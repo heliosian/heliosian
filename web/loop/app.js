@@ -1,6 +1,7 @@
 import {state, applyModel, group} from './state.js';
 import {el} from './dom.js';
-import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
+import {initChrome} from './chrome.js';
+import {renderChrome, setTitle, clearSearch} from '/shell.js';
 import {groupsPage} from './pages/groups.js';
 import {groupPage, newGroupModal} from './pages/group.js';
 import {adminPage} from './pages/admin.js';

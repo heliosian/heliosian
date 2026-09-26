@@ -1,10 +1,8 @@
-import {state, me, isAdmin, isSystemAdmin, setSuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown} from './state.js';
+import {state, me, isSystemAdmin, setSuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown} from './state.js';
 import {el, svg, link, button} from './dom.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
+import {initShell, appSymbol} from '/shell.js';
 import {openParty} from './edit.js';
 
-// The rail and the drawer show these; the phone's tab bar drops the admin one.
-// /admin is deliberately absent - Admin Tools is reached from the account menu.
 const primary = [
   {href: '/', icon: 'app', label: 'Parties'},
   {href: '/my', icon: 'home', label: "My Family's Parties"},
@@ -12,8 +10,6 @@ const primary = [
   {href: '/approvals', icon: 'hourglass', label: 'Approval Needed', admin: true, count: () => pendingParties().length},
 ];
 
-// Approval Needed is the one admin item that stays with the hat off: what
-// waits on the admin list reaches it either way.
 function navItems() {
   return primary.filter(item => !item.admin || isSystemAdmin());
 }
@@ -32,17 +28,11 @@ function active(href) {
   return path === href || path.startsWith(href + '/');
 }
 
-// partiesPath is the parties page for the chosen celebration: the root for
-// the current one, /celebrations/... for any other.
 export function partiesPath() {
   const code = state.celebration;
   return code === state.model.current ? '/' : `/celebrations/${encodeURIComponent(code)}`;
 }
 
-// The parties page's filters are the address's, so a reload, a copied link
-// and Back all keep them: ?show= names the tab - none for Available, the
-// first - and &category= the category, as lowercase words joined by
-// dashes. listPath writes them; listTab and listCategory read them back.
 function slug(words) {
   return words.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
@@ -69,22 +59,12 @@ export function listCategory() {
   return (want && state.model.categories.find(c => slug(c) === want)) || '';
 }
 
-// hostingShown is the Hosting page's tab as the address names it -
-// ?show=approvals or ?show=all - My Parties for none.
 export function hostingShown() {
   return new URLSearchParams(location.search).get('show') || 'mine';
 }
 
-// appSymbol is the app's own mark, worn by the rail's first item (toolbar.css).
-function appSymbol() {
-  const mark = el('span', 'app-symbol');
-  mark.setAttribute('aria-hidden', 'true');
-  return mark;
-}
-
 function navLink(item) {
   let href = item.href === '/' ? partiesPath() : item.href;
-  // Approval Needed is the Hosting page's admin tab.
   if (item.href === '/approvals') {
     href = '/hosting?show=approvals';
   }
@@ -97,23 +77,10 @@ function navLink(item) {
   return a;
 }
 
-function closeMenus() {
-  for (const menu of document.querySelectorAll('.user-menu')) {
-    menu.hidden = true;
-  }
-}
-
-// Hosting a party is the one thing anyone can start from anywhere, so it sits
-// under the nav rather than on the parties page.
 function hostButton() {
   return button('Host a Party', 'plus', 'button nav-action', () => openParty(null));
 }
 
-// The four tabs of the parties list sit under Parties in the rail, each
-// with how many parties it holds for the chosen celebration - the same
-// numbers the tab bar shows, from the same filter (pages/parties.js).
-// Available and Waitlist are what sells now; All Upcoming is everything
-// still to come, sold out and closed included; Past Parties what has been.
 export const listTabs = [
   {key: 'available', label: 'Available'},
   {key: 'waitlist', label: 'Waitlist'},
@@ -151,11 +118,6 @@ function tabLinks() {
   return wrap;
 }
 
-// familyLinks sit under My Family's Parties: the whole family first - every
-// party anyone in the household is on, guests they brought included - then
-// the viewer, then their partner and children, each with how many parties
-// they hold a ticket to or wait for. Nobody with no household gets a list
-// of one.
 function familyLinks() {
   const people = household();
   if (people.length < 2) {
@@ -169,7 +131,6 @@ function familyLinks() {
     a.append(el('span', 'nav-sub-name', name), el('span', 'nav-sub-count', String(n)));
     wrap.append(a);
   };
-  // The counts follow the page's past switch, so each says what its page lists.
   const listed = state.model.parties.filter(familyShown);
   entry('/my', 'My Family', listed.filter(p => myTickets(p).length).length, current[0] === 'my' && !current[1]);
   people.forEach((person, i) => {
@@ -197,170 +158,31 @@ function fillNav(nav) {
   }
 }
 
-function renderNav() {
-  const nav = document.querySelector('#nav');
-  nav.replaceChildren();
-  fillNav(nav);
-}
-
-function renderTabbar() {
-  const bar = document.querySelector('#tabbar');
-  bar.replaceChildren();
+function fillTabbar(bar) {
   for (const item of primary.filter(i => !i.admin)) {
     bar.append(navLink(item));
   }
 }
 
-function renderDrawer() {
-  const drawer = document.querySelector('#drawer');
-  drawer.replaceChildren();
-  const head = el('div', 'drawer-head');
-  const icon = el('img');
-  icon.src = '/brand/logo-mark.png';
-  icon.alt = '';
-  const close = el('button', 'icon-button');
-  close.type = 'button';
-  close.setAttribute('aria-label', 'Close');
-  close.append(svg('close'));
-  close.addEventListener('click', closeDrawer);
-  head.append(icon, el('span', '', 'Helios Celebrate'), close);
-  drawer.append(head);
-  const nav = el('nav', 'app-nav drawer-nav');
-  fillNav(nav);
-  drawer.append(nav);
-  const user = el('div', 'drawer-user');
-  user.append(el('div', 'name', me().name), el('div', 'email', me().email));
-  if (isSystemAdmin()) {
-    user.append(link('/admin', 'drawer-admin', 'Admin Tools'));
-  }
-  const form = el('form');
-  form.method = 'post';
-  form.action = '/auth/logout';
-  form.append(el('button', 'button button-secondary button-small', 'Sign Out'));
-  user.append(form);
-  drawer.append(user);
-}
-
-export function openDrawer() {
-  renderDrawer();
-  document.querySelector('#drawer-overlay').hidden = false;
-}
-
-export function closeDrawer() {
-  document.querySelector('#drawer-overlay').hidden = true;
-}
-
-function renderUser() {
-  const user = me();
-  renderAvatars({photoUrl: user.photoUrl && user.photoUrl + '?thumb=1', initial: user.initial});
-  renderAlerts(state.model.alerts || {});
-  renderProfileLink(user.email);
-  for (const line of document.querySelectorAll('.user-menu-email')) {
-    line.textContent = user.email;
-  }
-  // The pencil and Admin Tools go with being on the admin list; the rest of
-  // the admin rows come and go with the hat. The pencil puts the hat on or
-  // takes it off, and the page repaints as the other kind of user.
-  for (const row of document.querySelectorAll('.user-menu-admin')) {
-    row.hidden = !isSystemAdmin();
-  }
-  renderSuperToggle({show: isSystemAdmin(), on: state.superEdit, onToggle: on => {
-    setSuperEdit(on);
-    document.dispatchEvent(new CustomEvent('celebrate:refresh'));
-  }});
-}
-
-// One search box, in the top bar, and each page says what it filters. app.js
-// clears the binding on every route change. A page that filters nothing (a
-// party's page) keeps the box, with the parties list as its subject: typing
-// there jumps to that list with the words carried along.
-let onSearch = null;
-let carriedQuery = '';
-
-const defaultPlaceholder = 'Search parties…';
-
-function searchInput() {
-  return document.querySelector('#search-input');
-}
-
-export function setSearch(placeholder, handler) {
-  onSearch = handler;
-  const query = carriedQuery;
-  carriedQuery = '';
-  const input = searchInput();
-  input.value = query;
-  input.placeholder = placeholder || defaultPlaceholder;
-  if (query) {
-    handler(query.trim().toLowerCase());
-  }
-}
-
-export function clearSearch() {
-  onSearch = null;
-  const input = searchInput();
-  input.value = '';
-  input.placeholder = defaultPlaceholder;
-}
-
-function search(value) {
-  if (onSearch) {
-    onSearch(value.trim().toLowerCase());
-    return;
-  }
-  if (!value.trim()) {
-    return;
-  }
-  carriedQuery = value;
-  history.pushState(null, '', listPath(state.tab, state.category));
-  document.dispatchEvent(new CustomEvent('celebrate:refresh'));
-}
-
-export function setTitle(title) {
-  document.querySelector('#mobile-title').textContent = title;
-  document.title = `${title} · Helios Celebrate`;
-}
-
-// syncViewportHeight is the fix Helios Who? carries for the phone shell: in
-// standalone mode 100dvh can settle short after an in-page route change, so
-// --vh100 stands in for it (see team's chrome.js for the long version).
-function syncViewportHeight() {
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-  const height = standalone ? screen.height : window.innerHeight;
-  document.documentElement.style.setProperty('--vh100', height + 'px');
-}
-
-export function renderChrome() {
-  syncViewportHeight();
-  renderUser();
-  renderNav();
-  renderTabbar();
-}
-
 export function initChrome() {
-  initAppSwitch();
-  document.querySelector('#menu-button').append(svg('menu'));
-  document.querySelector('#menu-button').addEventListener('click', openDrawer);
-  searchInput().addEventListener('input', () => search(searchInput().value));
-  onSlash(() => searchInput().focus());
-  document.querySelector('#drawer-overlay').addEventListener('click', e => {
-    if (e.target === e.currentTarget) {
-      closeDrawer();
-    }
-  });
-  document.querySelector('#drawer').addEventListener('click', e => {
-    if (e.target.closest('a')) {
-      closeDrawer();
-    }
-  });
-  initUserMenu();
-  initSpoof();
-  window.addEventListener('resize', syncViewportHeight);
-  window.addEventListener('orientationchange', syncViewportHeight);
-  document.addEventListener('click', closeMenus);
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      closeMenus();
-      closeDrawer();
-    }
+  initShell({
+    name: 'Helios Celebrate',
+    me,
+    alerts: () => state.model.alerts,
+    isAdmin: isSystemAdmin,
+    superOn: () => state.superEdit,
+    onSuper: on => {
+      setSuperEdit(on);
+      document.dispatchEvent(new CustomEvent('celebrate:refresh'));
+    },
+    fillNav,
+    fillTabbar,
+    search: {
+      placeholder: 'Search parties…',
+      carry: () => {
+        history.pushState(null, '', listPath(state.tab, state.category));
+        document.dispatchEvent(new CustomEvent('celebrate:refresh'));
+      },
+    },
   });
 }

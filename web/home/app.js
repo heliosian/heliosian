@@ -1,34 +1,20 @@
 import {state, applyModel, setSuperAdmin, superOn} from './state.js';
+import {el} from './dom.js';
 import {renderCategories, renderNav} from './cards.js';
 import {renderMonth} from './month.js';
 import {renderWidgets} from './widgets.js';
 import {initEditing, refreshCategoryManager} from './edit.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
+import {onSlash} from '/toolbar.js';
+import {initTopbar, renderAccount, searchInput} from '/shell.js';
+
+const editCategories = el('button', 'user-menu-super', 'Edit Categories');
+editCategories.type = 'button';
+editCategories.id = 'edit-categories';
+editCategories.hidden = true;
 
 function renderChrome() {
-  const user = state.model.user;
-  // The same hero photo the directory leads with (their own, else their
-  // family's); the initial only stands in when there is no photo at all.
-  renderAvatars({photoUrl: user.photoUrl && user.photoUrl + '?thumb=1', initial: user.initial});
-  renderAlerts(state.model.alerts || {});
-  renderProfileLink(user.email);
-  document.querySelector('.user-menu-email').textContent = user.email;
-  for (const item of document.querySelectorAll('.user-menu-admin')) {
-    item.hidden = !user.isAdmin;
-  }
-  // Edit Categories is an edit, so it waits for the pencil; Admin Tools
-  // above does not.
-  for (const item of document.querySelectorAll('.user-menu-super')) {
-    item.hidden = !superOn();
-  }
-  // The pencil repaints the links in or out of Super Admin Mode.
-  renderSuperToggle({show: user.isAdmin, on: state.superAdmin, onToggle: on => {
-    setSuperAdmin(on);
-    renderChrome();
-    renderNav();
-    renderCategories(document.querySelector('#search').value);
-    renderWidgets(document.querySelector('#search').value);
-  }});
+  renderAccount();
+  editCategories.hidden = !superOn();
 }
 
 export async function load() {
@@ -39,26 +25,22 @@ export async function load() {
   applyModel(await res.json());
   renderChrome();
   renderNav();
-  renderCategories(document.querySelector('#search').value);
+  renderCategories(searchInput().value);
   refreshCategoryManager();
-  // The rail's month is drawn last, after everything the page is for: it is
-  // the one part fed by another app's model, and drawing it first once cost
-  // the whole page - a field the calendar had stopped sending left the month
-  // throwing, and the links and every category never ran.
+  // The rail's month is drawn last: it is fed by another app's model, and a
+  // failure there must not cost the links and categories drawn above it.
   renderMonth();
-  renderWidgets(document.querySelector('#search').value);
+  renderWidgets(searchInput().value);
 }
 
 function initSearch() {
-  const search = document.querySelector('#search');
+  const search = searchInput();
   search.addEventListener('input', () => {
     renderCategories(search.value);
     renderWidgets(search.value);
   });
   search.addEventListener('keydown', e => {
     if (e.key === 'Escape' && search.value) {
-      // Swallow the key so the modal/menu handlers do not also fire on what
-      // the user meant as "clear the box".
       e.stopPropagation();
       search.value = '';
       renderCategories('');
@@ -68,8 +50,6 @@ function initSearch() {
   onSlash(() => search.focus());
 }
 
-// On a phone the rail is a drawer behind the toolbar's hamburger: open on
-// the button, closed on the backdrop, a section link, or Escape.
 function setDrawer(open) {
   document.body.classList.toggle('drawer-open', open);
   document.querySelector('#drawer-overlay').hidden = !open;
@@ -91,19 +71,23 @@ function initDrawer() {
 }
 
 function initChrome() {
-  initAppSwitch();
+  initTopbar({
+    name: 'Heliosian',
+    me: () => state.model.user,
+    alerts: () => state.model.alerts,
+    isAdmin: () => state.model.user.isAdmin,
+    superOn: () => state.superAdmin,
+    onSuper: on => {
+      setSuperAdmin(on);
+      renderChrome();
+      renderNav();
+      renderCategories(searchInput().value);
+      renderWidgets(searchInput().value);
+    },
+    search: {placeholder: 'Search apps, links, or events…', own: true},
+    menuRows: [editCategories],
+  });
   initDrawer();
-  initUserMenu();
-  initSpoof();
-  const menu = document.querySelector('#user-menu');
-  document.addEventListener('click', () => {
-    menu.hidden = true;
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      menu.hidden = true;
-    }
-  });
 }
 
 initChrome();

@@ -3,11 +3,8 @@ import {el, withFrom, slugify, firstName} from './dom.js';
 import {familyOf} from './families.js';
 import {personLink, photoOrInitials, personPhotoUrl, roleLabel, gradeChain} from './people.js';
 import {gradeImage} from './pages/classrooms.js';
+import {searchInput} from '/shell.js';
 
-// The search dropdown's second line: a student's grade chain as before, a staff
-// member's job title, and a parent's "Parent to Leo (Grade 1)" instead of the
-// generic role label, since who someone is a parent OF is more useful here than the
-// fact that they're a parent.
 function personSearchSubtitle(p) {
   if (p.isStudent) {
     return gradeChain(p);
@@ -25,9 +22,6 @@ function personSearchSubtitle(p) {
   return roleLabel(p);
 }
 
-// The toolbar's search, on every width: people/grades/classrooms are all
-// loaded client-side already (state.model), so this is a plain client-side
-// filter rather than a server round trip.
 function renderGlobalSearchResults(resultsEl, query) {
   const q = query.trim().toLowerCase();
   resultsEl.replaceChildren();
@@ -95,8 +89,6 @@ function renderGlobalSearchResults(resultsEl, query) {
     return row;
   });
 
-  // Highlight the top result so Enter in the search box goes straight to it,
-  // without requiring an arrow-key press first.
   const first = resultsEl.querySelector('.gsearch-result');
   if (first) {
     first.classList.add('active');
@@ -105,10 +97,6 @@ function renderGlobalSearchResults(resultsEl, query) {
   resultsEl.hidden = false;
 }
 
-// Enter jumps straight to the highlighted result, the way a browser's own
-// address bar completes on Enter, so search-then-Enter never requires
-// reaching for the mouse. Arrow keys move the highlight between results
-// first, same as any other combobox.
 function goToActiveResult(resultsEl) {
   const active = resultsEl.querySelector('.gsearch-result.active');
   if (active) {
@@ -142,17 +130,19 @@ function handleSearchNavKeys(resultsEl, e) {
   }
 }
 
-export const topbarSearchInput = document.querySelector('#topbar-search-input');
-export const topbarSearchResults = document.querySelector('#topbar-search-results');
+export function searchResults() {
+  return document.querySelector('#search-results');
+}
 
 export function initSearch() {
-  topbarSearchInput.addEventListener('input', () => {
-    renderGlobalSearchResults(topbarSearchResults, topbarSearchInput.value);
+  const input = searchInput();
+  input.addEventListener('input', () => {
+    renderGlobalSearchResults(searchResults(), input.value);
   });
-  topbarSearchInput.addEventListener('focus', () => {
-    if (topbarSearchInput.value.trim()) {
-      renderGlobalSearchResults(topbarSearchResults, topbarSearchInput.value);
+  input.addEventListener('focus', () => {
+    if (input.value.trim()) {
+      renderGlobalSearchResults(searchResults(), input.value);
     }
   });
-  topbarSearchInput.addEventListener('keydown', e => handleSearchNavKeys(topbarSearchResults, e));
+  input.addEventListener('keydown', e => handleSearchNavKeys(searchResults(), e));
 }

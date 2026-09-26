@@ -2,7 +2,8 @@ import {state, me, isAdmin, isSystemAdmin, setSuperEdit, today, bands, tagGroups
 import {el, svg, link, button, toast, feedMark, emojiPicker} from './dom.js';
 import {popup} from '/modal.js';
 import {dayColumn} from './day.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
+import {onSlash} from '/toolbar.js';
+import {initShell, appSymbol} from '/shell.js';
 
 const primary = [
   {href: '/', icon: 'app', label: 'Calendar'},
@@ -17,15 +18,8 @@ function active(href) {
   return path === href || path.startsWith(href + '/');
 }
 
-// mineRows are the rail's My Events: the item itself, to every list at
-// once, and under it a section for each standing that holds anything -
-// RSVP, the invitations waiting for the viewer's reply, its count on a red
-// badge as Who?'s rail counts what is owed; Attending, the yeses; Hosting
-// - each with its count and to its own list; nothing at all when none
-// holds anything.
 function mineRows(nav, item) {
   const mine = myEvents();
-  // Only a section with something in it, and My Events only when any has.
   const sections = [
     ['/mine/rsvp', 'calendar', 'RSVP', mine.waiting, true],
     ['/mine/attending', 'check', 'Attending', mine.going, false],
@@ -49,22 +43,12 @@ function mineRows(nav, item) {
   }
 }
 
-// appSymbol is the app's own mark, worn by the rail's first item (toolbar.css).
-function appSymbol() {
-  const mark = el('span', 'app-symbol');
-  mark.setAttribute('aria-hidden', 'true');
-  return mark;
-}
-
 function navLink(item) {
   const a = link(item.href, active(item.href) ? 'is-active' : '');
   a.append(item.icon === 'app' ? appSymbol() : svg(item.icon), el('span', '', item.label));
   return a;
 }
 
-// editFeedPopup is the small popup for a saved calendar's name and emoji
-// - from the pencil beside it in the rail, and from the mark over the
-// calendar - saved with its filters as they stand.
 export function editFeedPopup(f) {
   const form = el('form');
   const nameField = el('label', 'field');
@@ -203,19 +187,10 @@ export function calendarMenu(onPick) {
   return menu;
 }
 
-// Whether the rail's saved calendars show their edit and remove buttons:
-// the pencil on Calendar toggles it, and it lasts until toggled back.
 let editingNav = false;
 
-// fillNav lists the pages, and under Calendar the viewer's own saved
-// calendars by name: each opens the calendar filtered to what it carries,
-// and is lit while the filters are its own. The pencil on Calendar turns
-// on a pencil and a cross on each of them - the pencil opens its form in a
-// popup, the cross removes it.
 function fillNav(nav) {
   for (const item of primary) {
-    // My Events has its three lists under it in the rail; the tab bar
-    // keeps it as one item.
     if (item.href === '/mine') {
       mineRows(nav, item);
       continue;
@@ -379,8 +354,6 @@ function fillNav(nav) {
   }
 }
 
-// A filter change repaints the page and carries the search words across,
-// so turning on a lit tag shows the matches it was hiding.
 function refresh() {
   carriedQuery = typed();
   document.dispatchEvent(new CustomEvent('calendar:refresh'));
@@ -619,9 +592,6 @@ async function reloadModel() {
   await load();
 }
 
-// The rail's day column, under the nav on a wide window: the day last opened
-// on the calendar page, today until one is. Drawn again after every page and
-// whenever the search words change.
 export function renderRailDay() {
   const day = dayColumn(state.day || today());
   document.querySelector('#rail-day').replaceChildren(day.node);
@@ -634,13 +604,10 @@ function renderNav() {
   renderRailDay();
 }
 
-function renderTabbar() {
-  const bar = document.querySelector('#tabbar');
-  bar.replaceChildren();
+function fillTabbar(bar) {
   for (const item of primary) {
     bar.append(navLink(item));
   }
-  // Filters unfolds the page's own card and scrolls to it.
   const filters = el('a', '');
   filters.href = '#';
   filters.append(svg('tag'), el('span', '', 'Filters'));
@@ -653,77 +620,6 @@ function renderTabbar() {
   bar.append(filters);
 }
 
-function renderDrawer() {
-  const drawer = document.querySelector('#drawer');
-  drawer.replaceChildren();
-  const head = el('div', 'drawer-head');
-  const icon = el('img');
-  icon.src = '/brand/logo-mark.png';
-  icon.alt = '';
-  const close = el('button', 'icon-button');
-  close.type = 'button';
-  close.setAttribute('aria-label', 'Close');
-  close.append(svg('close'));
-  close.addEventListener('click', closeDrawer);
-  head.append(icon, el('span', '', 'Helios When'), close);
-  drawer.append(head);
-  const nav = el('nav', 'app-nav drawer-nav');
-  fillNav(nav);
-  drawer.append(nav);
-  const user = el('div', 'drawer-user');
-  user.append(el('div', 'name', me().name), el('div', 'email', me().email));
-  if (isSystemAdmin()) {
-    user.append(link('/admin', 'drawer-admin', 'Admin Tools'));
-  }
-  const form = el('form');
-  form.method = 'post';
-  form.action = '/auth/logout';
-  form.append(el('button', 'button button-secondary button-small', 'Sign Out'));
-  user.append(form);
-  drawer.append(user);
-}
-
-export function openDrawer() {
-  renderDrawer();
-  document.querySelector('#drawer-overlay').hidden = false;
-}
-
-export function closeDrawer() {
-  document.querySelector('#drawer-overlay').hidden = true;
-}
-
-function closeMenus() {
-  for (const menu of document.querySelectorAll('.user-menu')) {
-    menu.hidden = true;
-  }
-}
-
-function renderUser() {
-  const user = me();
-  renderAvatars({photoUrl: user.photoUrl && user.photoUrl + '?thumb=1', initial: user.initial});
-  renderAlerts(state.model.alerts || {});
-  renderProfileLink(user.email);
-  for (const line of document.querySelectorAll('.user-menu-email')) {
-    line.textContent = user.email;
-  }
-  // Admin Tools is in the account menu, for the calendar admins alone,
-  // whatever the hat; the pencil puts the hat on or takes it off, and the
-  // page repaints as the other kind of user.
-  for (const row of document.querySelectorAll('.user-menu-admin')) {
-    row.hidden = !isSystemAdmin();
-  }
-  renderSuperToggle({show: isSystemAdmin(), on: state.superEdit, onToggle: async on => {
-    setSuperEdit(on);
-    const {render} = await import('./app.js');
-    renderChrome();
-    render();
-  }});
-}
-
-// The top bar's search box, as in the other apps. Typing opens a list of
-// the events the words find, whatever page is open - each with its date,
-// walked with the arrow keys, Enter opening the one chosen - and on the
-// calendar page the words also light up what they find in every panel.
 let onSearch = null;
 let carriedQuery = '';
 
@@ -737,7 +633,6 @@ function typed() {
   return searchInput().value;
 }
 
-// sync writes the words into the box and marks the page as searching.
 function sync(value) {
   const input = searchInput();
   if (input.value !== value) {
@@ -777,10 +672,6 @@ function search(value) {
   }
 }
 
-// The list under the box: up to a dozen of the events the words find, in
-// date order, with how many more there are; one the filters keep off the
-// page says so. Arrow keys move the choice, Enter opens it, Escape closes
-// the list, and a click on a row opens that one.
 const resultLimit = 12;
 let resultRows = [];
 let activeRow = -1;
@@ -816,8 +707,6 @@ function showResults(query) {
     row.style.setProperty('--c', eventTint(event));
     const when = el('span', 'search-row-date');
     const day = event.start.slice(0, 10);
-    // The year shows only when it is not this one, so last year's rows
-    // are not mistaken for this year's.
     const dayWords = parseDate(day).toLocaleDateString('en-US', day.slice(0, 4) === today().slice(0, 4) ? {month: 'short', day: 'numeric'} : {month: 'short', day: 'numeric', year: 'numeric'});
     when.append(el('span', 'search-row-dow', weekdayShort(day)), el('span', 'search-row-day', dayWords));
     const body = el('span', 'search-row-body');
@@ -881,54 +770,26 @@ function focusSearch() {
   searchInput().focus();
 }
 
-export function setTitle(title) {
-  document.querySelector('#mobile-title').textContent = title;
-  document.title = `${title} · Helios When`;
-}
-
-function syncViewportHeight() {
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-  const height = standalone ? screen.height : window.innerHeight;
-  document.documentElement.style.setProperty('--vh100', height + 'px');
-}
-
-export function renderChrome() {
-  syncViewportHeight();
-  renderUser();
-  renderNav();
-  renderTabbar();
-}
-
 export function initChrome() {
-  initAppSwitch();
-  document.querySelector('#menu-button').append(svg('menu'));
-  document.querySelector('#menu-button').addEventListener('click', openDrawer);
+  initShell({
+    name: 'Helios When',
+    me,
+    alerts: () => state.model.alerts,
+    isAdmin: isSystemAdmin,
+    superOn: () => state.superEdit,
+    onSuper: async on => {
+      setSuperEdit(on);
+      const {render} = await import('./app.js');
+      render();
+    },
+    fillNav,
+    fillTabbar,
+    search: {placeholder: defaultPlaceholder, results: true, own: true},
+    afterRender: renderRailDay,
+  });
   searchInput().addEventListener('input', () => search(typed()));
   searchInput().addEventListener('keydown', onSearchKey);
-  // Back in the box with words still there, the list comes back; leaving
-  // it, the list goes but the words and their highlights stay.
   searchInput().addEventListener('focus', () => showResults(typed().trim()));
   searchInput().addEventListener('blur', closeResults);
   onSlash(focusSearch);
-  document.querySelector('#drawer-overlay').addEventListener('click', e => {
-    if (e.target === e.currentTarget) {
-      closeDrawer();
-    }
-  });
-  document.querySelector('#drawer').addEventListener('click', e => {
-    if (e.target.closest('a')) {
-      closeDrawer();
-    }
-  });
-  initUserMenu();
-  initSpoof();
-  window.addEventListener('resize', syncViewportHeight);
-  window.addEventListener('orientationchange', syncViewportHeight);
-  document.addEventListener('click', closeMenus);
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      closeMenus();
-      closeDrawer();
-    }
-  });
 }

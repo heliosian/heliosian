@@ -1,6 +1,7 @@
 import {state, applyModel, celebration, familyMember, resolvePath, partyPath} from './state.js';
 import {el} from './dom.js';
-import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
+import {initChrome} from './chrome.js';
+import {renderChrome, setTitle, clearSearch} from '/shell.js';
 import {initModal} from '/modal.js';
 import {partiesPage} from './pages/parties.js';
 import {partyPage} from './pages/party.js';
@@ -14,7 +15,6 @@ export async function load() {
     throw new Error(`loading model failed: ${res.status}`);
   }
   applyModel(await res.json());
-  renderChrome();
   render();
 }
 
@@ -41,9 +41,6 @@ function route() {
       return celebration(parts[1]) ? partiesPage(parts[1]) : notFound('That celebration');
     case 'parties':
     case 'p': {
-      // /parties/{id} and /p/{pretty} both reach the party, through the
-      // Redirects tab when an address has since changed; the bar is
-      // corrected so the address people copy next is the live one.
       const p = resolvePath(location.pathname);
       if (p && partyPath(p) !== location.pathname) {
         history.replaceState(null, '', partyPath(p));
@@ -51,8 +48,6 @@ function route() {
       return p ? partyPage(p) : notFound(parts[0] === 'p' ? 'That address' : 'That party');
     }
     case 'my': {
-      // /my/{name} is one member of the household, by the address's local
-      // part; anyone else is not a page.
       if (!parts[1]) {
         return myPage(null);
       }
@@ -72,8 +67,6 @@ export function render() {
   page.className = '';
   clearSearch();
   page.replaceChildren(route());
-  // Admin Tools is its own window: the shell's rail, toolbar and tab bar
-  // step aside for the admin chrome (see pages/admin.js).
   document.body.classList.toggle('is-admin', location.pathname === '/admin');
   renderChrome();
 }

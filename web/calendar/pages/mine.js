@@ -1,6 +1,6 @@
 import {myEvents, eventPath, eventImage, eventDates, parseDate, timeLine, answerOf} from '../state.js';
 import {el, link, svg} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {setTitle} from '/shell.js';
 
 // minePage is My Events: the viewer's own standing with what is coming
 // up, a group per standing as the rail names them - RSVP, the invitations

@@ -1,6 +1,6 @@
 import {pendingItems, activityPath, rootOf, longDate} from '../state.js';
 import {el, link, svg, thumb, button} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {setTitle} from '/shell.js';
 import {saveActivityFields} from '../edit.js';
 
 // approvalButtons are an admin's answer to a suggestion without the hat:

@@ -1099,7 +1099,7 @@ body .drawer-user { border-top: 1px solid rgba(255, 255, 255, 0.16); color: #fff
 
 body .drawer-user .email, body .drawer-user .muted { color: rgba(255, 255, 255, 0.62); }
 
-body .drawer-user .drawer-admin, body .drawer .user-menu-link { color: #fff; }
+body .drawer-user .drawer-admin { color: #fff; }
 
 body .drawer .button.button-secondary { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.3); color: #fff; }
 

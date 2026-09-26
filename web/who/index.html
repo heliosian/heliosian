@@ -69,6 +69,7 @@
 <link rel="modulepreload" href="/crumbs.js">
 <link rel="modulepreload" href="/search.js">
 <link rel="modulepreload" href="/chrome.js">
+<link rel="modulepreload" href="/shell.js">
 <link rel="modulepreload" href="/install.js">
 <link rel="modulepreload" href="/pages/people.js">
 <link rel="modulepreload" href="/pages/staff.js">
@@ -91,51 +92,19 @@
 <nav class="app-nav" id="nav"></nav>
 </aside>
 <div class="content-col">
-<header class="topbar">
-<button class="topbar-menu" id="mobile-menu-btn" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
-<div class="topbar-search">
-<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-<input type="search" id="topbar-search-input" placeholder="Search by name, student, grade, or classroom…" autocomplete="off">
-<kbd class="topbar-key">/</kbd>
-<div class="gsearch-results" id="topbar-search-results" hidden></div>
-</div>
-<div class="topbar-user">
-<span class="stale-wrap">
-<button class="topbar-alert topbar-alert-count stale-alert" type="button" id="topbar-stale-alert" title="Some family info is missing or out of date" hidden><span class="stale-count"></span></button>
-<div class="stale-menu topbar-alert-menu" id="topbar-stale-menu" hidden></div>
-</span>
-<span class="topbar-alert-wrap"><a class="topbar-alert privacy-alert" id="topbar-privacy-alert" href="/my-privacy" title="Your privacy settings don’t match Veracross" hidden><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg></a></span>
-<button type="button" class="user" id="user" aria-label="Account"><span class="user-avatar"></span></button>
-<div class="user-menu" id="user-menu" hidden>
-<div class="user-menu-email"></div>
-<a href="/people" class="user-menu-profile">View Profile</a>
-<a href="/my-privacy" class="user-menu-privacy">My Privacy<span class="user-menu-alert" hidden></span></a>
-<a href="/admin" class="user-menu-admin" hidden>Admin Tools</a>
-<form method="post" action="/auth/logout"><button>Sign Out</button></form>
-</div>
-</div>
-<div class="app-switch">
-<a class="app-switch-button" aria-label="Heliosian" aria-haspopup="menu"><img src="/brand/heliosian-tile.png" alt=""><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></a>
-<div class="app-switch-menu" hidden></div>
-</div>
-</header>
+<header class="topbar" id="topbar"></header>
 <main id="main"></main>
 </div>
 </div>
-<nav class="mobile-tabs" id="mobile-tabs"></nav>
+<nav class="tabbar" id="tabbar"></nav>
 <div class="mobile-lists-overlay" id="mobile-lists-overlay" hidden></div>
 <div class="mobile-lists-menu" id="mobile-lists-menu" hidden>
 <div class="mobile-lists-head">Lists</div>
 <div class="mobile-lists-body" id="mobile-lists-body"></div>
 </div>
-<div class="drawer-overlay" id="drawer-overlay" hidden></div>
-<aside class="drawer" id="drawer" hidden>
-<div class="drawer-head">
-<a class="drawer-brand" href="/people"><img src="/brand/icon-192.png" alt=""><span>Helios Who?</span></a>
-<button class="drawer-close" id="drawer-close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+<div class="drawer-overlay" id="drawer-overlay" hidden>
+<aside class="drawer" id="drawer"></aside>
 </div>
-<nav class="app-nav drawer-nav" id="drawer-nav"></nav>
-</aside>
 <script type="module" src="/app.js"></script>
 </body>
 </html>

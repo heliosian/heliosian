@@ -3,7 +3,7 @@ import {segments, shuffled} from './dom.js';
 import {tabParam} from '/tabs.js';
 import {loadTagRelations} from './storage.js';
 import {familyEntries} from './families.js';
-import {initChrome, renderNav, setChrome, finishRender, renderUserChrome, renderSuperEditBanner, syncSuperEditCheckboxes, renderPrivacyMenuAlert} from './chrome.js';
+import {initChrome, renderNav, setChrome, finishRender, renderUserChrome, renderSuperEditBanner} from './chrome.js';
 import {initSearch} from './search.js';
 import {maybeShowInstallPrompt} from './install.js';
 import {renderPeople} from './pages/people.js';
@@ -40,8 +40,6 @@ function render() {
     renderFamilyDetail(seg[1]);
   } else if (seg[0] === 'people') {
     const params = new URLSearchParams(location.search);
-    // ?tag= is one of the user's own, ?list= a Magic Tag's key, ?shared= a
-    // tag shared with them as owner:name - keyed "shared:owner:name" inside.
     const tagParam = params.get('tag') || params.get('list') || (params.get('shared') ? 'shared:' + params.get('shared') : '');
     if (tagParam) {
       state.filterTags = new Set([tagParam]);
@@ -98,8 +96,6 @@ export async function load() {
   state.familyOrder = shuffled(familyEntries());
   renderUserChrome();
   renderSuperEditBanner();
-  syncSuperEditCheckboxes();
-  renderPrivacyMenuAlert();
   render();
   maybeShowInstallPrompt();
 }

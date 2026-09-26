@@ -1,6 +1,6 @@
 import {state, me, family, isAdmin, isSystemAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel, ADDING} from '../state.js';
 import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor, toast} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {setTitle} from '/shell.js';
 import {approvalButtons} from './approvals.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {appOrigin} from '/toolbar.js';

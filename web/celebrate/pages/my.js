@@ -1,6 +1,6 @@
 import {state, me, household, familyShown, myTickets} from '../state.js';
 import {el, link} from '../dom.js';
-import {setTitle, setSearch, renderChrome} from '../chrome.js';
+import {setTitle, setSearch, renderChrome} from '/shell.js';
 import {partyCard} from '../cards.js';
 import {checkbox} from '/form.js';
 

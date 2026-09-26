@@ -1,6 +1,6 @@
 import {state, me, isSystemAdmin} from '../state.js';
 import {el, svg, button} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {setTitle} from '/shell.js';
 
 function denied() {
   const page = el('div', 'list-page');

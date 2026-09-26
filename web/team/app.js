@@ -1,6 +1,7 @@
 import {state, applyModel, resolvePath, redirectTarget, activityPath, isFamily, isSystemAdmin} from './state.js';
 import {el} from './dom.js';
-import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
+import {initChrome} from './chrome.js';
+import {renderChrome, setTitle, clearSearch} from '/shell.js';
 import {initModal} from '/modal.js';
 import {signUpPage} from './pages/signup.js';
 import {myPage} from './pages/my.js';
@@ -15,7 +16,6 @@ export async function load() {
     throw new Error(`loading model failed: ${res.status}`);
   }
   applyModel(await res.json());
-  renderChrome();
   render();
 }
 
@@ -26,9 +26,6 @@ export function navigate(path) {
 }
 
 function notFound(what) {
-  // An address the Redirects tab sends on - to a page that is not an
-  // activity, or off the site - is followed by the browser, the way the
-  // server follows it ahead of sign-in.
   const target = redirectTarget(location.pathname);
   if (target) {
     location.replace(target + (target.includes('?') ? '' : location.search));
@@ -41,8 +38,6 @@ function notFound(what) {
 }
 
 function route() {
-  // Only the opportunities page narrows by category, and it reads its own
-  // from the address; everywhere else the rail lights none.
   state.category = '';
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   if (!parts.length) {
@@ -52,8 +47,6 @@ function route() {
     case 'years':
       return signUpPage(parts[1] || null);
     case 'my':
-      // /my/{email} is a household member's sign-ups; anyone else's is not a
-      // page.
       if (parts[1] && !isFamily(parts[1])) {
         return notFound('That person');
       }
@@ -63,17 +56,12 @@ function route() {
     case 'admin':
       return adminPage();
     case 'approvals':
-      // The queue is the admin list's, hat or not: waiting suggestions reach
-      // an admin like an alert would. For anyone else there is no such page.
       if (!isSystemAdmin()) {
         return notFound('That page');
       }
       return approvalsPage();
     case 'activities':
     case 'v': {
-      // /activities/{id}/... and /v/{pretty}/... both reach one page per node,
-      // through the Redirects tab when an address has since changed; the bar
-      // is corrected so the address people copy next is the live one.
       const act = resolvePath(location.pathname);
       if (act && activityPath(act) !== location.pathname) {
         history.replaceState(null, '', activityPath(act));
@@ -89,8 +77,6 @@ export function render() {
   page.className = '';
   clearSearch();
   page.replaceChildren(route());
-  // Admin Tools is its own window: the shell's rail, toolbar and tab bar
-  // step aside for the admin chrome (see pages/admin.js).
   document.body.classList.toggle('is-admin', location.pathname === '/admin');
   // After the page, so the rail's active item and its per-category counts
   // reflect where we just landed and what that page filtered to.

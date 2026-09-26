@@ -1,4 +1,5 @@
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper, signedIn} from '/toolbar.js';
+import {onSlash, signedIn} from '/toolbar.js';
+import {initTopbar, renderAccount} from '/shell.js';
 import {render, stable} from '/markdown.js';
 
 const maxChats = 50;
@@ -521,30 +522,19 @@ function closeDrawer() {
   document.querySelector('#drawer-overlay').hidden = true;
 }
 
-function renderUser() {
-  const user = state.model.user;
-  renderAvatars({photoUrl: user.photoUrl, initial: user.initial});
-  renderAlerts(state.model.alerts || {});
-  renderProfileLink(user.email);
-  for (const line of document.querySelectorAll('.user-menu-email')) {
-    line.textContent = user.email;
-  }
-  markSuper(false);
-}
-
 function initChrome() {
-  initAppSwitch();
-  initUserMenu();
-  initSpoof();
-  onSlash(() => composer().focus());
-  document.addEventListener('click', e => {
-    if (!e.target.closest('#user, #user-menu')) {
-      document.querySelector('#user-menu').hidden = true;
-    }
+  initTopbar({
+    name: 'Helios Ask',
+    me: () => state.model.user,
+    alerts: () => state.model.alerts,
+    isAdmin: () => false,
+    superOn: () => false,
+    onSuper: () => {},
+    menuButton: false,
   });
+  onSlash(() => composer().focus());
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      document.querySelector('#user-menu').hidden = true;
       closeDrawer();
     }
   });
@@ -583,7 +573,7 @@ async function load() {
     throw new Error(`loading model failed: ${res.status}`);
   }
   state.model = await res.json();
-  renderUser();
+  renderAccount();
   await openStorage(await signedIn(await keyed));
   await loadChats();
   renderChats();
@@ -591,9 +581,6 @@ async function load() {
   askFromAddress();
 }
 
-// askFromAddress asks a question another page handed across in the address
-// - ?q=, as Heliosian's Inbox widget's Ask about this does - in a
-// new chat, and takes it out of the address so a reload does not ask again.
 function askFromAddress() {
   const question = new URLSearchParams(location.search).get('q');
   if (!question) {

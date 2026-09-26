@@ -1,6 +1,6 @@
 import {state, descendants, parseWhen, activityPath, mySignUp, rootOf, parentOf, revealed} from '../state.js';
 import {el, link, svg, button} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {setTitle} from '/shell.js';
 import {categoryClass} from '../cards.js';
 
 let month = null;

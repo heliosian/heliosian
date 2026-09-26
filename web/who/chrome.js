@@ -1,15 +1,16 @@
 import {state, byEmail} from './state.js';
-import {el, svg, segments, hue, firstName, thumbUrl, trimMiddle} from './dom.js';
+import {el, svg, segments, hue, firstName, trimMiddle} from './dom.js';
 import {saveNavOpen, loadNavScroll, saveNavScroll} from './storage.js';
 import {familyOf, myFamilyKey} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
 import {tagNames, listKeys, listLabel, listApp, sharedKeys, sharedOf, managersOf, tagHref, onTagsChange, onTagsChangeChrome} from './tags.js';
-import {clampFilterPanel, closeFilterPanels} from './filters.js';
-import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodoCount, staleCard} from './stale.js';
-import {topbarSearchInput, topbarSearchResults} from './search.js';
-import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard, privacyMismatchText} from './pages/privacy.js';
+import {closeFilterPanels} from './filters.js';
+import {staleItems, familyInfoBanner, familyNavPeople, personTodoCount} from './stale.js';
+import {searchResults} from './search.js';
+import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
 import {load} from './app.js';
-import {renderAvatars, onSlash, isEditableTarget, initAppSwitch, initUserMenu, initSpoof, hoverMenu, hoverClick, alertMenu, alertCard, renderSuperToggle, privacyCount, privacyCard} from '/toolbar.js';
+import {onSlash, isEditableTarget} from '/toolbar.js';
+import {initShell, renderAccount, searchInput, syncViewportHeight} from '/shell.js';
 
 const primaryNavItems = [
   {path: 'people', label: 'Directory'},
@@ -27,10 +28,6 @@ const mobileNavSections = [
   {path: 'classrooms', label: 'Gradebands'},
   {path: 'staff', label: 'Staff'},
   {path: 'my-family', label: 'My Family'},
-  // Not a real page - opens the Lists popup instead of navigating (see the
-  // isListsTab handling in renderNav below). Keeps the "email-list" path so
-  // it still lands on Everyone as a fallback (JS disabled, middle-click,
-  // "open in new tab") and so the tab lights up whenever that page is open.
   {path: 'email-list', label: 'Lists', isListsTab: true},
 ];
 
@@ -55,9 +52,6 @@ export function setChrome(title, backHref) {
   updateMobileTitleInset();
 }
 
-// .mobile-title is centered by giving it equal left/right insets, so it has to
-// be centered on the whole strip rather than just the space beside the back
-// arrow, which is there on detail pages and not on the rest. Measured live.
 function updateMobileTitleInset() {
   const bar = document.querySelector('.mobile-top');
   const back = document.querySelector('#mobile-back');
@@ -74,8 +68,6 @@ export function resetMain(...children) {
   main.replaceChildren();
   onTagsChange(() => {});
   const seg = segments();
-  // My Privacy already shows its own, more detailed version of this per field, so the
-  // summary card here would just repeat what's right below it on that page.
   if (seg[0] !== 'my-privacy' && !privacyMismatchCardDismissed()) {
     const warnings = myPrivacyWarnings();
     if (warnings.length) {
@@ -125,23 +117,20 @@ function navScrollFade() {
   nav.style.setProperty('--fade-bottom', below ? '48px' : '0px');
 }
 
-// The rail is laid out before its logo has loaded, so an offset restored
-// then can be clamped to nothing; the nav's resize observer re-places it
-// until the person scrolls the rail themselves (navSettled).
+// The rail is laid out before its logo has loaded, so an offset restored then can
+// be clamped to nothing; the resize observer re-places it until the person scrolls.
 let navSettled = false;
 let navExpected = 0;
 
 function placeNavScroll(top) {
   const nav = document.querySelector('#nav');
   nav.scrollTop = top;
-  // The last active link: on a list page the Directory item is lit as well,
-  // and it sits at the top, so keeping it in view would scroll the list out.
   [...nav.querySelectorAll('a.active')].at(-1)?.scrollIntoView({block: 'nearest'});
   navExpected = nav.scrollTop;
   navScrollFade();
 }
 
-export function renderNav() {
+function fillNav(nav) {
   const seg = activeSection();
   const rawSeg = segments();
   const me = byEmail[document.body.dataset.userEmail];
@@ -170,120 +159,104 @@ export function renderNav() {
     container.append(a);
   }
 
-  function buildNavInto(nav) {
-    nav.replaceChildren();
-
-    function sectionHeading(key, title, icon, indicator, forceOpen) {
-      const open = state.navOpen[key] || forceOpen;
-      const heading = el('div', 'nav-heading nav-heading-toggle' + (open ? ' open' : ''));
-      const chevron = el('span', 'nav-chevron');
-      chevron.append(svg('chevron'));
-      // The top heading wears Who's own mark; the others their icon.
-      const headingIcon = icon === 'app' ? el('span', 'app-symbol') : svg(icon);
-      headingIcon.classList.add('nav-heading-icon-' + icon);
-      heading.append(chevron, headingIcon, el('span', 'nav-heading-title', title));
-      if (indicator === 'alert') {
-        const alert = el('span', 'nav-heading-alert');
-        alert.title = 'Some family info is missing or out of date';
-        alert.append(svg('alert'));
-        heading.append(alert);
-      } else if (indicator) {
-        heading.append(navBadge(indicator));
-      }
-      heading.addEventListener('click', () => {
-        state.navOpen[key] = !state.navOpen[key];
-        saveNavOpen(state.navOpen);
-        renderNav();
-      });
-      nav.append(heading);
-      if (!open) {
-        return null;
-      }
-      const body = el('div', 'nav-section-body');
-      nav.append(body);
-      // Once the rows are in, a heading with the page's row under it is
-      // lit too, as HCA-Team's sections are.
-      queueMicrotask(() => heading.classList.toggle('active', Boolean(body.querySelector('a.active'))));
-      return body;
+  function sectionHeading(key, title, icon, indicator, forceOpen) {
+    const open = state.navOpen[key] || forceOpen;
+    const heading = el('div', 'nav-heading nav-heading-toggle' + (open ? ' open' : ''));
+    const chevron = el('span', 'nav-chevron');
+    chevron.append(svg('chevron'));
+    const headingIcon = icon === 'app' ? el('span', 'app-symbol') : svg(icon);
+    headingIcon.classList.add('nav-heading-icon-' + icon);
+    heading.append(chevron, headingIcon, el('span', 'nav-heading-title', title));
+    if (indicator === 'alert') {
+      const alert = el('span', 'nav-heading-alert');
+      alert.title = 'Some family info is missing or out of date';
+      alert.append(svg('alert'));
+      heading.append(alert);
+    } else if (indicator) {
+      heading.append(navBadge(indicator));
     }
-
-    const directoryBody = sectionHeading('directory', 'Directory', 'app', 0, false);
-    if (directoryBody) {
-      for (const item of primaryNavItems) {
-        renderItem(directoryBody, item);
+    heading.addEventListener('click', () => {
+      state.navOpen[key] = !state.navOpen[key];
+      saveNavOpen(state.navOpen);
+      if (nav.id !== 'nav') {
+        fillNav(nav);
       }
+      renderNav();
+    });
+    nav.append(heading);
+    if (!open) {
+      return null;
     }
+    const body = el('div', 'nav-section-body');
+    nav.append(body);
+    queueMicrotask(() => heading.classList.toggle('active', Boolean(body.querySelector('a.active'))));
+    return body;
+  }
 
-    if (familyPeople.length) {
-      const todos = staleItems();
-      const familyTodos = todos.filter(i => i.target === 'family').length;
-      const familyBody = sectionHeading('family', 'My Family', 'heart', todos.length, onFamilyMember);
-      if (familyBody) {
-        renderItem(familyBody, {path: 'my-family', label: 'My Family'}, familyTodos || (todos.length > familyTodos && 'alert'));
-        for (const p of familyPeople) {
-          familyBody.append(familyMemberRow(p, me.email, onFamilyMember ? rawSegPerson.email : null));
-        }
-      }
+  nav.replaceChildren();
+  const directoryBody = sectionHeading('directory', 'Directory', 'app', 0, false);
+  if (directoryBody) {
+    for (const item of primaryNavItems) {
+      renderItem(directoryBody, item);
     }
+  }
 
-    const toolsBody = sectionHeading('tools', 'Lists', 'list', 0, false);
-    if (toolsBody) {
-      for (const item of toolsNavItems) {
-        renderItem(toolsBody, item);
-      }
-      const params = new URLSearchParams(location.search);
-      const listLink = (href, icon, name, active, title) => {
-        const a = el('a');
-        a.href = href;
-        a.title = title || name;
-        if (seg === 'people' && active) {
-          a.className = 'active';
-        }
-        a.append(icon, el('span', '', trimMiddle(name, 40)));
-        toolsBody.append(a);
-      };
-      // Plain white, not a per-name hashed color: the hash occasionally
-      // landed near the sidebar's own dark teal, making that tag's icon
-      // nearly invisible against the background it's sitting on.
-      const whiteIcon = name => {
-        const icon = svg(name);
-        icon.classList.add('nav-icon-tag');
-        icon.style.color = '#fff';
-        return icon;
-      };
-      // A tag more than one person manages - the user's own with managers,
-      // or another's shared with them - sits in the Shared Tags group below,
-      // whoever owns it; the plain list is the tags that are theirs alone.
-      const {own, shared} = groupedTags();
-      for (const name of own) {
-        listLink('/people?tag=' + encodeURIComponent(name), whiteIcon('tag'), name, params.get('tag') === name);
-      }
-      if (shared.length) {
-        toolsBody.append(sharedTagsHeading('nav-subheading'));
-      }
-      for (const entry of shared) {
-        listLink(entry.href, sharedTagIcon(whiteIcon('families'), entry.mine), entry.name, entry.active(params), entry.title);
-      }
-      if (listKeys().length) {
-        toolsBody.append(magicTagsHeading('nav-subheading'));
-      }
-      for (const key of listKeys()) {
-        listLink('/people?list=' + encodeURIComponent(key), magicTagIcon(key), listLabel(key), params.get('list') === key);
+  if (familyPeople.length) {
+    const todos = staleItems();
+    const familyTodos = todos.filter(i => i.target === 'family').length;
+    const familyBody = sectionHeading('family', 'My Family', 'heart', todos.length, onFamilyMember);
+    if (familyBody) {
+      renderItem(familyBody, {path: 'my-family', label: 'My Family'}, familyTodos || (todos.length > familyTodos && 'alert'));
+      for (const p of familyPeople) {
+        familyBody.append(familyMemberRow(p, me.email, onFamilyMember ? rawSegPerson.email : null));
       }
     }
   }
 
-  const nav = document.querySelector('#nav');
-  const top = navSettled ? nav.scrollTop : loadNavScroll();
-  buildNavInto(nav);
-  placeNavScroll(top);
-  const drawerNav = document.querySelector('#drawer-nav');
-  if (drawerNav) {
-    buildNavInto(drawerNav);
+  const toolsBody = sectionHeading('tools', 'Lists', 'list', 0, false);
+  if (toolsBody) {
+    for (const item of toolsNavItems) {
+      renderItem(toolsBody, item);
+    }
+    const params = new URLSearchParams(location.search);
+    const listLink = (href, icon, name, active, title) => {
+      const a = el('a');
+      a.href = href;
+      a.title = title || name;
+      if (seg === 'people' && active) {
+        a.className = 'active';
+      }
+      a.append(icon, el('span', '', trimMiddle(name, 40)));
+      toolsBody.append(a);
+    };
+    const whiteIcon = name => {
+      const icon = svg(name);
+      icon.classList.add('nav-icon-tag');
+      icon.style.color = '#fff';
+      return icon;
+    };
+    const {own, shared} = groupedTags();
+    for (const name of own) {
+      listLink('/people?tag=' + encodeURIComponent(name), whiteIcon('tag'), name, params.get('tag') === name);
+    }
+    if (shared.length) {
+      toolsBody.append(sharedTagsHeading('nav-subheading'));
+    }
+    for (const entry of shared) {
+      listLink(entry.href, sharedTagIcon(whiteIcon('families'), entry.mine), entry.name, entry.active(params), entry.title);
+    }
+    if (listKeys().length) {
+      toolsBody.append(magicTagsHeading('nav-subheading'));
+    }
+    for (const key of listKeys()) {
+      listLink('/people?list=' + encodeURIComponent(key), magicTagIcon(key), listLabel(key), params.get('list') === key);
+    }
   }
+}
 
-  const tabs = document.querySelector('#mobile-tabs');
-  tabs.replaceChildren();
+function fillTabbar(bar) {
+  const seg = activeSection();
+  const familyPeople = familyNavPeople();
   for (const item of mobileNavSections) {
     if (item.path === 'my-family' && !familyPeople.length) {
       continue;
@@ -298,8 +271,18 @@ export function renderNav() {
         setMobileListsMenu(mobileListsMenu.hidden);
       });
     }
-    tabs.append(a);
+    bar.append(a);
   }
+}
+
+export function renderNav() {
+  const nav = document.querySelector('#nav');
+  const top = navSettled ? nav.scrollTop : loadNavScroll();
+  fillNav(nav);
+  placeNavScroll(top);
+  const bar = document.querySelector('#tabbar');
+  bar.replaceChildren();
+  fillTabbar(bar);
   if (!mobileListsMenu.hidden) {
     renderMobileListsMenu();
   }
@@ -307,33 +290,6 @@ export function renderNav() {
 
 onTagsChangeChrome(renderNav);
 
-// Standalone iOS PWAs can settle 100dvh on a shorter value after an in-page
-// route change than they reported on first load, leaving fixed bottom bars
-// (mobile-tabs) short of the real screen edge - window.innerHeight matches
-// what position:fixed elements are actually anchored to, so mirroring it into
-// a custom property (see body/main's height: var(--vh100, 100dvh) in
-// style.css) keeps them in sync regardless of dvh's own drift.
-//
-// In standalone mode specifically, innerHeight itself under-reports: it
-// comes in ~60pt short of the true screen (no browser chrome exists there to
-// explain the gap), and because body's height ends up as fixed elements'
-// containing block, mobile-tabs' bottom:0 then stops short of the real edge
-// too, leaving a blank strip below it. There's no dynamic toolbar to track in
-// standalone mode, so screen.height - the full, stable device height - is
-// the correct source there instead.
-function syncViewportHeight() {
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-  const height = standalone ? screen.height : window.innerHeight;
-  document.documentElement.style.setProperty('--vh100', height + 'px');
-}
-
-// Wraps everything the render just built so it can act as the flexible
-// sticky-footer spacer: on a short page it grows to push the art down to the true
-// bottom of the viewport, and on a tall page it just yields to scrolling. Called
-// both after the top-level render() dispatch and after any in-page tab switch that
-// re-renders by calling its render*() function directly instead of going through
-// render() - those bypass this otherwise, leaving the footer art stuck from
-// whatever page loaded first (or missing it entirely).
 export function finishRender() {
   syncViewportHeight();
   const main = document.querySelector('#main');
@@ -341,11 +297,6 @@ export function finishRender() {
   contentWrap.append(...main.childNodes);
   main.append(contentWrap);
 }
-
-const userMenu = document.querySelector('#user-menu');
-
-const drawer = document.querySelector('#drawer');
-const drawerOverlay = document.querySelector('#drawer-overlay');
 
 const mobileListsMenu = document.querySelector('#mobile-lists-menu');
 const mobileListsOverlay = document.querySelector('#mobile-lists-overlay');
@@ -358,17 +309,8 @@ function setMobileListsMenu(open) {
   mobileListsOverlay.hidden = !open;
 }
 
-// The smart lists (a party's guests, an activity's roster, a room parent's
-// families, a group's members) sit under the user's own tags in both the
-// sidebar and the phone Lists sheet, set apart as "Magic Tags" so it's clear
-// they're made and kept up by the app, not something the user typed in -
-// the (i) explains on hover, since the name alone doesn't say where they
-// come from or why they can't be edited.
 const magicTagsTip = 'Automagically created based on events, volunteering and the groups you manage';
 
-// The (i) beside a Lists subheading shows its hint the moment it's hovered
-// - a title would wait a second first - as a fixed box beside the icon, so
-// the sidebar's own scrolling edge doesn't clip it.
 function hintIcon(text) {
   const tip = el('span', 'magic-tags-info');
   tip.append(svg('info'));
@@ -393,12 +335,6 @@ function magicTagsHeading(className) {
   return heading;
 }
 
-// Tags more than one person manages - the user's own that they've shared,
-// and others' shared with them - sit between the user's private tags and
-// the Magic Tags, under their own small heading; the (i) says as much.
-// The tags of the sidebar's two groups: own is the user's tags nobody else
-// manages; shared is every tag with more than one manager - the user's own
-// that they've shared, and others' shared with them - by name.
 function groupedTags() {
   const own = tagNames().filter(name => !managersOf(name).length);
   const shared = [
@@ -423,8 +359,6 @@ function groupedTags() {
   return {own, shared};
 }
 
-// A shared tag's icon: the people, and for one of the user's own a small
-// star at the corner - the owner's mark.
 function sharedTagIcon(icon, mine) {
   if (!mine) {
     return icon;
@@ -444,13 +378,6 @@ function sharedTagsHeading(className) {
   return heading;
 }
 
-// A Magic Tag's icon is the mark of the app it comes from, in the sidebar's
-// own white line style - the outline exports in web/public/common/brand/apps
-// (<key>-outline.png, from ~/Dropbox/Kids/Heliosian/images/<app>/white
-// outline.png): Celebrate's for a party, HCA-Team's for an activity, Helios
-// Loop's for a group, Who's own for a room parent's list - so the sidebar
-// says at a glance where each is kept up; the heading above them says
-// they're the apps' work.
 function magicTagIcon(key) {
   const mark = el('img', 'magic-tag-mark');
   mark.src = `/brand/apps/${listApp(key)}-outline.png`;
@@ -458,9 +385,6 @@ function magicTagIcon(key) {
   return mark;
 }
 
-// The same Everyone/Invites/tag links as the sidebar's "Lists" section
-// (buildNavInto above), just laid out as a mobile bottom sheet instead of a
-// nav list, since there's no sidebar to hold them on a phone-sized screen.
 function renderMobileListsMenu() {
   const body = mobileListsMenu.querySelector('#mobile-lists-body');
   body.replaceChildren();
@@ -500,13 +424,6 @@ function renderMobileListsMenu() {
   }
 }
 
-function setDrawer(open) {
-  drawer.hidden = !open;
-  drawerOverlay.hidden = !open;
-}
-
-// The banners live in one fixed-position stack so they pile up in normal flow
-// instead of each claiming top:0 and hiding one another.
 function topBanners() {
   let stack = document.querySelector('#top-banners');
   if (!stack) {
@@ -541,10 +458,6 @@ async function setSuperEdit(enabled) {
   await load();
 }
 
-export function syncSuperEditCheckboxes() {
-  renderSuperToggle({show: state.model.user.isAdmin, on: state.model.superEdit, onToggle: setSuperEdit});
-}
-
 export function renderSuperEditBanner() {
   let banner = document.querySelector('.super-edit-banner');
   if (!state.model.superEdit) {
@@ -570,72 +483,47 @@ export function renderSuperEditBanner() {
   updateBannerOffset();
 }
 
-// Fills the user chrome (both avatars, the profile links, and the admin-only
-// menu items) from the model's signed-in identity.
-export function renderUserChrome() {
+const privacyRow = el('a', 'user-menu-privacy', 'My Privacy');
+privacyRow.href = '/my-privacy';
+const privacyAlert = el('span', 'user-menu-alert');
+privacyAlert.hidden = true;
+privacyRow.append(privacyAlert);
+
+function me() {
   const user = state.model.user;
-  // The same hero photo the profile page shows (own photo, else family's), with
-  // the initial standing in when there isn't one - the same avatar every
-  // Heliosian app's toolbar shows.
   const person = personByKey(user.email);
-  const photoUrl = person && personPhotoUrl(person);
-  renderAvatars({photoUrl: photoUrl && thumbUrl(photoUrl), initial: user.initial});
-  for (const line of document.querySelectorAll('.user-menu-email')) {
-    line.textContent = user.email;
-  }
-  for (const link of document.querySelectorAll('.user-menu-profile')) {
-    link.href = '/people/' + encodeURIComponent(user.slug);
-  }
-  for (const item of document.querySelectorAll('.user-menu-admin')) {
-    item.hidden = !user.isAdmin;
+  return {...user, photoUrl: person && personPhotoUrl(person)};
+}
+
+function alerts() {
+  const capital = s => s.charAt(0).toUpperCase() + s.slice(1);
+  return {stale: staleItems().map(item => capital(item.label)), privacy: myPrivacyWarnings()};
+}
+
+export function renderUserChrome() {
+  renderAccount();
+  privacyRow.hidden = !familyOf(byEmail[document.body.dataset.userEmail]);
+  const mismatch = myPrivacyWarnings().length > 0;
+  privacyAlert.hidden = !mismatch;
+  if (mismatch && !privacyAlert.firstChild) {
+    privacyAlert.append(svg('alert'));
   }
 }
 
-export function renderPrivacyMenuAlert() {
-  const hasMismatch = myPrivacyWarnings().length > 0;
-  const staleCount = staleItems().length;
-  const hasStale = staleCount > 0;
-  // My Privacy only has anything to show for someone in a family (it's entirely
-  // about the family's address/phone visibility) - staff with no family record
-  // would just land on an empty page, so hide the link for them instead.
-  const hasFamily = !!familyOf(byEmail[document.body.dataset.userEmail]);
-  for (const link of document.querySelectorAll('.user-menu-privacy')) {
-    link.hidden = !hasFamily;
-  }
-
-  for (const badge of document.querySelectorAll('.user-menu-alert')) {
-    badge.hidden = !hasMismatch;
-    if (hasMismatch && !badge.firstChild) {
-      badge.append(svg('alert'));
-    }
-  }
-
-  // One loop over every .stale-alert/.privacy-alert in the page, however many
-  // bars carry them.
-  for (const staleButton of document.querySelectorAll('.stale-alert')) {
-    staleButton.hidden = !hasStale;
-    // A label and not a title: the card under it says the same, and a
-    // tooltip would sit on top of it.
-    staleButton.setAttribute('aria-label', `${staleCount} thing${staleCount === 1 ? '' : 's'} to update for the new year`);
-    staleButton.removeAttribute('title');
-  }
-  for (const count of document.querySelectorAll('.stale-count')) {
-    count.textContent = String(staleCount);
-  }
-  for (const privacyButton of document.querySelectorAll('.privacy-alert')) {
-    privacyButton.hidden = !hasMismatch;
-  }
-  privacyCount(myPrivacyWarnings().length);
-}
-
-// Wires the static chrome (menus, drawer, search, stale badge, global
-// click/keyboard handlers) exactly once, from app.js, so no module does DOM
-// work just by being imported.
 export function initChrome() {
-  initAppSwitch();
+  initShell({
+    name: 'Helios Who?',
+    me,
+    alerts,
+    isAdmin: () => state.model.user.isAdmin,
+    superOn: () => state.model.superEdit,
+    onSuper: setSuperEdit,
+    fillNav,
+    fillTabbar,
+    search: {placeholder: 'Search by name, student, grade, or classroom…', results: true, own: true},
+    menuRows: [privacyRow],
+  });
   window.addEventListener('resize', updateMobileTitleInset);
-  window.addEventListener('resize', syncViewportHeight);
-  window.addEventListener('orientationchange', syncViewportHeight);
   window.addEventListener('resize', updateBannerOffset);
   const nav = document.querySelector('#nav');
   nav.addEventListener('scroll', () => {
@@ -652,68 +540,10 @@ export function initChrome() {
     }
   }).observe(nav);
   window.addEventListener('pagehide', () => saveNavScroll(nav.scrollTop));
-
-  // The topbar only has room for the avatar (no name label), so - unlike the old
-  // sidebar row, which let a name click open the menu and an avatar click jump
-  // straight to the profile - the avatar's only job now is opening the menu, whose
-  // first item is "View Profile".
-  initUserMenu();
-  initSpoof();
-
-  // The stale-count badge (desktop and mobile both) opens the toolbar's card
-  // of what to update, as every app's bell does (staleCard), with a photo
-  // uploaded or the facts opened right from it, without leaving the page. It opens on hover the
-  // way the bar's other menus do, a mouse click leaving it open and a tap
-  // toggling it.
-  for (const staleButton of document.querySelectorAll('.stale-alert')) {
-    const wrap = staleButton.closest('.stale-wrap');
-    const panel = wrap.querySelector('.stale-menu');
-    const open = () => {
-      for (const p of document.querySelectorAll('.stale-menu')) {
-        p.hidden = true;
-      }
-      panel.replaceChildren(staleCard(staleItems()));
-      panel.hidden = false;
-      clampFilterPanel(wrap, panel);
-      // The card's point under the count, as the other badges' cards have it.
-      const w = wrap.getBoundingClientRect();
-      panel.style.setProperty('--notch', `${w.left + w.width / 2 - panel.getBoundingClientRect().left}px`);
-    };
-    const close = () => {
-      panel.hidden = true;
-    };
-    hoverMenu(staleButton, panel, open, close);
-    staleButton.addEventListener('click', e => {
-      e.stopPropagation();
-      if (panel.hidden) {
-        open();
-      } else if (!hoverClick(e)) {
-        close();
-      }
-    });
-  }
-
-  // The privacy triangle stays a link to My Privacy, and on hover lists
-  // which details are out of step - the address, the phone number - so the
-  // page need not be left to learn which it is.
-  for (const badge of document.querySelectorAll('.privacy-alert')) {
-    badge.removeAttribute('title');
-    alertMenu(badge, () => privacyCard(myPrivacyWarnings(), '/my-privacy', 'Review My Privacy'));
-  }
-
   mobileListsOverlay.addEventListener('click', () => setMobileListsMenu(false));
-
-  document.querySelector('#mobile-menu-btn').addEventListener('click', () => setDrawer(true));
-  document.querySelector('#drawer-close').addEventListener('click', () => setDrawer(false));
-  drawerOverlay.addEventListener('click', () => setDrawer(false));
-
   document.addEventListener('click', e => {
-    userMenu.hidden = true;
-    for (const p of document.querySelectorAll('.stale-menu')) {
-      p.hidden = true;
-    }
-    if (!topbarSearchResults.hidden && !e.target.closest('.topbar-search')) {
-      topbarSearchResults.hidden = true;
+    if (!searchResults().hidden && !e.target.closest('.topbar-search')) {
+      searchResults().hidden = true;
     }
     for (const menu of document.querySelectorAll('.card-menu, .photo-menu')) {
       if (!menu.hidden && !menu.parentElement.contains(e.target)) {
@@ -727,28 +557,18 @@ export function initChrome() {
       }
     }
   });
-
-  onSlash(() => topbarSearchInput.focus());
-
+  onSlash(() => searchInput().focus());
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      userMenu.hidden = true;
-      for (const p of document.querySelectorAll('.stale-menu')) {
-        p.hidden = true;
-      }
-      setDrawer(false);
-      topbarSearchResults.hidden = true;
+      searchResults().hidden = true;
       closeFilterPanels();
       for (const menu of document.querySelectorAll('.card-menu, .photo-menu')) {
         menu.hidden = true;
       }
-      if (e.target === topbarSearchInput) {
+      if (e.target === searchInput()) {
         e.target.blur();
       }
     } else if (e.key.toLowerCase() === 't' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {
-      // Same single "the tag button" a person's detail page shows (see
-      // breadcrumbs' tagEmail param) - clicking it does the actual work, so the
-      // shortcut just replays that click rather than duplicating its logic.
       const tagButton = document.querySelector('.tag-button');
       if (tagButton) {
         e.preventDefault();

@@ -23,6 +23,7 @@
 <link rel="modulepreload" href="/app.js">
 <link rel="modulepreload" href="/markdown.js">
 <link rel="modulepreload" href="/toolbar.js">
+<link rel="modulepreload" href="/shell.js">
 </head>
 <body>
 <header class="mobile-top">
@@ -41,23 +42,7 @@
 </nav>
 </aside>
 <div class="content-col">
-<header class="topbar">
-<div class="topbar-spacer"></div>
-<div class="topbar-user">
-<span class="topbar-alert-wrap"><a class="topbar-alert topbar-alert-count stale-alert" hidden><span class="stale-count"></span></a></span>
-<span class="topbar-alert-wrap"><a class="topbar-alert privacy-alert" hidden><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg></a></span>
-<button type="button" class="user" id="user" aria-label="Account"><span class="user-avatar"></span></button>
-<div class="user-menu" id="user-menu" hidden>
-<div class="user-menu-email"></div>
-<a class="user-menu-profile">View Profile</a>
-<form method="post" action="/auth/logout"><button>Sign Out</button></form>
-</div>
-</div>
-<div class="app-switch">
-<a class="app-switch-button" aria-label="Heliosian" aria-haspopup="menu"><img src="/brand/heliosian-tile.png" alt=""><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></a>
-<div class="app-switch-menu" hidden></div>
-</div>
-</header>
+<header class="topbar" id="topbar"></header>
 <main id="main">
 <div class="thread" id="thread"></div>
 </main>

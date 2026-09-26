@@ -1,6 +1,6 @@
 import {state, isUnassigned, parseDate, staffPath, newsletterPath, stageClass, stageName, mediumDate, shortDate, staffFor} from '../state.js';
 import {el, link, svg, thumb, button, pageHead} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {setTitle} from '/shell.js';
 import {emptyPanel} from '../cards.js';
 import {assignToMe} from '../edit.js';
 import {monthGrid, monthNav, showToggle} from './calendar.js';

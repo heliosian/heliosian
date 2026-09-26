@@ -1,6 +1,6 @@
 import {state, isSystemAdmin, me, money, whenLine, celebration} from '../state.js';
 import {el, button, svg} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {setTitle} from '/shell.js';
 import {openCelebration, openCategory, openSettings, openMoveAddress, send, reload} from '../edit.js';
 import {celebrationBand} from './parties.js';
 

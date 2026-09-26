@@ -29,6 +29,7 @@
 <link rel="modulepreload" href="/state.js">
 <link rel="modulepreload" href="/dom.js">
 <link rel="modulepreload" href="/chrome.js">
+<link rel="modulepreload" href="/shell.js">
 <link rel="modulepreload" href="/edit.js">
 <link rel="modulepreload" href="/cards.js">
 <link rel="modulepreload" href="/toolbar.js">
@@ -49,29 +50,7 @@
 <nav class="app-nav" id="nav"></nav>
 </aside>
 <div class="content-col">
-<header class="topbar">
-<button type="button" class="topbar-menu" id="menu-button" aria-label="Menu"></button>
-<div class="topbar-search" id="topbar-search">
-<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-<input type="search" id="search-input" placeholder="Search parties…" autocomplete="off">
-<kbd class="topbar-key">/</kbd>
-</div>
-<div class="topbar-user">
-<span class="topbar-alert-wrap"><a class="topbar-alert topbar-alert-count stale-alert" hidden><span class="stale-count"></span></a></span>
-<span class="topbar-alert-wrap"><a class="topbar-alert privacy-alert" hidden><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg></a></span>
-<button type="button" class="user" id="user" aria-label="Account"><span class="user-avatar"></span></button>
-<div class="user-menu" id="user-menu" hidden>
-<div class="user-menu-email"></div>
-<a class="user-menu-profile">View Profile</a>
-<a href="/admin" class="user-menu-admin" data-link hidden>Admin Tools</a>
-<form method="post" action="/auth/logout"><button>Sign Out</button></form>
-</div>
-</div>
-<div class="app-switch">
-<a class="app-switch-button" aria-label="Heliosian" aria-haspopup="menu"><img src="/brand/heliosian-tile.png" alt=""><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></a>
-<div class="app-switch-menu" hidden></div>
-</div>
-</header>
+<header class="topbar" id="topbar"></header>
 <main id="main">
 <div id="page"></div>
 </main>

@@ -1,10 +1,8 @@
 import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, setSuperEdit, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
 import {el, svg, link, button} from './dom.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
+import {initShell, appSymbol} from '/shell.js';
 import {openActivity} from './edit.js';
 
-// The rail and the drawer show these; the mobile tab bar drops the admin ones.
-// /admin is deliberately absent - Admin Tools is reached from the account menu.
 const primary = [
   {href: '/', icon: 'app', label: 'Opportunities'},
   {href: '/my', icon: 'star', label: 'My Sign Ups'},
@@ -12,8 +10,6 @@ const primary = [
   {href: '/approvals', icon: 'join', label: 'Approval Needed', admin: true, count: () => pendingItems().length},
 ];
 
-// Approval Needed is an alert for whoever is on the admin list, so it shows
-// whatever the hat.
 function navItems() {
   return primary.filter(item => !item.admin || isSystemAdmin());
 }
@@ -24,13 +20,6 @@ function active(href) {
     return path === '/' || path.startsWith('/years/') || path.startsWith('/activities/') || path.startsWith('/v/');
   }
   return path === href || path.startsWith(href + '/');
-}
-
-// appSymbol is the app's own mark, worn by the rail's first item (toolbar.css).
-function appSymbol() {
-  const mark = el('span', 'app-symbol');
-  mark.setAttribute('aria-hidden', 'true');
-  return mark;
 }
 
 function navLink(item) {
@@ -44,29 +33,13 @@ function navLink(item) {
   return a;
 }
 
-function closeMenus() {
-  for (const menu of document.querySelectorAll('.user-menu')) {
-    menu.hidden = true;
-  }
-}
-
-// Suggesting an idea is the one thing anyone can start from anywhere, so it sits
-// under the nav rather than on the opportunities page. edit.js reaches app.js
-// through a dynamic import, so importing it here makes no cycle.
 function suggestButton() {
-  // Ideas file under whichever category is named "Just an Idea", if there is
-  // one; otherwise the editor's default category stands.
   return button('Suggest an Idea', 'idea', 'button nav-action', () => {
     const ideas = state.model.categories.find(c => c.title === 'Just an Idea');
     openActivity(null, {category: ideas ? ideas.id : ''});
   });
 }
 
-// The categories sit under Opportunities as a sub-list, each with how many
-// activities it holds for the chosen year. The count comes from listedIn(), the
-// same helper the grid filters through, so a category showing 3 here cannot show
-// a different number of cards - and both follow the Show Previous / Show Hidden
-// switches. Clicking one filters the grid rather than opening a page of its own.
 function categoryLinks() {
   const wrap = el('div', 'nav-sub');
   const counts = new Map();
@@ -75,8 +48,6 @@ function categoryLinks() {
   }
   for (const c of state.model.categories) {
     const n = counts.get(c.id) || 0;
-    // An empty category is nothing to click through to, so it drops out of the
-    // rail until the year or the switches bring something back into it.
     if (!n) {
       continue;
     }
@@ -84,8 +55,6 @@ function categoryLinks() {
     const item = el('button', 'nav-sub-item' + (on ? ' is-on' : ''));
     item.type = 'button';
     item.append(el('span', 'nav-sub-name', c.title), el('span', 'nav-sub-count', String(n)));
-    // The pick is the address's, ?category=..., so a reload, a copied link
-    // and Back all keep it; clicking the one that is on clears it.
     item.addEventListener('click', async () => {
       const {navigate} = await import('./app.js');
       navigate(categoryPath(on ? '' : c.id));
@@ -95,11 +64,6 @@ function categoryLinks() {
   return wrap.children.length ? wrap : null;
 }
 
-// familyLinks sit under My Sign Ups for anyone with a household in the
-// directory: themselves, then their partner and children, each with how many
-// things they are on this year - the count the page shows, following the Show
-// Completed Events switch as it does. Nobody with no household gets a list of
-// one.
 function familyLinks() {
   const people = family();
   if (!people.length) {
@@ -121,26 +85,17 @@ function familyLinks() {
   return wrap;
 }
 
-// currentActivity is the thing whose page is open, by either of its addresses,
-// or null on every other page.
 function currentActivity() {
   const first = location.pathname.split('/').filter(Boolean)[0];
   return first === 'activities' || first === 'v' ? resolvePath(location.pathname) : null;
 }
 
-// Which of an event's category groups are open in the rail, by root id and
-// category id. Kept across renders - every navigation redraws the rail - so a
-// group someone opened stays open while they move around the event.
 const openGroups = new Set();
 
-// signUps is a thing's sign-ups and those of everything under it - the number
-// the rail shows against a committee. Taken counts a private list too, so the
-// number is right for whoever looks.
 function signUps(node) {
   return node.taken + descendants(node).reduce((n, d) => n + d.taken, 0);
 }
 
-// countLabel is "3", or "2 of 5" when the thing itself is after a set number.
 function countLabel(node) {
   if (node.spots) {
     return `${node.taken} of ${node.spots}`;
@@ -148,12 +103,6 @@ function countLabel(node) {
   return String(signUps(node));
 }
 
-// eventTree is the rail's entry for the event whose page is open: the event
-// itself, then its committees grouped by the event's categories. Every group,
-// and every committee with things under it, starts closed - the counts say
-// what is inside - and stays as it was toggled while moving around the event.
-// Hidden and pending things appear only with Show Hidden Things on, and only
-// to whoever may edit them.
 function eventTree(current) {
   const root = rootOf(current);
   const wrap = el('div', 'nav-event');
@@ -171,8 +120,6 @@ function eventTree(current) {
     }
     renderNav();
   };
-  // A disclosure chevron opens a group or a committee with things under it;
-  // a leaf gets a blank of the same width so titles line up.
   const disclosure = (key, open) => {
     const b = el('button', 'nav-tree-toggle' + (open ? ' is-open' : ''));
     b.type = 'button';
@@ -186,8 +133,6 @@ function eventTree(current) {
     });
     return b;
   };
-  // Rows under a group start where the group's title starts (past its chevron)
-  // and step in again for each level below that; without groups, from the edge.
   const item = (node, depth) => {
     const row = el('div', 'nav-tree-row');
     row.style.paddingLeft = `${(grouped ? 22 : 0) + depth * 14}px`;
@@ -233,9 +178,6 @@ function eventTree(current) {
   return wrap;
 }
 
-// fillNav is the toolbar's contents - the pages, the categories and the open
-// event's tree under Opportunities, the household under My Sign Ups, Suggest
-// an Idea - shared by the rail and the phone's drawer, so both say the same.
 function fillNav(nav) {
   const current = currentActivity();
   for (const item of navItems()) {
@@ -265,203 +207,48 @@ function renderNav() {
   fillNav(nav);
 }
 
-function renderTabbar() {
-  const bar = document.querySelector('#tabbar');
-  bar.replaceChildren();
+function fillTabbar(bar) {
   for (const item of primary.filter(i => !i.admin)) {
     bar.append(navLink(item));
   }
 }
 
-function renderDrawer() {
-  const drawer = document.querySelector('#drawer');
-  drawer.replaceChildren();
-  const head = el('div', 'drawer-head');
-  const icon = el('img');
-  icon.src = '/brand/logo-mark.png';
-  icon.alt = '';
-  const close = el('button', 'icon-button');
-  close.type = 'button';
-  close.setAttribute('aria-label', 'Close');
-  close.append(svg('close'));
-  close.addEventListener('click', closeDrawer);
-  head.append(icon, el('span', '', 'HCA-Team'), close);
-  drawer.append(head);
-  const nav = el('nav', 'app-nav drawer-nav');
-  fillNav(nav);
-  drawer.append(nav);
-  const user = el('div', 'drawer-user');
-  user.append(el('div', 'name', me().name), el('div', 'email', me().email));
-  if (isSystemAdmin()) {
-    user.append(link('/admin', 'drawer-admin', 'Admin Tools'));
-  }
-  const form = el('form');
-  form.method = 'post';
-  form.action = '/auth/logout';
-  form.append(el('button', 'button button-secondary button-small', 'Sign Out'));
-  user.append(form);
-  drawer.append(user);
-}
-
-export function openDrawer() {
-  renderDrawer();
-  document.querySelector('#drawer-overlay').hidden = false;
-}
-
-export function closeDrawer() {
-  document.querySelector('#drawer-overlay').hidden = true;
-}
-
-function renderUser() {
-  const user = me();
-  // The same hero photo the directory leads with (their own, else their
-  // family's); the initial only stands in when there is no photo at all.
-  renderAvatars({photoUrl: user.photoUrl && user.photoUrl + '?thumb=1', initial: user.initial});
-  renderAlerts(state.model.alerts || {});
-  renderProfileLink(user.email);
-  for (const line of document.querySelectorAll('.user-menu-email')) {
-    line.textContent = user.email;
-  }
-  // The pencil and Admin Tools go with being on the admin list. The pencil
-  // puts the hat on or takes it off, and the page repaints as the other kind
-  // of user.
-  for (const row of document.querySelectorAll('.user-menu-admin')) {
-    row.hidden = !isSystemAdmin();
-  }
-  renderSuperToggle({show: isSystemAdmin(), on: state.superEdit, onToggle: on => {
-    setSuperEdit(on);
-    document.dispatchEvent(new CustomEvent('hca:refresh'));
-  }});
-  // Show Hidden Things is for whoever has hidden things to see: the hat, or
-  // co-chairing something.
-  for (const row of document.querySelectorAll('.user-menu-hidden')) {
-    row.hidden = !isAdmin() && !runsAnything();
-  }
-  for (const box of document.querySelectorAll('.show-hidden-checkbox')) {
-    box.checked = state.showHidden;
-  }
-}
-
-// One search box, in the top bar, and each page says what it filters. app.js
-// clears the binding on every route change, so a stale handler can never
-// outlive the page that set it. A page that filters nothing (a detail page,
-// the calendar) keeps the box, with the opportunities list as its subject:
-// typing there jumps to that list with the words carried along (see
-// carriedQuery), so search is always one keystroke away, wherever you are.
-let onSearch = null;
-
-// The words typed on a page without its own search, on their way to the
-// opportunities list: setSearch there hands them to the list's handler.
-let carriedQuery = '';
-
-const defaultPlaceholder = 'Search opportunities…';
-
-function searchInputs() {
-  return [document.querySelector('#search-input')];
-}
-
-export function setSearch(placeholder, handler) {
-  onSearch = handler;
-  const query = carriedQuery;
-  carriedQuery = '';
-  for (const input of searchInputs()) {
-    input.value = query;
-    input.placeholder = placeholder || defaultPlaceholder;
-  }
-  if (query) {
-    handler(query.trim().toLowerCase());
-  }
-}
-
-export function clearSearch() {
-  onSearch = null;
-  for (const input of searchInputs()) {
-    input.value = '';
-    input.placeholder = defaultPlaceholder;
-  }
-}
-
-function search(value) {
-  if (onSearch) {
-    onSearch(value.trim().toLowerCase());
-    return;
-  }
-  if (!value.trim()) {
-    return;
-  }
-  carriedQuery = value;
-  history.pushState(null, '', yearPath());
+const hiddenRow = el('label', 'user-menu-toggle user-menu-hidden');
+const hiddenBox = el('input', 'show-hidden-checkbox');
+hiddenBox.type = 'checkbox';
+hiddenRow.hidden = true;
+hiddenRow.append(el('span', '', 'Show Hidden Things'), hiddenBox);
+hiddenBox.addEventListener('change', () => {
+  state.showHidden = hiddenBox.checked;
   document.dispatchEvent(new CustomEvent('hca:refresh'));
-}
+});
 
-function focusSearch() {
-  document.querySelector('#search-input').focus();
-}
-
-export function setTitle(title) {
-  document.querySelector('#mobile-title').textContent = title;
-  document.title = title === 'HCA-Team' ? title : `${title} · HCA-Team`;
-}
-
-// syncViewportHeight is the fix Helios Who? carries for the phone shell: in
-// standalone (Add to Home Screen) mode 100dvh can settle short after an
-// in-page route change, and window.innerHeight itself under-reports there,
-// so fixed bottom bars stop short of the screen and leave a blank strip.
-// screen.height is the stable full height in standalone mode; innerHeight
-// matches what position:fixed is anchored to in a browser tab. Either way
-// it lands in --vh100, which main's height reads instead of 100dvh.
-function syncViewportHeight() {
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-  const height = standalone ? screen.height : window.innerHeight;
-  document.documentElement.style.setProperty('--vh100', height + 'px');
-}
-
-export function renderChrome() {
-  syncViewportHeight();
-  renderUser();
-  renderNav();
-  renderTabbar();
+function renderHiddenRow() {
+  hiddenRow.hidden = !isAdmin() && !runsAnything();
+  hiddenBox.checked = state.showHidden;
 }
 
 export function initChrome() {
-  initAppSwitch();
-  document.querySelector('#menu-button').append(svg('menu'));
-  document.querySelector('#menu-button').addEventListener('click', openDrawer);
-  for (const input of searchInputs()) {
-    input.addEventListener('input', () => search(input.value));
-  }
-  onSlash(focusSearch);
-  document.querySelector('#drawer-overlay').addEventListener('click', e => {
-    if (e.target === e.currentTarget) {
-      closeDrawer();
-    }
-  });
-  document.querySelector('#drawer').addEventListener('click', e => {
-    if (e.target.closest('a')) {
-      closeDrawer();
-    }
-  });
-  initUserMenu();
-  initSpoof();
-  // The switch exists twice (rail menu and mobile menu), so a change on either
-  // updates the other. app.js listens for the repaint rather than chrome.js
-  // importing render, which would make the two modules import each other.
-  for (const box of document.querySelectorAll('.show-hidden-checkbox')) {
-    box.addEventListener('change', () => {
-      state.showHidden = box.checked;
-      for (const other of document.querySelectorAll('.show-hidden-checkbox')) {
-        other.checked = box.checked;
-      }
+  initShell({
+    name: 'HCA-Team',
+    me,
+    alerts: () => state.model.alerts,
+    isAdmin: isSystemAdmin,
+    superOn: () => state.superEdit,
+    onSuper: on => {
+      setSuperEdit(on);
       document.dispatchEvent(new CustomEvent('hca:refresh'));
-    });
-  }
-  window.addEventListener('resize', syncViewportHeight);
-  window.addEventListener('orientationchange', syncViewportHeight);
-  document.addEventListener('click', closeMenus);
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      closeMenus();
-      closeDrawer();
-    }
+    },
+    fillNav,
+    fillTabbar,
+    search: {
+      placeholder: 'Search opportunities…',
+      carry: () => {
+        history.pushState(null, '', yearPath());
+        document.dispatchEvent(new CustomEvent('hca:refresh'));
+      },
+    },
+    menuRows: [hiddenRow],
+    afterRender: renderHiddenRow,
   });
 }

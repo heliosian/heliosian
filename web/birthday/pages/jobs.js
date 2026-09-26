@@ -1,6 +1,6 @@
 import {state, mine, matches} from '../state.js';
 import {el, tabs, pageHead} from '../dom.js';
-import {setTitle, setSearch} from '../chrome.js';
+import {setTitle, setSearch} from '/shell.js';
 import {staffRow, emptyPanel, dateSummary} from '../cards.js';
 
 let tab = 'tasks';

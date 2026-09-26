@@ -1,7 +1,8 @@
 import {state, isAdmin, isSystemAdmin, canApprove, hostedParties, pendingParties, partyPath, whenLine, money, canHost} from '../state.js';
 import {el, link, button, thumb, svg} from '../dom.js';
 import {tabStrip} from '/tabs.js';
-import {setTitle, setSearch, hostingShown, renderChrome} from '../chrome.js';
+import {hostingShown} from '../chrome.js';
+import {setTitle, setSearch, renderChrome} from '/shell.js';
 import {openParty, setPartyStatus} from '../edit.js';
 import {availabilityBadge} from '../cards.js';
 

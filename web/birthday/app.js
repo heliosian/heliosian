@@ -1,6 +1,7 @@
 import {state, applyModel, staff, charity, isUnassigned, isAdmin, commsOnly} from './state.js';
 import {el} from './dom.js';
-import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
+import {initChrome} from './chrome.js';
+import {renderChrome, setTitle, clearSearch} from '/shell.js';
 import {offerTeam} from './edit.js';
 import {initModal} from '/modal.js';
 import {jobsPage} from './pages/jobs.js';
@@ -87,8 +88,6 @@ export function render() {
   page.className = '';
   clearSearch();
   page.replaceChildren(route());
-  // Admin Tools is its own window: the shell's rail, toolbar and tab bar
-  // step aside for the admin chrome (see pages/admin.js).
   document.body.classList.toggle('is-admin', location.pathname === '/admin');
   renderChrome();
 }

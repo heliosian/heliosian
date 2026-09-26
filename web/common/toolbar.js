@@ -302,7 +302,7 @@ window.addEventListener('unhandledrejection', e => {
   noteError(reason && reason.stack ? reason.stack.split('\n').slice(0, 2).join(' ') : String(reason));
 });
 
-function el(tag, className, text) {
+export function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) {
     node.className = className;
@@ -718,11 +718,8 @@ function initRSVP() {
     icon.innerHTML = '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>';
     badge.append(icon, el('span', 'rsvp-count', String(waiting.length)));
     wrap.append(badge);
-    // First among the bar's badges, before the directory's.
-    // Beside the bar's other badges, not inside one: Who? keeps its count in
-    // a box of its own (.stale-wrap).
     const first = user.parentElement.querySelector('.topbar-alert');
-    (first ? first.closest('.topbar-alert-wrap, .stale-wrap') || first : user).before(wrap);
+    (first ? first.closest('.topbar-alert-wrap') || first : user).before(wrap);
     alertMenu(badge, () => alertList({
       count: waiting.length,
       words: waiting.length === 1 ? 'invitation waits for your reply' : 'invitations wait for your reply',
@@ -770,7 +767,7 @@ function initApprovals() {
     // Beside the RSVP badge when there is one, first among the rest.
     const rsvp = document.querySelector('.rsvp-alert');
     const first = user.parentElement.querySelector('.topbar-alert');
-    (rsvp ? rsvp.closest('.topbar-alert-wrap') : first ? first.closest('.topbar-alert-wrap, .stale-wrap') || first : user).before(wrap);
+    (rsvp ? rsvp.closest('.topbar-alert-wrap') : first ? first.closest('.topbar-alert-wrap') || first : user).before(wrap);
     alertMenu(badge, () => alertList({
       count: waiting.length,
       words: waiting.length === 1 ? 'thing waits for your approval' : 'things wait for your approval',
@@ -816,7 +813,7 @@ function initLate() {
     wrap.append(badge);
     // First among the bar's badges: it is the most overdue thing there.
     const first = user.parentElement.querySelector('.topbar-alert');
-    (first ? first.closest('.topbar-alert-wrap, .stale-wrap') || first : user).before(wrap);
+    (first ? first.closest('.topbar-alert-wrap') || first : user).before(wrap);
     const day = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});
     alertMenu(badge, () => alertList({
       count: late.length,

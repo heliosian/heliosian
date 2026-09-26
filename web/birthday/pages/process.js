@@ -1,6 +1,6 @@
 import {state, stages, stageName, stageClass, isUnassigned, matches, staffPath, tableDate, weekday, team} from '../state.js';
 import {el, link, svg, thumb, button, pageHead} from '../dom.js';
-import {setTitle, setSearch} from '../chrome.js';
+import {setTitle, setSearch} from '/shell.js';
 import {emptyPanel} from '../cards.js';
 import {assignToMe} from '../edit.js';
 
@@ -240,6 +240,7 @@ export function processPage() {
     body.querySelector('.staff-table').replaceWith(table(rows, render));
   };
   query = '';
+  render(true);
   setSearch('Search staff…', q => {
     query = q;
     const input = body.querySelector('.filter-search input');
@@ -248,7 +249,6 @@ export function processPage() {
     }
     render(false);
   });
-  render(true);
   page.append(body);
   return page;
 }

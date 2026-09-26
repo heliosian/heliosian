@@ -1,7 +1,7 @@
 import {state, me, isSystemAdmin, settings} from '../state.js';
 import {el, svg, button} from '../dom.js';
 import {createPersonPicker} from '/picker.js';
-import {setTitle} from '../chrome.js';
+import {setTitle} from '/shell.js';
 import {openSettings} from '../edit.js';
 
 function denied() {

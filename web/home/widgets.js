@@ -1,5 +1,6 @@
 import {state, superOn} from './state.js';
 import {appOrigin} from '/toolbar.js';
+import {searchInput} from '/shell.js';
 import {el, svg} from './dom.js';
 import {whenOrigin, calendarMark, calendarMenu, dropdown, audienceWords} from './cards.js';
 import {openWidgetAudience, moveWidget} from './edit.js';
@@ -77,7 +78,7 @@ async function pick(token) {
     return;
   }
   nextMonth = null;
-  renderWidgets(document.querySelector('#search').value);
+  renderWidgets(searchInput().value);
 }
 
 // calendarPick is the saved calendar the widget reads, as a quiet dropdown
@@ -139,7 +140,7 @@ async function fetchNext(month) {
   } catch {
     return;
   }
-  renderWidgets(document.querySelector('#search').value);
+  renderWidgets(searchInput().value);
 }
 
 // dayBar is a day's heading inside a widget: a pale bar with the weekday
@@ -283,7 +284,7 @@ function widgetFoot(name, total, seeAll) {
     b.append(el('span', '', words), svg('chevron'));
     b.addEventListener('click', () => {
       shownCounts.set(name, next);
-      renderWidgets(document.querySelector('#search').value);
+      renderWidgets(searchInput().value);
     });
     buttons.append(b);
   };
@@ -397,7 +398,7 @@ async function fetchTeam() {
   } catch {
     return;
   }
-  renderWidgets(document.querySelector('#search').value);
+  renderWidgets(searchInput().value);
 }
 
 // teamChip is the chip picked - All, what needs people; Priority, what an
@@ -448,7 +449,7 @@ function teamWidget() {
       }
       chip.addEventListener('click', () => {
         teamChip = key;
-        renderWidgets(document.querySelector('#search').value);
+        renderWidgets(searchInput().value);
       });
       chips.append(chip);
     }
@@ -498,7 +499,7 @@ async function fetchParties() {
   } catch {
     return;
   }
-  renderWidgets(document.querySelector('#search').value);
+  renderWidgets(searchInput().value);
 }
 
 // partyChip is the chip picked - Available, the parties ahead with tickets
@@ -619,7 +620,7 @@ function celebrateWidget() {
       chip.type = 'button';
       chip.addEventListener('click', () => {
         partyChip = key;
-        renderWidgets(document.querySelector('#search').value);
+        renderWidgets(searchInput().value);
       });
       chips.append(chip);
     }
@@ -660,7 +661,7 @@ async function fetchSchool() {
   } catch {
     return;
   }
-  renderWidgets(document.querySelector('#search').value);
+  renderWidgets(searchInput().value);
 }
 
 // listNames are the school's lists as the widget says them.
@@ -825,7 +826,7 @@ function typePick() {
     item.addEventListener('click', () => {
       menu.hidden = true;
       schoolType = type;
-      renderWidgets(document.querySelector('#search').value);
+      renderWidgets(searchInput().value);
     });
     menu.append(item);
   }
@@ -968,7 +969,7 @@ function fitWidgets(query) {
 let resizing = null;
 window.addEventListener('resize', () => {
   clearTimeout(resizing);
-  resizing = setTimeout(() => renderWidgets(document.querySelector('#search').value), 150);
+  resizing = setTimeout(() => renderWidgets(searchInput().value), 150);
 });
 
 // renderWidgets draws the row in the order an admin set, or leaves it

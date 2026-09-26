@@ -1,6 +1,6 @@
 import {state, isAdmin, charityPath, staffPath} from '../state.js';
 import {el, link, svg, button, tabs, pageHead} from '../dom.js';
-import {setTitle, setSearch} from '../chrome.js';
+import {setTitle, setSearch} from '/shell.js';
 import {charityRow, emptyPanel} from '../cards.js';
 import {openCharity} from '../edit.js';
 

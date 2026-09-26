@@ -5,7 +5,7 @@ import {popup} from '/modal.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
 import {appOrigin} from '/toolbar.js';
-import {setTitle} from '../chrome.js';
+import {setTitle} from '/shell.js';
 import {audienceChips, blocks} from '../events.js';
 import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow} from '../invites.js';
 

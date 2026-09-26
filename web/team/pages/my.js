@@ -1,6 +1,6 @@
 import {state, me, years, myRows, sortByStart, isPrevious, matches, rootOf, parentOf, descendants, family} from '../state.js';
 import {el, toggle, selectPill} from '../dom.js';
-import {setTitle, setSearch} from '../chrome.js';
+import {setTitle, setSearch} from '/shell.js';
 import {activityCard} from '../cards.js';
 
 let year = null;

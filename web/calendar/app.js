@@ -1,6 +1,7 @@
 import {applyModel, event, eventPath, fetchEvent, today, parseDate, me, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
 import {el} from './dom.js';
-import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
+import {initChrome, clearSearch} from './chrome.js';
+import {renderChrome, setTitle} from '/shell.js';
 import {homePage} from './pages/home.js';
 import {eventPage} from './pages/event.js';
 import {adminPage} from './pages/admin.js';
@@ -12,7 +13,6 @@ export async function load() {
     throw new Error(`loading model failed: ${res.status}`);
   }
   applyModel(await res.json());
-  renderChrome();
   render();
 }
 
@@ -29,13 +29,8 @@ function notFound(what) {
   return page;
 }
 
-// appliedCalendar is the /c/{token} address whose calendar the filters
-// were last set from, so arriving at one sets them once and the chips can
-// be changed after that without every repaint setting them back.
 let appliedCalendar = '';
 
-// fetched is every event id asked of the server once, so a link to
-// nothing is not asked again and again.
 const fetched = new Set();
 
 function route() {
@@ -44,8 +39,6 @@ function route() {
     return homePage(today());
   }
   switch (parts[0]) {
-    // /c/{token} opens the calendar as one saved calendar (or My
-    // Heliosian) sees it - the address the rail's rows set.
     case 'c': {
       const f = allCalendars().find(x => x.token === parts[1]);
       if (!f) {
@@ -66,8 +59,6 @@ function route() {
       const id = parts.slice(1).join('/');
       const e = event(id);
       if (!e) {
-        // An invite-only event is not in the model: fetch it by its link,
-        // then draw the page again with it in hand.
         if (!fetched.has(id)) {
           fetched.add(id);
           fetchEvent(id).then(found => {
@@ -79,13 +70,9 @@ function route() {
         }
         return notFound('That event');
       }
-      // Reached by its import key, an event with a friendly address wears
-      // that in the address bar instead.
       if (e.address && id !== e.address) {
         history.replaceState(null, '', eventPath(e) + location.search);
       }
-      // The rail's day jumps to the event's, so its month and its plan
-      // and events are the ones beside the page.
       state.day = eventDates(e)[0];
       return eventPage(e);
     }
@@ -102,8 +89,6 @@ export function render() {
   page.className = '';
   clearSearch();
   page.replaceChildren(route());
-  // Admin Tools is its own window: the shell's rail, toolbar and tab bar
-  // step aside for the admin chrome (pages/admin.js).
   document.body.classList.toggle('is-admin', location.pathname === '/admin');
   renderChrome();
 }
@@ -119,7 +104,6 @@ document.addEventListener('click', e => {
 
 window.addEventListener('popstate', render);
 document.addEventListener('calendar:refresh', render);
-// A rail row clicked again re-applies its calendar even at the same address.
 document.addEventListener('calendar:navigate', () => {
   appliedCalendar = '';
 });

@@ -1,6 +1,6 @@
 import {state, isAdmin, years, allYears, sortByStart, matches, selectedYear, listedIn, canAdd, addLabel, categoryPath, categoryFromAddress, PRIORITY, isPriority, descendants} from '../state.js';
 import {el, toggle, selectPill, thumb, button, svg} from '../dom.js';
-import {setTitle, setSearch, renderChrome} from '../chrome.js';
+import {setTitle, setSearch, renderChrome} from '/shell.js';
 import {activityCard, categoryClass, priorityRow, wanted} from '../cards.js';
 import {openActivity} from '../edit.js';
 

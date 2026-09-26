@@ -1,6 +1,6 @@
 import {state, parseDate, staffPath, stageClass, stageName, stages} from '../state.js';
 import {el, link, svg, button} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {setTitle} from '/shell.js';
 
 let month = null;
 // showBy is which day the month places each person on: their actual

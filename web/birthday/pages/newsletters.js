@@ -1,6 +1,6 @@
 import {state, isAdmin, year, staffFor, charity, longDate, mediumDate, monthDay, dateCell, parseDate, newsletterPath} from '../state.js';
 import {el, link, svg, thumb, button, pageHead, menu, copyRich} from '../dom.js';
-import {setTitle, setSearch} from '../chrome.js';
+import {setTitle, setSearch} from '/shell.js';
 import {staffRow, emptyPanel} from '../cards.js';
 import {openNewsletterDate, openChangeNewsletterDate, addNextWeek, removeNewsletterDate, clearFutureNewsletterDates, openCreateNewsletterDates, markUsed, markAllUsed, toShare, shareIssue} from '../edit.js';
 

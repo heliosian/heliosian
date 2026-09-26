@@ -1,6 +1,6 @@
 import {state, byDepartment, matches} from '../state.js';
 import {el, button, tabs, pageHead} from '../dom.js';
-import {setTitle, setSearch} from '../chrome.js';
+import {setTitle, setSearch} from '/shell.js';
 import {staffRow, emptyPanel} from '../cards.js';
 import {openBirthday, openParticipation} from '../edit.js';
 

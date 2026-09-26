@@ -743,8 +743,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .drawer-user form { margin-top: 10px; }
 
-.user-menu-link { display: block; padding: 8px 0; font-size: 14px; font-weight: 600; color: var(--brand); text-decoration: none; }
-
 /* The calendar page: the month grid on the left, upcoming on the right in a
    panel as tall as the month and scrolling on its own inside that. The
    panel's words are taken out of the flow so the row's height is the

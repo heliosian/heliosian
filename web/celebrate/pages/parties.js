@@ -1,7 +1,8 @@
 import {state, parties, matches, celebration, whenParts, currentCelebration, celebrationCalendarLink} from '../state.js';
 import {el, selectPill, svg} from '../dom.js';
 import {tabStrip} from '/tabs.js';
-import {setTitle, setSearch, inTab, listTabs, listPath, listTab, listCategory, renderChrome} from '../chrome.js';
+import {inTab, listTabs, listPath, listTab, listCategory} from '../chrome.js';
+import {setTitle, setSearch, renderChrome} from '/shell.js';
 import {partyCard} from '../cards.js';
 
 let query = '';

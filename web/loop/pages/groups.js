@@ -1,6 +1,6 @@
 import {state, isAdmin, managed, matches, groupPath} from '../state.js';
 import {el, svg, link, button, iconButton, copyText, pageHead} from '../dom.js';
-import {setTitle, setSearch} from '../chrome.js';
+import {setTitle, setSearch} from '/shell.js';
 import {navigate} from '../app.js';
 
 export const visibilityWords = {hidden: 'Hidden', members: 'Visible to members', everyone: 'Visible to everyone'};
@@ -111,7 +111,7 @@ export function groupsPage() {
     cards(othersList, theirs);
   };
   render('');
-  setSearch(render);
+  setSearch('', render);
   page.append(list, suggested, others);
   return page;
 }

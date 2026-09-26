@@ -1,6 +1,6 @@
 import {me, isAdmin, settings, charity, longDate, mediumDate, emailLink, newsletterText} from '../state.js';
 import {el, link, svg, thumb, button, iconButton, copyText} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {setTitle} from '/shell.js';
 import {openAssign, markContacted, markUsed, useDefault, reuseLast, openDonation, openBirthday, openParticipation, openNote, removeNote} from '../edit.js';
 
 function crumb(sv) {
