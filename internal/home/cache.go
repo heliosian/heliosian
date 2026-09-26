@@ -29,6 +29,7 @@ func spec(images ImageChecker) store.Spec[*Model] {
 			{Name: adminsTab, Columns: adminColumns, Key: []string{"Email"}},
 			{Name: visibilityTab, Columns: visibilityColumns, Key: []string{"App"}},
 			{Name: audienceTab, Columns: AudienceColumns, Key: AudienceColumns},
+			{Name: widgetsTab, Columns: widgetColumns, Key: []string{"Widget"}},
 		},
 		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {
 			return BuildModel(ctx, tables, images)

@@ -1,0 +1,12 @@
+{
+  "messageId": "sample-jaysandravens-2026-09-21@example.org",
+  "subject": "Fall Clubs Reminder",
+  "date": "2026-09-21T09:00:00-07:00",
+  "from": "Helios Clubs",
+  "to": [
+    "jaysandravens@heliosschool.org"
+  ],
+  "channel": "jaysandravens",
+  "kind": "list",
+  "text": "Fall club sign-ups for the Jays and Ravens close this Friday, September 25, at noon. Chess, Lego Robotics and Garden Club still have spots.\n\nHappy clubbing,\nThe Clubs Team\n"
+}

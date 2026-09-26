@@ -1,0 +1,12 @@
+{
+  "messageId": "sample-parentsonly-2026-09-22@example.org",
+  "subject": "Family Game Night Is This Thursday!",
+  "date": "2026-09-22T12:30:00-07:00",
+  "from": "Helios Parents Association",
+  "to": [
+    "parentsonly@heliosschool.org"
+  ],
+  "channel": "parentsonly",
+  "kind": "list",
+  "text": "Family Game Night is this Thursday from 5:30 to 7:30pm in the multipurpose room, so bring a favourite board game to share. Pizza is on the HPA.\n\nSee you there!\nHPA\n"
+}

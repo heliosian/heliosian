@@ -17,21 +17,25 @@ import (
 // allFamilies are the lists that go to every family, whoever reads them.
 var allFamilies = []string{"parentsandstaff", "parentsonly", "parentsandstudents", "community", "parents", "newstudentfamilies", "new.parents"}
 
-// schoolDays is how far back the From the School widget reads.
+// schoolDays is how far back the Inbox widget reads.
 const schoolDays = 7
 
 // schoolEmail is one school email as the widget shows it.
 type schoolEmail struct {
-	Key     string   `json:"key"`
-	Title   string   `json:"title"`
-	Date    string   `json:"date"`
-	Kind    string   `json:"kind"`
-	Channel string   `json:"channel"`
-	Points  []string `json:"points"`
+	Key     string `json:"key"`
+	Title   string `json:"title"`
+	Date    string `json:"date"`
+	Kind    string `json:"kind"`
+	Channel string `json:"channel"`
+	// Audience is whom it was judged to be written to: Everyone, or the
+	// classrooms it names (artifacts.AudienceColumn); blank for a list's
+	// mail, which its channel says.
+	Audience string   `json:"audience"`
+	Points   []string `json:"points"`
 }
 
 // schoolWidget answers GET /api/apps/school on Heliosian's host: the home
-// page's From the School widget for the viewer - the last week's school
+// page's Inbox widget for the viewer - the last week's school
 // email with its key points (internal/keypoints), newest first: the
 // newsletter, the lists to every family, and the lists of the viewer's own
 // classrooms - their children's, their own as a student, those they teach -
@@ -56,7 +60,7 @@ func schoolWidget(directory *who.Cache, artifactsCache *artifacts.Cache) http.Ha
 			if points == nil {
 				points = []string{}
 			}
-			out = append(out, schoolEmail{Key: d.Key, Title: d.Title, Date: d.Date, Kind: d.Kind, Channel: d.Channel, Points: points})
+			out = append(out, schoolEmail{Key: d.Key, Title: d.Title, Date: d.Date, Kind: d.Kind, Channel: d.Channel, Audience: m.Audience[d.Key], Points: points})
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(struct {

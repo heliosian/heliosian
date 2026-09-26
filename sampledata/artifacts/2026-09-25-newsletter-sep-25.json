@@ -1,0 +1,12 @@
+{
+  "messageId": "sample-newsletter-2026-09-25@example.org",
+  "subject": "Helios Weekly Newsletter",
+  "date": "2026-09-25T15:20:00-07:00",
+  "from": "Helios School",
+  "to": [
+    "jordan.whitfield@heliosschool.org"
+  ],
+  "channel": "newsletter",
+  "kind": "newsletter",
+  "html": "<html>\n<body>\n<p>September 25, 2026</p>\n<h3>Early dismissal at 12:30pm Tue 9/29 – Fri 10/2 for ILP conferences</h3>\n<p>Students go home at 12:30pm each day of ILP week so teachers can meet with every family. Aftercare runs from 12:30pm as usual.</p>\n<h3>Mon 9/28 remains a full day, dismissal at 3:15pm</h3>\n<p>Monday is a regular school day; the early dismissals begin Tuesday.</p>\n<h3>Club start times shift earlier during ILP week (9/29–10/2)</h3>\n<p>Every club meets at 12:45pm instead of 3:30pm during ILP week. Please plan pick-ups to match.</p>\n<h3>Parent Ed Coffee with the Helios Board is Mon 10/5, 8:30–9:30am</h3>\n<p>Join the Board in the library for coffee and conversation about the year ahead.</p>\n</body>\n</html>\n"
+}

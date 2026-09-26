@@ -29,6 +29,7 @@ const (
 	adminsTab      = "Admins"
 	visibilityTab  = "Visibility"
 	audienceTab    = "Audience"
+	widgetsTab     = "Widgets"
 	addedFormat    = "2006-01-02"
 	maxTitleLength = 80
 	maxDescLength  = 300
@@ -49,10 +50,12 @@ var (
 	AudienceColumns   = append([]string{"Thing"}, filter.RuleColumns...)
 	adminColumns      = []string{"Email"}
 	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline", "Name", store.OrderColumn}
+	widgetColumns     = []string{"Widget", store.OrderColumn}
 	CategoryColumns   = categoryColumns
 	LinkColumns       = linkColumns
 	AdminColumns      = adminColumns
 	VisibilityColumns = visibilityColumns
+	WidgetColumns     = widgetColumns
 )
 
 type App struct {
@@ -160,11 +163,18 @@ type Model struct {
 	// WidgetRules are who each of the front page's widgets is for, by the
 	// widget's name (Widgets); no rules is everyone.
 	WidgetRules map[string][]filter.Rule `json:"-"`
-	admins      []string
+	// WidgetOrder is every widget's name in the order the page draws them,
+	// as an admin set it (widgetsTab); a widget without a place follows the
+	// rest in Widgets' order.
+	WidgetOrder []string `json:"-"`
+	// widgetKeys are the widgets' places (store.OrderColumn), by name.
+	widgetKeys map[string]string
+	admins     []string
 }
 
-// Widgets are the front page's widgets, by the names their audience rows
-// carry ("widget:when"), in the order the page draws them.
+// Widgets are the front page's widgets, by the names their audience and
+// order rows carry ("widget:when", "when"), in the order the page draws
+// them until an admin moves one.
 var Widgets = []string{"when", "team", "celebrate", "school"}
 
 func compareOrder(a, b, aTitle, bTitle string) int {
@@ -180,6 +190,29 @@ const (
 	thingLink     = "link:"
 	thingWidget   = "widget:"
 )
+
+// buildWidgetOrder reads widgetsTab into the model's WidgetOrder: the
+// widgets with a place by it, then the rest as Widgets has them.
+func buildWidgetOrder(model *Model, rows []store.Row) error {
+	model.widgetKeys = map[string]string{}
+	for _, row := range rows {
+		name := strings.TrimSpace(row["Widget"])
+		if !slices.Contains(Widgets, name) {
+			return fmt.Errorf("%s has no widget %q; the widgets are %s", widgetsTab, name, strings.Join(Widgets, ", "))
+		}
+		if _, dup := model.widgetKeys[name]; dup {
+			return fmt.Errorf("%s has two rows for %q", widgetsTab, name)
+		}
+		order := strings.TrimSpace(row[store.OrderColumn])
+		if err := store.CheckKey(order); err != nil {
+			return fmt.Errorf("widget %q: %w", name, err)
+		}
+		model.widgetKeys[name] = order
+	}
+	model.WidgetOrder = slices.Clone(Widgets)
+	slices.SortStableFunc(model.WidgetOrder, func(a, b string) int { return store.CompareKeys(model.widgetKeys[a], model.widgetKeys[b]) })
+	return nil
+}
 
 func rulesFor(rows []store.Row, key string) ([]filter.Rule, error) {
 	out := []filter.Rule{}
@@ -294,6 +327,9 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 			return nil, err
 		}
 		model.WidgetRules[key] = rules
+	}
+	if err := buildWidgetOrder(model, tables[widgetsTab]); err != nil {
+		return nil, err
 	}
 	for _, row := range tables[adminsTab] {
 		model.admins = append(model.admins, row["Email"])

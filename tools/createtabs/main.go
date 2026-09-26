@@ -116,6 +116,7 @@ var layouts = map[string][]tab{
 		{"Admins", home.AdminColumns},
 		{"Visibility", home.VisibilityColumns},
 		{"Audience", home.AudienceColumns},
+		{"Widgets", home.WidgetColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Events": {

@@ -2,7 +2,7 @@ import {state, superOn} from './state.js';
 import {appOrigin} from '/toolbar.js';
 import {el, svg} from './dom.js';
 import {whenOrigin, calendarMark, calendarMenu, dropdown, audienceWords} from './cards.js';
-import {openWidgetAudience} from './edit.js';
+import {openWidgetAudience, moveWidget} from './edit.js';
 import {dayTypeClass} from '/daytype.js';
 
 // The widgets across the top of the page, each a card with one app's view
@@ -600,19 +600,23 @@ function celebrateWidget() {
 }
 
 // School email comes from Heliosian's host (/api/apps/school): the last
-// week's, each with its key points, asked once per model and kept while the
-// widgets redraw.
+// week's, each with its key points; and the invitations still waiting for
+// the viewer's reply from the same host (/api/apps/rsvp, the toolbar's
+// badge's list) - both asked once per model and kept while the widgets
+// redraw.
 let school = null;
+let rsvps = [];
 let schoolFor = null;
 
 async function fetchSchool() {
   schoolFor = state.model;
   try {
-    const res = await fetch('/api/apps/school');
-    if (!res.ok) {
+    const [mail, waiting] = await Promise.all([fetch('/api/apps/school'), fetch('/api/apps/rsvp')]);
+    if (!mail.ok) {
       return;
     }
-    school = (await res.json()).emails || [];
+    school = (await mail.json()).emails || [];
+    rsvps = waiting.ok ? (await waiting.json()).waiting || [] : [];
   } catch {
     return;
   }
@@ -625,17 +629,23 @@ const listNames = {
   community: 'Community', parents: 'All parents', newstudentfamilies: 'New families', 'new.parents': 'New families',
 };
 
-// channelName is where an email came from: the newsletter, a list to every
-// family, a classroom's parents or students ("Jays parents"), a grade band
-// ("Jays & Ravens").
-function channelName(email) {
-  if (email.kind === 'newsletter') {
-    return 'Newsletter';
+// sentTo is whom an email went to, as its chip says it. A list's mail
+// says so by its list: every family's ("Parents & staff"), a classroom's
+// parents or students ("Jays parents"), a grade band ("Jays & Ravens").
+// Mail the school sends through Veracross - the newsletter, a teacher's
+// note - says nothing of it, so it goes by whom it was judged to be
+// written to: the classrooms it names, else every family.
+function sentTo(email) {
+  const cap = w => w.charAt(0).toUpperCase() + w.slice(1);
+  if (email.kind !== 'list') {
+    if (!email.audience || email.audience === 'Everyone') {
+      return 'All families';
+    }
+    return email.audience.split(',').map(r => r.trim()).filter(Boolean).join(' & ');
   }
   if (listNames[email.channel]) {
     return listNames[email.channel];
   }
-  const cap = w => w.charAt(0).toUpperCase() + w.slice(1);
   const [room, who] = email.channel.split('.');
   if (who) {
     return `${cap(room)} ${who}`;
@@ -643,35 +653,135 @@ function channelName(email) {
   return room.split('and').map(cap).join(' & ');
 }
 
-// emailRow is one school email: its subject, where it came from, its key
-// points - or word that they are on their way - and Ask about this, which
-// opens Helios Ask on a question about it.
-function emailRow(email) {
-  const row = el('li', 'wg-email');
-  const head = el('div', 'wg-email-head');
-  head.append(el('span', 'wg-title', email.title), el('span', 'wg-email-from', channelName(email)));
-  row.append(head);
+// schoolTones are the colours Inbox's rows wear in turn, the dot
+// on the line and the chip alike.
+const schoolTones = ['is-teal', 'is-lime', 'is-pink', 'is-blue'];
+
+// schoolOpen is the email whose key points are showing, by key: undefined
+// for the newest, as the widget first opens; null once the viewer folds
+// it away. Only one is open at a time, and it stays open while the widgets
+// redraw.
+let schoolOpen;
+
+// emailRow is one school email on the widget's line: a dot in its colour,
+// the day it came, its subject, a chip saying whom it went to, and a
+// chevron; a click opens its key points - or word that they are on their
+// way - and Ask about this, which opens Helios Ask on a question about it,
+// folding away whichever was open before.
+function emailRow(email, n, open) {
+  const row = el('li', 'wg-email ' + schoolTones[n % schoolTones.length]);
+  row.classList.toggle('is-open', open);
+  const date = parseDate(email.date);
+  const head = el('button', 'wg-email-head');
+  head.type = 'button';
+  head.setAttribute('aria-expanded', String(open));
+  const when = `${date.toLocaleDateString('en-US', {weekday: 'short'})}, ${date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;
+  head.append(el('span', 'wg-dot'), el('span', 'wg-email-date', when), el('span', 'wg-email-title', email.title), el('span', 'wg-email-to', sentTo(email)), svg('chevron'));
+  const body = el('div', 'wg-email-body');
   if (email.points.length) {
     const points = el('ul', 'wg-points');
     for (const p of email.points) {
       points.append(el('li', '', p));
     }
-    row.append(points);
+    body.append(points);
   } else {
-    row.append(el('div', 'wg-sub', 'Key points on their way.'));
+    body.append(el('div', 'wg-sub', 'Key points on their way.'));
   }
-  const day = parseDate(email.date).toLocaleDateString('en-US', {weekday: 'long', month: 'long', day: 'numeric'});
+  const day = date.toLocaleDateString('en-US', {weekday: 'long', month: 'long', day: 'numeric'});
   const ask = el('a', 'wg-ask');
   ask.href = appOrigin('ask') + '/?q=' + encodeURIComponent(`What should I know from the school email "${email.title}" sent ${day}?`);
   ask.append(el('span', '', 'Ask about this'), svg('chevron'));
-  row.append(ask);
+  body.append(ask);
+  head.addEventListener('click', () => {
+    const opening = !row.classList.contains('is-open');
+    for (const other of row.parentNode.children) {
+      other.classList.remove('is-open');
+      other.querySelector('.wg-email-head').setAttribute('aria-expanded', 'false');
+    }
+    row.classList.toggle('is-open', opening);
+    head.setAttribute('aria-expanded', String(opening));
+    schoolOpen = opening ? email.key : null;
+  });
+  row.append(head, body);
   return row;
 }
 
-// schoolWidget is From the School: the last week of the school's email -
-// the newsletter, the lists to every family, and the viewer's own
-// classrooms' - by day under the same bars as This Week, newest first,
-// each with its key points, the first three until More.
+// rsvpType is the Inbox dropdown's name for the invitations waiting on a
+// reply.
+const rsvpType = 'RSVP needed';
+
+// rsvpPanel is the invitations waiting on the viewer's reply, at the top
+// of the Inbox until they answer, set apart from the email in a green
+// panel: how many need an RSVP and View all across to My Events' RSVP on
+// When, then a white card of them, each its day, its title and an RSVP
+// pill, the whole row opening its page on When, where they answer.
+function rsvpPanel(waiting) {
+  const panel = el('section', 'wg-rsvps');
+  const head = el('div', 'wg-rsvps-head');
+  const n = waiting.length;
+  head.append(svg('calendar'), el('span', 'wg-rsvps-words', `${n} ${n === 1 ? 'event needs' : 'events need'} your RSVP`), moreLink('View all', whenOrigin('calendar') + '/mine/rsvp'));
+  const list = el('ol', 'wg-rsvp-list');
+  for (const rsvp of waiting) {
+    const row = el('li');
+    const a = el('a', 'wg-rsvp');
+    a.href = whenOrigin('calendar') + rsvp.path;
+    a.title = 'You\u2019re invited - answer on its page';
+    const date = parseDate(rsvp.start.split(' ')[0]);
+    const when = `${date.toLocaleDateString('en-US', {weekday: 'short'})}, ${date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;
+    a.append(el('span', 'wg-rsvp-date', when), el('span', 'wg-rsvp-title', rsvp.title), el('span', 'wg-rsvp-pill', 'RSVP'));
+    row.append(a);
+    list.append(row);
+  }
+  panel.append(head, list);
+  return panel;
+}
+
+// schoolType is the chip the Inbox's dropdown narrows it to - one whom
+// the email went to ("Parents & staff") - or null for all of them, kept
+// while the widgets redraw.
+let schoolType = null;
+
+// typePick is the Inbox's dropdown at its heading: All, then each whom the
+// week's email went to as its chips say it, with how many; picking one
+// shows only those.
+function typePick() {
+  const counts = new Map();
+  if (rsvps.length) {
+    counts.set(rsvpType, rsvps.length);
+  }
+  for (const e of school) {
+    counts.set(sentTo(e), (counts.get(sentTo(e)) || 0) + 1);
+  }
+  const wrap = el('div', 'category-calendar widget-calendar wg-type');
+  const toggle = el('button', 'category-calendar-toggle');
+  toggle.type = 'button';
+  toggle.title = 'Show one kind of email';
+  toggle.append(el('span', '', schoolType || 'All'), svg('chevron'));
+  const menu = el('div', 'category-calendar-menu');
+  menu.hidden = true;
+  for (const [type, n] of [[null, rsvps.length + school.length], ...counts]) {
+    const item = el('button', 'category-calendar-item' + (type === schoolType ? ' is-on' : ''));
+    item.type = 'button';
+    item.append(el('span', '', type || 'All'), el('span', 'category-calendar-tail wg-type-count', String(n)));
+    item.addEventListener('click', () => {
+      menu.hidden = true;
+      schoolType = type;
+      renderWidgets(document.querySelector('#search').value);
+    });
+    menu.append(item);
+  }
+  dropdown(toggle, menu);
+  wrap.append(toggle, menu);
+  return wrap;
+}
+
+// schoolWidget is Inbox: every invitation still waiting on the viewer's
+// reply, soonest first, until they answer it; then the last week of the
+// school's email - the newsletter, the lists to every family, and the
+// viewer's own classrooms' - newest first down a line, each its day,
+// subject and whom it went to, the first opened on its key points. A
+// dropdown at the heading narrows it to the invitations or to one whom the
+// email went to, and the first few emails show until Show N more.
 function schoolWidget() {
   if (schoolFor !== state.model) {
     school = null;
@@ -682,43 +792,35 @@ function schoolWidget() {
   }
   const card = el('article', 'widget widget-school');
   const head = el('header', 'widget-head');
-  head.append(widgetTitle('ask', 'From the School'));
+  head.append(widgetTitle('ask', 'Inbox'));
   card.append(head);
-  if (!school.length) {
+  if (!school.length && !rsvps.length) {
     card.append(el('p', 'wg-empty', 'No school email this week.'));
     return card;
   }
-  const groups = [];
-  for (const e of school) {
-    let g = groups.find(x => x.day === e.date);
-    if (!g) {
-      g = {day: e.date, rows: []};
-      groups.push(g);
-    }
-    g.rows.push(e);
+  const types = [...(rsvps.length ? [rsvpType] : []), ...school.map(sentTo)];
+  if (schoolType && !types.includes(schoolType)) {
+    schoolType = null;
   }
+  head.append(typePick());
+  const waiting = !schoolType || schoolType === rsvpType ? rsvps : [];
+  const shown = !schoolType ? school : school.filter(e => sentTo(e) === schoolType);
   const name = 'school';
-  const open = expanded.has(name);
-  let n = 0;
-  for (const g of groups) {
-    if (!open && n >= partyCards) {
-      break;
-    }
-    const list = el('ol', 'wg-emails');
-    for (const e of g.rows) {
-      if (!open && n >= partyCards) {
-        break;
-      }
-      list.append(emailRow(e));
-      n++;
-    }
-    card.append(dayBar(g.day, g.rows.length, 'email'), list);
+  const all = expanded.has(name);
+  if (waiting.length) {
+    card.append(rsvpPanel(waiting));
   }
-  if (school.length > partyCards) {
-    const more = el('button', 'wg-more', open ? 'Show less' : `Show ${school.length - partyCards} more`);
+  const list = el('ol', 'wg-emails');
+  if (shown.length) {
+    const openKey = schoolOpen === undefined || (schoolOpen && !shown.some(e => e.key === schoolOpen)) ? shown[0].key : schoolOpen;
+    (all ? shown : shown.slice(0, widgetRows)).forEach((e, n) => list.append(emailRow(e, n, e.key === openKey)));
+  }
+  card.append(list);
+  if (shown.length > widgetRows) {
+    const more = el('button', 'wg-more', all ? 'Show less' : `Show ${shown.length - widgetRows} more`);
     more.type = 'button';
     more.addEventListener('click', () => {
-      if (open) {
+      if (all) {
         expanded.delete(name);
       } else {
         expanded.add(name);
@@ -730,8 +832,11 @@ function schoolWidget() {
   return card;
 }
 
+// widgetMakers draw each widget, by its name.
+const widgetMakers = {when: whenWidget, team: teamWidget, celebrate: celebrateWidget, school: schoolWidget};
+
 // widgetNames are the widgets' names as an admin's pencil says them.
-const widgetNames = {when: 'This Week', team: 'Team', celebrate: 'Celebrate', school: 'From the School'};
+const widgetNames = {when: 'This Week', team: 'Team', celebrate: 'Celebrate', school: 'Inbox'};
 
 // adminTools puts, in Super Admin Mode, a pencil at a widget's heading that
 // opens who it is for, and says so beside the title: Hidden when the admin
@@ -752,10 +857,31 @@ function adminTools(card, key) {
   edit.append(svg('edit'));
   edit.addEventListener('click', () => openWidgetAudience(key, widgetNames[key]));
   head.insertBefore(edit, head.children[1] || null);
+  const order = widgetOrder();
+  const at = order.indexOf(key);
+  const moves = el('span', 'widget-moves');
+  for (const [by, glyph, words] of [[-1, '\u2039', 'Move earlier'], [1, '\u203a', 'Move later']]) {
+    const b = el('button', 'category-edit widget-move', glyph);
+    b.type = 'button';
+    b.title = words;
+    b.setAttribute('aria-label', `${words}: ${widgetNames[key]}`);
+    b.disabled = by < 0 ? at <= 0 : at >= order.length - 1;
+    b.addEventListener('click', () => moveWidget(key, by));
+    moves.append(b);
+  }
+  head.insertBefore(moves, edit.nextSibling);
 }
 
-// renderWidgets draws the row, or leaves it empty while a search is
-// filtering the page below. A widget not for the viewer - its rules, set
+// widgetOrder is the widgets' names in the order the page draws them, as
+// an admin set it for everyone.
+function widgetOrder() {
+  const makers = Object.keys(widgetMakers);
+  const set = (state.model.widgetOrder || []).filter(k => makers.includes(k));
+  return [...set, ...makers.filter(k => !set.includes(k))];
+}
+
+// renderWidgets draws the row in the order an admin set, or leaves it
+// empty while a search is filtering the page below. A widget not for the viewer - its rules, set
 // by an admin, leave them out - is left out; in Super Admin Mode every
 // widget shows, with the pencil that sets who it is for.
 export function renderWidgets(query = '') {
@@ -766,7 +892,8 @@ export function renderWidgets(query = '') {
     return;
   }
   const admin = superOn();
-  for (const [key, make] of [['when', whenWidget], ['team', teamWidget], ['celebrate', celebrateWidget], ['school', schoolWidget]]) {
+  for (const key of widgetOrder()) {
+    const make = widgetMakers[key];
     const forMe = ((state.model.widgets || {})[key] || {}).forMe !== false;
     if (!forMe && !admin) {
       continue;

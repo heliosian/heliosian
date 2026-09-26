@@ -271,6 +271,26 @@ func TestAppOrderIsAKey(t *testing.T) {
 	}
 }
 
+func TestWidgetOrderIsAKey(t *testing.T) {
+	c, _ := sampleCache(t)
+	c.directory = directoryOf(t)
+	a := app{cache: c, directory: c.directory}
+	if got := c.Model().WidgetOrder; !slices.Equal(got, Widgets) {
+		t.Fatalf("unset order = %v, want %v", got, Widgets)
+	}
+	for _, order := range [][]string{{"school", "when", "team", "celebrate"}, {"school", "celebrate", "when", "team"}} {
+		if rec := call(t, a.setWidgetOrder, map[string]any{"widgets": order}); rec.Code != http.StatusNoContent {
+			t.Fatalf("order: %d %s", rec.Code, rec.Body)
+		}
+		if got := c.Model().WidgetOrder; !slices.Equal(got, order) {
+			t.Fatalf("widgets = %v, want %v", got, order)
+		}
+	}
+	if rec := call(t, a.setWidgetOrder, map[string]any{"widgets": []string{"school", "when"}}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a partial order: %d, want 400", rec.Code)
+	}
+}
+
 func TestOnlyAdminsGetTheRules(t *testing.T) {
 	c, _ := sampleCache(t)
 	c.directory = directoryOf(t)

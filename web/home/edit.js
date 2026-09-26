@@ -336,6 +336,24 @@ export async function moveApp(key, by) {
   }
 }
 
+// moveWidget moves a front-page widget one place earlier or later, for
+// everyone.
+export async function moveWidget(key, by) {
+  const keys = [...(state.model.widgetOrder || [])];
+  const i = keys.indexOf(key);
+  const j = i + by;
+  if (i < 0 || j < 0 || j >= keys.length) {
+    return;
+  }
+  [keys[i], keys[j]] = [keys[j], keys[i]];
+  try {
+    await send('POST', '/api/apps/widgets/order', {widgets: keys});
+    await load();
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
 let editingApp = null;
 let appMode = 'everyone';
 let appEmails = [];

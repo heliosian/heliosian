@@ -1,6 +1,6 @@
 // Package keypoints writes the key points of each school email - the
 // newsletter, the all-family and classroom lists - once it is in, for
-// Heliosian's From the School widget: a few short lines, what to do and by
+// Heliosian's Inbox widget: a few short lines, what to do and by
 // when first, read by Claude from the email's words and kept in the
 // artifacts Documents tab's Key Points column.
 package keypoints

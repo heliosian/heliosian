@@ -1,0 +1,12 @@
+{
+  "messageId": "sample-jays-parents-2026-09-21@example.org",
+  "subject": "Jays field trip to the tide pools",
+  "date": "2026-09-21T16:10:00-07:00",
+  "from": "Jays Teachers",
+  "to": [
+    "jays.parents@heliosschool.org"
+  ],
+  "channel": "jays.parents",
+  "kind": "list",
+  "text": "The Jays visit the Fitzgerald Marine Reserve tide pools on Friday, October 9, so please return the signed permission slip by Monday, October 5. We need four more parent drivers.\n\nThanks,\nThe Jays teachers\n"
+}

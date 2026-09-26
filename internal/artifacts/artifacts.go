@@ -39,7 +39,7 @@ const (
 var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object", PointsColumn, AudienceColumn}
 
 // PointsColumn holds a school email's key points, one a line, written once
-// the email is in (internal/keypoints) for Heliosian's From the School
+// the email is in (internal/keypoints) for Heliosian's Inbox
 // widget; blank until then, and for everything else.
 const PointsColumn = "Key Points"
 

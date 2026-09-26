@@ -461,7 +461,7 @@ func TestSearchDocumentsFindsTheIssueAndReadsIt(t *testing.T) {
 	v := sampleViewer(t, jordan)
 	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, calendar.Location)
 	result := call(t, v, "search_documents", `{"query":"international night booths"}`)
-	if result["documents"].(float64) != 4 || result["newest"] != "2026-09-11" || result["oldest"] != "2026-08-30" {
+	if result["documents"].(float64) != 9 || result["newest"] != "2026-09-25" || result["oldest"] != "2026-08-30" {
 		t.Fatalf("documents: %v", result)
 	}
 	passages := result["passages"].([]any)

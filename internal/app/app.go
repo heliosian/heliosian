@@ -703,7 +703,7 @@ type Config struct {
 	Asker         ask.Responder
 	Embedder      artifacts.Embedder
 	ArtifactsMail artifacts.Inbox
-	// KeyPoints reads each school email's key points for the From the School
+	// KeyPoints reads each school email's key points for the Inbox
 	// widget; nil runs nothing.
 	KeyPoints keypoints.Summarizer
 }

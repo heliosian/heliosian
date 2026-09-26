@@ -101,6 +101,7 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins f
 	mux.HandleFunc("DELETE /api/apps/category", a.deleteCategory)
 	mux.HandleFunc("POST /api/apps/categories/order", a.reorderCategories)
 	mux.HandleFunc("POST /api/apps/widgets/audience", a.saveWidgetAudience)
+	mux.HandleFunc("POST /api/apps/widgets/order", a.setWidgetOrder)
 	mux.HandleFunc("POST /api/apps/image", a.uploadImage)
 	mux.HandleFunc("GET /api/apps/images/search", a.requireAdminFunc(a.search.ServeSearch))
 	mux.HandleFunc("GET /api/apps/images/thumb", a.requireAdminFunc(a.search.ServeThumb))
@@ -318,6 +319,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Options          *filter.Options       `json:"options,omitempty"`
 		TagLabels        map[string]string     `json:"tagLabels,omitempty"`
 		Widgets          map[string]widgetView `json:"widgets"`
+		WidgetOrder      []string              `json:"widgetOrder"`
 	}{
 		Categories:  categories,
 		User:        user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
@@ -325,6 +327,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Calendar:    a.month(email, "", ""),
 		Apps:        a.appViews(email, admin),
 		Widgets:     map[string]widgetView{},
+		WidgetOrder: full.WidgetOrder,
 	}
 	for _, key := range Widgets {
 		rules := full.WidgetRules[key]
@@ -485,6 +488,46 @@ func (a app) saveWidgetAudience(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "home: set a widget's audience", "actor", actor, "widget", body.Widget, "rules", len(rules))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// setWidgetOrder is POST /api/apps/widgets/order: an admin sets the order
+// the front page draws its widgets in, for everyone, naming every widget
+// once; only the places that change are written.
+func (a app) setWidgetOrder(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Widgets []string `json:"widgets"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	got, want := slices.Clone(body.Widgets), slices.Clone(Widgets)
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		http.Error(w, "the order must list every widget once: "+strings.Join(Widgets, ", "), http.StatusBadRequest)
+		return
+	}
+	model := a.cache.Model()
+	current := make([]string, len(body.Widgets))
+	for i, name := range body.Widgets {
+		current[i] = model.widgetKeys[name]
+	}
+	next := store.Order(current)
+	ops := []store.Op{}
+	for i, name := range body.Widgets {
+		if next[i] != current[i] {
+			ops = append(ops, store.Set(widgetsTab, store.Row{"Widget": name}, store.Row{store.OrderColumn: next[i]}))
+		}
+	}
+	if len(ops) > 0 && !a.commit(w, r, actor, ops...) {
+		return
+	}
+	slog.InfoContext(r.Context(), "home: set the widgets' order", "actor", actor, "widgets", body.Widgets)
 	w.WriteHeader(http.StatusNoContent)
 }
 
