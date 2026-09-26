@@ -36,7 +36,15 @@ var (
 
 type fakeDirectory struct{}
 
-func (fakeDirectory) Resolve(email string) string { return email }
+// parentAlias is another address of the parent's, as Email Aliases lists it.
+const parentAlias = "robin@heliosschool.org"
+
+func (fakeDirectory) Resolve(email string) string {
+	if email == parentAlias {
+		return parent
+	}
+	return email
+}
 
 func (fakeDirectory) People() []DirectoryPerson { return nil }
 
@@ -263,6 +271,12 @@ func TestSignUpAndRemove(t *testing.T) {
 	full := map[string]any{"id": "E026", "position": PositionVolunteer}
 	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", full); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a full role took a sign-up: %d", rec.Code)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E001", "email": "Robin@heliosschool.org", "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
+		t.Fatalf("an admin could not sign up an alias: %d %s", rec.Code, rec.Body)
+	}
+	if v := cache.Model().Activity("E001").volunteer(parent); v == nil {
+		t.Fatalf("a sign-up by alias was not stored as the directory's address: %+v", cache.Model().Activity("E001").Volunteers)
 	}
 	for _, as := range []string{parent, admin} {
 		if rec := call(t, mux, as, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": "x@elsewhere.example", "position": PositionVolunteer}); rec.Code != http.StatusBadRequest {

@@ -44,7 +44,7 @@ School years turn over on July 1 and are written as both calendar years, `2026 -
 
 ## Names and photos
 
-The portal stores only email addresses. Names and photos come from the directory model at request time, so a volunteer looks the same here as in Helios Who?. Someone the directory does not list, such as a parent who has not opted in, is shown under a name read out of their address. Sign-in resolves through the directory's email aliases too, so a person is one address across every app.
+The portal stores only email addresses. Names and photos come from the directory model at request time, so a volunteer looks the same here as in Helios Who?. Someone the directory does not list, such as a parent who has not opted in, is shown under a name read out of their address. Sign-in resolves through the directory's email aliases too, so a person is one address across every app, and so does a sign-up: one made by an alias is stored under the address the directory lists, and a row already stored under an alias still shows that person's name and photo.
 
 The directory reads the portal back: a co-chair's Lists in Helios Who? carry one list per activity they chair this school year, its volunteers and co-chairs and everything under it, and one more for each committee under it ("Spring Celebration: Decor"), so a committee can have an email list of its own (`docs/who/directory.md`); a rule's Tags picker - in Loop, When's guest lists, Heliosian's audiences - sets each committee in beneath its event under its own short name, so any one of them can be ticked (`Parent` on the list).
 

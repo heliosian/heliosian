@@ -217,7 +217,9 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	email := strings.ToLower(strings.TrimSpace(body.Email))
+	// An alias is stored as the address the directory lists, so a sign-up
+	// shows its face and counts as that person's own.
+	email := a.directory.Resolve(strings.ToLower(strings.TrimSpace(body.Email)))
 	if email == "" {
 		email = actor
 	}

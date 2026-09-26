@@ -81,7 +81,7 @@ func displayName(email string) string {
 }
 
 func (d viewer) person(email string) (string, string) {
-	if name, photo, ok := d.directory.Person(email); ok {
+	if name, photo, ok := d.directory.Person(d.directory.Resolve(strings.ToLower(email))); ok {
 		return name, photo
 	}
 	return displayName(email), ""
