@@ -1096,12 +1096,16 @@ func TestDeleteAndCancel(t *testing.T) {
 	if rec := call(t, as(mia, mux), "POST", "/api/calendar/invites/delete", `{"id":"meetup"}`); rec.Code != 403 {
 		t.Errorf("someone else deleting: %d", rec.Code)
 	}
+	token := cache.Model().InviteOf("meetup", coach).Token
 	if rec := call(t, jordan, "POST", "/api/calendar/invites/delete", `{"id":"meetup"}`); rec.Code != 200 || rec.Body.String() != "{\"event\":true}\n" {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
 	}
 	m := cache.Model()
 	if m.Event("meetup") != nil || m.Invitations["meetup"] != nil || len(m.Invites["meetup"]) != 0 {
 		t.Errorf("after delete: event %v, invitation %v, invites %d", m.Event("meetup"), m.Invitations["meetup"], len(m.Invites["meetup"]))
+	}
+	if rec := call(t, mux, "GET", "/ext/"+token, ""); rec.Code != 200 {
+		t.Errorf("outside page for a deleted event: %d", rec.Code)
 	}
 	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
 	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"}]}`)

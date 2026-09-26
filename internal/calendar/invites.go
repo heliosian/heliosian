@@ -195,8 +195,11 @@ func (inv *Invitation) hasDetails() bool {
 }
 
 func (m *Model) invitedEvent(e *Event) *Event {
+	if e == nil {
+		return nil
+	}
 	inv := m.Invitations[e.ID]
-	if e == nil || !e.linked() || !inv.hasDetails() {
+	if !e.linked() || !inv.hasDetails() {
 		return e
 	}
 	c := *e

@@ -42,7 +42,7 @@ const (
 	maxPixels    = 40_000_000
 )
 
-var folders = []string{"photos", "pronunciation", "link-images", "activity-images", "category-images"}
+var folders = []string{"photos", "pronunciation", "link-images", "activity-images", "party-images", "category-images"}
 
 var ErrNotFound = errors.New("no such object")
 

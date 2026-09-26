@@ -128,7 +128,7 @@ func (a *Auth) spoofFields(value string) (real, target string, ok bool) {
 		return "", "", false
 	}
 	payload := string(decoded)
-	if sign(a.key, payload) != parts[1] {
+	if !verify(a.key, payload, parts[1]) {
 		return "", "", false
 	}
 	fields := strings.Split(payload, "|")

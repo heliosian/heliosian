@@ -18,8 +18,8 @@ func main() {
 	cookie := flag.String("cookie", "", "name=value cookie to set for the url's host before navigating")
 	click := flag.String("click", "", "css selector(s) to click after the wait selector appears, several separated by |, each waited for in turn")
 	settle := flag.Duration("settle", 0, "extra time to wait after the last click, e.g. 3s")
-	width := flag.Int("width", 0, "viewport width (default 1280)")
-	height := flag.Int("height", 0, "viewport height (default 800)")
+	width := flag.Int("width", 1280, "viewport width")
+	height := flag.Int("height", 800, "viewport height")
 	flag.Parse()
 	png, err := capture.PNG(capture.Options{URL: *url, Wait: *wait, Remote: *remote, Cookie: *cookie, Click: *click, Settle: *settle, Width: *width, Height: *height})
 	if err != nil {

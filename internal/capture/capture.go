@@ -19,13 +19,12 @@ type Options struct {
 	Cookie string
 	// Click is one selector, or several separated by "|", each waited for
 	// and clicked in turn; Settle is how long to wait after the last.
-	Click  string
-	Settle time.Duration
-	// Width and Height set the viewport; zero means 1280x800.
+	Click         string
+	Settle        time.Duration
 	Width, Height int
 }
 
-// PNG captures one page as a full-page screenshot at a 1280×800 viewport.
+// PNG captures one page as a full-page screenshot.
 func PNG(opts Options) ([]byte, error) {
 	ctx := context.Background()
 	var cancelAllocator context.CancelFunc
@@ -39,11 +38,7 @@ func PNG(opts Options) ([]byte, error) {
 	defer cancelBrowser()
 	ctx, cancelTimeout := context.WithTimeout(ctx, 30*time.Second)
 	defer cancelTimeout()
-	width, height := opts.Width, opts.Height
-	if width == 0 || height == 0 {
-		width, height = 1280, 800
-	}
-	actions := []chromedp.Action{chromedp.EmulateViewport(int64(width), int64(height))}
+	actions := []chromedp.Action{chromedp.EmulateViewport(int64(opts.Width), int64(opts.Height))}
 	// Cookies, name=value, several separated by semicolons as a Cookie
 	// header carries them - the mode cookies, say, to capture a page in
 	// dark mode.
@@ -82,7 +77,7 @@ func PNG(opts Options) ([]byte, error) {
 	if opts.Settle > 0 {
 		actions = append(actions, chromedp.Sleep(opts.Settle))
 	}
-	actions = append(actions, chromedp.FullScreenshot(&png, 90))
+	actions = append(actions, chromedp.FullScreenshot(&png, 100))
 	if err := chromedp.Run(ctx, actions...); err != nil {
 		return nil, fmt.Errorf("capture %s: %w", opts.URL, err)
 	}

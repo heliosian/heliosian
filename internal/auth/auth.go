@@ -150,6 +150,10 @@ func sign(key []byte, payload string) string {
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
+func verify(key []byte, payload, signature string) bool {
+	return hmac.Equal([]byte(sign(key, payload)), []byte(signature))
+}
+
 func (a *Auth) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /auth/client", a.client)
 	mux.HandleFunc("POST /auth/login", a.login)
@@ -355,7 +359,7 @@ func (a *Auth) sessionEmail(r *http.Request) string {
 	if err := json.Unmarshal(decoded, &t); err != nil {
 		return ""
 	}
-	if !hmac.Equal([]byte(sign(a.key, string(t.Session))), []byte(t.Signature)) {
+	if !verify(a.key, string(t.Session), t.Signature) {
 		return ""
 	}
 	var s session
