@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -25,30 +26,39 @@ func New(key string) *Client {
 }
 
 func (c *Client) Lookup(address string) (Point, error) {
-	resp, err := client.Get("https://maps.googleapis.com/maps/api/geocode/json?address=" +
-		url.QueryEscape(address) + "&key=" + url.QueryEscape(c.key))
+	req, err := http.NewRequest("POST", "https://geocode.googleapis.com/v4/geocode/address", strings.NewReader(url.Values{"addressQuery": {address}}.Encode()))
+	if err != nil {
+		return Point{}, err
+	}
+	req.Header.Set("X-HTTP-Method-Override", "GET")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("X-Goog-Api-Key", c.key)
+	resp, err := client.Do(req)
 	if err != nil {
 		return Point{}, err
 	}
 	defer resp.Body.Close()
 	var parsed struct {
-		Status  string `json:"status"`
 		Results []struct {
-			Geometry struct {
-				Location struct {
-					Lat float64 `json:"lat"`
-					Lng float64 `json:"lng"`
-				} `json:"location"`
-			} `json:"geometry"`
+			Location struct {
+				Latitude  float64 `json:"latitude"`
+				Longitude float64 `json:"longitude"`
+			} `json:"location"`
 		} `json:"results"`
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
 		return Point{}, err
 	}
-	if parsed.Status != "OK" || len(parsed.Results) == 0 {
-		return Point{}, fmt.Errorf("geocode %q: %s", address, parsed.Status)
+	if parsed.Error.Message != "" {
+		return Point{}, fmt.Errorf("geocode: %s", parsed.Error.Message)
 	}
-	return Point{Lat: parsed.Results[0].Geometry.Location.Lat, Lng: parsed.Results[0].Geometry.Location.Lng}, nil
+	if len(parsed.Results) == 0 {
+		return Point{}, fmt.Errorf("geocode: no results")
+	}
+	return Point{Lat: parsed.Results[0].Location.Latitude, Lng: parsed.Results[0].Location.Longitude}, nil
 }
 
 type Suggestion struct {
