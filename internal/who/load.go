@@ -655,6 +655,7 @@ func (l *loader) applyNameToEmail() error {
 		}
 		return matches, nil
 	}
+	unmatched := []string{}
 	for name, email := range l.nameToEmail {
 		matches, err := fill(l.importRows, "student_full_name", "student_email", name, email)
 		if err != nil {
@@ -666,13 +667,34 @@ func (l *loader) applyNameToEmail() error {
 		}
 		matches += staffMatches
 		if matches != 1 {
-			return fmt.Errorf("name to email entry %q matches %d import rows", name, matches)
+			unmatched = append(unmatched, fmt.Sprintf("%q matches %d", name, matches))
 		}
 		if email == "" {
 			l.excluded[name] = true
 		}
 	}
-	return nil
+	if len(unmatched) == 0 {
+		return nil
+	}
+	uncovered := []string{}
+	for _, rows := range []struct {
+		rows                    []store.Row
+		nameColumn, emailColumn string
+	}{
+		{l.importRows, "student_full_name", "student_email"},
+		{l.staffRows, "person_full_name", "person_email"},
+	} {
+		for _, row := range rows.rows {
+			name := NormName(row[rows.nameColumn])
+			if _, ok := l.nameToEmail[name]; !ok && row[rows.emailColumn] == "" {
+				uncovered = append(uncovered, strconv.Quote(name))
+			}
+		}
+	}
+	slices.Sort(unmatched)
+	slices.Sort(uncovered)
+	return fmt.Errorf("name to email entries must each match one import row: %s; import rows with no email and no entry: %s",
+		strings.Join(unmatched, ", "), strings.Join(uncovered, ", "))
 }
 
 func (l *loader) transformImport() error {

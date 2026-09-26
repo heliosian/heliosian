@@ -170,6 +170,15 @@ func TestStaffWithNoVeracrossEmailComeFromTheMapping(t *testing.T) {
 	}
 }
 
+func TestUnmatchedNameEntryNamesTheRowsItCouldBe(t *testing.T) {
+	tables := with(sampleTables(t), namesTab, store.Row{"Name": "Luis Ortega"}, store.Row{"Name": "Luis Ortga"})
+	_, err := BuildModel(context.Background(), tables, noBlobs{}, noBlobs{}, testKey)
+	want := `name to email entries must each match one import row: "luis ortga" matches 0; import rows with no email and no entry: "luis ortega"`
+	if err == nil || err.Error() != want {
+		t.Errorf("got %v, want %s", err, want)
+	}
+}
+
 func TestNameWithNoEmailExcludesThePerson(t *testing.T) {
 	for _, p := range sampleModel(t).People {
 		if p.FullName == "Rosa Delgado" {
