@@ -13,10 +13,9 @@ html[data-theme="quan"] {
   --accent: #eb4d80;
   --brand: #d6386f;
   --brand-dark: #8f1d47;
+  --brand-deep: #3a0f1f;
   --title: #8f1d47;
   --subtitle: #d6386f;
-  --teal-3: #d6386f;
-  --teal-dark: #3a0f1f;
   --sidebar-top: #b9265f;
   --sidebar: #eb4d80;
   --sidebar-active: #c92e64;
@@ -25,7 +24,6 @@ html[data-theme="quan"] {
   --green-2: #7bfc01;
   --green-3: #5fc900;
   --gold-1: #5fc900;
-  --gold-2: #3f8f00;
   /* The page, a blush; its lines and fields pink-tinted. */
   --page: #fff5f8;
   --hero: #fff5f8;

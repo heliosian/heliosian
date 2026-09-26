@@ -33,7 +33,7 @@ button { font: inherit; }
   display: flex;
   flex-direction: column;
   /* The app's own symbol, large and faint, slipping off the rail's bottom-right corner. */
-  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, #0f4e54);
+  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, var(--brand-fill));
   background-size: 360px auto, auto;
   background-position: right -120px bottom -100px, left top;
   background-repeat: no-repeat, no-repeat;
@@ -55,9 +55,9 @@ button { font: inherit; }
    button's dark words and green hover like the other rails' actions. */
 .button.nav-action { margin: 14px 4px 0; justify-content: center; width: calc(100% - 8px); }
 
-.app-nav a.button.nav-action { color: var(--teal-dark); }
+.app-nav a.button.nav-action { color: var(--brand-deep); }
 
-.app-nav a.button.nav-action:hover { background: var(--green-3); border-color: var(--green-3); color: var(--teal-dark); }
+.app-nav a.button.nav-action:hover { background: var(--green-3); border-color: var(--green-3); color: var(--brand-deep); }
 
 /* The person's groups under My Groups, as HCA-Team lists its sections'
    rows: indented behind a rule, the one open lit with the lime bar. */
@@ -143,7 +143,7 @@ button { font: inherit; }
 
 main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 
-#page { flex: 1; width: 100%; max-width: 960px; margin: 0 auto; padding: 24px 24px 120px; }
+#page { max-width: 960px; }
 
 .icon-button.tiny { width: 24px; height: 24px; }
 
@@ -237,7 +237,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .group-list > :nth-child(5n+2) { --peek: var(--alert); }
 .group-list > :nth-child(5n+3) { --peek: var(--green-3); }
 .group-list > :nth-child(5n+4) { --peek: var(--gold-1); }
-.group-list > :nth-child(5n+5) { --peek: var(--teal-3); }
+.group-list > :nth-child(5n+5) { --peek: var(--brand-fill); }
 
 .section-title { font-family: Montserrat, Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif; font-size: 24px; font-weight: 400; color: var(--brand); margin: 44px 0 6px; }
 
@@ -455,7 +455,7 @@ a.compact-row:hover { background: var(--input); }
 
 .delivery-count.is-failed { color: var(--alert); }
 
-.delivery-count.is-pending { color: var(--gold-2); }
+.delivery-count.is-pending { color: var(--amber); }
 
 .delivery-count.is-zero { color: var(--muted); font-weight: 500; }
 
@@ -558,7 +558,6 @@ a.compact-row:hover { background: var(--input); }
     padding-top: calc(88px + env(safe-area-inset-top));
     padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom));
   }
-  #page { padding: 12px 12px 40px; }
   .mobile-top {
     display: flex;
     align-items: center;

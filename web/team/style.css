@@ -37,7 +37,7 @@ button { font: inherit; }
   display: flex;
   flex-direction: column;
   /* The app's own symbol, large and faint, slipping off the rail's bottom-right corner. */
-  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, #0f4e54);
+  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, var(--brand-fill));
   background-size: 360px auto, auto;
   background-position: right -120px bottom -100px, left top;
   background-repeat: no-repeat, no-repeat;
@@ -276,13 +276,7 @@ main {
   flex-direction: column;
 }
 
-#page {
-  flex: 1;
-  width: 100%;
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 24px 24px 40px;
-}
+#page { max-width: 1240px; }
 
 #page.wide { max-width: none; }
 
@@ -468,7 +462,7 @@ main {
 .card-chip.card-need svg { width: 13px; height: 13px; }
 
 .card-chip.cat-1 { background: #ee523c; }
-.card-chip.cat-2 { background: #00a69f; }
+.card-chip.cat-2 { background: var(--cat-teal); }
 .card-chip.cat-3 { background: #d7bb06; }
 .card-chip.cat-4 { background: #8f9403; }
 .card-chip.cat-5 { background: #4b8a8d; }
@@ -541,7 +535,7 @@ main {
 .card-slot:hover::before { transform: rotate(3deg); }
 
 .card-slot.cat-1 { --peek: #ee523c; }
-.card-slot.cat-2 { --peek: #00a69f; }
+.card-slot.cat-2 { --peek: var(--cat-teal); }
 .card-slot.cat-3 { --peek: #d7bb06; }
 .card-slot.cat-4 { --peek: #8f9403; }
 .card-slot.cat-5 { --peek: #4b8a8d; }
@@ -973,7 +967,7 @@ main {
 
 .badge.hidden { background: #555; }
 
-.badge.done { background: var(--ok); }
+.badge.done { background: var(--green-3); }
 
 .badge.full { background: var(--alert); }
 
@@ -1827,7 +1821,7 @@ button.side-chair:hover { background: var(--input); }
 
 .status-select::before { content: ''; position: absolute; left: 12px; top: 50%; width: 10px; height: 10px; border-radius: 50%; transform: translateY(-50%); background: #2fb344; pointer-events: none; }
 
-.status-select select { padding-left: 32px !important; }
+.status-select select, .field .status-select select { padding-left: 32px; }
 
 .status-select[data-status=Pending]::before { background: #e0a616; }
 
@@ -2439,7 +2433,7 @@ h2.section .link-button { font-size: 14px; }
 /* Entries take their event's category colour; things under an event the
    lighter tint with dark text; the viewer's own, yellow with a star. */
 .calendar .chip.cat-1 { background: #ee523c; }
-.calendar .chip.cat-2 { background: #00a69f; }
+.calendar .chip.cat-2 { background: var(--cat-teal); }
 .calendar .chip.cat-3 { background: #d7bb06; }
 .calendar .chip.cat-4 { background: #8f9403; }
 .calendar .chip.cat-5 { background: #4b8a8d; }
@@ -2675,7 +2669,6 @@ h2.section .link-button { font-size: 14px; }
     padding-top: calc(88px + env(safe-area-inset-top));
     padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom));
   }
-  #page { padding: 12px 12px 40px; }
   /* The shared toolbar is pinned on top (toolbar.css); this is the title
      strip under it. */
   .mobile-top {

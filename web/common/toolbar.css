@@ -169,7 +169,7 @@
    and the count on a dot at its top right, ringed in the bar's own colour -
    red for replies owed, late birthdays and things to update, yellow for a privacy mismatch,
    amber for approvals. */
-.rsvp-alert, .approvals-alert, .late-alert, .topbar-alert.stale-alert, .topbar-alert.privacy-alert { position: relative; width: 32px; height: 32px; border-radius: 50%; background: #0f4e54; color: #fff; }
+.rsvp-alert, .approvals-alert, .late-alert, .topbar-alert.stale-alert, .topbar-alert.privacy-alert { position: relative; width: 32px; height: 32px; border-radius: 50%; background: var(--brand-fill); color: #fff; }
 
 .rsvp-alert:hover, .approvals-alert:hover, .late-alert:hover, .topbar-alert.stale-alert:hover, .topbar-alert.privacy-alert:hover { background: #1f838a; opacity: 1; }
 
@@ -242,7 +242,7 @@ a.alert-card:hover { background: color-mix(in srgb, var(--tone) 5%, var(--alert-
 
 .alert-card-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 
-.alert-card-title { font-size: 16px; font-weight: 800; line-height: 1.25; color: #0f4e54; }
+.alert-card-title { font-size: 16px; font-weight: 800; line-height: 1.25; color: var(--brand); }
 
 .alert-card-text { font-size: 13.5px; line-height: 1.4; color: var(--muted, #647071); }
 
@@ -258,15 +258,15 @@ a.alert-card:hover { background: color-mix(in srgb, var(--tone) 5%, var(--alert-
 
 .alert-list-count { font-size: 26px; font-weight: 800; line-height: 1; color: var(--tone-ink, var(--tone)); }
 
-.alert-list-title { flex: 1; font-size: 16px; font-weight: 700; color: #0f4e54; }
+.alert-list-title { flex: 1; font-size: 16px; font-weight: 700; color: var(--brand); }
 
 .alert-list-close { align-self: center; display: flex; padding: 2px; border: 0; background: none; color: #6b7b7c; cursor: pointer; }
 
 .alert-list-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 
-.alert-list-close:hover { color: #0f4e54; }
+.alert-list-close:hover { color: var(--brand); }
 
-.alert-list-row { display: flex; align-items: center; gap: 12px; margin: 0 -8px; padding: 8px; cursor: pointer; border-bottom: 1px solid color-mix(in srgb, #0f4e54 10%, var(--alert-bg, #fcfdfd)); transition: background 0.12s ease; }
+.alert-list-row { display: flex; align-items: center; gap: 12px; margin: 0 -8px; padding: 8px; cursor: pointer; border-bottom: 1px solid color-mix(in srgb, var(--brand) 10%, var(--alert-bg, #fcfdfd)); transition: background 0.12s ease; }
 
 /* The row under the pointer takes a wash of the card's tone, rounded, and
    its hairline gives way to it. */
@@ -285,7 +285,7 @@ a.alert-card:hover { background: color-mix(in srgb, var(--tone) 5%, var(--alert-
 
 .alert-list-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 
-.alert-list-chip-title { font-size: 14.5px; font-weight: 700; color: #0f4e54; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alert-list-chip-title { font-size: 14.5px; font-weight: 700; color: var(--brand); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .alert-list-chip-note { font-size: 12.5px; color: var(--muted, #647071); }
 
@@ -1074,8 +1074,8 @@ body.is-super .user-avatar {
    whichever order the sheets load in. */
 body .drawer {
   color: #fff;
-  background-color: var(--sidebar, #0f4e54);
-  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, var(--sidebar-top, #022427), var(--sidebar, #0f4e54));
+  background-color: var(--sidebar, var(--brand-fill));
+  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, var(--sidebar-top, #022427), var(--sidebar, var(--brand-fill)));
   background-size: 360px auto, auto;
   background-position: right -120px bottom -100px, left top;
   background-repeat: no-repeat, no-repeat;

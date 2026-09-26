@@ -53,7 +53,7 @@ function miniMonth(date, paging) {
       const groups = specials(d);
       if (events.length) {
         const dot = el('span', 'mini-dot');
-        dot.style.background = eventTint(events[0]);
+        dot.style.setProperty('--mini-dot', eventTint(events[0]));
         cell.append(dot);
       } else if (groups.length) {
         cell.append(el('span', 'mini-dot ' + dayTypeClass(groups[0].name)));

@@ -11,9 +11,9 @@
 
 .hero-dow { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #5b6b6d; }
 
-.hero-mon { font-family: Montserrat, Roboto, sans-serif; font-size: 17px; font-weight: 800; line-height: 1; text-transform: uppercase; color: #0f4e54; margin-top: 3px; }
+.hero-mon { font-family: Montserrat, Roboto, sans-serif; font-size: 17px; font-weight: 800; line-height: 1; text-transform: uppercase; color: var(--brand-fill); margin-top: 3px; }
 
-.hero-num { font-family: Montserrat, Roboto, sans-serif; font-size: 24px; font-weight: 800; line-height: 1; color: #0f4e54; }
+.hero-num { font-family: Montserrat, Roboto, sans-serif; font-size: 24px; font-weight: 800; line-height: 1; color: var(--brand-fill); }
 
 .hero-sun { display: block; width: 32px; height: 19px; margin-top: 4px; }
 
@@ -41,11 +41,11 @@
 
 .hero-line:not(:first-child) .hero-line-text { color: #4d6a6d; }
 
-.hero-add { display: inline-flex; align-items: center; gap: 6px; align-self: center; margin-left: auto; padding: 4px 11px 4px 9px; border-radius: 999px; background: #e6eeee; color: #0f4e54; font-size: 13px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.hero-add { display: inline-flex; align-items: center; gap: 6px; align-self: center; margin-left: auto; padding: 4px 11px 4px 9px; border-radius: 999px; background: #e6eeee; color: var(--brand-fill); font-size: 13px; font-weight: 700; text-decoration: none; white-space: nowrap; }
 
 .hero-add:hover { background: #d9e5e5; }
 
-.hero-add svg { width: 18px; height: 18px; margin: 0; color: #0f4e54; }
+.hero-add svg { width: 18px; height: 18px; margin: 0; color: var(--brand-fill); }
 
 @media (max-width: 640px) {
   .hero-date { position: static; max-width: none; margin: 10px 0 0; border-radius: 14px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08); }

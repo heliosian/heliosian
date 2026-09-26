@@ -1,5 +1,5 @@
 :root {
-  --sidebar: #0f4e54;
+  --sidebar: var(--brand-fill);
   --sidebar-active: #216f76;
   --banner-h: 0px;
   --mobile-title-inset: 156px;
@@ -118,7 +118,7 @@ html {
 
 .infobanner-alert .infobanner-icon {
   background: #f1b940;
-  color: #082b2e;
+  color: var(--brand-deep);
 }
 
 .infobanner-alert .infobanner-main::before {
@@ -142,7 +142,7 @@ html {
 
 .infobanner-alert .infobanner-button {
   background: #f1b940;
-  color: #082b2e;
+  color: var(--brand-deep);
   border-radius: 999px;
 }
 
@@ -379,7 +379,7 @@ body {
   width: 280px;
   flex-shrink: 0;
   /* The app's own symbol, large and faint, slipping off the rail's bottom-right corner. */
-  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, #0f4e54);
+  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, var(--brand-fill));
   background-size: 360px auto, auto;
   background-position: right -120px bottom -100px, left top;
   background-repeat: no-repeat, no-repeat;
@@ -1400,7 +1400,7 @@ main {
 .filter-done {
   border: 0;
   background: var(--green-2);
-  color: var(--teal-dark);
+  color: var(--brand-deep);
 }
 
 .gv-settings {
@@ -3644,7 +3644,7 @@ a.list-row:hover {
 .media-button.primary {
   background: var(--green-2);
   border-color: var(--green-2);
-  color: var(--teal-dark);
+  color: var(--brand-deep);
 }
 
 .media-status {

@@ -322,7 +322,7 @@ function renderUser() {
   // The pencil and Admin Tools go with being on the admin list. The pencil
   // puts the hat on or takes it off, and the page repaints as the other kind
   // of user.
-  for (const row of document.querySelectorAll('.user-menu-system')) {
+  for (const row of document.querySelectorAll('.user-menu-admin')) {
     row.hidden = !isSystemAdmin();
   }
   renderSuperToggle({show: isSystemAdmin(), on: state.superEdit, onToggle: on => {

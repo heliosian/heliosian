@@ -38,7 +38,7 @@
 
 .tab-strip-item.active {
   /* A wash of the brand colour, so it follows the theme - teal, or quan's pink. */
-  background: color-mix(in srgb, var(--brand, #0f4e54) 9%, transparent);
+  background: color-mix(in srgb, var(--brand) 9%, transparent);
   color: var(--brand);
   font-weight: 600;
   border-radius: 8px 8px 0 0;

@@ -40,7 +40,7 @@ button { font: inherit; }
   display: flex;
   flex-direction: column;
   /* The app's own symbol, large and faint, slipping off the rail's bottom-right corner. */
-  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, #0f4e54);
+  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, var(--brand-fill));
   background-size: 360px auto, auto;
   background-position: right -120px bottom -100px, left top;
   background-repeat: no-repeat, no-repeat;
@@ -105,7 +105,7 @@ main {
   flex-direction: column;
 }
 
-#page { flex: 1; width: 100%; max-width: 1080px; margin: 0 auto; padding: 24px 24px 120px; }
+#page { max-width: 1080px; }
 
 /* The Unassigned page's two columns want the room. */
 #page:has(.split) { max-width: 1400px; }
@@ -667,7 +667,6 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
     padding-top: calc(88px + env(safe-area-inset-top));
     padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom));
   }
-  #page { padding: 12px 12px 40px; }
   /* The shared toolbar is pinned on top (toolbar.css); this is the title
      strip under it. */
   .mobile-top {

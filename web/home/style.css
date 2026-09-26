@@ -1,6 +1,6 @@
 :root {
   --hero: #ffffff;
-  --sidebar: #0f4e54;
+  --sidebar: var(--brand-fill);
   --sidebar-top: #022427;
   --sidebar-w: 280px;
 }
@@ -728,7 +728,7 @@ main {
 
 .wg-chip { padding: 7px 18px; border: 0; border-radius: 999px; background: #e1eeee; color: var(--brand); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 
-.wg-chip.is-on { background: #0f4e54; color: #fff; box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #0f4e54; }
+.wg-chip.is-on { background: var(--brand-fill); color: #fff; box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--brand-fill); }
 
 [data-theme="dark"] .wg-chip { background: rgba(255, 255, 255, 0.08); }
 

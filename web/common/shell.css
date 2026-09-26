@@ -31,7 +31,7 @@
   border-radius: 8px;
   border: 1px solid var(--green-2);
   background: var(--green-2);
-  color: var(--teal-dark);
+  color: var(--brand-deep);
   font: inherit;
   font-size: 15px;
   font-weight: 600;
@@ -125,6 +125,12 @@
 }
 
 .modal-overlay.modal-sheet { z-index: var(--z-sheet); }
+
+#page { flex: 1; width: 100%; margin: 0 auto; padding: 24px 24px 120px; }
+
+@media (max-width: 900px) {
+  #page { padding: 12px 12px 40px; }
+}
 
 body.is-admin > .app-shell > .sidebar,
 body.is-admin > .app-shell .topbar,
