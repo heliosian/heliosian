@@ -1,8 +1,8 @@
-import {state, isAdmin, isSystemAdmin, postedAndHosting, calendarLink, sourceWords, dayType, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
+import {state, isAdmin, isSystemAdmin, postedAndHosting, sourceWords, dayType, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg, paragraphs, button, toast, avatar, copyText} from '../dom.js';
 import {popup} from '/modal.js';
-import {dateCard} from '/datecard.js';
+import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
 import {appOrigin} from '/toolbar.js';
 import {setTitle} from '../chrome.js';
@@ -24,7 +24,7 @@ function hero(e) {
     }
   }, {once: true});
   wrap.append(img);
-  wrap.append(dateCard(el, {start: e.start, end: e.end, allDay: e.allDay, location: e.location, add: calendarLink(e)}));
+  wrap.append(dateCard(el, {start: e.start, end: e.end, allDay: e.allDay, location: e.location, add: googleCalendarLink({title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location || '', details: [e.description, location.origin + eventPath(e)].filter(Boolean).join('\n\n')})}));
   // A linked event says which app runs it on a card at the banner's foot,
   // the way to its page there.
   if (e.link) {

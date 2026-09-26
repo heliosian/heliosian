@@ -886,25 +886,6 @@ export function isParty(e) {
   return e.source === 'celebrate';
 }
 
-export function calendarLink(e) {
-  const from = parseWhen(e.start);
-  const to = parseWhen(e.end);
-  const stamp = d => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
-    + (from.hasTime ? `T${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}00` : '');
-  let until = to && e.end !== e.start ? to.date : new Date(from.date.getTime() + 60 * 60 * 1000);
-  if (!from.hasTime) {
-    until = new Date((to ? to.date : from.date).getTime() + 24 * 60 * 60 * 1000);
-  }
-  const params = new URLSearchParams({
-    action: 'TEMPLATE',
-    text: e.title,
-    dates: `${stamp(from.date)}/${stamp(until)}`,
-    details: [e.description, location.origin + eventPath(e)].filter(Boolean).join('\n\n'),
-    location: e.location || '',
-  });
-  return `https://calendar.google.com/calendar/render?${params}`;
-}
-
 // myEvents is the viewer's own standing with what is coming up, in date
 // order: hosted, the events they run; waiting, the invitations sent to
 // their household they have not answered; going, the rest they said yes

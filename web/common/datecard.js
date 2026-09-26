@@ -84,7 +84,7 @@ function sameDay(a, b) {
 }
 
 // googleCalendarLink is the event as a Google Calendar template link -
-// an hour long when it has a start and no end, the whole day when it has
+// two hours long when it has a start and no end, the whole day when it has
 // no clock - the details carrying the words and the page's address.
 export function googleCalendarLink({title, start, end, allDay = false, location = '', details = ''}) {
   const from = parseWhen(start);
@@ -95,7 +95,7 @@ export function googleCalendarLink({title, start, end, allDay = false, location 
   const timed = !allDay && from.hasTime;
   const stamp = d => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
     + (timed ? `T${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}00` : '');
-  let until = to && to.date > from.date ? to.date : new Date(from.date.getTime() + 60 * 60 * 1000);
+  let until = to && to.date > from.date ? to.date : new Date(from.date.getTime() + 2 * 60 * 60 * 1000);
   if (!timed) {
     until = new Date((to ? to.date : from.date).getTime() + 24 * 60 * 60 * 1000);
   }

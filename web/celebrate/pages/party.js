@@ -1,4 +1,4 @@
-import {state, isAdmin, canApprove, isKid, whenParts, parseWhen, priceLine, money, googleCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
+import {state, isAdmin, canApprove, isKid, whenParts, parseWhen, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {el, link, svg, button, avatar, thumb, paragraphs, copyText, toast} from '../dom.js';
 import {setTitle, listPath} from '../chrome.js';
 import {appOrigin} from '/toolbar.js';
@@ -32,7 +32,7 @@ function heroStamp(p) {
     stamp.textContent = 'Date to come';
     return stamp;
   }
-  return dateCard(el, {start: p.start, end: p.end, location: p.location || '', add: googleCalendarLink(p)});
+  return dateCard(el, {start: p.start, end: p.end, location: p.location || '', add: partyCalendarLink(p)});
 }
 
 // heroTools are the round buttons at the banner's top-left: the pencil for
