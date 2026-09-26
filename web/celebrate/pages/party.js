@@ -1,4 +1,4 @@
-import {isAdmin, canApprove, isKid, whenParts, parseWhen, priceLine, money, googleCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
+import {state, isAdmin, canApprove, isKid, whenParts, parseWhen, priceLine, money, googleCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {el, link, svg, button, avatar, thumb, paragraphs, copyText, toast} from '../dom.js';
 import {setTitle, listPath} from '../chrome.js';
 import {appOrigin} from '/toolbar.js';
