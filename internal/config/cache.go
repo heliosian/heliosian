@@ -15,16 +15,18 @@ type Cache struct {
 	*store.Store[*Settings]
 }
 
+var Tabs = []store.Tab{
+	{Name: SettingsTab, Columns: SettingsColumns, Key: []string{KeyColumn}},
+	{Name: SuperAdminsTab, Columns: SuperAdminColumns, Key: []string{EmailColumn}},
+	{Name: GradeColorsTab, Columns: GradeColorColumns, Key: []string{GradeColumn}},
+	{Name: ClassroomColorsTab, Columns: ClassroomColorColumns, Key: []string{ClassroomColumn}},
+	{Name: SignedOutTab, Columns: SignedOutColumns, Key: []string{EmailColumn}},
+}
+
 func NewCache(source data.Source, writer data.Writer, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(store.Spec[*Settings]{
-		App: App,
-		Tabs: []store.Tab{
-			{Name: SettingsTab, Columns: SettingsColumns, Key: []string{KeyColumn}},
-			{Name: SuperAdminsTab, Columns: SuperAdminColumns, Key: []string{EmailColumn}},
-			{Name: GradeColorsTab, Columns: GradeColorColumns, Key: []string{GradeColumn}},
-			{Name: ClassroomColorsTab, Columns: ClassroomColorColumns, Key: []string{ClassroomColumn}},
-			{Name: SignedOutTab, Columns: SignedOutColumns, Key: []string{EmailColumn}},
-		},
+		App:  App,
+		Tabs: Tabs,
 		Build: func(_ context.Context, tables store.Tables) (*Settings, error) {
 			return Parse(tables)
 		},

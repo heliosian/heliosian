@@ -126,12 +126,47 @@ var departmentOrder = []string{
 
 var importColumns = []string{
 	"entry_sort_name", "student_full_name", "student_classifications", "student_email",
+	"student_phone_mobile",
+	"household_1_phone", "household_1_address",
+	"household_1_person_1_full_name", "household_1_person_1_email",
+	"household_1_person_1_email_2", "household_1_person_1_phone_mobile",
+	"household_1_person_1_phone_business",
+	"household_1_person_2_full_name", "household_1_person_2_email",
+	"household_1_person_2_email_2", "household_1_person_2_phone_mobile",
+	"household_1_person_2_phone_business",
+	"household_2_phone", "household_2_address",
+	"household_2_person_1_full_name", "household_2_person_1_email",
+	"household_2_person_1_email_2", "household_2_person_1_phone_mobile",
+	"household_2_person_1_phone_business",
+	"household_2_person_2_full_name", "household_2_person_2_email",
+	"household_2_person_2_email_2", "household_2_person_2_phone_mobile",
+	"household_2_person_2_phone_business",
 	"student_photo",
 }
 
+type adultColumns struct {
+	name, email, mobile, business string
+}
+
+var householdColumns = []struct {
+	address, phone string
+	adults         []adultColumns
+}{
+	{"household_1_address", "household_1_phone", []adultColumns{
+		{"household_1_person_1_full_name", "household_1_person_1_email", "household_1_person_1_phone_mobile", "household_1_person_1_phone_business"},
+		{"household_1_person_2_full_name", "household_1_person_2_email", "household_1_person_2_phone_mobile", "household_1_person_2_phone_business"},
+	}},
+	{"household_2_address", "household_2_phone", []adultColumns{
+		{"household_2_person_1_full_name", "household_2_person_1_email", "household_2_person_1_phone_mobile", "household_2_person_1_phone_business"},
+		{"household_2_person_2_full_name", "household_2_person_2_email", "household_2_person_2_phone_mobile", "household_2_person_2_phone_business"},
+	}},
+}
+
 var staffImportColumns = []string{
-	"entry_sort_name", "person_full_name", "person_job_title", "person_classifications", "person_email",
-	"person_phone_business", "person_photo",
+	"entry_sort_name", "person_full_name", "person_job_title", "person_room",
+	"person_classifications", "person_biography",
+	"person_email", "person_email_2", "person_phone_business", "person_photo",
+	"person_department",
 }
 
 var excludedFacultyTypes = map[string]bool{"Vendors": true}
@@ -680,22 +715,21 @@ func (l *loader) transformImport() error {
 		l.people[email] = student
 		l.order = append(l.order, email)
 
-		for _, hn := range []string{"1", "2"} {
+		for _, hc := range householdColumns {
 			adults := []string{}
-			for _, pn := range []string{"1", "2"} {
-				prefix := "household_" + hn + "_person_" + pn + "_"
-				if row[prefix+"full_name"] == "" {
+			for _, ac := range hc.adults {
+				if row[ac.name] == "" {
 					continue
 				}
-				adultEmail := strings.ToLower(row[prefix+"email"])
+				adultEmail := strings.ToLower(row[ac.email])
 				if adultEmail == "" {
-					return fmt.Errorf("adult %q of student %s has no email", row[prefix+"full_name"], rawName)
+					return fmt.Errorf("adult %q of student %s has no email", row[ac.name], rawName)
 				}
-				phone := row[prefix+"phone_mobile"]
+				phone := row[ac.mobile]
 				if phone == "" {
-					phone = row[prefix+"phone_business"]
+					phone = row[ac.business]
 				}
-				if err := l.addAdult(row[prefix+"full_name"], adultEmail, phone); err != nil {
+				if err := l.addAdult(row[ac.name], adultEmail, phone); err != nil {
 					return err
 				}
 				adults = append(adults, adultEmail)
@@ -703,7 +737,7 @@ func (l *loader) transformImport() error {
 			if len(adults) == 0 {
 				continue
 			}
-			address, phone := row["household_"+hn+"_address"], row["household_"+hn+"_phone"]
+			address, phone := row[hc.address], row[hc.phone]
 			setKey := strings.Join(func() []string {
 				s := append([]string{}, adults...)
 				sort.Strings(s)

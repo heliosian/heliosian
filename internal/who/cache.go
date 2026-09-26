@@ -27,25 +27,28 @@ type Cache struct {
 	unlocated   chan struct{}
 }
 
+var Tabs = []store.Tab{
+	{Name: AliasesTable, Columns: AliasColumns, Key: []string{AliasColumn}},
+	{Name: studentsTab, Columns: importColumns, Key: []string{"entry_sort_name"}},
+	{Name: staffTab, Columns: staffImportColumns, Key: []string{"entry_sort_name"}},
+	{Name: namesTab, Columns: []string{"Name", "Email"}, Key: []string{"Name"}},
+	{Name: overridesTab, Columns: overrideColumns, Key: []string{"Email"}, Cascade: carryPerson},
+	{Name: familiesTab, Columns: familyColumns, Key: []string{"Email"}},
+	{Name: WebsiteTable, Columns: WebsiteColumns, Key: []string{WebsiteID}},
+	{Name: tagsTable, Columns: tagColumns, Key: tagColumns},
+	{Name: managersTable, Columns: managerColumns, Key: managerColumns},
+	{Name: photosTab, Columns: photoColumns, Key: []string{"Email", "Photo Name"}},
+	{Name: imagesTab, Columns: imageColumns, Key: []string{imageKind, imageName}},
+	{Name: adminsTable, Columns: []string{"Email"}, Key: []string{"Email"}},
+	{Name: geocodeTable, Columns: geocodeColumns, Key: []string{geocodeAddress}, AppendOnly: true},
+}
+
 func spec(blobs, static BlobChecker, idKey []byte, loaded func()) store.Spec[*Model] {
 	return store.Spec[*Model]{
 		App: appName,
-		Tabs: []store.Tab{
-			{Name: AliasesTable, Columns: AliasColumns, Key: []string{AliasColumn}},
-			{Name: studentsTab, Columns: importColumns, Key: []string{"entry_sort_name"}},
-			{Name: staffTab, Columns: staffImportColumns, Key: []string{"entry_sort_name"}},
-			{Name: namesTab, Columns: []string{"Name", "Email"}, Key: []string{"Name"}},
-			{Name: overridesTab, Columns: overrideColumns, Key: []string{"Email"}, Cascade: carryPerson},
-			{Name: familiesTab, Columns: familyColumns, Key: []string{"Email"}},
-			{Name: WebsiteTable, Columns: WebsiteColumns, Key: []string{WebsiteID}},
-			{Name: tagsTable, Columns: tagColumns, Key: tagColumns},
-			{Name: managersTable, Columns: managerColumns, Key: managerColumns},
-			{Name: photosTab, Columns: photoColumns, Key: []string{"Email", "Photo Name"}},
-			{Name: imagesTab, Columns: imageColumns, Key: []string{imageKind, imageName}},
-			{Name: adminsTable, Columns: []string{"Email"}, Key: []string{"Email"}},
-			{Name: geocodeTable, Columns: geocodeColumns, Key: []string{geocodeAddress}, AppendOnly: true},
-			{App: preferencesApp, Name: preferencesTab, Columns: []string{preferenceTimestamp, preferenceEmail, preferenceStatus, preferencePermission}, Key: []string{preferenceTimestamp, preferenceEmail}},
-		},
+		Tabs: append(slices.Clone(Tabs),
+			store.Tab{App: preferencesApp, Name: preferencesTab, Columns: []string{preferenceTimestamp, preferenceEmail, preferenceStatus, preferencePermission}, Key: []string{preferenceTimestamp, preferenceEmail}},
+		),
 		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {
 			return BuildModel(ctx, tables, blobs, static, idKey)
 		},

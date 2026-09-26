@@ -11,6 +11,7 @@ import (
 	"heliosian/internal/birthday"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
+	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/feedback"
 	"heliosian/internal/home"
@@ -40,6 +41,14 @@ type tab struct {
 	header []string
 }
 
+func withChangeLog(tabs []store.Tab) []tab {
+	out := []tab{}
+	for _, t := range tabs {
+		out = append(out, tab{t.Name, t.Columns})
+	}
+	return append(out, tab{store.ChangeLogTab, store.ChangeLogColumns})
+}
+
 var seeds = map[string]map[string]map[string]string{
 	"Apps": {"Categories": {"Title": home.EventsTitle, "Emoji": home.EventsEmoji, "Style": home.StyleEvents}},
 }
@@ -53,59 +62,7 @@ var layouts = map[string][]tab{
 		{"Reports", feedback.ReportColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
-	"Directory": {
-		{"Veracross Staff Import", []string{
-			"entry_sort_name", "person_full_name", "person_job_title", "person_room",
-			"person_classifications", "person_biography",
-			"person_email", "person_email_2", "person_phone_business", "person_photo",
-			"person_department",
-		}},
-		{"Veracross Student Import", []string{
-			"entry_sort_name", "student_full_name", "student_classifications", "student_email",
-			"student_phone_mobile",
-			"household_1_phone", "household_1_address",
-			"household_1_person_1_full_name", "household_1_person_1_email",
-			"household_1_person_1_email_2", "household_1_person_1_phone_mobile",
-			"household_1_person_1_phone_business",
-			"household_1_person_2_full_name", "household_1_person_2_email",
-			"household_1_person_2_email_2", "household_1_person_2_phone_mobile",
-			"household_1_person_2_phone_business",
-			"household_2_phone", "household_2_address",
-			"household_2_person_1_full_name", "household_2_person_1_email",
-			"household_2_person_1_email_2", "household_2_person_1_phone_mobile",
-			"household_2_person_1_phone_business",
-			"household_2_person_2_full_name", "household_2_person_2_email",
-			"household_2_person_2_email_2", "household_2_person_2_phone_mobile",
-			"household_2_person_2_phone_business",
-			"student_photo",
-		}},
-		{"Name to Email", []string{"Name", "Email"}},
-		{"Email Aliases", []string{"Alias", "Email"}},
-		{"Overrides", []string{
-			"Email", "Added",
-			"Full Name", "Legal Name", "Preferred Name",
-			"Is Student", "Is Parent", "Is Staff",
-			"New to Helios", "Pronouns", "Facts",
-			"Grade", "Classroom", "Crew",
-			"Phone", "Job Title", "Department", "Grade Band", "Room Parent",
-			"Opted Out", "Photo Updated", "Facts Updated",
-			"Veracross Photo", "Primary Photo", "Pronunciation",
-		}},
-		{"Families", []string{
-			"Email", "Address", "Family Phone", "Family Photo Caption",
-			"Family Photo Updated", "Family Photo", "Family Photo Crop", "Family Pronunciation",
-		}},
-		{store.ChangeLogTab, store.ChangeLogColumns},
-		{"Website Staff Import", []string{
-			"constituent_id", "full_name", "title", "departments", "email", "bio", "photo",
-		}},
-		{"Tags", []string{"Owner Email", "Tag", "Person Email"}},
-		{"Tag Managers", []string{"Owner Email", "Tag", "Manager Email"}},
-		{"Photos", []string{"Email", "Photo Name", "Crop Name", store.OrderColumn}},
-		{"Images", []string{"Kind", "Name", "Image"}},
-		{"Admins", []string{"Email"}},
-		{"Geocode", []string{"Address", "Lat", "Lng"}},
-	},
+	"Directory": withChangeLog(who.Tabs),
 	"Invite List Builder": {
 		{"_Greetings", who.GreetingColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
@@ -178,14 +135,7 @@ var layouts = map[string][]tab{
 		{calendar.BouncesTab, calendar.BounceColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
-	"Config": {
-		{"Settings", []string{"Key", "Value"}},
-		{"Super Admins", []string{"Email"}},
-		{"Grade Colors", []string{"Grade", "Color"}},
-		{"Classroom Colors", []string{"Classroom", "Color"}},
-		{"Signed Out", []string{"Email", "Time"}},
-		{store.ChangeLogTab, store.ChangeLogColumns},
-	},
+	"Config": withChangeLog(config.Tabs),
 	"Groups": {
 		{"Groups", loop.GroupColumns},
 		{"Managers", loop.ManagerColumns},
