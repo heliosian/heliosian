@@ -473,7 +473,7 @@ main {
 
 .widgets[hidden] { display: none; }
 
-.widget { min-width: 0; padding: 18px 20px 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); box-shadow: 0 1px 3px rgba(15, 78, 84, 0.06); }
+.widget { display: flex; flex-direction: column; min-width: 0; padding: 18px 20px 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); box-shadow: 0 1px 3px rgba(15, 78, 84, 0.06); }
 
 .widget-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; min-width: 0; }
 
@@ -697,11 +697,11 @@ main {
 /* On a narrow card the day sits over the subject with the chip at its
    right, over the chevron, and the points come in under the dot. */
 @container (max-width: 440px) {
-  .wg-email-head { display: grid; grid-template-columns: 24px 1fr auto; grid-template-areas: "dot date to" ". title go"; column-gap: 12px; row-gap: 2px; }
+  .wg-email-head { display: grid; grid-template-columns: 24px auto minmax(0, 1fr) auto; grid-template-areas: "dot date to to" ". title title go"; column-gap: 12px; row-gap: 2px; }
   .wg-email-head .wg-dot { grid-area: dot; }
   .wg-email-date { grid-area: date; }
   .wg-email-title { grid-area: title; }
-  .wg-email-to { grid-area: to; max-width: none; justify-self: end; }
+  .wg-email-to { grid-area: to; max-width: 100%; justify-self: end; }
   .wg-email-head > svg { grid-area: go; justify-self: end; margin-right: 4px; }
   .wg-email-body { padding-left: 36px; }
 }
@@ -780,9 +780,33 @@ main {
 .widget-icon { width: 34px; height: 34px; flex-shrink: 0; object-fit: contain; }
 
 /* The foot's way across sits at its left, without a rule. */
-.widget-foot { justify-content: flex-start; border-top: 0; padding-top: 4px; margin-top: 8px; }
+/* Every widget ends the same way, its foot at the card's bottom so the
+   feet of a row line up: one quiet line under a hairline - Show N more
+   and Show less as plain words with their chevrons at the left, See all
+   at the right. */
+.widget-foot { flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 16px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); }
 
-.widget-foot .widget-more { margin-left: 0; font-size: 15px; }
+.widget > :nth-last-child(2) { margin-bottom: 12px; }
+
+.widget-foot-slot { display: flex; flex-direction: column; margin-top: auto; }
+
+.widget-foot-slot:empty { display: none; }
+
+.wg-more-row { display: flex; align-items: center; gap: 18px; }
+
+.widget-foot .wg-more { display: inline-flex; align-items: center; gap: 3px; width: auto; margin: 0; padding: 2px 0; border: 0; border-radius: 0; background: none; color: var(--brand-ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+.widget-foot .wg-more:hover { background: none; text-decoration: underline; }
+
+.widget-foot .wg-more svg { width: 16px; height: 16px; }
+
+.widget-foot .wg-more.is-more svg { transform: rotate(90deg); }
+
+.widget-foot .wg-more.is-less svg { transform: rotate(-90deg); }
+
+.widget-foot > .widget-more { margin-left: auto; }
+
+.widget-foot .widget-more { font-size: 14px; }
 
 .button {
   display: inline-flex;

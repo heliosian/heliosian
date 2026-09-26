@@ -36,7 +36,7 @@ const (
 	KindAnnouncement = "announcement"
 )
 
-var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object", PointsColumn, AudienceColumn}
+var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object", PointsColumn, AudienceColumn, JudgedColumn}
 
 // PointsColumn holds a school email's key points, one a line, written once
 // the email is in (internal/keypoints) for Heliosian's Inbox
@@ -44,10 +44,17 @@ var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channe
 const PointsColumn = "Key Points"
 
 // AudienceColumn is who a school email was written to, judged with its key
-// points: Everyone, or the classrooms it names ("Condors, Ospreys") - for
+// points: Everyone, or the classrooms and grades it names ("Condors,
+// Ospreys", "Grade 2, Grade 4", "Condors, Grade 6") - for
 // mail the school sends through Veracross, which says nothing of whom it
 // went to; blank until judged.
 const AudienceColumn = "Audience"
+
+// JudgedColumn is the day a school email's points and audience were
+// written (YYYY-MM-DD), so the key points pass can read again the emails
+// judged before its question last changed (keypoints.Revision); blank
+// until judged, and for a row judged before the column was.
+const JudgedColumn = "Judged"
 
 // Everyone is the Audience of an email to the whole school.
 const Everyone = "Everyone"
@@ -166,10 +173,12 @@ func (d *Document) normalize() error {
 type Model struct {
 	Documents []*Document
 	Fetched   int
-	// Points are the key points written for a document, by key, and
-	// Audience who it was judged to be written to (AudienceColumn).
+	// Points are the key points written for a document, by key, Audience
+	// who it was judged to be written to (AudienceColumn), and Judged the
+	// day that was (JudgedColumn).
 	Points   map[string][]string
 	Audience map[string]string
+	Judged   map[string]string
 }
 
 type Objects interface {
@@ -204,8 +213,11 @@ func (d *documents) build(_ context.Context, tables store.Tables) (*Model, error
 	d.mu.Lock()
 	held := maps.Clone(d.held)
 	d.mu.Unlock()
-	m := &Model{Documents: make([]*Document, len(rows)), Points: map[string][]string{}, Audience: map[string]string{}}
+	m := &Model{Documents: make([]*Document, len(rows)), Points: map[string][]string{}, Audience: map[string]string{}, Judged: map[string]string{}}
 	for _, row := range rows {
+		if judged := strings.TrimSpace(row[JudgedColumn]); judged != "" {
+			m.Judged[row["Key"]] = judged
+		}
 		if points := splitPoints(row[PointsColumn]); len(points) > 0 {
 			m.Points[row["Key"]] = points
 		}
@@ -450,12 +462,14 @@ func splitPoints(cell string) []string {
 	return out
 }
 
-// SetPoints writes a document's key points and who it was written to.
-func (c *Cache) SetPoints(ctx context.Context, actor, key string, points []string, audience string) error {
-	return c.Commit(ctx, actor, store.Update(documentsTab, store.Row{"Key": key}, store.Row{PointsColumn: strings.Join(points, "\n"), AudienceColumn: audience}))
+// SetPoints writes a document's key points, who it was written to, and the
+// day it was judged.
+func (c *Cache) SetPoints(ctx context.Context, actor, key string, points []string, audience, judged string) error {
+	return c.Commit(ctx, actor, store.Update(documentsTab, store.Row{"Key": key}, store.Row{PointsColumn: strings.Join(points, "\n"), AudienceColumn: audience, JudgedColumn: judged}))
 }
 
-// Classrooms are the classrooms an Audience names, none for Everyone.
+// Classrooms are the classrooms and grades an Audience names, none for
+// Everyone; the directory's grade names tell the two apart.
 func Classrooms(audience string) []string {
 	out := []string{}
 	if audience == Everyone {

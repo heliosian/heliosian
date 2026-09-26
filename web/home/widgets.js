@@ -6,8 +6,8 @@ import {openWidgetAudience, moveWidget} from './edit.js';
 import {dayTypeClass} from '/daytype.js';
 
 // The widgets across the top of the page, each a card with one app's view
-// of what matters now: Helios When's week, what HCA-Team needs people for,
-// and Helios Celebrate's parties.
+// of what matters now: what is coming up on Helios When, what HCA-Team
+// needs people for, and Helios Celebrate's parties.
 
 // A YYYY-MM-DD as a local date, without the time zone shifting it.
 function parseDate(date) {
@@ -16,16 +16,6 @@ function parseDate(date) {
 }
 
 const pad = n => String(n).padStart(2, '0');
-
-function dateOf(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function addDays(date, n) {
-  const d = parseDate(date);
-  d.setDate(d.getDate() + n);
-  return dateOf(d);
-}
 
 // tint is where an event comes from, as When colours it: a party pink, an
 // HCA event purple, the school's own blue.
@@ -127,15 +117,21 @@ function allEvents(month) {
   return events.filter(shown);
 }
 
-// fetchNext asks for the month after, under the same calendar, when the
-// week reaches into it, and draws the widget again once it is in.
+// fetchNext asks for the month after, under the same calendar, so what is
+// upcoming runs on past the month's end, and draws the widget again once it
+// is in.
+let nextAsked = null;
+
 async function fetchNext(month) {
-  const last = addDays(month.today, 6);
-  if (last.slice(0, 7) === month.month || (nextMonth && nextMonth.month === last.slice(0, 7) && nextMonth.calendar === month.calendar)) {
+  const [y, m] = month.month.split('-').map(Number);
+  const after = m === 12 ? `${y + 1}-01` : `${y}-${pad(m + 1)}`;
+  const want = after + '|' + (month.calendar || '');
+  if (nextAsked === want) {
     return;
   }
+  nextAsked = want;
   try {
-    const res = await fetch('/api/apps/calendar?month=' + last.slice(0, 7) + '&calendar=' + encodeURIComponent(month.calendar || ''));
+    const res = await fetch('/api/apps/calendar?month=' + after + '&calendar=' + encodeURIComponent(month.calendar || ''));
     if (!res.ok) {
       return;
     }
@@ -169,6 +165,7 @@ function dayBar(day, count, noun, chips = []) {
 // any link inside it, which goes where it says.
 function wgRow(className, href, parts) {
   const row = el('li', 'wg-row ' + className);
+  row.dataset.row = '';
   row.append(el('span', 'wg-dot'), ...parts);
   const go = el('a', 'wg-go');
   go.href = href;
@@ -230,62 +227,100 @@ function eventRow(event, day) {
   return wgRow(tint(event), href, [el('span', 'wg-time', startTime(event, day)), main]);
 }
 
-// weekGroups is the week from today on: every day with something on it,
-// each event once, on the first of the seven days it falls on, whole-day
-// ones first and then by start.
-function weekGroups(events, today) {
-  const days = [0, 1, 2, 3, 4, 5, 6].map(n => addDays(today, n));
-  const byDay = new Map(days.map(d => [d, []]));
+// upcomingGroups is what is ahead from today on: every day with something
+// on it, each event once, on its first day from today - so one under way
+// sits on today - whole-day ones first and then by start.
+function upcomingGroups(events, today) {
+  const byDay = new Map();
   for (const event of events) {
-    const first = days.find(d => event.dates.includes(d));
+    const first = [...event.dates].sort().find(d => d >= today);
     if (first) {
+      if (!byDay.has(first)) {
+        byDay.set(first, []);
+      }
       byDay.get(first).push(event);
     }
   }
-  return days.filter(d => byDay.get(d).length).map(d => ({day: d, events: byDay.get(d).sort((a, b) => sortKey(a, d).localeCompare(sortKey(b, d)))}));
+  return [...byDay.keys()].sort().map(d => ({day: d, events: byDay.get(d).sort((a, b) => sortKey(a, d).localeCompare(sortKey(b, d)))}));
 }
 
-// widgetRows is how many rows a widget shows before its More button.
-const widgetRows = 4;
+// pageRows is how many rows every widget shows at first, and how many more
+// each Show more adds.
+const pageRows = 3;
 
-// expanded holds the lists whose More button was pressed, by name, kept
+// shownCounts are how many rows each list shows now, by name - a widget's,
+// with its chip or kind when it has them, so each keeps its own - kept
 // while the widgets redraw.
-const expanded = new Set();
+const shownCounts = new Map();
 
-// grouped draws groups of rows under their day bars, the first few rows
-// only until More is pressed: a group cut short keeps its bar, with the
-// day's whole count on it; a group past the cut is left out. More says how
-// many are held back, and Show less folds them away again.
+// fills are the rows each list adds on its own to fill the room its card
+// has - a card in a row stretches to the row's tallest, leaving the rest
+// blank at the foot - by name, cleared and measured again each time the
+// widgets are drawn (fitWidgets).
+const fills = new Map();
+
+// shownCount is how many rows a list shows now: the first few, or as many
+// as Show more reached, and whatever fills its card's room.
+function shownCount(name) {
+  return (shownCounts.get(name) || pageRows) + (fills.get(name) || 0);
+}
+
+// widgetFoot is the foot every widget ends with, the same on each - one
+// quiet line under a hairline: Show N more while rows are held back,
+// adding the next few, and Show less beside it once any were added,
+// folding back to the first few, at the left; See all across to the app,
+// when there is one to go to, at the right. Nothing when none of them is
+// wanted.
+function widgetFoot(name, total, seeAll) {
+  const foot = el('footer', 'widget-foot');
+  foot.dataset.list = name;
+  foot.dataset.total = String(total);
+  const count = Math.min(shownCount(name), total);
+  const buttons = el('div', 'wg-more-row');
+  const act = (words, next, dir) => {
+    const b = el('button', 'wg-more ' + dir);
+    b.type = 'button';
+    b.append(el('span', '', words), svg('chevron'));
+    b.addEventListener('click', () => {
+      shownCounts.set(name, next);
+      renderWidgets(document.querySelector('#search').value);
+    });
+    buttons.append(b);
+  };
+  if (count < total) {
+    act(`Show ${Math.min(pageRows, total - count)} more`, count + pageRows, 'is-more');
+  }
+  if ((shownCounts.get(name) || pageRows) > pageRows) {
+    act('Show less', pageRows, 'is-less');
+  }
+  if (buttons.children.length) {
+    foot.append(buttons);
+  }
+  if (seeAll) {
+    foot.append(moreLink(seeAll.words || 'See all', seeAll.href));
+  }
+  return foot.children.length ? foot : null;
+}
+
+// grouped draws groups of rows under their day bars, as many rows as the
+// list shows now (shownCount): a group cut short keeps its bar, with the
+// day's whole count on it; a group past the cut is left out.
 function grouped(name, groups, bar, row) {
   const out = [];
-  const total = groups.reduce((n, g) => n + g.rows.length, 0);
-  const open = expanded.has(name);
+  const limit = shownCount(name);
   let n = 0;
   for (const g of groups) {
-    if (!open && n >= widgetRows) {
+    if (n >= limit) {
       break;
     }
     const list = el('ol', 'wg-list');
     for (const r of g.rows) {
-      if (!open && n >= widgetRows) {
+      if (n >= limit) {
         break;
       }
       list.append(row(r, g, n++));
     }
     out.push(bar(g), list);
-  }
-  if (total > widgetRows) {
-    const more = el('button', 'wg-more', open ? 'Show less' : `Show ${total - widgetRows} more`);
-    more.type = 'button';
-    more.addEventListener('click', () => {
-      if (open) {
-        expanded.delete(name);
-      } else {
-        expanded.add(name);
-      }
-      renderWidgets(document.querySelector('#search').value);
-    });
-    out.push(more);
   }
   return out;
 }
@@ -311,14 +346,14 @@ function moreLink(words, href) {
   return a;
 }
 
-// whenWidget is Helios When's card, This Week: the calendar picker at the
-// heading's end, then today and the six days after, each day with
-// something on it under its bar - the weekday, the date, any kind of day
-// it is for the viewer's classrooms when not simply regular, and how many
-// events - and its events under it; and at its foot View full calendar
-// across to When. It reads the month the rail's calendar was first drawn
-// from - the viewer's default calendar - so the two agree, until another
-// is picked from the dropdown.
+// whenWidget is Helios When's card, Upcoming: the calendar picker at the
+// heading's end, then what is ahead from today through the month after,
+// each day with something on it under its bar - the weekday, the date,
+// any kind of day it is for the viewer's classrooms when not simply
+// regular, and how many events - and its events under it; and at its foot View full calendar
+// across to When; the first few until Show N more. It reads the month the
+// rail's calendar was first drawn from - the viewer's default calendar -
+// so the two agree, until another is picked from the dropdown.
 function whenWidget() {
   const month = currentMonth();
   if (!month || !month.today) {
@@ -327,22 +362,21 @@ function whenWidget() {
   const events = allEvents(month);
   const card = el('article', 'widget widget-when');
   const head = el('header', 'widget-head');
-  head.append(widgetTitle('calendar', 'This Week'));
+  head.append(widgetTitle('calendar', 'Upcoming'));
   const choose = calendarPick(month);
   if (choose) {
     head.append(choose);
   }
   card.append(head);
-  const groups = weekGroups(events, month.today);
+  const groups = upcomingGroups(events, month.today);
   if (!groups.length) {
-    card.append(el('p', 'wg-empty', 'Nothing on the calendar this week.'));
+    card.append(el('p', 'wg-empty', 'Nothing coming up on the calendar.'));
   }
   card.append(...grouped('when', groups.map(g => ({day: g.day, rows: g.events})),
     g => dayBar(g.day, g.rows.length, 'event', (((month.days || {})[g.day] || {}).kinds || []).map(k => el('span', 'widget-kind ' + dayTypeClass(k.name), k.words))),
     (event, g) => eventRow(event, g.day)));
-  const foot = el('footer', 'widget-foot');
-  foot.append(moreLink('View full calendar', whenOrigin('calendar')));
-  card.append(foot);
+  const total = groups.reduce((n, g) => n + g.events.length, 0);
+  card.append(widgetFoot('when', total, {href: whenOrigin('calendar')}));
   fetchNext(month);
   return card;
 }
@@ -392,9 +426,10 @@ function teamWidget() {
   }
   const card = el('article', 'widget widget-team');
   const head = el('header', 'widget-head');
-  head.append(widgetTitle('team', 'Team'), moreLink('View all', appOrigin('team')));
+  head.append(widgetTitle('team', 'Team'));
   const chips = el('div', 'wg-chips');
   const body = el('div');
+  const foot = el('div', 'widget-foot-slot');
   const paint = () => {
     chips.replaceChildren();
     // Priority is a chip only while an admin has marked something.
@@ -413,18 +448,20 @@ function teamWidget() {
       }
       chip.addEventListener('click', () => {
         teamChip = key;
-        paint();
+        renderWidgets(document.querySelector('#search').value);
       });
       chips.append(chip);
     }
     body.replaceChildren();
     const mine = teamChip === 'mine';
     const items = mine ? team.mine : teamChip === 'priority' ? team.priority || [] : team.open;
+    const end = widgetFoot('team-' + teamChip, items.length, {href: appOrigin('team')});
+    foot.replaceChildren(...(end ? [end] : []));
     if (!items.length) {
       body.append(el('p', 'wg-empty', mine ? 'You\u2019re not signed up for anything coming up.' : 'Nothing needs hands just now.'));
       return;
     }
-    body.append(...pictureList('team-' + teamChip, items, (item, i) => {
+    body.append(pictureList('team-' + teamChip, items, (item, i) => {
       const href = appOrigin('team') + item.path;
       const day = item.start ? parseDate(item.start).toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'}) : item.timing;
       const line = mine ? [day, item.under, item.position] : [day, item.note];
@@ -440,7 +477,7 @@ function teamWidget() {
     }));
   };
   paint();
-  card.append(head, chips, body);
+  card.append(head, chips, body, foot);
   return card;
 }
 
@@ -481,10 +518,6 @@ function partiesUnder(chip) {
   return parties;
 }
 
-// partyCards is how many rows a picture list - Celebrate's, Team's - shows
-// before More.
-const partyCards = 3;
-
 // partyPill is a party's standing or way in: the household's tickets as
 // When words them, else Get tickets or Join the waitlist while there is a
 // way in, to its page on Celebrate; nothing for one sold out or closed.
@@ -507,6 +540,7 @@ function partyPill(p) {
 // the whole row opening href but for a link inside it.
 function pictureRow({href, image, title, line, pill, tone}) {
   const row = el('li', 'wg-party' + (tone ? ' ' + tone : ''));
+  row.dataset.row = '';
   const pic = el('span', 'wg-party-pic');
   if (image) {
     const img = el('img');
@@ -553,27 +587,12 @@ function partyRow(p) {
   });
 }
 
-// pictureList is a widget's list of picture rows, the first three until
-// Show N more, which lists the rest and then folds them away again.
+// pictureList is a widget's list of picture rows, as many as the list
+// shows now (shownCount).
 function pictureList(name, items, row) {
-  const open = expanded.has(name);
   const list = el('ol', 'wg-parties');
-  (open ? items : items.slice(0, partyCards)).forEach((item, i) => list.append(row(item, i)));
-  const out = [list];
-  if (items.length > partyCards) {
-    const more = el('button', 'wg-more', open ? 'Show less' : `Show ${items.length - partyCards} more`);
-    more.type = 'button';
-    more.addEventListener('click', () => {
-      if (open) {
-        expanded.delete(name);
-      } else {
-        expanded.add(name);
-      }
-      renderWidgets(document.querySelector('#search').value);
-    });
-    out.push(more);
-  }
-  return out;
+  items.slice(0, shownCount(name)).forEach((item, i) => list.append(row(item, i)));
+  return list;
 }
 
 // celebrateWidget is Helios Celebrate's card: View all across to it at the
@@ -589,9 +608,10 @@ function celebrateWidget() {
   }
   const card = el('article', 'widget widget-celebrate');
   const head = el('header', 'widget-head');
-  head.append(widgetTitle('celebrate', 'Celebrate'), moreLink('View all', appOrigin('celebrate')));
+  head.append(widgetTitle('celebrate', 'Celebrate'));
   const chips = el('div', 'wg-chips');
   const body = el('div');
+  const foot = el('div', 'widget-foot-slot');
   const paint = () => {
     chips.replaceChildren();
     for (const [key, label] of [['available', 'Available'], ['all', 'All'], ['mine', 'Mine']]) {
@@ -599,21 +619,23 @@ function celebrateWidget() {
       chip.type = 'button';
       chip.addEventListener('click', () => {
         partyChip = key;
-        paint();
+        renderWidgets(document.querySelector('#search').value);
       });
       chips.append(chip);
     }
     body.replaceChildren();
     const items = partiesUnder(partyChip);
+    const end = widgetFoot('celebrate-' + partyChip, items.length, {href: appOrigin('celebrate')});
+    foot.replaceChildren(...(end ? [end] : []));
     if (!items.length) {
       const empty = {mine: 'Your household has no tickets to anything coming up.', available: 'Nothing new with tickets to be had just now.'}[partyChip] || 'No parties coming up.';
       body.append(el('p', 'wg-empty', empty));
       return;
     }
-    body.append(...pictureList('celebrate-' + partyChip, items, partyRow));
+    body.append(pictureList('celebrate-' + partyChip, items, partyRow));
   };
   paint();
-  card.append(head, chips, body);
+  card.append(head, chips, body, foot);
   return card;
 }
 
@@ -652,14 +674,29 @@ const listNames = {
 // parents or students ("Jays parents"), a grade band ("Jays & Ravens").
 // Mail the school sends through Veracross - the newsletter, a teacher's
 // note - says nothing of it, so it goes by whom it was judged to be
-// written to: the classrooms it names, else every family.
+// written to: the classrooms it names, the grades ("Grades 2, 4, 6 & 8"),
+// both ("Condors · Grade 6"), else every family.
 function sentTo(email) {
   const cap = w => w.charAt(0).toUpperCase() + w.slice(1);
   if (email.kind !== 'list') {
     if (!email.audience || email.audience === 'Everyone') {
       return 'All families';
     }
-    return email.audience.split(',').map(r => r.trim()).filter(Boolean).join(' & ');
+    const named = email.audience.split(',').map(r => r.trim()).filter(Boolean);
+    const isGrade = n => /^Grade \d+$/.test(n) || n === 'Kindergarten';
+    const and = list => list.length > 1 ? list.slice(0, -1).join(', ') + ' & ' + list[list.length - 1] : list.join('');
+    const rooms = named.filter(n => !isGrade(n));
+    const grades = named.filter(isGrade);
+    const numbers = grades.filter(g => g !== 'Kindergarten').map(g => g.slice(6));
+    const gradeWords = [];
+    if (grades.includes('Kindergarten')) {
+      gradeWords.push(numbers.length ? 'K' : 'Kindergarten');
+    }
+    if (numbers.length) {
+      gradeWords.push(...numbers);
+    }
+    const gradePart = !grades.length ? '' : grades.length === 1 ? grades[0] : `Grades ${and(gradeWords)}`;
+    return [rooms.length ? and(rooms) : '', gradePart].filter(Boolean).join(' \u00b7 ');
   }
   if (listNames[email.channel]) {
     return listNames[email.channel];
@@ -688,13 +725,16 @@ let schoolOpen;
 // folding away whichever was open before.
 function emailRow(email, n, open) {
   const row = el('li', 'wg-email ' + schoolTones[n % schoolTones.length]);
+  row.dataset.row = '';
   row.classList.toggle('is-open', open);
   const date = parseDate(email.date);
   const head = el('button', 'wg-email-head');
   head.type = 'button';
   head.setAttribute('aria-expanded', String(open));
   const when = `${date.toLocaleDateString('en-US', {weekday: 'short'})}, ${date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;
-  head.append(el('span', 'wg-dot'), el('span', 'wg-email-date', when), el('span', 'wg-email-title', email.title), el('span', 'wg-email-to', sentTo(email)), svg('chevron'));
+  const to = el('span', 'wg-email-to', sentTo(email));
+  to.title = sentTo(email);
+  head.append(el('span', 'wg-dot'), el('span', 'wg-email-date', when), el('span', 'wg-email-title', email.title), to, svg('chevron'));
   const body = el('div', 'wg-email-body');
   if (email.points.length) {
     const points = el('ul', 'wg-points');
@@ -724,12 +764,6 @@ function emailRow(email, n, open) {
   return row;
 }
 
-// schoolRows is how many emails the Inbox shows at first, the most
-// recent, and how many more each Show more adds; schoolCount is how many
-// it shows now, kept while the widgets redraw and back to the first three
-// when the dropdown picks another kind or Show less is pressed.
-const schoolRows = 3;
-let schoolCount = schoolRows;
 
 // rsvpType is the Inbox dropdown's name for the invitations waiting on a
 // reply.
@@ -791,7 +825,6 @@ function typePick() {
     item.addEventListener('click', () => {
       menu.hidden = true;
       schoolType = type;
-      schoolCount = schoolRows;
       renderWidgets(document.querySelector('#search').value);
     });
     menu.append(item);
@@ -835,22 +868,16 @@ function schoolWidget() {
   if (waiting.length) {
     card.append(rsvpPanel(waiting));
   }
-  const count = Math.min(schoolCount, shown.length);
+  const name = 'school-' + (schoolType || 'all');
   const list = el('ol', 'wg-emails');
   if (shown.length) {
     const openKey = schoolOpen === undefined || (schoolOpen && !shown.some(e => e.key === schoolOpen)) ? shown[0].key : schoolOpen;
-    shown.slice(0, count).forEach((e, n) => list.append(emailRow(e, n, e.key === openKey)));
+    shown.slice(0, shownCount(name)).forEach((e, n) => list.append(emailRow(e, n, e.key === openKey)));
   }
   card.append(list);
-  if (shown.length > schoolRows) {
-    const left = shown.length - count;
-    const more = el('button', 'wg-more', left ? `Show ${Math.min(left, schoolRows)} more` : 'Show less');
-    more.type = 'button';
-    more.addEventListener('click', () => {
-      schoolCount = left ? count + schoolRows : schoolRows;
-      renderWidgets(document.querySelector('#search').value);
-    });
-    card.append(more);
+  const foot = widgetFoot(name, shown.length, null);
+  if (foot) {
+    card.append(foot);
   }
   return card;
 }
@@ -859,7 +886,7 @@ function schoolWidget() {
 const widgetMakers = {when: whenWidget, team: teamWidget, celebrate: celebrateWidget, school: schoolWidget};
 
 // widgetNames are the widgets' names as an admin's pencil says them.
-const widgetNames = {when: 'This Week', team: 'Team', celebrate: 'Celebrate', school: 'Inbox'};
+const widgetNames = {when: 'Upcoming', team: 'Team', celebrate: 'Celebrate', school: 'Inbox'};
 
 // adminTools puts, in Super Admin Mode, a pencil at a widget's heading that
 // opens who it is for, and says so beside the title: Hidden when the admin
@@ -903,11 +930,57 @@ function widgetOrder() {
   return [...set, ...makers.filter(k => !set.includes(k))];
 }
 
+// fitWidgets fills each card's room: a card with rows still to show and
+// blank space above its foot - because another card in its row is taller -
+// takes as many more rows as that space holds, by the height its rows run
+// to, so it grows no taller; then the widgets are drawn once more with
+// them. It measures the page as drawn, so it runs straight after a draw,
+// before the page is painted.
+function fitWidgets(query) {
+  let changed = false;
+  for (const card of document.querySelector('#widgets').children) {
+    const foot = card.querySelector('.widget-foot[data-list]');
+    const rows = card.querySelectorAll('[data-row]');
+    if (!foot || !rows.length) {
+      continue;
+    }
+    const name = foot.dataset.list;
+    const left = Number(foot.dataset.total) - rows.length;
+    if (left <= 0) {
+      continue;
+    }
+    const first = card.querySelector('.wg-day, [data-row]').getBoundingClientRect();
+    const last = rows[rows.length - 1].getBoundingClientRect();
+    const per = (last.bottom - first.top) / rows.length;
+    const room = foot.getBoundingClientRect().top - last.bottom - 24;
+    const more = Math.min(left, Math.floor(room / per));
+    if (per > 0 && more > 0) {
+      fills.set(name, (fills.get(name) || 0) + more);
+      changed = true;
+    }
+  }
+  if (changed) {
+    renderWidgets(query, true);
+  }
+}
+
+// The cards' room changes with the window, so a resize measures it again.
+let resizing = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizing);
+  resizing = setTimeout(() => renderWidgets(document.querySelector('#search').value), 150);
+});
+
 // renderWidgets draws the row in the order an admin set, or leaves it
-// empty while a search is filtering the page below. A widget not for the viewer - its rules, set
-// by an admin, leave them out - is left out; in Super Admin Mode every
-// widget shows, with the pencil that sets who it is for.
-export function renderWidgets(query = '') {
+// empty while a search is filtering the page below. A widget not for the
+// viewer - its rules, set by an admin, leave them out - is left out; in
+// Super Admin Mode every widget shows, with the pencil that sets who it is
+// for. Each draw then fills the cards' room afresh (fitWidgets); fitted is
+// the draw that carries those fills, which measures nothing more.
+export function renderWidgets(query = '', fitted = false) {
+  if (!fitted) {
+    fills.clear();
+  }
   const root = document.querySelector('#widgets');
   root.replaceChildren();
   root.hidden = Boolean(query.trim());
@@ -931,4 +1004,7 @@ export function renderWidgets(query = '') {
     root.append(widget);
   }
   root.hidden = !root.children.length;
+  if (!fitted && !root.hidden) {
+    fitWidgets(query);
+  }
 }

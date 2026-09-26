@@ -9,8 +9,8 @@ import (
 )
 
 // TestMissing checks which emails want reading: school mail within the
-// window whose audience is not yet judged - not the chat, not an older
-// email, not one already done.
+// window whose audience is not yet judged, then any judged before Revision
+// - not the chat, not an older email, not one judged since.
 func TestMissing(t *testing.T) {
 	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	m := &artifacts.Model{
@@ -20,15 +20,18 @@ func TestMissing(t *testing.T) {
 			{Key: "c", Date: "2026-09-24", Kind: artifacts.KindList, Channel: "chat"},
 			{Key: "d", Date: "2026-09-01", Kind: artifacts.KindNewsletter},
 			{Key: "e", Date: "2026-09-23", Kind: artifacts.KindNewsletter},
+			{Key: "f", Date: "2026-09-25", Kind: artifacts.KindNewsletter},
+			{Key: "g", Date: "2026-09-22", Kind: artifacts.KindNewsletter},
 		},
-		Points:   map[string][]string{"e": {"done"}},
-		Audience: map[string]string{"e": artifacts.Everyone},
+		Points:   map[string][]string{"e": {"done"}, "f": {"old"}, "g": {"old"}},
+		Audience: map[string]string{"e": artifacts.Everyone, "f": "Condors", "g": artifacts.Everyone},
+		Judged:   map[string]string{"e": Revision, "g": "2026-09-20"},
 	}
 	got := []string{}
 	for _, d := range Missing(m, now) {
 		got = append(got, d.Key)
 	}
-	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+	if len(got) != 4 || got[0] != "a" || got[1] != "b" || got[2] != "f" || got[3] != "g" {
 		t.Errorf("missing: %v", got)
 	}
 }
