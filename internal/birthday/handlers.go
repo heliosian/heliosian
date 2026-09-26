@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"heliosian/internal/blob"
 	"io"
 	"log/slog"
 	"net/http"
@@ -54,7 +53,7 @@ type Describer interface {
 	Charity(ctx context.Context, actor, name, link string) (describe.Info, error)
 }
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(ctx context.Context, email string) error) {
+func Register(mux *http.ServeMux, cache *Cache, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(ctx context.Context, email string) error) {
 	a := app{cache: cache, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
 	if mailer != nil {
 		go a.remindLoop()

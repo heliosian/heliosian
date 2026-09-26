@@ -38,10 +38,11 @@ func whenLines(p *Party) (string, string) {
 		return "", ""
 	}
 	day := start.Format("Monday, January 2")
-	if end, err := time.ParseInLocation(DateTimeFormat, p.End, local); err == nil && end.After(start) {
-		return day, start.Format("3:04") + " – " + end.Format("3:04 PM")
+	end, err := time.ParseInLocation(DateTimeFormat, p.End, local)
+	if err != nil {
+		return day, start.Format("3:04 PM")
 	}
-	return day, start.Format("3:04 PM")
+	return day, sharecard.Hours(start, end)
 }
 
 func when(p *Party) string {

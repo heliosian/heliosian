@@ -50,11 +50,7 @@ func whenLines(e *Event) (string, string) {
 		}
 		return e.start.Format("Monday, January 2") + " – " + e.end.Format("Monday, January 2"), ""
 	}
-	day := e.start.Format("Monday, January 2")
-	if e.end.After(e.start) {
-		return day, e.start.Format("3:04") + " – " + e.end.Format("3:04 PM")
-	}
-	return day, e.start.Format("3:04 PM")
+	return e.start.Format("Monday, January 2"), sharecard.Hours(e.start, e.end)
 }
 
 func spansDays(e *Event) bool {

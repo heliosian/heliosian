@@ -15,11 +15,6 @@ import (
 	"heliosian/internal/sharecard"
 )
 
-const (
-	cardWidth  = sharecard.Width
-	cardHeight = sharecard.Height
-)
-
 var cardStyle = &sharecard.Style{
 	Page: color.RGBA{0xee, 0xf6, 0xea, 0xff}, Brand: color.RGBA{0x0c, 0x4c, 0x54, 0xff}, Accent: color.RGBA{0x00, 0x74, 0x6f, 0xff},
 	Ink: color.RGBA{0x0e, 0x3a, 0x42, 0xff}, Yellow: color.RGBA{0xf8, 0xd9, 0x08, 0xff}, Panel: color.RGBA{0xdc, 0xe9, 0xe4, 0xff},
@@ -65,30 +60,11 @@ func lineage(m *Model, a *Activity) string {
 }
 
 func when(a *Activity) string {
-	if a.Timing != "" {
-		return a.Timing
+	day, hours := whenLines(a)
+	if hours != "" {
+		return day + " · " + hours
 	}
-	if days, hours := spanLines(a); days != "" {
-		if hours != "" {
-			return days + " · " + hours
-		}
-		return days
-	}
-	start, err := time.ParseInLocation(DateTimeFormat, a.Start, local)
-	if err != nil {
-		if day, err := time.ParseInLocation(DateFormat, a.Start, local); err == nil {
-			return day.Format("Monday, January 2")
-		}
-		return ""
-	}
-	line := start.Format("Monday, January 2 · ")
-	if end, err := time.ParseInLocation(DateTimeFormat, a.End, local); err == nil && end.After(start) {
-		if start.Format("PM") == end.Format("PM") {
-			return line + start.Format("3:04") + "–" + end.Format("3:04 PM")
-		}
-		return line + start.Format("3:04 PM") + "–" + end.Format("3:04 PM")
-	}
-	return line + start.Format("3:04 PM")
+	return day
 }
 
 func blurb(a *Activity) string {
@@ -283,10 +259,11 @@ func whenLines(a *Activity) (string, string) {
 		return "", ""
 	}
 	day := start.Format("Monday, January 2")
-	if end, err := time.ParseInLocation(DateTimeFormat, a.End, local); err == nil && end.After(start) {
-		return day, start.Format("3:04") + " – " + end.Format("3:04 PM")
+	end, err := time.ParseInLocation(DateTimeFormat, a.End, local)
+	if err != nil {
+		return day, start.Format("3:04 PM")
 	}
-	return day, start.Format("3:04 PM")
+	return day, sharecard.Hours(start, end)
 }
 
 func spanLines(a *Activity) (string, string) {
