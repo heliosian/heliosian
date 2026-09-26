@@ -254,13 +254,12 @@ export function adminPage() {
     for (const [k, panel] of Object.entries(panels)) {
       panel.hidden = k !== key;
     }
+    state.adminTab = key;
   };
   for (const section of sections) {
     const group = el('div', 'sidebar-section');
     group.append(el('div', 'sidebar-section-title', section.title));
     for (const item of section.tabs) {
-      // Appearance - what colours the app - is the platform's super admins'
-      // alone; a regular admin's page is built without it.
       if (item.superOnly && !me().isSuperAdmin) {
         continue;
       }
@@ -276,7 +275,7 @@ export function adminPage() {
     }
     rail.append(group);
   }
-  show(sections[0].tabs[0].key);
+  show(state.adminTab && panels[state.adminTab] ? state.adminTab : sections[0].tabs[0].key);
   layout.append(rail, container);
   page.append(header, layout);
   return page;
