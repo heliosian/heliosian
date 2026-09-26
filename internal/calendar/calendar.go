@@ -200,7 +200,6 @@ type Year struct {
 
 const (
 	SchoolCalendarID   = "heliosns.org_cidjj9plktli1gdm2hrkj7gqks@group.calendar.google.com"
-	SchoolFeedURL      = "https://calendar.google.com/calendar/ical/heliosns.org_cidjj9plktli1gdm2hrkj7gqks%40group.calendar.google.com/public/basic.ics"
 	SchoolCalendarPage = "https://www.heliosschool.org/school-calendar"
 )
 
@@ -251,16 +250,7 @@ func GoogleEventURL(key string) string {
 			return ""
 		}
 	}
-	feed, err := url.Parse(SchoolFeedURL)
-	if err != nil {
-		return ""
-	}
-	parts := strings.Split(feed.Path, "/")
-	if len(parts) < 4 {
-		return ""
-	}
-	calendarID := parts[3]
-	eid := base64.RawStdEncoding.EncodeToString([]byte(eventID + " " + calendarID))
+	eid := base64.RawStdEncoding.EncodeToString([]byte(eventID + " " + SchoolCalendarID))
 	return "https://www.google.com/calendar/event?eid=" + eid
 }
 

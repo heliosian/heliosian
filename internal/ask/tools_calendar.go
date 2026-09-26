@@ -10,11 +10,6 @@ import (
 	"heliosian/internal/calendar"
 )
 
-type calendarClassroom = calendar.Classroom
-
-// eventCard is an event as the tools answer it: when and what, its
-// audience, the way in when another app runs it, and where the viewer's
-// household stands with it.
 type eventCard struct {
 	ID           string   `json:"id"`
 	Title        string   `json:"title"`

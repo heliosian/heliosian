@@ -891,8 +891,8 @@ func TestStudentInviteCcsParents(t *testing.T) {
 	if e := mailTo(kept, ella); len(e) != 1 || strings.Join(e[0].CC, ",") != robin || !strings.Contains(e[0].HTML, "sent Ella an invitation for") {
 		t.Errorf("ella's mail = %+v", e)
 	}
-	if got := andList([]string{"Sam", "Ella", "Robin", "Mia"}); got != "Sam, Ella, Robin and Mia" {
-		t.Errorf("andList = %q", got)
+	if got := joinNames([]string{"Sam", "Ella", "Robin", "Mia"}); got != "Sam, Ella, Robin and Mia" {
+		t.Errorf("joinNames = %q", got)
 	}
 }
 

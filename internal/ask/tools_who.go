@@ -6,11 +6,10 @@ import (
 	"slices"
 	"strings"
 
+	"heliosian/internal/calendar"
 	"heliosian/internal/who"
 )
 
-// card is a person as a tool answers: what the directory shows, with a
-// masked email or phone left out rather than made up.
 type card struct {
 	Name        string   `json:"name"`
 	Email       string   `json:"email,omitempty"`
@@ -298,7 +297,7 @@ var getClassroom = tool{
 			}
 			return map[string]any{"classrooms": out}, nil
 		}
-		i := slices.IndexFunc(v.calendar.Roster.Classrooms, func(c calendarClassroom) bool { return contains(c.Name, want) })
+		i := slices.IndexFunc(v.calendar.Roster.Classrooms, func(c calendar.Classroom) bool { return contains(c.Name, want) })
 		if i < 0 {
 			return nil, fmt.Errorf("there is no classroom called %q", want)
 		}

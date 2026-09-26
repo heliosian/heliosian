@@ -67,8 +67,6 @@ const (
 // no standing of its own yet.
 var callWords = map[string]string{"available": "Get tickets", "waitlist": "Join the waitlist", "sold-out": "Sold out", "open": "Join", "full": "Full"}
 
-// standing writes what a linked event offers into the event itself, once, so
-// every reader says the same words (Event.MineWords, Event.Call).
 func standing(e *Event) {
 	e.MineWords = mineWords(e)
 	if e.Call = e.MineWords; e.Call == "" {
@@ -76,11 +74,6 @@ func standing(e *Event) {
 	}
 }
 
-// mineWords is the household's standing in words: the viewer's own as
-// "you", another member's by name - "Sam has a ticket", "Sam and Alex have
-// tickets", "Sam and Alex are waitlisted", "Sam signed up". A party says
-// who holds a ticket rather than who is going: a ticket is what Celebrate
-// knows.
 func mineWords(e *Event) string {
 	names := joinNames(e.MineWho)
 	switch e.Mine {

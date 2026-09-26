@@ -321,15 +321,8 @@ func (v *viewer) starters() []string {
 	if v.me != nil {
 		_, kids := v.directory.Household(v.me.Email)
 		if i := slices.IndexFunc(kids, func(k *who.Person) bool { return k.Classroom != "" }); i >= 0 {
-			out = append(out, fmt.Sprintf("Who teaches %s in %s?", firstName(kids[i].FullName), kids[i].Classroom))
+			out = append(out, fmt.Sprintf("Who teaches %s in %s?", calendar.FirstWord(kids[i].FullName), kids[i].Classroom))
 		}
 	}
 	return append(out, "What can I volunteer for?", "Which parties still have tickets?")
-}
-
-func firstName(name string) string {
-	if words := strings.Fields(name); len(words) > 0 {
-		return words[0]
-	}
-	return name
 }

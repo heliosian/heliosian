@@ -1423,13 +1423,13 @@ func (a app) send(ctx context.Context, actor, host string, e *Event, emails []st
 				name = p.Name
 			}
 			if row.Email == t {
-				names = append([]string{firstWord(name)}, names...)
+				names = append([]string{FirstWord(name)}, names...)
 			} else {
-				names = append(names, firstWord(name))
+				names = append(names, FirstWord(name))
 			}
 		}
 		if len(names) == 0 {
-			names = []string{firstWord(displayName(t))}
+			names = []string{FirstWord(displayName(t))}
 		}
 		recipients[t] = names
 	}
@@ -1455,18 +1455,11 @@ func (a app) send(ctx context.Context, actor, host string, e *Event, emails []st
 	return len(order)
 }
 
-func andList(names []string) string {
-	if len(names) <= 1 {
-		return strings.Join(names, "")
-	}
-	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
-}
-
 func (a app) replyTo(e *Event, to string) []string {
 	return append(append([]string{}, a.hostsOf(e)...), a.organizer(e.ID, to))
 }
 
-func firstWord(name string) string {
+func FirstWord(name string) string {
 	if words := strings.Fields(name); len(words) > 0 {
 		return words[0]
 	}
@@ -1492,12 +1485,12 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 	}
 	hosting := "Hosted by " + strings.Join(hosts, " and ")
 	invited := strings.Join(names, ", ")
-	rsvpFor := "RSVP for " + andList(names) + " here"
+	rsvpFor := "RSVP for " + joinNames(names) + " here"
 	picture := origin + "/open/share/" + e.ID + ".png"
 	if inv := a.cache.Model().Invitations[e.ID]; inv != nil && inv.Flyer != "" {
 		picture = origin + flyerPath(e.ID)
 	}
-	whom := firstWord(displayName(to))
+	whom := FirstWord(displayName(to))
 	if len(names) > 0 {
 		whom = names[0]
 	}

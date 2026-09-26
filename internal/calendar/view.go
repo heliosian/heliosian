@@ -65,10 +65,7 @@ func contactLine(directory Directory, p Person) string {
 	case p.IsParent:
 		kids := []string{}
 		for _, k := range directory.Children(p.Email) {
-			name := k.Name
-			if words := strings.Fields(name); len(words) > 0 {
-				name = words[0]
-			}
+			name := FirstWord(k.Name)
 			if k.Grade != "" {
 				name += " (" + k.Grade + ")"
 			}
