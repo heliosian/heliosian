@@ -96,7 +96,7 @@ A person added by hand, flagged `Added` in Overrides, is known by nothing but th
 
 Renaming or deleting a tag takes its Tag Managers rows along in the same commit. Tags and managers are matched without regard to case, so two tags whose names differ only in case are one tag to every change.
 
-The import (`tools/import`) reads the sheet and the exports, works out the rows that differ in the Veracross tabs, the staff page tab and `Name to Email`, the Overrides cells the staff page has caught up with and the `Name to Email` entries Veracross now has an address for, and commits all of it at once as `import` through a store of its own, waiting for the write. A result the model would refuse is refused whole and writes nothing. The server sees it on its next refresh.
+The import (`tools/import`) reads the sheet and the exports, works out the rows that differ in the Veracross tabs, the staff page tab and `Name to Email`, the Overrides cells the staff page has caught up with and the `Name to Email` entries Veracross now has an address for, and plans all of it at once as `import` through the directory's book (`docs/storage.md`). It builds the model from the tables as the plan leaves them, and a result the model would refuse is refused whole and writes nothing, `--dry-run` included; the sheet as it stands before the import is never built, so it need not load. Otherwise it writes the plan and waits for the write. The server sees it on its next refresh.
 
 ## Refresh dates and family keys
 

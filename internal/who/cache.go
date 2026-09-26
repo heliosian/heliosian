@@ -43,12 +43,20 @@ var Tabs = []store.Tab{
 	{Name: geocodeTable, Columns: geocodeColumns, Key: []string{geocodeAddress}, AppendOnly: true},
 }
 
+func modelTabs() []store.Tab {
+	return append(slices.Clone(Tabs),
+		store.Tab{App: preferencesApp, Name: preferencesTab, Columns: []string{preferenceTimestamp, preferenceEmail, preferenceStatus, preferencePermission}, Key: []string{preferenceTimestamp, preferenceEmail}},
+	)
+}
+
+func NewBook(source data.Source, writer data.Writer, queue *store.Queue) (*store.Book, error) {
+	return store.NewBook(appName, modelTabs(), source, writer, queue)
+}
+
 func spec(blobs, static BlobChecker, idKey []byte, loaded func()) store.Spec[*Model] {
 	return store.Spec[*Model]{
-		App: appName,
-		Tabs: append(slices.Clone(Tabs),
-			store.Tab{App: preferencesApp, Name: preferencesTab, Columns: []string{preferenceTimestamp, preferenceEmail, preferenceStatus, preferencePermission}, Key: []string{preferenceTimestamp, preferenceEmail}},
-		),
+		App:  appName,
+		Tabs: modelTabs(),
 		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {
 			return BuildModel(ctx, tables, blobs, static, idKey)
 		},

@@ -437,9 +437,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] sheet source: %v", err)
 	}
-	directoryStore, err := who.Open(source, source, nil, staticFiles{}, []byte(actor), store.NewQueue())
+	book, err := who.NewBook(source, source, store.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] the directory does not load: %v", err)
+		log.Fatalf("[ERROR] directory tabs: %v", err)
+	}
+	tables, err := book.Read(context.Background())
+	if err != nil {
+		log.Fatalf("[ERROR] read the directory: %v", err)
 	}
 	bios, err := websiteRows(out)
 	if err != nil {
@@ -480,14 +484,19 @@ func main() {
 	}
 	ops = slices.Concat(ops, cleared, pruned)
 
+	plan, err := book.Plan(context.Background(), tables, actor, ops)
+	if err != nil {
+		log.Fatalf("[ERROR] plan the import: %v", err)
+	}
+	model, err := who.BuildModel(context.Background(), plan.Tables, nil, staticFiles{}, []byte(actor))
+	if err != nil {
+		log.Fatalf("[ERROR] the directory does not load with the import: %v", err)
+	}
 	if *dryRun {
 		log.Printf("dry run: %d row changes not committed", len(ops))
 		return
 	}
-	if err := directoryStore.CommitAndWait(context.Background(), actor, ops...); err != nil {
-		log.Fatalf("[ERROR] commit the import: %v", err)
-	}
-	model := directoryStore.Model()
+	<-book.Write(plan)
 	students, parents, staff := 0, 0, 0
 	for _, p := range model.People {
 		if p.IsStudent {
