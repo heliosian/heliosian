@@ -711,12 +711,12 @@ function volunteersBox(node, editing, save) {
       const label = el('button', 'split-label');
       label.type = 'button';
       label.textContent = 'Sign up';
-      label.addEventListener('click', () => (me ? me.onClick() : openSignUp(node, null)));
+      label.addEventListener('click', () => (me ? me.onClick() : openSignUp(node, null, true)));
       split.append(label);
       if (me) {
         split.append(button(mine ? 'Edit mine' : 'Me', me.icon, 'split-segment', me.onClick));
       }
-      split.append(button('Someone else', 'plus', 'split-segment', () => openSignUp(node, null)));
+      split.append(button('Someone else', 'plus', 'split-segment', () => openSignUp(node, null, true)));
       actions.append(split);
     } else if (me) {
       actions.append(button(me.label, me.icon, 'button button-small', me.onClick));

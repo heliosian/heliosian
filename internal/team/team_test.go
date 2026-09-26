@@ -59,6 +59,9 @@ func (fakeDirectory) Person(email string) (string, string, bool) {
 	if email == parent {
 		return "Robin Whitfield", "/photos/robin.jpg", true
 	}
+	if strings.HasSuffix(email, "@heliosschool.org") {
+		return displayName(email), "", true
+	}
 	return "", "", false
 }
 
@@ -261,6 +264,11 @@ func TestSignUpAndRemove(t *testing.T) {
 	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", full); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a full role took a sign-up: %d", rec.Code)
 	}
+	for _, as := range []string{parent, admin} {
+		if rec := call(t, mux, as, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": "x@elsewhere.example", "position": PositionVolunteer}); rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s signed up an address outside the directory: %d", as, rec.Code)
+		}
+	}
 	direct := map[string]any{"id": "E001", "position": PositionVolunteer}
 	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", direct); rec.Code != http.StatusBadRequest {
 		t.Fatalf("an activity without direct sign-up took one: %d", rec.Code)
@@ -340,6 +348,9 @@ func TestMail(t *testing.T) {
 	if strings.Contains(ics, "mailto:"+chair) {
 		t.Errorf("a chair is on the volunteer's invite:\n%s", ics)
 	}
+	if !strings.Contains(thanks.Text, "Your note: happy to help") {
+		t.Errorf("thank-you note label: %q", thanks.Text)
+	}
 	if !strings.Contains(thanks.Text, "Event Chairs: ") || strings.Contains(thanks.Text, "Leads") {
 		t.Fatalf("thank-you chairs: %q", thanks.Text)
 	}
@@ -380,6 +391,23 @@ func TestMail(t *testing.T) {
 	cancel := strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", "")
 	if m.Subject != "Removed: Clean Up Crew" || !slices.Equal(m.To, []string{other}) || !strings.HasPrefix(m.Attachments[0].ContentType, "text/calendar; method=CANCEL") || !strings.Contains(cancel, "METHOD:CANCEL") || !strings.Contains(cancel, "STATUS:CANCELLED") || !strings.Contains(cancel, "UID:team-E017-"+other+"@heliosian.com") {
 		t.Fatalf("cancellation: %+v\n%s", m, cancel)
+	}
+	if !strings.Contains(m.Text, "Mina Park removed your sign-up for Clean Up Crew") {
+		t.Errorf("cancellation does not name who removed it: %q", m.Text)
+	}
+	if r := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": kid, "position": PositionOpen, "note": "bring snacks"}); r.Code != http.StatusNoContent {
+		t.Fatalf("sign up a child: %d %s", r.Code, r.Body)
+	}
+	bySubject = map[string]mail.Message{}
+	for range 4 {
+		m := rec.next(t)
+		bySubject[m.Subject] = m
+	}
+	if thanks := bySubject["Thanks for volunteering for Clean Up Crew"]; !strings.Contains(thanks.Text, "Note from Robin Whitfield: bring snacks") {
+		t.Errorf("a note someone else wrote is not theirs: %q", thanks.Text)
+	}
+	if offer := bySubject["Co-chair offer: Kit Whitfield for Clean Up Crew"]; !strings.Contains(offer.Text, "Robin Whitfield added Kit Whitfield as co-chair of Clean Up Crew") || !strings.Contains(offer.Text, "Added by: Robin Whitfield") {
+		t.Errorf("offer notice does not name who made it: %q (subjects %v)", offer.Text, keys(bySubject))
 	}
 }
 

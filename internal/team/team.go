@@ -263,6 +263,10 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		ops = append(ops, store.Delete(volunteersTab, store.Row{"Event ID": from.ID, "Email": email}))
 	}
 	existing := current != nil
+	if _, _, listed := a.directory.Person(email); !existing && !listed {
+		http.Error(w, "that address is not in the directory", http.StatusBadRequest)
+		return
+	}
 	if !editor {
 		if (body.Position == PositionCoChair) != (was == PositionCoChair) {
 			http.Error(w, "only a co-chair or admin can make or unmake a co-chair", http.StatusForbidden)
@@ -332,7 +336,7 @@ func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: removed volunteer", "actor", actor, "email", email, "activity", act.Title, "year", act.Year)
-	a.mailRemoved(r, act, email)
+	a.mailRemoved(r, act, email, actor)
 	w.WriteHeader(http.StatusNoContent)
 }
 

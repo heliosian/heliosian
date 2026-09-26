@@ -486,12 +486,6 @@ async function goTo(path) {
   navigate(path);
 }
 
-// openSignUp signs the viewer, or someone they name, up for an activity or one
-// of the things under it; with an existing sign-up it edits that one.
-// peoplePicker is the searchable directory list behind "Someone else": type a
-// few letters, see faces, names and what places each person (a grade, a job,
-// "Parent"), pick one. The list is fetched once per page load. Typing a full
-// address that matches nobody still works - guests and new families are real.
 let peopleCache = null;
 
 async function people() {
@@ -743,7 +737,7 @@ export function peoplePicker() {
       results.append(row);
     }
     if (!hits.length) {
-      results.append(el('div', 'people-none', q.includes('@') ? `Nobody in the directory - “${q}” will be signed up by email.` : 'Nobody matches.'));
+      results.append(el('div', 'people-none', 'Nobody in the directory matches.'));
     }
     results.hidden = false;
   };
@@ -752,25 +746,23 @@ export function peoplePicker() {
 
   return {
     wrap,
-    // A typed address that matched nobody is still a value; anything else typed
-    // and not picked is not.
-    value: () => value || (search.value.includes('@') ? search.value.trim() : ''),
+    value: () => value,
   };
 }
 
-export function openSignUp(node, existing) {
-  const form = signUpForm(node, existing);
+export function openSignUp(node, existing, someoneElse) {
+  const form = signUpForm(node, existing, someoneElse);
   openModal(existing ? `Edit sign-up for ${node.title}` : `Sign up for ${node.title}`, form.fields, form);
 }
 
 // signUpForm is the sign-up editor's fields and the modal options that save
 // them, so the same form opens on its own and as a tab of a person's window.
-function signUpForm(node, existing) {
+function signUpForm(node, existing, someoneElse) {
   const editor = node.canEdit;
   const picker = peoplePicker();
-  const emailField = field('Who is it?', picker.wrap, 'Search the directory, or type an address for someone not in it');
+  const emailField = field('Who is it?', picker.wrap, 'Search the directory');
   const who = segmented([{label: 'Me', value: ''}, {label: 'Someone else', value: 'other'}],
-    existing && existing.email !== me().email ? 'other' : '', value => {
+    someoneElse || (existing && existing.email !== me().email) ? 'other' : '', value => {
       emailField.hidden = value !== 'other';
       if (value === 'other') {
         picker.wrap.querySelector('input').focus();
@@ -847,7 +839,7 @@ function signUpForm(node, existing) {
   } else {
     fields.push(field('Availability', position));
   }
-  note.placeholder = 'Anything the organizers should know';
+  note.placeholder = 'Anything the organizers and whoever is signed up should know';
   const noteLabel = el('span', '', 'Note ');
   noteLabel.append(el('small', '', '(optional)'));
   fields.push(field(noteLabel, note));
@@ -880,12 +872,17 @@ function signUpForm(node, existing) {
   return {
     fields,
     saveLabel: existing ? 'Save' : 'Sign Up',
-    submit: () => send('POST', '/api/team/volunteer', {
-      id: where ? where.value : node.id,
-      from: where && where.value !== node.id ? node.id : '',
-      email: existing ? existing.email : (who.value === 'other' ? picker.value() : ''),
-      position: isChair && !editor ? 'Co-Chair' : position.value, note: note.value,
-    }),
+    submit: () => {
+      if (!existing && who.value === 'other' && !picker.value()) {
+        throw new Error('Pick who to sign up from the directory');
+      }
+      return send('POST', '/api/team/volunteer', {
+        id: where ? where.value : node.id,
+        from: where && where.value !== node.id ? node.id : '',
+        email: existing ? existing.email : (who.value === 'other' ? picker.value() : ''),
+        position: isChair && !editor ? 'Co-Chair' : position.value, note: note.value,
+      });
+    },
     onDelete: existing ? () => send('DELETE', '/api/team/volunteer', {id: node.id, email: existing.email}) : null,
     deleteLabel: 'Remove',
     confirmDelete: existing ? `Remove ${existing.name} from ${node.title}?` : '',

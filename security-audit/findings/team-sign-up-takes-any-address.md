@@ -1,9 +1,9 @@
 Description: The portal lets any signed-in account sign up any well-formed address for an open activity (`team.saveVolunteer`), so a member can put other members on volunteer lists without their say, and make HCA-Team mail a thank-you, a calendar invite and the member's own six thousand characters to an address outside the school.
-Status: open
+Status: fixed
 Severity: low
 ---
-`saveVolunteer` (`internal/team/team.go:276-400`) takes `email` from the body and holds it to `emailForm` (`:301-308`). The check that someone else's sign-up is for a co-chair, an admin or the household applies only to a row that already exists (`:379-382`); a new row for anyone passes. The portal then mails the person signed up (`internal/team/mail.go:450-487`), the chairs copied, with the note the caller wrote. The caller cannot remove the row and repeat, so the bound is the number of open activities.
+`saveVolunteer` in `internal/team/team.go` refuses a new sign-up for an address the directory does not list (`Directory.Person`), whoever asks, chairs and admins included; an existing row for someone who has since left can still be edited or removed. The sign-up form's people picker in `web/team/edit.js` no longer takes a typed address that matched nobody.
 
-`POST /api/team/volunteer {"id": "<open activity>", "email": "x@elsewhere.example", "position": "Volunteer", "note": "..."}`.
+The mail now names whoever wrote the text or took the action: `mailSignUp` in `internal/team/mail.go` labels a note someone else wrote "Note from" and their name instead of "Your note", and the co-chair offer notice says who added the person; `mailRemoved` says who removed a sign-up when it was not the person themselves.
 
-Fix: for a caller who neither runs the activity nor is an admin, require the address to be the caller's own or one of their household's, the rule the edit already keeps.
+Any member can still sign up any other member of the directory, who is told by name who did it.

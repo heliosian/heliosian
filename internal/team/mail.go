@@ -308,11 +308,14 @@ func (a app) invite(m *Model, act *Activity, email, page string, to []string, ca
 	return mail.Attachment{Name: "invite.ics", ContentType: "text/calendar; method=" + method + "; charset=utf-8", Content: []byte(b.String())}, true
 }
 
-func (a app) mailRemoved(r *http.Request, act *Activity, email string) {
+func (a app) mailRemoved(r *http.Request, act *Activity, email, actor string) {
 	m := a.cache.Model()
 	l := a.letterFor(baseURL(r), act)
 	l.Heading = "You're no longer signed up"
-	l.Intro = fmt.Sprintf("Your sign-up for %s was removed, so it comes off your calendar. If that's a surprise, the chairs can put you back - just reply.", act.Title)
+	l.Intro = fmt.Sprintf("You removed your sign-up for %s, so it comes off your calendar.", act.Title)
+	if actor != email {
+		l.Intro = fmt.Sprintf("%s removed your sign-up for %s, so it comes off your calendar. If that's a surprise, the chairs can put you back - just reply.", a.nameOf(actor), act.Title)
+	}
 	l.Button = "See the details"
 	msg := a.compose("Removed: "+act.Title, append([]string{email}, a.directory.Parents(email)...), nil, l, without(chairsAround(m, act), email)...)
 	inv, ok := a.invite(m, act, email, l.Path, msg.To, true)
@@ -379,7 +382,11 @@ func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, a
 			l.Rows = append(l.Rows, [2]string{"Your role", "Volunteer"})
 		}
 		if note != "" {
-			l.Rows = append(l.Rows, [2]string{"Your note", note})
+			label := "Your note"
+			if actor != email {
+				label = "Note from " + a.nameOf(actor)
+			}
+			l.Rows = append(l.Rows, [2]string{label, note})
 		}
 		l.Rows = append(l.Rows, a.chairRows(model, act)...)
 		l.Button = "See the details"
@@ -421,10 +428,16 @@ func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, a
 		if admins := a.adminsWanting("offers", actor, email); len(admins) > 0 {
 			n := a.letterFor(base, act)
 			n.Heading = fmt.Sprintf("%s offered to co-chair %s", name, act.Title)
+			if actor != email {
+				n.Heading = fmt.Sprintf("%s added %s as co-chair of %s", a.nameOf(actor), name, act.Title)
+			}
 			n.Intro = "Someone is open to co-chairing. Open the page to make them a co-chair, or leave them as a volunteer."
 			n.Rows = [][2]string{{"Who", fmt.Sprintf("%s (%s)", name, email)}}
 			if note != "" {
 				n.Rows = append(n.Rows, [2]string{"Note", note})
+			}
+			if actor != email {
+				n.Rows = append(n.Rows, [2]string{"Added by", a.nameOf(actor)})
 			}
 			n.Button = "Open " + act.Title
 			a.send(ctx, fmt.Sprintf("Co-chair offer: %s for %s", name, act.Title), admins, nil, n)
