@@ -522,22 +522,25 @@ function updateBannerOffset() {
   document.documentElement.style.setProperty('--banner-h', stack ? stack.offsetHeight + 'px' : '0px');
 }
 
-// setSuperEdit is the one place that actually flips the switch - shared by the
-// banner's "Turn off" link and the toolbar's pencil, both of which just need
-// to call it and let the reload (which calls syncSuperEditCheckboxes and
-// renderSuperEditBanner) bring every copy of the control back in sync.
 async function setSuperEdit(enabled) {
-  await fetch('/api/admin/super-edit', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({enabled}),
-  });
+  let res;
+  try {
+    res = await fetch('/api/admin/super-edit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({enabled}),
+    });
+  } catch (err) {
+    alert(`Couldn’t change Super Admin Mode: ${err.message}`);
+    return;
+  }
+  if (!res.ok) {
+    alert(`Couldn’t change Super Admin Mode: ${await res.text()}`);
+    return;
+  }
   await load();
 }
 
-// syncSuperEditCheckboxes draws the toolbar's pencil, for admins alone, true
-// to the model after every reload - including one triggered by a different
-// tab or the admin page, which still has its own toggle too.
 export function syncSuperEditCheckboxes() {
   renderSuperToggle({show: state.model.user.isAdmin, on: state.model.superEdit, onToggle: setSuperEdit});
 }
