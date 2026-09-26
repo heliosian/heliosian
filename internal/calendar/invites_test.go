@@ -30,8 +30,6 @@ const (
 
 var testDirectory fakeDirectory
 
-// The party's tickets beyond the fixture's own, who Celebrate's admins are,
-// the moves asked of Celebrate, and the hooks Register handed back.
 var (
 	testAttendees      []Attendee
 	testCelebrateAdmin string
@@ -179,6 +177,52 @@ func mailTo(kept *keptMail, to string) []mail.Message {
 		}
 	}
 	return out
+}
+
+func TestSendWithoutMailMarksNothingSent(t *testing.T) {
+	mux, cache, _ := invitesApp(t)
+	jordan := as(host, mux)
+	if rec := call(t, jordan, "POST", "/api/calendar/events", `{"title":"Class meetup","start":"2026-10-10 15:00","end":"2026-10-10 17:00","location":"The park","tags":["Jays"],"sharing":"Link","id":"meetup"}`); rec.Code != 200 {
+		t.Fatalf("share: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`","via":"family"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"}]}`); rec.Code != 200 {
+		t.Fatalf("add: %d %s", rec.Code, rec.Body)
+	}
+	unmailed := http.NewServeMux()
+	Register(unmailed, cache, nil, testDirectory, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{})
+	if rec := call(t, as(host, unmailed), "POST", "/api/calendar/invites/send", `{"id":"meetup","to":"new"}`); rec.Code != 400 || !strings.Contains(rec.Body.String(), "mail is not set up") {
+		t.Errorf("send without mail: %d %s", rec.Code, rec.Body)
+	}
+	if inv := cache.Model().Invitations["meetup"]; inv.Sent != "" {
+		t.Errorf("invitation marked sent without mail")
+	}
+	for _, row := range cache.Model().Invites["meetup"] {
+		if row.Sent != "" {
+			t.Errorf("%s marked sent without mail", row.Email)
+		}
+	}
+}
+
+func TestCancelWithoutMailTellsNobody(t *testing.T) {
+	mux, cache, _ := invitesApp(t)
+	jordan := as(host, mux)
+	if rec := call(t, jordan, "POST", "/api/calendar/events", `{"title":"Class meetup","start":"2026-10-10 15:00","end":"2026-10-10 17:00","location":"The park","tags":["Jays"],"sharing":"Link","id":"meetup"}`); rec.Code != 200 {
+		t.Fatalf("share: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`","via":"family"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"}]}`); rec.Code != 200 {
+		t.Fatalf("add: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup","to":"new"}`); rec.Code != 200 {
+		t.Fatalf("send: %d %s", rec.Code, rec.Body)
+	}
+	unmailed := http.NewServeMux()
+	Register(unmailed, cache, nil, testDirectory, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{})
+	if rec := call(t, as(host, unmailed), "POST", "/api/calendar/events/cancel", `{"id":"meetup","notify":true}`); rec.Code != 200 || rec.Body.String() != "{\"told\":0}\n" {
+		t.Errorf("cancel without mail: %d %s", rec.Code, rec.Body)
+	}
+	if e := cache.Model().Event("meetup"); e == nil || !e.Cancelled {
+		t.Errorf("event not cancelled: %+v", e)
+	}
 }
 
 func TestInvitationLifecycle(t *testing.T) {

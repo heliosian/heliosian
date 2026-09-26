@@ -1292,6 +1292,10 @@ func (a app) sendInvites(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nobody to send to", http.StatusBadRequest)
 		return
 	}
+	if a.mail.Sender == nil {
+		http.Error(w, "mail is not set up", http.StatusBadRequest)
+		return
+	}
 	kind := ""
 	switch {
 	case body.Update:
@@ -1393,6 +1397,9 @@ const (
 )
 
 func (a app) send(ctx context.Context, actor, host string, e *Event, emails []string, kind string) int {
+	if a.mail.Sender == nil {
+		return 0
+	}
 	model := a.cache.Model()
 	e = model.invitedEvent(e)
 	inv := model.Invitations[e.ID]
@@ -1434,9 +1441,6 @@ func (a app) send(ctx context.Context, actor, host string, e *Event, emails []st
 		recipients[t] = names
 	}
 	a.markSent(ctx, actor, e, emails)
-	if a.mail.Sender == nil {
-		return 0
-	}
 	hostName := host
 	if p, known := a.directory.Person(host); known && p.Name != "" {
 		hostName = p.Name

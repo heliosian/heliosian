@@ -73,7 +73,7 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 	model := a.cache.Model()
 	targets := []string{}
 	cc := map[string][]string{}
-	if body.Notify {
+	if body.Notify && a.mail.Sender != nil {
 		for _, inv := range model.Invites[e.ID] {
 			if inv.Sent == "" || isGuestKey(inv.Email) || slices.Contains(targets, inv.Email) {
 				continue
@@ -106,9 +106,6 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) sendCancellation(ctx context.Context, to string, cc, replyTo []string, hostName, note string, e *Event) {
-	if a.mail.Sender == nil {
-		return
-	}
 	day, hours := whenLines(e)
 	when := day
 	if hours != "" {
