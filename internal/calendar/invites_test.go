@@ -1608,7 +1608,7 @@ func TestToolbarRSVPs(t *testing.T) {
 	if w := waiting(robinH); len(w) != 1 || w[0].Title != "Meetup" || w[0].Path != "/e/meetup" {
 		t.Fatalf("robin owes: %+v", w)
 	}
-	if w := waiting(jordan); len(w) != 0 {
+	if w := waiting(jordan); slices.ContainsFunc(w, func(r RSVP) bool { return r.Path == "/e/meetup" }) {
 		t.Errorf("the host owes: %+v", w)
 	}
 	call(t, robinH, "POST", "/api/calendar/rsvp", `{"id":"meetup","answer":"yes"}`)

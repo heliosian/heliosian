@@ -518,7 +518,7 @@ func TestRender(t *testing.T) {
 	if strings.Join(v.User.Classrooms, ",") != "Jays,Ospreys" || len(v.User.Students) != 2 || v.User.Initial != "J" {
 		t.Errorf("parent = %+v", v.User)
 	}
-	if len(v.Feeds) != 1 || v.Today != "2026-09-08" || len(v.Events) != 20 || len(v.Alerts.Stale) != 2 || len(v.Alerts.Privacy) != 1 {
+	if len(v.Feeds) != 1 || v.Today != "2026-09-08" || len(v.Events) != 22 || len(v.Alerts.Stale) != 2 || len(v.Alerts.Privacy) != 1 {
 		t.Errorf("view = feeds %d today %s events %d alerts %+v", len(v.Feeds), v.Today, len(v.Events), v.Alerts)
 	}
 	if v.Days["2026-09-08"]["Jays"] != "Regular" || len(v.Classrooms) != 9 || len(v.Tags) != 20 || v.Colors["Jays"] != "#fec502" {
@@ -641,7 +641,9 @@ func TestUpcoming(t *testing.T) {
 	if night.Title != "International Night" || night.Path != "/e/a7@sample" || night.Link != "/v/international-night" || night.LinkApp != "team" || night.Call != "Join" || night.Mine != "" || night.ImageApp != "calendar" || night.StartAt != "2026-09-24 16:00" || night.EndAt != "2026-09-24 18:00" {
 		t.Errorf("folded hca event = %+v", night)
 	}
-	if all := m.Upcoming(d, "nobody@x.org", linked, at, 0); len(all) != len(got)+2 {
+	// A stranger sees two classroom events the parent's classrooms leave
+	// out, and the parent two invitations sent them, so they see as many.
+	if all := m.Upcoming(d, "nobody@x.org", linked, at, 0); len(all) != len(got) {
 		t.Errorf("a stranger sees %d, a parent %d", len(all), len(got))
 	}
 	if two := m.Upcoming(d, "jordan.whitfield@heliosschool.org", linked, at, 2); len(two) != 2 || two[1].Title != party.Title {

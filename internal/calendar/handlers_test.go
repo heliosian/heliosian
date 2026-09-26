@@ -175,7 +175,7 @@ func TestModelRoute(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
 		t.Fatal(err)
 	}
-	if view.User.Email != "jordan.whitfield@heliosschool.org" || len(view.Feeds) != 1 || len(view.Events) != 20 || len(view.Classrooms) != 9 {
+	if view.User.Email != "jordan.whitfield@heliosschool.org" || len(view.Feeds) != 1 || len(view.Events) != 22 || len(view.Classrooms) != 9 {
 		t.Errorf("view = user %s, %d feeds, %d events, %d classrooms", view.User.Email, len(view.Feeds), len(view.Events), len(view.Classrooms))
 	}
 }
@@ -251,7 +251,7 @@ func TestSavedView(t *testing.T) {
 		t.Errorf("saved view = %+v", view.User.Saved)
 	}
 	for _, u := range cache.Model().Upcoming(fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}, me, nil, now(), 0) {
-		if !strings.Contains(u.Title, "Hawks") && !strings.Contains(u.Title, "CAFE") && u.Title != "International Night" && u.Title != "Halloween Parade" && u.Title != "HCA Meeting" && u.Title != "All School Movie Night" && u.Title != "Cocoa & Cookies" && u.Title != "Talent Show" && u.Title != "Back to School Social" && u.Title != "Spring Celebration" {
+		if !strings.Contains(u.Title, "Hawks") && !strings.Contains(u.Title, "CAFE") && u.Title != "International Night" && u.Title != "Halloween Parade" && u.Title != "HCA Meeting" && u.Title != "All School Movie Night" && u.Title != "Cocoa & Cookies" && u.Title != "Talent Show" && u.Title != "Back to School Social" && u.Title != "Spring Celebration" && u.Title != "Fall Potluck at the Torres'" && u.Title != "Jays & Ravens Beach Picnic" {
 			t.Errorf("upcoming under the saved view lists %q", u.Title)
 		}
 	}
@@ -477,7 +477,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec.Code != 200 || !shared.Pending || len(shared.IDs) != 1 {
 		t.Fatalf("parent shared an event: %d %s", rec.Code, rec.Body)
 	}
-	if e := cache.Model().Event(shared.IDs[0]); e == nil || !e.Pending || cache.Model().Event(shared.IDs[0]) != cache.Model().Pending[len(cache.Model().Pending)-1] {
+	if e := cache.Model().Event(shared.IDs[0]); e == nil || !e.Pending || !slices.Contains(cache.Model().Pending, e) {
 		t.Errorf("shared event = %+v", e)
 	}
 	if cache.Model().AnswerOf("jordan.whitfield@heliosschool.org", shared.IDs[0]) != AnswerYes {

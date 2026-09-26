@@ -706,6 +706,13 @@ function emailRow(email, n, open) {
   return row;
 }
 
+// schoolRows is how many emails the Inbox shows at first, the most
+// recent, and how many more each Show more adds; schoolCount is how many
+// it shows now, kept while the widgets redraw and back to the first three
+// when the dropdown picks another kind or Show less is pressed.
+const schoolRows = 3;
+let schoolCount = schoolRows;
+
 // rsvpType is the Inbox dropdown's name for the invitations waiting on a
 // reply.
 const rsvpType = 'RSVP needed';
@@ -766,6 +773,7 @@ function typePick() {
     item.addEventListener('click', () => {
       menu.hidden = true;
       schoolType = type;
+      schoolCount = schoolRows;
       renderWidgets(document.querySelector('#search').value);
     });
     menu.append(item);
@@ -781,7 +789,8 @@ function typePick() {
 // viewer's own classrooms' - newest first down a line, each its day,
 // subject and whom it went to, the first opened on its key points. A
 // dropdown at the heading narrows it to the invitations or to one whom the
-// email went to, and the first few emails show until Show N more.
+// email went to. The three most recent emails show, and each Show more
+// adds the next three; once all show, Show less folds back to three.
 function schoolWidget() {
   if (schoolFor !== state.model) {
     school = null;
@@ -805,26 +814,22 @@ function schoolWidget() {
   head.append(typePick());
   const waiting = !schoolType || schoolType === rsvpType ? rsvps : [];
   const shown = !schoolType ? school : school.filter(e => sentTo(e) === schoolType);
-  const name = 'school';
-  const all = expanded.has(name);
   if (waiting.length) {
     card.append(rsvpPanel(waiting));
   }
+  const count = Math.min(schoolCount, shown.length);
   const list = el('ol', 'wg-emails');
   if (shown.length) {
     const openKey = schoolOpen === undefined || (schoolOpen && !shown.some(e => e.key === schoolOpen)) ? shown[0].key : schoolOpen;
-    (all ? shown : shown.slice(0, widgetRows)).forEach((e, n) => list.append(emailRow(e, n, e.key === openKey)));
+    shown.slice(0, count).forEach((e, n) => list.append(emailRow(e, n, e.key === openKey)));
   }
   card.append(list);
-  if (shown.length > widgetRows) {
-    const more = el('button', 'wg-more', all ? 'Show less' : `Show ${shown.length - widgetRows} more`);
+  if (shown.length > schoolRows) {
+    const left = shown.length - count;
+    const more = el('button', 'wg-more', left ? `Show ${Math.min(left, schoolRows)} more` : 'Show less');
     more.type = 'button';
     more.addEventListener('click', () => {
-      if (all) {
-        expanded.delete(name);
-      } else {
-        expanded.add(name);
-      }
+      schoolCount = left ? count + schoolRows : schoolRows;
       renderWidgets(document.querySelector('#search').value);
     });
     card.append(more);
