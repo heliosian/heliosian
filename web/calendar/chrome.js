@@ -672,6 +672,9 @@ function renderDrawer() {
   drawer.append(nav);
   const user = el('div', 'drawer-user');
   user.append(el('div', 'name', me().name), el('div', 'email', me().email));
+  if (isSystemAdmin()) {
+    user.append(link('/admin', 'drawer-admin', 'Admin Tools'));
+  }
   const form = el('form');
   form.method = 'post';
   form.action = '/auth/logout';
@@ -695,8 +698,6 @@ function closeMenus() {
   }
 }
 
-// The amber badge in the top bar counts the events waiting for an admin's
-// approval, for the admins alone, and opens Admin Tools' Events list.
 function renderUser() {
   const user = me();
   renderAvatars({photoUrl: user.photoUrl && user.photoUrl + '?thumb=1', initial: user.initial});

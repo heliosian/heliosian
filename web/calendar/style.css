@@ -739,6 +739,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .drawer-user .email { font-size: 12px; color: var(--muted); }
 
+.drawer-user .drawer-admin { display: block; padding: 10px 0 0; font-size: 14px; font-weight: 600; color: var(--brand); }
+
 .drawer-user form { margin-top: 10px; }
 
 .user-menu-link { display: block; padding: 8px 0; font-size: 14px; font-weight: 600; color: var(--brand); text-decoration: none; }

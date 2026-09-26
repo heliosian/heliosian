@@ -292,6 +292,9 @@ function renderDrawer() {
   drawer.append(nav);
   const user = el('div', 'drawer-user');
   user.append(el('div', 'name', me().name), el('div', 'email', me().email));
+  if (isSystemAdmin()) {
+    user.append(link('/admin', 'drawer-admin', 'Admin Tools'));
+  }
   const form = el('form');
   form.method = 'post';
   form.action = '/auth/logout';
