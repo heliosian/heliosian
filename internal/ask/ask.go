@@ -59,6 +59,7 @@ type Sources struct {
 	Artifacts          func() *artifacts.Model
 	Embedder           artifacts.Embedder
 	Admins             Admins
+	Now                func() time.Time
 }
 
 type Admins struct {

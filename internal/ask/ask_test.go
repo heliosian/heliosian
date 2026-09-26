@@ -69,6 +69,8 @@ func (sampleDirectory) GradeColors() map[string]string     { return map[string]s
 func (sampleDirectory) People() []calendar.Person          { return nil }
 func (sampleDirectory) Lists(string) []calendar.List       { return nil }
 
+var sampleNow = time.Date(2026, 9, 12, 9, 0, 0, 0, calendar.Location)
+
 func sampleSources(t *testing.T) Sources {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
@@ -154,6 +156,7 @@ func sampleSources(t *testing.T) Sources {
 		Artifacts:          func() *artifacts.Model { return documents },
 		Embedder:           artifacts.Fake{},
 		Admins:             Admins{Team: isAdmin, Celebrate: isAdmin, Loop: isAdmin, Calendar: isAdmin, Home: isAdmin},
+		Now:                func() time.Time { return sampleNow },
 	}
 }
 
@@ -322,7 +325,7 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 	if known := anyStrings(first["known"]); len(known) == 0 || slices.Contains(known, "late-reminder") {
 		t.Fatalf("the first turn knew %v", known)
 	}
-	arrived := &artifacts.Document{Key: "late-reminder", Title: "Picture Day moves to Friday", Date: time.Now().In(calendar.Location).Format(calendar.DateFormat), Kind: artifacts.KindList}
+	arrived := &artifacts.Document{Key: "late-reminder", Title: "Picture Day moves to Friday", Date: sampleNow.Format(calendar.DateFormat), Kind: artifacts.KindList}
 	current = &artifacts.Model{Documents: append([]*artifacts.Document{arrived}, documents.Documents...)}
 	second := chat.keep(t, post(t, handler, chat.body(t, "And now?")))
 	if !slices.Contains(anyStrings(second["known"]), "late-reminder") {

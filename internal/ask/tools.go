@@ -108,7 +108,7 @@ func (a app) viewer(email string) *viewer {
 	v := &viewer{
 		email: email, directory: a.sources.Directory(), calendar: a.sources.Calendar(), team: a.sources.Team(), celebrate: a.sources.Celebrate(), loop: a.sources.Loop(),
 		artifacts: a.sources.Artifacts(), embedder: a.sources.Embedder,
-		sources: a.sources, now: time.Now().In(calendar.Location), access: &groupAccess{}, ctx: context.Background(),
+		sources: a.sources, now: a.sources.Now().In(calendar.Location), access: &groupAccess{}, ctx: context.Background(),
 	}
 	v.me = v.directory.Person(email)
 	household := v.directory.Family(email)
