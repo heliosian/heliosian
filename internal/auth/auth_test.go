@@ -180,7 +180,7 @@ func TestLoginPageFillsEachApp(t *testing.T) {
 		}
 		return rec.Body.String()
 	}
-	who := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?", Splash: "png"}, everyone, noSessions())
+	who := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, noSessions())
 	who.Preview = func(*http.Request) string { return `<meta property="og:title" content="Sam">` }
 	body := page(who)
 	for _, want := range []string{"<title>Helios Who?</title>", `alt="Helios Who?"`, `href="/brand/splash/splash-390x844-3x-portrait.png"`, `<meta property="og:title" content="Sam">`, "/brand/logo-lockup-light.png", "/login.js"} {
@@ -191,12 +191,8 @@ func TestLoginPageFillsEachApp(t *testing.T) {
 	if got := strings.Count(body, "apple-touch-startup-image"); got != 32 {
 		t.Errorf("who's splash links: %d, want 32", got)
 	}
-	birthday := page(New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Staff Birthdays", Splash: "jpg"}, everyone, noSessions()))
-	if !strings.Contains(birthday, `href="/brand/splash/splash-390x844-3x-portrait.jpg"`) {
-		t.Errorf("birthday's splash links are not jpg:\n%s", birthday)
-	}
 	loop := page(New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Loop"}, everyone, noSessions()))
-	if strings.Contains(loop, "apple-touch-startup-image") || !strings.Contains(loop, "<title>Helios Loop</title>") {
+	if strings.Count(loop, "apple-touch-startup-image") != 32 || !strings.Contains(loop, "<title>Helios Loop</title>") {
 		t.Errorf("loop's login page:\n%s", loop)
 	}
 }

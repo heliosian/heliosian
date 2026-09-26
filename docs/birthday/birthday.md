@@ -71,7 +71,7 @@ On phones the shared toolbar is pinned on top with a hamburger for the drawer, a
 
 ## Brand
 
-The cake-on-a-sun mark and the Staff Birthdays lockups live under `web/public/birthday/brand/`, cut from the app's exports (`docs/brand.md`): `appicon.png` for the home-screen icons; the bare mark (`favicon.png` there) for the favicons, `logo-mark.png` (the drawer's head), the app switch row (`web/public/common/brand/apps/birthday.png`) and the maskables at 62% on the icon's dark teal `#0e4d54`; the teal vertical lockup for the rail (`logo-lockup-vertical.png`, 170px wide); the white one for the login page (`logo-lockup-light.png`); the white horizontal for the admin header (`logo-lockup-light-horizontal.png`); the teal horizontal (`logo-lockup.png`) unused so far. The splash battery under `brand/splash/` is the white vertical lockup centered on the teal at every size the shell lists, drawn with ImageMagick.
+The cake-on-a-sun mark and the Staff Birthdays lockups live under `web/public/birthday/brand/`, cut from the app's exports (`docs/brand.md`): `appicon.png` for the home-screen icons; the bare mark (`favicon.png` there) for the favicons, `logo-mark.png` (the drawer's head), the app switch row (`web/public/common/brand/apps/birthday.png`) and the maskables at 62% on the icon's dark teal `#0e4d54`; the teal vertical lockup for the rail (`logo-lockup-vertical.png`, 170px wide); the white one for the login page (`logo-lockup-light.png`); the white horizontal for the admin header (`logo-lockup-light-horizontal.png`); the teal horizontal (`logo-lockup.png`) unused so far. The iOS splash screens are under `brand/splash/`.
 
 ## Editing
 
@@ -79,4 +79,4 @@ As in the other apps: in place, through modals and one-click actions, with every
 
 ## Sign-in and install
 
-Everything sits behind Google sign-in restricted to the school domain, sharing a session with the other apps on the same tier. It installs to a home screen like the directory (`docs/who/pwa.md`), with its icons and splash art under `web/public/birthday/`; the splash battery is JPEG there rather than PNG because the art is a photographic gradient.
+Everything sits behind Google sign-in restricted to the school domain, sharing a session with the other apps on the same tier. It installs to a home screen like the directory (`docs/who/pwa.md`), with its icons and splash art under `web/public/birthday/`.

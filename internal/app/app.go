@@ -1194,16 +1194,16 @@ func Production(domain, blobCache string) (*http.Server, *store.Queue) {
 		a.Spoof = core.Spoof
 		return a
 	}
-	whoAuth := newAuth(auth.Login{Title: "Helios Who?", Splash: "png"})
+	whoAuth := newAuth(auth.Login{Title: "Helios Who?"})
 	whoAuth.Preview = who.PreviewHead()
 	whoAuth.Register(core.Mux)
-	homeAuth := newAuth(auth.Login{Title: "Heliosian: Helios Community Apps", Splash: "png"})
+	homeAuth := newAuth(auth.Login{Title: "Heliosian: Helios Community Apps"})
 	homeAuth.Preview = home.PreviewHead(core.HomeCache)
 	homeAuth.Register(core.HomeMux)
-	teamAuth := newAuth(auth.Login{Title: "HCA Volunteer Portal", Splash: "png"})
+	teamAuth := newAuth(auth.Login{Title: "HCA Volunteer Portal"})
 	teamAuth.Preview = team.PreviewHead(core.TeamCache)
 	teamAuth.Register(core.TeamMux)
-	birthdayAuth := newAuth(auth.Login{Title: "Helios Staff Birthdays", Splash: "jpg"})
+	birthdayAuth := newAuth(auth.Login{Title: "Helios Staff Birthdays"})
 	birthdayAuth.Preview = birthday.PreviewHead()
 	birthdayAuth.Register(core.BirthdayMux)
 	celebrateAuth := newAuth(auth.Login{Title: "Helios Celebrate: Fun(d)raiser Parties"})

@@ -33,8 +33,7 @@ type Sessions interface {
 }
 
 type Login struct {
-	Title  string
-	Splash string
+	Title string
 }
 
 const loginTemplate = "web/templates/login.html"

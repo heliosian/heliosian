@@ -13,6 +13,8 @@ Each file under `web/public/<app>/brand/` is cut from its app's exports at the w
 - `symbol-white.png` and `symbol-watermark.png` - from `symbol_white.png`.
 - `logo-lockup*.png` - the horizontal export for a file wider than twice its height, else the vertical one; the white export for a name with `light` in it, else the teal.
 
+- `splash/splash-<size>.png` - the iOS launch screens the login page lists (`web/templates/login.html`), one for every device size it names: the white vertical export, trimmed, 55% of the screen's shorter side wide, centred on the brand teal. Every app has the same set of sizes.
+
 A lockup is always one of the exports, trimmed and scaled, and never assembled from the mark and the words: a lockup put together here does not match the designer's. When two apps' marks come out at different sizes, the fix is in the source files, not in the cut. The apps share one look - the same rail, the same toolbar, the same page ground - and there is no per-app theme to set.
 
 New art comes from the designer. Nothing here draws or extends a picture beyond cropping, resizing and compositing what an export already holds.
