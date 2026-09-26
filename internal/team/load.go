@@ -337,7 +337,7 @@ func (m *Model) moved(at string) string {
 		if strings.EqualFold(r.Old, at) {
 			moved, matched = r.New, at
 		} else if strings.HasPrefix(strings.ToLower(at), strings.ToLower(r.Old)+"/") && len(r.Old) > len(matched) {
-			moved, matched = r.New+at[len(r.Old):], r.Old
+			moved, matched = strings.TrimSuffix(r.New, "/")+at[len(r.Old):], r.Old
 		}
 	}
 	return moved
@@ -366,10 +366,14 @@ func (m *Model) Destination(path string) string {
 		seen[strings.ToLower(next)] = true
 		at = next
 	}
-	if at == start {
+	if at == start || !onSite(at) {
 		return ""
 	}
 	return at
+}
+
+func onSite(path string) bool {
+	return strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "//") && !strings.HasPrefix(path, "/\\")
 }
 
 func (m *Model) redirect(old string) *Redirect {

@@ -1189,10 +1189,14 @@ func TestRedirects(t *testing.T) {
 	if n := cache.Count(redirectsTab, store.Row{"Type": "pretty", "Old": "/v/intl-nite"}); n != 1 {
 		t.Fatalf("the sample row's kind was not kept: %+v", cache.Model().Redirects)
 	}
+	if rec := call(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"old": "/v/fair", "new": "/"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("to the front page: %d %s", rec.Code, rec.Body)
+	}
 	handler := Redirected(cache, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
 	for path, want := range map[string]string{
 		"/dl/signup/s/768d91/r/nsSPomxFcPrSfoRCAgzI?x=1": elsewhere + "/r/nsSPomxFcPrSfoRCAgzI?x=1",
 		"/v/intl-nite": "/v/international-night", "/v/international-night": "", "/calendar": "", "/nowhere": "",
+		"/v/fair": "/", "/v/fair/calendar": "/calendar", "/v/fair//elsewhere.example": "", "/v/fair/\\elsewhere.example": "",
 	} {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))

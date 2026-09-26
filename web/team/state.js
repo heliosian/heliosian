@@ -252,7 +252,7 @@ function moved(at) {
       to = r.new;
       matched = at;
     } else if (lower.startsWith(old + '/') && r.old.length > matched.length) {
-      to = r.new + at.slice(r.old.length);
+      to = r.new.replace(/\/$/, '') + at.slice(r.old.length);
       matched = r.old;
     }
   }
@@ -288,7 +288,7 @@ export function redirectTarget(path) {
     seen.add(next.toLowerCase());
     at = next;
   }
-  return at === start ? '' : at;
+  return at === start || !/^\/(?![/\\])/.test(at) ? '' : at;
 }
 
 export function parseWhen(s) {
