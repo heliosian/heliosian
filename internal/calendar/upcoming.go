@@ -48,8 +48,10 @@ type Card struct {
 	Call         string `json:"call,omitempty"`
 	Mine         string `json:"mine,omitempty"`
 	Availability string `json:"availability,omitempty"`
-	// Answer is the viewer's word on it: yes, no, or nothing yet.
-	Answer string `json:"answer,omitempty"`
+	// Answer is the viewer's word on it: yes, no, or nothing yet; Invited,
+	// that it was sent to them, so a card with no answer asks for one.
+	Answer  string `json:"answer,omitempty"`
+	Invited bool   `json:"invited,omitempty"`
 	// People is everyone in the household with a part in a linked event.
 	People []Standing `json:"people,omitempty"`
 }
@@ -278,12 +280,31 @@ func (m *Model) DefaultCalendar(email string) *Feed {
 	return m.Feed(mine[0].Token)
 }
 
+// PartiesFor is every Helios Celebrate party still ahead for one viewer,
+// soonest first, each as the card the front page takes - its household's
+// standing and the way in as the calendar words them - for Heliosian's
+// Celebrate widget. It is every party, not only those the viewer's calendar
+// filters admit.
+func (m *Model) PartiesFor(directory Directory, email string, linked []Linked, now time.Time) []Card {
+	today := now.Format(DateFormat)
+	out := []Card{}
+	for _, e := range m.eventsFor(directory, email, linked) {
+		if e.Source != SourceCelebrate || e.end.Format(DateFormat) < today {
+			continue
+		}
+		u := m.card(e)
+		u.Answer = m.AnswerOf(email, e.ID)
+		out = append(out, u)
+	}
+	return out
+}
+
 // card is one event as the front page takes it.
 func (m *Model) card(e *Event) Card {
 	u := Card{
 		ID: e.ID, Title: e.Title, Path: EventPath(e), Start: e.start.Format(DateFormat), When: when(e),
 		StartAt: e.Start, EndAt: e.End, Dates: e.Dates, Location: e.Location, Description: blurb(e),
-		Image: "/" + m.pictureOf(e), ImageApp: appCalendar,
+		Image: "/" + m.pictureOf(e), ImageApp: appCalendar, Invited: e.Invited,
 	}
 	if e.Link != "" {
 		u.Link, u.LinkApp = e.Link, linkedApp(e)

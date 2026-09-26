@@ -1,6 +1,7 @@
 import {state, applyModel, setSuperAdmin, superOn} from './state.js';
 import {renderCategories, renderNav} from './cards.js';
 import {renderMonth} from './month.js';
+import {renderWidgets} from './widgets.js';
 import {initEditing, refreshCategoryManager} from './edit.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
 
@@ -44,11 +45,15 @@ export async function load() {
   // the whole page - a field the calendar had stopped sending left the month
   // throwing, and the links and every category never ran.
   renderMonth();
+  renderWidgets(document.querySelector('#search').value);
 }
 
 function initSearch() {
   const search = document.querySelector('#search');
-  search.addEventListener('input', () => renderCategories(search.value));
+  search.addEventListener('input', () => {
+    renderCategories(search.value);
+    renderWidgets(search.value);
+  });
   search.addEventListener('keydown', e => {
     if (e.key === 'Escape' && search.value) {
       // Swallow the key so the modal/menu handlers do not also fire on what
@@ -56,6 +61,7 @@ function initSearch() {
       e.stopPropagation();
       search.value = '';
       renderCategories('');
+      renderWidgets('');
     }
   });
   onSlash(() => search.focus());

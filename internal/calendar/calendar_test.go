@@ -744,3 +744,27 @@ func TestSharingWords(t *testing.T) {
 		t.Errorf("Private read: %v", err)
 	}
 }
+
+// TestPartiesFor checks Heliosian's Celebrate widget: every party still
+// ahead, whatever the viewer's filters, with its standing and way in, and
+// nothing else the calendar holds.
+func TestPartiesFor(t *testing.T) {
+	m := load(t)
+	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-10 08:00", Location)
+	linked := []Linked{
+		{Source: SourceCelebrate, ID: "P001", Title: "Fondue & Fort Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing, Who: []string{"Ella"}},
+		{Source: SourceCelebrate, ID: "P002", Title: "Bagels", Start: "2026-09-05 10:00", End: "2026-09-05 12:00", Path: "/p/bagels", Availability: "past"},
+		{Source: SourceCelebrate, ID: "P003", Title: "Wurst", Start: "2026-10-03 15:30", End: "2026-10-03 18:30", Path: "/p/wurst", Availability: "available"},
+		{Source: SourceTeam, ID: "E001", Title: "HCA International Night 2026", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open"},
+	}
+	got := m.PartiesFor(fakeDirectory{}, "nobody@heliosschool.org", linked, at)
+	if len(got) != 2 || got[0].Title != "Fondue & Fort Night" || got[1].Title != "Wurst" {
+		t.Fatalf("parties: %+v", got)
+	}
+	if f := got[0]; f.Mine != MineGoing || f.Call != "Ella has a ticket" || f.Link != "/p/fondue" || f.LinkApp != "celebrate" {
+		t.Errorf("fondue: %+v", f)
+	}
+	if w := got[1]; w.Mine != "" || w.Call != "Get tickets" || w.StartAt != "2026-10-03 15:30" {
+		t.Errorf("wurst: %+v", w)
+	}
+}

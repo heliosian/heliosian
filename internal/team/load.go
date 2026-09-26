@@ -61,9 +61,12 @@ var legacyThemeKeys = []string{"Sidebar Color", "Sidebar Color 2", "Sidebar Text
 
 const CompleteColumn = "Volunteers Complete"
 
+// PriorityColumn is an activity's admin-only Priority flag (Activity.Priority).
+const PriorityColumn = "Priority"
+
 var (
 	CategoryColumns  = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page", store.OrderColumn}
-	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Flyer Image", "Highlight Headline", "Highlight Body", "Highlight Icon", "Added By", "Added", store.OrderColumn, CompleteColumn}
+	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Flyer Image", "Highlight Headline", "Highlight Body", "Highlight Icon", "Added By", "Added", store.OrderColumn, CompleteColumn, PriorityColumn}
 	VolunteerColumns = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
 	LinkColumns      = []string{"Event ID", "Title", "URL", "Image", "Description"}
 	SettingColumns   = []string{"Key", "Value"}
@@ -137,37 +140,40 @@ type Volunteer struct {
 }
 
 type Activity struct {
-	ID                 string      `json:"id"`
-	Year               string      `json:"year"`
-	Title              string      `json:"title"`
-	Parent             string      `json:"parent,omitempty"`
-	Category           string      `json:"category,omitempty"`
-	Status             string      `json:"status"`
-	Description        string      `json:"description,omitempty"`
-	Image              string      `json:"image,omitempty"`
-	ImageURL           string      `json:"imageUrl,omitempty"`
-	Flyer              string      `json:"flyer,omitempty"`
-	FlyerURL           string      `json:"flyerUrl,omitempty"`
-	Highlight          *Highlight  `json:"highlight,omitempty"`
-	Order              string      `json:"-"`
-	Timing             string      `json:"timing,omitempty"`
-	Start              string      `json:"start,omitempty"`
-	End                string      `json:"end,omitempty"`
-	Location           string      `json:"location,omitempty"`
-	Spots              int         `json:"spots,omitempty"`
-	CoLeaderNeeded     bool        `json:"coLeaderNeeded"`
-	VolunteersComplete bool        `json:"volunteersComplete"`
-	VolunteersHidden   bool        `json:"volunteersHidden"`
-	DirectSignUp       bool        `json:"directSignUp"`
-	PrettyID           string      `json:"prettyId,omitempty"`
-	AllowAdding        string      `json:"allowAddingOwn,omitempty"`
-	Adding             string      `json:"allowAdding"`
-	AddedBy            string      `json:"addedBy,omitempty"`
-	Added              string      `json:"added,omitempty"`
-	Children           []*Activity `json:"children"`
-	Links              []Link      `json:"links"`
-	Volunteers         []Volunteer `json:"volunteers"`
-	Categories         []Category  `json:"categories,omitempty"`
+	ID                 string     `json:"id"`
+	Year               string     `json:"year"`
+	Title              string     `json:"title"`
+	Parent             string     `json:"parent,omitempty"`
+	Category           string     `json:"category,omitempty"`
+	Status             string     `json:"status"`
+	Description        string     `json:"description,omitempty"`
+	Image              string     `json:"image,omitempty"`
+	ImageURL           string     `json:"imageUrl,omitempty"`
+	Flyer              string     `json:"flyer,omitempty"`
+	FlyerURL           string     `json:"flyerUrl,omitempty"`
+	Highlight          *Highlight `json:"highlight,omitempty"`
+	Order              string     `json:"-"`
+	Timing             string     `json:"timing,omitempty"`
+	Start              string     `json:"start,omitempty"`
+	End                string     `json:"end,omitempty"`
+	Location           string     `json:"location,omitempty"`
+	Spots              int        `json:"spots,omitempty"`
+	CoLeaderNeeded     bool       `json:"coLeaderNeeded"`
+	VolunteersComplete bool       `json:"volunteersComplete"`
+	VolunteersHidden   bool       `json:"volunteersHidden"`
+	DirectSignUp       bool       `json:"directSignUp"`
+	// Priority is an admin's mark on something the community most needs
+	// hands for, which Heliosian's Team widget lists under its own chip.
+	Priority    bool        `json:"priority"`
+	PrettyID    string      `json:"prettyId,omitempty"`
+	AllowAdding string      `json:"allowAddingOwn,omitempty"`
+	Adding      string      `json:"allowAdding"`
+	AddedBy     string      `json:"addedBy,omitempty"`
+	Added       string      `json:"added,omitempty"`
+	Children    []*Activity `json:"children"`
+	Links       []Link      `json:"links"`
+	Volunteers  []Volunteer `json:"volunteers"`
+	Categories  []Category  `json:"categories,omitempty"`
 }
 
 type Category struct {
@@ -967,6 +973,10 @@ func parseActivity(row map[string]string, images ImageChecker) (*Activity, error
 	if err != nil {
 		return fail(fmt.Errorf("direct sign-up %w", err))
 	}
+	priority, err := yesNo(row[PriorityColumn], false)
+	if err != nil {
+		return fail(fmt.Errorf("priority %w", err))
+	}
 	pretty := NormalizePretty(row["Pretty ID"])
 	if err := CheckPretty(pretty); err != nil {
 		return fail(err)
@@ -989,7 +999,7 @@ func parseActivity(row map[string]string, images ImageChecker) (*Activity, error
 		Description: row["Description"], Image: row["Image"], ImageURL: image, Flyer: row["Flyer Image"], FlyerURL: flyer, Highlight: highlightOf(row),
 		Order:  order,
 		Timing: row["Timing"], Start: row["Start"], End: row["End"], Location: row["Location"], Spots: spots,
-		CoLeaderNeeded: coLeader, VolunteersComplete: complete, VolunteersHidden: hidden, DirectSignUp: direct, PrettyID: pretty, AllowAdding: allowAdding,
+		CoLeaderNeeded: coLeader, VolunteersComplete: complete, VolunteersHidden: hidden, DirectSignUp: direct, Priority: priority, PrettyID: pretty, AllowAdding: allowAdding,
 		AddedBy: strings.ToLower(row["Added By"]), Added: row["Added"],
 		Children: []*Activity{}, Links: []Link{}, Volunteers: []Volunteer{},
 	}, nil

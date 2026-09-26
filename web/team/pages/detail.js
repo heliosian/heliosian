@@ -836,6 +836,22 @@ function volunteersBox(node, editing, save) {
   return box;
 }
 
+// priorityCard is an admin's way - with the pencil on - to mark a thing
+// the community most needs hands for, or to take the mark off: a button at
+// the foot of the sidebar. A marked thing leads the Opportunities page
+// under the High Priority chip and fills the Priority chip of the Team
+// widget on Heliosian's front page.
+function priorityCard(node, save) {
+  if (!isAdmin()) {
+    return null;
+  }
+  const card = sideCard('priority-card');
+  const on = Boolean(node.priority);
+  card.append(button(on ? 'Remove High Priority' : 'Mark High Priority', 'star', 'button ' + (on ? 'button-secondary' : '') + ' priority-button', () => save({priority: !on})));
+  card.append(el('div', 'side-line', on ? 'Listed under High Priority here and on Heliosian\u2019s front page.' : 'Lists it under High Priority here and on Heliosian\u2019s front page.'));
+  return card;
+}
+
 // resourcesCard is the activity's own links, plus the editor's way to add one.
 function resourcesCard(node, editing) {
   // The card earns its place with links, or while editing so one can be added.
@@ -1459,7 +1475,7 @@ export function activityPage(node) {
   }
 
   const side = el('aside', 'detail-side');
-  for (const card of [inviteCard(node), phone.matches ? null : facts, flyerCard(node, editing, save), helpCard(node)]) {
+  for (const card of [inviteCard(node), phone.matches ? null : facts, flyerCard(node, editing, save), helpCard(node), priorityCard(node, save)]) {
     if (card) {
       side.append(card);
     }

@@ -429,13 +429,17 @@ export function refreshCategoryManager() {
 }
 
 async function moveCategory(title, by) {
-  const titles = categoryTitles();
+  // The events section, off the page, keeps its place at the end, so a
+  // move is always past a section the admin can see.
+  const hidden = state.model.categories.filter(c => c.style === 'events').map(c => c.title);
+  const titles = categoryTitles().filter(t => !hidden.includes(t));
   const at = titles.indexOf(title);
   const to = at + by;
   if (at < 0 || to < 0 || to >= titles.length) {
     return;
   }
   titles.splice(to, 0, ...titles.splice(at, 1));
+  titles.push(...hidden);
   setStatus('#categories-status', 'Saving…');
   try {
     await send('POST', '/api/apps/categories/order', {titles});
@@ -512,7 +516,8 @@ function categoryRow(category, at, total) {
 
 function renderCategoryList() {
   const list = document.querySelector('#category-list');
-  const categories = state.model.categories;
+  // The events section is off the page, so off this list too.
+  const categories = state.model.categories.filter(c => c.style !== 'events');
   list.replaceChildren();
   if (!categories.length) {
     list.append(el('div', 'category-empty', 'No categories yet.'));

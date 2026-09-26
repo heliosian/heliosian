@@ -1,4 +1,4 @@
-import {state, isAdmin, years, allYears, sortByStart, matches, selectedYear, listedIn, canAdd, addLabel, categoryPath, categoryFromAddress} from '../state.js';
+import {state, isAdmin, years, allYears, sortByStart, matches, selectedYear, listedIn, canAdd, addLabel, categoryPath, categoryFromAddress, PRIORITY, isPriority} from '../state.js';
 import {el, toggle, selectPill, thumb, button} from '../dom.js';
 import {setTitle, setSearch, renderChrome} from '../chrome.js';
 import {activityCard, categoryClass} from '../cards.js';
@@ -8,7 +8,7 @@ let query = '';
 
 function shownIn(year) {
   return sortByStart(listedIn(year)).filter(a =>
-    matches(a, query) && (!state.category || a.category === state.category));
+    matches(a, query) && (!state.category || (state.category === PRIORITY ? isPriority(a) : a.category === state.category)));
 }
 
 // Cards are grouped under their category, in the order the Categories tab lists
@@ -21,7 +21,7 @@ function yearGrid(year) {
   // for - from the rail, or its chip.
   const items = shownIn(year).filter(a => {
     const c = state.model.categories.find(c => c.id === a.category);
-    return !c || c.showOnMain || state.category === c.id;
+    return !c || c.showOnMain || state.category === c.id || state.category === PRIORITY;
   });
   if (!items.length) {
     const panel = el('div', 'panel');
@@ -69,7 +69,8 @@ function yearContent(year, thisYear) {
   const list = el('div');
   const paint = () => list.replaceChildren(yearGrid(year));
 
-  // The chip row filters the grid in place: "All" plus one chip per category
+  // The chip row filters the grid in place: High Priority first, when an
+  // admin has marked anything this year, then "All" plus one chip per category
   // that has something in it this year, each in that category's own tint. The
   // chips follow the year and the switches but not the search or the chosen
   // chip, so filtering never makes the other chips disappear.
@@ -77,7 +78,7 @@ function yearContent(year, thisYear) {
     chips.replaceChildren();
     const present = new Set(listedIn(year).map(a => a.category));
     const add = (id, label) => {
-      const chip = el('button', 'chip ' + (id ? categoryClass(id) : 'chip-all') + (state.category === id ? ' is-on' : ''));
+      const chip = el('button', 'chip ' + (id === PRIORITY ? 'chip-priority' : id ? categoryClass(id) : 'chip-all') + (state.category === id ? ' is-on' : ''));
       chip.type = 'button';
       chip.textContent = label;
       // A chip is the rail's pick too, kept in the address the same way,
@@ -91,6 +92,10 @@ function yearContent(year, thisYear) {
       });
       chips.append(chip);
     };
+    // High Priority leads, while anything this year is marked one.
+    if (listedIn(year).some(isPriority)) {
+      add(PRIORITY, 'High Priority');
+    }
     add('', 'All');
     for (const c of state.model.categories) {
       if (present.has(c.id) && (c.showOnMain || state.category === c.id)) {

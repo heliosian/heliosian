@@ -494,6 +494,14 @@ main {
 .chip.cat-4 { background: #244d53; }
 .chip.cat-5 { background: #d9a900; }
 .chip.cat-none { background: #5f6f6e; }
+/* The admin's Mark High Priority, at the foot of an activity's sidebar. */
+.priority-card { display: flex; flex-direction: column; gap: 8px; }
+.priority-card .priority-button { justify-content: center; width: 100%; }
+.priority-card .priority-button:not(.button-secondary) { background: #c2253f; border-color: #c2253f; color: #fff; }
+.priority-card .priority-button:not(.button-secondary):hover { background: #a51d34; border-color: #a51d34; }
+/* High Priority leads the row, a deep red behind a star. */
+.chip.chip-priority { gap: 5px; background: #c2253f; }
+.chip.chip-priority::before { content: '\2605'; font-size: 12px; }
 
 .card-slot.cat-1, .card-slot.cat-2, .card-slot.cat-3, .card-slot.cat-4, .card-slot.cat-5, .card-slot.cat-none { background: none; }
 

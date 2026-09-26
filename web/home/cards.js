@@ -217,8 +217,10 @@ function listed(link) {
 
 // A section kept to other people reaches an admin alone, and shows only in
 // Super Admin Mode, as a link kept from them does.
+// The events section is gone from the page - the widgets across its top
+// carry what is coming up - whatever the Categories tab still holds for it.
 function sectionListed(category) {
-  return category.forMe !== false || superOn();
+  return category.style !== 'events' && (category.forMe !== false || superOn());
 }
 
 // audienceWords says who some rules keep a thing to, short: each rule's
@@ -257,13 +259,10 @@ export function renderCategories(query = '') {
     if (!sectionListed(category)) {
       continue;
     }
-    // The events section is the portal's; its cards come from there rather
-    // than from links, and its heading gets a way across to the portal. The
-    // apps section is the community apps themselves, from the model.
-    const events = category.style === 'events';
+    // The apps section is the community apps themselves, from the model.
     const apps = category.style === 'apps';
-    const links = events || apps ? [] : category.links.filter(link => listed(link) && matches(link, needle));
-    const count = events ? eventsMatching(needle) : apps ? appsMatching(needle).length : links.length;
+    const links = apps ? [] : category.links.filter(link => listed(link) && matches(link, needle));
+    const count = apps ? appsMatching(needle).length : links.length;
     // A section with nothing to show stays off the page - except in Super
     // Admin Mode, where it appears empty so it can be filled or edited.
     if (!count && (needle || !superOn())) {
@@ -272,7 +271,7 @@ export function renderCategories(query = '') {
     shown += count;
     // A category of compact tiles is a quieter section: a smaller heading
     // without the swoosh.
-    const section = el('section', 'category' + (events ? ' upcoming' : '') + (category.style === 'tiles' ? ' is-compact' : ''));
+    const section = el('section', 'category' + (category.style === 'tiles' ? ' is-compact' : ''));
     section.id = anchorFor(category.title);
     // The heading is the title alone; the category's mark is in the rail,
     // not here.
@@ -280,18 +279,6 @@ export function renderCategories(query = '') {
     const title = el('h2', 'category-title', category.title);
     title.append(...badges(category));
     head.append(title);
-    // Upcoming Events names the saved calendar it is read under beside
-    // the heading, as a quiet dropdown of every saved calendar; one that
-    // is not the default gets a Make default beside it.
-    if (events && state.model.upcomingCalendar) {
-      head.append(calendarPicker(needle));
-    }
-    if (events) {
-      const all = el('a', 'category-more');
-      all.href = whenOrigin('calendar');
-      all.append(el('span', '', 'See all in Helios When'), svg('chevron'));
-      head.append(all);
-    }
     if (superOn()) {
       const edit = el('button', 'category-edit');
       edit.type = 'button';
@@ -304,7 +291,7 @@ export function renderCategories(query = '') {
     }
     section.append(head);
     // An empty category still gets its grid for the admin's add card.
-    section.append(events ? eventsPanel(category, needle) : apps ? appsPanel(category, needle) : panel(category, links, needle));
+    section.append(apps ? appsPanel(category, needle) : panel(category, links, needle));
     root.append(section);
   }
   const empty = document.querySelector('#empty-search');
@@ -314,120 +301,18 @@ export function renderCategories(query = '') {
   }
 }
 
-// Upcoming Events: Helios When's next few events for this person - the
-// school's, HCA-Team's and Celebrate's as the calendar lists them - each a
-// card that opens its page in When, with Add to Calendar under it and, for an
-// event another app runs, the way in there: Join, Get tickets, or where the
-// household already stands. The search box filters them by title like the
-// links; with none ahead, or none matching, the section stays off the page.
 // whenOrigin is an app's origin on this tier, the calendar's under the name
 // it answers to rather than the one that redirects there.
 export function whenOrigin(app) {
   return appOrigin(app === 'calendar' ? 'when' : app);
 }
 
-// tint is where an event comes from, as the rail's month colours it too.
-function tint(event) {
-  return event.linkApp === 'celebrate' ? 'is-celebrate' : event.linkApp === 'team' ? 'is-team' : 'is-school';
-}
-
-// sourceName is the app an event comes from, as the switch names it, or
-// the school for the calendar's own.
-function sourceName(event) {
-  if (!event.linkApp) {
-    return 'School';
-  }
-  const app = (state.model.apps || []).find(a => a.key === event.linkApp);
-  return app ? app.name : {celebrate: 'Helios Celebrate', team: 'HCA-Team'}[event.linkApp] || event.linkApp;
-}
-
-// eventCard is one of the events coming up, from Helios When - the
-// school's, HCA-Team's and Celebrate's as the calendar lists them - opening
-// its page on When, with Yes and No under it, a cross to hide it, and for
-// an event another app runs, the way in as When's pill words it.
-function eventCard(event) {
-  const card = el('div', 'event-card');
-  const open = el('a', 'event-open');
-  open.href = whenOrigin('calendar') + event.path;
-  const art = el('div', 'event-art');
-  // The picture is the one the event's page wears, fetched from whichever
-  // app serves it - the calendar, or the app that runs a linked event.
-  if (event.image) {
-    const img = el('img');
-    img.src = whenOrigin(event.imageApp) + event.image;
-    img.alt = '';
-    img.loading = 'lazy';
-    art.append(img);
-  } else {
-    art.append(svg('calendar'));
-  }
-  // The stamp reads the day off the YYYY-MM-DD start without the browser's
-  // time zone shifting it.
-  const [, month, day] = event.start.split('-');
-  const stamp = el('div', 'event-stamp');
-  stamp.append(el('span', 'event-stamp-month', new Date(2000, Number(month) - 1, 1).toLocaleDateString('en-US', {month: 'short'})));
-  stamp.append(el('span', 'event-stamp-day', String(Number(day))));
-  art.append(stamp);
-  // A chip at the picture's foot says where the event comes from: the
-  // app that runs it, by the name the app switch gives it, else the
-  // school's calendar.
-  art.append(el('span', 'event-source ' + tint(event), sourceName(event)));
-  const body = el('div', 'event-body');
-  body.append(el('div', 'event-title', event.title));
-  // The stamp on the picture is the day; under the title, the hours alone.
-  const [, time] = (event.when || '').split(' · ');
-  if (time) {
-    const when = el('div', 'event-when');
-    const lines = el('div', 'event-when-lines');
-    lines.append(el('span', '', time));
-    when.append(svg('clock'), lines);
-    body.append(when);
-  }
-  open.append(art, body);
-  // The cross at the corner hides the event from this person's lists -
-  // still on the calendar's month, in gray, and in its search.
-  const hide = el('button', 'event-hide');
-  hide.type = 'button';
-  hide.title = 'Hide this event';
-  hide.setAttribute('aria-label', 'Hide this event');
-  hide.append(svg('close'));
-  hide.addEventListener('click', async e => {
-    e.preventDefault();
-    if (await answer(event, 'hidden')) {
-      card.remove();
-    }
-  });
-  art.append(hide);
-  // One row: Yes and No (a party's Add to My Calendar or Add Ticket), and beside
-  // them, when the event has a way in and nobody is in yet, a button
-  // saying what When's pill says - teal while it is open, plain once it
-  // is full.
-  const actions = el('div', 'event-actions');
-  actions.append(rsvpButtons(event));
-  // The household's part in a linked event is a line above the buttons -
-  // each ticket holder, each volunteer with their role - rather than a
-  // button; the way in stays a button only while nobody is in yet.
-  if (event.people && event.people.length) {
-    card.append(open, peopleList(event), actions);
-    return card;
-  }
-  if (event.call && event.linkApp !== 'celebrate') {
-    const live = event.availability === 'open' || event.availability === 'available';
-    const go = el('a', 'button button-small' + (live ? '' : ' button-secondary'));
-    go.href = whenOrigin(event.linkApp) + event.link;
-    go.append(svg('volunteer'), el('span', '', event.call));
-    actions.append(go);
-  }
-  card.append(open, actions);
-  return card;
-}
-
 // rsvpButtons is the event's answer as buttons: Yes and No, the one given
 // filled - a yes brings a calendar invite by email; a maybe given on When
 // is said as such. A party has no yes or no: with a ticket in the
 // household, Add to My Calendar puts it on this person's calendar;
-// without one, Add Ticket goes to the party page. The rail's day card and
-// the Upcoming cards share it.
+// without one, Add Ticket goes to the party page. The rail's day card
+// uses it.
 export function rsvpButtons(event) {
   const rsvp = el('div', 'event-rsvp');
   if (event.linkApp === 'celebrate') {
@@ -555,104 +440,6 @@ export function dropdown(toggle, menu) {
   menu.addEventListener('click', e => e.stopPropagation());
 }
 
-// calendarPicker is the saved calendar Upcoming Events is read under, as
-// a small dropdown beside the heading: picking another re-reads the
-// events under it, and Make default beside it makes that one the default
-// on Helios When - the one this page and its rail open to.
-function calendarPicker(needle) {
-  const cal = state.model.upcomingCalendar;
-  const list = cal.calendars || [];
-  const current = list.find(c => c.token === cal.calendar) || list[0];
-  const chosen = list.find(c => c.token === cal.default) || list[0];
-  const wrap = el('div', 'category-calendar');
-  const toggle = el('button', 'category-calendar-toggle');
-  toggle.type = 'button';
-  toggle.title = 'The saved calendar these events come from';
-  toggle.append(calendarMark(current), el('span', '', current.name), svg('chevron'));
-  if (current.locked) {
-    toggle.title = 'The calendar\u2019s own view, for everyone';
-  }
-  const menu = calendarMenu(list, current, chosen, async c => {
-    const res = await fetch('/api/apps/upcoming?calendar=' + encodeURIComponent(c.token));
-    if (!res.ok) {
-      toast(await res.text());
-      return;
-    }
-    const ahead = await res.json();
-    state.model.upcoming = ahead.events;
-    state.model.upcomingCalendar = {calendar: ahead.calendar, default: ahead.default, calendars: ahead.calendars};
-    renderCategories(needle);
-  });
-  dropdown(toggle, menu);
-  wrap.append(toggle, menu);
-  if (current.token !== chosen.token) {
-    const make = el('button', 'category-calendar-make');
-    make.type = 'button';
-    make.append(svg('star'), el('span', '', 'Make default'));
-    make.title = 'Open Heliosian and Helios When to this calendar from now on - it moves to the top of the rail';
-    make.addEventListener('click', async () => {
-      const res = await fetch('/api/apps/calendar/default', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: current.token})});
-      if (!res.ok) {
-        toast(await res.text());
-        return;
-      }
-      toast(`${current.name} is your default calendar now`);
-      const {load} = await import('./app.js');
-      await load();
-    });
-    wrap.append(make);
-  }
-  return wrap;
-}
-
-// peopleList is the household's part in a linked event on one line behind
-// one icon: the names with a dot between each, and a note - a role, a
-// waitlist place, a guest still to be named - in parentheses after its name.
-function peopleList(event) {
-  // The line opens the household's standing where it is kept: the party's
-  // page on Celebrate with its tickets, the event's page on HCA-Team.
-  const line = event.link ? el('a', 'event-people') : el('div', 'event-people');
-  if (event.link) {
-    line.href = whenOrigin(event.linkApp) + event.link;
-    line.title = event.linkApp === 'celebrate' ? 'See the tickets' : 'See the sign-ups';
-  }
-  // A row is an icon and its words.
-  const row = (icon, className, words) => {
-    const r = el('span', 'event-people-row');
-    r.append(svg(icon), el('span', className, words));
-    return r;
-  };
-  // A party's tickets are counted rather than named - the household's
-  // holders and guests can run to a paragraph; the volunteers on an
-  // HCA-Team event are named with their roles.
-  if (event.linkApp === 'celebrate') {
-    const n = event.people.length;
-    line.append(row('ticket', 'event-person', `${n} ticket${n === 1 ? '' : 's'}`));
-    return line;
-  }
-  // The viewer's own parts, as the roles alone - "Co-Chair · Performance
-  // Tech" - then, on a row of its own with the family's mark, the rest of
-  // the household as a count of roles.
-  const mine = event.people.filter(p => p.mine);
-  const others = event.people.length - mine.length;
-  if (mine.length) {
-    const roles = el('span', 'event-people-names');
-    mine.forEach((p, i) => {
-      if (i) {
-        roles.append(el('span', 'event-people-sep', '\u2022'));
-      }
-      roles.append(el('span', 'event-person', p.note || 'Signed up'));
-    });
-    const r = el('span', 'event-people-row');
-    r.append(svg('volunteer'), roles);
-    line.append(r);
-  }
-  if (others) {
-    line.append(row('family', 'event-person-note event-people-family', `${others} role${others === 1 ? '' : 's'} in my family`));
-  }
-  return line;
-}
-
 // answer tells the calendar this person's word on an event - yes, no,
 // hidden, or nothing - and says whether it took.
 async function answer(event, word) {
@@ -662,32 +449,6 @@ async function answer(event, word) {
     return false;
   }
   return true;
-}
-
-// The events section's body: the portal's next few, or a word when nothing is
-// ahead; the search box filters them by title like the links.
-function eventsPanel(category, needle) {
-  const events = (state.model.upcoming || []).filter(e => !needle || e.title.toLowerCase().includes(needle));
-  if (!events.length) {
-    return el('div', 'category-empty', needle ? 'No events match.' : 'Nothing coming up yet.');
-  }
-  const wrap = el('div');
-  const grid = el('div', 'event-grid');
-  const {shown, hidden} = limited(category, events, needle);
-  for (const event of shown) {
-    const slot = el('div', 'chip-slot');
-    slot.append(eventCard(event));
-    grid.append(slot);
-  }
-  wrap.append(grid);
-  if (hidden) {
-    wrap.append(seeMore(category, hidden, () => renderCategories(needle)));
-  }
-  return wrap;
-}
-
-function eventsMatching(needle) {
-  return (state.model.upcoming || []).filter(e => !needle || e.title.toLowerCase().includes(needle)).length;
 }
 
 // The apps section: the community apps this person sees, as the model lists
@@ -804,9 +565,6 @@ function hasSomething(category) {
   }
   if (superOn()) {
     return true;
-  }
-  if (category.style === 'events') {
-    return eventsMatching('') > 0;
   }
   if (category.style === 'apps') {
     return appsMatching('').length > 0;

@@ -360,6 +360,7 @@ type activityBody struct {
 	VolunteersHidden   bool       `json:"volunteersHidden"`
 	VolunteersComplete bool       `json:"volunteersComplete"`
 	DirectSignUp       bool       `json:"directSignUp"`
+	Priority           bool       `json:"priority"`
 	SignUp             string     `json:"signUp"`
 	PrettyID           string     `json:"prettyId"`
 	AllowAdding        string     `json:"allowAdding"`
@@ -581,6 +582,12 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 		CompleteColumn:   YesNo(body.VolunteersComplete),
 		"Direct Sign-Up": YesNo(body.DirectSignUp), "Pretty ID": pretty, "Allow Adding": allowAdding,
 	}
+	// Priority is an admin's to set: anyone else's save keeps what it was.
+	priority := body.Priority
+	if !admin {
+		priority = current != nil && current.Priority
+	}
+	cells[PriorityColumn] = YesNo(priority)
 	for k, v := range highlightCells(body.Highlight) {
 		cells[k] = v
 	}

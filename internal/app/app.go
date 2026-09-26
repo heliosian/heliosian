@@ -889,6 +889,8 @@ func NewCore(cfg Config) *Core {
 	homeMux.HandleFunc("GET /api/apps/rsvp", hooks.RSVPs)
 	homeMux.HandleFunc("GET /api/apps/approvals", waitingApprovals)
 	homeMux.HandleFunc("GET /api/apps/late", behind)
+	homeMux.HandleFunc("GET /api/apps/team", teamWidget(cache, teamCache))
+	homeMux.HandleFunc("GET /api/apps/celebrate", celebrateWidget(cache, calendarCache, calendarDir, linked))
 	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.FeedbackFiler, superAdmin)
 	blob.Register(mux, cfg.Store)
 	blob.RegisterHome(homeMux, cfg.Store)

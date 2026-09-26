@@ -1307,6 +1307,7 @@ export function openActivity(act, options) {
         // Location is no longer asked for or shown; a value already in the sheet is kept.
         start: scheduled.start, end: scheduled.end, location: act ? act.location || '' : '', spots: unlimited.input.checked ? 0 : Number(spots.value) || 0,
         coLeaderNeeded: coLeader.input.checked, volunteersHidden: hidden.input.checked, volunteersComplete: complete.input.checked, directSignUp: direct.input.checked,
+        priority: Boolean(act && act.priority),
         signUp: act ? '' : signMe.value, prettyId: pretty.value.trim().toLowerCase(), allowAdding: allowAdding.value,
       };
       await saveActivity(body);
@@ -1847,6 +1848,7 @@ export async function saveActivityFields(act, changes) {
     description: act.description || '', image: act.image || '', flyer: act.flyer || '', timing: act.own.timing,
     start: act.own.start, end: act.own.end, location: act.location || '', spots: act.spots || 0,
     coLeaderNeeded: act.coLeaderNeeded, volunteersHidden: act.volunteersHidden, volunteersComplete: Boolean(act.volunteersComplete), directSignUp: act.directSignUp,
+    priority: Boolean(act.priority),
     prettyId: act.prettyId || '', allowAdding: act.allowAddingOwn || '', highlight: act.highlight || null,
     ...changes,
   };

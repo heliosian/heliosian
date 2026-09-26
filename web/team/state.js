@@ -547,8 +547,20 @@ function categorySlug(c) {
 // categoryPath is the opportunities page for the chosen year narrowed to
 // one heading by id - ?category=headline-events - or the whole year for none.
 export function categoryPath(id) {
+  if (id === PRIORITY) {
+    return yearPath() + '?category=' + PRIORITY;
+  }
   const c = id && state.model.categories.find(c => c.id === id);
   return yearPath() + (c ? '?category=' + encodeURIComponent(categorySlug(c)) : '');
+}
+
+// PRIORITY stands where a heading's id would for the High Priority chip:
+// the events an admin marked a priority, or that hold something that is.
+export const PRIORITY = 'high-priority';
+
+// isPriority says a thing, or anything under it, is marked a priority.
+export function isPriority(node) {
+  return Boolean(node.priority) || (node.children || []).some(isPriority);
 }
 
 // categoryFromAddress is the heading the address bar names, by slug or by
@@ -557,6 +569,9 @@ export function categoryFromAddress() {
   const want = new URLSearchParams(location.search).get('category');
   if (!want) {
     return '';
+  }
+  if (want === PRIORITY) {
+    return PRIORITY;
   }
   const c = state.model.categories.find(c => categorySlug(c) === want || c.id === want);
   return c ? c.id : '';
