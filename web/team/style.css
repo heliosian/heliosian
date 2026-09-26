@@ -1987,6 +1987,32 @@ button.side-chair:hover { background: var(--input); }
 
 .roster td { padding: 8px 12px; border-top: 1px solid var(--line); vertical-align: middle; }
 
+/* A heading is a button that sorts by its column; its chevron shows only once
+   that column leads the order, pointing up for ascending, down for descending. */
+.roster-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.roster-sort:hover { text-decoration: underline; }
+
+.roster-sort svg { width: 12px; height: 12px; visibility: hidden; transform: rotate(-90deg); }
+
+.roster th[aria-sort] .roster-sort svg { visibility: visible; }
+
+.roster th[aria-sort="descending"] .roster-sort svg { transform: rotate(90deg); }
+
+.roster-date { white-space: nowrap; }
+
 .roster-who { display: flex; align-items: center; gap: 10px; font-weight: 600; white-space: nowrap; }
 
 .roster-who .people-face { width: 30px; height: 30px; font-size: 13px; }

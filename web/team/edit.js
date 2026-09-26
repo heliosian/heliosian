@@ -1,4 +1,4 @@
-import {state, me, isAdmin, years, allYears, activityPath, activity, parentOf, canAdd, ADDING, category as categoryOf, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED, isFamily} from './state.js';
+import {state, me, isAdmin, longDate, years, allYears, activityPath, activity, parentOf, canAdd, ADDING, category as categoryOf, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED, isFamily} from './state.js';
 
 function* allNodes() {
   for (const root of state.model.activities) {
@@ -1351,8 +1351,10 @@ export function openLink(node, item) {
 
 // openVolunteerGrid is the organizers' roster for an event: every sign-up in the
 // tree, with where it is (category > committee > ... , or "(itself)"), the
-// position, the address, and for a student the parents' addresses - the people
-// an organizer actually needs to reach. Copy emails copies every address in it.
+// position, the day they signed up, the address, and for a student the
+// parents' addresses - the people an organizer actually needs to reach. Copy
+// emails copies every address in it. A heading sorts by its column, a second
+// click the other way; the copies follow the order on screen.
 export function openVolunteerGrid(root, nodes, pathOf) {
   const rows = [];
   for (const node of nodes) {
@@ -1367,6 +1369,8 @@ export function openVolunteerGrid(root, nodes, pathOf) {
     {label: 'Volunteer', get: r => r.v.name || r.v.email},
     {label: 'Where', get: r => pathOf(r.node)},
     {label: 'As', get: r => r.v.position},
+    // The sheet's day, YYYY-MM-DD, sorts as it stands; the table shows it long.
+    {label: 'Sign Up Date', get: r => r.v.added || '', show: r => (r.v.added ? longDate(r.v.added) : '')},
     {label: 'Email', get: r => r.v.email},
     {label: "Parents' email", get: r => r.parents.join(', ')},
   ];
@@ -1393,9 +1397,36 @@ export function openVolunteerGrid(root, nodes, pathOf) {
   };
   const table = el('table', 'roster');
   const head = el('tr');
+  // The rows keep the tree's order until a heading is clicked. Blanks - no
+  // date on an old sign-up, no parents - stay at the foot either way.
+  let sortedBy = null;
+  let ascending = true;
+  const sortBy = (c, th) => {
+    ascending = sortedBy === c ? !ascending : true;
+    sortedBy = c;
+    rows.sort((a, b) => {
+      const x = c.get(a);
+      const y = c.get(b);
+      if (!x || !y) {
+        return x ? -1 : y ? 1 : 0;
+      }
+      const order = x.localeCompare(y, undefined, {numeric: true, sensitivity: 'base'});
+      return ascending ? order : -order;
+    });
+    for (const cell of head.children) {
+      cell.removeAttribute('aria-sort');
+    }
+    th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+    body.append(...rows.map(r => r.tr));
+  };
   for (const c of columns) {
     const th = el('th');
-    th.append(el('span', '', c.label), copyGlyph(`Copy the ${c.label} column`, () => rows.map(c.get).filter(Boolean).join('\n')));
+    const sort = el('button', 'roster-sort');
+    sort.type = 'button';
+    sort.title = `Sort by ${c.label}`;
+    sort.append(el('span', '', c.label), svg('chevron'));
+    sort.addEventListener('click', () => sortBy(c, th));
+    th.append(sort, copyGlyph(`Copy the ${c.label} column`, () => rows.map(c.get).filter(Boolean).join('\n')));
     head.append(th);
   }
   const thead = el('thead');
@@ -1421,6 +1452,7 @@ export function openVolunteerGrid(root, nodes, pathOf) {
     tr.append(who);
     tr.append(el('td', 'roster-where', pathOf(node)));
     tr.append(el('td', '', v.position));
+    tr.append(el('td', 'roster-date', columns.find(c => c.label === 'Sign Up Date').show(row)));
     const mail = el('td', 'roster-mail');
     mail.append(mailto(v.email));
     tr.append(mail);
@@ -1428,6 +1460,7 @@ export function openVolunteerGrid(root, nodes, pathOf) {
     const parents = el('td', 'roster-mail');
     parentCells.push({cell: parents, row});
     tr.append(parents);
+    row.tr = tr;
     body.append(tr);
   }
   table.append(body);
