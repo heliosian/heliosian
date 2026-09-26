@@ -49,7 +49,10 @@ func carryCelebration(before, after store.Row) []store.Op {
 	if before == nil || after == nil || before["Code"] == after["Code"] {
 		return nil
 	}
-	return []store.Op{store.Update(partiesTab, store.Row{"Celebration": before["Code"]}, store.Row{"Celebration": after["Code"]})}
+	return []store.Op{
+		store.Update(partiesTab, store.Row{"Celebration": before["Code"]}, store.Row{"Celebration": after["Code"]}),
+		store.Update(invoicingTab, store.Row{"Event Code": before["Code"]}, store.Row{"Event Code": after["Code"]}),
+	}
 }
 
 func carryCategory(before, after store.Row) []store.Op {

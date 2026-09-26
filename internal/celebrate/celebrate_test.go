@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -750,9 +751,17 @@ func TestCategoriesAndCelebrations(t *testing.T) {
 	if m = cache.Model(); parties == 0 || len(m.SortedParties("SC-2025B")) != parties || cache.Count(partiesTab, store.Row{"Celebration": "SC-2025"}) != 0 {
 		t.Fatalf("a celebration rename left parties behind: %d of %d moved", len(m.SortedParties("SC-2025B")), parties)
 	}
-	rec := call(t, mux, admin, "GET", "/api/celebrate/invoices.csv?celebration=SC-2025", nil)
+	if cache.Count(invoicingTab, store.Row{"Event Code": "SC-2025"}) != 0 {
+		t.Fatal("a celebration rename left ledger rows behind")
+	}
+	rec := call(t, mux, admin, "GET", "/api/celebrate/invoices.csv?celebration=SC-2025B", nil)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Wines of the Southern Hemisphere!") || strings.Contains(rec.Body.String(), "Fondue") {
 		t.Fatalf("invoices: %d %s", rec.Code, rec.Body)
+	}
+	for _, code := range []string{"SC-2025", `x"; filename*=UTF-8''invoice.html`} {
+		if rec := call(t, mux, admin, "GET", "/api/celebrate/invoices.csv?celebration="+url.QueryEscape(code), nil); rec.Code != http.StatusNotFound {
+			t.Fatalf("invoices for %q: %d", code, rec.Code)
+		}
 	}
 	if rec := call(t, mux, other, "GET", "/api/celebrate/invoices.csv", nil); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent read the invoices: %d", rec.Code)

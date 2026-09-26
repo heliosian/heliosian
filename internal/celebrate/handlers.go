@@ -1280,6 +1280,10 @@ func (a app) invoicesCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	model := a.cache.Model()
 	code := r.URL.Query().Get("celebration")
+	if code != "" && model.Celebration(code) == nil {
+		http.Error(w, "no such celebration", http.StatusNotFound)
+		return
+	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"invoicing-%s.csv\"", code))
 	out := csv.NewWriter(w)
