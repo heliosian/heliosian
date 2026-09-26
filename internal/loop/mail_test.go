@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
@@ -123,14 +124,14 @@ type fakeDocuments struct {
 	dropped []string
 }
 
-func (f *fakeDocuments) Post(_ context.Context, _, group string, raw []byte) error {
+func (f *fakeDocuments) Post(_ context.Context, _ access.Actor, group string, raw []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.groups = append(f.groups, group)
 	return nil
 }
 
-func (f *fakeDocuments) Remove(_ context.Context, _, group string) error {
+func (f *fakeDocuments) Remove(_ context.Context, _ access.Actor, group string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.dropped = append(f.dropped, group)
@@ -567,7 +568,7 @@ func TestARestartResumesAMessageFromItsArchivedCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	cells := store.Row{"Received": time.Now().Format(time.RFC3339), "From": "Alice Smith <alice@gmail.com>", "Subject": "Re: Saturday's game", "State": stateReceived, "Object": object, "Message ID": "abc@gmail.com"}
-	if err := h.cache.CommitAndWait(context.Background(), "test", store.Set(messagesTab, store.Row{"ID": id(post), "Group": "soccer-team"}, cells)); err != nil {
+	if err := h.cache.CommitAndWait(context.Background(), access.System("test"), store.Set(messagesTab, store.Row{"ID": id(post), "Group": "soccer-team"}, cells)); err != nil {
 		t.Fatal(err)
 	}
 	newMailer(h.cache, h.directory, h.mailbox).recover()

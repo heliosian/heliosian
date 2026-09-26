@@ -6,10 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"slices"
 	"strings"
 
-	"heliosian/internal/store"
+	"heliosian/internal/access"
 )
 
 const extShell = "web/public/calendar/ext.html"
@@ -84,7 +83,7 @@ func (a app) extView(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	a.noteOpened(r.Context(), e, inv.Email)
+	a.noteOpened(r.Context(), access.Actor{Email: inv.Email}, e)
 	model := a.cache.Model()
 	day, hours := whenLines(e)
 	view := ExtView{Title: e.Title, Day: day, Hours: hours, Location: e.Location, Description: e.Description, Hosts: []string{}, Name: inv.Name, Answer: model.AnswerOf(inv.Email, e.ID), Guests: true, Brought: []ExtGuest{}, Family: []ExtGuest{}, Past: e.end.Before(now()), Banner: "/open/banner/" + e.ID}
@@ -134,24 +133,18 @@ func (a app) extAnswer(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
+	actor := access.Actor{Email: inv.Email}
+	subject, err := a.extSubject(actor, e, body.Key, body.Answer)
+	if err != nil {
+		refuse(w, err)
+		return
+	}
 	answer := strings.ToLower(strings.TrimSpace(body.Answer))
-	if answer == AnswerHidden {
-		http.Error(w, "an answer is yes, no, maybe, or blank", http.StatusBadRequest)
+	if err := a.recordBy(r.Context(), actor, subject, e.ID, answer, ViaPage, false, false); err != nil {
+		refuse(w, err)
 		return
 	}
-	subject := inv.Email
-	if key := normalizeEmail(body.Key); key != "" && key != inv.Email {
-		if !slices.Contains(a.householdOn(e, inv.Email), key) {
-			http.Error(w, "that is not someone in your family", http.StatusForbidden)
-			return
-		}
-		subject = key
-	}
-	if err := a.recordBy(r.Context(), inv.Email, subject, e.ID, answer, ViaPage, false, false); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	slog.InfoContext(r.Context(), "calendar: answered from outside", "actor", inv.Email, "for", subject, "event", e.ID, "answer", answer)
+	slog.InfoContext(r.Context(), "calendar: answered from outside", "actor", actor.Email, "for", subject, "event", e.ID, "answer", answer)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -167,17 +160,18 @@ func (a app) extGuest(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	if settings := a.cache.Model().Invitations[e.ID]; settings == nil || !settings.Guests {
-		http.Error(w, "this event is not taking guests", http.StatusForbidden)
+	actor := access.Actor{Email: inv.Email}
+	ops, g, err := a.extGuestOps(actor, e, body.Name, body.Email)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	key, err := a.bringGuest(r.Context(), inv.Email, e, inv.Email, body.Name, body.Email, AnswerYes, true)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := a.bringGuest(r.Context(), actor, ops, g); err != nil {
+		refuse(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"email": key})
+	json.NewEncoder(w).Encode(map[string]string{"email": g.key})
 }
 
 func (a app) extRemoveGuest(w http.ResponseWriter, r *http.Request) {
@@ -191,15 +185,15 @@ func (a app) extRemoveGuest(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	key := normalizeEmail(body.Key)
-	guest := a.cache.Model().InviteOf(e.ID, key)
-	if guest == nil || guest.GuestOf != inv.Email {
-		http.Error(w, "that is not a guest of yours", http.StatusNotFound)
+	actor := access.Actor{Email: inv.Email}
+	ops, key, err := a.extRemoveGuestOps(actor, e, body.Key)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	if !a.commit(w, r, inv.Email, store.Delete(InvitesTab, store.Row{"Event ID": e.ID, "Email": key})) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: guest removed from outside", "actor", inv.Email, "event", e.ID, "guest", key)
+	slog.InfoContext(r.Context(), "calendar: guest removed from outside", "actor", actor.Email, "event", e.ID, "guest", key)
 	w.WriteHeader(http.StatusNoContent)
 }

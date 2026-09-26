@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/data"
 )
 
@@ -88,12 +89,12 @@ func (s *Store[M]) Count(tab string, match Row) int {
 	return n
 }
 
-func (s *Store[M]) Commit(ctx context.Context, actor string, ops ...Op) error {
+func (s *Store[M]) Commit(ctx context.Context, actor access.Actor, ops ...Op) error {
 	_, err := s.commit(ctx, actor, ops)
 	return err
 }
 
-func (s *Store[M]) CommitAndWait(ctx context.Context, actor string, ops ...Op) error {
+func (s *Store[M]) CommitAndWait(ctx context.Context, actor access.Actor, ops ...Op) error {
 	done, err := s.commit(ctx, actor, ops)
 	if err != nil || done == nil {
 		return err
@@ -102,13 +103,13 @@ func (s *Store[M]) CommitAndWait(ctx context.Context, actor string, ops ...Op) e
 	return nil
 }
 
-func (s *Store[M]) commit(ctx context.Context, actor string, ops []Op) (<-chan struct{}, error) {
+func (s *Store[M]) commit(ctx context.Context, actor access.Actor, ops []Op) (<-chan struct{}, error) {
 	s.queue.commits.Lock()
 	defer s.queue.commits.Unlock()
 	s.mu.RLock()
 	tables := s.tables
 	s.mu.RUnlock()
-	plan, err := s.book.Plan(ctx, tables, actor, ops)
+	plan, err := s.book.Plan(ctx, tables, actor.Email, ops)
 	if err != nil || plan.Empty() {
 		return nil, err
 	}

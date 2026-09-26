@@ -41,18 +41,18 @@ func Members(g Group, s Sources) []string {
 	return filter.Members(list(g), s)
 }
 
-func (g Group) Edits(v access.Viewer) bool {
+func (g Group) Edits(v access.Actor) bool {
 	return v.Admin || g.Manages(v.Email)
 }
 
-func (g Group) VisibleTo(v access.Viewer, s Sources) bool {
+func (g Group) VisibleTo(v access.Actor, s Sources) bool {
 	if g.Edits(v) || g.Visibility == VisibilityEveryone {
 		return true
 	}
 	return g.Visibility == VisibilityMembers && OnList(g, s, v.Email)
 }
 
-func (g Group) For(v access.Viewer, s Sources) *Group {
+func (g Group) For(v access.Actor, s Sources) *Group {
 	if !g.VisibleTo(v, s) {
 		return nil
 	}

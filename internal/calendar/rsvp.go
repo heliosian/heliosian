@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/mail"
-	"heliosian/internal/store"
 )
 
 type Answerer func(ctx context.Context, email, id, answer string) error
@@ -19,36 +19,28 @@ type Answerer func(ctx context.Context, email, id, answer string) error
 var errNotRecorded = errors.New("the answer was not recorded")
 
 func (a app) answer(ctx context.Context, email, id, answer string) error {
-	return a.record(ctx, email, id, answer, true)
+	return a.record(ctx, a.as(normalizeEmail(email)), id, answer, true)
 }
 
-func (a app) record(ctx context.Context, email, id, answer string, invite bool) error {
-	return a.recordBy(ctx, email, email, id, answer, ViaPage, invite, false)
+func (a app) record(ctx context.Context, actor access.Actor, id, answer string, invite bool) error {
+	return a.recordBy(ctx, actor, actor.Email, id, answer, ViaPage, invite, false)
 }
 
-func (a app) recordBy(ctx context.Context, actor, email, id, answer, via string, invite, wait bool) error {
+func (a app) recordBy(ctx context.Context, actor access.Actor, email, id, answer, via string, invite, wait bool) error {
 	email = normalizeEmail(email)
 	answer = strings.ToLower(strings.TrimSpace(answer))
-	if answer != "" && !isAnswer(answer) {
-		return fmt.Errorf("an answer is yes, no, maybe, or hidden")
-	}
-	e := a.eventFor(email, false, id)
-	if e == nil {
-		return fmt.Errorf("that event is not on the calendar")
+	ops, e, err := a.answerOps(actor, email, id, answer, via)
+	if err != nil {
+		return err
 	}
 	if inv := a.cache.Model().InviteOf(e.ID, email); inv != nil && inv.Sent != "" {
 		invite = false
-	}
-	key := store.Row{"Event ID": e.ID, "Email": email}
-	op := store.Delete(RSVPsTab, key)
-	if answer != "" {
-		op = store.Set(RSVPsTab, key, store.Row{"Answer": answer, "Answered": now().Format(DateTimeFormat), "Answered By": actor, "Via": via})
 	}
 	commit := a.cache.Commit
 	if wait {
 		commit = a.cache.CommitAndWait
 	}
-	if err := commit(ctx, actor, op); err != nil {
+	if err := commit(ctx, actor, ops...); err != nil {
 		return fmt.Errorf("%w: %w", errNotRecorded, err)
 	}
 	model := a.cache.Model()
@@ -57,8 +49,8 @@ func (a app) recordBy(ctx context.Context, actor, email, id, answer, via string,
 	}
 	if inv := model.Invitations[e.ID]; inv != nil && a.mail.Sender != nil && answer != "" && answer != AnswerHidden {
 		for _, h := range inv.Notify {
-			if h != actor {
-				go a.sendAnswerNote(context.WithoutCancel(ctx), h, actor, email, answer, model.invitedEvent(e))
+			if h != actor.Email {
+				go a.sendAnswerNote(context.WithoutCancel(ctx), h, actor.Email, email, answer, model.invitedEvent(e))
 			}
 		}
 	}
@@ -125,7 +117,7 @@ func (a app) eventFor(email string, admin bool, id string) *Event {
 }
 
 func (a app) sees(email string, admin bool, e *Event) bool {
-	if admin || normalizeEmail(e.AddedBy) == email || a.isHost(email, admin, e) {
+	if admin || normalizeEmail(e.AddedBy) == email || a.isHost(access.Actor{Email: email, Admin: admin}, e) {
 		return true
 	}
 	if e.Sharing == SharingInvited {
@@ -135,7 +127,7 @@ func (a app) sees(email string, admin bool, e *Event) bool {
 }
 
 func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
-	email, _ := a.who(r)
+	actor := a.actor(r)
 	var body struct {
 		ID     string `json:"id"`
 		Answer string `json:"answer"`
@@ -143,11 +135,11 @@ func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	if err := a.answer(r.Context(), email, body.ID, body.Answer); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := a.record(r.Context(), actor, body.ID, body.Answer, true); err != nil {
+		refuse(w, err)
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: answered", "actor", email, "event", body.ID, "answer", body.Answer)
+	slog.InfoContext(r.Context(), "calendar: answered", "actor", actor.Email, "event", body.ID, "answer", body.Answer)
 	w.WriteHeader(http.StatusNoContent)
 }
 

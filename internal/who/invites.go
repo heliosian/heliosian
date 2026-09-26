@@ -171,36 +171,17 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, invites *Invites) {
 		}
 		format := strings.TrimSpace(r.FormValue("format"))
 		original := strings.TrimSpace(r.FormValue("original"))
-		if format == "" {
-			http.Error(w, "format is required", http.StatusBadRequest)
+		actor := requestActor(cache, r)
+		ops, err := invites.saveGreeting(actor, format, original, r.FormValue("grouped") == "1", r.FormValue("individual") == "1")
+		if err != nil {
+			refuse(w, err)
 			return
 		}
-		if len(format) > 200 {
-			http.Error(w, "format is too long", http.StatusBadRequest)
-			return
-		}
-		email := effectiveEmail(cache, r)
-		cells := store.Row{
-			"Name":       format,
-			"Format":     format,
-			"Grouped":    yesNo(r.FormValue("grouped") == "1"),
-			"Individual": yesNo(r.FormValue("individual") == "1"),
-			"Email":      email,
-		}
-		op := store.Insert(greetingsTab, cells)
-		if original != "" {
-			have, ok := invites.greeting(original)
-			if !ok || have.CreatedBy != email {
-				http.Error(w, "you can only edit greetings you created", http.StatusForbidden)
-				return
-			}
-			op = store.Update(greetingsTab, store.Row{"Name": original}, cells)
-		}
-		if err := invites.Commit(r.Context(), email, op); err != nil {
+		if err := invites.Commit(r.Context(), actor, ops...); err != nil {
 			serverError(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "greeting: saved", "actor", email, "from", original, "name", format)
+		slog.InfoContext(r.Context(), "greeting: saved", "actor", actor.Email, "from", original, "name", format)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
@@ -211,21 +192,17 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, invites *Invites) {
 			return
 		}
 		name := strings.TrimSpace(r.FormValue("name"))
-		if name == "" {
-			http.Error(w, "name is required", http.StatusBadRequest)
+		actor := requestActor(cache, r)
+		ops, err := invites.deleteGreeting(actor, name)
+		if err != nil {
+			refuse(w, err)
 			return
 		}
-		email := effectiveEmail(cache, r)
-		have, ok := invites.greeting(name)
-		if !ok || have.CreatedBy != email {
-			http.Error(w, "you can only delete greetings you created", http.StatusForbidden)
-			return
-		}
-		if err := invites.Commit(r.Context(), email, store.Delete(greetingsTab, store.Row{"Name": name})); err != nil {
+		if err := invites.Commit(r.Context(), actor, ops...); err != nil {
 			serverError(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "greeting: deleted", "actor", email, "name", name)
+		slog.InfoContext(r.Context(), "greeting: deleted", "actor", actor.Email, "name", name)
 		w.WriteHeader(http.StatusNoContent)
 	})
 }

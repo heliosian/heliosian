@@ -12,16 +12,8 @@ import (
 	"heliosian/internal/mail"
 )
 
-// When a birthday is assigned, the person it goes to gets an email with a
-// calendar invite for the day the request is due: what to do, whose birthday,
-// the dates, last year's charity, and a link to the staff member's page.
-// Sending happens off the request, and a failure is logged rather than shown:
-// the assignment itself already took.
-
 const schoolDomain = "@heliosschool.org"
 
-// staffPath is a staff member's page, as the client addresses it: the
-// address's prefix for a school address, the whole address for anyone else.
 func staffPath(email string) string {
 	if strings.HasSuffix(email, schoolDomain) {
 		return "/staff/" + strings.TrimSuffix(email, schoolDomain)
@@ -29,7 +21,6 @@ func staffPath(email string) string {
 	return "/staff/" + email
 }
 
-// baseURL is the app as the request reached it, for the link in a message.
 func baseURL(r *http.Request) string {
 	scheme := "https"
 	if r.TLS == nil && !strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") && strings.HasPrefix(r.Host, "localhost") {
@@ -38,7 +29,6 @@ func baseURL(r *http.Request) string {
 	return scheme + "://" + r.Host
 }
 
-// staffView is one staff member as the pages see them, this year, now.
 func (a app) staffView(model *Model, staffEmail string) (StaffView, bool) {
 	b := model.Birthday(staffEmail)
 	if b == nil {
@@ -49,8 +39,6 @@ func (a app) staffView(model *Model, staffEmail string) (StaffView, bool) {
 	return v.staff(model, b, YearContaining(now(), month, day), now()), true
 }
 
-// mailAssignment sends the assignee their invite, when the app has mail and
-// the birthday has a day to ask by.
 func (a app) mailAssignment(r *http.Request, staffEmail, to string) {
 	if a.mailer == nil {
 		return
@@ -66,13 +54,10 @@ func (a app) mailAssignment(r *http.Request, staffEmail, to string) {
 	a.sendInvite(r, sv, to, "")
 }
 
-// askDay is when a birthday's request is due and who it is assigned to,
-// for telling a change apart.
 type askDay struct {
 	requestBy, assignedTo string
 }
 
-// askDays is every assigned birthday's ask day this year.
 func (a app) askDays(model *Model) map[string]askDay {
 	out := map[string]askDay{}
 	if model == nil {
@@ -87,10 +72,6 @@ func (a app) askDays(model *Model) map[string]askDay {
 	return out
 }
 
-// mailMovedAskDays sends a fresh invite to the assignee of every birthday
-// whose day to ask by moved with a write - a newsletter date changed, a
-// birthday or its override corrected - so their calendar follows. A birthday
-// whose assignee changed is the assign handler's to mail.
 func (a app) mailMovedAskDays(r *http.Request, before, after map[string]askDay) {
 	if a.mailer == nil {
 		return
@@ -110,8 +91,6 @@ func (a app) mailMovedAskDays(r *http.Request, before, after map[string]askDay) 
 	}
 }
 
-// sendInvite mails the invite off the request; movedFrom, when set, is the
-// day it used to be, and the message says so.
 func (a app) sendInvite(r *http.Request, sv StaffView, to, movedFrom string) {
 	m := assignmentMessage(baseURL(r), a.from, sv, to, movedFrom)
 	go func() {
@@ -121,8 +100,6 @@ func (a app) sendInvite(r *http.Request, sv StaffView, to, movedFrom string) {
 	}()
 }
 
-// assignmentMessage is the email and its invite; movedFrom, when set, makes
-// it an update.
 func assignmentMessage(base, from string, sv StaffView, to, movedFrom string) mail.Message {
 	link := base + staffPath(sv.Email)
 	ask := longDate(sv.RequestBy)
@@ -181,9 +158,6 @@ func assignmentMessage(base, from string, sv StaffView, to, movedFrom string) ma
 	}
 }
 
-// invite is the calendar file: one all-day event on the day to ask by, from
-// the app to the assignee, with a UID that is the birthday's for the year, so
-// a later assignment of the same birthday replaces it on the calendar.
 func invite(from, to string, sv StaffView, summary, description, link string) string {
 	day, _ := ParseDate(sv.RequestBy)
 	next := day.AddDate(0, 0, 1)
@@ -221,8 +195,6 @@ func invite(from, to string, sv StaffView, summary, description, link string) st
 	return b.String()
 }
 
-// longDate and mediumDate say a date cell the way the pages do: Friday,
-// September 18, 2026, and September 18, 2026.
 func longDate(cell string) string {
 	if t, err := ParseDate(cell); err == nil {
 		return t.Format("Monday, January 2, 2006")
@@ -237,7 +209,6 @@ func mediumDate(cell string) string {
 	return cell
 }
 
-// mailAddress is the bare address inside "Name <address>".
 func mailAddress(from string) string {
 	if i := strings.LastIndex(from, "<"); i >= 0 {
 		return strings.TrimSuffix(strings.TrimSpace(from[i+1:]), ">")
@@ -245,8 +216,6 @@ func mailAddress(from string) string {
 	return strings.TrimSpace(from)
 }
 
-// icsEscape and icsFold write text the way RFC 5545 wants it: commas,
-// semicolons, backslashes and newlines escaped, lines folded at 75 octets.
 func icsEscape(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, ";", `\;`, ",", `\,`, "\r\n", `\n`, "\n", `\n`)
 	return r.Replace(s)

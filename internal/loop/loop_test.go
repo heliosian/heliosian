@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
@@ -170,7 +171,8 @@ func TestSavingAGroupWritesOnlyWhatChanged(t *testing.T) {
 	additions := cache.Count(additionsTab, nil)
 	g := Normalize(Group{Name: "chess.club", Title: " Chess Club ", Visibility: " Members ", Managers: []string{"M@X.org", "m@x.org"}, Rules: []Rule{{Kind: "Include", Search: "  Kim ", Tags: []string{" M@X.org:Chess "}}},
 		Additions: []Addition{{Email: " Coach@Club.org ", Name: "  The  Coach "}, {Email: "coach@club.org", Name: "Again"}}})
-	if err := cache.CommitAndWait(ctx, "m@x.org", groupOps(Group{}, g, true)...); err != nil {
+	manager := access.Actor{Email: "m@x.org"}
+	if err := cache.CommitAndWait(ctx, manager, groupOps(Group{}, g, true)...); err != nil {
 		t.Fatal(err)
 	}
 	model := cache.Model()
@@ -185,7 +187,7 @@ func TestSavingAGroupWritesOnlyWhatChanged(t *testing.T) {
 	next.Rules = append(slices.Clone(got.Rules), Rule{Kind: KindExclude, Roles: []string{"Staff"}})
 	next.Additions = nil
 	next.Visibility = ""
-	if err := cache.CommitAndWait(ctx, "m@x.org", groupOps(*got, next, false)...); err != nil {
+	if err := cache.CommitAndWait(ctx, manager, groupOps(*got, next, false)...); err != nil {
 		t.Fatal(err)
 	}
 	model = cache.Model()
@@ -198,7 +200,7 @@ func TestSavingAGroupWritesOnlyWhatChanged(t *testing.T) {
 	if logRows(t, dir, managersTab) != 1 {
 		t.Fatalf("an unchanged manager was written again: %d log rows", logRows(t, dir, managersTab))
 	}
-	if err := cache.Commit(ctx, "m@x.org", store.Delete(groupsTab, store.Row{"Name": "chess.club"})); err != nil {
+	if err := cache.Commit(ctx, manager, store.Delete(groupsTab, store.Row{"Name": "chess.club"})); err != nil {
 		t.Fatal(err)
 	}
 	if model = cache.Model(); model.Group("chess.club") != nil || len(model.Groups) != 3 {
@@ -275,8 +277,9 @@ func TestArchivedIsOnePersonsAndFollowsTheGroup(t *testing.T) {
 	ctx := context.Background()
 	const jordan = "jordan.whitfield@heliosschool.org"
 	match := store.Row{"Group": "soccer-team", "Email": jordan}
+	as := access.Actor{Email: jordan}
 	for range 2 {
-		if err := cache.Commit(ctx, jordan, store.Set(archivedTab, match, store.Row{})); err != nil {
+		if err := cache.Commit(ctx, as, store.Set(archivedTab, match, store.Row{})); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -287,16 +290,16 @@ func TestArchivedIsOnePersonsAndFollowsTheGroup(t *testing.T) {
 	if model.Archived("soccer-team", "abena.osei@heliosschool.org") || model.Archived("hummingbird-families", jordan) {
 		t.Fatal("an archive reached another person or another group")
 	}
-	if err := cache.Commit(ctx, jordan, store.Delete(archivedTab, match)); err != nil {
+	if err := cache.Commit(ctx, as, store.Delete(archivedTab, match)); err != nil {
 		t.Fatal(err)
 	}
 	if cache.Count(archivedTab, nil) != 0 || cache.Model().Archived("soccer-team", jordan) {
 		t.Fatal("unarchiving left the row")
 	}
-	if err := cache.Commit(ctx, jordan, store.Set(archivedTab, match, store.Row{})); err != nil {
+	if err := cache.Commit(ctx, as, store.Set(archivedTab, match, store.Row{})); err != nil {
 		t.Fatal(err)
 	}
-	if err := cache.Commit(ctx, jordan, store.Delete(groupsTab, store.Row{"Name": "soccer-team"})); err != nil {
+	if err := cache.Commit(ctx, as, store.Delete(groupsTab, store.Row{"Name": "soccer-team"})); err != nil {
 		t.Fatal(err)
 	}
 	if cache.Count(archivedTab, nil) != 0 {

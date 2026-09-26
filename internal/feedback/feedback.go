@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/logging"
 	"heliosian/internal/ratelimit"
@@ -94,6 +95,11 @@ type submission struct {
 	Errors   []string `json:"errors"`
 }
 
+func actorOf(r *http.Request, superAdmin func(string) bool) access.Actor {
+	email := strings.ToLower(auth.Email(r))
+	return access.Actor{Email: email, Admin: superAdmin(email)}
+}
+
 func (a api) file(w http.ResponseWriter, r *http.Request) {
 	var in submission
 	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&in); err != nil {
@@ -113,29 +119,27 @@ func (a api) file(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "that's longer than a report can be", http.StatusBadRequest)
 		return
 	}
-	email := strings.ToLower(auth.Email(r))
+	actor := actorOf(r, a.superAdmin)
 	now := time.Now()
-	if !a.intake.recent.Allow(email, now) {
+	if !a.intake.recent.Allow(actor.Email, now) {
 		http.Error(w, "that's a lot of reports in a few minutes; please wait a little and try again", http.StatusTooManyRequests)
 		return
 	}
-	saved, err := a.intake.cache.save(r.Context(), Report{
-		App:        a.app,
-		AppName:    a.name(),
-		Kind:       in.Kind,
-		Summary:    summary,
-		Details:    strings.TrimSpace(in.Details),
-		Email:      email,
-		SuperAdmin: a.superAdmin(email),
-		URL:        clip(in.URL, 1000),
-		Page:       clip(in.Page, 200),
-		Viewport:   clip(in.Viewport, 40),
-		Screen:     clip(in.Screen, 40),
-		Language:   clip(in.Language, 40),
-		Timezone:   clip(in.Timezone, 80),
-		UserAgent:  clip(r.UserAgent(), 400),
-		Errors:     clipAll(in.Errors),
-		At:         now,
+	saved, err := a.intake.cache.save(r.Context(), actor, Report{
+		App:       a.app,
+		AppName:   a.name(),
+		Kind:      in.Kind,
+		Summary:   summary,
+		Details:   strings.TrimSpace(in.Details),
+		URL:       clip(in.URL, 1000),
+		Page:      clip(in.Page, 200),
+		Viewport:  clip(in.Viewport, 40),
+		Screen:    clip(in.Screen, 40),
+		Language:  clip(in.Language, 40),
+		Timezone:  clip(in.Timezone, 80),
+		UserAgent: clip(r.UserAgent(), 400),
+		Errors:    clipAll(in.Errors),
+		At:        now,
 	})
 	if err != nil {
 		slog.ErrorContext(r.Context(), "[ERROR] feedback: saving failed", "error", err, "kind", in.Kind, "summary", summary, "details", in.Details)

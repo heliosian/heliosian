@@ -308,7 +308,7 @@ func TestWhoSeesAGroupAndWhoReadsItsMail(t *testing.T) {
 			Excluded: []loop.Excluded{{Email: mia}},
 		})
 		for _, email := range []string{jordan, nico, mia, outsider} {
-			as := access.Viewer{Email: email}
+			as := access.Actor{Email: email}
 			if got := g.VisibleTo(as, s); got != c.sees[email] {
 				t.Errorf("%s: %s sees %v", c.visibility, email, got)
 			}
@@ -323,7 +323,7 @@ func TestWhoSeesAGroupAndWhoReadsItsMail(t *testing.T) {
 				t.Errorf("%s: %s sees rules %v", c.visibility, email, shown.Rules)
 			}
 		}
-		if !g.VisibleTo(access.Viewer{Email: outsider, Admin: true}, s) {
+		if !g.VisibleTo(access.Actor{Email: outsider, Admin: true}, s) {
 			t.Errorf("%s: an admin does not see it", c.visibility)
 		}
 	}

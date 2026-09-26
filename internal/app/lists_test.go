@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
@@ -59,7 +60,7 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	if list.Archived {
 		t.Fatal("a group nobody archived came marked archived")
 	}
-	if err := groups.Commit(context.Background(), jordan, store.Set("Archived", store.Row{"Group": "soccer-team", "Email": jordan}, store.Row{})); err != nil {
+	if err := groups.Commit(context.Background(), access.Actor{Email: jordan}, store.Set("Archived", store.Row{"Group": "soccer-team", "Email": jordan}, store.Row{})); err != nil {
 		t.Fatal(err)
 	}
 	lists = GroupLists(groups.Model(), sources, jordan)

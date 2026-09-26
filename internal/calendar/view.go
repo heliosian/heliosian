@@ -31,6 +31,7 @@ type Directory interface {
 	Person(email string) (Person, bool)
 	Children(email string) []Person
 	Household(email string) []string
+	Family(email string) map[string]bool
 	Parents(email string) []string
 	Alerts(email string) (stale []string, privacy []string)
 	ClassroomColors() map[string]string
@@ -187,7 +188,7 @@ func classroomsOf(model *Model, me Person, kids []Person) []string {
 	return out
 }
 
-func (m *Model) EventsFor(v access.Viewer, directory Directory, linked []Linked) []*Event {
+func (m *Model) EventsFor(v access.Actor, directory Directory, linked []Linked) []*Event {
 	events := m.eventsFor(directory, v.Email, linked)
 	carried := map[string]bool{}
 	for _, e := range events {
@@ -201,7 +202,7 @@ func (m *Model) EventsFor(v access.Viewer, directory Directory, linked []Linked)
 	return events
 }
 
-func (m *Model) ResponsesFor(v access.Viewer, directory Directory) map[string]*Responses {
+func (m *Model) ResponsesFor(v access.Actor, directory Directory) map[string]*Responses {
 	mine := map[string]bool{}
 	for _, e := range append(append([]*Event{}, m.Events...), m.Pending...) {
 		if e.AddedBy != "" && !e.PosterLeft && normalizeEmail(e.AddedBy) == normalizeEmail(v.Email) {
@@ -249,7 +250,7 @@ func (m *Model) ResponsesFor(v access.Viewer, directory Directory) map[string]*R
 	return responses
 }
 
-func Render(model *Model, directory Directory, as access.Viewer, now time.Time, linked []Linked) View {
+func Render(model *Model, directory Directory, as access.Actor, now time.Time, linked []Linked) View {
 	email, admin := as.Email, as.Admin
 	me, known := directory.Person(email)
 	if !known {

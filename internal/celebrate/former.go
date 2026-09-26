@@ -3,7 +3,6 @@ package celebrate
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -11,14 +10,14 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
-	"heliosian/internal/store"
 )
 
 // AddressMoved is told when an admin moves someone's address, after
 // Celebrate's own rows have moved, so Helios When can move the party guest
 // lists with them.
-type AddressMoved func(ctx context.Context, actor, old, to, name string)
+type AddressMoved func(ctx context.Context, actor access.Actor, old, to, name string)
 
 // MoveAddress records that old has moved to to - an alum's school account
 // closing after graduation - and moves every ticket, waitlist request and
@@ -26,53 +25,10 @@ type AddressMoved func(ctx context.Context, actor, old, to, name string)
 // bookkeeper's and keeps the address it was billed under. A ticket that took
 // its name from the directory, while the directory still held them, keeps
 // the name given here.
-func MoveAddress(ctx context.Context, cache *Cache, actor, old, to, name string) (int, error) {
-	old, to, name = cleanEmail(old), cleanEmail(to), strings.TrimSpace(name)
-	if err := checkEmail(old); err != nil {
+func MoveAddress(ctx context.Context, cache *Cache, actor access.Actor, old, to, name string) (int, error) {
+	ops, moved, err := cache.Model().moveAddress(actor, old, to, name)
+	if err != nil {
 		return 0, err
-	}
-	if err := checkEmail(to); err != nil {
-		return 0, err
-	}
-	if old == to {
-		return 0, fmt.Errorf("that is the address it has already")
-	}
-	if len(name) > maxNameLength {
-		return 0, fmt.Errorf("the name is too long")
-	}
-	model := cache.Model()
-	if _, ok := model.former[old]; ok {
-		return 0, fmt.Errorf("%s has already moved to %s", old, model.former[old].New)
-	}
-	ops := []store.Op{}
-	// Moving back to an address it once left drops that record rather than
-	// making a loop of two.
-	if f, ok := model.former[to]; ok && f.New == old {
-		ops = append(ops, store.Delete(formerTab, store.Row{"Old": to}))
-	}
-	ops = append(ops,
-		store.Update(formerTab, store.Row{"New": old}, store.Row{"New": to}),
-		store.Insert(formerTab, store.Row{"Old": old, "New": to, "Name": name, "Changed": today()}),
-		store.Update(hostsTab, store.Row{"Email": old}, store.Row{"Email": to}),
-	)
-	moved := 0
-	for _, p := range model.Parties {
-		for _, t := range p.Tickets {
-			cells := store.Row{}
-			if t.Email == old {
-				cells["Email"] = to
-				if t.Name == "" && name != "" {
-					cells["Name"] = name
-				}
-			}
-			if t.Purchaser == old {
-				cells["Purchaser"] = to
-			}
-			if len(cells) > 0 {
-				ops = append(ops, store.Update(ticketsTab, store.Row{"Ticket ID": t.ID}, cells))
-				moved++
-			}
-		}
 	}
 	if err := cache.Commit(ctx, actor, ops...); err != nil {
 		return 0, err
@@ -81,10 +37,6 @@ func MoveAddress(ctx context.Context, cache *Cache, actor, old, to, name string)
 }
 
 func (a app) moveAddress(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
-		return
-	}
 	var body struct {
 		Old  string `json:"old"`
 		To   string `json:"to"`
@@ -93,20 +45,20 @@ func (a app) moveAddress(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	old, to := cleanEmail(body.Old), cleanEmail(body.To)
-	if _, known := a.directory.Person(a.directory.Resolve(old)); known {
-		http.Error(w, "their address is the directory's to change", http.StatusBadRequest)
-		return
-	}
-	moved, err := MoveAddress(r.Context(), a.cache, actor, old, to, body.Name)
+	actor := a.actor(r)
+	ops, moved, err := a.cache.Model().moveUnlisted(actor, a.directory, body.Old, body.To, body.Name)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		refuse(w, err)
 		return
 	}
+	if !a.commit(w, r, actor, ops...) {
+		return
+	}
+	old, to := cleanEmail(body.Old), cleanEmail(body.To)
 	if a.moved != nil {
 		a.moved(r.Context(), actor, old, to, strings.TrimSpace(body.Name))
 	}
-	slog.InfoContext(r.Context(), "celebrate: address moved", "actor", actor, "from", old, "to", to, "tickets", moved)
+	slog.InfoContext(r.Context(), "celebrate: address moved", "actor", actor.Email, "from", old, "to", to, "tickets", moved)
 	w.WriteHeader(http.StatusNoContent)
 }
 

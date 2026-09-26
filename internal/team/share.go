@@ -40,7 +40,7 @@ func title() string {
 }
 
 func previewable(m *Model, a *Activity) bool {
-	return a != nil && (a.Status == StatusOpen || a.Status == StatusDone) && m.VisibleTo(a, access.Viewer{})
+	return a != nil && (a.Status == StatusOpen || a.Status == StatusDone) && m.VisibleTo(a, access.Actor{})
 }
 
 func timed(m *Model, a *Activity) *Activity {
@@ -119,7 +119,7 @@ func needs(m *Model, at time.Time) []*Activity {
 	year, today := SchoolYear(at), at.Format(DateFormat)
 	dated, undated := []*Activity{}, []*Activity{}
 	for _, a := range m.Activities {
-		if a.Year != year || a.Status != StatusOpen || !m.VisibleTo(a, access.Viewer{}) || a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots) {
+		if a.Year != year || a.Status != StatusOpen || !m.VisibleTo(a, access.Actor{}) || a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots) {
 			continue
 		}
 		if a.Start == "" {

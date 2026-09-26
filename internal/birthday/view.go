@@ -180,7 +180,7 @@ func (v viewer) staff(model *Model, b *Birthday, year Year, today time.Time) Sta
 }
 
 // Render is the model as one signed-in person sees it.
-func Render(model *Model, directory Directory, as access.Viewer, now time.Time) View {
+func Render(model *Model, directory Directory, as access.Actor, now time.Time) View {
 	email, admin := as.Email, as.Admin
 	v := viewer{directory: directory}
 	me, _ := v.person(email)

@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-
-	"heliosian/internal/store"
 )
 
 const maxTagLength = 40
@@ -99,18 +97,6 @@ func (m *Model) SharedTags(email string) []SharedTag {
 	return out
 }
 
-func (m *Model) canManage(email, owner, tag string) bool {
-	if strings.EqualFold(email, owner) {
-		return true
-	}
-	for _, row := range m.managers {
-		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[managerEmail], email) {
-			return true
-		}
-	}
-	return false
-}
-
 func (m *Model) tagged(owner, tag, person string) bool {
 	for _, row := range m.tags {
 		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[tagPerson], person) {
@@ -134,183 +120,115 @@ func RegisterTags(mux *http.ServeMux, cache *Cache) {
 	mux.HandleFunc("POST /api/directory/tag-leave", t.leave)
 }
 
-func (t tagger) tagOwnerOf(r *http.Request, tag string) string {
-	caller := effectiveEmail(t.cache, r)
-	owner := strings.ToLower(strings.TrimSpace(r.FormValue("owner")))
-	if owner == "" || owner == caller {
-		return caller
-	}
-	if !t.cache.Model().canManage(caller, owner, tag) {
-		return ""
-	}
-	return owner
+func formEmail(r *http.Request, name string) string {
+	return strings.ToLower(strings.TrimSpace(r.FormValue(name)))
 }
 
 func (t tagger) rename(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	owner := effectiveEmail(t.cache, r)
 	from := strings.TrimSpace(r.FormValue("tag"))
 	to := strings.TrimSpace(r.FormValue("name"))
-	if from == "" || len(from) > maxTagLength || to == "" || len(to) > maxTagLength {
-		http.Error(w, "bad tag name", http.StatusBadRequest)
+	actor := requestActor(t.cache, r)
+	ops, people, err := t.cache.Model().renameTag(actor, from, to)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	if to == from {
+	if len(ops) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	own := t.cache.Tags(owner)
-	if len(own[from]) == 0 {
-		http.Error(w, "no such tag", http.StatusBadRequest)
+	if !t.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	if len(own[to]) > 0 {
-		http.Error(w, "you already have a tag called "+to, http.StatusConflict)
-		return
-	}
-	named := store.Row{tagOwner: owner, tagName: from}
-	if !t.cache.commit(w, r, owner,
-		store.Update(tagsTable, named, store.Row{tagName: to}),
-		store.Update(managersTable, named, store.Row{tagName: to}),
-	) {
-		return
-	}
-	slog.InfoContext(r.Context(), "tag: renamed", "owner", owner, "from", from, "to", to, "people", len(own[from]))
+	slog.InfoContext(r.Context(), "tag: renamed", "owner", actor.Email, "from", from, "to", to, "people", people)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	owner := effectiveEmail(t.cache, r)
 	from := strings.TrimSpace(r.FormValue("tag"))
 	to := strings.TrimSpace(r.FormValue("name"))
-	if from == "" || len(from) > maxTagLength || to == "" || len(to) > maxTagLength {
-		http.Error(w, "bad tag name", http.StatusBadRequest)
+	actor := requestActor(t.cache, r)
+	ops, fromOwner, people, err := t.cache.Model().copyTag(actor, formEmail(r, "owner"), from, to)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	fromOwner := t.tagOwnerOf(r, from)
-	if fromOwner == "" {
-		http.Error(w, "not your tag to copy", http.StatusForbidden)
+	if !t.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	if fromOwner == owner && to == from {
-		http.Error(w, "bad tag name", http.StatusBadRequest)
-		return
-	}
-	people := t.cache.Tags(fromOwner)[from]
-	if len(people) == 0 {
-		http.Error(w, "no such tag", http.StatusBadRequest)
-		return
-	}
-	if len(t.cache.Tags(owner)[to]) > 0 {
-		http.Error(w, "you already have a tag called "+to, http.StatusConflict)
-		return
-	}
-	ops := []store.Op{}
-	for _, person := range people {
-		ops = append(ops, store.Insert(tagsTable, store.Row{tagOwner: owner, tagName: to, tagPerson: person}))
-	}
-	if !t.cache.commit(w, r, owner, ops...) {
-		return
-	}
-	slog.InfoContext(r.Context(), "tag: copied", "owner", owner, "fromOwner", fromOwner, "from", from, "to", to, "people", len(people))
+	slog.InfoContext(r.Context(), "tag: copied", "owner", actor.Email, "fromOwner", fromOwner, "from", from, "to", to, "people", people)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (t tagger) share(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	owner := effectiveEmail(t.cache, r)
 	tag := strings.TrimSpace(r.FormValue("tag"))
-	manager := strings.ToLower(strings.TrimSpace(r.FormValue("manager")))
+	manager := formEmail(r, "manager")
 	on := r.FormValue("on") == "1"
-	if tag == "" || len(tag) > maxTagLength {
-		http.Error(w, "bad tag name", http.StatusBadRequest)
+	actor := requestActor(t.cache, r)
+	ops, err := t.cache.Model().shareTag(actor, tag, manager, on)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	if t.cache.Model().Person(manager) == nil || manager == owner {
-		http.Error(w, "no such person", http.StatusBadRequest)
+	if !t.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	if on && len(t.cache.Tags(owner)[tag]) == 0 {
-		http.Error(w, "no such tag", http.StatusBadRequest)
-		return
-	}
-	if !t.cache.commit(w, r, owner, managerOp(owner, tag, manager, on)) {
-		return
-	}
-	slog.InfoContext(r.Context(), "tag: shared", "owner", owner, "on", on, "tag", tag, "manager", manager)
+	slog.InfoContext(r.Context(), "tag: shared", "owner", actor.Email, "on", on, "tag", tag, "manager", manager)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (t tagger) leave(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	manager := effectiveEmail(t.cache, r)
-	owner := strings.ToLower(strings.TrimSpace(r.FormValue("owner")))
+	owner := formEmail(r, "owner")
 	tag := strings.TrimSpace(r.FormValue("tag"))
-	if tag == "" || len(tag) > maxTagLength || owner == "" || owner == manager {
-		http.Error(w, "bad tag", http.StatusBadRequest)
+	actor := requestActor(t.cache, r)
+	ops, err := t.cache.Model().leaveTag(actor, owner, tag)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	if !t.cache.commit(w, r, manager, managerOp(owner, tag, manager, false)) {
+	if !t.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "tag: left", "owner", owner, "tag", tag, "manager", manager)
+	slog.InfoContext(r.Context(), "tag: left", "owner", owner, "tag", tag, "manager", actor.Email)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func managerOp(owner, tag, manager string, on bool) store.Op {
-	row := store.Row{tagOwner: owner, tagName: tag, managerEmail: manager}
-	if on {
-		return store.Set(managersTable, row, store.Row{})
-	}
-	return store.Delete(managersTable, row)
 }
 
 func (t tagger) drop(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	owner := effectiveEmail(t.cache, r)
 	tag := strings.TrimSpace(r.FormValue("tag"))
-	if tag == "" || len(tag) > maxTagLength {
-		http.Error(w, "bad tag name", http.StatusBadRequest)
+	actor := requestActor(t.cache, r)
+	ops, people, err := t.cache.Model().dropTag(actor, tag)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	people := len(t.cache.Tags(owner)[tag])
-	named := store.Row{tagOwner: owner, tagName: tag}
-	if !t.cache.commit(w, r, owner, store.Delete(tagsTable, named), store.Delete(managersTable, named)) {
+	if !t.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "tag: deleted", "owner", owner, "tag", tag, "people", people)
+	slog.InfoContext(r.Context(), "tag: deleted", "owner", actor.Email, "tag", tag, "people", people)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (t tagger) set(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	person := strings.ToLower(strings.TrimSpace(r.FormValue("person")))
+	person := formEmail(r, "person")
 	tag := strings.TrimSpace(r.FormValue("tag"))
 	on := r.FormValue("on") == "1"
-	if tag == "" || len(tag) > maxTagLength {
-		http.Error(w, "bad tag name", http.StatusBadRequest)
+	actor := requestActor(t.cache, r)
+	ops, owner, err := t.cache.Model().setTag(actor, formEmail(r, "owner"), tag, person, on)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	owner := t.tagOwnerOf(r, tag)
-	if owner == "" {
-		http.Error(w, "not your tag to manage", http.StatusForbidden)
-		return
-	}
-	if t.cache.Model().Person(person) == nil {
-		http.Error(w, "no such person", http.StatusBadRequest)
-		return
-	}
-	if t.cache.Model().tagged(owner, tag, person) == on {
+	if len(ops) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	row := store.Row{tagOwner: owner, tagName: tag, tagPerson: person}
-	op := store.Delete(tagsTable, row)
-	if on {
-		op = store.Insert(tagsTable, row)
-	}
-	if !t.cache.commit(w, r, effectiveEmail(t.cache, r), op) {
+	if !t.cache.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "tag: changed", "owner", owner, "on", on, "tag", tag, "person", person)

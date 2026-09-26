@@ -68,7 +68,7 @@ func DisplayName(email string) string {
 }
 
 type viewer struct {
-	access.Viewer
+	access.Actor
 	directory Directory
 	rsvps     RSVPLookup
 }
@@ -279,9 +279,9 @@ func (v viewer) attendee(t Ticket, editor bool) Attendee {
 }
 
 func (v viewer) party(raw *Party, now time.Time) PartyView {
-	p := raw.For(v.Viewer, v.directory)
+	p := raw.For(v.Actor, v.directory)
 	hosting := p.Hosted(v.Email)
-	editor := p.Edits(v.Viewer)
+	editor := p.Edits(v.Actor)
 	pv := PartyView{
 		Party: p, Availability: p.Availability(now), Sold: p.Sold(), Waiting: p.Waiting(), Raised: raw.Raised(), Remaining: p.Remaining(),
 		HostPeople: []Person{}, Attendees: []Attendee{}, Waitlisted: []Attendee{}, CanEdit: editor, Hosting: hosting,
@@ -314,14 +314,14 @@ func (v viewer) party(raw *Party, now time.Time) PartyView {
 }
 
 // Render is the model as one signed-in person sees it.
-func Render(model *Model, directory Directory, as access.Viewer, now time.Time) View {
+func Render(model *Model, directory Directory, as access.Actor, now time.Time) View {
 	return RenderWith(model, directory, nil, as, now)
 }
 
 // RenderWith is Render with Helios When's word on each party's guest list
 // for its hosts.
-func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, as access.Viewer, now time.Time) View {
-	v := viewer{Viewer: as, directory: directory, rsvps: rsvps}
+func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, as access.Actor, now time.Time) View {
+	v := viewer{Actor: as, directory: directory, rsvps: rsvps}
 	email, admin := as.Email, as.Admin
 	me := v.person(email)
 	adults, kids := directory.Household(email)
@@ -362,20 +362,6 @@ func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, as access.V
 		view.Parties = append(view.Parties, v.party(p, now))
 	}
 	return view
-}
-
-// InHousehold reports whether email is the viewer or someone in their family.
-func InHousehold(directory Directory, viewer, email string) bool {
-	if email == viewer {
-		return true
-	}
-	adults, kids := directory.Household(viewer)
-	for _, p := range append(adults, kids...) {
-		if strings.EqualFold(p.Email, email) {
-			return true
-		}
-	}
-	return false
 }
 
 // Billable says who may be invoiced for a ticket the viewer takes: an adult

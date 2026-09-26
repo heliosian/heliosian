@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/app"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/ask"
@@ -111,7 +112,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 		logging.Fatal("list the sample documents", "error", err)
 	}
 	for _, path := range saved {
-		if err := core.Documents.FileSaved(context.Background(), "sample", path); err != nil {
+		if err := core.Documents.FileSaved(context.Background(), access.System("sample"), path); err != nil {
 			logging.Fatal("file a sample document", "path", path, "error", err)
 		}
 	}

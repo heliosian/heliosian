@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 )
 
@@ -44,7 +45,7 @@ func TestAParentEditsTheirHouseholdAndKidButNotTheOtherParents(t *testing.T) {
 		{elena, "person", dev, false},
 		{"nobody@example.org", "person", "nobody@example.org", false},
 	} {
-		if got := mayEdit(m, c.me, c.target, c.key); got != c.want {
+		if got := m.familyMayEdit(c.me, c.target, c.key); got != c.want {
 			t.Errorf("%s editing %s %s: %v, want %v", c.me, c.target, c.key, got, c.want)
 		}
 	}
@@ -57,19 +58,19 @@ func sampleCache(t *testing.T) *Cache {
 
 func TestSuperEditIsAnAdminsCookie(t *testing.T) {
 	cache := sampleCache(t)
-	u := uploader{cache: cache}
+	model := cache.Model()
 	rohans := familyID(testKey, rohan)
 	on := httptest.NewRequest("POST", "/", nil)
 	on.AddCookie(&http.Cookie{Name: superEditCookie, Value: "1"})
 	off := httptest.NewRequest("POST", "/", nil)
-	if !u.mayEdit(on, cache.Model(), jordan, "family", rohans) {
-		t.Error("an admin with the pencil on cannot edit another family")
+	if err := model.mayEdit(actorOf(cache, jordan), superEditOn(on), "family", rohans); err != nil {
+		t.Errorf("an admin with the pencil on cannot edit another family: %v", err)
 	}
-	if u.mayEdit(off, cache.Model(), jordan, "family", rohans) {
-		t.Error("an admin with the pencil off edits another family")
+	if err := model.mayEdit(actorOf(cache, jordan), superEditOn(off), "family", rohans); access.Status(err) != http.StatusForbidden {
+		t.Errorf("an admin with the pencil off edits another family: %v", err)
 	}
-	if u.mayEdit(on, cache.Model(), asha, "family", rohans) {
-		t.Error("a parent with the cookie set edits another family")
+	if err := model.mayEdit(actorOf(cache, asha), superEditOn(on), "family", rohans); access.Status(err) != http.StatusForbidden {
+		t.Errorf("a parent with the cookie set edits another family: %v", err)
 	}
 }
 

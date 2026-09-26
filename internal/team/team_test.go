@@ -37,7 +37,6 @@ var (
 
 type fakeDirectory struct{}
 
-// parentAlias is another address of the parent's, as Email Aliases lists it.
 const parentAlias = "robin@heliosschool.org"
 
 func (fakeDirectory) Resolve(email string) string {
@@ -63,8 +62,8 @@ func (fakeDirectory) Family(email string) map[string]bool {
 	return map[string]bool{}
 }
 
-func viewerOf(email string, admin bool) access.Viewer {
-	return access.Viewer{Email: email, Admin: admin, Household: fakeDirectory{}.Family(email)}
+func viewerOf(email string, admin bool) access.Actor {
+	return access.Actor{Email: email, Admin: admin, Household: fakeDirectory{}.Family(email)}
 }
 
 func (fakeDirectory) Grade(string) string { return "" }
@@ -263,7 +262,7 @@ func TestActivityForPrivateList(t *testing.T) {
 	}}
 	for _, c := range []struct {
 		name string
-		as   access.Viewer
+		as   access.Actor
 		want []string
 	}{
 		{"stranger", viewerOf("someone.new@heliosschool.org", false), []string{chair}},
@@ -510,6 +509,23 @@ func TestMoveSignUp(t *testing.T) {
 	}
 }
 
+func TestMoveNeedsBothEnds(t *testing.T) {
+	cache, mux := newServer(t)
+	const marco = "marco.torres@heliosschool.org"
+	move := func(who, from, to string) int {
+		return call(t, mux, who, "POST", "/api/team/volunteer", map[string]any{"id": to, "email": marco, "position": PositionVolunteer, "from": from}).Code
+	}
+	if code := move(chair, "E016", "E003"); code != http.StatusForbidden || cache.Model().Activity("E016").volunteer(marco) == nil {
+		t.Fatalf("a co-chair moved someone into a thing they do not run: %d", code)
+	}
+	if code := move(chair, "E016", "E017"); code != http.StatusNoContent || cache.Model().Activity("E017").volunteer(marco) == nil {
+		t.Fatalf("a co-chair could not move someone between two things they run: %d", code)
+	}
+	if code := move(admin, "E017", "E003"); code != http.StatusNoContent || cache.Model().Activity("E003").volunteer(marco) == nil {
+		t.Fatalf("an admin could not move someone: %d", code)
+	}
+}
+
 func TestReorderChildren(t *testing.T) {
 	cache, mux := newServer(t)
 	titles := func() []string {
@@ -663,9 +679,6 @@ func TestRenameKeepsTheTree(t *testing.T) {
 	}
 }
 
-// A co-chair approves what was suggested under their event by opening or
-// finishing it; hiding stays an admin's, and a pending event of its own
-// waits for an admin whoever chairs it.
 func TestCoChairApproves(t *testing.T) {
 	cache, mux := newServer(t)
 	save := func(who, id, parentID, category, status string) int {
@@ -692,7 +705,6 @@ func TestCoChairApproves(t *testing.T) {
 	}
 }
 
-// A co-chair moves a thing only under something else they run.
 func TestCoChairMovesOnlyUnderTheirOwn(t *testing.T) {
 	cache, mux := newServer(t)
 	const india = "deepa.natarajan@heliosschool.org"

@@ -83,21 +83,15 @@ func NewCache(source data.Source, writer data.Writer, superAdmin func(string) bo
 	return &Cache{Store: s, shared: shared, superAdmin: superAdmin}, nil
 }
 
-// IsSuperAdmin reports whether email is one of the platform's super admins
-// (docs/config.md) - the tier that colours the app in Appearance.
 func (c *Cache) IsSuperAdmin(email string) bool {
 	return c.superAdmin(strings.ToLower(strings.TrimSpace(email)))
 }
 
-// IsAdmin reports whether email runs the app: a row in the Admins tab, or a
-// platform super admin.
 func (c *Cache) IsAdmin(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
 	return slices.Contains(c.Model().Admins, email) || c.superAdmin(email)
 }
 
-// Admins is every admin as the admin page lists them: the tab plus the super
-// admins, indistinguishable, sorted together.
 func (c *Cache) Admins(superAdmins []string) []string {
 	admins := config.NormalizeEmails(append(slices.Clone(c.Model().Admins), superAdmins...))
 	sort.Strings(admins)

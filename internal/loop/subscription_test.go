@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/store"
 )
@@ -258,7 +259,7 @@ func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
 	}
 	visible := func(to string) {
 		t.Helper()
-		if err := h.cache.Commit(context.Background(), "test", store.Update(groupsTab, store.Row{"Name": name}, store.Row{visibleColumn: to})); err != nil {
+		if err := h.cache.Commit(context.Background(), access.System("test"), store.Update(groupsTab, store.Row{"Name": name}, store.Row{visibleColumn: to})); err != nil {
 			t.Fatal(err)
 		}
 	}

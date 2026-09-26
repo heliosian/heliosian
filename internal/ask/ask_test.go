@@ -15,6 +15,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 
+	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
@@ -61,7 +62,10 @@ func (d sampleDirectory) Children(email string) []calendar.Person {
 	return out
 }
 
-func (sampleDirectory) Household(string) []string          { return nil }
+func (sampleDirectory) Household(string) []string { return nil }
+func (d sampleDirectory) Family(email string) map[string]bool {
+	return d.model.Family(email)
+}
 func (sampleDirectory) Parents(string) []string            { return nil }
 func (sampleDirectory) Alerts(string) ([]string, []string) { return nil, nil }
 func (sampleDirectory) ClassroomColors() map[string]string { return map[string]string{} }
@@ -130,7 +134,7 @@ func sampleSources(t *testing.T) Sources {
 		t.Fatal(err)
 	}
 	for _, path := range saved {
-		if err := filer.FileSaved(context.Background(), "test", path); err != nil {
+		if err := filer.FileSaved(context.Background(), access.System("test"), path); err != nil {
 			t.Fatal(err)
 		}
 	}

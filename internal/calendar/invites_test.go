@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/mail"
@@ -79,8 +80,8 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSourc
 	celebrate := Celebrate{
 		Party:   parties,
 		IsAdmin: func(email string) bool { return email != "" && email == testCelebrateAdmin },
-		MoveAddress: func(_ context.Context, actor, old, to, name string) error {
-			testMoves = append(testMoves, [4]string{actor, old, to, name})
+		MoveAddress: func(_ context.Context, actor access.Actor, old, to, name string) error {
+			testMoves = append(testMoves, [4]string{actor.Email, old, to, name})
 			return nil
 		},
 	}
@@ -1738,7 +1739,7 @@ func TestTicketGuestsAndMovedAddresses(t *testing.T) {
 	// Celebrate moves its tickets, then tells the calendar (the Hooks).
 	token := cache.Model().InviteOf(partyA, alum).Token
 	testAttendees[0].Email = home
-	testHooks.MoveAddress(context.Background(), mia, alum, home, "Ella Whitfield")
+	testHooks.MoveAddress(context.Background(), access.Actor{Email: mia}, alum, home, "Ella Whitfield")
 	model = cache.Model()
 	moved := model.InviteOf(partyA, home)
 	if moved == nil || model.InviteOf(partyA, alum) != nil || moved.Token != token || moved.Name != "Ella Whitfield" {
@@ -1755,6 +1756,105 @@ func TestTicketGuestsAndMovedAddresses(t *testing.T) {
 	// list already, and adds nobody.
 	if n := testHooksFill(t, cache, mux); n != 0 {
 		t.Errorf("the sweep added %d after the move", n)
+	}
+}
+
+func TestCohostsRunTheEvent(t *testing.T) {
+	mux, cache, _ := invitesApp(t)
+	jordan, miaH, robinH := as(host, mux), as(mia, mux), as(robin, mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "PUT", "/api/calendar/invites/settings", `{"id":"meetup","hosts":["`+mia+`","`+robin+`"]}`)
+	if rec := call(t, as(sam, mux), "PUT", "/api/calendar/events", `{"id":"meetup","title":"Meetup?","start":"2026-10-10 15:00","tags":[],"sharing":"Link"}`); rec.Code != 403 {
+		t.Errorf("someone not hosting editing the event: %d", rec.Code)
+	}
+	if rec := call(t, miaH, "PUT", "/api/calendar/events", `{"id":"meetup","title":"Meetup!","start":"2026-10-10 15:00","tags":[],"sharing":"Link"}`); rec.Code != 204 {
+		t.Fatalf("a co-host editing the event: %d %s", rec.Code, rec.Body)
+	}
+	if e := cache.Model().Event("meetup"); e == nil || e.Title != "Meetup!" {
+		t.Errorf("the event after the co-host's edit = %+v", e)
+	}
+	if rec := call(t, as(sam, mux), "POST", "/api/calendar/invites/step-down", `{"id":"meetup","email":"`+robin+`"}`); rec.Code != 403 {
+		t.Errorf("someone not hosting stepping a co-host down: %d", rec.Code)
+	}
+	if rec := call(t, miaH, "POST", "/api/calendar/invites/step-down", `{"id":"meetup","email":"`+robin+`"}`); rec.Code != 204 {
+		t.Fatalf("a co-host stepping another down: %d %s", rec.Code, rec.Body)
+	}
+	if inv := cache.Model().Invitations["meetup"]; slices.Contains(inv.Hosts, robin) || !slices.Contains(inv.Hosts, mia) {
+		t.Errorf("hosts after the co-host was stepped down = %v", inv.Hosts)
+	}
+	if rec := call(t, robinH, "PUT", "/api/calendar/events", `{"id":"meetup","title":"Meetup?","start":"2026-10-10 15:00","tags":[],"sharing":"Link"}`); rec.Code != 403 {
+		t.Errorf("a stepped-down co-host editing the event: %d", rec.Code)
+	}
+	if rec := call(t, miaH, "POST", "/api/calendar/invites/step-down", `{"id":"meetup","email":"`+host+`"}`); rec.Code != 204 {
+		t.Fatalf("a co-host stepping the poster down: %d %s", rec.Code, rec.Body)
+	}
+	if e := cache.Model().Event("meetup"); e == nil || !e.PosterLeft {
+		t.Errorf("the poster still hosts: %+v", e)
+	}
+	if rec := call(t, jordan, "POST", "/api/calendar/invites/step-down", `{"id":"meetup","email":"`+mia+`"}`); rec.Code != 403 {
+		t.Errorf("a poster who stepped down stepping a co-host down: %d", rec.Code)
+	}
+	if rec := call(t, miaH, "POST", "/api/calendar/events/cancel", `{"id":"meetup"}`); rec.Code != 200 {
+		t.Fatalf("a co-host cancelling: %d %s", rec.Code, rec.Body)
+	}
+	if e := cache.Model().Event("meetup"); e == nil || !e.Cancelled {
+		t.Errorf("not cancelled: %+v", e)
+	}
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Other","start":"2026-10-11 15:00","tags":[],"sharing":"Link","id":"other"}`)
+	call(t, jordan, "PUT", "/api/calendar/invites/settings", `{"id":"other","hosts":["`+mia+`"]}`)
+	if rec := call(t, miaH, "POST", "/api/calendar/invites/delete", `{"id":"other"}`); rec.Code != 200 {
+		t.Fatalf("a co-host deleting: %d %s", rec.Code, rec.Body)
+	}
+	if cache.Model().Event("other") != nil {
+		t.Errorf("the event outlived its co-host's delete")
+	}
+}
+
+func TestSweepActsOnlyForAHost(t *testing.T) {
+	mux, cache, _, sources := invitesAppWith(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "PUT", "/api/calendar/invites/settings", `{"id":"meetup","hosts":["`+mia+`"]}`)
+	if rec := call(t, jordan, "POST", "/api/calendar/invites/group", `{"id":"meetup","rule":{"roles":["Student"],"classrooms":["Jays"]},"auto":false}`); rec.Code != 200 {
+		t.Fatalf("group: %d %s", rec.Code, rec.Body)
+	}
+	a := app{cache: cache, directory: testDirectory, linked: func(string) []Linked { return nil }, sources: sources.sources, clock: &matchClock{}}
+	gone := cache.Model().Invites["meetup"][0].Email
+	drop := func() {
+		t.Helper()
+		if err := cache.Commit(context.Background(), access.System("test"), store.Delete(InvitesTab, store.Row{"Event ID": "meetup", "Email": gone})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sweepTwice := func() {
+		start := now()
+		a.sweep(context.Background())
+		now = func() time.Time { return start.Add(grace + time.Minute) }
+		a.sweep(context.Background())
+		now = pinnedClock
+	}
+	drop()
+	sweepTwice()
+	if cache.Model().InviteOf("meetup", gone) == nil {
+		t.Fatalf("the sweep did not fill the group while its maker hosts")
+	}
+	if a.sweptEvent(a.as(host), "meetup") == nil {
+		t.Errorf("the group's maker does not count as its host")
+	}
+	drop()
+	call(t, jordan, "POST", "/api/calendar/invites/step-down", `{"id":"meetup"}`)
+	if a.sweptEvent(a.as(host), "meetup") != nil {
+		t.Errorf("the group's maker counts as a host after stepping down")
+	}
+	sweepTwice()
+	if cache.Model().InviteOf("meetup", gone) != nil {
+		t.Errorf("the sweep filled the group for someone who no longer hosts")
+	}
+	now = func() time.Time { return testNow.Add(grace + time.Minute) }
+	a.sweepEvent(context.Background(), a.eventFor(mia, false, "meetup"))
+	now = pinnedClock
+	if cache.Model().InviteOf("meetup", gone) == nil {
+		t.Errorf("the group no longer matches, so the sweep proved nothing")
 	}
 }
 

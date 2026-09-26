@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 )
@@ -108,7 +109,7 @@ func signedIn(email string) context.Context {
 func TestCommitKeepsPreviousValuesOnly(t *testing.T) {
 	f := newFixture(t)
 	ctx := signedIn("admin@example.org")
-	err := f.store.CommitAndWait(ctx, "ann@example.org",
+	err := f.store.CommitAndWait(ctx, access.Actor{Email: "ann@example.org"},
 		Insert("Things", Row{"Name": "cap", "Color": "blue"}),
 		Update("Things", Row{"Name": "boot"}, Row{"Color": "brown", "Size": ""}),
 		Delete("Uses", Row{"Thing": "boot"}),
@@ -134,13 +135,13 @@ func TestCommitKeepsPreviousValuesOnly(t *testing.T) {
 
 func TestSetInsertsAndUpdateDoesNot(t *testing.T) {
 	f := newFixture(t)
-	if err := f.store.CommitAndWait(context.Background(), "job", Update("Things", Row{"Name": "sock"}, Row{"Color": "grey"})); err != nil {
+	if err := f.store.CommitAndWait(context.Background(), access.System("job"), Update("Things", Row{"Name": "sock"}, Row{"Color": "grey"})); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.rows(t, "Things")) != 2 || len(f.log(t)) != 0 {
 		t.Fatal("an update matching nothing wrote something")
 	}
-	if err := f.store.CommitAndWait(context.Background(), "job", Set("Things", Row{"Name": "sock"}, Row{"Color": "grey"})); err != nil {
+	if err := f.store.CommitAndWait(context.Background(), access.System("job"), Set("Things", Row{"Name": "sock"}, Row{"Color": "grey"})); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.rows(t, "Things")) != 3 || f.store.Count("Things", Row{"Name": "SOCK"}) != 1 {
@@ -151,10 +152,10 @@ func TestSetInsertsAndUpdateDoesNot(t *testing.T) {
 
 func TestAppendOnlyIsWrittenNotLogged(t *testing.T) {
 	f := newFixture(t)
-	if err := f.store.CommitAndWait(context.Background(), "job", Insert("Events", Row{"When": "2", "What": "sent"})); err != nil {
+	if err := f.store.CommitAndWait(context.Background(), access.System("job"), Insert("Events", Row{"When": "2", "What": "sent"})); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.store.CommitAndWait(context.Background(), "job", Delete("Events", Row{"When": "1"})); err != nil {
+	if err := f.store.CommitAndWait(context.Background(), access.System("job"), Delete("Events", Row{"When": "1"})); err != nil {
 		t.Fatal(err)
 	}
 	if events := f.rows(t, "Events"); len(events) != 1 || events[0]["What"] != "sent" {
@@ -164,7 +165,7 @@ func TestAppendOnlyIsWrittenNotLogged(t *testing.T) {
 		t.Fatalf("an append-only tab was logged: %v", f.log(t))
 	}
 	for _, op := range []Op{Update("Events", Row{"When": "2"}, Row{"What": "bounced"}), Set("Events", Row{"When": "3"}, Row{"What": "sent"})} {
-		if err := f.store.CommitAndWait(context.Background(), "job", op); err == nil || !strings.Contains(err.Error(), "append-only") {
+		if err := f.store.CommitAndWait(context.Background(), access.System("job"), op); err == nil || !strings.Contains(err.Error(), "append-only") {
 			t.Fatalf("an edit of an append-only tab was taken: %v", err)
 		}
 	}
@@ -197,7 +198,7 @@ func TestAnotherSheetsTabIsReadNotWritten(t *testing.T) {
 	if s.Model()["answers"] != 1 {
 		t.Fatalf("model %v", s.Model())
 	}
-	if err := s.Commit(context.Background(), "job", Insert("Answers", Row{"Who": "bo", "Said": "no"})); err == nil {
+	if err := s.Commit(context.Background(), access.System("job"), Insert("Answers", Row{"Who": "bo", "Said": "no"})); err == nil {
 		t.Fatal("a write to another sheet's tab was taken")
 	}
 	if _, rows, _ := f.dir.Table("other", "Answers"); len(rows) != 1 {
@@ -211,7 +212,7 @@ func TestCommitAndWaitWaitsItsTurn(t *testing.T) {
 	f.queue.Add(func() { <-release })
 	done := make(chan error, 1)
 	go func() {
-		done <- f.store.CommitAndWait(context.Background(), "job", Insert("Things", Row{"Name": "cap"}))
+		done <- f.store.CommitAndWait(context.Background(), access.System("job"), Insert("Things", Row{"Name": "cap"}))
 	}()
 	select {
 	case err := <-done:
@@ -233,7 +234,7 @@ func TestCommitAndWaitWaitsItsTurn(t *testing.T) {
 func TestRefusedWriteIsFatal(t *testing.T) {
 	if os.Getenv("STORE_REFUSED_WRITE") == "1" {
 		f := newFixture(t)
-		f.store.CommitAndWait(context.Background(), "job", Insert("Things", Row{"Name": "sock", "Weight": "1"}))
+		f.store.CommitAndWait(context.Background(), access.System("job"), Insert("Things", Row{"Name": "sock", "Weight": "1"}))
 		return
 	}
 	cmd := exec.Command(os.Args[0], "-test.run=^TestRefusedWriteIsFatal$")
@@ -247,7 +248,7 @@ func TestRefusedWriteIsFatal(t *testing.T) {
 
 func TestCascadeCarriesARename(t *testing.T) {
 	f := newFixture(t)
-	if err := f.store.CommitAndWait(context.Background(), "ann", Update("Things", Row{"Name": "hat"}, Row{"Name": "cap"})); err != nil {
+	if err := f.store.CommitAndWait(context.Background(), access.Actor{Email: "ann"}, Update("Things", Row{"Name": "hat"}, Row{"Name": "cap"})); err != nil {
 		t.Fatal(err)
 	}
 	if f.store.Count("Uses", Row{"Thing": "cap"}) != 2 || f.store.Count("Uses", Row{"Thing": "hat"}) != 0 {
@@ -267,7 +268,7 @@ func TestCascadeCarriesARename(t *testing.T) {
 
 func TestRefusedChangeWritesNothing(t *testing.T) {
 	f := newFixture(t)
-	if err := f.store.CommitAndWait(context.Background(), "ann", Update("Things", Row{"Name": "hat"}, Row{"Color": "plaid"})); err == nil {
+	if err := f.store.CommitAndWait(context.Background(), access.Actor{Email: "ann"}, Update("Things", Row{"Name": "hat"}, Row{"Color": "plaid"})); err == nil {
 		t.Fatal("a change the model refuses was taken")
 	}
 	if f.store.Count("Things", Row{"Color": "plaid"}) != 0 || f.rows(t, "Things")[0]["Color"] != "red" || len(f.log(t)) != 0 {
@@ -307,7 +308,7 @@ func TestWritesToOneTabAreBatched(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.CommitAndWait(context.Background(), "job",
+	err = s.CommitAndWait(context.Background(), access.System("job"),
 		Insert("Things", Row{"Name": "cap"}),
 		Insert("Things", Row{"Name": "sock"}),
 		Update("Things", Row{"Name": "hat"}, Row{"Color": "green"}),
@@ -355,7 +356,7 @@ func TestACommitAbandonsTheRefresh(t *testing.T) {
 	}
 	f.queue.Refresh()
 	<-paused.reading
-	if err := f.store.Commit(context.Background(), "ann", Insert("Things", Row{"Name": "cap"})); err != nil {
+	if err := f.store.Commit(context.Background(), access.Actor{Email: "ann"}, Insert("Things", Row{"Name": "cap"})); err != nil {
 		t.Fatal(err)
 	}
 	close(paused.release)

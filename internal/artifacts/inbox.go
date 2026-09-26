@@ -19,8 +19,8 @@ import (
 
 	"golang.org/x/net/html/charset"
 
+	"heliosian/internal/access"
 	"heliosian/internal/mail"
-	"heliosian/internal/store"
 )
 
 type Bucket interface {
@@ -36,10 +36,9 @@ func (i Inbox) ready() bool {
 	return i.SigningKey != "" && i.Bucket != nil
 }
 
-const (
-	mailActor       = "ask mail"
-	maxMailMarkdown = 200_000
-)
+const maxMailMarkdown = 200_000
+
+var mailActor = access.System("ask mail")
 
 type Holder interface {
 	Hold()
@@ -102,7 +101,7 @@ func (in *Filer) hook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (in *Filer) Post(ctx context.Context, actor, group string, raw []byte) error {
+func (in *Filer) Post(ctx context.Context, actor access.Actor, group string, raw []byte) error {
 	in.holder.Hold()
 	defer in.holder.Release()
 	m, err := ParseMail(raw)
@@ -113,15 +112,15 @@ func (in *Filer) Post(ctx context.Context, actor, group string, raw []byte) erro
 	return in.file(ctx, actor, m)
 }
 
-func (in *Filer) Remove(ctx context.Context, actor, group string) error {
-	if err := in.cache.Commit(ctx, actor, store.Delete(documentsTab, store.Row{"Kind": KindGroup, "Channel": group})); err != nil {
+func (in *Filer) Remove(ctx context.Context, actor access.Actor, group string) error {
+	if err := in.cache.Commit(ctx, actor, in.cache.Model().removeGroup(actor, group)...); err != nil {
 		return err
 	}
 	slog.Info("artifacts: a group's mail removed", "group", group)
 	return nil
 }
 
-func (in *Filer) FileSaved(ctx context.Context, actor, path string) error {
+func (in *Filer) FileSaved(ctx context.Context, actor access.Actor, path string) error {
 	saved, err := ReadSaved(path)
 	if err != nil {
 		return err
@@ -133,7 +132,7 @@ func (in *Filer) FileSaved(ctx context.Context, actor, path string) error {
 	return in.record(ctx, actor, doc)
 }
 
-func (in *Filer) file(ctx context.Context, actor string, m Message) error {
+func (in *Filer) file(ctx context.Context, actor access.Actor, m Message) error {
 	doc, err := Build(m, NewResolver(), in.embedder.Model())
 	if errors.Is(err, ErrNotBroadcast) || errors.Is(err, ErrNoWords) {
 		slog.Info("artifacts: mail left out", "from", m.From, "subject", m.Subject, "reason", err)
@@ -149,7 +148,7 @@ func (in *Filer) file(ctx context.Context, actor string, m Message) error {
 	return in.record(ctx, actor, doc)
 }
 
-func (in *Filer) record(ctx context.Context, actor string, doc *Document) error {
+func (in *Filer) record(ctx context.Context, actor access.Actor, doc *Document) error {
 	if in.known(doc) {
 		slog.Info("artifacts: already on file", "key", doc.Key, "subject", doc.Title, "date", doc.Date)
 		return nil
@@ -167,7 +166,7 @@ func (in *Filer) record(ctx context.Context, actor string, doc *Document) error 
 	if err := in.cache.Hold(doc); err != nil {
 		return err
 	}
-	if err := in.cache.CommitAndWait(ctx, actor, store.Insert(documentsTab, doc.Row())); err != nil {
+	if err := in.cache.CommitAndWait(ctx, actor, in.cache.Model().Record(actor, doc)...); err != nil {
 		return fmt.Errorf("record: %w", err)
 	}
 	slog.Info("artifacts: filed", "key", doc.Key, "subject", doc.Title, "date", doc.Date, "channel", doc.Channel, "chunks", len(doc.Chunks))

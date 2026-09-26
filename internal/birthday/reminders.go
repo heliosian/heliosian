@@ -9,18 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/mail"
-	"heliosian/internal/store"
 )
-
-// Reminders go to the assignee of a birthday as its days come: on the day to
-// ask, the outreach letter ready to send and a nudge to mark it done; two
-// days after, the same again if it has not been; and on the day the
-// birthday is due by (Due By Lead Days before the newsletter), a nudge to
-// record the charity if it came, since asking again is not theirs to do -
-// the default charity stands otherwise. Each goes once,
-// recorded on the Reminders tab, and all of one birthday's messages make one
-// thread with its invite.
 
 const (
 	remindAsk      = "ask"
@@ -30,17 +21,14 @@ const (
 	lateAfterDays = 2
 )
 
-// remindHours is when in the day reminders go, school time.
 var remindHours = [2]int{7, 21}
 
-// reminder is one due to go: the birthday, the kind, and who gets it.
 type reminder struct {
 	sv   StaffView
 	kind string
 	to   string
 }
 
-// dueReminders is what should go today and has not.
 func (a app) dueReminders(model *Model, today time.Time) []reminder {
 	out := []reminder{}
 	day := today.Format(DateFormat)
@@ -68,8 +56,6 @@ func (a app) dueReminders(model *Model, today time.Time) []reminder {
 	return out
 }
 
-// remindLoop sends what is due, hourly through the day, from a minute after
-// the start so the caches have settled.
 func (a app) remindLoop() {
 	time.Sleep(time.Minute)
 	for {
@@ -80,7 +66,6 @@ func (a app) remindLoop() {
 	}
 }
 
-// sendDueReminders sends today's, recording each as it goes.
 func (a app) sendDueReminders(ctx context.Context, today time.Time) int {
 	if a.mailer == nil {
 		return 0
@@ -108,15 +93,18 @@ func (a app) sendDueReminders(ctx context.Context, today time.Time) int {
 	return n
 }
 
-// recordReminder writes the row that keeps a reminder from going twice.
 func (a app) recordReminder(ctx context.Context, sv StaffView, kind, to string, today time.Time) {
-	cells := store.Row{"Email": sv.Email, "Year": sv.Year, "Kind": kind, "Sent On": today.Format(DateFormat), "Sent To": to}
-	if err := a.cache.Commit(ctx, "reminders", store.Insert(remindersTab, cells)); err != nil {
+	actor := access.System(remindersActor)
+	ops, err := recordReminder(actor, sv, kind, to, today)
+	if err != nil {
+		slog.ErrorContext(ctx, "[ERROR] birthday: record reminder", "error", err)
+		return
+	}
+	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
 		slog.ErrorContext(ctx, "[ERROR] birthday: record reminder", "error", err)
 	}
 }
 
-// reminderMessage is the email for one reminder.
 func (a app) reminderMessage(model *Model, rem reminder) mail.Message {
 	sv := rem.sv
 	link := a.base + staffPath(sv.Email)
@@ -159,8 +147,6 @@ func (a app) reminderMessage(model *Model, rem reminder) mail.Message {
 	}
 }
 
-// mailto is the letter as a link that opens it in the assignee's mail app,
-// addressed and written.
 func mailto(l Letter) string {
 	q := url.Values{}
 	if l.CC != "" {
@@ -172,9 +158,6 @@ func mailto(l Letter) string {
 	return "mailto:" + l.To + "?" + strings.ReplaceAll(q.Encode(), "+", "%20")
 }
 
-// threadSubject is the subject every message about one birthday's year
-// shares, and threadHeaders the ids that tie them together: the invite
-// carries the thread's id as its own, the rest reply to it.
 func threadSubject(sv StaffView) string {
 	return fmt.Sprintf("Ask %s about their birthday charity", sv.Name)
 }

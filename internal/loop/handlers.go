@@ -7,12 +7,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"maps"
 	"net/http"
-	"slices"
 	"sort"
 	"strings"
-	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
@@ -93,18 +90,9 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, shell)
 }
 
-func (a app) who(r *http.Request) (string, bool) {
+func (a app) actor(r *http.Request) access.Actor {
 	email := a.directory.Resolve(strings.ToLower(auth.Email(r)))
-	return email, a.cache.IsAdmin(email)
-}
-
-func (a app) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
-	email, admin := a.who(r)
-	if !admin {
-		http.Error(w, "admin access required", http.StatusForbidden)
-		return "", false
-	}
-	return email, true
+	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email)}
 }
 
 func SourcesOf(directory Directory) Sources {
@@ -265,22 +253,13 @@ func (a app) members(g Group) []Member {
 	return append(inside, outside...)
 }
 
-func (a app) checkAdditions(additions []Addition) error {
-	for _, added := range additions {
-		if p, ok := a.directory.Person(a.directory.Resolve(added.Email)); ok {
-			return fmt.Errorf("%s is in the directory as %s; add them with a rule", added.Email, p.Name)
-		}
-	}
-	return nil
-}
-
-func (a app) view(g Group, as access.Viewer) (groupView, bool) {
+func (a app) view(g Group, as access.Actor) (groupView, bool) {
 	shown := g.For(as, a.sources())
 	if shown == nil {
 		return groupView{}, false
 	}
 	viewer := as.Email
-	v := groupView{Group: *shown, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Open: g.VisibleTo(access.Viewer{Email: viewer}, a.sources()), Unsubscribed: g.HasExcluded(viewer), Archived: a.cache.Model().Archived(g.Name, viewer), Sent: a.sentCount(g.Name)}
+	v := groupView{Group: *shown, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Open: g.VisibleTo(access.Actor{Email: viewer}, a.sources()), Unsubscribed: g.HasExcluded(viewer), Archived: a.cache.Model().Archived(g.Name, viewer), Sent: a.sentCount(g.Name)}
 	v.Members = a.members(g)
 	if !g.Edits(as) {
 		for i := range v.Members {
@@ -294,7 +273,7 @@ func (a app) view(g Group, as access.Viewer) (groupView, bool) {
 	return v, true
 }
 
-func (a app) sendView(w http.ResponseWriter, r *http.Request, g Group, as access.Viewer) {
+func (a app) sendView(w http.ResponseWriter, r *http.Request, g Group, as access.Actor) {
 	v, ok := a.view(g, as)
 	if !ok {
 		w.WriteHeader(http.StatusNoContent)
@@ -311,7 +290,8 @@ func (a app) options(viewer string) options {
 }
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
-	email, admin := a.who(r)
+	actor := a.actor(r)
+	email := actor.Email
 	me := a.person(email)
 	view := struct {
 		User        user              `json:"user"`
@@ -323,7 +303,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Alerts      alerts            `json:"alerts"`
 		GradeColors map[string]string `json:"gradeColors,omitempty"`
 	}{
-		User:        user{Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: admin, IsSuperAdmin: a.cache.IsSuperAdmin(email)},
+		User:        user{Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: actor.Admin, IsSuperAdmin: a.cache.IsSuperAdmin(email)},
 		Domain:      Domain,
 		Groups:      []groupView{},
 		Suggestions: a.suggestions(email),
@@ -332,7 +312,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		GradeColors: a.directory.GradeColors(),
 	}
 	for _, g := range a.cache.Model().Groups {
-		if v, ok := a.view(g, access.Viewer{Email: email, Admin: admin}); ok {
+		if v, ok := a.view(g, actor); ok {
 			view.Groups = append(view.Groups, v)
 		}
 	}
@@ -353,11 +333,12 @@ type draftBody struct {
 }
 
 func (a app) draftMembers(w http.ResponseWriter, r *http.Request, body draftBody) ([]Member, []int, bool) {
-	email, admin := a.who(r)
+	actor := a.actor(r)
+	email := actor.Email
 	draft := Normalize(Group{Name: "preview", Title: "preview", Managers: []string{email}, Rules: body.Rules, Additions: body.Additions, Excluded: body.Excluded})
 	var existing []Rule
 	if g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name))); g != nil {
-		if !admin && !g.Manages(email) {
+		if !g.Edits(actor) {
 			http.Error(w, "you do not manage this group", http.StatusForbidden)
 			return nil, nil, false
 		}
@@ -373,7 +354,7 @@ func (a app) draftMembers(w http.ResponseWriter, r *http.Request, body draftBody
 			return nil, nil, false
 		}
 	}
-	if err := a.checkAdditions(draft.Additions); err != nil {
+	if err := checkAdditions(a.directory, draft.Additions); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return nil, nil, false
 	}
@@ -396,7 +377,7 @@ func (a app) preview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) describe(w http.ResponseWriter, r *http.Request) {
-	email, _ := a.who(r)
+	email := a.actor(r).Email
 	var body draftBody
 	if !decode(w, r, &body) {
 		return
@@ -453,68 +434,16 @@ func (a app) describe(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a app) commit(w http.ResponseWriter, r *http.Request, actor string, ops ...store.Op) bool {
+func (a app) commit(w http.ResponseWriter, r *http.Request, actor access.Actor, ops ...store.Op) bool {
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), access.Status(err))
 		return false
 	}
 	return true
 }
 
-func sameRule(x, y Rule) bool {
-	return maps.Equal(filter.RuleCells(x), filter.RuleCells(y))
-}
-
-func groupOps(was Group, g Group, adding bool) []store.Op {
-	ops := []store.Op{store.Update(groupsTab, store.Row{"Name": g.Name}, groupCells(g))}
-	if adding {
-		ops = []store.Op{store.Insert(groupsTab, groupCells(g))}
-	}
-	row := func(column, value string) store.Row {
-		return store.Row{"Group": g.Name, column: value}
-	}
-	for _, list := range []struct {
-		tab, column string
-		was, now    []string
-	}{{managersTab, "Email", was.Managers, g.Managers}, {aliasesTab, "Alias", was.Aliases, g.Aliases}} {
-		for _, v := range list.was {
-			if !slices.Contains(list.now, v) {
-				ops = append(ops, store.Delete(list.tab, row(list.column, v)))
-			}
-		}
-		for _, v := range list.now {
-			if !slices.Contains(list.was, v) {
-				ops = append(ops, store.Insert(list.tab, row(list.column, v)))
-			}
-		}
-	}
-	if !slices.EqualFunc(was.Rules, g.Rules, sameRule) {
-		ops = append(ops, store.Delete(rulesTab, store.Row{"Group": g.Name}))
-		for _, r := range g.Rules {
-			ops = append(ops, store.Insert(rulesTab, ruleCells(g.Name, r)))
-		}
-	}
-	for _, added := range was.Additions {
-		if g.Addition(added.Email) == nil {
-			ops = append(ops, store.Delete(additionsTab, row("Email", added.Email)))
-		}
-	}
-	for _, added := range g.Additions {
-		ops = append(ops, store.Set(additionsTab, row("Email", added.Email), store.Row{"Name": added.Name}))
-	}
-	for _, e := range was.Excluded {
-		if !g.HasExcluded(e.Email) {
-			ops = append(ops, store.Delete(excludedTab, row("Email", e.Email)))
-		}
-	}
-	for _, e := range g.Excluded {
-		ops = append(ops, store.Set(excludedTab, row("Email", e.Email), store.Row{"Note": e.Note, "Timestamp": e.When}))
-	}
-	return ops
-}
-
 func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
-	email, admin := a.who(r)
+	actor := a.actor(r)
 	var body struct {
 		Original string `json:"original"`
 		Group
@@ -522,83 +451,35 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	g := Normalize(body.Group)
-	original := strings.ToLower(strings.TrimSpace(body.Original))
-	var existing []Rule
-	var was Group
-	action := "add"
-	for _, local := range g.Names() {
-		if other := a.cache.Model().Resolve(local); other != nil && other.Name != original {
-			http.Error(w, fmt.Sprintf("%s@%s is taken", local, Domain), http.StatusBadRequest)
-			return
-		}
-	}
-	if original == "" {
-		if !g.Manages(email) {
-			g.Managers = append([]string{email}, g.Managers...)
-		}
-		g.CreatedBy = email
-		g.Created = time.Now().Format("2006-01-02")
-	} else {
-		current := a.cache.Model().Group(original)
-		if current == nil {
-			http.Error(w, "no such group", http.StatusNotFound)
-			return
-		}
-		if !admin && !current.Manages(email) {
-			http.Error(w, "you do not manage this group", http.StatusForbidden)
-			return
-		}
-		if g.Name != original {
-			http.Error(w, "a group's name is its address and cannot change; make a new group", http.StatusBadRequest)
-			return
-		}
-		g.CreatedBy, g.Created = current.CreatedBy, current.Created
-		existing = current.Rules
-		was = *current
-		action = "edit"
-	}
-	if err := filter.Writable(a.sources(), email, g.Managers, existing, g.Rules); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	ops, g, action, err := a.cache.Model().SaveGroup(actor, a.directory, body.Original, body.Group)
+	if err != nil {
+		http.Error(w, err.Error(), access.Status(err))
 		return
 	}
-	if err := CheckGroup(g); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := a.checkAdditions(g.Additions); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if !a.commit(w, r, email, groupOps(was, g, action == "add")...) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility, "posting", g.Posting, "replying", g.Replying)
-	a.sendView(w, r, *a.cache.Model().Group(g.Name), access.Viewer{Email: email, Admin: admin})
+	a.sendView(w, r, *a.cache.Model().Group(g.Name), actor)
 }
 
 func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
-	email, admin := a.who(r)
+	actor := a.actor(r)
 	var body struct {
 		Name string `json:"name"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	name := strings.ToLower(strings.TrimSpace(body.Name))
-	current := a.cache.Model().Group(name)
-	if current == nil {
-		http.Error(w, "no such group", http.StatusNotFound)
+	ops, name, err := a.cache.Model().DeleteGroup(actor, body.Name)
+	if err != nil {
+		http.Error(w, err.Error(), access.Status(err))
 		return
 	}
-	if !admin && !current.Manages(email) {
-		http.Error(w, "you do not manage this group", http.StatusForbidden)
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	if !a.commit(w, r, email, store.Delete(groupsTab, store.Row{"Name": name})) {
-		return
-	}
-	if err := a.mail.Documents.Remove(r.Context(), email, name); err != nil {
+	if err := a.mail.Documents.Remove(r.Context(), actor, name); err != nil {
 		slog.ErrorContext(r.Context(), "[ERROR] groups: filed mail not removed", "group", name, "error", err)
 	}
 	slog.InfoContext(r.Context(), "groups: deleted group", "group", name)
@@ -606,7 +487,7 @@ func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) subscription(w http.ResponseWriter, r *http.Request) {
-	email, admin := a.who(r)
+	actor := a.actor(r)
 	var body struct {
 		Name       string `json:"name"`
 		Subscribed bool   `json:"subscribed"`
@@ -614,31 +495,24 @@ func (a app) subscription(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	as := access.Viewer{Email: email, Admin: admin}
-	g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name)))
-	if g == nil || !g.VisibleTo(as, a.sources()) {
-		http.Error(w, "no such group", http.StatusNotFound)
-		return
-	}
-	if !OnList(*g, a.sources(), email) {
-		http.Error(w, "you are not on this group", http.StatusForbidden)
-		return
-	}
-	var err error
-	if body.Subscribed {
-		err = a.resubscribeAddress(r.Context(), g, email)
-	} else {
-		err = a.unsubscribeAddress(r.Context(), g, email, loopPage)
-	}
+	ops, g, err := a.cache.Model().SetSubscription(actor, a.sources(), body.Name, body.Subscribed)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), access.Status(err))
 		return
 	}
-	a.sendView(w, r, *a.cache.Model().Group(g.Name), as)
+	how := ""
+	if !body.Subscribed {
+		how = loopPage
+	}
+	if err := a.commitSubscription(r.Context(), actor, *g, how, ops); err != nil {
+		http.Error(w, err.Error(), access.Status(err))
+		return
+	}
+	a.sendView(w, r, *a.cache.Model().Group(g.Name), actor)
 }
 
 func (a app) archive(w http.ResponseWriter, r *http.Request) {
-	email, admin := a.who(r)
+	actor := a.actor(r)
 	var body struct {
 		Name     string `json:"name"`
 		Archived bool   `json:"archived"`
@@ -646,34 +520,29 @@ func (a app) archive(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	as := access.Viewer{Email: email, Admin: admin}
-	g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name)))
-	if g == nil || !g.VisibleTo(as, a.sources()) {
-		http.Error(w, "no such group", http.StatusNotFound)
+	ops, g, err := a.cache.Model().SetArchived(actor, a.sources(), body.Name, body.Archived)
+	if err != nil {
+		http.Error(w, err.Error(), access.Status(err))
 		return
 	}
-	match := store.Row{"Group": g.Name, "Email": email}
-	op := store.Delete(archivedTab, match)
-	if body.Archived {
-		op = store.Set(archivedTab, match, store.Row{})
-	}
-	if !a.commit(w, r, email, op) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "groups: archived", "group", g.Name, "email", email, "archived", body.Archived)
-	a.sendView(w, r, *a.cache.Model().Group(g.Name), as)
+	slog.InfoContext(r.Context(), "groups: archived", "group", g.Name, "email", actor.Email, "archived", body.Archived)
+	a.sendView(w, r, *a.cache.Model().Group(g.Name), actor)
 }
 
 func (a app) adminState(w http.ResponseWriter, r *http.Request) {
-	email, ok := a.requireAdmin(w, r)
-	if !ok {
+	actor := a.actor(r)
+	if !actor.Admin {
+		http.Error(w, "admin access required", http.StatusForbidden)
 		return
 	}
 	view := struct {
 		Email        string   `json:"email"`
 		Admins       []string `json:"admins"`
 		IsSuperAdmin bool     `json:"isSuperAdmin"`
-	}{Email: email, Admins: a.cache.Admins(a.superAdmins()), IsSuperAdmin: a.cache.IsSuperAdmin(email)}
+	}{Email: actor.Email, Admins: a.cache.Admins(a.superAdmins()), IsSuperAdmin: a.cache.IsSuperAdmin(actor.Email)}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode groups admin state", "error", err)
@@ -681,37 +550,17 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
-		return
-	}
+	actor := a.actor(r)
 	var body struct {
 		Admins []string `json:"admins"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	super := map[string]bool{}
-	for _, e := range a.superAdmins() {
-		super[e] = true
-	}
-	admins := []string{}
-	for _, e := range cleanEmails(body.Admins) {
-		if !super[e] {
-			admins = append(admins, e)
-		}
-	}
-	current := a.cache.Model().admins
-	ops := []store.Op{}
-	for _, e := range current {
-		if !slices.Contains(admins, e) {
-			ops = append(ops, store.Delete(adminsTab, store.Row{"Email": e}))
-		}
-	}
-	for _, e := range admins {
-		if !slices.Contains(current, e) {
-			ops = append(ops, store.Insert(adminsTab, store.Row{"Email": e}))
-		}
+	ops, admins, err := a.cache.Model().SetAdmins(actor, a.superAdmins(), body.Admins)
+	if err != nil {
+		http.Error(w, err.Error(), access.Status(err))
+		return
 	}
 	if !a.commit(w, r, actor, ops...) {
 		return

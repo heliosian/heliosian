@@ -124,10 +124,10 @@ func details(p *Party, page string) string {
 func (a app) attendeeName(p *Party, email string) string {
 	for _, t := range p.Tickets {
 		if t.Email == email {
-			return a.ticketName(map[string]string{"Email": t.Email, "Name": t.Name})
+			return ticketName(a.directory, map[string]string{"Email": t.Email, "Name": t.Name})
 		}
 	}
-	return a.nameOf(email)
+	return nameOf(a.directory, email)
 }
 
 // invite is the calendar file on a note that says someone is going: the
@@ -339,7 +339,7 @@ func without(list []string, drop string) []string {
 // firstName is the greeting's name: the first word of what the directory
 // calls someone.
 func (a app) firstName(email string) string {
-	words := strings.Fields(a.nameOf(email))
+	words := strings.Fields(nameOf(a.directory, email))
 	if len(words) == 0 {
 		return ""
 	}
@@ -364,7 +364,7 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 	waiting := 0
 	total := 0.0
 	for _, t := range taken {
-		who := a.ticketName(t)
+		who := ticketName(a.directory, t)
 		if t["Status"] == TicketSold {
 			sold = append(sold, who)
 			price, _ := ParsePrice(t["Price"])
@@ -408,13 +408,13 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 	by := ""
 	switch {
 	case free && purchaser != actor:
-		by = fmt.Sprintf(" %s has added you at no charge as %s's guest - a gift from the hosts.", a.nameOf(actor), a.nameOf(purchaser))
+		by = fmt.Sprintf(" %s has added you at no charge as %s's guest - a gift from the hosts.", nameOf(a.directory, actor), nameOf(a.directory, purchaser))
 	case free:
-		by = fmt.Sprintf(" %s has added you at no charge - a gift from the hosts.", a.nameOf(actor))
+		by = fmt.Sprintf(" %s has added you at no charge - a gift from the hosts.", nameOf(a.directory, actor))
 	case holder != "":
-		by = fmt.Sprintf(" %s took it for you.", a.nameOf(actor))
+		by = fmt.Sprintf(" %s took it for you.", nameOf(a.directory, actor))
 	case actor != purchaser:
-		by = fmt.Sprintf(" %s took them for your family.", a.nameOf(actor))
+		by = fmt.Sprintf(" %s took them for your family.", nameOf(a.directory, actor))
 	}
 	subject := ""
 	switch {
@@ -424,7 +424,7 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 		subject = "Your tickets to " + p.Title
 	case guestOf:
 		l.Heading = strings.Fields(holder)[0] + " is going!"
-		l.Intro = fmt.Sprintf("%s - %s has a ticket to %s as your guest; %s added them at no charge - a gift from the hosts. The ticket sits with your family, yours to pass on if plans change. The hosts are copied here, so just reply if you have a question.", hi, holder, p.Title, a.nameOf(actor))
+		l.Intro = fmt.Sprintf("%s - %s has a ticket to %s as your guest; %s added them at no charge - a gift from the hosts. The ticket sits with your family, yours to pass on if plans change. The hosts are copied here, so just reply if you have a question.", hi, holder, p.Title, nameOf(a.directory, actor))
 		subject = holder + "'s ticket to " + p.Title
 	case holder != "":
 		l.Heading = strings.Fields(holder)[0] + ", you're going!"
@@ -452,7 +452,7 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 		l.Rows = append(l.Rows, [2]string{"Total", fmt.Sprintf("$%s (%d × $%s)", PriceCell(total), len(sold), PriceCell(p.Price))})
 	}
 	if !free {
-		l.Rows = append(l.Rows, [2]string{"Billed to", fmt.Sprintf("%s (%s)", a.nameOf(purchaser), purchaser)})
+		l.Rows = append(l.Rows, [2]string{"Billed to", fmt.Sprintf("%s (%s)", nameOf(a.directory, purchaser), purchaser)})
 	}
 	if note := taken[0]["Note"]; note != "" {
 		l.Rows = append(l.Rows, [2]string{"Your note", note})
@@ -492,11 +492,11 @@ func (a app) mailWaitlistHosts(r *http.Request, p *Party, purchaser string, wait
 		return
 	}
 	l := a.letterFor(baseURL(r), p)
-	who := a.nameOf(purchaser)
+	who := nameOf(a.directory, purchaser)
 	l.Heading = fmt.Sprintf("%s joined the waitlist", who)
 	l.Intro = fmt.Sprintf("%s would like %d %s to %s once places open up. Nothing is billed until you offer them - open the party and use Offer beside the request when you can. Reply to this note to reach %s directly.", who, waiting, plural(waiting, "ticket"), p.Title, who)
 	if actor != purchaser {
-		l.Intro += fmt.Sprintf(" (%s made the request for the family.)", a.nameOf(actor))
+		l.Intro += fmt.Sprintf(" (%s made the request for the family.)", nameOf(a.directory, actor))
 	}
 	l.Rows = [][2]string{{"Waiting", fmt.Sprintf("%s (%s)", who, purchaser)}, {"Tickets", fmt.Sprintf("%d", waiting)}}
 	if note != "" {
@@ -526,13 +526,13 @@ func (a app) mailOffered(r *http.Request, p *Party, purchaser string, tickets []
 	names := []string{}
 	total := 0.0
 	for _, t := range tickets {
-		names = append(names, a.ticketName(t))
+		names = append(names, ticketName(a.directory, t))
 		price, _ := ParsePrice(t["Price"])
 		total += price
 	}
 	l.Heading = "A place opened up!"
-	l.Intro = fmt.Sprintf("%s - %s has offered your family %d %s to %s, off the waitlist. They're yours now. The hosts are copied here, so just reply if you have a question.", hi, a.nameOf(actor), n, plural(n, "ticket"), p.Title)
-	l.Rows = [][2]string{{"Tickets", strings.Join(names, ", ")}, {"Total", fmt.Sprintf("$%s (%d × $%s)", PriceCell(total), n, PriceCell(total/float64(n)))}, {"Billed to", fmt.Sprintf("%s (%s)", a.nameOf(purchaser), purchaser)}}
+	l.Intro = fmt.Sprintf("%s - %s has offered your family %d %s to %s, off the waitlist. They're yours now. The hosts are copied here, so just reply if you have a question.", hi, nameOf(a.directory, actor), n, plural(n, "ticket"), p.Title)
+	l.Rows = [][2]string{{"Tickets", strings.Join(names, ", ")}, {"Total", fmt.Sprintf("$%s (%d × $%s)", PriceCell(total), n, PriceCell(total/float64(n)))}, {"Billed to", fmt.Sprintf("%s (%s)", nameOf(a.directory, purchaser), purchaser)}}
 	if hosts := a.hostNames(p); hosts != "" {
 		l.Rows = append(l.Rows, [2]string{"Hosts", hosts})
 	}
@@ -548,7 +548,7 @@ func (a app) hostNames(p *Party) string {
 	}
 	names := []string{}
 	for _, h := range p.HostEmails {
-		names = append(names, a.nameOf(h))
+		names = append(names, nameOf(a.directory, h))
 	}
 	return strings.Join(names, ", ")
 }

@@ -70,7 +70,7 @@ func (c *Cache) Widget(email string, at time.Time) Widget {
 				}
 			}
 			v, ok := on(a)
-			if !ok || a.Year != year || a.Status == StatusDone || !m.VisibleTo(a, access.Viewer{Email: email}) {
+			if !ok || a.Year != year || a.Status == StatusDone || !m.VisibleTo(a, access.Actor{Email: email}) {
 				continue
 			}
 			item := m.widgetItem(a)
@@ -114,7 +114,7 @@ func byDay(x, y WidgetItem) int {
 // full where it counts its spots - as the Volunteers needed list (needs)
 // has it for the top level.
 func (m *Model) wanted(a *Activity, year, today string) bool {
-	if a.Year != year || a.Status != StatusOpen || !m.VisibleTo(a, access.Viewer{}) || a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots) {
+	if a.Year != year || a.Status != StatusOpen || !m.VisibleTo(a, access.Actor{}) || a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots) {
 		return false
 	}
 	last := lastDay(timed(m, a))
@@ -157,7 +157,7 @@ func (m *Model) openNote(a *Activity) string {
 	}
 	var count func(n *Activity)
 	count = func(n *Activity) {
-		if n.Status != StatusOpen || n.VolunteersComplete || !m.VisibleTo(n, access.Viewer{}) {
+		if n.Status != StatusOpen || n.VolunteersComplete || !m.VisibleTo(n, access.Actor{}) {
 			return
 		}
 		if left := n.Spots - len(n.Volunteers); n.Spots > 0 && left > 0 {

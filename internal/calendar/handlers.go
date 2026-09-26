@@ -10,8 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
-	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -130,9 +128,9 @@ var now = func() time.Time {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
-	view := Render(a.cache.Model(), a.directory, access.Viewer{Email: email, Admin: admin}, now(), a.linked(email))
+	view := Render(a.cache.Model(), a.directory, access.Actor{Email: email, Admin: admin}, now(), a.linked(email))
 	for i, e := range view.Events {
-		hosted := (e.Source == SourceSheet || e.linked() || e.imported()) && a.isHost(email, false, e)
+		hosted := (e.Source == SourceSheet || e.linked() || e.imported()) && a.isHost(access.Actor{Email: email}, e)
 		if !hosted && len(e.Hosts) == 0 {
 			continue
 		}
@@ -161,9 +159,22 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 	return true
 }
 
-func (a app) commit(w http.ResponseWriter, r *http.Request, actor string, ops ...store.Op) bool {
+func (a app) as(email string) access.Actor {
+	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email), Household: a.directory.Family(email)}
+}
+
+func (a app) actor(r *http.Request) access.Actor {
+	email, _ := a.who(r)
+	return a.as(email)
+}
+
+func refuse(w http.ResponseWriter, err error) {
+	http.Error(w, err.Error(), access.Status(err))
+}
+
+func (a app) commit(w http.ResponseWriter, r *http.Request, actor access.Actor, ops ...store.Op) bool {
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		refuse(w, err)
 		return false
 	}
 	return true
@@ -186,70 +197,46 @@ func feedURL(r *http.Request, token string) string {
 	return "https://" + r.Host + "/open/feed/" + token + ".ics"
 }
 
+type feedBody struct {
+	Token      string   `json:"token"`
+	Name       string   `json:"name"`
+	Emoji      string   `json:"emoji"`
+	Classrooms []string `json:"classrooms"`
+	Tags       []string `json:"tags"`
+}
+
 func (a app) addFeed(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
-	var body struct {
-		Name       string   `json:"name"`
-		Emoji      string   `json:"emoji"`
-		Classrooms []string `json:"classrooms"`
-		Tags       []string `json:"tags"`
-	}
+	actor := a.actor(r)
+	var body feedBody
 	if !decode(w, r, &body) {
 		return
 	}
-	token := NewToken()
-	cells := store.Row{
-		"Token": token, "Email": actor, "Name": a.cache.Model().unusedFeedName(actor, strings.TrimSpace(body.Name)), "Emoji": feedEmoji(body.Emoji),
-		"Classrooms": JoinList(SplitList(JoinList(body.Classrooms))), "Tags": JoinList(SplitList(JoinList(body.Tags))), "Created": now().Format(DateTimeFormat),
-	}
-	if !a.commit(w, r, actor, store.Insert(FeedsTab, cells)) {
+	ops, cells := a.newFeed(actor, body)
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: feed added", "actor", actor, "name", cells["Name"], "classrooms", cells["Classrooms"], "tags", cells["Tags"])
+	slog.InfoContext(r.Context(), "calendar: feed added", "actor", actor.Email, "name", cells["Name"], "classrooms", cells["Classrooms"], "tags", cells["Tags"])
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": token, "url": feedURL(r, token)})
+	json.NewEncoder(w).Encode(map[string]string{"token": cells["Token"], "url": feedURL(r, cells["Token"])})
 }
 
 func (a app) editFeed(w http.ResponseWriter, r *http.Request) {
-	actor, admin := a.who(r)
-	var body struct {
-		Token      string   `json:"token"`
-		Name       string   `json:"name"`
-		Emoji      string   `json:"emoji"`
-		Classrooms []string `json:"classrooms"`
-		Tags       []string `json:"tags"`
-	}
+	actor := a.actor(r)
+	var body feedBody
 	if !decode(w, r, &body) {
 		return
 	}
-	if strings.TrimSpace(body.Name) == "" {
-		http.Error(w, "a feed needs a name", http.StatusBadRequest)
+	ops, cells, err := a.changeFeed(actor, body)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	if strings.TrimSpace(body.Token) == MyHeliosianToken {
-		if err := a.cache.Commit(r.Context(), actor, homeOp(actor, store.Row{"Home Name": strings.TrimSpace(body.Name), "Home Emoji": feedEmoji(body.Emoji)})); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	f := a.cache.Model().Feed(strings.TrimSpace(body.Token))
-	if f == nil {
-		http.Error(w, "no such feed", http.StatusNotFound)
-		return
+	if cells != nil {
+		slog.InfoContext(r.Context(), "calendar: feed changed", "actor", actor.Email, "name", cells["Name"], "classrooms", cells["Classrooms"], "tags", cells["Tags"])
 	}
-	if f.Email != actor && !admin {
-		http.Error(w, "only the person who made a feed, or an admin, can change it", http.StatusForbidden)
-		return
-	}
-	cells := store.Row{
-		"Name": strings.TrimSpace(body.Name), "Emoji": feedEmoji(body.Emoji), "Classrooms": JoinList(SplitList(JoinList(body.Classrooms))), "Tags": JoinList(SplitList(JoinList(body.Tags))),
-	}
-	if !a.commit(w, r, actor, store.Update(FeedsTab, store.Row{"Token": f.Token}, cells)) {
-		return
-	}
-	slog.InfoContext(r.Context(), "calendar: feed changed", "actor", actor, "name", cells["Name"], "classrooms", cells["Classrooms"], "tags", cells["Tags"])
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -262,97 +249,60 @@ type Hooks struct {
 	RSVPs http.HandlerFunc
 	// MoveAddress moves an address on the guest list of every Celebrate
 	// party, once Celebrate has moved its own rows (MoveAddress there).
-	MoveAddress func(ctx context.Context, actor, old, to, name string)
-}
-
-func homeOp(email string, cells store.Row) store.Op {
-	return store.Set(SettingsTab, store.Row{"Email": email}, cells)
+	MoveAddress func(ctx context.Context, actor access.Actor, old, to, name string)
 }
 
 func (a app) makeDefault(ctx context.Context, email, token string) error {
-	email = normalizeEmail(email)
-	mine := a.cache.Model().MyCalendars(email)
-	tokens := []string{token}
-	found := false
-	for _, f := range mine {
-		if f.Token == token {
-			found = true
-			continue
-		}
-		tokens = append(tokens, f.Token)
-	}
-	if !found {
-		return fmt.Errorf("that is not one of your calendars")
-	}
-	if err := a.reorder(ctx, email, tokens); err != nil {
+	actor := a.as(normalizeEmail(email))
+	ops, tokens, err := a.defaultOps(actor, token)
+	if err != nil {
 		return err
 	}
-	slog.InfoContext(ctx, "calendar: default calendar set", "actor", email, "token", token)
+	if err := a.saveOrder(ctx, actor, tokens, ops); err != nil {
+		return err
+	}
+	slog.InfoContext(ctx, "calendar: default calendar set", "actor", actor.Email, "token", token)
 	return nil
 }
 
 func (a app) setDefault(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor := a.actor(r)
 	var body struct {
 		Token string `json:"token"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	if err := a.makeDefault(r.Context(), actor, strings.TrimSpace(body.Token)); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := a.makeDefault(r.Context(), actor.Email, strings.TrimSpace(body.Token)); err != nil {
+		refuse(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a app) reorder(ctx context.Context, email string, tokens []string) error {
-	model := a.cache.Model()
-	ops := []store.Op{}
-	if at := slices.Index(tokens, MyHeliosianToken); at >= 0 {
-		ops = append(ops, homeOp(email, store.Row{"Home Position": strconv.Itoa(at)}))
-		tokens = slices.Delete(slices.Clone(tokens), at, at+1)
-	}
-	mine := map[string]string{}
-	for _, f := range model.Feeds {
-		if normalizeEmail(f.Email) == email {
-			mine[f.Token] = f.order
-		}
-	}
-	if len(tokens) != len(mine) {
-		return fmt.Errorf("the order must name each of your calendars once")
-	}
-	current := []string{}
-	for _, t := range tokens {
-		order, ok := mine[t]
-		if !ok || slices.Contains(tokens[:len(current)], t) {
-			return fmt.Errorf("the order must name each of your calendars once")
-		}
-		current = append(current, order)
-	}
-	keys := store.Order(current)
-	for i, t := range tokens {
-		if keys[i] != current[i] {
-			ops = append(ops, store.Update(FeedsTab, store.Row{"Token": t}, store.Row{store.OrderColumn: keys[i]}))
-		}
-	}
-	if err := a.cache.Commit(ctx, email, ops...); err != nil {
+func (a app) saveOrder(ctx context.Context, actor access.Actor, tokens []string, ops []store.Op) error {
+	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
 		return err
 	}
-	slog.InfoContext(ctx, "calendar: feeds ordered", "actor", email, "order", strings.Join(tokens, ","))
+	slog.InfoContext(ctx, "calendar: feeds ordered", "actor", actor.Email, "order", strings.Join(tokens, ","))
 	return nil
 }
 
 func (a app) orderFeeds(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor := a.actor(r)
 	var body struct {
 		Tokens []string `json:"tokens"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	if err := a.reorder(r.Context(), actor, body.Tokens); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	ops, err := a.orderOps(actor, body.Tokens)
+	if err != nil {
+		refuse(w, err)
+		return
+	}
+	if err := a.saveOrder(r.Context(), actor, body.Tokens, ops); err != nil {
+		refuse(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -367,27 +317,22 @@ func feedEmoji(s string) string {
 }
 
 func (a app) removeFeed(w http.ResponseWriter, r *http.Request) {
-	actor, admin := a.who(r)
+	actor := a.actor(r)
 	var body struct {
 		Token string `json:"token"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	f := a.cache.Model().Feed(strings.TrimSpace(body.Token))
-	if f == nil {
-		http.Error(w, "no such feed", http.StatusNotFound)
+	ops, name, err := a.dropFeed(actor, body.Token)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	if f.Email != actor && !admin {
-		http.Error(w, "only the person who made a feed, or an admin, can remove it", http.StatusForbidden)
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	name := f.Name
-	if !a.commit(w, r, actor, store.Delete(FeedsTab, store.Row{"Token": f.Token})) {
-		return
-	}
-	slog.InfoContext(r.Context(), "calendar: feed removed", "actor", actor, "name", name)
+	slog.InfoContext(r.Context(), "calendar: feed removed", "actor", actor.Email, "name", name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -409,7 +354,7 @@ func (a app) admin(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (a app) setKeywords(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor := a.actor(r)
 	var body struct {
 		ID       string   `json:"id"`
 		Keywords []string `json:"keywords"`
@@ -417,20 +362,15 @@ func (a app) setKeywords(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	e := a.cache.Model().Event(body.ID)
-	if e == nil {
-		http.Error(w, "that event is not in the sheet", http.StatusNotFound)
+	ops, e, cell, err := a.keywordOps(actor, body.ID, body.Keywords)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	words := SplitList(JoinList(body.Keywords))
-	cell := Clear
-	if len(words) > 0 {
-		cell = JoinList(words)
-	}
-	if !a.commit(w, r, actor, store.Set(OverridesTab, store.Row{"Event ID": e.ID}, store.Row{"Keywords": cell})) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: keywords set", "actor", actor, "event", e.ID, "keywords", cell)
+	slog.InfoContext(r.Context(), "calendar: keywords set", "actor", actor.Email, "event", e.ID, "keywords", cell)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -464,74 +404,38 @@ func shiftWhen(when string, weeks int) string {
 	return t.AddDate(0, 0, 7*weeks).Format(layout)
 }
 
+type eventBody struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Start       string   `json:"start"`
+	End         string   `json:"end"`
+	Location    string   `json:"location"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+	DayType     string   `json:"dayType"`
+	Keywords    []string `json:"keywords"`
+	Source      string   `json:"source"`
+	Image       string   `json:"image"`
+	Sharing     string   `json:"sharing"`
+	RepeatWeeks int      `json:"repeatWeeks"`
+	RepeatTimes int      `json:"repeatTimes"`
+}
+
 func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
-	actor, admin := a.who(r)
-	var body struct {
-		Title       string   `json:"title"`
-		Start       string   `json:"start"`
-		End         string   `json:"end"`
-		Location    string   `json:"location"`
-		Description string   `json:"description"`
-		Tags        []string `json:"tags"`
-		DayType     string   `json:"dayType"`
-		Keywords    []string `json:"keywords"`
-		Source      string   `json:"source"`
-		Image       string   `json:"image"`
-		Sharing     string   `json:"sharing"`
-		ID          string   `json:"id"`
-		RepeatWeeks int      `json:"repeatWeeks"`
-		RepeatTimes int      `json:"repeatTimes"`
-	}
+	actor := a.actor(r)
+	var body eventBody
 	if !decode(w, r, &body) {
 		return
 	}
-	if !slices.Contains(sharingWords, body.Sharing) {
-		http.Error(w, "sharing is "+strings.Join(sharingWords, ", "), http.StatusBadRequest)
+	ops, ids, pending, err := a.newEvents(actor, body)
+	if err != nil {
+		refuse(w, err)
 		return
-	}
-	if body.RepeatTimes < 0 || body.RepeatTimes > 52 || body.RepeatWeeks < 1 && body.RepeatTimes > 0 {
-		http.Error(w, "repeat up to 52 more times, some whole number of weeks apart", http.StatusBadRequest)
-		return
-	}
-	chosen := strings.ToLower(strings.TrimSpace(body.ID))
-	if chosen != "" {
-		if !eventIDForm.MatchString(chosen) {
-			http.Error(w, "a web address is 3 to 40 letters, digits and dashes", http.StatusBadRequest)
-			return
-		}
-		if a.cache.Model().Event(chosen) != nil || a.cache.Count(EventsTab, store.Row{"Event ID": chosen}) > 0 {
-			http.Error(w, "that web address is taken", http.StatusBadRequest)
-			return
-		}
-	}
-	if !admin {
-		body.RepeatTimes, body.DayType = 0, ""
-	}
-	pending := body.Sharing == SharingPublic
-	status := ""
-	if pending {
-		status = StatusPending
-	}
-	stamp := now().Format(DateFormat)
-	ids := []string{}
-	ops := []store.Op{}
-	for i := 0; i <= body.RepeatTimes; i++ {
-		id := newEventID()
-		if i == 0 && chosen != "" {
-			id = chosen
-		}
-		ids = append(ids, id)
-		ops = append(ops, store.Insert(EventsTab, store.Row{
-			"Event ID": id, "Start": shiftWhen(strings.TrimSpace(body.Start), i*body.RepeatWeeks), "End": shiftWhen(strings.TrimSpace(body.End), i*body.RepeatWeeks),
-			"Title": strings.TrimSpace(body.Title), "Location": strings.TrimSpace(body.Location), "Description": strings.TrimSpace(body.Description),
-			"Tags": JoinList(SplitList(JoinList(body.Tags))), "Day Type": strings.TrimSpace(body.DayType), "Keywords": JoinList(SplitList(JoinList(body.Keywords))),
-			"Added By": actor, "Added": stamp, "Source": strings.TrimSpace(body.Source), "Sharing": body.Sharing, "Status": status, "Image": strings.Trim(strings.TrimSpace(body.Image), "/"),
-		}))
 	}
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: events added", "actor", actor, "title", strings.TrimSpace(body.Title), "count", len(ids), "pending", pending)
+	slog.InfoContext(r.Context(), "calendar: events added", "actor", actor.Email, "title", strings.TrimSpace(body.Title), "count", len(ids), "pending", pending)
 	for _, id := range ids {
 		if err := a.record(r.Context(), actor, id, AnswerYes, false); err != nil {
 			slog.WarnContext(r.Context(), "calendar: host's yes", "event", id, "error", err)
@@ -539,7 +443,7 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	if a.mail.Sender != nil {
 		if e := a.cache.Model().Event(ids[0]); e != nil {
-			go a.tellAdmins(context.WithoutCancel(r.Context()), r.Host, actor, e)
+			go a.tellAdmins(context.WithoutCancel(r.Context()), r.Host, actor.Email, e)
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -621,56 +525,23 @@ func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
 }
 
 func (a app) editEvent(w http.ResponseWriter, r *http.Request) {
-	actor, admin := a.who(r)
-	var body struct {
-		ID          string   `json:"id"`
-		Title       string   `json:"title"`
-		Start       string   `json:"start"`
-		End         string   `json:"end"`
-		Location    string   `json:"location"`
-		Description string   `json:"description"`
-		Tags        []string `json:"tags"`
-		Keywords    []string `json:"keywords"`
-		Source      string   `json:"source"`
-		Image       string   `json:"image"`
-		Sharing     string   `json:"sharing"`
-	}
+	actor := a.actor(r)
+	var body eventBody
 	if !decode(w, r, &body) {
 		return
 	}
-	if !slices.Contains(sharingWords, body.Sharing) {
-		http.Error(w, "sharing is "+strings.Join(sharingWords, ", "), http.StatusBadRequest)
+	ops, e, cells, err := a.changeEvent(actor, body)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	e := a.cache.Model().Event(strings.TrimSpace(body.ID))
-	if e == nil || e.Source != SourceSheet {
-		http.Error(w, "that event is not one added by hand", http.StatusNotFound)
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	if (normalizeEmail(e.AddedBy) != actor || e.PosterLeft) && !admin {
-		http.Error(w, "only the person who added an event, while they host it, or an admin, can change it", http.StatusForbidden)
-		return
-	}
-	cells := store.Row{
-		"Title": strings.TrimSpace(body.Title), "Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End),
-		"Location": strings.TrimSpace(body.Location), "Description": strings.TrimSpace(body.Description),
-		"Tags": JoinList(SplitList(JoinList(body.Tags))), "Keywords": JoinList(SplitList(JoinList(body.Keywords))),
-		"Source": strings.TrimSpace(body.Source), "Image": strings.Trim(strings.TrimSpace(body.Image), "/"),
-	}
-	if body.Sharing != e.Sharing {
-		cells["Sharing"] = body.Sharing
-		cells["Status"] = ""
-		if body.Sharing == SharingPublic {
-			cells["Status"] = StatusPending
-		}
-	}
-	if !a.commit(w, r, actor, store.Update(EventsTab, store.Row{"Event ID": e.ID}, cells)) {
-		return
-	}
-	slog.InfoContext(r.Context(), "calendar: event changed", "actor", actor, "event", e.ID, "title", cells["Title"])
+	slog.InfoContext(r.Context(), "calendar: event changed", "actor", actor.Email, "event", e.ID, "title", cells["Title"])
 	if cells["Status"] == StatusPending && a.mail.Sender != nil {
 		if changed := a.cache.Model().Event(e.ID); changed != nil {
-			go a.tellAdmins(context.WithoutCancel(r.Context()), r.Host, actor, changed)
+			go a.tellAdmins(context.WithoutCancel(r.Context()), r.Host, actor.Email, changed)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -685,31 +556,27 @@ func (a app) declineEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) setStatus(w http.ResponseWriter, r *http.Request, status, did string) {
-	actor, _ := a.who(r)
+	actor := a.actor(r)
 	var body struct {
 		ID string `json:"id"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	e := a.cache.Model().Event(strings.TrimSpace(body.ID))
-	if e == nil || e.Source != SourceSheet {
-		http.Error(w, "that event is not one added by hand", http.StatusNotFound)
+	ops, e, err := a.statusOps(actor, body.ID, status)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	if status == StatusDeclined && e.Sharing != SharingPublic {
-		http.Error(w, "only a public event is declined", http.StatusBadRequest)
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	if !a.commit(w, r, actor, store.Update(EventsTab, store.Row{"Event ID": e.ID}, store.Row{"Status": status})) {
-		return
-	}
-	slog.InfoContext(r.Context(), "calendar: event "+did, "actor", actor, "event", e.ID, "title", e.Title, "by", e.AddedBy)
+	slog.InfoContext(r.Context(), "calendar: event "+did, "actor", actor.Email, "event", e.ID, "title", e.Title, "by", e.AddedBy)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a app) moveEvent(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor := a.actor(r)
 	var body struct {
 		ID    string `json:"id"`
 		Start string `json:"start"`
@@ -718,24 +585,24 @@ func (a app) moveEvent(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	e := a.cache.Model().Event(body.ID)
-	if e == nil || e.Source != SourceSheet {
-		http.Error(w, "only an event of the Events tab moves from here", http.StatusBadRequest)
-		return
-	}
 	start, end := strings.TrimSpace(body.Start), strings.TrimSpace(body.End)
 	if end == "" {
 		end = start
 	}
-	if !a.commit(w, r, actor, store.Update(EventsTab, store.Row{"Event ID": e.ID}, store.Row{"Start": start, "End": end})) {
+	ops, e, err := a.moveOps(actor, body.ID, start, end)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: event moved", "actor", actor, "event", e.ID, "start", start, "end", end)
+	if !a.commit(w, r, actor, ops...) {
+		return
+	}
+	slog.InfoContext(r.Context(), "calendar: event moved", "actor", actor.Email, "event", e.ID, "start", start, "end", end)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a app) saveSetting(w http.ResponseWriter, r *http.Request) {
-	email, _ := a.who(r)
+	actor := a.actor(r)
 	var body struct {
 		Classrooms []string `json:"classrooms"`
 		Tags       []string `json:"tags"`
@@ -743,98 +610,53 @@ func (a app) saveSetting(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	cells := store.Row{
-		"Classrooms": JoinList(SplitList(JoinList(body.Classrooms))), "Categories": JoinList(SplitList(JoinList(body.Tags))), "Saved": now().Format(DateTimeFormat),
-	}
-	if !a.commit(w, r, email, store.Set(SettingsTab, store.Row{"Email": email}, cells)) {
+	ops, cells := saveViewOps(actor, body.Classrooms, body.Tags)
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: view saved", "actor", email, "classrooms", cells["Classrooms"], "tags", cells["Categories"])
+	slog.InfoContext(r.Context(), "calendar: view saved", "actor", actor.Email, "classrooms", cells["Classrooms"], "tags", cells["Categories"])
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a app) forgetSetting(w http.ResponseWriter, r *http.Request) {
-	email, _ := a.who(r)
-	if _, ok := a.cache.Model().Settings[email]; !ok {
+	actor := a.actor(r)
+	ops := a.forgetViewOps(actor)
+	if len(ops) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
-	}
-	if !a.commit(w, r, email, store.Update(SettingsTab, store.Row{"Email": email}, store.Row{"Classrooms": "", "Categories": "", "Saved": ""})) {
-		return
-	}
-	slog.InfoContext(r.Context(), "calendar: view forgotten", "actor", email)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a app) setTags(w http.ResponseWriter, r *http.Request) {
-	actor, admin := a.who(r)
-	if !admin {
-		http.Error(w, "only a calendar admin can change the categories", http.StatusForbidden)
-		return
-	}
-	var body struct {
-		Tags []struct {
-			Name        string `json:"name"`
-			Description string `json:"description"`
-			Group       string `json:"group"`
-			Default     bool   `json:"default"`
-			Image       string `json:"image"`
-		} `json:"tags"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
-	current := map[string]Tag{}
-	for _, t := range a.cache.Model().Tags {
-		current[t.Name] = t
-	}
-	names, orders, rows := []string{}, []string{}, []store.Row{}
-	for _, t := range body.Tags {
-		name, description, group, image := strings.TrimSpace(t.Name), strings.TrimSpace(t.Description), strings.TrimSpace(t.Group), strings.TrimSpace(t.Image)
-		if name == "" || slices.Contains(names, name) {
-			http.Error(w, "every category needs a name of its own", http.StatusBadRequest)
-			return
-		}
-		if description == "" {
-			http.Error(w, fmt.Sprintf("%q needs a description", name), http.StatusBadRequest)
-			return
-		}
-		if _, ok := current[name]; !ok && slices.ContainsFunc(builtinTags, func(b Tag) bool { return b.Name == name }) {
-			http.Error(w, fmt.Sprintf("%q is built in and has no row of its own", name), http.StatusBadRequest)
-			return
-		}
-		names = append(names, name)
-		orders = append(orders, current[name].order)
-		rows = append(rows, store.Row{"Description": description, "Group": group, "Default": yesNoWord(t.Default), "Image": image})
-	}
-	for name := range current {
-		if !slices.Contains(names, name) {
-			http.Error(w, fmt.Sprintf("%q is missing - a category cannot be removed from here", name), http.StatusBadRequest)
-			return
-		}
-	}
-	keys := store.Order(orders)
-	ops := []store.Op{}
-	added := 0
-	for i, name := range names {
-		cells := rows[i]
-		cells[store.OrderColumn] = keys[i]
-		was, ok := current[name]
-		if !ok {
-			cells["Tag"] = name
-			ops = append(ops, store.Insert(TagsTab, cells))
-			added++
-			continue
-		}
-		if tagDefault(cells["Default"]) == was.Default {
-			delete(cells, "Default")
-		}
-		ops = append(ops, store.Update(TagsTab, store.Row{"Tag": name}, cells))
 	}
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: categories saved", "actor", actor, "added", added)
+	slog.InfoContext(r.Context(), "calendar: view forgotten", "actor", actor.Email)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type tagBody struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Group       string `json:"group"`
+	Default     bool   `json:"default"`
+	Image       string `json:"image"`
+}
+
+func (a app) setTags(w http.ResponseWriter, r *http.Request) {
+	actor := a.actor(r)
+	var body struct {
+		Tags []tagBody `json:"tags"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	ops, added, err := a.tagOps(actor, body.Tags)
+	if err != nil {
+		refuse(w, err)
+		return
+	}
+	if !a.commit(w, r, actor, ops...) {
+		return
+	}
+	slog.InfoContext(r.Context(), "calendar: categories saved", "actor", actor.Email, "added", added)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -865,14 +687,13 @@ func (a app) feed(w http.ResponseWriter, r *http.Request) {
 // Settings row the first time they ask - the Subscribe menu's, for the
 // calendar that is not a saved one.
 func (a app) myHeliosianToken(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
-	token := a.cache.Model().Settings[actor].FeedToken
-	if token == "" {
-		token = NewToken()
-		if !a.commit(w, r, actor, homeOp(actor, store.Row{"Feed Token": token})) {
+	actor := a.actor(r)
+	ops, token := a.feedTokenOps(actor)
+	if len(ops) > 0 {
+		if !a.commit(w, r, actor, ops...) {
 			return
 		}
-		slog.InfoContext(r.Context(), "calendar: my heliosian feed made", "actor", actor)
+		slog.InfoContext(r.Context(), "calendar: my heliosian feed made", "actor", actor.Email)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"token": token})

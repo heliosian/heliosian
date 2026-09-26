@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
@@ -191,7 +192,7 @@ func sampleModel(t *testing.T) *Model {
 		t.Fatal(err)
 	}
 	for _, file := range files {
-		if err := in.FileSaved(context.Background(), "test", file); err != nil {
+		if err := in.FileSaved(context.Background(), access.System("test"), file); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -200,7 +201,7 @@ func sampleModel(t *testing.T) *Model {
 
 func TestAFreshStoreReadsWhatWasFiled(t *testing.T) {
 	in, objects, sheet, queue := testInbox(t)
-	if err := in.FileSaved(context.Background(), "test", samples+"/2026-09-11-newsletter-sep-11.json"); err != nil {
+	if err := in.FileSaved(context.Background(), access.System("test"), samples+"/2026-09-11-newsletter-sep-11.json"); err != nil {
 		t.Fatal(err)
 	}
 	queue.Flush()
@@ -265,7 +266,7 @@ func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 func TestGroupMailIsFiledUnderEachGroupOnce(t *testing.T) {
 	in, _, sheet, queue := testInbox(t)
 	for _, group := range []string{"soccer-team", "soccer-team", "chess-club"} {
-		if err := in.Post(context.Background(), "loop mailer", group, []byte(personalMail)); err != nil {
+		if err := in.Post(context.Background(), access.System("loop mailer"), group, []byte(personalMail)); err != nil {
 			t.Fatalf("%s: %v", group, err)
 		}
 	}
@@ -290,11 +291,11 @@ func TestGroupMailIsFiledUnderEachGroupOnce(t *testing.T) {
 func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testing.T) {
 	in, objects, sheet, queue := testInbox(t)
 	for _, group := range []string{"soccer-team", "chess-club"} {
-		if err := in.Post(context.Background(), "loop mailer", group, []byte(personalMail)); err != nil {
+		if err := in.Post(context.Background(), access.System("loop mailer"), group, []byte(personalMail)); err != nil {
 			t.Fatalf("%s: %v", group, err)
 		}
 	}
-	if err := in.Remove(context.Background(), "owner@example.org", "soccer-team"); err != nil {
+	if err := in.Remove(context.Background(), access.System("owner@example.org"), "soccer-team"); err != nil {
 		t.Fatal(err)
 	}
 	queue.Flush()
@@ -311,7 +312,7 @@ func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testi
 	if model := in.cache.Model(); len(model.Documents) != 1 || model.Documents[0].Channel != "chess-club" {
 		t.Fatalf("the model holds %+v", model.Documents)
 	}
-	if err := in.Remove(context.Background(), "owner@example.org", "soccer-team"); err != nil {
+	if err := in.Remove(context.Background(), access.System("owner@example.org"), "soccer-team"); err != nil {
 		t.Fatalf("removing a group with no mail: %v", err)
 	}
 	queue.Flush()

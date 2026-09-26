@@ -16,6 +16,7 @@ import (
 	"sync"
 	"testing"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
@@ -171,7 +172,7 @@ func TestTagChangesReachMemoryTheSheetAndTheLog(t *testing.T) {
 
 func seedAddedPerson(t *testing.T, s server) {
 	t.Helper()
-	err := s.cache.Commit(context.Background(), "test",
+	err := s.cache.Commit(context.Background(), access.System("test"),
 		store.Insert(tagsTable, store.Row{tagOwner: jordan, tagName: "Band", tagPerson: noa}),
 		store.Insert(tagsTable, store.Row{tagOwner: noa, tagName: "Choir", tagPerson: jordan}),
 		store.Insert(managersTable, store.Row{tagOwner: noa, tagName: "Choir", managerEmail: abena}),
@@ -230,7 +231,7 @@ func TestDeletingAnAddedPersonTakesTheirRows(t *testing.T) {
 
 func TestDeletingAnImportedPersonsOverridesKeepsTheirRows(t *testing.T) {
 	s := newServer(t)
-	if err := s.cache.Commit(context.Background(), "test", store.Delete(overridesTab, store.Row{"Email": jordan})); err != nil {
+	if err := s.cache.Commit(context.Background(), access.System("test"), store.Delete(overridesTab, store.Row{"Email": jordan})); err != nil {
 		t.Fatal(err)
 	}
 	if s.count(t, tagsTable, store.Row{tagOwner: jordan}) == 0 {
@@ -242,7 +243,7 @@ func TestPhotoOrderIsSortKeys(t *testing.T) {
 	s := newServer(t)
 	const elena = "elena.torres@heliosschool.org"
 	after := []photoRef{{Name: "a.jpg"}, {Name: "b.jpg"}, {Name: "c.jpg"}}
-	if err := s.cache.Commit(context.Background(), elena, photoOps(elena, nil, after)...); err != nil {
+	if err := s.cache.Commit(context.Background(), actorOf(s.cache, elena), photoOps(elena, nil, after)...); err != nil {
 		t.Fatal(err)
 	}
 	names := func() []string {

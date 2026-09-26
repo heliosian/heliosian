@@ -23,6 +23,7 @@ import (
 	gcal "google.golang.org/api/calendar/v3"
 	"google.golang.org/api/option"
 
+	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/ask"
 	"heliosian/internal/auth"
@@ -564,6 +565,10 @@ func (d calendarDirectory) Household(email string) []string {
 	return emailsOf(append(adults, kids...))
 }
 
+func (d calendarDirectory) Family(email string) map[string]bool {
+	return d.cache.Model().Family(email)
+}
+
 func (d calendarDirectory) Parents(email string) []string {
 	return emailsOf(d.cache.Model().Parents(email))
 }
@@ -845,7 +850,7 @@ func NewCore(cfg Config) *Core {
 	// Moving an alum's address is Celebrate's to record and its tickets to
 	// follow, then the parties' guest lists here - from either app's page.
 	var hooks calendar.Hooks
-	moveAddress := func(ctx context.Context, actor, old, to, name string) error {
+	moveAddress := func(ctx context.Context, actor access.Actor, old, to, name string) error {
 		if _, err := celebrate.MoveAddress(ctx, celebrateCache, actor, old, to, name); err != nil {
 			return err
 		}
@@ -877,7 +882,7 @@ func NewCore(cfg Config) *Core {
 		}
 		return &celebrate.PartyRSVPs{Sent: sent, Answers: answers}
 	}
-	celebrate.Register(celebrateMux, celebrateCache, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom, partyRSVPs, func(ctx context.Context, actor, old, to, name string) {
+	celebrate.Register(celebrateMux, celebrateCache, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom, partyRSVPs, func(ctx context.Context, actor access.Actor, old, to, name string) {
 		hooks.MoveAddress(ctx, actor, old, to, name)
 	})
 	askMux := http.NewServeMux()

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
@@ -334,7 +335,7 @@ func TestCacheReadsNewestFirst(t *testing.T) {
 func TestCacheSavesAndHandles(t *testing.T) {
 	dir, queue, cache := testCache(t)
 	ctx := context.Background()
-	saved, err := cache.save(ctx, sample())
+	saved, err := cache.save(ctx, access.Actor{Email: sample().Email}, sample())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,21 +346,30 @@ func TestCacheSavesAndHandles(t *testing.T) {
 		t.Errorf("not readable back: %+v %v", got, ok)
 	}
 	now := time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC)
-	if err := cache.Filed(ctx, saved.ID, "https://github.com/x/y/issues/3", "admin@example.org", now); err != nil {
-		t.Fatal(err)
+	superAdmin := access.Actor{Email: "admin@example.org", Admin: true}
+	commit := func(ops []store.Op, err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cache.Commit(ctx, superAdmin, ops...); err != nil {
+			t.Fatal(err)
+		}
 	}
+	commit(cache.Model().filed(superAdmin, saved.ID, "https://github.com/x/y/issues/3", now))
 	got, _ := cache.Report(saved.ID)
 	if got.Status != StatusFiled || got.Issue != "https://github.com/x/y/issues/3" || got.HandledBy != "admin@example.org" {
 		t.Errorf("filed = %+v", got)
 	}
-	if err := cache.Dismissed(ctx, "a1b2c3d4e5f6", "admin@example.org", now); err != nil {
-		t.Fatal(err)
-	}
+	commit(cache.Model().dismissed(superAdmin, "a1b2c3d4e5f6", now))
 	if got, _ := cache.Report("a1b2c3d4e5f6"); got.Status != StatusDismissed {
 		t.Errorf("dismissed = %+v", got)
 	}
-	if err := cache.Filed(ctx, "nope", "x", "y", now); err == nil {
-		t.Error("filed a report that does not exist")
+	if _, err := cache.Model().filed(superAdmin, "nope", "x", now); access.Status(err) != http.StatusNotFound {
+		t.Errorf("filing a report that does not exist: %v", err)
+	}
+	if _, err := cache.Model().dismissed(access.Actor{Email: "member@example.org"}, saved.ID, now); access.Status(err) != http.StatusForbidden {
+		t.Errorf("a member dismissing a report: %v", err)
 	}
 	queue.Flush()
 	_, log, err := dir.Table(appName, store.ChangeLogTab)

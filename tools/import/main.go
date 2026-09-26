@@ -18,6 +18,7 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 
+	"heliosian/internal/access"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -32,6 +33,8 @@ const (
 	websiteFile = "Staff Bios.csv"
 	actor       = "import"
 )
+
+var system = access.System(actor)
 
 var sources = []struct {
 	tab    string
@@ -192,7 +195,7 @@ func clearCaughtUpOverrides(out string, source *data.Sheet, bios []map[string]st
 		{"Job Title", who.WebsiteTitle},
 	}
 	ops := []store.Op{}
-	kept := 0
+	cleared, kept := 0, 0
 	for _, bio := range bios {
 		email, err := who.WebsiteEmail(bio, nameToEmail, staffByName)
 		if err != nil {
@@ -222,9 +225,14 @@ func clearCaughtUpOverrides(out string, source *data.Sheet, bios []map[string]st
 			continue
 		}
 		log.Printf("  clearing %v for %s, which the staff page has caught up with", slices.Sorted(maps.Keys(cells)), email)
-		ops = append(ops, store.Update("Overrides", store.Row{"Email": email}, cells))
+		clearing, err := who.ClearCaughtUp(system, email, cells)
+		if err != nil {
+			return nil, err
+		}
+		ops = append(ops, clearing...)
+		cleared++
 	}
-	log.Printf("Overrides: %d rows the staff page has caught up with, %d left alone", len(ops), kept)
+	log.Printf("Overrides: %d rows the staff page has caught up with, %d left alone", cleared, kept)
 	return ops, nil
 }
 
@@ -301,9 +309,13 @@ func pruneNameToEmail(out string, source *data.Sheet, exported []map[string]stri
 		}
 		dropped[who.NormName(name)] = true
 		log.Printf("  dropping %s, veracross now has an address for them", name)
-		ops = append(ops, store.Delete(namesTab, store.Row{"Name": name}))
+		drop, err := who.ImportDelete(system, namesTab, name)
+		if err != nil {
+			return nil, err
+		}
+		ops = append(ops, drop...)
 	}
-	log.Printf("%s: %d entries the export has caught up with", namesTab, len(ops))
+	log.Printf("%s: %d entries the export has caught up with", namesTab, len(dropped))
 	return ops, nil
 }
 
@@ -364,12 +376,20 @@ func (s tabSync) ops(source *data.Sheet) ([]store.Op, error) {
 		}
 		if !ok {
 			log.Printf("  added %s", key)
-			ops = append(ops, store.Insert(s.tab, cells))
+			insert, err := who.ImportInsert(system, s.tab, cells)
+			if err != nil {
+				return nil, err
+			}
+			ops = append(ops, insert...)
 			added++
 			continue
 		}
 		if len(cells) > 0 {
-			ops = append(ops, store.Update(s.tab, store.Row{s.keyCol: key}, cells))
+			update, err := who.ImportUpdate(system, s.tab, key, cells)
+			if err != nil {
+				return nil, err
+			}
+			ops = append(ops, update...)
 			changed++
 		}
 	}
@@ -383,7 +403,11 @@ func (s tabSync) ops(source *data.Sheet) ([]store.Op, error) {
 			continue
 		}
 		log.Printf("  removed %s", key)
-		ops = append(ops, store.Delete(s.tab, store.Row{s.keyCol: key}))
+		remove, err := who.ImportDelete(system, s.tab, key)
+		if err != nil {
+			return nil, err
+		}
+		ops = append(ops, remove...)
 		removed++
 	}
 	log.Printf("%s: %d rows added, %d changed, %d removed", s.tab, added, changed, removed)

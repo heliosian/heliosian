@@ -4,12 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/logging"
 	"heliosian/internal/store"
@@ -148,8 +148,8 @@ func (c *Cache) Reports() []Report {
 	return c.Model().reports
 }
 
-func (c *Cache) Report(id string) (Report, bool) {
-	for _, r := range c.Model().reports {
+func (m *Model) report(id string) (Report, bool) {
+	for _, r := range m.reports {
 		if r.ID == id {
 			return r, true
 		}
@@ -157,26 +157,14 @@ func (c *Cache) Report(id string) (Report, bool) {
 	return Report{}, false
 }
 
-func (c *Cache) save(ctx context.Context, r Report) (Report, error) {
-	r.ID = newID()
-	r.Status = StatusNew
-	if err := c.Commit(ctx, r.Email, store.Insert(reportsTab, r.cells())); err != nil {
+func (c *Cache) Report(id string) (Report, bool) {
+	return c.Model().report(id)
+}
+
+func (c *Cache) save(ctx context.Context, actor access.Actor, r Report) (Report, error) {
+	saved, ops := c.Model().submit(actor, r)
+	if err := c.Commit(ctx, actor, ops...); err != nil {
 		return Report{}, err
 	}
-	return r, nil
-}
-
-func (c *Cache) handle(ctx context.Context, id, actor string, cells store.Row) error {
-	if _, ok := c.Report(id); !ok {
-		return fmt.Errorf("feedback: no report %q", id)
-	}
-	return c.Commit(ctx, actor, store.Update(reportsTab, store.Row{"ID": id}, cells))
-}
-
-func (c *Cache) Filed(ctx context.Context, id, issue, actor string, now time.Time) error {
-	return c.handle(ctx, id, actor, store.Row{"Status": StatusFiled, "Issue": issue, "Handled": handledCell(now), "Handled By": actor})
-}
-
-func (c *Cache) Dismissed(ctx context.Context, id, actor string, now time.Time) error {
-	return c.handle(ctx, id, actor, store.Row{"Status": StatusDismissed, "Handled": handledCell(now), "Handled By": actor})
+	return saved, nil
 }

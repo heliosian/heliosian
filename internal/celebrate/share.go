@@ -27,7 +27,7 @@ func ShareTagline(now func() string) {
 }
 
 func previewable(p *Party) bool {
-	return p != nil && p.VisibleTo(access.Viewer{})
+	return p != nil && p.VisibleTo(access.Actor{})
 }
 
 func whenLines(p *Party) (string, string) {

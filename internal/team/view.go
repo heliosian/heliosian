@@ -91,7 +91,7 @@ func (d viewer) person(email string) (string, string) {
 }
 
 type viewer struct {
-	access.Viewer
+	access.Actor
 	directory Directory
 }
 
@@ -193,11 +193,11 @@ func visibleStatus(status, addedBy, email string, editor bool) bool {
 	return true
 }
 
-func (m *Model) Edits(a *Activity, v access.Viewer) bool {
+func (m *Model) Edits(a *Activity, v access.Actor) bool {
 	return v.Admin || m.Runs(a, v.Email)
 }
 
-func (m *Model) VisibleTo(a *Activity, v access.Viewer) bool {
+func (m *Model) VisibleTo(a *Activity, v access.Actor) bool {
 	for node := a; node != nil; node = m.Activity(node.Parent) {
 		if !visibleStatus(node.Status, node.AddedBy, v.Email, m.Edits(node, v)) {
 			return false
@@ -209,14 +209,14 @@ func (m *Model) VisibleTo(a *Activity, v access.Viewer) bool {
 	return false
 }
 
-func (m *Model) ActivityFor(a *Activity, v access.Viewer) *Activity {
+func (m *Model) ActivityFor(a *Activity, v access.Actor) *Activity {
 	if !m.VisibleTo(a, v) {
 		return nil
 	}
 	return m.activityFor(a, v)
 }
 
-func (m *Model) activityFor(a *Activity, v access.Viewer) *Activity {
+func (m *Model) activityFor(a *Activity, v access.Actor) *Activity {
 	editor := m.Edits(a, v)
 	c := *a
 	c.Taken = len(a.Volunteers)
@@ -262,7 +262,7 @@ func (v viewer) activity(model *Model, a *Activity, runs bool, lists EmailListLo
 		Children:   []*ActivityView{},
 		Volunteers: v.volunteers(a.Volunteers),
 		Taken:      a.Taken,
-		CanEdit:    model.Edits(a, v.Viewer),
+		CanEdit:    model.Edits(a, v.Actor),
 		Runs:       chairs,
 	}
 	for _, c := range a.Children {
@@ -276,14 +276,14 @@ func (v viewer) activity(model *Model, a *Activity, runs bool, lists EmailListLo
 }
 
 // Render is the model as one signed-in person sees it.
-func Render(model *Model, directory Directory, as access.Viewer, now time.Time) View {
+func Render(model *Model, directory Directory, as access.Actor, now time.Time) View {
 	return RenderWith(model, directory, nil, nil, as, now)
 }
 
 // RenderWith is Render with Helios When's word on each event's guest
 // list, and Helios Loop's on each thing's email list, for the chairs.
-func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, lists EmailListLookup, as access.Viewer, now time.Time) View {
-	v := viewer{Viewer: as, directory: directory}
+func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, lists EmailListLookup, as access.Actor, now time.Time) View {
+	v := viewer{Actor: as, directory: directory}
 	email, admin := as.Email, as.Admin
 	name, photo := v.person(email)
 	spouses, children := directory.Household(email)

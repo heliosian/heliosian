@@ -17,6 +17,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
+	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 )
 
@@ -249,7 +250,7 @@ func Pass(ctx context.Context, cache *artifacts.Cache, s Summarizer, school Scho
 		if named := append(slices.Clone(reading.Classrooms), reading.Grades...); len(named) > 0 {
 			audience = strings.Join(named, ", ")
 		}
-		if err := cache.SetPoints(ctx, "keypoints", d.Key, reading.Points, audience, now.Format("2006-01-02")); err != nil {
+		if err := cache.SetPoints(ctx, access.System("keypoints"), d.Key, reading.Points, audience, now.Format("2006-01-02")); err != nil {
 			slog.ErrorContext(ctx, "[ERROR] keypoints: write the points", "error", err, "key", d.Key)
 			return written
 		}

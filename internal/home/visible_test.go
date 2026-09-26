@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 )
@@ -37,7 +38,7 @@ func sampleCache(t *testing.T) (*Cache, sheet) {
 
 func setVisibility(t *testing.T, c *Cache, app string, v Visibility) {
 	t.Helper()
-	if err := c.Commit(context.Background(), "test", store.Set(visibilityTab, store.Row{"App": app}, v.cells())); err != nil {
+	if err := c.Commit(context.Background(), access.System("test"), store.Set(visibilityTab, store.Row{"App": app}, v.cells())); err != nil {
 		t.Fatalf("set %s: %v", app, err)
 	}
 }

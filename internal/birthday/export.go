@@ -6,47 +6,27 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/store"
 )
 
-// The weekly export copies the birthdays an issue of the newsletter carries
-// into the Newsletter tab of the Staff Birthday List (Shared) spreadsheet -
-// the association's own record of the week's donations - and marks each of
-// them done: every Thursday at 11:59 at night, school time, for the issue in
-// the week ahead, and whenever the team presses Copy to Shared Sheet on the
-// Newsletters page. Everyone the issue carries goes, No Newsletter included
-// with that as their preference; whoever has no charity recorded by then is
-// given the default charity, recorded with nobody as its recorder, since the
-// default stands when they do not answer. Marking done is the donation's
-// Used On, so a birthday already marked is not copied again.
-
 const (
-	// sharedSheet is the spreadsheet's key among the data sources
-	// (BIRTHDAY_SHARED_SHEET), and sharedNewsletterTab the tab the rows go on.
 	sharedSheet         = "birthdayshared"
 	sharedNewsletterTab = "Newsletter"
-
-	// exportActor is who the Thursday run marks the donations used by, the
-	// Used By column wanting an address.
-	exportActor = "birthday@heliosian.com"
+	exportActor         = "birthday@heliosian.com"
 )
 
-// SharedNewsletterColumns is the shared Newsletter tab's header.
 var SharedNewsletterColumns = []string{"Staff Name", "Staff Email", "Staff Birthday", "Target Newsletter Date", "Contacted On", "Charity Selected On", "Charity Name", "Charity Link", "Charity Blurb", "Note", "Preference"}
 
-// exportDay, exportHour and exportMinute are when the weekly run goes:
-// Thursday, at 23:59.
 const (
 	exportDay    = time.Thursday
 	exportHour   = 23
 	exportMinute = 59
 )
 
-// nextExport is the first Thursday 23:59 after t, school time.
 func nextExport(t time.Time) time.Time {
 	t = t.In(local)
 	at := time.Date(t.Year(), t.Month(), t.Day(), exportHour, exportMinute, 0, 0, local)
@@ -56,8 +36,6 @@ func nextExport(t time.Time) time.Time {
 	return at
 }
 
-// weekIssue is the issue a run at t is for: the first newsletter date in the
-// seven days after t's day, or "" when the week has none.
 func weekIssue(model *Model, t time.Time) string {
 	from := t.In(local).Format(DateFormat)
 	to := t.In(local).AddDate(0, 0, 7).Format(DateFormat)
@@ -69,8 +47,7 @@ func weekIssue(model *Model, t time.Time) string {
 	return ""
 }
 
-// exportLoop runs the export every Thursday night for the week's issue. It
-// keeps the wall clock rather than now, which tests pin to a day long past.
+// Keeps the wall clock rather than now, which tests pin to a day long past.
 func (a app) exportLoop() {
 	for {
 		at := nextExport(time.Now())
@@ -81,25 +58,22 @@ func (a app) exportLoop() {
 			slog.InfoContext(ctx, "birthday: no issue this week to copy to the shared sheet")
 			continue
 		}
-		n, err := a.exportIssue(ctx, issue, exportActor)
+		n, err := a.weeklyExport(ctx, issue)
 		if err != nil {
-			slog.ErrorContext(ctx, "birthday: weekly copy to the shared sheet", "issue", issue, "copied", n, "error", err)
+			slog.ErrorContext(ctx, "[ERROR] birthday: weekly copy to the shared sheet", "issue", issue, "copied", n, "error", err)
 			continue
 		}
 		slog.InfoContext(ctx, "birthday: weekly copy to the shared sheet", "issue", issue, "copied", n)
 	}
 }
 
-// exported is one birthday on its way to the shared sheet: its row there,
-// and what marking it done writes to its donation.
 type exported struct {
 	email, year string
 	row         map[string]string
 	donation    map[string]string
 }
 
-// toExport is every birthday an issue carries that is not yet done.
-func (a app) toExport(model *Model, issue, actor string) []exported {
+func (a app) toExport(model *Model, issue string) []exported {
 	out := []exported{}
 	day := today()
 	for i := range model.Birthdays {
@@ -111,7 +85,7 @@ func (a app) toExport(model *Model, issue, actor string) []exported {
 			continue
 		}
 		name, note, selected := model.Settings.DefaultCharity, "", ""
-		donation := map[string]string{"Used On": day, "Used By": actor}
+		donation := map[string]string{}
 		if sv.Donation != nil {
 			name, note, selected = sv.Donation.Charity, sv.Donation.Note, sv.Donation.RecordedOn
 		} else {
@@ -133,54 +107,56 @@ func (a app) toExport(model *Model, issue, actor string) []exported {
 	return out
 }
 
-// exportIssue copies an issue's birthdays that are not yet done to the
-// shared sheet, then marks each done, and says how many went. The copy is
-// queued ahead of the marks, so no birthday is marked without its row.
-func (a app) exportIssue(ctx context.Context, issue, actor string) (int, error) {
-	items := a.toExport(a.cache.Model(), issue, actor)
-	if len(items) == 0 {
-		return 0, nil
-	}
-	rows, marks := []store.Op{}, []store.Op{}
-	for _, it := range items {
-		rows = append(rows, store.Insert(sharedNewsletterTab, it.row))
-		marks = append(marks, store.Set(donationsTab, store.Row{"Email": it.email, "Year": it.year}, it.donation))
+// The copy is queued ahead of the marks, so no birthday is marked without its row.
+func (a app) commitExport(ctx context.Context, actor access.Actor, rows, marks []store.Op) error {
+	if len(rows) == 0 {
+		return nil
 	}
 	if err := a.cache.shared.Commit(ctx, actor, rows...); err != nil {
-		return 0, fmt.Errorf("copy to the shared sheet: %w", err)
+		return fmt.Errorf("copy to the shared sheet: %w", err)
 	}
 	if err := a.cache.Commit(ctx, actor, marks...); err != nil {
-		return 0, fmt.Errorf("mark the copied birthdays done: %w", err)
+		return fmt.Errorf("mark the copied birthdays done: %w", err)
 	}
-	return len(items), nil
+	return nil
 }
 
-// shareIssue is POST /api/birthday/newsletter/share: anyone on the team
-// running the export by hand for an issue, the Newsletters page's Copy to
-// Shared Sheet. It answers how many birthdays went.
-func (a app) shareIssue(w http.ResponseWriter, r *http.Request) {
-	actor, _, ok := a.requireTeam(w, r)
-	if !ok {
-		return
+func (a app) weeklyExport(ctx context.Context, issue string) (int, error) {
+	actor := access.System(exportActor)
+	model := a.cache.Model()
+	rows, marks, err := weeklyExport(actor, a.toExport(model, issue))
+	if err != nil {
+		return 0, err
 	}
+	if err := a.commitExport(ctx, actor, rows, marks); err != nil {
+		return 0, err
+	}
+	return len(rows), nil
+}
+
+func (a app) shareIssue(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Date string `json:"date"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
+	actor := a.actor(r)
 	issue := strings.TrimSpace(body.Date)
-	if !slices.Contains(a.cache.Model().NewsletterDates, issue) {
-		http.Error(w, "that is not a newsletter date", http.StatusBadRequest)
-		return
-	}
-	n, err := a.exportIssue(r.Context(), issue, actor)
+	model := a.cache.Model()
+	rows, marks, err := model.shareIssue(actor, issue, a.toExport(model, issue))
 	if err != nil {
-		slog.ErrorContext(r.Context(), "birthday: copy to the shared sheet", "actor", actor, "issue", issue, "copied", n, "error", err)
-		http.Error(w, fmt.Sprintf("copied %d, then: %v", n, err), http.StatusBadGateway)
+		refuse(w, err)
 		return
 	}
-	slog.InfoContext(r.Context(), "birthday: copied to the shared sheet", "actor", actor, "issue", issue, "copied", n)
+	if err := a.commitExport(r.Context(), actor, rows, marks); err != nil {
+		slog.ErrorContext(r.Context(), "[ERROR] birthday: copy to the shared sheet", "actor", actor.Email, "issue", issue, "copied", 0, "error", err)
+		http.Error(w, fmt.Sprintf("copied 0, then: %v", err), http.StatusBadGateway)
+		return
+	}
+	slog.InfoContext(r.Context(), "birthday: copied to the shared sheet", "actor", actor.Email, "issue", issue, "copied", len(rows))
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]int{"copied": n})
+	if err := json.NewEncoder(w).Encode(map[string]int{"copied": len(rows)}); err != nil {
+		slog.ErrorContext(r.Context(), "encode copied count", "error", err)
+	}
 }

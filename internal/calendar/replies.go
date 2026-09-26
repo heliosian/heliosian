@@ -18,6 +18,7 @@ import (
 	netmail "net/mail"
 	"strings"
 
+	"heliosian/internal/access"
 	"heliosian/internal/mail"
 )
 
@@ -124,7 +125,7 @@ func (a app) takeReply(ctx context.Context, reply Reply, from, tag string) error
 	if !hmac.Equal([]byte(tag), []byte(a.replyToken(id, email))) {
 		return fmt.Errorf("sent to an address that is not this attendee's for this event")
 	}
-	if err := a.recordBy(ctx, email, email, id, answer, ViaCalendar, false, true); err != nil {
+	if err := a.recordBy(ctx, access.System(email), email, id, answer, ViaCalendar, false, true); err != nil {
 		return err
 	}
 	slog.InfoContext(ctx, "calendar: answered by reply", "actor", email, "event", id, "answer", answer)

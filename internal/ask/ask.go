@@ -54,7 +54,7 @@ type Sources struct {
 	CelebrateDirectory celebrate.Directory
 	Loop               func() *loop.Model
 	LoopSources        func() loop.Sources
-	Links              func(v access.Viewer) []home.Category
+	Links              func(v access.Actor) []home.Category
 	Alerts             func(email string) (stale []string, privacy []string)
 	Artifacts          func() *artifacts.Model
 	Embedder           artifacts.Embedder

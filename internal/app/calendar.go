@@ -42,7 +42,7 @@ func firstName(name, email string) string {
 
 func (c calendarLinked) list(email string) []calendar.Linked {
 	now := time.Now().In(calendar.Location)
-	as := access.Viewer{Email: email, Household: c.directory.Family(email)}
+	as := access.Actor{Email: email, Household: c.directory.Family(email)}
 	family := familyNames{email: ""}
 	full := map[string]string{}
 	adults, kids := c.directory.Household(email)
@@ -102,7 +102,7 @@ func (c calendarLinked) parties(now time.Time, family familyNames, full map[stri
 	out := []calendar.Linked{}
 	model := c.celebrate.Model()
 	for _, p := range model.SortedParties("") {
-		if !p.VisibleTo(access.Viewer{}) || p.Start == "" {
+		if !p.VisibleTo(access.Actor{}) || p.Start == "" {
 			continue
 		}
 		var going, waiting standing
@@ -152,11 +152,11 @@ func activityImage(model *team.Model, a *team.Activity) string {
 	return ""
 }
 
-func (c calendarLinked) activities(as access.Viewer, family familyNames, full map[string]string) []calendar.Linked {
+func (c calendarLinked) activities(as access.Actor, family familyNames, full map[string]string) []calendar.Linked {
 	out := []calendar.Linked{}
 	model := c.team.Model()
 	for _, raw := range model.Activities {
-		if !model.VisibleTo(raw, access.Viewer{}) || raw.Start == "" {
+		if !model.VisibleTo(raw, access.Actor{}) || raw.Start == "" {
 			continue
 		}
 		a := model.ActivityFor(raw, as)

@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/geocode"
@@ -117,7 +117,7 @@ func NewCache(source data.Source, writer data.Writer, blobs, static BlobChecker,
 	return c, nil
 }
 
-func (c *Cache) commit(w http.ResponseWriter, r *http.Request, actor string, ops ...store.Op) bool {
+func (c *Cache) commit(w http.ResponseWriter, r *http.Request, actor access.Actor, ops ...store.Op) bool {
 	if err := c.Commit(r.Context(), actor, ops...); err != nil {
 		serverError(w, r, err)
 		return false
@@ -140,7 +140,8 @@ func (c *Cache) Locate(geocoder Geocoder) {
 }
 
 func (c *Cache) geocode(geocoder Geocoder) {
-	missing := c.Model().unlocated
+	model := c.Model()
+	missing := model.unlocated
 	if len(missing) == 0 {
 		return
 	}
@@ -168,19 +169,9 @@ func (c *Cache) geocode(geocoder Geocoder) {
 	}
 	close(jobs)
 	wg.Wait()
-	ops := []store.Op{}
-	for _, address := range missing {
-		point, ok := found[address]
-		if !ok {
-			continue
-		}
-		ops = append(ops, store.Insert(geocodeTable, store.Row{
-			geocodeAddress: address,
-			geocodeLat:     strconv.FormatFloat(point.Lat, 'f', -1, 64),
-			geocodeLng:     strconv.FormatFloat(point.Lng, 'f', -1, 64),
-		}))
-	}
-	if err := c.Commit(context.Background(), "geocoder", ops...); err != nil {
+	actor := access.System("geocoder")
+	ops := model.locate(actor, found)
+	if err := c.Commit(context.Background(), actor, ops...); err != nil {
 		slog.Error("[ERROR] record geocoded addresses", "error", err)
 	}
 	slog.Info("geocoded family addresses", "looked up", len(missing), "found", len(ops), "took", time.Since(start).Round(time.Millisecond))

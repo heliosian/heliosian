@@ -43,7 +43,7 @@ func (n Notifier) Notify(r Report) {
 	ctx, cancel := context.WithTimeout(context.Background(), notifyTimeout)
 	defer cancel()
 	if err := n.Sender.Send(ctx, n.message(to, r)); err != nil {
-		slog.Error("feedback: announce", "error", err, "id", r.ID)
+		slog.Error("[ERROR] feedback: announce", "error", err, "id", r.ID)
 	}
 }
 

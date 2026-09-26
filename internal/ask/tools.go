@@ -95,11 +95,11 @@ type viewer struct {
 	embedder  artifacts.Embedder
 	sources   Sources
 	now       time.Time
-	teamAs    access.Viewer
-	partyAs   access.Viewer
-	loopAs    access.Viewer
-	whenAs    access.Viewer
-	homeAs    access.Viewer
+	teamAs    access.Actor
+	partyAs   access.Actor
+	loopAs    access.Actor
+	whenAs    access.Actor
+	homeAs    access.Actor
 	access    *groupAccess
 	ctx       context.Context
 }
@@ -112,8 +112,8 @@ func (a app) viewer(email string) *viewer {
 	}
 	v.me = v.directory.Person(email)
 	household := v.directory.Family(email)
-	as := func(admin func(string) bool) access.Viewer {
-		return access.Viewer{Email: email, Admin: admin(email), Household: household}
+	as := func(admin func(string) bool) access.Actor {
+		return access.Actor{Email: email, Admin: admin(email), Household: household}
 	}
 	v.teamAs, v.partyAs, v.loopAs, v.whenAs, v.homeAs = as(a.sources.Admins.Team), as(a.sources.Admins.Celebrate), as(a.sources.Admins.Loop), as(a.sources.Admins.Calendar), as(a.sources.Admins.Home)
 	return v

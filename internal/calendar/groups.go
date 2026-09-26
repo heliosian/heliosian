@@ -3,15 +3,14 @@ package calendar
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
-	"maps"
 	"net/http"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
 )
@@ -109,32 +108,6 @@ func (m *Model) GroupOf(id, gid string) *InviteGroup {
 	return nil
 }
 
-func (a app) checkRule(r filter.Rule, actor string, e *Event) (filter.Rule, error) {
-	if a.sources == nil {
-		return r, fmt.Errorf("groups are not set up")
-	}
-	r = filter.Clean(r)
-	r.Kind = filter.KindInclude
-	if err := filter.Check(r); err != nil {
-		return r, err
-	}
-	options := filter.OptionsFor(a.sources(), actor)
-	for _, g := range r.Grades {
-		if !slices.Contains(options.Grades, g) {
-			return r, fmt.Errorf("the directory has no grade %s", g)
-		}
-	}
-	for _, c := range r.Classrooms {
-		if !slices.Contains(options.Classrooms, c) {
-			return r, fmt.Errorf("the directory has no classroom %s", c)
-		}
-	}
-	if err := filter.Writable(a.sources(), actor, a.hostsOf(e), nil, []filter.Rule{r}); err != nil {
-		return r, err
-	}
-	return r, nil
-}
-
 func (a app) members(e *Event, g InviteGroup) []string {
 	if a.sources == nil {
 		return nil
@@ -228,11 +201,13 @@ func (a app) groupPreview(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
-	if !ok {
+	actor := a.actor(r)
+	e, err := a.hostedEvent(actor, body.ID)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	rule, err := a.checkRule(body.Rule, actor, e)
+	rule, err := a.checkRule(actor, body.Rule, e)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -257,12 +232,6 @@ func (a app) groupPreview(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func groupRow(e *Event, g InviteGroup) store.Row {
-	row := store.Row{"Event ID": e.ID, "Group ID": g.ID, "Auto": yesNoWord(g.Auto), "Added By": g.AddedBy, "Added": g.Added}
-	maps.Copy(row, filter.RuleCells(g.Rule))
-	return row
-}
-
 func (a app) addGroup(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID   string      `json:"id"`
@@ -272,25 +241,17 @@ func (a app) addGroup(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
-	if !ok {
-		return
-	}
-	rule, err := a.checkRule(body.Rule, actor, e)
+	actor := a.actor(r)
+	ops, e, g, err := a.addGroupOps(actor, body.ID, body.Rule, body.Auto)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		refuse(w, err)
 		return
 	}
-	if len(a.cache.Model().Groups[e.ID]) >= 20 {
-		http.Error(w, "a guest list holds twenty groups at most", http.StatusBadRequest)
-		return
-	}
-	g := InviteGroup{ID: strings.ToLower(newEventID()), Rule: rule, Auto: body.Auto == nil || *body.Auto, AddedBy: actor, Added: now().Format(DateTimeFormat)}
-	if !a.commit(w, r, actor, append(a.invitationOps(e.ID, actor, nil), store.Insert(InviteGroupsTab, groupRow(e, g)))...) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	added := a.fill(r.Context(), actor, e, g, false)
-	slog.InfoContext(r.Context(), "calendar: group added", "actor", actor, "event", e.ID, "group", g.ID, "added", added)
+	slog.InfoContext(r.Context(), "calendar: group added", "actor", actor.Email, "event", e.ID, "group", g.ID, "added", added)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"group": g.ID, "added": added})
 }
@@ -304,22 +265,19 @@ func (a app) setGroup(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
-	if !ok {
+	actor := a.actor(r)
+	ops, e, g, err := a.setGroupOps(actor, body.ID, body.Group, body.Auto)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	g := a.cache.Model().GroupOf(e.ID, body.Group)
-	if g == nil {
-		http.Error(w, "that group is not on the list", http.StatusNotFound)
-		return
-	}
-	if !a.commit(w, r, actor, store.Update(InviteGroupsTab, store.Row{"Event ID": e.ID, "Group ID": g.ID}, store.Row{"Auto": yesNoWord(body.Auto)})) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	if body.Auto {
 		a.fill(r.Context(), actor, e, *a.cache.Model().GroupOf(e.ID, g.ID), false)
 	}
-	slog.InfoContext(r.Context(), "calendar: group changed", "actor", actor, "event", e.ID, "group", g.ID, "auto", body.Auto)
+	slog.InfoContext(r.Context(), "calendar: group changed", "actor", actor.Email, "event", e.ID, "group", g.ID, "auto", body.Auto)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -331,61 +289,22 @@ func (a app) removeGroup(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
-	if !ok {
+	actor := a.actor(r)
+	ops, e, g, err := a.removeGroupOps(actor, body.ID, body.Group)
+	if err != nil {
+		refuse(w, err)
 		return
-	}
-	model := a.cache.Model()
-	g := model.GroupOf(e.ID, body.Group)
-	if g == nil {
-		http.Error(w, "that group is not on the list", http.StatusNotFound)
-		return
-	}
-	ops := []store.Op{store.Delete(InviteGroupsTab, store.Row{"Event ID": e.ID, "Group ID": g.ID})}
-	for _, inv := range model.Invites[e.ID] {
-		if inv.Via == ViaGroup+g.ID && inv.Sent == "" {
-			ops = append(ops, store.Delete(InvitesTab, store.Row{"Event ID": e.ID, "Email": inv.Email}))
-		}
 	}
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: group removed", "actor", actor, "event", e.ID, "group", g.ID, "dropped", len(ops)-1)
+	slog.InfoContext(r.Context(), "calendar: group removed", "actor", actor.Email, "event", e.ID, "group", g.ID, "dropped", len(ops)-1)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{"dropped": len(ops) - 1})
 }
 
-func (a app) fill(ctx context.Context, actor string, e *Event, g InviteGroup, wait bool) int {
-	model := a.cache.Model()
-	at := now()
-	stamp := at.Format(DateTimeFormat)
-	ops := []store.Op{}
-	emails := []string{}
-	matching := a.members(e, g)
-	guests := a.ticketGuests(g)
-	if wait {
-		a.clock.keep(e.ID, g.ID, matching)
-	}
-	for _, email := range matching {
-		if model.InviteOf(e.ID, email) != nil || slices.Contains(g.Removed, email) {
-			continue
-		}
-		if wait && !a.clock.ripe(e.ID, g.ID, email, at) {
-			slog.DebugContext(ctx, "calendar: group match waits the grace", "event", e.ID, "group", g.ID, "email", email)
-			continue
-		}
-		name, token := email, ""
-		if p, known := a.directory.Person(email); known {
-			name = p.Name
-		} else if guest, ok := guests[email]; ok {
-			name, token = guest, NewToken()
-			if name == "" {
-				name = displayName(email)
-			}
-		}
-		ops = append(ops, store.Insert(InvitesTab, store.Row{"Event ID": e.ID, "Email": email, "Name": name, "Via": ViaGroup + g.ID, "Added By": g.AddedBy, "Added": stamp, "Token": token}))
-		emails = append(emails, email)
-	}
+func (a app) fill(ctx context.Context, actor access.Actor, e *Event, g InviteGroup, wait bool) int {
+	ops, emails := a.fillOps(actor, e, g, wait)
 	if len(ops) == 0 {
 		return 0
 	}
@@ -404,7 +323,7 @@ func (a app) sweepEvent(ctx context.Context, e *Event) {
 		return
 	}
 	for _, g := range a.cache.Model().Groups[e.ID] {
-		if n := a.fill(ctx, sweepActor, e, g, true); n > 0 {
+		if n := a.fill(ctx, access.System(sweepActor), e, g, true); n > 0 {
 			slog.InfoContext(ctx, "calendar: group filled", "event", e.ID, "group", g.ID, "added", n)
 		}
 	}
@@ -416,7 +335,7 @@ func (a app) sweep(ctx context.Context) {
 	}
 	for id, groups := range a.cache.Model().Groups {
 		if len(groups) > 0 {
-			a.sweepEvent(ctx, a.eventFor(groups[0].AddedBy, false, id))
+			a.sweepEvent(ctx, a.sweptEvent(a.as(groups[0].AddedBy), id))
 		}
 	}
 }
@@ -434,36 +353,22 @@ func (a app) startParty(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
-	if !ok {
+	actor := a.actor(r)
+	ops, e, g, err := a.startPartyOps(actor, body.ID)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	if !e.linked() {
-		http.Error(w, "only a party or an HCA event starts this way", http.StatusBadRequest)
+	if len(ops) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"group": g.ID, "added": 0})
 		return
 	}
-	if a.sources == nil {
-		http.Error(w, "groups are not set up", http.StatusNotFound)
-		return
-	}
-	key := "party:" + e.linkedID()
-	if e.Source != SourceCelebrate {
-		key = "activity:" + e.linkedID()
-	}
-	model := a.cache.Model()
-	for _, g := range model.Groups[e.ID] {
-		if slices.Contains(g.Rule.Tags, key) {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{"group": g.ID, "added": 0})
-			return
-		}
-	}
-	g := InviteGroup{ID: strings.ToLower(newEventID()), Rule: filter.Rule{Kind: filter.KindInclude, Tags: []string{key}}, Auto: true, AddedBy: actor, Added: now().Format(DateTimeFormat)}
-	if !a.commit(w, r, actor, append(a.invitationOps(e.ID, actor, nil), store.Insert(InviteGroupsTab, groupRow(e, g)))...) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	added := a.fill(r.Context(), actor, e, g, false)
-	slog.InfoContext(r.Context(), "calendar: party list started", "actor", actor, "event", e.ID, "group", g.ID, "added", added)
+	slog.InfoContext(r.Context(), "calendar: party list started", "actor", actor.Email, "event", e.ID, "group", g.ID, "added", added)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"group": g.ID, "added": added})
 }

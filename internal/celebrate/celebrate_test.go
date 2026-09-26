@@ -87,8 +87,8 @@ func (d fakeDirectory) Family(email string) map[string]bool {
 	return out
 }
 
-func viewerOf(email string, admin bool) access.Viewer {
-	return access.Viewer{Email: email, Admin: admin, Household: fakeDirectory{}.Family(email)}
+func viewerOf(email string, admin bool) access.Actor {
+	return access.Actor{Email: email, Admin: admin, Household: fakeDirectory{}.Family(email)}
 }
 
 func (fakeDirectory) People() []Person { return nil }
@@ -341,6 +341,34 @@ func TestAttendeeLines(t *testing.T) {
 				t.Errorf("a student did not see their own ticket as theirs: %+v", a)
 			}
 		}
+	}
+}
+
+func TestStudentsActForThemselves(t *testing.T) {
+	cache, mux := newServer(t)
+	var guest, own string
+	for _, tk := range cache.Model().Party("P001").Tickets {
+		if tk.Purchaser == parent && tk.Email == "" {
+			guest = tk.ID
+		}
+		if tk.Email == kid {
+			own = tk.ID
+		}
+	}
+	if guest == "" || own == "" {
+		t.Fatal("the sample lacks a parent's guest ticket or the student's own ticket on P001")
+	}
+	note := func(as, id string) int {
+		return call(t, mux, as, "POST", "/api/celebrate/ticket", map[string]any{"ticketId": id, "note": "see you there"}).Code
+	}
+	if got := note(kid, guest); got != http.StatusForbidden {
+		t.Errorf("a student edited their parent's ticket: %d", got)
+	}
+	if got := note(partner, guest); got != http.StatusNoContent {
+		t.Errorf("a parent could not edit their household's ticket: %d", got)
+	}
+	if got := note(kid, own); got != http.StatusNoContent {
+		t.Errorf("a student could not edit their own ticket: %d", got)
 	}
 }
 
@@ -1182,8 +1210,8 @@ func TestMoveAddress(t *testing.T) {
 	type move struct{ actor, old, to, name string }
 	told := []move{}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom, nil, func(_ context.Context, actor, old, to, name string) {
-		told = append(told, move{actor, old, to, name})
+	Register(mux, cache, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom, nil, func(_ context.Context, actor access.Actor, old, to, name string) {
+		told = append(told, move{actor.Email, old, to, name})
 	})
 	const (
 		school = "ella.graduated@heliosschool.org"
@@ -1224,7 +1252,7 @@ func TestMoveAddress(t *testing.T) {
 
 	// A ticket row still naming the old address - pasted in by hand - reads
 	// as the new one.
-	if err := cache.Commit(context.Background(), admin, store.Insert(ticketsTab, store.Row{"Ticket ID": "TOLD", "Party ID": "P002", "Email": school, "Purchaser": school, "Status": TicketSold, "Price": "0"})); err != nil {
+	if err := cache.Commit(context.Background(), access.System(admin), store.Insert(ticketsTab, store.Row{"Ticket ID": "TOLD", "Party ID": "P002", "Email": school, "Purchaser": school, "Status": TicketSold, "Price": "0"})); err != nil {
 		t.Fatal(err)
 	}
 	if tk, _ := cache.Model().TicketByID("TOLD"); tk.Email != home || tk.Purchaser != home || tk.Name != "Ella Whitfield" {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
@@ -86,8 +87,8 @@ func (a app) deliveryEvents(w http.ResponseWriter, r *http.Request) {
 	if reason == "" {
 		reason = d.Reason
 	}
-	row := store.Row{"Email": email, "When": now().Format(DateTimeFormat), "Reason": reason}
-	if err := a.cache.CommitAndWait(r.Context(), deliveryActor, store.Insert(BouncesTab, row)); err != nil {
+	actor := access.System(deliveryActor)
+	if err := a.cache.CommitAndWait(r.Context(), actor, bounceOps(actor, email, reason)...); err != nil {
 		slog.ErrorContext(r.Context(), "[ERROR] calendar: note bounce", "email", email, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -109,51 +110,28 @@ func (a app) changeInviteEmail(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
-	if !ok {
+	actor := a.actor(r)
+	ops, c, err := a.changeAddressOps(actor, body.ID, body.Email, body.To, body.Everywhere)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	model := a.cache.Model()
-	email := normalizeEmail(body.Email)
-	to := normalizeEmail(body.To)
-	inv := model.InviteOf(e.ID, email)
-	switch {
-	case inv == nil:
-		http.Error(w, "that person is not on the list", http.StatusNotFound)
-		return
-	case isGuestKey(email):
-		http.Error(w, "a guest named without an address has none to change", http.StatusBadRequest)
-		return
-	case !emailForm.MatchString(to):
-		http.Error(w, "that is not an email address", http.StatusBadRequest)
-		return
-	case to == email:
-		w.WriteHeader(http.StatusNoContent)
-		return
-	case model.InviteOf(e.ID, to) != nil && !body.Everywhere:
-		http.Error(w, "that address is on the list already", http.StatusBadRequest)
-		return
-	}
-	if _, known := a.directory.Person(email); known {
-		http.Error(w, "their address is the directory's to change", http.StatusBadRequest)
-		return
-	}
-	if body.Everywhere {
-		if e.Source != SourceCelebrate || a.celebrate.MoveAddress == nil || a.celebrate.IsAdmin == nil || !a.celebrate.IsAdmin(actor) {
-			http.Error(w, "only Celebrate's admins move an address on every party", http.StatusForbidden)
-			return
-		}
-		if err := a.celebrate.MoveAddress(r.Context(), actor, email, to, inv.Name); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+	if c.everywhere {
+		if err := a.celebrate.MoveAddress(r.Context(), actor, c.from, c.to, c.name); err != nil {
+			refuse(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !a.commit(w, r, actor, store.Update(InvitesTab, store.Row{"Event ID": e.ID, "Email": email}, store.Row{"Email": to})) {
+	if len(ops) == 0 {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: invite address changed", "actor", actor, "event", e.ID, "from", email, "to", to)
+	if !a.commit(w, r, actor, ops...) {
+		return
+	}
+	slog.InfoContext(r.Context(), "calendar: invite address changed", "actor", actor.Email, "event", c.event.ID, "from", c.from, "to", c.to)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -164,49 +142,9 @@ func (a app) changeInviteEmail(w http.ResponseWriter, r *http.Request) {
 // guest brought under the old address follows too. Where the new address is
 // on a list already, the old row simply goes. Anyone who had been sent the
 // invitation at the old address - which reached nobody - is sent it again.
-func (a app) moveAddress(ctx context.Context, actor, old, to, name string) {
+func (a app) moveAddress(ctx context.Context, actor access.Actor, old, to, name string) {
 	old, to = normalizeEmail(old), normalizeEmail(to)
-	model := a.cache.Model()
-	person, known := a.directory.Person(to)
-	ops := []store.Op{}
-	resend := []string{}
-	for id := range model.Invites {
-		if !strings.HasPrefix(id, SourceCelebrate+"/") {
-			continue
-		}
-		row := model.InviteOf(id, old)
-		if row == nil {
-			continue
-		}
-		match := store.Row{"Event ID": id, "Email": old}
-		if model.InviteOf(id, to) != nil {
-			ops = append(ops, store.Delete(InvitesTab, match))
-		} else {
-			cells := store.Row{"Email": to, "Token": "", "Household": ""}
-			switch {
-			case known:
-				cells["Name"] = person.Name
-			default:
-				cells["Token"], cells["Household"] = row.Token, row.Household
-				if cells["Token"] == "" {
-					cells["Token"] = NewToken()
-				}
-				if name != "" {
-					cells["Name"] = name
-				}
-			}
-			ops = append(ops, store.Update(InvitesTab, match, cells))
-			if row.Sent != "" {
-				if inv := model.Invitations[id]; inv != nil && inv.Sent != "" {
-					resend = append(resend, id)
-				}
-			}
-		}
-		ops = append(ops,
-			store.Update(InvitesTab, store.Row{"Event ID": id, "Household": old}, store.Row{"Household": to}),
-			store.Update(InvitesTab, store.Row{"Event ID": id, "Guest Of": old}, store.Row{"Guest Of": to}),
-		)
-	}
+	ops, resend := a.moveAddressOps(actor, old, to, name)
 	if len(ops) == 0 {
 		return
 	}
@@ -215,15 +153,15 @@ func (a app) moveAddress(ctx context.Context, actor, old, to, name string) {
 		return
 	}
 	for _, id := range resend {
-		e := a.eventFor(actor, true, id)
+		e := a.eventFor(actor.Email, true, id)
 		if e == nil || e.end.Before(now()) {
 			continue
 		}
-		host := actor
+		host := actor.Email
 		if hosts := a.hostsOf(e); len(hosts) > 0 {
 			host = hosts[0]
 		}
 		a.send(ctx, actor, host, e, []string{to}, "")
 	}
-	slog.InfoContext(ctx, "calendar: address moved", "actor", actor, "from", old, "to", to, "resent", len(resend))
+	slog.InfoContext(ctx, "calendar: address moved", "actor", actor.Email, "from", old, "to", to, "resent", len(resend))
 }

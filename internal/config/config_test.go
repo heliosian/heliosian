@@ -170,3 +170,26 @@ func TestAdminEditsAreCommits(t *testing.T) {
 		t.Errorf("an unchanged setting was logged:\n%s", strings.Join(log, "\n"))
 	}
 }
+
+func TestEditsNeedTheirAdmin(t *testing.T) {
+	_, _, cache := sample(t)
+	const asha = "asha.chandra@heliosschool.org"
+	mux := http.NewServeMux()
+	Register(mux, cache, func(email string) bool { return email == asha })
+	for path, body := range map[string]string{
+		"/api/config/color":        `{"kind":"staff","color":"#000000"}`,
+		"/api/config/super-admins": `{"superAdmins":["` + asha + `"]}`,
+		"/api/config/sign-out":     `{"email":"parent@heliosschool.org"}`,
+	} {
+		for who, want := range map[string]int{"robin.whitfield@heliosschool.org": http.StatusForbidden, asha: http.StatusNoContent} {
+			if path != "/api/config/color" && who == asha {
+				want = http.StatusForbidden
+			}
+			rec := httptest.NewRecorder()
+			auth.Fixed(who, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
+			if rec.Code != want {
+				t.Errorf("%s by %s: %d %s, want %d", path, who, rec.Code, rec.Body, want)
+			}
+		}
+	}
+}

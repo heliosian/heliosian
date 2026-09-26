@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/auth"
+	"heliosian/internal/access"
 )
 
 const (
@@ -35,13 +35,12 @@ func RegisterAdmin(mux *http.ServeMux, cache *Cache, filer IssueFiler, superAdmi
 	mux.HandleFunc("POST /api/admin/feedback/{id}/dismiss", a.dismiss)
 }
 
-func (a admin) require(w http.ResponseWriter, r *http.Request) (string, bool) {
-	email := strings.ToLower(auth.Email(r))
-	if !a.superAdmin(email) {
-		http.Error(w, "super admin access required", http.StatusForbidden)
-		return "", false
+func (a admin) require(w http.ResponseWriter, r *http.Request) bool {
+	if err := requireSuperAdmin(actorOf(r, a.superAdmin)); err != nil {
+		http.Error(w, err.Error(), access.Status(err))
+		return false
 	}
-	return email, true
+	return true
 }
 
 type summary struct {
@@ -95,7 +94,7 @@ func summaryOf(r Report) summary {
 }
 
 func (a admin) list(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.require(w, r); !ok {
+	if !a.require(w, r) {
 		return
 	}
 	reports := a.cache.Reports()
@@ -112,7 +111,7 @@ func (a admin) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a admin) one(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.require(w, r); !ok {
+	if !a.require(w, r) {
 		return
 	}
 	report, ok := a.cache.Report(r.PathValue("id"))
@@ -139,21 +138,14 @@ func (a admin) one(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a admin) file(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.require(w, r)
-	if !ok {
+	actor := actorOf(r, a.superAdmin)
+	report, err := a.cache.Model().filing(actor, r.PathValue("id"))
+	if err != nil {
+		http.Error(w, err.Error(), access.Status(err))
 		return
 	}
 	if a.filer == nil {
 		http.Error(w, "filing on GitHub is not set up on this server", http.StatusServiceUnavailable)
-		return
-	}
-	report, ok := a.cache.Report(r.PathValue("id"))
-	if !ok {
-		http.Error(w, "no such report", http.StatusNotFound)
-		return
-	}
-	if report.Status == StatusFiled {
-		http.Error(w, "that report is already filed", http.StatusConflict)
 		return
 	}
 	var in draft
@@ -184,29 +176,34 @@ func (a admin) file(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	issue, err := a.filer.File(ctx, title, body, issueType, in.Labels)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "feedback: filing failed", "error", err, "id", report.ID)
+		slog.ErrorContext(r.Context(), "[ERROR] feedback: filing failed", "error", err, "id", report.ID)
 		http.Error(w, "GitHub would not take the issue: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	if err := a.cache.Filed(r.Context(), report.ID, issue, actor, time.Now()); err != nil {
-		slog.ErrorContext(r.Context(), "feedback: mark filed", "error", err, "id", report.ID, "issue", issue)
+	if err := a.markFiled(r.Context(), actor, report.ID, issue); err != nil {
+		slog.ErrorContext(r.Context(), "[ERROR] feedback: mark filed", "error", err, "id", report.ID, "issue", issue)
 		http.Error(w, "the issue is filed at "+issue+" but the report could not be marked: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, r, map[string]string{"issue": issue})
 }
 
+func (a admin) markFiled(ctx context.Context, actor access.Actor, id, issue string) error {
+	ops, err := a.cache.Model().filed(actor, id, issue, time.Now())
+	if err != nil {
+		return err
+	}
+	return a.cache.Commit(ctx, actor, ops...)
+}
+
 func (a admin) dismiss(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.require(w, r)
-	if !ok {
+	actor := actorOf(r, a.superAdmin)
+	ops, err := a.cache.Model().dismissed(actor, r.PathValue("id"), time.Now())
+	if err != nil {
+		http.Error(w, err.Error(), access.Status(err))
 		return
 	}
-	report, ok := a.cache.Report(r.PathValue("id"))
-	if !ok {
-		http.Error(w, "no such report", http.StatusNotFound)
-		return
-	}
-	if err := a.cache.Dismissed(r.Context(), report.ID, actor, time.Now()); err != nil {
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -216,6 +213,6 @@ func (a admin) dismiss(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, r *http.Request, view any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "feedback: encode", "error", err)
+		slog.ErrorContext(r.Context(), "[ERROR] feedback: encode", "error", err)
 	}
 }

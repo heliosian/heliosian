@@ -139,13 +139,13 @@ func (a app) sentCount(name string) int {
 }
 
 func (a app) messages(w http.ResponseWriter, r *http.Request) {
-	email, admin := a.who(r)
+	actor := a.actor(r)
 	g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("name"))))
 	if g == nil {
 		http.Error(w, "no such group", http.StatusNotFound)
 		return
 	}
-	if !admin && !g.Manages(email) {
+	if !g.Edits(actor) {
 		http.Error(w, "you do not manage this group", http.StatusForbidden)
 		return
 	}

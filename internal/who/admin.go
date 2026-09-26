@@ -3,7 +3,6 @@ package who
 import (
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,7 +13,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
-	"heliosian/internal/config"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
@@ -41,17 +39,21 @@ func RegisterAdmin(mux *http.ServeMux, cache *Cache, media *blob.Store) {
 	mux.HandleFunc("POST /api/admin/unhide-person", a.unhidePerson)
 }
 
-func viewerOf(cache *Cache, email string) access.Viewer {
-	return access.Viewer{Email: email, Admin: cache.IsAdmin(email), Household: cache.Model().Family(email)}
+func actorOf(cache *Cache, email string) access.Actor {
+	return access.Actor{Email: email, Admin: cache.IsAdmin(email), Household: cache.Model().Family(email)}
 }
 
-func (a admin) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
-	v := viewerOf(a.cache, effectiveEmail(a.cache, r))
-	if !v.Admin {
-		http.Error(w, "admin access required", http.StatusForbidden)
-		return "", false
+func requestActor(cache *Cache, r *http.Request) access.Actor {
+	return actorOf(cache, effectiveEmail(cache, r))
+}
+
+func (a admin) requireAdmin(w http.ResponseWriter, r *http.Request) (access.Actor, bool) {
+	v := requestActor(a.cache, r)
+	if err := mayAdminister(v); err != nil {
+		refuse(w, err)
+		return v, false
 	}
-	return v.Email, true
+	return v, true
 }
 
 func (a admin) page(w http.ResponseWriter, r *http.Request) {
@@ -137,9 +139,8 @@ type crewOption struct {
 }
 
 func (a admin) state(w http.ResponseWriter, r *http.Request) {
-	v := viewerOf(a.cache, effectiveEmail(a.cache, r))
-	if !v.Admin {
-		http.Error(w, "admin access required", http.StatusForbidden)
+	v, ok := a.requireAdmin(w, r)
+	if !ok {
 		return
 	}
 	email := v.Email
@@ -229,35 +230,31 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a admin) setAdmins(w http.ResponseWriter, r *http.Request) {
-	email, ok := a.requireAdmin(w, r)
-	if !ok {
-		return
+func decodeBody(w http.ResponseWriter, r *http.Request, limit int64, body any) bool {
+	if err := json.NewDecoder(io.LimitReader(r.Body, limit)).Decode(body); err != nil {
+		http.Error(w, "bad request body", http.StatusBadRequest)
+		return false
 	}
+	return true
+}
+
+func (a admin) setAdmins(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Admins []string `json:"admins"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
+	if !decodeBody(w, r, 8<<10, &body) {
 		return
 	}
-	admins := withoutSuperAdmins(config.NormalizeEmails(body.Admins), a.cache.superAdmins())
-	current := a.cache.Model().admins
-	ops := []store.Op{}
-	for _, e := range current {
-		if !slices.Contains(admins, e) {
-			ops = append(ops, store.Delete(adminsTable, store.Row{"Email": e}))
-		}
-	}
-	for _, e := range admins {
-		if !slices.Contains(current, e) {
-			ops = append(ops, store.Insert(adminsTable, store.Row{"Email": e}))
-		}
-	}
-	if !a.cache.commit(w, r, email, ops...) {
+	actor := requestActor(a.cache, r)
+	ops, admins, err := a.cache.setAdmins(actor, body.Admins)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: set the admin list", "actor", email, "admins", admins)
+	if !a.cache.commit(w, r, actor, ops...) {
+		return
+	}
+	slog.InfoContext(r.Context(), "admin: set the admin list", "actor", actor.Email, "admins", admins)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -280,24 +277,20 @@ const (
 	superEditLength = 400 * 24 * 60 * 60
 )
 
-func superEdit(r *http.Request, v access.Viewer) bool {
-	if !v.Admin {
-		return false
-	}
+func superEditOn(r *http.Request) bool {
 	cookie, err := r.Cookie(superEditCookie)
 	return err == nil && cookie.Value == "1"
 }
 
 func (a admin) setSuperEdit(w http.ResponseWriter, r *http.Request) {
-	email, ok := a.requireAdmin(w, r)
+	actor, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
 	var body struct {
 		Enabled bool `json:"enabled"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
+	if !decodeBody(w, r, 1<<10, &body) {
 		return
 	}
 	cookie := &http.Cookie{
@@ -312,7 +305,7 @@ func (a admin) setSuperEdit(w http.ResponseWriter, r *http.Request) {
 		cookie.Value, cookie.MaxAge = "1", superEditLength
 	}
 	http.SetCookie(w, cookie)
-	slog.InfoContext(r.Context(), "admin: set super edit mode", "actor", email, "enabled", body.Enabled)
+	slog.InfoContext(r.Context(), "admin: set super edit mode", "actor", actor.Email, "enabled", body.Enabled)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -324,90 +317,38 @@ const (
 	maxAddressLength  = 200
 )
 
+type personFields struct {
+	Email         string `json:"email"`
+	Classroom     string `json:"classroom"`
+	Crew          string `json:"crew"`
+	Department    string `json:"department"`
+	JobTitle      string `json:"jobTitle"`
+	GradeBand     string `json:"gradeBand"`
+	FullName      string `json:"fullName"`
+	LegalName     string `json:"legalName"`
+	PreferredName string `json:"preferredName"`
+	Facts         string `json:"facts"`
+}
+
 func (a admin) setPersonFields(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
+	var body personFields
+	if !decodeBody(w, r, 8<<10, &body) {
 		return
 	}
-	var body struct {
-		Email         string `json:"email"`
-		Classroom     string `json:"classroom"`
-		Crew          string `json:"crew"`
-		Department    string `json:"department"`
-		JobTitle      string `json:"jobTitle"`
-		GradeBand     string `json:"gradeBand"`
-		FullName      string `json:"fullName"`
-		LegalName     string `json:"legalName"`
-		PreferredName string `json:"preferredName"`
-		Facts         string `json:"facts"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
+	actor := requestActor(a.cache, r)
+	target, cells, ops, err := a.cache.Model().setPersonFields(actor, body)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	target := strings.ToLower(strings.TrimSpace(body.Email))
-	model := a.cache.Model()
-	person := model.Person(target)
-	if person == nil {
-		http.Error(w, "no such person", http.StatusBadRequest)
-		return
-	}
-	if len(body.JobTitle) > maxJobTitleLength {
-		http.Error(w, "job title too long", http.StatusBadRequest)
-		return
-	}
-	if !validClassroom(model, body.Classroom) {
-		http.Error(w, "unknown classroom", http.StatusBadRequest)
-		return
-	}
-	if !validCrew(model, body.Classroom, body.Crew) {
-		http.Error(w, "unknown crew for that classroom", http.StatusBadRequest)
-		return
-	}
-	if body.Department != "" && !slices.Contains(model.Departments, body.Department) {
-		http.Error(w, "unknown department", http.StatusBadRequest)
-		return
-	}
-	if body.GradeBand != "" && !gradeBandSet()[body.GradeBand] {
-		http.Error(w, "unknown grade band", http.StatusBadRequest)
-		return
-	}
-	if err := validFullName(body.FullName, person); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if len(body.LegalName) > maxNameLength {
-		http.Error(w, "bad legal name", http.StatusBadRequest)
-		return
-	}
-	if len(body.PreferredName) > maxNameLength {
-		http.Error(w, "bad preferred name", http.StatusBadRequest)
-		return
-	}
-	if len(body.Facts) > maxFactsLength {
-		http.Error(w, "bad facts", http.StatusBadRequest)
-		return
-	}
-
-	cells := store.Row{}
-	diffStringCellNoBaseline(cells, "Classroom", body.Classroom, overrideStringValue(person, "Classroom"))
-	diffStringCellNoBaseline(cells, "Crew", body.Crew, overrideStringValue(person, "Crew"))
-	diffStringCellNoBaseline(cells, "Department", body.Department, overrideStringValue(person, "Department"))
-	diffStringCell(cells, "Job Title", body.JobTitle, overrideStringValue(person, "Job Title"))
-	diffStringCellNoBaseline(cells, "Grade Band", body.GradeBand, overrideStringValue(person, "Grade Band"))
-	diffStringCell(cells, "Full Name", body.FullName, overrideStringValue(person, "Full Name"))
-	diffStringCell(cells, "Legal Name", body.LegalName, overrideStringValue(person, "Legal Name"))
-	diffStringCell(cells, "Preferred Name", body.PreferredName, overrideStringValue(person, "Preferred Name"))
-	diffFacts(cells, body.Facts, person)
-
-	if len(cells) == 0 {
+	if len(ops) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !a.cache.commit(w, r, actor, setOverride(target, cells)) {
+	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: edited person fields", "actor", actor, "target", target, "cells", cells)
+	slog.InfoContext(r.Context(), "admin: edited person fields", "actor", actor.Email, "target", target, "cells", cells)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -476,158 +417,36 @@ func gradeBandSet() map[string]bool {
 func validFullName(fullName string, person *Person) error {
 	if strings.TrimSpace(fullName) == "" {
 		if fullNameFallback(person) == "" {
-			return errors.New("full name required: this person has no Veracross record to fall back to")
+			return access.Invalid("full name required: this person has no Veracross record to fall back to")
 		}
 		return nil
 	}
 	if len(fullName) > maxNameLength {
-		return errors.New("full name too long")
+		return access.Invalid("full name too long")
 	}
 	return nil
 }
 
-func (a admin) setStudentFields(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		Email         string `json:"email"`
-		FullName      string `json:"fullName"`
-		LegalName     string `json:"legalName"`
-		PreferredName string `json:"preferredName"`
-		Grade         string `json:"grade"`
-		Classroom     string `json:"classroom"`
-		Crew          string `json:"crew"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return
-	}
-	target := strings.ToLower(strings.TrimSpace(body.Email))
-	model := a.cache.Model()
-	person := model.Person(target)
-	if person == nil {
-		http.Error(w, "no such person", http.StatusBadRequest)
-		return
-	}
-	if err := validFullName(body.FullName, person); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if len(body.LegalName) > maxNameLength {
-		http.Error(w, "bad legal name", http.StatusBadRequest)
-		return
-	}
-	if len(body.PreferredName) > maxNameLength {
-		http.Error(w, "bad preferred name", http.StatusBadRequest)
-		return
-	}
-	if !validGrade(body.Grade) {
-		http.Error(w, "unknown grade", http.StatusBadRequest)
-		return
-	}
-	if !validClassroom(model, body.Classroom) {
-		http.Error(w, "unknown classroom", http.StatusBadRequest)
-		return
-	}
-	if !validCrew(model, body.Classroom, body.Crew) {
-		http.Error(w, "unknown crew for that classroom", http.StatusBadRequest)
-		return
-	}
-
-	cells := store.Row{}
-	diffStringCell(cells, "Full Name", body.FullName, overrideStringValue(person, "Full Name"))
-	diffStringCell(cells, "Legal Name", body.LegalName, overrideStringValue(person, "Legal Name"))
-	diffStringCell(cells, "Preferred Name", body.PreferredName, overrideStringValue(person, "Preferred Name"))
-	diffStringCell(cells, "Grade", body.Grade, overrideStringValue(person, "Grade"))
-	diffStringCell(cells, "Classroom", body.Classroom, overrideStringValue(person, "Classroom"))
-	diffStringCell(cells, "Crew", body.Crew, overrideStringValue(person, "Crew"))
-
-	if len(cells) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	if !a.cache.commit(w, r, actor, setOverride(target, cells)) {
-		return
-	}
-	slog.InfoContext(r.Context(), "admin: edited student fields", "actor", actor, "target", target, "cells", cells)
-	w.WriteHeader(http.StatusNoContent)
+type studentFields struct {
+	Email         string `json:"email"`
+	FullName      string `json:"fullName"`
+	LegalName     string `json:"legalName"`
+	PreferredName string `json:"preferredName"`
+	Grade         string `json:"grade"`
+	Classroom     string `json:"classroom"`
+	Crew          string `json:"crew"`
 }
 
-func (a admin) setParentFields(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
+func (a admin) setStudentFields(w http.ResponseWriter, r *http.Request) {
+	var body studentFields
+	if !decodeBody(w, r, 8<<10, &body) {
 		return
 	}
-	var body struct {
-		Email         string `json:"email"`
-		FullName      string `json:"fullName"`
-		LegalName     string `json:"legalName"`
-		PreferredName string `json:"preferredName"`
-		Phone         string `json:"phone"`
-		RoomParent    string `json:"roomParent"`
-		Address       string `json:"address"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
+	actor := requestActor(a.cache, r)
+	target, cells, ops, err := a.cache.Model().setStudentFields(actor, body)
+	if err != nil {
+		refuse(w, err)
 		return
-	}
-	target := strings.ToLower(strings.TrimSpace(body.Email))
-	model := a.cache.Model()
-	person := model.Person(target)
-	if person == nil {
-		http.Error(w, "no such person", http.StatusBadRequest)
-		return
-	}
-	if !person.IsParent {
-		http.Error(w, "not a parent", http.StatusBadRequest)
-		return
-	}
-	if err := validFullName(body.FullName, person); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if len(body.LegalName) > maxNameLength {
-		http.Error(w, "bad legal name", http.StatusBadRequest)
-		return
-	}
-	if len(body.PreferredName) > maxNameLength {
-		http.Error(w, "bad preferred name", http.StatusBadRequest)
-		return
-	}
-	if len(body.Phone) > maxPhoneLength {
-		http.Error(w, "bad phone number", http.StatusBadRequest)
-		return
-	}
-	if len(body.Address) > maxAddressLength {
-		http.Error(w, "bad address", http.StatusBadRequest)
-		return
-	}
-	if body.RoomParent != "" && !gradeBandSet()[body.RoomParent] {
-		http.Error(w, "unknown room parent band", http.StatusBadRequest)
-		return
-	}
-
-	cells := store.Row{}
-	diffStringCell(cells, "Full Name", body.FullName, overrideStringValue(person, "Full Name"))
-	diffStringCell(cells, "Legal Name", body.LegalName, overrideStringValue(person, "Legal Name"))
-	diffStringCell(cells, "Preferred Name", body.PreferredName, overrideStringValue(person, "Preferred Name"))
-	diffStringCell(cells, "Phone", body.Phone, overrideStringValue(person, "Phone"))
-	diffStringCellNoBaseline(cells, "Room Parent", body.RoomParent, overrideStringValue(person, "Room Parent"))
-
-	family, _ := model.FamilyOf(person.Email)
-	familyCells := store.Row{}
-	if family.Key != "" {
-		diffStringCell(familyCells, "Address", body.Address, familyStringValue(family, "Address"))
-	}
-
-	ops := []store.Op{}
-	if len(cells) > 0 {
-		ops = append(ops, setOverride(target, cells))
-	}
-	if len(familyCells) > 0 {
-		ops = append(ops, setFamily(family.email, familyCells))
 	}
 	if len(ops) == 0 {
 		w.WriteHeader(http.StatusNoContent)
@@ -636,203 +455,154 @@ func (a admin) setParentFields(w http.ResponseWriter, r *http.Request) {
 	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: edited parent fields", "actor", actor, "target", target, "cells", cells, "familyCells", familyCells)
+	slog.InfoContext(r.Context(), "admin: edited student fields", "actor", actor.Email, "target", target, "cells", cells)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a admin) setAddedFields(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		Email     string `json:"email"`
-		NewEmail  string `json:"newEmail"`
-		FullName  string `json:"fullName"`
-		IsStudent bool   `json:"isStudent"`
-		IsParent  bool   `json:"isParent"`
-		IsStaff   bool   `json:"isStaff"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return
-	}
-	target := strings.ToLower(strings.TrimSpace(body.Email))
-	model := a.cache.Model()
-	person := model.Person(target)
-	if person == nil {
-		http.Error(w, "no such person", http.StatusBadRequest)
-		return
-	}
-	if !overrideBoolValue(person, "Added") {
-		http.Error(w, "not an added-only person", http.StatusBadRequest)
-		return
-	}
-	if err := validFullName(body.FullName, person); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if !body.IsStudent && !body.IsParent && !body.IsStaff {
-		http.Error(w, "choose at least one of Is Student, Is Parent, or Is Staff", http.StatusBadRequest)
-		return
-	}
-	newEmail := strings.ToLower(strings.TrimSpace(body.NewEmail))
-	if !strings.Contains(newEmail, "@") {
-		http.Error(w, "bad email address", http.StatusBadRequest)
-		return
-	}
-	if newEmail != target && model.Person(newEmail) != nil {
-		http.Error(w, "a person with this email already exists", http.StatusBadRequest)
-		return
-	}
+type parentFields struct {
+	Email         string `json:"email"`
+	FullName      string `json:"fullName"`
+	LegalName     string `json:"legalName"`
+	PreferredName string `json:"preferredName"`
+	Phone         string `json:"phone"`
+	RoomParent    string `json:"roomParent"`
+	Address       string `json:"address"`
+}
 
-	cells := store.Row{}
-	diffStringCell(cells, "Full Name", body.FullName, overrideStringValue(person, "Full Name"))
-	diffBoolCell(cells, "Is Student", body.IsStudent, overrideBoolValue(person, "Is Student"))
-	diffBoolCell(cells, "Is Parent", body.IsParent, overrideBoolValue(person, "Is Parent"))
-	diffBoolCell(cells, "Is Staff", body.IsStaff, overrideBoolValue(person, "Is Staff"))
-	if newEmail != target {
-		cells["Email"] = newEmail
+func (a admin) setParentFields(w http.ResponseWriter, r *http.Request) {
+	var body parentFields
+	if !decodeBody(w, r, 8<<10, &body) {
+		return
 	}
-
-	if len(cells) == 0 {
+	actor := requestActor(a.cache, r)
+	target, cells, familyCells, ops, err := a.cache.Model().setParentFields(actor, body)
+	if err != nil {
+		refuse(w, err)
+		return
+	}
+	if len(ops) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !a.cache.commit(w, r, actor, store.Update(overridesTab, store.Row{"Email": target}, cells)) {
+	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: edited added-person fields", "actor", actor, "target", target, "cells", cells)
+	slog.InfoContext(r.Context(), "admin: edited parent fields", "actor", actor.Email, "target", target, "cells", cells, "familyCells", familyCells)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type addedFields struct {
+	Email     string `json:"email"`
+	NewEmail  string `json:"newEmail"`
+	FullName  string `json:"fullName"`
+	IsStudent bool   `json:"isStudent"`
+	IsParent  bool   `json:"isParent"`
+	IsStaff   bool   `json:"isStaff"`
+}
+
+func (a admin) setAddedFields(w http.ResponseWriter, r *http.Request) {
+	var body addedFields
+	if !decodeBody(w, r, 4<<10, &body) {
+		return
+	}
+	actor := requestActor(a.cache, r)
+	target, cells, ops, err := a.cache.Model().setAddedFields(actor, body)
+	if err != nil {
+		refuse(w, err)
+		return
+	}
+	if len(ops) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if !a.cache.commit(w, r, actor, ops...) {
+		return
+	}
+	slog.InfoContext(r.Context(), "admin: edited added-person fields", "actor", actor.Email, "target", target, "cells", cells)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type newPerson struct {
+	Email     string `json:"email"`
+	FullName  string `json:"fullName"`
+	IsStudent bool   `json:"isStudent"`
+	IsParent  bool   `json:"isParent"`
+	IsStaff   bool   `json:"isStaff"`
 }
 
 func (a admin) addPerson(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
+	var body newPerson
+	if !decodeBody(w, r, 4<<10, &body) {
 		return
 	}
-	var body struct {
-		Email     string `json:"email"`
-		FullName  string `json:"fullName"`
-		IsStudent bool   `json:"isStudent"`
-		IsParent  bool   `json:"isParent"`
-		IsStaff   bool   `json:"isStaff"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
+	actor := requestActor(a.cache, r)
+	email, fullName, ops, err := a.cache.Model().addPerson(actor, body)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	email := strings.ToLower(strings.TrimSpace(body.Email))
-	if !strings.Contains(email, "@") {
-		http.Error(w, "bad email address", http.StatusBadRequest)
+	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	model := a.cache.Model()
-	if model.Person(email) != nil {
-		http.Error(w, "a person with this email already exists", http.StatusBadRequest)
-		return
-	}
-	fullName := strings.TrimSpace(body.FullName)
-	if fullName == "" || len(fullName) > maxNameLength {
-		http.Error(w, "bad full name", http.StatusBadRequest)
-		return
-	}
-	if !body.IsStudent && !body.IsParent && !body.IsStaff {
-		http.Error(w, "choose at least one of Is Student, Is Parent, or Is Staff", http.StatusBadRequest)
-		return
-	}
-
-	cells := store.Row{"Added": "TRUE", "Full Name": fullName}
-	if body.IsStudent {
-		cells["Is Student"] = "TRUE"
-	}
-	if body.IsParent {
-		cells["Is Parent"] = "TRUE"
-	}
-	if body.IsStaff {
-		cells["Is Staff"] = "TRUE"
-	}
-	if !a.cache.commit(w, r, actor, setOverride(email, cells)) {
-		return
-	}
-	slog.InfoContext(r.Context(), "admin: added a new person", "actor", actor, "email", email, "name", fullName)
+	slog.InfoContext(r.Context(), "admin: added a new person", "actor", actor.Email, "email", email, "name", fullName)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type personEmail struct {
+	Email string `json:"email"`
+}
+
 func (a admin) deletePerson(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
+	var body personEmail
+	if !decodeBody(w, r, 1<<10, &body) {
 		return
 	}
-	var body struct {
-		Email string `json:"email"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
+	actor := requestActor(a.cache, r)
+	target, ops, err := a.cache.Model().deletePerson(actor, body.Email)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	target := strings.ToLower(strings.TrimSpace(body.Email))
-	person := a.cache.Model().Person(target)
-	if person == nil {
-		http.Error(w, "no such person", http.StatusBadRequest)
+	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	if !overrideBoolValue(person, "Added") {
-		http.Error(w, "not an added-only person", http.StatusBadRequest)
-		return
-	}
-	if !a.cache.commit(w, r, actor, store.Delete(overridesTab, store.Row{"Email": target})) {
-		return
-	}
-	slog.InfoContext(r.Context(), "admin: deleted added person", "actor", actor, "target", target)
+	slog.InfoContext(r.Context(), "admin: deleted added person", "actor", actor.Email, "target", target)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a admin) hidePerson(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
+	var body personEmail
+	if !decodeBody(w, r, 1<<10, &body) {
 		return
 	}
-	var body struct {
-		Email string `json:"email"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
+	actor := requestActor(a.cache, r)
+	target, ops, err := a.cache.Model().hidePerson(actor, body.Email)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	target := strings.ToLower(strings.TrimSpace(body.Email))
-	if a.cache.Model().Person(target) == nil {
-		http.Error(w, "no such person", http.StatusBadRequest)
+	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	if !a.cache.commit(w, r, actor, setOverride(target, store.Row{"Opted Out": "TRUE"})) {
-		return
-	}
-	slog.InfoContext(r.Context(), "admin: hid person from the directory", "actor", actor, "target", target)
+	slog.InfoContext(r.Context(), "admin: hid person from the directory", "actor", actor.Email, "target", target)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a admin) unhidePerson(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
+	var body personEmail
+	if !decodeBody(w, r, 1<<10, &body) {
 		return
 	}
-	var body struct {
-		Email string `json:"email"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
+	actor := requestActor(a.cache, r)
+	target, ops, err := a.cache.Model().unhidePerson(actor, body.Email)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	target := strings.ToLower(strings.TrimSpace(body.Email))
-	if !slices.Contains(a.cache.Model().hiddenEmails, target) {
-		http.Error(w, "not currently hidden", http.StatusBadRequest)
+	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	if !a.cache.commit(w, r, actor, store.Update(overridesTab, store.Row{"Email": target}, store.Row{"Opted Out": ""})) {
-		return
-	}
-	slog.InfoContext(r.Context(), "admin: unhid person from the directory", "actor", actor, "target", target)
+	slog.InfoContext(r.Context(), "admin: unhid person from the directory", "actor", actor.Email, "target", target)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -843,10 +613,6 @@ var imageExtensions = map[string]string{
 }
 
 func (a admin) setImage(w http.ResponseWriter, r *http.Request) {
-	email, ok := a.requireAdmin(w, r)
-	if !ok {
-		return
-	}
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		http.Error(w, "upload too large or malformed", http.StatusBadRequest)
@@ -854,23 +620,6 @@ func (a admin) setImage(w http.ResponseWriter, r *http.Request) {
 	}
 	kind := r.FormValue("kind")
 	name := strings.TrimSpace(r.FormValue("name"))
-	model := a.cache.Model()
-	switch kind {
-	case imageClassroom:
-		if !slices.ContainsFunc(model.Classrooms, func(c Classroom) bool { return c.Name == name }) {
-			http.Error(w, "no such classroom", http.StatusBadRequest)
-			return
-		}
-	case imageGrade:
-		if !slices.Contains(gradeOrder, name) {
-			http.Error(w, "no such grade", http.StatusBadRequest)
-			return
-		}
-	default:
-		http.Error(w, "bad kind: must be classroom or grade", http.StatusBadRequest)
-		return
-	}
-
 	file, _, err := r.FormFile("file")
 	if err != nil {
 		http.Error(w, "missing file", http.StatusBadRequest)
@@ -889,13 +638,19 @@ func (a admin) setImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	image := fmt.Sprintf("%x.%s", sha256.Sum256(content), ext)
+	actor := requestActor(a.cache, r)
+	ops, err := a.cache.Model().setImage(actor, kind, name, image)
+	if err != nil {
+		refuse(w, err)
+		return
+	}
 	if err := a.media.Put("photos", image, sniffed, content); err != nil {
 		serverError(w, r, err)
 		return
 	}
-	if !a.cache.commit(w, r, email, store.Set(imagesTab, store.Row{imageKind: kind, imageName: name}, store.Row{imageImage: image})) {
+	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: replaced image", "actor", email, "kind", kind, "name", name)
+	slog.InfoContext(r.Context(), "admin: replaced image", "actor", actor.Email, "kind", kind, "name", name)
 	w.WriteHeader(http.StatusNoContent)
 }

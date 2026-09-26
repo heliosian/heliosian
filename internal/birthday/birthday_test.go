@@ -142,7 +142,7 @@ func call(t *testing.T, mux *http.ServeMux, as, method, path string, body any) *
 
 func view(t *testing.T, cache *Cache, as string) View {
 	t.Helper()
-	return Render(cache.Model(), fakeDirectory{}, access.Viewer{Email: as, Admin: as == admin}, now())
+	return Render(cache.Model(), fakeDirectory{}, access.Actor{Email: as, Admin: as == admin}, now())
 }
 
 func find(list []StaffView, email string) *StaffView {
@@ -845,7 +845,7 @@ func TestShareIssue(t *testing.T) {
 		t.Fatalf("a day that is no issue: %d", rec.Code)
 	}
 	a := app{cache: cache, directory: fakeDirectory{}}
-	n, err := a.exportIssue(context.Background(), "2026-09-11", exportActor)
+	n, err := a.weeklyExport(context.Background(), "2026-09-11")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -870,14 +870,14 @@ func TestShareIssue(t *testing.T) {
 	if d, _ := model.Donation("bill.ryder@heliosschool.org", "2026 - 2027"); bill["Staff Name"] != "Bill Ryder" || bill["Staff Birthday"] != "2026-09-15" || bill["Contacted On"] != "2026-09-08" || bill["Charity Selected On"] != "" || bill["Charity Name"] != model.Settings.DefaultCharity || d.RecordedBy != "" {
 		t.Errorf("Bill, defaulted: row %v, donation %+v", bill, d)
 	}
-	if n, err := a.exportIssue(context.Background(), "2026-09-11", exportActor); n != 0 || err != nil {
+	if n, err := a.weeklyExport(context.Background(), "2026-09-11"); n != 0 || err != nil {
 		t.Fatalf("a second run copied %d: %v", n, err)
 	}
 	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"date": "2026-09-11"}); rec.Code != 200 || rec.Body.String() != "{\"copied\":0}\n" {
 		t.Fatalf("the button after the run: %d %s", rec.Code, rec.Body)
 	}
 	omar := find(view(t, cache, admin).Staff, "omar.farouk@heliosschool.org")
-	if _, err := a.exportIssue(context.Background(), omar.NewsletterDate, exportActor); err != nil {
+	if _, err := a.weeklyExport(context.Background(), omar.NewsletterDate); err != nil {
 		t.Fatal(err)
 	}
 	queue.Flush()

@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
@@ -28,8 +29,8 @@ type Archive interface {
 }
 
 type Documents interface {
-	Post(ctx context.Context, actor, group string, raw []byte) error
-	Remove(ctx context.Context, actor, group string) error
+	Post(ctx context.Context, actor access.Actor, group string, raw []byte) error
+	Remove(ctx context.Context, actor access.Actor, group string) error
 }
 
 type Mail struct {
@@ -87,7 +88,7 @@ func (j job) key() string {
 
 var deliveryBatch = 5 * time.Second
 
-const mailerActor = "loop mailer"
+var mailerActor = access.System("loop mailer")
 
 type mailer struct {
 	cache     *Cache
@@ -153,8 +154,7 @@ func (m *mailer) recover() {
 }
 
 func (m *mailer) mark(j job, state string, cells store.Row) {
-	cells["State"] = state
-	if err := m.cache.Commit(context.Background(), mailerActor, store.Update(messagesTab, store.Row{"ID": j.id, "Group": j.group}, cells)); err != nil {
+	if err := m.cache.Commit(context.Background(), mailerActor, markMessage(mailerActor, j.id, j.group, state, cells)...); err != nil {
 		slog.Error("[ERROR] groups: mail record", "message", j.id, "group", j.group, "error", err)
 	}
 }
@@ -208,7 +208,7 @@ func (m *mailer) received(ctx context.Context, raw []byte, from, subject string,
 			return fmt.Errorf("archive %s for %s: %w", id, name, err)
 		}
 		cells := store.Row{"Received": time.Now().Format(time.RFC3339), "From": from, "Subject": subject, "State": stateReceived, "Recipients": "", "Object": j.object, "Detail": "", "Message ID": messageID}
-		if err := m.cache.CommitAndWait(ctx, mailerActor, store.Set(messagesTab, store.Row{"ID": id, "Group": name}, cells)); err != nil {
+		if err := m.cache.CommitAndWait(ctx, mailerActor, recordMessage(mailerActor, id, name, cells)...); err != nil {
 			m.release(j)
 			return fmt.Errorf("record %s for %s: %w", id, name, err)
 		}
@@ -235,11 +235,7 @@ func (m *mailer) flush() {
 	m.pending = nil
 	m.flushing = false
 	m.mu.Unlock()
-	ops := make([]store.Op, 0, len(rows))
-	for _, row := range rows {
-		ops = append(ops, store.Insert(deliveriesTab, row))
-	}
-	if err := m.cache.Commit(context.Background(), mailerActor, ops...); err != nil {
+	if err := m.cache.Commit(context.Background(), mailerActor, recordDeliveries(mailerActor, rows)...); err != nil {
 		slog.Error("[ERROR] groups: delivery record", "rows", len(rows), "error", err)
 	}
 }

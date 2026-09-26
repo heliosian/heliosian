@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/calendar"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -462,10 +463,8 @@ func splitPoints(cell string) []string {
 	return out
 }
 
-// SetPoints writes a document's key points, who it was written to, and the
-// day it was judged.
-func (c *Cache) SetPoints(ctx context.Context, actor, key string, points []string, audience, judged string) error {
-	return c.Commit(ctx, actor, store.Update(documentsTab, store.Row{"Key": key}, store.Row{PointsColumn: strings.Join(points, "\n"), AudienceColumn: audience, JudgedColumn: judged}))
+func (c *Cache) SetPoints(ctx context.Context, actor access.Actor, key string, points []string, audience, judged string) error {
+	return c.Commit(ctx, actor, c.Model().setPoints(actor, key, points, audience, judged)...)
 }
 
 // Classrooms are the classrooms and grades an Audience names, none for

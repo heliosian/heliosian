@@ -338,15 +338,15 @@ func (p *Party) Hosted(email string) bool {
 	return slices.Contains(p.HostEmails, email)
 }
 
-func (p *Party) Edits(v access.Viewer) bool {
+func (p *Party) Edits(v access.Actor) bool {
 	return v.Admin || p.Hosted(v.Email)
 }
 
-func (p *Party) VisibleTo(v access.Viewer) bool {
+func (p *Party) VisibleTo(v access.Actor) bool {
 	return p.Status == StatusOpen || p.Edits(v)
 }
 
-func (p *Party) For(v access.Viewer, directory Directory) *Party {
+func (p *Party) For(v access.Actor, directory Directory) *Party {
 	if !p.VisibleTo(v) {
 		return nil
 	}

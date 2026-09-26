@@ -213,13 +213,3 @@ func NormalizeEmails(emails []string) []string {
 	}
 	return out
 }
-
-func setSettings(values map[string]string) []store.Op {
-	ops := []store.Op{}
-	for _, key := range Keys {
-		if value, ok := values[key]; ok {
-			ops = append(ops, store.Set(SettingsTab, store.Row{KeyColumn: key}, store.Row{ValueColumn: value}))
-		}
-	}
-	return ops
-}

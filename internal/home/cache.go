@@ -2,7 +2,6 @@ package home
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"slices"
 	"sort"
@@ -81,7 +80,7 @@ func (c *Cache) includes(rules []filter.Rule, email string) bool {
 	return c.directory != nil && len(rules) > 0 && filter.OnList(filter.List{Rules: rules, Editors: c.Admins()}, c.directory.Sources(), email)
 }
 
-func (c *Cache) CategoriesFor(v access.Viewer) []Category {
+func (c *Cache) CategoriesFor(v access.Actor) []Category {
 	forMe := func(rules []filter.Rule) bool {
 		return len(rules) == 0 || c.includes(rules, v.Email)
 	}
@@ -231,14 +230,10 @@ func (c *Cache) Admins() []string {
 }
 
 func Grant(ctx context.Context, cache *Cache, appKey, email string) error {
-	app, ok := appByKey(appKey)
-	if !ok {
-		return fmt.Errorf("no app %q", appKey)
+	actor := access.Actor{Email: strings.ToLower(strings.TrimSpace(email))}
+	ops, err := cache.grant(actor, appKey)
+	if err != nil {
+		return err
 	}
-	email = strings.ToLower(strings.TrimSpace(email))
-	v := visibilityOf(cache.Model(), app)
-	if slices.Contains(v.Emails, email) {
-		return nil
-	}
-	return cache.Commit(ctx, email, store.Set(visibilityTab, store.Row{"App": app.Key}, store.Row{"Visibility": v.Mode, "Emails": joinEmails(normalizeEmails(append(v.Emails, email)))}))
+	return cache.Commit(ctx, actor, ops...)
 }

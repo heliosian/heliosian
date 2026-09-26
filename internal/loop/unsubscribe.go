@@ -10,8 +10,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
@@ -108,30 +108,27 @@ func (a app) unsubscribePage(w http.ResponseWriter, r *http.Request) {
 	writePage(w, g.Title, "Unsubscribe", body)
 }
 
-func (a app) unsubscribeAddress(ctx context.Context, g *Group, email, how string) error {
-	if g.HasExcluded(email) {
+func (a app) commitSubscription(ctx context.Context, actor access.Actor, g Group, how string, ops []store.Op) error {
+	if len(ops) == 0 {
 		return nil
 	}
-	cells := store.Row{"Group": g.Name, "Email": email, "Note": "Unsubscribed by " + how, "Timestamp": time.Now().Format(time.RFC3339)}
-	if err := a.cache.Commit(ctx, email, store.Insert(excludedTab, cells)); err != nil {
+	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
 		return err
 	}
-	slog.InfoContext(ctx, "groups: unsubscribed", "group", g.Name, "email", email, "how", how)
+	if how == "" {
+		slog.InfoContext(ctx, "groups: resubscribed", "group", g.Name, "email", actor.Email)
+		return nil
+	}
+	slog.InfoContext(ctx, "groups: unsubscribed", "group", g.Name, "email", actor.Email, "how", how)
 	return nil
+}
+
+func (a app) unsubscribeAddress(ctx context.Context, g Group, email, how string) error {
+	actor := access.Actor{Email: email}
+	return a.commitSubscription(ctx, actor, g, how, g.Unsubscribe(actor, how))
 }
 
 const loopPage = "the group's page in Loop"
-
-func (a app) resubscribeAddress(ctx context.Context, g *Group, email string) error {
-	if !g.HasExcluded(email) {
-		return nil
-	}
-	if err := a.cache.Commit(ctx, email, store.Delete(excludedTab, store.Row{"Group": g.Name, "Email": email})); err != nil {
-		return err
-	}
-	slog.InfoContext(ctx, "groups: resubscribed", "group", g.Name, "email", email)
-	return nil
-}
 
 func (a app) unsubscribe(w http.ResponseWriter, r *http.Request) {
 	g, email, ok := a.unsubscribeGroup(w, r)
@@ -147,7 +144,7 @@ func (a app) unsubscribe(w http.ResponseWriter, r *http.Request) {
 	if oneClick {
 		how = "one-click"
 	}
-	if err := a.unsubscribeAddress(r.Context(), g, email, how); err != nil {
+	if err := a.unsubscribeAddress(r.Context(), *g, email, how); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -175,7 +172,7 @@ func (a app) unsubscribeByMail(ctx context.Context, subject, sender string) {
 		slog.WarnContext(ctx, "groups: unsubscribe mail for no group", "group", name, "email", email)
 		return
 	}
-	if err := a.unsubscribeAddress(ctx, g, email, "mail from "+strings.ToLower(mail.AddressOf(sender))); err != nil {
+	if err := a.unsubscribeAddress(ctx, *g, email, "mail from "+strings.ToLower(mail.AddressOf(sender))); err != nil {
 		slog.ErrorContext(ctx, "groups: unsubscribe by mail", "group", name, "email", email, "error", err)
 	}
 }

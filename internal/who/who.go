@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/serve"
 )
@@ -108,7 +109,7 @@ type user struct {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	v := viewerOf(a.cache, effectiveEmail(a.cache, r))
+	v := requestActor(a.cache, r)
 	effective := v.Email
 	name := a.cache.Model().DisplayName(effective)
 	slug := Slug(effective)
@@ -135,7 +136,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		// Both computed from the effective identity, so a spoofed view shows exactly
 		// what that person sees — a regular parent's simulated view never carries the
 		// real admin's super-edit powers along with it.
-		SuperEdit: superEdit(r, v),
+		SuperEdit: superEditing(v, superEditOn(r)),
 	}
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode model", "error", err)
@@ -145,4 +146,8 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 func serverError(w http.ResponseWriter, r *http.Request, err error) {
 	slog.ErrorContext(r.Context(), "directory request failed", "error", err)
 	http.Error(w, "internal error", http.StatusInternalServerError)
+}
+
+func refuse(w http.ResponseWriter, err error) {
+	http.Error(w, err.Error(), access.Status(err))
 }

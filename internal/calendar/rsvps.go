@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 )
 
@@ -29,7 +30,7 @@ func (a app) waiting(email string) []RSVP {
 	today := now().Format(DateFormat)
 	events := []*Event{}
 	for _, e := range model.eventsFor(a.directory, email, a.linked(email)) {
-		if !e.Invited || e.Cancelled || answers[e.ID] != "" || e.end.Format(DateFormat) < today || a.isHost(email, false, e) {
+		if !e.Invited || e.Cancelled || answers[e.ID] != "" || e.end.Format(DateFormat) < today || a.isHost(access.Actor{Email: email}, e) {
 			continue
 		}
 		events = append(events, e)
@@ -50,6 +51,6 @@ func (a app) rsvps(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(struct {
 		Waiting []RSVP `json:"waiting"`
 	}{a.waiting(auth.Email(r))}); err != nil {
-		slog.ErrorContext(r.Context(), "encode rsvps", "error", err)
+		slog.ErrorContext(r.Context(), "[ERROR] encode rsvps", "error", err)
 	}
 }

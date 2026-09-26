@@ -12,6 +12,7 @@ import (
 	"sort"
 	"sync"
 
+	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
@@ -21,10 +22,9 @@ import (
 const (
 	batch   = 200
 	workers = 8
-	actor   = "importartifacts"
 )
 
-const documentsTab = "Documents"
+var actor = access.System("importartifacts")
 
 func requiredEnv(name string) string {
 	value := os.Getenv(name)
@@ -102,7 +102,7 @@ func main() {
 			empty++
 			key := saved.Key()
 			if object, known := objects[key]; known {
-				drops = append(drops, store.Delete(documentsTab, store.Row{"Key": key}))
+				drops = append(drops, cache.Model().Drop(actor, key)...)
 				dropped = append(dropped, object)
 				delete(objects, key)
 			}
@@ -207,13 +207,14 @@ type work struct {
 }
 
 func record(ctx context.Context, cache *artifacts.Cache, uploader *blob.Uploader, group []work) error {
+	model := cache.Model()
 	ops := []store.Op{}
 	for _, item := range group {
 		if item.replacing == "" {
-			ops = append(ops, store.Insert(documentsTab, item.doc.Row()))
+			ops = append(ops, model.Record(actor, item.doc)...)
 			continue
 		}
-		ops = append(ops, store.Update(documentsTab, store.Row{"Key": item.doc.Key}, item.doc.Row()))
+		ops = append(ops, model.Replace(actor, item.doc)...)
 	}
 	if err := cache.CommitAndWait(ctx, actor, ops...); err != nil {
 		return fmt.Errorf("record the documents: %w", err)

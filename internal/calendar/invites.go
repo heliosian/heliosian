@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
-	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -16,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
@@ -76,7 +76,7 @@ type PartyPeople struct {
 type Celebrate struct {
 	Party       func(id string) *PartyPeople
 	IsAdmin     func(email string) bool
-	MoveAddress func(ctx context.Context, actor, old, to, name string) error
+	MoveAddress func(ctx context.Context, actor access.Actor, old, to, name string) error
 }
 
 type Attendee struct {
@@ -241,42 +241,6 @@ func newGuestKey() string {
 	return guestPrefix + strings.ToLower(newEventID())
 }
 
-func (a app) hostsOf(e *Event) []string {
-	out := []string{}
-	add := func(email string) {
-		if email = a.directory.Resolve(normalizeEmail(email)); email != "" && !slices.Contains(out, email) {
-			out = append(out, email)
-		}
-	}
-	switch e.Source {
-	case SourceSheet:
-		if !e.PosterLeft {
-			add(e.AddedBy)
-		}
-	case SourceCelebrate:
-		if a.parties != nil {
-			if p := a.parties(strings.TrimPrefix(e.ID, SourceCelebrate+"/")); p != nil {
-				for _, h := range p.Hosts {
-					add(h)
-				}
-			}
-		}
-	}
-	for _, h := range e.Hosts {
-		add(h)
-	}
-	if inv := a.cache.Model().Invitations[e.ID]; inv != nil {
-		for _, h := range inv.Hosts {
-			add(h)
-		}
-	}
-	return out
-}
-
-func (a app) isHost(email string, admin bool, e *Event) bool {
-	return slices.Contains(a.hostsOf(e), email) || (admin && (e.Source == SourceSheet || e.linked() || e.imported()))
-}
-
 func (a app) party(e *Event) *PartyPeople {
 	if e == nil || e.Source != SourceCelebrate || a.parties == nil {
 		return nil
@@ -284,84 +248,9 @@ func (a app) party(e *Event) *PartyPeople {
 	return a.parties(strings.TrimPrefix(e.ID, SourceCelebrate+"/"))
 }
 
-func (a app) inviterEvent(w http.ResponseWriter, r *http.Request, id string) (string, *Event, bool, bool) {
-	actor, admin := a.who(r)
-	e := a.eventFor(actor, admin, strings.TrimSpace(id))
-	if e == nil {
-		http.Error(w, "that event is not on the calendar", http.StatusNotFound)
-		return actor, nil, false, false
-	}
-	if e.Source != SourceSheet && !e.linked() && !e.imported() {
-		http.Error(w, "that event keeps no guest list", http.StatusBadRequest)
-		return actor, nil, false, false
-	}
-	host := a.isHost(actor, admin, e)
-	if !host && e.Sharing != SharingPublic && !a.cache.Model().Invited(a.directory, actor, e.ID) {
-		http.Error(w, "only a host, or someone invited, may invite others", http.StatusForbidden)
-		return actor, nil, false, false
-	}
-	return actor, e, host, true
-}
-
-func (a app) hostedEvent(w http.ResponseWriter, r *http.Request, id string) (string, *Event, bool) {
-	actor, admin := a.who(r)
-	e := a.eventFor(actor, admin, strings.TrimSpace(id))
-	if e == nil {
-		http.Error(w, "that event is not on the calendar", http.StatusNotFound)
-		return actor, nil, false
-	}
-	if e.Source != SourceSheet && !e.linked() && !e.imported() {
-		http.Error(w, "that event keeps no guest list", http.StatusBadRequest)
-		return actor, nil, false
-	}
-	if !a.isHost(actor, admin, e) {
-		http.Error(w, "only a host can change the guest list", http.StatusForbidden)
-		return actor, nil, false
-	}
-	return actor, e, true
-}
-
-func (a app) household(email string) []string {
-	return append([]string{email}, a.directory.Household(email)...)
-}
-
-func (a app) householdOn(e *Event, email string) []string {
-	if _, known := a.directory.Person(email); known {
-		return a.household(email)
-	}
-	model := a.cache.Model()
-	inv := model.InviteOf(e.ID, email)
-	if inv == nil || inv.Household == "" {
-		return []string{email}
-	}
-	out := []string{email}
-	for _, other := range model.Invites[e.ID] {
-		if other.Household == inv.Household && other.Email != email && other.GuestOf == "" {
-			out = append(out, other.Email)
-		}
-	}
-	return out
-}
-
 func (a app) isAdult(email string) bool {
 	p, known := a.directory.Person(email)
 	return !known || !p.IsStudent || p.IsParent || p.IsStaff
-}
-
-func (a app) mayAnswerFor(actor, subject string, admin bool, e *Event) bool {
-	if actor == subject || a.isHost(actor, admin, e) {
-		return true
-	}
-	if !a.isAdult(actor) {
-		return false
-	}
-	if slices.Contains(a.household(actor), subject) {
-		return true
-	}
-	if inv := a.cache.Model().InviteOf(e.ID, subject); inv != nil && inv.GuestOf != "" && slices.Contains(a.household(actor), inv.GuestOf) {
-		return true
-	}
-	return false
 }
 
 type GuestRow struct {
@@ -503,7 +392,7 @@ func (a app) personOf(email, name string) (Person, bool) {
 	return p, false
 }
 
-func (a app) rows(viewer string, admin bool, e *Event) []GuestRow {
+func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
 	model := a.cache.Model()
 	tickets := map[string]string{}
 	if p := a.party(e); p != nil {
@@ -535,7 +424,7 @@ func (a app) rows(viewer string, admin bool, e *Event) []GuestRow {
 	seen := map[string]bool{}
 	row := func(email, name string, invited bool) GuestRow {
 		p, known := a.personOf(email, name)
-		g := GuestRow{Person: p, Key: email, Invited: invited, Outside: !known, Ticket: tickets[email], Mine: a.mayAnswerFor(viewer, email, admin, e), Household: householdOf(email)}
+		g := GuestRow{Person: p, Key: email, Invited: invited, Outside: !known, Ticket: tickets[email], Mine: a.mayAnswerFor(viewer, email, e), Household: householdOf(email)}
 		if known {
 			g.Grades, g.Classrooms = a.facetsOf(p)
 		}
@@ -550,7 +439,7 @@ func (a app) rows(viewer string, admin bool, e *Event) []GuestRow {
 		}
 		return g
 	}
-	host := a.isHost(viewer, admin, e)
+	host := a.isHost(viewer, e)
 	for _, inv := range model.Invites[e.ID] {
 		g := row(inv.Email, inv.Name, true)
 		g.GuestOf, g.Via, g.Sent, g.Opened = inv.GuestOf, inv.Via, inv.Sent, inv.Opened
@@ -583,15 +472,16 @@ func (a app) rows(viewer string, admin bool, e *Event) []GuestRow {
 }
 
 func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
-	viewer, admin := a.who(r)
+	actor := a.actor(r)
+	viewer := actor.Email
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
-	e := a.eventFor(viewer, admin, id)
+	e := a.eventFor(viewer, actor.Admin, id)
 	if e == nil {
 		http.Error(w, "that event is not on the calendar", http.StatusNotFound)
 		return
 	}
-	host := a.isHost(viewer, admin, e)
-	a.noteOpened(r.Context(), e, viewer)
+	host := a.isHost(actor, e)
+	a.noteOpened(r.Context(), actor, e)
 	if host {
 		a.sweepEvent(r.Context(), e)
 	}
@@ -625,7 +515,7 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 			view.NotifyMe = slices.Contains(inv.Notify, viewer)
 		}
 	}
-	rows := a.rows(viewer, admin, e)
+	rows := a.rows(actor, e)
 	mine := model.mine(a.directory, viewer)
 	for _, g := range rows {
 		if g.Invited && (slices.Contains(mine, g.Email) || (g.GuestOf != "" && slices.Contains(mine, g.GuestOf))) {
@@ -717,10 +607,11 @@ type PickerView struct {
 
 func (a app) invitePeople(w http.ResponseWriter, r *http.Request) {
 	var e *Event
-	actor, _ := a.who(r)
+	actor := a.actor(r)
 	if id := strings.TrimSpace(r.URL.Query().Get("id")); id != "" {
-		var ok bool
-		if actor, e, _, ok = a.inviterEvent(w, r, id); !ok {
+		var err error
+		if e, _, err = a.inviterEvent(actor, id); err != nil {
+			refuse(w, err)
 			return
 		}
 	}
@@ -747,7 +638,7 @@ func (a app) invitePeople(w http.ResponseWriter, r *http.Request) {
 		view.People = append(view.People, pp)
 	}
 	sort.Slice(view.People, func(i, j int) bool { return view.People[i].Name < view.People[j].Name })
-	if lists := a.directory.Lists(actor); lists != nil {
+	if lists := a.directory.Lists(actor.Email); lists != nil {
 		view.Lists = lists
 	}
 	if e != nil {
@@ -764,143 +655,40 @@ func (a app) invitePeople(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a app) invitationOps(id, actor string, cells store.Row) []store.Op {
-	if a.cache.Model().Invitations[id] != nil {
-		if len(cells) == 0 {
-			return nil
-		}
-		return []store.Op{store.Update(InvitationsTab, store.Row{"Event ID": id}, cells)}
-	}
-	row := store.Row{"Event ID": id, "Audience": "Both", "Guests": "Yes", "Created By": actor, "Created": now().Format(DateTimeFormat)}
-	maps.Copy(row, cells)
-	return []store.Op{store.Insert(InvitationsTab, row)}
+type settingsBody struct {
+	ID          string   `json:"id"`
+	Audience    string   `json:"audience"`
+	Message     *string  `json:"message"`
+	Hosts       []string `json:"hosts"`
+	Title       *string  `json:"title"`
+	Start       *string  `json:"start"`
+	End         *string  `json:"end"`
+	Location    *string  `json:"location"`
+	Description *string  `json:"description"`
+	Flyer       *string  `json:"flyer"`
+	NotifyMe    *bool    `json:"notifyMe"`
+	HideHosts   *bool    `json:"hideHosts"`
+	PublicList  *bool    `json:"publicList"`
 }
 
 func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID          string   `json:"id"`
-		Audience    string   `json:"audience"`
-		Message     *string  `json:"message"`
-		Hosts       []string `json:"hosts"`
-		Title       *string  `json:"title"`
-		Start       *string  `json:"start"`
-		End         *string  `json:"end"`
-		Location    *string  `json:"location"`
-		Description *string  `json:"description"`
-		Flyer       *string  `json:"flyer"`
-		NotifyMe    *bool    `json:"notifyMe"`
-		HideHosts   *bool    `json:"hideHosts"`
-		PublicList  *bool    `json:"publicList"`
-	}
+	var body settingsBody
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
-	if !ok {
+	actor := a.actor(r)
+	ops, e, newHosts, err := a.settingsOps(actor, body)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	cells := store.Row{}
-	if body.HideHosts != nil {
-		cells["Hide Hosts"] = ""
-		if *body.HideHosts {
-			cells["Hide Hosts"] = "Yes"
-		}
-	}
-	if body.PublicList != nil {
-		cells["Public Guest List"] = ""
-		if *body.PublicList {
-			cells["Public Guest List"] = "Yes"
-		}
-	}
-	if body.NotifyMe != nil {
-		notify := []string{}
-		if inv := a.cache.Model().Invitations[e.ID]; inv != nil {
-			notify = append(notify, inv.Notify...)
-		}
-		notify = slices.DeleteFunc(notify, func(h string) bool { return h == actor })
-		if *body.NotifyMe {
-			notify = append(notify, actor)
-		}
-		cells["Notify"] = strings.Join(notify, ", ")
-	}
-	if body.Flyer != nil {
-		flyer := strings.Trim(strings.TrimSpace(*body.Flyer), "/")
-		if flyer != "" && a.store != nil && a.readImage(flyer) == nil {
-			http.Error(w, "that picture is not here", http.StatusBadRequest)
-			return
-		}
-		cells["Flyer"] = flyer
-	}
-	if e.linked() {
-		for col, v := range map[string]*string{"Title": body.Title, "Location": body.Location, "Description": body.Description} {
-			if v != nil {
-				if len(*v) > maxTextLength {
-					http.Error(w, "the "+strings.ToLower(col)+" is too long", http.StatusBadRequest)
-					return
-				}
-				cells[col] = strings.TrimSpace(*v)
-			}
-		}
-		if body.Start != nil {
-			start, end := strings.TrimSpace(*body.Start), ""
-			if body.End != nil {
-				end = strings.TrimSpace(*body.End)
-			}
-			if start != "" {
-				if _, _, _, err := parseWhen(start, end); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
-			} else {
-				end = ""
-			}
-			cells["Start"], cells["End"] = start, end
-		}
-	}
-	switch strings.ToLower(strings.TrimSpace(body.Audience)) {
-	case AudienceAdults:
-		cells["Audience"] = "Adults"
-	case AudienceStudents:
-		cells["Audience"] = "Students"
-	case AudienceBoth:
-		cells["Audience"] = "Both"
-	case "":
-	default:
-		http.Error(w, "the audience is adults, students, or both", http.StatusBadRequest)
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	if body.Message != nil {
-		if len(*body.Message) > maxTextLength {
-			http.Error(w, "the message is too long", http.StatusBadRequest)
-			return
-		}
-		cells["Message"] = strings.TrimSpace(*body.Message)
-	}
-	newHosts := []string{}
-	if body.Hosts != nil {
-		hosts := []string{}
-		for _, h := range body.Hosts {
-			h = a.directory.Resolve(normalizeEmail(h))
-			if _, known := a.directory.Person(h); !known {
-				http.Error(w, h+" is not in the directory", http.StatusBadRequest)
-				return
-			}
-			if !slices.Contains(hosts, h) {
-				hosts = append(hosts, h)
-			}
-			if !slices.Contains(a.hostsOf(e), h) {
-				newHosts = append(newHosts, h)
-			}
-		}
-		cells["Hosts"] = JoinList(hosts)
-	}
-	if !a.commit(w, r, actor, a.invitationOps(e.ID, actor, cells)...) {
-		return
-	}
-	slog.InfoContext(r.Context(), "calendar: guest list settings", "actor", actor, "event", e.ID)
+	slog.InfoContext(r.Context(), "calendar: guest list settings", "actor", actor.Email, "event", e.ID)
 	if a.mail.Sender != nil {
 		for _, h := range newHosts {
-			go a.sendCohostNote(context.WithoutCancel(r.Context()), h, actor, e)
+			go a.sendCohostNote(context.WithoutCancel(r.Context()), h, actor.Email, e)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -914,41 +702,16 @@ func (a app) stepDown(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
-	if !ok {
+	actor := a.actor(r)
+	ops, e, who, poster, err := a.stepDownOps(actor, body.ID, body.Email)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	who := actor
-	if email := a.directory.Resolve(normalizeEmail(body.Email)); email != "" && email != actor {
-		if _, admin := a.who(r); !admin {
-			http.Error(w, "only a calendar admin can step someone else down", http.StatusForbidden)
-			return
-		}
-		who = email
-	}
-	inv := a.cache.Model().Invitations[e.ID]
-	cohost := inv != nil && slices.Contains(inv.Hosts, who)
-	poster := e.Source == SourceSheet && !e.PosterLeft && a.directory.Resolve(normalizeEmail(e.AddedBy)) == who
-	if !cohost && !poster {
-		http.Error(w, "that person hosts this event on the app that runs it, or not at all - step down there", http.StatusBadRequest)
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	cells := store.Row{}
-	if poster {
-		cells["Stepped Down"] = normalizeEmail(e.AddedBy)
-	}
-	if inv != nil {
-		if cohost {
-			cells["Hosts"] = JoinList(slices.DeleteFunc(slices.Clone(inv.Hosts), func(h string) bool { return h == who }))
-		}
-		if slices.Contains(inv.Notify, who) {
-			cells["Notify"] = strings.Join(slices.DeleteFunc(slices.Clone(inv.Notify), func(h string) bool { return h == who }), ", ")
-		}
-	}
-	if !a.commit(w, r, actor, a.invitationOps(e.ID, actor, cells)...) {
-		return
-	}
-	slog.InfoContext(r.Context(), "calendar: host stepped down", "actor", actor, "who", who, "event", e.ID, "poster", poster)
+	slog.InfoContext(r.Context(), "calendar: host stepped down", "actor", actor.Email, "who", who, "event", e.ID, "poster", poster)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -993,69 +756,26 @@ func (a app) sendCohostNote(ctx context.Context, to, actor string, e *Event) {
 	slog.InfoContext(ctx, "calendar: co-host told", "to", to, "event", e.ID)
 }
 
+type invitee struct {
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	Via       string `json:"via"`
+	Household string `json:"household"`
+}
+
 func (a app) addInvites(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID     string `json:"id"`
-		People []struct {
-			Email     string `json:"email"`
-			Name      string `json:"name"`
-			Via       string `json:"via"`
-			Household string `json:"household"`
-		} `json:"people"`
+		ID     string    `json:"id"`
+		People []invitee `json:"people"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, host, ok := a.inviterEvent(w, r, body.ID)
-	if !ok {
+	actor := a.actor(r)
+	ops, e, emails, host, err := a.inviteOps(actor, body.ID, body.People)
+	if err != nil {
+		refuse(w, err)
 		return
-	}
-	if !host && len(body.People) > 20 {
-		http.Error(w, "invite up to twenty people at a time", http.StatusBadRequest)
-		return
-	}
-	if len(body.People) == 0 || len(body.People) > 500 {
-		http.Error(w, "add between one and five hundred people at a time", http.StatusBadRequest)
-		return
-	}
-	model := a.cache.Model()
-	stamp := now().Format(DateTimeFormat)
-	ops := a.invitationOps(e.ID, actor, nil)
-	emails := []string{}
-	for _, p := range body.People {
-		name := strings.TrimSpace(p.Name)
-		household := normalizeEmail(p.Household)
-		email := a.directory.Resolve(normalizeEmail(p.Email))
-		token := ""
-		switch {
-		case email == "" && household != "" && name != "":
-			email = newGuestKey()
-		case !emailForm.MatchString(email):
-			http.Error(w, fmt.Sprintf("%q is not an email address", p.Email), http.StatusBadRequest)
-			return
-		default:
-			token = NewToken()
-			if person, known := a.directory.Person(email); known {
-				name, token, household = person.Name, "", ""
-			}
-		}
-		if slices.Contains(emails, email) || model.InviteOf(e.ID, email) != nil {
-			continue
-		}
-		emails = append(emails, email)
-		if len(name) > maxTitleLength {
-			http.Error(w, "a name is too long", http.StatusBadRequest)
-			return
-		}
-		if household != "" && !emailForm.MatchString(household) {
-			http.Error(w, "a family is named by an address", http.StatusBadRequest)
-			return
-		}
-		via := strings.TrimSpace(p.Via)
-		if !host {
-			via = ViaInvited
-		}
-		ops = append(ops, store.Insert(InvitesTab, store.Row{"Event ID": e.ID, "Email": email, "Name": name, "Via": via, "Added By": actor, "Added": stamp, "Token": token, "Household": household}))
 	}
 	if !a.commit(w, r, actor, ops...) {
 		return
@@ -1063,10 +783,10 @@ func (a app) addInvites(w http.ResponseWriter, r *http.Request) {
 	sent := 0
 	if !host {
 		if inv := a.cache.Model().Invitations[e.ID]; inv != nil && inv.Sent != "" {
-			sent = a.send(r.Context(), actor, actor, e, emails, "")
+			sent = a.send(r.Context(), actor, actor.Email, e, emails, "")
 		}
 	}
-	slog.InfoContext(r.Context(), "calendar: guests added", "actor", actor, "event", e.ID, "count", len(emails), "host", host, "sent", sent)
+	slog.InfoContext(r.Context(), "calendar: guests added", "actor", actor.Email, "event", e.ID, "count", len(emails), "host", host, "sent", sent)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{"added": len(emails), "sent": sent})
 }
@@ -1079,129 +799,56 @@ func (a app) removeInvite(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, admin := a.who(r)
-	e := a.eventFor(actor, admin, strings.TrimSpace(body.ID))
-	if e == nil {
-		http.Error(w, "that event is not on the calendar", http.StatusNotFound)
+	actor := a.actor(r)
+	ops, e, email, fromGroup, err := a.uninviteOps(actor, body.ID, body.Email)
+	if err != nil {
+		refuse(w, err)
 		return
-	}
-	email := normalizeEmail(body.Email)
-	inv := a.cache.Model().InviteOf(e.ID, email)
-	if inv == nil {
-		http.Error(w, "they are not on the list", http.StatusNotFound)
-		return
-	}
-	if !a.isHost(actor, admin, e) && !(inv.GuestOf != "" && a.mayAnswerFor(actor, inv.GuestOf, admin, e)) {
-		http.Error(w, "only a host can take someone off the list", http.StatusForbidden)
-		return
-	}
-	ops := []store.Op{store.Delete(InvitesTab, store.Row{"Event ID": e.ID, "Email": email})}
-	var group *InviteGroup
-	if gid, ok := strings.CutPrefix(inv.Via, ViaGroup); ok {
-		if group = a.cache.Model().GroupOf(e.ID, gid); group != nil {
-			ops = append(ops, store.Update(InviteGroupsTab, store.Row{"Event ID": e.ID, "Group ID": gid}, store.Row{"Removed": strings.Join(append(slices.Clone(group.Removed), email), ", ")}))
-		}
 	}
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: guest removed", "actor", actor, "event", e.ID, "email", email, "from group", group != nil)
+	slog.InfoContext(r.Context(), "calendar: guest removed", "actor", actor.Email, "event", e.ID, "email", email, "from group", fromGroup)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type guestBody struct {
+	ID     string  `json:"id"`
+	Name   string  `json:"name"`
+	Email  string  `json:"email"`
+	Of     string  `json:"of"`
+	Answer *string `json:"answer"`
+	Invite *bool   `json:"invite"`
+}
+
 func (a app) addGuest(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID     string  `json:"id"`
-		Name   string  `json:"name"`
-		Email  string  `json:"email"`
-		Of     string  `json:"of"`
-		Answer *string `json:"answer"`
-		Invite *bool   `json:"invite"`
-	}
+	var body guestBody
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, admin := a.who(r)
-	e := a.eventFor(actor, admin, strings.TrimSpace(body.ID))
-	if e == nil {
-		http.Error(w, "that event is not on the calendar", http.StatusNotFound)
+	actor := a.actor(r)
+	ops, g, err := a.bringGuestOps(actor, body)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	model := a.cache.Model()
-	inv := model.Invitations[e.ID]
-	answer, invite := AnswerYes, true
-	if body.Answer != nil {
-		answer = strings.ToLower(strings.TrimSpace(*body.Answer))
-		if answer != "" && answer != AnswerYes {
-			http.Error(w, "a guest is put down as yes, or left to answer", http.StatusBadRequest)
-			return
-		}
-	}
-	if body.Invite != nil {
-		invite = *body.Invite
-	}
-	of := actor
-	if body.Of != "" {
-		of = a.directory.Resolve(normalizeEmail(body.Of))
-	}
-	if !a.isHost(actor, admin, e) {
-		if inv == nil || !inv.Guests {
-			http.Error(w, "this event is not taking guests", http.StatusForbidden)
-			return
-		}
-		if !a.mayAnswerFor(actor, of, admin, e) || model.InviteOf(e.ID, of) == nil {
-			http.Error(w, "a guest comes with someone on the list", http.StatusForbidden)
-			return
-		}
-	}
-	key, err := a.bringGuest(r.Context(), actor, e, of, body.Name, body.Email, answer, invite)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := a.bringGuest(r.Context(), actor, ops, g); err != nil {
+		refuse(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"email": key})
+	json.NewEncoder(w).Encode(map[string]string{"email": g.key})
 }
 
-func (a app) bringGuest(ctx context.Context, actor string, e *Event, of, name, email, answer string, invite bool) (string, error) {
-	model := a.cache.Model()
-	name = strings.TrimSpace(name)
-	if name == "" || len(name) > maxTitleLength {
-		return "", fmt.Errorf("a guest needs a name")
-	}
-	email = normalizeEmail(email)
-	stamp := now().Format(DateTimeFormat)
-	row := store.Row{"Event ID": e.ID, "Name": name, "Guest Of": of, "Via": ViaGuest, "Added By": actor, "Added": stamp}
-	if email != "" {
-		if !emailForm.MatchString(email) {
-			return "", fmt.Errorf("that is not an email address")
-		}
-		email = a.directory.Resolve(email)
-		if model.InviteOf(e.ID, email) != nil {
-			return "", fmt.Errorf("they are on the list already")
-		}
-		if p, known := a.directory.Person(email); known {
-			row["Name"] = p.Name
-		} else {
-			row["Token"] = NewToken()
-		}
-	} else {
-		email = newGuestKey()
-		row["Sent"] = stamp
-	}
-	row["Email"] = email
-	ops := append(a.invitationOps(e.ID, actor, nil), store.Insert(InvitesTab, row))
-	if answer != "" {
-		ops = append(ops, store.Set(RSVPsTab, store.Row{"Event ID": e.ID, "Email": email}, store.Row{"Answer": answer, "Answered": stamp, "Answered By": actor, "Via": ViaPage}))
-	}
+func (a app) bringGuest(ctx context.Context, actor access.Actor, ops []store.Op, g broughtGuest) error {
 	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
-		return "", err
+		return err
 	}
-	slog.InfoContext(ctx, "calendar: guest brought", "actor", actor, "event", e.ID, "of", of, "guest", email, "answer", answer, "invite", invite)
-	if invite && !isGuestKey(email) {
-		a.send(ctx, actor, actor, e, []string{email}, "")
+	slog.InfoContext(ctx, "calendar: guest brought", "actor", actor.Email, "event", g.event.ID, "of", g.of, "guest", g.key, "answer", g.answer, "invite", g.invite)
+	if g.invite && !isGuestKey(g.key) {
+		a.send(ctx, actor, actor.Email, g.event, []string{g.key}, "")
 	}
-	return email, nil
+	return nil
 }
 
 func (a app) answerFor(w http.ResponseWriter, r *http.Request) {
@@ -1213,30 +860,18 @@ func (a app) answerFor(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, admin := a.who(r)
-	e := a.eventFor(actor, admin, strings.TrimSpace(body.ID))
-	if e == nil {
-		http.Error(w, "that event is not on the calendar", http.StatusNotFound)
-		return
-	}
-	subject := normalizeEmail(body.Email)
-	if !isGuestKey(subject) {
-		subject = a.directory.Resolve(subject)
-	}
-	if !a.mayAnswerFor(actor, subject, admin, e) {
-		http.Error(w, "you can answer for yourself and your household", http.StatusForbidden)
+	actor := a.actor(r)
+	e, subject, err := a.answerSubject(actor, body.ID, body.Email, body.Answer)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
 	answer := strings.ToLower(strings.TrimSpace(body.Answer))
-	if answer == AnswerHidden {
-		http.Error(w, "hiding is a person's own", http.StatusBadRequest)
+	if err := a.recordBy(r.Context(), actor, subject, e.ID, answer, ViaPage, subject == actor.Email, false); err != nil {
+		refuse(w, err)
 		return
 	}
-	if err := a.recordBy(r.Context(), actor, subject, e.ID, answer, ViaPage, subject == actor, false); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	slog.InfoContext(r.Context(), "calendar: answered for", "actor", actor, "subject", subject, "event", e.ID, "answer", answer)
+	slog.InfoContext(r.Context(), "calendar: answered for", "actor", actor.Email, "subject", subject, "event", e.ID, "answer", answer)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1250,8 +885,10 @@ func (a app) sendInvites(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
-	if !ok {
+	actor := a.actor(r)
+	e, err := a.hostedEvent(actor, body.ID)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
 	model := a.cache.Model()
@@ -1303,41 +940,24 @@ func (a app) sendInvites(w http.ResponseWriter, r *http.Request) {
 	case reminder:
 		kind = inviteReminder
 	}
-	sent := a.send(r.Context(), actor, actor, e, emails, kind)
-	slog.InfoContext(r.Context(), "calendar: invites sent", "actor", actor, "event", e.ID, "invites", len(emails), "messages", sent)
+	sent := a.send(r.Context(), actor, actor.Email, e, emails, kind)
+	slog.InfoContext(r.Context(), "calendar: invites sent", "actor", actor.Email, "event", e.ID, "invites", len(emails), "messages", sent)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{"invites": len(emails), "messages": sent})
 }
 
-func (a app) markSent(ctx context.Context, actor string, e *Event, emails []string) {
-	model := a.cache.Model()
-	stamp := now().Format(DateTimeFormat)
-	ops := []store.Op{}
-	for _, email := range emails {
-		ops = append(ops, store.Update(InvitesTab, store.Row{"Event ID": e.ID, "Email": email}, store.Row{"Sent": stamp}))
-	}
-	if inv := model.Invitations[e.ID]; inv != nil && inv.Sent == "" {
-		ops = append(ops, store.Update(InvitationsTab, store.Row{"Event ID": e.ID}, store.Row{"Sent": stamp}))
-	}
-	for _, g := range model.Groups[e.ID] {
-		unsent := slices.ContainsFunc(model.Invites[e.ID], func(inv Invite) bool {
-			return inv.Via == ViaGroup+g.ID && inv.Sent == "" && !slices.Contains(emails, inv.Email)
-		})
-		if g.Sent == "" && !unsent {
-			ops = append(ops, store.Update(InviteGroupsTab, store.Row{"Event ID": e.ID, "Group ID": g.ID}, store.Row{"Sent": stamp}))
-		}
-	}
-	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
+func (a app) markSent(ctx context.Context, actor access.Actor, e *Event, emails []string) {
+	if err := a.cache.Commit(ctx, actor, a.sentOps(actor, e, emails)...); err != nil {
 		slog.ErrorContext(ctx, "[ERROR] calendar: mark invites sent", "event", e.ID, "error", err)
 	}
 }
 
-func (a app) noteOpened(ctx context.Context, e *Event, email string) {
-	inv := a.cache.Model().InviteOf(e.ID, email)
-	if inv == nil || inv.Opened != "" || inv.Sent == "" {
+func (a app) noteOpened(ctx context.Context, actor access.Actor, e *Event) {
+	ops := a.openedOps(actor, e)
+	if len(ops) == 0 {
 		return
 	}
-	if err := a.cache.Commit(ctx, email, store.Update(InvitesTab, store.Row{"Event ID": e.ID, "Email": email}, store.Row{"Opened": now().Format(DateTimeFormat)})); err != nil {
+	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
 		slog.ErrorContext(ctx, "[ERROR] calendar: note opened", "event", e.ID, "error", err)
 	}
 }
@@ -1350,8 +970,10 @@ func (a app) skipInvites(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
-	if !ok {
+	actor := a.actor(r)
+	e, err := a.hostedEvent(actor, body.ID)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
 	model := a.cache.Model()
@@ -1367,7 +989,7 @@ func (a app) skipInvites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.markSent(r.Context(), actor, e, emails)
-	slog.InfoContext(r.Context(), "calendar: invites skipped", "actor", actor, "event", e.ID, "skipped", len(emails))
+	slog.InfoContext(r.Context(), "calendar: invites skipped", "actor", actor.Email, "event", e.ID, "skipped", len(emails))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{"skipped": len(emails)})
 }
@@ -1396,7 +1018,7 @@ const (
 	inviteUpdate   = "update"
 )
 
-func (a app) send(ctx context.Context, actor, host string, e *Event, emails []string, kind string) int {
+func (a app) send(ctx context.Context, actor access.Actor, host string, e *Event, emails []string, kind string) int {
 	if a.mail.Sender == nil {
 		return 0
 	}
@@ -1638,8 +1260,10 @@ func (a app) messageInvites(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
-	if !ok {
+	actor := a.actor(r)
+	e, err := a.hostedEvent(actor, body.ID)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
 	message := strings.TrimSpace(body.Message)
@@ -1694,18 +1318,18 @@ func (a app) messageInvites(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nobody on the list stands where you chose", http.StatusBadRequest)
 		return
 	}
-	hostName := actor
-	if p, known := a.directory.Person(actor); known && p.Name != "" {
+	hostName := actor.Email
+	if p, known := a.directory.Person(actor.Email); known && p.Name != "" {
 		hostName = p.Name
 	}
 	replyTo := a.hostsOf(e)
-	if !slices.Contains(replyTo, actor) {
-		replyTo = append([]string{actor}, replyTo...)
+	if !slices.Contains(replyTo, actor.Email) {
+		replyTo = append([]string{actor.Email}, replyTo...)
 	}
 	for _, to := range targets {
 		go a.sendMessage(context.WithoutCancel(r.Context()), to, cc[to], replyTo, hostName, subject, message, e, body.Attach)
 	}
-	slog.InfoContext(r.Context(), "calendar: message sent", "actor", actor, "event", e.ID, "to", len(targets))
+	slog.InfoContext(r.Context(), "calendar: message sent", "actor", actor.Email, "event", e.ID, "to", len(targets))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{"messages": len(targets)})
 }

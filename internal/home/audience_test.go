@@ -9,6 +9,7 @@ import (
 	"slices"
 	"testing"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
@@ -24,10 +25,20 @@ func (noFiles) Has(string) (bool, error) { return false, nil }
 
 func (noFiles) Prefetch(context.Context, []string) error { return nil }
 
-type sampleDirectory struct{ model *who.Model }
+type sampleDirectory struct {
+	model   *who.Model
+	aliases map[string]string
+}
 
 func (d sampleDirectory) Sources() filter.Sources {
 	return filter.Sources{Directory: d.model}
+}
+
+func (d sampleDirectory) Resolve(email string) string {
+	if to, ok := d.aliases[email]; ok {
+		return to
+	}
+	return d.model.Resolve(email)
 }
 
 func directoryOf(t *testing.T) sampleDirectory {
@@ -36,7 +47,7 @@ func directoryOf(t *testing.T) sampleDirectory {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return sampleDirectory{model}
+	return sampleDirectory{model: model}
 }
 
 func call(t *testing.T, handler http.HandlerFunc, body any) *httptest.ResponseRecorder {
@@ -107,7 +118,7 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 	if hidden := c.HiddenApps(sam); !slices.Contains(hidden, "celebrate") {
 		t.Errorf("a student sees the celebration: %v", hidden)
 	}
-	if err := c.Commit(context.Background(), "test", audience(thingLink+"Directory", nil, []filter.Rule{{Kind: filter.KindExclude, Roles: []string{"Student"}}})...); err != nil {
+	if err := c.Commit(context.Background(), access.System("test"), audience(thingLink+"Directory", nil, []filter.Rule{{Kind: filter.KindExclude, Roles: []string{"Student"}}})...); err != nil {
 		t.Fatal(err)
 	}
 	if got := c.Model().Categories[2].Links[0].Rules; len(got) != 1 || got[0].Kind != filter.KindExclude {
@@ -118,7 +129,7 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 		{"Thing": "link:Directory", "Kind": "include"},
 		{"Thing": "link:Directory", "Kind": "include", "Tags": "Carpool"},
 	} {
-		if err := c.Commit(context.Background(), "test", store.Insert(audienceTab, bad)); err == nil {
+		if err := c.Commit(context.Background(), access.System("test"), store.Insert(audienceTab, bad)); err == nil {
 			t.Errorf("a bad rule %v loaded", bad)
 		}
 	}
@@ -128,13 +139,13 @@ func TestCategoryRenameCarriesItsLinksAndAudience(t *testing.T) {
 	c, dir := sampleCache(t)
 	c.directory = directoryOf(t)
 	a := app{cache: c, directory: c.directory}
-	chats := a.category("Chats")
+	chats := c.Model().category("Chats")
 	rec := call(t, a.saveCategory, map[string]any{"original": "Chats", "title": "Group Chats", "emoji": chats.Emoji, "style": chats.Style, "rules": chats.Rules})
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
-	renamed := a.category("Group Chats")
-	if renamed == nil || len(renamed.Links) != len(chats.Links) || len(renamed.Rules) != 1 || a.category("Chats") != nil {
+	renamed := c.Model().category("Group Chats")
+	if renamed == nil || len(renamed.Links) != len(chats.Links) || len(renamed.Rules) != 1 || c.Model().category("Chats") != nil {
 		t.Fatalf("the links and the audience did not follow the rename in memory: %+v", renamed)
 	}
 	for _, row := range dir.rows(t, linksTab) {
@@ -162,7 +173,7 @@ func TestMoveLinkTradesPlacesWithinItsCategory(t *testing.T) {
 		t.Fatalf("move: %d %s", rec.Code, rec.Body)
 	}
 	var school []string
-	for _, l := range a.category("School").Links {
+	for _, l := range c.Model().category("School").Links {
 		school = append(school, l.Title)
 	}
 	if want := []string{"Directory", "Calendar", "Staff Room", "Parent Portal"}; !slices.Equal(school, want) {
@@ -184,12 +195,12 @@ func TestARowWithNoOrderSortsLast(t *testing.T) {
 	c, dir := sampleCache(t)
 	c.directory = directoryOf(t)
 	a := app{cache: c, directory: c.directory}
-	if err := c.Commit(context.Background(), "test", store.Insert(linksTab, store.Row{"Title": "Lunch Menu", "URL": "https://lunch.example.org/", "Category": "School", "Visible": "Yes"}), store.Update(linksTab, store.Row{"Title": "Directory"}, store.Row{store.OrderColumn: ""})); err != nil {
+	if err := c.Commit(context.Background(), access.System("test"), store.Insert(linksTab, store.Row{"Title": "Lunch Menu", "URL": "https://lunch.example.org/", "Category": "School", "Visible": "Yes"}), store.Update(linksTab, store.Row{"Title": "Directory"}, store.Row{store.OrderColumn: ""})); err != nil {
 		t.Fatal(err)
 	}
 	school := func() []string {
 		out := []string{}
-		for _, l := range a.category("School").Links {
+		for _, l := range c.Model().category("School").Links {
 			out = append(out, l.Title)
 		}
 		return out
@@ -234,11 +245,11 @@ func TestCategoryOrderKeysOnlyWhatMoved(t *testing.T) {
 func TestTheEventsSectionIsWrittenWhereItStands(t *testing.T) {
 	c, _ := sampleCache(t)
 	c.directory = directoryOf(t)
-	if err := c.Commit(context.Background(), "test", store.Delete(categoriesTab, store.Row{"Title": EventsTitle})); err != nil {
+	if err := c.Commit(context.Background(), access.System("test"), store.Delete(categoriesTab, store.Row{"Title": EventsTitle})); err != nil {
 		t.Fatal(err)
 	}
 	a := app{cache: c, directory: c.directory}
-	if !a.virtualEvents(EventsTitle) {
+	if !c.Model().virtualEvents(EventsTitle) {
 		t.Fatal("no synthesized events section")
 	}
 	titles := []string{"Helios Community Apps", EventsTitle, "School", "Events", "Chats"}
@@ -249,7 +260,7 @@ func TestTheEventsSectionIsWrittenWhereItStands(t *testing.T) {
 	for _, category := range c.Model().Categories {
 		got = append(got, category.Title)
 	}
-	if !slices.Equal(got, titles) || a.virtualEvents(EventsTitle) {
+	if !slices.Equal(got, titles) || c.Model().virtualEvents(EventsTitle) {
 		t.Fatalf("categories = %v, want %v with the events row written", got, titles)
 	}
 }
@@ -345,10 +356,52 @@ func TestOnlyAdminsGetTheRules(t *testing.T) {
 	}
 }
 
-// TestWidgetAudience checks a widget's rules: an admin keeps the Team widget
-// to parents, a student's model then says it is not for them while a
-// parent's says it is, only an admin gets the rules, and an unknown widget
-// is refused.
+func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
+	c, dir := sampleCache(t)
+	const alias = "jw@example.org"
+	directory := directoryOf(t)
+	directory.aliases = map[string]string{alias: admin}
+	c.directory = directory
+	a := app{
+		cache: c, directory: directory,
+		heroPhoto: func(string) string { return "" },
+		alerts:    func(string) ([]string, []string) { return nil, nil },
+		upcoming:  func(string, string) Upcoming { return Upcoming{} },
+		month:     func(string, string, string) Month { return Month{} },
+	}
+	if c.IsAdmin(alias) {
+		t.Fatal("the alias is listed as an admin itself")
+	}
+	rec := httptest.NewRecorder()
+	auth.Fixed(alias, http.HandlerFunc(a.model)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/apps/model", nil))
+	var view struct {
+		User user `json:"user"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if !view.User.IsAdmin {
+		t.Errorf("the alias's model is not an admin's: %s", rec.Body)
+	}
+	raw, err := json.Marshal(map[string]any{"title": "Parent Portal", "by": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec = httptest.NewRecorder()
+	auth.Fixed(alias, http.HandlerFunc(a.moveLink)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(raw)))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("the alias's move: %d %s", rec.Code, rec.Body)
+	}
+	if log := changeLog(t, dir); len(log) != 1 || log[0]["Actor"] != admin {
+		t.Errorf("change log = %v, want one row by the admin the alias resolves to", log)
+	}
+	rec = httptest.NewRecorder()
+	auth.Fixed("robin.whitfield@heliosschool.org", http.HandlerFunc(a.moveLink)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(raw)))
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("a member's move: %d, want 403", rec.Code)
+	}
+}
+
 func TestWidgetAudience(t *testing.T) {
 	c, _ := sampleCache(t)
 	c.directory = directoryOf(t)

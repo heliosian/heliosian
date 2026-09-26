@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"heliosian/internal/mail"
-	"heliosian/internal/store"
 )
 
 func (a app) deleteInvitation(w http.ResponseWriter, r *http.Request) {
@@ -22,24 +21,16 @@ func (a app) deleteInvitation(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
-	if !ok {
+	actor := a.actor(r)
+	ops, e, own, err := a.deleteInvitationOps(actor, body.ID)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	inv := a.cache.Model().Invitations[e.ID]
-	own := e.Source == SourceSheet
-	if own && inv != nil && inv.Sent != "" {
-		http.Error(w, "the invites are out: cancel the event instead", http.StatusBadRequest)
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	op := store.Delete(InvitationsTab, store.Row{"Event ID": e.ID})
-	if own {
-		op = store.Delete(EventsTab, store.Row{"Event ID": e.ID})
-	}
-	if !a.commit(w, r, actor, op) {
-		return
-	}
-	slog.InfoContext(r.Context(), "calendar: invitation deleted", "actor", actor, "event", e.ID, "title", e.Title, "event too", own)
+	slog.InfoContext(r.Context(), "calendar: invitation deleted", "actor", actor.Email, "event", e.ID, "title", e.Title, "event too", own)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"event": own})
 }
@@ -53,23 +44,17 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
-	if !ok {
+	actor := a.actor(r)
+	ops, e, err := a.cancelOps(actor, body.ID, body.Note)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	if e.Source != SourceSheet {
-		http.Error(w, "an event another app runs is cancelled there", http.StatusBadRequest)
-		return
-	}
-	if e.Cancelled {
+	if len(ops) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	note := strings.TrimSpace(body.Note)
-	if len(note) > maxTextLength {
-		http.Error(w, "the note is too long", http.StatusBadRequest)
-		return
-	}
 	model := a.cache.Model()
 	targets := []string{}
 	cc := map[string][]string{}
@@ -86,21 +71,21 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 			targets = append(targets, inv.Email)
 		}
 	}
-	if !a.commit(w, r, actor, store.Update(EventsTab, store.Row{"Event ID": e.ID}, store.Row{"Status": StatusCancelled})) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	hostName := actor
-	if p, known := a.directory.Person(actor); known && p.Name != "" {
+	hostName := actor.Email
+	if p, known := a.directory.Person(actor.Email); known && p.Name != "" {
 		hostName = p.Name
 	}
 	replyTo := a.hostsOf(e)
-	if !slices.Contains(replyTo, actor) {
-		replyTo = append([]string{actor}, replyTo...)
+	if !slices.Contains(replyTo, actor.Email) {
+		replyTo = append([]string{actor.Email}, replyTo...)
 	}
 	for _, to := range targets {
 		go a.sendCancellation(context.WithoutCancel(r.Context()), to, cc[to], replyTo, hostName, note, model.invitedEvent(e))
 	}
-	slog.InfoContext(r.Context(), "calendar: event cancelled", "actor", actor, "event", e.ID, "title", e.Title, "told", len(targets))
+	slog.InfoContext(r.Context(), "calendar: event cancelled", "actor", actor.Email, "event", e.ID, "title", e.Title, "told", len(targets))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{"told": len(targets)})
 }

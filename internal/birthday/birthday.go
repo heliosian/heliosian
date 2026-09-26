@@ -61,20 +61,11 @@ const (
 	EmailSubjectKey     = "Email Subject"
 	EmailBodyKey        = "Email Body"
 	NoNewsletterNoteKey = "No Newsletter Note"
-	// OutreachCCKey is who a volunteer copies on the outreach email - the
-	// HCA's address - and may be blank.
-	OutreachCCKey = "Outreach CC"
-	// RequestLeadKey is how many days before the newsletter the request is
-	// due; blank means the default.
-	RequestLeadKey = "Request Lead Days"
-	// DueByLeadKey is how many days before the newsletter the birthday's
-	// information - the charity - is due in; blank means the default.
-	DueByLeadKey = "Due By Lead Days"
+	OutreachCCKey       = "Outreach CC"
+	RequestLeadKey      = "Request Lead Days"
+	DueByLeadKey        = "Due By Lead Days"
 )
 
-// The roles on the Team tab: volunteers work the birthdays and are offered
-// when one is assigned; the comms team carries the donations into the
-// newsletter.
 const (
 	RoleVolunteer = "Volunteer"
 	RoleComms     = "Comms Team"
@@ -84,12 +75,8 @@ var Roles = []string{RoleVolunteer, RoleComms}
 
 var settingKeys = []string{DefaultCharityKey, YearStartKey, EmailSubjectKey, EmailBodyKey, NoNewsletterNoteKey, OutreachCCKey, RequestLeadKey, DueByLeadKey}
 
-// legacyThemeKeys are rows the Appearance panel wrote while the apps could
-// be recoloured (2026-09-16); the tab may still carry them, and they are
-// passed over.
 var legacyThemeKeys = []string{"Sidebar Color", "Sidebar Color 2", "Sidebar Text Color", "Page Color", "Page Color 2", "Logo", "Sidebar Image"}
 
-// optionalSettingKeys may be missing or blank.
 var optionalSettingKeys = []string{OutreachCCKey, RequestLeadKey, DueByLeadKey}
 
 var (
@@ -108,10 +95,6 @@ var (
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
-// Birthday is one staff member's row: their birthday as a month and day,
-// 08-20, the newsletter that should carry it when the usual pick is wrong, and
-// their standing wish about taking part. Someone who opted out entirely may
-// have no birthday on file.
 type Birthday struct {
 	Email    string `json:"email"`
 	Birthday string `json:"birthday,omitempty"`
@@ -173,15 +156,11 @@ type Settings struct {
 	DueByLeadDays    int    `json:"dueByLeadDays"`
 }
 
-// TeamMember is one person in one role on the Team tab.
 type TeamMember struct {
 	Email string `json:"email"`
 	Role  string `json:"role"`
 }
 
-// Model is the sheet organized: birthdays in row order, the per-year progress
-// tables keyed by email and year, charities by name, and the newsletter dates
-// sorted.
 type Model struct {
 	Birthdays       []Birthday
 	Assignments     map[string]Assignment
@@ -191,13 +170,11 @@ type Model struct {
 	Charities       []Charity
 	NewsletterDates []string
 	Team            []TeamMember
-	// Reminders is every reminder sent, by the birthday, year and kind, so
-	// none goes twice.
-	Reminders map[string]bool
-	Settings  Settings
-	Admins    []string
-	byEmail   map[string]*Birthday
-	byCharity map[string]*Charity
+	Reminders       map[string]bool
+	Settings        Settings
+	Admins          []string
+	byEmail         map[string]*Birthday
+	byCharity       map[string]*Charity
 }
 
 func reminderKey(email, year, kind string) string {
@@ -231,19 +208,16 @@ func (m *Model) Donation(email, year string) (Donation, bool) {
 	return d, ok
 }
 
-// Skipped reports whether a staff member asked to be left out entirely.
 func (m *Model) Skipped(email string) bool {
 	b := m.Birthday(email)
 	return b != nil && b.Level == LevelSkip
 }
 
-// InPipeline reports whether a staff member has a birthday to work through.
 func (m *Model) InPipeline(email string) bool {
 	b := m.Birthday(email)
 	return b != nil && b.Birthday != "" && b.Level != LevelSkip
 }
 
-// OnTeam reports whether email holds any role on the Team tab.
 func (m *Model) OnTeam(email string) bool {
 	for _, t := range m.Team {
 		if t.Email == email {
@@ -253,7 +227,7 @@ func (m *Model) OnTeam(email string) bool {
 	return false
 }
 
-func (m *Model) Sees(v access.Viewer) bool {
+func (m *Model) Sees(v access.Actor) bool {
 	return v.Admin || m.OnTeam(v.Email)
 }
 
@@ -298,7 +272,6 @@ func checkEmail(email string) error {
 	return nil
 }
 
-// ParseDate reads a date cell, 2026-09-24.
 func ParseDate(cell string) (time.Time, error) {
 	t, err := time.Parse(DateFormat, cell)
 	if err != nil {
@@ -378,8 +351,6 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	}, nil
 }
 
-// leadDays reads a days-before-the-newsletter setting, 0 to 60, or its
-// default when blank.
 func leadDays(values map[string]string, key string, fallback int) (int, error) {
 	raw := strings.TrimSpace(values[key])
 	if raw == "" {
@@ -392,9 +363,6 @@ func leadDays(values map[string]string, key string, fallback int) (int, error) {
 	return n, nil
 }
 
-// BuildModel validates every row and refuses the whole set on the first problem,
-// the stance every app here takes: a sheet edit that breaks a rule surfaces as a
-// refused load, never as a page quietly missing a birthday.
 func BuildModel(tables store.Tables) (*Model, error) {
 	settings, err := parseSettings(tables[settingsTab])
 	if err != nil {

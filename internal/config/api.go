@@ -5,9 +5,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/store"
 )
@@ -28,22 +28,17 @@ func Register(mux *http.ServeMux, cache *Cache, isAdmin func(email string) bool)
 	mux.HandleFunc("POST /api/config/sign-out", a.signOut)
 }
 
-func (a api) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
+func (a api) actor(r *http.Request, admin func(email string) bool) access.Actor {
 	email := strings.ToLower(auth.Email(r))
-	if !a.isAdmin(email) {
-		http.Error(w, "admin access required", http.StatusForbidden)
-		return "", false
-	}
-	return email, true
+	return access.Actor{Email: email, Admin: admin(email)}
 }
 
-func (a api) requireSuperAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
-	email := strings.ToLower(auth.Email(r))
-	if !a.cache.IsSuperAdmin(email) {
-		http.Error(w, "admin access required", http.StatusForbidden)
-		return "", false
-	}
-	return email, true
+func (a api) settingsActor(r *http.Request) access.Actor {
+	return a.actor(r, a.isAdmin)
+}
+
+func (a api) superActor(r *http.Request) access.Actor {
+	return a.actor(r, a.cache.IsSuperAdmin)
 }
 
 func decode(w http.ResponseWriter, r *http.Request, into any) bool {
@@ -57,11 +52,15 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 func encode(w http.ResponseWriter, r *http.Request, view any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode config", "error", err)
+		slog.ErrorContext(r.Context(), "[ERROR] encode config", "error", err)
 	}
 }
 
-func (a api) commit(w http.ResponseWriter, r *http.Request, actor string, ops ...store.Op) bool {
+func refuse(w http.ResponseWriter, err error) {
+	http.Error(w, err.Error(), access.Status(err))
+}
+
+func (a api) commit(w http.ResponseWriter, r *http.Request, actor access.Actor, ops ...store.Op) bool {
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return false
@@ -74,30 +73,25 @@ func (a api) settings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a api) superAdmins(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.requireSuperAdmin(w, r); !ok {
+	if err := requireAdmin(a.superActor(r)); err != nil {
+		refuse(w, err)
 		return
 	}
 	encode(w, r, map[string][]string{"superAdmins": a.cache.SuperAdmins()})
 }
 
 func (a api) setStaleYears(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
-		return
-	}
 	var years StaleYears
 	if !decode(w, r, &years) {
 		return
 	}
-	if years.Photo <= 0 || years.Facts <= 0 || years.FamilyPhoto <= 0 {
-		http.Error(w, "thresholds must be positive numbers of years", http.StatusBadRequest)
+	actor := a.settingsActor(r)
+	ops, err := a.cache.Settings().setStaleYears(actor, years)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	if !a.commit(w, r, actor, setSettings(map[string]string{
-		PhotoStaleYears:       FormatYears(years.Photo),
-		FactsStaleYears:       FormatYears(years.Facts),
-		FamilyPhotoStaleYears: FormatYears(years.FamilyPhoto),
-	})...) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "config: set stale-years thresholds", "photo", years.Photo, "facts", years.Facts, "familyPhoto", years.FamilyPhoto)
@@ -105,24 +99,17 @@ func (a api) setStaleYears(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a api) setPrivacyLinks(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
+	var body PrivacyLinks
+	if !decode(w, r, &body) {
 		return
 	}
-	var links PrivacyLinks
-	if !decode(w, r, &links) {
+	actor := a.settingsActor(r)
+	links, ops, err := a.cache.Settings().setPrivacyLinks(actor, body)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	links.VeracrossPreferences = strings.TrimSpace(links.VeracrossPreferences)
-	links.HeliosWhoOptIn = strings.TrimSpace(links.HeliosWhoOptIn)
-	if !strings.HasPrefix(links.VeracrossPreferences, "https://") || !strings.HasPrefix(links.HeliosWhoOptIn, "https://") {
-		http.Error(w, "both links must be full https:// URLs", http.StatusBadRequest)
-		return
-	}
-	if !a.commit(w, r, actor, setSettings(map[string]string{
-		VeracrossPreferences: links.VeracrossPreferences,
-		HeliosWhoOptIn:       links.HeliosWhoOptIn,
-	})...) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "config: set privacy links", "veracrossPreferences", links.VeracrossPreferences, "heliosWhoOptIn", links.HeliosWhoOptIn)
@@ -130,10 +117,6 @@ func (a api) setPrivacyLinks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a api) setColor(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
-		return
-	}
 	var body struct {
 		Kind  string `json:"kind"`
 		Name  string `json:"name"`
@@ -142,25 +125,10 @@ func (a api) setColor(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	if !HexColor.MatchString(body.Color) {
-		http.Error(w, "color must be a #rrggbb hex value", http.StatusBadRequest)
-		return
-	}
-	name := strings.TrimSpace(body.Name)
-	if body.Kind != "staff" && name == "" {
-		http.Error(w, "missing name", http.StatusBadRequest)
-		return
-	}
-	var ops []store.Op
-	switch body.Kind {
-	case "classroom":
-		ops = []store.Op{store.Set(ClassroomColorsTab, store.Row{ClassroomColumn: name}, store.Row{ColorColumn: body.Color})}
-	case "grade":
-		ops = []store.Op{store.Set(GradeColorsTab, store.Row{GradeColumn: name}, store.Row{ColorColumn: body.Color})}
-	case "staff":
-		ops = setSettings(map[string]string{StaffColor: body.Color})
-	default:
-		http.Error(w, "bad kind: must be classroom, grade, or staff", http.StatusBadRequest)
+	actor := a.settingsActor(r)
+	name, ops, err := a.cache.Settings().setColor(actor, body.Kind, body.Name, body.Color)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
 	if !a.commit(w, r, actor, ops...) {
@@ -171,32 +139,17 @@ func (a api) setColor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a api) setSuperAdmins(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireSuperAdmin(w, r)
-	if !ok {
-		return
-	}
 	var body struct {
 		SuperAdmins []string `json:"superAdmins"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	admins := NormalizeEmails(body.SuperAdmins)
-	if len(admins) == 0 {
-		http.Error(w, "the super admin list cannot be empty", http.StatusBadRequest)
+	actor := a.superActor(r)
+	admins, ops, err := a.cache.Settings().setSuperAdmins(actor, body.SuperAdmins)
+	if err != nil {
+		refuse(w, err)
 		return
-	}
-	current := a.cache.SuperAdmins()
-	ops := []store.Op{}
-	for _, e := range current {
-		if !slices.Contains(admins, e) {
-			ops = append(ops, store.Delete(SuperAdminsTab, store.Row{EmailColumn: e}))
-		}
-	}
-	for _, e := range admins {
-		if !slices.Contains(current, e) {
-			ops = append(ops, store.Insert(SuperAdminsTab, store.Row{EmailColumn: e}))
-		}
 	}
 	if !a.commit(w, r, actor, ops...) {
 		return
@@ -206,25 +159,21 @@ func (a api) setSuperAdmins(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a api) signOut(w http.ResponseWriter, r *http.Request) {
-	admin, ok := a.requireSuperAdmin(w, r)
-	if !ok {
-		return
-	}
 	var body struct {
 		Email string `json:"email"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	email := strings.ToLower(strings.TrimSpace(body.Email))
-	if !strings.Contains(email, "@") {
-		http.Error(w, "missing email", http.StatusBadRequest)
+	actor := a.superActor(r)
+	email, ops, err := a.cache.Settings().signOut(actor, body.Email)
+	if err != nil {
+		refuse(w, err)
 		return
 	}
-	if err := a.cache.signOut(r.Context(), admin, email); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "config: signed out every session", "email", email, "by", admin)
+	slog.InfoContext(r.Context(), "config: signed out every session", "email", email, "by", actor.Email)
 	w.WriteHeader(http.StatusNoContent)
 }

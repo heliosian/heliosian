@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 )
@@ -59,11 +60,6 @@ func (c *Cache) SignedOut(email string) (time.Time, bool) {
 }
 
 func (c *Cache) SignOut(ctx context.Context, email string) error {
-	email = strings.ToLower(strings.TrimSpace(email))
-	return c.signOut(ctx, email, email)
-}
-
-func (c *Cache) signOut(ctx context.Context, actor, email string) error {
-	at := time.Now().Truncate(time.Second)
-	return c.Commit(ctx, actor, store.Set(SignedOutTab, store.Row{EmailColumn: email}, store.Row{TimeColumn: at.Format(time.RFC3339)}))
+	actor := access.Actor{Email: strings.ToLower(strings.TrimSpace(email))}
+	return c.Commit(ctx, actor, c.Settings().signOutSelf(actor)...)
 }
