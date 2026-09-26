@@ -39,7 +39,7 @@ func sample() Report {
 }
 
 func TestStripLeavesNothingPersonal(t *testing.T) {
-	title, body, labels := Strip(sample())
+	title, body, issueType, labels := Strip(sample())
 	if title != "[Helios When] Next month | shows nothing" {
 		t.Errorf("title = %q", title)
 	}
@@ -59,20 +59,32 @@ func TestStripLeavesNothingPersonal(t *testing.T) {
 			t.Errorf("body still carries %q:\n%s", unwanted, body)
 		}
 	}
-	if strings.Join(labels, ",") != "bug,app:calendar" {
+	if issueType != "Bug" {
+		t.Errorf("type = %q", issueType)
+	}
+	if strings.Join(labels, ",") != "app:calendar" {
 		t.Errorf("labels = %v", labels)
+	}
+}
+
+func TestStripAnIdeaIsAFeature(t *testing.T) {
+	r := sample()
+	r.Kind = "idea"
+	_, _, issueType, _ := Strip(r)
+	if issueType != "Feature" {
+		t.Errorf("type = %q", issueType)
 	}
 }
 
 func TestStripWithNoApp(t *testing.T) {
 	r := sample()
 	r.App, r.AppName = "", ""
-	title, body, labels := Strip(r)
+	title, body, _, labels := Strip(r)
 	if title != "Next month | shows nothing" {
 		t.Errorf("title = %q", title)
 	}
-	if strings.Join(labels, ",") != "bug" {
-		t.Errorf("labels = %v", labels)
+	if labels == nil || len(labels) != 0 {
+		t.Errorf("labels = %#v", labels)
 	}
 	if strings.Contains(body, "| App |") {
 		t.Errorf("body names an app it has none of:\n%s", body)
@@ -82,11 +94,11 @@ func TestStripWithNoApp(t *testing.T) {
 func TestStripWithOnlyAnAppKey(t *testing.T) {
 	r := sample()
 	r.AppName = ""
-	title, body, labels := Strip(r)
+	title, body, _, labels := Strip(r)
 	if title != "Next month | shows nothing" {
 		t.Errorf("title = %q", title)
 	}
-	if strings.Join(labels, ",") != "bug,app:calendar" {
+	if strings.Join(labels, ",") != "app:calendar" {
 		t.Errorf("labels = %v", labels)
 	}
 	if !strings.Contains(body, "| App | `calendar` |") {
@@ -97,7 +109,7 @@ func TestStripWithOnlyAnAppKey(t *testing.T) {
 func TestStripRedactsAnAddressInTheSummary(t *testing.T) {
 	r := sample()
 	r.Summary = "mail to head@example.org bounces"
-	title, _, _ := Strip(r)
+	title, _, _, _ := Strip(r)
 	if strings.Contains(title, "head@example.org") || !strings.Contains(title, "[email removed]") {
 		t.Errorf("title = %q", title)
 	}
@@ -145,7 +157,7 @@ func TestGitHubAppFiles(t *testing.T) {
 	server, created, issueAuth := appServer(t, "https://github.com/heliosian/heliosian/issues/9")
 	defer server.Close()
 	g := testApp(t, server.URL)
-	issue, err := g.File(context.Background(), "A title", "A body", []string{"bug", "app:calendar"})
+	issue, err := g.File(context.Background(), "A title", "A body", "Bug", []string{"app:calendar"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,6 +169,9 @@ func TestGitHubAppFiles(t *testing.T) {
 	}
 	if (*created)["title"] != "A title" {
 		t.Errorf("title = %v", (*created)["title"])
+	}
+	if (*created)["type"] != "Bug" {
+		t.Errorf("type = %v", (*created)["type"])
 	}
 }
 
@@ -178,7 +193,7 @@ func TestGitHubAppReusesItsToken(t *testing.T) {
 	defer server.Close()
 	g := testApp(t, server.URL)
 	for range 3 {
-		if _, err := g.File(context.Background(), "t", "b", nil); err != nil {
+		if _, err := g.File(context.Background(), "t", "b", "Bug", nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -193,7 +208,7 @@ func TestGitHubAppRefused(t *testing.T) {
 	}))
 	defer server.Close()
 	g := testApp(t, server.URL)
-	_, err := g.File(context.Background(), "t", "b", nil)
+	_, err := g.File(context.Background(), "t", "b", "Bug", nil)
 	if err == nil || !strings.Contains(err.Error(), "401") {
 		t.Errorf("err = %v", err)
 	}
@@ -376,12 +391,12 @@ func testAdmin(t *testing.T, filer IssueFiler, who string) (*Cache, http.Handler
 }
 
 type fakeFiler struct {
-	title, body string
-	labels      []string
+	title, body, issueType string
+	labels                 []string
 }
 
-func (f *fakeFiler) File(ctx context.Context, title, body string, labels []string) (string, error) {
-	f.title, f.body, f.labels = title, body, labels
+func (f *fakeFiler) File(ctx context.Context, title, body, issueType string, labels []string) (string, error) {
+	f.title, f.body, f.issueType, f.labels = title, body, issueType, labels
 	return "https://github.com/heliosian/heliosian/issues/77", nil
 }
 
@@ -442,16 +457,19 @@ func TestAdminFilesAndDismisses(t *testing.T) {
 	if rec := post("/api/admin/feedback/a1b2c3d4e5f6/file", `{"title":"","body":"x"}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("empty title: %d", rec.Code)
 	}
-	rec := post("/api/admin/feedback/a1b2c3d4e5f6/file", `{"title":"Blank grid","body":"Reported by rowan.avery@example.org","labels":["bug"]}`)
+	if rec := post("/api/admin/feedback/a1b2c3d4e5f6/file", `{"title":"Blank grid","body":"x","type":" "}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("empty type: %d", rec.Code)
+	}
+	rec := post("/api/admin/feedback/a1b2c3d4e5f6/file", `{"title":"Blank grid","body":"Reported by rowan.avery@example.org","type":"Bug"}`)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "rowan.avery@example.org") {
 		t.Errorf("an address slipped through: %d %s", rec.Code, rec.Body.String())
 	}
-	rec = post("/api/admin/feedback/a1b2c3d4e5f6/file", `{"title":"Blank grid","body":"Forward a month and the grid empties.","labels":["bug","app:calendar"]}`)
+	rec = post("/api/admin/feedback/a1b2c3d4e5f6/file", `{"title":"Blank grid","body":"Forward a month and the grid empties.","type":"Bug","labels":["app:calendar"]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("file: %d %s", rec.Code, rec.Body.String())
 	}
-	if filer.title != "Blank grid" || strings.Join(filer.labels, ",") != "bug,app:calendar" {
-		t.Errorf("filed %q with %v", filer.title, filer.labels)
+	if filer.title != "Blank grid" || filer.issueType != "Bug" || strings.Join(filer.labels, ",") != "app:calendar" {
+		t.Errorf("filed %q as %q with %v", filer.title, filer.issueType, filer.labels)
 	}
 	got, _ := cache.Report("a1b2c3d4e5f6")
 	if got.Status != StatusFiled || got.Issue != "https://github.com/heliosian/heliosian/issues/77" || got.HandledBy != "admin@example.org" {

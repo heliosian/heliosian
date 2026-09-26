@@ -24,7 +24,7 @@ Every saved report is mailed to the super admins the Config sheet names - the sa
 
 Heliosian's admin page (`/admin` on the front page's host) has a Feedback panel: every report newest first, filtered to New, Filed, Dismissed or all, with a count of what is waiting beside the tab. The reports carry who reported them and what page they were on, so the panel is the super admins' alone - an app admin does not see the tab at all, and `/api/admin/feedback` answers them 403.
 
-Opening one shows what the person wrote and everything the row holds, including their address, and below it the issue as it would be filed, ready to edit: a title, a body, and the labels. That draft is `feedback.Strip`, which is where the personal detail is taken out:
+Opening one shows what the person wrote and everything the row holds, including their address, and below it the issue as it would be filed, ready to edit: a title, a body, the type and the labels. That draft is `feedback.Strip`, which is where the personal detail is taken out:
 
 - The Reporter section the old triage issues carried is gone; nothing names who reported it.
 - Every email address anywhere in the summary, the details or the errors becomes `[email removed]`, including one the reporter typed themselves.
@@ -37,7 +37,7 @@ Filing writes the issue's address and the admin's own back to the row and moves 
 
 ## The issue
 
-A kept report becomes an issue in `heliosian/heliosian` itself - the primary repository, in the open, which is the reason nothing personal may reach it. The title starts as the app's name in brackets and the summary, `[Helios When] Next month shows nothing`, and the labels start as the kind (`bug` or `idea`) and `app:<key>` (`app:home`, `app:who`, `app:team`, `app:birthday`, `app:celebrate`, `app:calendar`, `app:loop`, `app:ask`); each label has to exist on the repository ahead of time, and `gh label list --repo heliosian/heliosian` says which do.
+A kept report becomes an issue in `heliosian/heliosian` itself - the primary repository, in the open, which is the reason nothing personal may reach it. The title starts as the app's name in brackets and the summary, `[Helios When] Next month shows nothing`. The type starts from the kind, a `bug` filed as Bug and an `idea` as Feature; the types are the organization's, and `gh api orgs/heliosian/issue-types` lists them. The labels start as `app:<key>` for the app it was reported from; each label has to exist on the repository ahead of time, and `gh label list --repo heliosian/heliosian` says which do.
 
 It is filed by a GitHub App, not by a person, so the issue's author is the app's own bot account and an issue built out of somebody's report is plainly the robot's doing rather than the admin's own words. `internal/feedback/github.go` signs a short-lived RS256 JWT with the app's key, asks `GET /repos/heliosian/heliosian/installation` which installation it is (so nothing has to carry an installation id), trades the assertion for an installation token, and keeps that token until five minutes before its hour is out.
 

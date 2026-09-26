@@ -284,6 +284,7 @@ async function openReport(id) {
     : 'Filing on GitHub is not set up on this server, so this report can only be dismissed.';
   const title = field('input', 'Title', report.draft.title, {type: 'text', maxLength: 200});
   const body = field('textarea', 'Body', report.draft.body);
+  const issueType = field('input', 'Type', report.draft.type, {type: 'text'});
   const labels = field('input', 'Labels', (report.draft.labels || []).join(', '), {type: 'text'});
   const actions = document.createElement('div');
   actions.className = 'report-actions';
@@ -309,6 +310,7 @@ async function openReport(id) {
       body: JSON.stringify({
         title: title.input.value,
         body: body.input.value,
+        type: issueType.input.value,
         labels: labels.input.value.split(',').map(l => l.trim()).filter(Boolean),
       }),
     });
@@ -336,7 +338,7 @@ async function openReport(id) {
   });
 
   actions.append(fileButton, dismissButton, status);
-  card.append(hint, title.wrap, body.wrap, labels.wrap, actions);
+  card.append(hint, title.wrap, body.wrap, issueType.wrap, labels.wrap, actions);
 }
 
 function initFeedback() {

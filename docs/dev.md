@@ -1,4 +1,13 @@
-# Local development
+# Development
+
+## Principles
+
+- **One static Go binary.** The server is Go, compiled to a static binary, running on Google Cloud Run. A new app joins the same binary at its own hostname rather than deploying as a new service; the only other production binary is the scheduled job in `cmd/periodicsync`.
+- **Frameworkless client.** Client code is plain JavaScript with no client-side framework and no build step.
+- **Great local development.** A single command runs the server locally, content changes show on a refresh without a restart, and fictional sample data makes it possible to develop and test without touching real community data.
+- **Agent-friendly repository.** Most development happens through coding agents driven by community contributors. The repo is structured, documented and instrumented (screenshots, browser driving, load checks) so agents can build, verify and iterate without hand-holding.
+- **Open source, minimal configurability.** The code is public and specific to Helios; it does not aim to be a generic configurable product. It contains no secrets, credentials or private community data.
+- **Sheets and a bucket.** Structured data lives in Google Sheets and blobs (photos and other uploads) in Cloud Storage (`docs/storage.md`). The system of record for families and staff is Veracross, reaching the directory's sheet through `tools/import`; a direct integration replaces that when Veracross offers an API.
 
 ## Run
 

@@ -48,8 +48,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 
 Platform:
 
-- [goals.md](docs/goals.md) — what this is and the principles behind it
-- [dev.md](docs/dev.md) — local development, including real-data mode
+- [dev.md](docs/dev.md) — the principles behind it, and local development, including real-data mode
 - [screenshots.md](docs/screenshots.md) — page capture for humans and agents
 - [deploy.md](docs/deploy.md) — production deployment
 - [config.md](docs/config.md) — the Config sheet: super admins and the platform settings

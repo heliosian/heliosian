@@ -185,7 +185,9 @@ func publicAddress(raw string) string {
 	return u.String()
 }
 
-func Strip(r Report) (title, body string, labels []string) {
+var issueTypes = map[string]string{"bug": "Bug", "idea": "Feature"}
+
+func Strip(r Report) (title, body, issueType string, labels []string) {
 	title = Redact(r.Summary)
 	if r.AppName != "" {
 		title = "[" + r.AppName + "] " + title
@@ -215,11 +217,11 @@ func Strip(r Report) (title, body string, labels []string) {
 	if len(r.Errors) > 0 {
 		fmt.Fprintf(&b, "\n<details>\n<summary>Recent errors (%d)</summary>\n\n```\n%s\n```\n\n</details>\n", len(r.Errors), Redact(strings.Join(r.Errors, "\n")))
 	}
-	labels = []string{r.Kind}
+	labels = []string{}
 	if r.App != "" {
 		labels = append(labels, "app:"+r.App)
 	}
-	return title, b.String(), labels
+	return title, b.String(), issueTypes[r.Kind], labels
 }
 
 func appCell(r Report) string {

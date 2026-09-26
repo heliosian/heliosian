@@ -196,9 +196,7 @@ func (g *GitHubApp) accessToken(ctx context.Context) (string, error) {
 	return g.token, nil
 }
 
-// File opens the issue and answers with its address. The title, body and
-// labels are whatever the admin settled on, not the raw report.
-func (g *GitHubApp) File(ctx context.Context, title, body string, labels []string) (string, error) {
+func (g *GitHubApp) File(ctx context.Context, title, body, issueType string, labels []string) (string, error) {
 	token, err := g.accessToken(ctx)
 	if err != nil {
 		return "", err
@@ -206,7 +204,7 @@ func (g *GitHubApp) File(ctx context.Context, title, body string, labels []strin
 	var created struct {
 		URL string `json:"html_url"`
 	}
-	payload := map[string]any{"title": title, "body": body, "labels": labels}
+	payload := map[string]any{"title": title, "body": body, "type": issueType, "labels": labels}
 	if err := g.call(ctx, http.MethodPost, "/repos/"+Repo+"/issues", token, payload, http.StatusCreated, &created); err != nil {
 		return "", err
 	}

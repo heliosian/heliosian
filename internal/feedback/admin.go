@@ -18,7 +18,7 @@ const (
 )
 
 type IssueFiler interface {
-	File(ctx context.Context, title, body string, labels []string) (string, error)
+	File(ctx context.Context, title, body, issueType string, labels []string) (string, error)
 }
 
 type admin struct {
@@ -75,6 +75,7 @@ type detail struct {
 type draft struct {
 	Title  string   `json:"title"`
 	Body   string   `json:"body"`
+	Type   string   `json:"type"`
 	Labels []string `json:"labels"`
 	Repo   string   `json:"repo"`
 }
@@ -119,7 +120,7 @@ func (a admin) one(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such report", http.StatusNotFound)
 		return
 	}
-	title, body, labels := Strip(report)
+	title, body, issueType, labels := Strip(report)
 	writeJSON(w, r, detail{
 		summary:  summaryOf(report),
 		Details:  report.Details,
@@ -133,7 +134,7 @@ func (a admin) one(w http.ResponseWriter, r *http.Request) {
 		Language: report.Language,
 		Timezone: report.Timezone,
 		Errors:   report.Errors,
-		Draft:    draft{Title: title, Body: body, Labels: labels, Repo: Repo},
+		Draft:    draft{Title: title, Body: body, Type: issueType, Labels: labels, Repo: Repo},
 	})
 }
 
@@ -162,8 +163,13 @@ func (a admin) file(w http.ResponseWriter, r *http.Request) {
 	}
 	title := strings.TrimSpace(in.Title)
 	body := strings.TrimSpace(in.Body)
+	issueType := strings.TrimSpace(in.Type)
 	if title == "" {
 		http.Error(w, "an issue needs a title", http.StatusBadRequest)
+		return
+	}
+	if issueType == "" {
+		http.Error(w, "an issue needs a type", http.StatusBadRequest)
 		return
 	}
 	if len([]rune(title)) > titleLimit || len([]rune(body)) > bodyLimit {
@@ -176,7 +182,7 @@ func (a admin) file(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	issue, err := a.filer.File(ctx, title, body, in.Labels)
+	issue, err := a.filer.File(ctx, title, body, issueType, in.Labels)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "feedback: filing failed", "error", err, "id", report.ID)
 		http.Error(w, "GitHub would not take the issue: "+err.Error(), http.StatusBadGateway)
