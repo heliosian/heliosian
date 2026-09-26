@@ -44,6 +44,10 @@ type Lister interface {
 	Lists(email string) []List
 }
 
+func (m *Model) RoomParentsOf(band string) []string {
+	return m.RoomParents[bandLabel(band)]
+}
+
 func (m *Model) RoomParentLists(email string) []List {
 	out := []List{}
 	for label, parents := range m.RoomParents {

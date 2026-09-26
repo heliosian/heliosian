@@ -327,12 +327,7 @@ var getClassroom = tool{
 			}
 		}
 		sortedByName(others, func(c card) string { return c.Name })
-		roomParents := []string{}
-		for label, parents := range v.directory.RoomParents {
-			if bandMatches(label, c.Grades) {
-				roomParents = append(roomParents, v.names(parents)...)
-			}
-		}
+		roomParents := v.names(v.directory.RoomParentsOf(c.Band))
 		slices.Sort(roomParents)
 		return map[string]any{
 			"name": c.Name, "band": c.Band, "grades": c.Grades, "teachers": v.classroomTeachers(c.Name), "crews": crews, "students": others,
@@ -349,19 +344,4 @@ func (v *viewer) count(classroom string) int {
 		}
 	}
 	return n
-}
-
-// bandMatches says whether a room parent band label - K, 1st/2nd, 3rd/4th
-// - names any of the grades.
-func bandMatches(label string, grades []string) bool {
-	for _, g := range grades {
-		if g == "Kindergarten" && strings.HasPrefix(label, "K") {
-			return true
-		}
-		number := strings.TrimPrefix(g, "Grade ")
-		if strings.Contains(label, number+"st") || strings.Contains(label, number+"nd") || strings.Contains(label, number+"rd") || strings.Contains(label, number+"th") {
-			return true
-		}
-	}
-	return false
 }
