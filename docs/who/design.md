@@ -1,31 +1,10 @@
 # Design language
 
-Visual reference for the apps. Colors are sampled from live captures; treat them as the working palette until original brand assets arrive.
+Visual reference for the apps.
 
 ## Palette
 
-Brand:
-
-| Color | Hex | Use |
-|---|---|---|
-| Brand teal | `#014E54` | Canonical brand color (the app manifest's theme color): login backdrop, detail-page family bands, role/title small-caps labels, primary buttons. Renders near `#1f4d53` in the UI |
-| Sidebar teal | `#173c41` | Sidebar background (darkest surface) |
-| Teal highlight | `#2f5054` | Selected sidebar item |
-| Band row teal | `#29555b` | Row highlight inside dark bands |
-| Sun yellow | `#fee000` | Large sun disc in the logo lockup; celebratory accent |
-| Sun orange | `#f68d1e` | Small disc standing in for the wordmark's "o", overlapping the sun |
-| Overlap red | `#ef563f` | Where the two discs overlap |
-| Brush lime → green | `#69c01f` → `#0b963e` | Gradient of the "Who?" brush script and its underline |
-
-Neutrals:
-
-| Color | Hex | Use |
-|---|---|---|
-| White | `#ffffff` | Content background, cards |
-| Row gray | `#f5f5f5` | List rows, zebra sections |
-| Input gray | `#efefef` | Search fields, filter buttons |
-| Ink | `#0d0d0d` | Headings, names, values |
-| Muted | `#707070` | Secondary lines, field labels |
+Every app, Admin Tools page and sign-in page takes its colours from one stylesheet, `web/public/common/palette.css`, linked first in each page's head: the brand teal, the accent teal, the page and card grounds, the lines, the ink, the muted text, the input ground, the one alert red, and the logo swatch's greens and golds. It sits in the public tree so the sign-in pages, served before sign-in, reach it too. An app's own `:root` holds only what is its alone, such as Helios When's day-type colours. Dark mode (`web/common/dark.css`) and Quan mode (`web/common/quan.css`) redefine the same names. A `theme-color` meta tag and a manifest's colours cannot read a stylesheet, so they carry the brand teal as a literal.
 
 Grade-band colors (mascot tile grounds, one per band):
 

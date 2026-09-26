@@ -32,8 +32,6 @@ html[data-theme="dark"] {
      it reads as its pale self. */
   --brand: #8fd6d1;
   --brand-dark: #b4e6e2;
-  --brand-ink: #8fd6d1;
-  --label: #8fd6d1;
   --title: #cfe4e2;
   --subtitle: #8fd6d1;
   color-scheme: dark;
@@ -102,7 +100,7 @@ html[data-theme="dark"] {
 [data-theme="dark"] .topbar-alert-menu > *:not(.alert-card),
 [data-theme="dark"] .spoof-menu { background: var(--card); border-color: var(--line); color: var(--ink); }
 
-[data-theme="dark"] .spoof-row.is-current { background: rgba(0, 166, 159, 0.22); }
+[data-theme="dark"] .spoof-row.is-current { background: var(--nav-active); }
 
 [data-theme="dark"] .spoof-search input { background: var(--input); color: var(--ink); border-color: var(--line); }
 
@@ -170,7 +168,7 @@ html[data-theme="dark"] {
 [data-theme="dark"] .edit-icon:not(.recording) { background: var(--input); color: var(--ink); }
 [data-theme="dark"] .edit-icon:not(.recording):hover { color: var(--brand); }
 
-[data-theme="dark"] .person-chip.is-on { background: rgba(0, 166, 159, 0.22); border-color: var(--brand); }
+[data-theme="dark"] .person-chip.is-on { background: var(--nav-active); border-color: var(--brand); }
 
 [data-theme="dark"] .event-visibility-choice { background: var(--input); }
 [data-theme="dark"] .event-visibility-choice.is-on { background: rgba(0, 166, 159, 0.18); }
@@ -270,7 +268,7 @@ html[data-theme="dark"] {
 /* The app switch: the row hovered and the app this is take a deeper wash. */
 [data-theme="dark"] .app-switch-menu a:hover { background: var(--input); }
 
-[data-theme="dark"] .app-switch-menu a.is-current { background: rgba(0, 166, 159, 0.22); }
+[data-theme="dark"] .app-switch-menu a.is-current { background: var(--nav-active); }
 
 /* The source chip on an event card: dark words on its tint. */
 [data-theme="dark"] .event-source { color: #0b1c1e; }
@@ -399,7 +397,7 @@ html[data-theme="dark"] {
 
 [data-theme="dark"] .admin .sidebar { background: var(--card); border-color: var(--line); }
 
-[data-theme="dark"] .admin .tab.active { background: rgba(0, 166, 159, 0.22); color: #fff; }
+[data-theme="dark"] .admin .tab.active { background: var(--nav-active); color: #fff; }
 
 [data-theme="dark"] .admin .card,
 [data-theme="dark"] .admin .person-picker input,
@@ -736,7 +734,7 @@ html[data-theme="dark"] {
 [data-theme="dark"] .strip-arrow,
 [data-theme="dark"] .admin-mark { background: var(--card); border-color: var(--line); }
 
-[data-theme="dark"] .filter-action.is-on { background: rgba(0, 166, 159, 0.22); border-color: rgba(0, 166, 159, 0.45); color: var(--brand); }
+[data-theme="dark"] .filter-action.is-on { background: var(--nav-active); border-color: rgba(0, 166, 159, 0.45); color: var(--brand); }
 
 [data-theme="dark"] .pending-band.is-invite { background: #12393b; }
 
@@ -771,6 +769,6 @@ html[data-theme="dark"] {
 [data-theme="dark"] .admin-row-description:focus { background: var(--input); }
 
 [data-theme="dark"] .feedback-modal { background: var(--card); }
-[data-theme="dark"] .feedback-kind:has(input:checked) span { background: rgba(0, 166, 159, 0.22); }
+[data-theme="dark"] .feedback-kind:has(input:checked) span { background: var(--nav-active); }
 [data-theme="dark"] .feedback-send { border-color: var(--brand-fill); }
 [data-theme="dark"] .feedback-cancel { background: var(--card); border-color: var(--line); color: var(--ink); }

@@ -1,34 +1,11 @@
 :root {
-  --brand: #0f4e54;
   --sidebar: #0f4e54;
   --sidebar-active: #216f76;
-  --line: #e2e8e9;
-  --ink: #0d0d0d;
-  --muted: #647071;
-  --label: #0f4e54;
-  --input: #edf2f2;
-  --alert: #f15540;
   --banner-h: 0px;
   --mobile-title-inset: 156px;
-  --privacy-green: #8ea604;
-  --privacy-yellow: #f6e24c;
+  --privacy-green: var(--cat-olive);
+  --privacy-yellow: var(--cat-yellow);
   --privacy-red: #dc2626;
-  /* The shared palette (icons/swatch.psd): teal, green, yellow, gold, red. */
-  --teal-1: #00a69f;
-  --teal-2: #216f76;
-  --teal-3: #0f4e54;
-  --teal-dark: #082b2e;
-  --lime: #c1e524;
-  --green-2: #a4c21e;
-  --green-3: #88a700;
-  --green-dark: #4e5e07;
-  --yellow-pale: #fef7b7;
-  --yellow-1: #fae105;
-  --gold-1: #f1b940;
-  --gold-2: #cc8f0b;
-  --red-1: #f37766;
-  --red-2: #f15540;
-  --red-dark: #872113;
 }
 
 /* Fallback canvas color behind the page itself - in standalone iOS PWA mode,
@@ -491,7 +468,7 @@ body {
 /* The item the page is on: a lighter teal wash with a lime bar at its left,
    its icon and the chevron at its end in lime, white words. */
 .app-nav a.active {
-  background: rgba(0, 166, 159, 0.22);
+  background: var(--nav-active);
   color: #fff;
   font-weight: 700;
   position: relative;
@@ -529,7 +506,7 @@ body {
 
 
 .nav-icon-map {
-  color: #8ea604;
+  color: var(--cat-olive);
 }
 
 /* Same palette as .mobile-tabs (see the @media max-width:900px block below) -
@@ -537,27 +514,27 @@ body {
    as quickly by color as by icon shape. Tag links get their own per-name hue
    instead (see renderNav in app.js), since there's no fixed set of those. */
 .nav-icon-people {
-  color: #20a39e;
+  color: var(--cat-teal);
 }
 
 .nav-icon-classrooms {
-  color: #8ea604;
+  color: var(--cat-olive);
 }
 
 .nav-icon-staff {
-  color: #df604a;
+  color: var(--cat-coral);
 }
 
 .nav-icon-email-list {
-  color: #f6e24c;
+  color: var(--cat-yellow);
 }
 
 .nav-icon-my-family {
-  color: #20a39e;
+  color: var(--cat-teal);
 }
 
 .nav-icon-greenvelope {
-  color: #df604a;
+  color: var(--cat-coral);
 }
 
 .nav-heading {
@@ -590,7 +567,7 @@ body {
 /* A section with the page's row under it: the same wash and lime bar. */
 .nav-heading-toggle.active {
   position: relative;
-  background: rgba(0, 166, 159, 0.22);
+  background: var(--nav-active);
   color: #fff;
   border-radius: 0 999px 999px 0;
   overflow: hidden;
@@ -742,8 +719,8 @@ body {
   right: -6px;
   width: 11px !important;
   height: 11px !important;
-  fill: #f6e24c !important;
-  stroke: #f6e24c !important;
+  fill: var(--cat-yellow) !important;
+  stroke: var(--cat-yellow) !important;
   stroke-width: 1 !important;
   opacity: 1 !important;
 }
@@ -1071,7 +1048,7 @@ main {
   letter-spacing: -0.01em;
   margin: 0;
   padding-bottom: 12px;
-  color: var(--label);
+  color: var(--brand);
 }
 
 .page-title::after {
@@ -1106,7 +1083,7 @@ main {
 .magic-source > svg {
   width: 16px;
   height: 16px;
-  fill: #f6e24c;
+  fill: var(--cat-yellow);
   stroke: #c9b52a;
   stroke-width: 1;
   flex-shrink: 0;
@@ -1925,7 +1902,7 @@ main {
 }
 
 .gv-greeting-card-btn-delete:hover {
-  color: #c0392b;
+  color: var(--alert);
 }
 
 .gv-greeting-card-btn svg {
@@ -2043,7 +2020,7 @@ main {
 
 .gv-new-greeting-error {
   font-size: 12px;
-  color: #c0392b;
+  color: var(--alert);
 }
 
 .gv-new-greeting-actions {
@@ -2234,7 +2211,7 @@ main {
   font-size: 18px;
   font-weight: 700;
   margin: 0 0 10px;
-  color: var(--label);
+  color: var(--brand);
 }
 
 .privacy-howto a {
@@ -2708,7 +2685,7 @@ div.person-photo {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: var(--label);
+  color: var(--brand);
   text-transform: uppercase;
   text-decoration: none;
   margin-bottom: 6px;
@@ -2726,22 +2703,22 @@ a.role-label:hover {
 }
 
 .role-label-student {
-  color: #20a39e;
+  color: var(--cat-teal);
   background: #ddf1f0;
 }
 
 .role-label-parent {
-  color: #8ea604;
+  color: var(--cat-olive);
   background: #eef1d9;
 }
 
 .role-label-staff {
-  color: #df604a;
+  color: var(--cat-coral);
   background: #fae7e3;
 }
 
 .role-label-guest {
-  color: #244d53;
+  color: var(--cat-deep-teal);
   background: #e3e9ea;
 }
 
@@ -2846,7 +2823,7 @@ div.student-photo {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: var(--label);
+  color: var(--brand);
   text-transform: uppercase;
   margin-top: 10px;
 }
@@ -3156,7 +3133,7 @@ div.detail-photo-empty {
   border: 0;
   border-radius: 999px;
   background: var(--input);
-  color: var(--label);
+  color: var(--brand);
   font: inherit;
   font-size: 14px;
   font-weight: 600;
@@ -3423,15 +3400,15 @@ a.list-row:hover {
 }
 
 .chip-toggle-student.active {
-  background: #20a39e;
+  background: var(--cat-teal);
 }
 
 .chip-toggle-parent.active {
-  background: #8ea604;
+  background: var(--cat-olive);
 }
 
 .chip-toggle-staff.active {
-  background: #df604a;
+  background: var(--cat-coral);
 }
 
 .roster-list.grid {
@@ -4168,7 +4145,7 @@ img.fcard-photo {
   position: absolute;
   inset: 0;
   border-radius: 10px;
-  background: var(--peek-color, #f6e24c);
+  background: var(--peek-color, var(--cat-yellow));
   /* Rotating around the bottom-right corner (not center, not top-right - both
      measured to leak the peek below and/or left of the photo): that corner
      stays fixed in place, the top-right corner swings out to the right (the
@@ -4234,7 +4211,7 @@ a.person-card:hover .photo-wrap-peek::before {
      matches the peek/ring color instead of one fixed teal for every card
      regardless of its theme color. Falls back to the old teal wherever
      there's no peek context (the profile page's plain .photo-wrap). */
-  color: var(--peek-color, #20a39e);
+  color: var(--peek-color, var(--cat-teal));
   cursor: pointer;
   display: flex;
 }

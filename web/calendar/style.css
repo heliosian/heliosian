@@ -1,24 +1,5 @@
-/* Helios When, on the shell the other apps use - a rail beside the shared
-   toolbar (web/common/toolbar.css), which reads --brand, --line, --ink,
-   --muted and --input from here. The palette is the brand teal with an amber
-   for the days that are not regular; classrooms wear the Config sheet's
-   colors. */
 :root {
-  --brand: #0f4e54;
-  --brand-dark: #082b2e;
-  --brand-deep: #082b2e;
-  --accent: #00a69f;
-  --amber: #cc8f0b;
-  --page: #ffffff;
-  --card: #ffffff;
-  --line: #e2e8e9;
-  --ink: #0d0d0d;
-  --muted: #647071;
-  --input: #edf2f2;
-  --alert: #f15540;
   --tabbar: 64px;
-  /* Day types: red for a day off, amber for a short one, plum for no
-     aftercare, slate for anything else the sheet defines. */
   --no-school: #c2442d;
   --no-school-wash: #fbebe7;
   --early: #b8761a;
@@ -27,22 +8,6 @@
   --no-aftercare-wash: #f1ebf9;
   --other: #4c6a70;
   --other-wash: #e9f0f1;
-  /* The shared palette (icons/swatch.psd): teal, green, yellow, gold, red. */
-  --teal-1: #00a69f;
-  --teal-2: #216f76;
-  --teal-3: #0f4e54;
-  --teal-dark: #082b2e;
-  --lime: #c1e524;
-  --green-2: #a4c21e;
-  --green-3: #88a700;
-  --green-dark: #4e5e07;
-  --yellow-pale: #fef7b7;
-  --yellow-1: #fae105;
-  --gold-1: #f1b940;
-  --gold-2: #cc8f0b;
-  --red-1: #f37766;
-  --red-2: #f15540;
-  --red-dark: #872113;
 }
 
 * { box-sizing: border-box; }
@@ -144,7 +109,7 @@ button { font: inherit; }
 
 /* The item the page is on: a lighter teal wash with a lime bar at its left,
    its icon and the chevron at its end in lime, white words. */
-.app-nav a.is-active { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
+.app-nav a.is-active { background: var(--nav-active); color: #fff; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
 /* ...its icon and the chevron at its end in lime. */
 .app-nav a.is-active svg { color: var(--lime); }
 
@@ -316,7 +281,7 @@ button { font: inherit; }
 .nav-sub-tool.nav-sub-lock:hover { background: none; color: rgba(255, 255, 255, 0.75); }
 
 /* The one the page is on: the same wash and lime bar as a section. */
-.app-nav a.nav-sub.is-active { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
+.app-nav a.nav-sub.is-active { background: var(--nav-active); color: #fff; position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
 
 .app-nav a.nav-sub.is-working { background: rgba(255, 255, 255, 0.1); color: #fff; position: relative; font-weight: 600; border-radius: 0 10px 10px 0; overflow: hidden; }
 

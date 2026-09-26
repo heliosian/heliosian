@@ -1,34 +1,5 @@
 :root {
-  --brand: #0f4e54;
-  --brand-dark: #082b2e;
-  --brand-deep: #082b2e;
-  --accent: #00a69f;
-  --yellow: #fae105;
-  --page: #ffffff;
-  --card: #ffffff;
-  --line: #e2e8e9;
-  --ink: #0d0d0d;
-  --muted: #647071;
-  --input: #edf2f2;
-  --alert: #f15540;
-  --ok: #88a700;
   --tabbar: 64px;
-  /* The shared palette (icons/swatch.psd): teal, green, yellow, gold, red. */
-  --teal-1: #00a69f;
-  --teal-2: #216f76;
-  --teal-3: #0f4e54;
-  --teal-dark: #082b2e;
-  --lime: #c1e524;
-  --green-2: #a4c21e;
-  --green-3: #88a700;
-  --green-dark: #4e5e07;
-  --yellow-pale: #fef7b7;
-  --yellow-1: #fae105;
-  --gold-1: #f1b940;
-  --gold-2: #cc8f0b;
-  --red-1: #f37766;
-  --red-2: #f15540;
-  --red-dark: #872113;
 }
 
 * { box-sizing: border-box; }
@@ -111,7 +82,7 @@ button { font: inherit; }
 
 /* The item the page is on: a lighter teal wash with a lime bar at its left,
    its icon and the chevron at its end in lime, white words. */
-.app-nav a.is-active { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
+.app-nav a.is-active { background: var(--nav-active); color: #fff; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
 /* ...its icon and the chevron at its end in lime. */
 .app-nav a.is-active svg { color: var(--lime); }
 
@@ -156,7 +127,7 @@ button { font: inherit; }
 .nav-sub-item:hover { background: rgba(255, 255, 255, 0.1); }
 
 /* The one the page is on: the same wash and lime bar as a section. */
-.nav-sub-item.is-on { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
+.nav-sub-item.is-on { background: var(--nav-active); color: #fff; position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
 
 .nav-sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -192,7 +163,7 @@ button { font: inherit; }
 
 .nav-event-link:hover { background: rgba(255, 255, 255, 0.1); }
 
-.nav-event-link.is-active { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
+.nav-event-link.is-active { background: var(--nav-active); color: #fff; position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
 
 /* The generic .app-nav a rule would size these like the main items; they are
    sub-items - a committee in the open event, or someone in the household
@@ -209,7 +180,7 @@ button { font: inherit; }
 }
 
 .app-nav a.nav-tree-item.is-on,
-.app-nav a.nav-family-item.is-on { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
+.app-nav a.nav-family-item.is-on { background: var(--nav-active); color: #fff; position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
 
 .nav-tree-group { font-weight: 700; }
 
@@ -488,11 +459,11 @@ main {
 
 /* Helios Who?'s pill colours - its staff coral, student teal and parent
    olive - then its brand teal and a gold. */
-.chip.cat-1 { background: #df604a; }
-.chip.cat-2 { background: #20a39e; }
-.chip.cat-3 { background: #8ea604; }
-.chip.cat-4 { background: #244d53; }
-.chip.cat-5 { background: #d9a900; }
+.chip.cat-1 { background: var(--cat-coral); }
+.chip.cat-2 { background: var(--cat-teal); }
+.chip.cat-3 { background: var(--cat-olive); }
+.chip.cat-4 { background: var(--cat-deep-teal); }
+.chip.cat-5 { background: var(--cat-gold); }
 .chip.cat-none { background: #5f6f6e; }
 /* The admin's Mark High Priority, at the foot of an activity's sidebar: a
    small button outlined in the priority red, quiet until it is wanted. */
@@ -542,11 +513,11 @@ main {
 .prio-when-line svg { flex-shrink: 0; width: 16px; height: 16px; margin-top: 1px; }
 .prio-tag { display: inline-block; margin-top: 6px; padding: 2px 9px; border-radius: 999px; color: #fff; font-size: 11.5px; font-weight: 600; }
 /* The tag wears its category's chip colour, as in the chip row above. */
-.prio-tag.cat-1 { background: #df604a; }
-.prio-tag.cat-2 { background: #20a39e; }
-.prio-tag.cat-3 { background: #8ea604; }
-.prio-tag.cat-4 { background: #244d53; }
-.prio-tag.cat-5 { background: #d9a900; }
+.prio-tag.cat-1 { background: var(--cat-coral); }
+.prio-tag.cat-2 { background: var(--cat-teal); }
+.prio-tag.cat-3 { background: var(--cat-olive); }
+.prio-tag.cat-4 { background: var(--cat-deep-teal); }
+.prio-tag.cat-5 { background: var(--cat-gold); }
 .prio-tag.cat-none { background: #5f6f6e; }
 .prio-people { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .prio-chair { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 5px 11px; border-radius: 999px; background: var(--input); color: var(--brand); font-size: 12.5px; font-weight: 600; }

@@ -7,29 +7,20 @@
 <title>Heliosian Admin</title>
 <link rel="icon" href="/brand/favicon-192.png">
 <link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/palette.css">
 <link rel="stylesheet" href="/admin.css">
 <link rel="stylesheet" href="/dark.css">
 <link rel="stylesheet" href="/quan.css">
 <style>
-  /* The page's own palette; the chrome comes from admin.css. */
-  :root {
-    --brand: #244d53;
-    --line: #e2e6eb;
-    --ink: #0d0d0d;
-    --muted: #707070;
-    --input: #efefef;
-    --alert: #c0392b;
-  }
-  /* The lime button every app's page wears (style.css). */
   .button {
     display: inline-flex;
     align-items: center;
     gap: 10px;
     padding: 11px 20px;
     border-radius: 8px;
-    border: 1px solid #a4c21e;
-    background: #a4c21e;
-    color: #082b2e;
+    border: 1px solid var(--green-2);
+    background: var(--green-2);
+    color: var(--teal-dark);
     font: inherit;
     font-size: 15px;
     font-weight: 600;
@@ -37,7 +28,7 @@
     cursor: pointer;
     text-decoration: none;
   }
-  .button:hover { background: #88a700; border-color: #88a700; }
+  .button:hover { background: var(--green-3); border-color: var(--green-3); }
   .button:disabled {
     background: var(--input);
     border-color: var(--line);

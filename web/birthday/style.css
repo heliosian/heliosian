@@ -1,42 +1,5 @@
-/* Helios Staff Birthdays, on the shell HCA-Team and Helios Celebrate use - a
-   rail beside the shared toolbar (web/common/toolbar.css), which reads
-   --brand, --line, --ink, --muted and --input from here. The palette is
-   sampled from the logo art (~/Dropbox/Kids/Heliosian/images/birthday): the
-   dark teal of STAFF, the lighter teal of BIRTHDAYS (darkened where it
-   carries text), the olive of the tagline, the sun for the swoosh under a
-   page's title - the family Helios Celebrate's art shares. */
 :root {
-  --brand: #0f4e54;
-  --brand-dark: #082b2e;
-  --brand-deep: #082b2e;
-  --accent: #00a69f;
-  --yellow: #fae105;
-  --green: #88a700;
-  --page: #ffffff;
-  --card: #ffffff;
-  --line: #e2e8e9;
-  --ink: #0d0d0d;
-  --muted: #647071;
-  --input: #edf2f2;
-  --alert: #f15540;
-  --ok: #88a700;
   --tabbar: 64px;
-  /* The shared palette (icons/swatch.psd): teal, green, yellow, gold, red. */
-  --teal-1: #00a69f;
-  --teal-2: #216f76;
-  --teal-3: #0f4e54;
-  --teal-dark: #082b2e;
-  --lime: #c1e524;
-  --green-2: #a4c21e;
-  --green-3: #88a700;
-  --green-dark: #4e5e07;
-  --yellow-pale: #fef7b7;
-  --yellow-1: #fae105;
-  --gold-1: #f1b940;
-  --gold-2: #cc8f0b;
-  --red-1: #f37766;
-  --red-2: #f15540;
-  --red-dark: #872113;
 }
 
 * { box-sizing: border-box; }
@@ -102,7 +65,7 @@ button { font: inherit; }
 
 /* The item the page is on: a lighter teal wash with a lime bar at its left,
    its icon and the chevron at its end in lime, white words. */
-.app-nav a.is-active { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
+.app-nav a.is-active { background: var(--nav-active); color: #fff; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
 /* ...its icon and the chevron at its end in lime. */
 .app-nav a.is-active svg { color: var(--lime); }
 
@@ -126,7 +89,7 @@ button { font: inherit; }
 
 /* The red circle an item carries at its end with its number, the active
    item's chevron after it. */
-.nav-flag { display: inline-flex; align-items: center; justify-content: center; margin-left: auto; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: 10px; background: #df604a; color: #fff; font-size: 11px; font-weight: 700; line-height: 1; flex-shrink: 0; }
+.nav-flag { display: inline-flex; align-items: center; justify-content: center; margin-left: auto; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: 10px; background: var(--alert); color: #fff; font-size: 11px; font-weight: 700; line-height: 1; flex-shrink: 0; }
 
 
 
@@ -497,7 +460,7 @@ body.is-admin main { padding: 0; }
    rail flags them. */
 .urgency-chip { display: inline-block; border-radius: 5px; padding: 1px 7px; font-size: 11px; font-weight: 700; color: #fff; }
 
-.urgency-chip.is-late { background: #df604a; }
+.urgency-chip.is-late { background: var(--alert); }
 
 .urgency-chip.is-today { background: #e8a33d; }
 
@@ -679,7 +642,7 @@ a.fact-value { color: var(--brand); }
 
 .sprig { width: 60px; height: 60px; color: var(--accent); }
 
-.sprig-corner { position: absolute; left: -14px; bottom: -14px; width: 150px; height: 150px; color: var(--green); opacity: 0.28; transform: rotate(-25deg); }
+.sprig-corner { position: absolute; left: -14px; bottom: -14px; width: 150px; height: 150px; color: var(--green-3); opacity: 0.28; transform: rotate(-25deg); }
 
 .notes { margin: 12px 0 0; }
 
@@ -1000,7 +963,7 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 
 .cell-date { display: flex; align-items: center; gap: 10px; }
 
-.cell-date svg { width: 22px; height: 22px; color: #c0392b; flex-shrink: 0; }
+.cell-date svg { width: 22px; height: 22px; color: var(--alert); flex-shrink: 0; }
 
 .cell-date.contact svg { color: var(--accent); }
 

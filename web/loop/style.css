@@ -1,36 +1,5 @@
-/* Helios Loop, on the shell the other apps use - a rail beside the shared
-   toolbar (web/common/toolbar.css), which reads --brand, --line, --ink,
-   --muted and --input from here. Its own hue is a slate blue, so the app
-   reads apart from the teals of the directory and the calendar. */
 :root {
-  --brand: #0f4e54;
-  --brand-dark: #082b2e;
-  --accent: #00a69f;
-  --page: #ffffff;
-  --card: #ffffff;
-  --line: #e2e8e9;
-  --ink: #0d0d0d;
-  --muted: #647071;
-  --input: #edf2f2;
-  --alert: #f15540;
-  --ok: #88a700;
   --tabbar: 64px;
-  /* The shared palette (icons/swatch.psd): teal, green, yellow, gold, red. */
-  --teal-1: #00a69f;
-  --teal-2: #216f76;
-  --teal-3: #0f4e54;
-  --teal-dark: #082b2e;
-  --lime: #c1e524;
-  --green-2: #a4c21e;
-  --green-3: #88a700;
-  --green-dark: #4e5e07;
-  --yellow-pale: #fef7b7;
-  --yellow-1: #fae105;
-  --gold-1: #f1b940;
-  --gold-2: #cc8f0b;
-  --red-1: #f37766;
-  --red-2: #f15540;
-  --red-dark: #872113;
 }
 
 * { box-sizing: border-box; }
@@ -98,7 +67,7 @@ button { font: inherit; }
 
 .nav-sub-item:hover { background: rgba(255, 255, 255, 0.1); }
 
-.nav-sub-item.is-on { background: rgba(0, 166, 159, 0.22); position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
+.nav-sub-item.is-on { background: var(--nav-active); position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
 
 .nav-sub-item.is-on::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--lime); }
 
@@ -114,7 +83,7 @@ button { font: inherit; }
 .nav-chevron svg { width: 14px; height: 14px; stroke: rgba(255, 255, 255, 0.55); stroke-width: 2; transform: rotate(-90deg); transition: transform 0.15s ease; }
 .nav-heading-toggle.open .nav-chevron svg { transform: none; }
 /* Archived is lit as a page's row is while one of its groups is the page open. */
-.nav-heading-toggle.is-active { position: relative; background: rgba(0, 166, 159, 0.22); border-radius: 0 10px 10px 0; overflow: hidden; }
+.nav-heading-toggle.is-active { position: relative; background: var(--nav-active); border-radius: 0 10px 10px 0; overflow: hidden; }
 .nav-heading-toggle.is-active > svg { color: var(--lime); }
 .nav-heading-toggle.is-active .nav-chevron svg { stroke: var(--lime); }
 .nav-heading-toggle.is-active::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--lime); }
@@ -131,7 +100,7 @@ button { font: inherit; }
 
 /* The item the page is on: a lighter teal wash with a lime bar at its left,
    its icon and the chevron at its end in lime, white words. */
-.app-nav a.is-active { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
+.app-nav a.is-active { background: var(--nav-active); color: #fff; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
 /* ...its icon and the chevron at its end in lime. */
 .app-nav a.is-active svg { color: var(--lime); }
 
@@ -384,7 +353,7 @@ body.is-admin main { padding: 0; }
 .rule-sign { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; color: #fff; }
 .rule-sign svg { width: 16px; height: 16px; stroke-width: 3; }
 .rule-sign-include { background: var(--green-3); }
-.rule-sign-exclude { background: var(--red-2); }
+.rule-sign-exclude { background: var(--alert); }
 
 .card h3 { font-size: 14px; margin: 16px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 
@@ -398,8 +367,8 @@ body.is-admin main { padding: 0; }
    by place in the grid. */
 .group-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 40px 52px; }
 
-.group-list > :nth-child(5n+1) { --peek: var(--teal-1); }
-.group-list > :nth-child(5n+2) { --peek: var(--red-2); }
+.group-list > :nth-child(5n+1) { --peek: var(--accent); }
+.group-list > :nth-child(5n+2) { --peek: var(--alert); }
 .group-list > :nth-child(5n+3) { --peek: var(--green-3); }
 .group-list > :nth-child(5n+4) { --peek: var(--gold-1); }
 .group-list > :nth-child(5n+5) { --peek: var(--teal-3); }
@@ -618,7 +587,7 @@ a.compact-row:hover { background: var(--input); }
 
 .delivery-count.is-delivered { color: #24763c; }
 
-.delivery-count.is-failed { color: var(--red-2); }
+.delivery-count.is-failed { color: var(--alert); }
 
 .delivery-count.is-pending { color: var(--gold-2); }
 

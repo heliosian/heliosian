@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#014E54">
+<meta name="theme-color" content="#0f4e54">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Helios</title>
@@ -12,6 +12,7 @@
 <link rel="icon" href="/brand/favicon-192.png">
 <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
 <link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/palette.css">
 <style>
 body {
   margin: 0;
@@ -19,7 +20,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #014E54 url('/brand/login-art.jpg') center / cover no-repeat;
+  background: var(--brand) url('/brand/login-art.jpg') center / cover no-repeat;
   font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -61,7 +62,7 @@ body {
   padding: 0.75rem 1rem;
   border-radius: 0.6rem;
   background: white;
-  color: #014E54;
+  color: var(--brand);
   font-size: 0.9375rem;
   font-weight: 700;
   text-decoration: none;

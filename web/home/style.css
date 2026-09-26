@@ -1,34 +1,8 @@
 :root {
-  --brand: #0f4e54;
-  --brand-dark: #082b2e;
-  --brand-ink: #0f4e54;
-  --page: #ffffff;
   --hero: #ffffff;
-  --card: #ffffff;
-  --sidebar: #0f4e54; /* the foot of the rail's gradient; --sidebar-top its head */
+  --sidebar: #0f4e54;
   --sidebar-top: #022427;
-  --line: #e2e8e9;
-  --ink: #0d0d0d;
-  --muted: #647071;
-  --input: #edf2f2;
-  --alert: #f15540;
-  --sidebar-w: 280px; /* wide enough for the month grid */
-  /* The shared palette (icons/swatch.psd): teal, green, yellow, gold, red. */
-  --teal-1: #00a69f;
-  --teal-2: #216f76;
-  --teal-3: #0f4e54;
-  --teal-dark: #082b2e;
-  --lime: #c1e524;
-  --green-2: #a4c21e;
-  --green-3: #88a700;
-  --green-dark: #4e5e07;
-  --yellow-pale: #fef7b7;
-  --yellow-1: #fae105;
-  --gold-1: #f1b940;
-  --gold-2: #cc8f0b;
-  --red-1: #f37766;
-  --red-2: #f15540;
-  --red-dark: #872113;
+  --sidebar-w: 280px;
 }
 
 * { box-sizing: border-box; }
@@ -127,7 +101,7 @@ html[data-theme="quan"] .sidebar { background-image: url('/brand/sidebar-camp.pn
 
 /* The item the page is on: a lighter teal wash with a lime bar at its left,
    its icon and the chevron at its end in lime, white words. */
-.app-nav a.is-active { background: rgba(0, 166, 159, 0.22); color: #fff; font-weight: 600; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
+.app-nav a.is-active { background: var(--nav-active); color: #fff; font-weight: 600; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
 /* ...its icon and the chevron at its end in lime. */
 .app-nav a.is-active svg, .app-nav a.is-active .icon-mask { color: var(--lime); }
 
@@ -479,7 +453,7 @@ main {
 
 .widget-head > * { flex-shrink: 0; }
 
-.widget-title { margin: 0; font-family: Montserrat, Roboto, sans-serif; font-size: 22px; font-weight: 700; color: var(--brand-ink); }
+.widget-title { margin: 0; font-family: Montserrat, Roboto, sans-serif; font-size: 22px; font-weight: 700; color: var(--brand); }
 
 .widget-kind { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; align-self: center; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #1d2b2c; background: #a9d3d8; }
 
@@ -504,7 +478,7 @@ main {
 
 .widget-calendar .category-calendar-toggle svg { flex-shrink: 0; }
 
-.widget-more { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; font-size: 14px; font-weight: 600; color: var(--brand-ink); text-decoration: none; }
+.widget-more { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; font-size: 14px; font-weight: 600; color: var(--brand); text-decoration: none; }
 
 .widget-more:hover { text-decoration: underline; }
 
@@ -534,7 +508,7 @@ main {
 
 [data-theme="dark"] .wg-day { background: rgba(255, 255, 255, 0.06); }
 
-.wg-day-label { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 700; color: var(--brand-ink); text-transform: uppercase; letter-spacing: 0.02em; }
+.wg-day-label { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 700; color: var(--brand); text-transform: uppercase; letter-spacing: 0.02em; }
 
 .wg-day-label .widget-kind { text-transform: none; letter-spacing: 0; font-weight: 600; }
 
@@ -561,7 +535,7 @@ main {
 
 .wg-text { flex: 1; min-width: 0; }
 
-.wg-title { font-weight: 700; font-size: 15px; line-height: 20px; color: var(--brand-ink); text-decoration: none; }
+.wg-title { font-weight: 700; font-size: 15px; line-height: 20px; color: var(--brand); text-decoration: none; }
 
 .wg-title:hover { text-decoration: underline; }
 
@@ -612,7 +586,7 @@ main {
 
 [data-theme="dark"] .wg-pill { background: rgba(255, 255, 255, 0.08); }
 
-.wg-go { flex-shrink: 0; display: inline-flex; color: var(--brand-ink); }
+.wg-go { flex-shrink: 0; display: inline-flex; color: var(--brand); }
 
 .wg-go svg { width: 18px; height: 18px; }
 
@@ -660,7 +634,7 @@ main {
 
 .wg-rsvp-date { flex: 0 0 auto; min-width: 88px; padding-right: 14px; border-right: 1px solid var(--line); font-size: 14px; color: var(--muted); white-space: nowrap; }
 
-.wg-rsvp-title { flex: 1; min-width: 0; font-weight: 700; font-size: 15.5px; line-height: 20px; color: var(--brand-ink); }
+.wg-rsvp-title { flex: 1; min-width: 0; font-weight: 700; font-size: 15.5px; line-height: 20px; color: var(--brand); }
 
 .wg-rsvp:hover .wg-rsvp-title { text-decoration: underline; }
 
@@ -678,13 +652,13 @@ main {
 
 .wg-email-date { flex: 0 0 96px; font-size: 14px; font-weight: 500; color: var(--muted); text-transform: uppercase; white-space: nowrap; }
 
-.wg-email-title { flex: 1; min-width: 0; font-weight: 700; font-size: 15.5px; line-height: 20px; color: var(--brand-ink); }
+.wg-email-title { flex: 1; min-width: 0; font-weight: 700; font-size: 15.5px; line-height: 20px; color: var(--brand); }
 
 .wg-email-to { flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 12px; border-radius: 999px; background: var(--pale-tint); color: var(--ink-tint); font-size: 13px; font-weight: 600; }
 
 [data-theme="dark"] .wg-email-to { background: rgba(255, 255, 255, 0.08); color: color-mix(in srgb, var(--ink-tint) 45%, white); }
 
-.wg-email-head > svg { flex: 0 0 18px; width: 18px; height: 18px; color: var(--brand-ink); transition: transform 0.15s; }
+.wg-email-head > svg { flex: 0 0 18px; width: 18px; height: 18px; color: var(--brand); transition: transform 0.15s; }
 
 .wg-email.is-open .wg-email-head > svg { transform: rotate(-90deg); }
 
@@ -712,9 +686,9 @@ main {
 
 .wg-points li { margin: 3px 0; }
 
-.wg-points li::marker { color: var(--brand-ink); }
+.wg-points li::marker { color: var(--brand); }
 
-.wg-ask { display: inline-flex; align-items: center; gap: 2px; margin-top: 8px; font-size: 13.5px; font-weight: 600; color: var(--brand-ink); text-decoration: none; }
+.wg-ask { display: inline-flex; align-items: center; gap: 2px; margin-top: 8px; font-size: 13.5px; font-weight: 600; color: var(--brand); text-decoration: none; }
 
 .wg-ask:hover { text-decoration: underline; }
 
@@ -722,7 +696,7 @@ main {
 
 /* The Inbox's dropdown, at the heading's end, as a soft pill like This
    Week's calendar picker; each kind's count at its row's end. */
-.widget-school .widget-calendar .category-calendar-toggle { padding: 7px 12px 7px 14px; border-radius: 12px; background: #e8f3f2; color: var(--brand-ink); font-size: 15px; font-weight: 600; }
+.widget-school .widget-calendar .category-calendar-toggle { padding: 7px 12px 7px 14px; border-radius: 12px; background: #e8f3f2; color: var(--brand); font-size: 15px; font-weight: 600; }
 
 [data-theme="dark"] .widget-school .widget-calendar .category-calendar-toggle { background: rgba(255, 255, 255, 0.08); }
 
@@ -744,7 +718,7 @@ main {
 .widget-title .hidden-badge { font-family: Roboto, sans-serif; font-size: 12px; }
 
 /* More, under a widget's first few rows: a quiet button across the card. */
-.wg-more { display: block; width: 100%; margin-top: 6px; padding: 7px; border: 1px solid var(--line); border-radius: 10px; background: none; color: var(--brand-ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.wg-more { display: block; width: 100%; margin-top: 6px; padding: 7px; border: 1px solid var(--line); border-radius: 10px; background: none; color: var(--brand); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 
 .wg-more:hover { background: var(--input); }
 
@@ -752,7 +726,7 @@ main {
    ringed, the other a pale teal. */
 .wg-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 10px; }
 
-.wg-chip { padding: 7px 18px; border: 0; border-radius: 999px; background: #e1eeee; color: var(--brand-ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.wg-chip { padding: 7px 18px; border: 0; border-radius: 999px; background: #e1eeee; color: var(--brand); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 
 .wg-chip.is-on { background: #0f4e54; color: #fff; box-shadow: 0 0 0 2px var(--card), 0 0 0 4px #0f4e54; }
 
@@ -768,7 +742,7 @@ main {
 [data-theme="dark"] .wg-chip-count { background: rgba(255, 255, 255, 0.12); }
 
 /* The calendar picker as a soft pill at the heading's end. */
-.widget-when .widget-calendar .category-calendar-toggle { padding: 7px 12px; border-radius: 10px; background: #e8f3f2; color: var(--brand-ink); font-weight: 500; }
+.widget-when .widget-calendar .category-calendar-toggle { padding: 7px 12px; border-radius: 10px; background: #e8f3f2; color: var(--brand); font-weight: 500; }
 
 [data-theme="dark"] .widget-when .widget-calendar .category-calendar-toggle { background: rgba(255, 255, 255, 0.08); }
 
@@ -794,7 +768,7 @@ main {
 
 .wg-more-row { display: flex; align-items: center; gap: 18px; }
 
-.widget-foot .wg-more { display: inline-flex; align-items: center; gap: 3px; width: auto; margin: 0; padding: 2px 0; border: 0; border-radius: 0; background: none; color: var(--brand-ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.widget-foot .wg-more { display: inline-flex; align-items: center; gap: 3px; width: auto; margin: 0; padding: 2px 0; border: 0; border-radius: 0; background: none; color: var(--brand); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 
 .widget-foot .wg-more:hover { background: none; text-decoration: underline; }
 
@@ -1492,7 +1466,7 @@ a.event-people:hover .event-person { text-decoration: underline; }
 }
 
 /* Who a link or a section is kept to, after its title, in Super Admin Mode. */
-.hidden-badge.audience-badge { background: var(--teal-1); margin-left: 6px; text-transform: none; letter-spacing: 0; }
+.hidden-badge.audience-badge { background: var(--accent); margin-left: 6px; text-transform: none; letter-spacing: 0; }
 
 /* The app editor: the mark and address at the top, which are the code's;
    the mode chips; the people named on its list. */

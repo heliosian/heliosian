@@ -1,0 +1,30 @@
+:root {
+  --brand: #0f4e54;
+  --brand-dark: #082b2e;
+  --brand-deep: #082b2e;
+  --accent: #00a69f;
+  --page: #ffffff;
+  --card: #ffffff;
+  --line: #e2e8e9;
+  --ink: #0d0d0d;
+  --muted: #647071;
+  --input: #edf2f2;
+  --alert: #f15540;
+  --ok: #88a700;
+  --yellow: #fae105;
+  --amber: #cc8f0b;
+  --nav-active: rgba(0, 166, 159, 0.22);
+  --teal-3: #0f4e54;
+  --teal-dark: #082b2e;
+  --lime: #c1e524;
+  --green-2: #a4c21e;
+  --green-3: #88a700;
+  --gold-1: #f1b940;
+  --gold-2: #cc8f0b;
+  --cat-teal: #00a69f;
+  --cat-olive: #88a700;
+  --cat-coral: #f37766;
+  --cat-yellow: #fae105;
+  --cat-deep-teal: #0f4e54;
+  --cat-gold: #f1b940;
+}

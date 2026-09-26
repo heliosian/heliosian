@@ -13,12 +13,8 @@ html[data-theme="quan"] {
   --accent: #eb4d80;
   --brand: #d6386f;
   --brand-dark: #8f1d47;
-  --brand-ink: #d6386f;
-  --label: #d6386f;
   --title: #8f1d47;
   --subtitle: #d6386f;
-  --teal-1: #eb4d80;
-  --teal-2: #c92e64;
   --teal-3: #d6386f;
   --teal-dark: #3a0f1f;
   --sidebar-top: #b9265f;
@@ -26,13 +22,8 @@ html[data-theme="quan"] {
   --sidebar-active: #c92e64;
   /* The lime, and the greens the buttons and bars are drawn in. */
   --lime: #7bfc01;
-  --green: #5fc900;
   --green-2: #7bfc01;
   --green-3: #5fc900;
-  --green-dark: #2f6300;
-  /* The alerts' amber, gone lime. */
-  --yellow-pale: #efffd6;
-  --yellow-1: #7bfc01;
   --gold-1: #5fc900;
   --gold-2: #3f8f00;
   /* The page, a blush; its lines and fields pink-tinted. */
