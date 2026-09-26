@@ -4,7 +4,7 @@ What a security audit of this codebase looks for, what it leaves alone, and how 
 
 ## The system
 
-One Go binary serves every app, picked by hostname, behind Google sign-in restricted to the school's Workspace domain, with the server's own HMAC-signed session cookie on the tier-wide domain. The data is the community's: families, children, addresses, photos, mail, invitations. It lives in Google Sheets and Cloud Storage buckets read as one service account, is held in memory, and is served to frameworkless JavaScript. A few paths answer without a session: `web/public/`, the sign-in exchange, `/hooks/` (callbacks checked by the caller's secret), `/open/` and `/ext/` (addresses whose token is the whole of the check). `docs/dev.md` and `docs/deploy.md` describe the whole shape.
+The layout is in `README.md` and `docs/dev.md`: Hosts and files for host routing, the file-serving order and every path `auth.Public` lets through without a session; Real data for sign-in and the session cookie; `docs/deploy.md` for how it runs. What makes it an audit's concern is that the data is the community's - families, children, addresses, photos, mail, invitations.
 
 The people to think about:
 
