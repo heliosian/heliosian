@@ -117,7 +117,6 @@ func sampleSources(t *testing.T) Sources {
 	if err != nil {
 		t.Fatal(err)
 	}
-	homeModel := homeCache.Model()
 	media := blob.NewMemory()
 	artifactsCache, err := artifacts.NewCache(dir, dir, media, artifacts.Fake{}, queue)
 	if err != nil {
@@ -149,11 +148,51 @@ func sampleSources(t *testing.T) Sources {
 		LoopSources: func() loop.Sources {
 			return loop.Sources{Directory: directory, Tags: tags, Lists: lists, Shared: directory.SharedTags}
 		},
-		Links:     func() []home.Category { return homeModel.Categories },
-		Alerts:    func(string) ([]string, []string) { return nil, nil },
-		Artifacts: func() *artifacts.Model { return documents },
-		Embedder:  artifacts.Fake{},
+		CelebrateDirectory: sampleParties{directory},
+		Links:              homeCache.CategoriesFor,
+		Alerts:             func(string) ([]string, []string) { return nil, nil },
+		Artifacts:          func() *artifacts.Model { return documents },
+		Embedder:           artifacts.Fake{},
+		Admins:             Admins{Team: isAdmin, Celebrate: isAdmin, Loop: isAdmin, Calendar: isAdmin, Home: isAdmin},
 	}
+}
+
+const sampleAdmin = "grace.kim@heliosschool.org"
+
+func isAdmin(email string) bool {
+	return email == sampleAdmin
+}
+
+type sampleParties struct {
+	model *who.Model
+}
+
+func (d sampleParties) Resolve(email string) string {
+	return d.model.Resolve(email)
+}
+
+func (d sampleParties) Person(email string) (celebrate.Person, bool) {
+	p := d.model.Person(email)
+	if p == nil {
+		return celebrate.Person{}, false
+	}
+	return celebrate.Person{Email: p.Email, Name: p.FullName, IsStudent: p.IsStudent, IsParent: p.IsParent, IsStaff: p.IsStaff}, true
+}
+
+func (d sampleParties) Household(string) (adults, kids []celebrate.Person) {
+	return nil, nil
+}
+
+func (d sampleParties) Family(email string) map[string]bool {
+	return d.model.Family(email)
+}
+
+func (d sampleParties) People() []celebrate.Person {
+	return nil
+}
+
+func (d sampleParties) Alerts(string) ([]string, []string) {
+	return nil, nil
 }
 
 func sampleViewer(t *testing.T, email string) *viewer {
@@ -375,6 +414,86 @@ func TestVolunteerOpportunitiesNameTheHouseholdsSignUps(t *testing.T) {
 	}
 }
 
+func TestPrivateVolunteerListAsTeamShowsIt(t *testing.T) {
+	const student, stranger = "sam.whitfield@heliosschool.org", "elena.torres@heliosschool.org"
+	sources := sampleSources(t)
+	var room *team.Activity
+	for _, root := range sources.Team().Activities {
+		for _, a := range append([]*team.Activity{root}, root.Descendants()...) {
+			if a.Title == "Room Parents" {
+				room = a
+			}
+		}
+	}
+	if room == nil || !room.VolunteersHidden {
+		t.Fatalf("no private Room Parents list in the sample: %+v", room)
+	}
+	room.Volunteers = append(room.Volunteers, team.Volunteer{Email: jordan, Position: team.PositionOpen}, team.Volunteer{Email: stranger, Position: team.PositionOpen})
+	chairs := len(room.CoChairs())
+	for _, c := range []struct {
+		email      string
+		volunteers int
+		household  int
+		private    bool
+	}{
+		{student, 0, 0, true},
+		{jordan, 1, 1, true},
+		{sampleAdmin, 2, 0, false},
+	} {
+		result := call(t, app{sources: sources}.viewer(c.email), "get_activity", `{"id":"`+room.ID+`"}`)
+		thing := result["thing"].(map[string]any)
+		if got := len(anyStrings(thing["volunteers"])); got != c.volunteers {
+			t.Errorf("%s: %d volunteers, want %d: %v", c.email, got, c.volunteers, thing["volunteers"])
+		}
+		if got := len(anyStrings(thing["household"])); got != c.household {
+			t.Errorf("%s: %d household sign-ups, want %d: %v", c.email, got, c.household, thing["household"])
+		}
+		if got := len(anyStrings(thing["coChairs"])); got != chairs {
+			t.Errorf("%s: %d co-chairs, want %d", c.email, got, chairs)
+		}
+		if (thing["volunteerListPrivate"] == true) != c.private || thing["taken"].(float64) != float64(chairs+2) {
+			t.Errorf("%s: private %v, taken %v", c.email, thing["volunteerListPrivate"], thing["taken"])
+		}
+	}
+}
+
+func TestAdminSeesTeamsHiddenThings(t *testing.T) {
+	sources := sampleSources(t)
+	hidden := 0
+	for _, root := range sources.Team().Activities {
+		if root.Status != team.StatusHidden && root.Status != team.StatusPending {
+			continue
+		}
+		hidden++
+		input := json.RawMessage(`{"id":"` + root.ID + `"}`)
+		admin, stranger := app{sources: sources}.viewer(sampleAdmin), app{sources: sources}.viewer("nobody@heliosschool.org")
+		if _, err := admin.run(context.Background(), "get_activity", input); err != nil {
+			t.Errorf("admin cannot read %s (%s): %v", root.Title, root.Status, err)
+		}
+		if _, err := stranger.run(context.Background(), "get_activity", input); err == nil {
+			t.Errorf("a stranger read %s (%s)", root.Title, root.Status)
+		}
+	}
+	if hidden == 0 {
+		t.Fatal("no hidden or pending thing in the sample, so the test proves nothing")
+	}
+}
+
+func TestPartiesListWhoHoldsTickets(t *testing.T) {
+	result := call(t, sampleViewer(t, "nobody@heliosschool.org"), "parties", `{"include_past":true}`)
+	named := 0
+	for _, p := range result["parties"].([]any) {
+		party := p.(map[string]any)
+		if party["sold"].(float64) > 0 && len(anyStrings(party["attendees"])) == 0 {
+			t.Errorf("%v: tickets sold but no attendees named", party["title"])
+		}
+		named += len(anyStrings(party["attendees"]))
+	}
+	if named == 0 {
+		t.Fatal("no attendee named anywhere")
+	}
+}
+
 func TestRolesTakeTheirEventsDay(t *testing.T) {
 	v := sampleViewer(t, jordan)
 	v.now = time.Date(2026, 10, 1, 9, 0, 0, 0, calendar.Location)
@@ -428,17 +547,14 @@ func TestPartiesSayWhereTheyStandAgainstToday(t *testing.T) {
 	}
 }
 
-func TestGroupsShowMembersToManagersAlone(t *testing.T) {
+func TestGroupsShowMembersAsLoopDoes(t *testing.T) {
 	result := call(t, sampleViewer(t, jordan), "my_groups", `{}`)
 	seen := map[string]bool{}
 	for _, g := range result["groups"].([]any) {
 		group := g.(map[string]any)
 		seen[group["address"].(string)] = true
-		if group["youManage"] == true && len(anyStrings(group["people"])) == 0 {
-			t.Errorf("managed group without members: %v", group)
-		}
-		if group["youManage"] != true && len(anyStrings(group["people"])) > 0 {
-			t.Errorf("unmanaged group lists members: %v", group)
+		if group["members"].(float64) > 0 && len(anyStrings(group["people"])) == 0 {
+			t.Errorf("group without its members: %v", group)
 		}
 	}
 	if !seen["soccer-team@loop.heliosian.com"] || !seen["middle-school-parents@loop.heliosian.com"] {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 
+	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
@@ -94,23 +95,27 @@ type viewer struct {
 	embedder  artifacts.Embedder
 	sources   Sources
 	now       time.Time
-	// family is the viewer and everyone in their families, by address.
-	family map[string]bool
-	access *groupAccess
-	ctx    context.Context
+	teamAs    access.Viewer
+	partyAs   access.Viewer
+	loopAs    access.Viewer
+	whenAs    access.Viewer
+	homeAs    access.Viewer
+	access    *groupAccess
+	ctx       context.Context
 }
 
 func (a app) viewer(email string) *viewer {
 	v := &viewer{
 		email: email, directory: a.sources.Directory(), calendar: a.sources.Calendar(), team: a.sources.Team(), celebrate: a.sources.Celebrate(), loop: a.sources.Loop(),
 		artifacts: a.sources.Artifacts(), embedder: a.sources.Embedder,
-		sources: a.sources, now: time.Now().In(calendar.Location), family: map[string]bool{email: true}, access: &groupAccess{}, ctx: context.Background(),
+		sources: a.sources, now: time.Now().In(calendar.Location), access: &groupAccess{}, ctx: context.Background(),
 	}
 	v.me = v.directory.Person(email)
-	adults, kids := v.directory.Household(email)
-	for _, member := range append(adults, kids...) {
-		v.family[member.Email] = true
+	household := v.directory.Family(email)
+	as := func(admin func(string) bool) access.Viewer {
+		return access.Viewer{Email: email, Admin: admin(email), Household: household}
 	}
+	v.teamAs, v.partyAs, v.loopAs, v.whenAs, v.homeAs = as(a.sources.Admins.Team), as(a.sources.Admins.Celebrate), as(a.sources.Admins.Loop), as(a.sources.Admins.Calendar), as(a.sources.Admins.Home)
 	return v
 }
 

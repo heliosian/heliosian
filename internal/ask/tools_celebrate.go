@@ -37,7 +37,8 @@ type partyCard struct {
 	Link         string   `json:"link"`
 }
 
-func (v *viewer) partyCard(p *celebrate.Party) partyCard {
+func (v *viewer) partyCard(raw *celebrate.Party) partyCard {
+	p := raw.For(v.partyAs, v.sources.CelebrateDirectory)
 	c := partyCard{
 		Title: p.Title, Subtitle: p.Subtitle, Summary: p.Summary, NeedToKnow: clip(p.NeedToKnow, 400), Category: p.Category, Start: p.Start, End: p.End, When: v.timing(p.Start, p.End), Past: p.Past(v.now), Location: p.Location, Address: p.Address,
 		Price: p.Price, Unit: p.Unit, Capacity: p.Capacity, Sold: p.Sold(), Remaining: p.Remaining(), Waiting: p.Waiting(), Availability: p.Availability(v.now),
@@ -49,7 +50,6 @@ func (v *viewer) partyCard(p *celebrate.Party) partyCard {
 	if p.Students {
 		c.Who = append(c.Who, "students")
 	}
-	hosting := p.Hosted(v.email)
 	for _, t := range p.Tickets {
 		holder := t.Name
 		if t.Email != "" {
@@ -59,19 +59,17 @@ func (v *viewer) partyCard(p *celebrate.Party) partyCard {
 		if t.Status == celebrate.TicketWaitlist {
 			words = fmt.Sprintf("%s (waitlist, %d)", holder, t.Quantity)
 		}
-		if v.family[t.Purchaser] || (t.Email != "" && v.family[t.Email]) {
+		if v.partyAs.Mine(t.Purchaser) || v.partyAs.Mine(t.Email) {
 			c.Household = append(c.Household, words)
 		}
-		if hosting {
-			c.Attendees = append(c.Attendees, words)
-		}
+		c.Attendees = append(c.Attendees, words)
 	}
 	return c
 }
 
 var parties = tool{
 	name:        "parties",
-	description: "The fun(d)raiser parties on Helios Celebrate: the current celebration, and every party still to come with its date, place, price, tickets left, waitlist, hosts and who may come, plus the viewer's household's own tickets; each says where it stands against today. A party the viewer hosts comes with its attendee list. Parties that have happened are counted and left out unless asked for. One call is enough: it returns every party at once.",
+	description: "The fun(d)raiser parties on Helios Celebrate: the current celebration, and every party still to come with its date, place, price, tickets left, waitlist, hosts, who may come and who holds tickets, plus the viewer's household's own tickets; each says where it stands against today. Parties that have happened are counted and left out unless asked for. One call is enough: it returns every party at once.",
 	words:       "Looking at the parties",
 	properties: map[string]any{
 		"query":        str("Words to find in a title, summary or category."),
@@ -92,7 +90,7 @@ var parties = tool{
 		out := []partyCard{}
 		past := 0
 		for _, p := range v.celebrate.SortedParties("") {
-			if !p.VisibleTo(v.email, false) {
+			if !p.VisibleTo(v.partyAs) {
 				continue
 			}
 			if in.Query != "" && !contains(p.Title, in.Query) && !contains(p.Summary, in.Query) && !contains(p.Category, in.Query) && !contains(p.Subtitle, in.Query) {

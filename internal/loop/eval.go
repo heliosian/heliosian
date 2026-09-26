@@ -3,6 +3,7 @@ package loop
 import (
 	"slices"
 
+	"heliosian/internal/access"
 	"heliosian/internal/filter"
 )
 
@@ -40,11 +41,26 @@ func Members(g Group, s Sources) []string {
 	return filter.Members(list(g), s)
 }
 
-func (g Group) VisibleTo(email string, admin bool, s Sources) bool {
-	if admin || g.Manages(email) || g.Visibility == VisibilityEveryone {
+func (g Group) Edits(v access.Viewer) bool {
+	return v.Admin || g.Manages(v.Email)
+}
+
+func (g Group) VisibleTo(v access.Viewer, s Sources) bool {
+	if g.Edits(v) || g.Visibility == VisibilityEveryone {
 		return true
 	}
-	return g.Visibility == VisibilityMembers && OnList(g, s, email)
+	return g.Visibility == VisibilityMembers && OnList(g, s, v.Email)
+}
+
+func (g Group) For(v access.Viewer, s Sources) *Group {
+	if !g.VisibleTo(v, s) {
+		return nil
+	}
+	if !g.Edits(v) {
+		g.Rules = []Rule{}
+		g.Excluded = []Excluded{}
+	}
+	return &g
 }
 
 func (g Group) MailReadableBy(email string, s Sources) bool {

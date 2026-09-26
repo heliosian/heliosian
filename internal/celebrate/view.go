@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"heliosian/internal/access"
 )
 
 // Person is what the directory knows about someone the app names: enough to
@@ -43,6 +45,7 @@ type Directory interface {
 	// Household is a person's family as the directory lists it: the other
 	// adults in it, then the children (themselves left out of both).
 	Household(email string) (adults, kids []Person)
+	Family(email string) map[string]bool
 	People() []Person
 	Alerts(email string) (stale []string, privacy []string)
 }
@@ -65,13 +68,9 @@ func DisplayName(email string) string {
 }
 
 type viewer struct {
-	email     string
-	admin     bool
+	access.Viewer
 	directory Directory
 	rsvps     RSVPLookup
-	// family is the viewer's household by address: the tickets they may see
-	// the details of and take back.
-	family map[string]bool
 }
 
 func (v viewer) person(email string) Person {
@@ -272,18 +271,19 @@ func (v viewer) attendee(t Ticket, editor bool) Attendee {
 		TicketID: t.ID, Email: t.Email, Name: person.Name, PhotoURL: person.PhotoURL, Kind: kindOf(person, known),
 		Grade: person.Grade, Line: v.line(t, person, known, purchaser.Name), Status: t.Status, Quantity: t.Quantity, Added: t.Added,
 	}
-	a.Mine = t.Purchaser == v.email || v.family[t.Purchaser] || (t.Email != "" && (t.Email == v.email || v.family[t.Email]))
+	a.Mine = v.Mine(t.Purchaser) || v.Mine(t.Email)
 	if editor || a.Mine {
 		a.Purchaser, a.PurchaserName, a.Price, a.Note, a.AddedBy = t.Purchaser, purchaser.Name, t.Price, t.Note, t.AddedBy
 	}
 	return a
 }
 
-func (v viewer) party(p *Party, now time.Time) PartyView {
-	hosting := p.Hosted(v.email)
-	editor := v.admin || hosting
+func (v viewer) party(raw *Party, now time.Time) PartyView {
+	p := raw.For(v.Viewer, v.directory)
+	hosting := p.Hosted(v.Email)
+	editor := p.Edits(v.Viewer)
 	pv := PartyView{
-		Party: p, Availability: p.Availability(now), Sold: p.Sold(), Waiting: p.Waiting(), Raised: p.Raised(), Remaining: p.Remaining(),
+		Party: p, Availability: p.Availability(now), Sold: p.Sold(), Waiting: p.Waiting(), Raised: raw.Raised(), Remaining: p.Remaining(),
 		HostPeople: []Person{}, Attendees: []Attendee{}, Waitlisted: []Attendee{}, CanEdit: editor, Hosting: hosting,
 	}
 	for _, email := range p.HostEmails {
@@ -314,19 +314,17 @@ func (v viewer) party(p *Party, now time.Time) PartyView {
 }
 
 // Render is the model as one signed-in person sees it.
-func Render(model *Model, directory Directory, email string, admin bool, now time.Time) View {
-	return RenderWith(model, directory, nil, email, admin, now)
+func Render(model *Model, directory Directory, as access.Viewer, now time.Time) View {
+	return RenderWith(model, directory, nil, as, now)
 }
 
 // RenderWith is Render with Helios When's word on each party's guest list
 // for its hosts.
-func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, email string, admin bool, now time.Time) View {
-	v := viewer{email: email, admin: admin, directory: directory, rsvps: rsvps, family: map[string]bool{}}
+func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, as access.Viewer, now time.Time) View {
+	v := viewer{Viewer: as, directory: directory, rsvps: rsvps}
+	email, admin := as.Email, as.Admin
 	me := v.person(email)
 	adults, kids := directory.Household(email)
-	for _, p := range append(append([]Person{}, adults...), kids...) {
-		v.family[p.Email] = true
-	}
 	view := View{
 		User: User{
 			Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: admin,
@@ -358,7 +356,7 @@ func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, email strin
 	stale, privacy := directory.Alerts(email)
 	view.Alerts = Alerts{Stale: stale, Privacy: privacy}
 	for _, p := range model.SortedParties("") {
-		if !p.VisibleTo(email, admin) {
+		if !p.VisibleTo(as) {
 			continue
 		}
 		view.Parties = append(view.Parties, v.party(p, now))

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/sharecard"
 )
 
@@ -26,7 +27,7 @@ func ShareTagline(now func() string) {
 }
 
 func previewable(p *Party) bool {
-	return p != nil && p.VisibleTo("", false)
+	return p != nil && p.VisibleTo(access.Viewer{})
 }
 
 func whenLines(p *Party) (string, string) {

@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"heliosian/internal/access"
 )
 
 // Directory is what the portal asks of the school directory: who a signed-in
@@ -24,6 +26,7 @@ type Directory interface {
 	// Household is a parent's family as the directory lists it: the other
 	// adults in it, then the children; nothing for anyone else.
 	Household(email string) (adults, kids []Child)
+	Family(email string) map[string]bool
 	// Alerts is what the toolbar's badges say for a person, as the directory
 	// reckons them: things to update for the new year, and a privacy mismatch.
 	Alerts(email string) (stale []string, privacy []string)
@@ -88,11 +91,7 @@ func (d viewer) person(email string) (string, string) {
 }
 
 type viewer struct {
-	email string
-	admin bool
-	// family is the viewer's household by address - the sign-ups a private
-	// list still shows them.
-	family    map[string]bool
+	access.Viewer
 	directory Directory
 }
 
@@ -184,18 +183,6 @@ type User struct {
 	Children []Child `json:"children,omitempty"`
 }
 
-// canEdit reports whether the viewer runs this activity: an admin, or one of its
-// co-chairs.
-func (v viewer) canEdit(a *Activity) bool {
-	return v.admin || a.IsCoChair(v.email)
-}
-
-// visible decides whether a pending or hidden item reaches this viewer: hidden
-// ones only reach editors, pending ones also reach whoever proposed them.
-func (v viewer) visible(status, addedBy string, editor bool) bool {
-	return visibleStatus(status, addedBy, v.email, editor)
-}
-
 func visibleStatus(status, addedBy, email string, editor bool) bool {
 	switch status {
 	case StatusHidden:
@@ -206,11 +193,13 @@ func visibleStatus(status, addedBy, email string, editor bool) bool {
 	return true
 }
 
-// VisibleTo is whether the portal shows a thing to someone: it and every
-// thing above it, each judged with its editors - an admin, or whoever runs it.
-func (m *Model) VisibleTo(a *Activity, email string, admin bool) bool {
+func (m *Model) Edits(a *Activity, v access.Viewer) bool {
+	return v.Admin || m.Runs(a, v.Email)
+}
+
+func (m *Model) VisibleTo(a *Activity, v access.Viewer) bool {
 	for node := a; node != nil; node = m.Activity(node.Parent) {
-		if !visibleStatus(node.Status, node.AddedBy, email, admin || m.Runs(node, email)) {
+		if !visibleStatus(node.Status, node.AddedBy, v.Email, m.Edits(node, v)) {
 			return false
 		}
 		if node.Parent == "" {
@@ -220,20 +209,42 @@ func (m *Model) VisibleTo(a *Activity, email string, admin bool) bool {
 	return false
 }
 
-// volunteers lists who signed up, named and pictured, holding back a hidden
-// list from anyone but the activity's editors: those viewers see the co-chairs
-// and themselves, so they know who to ask and that their own sign-up took.
-func (v viewer) volunteers(list []Volunteer, hidden, editor bool) []Volunteer {
-	out := []Volunteer{}
-	for _, vol := range list {
-		if hidden && !editor && vol.Position != PositionCoChair && vol.Email != v.email && !v.family[vol.Email] {
+func (m *Model) ActivityFor(a *Activity, v access.Viewer) *Activity {
+	if !m.VisibleTo(a, v) {
+		return nil
+	}
+	return m.activityFor(a, v)
+}
+
+func (m *Model) activityFor(a *Activity, v access.Viewer) *Activity {
+	editor := m.Edits(a, v)
+	c := *a
+	c.Taken = len(a.Volunteers)
+	c.Volunteers = []Volunteer{}
+	for _, vol := range a.Volunteers {
+		if a.VolunteersHidden && !editor && vol.Position != PositionCoChair && !v.Mine(vol.Email) {
 			continue
 		}
-		vol.Name, vol.PhotoURL = v.person(vol.Email)
-		vol.Grade = v.directory.Grade(vol.Email)
 		if !editor {
 			vol.AddedBy = ""
-		} else if vol.AddedBy != "" && vol.AddedBy != vol.Email {
+		}
+		c.Volunteers = append(c.Volunteers, vol)
+	}
+	c.Children = []*Activity{}
+	for _, child := range a.Children {
+		if visibleStatus(child.Status, child.AddedBy, v.Email, m.Edits(child, v)) {
+			c.Children = append(c.Children, m.activityFor(child, v))
+		}
+	}
+	return &c
+}
+
+func (v viewer) volunteers(list []Volunteer) []Volunteer {
+	out := []Volunteer{}
+	for _, vol := range list {
+		vol.Name, vol.PhotoURL = v.person(vol.Email)
+		vol.Grade = v.directory.Grade(vol.Email)
+		if vol.AddedBy != "" && vol.AddedBy != vol.Email {
 			vol.AddedByName, _ = v.person(vol.AddedBy)
 		}
 		out = append(out, vol)
@@ -244,54 +255,38 @@ func (v viewer) volunteers(list []Volunteer, hidden, editor bool) []Volunteer {
 	return out
 }
 
-// children renders the tree under an activity. An editor of the root edits the
-// whole tree, so canEdit is inherited rather than recomputed from co-chairs at
-// each level - a co-chair of a child still edits that child, because they are a
-// co-chair there. Whether a volunteer list is private is each thing's own
-// switch and nothing more: an event that hides its list does not hide its
-// committees'.
-func (v viewer) children(list []*Activity, editor, runs bool) []*ActivityView {
-	return v.childrenWith(list, editor, runs, nil)
-}
-
-func (v viewer) childrenWith(list []*Activity, editor, runs bool, lists EmailListLookup) []*ActivityView {
-	out := []*ActivityView{}
-	for _, c := range list {
-		own := editor || v.canEdit(c)
-		if !v.visible(c.Status, c.AddedBy, own) {
-			continue
-		}
-		chairs := runs || c.IsCoChair(v.email)
-		view := &ActivityView{
-			Activity:   c,
-			Children:   v.childrenWith(c.Children, own, chairs, lists),
-			Volunteers: v.volunteers(c.Volunteers, c.VolunteersHidden, own),
-			Taken:      len(c.Volunteers),
-			CanEdit:    own,
-			Runs:       chairs,
-		}
-		if chairs && lists != nil {
-			view.EmailList = lists(c.ID)
-		}
-		out = append(out, view)
+func (v viewer) activity(model *Model, a *Activity, runs bool, lists EmailListLookup) ActivityView {
+	chairs := runs || a.IsCoChair(v.Email)
+	view := ActivityView{
+		Activity:   a,
+		Children:   []*ActivityView{},
+		Volunteers: v.volunteers(a.Volunteers),
+		Taken:      a.Taken,
+		CanEdit:    model.Edits(a, v.Viewer),
+		Runs:       chairs,
 	}
-	return out
+	for _, c := range a.Children {
+		child := v.activity(model, c, chairs, lists)
+		view.Children = append(view.Children, &child)
+	}
+	if chairs && lists != nil {
+		view.EmailList = lists(a.ID)
+	}
+	return view
 }
 
 // Render is the model as one signed-in person sees it.
-func Render(model *Model, directory Directory, email string, admin bool, now time.Time) View {
-	return RenderWith(model, directory, nil, nil, email, admin, now)
+func Render(model *Model, directory Directory, as access.Viewer, now time.Time) View {
+	return RenderWith(model, directory, nil, nil, as, now)
 }
 
 // RenderWith is Render with Helios When's word on each event's guest
 // list, and Helios Loop's on each thing's email list, for the chairs.
-func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, lists EmailListLookup, email string, admin bool, now time.Time) View {
-	v := viewer{email: email, admin: admin, directory: directory, family: map[string]bool{}}
+func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, lists EmailListLookup, as access.Viewer, now time.Time) View {
+	v := viewer{Viewer: as, directory: directory}
+	email, admin := as.Email, as.Admin
 	name, photo := v.person(email)
 	spouses, children := directory.Household(email)
-	for _, c := range append(append([]Child{}, spouses...), children...) {
-		v.family[c.Email] = true
-	}
 	current := SchoolYear(now)
 	stale, privacy := directory.Alerts(email)
 	view := View{
@@ -304,26 +299,15 @@ func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, lists Email
 		Redirects:   model.Redirects,
 		GradeColors: directory.GradeColors(),
 	}
-	for _, a := range model.Activities {
-		editor := v.canEdit(a)
-		if !v.visible(a.Status, a.AddedBy, editor) {
+	for _, raw := range model.Activities {
+		a := model.ActivityFor(raw, as)
+		if a == nil {
 			continue
 		}
-		chairs := a.IsCoChair(v.email)
-		av := ActivityView{
-			Activity:   a,
-			Children:   v.childrenWith(a.Children, editor, chairs, lists),
-			Volunteers: v.volunteers(a.Volunteers, a.VolunteersHidden, editor),
-			Taken:      len(a.Volunteers),
-			CanEdit:    editor,
-			Runs:       chairs,
-		}
-		if chairs && lists != nil {
-			av.EmailList = lists(a.ID)
-		}
+		av := v.activity(model, a, false, lists)
 		// Whoever runs the event reads each volunteer's answer to its
 		// invitation on Helios When, once the invites are out.
-		if editor && rsvps != nil {
+		if av.CanEdit && rsvps != nil {
 			if r := rsvps(a.ID); r != nil {
 				av.Started, av.Invited = true, r.Sent
 				if r.Sent {

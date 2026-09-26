@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"heliosian/internal/access"
 )
 
 // Person is what the directory knows about someone the app names.
@@ -178,7 +180,8 @@ func (v viewer) staff(model *Model, b *Birthday, year Year, today time.Time) Sta
 }
 
 // Render is the model as one signed-in person sees it.
-func Render(model *Model, directory Directory, email string, admin bool, now time.Time) View {
+func Render(model *Model, directory Directory, as access.Viewer, now time.Time) View {
+	email, admin := as.Email, as.Admin
 	v := viewer{directory: directory}
 	me, _ := v.person(email)
 	month, day, _ := ParseMonthDay(model.Settings.YearStart)
@@ -202,7 +205,7 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 	}
 	stale, privacy := directory.Alerts(email)
 	view.Alerts = Alerts{Stale: stale, Privacy: privacy}
-	if !admin && !model.OnTeam(email) {
+	if !model.Sees(as) {
 		return view
 	}
 	view.Settings, view.Charities, view.NewsletterDates = model.Settings, model.Charities, model.NewsletterDates

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
@@ -78,6 +79,44 @@ func NewCache(source data.Source, writer data.Writer, images ImageChecker, super
 
 func (c *Cache) includes(rules []filter.Rule, email string) bool {
 	return c.directory != nil && len(rules) > 0 && filter.OnList(filter.List{Rules: rules, Editors: c.Admins()}, c.directory.Sources(), email)
+}
+
+func (c *Cache) CategoriesFor(v access.Viewer) []Category {
+	forMe := func(rules []filter.Rule) bool {
+		return len(rules) == 0 || c.includes(rules, v.Email)
+	}
+	full := c.Model()
+	out := make([]Category, 0, len(full.Categories))
+	for _, category := range full.Categories {
+		sectionMine := forMe(category.Rules)
+		if !sectionMine && !v.Admin {
+			continue
+		}
+		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual, Rules: []filter.Rule{}}
+		if v.Admin {
+			shown.Rules = category.Rules
+		}
+		if !sectionMine {
+			no := false
+			shown.ForMe = &no
+		}
+		for _, link := range category.Links {
+			mine := forMe(link.Rules)
+			if !(link.Visible && mine) && !v.Admin {
+				continue
+			}
+			if !mine {
+				no := false
+				link.ForMe = &no
+			}
+			if !v.Admin {
+				link.Rules = []filter.Rule{}
+			}
+			shown.Links = append(shown.Links, link)
+		}
+		out = append(out, shown)
+	}
+	return out
 }
 
 func normalizeEmails(emails []string) []string {

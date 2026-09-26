@@ -108,7 +108,8 @@ type user struct {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	effective := effectiveEmail(a.cache, r)
+	v := viewerOf(a.cache, effectiveEmail(a.cache, r))
+	effective := v.Email
 	name := a.cache.Model().DisplayName(effective)
 	slug := Slug(effective)
 	view := struct {
@@ -125,7 +126,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		SuperEdit   bool                `json:"superEdit,omitempty"`
 	}{
 		Model:       a.cache.Model(),
-		User:        user{Name: name, Initial: strings.ToUpper(name[:1]), Email: effective, Slug: slug, IsAdmin: a.cache.IsAdmin(effective)},
+		User:        user{Name: name, Initial: strings.ToUpper(name[:1]), Email: effective, Slug: slug, IsAdmin: v.Admin},
 		MapsKey:     a.mapsKey,
 		Tags:        a.cache.Tags(effective),
 		TagManagers: a.cache.TagManagers(effective),
@@ -134,7 +135,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		// Both computed from the effective identity, so a spoofed view shows exactly
 		// what that person sees — a regular parent's simulated view never carries the
 		// real admin's super-edit powers along with it.
-		SuperEdit: superEdit(a.cache, r, effective),
+		SuperEdit: superEdit(r, v),
 	}
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode model", "error", err)

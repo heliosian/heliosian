@@ -41,7 +41,7 @@ func (v *viewer) linkCard(address string) (linkCard, bool) {
 			}
 		}
 	case strings.HasPrefix(address, whenBase+"/"):
-		for _, e := range v.calendar.EventsFor(v.sources.CalendarDirectory, v.email, v.sources.Linked(v.email)) {
+		for _, e := range v.calendar.EventsFor(v.whenAs, v.sources.CalendarDirectory, v.sources.Linked(v.email)) {
 			if eventLink(e) != address {
 				continue
 			}
@@ -56,13 +56,13 @@ func (v *viewer) linkCard(address string) (linkCard, bool) {
 	case strings.HasPrefix(address, loopBase+"/"):
 		sources := v.sources.LoopSources()
 		for _, g := range v.loop.Groups {
-			if loopBase+g.Path() == address && g.VisibleTo(v.email, false, sources) {
+			if loopBase+g.Path() == address && g.VisibleTo(v.loopAs, sources) {
 				return linkCard{URL: address, Kind: "group", Name: g.Title}, true
 			}
 		}
 	case strings.HasPrefix(address, teamBase+"/"):
 		a := v.team.Resolve(strings.TrimPrefix(address, teamBase))
-		if a == nil || !v.team.VisibleTo(a, v.email, false) {
+		if a == nil || !v.team.VisibleTo(a, v.teamAs) {
 			return linkCard{}, false
 		}
 		c := linkCard{URL: address, Kind: "activity", Name: a.Title}
@@ -72,7 +72,7 @@ func (v *viewer) linkCard(address string) (linkCard, bool) {
 		return c, true
 	case strings.HasPrefix(address, celebrateBase+"/"):
 		p := v.celebrate.Resolve(strings.TrimPrefix(address, celebrateBase))
-		if p == nil || !p.VisibleTo(v.email, false) {
+		if p == nil || !p.VisibleTo(v.partyAs) {
 			return linkCard{}, false
 		}
 		c := linkCard{URL: address, Kind: "party", Name: p.Title}

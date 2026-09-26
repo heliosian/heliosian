@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/blob"
 	"heliosian/internal/claude"
 	"heliosian/internal/describe"
 	"heliosian/internal/logging"
@@ -114,7 +116,7 @@ func (a app) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool)
 
 func (a app) requireTeam(w http.ResponseWriter, r *http.Request) (string, bool, bool) {
 	email, admin := a.who(r)
-	if !admin && !a.cache.Model().OnTeam(email) {
+	if !a.cache.Model().Sees(access.Viewer{Email: email, Admin: admin}) {
 		http.Error(w, "team membership required", http.StatusForbidden)
 		return "", false, false
 	}
@@ -136,7 +138,7 @@ func (a app) year() string {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
-	view := Render(a.cache.Model(), a.directory, email, admin, now())
+	view := Render(a.cache.Model(), a.directory, access.Viewer{Email: email, Admin: admin}, now())
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {

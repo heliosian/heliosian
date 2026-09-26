@@ -174,6 +174,8 @@ type Activity struct {
 	Links       []Link      `json:"links"`
 	Volunteers  []Volunteer `json:"volunteers"`
 	Categories  []Category  `json:"categories,omitempty"`
+	// Set on ActivityFor's copy alone: every sign-up, withheld ones included.
+	Taken int `json:"-"`
 }
 
 type Category struct {

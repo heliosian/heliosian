@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/calendar"
@@ -270,34 +271,9 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	forMe := func(rules []filter.Rule) bool {
 		return len(rules) == 0 || a.cache.includes(rules, email)
 	}
-	categories := make([]Category, 0, len(full.Categories))
-	for _, category := range full.Categories {
-		sectionMine := forMe(category.Rules)
-		if !sectionMine && !admin {
-			continue
-		}
-		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual, Rules: []filter.Rule{}}
-		if admin {
-			shown.Rules = category.Rules
-		}
-		if !sectionMine {
-			no := false
-			shown.ForMe = &no
-		}
-		for _, link := range category.Links {
-			mine := forMe(link.Rules)
-			if ((link.Visible && mine) || admin) && !linksInto(hidden, link.URL) {
-				if !mine {
-					no := false
-					link.ForMe = &no
-				}
-				if !admin {
-					link.Rules = []filter.Rule{}
-				}
-				shown.Links = append(shown.Links, link)
-			}
-		}
-		categories = append(categories, shown)
+	categories := a.cache.CategoriesFor(access.Viewer{Email: email, Admin: admin})
+	for i := range categories {
+		categories[i].Links = slices.DeleteFunc(categories[i].Links, func(l Link) bool { return linksInto(hidden, l.URL) })
 	}
 	view := struct {
 		Categories       []Category            `json:"categories"`

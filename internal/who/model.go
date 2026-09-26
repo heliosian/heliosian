@@ -167,6 +167,18 @@ func (m *Model) Household(email string) (adults, kids []*Person) {
 	return m.members(m.FamilyKeysOf(email), email)
 }
 
+func (m *Model) Family(email string) map[string]bool {
+	out := map[string]bool{}
+	if p := m.Person(m.Resolve(email)); p == nil || !p.IsParent {
+		return out
+	}
+	adults, kids := m.Household(email)
+	for _, p := range append(adults, kids...) {
+		out[p.Email] = true
+	}
+	return out
+}
+
 func (m *Model) Parents(email string) []*Person {
 	if p := m.Person(m.Resolve(email)); p == nil || !p.IsStudent {
 		return nil

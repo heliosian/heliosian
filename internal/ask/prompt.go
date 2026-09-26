@@ -73,27 +73,27 @@ func (v *viewer) exampleLinks() []string {
 		}
 	}
 	today := v.now.Format(calendar.DateFormat)
-	for _, e := range v.calendar.EventsFor(v.sources.CalendarDirectory, v.email, v.sources.Linked(v.email)) {
+	for _, e := range v.calendar.EventsFor(v.whenAs, v.sources.CalendarDirectory, v.sources.Linked(v.email)) {
 		if app, _ := calendar.Page(e); app == "calendar" && e.Start >= today {
 			out = append(out, eventLink(e))
 			break
 		}
 	}
 	for _, a := range v.team.Activities {
-		if a.Year == team.SchoolYear(v.now) && v.team.VisibleTo(a, v.email, false) {
+		if a.Year == team.SchoolYear(v.now) && v.team.VisibleTo(a, v.teamAs) {
 			out = append(out, teamBase+v.team.PathOf(a))
 			break
 		}
 	}
 	for _, p := range v.celebrate.SortedParties("") {
-		if p.VisibleTo(v.email, false) && !p.Past(v.now) {
+		if p.VisibleTo(v.partyAs) && !p.Past(v.now) {
 			out = append(out, celebrateBase+v.celebrate.PathOf(p))
 			break
 		}
 	}
 	sources := v.sources.LoopSources()
 	for _, g := range v.loop.Groups {
-		if g.VisibleTo(v.email, false, sources) {
+		if g.VisibleTo(v.loopAs, sources) {
 			out = append(out, loopBase+g.Path())
 			break
 		}

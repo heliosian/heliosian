@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/claude"
@@ -273,25 +274,36 @@ func (a app) checkAdditions(additions []Addition) error {
 	return nil
 }
 
-func (a app) sees(g Group, viewer string, admin bool) bool {
-	return g.VisibleTo(viewer, admin, a.sources())
-}
-
-func (a app) view(g Group, viewer string, edit bool) groupView {
-	v := groupView{Group: g, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Open: a.sees(g, viewer, false), Unsubscribed: g.HasExcluded(viewer), Archived: a.cache.Model().Archived(g.Name, viewer), Sent: a.sentCount(g.Name)}
+func (a app) view(g Group, as access.Viewer) (groupView, bool) {
+	shown := g.For(as, a.sources())
+	if shown == nil {
+		return groupView{}, false
+	}
+	viewer := as.Email
+	v := groupView{Group: *shown, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Open: g.VisibleTo(access.Viewer{Email: viewer}, a.sources()), Unsubscribed: g.HasExcluded(viewer), Archived: a.cache.Model().Archived(g.Name, viewer), Sent: a.sentCount(g.Name)}
 	v.Members = a.members(g)
-	if !edit {
-		v.Group.Rules = []Rule{}
-		v.Group.Excluded = []Excluded{}
+	if !g.Edits(as) {
 		for i := range v.Members {
 			v.Members[i].Reasons = nil
 		}
-		return v
+		return v, true
 	}
 	for _, r := range g.Rules {
 		v.Rules = append(v.Rules, ruleView{Rule: r, TagLabels: a.sources().TagLabels(r, g.Managers, viewer)})
 	}
-	return v
+	return v, true
+}
+
+func (a app) sendView(w http.ResponseWriter, r *http.Request, g Group, as access.Viewer) {
+	v, ok := a.view(g, as)
+	if !ok {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.ErrorContext(r.Context(), "[ERROR] encode group", "error", err)
+	}
 }
 
 func (a app) options(viewer string) options {
@@ -320,8 +332,8 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		GradeColors: a.directory.GradeColors(),
 	}
 	for _, g := range a.cache.Model().Groups {
-		if a.sees(g, email, admin) {
-			view.Groups = append(view.Groups, a.view(g, email, admin || g.Manages(email)))
+		if v, ok := a.view(g, access.Viewer{Email: email, Admin: admin}); ok {
+			view.Groups = append(view.Groups, v)
 		}
 	}
 	view.Alerts.Stale, view.Alerts.Privacy = a.directory.Alerts(email)
@@ -562,10 +574,7 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility, "posting", g.Posting, "replying", g.Replying)
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.view(*a.cache.Model().Group(g.Name), email, true)); err != nil {
-		slog.ErrorContext(r.Context(), "encode saved group", "error", err)
-	}
+	a.sendView(w, r, *a.cache.Model().Group(g.Name), access.Viewer{Email: email, Admin: admin})
 }
 
 func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
@@ -605,8 +614,9 @@ func (a app) subscription(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
+	as := access.Viewer{Email: email, Admin: admin}
 	g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name)))
-	if g == nil || !a.sees(*g, email, admin) {
+	if g == nil || !g.VisibleTo(as, a.sources()) {
 		http.Error(w, "no such group", http.StatusNotFound)
 		return
 	}
@@ -624,10 +634,7 @@ func (a app) subscription(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.view(*a.cache.Model().Group(g.Name), email, admin || g.Manages(email))); err != nil {
-		slog.ErrorContext(r.Context(), "encode subscription", "error", err)
-	}
+	a.sendView(w, r, *a.cache.Model().Group(g.Name), as)
 }
 
 func (a app) archive(w http.ResponseWriter, r *http.Request) {
@@ -639,8 +646,9 @@ func (a app) archive(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
+	as := access.Viewer{Email: email, Admin: admin}
 	g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name)))
-	if g == nil || !a.sees(*g, email, admin) {
+	if g == nil || !g.VisibleTo(as, a.sources()) {
 		http.Error(w, "no such group", http.StatusNotFound)
 		return
 	}
@@ -653,10 +661,7 @@ func (a app) archive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "groups: archived", "group", g.Name, "email", email, "archived", body.Archived)
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.view(*a.cache.Model().Group(g.Name), email, admin || g.Manages(email))); err != nil {
-		slog.ErrorContext(r.Context(), "encode archive", "error", err)
-	}
+	a.sendView(w, r, *a.cache.Model().Group(g.Name), as)
 }
 
 func (a app) adminState(w http.ResponseWriter, r *http.Request) {

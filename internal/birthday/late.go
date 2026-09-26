@@ -4,6 +4,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"heliosian/internal/access"
 )
 
 // The steps a birthday can fall behind on, each with a day it is due by:
@@ -40,7 +42,7 @@ func (c *Cache) Late(directory Directory, email string) []Late {
 	model := c.Model()
 	admin := c.IsAdmin(email)
 	comms := slices.ContainsFunc(model.Team, func(t TeamMember) bool { return t.Email == email && t.Role == RoleComms })
-	if !admin && !comms && !model.OnTeam(email) {
+	if !model.Sees(access.Viewer{Email: email, Admin: admin}) {
 		return []Late{}
 	}
 	v := viewer{directory: directory}

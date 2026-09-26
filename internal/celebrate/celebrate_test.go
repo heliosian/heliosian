@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
@@ -72,6 +73,22 @@ func (fakeDirectory) Household(email string) (adults, kids []Person) {
 		}
 	}
 	return adults, kids
+}
+
+func (d fakeDirectory) Family(email string) map[string]bool {
+	out := map[string]bool{}
+	if !people[email].IsParent {
+		return out
+	}
+	adults, kids := d.Household(email)
+	for _, p := range append(adults, kids...) {
+		out[p.Email] = true
+	}
+	return out
+}
+
+func viewerOf(email string, admin bool) access.Viewer {
+	return access.Viewer{Email: email, Admin: admin, Household: fakeDirectory{}.Family(email)}
 }
 
 func (fakeDirectory) People() []Person { return nil }
@@ -244,7 +261,7 @@ func TestBrokenSheetRefusesToLoad(t *testing.T) {
 
 func TestRenderHidesWhatItShould(t *testing.T) {
 	cache, _ := newServer(t)
-	view := Render(cache.Model(), fakeDirectory{}, other, false, testNow())
+	view := Render(cache.Model(), fakeDirectory{}, viewerOf(other, false), testNow())
 	for _, p := range view.Parties {
 		if p.Status != StatusOpen {
 			t.Errorf("%s reached a parent as %s", p.Title, p.Status)
@@ -253,7 +270,7 @@ func TestRenderHidesWhatItShould(t *testing.T) {
 			t.Errorf("%s is editable by someone who does not host it", p.Title)
 		}
 	}
-	host := Render(cache.Model(), fakeDirectory{}, "layla.haddad@heliosschool.org", false, testNow())
+	host := Render(cache.Model(), fakeDirectory{}, viewerOf("layla.haddad@heliosschool.org", false), testNow())
 	found := false
 	for _, p := range host.Parties {
 		if p.ID == "P013" {
@@ -263,17 +280,17 @@ func TestRenderHidesWhatItShould(t *testing.T) {
 	if !found {
 		t.Error("a host cannot see or edit their own pending party")
 	}
-	if got := Render(cache.Model(), fakeDirectory{}, admin, true, testNow()); len(got.Parties) != 16 {
+	if got := Render(cache.Model(), fakeDirectory{}, viewerOf(admin, true), testNow()); len(got.Parties) != 16 {
 		t.Errorf("admin view: %d parties", len(got.Parties))
 	}
-	if got := Render(cache.Model(), fakeDirectory{}, parent, false, testNow()); got.User.PhotoURL != "/photos/jordan.jpg" || len(got.User.Children) != 2 {
+	if got := Render(cache.Model(), fakeDirectory{}, viewerOf(parent, false), testNow()); got.User.PhotoURL != "/photos/jordan.jpg" || len(got.User.Children) != 2 {
 		t.Errorf("admin view: %d parties, user %+v", len(got.Parties), got.User)
 	}
 }
 
 func TestAttendeeLines(t *testing.T) {
 	cache, _ := newServer(t)
-	view := Render(cache.Model(), fakeDirectory{}, other, false, testNow())
+	view := Render(cache.Model(), fakeDirectory{}, viewerOf(other, false), testNow())
 	var fondue PartyView
 	for _, p := range view.Parties {
 		if p.ID == "P001" {
@@ -300,7 +317,7 @@ func TestAttendeeLines(t *testing.T) {
 	if notes["Zander Whitfield (cousin, age 8)"] != "" {
 		t.Errorf("a stranger saw a note: %q", notes["Zander Whitfield (cousin, age 8)"])
 	}
-	mine := Render(cache.Model(), fakeDirectory{}, partner, false, testNow())
+	mine := Render(cache.Model(), fakeDirectory{}, viewerOf(partner, false), testNow())
 	for _, p := range mine.Parties {
 		if p.ID != "P001" {
 			continue
@@ -308,6 +325,20 @@ func TestAttendeeLines(t *testing.T) {
 		for _, a := range p.Attendees {
 			if a.Name == "Zander Whitfield (cousin, age 8)" && (!a.Mine || a.Note == "") {
 				t.Errorf("the household did not get its own ticket back: %+v", a)
+			}
+		}
+	}
+	student := Render(cache.Model(), fakeDirectory{}, viewerOf(kid, false), testNow())
+	for _, p := range student.Parties {
+		if p.ID != "P001" {
+			continue
+		}
+		for _, a := range p.Attendees {
+			if a.Name == "Zander Whitfield (cousin, age 8)" && (a.Mine || a.Note != "" || a.Purchaser != "" || a.Line != "Guest of Jordan Whitfield") {
+				t.Errorf("a student saw their family's ticket as theirs: %+v", a)
+			}
+			if a.Email == kid && !a.Mine {
+				t.Errorf("a student did not see their own ticket as theirs: %+v", a)
 			}
 		}
 	}
@@ -480,10 +511,10 @@ func TestFreeTicket(t *testing.T) {
 	if n := len(cache.Model().Invoicing); n != before+1 {
 		t.Fatalf("model ledger %d, want %d", n, before+1)
 	}
-	if v := Render(cache.Model(), fakeDirectory{}, other, false, testNow()); len(v.Invoicing) != 0 {
+	if v := Render(cache.Model(), fakeDirectory{}, viewerOf(other, false), testNow()); len(v.Invoicing) != 0 {
 		t.Fatalf("a parent was shown the ledger")
 	}
-	if v := Render(cache.Model(), fakeDirectory{}, admin, true, testNow()); len(v.Invoicing) != before+1 {
+	if v := Render(cache.Model(), fakeDirectory{}, viewerOf(admin, true), testNow()); len(v.Invoicing) != before+1 {
 		t.Fatalf("the admin was not shown the ledger")
 	}
 	logged := 0

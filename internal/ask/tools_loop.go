@@ -30,7 +30,7 @@ type groupCard struct {
 
 var myGroups = tool{
 	name:        "my_groups",
-	description: "The email groups on Helios Loop the viewer can see: the ones they manage, with their members; the ones open to everyone; and the ones they are on whose managers opened them to their members. Each is an address whose members follow from rules over the directory.",
+	description: "The email groups on Helios Loop the viewer can see, each with its members: the ones they manage, the ones open to everyone, and the ones they are on whose managers opened them to their members. Each is an address whose members follow from rules over the directory.",
 	words:       "Looking at the email groups",
 	properties: map[string]any{
 		"query": str("Words to find in a title, address or description."),
@@ -42,28 +42,25 @@ var myGroups = tool{
 		}
 		sources := v.sources.LoopSources()
 		out := []groupCard{}
-		for _, g := range v.loop.Groups {
-			manages := g.Manages(v.email)
-			members := loop.Members(g, sources)
-			on := slices.Contains(members, v.email)
-			if !g.VisibleTo(v.email, false, sources) {
+		for _, raw := range v.loop.Groups {
+			g := raw.For(v.loopAs, sources)
+			if g == nil {
 				continue
 			}
 			if in.Query != "" && !contains(g.Title, in.Query) && !contains(g.Name, in.Query) && !contains(g.Description, in.Query) {
 				continue
 			}
+			members := loop.Members(raw, sources)
 			c := groupCard{
 				Title: g.Title, Address: g.Address(), Aliases: g.Aliases, Description: g.Description, Visibility: g.Visibility, Managers: v.names(g.Managers),
-				Manage: manages, OnIt: on, Members: len(members), Link: loopBase + g.Path(),
+				Manage: g.Manages(v.email), OnIt: slices.Contains(members, v.email), Members: len(members), Link: loopBase + g.Path(),
 			}
-			if manages {
-				for _, m := range members {
-					name := v.name(m)
-					if added := g.Addition(m); added != nil && added.Name != "" {
-						name = added.Name + " (outside the directory)"
-					}
-					c.People = append(c.People, name)
+			for _, m := range members {
+				name := v.name(m)
+				if added := g.Addition(m); added != nil && added.Name != "" {
+					name = added.Name + " (outside the directory)"
 				}
+				c.People = append(c.People, name)
 			}
 			out = append(out, c)
 		}
@@ -106,19 +103,23 @@ var communityLinks = tool{
 			return nil, err
 		}
 		sections := []map[string]any{}
-		for _, category := range v.sources.Links() {
+		for _, category := range v.sources.Links(v.homeAs) {
 			if category.Style == home.StyleEvents || category.Style == home.StyleApps {
 				continue
 			}
-			links := []map[string]string{}
+			links := []map[string]any{}
 			for _, l := range category.Links {
-				if !l.Visible {
-					continue
-				}
 				if in.Query != "" && !contains(l.Title, in.Query) && !contains(l.Description, in.Query) {
 					continue
 				}
-				links = append(links, map[string]string{"title": l.Title, "description": l.Description, "url": l.URL})
+				link := map[string]any{"title": l.Title, "description": l.Description, "url": l.URL}
+				if !l.Visible {
+					link["hiddenFromEveryone"] = true
+				}
+				if l.ForMe != nil && !*l.ForMe {
+					link["notForYou"] = true
+				}
+				links = append(links, link)
 			}
 			if len(links) > 0 {
 				sections = append(sections, map[string]any{"section": category.Title, "links": links})

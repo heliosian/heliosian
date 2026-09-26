@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 )
@@ -514,7 +515,7 @@ func TestRender(t *testing.T) {
 		kids: map[string][]Person{"jordan.whitfield@heliosschool.org": {ella, sam}},
 	}
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-08 08:00", Location)
-	v := Render(m, d, "jordan.whitfield@heliosschool.org", false, at, nil)
+	v := Render(m, d, access.Viewer{Email: "jordan.whitfield@heliosschool.org"}, at, nil)
 	if strings.Join(v.User.Classrooms, ",") != "Jays,Ospreys" || len(v.User.Students) != 2 || v.User.Initial != "J" {
 		t.Errorf("parent = %+v", v.User)
 	}
@@ -526,12 +527,12 @@ func TestRender(t *testing.T) {
 	}
 	cases := map[string]string{"sam@x.org": "Jays", "teacher@x.org": "Hawks", "office@x.org": "", "nobody@x.org": ""}
 	for email, want := range cases {
-		v := Render(m, d, email, false, at, nil)
+		v := Render(m, d, access.Viewer{Email: email}, at, nil)
 		if got := strings.Join(v.User.Classrooms, ","); got != want || len(v.Feeds) != 0 {
 			t.Errorf("%s: classrooms %q, want %q; feeds %d", email, got, want, len(v.Feeds))
 		}
 	}
-	if v := Render(m, d, "nobody@x.org", true, at, nil); v.User.Name != "Nobody" || !v.User.IsAdmin {
+	if v := Render(m, d, access.Viewer{Email: "nobody@x.org", Admin: true}, at, nil); v.User.Name != "Nobody" || !v.User.IsAdmin {
 		t.Errorf("stranger = %+v", v.User)
 	}
 }
@@ -546,7 +547,7 @@ func TestRenderLinked(t *testing.T) {
 		{Source: SourceTeam, ID: "E001", Title: "HCA International Night 2026", Description: "Booths wanted.", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open", Mine: MineGoing},
 		{Source: SourceTeam, ID: "E005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/E005", Availability: "done"},
 	}
-	v := Render(m, d, "nobody@x.org", false, at, linked)
+	v := Render(m, d, access.Viewer{Email: "nobody@x.org"}, at, linked)
 	if len(v.Events) != 23 {
 		t.Fatalf("events = %d", len(v.Events))
 	}

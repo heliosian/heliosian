@@ -19,6 +19,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 
+	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/calendar"
@@ -42,20 +43,26 @@ const (
 )
 
 type Sources struct {
-	Directory         func() *who.Model
-	Tags              func(owner string) map[string][]string
-	Lists             func(email string) []who.List
-	Calendar          func() *calendar.Model
-	CalendarDirectory calendar.Directory
-	Linked            func(email string) []calendar.Linked
-	Team              func() *team.Model
-	Celebrate         func() *celebrate.Model
-	Loop              func() *loop.Model
-	LoopSources       func() loop.Sources
-	Links             func() []home.Category
-	Alerts            func(email string) (stale []string, privacy []string)
-	Artifacts         func() *artifacts.Model
-	Embedder          artifacts.Embedder
+	Directory          func() *who.Model
+	Tags               func(owner string) map[string][]string
+	Lists              func(email string) []who.List
+	Calendar           func() *calendar.Model
+	CalendarDirectory  calendar.Directory
+	Linked             func(email string) []calendar.Linked
+	Team               func() *team.Model
+	Celebrate          func() *celebrate.Model
+	CelebrateDirectory celebrate.Directory
+	Loop               func() *loop.Model
+	LoopSources        func() loop.Sources
+	Links              func(v access.Viewer) []home.Category
+	Alerts             func(email string) (stale []string, privacy []string)
+	Artifacts          func() *artifacts.Model
+	Embedder           artifacts.Embedder
+	Admins             Admins
+}
+
+type Admins struct {
+	Team, Celebrate, Loop, Calendar, Home func(email string) bool
 }
 
 type app struct {

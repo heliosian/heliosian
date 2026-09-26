@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"heliosian/internal/access"
 )
 
 type Person struct {
@@ -185,7 +187,70 @@ func classroomsOf(model *Model, me Person, kids []Person) []string {
 	return out
 }
 
-func Render(model *Model, directory Directory, email string, admin bool, now time.Time, linked []Linked) View {
+func (m *Model) EventsFor(v access.Viewer, directory Directory, linked []Linked) []*Event {
+	events := m.eventsFor(directory, v.Email, linked)
+	carried := map[string]bool{}
+	for _, e := range events {
+		carried[e.ID] = true
+	}
+	for _, e := range m.Pending {
+		if !e.Cancelled && (v.Admin || normalizeEmail(e.AddedBy) == normalizeEmail(v.Email)) && !carried[e.ID] {
+			events = append(events, m.withInvitation(e))
+		}
+	}
+	return events
+}
+
+func (m *Model) ResponsesFor(v access.Viewer, directory Directory) map[string]*Responses {
+	mine := map[string]bool{}
+	for _, e := range append(append([]*Event{}, m.Events...), m.Pending...) {
+		if e.AddedBy != "" && !e.PosterLeft && normalizeEmail(e.AddedBy) == normalizeEmail(v.Email) {
+			mine[e.ID] = true
+		}
+	}
+	if !v.Admin && len(mine) == 0 {
+		return nil
+	}
+	responses := map[string]*Responses{}
+	for who, answers := range m.Answers {
+		person, ok := directory.Person(who)
+		if !ok {
+			person = Person{Email: who, Name: displayName(who)}
+		}
+		person.PhotoURL = thumb(person.PhotoURL)
+		person.Line = contactLine(directory, person)
+		for id, answer := range answers {
+			if !v.Admin && !mine[id] {
+				continue
+			}
+			r := responses[id]
+			if r == nil {
+				r = &Responses{}
+				responses[id] = r
+			}
+			switch answer {
+			case AnswerYes:
+				r.Yes = append(r.Yes, person)
+			case AnswerMaybe:
+				r.Maybe = append(r.Maybe, person)
+			case AnswerNo:
+				r.No = append(r.No, person)
+			}
+		}
+	}
+	byName := func(list []Person) {
+		sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+	}
+	for _, r := range responses {
+		byName(r.Yes)
+		byName(r.Maybe)
+		byName(r.No)
+	}
+	return responses
+}
+
+func Render(model *Model, directory Directory, as access.Viewer, now time.Time, linked []Linked) View {
+	email, admin := as.Email, as.Admin
 	me, known := directory.Person(email)
 	if !known {
 		me = Person{Email: email, Name: displayName(email)}
@@ -220,72 +285,13 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 			}
 		}
 	}
-	// The events: the calendar's, with the pending ones the viewer shared -
-	// every pending one for an admin - marked as such.
-	events := model.eventsFor(directory, email, linked)
-	carried := map[string]bool{}
-	for _, e := range events {
-		carried[e.ID] = true
-	}
-	for _, e := range model.Pending {
-		// One the viewer answered is there already, under Going, as a copy;
-		// a cancelled one is on nobody's list, its page found by its link.
-		if !e.Cancelled && (admin || normalizeEmail(e.AddedBy) == normalizeEmail(email)) && !carried[e.ID] {
-			events = append(events, model.withInvitation(e))
-		}
-	}
-	// Who answered: every event for an admin, their own for whoever shared
-	// one and still hosts it.
-	mine := map[string]bool{}
-	for _, e := range append(append([]*Event{}, model.Events...), model.Pending...) {
-		if e.AddedBy != "" && !e.PosterLeft && normalizeEmail(e.AddedBy) == normalizeEmail(email) {
-			mine[e.ID] = true
-		}
-	}
+	events := model.EventsFor(as, directory, linked)
 	var provenance map[string]*Provenance
-	var responses map[string]*Responses
 	if admin {
 		provenance = model.Provenance
 	}
-	if admin || len(mine) > 0 {
-		responses = map[string]*Responses{}
-		for who, answers := range model.Answers {
-			person, ok := directory.Person(who)
-			if !ok {
-				person = Person{Email: who, Name: displayName(who)}
-			}
-			person.PhotoURL = thumb(person.PhotoURL)
-			person.Line = contactLine(directory, person)
-			for id, answer := range answers {
-				if !admin && !mine[id] {
-					continue
-				}
-				r := responses[id]
-				if r == nil {
-					r = &Responses{}
-					responses[id] = r
-				}
-				switch answer {
-				case AnswerYes:
-					r.Yes = append(r.Yes, person)
-				case AnswerMaybe:
-					r.Maybe = append(r.Maybe, person)
-				case AnswerNo:
-					r.No = append(r.No, person)
-				}
-			}
-		}
-		byName := func(list []Person) {
-			sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
-		}
-		for _, r := range responses {
-			byName(r.Yes)
-			byName(r.Maybe)
-			byName(r.No)
-		}
-	}
 	return View{
-		Provenance: provenance, Responses: responses, GradeColors: directory.GradeColors(), Names: names,
+		Provenance: provenance, Responses: model.ResponsesFor(as, directory), GradeColors: directory.GradeColors(), Names: names,
 		User: user, Today: now.Format(DateFormat), Now: now.Format(DateTimeFormat),
 		Classrooms: model.Roster.Classrooms, Colors: directory.ClassroomColors(), Tags: append(append([]Tag{}, model.Tags...), builtinTags...), DayTypes: model.DayTypes, Years: model.Years,
 		Days: model.Days, Events: events, Feeds: feeds, Alerts: Alerts{Stale: stale, Privacy: privacy},

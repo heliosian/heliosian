@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
 )
@@ -250,6 +251,10 @@ func (m *Model) OnTeam(email string) bool {
 		}
 	}
 	return false
+}
+
+func (m *Model) Sees(v access.Viewer) bool {
+	return v.Admin || m.OnTeam(v.Email)
 }
 
 func yesNo(cell string) (bool, error) {

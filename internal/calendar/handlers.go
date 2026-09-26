@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/filter"
@@ -129,7 +130,7 @@ var now = func() time.Time {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
-	view := Render(a.cache.Model(), a.directory, email, admin, now(), a.linked(email))
+	view := Render(a.cache.Model(), a.directory, access.Viewer{Email: email, Admin: admin}, now(), a.linked(email))
 	for i, e := range view.Events {
 		hosted := (e.Source == SourceSheet || e.linked() || e.imported()) && a.isHost(email, false, e)
 		if !hosted && len(e.Hosts) == 0 {

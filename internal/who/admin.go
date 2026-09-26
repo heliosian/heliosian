@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"heliosian/internal/access"
 	"heliosian/internal/blob"
 	"heliosian/internal/config"
 	"heliosian/internal/serve"
@@ -40,13 +41,17 @@ func RegisterAdmin(mux *http.ServeMux, cache *Cache, media *blob.Store) {
 	mux.HandleFunc("POST /api/admin/unhide-person", a.unhidePerson)
 }
 
+func viewerOf(cache *Cache, email string) access.Viewer {
+	return access.Viewer{Email: email, Admin: cache.IsAdmin(email), Household: cache.Model().Family(email)}
+}
+
 func (a admin) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
-	email := effectiveEmail(a.cache, r)
-	if !a.cache.IsAdmin(email) {
+	v := viewerOf(a.cache, effectiveEmail(a.cache, r))
+	if !v.Admin {
 		http.Error(w, "admin access required", http.StatusForbidden)
 		return "", false
 	}
-	return email, true
+	return v.Email, true
 }
 
 func (a admin) page(w http.ResponseWriter, r *http.Request) {
@@ -132,11 +137,12 @@ type crewOption struct {
 }
 
 func (a admin) state(w http.ResponseWriter, r *http.Request) {
-	email := effectiveEmail(a.cache, r)
-	if !a.cache.IsAdmin(email) {
+	v := viewerOf(a.cache, effectiveEmail(a.cache, r))
+	if !v.Admin {
 		http.Error(w, "admin access required", http.StatusForbidden)
 		return
 	}
+	email := v.Email
 	model := a.cache.Model()
 	classrooms := make([]imageInfo, 0, len(model.Classrooms))
 	for _, c := range model.Classrooms {
@@ -274,8 +280,8 @@ const (
 	superEditLength = 400 * 24 * 60 * 60
 )
 
-func superEdit(cache *Cache, r *http.Request, email string) bool {
-	if !cache.IsAdmin(email) {
+func superEdit(r *http.Request, v access.Viewer) bool {
+	if !v.Admin {
 		return false
 	}
 	cookie, err := r.Cookie(superEditCookie)

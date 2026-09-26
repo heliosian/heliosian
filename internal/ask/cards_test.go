@@ -80,7 +80,7 @@ func TestLinkCardsKeepEachAppsVisibility(t *testing.T) {
 			}
 		}
 		seen := map[string]bool{}
-		for _, e := range v.calendar.EventsFor(v.sources.CalendarDirectory, email, v.sources.Linked(email)) {
+		for _, e := range v.calendar.EventsFor(v.whenAs, v.sources.CalendarDirectory, v.sources.Linked(email)) {
 			seen[e.ID] = true
 			if !strings.HasPrefix(eventLink(e), whenBase) {
 				continue
@@ -96,14 +96,14 @@ func TestLinkCardsKeepEachAppsVisibility(t *testing.T) {
 		}
 		for _, g := range v.loop.Groups {
 			_, ok := v.linkCard(loopBase + g.Path())
-			if ok != g.VisibleTo(email, false, v.sources.LoopSources()) {
+			if ok != g.VisibleTo(v.loopAs, v.sources.LoopSources()) {
 				t.Errorf("%s: group %s card %v", email, g.Name, ok)
 			}
 		}
 		hidden, shown := 0, 0
 		for _, p := range v.celebrate.Parties {
 			_, ok := v.linkCard(celebrateBase + v.celebrate.PathOf(p))
-			if ok != p.VisibleTo(email, false) {
+			if ok != p.VisibleTo(v.partyAs) {
 				t.Errorf("%s: party %q (%s) card %v", email, p.Title, p.Status, ok)
 			}
 			if ok {
@@ -115,7 +115,7 @@ func TestLinkCardsKeepEachAppsVisibility(t *testing.T) {
 		for _, root := range v.team.Activities {
 			for _, a := range append([]*team.Activity{root}, root.Descendants()...) {
 				_, ok := v.linkCard(teamBase + v.team.PathOf(a))
-				if ok != v.team.VisibleTo(a, email, false) {
+				if ok != v.team.VisibleTo(a, v.teamAs) {
 					t.Errorf("%s: activity %q (%s) card %v", email, a.Title, a.Status, ok)
 				}
 			}

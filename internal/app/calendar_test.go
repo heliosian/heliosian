@@ -23,10 +23,25 @@ func (sampleImages) Prefetch(context.Context, []string) error { return nil }
 type sampleHousehold struct{}
 
 func (sampleHousehold) Household(email string) (adults, kids []celebrate.Person) {
-	if email != "jordan.whitfield@heliosschool.org" {
-		return nil, nil
+	switch email {
+	case "jordan.whitfield@heliosschool.org":
+		return []celebrate.Person{{Email: "robin.whitfield@heliosschool.org", Name: "Robin Whitfield"}}, []celebrate.Person{{Email: "sam.whitfield@heliosschool.org", Name: "Sam Whitfield"}, {Email: "ella.whitfield@heliosschool.org", Name: "Ella Whitfield"}}
+	case "sam.whitfield@heliosschool.org":
+		return []celebrate.Person{{Email: "jordan.whitfield@heliosschool.org", Name: "Jordan Whitfield"}, {Email: "robin.whitfield@heliosschool.org", Name: "Robin Whitfield"}}, []celebrate.Person{{Email: "ella.whitfield@heliosschool.org", Name: "Ella Whitfield"}}
 	}
-	return []celebrate.Person{{Email: "robin.whitfield@heliosschool.org", Name: "Robin Whitfield"}}, []celebrate.Person{{Email: "sam.whitfield@heliosschool.org", Name: "Sam Whitfield"}, {Email: "ella.whitfield@heliosschool.org", Name: "Ella Whitfield"}}
+	return nil, nil
+}
+
+func (h sampleHousehold) Family(email string) map[string]bool {
+	out := map[string]bool{}
+	if email != "jordan.whitfield@heliosschool.org" {
+		return out
+	}
+	adults, kids := h.Household(email)
+	for _, p := range append(adults, kids...) {
+		out[p.Email] = true
+	}
+	return out
 }
 
 func (sampleHousehold) Person(email string) (celebrate.Person, bool) {
@@ -77,6 +92,24 @@ func TestCalendarLinkedMine(t *testing.T) {
 	for _, l := range linked.list("nobody@x.org") {
 		if l.Mine != "" {
 			t.Errorf("stranger stands with %s: %q", l.ID, l.Mine)
+		}
+	}
+	others := 0
+	for _, l := range linked.list("jordan.whitfield@heliosschool.org") {
+		for _, p := range l.People {
+			if !p.Mine {
+				others++
+			}
+		}
+	}
+	if others == 0 {
+		t.Fatal("the parent sees no one else's standing, so the student check proves nothing")
+	}
+	for _, l := range linked.list("sam.whitfield@heliosschool.org") {
+		for _, p := range l.People {
+			if !p.Mine {
+				t.Errorf("a student sees %s's standing with %s", p.Name, l.ID)
+			}
 		}
 	}
 }

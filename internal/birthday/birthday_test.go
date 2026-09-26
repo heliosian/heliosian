@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
@@ -141,7 +142,7 @@ func call(t *testing.T, mux *http.ServeMux, as, method, path string, body any) *
 
 func view(t *testing.T, cache *Cache, as string) View {
 	t.Helper()
-	return Render(cache.Model(), fakeDirectory{}, as, as == admin, now())
+	return Render(cache.Model(), fakeDirectory{}, access.Viewer{Email: as, Admin: as == admin}, now())
 }
 
 func find(list []StaffView, email string) *StaffView {

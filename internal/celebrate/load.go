@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"heliosian/internal/access"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
 )
@@ -337,8 +338,36 @@ func (p *Party) Hosted(email string) bool {
 	return slices.Contains(p.HostEmails, email)
 }
 
-func (p *Party) VisibleTo(email string, admin bool) bool {
-	return p.Status == StatusOpen || admin || p.Hosted(email)
+func (p *Party) Edits(v access.Viewer) bool {
+	return v.Admin || p.Hosted(v.Email)
+}
+
+func (p *Party) VisibleTo(v access.Viewer) bool {
+	return p.Status == StatusOpen || p.Edits(v)
+}
+
+func (p *Party) For(v access.Viewer, directory Directory) *Party {
+	if !p.VisibleTo(v) {
+		return nil
+	}
+	c := *p
+	c.Tickets = []Ticket{}
+	for _, t := range p.Tickets {
+		if !p.Edits(v) && !v.Mine(t.Purchaser) && !v.Mine(t.Email) {
+			// A guest's line names who bought for them, to everyone.
+			if t.Email != "" && (t.Email == t.Purchaser || known(directory, t.Email)) {
+				t.Purchaser = ""
+			}
+			t.Price, t.Note, t.AddedBy = 0, "", ""
+		}
+		c.Tickets = append(c.Tickets, t)
+	}
+	return &c
+}
+
+func known(directory Directory, email string) bool {
+	_, ok := directory.Person(directory.Resolve(email))
+	return ok
 }
 
 func (p *Party) Sold() int {

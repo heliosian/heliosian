@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
@@ -53,6 +54,17 @@ func (fakeDirectory) Household(email string) (adults, kids []Child) {
 		return []Child{{Email: spouse, Name: "Sam Whitfield"}}, []Child{{Email: kid, Name: "Kit Whitfield", Grade: "3"}}
 	}
 	return nil, nil
+}
+
+func (fakeDirectory) Family(email string) map[string]bool {
+	if email == parent {
+		return map[string]bool{spouse: true, kid: true}
+	}
+	return map[string]bool{}
+}
+
+func viewerOf(email string, admin bool) access.Viewer {
+	return access.Viewer{Email: email, Admin: admin, Household: fakeDirectory{}.Family(email)}
 }
 
 func (fakeDirectory) Grade(string) string { return "" }
@@ -184,14 +196,15 @@ func TestVisibleToIsWhatRenderShows(t *testing.T) {
 				walk(a.Children)
 			}
 		}
-		for _, a := range Render(m, fakeDirectory{}, c.email, c.admin, now()).Activities {
+		as := viewerOf(c.email, c.admin)
+		for _, a := range Render(m, fakeDirectory{}, as, now()).Activities {
 			shown[a.ID] = true
 			walk(a.Children)
 		}
 		hidden := 0
 		for _, a := range all {
-			if m.VisibleTo(a, c.email, c.admin) != shown[a.ID] {
-				t.Errorf("%s (admin %v): %q (%s) VisibleTo %v, rendered %v", c.email, c.admin, a.Title, a.Status, m.VisibleTo(a, c.email, c.admin), shown[a.ID])
+			if m.VisibleTo(a, as) != shown[a.ID] {
+				t.Errorf("%s (admin %v): %q (%s) VisibleTo %v, rendered %v", c.email, c.admin, a.Title, a.Status, m.VisibleTo(a, as), shown[a.ID])
 			}
 			if !shown[a.ID] {
 				hidden++
@@ -205,7 +218,7 @@ func TestVisibleToIsWhatRenderShows(t *testing.T) {
 
 func TestRenderHidesWhatItShould(t *testing.T) {
 	cache, _ := newServer(t)
-	view := Render(cache.Model(), fakeDirectory{}, parent, false, now())
+	view := Render(cache.Model(), fakeDirectory{}, viewerOf(parent, false), now())
 	for _, a := range view.Activities {
 		if a.Status == StatusHidden || a.Status == StatusPending {
 			t.Errorf("%s reached a parent as %s", a.Title, a.Status)
@@ -224,7 +237,7 @@ func TestRenderHidesWhatItShould(t *testing.T) {
 	if view.User.Name != "Robin Whitfield" || view.User.PhotoURL != "/photos/robin.jpg" || view.People != nil {
 		t.Errorf("user %+v, people %v", view.User, view.People)
 	}
-	suggester := Render(cache.Model(), fakeDirectory{}, "elena.torres@heliosschool.org", false, now())
+	suggester := Render(cache.Model(), fakeDirectory{}, viewerOf("elena.torres@heliosschool.org", false), now())
 	found := false
 	for _, a := range suggester.Activities {
 		if a.Title == "Family Escape Room Night" {
@@ -234,8 +247,42 @@ func TestRenderHidesWhatItShould(t *testing.T) {
 	if !found {
 		t.Error("a suggester cannot see their own pending suggestion")
 	}
-	if got := Render(cache.Model(), fakeDirectory{}, "someone.new@heliosschool.org", false, now()).User.Name; got != "Someone New" {
+	if got := Render(cache.Model(), fakeDirectory{}, viewerOf("someone.new@heliosschool.org", false), now()).User.Name; got != "Someone New" {
 		t.Errorf("display name %q", got)
+	}
+}
+
+func TestActivityForPrivateList(t *testing.T) {
+	cache, _ := newServer(t)
+	m := cache.Model()
+	a := &Activity{ID: "X1", Status: StatusOpen, VolunteersHidden: true, Volunteers: []Volunteer{
+		{Email: chair, Position: PositionCoChair},
+		{Email: parent, Position: PositionOpen, AddedBy: parent},
+		{Email: kid, Position: PositionOpen, AddedBy: parent},
+		{Email: "elena.torres@heliosschool.org", Position: PositionOpen},
+	}}
+	for _, c := range []struct {
+		name string
+		as   access.Viewer
+		want []string
+	}{
+		{"stranger", viewerOf("someone.new@heliosschool.org", false), []string{chair}},
+		{"student", viewerOf(kid, false), []string{chair, kid}},
+		{"parent", viewerOf(parent, false), []string{chair, parent, kid}},
+		{"co-chair", viewerOf(chair, false), []string{chair, parent, kid, "elena.torres@heliosschool.org"}},
+		{"admin", viewerOf(admin, true), []string{chair, parent, kid, "elena.torres@heliosschool.org"}},
+	} {
+		got := m.ActivityFor(a, c.as)
+		emails := []string{}
+		for _, v := range got.Volunteers {
+			emails = append(emails, v.Email)
+			if v.AddedBy != "" && !m.Edits(a, c.as) {
+				t.Errorf("%s: added by leaked on %s", c.name, v.Email)
+			}
+		}
+		if !slices.Equal(emails, c.want) || got.Taken != 4 {
+			t.Errorf("%s: got %v taken %d, want %v", c.name, emails, got.Taken, c.want)
+		}
 	}
 }
 

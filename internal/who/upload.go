@@ -488,7 +488,7 @@ func isPhotoSubset(order []string, photos []Photo) bool {
 }
 
 func (u uploader) mayEdit(r *http.Request, model *Model, me, target, key string) bool {
-	return superEdit(u.cache, r, me) || mayEdit(model, me, target, key)
+	return superEdit(r, viewerOf(u.cache, me)) || mayEdit(model, me, target, key)
 }
 
 func mayEdit(model *Model, me, target, key string) bool {

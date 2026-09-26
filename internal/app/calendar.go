@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/team"
@@ -20,6 +21,7 @@ type calendarLinked struct {
 
 type familyLookup interface {
 	Household(email string) (adults, kids []celebrate.Person)
+	Family(email string) map[string]bool
 	Person(email string) (celebrate.Person, bool)
 }
 
@@ -40,19 +42,20 @@ func firstName(name, email string) string {
 
 func (c calendarLinked) list(email string) []calendar.Linked {
 	now := time.Now().In(calendar.Location)
+	as := access.Viewer{Email: email, Household: c.directory.Family(email)}
 	family := familyNames{email: ""}
 	full := map[string]string{}
 	adults, kids := c.directory.Household(email)
 	for _, p := range append(append([]celebrate.Person{}, adults...), kids...) {
-		full[p.Email] = p.Name
-		if p.Email != email {
+		if as.Household[p.Email] {
+			full[p.Email] = p.Name
 			family[p.Email] = firstName(p.Name, p.Email)
 		}
 	}
 	if me, ok := c.directory.Person(email); ok && me.Name != "" {
 		full[email] = me.Name
 	}
-	return append(c.parties(now, family, full), c.activities(family, full)...)
+	return append(c.parties(now, family, full), c.activities(as, family, full)...)
 }
 
 func nameOf(full map[string]string, email, fallback string) string {
@@ -99,7 +102,7 @@ func (c calendarLinked) parties(now time.Time, family familyNames, full map[stri
 	out := []calendar.Linked{}
 	model := c.celebrate.Model()
 	for _, p := range model.SortedParties("") {
-		if !p.VisibleTo("", false) || p.Start == "" {
+		if !p.VisibleTo(access.Viewer{}) || p.Start == "" {
 			continue
 		}
 		var going, waiting standing
@@ -149,18 +152,19 @@ func activityImage(model *team.Model, a *team.Activity) string {
 	return ""
 }
 
-func (c calendarLinked) activities(family familyNames, full map[string]string) []calendar.Linked {
+func (c calendarLinked) activities(as access.Viewer, family familyNames, full map[string]string) []calendar.Linked {
 	out := []calendar.Linked{}
 	model := c.team.Model()
-	for _, a := range model.Activities {
-		if !model.VisibleTo(a, "", false) || a.Start == "" {
+	for _, raw := range model.Activities {
+		if !model.VisibleTo(raw, access.Viewer{}) || raw.Start == "" {
 			continue
 		}
+		a := model.ActivityFor(raw, as)
 		availability := "open"
 		switch {
 		case a.Status == team.StatusDone:
 			availability = "done"
-		case a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots):
+		case a.VolunteersComplete || (a.Spots > 0 && a.Taken >= a.Spots):
 			availability = "full"
 		}
 		var signed standing

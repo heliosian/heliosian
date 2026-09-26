@@ -35,13 +35,14 @@ type activityCard struct {
 	Link        string   `json:"link"`
 }
 
-func (v *viewer) activityCard(a *team.Activity) activityCard {
-	runs := v.team.Runs(a, v.email)
+func (v *viewer) activityCard(raw *team.Activity) activityCard {
+	a := v.team.ActivityFor(raw, v.teamAs)
+	editor := v.team.Edits(a, v.teamAs)
 	start, end, from := v.dates(a)
 	c := activityCard{
 		ID: a.ID, Title: a.Title, Status: a.Status, Timing: a.Timing, Start: start, End: end, When: v.timing(start, end), DatesFrom: from, Past: v.over(a), Location: a.Location, Description: clip(a.Description, 400),
-		Spots: a.Spots, Taken: len(a.Volunteers), Full: a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots), NeedsCoLead: a.CoLeaderNeeded,
-		CoChairs: []string{}, Hidden: a.VolunteersHidden && !runs, Link: teamBase + v.team.PathOf(a),
+		Spots: a.Spots, Taken: a.Taken, Full: a.VolunteersComplete || (a.Spots > 0 && a.Taken >= a.Spots), NeedsCoLead: a.CoLeaderNeeded,
+		CoChairs: []string{}, Hidden: a.VolunteersHidden && !editor, Link: teamBase + v.team.PathOf(a),
 	}
 	if a.Parent != "" {
 		if parent := v.team.Activity(a.Parent); parent != nil {
@@ -55,14 +56,14 @@ func (v *viewer) activityCard(a *team.Activity) activityCard {
 		name := v.name(vol.Email)
 		if vol.Position == team.PositionCoChair {
 			c.CoChairs = append(c.CoChairs, name)
-		} else if runs || !a.VolunteersHidden || v.family[vol.Email] {
+		} else {
 			words := name
 			if vol.Note != "" {
 				words += " (" + vol.Note + ")"
 			}
 			c.Volunteers = append(c.Volunteers, words)
 		}
-		if v.family[vol.Email] {
+		if v.teamAs.Mine(vol.Email) {
 			words := name + ": " + vol.Position
 			if vol.Email == v.email {
 				words = "you: " + vol.Position
@@ -136,7 +137,7 @@ var volunteerOpportunities = tool{
 		total := 0
 		var walk func(a *team.Activity)
 		walk = func(a *team.Activity) {
-			if !v.team.VisibleTo(a, v.email, false) {
+			if !v.team.VisibleTo(a, v.teamAs) {
 				return
 			}
 			if (in.IncludePast || !v.over(a)) && (in.Query == "" || contains(a.Title, in.Query) || contains(a.Description, in.Query)) {
@@ -175,12 +176,12 @@ var getActivity = tool{
 		if a == nil && strings.TrimSpace(in.Path) != "" {
 			a = v.team.Resolve(strings.TrimPrefix(strings.TrimSpace(in.Path), teamBase))
 		}
-		if a == nil || !v.team.VisibleTo(a, v.email, false) {
+		if a == nil || !v.team.VisibleTo(a, v.teamAs) {
 			return nil, fmt.Errorf("nothing on HCA-Team matches that")
 		}
 		under := []activityCard{}
 		for _, d := range a.Descendants() {
-			if v.team.VisibleTo(d, v.email, false) {
+			if v.team.VisibleTo(d, v.teamAs) {
 				under = append(under, v.activityCard(d))
 			}
 		}

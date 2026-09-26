@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/imagesearch"
@@ -125,7 +126,7 @@ func today() string {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
-	view := RenderWith(a.cache.Model(), a.directory, a.rsvps, a.lists, email, admin, time.Now().In(local))
+	view := RenderWith(a.cache.Model(), a.directory, a.rsvps, a.lists, access.Viewer{Email: email, Admin: admin, Household: a.directory.Family(email)}, time.Now().In(local))
 	view.ImageSearch = a.search.On()
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)
 	w.Header().Set("Content-Type", "application/json")

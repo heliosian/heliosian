@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/loop"
@@ -307,14 +308,22 @@ func TestWhoSeesAGroupAndWhoReadsItsMail(t *testing.T) {
 			Excluded: []loop.Excluded{{Email: mia}},
 		})
 		for _, email := range []string{jordan, nico, mia, outsider} {
-			if got := g.VisibleTo(email, false, s); got != c.sees[email] {
+			as := access.Viewer{Email: email}
+			if got := g.VisibleTo(as, s); got != c.sees[email] {
 				t.Errorf("%s: %s sees %v", c.visibility, email, got)
 			}
 			if got := g.MailReadableBy(email, s); got != c.reads[email] {
 				t.Errorf("%s: %s reads the mail %v", c.visibility, email, got)
 			}
+			shown := g.For(as, s)
+			if (shown != nil) != c.sees[email] {
+				t.Errorf("%s: %s got %v from For", c.visibility, email, shown)
+			}
+			if shown != nil && (len(shown.Rules) > 0) != (email == jordan) {
+				t.Errorf("%s: %s sees rules %v", c.visibility, email, shown.Rules)
+			}
 		}
-		if !g.VisibleTo(outsider, true, s) {
+		if !g.VisibleTo(access.Viewer{Email: outsider, Admin: true}, s) {
 			t.Errorf("%s: an admin does not see it", c.visibility)
 		}
 	}

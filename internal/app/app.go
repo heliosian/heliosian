@@ -318,6 +318,10 @@ func teamHousehold(model *who.Model, email string) (adults, kids []team.Child) {
 	return adults, kids
 }
 
+func (d directory) Family(email string) map[string]bool {
+	return d.cache.Model().Family(email)
+}
+
 func (d directory) Household(email string) (adults, kids []team.Child) {
 	p := d.cache.Model().Person(email)
 	if p == nil || !p.IsParent {
@@ -462,6 +466,10 @@ func (d celebrateDirectory) Household(email string) (adults, kids []celebrate.Pe
 		kids = append(kids, celebratePerson(model, k))
 	}
 	return adults, kids
+}
+
+func (d celebrateDirectory) Family(email string) map[string]bool {
+	return d.cache.Model().Family(email)
 }
 
 func (d celebrateDirectory) People() []celebrate.Person {
