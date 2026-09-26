@@ -10,6 +10,8 @@ For a sample-data page, one self-contained command serves, captures, and exits:
 
 It takes `--width` and `--height` too, so `--width 390 --height 844` is a phone; add `?mode=dark` to the URL to see the page in dark mode. It marks Quan mode as already shown, so the sample super admin is not switched onto it and the capture wears the mode the URL asks for. `--click` and `--settle` are the same as `tools/screenshot`'s below, and `--as <address>` views as that person through Spoof Mode, the way the sample super admin can from the toolbar, so a page can be captured as a plain member.
 
+The capture serves on `PORT` (default 8080). When another dev server already holds that port, the capture can reach that server instead of its own, and shows whatever code it is running; give the capture a port nobody else is on, `PORT=8093 go run ./tools/startserver --capture …`.
+
 With a server already running, capture against it directly:
 
     go run ./tools/screenshot --url https://who.heliosiandev.com:8080/people --out local/screenshots/directory.png --wait .sidebar

@@ -41,6 +41,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `sampledata/` — the fictional community served by default
 - `cmd/` — the binaries production runs besides `main.go`: `cmd/periodicsync`, the scheduled job that reads the school's year calendar PDF
 - `tools/` — dev tooling, never deployed: the dev server, screenshots, browser driving, sheet inspection, imports, deploy
+- `asset-sources/` — the designer's Photoshop files and exports every app's brand art is cut from, never deployed (`docs/brand.md`)
 - `docs/` — everything below
 
 ## Docs
@@ -52,6 +53,7 @@ Platform:
 - [deploy.md](docs/deploy.md) — production deployment
 - [config.md](docs/config.md) — the Config sheet: super admins and the platform settings
 - [toolbar.md](docs/toolbar.md) — the top bar every app shares: search with `/`, the account avatar, the switch between apps
+- [brand.md](docs/brand.md) — where every app's logo art lives, and how its icons and lockups are cut from it
 - [feedback.md](docs/feedback.md) — "Report a problem or idea": the form in every app, the sheet it lands in, and the queue an admin files from
 
 Helios Who?, in `docs/who/`:

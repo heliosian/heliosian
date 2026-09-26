@@ -2,5 +2,6 @@
 local/
 docs/
 sampledata/
+asset-sources/
 Dockerfile
 LICENSE.md
