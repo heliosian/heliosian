@@ -119,7 +119,16 @@ type ActivityView struct {
 	// events at the top alone.
 	Started bool `json:"started,omitempty"`
 	Invited bool `json:"invited,omitempty"`
+	// EmailList is the Helios Loop group whose rules name this thing's
+	// volunteers - its name, the address's first part - for whoever runs
+	// it; blank when there is none yet.
+	EmailList string `json:"emailList,omitempty"`
 }
+
+// EmailListLookup answers, for an activity's id, the Helios Loop group
+// drawn from its volunteers, or blank; Loop's cache is behind it in the
+// server.
+type EmailListLookup func(id string) string
 
 // EventRSVPs is Helios When's word on an event's guest list: whether the
 // invites went out, and each invitee's answer by address - yes, maybe,
@@ -242,6 +251,10 @@ func (v viewer) volunteers(list []Volunteer, hidden, editor bool) []Volunteer {
 // switch and nothing more: an event that hides its list does not hide its
 // committees'.
 func (v viewer) children(list []*Activity, editor, runs bool) []*ActivityView {
+	return v.childrenWith(list, editor, runs, nil)
+}
+
+func (v viewer) childrenWith(list []*Activity, editor, runs bool, lists EmailListLookup) []*ActivityView {
 	out := []*ActivityView{}
 	for _, c := range list {
 		own := editor || v.canEdit(c)
@@ -249,26 +262,30 @@ func (v viewer) children(list []*Activity, editor, runs bool) []*ActivityView {
 			continue
 		}
 		chairs := runs || c.IsCoChair(v.email)
-		out = append(out, &ActivityView{
+		view := &ActivityView{
 			Activity:   c,
-			Children:   v.children(c.Children, own, chairs),
+			Children:   v.childrenWith(c.Children, own, chairs, lists),
 			Volunteers: v.volunteers(c.Volunteers, c.VolunteersHidden, own),
 			Taken:      len(c.Volunteers),
 			CanEdit:    own,
 			Runs:       chairs,
-		})
+		}
+		if chairs && lists != nil {
+			view.EmailList = lists(c.ID)
+		}
+		out = append(out, view)
 	}
 	return out
 }
 
 // Render is the model as one signed-in person sees it.
 func Render(model *Model, directory Directory, email string, admin bool, now time.Time) View {
-	return RenderWith(model, directory, nil, email, admin, now)
+	return RenderWith(model, directory, nil, nil, email, admin, now)
 }
 
 // RenderWith is Render with Helios When's word on each event's guest
-// list, for the chairs.
-func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, email string, admin bool, now time.Time) View {
+// list, and Helios Loop's on each thing's email list, for the chairs.
+func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, lists EmailListLookup, email string, admin bool, now time.Time) View {
 	v := viewer{email: email, admin: admin, directory: directory, family: map[string]bool{}}
 	name, photo := v.person(email)
 	spouses, children := directory.Household(email)
@@ -295,11 +312,14 @@ func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, email strin
 		chairs := a.IsCoChair(v.email)
 		av := ActivityView{
 			Activity:   a,
-			Children:   v.children(a.Children, editor, chairs),
+			Children:   v.childrenWith(a.Children, editor, chairs, lists),
 			Volunteers: v.volunteers(a.Volunteers, a.VolunteersHidden, editor),
 			Taken:      len(a.Volunteers),
 			CanEdit:    editor,
 			Runs:       chairs,
+		}
+		if chairs && lists != nil {
+			av.EmailList = lists(a.ID)
 		}
 		// Whoever runs the event reads each volunteer's answer to its
 		// invitation on Helios When, once the invites are out.

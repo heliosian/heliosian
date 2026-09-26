@@ -135,6 +135,9 @@
 
 .facet-section-body .facet-option { padding-left: 24px; }
 
+/* A committee's list, set in beneath its event's. */
+.facet-option.is-under { padding-left: calc(14px + var(--depth, 1) * 22px); }
+
 .facet-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 12px 4px; border-top: 1px solid var(--line); margin-top: 4px; }
 
 /* The editor's pencil and trash, for a page without an icon-button of its own. */

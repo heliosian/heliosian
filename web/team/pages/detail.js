@@ -722,14 +722,13 @@ function volunteersBox(node, editing, save) {
       actions.append(button(me.label, me.icon, 'button button-small', me.onClick));
     }
   }
-  // The invitation lives on Helios When: Create Invite starts the event's
-  // guest list there from the volunteers; once the invites are out the
-  // same page is where the RSVPs are.
-  if (node.canEdit && node === rootOf(node) && parseWhen(node.start)) {
-    const invite = el('a', 'button button-small' + (node.started ? ' button-secondary' : ''));
-    invite.href = invitePath(node);
-    invite.append(svg('calendar'), el('span', '', node.invited ? 'RSVPs on Helios When' : node.started ? 'The invite on Helios When' : 'Create Invite'));
-    actions.append(invite);
+  // Its email list lives on Helios Loop: Create Decor Email List makes one
+  // from the volunteers, and once there is one the button opens it.
+  if (node.runs) {
+    const list = el('a', 'button button-small' + (node.emailList ? ' button-secondary' : ''));
+    list.href = emailListPath(node);
+    list.append(svg('mail'), el('span', '', emailListWords(node)));
+    actions.append(list);
   }
   head.append(actions);
   box.append(head);
@@ -845,11 +844,13 @@ function volunteersBox(node, editing, save) {
 
 // priorityCard is an admin's way - with the pencil on - to mark a thing
 // the community most needs hands for, or to take the mark off: a button at
-// the foot of the sidebar. A marked thing leads the Opportunities page
+// the foot of the sidebar, while it still wants people. A marked thing leads the Opportunities page
 // under the High Priority chip and fills the Priority chip of the Team
 // widget on Heliosian's front page.
 function priorityCard(node, save) {
-  if (!isAdmin()) {
+  // A thing with its volunteers complete, or every spot taken, needs no
+  // more hands, so it is no one's priority.
+  if (!isAdmin() || isFull(node)) {
     return null;
   }
   const card = sideCard('priority-card');
@@ -981,31 +982,42 @@ function flyerCard(node, editing, save) {
 
 // helpCard points at the people who run the activity. Only shown when there is
 // somebody to point at - co-chairs are the ones with a published address here.
-// invitePath is the event's page on Helios When - with ?invite=1, which
-// starts the guest list there, while none exists yet.
-function invitePath(node) {
-  return appOrigin('calendar') + '/e/team/' + encodeURIComponent(node.id) + (node.started ? '' : '?invite=1');
+// emailListPath is this thing's email list on Helios Loop, or - while it
+// has none - Loop's new-list form filled in from its volunteers: the list
+// of everyone signed up here and under it, with its co-chairs, which Loop
+// offers the chairs (/new?from=activity:<id>).
+function emailListPath(node) {
+  if (node.emailList) {
+    return appOrigin('loop') + '/groups/' + encodeURIComponent(node.emailList);
+  }
+  return appOrigin('loop') + '/new?from=' + encodeURIComponent('activity:' + node.id);
 }
 
-// inviteCard is a chair's own word in the rail, highlighted so it is not
-// missed: the invitation lives on Helios When. Before a guest list exists
-// it says how Create Invite starts one; with a list still to be sent, that
-// the invite is waiting there; once the invites are out, that the RSVPs
-// are there. For the events at the top, with a date.
-function inviteCard(node) {
-  if (!node.canEdit || node !== rootOf(node) || !parseWhen(node.start)) {
+// emailListWords names the list by what it is for - "Create Decor Email
+// List" - so a committee's is plainly the committee's and not the event's.
+function emailListWords(node) {
+  return node.emailList ? `${node.title} Email List` : `Create ${node.title} Email List`;
+}
+
+// emailListCard is a chair's own word in the rail, highlighted so it is not
+// missed: an email list for this thing - the event, or one committee in it
+// - reaching everyone signed up here and under it, and its co-chairs, as
+// they come and go. Before there is one it says how Create makes one on
+// Helios Loop; after, its address and the way to it. For whoever runs it
+// or something above it.
+function emailListCard(node) {
+  if (!node.runs) {
     return null;
   }
   const card = sideCard('side-card-invite');
-  const [title, words, label] = node.invited
-    ? ['RSVPs on Helios When', 'The invites are out. The guest list and the RSVPs are on the event\u2019s page on Helios When - who signed up, who has said they are coming, and the way to remind whoever has not.', 'See the RSVPs']
-    : node.started
-      ? ['Your invite is waiting', 'The guest list is started on Helios When, and nobody has been sent the invitation yet. Look it over there and send it when it is ready.', 'View the invite']
-      : ['Invite your volunteers', 'Create an invite on Helios When and start collecting RSVPs. If more people sign up, the invite can be automatically updated.', 'Create Invite'];
+  const address = node.emailList ? `${node.emailList}@loop.heliosian.com` : '';
+  const [title, words] = node.emailList
+    ? [`${node.title} Email List`, `${address} reaches everyone signed up for ${node.title}, and its co-chairs, as people join and leave.`]
+    : [`Email everyone in ${node.title}`, `Make an email list on Helios Loop of everyone signed up for ${node.title}, and its co-chairs. It keeps up as people join and leave.`];
   card.append(el('div', 'side-title', title), el('div', 'side-line', words));
   const a = el('a', 'button button-small side-button');
-  a.href = invitePath(node);
-  a.append(svg('calendar'), el('span', '', label));
+  a.href = emailListPath(node);
+  a.append(svg('mail'), el('span', '', emailListWords(node)));
   card.append(a);
   return card;
 }
@@ -1482,7 +1494,7 @@ export function activityPage(node) {
   }
 
   const side = el('aside', 'detail-side');
-  for (const card of [inviteCard(node), phone.matches ? null : facts, flyerCard(node, editing, save), helpCard(node), priorityCard(node, save)]) {
+  for (const card of [emailListCard(node), phone.matches ? null : facts, flyerCard(node, editing, save), helpCard(node), priorityCard(node, save)]) {
     if (card) {
       side.append(card);
     }

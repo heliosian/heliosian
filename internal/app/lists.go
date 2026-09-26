@@ -134,14 +134,18 @@ func activities(directory *who.Model, model *team.Model, email string, now time.
 		last, _ := team.ParseWhen(cell)
 		return last.Before(today)
 	}
-	var walk func(a, root *team.Activity, under bool)
-	walk = func(a, root *team.Activity, under bool) {
+	// Every thing at or under one the viewer co-chairs is a list of theirs:
+	// the event's whole team, and each committee's ("Spring Celebration:
+	// Decor"), so a committee can have its own email list.
+	var walk func(a, root *team.Activity, parent string)
+	walk = func(a, root *team.Activity, parent string) {
 		if over(a) {
 			return
 		}
-		mine := !under && chairs(a)
-		if mine {
-			list := who.List{Key: who.ListActivity + ":" + a.ID, Name: a.Title, Kind: who.ListActivity, Guests: []who.Guest{}, Hosts: resolved(directory, a.CoChairs())}
+		key := ""
+		if parent != "" || chairs(a) {
+			key = who.ListActivity + ":" + a.ID
+			list := who.List{Key: key, Name: a.Title, Kind: who.ListActivity, Parent: parent, Guests: []who.Guest{}, Hosts: resolved(directory, a.CoChairs())}
 			if a != root {
 				list.Name = root.Title + ": " + a.Title
 			}
@@ -162,13 +166,31 @@ func activities(directory *who.Model, model *team.Model, email string, now time.
 			out = append(out, list)
 		}
 		for _, c := range a.Children {
-			walk(c, root, under || mine)
+			walk(c, root, key)
 		}
 	}
 	for _, a := range model.Activities {
 		if a.Year == year {
-			walk(a, a, false)
+			walk(a, a, "")
 		}
 	}
 	return out
+}
+
+// activityEmailList is Team's lookup of an activity's email list: the Helios
+// Loop group one of whose rules names the activity's list of volunteers
+// ("activity:<id>"), by its name, or blank - so the activity page offers the
+// list that is there rather than making another.
+func activityEmailList(groups func() *loop.Model) team.EmailListLookup {
+	return func(id string) string {
+		key := who.ListActivity + ":" + id
+		for _, g := range groups().Groups {
+			for _, r := range g.Rules {
+				if slices.Contains(r.Tags, key) {
+					return g.Name
+				}
+			}
+		}
+		return ""
+	}
 }

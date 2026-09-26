@@ -52,6 +52,7 @@ type app struct {
 	mailer      mail.Sender
 	from        string
 	rsvps       RSVPLookup
+	lists       EmailListLookup
 }
 
 type ImageSearch = imagesearch.Search
@@ -60,11 +61,11 @@ func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 	a.search.ServeImport(w, r, imageFolder, maxImageSize)
 }
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup, lists EmailListLookup) {
 	if search.UserAgent == "" {
 		search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
 	}
-	a := app{cache: cache, media: media, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps}
+	a := app{cache: cache, media: media, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps, lists: lists}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -134,7 +135,7 @@ func today() string {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
-	view := RenderWith(a.cache.Model(), a.directory, a.rsvps, email, admin, time.Now().In(local))
+	view := RenderWith(a.cache.Model(), a.directory, a.rsvps, a.lists, email, admin, time.Now().In(local))
 	view.ImageSearch = a.search.On()
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)
 	w.Header().Set("Content-Type", "application/json")
@@ -583,9 +584,14 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 		"Direct Sign-Up": YesNo(body.DirectSignUp), "Pretty ID": pretty, "Allow Adding": allowAdding,
 	}
 	// Priority is an admin's to set: anyone else's save keeps what it was.
+	// Volunteers complete takes it off - a thing with all the hands it needs
+	// is no one's priority - and a complete thing cannot be marked.
 	priority := body.Priority
 	if !admin {
 		priority = current != nil && current.Priority
+	}
+	if body.VolunteersComplete {
+		priority = false
 	}
 	cells[PriorityColumn] = YesNo(priority)
 	for k, v := range highlightCells(body.Highlight) {

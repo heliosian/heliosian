@@ -558,9 +558,11 @@ export function categoryPath(id) {
 // the events an admin marked a priority, or that hold something that is.
 export const PRIORITY = 'high-priority';
 
-// isPriority says a thing, or anything under it, is marked a priority.
+// isPriority says a thing, or anything under it, is marked a priority and
+// still wants people: once its volunteers are complete, or every spot is
+// taken, the mark no longer counts.
 export function isPriority(node) {
-  return Boolean(node.priority) || (node.children || []).some(isPriority);
+  return (Boolean(node.priority) && !isFull(node)) || (node.children || []).some(isPriority);
 }
 
 // categoryFromAddress is the heading the address bar names, by slug or by

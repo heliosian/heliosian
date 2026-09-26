@@ -392,6 +392,9 @@ type ListOption struct {
 	Key  string `json:"key"`
 	Name string `json:"name"`
 	Kind string `json:"kind"`
+	// Parent is the list's own parent list (who.List.Parent), for a
+	// committee under its event.
+	Parent string `json:"parent,omitempty"`
 }
 
 type Options struct {
@@ -440,7 +443,7 @@ func OptionsFor(s Sources, viewer string) Options {
 	lists := []ListOption{}
 	if s.Lists != nil {
 		for _, l := range s.Lists(viewer) {
-			lists = append(lists, ListOption{Key: l.Key, Name: l.Name, Kind: l.Kind})
+			lists = append(lists, ListOption{Key: l.Key, Name: l.Name, Kind: l.Kind, Parent: l.Parent})
 		}
 	}
 	slices.SortFunc(lists, func(x, y ListOption) int { return strings.Compare(x.Name, y.Name) })

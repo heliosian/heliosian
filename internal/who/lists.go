@@ -13,6 +13,10 @@ type List struct {
 	People []string `json:"people"`
 	Guests []Guest  `json:"guests"`
 	Hosts  []string `json:"-"`
+	// Parent is the list this one sits under - an event's, for one of its
+	// committees - so a picker can show it beneath its event; blank at the
+	// top.
+	Parent string `json:"parent,omitempty"`
 	// Archived is a group's list its manager has put away in Loop: kept
 	// off Who?'s rail and filters for them, though its page still opens.
 	Archived bool `json:"archived,omitempty"`

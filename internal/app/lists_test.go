@@ -8,6 +8,7 @@ import (
 
 	"heliosian/internal/celebrate"
 	"heliosian/internal/data"
+	"heliosian/internal/filter"
 	"heliosian/internal/loop"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
@@ -115,5 +116,48 @@ func TestMagicTagsCarryTheirHosts(t *testing.T) {
 	}
 	if !slices.Contains(lists[i].People, jordan) {
 		t.Fatalf("Fondue & Fort Night's list leaves off its host: %v", lists[i].People)
+	}
+}
+
+// TestCommitteesAreListsToo checks that a co-chair's lists hold each
+// committee under the event they chair, by the event's name and the
+// committee's, so a committee can have an email list of its own; and that
+// the activity page finds a Loop group whose rule names an activity's list.
+func TestCommitteesAreListsToo(t *testing.T) {
+	t.Chdir("../..")
+	dir := &data.Dir{Root: "sampledata"}
+	directory, err := who.LoadModel(dir, nil, staticFiles{}, []byte("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	teamCache, err := team.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, store.NewQueue())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mina := directory.Resolve("mina.park@heliosschool.org")
+	lists := activities(directory, teamCache.Model(), mina, time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC))
+	names := map[string]string{}
+	for _, l := range lists {
+		names[l.Key] = l.Name
+	}
+	if names["activity:E002"] != "Spring Celebration" || names["activity:E023"] != "Spring Celebration: Decor" {
+		t.Errorf("mina's lists: %v", names)
+	}
+	for _, l := range lists {
+		if l.Key == "activity:E023" && l.Parent != "activity:E002" {
+			t.Errorf("decor sits under %q", l.Parent)
+		}
+		if l.Key == "activity:E002" && l.Parent != "" {
+			t.Errorf("the event sits under %q", l.Parent)
+		}
+	}
+	model := &loop.Model{Groups: []loop.Group{{Name: "soccer", Rules: []filter.Rule{{Kind: filter.KindInclude, Tags: []string{"room:jays"}}}}}}
+	lookup := activityEmailList(func() *loop.Model { return model })
+	if got := lookup("E023"); got != "" {
+		t.Errorf("decor has a list already: %q", got)
+	}
+	model.Groups = append(model.Groups, loop.Group{Name: "decor", Rules: []filter.Rule{{Kind: filter.KindInclude, Tags: []string{"activity:E023"}}}})
+	if got := lookup("E023"); got != "decor" {
+		t.Errorf("decor's list: %q", got)
 	}
 }

@@ -77,4 +77,20 @@ func TestPriorityIsAnAdmins(t *testing.T) {
 	if !cache.Model().Activity("E020").Priority {
 		t.Fatal("a co-chair cleared an admin's mark")
 	}
+	// Volunteers complete takes the mark off, whoever saves it, and an admin
+	// cannot mark a complete thing.
+	edit["volunteersComplete"] = true
+	if rec := call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+		t.Fatalf("complete: %d %s", rec.Code, rec.Body)
+	}
+	if cache.Model().Activity("E020").Priority {
+		t.Fatal("a complete thing kept its priority")
+	}
+	edit["priority"] = true
+	if rec := call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+		t.Fatalf("admin save: %d %s", rec.Code, rec.Body)
+	}
+	if cache.Model().Activity("E020").Priority {
+		t.Fatal("an admin marked a complete thing")
+	}
 }

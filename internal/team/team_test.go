@@ -81,7 +81,7 @@ func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, mailer, testFrom, nil)
+	Register(mux, cache, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, mailer, testFrom, nil, nil)
 	return cache, mux
 }
 

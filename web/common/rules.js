@@ -44,8 +44,12 @@ export function filterWidgets({el, svg, button}) {
       panel.append(el('div', 'facet-empty', 'Nothing to choose yet.'));
     }
     for (const v of values) {
-      const {value, label: text, icon: mark} = typeof v === 'string' ? {value: v, label: v} : v;
-      const row = el('label', 'facet-option');
+      const {value, label: text, icon: mark, depth} = typeof v === 'string' ? {value: v, label: v} : v;
+      // A committee's list sits under its event's, set in by how deep it is.
+      const row = el('label', 'facet-option' + (depth ? ' is-under' : ''));
+      if (depth) {
+        row.style.setProperty('--depth', depth);
+      }
       const box = el('input');
       box.type = 'checkbox';
       box.checked = chosen.has(value);
@@ -316,13 +320,27 @@ export function rulesEditor({el, svg, options, personName}) {
       changed();
     }));
     const tags = new Set(rule.tags);
+    // A committee's list follows its event's - the names sort so - set in
+    // beneath it under its own short name ("K - 2 Spellers"), though the
+    // rule still says it whole.
+    const depthOf = l => {
+      let depth = 0;
+      for (let at = l; at && at.parent; at = options().lists.find(x => x.key === at.parent)) {
+        depth++;
+      }
+      return depth;
+    };
+    const shortName = l => (l.parent ? l.name.slice(l.name.lastIndexOf(': ') + 2) : l.name);
     const tagValues = [
       ...options().tags.map(t => ({value: t.key, label: t.name, icon: 'tag'})),
-      ...options().lists.map(l => ({value: l.key, label: l.name, icon: listIcons[l.kind]})),
+      ...options().lists.map(l => ({value: l.key, label: shortName(l), whole: l.name, icon: listIcons[l.kind], depth: depthOf(l)})),
     ];
     controls.append(facetDropdown('Tags', 'tag', tagValues, tags, () => {
       rule.tags = [...tags];
-      rule.tagLabels = rule.tags.map(t => (tagValues.find(v => v.value === t) || {label: t}).label);
+      rule.tagLabels = rule.tags.map(t => {
+        const v = tagValues.find(x => x.value === t) || {label: t};
+        return v.whole || v.label;
+      });
       changed();
     }));
     const family = new Set(rule.family);
