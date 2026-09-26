@@ -60,7 +60,7 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 		kids:   map[string][]Person{},
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, nil, nil, ImageSearch{}, Mail{})
+	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{})
 	return mux, cache
 }
 
@@ -364,7 +364,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	d := fakeDirectory{people: map[string]Person{"jordan.whitfield@heliosschool.org": {Email: "jordan.whitfield@heliosschool.org", Name: "Jordan", IsParent: true}}, kids: map[string][]Person{}}
 	kept := &keptMail{}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, nil, nil, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>"})
+	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>"})
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {

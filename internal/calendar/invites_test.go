@@ -30,6 +30,15 @@ const (
 
 var testDirectory fakeDirectory
 
+// The party's tickets beyond the fixture's own, who Celebrate's admins are,
+// the moves asked of Celebrate, and the hooks Register handed back.
+var (
+	testAttendees      []Attendee
+	testCelebrateAdmin string
+	testMoves          [][4]string
+	testHooks          Hooks
+)
+
 func invitesApp(t *testing.T) (http.Handler, *Cache, *keptMail) {
 	h, c, k, _ := invitesAppWith(t)
 	return h, c, k
@@ -66,7 +75,16 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSourc
 		if id != "p1" {
 			return nil
 		}
-		return &PartyPeople{Hosts: []string{mia}, Attendees: []Attendee{{Email: robin, Name: "Robin Whitfield", Status: "ticket"}, {Email: sam, Name: "Sam Whitfield", Status: "ticket"}, {Name: "A cousin", Status: "waitlist"}}}
+		return &PartyPeople{Hosts: []string{mia}, Attendees: append([]Attendee{{Email: robin, Name: "Robin Whitfield", Status: "ticket"}, {Email: sam, Name: "Sam Whitfield", Status: "ticket"}, {Name: "A cousin", Status: "waitlist"}}, testAttendees...)}
+	}
+	testAttendees, testCelebrateAdmin, testMoves = nil, "", nil
+	celebrate := Celebrate{
+		Party:   parties,
+		IsAdmin: func(email string) bool { return email != "" && email == testCelebrateAdmin },
+		MoveAddress: func(_ context.Context, actor, old, to, name string) error {
+			testMoves = append(testMoves, [4]string{actor, old, to, name})
+			return nil
+		},
 	}
 	linked := func(email string) []Linked {
 		return []Linked{
@@ -76,7 +94,7 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSourc
 	}
 	mux := http.NewServeMux()
 	sources := newSampleSources(t)
-	Register(mux, cache, nil, testDirectory, func() []string { return nil }, linked, parties, sources.sources, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey})
+	testHooks = Register(mux, cache, nil, testDirectory, func() []string { return nil }, linked, celebrate, sources.sources, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey})
 	return mux, cache, kept, sources
 }
 
@@ -1615,4 +1633,86 @@ func TestToolbarRSVPs(t *testing.T) {
 	if w := waiting(robinH); len(w) != 0 {
 		t.Errorf("robin after answering owes: %+v", w)
 	}
+}
+
+func TestTicketGuestsAndMovedAddresses(t *testing.T) {
+	mux, cache, kept, sources := invitesAppWith(t)
+	const (
+		alum   = "ella.graduated@heliosschool.org"
+		home   = "ella.w@gmail.com"
+		cousin = "kit@example.org"
+	)
+	testAttendees = []Attendee{{Email: alum, Status: "ticket"}, {Email: cousin, Name: "Kit Whitfield", Status: "free"}, {Email: "hopeful@example.org", Name: "Hopeful", Status: "waitlist"}}
+	sources.extra = map[string][]string{"party:p1": {mia, robin, sam}}
+	miaH := as(mia, mux)
+	if rec := call(t, miaH, "POST", "/api/calendar/invites/start", `{"id":"`+partyA+`"}`); rec.Code != 200 {
+		t.Fatalf("start: %d %s", rec.Code, rec.Body)
+	}
+	model := cache.Model()
+	for _, email := range []string{alum, cousin} {
+		if inv := model.InviteOf(partyA, email); inv == nil || inv.Token == "" {
+			t.Errorf("ticket guest %s = %+v", email, inv)
+		}
+	}
+	if inv := model.InviteOf(partyA, cousin); inv == nil || inv.Name != "Kit Whitfield" {
+		t.Errorf("the cousin's name = %+v", inv)
+	}
+	if model.InviteOf(partyA, "hopeful@example.org") != nil {
+		t.Errorf("someone only on the waitlist is on the list")
+	}
+	call(t, miaH, "POST", "/api/calendar/invites/send", `{"id":"`+partyA+`"}`)
+	waitFor(kept, 5)
+	if len(mailTo(kept, alum)) != 1 || len(mailTo(kept, cousin)) != 1 {
+		t.Fatalf("ticket guests were not sent the invitation: alum %d, cousin %d", len(mailTo(kept, alum)), len(mailTo(kept, cousin)))
+	}
+	call(t, miaH, "POST", "/api/calendar/invites/answer", `{"id":"`+partyA+`","email":"`+alum+`","answer":"maybe"}`)
+
+	// A host who is not one of Celebrate's admins sees no way to move it
+	// everywhere, and is refused if they try.
+	if v := inviteView(t, miaH, partyA); v.MoveEverywhere {
+		t.Errorf("a host who is no admin of Celebrate may move addresses everywhere")
+	}
+	body := `{"id":"` + partyA + `","email":"` + alum + `","to":"` + home + `","everywhere":true}`
+	if rec := call(t, miaH, "POST", "/api/calendar/invites/email", body); rec.Code != 403 {
+		t.Errorf("moved everywhere without being Celebrate's admin: %d", rec.Code)
+	}
+	testCelebrateAdmin = mia
+	if v := inviteView(t, miaH, partyA); !v.MoveEverywhere {
+		t.Errorf("Celebrate's admin is not offered the move")
+	}
+	if rec := call(t, miaH, "POST", "/api/calendar/invites/email", body); rec.Code != 204 {
+		t.Fatalf("move everywhere: %d %s", rec.Code, rec.Body)
+	}
+	if len(testMoves) != 1 || testMoves[0] != [4]string{mia, alum, home, "Ella Graduated"} {
+		t.Fatalf("Celebrate was asked %v", testMoves)
+	}
+
+	// Celebrate moves its tickets, then tells the calendar (the Hooks).
+	token := cache.Model().InviteOf(partyA, alum).Token
+	testAttendees[0].Email = home
+	testHooks.MoveAddress(context.Background(), mia, alum, home, "Ella Whitfield")
+	model = cache.Model()
+	moved := model.InviteOf(partyA, home)
+	if moved == nil || model.InviteOf(partyA, alum) != nil || moved.Token != token || moved.Name != "Ella Whitfield" {
+		t.Fatalf("after the move: %+v, old %+v", moved, model.InviteOf(partyA, alum))
+	}
+	if model.AnswerOf(home, partyA) != AnswerMaybe {
+		t.Errorf("the answer did not follow: %q", model.AnswerOf(home, partyA))
+	}
+	waitFor(kept, 6)
+	if len(mailTo(kept, home)) != 1 {
+		t.Errorf("the invitation was not sent again to the new address: %d", len(mailTo(kept, home)))
+	}
+	// The group's next sweep finds the ticket at the new address on the
+	// list already, and adds nobody.
+	if n := testHooksFill(t, cache, mux); n != 0 {
+		t.Errorf("the sweep added %d after the move", n)
+	}
+}
+
+func testHooksFill(t *testing.T, cache *Cache, mux http.Handler) int {
+	t.Helper()
+	before := len(cache.Model().Invites[partyA])
+	inviteView(t, as(mia, mux), partyA)
+	return len(cache.Model().Invites[partyA]) - before
 }

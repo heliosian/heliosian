@@ -109,7 +109,7 @@ func TestRepliesRecordAnswers(t *testing.T) {
 	}
 	m := Mail{SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, nil, nil, ImageSearch{}, m)
+	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, m)
 	own := replyAddress("a7@sample", me)
 	if own != "Helios When <rsvp+"+(app{mail: m}).replyToken("a7@sample", me)+"@reply.heliosian.com>" {
 		t.Fatalf("organizer = %q", own)

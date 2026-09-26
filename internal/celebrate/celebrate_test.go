@@ -100,7 +100,7 @@ func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, mailer, testFrom, nil)
+	Register(mux, cache, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, mailer, testFrom, nil, nil)
 	return cache, mux
 }
 
@@ -1143,5 +1143,143 @@ func TestReassign(t *testing.T) {
 	}
 	if rec := call(t, mux, parent, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": adults, "email": kid}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("reassigned an adults-only ticket to a child: %d", rec.Code)
+	}
+}
+
+func TestMoveAddress(t *testing.T) {
+	cache, _ := newServer(t)
+	type move struct{ actor, old, to, name string }
+	told := []move{}
+	mux := http.NewServeMux()
+	Register(mux, cache, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom, nil, func(_ context.Context, actor, old, to, name string) {
+		told = append(told, move{actor, old, to, name})
+	})
+	const (
+		school = "ella.graduated@heliosschool.org"
+		home   = "ella.w@gmail.com"
+		later  = "ella.whitfield@college.edu"
+	)
+	var held string
+	for _, tk := range cache.Model().Party("P001").Tickets {
+		if tk.Email == teen {
+			held = tk.ID
+		}
+	}
+	// A ticket that took its name from the directory while its holder was
+	// still in it: an address and no name.
+	if rec := call(t, mux, admin, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": held, "email": school}); rec.Code != http.StatusNoContent {
+		t.Fatalf("set up the alum's ticket: %d %s", rec.Code, rec.Body)
+	}
+	body := map[string]any{"old": school, "to": home, "name": "Ella Whitfield"}
+	if rec := call(t, mux, parent, "POST", "/api/celebrate/address", body); rec.Code != http.StatusForbidden {
+		t.Fatalf("a parent moved an address: %d", rec.Code)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/celebrate/address", map[string]any{"old": parent, "to": home}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("moved an address the directory holds: %d", rec.Code)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/celebrate/address", body); rec.Code != http.StatusNoContent {
+		t.Fatalf("move: %d %s", rec.Code, rec.Body)
+	}
+	tk, _ := cache.Model().TicketByID(held)
+	if tk.Email != home || tk.Name != "Ella Whitfield" || tk.Purchaser != parent {
+		t.Fatalf("after the move: %+v", tk)
+	}
+	if len(told) != 1 || told[0] != (move{admin, school, home, "Ella Whitfield"}) {
+		t.Fatalf("When was told %+v", told)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/celebrate/address", body); rec.Code != http.StatusBadRequest {
+		t.Fatalf("moved the same address twice: %d", rec.Code)
+	}
+
+	// A ticket row still naming the old address - pasted in by hand - reads
+	// as the new one.
+	if err := cache.Commit(context.Background(), admin, store.Insert(ticketsTab, store.Row{"Ticket ID": "TOLD", "Party ID": "P002", "Email": school, "Purchaser": school, "Status": TicketSold, "Price": "0"})); err != nil {
+		t.Fatal(err)
+	}
+	if tk, _ := cache.Model().TicketByID("TOLD"); tk.Email != home || tk.Purchaser != home || tk.Name != "Ella Whitfield" {
+		t.Fatalf("a row naming the old address: %+v", tk)
+	}
+
+	// Moving again points the first move at the last address too, so no
+	// address is ever a step away from where it went.
+	if rec := call(t, mux, admin, "POST", "/api/celebrate/address", map[string]any{"old": home, "to": later}); rec.Code != http.StatusNoContent {
+		t.Fatalf("second move: %d %s", rec.Code, rec.Body)
+	}
+	if got := cache.Model().CurrentAddress(school); got != later {
+		t.Fatalf("the first address now goes to %s", got)
+	}
+	if tk, _ := cache.Model().TicketByID(held); tk.Email != later || tk.Name != "Ella Whitfield" {
+		t.Fatalf("after the second move: %+v", tk)
+	}
+	queue.Flush()
+	_, rows, err := sheet.Table(appName, formerTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0]["New"] != later || rows[1]["Old"] != home || rows[1]["New"] != later || rows[0]["Changed"] != today() {
+		t.Fatalf("former addresses: %v", rows)
+	}
+}
+
+func TestFormerAddressesRefuseALoop(t *testing.T) {
+	_, _ = newServer(t)
+	tabs := tables(t)
+	tabs[formerTab] = []store.Row{{"Old": "a@x.org", "New": "b@x.org"}, {"Old": "b@x.org", "New": "c@x.org"}}
+	if _, err := BuildModel(context.Background(), tabs, bundled{}); err == nil || !strings.Contains(err.Error(), "has itself moved") {
+		t.Fatalf("a chain loaded: %v", err)
+	}
+	tabs[formerTab] = []store.Row{{"Old": "a@x.org", "New": "a@x.org"}}
+	if _, err := BuildModel(context.Background(), tabs, bundled{}); err == nil {
+		t.Fatal("an address moving to itself loaded")
+	}
+}
+
+func TestProblemAddresses(t *testing.T) {
+	cache, mux := newServer(t)
+	const (
+		alum    = "maya.lin@heliosschool.org"
+		outside = "percy.jackson@gmail.com"
+	)
+	var tickets []string
+	for _, tk := range cache.Model().Party("P001").Tickets {
+		if tk.Email == teen || tk.Email == kid {
+			tickets = append(tickets, tk.ID)
+		}
+	}
+	call(t, mux, admin, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": tickets[0], "email": alum})
+	call(t, mux, admin, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": tickets[1], "email": outside, "name": "Percy Jackson"})
+	if rec := call(t, mux, parent, "GET", "/api/celebrate/addresses", nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("a parent read the addresses: %d", rec.Code)
+	}
+	rec := call(t, mux, admin, "GET", "/api/celebrate/addresses", nil)
+	var view struct {
+		Problems []Problem
+		Moved    []Moved
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil || rec.Code != 200 {
+		t.Fatalf("addresses: %d %s", rec.Code, rec.Body)
+	}
+	// The test directory holds a handful of people, so the sample's other
+	// school addresses are listed too; what matters is who is and is not.
+	find := func(email string) *Problem {
+		for i := range view.Problems {
+			if view.Problems[i].Email == email {
+				return &view.Problems[i]
+			}
+		}
+		return nil
+	}
+	if pr := find(alum); pr == nil || pr.Name != "Maya Lin" || len(pr.Uses) != 1 || pr.Uses[0].Role != "Ticket" || pr.Uses[0].Path != "/p/fondue" || !pr.Upcoming {
+		t.Fatalf("the alum = %+v", pr)
+	}
+	if find(outside) != nil || find(parent) != nil || find(teen) != nil {
+		t.Fatalf("listed an outside or directory address")
+	}
+	call(t, mux, admin, "POST", "/api/celebrate/address", map[string]any{"old": alum, "to": "maya@college.edu", "name": "Maya Lin"})
+	rec = call(t, mux, admin, "GET", "/api/celebrate/addresses", nil)
+	view.Problems, view.Moved = nil, nil
+	json.Unmarshal(rec.Body.Bytes(), &view)
+	if find(alum) != nil || len(view.Moved) != 1 || view.Moved[0].Old != alum || view.Moved[0].New != "maya@college.edu" {
+		t.Fatalf("after the change: %+v %+v", view.Problems, view.Moved)
 	}
 }

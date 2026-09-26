@@ -833,7 +833,18 @@ func NewCore(cfg Config) *Core {
 	calendarDir := calendarDirectory{cache, settings, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}.Lists}
 	frontEvents := upcomingEvents{calendarCache, calendarDir, linked}
 	calendarMux := http.NewServeMux()
-	hooks := calendar.Register(calendarMux, calendarCache, cfg.Store, calendarDir, settings.SuperAdmins, linked, partyPeople{celebrateCache}.people, audienceSources{loopDir}.Sources, cfg.ImageSearch, cfg.CalendarMail)
+	// Moving an alum's address is Celebrate's to record and its tickets to
+	// follow, then the parties' guest lists here - from either app's page.
+	var hooks calendar.Hooks
+	moveAddress := func(ctx context.Context, actor, old, to, name string) error {
+		if _, err := celebrate.MoveAddress(ctx, celebrateCache, actor, old, to, name); err != nil {
+			return err
+		}
+		hooks.MoveAddress(ctx, actor, old, to, name)
+		return nil
+	}
+	partyCalendar := calendar.Celebrate{Party: partyPeople{celebrateCache}.people, IsAdmin: celebrateCache.IsAdmin, MoveAddress: moveAddress}
+	hooks = calendar.Register(calendarMux, calendarCache, cfg.Store, calendarDir, settings.SuperAdmins, linked, partyCalendar, audienceSources{loopDir}.Sources, cfg.ImageSearch, cfg.CalendarMail)
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, audienceSources{loopDir}, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault)
 	teamMux := http.NewServeMux()
@@ -857,7 +868,9 @@ func NewCore(cfg Config) *Core {
 		}
 		return &celebrate.PartyRSVPs{Sent: sent, Answers: answers}
 	}
-	celebrate.Register(celebrateMux, celebrateCache, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom, partyRSVPs)
+	celebrate.Register(celebrateMux, celebrateCache, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom, partyRSVPs, func(ctx context.Context, actor, old, to, name string) {
+		hooks.MoveAddress(ctx, actor, old, to, name)
+	})
 	askMux := http.NewServeMux()
 	loopMail := cfg.Loop
 	documents := artifacts.Register(askMux, artifactsCache, cfg.Embedder, queue, cfg.ArtifactsMail)

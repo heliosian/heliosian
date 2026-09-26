@@ -1198,6 +1198,37 @@ export function openReassign(p, a) {
   });
 }
 
+// openMoveAddress is an admin's fix for an address that no longer reaches
+// anyone - an alum's school account, closed after graduation: every ticket
+// and waitlist request on every party moves to the new one, so do the party
+// guest lists on Helios When, and an invitation already sent to the old one
+// goes again. Former Addresses in the sheet keeps the record, so the old
+// address typed in later lands on the new one.
+export function openMoveAddress(a, onDone) {
+  const to = text('', {type: 'email', placeholder: 'percy.jackson@gmail.com', maxLength: 200});
+  const name = text(a.name || '', {placeholder: 'Percy Jackson', maxLength: 120});
+  const fields = [
+    el('p', 'form-lead', `${a.email} moves to the new address on every party - tickets, waitlist requests and guest lists alike - and anyone already sent an invitation there is sent it again.`),
+    field('New email address', to, null, true),
+    field('Name', name, 'The directory no longer holds them, so this is what the parties call them.'),
+  ];
+  openModal(`Change ${a.name}'s address`, fields, {
+    saveLabel: 'Change address',
+    submit: () => {
+      if (!to.value.trim()) {
+        throw new Error('Give the new address.');
+      }
+      return send('POST', '/api/celebrate/address', {old: a.email, to: to.value.trim().toLowerCase(), name: name.value.trim()});
+    },
+    afterSave: () => {
+      toast('Address changed on every party');
+      if (onDone) {
+        onDone();
+      }
+    },
+  });
+}
+
 // removeTicket takes a ticket off a party (a host) or a name off the
 // waitlist (the family too), after a word of confirmation.
 export async function removeTicket(p, a) {
@@ -1319,6 +1350,15 @@ function ticketForm(p, a) {
     const words = el('div', 'setting-text');
     words.append(el('div', 'setting-label', 'Reassign this ticket'), el('div', 'setting-hint', 'Give it to someone else - a sibling, or another family it was resold to.'));
     card.append(words, button('Reassign', 'people', 'button button-secondary button-small', () => openReassign(p, a)));
+    fields.push(card);
+  }
+  // Change address: an admin's, for a holder the directory does not know -
+  // most often an alum whose school address closed.
+  if (isAdmin() && a.email && a.kind === 'Guest') {
+    const card = el('div', 'appoint-card');
+    const words = el('div', 'setting-text');
+    words.append(el('div', 'setting-label', 'Change their address'), el('div', 'setting-hint', 'An alum whose school address closed, or any address that no longer reaches them - on every party at once.'));
+    card.append(words, button('Change address', 'mail', 'button button-secondary button-small', () => openMoveAddress(a)));
     fields.push(card);
   }
   return {

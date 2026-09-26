@@ -69,6 +69,16 @@ type PartyPeople struct {
 	Attendees []Attendee
 }
 
+// Celebrate is what the calendar asks of Helios Celebrate: a party's hosts
+// and tickets, whether someone is one of its admins, and moving an address
+// on every party - its tickets there, and the guest lists here - when an
+// alum's school account closes.
+type Celebrate struct {
+	Party       func(id string) *PartyPeople
+	IsAdmin     func(email string) bool
+	MoveAddress func(ctx context.Context, actor, old, to, name string) error
+}
+
 type Attendee struct {
 	Email  string `json:"email,omitempty"`
 	Name   string `json:"name"`
@@ -448,26 +458,29 @@ type Counts struct {
 }
 
 type InviteView struct {
-	Host        bool          `json:"host"`
-	AdminHost   bool          `json:"adminHost,omitempty"`
-	Poster      string        `json:"poster,omitempty"`
-	MayInvite   bool          `json:"mayInvite,omitempty"`
-	NotifyMe    bool          `json:"notifyMe,omitempty"`
-	Linked      bool          `json:"linked,omitempty"`
-	Party       bool          `json:"party,omitempty"`
-	Settings    *Invitation   `json:"settings,omitempty"`
-	Guests      bool          `json:"guests"`
-	Sent        string        `json:"sent,omitempty"`
-	Flyer       string        `json:"flyer,omitempty"`
-	HostsHidden bool          `json:"hostsHidden,omitempty"`
-	ListPrivate bool          `json:"listPrivate,omitempty"`
-	Hosts       []Person      `json:"hosts"`
-	Original    *EventWords   `json:"original,omitempty"`
-	Mine        []GuestRow    `json:"mine"`
-	Coming      []GuestRow    `json:"coming"`
-	List        []GuestRow    `json:"list"`
-	Groups      []InviteGroup `json:"groups,omitempty"`
-	Counts      Counts        `json:"counts"`
+	Host      bool `json:"host"`
+	AdminHost bool `json:"adminHost,omitempty"`
+	// MoveEverywhere says the viewer may move an address on every Celebrate
+	// party at once: a party's list, opened by one of Celebrate's admins.
+	MoveEverywhere bool          `json:"moveEverywhere,omitempty"`
+	Poster         string        `json:"poster,omitempty"`
+	MayInvite      bool          `json:"mayInvite,omitempty"`
+	NotifyMe       bool          `json:"notifyMe,omitempty"`
+	Linked         bool          `json:"linked,omitempty"`
+	Party          bool          `json:"party,omitempty"`
+	Settings       *Invitation   `json:"settings,omitempty"`
+	Guests         bool          `json:"guests"`
+	Sent           string        `json:"sent,omitempty"`
+	Flyer          string        `json:"flyer,omitempty"`
+	HostsHidden    bool          `json:"hostsHidden,omitempty"`
+	ListPrivate    bool          `json:"listPrivate,omitempty"`
+	Hosts          []Person      `json:"hosts"`
+	Original       *EventWords   `json:"original,omitempty"`
+	Mine           []GuestRow    `json:"mine"`
+	Coming         []GuestRow    `json:"coming"`
+	List           []GuestRow    `json:"list"`
+	Groups         []InviteGroup `json:"groups,omitempty"`
+	Counts         Counts        `json:"counts"`
 }
 
 func (a app) personOf(email, name string) (Person, bool) {
@@ -587,6 +600,7 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 		poster = a.directory.Resolve(normalizeEmail(e.AddedBy))
 	}
 	view := InviteView{Host: host, AdminHost: adminHost, Poster: poster, MayInvite: host || e.Sharing == SharingPublic || model.Invited(a.directory, viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
+	view.MoveEverywhere = host && view.Party && a.celebrate.IsAdmin != nil && a.celebrate.IsAdmin(viewer)
 	if inv != nil && inv.Flyer != "" {
 		view.Flyer = flyerPath(e.ID)
 	}

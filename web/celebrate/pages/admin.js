@@ -1,7 +1,7 @@
 import {state, isSystemAdmin, me, money, whenLine, celebration} from '../state.js';
 import {el, button, svg} from '../dom.js';
 import {setTitle} from '../chrome.js';
-import {openCelebration, openCategory, openSettings, send, reload} from '../edit.js';
+import {openCelebration, openCategory, openSettings, openMoveAddress, send, reload} from '../edit.js';
 import {celebrationBand} from './parties.js';
 
 function denied() {
@@ -258,6 +258,82 @@ function invoicesCard() {
   return card;
 }
 
+// addressesCard lists the school addresses on the parties that the
+// directory does not have - most often an alum's account, closed after
+// graduation, so invitations to it reach nobody - each with the parties it
+// stands on and Change address, and under them the changes already made
+// (the sheet's Former Addresses tab).
+function addressesCard() {
+  const card = el('div', 'card');
+  card.append(el('h2', '', 'Addresses'));
+  card.append(el('div', 'hint', 'School addresses on a ticket, a waitlist request, a bill or a host that the directory does not have - most often an alum whose school account closed after graduation. Change one and it moves on every party, tickets and guest lists alike, and invitations already sent to it go again.'));
+  const past = el('input');
+  past.type = 'checkbox';
+  const pastLabel = el('label', 'email-fix-past');
+  pastLabel.append(past, el('span', '', 'Show addresses only on past parties'));
+  const list = el('div', 'email-fix-list');
+  const movedHead = el('h3', 'email-fix-moved-head', 'Already changed');
+  const moved = el('div', 'email-fix-list');
+  card.append(pastLabel, list, movedHead, moved);
+  let data = null;
+  const paint = () => {
+    list.replaceChildren();
+    moved.replaceChildren();
+    if (!data) {
+      list.append(el('div', 'hint', 'Loading…'));
+      return;
+    }
+    const rows = data.problems.filter(pr => past.checked || pr.upcoming);
+    const hidden = data.problems.length - rows.length;
+    if (!rows.length) {
+      list.append(el('div', 'hint', hidden ? `None on a party still to come; ${hidden} only on past parties.` : 'Every school address on the parties is in the directory.'));
+    }
+    for (const pr of rows) {
+      const row = el('div', 'email-fix-row');
+      const who = el('div', 'email-fix-who');
+      who.append(el('div', 'email-fix-name', pr.name), el('div', 'email-fix-email', pr.email));
+      const uses = el('div', 'email-fix-uses');
+      for (const u of pr.uses) {
+        const chip = el('a', 'email-fix-use' + (u.past ? ' is-past' : ''));
+        chip.href = u.path;
+        chip.setAttribute('data-link', '');
+        chip.textContent = u.role === 'Ticket' ? u.party : `${u.party} · ${u.role === 'Billed' ? 'billed' : u.role === 'Host' ? 'host' : 'waitlist'}`;
+        uses.append(chip);
+      }
+      who.append(uses);
+      row.append(who, button('Change address', 'mail', 'button button-secondary button-small', () => openMoveAddress(pr, load)));
+      list.append(row);
+    }
+    if (hidden && rows.length) {
+      list.append(el('div', 'hint', `${hidden} more only on past parties.`));
+    }
+    movedHead.hidden = !data.moved.length;
+    for (const m of data.moved) {
+      const row = el('div', 'email-fix-row');
+      const who = el('div', 'email-fix-who');
+      who.append(el('div', 'email-fix-name', m.name || m.old), el('div', 'email-fix-email', `${m.old} \u2192 ${m.new}${m.changed ? ' \u00b7 ' + m.changed : ''}`));
+      row.append(who);
+      moved.append(row);
+    }
+  };
+  const load = async () => {
+    try {
+      const res = await fetch('/api/celebrate/addresses');
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      data = await res.json();
+      paint();
+    } catch (err) {
+      list.replaceChildren(el('div', 'hint error', err.message));
+    }
+  };
+  past.addEventListener('change', paint);
+  paint();
+  load();
+  return card;
+}
+
 // adminsCard mirrors the other apps' admin lists: every add or remove posts
 // immediately, so nothing looks saved that isn't.
 function adminsCard() {
@@ -344,6 +420,7 @@ const sections = [
     {key: 'invoices', label: 'Invoicing', card: invoicesCard},
   ]},
   {title: 'Editing & Control', tabs: [
+    {key: 'addresses', label: 'Addresses', card: addressesCard},
     {key: 'admins', label: 'Admins', card: adminsCard},
   ]},
 ];

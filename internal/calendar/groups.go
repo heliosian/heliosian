@@ -171,6 +171,40 @@ func (a app) ticketHolders(g InviteGroup, members []string) []string {
 			out = append(out, m)
 		}
 	}
+	for email := range a.ticketGuests(g) {
+		if !slices.Contains(out, email) {
+			out = append(out, email)
+		}
+	}
+	return out
+}
+
+// ticketGuests are a party's ticket holders the directory does not hold but
+// who came with an address - an alum, a cousin whose address the family gave
+// - by address, with the name on the ticket. The directory's lists count
+// such guests without naming them, so the ticket holders' group adds them
+// here, each as someone from outside with their own link.
+func (a app) ticketGuests(g InviteGroup) map[string]string {
+	out := map[string]string{}
+	if a.parties == nil || len(g.Rule.Tags) != 1 || !strings.HasPrefix(g.Rule.Tags[0], "party:") {
+		return out
+	}
+	p := a.parties(strings.TrimPrefix(g.Rule.Tags[0], "party:"))
+	if p == nil {
+		return out
+	}
+	for _, t := range p.Attendees {
+		email := a.directory.Resolve(normalizeEmail(t.Email))
+		if email == "" || t.Status == "waitlist" || !emailForm.MatchString(email) {
+			continue
+		}
+		if _, known := a.directory.Person(email); known {
+			continue
+		}
+		if out[email] == "" {
+			out[email] = strings.TrimSpace(t.Name)
+		}
+	}
 	return out
 }
 
@@ -328,6 +362,7 @@ func (a app) fill(ctx context.Context, actor string, e *Event, g InviteGroup, wa
 	ops := []store.Op{}
 	emails := []string{}
 	matching := a.members(e, g)
+	guests := a.ticketGuests(g)
 	if wait {
 		a.clock.keep(e.ID, g.ID, matching)
 	}
@@ -339,11 +374,16 @@ func (a app) fill(ctx context.Context, actor string, e *Event, g InviteGroup, wa
 			slog.DebugContext(ctx, "calendar: group match waits the grace", "event", e.ID, "group", g.ID, "email", email)
 			continue
 		}
-		name := email
+		name, token := email, ""
 		if p, known := a.directory.Person(email); known {
 			name = p.Name
+		} else if guest, ok := guests[email]; ok {
+			name, token = guest, NewToken()
+			if name == "" {
+				name = displayName(email)
+			}
 		}
-		ops = append(ops, store.Insert(InvitesTab, store.Row{"Event ID": e.ID, "Email": email, "Name": name, "Via": ViaGroup + g.ID, "Added By": g.AddedBy, "Added": stamp}))
+		ops = append(ops, store.Insert(InvitesTab, store.Row{"Event ID": e.ID, "Email": email, "Name": name, "Via": ViaGroup + g.ID, "Added By": g.AddedBy, "Added": stamp, "Token": token}))
 		emails = append(emails, email)
 	}
 	if len(ops) == 0 {

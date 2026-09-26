@@ -56,13 +56,14 @@ type app struct {
 	mailer      mail.Sender
 	from        string
 	rsvps       RSVPLookup
+	moved       AddressMoved
 }
 
-func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup) {
+func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup, moved AddressMoved) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
 	}
-	a := app{cache: cache, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps}
+	a := app{cache: cache, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps, moved: moved}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -80,6 +81,8 @@ func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Dir
 	mux.HandleFunc("POST /api/celebrate/ticket", a.editTicket)
 	mux.HandleFunc("DELETE /api/celebrate/ticket", a.removeTicket)
 	mux.HandleFunc("POST /api/celebrate/ticket/reassign", a.reassignTicket)
+	mux.HandleFunc("POST /api/celebrate/address", a.moveAddress)
+	mux.HandleFunc("GET /api/celebrate/addresses", a.addresses)
 	mux.HandleFunc("POST /api/celebrate/party", a.saveParty)
 	mux.HandleFunc("DELETE /api/celebrate/party", a.deleteParty)
 	mux.HandleFunc("POST /api/celebrate/party/flags", a.setFlags)
@@ -179,6 +182,12 @@ func (a app) ticketOps(p *Party, added []store.Row) []store.Op {
 		}
 	}
 	return ops
+}
+
+// current is the address to store for one typed in: the directory's own for
+// any of its aliases, and where a former address moved to.
+func (a app) current(email string) string {
+	return a.cache.Model().CurrentAddress(a.directory.Resolve(email))
 }
 
 func cleanEmail(raw string) string {
@@ -340,7 +349,7 @@ func (a app) buyTickets(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		email = a.directory.Resolve(email)
+		email = a.current(email)
 		if seen[email] {
 			continue
 		}
@@ -727,7 +736,7 @@ func (a app) reassignTicket(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		email = a.directory.Resolve(email)
+		email = a.current(email)
 		person, known := a.directory.Person(email)
 		if known && !p.Admits(person, known) {
 			http.Error(w, fmt.Sprintf("%s can't hold a ticket: this party is for %s", person.Name, audienceWords(p)), http.StatusBadRequest)

@@ -27,6 +27,7 @@ const (
 	adminsTab       = "Admins"
 	redirectsTab    = "Redirects"
 	invoicingTab    = "INVOICING"
+	formerTab       = "Former Addresses"
 )
 
 const (
@@ -74,6 +75,7 @@ var (
 	AdminColumns       = []string{"Email"}
 	RedirectColumns    = []string{"Type", "Old", "New", "Date"}
 	InvoicingColumns   = []string{"Date", "Party Title", "Event Code", "Purchaser Email", "Guest Name", "Action", "Quantity", "Cost", "Invoice", "Invoice To"}
+	FormerColumns      = []string{"Old", "New", "Name", "Changed"}
 )
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
@@ -217,6 +219,25 @@ type Model struct {
 	byTicket      map[string]*Ticket
 	ticketParties map[string]*Party
 	pretty        map[string]*Party
+	former        map[string]Former
+}
+
+// Former is where an address nobody reads any more - an alum's closed school
+// account - has moved to, and the name to call its owner by, since the
+// directory no longer holds them.
+type Former struct {
+	New     string
+	Name    string
+	Changed string
+}
+
+// CurrentAddress is the address to use for email: the one it moved to, when
+// it is a former address, and itself otherwise.
+func (m *Model) CurrentAddress(email string) string {
+	if f, ok := m.former[email]; ok {
+		return f.New
+	}
+	return email
 }
 
 type InvoiceLine struct {
@@ -625,6 +646,7 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 		Celebrations: []*Celebration{}, Categories: []string{}, Parties: []*Party{}, Settings: settings,
 		Skipped: map[string]int{}, categoryOrder: map[string]string{}, byCode: map[string]*Celebration{}, byParty: map[string]*Party{},
 		byTicket: map[string]*Ticket{}, ticketParties: map[string]*Party{}, pretty: map[string]*Party{}, Redirects: []Redirect{}, Invoicing: []InvoiceLine{},
+		former: map[string]Former{},
 	}
 	admins := []string{}
 	for _, row := range tables[adminsTab] {
@@ -785,6 +807,38 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 		}
 	}
 
+	for _, row := range tables[formerTab] {
+		old, to := cleanEmail(row["Old"]), cleanEmail(row["New"])
+		if old == "" && to == "" {
+			continue
+		}
+		fail := func(err error) (*Model, error) {
+			return nil, fmt.Errorf("former address %s: %w", old, err)
+		}
+		if err := checkEmail(old); err != nil {
+			return fail(err)
+		}
+		if err := checkEmail(to); err != nil {
+			return fail(fmt.Errorf("new %w", err))
+		}
+		if old == to {
+			return fail(fmt.Errorf("moves to itself"))
+		}
+		if _, dup := model.former[old]; dup {
+			return fail(fmt.Errorf("is listed twice"))
+		}
+		name := strings.TrimSpace(row["Name"])
+		if len(name) > maxNameLength {
+			return fail(fmt.Errorf("name is too long"))
+		}
+		model.former[old] = Former{New: to, Name: name, Changed: strings.TrimSpace(row["Changed"])}
+	}
+	for old, f := range model.former {
+		if _, ok := model.former[f.New]; ok {
+			return nil, fmt.Errorf("former address %s moves to %s, which has itself moved: point it at where that went", old, f.New)
+		}
+	}
+
 	for _, row := range tables[ticketsTab] {
 		id := strings.TrimSpace(row["Ticket ID"])
 		if id == "" {
@@ -800,6 +854,15 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 		if err != nil {
 			return nil, fmt.Errorf("ticket %s on %s: %w", id, p.Title, err)
 		}
+		// A ticket still naming a former address is read as naming where it
+		// went, so a row pasted into Former Addresses by hand takes at once.
+		if f, ok := model.former[t.Email]; ok {
+			t.Email = f.New
+			if t.Name == "" {
+				t.Name = f.Name
+			}
+		}
+		t.Purchaser = model.CurrentAddress(t.Purchaser)
 		if _, dup := model.byTicket[id]; dup {
 			return nil, fmt.Errorf("ticket id %s is used twice", id)
 		}

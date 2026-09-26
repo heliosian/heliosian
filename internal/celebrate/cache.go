@@ -31,6 +31,7 @@ func spec(images ImageChecker) store.Spec[*Model] {
 			{Name: adminsTab, Columns: AdminColumns, Key: []string{"Email"}},
 			{Name: redirectsTab, Columns: RedirectColumns, Key: []string{"Old"}},
 			{Name: invoicingTab, Columns: InvoicingColumns, Key: []string{"Date", "Party Title", "Purchaser Email", "Guest Name"}},
+			{Name: formerTab, Columns: FormerColumns, Key: []string{"Old"}},
 		},
 		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {
 			return BuildModel(ctx, tables, images)

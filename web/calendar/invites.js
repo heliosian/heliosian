@@ -756,7 +756,7 @@ function ticketDetail(ticket) {
         : 'Invited, with no ticket to the party. Tickets are on the party page on Helios Celebrate.';
 }
 
-function warningChip(e, r, refresh) {
+function warningChip(e, view, r, refresh) {
   const chip = el('span', 'guests-chip is-warning');
   chip.title = r.warningWords;
   chip.append(svg('info'), el('span', '', r.warning === 'bounced' ? 'Bounced' : 'Not in the directory'));
@@ -765,13 +765,13 @@ function warningChip(e, r, refresh) {
   edit.textContent = 'Edit email';
   edit.addEventListener('click', ev => {
     ev.stopPropagation();
-    openEmailEdit(e, r, refresh);
+    openEmailEdit(e, view, r, refresh);
   });
   chip.append(edit);
   return chip;
 }
 
-function openEmailEdit(e, r, refresh) {
+function openEmailEdit(e, view, r, refresh) {
   const form = el('form', 'admin-form');
   form.append(el('p', 'hint', r.warningWords + ' Give a different address, or close this and send to it anyway.'));
   const field = el('div', 'field');
@@ -781,6 +781,18 @@ function openEmailEdit(e, r, refresh) {
   input.value = r.email;
   field.append(el('span', '', 'Email address'), input);
   form.append(field);
+  // One of Celebrate's admins may move the address on every party at once -
+  // an alum's closed school account - tickets and guest lists alike, and it
+  // is remembered, so the old address typed in later lands on the new one.
+  let everywhere = null;
+  if (view.moveEverywhere) {
+    everywhere = el('input');
+    everywhere.type = 'checkbox';
+    everywhere.checked = true;
+    const label = el('label', 'message-to-choice');
+    label.append(everywhere, el('span', '', 'Change it on every Celebrate party - tickets too - and resend invitations already sent'));
+    form.append(label);
+  }
   const actions = el('div', 'modal-actions');
   const status = el('span', 'save-status');
   const submit = el('button', 'button');
@@ -793,8 +805,9 @@ function openEmailEdit(e, r, refresh) {
     ev.preventDefault();
     submit.disabled = true;
     try {
-      await post('POST', '/api/calendar/invites/email', {id: e.id, email: r.key, to: input.value.trim()});
-      toast('Address changed');
+      const all = Boolean(everywhere && everywhere.checked);
+      await post('POST', '/api/calendar/invites/email', {id: e.id, email: r.key, to: input.value.trim(), everywhere: all});
+      toast(all ? 'Address changed on every party' : 'Address changed');
       shut();
       refresh();
     } catch (err) {
@@ -834,7 +847,7 @@ function openPending(e, view, refresh) {
     }
     if (r.warning) {
       const marks = el('div', 'guests-marks');
-      marks.append(warningChip(e, r, () => {
+      marks.append(warningChip(e, view, r, () => {
         shut();
         refresh();
       }));
@@ -1344,7 +1357,7 @@ export function guestListSection(e, view, refresh) {
       marks.append(opened);
     }
     if (r.warning) {
-      marks.append(warningChip(e, r, refresh));
+      marks.append(warningChip(e, view, r, refresh));
     }
     who.append(marks);
     row.append(who);

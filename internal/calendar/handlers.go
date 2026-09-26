@@ -37,6 +37,7 @@ type app struct {
 	superAdmins func() []string
 	linked      func(email string) []Linked
 	parties     func(id string) *PartyPeople
+	celebrate   Celebrate
 	sources     func() filter.Sources
 	clock       *matchClock
 	search      ImageSearch
@@ -50,11 +51,11 @@ const (
 	maxImageSize = 8 << 20
 )
 
-func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, parties func(id string) *PartyPeople, sources func() filter.Sources, search ImageSearch, mailbox Mail) Hooks {
+func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search ImageSearch, mailbox Mail) Hooks {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
 	}
-	a := app{cache: cache, store: store, directory: directory, superAdmins: superAdmins, linked: linked, parties: parties, sources: sources, clock: &matchClock{}, search: search, mail: mailbox}
+	a := app{cache: cache, store: store, directory: directory, superAdmins: superAdmins, linked: linked, parties: celebrate.Party, celebrate: celebrate, sources: sources, clock: &matchClock{}, search: search, mail: mailbox}
 	if sources != nil {
 		go a.sweepLoop()
 	}
@@ -118,7 +119,7 @@ func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Dir
 	mux.HandleFunc("GET /open/banner/{id...}", a.banner)
 	mux.HandleFunc("POST /hooks/replies/mime", a.replies)
 	mux.HandleFunc("POST /hooks/events", a.deliveryEvents)
-	return Hooks{Answer: a.answer, MakeDefault: a.makeDefault, RSVPs: a.rsvps}
+	return Hooks{Answer: a.answer, MakeDefault: a.makeDefault, RSVPs: a.rsvps, MoveAddress: a.moveAddress}
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -266,6 +267,9 @@ type Hooks struct {
 	// the shared toolbar - the calendar's own registers it itself: the
 	// invitations waiting for the viewer's reply.
 	RSVPs http.HandlerFunc
+	// MoveAddress moves an address on the guest list of every Celebrate
+	// party, once Celebrate has moved its own rows (MoveAddress there).
+	MoveAddress func(ctx context.Context, actor, old, to, name string)
 }
 
 func homeOp(email string, cells store.Row) store.Op {
