@@ -104,7 +104,7 @@ func (fakeDirectory) People() []Person {
 	return append([]Person{{Email: admin, Name: "Jordan Whitfield"}}, staff...)
 }
 
-func (fakeDirectory) Alerts(string) (int, bool) { return 0, false }
+func (fakeDirectory) Alerts(string) ([]string, []string) { return nil, nil }
 
 func (fakeDirectory) Departments() []string {
 	return []string{"Admin and Office Staff", "Co-Curriculars and Specialists", "Classroom Teachers", "Facilities Staff"}

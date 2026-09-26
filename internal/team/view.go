@@ -26,13 +26,13 @@ type Directory interface {
 	Household(email string) (adults, kids []Child)
 	// Alerts is what the toolbar's badges say for a person, as the directory
 	// reckons them: things to update for the new year, and a privacy mismatch.
-	Alerts(email string) (stale int, privacy bool)
+	Alerts(email string) (stale []string, privacy []string)
 }
 
 // Alerts carries the directory's badge reckoning to the toolbar.
 type Alerts struct {
-	Stale   int  `json:"stale"`
-	Privacy bool `json:"privacy"`
+	Stale   []string `json:"stale"`
+	Privacy []string `json:"privacy"`
 }
 
 // DirectoryPerson is one row of a people picker: enough to recognise someone -

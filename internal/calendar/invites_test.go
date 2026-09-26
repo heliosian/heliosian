@@ -1578,3 +1578,31 @@ func TestAdminActsAsHost(t *testing.T) {
 		t.Errorf("the admin after: host %v poster %q", v.Host, v.Poster)
 	}
 }
+
+// The toolbar's RSVP badge lists what someone owes a reply: an invitation
+// sent them and unanswered, gone once they answer, and never the host's.
+func TestToolbarRSVPs(t *testing.T) {
+	mux, _, kept := invitesApp(t)
+	jordan, robinH := as(host, mux), as(robin, mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
+	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup"}`)
+	waitFor(kept, 1)
+	waiting := func(h http.Handler) []RSVP {
+		var view struct {
+			Waiting []RSVP `json:"waiting"`
+		}
+		json.NewDecoder(call(t, h, "GET", "/api/apps/rsvp", "").Body).Decode(&view)
+		return view.Waiting
+	}
+	if w := waiting(robinH); len(w) != 1 || w[0].Title != "Meetup" || w[0].Path != "/e/meetup" {
+		t.Fatalf("robin owes: %+v", w)
+	}
+	if w := waiting(jordan); len(w) != 0 {
+		t.Errorf("the host owes: %+v", w)
+	}
+	call(t, robinH, "POST", "/api/calendar/rsvp", `{"id":"meetup","answer":"yes"}`)
+	if w := waiting(robinH); len(w) != 0 {
+		t.Errorf("robin after answering owes: %+v", w)
+	}
+}

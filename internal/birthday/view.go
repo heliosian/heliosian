@@ -25,13 +25,13 @@ type Directory interface {
 	// People is everyone with an address to sign in by, for the pickers.
 	People() []Person
 	Departments() []string
-	Alerts(email string) (stale int, privacy bool)
+	Alerts(email string) (stale []string, privacy []string)
 }
 
 // Alerts carries the directory's badge reckoning to the toolbar.
 type Alerts struct {
-	Stale   int  `json:"stale"`
-	Privacy bool `json:"privacy"`
+	Stale   []string `json:"stale"`
+	Privacy []string `json:"privacy"`
 }
 
 // displayName reads a name out of an address for someone the directory does not

@@ -103,7 +103,7 @@ func (d loopDirectory) GradeColors() map[string]string {
 	return d.settings.Settings().GradeColors
 }
 
-func (d loopDirectory) Alerts(email string) (int, bool) {
+func (d loopDirectory) Alerts(email string) ([]string, []string) {
 	alerts := d.cache.Alerts(email, d.settings.Settings().StaleYears)
 	return alerts.Stale, alerts.Privacy
 }

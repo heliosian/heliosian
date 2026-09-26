@@ -165,83 +165,136 @@
    card is Who?'s new-year checklist there and a line across to it elsewhere,
    the triangle's says what the mismatch is. Both open on hover (alertMenu
    in toolbar.js) as a pale yellow card with a gold bar. */
+/* The badges - RSVP's calendar, the approvals' hourglass, the directory's
+   bell, and the privacy triangle, which has no count - as one family: a dark teal disc with the icon in white
+   and the count on a dot at its top right, ringed in the bar's own colour -
+   red for replies owed and things to update, yellow for a privacy mismatch,
+   amber for approvals. */
+.rsvp-alert, .approvals-alert, .topbar-alert.stale-alert, .topbar-alert.privacy-alert { position: relative; width: 32px; height: 32px; border-radius: 50%; background: #0f4e54; color: #fff; }
+
+.rsvp-alert:hover, .approvals-alert:hover, .topbar-alert.stale-alert:hover, .topbar-alert.privacy-alert:hover { background: #1f838a; opacity: 1; }
+
+.rsvp-alert svg, .approvals-alert svg, .stale-alert svg, .topbar-alert.privacy-alert svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+.rsvp-count, .approvals-count, .topbar-alert-count.stale-alert .stale-count { position: absolute; top: -5px; right: -6px; width: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; box-shadow: 0 0 0 2px var(--toolbar, #ecf3f2); font-size: 10.5px; font-weight: 700; line-height: 18px; text-align: center; }
+
+.rsvp-count { background: #df604a; color: #fff; }
+
+.topbar-alert-count.stale-alert .stale-count { display: block; background: #df604a; color: #fff; }
+
+.approvals-count { background: #e8a33d; color: #fff; }
+
+.privacy-count { position: absolute; top: -5px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; box-shadow: 0 0 0 2px var(--toolbar, #ecf3f2); background: #fae105; color: #0d0d0d; font-size: 10.5px; font-weight: 700; line-height: 18px; text-align: center; }
+
+.privacy-count[hidden] { display: none; }
+
 .topbar-alert-wrap {
   position: relative;
   display: flex;
 }
 
 .topbar-alert-menu {
+  --alert-bg: #fcfdfd;
   position: absolute;
   right: 0;
-  top: calc(100% + 8px);
-  width: 320px;
+  top: calc(100% + 12px);
+  width: 340px;
   max-width: calc(100vw - 24px);
   z-index: 25;
+  filter: drop-shadow(0 12px 28px rgba(15, 40, 44, 0.18));
 }
 
+/* The card's point, up under the badge it hangs from (clampMenu sets
+   --notch). */
+.topbar-alert-menu::before { content: ''; position: absolute; top: -7px; left: var(--notch, calc(100% - 22px)); width: 16px; height: 16px; background: var(--alert-bg); border-radius: 3px 0 0 0; transform: translateX(-50%) rotate(45deg); }
+
+/* The card an alert badge drops down: white, with a bar of its tone - red,
+   or amber for the approvals - down its left edge, the icon in a pale disc
+   of that tone, the words in the brand teal, a chevron; the whole card the
+   link, for a badge with one thing to say. */
 .alert-card {
+  --tone: #e2574c;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px 14px 18px;
+  gap: 16px;
+  padding: 18px 18px 18px 26px;
   position: relative;
   overflow: hidden;
-  background: #fef7b7;
-  border-radius: 0 12px 12px 0;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  background: var(--alert-bg, #fcfdfd);
+  border-radius: 16px;
   color: var(--ink);
   text-decoration: none;
 }
 
-.alert-card::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 6px;
-  background: #f1b940;
-}
+.alert-card.is-amber { --tone: #d98a1c; }
 
-.alert-card:hover { background: #fdf3a4; }
+/* A card in its badge's yellow - the privacy mismatch's: the bright yellow for the bar and
+   the discs' ground, a deeper gold for the words and marks that must read
+   on white. */
+.alert-card.is-yellow { --tone: #f2cf1d; --tone-ink: #9a7a00; }
 
-.alert-card-disc {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: #fbe98f;
-  color: #cc8f0b;
-}
+.alert-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 7px; background: var(--tone); }
 
-.alert-card-disc svg { width: 22px; height: 22px; }
+a.alert-card:hover { background: color-mix(in srgb, var(--tone) 5%, var(--alert-bg, #fcfdfd)); }
 
-.alert-card-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.alert-card-disc { display: flex; align-items: center; justify-content: center; width: 46px; height: 46px; flex-shrink: 0; border-radius: 50%; background: color-mix(in srgb, var(--tone) 14%, var(--alert-bg, #fcfdfd)); color: var(--tone-ink, var(--tone)); }
 
-.alert-card-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #0f4e54;
-}
+.alert-card-disc svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-.alert-card-text {
-  font-size: 13.5px;
-  line-height: 1.4;
-  color: var(--muted, #647071);
-}
+.alert-card-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 
-.alert-card-chevron {
-  width: 9px;
-  height: 9px;
-  flex-shrink: 0;
-  margin-right: 4px;
-  border-right: 2px solid #0f4e54;
-  border-bottom: 2px solid #0f4e54;
-  transform: rotate(-45deg);
-}
+.alert-card-title { font-size: 16px; font-weight: 800; line-height: 1.25; color: #0f4e54; }
+
+.alert-card-text { font-size: 13.5px; line-height: 1.4; color: var(--muted, #647071); }
+
+.alert-card-chevron { width: 9px; height: 9px; flex-shrink: 0; margin-right: 4px; border-right: 2px solid #6b7b7c; border-bottom: 2px solid #6b7b7c; transform: rotate(-45deg); }
+
+/* A card that lists things (alertList): the count large in its tone beside
+   what they are and a close; a row for each, its icon's pale disc beside the
+   title and its note and a chevron, the rows parted by hairlines; and a
+   link of its tone to the whole list across the foot. */
+.alert-list { flex-direction: column; align-items: stretch; gap: 0; padding-top: 16px; padding-bottom: 12px; }
+
+.alert-list-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+
+.alert-list-count { font-size: 26px; font-weight: 800; line-height: 1; color: var(--tone-ink, var(--tone)); }
+
+.alert-list-title { flex: 1; font-size: 16px; font-weight: 700; color: #0f4e54; }
+
+.alert-list-close { align-self: center; display: flex; padding: 2px; border: 0; background: none; color: #6b7b7c; cursor: pointer; }
+
+.alert-list-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+
+.alert-list-close:hover { color: #0f4e54; }
+
+.alert-list-row { display: flex; align-items: center; gap: 12px; margin: 0 -8px; padding: 8px; cursor: pointer; border-bottom: 1px solid color-mix(in srgb, #0f4e54 10%, var(--alert-bg, #fcfdfd)); transition: background 0.12s ease; }
+
+/* The row under the pointer takes a wash of the card's tone, rounded, and
+   its hairline gives way to it. */
+.alert-list-row:hover { border-radius: 10px; border-bottom-color: transparent; background: color-mix(in srgb, var(--tone) 12%, var(--alert-bg, #fcfdfd)); }
+
+/* With no foot to part it from, the last row keeps no hairline. */
+.alert-list-row:last-child { border-bottom: 0; }
+
+.alert-list-row .alert-card-disc { width: 38px; height: 38px; }
+
+.alert-list-row .alert-card-disc svg { width: 19px; height: 19px; }
+
+.alert-list-chip { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 2px 0; border: 0; background: none; font: inherit; text-align: left; text-decoration: none; color: inherit; cursor: pointer; }
+
+
+
+.alert-list-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+
+.alert-list-chip-title { font-size: 14.5px; font-weight: 700; color: #0f4e54; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.alert-list-chip-note { font-size: 12.5px; color: var(--muted, #647071); }
+
+.alert-list-button { display: inline-flex; align-self: flex-start; align-items: center; gap: 8px; margin-top: 10px; padding: 2px 0; background: none; color: var(--tone-ink, var(--tone)); font-size: 14.5px; font-weight: 700; text-decoration: none; }
+
+.alert-list-button:hover { text-decoration: underline; }
+
+.alert-list-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Super Admin Mode's switch, for the app's admins (renderSuperToggle in
    toolbar.js): a pencil in the brand teal ahead of Spoof Mode's eye, white on
@@ -281,6 +334,22 @@
 }
 
 .super-toggle.is-on:hover { background: #c9523e; }
+
+/* While Spoof Mode views as someone else (body.is-spoofing, set by
+   buildSpoof), the whole bar is hot pink in every theme, and the pill saying
+   whom turns white on it. */
+body.is-spoofing .topbar { --toolbar: #ff3d9a; }
+
+/* The search box's / hint keeps its own ground, not the bar's pink. */
+body.is-spoofing .topbar-key { background: #fff; }
+
+body.is-spoofing .spoof-wrap.is-on .spoof-pill { background: #fff; color: #c2185b; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); }
+
+body.is-spoofing .spoof-wrap.is-on .spoof-button { color: #c2185b; }
+
+body.is-spoofing .spoof-wrap.is-on .spoof-button:hover, body.is-spoofing .spoof-stop:hover { background: rgba(194, 24, 91, 0.1); }
+
+body.is-spoofing .spoof-stop { color: #c2185b; }
 
 /* Spoof Mode's switch, before the avatar, for super admins alone (initSpoof
    in toolbar.js): an eye in the brand teal, and while viewing as someone a

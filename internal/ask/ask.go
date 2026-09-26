@@ -50,7 +50,7 @@ type Sources struct {
 	Loop              func() *loop.Model
 	LoopSources       func() loop.Sources
 	Links             func() []home.Category
-	Alerts            func(email string) (stale int, privacy bool)
+	Alerts            func(email string) (stale []string, privacy []string)
 	Artifacts         func() *artifacts.Model
 	Embedder          artifacts.Embedder
 }
@@ -84,8 +84,8 @@ type user struct {
 }
 
 type alerts struct {
-	Stale   int  `json:"stale"`
-	Privacy bool `json:"privacy"`
+	Stale   []string `json:"stale"`
+	Privacy []string `json:"privacy"`
 }
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {

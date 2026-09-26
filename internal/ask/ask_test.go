@@ -60,7 +60,7 @@ func (d sampleDirectory) Children(email string) []calendar.Person {
 	return out
 }
 
-func (sampleDirectory) Alerts(string) (int, bool)          { return 0, false }
+func (sampleDirectory) Alerts(string) ([]string, []string) { return nil, nil }
 func (sampleDirectory) ClassroomColors() map[string]string { return map[string]string{} }
 func (sampleDirectory) GradeColors() map[string]string     { return map[string]string{} }
 func (sampleDirectory) People() []calendar.Person          { return nil }
@@ -147,7 +147,7 @@ func sampleSources(t *testing.T) Sources {
 			return loop.Sources{Directory: directory, Tags: tags, Lists: lists, Shared: directory.SharedTags}
 		},
 		Links:     func() []home.Category { return homeModel.Categories },
-		Alerts:    func(string) (int, bool) { return 0, false },
+		Alerts:    func(string) ([]string, []string) { return nil, nil },
 		Artifacts: func() *artifacts.Model { return documents },
 		Embedder:  artifacts.Fake{},
 	}

@@ -1,7 +1,7 @@
 import {state, me, isAdmin, isSystemAdmin, setSuperEdit, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, dayLabel, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents, eventDates} from './state.js';
 import {el, svg, link, button, toast, feedMark, popup, emojiPicker} from './dom.js';
 import {dayColumn} from './day.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, alertMenu, alertCard, renderSuperToggle} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
 
 const primary = [
   {href: '/', icon: 'app', label: 'Calendar'},
@@ -17,29 +17,35 @@ function active(href) {
   return path === href || path.startsWith(href + '/');
 }
 
-// myEventRows lists the viewer's own events under My Events: the
-// invitations waiting for their reply first, then what they host, then
-// what they are going to, a few of each in date order, each to its page
-// with a mark at its end - a clock for a reply owed, a star for one they
-// host - and the count of what is left as a last row.
-function myEventRows(nav) {
+// mineRows are the rail's My Events: the item itself, to every list at
+// once, and under it a section for each standing that holds anything -
+// RSVP, the invitations waiting for the viewer's reply, its count on a red
+// badge as Who?'s rail counts what is owed; Attending, the yeses; Hosting
+// - each with its count and to its own list; nothing at all when none
+// holds anything.
+function mineRows(nav, item) {
   const mine = myEvents();
-  const rows = [...mine.waiting.map(e => ({e, mark: 'clock', title: 'Waiting for your reply'})), ...mine.hosted.map(e => ({e, mark: 'star', title: 'You host this'})), ...mine.going.map(e => ({e, mark: 'check', title: 'You said yes'}))];
-  const shown = rows.slice(0, 6);
-  for (const {e, mark, title} of shown) {
-    const a = link(eventPath(e), 'nav-sub nav-sub-event' + (location.pathname === eventPath(e) ? ' is-active' : ''));
-    const first = eventDates(e)[0];
-    a.append(el('span', 'nav-sub-date', parseDate(first).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})), el('span', '', e.title));
-    const marks = el('span', 'nav-sub-marks');
-    const m = el('span', 'nav-sub-' + (mark === 'star' ? 'star' : 'mark') + ' is-' + mark);
-    m.title = title;
-    m.append(svg(mark));
-    marks.append(m);
-    a.append(marks);
-    nav.append(a);
+  // Only a section with something in it, and My Events only when any has.
+  const sections = [
+    ['/mine/rsvp', 'calendar', 'RSVP', mine.waiting, true],
+    ['/mine/attending', 'check', 'Attending', mine.going, false],
+    ['/mine/hosting', 'star', 'Hosting', mine.hosted, false],
+    ['/mine/pending', 'clock', 'Pending Approval', mine.pending, false],
+  ].filter(([, , , list]) => list.length);
+  if (!sections.length) {
+    return;
   }
-  if (rows.length > shown.length) {
-    nav.append(link('/mine', 'nav-sub nav-sub-more', `and ${rows.length - shown.length} more`));
+  nav.append(link(item.href, location.pathname === item.href ? 'is-active' : ''));
+  nav.lastChild.append(svg(item.icon), el('span', '', item.label));
+  for (const [href, icon, words, list, owed] of sections) {
+    const a = link(href, 'nav-sub nav-mine nav-mine-' + icon + (location.pathname === href ? ' is-active' : ''));
+    a.append(svg(icon), el('span', 'nav-mine-words', words));
+    if (list.length) {
+      const badge = el('span', 'nav-badge' + (owed ? '' : ' is-quiet'), String(list.length));
+      badge.title = owed ? `${list.length} ${list.length === 1 ? 'invitation waits' : 'invitations wait'} for your reply` : `${list.length} coming up`;
+      a.append(badge);
+    }
+    nav.append(a);
   }
 }
 
@@ -208,11 +214,14 @@ let editingNav = false;
 // the Feeds page, the cross removes it.
 function fillNav(nav) {
   for (const item of primary) {
+    // My Events has its three lists under it in the rail; the tab bar
+    // keeps it as one item.
+    if (item.href === '/mine') {
+      mineRows(nav, item);
+      continue;
+    }
     const top = navLink(item);
     nav.append(top);
-    if (item.href === '/mine') {
-      myEventRows(nav);
-    }
     if (item.href !== '/') {
       continue;
     }
@@ -688,51 +697,10 @@ function closeMenus() {
 
 // The amber badge in the top bar counts the events waiting for an admin's
 // approval, for the admins alone, and opens Admin Tools' Events list.
-// Approvals are an admin's alert, like the directory's badges: they reach
-// everyone on the admin list whether Super Admin Mode is on or off, drawn
-// from every event the server sent, not only those the hat leaves listed.
-function waitingEvents() {
-  return isSystemAdmin() ? (state.model.allEvents || state.model.events).filter(e => e.pending) : [];
-}
-
-function renderApprovals() {
-  const waiting = waitingEvents().length;
-  for (const badge of document.querySelectorAll('.approve-alert')) {
-    badge.hidden = !waiting;
-    // A label and not a title: the card under it says the same, and a
-    // tooltip would sit on top of it.
-    const words = `${waiting} event${waiting === 1 ? '' : 's'} waiting for approval`;
-    badge.setAttribute('aria-label', words);
-    badge.removeAttribute('title');
-    // The card lists each waiting event under its title as a chip that opens
-    // its page, where Approve and Decline are, then a line to Admin Tools.
-    // The chips are links, so the card is not one: the toolbar's card is
-    // rebuilt as a plain box, its chevron dropped.
-    alertMenu(badge, () => {
-      const made = alertCard(words, '', 'Open Admin Tools', '/admin');
-      const card = el('div', 'alert-card approve-card');
-      card.append(made.querySelector('.alert-card-disc'), made.querySelector('.alert-card-words'));
-      const chips = el('div', 'approve-chips');
-      for (const e of waitingEvents().sort((a, b) => a.start.localeCompare(b.start))) {
-        const chip = link(eventPath(e), 'approve-chip');
-        const who = (state.model.names || {})[e.addedBy] || e.addedBy;
-        chip.append(el('span', 'approve-chip-title', e.title), el('span', 'approve-chip-note', `${dayLabel(e.start.slice(0, 10))} \u00b7 ${who}`));
-        chips.append(chip);
-      }
-      card.querySelector('.alert-card-words').append(chips, link('/admin', 'approve-admin', 'Open Admin Tools'));
-      return card;
-    });
-  }
-  for (const count of document.querySelectorAll('.approve-count')) {
-    count.textContent = String(waiting);
-  }
-}
-
 function renderUser() {
   const user = me();
   renderAvatars({photoUrl: user.photoUrl && user.photoUrl + '?thumb=1', initial: user.initial});
   renderAlerts(state.model.alerts || {});
-  renderApprovals();
   renderProfileLink(user.email);
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;

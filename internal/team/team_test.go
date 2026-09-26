@@ -50,7 +50,7 @@ func (fakeDirectory) Household(email string) (adults, kids []Child) {
 
 func (fakeDirectory) Grade(string) string { return "" }
 
-func (fakeDirectory) Alerts(string) (int, bool) { return 0, false }
+func (fakeDirectory) Alerts(string) ([]string, []string) { return nil, nil }
 
 func (fakeDirectory) GradeColors() map[string]string { return nil }
 

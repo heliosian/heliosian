@@ -5,11 +5,11 @@ import {familyOf, myFamilyKey} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
 import {tagNames, listKeys, listLabel, listApp, sharedKeys, sharedOf, managersOf, tagHref, onTagsChange, onTagsChangeChrome} from './tags.js';
 import {clampFilterPanel, closeFilterPanels} from './filters.js';
-import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodoCount} from './stale.js';
+import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodoCount, staleCard} from './stale.js';
 import {topbarSearchInput, topbarSearchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard, privacyMismatchText} from './pages/privacy.js';
 import {load} from './app.js';
-import {renderAvatars, onSlash, isEditableTarget, initAppSwitch, initUserMenu, initSpoof, hoverMenu, hoverClick, alertMenu, alertCard, renderSuperToggle} from '/toolbar.js';
+import {renderAvatars, onSlash, isEditableTarget, initAppSwitch, initUserMenu, initSpoof, hoverMenu, hoverClick, alertMenu, alertCard, renderSuperToggle, privacyCount, privacyCard} from '/toolbar.js';
 
 const primaryNavItems = [
   {path: 'people', label: 'Directory'},
@@ -611,7 +611,10 @@ export function renderPrivacyMenuAlert() {
   // bars carry them.
   for (const staleButton of document.querySelectorAll('.stale-alert')) {
     staleButton.hidden = !hasStale;
-    staleButton.title = `${staleCount} thing${staleCount === 1 ? '' : 's'} to update for the new year`;
+    // A label and not a title: the card under it says the same, and a
+    // tooltip would sit on top of it.
+    staleButton.setAttribute('aria-label', `${staleCount} thing${staleCount === 1 ? '' : 's'} to update for the new year`);
+    staleButton.removeAttribute('title');
   }
   for (const count of document.querySelectorAll('.stale-count')) {
     count.textContent = String(staleCount);
@@ -619,6 +622,7 @@ export function renderPrivacyMenuAlert() {
   for (const privacyButton of document.querySelectorAll('.privacy-alert')) {
     privacyButton.hidden = !hasMismatch;
   }
+  privacyCount(myPrivacyWarnings().length);
 }
 
 // Wires the static chrome (menus, drawer, search, stale badge, global
@@ -653,10 +657,9 @@ export function initChrome() {
   initUserMenu();
   initSpoof();
 
-  // The stale-count badge (desktop and mobile both) used to link straight to
-  // /my-family; now it opens a dropdown built from the same todoChecklist used
-  // on My Family/a person's own page, so what to fix and the link to fix it are
-  // both right there without leaving the current page. It opens on hover the
+  // The stale-count badge (desktop and mobile both) opens the toolbar's card
+  // of what to update, as every app's bell does (staleCard), with a photo
+  // uploaded or the facts opened right from it, without leaving the page. It opens on hover the
   // way the bar's other menus do, a mouse click leaving it open and a tap
   // toggling it.
   for (const staleButton of document.querySelectorAll('.stale-alert')) {
@@ -666,9 +669,12 @@ export function initChrome() {
       for (const p of document.querySelectorAll('.stale-menu')) {
         p.hidden = true;
       }
-      panel.replaceChildren(todoChecklist(staleItems()));
+      panel.replaceChildren(staleCard(staleItems()));
       panel.hidden = false;
       clampFilterPanel(wrap, panel);
+      // The card's point under the count, as the other badges' cards have it.
+      const w = wrap.getBoundingClientRect();
+      panel.style.setProperty('--notch', `${w.left + w.width / 2 - panel.getBoundingClientRect().left}px`);
     };
     const close = () => {
       panel.hidden = true;
@@ -684,11 +690,12 @@ export function initChrome() {
     });
   }
 
-  // The privacy triangle stays a link to My Privacy, and on hover says what
-  // the mismatch is - the sentence the dismissable banner uses - over the
-  // link, so the page need not be left to learn which detail it is.
+  // The privacy triangle stays a link to My Privacy, and on hover lists
+  // which details are out of step - the address, the phone number - so the
+  // page need not be left to learn which it is.
   for (const badge of document.querySelectorAll('.privacy-alert')) {
-    alertMenu(badge, () => alertCard('Privacy Settings Mismatch', privacyMismatchText(myPrivacyWarnings()), 'See Details', '/my-privacy'));
+    badge.removeAttribute('title');
+    alertMenu(badge, () => privacyCard(myPrivacyWarnings(), '/my-privacy', 'Review My Privacy'));
   }
 
   mobileListsOverlay.addEventListener('click', () => setMobileListsMenu(false));

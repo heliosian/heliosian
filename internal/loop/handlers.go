@@ -46,7 +46,7 @@ type Directory interface {
 	Shared(email string) []who.SharedTag
 	Person(email string) (Person, bool)
 	People() []Person
-	Alerts(email string) (int, bool)
+	Alerts(email string) ([]string, []string)
 	GradeColors() map[string]string
 }
 
@@ -132,8 +132,8 @@ type user struct {
 }
 
 type alerts struct {
-	Stale   int  `json:"stale"`
-	Privacy bool `json:"privacy"`
+	Stale   []string `json:"stale"`
+	Privacy []string `json:"privacy"`
 }
 
 type ruleView struct {

@@ -182,38 +182,32 @@ html[data-theme="dark"] {
 /* The yellow cards - the banners, the badge's dropdown, Who?'s checklist -
    turn to a deep amber wash with gold marks and light words, keeping their
    gold buttons. */
-[data-theme="dark"] .alert-card,
 [data-theme="dark"] .infobanner-alert,
 [data-theme="dark"] .todo-card { background: #2c2310; border-color: #5a4418; color: var(--ink); }
 
-[data-theme="dark"] .alert-card::before,
 [data-theme="dark"] .infobanner-alert::before,
 [data-theme="dark"] .todo-card::before { background: #f1b940; }
 
-[data-theme="dark"] .alert-card-disc,
 [data-theme="dark"] .infobanner-alert .infobanner-icon { background: #4a3812; color: #f1b940; }
 
-[data-theme="dark"] .alert-card-title,
 [data-theme="dark"] .infobanner-alert .infobanner-title,
 [data-theme="dark"] .todo-card-title { color: #f1b940; }
 
-[data-theme="dark"] .alert-card-text,
 [data-theme="dark"] .infobanner-alert .infobanner-desc,
 [data-theme="dark"] .todo-row { color: #d9d2c0; }
 
 [data-theme="dark"] .infobanner-alert .infobanner-main::before { background: #f1b940; }
 
-[data-theme="dark"] .alert-card:hover { background: #352b13; }
+/* The badges' cards on the dark card's ground, their words light. */
+[data-theme="dark"] .topbar-alert-menu { --alert-bg: #16292c; }
+[data-theme="dark"] .alert-card { color: var(--ink); }
+[data-theme="dark"] .alert-card-title, [data-theme="dark"] .alert-list-title, [data-theme="dark"] .alert-list-chip-title { color: #e6eeee; }
+[data-theme="dark"] .alert-card-chevron { border-color: #8fa3a6; }
+[data-theme="dark"] .alert-card.is-yellow { --tone-ink: #f2cf1d; }
+[data-theme="dark"] .rsvp-alert, [data-theme="dark"] .approvals-alert, [data-theme="dark"] .topbar-alert.stale-alert, [data-theme="dark"] .topbar-alert.privacy-alert { background: #1f838a; }
+[data-theme="dark"] .rsvp-alert:hover, [data-theme="dark"] .approvals-alert:hover, [data-theme="dark"] .topbar-alert.stale-alert:hover, [data-theme="dark"] .topbar-alert.privacy-alert:hover { background: #2b9da5; }
 
-/* When's approvals card and its chips, whose light amber by name in the
-   calendar's stylesheet outweighs the rules above. */
-[data-theme="dark"] .topbar-alert-wrap:has(.approve-alert) .alert-card,
-[data-theme="dark"] .topbar-alert-wrap:has(.approve-alert) .approve-card:hover { background: #2c2310; border-color: #5a4418; }
-[data-theme="dark"] .topbar-alert-wrap:has(.approve-alert) .alert-card-title { color: #f1b940; }
-[data-theme="dark"] .approve-chip { background: #352b13; border-color: #8a6a1f; }
-[data-theme="dark"] .approve-chip:hover { background: #40331a; }
 
-[data-theme="dark"] .alert-card-chevron,
 [data-theme="dark"] .todo-chevron { border-color: #f1b940; color: #f1b940; }
 
 [data-theme="dark"] .todo-row { border-top-color: rgba(241, 185, 64, 0.25); }

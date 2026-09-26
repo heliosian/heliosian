@@ -47,8 +47,8 @@ func (d sampleDirectory) Person(email string) (Person, bool) {
 	}
 	return Person{Email: p.Email, Name: p.FullName}, true
 }
-func (d sampleDirectory) People() []Person          { return nil }
-func (d sampleDirectory) Alerts(string) (int, bool) { return 0, false }
+func (d sampleDirectory) People() []Person                   { return nil }
+func (d sampleDirectory) Alerts(string) ([]string, []string) { return nil, nil }
 
 func (d sampleDirectory) GradeColors() map[string]string { return nil }
 

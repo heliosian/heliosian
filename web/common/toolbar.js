@@ -119,6 +119,11 @@ export function hoverClick(e) {
 export function initUserMenu() {
   const button = document.querySelector('#user');
   const menu = document.querySelector('#user-menu');
+  // Every app calls this, so the RSVP and approvals badges ride along, and
+  // the directory's count gets its bell.
+  initRSVP();
+  initApprovals();
+  bellStale();
   // Dark mode's row goes in every app's menu, above Sign Out.
   if (!menu.querySelector('.user-menu-mode')) {
     const signOut = menu.querySelector('form');
@@ -483,6 +488,96 @@ function clampMenu(wrap, menu) {
   const left = Math.max(margin, Math.min(wrapRect.right - width, window.innerWidth - margin - width));
   menu.style.left = `${left - wrapRect.left}px`;
   menu.style.right = 'auto';
+  // The card's point sits under the badge it hangs from.
+  menu.style.setProperty('--notch', `${wrapRect.left + wrapRect.width / 2 - left}px`);
+}
+
+// alertIcons are the rows' own marks, so each says what it is at a glance:
+// a photo, a family photo, facts, an address, a phone, and the three apps'
+// things waiting for approval.
+export const alertIcons = {
+  photo: '<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>',
+  family: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.6 2.7-6 6-6s6 2.4 6 6"/><circle cx="17" cy="9.5" r="2.6"/><path d="M15.5 14.3c3 .1 5.5 2.3 5.5 5.7"/></svg>',
+  facts: '<svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>',
+  address: '<svg viewBox="0 0 24 24"><path d="M12 22s7-7.6 7-12a7 7 0 1 0-14 0c0 4.4 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+  phone: '<svg viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>',
+  team: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.6 2.7-6 6-6s6 2.4 6 6"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 14.4c2 .7 3 2.8 3 5.6"/></svg>',
+  celebrate: '<svg viewBox="0 0 24 24"><path d="M3 9V7a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v2a2.5 2.5 0 0 0 0 5v2a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-2a2.5 2.5 0 0 0 0-5z"/><path d="M14 6v11" stroke-dasharray="2 2"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+};
+
+// updateIcon is the mark for one thing the directory wants updated, by
+// what its label says it is.
+function updateIcon(label) {
+  if (/^family photo/i.test(label)) {
+    return alertIcons.family;
+  }
+  return /facts$/i.test(label) ? alertIcons.facts : alertIcons.photo;
+}
+
+// alertList is the card for a badge that lists things - RSVP's invitations,
+// the approvals: the count large in its tone beside what they are and a
+// close, a row for each - its icon in a pale disc beside a chip with the
+// title and its note, to its page - and a button across the foot to the
+// whole list. tone is the card's colour, red or amber.
+export function alertList({count, words, items, icon, button, href, tone}) {
+  const card = el('div', 'alert-card alert-list' + (tone ? ' is-' + tone : ''));
+  const head = el('div', 'alert-list-head');
+  head.append(el('span', 'alert-list-count', String(count)), el('span', 'alert-list-title', words));
+  const close = el('button', 'alert-list-close');
+  close.type = 'button';
+  close.setAttribute('aria-label', 'Close');
+  close.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+  close.addEventListener('click', () => {
+    const menu = card.closest('.topbar-alert-menu');
+    if (menu) {
+      menu.hidden = true;
+    }
+  });
+  head.append(close);
+  card.append(head);
+  for (const item of items) {
+    const row = el('div', 'alert-list-row');
+    const disc = el('span', 'alert-card-disc');
+    disc.innerHTML = item.icon || icon;
+    // A row goes to its page, or - given an action - does it in place, as
+    // Who?'s photo rows open the file picker; the note can be told how it
+    // went (item.status is handed the note's node).
+    const chip = el(item.action ? 'button' : 'a', 'alert-list-chip');
+    if (item.action) {
+      chip.type = 'button';
+      chip.addEventListener('click', item.action);
+    } else {
+      chip.href = item.href;
+    }
+    const note = el('span', 'alert-list-chip-note', item.note);
+    const text = el('span', 'alert-list-words');
+    text.append(el('span', 'alert-list-chip-title', item.title), note);
+    chip.append(text, el('span', 'alert-card-chevron'));
+    if (item.status) {
+      item.status(note);
+    }
+    row.append(disc, chip);
+    // The whole row is the chip's: its icon too.
+    row.addEventListener('click', e => {
+      if (!chip.contains(e.target)) {
+        chip.click();
+      }
+    });
+    card.append(row);
+  }
+  // The foot's link to the whole list, where there is one list to go to.
+  if (button) {
+    const go = el('a', 'alert-list-button');
+    go.href = href;
+    go.append(el('span', '', button));
+    const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    arrow.setAttribute('viewBox', '0 0 24 24');
+    arrow.innerHTML = '<path d="M5 12h14M13 6l6 6-6 6"/>';
+    go.append(arrow);
+    card.append(go);
+  }
+  return card;
 }
 
 // The card an alert badge drops down: a pale yellow card with a gold bar
@@ -510,24 +605,180 @@ export function alertCard(title, text, linkText, href) {
 // hanging a card off each that says so on hover. Who? itself reckons these
 // client-side, with the checklist itself under its count, and does not call
 // this.
-export function renderAlerts({stale = 0, privacy = false} = {}) {
-  const who = appOrigin('who');
-  const staleTitle = `${stale} thing${stale === 1 ? '' : 's'} to update for the new year`;
+// bellStale puts a bell in each of the directory's count badges - Who?'s own
+// and the one every other app draws - so it wears the count on a dot at
+// its corner, as the RSVP and approvals badges do.
+function bellStale() {
   for (const badge of document.querySelectorAll('.stale-alert')) {
-    badge.hidden = !stale;
+    if (badge.querySelector('svg')) {
+      continue;
+    }
+    const bell = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    bell.setAttribute('viewBox', '0 0 24 24');
+    bell.setAttribute('aria-hidden', 'true');
+    bell.innerHTML = '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>';
+    badge.prepend(bell);
+  }
+}
+
+// privacyCount puts on the triangle how many details Veracross shows that
+// the directory hides - the address, the phone - on a dot at its corner,
+// as the other badges carry theirs; Who? calls it with its own reckoning.
+export function privacyCount(n) {
+  for (const badge of document.querySelectorAll('.privacy-alert')) {
+    let dot = badge.querySelector('.privacy-count');
+    if (!dot) {
+      dot = el('span', 'privacy-count');
+      badge.append(dot);
+    }
+    dot.textContent = String(n);
+    dot.hidden = !n;
+  }
+}
+
+// privacyCard is the triangle's card: how many details Veracross shows that
+// Helios Who hides, and a row for each - the address, the phone number -
+// to My Privacy, where they are set. fields are the server's words
+// ("address", "phone") or Who?'s own ("address", "phone number").
+const privacyNames = {address: 'Address', phone: 'Phone number', 'phone number': 'Phone number'};
+
+export function privacyCard(fields, href, button = 'Review My Privacy in Helios Who') {
+  return alertList({
+    count: fields.length,
+    words: fields.length === 1 ? 'privacy setting doesn\u2019t match Veracross' : 'privacy settings don\u2019t match Veracross',
+    items: fields.map(f => ({title: `${privacyNames[f] || f} mismatch`, note: 'Visible on Veracross, hidden in Helios Who', href, icon: f === 'address' ? alertIcons.address : alertIcons.phone})),
+    icon: '<svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>',
+    button,
+    href,
+    tone: 'yellow',
+  });
+}
+
+export function renderAlerts({stale = [], privacy = []} = {}) {
+  bellStale();
+  const fields = Array.isArray(privacy) ? privacy : [];
+  const updates = Array.isArray(stale) ? stale : [];
+  privacyCount(fields.length);
+  const who = appOrigin('who');
+  // The bell's card lists each thing to update - "Sam's photo", "Family
+  // photo" - to My Family, where it is done.
+  for (const badge of document.querySelectorAll('.stale-alert')) {
+    badge.hidden = !updates.length;
     badge.href = who + '/my-family';
-    badge.title = staleTitle;
-    alertMenu(badge, () => alertCard(badge.title, 'A photo or a few facts the directory would like refreshed for your family.', 'Open My Family in Helios Who', badge.href));
+    badge.setAttribute('aria-label', `${updates.length} thing${updates.length === 1 ? '' : 's'} to update for the new year`);
+    badge.removeAttribute('title');
+    alertMenu(badge, () => alertList({
+      count: updates.length,
+      words: updates.length === 1 ? 'thing to update for the new year' : 'things to update for the new year',
+      items: updates.map(label => ({title: label, note: 'Update it for the new year', href: badge.href, icon: updateIcon(label)})),
+      icon: '<svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
+      button: 'Open My Family in Helios Who',
+      href: badge.href,
+    }));
   }
   for (const count of document.querySelectorAll('.stale-count')) {
-    count.textContent = String(stale);
+    count.textContent = String(updates.length);
   }
   for (const badge of document.querySelectorAll('.privacy-alert')) {
-    badge.hidden = !privacy;
+    badge.hidden = !fields.length;
     badge.href = who + '/my-privacy';
-    badge.title = 'Your privacy settings don\u2019t match Veracross';
-    alertMenu(badge, () => alertCard('Privacy Settings Mismatch', 'Something your family hides in Helios Who is still visible on Veracross. Hiding it in Who does not hide it there.', 'Review My Privacy in Helios Who', badge.href));
+    badge.setAttribute('aria-label', 'Your privacy settings don\u2019t match Veracross');
+    badge.removeAttribute('title');
+    alertMenu(badge, () => privacyCard(fields, badge.href));
   }
+}
+
+// The RSVP badge, in every app's bar before the other alerts while any
+// invitation waits for the viewer's reply: a calendar with their count on
+// a red dot, going to the RSVP list on Helios When, and under it - on the
+// same hover as the other badges - a card listing each, soonest first, to
+// its page there. The page's own host answers (/api/apps/rsvp, the
+// calendar's, served on every app), so it is the same list everywhere.
+const rsvpDay = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
+
+function initRSVP() {
+  const user = document.querySelector('#user');
+  if (!user || document.querySelector('.rsvp-alert')) {
+    return;
+  }
+  fetch('/api/apps/rsvp').then(res => res.ok ? res.json() : null).then(view => {
+    const waiting = (view && view.waiting) || [];
+    if (!waiting.length) {
+      return;
+    }
+    const when = appOrigin('calendar');
+    const wrap = el('span', 'topbar-alert-wrap');
+    const badge = el('a', 'topbar-alert rsvp-alert');
+    badge.href = when + '/mine/rsvp';
+    const words = `${waiting.length} ${waiting.length === 1 ? 'invitation waits' : 'invitations wait'} for your reply`;
+    badge.setAttribute('aria-label', words);
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.innerHTML = '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>';
+    badge.append(icon, el('span', 'rsvp-count', String(waiting.length)));
+    wrap.append(badge);
+    // First among the bar's badges, before the directory's.
+    // Beside the bar's other badges, not inside one: Who? keeps its count in
+    // a box of its own (.stale-wrap).
+    const first = user.parentElement.querySelector('.topbar-alert');
+    (first ? first.closest('.topbar-alert-wrap, .stale-wrap') || first : user).before(wrap);
+    alertMenu(badge, () => alertList({
+      count: waiting.length,
+      words: waiting.length === 1 ? 'invitation waits for your reply' : 'invitations wait for your reply',
+      items: waiting.map(r => {
+        const day = new Date(r.start.slice(0, 10) + 'T12:00:00');
+        const hours = r.allDay || r.start.length < 16 ? '' : ' \u00b7 ' + new Date(r.start.replace(' ', 'T')).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
+        return {title: r.title, note: rsvpDay.format(day) + hours, href: when + r.path};
+      }),
+      icon: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="12" cy="15.5" r="1.6"/></svg>',
+      button: 'Open RSVP in Helios When',
+      href: badge.href,
+    }));
+  }).catch(() => {});
+}
+
+// The approvals badge, for an admin of any app, in every app's bar while
+// anything waits for their approval - with Super Admin Mode on or off,
+// approvals being an admin's alert: an hourglass with the count on an amber
+// dot, going to the approvals of the app with the first of them, and under
+// it a card listing each under its app's name, soonest first, to its page
+// there (/api/apps/approvals, served on every app).
+const approvalLists = {team: '/approvals', celebrate: '/approvals', calendar: '/admin'};
+const approvalApps = {team: 'HCA-Team', celebrate: 'Helios Celebrate', calendar: 'Helios When'};
+
+function initApprovals() {
+  const user = document.querySelector('#user');
+  if (!user || document.querySelector('.approvals-alert')) {
+    return;
+  }
+  fetch('/api/apps/approvals').then(res => res.ok ? res.json() : null).then(view => {
+    const waiting = (view && view.waiting) || [];
+    if (!waiting.length) {
+      return;
+    }
+    const wrap = el('span', 'topbar-alert-wrap');
+    const badge = el('a', 'topbar-alert approvals-alert');
+    badge.href = appOrigin(waiting[0].app) + approvalLists[waiting[0].app];
+    const words = `${waiting.length} ${waiting.length === 1 ? 'thing waits' : 'things wait'} for your approval`;
+    badge.setAttribute('aria-label', words);
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.innerHTML = '<path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/>';
+    badge.append(icon, el('span', 'approvals-count', String(waiting.length)));
+    wrap.append(badge);
+    // Beside the RSVP badge when there is one, first among the rest.
+    const rsvp = document.querySelector('.rsvp-alert');
+    const first = user.parentElement.querySelector('.topbar-alert');
+    (rsvp ? rsvp.closest('.topbar-alert-wrap') : first ? first.closest('.topbar-alert-wrap, .stale-wrap') || first : user).before(wrap);
+    alertMenu(badge, () => alertList({
+      count: waiting.length,
+      words: waiting.length === 1 ? 'thing waits for your approval' : 'things wait for your approval',
+      items: waiting.map(a => ({title: a.title, note: approvalApps[a.app] + (a.start ? ' \u00b7 ' + rsvpDay.format(new Date(a.start.slice(0, 10) + 'T12:00:00')) : ''), href: appOrigin(a.app) + a.path, icon: alertIcons[a.app]})),
+      icon: '<svg viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/></svg>',
+      // No foot: the things come from several apps, each row to its own.
+      tone: 'amber',
+    }));
+  }).catch(() => {});
 }
 
 // Spoof Mode's switch, for super admins: an eye beside the avatar, a red
@@ -577,6 +828,9 @@ function buildSpoof(user, state) {
   const menu = el('div', 'spoof-menu');
   menu.hidden = true;
   wrap.append(pill, menu);
+  // While viewing as someone else the whole bar goes hot pink, in every app
+  // and every theme, so it cannot be forgotten whose account this is.
+  document.body.classList.toggle('is-spoofing', Boolean(state.spoofing));
   if (state.spoofing) {
     wrap.classList.add('is-on');
     const as = el('span', 'spoof-as');

@@ -28,7 +28,7 @@ import (
 
 const shell = "web/calendar/index.html"
 
-var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/e/{id...}", "/events/{id...}", "/feeds", "/mine", "/admin"}
+var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/e/{id...}", "/events/{id...}", "/feeds", "/mine", "/mine/{list}", "/admin"}
 
 type app struct {
 	cache       *Cache
@@ -62,6 +62,7 @@ func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Dir
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("GET /api/calendar/model", a.model)
+	mux.HandleFunc("GET /api/apps/rsvp", a.rsvps)
 	mux.HandleFunc("POST /api/calendar/feeds", a.addFeed)
 	mux.HandleFunc("PUT /api/calendar/feeds", a.editFeed)
 	mux.HandleFunc("PUT /api/calendar/feeds/order", a.orderFeeds)
@@ -116,7 +117,7 @@ func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Dir
 	mux.HandleFunc("GET /open/banner/{id...}", a.banner)
 	mux.HandleFunc("POST /hooks/replies/mime", a.replies)
 	mux.HandleFunc("POST /hooks/events", a.deliveryEvents)
-	return Hooks{Answer: a.answer, MakeDefault: a.makeDefault}
+	return Hooks{Answer: a.answer, MakeDefault: a.makeDefault, RSVPs: a.rsvps}
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -260,6 +261,10 @@ func (a app) editFeed(w http.ResponseWriter, r *http.Request) {
 type Hooks struct {
 	Answer      Answerer
 	MakeDefault func(ctx context.Context, email, token string) error
+	// RSVPs answers GET /api/apps/rsvp, which every app's host serves for
+	// the shared toolbar - the calendar's own registers it itself: the
+	// invitations waiting for the viewer's reply.
+	RSVPs http.HandlerFunc
 }
 
 func homeOp(email string, cells store.Row) store.Op {

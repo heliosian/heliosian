@@ -285,7 +285,7 @@ func TestOnlyAdminsGetTheRules(t *testing.T) {
 	a := app{
 		cache: c, directory: c.directory,
 		heroPhoto: func(string) string { return "" },
-		alerts:    func(string) (int, bool) { return 0, false },
+		alerts:    func(string) ([]string, []string) { return nil, nil },
 		upcoming:  func(string, string) Upcoming { return Upcoming{} },
 		month:     func(string, string, string) Month { return Month{} },
 	}

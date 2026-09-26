@@ -3,6 +3,7 @@ import {el, svg, withFrom, firstName, infoBanner} from './dom.js';
 import {familyOf, canEditFamily} from './families.js';
 import {personSlug} from './people.js';
 import {submitMedia} from './edit.js';
+import {alertList, alertIcons} from '/toolbar.js';
 
 function agedPast(present, updated, years) {
   if (!present) {
@@ -132,4 +133,42 @@ export function familyNavPeople() {
 
 export function personTodoCount(p) {
   return (photoNeedsUpdate(p) ? 1 : 0) + (factsNeedUpdate(p) ? 1 : 0);
+}
+
+// staleCard is the toolbar's dropdown under the count, as every app's bell
+// has it (alertList in toolbar.js): a row for each thing to update, its icon
+// for what it is - a photo row opening the file picker right there and
+// saying how the upload went, a facts row to the person's facts - and a
+// button across the foot to My Family.
+export function staleCard(items) {
+  const title = s => s.charAt(0).toUpperCase() + s.slice(1);
+  // The file pickers of the card before this one go with it.
+  for (const old of document.querySelectorAll('.stale-card-input')) {
+    old.remove();
+  }
+  return alertList({
+    count: items.length,
+    words: items.length === 1 ? 'thing to update for the new year' : 'things to update for the new year',
+    items: items.map(item => {
+      if (item.type !== 'photo') {
+        return {title: title(item.label), note: 'Update the facts', href: withFrom(`/people/${encodeURIComponent(personSlug(item.key))}?edit=1&focus=facts`), icon: alertIcons.facts};
+      }
+      const input = el('input', 'stale-card-input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.hidden = true;
+      let note = null;
+      input.addEventListener('change', () => {
+        if (input.files.length) {
+          submitMedia(item.target, item.key, 'photo', input.files[0], input.files[0].name, note);
+        }
+      });
+      document.body.append(input);
+      return {title: title(item.label), note: 'Upload a new photo', action: () => input.click(), status: n => {
+        note = n;
+      }, icon: item.target === 'family' ? alertIcons.family : alertIcons.photo};
+    }),
+    button: 'Open My Family',
+    href: '/my-family',
+  });
 }

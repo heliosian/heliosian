@@ -79,7 +79,7 @@ func (fakeDirectory) Household(email string) (adults, kids []Person) {
 
 func (fakeDirectory) People() []Person { return nil }
 
-func (fakeDirectory) Alerts(string) (int, bool) { return 0, false }
+func (fakeDirectory) Alerts(string) ([]string, []string) { return nil, nil }
 
 type bundled struct{}
 

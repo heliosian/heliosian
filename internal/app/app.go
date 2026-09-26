@@ -244,7 +244,7 @@ func (s audienceSources) Sources() filter.Sources {
 	return loop.SourcesOf(s.loopDirectory)
 }
 
-func (d directory) Alerts(email string) (int, bool) {
+func (d directory) Alerts(email string) ([]string, []string) {
 	alerts := d.cache.Alerts(email, d.settings.Settings().StaleYears)
 	return alerts.Stale, alerts.Privacy
 }
@@ -411,7 +411,7 @@ func (d birthdayDirectory) Departments() []string {
 	return d.cache.Model().Departments
 }
 
-func (d birthdayDirectory) Alerts(email string) (int, bool) {
+func (d birthdayDirectory) Alerts(email string) ([]string, []string) {
 	alerts := d.cache.Alerts(email, d.settings.Settings().StaleYears)
 	return alerts.Stale, alerts.Privacy
 }
@@ -492,7 +492,7 @@ func (d celebrateDirectory) People() []celebrate.Person {
 	return out
 }
 
-func (d celebrateDirectory) Alerts(email string) (int, bool) {
+func (d celebrateDirectory) Alerts(email string) ([]string, []string) {
 	alerts := d.cache.Alerts(email, d.settings.Settings().StaleYears)
 	return alerts.Stale, alerts.Privacy
 }
@@ -573,7 +573,7 @@ func (d calendarDirectory) Children(email string) []calendar.Person {
 	return out
 }
 
-func (d calendarDirectory) Alerts(email string) (int, bool) {
+func (d calendarDirectory) Alerts(email string) ([]string, []string) {
 	alerts := d.cache.Alerts(email, d.settings.Settings().StaleYears)
 	return alerts.Stale, alerts.Privacy
 }
@@ -863,8 +863,16 @@ func NewCore(cfg Config) *Core {
 	loopMux := http.NewServeMux()
 	loop.Register(loopMux, loopCache, cfg.Store, loopDir, settings.SuperAdmins, loopMail, cfg.LoopDescriber)
 	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker, spend)
+	// The shared toolbar's approvals badge, for an admin of any app.
+	waitingApprovals := approvals(cache, teamCache, celebrateCache, calendarCache)
 	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux, askMux} {
 		home.RegisterSwitch(m, homeCache)
+		// The shared toolbar's RSVP badge asks the page's own host; the
+		// calendar's serves it already.
+		if m != calendarMux {
+			m.HandleFunc("GET /api/apps/rsvp", hooks.RSVPs)
+		}
+		m.HandleFunc("GET /api/apps/approvals", waitingApprovals)
 	}
 	feedbackCache, err := feedback.NewCache(cfg.Source, cfg.Writer, queue)
 	if err != nil {
@@ -884,6 +892,8 @@ func NewCore(cfg Config) *Core {
 			suggestions.Register(m)
 		}
 	}
+	homeMux.HandleFunc("GET /api/apps/rsvp", hooks.RSVPs)
+	homeMux.HandleFunc("GET /api/apps/approvals", waitingApprovals)
 	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.FeedbackFiler, superAdmin)
 	blob.Register(mux, cfg.Store)
 	blob.RegisterHome(homeMux, cfg.Store)

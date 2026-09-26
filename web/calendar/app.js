@@ -93,7 +93,7 @@ function route() {
     case 'feeds':
       return feedsPage();
     case 'mine':
-      return minePage();
+      return minePage(parts[1] || '');
     case 'admin':
       return me().isAdmin ? adminPage() : notFound('That page');
   }

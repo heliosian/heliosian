@@ -204,6 +204,29 @@ button { font: inherit; }
 
 .app-nav a.nav-sub:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
 
+/* My Events' sections in the rail - RSVP, Attending, Hosting - each with
+   its mark, its count - red for replies owed, as Who?'s rail counts what
+   is owed, quiet for the rest - and a chevron. */
+.app-nav a.nav-mine .nav-mine-words { flex: 1; }
+
+.app-nav a.nav-mine svg { width: 16px; height: 16px; }
+
+.app-nav a.nav-mine::after { content: ''; width: 7px; height: 7px; margin-left: 4px; border-right: 2px solid rgba(255, 255, 255, 0.5); border-bottom: 2px solid rgba(255, 255, 255, 0.5); transform: rotate(-45deg); flex-shrink: 0; }
+
+.app-nav a.nav-mine.is-active::after { border-color: var(--lime); }
+
+.app-nav a.nav-mine-calendar svg { color: #f2c46d; }
+
+.app-nav a.nav-mine-check svg { color: #8fe0b6; }
+
+.app-nav a.nav-mine-star svg { color: var(--lime); fill: currentColor; }
+
+.app-nav a.nav-mine-clock svg { color: #f2c46d; }
+
+.app-nav .nav-badge.is-quiet { background: rgba(255, 255, 255, 0.16); color: rgba(255, 255, 255, 0.85); }
+
+.app-nav .nav-badge { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-width: 18px; height: 18px; padding: 0 5px; margin-left: auto; border-radius: 9px; background: var(--alert); color: #fff; font-size: 11px; font-weight: 700; line-height: 1; }
+
 .app-nav a.nav-sub .nav-sub-marks { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
 
 .app-nav a.nav-sub .nav-sub-star { display: inline-flex; color: var(--lime); }
@@ -231,26 +254,64 @@ button { font: inherit; }
 
 .app-nav a.nav-sub-more { font-size: 12.5px; color: rgba(255, 255, 255, 0.55); }
 
-/* My Events, the page: a group per standing, its rows as the lists have
-   them. */
-.mine-group { margin: 20px 0 8px; }
+/* My Events, the page: a group per standing, each a grid of cards. */
+.mine-group { margin: 12px 0 28px; }
 
-.mine-group .rsvps-head { margin: 0 0 8px; font-size: 12px; }
-
-.mine-group .rsvps-head.is-waiting { color: #b8860b; }
-
-.mine-group .rsvps-head.is-hosted { color: var(--brand); }
-
-.mine-group .rsvps-head.is-going { color: #1d6b48; }
+.mine-heading { margin: 0 0 16px; font-family: Montserrat, Roboto, sans-serif; font-size: 20px; font-weight: 700; color: var(--brand); }
 
 .mine-empty { font-size: 14px; color: var(--muted); }
 
-.mine-group .event-time { width: auto; min-width: 128px; }
+/* My Events' cards, as HCA-Team's and Celebrate's grids have them: a card
+   with a card of an accent peeking out behind, the picture with the
+   tear-off date stamp overhanging its foot, the words, and a foot with
+   what to do. */
+.mine-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 36px 44px; padding-right: 6px; }
 
-@media (max-width: 640px) {
-  .mine-group .event-row { flex-wrap: wrap; }
-  .mine-group .event-time { width: 100%; }
-}
+.mine-grid > :nth-child(5n+1) { --peek: #1f838a; }
+.mine-grid > :nth-child(5n+2) { --peek: #c2442d; }
+.mine-grid > :nth-child(5n+3) { --peek: #88a700; }
+.mine-grid > :nth-child(5n+4) { --peek: #e0c800; }
+.mine-grid > :nth-child(5n+5) { --peek: #0f4e54; }
+
+.mine-slot { position: relative; z-index: 0; display: flex; }
+
+.mine-slot::before { content: ''; position: absolute; inset: 0; border-radius: 14px; background: var(--peek, var(--accent)); transform: rotate(1.5deg); transform-origin: bottom right; transition: transform 0.2s ease; z-index: -1; }
+
+.mine-slot:hover::before { transform: rotate(3deg); }
+
+.mine-card { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); }
+
+.mine-card-media { position: relative; display: block; line-height: 0; }
+
+.mine-card-image { width: 100%; height: 170px; object-fit: cover; background: var(--input); }
+
+.mine-chip { position: absolute; left: 12px; top: 12px; padding: 5px 12px; border-radius: 999px; background: #fae105; color: #0d0d0d; font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; line-height: 1.3; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }
+
+.mine-stamp { position: absolute; right: 10px; bottom: -14px; min-width: 52px; padding: 0 0 5px; border-radius: 10px; background: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18); text-align: center; line-height: 1.1; overflow: hidden; }
+
+.mine-stamp-month { padding: 3px 8px; background: var(--alert); color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; }
+
+.mine-stamp-day { padding: 4px 8px 0; font-size: 19px; font-weight: 700; color: var(--brand); }
+
+.mine-stamp-dow { padding: 1px 8px 0; font-size: 9px; font-weight: 700; color: var(--muted); letter-spacing: 0.08em; }
+
+.mine-card-body { flex: 1; display: flex; flex-direction: column; gap: 5px; padding: 20px 14px 12px; }
+
+.mine-card-title { margin-bottom: 2px; font-size: 16px; font-weight: 700; color: var(--brand); text-decoration: none; }
+
+.mine-card-title:hover { text-decoration: underline; }
+
+.mine-card-line { display: flex; align-items: flex-start; gap: 7px; font-size: 13px; color: var(--muted); }
+
+.mine-card-line svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 2px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+.mine-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 14px 14px; }
+
+.mine-card-note { font-size: 12.5px; font-weight: 600; color: var(--muted); text-align: right; }
+
+.mine-card-note.is-waiting { color: #b8860b; }
+
+.mine-card-note.is-going { color: #1d6b48; }
 
 .nav-sub-tool.nav-sub-lock { cursor: default; opacity: 0.7; }
 
@@ -1195,34 +1256,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 /* The event form's picture: the categories' control, larger. */
 .event-image-row .admin-image-pick { width: 120px; height: 68px; }
-
-/* The approvals badge: the count badge in amber rather than the alert red,
-   its card listing each waiting event as a chip that opens its page. */
-.approve-alert span { background: var(--amber); }
-
-.approve-alert + .topbar-alert-menu .alert-card, .topbar-alert-wrap:has(.approve-alert) .alert-card { background: #fff8e8; border-color: var(--amber); }
-
-.topbar-alert-wrap:has(.approve-alert) .alert-card-title { color: #8a5a00; }
-
-/* The card is a box, not a link - the chips inside are the links - so it
-   keeps its colour under the mouse, and the disc sits by the title. */
-.approve-card { align-items: flex-start; }
-
-.topbar-alert-wrap:has(.approve-alert) .approve-card:hover { background: #fff8e8; }
-
-.approve-chips { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 4px; }
-
-.approve-admin { font-size: 13px; font-weight: 600; color: var(--brand); text-decoration: none; }
-
-.approve-admin:hover { text-decoration: underline; }
-
-.approve-chip { display: flex; flex-direction: column; gap: 1px; padding: 8px 12px; border: 1.5px dashed var(--amber); border-radius: 10px; background: #fff8e8; text-decoration: none; color: var(--ink); }
-
-.approve-chip:hover { background: #fff1d1; }
-
-.approve-chip-title { font-size: 13.5px; font-weight: 700; color: var(--brand); }
-
-.approve-chip-note { font-size: 12px; color: var(--muted); }
 
 .admin-pending-head { margin: 4px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #8a5a00; }
 

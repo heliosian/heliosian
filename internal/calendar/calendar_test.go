@@ -483,7 +483,9 @@ func (d fakeDirectory) People() []Person {
 
 func (d fakeDirectory) Lists(string) []List { return d.lists }
 
-func (d fakeDirectory) Alerts(string) (int, bool) { return 2, true }
+func (d fakeDirectory) Alerts(string) ([]string, []string) {
+	return []string{"Sam's photo", "Family photo"}, []string{"address"}
+}
 
 func (d fakeDirectory) GradeColors() map[string]string { return nil }
 
@@ -510,7 +512,7 @@ func TestRender(t *testing.T) {
 	if strings.Join(v.User.Classrooms, ",") != "Jays,Ospreys" || len(v.User.Students) != 2 || v.User.Initial != "J" {
 		t.Errorf("parent = %+v", v.User)
 	}
-	if len(v.Feeds) != 1 || v.Today != "2026-09-08" || len(v.Events) != 20 || v.Alerts.Stale != 2 || !v.Alerts.Privacy {
+	if len(v.Feeds) != 1 || v.Today != "2026-09-08" || len(v.Events) != 20 || len(v.Alerts.Stale) != 2 || len(v.Alerts.Privacy) != 1 {
 		t.Errorf("view = feeds %d today %s events %d alerts %+v", len(v.Feeds), v.Today, len(v.Events), v.Alerts)
 	}
 	if v.Days["2026-09-08"]["Jays"] != "Regular" || len(v.Classrooms) != 9 || len(v.Tags) != 20 || v.Colors["Jays"] != "#fec502" {

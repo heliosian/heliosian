@@ -847,13 +847,16 @@ export async function answer(e, word) {
   }
 }
 
-// eventImage is the picture across the top of an event's page: the event's
-// own, where the app that runs it has one (fetched from that app, on this
-// page's own tier); else the image of the first of its tags that has one,
+// eventImage is the picture across the top of an event's page and on its
+// card: the event's own, where the app that runs it has one (served by the
+// calendar's own host); else the image of the first of its tags that has one,
 // in the order the event carries them; else the calendar's own header.
 export function eventImage(e) {
+  // Another app's picture comes through the calendar's own host, as the
+  // page for someone from outside has it (/open/banner/), so it never waits
+  // on reaching that app's.
   if (e.image) {
-    return e.link ? appOrigin(linkedApp(e)) + e.image : e.image;
+    return e.link ? '/open/banner/' + e.id.split('/').map(encodeURIComponent).join('/') : e.image;
   }
   for (const name of e.tags) {
     const tag = state.model.tags.find(t => t.name === name);
@@ -896,8 +899,12 @@ export function calendarLink(e) {
 export function myEvents() {
   const day = today();
   const upcoming = state.model.events.filter(e => eventDates(e)[eventDates(e).length - 1] >= day);
+  // What the viewer shared that waits for an admin's approval is its own
+  // list, not among what they host until it is on the calendar.
+  const pending = e => e.pending && !e.declined && e.addedBy === me().email;
   return {
-    hosted: upcoming.filter(e => e.hosted),
+    hosted: upcoming.filter(e => e.hosted && !pending(e)),
+    pending: upcoming.filter(pending),
     waiting: upcoming.filter(e => !e.hosted && e.invited && !answerOf(e)),
     going: upcoming.filter(e => !e.hosted && answerOf(e) === 'yes'),
   };

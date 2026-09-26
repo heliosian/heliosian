@@ -40,7 +40,7 @@ type app struct {
 	heroPhoto   func(string) string
 	people      func() []Person
 	directory   Directory
-	alerts      func(string) (int, bool)
+	alerts      func(string) ([]string, []string)
 	upcoming    func(email, token string) Upcoming
 	makeDefault func(ctx context.Context, email, token string) error
 	month       func(email, month, token string) Month
@@ -71,11 +71,11 @@ type Month struct {
 }
 
 type alerts struct {
-	Stale   int  `json:"stale"`
-	Privacy bool `json:"privacy"`
+	Stale   []string `json:"stale"`
+	Privacy []string `json:"privacy"`
 }
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, directory Directory, alerts func(string) (int, bool), upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, directory Directory, alerts func(string) ([]string, []string), upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	}

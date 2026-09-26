@@ -28,7 +28,7 @@ type Directory interface {
 	Resolve(email string) string
 	Person(email string) (Person, bool)
 	Children(email string) []Person
-	Alerts(email string) (stale int, privacy bool)
+	Alerts(email string) (stale []string, privacy []string)
 	ClassroomColors() map[string]string
 	GradeColors() map[string]string
 	// People is everyone in the directory, and Lists one person's lists in
@@ -91,8 +91,8 @@ func thumb(url string) string {
 }
 
 type Alerts struct {
-	Stale   int  `json:"stale"`
-	Privacy bool `json:"privacy"`
+	Stale   []string `json:"stale"`
+	Privacy []string `json:"privacy"`
 }
 
 type User struct {
