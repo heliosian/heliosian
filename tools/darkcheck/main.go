@@ -1,11 +1,3 @@
-// Command darkcheck loads pages in dark mode and reads the rendered page for
-// what dark.css missed: words with too little contrast against the ground
-// they sit on, light surfaces a dark page was never meant to hold, and a
-// tab strip painted a different colour from what it sits on. It walks every
-// visible element, compositing each one's background up through its
-// ancestors, so a pale fill painted by name shows up whatever stylesheet
-// put it there. One url per -url, or several separated by commas; -click
-// clicks its way into a window first, as tools/screenshot does.
 package main
 
 import (
@@ -137,7 +129,7 @@ func main() {
 	minRatio := flag.Float64("min", 3, "report words whose contrast is under this, or under what their size needs if lower")
 	flag.Parse()
 	if *urls == "" {
-		log.Fatal("[ERROR] -url is required")
+		log.Fatal("[ERROR] --url is required")
 	}
 	ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("ignore-certificate-errors", true))...)
 	defer cancel()

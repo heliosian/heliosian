@@ -1,4 +1,3 @@
-// Command cookie prints a signed session cookie for local api testing.
 package main
 
 import (
@@ -16,7 +15,7 @@ func main() {
 	flag.Parse()
 	key := os.Getenv("SESSION_KEY")
 	if key == "" || *email == "" {
-		log.Fatal("[ERROR] SESSION_KEY and -email are required")
+		log.Fatal("[ERROR] SESSION_KEY and --email are required")
 	}
 	fmt.Println(auth.Token([]byte(key), *email, time.Now()))
 }
