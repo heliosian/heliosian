@@ -1,5 +1,6 @@
 import {state, me, isAdmin, postedAndHosting, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
-import {el, svg, button, toast, avatar, popup, copyText} from './dom.js';
+import {el, svg, button, toast, avatar, copyText} from './dom.js';
+import {popup} from '/modal.js';
 import {appOrigin} from '/toolbar.js';
 import {rulesEditor, filterWidgets} from '/rules.js';
 import {addressSuggest} from '/address.js';

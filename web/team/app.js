@@ -1,7 +1,7 @@
 import {state, applyModel, resolvePath, redirectTarget, activityPath, isFamily, isSystemAdmin} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
-import {initModal} from './edit.js';
+import {initModal} from '/modal.js';
 import {signUpPage} from './pages/signup.js';
 import {myPage} from './pages/my.js';
 import {calendarPage} from './pages/calendar.js';
@@ -110,5 +110,5 @@ window.addEventListener('popstate', render);
 document.addEventListener('hca:refresh', render);
 
 initChrome();
-initModal();
+initModal(load);
 load();

@@ -1,7 +1,8 @@
 import {state, applyModel, staff, charity, isUnassigned, isAdmin, commsOnly} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
-import {initModal, offerTeam} from './edit.js';
+import {offerTeam} from './edit.js';
+import {initModal} from '/modal.js';
 import {jobsPage} from './pages/jobs.js';
 import {processPage} from './pages/process.js';
 import {calendarPage} from './pages/calendar.js';
@@ -105,5 +106,5 @@ window.addEventListener('popstate', render);
 document.addEventListener('birthday:refresh', render);
 
 initChrome();
-initModal();
+initModal(load);
 load();

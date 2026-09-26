@@ -1,5 +1,6 @@
 import {state, me, tagGroups, bands, classroomNames, myClassrooms, event, eventDates, eventPath, addDays, parseDate, dayLabel} from '../state.js';
-import {el, link, svg, button, toast, popup} from '../dom.js';
+import {el, link, svg, button, toast} from '../dom.js';
+import {popup} from '/modal.js';
 import {setTitle} from '../chrome.js';
 import {eventForm} from '../eventform.js';
 import {imageControl} from '../imagecontrol.js';

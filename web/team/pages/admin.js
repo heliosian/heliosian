@@ -1,7 +1,8 @@
 import {state, isSystemAdmin, me} from '../state.js';
 import {el, button, svg} from '../dom.js';
 import {setTitle} from '../chrome.js';
-import {categoryList, openSettings, openRedirect, checkbox, send} from '../edit.js';
+import {categoryList, openSettings, openRedirect, send} from '../edit.js';
+import {checkbox} from '/form.js';
 
 function denied() {
   const page = el('div', 'list-page');

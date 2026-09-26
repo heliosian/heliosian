@@ -119,17 +119,6 @@ export function avatar(person, className) {
   return node;
 }
 
-export function segmented(items, active, onPick) {
-  const bar = el('div', 'segmented');
-  for (const item of items) {
-    const b = el('button', 'segment' + (item.key === active ? ' is-on' : ''), item.label);
-    b.type = 'button';
-    b.addEventListener('click', () => onPick(item.key));
-    bar.append(b);
-  }
-  return bar;
-}
-
 let toastTimer;
 
 // toast shows a line at the foot of the page for a moment - longer, given
@@ -251,40 +240,6 @@ export function peopleList(list, icon) {
     rows.append(row);
   }
   return rows;
-}
-
-// popup is a layer over the page with a titled box: closing on its cross,
-// Escape, or a click outside. It hands back the box and the closer.
-export function popup(title, node, {wide = false} = {}) {
-  const layer = el('div', 'modal-overlay');
-  const box = el('div', 'modal' + (wide ? ' modal-wide' : ''));
-  const header = el('div', 'modal-header');
-  header.append(el('h2', '', title));
-  const close = el('button', 'modal-close', '\u00d7');
-  close.type = 'button';
-  close.setAttribute('aria-label', 'Close');
-  const shut = () => {
-    layer.remove();
-    document.removeEventListener('keydown', onKey, true);
-  };
-  const onKey = e => {
-    if (e.key === 'Escape') {
-      e.stopImmediatePropagation();
-      shut();
-    }
-  };
-  close.addEventListener('click', shut);
-  layer.addEventListener('click', e => {
-    if (e.target === layer) {
-      shut();
-    }
-  });
-  document.addEventListener('keydown', onKey, true);
-  header.append(close);
-  box.append(header, node);
-  layer.append(box);
-  document.body.append(layer);
-  return {box, shut};
 }
 
 // feedMark is a saved calendar's mark: the emoji its owner gave it, else

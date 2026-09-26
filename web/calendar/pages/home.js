@@ -1,6 +1,7 @@
 import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, eventTint, timeLine, startTime, eventPath, weekdayShort, isMatch, isHidden, isGray} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
-import {el, link, svg, button, peopleLine, toast, popup, copyText, feedMark} from '../dom.js';
+import {el, link, svg, button, peopleLine, toast, copyText, feedMark} from '../dom.js';
+import {popup} from '/modal.js';
 import {setTitle, setSearch, fillFilters, renderRailDay, editFeedPopup, makeDefaultFeed, calendarMenu} from '../chrome.js';
 import {dayColumn, openAddEvent} from '../day.js';
 import {callPill, emptyNote, roomDots, planCards} from '../events.js';

@@ -2,7 +2,8 @@ import {state, isAdmin, canApprove, isKid, whenParts, parseWhen, priceLine, mone
 import {el, link, svg, button, avatar, thumb, paragraphs, copyText, toast} from '../dom.js';
 import {setTitle, listPath} from '../chrome.js';
 import {appOrigin} from '/toolbar.js';
-import {openBuy, openParty, openFreeTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setFlags, setPartyStatus, openContacts, savePartyFields, uploadImage, editable, editPencil, fieldEditor, textInput, textAreaInput, whenInputs, emojiPicker, uploadAndSave, imageSearchOn, openImageSearch} from '../edit.js';
+import {openBuy, openParty, openFreeTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setFlags, setPartyStatus, openContacts, savePartyFields, uploadImage, editable, editPencil, fieldEditor, whenInputs, emojiPicker, uploadAndSave, imageSearchOn, openImageSearch} from '../edit.js';
+import {text as textInput, textarea as textAreaInput} from '/form.js';
 import {statusBadges} from '../cards.js';
 import {openPhotoLightbox, openCropTool} from '/crop.js';
 import {dateCard} from '/datecard.js';

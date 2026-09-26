@@ -3,13 +3,10 @@ import {addressSuggest} from '/address.js';
 import {el, svg, toast, button, avatar} from './dom.js';
 import {tabStrip} from '/tabs.js';
 import {imageTools} from '/images.js';
+import {openModal, closeModal, popup} from '/modal.js';
+import {field, text, textarea, select, checkbox, segmented} from '/form.js';
 
 export const {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/celebrate', {state, toast});
-
-let modalState = null;
-
-const overlay = () => document.querySelector('#modal-overlay');
-const form = () => document.querySelector('#modal');
 
 export async function reload() {
   const {load} = await import('./app.js');
@@ -28,179 +25,6 @@ export async function send(method, url, body) {
 async function goTo(path) {
   const {navigate} = await import('./app.js');
   navigate(path);
-}
-
-// openSheet is a second layer above the modal for something the form needs
-// mid-edit - the image search - so the form underneath keeps every field
-// typed into it.
-function openSheet(title, nodes, options) {
-  const layer = el('div', 'modal-overlay modal-sheet');
-  const box = el('div', 'modal' + (options && options.wide ? ' modal-wide' : ''));
-  const header = el('div', 'modal-header');
-  header.append(el('h2', '', title));
-  const close = el('button', 'modal-close', '×');
-  close.type = 'button';
-  close.setAttribute('aria-label', 'Close');
-  const shut = () => {
-    layer.remove();
-    document.removeEventListener('keydown', onKey, true);
-  };
-  const onKey = e => {
-    if (e.key === 'Escape') {
-      e.stopImmediatePropagation();
-      shut();
-    }
-  };
-  close.addEventListener('click', shut);
-  layer.addEventListener('click', e => {
-    if (e.target === layer) {
-      shut();
-    }
-  });
-  document.addEventListener('keydown', onKey, true);
-  header.append(close);
-  box.append(header, ...nodes);
-  layer.append(box);
-  document.body.append(layer);
-  return shut;
-}
-
-export function closeModal() {
-  overlay().hidden = true;
-  form().replaceChildren();
-  modalState = null;
-}
-
-export function initModal() {
-  overlay().addEventListener('click', e => {
-    if (e.target === overlay()) {
-      closeModal();
-    }
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      closeModal();
-    }
-  });
-  form().addEventListener('submit', async e => {
-    e.preventDefault();
-    if (!modalState || !modalState.submit) {
-      return;
-    }
-    const {submit, afterSave} = modalState;
-    setStatus('Saving…');
-    try {
-      const result = await submit();
-      closeModal();
-      await reload();
-      if (afterSave) {
-        afterSave(result);
-      }
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
-}
-
-function setStatus(message, error) {
-  const status = form().querySelector('.save-status');
-  if (!status) {
-    return;
-  }
-  status.textContent = message;
-  status.classList.toggle('error', Boolean(error));
-}
-
-function field(label, input, hint, required) {
-  const wrap = el('label', 'field' + (required ? ' is-required' : ''));
-  wrap.append(typeof label === 'string' ? el('span', '', label) : label, input);
-  if (hint) {
-    wrap.append(el('small', '', hint));
-  }
-  return wrap;
-}
-
-function text(value, options) {
-  const input = el('input');
-  input.type = (options && options.type) || 'text';
-  input.value = value === undefined || value === null ? '' : String(value);
-  if (options && options.placeholder) {
-    input.placeholder = options.placeholder;
-  }
-  if (options && options.required) {
-    input.required = true;
-  }
-  if (options && options.maxLength) {
-    input.maxLength = options.maxLength;
-  }
-  if (options && options.min !== undefined) {
-    input.min = options.min;
-  }
-  if (options && options.step !== undefined) {
-    input.step = options.step;
-  }
-  return input;
-}
-
-function textarea(value, rows) {
-  const input = el('textarea');
-  input.rows = rows || 4;
-  input.value = value || '';
-  return input;
-}
-
-function select(options, value) {
-  const input = el('select');
-  for (const option of options) {
-    const node = el('option', '', option.label === undefined ? option : option.label);
-    node.value = option.value === undefined ? option : option.value;
-    node.selected = node.value === value;
-    input.append(node);
-  }
-  return input;
-}
-
-// segmented is a two-or-more-way switch: one button per choice, the chosen one
-// filled.
-function segmented(options, initial, onChange) {
-  const wrap = el('div', 'segmented');
-  wrap.setAttribute('role', 'radiogroup');
-  const s = {value: initial};
-  const buttons = options.map(o => {
-    const b = el('button', 'segment' + (o.value === initial ? ' is-on' : ''), o.label);
-    b.type = 'button';
-    b.setAttribute('role', 'radio');
-    b.setAttribute('aria-checked', String(o.value === initial));
-    b.addEventListener('click', () => {
-      s.value = o.value;
-      for (const other of buttons) {
-        const on = other === b;
-        other.classList.toggle('is-on', on);
-        other.setAttribute('aria-checked', String(on));
-      }
-      onChange(o.value);
-    });
-    wrap.append(b);
-    return b;
-  });
-  return {wrap, get value() { return s.value; }};
-}
-
-// checkbox is a labelled switch with an optional line of explanation.
-export function checkbox(label, checked, hint) {
-  const wrap = el('label', 'field field-toggle');
-  const input = el('input');
-  input.type = 'checkbox';
-  input.checked = Boolean(checked);
-  const words = el('span');
-  words.append(el('span', '', label));
-  if (hint) {
-    words.append(el('small', '', hint));
-  }
-  const knob = el('span', 'switch');
-  knob.append(input, el('span'));
-  wrap.append(knob, words);
-  return {wrap, input};
 }
 
 // whenPickers is a date beside an optional time. The sheet stores
@@ -255,71 +79,6 @@ function tabbedFields(panels) {
   });
   wrap.append(bar, ...bodies);
   return wrap;
-}
-
-function openModal(title, fields, options) {
-  const f = form();
-  f.replaceChildren();
-  f.classList.toggle('modal-wide', options.wide === true);
-  f.classList.toggle('modal-table', options.wide === 'table');
-  f.classList.toggle('modal-person', options.wide === 'person');
-  const header = el('div', 'modal-header');
-  header.append(el('h2', '', title));
-  const close = el('button', 'modal-close', '×');
-  close.type = 'button';
-  close.setAttribute('aria-label', 'Close');
-  close.addEventListener('click', closeModal);
-  header.append(close);
-  f.append(header);
-  for (const node of fields) {
-    f.append(node);
-  }
-  const actions = el('div', 'modal-actions');
-  if (options.actions === false) {
-    // A window whose body carries its own way out - the person card's Done.
-    actions.hidden = true;
-  } else if (options.submit) {
-    const save = el('button', 'button', options.saveLabel || 'Save');
-    save.type = 'submit';
-    const cancel = el('button', 'button button-secondary', 'Cancel');
-    cancel.type = 'button';
-    cancel.addEventListener('click', closeModal);
-    actions.append(save, cancel);
-  } else {
-    const done = el('button', 'button', 'Done');
-    done.type = 'button';
-    done.addEventListener('click', closeModal);
-    actions.append(done);
-  }
-  if (options.onDelete) {
-    const del = el('button', 'danger-button', options.deleteLabel || 'Delete');
-    del.type = 'button';
-    del.addEventListener('click', async () => {
-      if (!confirm(options.confirmDelete)) {
-        return;
-      }
-      setStatus('Deleting…');
-      try {
-        await options.onDelete();
-        closeModal();
-        await reload();
-        if (options.afterDelete) {
-          options.afterDelete();
-        }
-      } catch (err) {
-        setStatus(err.message, true);
-      }
-    });
-    actions.append(del);
-  }
-  actions.append(el('span', 'save-status'));
-  f.append(actions);
-  modalState = {submit: options.submit, afterSave: options.afterSave};
-  overlay().hidden = false;
-  const first = f.querySelector('input:not([type=hidden]):not([type=file]):not([type=checkbox]), textarea, select');
-  if (first) {
-    first.focus();
-  }
 }
 
 // The directory, fetched once per page load, behind the people pickers.
@@ -949,7 +708,7 @@ function openAddSomeone(p, editor, onAdd, opts = {}) {
   } else {
     wrap.append(guestPanel);
   }
-  const shut = openSheet(opts.title || 'Add someone', [wrap]);
+  const {shut} = popup(opts.title || 'Add someone', wrap);
   const first = wrap.querySelector('input:not([hidden])');
   if (first) {
     first.focus();
@@ -988,6 +747,7 @@ export function openReassign(p, a) {
   fields.push(which.wrap, directoryPanel, guestPanel);
   fields.push(el('p', 'buy-note', `The ticket stays billed to ${a.purchaserName || a.purchaser || 'the family that took it'}; if it was resold, that is settled between the two families.`));
   openModal(`Reassign ${a.name}'s ticket`, fields, {
+    replace: true,
     saveLabel: 'Reassign',
     submit: async () => {
       const body = {ticketId: a.ticketId};
@@ -1025,6 +785,7 @@ export function openMoveAddress(a, onDone) {
     field('Name', name, 'The directory no longer holds them, so this is what the parties call them.'),
   ];
   openModal(`Change ${a.name}'s address`, fields, {
+    replace: true,
     saveLabel: 'Change address',
     submit: () => {
       if (!to.value.trim()) {
@@ -1628,14 +1389,6 @@ export function editable(anchor, label, make, submit) {
     fieldEditor(anchor, pencil, {input: built.input, hint: built.hint, value: built.value, validate: built.validate, submit});
   });
   return pencil;
-}
-
-export function textInput(value, options) {
-  return text(value, options);
-}
-
-export function textAreaInput(value, rows) {
-  return textarea(value, rows);
 }
 
 // whenInputs is the start and end pickers together, for the rail's Date &

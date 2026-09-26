@@ -6,7 +6,8 @@ import {dateCard, googleCalendarLink} from '/datecard.js';
 import {appOrigin} from '/toolbar.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
 import {openCropTool, openPhotoLightbox} from '/crop.js';
-import {send, reload, openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid, editPencil} from '../edit.js';
+import {send, reload, openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, uploadAndSave, openCategoryManager, openVolunteerGrid, editPencil} from '../edit.js';
+import {text as textInput, textarea as textAreaInput, select as selectInput} from '/form.js';
 
 
 // Which activity is in edit mode, by id. Keyed rather than a bare boolean so

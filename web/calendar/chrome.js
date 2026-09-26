@@ -1,5 +1,6 @@
 import {state, me, isAdmin, isSystemAdmin, setSuperEdit, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, dayLabel, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents, eventDates} from './state.js';
-import {el, svg, link, button, toast, feedMark, popup, emojiPicker} from './dom.js';
+import {el, svg, link, button, toast, feedMark, emojiPicker} from './dom.js';
+import {popup} from '/modal.js';
 import {dayColumn} from './day.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
 

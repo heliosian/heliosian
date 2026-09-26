@@ -5,7 +5,8 @@
 // card at the top of the page.
 import {state, eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, weekdayLong, specials, isSchoolDay, eventTint, timeLine, eventPath, isMatch, isGray} from './state.js';
 import {dayTypeClass} from '/daytype.js';
-import {el, link, svg, button, popup} from './dom.js';
+import {el, link, svg, button} from './dom.js';
+import {popup} from '/modal.js';
 import {eventForm} from './eventform.js';
 import {planCards} from './events.js';
 

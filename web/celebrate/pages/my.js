@@ -2,7 +2,7 @@ import {state, me, household, familyShown, myTickets} from '../state.js';
 import {el, link} from '../dom.js';
 import {setTitle, setSearch, renderChrome} from '../chrome.js';
 import {partyCard} from '../cards.js';
-import {checkbox} from '../edit.js';
+import {checkbox} from '/form.js';
 
 let query = '';
 

@@ -1,7 +1,7 @@
 import {state, applyModel, celebration, familyMember, resolvePath, partyPath} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
-import {initModal} from './edit.js';
+import {initModal} from '/modal.js';
 import {partiesPage} from './pages/parties.js';
 import {partyPage} from './pages/party.js';
 import {myPage} from './pages/my.js';
@@ -91,5 +91,5 @@ window.addEventListener('popstate', render);
 document.addEventListener('celebrate:refresh', render);
 
 initChrome();
-initModal();
+initModal(load);
 load();

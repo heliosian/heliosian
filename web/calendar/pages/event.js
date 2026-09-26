@@ -1,6 +1,7 @@
 import {state, isAdmin, isSystemAdmin, postedAndHosting, calendarLink, sourceWords, dayType, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
-import {el, link, svg, paragraphs, button, toast, avatar, popup, copyText} from '../dom.js';
+import {el, link, svg, paragraphs, button, toast, avatar, copyText} from '../dom.js';
+import {popup} from '/modal.js';
 import {dateCard} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
 import {appOrigin} from '/toolbar.js';

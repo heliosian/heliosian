@@ -8,13 +8,10 @@ function* allNodes() {
 }
 import {el, svg, toast, button, thumb, whenEditor} from './dom.js';
 import {imageTools} from '/images.js';
+import {openModal, closeModal} from '/modal.js';
+import {field, text, textarea, select, checkbox, segmented} from '/form.js';
 
 export const {uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/team', {state, toast});
-
-let modalState = null;
-
-const overlay = () => document.querySelector('#modal-overlay');
-const form = () => document.querySelector('#modal');
 
 export async function reload() {
   const {load} = await import('./app.js');
@@ -66,143 +63,6 @@ export async function saveActivity(body) {
     const {render} = await import('./app.js');
     render();
   }
-}
-
-function closeModal() {
-  overlay().hidden = true;
-  form().replaceChildren();
-  modalState = null;
-}
-
-export function initModal() {
-  overlay().addEventListener('click', e => {
-    if (e.target === overlay()) {
-      closeModal();
-    }
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      closeModal();
-    }
-  });
-  form().addEventListener('submit', async e => {
-    e.preventDefault();
-    if (!modalState) {
-      return;
-    }
-    const {submit, afterSave} = modalState;
-    if (!submit) {
-      return;
-    }
-    setStatus('Saving…');
-    try {
-      await submit();
-      closeModal();
-      await reload();
-      if (afterSave) {
-        afterSave();
-      }
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
-}
-
-function setStatus(message, error) {
-  const status = form().querySelector('.save-status');
-  if (!status) {
-    return;
-  }
-  status.textContent = message;
-  status.classList.toggle('error', Boolean(error));
-}
-
-function field(label, input, hint) {
-  const wrap = el('label', 'field');
-  wrap.append(typeof label === 'string' ? el('span', '', label) : label, input);
-  if (hint) {
-    wrap.append(el('small', '', hint));
-  }
-  return wrap;
-}
-
-function text(value, options) {
-  const input = el('input');
-  input.type = (options && options.type) || 'text';
-  input.value = value || '';
-  if (options && options.placeholder) {
-    input.placeholder = options.placeholder;
-  }
-  if (options && options.required) {
-    input.required = true;
-  }
-  if (options && options.maxLength) {
-    input.maxLength = options.maxLength;
-  }
-  return input;
-}
-
-// segmented is a two-or-more-way switch: one button per choice, the chosen one
-// filled. For a choice this small a dropdown hides the other option; this shows
-// both. `value` reads the current choice.
-function segmented(options, initial, onChange) {
-  const wrap = el('div', 'segmented');
-  wrap.setAttribute('role', 'radiogroup');
-  const state = {value: initial};
-  const buttons = options.map(o => {
-    const b = el('button', 'segment' + (o.value === initial ? ' is-on' : ''), o.label);
-    b.type = 'button';
-    b.setAttribute('role', 'radio');
-    b.setAttribute('aria-checked', String(o.value === initial));
-    b.addEventListener('click', () => {
-      state.value = o.value;
-      for (const other of buttons) {
-        const on = other === b;
-        other.classList.toggle('is-on', on);
-        other.setAttribute('aria-checked', String(on));
-      }
-      onChange(o.value);
-    });
-    wrap.append(b);
-    return b;
-  });
-  return {wrap, get value() { return state.value; }};
-}
-
-function textarea(value, rows) {
-  const input = el('textarea');
-  input.rows = rows || 4;
-  input.value = value || '';
-  return input;
-}
-
-function select(options, value) {
-  const input = el('select');
-  for (const option of options) {
-    const node = el('option', '', option.label === undefined ? option : option.label);
-    node.value = option.value === undefined ? option : option.value;
-    node.selected = node.value === value;
-    input.append(node);
-  }
-  return input;
-}
-
-// checkbox is a labelled switch - the same control the page's toggle rows use -
-// with an optional line of explanation under the label.
-export function checkbox(label, checked, hint) {
-  const wrap = el('label', 'field field-toggle');
-  const input = el('input');
-  input.type = 'checkbox';
-  input.checked = Boolean(checked);
-  const text = el('span');
-  text.append(el('span', '', label));
-  if (hint) {
-    text.append(el('small', '', hint));
-  }
-  const knob = el('span', 'switch');
-  knob.append(input, el('span'));
-  wrap.append(knob, text);
-  return {wrap, input};
 }
 
 // settingCard is a bordered panel for one setting: its name and a sentence,
@@ -270,72 +130,6 @@ function tabbedFields(panels) {
   return wrap;
 }
 
-function openModal(title, fields, options) {
-  const f = form();
-  f.replaceChildren();
-  f.classList.toggle('modal-wide', options.wide === true);
-  f.classList.toggle('modal-person', options.wide === 'person');
-  const header = el('div', 'modal-header');
-  header.append(el('h2', '', title));
-  const close = el('button', 'modal-close', '×');
-  close.type = 'button';
-  close.setAttribute('aria-label', 'Close');
-  close.addEventListener('click', closeModal);
-  header.append(close);
-  f.append(header);
-  for (const node of fields) {
-    f.append(node);
-  }
-  const actions = el('div', 'modal-actions');
-  if (options.actions === false) {
-    // A window whose body carries its own way out - the person card's Done.
-    actions.hidden = true;
-  } else if (options.submit) {
-    const save = el('button', 'button', options.saveLabel || 'Save');
-    save.type = 'submit';
-    const cancel = el('button', 'button button-secondary', 'Cancel');
-    cancel.type = 'button';
-    cancel.addEventListener('click', closeModal);
-    actions.append(save, cancel);
-  } else {
-    // A modal that only shows things - the category manager - has nothing to
-    // save, so it gets a single way out.
-    const done = el('button', 'button', 'Done');
-    done.type = 'button';
-    done.addEventListener('click', closeModal);
-    actions.append(done);
-  }
-  if (options.onDelete) {
-    const del = el('button', 'danger-button', options.deleteLabel || 'Delete');
-    del.type = 'button';
-    del.addEventListener('click', async () => {
-      if (!confirm(options.confirmDelete)) {
-        return;
-      }
-      setStatus('Deleting…');
-      try {
-        await options.onDelete();
-        closeModal();
-        await reload();
-        if (options.afterDelete) {
-          options.afterDelete();
-        }
-      } catch (err) {
-        setStatus(err.message, true);
-      }
-    });
-    actions.append(del);
-  }
-  actions.append(el('span', 'save-status'));
-  f.append(actions);
-  modalState = {submit: options.submit, afterSave: options.afterSave};
-  overlay().hidden = false;
-  const first = f.querySelector('input:not([type=hidden]):not([type=file]), textarea, select');
-  if (first) {
-    first.focus();
-  }
-}
-
 async function goTo(path) {
   const {navigate} = await import('./app.js');
   navigate(path);
@@ -389,7 +183,7 @@ export async function openPerson(v, node) {
     {label: 'Sign up', icon: 'edit', fields: form.fields},
     {label: 'Contact', icon: 'people', fields: [contact, personFoot(v, info)]},
   ]);
-  openModal('', [head, tabs], {...form, wide: 'person'});
+  openModal('', [head, tabs], {...form, wide: 'person', replace: true});
 }
 
 // personHead is the top of a person's window: the big face, the name with
@@ -1450,18 +1244,6 @@ export function editable(anchor, label, make, submit) {
   return pencil;
 }
 
-export function textInput(value, options) {
-  return text(value, options);
-}
-
-export function textAreaInput(value, rows) {
-  return textarea(value, rows);
-}
-
-export function selectInput(options, value) {
-  return select(options, value);
-}
-
 // openCategory edits one category, or adds one to `eventId`'s event - or to the
 // page's headings when eventId is empty.
 export function openCategory(category, eventId, after) {
@@ -1498,6 +1280,7 @@ export function openCategory(category, eventId, after) {
     fields.push(onMain.wrap);
   }
   openModal(category ? 'Edit Category' : 'Add Category', fields, {
+    replace: true,
     saveLabel: category ? 'Save changes' : 'Add',
     submit: () => send('POST', '/api/team/category', {
       id: category ? category.id : '', eventId: eventId || '',
@@ -1578,7 +1361,7 @@ export function openCategoryManager(root) {
   openModal(`${root.title}: Categories`, [
     el('div', 'hint', 'The things under this event are grouped by these, in this order. Each one says whether people may add to it.'),
     categoryList(root, again),
-  ], {});
+  ], {replace: true});
 }
 
 export function openSettings() {
