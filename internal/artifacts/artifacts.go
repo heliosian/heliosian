@@ -21,17 +21,16 @@ import (
 )
 
 const (
-	appName          = "artifacts"
-	documentsTab     = "Documents"
-	Folder           = "artifacts"
-	lexicalWeight    = 0.15
-	readers          = 32
-	KindNewsletter   = "newsletter"
-	KindList         = "list"
-	KindAnnouncement = "announcement"
-	KindPage         = "page"
-	KindPortal       = "portal"
-	KindGroup        = "group"
+	appName        = "artifacts"
+	documentsTab   = "Documents"
+	Folder         = "artifacts"
+	lexicalWeight  = 0.15
+	readers        = 32
+	KindNewsletter = "newsletter"
+	KindList       = "list"
+	KindPage       = "page"
+	KindPortal     = "portal"
+	KindGroup      = "group"
 )
 
 var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object"}

@@ -3,6 +3,8 @@ package artifacts
 import (
 	"slices"
 	"strings"
+
+	"heliosian/internal/mail"
 )
 
 var domains = []string{"heliosschool.org", "heliosns.org"}
@@ -17,9 +19,9 @@ var broadcast = []string{
 	"hawksandfalcons", "jaysandravens", "condorsandospreys",
 }
 
-var mailers = []string{"veracross.com", "benchmarkemail.com", "bmetrack.com"}
+var mailers = []string{"veracross.com"}
 
-func Channel(listID, from string, recipients []string) (channel, kind string, ok bool) {
+func Channel(listID, from string) (channel, kind string, ok bool) {
 	list := listName(listID)
 	if list != "" {
 		for _, domain := range domains {
@@ -27,19 +29,10 @@ func Channel(listID, from string, recipients []string) (channel, kind string, ok
 				return name, KindList, true
 			}
 		}
-		if mailer(list) {
-			return "newsletter", KindNewsletter, true
-		}
 		return list, "", false
 	}
-	if mailer(strings.ToLower(from)) {
+	if mailer(mail.AddressOf(from)) {
 		return "newsletter", KindNewsletter, true
-	}
-	for _, address := range recipients {
-		local, domain, _ := strings.Cut(strings.ToLower(strings.TrimSpace(address)), "@")
-		if slices.Contains(domains, domain) && slices.Contains(broadcast, local) {
-			return local, KindAnnouncement, true
-		}
 	}
 	return "", "", false
 }
@@ -52,10 +45,29 @@ func listName(listID string) string {
 }
 
 func mailer(address string) bool {
+	domain := strings.ToLower(address[strings.LastIndex(address, "@")+1:])
 	for _, host := range mailers {
-		if strings.Contains(address, host) {
+		if domain == host || strings.HasSuffix(domain, "."+host) {
 			return true
 		}
 	}
 	return false
+}
+
+func vouch(lines []mail.HeaderLine, m Message) string {
+	channel, kind, ok := m.Broadcast()
+	if !ok {
+		return ""
+	}
+	switch kind {
+	case KindNewsletter:
+		return mail.Authenticated(lines)
+	case KindList:
+		local, domain, _ := strings.Cut(strings.ToLower(mail.SealedSender(lines)), "@")
+		if strings.HasPrefix(local, channel+"+") && slices.Contains(domains, domain) {
+			return ""
+		}
+		return "the forwarding mailbox's sealed results do not show the list sending it"
+	}
+	return "no proof is known for kind " + kind
 }

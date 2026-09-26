@@ -17,6 +17,13 @@ import (
 )
 
 const classMail = "Received: by mxa.mailgun.org with SMTP id 1; Wed, 16 Sep 2026 07:05:00 +0000\r\n" +
+	"Authentication-Results: mxa.mailgun.org; dkim=fail header.d=heliosschool.org; spf=pass smtp.mailfrom=\"parent+caf_=ask@heliosschool.org\"; dmarc=pass header.from=heliosschool.org; arc=pass\r\n" +
+	"ARC-Seal: i=2; a=rsa-sha256; cv=pass; d=google.com; s=arc-20260327; b=abc\r\n" +
+	"ARC-Authentication-Results: i=2; mx.google.com; dkim=pass header.i=@heliosschool.org;\r\n" +
+	" spf=pass (google.com: domain of falcons.parents+bncabc@heliosschool.org designates 209.85.220.69 as permitted sender) smtp.mailfrom=falcons.parents+bncABC@heliosschool.org;\r\n" +
+	" dmarc=pass header.from=heliosschool.org\r\n" +
+	"ARC-Seal: i=1; a=rsa-sha256; cv=none; d=google.com; s=arc-20260327; b=def\r\n" +
+	"ARC-Authentication-Results: i=1; mx.google.com; spf=pass smtp.mailfrom=renee.park@heliosschool.org\r\n" +
 	"Received: from mail.heliosschool.org by mx.google.com; Tue, 15 Sep 2026 23:59:00 -0700\r\n" +
 	"Message-ID: <class-1@heliosschool.org>\r\n" +
 	"Date: Tue, 15 Sep 2026 08:30:00 -0700\r\n" +
@@ -85,23 +92,57 @@ func TestParseMailReadsHeadersAndBody(t *testing.T) {
 func TestChannelKeepsOnlyBroadcasts(t *testing.T) {
 	for _, c := range []struct {
 		list, from string
-		to         []string
 		channel    string
 		kind       string
 	}{
-		{"", "Helios School <m@mail1.veracross.com>", []string{"parent@heliosns.org"}, "newsletter", KindNewsletter},
-		{"<3064358178.560896@benchmarkemail.com>", "Helios School <news@heliosschool.org>", nil, "newsletter", KindNewsletter},
-		{"Falcons Parents <falcons.parents.heliosschool.org>", "Teacher <t@heliosschool.org>", nil, "falcons.parents", KindList},
-		{"<chat.heliosns.org>", "Parent <p@gmail.com>", nil, "chat", KindList},
-		{"", "Office <office@heliosschool.org>", []string{"Parent <parent@heliosns.org>", "hawksandfalcons@heliosschool.org"}, "hawksandfalcons", KindAnnouncement},
-		{"<michelle-level3math.parents.heliosschool.org>", "Teacher <t@heliosschool.org>", nil, "", ""},
-		{"<boardoftrustees.heliosschool.org>", "Chair <c@heliosschool.org>", []string{"parentsandstaff@heliosschool.org"}, "", ""},
-		{"<github.com>", "GitHub <noreply@github.com>", nil, "", ""},
-		{"", "Sam Lee <sam@example.org>", []string{"parent@heliosns.org"}, "", ""},
+		{"", "Helios School <m@mail1.veracross.com>", "newsletter", KindNewsletter},
+		{"<3064358178.560896@benchmarkemail.com>", "Helios School <news@heliosschool.org>", "", ""},
+		{"Falcons Parents <falcons.parents.heliosschool.org>", "Teacher <t@heliosschool.org>", "falcons.parents", KindList},
+		{"<chat.heliosns.org>", "Parent <p@gmail.com>", "chat", KindList},
+		{"", "Office <hawksandfalcons@heliosschool.org>", "", ""},
+		{"", "\"veracross.com\" <x@elsewhere.example>", "", ""},
+		{"", "x@veracross.com.elsewhere.example", "", ""},
+		{"<michelle-level3math.parents.heliosschool.org>", "Teacher <t@heliosschool.org>", "", ""},
+		{"<boardoftrustees.heliosschool.org>", "Chair <c@heliosschool.org>", "", ""},
+		{"<github.com>", "GitHub <noreply@github.com>", "", ""},
+		{"", "Sam Lee <sam@example.org>", "", ""},
 	} {
-		channel, kind, ok := Channel(c.list, c.from, c.to)
+		channel, kind, ok := Channel(c.list, c.from)
 		if ok != (c.kind != "") || (ok && (channel != c.channel || kind != c.kind)) {
-			t.Errorf("%q from %q to %q: %q %q %v", c.list, c.from, c.to, channel, kind, ok)
+			t.Errorf("%q from %q: %q %q %v", c.list, c.from, channel, kind, ok)
+		}
+	}
+}
+
+func TestVouchTakesTheForwardingMailboxsSealedResults(t *testing.T) {
+	const mailgun = "Authentication-Results: mxa.mailgun.org; dkim=fail; spf=pass smtp.mailfrom=\"parent+caf_=ask@heliosschool.org\"; arc="
+	sealed := func(results string) string {
+		return "ARC-Seal: i=1; a=rsa-sha256; cv=none; d=google.com; s=arc-20260327; b=abc\r\n" +
+			"ARC-Authentication-Results: i=1; mx.google.com; " + results + "\r\n"
+	}
+	const newsletter = "From: Helios School <m@mail1.veracross.com>\r\n\r\n"
+	const veracross = "dkim=pass header.i=@mail1.veracross.com; spf=pass smtp.mailfrom=m@mail1.veracross.com; dmarc=pass header.from=mail1.veracross.com"
+	const list = "List-Id: <parentsandstaff.heliosschool.org>\r\nFrom: Sunny <sunny@heliosschool.org>\r\n\r\n"
+	const groups = "dkim=pass header.i=@heliosschool.org; spf=pass (google.com: domain of parentsandstaff+bnc@heliosschool.org) smtp.mailfrom=parentsandstaff+bncX@heliosschool.org; dmarc=pass header.from=heliosschool.org"
+	cases := map[string]bool{
+		mailgun + "pass\r\n" + sealed(veracross) + newsletter: true,
+		mailgun + "fail\r\n" + sealed(veracross) + newsletter: false,
+		mailgun + "pass\r\n" + sealed("dkim=pass header.i=@elsewhere.example; spf=pass smtp.mailfrom=x@elsewhere.example; dmarc=fail header.from=mail1.veracross.com") + newsletter: false,
+		mailgun + "pass\r\n" + sealed(groups) + list: true,
+		mailgun + "fail\r\n" + sealed(groups) + list: false,
+		mailgun + "pass\r\n" + sealed("spf=pass smtp.mailfrom=sunny@heliosschool.org; dmarc=pass header.from=heliosschool.org") + list:                            false,
+		mailgun + "pass\r\n" + sealed("spf=pass smtp.mailfrom=chat+bncX@heliosschool.org; dmarc=pass header.from=heliosschool.org") + list:                        false,
+		mailgun + "pass\r\n" + sealed("spf=pass smtp.mailfrom=parentsandstaff+bncX@forger.example; dmarc=pass header.from=forger.example") + list:                 false,
+		mailgun + "pass\r\n" + "ARC-Seal: i=1; cv=none; d=forger.example; b=abc\r\nARC-Authentication-Results: i=1; mx.forger.example; " + groups + "\r\n" + list: false,
+	}
+	for raw, want := range cases {
+		lines, _ := mail.SplitMessage([]byte(raw))
+		m, err := ParseMail([]byte("Received: by mxa.mailgun.org; Wed, 16 Sep 2026 07:05:00 +0000\r\nMessage-ID: <v@x>\r\n" + raw + "Words.\r\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := vouch(lines, m); (got == "") != want {
+			t.Errorf("%q: %q", raw, got)
 		}
 	}
 }
@@ -191,7 +232,8 @@ func hook(in *Filer, key, raw string) int {
 
 func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 	in, objects, sheet, queue := testInbox(t)
-	for _, raw := range []string{personalMail, classMail, classMail} {
+	direct := strings.NewReplacer("smtp.mailfrom=falcons.parents+bncABC@", "smtp.mailfrom=renee.park@", "<class-1@", "<class-2@").Replace(classMail)
+	for _, raw := range []string{personalMail, direct, classMail, classMail} {
 		if code := hook(in, "key", raw); code != http.StatusOK {
 			t.Fatalf("the hook answered %d", code)
 		}

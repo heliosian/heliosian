@@ -79,7 +79,7 @@ func (m Message) Broadcast() (channel, kind string, ok bool) {
 	if from == "" {
 		from = m.From
 	}
-	return Channel(m.ListID, from, append(append([]string{}, m.To...), m.CC...))
+	return Channel(m.ListID, from)
 }
 
 func ReadMessage(path string) (Message, error) {

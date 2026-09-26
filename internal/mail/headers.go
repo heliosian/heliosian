@@ -62,8 +62,8 @@ func AddressOf(from string) string {
 // Mailgun prepends its own Authentication-Results, so only the topmost one
 // counts; any further down are the sender's to write.
 func Authenticated(lines []HeaderLine) string {
-	id, results, _ := strings.Cut(uncommented(Header(lines, "authentication-results")), ";")
-	if !strings.HasSuffix(strings.ToLower(strings.TrimSpace(id)), ".mailgun.org") {
+	results, ok := mailgunResults(lines)
+	if !ok {
 		return "no authentication results from Mailgun"
 	}
 	_, from, _ := strings.Cut(strings.ToLower(AddressOf(Header(lines, "from"))), "@")
@@ -77,6 +77,33 @@ func Authenticated(lines []HeaderLine) string {
 		}
 	}
 	return "the sender's address passed neither SPF nor DKIM"
+}
+
+func mailgunResults(lines []HeaderLine) (string, bool) {
+	id, results, _ := strings.Cut(uncommented(Header(lines, "authentication-results")), ";")
+	return results, strings.HasSuffix(strings.ToLower(strings.TrimSpace(id)), ".mailgun.org")
+}
+
+func SealedSender(lines []HeaderLine) string {
+	results, ok := mailgunResults(lines)
+	if !ok {
+		return ""
+	}
+	if _, arc := passes(results, ""); !arc {
+		return ""
+	}
+	for _, result := range strings.Split(sealedResults(lines), ";") {
+		fields := strings.Fields(strings.ToLower(result))
+		if len(fields) == 0 || fields[0] != "spf=pass" {
+			continue
+		}
+		for _, field := range fields[1:] {
+			if address, ok := strings.CutPrefix(field, "smtp.mailfrom="); ok {
+				return strings.Trim(address, `"`)
+			}
+		}
+	}
+	return ""
 }
 
 func passes(results, from string) (passed, arc bool) {

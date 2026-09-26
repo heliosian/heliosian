@@ -36,7 +36,10 @@ func (i Inbox) ready() bool {
 	return i.SigningKey != "" && i.Bucket != nil
 }
 
-const mailActor = "ask mail"
+const (
+	mailActor       = "ask mail"
+	maxMailMarkdown = 200_000
+)
 
 type Holder interface {
 	Hold()
@@ -83,7 +86,12 @@ func (in *Filer) hook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	logHeaders(raw, m)
+	lines, _ := mail.SplitMessage(raw)
+	if reason := vouch(lines, m); reason != "" {
+		slog.WarnContext(r.Context(), "artifacts: mail not vouched for", "id", m.MessageID, "from", m.From, "subject", m.Subject, "reason", reason)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	in.holder.Hold()
 	defer in.holder.Release()
 	if err := in.file(r.Context(), mailActor, m); err != nil {
@@ -92,25 +100,6 @@ func (in *Filer) hook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-}
-
-// Temporary: gathers what real forwarded mail carries, to settle the fix for
-// security-audit/findings/ask-mail-hook-trusts-sender-headers.md. Remove with it.
-func logHeaders(raw []byte, m Message) {
-	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
-	if err != nil {
-		return
-	}
-	h := msg.Header
-	channel, kind, ok := m.Broadcast()
-	slog.Info("artifacts: mail headers",
-		"id", m.MessageID, "subject", m.Subject, "from", m.From, "to", m.To, "cc", m.CC,
-		"channel", channel, "kind", kind, "broadcast", ok,
-		"list-id", h["List-Id"], "sender", h["Sender"], "return-path", h["Return-Path"],
-		"x-forwarded-for", h["X-Forwarded-For"], "x-forwarded-to", h["X-Forwarded-To"],
-		"authentication-results", h["Authentication-Results"],
-		"arc-authentication-results", h["Arc-Authentication-Results"],
-		"arc-seal", h["Arc-Seal"])
 }
 
 func (in *Filer) Post(ctx context.Context, actor, group string, raw []byte) error {
@@ -152,6 +141,10 @@ func (in *Filer) file(ctx context.Context, actor string, m Message) error {
 	}
 	if err != nil {
 		return err
+	}
+	if len(doc.Markdown) > maxMailMarkdown {
+		slog.Info("artifacts: mail left out", "from", m.From, "subject", m.Subject, "reason", fmt.Sprintf("%d characters of markdown, over %d", len(doc.Markdown), maxMailMarkdown))
+		return nil
 	}
 	return in.record(ctx, actor, doc)
 }
