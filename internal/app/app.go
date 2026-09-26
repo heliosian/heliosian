@@ -820,7 +820,7 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load artifacts data", "error", err)
 	}
 	if cfg.KeyPoints != nil {
-		go keypoints.Run(artifactsCache, cfg.KeyPoints)
+		go keypoints.Run(artifactsCache, cfg.KeyPoints, schoolDirectory{cache})
 	}
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cache.IsAdmin)

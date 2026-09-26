@@ -36,12 +36,21 @@ const (
 	KindAnnouncement = "announcement"
 )
 
-var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object", PointsColumn}
+var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object", PointsColumn, AudienceColumn}
 
 // PointsColumn holds a school email's key points, one a line, written once
 // the email is in (internal/keypoints) for Heliosian's From the School
 // widget; blank until then, and for everything else.
 const PointsColumn = "Key Points"
+
+// AudienceColumn is who a school email was written to, judged with its key
+// points: Everyone, or the classrooms it names ("Condors, Ospreys") - for
+// mail the school sends through Veracross, which says nothing of whom it
+// went to; blank until judged.
+const AudienceColumn = "Audience"
+
+// Everyone is the Audience of an email to the whole school.
+const Everyone = "Everyone"
 
 var stopwords = map[string]bool{"the": true, "and": true, "for": true, "are": true, "was": true, "our": true, "you": true, "your": true, "with": true, "this": true, "that": true, "from": true, "what": true, "when": true, "where": true, "who": true, "how": true, "does": true, "did": true, "will": true, "about": true, "there": true, "have": true, "has": true, "any": true, "can": true, "is": true, "in": true, "on": true, "at": true, "to": true, "of": true, "an": true, "or": true, "be": true, "it": true, "my": true, "me": true, "we": true, "us": true, "do": true, "up": true, "so": true, "if": true, "as": true, "by": true, "its": true, "not": true, "tell": true, "know": true, "say": true, "said": true, "school": true, "helios": true}
 
@@ -157,8 +166,10 @@ func (d *Document) normalize() error {
 type Model struct {
 	Documents []*Document
 	Fetched   int
-	// Points are the key points written for a document, by key.
-	Points map[string][]string
+	// Points are the key points written for a document, by key, and
+	// Audience who it was judged to be written to (AudienceColumn).
+	Points   map[string][]string
+	Audience map[string]string
 }
 
 type Objects interface {
@@ -193,10 +204,13 @@ func (d *documents) build(_ context.Context, tables store.Tables) (*Model, error
 	d.mu.Lock()
 	held := maps.Clone(d.held)
 	d.mu.Unlock()
-	m := &Model{Documents: make([]*Document, len(rows)), Points: map[string][]string{}}
+	m := &Model{Documents: make([]*Document, len(rows)), Points: map[string][]string{}, Audience: map[string]string{}}
 	for _, row := range rows {
 		if points := splitPoints(row[PointsColumn]); len(points) > 0 {
 			m.Points[row["Key"]] = points
+		}
+		if audience := strings.TrimSpace(row[AudienceColumn]); audience != "" {
+			m.Audience[row["Key"]] = audience
 		}
 	}
 	wanted := []int{}
@@ -436,9 +450,23 @@ func splitPoints(cell string) []string {
 	return out
 }
 
-// SetPoints writes a document's key points.
-func (c *Cache) SetPoints(ctx context.Context, actor, key string, points []string) error {
-	return c.Commit(ctx, actor, store.Update(documentsTab, store.Row{"Key": key}, store.Row{PointsColumn: strings.Join(points, "\n")}))
+// SetPoints writes a document's key points and who it was written to.
+func (c *Cache) SetPoints(ctx context.Context, actor, key string, points []string, audience string) error {
+	return c.Commit(ctx, actor, store.Update(documentsTab, store.Row{"Key": key}, store.Row{PointsColumn: strings.Join(points, "\n"), AudienceColumn: audience}))
+}
+
+// Classrooms are the classrooms an Audience names, none for Everyone.
+func Classrooms(audience string) []string {
+	out := []string{}
+	if audience == Everyone {
+		return out
+	}
+	for _, name := range strings.Split(audience, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // School says a document is mail the school sent everyone or a whole class:

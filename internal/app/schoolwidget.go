@@ -49,7 +49,7 @@ func schoolWidget(directory *who.Cache, artifactsCache *artifacts.Cache) http.Ha
 			if d.Date < since {
 				break
 			}
-			if !artifacts.School(d) || !forClassrooms(d, mine) {
+			if !artifacts.School(d) || !forClassrooms(d, mine, m.Audience[d.Key]) {
 				continue
 			}
 			points := m.Points[d.Key]
@@ -65,6 +65,40 @@ func schoolWidget(directory *who.Cache, artifactsCache *artifacts.Cache) http.Ha
 			slog.ErrorContext(r.Context(), "encode school widget", "error", err)
 		}
 	}
+}
+
+// schoolDirectory is what the key points pass needs of the directory: the
+// school's classrooms, and those an email's sender teaches - found by the
+// name in its From, since Veracross sends a teacher's mail from its own
+// address.
+type schoolDirectory struct {
+	cache *who.Cache
+}
+
+func (s schoolDirectory) Classrooms() []string {
+	out := []string{}
+	for _, c := range s.cache.Model().Classrooms {
+		out = append(out, c.Name)
+	}
+	return out
+}
+
+func (s schoolDirectory) Teaches(author string) []string {
+	name, _, _ := strings.Cut(author, "<")
+	name = strings.Trim(strings.TrimSpace(name), `"`)
+	if name == "" {
+		return nil
+	}
+	m := s.cache.Model()
+	out := []string{}
+	for _, c := range m.Crews {
+		for _, email := range c.Teachers {
+			if p := m.Person(email); p != nil && strings.EqualFold(p.FullName, name) && !slices.Contains(out, c.Classroom) {
+				out = append(out, c.Classroom)
+			}
+		}
+	}
+	return out
 }
 
 // classroomSlugs are the viewer's classrooms as the lists name them
@@ -91,11 +125,30 @@ func classroomSlugs(m *who.Model, email string) []string {
 	return out
 }
 
-// forClassrooms says a school email reaches the viewer: the newsletter and
-// every-family lists always; a classroom's list ("jays.parents") or a grade
-// band's ("jaysandravens") when it names one of their classrooms.
-func forClassrooms(d *artifacts.Document, mine []string) bool {
-	if d.Kind != artifacts.KindList || slices.Contains(allFamilies, d.Channel) {
+// forClassrooms says a school email reaches the viewer. A list says whom it
+// went to: every family's always, a classroom's ("jays.parents") or a grade
+// band's ("jaysandravens") when it names one of their classrooms. Mail the
+// school sends through Veracross - the newsletter, but a teacher's note to
+// their class too - says nothing of whom it went to, so it waits until its
+// audience is judged (internal/keypoints) and then reaches everyone, or the
+// classrooms it was written to.
+func forClassrooms(d *artifacts.Document, mine []string, audience string) bool {
+	if d.Kind != artifacts.KindList {
+		if audience == "" {
+			return false
+		}
+		rooms := artifacts.Classrooms(audience)
+		if len(rooms) == 0 {
+			return true
+		}
+		for _, room := range rooms {
+			if slices.Contains(mine, who.ClassroomSlug(room)) {
+				return true
+			}
+		}
+		return false
+	}
+	if slices.Contains(allFamilies, d.Channel) {
 		return true
 	}
 	room, _, _ := strings.Cut(d.Channel, ".")

@@ -8,9 +8,9 @@ import (
 	"heliosian/internal/artifacts"
 )
 
-// TestMissing checks which emails want points: school mail within the
-// window that has none yet - not the chat, not an older email, not one
-// already done.
+// TestMissing checks which emails want reading: school mail within the
+// window whose audience is not yet judged - not the chat, not an older
+// email, not one already done.
 func TestMissing(t *testing.T) {
 	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	m := &artifacts.Model{
@@ -21,7 +21,8 @@ func TestMissing(t *testing.T) {
 			{Key: "d", Date: "2026-09-01", Kind: artifacts.KindNewsletter},
 			{Key: "e", Date: "2026-09-23", Kind: artifacts.KindNewsletter},
 		},
-		Points: map[string][]string{"e": {"done"}},
+		Points:   map[string][]string{"e": {"done"}},
+		Audience: map[string]string{"e": artifacts.Everyone},
 	}
 	got := []string{}
 	for _, d := range Missing(m, now) {
@@ -35,15 +36,22 @@ func TestMissing(t *testing.T) {
 // TestFake checks the sample server's stand-in: an email's headings, else
 // its first sentence.
 func TestFake(t *testing.T) {
-	points, _ := Fake{}.Points(context.Background(), "", "", "Hello all.\n\n## Picture Day\n\nTuesday.\n\n## Book Fair\n")
+	points := fakePoints("Hello all.\n\n## Picture Day\n\nTuesday.\n\n## Book Fair\n")
 	if len(points) != 2 || points[0] != "Picture Day" || points[1] != "Book Fair" {
 		t.Errorf("headings: %v", points)
 	}
-	points, _ = Fake{}.Points(context.Background(), "", "", "Please send snacks. Thanks!")
+	points = fakePoints("Please send snacks. Thanks!")
 	if len(points) != 1 || points[0] != "Please send snacks" {
 		t.Errorf("first sentence: %v", points)
 	}
 	if got := clean([]string{"  a   b ", "", "c"}); len(got) != 2 || got[0] != "a b" {
 		t.Errorf("clean: %v", got)
+	}
+	if got := known([]string{"condors", "Nowhere", "Condors"}, []string{"Condors", "Jays"}); len(got) != 1 || got[0] != "Condors" {
+		t.Errorf("known: %v", got)
+	}
+	r, _ := Fake{}.Read(context.Background(), Email{Markdown: "Hi.", Teaches: []string{"Condors"}})
+	if len(r.Classrooms) != 1 || r.Classrooms[0] != "Condors" {
+		t.Errorf("fake reading: %+v", r)
 	}
 }
