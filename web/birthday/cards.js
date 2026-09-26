@@ -1,4 +1,4 @@
-import {longDate, mediumDate, isUnassigned, staffPath, charityPath, stageClass, stageName, emailLink} from './state.js';
+import {longDate, mediumDate, isUnassigned, staffPath, charityPath, stageClass, stageName, emailLink, urgency, urgencyWords} from './state.js';
 import {el, link, svg, thumb, button, menu} from './dom.js';
 import {assignToMe, markContacted, openDonation, useDefault, markUsed} from './edit.js';
 
@@ -16,6 +16,11 @@ export function staffRow(sv, options) {
   }
   if (opts.stage && sv.stage) {
     label.append(el('span', 'stage-chip ' + stageClass(sv.stage), stageName(sv.stage)));
+  }
+  // Late or due today, beside the stage, in the rail's red and amber.
+  const due = urgency(sv);
+  if (due.when) {
+    label.append(el('span', 'urgency-chip is-' + due.when, urgencyWords(due)));
   }
   body.append(label, el('div', 'row-title', sv.name));
   const lines = [];

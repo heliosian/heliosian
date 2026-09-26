@@ -15,7 +15,7 @@ function settingsCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Settings'));
   card.append(el('div', 'hint', 'The default charity, when the birthday year turns over, and the outreach email.'));
-  for (const [label, value] of [['Default charity', s.defaultCharity], ['Year start', s.yearStart], ['Ask-by lead', `${s.requestLeadDays} days before the newsletter`], ['Email subject', s.emailSubject], ['Email body', s.emailBody], ['No-newsletter note', s.noNewsletterNote], ['CC on outreach', s.outreachCC || '—']]) {
+  for (const [label, value] of [['Default charity', s.defaultCharity], ['Year start', s.yearStart], ['Ask-by lead', `${s.requestLeadDays} days before the newsletter`], ['Birthday due by', `${s.dueByLeadDays} days before the newsletter`], ['Email subject', s.emailSubject], ['Email body', s.emailBody], ['No-newsletter note', s.noNewsletterNote], ['CC on outreach', s.outreachCC || '—']]) {
     const row = el('div', 'admin-row');
     const body = el('div', 'grow');
     body.append(el('div', '', label), el('div', 'sub pre', value));

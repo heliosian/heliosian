@@ -1,7 +1,7 @@
 import {state, parties, matches, celebration, whenParts, currentCelebration, celebrationCalendarLink} from '../state.js';
 import {el, selectPill, svg} from '../dom.js';
 import {tabStrip} from '/tabs.js';
-import {setTitle, setSearch, inTab, listTabs} from '../chrome.js';
+import {setTitle, setSearch, inTab, listTabs, listPath, listTab, listCategory, renderChrome} from '../chrome.js';
 import {partyCard} from '../cards.js';
 
 let query = '';
@@ -78,6 +78,9 @@ export function partiesPage(code) {
   } else if (state.model.current) {
     state.celebration = state.model.current;
   }
+  // The tab and the category are the address's (listPath).
+  state.tab = listTab();
+  state.category = listCategory();
   const c = currentCelebration();
   setTitle('Parties');
   const page = el('div');
@@ -104,7 +107,6 @@ export function partiesPage(code) {
     head.append(selectPill('calendar', options, state.celebration, picked => {
       state.celebration = picked;
       query = '';
-      state.category = '';
       history.replaceState(null, '', picked === state.model.current ? '/' : `/celebrations/${encodeURIComponent(picked)}`);
       document.dispatchEvent(new CustomEvent('celebrate:refresh'));
     }));
@@ -122,8 +124,10 @@ export function partiesPage(code) {
     bar.replaceChildren();
     bar.append(tabStrip(listTabs.map(t => ({...t, count: counts[t.key]})), state.tab, 2, key => {
       state.tab = key;
+      history.pushState(null, '', listPath(state.tab, state.category));
       paintTabs();
       paint();
+      renderChrome();
     }));
     const filter = el('label', 'select-pill filter-pill');
     filter.append(svg('list'));
@@ -136,6 +140,7 @@ export function partiesPage(code) {
     }
     sel.addEventListener('change', () => {
       state.category = sel.value;
+      history.pushState(null, '', listPath(state.tab, state.category));
       paint();
     });
     filter.append(sel, svg('caret'));

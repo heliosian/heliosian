@@ -62,24 +62,27 @@ func (v viewer) person(email string) (Person, bool) {
 // from it and everything recorded about it.
 type StaffView struct {
 	Person
-	InDirectory      bool      `json:"inDirectory"`
-	Year             string    `json:"year"`
-	Birthday         string    `json:"birthday,omitempty"`
-	BirthdayThisYear string    `json:"birthdayThisYear,omitempty"`
-	NewsletterDate   string    `json:"newsletterDate,omitempty"`
-	RequestBy        string    `json:"requestBy,omitempty"`
-	Override         string    `json:"override,omitempty"`
-	Level            string    `json:"level,omitempty"`
-	LevelNote        string    `json:"levelNote,omitempty"`
-	Stage            string    `json:"stage,omitempty"`
-	AssignedTo       string    `json:"assignedTo,omitempty"`
-	AssignedToName   string    `json:"assignedToName,omitempty"`
-	AssignedOn       string    `json:"assignedOn,omitempty"`
-	ContactedOn      string    `json:"contactedOn,omitempty"`
-	ContactedBy      string    `json:"contactedBy,omitempty"`
-	Donation         *Donation `json:"donation,omitempty"`
-	LastDonation     *Donation `json:"lastDonation,omitempty"`
-	Notes            []Note    `json:"notes"`
+	InDirectory      bool   `json:"inDirectory"`
+	Year             string `json:"year"`
+	Birthday         string `json:"birthday,omitempty"`
+	BirthdayThisYear string `json:"birthdayThisYear,omitempty"`
+	NewsletterDate   string `json:"newsletterDate,omitempty"`
+	RequestBy        string `json:"requestBy,omitempty"`
+	// DueBy is the day the birthday's information - the charity - is due
+	// in: the Due By Lead Days setting before the newsletter.
+	DueBy          string    `json:"dueBy,omitempty"`
+	Override       string    `json:"override,omitempty"`
+	Level          string    `json:"level,omitempty"`
+	LevelNote      string    `json:"levelNote,omitempty"`
+	Stage          string    `json:"stage,omitempty"`
+	AssignedTo     string    `json:"assignedTo,omitempty"`
+	AssignedToName string    `json:"assignedToName,omitempty"`
+	AssignedOn     string    `json:"assignedOn,omitempty"`
+	ContactedOn    string    `json:"contactedOn,omitempty"`
+	ContactedBy    string    `json:"contactedBy,omitempty"`
+	Donation       *Donation `json:"donation,omitempty"`
+	LastDonation   *Donation `json:"lastDonation,omitempty"`
+	Notes          []Note    `json:"notes"`
 }
 
 type YearView struct {
@@ -146,6 +149,7 @@ func (v viewer) staff(model *Model, b *Birthday, year Year, today time.Time) Sta
 	if hasNewsletter {
 		sv.NewsletterDate = dateCell(newsletter)
 		sv.RequestBy = dateCell(RequestBy(newsletter, model.Settings.RequestLeadDays))
+		sv.DueBy = dateCell(RequestBy(newsletter, model.Settings.DueByLeadDays))
 	}
 	if a, ok := model.Assignment(b.Email, year.Label); ok {
 		to, _ := v.person(a.AssignedTo)

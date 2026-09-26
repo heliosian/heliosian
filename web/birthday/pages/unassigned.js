@@ -3,7 +3,7 @@ import {el, link, svg, thumb, button, pageHead} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {emptyPanel} from '../cards.js';
 import {assignToMe} from '../edit.js';
-import {monthGrid, monthNav} from './calendar.js';
+import {monthGrid, monthNav, showToggle} from './calendar.js';
 import {appOrigin} from '/toolbar.js';
 
 // The unassigned birthdays two ways at once: a list to pick from, by
@@ -127,27 +127,6 @@ function grid(rows, rerender) {
   return monthGrid(month, items, 'compact picker');
 }
 
-// showToggle is the switch between the two days the month can show.
-function showToggle(onChange) {
-  const wrap = el('div', 'show-toggle');
-  wrap.append(el('span', 'show-toggle-label', 'Show:'));
-  const group = el('div', 'segmented');
-  for (const [key, label] of [['ask', 'Ask by Date'], ['birthday', 'Actual Birthday']]) {
-    const b = el('button', 'segment' + (showBy === key ? ' is-on' : ''), label);
-    b.type = 'button';
-    b.addEventListener('click', () => {
-      showBy = key;
-      for (const other of group.children) {
-        other.classList.toggle('is-on', other === b);
-      }
-      onChange();
-    });
-    group.append(b);
-  }
-  wrap.append(group);
-  return wrap;
-}
-
 // pickCard sits under the row picked with what the row does not say - the
 // stage, the dates, and the ways on - so nothing is said twice.
 function pickCard(sv) {
@@ -199,7 +178,10 @@ export function unassignedPage() {
   }));
   picked = (pickedOne(rows) || {}).email || '';
   left.append(list(rows, rerender));
-  calCard.append(calHead, showToggle(rerender), grid(rows, rerender));
+  calCard.append(calHead, showToggle(showBy, key => {
+    showBy = key;
+    rerender();
+  }), grid(rows, rerender));
   right.append(calCard);
   columns.append(left, right);
   page.append(columns);

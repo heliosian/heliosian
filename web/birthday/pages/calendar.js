@@ -3,6 +3,9 @@ import {el, link, svg, button} from '../dom.js';
 import {setTitle} from '../chrome.js';
 
 let month = null;
+// showBy is which day the month places each person on: their actual
+// birthday this year, to start, or the day to ask them by.
+let showBy = 'birthday';
 
 // The legend doubles as a filter: every kind shows until one is clicked, then
 // only the clicked kinds do, and clicking the last one on shows everything again.
@@ -14,7 +17,7 @@ const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'long', year: 'nume
 function entries() {
   const out = [];
   for (const sv of state.model.staff) {
-    const day = parseDate(sv.birthdayThisYear);
+    const day = parseDate(showBy === 'ask' ? sv.requestBy : sv.birthdayThisYear);
     if (day) {
       out.push({key: day.toDateString(), title: sv.name, href: staffPath(sv), className: stageClass(sv.stage)});
     }
@@ -82,6 +85,28 @@ export function monthGrid(month, items, className) {
   return cal;
 }
 
+// showToggle is the switch between the two days a month can place a person
+// on - the day to ask them by, or their actual birthday - lit on value, and
+// calling onPick with the key picked.
+export function showToggle(value, onPick) {
+  const wrap = el('div', 'show-toggle');
+  wrap.append(el('span', 'show-toggle-label', 'Show:'));
+  const group = el('div', 'segmented');
+  for (const [key, label] of [['ask', 'Ask by Date'], ['birthday', 'Actual Birthday']]) {
+    const b = el('button', 'segment' + (value === key ? ' is-on' : ''), label);
+    b.type = 'button';
+    b.addEventListener('click', () => {
+      for (const other of group.children) {
+        other.classList.toggle('is-on', other === b);
+      }
+      onPick(key);
+    });
+    group.append(b);
+  }
+  wrap.append(group);
+  return wrap;
+}
+
 // monthNav is the Today button and the arrows, calling step with -1, 0 or 1.
 export function monthNav(step) {
   const nav = el('div', 'page-actions calendar-nav');
@@ -146,6 +171,12 @@ export function calendarPage() {
     legend.append(chip);
   }
   paint();
-  page.append(head, legend, grid());
+  // The legend at the left, the switch between the two days at the right.
+  const controls = el('div', 'calendar-controls');
+  controls.append(legend, showToggle(showBy, key => {
+    showBy = key;
+    page.querySelector('.calendar').replaceWith(grid());
+  }));
+  page.append(head, controls, grid());
   return page;
 }

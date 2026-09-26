@@ -529,6 +529,39 @@ export function selectedYear() {
   return state.year && options.includes(state.year) ? state.year : years().current;
 }
 
+// yearPath is the opportunities page for the chosen year: the root for the
+// current year, /years/... for any other, matching what the year dropdown puts
+// in the address bar.
+export function yearPath() {
+  const year = selectedYear();
+  return year === years().current ? '/' : `/years/${encodeURIComponent(year)}`;
+}
+
+// categorySlug is a heading as the address names it - its title in
+// lowercase words joined by dashes, "headline-events" - so a link to one
+// category reads as what it is and outlives a reordering of the ids.
+function categorySlug(c) {
+  return c.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || c.id;
+}
+
+// categoryPath is the opportunities page for the chosen year narrowed to
+// one heading by id - ?category=headline-events - or the whole year for none.
+export function categoryPath(id) {
+  const c = id && state.model.categories.find(c => c.id === id);
+  return yearPath() + (c ? '?category=' + encodeURIComponent(categorySlug(c)) : '');
+}
+
+// categoryFromAddress is the heading the address bar names, by slug or by
+// id, or blank when it names none or one that is not in the model.
+export function categoryFromAddress() {
+  const want = new URLSearchParams(location.search).get('category');
+  if (!want) {
+    return '';
+  }
+  const c = state.model.categories.find(c => categorySlug(c) === want || c.id === want);
+  return c ? c.id : '';
+}
+
 // listedIn is what that page shows for a year before the search box and the
 // category chips narrow it further. The rail's per-category counts and the grid
 // itself both go through here, so the numbers cannot drift from the cards.

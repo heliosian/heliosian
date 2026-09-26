@@ -66,6 +66,9 @@ const (
 	// RequestLeadKey is how many days before the newsletter the request is
 	// due; blank means the default.
 	RequestLeadKey = "Request Lead Days"
+	// DueByLeadKey is how many days before the newsletter the birthday's
+	// information - the charity - is due in; blank means the default.
+	DueByLeadKey = "Due By Lead Days"
 )
 
 // The roles on the Team tab: volunteers work the birthdays and are offered
@@ -78,7 +81,7 @@ const (
 
 var Roles = []string{RoleVolunteer, RoleComms}
 
-var settingKeys = []string{DefaultCharityKey, YearStartKey, EmailSubjectKey, EmailBodyKey, NoNewsletterNoteKey, OutreachCCKey, RequestLeadKey}
+var settingKeys = []string{DefaultCharityKey, YearStartKey, EmailSubjectKey, EmailBodyKey, NoNewsletterNoteKey, OutreachCCKey, RequestLeadKey, DueByLeadKey}
 
 // legacyThemeKeys are rows the Appearance panel wrote while the apps could
 // be recoloured (2026-09-16); the tab may still carry them, and they are
@@ -86,7 +89,7 @@ var settingKeys = []string{DefaultCharityKey, YearStartKey, EmailSubjectKey, Ema
 var legacyThemeKeys = []string{"Sidebar Color", "Sidebar Color 2", "Sidebar Text Color", "Page Color", "Page Color 2", "Logo", "Sidebar Image"}
 
 // optionalSettingKeys may be missing or blank.
-var optionalSettingKeys = []string{OutreachCCKey, RequestLeadKey}
+var optionalSettingKeys = []string{OutreachCCKey, RequestLeadKey, DueByLeadKey}
 
 var (
 	BirthdayColumns       = []string{"Email", "Birthday", "Newsletter Override", "Participation", "Note"}
@@ -166,6 +169,7 @@ type Settings struct {
 	NoNewsletterNote string `json:"noNewsletterNote"`
 	OutreachCC       string `json:"outreachCC"`
 	RequestLeadDays  int    `json:"requestLeadDays"`
+	DueByLeadDays    int    `json:"dueByLeadDays"`
 }
 
 // TeamMember is one person in one role on the Team tab.
@@ -354,19 +358,33 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	if _, _, err := ParseMonthDay(values[YearStartKey]); err != nil {
 		return Settings{}, fmt.Errorf("setting %q: %w", YearStartKey, err)
 	}
-	lead := DefaultRequestLeadDays
-	if raw := strings.TrimSpace(values[RequestLeadKey]); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil || n < 0 || n > 60 {
-			return Settings{}, fmt.Errorf("setting %q: %q is not a number of days from 0 to 60", RequestLeadKey, raw)
-		}
-		lead = n
+	lead, err := leadDays(values, RequestLeadKey, DefaultRequestLeadDays)
+	if err != nil {
+		return Settings{}, err
+	}
+	dueBy, err := leadDays(values, DueByLeadKey, DefaultDueByLeadDays)
+	if err != nil {
+		return Settings{}, err
 	}
 	return Settings{
 		DefaultCharity: values[DefaultCharityKey], YearStart: values[YearStartKey],
 		EmailSubject: values[EmailSubjectKey], EmailBody: values[EmailBodyKey], NoNewsletterNote: values[NoNewsletterNoteKey],
-		OutreachCC: strings.TrimSpace(values[OutreachCCKey]), RequestLeadDays: lead,
+		OutreachCC: strings.TrimSpace(values[OutreachCCKey]), RequestLeadDays: lead, DueByLeadDays: dueBy,
 	}, nil
+}
+
+// leadDays reads a days-before-the-newsletter setting, 0 to 60, or its
+// default when blank.
+func leadDays(values map[string]string, key string, fallback int) (int, error) {
+	raw := strings.TrimSpace(values[key])
+	if raw == "" {
+		return fallback, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 || n > 60 {
+		return 0, fmt.Errorf("setting %q: %q is not a number of days from 0 to 60", key, raw)
+	}
+	return n, nil
 }
 
 // BuildModel validates every row and refuses the whole set on the first problem,

@@ -1,4 +1,4 @@
-import {state, me, isSystemAdmin, isAdmin, setSuperEdit, isUnassigned, commsOnly} from './state.js';
+import {state, me, isSystemAdmin, isAdmin, setSuperEdit, isUnassigned, commsOnly, onComms, mine, urgency} from './state.js';
 import {el, svg, link} from './dom.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
 
@@ -64,9 +64,53 @@ function appSymbol() {
   return mark;
 }
 
+// flag is the red circle an item carries at its end, with the number in
+// it, so what needs doing shows from anywhere in the app: Unassigned, how
+// many have nobody; My Jobs, the viewer's own birthdays late or due today;
+// Process, everyone's, for an admin; Newsletters, the newsletter steps, for
+// the comms team and admins. Its title says how the number splits.
+function flag(href) {
+  const staff = state.model ? state.model.staff : [];
+  const due = rows => {
+    const u = rows.map(urgency);
+    const late = u.filter(x => x.when === 'late').length;
+    const today = u.filter(x => x.when === 'today').length;
+    if (!late && !today) {
+      return null;
+    }
+    const words = [late ? `${late} late` : '', today ? `${today} due today` : ''].filter(Boolean).join(', ');
+    return circle(late + today, words);
+  };
+  const own = sv => urgency(sv).step !== 'newsletter';
+  switch (href) {
+    case '/unassigned': {
+      const open = staff.filter(isUnassigned).length;
+      return open ? circle(open, `${open} ${open === 1 ? 'birthday has' : 'birthdays have'} nobody yet`) : null;
+    }
+    case '/jobs':
+      return due(staff.filter(sv => mine(sv) && own(sv)));
+    case '/process':
+      return isSystemAdmin() ? due(staff) : null;
+    case '/newsletters':
+      return isSystemAdmin() || onComms() ? due(staff.filter(sv => urgency(sv).step === 'newsletter')) : null;
+  }
+  return null;
+}
+
+function circle(n, title) {
+  const c = el('span', 'nav-flag', String(n));
+  c.title = title;
+  c.setAttribute('aria-label', title);
+  return c;
+}
+
 function navLink(item, first) {
   const a = link(item.href, active(item.href) ? 'is-active' : '');
   a.append(first ? appSymbol() : svg(item.icon), el('span', '', item.label));
+  const mark = flag(item.href);
+  if (mark) {
+    a.append(mark);
+  }
   return a;
 }
 

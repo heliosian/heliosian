@@ -165,20 +165,20 @@
    card is Who?'s new-year checklist there and a line across to it elsewhere,
    the triangle's says what the mismatch is. Both open on hover (alertMenu
    in toolbar.js) as a pale yellow card with a gold bar. */
-/* The badges - RSVP's calendar, the approvals' hourglass, the directory's
+/* The badges - RSVP's calendar, the approvals' hourglass, the late birthdays' cake, the directory's
    bell, and the privacy triangle, which has no count - as one family: a dark teal disc with the icon in white
    and the count on a dot at its top right, ringed in the bar's own colour -
-   red for replies owed and things to update, yellow for a privacy mismatch,
+   red for replies owed, late birthdays and things to update, yellow for a privacy mismatch,
    amber for approvals. */
-.rsvp-alert, .approvals-alert, .topbar-alert.stale-alert, .topbar-alert.privacy-alert { position: relative; width: 32px; height: 32px; border-radius: 50%; background: #0f4e54; color: #fff; }
+.rsvp-alert, .approvals-alert, .late-alert, .topbar-alert.stale-alert, .topbar-alert.privacy-alert { position: relative; width: 32px; height: 32px; border-radius: 50%; background: #0f4e54; color: #fff; }
 
-.rsvp-alert:hover, .approvals-alert:hover, .topbar-alert.stale-alert:hover, .topbar-alert.privacy-alert:hover { background: #1f838a; opacity: 1; }
+.rsvp-alert:hover, .approvals-alert:hover, .late-alert:hover, .topbar-alert.stale-alert:hover, .topbar-alert.privacy-alert:hover { background: #1f838a; opacity: 1; }
 
-.rsvp-alert svg, .approvals-alert svg, .stale-alert svg, .topbar-alert.privacy-alert svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; }
+.rsvp-alert svg, .approvals-alert svg, .late-alert svg, .stale-alert svg, .topbar-alert.privacy-alert svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; }
 
-.rsvp-count, .approvals-count, .topbar-alert-count.stale-alert .stale-count { position: absolute; top: -5px; right: -6px; width: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; box-shadow: 0 0 0 2px var(--toolbar, #ecf3f2); font-size: 10.5px; font-weight: 700; line-height: 18px; text-align: center; }
+.rsvp-count, .approvals-count, .late-count, .topbar-alert-count.stale-alert .stale-count { position: absolute; top: -5px; right: -6px; width: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; box-shadow: 0 0 0 2px var(--toolbar, #ecf3f2); font-size: 10.5px; font-weight: 700; line-height: 18px; text-align: center; }
 
-.rsvp-count { background: #df604a; color: #fff; }
+.rsvp-count, .late-count { background: #df604a; color: #fff; }
 
 .topbar-alert-count.stale-alert .stale-count { display: block; background: #df604a; color: #fff; }
 

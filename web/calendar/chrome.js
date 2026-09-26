@@ -313,7 +313,7 @@ function fillNav(nav) {
       }
       if (f.locked && !editingNav) {
         const lock = el('span', 'nav-sub-locked');
-        lock.title = 'Everyone keeps this one; its filters are the calendar\u2019s own';
+        lock.title = 'You can\u2019t modify this calendar, but you can create a new one based off of it.';
         lock.append(svg('lock'));
         marks.append(lock);
       }
@@ -347,7 +347,7 @@ function fillNav(nav) {
         if (f.locked) {
           // A lock where the cross would be: it cannot be removed.
           const lock = el('span', 'nav-sub-tool nav-sub-lock');
-          lock.title = 'Everyone keeps this one; its filters are the calendar\u2019s own';
+          lock.title = 'You can\u2019t modify this calendar, but you can create a new one based off of it.';
           lock.append(svg('lock'));
           row.append(lock);
           nav.append(row);

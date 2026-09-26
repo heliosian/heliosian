@@ -859,7 +859,7 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 		DefaultCharityKey: strings.TrimSpace(body.DefaultCharity), YearStartKey: strings.TrimSpace(body.YearStart),
 		EmailSubjectKey: strings.TrimSpace(body.EmailSubject), EmailBodyKey: strings.TrimSpace(body.EmailBody),
 		NoNewsletterNoteKey: strings.TrimSpace(body.NoNewsletterNote), OutreachCCKey: strings.TrimSpace(body.OutreachCC),
-		RequestLeadKey: strconv.Itoa(body.RequestLeadDays),
+		RequestLeadKey: strconv.Itoa(body.RequestLeadDays), DueByLeadKey: strconv.Itoa(body.DueByLeadDays),
 	}
 	ops := []store.Op{}
 	for _, key := range settingKeys {

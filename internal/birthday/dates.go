@@ -12,6 +12,10 @@ import (
 // when the settings do not say.
 const DefaultRequestLeadDays = 8
 
+// DefaultDueByLeadDays is how far ahead of the newsletter the birthday's
+// information - the charity - is due in, when the settings do not say.
+const DefaultDueByLeadDays = 2
+
 var yearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
 
 // ParseMonthDay reads the Year Start setting, 08-14.

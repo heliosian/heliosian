@@ -41,6 +41,9 @@ function notFound(what) {
 }
 
 function route() {
+  // Only the opportunities page narrows by category, and it reads its own
+  // from the address; everywhere else the rail lights none.
+  state.category = '';
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   if (!parts.length) {
     return signUpPage(null);

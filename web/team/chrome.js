@@ -1,4 +1,4 @@
-import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, setSuperEdit, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
+import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, setSuperEdit, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
 import {openActivity} from './edit.js';
@@ -26,14 +26,6 @@ function active(href) {
   return path === href || path.startsWith(href + '/');
 }
 
-// yearPath is the opportunities page for the chosen year: the root for the
-// current year, /years/... for any other, matching what the year dropdown puts
-// in the address bar.
-function yearPath() {
-  const year = selectedYear();
-  return year === years().current ? '/' : `/years/${encodeURIComponent(year)}`;
-}
-
 // appSymbol is the app's own mark, worn by the rail's first item (toolbar.css).
 function appSymbol() {
   const mark = el('span', 'app-symbol');
@@ -44,13 +36,6 @@ function appSymbol() {
 function navLink(item) {
   const href = item.href === '/' ? yearPath() : item.href;
   const a = link(href, active(item.href) ? 'is-active' : '');
-  if (item.href === '/') {
-    // Opportunities is the whole year: it drops whatever category a chip or
-    // the rail had narrowed the page to, but keeps the year.
-    a.addEventListener('click', () => {
-      state.category = '';
-    });
-  }
   a.append(item.icon === 'app' ? appSymbol() : svg(item.icon), el('span', '', item.label));
   const n = item.count ? item.count() : 0;
   if (n) {
@@ -99,10 +84,11 @@ function categoryLinks() {
     const item = el('button', 'nav-sub-item' + (on ? ' is-on' : ''));
     item.type = 'button';
     item.append(el('span', 'nav-sub-name', c.title), el('span', 'nav-sub-count', String(n)));
+    // The pick is the address's, ?category=..., so a reload, a copied link
+    // and Back all keep it; clicking the one that is on clears it.
     item.addEventListener('click', async () => {
-      state.category = on ? '' : c.id;
       const {navigate} = await import('./app.js');
-      navigate(location.pathname === '/' ? location.pathname : '/');
+      navigate(categoryPath(on ? '' : c.id));
     });
     wrap.append(item);
   }

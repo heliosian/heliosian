@@ -1,6 +1,6 @@
-import {state, isAdmin, years, allYears, sortByStart, matches, selectedYear, listedIn, canAdd, addLabel} from '../state.js';
+import {state, isAdmin, years, allYears, sortByStart, matches, selectedYear, listedIn, canAdd, addLabel, categoryPath, categoryFromAddress} from '../state.js';
 import {el, toggle, selectPill, thumb, button} from '../dom.js';
-import {setTitle, setSearch} from '../chrome.js';
+import {setTitle, setSearch, renderChrome} from '../chrome.js';
 import {activityCard, categoryClass} from '../cards.js';
 import {openActivity} from '../edit.js';
 
@@ -80,10 +80,14 @@ function yearContent(year, thisYear) {
       const chip = el('button', 'chip ' + (id ? categoryClass(id) : 'chip-all') + (state.category === id ? ' is-on' : ''));
       chip.type = 'button';
       chip.textContent = label;
+      // A chip is the rail's pick too, kept in the address the same way,
+      // but repaints in place so the search typed so far stands.
       chip.addEventListener('click', () => {
         state.category = state.category === id ? '' : id;
+        history.pushState(null, '', categoryPath(state.category));
         paintChips();
         paint();
+        renderChrome();
       });
       chips.append(chip);
     };
@@ -119,6 +123,8 @@ export function signUpPage(yearParam) {
   }
   const year = selectedYear();
   state.year = year;
+  // The category is the address's: ?category= names it, and none is all.
+  state.category = categoryFromAddress();
 
   const page = el('div');
   const head = el('div', 'page-head');
@@ -137,7 +143,6 @@ export function signUpPage(yearParam) {
   head.append(selectPill('calendar', options.map(y => ({key: y, label: y})), year, picked => {
     state.year = picked;
     query = '';
-    state.category = '';
     history.replaceState(null, '', picked === years().current ? '/' : `/years/${encodeURIComponent(picked)}`);
     document.dispatchEvent(new CustomEvent('hca:refresh'));
   }));

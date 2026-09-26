@@ -150,8 +150,45 @@ export function mine(sv) {
   return sv.assignedTo === me().email;
 }
 
+// urgency is where a birthday stands against its days, reckoned as the
+// toolbar's late badge reckons it (internal/birthday/late.go), and a day
+// early too: {when: 'late' | 'today' | '', step}. The steps are the
+// birthday's information - the charity, due by dueBy - and before that the
+// outreach, due by requestBy, both the assignee's; and once the charity is
+// in, the newsletter, the comms team's. A late step outranks one due today.
+export function urgency(sv) {
+  if (sv.stage === 'Complete') {
+    return {when: '', step: ''};
+  }
+  const steps = [
+    ['info', !sv.donation && sv.dueBy],
+    ['outreach', sv.stage === 'Awaiting Outreach' && sv.requestBy],
+    ['newsletter', sv.stage === 'Awaiting Newsletter' && sv.newsletterDate],
+  ];
+  const today = state.model.today;
+  for (const when of ['late', 'today']) {
+    for (const [step, day] of steps) {
+      if (day && (when === 'late' ? day < today : day === today)) {
+        return {when, step};
+      }
+    }
+  }
+  return {when: '', step: ''};
+}
+
+// urgencyWords is a birthday's urgency as a row's chip says it.
+export function urgencyWords({when, step}) {
+  const what = {info: 'Charity', outreach: 'Outreach', newsletter: 'Newsletter'}[step];
+  return when === 'late' ? `${what} late` : when === 'today' ? `${what} due today` : '';
+}
+
 // commsOnly says the viewer is on the comms team and nothing else - not a
 // volunteer, not an admin - so the app shows them the newsletters alone.
+export function onComms() {
+  const email = me().email;
+  return state.model.team.some(m => m.email === email && m.role === 'Comms Team');
+}
+
 export function commsOnly() {
   const email = me().email;
   const roles = state.model.team.filter(m => m.email === email).map(m => m.role);

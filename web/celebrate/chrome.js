@@ -24,7 +24,10 @@ function active(href) {
     return path === '/' || path.startsWith('/parties/') || path.startsWith('/celebrations/');
   }
   if (href === '/approvals') {
-    return path === '/hosting' && state.hostingTab === 'approvals';
+    return path === '/hosting' && hostingShown() === 'approvals';
+  }
+  if (href === '/hosting') {
+    return path === '/hosting' && hostingShown() !== 'approvals';
   }
   return path === href || path.startsWith(href + '/');
 }
@@ -34,6 +37,42 @@ function active(href) {
 export function partiesPath() {
   const code = state.celebration;
   return code === state.model.current ? '/' : `/celebrations/${encodeURIComponent(code)}`;
+}
+
+// The parties page's filters are the address's, so a reload, a copied link
+// and Back all keep them: ?show= names the tab - none for Available, the
+// first - and &category= the category, as lowercase words joined by
+// dashes. listPath writes them; listTab and listCategory read them back.
+function slug(words) {
+  return words.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+export function listPath(tab, category) {
+  const q = new URLSearchParams();
+  if (tab && tab !== listTabs[0].key) {
+    q.set('show', tab);
+  }
+  if (category) {
+    q.set('category', slug(category));
+  }
+  const rest = q.toString();
+  return partiesPath() + (rest ? '?' + rest : '');
+}
+
+export function listTab() {
+  const want = new URLSearchParams(location.search).get('show');
+  return listTabs.some(t => t.key === want) ? want : listTabs[0].key;
+}
+
+export function listCategory() {
+  const want = new URLSearchParams(location.search).get('category');
+  return (want && state.model.categories.find(c => slug(c) === want)) || '';
+}
+
+// hostingShown is the Hosting page's tab as the address names it -
+// ?show=approvals or ?show=all - My Parties for none.
+export function hostingShown() {
+  return new URLSearchParams(location.search).get('show') || 'mine';
 }
 
 // appSymbol is the app's own mark, worn by the rail's first item (toolbar.css).
@@ -47,16 +86,9 @@ function navLink(item) {
   let href = item.href === '/' ? partiesPath() : item.href;
   // Approval Needed is the Hosting page's admin tab.
   if (item.href === '/approvals') {
-    href = '/hosting';
+    href = '/hosting?show=approvals';
   }
   const a = link(href, active(item.href) ? 'is-active' : '');
-  a.addEventListener('click', () => {
-    if (item.href === '/approvals') {
-      state.hostingTab = 'approvals';
-    } else if (item.href === '/hosting') {
-      state.hostingTab = 'mine';
-    }
-  });
   a.append(item.icon === 'app' ? appSymbol() : svg(item.icon), el('span', '', item.label));
   const n = item.count ? item.count() : 0;
   if (n) {
@@ -111,9 +143,8 @@ function tabLinks() {
     item.type = 'button';
     item.append(el('span', 'nav-sub-name', t.label), el('span', 'nav-sub-count', String(n)));
     item.addEventListener('click', async () => {
-      state.tab = t.key;
       const {navigate} = await import('./app.js');
-      navigate(partiesPath());
+      navigate(listPath(t.key, onList ? state.category : ''));
     });
     wrap.append(item);
   }
@@ -280,7 +311,7 @@ function search(value) {
     return;
   }
   carriedQuery = value;
-  history.pushState(null, '', partiesPath());
+  history.pushState(null, '', listPath(state.tab, state.category));
   document.dispatchEvent(new CustomEvent('celebrate:refresh'));
 }
 

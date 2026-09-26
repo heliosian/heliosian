@@ -1,7 +1,7 @@
 import {state, isAdmin, isSystemAdmin, canApprove, hostedParties, pendingParties, partyPath, whenLine, money, canHost} from '../state.js';
 import {el, link, button, thumb, svg} from '../dom.js';
 import {tabStrip} from '/tabs.js';
-import {setTitle, setSearch} from '../chrome.js';
+import {setTitle, setSearch, hostingShown, renderChrome} from '../chrome.js';
 import {openParty, setPartyStatus} from '../edit.js';
 import {availabilityBadge} from '../cards.js';
 
@@ -67,13 +67,17 @@ export function hostingPage() {
   if (isAdmin()) {
     items.push({key: 'all', label: 'All Parties', count: state.model.parties.length});
   }
+  // The tab is the address's: ?show=approvals or ?show=all, none for mine.
+  state.hostingTab = hostingShown();
   if (!items.some(i => i.key === state.hostingTab)) {
     state.hostingTab = 'mine';
   }
   const paint = () => {
     bar.replaceChildren(tabStrip(items, state.hostingTab, 2, key => {
       state.hostingTab = key;
+      history.pushState(null, '', key === 'mine' ? '/hosting' : '/hosting?show=' + key);
       paint();
+      renderChrome();
     }));
     body.replaceChildren();
     let list = state.hostingTab === 'mine' ? hostedParties() : state.hostingTab === 'approvals' ? pendingParties() : state.model.parties;

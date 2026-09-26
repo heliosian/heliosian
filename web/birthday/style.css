@@ -117,6 +117,18 @@ button { font: inherit; }
   flex-shrink: 0;
 }
 
+/* Beside a red circle the chevron sits in a fixed spot at the end, and
+   every item with a circle keeps that room, so the circles line up whether
+   or not their item is the one open. */
+.app-nav a:has(.nav-flag) { padding-right: 36px; }
+
+.app-nav a.is-active:has(.nav-flag)::after { position: absolute; right: 16px; top: calc(50% - 5px); margin: 0; }
+
+/* The red circle an item carries at its end with its number, the active
+   item's chevron after it. */
+.nav-flag { display: inline-flex; align-items: center; justify-content: center; margin-left: auto; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: 10px; background: #df604a; color: #fff; font-size: 11px; font-weight: 700; line-height: 1; flex-shrink: 0; }
+
+
 
 .content-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 
@@ -481,6 +493,14 @@ body.is-admin main { padding: 0; }
   background: var(--muted-fill);
 }
 
+/* A row's late or due-today word, beside its stage: red and amber, as the
+   rail flags them. */
+.urgency-chip { display: inline-block; border-radius: 5px; padding: 1px 7px; font-size: 11px; font-weight: 700; color: #fff; }
+
+.urgency-chip.is-late { background: #df604a; }
+
+.urgency-chip.is-today { background: #e8a33d; }
+
 .stage-wait { background: #7a8f9a; }
 
 .stage-awaiting-outreach { background: #c46a1c; }
@@ -498,6 +518,11 @@ body.is-admin main { padding: 0; }
 .legend .chip { border: 0; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
 
 .legend .chip.is-off { opacity: 0.35; }
+
+/* The calendar's legend and its Show switch share a row. */
+.calendar-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 0 0 12px; }
+
+.calendar-controls .legend, .calendar-controls .show-toggle { margin: 0; }
 
 .footnote { color: var(--muted); font-size: 13px; text-align: center; margin-top: 28px; }
 
@@ -839,6 +864,7 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
   }
   .tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); text-decoration: none; font-size: 11px; }
   .tabbar a.is-active { color: var(--brand); }
+  .tabbar .nav-flag { display: none; }
   .tabbar svg { width: 22px; height: 22px; }
   .page-title { font-size: 28px; }
   .page-head { gap: 12px; }

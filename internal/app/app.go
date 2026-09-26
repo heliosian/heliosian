@@ -859,12 +859,14 @@ func NewCore(cfg Config) *Core {
 	loop.Register(loopMux, loopCache, cfg.Store, loopDir, settings.SuperAdmins, loopMail, cfg.LoopDescriber)
 	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker, spend, cfg.ChatKey)
 	waitingApprovals := approvals(cache, teamCache, celebrateCache, calendarCache)
+	behind := lateBirthdays(cache, birthdayCache, birthdayDirectory{cache, settings})
 	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux, askMux} {
 		home.RegisterSwitch(m, homeCache)
 		if m != calendarMux {
 			m.HandleFunc("GET /api/apps/rsvp", hooks.RSVPs)
 		}
 		m.HandleFunc("GET /api/apps/approvals", waitingApprovals)
+		m.HandleFunc("GET /api/apps/late", behind)
 	}
 	feedbackCache, err := feedback.NewCache(cfg.Source, cfg.Writer, queue)
 	if err != nil {
@@ -886,6 +888,7 @@ func NewCore(cfg Config) *Core {
 	}
 	homeMux.HandleFunc("GET /api/apps/rsvp", hooks.RSVPs)
 	homeMux.HandleFunc("GET /api/apps/approvals", waitingApprovals)
+	homeMux.HandleFunc("GET /api/apps/late", behind)
 	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.FeedbackFiler, superAdmin)
 	blob.Register(mux, cfg.Store)
 	blob.RegisterHome(homeMux, cfg.Store)

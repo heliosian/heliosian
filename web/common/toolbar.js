@@ -123,6 +123,7 @@ export function initUserMenu() {
   // the directory's count gets its bell.
   initRSVP();
   initApprovals();
+  initLate();
   bellStale();
   // Dark mode's row goes in every app's menu, above Sign Out.
   if (!menu.querySelector('.user-menu-mode')) {
@@ -777,6 +778,60 @@ function initApprovals() {
       icon: '<svg viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/></svg>',
       // No foot: the things come from several apps, each row to its own.
       tone: 'amber',
+    }));
+  }).catch(() => {});
+}
+
+// The late-birthdays badge, in every app's bar while a birthday step the
+// viewer owes is past its day - a birthday assigned to them whose charity is
+// not in by its due-by day, or whose outreach is past the day to ask; or, on
+// the comms team, a birthday past its newsletter not yet marked used; a birthday admin sees everyone's, the unassigned included, with or
+// without Super Admin Mode, as approvals. A cake with the count on a red
+// dot, to Birthday's My Jobs (an admin's, Process), and under it a card
+// listing each, oldest first, to the staff member's page there
+// (/api/apps/late, served on every app).
+const lateCake = '<path d="M4 21V13a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8"/><path d="M4 16c1.3 0 1.3 1 2.7 1s1.3-1 2.6-1 1.3 1 2.7 1 1.3-1 2.6-1 1.3 1 2.7 1 1.3-1 2.7-1"/><path d="M2 21h20M12 11V7"/><path d="M12 7c-1.1 0-2-.9-2-2 0-1.4 2-3 2-3s2 1.6 2 3c0 1.1-.9 2-2 2z"/>';
+const lateSteps = {outreach: 'Outreach was due', info: 'Birthday info was due', newsletter: 'Newsletter went out'};
+
+function initLate() {
+  const user = document.querySelector('#user');
+  if (!user || document.querySelector('.late-alert')) {
+    return;
+  }
+  fetch('/api/apps/late').then(res => res.ok ? res.json() : null).then(view => {
+    const late = (view && view.late) || [];
+    if (!late.length) {
+      return;
+    }
+    const birthday = appOrigin('birthday');
+    const wrap = el('span', 'topbar-alert-wrap');
+    const badge = el('a', 'topbar-alert late-alert');
+    badge.href = birthday + (view.admin ? '/process' : '/jobs');
+    const words = `${late.length} birthday ${late.length === 1 ? 'step is' : 'steps are'} late`;
+    badge.setAttribute('aria-label', words);
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.innerHTML = lateCake;
+    badge.append(icon, el('span', 'late-count', String(late.length)));
+    wrap.append(badge);
+    // First among the bar's badges: it is the most overdue thing there.
+    const first = user.parentElement.querySelector('.topbar-alert');
+    (first ? first.closest('.topbar-alert-wrap, .stale-wrap') || first : user).before(wrap);
+    const day = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});
+    alertMenu(badge, () => alertList({
+      count: late.length,
+      words: late.length === 1 ? 'birthday step is late' : 'birthday steps are late',
+      items: late.map(l => {
+        let note = `${lateSteps[l.step] || 'Due'} ${day.format(new Date(l.due + 'T12:00:00'))}`;
+        // An admin sees whose each assignee's step is.
+        if (view.admin && l.step !== 'newsletter') {
+          note += ' \u00b7 ' + (l.assignee || 'Unassigned');
+        }
+        return {title: l.name, note, href: birthday + l.path};
+      }),
+      icon: '<svg viewBox="0 0 24 24">' + lateCake + '</svg>',
+      button: view.admin ? 'Open Process in Birthday' : 'Open My Jobs in Birthday',
+      href: badge.href,
     }));
   }).catch(() => {});
 }

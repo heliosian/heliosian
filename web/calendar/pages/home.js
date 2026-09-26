@@ -710,7 +710,7 @@ export function homePage(date) {
     headline.append(mark, pick);
     if (shown.locked) {
       const lock = el('span', 'calendar-lock');
-      lock.title = 'Its filters are the calendar\u2019s own, and it cannot be removed';
+      lock.title = 'You can\u2019t modify this calendar, but you can create a new one based off of it.';
       lock.append(svg('lock'));
       headline.append(lock);
     }

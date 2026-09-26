@@ -15,9 +15,10 @@ import (
 
 // Reminders go to the assignee of a birthday as its days come: on the day to
 // ask, the outreach letter ready to send and a nudge to mark it done; two
-// days after, the same again if it has not been; and two days before the
-// newsletter, a nudge to record the charity if it came, since asking again
-// is not theirs to do - the default charity stands otherwise. Each goes once,
+// days after, the same again if it has not been; and on the day the
+// birthday is due by (Due By Lead Days before the newsletter), a nudge to
+// record the charity if it came, since asking again is not theirs to do -
+// the default charity stands otherwise. Each goes once,
 // recorded on the Reminders tab, and all of one birthday's messages make one
 // thread with its invite.
 
@@ -26,8 +27,7 @@ const (
 	remindLate     = "late"
 	remindDonation = "donation"
 
-	lateAfterDays      = 2
-	donationBeforeDays = 2
+	lateAfterDays = 2
 )
 
 // remindHours is when in the day reminders go, school time.
@@ -59,10 +59,8 @@ func (a app) dueReminders(model *Model, today time.Time) []reminder {
 		case !contacted && day >= sv.RequestBy && !sent(remindAsk) && !sent(remindLate):
 			out = append(out, reminder{sv, remindAsk, sv.AssignedTo})
 		}
-		if sv.Donation == nil && sv.NewsletterDate != "" && !sent(remindDonation) {
-			newsletter, _ := ParseDate(sv.NewsletterDate)
-			from := newsletter.AddDate(0, 0, -donationBeforeDays).Format(DateFormat)
-			if day >= from && day <= sv.NewsletterDate {
+		if sv.Donation == nil && sv.DueBy != "" && !sent(remindDonation) {
+			if day >= sv.DueBy && day <= sv.NewsletterDate {
 				out = append(out, reminder{sv, remindDonation, sv.AssignedTo})
 			}
 		}
