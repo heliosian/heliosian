@@ -998,33 +998,15 @@ func clientID() string {
 	return parsed.Web.ClientID
 }
 
-func mailFrom() string {
-	if from := os.Getenv("MAIL_FROM"); from != "" {
-		return from
-	}
-	return "HCA-Team <team@loop.heliosian.com>"
-}
-
-func birthdayMailFrom() string {
-	if from := os.Getenv("BIRTHDAY_MAIL_FROM"); from != "" {
-		return from
-	}
-	return "Helios Staff Birthdays <birthday@reply.heliosian.com>"
-}
-
-func birthdayBase() string {
-	if base := os.Getenv("BIRTHDAY_BASE_URL"); base != "" {
-		return strings.TrimSuffix(base, "/")
-	}
-	return "https://birthday.heliosian.com"
-}
-
-func feedbackBase() string {
-	if base := os.Getenv("FEEDBACK_BASE_URL"); base != "" {
-		return strings.TrimSuffix(base, "/")
-	}
-	return "https://heliosian.com"
-}
+const (
+	mailFrom          = "HCA-Team <team@loop.heliosian.com>"
+	birthdayMailFrom  = "Helios Staff Birthdays <birthday@reply.heliosian.com>"
+	birthdayBase      = "https://birthday.heliosian.com"
+	feedbackBase      = "https://heliosian.com"
+	calendarMailFrom  = "Helios When <when@reply.heliosian.com>"
+	calendarReplyTo   = "Helios When <when@reply.heliosian.com>"
+	celebrateMailFrom = "Helios Celebrate <celebrate@reply.heliosian.com>"
+)
 
 func githubApp() feedback.IssueFiler {
 	app, err := feedback.NewGitHubApp(mapsKey("GITHUB_APP_ID", "local/creds/github-app.id"), mapsKey("GITHUB_APP_KEY", "local/creds/github-app.pem"))
@@ -1034,22 +1016,8 @@ func githubApp() feedback.IssueFiler {
 	return app
 }
 
-func calendarMailFrom() string {
-	if from := os.Getenv("CALENDAR_MAIL_FROM"); from != "" {
-		return from
-	}
-	return "Helios When <when@reply.heliosian.com>"
-}
-
-func calendarReplyTo() string {
-	if to := os.Getenv("CALENDAR_REPLY_TO"); to != "" {
-		return to
-	}
-	return "Helios When <when@reply.heliosian.com>"
-}
-
 func calendarMail(sessionKey string) calendar.Mail {
-	return calendar.Mail{Sender: newMailer(calendarMailFrom()), From: calendarMailFrom(), ReplyTo: calendarReplyTo(), SigningKey: mailgunSigningKey(), Key: []byte(sessionKey)}
+	return calendar.Mail{Sender: newMailer(calendarMailFrom), From: calendarMailFrom, ReplyTo: calendarReplyTo, SigningKey: mailgunSigningKey(), Key: []byte(sessionKey)}
 }
 
 func mailgunKey() string {
@@ -1058,13 +1026,6 @@ func mailgunKey() string {
 
 func mailgunSigningKey() string {
 	return optionalKey("MAILGUN_WEBHOOK_KEY", "local/creds/mailgun-webhook.key")
-}
-
-func celebrateMailFrom() string {
-	if from := os.Getenv("CELEBRATE_MAIL_FROM"); from != "" {
-		return from
-	}
-	return "Helios Celebrate <celebrate@reply.heliosian.com>"
 }
 
 func newMailer(from string) mail.Sender {
@@ -1196,16 +1157,16 @@ func Production(domain, blobCache string) (*http.Server, *store.Queue) {
 		BrowserKey:    mapsKey("GOOGLE_MAPS_BROWSER_KEY", "local/creds/maps.key"),
 		ImageSearch:   ImageSearchKeys(),
 		Describer:     ClaudeDescriber(),
-		Mail:          newMailer(mailFrom()),
-		MailFrom:      mailFrom(),
-		CelebrateMail: newMailer(celebrateMailFrom()),
-		CelebrateFrom: celebrateMailFrom(),
+		Mail:          newMailer(mailFrom),
+		MailFrom:      mailFrom,
+		CelebrateMail: newMailer(celebrateMailFrom),
+		CelebrateFrom: celebrateMailFrom,
 		CalendarMail:  calendarMail(sessionKey),
-		BirthdayMail:  newMailer(birthdayMailFrom()),
-		BirthdayFrom:  birthdayMailFrom(),
-		BirthdayBase:  birthdayBase(),
+		BirthdayMail:  newMailer(birthdayMailFrom),
+		BirthdayFrom:  birthdayMailFrom,
+		BirthdayBase:  birthdayBase,
 		FeedbackFiler: githubApp(),
-		FeedbackBase:  feedbackBase(),
+		FeedbackBase:  feedbackBase,
 		Loop:          loopMail(sessionKey),
 		LoopDescriber: ClaudeGroupDescriber(),
 		Asker:         ask.NewClaude(mapsKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key")),

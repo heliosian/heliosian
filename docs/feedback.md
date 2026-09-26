@@ -18,7 +18,7 @@ One spreadsheet, `FEEDBACK_SHEET`, one tab, `Reports`, one row per report, appen
 
 ## Telling the super admins
 
-Every saved report is mailed to the super admins the Config sheet names - the same list that may read the queue, so whoever can triage is whoever hears. It goes out through the portal's own sender and address (`MAIL_FROM`, HCA-Team), and carries the kind, the app, the summary, the details, who reported it, and a link straight to the report on the admin page. Without a mail sender, or with nobody on the list, the report is still saved and simply not announced.
+Every saved report is mailed to the super admins the Config sheet names - the same list that may read the queue, so whoever can triage is whoever hears. It goes out through the portal's own sender and address (`mailFrom` in `internal/app/app.go`), and carries the kind, the app, the summary, the details, who reported it, and a link straight to the report on the admin page. Without a mail sender, or with nobody on the list, the report is still saved and simply not announced.
 
 ## The queue
 
