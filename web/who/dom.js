@@ -179,7 +179,10 @@ export function ordinal(gradeName) {
 }
 
 export function csvField(value) {
-  return /[",\n]/.test(value) ? '"' + value.replaceAll('"', '""') + '"' : value;
+  if (/^[=+\-@\t\r]/.test(value) && isNaN(Number(value))) {
+    value = "'" + value;
+  }
+  return /[",\n\r]/.test(value) ? '"' + value.replaceAll('"', '""') + '"' : value;
 }
 
 export function iconButton(name, label, action) {

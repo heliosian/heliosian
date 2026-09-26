@@ -814,6 +814,24 @@ func TestPastAndPrices(t *testing.T) {
 	}
 }
 
+func TestCSVCell(t *testing.T) {
+	for cell, want := range map[string]string{
+		"":                "",
+		"Ann Lee":         "Ann Lee",
+		"-40":             "-40",
+		"+12.50":          "+12.50",
+		`=HYPERLINK("x")`: `'=HYPERLINK("x")`,
+		"@SUM(A1)":        "'@SUM(A1)",
+		"-2+3":            "'-2+3",
+		"\t=1+1":          "'\t=1+1",
+		"a=b":             "a=b",
+	} {
+		if got := csvCell(cell); got != want {
+			t.Errorf("csvCell(%q) = %q, want %q", cell, got, want)
+		}
+	}
+}
+
 func TestFriendlyAddresses(t *testing.T) {
 	cache, mux := newServer(t)
 	m := cache.Model()

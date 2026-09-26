@@ -1288,9 +1288,23 @@ func (a app) invoicesCSV(w http.ResponseWriter, r *http.Request) {
 		if code != "" && l.Code != code {
 			continue
 		}
-		out.Write([]string{l.Date, l.Party, l.Code, l.Purchaser, l.Guest, l.Action, strconv.Itoa(l.Quantity), PriceCell(l.Cost), l.Invoice, l.InvoiceTo})
+		row := []string{l.Date, l.Party, l.Code, l.Purchaser, l.Guest, l.Action, strconv.Itoa(l.Quantity), PriceCell(l.Cost), l.Invoice, l.InvoiceTo}
+		for i, cell := range row {
+			row[i] = csvCell(cell)
+		}
+		out.Write(row)
 	}
 	out.Flush()
+}
+
+func csvCell(s string) string {
+	if s == "" || !strings.ContainsRune("=+-@\t\r", rune(s[0])) {
+		return s
+	}
+	if _, err := strconv.ParseFloat(s, 64); err == nil {
+		return s
+	}
+	return "'" + s
 }
 
 func (a app) adminState(w http.ResponseWriter, r *http.Request) {
