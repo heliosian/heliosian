@@ -1,61 +1,84 @@
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper, signedIn} from '/toolbar.js';
 import {render, stable} from '/markdown.js';
 
-// The chats live in this browser, under the signed-in address: each an
-// id, a title from its first question, when it was last touched, every
-// turn as drawn, and the conversation as the model saw it - context, the
-// messages the server hands back after each turn, and known, the documents
-// it has been told of - sent whole with the next message, since the server
-// keeps nothing.
 const maxChats = 50;
+const ivLength = 12;
+const storagePattern = /^chats-[0-9a-f]{64}$/;
 
-const state = {model: null, chats: [], current: null, busy: false, stopper: null};
+const state = {model: null, chats: [], current: null, busy: false, stopper: null, key: null, storageKey: null, saving: Promise.resolve()};
 
-function chatsKey() {
-  return 'ask-chats:' + state.model.user.email;
-}
-
-function currentKey() {
-  return 'ask-current:' + state.model.user.email;
-}
-
-function loadChats() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(chatsKey()) || '[]');
-    state.chats = Array.isArray(raw) ? raw.filter(c => c && c.id && Array.isArray(c.turns)) : [];
-  } catch {
-    state.chats = [];
+function toBase64(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   }
-  for (const chat of state.chats) {
-    if (!Array.isArray(chat.context)) {
-      chat.context = chat.turns.filter(t => (t.text || '').trim()).map(t => textMessage(t.role, t.text));
-      chat.known = [];
+  return btoa(binary);
+}
+
+function fromBase64(text) {
+  return Uint8Array.from(atob(text), c => c.charCodeAt(0));
+}
+
+async function openStorage(res) {
+  if (!res.ok) {
+    throw new Error(`loading key failed: ${res.status}`);
+  }
+  const {key} = await res.json();
+  state.key = await crypto.subtle.importKey('raw', fromBase64(key), 'AES-GCM', false, ['encrypt', 'decrypt']);
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(state.model.user.email)));
+  state.storageKey = 'chats-' + Array.from(digest, b => b.toString(16).padStart(2, '0')).join('');
+  for (const name of Object.keys(localStorage)) {
+    if (!storagePattern.test(name)) {
+      localStorage.removeItem(name);
     }
   }
+}
+
+async function loadChats() {
+  state.chats = [];
+  state.current = null;
+  const stored = localStorage.getItem(state.storageKey);
+  if (!stored) {
+    return;
+  }
+  let plain;
+  try {
+    const bytes = fromBase64(stored);
+    plain = await crypto.subtle.decrypt({name: 'AES-GCM', iv: bytes.subarray(0, ivLength)}, state.key, bytes.subarray(ivLength));
+  } catch {
+    localStorage.removeItem(state.storageKey);
+    return;
+  }
+  state.chats = JSON.parse(new TextDecoder().decode(plain));
   state.chats.sort((a, b) => (b.updated || 0) - (a.updated || 0));
-  const id = localStorage.getItem(currentKey());
-  state.current = state.chats.find(c => c.id === id) || null;
+}
+
+async function writeChats(chats) {
+  for (;;) {
+    const iv = crypto.getRandomValues(new Uint8Array(ivLength));
+    const sealed = new Uint8Array(await crypto.subtle.encrypt({name: 'AES-GCM', iv}, state.key, new TextEncoder().encode(JSON.stringify(chats))));
+    const bytes = new Uint8Array(ivLength + sealed.length);
+    bytes.set(iv);
+    bytes.set(sealed, ivLength);
+    try {
+      localStorage.setItem(state.storageKey, toBase64(bytes));
+      return;
+    } catch (err) {
+      if (err.name !== 'QuotaExceededError' || chats.length <= 1) {
+        throw err;
+      }
+      const dropped = chats.pop();
+      state.chats = state.chats.filter(c => c !== dropped);
+    }
+  }
 }
 
 function saveChats() {
   state.chats.sort((a, b) => (b.updated || 0) - (a.updated || 0));
   state.chats = state.chats.slice(0, maxChats);
-  for (;;) {
-    try {
-      localStorage.setItem(chatsKey(), JSON.stringify(state.chats));
-      break;
-    } catch (err) {
-      if (err.name !== 'QuotaExceededError' || state.chats.length <= 1) {
-        throw err;
-      }
-      state.chats.pop();
-    }
-  }
-  if (state.current) {
-    localStorage.setItem(currentKey(), state.current.id);
-  } else {
-    localStorage.removeItem(currentKey());
-  }
+  const chats = state.chats.slice();
+  const write = state.saving.then(() => writeChats(chats));
+  state.saving = write.catch(() => {});
 }
 
 function textMessage(role, text) {
@@ -245,7 +268,6 @@ function openChat(chat) {
     return;
   }
   state.current = chat;
-  saveChats();
   renderChats();
   renderThread();
 }
@@ -268,7 +290,6 @@ function newChat() {
     return;
   }
   state.current = null;
-  saveChats();
   renderChats();
   renderThread();
   closeDrawer();
@@ -556,13 +577,15 @@ function initChrome() {
 }
 
 async function load() {
+  const keyed = fetch('/api/ask/key');
   const res = await signedIn(await fetch('/api/ask/model'));
   if (!res.ok) {
     throw new Error(`loading model failed: ${res.status}`);
   }
   state.model = await res.json();
   renderUser();
-  loadChats();
+  await openStorage(await signedIn(await keyed));
+  await loadChats();
   renderChats();
   renderThread();
 }

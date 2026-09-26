@@ -689,6 +689,7 @@ type Config struct {
 	Blobs         who.BlobChecker
 	Store         *blob.Store
 	FamilyIDKey   []byte
+	ChatKey       []byte
 	BrowserKey    string
 	ImageSearch   imagesearch.Search
 	Mail          mail.Sender
@@ -862,13 +863,10 @@ func NewCore(cfg Config) *Core {
 	loopMail.Documents = documents
 	loopMux := http.NewServeMux()
 	loop.Register(loopMux, loopCache, cfg.Store, loopDir, settings.SuperAdmins, loopMail, cfg.LoopDescriber)
-	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker, spend)
-	// The shared toolbar's approvals badge, for an admin of any app.
+	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker, spend, cfg.ChatKey)
 	waitingApprovals := approvals(cache, teamCache, celebrateCache, calendarCache)
 	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux, askMux} {
 		home.RegisterSwitch(m, homeCache)
-		// The shared toolbar's RSVP badge asks the page's own host; the
-		// calendar's serves it already.
 		if m != calendarMux {
 			m.HandleFunc("GET /api/apps/rsvp", hooks.RSVPs)
 		}
@@ -1163,6 +1161,8 @@ func Production(domain, blobCache string) (*http.Server, *store.Queue) {
 	}
 	familyIDKey := hmac.New(sha256.New, []byte(sessionKey))
 	familyIDKey.Write([]byte("family id"))
+	chatKey := hmac.New(sha256.New, []byte(sessionKey))
+	chatKey.Write([]byte("ask chats"))
 	core := NewCore(Config{
 		Source:        sheet,
 		Writer:        sheet,
@@ -1170,6 +1170,7 @@ func Production(domain, blobCache string) (*http.Server, *store.Queue) {
 		Blobs:         store,
 		Store:         store,
 		FamilyIDKey:   familyIDKey.Sum(nil),
+		ChatKey:       chatKey.Sum(nil),
 		BrowserKey:    mapsKey("GOOGLE_MAPS_BROWSER_KEY", "local/creds/maps.key"),
 		ImageSearch:   ImageSearchKeys(),
 		Describer:     ClaudeDescriber(),

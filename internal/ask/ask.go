@@ -3,6 +3,9 @@ package ask
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -59,12 +62,14 @@ type app struct {
 	sources   Sources
 	responder Responder
 	recent    *ratelimit.Limiter
+	chatKey   []byte
 }
 
-func Register(mux *http.ServeMux, sources Sources, responder Responder, recent *ratelimit.Limiter) {
-	a := app{sources: sources, responder: responder, recent: recent}
+func Register(mux *http.ServeMux, sources Sources, responder Responder, recent *ratelimit.Limiter, chatKey []byte) {
+	a := app{sources: sources, responder: responder, recent: recent, chatKey: chatKey}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /api/ask/model", a.model)
+	mux.HandleFunc("GET /api/ask/key", a.key)
 	mux.HandleFunc("POST /api/ask/chat", a.chat)
 }
 
@@ -106,6 +111,16 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode ask model", "error", err)
+	}
+}
+
+func (a app) key(w http.ResponseWriter, r *http.Request) {
+	mac := hmac.New(sha256.New, a.chatKey)
+	mac.Write([]byte(a.who(r)))
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := json.NewEncoder(w).Encode(map[string]string{"key": base64.StdEncoding.EncodeToString(mac.Sum(nil))}); err != nil {
+		slog.ErrorContext(r.Context(), "encode ask key", "error", err)
 	}
 }
 

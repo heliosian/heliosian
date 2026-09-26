@@ -1,7 +1,7 @@
 Description: Helios Ask keeps up to fifty whole chats - questions and the answers with the directory data in them - in `localStorage` under `ask-chats:<address>`, and Sign Out clears none of it, so the next person at a shared family computer reads them from the browser's tools without signing in.
-Status: open
+Status: fixed
 Severity: low
 ---
-`web/ask/app.js:13-42` reads and writes the chats under a key named for the signed-in address. Sign Out is a bare form post to `/auth/logout` (`web/ask/index.html:51`), which clears the cookies and leaves the origin's storage as it was. The chats of a person viewed as in Spoof Mode are kept the same way, under that person's address, on the admin's machine. Every other app keeps only interface state there (`navOpen`, filters, `superEdit` switches).
+Sign Out can happen on any app, and only the Ask origin can clear Ask's storage, so `Clear-Site-Data` on sign-out would miss every sign-out made elsewhere.
 
-Fix: answer `/auth/logout` with `Clear-Site-Data: "storage"` on the ask host, or have the page clear its `ask-chats:` and current-chat keys as it submits the form; and keep no chats while `GET /auth/spoof` says a spoof is on.
+Fixed by encrypting the chats instead: `GET /api/ask/key` (`internal/ask/ask.go`) answers, `no-store` and only to a signed-in person, an HMAC of their address under `ChatKey`, derived from `SESSION_KEY` in `internal/app`. `web/ask/app.js` imports it as a non-extractable AES-GCM key and keeps the chats as one sealed value under `chats-<sha256 of the address>`. After sign-out, from any app, what is left is ciphertext with no key in the browser. On load the page removes every entry not in that form, which clears the old plaintext `ask-chats:` and `ask-current:` entries, and an entry that will not decrypt is removed. `docs/ask/data.md`, The conversation, describes it.

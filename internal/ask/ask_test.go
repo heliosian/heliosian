@@ -2,6 +2,7 @@ package ask
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -273,7 +274,7 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 	sources.Artifacts = func() *artifacts.Model { return current }
 	requests := []Request{}
 	mux := http.NewServeMux()
-	Register(mux, sources, recording{requests: &requests}, claude.NewLimiter())
+	Register(mux, sources, recording{requests: &requests}, claude.NewLimiter(), []byte("test"))
 	handler := auth.Fixed(jordan, mux)
 	chat := &transcript{}
 	first := chat.keep(t, post(t, handler, chat.body(t, "Anything new?")))
@@ -565,8 +566,41 @@ func anyStrings(list any) []string {
 func serveApp(t *testing.T, responder Responder) http.Handler {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), responder, claude.NewLimiter())
+	Register(mux, sampleSources(t), responder, claude.NewLimiter(), []byte("test"))
 	return auth.Fixed(jordan, mux)
+}
+
+func chatKey(t *testing.T, handler http.Handler) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/ask/key", nil))
+	if rec.Code != http.StatusOK || rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("key: %d cache %q", rec.Code, rec.Header().Get("Cache-Control"))
+	}
+	var body struct {
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(body.Key)
+	if err != nil || len(raw) != 32 {
+		t.Fatalf("key %q is not 32 bytes: %v", body.Key, err)
+	}
+	return body.Key
+}
+
+func TestChatKeyIsTheSameEachLoadAndGoesWithTheServerKey(t *testing.T) {
+	handler := serveApp(t, Fake{})
+	first := chatKey(t, handler)
+	if again := chatKey(t, handler); again != first {
+		t.Fatalf("a second load gave %q, not %q", again, first)
+	}
+	mux := http.NewServeMux()
+	Register(mux, sampleSources(t), Fake{}, claude.NewLimiter(), []byte("other"))
+	if other := chatKey(t, auth.Fixed(jordan, mux)); other == first {
+		t.Fatalf("a different server key gave the same chat key")
+	}
 }
 
 func post(t *testing.T, handler http.Handler, body string) *httptest.ResponseRecorder {
@@ -580,7 +614,7 @@ func post(t *testing.T, handler http.Handler, body string) *httptest.ResponseRec
 func TestChatStreamsAndKeepsTheConversation(t *testing.T) {
 	requests := []Request{}
 	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), recording{requests: &requests}, claude.NewLimiter())
+	Register(mux, sampleSources(t), recording{requests: &requests}, claude.NewLimiter(), []byte("test"))
 	handler := auth.Fixed(jordan, mux)
 	chat := &transcript{}
 	rec := post(t, handler, chat.body(t, "What kind of day is today?"))
@@ -616,7 +650,7 @@ func TestChatStreamsAndKeepsTheConversation(t *testing.T) {
 func TestChatReadsTheBrowsersContextWithKeys(t *testing.T) {
 	requests := []Request{}
 	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), recording{requests: &requests}, claude.NewLimiter())
+	Register(mux, sampleSources(t), recording{requests: &requests}, claude.NewLimiter(), []byte("test"))
 	handler := auth.Fixed(jordan, mux)
 	chat := &transcript{}
 	if err := json.Unmarshal([]byte(`[{"role":"user","content":[{"type":"text","text":"Is `+samURL+` here?"}]},{"role":"assistant","content":[{"type":"text","text":"Yes, [Sam](`+samURL+`)."}]},{"role":"user","content":[{"type":"text","text":"Two"}]},{"role":"assistant","content":[{"type":"text","text":"B"}]}]`), &chat.context); err != nil {
