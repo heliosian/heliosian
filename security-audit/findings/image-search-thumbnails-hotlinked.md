@@ -1,7 +1,0 @@
-Description: The image pickers showed search results straight from Unsplash's, Pexels' and Pixabay's CDNs, so each search sent the searcher's address and the portal's origin to three outside services and the content security policy had to name their hosts as image sources.
-Status: fixed
-Severity: low
----
-`imagesearch.ServeSearch` (`internal/imagesearch/imagesearch.go`) answers with no provider address and no provider name at all: each hit is an id of the server's own (a hash of the library and its id), the app's own thumbnail route beside the search route (`/api/<app>/images/thumb?id=`), a size and a title. The provider's addresses for the thumbnail and the full image are kept server-side, in a record under `stock/<id>.json` in the media bucket, written by the search. `ServeThumb` reads the thumbnail from `stock/<id>-thumb`, fetching it from the provider once, with the server's own user agent, when it is not there yet; `ServeImport` does the same for the full image under `stock/<id>` before storing it content-addressed in the app's folder. No editor's browser reaches a provider, a picture is pulled from a provider once however many searches or picks it appears in, and `internal/app/csp.go` names no CDN host under `img-src`.
-
-The four pickers (`web/home/edit.js`, `web/calendar/images.js`, `web/team/edit.js`, `web/celebrate/edit.js`) render `thumb` as before and post the id on import. `TestStockFetchedOnce` holds the once-only fetch and the refusal of anything but a known id.

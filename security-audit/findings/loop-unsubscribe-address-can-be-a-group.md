@@ -1,7 +1,0 @@
-Description: Loop's reserved names left out `unsubscribe`, so any signed-in account could make a group of that name and receive every mail-app unsubscribe - token, group and address - since the inbound hook handed the message to the group the recipient resolved to after running the unsubscribe.
-Status: fixed
-Severity: medium
----
-`reservedNames` (`internal/loop/loop.go`) now holds `unsubscribe`, so `CheckGroup` refuses it as a group's name or alias, both on save and when the model is built from the sheet; and `inbound` (`internal/loop/mail.go`) leaves the unsubscribe recipient out of the list it hands to `received`, so the message becomes no job even for a group that somehow held the name and is not warned about as mail for no group. `TestChecksRefuseBadGroups` holds the name and the alias; `TestUnsubscribeByMailTakesThemOffTheGroup` holds that the mail is taken as no post. The token itself still never expires, which is by design: it reaches only the one person's copy.
-
-`team@loop.heliosian.com` - the portal's and the feedback mail's default sender and the sender of Loop's bounce notices (`internal/app/app.go`, `internal/loop/mail.go`) - is meant to be a group, so a reply to it reaches people (`docs/deploy.md`), and is not reserved. What is missing there is enforcement, not reservation: nothing makes sure the `team` group exists or that an admin holds it, so on a deploy where it is absent the first account to make it receives those replies. Bootstrapping the group is out of this finding's scope and not fixed here.

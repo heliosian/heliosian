@@ -1,6 +1,6 @@
 # Security audit
 
-What an audit of this codebase looks for, what it leaves alone, and how its findings are kept.
+What a security audit of this codebase looks for, what it leaves alone, and how its findings are kept.
 
 ## The system
 
@@ -116,23 +116,23 @@ A second check that costs a few lines where one check stands alone today. The te
 
 ## Findings
 
-One file per finding under `security-audit/findings/`, copied from `security-audit/TEMPLATE.md` and named for what it is about in a few lowercase words joined by hyphens (`open-feed-token-never-expires.md`). A file is:
+A finding is a GitHub issue on this repository whose issue type is Security, so every audit's findings, open and closed, are one search:
 
-    Description: one sentence
-    Status: open
-    Severity: medium
-    ---
-    brief details
+    gh issue list --repo heliosian/heliosian --search "type:Security" --state all
 
+Search the list before filing, so the same thing is not filed twice. The issue carries:
+
+- **Title** - what is wrong, in a few words.
+- **Severity**, on the body's first line with the resolution - how bad it is while it stands, judged by who can do it and what they get, and kept once the issue is closed. `critical`: anyone on the internet, or a link holder, reads or changes the community's data at large, or takes a credential. `high`: a signed-in account or a mail sender reads what consent or the rules keep from them across the community, acts as someone else, or takes the service down. `medium`: a leak or a write kept to one app, one group or one kind of record, money or mail spent without a bound, or something that needs a further condition to bite. `low`: a nuisance, a narrow leak, a second check that is missing where the first still stands.
 - **Description** - one sentence saying what is wrong, where, and who (anyone, a link holder, a member, an admin) can do what because of it.
-- **Status** - `open` when written; `revisit` when it is true but waits on something before it can be worked on, with what it waits on in the details; `fixed` once a change closes it; `wontfix` when it is understood and left, with the reason in the details; `invalid` when it turns out not to be one, with the reason in the details.
-- **Severity** - how bad it is while it stands, judged by who can do it and what they get, and kept as the finding's status changes. `critical`: anyone on the internet, or a link holder, reads or changes the community's data at large, or takes a credential. `high`: a signed-in account or a mail sender reads what consent or the rules keep from them across the community, acts as someone else, or takes the service down. `medium`: a leak or a write kept to one app, one group or one kind of record, money or mail spent without a bound, or something that needs a further condition to bite. `low`: a nuisance, a narrow leak, a second check that is missing where the first still stands.
-- **Details**, after the `---` - brief: the files and lines, how to see it, and the fix if one is plain. A few short paragraphs at most. A `fixed`, `wontfix` or `invalid` finding names files and functions but no line numbers, since the code moves on and they go stale.
+- **Details** - brief: the files and functions, how to see it, and the fix if one is plain. A few short paragraphs at most. No line numbers, since the code moves on and they go stale.
 
-One finding per file: the same mistake in five handlers is one finding naming the five; two different mistakes in one handler are two.
+One finding per issue: the same mistake in five handlers is one finding naming the five; two different mistakes in one handler are two.
 
-When a finding was written and when it last changed come from git, so a file carries no dates. A finding that stops being true is edited, not deleted, so the record of what was looked at stays. The details describe the finding as it stands, not the story of how it changed.
+An issue stays open while the finding stands, including one that waits on something before it can be worked on, with what it waits on in the details. It closes one of three ways, the resolution on the body's first line and the details saying what was done or why not:
 
-`go run ./tools/findings` refuses a file that does not follow the format, naming the file and the line, so a listing that runs clean is also the check that every finding is well formed.
+- **fixed** - closed as completed once a change closes it, the details describing the fix.
+- **wontfix** - closed as not planned when it is understood and left, the details giving the reason.
+- **invalid** - closed as not planned when it turns out not to be one, the details giving the reason.
 
-`go run ./tools/findings` lists them: `--status open,wontfix` keeps those statuses, as do `--open --wontfix`, each status being a flag of its own, `--text token` keeps findings with those words anywhere in the file, `--since 2026-01-31` keeps what changed on or after that day. Filters combine. `--first` keeps one of what is left, the next to work on: the open finding first by file name among those at the highest severity any open one has, so the answer holds still until that finding's status changes; a `revisit` finding is passed over unless `--with-revisit` is given, which counts it as open. `--stat` prints, in place of the list, a coloured grid of how many of the kept findings stand at each severity and status, with totals.
+A closing comment names the commits that fixed it or decided it, and a fix's commit message names the issue. The body describes the finding as it stands, not the story of how it changed; that is the issue's timeline and the commits'.

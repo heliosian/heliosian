@@ -41,7 +41,6 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `sampledata/` — the fictional community served by default
 - `cmd/` — the binaries production runs besides `main.go`: `cmd/periodicsync`, the scheduled job that reads the school's year calendar PDF
 - `tools/` — dev tooling, never deployed: the dev server, screenshots, browser driving, sheet inspection, imports, deploy
-- `security-audit/` — what a security audit of this codebase looks for and leaves alone, the template for a finding, and the findings, one file each, listed by `tools/findings`
 - `docs/` — everything below
 
 ## Docs
@@ -97,5 +96,9 @@ Helios Ask, in `docs/ask/`:
 - [ask.md](docs/ask/ask.md) — the chat app spec: the page, what Claude knows, what it can read
 - [data.md](docs/ask/data.md) — the call to Claude, the conversation, the tools and their limits
 - [artifacts.md](docs/ask/artifacts.md) — the community's documents, its mail, its website's pages and its parent portal: what is in them and what is withheld, how they become markdown, chunks and embeddings, and how they are searched
+
+Audits, in `docs/audits/`:
+
+- [security.md](docs/audits/security.md) — what a security audit of this codebase looks for and leaves alone, and how its findings are kept as Security issues
 
 Each app keeps its own docs under `docs/<app>/`, named for its hostname; the top level is only what every app shares.
