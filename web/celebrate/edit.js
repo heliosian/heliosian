@@ -1,5 +1,6 @@
 import {state, me, isAdmin, household, billable, admits, audienceWords, ticketFor, money, currentCelebration, partyPath, party} from './state.js';
 import {addressSuggest} from '/address.js';
+import {createPersonPicker} from '/picker.js';
 import {el, svg, toast, button, avatar} from './dom.js';
 import {tabStrip} from '/tabs.js';
 import {imageTools} from '/images.js';
@@ -81,120 +82,23 @@ function tabbedFields(panels) {
   return wrap;
 }
 
-// The directory, fetched once per page load, behind the people pickers.
-let peopleCache = null;
+let asked = null;
 
-async function people() {
-  if (!peopleCache) {
-    const res = await fetch('/api/celebrate/people');
-    peopleCache = res.ok ? await res.json() : [];
-  }
-  return peopleCache;
+function people() {
+  asked = asked || fetch('/api/celebrate/people').then(async res => {
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+    return res.json();
+  }).catch(err => {
+    asked = null;
+    throw err;
+  });
+  return asked;
 }
 
-// peoplePicker is the searchable directory list: type a few letters, see
-// faces, names and what places each person, pick one. Typing a full address
-// that matches nobody still works.
-export function peoplePicker(placeholder, onPick, allow) {
-  const wrap = el('div', 'people-picker');
-  const search = el('input');
-  search.type = 'search';
-  search.placeholder = placeholder || 'Search by name…';
-  search.autocomplete = 'off';
-  const results = el('div', 'people-results');
-  results.hidden = true;
-  const chosen = el('div', 'people-chosen');
-  chosen.hidden = true;
-  wrap.append(search, results, chosen);
-  let value = '';
-  let picked = null;
-  const tile = person => {
-    const row = el('button', 'people-row');
-    row.type = 'button';
-    row.append(avatar(person, 'people-face'));
-    const words = el('div', 'people-text');
-    words.append(el('div', 'people-name', person.name));
-    if (person.title) {
-      words.append(el('div', 'people-title', person.title));
-    }
-    row.append(words);
-    return row;
-  };
-  const choose = person => {
-    // With a handler, a pick is handed over at once and the box clears for
-    // the next; without one it stays shown as the choice.
-    if (onPick) {
-      search.value = '';
-      results.hidden = true;
-      results.replaceChildren();
-      onPick(person);
-      return;
-    }
-    value = person.email;
-    picked = person;
-    chosen.replaceChildren();
-    const row = tile(person);
-    row.disabled = true;
-    const clear = el('button', 'link-button', 'Change');
-    clear.type = 'button';
-    clear.addEventListener('click', () => {
-      value = '';
-      picked = null;
-      chosen.hidden = true;
-      search.hidden = false;
-      search.value = '';
-      search.focus();
-    });
-    chosen.append(row, clear);
-    chosen.hidden = false;
-    results.hidden = true;
-    search.hidden = true;
-  };
-  const show = async () => {
-    const q = search.value.trim().toLowerCase();
-    results.replaceChildren();
-    if (!q) {
-      results.hidden = true;
-      return;
-    }
-    const all = await people();
-    // With a rule for who may be picked, the rest never show.
-    const hits = all.filter(p => (!allow || allow(p)) && (p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q))).slice(0, 8);
-    for (const person of hits) {
-      const row = tile(person);
-      row.addEventListener('click', () => choose(person));
-      results.append(row);
-    }
-    if (!hits.length) {
-      results.append(el('div', 'people-none', q.includes('@') ? `Nobody in the directory - “${q}” will be used as typed.` : 'Nobody matches.'));
-    }
-    results.hidden = false;
-  };
-  search.addEventListener('input', show);
-  search.addEventListener('focus', show);
-  if (onPick) {
-    search.addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const typed = search.value.trim().toLowerCase();
-        if (typed.includes('@')) {
-          choose({email: typed, name: typed});
-        }
-      }
-    });
-  }
-  return {
-    wrap,
-    value: () => value || (search.value.includes('@') ? search.value.trim().toLowerCase() : ''),
-    person: () => picked,
-    reset: () => {
-      value = '';
-      picked = null;
-      chosen.hidden = true;
-      search.hidden = false;
-      search.value = '';
-    },
-  };
+function peoplePicker(options) {
+  return createPersonPicker(el('div'), {people, address: true, ...options});
 }
 
 // personInfo is the directory's row for an address, or null for someone it
@@ -682,12 +586,12 @@ function openAddSomeone(p, editor, onAdd, opts = {}) {
       kinds.push('a student');
     }
     const label = kinds.length === 2 ? 'Search the directory…' : `Search for ${kinds.join(' or ')}…`;
-    const picker = peoplePicker(label, person => {
+    const picker = peoplePicker({placeholder: label, allow: person => admits(p, person), onPick: person => {
       onAdd({email: person.email, name: person.name || person.email, photoUrl: person.photoUrl, title: person.title});
       shut();
-    }, person => admits(p, person));
+    }});
     directoryPanel = el('div');
-    directoryPanel.append(field('Who', picker.wrap, `This party is for ${audienceWords(p)}.`));
+    directoryPanel.append(field('Who', picker.mount, `This party is for ${audienceWords(p)}.`));
   }
   if (directoryPanel) {
     const which = segmented([{label: 'From the directory', value: 'directory'}, {label: 'Guest', value: 'guest'}], 'directory', v => {
@@ -732,8 +636,8 @@ export function openReassign(p, a) {
   if (p.students) {
     kinds.push('a student');
   }
-  const picker = peoplePicker(kinds.length === 2 ? 'Search the directory…' : `Search for ${kinds.join(' or ')}…`, null, person => admits(p, person));
-  const directoryPanel = field('Who', picker.wrap, `This party is for ${audienceWords(p)}.`);
+  const picker = peoplePicker({placeholder: kinds.length === 2 ? 'Search the directory…' : `Search for ${kinds.join(' or ')}…`, allow: person => admits(p, person)});
+  const directoryPanel = field('Who', picker.mount, `This party is for ${audienceWords(p)}.`);
   const name = text('', {placeholder: 'Percy Jackson', maxLength: 120});
   const email = text('', {type: 'email', placeholder: 'percy.jackson@gmail.com', maxLength: 200});
   const guestPanel = el('div');
@@ -752,7 +656,7 @@ export function openReassign(p, a) {
     submit: async () => {
       const body = {ticketId: a.ticketId};
       if (mode === 'directory') {
-        picked = picker.value();
+        picked = picker.value;
         if (!picked) {
           throw new Error('Pick someone from the directory.');
         }
@@ -841,9 +745,9 @@ export function openFreeTicket(p) {
   // Whose guest the ticket holder is: an adult from the directory, who
   // holds the ticket for them - it shows under their family, is theirs to
   // pass on, and the note goes to them. Left blank, the host themselves.
-  const guestOf = peoplePicker('Search for an adult\u2026', null, person => !person.isStudent);
+  const guestOf = peoplePicker({placeholder: 'Search for an adult\u2026', allow: person => !person.isStudent});
   const extra = el('div');
-  extra.append(field('Guest of', guestOf.wrap, 'Optional - who is bringing them. They get the note, and the ticket sits with their family to pass on. Blank means you.'));
+  extra.append(field('Guest of', guestOf.mount, 'Optional - who is bringing them. They get the note, and the ticket sits with their family to pass on. Blank means you.'));
   // With a cap, the gift can come out of the paid places or be one more
   // on top of them.
   const raise = p.capacity ? checkbox('Raise the capacity by one', true, `So this ticket takes none of the ${p.capacity} paid places.`) : null;
@@ -853,11 +757,11 @@ export function openFreeTicket(p) {
   openAddSomeone(p, true, async person => {
     try {
       await send('POST', '/api/celebrate/tickets', {
-        partyId: p.id, free: true, purchaser: guestOf.value(), raiseCapacity: Boolean(raise && raise.input.checked), note: 'Free ticket from the hosts',
+        partyId: p.id, free: true, purchaser: guestOf.value, raiseCapacity: Boolean(raise && raise.input.checked), note: 'Free ticket from the hosts',
         attendees: [{email: person.email || '', name: person.guest ? person.name : ''}],
       });
       await reload();
-      const host = guestOf.person();
+      const host = guestOf.person;
       toast(host ? `${person.name} has a free ticket as ${host.name}'s guest` : `${person.name} has a free ticket`);
     } catch (err) {
       toast(err.message);
@@ -955,7 +859,7 @@ function hostChips(initial) {
   const hosts = initial.map(h => ({...h}));
   const wrap = el('div');
   const list = el('div', 'chip-pick');
-  const picker = peoplePicker('Add a host from the directory…');
+  const picker = peoplePicker({placeholder: 'Add a host from the directory…'});
   const paint = () => {
     list.replaceChildren();
     for (const h of hosts) {
@@ -969,17 +873,17 @@ function hostChips(initial) {
     }
   };
   const add = button('Add', 'plus', 'button button-secondary button-small', () => {
-    const email = picker.value();
+    const email = picker.value;
     if (!email || hosts.some(h => h.email === email)) {
       return;
     }
-    const person = picker.person() || {};
+    const person = picker.person || {};
     hosts.push({email, name: person.name || email, photoUrl: person.photoUrl});
     picker.reset();
     paint();
   });
   const row = el('div', 'guest-add');
-  row.append(picker.wrap, add);
+  row.append(picker.mount, add);
   paint();
   list.classList.add('chip-pick-roomy');
   wrap.append(list, row);

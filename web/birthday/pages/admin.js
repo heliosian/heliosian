@@ -116,7 +116,7 @@ function teamCard() {
     const rows = el('div');
     const add = el('div', 'add-row');
     const mount = el('div');
-    const picker = createPersonPicker(mount);
+    const picker = createPersonPicker(mount, {address: true, people: () => people.filter(p => !team.some(m => m.role === role && m.email === p.email))});
     const render = () => {
       rows.replaceChildren();
       const members = team.filter(m => m.role === role);
@@ -134,16 +134,14 @@ function teamCard() {
         row.append(remove);
         rows.append(row);
       }
-      picker.setPeople(people.filter(p => !members.some(m => m.email === p.email)));
     };
     const addOne = () => {
-      const email = (picker.value || picker.text).toLowerCase();
+      const email = picker.value;
       if (!email) {
-        return;
-      }
-      if (!email.includes('@')) {
-        status.classList.add('error');
-        status.textContent = 'Pick someone from the list, or type a full email address.';
+        if (picker.input.value.trim()) {
+          status.classList.add('error');
+          status.textContent = 'Pick someone from the list, or type a full email address.';
+        }
         return;
       }
       picker.reset();

@@ -320,17 +320,14 @@ export async function openAppEditor(app) {
   showTab('app', 'details');
   appModal.hidden = false;
   appAudience = audienceCard(document.querySelector('#app-audience'), v.rules || [], 'The people these rules pick out. No rules and nobody named means nobody.', 'app:' + app.key, false);
-  let people = [];
   try {
-    const admin = await loadAdminState();
-    people = admin.people || [];
+    await loadAdminState();
   } catch (err) {
     setStatus('#app-status', err.message, true);
   }
   if (!appPicker) {
-    appPicker = createPersonPicker(document.querySelector('#app-people-picker'));
+    appPicker = createPersonPicker(document.querySelector('#app-people-picker'), {address: true, people: async () => (await loadAdminState()).people});
   }
-  appPicker.setPeople(people);
   appPicker.reset();
   const modes = document.querySelector('#app-mode');
   modes.replaceChildren();
@@ -372,7 +369,7 @@ function renderAppPeople() {
 }
 
 function addAppPerson() {
-  const email = (appPicker.value || appPicker.text).toLowerCase();
+  const email = appPicker.value;
   if (!email) {
     return;
   }

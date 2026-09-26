@@ -55,7 +55,6 @@ export function buildAdminListEditor(rowsSelector, selectSelector, statusSelecto
       remove.addEventListener('click', async () => {
         pending = pending.filter(e => e !== email);
         renderRows();
-        renderSelect();
         await persist();
       });
       row.append(name, emailEl, remove);
@@ -63,14 +62,9 @@ export function buildAdminListEditor(rowsSelector, selectSelector, statusSelecto
     }
   }
 
-  const picker = createPersonPicker(selectEl);
-
-  function renderSelect() {
-    picker.setPeople(state.people.filter(p => !pending.includes(p.email)));
-  }
+  const picker = createPersonPicker(selectEl, {people: () => state.people.filter(p => !pending.includes(p.email))});
 
   renderRows();
-  renderSelect();
 
   const addButton = selectEl.parentElement.querySelector('.upload-button');
   addButton.onclick = async () => {
@@ -79,7 +73,6 @@ export function buildAdminListEditor(rowsSelector, selectSelector, statusSelecto
       pending.push(email);
       picker.reset();
       renderRows();
-      renderSelect();
       await persist();
     }
   };

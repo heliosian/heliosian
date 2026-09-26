@@ -8,6 +8,7 @@ function* allNodes() {
 }
 import {el, svg, toast, button, thumb, whenEditor} from './dom.js';
 import {imageTools} from '/images.js';
+import {createPersonPicker} from '/picker.js';
 import {openModal, closeModal} from '/modal.js';
 import {field, text, textarea, select, checkbox, segmented} from '/form.js';
 
@@ -135,14 +136,19 @@ async function goTo(path) {
   navigate(path);
 }
 
-let peopleCache = null;
+let asked = null;
 
-async function people() {
-  if (!peopleCache) {
-    const res = await fetch('/api/team/people');
-    peopleCache = res.ok ? await res.json() : [];
-  }
-  return peopleCache;
+function people() {
+  asked = asked || fetch('/api/team/people').then(async res => {
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+    return res.json();
+  }).catch(err => {
+    asked = null;
+    throw err;
+  });
+  return asked;
 }
 
 // personInfo is the directory's row for an address, or null for someone it does
@@ -316,89 +322,6 @@ function personFoot(v, info, done) {
   return foot.children.length ? foot : el('div');
 }
 
-export function peoplePicker() {
-  const wrap = el('div', 'people-picker');
-  const search = el('input');
-  search.type = 'search';
-  search.placeholder = 'Search by name…';
-  search.autocomplete = 'off';
-  const results = el('div', 'people-results');
-  results.hidden = true;
-  const chosen = el('div', 'people-chosen');
-  chosen.hidden = true;
-  wrap.append(search, results, chosen);
-  let value = '';
-
-  const tile = person => {
-    const row = el('button', 'people-row');
-    row.type = 'button';
-    const face = el('div', 'avatar people-face');
-    if (person.photoUrl) {
-      const img = el('img');
-      img.src = person.photoUrl;
-      img.alt = '';
-      img.loading = 'lazy';
-      face.append(img);
-    } else {
-      face.textContent = (person.name || person.email).slice(0, 1).toUpperCase();
-    }
-    const text = el('div', 'people-text');
-    text.append(el('div', 'people-name', person.name));
-    if (person.title) {
-      text.append(el('div', 'people-title', person.title));
-    }
-    row.append(face, text);
-    return row;
-  };
-
-  const choose = person => {
-    value = person.email;
-    chosen.replaceChildren();
-    const picked = tile(person);
-    picked.disabled = true;
-    const clear = el('button', 'link-button', 'Change');
-    clear.type = 'button';
-    clear.addEventListener('click', () => {
-      value = '';
-      chosen.hidden = true;
-      search.hidden = false;
-      search.value = '';
-      search.focus();
-    });
-    chosen.append(picked, clear);
-    chosen.hidden = false;
-    results.hidden = true;
-    search.hidden = true;
-  };
-
-  const show = async () => {
-    const q = search.value.trim().toLowerCase();
-    results.replaceChildren();
-    if (!q) {
-      results.hidden = true;
-      return;
-    }
-    const all = await people();
-    const hits = all.filter(p => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)).slice(0, 8);
-    for (const person of hits) {
-      const row = tile(person);
-      row.addEventListener('click', () => choose(person));
-      results.append(row);
-    }
-    if (!hits.length) {
-      results.append(el('div', 'people-none', 'Nobody in the directory matches.'));
-    }
-    results.hidden = false;
-  };
-  search.addEventListener('input', show);
-  search.addEventListener('focus', show);
-
-  return {
-    wrap,
-    value: () => value,
-  };
-}
-
 export function openSignUp(node, existing, someoneElse) {
   const form = signUpForm(node, existing, someoneElse);
   openModal(existing ? `Edit sign-up for ${node.title}` : `Sign up for ${node.title}`, form.fields, form);
@@ -408,13 +331,13 @@ export function openSignUp(node, existing, someoneElse) {
 // them, so the same form opens on its own and as a tab of a person's window.
 function signUpForm(node, existing, someoneElse) {
   const editor = node.canEdit;
-  const picker = peoplePicker();
-  const emailField = field('Who is it?', picker.wrap, 'Search the directory');
+  const picker = createPersonPicker(el('div'), {people});
+  const emailField = field('Who is it?', picker.mount, 'Search the directory');
   const who = segmented([{label: 'Me', value: ''}, {label: 'Someone else', value: 'other'}],
     someoneElse || (existing && existing.email !== me().email) ? 'other' : '', value => {
       emailField.hidden = value !== 'other';
       if (value === 'other') {
-        picker.wrap.querySelector('input').focus();
+        picker.input.focus();
       }
     });
   emailField.hidden = who.value !== 'other';
@@ -522,13 +445,13 @@ function signUpForm(node, existing, someoneElse) {
     fields,
     saveLabel: existing ? 'Save' : 'Sign Up',
     submit: () => {
-      if (!existing && who.value === 'other' && !picker.value()) {
+      if (!existing && who.value === 'other' && !picker.value) {
         throw new Error('Pick who to sign up from the directory');
       }
       return send('POST', '/api/team/volunteer', {
         id: where ? where.value : node.id,
         from: where && where.value !== node.id ? node.id : '',
-        email: existing ? existing.email : (who.value === 'other' ? picker.value() : ''),
+        email: existing ? existing.email : (who.value === 'other' ? picker.value : ''),
         position: isChair && !editor ? 'Co-Chair' : position.value, note: note.value,
       });
     },

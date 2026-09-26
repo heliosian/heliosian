@@ -3,7 +3,7 @@ import {ensureSuperAdminUI} from './superadmins.js';
 import {buildAdminListEditor} from './admins.js';
 import {renderImages} from './images.js';
 import {overridesPanels, initOverrides} from './overrides.js';
-import {renderAddedPeopleTable, renderHiddenPeopleTable, hidePersonPicker, initPeople} from './people.js';
+import {renderAddedPeopleTable, renderHiddenPeopleTable, initPeople} from './people.js';
 import {initSettings} from './settings.js';
 import {initSidebar} from './sidebar.js';
 
@@ -50,11 +50,9 @@ function render() {
     '#admins-rows', '#add-admin-select', '#admins-status', '/api/admin/admins', 'admins', state.admins);
 
   for (const panel of overridesPanels) {
-    panel.refreshPeople();
     panel.refreshSelected();
   }
   renderAddedPeopleTable();
-  hidePersonPicker.setPeople(state.people);
   renderHiddenPeopleTable();
 
   ensureSuperAdminUI();

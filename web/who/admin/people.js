@@ -76,7 +76,7 @@ async function deleteAddedPerson(p) {
 // Never needs filtering: someone already hidden is, by definition, already gone from
 // state.people (removeOptedOut in load.go drops them from the model entirely), so
 // they can't show up here to be hidden a second time.
-export let hidePersonPicker = null;
+let hidePersonPicker = null;
 
 export function renderHiddenPeopleTable() {
   const tbody = document.querySelector('#hidden-people-rows');
@@ -183,7 +183,7 @@ export function initPeople() {
     }
   });
 
-  hidePersonPicker = createPersonPicker(document.querySelector('#hide-person-select'));
+  hidePersonPicker = createPersonPicker(document.querySelector('#hide-person-select'), {people: () => state.people});
 
   document.querySelector('#hide-person-button').addEventListener('click', async () => {
     const status = document.querySelector('#hide-person-status');

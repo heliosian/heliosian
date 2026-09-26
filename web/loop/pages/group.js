@@ -275,7 +275,7 @@ function editor(g, isNew, closeModal, startTab) {
   managers.append(el('div', 'hint', 'Managers can edit or delete the group.'));
   const managerRows = el('div');
   const mount = el('div');
-  const picker = createPersonPicker(mount);
+  const picker = createPersonPicker(mount, {people: () => state.model.people.filter(p => !draft.managers.includes(p.email))});
   const renderManagers = () => {
     managerRows.replaceChildren();
     for (const email of draft.managers) {
@@ -289,7 +289,6 @@ function editor(g, isNew, closeModal, startTab) {
       });
       managerRows.append(personRow(person, remove));
     }
-    picker.setPeople(state.model.people.filter(p => !draft.managers.includes(p.email)));
   };
   const addManager = () => {
     const email = picker.value;
@@ -553,8 +552,7 @@ function editor(g, isNew, closeModal, startTab) {
   previewHeadRow.after(additionAdd);
 
   const personMount = el('div');
-  const personPicker = createPersonPicker(personMount);
-  personPicker.setPeople(state.model.people);
+  const personPicker = createPersonPicker(personMount, {people: () => state.model.people});
   const personStatus = el('span', 'save-status');
   const personAdd = el('div', 'add-row addition-add');
   personAdd.hidden = true;
@@ -1004,8 +1002,7 @@ function managersCard(g, canEdit) {
   card.append(row);
   if (editing) {
     const mount = el('div');
-    const picker = createPersonPicker(mount);
-    picker.setPeople(state.model.people.filter(p => !g.managers.some(m => m.email === p.email)));
+    const picker = createPersonPicker(mount, {people: () => state.model.people.filter(p => !g.managers.some(m => m.email === p.email))});
     const add = () => {
       if (picker.value) {
         save([...g.managers.map(m => m.email), picker.value]);

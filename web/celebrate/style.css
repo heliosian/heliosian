@@ -1031,7 +1031,7 @@ main {
 
 .guest-add { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
 
-.guest-add .people-picker { flex: 1; }
+.guest-add .person-picker { flex: 1; }
 
 .buy-total { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 10px; background: var(--input); margin-top: 6px; }
 
@@ -1042,34 +1042,6 @@ main {
 .buy-total-hint { font-size: 13px; color: var(--muted); }
 
 .buy-note { font-size: 12.5px; color: var(--muted); margin: 10px 0 0; }
-
-.people-picker { display: flex; flex-direction: column; gap: 6px; }
-
-.people-picker input[type=search] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
-
-.people-results { max-height: 260px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
-
-.people-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 12px; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
-
-.people-row + .people-row { border-top: 1px solid var(--line); }
-
-.people-row:hover:not(:disabled) { background: var(--input); }
-
-.people-row:disabled { cursor: default; }
-
-.people-face { width: 38px; height: 38px; font-size: 15px; }
-
-.people-text { min-width: 0; }
-
-.people-name { font-weight: 600; font-size: 14px; color: var(--ink); }
-
-.people-title { font-size: 12.5px; color: var(--muted); }
-
-.people-none { padding: 12px; font-size: 13.5px; color: var(--muted); }
-
-.people-chosen { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--brand); border-radius: 10px; padding-right: 12px; background: var(--card); }
-
-.people-chosen .people-row { flex: 1; }
 
 /* A person's window, as HCA-Team opens one from a volunteer's face. */
 .modal.modal-person { max-width: 640px; }

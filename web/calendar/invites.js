@@ -119,13 +119,7 @@ function guestForm(e, of, onDone) {
   };
   const helios = el('div');
   const mount = el('div', 'cohost-picker');
-  const picker = createPersonPicker(mount);
-  fetchPickerData(e).then(data => {
-    picker.setPeople(data.people.map(p => ({name: p.name || p.email, email: p.email})));
-    if (active === 'helios') {
-      mount.querySelector('input')?.focus();
-    }
-  }).catch(err => toast(err.message));
+  const picker = createPersonPicker(mount, {people: pickerPeople(e, () => true)});
   helios.append(field('Who', mount));
   panels.helios = helios;
   const outside = el('div');
@@ -170,7 +164,7 @@ function guestForm(e, of, onDone) {
         return;
       }
       body.email = picker.value;
-      body.name = picker.text || picker.value;
+      body.name = picker.person.name;
     } else {
       if (!name.value.trim()) {
         status.textContent = 'A name, please.';
@@ -206,6 +200,7 @@ function openGuestForm(e, of, onDone) {
     onDone();
   });
   shut = popup('Add a guest', form).shut;
+  form.querySelector('.person-picker input').focus();
 }
 
 export function familyBand(e, view, refresh) {
@@ -677,11 +672,7 @@ function openAddHost(e, view, refresh) {
   const form = el('form', 'admin-form');
   form.append(el('p', 'hint', 'A co-host builds and sends the list, reads every answer and hears replies, as you do.'));
   const mount = el('div', 'cohost-picker');
-  const picker = createPersonPicker(mount);
-  fetchPickerData(e).then(data => {
-    picker.setPeople(data.people.filter(p => !p.isStudent && !view.hosts.some(h => h.email === p.email)).map(p => ({name: p.name || p.email, email: p.email})));
-    mount.querySelector('input')?.focus();
-  }).catch(err => toast(err.message));
+  const picker = createPersonPicker(mount, {people: pickerPeople(e, p => !p.isStudent && !view.hosts.some(h => h.email === p.email))});
   form.append(mount);
   const actions = el('div', 'modal-actions');
   const status = el('span', 'save-status');
@@ -712,6 +703,7 @@ function openAddHost(e, view, refresh) {
     }
   });
   shut = popup('Add a co-host', form).shut;
+  picker.input.focus();
 }
 
 function menuButton(label, icon, items) {
@@ -1925,6 +1917,17 @@ async function fetchPickerData(e) {
     throw new Error(await res.text());
   }
   return res.json();
+}
+
+function pickerPeople(e, keep) {
+  let asked = null;
+  return async () => {
+    asked = asked || fetchPickerData(e).catch(err => {
+      asked = null;
+      throw err;
+    });
+    return (await asked).people.filter(keep).map(p => ({...p, name: p.name || p.email}));
+  };
 }
 
 let ruleOptions = null;

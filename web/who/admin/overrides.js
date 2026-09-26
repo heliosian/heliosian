@@ -108,7 +108,7 @@ function bindOverridesPanel(spec) {
     }
   }
 
-  const picker = createPersonPicker(el('person-select'));
+  const picker = createPersonPicker(el('person-select'), {people: () => state.people.filter(spec.filter)});
   el('person-load-button').addEventListener('click', () => {
     if (picker.value) {
       loadPerson(picker.value);
@@ -157,9 +157,6 @@ function bindOverridesPanel(spec) {
   });
 
   const panel = {
-    refreshPeople() {
-      picker.setPeople(state.people.filter(spec.filter));
-    },
     // resetStatus is false here, so a post-save refresh redraws the form with the
     // now-persisted values without stomping on the "Saved."/error message the save
     // handler just set - only an explicit Load (a new person, or the picker) should
