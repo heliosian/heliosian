@@ -91,7 +91,6 @@ func sampleServer() (*http.Server, *store.Queue) {
 		Describer:     sampleDescriber(),
 		Mail:          mail.New("", "HCA-Team <hca@example.org>", mailDir()),
 		MailFrom:      "HCA-Team <hca@example.org>",
-		WhoMail:       mail.New("", "Helios Who? <who@example.org>", mailDir()),
 		CelebrateMail: mail.New("", "Helios Celebrate <celebrate@example.org>", mailDir()),
 		CelebrateFrom: "Helios Celebrate <celebrate@example.org>",
 		CalendarMail:  calendar.Mail{Sender: mail.New("", "Helios When <when@example.org>", mailDir()), From: "Helios When <when@example.org>", ReplyTo: "Helios When <rsvp@reply.example.org>", Key: []byte("sample")},

@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
 
@@ -122,12 +121,11 @@ func (m *Model) tagged(owner, tag, person string) bool {
 }
 
 type tagger struct {
-	cache  *Cache
-	mailer mail.Sender
+	cache *Cache
 }
 
-func RegisterTags(mux *http.ServeMux, cache *Cache, mailer mail.Sender) {
-	t := tagger{cache: cache, mailer: mailer}
+func RegisterTags(mux *http.ServeMux, cache *Cache) {
+	t := tagger{cache: cache}
 	mux.HandleFunc("POST /api/directory/tag", t.set)
 	mux.HandleFunc("POST /api/directory/tag-delete", t.drop)
 	mux.HandleFunc("POST /api/directory/tag-rename", t.rename)
@@ -241,9 +239,6 @@ func (t tagger) share(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "tag: shared", "owner", owner, "on", on, "tag", tag, "manager", manager)
-	if on {
-		t.notifyShared(r, owner, tag, manager)
-	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -1,7 +1,7 @@
 Description: Sharing a tag in Who? mails the chosen person every time the route is called, already shared or not (`tagger.share`), so any member can send anyone in the directory - students included - unlimited mail from Helios Who? with forty characters of their own in the subject.
-Status: open
+Status: fixed
 Severity: low
 ---
-`POST /api/directory/tag-share` with `on=1` (`internal/who/tags.go:152-184`) checks that the tag exists and the person is listed, never that they are already a manager of it, then runs `notifyShared` (`internal/who/mail.go:85-114`): "<name> shared the tag "<tag>" with you", from the service's address. Each call also appends another identical row to `Tag Managers` (`flushManager`, `tags.go:210-213`). Nothing counts calls.
+`POST /api/directory/tag-share` with `on=1` (`tagger.share` in `internal/who/tags.go`) checked that the tag exists and the person is listed, never that they already manage it, then ran `notifyShared`: "<name> shared the tag "<tag>" with you", from the service's address. Sharing off and on again sent another each time, and nothing counted calls.
 
-Fix: return before the write and the mail when the person already manages the tag, and hold the route to a per-owner window of the kind `feedback.Queue` keeps.
+Fixed by sending no mail on a share at all: `notifyShared` and `internal/who/mail.go` are gone, and with them Who?'s mailer (`WhoMail`, `WHO_MAIL_FROM`), which sent nothing else. A shared tag shows up under the manager's Shared Tags.

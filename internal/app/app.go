@@ -691,7 +691,6 @@ type Config struct {
 	CelebrateMail mail.Sender
 	CelebrateFrom string
 	CalendarMail  calendar.Mail
-	WhoMail       mail.Sender
 	BirthdayMail  mail.Sender
 	BirthdayFrom  string
 	BirthdayBase  string
@@ -819,7 +818,7 @@ func NewCore(cfg Config) *Core {
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cache.IsAdmin)
 	who.Register(mux, cache, cfg.BrowserKey, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir})
-	who.RegisterTags(mux, cache, cfg.WhoMail)
+	who.RegisterTags(mux, cache)
 	who.RegisterAdmin(mux, cache, cfg.Store)
 	who.RegisterInvites(mux, cache, invites)
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
@@ -1034,13 +1033,6 @@ func mailgunSigningKey() string {
 	return optionalKey("MAILGUN_WEBHOOK_KEY", "local/creds/mailgun-webhook.key")
 }
 
-func whoMailFrom() string {
-	if from := os.Getenv("WHO_MAIL_FROM"); from != "" {
-		return from
-	}
-	return "Helios Who? <who@reply.heliosian.com>"
-}
-
 func celebrateMailFrom() string {
 	if from := os.Getenv("CELEBRATE_MAIL_FROM"); from != "" {
 		return from
@@ -1170,7 +1162,6 @@ func Production(domain, blobCache string) (*http.Server, *store.Queue) {
 		Describer:     ClaudeDescriber(),
 		Mail:          newMailer(mailFrom()),
 		MailFrom:      mailFrom(),
-		WhoMail:       newMailer(whoMailFrom()),
 		CelebrateMail: newMailer(celebrateMailFrom()),
 		CelebrateFrom: celebrateMailFrom(),
 		CalendarMail:  calendarMail(sessionKey),

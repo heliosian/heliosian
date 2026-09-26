@@ -58,7 +58,7 @@ func newServer(t *testing.T) server {
 	}
 	media := blob.NewMemory()
 	mux := http.NewServeMux()
-	RegisterTags(mux, cache, nil)
+	RegisterTags(mux, cache)
 	RegisterAdmin(mux, cache, media)
 	RegisterUpload(mux, cache, media)
 	return server{dir: dir, queue: queue, cache: cache, mux: mux}
