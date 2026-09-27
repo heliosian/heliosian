@@ -59,6 +59,14 @@ func requiredEnv(name string) string {
 	return value
 }
 
+func sheetEnvVars(sheets []app.Spreadsheet) string {
+	pairs := []string{}
+	for _, s := range sheets {
+		pairs = append(pairs, s.Env+"="+requiredEnv(s.Env))
+	}
+	return strings.Join(pairs, ",")
+}
+
 func gcloud(args ...string) {
 	cmd := exec.Command("gcloud", args...)
 	cmd.Stdout = os.Stdout
@@ -90,21 +98,8 @@ func mapDomains() {
 }
 
 func main() {
-	jobEnvVars := "DIRECTORY_SHEET=" + requiredEnv("DIRECTORY_SHEET") +
-		",PREFERENCES_SHEET=" + requiredEnv("PREFERENCES_SHEET") +
-		",CALENDAR_SHEET=" + requiredEnv("CALENDAR_SHEET") +
-		",CONFIG_SHEET=" + requiredEnv("CONFIG_SHEET")
-	envVars := jobEnvVars +
-		",EVENTS_SHEET=" + requiredEnv("EVENTS_SHEET") +
-		",CELEBRATE_SHEET=" + requiredEnv("CELEBRATE_SHEET") +
-		",GROUPS_SHEET=" + requiredEnv("GROUPS_SHEET") +
-		",INVITES_SHEET=" + requiredEnv("INVITES_SHEET") +
-		",APPS_SHEET=" + requiredEnv("APPS_SHEET") +
-		",BIRTHDAY_SHEET=" + requiredEnv("BIRTHDAY_SHEET") +
-		",BIRTHDAY_SHARED_SHEET=" + requiredEnv("BIRTHDAY_SHARED_SHEET") +
-		",ARTIFACTS_SHEET=" + requiredEnv("ARTIFACTS_SHEET") +
-		",FEEDBACK_SHEET=" + requiredEnv("FEEDBACK_SHEET") +
-		",GOOGLE_CLIENT_ID=" + clientID()
+	jobEnvVars := sheetEnvVars(app.SpreadsheetsOf(app.SyncSources))
+	envVars := sheetEnvVars(app.Spreadsheets) + ",GOOGLE_CLIENT_ID=" + clientID()
 	log.Printf("deploying %s to %s in %s", image, service, region)
 	gcloud("run", "deploy", service,
 		"--image", image,

@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 
+	"heliosian/internal/app"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/birthday"
 	"heliosian/internal/calendar"
@@ -20,21 +21,6 @@ import (
 	"heliosian/internal/team"
 	"heliosian/internal/who"
 )
-
-var spreadsheets = []struct{ env, layout string }{
-	{"DIRECTORY_SHEET", "Directory"},
-	{"INVITES_SHEET", "Invite List Builder"},
-	{"APPS_SHEET", "Apps"},
-	{"EVENTS_SHEET", "Events"},
-	{"BIRTHDAY_SHEET", "Birthdays"},
-	{"BIRTHDAY_SHARED_SHEET", "Staff Birthday List (Shared)"},
-	{"CALENDAR_SHEET", "Calendar"},
-	{"CELEBRATE_SHEET", "Celebrate"},
-	{"CONFIG_SHEET", "Config"},
-	{"GROUPS_SHEET", "Groups"},
-	{"ARTIFACTS_SHEET", "Artifacts"},
-	{"FEEDBACK_SHEET", "Feedback"},
-}
 
 type tab struct {
 	title  string
@@ -206,13 +192,19 @@ func applyLayout(source *data.Sheet, layout string) (tabs, columns int, err erro
 }
 
 func main() {
+	spreadsheets := []app.Spreadsheet{}
+	for _, s := range app.Spreadsheets {
+		if _, ok := layouts[s.Title]; ok {
+			spreadsheets = append(spreadsheets, s)
+		}
+	}
 	ids := map[string]string{}
 	for _, s := range spreadsheets {
-		id := os.Getenv(s.env)
+		id := os.Getenv(s.Env)
 		if id == "" {
-			log.Fatalf("%s is required", s.env)
+			log.Fatalf("%s is required", s.Env)
 		}
-		ids[s.layout] = id
+		ids[s.Title] = id
 	}
 	source, err := data.NewSheet(ids)
 	if err != nil {
@@ -220,9 +212,9 @@ func main() {
 	}
 	tabs, columns := 0, 0
 	for _, s := range spreadsheets {
-		created, added, err := applyLayout(source, s.layout)
+		created, added, err := applyLayout(source, s.Title)
 		if err != nil {
-			log.Fatalf("%s: %v", s.env, err)
+			log.Fatalf("%s: %v", s.Env, err)
 		}
 		tabs += created
 		columns += added

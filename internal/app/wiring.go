@@ -320,23 +320,8 @@ func (c *Core) Handlers(gate func(key string, next http.Handler) http.Handler) m
 }
 
 func Production(domain string) (*http.Server, *store.Queue) {
-	spreadsheets := map[string]string{
-		"directory":      requiredEnv("DIRECTORY_SHEET"),
-		"preferences":    requiredEnv("PREFERENCES_SHEET"),
-		"invites":        requiredEnv("INVITES_SHEET"),
-		"apps":           requiredEnv("APPS_SHEET"),
-		"events":         requiredEnv("EVENTS_SHEET"),
-		"birthdays":      requiredEnv("BIRTHDAY_SHEET"),
-		"birthdayshared": requiredEnv("BIRTHDAY_SHARED_SHEET"),
-		"celebrate":      requiredEnv("CELEBRATE_SHEET"),
-		"calendar":       requiredEnv("CALENDAR_SHEET"),
-		"config":         requiredEnv("CONFIG_SHEET"),
-		"groups":         requiredEnv("GROUPS_SHEET"),
-		"artifacts":      requiredEnv("ARTIFACTS_SHEET"),
-		"feedback":       requiredEnv("FEEDBACK_SHEET"),
-	}
 	sessionKey := requiredEnv("SESSION_KEY")
-	sheet, err := data.NewSheet(spreadsheets)
+	sheet, err := data.NewSheet(SheetIDs(Spreadsheets))
 	if err != nil {
 		logging.Fatal("load directory sheet", "error", err)
 	}

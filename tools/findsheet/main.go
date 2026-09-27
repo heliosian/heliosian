@@ -7,25 +7,15 @@ import (
 
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
+
+	"heliosian/internal/app"
 )
 
-var variables = map[string]string{
-	"Directory":                    "DIRECTORY_SHEET",
-	"Preferences":                  "PREFERENCES_SHEET",
-	"Invite List Builder":          "INVITES_SHEET",
-	"Apps":                         "APPS_SHEET",
-	"Events":                       "EVENTS_SHEET",
-	"Birthdays":                    "BIRTHDAY_SHEET",
-	"Staff Birthday List (Shared)": "BIRTHDAY_SHARED_SHEET",
-	"Calendar":                     "CALENDAR_SHEET",
-	"Celebrate":                    "CELEBRATE_SHEET",
-	"Config":                       "CONFIG_SHEET",
-	"Groups":                       "GROUPS_SHEET",
-	"Artifacts":                    "ARTIFACTS_SHEET",
-	"Feedback":                     "FEEDBACK_SHEET",
-}
-
 func main() {
+	variables := map[string]string{}
+	for _, s := range app.Spreadsheets {
+		variables[s.Title] = s.Env
+	}
 	svc, err := drive.NewService(context.Background(),
 		option.WithScopes(drive.DriveReadonlyScope))
 	if err != nil {
@@ -53,11 +43,11 @@ func main() {
 		}
 		found[variable] = f.Id
 	}
-	for _, variable := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "BIRTHDAY_SHEET", "BIRTHDAY_SHARED_SHEET", "CALENDAR_SHEET", "CELEBRATE_SHEET", "CONFIG_SHEET", "GROUPS_SHEET", "ARTIFACTS_SHEET", "FEEDBACK_SHEET"} {
-		id, ok := found[variable]
+	for _, s := range app.Spreadsheets {
+		id, ok := found[s.Env]
 		if !ok {
-			log.Fatalf("no spreadsheet found for %s", variable)
+			log.Fatalf("no spreadsheet found for %s", s.Env)
 		}
-		fmt.Printf("export %s=%s\n", variable, id)
+		fmt.Printf("export %s=%s\n", s.Env, id)
 	}
 }

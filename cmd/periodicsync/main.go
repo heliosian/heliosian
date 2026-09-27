@@ -28,14 +28,6 @@ func (s staticFiles) Has(key string) (bool, error) {
 
 func (staticFiles) Prefetch(context.Context, []string) error { return nil }
 
-func requiredEnv(name string) string {
-	value := os.Getenv(name)
-	if value == "" {
-		logging.Fatal("periodicsync: environment variable required", "name", name)
-	}
-	return value
-}
-
 func apiKey() string {
 	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
 		return key
@@ -59,12 +51,7 @@ func main() {
 	if !*permitted {
 		logging.Fatal("periodicsync: this run spends money on Claude; pass --i-have-user-permission-to-spend-money only when the user has said to run it")
 	}
-	spreadsheets := map[string]string{
-		"calendar":    requiredEnv("CALENDAR_SHEET"),
-		"directory":   requiredEnv("DIRECTORY_SHEET"),
-		"preferences": requiredEnv("PREFERENCES_SHEET"),
-		"config":      requiredEnv("CONFIG_SHEET"),
-	}
+	spreadsheets := app.SheetIDs(app.SpreadsheetsOf(app.SyncSources))
 	key := apiKey()
 	ctx := context.Background()
 	source, err := data.NewSheet(spreadsheets)

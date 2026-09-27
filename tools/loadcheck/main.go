@@ -79,14 +79,6 @@ func (celebrateImages) Has(key string) (bool, error) {
 
 func (celebrateImages) Prefetch(context.Context, []string) error { return nil }
 
-func requiredEnv(name string) string {
-	value := os.Getenv(name)
-	if value == "" {
-		log.Fatalf("%s is required", name)
-	}
-	return value
-}
-
 func main() {
 	dir := flag.String("dir", "", "load from a directory of dumped tabs instead of the live sheets")
 	flag.Parse()
@@ -95,18 +87,7 @@ func main() {
 	if *dir != "" {
 		source = &data.Dir{Root: *dir}
 	} else {
-		live, err := data.NewSheet(map[string]string{
-			"directory":   requiredEnv("DIRECTORY_SHEET"),
-			"preferences": requiredEnv("PREFERENCES_SHEET"),
-			"invites":     requiredEnv("INVITES_SHEET"),
-			"apps":        requiredEnv("APPS_SHEET"),
-			"events":      requiredEnv("EVENTS_SHEET"),
-			"celebrate":   requiredEnv("CELEBRATE_SHEET"),
-			"calendar":    requiredEnv("CALENDAR_SHEET"),
-			"config":      requiredEnv("CONFIG_SHEET"),
-			"groups":      requiredEnv("GROUPS_SHEET"),
-			"artifacts":   requiredEnv("ARTIFACTS_SHEET"),
-		})
+		live, err := data.NewSheet(app.SheetIDs(app.SpreadsheetsOf([]string{"directory", "preferences", "invites", "apps", "events", "celebrate", "calendar", "config", "groups", "artifacts"})))
 		if err != nil {
 			log.Fatalf("sheet source: %v", err)
 		}
