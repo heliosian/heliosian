@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -9,28 +8,25 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
+	"heliosian/internal/testkit"
 	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
-type sampleImages struct{}
-
-func (sampleImages) Has(key string) (bool, error) {
-	return strings.HasPrefix(key, "sample/") || strings.HasPrefix(key, "brand/"), nil
-}
-
-func (sampleImages) Prefetch(context.Context, []string) error { return nil }
+var sampleImages = testkit.Images(func(key string) bool {
+	return strings.HasPrefix(key, "sample/") || strings.HasPrefix(key, "brand/")
+})
 
 func samplesLinked(t *testing.T) calendarLinked {
 	t.Helper()
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
 	queue := store.NewQueue()
-	parties, err := celebrate.NewCache(dir, dir, sampleImages{}, func() []string { return nil }, queue)
+	parties, err := celebrate.NewCache(dir, dir, sampleImages, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	activities, err := team.NewCache(dir, dir, sampleImages{}, func() []string { return nil }, queue)
+	activities, err := team.NewCache(dir, dir, sampleImages, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}

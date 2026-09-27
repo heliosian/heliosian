@@ -7,21 +7,20 @@ import (
 
 	"heliosian/internal/data"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
+	"heliosian/internal/testkit/sample"
 	"heliosian/internal/when"
+	"heliosian/internal/who"
 )
 
 func sampleCache(t *testing.T) (*data.Dir, *when.Cache) {
 	t.Helper()
 	sheet := &data.Dir{Root: "../../sampledata"}
-	roster := when.Roster{}
-	for _, name := range []string{"Hummingbirds", "Hawks", "Falcons", "Jays", "Ravens", "Condors", "Ospreys", "Egrets", "Herons"} {
-		roster.Classrooms = append(roster.Classrooms, when.Classroom{Name: name})
-	}
-	cache, err := when.NewCache(sheet, sheet, func() when.Roster { return roster }, nil, func() []string { return nil }, store.NewQueue())
+	directory, err := who.LoadModel(sheet, nil, testkit.None, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return sheet, cache
+	return sheet, sample.Calendar(t, sheet, store.NewQueue(), directory)
 }
 
 func rowsOf(t *testing.T, sheet *data.Dir, tab string) []map[string]string {

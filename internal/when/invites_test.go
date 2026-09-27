@@ -13,7 +13,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/config"
-	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
@@ -55,13 +54,7 @@ func invitesApp(t *testing.T) (http.Handler, *Cache, *keptMail) {
 
 func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSources) {
 	t.Helper()
-	t.Chdir("../..")
-	sheet = &data.Dir{Root: "sampledata"}
-	queue = store.NewQueue()
-	cache, err := NewCache(sheet, sheet, func() Roster { return roster }, nil, func() []string { return nil }, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cache := sampleCache(t)
 	sources := newSampleSources(t)
 	testDirectory = sources.model
 	kept := &keptMail{}
@@ -124,11 +117,6 @@ func newSampleSources(t *testing.T) *sampleSources {
 	t.Helper()
 	return &sampleSources{model: sampleDirectory(t, "sampledata"), tagged: map[string][]string{}}
 }
-
-type noFiles struct{}
-
-func (noFiles) Has(string) (bool, error)                 { return false, nil }
-func (noFiles) Prefetch(context.Context, []string) error { return nil }
 
 func waitFor(kept *keptMail, n int) []mail.Message {
 	for i := 0; i < 100 && len(kept.all()) < n; i++ {

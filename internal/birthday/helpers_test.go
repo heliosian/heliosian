@@ -1,18 +1,8 @@
 package birthday
 
 import (
-	"time"
-
 	"heliosian/internal/cells"
 )
-
-func mustTime(s string) time.Time {
-	t, err := time.Parse(DateFormat, s)
-	if err != nil {
-		panic(err)
-	}
-	return t
-}
 
 func (m *Model) charityRows() []map[string]string {
 	rows := []map[string]string{}

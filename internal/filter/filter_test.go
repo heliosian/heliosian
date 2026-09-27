@@ -1,26 +1,15 @@
 package filter_test
 
 import (
-	"context"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
+	"heliosian/internal/testkit"
 	"heliosian/internal/who"
 )
-
-type staticFiles struct{}
-
-func (staticFiles) Has(key string) (bool, error) {
-	_, err := os.Stat(filepath.Join("../../web/who", filepath.FromSlash(key)))
-	return err == nil, nil
-}
-
-func (staticFiles) Prefetch(context.Context, []string) error { return nil }
 
 const (
 	jordan = "jordan.whitfield@heliosschool.org"
@@ -31,7 +20,7 @@ const (
 
 func sample(t *testing.T) (filter.Sources, *who.Model) {
 	t.Helper()
-	model, err := who.LoadModel(&data.Dir{Root: "../../sampledata"}, nil, staticFiles{}, []byte("test"))
+	model, err := who.LoadModel(&data.Dir{Root: "../../sampledata"}, nil, testkit.Files("../../web/who"), []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}

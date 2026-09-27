@@ -20,6 +20,7 @@ import (
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 	"heliosian/internal/who"
 )
 
@@ -82,16 +83,7 @@ var testStyle = CardStyle(func() string { return "Helios When" }, func() string 
 
 func changeLog(t *testing.T) []string {
 	t.Helper()
-	queue.Flush()
-	_, rows, err := sheet.Table(appName, store.ChangeLogTab)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := []string{}
-	for _, row := range rows {
-		out = append(out, row["Actor"]+"|"+row["Action"]+"|"+row["Tab"]+"|"+row["Key"]+"|"+row["Column"]+"|"+row["Previous"])
-	}
-	return out
+	return testkit.ChangeLines(t, sheet, queue, appName)
 }
 
 func as(email string, handler http.Handler) http.Handler {
@@ -198,30 +190,14 @@ func TestModelRoute(t *testing.T) {
 
 func TestSharePreview(t *testing.T) {
 	handler, cache := testApp(t)
-	head := PreviewHead(cache, func(string) []Linked { return nil }, testStyle)
-	req := httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/e/a7@sample", nil)
-	req.Host = "when.heliosiandev.com:8080"
-	tags := head(req)
-	for _, want := range []string{`property="og:title" content="International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`, `content="https://when.heliosiandev.com:8080/open/share/a7@sample.png"`} {
-		if !strings.Contains(tags, want) {
-			t.Errorf("event tags lack %s:\n%s", want, tags)
-		}
-	}
-	req = httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/mine", nil)
-	req.Host = "when.heliosiandev.com:8080"
-	tags = head(req)
-	if !strings.Contains(tags, `og:title" content="Helios When"`) || !strings.Contains(tags, "One calendar") || !strings.Contains(tags, "/open/share/upcoming.png") {
-		t.Errorf("site tags:\n%s", tags)
-	}
-	for _, path := range []string{"/open/share/a7@sample.png", "/open/share/upcoming.png"} {
-		rec := call(t, handler, "GET", path, "")
-		if rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" || rec.Body.Len() < 1000 {
-			t.Errorf("%s: %d %s %d bytes", path, rec.Code, rec.Header().Get("Content-Type"), rec.Body.Len())
-		}
-	}
-	if rec := call(t, handler, "GET", "/open/share/nope.png", ""); rec.Code != 404 {
-		t.Errorf("missing card: %d", rec.Code)
-	}
+	testkit.Previews(t, PreviewHead(cache, func(string) []Linked { return nil }, testStyle), testkit.Preview{
+		URL:  "https://when.heliosiandev.com:8080/e/a7@sample",
+		Want: []string{`property="og:title" content="International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`, `content="https://when.heliosiandev.com:8080/open/share/a7@sample.png"`},
+	}, testkit.Preview{
+		URL:  "https://when.heliosiandev.com:8080/mine",
+		Want: []string{`og:title" content="Helios When"`, "One calendar", "/open/share/upcoming.png"},
+	})
+	testkit.Cards(t, handler, []string{"/open/share/a7@sample.png", "/open/share/upcoming.png"}, "/open/share/nope.png")
 }
 
 func TestProvenanceForAdmins(t *testing.T) {

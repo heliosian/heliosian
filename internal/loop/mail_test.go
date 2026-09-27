@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -21,17 +19,9 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 	"heliosian/internal/who"
 )
-
-type staticFiles struct{}
-
-func (staticFiles) Has(key string) (bool, error) {
-	_, err := os.Stat(filepath.Join("../../web/who", filepath.FromSlash(key)))
-	return err == nil, nil
-}
-
-func (staticFiles) Prefetch(context.Context, []string) error { return nil }
 
 func sampleSources(model *who.Model) func() Sources {
 	return func() Sources {
@@ -155,7 +145,7 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 	deliveryBatch = 20 * time.Millisecond
 	dir := &data.Dir{Root: "../../sampledata"}
-	model, err := who.LoadModel(dir, nil, staticFiles{}, []byte("test"))
+	model, err := who.LoadModel(dir, nil, testkit.Files("../../web/who"), []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}

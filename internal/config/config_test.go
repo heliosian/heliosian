@@ -13,6 +13,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 )
 
 func sample(t *testing.T) (*data.Dir, *store.Queue, *Cache) {
@@ -43,19 +44,6 @@ func sampleTables(t *testing.T) store.Tables {
 func with(tables store.Tables, tab string, rows ...store.Row) store.Tables {
 	out := maps.Clone(tables)
 	out[tab] = append(slices.Clone(tables[tab]), rows...)
-	return out
-}
-
-func changeLog(t *testing.T, dir *data.Dir) []string {
-	t.Helper()
-	_, rows, err := dir.Table(App, store.ChangeLogTab)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := []string{}
-	for _, row := range rows {
-		out = append(out, row["Actor"]+"|"+row["Action"]+"|"+row["Tab"]+"|"+row["Key"]+"|"+row["Column"]+"|"+row["Previous"])
-	}
 	return out
 }
 
@@ -125,7 +113,7 @@ func TestSignOutIsRecordedOncePerAddress(t *testing.T) {
 	if len(rows) != 1 || rows[0][EmailColumn] != "parent@heliosschool.org" || rows[0][TimeColumn] != second.Format(time.RFC3339) {
 		t.Errorf("tab holds %v, want one row for the address at the second sign-out", rows)
 	}
-	log := changeLog(t, dir)
+	log := testkit.ChangeLines(t, dir, queue, App)
 	want := []string{
 		"parent@heliosschool.org|insert|Signed Out|Email=parent@heliosschool.org||",
 		"parent@heliosschool.org|set|Signed Out|Email=parent@heliosschool.org|Time|" + first.Format(time.RFC3339),
@@ -155,8 +143,7 @@ func TestAdminEditsAreCommits(t *testing.T) {
 	if s.StaleYears.Photo != 1 || s.GradeColors["Kindergarten"] != "#000000" || !cache.IsSuperAdmin("asha.chandra@heliosschool.org") {
 		t.Fatalf("settings after the edits: %+v", s)
 	}
-	queue.Flush()
-	log := changeLog(t, dir)
+	log := testkit.ChangeLines(t, dir, queue, App)
 	for _, line := range []string{
 		jordan + "|set|Settings|Key=Photo Stale Years|Value|0.75",
 		jordan + "|set|Grade Colors|Grade=Kindergarten|Color|#d20210",

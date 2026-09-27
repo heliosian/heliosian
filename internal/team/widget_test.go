@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/testkit"
 	"heliosian/internal/when"
 )
 
@@ -49,34 +50,34 @@ func TestPriorityIsAnAdmins(t *testing.T) {
 		"id": "E020", "year": "2026 - 2027", "title": "India", "parent": "E001",
 		"category": "C08", "status": StatusOpen, "coLeaderNeeded": true, "directSignUp": true, "priority": true,
 	}
-	if rec := call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("co-chair save: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Model().Activity("E020").Priority {
 		t.Fatal("a co-chair marked a priority")
 	}
-	if rec := call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("admin save: %d %s", rec.Code, rec.Body)
 	}
 	if !cache.Model().Activity("E020").Priority {
 		t.Fatal("an admin's mark did not stick")
 	}
 	edit["priority"] = false
-	if rec := call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("co-chair save: %d %s", rec.Code, rec.Body)
 	}
 	if !cache.Model().Activity("E020").Priority {
 		t.Fatal("a co-chair cleared an admin's mark")
 	}
 	edit["volunteersComplete"] = true
-	if rec := call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("complete: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Model().Activity("E020").Priority {
 		t.Fatal("a complete thing kept its priority")
 	}
 	edit["priority"] = true
-	if rec := call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("admin save: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Model().Activity("E020").Priority {

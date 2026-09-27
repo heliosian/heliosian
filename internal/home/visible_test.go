@@ -8,6 +8,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 )
 
 type sheet struct {
@@ -17,19 +18,14 @@ type sheet struct {
 
 func (s sheet) rows(t *testing.T, tab string) []store.Row {
 	t.Helper()
-	s.queue.Flush()
-	_, rows, err := s.dir.Table(appName, tab)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return rows
+	return testkit.Rows(t, s.dir, s.queue, appName, tab)
 }
 
 func sampleCache(t *testing.T) (*Cache, sheet) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	c, err := NewCache(dir, dir, noImages{}, func() []string { return nil }, sampleSources(t), queue)
+	c, err := NewCache(dir, dir, testkit.All, func() []string { return nil }, sampleSources(t), queue)
 	if err != nil {
 		t.Fatalf("load sample apps sheet: %v", err)
 	}
@@ -111,7 +107,7 @@ func TestGrantAddsToAnAppsList(t *testing.T) {
 
 func TestVisibilityRowForAnUnknownAppIsSkipped(t *testing.T) {
 	rows := []store.Row{{"App": "bogus", "Visibility": "nonsense"}, {"App": "who", "Visibility": "everyone"}}
-	m, err := BuildModel(context.Background(), store.Tables{visibilityTab: rows}, noImages{})
+	m, err := BuildModel(context.Background(), store.Tables{visibilityTab: rows}, testkit.All)
 	if err != nil {
 		t.Fatalf("a row for an app this build does not know refused the load: %v", err)
 	}
@@ -132,7 +128,7 @@ func TestVisibilityRowsAreChecked(t *testing.T) {
 		{[]store.Row{{"App": "who"}}, "is not everyone or list"},
 		{[]store.Row{{"App": "who", "Visibility": "list"}, {"App": "who", "Visibility": "everyone"}}, "two rows"},
 	} {
-		if _, err := BuildModel(context.Background(), store.Tables{visibilityTab: c.rows}, noImages{}); err == nil || !strings.Contains(err.Error(), c.want) {
+		if _, err := BuildModel(context.Background(), store.Tables{visibilityTab: c.rows}, testkit.All); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%v built: %v, want %q", c.rows, err, c.want)
 		}
 	}
@@ -150,7 +146,7 @@ func TestVisibilityEmailsCell(t *testing.T) {
 
 func TestAppsSection(t *testing.T) {
 	tables := store.Tables{categoriesTab: {category("Helios Community Apps", "📌", StyleApps), category("School", "", StyleTiles)}}
-	m, err := BuildModel(context.Background(), tables, noImages{})
+	m, err := BuildModel(context.Background(), tables, testkit.All)
 	if err != nil {
 		t.Fatalf("build with an apps row: %v", err)
 	}
@@ -158,12 +154,12 @@ func TestAppsSection(t *testing.T) {
 		t.Errorf("categories = %+v, want the synthesized events section, then the apps section", m.Categories)
 	}
 	tables[linksTab] = []store.Row{{"Title": "Directory", "URL": "https://who.heliosian.com/", "Category": "Helios Community Apps", "Visible": "Yes"}}
-	if _, err := BuildModel(context.Background(), tables, noImages{}); err == nil || !strings.Contains(err.Error(), "community apps") {
+	if _, err := BuildModel(context.Background(), tables, testkit.All); err == nil || !strings.Contains(err.Error(), "community apps") {
 		t.Errorf("a link under the apps section built: %v", err)
 	}
 	tables[linksTab] = nil
 	tables[categoriesTab] = append(tables[categoriesTab], category("More Apps", "", StyleApps))
-	if _, err := BuildModel(context.Background(), tables, noImages{}); err == nil || !strings.Contains(err.Error(), "only one") {
+	if _, err := BuildModel(context.Background(), tables, testkit.All); err == nil || !strings.Contains(err.Error(), "only one") {
 		t.Errorf("two apps rows built: %v", err)
 	}
 }

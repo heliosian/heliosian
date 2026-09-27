@@ -28,55 +28,31 @@ import (
 	"heliosian/internal/loop"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
+	"heliosian/internal/testkit"
+	"heliosian/internal/testkit/sample"
 	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
 const jordan = "jordan.whitfield@heliosschool.org"
 
-type anyImages struct{}
-
-func (anyImages) Has(string) (bool, error) { return true, nil }
-
-func (anyImages) Prefetch(context.Context, []string) error { return nil }
-
 var sampleNow = time.Date(2026, 9, 12, 9, 0, 0, 0, when.Location)
 
 func sampleSources(t *testing.T) Sources {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	directory, err := who.LoadModel(dir, anyImages{}, anyImages{}, []byte("test"))
+	directory, err := who.LoadModel(dir, testkit.All, testkit.All, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
-	}
-	roster := when.Roster{}
-	for _, c := range directory.Classrooms {
-		room := when.Classroom{Name: c.Name, Grades: []string{}}
-		for _, g := range directory.Grades {
-			if slices.ContainsFunc(directory.People, func(p who.Person) bool { return p.IsStudent && p.Classroom == c.Name && p.Grade == g.Name }) {
-				room.Grades = append(room.Grades, g.Name)
-				room.Band = g.Band
-			}
-		}
-		for _, crew := range directory.Crews {
-			if crew.Classroom == c.Name && crew.Name != "" {
-				room.Crews = append(room.Crews, crew.Name)
-			}
-		}
-		roster.Classrooms = append(roster.Classrooms, room)
 	}
 	queue := store.NewQueue()
-	calendarCache, err := when.NewCache(dir, dir, func() when.Roster { return roster }, nil, func() []string { return nil }, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	calendarModel := calendarCache.Model()
-	teamCache, err := team.NewCache(dir, dir, anyImages{}, func() []string { return nil }, queue)
+	calendarModel := sample.Calendar(t, dir, queue, directory).Model()
+	teamCache, err := team.NewCache(dir, dir, testkit.All, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	teamModel := teamCache.Model()
-	celebrateCache, err := celebrate.NewCache(dir, dir, anyImages{}, func() []string { return nil }, queue)
+	celebrateCache, err := celebrate.NewCache(dir, dir, testkit.All, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +62,7 @@ func sampleSources(t *testing.T) Sources {
 		t.Fatal(err)
 	}
 	loopModel := loopCache.Model()
-	homeCache, err := home.NewCache(dir, dir, anyImages{}, func() []string { return nil }, func() filter.Sources { return filter.Sources{Directory: directory} }, queue)
+	homeCache, err := home.NewCache(dir, dir, testkit.All, func() []string { return nil }, func() filter.Sources { return filter.Sources{Directory: directory} }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}

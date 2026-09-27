@@ -13,6 +13,7 @@ import (
 	"heliosian/internal/loop"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
+	"heliosian/internal/testkit"
 	"heliosian/internal/who"
 )
 
@@ -70,12 +71,6 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	}
 }
 
-type anyImage struct{}
-
-func (anyImage) Has(string) (bool, error) { return true, nil }
-
-func (anyImage) Prefetch(context.Context, []string) error { return nil }
-
 func TestMagicTagsCarryTheirHosts(t *testing.T) {
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
@@ -84,12 +79,12 @@ func TestMagicTagsCarryTheirHosts(t *testing.T) {
 		t.Fatal(err)
 	}
 	queue := store.NewQueue()
-	portalCache, err := team.NewCache(dir, dir, anyImage{}, func() []string { return nil }, queue)
+	portalCache, err := team.NewCache(dir, dir, testkit.All, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	portal := portalCache.Model()
-	siteCache, err := celebrate.NewCache(dir, dir, anyImage{}, func() []string { return nil }, queue)
+	siteCache, err := celebrate.NewCache(dir, dir, testkit.All, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +122,7 @@ func TestCommitteesAreListsToo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	teamCache, err := team.NewCache(dir, dir, anyImage{}, func() []string { return nil }, store.NewQueue())
+	teamCache, err := team.NewCache(dir, dir, testkit.All, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}

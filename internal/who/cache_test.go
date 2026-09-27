@@ -23,13 +23,8 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/geocode"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 )
-
-type allBlobs struct{}
-
-func (allBlobs) Has(string) (bool, error) { return true, nil }
-
-func (allBlobs) Prefetch(context.Context, []string) error { return nil }
 
 type countingGeocoder struct {
 	mu    sync.Mutex
@@ -54,7 +49,7 @@ func newServer(t *testing.T) server {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	cache, err := NewCache(dir, dir, allBlobs{}, noBlobs{}, queue, testKey, func() []string { return []string{jordan} })
+	cache, err := NewCache(dir, dir, testkit.All, testkit.None, queue, testKey, func() []string { return []string{jordan} })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,12 +79,7 @@ func (s server) form(t *testing.T, as, path string, values url.Values) {
 
 func (s server) rows(t *testing.T, tab string) []map[string]string {
 	t.Helper()
-	s.queue.Flush()
-	_, rows, err := s.dir.Table(appName, tab)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return rows
+	return testkit.Rows(t, s.dir, s.queue, appName, tab)
 }
 
 func (s server) count(t *testing.T, tab string, match store.Row) int {
@@ -114,11 +104,7 @@ func sortedKeys(row store.Row) []string {
 
 func (s server) changeLog(t *testing.T) []string {
 	t.Helper()
-	out := []string{}
-	for _, row := range s.rows(t, store.ChangeLogTab) {
-		out = append(out, row["Actor"]+"|"+row["Action"]+"|"+row["Tab"]+"|"+row["Key"]+"|"+row["Column"]+"|"+row["Previous"])
-	}
-	return out
+	return testkit.ChangeLines(t, s.dir, s.queue, appName)
 }
 
 func logged(t *testing.T, log []string, want ...string) {

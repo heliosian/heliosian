@@ -240,7 +240,7 @@ func main() {
 	fmt.Printf("config: %d super admins, stale years %+v, staff color %s, %d grade colors, %d classroom colors\n",
 		len(settings.SuperAdmins), settings.StaleYears, settings.StaffColor, len(settings.GradeColors), len(settings.ClassroomColors))
 
-	calendarCache, err := when.NewCache(source, nil, func() when.Roster { return app.CalendarRoster(model) }, nil, func() []string { return nil }, store.NewQueue())
+	calendarCache, err := when.NewCache(source, nil, func() when.Roster { return when.RosterOf(model) }, nil, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load calendar model: %v", err)
 	}

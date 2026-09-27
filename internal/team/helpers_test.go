@@ -1,15 +1,11 @@
 package team
 
-import "time"
+import (
+	"time"
+
+	"heliosian/internal/testkit"
+)
 
 func now() time.Time {
-	return mustTime("2026-09-09")
-}
-
-func mustTime(s string) time.Time {
-	t, err := time.Parse(DateFormat, s)
-	if err != nil {
-		panic(err)
-	}
-	return t
+	return testkit.MustTime("2026-09-09")
 }

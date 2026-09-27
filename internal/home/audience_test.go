@@ -16,20 +16,15 @@ import (
 	"heliosian/internal/filter"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 	"heliosian/internal/who"
 )
 
 const admin = "jordan.whitfield@heliosschool.org"
 
-type noFiles struct{}
-
-func (noFiles) Has(string) (bool, error) { return false, nil }
-
-func (noFiles) Prefetch(context.Context, []string) error { return nil }
-
 func sampleSources(t *testing.T) func() filter.Sources {
 	t.Helper()
-	model, err := who.LoadModel(&data.Dir{Root: "../../sampledata"}, nil, noFiles{}, []byte("test"))
+	model, err := who.LoadModel(&data.Dir{Root: "../../sampledata"}, nil, testkit.None, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +44,7 @@ func call(t *testing.T, handler http.HandlerFunc, body any) *httptest.ResponseRe
 
 func changeLog(t *testing.T, s sheet) []store.Row {
 	t.Helper()
-	return s.rows(t, store.ChangeLogTab)
+	return testkit.ChangeLog(t, s.dir, s.queue, appName)
 }
 
 func TestAudienceIsAListOfRules(t *testing.T) {

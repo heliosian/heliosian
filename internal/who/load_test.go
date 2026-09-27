@@ -12,19 +12,14 @@ import (
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 )
-
-type noBlobs struct{}
-
-func (noBlobs) Has(string) (bool, error) { return false, nil }
-
-func (noBlobs) Prefetch(context.Context, []string) error { return nil }
 
 var testKey = []byte("test")
 
 func sampleModel(t *testing.T) *Model {
 	t.Helper()
-	model, err := LoadModel(&data.Dir{Root: "../../sampledata"}, noBlobs{}, noBlobs{}, testKey)
+	model, err := LoadModel(&data.Dir{Root: "../../sampledata"}, testkit.None, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("load sample model: %v", err)
 	}
@@ -172,7 +167,7 @@ func TestStaffWithNoVeracrossEmailComeFromTheMapping(t *testing.T) {
 
 func TestUnmatchedNameEntryNamesTheRowsItCouldBe(t *testing.T) {
 	tables := with(sampleTables(t), namesTab, store.Row{"Name": "Luis Ortega"}, store.Row{"Name": "Luis Ortga"})
-	_, err := BuildModel(context.Background(), tables, noBlobs{}, noBlobs{}, testKey)
+	_, err := BuildModel(context.Background(), tables, testkit.None, testkit.None, testKey)
 	want := `name to email entries must each match one import row: "luis ortga" matches 0; import rows with no email and no entry: "luis ortega"`
 	if err == nil || err.Error() != want {
 		t.Errorf("got %v, want %s", err, want)
@@ -258,7 +253,7 @@ func TestOneHouseholdsAnswerCoversTheOther(t *testing.T) {
 		}
 	}
 	tables[preferencesTab] = kept
-	m, err := BuildModel(context.Background(), tables, noBlobs{}, noBlobs{}, testKey)
+	m, err := BuildModel(context.Background(), tables, testkit.None, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("build model with one household's submission dropped: %v", err)
 	}
@@ -302,7 +297,7 @@ func TestOverriddenFactsBeatTheWebsiteBio(t *testing.T) {
 
 func TestClearedFactsAreNotRefilledFromTheWebsite(t *testing.T) {
 	email := "bill.ryder@heliosschool.org"
-	m, err := BuildModel(context.Background(), withOverride(sampleTables(t), email, store.Row{"Facts": "-"}), noBlobs{}, noBlobs{}, testKey)
+	m, err := BuildModel(context.Background(), withOverride(sampleTables(t), email, store.Row{"Facts": "-"}), testkit.None, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("build model with the facts cleared: %v", err)
 	}
@@ -344,7 +339,7 @@ func TestWebsiteEntryMatchingTwoStaffByNameIsFatal(t *testing.T) {
 		"person_full_name": "Hana Ito", "person_email": "hana.ito2@heliosschool.org",
 		"person_classifications": `{"faculty_type":"Specialist"}`,
 	})
-	if _, err := BuildModel(context.Background(), tables, noBlobs{}, noBlobs{}, testKey); err == nil {
+	if _, err := BuildModel(context.Background(), tables, testkit.None, testkit.None, testKey); err == nil {
 		t.Error("a website entry with no address whose name matches two staff should fail the load")
 	}
 }
@@ -377,7 +372,7 @@ func TestAliasMatchingNothingIsFatal(t *testing.T) {
 	tables[AliasesTable] = append(append([]store.Row{}, tables[AliasesTable]...), store.Row{
 		AliasColumn: "nobody@heliosschool.org", AliasEmailColumn: "ruth.amari@heliosschool.org",
 	})
-	if _, err := BuildModel(context.Background(), tables, noBlobs{}, noBlobs{}, testKey); err == nil {
+	if _, err := BuildModel(context.Background(), tables, testkit.None, testkit.None, testKey); err == nil {
 		t.Error("an alias matching no import row should fail the load")
 	}
 }
@@ -462,7 +457,7 @@ func TestTwoHouseholdKidBelongsToBothFamilies(t *testing.T) {
 
 func TestFamiliesRowKeyedByTheWrongParentIsFatal(t *testing.T) {
 	misKeyed := withFamily(sampleTables(t), "marco.torres@heliosschool.org", store.Row{"Family Phone": "650-555-0000"})
-	if _, err := BuildModel(context.Background(), misKeyed, noBlobs{}, noBlobs{}, testKey); err == nil {
+	if _, err := BuildModel(context.Background(), misKeyed, testkit.None, testkit.None, testKey); err == nil {
 		t.Error("a Families row keyed by the non-first parent should fail the load")
 	}
 }
@@ -484,7 +479,7 @@ func TestWithheldFirstAdultIsNowhereInTheModel(t *testing.T) {
 			withOverride(tables, "elena.torres@heliosschool.org", store.Row{"Opted Out": "Yes"})},
 		{"silent staff partner", "colin.quinn@heliosschool.org", "dana.hawkins@heliosschool.org", silent},
 	} {
-		m, err := BuildModel(context.Background(), c.tables, noBlobs{}, noBlobs{}, testKey)
+		m, err := BuildModel(context.Background(), c.tables, testkit.None, testkit.None, testKey)
 		if err != nil {
 			t.Fatalf("%s: build model: %v", c.name, err)
 		}
@@ -515,13 +510,13 @@ func TestStaffNotInVeracrossStillLoad(t *testing.T) {
 func TestClearingPronounsSucceeds(t *testing.T) {
 	email := "ruth.amari@heliosschool.org"
 	withPronouns := withOverride(sampleTables(t), email, store.Row{"Pronouns": "she/her"})
-	if _, err := BuildModel(context.Background(), withPronouns, noBlobs{}, noBlobs{}, testKey); err != nil {
+	if _, err := BuildModel(context.Background(), withPronouns, testkit.None, testkit.None, testKey); err != nil {
 		t.Fatalf("seed pronouns: %v", err)
 	}
-	if _, err := BuildModel(context.Background(), withOverride(withPronouns, email, store.Row{"Pronouns": ""}), noBlobs{}, noBlobs{}, testKey); err != nil {
+	if _, err := BuildModel(context.Background(), withOverride(withPronouns, email, store.Row{"Pronouns": ""}), testkit.None, testkit.None, testKey); err != nil {
 		t.Errorf("clearing Pronouns with an empty string should succeed, got: %v", err)
 	}
-	if _, err := BuildModel(context.Background(), withOverride(withPronouns, email, store.Row{"Pronouns": "-"}), noBlobs{}, noBlobs{}, testKey); err == nil {
+	if _, err := BuildModel(context.Background(), withOverride(withPronouns, email, store.Row{"Pronouns": "-"}), testkit.None, testkit.None, testKey); err == nil {
 		t.Errorf("clearing Pronouns with \"-\" should still fail the useless-override check, documenting why \"\" is required")
 	}
 }
@@ -529,14 +524,14 @@ func TestClearingPronounsSucceeds(t *testing.T) {
 func TestClearingFamilyPhotoCaptionSucceeds(t *testing.T) {
 	key := "carmen.alvarez@heliosschool.org"
 	withCaption := withFamily(sampleTables(t), key, store.Row{"Family Photo Caption": "Carmen at the beach."})
-	m, err := BuildModel(context.Background(), withCaption, noBlobs{}, noBlobs{}, testKey)
+	m, err := BuildModel(context.Background(), withCaption, testkit.None, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("seed a family photo caption: %v", err)
 	}
 	if m.Families[familyID(testKey, key)].PhotoCaption != "Carmen at the beach." {
 		t.Fatalf("caption did not seed correctly: %+v", m.Families[familyID(testKey, key)])
 	}
-	cleared, err := BuildModel(context.Background(), withFamily(withCaption, key, store.Row{"Family Photo Caption": "-"}), noBlobs{}, noBlobs{}, testKey)
+	cleared, err := BuildModel(context.Background(), withFamily(withCaption, key, store.Row{"Family Photo Caption": "-"}), testkit.None, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("clearing Family Photo Caption with \"-\" should succeed, got: %v", err)
 	}
@@ -547,38 +542,38 @@ func TestClearingFamilyPhotoCaptionSucceeds(t *testing.T) {
 
 func TestClearingPronunciationSucceeds(t *testing.T) {
 	email := "ruth.amari@heliosschool.org"
-	blobs := fakeBlobs{"pronunciation/somefile.webm": true}
+	blobs := testkit.Only("pronunciation/somefile.webm")
 	withPronunciation := withOverride(sampleTables(t), email, store.Row{"Pronunciation": "somefile.webm"})
-	seeded, err := BuildModel(context.Background(), withPronunciation, blobs, noBlobs{}, testKey)
+	seeded, err := BuildModel(context.Background(), withPronunciation, blobs, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("seed a pronunciation: %v", err)
 	}
 	if got := seeded.Person(email).pronunciation; got != "somefile.webm" {
 		t.Fatalf("pronunciation did not seed correctly: %q", got)
 	}
-	cleared, err := BuildModel(context.Background(), withOverride(withPronunciation, email, store.Row{"Pronunciation": ""}), blobs, noBlobs{}, testKey)
+	cleared, err := BuildModel(context.Background(), withOverride(withPronunciation, email, store.Row{"Pronunciation": ""}), blobs, testkit.None, testKey)
 	if err != nil {
 		t.Errorf("clearing Pronunciation with an empty string should succeed, got: %v", err)
 	} else if got := cleared.Person(email).pronunciation; got != "" {
 		t.Errorf("pronunciation = %q after clearing with \"\", want empty", got)
 	}
-	if _, err := BuildModel(context.Background(), withOverride(withPronunciation, email, store.Row{"Pronunciation": "-"}), noBlobs{}, noBlobs{}, testKey); err == nil {
+	if _, err := BuildModel(context.Background(), withOverride(withPronunciation, email, store.Row{"Pronunciation": "-"}), testkit.None, testkit.None, testKey); err == nil {
 		t.Errorf("clearing Pronunciation with \"-\" should still fail the useless-override check, documenting why \"\" is required")
 	}
 }
 
 func TestClearingFamilyPronunciationSucceeds(t *testing.T) {
 	key := "carmen.alvarez@heliosschool.org"
-	blobs := fakeBlobs{"pronunciation/somefile.webm": true}
+	blobs := testkit.Only("pronunciation/somefile.webm")
 	withPronunciation := withFamily(sampleTables(t), key, store.Row{"Family Pronunciation": "somefile.webm"})
-	seeded, err := BuildModel(context.Background(), withPronunciation, blobs, noBlobs{}, testKey)
+	seeded, err := BuildModel(context.Background(), withPronunciation, blobs, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("seed a family pronunciation: %v", err)
 	}
 	if got := seeded.Families[familyID(testKey, key)].pronunciation; got != "somefile.webm" {
 		t.Fatalf("family pronunciation did not seed correctly: %q", got)
 	}
-	cleared, err := BuildModel(context.Background(), withFamily(withPronunciation, key, store.Row{"Family Pronunciation": ""}), blobs, noBlobs{}, testKey)
+	cleared, err := BuildModel(context.Background(), withFamily(withPronunciation, key, store.Row{"Family Pronunciation": ""}), blobs, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("clearing Family Pronunciation with an empty string should succeed, got: %v", err)
 	}
@@ -587,17 +582,11 @@ func TestClearingFamilyPronunciationSucceeds(t *testing.T) {
 	}
 }
 
-type fakeBlobs map[string]bool
-
-func (f fakeBlobs) Has(key string) (bool, error) { return f[key], nil }
-
-func (fakeBlobs) Prefetch(context.Context, []string) error { return nil }
-
 func TestPhotoCropResolvesOverOriginal(t *testing.T) {
 	email := "elena.torres@heliosschool.org"
 	withCrop := withPhotos(sampleTables(t), email, []photoRef{{Name: "orig.jpg", CropName: "crop.jpg"}})
-	blobs := fakeBlobs{"photos/orig.jpg": true, "photos/crop.jpg": true}
-	m, err := BuildModel(context.Background(), withCrop, blobs, noBlobs{}, testKey)
+	blobs := testkit.Only("photos/orig.jpg", "photos/crop.jpg")
+	m, err := BuildModel(context.Background(), withCrop, blobs, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("build model with a crop: %v", err)
 	}
@@ -617,8 +606,8 @@ func TestPhotoCropResolvesOverOriginal(t *testing.T) {
 func TestMissingCropFallsBackToOriginal(t *testing.T) {
 	email := "elena.torres@heliosschool.org"
 	withCrop := withPhotos(sampleTables(t), email, []photoRef{{Name: "orig.jpg", CropName: "missing-crop.jpg"}})
-	blobs := fakeBlobs{"photos/orig.jpg": true}
-	m, err := BuildModel(context.Background(), withCrop, blobs, noBlobs{}, testKey)
+	blobs := testkit.Only("photos/orig.jpg")
+	m, err := BuildModel(context.Background(), withCrop, blobs, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("a missing crop should not fail the model load: %v", err)
 	}
@@ -636,7 +625,7 @@ func TestPhotoOrderIsNotRowOrder(t *testing.T) {
 		{"Email": email, "Photo Name": "second.jpg", store.OrderColumn: "m"},
 		{"Email": email, "Photo Name": "first.jpg", store.OrderColumn: "b"},
 	}
-	m, err := BuildModel(context.Background(), tables, allBlobs{}, noBlobs{}, testKey)
+	m, err := BuildModel(context.Background(), tables, testkit.All, testkit.None, testKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -648,7 +637,7 @@ func TestPhotoOrderIsNotRowOrder(t *testing.T) {
 		t.Errorf("photos %v, want keyed ones in key order and the blank one last", got)
 	}
 	tables[photosTab][0][store.OrderColumn] = "B"
-	if _, err := BuildModel(context.Background(), tables, allBlobs{}, noBlobs{}, testKey); err == nil {
+	if _, err := BuildModel(context.Background(), tables, testkit.All, testkit.None, testKey); err == nil {
 		t.Error("a photo order that is not a sort key loaded")
 	}
 }
@@ -656,8 +645,8 @@ func TestPhotoOrderIsNotRowOrder(t *testing.T) {
 func TestPersonWithNoPhotosShowsNoFamilyPhoto(t *testing.T) {
 	key := "elena.torres@heliosschool.org"
 	withFamilyPhoto := withFamily(sampleTables(t), key, store.Row{"Family Photo": "family.jpg"})
-	blobs := fakeBlobs{"photos/family.jpg": true}
-	m, err := BuildModel(context.Background(), withFamilyPhoto, blobs, noBlobs{}, testKey)
+	blobs := testkit.Only("photos/family.jpg")
+	m, err := BuildModel(context.Background(), withFamilyPhoto, blobs, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("build model with a family photo: %v", err)
 	}
@@ -676,8 +665,8 @@ func TestPersonWithNoPhotosShowsNoFamilyPhoto(t *testing.T) {
 func TestPersonWithNoPronunciationFallsBackToFamilyPronunciation(t *testing.T) {
 	key := "elena.torres@heliosschool.org"
 	withFamilyPronunciation := withFamily(sampleTables(t), key, store.Row{"Family Pronunciation": "family.webm"})
-	blobs := fakeBlobs{"pronunciation/family.webm": true}
-	m, err := BuildModel(context.Background(), withFamilyPronunciation, blobs, noBlobs{}, testKey)
+	blobs := testkit.Only("pronunciation/family.webm")
+	m, err := BuildModel(context.Background(), withFamilyPronunciation, blobs, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("build model with a family pronunciation: %v", err)
 	}
@@ -697,8 +686,8 @@ func TestOwnPronunciationOverridesFamilyFallback(t *testing.T) {
 	withBoth := withOverride(
 		withFamily(sampleTables(t), "elena.torres@heliosschool.org", store.Row{"Family Pronunciation": "family.webm"}),
 		"mia.torres@heliosschool.org", store.Row{"Pronunciation": "mia.webm"})
-	blobs := fakeBlobs{"pronunciation/family.webm": true, "pronunciation/mia.webm": true}
-	m, err := BuildModel(context.Background(), withBoth, blobs, noBlobs{}, testKey)
+	blobs := testkit.Only("pronunciation/family.webm", "pronunciation/mia.webm")
+	m, err := BuildModel(context.Background(), withBoth, blobs, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("build model with both a personal and family pronunciation: %v", err)
 	}
@@ -720,12 +709,6 @@ func model(t *testing.T, email string) *Person {
 	return p
 }
 
-type blobsWith map[string]bool
-
-func (b blobsWith) Has(name string) (bool, error) { return b[name], nil }
-
-func (blobsWith) Prefetch(context.Context, []string) error { return nil }
-
 func TestHeroPhotoPrefersOwnPhotoThenFallsBackToTheFamily(t *testing.T) {
 	const email = "jordan.whitfield@heliosschool.org"
 	sample := sampleModel(t)
@@ -733,10 +716,10 @@ func TestHeroPhotoPrefersOwnPhotoThenFallsBackToTheFamily(t *testing.T) {
 	if len(key) == 0 {
 		t.Fatalf("%s has no family in the sample", email)
 	}
-	blobs := blobsWith{"photos/own.jpg": true, "photos/fam.jpg": true}
+	blobs := testkit.Only("photos/own.jpg", "photos/fam.jpg")
 
 	family := withFamily(sampleTables(t), sample.Families[key[0]].email, store.Row{"Family Photo": "fam.jpg"})
-	m, err := BuildModel(context.Background(), family, blobs, noBlobs{}, testKey)
+	m, err := BuildModel(context.Background(), family, blobs, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("build model with a family photo: %v", err)
 	}
@@ -745,7 +728,7 @@ func TestHeroPhotoPrefersOwnPhotoThenFallsBackToTheFamily(t *testing.T) {
 	}
 
 	own := withPhotos(family, email, []photoRef{{Name: "own.jpg"}})
-	m, err = BuildModel(context.Background(), own, blobs, noBlobs{}, testKey)
+	m, err = BuildModel(context.Background(), own, blobs, testkit.None, testKey)
 	if err != nil {
 		t.Fatalf("build model with an own photo: %v", err)
 	}

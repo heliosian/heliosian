@@ -75,6 +75,10 @@ Who may see a thing, what it is called, where its page is, and what else changes
 
 A rule an app needs that its owner lacks is added to the owner, never kept by the app that needed it.
 
+## Tests
+
+Helpers more than one package's tests use live in `internal/testkit`, which only `_test.go` files import, so none of it reaches the binary. It is three packages because a package's own tests cannot import anything that imports that package: `testkit` itself imports nothing above `store`, `data` and `auth`, so every app's tests can use it - image checkers (`None`, `All`, `Only`, `Files`), `Call` for a signed-in request, sheet reads that flush the write queue first (`Rows`, `Tables`, `ChangeLog`, `ChangeLines`), `MustTime`, and the link-preview checks `Previews` and `Cards`; `testkit/mailtest` holds the mail `Recorder` and `Discard`, kept apart because `mail` imports `config`; `testkit/sample` builds the sample calendar cache on the real `when.RosterOf`, and so is for packages above `when`.
+
 ## Setup
 
 Development happens on macOS. Two Homebrew installs cover everything here and in `docs/screenshots.md`:

@@ -132,7 +132,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load invites data", "error", err)
 	}
-	calendarCache, err := when.NewCache(cfg.Source, cfg.Writer, func() when.Roster { return CalendarRoster(cache.Model()) }, calendarImages{cfg.Store}, settings.SuperAdmins, queue)
+	calendarCache, err := when.NewCache(cfg.Source, cfg.Writer, func() when.Roster { return when.RosterOf(cache.Model()) }, calendarImages{cfg.Store}, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load calendar data", "error", err)
 	}
@@ -405,7 +405,7 @@ func calendarWatcher(sheet *data.Sheet, core *Core, sessionKey string) *calendar
 	mac.Write([]byte("calendar watch"))
 	opts := calendarimport.Options{
 		Source: sheet, Cache: core.CalendarCache, Calendar: cal,
-		Roster:       func() when.Roster { return CalendarRoster(core.Cache.Model()) },
+		Roster:       func() when.Roster { return when.RosterOf(core.Cache.Model()) },
 		AnthropicKey: env.Key("ANTHROPIC_API_KEY", "local/creds/anthropic.key"),
 	}
 	return calendarimport.NewWatcher(opts, hex.EncodeToString(mac.Sum(nil)))

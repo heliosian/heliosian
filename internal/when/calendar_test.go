@@ -11,6 +11,7 @@ import (
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 	"heliosian/internal/who"
 )
 
@@ -450,7 +451,7 @@ func TestICS(t *testing.T) {
 
 func sampleDirectory(t *testing.T, root string) *who.Model {
 	t.Helper()
-	model, err := who.LoadModel(&data.Dir{Root: root}, nil, noFiles{}, []byte("test"))
+	model, err := who.LoadModel(&data.Dir{Root: root}, nil, testkit.None, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}

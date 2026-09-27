@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"heliosian/internal/testkit"
 )
 
 func TestLate(t *testing.T) {
@@ -25,7 +27,7 @@ func TestLate(t *testing.T) {
 	if l := all["Ruth Amari outreach"]; l.Assignee != "Mina Park" {
 		t.Errorf("assigned outreach: %+v", l)
 	}
-	if rec := call(t, mux, admin, "POST", "/api/birthday/used", map[string]any{"email": "dana.hawkins@heliosschool.org", "used": false}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/used", map[string]any{"email": "dana.hawkins@heliosschool.org", "used": false}); rec.Code != http.StatusNoContent {
 		t.Fatalf("unused: %d %s", rec.Code, rec.Body)
 	}
 	if l, ok := steps(admin)["Dana Hawkins newsletter"]; !ok || l.Due != "2026-08-21" {
@@ -34,7 +36,7 @@ func TestLate(t *testing.T) {
 	if got := steps(parent); len(got) != 0 {
 		t.Errorf("volunteer with nothing late: %+v", got)
 	}
-	if rec := call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": "miguel.santos@heliosschool.org"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": "miguel.santos@heliosschool.org"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("assign: %d %s", rec.Code, rec.Body)
 	}
 	if got := steps(parent); len(got) != 1 || got["Miguel Santos outreach"].Due != "2026-09-03" {
@@ -43,7 +45,7 @@ func TestLate(t *testing.T) {
 	if got := steps("nobody@heliosschool.org"); len(got) != 0 {
 		t.Errorf("off the team: %+v", got)
 	}
-	now = func() time.Time { return mustTime("2026-09-10") }
+	now = func() time.Time { return testkit.MustTime("2026-09-10") }
 	all = steps(admin)
 	if l, ok := all["Ruth Amari info"]; !ok || l.Due != "2026-09-09" || l.Assignee != "Mina Park" {
 		t.Errorf("birthday info past its due-by day: %+v", all)
