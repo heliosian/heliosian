@@ -633,7 +633,7 @@ func (a app) joinTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	if a.joinHome != nil {
 		if err := a.joinHome(r.Context(), actor.Email); err != nil {
-			slog.ErrorContext(r.Context(), "[ERROR] birthday: put a joiner on the app's list", "error", err, "email", actor.Email)
+			slog.ErrorContext(r.Context(), "birthday: put a joiner on the app's list", "error", err, "email", actor.Email)
 		}
 	}
 	slog.InfoContext(r.Context(), "birthday: joined the team", "email", actor.Email)

@@ -176,12 +176,12 @@ func (a admin) file(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	issue, err := a.filer.File(ctx, title, body, issueType, in.Labels)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] feedback: filing failed", "error", err, "id", report.ID)
+		slog.ErrorContext(r.Context(), "feedback: filing failed", "error", err, "id", report.ID)
 		http.Error(w, "GitHub would not take the issue: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	if err := a.markFiled(r.Context(), actor, report.ID, issue); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] feedback: mark filed", "error", err, "id", report.ID, "issue", issue)
+		slog.ErrorContext(r.Context(), "feedback: mark filed", "error", err, "id", report.ID, "issue", issue)
 		http.Error(w, "the issue is filed at "+issue+" but the report could not be marked: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -213,6 +213,6 @@ func (a admin) dismiss(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, r *http.Request, view any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] feedback: encode", "error", err)
+		slog.ErrorContext(r.Context(), "feedback: encode", "error", err)
 	}
 }

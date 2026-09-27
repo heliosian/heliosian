@@ -70,7 +70,7 @@ func flags(name string, args []string, define func(fs *flag.FlagSet), required .
 		}
 	}
 	if len(missing) > 0 {
-		log.Fatalf("[ERROR] %s needs %s", name, strings.Join(missing, ", "))
+		log.Fatalf("%s needs %s", name, strings.Join(missing, ", "))
 	}
 	return *sheet
 }
@@ -78,7 +78,7 @@ func flags(name string, args []string, define func(fs *flag.FlagSet), required .
 func parse(name string, args []string, define func(fs *flag.FlagSet), required ...string) *data.Sheet {
 	source, err := data.NewSheet(map[string]string{"sheet": flags(name, args, define, required...)})
 	if err != nil {
-		log.Fatalf("[ERROR] sheet source: %v", err)
+		log.Fatalf("sheet source: %v", err)
 	}
 	return source
 }
@@ -86,7 +86,7 @@ func parse(name string, args []string, define func(fs *flag.FlagSet), required .
 func raw(source *data.Sheet, tab string) [][]string {
 	all, err := source.Raw("sheet", tab)
 	if err != nil {
-		log.Fatalf("[ERROR] read tab %s: %v", tab, err)
+		log.Fatalf("read tab %s: %v", tab, err)
 	}
 	return all
 }
@@ -94,17 +94,17 @@ func raw(source *data.Sheet, tab string) [][]string {
 func readCSV(path string) [][]string {
 	f, err := os.Open(path)
 	if err != nil {
-		log.Fatalf("[ERROR] open %s: %v", path, err)
+		log.Fatalf("open %s: %v", path, err)
 	}
 	records, err := csv.NewReader(f).ReadAll()
 	if err != nil {
-		log.Fatalf("[ERROR] read %s: %v", path, err)
+		log.Fatalf("read %s: %v", path, err)
 	}
 	if err := f.Close(); err != nil {
-		log.Fatalf("[ERROR] close %s: %v", path, err)
+		log.Fatalf("close %s: %v", path, err)
 	}
 	if len(records) < 2 {
-		log.Fatalf("[ERROR] %s has no data rows", path)
+		log.Fatalf("%s has no data rows", path)
 	}
 	return records
 }
@@ -130,24 +130,24 @@ func create(args []string) {
 	}, "title")
 	svc, err := drive.NewService(context.Background(), option.WithScopes(drive.DriveScope))
 	if err != nil {
-		log.Fatalf("[ERROR] create drive client: %v", err)
+		log.Fatalf("create drive client: %v", err)
 	}
 	anchor, err := svc.Files.Get(anchorID).SupportsAllDrives(true).Fields("driveId, parents").Do()
 	if err != nil {
-		log.Fatalf("[ERROR] look up %s: %v", anchorID, err)
+		log.Fatalf("look up %s: %v", anchorID, err)
 	}
 	if anchor.DriveId == "" || len(anchor.Parents) == 0 {
-		log.Fatalf("[ERROR] %s is not in a shared drive", anchorID)
+		log.Fatalf("%s is not in a shared drive", anchorID)
 	}
 	existing, err := svc.Files.List().
 		Q(fmt.Sprintf("name = '%s' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false", *title)).
 		Corpora("drive").DriveId(anchor.DriveId).IncludeItemsFromAllDrives(true).SupportsAllDrives(true).
 		Fields("files(id, name)").Do()
 	if err != nil {
-		log.Fatalf("[ERROR] list spreadsheets: %v", err)
+		log.Fatalf("list spreadsheets: %v", err)
 	}
 	if len(existing.Files) > 0 {
-		log.Fatalf("[ERROR] a spreadsheet named %q already exists: %s", *title, existing.Files[0].Id)
+		log.Fatalf("a spreadsheet named %q already exists: %s", *title, existing.Files[0].Id)
 	}
 	created, err := svc.Files.Create(&drive.File{
 		Name:     *title,
@@ -155,7 +155,7 @@ func create(args []string) {
 		Parents:  anchor.Parents,
 	}).SupportsAllDrives(true).Fields("id").Do()
 	if err != nil {
-		log.Fatalf("[ERROR] create spreadsheet: %v", err)
+		log.Fatalf("create spreadsheet: %v", err)
 	}
 	log.Printf("created %q beside %s", *title, anchorID)
 	fmt.Println(created.Id)
@@ -165,7 +165,7 @@ func tabs(args []string) {
 	source := parse("tabs", args, func(fs *flag.FlagSet) {})
 	title, sizes, err := source.Layout("sheet")
 	if err != nil {
-		log.Fatalf("[ERROR] get spreadsheet: %v", err)
+		log.Fatalf("get spreadsheet: %v", err)
 	}
 	fmt.Println("title:", title)
 	names := []string{}
@@ -174,7 +174,7 @@ func tabs(args []string) {
 	}
 	headers, err := source.Tabs(context.Background(), "sheet", nil, names)
 	if err != nil {
-		log.Fatalf("[ERROR] read headers: %v", err)
+		log.Fatalf("read headers: %v", err)
 	}
 	for _, t := range sizes {
 		fmt.Printf("\ntab %q: %d rows x %d cols\n", t.Title, t.Rows, t.Columns)
@@ -220,14 +220,14 @@ func dump(args []string) {
 	all := raw(source, *tab)
 	f, err := os.Create(*out)
 	if err != nil {
-		log.Fatalf("[ERROR] create %s: %v", *out, err)
+		log.Fatalf("create %s: %v", *out, err)
 	}
 	w := csv.NewWriter(f)
 	if err := w.WriteAll(all); err != nil {
-		log.Fatalf("[ERROR] write csv: %v", err)
+		log.Fatalf("write csv: %v", err)
 	}
 	if err := f.Close(); err != nil {
-		log.Fatalf("[ERROR] close %s: %v", *out, err)
+		log.Fatalf("close %s: %v", *out, err)
 	}
 	log.Printf("wrote %d rows to %s", len(all), *out)
 }
@@ -243,17 +243,17 @@ func write(args []string) {
 	recs := readCSV(*in)
 	existing := raw(source, *tab)
 	if len(existing) == 0 {
-		log.Fatalf("[ERROR] tab %s has no header row", *tab)
+		log.Fatalf("tab %s has no header row", *tab)
 	}
 	if !*appendRows && len(existing) != 1 {
-		log.Fatalf("[ERROR] tab %s has %d rows; want exactly the header row", *tab, len(existing))
+		log.Fatalf("tab %s has %d rows; want exactly the header row", *tab, len(existing))
 	}
 	if !slices.Equal(existing[0], recs[0]) {
-		log.Fatalf("[ERROR] header mismatch:\n tab: %q\n csv: %q", existing[0], recs[0])
+		log.Fatalf("header mismatch:\n tab: %q\n csv: %q", existing[0], recs[0])
 	}
 	added := records(recs[0], recs[1:])
 	if err := source.Insert("sheet", *tab, added); err != nil {
-		log.Fatalf("[ERROR] write rows: %v", err)
+		log.Fatalf("write rows: %v", err)
 	}
 	log.Printf("wrote %d rows to %s", len(added), *tab)
 }
@@ -269,16 +269,16 @@ func sync(args []string) {
 	}, "tab", "in", "keycol")
 	recs := readCSV(*in)
 	header, wanted := recs[0], records(recs[0], recs[1:])
-	result, err := source.Sync("sheet", *tab, header, wanted, *keyCol, data.Merge, false)
+	result, err := source.Sync("sheet", *tab, header, wanted, *keyCol, false)
 	if err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		log.Fatalf("%v", err)
 	}
 	for _, e := range result.Edits {
 		log.Printf("  %s %s: %q -> %q", e.Key, e.Column, e.From, e.To)
 	}
 	log.Printf("%d cells differ across %d csv rows", len(result.Edits), len(wanted))
 	if len(result.Added) > 0 {
-		log.Fatalf("[ERROR] %d csv rows match no tab row, which this tool will not add: %v",
+		log.Fatalf("%d csv rows match no tab row, which this tool will not add: %v",
 			len(result.Added), result.Added)
 	}
 	if len(result.Detached) > 0 {
@@ -291,8 +291,8 @@ func sync(args []string) {
 	if len(result.Edits) == 0 {
 		return
 	}
-	if _, err := source.Sync("sheet", *tab, header, wanted, *keyCol, data.Merge, true); err != nil {
-		log.Fatalf("[ERROR] %v", err)
+	if _, err := source.Sync("sheet", *tab, header, wanted, *keyCol, true); err != nil {
+		log.Fatalf("%v", err)
 	}
 	log.Printf("wrote %d cells to %s", len(result.Edits), *tab)
 }
@@ -307,7 +307,7 @@ func set(args []string) {
 		value = fs.String("value", "", "value to write")
 	}, "tab", "key", "col")
 	if err := source.Upsert("sheet", *tab, map[string]string{*keyCol: *key}, map[string]string{*col: *value}); err != nil {
-		log.Fatalf("[ERROR] set %s[%s=%s].%s: %v", *tab, *keyCol, *key, *col, err)
+		log.Fatalf("set %s[%s=%s].%s: %v", *tab, *keyCol, *key, *col, err)
 	}
 	log.Printf("set %s[%s=%s].%s = %q", *tab, *keyCol, *key, *col, *value)
 }
@@ -320,7 +320,7 @@ func deleteRows(args []string) {
 		value = fs.String("value", "", "value to match")
 	}, "tab", "value")
 	if err := source.Delete("sheet", *tab, map[string]string{*col: *value}); err != nil {
-		log.Fatalf("[ERROR] delete from %s where %s=%s: %v", *tab, *col, *value, err)
+		log.Fatalf("delete from %s where %s=%s: %v", *tab, *col, *value, err)
 	}
 	log.Printf("deleted rows from %s where %s = %q", *tab, *col, *value)
 }
@@ -332,7 +332,7 @@ func rename(args []string) {
 		to = fs.String("to", "", "new tab title")
 	}, "from", "to")
 	if err := source.RenameTab("sheet", *from, *to); err != nil {
-		log.Fatalf("[ERROR] rename %q: %v", *from, err)
+		log.Fatalf("rename %q: %v", *from, err)
 	}
 	log.Printf("renamed %q to %q", *from, *to)
 }
@@ -347,14 +347,14 @@ func drop(args []string) {
 	}, "tab", "columns")
 	all := raw(source, *tab)
 	if len(all) == 0 {
-		log.Fatalf("[ERROR] tab %q has no header row", *tab)
+		log.Fatalf("tab %q has no header row", *tab)
 	}
 	names := []string{}
 	for _, name := range strings.Split(*columns, ",") {
 		name = strings.TrimSpace(name)
 		i := slices.Index(all[0], name)
 		if i < 0 {
-			log.Fatalf("[ERROR] tab %q has no column %q", *tab, name)
+			log.Fatalf("tab %q has no column %q", *tab, name)
 		}
 		filled := 0
 		for _, row := range all[1:] {
@@ -370,7 +370,7 @@ func drop(args []string) {
 		return
 	}
 	if err := source.DropColumns("sheet", *tab, names); err != nil {
-		log.Fatalf("[ERROR] delete columns from %q: %v", *tab, err)
+		log.Fatalf("delete columns from %q: %v", *tab, err)
 	}
 	log.Printf("deleted %d columns from %q: %s", len(names), *tab, *columns)
 }

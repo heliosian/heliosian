@@ -67,7 +67,7 @@ func (w *Watcher) work() {
 	for range w.kick {
 		start := time.Now()
 		if err := w.run(context.Background()); err != nil {
-			slog.Error("[ERROR] calendar import", "error", err, "took", time.Since(start).Round(time.Millisecond))
+			slog.Error("calendar import", "error", err, "took", time.Since(start).Round(time.Millisecond))
 			continue
 		}
 		slog.Info("calendar import", "took", time.Since(start).Round(time.Millisecond))
@@ -98,7 +98,7 @@ func (w *Watcher) renew() {
 		Expiration: time.Now().Add(channelLife).UnixMilli(),
 	}).Do()
 	if err != nil {
-		slog.Error("[ERROR] calendar watch", "error", err)
+		slog.Error("calendar watch", "error", err)
 		return
 	}
 	slog.Info("calendar watch opened", "channel", ch.Id, "expires", expiry(ch).In(calendar.Location).Format(calendar.DateTimeFormat))
@@ -111,7 +111,7 @@ func (w *Watcher) renew() {
 
 func (w *Watcher) stop(ch *gcal.Channel) {
 	if err := w.opts.Calendar.Channels.Stop(&gcal.Channel{Id: ch.Id, ResourceId: ch.ResourceId}).Do(); err != nil {
-		slog.Error("[ERROR] calendar watch stop", "channel", ch.Id, "error", err)
+		slog.Error("calendar watch stop", "channel", ch.Id, "error", err)
 		return
 	}
 	slog.Info("calendar watch closed", "channel", ch.Id)

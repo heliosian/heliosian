@@ -166,7 +166,7 @@ func newID() string {
 func (a app) people(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.directory.People()); err != nil {
-		slog.ErrorContext(r.Context(), "events: encode people", "error", err)
+		slog.ErrorContext(r.Context(), "team:encode people", "error", err)
 	}
 }
 
@@ -184,7 +184,7 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, s.ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: saved volunteer", "actor", actor.Email, "action", s.action, "email", s.email, "activity", s.act.Title, "year", s.act.Year)
+	slog.InfoContext(r.Context(), "team:saved volunteer", "actor", actor.Email, "action", s.action, "email", s.email, "activity", s.act.Title, "year", s.act.Year)
 	a.mailSignUp(r, s.act, s.email, s.position, s.note, actor.Email, s.existed, s.was)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -206,7 +206,7 @@ func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: removed volunteer", "actor", actor.Email, "email", email, "activity", act.Title, "year", act.Year)
+	slog.InfoContext(r.Context(), "team:removed volunteer", "actor", actor.Email, "email", email, "activity", act.Title, "year", act.Year)
 	a.mailRemoved(r, act, email, actor.Email)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -259,7 +259,7 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, s.ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: saved activity", "actor", actor.Email, "action", s.action, "activity", s.title, "id", s.id, "year", s.year, "status", s.status)
+	slog.InfoContext(r.Context(), "team:saved activity", "actor", actor.Email, "action", s.action, "activity", s.title, "id", s.id, "year", s.year, "status", s.status)
 	if s.adding {
 		a.mailNewActivity(r, a.cache.Model().Activity(s.id), actor.Email)
 	}
@@ -280,7 +280,7 @@ func (a app) deleteActivity(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: deleted activity", "actor", actor.Email, "activity", act.Title, "year", act.Year)
+	slog.InfoContext(r.Context(), "team:deleted activity", "actor", actor.Email, "activity", act.Title, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -298,7 +298,7 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: saved link", "actor", actor.Email, "action", action, "link", strings.TrimSpace(body.Title), "activity", act.Title, "year", act.Year)
+	slog.InfoContext(r.Context(), "team:saved link", "actor", actor.Email, "action", action, "link", strings.TrimSpace(body.Title), "activity", act.Title, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -319,7 +319,7 @@ func (a app) orderChildren(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: reordered", "actor", actor.Email, "parent", parent.Title, "year", parent.Year, "changed", len(ops))
+	slog.InfoContext(r.Context(), "team:reordered", "actor", actor.Email, "parent", parent.Title, "year", parent.Year, "changed", len(ops))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -340,7 +340,7 @@ func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: deleted link", "actor", actor.Email, "link", body.Title, "activity", act.Title, "year", act.Year)
+	slog.InfoContext(r.Context(), "team:deleted link", "actor", actor.Email, "link", body.Title, "activity", act.Title, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -358,7 +358,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, s.op) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: saved category", "actor", actor.Email, "action", s.action, "category", s.title, "id", s.id, "event", s.eventID)
+	slog.InfoContext(r.Context(), "team:saved category", "actor", actor.Email, "action", s.action, "category", s.title, "id", s.id, "event", s.eventID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -380,7 +380,7 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: reordered categories", "actor", actor.Email, "event", eventID, "count", len(body.IDs))
+	slog.InfoContext(r.Context(), "team:reordered categories", "actor", actor.Email, "event", eventID, "count", len(body.IDs))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -400,7 +400,7 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: deleted category", "actor", actor.Email, "category", cat.Title, "id", cat.ID)
+	slog.InfoContext(r.Context(), "team:deleted category", "actor", actor.Email, "category", cat.Title, "id", cat.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -418,7 +418,7 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: copied activity", "actor", actor.Email, "activity", act.Title, "from", act.Year, "to", year, "id", id)
+	slog.InfoContext(r.Context(), "team:copied activity", "actor", actor.Email, "activity", act.Title, "from", act.Year, "to", year, "id", id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -439,7 +439,7 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: changed the settings", "actor", actor.Email)
+	slog.InfoContext(r.Context(), "team:changed the settings", "actor", actor.Email)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -459,7 +459,7 @@ func (a app) saveNotify(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: set notifications", "actor", actor.Email, "kinds", value)
+	slog.InfoContext(r.Context(), "team:set notifications", "actor", actor.Email, "kinds", value)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -504,7 +504,7 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: set the admin list", "actor", actor.Email, "admins", admins)
+	slog.InfoContext(r.Context(), "team:set the admin list", "actor", actor.Email, "admins", admins)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -526,7 +526,7 @@ func (a app) saveRedirect(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, s.op) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: saved redirect", "actor", actor.Email, "action", s.action, "old", s.old, "new", s.to)
+	slog.InfoContext(r.Context(), "team:saved redirect", "actor", actor.Email, "action", s.action, "old", s.old, "new", s.to)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -546,6 +546,6 @@ func (a app) deleteRedirect(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: deleted redirect", "actor", actor.Email, "old", redirect.Old)
+	slog.InfoContext(r.Context(), "team:deleted redirect", "actor", actor.Email, "old", redirect.Old)
 	w.WriteHeader(http.StatusNoContent)
 }

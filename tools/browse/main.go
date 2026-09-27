@@ -132,7 +132,7 @@ func main() {
 
 	id, err := currentTarget()
 	if err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		log.Fatalf("%v", err)
 	}
 	allocCtx, _ := chromedp.NewRemoteAllocator(context.Background(), "http://localhost:9222")
 	// cancelling the chromedp context closes the attached tab; the tab must outlive this process
@@ -149,7 +149,7 @@ func main() {
 		width, werr := strconv.ParseInt(w, 10, 64)
 		height, herr := strconv.ParseInt(h, 10, 64)
 		if !ok || werr != nil || herr != nil {
-			log.Fatalf("[ERROR] size must be WxH, got %q", *size)
+			log.Fatalf("size must be WxH, got %q", *size)
 		}
 		viewport = chromedp.EmulateViewport(width, height)
 	}
@@ -162,7 +162,7 @@ func main() {
 	if *cookie != "" {
 		name, value, ok := strings.Cut(*cookie, "=")
 		if !ok {
-			log.Fatalf("[ERROR] cookie must be name=value, got %q", *cookie)
+			log.Fatalf("cookie must be name=value, got %q", *cookie)
 		}
 		actions = append(actions, network.SetCookie(name, value).WithDomain("who.heliosiandev.com").WithPath("/"))
 	}
@@ -181,7 +181,7 @@ func main() {
 	if *click != "" {
 		x, y, err := parseXY(*click)
 		if err != nil {
-			log.Fatalf("[ERROR] %v", err)
+			log.Fatalf("%v", err)
 		}
 		actions = append(actions, chromedp.MouseClickXY(x, y))
 	}
@@ -209,22 +209,22 @@ func main() {
 	var location, title string
 	actions = append(actions, chromedp.Location(&location), chromedp.Title(&title))
 	if err := chromedp.Run(ctx, actions...); err != nil {
-		log.Fatalf("[ERROR] browse: %v", err)
+		log.Fatalf("browse: %v", err)
 	}
 	if *dump {
 		fmt.Println(html)
 	} else if *eval != "" {
 		encoded, err := json.MarshalIndent(evalResult, "", "  ")
 		if err != nil {
-			log.Fatalf("[ERROR] encode eval result: %v", err)
+			log.Fatalf("encode eval result: %v", err)
 		}
 		fmt.Println(string(encoded))
 	} else {
 		if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
-			log.Fatalf("[ERROR] create output dir: %v", err)
+			log.Fatalf("create output dir: %v", err)
 		}
 		if err := os.WriteFile(*out, png, 0o644); err != nil {
-			log.Fatalf("[ERROR] write %s: %v", *out, err)
+			log.Fatalf("write %s: %v", *out, err)
 		}
 	}
 	fmt.Printf("url: %s\ntitle: %s\n", location, title)

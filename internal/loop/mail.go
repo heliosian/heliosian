@@ -146,7 +146,7 @@ func (m *mailer) recover() {
 		if msg.State == stateReceived {
 			j := job{id: msg.ID, group: msg.Group, object: msg.Object}
 			if m.take(j) {
-				slog.Info("groups: resuming a message", "message", j.id, "group", j.group)
+				slog.Info("loop:resuming a message", "message", j.id, "group", j.group)
 				m.work <- j
 			}
 		}
@@ -155,14 +155,14 @@ func (m *mailer) recover() {
 
 func (m *mailer) mark(j job, state string, cells store.Row) {
 	if err := m.cache.Commit(context.Background(), mailerActor, markMessage(mailerActor, j.id, j.group, state, cells)...); err != nil {
-		slog.Error("[ERROR] groups: mail record", "message", j.id, "group", j.group, "error", err)
+		slog.Error("loop:mail record", "message", j.id, "group", j.group, "error", err)
 	}
 }
 
 func (m *mailer) recordSent(ctx context.Context, j job, raw []byte, cells map[string]string) {
 	m.mark(j, stateSent, cells)
 	if err := m.mail.Documents.Post(ctx, mailerActor, j.group, raw); err != nil {
-		slog.Error("[ERROR] groups: not filed for ask", "message", j.id, "group", j.group, "error", err)
+		slog.Error("loop:not filed for ask", "message", j.id, "group", j.group, "error", err)
 	}
 }
 
@@ -183,7 +183,7 @@ func (m *mailer) groupsIn(addresses []string) []string {
 	for _, local := range localsIn(addresses) {
 		g := model.Resolve(local)
 		if g == nil {
-			slog.Warn("groups: mail for no group", "local", local)
+			slog.Warn("loop:mail for no group", "local", local)
 			continue
 		}
 		if !slices.Contains(out, g.Name) {
@@ -212,7 +212,7 @@ func (m *mailer) received(ctx context.Context, raw []byte, from, subject string,
 			m.release(j)
 			return fmt.Errorf("record %s for %s: %w", id, name, err)
 		}
-		slog.Info("groups: mail received", "message", id, "group", name, "from", from, "subject", subject)
+		slog.Info("loop:mail received", "message", id, "group", name, "from", from, "subject", subject)
 		m.work <- j
 	}
 	return nil
@@ -236,7 +236,7 @@ func (m *mailer) flush() {
 	m.flushing = false
 	m.mu.Unlock()
 	if err := m.cache.Commit(context.Background(), mailerActor, recordDeliveries(mailerActor, rows)...); err != nil {
-		slog.Error("[ERROR] groups: delivery record", "rows", len(rows), "error", err)
+		slog.Error("loop:delivery record", "rows", len(rows), "error", err)
 	}
 }
 
@@ -275,7 +275,7 @@ func (m *mailer) delivery(event, from, messageID, detail string, when time.Time,
 	}
 	email := strings.ToLower(mail.AddressOf(address))
 	if event != eventDelivered {
-		slog.Warn("groups: delivery trouble", "event", event, "group", names[0], "email", email, "detail", detail)
+		slog.Warn("loop:delivery trouble", "event", event, "group", names[0], "email", email, "detail", detail)
 	}
 	m.record(map[string]string{"Timestamp": when.Format(time.RFC3339), "Group": names[0], "Email": email, "Event": event, "Message": messageID, "Detail": detail})
 }
@@ -283,7 +283,7 @@ func (m *mailer) delivery(event, from, messageID, detail string, when time.Time,
 func (m *mailer) forward(ctx context.Context, j job) string {
 	log := slog.With("message", j.id, "group", j.group)
 	fail := func(what string, err error) string {
-		log.Error("groups: forward failed", "step", what, "error", err)
+		log.Error("loop:forward failed", "step", what, "error", err)
 		m.mark(j, stateFailed, map[string]string{"Detail": what + ": " + err.Error()})
 		return stateFailed
 	}
@@ -303,12 +303,12 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	}
 	lines, body := mail.SplitMessage(raw)
 	if reason := held(lines); reason != "" {
-		log.Info("groups: message held", "reason", reason)
+		log.Info("loop:message held", "reason", reason)
 		m.mark(j, stateDropped, map[string]string{"Detail": reason})
 		return stateDropped
 	}
 	if reason := mail.Authenticated(lines); reason != "" {
-		log.Info("groups: message not authenticated", "reason", reason, "from", mail.Header(lines, "from"))
+		log.Info("loop:message not authenticated", "reason", reason, "from", mail.Header(lines, "from"))
 		m.mark(j, stateDropped, map[string]string{"Detail": reason})
 		return stateDropped
 	}
@@ -319,9 +319,9 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 		if reply {
 			audience, verb = g.Replying, "reply"
 		}
-		log.Info("groups: post refused", "from", sender, "reply", reply, "audience", audience)
+		log.Info("loop:post refused", "from", sender, "reply", reply, "audience", audience)
 		if err := m.bounce(ctx, *g, lines, audience, verb); err != nil {
-			log.Error("[ERROR] groups: bounce failed", "to", sender, "error", err)
+			log.Error("loop:bounce failed", "to", sender, "error", err)
 		}
 		m.mark(j, stateDropped, map[string]string{"Detail": "only the group's " + audience + " may " + verb})
 		return stateDropped
@@ -338,7 +338,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 		unsubscribe := "List-Unsubscribe: <mailto:" + unsubscribeLocal + "@" + Domain + "?subject=" + tok + ">, <" + m.mail.Base + "/open/unsubscribe/" + tok + ">"
 		msg := render(head, []string{unsubscribe, "List-Unsubscribe-Post: List-Unsubscribe=One-Click"}, body)
 		if err := m.mail.Sender.SendRaw(ctx, g.Address(), []string{rcpt}, msg); err != nil {
-			log.Error("groups: send failed", "to", rcpt, "error", err)
+			log.Error("loop:send failed", "to", rcpt, "error", err)
 			failures = append(failures, rcpt+": "+err.Error())
 			continue
 		}
@@ -349,7 +349,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	if sent == 0 && len(members) > 0 {
 		state = stateFailed
 	}
-	log.Info("groups: forwarded", "members", len(members), "sent", sent, "failed", len(failures))
+	log.Info("loop:forwarded", "members", len(members), "sent", sent, "failed", len(failures))
 	cells := map[string]string{"Recipients": strconv.Itoa(sent), "Detail": strings.Join(failures, "; ")}
 	if state == stateSent {
 		m.recordSent(ctx, j, raw, cells)
@@ -385,7 +385,7 @@ func (a app) inbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := mail.VerifyNotification(a.mail.SigningKey, fields, time.Now()); err != nil {
-		slog.WarnContext(r.Context(), "groups: inbound call refused", "error", err)
+		slog.WarnContext(r.Context(), "loop:inbound call refused", "error", err)
 		http.Error(w, "signature", http.StatusNotAcceptable)
 		return
 	}
@@ -400,12 +400,12 @@ func (a app) inbound(w http.ResponseWriter, r *http.Request) {
 	}
 	raw := []byte(fields["body-mime"])
 	if len(raw) == 0 {
-		slog.WarnContext(r.Context(), "groups: inbound call carries no body-mime", "recipient", fields["recipient"])
+		slog.WarnContext(r.Context(), "loop:inbound call carries no body-mime", "recipient", fields["recipient"])
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	if err := a.mailer.received(r.Context(), raw, fields["from"], fields["subject"], posted); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] groups: mail not recorded", "recipient", fields["recipient"], "error", err)
+		slog.ErrorContext(r.Context(), "loop:mail not recorded", "recipient", fields["recipient"], "error", err)
 		http.Error(w, "not recorded", http.StatusInternalServerError)
 		return
 	}
@@ -451,7 +451,7 @@ func (a app) events(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := mail.VerifyMailgun(a.mail.SigningKey, event.Signature.Timestamp, event.Signature.Token, event.Signature.Signature, time.Now()); err != nil {
-		slog.WarnContext(r.Context(), "groups: event call refused", "error", err)
+		slog.WarnContext(r.Context(), "loop:event call refused", "error", err)
 		http.Error(w, "signature", http.StatusNotAcceptable)
 		return
 	}

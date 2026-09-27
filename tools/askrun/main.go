@@ -95,18 +95,18 @@ func main() {
 	flag.Parse()
 	key := os.Getenv("SESSION_KEY")
 	if key == "" {
-		log.Fatal("[ERROR] SESSION_KEY is required (the server and the minted cookie must share it)")
+		log.Fatal("SESSION_KEY is required (the server and the minted cookie must share it)")
 	}
 	viewers := []string{""}
 	if *as != "" {
 		viewers = strings.Split(*as, ",")
 	}
 	if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
-		log.Fatalf("[ERROR] create output dir: %v", err)
+		log.Fatalf("create output dir: %v", err)
 	}
 	file, err := os.Create(*out)
 	if err != nil {
-		log.Fatalf("[ERROR] create output: %v", err)
+		log.Fatalf("create output: %v", err)
 	}
 	defer file.Close()
 	client := &http.Client{Timeout: 4 * time.Minute, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
@@ -141,7 +141,7 @@ func main() {
 			fmt.Fprintf(file, "as %s · %s · %d rounds · %d in (%d cached) · %d out · %s\n\n%s\n\n", shown, strings.Join(r.Tools, ", "), r.Usage.Rounds, r.Usage.Input, r.Usage.Cached, r.Usage.Output, r.Took.Round(100*time.Millisecond), strings.TrimSpace(r.Text))
 		}
 		if err := file.Sync(); err != nil {
-			log.Fatalf("[ERROR] write output: %v", err)
+			log.Fatalf("write output: %v", err)
 		}
 		status := "ok"
 		if r.Err != "" {
@@ -157,11 +157,11 @@ func ask(client *http.Client, base, cookie, conversation, message string) result
 	started := time.Now()
 	body, err := json.Marshal(map[string]any{"conversation": conversation, "message": message})
 	if err != nil {
-		log.Fatalf("[ERROR] encode request: %v", err)
+		log.Fatalf("encode request: %v", err)
 	}
 	req, err := http.NewRequest(http.MethodPost, base+"/api/ask/chat", bytes.NewReader(body))
 	if err != nil {
-		log.Fatalf("[ERROR] build request: %v", err)
+		log.Fatalf("build request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Cookie", cookie)

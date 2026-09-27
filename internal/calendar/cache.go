@@ -125,7 +125,7 @@ func resolveImages(ctx context.Context, images ImageChecker, model *Model) {
 		names = append(names, name)
 	}
 	if err := images.Prefetch(ctx, names); err != nil {
-		slog.Error("[ERROR] calendar: prefetch images", "error", err)
+		slog.Error("calendar: prefetch images", "error", err)
 	}
 	for i := range model.Tags {
 		t := &model.Tags[i]
@@ -134,7 +134,7 @@ func resolveImages(ctx context.Context, images ImageChecker, model *Model) {
 		}
 		found, err := images.Has(t.Image)
 		if err != nil {
-			slog.Error("[ERROR] calendar: tag image", "tag", t.Name, "image", t.Image, "error", err)
+			slog.Error("calendar: tag image", "tag", t.Name, "image", t.Image, "error", err)
 		} else if !found {
 			slog.Warn("calendar: tag image does not exist", "tag", t.Name, "image", t.Image)
 		} else {
@@ -144,7 +144,7 @@ func resolveImages(ctx context.Context, images ImageChecker, model *Model) {
 	for what, name := range pictures {
 		found, err := images.Has(name)
 		if err != nil {
-			slog.Error("[ERROR] calendar: picture", "of", what, "image", name, "error", err)
+			slog.Error("calendar: picture", "of", what, "image", name, "error", err)
 		} else if !found {
 			slog.Warn("calendar: picture does not exist", "of", what, "image", name)
 		}

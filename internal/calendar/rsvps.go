@@ -51,6 +51,6 @@ func (a app) rsvps(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(struct {
 		Waiting []RSVP `json:"waiting"`
 	}{a.waiting(auth.Email(r))}); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode rsvps", "error", err)
+		slog.ErrorContext(r.Context(), "encode rsvps", "error", err)
 	}
 }

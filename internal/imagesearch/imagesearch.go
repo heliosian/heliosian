@@ -161,13 +161,13 @@ func (s Search) store(w http.ResponseWriter, r *http.Request, folder, mimeType s
 	sum := sha256.Sum256(content)
 	name := hex.EncodeToString(sum[:]) + extensions[mimeType]
 	if err := s.Stock.store.Put(folder, name, mimeType, content); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] store image", "folder", folder, "error", err)
+		slog.ErrorContext(r.Context(), "store image", "folder", folder, "error", err)
 		http.Error(w, "could not store the image", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]string{"name": folder + "/" + name}); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode image name", "error", err)
+		slog.ErrorContext(r.Context(), "encode image name", "error", err)
 	}
 }
 
@@ -284,12 +284,12 @@ func (st *Stock) prefetch(results []result, userAgent string) {
 			err = st.store.Write(ctx, recordName(res.hit.ID), "application/json", body)
 		}
 		if err != nil {
-			slog.Error("[ERROR] keep a search result", "id", res.hit.ID, "error", err)
+			slog.Error("keep a search result", "id", res.hit.ID, "error", err)
 		}
 	})
 	st.each(results, func(res result) {
 		if err := st.thumbnail(ctx, res.hit.ID, userAgent); err != nil {
-			slog.Error("[ERROR] prefetch a thumbnail", "id", res.hit.ID, "error", err)
+			slog.Error("prefetch a thumbnail", "id", res.hit.ID, "error", err)
 		}
 	})
 }
@@ -563,13 +563,13 @@ func (s Search) serveThumb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] stock thumbnail", "id", id, "error", err)
+		slog.ErrorContext(r.Context(), "stock thumbnail", "id", id, "error", err)
 		http.Error(w, "could not fetch that picture", http.StatusBadGateway)
 		return
 	}
 	content, mimeType, err := s.Stock.store.Read(r.Context(), thumbName(id))
 	if err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] stock thumbnail", "id", id, "error", err)
+		slog.ErrorContext(r.Context(), "stock thumbnail", "id", id, "error", err)
 		http.Error(w, "could not read that picture", http.StatusInternalServerError)
 		return
 	}
@@ -609,12 +609,12 @@ func (s Search) serveImport(w http.ResponseWriter, r *http.Request, folder strin
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		case err != nil:
-			slog.ErrorContext(ctx, "[ERROR] stock image", "id", body.ID, "error", err)
+			slog.ErrorContext(ctx, "stock image", "id", body.ID, "error", err)
 			http.Error(w, "could not fetch that image", http.StatusBadGateway)
 			return
 		}
 		if err := s.Stock.store.Write(ctx, imageName(body.ID), mimeType, content); err != nil {
-			slog.ErrorContext(ctx, "[ERROR] keep stock image", "id", body.ID, "error", err)
+			slog.ErrorContext(ctx, "keep stock image", "id", body.ID, "error", err)
 			http.Error(w, "could not store the image", http.StatusInternalServerError)
 			return
 		}
@@ -622,7 +622,7 @@ func (s Search) serveImport(w http.ResponseWriter, r *http.Request, folder strin
 		download = rec.Download
 	}
 	if err != nil {
-		slog.ErrorContext(ctx, "[ERROR] stock image", "id", body.ID, "error", err)
+		slog.ErrorContext(ctx, "stock image", "id", body.ID, "error", err)
 		http.Error(w, "could not read that image", http.StatusInternalServerError)
 		return
 	}

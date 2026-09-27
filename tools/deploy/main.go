@@ -18,7 +18,7 @@ func clientID() string {
 	}
 	raw, err := os.ReadFile("local/creds/oauth-client.json")
 	if err != nil {
-		log.Fatalf("[ERROR] read local/creds/oauth-client.json (or set GOOGLE_CLIENT_ID): %v", err)
+		log.Fatalf("read local/creds/oauth-client.json (or set GOOGLE_CLIENT_ID): %v", err)
 	}
 	var parsed struct {
 		Web struct {
@@ -26,7 +26,7 @@ func clientID() string {
 		} `json:"web"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil || parsed.Web.ClientID == "" {
-		log.Fatal("[ERROR] local/creds/oauth-client.json is not an oauth web client file")
+		log.Fatal("local/creds/oauth-client.json is not an oauth web client file")
 	}
 	return parsed.Web.ClientID
 }
@@ -55,7 +55,7 @@ const (
 func requiredEnv(name string) string {
 	value := os.Getenv(name)
 	if value == "" {
-		log.Fatalf("[ERROR] %s is required", name)
+		log.Fatalf("%s is required", name)
 	}
 	return value
 }
@@ -65,7 +65,7 @@ func gcloud(args ...string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		log.Fatalf("[ERROR] gcloud %s: %v", args[0], err)
+		log.Fatalf("gcloud %s: %v", args[0], err)
 	}
 }
 
@@ -75,7 +75,7 @@ func gcloudLines(args ...string) []string {
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {
-		log.Fatalf("[ERROR] gcloud %s: %v", args[0], err)
+		log.Fatalf("gcloud %s: %v", args[0], err)
 	}
 	return strings.Fields(string(out))
 }

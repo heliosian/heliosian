@@ -12,7 +12,7 @@ import (
 	"image/draw"
 	"image/png"
 	"io"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -60,7 +60,7 @@ type Options struct {
 
 var retryWaits = []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute}
 
-func fetch(address string) ([]byte, error) {
+func fetch(ctx context.Context, address string) ([]byte, error) {
 	client := &http.Client{Timeout: 60 * time.Second}
 	for attempt := 0; ; attempt++ {
 		resp, err := client.Get(address)
@@ -78,7 +78,7 @@ func fetch(address string) ([]byte, error) {
 		if resp.StatusCode != http.StatusTooManyRequests || attempt == len(retryWaits) {
 			return nil, fmt.Errorf("get %s: %s", address, resp.Status)
 		}
-		log.Printf("get %s: %s (retry-after %q), retrying in %s", address, resp.Status, resp.Header.Get("Retry-After"), retryWaits[attempt])
+		slog.WarnContext(ctx, "calendar import: fetch throttled", "url", address, "status", resp.Status, "retry-after", resp.Header.Get("Retry-After"), "wait", retryWaits[attempt])
 		time.Sleep(retryWaits[attempt])
 	}
 }
@@ -312,7 +312,7 @@ func ask(ctx context.Context, client anthropic.Client, system string, content []
 			text.WriteString(t.Text)
 		}
 	}
-	log.Printf("claude: %d input tokens (%d from cache), %d output tokens", resp.Usage.InputTokens+resp.Usage.CacheReadInputTokens+resp.Usage.CacheCreationInputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.OutputTokens)
+	slog.InfoContext(ctx, "calendar import: claude usage", "input", resp.Usage.InputTokens+resp.Usage.CacheReadInputTokens+resp.Usage.CacheCreationInputTokens, "cached", resp.Usage.CacheReadInputTokens, "output", resp.Usage.OutputTokens)
 	if err := json.Unmarshal([]byte(text.String()), out); err != nil {
 		return "", fmt.Errorf("decode claude's answer: %w: %s", err, text.String())
 	}
@@ -625,7 +625,7 @@ func extractLegend(ctx context.Context, client anthropic.Client, page anthropic.
 			return nil, fmt.Errorf("legend: bad or repeated wording %q", e.Label)
 		}
 		seen[e.Label] = true
-		log.Printf("pdf: legend %s %q means %s", e.Color, e.Label, e.DayType)
+		slog.InfoContext(ctx, "calendar import: pdf legend", "color", e.Color, "label", e.Label, "day type", e.DayType)
 	}
 	return out.Legend, nil
 }
@@ -706,11 +706,11 @@ func extractMonth(ctx context.Context, client anthropic.Client, document anthrop
 	for day := 1; day <= last; day++ {
 		if meaning(readings[0][day]) != meaning(readings[1][day]) {
 			disputed = append(disputed, day)
-			log.Printf("  [WARN] %s %d read as %q and as %q", name, day, readings[0][day], readings[1][day])
+			slog.WarnContext(ctx, "calendar import: pdf readings differ", "month", name, "day", day, "first", readings[0][day], "second", readings[1][day])
 		}
 	}
 	if len(disputed) > 0 {
-		log.Printf("  [WARN] %s: the two readings differ on %d days; reading a third time", name, len(disputed))
+		slog.WarnContext(ctx, "calendar import: reading the month a third time", "month", name, "disputed", len(disputed))
 		third, err := read()
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
@@ -744,7 +744,7 @@ func extractMonth(ctx context.Context, client anthropic.Client, document anthrop
 			DayType: chosen,
 		})
 	}
-	log.Printf("pdf: %s has %d filled cells from %d readings", name, len(days), len(readings))
+	slog.InfoContext(ctx, "calendar import: pdf month read", "month", name, "filled", len(days), "readings", len(readings))
 	return days, nil
 }
 
@@ -800,7 +800,7 @@ func extractEntries(ctx context.Context, client anthropic.Client, pdf []byte, ro
 		if attempt == 2 {
 			return out, err
 		}
-		log.Printf("  [WARN] %v; asking again", err)
+		slog.WarnContext(ctx, "calendar import: asking for the important dates again", "error", err)
 	}
 }
 
@@ -815,7 +815,7 @@ func extractPDF(ctx context.Context, client anthropic.Client, pdf []byte, roster
 		return pdfExtraction{}, err
 	}
 	for i, rect := range rects {
-		log.Printf("pdf: grid %d at %v", i+1, rect)
+		slog.InfoContext(ctx, "calendar import: pdf grid", "grid", i+1, "rect", rect.String())
 	}
 	pageBlock, err := imageBlock(page)
 	if err != nil {
@@ -859,14 +859,14 @@ func readPDF(ctx context.Context, client anthropic.Client, pdf []byte, hash stri
 	if err != nil {
 		return nil, "", err
 	}
-	rows, err := pdfRows(extraction, hash, roster)
+	rows, err := pdfRows(ctx, extraction, hash, roster)
 	if err != nil {
 		return nil, "", err
 	}
 	return rows, extraction.Year, nil
 }
 
-func pdfRows(extraction pdfExtraction, hash string, roster calendar.Roster) ([]map[string]string, error) {
+func pdfRows(ctx context.Context, extraction pdfExtraction, hash string, roster calendar.Roster) ([]map[string]string, error) {
 	yearForm := regexp.MustCompile(`^(\d{4})-(\d{4})$`)
 	match := yearForm.FindStringSubmatch(extraction.Year)
 	if match == nil {
@@ -887,7 +887,7 @@ func pdfRows(extraction pdfExtraction, hash string, roster calendar.Roster) ([]m
 		}
 		entries = append(entries, pdfEntry{Title: s.Legend, Start: s.Date, End: s.Date, DayType: s.DayType, Classrooms: roster.Names(), Marker: noMarker})
 	}
-	log.Printf("pdf: %d listed entries, %d shaded days", len(extraction.Entries), len(extraction.Shaded))
+	slog.InfoContext(ctx, "calendar import: pdf extracted", "listed", len(extraction.Entries), "shaded", len(extraction.Shaded))
 	for _, e := range entries {
 		if len(e.Classrooms) == 0 {
 			return nil, fmt.Errorf("entry %q names no classrooms", e.Title)
@@ -1042,7 +1042,7 @@ func enrich(ctx context.Context, client anthropic.Client, inputs []enrichInput, 
 		if attempt == 2 {
 			return nil, err
 		}
-		log.Printf("  [WARN] %v; asking again", err)
+		slog.WarnContext(ctx, "calendar import: asking for the classification again", "error", err)
 	}
 	ordered := []enrichOutput{}
 	for _, in := range inputs {
@@ -1063,12 +1063,12 @@ type run struct {
 	failures []string
 }
 
-func begin(opts Options) (*run, error) {
+func begin(ctx context.Context, opts Options) (*run, error) {
 	if opts.DryRun {
-		log.Printf("dry run: nothing will be written to the sheet")
+		slog.InfoContext(ctx, "calendar import: dry run, nothing will be written to the sheet")
 	}
 	roster := opts.Roster()
-	log.Printf("roster: %d classrooms", len(roster.Classrooms))
+	slog.InfoContext(ctx, "calendar import: roster", "classrooms", len(roster.Classrooms))
 	names := []string{calendar.GoogleTab, calendar.PDFTab, calendar.EnrichmentTab, calendar.DayTypesTab, calendar.TagsTab}
 	tabs, err := opts.Source.Tabs(context.Background(), "calendar", names, nil)
 	if err != nil {
@@ -1098,7 +1098,7 @@ func begin(opts Options) (*run, error) {
 }
 
 func RunGoogle(ctx context.Context, opts Options) error {
-	r, err := begin(opts)
+	r, err := begin(ctx, opts)
 	if err != nil {
 		return err
 	}
@@ -1107,7 +1107,7 @@ func RunGoogle(ctx context.Context, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("read the school calendar: %w", err)
 	}
-	log.Printf("feed: %d events from %s on", len(google), from.Format(calendar.DateFormat))
+	slog.InfoContext(ctx, "calendar import: feed read", "events", len(google), "from", from.Format(calendar.DateFormat))
 	inWindow := func(row map[string]string) bool {
 		start, err := time.ParseInLocation(calendar.DateFormat, row["Start"][:min(len(row["Start"]), len(calendar.DateFormat))], calendar.Location)
 		return err == nil && !start.Before(from) && start.Before(to)
@@ -1119,19 +1119,19 @@ func RunGoogle(ctx context.Context, opts Options) error {
 		}
 	}
 	enrichment := r.enrich(ctx, google, false)
-	log.Printf("rows: %d feed, %d enriched", len(rows), len(enrichment))
-	return r.write([]tabSync{
+	slog.InfoContext(ctx, "calendar import: rows", "feed", len(rows), "enriched", len(enrichment))
+	return r.write(ctx, []tabSync{
 		{calendar.GoogleTab, calendar.GoogleColumns, rows, r.tables[calendar.GoogleTab], "Key", true},
 		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables[calendar.EnrichmentTab], "Event ID", false},
 	})
 }
 
 func RunPDF(ctx context.Context, opts Options) error {
-	r, err := begin(opts)
+	r, err := begin(ctx, opts)
 	if err != nil {
 		return err
 	}
-	page, err := fetch(pageURL)
+	page, err := fetch(ctx, pageURL)
 	if err != nil {
 		return fmt.Errorf("fetch the school calendar page: %w", err)
 	}
@@ -1139,7 +1139,7 @@ func RunPDF(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
-	pdf, err := fetch(pdfURL)
+	pdf, err := fetch(ctx, pdfURL)
 	if err != nil {
 		return fmt.Errorf("fetch the year calendar pdf: %w", err)
 	}
@@ -1152,12 +1152,12 @@ func RunPDF(ctx context.Context, opts Options) error {
 		}
 	}
 	if known {
-		log.Printf("pdf: %s unchanged (%s), %d rows kept", pdfURL, pdfHash, len(r.tables[calendar.PDFTab]))
+		slog.InfoContext(ctx, "calendar import: pdf unchanged", "url", pdfURL, "hash", pdfHash, "kept", len(r.tables[calendar.PDFTab]))
 	} else {
-		log.Printf("pdf: %s is new (%s), reading it", pdfURL, pdfHash)
+		slog.InfoContext(ctx, "calendar import: pdf is new, reading it", "url", pdfURL, "hash", pdfHash)
 		fresh, year, err := readPDF(ctx, r.client, pdf, pdfHash, r.roster, r.dayTypes)
 		if err != nil {
-			log.Printf("[ERROR] read the year calendar pdf: %v; keeping the %d rows already there", err, len(r.tables[calendar.PDFTab]))
+			slog.ErrorContext(ctx, "calendar import: read the year calendar pdf, keeping the rows already there", "kept", len(r.tables[calendar.PDFTab]), "error", err)
 			r.failures = append(r.failures, "the year calendar pdf")
 		} else {
 			rows = []map[string]string{}
@@ -1167,12 +1167,12 @@ func RunPDF(ctx context.Context, opts Options) error {
 				}
 			}
 			rows = append(rows, fresh...)
-			log.Printf("pdf: %d entries for %s", len(fresh), year)
+			slog.InfoContext(ctx, "calendar import: pdf entries", "entries", len(fresh), "year", year)
 		}
 	}
 	enrichment := r.enrich(ctx, rows, true)
-	log.Printf("rows: %d pdf, %d enriched", len(rows), len(enrichment))
-	return r.write([]tabSync{
+	slog.InfoContext(ctx, "calendar import: rows", "pdf", len(rows), "enriched", len(enrichment))
+	return r.write(ctx, []tabSync{
 		{calendar.PDFTab, calendar.PDFColumns, rows, r.tables[calendar.PDFTab], "Key", true},
 		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables[calendar.EnrichmentTab], "Event ID", false},
 	})
@@ -1202,7 +1202,7 @@ func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []
 		existing[row["Event ID"]] = row
 	}
 	enrichment, pending, hashes := plan(existing, rows, vocabulary)
-	log.Printf("enrichment: %d rows current, %d events to classify", len(enrichment), len(pending))
+	slog.InfoContext(ctx, "calendar import: enrichment", "current", len(enrichment), "to classify", len(pending))
 	today := time.Now().In(calendar.Location).Format(calendar.DateFormat)
 	batches := [][]enrichInput{}
 	for start := 0; start < len(pending); start += batchSize {
@@ -1219,7 +1219,7 @@ func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []
 	wg.Wait()
 	for i, batch := range batches {
 		if errs[i] != nil {
-			log.Printf("[ERROR] classify events, batch %d of %d: %v", i+1, len(batches), errs[i])
+			slog.ErrorContext(ctx, "calendar import: classify events", "batch", i+1, "of", len(batches), "error", errs[i])
 			r.failures = append(r.failures, fmt.Sprintf("classification batch %d of %d", i+1, len(batches)))
 			continue
 		}
@@ -1236,7 +1236,7 @@ func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []
 			}
 			enrichment = append(enrichment, row)
 		}
-		log.Printf("enrichment: batch %d of %d classified %d events", i+1, len(batches), len(batch))
+		slog.InfoContext(ctx, "calendar import: batch classified", "batch", i+1, "of", len(batches), "events", len(batch))
 	}
 	byTag := map[string]int{}
 	for _, row := range enrichment {
@@ -1246,7 +1246,7 @@ func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []
 	}
 	for _, t := range r.tags {
 		if byTag[t.Name] > 0 {
-			log.Printf("  %s: %d", t.Name, byTag[t.Name])
+			slog.InfoContext(ctx, "calendar import: tag count", "tag", t.Name, "events", byTag[t.Name])
 		}
 	}
 	return enrichment
@@ -1261,15 +1261,15 @@ type tabSync struct {
 	mirror bool
 }
 
-func (r *run) write(tabs []tabSync) error {
+func (r *run) write(ctx context.Context, tabs []tabSync) error {
 	ops := []store.Op{}
 	for _, s := range tabs {
 		tabOps, added, changed, removed := syncOps(importer, s)
-		log.Printf("%s: %d rows added, %d changed, %d removed", s.tab, added, changed, removed)
+		slog.InfoContext(ctx, "calendar import: tab changes", "tab", s.tab, "added", added, "changed", changed, "removed", removed)
 		ops = append(ops, tabOps...)
 	}
 	if r.opts.DryRun {
-		log.Printf("dry run: %d row changes not committed", len(ops))
+		slog.InfoContext(ctx, "calendar import: dry run, row changes not committed", "changes", len(ops))
 	} else if err := r.opts.Cache.CommitAndWait(context.Background(), importer, ops...); err != nil {
 		return fmt.Errorf("commit the import: %w", err)
 	}

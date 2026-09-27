@@ -149,7 +149,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode calendar model", "error", err)
+		slog.ErrorContext(r.Context(), "encode calendar model", "error", err)
 	}
 }
 
@@ -520,7 +520,7 @@ func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
 		Text: text.String(), HTML: htm.String(),
 	})
 	if err != nil {
-		slog.ErrorContext(ctx, "[ERROR] calendar: tell admins", "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "calendar: tell admins", "event", e.ID, "error", err)
 		return
 	}
 	slog.InfoContext(ctx, "calendar: admins told", "event", e.ID, "to", len(admins))

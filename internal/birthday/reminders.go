@@ -97,11 +97,11 @@ func (a app) recordReminder(ctx context.Context, sv StaffView, kind, to string, 
 	actor := access.System(remindersActor)
 	ops, err := recordReminder(actor, sv, kind, to, today)
 	if err != nil {
-		slog.ErrorContext(ctx, "[ERROR] birthday: record reminder", "error", err)
+		slog.ErrorContext(ctx, "birthday: record reminder", "error", err)
 		return
 	}
 	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
-		slog.ErrorContext(ctx, "[ERROR] birthday: record reminder", "error", err)
+		slog.ErrorContext(ctx, "birthday: record reminder", "error", err)
 	}
 }
 

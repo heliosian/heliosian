@@ -25,7 +25,7 @@ func throttled(t *testing.T, refusals int) (*httptest.Server, *int) {
 func TestFetchWaitsOutThrottling(t *testing.T) {
 	retryWaits = []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond}
 	server, calls := throttled(t, 2)
-	body, err := fetch(server.URL)
+	body, err := fetch(t.Context(), server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestFetchWaitsOutThrottling(t *testing.T) {
 func TestFetchGivesUpAfterTheLastWait(t *testing.T) {
 	retryWaits = []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond}
 	server, calls := throttled(t, 10)
-	_, err := fetch(server.URL)
+	_, err := fetch(t.Context(), server.URL)
 	if err == nil {
 		t.Fatal("no error")
 	}
@@ -57,7 +57,7 @@ func TestFetchDoesNotRetryOtherFailures(t *testing.T) {
 		http.Error(w, "gone", http.StatusNotFound)
 	}))
 	t.Cleanup(server.Close)
-	_, err := fetch(server.URL)
+	_, err := fetch(t.Context(), server.URL)
 	if err == nil {
 		t.Fatal("no error")
 	}

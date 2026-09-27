@@ -122,7 +122,7 @@ func (q *Queue) refresh() {
 			return
 		}
 		if err != nil {
-			slog.Error("[ERROR] refresh", "error", err)
+			slog.Error("refresh", "error", err)
 			return
 		}
 		swaps = append(swaps, swap)

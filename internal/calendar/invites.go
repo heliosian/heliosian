@@ -578,7 +578,7 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode guest list", "error", err)
+		slog.ErrorContext(r.Context(), "encode guest list", "error", err)
 	}
 }
 
@@ -651,7 +651,7 @@ func (a app) invitePeople(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode guest picker", "error", err)
+		slog.ErrorContext(r.Context(), "encode guest picker", "error", err)
 	}
 }
 
@@ -750,7 +750,7 @@ func (a app) sendCohostNote(ctx context.Context, to, actor string, e *Event) {
 		HTML:    htm.String(),
 	})
 	if err != nil {
-		slog.ErrorContext(ctx, "[ERROR] calendar: send co-host note", "to", to, "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "calendar: send co-host note", "to", to, "event", e.ID, "error", err)
 		return
 	}
 	slog.InfoContext(ctx, "calendar: co-host told", "to", to, "event", e.ID)
@@ -948,7 +948,7 @@ func (a app) sendInvites(w http.ResponseWriter, r *http.Request) {
 
 func (a app) markSent(ctx context.Context, actor access.Actor, e *Event, emails []string) {
 	if err := a.cache.Commit(ctx, actor, a.sentOps(actor, e, emails)...); err != nil {
-		slog.ErrorContext(ctx, "[ERROR] calendar: mark invites sent", "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "calendar: mark invites sent", "event", e.ID, "error", err)
 	}
 }
 
@@ -958,7 +958,7 @@ func (a app) noteOpened(ctx context.Context, actor access.Actor, e *Event) {
 		return
 	}
 	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
-		slog.ErrorContext(ctx, "[ERROR] calendar: note opened", "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "calendar: note opened", "event", e.ID, "error", err)
 	}
 }
 
@@ -1208,7 +1208,7 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 		}}
 	}
 	if err := a.mail.Sender.Send(ctx, msg); err != nil {
-		slog.ErrorContext(ctx, "[ERROR] calendar: send invitation", "to", to, "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "calendar: send invitation", "to", to, "event", e.ID, "error", err)
 		return
 	}
 	slog.InfoContext(ctx, "calendar: invitation sent", "to", to, "event", e.ID, "kind", kind)
@@ -1427,7 +1427,7 @@ func (a app) sendMessage(ctx context.Context, to string, cc, replyTo []string, h
 	}
 	err := a.mail.Sender.Send(ctx, msg)
 	if err != nil {
-		slog.ErrorContext(ctx, "[ERROR] calendar: send message", "to", to, "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "calendar: send message", "to", to, "event", e.ID, "error", err)
 		return
 	}
 	slog.InfoContext(ctx, "calendar: message sent", "to", to, "event", e.ID)

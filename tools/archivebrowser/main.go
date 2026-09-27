@@ -101,11 +101,11 @@ func main() {
 	out := flag.String("out", "", "the folder the pages and documents are saved in")
 	flag.Parse()
 	if *start == "" || *prefix == "" || *selector == "" || *out == "" {
-		log.Fatal("[ERROR] --start, --prefix, --selector and --out are all required")
+		log.Fatal("--start, --prefix, --selector and --out are all required")
 	}
 	id, err := newTab()
 	if err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		log.Fatalf("%v", err)
 	}
 	allocCtx, _ := chromedp.NewRemoteAllocator(context.Background(), "http://localhost:9222")
 	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(id)))
@@ -113,7 +113,7 @@ func main() {
 	ctx, cancelTimeout := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancelTimeout()
 	if err := os.MkdirAll(*out, 0o755); err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		log.Fatalf("%v", err)
 	}
 
 	script := strings.Replace(renderScript, "SELECTOR", strconv.Quote(*selector), 1)
@@ -130,7 +130,7 @@ func main() {
 			return p.WithAwaitPromise(true)
 		}))
 		if err != nil {
-			log.Printf("[ERROR] %s: %v", address, err)
+			log.Printf("%s: %v", address, err)
 			failed++
 			continue
 		}
@@ -161,7 +161,7 @@ func main() {
 
 	downloads, err := newDownloader(ctx)
 	if err != nil {
-		log.Fatalf("[ERROR] downloads: %v", err)
+		log.Fatalf("downloads: %v", err)
 	}
 	defer downloads.close(ctx)
 	handled := map[string]bool{}
@@ -179,7 +179,7 @@ func main() {
 		}
 		result, err := fetch(ctx, downloads)
 		if err != nil {
-			log.Printf("[ERROR] %s: %v", doc.URL, err)
+			log.Printf("%s: %v", doc.URL, err)
 			failed++
 			continue
 		}
@@ -278,7 +278,7 @@ func newDownloader(ctx context.Context) (*downloader, error) {
 
 func (d *downloader) close(ctx context.Context) {
 	if err := chromedp.Run(ctx, browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorDefault)); err != nil {
-		log.Printf("[ERROR] restore the browser's downloads: %v", err)
+		log.Printf("restore the browser's downloads: %v", err)
 	}
 	os.RemoveAll(d.dir)
 }
@@ -442,11 +442,11 @@ func write(out, name string, doc Doc) {
 	doc.Fetched = time.Now().UTC().Format(time.RFC3339)
 	encoded, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		log.Fatalf("%v", err)
 	}
 	file := filepath.Join(out, name+".json")
 	if err := os.WriteFile(file, encoded, 0o644); err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		log.Fatalf("%v", err)
 	}
 	log.Printf("%q saved as %s", doc.Title, file)
 }

@@ -89,7 +89,7 @@ func (a app) deliveryEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	actor := access.System(deliveryActor)
 	if err := a.cache.CommitAndWait(r.Context(), actor, bounceOps(actor, email, reason)...); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] calendar: note bounce", "email", email, "error", err)
+		slog.ErrorContext(r.Context(), "calendar: note bounce", "email", email, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -149,7 +149,7 @@ func (a app) moveAddress(ctx context.Context, actor access.Actor, old, to, name 
 		return
 	}
 	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
-		slog.ErrorContext(ctx, "[ERROR] calendar: move address", "from", old, "to", to, "error", err)
+		slog.ErrorContext(ctx, "calendar: move address", "from", old, "to", to, "error", err)
 		return
 	}
 	for _, id := range resend {

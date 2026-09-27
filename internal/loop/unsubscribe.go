@@ -116,10 +116,10 @@ func (a app) commitSubscription(ctx context.Context, actor access.Actor, g Group
 		return err
 	}
 	if how == "" {
-		slog.InfoContext(ctx, "groups: resubscribed", "group", g.Name, "email", actor.Email)
+		slog.InfoContext(ctx, "loop:resubscribed", "group", g.Name, "email", actor.Email)
 		return nil
 	}
-	slog.InfoContext(ctx, "groups: unsubscribed", "group", g.Name, "email", actor.Email, "how", how)
+	slog.InfoContext(ctx, "loop:unsubscribed", "group", g.Name, "email", actor.Email, "how", how)
 	return nil
 }
 
@@ -164,15 +164,15 @@ func (a app) unsubscribeByMail(ctx context.Context, subject, sender string) {
 	}
 	name, email, ok := parseToken(a.mail.Key, tok)
 	if !ok {
-		slog.WarnContext(ctx, "groups: unsubscribe mail with no token", "sender", sender, "subject", subject)
+		slog.WarnContext(ctx, "loop:unsubscribe mail with no token", "sender", sender, "subject", subject)
 		return
 	}
 	g := a.cache.Model().Group(name)
 	if g == nil {
-		slog.WarnContext(ctx, "groups: unsubscribe mail for no group", "group", name, "email", email)
+		slog.WarnContext(ctx, "loop:unsubscribe mail for no group", "group", name, "email", email)
 		return
 	}
 	if err := a.unsubscribeAddress(ctx, *g, email, "mail from "+strings.ToLower(mail.AddressOf(sender))); err != nil {
-		slog.ErrorContext(ctx, "groups: unsubscribe by mail", "group", name, "email", email, "error", err)
+		slog.ErrorContext(ctx, "loop:unsubscribe by mail", "group", name, "email", email, "error", err)
 	}
 }

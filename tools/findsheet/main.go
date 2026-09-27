@@ -30,7 +30,7 @@ func main() {
 	svc, err := drive.NewService(context.Background(),
 		option.WithScopes(drive.DriveReadonlyScope))
 	if err != nil {
-		log.Fatalf("[ERROR] create drive client: %v", err)
+		log.Fatalf("create drive client: %v", err)
 	}
 	resp, err := svc.Files.List().
 		Q("mimeType = 'application/vnd.google-apps.spreadsheet'").
@@ -40,7 +40,7 @@ func main() {
 		Fields("files(id, name)").
 		Do()
 	if err != nil {
-		log.Fatalf("[ERROR] list spreadsheets: %v", err)
+		log.Fatalf("list spreadsheets: %v", err)
 	}
 	found := map[string]string{}
 	for _, f := range resp.Files {
@@ -50,14 +50,14 @@ func main() {
 			continue
 		}
 		if previous, dup := found[variable]; dup {
-			log.Fatalf("[ERROR] two spreadsheets named %q: %s and %s", f.Name, previous, f.Id)
+			log.Fatalf("two spreadsheets named %q: %s and %s", f.Name, previous, f.Id)
 		}
 		found[variable] = f.Id
 	}
 	for _, variable := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "BIRTHDAY_SHEET", "BIRTHDAY_SHARED_SHEET", "CALENDAR_SHEET", "CELEBRATE_SHEET", "CONFIG_SHEET", "GROUPS_SHEET", "ARTIFACTS_SHEET", "FEEDBACK_SHEET"} {
 		id, ok := found[variable]
 		if !ok {
-			log.Fatalf("[ERROR] no spreadsheet found for %s", variable)
+			log.Fatalf("no spreadsheet found for %s", variable)
 		}
 		fmt.Printf("export %s=%s\n", variable, id)
 	}

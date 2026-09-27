@@ -110,10 +110,10 @@ func (a app) discoverApps() {
 	actor := access.System("app discovery")
 	ops, found := a.cache.discover(actor)
 	for _, app := range found {
-		slog.Info("apps: found a new app, listed for nobody yet", "app", app.Key)
+		slog.Info("home:found a new app, listed for nobody yet", "app", app.Key)
 	}
 	if err := a.cache.Commit(context.Background(), actor, ops...); err != nil {
-		slog.Error("[ERROR] apps: discover apps", "error", err)
+		slog.Error("home:discover apps", "error", err)
 	}
 }
 
@@ -125,7 +125,7 @@ func RegisterSwitch(mux *http.ServeMux, cache *Cache) {
 		}{Apps: append([]App{homeApp()}, cache.AppList()...), Hidden: cache.HiddenApps(auth.Email(r))}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(view); err != nil {
-			slog.ErrorContext(r.Context(), "[ERROR] encode app switch", "error", err)
+			slog.ErrorContext(r.Context(), "encode app switch", "error", err)
 		}
 	})
 }
@@ -214,7 +214,7 @@ func (a app) calendar(w http.ResponseWriter, r *http.Request) {
 	email := a.actor(r).Email
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.month(email, r.URL.Query().Get("month"), r.URL.Query().Get("calendar"))); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode apps calendar", "error", err)
+		slog.ErrorContext(r.Context(), "encode apps calendar", "error", err)
 	}
 }
 
@@ -243,7 +243,7 @@ func (a app) upcomingUnder(w http.ResponseWriter, r *http.Request) {
 	email := a.actor(r).Email
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.upcoming(email, r.URL.Query().Get("calendar"))); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode upcoming", "error", err)
+		slog.ErrorContext(r.Context(), "encode upcoming", "error", err)
 	}
 }
 
@@ -323,7 +323,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	view.Alerts.Stale, view.Alerts.Privacy = a.alerts(email)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode apps model", "error", err)
+		slog.ErrorContext(r.Context(), "encode apps model", "error", err)
 	}
 }
 
@@ -478,7 +478,7 @@ func (a app) audienceOptions(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(filter.OptionsFor(a.directory.Sources(), actor.Email)); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode audience options", "error", err)
+		slog.ErrorContext(r.Context(), "encode audience options", "error", err)
 	}
 }
 
@@ -514,7 +514,7 @@ func (a app) audiencePreview(w http.ResponseWriter, r *http.Request) {
 	}{Count: len(members), Names: names[:min(len(names), 12)], RuleCounts: filter.RuleCounts(list, sources)}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode audience preview", "error", err)
+		slog.ErrorContext(r.Context(), "encode audience preview", "error", err)
 	}
 }
 
@@ -532,7 +532,7 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "apps: saved link", "action", action, "title", title)
+	slog.InfoContext(r.Context(), "home:saved link", "action", action, "title", title)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -552,7 +552,7 @@ func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "apps: deleted link", "title", body.Title)
+	slog.InfoContext(r.Context(), "home:deleted link", "title", body.Title)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -570,7 +570,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "apps: saved category", "action", action, "title", title)
+	slog.InfoContext(r.Context(), "home:saved category", "action", action, "title", title)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -590,7 +590,7 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "apps: reordered categories", "count", len(body.Titles))
+	slog.InfoContext(r.Context(), "home:reordered categories", "count", len(body.Titles))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -615,7 +615,7 @@ func (a app) moveLink(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "apps: moved link", "title", body.Title, "by", body.By)
+	slog.InfoContext(r.Context(), "home:moved link", "title", body.Title, "by", body.By)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -635,7 +635,7 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "apps: deleted category", "title", body.Title)
+	slog.InfoContext(r.Context(), "home:deleted category", "title", body.Title)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -653,7 +653,7 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 	}{Email: actor.Email, Admins: a.cache.Admins(), Apps: a.cache.AppVisibilities(), People: a.people(), IsSuperAdmin: a.cache.IsSuperAdmin(actor.Email)}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode apps admin state", "error", err)
+		slog.ErrorContext(r.Context(), "encode apps admin state", "error", err)
 	}
 }
 
@@ -673,7 +673,7 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "apps: set the admin list", "admins", admins)
+	slog.InfoContext(r.Context(), "home:set the admin list", "admins", admins)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -691,7 +691,7 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "apps: set an app's visibility", "app", key, "visibility", v.Mode, "emails", len(v.Emails), "name", v.Name, "tagline", v.Tagline)
+	slog.InfoContext(r.Context(), "home:set an app's visibility", "app", key, "visibility", v.Mode, "emails", len(v.Emails), "name", v.Name, "tagline", v.Tagline)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -711,6 +711,6 @@ func (a app) setAppOrder(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "apps: set the apps' order", "apps", body.Apps)
+	slog.InfoContext(r.Context(), "home:set the apps' order", "apps", body.Apps)
 	w.WriteHeader(http.StatusNoContent)
 }

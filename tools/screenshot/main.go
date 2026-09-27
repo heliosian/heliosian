@@ -23,13 +23,13 @@ func main() {
 	flag.Parse()
 	png, err := capture.PNG(capture.Options{URL: *url, Wait: *wait, Remote: *remote, Cookie: *cookie, Click: *click, Settle: *settle, Width: *width, Height: *height})
 	if err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		log.Fatalf("%v", err)
 	}
 	if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
-		log.Fatalf("[ERROR] create output dir: %v", err)
+		log.Fatalf("create output dir: %v", err)
 	}
 	if err := os.WriteFile(*out, png, 0o644); err != nil {
-		log.Fatalf("[ERROR] write %s: %v", *out, err)
+		log.Fatalf("write %s: %v", *out, err)
 	}
 	log.Printf("captured %s to %s", *url, *out)
 }

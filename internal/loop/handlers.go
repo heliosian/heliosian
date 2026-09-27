@@ -282,7 +282,7 @@ func (a app) sendView(w http.ResponseWriter, r *http.Request, g Group, as access
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode group", "error", err)
+		slog.ErrorContext(r.Context(), "encode group", "error", err)
 	}
 }
 
@@ -424,11 +424,11 @@ func (a app) describe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "groups: describe", "actor", email, "title", body.Title, "error", err)
+		slog.ErrorContext(r.Context(), "loop:describe", "actor", email, "title", body.Title, "error", err)
 		http.Error(w, "could not write a description right now", http.StatusBadGateway)
 		return
 	}
-	slog.InfoContext(r.Context(), "groups: described", "actor", email, "title", body.Title, "members", len(members))
+	slog.InfoContext(r.Context(), "loop:described", "actor", email, "title", body.Title, "members", len(members))
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]string{"description": description}); err != nil {
 		slog.ErrorContext(r.Context(), "encode groups description", "error", err)
@@ -460,7 +460,7 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility, "posting", g.Posting, "replying", g.Replying)
+	slog.InfoContext(r.Context(), "loop:saved group", "action", action, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility, "posting", g.Posting, "replying", g.Replying)
 	a.sendView(w, r, *a.cache.Model().Group(g.Name), actor)
 }
 
@@ -481,9 +481,9 @@ func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.mail.Documents.Remove(r.Context(), actor, name); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] groups: filed mail not removed", "group", name, "error", err)
+		slog.ErrorContext(r.Context(), "loop:filed mail not removed", "group", name, "error", err)
 	}
-	slog.InfoContext(r.Context(), "groups: deleted group", "group", name)
+	slog.InfoContext(r.Context(), "loop:deleted group", "group", name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -529,7 +529,7 @@ func (a app) archive(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "groups: archived", "group", g.Name, "email", actor.Email, "archived", body.Archived)
+	slog.InfoContext(r.Context(), "loop:archived", "group", g.Name, "email", actor.Email, "archived", body.Archived)
 	a.sendView(w, r, *a.cache.Model().Group(g.Name), actor)
 }
 
@@ -566,6 +566,6 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "groups: set the admin list", "admins", admins)
+	slog.InfoContext(r.Context(), "loop:set the admin list", "admins", admins)
 	w.WriteHeader(http.StatusNoContent)
 }

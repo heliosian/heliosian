@@ -210,19 +210,19 @@ func main() {
 	for _, s := range spreadsheets {
 		id := os.Getenv(s.env)
 		if id == "" {
-			log.Fatalf("[ERROR] %s is required", s.env)
+			log.Fatalf("%s is required", s.env)
 		}
 		ids[s.layout] = id
 	}
 	source, err := data.NewSheet(ids)
 	if err != nil {
-		log.Fatalf("[ERROR] sheet source: %v", err)
+		log.Fatalf("sheet source: %v", err)
 	}
 	tabs, columns := 0, 0
 	for _, s := range spreadsheets {
 		created, added, err := applyLayout(source, s.layout)
 		if err != nil {
-			log.Fatalf("[ERROR] %s: %v", s.env, err)
+			log.Fatalf("%s: %v", s.env, err)
 		}
 		tabs += created
 		columns += added

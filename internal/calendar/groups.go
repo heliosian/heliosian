@@ -189,7 +189,7 @@ func (a app) groupOptions(w http.ResponseWriter, r *http.Request) {
 	actor, _ := a.who(r)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(filter.OptionsFor(a.sources(), actor)); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode group options", "error", err)
+		slog.ErrorContext(r.Context(), "encode group options", "error", err)
 	}
 }
 
@@ -228,7 +228,7 @@ func (a app) groupPreview(w http.ResponseWriter, r *http.Request) {
 	}{Count: len(members), Names: names[:min(len(names), 12)]}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode group preview", "error", err)
+		slog.ErrorContext(r.Context(), "encode group preview", "error", err)
 	}
 }
 
@@ -309,7 +309,7 @@ func (a app) fill(ctx context.Context, actor access.Actor, e *Event, g InviteGro
 		return 0
 	}
 	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
-		slog.ErrorContext(ctx, "[ERROR] calendar: fill group", "event", e.ID, "group", g.ID, "error", err)
+		slog.ErrorContext(ctx, "calendar: fill group", "event", e.ID, "group", g.ID, "error", err)
 		return 0
 	}
 	if g.Auto && g.Sent != "" {

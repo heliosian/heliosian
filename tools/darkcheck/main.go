@@ -182,7 +182,7 @@ func main() {
 	minRatio := flag.Float64("min", 3, "report words whose contrast is under this, or under what their size needs if lower")
 	flag.Parse()
 	if *urls == "" {
-		log.Fatal("[ERROR] --url is required")
+		log.Fatal("--url is required")
 	}
 	ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("ignore-certificate-errors", true))...)
 	defer cancel()
@@ -194,7 +194,7 @@ func main() {
 		}
 		rep, err := check(ctx, u, *cookie, *click, *wait, *settle, *width, *height)
 		if err != nil {
-			log.Printf("[ERROR] %s: %v", u, err)
+			log.Printf("%s: %v", u, err)
 			failed++
 			continue
 		}
@@ -202,7 +202,7 @@ func main() {
 		if *compare {
 			day, err = check(ctx, u, "heliosian-mode=light", *click, *wait, *settle, *width, *height)
 			if err != nil {
-				log.Printf("[ERROR] %s by day: %v", u, err)
+				log.Printf("%s by day: %v", u, err)
 				failed++
 				continue
 			}
@@ -210,7 +210,7 @@ func main() {
 		print(u, rep, day, *showLight, *minRatio)
 	}
 	if failed > 0 {
-		log.Fatalf("[ERROR] %d page(s) could not be read", failed)
+		log.Fatalf("%d page(s) could not be read", failed)
 	}
 }
 

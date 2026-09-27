@@ -94,7 +94,7 @@ func (in *Filer) hook(w http.ResponseWriter, r *http.Request) {
 	in.holder.Hold()
 	defer in.holder.Release()
 	if err := in.file(r.Context(), mailActor, m); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] artifacts: mail not imported", "id", m.MessageID, "subject", m.Subject, "error", err)
+		slog.ErrorContext(r.Context(), "artifacts: mail not imported", "id", m.MessageID, "subject", m.Subject, "error", err)
 		http.Error(w, "not imported", http.StatusInternalServerError)
 		return
 	}

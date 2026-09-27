@@ -29,7 +29,7 @@ var actor = access.System("importartifacts")
 func requiredEnv(name string) string {
 	value := os.Getenv(name)
 	if value == "" {
-		log.Fatalf("[ERROR] %s is required", name)
+		log.Fatalf("%s is required", name)
 	}
 	return value
 }
@@ -41,31 +41,31 @@ func main() {
 	flag.Parse()
 	files := flag.Args()
 	if len(files) == 0 {
-		log.Fatal("[ERROR] name the files to import: go run ./tools/importartifacts local/imports/mail/*.json local/imports/site/*.json")
+		log.Fatal("name the files to import: go run ./tools/importartifacts local/imports/mail/*.json local/imports/site/*.json")
 	}
 	if !*dryRun && !*permitted {
-		log.Fatal("[ERROR] this run spends money embedding; pass --i-have-user-permission-to-spend-money only when the user has said to run it")
+		log.Fatal("this run spends money embedding; pass --i-have-user-permission-to-spend-money only when the user has said to run it")
 	}
 	sort.Strings(files)
 	source, err := data.NewSheet(map[string]string{"artifacts": requiredEnv("ARTIFACTS_SHEET")})
 	if err != nil {
-		log.Fatalf("[ERROR] sheet source: %v", err)
+		log.Fatalf("sheet source: %v", err)
 	}
 	embedder, err := artifacts.NewVertex()
 	if err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		log.Fatalf("%v", err)
 	}
 	reader, err := blob.New("local/cache/blobs")
 	if err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		log.Fatalf("%v", err)
 	}
 	cache, err := artifacts.NewCache(source, source, reader, embedder, store.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] load the documents on file: %v", err)
+		log.Fatalf("load the documents on file: %v", err)
 	}
 	uploader, err := blob.NewUploader()
 	if err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		log.Fatalf("%v", err)
 	}
 	objects := map[string]string{}
 	issues := map[string]string{}
@@ -89,7 +89,7 @@ func main() {
 		}
 		saved, err := artifacts.ReadSaved(file)
 		if err != nil {
-			log.Printf("[ERROR] %v", err)
+			log.Printf("%v", err)
 			failed++
 			continue
 		}
@@ -109,7 +109,7 @@ func main() {
 			continue
 		}
 		if err != nil {
-			log.Printf("[ERROR] %s: %v", filepath.Base(file), err)
+			log.Printf("%s: %v", filepath.Base(file), err)
 			failed++
 			continue
 		}
@@ -171,11 +171,11 @@ func main() {
 	ctx := context.Background()
 	if len(drops) > 0 {
 		if err := cache.CommitAndWait(ctx, actor, drops...); err != nil {
-			log.Fatalf("[ERROR] drop the documents with no words: %v", err)
+			log.Fatalf("drop the documents with no words: %v", err)
 		}
 		for _, object := range dropped {
 			if err := uploader.Remove(object); err != nil {
-				log.Fatalf("[ERROR] drop %s: %v", object, err)
+				log.Fatalf("drop %s: %v", object, err)
 			}
 		}
 	}
@@ -184,10 +184,10 @@ func main() {
 		end := min(start+batch, len(pending))
 		group := pending[start:end]
 		if err := embedAndStore(cache, embedder, uploader, group); err != nil {
-			log.Fatalf("[ERROR] %v", err)
+			log.Fatalf("%v", err)
 		}
 		if err := record(ctx, cache, uploader, group); err != nil {
-			log.Fatalf("[ERROR] %v", err)
+			log.Fatalf("%v", err)
 		}
 		imported += len(group)
 		log.Printf("imported %d of %d (%.1fM characters embedded)", imported, len(pending), float64(artifacts.Billed)/1e6)

@@ -49,7 +49,7 @@ func (l *links) url(key string) (string, bool) {
 	defer l.mu.Unlock()
 	url, ok := l.urls["L"+key]
 	if !ok {
-		slog.Error("[ERROR] ask: unknown link key", "key", "L"+key)
+		slog.Error("ask: unknown link key", "key", "L"+key)
 	}
 	return url, ok
 }
@@ -74,7 +74,7 @@ func (l *links) expand(text string) string {
 		if l.known(m[2]) {
 			return match
 		}
-		slog.Error("[ERROR] ask: dropped a link the model made up", "target", m[2])
+		slog.Error("ask: dropped a link the model made up", "target", m[2])
 		return m[1]
 	})
 	return address.ReplaceAllStringFunc(text, func(match string) string {
@@ -82,7 +82,7 @@ func (l *links) expand(text string) string {
 		if l.known(url) {
 			return match
 		}
-		slog.Error("[ERROR] ask: dropped an address the model made up", "target", url)
+		slog.Error("ask: dropped an address the model made up", "target", url)
 		return match[len(url):]
 	})
 }

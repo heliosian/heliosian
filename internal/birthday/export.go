@@ -60,7 +60,7 @@ func (a app) exportLoop() {
 		}
 		n, err := a.weeklyExport(ctx, issue)
 		if err != nil {
-			slog.ErrorContext(ctx, "[ERROR] birthday: weekly copy to the shared sheet", "issue", issue, "copied", n, "error", err)
+			slog.ErrorContext(ctx, "birthday: weekly copy to the shared sheet", "issue", issue, "copied", n, "error", err)
 			continue
 		}
 		slog.InfoContext(ctx, "birthday: weekly copy to the shared sheet", "issue", issue, "copied", n)
@@ -150,7 +150,7 @@ func (a app) shareIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.commitExport(r.Context(), actor, rows, marks); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] birthday: copy to the shared sheet", "actor", actor.Email, "issue", issue, "copied", 0, "error", err)
+		slog.ErrorContext(r.Context(), "birthday: copy to the shared sheet", "actor", actor.Email, "issue", issue, "copied", 0, "error", err)
 		http.Error(w, fmt.Sprintf("copied 0, then: %v", err), http.StatusBadGateway)
 		return
 	}

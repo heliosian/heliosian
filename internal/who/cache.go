@@ -155,7 +155,7 @@ func (c *Cache) geocode(geocoder Geocoder) {
 			for address := range jobs {
 				point, err := geocoder.Lookup(address)
 				if err != nil {
-					slog.Error("[ERROR] geocode", "error", err)
+					slog.Error("geocode", "error", err)
 					continue
 				}
 				mu.Lock()
@@ -172,7 +172,7 @@ func (c *Cache) geocode(geocoder Geocoder) {
 	actor := access.System("geocoder")
 	ops := model.locate(actor, found)
 	if err := c.Commit(context.Background(), actor, ops...); err != nil {
-		slog.Error("[ERROR] record geocoded addresses", "error", err)
+		slog.Error("record geocoded addresses", "error", err)
 	}
 	slog.Info("geocoded family addresses", "looked up", len(missing), "found", len(ops), "took", time.Since(start).Round(time.Millisecond))
 }

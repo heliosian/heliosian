@@ -11,10 +11,10 @@ import (
 func main() {
 	profile, err := filepath.Abs("local/capture-profile")
 	if err != nil {
-		log.Fatalf("[ERROR] resolve profile dir: %v", err)
+		log.Fatalf("resolve profile dir: %v", err)
 	}
 	if err := os.MkdirAll(profile, 0o700); err != nil {
-		log.Fatalf("[ERROR] create profile dir: %v", err)
+		log.Fatalf("create profile dir: %v", err)
 	}
 	cmd := exec.Command("open", "-na", "Google Chrome", "--args",
 		"--user-data-dir="+profile,
@@ -22,7 +22,7 @@ func main() {
 		"--no-first-run",
 		"--no-default-browser-check")
 	if err := cmd.Run(); err != nil {
-		log.Fatalf("[ERROR] launch chrome: %v", err)
+		log.Fatalf("launch chrome: %v", err)
 	}
 	log.Printf("capture browser running, devtools on http://localhost:9222, profile in %s", profile)
 }

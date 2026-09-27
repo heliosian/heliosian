@@ -199,12 +199,12 @@ func (b *Book) write(writes []Op, log []Row) {
 		run := batch(writes)
 		writes = writes[len(run):]
 		if err := b.put(run); err != nil {
-			logging.Fatal("[ERROR] write", "app", b.app, "tab", run[0].tab, "error", err)
+			logging.Fatal("write", "app", b.app, "tab", run[0].tab, "error", err)
 		}
 	}
 	if len(log) > 0 {
 		if err := b.writer.Insert(b.app, ChangeLogTab, log); err != nil {
-			logging.Fatal("[ERROR] write the change log", "app", b.app, "error", err)
+			logging.Fatal("write the change log", "app", b.app, "error", err)
 		}
 	}
 }

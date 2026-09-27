@@ -27,11 +27,11 @@ func main() {
 	client := &http.Client{Timeout: 30 * time.Second}
 	site, err := url.Parse(artifacts.Site)
 	if err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		log.Fatalf("%v", err)
 	}
 	body, err := fetch(client, artifacts.Site+"/fs/pages/sitemap")
 	if err != nil {
-		log.Fatalf("[ERROR] sitemap: %v", err)
+		log.Fatalf("sitemap: %v", err)
 	}
 	var sitemap struct {
 		URLs []struct {
@@ -39,10 +39,10 @@ func main() {
 		} `xml:"url"`
 	}
 	if err := xml.Unmarshal(body, &sitemap); err != nil {
-		log.Fatalf("[ERROR] sitemap: %v", err)
+		log.Fatalf("sitemap: %v", err)
 	}
 	if err := os.MkdirAll(out, 0o755); err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		log.Fatalf("%v", err)
 	}
 	log.Printf("%d pages in the sitemap", len(sitemap.URLs))
 	saved, excluded, away, failed := 0, 0, 0, 0
@@ -60,14 +60,14 @@ func main() {
 		fetched = true
 		resp, err := get(client, loc)
 		if err != nil {
-			log.Printf("[ERROR] %s: %v", loc, err)
+			log.Printf("%s: %v", loc, err)
 			failed++
 			continue
 		}
 		page, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			log.Printf("[ERROR] %s: %v", loc, err)
+			log.Printf("%s: %v", loc, err)
 			failed++
 			continue
 		}
@@ -78,7 +78,7 @@ func main() {
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
-			log.Printf("[ERROR] %s: %s", loc, resp.Status)
+			log.Printf("%s: %s", loc, resp.Status)
 			failed++
 			continue
 		}
@@ -94,11 +94,11 @@ func main() {
 			HTML:    string(page),
 		}, "", "  ")
 		if err != nil {
-			log.Fatalf("[ERROR] %v", err)
+			log.Fatalf("%v", err)
 		}
 		file := filepath.Join(out, fileName(final)+".json")
 		if err := os.WriteFile(file, encoded, 0o644); err != nil {
-			log.Fatalf("[ERROR] %v", err)
+			log.Fatalf("%v", err)
 		}
 		log.Printf("%s: saved as %s", loc, file)
 		saved++

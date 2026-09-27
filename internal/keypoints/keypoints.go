@@ -251,7 +251,7 @@ func Pass(ctx context.Context, cache *artifacts.Cache, s Summarizer, school Scho
 			audience = strings.Join(named, ", ")
 		}
 		if err := cache.SetPoints(ctx, access.System("keypoints"), d.Key, reading.Points, audience, now.Format("2006-01-02")); err != nil {
-			slog.ErrorContext(ctx, "[ERROR] keypoints: write the points", "error", err, "key", d.Key)
+			slog.ErrorContext(ctx, "keypoints: write the points", "error", err, "key", d.Key)
 			return written
 		}
 		written++

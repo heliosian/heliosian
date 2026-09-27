@@ -228,7 +228,7 @@ func (a *Auth) splash(w http.ResponseWriter, r *http.Request) {
 	}
 	page, err := template.ParseFiles(loginTemplate)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] read the login page", "error", err)
+		slog.ErrorContext(r.Context(), "read the login page", "error", err)
 		http.Error(w, "login page unavailable", http.StatusInternalServerError)
 		return
 	}
@@ -237,7 +237,7 @@ func (a *Auth) splash(w http.ResponseWriter, r *http.Request) {
 		Login
 		Head template.HTML
 	}{a.page, template.HTML(head)}); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] render the login page", "error", err)
+		slog.ErrorContext(r.Context(), "render the login page", "error", err)
 		http.Error(w, "login page unavailable", http.StatusInternalServerError)
 		return
 	}

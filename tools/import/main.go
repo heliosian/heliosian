@@ -438,11 +438,11 @@ func main() {
 		website = "../webexport"
 	}
 	if sheet == "" || preferences == "" || config == "" {
-		log.Fatal("[ERROR] DIRECTORY_SHEET, PREFERENCES_SHEET, and CONFIG_SHEET are required")
+		log.Fatal("DIRECTORY_SHEET, PREFERENCES_SHEET, and CONFIG_SHEET are required")
 	}
 	out, err := os.MkdirTemp("", "vcexport")
 	if err != nil {
-		log.Fatalf("[ERROR] create output dir: %v", err)
+		log.Fatalf("create output dir: %v", err)
 	}
 
 	if *dryRun {
@@ -450,71 +450,71 @@ func main() {
 	}
 	log.Printf("exporting from Veracross into %s", out)
 	if err := run(exporter, "go", "run", ".", "--out", out); err != nil {
-		log.Fatalf("[ERROR] export: %v", err)
+		log.Fatalf("export: %v", err)
 	}
 	log.Printf("exporting from the school website into %s", out)
 	if err := run(website, "go", "run", ".", "--out", out); err != nil {
-		log.Fatalf("[ERROR] website export: %v", err)
+		log.Fatalf("website export: %v", err)
 	}
 
 	source, err := data.NewSheet(map[string]string{directory: sheet, "preferences": preferences, "config": config})
 	if err != nil {
-		log.Fatalf("[ERROR] sheet source: %v", err)
+		log.Fatalf("sheet source: %v", err)
 	}
 	book, err := who.NewBook(source, source, store.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] directory tabs: %v", err)
+		log.Fatalf("directory tabs: %v", err)
 	}
 	tables, err := book.Read(context.Background())
 	if err != nil {
-		log.Fatalf("[ERROR] read the directory: %v", err)
+		log.Fatalf("read the directory: %v", err)
 	}
 	bios, err := websiteRows(out)
 	if err != nil {
-		log.Fatalf("[ERROR] read %s: %v", websiteFile, err)
+		log.Fatalf("read %s: %v", websiteFile, err)
 	}
 
 	if err := uploadPhotos(filepath.Join(out, "photos"), !*dryRun); err != nil {
-		log.Fatalf("[ERROR] upload photos: %v", err)
+		log.Fatalf("upload photos: %v", err)
 	}
 
 	ops, err := tabSync{tab: who.WebsiteTable, header: who.WebsiteColumns, rows: bios, keyCol: who.WebsiteID, mirror: true}.ops(source)
 	if err != nil {
-		log.Fatalf("[ERROR] plan %s: %v", who.WebsiteTable, err)
+		log.Fatalf("plan %s: %v", who.WebsiteTable, err)
 	}
 	exportedNames := []map[string]string{}
 	for _, s := range sources {
 		header, rows, err := readCSV(filepath.Join(out, s.file))
 		if err != nil {
-			log.Fatalf("[ERROR] read %s: %v", s.file, err)
+			log.Fatalf("read %s: %v", s.file, err)
 		}
 		if s.tab == namesTab {
 			exportedNames = rows
 		}
 		tabOps, err := tabSync{tab: s.tab, header: header, rows: rows, keyCol: s.keyCol, mirror: s.mirror}.ops(source)
 		if err != nil {
-			log.Fatalf("[ERROR] plan %s: %v", s.tab, err)
+			log.Fatalf("plan %s: %v", s.tab, err)
 		}
 		ops = append(ops, tabOps...)
 	}
 
 	cleared, err := clearCaughtUpOverrides(out, source, bios)
 	if err != nil {
-		log.Fatalf("[ERROR] plan clearing the overrides the staff page has caught up with: %v", err)
+		log.Fatalf("plan clearing the overrides the staff page has caught up with: %v", err)
 	}
 	pruned, err := pruneNameToEmail(out, source, exportedNames)
 	if err != nil {
-		log.Fatalf("[ERROR] plan pruning %s: %v", namesTab, err)
+		log.Fatalf("plan pruning %s: %v", namesTab, err)
 	}
 	ops = slices.Concat(ops, cleared, pruned)
 
 	plan, err := book.Plan(context.Background(), tables, actor, ops)
 	if err != nil {
-		log.Fatalf("[ERROR] plan the import: %v", err)
+		log.Fatalf("plan the import: %v", err)
 	}
 	model, err := who.BuildModel(context.Background(), plan.Tables, nil, staticFiles{}, []byte(actor))
 	if err != nil {
-		log.Fatalf("[ERROR] the directory does not load with the import: %v", err)
+		log.Fatalf("the directory does not load with the import: %v", err)
 	}
 	if *dryRun {
 		log.Printf("dry run: %d row changes not committed", len(ops))

@@ -98,7 +98,7 @@ func (a app) sendAnswerNote(ctx context.Context, to, actor, email, answer string
 		HTML:    htm,
 	})
 	if err != nil {
-		slog.ErrorContext(ctx, "[ERROR] calendar: send answer note", "to", to, "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "calendar: send answer note", "to", to, "event", e.ID, "error", err)
 	}
 }
 
@@ -179,7 +179,7 @@ func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 		}},
 	})
 	if err != nil {
-		slog.ErrorContext(ctx, "[ERROR] calendar: send invite", "to", email, "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "calendar: send invite", "to", email, "event", e.ID, "error", err)
 		return
 	}
 	slog.InfoContext(ctx, "calendar: invite sent", "to", email, "event", e.ID)

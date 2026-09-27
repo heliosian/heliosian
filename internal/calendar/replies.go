@@ -75,7 +75,7 @@ func (a app) replies(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.takeReply(r.Context(), reply, from, tag); err != nil {
 		if errors.Is(err, errNotRecorded) {
-			slog.ErrorContext(r.Context(), "[ERROR] calendar: reply not recorded", "from", from, "uid", reply.UID, "attendee", reply.Email, "error", err)
+			slog.ErrorContext(r.Context(), "calendar: reply not recorded", "from", from, "uid", reply.UID, "attendee", reply.Email, "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

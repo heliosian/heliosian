@@ -60,7 +60,7 @@ What matters to this audit is that the apps are built to one shape, in `internal
 
 ### Operator-facing consistency
 
-- **Logging:** `[ERROR]` on error-level lines, lowercase messages, log prefixes naming the app and not a sheet, one logging package throughout the server.
+- **Logging:** severity carried by the `slog` level and never written into the message, lowercase messages, log prefixes naming the app and not a sheet, one logging package throughout the server.
 - **Mail senders, keys and configuration,** each passed in one shape, not several.
 - **Tools that do the same job with different flag names or different dry-run behaviour.**
 - **Tool output that doesn't match its name** or its docs (a `.png` that is a JPEG).

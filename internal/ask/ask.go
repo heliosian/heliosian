@@ -199,7 +199,7 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", kind, encoded)
 		if err := controller.Flush(); err != nil {
-			slog.ErrorContext(r.Context(), "[ERROR] ask: flush", "error", err)
+			slog.ErrorContext(r.Context(), "ask: flush", "error", err)
 		}
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), turnTimeout)
@@ -230,7 +230,7 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] ask: answer failed", "conversation", body.Conversation, "error", err)
+		slog.ErrorContext(r.Context(), "ask: answer failed", "conversation", body.Conversation, "error", err)
 		emit("error", map[string]string{"message": "Something went wrong answering that; try again in a moment."})
 		return
 	}

@@ -133,7 +133,7 @@ func (a app) sendCancellation(ctx context.Context, to string, cc, replyTo []stri
 		}}
 	}
 	if err := a.mail.Sender.Send(ctx, msg); err != nil {
-		slog.ErrorContext(ctx, "[ERROR] calendar: send cancellation", "to", to, "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "calendar: send cancellation", "to", to, "event", e.ID, "error", err)
 		return
 	}
 	slog.InfoContext(ctx, "calendar: cancellation sent", "to", to, "event", e.ID)

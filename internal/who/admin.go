@@ -254,7 +254,7 @@ func (a admin) setAdmins(w http.ResponseWriter, r *http.Request) {
 	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: set the admin list", "actor", actor.Email, "admins", admins)
+	slog.InfoContext(r.Context(), "who:set the admin list", "actor", actor.Email, "admins", admins)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -305,7 +305,7 @@ func (a admin) setSuperEdit(w http.ResponseWriter, r *http.Request) {
 		cookie.Value, cookie.MaxAge = "1", superEditLength
 	}
 	http.SetCookie(w, cookie)
-	slog.InfoContext(r.Context(), "admin: set super edit mode", "actor", actor.Email, "enabled", body.Enabled)
+	slog.InfoContext(r.Context(), "who:set super edit mode", "actor", actor.Email, "enabled", body.Enabled)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -348,7 +348,7 @@ func (a admin) setPersonFields(w http.ResponseWriter, r *http.Request) {
 	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: edited person fields", "actor", actor.Email, "target", target, "cells", cells)
+	slog.InfoContext(r.Context(), "who:edited person fields", "actor", actor.Email, "target", target, "cells", cells)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -455,7 +455,7 @@ func (a admin) setStudentFields(w http.ResponseWriter, r *http.Request) {
 	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: edited student fields", "actor", actor.Email, "target", target, "cells", cells)
+	slog.InfoContext(r.Context(), "who:edited student fields", "actor", actor.Email, "target", target, "cells", cells)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -487,7 +487,7 @@ func (a admin) setParentFields(w http.ResponseWriter, r *http.Request) {
 	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: edited parent fields", "actor", actor.Email, "target", target, "cells", cells, "familyCells", familyCells)
+	slog.InfoContext(r.Context(), "who:edited parent fields", "actor", actor.Email, "target", target, "cells", cells, "familyCells", familyCells)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -518,7 +518,7 @@ func (a admin) setAddedFields(w http.ResponseWriter, r *http.Request) {
 	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: edited added-person fields", "actor", actor.Email, "target", target, "cells", cells)
+	slog.InfoContext(r.Context(), "who:edited added-person fields", "actor", actor.Email, "target", target, "cells", cells)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -544,7 +544,7 @@ func (a admin) addPerson(w http.ResponseWriter, r *http.Request) {
 	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: added a new person", "actor", actor.Email, "email", email, "name", fullName)
+	slog.InfoContext(r.Context(), "who:added a new person", "actor", actor.Email, "email", email, "name", fullName)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -566,7 +566,7 @@ func (a admin) deletePerson(w http.ResponseWriter, r *http.Request) {
 	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: deleted added person", "actor", actor.Email, "target", target)
+	slog.InfoContext(r.Context(), "who:deleted added person", "actor", actor.Email, "target", target)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -584,7 +584,7 @@ func (a admin) hidePerson(w http.ResponseWriter, r *http.Request) {
 	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: hid person from the directory", "actor", actor.Email, "target", target)
+	slog.InfoContext(r.Context(), "who:hid person from the directory", "actor", actor.Email, "target", target)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -602,7 +602,7 @@ func (a admin) unhidePerson(w http.ResponseWriter, r *http.Request) {
 	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: unhid person from the directory", "actor", actor.Email, "target", target)
+	slog.InfoContext(r.Context(), "who:unhid person from the directory", "actor", actor.Email, "target", target)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -651,6 +651,6 @@ func (a admin) setImage(w http.ResponseWriter, r *http.Request) {
 	if !a.cache.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "admin: replaced image", "actor", actor.Email, "kind", kind, "name", name)
+	slog.InfoContext(r.Context(), "who:replaced image", "actor", actor.Email, "kind", kind, "name", name)
 	w.WriteHeader(http.StatusNoContent)
 }

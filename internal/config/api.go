@@ -52,7 +52,7 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 func encode(w http.ResponseWriter, r *http.Request, view any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode config", "error", err)
+		slog.ErrorContext(r.Context(), "encode config", "error", err)
 	}
 }
 

@@ -81,7 +81,7 @@ func (celebrateImages) Prefetch(context.Context, []string) error { return nil }
 func requiredEnv(name string) string {
 	value := os.Getenv(name)
 	if value == "" {
-		log.Fatalf("[ERROR] %s is required", name)
+		log.Fatalf("%s is required", name)
 	}
 	return value
 }
@@ -106,13 +106,13 @@ func main() {
 			"artifacts":   requiredEnv("ARTIFACTS_SHEET"),
 		})
 		if err != nil {
-			log.Fatalf("[ERROR] sheet source: %v", err)
+			log.Fatalf("sheet source: %v", err)
 		}
 		source = live
 	}
 	model, err := who.LoadModel(source, nil, staticFiles{"web/who"}, []byte("loadcheck"))
 	if err != nil {
-		log.Fatalf("[ERROR] load directory model: %v", err)
+		log.Fatalf("load directory model: %v", err)
 	}
 	students, parents, staff, isNew := 0, 0, 0, 0
 	for _, p := range model.People {
@@ -187,7 +187,7 @@ func main() {
 	fmt.Println("departments:", model.Departments)
 	invites, err := who.NewInvites(source, nil, store.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] load invites: %v", err)
+		log.Fatalf("load invites: %v", err)
 	}
 	fmt.Printf("invites: %d systems, %d greetings\n", len(invites.Systems()), len(invites.Model()))
 	fmt.Println("grades:")
@@ -197,7 +197,7 @@ func main() {
 
 	appsCache, err := home.NewCache(source, nil, homeImages{}, func() []string { return nil }, nil, store.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] load apps model: %v", err)
+		log.Fatalf("load apps model: %v", err)
 	}
 	apps := appsCache.Model()
 	fmt.Println("apps:")
@@ -215,7 +215,7 @@ func main() {
 
 	eventsCache, err := team.NewCache(source, nil, teamImages{}, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] load events model: %v", err)
+		log.Fatalf("load events model: %v", err)
 	}
 	portal := eventsCache.Model()
 	fmt.Println("events:")
@@ -243,7 +243,7 @@ func main() {
 
 	celebrateCache, err := celebrate.NewCache(source, nil, celebrateImages{}, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] load celebrate model: %v", err)
+		log.Fatalf("load celebrate model: %v", err)
 	}
 	site := celebrateCache.Model()
 	fmt.Println("celebrate:")
@@ -269,7 +269,7 @@ func main() {
 
 	configCache, err := config.NewCache(source, nil, store.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] load config: %v", err)
+		log.Fatalf("load config: %v", err)
 	}
 	settings := configCache.Settings()
 	fmt.Printf("config: %d super admins, stale years %+v, staff color %s, %d grade colors, %d classroom colors\n",
@@ -277,7 +277,7 @@ func main() {
 
 	calendarCache, err := calendar.NewCache(source, nil, func() calendar.Roster { return app.CalendarRoster(model) }, nil, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] load calendar model: %v", err)
+		log.Fatalf("load calendar model: %v", err)
 	}
 	plan := calendarCache.Model()
 	bySource, byTag := map[string]int{}, map[string]int{}
@@ -312,7 +312,7 @@ func main() {
 
 	groupCache, err := loop.NewCache(source, nil, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] load groups model: %v", err)
+		log.Fatalf("load groups model: %v", err)
 	}
 	groupModel := groupCache.Model()
 	now := time.Now().In(calendar.Location)
@@ -332,15 +332,15 @@ func main() {
 
 	objects, err := blob.New("local/cache/blobs")
 	if err != nil {
-		log.Fatalf("[ERROR] blob store: %v", err)
+		log.Fatalf("blob store: %v", err)
 	}
 	embedder, err := artifacts.NewVertex()
 	if err != nil {
-		log.Fatalf("[ERROR] embedder: %v", err)
+		log.Fatalf("embedder: %v", err)
 	}
 	artifactsCache, err := artifacts.NewCache(source, nil, objects, embedder, store.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] load artifacts: %v", err)
+		log.Fatalf("load artifacts: %v", err)
 	}
 	documents := artifactsCache.Model().Documents
 	fmt.Printf("artifacts: %d documents\n", len(documents))

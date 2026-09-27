@@ -54,14 +54,14 @@ func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
 		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enriched, enrichment, "Event ID", false},
 	}
 	dry := &run{opts: Options{Cache: cache, DryRun: true}}
-	if err := dry.write(sync); err != nil {
+	if err := dry.write(t.Context(), sync); err != nil {
 		t.Fatal(err)
 	}
 	if cache.Model().Event("a13@sample") != nil || len(rowsOf(t, sheet, store.ChangeLogTab)) != 0 {
 		t.Fatal("a dry run committed")
 	}
 	r := &run{opts: Options{Cache: cache}}
-	if err := r.write(sync); err != nil {
+	if err := r.write(t.Context(), sync); err != nil {
 		t.Fatal(err)
 	}
 	m := cache.Model()
@@ -96,7 +96,7 @@ func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
 	}
 	before := len(log)
 	sync[0].before, sync[1].before = rowsOf(t, sheet, calendar.GoogleTab), rowsOf(t, sheet, calendar.EnrichmentTab)
-	if err := r.write(sync); err != nil {
+	if err := r.write(t.Context(), sync); err != nil {
 		t.Fatal(err)
 	}
 	if len(rowsOf(t, sheet, store.ChangeLogTab)) != before {

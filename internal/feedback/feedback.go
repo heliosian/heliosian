@@ -142,7 +142,7 @@ func (a api) file(w http.ResponseWriter, r *http.Request) {
 		At:        now,
 	})
 	if err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] feedback: saving failed", "error", err, "kind", in.Kind, "summary", summary, "details", in.Details)
+		slog.ErrorContext(r.Context(), "feedback: saving failed", "error", err, "kind", in.Kind, "summary", summary, "details", in.Details)
 		http.Error(w, "we couldn't take the report just now; please try again in a moment", http.StatusServiceUnavailable)
 		return
 	}

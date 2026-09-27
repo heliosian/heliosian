@@ -19,7 +19,7 @@ How code is written in this repository, for coding agents and the people driving
 
 - `go run`, never `go build`, so no binaries land in the tree. Use `go vet` to check compilation.
 - Literal initialization (`map[string]bool{}`) over `make()`.
-- All-lowercase log messages, with `[ERROR]` in front of errors.
+- All-lowercase log messages, through `slog` at the level that fits; severity is the level, never a prefix in the message.
 - Keep every Go file gofmt-clean.
 - The server is pure Go: no cgo, no external binaries or subprocesses, and no Debian (or other distro) base image. Don't propose any of them, not even as an option.
 - Long flags take double dashes (`--dry-run`), everywhere: flags a tool defines, commands run, and commands written in docs. Single dashes are for single-letter flags.

@@ -117,7 +117,7 @@ func (a app) extView(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] encode outside invitation", "error", err)
+		slog.ErrorContext(r.Context(), "encode outside invitation", "error", err)
 	}
 }
 
