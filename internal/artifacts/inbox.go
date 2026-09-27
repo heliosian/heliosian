@@ -3,15 +3,12 @@ package artifacts
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"mime"
-	"mime/multipart"
-	"mime/quotedprintable"
 	"net/http"
 	netmail "net/mail"
 	"strings"
@@ -215,7 +212,7 @@ func ParseMail(raw []byte) (Message, error) {
 	if m.CC, err = addresses(h.Get("Cc")); err != nil {
 		return Message{}, fmt.Errorf("%s: Cc: %w", id, err)
 	}
-	if err := m.read(h.Get("Content-Type"), h.Get("Content-Transfer-Encoding"), h.Get("Content-Disposition"), msg.Body); err != nil {
+	if err := mail.Parts(msg, m.read); err != nil {
 		return Message{}, fmt.Errorf("%s: %w", id, err)
 	}
 	return m, nil
@@ -248,52 +245,19 @@ func addresses(header string) ([]string, error) {
 	return out, nil
 }
 
-func (m *Message) read(contentType, encoding, disposition string, body io.Reader) error {
-	if contentType == "" {
-		contentType = "text/plain"
-	}
-	mediaType, params, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return fmt.Errorf("content type %q: %w", contentType, err)
-	}
-	if strings.HasPrefix(mediaType, "multipart/") {
-		reader := multipart.NewReader(body, params["boundary"])
-		for {
-			part, err := reader.NextRawPart()
-			if err == io.EOF {
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-			if err := m.read(part.Header.Get("Content-Type"), part.Header.Get("Content-Transfer-Encoding"), part.Header.Get("Content-Disposition"), part); err != nil {
-				return err
-			}
-		}
-	}
-	if kind, _, _ := mime.ParseMediaType(disposition); kind == "attachment" {
+func (m *Message) read(p mail.Part) error {
+	if p.Disposition == "attachment" {
 		return nil
 	}
 	into := &m.Text
-	if mediaType == "text/html" {
+	switch p.MediaType {
+	case "text/plain":
+	case "text/html":
 		into = &m.HTML
-	}
-	if mediaType != "text/plain" && mediaType != "text/html" {
+	default:
 		return nil
 	}
-	content := body
-	switch strings.ToLower(strings.TrimSpace(encoding)) {
-	case "base64":
-		content = base64.NewDecoder(base64.StdEncoding, content)
-	case "quoted-printable":
-		content = quotedprintable.NewReader(content)
-	}
-	if label := params["charset"]; label != "" {
-		if content, err = charset.NewReaderLabel(label, content); err != nil {
-			return fmt.Errorf("charset %q: %w", label, err)
-		}
-	}
-	text, err := io.ReadAll(content)
+	text, err := io.ReadAll(p.Body)
 	if err != nil {
 		return err
 	}

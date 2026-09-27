@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -54,13 +55,17 @@ func ReadSaved(path string) (Saved, error) {
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	read := readMessage
 	if probe.Format != "" {
-		return ReadResource(path)
+		read = readResource
+	} else if probe.URL != "" {
+		read = readPage
 	}
-	if probe.URL != "" {
-		return ReadPage(path)
+	saved, err := read(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	return ReadMessage(path)
+	return saved, nil
 }
 
 func (m Message) Broadcast() (channel, kind string, ok bool) {
@@ -74,17 +79,13 @@ func (m Message) Broadcast() (channel, kind string, ok bool) {
 	return Channel(m.ListID, from)
 }
 
-func ReadMessage(path string) (Message, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return Message{}, err
-	}
+func readMessage(raw []byte) (Saved, error) {
 	var m Message
 	if err := json.Unmarshal(raw, &m); err != nil {
-		return Message{}, fmt.Errorf("%s: %w", path, err)
+		return nil, err
 	}
 	if m.MessageID == "" || m.Date == "" {
-		return Message{}, fmt.Errorf("%s: the message has no id or date", path)
+		return nil, fmt.Errorf("the message has no id or date")
 	}
 	return m, nil
 }
@@ -104,31 +105,34 @@ func (m Message) Build(links *Resolver, model string) (*Document, error) {
 	}
 	markdown := ""
 	if page := strings.TrimSpace(m.HTML); page != "" {
-		if markdown, err = Markdown(page, links.Resolve); err != nil {
+		if markdown, err = Markdown(page, links.Links(&url.URL{})); err != nil {
 			return nil, fmt.Errorf("%s: %w", m.MessageID, err)
 		}
 	} else {
 		markdown = fromText(m.Text)
 	}
-	if markdown = trim(markdown); markdown == "" {
-		return nil, fmt.Errorf("%s: %w", m.MessageID, ErrNoWords)
-	}
 	title := strings.TrimSpace(m.Subject)
 	if title == "" {
 		title = "(no subject)"
 	}
-	doc := &Document{
+	return finish(&Document{
 		Key:      m.Key(),
 		Title:    title,
-		Date:     day.In(when.Location).Format(when.DateFormat),
 		Author:   strings.TrimSpace(m.From),
 		Kind:     kind,
 		Channel:  channel,
 		Source:   "mail:" + m.MessageID,
 		Model:    model,
-		Markdown: markdown,
+		Markdown: trim(markdown),
+	}, day)
+}
+
+func finish(doc *Document, day time.Time) (*Document, error) {
+	if doc.Markdown = strings.TrimSpace(doc.Markdown); doc.Markdown == "" {
+		return nil, fmt.Errorf("%s: %w", doc.Source, ErrNoWords)
 	}
-	doc.Chunks = Chunks(markdown)
+	doc.Date = day.In(when.Location).Format(when.DateFormat)
+	doc.Chunks = Chunks(doc.Markdown)
 	return doc, nil
 }
 

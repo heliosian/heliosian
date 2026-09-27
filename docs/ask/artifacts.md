@@ -8,7 +8,7 @@ Only mail that went to everyone or to a whole class is in it: the school's newsl
 
 The rules name what is in, never what is out, so a list nobody thought of stays out on its own. Outside the Helios Loop groups' mail, Helios Ask answers whoever asks it and asks nothing of who they are: a list has no membership on file to hold a reader to, what went to one class's parents is not secret from another class's, and nothing on these lists is kept from students, so a parent, a student and a staff member read the same documents. The gate is what is filed, since anything sent to a few people on behalf of the rest would be the whole community reading it. A message is in when one of these holds, in this order:
 
-- Its list header names one of those lists on either school domain (`heliosschool.org`, `heliosns.org`): kind `list`, channel the list's name.
+- Its list header names one of those lists on `heliosschool.org`: kind `list`, channel the list's name.
 - Any other list header, and it is out.
 - With no list header, its sender's address is at one of the newsletter's mailers' domains or under one (`mailers` in `internal/artifacts/channel.go`): kind `newsletter`.
 

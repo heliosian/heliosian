@@ -12,7 +12,7 @@ const samples = "../../sampledata/artifacts"
 
 func sampleIssue(t *testing.T) *Document {
 	t.Helper()
-	message, err := ReadMessage(samples + "/2026-09-11-newsletter-sep-11.json")
+	message, err := ReadSaved(samples + "/2026-09-11-newsletter-sep-11.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestMessageBecomesMarkdown(t *testing.T) {
 }
 
 func TestPlainTextMessageKeepsItsParagraphs(t *testing.T) {
-	message, err := ReadMessage(samples + "/2026-08-30-chat-nut-free.json")
+	message, err := ReadSaved(samples + "/2026-08-30-chat-nut-free.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,6 +109,26 @@ func TestPageBecomesMarkdown(t *testing.T) {
 	}
 	if n := strings.Count(doc.Markdown, "What to Bring"); n != 1 {
 		t.Errorf("the panel's title appears %d times:\n%s", n, doc.Markdown)
+	}
+}
+
+func TestEveryKindUnwrapsLinks(t *testing.T) {
+	const body = `<p>See <a href="https://www.google.com/url?q=https://www.choicelunch.com/&amp;sa=D">Choicelunch</a>, <a href="https://email.mail1.veracross.com/c/eJxMzT1u7SAQhuHVQGnB8F9Q3MbbOIIBH9DlGAscrz9CKZJynnmlL3lpLKfZc2Md11oIS4tPwiiUGuOhdIyodU7WhATKpuisi7R6YKCZ4xxAWGU3riCZw0UjxRGMQSLZJ9TGtyePgKPPuWH_0ObLfV-TiH8EdgJ7wbCV3GqfNZyrILDT4dfx_mqtPnkQyX6KiaX3tvXxpo8H-uALW83n7f--F-e1_Lr-eyucXnDlMfv56wCMgfgOAAD__5zzUBI">the form</a> and <a href="/about">about</a>.</p>`
+	const want = "See [Choicelunch](https://www.choicelunch.com/), [the form](https://hca.heliosian.com/) and "
+	page := Page{URL: "https://www.heliosschool.org/student-life/lunch", HTML: `<html><head><title>Lunch - Helios School</title><meta name="page-published" content="2026-09-01T12:00:00Z"></head><body><main>` + body + `</main></body></html>`}
+	doc, err := page.Build(&Resolver{}, Fake{}.Model())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Markdown != want+"[about](https://www.heliosschool.org/about)." {
+		t.Errorf("page markdown:\n%s", doc.Markdown)
+	}
+	message := Message{MessageID: "m@x", Date: "2026-09-01T12:00:00Z", Subject: "Lunch", Channel: "parents", Kind: KindList, HTML: body}
+	if doc, err = message.Build(&Resolver{}, Fake{}.Model()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(doc.Markdown, want) {
+		t.Errorf("mail markdown:\n%s", doc.Markdown)
 	}
 }
 
@@ -473,15 +493,15 @@ func TestMessagesArePlacedByWhatTheyCarry(t *testing.T) {
 		belongs       bool
 	}{
 		{"a class list", Message{ListID: "<jays.parents.heliosschool.org>"}, "jays.parents", KindList, true},
-		{"the old domain", Message{ListID: "<hummingbirds.parents.heliosns.org>"}, "hummingbirds.parents", KindList, true},
+		{"the old domain", Message{ListID: "<hummingbirds.parents.heliosns.org>"}, "", "", false},
 		{"a list with a description", Message{ListID: "Chat <chat.heliosschool.org>"}, "chat", KindList, true},
 		{"the newsletter's mailer", Message{Sender: "m@mail1.veracross.com"}, "newsletter", KindNewsletter, true},
 		{"the former mailer", Message{ListID: "<3064358178.560896@benchmarkemail.com>"}, "", "", false},
 		{"a broadcast address", Message{To: []string{"parentsandstaff@heliosschool.org"}}, "", "", false},
 		{"the board", Message{ListID: "<boardoftrustees.heliosschool.org>"}, "", "", false},
 		{"a board committee", Message{ListID: "<board-finance.heliosschool.org>"}, "", "", false},
-		{"an HCA team", Message{ListID: "<hca-social-events-team.heliosns.org>"}, "", "", false},
-		{"the room parents", Message{ListID: "<room.parents.heliosns.org>"}, "", "", false},
+		{"an HCA team", Message{ListID: "<hca-social-events-team.heliosschool.org>"}, "", "", false},
+		{"the room parents", Message{ListID: "<room.parents.heliosschool.org>"}, "", "", false},
 		{"one person", Message{To: []string{"gayle.mcdowell@heliosschool.org"}}, "", "", false},
 		{"mail to the association", Message{To: []string{"hca@heliosschool.org"}}, "", "", false},
 		{"what it was saved as", Message{Channel: "chat", Kind: KindList, ListID: "<boardoftrustees.heliosschool.org>"}, "chat", KindList, true},

@@ -26,6 +26,27 @@ func tracking(address string) bool {
 	return strings.HasSuffix(u.Host, veracrossHost) && strings.HasPrefix(u.Path, trackingPath)
 }
 
+func (r *Resolver) Links(base *url.URL) func(string) string {
+	return func(href string) string {
+		target, err := base.Parse(href)
+		if err != nil {
+			return ""
+		}
+		return r.Resolve(unwrapGoogle(target).String())
+	}
+}
+
+func unwrapGoogle(u *url.URL) *url.URL {
+	if (u.Host != "www.google.com" && u.Host != "google.com") || u.Path != "/url" {
+		return u
+	}
+	target, err := url.Parse(u.Query().Get("q"))
+	if err != nil || target.Host == "" {
+		return u
+	}
+	return target
+}
+
 func (r *Resolver) Resolve(address string) string {
 	if !tracking(address) {
 		return address

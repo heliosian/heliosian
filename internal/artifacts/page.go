@@ -5,14 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"slices"
 	"strings"
 	"time"
 
 	"golang.org/x/net/html"
-
-	"heliosian/internal/when"
 )
 
 const Site = "https://www.heliosschool.org"
@@ -46,7 +43,7 @@ func Excluded(address string) bool {
 
 var ErrExcluded = errors.New("the page is not one the documents carry")
 
-func (p Page) Build(_ *Resolver, model string) (*Document, error) {
+func (p Page) Build(links *Resolver, model string) (*Document, error) {
 	if Excluded(p.URL) {
 		return nil, fmt.Errorf("%s: %w", p.URL, ErrExcluded)
 	}
@@ -73,33 +70,20 @@ func (p Page) Build(_ *Resolver, model string) (*Document, error) {
 	if err := html.Render(body, main); err != nil {
 		return nil, fmt.Errorf("%s: %w", p.URL, err)
 	}
-	markdown, err := Markdown(body.String(), func(href string) string {
-		target, err := base.Parse(href)
-		if err != nil {
-			return ""
-		}
-		return target.String()
-	})
+	markdown, err := Markdown(body.String(), links.Links(base))
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", p.URL, err)
 	}
-	if markdown = strings.TrimSpace(markdown); markdown == "" {
-		return nil, fmt.Errorf("%s: %w", p.URL, ErrNoWords)
-	}
-	title := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(text(head)), "- Helios School"))
-	doc := &Document{
+	return finish(&Document{
 		Key:      Key(p.URL),
-		Title:    title,
-		Date:     day.In(when.Location).Format(when.DateFormat),
+		Title:    strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(text(head)), "- Helios School")),
 		Author:   "Helios School",
 		Kind:     KindPage,
 		Channel:  "website",
 		Source:   p.URL,
 		Model:    model,
 		Markdown: markdown,
-	}
-	doc.Chunks = Chunks(markdown)
-	return doc, nil
+	}, day)
 }
 
 func strip(n *html.Node) {
@@ -148,17 +132,13 @@ func text(n *html.Node) string {
 	return out
 }
 
-func ReadPage(path string) (Page, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return Page{}, err
-	}
+func readPage(raw []byte) (Saved, error) {
 	var p Page
 	if err := json.Unmarshal(raw, &p); err != nil {
-		return Page{}, fmt.Errorf("%s: %w", path, err)
+		return nil, err
 	}
 	if p.URL == "" || p.HTML == "" {
-		return Page{}, fmt.Errorf("%s: the page has no address or no text", path)
+		return nil, fmt.Errorf("the page has no address or no text")
 	}
 	return p, nil
 }

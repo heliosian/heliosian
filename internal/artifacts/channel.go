@@ -7,7 +7,7 @@ import (
 	"heliosian/internal/mail"
 )
 
-var domains = []string{"heliosschool.org", "heliosns.org"}
+const domain = "heliosschool.org"
 
 var broadcast = []string{
 	"parentsandstaff", "parentsonly", "parentsandstudents", "community", "parents", "chat", "chat2",
@@ -24,10 +24,8 @@ var mailers = []string{"veracross.com"}
 func Channel(listID, from string) (channel, kind string, ok bool) {
 	list := listName(listID)
 	if list != "" {
-		for _, domain := range domains {
-			if name, cut := strings.CutSuffix(list, "."+domain); cut && slices.Contains(broadcast, name) {
-				return name, KindList, true
-			}
+		if name, cut := strings.CutSuffix(list, "."+domain); cut && slices.Contains(broadcast, name) {
+			return name, KindList, true
 		}
 		return list, "", false
 	}
@@ -63,8 +61,8 @@ func vouch(lines []mail.HeaderLine, m Message) string {
 	case KindNewsletter:
 		return mail.Authenticated(lines)
 	case KindList:
-		local, domain, _ := strings.Cut(strings.ToLower(mail.SealedSender(lines)), "@")
-		if strings.HasPrefix(local, channel+"+") && slices.Contains(domains, domain) {
+		local, at, _ := strings.Cut(strings.ToLower(mail.SealedSender(lines)), "@")
+		if strings.HasPrefix(local, channel+"+") && at == domain {
 			return ""
 		}
 		return "the forwarding mailbox's sealed results do not show the list sending it"

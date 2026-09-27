@@ -5,15 +5,11 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"mime"
-	"mime/multipart"
-	"mime/quotedprintable"
 	"net/http"
 	netmail "net/mail"
 	"strings"
@@ -142,47 +138,27 @@ func ParseReply(raw []byte) (Reply, error) {
 	if err != nil {
 		return Reply{}, fmt.Errorf("read message: %w", err)
 	}
-	ics := findCalendar(msg.Header.Get("Content-Type"), msg.Header.Get("Content-Transfer-Encoding"), msg.Header.Get("Content-Disposition"), msg.Body)
+	var ics []byte
+	err = mail.Parts(msg, func(p mail.Part) error {
+		if ics != nil || (p.MediaType != "text/calendar" && p.MediaType != "application/ics" && !strings.HasSuffix(strings.ToLower(p.Name), ".ics")) {
+			return nil
+		}
+		out, err := io.ReadAll(io.LimitReader(p.Body, 1<<20))
+		if err != nil {
+			return err
+		}
+		if len(out) > 0 {
+			ics = out
+		}
+		return nil
+	})
+	if err != nil {
+		return Reply{}, err
+	}
 	if ics == nil {
 		return Reply{}, fmt.Errorf("no calendar part")
 	}
 	return readReply(ics)
-}
-
-func findCalendar(contentType, encoding, disposition string, body io.Reader) []byte {
-	mediaType, params, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		mediaType = "text/plain"
-	}
-	if strings.HasPrefix(mediaType, "multipart/") {
-		reader := multipart.NewReader(body, params["boundary"])
-		for {
-			part, err := reader.NextPart()
-			if err != nil {
-				return nil
-			}
-			if found := findCalendar(part.Header.Get("Content-Type"), part.Header.Get("Content-Transfer-Encoding"), part.Header.Get("Content-Disposition"), part); found != nil {
-				return found
-			}
-		}
-	}
-	_, dispositionParams, _ := mime.ParseMediaType(disposition)
-	name := strings.ToLower(params["name"] + dispositionParams["filename"])
-	if mediaType != "text/calendar" && mediaType != "application/ics" && !strings.HasSuffix(name, ".ics") {
-		return nil
-	}
-	var content io.Reader = body
-	switch strings.ToLower(strings.TrimSpace(encoding)) {
-	case "base64":
-		content = base64.NewDecoder(base64.StdEncoding, body)
-	case "quoted-printable":
-		content = quotedprintable.NewReader(body)
-	}
-	out, err := io.ReadAll(io.LimitReader(content, 1<<20))
-	if err != nil || len(out) == 0 {
-		return nil
-	}
-	return out
 }
 
 func readReply(ics []byte) (Reply, error) {

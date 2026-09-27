@@ -4,12 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"time"
-
-	"heliosian/internal/when"
 )
 
 const (
@@ -30,17 +27,13 @@ func (r Resource) Key() string {
 	return Key(r.URL)
 }
 
-func ReadResource(path string) (Resource, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return Resource{}, err
-	}
+func readResource(raw []byte) (Saved, error) {
 	var r Resource
 	if err := json.Unmarshal(raw, &r); err != nil {
-		return Resource{}, fmt.Errorf("%s: %w", path, err)
+		return nil, err
 	}
 	if r.URL == "" || strings.TrimSpace(r.Title) == "" || r.Fetched == "" || (r.Format != FormatHTML && r.Format != FormatText) {
-		return Resource{}, fmt.Errorf("%s: the resource has no address, title, fetch time or known format", path)
+		return nil, fmt.Errorf("the resource has no address, title, fetch time or known format")
 	}
 	return r, nil
 }
@@ -57,14 +50,7 @@ func (r Resource) Build(links *Resolver, model string) (*Document, error) {
 	markdown := ""
 	switch r.Format {
 	case FormatHTML:
-		absolute := func(href string) string {
-			target, err := base.Parse(href)
-			if err != nil {
-				return ""
-			}
-			return unwrapGoogle(target).String()
-		}
-		if markdown, err = Markdown(r.Body, func(href string) string { return links.Resolve(absolute(href)) }); err != nil {
+		if markdown, err = Markdown(r.Body, links.Links(base)); err != nil {
 			return nil, fmt.Errorf("%s: %w", r.URL, err)
 		}
 	case FormatText:
@@ -72,33 +58,16 @@ func (r Resource) Build(links *Resolver, model string) (*Document, error) {
 	default:
 		return nil, fmt.Errorf("%s: no format %q", r.URL, r.Format)
 	}
-	if markdown = strings.TrimSpace(markdown); markdown == "" {
-		return nil, fmt.Errorf("%s: %w", r.URL, ErrNoWords)
-	}
-	doc := &Document{
+	return finish(&Document{
 		Key:      Key(r.URL),
 		Title:    strings.TrimSpace(r.Title),
-		Date:     day.In(when.Location).Format(when.DateFormat),
 		Author:   "Helios School",
 		Kind:     KindPortal,
 		Channel:  "portal",
 		Source:   r.URL,
 		Model:    model,
 		Markdown: markdown,
-	}
-	doc.Chunks = Chunks(markdown)
-	return doc, nil
-}
-
-func unwrapGoogle(u *url.URL) *url.URL {
-	if (u.Host != "www.google.com" && u.Host != "google.com") || u.Path != "/url" {
-		return u
-	}
-	target, err := url.Parse(u.Query().Get("q"))
-	if err != nil || target.Host == "" {
-		return u
-	}
-	return target
+	}, day)
 }
 
 var slideNumber = regexp.MustCompile(`^\d+$`)
