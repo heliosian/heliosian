@@ -86,7 +86,7 @@ func (m *Model) MonthUnder(directory Directory, email string, linked []Linked, n
 	}
 	for _, e := range m.eventsFor(directory, email, linked) {
 		answer := m.AnswerOf(email, e.ID)
-		if e.start.Format(DateFormat) > to || e.end.Format(DateFormat) < from || answer == AnswerHidden || answer == AnswerNo || !(e.Invited || admits(m, e, classrooms, tags)) {
+		if e.start.Format(DateFormat) > to || e.end.Format(DateFormat) < from || !m.InView(e, answer, classrooms, tags) {
 			continue
 		}
 		u := m.card(e)

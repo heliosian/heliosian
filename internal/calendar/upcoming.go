@@ -167,6 +167,14 @@ func admits(model *Model, e *Event, classrooms, tags []string) bool {
 	return len(categories) == 0 || overlaps(categories, tags)
 }
 
+func (m *Model) InView(e *Event, answer string, classrooms, tags []string) bool {
+	if answer == AnswerHidden || answer == AnswerNo {
+		return false
+	}
+	going := answer == AnswerYes && slices.Contains(tags, TagGoing)
+	return going || e.Invited || admits(m, e, classrooms, tags)
+}
+
 // viewOf is the filter the calendar page first shows a viewer under: their
 // default calendar - the first in their rail - where it is a saved one;
 // else My Heliosian - the view they saved in place of
@@ -319,11 +327,7 @@ func (m *Model) UpcomingUnder(directory Directory, email string, linked []Linked
 	out := []Card{}
 	for _, e := range m.eventsFor(directory, email, linked) {
 		answer := m.AnswerOf(email, e.ID)
-		// A yes reaches across classrooms, so long as Going is in view, and
-		// an invitation does whatever is in view; a no leaves the list, as
-		// hiding does - the month still shows it, in gray.
-		going := answer == AnswerYes && slices.Contains(tags, TagGoing)
-		if e.end.Format(DateFormat) < today || answer == AnswerHidden || answer == AnswerNo || !(going || e.Invited || admits(m, e, classrooms, tags)) {
+		if e.end.Format(DateFormat) < today || !m.InView(e, answer, classrooms, tags) {
 			continue
 		}
 		if limit > 0 && len(out) == limit {
