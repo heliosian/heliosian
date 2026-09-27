@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"heliosian/internal/calendar"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -291,7 +291,7 @@ var getClassroom = tool{
 			}
 			return map[string]any{"classrooms": out}, nil
 		}
-		i := slices.IndexFunc(v.calendar.Roster.Classrooms, func(c calendar.Classroom) bool { return contains(c.Name, want) })
+		i := slices.IndexFunc(v.calendar.Roster.Classrooms, func(c when.Classroom) bool { return contains(c.Name, want) })
 		if i < 0 {
 			return nil, fmt.Errorf("there is no classroom called %q", want)
 		}

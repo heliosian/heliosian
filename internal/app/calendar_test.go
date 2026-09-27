@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
+	"heliosian/internal/when"
 )
 
 type sampleImages struct{}
@@ -67,21 +67,21 @@ func samplesLinked(t *testing.T) calendarLinked {
 	return calendarLinked{parties, activities, sampleHousehold{}}
 }
 
-func linkedFromSamples(t *testing.T) []calendar.Linked {
+func linkedFromSamples(t *testing.T) []when.Linked {
 	t.Helper()
 	return samplesLinked(t).list("nobody@x.org")
 }
 
 func TestCalendarLinkedMine(t *testing.T) {
 	linked := samplesLinked(t)
-	byID := map[string]calendar.Linked{}
+	byID := map[string]when.Linked{}
 	for _, l := range linked.list("jordan.whitfield@heliosschool.org") {
 		byID[l.ID] = l
 	}
 	want := map[string]string{
-		"P001": calendar.MineGoing, "P002": calendar.MineGoing, "P003": calendar.MineGoing, "P005": calendar.MineGoing, "P012": calendar.MineGoing,
-		"P006": calendar.MineWaitlisted, "P007": calendar.MineWaitlisted, "P004": "",
-		"E001": calendar.MineGoing, "E002": "",
+		"P001": when.MineGoing, "P002": when.MineGoing, "P003": when.MineGoing, "P005": when.MineGoing, "P012": when.MineGoing,
+		"P006": when.MineWaitlisted, "P007": when.MineWaitlisted, "P004": "",
+		"E001": when.MineGoing, "E002": "",
 	}
 	for id, mine := range want {
 		l, ok := byID[id]
@@ -115,9 +115,9 @@ func TestCalendarLinkedMine(t *testing.T) {
 }
 
 func TestCalendarLinkedParties(t *testing.T) {
-	parties := []calendar.Linked{}
+	parties := []when.Linked{}
 	for _, l := range linkedFromSamples(t) {
-		if l.Source == calendar.SourceCelebrate {
+		if l.Source == when.SourceCelebrate {
 			parties = append(parties, l)
 		}
 	}
@@ -146,9 +146,9 @@ func TestCalendarLinkedParties(t *testing.T) {
 }
 
 func TestCalendarLinkedActivities(t *testing.T) {
-	byID := map[string]calendar.Linked{}
+	byID := map[string]when.Linked{}
 	for _, l := range linkedFromSamples(t) {
-		if l.Source == calendar.SourceTeam {
+		if l.Source == when.SourceTeam {
 			byID[l.ID] = l
 		}
 	}

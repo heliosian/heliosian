@@ -10,8 +10,8 @@ import (
 
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
-	"heliosian/internal/calendar"
 	"heliosian/internal/keypoints"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -34,7 +34,7 @@ func schoolWidget(directory *who.Cache, artifactsCache *artifacts.Cache) http.Ha
 		people := directory.Model()
 		email := people.Resolve(auth.Email(r))
 		seats, grades := seatsOf(people, email), gradeNames(people)
-		since := time.Now().In(calendar.Location).AddDate(0, 0, -schoolDays).Format("2006-01-02")
+		since := time.Now().In(when.Location).AddDate(0, 0, -schoolDays).Format("2006-01-02")
 		m := artifactsCache.Model()
 		out := []schoolEmail{}
 		for _, d := range m.Documents {

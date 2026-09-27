@@ -19,7 +19,6 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
-	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/claude"
 	"heliosian/internal/data"
@@ -28,6 +27,7 @@ import (
 	"heliosian/internal/loop"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -45,16 +45,16 @@ func (d sampleDirectory) Resolve(email string) string { return d.model.Resolve(e
 
 func (d sampleDirectory) Sources() filter.Sources { return filter.Sources{Directory: d.model} }
 
-func (d sampleDirectory) Person(email string) (calendar.Person, bool) {
+func (d sampleDirectory) Person(email string) (when.Person, bool) {
 	p := d.model.Person(email)
 	if p == nil {
-		return calendar.Person{}, false
+		return when.Person{}, false
 	}
-	return calendar.Person{Email: p.Email, Name: p.FullName, IsStudent: p.IsStudent, IsParent: p.IsParent, IsStaff: p.IsStaff, Grade: p.Grade, Classroom: p.Classroom}, true
+	return when.Person{Email: p.Email, Name: p.FullName, IsStudent: p.IsStudent, IsParent: p.IsParent, IsStaff: p.IsStaff, Grade: p.Grade, Classroom: p.Classroom}, true
 }
 
-func (d sampleDirectory) Children(email string) []calendar.Person {
-	out := []calendar.Person{}
+func (d sampleDirectory) Children(email string) []when.Person {
+	out := []when.Person{}
 	for _, key := range d.model.FamilyKeysOf(email) {
 		for _, kid := range d.model.Families[key].KidEmails {
 			if p, ok := d.Person(kid); ok {
@@ -73,10 +73,10 @@ func (sampleDirectory) Parents(string) []string            { return nil }
 func (sampleDirectory) Alerts(string) ([]string, []string) { return nil, nil }
 func (sampleDirectory) ClassroomColors() map[string]string { return map[string]string{} }
 func (sampleDirectory) GradeColors() map[string]string     { return map[string]string{} }
-func (sampleDirectory) People() []calendar.Person          { return nil }
-func (sampleDirectory) Lists(string) []calendar.List       { return nil }
+func (sampleDirectory) People() []when.Person              { return nil }
+func (sampleDirectory) Lists(string) []when.List           { return nil }
 
-var sampleNow = time.Date(2026, 9, 12, 9, 0, 0, 0, calendar.Location)
+var sampleNow = time.Date(2026, 9, 12, 9, 0, 0, 0, when.Location)
 
 func sampleSources(t *testing.T) Sources {
 	t.Helper()
@@ -85,9 +85,9 @@ func sampleSources(t *testing.T) Sources {
 	if err != nil {
 		t.Fatal(err)
 	}
-	roster := calendar.Roster{}
+	roster := when.Roster{}
 	for _, c := range directory.Classrooms {
-		room := calendar.Classroom{Name: c.Name, Grades: []string{}}
+		room := when.Classroom{Name: c.Name, Grades: []string{}}
 		for _, g := range directory.Grades {
 			if slices.ContainsFunc(directory.People, func(p who.Person) bool { return p.IsStudent && p.Classroom == c.Name && p.Grade == g.Name }) {
 				room.Grades = append(room.Grades, g.Name)
@@ -102,7 +102,7 @@ func sampleSources(t *testing.T) Sources {
 		roster.Classrooms = append(roster.Classrooms, room)
 	}
 	queue := store.NewQueue()
-	calendarCache, err := calendar.NewCache(dir, dir, func() calendar.Roster { return roster }, nil, func(string) bool { return false }, queue)
+	calendarCache, err := when.NewCache(dir, dir, func() when.Roster { return roster }, nil, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,9 +148,9 @@ func sampleSources(t *testing.T) Sources {
 		Directory:         func() *who.Model { return directory },
 		Tags:              tags,
 		Lists:             lists,
-		Calendar:          func() *calendar.Model { return calendarModel },
+		Calendar:          func() *when.Model { return calendarModel },
 		CalendarDirectory: sampleDirectory{directory},
-		Linked:            func(string) []calendar.Linked { return nil },
+		Linked:            func(string) []when.Linked { return nil },
 		Team:              func() *team.Model { return teamModel },
 		Celebrate:         func() *celebrate.Model { return celebrateModel },
 		Loop:              func() *loop.Model { return loopModel },
@@ -243,7 +243,7 @@ func TestLingoReadsTheModels(t *testing.T) {
 
 func TestRecentBlockListsTheNewestDocuments(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, calendar.Location)
+	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, when.Location)
 	block := recentBlock(v, recentDocuments(v))
 	for _, want := range []string{"## Recent documents", "- Friday, September 11, 2026, past (6 days ago): Helios Weekly Newsletter 2026 Sep 11 (key ", "Helios Weekly Newsletter 2026 September 4"} {
 		if !strings.Contains(block, want) {
@@ -255,7 +255,7 @@ func TestRecentBlockListsTheNewestDocuments(t *testing.T) {
 			t.Errorf("recent block reaches back to %q:\n%s", unwanted, block)
 		}
 	}
-	v.now = time.Date(2027, 1, 4, 9, 0, 0, 0, calendar.Location)
+	v.now = time.Date(2027, 1, 4, 9, 0, 0, 0, when.Location)
 	if block := recentBlock(v, recentDocuments(v)); !strings.Contains(block, "No documents have come in") {
 		t.Fatalf("a quiet fortnight: %s", block)
 	}
@@ -332,7 +332,7 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 	if known := anyStrings(first["known"]); len(known) == 0 || slices.Contains(known, "late-reminder") {
 		t.Fatalf("the first turn knew %v", known)
 	}
-	arrived := &artifacts.Document{Key: "late-reminder", Title: "Picture Day moves to Friday", Date: sampleNow.Format(calendar.DateFormat), Kind: artifacts.KindList}
+	arrived := &artifacts.Document{Key: "late-reminder", Title: "Picture Day moves to Friday", Date: sampleNow.Format(when.DateFormat), Kind: artifacts.KindList}
 	current = &artifacts.Model{Documents: append([]*artifacts.Document{arrived}, documents.Documents...)}
 	second := chat.keep(t, post(t, handler, chat.body(t, "And now?")))
 	if !slices.Contains(anyStrings(second["known"]), "late-reminder") {
@@ -416,7 +416,7 @@ func TestCalendarEventsSearchesTheYear(t *testing.T) {
 
 func TestVolunteerOpportunitiesNameTheHouseholdsSignUps(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 1, 9, 0, 0, 0, calendar.Location)
+	v.now = time.Date(2026, 9, 1, 9, 0, 0, 0, when.Location)
 	result := call(t, v, "get_activity", `{"path":"/v/international-night"}`)
 	thing := result["thing"].(map[string]any)
 	if !strings.Contains(strings.Join(anyStrings(thing["household"]), ","), "you: Co-Chair") {
@@ -506,7 +506,7 @@ func TestPartiesListWhoHoldsTickets(t *testing.T) {
 
 func TestRolesTakeTheirEventsDay(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 10, 1, 9, 0, 0, 0, calendar.Location)
+	v.now = time.Date(2026, 10, 1, 9, 0, 0, 0, when.Location)
 	result := call(t, v, "get_activity", `{"path":"/v/international-night"}`)
 	thing := result["thing"].(map[string]any)
 	if thing["past"] != true {
@@ -537,7 +537,7 @@ func TestRolesTakeTheirEventsDay(t *testing.T) {
 
 func TestPartiesSayWhereTheyStandAgainstToday(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 18, 9, 0, 0, 0, calendar.Location)
+	v.now = time.Date(2026, 9, 18, 9, 0, 0, 0, when.Location)
 	result := call(t, v, "parties", `{}`)
 	for _, p := range result["parties"].([]any) {
 		party := p.(map[string]any)
@@ -585,7 +585,7 @@ func TestMyListsAreTheViewersOwn(t *testing.T) {
 
 func TestSearchDocumentsFindsTheIssueAndReadsIt(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, calendar.Location)
+	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, when.Location)
 	result := call(t, v, "search_documents", `{"query":"international night booths"}`)
 	if result["documents"].(float64) != 9 || result["newest"] != "2026-09-25" || result["oldest"] != "2026-08-30" {
 		t.Fatalf("documents: %v", result)
@@ -617,7 +617,7 @@ func TestSearchDocumentsFindsTheIssueAndReadsIt(t *testing.T) {
 
 func TestSearchDocumentsLinksAPage(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, calendar.Location)
+	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, when.Location)
 	result := call(t, v, "search_documents", `{"query":"what to bring for family camping tents"}`)
 	first := result["passages"].([]any)[0].(map[string]any)
 	const url = "https://www.heliosschool.org/student-life/family-camping"
@@ -637,7 +637,7 @@ func TestSearchDocumentsLinksAPage(t *testing.T) {
 
 func TestSearchDocumentsNarrows(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, calendar.Location)
+	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, when.Location)
 	result := call(t, v, "search_documents", `{"query":"labor day","until":"2026-09-04"}`)
 	if result["searched"].(float64) != 3 {
 		t.Fatalf("until: %v", result["searched"])

@@ -5,19 +5,19 @@ import (
 	"slices"
 	"testing"
 
-	"heliosian/internal/calendar"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
+	"heliosian/internal/when"
 )
 
-func sampleCache(t *testing.T) (*data.Dir, *calendar.Cache) {
+func sampleCache(t *testing.T) (*data.Dir, *when.Cache) {
 	t.Helper()
 	sheet := &data.Dir{Root: "../../sampledata"}
-	roster := calendar.Roster{}
+	roster := when.Roster{}
 	for _, name := range []string{"Hummingbirds", "Hawks", "Falcons", "Jays", "Ravens", "Condors", "Ospreys", "Egrets", "Herons"} {
-		roster.Classrooms = append(roster.Classrooms, calendar.Classroom{Name: name})
+		roster.Classrooms = append(roster.Classrooms, when.Classroom{Name: name})
 	}
-	cache, err := calendar.NewCache(sheet, sheet, func() calendar.Roster { return roster }, nil, func(string) bool { return false }, store.NewQueue())
+	cache, err := when.NewCache(sheet, sheet, func() when.Roster { return roster }, nil, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func rowsOf(t *testing.T, sheet *data.Dir, tab string) []map[string]string {
 
 func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
 	sheet, cache := sampleCache(t)
-	google, enrichment := rowsOf(t, sheet, calendar.GoogleTab), rowsOf(t, sheet, calendar.EnrichmentTab)
+	google, enrichment := rowsOf(t, sheet, when.GoogleTab), rowsOf(t, sheet, when.EnrichmentTab)
 	rows := []map[string]string{}
 	for _, row := range google {
 		switch row["Key"] {
@@ -50,8 +50,8 @@ func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
 	rows = append(rows, map[string]string{"Key": "a13@sample", "Start": "2027-04-01", "End": "2027-04-01", "Title": "Spring Picnic", "Updated": "2026-09-01 09:00", "Sequence": "0"})
 	enriched := append(slices.Clone(enrichment), map[string]string{"Event ID": "a13@sample", "Tags": "Jays, Community", "Input Hash": "h", "Model": modelName, "Enriched": "2026-09-01"})
 	sync := []tabSync{
-		{calendar.GoogleTab, calendar.GoogleColumns, rows, google, "Key", true},
-		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enriched, enrichment, "Event ID", false},
+		{when.GoogleTab, when.GoogleColumns, rows, google, "Key", true},
+		{when.EnrichmentTab, when.EnrichmentColumns, enriched, enrichment, "Event ID", false},
 	}
 	dry := &run{opts: Options{Cache: cache, DryRun: true}}
 	if err := dry.write(t.Context(), sync); err != nil {
@@ -69,7 +69,7 @@ func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
 		t.Errorf("model after the import: a6 %+v, a13 %+v", m.Event("a6@sample"), m.Event("a13@sample"))
 	}
 	keys := []string{}
-	for _, row := range rowsOf(t, sheet, calendar.GoogleTab) {
+	for _, row := range rowsOf(t, sheet, when.GoogleTab) {
 		keys = append(keys, row["Key"]+"="+row["Title"])
 	}
 	if slices.ContainsFunc(keys, func(k string) bool { return k == "a12@sample=Spring Celebration" }) || !slices.Contains(keys, "a6@sample=Hummingbird Coffee") || !slices.Contains(keys, "a13@sample=Spring Picnic") || len(keys) != len(google) {
@@ -95,7 +95,7 @@ func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
 		}
 	}
 	before := len(log)
-	sync[0].before, sync[1].before = rowsOf(t, sheet, calendar.GoogleTab), rowsOf(t, sheet, calendar.EnrichmentTab)
+	sync[0].before, sync[1].before = rowsOf(t, sheet, when.GoogleTab), rowsOf(t, sheet, when.EnrichmentTab)
 	if err := r.write(t.Context(), sync); err != nil {
 		t.Fatal(err)
 	}

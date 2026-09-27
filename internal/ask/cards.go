@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/calendar"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -46,8 +46,8 @@ func (v *viewer) linkCard(address string) (linkCard, bool) {
 				continue
 			}
 			card := linkCard{URL: address, Kind: "event", Name: e.Title}
-			if len(e.Start) >= len(calendar.DateFormat) {
-				if day, err := time.ParseInLocation(calendar.DateFormat, e.Start[:len(calendar.DateFormat)], calendar.Location); err == nil {
+			if len(e.Start) >= len(when.DateFormat) {
+				if day, err := time.ParseInLocation(when.DateFormat, e.Start[:len(when.DateFormat)], when.Location); err == nil {
 					card.Badge = day.Format("Mon Jan 2")
 				}
 			}

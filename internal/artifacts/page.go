@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/net/html"
 
-	"heliosian/internal/calendar"
+	"heliosian/internal/when"
 )
 
 const Site = "https://www.heliosschool.org"
@@ -90,7 +90,7 @@ func (p Page) Build(_ *Resolver, model string) (*Document, error) {
 	doc := &Document{
 		Key:      Key(p.URL),
 		Title:    title,
-		Date:     day.In(calendar.Location).Format(calendar.DateFormat),
+		Date:     day.In(when.Location).Format(when.DateFormat),
 		Author:   "Helios School",
 		Kind:     KindPage,
 		Channel:  "website",

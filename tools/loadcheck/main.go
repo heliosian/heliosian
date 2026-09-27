@@ -14,7 +14,6 @@ import (
 	"heliosian/internal/app"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
-	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
@@ -23,6 +22,7 @@ import (
 	"heliosian/internal/loop"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -258,7 +258,7 @@ func main() {
 	fmt.Printf("config: %d super admins, stale years %+v, staff color %s, %d grade colors, %d classroom colors\n",
 		len(settings.SuperAdmins), settings.StaleYears, settings.StaffColor, len(settings.GradeColors), len(settings.ClassroomColors))
 
-	calendarCache, err := calendar.NewCache(source, nil, func() calendar.Roster { return app.CalendarRoster(model) }, nil, func(string) bool { return false }, store.NewQueue())
+	calendarCache, err := when.NewCache(source, nil, func() when.Roster { return app.CalendarRoster(model) }, nil, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load calendar model: %v", err)
 	}
@@ -271,7 +271,7 @@ func main() {
 		}
 	}
 	fmt.Printf("calendar: %d events (google %d, pdf %d, sheet %d), %d hidden, %d duplicates folded\n",
-		len(plan.Events), bySource[calendar.SourceGoogle], bySource[calendar.SourcePDF], bySource[calendar.SourceSheet], plan.Hidden, plan.Duplicates)
+		len(plan.Events), bySource[when.SourceGoogle], bySource[when.SourcePDF], bySource[when.SourceSheet], plan.Hidden, plan.Duplicates)
 	for _, t := range plan.Tags {
 		fmt.Printf("  %s: %d\n", t.Name, byTag[t.Name])
 	}
@@ -298,7 +298,7 @@ func main() {
 		log.Fatalf("load groups model: %v", err)
 	}
 	groupModel := groupCache.Model()
-	now := time.Now().In(calendar.Location)
+	now := time.Now().In(when.Location)
 	sources := loop.Sources{
 		Directory: model,
 		Tags:      model.Tags,

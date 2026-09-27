@@ -34,13 +34,13 @@ import (
 	gcal "google.golang.org/api/calendar/v3"
 	"google.golang.org/api/googleapi"
 
-	"heliosian/internal/calendar"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
+	"heliosian/internal/when"
 )
 
 const (
-	pageURL   = calendar.SchoolCalendarPage
+	pageURL   = when.SchoolCalendarPage
 	modelName = "claude-fable-5-1"
 	batchSize = 10
 	noDayType = "None"
@@ -51,9 +51,9 @@ var legendDayTypes = []string{"No School", "Early Dismissal"}
 
 type Options struct {
 	Source       data.Source
-	Cache        *calendar.Cache
+	Cache        *when.Cache
 	Calendar     *gcal.Service
-	Roster       func() calendar.Roster
+	Roster       func() when.Roster
 	AnthropicKey string
 	DryRun       bool
 }
@@ -164,7 +164,7 @@ func window(now time.Time) (time.Time, time.Time) {
 	if now.Month() < time.July {
 		start--
 	}
-	from := time.Date(start, time.July, 1, 0, 0, 0, 0, calendar.Location)
+	from := time.Date(start, time.July, 1, 0, 0, 0, 0, when.Location)
 	return from, from.AddDate(3, 0, 0)
 }
 
@@ -172,7 +172,7 @@ const feedFields = googleapi.Field("nextPageToken,items(iCalUID,recurringEventId
 
 func feedRows(ctx context.Context, svc *gcal.Service, from, to time.Time) ([]map[string]string, error) {
 	rows := []map[string]string{}
-	call := svc.Events.List(calendar.SchoolCalendarID).Context(ctx).
+	call := svc.Events.List(when.SchoolCalendarID).Context(ctx).
 		SingleEvents(true).OrderBy("startTime").MaxResults(2500).
 		TimeMin(from.Format(time.RFC3339)).TimeMax(to.Format(time.RFC3339)).
 		Fields(feedFields)
@@ -203,11 +203,11 @@ func eventTime(t *gcal.EventDateTime) (time.Time, bool, error) {
 		return time.Time{}, false, fmt.Errorf("event with no time")
 	}
 	if t.Date != "" {
-		day, err := time.ParseInLocation(calendar.DateFormat, t.Date, calendar.Location)
+		day, err := time.ParseInLocation(when.DateFormat, t.Date, when.Location)
 		return day, true, err
 	}
 	at, err := time.Parse(time.RFC3339, t.DateTime)
-	return at.In(calendar.Location), false, err
+	return at.In(when.Location), false, err
 }
 
 func instanceKey(uid string, t time.Time, allDay bool) string {
@@ -247,7 +247,7 @@ func feedRow(e *gcal.Event) (map[string]string, time.Time, error) {
 		"Title":       collapse(e.Summary),
 		"Location":    collapse(e.Location),
 		"Description": description,
-		"Updated":     updated.In(calendar.Location).Format(calendar.DateTimeFormat),
+		"Updated":     updated.In(when.Location).Format(when.DateTimeFormat),
 		"Sequence":    strconv.FormatInt(e.Sequence, 10),
 	}
 	if allDay {
@@ -255,9 +255,9 @@ func feedRow(e *gcal.Event) (map[string]string, time.Time, error) {
 		if end.Before(start) {
 			end = start
 		}
-		row["Start"], row["End"] = start.Format(calendar.DateFormat), end.Format(calendar.DateFormat)
+		row["Start"], row["End"] = start.Format(when.DateFormat), end.Format(when.DateFormat)
 	} else {
-		row["Start"], row["End"] = start.Format(calendar.DateTimeFormat), end.Format(calendar.DateTimeFormat)
+		row["Start"], row["End"] = start.Format(when.DateTimeFormat), end.Format(when.DateTimeFormat)
 	}
 	if row["Title"] == "" {
 		row["Title"] = "(untitled)"
@@ -323,7 +323,7 @@ func enumOf(values []string) map[string]any {
 	return map[string]any{"type": "string", "enum": values}
 }
 
-func glossary(roster calendar.Roster) string {
+func glossary(roster when.Roster) string {
 	b := &strings.Builder{}
 	b.WriteString("Helios School is a K-8 school. Students belong to a homeroom classroom named for a bird. Two classrooms make a grade band whose name is a portmanteau of the two classroom names. Lower School is Kindergarten through Grade 4 and Middle School is Grade 5 through Grade 8.\n\nBands and their classrooms:\n")
 	bands := []string{}
@@ -739,7 +739,7 @@ func extractMonth(ctx context.Context, client anthropic.Client, document anthrop
 			continue
 		}
 		days = append(days, shadedDay{
-			Date:    time.Date(month.Year(), month.Month(), day, 0, 0, 0, 0, calendar.Location).Format(calendar.DateFormat),
+			Date:    time.Date(month.Year(), month.Month(), day, 0, 0, 0, 0, when.Location).Format(when.DateFormat),
 			Legend:  fill[chosen],
 			DayType: chosen,
 		})
@@ -748,7 +748,7 @@ func extractMonth(ctx context.Context, client anthropic.Client, document anthrop
 	return days, nil
 }
 
-func entriesSystem(roster calendar.Roster) string {
+func entriesSystem(roster when.Roster) string {
 	return glossary(roster) + `
 You are reading the school's one-page year calendar PDF: twelve month grids, a legend, and an Important Dates list. Read the Important Dates list into entries.
 
@@ -759,7 +759,7 @@ You are reading the school's one-page year calendar PDF: twelve month grids, a l
 - year is the school year in the title, written as YYYY-YYYY. Dates are YYYY-MM-DD; the year of each date follows from which side of the winter break the month is on.`
 }
 
-func extractEntries(ctx context.Context, client anthropic.Client, pdf []byte, roster calendar.Roster, dayTypes []string) (pdfExtraction, error) {
+func extractEntries(ctx context.Context, client anthropic.Client, pdf []byte, roster when.Roster, dayTypes []string) (pdfExtraction, error) {
 	system := entriesSystem(roster)
 	schema := map[string]any{
 		"type": "object", "additionalProperties": false, "required": []string{"year", "entries"},
@@ -776,7 +776,7 @@ func extractEntries(ctx context.Context, client anthropic.Client, pdf []byte, ro
 						"end":        map[string]any{"type": "string", "description": "YYYY-MM-DD, the same as start for a single day"},
 						"dayType":    enumOf(append([]string{noDayType}, dayTypes...)),
 						"classrooms": map[string]any{"type": "array", "minItems": 1, "items": enumOf(roster.Names())},
-						"marker":     enumOf([]string{noMarker, calendar.MarkerFirstDay, calendar.MarkerLastDay}),
+						"marker":     enumOf([]string{noMarker, when.MarkerFirstDay, when.MarkerLastDay}),
 					},
 				},
 			},
@@ -804,7 +804,7 @@ func extractEntries(ctx context.Context, client anthropic.Client, pdf []byte, ro
 	}
 }
 
-func extractPDF(ctx context.Context, client anthropic.Client, pdf []byte, roster calendar.Roster, dayTypes []string) (pdfExtraction, error) {
+func extractPDF(ctx context.Context, client anthropic.Client, pdf []byte, roster when.Roster, dayTypes []string) (pdfExtraction, error) {
 	rendered, err := renderPage(pdf)
 	if err != nil {
 		return pdfExtraction{}, fmt.Errorf("render the calendar page: %w", err)
@@ -840,7 +840,7 @@ func extractPDF(ctx context.Context, client anthropic.Client, pdf []byte, roster
 	var wg sync.WaitGroup
 	for i := range 12 {
 		wg.Go(func() {
-			month := time.Date(startYear, time.July+time.Month(i), 1, 0, 0, 0, 0, calendar.Location)
+			month := time.Date(startYear, time.July+time.Month(i), 1, 0, 0, 0, 0, when.Location)
 			months[i], errs[i] = extractMonth(ctx, client, crops[i], month, legend)
 		})
 	}
@@ -854,7 +854,7 @@ func extractPDF(ctx context.Context, client anthropic.Client, pdf []byte, roster
 	return out, nil
 }
 
-func readPDF(ctx context.Context, client anthropic.Client, pdf []byte, hash string, roster calendar.Roster, dayTypes []string) ([]map[string]string, string, error) {
+func readPDF(ctx context.Context, client anthropic.Client, pdf []byte, hash string, roster when.Roster, dayTypes []string) ([]map[string]string, string, error) {
 	extraction, err := extractPDF(ctx, client, pdf, roster, dayTypes)
 	if err != nil {
 		return nil, "", err
@@ -866,7 +866,7 @@ func readPDF(ctx context.Context, client anthropic.Client, pdf []byte, hash stri
 	return rows, extraction.Year, nil
 }
 
-func pdfRows(ctx context.Context, extraction pdfExtraction, hash string, roster calendar.Roster) ([]map[string]string, error) {
+func pdfRows(ctx context.Context, extraction pdfExtraction, hash string, roster when.Roster) ([]map[string]string, error) {
 	yearForm := regexp.MustCompile(`^(\d{4})-(\d{4})$`)
 	match := yearForm.FindStringSubmatch(extraction.Year)
 	if match == nil {
@@ -897,14 +897,14 @@ func pdfRows(ctx context.Context, extraction pdfExtraction, hash string, roster 
 				return nil, fmt.Errorf("entry %q names %q, which is not a classroom", e.Title, c)
 			}
 		}
-		start, err := time.ParseInLocation(calendar.DateFormat, e.Start, calendar.Location)
+		start, err := time.ParseInLocation(when.DateFormat, e.Start, when.Location)
 		if err != nil {
 			return nil, fmt.Errorf("entry %q: start %q is not a date", e.Title, e.Start)
 		}
-		if _, err := time.ParseInLocation(calendar.DateFormat, e.End, calendar.Location); err != nil {
+		if _, err := time.ParseInLocation(when.DateFormat, e.End, when.Location); err != nil {
 			return nil, fmt.Errorf("entry %q: end %q is not a date", e.Title, e.End)
 		}
-		if got := calendar.SchoolYear(start); got != extraction.Year {
+		if got := when.SchoolYear(start); got != extraction.Year {
 			return nil, fmt.Errorf("entry %q on %s falls in %s, not %s", e.Title, e.Start, got, extraction.Year)
 		}
 		key := "pdf/" + extraction.Year + "/" + e.Start + "/" + slug(e.Title)
@@ -914,7 +914,7 @@ func pdfRows(ctx context.Context, extraction pdfExtraction, hash string, roster 
 		keys[key] = true
 		row := map[string]string{
 			"Key": key, "Year": extraction.Year, "Start": e.Start, "End": e.End, "Title": collapse(e.Title),
-			"Tags": calendar.JoinList(e.Classrooms), "PDF": hash,
+			"Tags": when.JoinList(e.Classrooms), "PDF": hash,
 		}
 		if e.DayType != noDayType {
 			row["Day Type"] = e.DayType
@@ -923,9 +923,9 @@ func pdfRows(ctx context.Context, extraction pdfExtraction, hash string, roster 
 			row["Marker"] = e.Marker
 		}
 		switch e.Marker {
-		case calendar.MarkerFirstDay:
+		case when.MarkerFirstDay:
 			firstDays++
-		case calendar.MarkerLastDay:
+		case when.MarkerLastDay:
 			lastDays++
 		}
 		rows = append(rows, row)
@@ -953,7 +953,7 @@ type enrichOutput struct {
 	Keywords []string `json:"keywords"`
 }
 
-func classifierSystem(roster calendar.Roster, tags []calendar.Tag) string {
+func classifierSystem(roster when.Roster, tags []when.Tag) string {
 	described := &strings.Builder{}
 	for _, t := range tags {
 		fmt.Fprintf(described, "- %s: %s\n", t.Name, t.Description)
@@ -968,7 +968,7 @@ You classify events from the school calendar for a family-facing app. For each e
 Answer under every event's id, repeating its title exactly as given.`
 }
 
-func enrich(ctx context.Context, client anthropic.Client, inputs []enrichInput, roster calendar.Roster, dayTypes []string, tags []calendar.Tag) ([]enrichOutput, error) {
+func enrich(ctx context.Context, client anthropic.Client, inputs []enrichInput, roster when.Roster, dayTypes []string, tags []when.Tag) ([]enrichOutput, error) {
 	names := []string{}
 	for _, t := range tags {
 		names = append(names, t.Name)
@@ -1055,11 +1055,11 @@ func enrich(ctx context.Context, client anthropic.Client, inputs []enrichInput, 
 
 type run struct {
 	opts     Options
-	roster   calendar.Roster
+	roster   when.Roster
 	client   anthropic.Client
 	tables   store.Tables
 	dayTypes []string
-	tags     []calendar.Tag
+	tags     []when.Tag
 	failures []string
 }
 
@@ -1069,7 +1069,7 @@ func begin(ctx context.Context, opts Options) (*run, error) {
 	}
 	roster := opts.Roster()
 	slog.InfoContext(ctx, "calendar import: roster", "classrooms", len(roster.Classrooms))
-	names := []string{calendar.GoogleTab, calendar.PDFTab, calendar.EnrichmentTab, calendar.DayTypesTab, calendar.TagsTab}
+	names := []string{when.GoogleTab, when.PDFTab, when.EnrichmentTab, when.DayTypesTab, when.TagsTab}
 	tabs, err := opts.Source.Tabs(context.Background(), "calendar", names, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read calendar tables: %w", err)
@@ -1079,19 +1079,19 @@ func begin(ctx context.Context, opts Options) (*run, error) {
 		tables[name] = tabs[name].Rows
 	}
 	dayTypes := []string{}
-	for _, row := range tables[calendar.DayTypesTab] {
+	for _, row := range tables[when.DayTypesTab] {
 		dayTypes = append(dayTypes, row["Day Type"])
 	}
-	tags := []calendar.Tag{}
-	for _, row := range tables[calendar.TagsTab] {
-		tags = append(tags, calendar.Tag{Name: row["Tag"], Description: row["Description"]})
+	tags := []when.Tag{}
+	for _, row := range tables[when.TagsTab] {
+		tags = append(tags, when.Tag{Name: row["Tag"], Description: row["Description"]})
 	}
 	if len(tags) == 0 {
-		return nil, fmt.Errorf("%s needs rows before the import can run", calendar.TagsTab)
+		return nil, fmt.Errorf("%s needs rows before the import can run", when.TagsTab)
 	}
-	for _, name := range append([]string{calendar.RegularDayType}, legendDayTypes...) {
+	for _, name := range append([]string{when.RegularDayType}, legendDayTypes...) {
 		if !slices.Contains(dayTypes, name) {
-			return nil, fmt.Errorf("%s needs a %q row before the import can run", calendar.DayTypesTab, name)
+			return nil, fmt.Errorf("%s needs a %q row before the import can run", when.DayTypesTab, name)
 		}
 	}
 	return &run{opts: opts, roster: roster, client: anthropic.NewClient(option.WithAPIKey(opts.AnthropicKey)), tables: tables, dayTypes: dayTypes, tags: tags}, nil
@@ -1102,18 +1102,18 @@ func RunGoogle(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
-	from, to := window(time.Now().In(calendar.Location))
+	from, to := window(time.Now().In(when.Location))
 	google, err := feedRows(ctx, opts.Calendar, from, to)
 	if err != nil {
 		return fmt.Errorf("read the school calendar: %w", err)
 	}
-	slog.InfoContext(ctx, "calendar import: feed read", "events", len(google), "from", from.Format(calendar.DateFormat))
+	slog.InfoContext(ctx, "calendar import: feed read", "events", len(google), "from", from.Format(when.DateFormat))
 	inWindow := func(row map[string]string) bool {
-		start, err := time.ParseInLocation(calendar.DateFormat, row["Start"][:min(len(row["Start"]), len(calendar.DateFormat))], calendar.Location)
+		start, err := time.ParseInLocation(when.DateFormat, row["Start"][:min(len(row["Start"]), len(when.DateFormat))], when.Location)
 		return err == nil && !start.Before(from) && start.Before(to)
 	}
 	rows := slices.Clone(google)
-	for _, row := range r.tables[calendar.GoogleTab] {
+	for _, row := range r.tables[when.GoogleTab] {
 		if !inWindow(row) {
 			rows = append(rows, row)
 		}
@@ -1121,8 +1121,8 @@ func RunGoogle(ctx context.Context, opts Options) error {
 	enrichment := r.enrich(ctx, google, false)
 	slog.InfoContext(ctx, "calendar import: rows", "feed", len(rows), "enriched", len(enrichment))
 	return r.write(ctx, []tabSync{
-		{calendar.GoogleTab, calendar.GoogleColumns, rows, r.tables[calendar.GoogleTab], "Key", true},
-		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables[calendar.EnrichmentTab], "Event ID", false},
+		{when.GoogleTab, when.GoogleColumns, rows, r.tables[when.GoogleTab], "Key", true},
+		{when.EnrichmentTab, when.EnrichmentColumns, enrichment, r.tables[when.EnrichmentTab], "Event ID", false},
 	})
 }
 
@@ -1144,24 +1144,24 @@ func RunPDF(ctx context.Context, opts Options) error {
 		return fmt.Errorf("fetch the year calendar pdf: %w", err)
 	}
 	pdfHash := digest(string(pdf), legendSystem, entriesSystem(r.roster), monthSystem(""))[:12]
-	rows := r.tables[calendar.PDFTab]
+	rows := r.tables[when.PDFTab]
 	known := false
-	for _, row := range r.tables[calendar.PDFTab] {
+	for _, row := range r.tables[when.PDFTab] {
 		if row["PDF"] == pdfHash {
 			known = true
 		}
 	}
 	if known {
-		slog.InfoContext(ctx, "calendar import: pdf unchanged", "url", pdfURL, "hash", pdfHash, "kept", len(r.tables[calendar.PDFTab]))
+		slog.InfoContext(ctx, "calendar import: pdf unchanged", "url", pdfURL, "hash", pdfHash, "kept", len(r.tables[when.PDFTab]))
 	} else {
 		slog.InfoContext(ctx, "calendar import: pdf is new, reading it", "url", pdfURL, "hash", pdfHash)
 		fresh, year, err := readPDF(ctx, r.client, pdf, pdfHash, r.roster, r.dayTypes)
 		if err != nil {
-			slog.ErrorContext(ctx, "calendar import: read the year calendar pdf, keeping the rows already there", "kept", len(r.tables[calendar.PDFTab]), "error", err)
+			slog.ErrorContext(ctx, "calendar import: read the year calendar pdf, keeping the rows already there", "kept", len(r.tables[when.PDFTab]), "error", err)
 			r.failures = append(r.failures, "the year calendar pdf")
 		} else {
 			rows = []map[string]string{}
-			for _, row := range r.tables[calendar.PDFTab] {
+			for _, row := range r.tables[when.PDFTab] {
 				if row["Year"] != year {
 					rows = append(rows, row)
 				}
@@ -1173,8 +1173,8 @@ func RunPDF(ctx context.Context, opts Options) error {
 	enrichment := r.enrich(ctx, rows, true)
 	slog.InfoContext(ctx, "calendar import: rows", "pdf", len(rows), "enriched", len(enrichment))
 	return r.write(ctx, []tabSync{
-		{calendar.PDFTab, calendar.PDFColumns, rows, r.tables[calendar.PDFTab], "Key", true},
-		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables[calendar.EnrichmentTab], "Event ID", false},
+		{when.PDFTab, when.PDFColumns, rows, r.tables[when.PDFTab], "Key", true},
+		{when.EnrichmentTab, when.EnrichmentColumns, enrichment, r.tables[when.EnrichmentTab], "Event ID", false},
 	})
 }
 
@@ -1198,12 +1198,12 @@ func plan(existing map[string]map[string]string, rows []map[string]string, vocab
 func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []map[string]string {
 	vocabulary := digest(classifierSystem(r.roster, r.tags), strings.Join(r.roster.Names(), ","), strings.Join(r.dayTypes, ","))
 	existing := map[string]map[string]string{}
-	for _, row := range r.tables[calendar.EnrichmentTab] {
+	for _, row := range r.tables[when.EnrichmentTab] {
 		existing[row["Event ID"]] = row
 	}
 	enrichment, pending, hashes := plan(existing, rows, vocabulary)
 	slog.InfoContext(ctx, "calendar import: enrichment", "current", len(enrichment), "to classify", len(pending))
-	today := time.Now().In(calendar.Location).Format(calendar.DateFormat)
+	today := time.Now().In(when.Location).Format(when.DateFormat)
 	batches := [][]enrichInput{}
 	for start := 0; start < len(pending); start += batchSize {
 		batches = append(batches, pending[start:min(start+batchSize, len(pending))])
@@ -1228,8 +1228,8 @@ func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []
 				a.DayType = noDayType
 			}
 			row := map[string]string{
-				"Event ID": a.ID, "Tags": calendar.JoinList(a.Tags),
-				"Keywords": calendar.JoinList(a.Keywords), "Input Hash": hashes[a.ID], "Model": modelName, "Enriched": today,
+				"Event ID": a.ID, "Tags": when.JoinList(a.Tags),
+				"Keywords": when.JoinList(a.Keywords), "Input Hash": hashes[a.ID], "Model": modelName, "Enriched": today,
 			}
 			if a.DayType != noDayType {
 				row["Day Type"] = a.DayType
@@ -1240,7 +1240,7 @@ func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []
 	}
 	byTag := map[string]int{}
 	for _, row := range enrichment {
-		for _, t := range calendar.SplitList(row["Tags"]) {
+		for _, t := range when.SplitList(row["Tags"]) {
 			byTag[t]++
 		}
 	}

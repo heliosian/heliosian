@@ -100,7 +100,7 @@ func (c calendarImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "category-images/") {
 		return uploaded(c.store, key)
 	}
-	return bundled([]string{"web/calendar", "web/public/calendar"}, key), nil
+	return bundled([]string{"web/when", "web/public/when"}, key), nil
 }
 
 func (c calendarImages) Prefetch(ctx context.Context, names []string) error {

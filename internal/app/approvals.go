@@ -7,9 +7,9 @@ import (
 	"sort"
 
 	"heliosian/internal/auth"
-	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/team"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -20,7 +20,7 @@ type approval struct {
 	Path  string `json:"path"`
 }
 
-func approvals(directory *who.Cache, teamCache *team.Cache, celebrateCache *celebrate.Cache, calendarCache *calendar.Cache) http.HandlerFunc {
+func approvals(directory *who.Cache, teamCache *team.Cache, celebrateCache *celebrate.Cache, calendarCache *when.Cache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		email := directory.Model().Resolve(auth.Email(r))
 		out := []approval{}
@@ -48,7 +48,7 @@ func approvals(directory *who.Cache, teamCache *team.Cache, celebrateCache *cele
 		if calendarCache.IsAdmin(email) {
 			for _, e := range calendarCache.Model().Pending {
 				if e.Pending && !e.Declined && !e.Cancelled {
-					out = append(out, approval{App: "calendar", Title: e.Title, Start: e.Start, Path: calendar.EventPath(e)})
+					out = append(out, approval{App: "when", Title: e.Title, Start: e.Start, Path: when.EventPath(e)})
 				}
 			}
 		}

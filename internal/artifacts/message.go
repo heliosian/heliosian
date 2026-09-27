@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/calendar"
+	"heliosian/internal/when"
 )
 
 type Message struct {
@@ -120,7 +120,7 @@ func (m Message) Build(links *Resolver, model string) (*Document, error) {
 	doc := &Document{
 		Key:      m.Key(),
 		Title:    title,
-		Date:     day.In(calendar.Location).Format(calendar.DateFormat),
+		Date:     day.In(when.Location).Format(when.DateFormat),
 		Author:   strings.TrimSpace(m.From),
 		Kind:     kind,
 		Channel:  channel,

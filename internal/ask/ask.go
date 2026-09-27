@@ -22,13 +22,13 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
-	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
 	"heliosian/internal/ratelimit"
 	"heliosian/internal/serve"
 	"heliosian/internal/team"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -46,9 +46,9 @@ type Sources struct {
 	Directory          func() *who.Model
 	Tags               func(owner string) map[string][]string
 	Lists              func(email string) []who.List
-	Calendar           func() *calendar.Model
-	CalendarDirectory  calendar.Directory
-	Linked             func(email string) []calendar.Linked
+	Calendar           func() *when.Model
+	CalendarDirectory  when.Directory
+	Linked             func(email string) []when.Linked
 	Team               func() *team.Model
 	Celebrate          func() *celebrate.Model
 	CelebrateDirectory celebrate.Directory

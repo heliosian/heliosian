@@ -9,7 +9,6 @@ import (
 	"heliosian/internal/ask"
 	"heliosian/internal/birthday"
 	"heliosian/internal/blob"
-	"heliosian/internal/calendar"
 	"heliosian/internal/describe"
 	"heliosian/internal/feedback"
 	"heliosian/internal/imagesearch"
@@ -17,6 +16,7 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
+	"heliosian/internal/when"
 )
 
 func requiredEnv(name string) string {
@@ -65,8 +65,8 @@ func githubApp() feedback.IssueFiler {
 	return app
 }
 
-func calendarMail(sessionKey string) calendar.Mail {
-	return calendar.Mail{Sender: newMailer(calendarMailFrom), From: calendarMailFrom, ReplyTo: calendarReplyTo, Base: calendarBase, SigningKey: mailgunSigningKey(), Key: []byte(sessionKey)}
+func calendarMail(sessionKey string) when.Mail {
+	return when.Mail{Sender: newMailer(calendarMailFrom), From: calendarMailFrom, ReplyTo: calendarReplyTo, Base: calendarBase, SigningKey: mailgunSigningKey(), Key: []byte(sessionKey)}
 }
 
 func mailgunKey() string {

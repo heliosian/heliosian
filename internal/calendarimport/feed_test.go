@@ -12,7 +12,7 @@ import (
 	gcal "google.golang.org/api/calendar/v3"
 	gapi "google.golang.org/api/option"
 
-	"heliosian/internal/calendar"
+	"heliosian/internal/when"
 )
 
 func timed(at string) *gcal.EventDateTime {
@@ -62,7 +62,7 @@ func fakeCalendar(t *testing.T) (*gcal.Service, *[]string) {
 
 func TestFeedRowsKeepTheSheetsKeys(t *testing.T) {
 	svc, queries := fakeCalendar(t)
-	from := time.Date(2026, time.July, 1, 0, 0, 0, 0, calendar.Location)
+	from := time.Date(2026, time.July, 1, 0, 0, 0, 0, when.Location)
 	rows, err := feedRows(context.Background(), svc, from, from.AddDate(3, 0, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +90,7 @@ func TestFeedRowsKeepTheSheetsKeys(t *testing.T) {
 
 func TestFeedRowsAskForSingleEventsInTheWindow(t *testing.T) {
 	svc, queries := fakeCalendar(t)
-	from := time.Date(2026, time.July, 1, 0, 0, 0, 0, calendar.Location)
+	from := time.Date(2026, time.July, 1, 0, 0, 0, 0, when.Location)
 	if _, err := feedRows(context.Background(), svc, from, from.AddDate(3, 0, 0)); err != nil {
 		t.Fatal(err)
 	}

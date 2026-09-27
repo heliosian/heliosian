@@ -6,7 +6,7 @@ const apex = /^https?:\/\/heliosian\.com(\/.*)?$/;
 export function localizeLink(href) {
   let m = href.match(appHosts);
   if (m) {
-    const label = {hca: 'team', cal: 'calendar', when: 'calendar', www: 'home'}[m[1]] || m[1];
+    const label = {hca: 'team', cal: 'when', calendar: 'when', www: 'home'}[m[1]] || m[1];
     const path = m[2] || '/';
     return appOrigin(label) + path;
   }

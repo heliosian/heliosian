@@ -20,7 +20,6 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/birthday"
 	"heliosian/internal/blob"
-	"heliosian/internal/calendar"
 	"heliosian/internal/capture"
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
@@ -32,6 +31,7 @@ import (
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/when"
 )
 
 const logPath = "local/heliosian-server.log"
@@ -96,7 +96,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 		MailFrom:      "HCA-Team <hca@example.org>",
 		CelebrateMail: mail.New("", "Helios Celebrate <celebrate@example.org>", mailDir()),
 		CelebrateFrom: "Helios Celebrate <celebrate@example.org>",
-		CalendarMail:  calendar.Mail{Sender: mail.New("", "Helios When <when@example.org>", mailDir()), From: "Helios When <when@example.org>", ReplyTo: "Helios When <rsvp@reply.example.org>", Key: []byte("sample")},
+		CalendarMail:  when.Mail{Sender: mail.New("", "Helios When <when@example.org>", mailDir()), From: "Helios When <when@example.org>", ReplyTo: "Helios When <rsvp@reply.example.org>", Key: []byte("sample")},
 		BirthdayMail:  mail.New("", "Helios Staff Birthdays <birthday@example.org>", mailDir()),
 		BirthdayFrom:  "Helios Staff Birthdays <birthday@example.org>",
 		BirthdayBase:  "https://birthday.heliosiandev.com:" + app.Port(),

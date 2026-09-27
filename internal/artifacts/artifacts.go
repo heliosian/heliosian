@@ -17,9 +17,9 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
-	"heliosian/internal/calendar"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
+	"heliosian/internal/when"
 )
 
 const (
@@ -109,11 +109,11 @@ func (d *Document) Row() map[string]string {
 }
 
 func (d *Document) embedText(c Chunk) string {
-	when := d.Date
-	if day, err := time.ParseInLocation(calendar.DateFormat, d.Date, calendar.Location); err == nil {
-		when = day.Format("January 2, 2006")
+	date := d.Date
+	if day, err := time.ParseInLocation(when.DateFormat, d.Date, when.Location); err == nil {
+		date = day.Format("January 2, 2006")
 	}
-	head := d.Title + ", " + when
+	head := d.Title + ", " + date
 	if d.Channel != "" {
 		head += " (" + d.Channel + ")"
 	}

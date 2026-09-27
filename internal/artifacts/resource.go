@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/calendar"
+	"heliosian/internal/when"
 )
 
 const (
@@ -78,7 +78,7 @@ func (r Resource) Build(links *Resolver, model string) (*Document, error) {
 	doc := &Document{
 		Key:      Key(r.URL),
 		Title:    strings.TrimSpace(r.Title),
-		Date:     day.In(calendar.Location).Format(calendar.DateFormat),
+		Date:     day.In(when.Location).Format(when.DateFormat),
 		Author:   "Helios School",
 		Kind:     KindPortal,
 		Channel:  "portal",

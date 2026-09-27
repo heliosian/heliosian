@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/calendar"
 	"heliosian/internal/team"
+	"heliosian/internal/when"
 )
 
 type activityCard struct {
@@ -155,7 +155,7 @@ var volunteerOpportunities = tool{
 				walk(a)
 			}
 		}
-		return map[string]any{"today": v.now.Format(calendar.DateFormat), "year": year, "things": out, "matched": total, "shown": len(out), "expenseForm": v.team.Settings.ExpenseFormURL}, nil
+		return map[string]any{"today": v.now.Format(when.DateFormat), "year": year, "things": out, "matched": total, "shown": len(out), "expenseForm": v.team.Settings.ExpenseFormURL}, nil
 	},
 }
 

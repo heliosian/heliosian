@@ -2,16 +2,14 @@ import {modeRow, offerQuan} from '/mode.js';
 
 const homeApp = {key: 'home', name: 'Heliosian', tagline: 'Helios Community Apps'};
 
-const hostLabels = {who: 'who', team: 'team', celebrate: 'celebrate', birthday: 'birthday', calendar: 'when', loop: 'loop', ask: 'ask'};
-
 function tierLabels() {
   const labels = location.hostname.split('.');
-  return Object.values(hostLabels).includes(labels[0]) ? labels.slice(1) : labels;
+  return labels.length > 2 ? labels.slice(1) : labels;
 }
 
 export function currentApp() {
-  const first = location.hostname.split('.')[0];
-  return Object.keys(hostLabels).find(key => hostLabels[key] === first) || 'home';
+  const labels = location.hostname.split('.');
+  return labels.length > 2 ? labels[0] : 'home';
 }
 
 export function signedIn(res) {
@@ -24,7 +22,7 @@ export function signedIn(res) {
 
 export function appOrigin(key) {
   const tier = tierLabels();
-  const host = key === 'home' ? tier : [hostLabels[key], ...tier];
+  const host = key === 'home' ? tier : [key, ...tier];
   return location.protocol + '//' + host.join('.') + (location.port ? ':' + location.port : '');
 }
 
@@ -435,7 +433,7 @@ export const alertIcons = {
   phone: '<svg viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>',
   team: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.6 2.7-6 6-6s6 2.4 6 6"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 14.4c2 .7 3 2.8 3 5.6"/></svg>',
   celebrate: '<svg viewBox="0 0 24 24"><path d="M3 9V7a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v2a2.5 2.5 0 0 0 0 5v2a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-2a2.5 2.5 0 0 0 0-5z"/><path d="M14 6v11" stroke-dasharray="2 2"/></svg>',
-  calendar: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  when: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
 };
 
 function updateIcon(label) {
@@ -598,7 +596,7 @@ function initRSVP() {
     if (!waiting.length) {
       return;
     }
-    const when = appOrigin('calendar');
+    const when = appOrigin('when');
     const wrap = el('span', 'topbar-alert-wrap');
     const badge = el('a', 'topbar-alert rsvp-alert');
     badge.href = when + '/mine/rsvp';
@@ -626,8 +624,8 @@ function initRSVP() {
   }).catch(() => {});
 }
 
-const approvalLists = {team: '/approvals', celebrate: '/approvals', calendar: '/admin'};
-const approvalApps = {team: 'HCA-Team', celebrate: 'Helios Celebrate', calendar: 'Helios When'};
+const approvalLists = {team: '/approvals', celebrate: '/approvals', when: '/admin'};
+const approvalApps = {team: 'HCA-Team', celebrate: 'Helios Celebrate', when: 'Helios When'};
 
 function initApprovals() {
   const user = document.querySelector('#user');

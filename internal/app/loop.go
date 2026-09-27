@@ -5,11 +5,11 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/loop"
 	"heliosian/internal/team"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -33,7 +33,7 @@ func (d loopDirectory) Tags(owner string) map[string][]string {
 }
 
 func (d loopDirectory) Lists(owner string) []who.List {
-	return append(d.cache.Model().RoomParentLists(owner), SmartLists(d.cache.Model(), d.team.Model(), d.celebrate.Model(), owner, time.Now().In(calendar.Location))...)
+	return append(d.cache.Model().RoomParentLists(owner), SmartLists(d.cache.Model(), d.team.Model(), d.celebrate.Model(), owner, time.Now().In(when.Location))...)
 }
 
 func (d loopDirectory) Shared(email string) []who.SharedTag {

@@ -67,7 +67,7 @@ func TestTheOldServiceWorkerIsReplacedEverywhere(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("%s fell through on %s", r.URL.Path, r.Host)
 	})
-	for _, app := range []string{"who", "home", "team", "birthday", "celebrate", "calendar", "loop", "ask"} {
+	for _, app := range []string{"who", "home", "team", "birthday", "celebrate", "when", "loop", "ask"} {
 		rec := get(t, Public(app, next), app+".heliosiandev.com", "/sw-prod-v4.js?dv=6ee63b1f4a87c21b6f330bafecdc5b45a1655fb6")
 		if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") || !strings.Contains(rec.Body.String(), "unregister") {
 			t.Errorf("%s: got %d %q, want the replacement worker", app, rec.Code, rec.Header().Get("Content-Type"))
@@ -81,9 +81,9 @@ func TestHostsFor(t *testing.T) {
 		"home.heliosian.com":             "home",
 		"team.heliosian.com":             "team",
 		"hca.heliosian.com":              "team",
-		"calendar.heliosian.com":         "calendar",
-		"cal.heliosian.com":              "calendar",
-		"when.heliosian.com":             "calendar",
+		"calendar.heliosian.com":         "when",
+		"cal.heliosian.com":              "when",
+		"when.heliosian.com":             "when",
 		"heliosian.com":                  "home",
 		"www.heliosian.com":              "home",
 		"localhost":                      "",
@@ -103,7 +103,7 @@ func TestHostsFor(t *testing.T) {
 	dev := map[string]string{
 		"who.heliosiandev.com":      "who",
 		"hca.heliosiandev.com":      "team",
-		"when.heliosiandev.com":     "calendar",
+		"when.heliosiandev.com":     "when",
 		"heliosiandev.com":          "home",
 		"www.heliosiandev.com":      "home",
 		"who.heliosian.com":         "",
@@ -273,7 +273,7 @@ func TestCanonicalHost(t *testing.T) {
 func TestRouteAliases(t *testing.T) {
 	served := false
 	serve := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { served = true })
-	apps := map[string]http.Handler{"calendar": serve, "team": serve, "home": serve}
+	apps := map[string]http.Handler{"when": serve, "team": serve, "home": serve}
 	aliased := map[string]http.Handler{"team": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/dl/signup" {
 			http.NotFound(w, r)
@@ -291,7 +291,7 @@ func TestRouteAliases(t *testing.T) {
 		{"GET", "cal.heliosian.com:8080", "/?x=1", 301, "https://when.heliosian.com:8080/"},
 		{"GET", "calendar.heliosian.com", "/day/2026-09-13", 404, ""},
 		{"GET", "calendar.heliosian.com", "/open/feed/abc.ics", 404, ""},
-		{"POST", "calendar.heliosian.com", "/api/calendar/x", 404, ""},
+		{"POST", "calendar.heliosian.com", "/api/when/x", 404, ""},
 		{"GET", "when.heliosian.com", "/", 200, ""},
 		{"GET", "www.heliosian.com", "/", 301, "https://heliosian.com/"},
 		{"GET", "home.heliosian.com", "/people", 404, ""},

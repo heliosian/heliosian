@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/loop"
 	"heliosian/internal/team"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -22,7 +22,7 @@ type smartLists struct {
 }
 
 func (s smartLists) Lists(email string) []who.List {
-	lists := SmartLists(s.cache.Model(), s.team.Model(), s.celebrate.Model(), email, time.Now().In(calendar.Location))
+	lists := SmartLists(s.cache.Model(), s.team.Model(), s.celebrate.Model(), email, time.Now().In(when.Location))
 	return append(lists, GroupLists(s.loop.Model(), loop.SourcesOf(s.directory), email)...)
 }
 

@@ -10,7 +10,6 @@ import (
 	"heliosian/internal/app"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/birthday"
-	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
@@ -19,6 +18,7 @@ import (
 	"heliosian/internal/loop"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -103,22 +103,22 @@ var layouts = map[string][]tab{
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Calendar": {
-		{calendar.GoogleTab, calendar.GoogleColumns},
-		{calendar.PDFTab, calendar.PDFColumns},
-		{calendar.EventsTab, calendar.EventColumns},
-		{calendar.EnrichmentTab, calendar.EnrichmentColumns},
-		{calendar.OverridesTab, calendar.OverrideColumns},
-		{calendar.DayTypesTab, calendar.DayTypeColumns},
-		{calendar.DayOverridesTab, calendar.DayOverrideColumns},
-		{calendar.TagsTab, calendar.TagColumns},
-		{calendar.AdminsTab, calendar.AdminColumns},
-		{calendar.FeedsTab, calendar.FeedColumns},
-		{calendar.SettingsTab, calendar.SettingColumns},
-		{calendar.RSVPsTab, calendar.RSVPColumns},
-		{calendar.InvitationsTab, calendar.InvitationColumns},
-		{calendar.InvitesTab, calendar.InviteColumns},
-		{calendar.InviteGroupsTab, calendar.InviteGroupColumns},
-		{calendar.BouncesTab, calendar.BounceColumns},
+		{when.GoogleTab, when.GoogleColumns},
+		{when.PDFTab, when.PDFColumns},
+		{when.EventsTab, when.EventColumns},
+		{when.EnrichmentTab, when.EnrichmentColumns},
+		{when.OverridesTab, when.OverrideColumns},
+		{when.DayTypesTab, when.DayTypeColumns},
+		{when.DayOverridesTab, when.DayOverrideColumns},
+		{when.TagsTab, when.TagColumns},
+		{when.AdminsTab, when.AdminColumns},
+		{when.FeedsTab, when.FeedColumns},
+		{when.SettingsTab, when.SettingColumns},
+		{when.RSVPsTab, when.RSVPColumns},
+		{when.InvitationsTab, when.InvitationColumns},
+		{when.InvitesTab, when.InviteColumns},
+		{when.InviteGroupsTab, when.InviteGroupColumns},
+		{when.BouncesTab, when.BounceColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Config": withChangeLog(config.Tabs),

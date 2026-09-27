@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/team"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -40,8 +40,8 @@ func firstName(name, email string) string {
 	return local
 }
 
-func (c calendarLinked) list(email string) []calendar.Linked {
-	now := time.Now().In(calendar.Location)
+func (c calendarLinked) list(email string) []when.Linked {
+	now := time.Now().In(when.Location)
 	as := access.Actor{Email: email, Household: c.directory.Family(email)}
 	family := familyNames{email: ""}
 	full := map[string]string{}
@@ -98,15 +98,15 @@ func (s standing) who() []string {
 	return s.names
 }
 
-func (c calendarLinked) parties(now time.Time, family familyNames, full map[string]string) []calendar.Linked {
-	out := []calendar.Linked{}
+func (c calendarLinked) parties(now time.Time, family familyNames, full map[string]string) []when.Linked {
+	out := []when.Linked{}
 	model := c.celebrate.Model()
 	for _, p := range model.SortedParties("") {
 		if !p.VisibleTo(access.Actor{}) || p.Start == "" {
 			continue
 		}
 		var going, waiting standing
-		people := []calendar.Standing{}
+		people := []when.Standing{}
 		for _, t := range p.Tickets {
 			if !family.has(t.Purchaser) && !family.has(t.Email) {
 				continue
@@ -119,23 +119,23 @@ func (c calendarLinked) parties(now time.Time, family familyNames, full map[stri
 			case celebrate.TicketSold:
 				going.add(family, holder, t.Name)
 				if family.has(t.Email) {
-					people = append(people, calendar.Standing{Name: nameOf(full, t.Email, t.Name), Mine: family[t.Email] == ""})
+					people = append(people, when.Standing{Name: nameOf(full, t.Email, t.Name), Mine: family[t.Email] == ""})
 				} else {
-					people = append(people, calendar.Standing{Name: nameOf(full, "", t.Name), Note: "guest"})
+					people = append(people, when.Standing{Name: nameOf(full, "", t.Name), Note: "guest"})
 				}
 			case celebrate.TicketWaitlist:
 				waiting.add(family, holder, t.Name)
-				people = append(people, calendar.Standing{Name: nameOf(full, holder, t.Name), Note: "waitlisted"})
+				people = append(people, when.Standing{Name: nameOf(full, holder, t.Name), Note: "waitlisted"})
 			}
 		}
 		mine, who := "", []string(nil)
 		if going.mine || len(going.names) > 0 {
-			mine, who = calendar.MineGoing, going.who()
+			mine, who = when.MineGoing, going.who()
 		} else if waiting.mine || len(waiting.names) > 0 {
-			mine, who = calendar.MineWaitlisted, waiting.who()
+			mine, who = when.MineWaitlisted, waiting.who()
 		}
-		out = append(out, calendar.Linked{
-			Source: calendar.SourceCelebrate, ID: p.ID, Title: p.Title, Summary: p.Summary, Description: p.Description, Location: p.Location,
+		out = append(out, when.Linked{
+			Source: when.SourceCelebrate, ID: p.ID, Title: p.Title, Summary: p.Summary, Description: p.Description, Location: p.Location,
 			Start: p.Start, End: p.End, Path: model.PathOf(p), Availability: p.Availability(now), Mine: mine, Who: who, People: people, Image: p.ImageURL,
 		})
 	}
@@ -152,8 +152,8 @@ func activityImage(model *team.Model, a *team.Activity) string {
 	return ""
 }
 
-func (c calendarLinked) activities(as access.Actor, family familyNames, full map[string]string) []calendar.Linked {
-	out := []calendar.Linked{}
+func (c calendarLinked) activities(as access.Actor, family familyNames, full map[string]string) []when.Linked {
+	out := []when.Linked{}
 	model := c.team.Model()
 	for _, raw := range model.Activities {
 		if !model.VisibleTo(raw, access.Actor{}) || raw.Start == "" {
@@ -168,7 +168,7 @@ func (c calendarLinked) activities(as access.Actor, family familyNames, full map
 			availability = "full"
 		}
 		var signed standing
-		people := []calendar.Standing{}
+		people := []when.Standing{}
 		for _, item := range append([]*team.Activity{a}, a.Descendants()...) {
 			for _, v := range item.Volunteers {
 				if !family.has(v.Email) {
@@ -179,15 +179,15 @@ func (c calendarLinked) activities(as access.Actor, family familyNames, full map
 				if item != a {
 					note = item.Title
 				}
-				people = append(people, calendar.Standing{Name: nameOf(full, v.Email, ""), Note: note, Mine: family[v.Email] == ""})
+				people = append(people, when.Standing{Name: nameOf(full, v.Email, ""), Note: note, Mine: family[v.Email] == ""})
 			}
 		}
 		mine, who := "", []string(nil)
 		if signed.mine || len(signed.names) > 0 {
-			mine, who = calendar.MineGoing, signed.who()
+			mine, who = when.MineGoing, signed.who()
 		}
-		out = append(out, calendar.Linked{
-			Source: calendar.SourceTeam, ID: a.ID, Title: a.Title, Description: a.Description, Location: a.Location,
+		out = append(out, when.Linked{
+			Source: when.SourceTeam, ID: a.ID, Title: a.Title, Description: a.Description, Location: a.Location,
 			Start: a.Start, End: a.End, Path: model.PathOf(a), Availability: availability, Mine: mine, Who: who, People: people, Image: activityImage(model, a),
 			Hosts: a.CoChairs(),
 		})
@@ -199,12 +199,12 @@ type partyPeople struct {
 	celebrate *celebrate.Cache
 }
 
-func (p partyPeople) people(id string) *calendar.PartyPeople {
+func (p partyPeople) people(id string) *when.PartyPeople {
 	party := p.celebrate.Model().Party(id)
 	if party == nil {
 		return nil
 	}
-	out := &calendar.PartyPeople{Hosts: append([]string{}, party.HostEmails...), Attendees: []calendar.Attendee{}}
+	out := &when.PartyPeople{Hosts: append([]string{}, party.HostEmails...), Attendees: []when.Attendee{}}
 	for _, t := range party.Tickets {
 		status := "ticket"
 		if t.Status == celebrate.TicketWaitlist {
@@ -212,12 +212,12 @@ func (p partyPeople) people(id string) *calendar.PartyPeople {
 		} else if t.Price <= 0 {
 			status = "free"
 		}
-		out.Attendees = append(out.Attendees, calendar.Attendee{Email: strings.ToLower(strings.TrimSpace(t.Email)), Name: t.Name, Status: status})
+		out.Attendees = append(out.Attendees, when.Attendee{Email: strings.ToLower(strings.TrimSpace(t.Email)), Name: t.Name, Status: status})
 	}
 	return out
 }
 
-func CalendarRoster(m *who.Model) calendar.Roster {
+func CalendarRoster(m *who.Model) when.Roster {
 	bandOf := map[string]string{}
 	order := map[string]int{}
 	for i, g := range m.Grades {
@@ -240,7 +240,7 @@ func CalendarRoster(m *who.Model) calendar.Roster {
 			crews[c.Classroom] = append(crews[c.Classroom], c.Name)
 		}
 	}
-	roster := calendar.Roster{Classrooms: []calendar.Classroom{}}
+	roster := when.Roster{Classrooms: []when.Classroom{}}
 	for _, c := range m.Classrooms {
 		names := []string{}
 		for g := range grades[c.Name] {
@@ -251,7 +251,7 @@ func CalendarRoster(m *who.Model) calendar.Roster {
 		if len(names) > 0 {
 			band = bandOf[names[0]]
 		}
-		roster.Classrooms = append(roster.Classrooms, calendar.Classroom{Name: c.Name, Band: band, Grades: names, Crews: crews[c.Name]})
+		roster.Classrooms = append(roster.Classrooms, when.Classroom{Name: c.Name, Band: band, Grades: names, Crews: crews[c.Name]})
 	}
 	return roster
 }

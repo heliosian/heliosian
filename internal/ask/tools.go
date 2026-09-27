@@ -14,10 +14,10 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
-	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/loop"
 	"heliosian/internal/team"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -80,7 +80,7 @@ type viewer struct {
 	email     string
 	me        *who.Person
 	directory *who.Model
-	calendar  *calendar.Model
+	calendar  *when.Model
 	team      *team.Model
 	celebrate *celebrate.Model
 	loop      *loop.Model
@@ -101,7 +101,7 @@ func (a app) viewer(email string) *viewer {
 	v := &viewer{
 		email: email, directory: a.sources.Directory(), calendar: a.sources.Calendar(), team: a.sources.Team(), celebrate: a.sources.Celebrate(), loop: a.sources.Loop(),
 		artifacts: a.sources.Artifacts(), embedder: a.sources.Embedder,
-		sources: a.sources, now: a.sources.Now().In(calendar.Location), access: &groupAccess{}, ctx: context.Background(),
+		sources: a.sources, now: a.sources.Now().In(when.Location), access: &groupAccess{}, ctx: context.Background(),
 	}
 	v.me = v.directory.Person(email)
 	household := v.directory.Family(email)
@@ -166,7 +166,7 @@ func whoLink(email string) string {
 	return whoBase + who.PersonPath(email)
 }
 
-var appBases = map[string]string{"calendar": whenBase, "team": teamBase, "celebrate": celebrateBase}
+var appBases = map[string]string{"when": whenBase, "team": teamBase, "celebrate": celebrateBase}
 
 func (v *viewer) classroomTeachers(classroom string) []string {
 	seen := map[string]bool{}
@@ -241,14 +241,14 @@ func rolesOf(p *who.Person) string {
 
 func (v *viewer) daysAway(cell string) (int, bool) {
 	cell = strings.TrimSpace(cell)
-	if len(cell) < len(calendar.DateFormat) {
+	if len(cell) < len(when.DateFormat) {
 		return 0, false
 	}
-	day, err := time.ParseInLocation(calendar.DateFormat, cell[:len(calendar.DateFormat)], calendar.Location)
+	day, err := time.ParseInLocation(when.DateFormat, cell[:len(when.DateFormat)], when.Location)
 	if err != nil {
 		return 0, false
 	}
-	today := time.Date(v.now.Year(), v.now.Month(), v.now.Day(), 0, 0, 0, 0, calendar.Location)
+	today := time.Date(v.now.Year(), v.now.Month(), v.now.Day(), 0, 0, 0, 0, when.Location)
 	return int(day.Sub(today).Hours() / 24), true
 }
 
@@ -274,7 +274,7 @@ func (v *viewer) timing(start, end string) string {
 }
 
 func date(cell string) (time.Time, error) {
-	t, err := time.ParseInLocation(calendar.DateFormat, strings.TrimSpace(cell), calendar.Location)
+	t, err := time.ParseInLocation(when.DateFormat, strings.TrimSpace(cell), when.Location)
 	if err != nil {
 		return t, fmt.Errorf("%q is not a date like 2026-09-24", cell)
 	}

@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
+	"heliosian/internal/when"
 )
 
 type partyCard struct {
@@ -102,6 +102,6 @@ var parties = tool{
 			}
 			out = append(out, v.partyCard(p))
 		}
-		return map[string]any{"today": v.now.Format(calendar.DateFormat), "celebration": celebration, "parties": out, "pastPartiesLeftOut": past, "intro": clip(v.celebrate.Settings.PartiesIntro, 600), "ticketNote": clip(v.celebrate.Settings.TicketNote, 400)}, nil
+		return map[string]any{"today": v.now.Format(when.DateFormat), "celebration": celebration, "parties": out, "pastPartiesLeftOut": past, "intro": clip(v.celebrate.Settings.PartiesIntro, 600), "ticketNote": clip(v.celebrate.Settings.TicketNote, 400)}, nil
 	},
 }

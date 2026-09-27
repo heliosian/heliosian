@@ -12,7 +12,7 @@ import (
 
 	gcal "google.golang.org/api/calendar/v3"
 
-	"heliosian/internal/calendar"
+	"heliosian/internal/when"
 )
 
 const HookPath = "/hooks/calendar"
@@ -93,7 +93,7 @@ func (w *Watcher) renew() {
 	}
 	id := make([]byte, 16)
 	rand.Read(id)
-	ch, err := w.opts.Calendar.Events.Watch(calendar.SchoolCalendarID, &gcal.Channel{
+	ch, err := w.opts.Calendar.Events.Watch(when.SchoolCalendarID, &gcal.Channel{
 		Id: hex.EncodeToString(id), Type: "web_hook", Address: hookAddress, Token: w.token,
 		Expiration: time.Now().Add(channelLife).UnixMilli(),
 	}).Do()
@@ -101,7 +101,7 @@ func (w *Watcher) renew() {
 		slog.Error("calendar watch", "error", err)
 		return
 	}
-	slog.Info("calendar watch opened", "channel", ch.Id, "expires", expiry(ch).In(calendar.Location).Format(calendar.DateTimeFormat))
+	slog.Info("calendar watch opened", "channel", ch.Id, "expires", expiry(ch).In(when.Location).Format(when.DateTimeFormat))
 	old := w.channel
 	w.channel = ch
 	if old != nil {

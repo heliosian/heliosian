@@ -160,7 +160,7 @@ function standing(event) {
 function action(event) {
   if (event.invited && !event.answer) {
     const pill = el('a', 'wg-pill is-rsvp', 'RSVP');
-    pill.href = appOrigin('calendar') + event.path;
+    pill.href = appOrigin('when') + event.path;
     pill.title = 'You\u2019re invited - answer on its page';
     return pill;
   }
@@ -173,7 +173,7 @@ function action(event) {
 }
 
 function eventRow(event, day) {
-  const href = appOrigin('calendar') + event.path;
+  const href = appOrigin('when') + event.path;
   const title = el('a', 'wg-title', event.title);
   title.href = href;
   const main = el('div', 'wg-main');
@@ -299,7 +299,7 @@ function whenWidget() {
     g => dayBar(g.day, g.rows.length, 'event', (((month.days || {})[g.day] || {}).kinds || []).map(k => el('span', 'widget-kind ' + dayTypeClass(k.name), k.words))),
     (event, g) => eventRow(event, g.day)));
   const total = groups.reduce((n, g) => n + g.events.length, 0);
-  card.append(widgetFoot('when', total, {href: appOrigin('calendar')}));
+  card.append(widgetFoot('when', total, {href: appOrigin('when')}));
   fetchNext(month);
   return card;
 }
@@ -631,12 +631,12 @@ function rsvpPanel(waiting) {
   const panel = el('section', 'wg-rsvps');
   const head = el('div', 'wg-rsvps-head');
   const n = waiting.length;
-  head.append(svg('calendar'), el('span', 'wg-rsvps-words', `${n} ${n === 1 ? 'event needs' : 'events need'} your RSVP`), moreLink('View all', appOrigin('calendar') + '/mine/rsvp'));
+  head.append(svg('calendar'), el('span', 'wg-rsvps-words', `${n} ${n === 1 ? 'event needs' : 'events need'} your RSVP`), moreLink('View all', appOrigin('when') + '/mine/rsvp'));
   const list = el('ol', 'wg-rsvp-list');
   for (const rsvp of waiting) {
     const row = el('li');
     const a = el('a', 'wg-rsvp');
-    a.href = appOrigin('calendar') + rsvp.path;
+    a.href = appOrigin('when') + rsvp.path;
     a.title = 'You\u2019re invited - answer on its page';
     const date = parseDate(rsvp.start.split(' ')[0]);
     const when = `${date.toLocaleDateString('en-US', {weekday: 'short'})}, ${date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;

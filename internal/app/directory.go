@@ -9,13 +9,13 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/birthday"
-	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
 	"heliosian/internal/team"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -161,19 +161,19 @@ func (d directory) Household(email string) (adults, kids []team.Child) {
 }
 
 type upcomingEvents struct {
-	cache     *calendar.Cache
-	directory calendar.Directory
-	linked    func(email string) []calendar.Linked
+	cache     *when.Cache
+	directory when.Directory
+	linked    func(email string) []when.Linked
 }
 
 func (u upcomingEvents) list(email, token string) home.Upcoming {
 	model := u.cache.Model()
-	out := home.Upcoming{Events: model.UpcomingUnder(u.directory, email, u.linked(email), time.Now().In(calendar.Location), 6, token)}
+	out := home.Upcoming{Events: model.UpcomingUnder(u.directory, email, u.linked(email), time.Now().In(when.Location), 6, token)}
 	out.Calendars, out.Default, out.Calendar = savedCalendars(model, email, token)
 	return out
 }
 
-func savedCalendars(model *calendar.Model, email, token string) (list []home.SavedCalendar, def, current string) {
+func savedCalendars(model *when.Model, email, token string) (list []home.SavedCalendar, def, current string) {
 	for _, f := range model.MyCalendars(email) {
 		list = append(list, home.SavedCalendar{Token: f.Token, Name: f.Name, Emoji: f.Emoji, Locked: f.Locked})
 	}
@@ -187,7 +187,7 @@ func savedCalendars(model *calendar.Model, email, token string) (list []home.Sav
 
 func (u upcomingEvents) month(email, month, token string) home.Month {
 	model := u.cache.Model()
-	m := model.MonthUnder(u.directory, email, u.linked(email), time.Now().In(calendar.Location), month, token)
+	m := model.MonthUnder(u.directory, email, u.linked(email), time.Now().In(when.Location), month, token)
 	_, _, current := savedCalendars(model, email, token)
 	return home.Month{Month: m.Month, Today: m.Today, Days: m.Days, Events: m.Events, Calendar: current}
 }
@@ -327,31 +327,31 @@ type calendarDirectory struct {
 	lists    func(email string) []who.List
 }
 
-func (d calendarDirectory) People() []calendar.Person {
+func (d calendarDirectory) People() []when.Person {
 	model := d.cache.Model()
-	out := []calendar.Person{}
+	out := []when.Person{}
 	for i := range model.People {
 		out = append(out, calendarPerson(model, &model.People[i]))
 	}
 	return out
 }
 
-func (d calendarDirectory) Lists(email string) []calendar.List {
-	out := []calendar.List{}
+func (d calendarDirectory) Lists(email string) []when.List {
+	out := []when.List{}
 	model := d.cache.Model()
 	tags := model.Tags(email)
 	for _, name := range slices.Sorted(maps.Keys(tags)) {
-		out = append(out, calendar.List{Key: "tag:" + name, Name: name, Kind: "tag", People: tags[name]})
+		out = append(out, when.List{Key: "tag:" + name, Name: name, Kind: "tag", People: tags[name]})
 	}
 	for _, shared := range model.SharedTags(email) {
-		out = append(out, calendar.List{Key: "shared:" + shared.Owner + ":" + shared.Name, Name: shared.Name + " (" + shared.OwnerName + "'s)", Kind: "tag", People: shared.People})
+		out = append(out, when.List{Key: "shared:" + shared.Owner + ":" + shared.Name, Name: shared.Name + " (" + shared.OwnerName + "'s)", Kind: "tag", People: shared.People})
 	}
 	if d.lists != nil {
 		for _, list := range d.lists(email) {
 			if list.Archived {
 				continue
 			}
-			out = append(out, calendar.List{Key: list.Key, Name: list.Name, Kind: list.Kind, People: list.People})
+			out = append(out, when.List{Key: list.Key, Name: list.Name, Kind: list.Kind, People: list.People})
 		}
 	}
 	return out
@@ -361,18 +361,18 @@ func (d calendarDirectory) Resolve(email string) string {
 	return d.cache.Model().Resolve(email)
 }
 
-func calendarPerson(model *who.Model, p *who.Person) calendar.Person {
-	return calendar.Person{
+func calendarPerson(model *who.Model, p *who.Person) when.Person {
+	return when.Person{
 		Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), IsStudent: p.IsStudent, IsParent: p.IsParent,
 		IsStaff: p.IsStaff, Grade: p.Grade, Classroom: p.Classroom, EmailMasked: p.EmailMasked,
 	}
 }
 
-func (d calendarDirectory) Person(email string) (calendar.Person, bool) {
+func (d calendarDirectory) Person(email string) (when.Person, bool) {
 	model := d.cache.Model()
 	p := model.Person(email)
 	if p == nil {
-		return calendar.Person{}, false
+		return when.Person{}, false
 	}
 	return calendarPerson(model, p), true
 }
@@ -381,9 +381,9 @@ func (d calendarDirectory) GradeColors() map[string]string {
 	return d.settings.Settings().GradeColors
 }
 
-func (d calendarDirectory) Children(email string) []calendar.Person {
+func (d calendarDirectory) Children(email string) []when.Person {
 	model := d.cache.Model()
-	out := []calendar.Person{}
+	out := []when.Person{}
 	for _, k := range model.Children(email) {
 		out = append(out, calendarPerson(model, k))
 	}

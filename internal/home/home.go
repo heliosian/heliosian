@@ -13,12 +13,12 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
-	"heliosian/internal/calendar"
 	"heliosian/internal/filter"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
+	"heliosian/internal/when"
 )
 
 const imageFolder = "link-images"
@@ -45,7 +45,7 @@ type app struct {
 }
 
 type Upcoming struct {
-	Events    []calendar.Card `json:"events"`
+	Events    []when.Card     `json:"events"`
 	Calendar  string          `json:"calendar,omitempty"`
 	Default   string          `json:"default,omitempty"`
 	Calendars []SavedCalendar `json:"calendars,omitempty"`
@@ -59,11 +59,11 @@ type SavedCalendar struct {
 }
 
 type Month struct {
-	Month    string                  `json:"month"`
-	Today    string                  `json:"today"`
-	Days     map[string]calendar.Day `json:"days"`
-	Events   []calendar.Card         `json:"events"`
-	Calendar string                  `json:"calendar,omitempty"`
+	Month    string              `json:"month"`
+	Today    string              `json:"today"`
+	Days     map[string]when.Day `json:"days"`
+	Events   []when.Card         `json:"events"`
+	Calendar string              `json:"calendar,omitempty"`
 }
 
 type alerts struct {
@@ -277,7 +277,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		User             user                  `json:"user"`
 		ImageSearch      bool                  `json:"imageSearch"`
 		Alerts           alerts                `json:"alerts"`
-		Upcoming         []calendar.Card       `json:"upcoming"`
+		Upcoming         []when.Card           `json:"upcoming"`
 		UpcomingCalendar *Upcoming             `json:"upcomingCalendar,omitempty"`
 		Calendar         Month                 `json:"calendar"`
 		Apps             []appView             `json:"apps"`

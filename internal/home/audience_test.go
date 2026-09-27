@@ -262,7 +262,7 @@ func TestTheEventsSectionIsWrittenWhereItStands(t *testing.T) {
 func TestAppOrderIsAKey(t *testing.T) {
 	c, _ := sampleCache(t)
 	a := app{cache: c, directory: c.directory}
-	order := []string{"ask", "who", "team", "celebrate", "birthday", "calendar", "loop"}
+	order := []string{"ask", "who", "team", "celebrate", "birthday", "when", "loop"}
 	if rec := call(t, a.setAppOrder, map[string]any{"apps": order}); rec.Code != http.StatusNoContent {
 		t.Fatalf("order: %d %s", rec.Code, rec.Body)
 	}

@@ -587,7 +587,7 @@ function flyerCard(p, editing) {
 }
 
 function invitePath(p) {
-  return appOrigin('calendar') + '/e/celebrate/' + encodeURIComponent(p.id) + (p.started ? '' : '?invite=1');
+  return appOrigin('when') + '/e/celebrate/' + encodeURIComponent(p.id) + (p.started ? '' : '?invite=1');
 }
 
 function inviteCard(p) {
