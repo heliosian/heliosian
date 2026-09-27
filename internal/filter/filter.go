@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/who"
 )
 
@@ -451,34 +452,19 @@ func OptionsFor(s Sources, viewer string) Options {
 
 var RuleColumns = []string{"Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family"}
 
-func SplitList(cell string) []string {
-	out := []string{}
-	for _, item := range strings.Split(cell, ",") {
-		item = strings.TrimSpace(item)
-		if item != "" && !slices.Contains(out, item) {
-			out = append(out, item)
-		}
-	}
-	return out
-}
-
-func JoinList(items []string) string {
-	return strings.Join(items, ", ")
-}
-
 func RuleFromRow(row map[string]string) Rule {
 	return Rule{
-		Kind: row["Kind"], Roles: SplitList(row["Roles"]), Search: row["Search"],
-		Classrooms: SplitList(row["Classrooms"]), Grades: SplitList(row["Grades"]),
-		Tags: SplitList(row["Tags"]), Family: SplitList(row["Family"]),
+		Kind: row["Kind"], Roles: cells.SplitList(row["Roles"]), Search: row["Search"],
+		Classrooms: cells.SplitList(row["Classrooms"]), Grades: cells.SplitList(row["Grades"]),
+		Tags: cells.SplitList(row["Tags"]), Family: cells.SplitList(row["Family"]),
 	}
 }
 
 func RuleCells(r Rule) map[string]string {
 	return map[string]string{
-		"Kind": r.Kind, "Roles": JoinList(r.Roles), "Search": r.Search,
-		"Classrooms": JoinList(r.Classrooms), "Grades": JoinList(r.Grades),
-		"Tags": JoinList(r.Tags), "Family": JoinList(r.Family),
+		"Kind": r.Kind, "Roles": cells.JoinList(r.Roles), "Search": r.Search,
+		"Classrooms": cells.JoinList(r.Classrooms), "Grades": cells.JoinList(r.Grades),
+		"Tags": cells.JoinList(r.Tags), "Family": cells.JoinList(r.Family),
 	}
 }
 
@@ -495,12 +481,12 @@ func Clean(r Rule) Rule {
 	}
 	return Rule{
 		Kind:       strings.ToLower(strings.TrimSpace(r.Kind)),
-		Roles:      SplitList(JoinList(r.Roles)),
+		Roles:      cells.SplitList(cells.JoinList(r.Roles)),
 		Search:     strings.Join(strings.Fields(strings.ToLower(r.Search)), " "),
-		Classrooms: SplitList(JoinList(r.Classrooms)),
-		Grades:     SplitList(JoinList(r.Grades)),
+		Classrooms: cells.SplitList(cells.JoinList(r.Classrooms)),
+		Grades:     cells.SplitList(cells.JoinList(r.Grades)),
 		Tags:       tags,
-		Family:     SplitList(JoinList(r.Family)),
+		Family:     cells.SplitList(cells.JoinList(r.Family)),
 	}
 }
 

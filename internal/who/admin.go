@@ -13,6 +13,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
+	"heliosian/internal/cells"
 	"heliosian/internal/store"
 )
 
@@ -88,10 +89,6 @@ type personOption struct {
 	Veracross overridableFields `json:"veracross"`
 }
 
-func boolCell(b bool) string {
-	return map[bool]string{true: "TRUE", false: "FALSE"}[b]
-}
-
 func overrideStringValue(person *Person, column string) string {
 	cell := person.overrideRow[column]
 	if cell == "-" {
@@ -101,7 +98,8 @@ func overrideStringValue(person *Person, column string) string {
 }
 
 func overrideBoolValue(person *Person, column string) bool {
-	return person.overrideRow[column] == "TRUE"
+	value, _ := cells.YesNo(person.overrideRow[column], false)
+	return value
 }
 
 func familyStringValue(family Family, column string) string {
@@ -165,9 +163,9 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 			IsStaff: p.IsStaff, IsStudent: p.IsStudent, IsParent: p.IsParent,
 			IsAdded: overrideBoolValue(p, "Added"),
 			Override: overridableFields{
-				IsStaff:       boolCell(overrideBoolValue(p, "Is Staff")),
-				IsStudent:     boolCell(overrideBoolValue(p, "Is Student")),
-				IsParent:      boolCell(overrideBoolValue(p, "Is Parent")),
+				IsStaff:       cells.YesNoCell(overrideBoolValue(p, "Is Staff")),
+				IsStudent:     cells.YesNoCell(overrideBoolValue(p, "Is Student")),
+				IsParent:      cells.YesNoCell(overrideBoolValue(p, "Is Parent")),
 				Classroom:     overrideStringValue(p, "Classroom"),
 				Crew:          overrideStringValue(p, "Crew"),
 				Department:    overrideStringValue(p, "Department"),
@@ -183,7 +181,7 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 				Address:       familyStringValue(family, "Address"),
 			},
 			Veracross: overridableFields{
-				IsStaff:       importedValue(p, "Is Staff", boolCell(p.IsStaff)),
+				IsStaff:       importedValue(p, "Is Staff", cells.YesNoCell(p.IsStaff)),
 				Classroom:     importedValue(p, "Classroom", p.Classroom),
 				Crew:          importedValue(p, "Crew", p.Crew),
 				JobTitle:      importedValue(p, "Job Title", p.JobTitle),
@@ -312,11 +310,11 @@ func (a admin) setPersonFields(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func diffBoolCell(cells store.Row, column string, next, current bool) {
+func diffBoolCell(row store.Row, column string, next, current bool) {
 	if next == current {
 		return
 	}
-	cells[column] = boolCell(next)
+	row[column] = cells.YesNoCell(next)
 }
 
 func diffStringCell(cells store.Row, column string, next, current string) {

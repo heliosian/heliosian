@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/geocode"
@@ -69,7 +70,10 @@ func spec(blobs, static BlobChecker, idKey []byte, loaded func()) store.Spec[*Mo
 }
 
 func carryPerson(_ store.Tables, before, after store.Row) []store.Op {
-	if before == nil || before["Added"] != "TRUE" {
+	if before == nil {
+		return nil
+	}
+	if added, _ := cells.YesNo(before["Added"], false); !added {
 		return nil
 	}
 	was := before["Email"]

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
 )
@@ -276,9 +277,9 @@ func (m *Model) saveCharity(actor access.Actor, edit charityEdit) ([]store.Op, C
 	if allowed {
 		why = ""
 	}
-	cells := store.Row{
+	row := store.Row{
 		"Name": name, "Donation Link": strings.TrimSpace(edit.DonationLink), "About": strings.TrimSpace(edit.About),
-		"EIN": strings.TrimSpace(edit.EIN), "Allowed": YesNo(allowed), "Why Not Allowed": why,
+		"EIN": strings.TrimSpace(edit.EIN), "Allowed": cells.YesNoCell(allowed), "Why Not Allowed": why,
 	}
 	renamed := !adding && edit.Original != name
 	if (adding || renamed) && m.Charity(name) != nil {
@@ -286,10 +287,10 @@ func (m *Model) saveCharity(actor access.Actor, edit charityEdit) ([]store.Op, C
 	}
 	saved := Charity{Name: name, Allowed: allowed}
 	if adding {
-		cells["Added On"] = today()
-		return []store.Op{store.Insert(charitiesTab, cells)}, saved, true, nil
+		row["Added On"] = today()
+		return []store.Op{store.Insert(charitiesTab, row)}, saved, true, nil
 	}
-	return []store.Op{store.Update(charitiesTab, store.Row{"Name": edit.Original}, cells)}, saved, false, nil
+	return []store.Op{store.Update(charitiesTab, store.Row{"Name": edit.Original}, row)}, saved, false, nil
 }
 
 func (c *Cache) deleteCharity(actor access.Actor, name string) ([]store.Op, error) {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 )
 
 type Directory interface {
@@ -48,20 +49,11 @@ type Child struct {
 	Grade string `json:"grade,omitempty"`
 }
 
-func displayName(email string) string {
-	local, _, _ := strings.Cut(email, "@")
-	words := strings.FieldsFunc(local, func(r rune) bool { return r == '.' || r == '_' || r == '-' })
-	for i, w := range words {
-		words[i] = strings.ToUpper(w[:1]) + w[1:]
-	}
-	return strings.Join(words, " ")
-}
-
 func (d viewer) person(email string) (string, string) {
 	if name, photo, ok := d.directory.Person(d.directory.Resolve(strings.ToLower(email))); ok {
 		return name, photo
 	}
-	return displayName(email), ""
+	return cells.DisplayName(email), ""
 }
 
 type viewer struct {

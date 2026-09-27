@@ -34,6 +34,7 @@ import (
 	gcal "google.golang.org/api/calendar/v3"
 	"google.golang.org/api/googleapi"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 	"heliosian/internal/when"
@@ -914,7 +915,7 @@ func pdfRows(ctx context.Context, extraction pdfExtraction, hash string, roster 
 		keys[key] = true
 		row := map[string]string{
 			"Key": key, "Year": extraction.Year, "Start": e.Start, "End": e.End, "Title": collapse(e.Title),
-			"Tags": when.JoinList(e.Classrooms), "PDF": hash,
+			"Tags": cells.JoinList(e.Classrooms), "PDF": hash,
 		}
 		if e.DayType != noDayType {
 			row["Day Type"] = e.DayType
@@ -1228,8 +1229,8 @@ func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []
 				a.DayType = noDayType
 			}
 			row := map[string]string{
-				"Event ID": a.ID, "Tags": when.JoinList(a.Tags),
-				"Keywords": when.JoinList(a.Keywords), "Input Hash": hashes[a.ID], "Model": modelName, "Enriched": today,
+				"Event ID": a.ID, "Tags": cells.JoinList(a.Tags),
+				"Keywords": cells.JoinList(a.Keywords), "Input Hash": hashes[a.ID], "Model": modelName, "Enriched": today,
 			}
 			if a.DayType != noDayType {
 				row["Day Type"] = a.DayType
@@ -1240,7 +1241,7 @@ func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []
 	}
 	byTag := map[string]int{}
 	for _, row := range enrichment {
-		for _, t := range when.SplitList(row["Tags"]) {
+		for _, t := range cells.SplitList(row["Tags"]) {
 			byTag[t]++
 		}
 	}

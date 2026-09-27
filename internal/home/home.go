@@ -381,13 +381,6 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 	return true
 }
 
-func visibleCell(visible bool) string {
-	if visible {
-		return "Yes"
-	}
-	return "No"
-}
-
 func (a app) commit(w http.ResponseWriter, r *http.Request, actor access.Actor, ops ...store.Op) bool {
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

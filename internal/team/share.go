@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/sharecard"
 )
 
@@ -236,11 +237,11 @@ func whenLines(a *Activity) (string, string) {
 }
 
 func spanLines(a *Activity) (string, string) {
-	start, err := ParseWhen(a.Start)
+	start, err := cells.When(a.Start)
 	if err != nil {
 		return "", ""
 	}
-	end, err := ParseWhen(a.End)
+	end, err := cells.When(a.End)
 	if err != nil || (end.Year() == start.Year() && end.YearDay() == start.YearDay()) {
 		return "", ""
 	}

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
 )
@@ -804,7 +805,10 @@ func (l *loader) applyOverrides() error {
 			return fmt.Errorf("overrides has duplicate email %s", email)
 		}
 		seen[email] = true
-		added := row["Added"] == "TRUE"
+		added, err := cells.YesNo(row["Added"], false)
+		if err != nil {
+			return fmt.Errorf("overrides row %s: added %w", email, err)
+		}
 		p, exists := l.people[email]
 		if added && exists {
 			return fmt.Errorf("overrides row %s is flagged added but the import covers this person", email)
@@ -822,7 +826,7 @@ func (l *loader) applyOverrides() error {
 			"Full Name": p.FullName, "Legal Name": p.LegalName, "Preferred Name": p.PreferredName,
 			"Grade": p.Grade, "Classroom": p.Classroom, "Crew": p.Crew,
 			"Phone": p.Phone, "Job Title": p.JobTitle, "Facts": p.Facts,
-			"Is Staff": map[bool]string{true: "TRUE", false: "FALSE"}[p.IsStaff],
+			"Is Staff": cells.YesNoCell(p.IsStaff),
 		}
 
 		useless := func(column, why string) {
@@ -846,23 +850,18 @@ func (l *loader) applyOverrides() error {
 			}
 		}
 		applyBool := func(column string, field *bool) error {
-			switch row[column] {
-			case "":
-			case "-", "FALSE":
-				if !*field {
-					useless(column, "is already false")
-					return nil
-				}
-				*field = false
-			case "TRUE":
-				if *field {
-					useless(column, "is already true")
-					return nil
-				}
-				*field = true
-			default:
-				return fmt.Errorf("overrides row %s has invalid %s %q", email, column, row[column])
+			if strings.TrimSpace(row[column]) == "" {
+				return nil
 			}
+			value, err := cells.YesNo(row[column], false)
+			if err != nil {
+				return fmt.Errorf("overrides row %s: %s %w", email, strings.ToLower(column), err)
+			}
+			if *field == value {
+				useless(column, fmt.Sprintf("is already %s", cells.YesNoCell(value)))
+				return nil
+			}
+			*field = value
 			return nil
 		}
 		apply("Full Name", &p.FullName)
@@ -908,12 +907,12 @@ func (l *loader) applyOverrides() error {
 			l.roomParents[cell] = append(l.roomParents[cell], email)
 		}
 
-		switch row["Opted Out"] {
-		case "", "-", "FALSE":
-		case "TRUE":
+		optedOut, err := cells.YesNo(row["Opted Out"], false)
+		if err != nil {
+			return fmt.Errorf("overrides row %s: opted out %w", email, err)
+		}
+		if optedOut {
 			l.optedOut[email] = true
-		default:
-			return fmt.Errorf("overrides row %s has invalid Opted Out %q", email, row["Opted Out"])
 		}
 
 		if added {

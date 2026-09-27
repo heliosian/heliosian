@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -67,7 +68,7 @@ func carryActivity(tables store.Tables, before, after store.Row) []store.Op {
 }
 
 func rowPath(rows []store.Row, row store.Row) string {
-	return activityPath(strings.TrimSpace(row["Event ID"]), strings.TrimSpace(row["Parent"]), NormalizePretty(row["Pretty ID"]), func(parent string) string {
+	return activityPath(strings.TrimSpace(row["Event ID"]), strings.TrimSpace(row["Parent"]), cells.NormalizePretty(row["Pretty ID"]), func(parent string) string {
 		return rowPath(rows, activityRow(rows, parent))
 	})
 }

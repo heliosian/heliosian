@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
 )
@@ -101,7 +102,7 @@ func (v *viewer) over(a *team.Activity) bool {
 	if cell == "" {
 		return false
 	}
-	last, err := team.ParseWhen(cell)
+	last, err := cells.When(cell)
 	if err != nil {
 		return false
 	}

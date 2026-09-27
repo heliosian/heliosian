@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
@@ -120,7 +121,7 @@ func homeOp(email string, cells store.Row) store.Op {
 
 func feedCells(body feedBody) store.Row {
 	return store.Row{
-		"Name": strings.TrimSpace(body.Name), "Emoji": feedEmoji(body.Emoji), "Classrooms": JoinList(SplitList(JoinList(body.Classrooms))), "Tags": JoinList(SplitList(JoinList(body.Tags))),
+		"Name": strings.TrimSpace(body.Name), "Emoji": feedEmoji(body.Emoji), "Classrooms": cells.JoinList(cells.SplitList(cells.JoinList(body.Classrooms))), "Tags": cells.JoinList(cells.SplitList(cells.JoinList(body.Tags))),
 	}
 }
 
@@ -218,10 +219,10 @@ func (a app) feedTokenOps(actor access.Actor) ([]store.Op, string) {
 }
 
 func saveViewOps(actor access.Actor, classrooms, tags []string) ([]store.Op, store.Row) {
-	cells := store.Row{
-		"Classrooms": JoinList(SplitList(JoinList(classrooms))), "Categories": JoinList(SplitList(JoinList(tags))), "Saved": now().Format(DateTimeFormat),
+	row := store.Row{
+		"Classrooms": cells.JoinList(cells.SplitList(cells.JoinList(classrooms))), "Categories": cells.JoinList(cells.SplitList(cells.JoinList(tags))), "Saved": now().Format(DateTimeFormat),
 	}
-	return []store.Op{store.Upsert(SettingsTab, store.Row{"Email": actor.Email}, cells)}, cells
+	return []store.Op{store.Upsert(SettingsTab, store.Row{"Email": actor.Email}, row)}, row
 }
 
 func (a app) forgetViewOps(actor access.Actor) []store.Op {
@@ -246,10 +247,10 @@ func (a app) keywordOps(actor access.Actor, id string, keywords []string) ([]sto
 	if e == nil {
 		return nil, nil, "", access.Missing("that event is not in the sheet")
 	}
-	words := SplitList(JoinList(keywords))
+	words := cells.SplitList(cells.JoinList(keywords))
 	cell := Clear
 	if len(words) > 0 {
-		cell = JoinList(words)
+		cell = cells.JoinList(words)
 	}
 	return []store.Op{store.Upsert(OverridesTab, store.Row{"Event ID": e.ID}, store.Row{"Keywords": cell})}, e, cell, nil
 }
@@ -290,7 +291,7 @@ func (a app) newEvents(actor access.Actor, body eventBody) ([]store.Op, []string
 		ops = append(ops, store.Insert(EventsTab, store.Row{
 			"Event ID": id, "Start": shiftWhen(strings.TrimSpace(body.Start), i*body.RepeatWeeks), "End": shiftWhen(strings.TrimSpace(body.End), i*body.RepeatWeeks),
 			"Title": strings.TrimSpace(body.Title), "Location": strings.TrimSpace(body.Location), "Description": strings.TrimSpace(body.Description),
-			"Tags": JoinList(SplitList(JoinList(body.Tags))), "Day Type": strings.TrimSpace(body.DayType), "Keywords": JoinList(SplitList(JoinList(body.Keywords))),
+			"Tags": cells.JoinList(cells.SplitList(cells.JoinList(body.Tags))), "Day Type": strings.TrimSpace(body.DayType), "Keywords": cells.JoinList(cells.SplitList(cells.JoinList(body.Keywords))),
 			"Added By": actor.Email, "Added": stamp, "Source": strings.TrimSpace(body.Source), "Sharing": body.Sharing, "Status": status, "Image": strings.Trim(strings.TrimSpace(body.Image), "/"),
 		}))
 	}
@@ -308,20 +309,20 @@ func (a app) changeEvent(actor access.Actor, body eventBody) ([]store.Op, *Event
 	if !a.isHost(actor, e) {
 		return nil, nil, nil, access.Forbidden("only a host of an event, or an admin, can change it")
 	}
-	cells := store.Row{
+	row := store.Row{
 		"Title": strings.TrimSpace(body.Title), "Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End),
 		"Location": strings.TrimSpace(body.Location), "Description": strings.TrimSpace(body.Description),
-		"Tags": JoinList(SplitList(JoinList(body.Tags))), "Keywords": JoinList(SplitList(JoinList(body.Keywords))),
+		"Tags": cells.JoinList(cells.SplitList(cells.JoinList(body.Tags))), "Keywords": cells.JoinList(cells.SplitList(cells.JoinList(body.Keywords))),
 		"Source": strings.TrimSpace(body.Source), "Image": strings.Trim(strings.TrimSpace(body.Image), "/"),
 	}
 	if body.Sharing != e.Sharing {
-		cells["Sharing"] = body.Sharing
-		cells["Status"] = ""
+		row["Sharing"] = body.Sharing
+		row["Status"] = ""
 		if body.Sharing == SharingPublic {
-			cells["Status"] = StatusPending
+			row["Status"] = StatusPending
 		}
 	}
-	return []store.Op{store.Update(EventsTab, store.Row{"Event ID": e.ID}, cells)}, e, cells, nil
+	return []store.Op{store.Update(EventsTab, store.Row{"Event ID": e.ID}, row)}, e, row, nil
 }
 
 func (a app) statusOps(actor access.Actor, id, status string) ([]store.Op, *Event, error) {
@@ -371,7 +372,7 @@ func (a app) tagOps(actor access.Actor, tags []tagBody) ([]store.Op, int, error)
 		}
 		names = append(names, name)
 		orders = append(orders, current[name].order)
-		rows = append(rows, store.Row{"Description": description, "Group": group, "Default": yesNoWord(t.Default), "Image": image})
+		rows = append(rows, store.Row{"Description": description, "Group": group, "Default": cells.YesNoCell(t.Default), "Image": image})
 	}
 	for name := range current {
 		if !slices.Contains(names, name) {
@@ -391,7 +392,7 @@ func (a app) tagOps(actor access.Actor, tags []tagBody) ([]store.Op, int, error)
 			added++
 			continue
 		}
-		if tagDefault(cells["Default"]) == was.Default {
+		if tags[i].Default == was.Default {
 			delete(cells, "Default")
 		}
 		ops = append(ops, store.Update(TagsTab, store.Row{"Tag": name}, cells))
@@ -410,18 +411,18 @@ func (a app) overrideOps(actor access.Actor, body overrideBody) ([]store.Op, str
 	}
 	id := e.ID
 	school := model.imports[id]
-	cells := store.Row{}
+	row := store.Row{}
 	plain := func(s string) string {
 		return strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n"))
 	}
 	set := func(column, want, was string) {
 		switch want = strings.TrimSpace(want); {
 		case plain(want) == plain(was):
-			cells[column] = ""
+			row[column] = ""
 		case want == "":
-			cells[column] = Clear
+			row[column] = Clear
 		default:
-			cells[column] = want
+			row[column] = want
 		}
 	}
 	set("Title", body.Title, school.Title)
@@ -430,9 +431,9 @@ func (a app) overrideOps(actor access.Actor, body overrideBody) ([]store.Op, str
 		return nil, "", false, access.Invalid("%v", err)
 	}
 	if start.Equal(school.start) && end.Equal(school.end) && allDay == school.AllDay {
-		cells["Start"], cells["End"] = "", ""
+		row["Start"], row["End"] = "", ""
 	} else {
-		cells["Start"], cells["End"] = strings.TrimSpace(body.Start), strings.TrimSpace(body.End)
+		row["Start"], row["End"] = strings.TrimSpace(body.Start), strings.TrimSpace(body.End)
 	}
 	set("Location", body.Location, school.Location)
 	set("Description", body.Description, school.Description)
@@ -441,33 +442,33 @@ func (a app) overrideOps(actor access.Actor, body overrideBody) ([]store.Op, str
 		builtIn[t.Name] = t.BuiltIn
 	}
 	list := func(column string, want, was []string) {
-		want = SplitList(JoinList(want))
+		want = cells.SplitList(cells.JoinList(want))
 		was = slices.DeleteFunc(slices.Clone(was), func(t string) bool { return builtIn[t] })
 		x, y := slices.Sorted(slices.Values(want)), slices.Sorted(slices.Values(was))
 		switch {
 		case slices.Equal(x, y):
-			cells[column] = ""
+			row[column] = ""
 		case len(want) == 0:
-			cells[column] = Clear
+			row[column] = Clear
 		default:
-			cells[column] = JoinList(want)
+			row[column] = cells.JoinList(want)
 		}
 	}
 	list("Tags", body.Tags, school.Tags)
 	list("Keywords", body.Keywords, school.Keywords)
-	cells["Note"] = strings.TrimSpace(body.Note)
-	cells["Address"] = strings.ToLower(strings.TrimSpace(body.Address))
-	if cells["Address"] != "" && !eventIDForm.MatchString(cells["Address"]) {
+	row["Note"] = strings.TrimSpace(body.Note)
+	row["Address"] = strings.ToLower(strings.TrimSpace(body.Address))
+	if row["Address"] != "" && !eventIDForm.MatchString(row["Address"]) {
 		return nil, "", false, access.Invalid("an address is letters, digits and dashes, 3 to 40 of them")
 	}
-	empty := !slices.ContainsFunc(slices.Collect(maps.Values(cells)), func(v string) bool { return v != "" })
+	empty := !slices.ContainsFunc(slices.Collect(maps.Values(row)), func(v string) bool { return v != "" })
 	if p := model.Provenance[id]; p != nil && slices.ContainsFunc(p.Corrected, func(c string) bool { return c == "Day Type" || c == "Hidden" || c == "Image" }) {
 		empty = false
 	}
 	if empty {
 		return []store.Op{store.Delete(OverridesTab, store.Row{"Event ID": id})}, id, true, nil
 	}
-	return []store.Op{store.Upsert(OverridesTab, store.Row{"Event ID": id}, cells)}, id, false, nil
+	return []store.Op{store.Upsert(OverridesTab, store.Row{"Event ID": id}, row)}, id, false, nil
 }
 
 func (a app) overrideImageOps(actor access.Actor, id, image string) ([]store.Op, *Event, string, error) {
@@ -499,18 +500,12 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	cells := store.Row{}
+	row := store.Row{}
 	if body.HideHosts != nil {
-		cells["Hide Hosts"] = ""
-		if *body.HideHosts {
-			cells["Hide Hosts"] = "Yes"
-		}
+		row["Hide Hosts"] = cells.YesNoCell(*body.HideHosts)
 	}
 	if body.PublicList != nil {
-		cells["Public Guest List"] = ""
-		if *body.PublicList {
-			cells["Public Guest List"] = "Yes"
-		}
+		row["Public Guest List"] = cells.YesNoCell(*body.PublicList)
 	}
 	if body.NotifyMe != nil {
 		notify := []string{}
@@ -521,14 +516,14 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 		if *body.NotifyMe {
 			notify = append(notify, actor.Email)
 		}
-		cells["Notify"] = strings.Join(notify, ", ")
+		row["Notify"] = strings.Join(notify, ", ")
 	}
 	if body.Flyer != nil {
 		flyer := strings.Trim(strings.TrimSpace(*body.Flyer), "/")
 		if flyer != "" && a.store != nil && a.readImage(flyer) == nil {
 			return nil, nil, nil, access.Invalid("that picture is not here")
 		}
-		cells["Flyer"] = flyer
+		row["Flyer"] = flyer
 	}
 	if e.linked() {
 		for col, v := range map[string]*string{"Title": body.Title, "Location": body.Location, "Description": body.Description} {
@@ -536,7 +531,7 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 				if len(*v) > maxTextLength {
 					return nil, nil, nil, access.Invalid("the %s is too long", strings.ToLower(col))
 				}
-				cells[col] = strings.TrimSpace(*v)
+				row[col] = strings.TrimSpace(*v)
 			}
 		}
 		if body.Start != nil {
@@ -551,16 +546,16 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 			} else {
 				end = ""
 			}
-			cells["Start"], cells["End"] = start, end
+			row["Start"], row["End"] = start, end
 		}
 	}
 	switch strings.ToLower(strings.TrimSpace(body.Audience)) {
 	case AudienceAdults:
-		cells["Audience"] = "Adults"
+		row["Audience"] = "Adults"
 	case AudienceStudents:
-		cells["Audience"] = "Students"
+		row["Audience"] = "Students"
 	case AudienceBoth:
-		cells["Audience"] = "Both"
+		row["Audience"] = "Both"
 	case "":
 	default:
 		return nil, nil, nil, access.Invalid("the audience is adults, students, or both")
@@ -569,7 +564,7 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 		if len(*body.Message) > maxTextLength {
 			return nil, nil, nil, access.Invalid("the message is too long")
 		}
-		cells["Message"] = strings.TrimSpace(*body.Message)
+		row["Message"] = strings.TrimSpace(*body.Message)
 	}
 	newHosts := []string{}
 	if body.Hosts != nil {
@@ -586,9 +581,9 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 				newHosts = append(newHosts, h)
 			}
 		}
-		cells["Hosts"] = JoinList(hosts)
+		row["Hosts"] = cells.JoinList(hosts)
 	}
-	return a.invitationOps(actor, e.ID, cells), e, newHosts, nil
+	return a.invitationOps(actor, e.ID, row), e, newHosts, nil
 }
 
 func (a app) stepDownOps(actor access.Actor, id, email string) ([]store.Op, *Event, string, bool, error) {
@@ -606,19 +601,19 @@ func (a app) stepDownOps(actor access.Actor, id, email string) ([]store.Op, *Eve
 	if !cohost && !poster {
 		return nil, nil, "", false, access.Invalid("that person hosts this event on the app that runs it, or not at all - step down there")
 	}
-	cells := store.Row{}
+	row := store.Row{}
 	if poster {
-		cells["Stepped Down"] = config.NormalizeEmail(e.AddedBy)
+		row["Stepped Down"] = config.NormalizeEmail(e.AddedBy)
 	}
 	if inv != nil {
 		if cohost {
-			cells["Hosts"] = JoinList(slices.DeleteFunc(slices.Clone(inv.Hosts), func(h string) bool { return h == who }))
+			row["Hosts"] = cells.JoinList(slices.DeleteFunc(slices.Clone(inv.Hosts), func(h string) bool { return h == who }))
 		}
 		if slices.Contains(inv.Notify, who) {
-			cells["Notify"] = strings.Join(slices.DeleteFunc(slices.Clone(inv.Notify), func(h string) bool { return h == who }), ", ")
+			row["Notify"] = strings.Join(slices.DeleteFunc(slices.Clone(inv.Notify), func(h string) bool { return h == who }), ", ")
 		}
 	}
-	return a.invitationOps(actor, e.ID, cells), e, who, poster, nil
+	return a.invitationOps(actor, e.ID, row), e, who, poster, nil
 }
 
 func (a app) inviteOps(actor access.Actor, id string, people []invitee) ([]store.Op, *Event, []string, bool, error) {
@@ -894,7 +889,7 @@ func (a app) checkRule(actor access.Actor, r filter.Rule, e *Event) (filter.Rule
 }
 
 func (a app) newGroupOps(actor access.Actor, e *Event, g InviteGroup) []store.Op {
-	row := store.Row{"Event ID": e.ID, "Group ID": g.ID, "Auto": yesNoWord(g.Auto), "Added By": g.AddedBy, "Added": g.Added}
+	row := store.Row{"Event ID": e.ID, "Group ID": g.ID, "Auto": cells.YesNoCell(g.Auto), "Added By": g.AddedBy, "Added": g.Added}
 	maps.Copy(row, filter.RuleCells(g.Rule))
 	return append(a.invitationOps(actor, e.ID, nil), store.Insert(InviteGroupsTab, row))
 }
@@ -924,7 +919,7 @@ func (a app) setGroupOps(actor access.Actor, id, gid string, auto bool) ([]store
 	if g == nil {
 		return nil, nil, nil, access.Missing("that group is not on the list")
 	}
-	return []store.Op{store.Update(InviteGroupsTab, store.Row{"Event ID": e.ID, "Group ID": g.ID}, store.Row{"Auto": yesNoWord(auto)})}, e, g, nil
+	return []store.Op{store.Update(InviteGroupsTab, store.Row{"Event ID": e.ID, "Group ID": g.ID}, store.Row{"Auto": cells.YesNoCell(auto)})}, e, g, nil
 }
 
 func (a app) removeGroupOps(actor access.Actor, id, gid string) ([]store.Op, *Event, *InviteGroup, error) {
@@ -995,7 +990,7 @@ func (a app) fillOps(actor access.Actor, e *Event, g InviteGroup, wait bool) ([]
 		} else if guest, ok := guests[email]; ok {
 			name, token = guest, NewToken()
 			if name == "" {
-				name = displayName(email)
+				name = cells.DisplayName(email)
 			}
 		}
 		ops = append(ops, store.Insert(InvitesTab, store.Row{"Event ID": e.ID, "Email": email, "Name": name, "Via": ViaGroup + g.ID, "Added By": g.AddedBy, "Added": stamp, "Token": token}))

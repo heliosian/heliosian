@@ -481,7 +481,7 @@ func TestWithheldFirstAdultIsNowhereInTheModel(t *testing.T) {
 		tables               store.Tables
 	}{
 		{"opted out", "elena.torres@heliosschool.org", "marco.torres@heliosschool.org",
-			withOverride(tables, "elena.torres@heliosschool.org", store.Row{"Opted Out": "TRUE"})},
+			withOverride(tables, "elena.torres@heliosschool.org", store.Row{"Opted Out": "Yes"})},
 		{"silent staff partner", "colin.quinn@heliosschool.org", "dana.hawkins@heliosschool.org", silent},
 	} {
 		m, err := BuildModel(context.Background(), c.tables, noBlobs{}, noBlobs{}, testKey)

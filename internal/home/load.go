@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,10 +13,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 	"unicode"
 	"unicode/utf8"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
@@ -34,7 +33,6 @@ const (
 	addedFormat    = "2006-01-02"
 	maxTitleLength = 80
 	maxDescLength  = 300
-	maxURLLength   = 1000
 
 	StyleCards  = "cards"
 	StyleTiles  = "tiles"
@@ -226,16 +224,6 @@ func rulesFor(rows []store.Row, key string) ([]filter.Rule, error) {
 	return out, nil
 }
 
-func yesNo(cell string) (bool, error) {
-	switch cell {
-	case "Yes":
-		return true, nil
-	case "No":
-		return false, nil
-	}
-	return false, fmt.Errorf("%q is not Yes or No", cell)
-}
-
 func checkMax(cell string) (int, error) {
 	cell = strings.TrimSpace(cell)
 	if cell == "" {
@@ -274,46 +262,8 @@ func checkEmoji(cell string) error {
 	return nil
 }
 
-func checkURL(raw string) error {
-	if len(raw) > maxURLLength {
-		return fmt.Errorf("url is too long")
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return err
-	}
-	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return fmt.Errorf("url %q must be an absolute http(s) url", raw)
-	}
-	return nil
-}
-
-func imageURL(images ImageChecker, name string) (string, error) {
-	if name == "" {
-		return "", nil
-	}
-	found, err := images.Has(name)
-	if err != nil {
-		return "", fmt.Errorf("image %q: %w", name, err)
-	}
-	if !found {
-		return "", fmt.Errorf("image %q does not exist", name)
-	}
-	return "/" + name, nil
-}
-
-func imageNames(rows []store.Row) []string {
-	names := []string{}
-	for _, row := range rows {
-		if row["Image"] != "" {
-			names = append(names, row["Image"])
-		}
-	}
-	return names
-}
-
 func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (*Model, error) {
-	if err := images.Prefetch(ctx, imageNames(tables[linksTab])); err != nil {
+	if err := images.Prefetch(ctx, cells.ImageNames([]string{"Image"}, tables[linksTab])); err != nil {
 		return nil, err
 	}
 	audience := tables[audienceTab]
@@ -401,7 +351,7 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 		if err := store.CheckKey(order); err != nil {
 			return nil, fmt.Errorf("link %q: %w", title, err)
 		}
-		if err := checkURL(row["URL"]); err != nil {
+		if err := cells.URL(row["URL"], false); err != nil {
 			return nil, fmt.Errorf("link %q: %w", title, err)
 		}
 		at, ok := index[row["Category"]]
@@ -414,16 +364,14 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 		if model.Categories[at].Style == StyleApps {
 			return nil, fmt.Errorf("link %q sits under %q, which holds the community apps rather than links", title, row["Category"])
 		}
-		visible, err := yesNo(row["Visible"])
+		visible, err := cells.YesNo(row["Visible"], false)
 		if err != nil {
 			return nil, fmt.Errorf("link %q: visible %w", title, err)
 		}
-		if row["Added"] != "" {
-			if _, err := time.Parse(addedFormat, row["Added"]); err != nil {
-				return nil, fmt.Errorf("link %q has invalid added date %q", title, row["Added"])
-			}
+		if err := cells.Added(row["Added"]); err != nil {
+			return nil, fmt.Errorf("link %q: %w", title, err)
 		}
-		image, err := imageURL(images, row["Image"])
+		image, err := cells.ImageURL(images, row["Image"])
 		if err != nil {
 			return nil, fmt.Errorf("link %q: %w", title, err)
 		}

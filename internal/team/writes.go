@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
 )
@@ -161,7 +162,7 @@ func renamedPretty(model *Model, pretty, year string) string {
 		base = pretty + "-" + m[1]
 	}
 	for i, candidate := 2, base; ; i++ {
-		if model.ByPretty(candidate) == nil && len(candidate) <= maxPrettyLength {
+		if model.ByPretty(candidate) == nil && len(candidate) <= cells.MaxPrettyLength {
 			return candidate
 		}
 		candidate = fmt.Sprintf("%s-%d", base, i)
@@ -299,8 +300,8 @@ func (m *Model) saveActivity(actor access.Actor, body activityBody) (activitySav
 			return activitySave{}, access.Invalid("sign up as a volunteer, as one open to co-chairing, or not at all")
 		}
 	}
-	pretty := NormalizePretty(body.PrettyID)
-	if err := CheckPretty(pretty); err != nil {
+	pretty := cells.NormalizePretty(body.PrettyID)
+	if err := cells.CheckPretty(pretty); err != nil {
 		return activitySave{}, access.Invalid("%s", err.Error())
 	}
 	allowAdding, err := checkAdding(body.AllowAdding)
@@ -338,15 +339,15 @@ func (m *Model) saveActivity(actor access.Actor, body activityBody) (activitySav
 		}
 		displaced, renamed = other, conflict.Renamed
 	}
-	cells := store.Row{
+	row := store.Row{
 		"Event ID": id, "Year": year, "Title": title, "Parent": parent,
 		"Category": category, "Status": status,
 		"Description": strings.TrimSpace(body.Description), "Image": strings.TrimSpace(body.Image), "Flyer Image": strings.TrimSpace(body.Flyer),
 		"Timing": strings.TrimSpace(body.Timing), "Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End),
 		"Location": strings.TrimSpace(body.Location), "Spots": spotsCell(body.Spots),
-		"Co-Leader Needed": YesNo(body.CoLeaderNeeded), "Volunteers Hidden": YesNo(body.VolunteersHidden),
-		CompleteColumn:   YesNo(body.VolunteersComplete),
-		"Direct Sign-Up": YesNo(body.DirectSignUp), "Pretty ID": pretty, "Allow Adding": allowAdding,
+		"Co-Leader Needed": cells.YesNoCell(body.CoLeaderNeeded), "Volunteers Hidden": cells.YesNoCell(body.VolunteersHidden),
+		CompleteColumn:   cells.YesNoCell(body.VolunteersComplete),
+		"Direct Sign-Up": cells.YesNoCell(body.DirectSignUp), "Pretty ID": pretty, "Allow Adding": allowAdding,
 	}
 	priority := body.Priority
 	if !actor.Admin {
@@ -355,25 +356,25 @@ func (m *Model) saveActivity(actor access.Actor, body activityBody) (activitySav
 	if body.VolunteersComplete {
 		priority = false
 	}
-	cells[PriorityColumn] = YesNo(priority)
+	row[PriorityColumn] = cells.YesNoCell(priority)
 	for k, v := range highlightCells(body.Highlight) {
-		cells[k] = v
+		row[k] = v
 	}
 	ops := []store.Op{}
 	action := "edit"
 	if adding {
 		action = "add"
-		cells["Added By"] = actor.Email
-		cells["Added"] = today()
-		ops = append(ops, store.Insert(activitiesTab, cells))
+		row["Added By"] = actor.Email
+		row["Added"] = today()
+		ops = append(ops, store.Insert(activitiesTab, row))
 		if joining != "" {
 			ops = append(ops, store.Insert(volunteersTab, store.Row{"Event ID": id, "Email": actor.Email, "Position": joining, "Added By": actor.Email, "Added": today()}))
 		}
 	} else {
 		if current.Parent != parent {
-			cells[store.OrderColumn] = ""
+			row[store.OrderColumn] = ""
 		}
-		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": id}, cells))
+		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": id}, row))
 	}
 	if displaced != nil {
 		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": displaced.ID}, store.Row{"Pretty ID": renamed}))
@@ -540,7 +541,7 @@ func (m *Model) saveCategory(actor access.Actor, body categoryBody) (categorySav
 	if adding {
 		id = newID()
 	}
-	cells := store.Row{
+	row := store.Row{
 		"Category ID":       id,
 		"Event ID":          eventID,
 		"Title":             title,
@@ -550,11 +551,11 @@ func (m *Model) saveCategory(actor access.Actor, body categoryBody) (categorySav
 		"Show On Main Page": "",
 	}
 	if eventID == "" {
-		cells["Show On Main Page"] = YesNo(body.ShowOnMain == nil || *body.ShowOnMain)
+		row["Show On Main Page"] = cells.YesNoCell(body.ShowOnMain == nil || *body.ShowOnMain)
 	}
-	save := categorySave{op: store.Insert(categoriesTab, cells), id: id, eventID: eventID, title: title, action: "add"}
+	save := categorySave{op: store.Insert(categoriesTab, row), id: id, eventID: eventID, title: title, action: "add"}
 	if !adding {
-		save.op = store.Update(categoriesTab, store.Row{"Category ID": id}, cells)
+		save.op = store.Update(categoriesTab, store.Row{"Category ID": id}, row)
 		save.action = "edit"
 	}
 	return save, nil
@@ -651,9 +652,9 @@ func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, 
 			"Event ID": fresh[c.ID], "Year": year, "Title": c.Title, "Parent": parent, "Category": remap(c.Category),
 			"Status": c.Status, "Description": c.Description, "Image": c.Image, "Flyer Image": c.Flyer, "Timing": c.Timing,
 			"Location": c.Location, "Spots": spotsCell(c.Spots),
-			"Co-Leader Needed": YesNo(c.CoLeaderNeeded), "Volunteers Hidden": YesNo(c.VolunteersHidden),
-			"Direct Sign-Up": YesNo(c.DirectSignUp), "Allow Adding": c.AllowAdding, "Added By": actor.Email, "Added": today(),
-			store.OrderColumn: c.Order, CompleteColumn: YesNo(false),
+			"Co-Leader Needed": cells.YesNoCell(c.CoLeaderNeeded), "Volunteers Hidden": cells.YesNoCell(c.VolunteersHidden),
+			"Direct Sign-Up": cells.YesNoCell(c.DirectSignUp), "Allow Adding": c.AllowAdding, "Added By": actor.Email, "Added": today(),
+			store.OrderColumn: c.Order, CompleteColumn: cells.YesNoCell(false),
 		}
 		for k, v := range highlightCells(c.Highlight) {
 			row[k] = v

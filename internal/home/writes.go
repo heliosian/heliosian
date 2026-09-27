@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
@@ -249,20 +250,20 @@ func (c *Cache) saveLink(actor access.Actor, in linkEdit) (string, string, []sto
 	if err != nil {
 		return "", "", nil, err
 	}
-	cells := store.Row{
+	row := store.Row{
 		"Title": title, "Description": strings.TrimSpace(in.Description), "URL": strings.TrimSpace(in.URL),
-		"Image": strings.TrimSpace(in.Image), "Category": strings.TrimSpace(in.Category), "Visible": visibleCell(in.Visible),
+		"Image": strings.TrimSpace(in.Image), "Category": strings.TrimSpace(in.Category), "Visible": cells.YesNoCell(in.Visible),
 	}
-	if existing != nil && existing.Category != cells["Category"] {
-		cells[store.OrderColumn] = ""
+	if existing != nil && existing.Category != row["Category"] {
+		row[store.OrderColumn] = ""
 	}
 	action := "edit"
-	op := store.Update(linksTab, store.Row{"Title": in.Original}, cells)
+	op := store.Update(linksTab, store.Row{"Title": in.Original}, row)
 	if in.Original == "" {
 		action = "add"
-		cells["Added By"] = actor.Email
-		cells["Added"] = time.Now().Format(addedFormat)
-		op = store.Insert(linksTab, cells)
+		row["Added By"] = actor.Email
+		row["Added"] = time.Now().Format(addedFormat)
+		op = store.Insert(linksTab, row)
 	}
 	ops := []store.Op{op}
 	if changed := audience(thingLink+title, was, rules); changed != nil {

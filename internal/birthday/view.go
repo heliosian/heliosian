@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 )
 
 type Person struct {
@@ -30,15 +31,6 @@ type Alerts struct {
 	Privacy []string `json:"privacy"`
 }
 
-func displayName(email string) string {
-	local, _, _ := strings.Cut(email, "@")
-	words := strings.FieldsFunc(local, func(r rune) bool { return r == '.' || r == '_' || r == '-' })
-	for i, w := range words {
-		words[i] = strings.ToUpper(w[:1]) + w[1:]
-	}
-	return strings.Join(words, " ")
-}
-
 type viewer struct {
 	directory Directory
 }
@@ -47,7 +39,7 @@ func (v viewer) person(email string) (Person, bool) {
 	if p, ok := v.directory.Person(v.directory.Resolve(email)); ok {
 		return p, true
 	}
-	return Person{Email: email, Name: displayName(email)}, false
+	return Person{Email: email, Name: cells.DisplayName(email)}, false
 }
 
 type StaffView struct {

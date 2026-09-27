@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/mail"
 )
 
@@ -31,7 +32,7 @@ func ICS(model *Model, directory Directory, f *Feed, linked []Linked, origin str
 			m.Modified = modified
 		}
 		if len(e.Tags) > 0 {
-			m.Categories = JoinList(e.Tags)
+			m.Categories = cells.JoinList(e.Tags)
 		}
 		c.Events = append(c.Events, m)
 	}

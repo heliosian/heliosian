@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
@@ -189,10 +190,6 @@ func (m *Model) Resolve(local string) *Group {
 	return &m.Groups[i]
 }
 
-func JoinList(items []string) string {
-	return strings.Join(items, ", ")
-}
-
 func CheckName(name string) error {
 	if !nameForm.MatchString(name) || strings.Contains(name, "..") {
 		return fmt.Errorf("a group's name is two to forty lowercase letters, digits, dots and hyphens, starting and ending with a letter or digit, with no two dots together")
@@ -241,13 +238,13 @@ func CheckGroup(g Group) error {
 		return fmt.Errorf("group %s: the description is too long", g.Name)
 	}
 	if !slices.Contains(Visibilities, g.Visibility) {
-		return fmt.Errorf("group %s: visibility %q is not one of %s", g.Name, g.Visibility, JoinList(Visibilities))
+		return fmt.Errorf("group %s: visibility %q is not one of %s", g.Name, g.Visibility, cells.JoinList(Visibilities))
 	}
 	if !slices.Contains(Postings, g.Posting) {
-		return fmt.Errorf("group %s: posting %q is not one of %s", g.Name, g.Posting, JoinList(Postings))
+		return fmt.Errorf("group %s: posting %q is not one of %s", g.Name, g.Posting, cells.JoinList(Postings))
 	}
 	if !slices.Contains(Postings, g.Replying) {
-		return fmt.Errorf("group %s: replying %q is not one of %s", g.Name, g.Replying, JoinList(Postings))
+		return fmt.Errorf("group %s: replying %q is not one of %s", g.Name, g.Replying, cells.JoinList(Postings))
 	}
 	if len(g.Managers) == 0 {
 		return fmt.Errorf("group %s needs at least one manager", g.Name)

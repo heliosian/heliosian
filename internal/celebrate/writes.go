@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
 )
@@ -577,14 +578,14 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 	if adding {
 		id = NewID()
 	}
-	pretty := NormalizePretty(body.PrettyID)
-	if CheckPretty(pretty) != nil {
-		return savedParty{}, access.Invalid("the friendly address can be only lower-case letters, digits and hyphens, at most %d", maxPrettyLength)
+	pretty := cells.NormalizePretty(body.PrettyID)
+	if cells.CheckPretty(pretty) != nil {
+		return savedParty{}, access.Invalid("the friendly address can be only lower-case letters, digits and hyphens, at most %d", cells.MaxPrettyLength)
 	}
 	if other := m.ByPretty(pretty); pretty != "" && other != nil && other.ID != id {
 		return savedParty{}, access.Invalid("%q is already the address of %s", pretty, other.Title)
 	}
-	cells := store.Row{
+	row := store.Row{
 		"Celebration": celebration, "Title": strings.TrimSpace(body.Title), "Subtitle": strings.TrimSpace(body.Subtitle),
 		"Summary": strings.TrimSpace(body.Summary), "Description": strings.TrimSpace(body.Description), "Need To Know": strings.TrimSpace(body.NeedToKnow),
 		"Note Emoji": strings.TrimSpace(body.NoteEmoji), "Note Title": strings.TrimSpace(body.NoteTitle),
@@ -592,19 +593,19 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 		"Ticket Unit": strings.TrimSpace(body.Unit), "Price": PriceCell(body.Price), "Capacity": countCell(body.Capacity), "Minimum": countCell(body.Minimum),
 		"Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End), "Location": strings.TrimSpace(body.Location),
 		"Address": strings.TrimSpace(body.Address), "Pretty ID": pretty, "Image": strings.TrimSpace(body.Image), "Flyer Image": strings.TrimSpace(body.Flyer), "Status": status, "Tickets": ticketsCell(body.TicketsOpen),
-		"Waitlist": YesNo(body.Waitlist), "Adults": YesNo(body.Adults), "Students": YesNo(body.Students),
-		"Drop-Off": YesNo(body.DropOff), "Parent Ticket Required": YesNo(body.ParentTicket),
+		"Waitlist": cells.YesNoCell(body.Waitlist), "Adults": cells.YesNoCell(body.Adults), "Students": cells.YesNoCell(body.Students),
+		"Drop-Off": cells.YesNoCell(body.DropOff), "Parent Ticket Required": cells.YesNoCell(body.ParentTicket),
 	}
 	ops := []store.Op{}
 	before := []string{}
 	if adding {
-		cells["Party ID"] = id
-		cells["Added By"] = actor.Email
-		cells["Added"] = today()
-		ops = append(ops, store.Insert(partiesTab, cells))
+		row["Party ID"] = id
+		row["Added By"] = actor.Email
+		row["Added"] = today()
+		ops = append(ops, store.Insert(partiesTab, row))
 	} else {
 		before = was.HostEmails
-		ops = append(ops, store.Update(partiesTab, store.Row{"Party ID": id}, cells))
+		ops = append(ops, store.Update(partiesTab, store.Row{"Party ID": id}, row))
 	}
 	for _, h := range before {
 		if !slices.Contains(hosts, h) {
@@ -616,7 +617,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 			ops = append(ops, store.Insert(hostsTab, store.Row{"Party ID": id, "Email": h}))
 		}
 	}
-	return savedParty{id: id, title: cells["Title"], status: status, adding: adding, ops: ops}, nil
+	return savedParty{id: id, title: row["Title"], status: status, adding: adding, ops: ops}, nil
 }
 
 func (m *Model) deleteParty(actor access.Actor, id string) (*Party, []store.Op, error) {
@@ -654,12 +655,12 @@ func (m *Model) setFlags(actor access.Actor, flags partyFlags) (*Party, []store.
 	if !flags.Adults && !flags.Students {
 		return nil, nil, access.Invalid("let adults, students, or both hold a ticket")
 	}
-	cells := store.Row{
-		"Tickets": ticketsCell(flags.TicketsOpen), "Waitlist": YesNo(flags.Waitlist),
-		"Adults": YesNo(flags.Adults), "Students": YesNo(flags.Students),
-		"Drop-Off": YesNo(flags.DropOff), "Parent Ticket Required": YesNo(flags.ParentTicket),
+	row := store.Row{
+		"Tickets": ticketsCell(flags.TicketsOpen), "Waitlist": cells.YesNoCell(flags.Waitlist),
+		"Adults": cells.YesNoCell(flags.Adults), "Students": cells.YesNoCell(flags.Students),
+		"Drop-Off": cells.YesNoCell(flags.DropOff), "Parent Ticket Required": cells.YesNoCell(flags.ParentTicket),
 	}
-	return p, []store.Op{store.Update(partiesTab, store.Row{"Party ID": p.ID}, cells)}, nil
+	return p, []store.Op{store.Update(partiesTab, store.Row{"Party ID": p.ID}, row)}, nil
 }
 
 func (m *Model) setStatus(actor access.Actor, id, status string) (*Party, []store.Op, error) {
@@ -706,11 +707,11 @@ func (m *Model) saveCelebration(actor access.Actor, form celebrationForm) ([]sto
 	if (adding || renamed) && m.Celebration(code) != nil {
 		return nil, false, access.Invalid("%q is already a celebration", code)
 	}
-	cells := store.Row{
+	row := store.Row{
 		"Code": code, "Title": strings.TrimSpace(form.Title), "Subtitle": strings.TrimSpace(form.Subtitle),
 		"Start": strings.TrimSpace(form.Start), "End": strings.TrimSpace(form.End), "Location": strings.TrimSpace(form.Location),
 		"Address": strings.TrimSpace(form.Address), "Description": strings.TrimSpace(form.Description), "Image": strings.TrimSpace(form.Image),
-		"Button Text": strings.TrimSpace(form.ButtonText), "Button URL": strings.TrimSpace(form.ButtonURL), "Current": YesNo(form.Current), "Banner": YesNo(form.Banner),
+		"Button Text": strings.TrimSpace(form.ButtonText), "Button URL": strings.TrimSpace(form.ButtonURL), "Current": cells.YesNoCell(form.Current), "Banner": cells.YesNoCell(form.Banner),
 	}
 	ops := []store.Op{}
 	for _, c := range m.Celebrations {
@@ -729,9 +730,9 @@ func (m *Model) saveCelebration(actor access.Actor, form celebrationForm) ([]sto
 		}
 	}
 	if adding {
-		ops = append(ops, store.Insert(celebrationsTab, cells))
+		ops = append(ops, store.Insert(celebrationsTab, row))
 	} else {
-		ops = append(ops, store.Update(celebrationsTab, store.Row{"Code": form.Original}, cells))
+		ops = append(ops, store.Update(celebrationsTab, store.Row{"Code": form.Original}, row))
 	}
 	return ops, adding, nil
 }
@@ -754,7 +755,7 @@ func (m *Model) saveCategory(actor access.Actor, original, title string) ([]stor
 		return nil, false, err
 	}
 	title = strings.TrimSpace(title)
-	if err := checkTitle("category", title); err != nil {
+	if err := cells.Title("category", title, maxTitleLength); err != nil {
 		return nil, false, access.Invalid("%s", err)
 	}
 	adding := original == ""
@@ -812,7 +813,7 @@ func (m *Model) saveSettings(actor access.Actor, s Settings) ([]store.Op, error)
 	if err := requireAdmin(actor); err != nil {
 		return nil, err
 	}
-	values := map[string]string{PartiesIntroKey: strings.TrimSpace(s.PartiesIntro), TicketNoteKey: strings.TrimSpace(s.TicketNote), HostingOpenKey: YesNo(s.HostingOpen)}
+	values := map[string]string{PartiesIntroKey: strings.TrimSpace(s.PartiesIntro), TicketNoteKey: strings.TrimSpace(s.TicketNote), HostingOpenKey: cells.YesNoCell(s.HostingOpen)}
 	ops := []store.Op{}
 	for _, key := range settingKeys {
 		ops = append(ops, store.Upsert(settingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))

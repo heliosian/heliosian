@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
@@ -82,8 +83,12 @@ func (b *builder) groups(rows []store.Row) {
 		if rule.Kind == "" {
 			rule.Kind = filter.KindInclude
 		}
+		auto, err := cells.YesNo(row["Auto"], true)
+		if err != nil {
+			b.refuse("invite group %s on %s: auto %v", gid, id, err)
+		}
 		b.model.Groups[id] = append(b.model.Groups[id], InviteGroup{
-			ID: gid, Rule: rule, Auto: !strings.EqualFold(strings.TrimSpace(row["Auto"]), "No"),
+			ID: gid, Rule: rule, Auto: auto,
 			AddedBy: config.NormalizeEmail(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]),
 			Removed: splitEmails(row["Removed"]),
 		})
@@ -214,7 +219,7 @@ func (a app) groupPreview(w http.ResponseWriter, r *http.Request) {
 		if p, known := a.directory.Person(m); known && p.Name != "" {
 			names = append(names, p.Name)
 		} else {
-			names = append(names, displayName(m))
+			names = append(names, cells.DisplayName(m))
 		}
 	}
 	slices.Sort(names)

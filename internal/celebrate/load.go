@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
 )
@@ -36,7 +37,6 @@ const (
 	DateTimeFormat = "2006-01-02 15:04"
 	maxTitleLength = 120
 	maxTextLength  = 6000
-	maxURLLength   = 1000
 	maxNameLength  = 120
 )
 
@@ -80,27 +80,6 @@ var (
 )
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
-
-var prettyForm = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
-
-const maxPrettyLength = 40
-
-func NormalizePretty(raw string) string {
-	return strings.ToLower(strings.TrimSpace(raw))
-}
-
-func CheckPretty(pretty string) error {
-	if pretty == "" {
-		return nil
-	}
-	if len(pretty) > maxPrettyLength {
-		return fmt.Errorf("pretty id %q is too long", pretty)
-	}
-	if !prettyForm.MatchString(pretty) {
-		return fmt.Errorf("pretty id %q is not lower-case letters, digits and hyphens", pretty)
-	}
-	return nil
-}
 
 type Redirect struct {
 	Type string `json:"type"`
@@ -250,7 +229,7 @@ type InvoiceLine struct {
 }
 
 func (m *Model) ByPretty(pretty string) *Party {
-	return m.pretty[NormalizePretty(pretty)]
+	return m.pretty[cells.NormalizePretty(pretty)]
 }
 
 func (m *Model) PathOf(p *Party) string {
@@ -406,7 +385,7 @@ func (p *Party) Full() bool {
 }
 
 func (p *Party) StartTime() time.Time {
-	t, _ := ParseWhen(p.Start)
+	t, _ := cells.When(p.Start)
 	return t
 }
 
@@ -418,7 +397,7 @@ func (p *Party) Past(now time.Time) bool {
 	if cell == "" {
 		return false
 	}
-	t, err := ParseWhen(cell)
+	t, err := cells.When(cell)
 	if err != nil {
 		return false
 	}
@@ -450,99 +429,12 @@ func (p *Party) Availability(now time.Time) string {
 	return SoldOut
 }
 
-func yesNo(cell string, blank bool) (bool, error) {
-	switch strings.TrimSpace(cell) {
-	case "Yes":
-		return true, nil
-	case "No":
-		return false, nil
-	case "":
-		return blank, nil
-	}
-	return false, fmt.Errorf("%q is not Yes, No, or blank", cell)
-}
-
-func YesNo(b bool) string {
-	if b {
-		return "Yes"
-	}
-	return "No"
-}
-
-func ParseWhen(cell string) (time.Time, error) {
-	if t, err := time.Parse(DateTimeFormat, cell); err == nil {
-		return t, nil
-	}
-	if t, err := time.Parse(DateFormat, cell); err == nil {
-		return t, nil
-	}
-	return time.Time{}, fmt.Errorf("%q is not a date like 2026-09-24 or 2026-09-24 16:00", cell)
-}
-
-func checkSpan(start, end string) error {
-	var from time.Time
-	if start != "" {
-		t, err := ParseWhen(start)
-		if err != nil {
-			return fmt.Errorf("start %w", err)
-		}
-		from = t
-	}
-	if end == "" {
-		return nil
-	}
-	to, err := ParseWhen(end)
-	if err != nil {
-		return fmt.Errorf("end %w", err)
-	}
-	if start == "" {
-		return fmt.Errorf("has an end but no start")
-	}
-	if to.Before(from) {
-		return fmt.Errorf("ends before it starts")
-	}
-	return nil
-}
-
-func checkAdded(cell string) error {
-	if cell == "" {
-		return nil
-	}
-	if _, err := ParseWhen(cell); err != nil {
-		return fmt.Errorf("added %w", err)
-	}
-	return nil
-}
-
-func checkURL(raw string) error {
-	if raw == "" {
-		return nil
-	}
-	if len(raw) > maxURLLength {
-		return fmt.Errorf("url is too long")
-	}
-	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
-		return fmt.Errorf("url %q must start with http(s)://", raw)
-	}
-	return nil
-}
-
 func checkEmail(email string) error {
 	if !emailForm.MatchString(email) {
 		return fmt.Errorf("%q is not an email address", email)
 	}
 	if email != strings.ToLower(email) {
 		return fmt.Errorf("email %q is not lowercase", email)
-	}
-	return nil
-}
-
-func checkTitle(kind, title string) error {
-	if strings.TrimSpace(title) == "" {
-		return fmt.Errorf("%s has no title", kind)
-	}
-	if len(title) > maxTitleLength {
-		return fmt.Errorf("%s title %q is too long", kind, title)
 	}
 	return nil
 }
@@ -595,20 +487,6 @@ func parseCount(what, cell string) (int, error) {
 	return int(n), nil
 }
 
-func imageURL(images ImageChecker, name string) (string, error) {
-	if name == "" {
-		return "", nil
-	}
-	found, err := images.Has(name)
-	if err != nil {
-		return "", fmt.Errorf("image %q: %w", name, err)
-	}
-	if !found {
-		return "", fmt.Errorf("image %q does not exist", name)
-	}
-	return "/" + name, nil
-}
-
 func parseSettings(rows []store.Row) (Settings, error) {
 	values := map[string]string{}
 	for _, row := range rows {
@@ -624,25 +502,11 @@ func parseSettings(rows []store.Row) (Settings, error) {
 		}
 		values[key] = row["Value"]
 	}
-	hosting, err := yesNo(values[HostingOpenKey], true)
+	hosting, err := cells.YesNo(values[HostingOpenKey], true)
 	if err != nil {
 		return Settings{}, fmt.Errorf("%s %s: %w", settingsTab, HostingOpenKey, err)
 	}
 	return Settings{PartiesIntro: values[PartiesIntroKey], TicketNote: values[TicketNoteKey], HostingOpen: hosting}, nil
-}
-
-func imageNames(rows ...[]store.Row) []string {
-	names := []string{}
-	for _, list := range rows {
-		for _, row := range list {
-			for _, column := range []string{"Image", "Flyer Image"} {
-				if name := strings.TrimSpace(row[column]); name != "" {
-					names = append(names, name)
-				}
-			}
-		}
-	}
-	return names
 }
 
 func compareAdded(a, b Ticket) int {
@@ -662,7 +526,7 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 	if err != nil {
 		return nil, err
 	}
-	if err := images.Prefetch(ctx, imageNames(tables[celebrationsTab], tables[partiesTab])); err != nil {
+	if err := images.Prefetch(ctx, cells.ImageNames([]string{"Image", "Flyer Image"}, tables[celebrationsTab], tables[partiesTab])); err != nil {
 		return nil, fmt.Errorf("prefetch images: %w", err)
 	}
 	model := &Model{
@@ -691,17 +555,17 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 		if model.Celebration(code) != nil {
 			return fail(fmt.Errorf("is listed twice"))
 		}
-		if err := checkTitle("celebration", row["Title"]); err != nil {
+		if err := cells.Title("celebration", row["Title"], maxTitleLength); err != nil {
 			return fail(err)
 		}
-		if err := checkSpan(row["Start"], row["End"]); err != nil {
+		if err := cells.Span(row["Start"], row["End"]); err != nil {
 			return fail(err)
 		}
 		if err := checkText("description", row["Description"]); err != nil {
 			return fail(err)
 		}
 		if link := strings.TrimSpace(row["Button URL"]); link != ButtonCalendar {
-			if err := checkURL(link); err != nil {
+			if err := cells.URL(link, true); err != nil {
 				return fail(err)
 			}
 		} else if strings.TrimSpace(row["Start"]) == "" {
@@ -710,16 +574,16 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 		if (strings.TrimSpace(row["Button URL"]) == "") != (strings.TrimSpace(row["Button Text"]) == "") {
 			return fail(fmt.Errorf("the button needs both its text and its link, or neither"))
 		}
-		current, err := yesNo(row["Current"], false)
+		current, err := cells.YesNo(row["Current"], false)
 		if err != nil {
 			return fail(fmt.Errorf("current %w", err))
 		}
-		banner, err := yesNo(row["Banner"], false)
+		banner, err := cells.YesNo(row["Banner"], false)
 		if err != nil {
 			return fail(fmt.Errorf("banner %w", err))
 		}
 		image := strings.TrimSpace(row["Image"])
-		url, err := imageURL(images, image)
+		url, err := cells.ImageURL(images, image)
 		if err != nil {
 			return fail(err)
 		}
@@ -905,7 +769,7 @@ func parseParty(row store.Row, model *Model, images ImageChecker) (*Party, error
 	if model.Celebration(celebration) == nil {
 		return nil, fmt.Errorf("names celebration %q, which is not on the Celebrations tab", celebration)
 	}
-	if err := checkTitle("party", row["Title"]); err != nil {
+	if err := cells.Title("party", row["Title"], maxTitleLength); err != nil {
 		return nil, err
 	}
 	for _, what := range []string{"Summary", "Description", "Need To Know"} {
@@ -932,7 +796,7 @@ func parseParty(row store.Row, model *Model, images ImageChecker) (*Party, error
 	if err != nil {
 		return nil, err
 	}
-	if err := checkSpan(row["Start"], row["End"]); err != nil {
+	if err := cells.Span(row["Start"], row["End"]); err != nil {
 		return nil, err
 	}
 	status := strings.TrimSpace(row["Status"])
@@ -952,7 +816,7 @@ func parseParty(row store.Row, model *Model, images ImageChecker) (*Party, error
 		column string
 		blank  bool
 	}{{"Waitlist", true}, {"Adults", true}, {"Students", false}, {"Drop-Off", false}, {"Parent Ticket Required", false}} {
-		v, err := yesNo(row[f.column], f.blank)
+		v, err := cells.YesNo(row[f.column], f.blank)
 		if err != nil {
 			return nil, fmt.Errorf("%s %w", strings.ToLower(f.column), err)
 		}
@@ -966,21 +830,21 @@ func parseParty(row store.Row, model *Model, images ImageChecker) (*Party, error
 			return nil, fmt.Errorf("added by %w", err)
 		}
 	}
-	if err := checkAdded(row["Added"]); err != nil {
+	if err := cells.Added(row["Added"]); err != nil {
 		return nil, err
 	}
 	image := strings.TrimSpace(row["Image"])
-	url, err := imageURL(images, image)
+	url, err := cells.ImageURL(images, image)
 	if err != nil {
 		return nil, err
 	}
 	flyer := strings.TrimSpace(row["Flyer Image"])
-	flyerURL, err := imageURL(images, flyer)
+	flyerURL, err := cells.ImageURL(images, flyer)
 	if err != nil {
 		return nil, fmt.Errorf("flyer %w", err)
 	}
-	pretty := NormalizePretty(row["Pretty ID"])
-	if err := CheckPretty(pretty); err != nil {
+	pretty := cells.NormalizePretty(row["Pretty ID"])
+	if err := cells.CheckPretty(pretty); err != nil {
 		return nil, err
 	}
 	return &Party{
@@ -1041,7 +905,7 @@ func parseTicket(row store.Row, id string) (*Ticket, error) {
 			return nil, fmt.Errorf("added by %w", err)
 		}
 	}
-	if err := checkAdded(row["Added"]); err != nil {
+	if err := cells.Added(row["Added"]); err != nil {
 		return nil, err
 	}
 	return &Ticket{

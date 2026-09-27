@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 )
@@ -49,11 +50,19 @@ func buildGreetings(tables store.Tables) ([]GreetingTemplate, error) {
 		if name == "" || format == "" {
 			continue
 		}
+		grouped, err := cells.YesNo(row["Grouped"], true)
+		if err != nil {
+			return nil, fmt.Errorf("greeting %q: grouped %w", name, err)
+		}
+		individual, err := cells.YesNo(row["Individual"], true)
+		if err != nil {
+			return nil, fmt.Errorf("greeting %q: individual %w", name, err)
+		}
 		greetings = append(greetings, GreetingTemplate{
 			Name:       name,
 			Format:     format,
-			Grouped:    row["Grouped"] != "No",
-			Individual: row["Individual"] != "No",
+			Grouped:    grouped,
+			Individual: individual,
 			CreatedBy:  row["Email"],
 		})
 	}
@@ -78,13 +87,21 @@ func loadInviteTemplates(source data.Source) ([]InviteTemplate, error) {
 		if len(raw) == 0 {
 			continue
 		}
+		headerRow, err := cells.YesNo(sys["Header Row"], true)
+		if err != nil {
+			return nil, fmt.Errorf("%s template: header row %w", name, err)
+		}
+		supportsGroups, err := cells.YesNo(sys["Supports Groups"], true)
+		if err != nil {
+			return nil, fmt.Errorf("%s template: supports groups %w", name, err)
+		}
 		templates = append(templates, InviteTemplate{
 			Name:           name,
 			Sheet:          tab,
 			Description:    sys["Description"],
 			Notes:          sys["Notes"],
-			HeaderRow:      sys["Header Row"] != "No",
-			SupportsGroups: sys["Supports Groups"] != "No",
+			HeaderRow:      headerRow,
+			SupportsGroups: supportsGroups,
 			Header:         raw[0],
 			Rows:           raw[1:],
 		})
@@ -215,11 +232,4 @@ func visibleGreetings(greetings []GreetingTemplate, email string) []GreetingTemp
 		}
 	}
 	return visible
-}
-
-func yesNo(b bool) string {
-	if b {
-		return "Yes"
-	}
-	return "No"
 }

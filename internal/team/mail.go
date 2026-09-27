@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/mail"
 )
 
@@ -143,7 +144,7 @@ func (a app) mailRemoved(r *http.Request, act *Activity, email, actor string) {
 func (a app) nameOf(email string) string {
 	name, _, _ := a.directory.Person(email)
 	if name == "" {
-		return displayName(email)
+		return cells.DisplayName(email)
 	}
 	return name
 }

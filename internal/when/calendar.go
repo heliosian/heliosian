@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"net/url"
 	"regexp"
 	"slices"
 	"sort"
@@ -12,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/logging"
@@ -308,10 +308,6 @@ func (m *Model) MyHeliosian(email string) Feed {
 	return f
 }
 
-func tagDefault(cell string) bool {
-	return !strings.EqualFold(strings.TrimSpace(cell), "No")
-}
-
 type Feed struct {
 	Token      string   `json:"token"`
 	Email      string   `json:"email"`
@@ -433,31 +429,6 @@ func (m *Model) unusedFeedName(email, name string) string {
 	}
 }
 
-func SplitList(cell string) []string {
-	out := []string{}
-	for _, item := range strings.Split(cell, ",") {
-		item = strings.TrimSpace(item)
-		if item != "" && !slices.Contains(out, item) {
-			out = append(out, item)
-		}
-	}
-	return out
-}
-
-func JoinList(items []string) string {
-	return strings.Join(items, ", ")
-}
-
-func yesNo(cell string) (bool, error) {
-	switch cell {
-	case "Yes":
-		return true, nil
-	case "No", "":
-		return false, nil
-	}
-	return false, fmt.Errorf("%q is not Yes, No, or blank", cell)
-}
-
 func parseDate(cell string) (time.Time, error) {
 	t, err := time.ParseInLocation(DateFormat, cell, Location)
 	if err != nil {
@@ -572,7 +543,11 @@ func parseTags(rows []store.Row) ([]Tag, error) {
 		if err := store.CheckKey(order); err != nil {
 			return nil, fmt.Errorf("tag %q: %w", name, err)
 		}
-		out = append(out, Tag{Name: name, Description: row["Description"], Group: strings.TrimSpace(row["Group"]), Default: tagDefault(row["Default"]), Image: strings.TrimSpace(row["Image"]), order: order})
+		standard, err := cells.YesNo(row["Default"], true)
+		if err != nil {
+			return nil, fmt.Errorf("tag %q: default %w", name, err)
+		}
+		out = append(out, Tag{Name: name, Description: row["Description"], Group: strings.TrimSpace(row["Group"]), Default: standard, Image: strings.TrimSpace(row["Image"]), order: order})
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("%s has no rows", TagsTab)
@@ -621,22 +596,12 @@ func (b *builder) add(e *Event) error {
 	return nil
 }
 
-func checkTitle(title string) error {
-	if title == "" {
-		return fmt.Errorf("has no title")
-	}
-	if len(title) > maxTitleLength {
-		return fmt.Errorf("title is too long")
-	}
-	return nil
-}
-
 func (b *builder) event(source, id string, row store.Row) (*Event, error) {
 	e := &Event{ID: id, Source: source, Title: row["Title"], SourceTitle: row["Title"], Location: row["Location"], Description: row["Description"], Sharing: SharingPublic}
 	fail := func(err error) (*Event, error) {
 		return nil, fmt.Errorf("%s row %q: %w", source, id, err)
 	}
-	if err := checkTitle(e.Title); err != nil {
+	if err := cells.Title("event", e.Title, maxTitleLength); err != nil {
 		return fail(err)
 	}
 	if len(e.Description) > maxTextLength {
@@ -651,7 +616,7 @@ func (b *builder) event(source, id string, row store.Row) (*Event, error) {
 	if e.End == "" {
 		e.End = e.Start
 	}
-	e.Tags = SplitList(row["Tags"])
+	e.Tags = cells.SplitList(row["Tags"])
 	if err := b.checkTags(e.Tags); err != nil {
 		return fail(err)
 	}
@@ -659,7 +624,7 @@ func (b *builder) event(source, id string, row store.Row) (*Event, error) {
 	if err := b.checkDayType(e.DayType); err != nil {
 		return fail(err)
 	}
-	e.Keywords = SplitList(row["Keywords"])
+	e.Keywords = cells.SplitList(row["Keywords"])
 	return e, nil
 }
 
@@ -684,7 +649,7 @@ func (b *builder) applyEnrichment(rows []store.Row) error {
 		fail := func(err error) error {
 			return fmt.Errorf("enrichment of %q: %w", id, err)
 		}
-		tags := SplitList(row["Tags"])
+		tags := cells.SplitList(row["Tags"])
 		if err := b.checkTags(tags); err != nil {
 			return fail(err)
 		}
@@ -695,7 +660,7 @@ func (b *builder) applyEnrichment(rows []store.Row) error {
 				return fail(err)
 			}
 		}
-		e.Keywords = union(e.Keywords, SplitList(row["Keywords"]))
+		e.Keywords = union(e.Keywords, cells.SplitList(row["Keywords"]))
 		p := b.model.provenance(id)
 		p.Model, p.Enriched = strings.TrimSpace(row["Model"]), strings.TrimSpace(row["Enriched"])
 	}
@@ -718,7 +683,7 @@ func overrideList(cell string, target *[]string) {
 	case Clear:
 		*target = []string{}
 	default:
-		*target = SplitList(cell)
+		*target = cells.SplitList(cell)
 	}
 }
 
@@ -753,7 +718,7 @@ func (b *builder) applyOverrides(rows []store.Row) error {
 			return fail(fmt.Errorf("a title cannot be cleared"))
 		}
 		override(row["Title"], &e.Title)
-		if err := checkTitle(e.Title); err != nil {
+		if err := cells.Title("event", e.Title, maxTitleLength); err != nil {
 			return fail(err)
 		}
 		if row["Start"] == Clear {
@@ -783,7 +748,7 @@ func (b *builder) applyOverrides(rows []store.Row) error {
 			return fail(err)
 		}
 		overrideList(row["Keywords"], &e.Keywords)
-		hidden, err := yesNo(row["Hidden"])
+		hidden, err := cells.YesNo(row["Hidden"], false)
 		if err != nil {
 			return fail(fmt.Errorf("hidden %w", err))
 		}
@@ -886,12 +851,12 @@ func (b *builder) settings(rows []store.Row) {
 			continue
 		}
 		setting := Setting{Classrooms: []string{}, Tags: []string{}}
-		for _, c := range SplitList(row["Classrooms"]) {
+		for _, c := range cells.SplitList(row["Classrooms"]) {
 			if b.model.Roster.has(c) {
 				setting.Classrooms = append(setting.Classrooms, c)
 			}
 		}
-		for _, t := range SplitList(row["Categories"]) {
+		for _, t := range cells.SplitList(row["Categories"]) {
 			if b.model.tags[t] || slices.ContainsFunc(builtinTags, func(bt Tag) bool { return bt.Name == t }) {
 				setting.Tags = append(setting.Tags, t)
 			}
@@ -944,7 +909,7 @@ func (b *builder) feeds(rows []store.Row) error {
 	for _, row := range rows {
 		f := Feed{
 			Token: strings.TrimSpace(row["Token"]), Email: strings.TrimSpace(row["Email"]), Name: strings.TrimSpace(row["Name"]),
-			Classrooms: SplitList(row["Classrooms"]), Tags: SplitList(row["Tags"]), Created: row["Created"], Emoji: strings.TrimSpace(row["Emoji"]),
+			Classrooms: cells.SplitList(row["Classrooms"]), Tags: cells.SplitList(row["Tags"]), Created: row["Created"], Emoji: strings.TrimSpace(row["Emoji"]),
 			order: strings.TrimSpace(row[store.OrderColumn]),
 		}
 		if f.Token == "" {
@@ -1189,7 +1154,7 @@ func (b *builder) days(dayOverrides []store.Row) error {
 		if _, err := parseDate(date); err != nil {
 			return fail(err)
 		}
-		classrooms := SplitList(row["Classrooms"])
+		classrooms := cells.SplitList(row["Classrooms"])
 		for _, c := range classrooms {
 			if !m.Roster.has(c) {
 				return fail(fmt.Errorf("%q is not a classroom", c))
@@ -1281,7 +1246,7 @@ func BuildModel(tables store.Tables, roster Roster) (*Model, error) {
 			e.Image = "/" + image
 		}
 		if proof := strings.TrimSpace(row["Source"]); proof != "" {
-			if u, err := url.Parse(proof); err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" {
+			if cells.URL(proof, false) == nil {
 				e.SourceURL = proof
 			} else {
 				e.SourceNote = proof

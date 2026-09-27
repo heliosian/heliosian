@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -71,8 +72,8 @@ func carryParty(_ store.Tables, before, after store.Row) []store.Op {
 	case after == nil:
 		return []store.Op{store.Delete(hostsTab, store.Row{"Party ID": before["Party ID"]})}
 	}
-	was := partyPath(before["Party ID"], NormalizePretty(before["Pretty ID"]))
-	now := partyPath(after["Party ID"], NormalizePretty(after["Pretty ID"]))
+	was := partyPath(before["Party ID"], cells.NormalizePretty(before["Pretty ID"]))
+	now := partyPath(after["Party ID"], cells.NormalizePretty(after["Pretty ID"]))
 	if was == now {
 		return nil
 	}

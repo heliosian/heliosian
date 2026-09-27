@@ -18,7 +18,7 @@ Home's data lives in one Google Sheet, `Apps`, in the community shared drive, re
 
 **Title is the key.** Links and categories are edited by title, so a title must be unique within its tab. An edit that renames carries the new title in the same write, so the row keeps its place; a category rename rewrites the Category cell of every link in it, and a rename or delete of either carries its `Audience` rows along - cascades on the store (`carryCategory` and `carryLink` in `internal/home/cache.go`).
 
-**Visible is Yes or No**, spelled exactly so. Any other value refuses the load.
+**Visible is Yes or No**, blank being No, read as every yes/no cell is (`docs/storage.md`, Cells).
 
 **Style is `cards`, `tiles`, `events` or `apps`**, spelled exactly so, and every category needs one. `cards` renders the category as large feature cards, each with its image, description, and its own button; `tiles` renders it as a row of compact tiles with a picture, the title and a line; `apps` is the community apps section, described with `events` below. A blank or misspelled Style refuses the load rather than guessing a presentation, the same stance Visible takes — the front page's shape is a property of the sheet, not of what the renderer happens to fall back to.
 

@@ -55,6 +55,10 @@ A row's place in a list the app lets people arrange is its `Order` cell, never i
 
 A list nobody arranges sorts by a real field of its rows instead - a celebration by its start, a ticket by when it was added, a Loop message by when it was received - blanks last. A list an editor saves whole, like a group's filter rules, is replaced whole in the editor's order whenever it changes.
 
+## Cells
+
+Every app reads the common kinds of cell through `internal/cells`, so the same value means the same thing in every sheet. A yes/no cell is `Yes` or `No` in any case and with any spaces around it, and blank means whatever that column's default is (each app's docs say which); anything else refuses the load. The apps write `Yes` and `No`. A title may not be blank, too long for its app, or have spaces around it, since titles key rows the apps write back by exact match. A link is an absolute `http` or `https` address with a host. A date is `2026-09-24` or `2026-09-24 16:00`, an Added cell either or blank. A comma list is split on commas, each item trimmed, blanks and repeats dropped, and written back joined with `, `.
+
 ## Hooks
 
 - **Cascade hooks** belong to a tab (`store.Tab.Cascade`) and turn a changed row into more operations, inside the same commit: renaming a Staff Birthdays charity renames it on every donation and in the default-charity setting, moving a newsletter date moves every birthday pinned to it, deleting a Loop group deletes its managers, rules, messages and deliveries with it, and deleting a Helios When invitation deletes its invites, groups and answers, a guest's address change carrying their answer with it, and renaming or deleting a person Who? holds only in Overrides renames or deletes their tags, tag managers and photos. Each sees the row before and after, and the tables as the commit has left them so far (Team reads the parent chain there to work out an activity's address), and returns operations; it writes nothing itself.

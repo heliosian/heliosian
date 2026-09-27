@@ -336,13 +336,6 @@ func (a app) removeFeed(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func yesNoWord(b bool) string {
-	if b {
-		return "Yes"
-	}
-	return "No"
-}
-
 func (a app) admin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, admin := a.who(r); !admin {

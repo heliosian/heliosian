@@ -16,6 +16,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
@@ -94,6 +95,14 @@ func (b *builder) invitations(settings, rows []store.Row) {
 		if id == "" {
 			continue
 		}
+		hideHosts, err := cells.YesNo(row["Hide Hosts"], false)
+		if err != nil {
+			b.refuse("invitation for %s: hide hosts %v", id, err)
+		}
+		publicList, err := cells.YesNo(row["Public Guest List"], false)
+		if err != nil {
+			b.refuse("invitation for %s: public guest list %v", id, err)
+		}
 		inv := &Invitation{
 			EventID: id, Hosts: []string{}, Audience: strings.ToLower(strings.TrimSpace(row["Audience"])), Guests: true, Message: strings.TrimSpace(row["Message"]),
 			CreatedBy: config.NormalizeEmail(row["Created By"]), Created: strings.TrimSpace(row["Created"]), Sent: strings.TrimSpace(row["Sent"]),
@@ -101,8 +110,8 @@ func (b *builder) invitations(settings, rows []store.Row) {
 			Location: strings.TrimSpace(row["Location"]), Description: strings.TrimSpace(row["Description"]),
 			Flyer: strings.Trim(strings.TrimSpace(row["Flyer"]), "/"), Notify: splitEmails(row["Notify"]),
 			SteppedDown: config.NormalizeEmail(row["Stepped Down"]),
-			HideHosts:   strings.EqualFold(strings.TrimSpace(row["Hide Hosts"]), "Yes"),
-			PublicList:  strings.EqualFold(strings.TrimSpace(row["Public Guest List"]), "Yes"),
+			HideHosts:   hideHosts,
+			PublicList:  publicList,
 		}
 		if inv.Start != "" {
 			if _, _, _, err := parseWhen(inv.Start, inv.End); err != nil {
@@ -110,7 +119,7 @@ func (b *builder) invitations(settings, rows []store.Row) {
 				inv.Start, inv.End = "", ""
 			}
 		}
-		for _, h := range SplitList(row["Hosts"]) {
+		for _, h := range cells.SplitList(row["Hosts"]) {
 			inv.Hosts = append(inv.Hosts, config.NormalizeEmail(h))
 		}
 		if inv.Audience != AudienceAdults && inv.Audience != AudienceStudents {
@@ -378,7 +387,7 @@ func (a app) personOf(email, name string) (Person, bool) {
 	}
 	p = Person{Email: email, Name: name}
 	if p.Name == "" && !isGuestKey(email) {
-		p.Name = displayName(email)
+		p.Name = cells.DisplayName(email)
 	}
 	if isGuestKey(email) {
 		p.Email = ""
@@ -407,7 +416,7 @@ func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
 		if names[email] != "" {
 			return names[email]
 		}
-		return displayName(email)
+		return cells.DisplayName(email)
 	}
 	householdOf := func(email string) string {
 		members := a.householdOn(e, email)
@@ -1028,7 +1037,7 @@ func (a app) send(ctx context.Context, actor access.Actor, host string, e *Event
 			}
 		}
 		if len(names) == 0 {
-			names = []string{FirstWord(displayName(t))}
+			names = []string{FirstWord(cells.DisplayName(t))}
 		}
 		recipients[t] = names
 	}
@@ -1086,7 +1095,7 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 	if inv := a.cache.Model().Invitations[e.ID]; inv != nil && inv.Flyer != "" {
 		picture = origin + flyerPath(e.ID)
 	}
-	whom := FirstWord(displayName(to))
+	whom := FirstWord(cells.DisplayName(to))
 	if len(names) > 0 {
 		whom = names[0]
 	}

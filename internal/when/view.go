@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 )
 
@@ -122,15 +123,6 @@ type View struct {
 	Alerts      Alerts                       `json:"alerts"`
 }
 
-func displayName(email string) string {
-	local, _, _ := strings.Cut(email, "@")
-	words := strings.FieldsFunc(local, func(r rune) bool { return r == '.' || r == '_' || r == '-' })
-	for i, w := range words {
-		words[i] = strings.ToUpper(w[:1]) + w[1:]
-	}
-	return strings.Join(words, " ")
-}
-
 func students(directory Directory, me Person) []Person {
 	out := []Person{}
 	if me.IsStudent {
@@ -189,7 +181,7 @@ func (m *Model) ResponsesFor(v access.Actor, directory Directory) map[string]*Re
 	for who, answers := range m.Answers {
 		person, ok := directory.Person(who)
 		if !ok {
-			person = Person{Email: who, Name: displayName(who)}
+			person = Person{Email: who, Name: cells.DisplayName(who)}
 		}
 		person.PhotoURL = thumb(person.PhotoURL)
 		person.Line = contactLine(directory, person)
@@ -227,7 +219,7 @@ func Render(model *Model, directory Directory, as access.Actor, now time.Time, l
 	email, admin := as.Email, as.Admin
 	me, known := directory.Person(email)
 	if !known {
-		me = Person{Email: email, Name: displayName(email)}
+		me = Person{Email: email, Name: cells.DisplayName(email)}
 	}
 	initial := ""
 	if me.Name != "" {

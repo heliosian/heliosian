@@ -15,6 +15,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/cells"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
@@ -79,7 +80,7 @@ func (fakeDirectory) Person(email string) (string, string, bool) {
 		return "Robin Whitfield", "/photos/robin.jpg", true
 	}
 	if strings.HasSuffix(email, "@heliosschool.org") {
-		return displayName(email), "", true
+		return cells.DisplayName(email), "", true
 	}
 	return "", "", false
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"heliosian/internal/celebrate"
+	"heliosian/internal/cells"
 	"heliosian/internal/loop"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
@@ -131,7 +132,7 @@ func activities(directory *who.Model, model *team.Model, email string, now time.
 		if cell == "" {
 			return false
 		}
-		last, _ := team.ParseWhen(cell)
+		last, _ := cells.When(cell)
 		return last.Before(today)
 	}
 	var walk func(a, root *team.Activity, parent string)

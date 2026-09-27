@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/geocode"
 	"heliosian/internal/store"
@@ -270,17 +271,17 @@ func (m *Model) addPerson(actor access.Actor, f newPerson) (string, string, []st
 	if !f.IsStudent && !f.IsParent && !f.IsStaff {
 		return "", "", nil, access.Invalid("choose at least one of Is Student, Is Parent, or Is Staff")
 	}
-	cells := store.Row{"Added": "TRUE", "Full Name": fullName}
+	row := store.Row{"Added": cells.YesNoCell(true), "Full Name": fullName}
 	if f.IsStudent {
-		cells["Is Student"] = "TRUE"
+		row["Is Student"] = cells.YesNoCell(true)
 	}
 	if f.IsParent {
-		cells["Is Parent"] = "TRUE"
+		row["Is Parent"] = cells.YesNoCell(true)
 	}
 	if f.IsStaff {
-		cells["Is Staff"] = "TRUE"
+		row["Is Staff"] = cells.YesNoCell(true)
 	}
-	return email, fullName, []store.Op{setOverride(email, cells)}, nil
+	return email, fullName, []store.Op{setOverride(email, row)}, nil
 }
 
 func (m *Model) deletePerson(actor access.Actor, email string) (string, []store.Op, error) {
@@ -300,7 +301,7 @@ func (m *Model) hidePerson(actor access.Actor, email string) (string, []store.Op
 		return "", nil, err
 	}
 	target := strings.ToLower(strings.TrimSpace(email))
-	return target, []store.Op{setOverride(target, store.Row{"Opted Out": "TRUE"})}, nil
+	return target, []store.Op{setOverride(target, store.Row{"Opted Out": cells.YesNoCell(true)})}, nil
 }
 
 func (m *Model) unhidePerson(actor access.Actor, email string) (string, []store.Op, error) {
@@ -677,21 +678,21 @@ func (i *Invites) saveGreeting(actor access.Actor, format, original string, grou
 	if len(format) > 200 {
 		return nil, access.Invalid("format is too long")
 	}
-	cells := store.Row{
+	row := store.Row{
 		"Name":       format,
 		"Format":     format,
-		"Grouped":    yesNo(grouped),
-		"Individual": yesNo(individual),
+		"Grouped":    cells.YesNoCell(grouped),
+		"Individual": cells.YesNoCell(individual),
 		"Email":      actor.Email,
 	}
 	if original == "" {
-		return []store.Op{store.Insert(greetingsTab, cells)}, nil
+		return []store.Op{store.Insert(greetingsTab, row)}, nil
 	}
 	have, ok := i.greeting(original)
 	if !ok || have.CreatedBy != actor.Email {
 		return nil, access.Forbidden("you can only edit greetings you created")
 	}
-	return []store.Op{store.Update(greetingsTab, store.Row{"Name": original}, cells)}, nil
+	return []store.Op{store.Update(greetingsTab, store.Row{"Name": original}, row)}, nil
 }
 
 func (i *Invites) deleteGreeting(actor access.Actor, name string) ([]store.Op, error) {

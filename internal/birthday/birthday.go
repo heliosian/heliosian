@@ -2,7 +2,6 @@ package birthday
 
 import (
 	"fmt"
-	"net/url"
 	"regexp"
 	"slices"
 	"sort"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
 )
@@ -35,7 +35,6 @@ const (
 	MonthDayFormat = "01-02"
 	maxNameLength  = 120
 	maxTextLength  = 6000
-	maxURLLength   = 1000
 )
 
 const (
@@ -231,37 +230,6 @@ func (m *Model) Sees(v access.Actor) bool {
 	return v.Admin || m.OnTeam(v.Email)
 }
 
-func yesNo(cell string) (bool, error) {
-	switch cell {
-	case "Yes":
-		return true, nil
-	case "No", "":
-		return false, nil
-	}
-	return false, fmt.Errorf("%q is not Yes, No, or blank", cell)
-}
-
-func YesNo(b bool) string {
-	if b {
-		return "Yes"
-	}
-	return "No"
-}
-
-func checkURL(raw string) error {
-	if len(raw) > maxURLLength {
-		return fmt.Errorf("url is too long")
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return err
-	}
-	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return fmt.Errorf("url %q must be an absolute http(s) url", raw)
-	}
-	return nil
-}
-
 func checkEmail(email string) error {
 	if !emailForm.MatchString(email) {
 		return fmt.Errorf("%q is not an email address", email)
@@ -407,13 +375,13 @@ func BuildModel(tables store.Tables) (*Model, error) {
 		if model.Charity(name) != nil {
 			return fail(fmt.Errorf("is listed twice"))
 		}
-		if err := checkURL(row["Donation Link"]); err != nil {
+		if err := cells.URL(row["Donation Link"], false); err != nil {
 			return fail(err)
 		}
 		if len(row["About"]) > maxTextLength {
 			return fail(fmt.Errorf("about is too long"))
 		}
-		allowed, err := yesNo(row["Allowed"])
+		allowed, err := cells.YesNo(row["Allowed"], false)
 		if err != nil {
 			return fail(fmt.Errorf("allowed %w", err))
 		}

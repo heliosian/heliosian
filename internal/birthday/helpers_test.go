@@ -1,6 +1,10 @@
 package birthday
 
-import "time"
+import (
+	"time"
+
+	"heliosian/internal/cells"
+)
 
 func mustTime(s string) time.Time {
 	t, err := time.Parse(DateFormat, s)
@@ -13,7 +17,7 @@ func mustTime(s string) time.Time {
 func (m *Model) charityRows() []map[string]string {
 	rows := []map[string]string{}
 	for _, c := range m.Charities {
-		rows = append(rows, map[string]string{"Name": c.Name, "Donation Link": c.DonationLink, "Allowed": YesNo(c.Allowed)})
+		rows = append(rows, map[string]string{"Name": c.Name, "Donation Link": c.DonationLink, "Allowed": cells.YesNoCell(c.Allowed)})
 	}
 	return rows
 }
