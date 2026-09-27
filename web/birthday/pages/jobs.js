@@ -1,5 +1,6 @@
 import {state, mine, matches} from '../state.js';
-import {el, tabs, pageHead} from '../dom.js';
+import {el, pageHead} from '../dom.js';
+import {tabStrip} from '/tabs.js';
 import {setTitle, setSearch} from '/shell.js';
 import {staffRow, emptyPanel, dateSummary} from '../cards.js';
 
@@ -36,7 +37,7 @@ export function jobsPage() {
   const body = el('div');
   const render = () => {
     const counted = items.map(item => ({...item, count: state.model.staff.filter(sv => inTab(sv, item)).length}));
-    body.replaceChildren(tabs(counted, tab, key => {
+    body.replaceChildren(tabStrip(counted, tab, counted.length, key => {
       tab = key;
       render();
     }));

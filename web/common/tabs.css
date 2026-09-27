@@ -11,6 +11,8 @@
 
 .modal .tab-strip { background: var(--card); }
 
+.form-tabs .tab-strip { position: static; padding-top: 0; margin: -4px 0 18px; }
+
 .tab-strip-item {
   position: relative;
   display: flex;

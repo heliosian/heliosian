@@ -1,5 +1,6 @@
 import {state, byDepartment, matches} from '../state.js';
-import {el, button, tabs, pageHead} from '../dom.js';
+import {el, button, pageHead} from '../dom.js';
+import {tabStrip} from '/tabs.js';
 import {setTitle, setSearch} from '/shell.js';
 import {staffRow, emptyPanel} from '../cards.js';
 import {openBirthday, openParticipation} from '../edit.js';
@@ -43,7 +44,7 @@ export function skippedPage() {
   const body = el('div');
   const render = () => {
     head.replaceChildren(pageHead('Skipped', [button('Add', 'plus', 'button', () => (tab === 'missing' ? openBirthday({}) : openParticipation({})))]));
-    body.replaceChildren(tabs([{key: 'missing', label: 'Missing Birthday', count: state.model.missing.length}, {key: 'skipped', label: 'Opted Out', count: state.model.skipped.length}], tab, key => {
+    body.replaceChildren(tabStrip([{key: 'missing', label: 'Missing Birthday', count: state.model.missing.length}, {key: 'skipped', label: 'Opted Out', count: state.model.skipped.length}], tab, 2, key => {
       tab = key;
       render();
     }));

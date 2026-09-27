@@ -1,5 +1,6 @@
 import {state, isAdmin, charityPath, staffPath} from '../state.js';
-import {el, link, svg, button, tabs, pageHead} from '../dom.js';
+import {el, link, svg, button, pageHead} from '../dom.js';
+import {tabStrip} from '/tabs.js';
 import {setTitle, setSearch} from '/shell.js';
 import {charityRow, emptyPanel} from '../cards.js';
 import {openCharity} from '../edit.js';
@@ -28,7 +29,7 @@ export function charitiesPage() {
   const body = el('div');
   const render = () => {
     const count = allowed => state.model.charities.filter(c => c.allowed === allowed).length;
-    body.replaceChildren(tabs([{key: 'allowed', label: 'Allowed', count: count(true)}, {key: 'prohibited', label: 'Prohibited', count: count(false)}], tab, key => {
+    body.replaceChildren(tabStrip([{key: 'allowed', label: 'Allowed', count: count(true)}, {key: 'prohibited', label: 'Prohibited', count: count(false)}], tab, 2, key => {
       tab = key;
       render();
     }));

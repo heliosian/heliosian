@@ -11,6 +11,7 @@ import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
 import {openModal, closeModal} from '/modal.js';
 import {field, text, textarea, select, checkbox, segmented} from '/form.js';
+import {tabbedFields} from '/tabs.js';
 
 export const {uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/team', {state, toast});
 
@@ -92,45 +93,6 @@ function settingRow(label, hint, control) {
   return row;
 }
 
-// tabbedFields lays a long form out as tabs. Every field stays in the form -
-// only the panels hide - so values and validation survive switching. A field
-// the browser refuses on submit brings its own tab forward, since a hidden
-// invalid control would otherwise block the save without a word.
-function tabbedFields(panels) {
-  const wrap = el('div', 'form-tabs');
-  const bar = el('div', 'tabs light');
-  const bodies = [];
-  let active = 0;
-  const show = i => {
-    active = i;
-    bar.querySelectorAll('button').forEach((b, j) => b.classList.toggle('is-active', j === i));
-    bodies.forEach((body, j) => {
-      body.hidden = j !== i;
-    });
-  };
-  panels.forEach((panel, i) => {
-    const tab = el('button', i === 0 ? 'is-active' : '');
-    tab.type = 'button';
-    if (panel.icon) {
-      tab.append(svg(panel.icon));
-    }
-    tab.append(el('span', '', panel.label));
-    tab.addEventListener('click', () => show(i));
-    bar.append(tab);
-    const body = el('div', 'form-tab-body');
-    body.hidden = i !== 0;
-    body.append(...panel.fields);
-    body.addEventListener('invalid', () => {
-      if (active !== i) {
-        show(i);
-      }
-    }, true);
-    bodies.push(body);
-  });
-  wrap.append(bar, ...bodies);
-  return wrap;
-}
-
 async function goTo(path) {
   const {navigate} = await import('./app.js');
   navigate(path);
@@ -186,8 +148,8 @@ export async function openPerson(v, node) {
   }
   const form = signUpForm(node, v);
   const tabs = tabbedFields([
-    {label: 'Sign up', icon: 'edit', fields: form.fields},
-    {label: 'Contact', icon: 'people', fields: [contact, personFoot(v, info)]},
+    {label: 'Sign up', icon: svg('edit'), fields: form.fields},
+    {label: 'Contact', icon: svg('people'), fields: [contact, personFoot(v, info)]},
   ]);
   openModal('', [head, tabs], {...form, wide: 'person', replace: true});
 }
@@ -825,10 +787,10 @@ export function openActivity(act, options) {
     about.classList.add('is-stacked');
     basics.push(about, highlight.wrap);
     body = [tabbedFields([
-      {label: 'Basics', icon: 'doc', fields: basics},
-      {label: 'When', icon: 'calendar', fields: [...(yearField ? [yearField] : []), when.wrap]},
-      {label: 'Sign-ups', icon: 'people', fields: [...(statusRow ? [statusRow] : []), spotsField, complete.wrap, allowAddingRow, coLeader.wrap, hidden.wrap, direct.wrap]},
-      {label: 'Image & Address', icon: 'image', fields: [
+      {label: 'Basics', icon: svg('doc'), fields: basics},
+      {label: 'When', icon: svg('calendar'), fields: [...(yearField ? [yearField] : []), when.wrap]},
+      {label: 'Sign-ups', icon: svg('people'), fields: [...(statusRow ? [statusRow] : []), spotsField, complete.wrap, allowAddingRow, coLeader.wrap, hidden.wrap, direct.wrap]},
+      {label: 'Image & Address', icon: svg('image'), fields: [
         settingCard('Top Banner Image', 'The wide picture across the top of the page and on the card (optional).', image.wrap.querySelector('.image-row')),
         settingCard('Flyer', 'The event\'s poster, shown beside the details and used for the social share image when there is one (optional).', flyer.wrap.querySelector('.image-row')),
         settingCard('Friendly address', under

@@ -22,12 +22,20 @@ function closeMenus() {
   }
 }
 
-document.addEventListener('click', closeMenus);
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    closeMenus();
+let listening = false;
+
+function listen() {
+  if (listening) {
+    return;
   }
-});
+  listening = true;
+  document.addEventListener('click', closeMenus);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      closeMenus();
+    }
+  });
+}
 
 function fill(target, item) {
   if (item.icon) {
@@ -61,6 +69,7 @@ export function tabStrip(items, activeKey, mobileVisible, onSelect) {
     strip.append(tab);
   }
   if (hidden.length) {
+    listen();
     const wrap = node('div', 'tab-strip-more');
     const more = node('div', 'tab-strip-item' + (hidden.some(t => t.key === activeKey) ? ' active' : ''));
     more.append(icon(moreIcon), node('span', '', 'More'), icon(chevronIcon));
@@ -82,4 +91,37 @@ export function tabStrip(items, activeKey, mobileVisible, onSelect) {
     strip.append(wrap);
   }
   return strip;
+}
+
+export function tabbedFields(panels) {
+  const wrap = node('div', 'form-tabs');
+  const items = panels.map((panel, i) => ({key: String(i), label: panel.label, icon: panel.icon || null}));
+  const bodies = [];
+  let active = 0;
+  let bar = null;
+  const show = i => {
+    active = i;
+    const next = tabStrip(items, String(i), items.length, key => show(Number(key)));
+    if (bar) {
+      bar.replaceWith(next);
+    }
+    bar = next;
+    bodies.forEach((body, j) => {
+      body.hidden = j !== i;
+    });
+  };
+  show(0);
+  panels.forEach((panel, i) => {
+    const body = node('div', 'form-tab-body');
+    body.hidden = i !== 0;
+    body.append(...panel.fields);
+    body.addEventListener('invalid', () => {
+      if (active !== i) {
+        show(i);
+      }
+    }, true);
+    bodies.push(body);
+  });
+  wrap.append(bar, ...bodies);
+  return wrap;
 }

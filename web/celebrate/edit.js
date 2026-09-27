@@ -2,7 +2,7 @@ import {state, me, isAdmin, household, billable, admits, audienceWords, ticketFo
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
 import {el, svg, toast, button, avatar} from './dom.js';
-import {tabStrip} from '/tabs.js';
+import {tabbedFields} from '/tabs.js';
 import {imageTools} from '/images.js';
 import {openModal, closeModal, popup} from '/modal.js';
 import {field, text, textarea, select, checkbox, segmented, whenPickers} from '/form.js';
@@ -26,41 +26,6 @@ export async function send(method, url, body) {
 async function goTo(path) {
   const {navigate} = await import('./app.js');
   navigate(path);
-}
-
-// tabbedFields lays a long form out as tabs. Every field stays in the form -
-// only the panels hide - so values and validation survive switching.
-function tabbedFields(panels) {
-  const wrap = el('div', 'form-tabs');
-  const items = panels.map((panel, i) => ({key: String(i), label: panel.label, icon: panel.icon ? svg(panel.icon) : null}));
-  const bodies = [];
-  let active = 0;
-  let bar = null;
-  const show = i => {
-    active = i;
-    const next = tabStrip(items, String(i), items.length, key => show(Number(key)));
-    if (bar) {
-      bar.replaceWith(next);
-    }
-    bar = next;
-    bodies.forEach((body, j) => {
-      body.hidden = j !== i;
-    });
-  };
-  show(0);
-  panels.forEach((panel, i) => {
-    const body = el('div', 'form-tab-body');
-    body.hidden = i !== 0;
-    body.append(...panel.fields);
-    body.addEventListener('invalid', () => {
-      if (active !== i) {
-        show(i);
-      }
-    }, true);
-    bodies.push(body);
-  });
-  wrap.append(bar, ...bodies);
-  return wrap;
 }
 
 let asked = null;
@@ -758,8 +723,8 @@ export async function openTicket(p, a) {
   const info = a.email ? await personInfo(a.email) : null;
   const form = ticketForm(p, a);
   const tabs = tabbedFields([
-    {label: 'Contact', icon: 'people', fields: [personContact(a, info), personFoot(a, info, null)]},
-    {label: 'Ticket', icon: 'ticket', fields: form.fields},
+    {label: 'Contact', icon: svg('people'), fields: [personContact(a, info), personFoot(a, info, null)]},
+    {label: 'Ticket', icon: svg('ticket'), fields: form.fields},
   ]);
   openModal('', [personHead(a, info), tabs], {...form, wide: 'person'});
 }
@@ -984,11 +949,11 @@ export function openParty(p) {
   ];
 
   const panels = [
-    {label: 'Basics', icon: 'party', fields: basics},
-    {label: 'Design', icon: 'image', fields: design},
-    {label: 'When & where', icon: 'calendar', fields: when},
-    {label: 'Tickets', icon: 'ticket', fields: tickets},
-    {label: 'Hosts', icon: 'people', fields: hosts},
+    {label: 'Basics', icon: svg('party'), fields: basics},
+    {label: 'Design', icon: svg('image'), fields: design},
+    {label: 'When & where', icon: svg('calendar'), fields: when},
+    {label: 'Tickets', icon: svg('ticket'), fields: tickets},
+    {label: 'Hosts', icon: svg('people'), fields: hosts},
   ];
   // Status, celebration and category are an admin's to set; the server
   // keeps a host's as they are.
@@ -999,7 +964,7 @@ export function openParty(p) {
     status = select([{label: 'Open', value: 'Open'}, {label: 'Pending approval', value: 'Pending'}, {label: 'Hidden', value: 'Hidden'}], p ? p.status : 'Open');
     celebrationPick = select(state.model.celebrations.map(c => ({label: c.title, value: c.code})), p ? p.celebration : (currentCelebration() || {}).code);
     category = select([{label: 'No category', value: ''}, ...state.model.categories.map(c => ({label: c, value: c}))], p ? p.category : '');
-    panels.push({label: 'Admin', icon: 'shield', fields: [
+    panels.push({label: 'Admin', icon: svg('shield'), fields: [
       field('Status', status, 'Open is listed for everyone; Pending waits for approval; Hidden is parked.'),
       field('Celebration', celebrationPick, 'Which year the party belongs to.'),
       field('Category', category, 'For the filter on the parties page.'),

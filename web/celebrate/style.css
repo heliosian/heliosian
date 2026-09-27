@@ -982,8 +982,6 @@ main {
 
 .segment.is-on { background: var(--card); color: var(--brand-ink, var(--brand)); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 
-.form-tabs .tab-strip { position: static; padding-top: 0; margin: -4px 0 18px; }
-
 .form-tab-body { min-height: 280px; }
 
 /* People chips: the household in the ticket form, the hosts in the editor. */

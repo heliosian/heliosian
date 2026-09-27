@@ -744,32 +744,6 @@ main {
 
 .band .band-inner { max-width: 940px; margin: 0 auto; }
 
-.tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
-  margin-bottom: 20px;
-  overflow-x: auto;
-}
-
-.tabs button {
-  border: 0;
-  background: none;
-  color: rgba(255, 255, 255, 0.75);
-  padding: 10px 12px;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  white-space: nowrap;
-  font-weight: 500;
-}
-
-.tabs button.is-active { color: #fff; border-bottom-color: #fff; }
-
-.tabs.light { border-bottom-color: var(--line); }
-
-.tabs.light button { color: var(--muted); }
-
-.tabs.light button.is-active { color: var(--ink); border-bottom-color: var(--ink); }
 
 .year-title { font-size: 44px; font-weight: 700; margin: 12px 0 4px; }
 
@@ -1708,16 +1682,6 @@ button.side-chair:hover { background: var(--input); }
 
 /* The organizers' roster modal: wider than a form, a scrolling table inside. */
 .modal.modal-wide { max-width: 900px; }
-
-/* A form laid out in tabs: the bar sits flush with the modal's header, and each
-   panel keeps a floor so switching tabs does not bounce the buttons about. */
-.form-tabs .tabs { margin: -4px 0 18px; gap: 6px; }
-
-.form-tabs .tabs button { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 8px 8px 0 0; font-weight: 600; }
-
-.form-tabs .tabs button svg { width: 18px; height: 18px; }
-
-.form-tabs .tabs.light button.is-active { background: var(--glass, #eaf3f3); color: var(--brand); border-bottom-color: var(--accent); }
 
 .form-tab-body { min-height: 300px; }
 

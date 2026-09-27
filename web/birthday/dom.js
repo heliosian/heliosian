@@ -125,21 +125,6 @@ export function pageHead(title, actions) {
 }
 
 // tabs draws the list's tabs, each with its count when the item carries one.
-export function tabs(items, active, onPick) {
-  const bar = el('div', 'tabs');
-  for (const item of items) {
-    const b = el('button', item.key === active ? 'is-active' : '');
-    b.type = 'button';
-    b.append(el('span', '', item.label));
-    if (item.count !== undefined) {
-      b.append(el('span', 'tab-count', String(item.count)));
-    }
-    b.addEventListener('click', () => onPick(item.key));
-    bar.append(b);
-  }
-  return bar;
-}
-
 export function menu(items) {
   const wrap = el('div', 'more-wrap');
   const trigger = iconButton('more', 'More', '', () => {
