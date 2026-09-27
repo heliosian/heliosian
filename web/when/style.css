@@ -2654,8 +2654,7 @@ body.is-admin #page > :not(.home) { max-width: none; margin: 0; }
   .content-col { display: block; }
   main {
     display: block;
-    position: fixed;
-    inset: 0;
+    height: var(--vh100, 100dvh);
     overflow-y: auto;
     padding-top: calc(88px + env(safe-area-inset-top));
     padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom));

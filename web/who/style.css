@@ -357,7 +357,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: var(--vh100, 100dvh);
   overflow: hidden;
   color: var(--ink);
   background: var(--page);
@@ -891,21 +891,6 @@ main {
 /* The page's content, wrapped once per render, grows to fill main. */
 .page-content-wrap {
   flex: 1 0 auto;
-}
-
-.scroll-probe {
-  position: fixed;
-  top: calc(88px + var(--banner-h) + env(safe-area-inset-top));
-  left: 4px;
-  right: 4px;
-  z-index: 60;
-  margin: 0;
-  padding: 4px 6px;
-  background: rgba(0, 0, 0, 0.75);
-  color: #fff;
-  font: 10px/1.35 ui-monospace, monospace;
-  white-space: pre-wrap;
-  pointer-events: none;
 }
 
 .container {
@@ -4289,12 +4274,9 @@ a.person-card:hover .photo-wrap-peek::before {
     display: block;
   }
   main {
-    position: fixed;
-    inset: 0;
+    height: var(--vh100, 100dvh);
     margin-top: 0;
     padding-top: calc(88px + var(--banner-h) + env(safe-area-inset-top));
-  }
-  .page-content-wrap {
     padding-bottom: calc(62px + env(safe-area-inset-bottom));
   }
   .container {
