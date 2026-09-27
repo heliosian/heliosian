@@ -184,7 +184,7 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load artifacts data", "error", err)
 	}
 	if cfg.KeyPoints != nil {
-		go keypoints.Run(artifactsCache, cfg.KeyPoints, schoolDirectory{cache})
+		go keypoints.Run(artifactsCache, cfg.KeyPoints, cache)
 	}
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cache.IsAdmin)
@@ -194,7 +194,10 @@ func NewCore(cfg Config) *Core {
 	who.RegisterInvites(mux, cache, invites)
 	blob.Register(mux, cfg.Store, "pronunciation")
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
-	linked := calendarLinked{celebrateCache, teamCache, cache.Model}.list
+	linked := func(email string) []when.Linked {
+		family := when.FamilyOf(cache.Model(), email)
+		return append(celebrateCache.Model().Linked(family, time.Now().In(when.Location)), teamCache.Model().Linked(family)...)
+	}
 	frontEvents := upcomingEvents{calendarCache, cache.Model, linked}
 	calendarMux := http.NewServeMux()
 	var hooks when.Hooks
@@ -205,7 +208,7 @@ func NewCore(cfg Config) *Core {
 		hooks.MoveAddress(ctx, actor, old, to, name)
 		return nil
 	}
-	partyCalendar := when.Celebrate{Party: partyPeople{celebrateCache}.people, IsAdmin: celebrateCache.IsAdmin, MoveAddress: moveAddress}
+	partyCalendar := when.Celebrate{Party: func(id string) *when.PartyPeople { return celebrateCache.Model().PartyPeople(id) }, IsAdmin: celebrateCache.IsAdmin, MoveAddress: moveAddress}
 	hooks = when.Register(calendarMux, calendarCache, cfg.Store, cache.Model, settings.Settings, calendarLists(cache, lists.Lists), linked, partyCalendar, sources, cfg.ImageSearch, cfg.CalendarMail, calendarStyle)
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Store, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault, homeStyle)
@@ -217,7 +220,8 @@ func NewCore(cfg Config) *Core {
 		}
 		return &team.EventRSVPs{Sent: sent, Answers: answers}
 	}
-	team.Register(teamMux, teamCache, cfg.Store, cache.Model, settings.Settings, cfg.ImageSearch, cfg.Mail, cfg.MailFrom, eventRSVPs, activityEmailList(loopCache.Model), teamStyle)
+	activityEmailList := func(id string) string { return loopCache.Model().Tagged(who.ListActivity + ":" + id) }
+	team.Register(teamMux, teamCache, cfg.Store, cache.Model, settings.Settings, cfg.ImageSearch, cfg.Mail, cfg.MailFrom, eventRSVPs, activityEmailList, teamStyle)
 	birthdayMux := http.NewServeMux()
 	birthday.Register(birthdayMux, birthdayCache, cache.Model, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(ctx context.Context, email string) error {
 		return home.Grant(ctx, homeCache, "birthday", email)

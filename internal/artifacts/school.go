@@ -1,0 +1,106 @@
+package artifacts
+
+import (
+	"slices"
+	"strings"
+
+	"heliosian/internal/who"
+)
+
+var allFamilies = []string{"parentsandstaff", "parentsonly", "parentsandstudents", "community", "parents", "newstudentfamilies", "new.parents"}
+
+type SchoolEmail struct {
+	Key      string   `json:"key"`
+	Title    string   `json:"title"`
+	Date     string   `json:"date"`
+	Kind     string   `json:"kind"`
+	Channel  string   `json:"channel"`
+	Audience string   `json:"audience"`
+	Points   []string `json:"points"`
+}
+
+func (m *Model) SchoolMail(people *who.Model, email, since string) []SchoolEmail {
+	seats, grades := seatsOf(people, email), people.GradeNames()
+	out := []SchoolEmail{}
+	for _, d := range m.Documents {
+		if d.Date < since {
+			break
+		}
+		if !School(d) || !forClassrooms(d, seats, m.Audience[d.Key], grades) {
+			continue
+		}
+		points := m.Points[d.Key]
+		if points == nil {
+			points = []string{}
+		}
+		out = append(out, SchoolEmail{Key: d.Key, Title: d.Title, Date: d.Date, Kind: d.Kind, Channel: d.Channel, Audience: m.Audience[d.Key], Points: points})
+	}
+	return out
+}
+
+type seat struct {
+	room, grade string
+}
+
+func seatsOf(m *who.Model, email string) []seat {
+	out := []seat{}
+	add := func(room, grade string) {
+		if s := (seat{who.ClassroomSlug(room), grade}); s.room != "" && !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	if p := m.Person(email); p != nil && p.IsStudent {
+		add(p.Classroom, p.Grade)
+	}
+	for _, kid := range m.Children(email) {
+		add(kid.Classroom, kid.Grade)
+	}
+	for _, c := range m.Crews {
+		if slices.Contains(c.Teachers, email) {
+			add(c.Classroom, "")
+		}
+	}
+	return out
+}
+
+func forClassrooms(d *Document, seats []seat, audience string, grades []string) bool {
+	if d.Kind != KindList {
+		if audience == "" {
+			return false
+		}
+		named := Classrooms(audience)
+		if len(named) == 0 {
+			return true
+		}
+		rooms, toGrades := []string{}, []string{}
+		for _, n := range named {
+			if slices.Contains(grades, n) {
+				toGrades = append(toGrades, n)
+			} else {
+				rooms = append(rooms, who.ClassroomSlug(n))
+			}
+		}
+		for _, s := range seats {
+			inRoom := len(rooms) == 0 || slices.Contains(rooms, s.room)
+			inGrade := len(toGrades) == 0 || s.grade == "" || slices.Contains(toGrades, s.grade)
+			if inRoom && inGrade {
+				return true
+			}
+		}
+		return false
+	}
+	if slices.Contains(allFamilies, d.Channel) {
+		return true
+	}
+	room, _, _ := strings.Cut(d.Channel, ".")
+	mine := []string{}
+	for _, s := range seats {
+		mine = append(mine, s.room)
+	}
+	for _, slug := range mine {
+		if room == slug || (strings.Contains(room, "and") && slices.Contains(strings.Split(room, "and"), slug)) {
+			return true
+		}
+	}
+	return false
+}

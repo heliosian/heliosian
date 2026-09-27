@@ -285,7 +285,8 @@ func main() {
 		Directory: model,
 		Tags:      model.Tags,
 		Lists: func(owner string) []who.List {
-			return append(model.RoomParentLists(owner), app.SmartLists(model, portal, site, owner, now)...)
+			lists := append(model.RoomParentLists(owner), site.Lists(model, owner, now)...)
+			return append(lists, portal.Lists(model, owner, now)...)
 		},
 		Shared: model.SharedTags,
 	}

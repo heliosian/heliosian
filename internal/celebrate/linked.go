@@ -1,0 +1,136 @@
+package celebrate
+
+import (
+	"maps"
+	"slices"
+	"strings"
+	"time"
+
+	"heliosian/internal/access"
+	"heliosian/internal/admins"
+	"heliosian/internal/when"
+	"heliosian/internal/who"
+)
+
+func (m *Model) Linked(family when.Family, now time.Time) []when.Linked {
+	out := []when.Linked{}
+	for _, p := range m.SortedParties("") {
+		if !p.VisibleTo(access.Actor{}) || p.Start == "" {
+			continue
+		}
+		var going, waiting when.Circle
+		people := []when.Standing{}
+		for _, t := range p.Tickets {
+			if !family.Has(t.Purchaser) && !family.Has(t.Email) {
+				continue
+			}
+			holder := t.Email
+			if !family.Has(holder) {
+				holder = t.Purchaser
+			}
+			switch t.Status {
+			case TicketSold:
+				going.Add(family, holder, t.Name)
+				if family.Has(t.Email) {
+					people = append(people, when.Standing{Name: family.Name(t.Email, t.Name), Mine: family.Me(t.Email)})
+				} else {
+					people = append(people, when.Standing{Name: family.Name("", t.Name), Note: "guest"})
+				}
+			case TicketWaitlist:
+				waiting.Add(family, holder, t.Name)
+				people = append(people, when.Standing{Name: family.Name(holder, t.Name), Note: "waitlisted"})
+			}
+		}
+		mine, names := "", []string(nil)
+		if going.Any() {
+			mine, names = when.MineGoing, going.Who()
+		} else if waiting.Any() {
+			mine, names = when.MineWaitlisted, waiting.Who()
+		}
+		out = append(out, when.Linked{
+			Source: when.SourceCelebrate, ID: p.ID, Title: p.Title, Summary: p.Summary, Description: p.Description, Location: p.Location,
+			Start: p.Start, End: p.End, Path: m.PathOf(p), Availability: p.Availability(now), Mine: mine, Who: names, People: people, Image: p.ImageURL,
+		})
+	}
+	return out
+}
+
+func (m *Model) PartyPeople(id string) *when.PartyPeople {
+	party := m.Party(id)
+	if party == nil {
+		return nil
+	}
+	out := &when.PartyPeople{Hosts: append([]string{}, party.HostEmails...), Attendees: []when.Attendee{}}
+	for _, t := range party.Tickets {
+		status := "ticket"
+		if t.Status == TicketWaitlist {
+			status = "waitlist"
+		} else if t.Price <= 0 {
+			status = "free"
+		}
+		out.Attendees = append(out.Attendees, when.Attendee{Email: strings.ToLower(strings.TrimSpace(t.Email)), Name: t.Name, Status: status})
+	}
+	return out
+}
+
+func (m *Model) Lists(directory *who.Model, email string, now time.Time) []who.List {
+	out := []who.List{}
+	for _, p := range m.Parties {
+		if p.Past(now) || !slices.ContainsFunc(p.HostEmails, func(h string) bool { return directory.Resolve(h) == email }) {
+			continue
+		}
+		list := who.List{Key: who.ListParty + ":" + p.ID, Name: p.Title, Kind: who.ListParty, Guests: []who.Guest{}, Hosts: directory.ResolveAll(p.HostEmails)}
+		people := map[string]bool{}
+		for _, t := range p.Tickets {
+			if t.Status != TicketSold {
+				continue
+			}
+			holder := directory.Resolve(t.Email)
+			buyer := directory.Resolve(t.Purchaser)
+			known := directory.Person(buyer) != nil
+			if t.Email == "" || directory.Person(holder) == nil {
+				guest := who.Guest{ID: t.ID, Name: t.Name, Email: t.Email}
+				if guest.Name == "" {
+					guest.Name = DisplayName(t.Email)
+				}
+				if buyer != holder {
+					guest.Purchaser = buyer
+					if p := directory.Person(buyer); p != nil {
+						guest.PurchaserName = p.FullName
+					} else {
+						guest.PurchaserName = DisplayName(buyer)
+					}
+				}
+				list.Guests = append(list.Guests, guest)
+			} else {
+				people[holder] = true
+			}
+			if known {
+				people[buyer] = true
+			}
+		}
+		for _, host := range list.Hosts {
+			if directory.Person(host) != nil {
+				people[host] = true
+			}
+		}
+		list.People = slices.Sorted(maps.Keys(people))
+		slices.SortFunc(list.Guests, func(a, b who.Guest) int { return strings.Compare(a.Name, b.Name) })
+		out = append(out, list)
+	}
+	return out
+}
+
+func (c *Cache) Pending(email string) []admins.Approval {
+	out := []admins.Approval{}
+	if !c.IsAdmin(email) {
+		return out
+	}
+	m := c.Model()
+	for _, p := range m.Parties {
+		if p.Status == StatusPending {
+			out = append(out, admins.Approval{App: "celebrate", Title: p.Title, Start: p.Start, Path: m.PathOf(p)})
+		}
+	}
+	return out
+}

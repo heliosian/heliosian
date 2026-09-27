@@ -100,6 +100,19 @@ func NewCache(source data.Source, writer data.Writer, roster func() Roster, imag
 	return &Cache{Store: s, List: admins.New(superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
 }
 
+func (c *Cache) Pending(email string) []admins.Approval {
+	out := []admins.Approval{}
+	if !c.IsAdmin(email) {
+		return out
+	}
+	for _, e := range c.Model().Pending {
+		if e.Pending && !e.Declined && !e.Cancelled {
+			out = append(out, admins.Approval{App: "when", Title: e.Title, Start: e.Start, Path: EventPath(e)})
+		}
+	}
+	return out
+}
+
 func resolveImages(ctx context.Context, images ImageChecker, model *Model) {
 	if images == nil {
 		return

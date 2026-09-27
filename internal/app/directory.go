@@ -19,7 +19,9 @@ func audience(cache *who.Cache, teamCache *team.Cache, celebrateCache *celebrate
 	return func() filter.Sources {
 		model := cache.Model()
 		return filter.Sources{Directory: model, Tags: model.Tags, Shared: model.SharedTags, Lists: func(owner string) []who.List {
-			return append(model.RoomParentLists(owner), SmartLists(model, teamCache.Model(), celebrateCache.Model(), owner, time.Now().In(when.Location))...)
+			now := time.Now().In(when.Location)
+			lists := append(model.RoomParentLists(owner), celebrateCache.Model().Lists(model, owner, now)...)
+			return append(lists, teamCache.Model().Lists(model, owner, now)...)
 		}}
 	}
 }
