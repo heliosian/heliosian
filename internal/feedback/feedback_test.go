@@ -539,7 +539,7 @@ func TestNotifyTellsTheSuperAdmins(t *testing.T) {
 	if !strings.Contains(m.Subject, "Helios When") || !strings.Contains(m.Subject, "Next month") {
 		t.Errorf("subject = %q", m.Subject)
 	}
-	for _, want := range []string{"jordan.whitfield@example.org", "https://heliosian.com/admin?panel=feedback&report=abc123"} {
+	for _, want := range []string{"jordan.whitfield@example.org", "https://heliosian.com/admin?tab=feedback&report=abc123"} {
 		if !strings.Contains(m.Text, want) {
 			t.Errorf("text lacks %q:\n%s", want, m.Text)
 		}

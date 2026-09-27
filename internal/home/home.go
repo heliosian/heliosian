@@ -77,7 +77,7 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins f
 	}
 	a := app{cache: cache, store: media, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, directory: cache.directory, alerts: alerts, upcoming: upcoming, month: month, search: search, answer: answer, makeDefault: makeDefault, style: style}
 	mux.HandleFunc("GET /{$}", a.page)
-	mux.HandleFunc("GET /admin", a.adminPage)
+	mux.HandleFunc("GET /admin", a.page)
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusMovedPermanently)
 	})
@@ -172,13 +172,6 @@ func (a app) appViews(email string, admin bool) []appView {
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, "web/home/index.html")
-}
-
-func (a app) adminPage(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.admin(w, r); !ok {
-		return
-	}
-	serve.File(w, r, "web/home/admin.html")
 }
 
 func (a app) actor(r *http.Request) access.Actor {

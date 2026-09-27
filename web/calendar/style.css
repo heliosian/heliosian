@@ -2414,9 +2414,7 @@ button.send-tile { font: inherit; text-align: left; }
 
 body.is-admin #page > :not(.home) { max-width: none; margin: 0; }
 
-.admin { min-height: 100%; display: flex; flex-direction: column; background: #f7f8f9; }
-
-.admin .container { max-width: 1100px; }
+.admin .admin-body { max-width: 1100px; }
 
 .admin .card > .hint { margin-bottom: 14px; }
 

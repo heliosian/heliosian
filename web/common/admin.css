@@ -1,16 +1,15 @@
-/* The admin pages' chrome, the same in every app: a teal header with the
-   app's mark, "Admin", the signed-in address and a close button; a white
+/* Admin Tools, drawn by admin.js in every app: a teal header with the
+   app's tile, "Admin", the signed-in address and a close button; a white
    rail of grouped tabs on the left; cards on the right. Each app's own
-   stylesheet (or the page's :root) supplies --brand, --line, --ink, --muted,
-   --input and --alert; this file supplies the shapes. */
+   stylesheet supplies --brand, --line, --ink, --muted, --input and
+   --alert; this file supplies the shapes. */
 
+.admin-denied { padding: 28px; }
 .admin, .admin * { box-sizing: border-box; }
-body.admin {
-  margin: 0;
-  min-height: 100vh;
+.admin {
+  min-height: 100%;
   display: flex;
   flex-direction: column;
-  font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   color: var(--ink);
   background: var(--page-tint, #f7f8f9);
 }
@@ -29,11 +28,6 @@ body.admin {
   color: #fff;
   text-decoration: none;
 }
-.admin header .brand-link img {
-  height: 26px;
-}
-/* An app whose mark needs its own ground shows its icon tile instead of a
-   wordmark. */
 .admin header .brand-link img.admin-tile { height: 32px; border-radius: 8px; }
 .admin header .brand-link span {
   font-size: 15px;
@@ -45,28 +39,28 @@ body.admin {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.75);
 }
-.admin .layout {
+.admin .admin-layout {
   display: flex;
   align-items: stretch;
   flex: 1;
 }
-.admin .container {
+.admin .admin-body {
   flex: 1;
   min-width: 0;
   max-width: 900px;
   padding: 28px;
 }
-.admin .sidebar {
+.admin .admin-rail {
   width: 220px;
   flex-shrink: 0;
   padding: 20px 0;
   border-right: 1px solid var(--line);
   background: var(--card);
 }
-.admin .sidebar-section + .sidebar-section {
+.admin .admin-rail-section + .admin-rail-section {
   margin-top: 20px;
 }
-.admin .sidebar-section-title {
+.admin .admin-rail-title {
   padding: 0 24px 6px;
   font-size: 11px;
   font-weight: 700;
@@ -75,6 +69,9 @@ body.admin {
   color: #9aa4ab;
 }
 .admin .tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 10px 24px;
   font-size: 14px;
   font-weight: 600;
@@ -90,7 +87,18 @@ body.admin {
   border-left-color: var(--brand);
   background: var(--picked, #eef4f4);
 }
-.admin .panel[hidden], .admin .tab[hidden] { display: none; }
+.admin .tab-count {
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--brand-fill);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.admin .panel[hidden] { display: none; }
 .admin .card {
   background: var(--card);
   border: 1px solid var(--line);
@@ -144,11 +152,23 @@ body.admin {
 
 .admin .person-picker { flex: 1; }
 
-/* On a phone the rail becomes a strip of pills along the top. Who?'s admin
-   page has its own fold-out menu instead, so this is opt-in by class. */
+/* The rows and the add line the admin lists draw, at an app's own weight so
+   a tool of its own can shape its rows differently. */
+:where(.admin) .admin-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+:where(.admin) .admin-row:first-of-type { border-top: 0; }
+:where(.admin) .grow { flex: 1; min-width: 0; }
+:where(.admin) .sub { font-size: 13px; color: var(--muted); }
+:where(.admin) .add-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+:where(.admin) .add-row .person-picker { min-width: 200px; }
+:where(.admin) .save-status { font-size: 13px; color: var(--muted); }
+:where(.admin) .save-status.error { color: var(--alert); }
+:where(.admin) .button-small { padding: 6px 12px; font-size: 13px; }
+:where(.admin) .link-button.danger { color: var(--danger-ink, var(--alert)); }
+
+/* On a phone the rail becomes a strip of pills along the top. */
 @media (max-width: 760px) {
-  .admin.admin-strip .layout { flex-direction: column; }
-  .admin.admin-strip .sidebar {
+  .admin .admin-layout { flex-direction: column; }
+  .admin .admin-rail {
     width: auto;
     display: flex;
     gap: 2px;
@@ -157,9 +177,9 @@ body.admin {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
-  .admin.admin-strip .sidebar-section { display: flex; align-items: center; gap: 2px; }
-  .admin.admin-strip .sidebar-section + .sidebar-section { margin-top: 0; }
-  .admin.admin-strip .sidebar-section-title { display: none; }
-  .admin.admin-strip .tab { white-space: nowrap; padding: 8px 12px; border-left: 0; border-radius: 999px; }
-  .admin.admin-strip .container { padding: 16px; }
+  .admin .admin-rail-section { display: flex; align-items: center; gap: 2px; }
+  .admin .admin-rail-section + .admin-rail-section { margin-top: 0; }
+  .admin .admin-rail-title { display: none; }
+  .admin .tab { white-space: nowrap; padding: 8px 12px; border-left: 0; border-radius: 999px; }
+  .admin .admin-body { padding: 16px; }
 }

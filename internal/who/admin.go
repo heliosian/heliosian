@@ -13,7 +13,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
-	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -24,7 +23,6 @@ type admin struct {
 
 func RegisterAdmin(mux *http.ServeMux, cache *Cache, media *blob.Store) {
 	a := admin{cache: cache, media: media}
-	mux.HandleFunc("GET /admin", a.page)
 	mux.HandleFunc("GET /api/admin/state", a.state)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /api/admin/images", a.setImage)
@@ -54,13 +52,6 @@ func (a admin) requireAdmin(w http.ResponseWriter, r *http.Request) (access.Acto
 		return v, false
 	}
 	return v, true
-}
-
-func (a admin) page(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.requireAdmin(w, r); !ok {
-		return
-	}
-	serve.File(w, r, "web/who/admin.html")
 }
 
 type imageInfo struct {

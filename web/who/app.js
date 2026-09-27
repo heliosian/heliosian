@@ -16,6 +16,7 @@ import {renderClassroomsPage, renderGradeDetail, renderClassroomDetail} from './
 import {renderStaffPage} from './pages/staff.js';
 import {renderPrivacyPage} from './pages/privacy.js';
 import {renderMapPage} from './pages/map.js';
+import {renderAdminPage} from './pages/admin.js';
 
 const sectionTitles = {
   people: 'People',
@@ -26,12 +27,18 @@ const sectionTitles = {
   'email-list': 'Everyone',
   greenvelope: 'Invites',
   'my-privacy': 'My Privacy',
+  admin: 'Admin Tools',
 };
 
 function render() {
   renderNav();
   setChrome(sectionTitles[segments()[0]] || 'Helios Who?', null);
   const seg = segments();
+  document.body.classList.toggle('is-admin', seg[0] === 'admin');
+  if (seg[0] === 'admin') {
+    renderAdminPage();
+    return;
+  }
   if (seg[0] === 'people' && seg[1] && seg[1].startsWith('guest:')) {
     renderGuestDetail(seg[1].slice('guest:'.length));
   } else if (seg[0] === 'people' && seg[1]) {

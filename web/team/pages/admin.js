@@ -1,14 +1,8 @@
 import {state, isSystemAdmin, me} from '../state.js';
-import {el, button, svg} from '../dom.js';
-import {setTitle} from '/shell.js';
-import {categoryList, openSettings, openRedirect, send} from '../edit.js';
+import {el, button} from '../dom.js';
+import {categoryList, openSettings, openRedirect, send, people} from '../edit.js';
 import {checkbox} from '/form.js';
-
-function denied() {
-  const page = el('div', 'list-page');
-  page.append(el('h1', '', 'Admin access required'));
-  return page;
-}
+import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 
 function categoriesCard() {
   const card = el('div', 'card');
@@ -87,80 +81,6 @@ function notifyCard() {
   return card;
 }
 
-// adminsCard mirrors the other apps' admin lists: every add or remove posts
-// immediately, so nothing looks saved that isn't.
-function adminsCard() {
-  const card = el('div', 'card');
-  card.append(el('h2', '', 'Admins'));
-  card.append(el('div', 'hint', 'Whoever is on this list can approve suggestions, edit any activity, and reach this page. Co-chairs edit their own activities without being here.'));
-  const rows = el('div');
-  const status = el('span', 'save-status');
-  let admins = [];
-  const persist = async () => {
-    status.classList.remove('error');
-    status.textContent = 'Saving…';
-    const res = await fetch('/api/admin/admins', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({admins})});
-    if (!res.ok) {
-      status.classList.add('error');
-      status.textContent = await res.text();
-      return;
-    }
-    status.textContent = 'Saved.';
-  };
-  const render = () => {
-    rows.replaceChildren();
-    if (!admins.length) {
-      rows.append(el('div', 'hint', 'Nobody yet.'));
-    }
-    for (const email of admins) {
-      const row = el('div', 'admin-row');
-      row.append(el('div', 'grow', email));
-      const remove = el('button', 'link-button danger', 'Remove');
-      remove.type = 'button';
-      remove.addEventListener('click', async () => {
-        admins = admins.filter(e => e !== email);
-        render();
-        await persist();
-      });
-      row.append(remove);
-      rows.append(row);
-    }
-  };
-  const add = el('div', 'add-row');
-  const input = el('input');
-  input.type = 'email';
-  input.placeholder = 'name@heliosschool.org';
-  const addOne = async () => {
-    const email = input.value.trim().toLowerCase();
-    if (!email || admins.includes(email)) {
-      return;
-    }
-    admins.push(email);
-    input.value = '';
-    render();
-    await persist();
-  };
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addOne();
-    }
-  });
-  add.append(input, button('Add', null, 'button', addOne), status);
-  card.append(rows, add);
-  fetch('/api/admin/state').then(async res => {
-    if (!res.ok) {
-      status.classList.add('error');
-      status.textContent = 'Failed to load the admin list.';
-      return;
-    }
-    const data = await res.json();
-    admins = data.admins;
-    render();
-  });
-  return card;
-}
-
 // redirectsCard is the Redirects tab: every old address the portal sends on,
 // the ones renames wrote as well as the ones added here, each with where it
 // goes. A link from the old volunteer site is the usual reason to add one.
@@ -200,9 +120,6 @@ function redirectsCard() {
   return card;
 }
 
-// The admin chrome every app shares (web/common/admin.css): the teal header
-// with the mark, "Admin", the address and a close button; the rail of grouped
-// tabs; one panel showing at a time.
 const sections = [
   {title: 'Display', tabs: [
     {key: 'categories', label: 'Categories', card: categoriesCard},
@@ -210,7 +127,7 @@ const sections = [
   ]},
   {title: 'Editing & Control', tabs: [
     {key: 'notify', label: 'Email Notifications', card: notifyCard},
-    {key: 'admins', label: 'Admins', card: adminsCard},
+    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can approve suggestions, edit any activity, and reach this page. Co-chairs edit their own activities without being here.', people})},
   ]},
   {title: 'Addresses', tabs: [
     {key: 'redirects', label: 'Redirects', card: redirectsCard},
@@ -218,65 +135,5 @@ const sections = [
 ];
 
 export function adminPage() {
-  setTitle('Admin Tools');
-  // The page goes with being on the admin list, hat or no hat.
-  if (!isSystemAdmin()) {
-    return denied();
-  }
-  const page = el('div', 'admin admin-strip');
-  const header = el('header');
-  const brand = el('a', 'brand-link');
-  brand.href = '/';
-  brand.setAttribute('data-link', '');
-  const mark = el('img', 'admin-tile');
-  mark.src = '/brand/icon-192.png';
-  mark.alt = 'HCA-Team';
-  brand.append(mark, el('span', '', 'Admin'));
-  const right = el('span', 'right');
-  right.append(el('span', 'email', me().email));
-  const close = el('a', 'admin-close');
-  close.href = '/';
-  close.setAttribute('data-link', '');
-  close.setAttribute('aria-label', 'Close admin tools');
-  close.append(svg('close'));
-  right.append(close);
-  header.append(brand, right);
-
-  const layout = el('div', 'layout');
-  const rail = el('nav', 'sidebar');
-  const container = el('div', 'container');
-  const panels = {};
-  const tabs = [];
-  const show = key => {
-    for (const tab of tabs) {
-      tab.classList.toggle('active', tab.dataset.panel === key);
-    }
-    for (const [k, panel] of Object.entries(panels)) {
-      panel.hidden = k !== key;
-    }
-    state.adminTab = key;
-  };
-  for (const section of sections) {
-    const group = el('div', 'sidebar-section');
-    group.append(el('div', 'sidebar-section-title', section.title));
-    for (const item of section.tabs) {
-      if (item.superOnly && !me().isSuperAdmin) {
-        continue;
-      }
-      const tab = el('div', 'tab', item.label);
-      tab.dataset.panel = item.key;
-      tab.addEventListener('click', () => show(item.key));
-      tabs.push(tab);
-      group.append(tab);
-      const panel = el('div', 'panel');
-      panel.append(item.card());
-      panels[item.key] = panel;
-      container.append(panel);
-    }
-    rail.append(group);
-  }
-  show(state.adminTab && panels[state.adminTab] ? state.adminTab : sections[0].tabs[0].key);
-  layout.append(rail, container);
-  page.append(header, layout);
-  return page;
+  return buildAdminPage({appName: 'HCA-Team', allowed: isSystemAdmin(), email: me().email, sections});
 }

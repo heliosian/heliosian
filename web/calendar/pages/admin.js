@@ -1,7 +1,7 @@
 import {state, me, tagGroups, bands, classroomNames, myClassrooms, event, eventDates, eventPath, addDays, parseDate, dayLabel} from '../state.js';
 import {el, link, svg, button, toast} from '../dom.js';
 import {popup} from '/modal.js';
-import {setTitle} from '/shell.js';
+import {adminPage as buildAdminPage} from '/admin.js';
 import {eventForm} from '../eventform.js';
 import {imageControl} from '../imagecontrol.js';
 
@@ -548,7 +548,6 @@ function eventsTool() {
   return card;
 }
 
-// The tools, grouped as the rail lists them.
 const sections = [
   {title: 'Calendar', tabs: [
     {key: 'events', label: 'Events', card: eventsTool},
@@ -556,68 +555,6 @@ const sections = [
   ]},
 ];
 
-// adminPage is Admin Tools as the other apps have it: its own window over
-// the shell - a teal header with the tile, Admin, the signed-in address and
-// a close button - a rail of tabs, and a card per tool.
 export function adminPage() {
-  setTitle('Admin Tools');
-  const page = el('div', 'admin admin-strip');
-  const header = el('header');
-  const brand = el('a', 'brand-link');
-  brand.href = '/';
-  brand.setAttribute('data-link', '');
-  const mark = el('img', 'admin-tile');
-  mark.src = '/brand/icon-192.png';
-  mark.alt = 'Helios When';
-  brand.append(mark, el('span', '', 'Admin'));
-  const right = el('span', 'right');
-  right.append(el('span', 'email', me().email));
-  const close = el('a', 'admin-close');
-  close.href = '/';
-  close.setAttribute('data-link', '');
-  close.setAttribute('aria-label', 'Close admin tools');
-  close.append(svg('close'));
-  right.append(close);
-  header.append(brand, right);
-
-  const layout = el('div', 'layout');
-  const rail = el('nav', 'sidebar');
-  const container = el('div', 'container');
-  const panels = {};
-  const tabList = [];
-  const show = key => {
-    for (const tab of tabList) {
-      tab.classList.toggle('active', tab.dataset.panel === key);
-    }
-    for (const [k, panel] of Object.entries(panels)) {
-      panel.hidden = k !== key;
-    }
-    state.adminTab = key;
-  };
-  for (const section of sections) {
-    const group = el('div', 'sidebar-section');
-    group.append(el('div', 'sidebar-section-title', section.title));
-    for (const item of section.tabs) {
-      // Appearance - what colours the app - is the platform's super admins'
-      // alone; a regular admin's page is built without it.
-      if (item.superOnly && !me().isSuperAdmin) {
-        continue;
-      }
-      const tab = el('div', 'tab', item.label);
-      tab.dataset.panel = item.key;
-      tab.addEventListener('click', () => show(item.key));
-      tabList.push(tab);
-      group.append(tab);
-      const panel = el('div', 'panel');
-      panel.append(item.card());
-      panels[item.key] = panel;
-      container.append(panel);
-    }
-    rail.append(group);
-  }
-  const wanted = new URLSearchParams(location.search).get('tab') || (new URLSearchParams(location.search).get('clone') ? 'events' : state.adminTab);
-  show(wanted && panels[wanted] ? wanted : sections[0].tabs[0].key);
-  layout.append(rail, container);
-  page.append(header, layout);
-  return page;
+  return buildAdminPage({appName: 'Helios When', allowed: me().isAdmin, email: me().email, sections});
 }

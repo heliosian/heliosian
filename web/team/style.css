@@ -2328,8 +2328,6 @@ h2.section .link-button { font-size: 14px; }
 
 .year-block h2 { font-size: 18px; margin: 0 0 8px; }
 
-.admin { min-height: 100%; display: flex; flex-direction: column; background: #f7f8f9; }
-
 .admin-row {
   display: flex;
   align-items: center;

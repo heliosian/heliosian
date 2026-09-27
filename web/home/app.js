@@ -6,6 +6,7 @@ import {renderWidgets} from './widgets.js';
 import {initEditing, refreshCategoryManager} from './edit.js';
 import {onSlash} from '/toolbar.js';
 import {initTopbar, renderAccount, searchInput} from '/shell.js';
+import {renderAdminPage} from './adminpage.js';
 
 const editCategories = el('button', 'user-menu-super', 'Edit Categories');
 editCategories.type = 'button';
@@ -24,6 +25,11 @@ export async function load() {
   }
   applyModel(await res.json());
   renderChrome();
+  if (location.pathname === '/admin') {
+    document.body.classList.add('is-admin');
+    await renderAdminPage();
+    return;
+  }
   renderNav();
   renderCategories(searchInput().value);
   refreshCategoryManager();

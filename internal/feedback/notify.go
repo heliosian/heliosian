@@ -53,7 +53,7 @@ func (n Notifier) message(to []string, r Report) mail.Message {
 		what = "A problem"
 	}
 	subject := fmt.Sprintf("[%s] %s: %s", r.AppName, strings.ToLower(what), r.Summary)
-	link := strings.TrimSuffix(n.Base, "/") + "/admin?panel=feedback&report=" + r.ID
+	link := strings.TrimSuffix(n.Base, "/") + "/admin?tab=feedback&report=" + r.ID
 	details := r.Details
 	if details == "" {
 		details = "No details given."

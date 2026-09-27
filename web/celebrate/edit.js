@@ -30,7 +30,7 @@ async function goTo(path) {
 
 let asked = null;
 
-function people() {
+export function people() {
   asked = asked || fetch('/api/celebrate/people').then(async res => {
     if (!res.ok) {
       throw new Error(await res.text());

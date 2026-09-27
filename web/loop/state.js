@@ -1,7 +1,7 @@
 // superEdit is an admin's hat, as the other apps have it: off, they see and
 // can do what anyone else can (plus the groups they manage); on, every
 // group is theirs to open and edit. It is remembered per browser.
-export const state = {model: null, adminTab: '', superEdit: readSuperEdit()};
+export const state = {model: null, superEdit: readSuperEdit()};
 
 function readSuperEdit() {
   try {

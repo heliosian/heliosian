@@ -13,7 +13,7 @@ import (
 	"heliosian/internal/sharecard"
 )
 
-var sections = []string{"people", "classrooms", "staff", "map", "email-list", "greenvelope", "my-privacy"}
+var sections = []string{"people", "classrooms", "staff", "map", "email-list", "greenvelope", "my-privacy", "admin"}
 
 var legacy = map[string]string{
 	"people":   "/people",

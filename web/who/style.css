@@ -4657,3 +4657,47 @@ a.person-card:hover .photo-wrap-peek::before {
   text-decoration: underline;
   flex-shrink: 0;
 }
+
+/* Admin Tools' own panels: the pictures and colours, the settings rows, the
+   overrides forms and the tables of added and hidden people. */
+.admin .image-row { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); }
+.admin .image-row:first-of-type { border-top: 0; }
+.admin .image-row img, .admin .image-row .placeholder { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: var(--input); flex-shrink: 0; }
+.admin .image-row .name { flex: 1; min-width: 0; font-weight: 500; }
+.admin .image-row .status { font-size: 12px; color: var(--muted); }
+.admin .image-row .status.error { color: var(--alert); }
+.admin .color-swatch { width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 50%; overflow: hidden; cursor: pointer; flex-shrink: 0; }
+.admin .color-swatch::-webkit-color-swatch-wrapper { padding: 0; }
+.admin .color-swatch::-webkit-color-swatch { border: none; border-radius: 50%; }
+.field-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.field-row:first-of-type { border-top: 0; }
+.field-row input[type=number] { width: 90px; }
+.field-row input[type=url] { width: 420px; max-width: 60vw; }
+.field-row input[type=text], .field-row select { width: 260px; max-width: 60vw; }
+.field-row input:not([type=checkbox]), .field-row select, .field-block textarea { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 14px; background: var(--field); color: var(--ink); }
+.field-value { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.field-current { font-size: 12px; color: var(--muted); }
+.field-block { display: block; padding: 10px 0; border-top: 1px solid var(--line); }
+.field-block > span { display: block; margin-bottom: 8px; }
+.field-block textarea { display: block; box-sizing: border-box; width: 100%; min-height: 140px; resize: vertical; }
+.field-block .field-current { margin-top: 4px; }
+.roles-row { justify-content: flex-start; gap: 20px; }
+.roles-row label { display: flex; align-items: center; gap: 6px; }
+.admin .card-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.admin .card-header-row h2 { margin: 0; }
+.admin .data-table-wrap { overflow-x: auto; }
+.admin .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.admin .data-table th { text-align: left; padding: 8px 10px; font-size: 12px; font-weight: 700; color: var(--muted); border-bottom: 1px solid var(--line); white-space: nowrap; }
+.admin .data-table td { padding: 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.admin .data-table-empty { color: var(--muted); text-align: center; }
+
+/* The windows Admin Tools opens over the page (popup in modal.js). */
+.modal { width: 100%; max-width: 460px; max-height: calc(100vh - 40px); overflow-y: auto; padding: 20px 24px; border-radius: 12px; background: var(--card); color: var(--ink); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; }
+.modal-header h2 { margin: 0; font-size: 16px; }
+.modal .hint { margin: 8px 0 16px; font-size: 13px; color: var(--muted); }
+.modal-close { padding: 4px 6px; border: 0; background: none; font-size: 22px; line-height: 1; color: var(--muted); cursor: pointer; }
+.modal-actions { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+.modal .save-status { font-size: 13px; color: var(--muted); }
+.modal .save-status.error { color: var(--alert); }
+.danger-button { padding: 4px 8px; border: 0; background: none; color: var(--danger-ink, var(--alert)); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }

@@ -1,4 +1,4 @@
-import {applyModel, event, eventPath, fetchEvent, today, parseDate, me, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
+import {applyModel, event, eventPath, fetchEvent, today, parseDate, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
 import {el} from './dom.js';
 import {initChrome, clearSearch} from './chrome.js';
 import {renderChrome, setTitle} from '/shell.js';
@@ -79,7 +79,7 @@ function route() {
     case 'mine':
       return minePage(parts[1] || '');
     case 'admin':
-      return me().isAdmin ? adminPage() : notFound('That page');
+      return adminPage();
   }
   return notFound('That page');
 }
