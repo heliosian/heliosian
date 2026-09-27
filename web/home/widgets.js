@@ -278,7 +278,7 @@ function whenWidget() {
   const events = allEvents(month);
   const card = el('article', 'widget widget-when');
   const head = el('header', 'widget-head');
-  head.append(widgetTitle('calendar', 'Upcoming'));
+  head.append(widgetTitle('when', 'Upcoming'));
   const choose = calendarPick(month);
   if (choose) {
     head.append(choose);
