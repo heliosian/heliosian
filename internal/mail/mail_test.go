@@ -30,7 +30,7 @@ func TestMailgunPostsTheMessage(t *testing.T) {
 		attachment.name, attachment.kind, attachment.content = header.Filename, header.Header.Get("Content-Type"), string(body)
 		w.Write([]byte(`{"id":"<x@example.org>","message":"Queued. Thank you."}`))
 	}))
-	m := &Mailgun{Key: "key-test", From: "HCA-Team <team@example.org>"}
+	m := NewMailgun("key-test", "HCA-Team <team@example.org>")
 	msg := Message{To: []string{"a@example.org"}, CC: []string{"b@example.org"}, ReplyTo: []string{"b@example.org"}, Subject: "Hi", HTML: "<p>Hi</p>", Text: "Hi",
 		Headers:     map[string]string{"Message-Id": "<one@example.org>", "In-Reply-To": "<zero@example.org>"},
 		Attachments: []Attachment{{Name: "invite.ics", ContentType: "text/calendar; method=REQUEST", Content: []byte("BEGIN:VCALENDAR")}}}

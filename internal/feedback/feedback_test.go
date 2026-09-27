@@ -520,11 +520,12 @@ func (s *sentMail) Send(ctx context.Context, m mail.Message) error {
 	return nil
 }
 
+func (s *sentMail) From() string { return "HCA-Team <team@example.org>" }
+
 func TestNotifyTellsTheSuperAdmins(t *testing.T) {
 	sent := &sentMail{}
 	n := Notifier{
 		Sender:      sent,
-		From:        "HCA-Team <team@example.org>",
 		Base:        "https://heliosian.com",
 		SuperAdmins: func() []string { return []string{"Admin@example.org", " ", "other@example.org"} },
 	}

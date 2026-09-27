@@ -29,9 +29,8 @@ const (
 	admin  = "jordan.whitfield@heliosschool.org"
 	chair  = "mina.park@heliosschool.org"
 
-	testFrom = "HCA-Team <hca@example.org>"
-	kid      = "ella.whitfield@heliosschool.org"
-	student  = "sam.whitfield@heliosschool.org"
+	kid     = "ella.whitfield@heliosschool.org"
+	student = "sam.whitfield@heliosschool.org"
 )
 
 var (
@@ -61,7 +60,7 @@ func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, blob.New(blob.NewMemoryBucket()), func() *who.Model { return directory }, func() *config.Settings { return settings }, imagesearch.Search{}, mailer, testFrom, nil, nil, testStyle)
+	Register(mux, cache, blob.New(blob.NewMemoryBucket()), func() *who.Model { return directory }, func() *config.Settings { return settings }, imagesearch.Search{}, mailer, nil, nil, testStyle)
 	return cache, mux
 }
 
@@ -321,7 +320,7 @@ func TestMail(t *testing.T) {
 		t.Fatalf("invite note: %+v (subjects %v)", invite, keys(bySubject))
 	}
 	ics := strings.ReplaceAll(string(invite.Attachments[0].Content), "\r\n ", "")
-	for _, want := range []string{"METHOD:REQUEST", "UID:team-E017-" + parent + "@heliosian.com", "SUMMARY:Clean Up Crew (International Night)", "DTSTART:20260924T230000Z", "DTEND:20260925T010000Z", "ORGANIZER;CN=HCA-Team:mailto:hca@example.org", "ATTENDEE;CN=Robin Whitfield;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "STATUS:CONFIRMED"} {
+	for _, want := range []string{"METHOD:REQUEST", "UID:team-E017-" + parent + "@heliosian.com", "SUMMARY:Clean Up Crew (International Night)", "DTSTART:20260924T230000Z", "DTEND:20260925T010000Z", "ORGANIZER;CN=HCA-Team:mailto:" + mail.AddressOf(mailtest.From), "ATTENDEE;CN=Robin Whitfield;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "STATUS:CONFIRMED"} {
 		if !strings.Contains(ics, want) {
 			t.Errorf("invite lacks %q:\n%s", want, ics)
 		}

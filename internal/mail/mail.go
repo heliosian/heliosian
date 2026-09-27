@@ -38,6 +38,7 @@ type Attachment struct {
 
 type Sender interface {
 	Send(ctx context.Context, m Message) error
+	From() string
 }
 
 func Compose(from string, m Message) string {

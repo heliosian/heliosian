@@ -345,6 +345,8 @@ func (k *keptMail) Send(ctx context.Context, m mail.Message) error {
 	return nil
 }
 
+func (k *keptMail) From() string { return "Helios When <when@example.org>" }
+
 func (k *keptMail) all() []mail.Message {
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -356,7 +358,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	d := sampleDirectory(t, "sampledata")
 	kept := &keptMail{}
 	mux := http.NewServeMux()
-	Register(mux, cache, memoryStore(), func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, noCelebrate(), newSampleSources(t).sources, imagesearch.Search{}, Mail{Sender: kept, From: "Helios When <when@example.org>", Base: "https://when.heliosian.com"}, testStyle)
+	Register(mux, cache, memoryStore(), func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, noCelebrate(), newSampleSources(t).sources, imagesearch.Search{}, Mail{Sender: kept, Base: "https://when.heliosian.com"}, testStyle)
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {

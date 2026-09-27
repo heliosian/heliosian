@@ -10,7 +10,11 @@ import (
 
 type Discard struct{}
 
+const From = "Helios Sample <sample@example.org>"
+
 func (Discard) Send(context.Context, mail.Message) error { return nil }
+
+func (Discard) From() string { return From }
 
 type Recorder chan mail.Message
 
@@ -20,6 +24,8 @@ func (r Recorder) Send(_ context.Context, m mail.Message) error {
 	r <- m
 	return nil
 }
+
+func (Recorder) From() string { return From }
 
 func (r Recorder) Next(t *testing.T) mail.Message {
 	t.Helper()

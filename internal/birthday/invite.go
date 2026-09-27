@@ -79,7 +79,7 @@ func (a app) mailMovedAskDays(r *http.Request, before, after map[string]askDay) 
 }
 
 func (a app) sendInvite(r *http.Request, sv StaffView, to, movedFrom string) {
-	m := assignmentMessage(mail.Base(r), a.from, sv, to, movedFrom)
+	m := assignmentMessage(mail.Base(r), a.mailer.From(), sv, to, movedFrom)
 	go func() {
 		if err := a.mailer.Send(context.WithoutCancel(r.Context()), m); err != nil {
 			slog.Error("birthday: mail invite", "error", err, "to", to, "email", sv.Email)

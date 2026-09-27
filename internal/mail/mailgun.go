@@ -24,11 +24,15 @@ import (
 const Host = "api.mailgun.net"
 
 type Mailgun struct {
-	Key, From string
+	Key, from string
 }
 
 func NewMailgun(key, from string) *Mailgun {
-	return &Mailgun{Key: key, From: from}
+	return &Mailgun{Key: key, from: from}
+}
+
+func (m *Mailgun) From() string {
+	return m.from
 }
 
 func domainOf(from string) (string, error) {
@@ -89,13 +93,13 @@ func (m *Mailgun) Send(ctx context.Context, msg Message) error {
 	if len(msg.To) == 0 {
 		return fmt.Errorf("mail: no recipient")
 	}
-	domain, err := domainOf(m.From)
+	domain, err := domainOf(m.from)
 	if err != nil {
 		return err
 	}
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
-	fields := [][2]string{{"from", FromLine(m.From, msg)}, {"subject", msg.Subject}, {"html", msg.HTML}}
+	fields := [][2]string{{"from", FromLine(m.from, msg)}, {"subject", msg.Subject}, {"html", msg.HTML}}
 	if msg.Text != "" {
 		fields = append(fields, [2]string{"text", msg.Text})
 	}

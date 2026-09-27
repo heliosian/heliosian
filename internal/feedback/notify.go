@@ -16,7 +16,6 @@ const notifyTimeout = 30 * time.Second
 
 type Notifier struct {
 	Sender      mail.Sender
-	From        string
 	Base        string
 	SuperAdmins func() []string
 }

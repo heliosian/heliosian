@@ -31,6 +31,8 @@ func (s *sentMail) Send(_ context.Context, m mail.Message) error {
 	return nil
 }
 
+func (s *sentMail) From() string { return "Helios Staff Birthdays <birthday@example.org>" }
+
 func (s *sentMail) wait(t *testing.T, n int) []mail.Message {
 	t.Helper()
 	for i := 0; i < 100; i++ {
@@ -84,7 +86,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	mux := http.NewServeMux()
 	sent = &sentMail{}
 	joined = nil
-	Register(mux, cache, directory, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(_ context.Context, email string) error {
+	Register(mux, cache, directory, nil, sent, "https://birthday.example.org", func(_ context.Context, email string) error {
 		joined = append(joined, email)
 		return nil
 	}, About(func() string { return "Helios Birthday Team" }, func() string { return "Staff birthday donations" }))
@@ -520,7 +522,7 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 
 func TestReminders(t *testing.T) {
 	cache, mux := newServer(t)
-	app := app{cache: cache, directory: directory, mailer: sent, from: "Helios Staff Birthdays <birthday@example.org>", base: "https://birthday.example.org"}
+	app := app{cache: cache, directory: directory, mailer: sent, base: "https://birthday.example.org"}
 	kinds := func(day string) []string {
 		out := []string{}
 		for _, r := range app.dueReminders(cache.Model(), testkit.MustTime(day)) {

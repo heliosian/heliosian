@@ -62,12 +62,9 @@ type Config struct {
 	BrowserKey    string
 	ImageSearch   imagesearch.Search
 	Mail          mail.Sender
-	MailFrom      string
 	CelebrateMail mail.Sender
-	CelebrateFrom string
 	CalendarMail  when.Mail
 	BirthdayMail  mail.Sender
-	BirthdayFrom  string
 	BirthdayBase  string
 	FeedbackFiler feedback.IssueFiler
 	FeedbackBase  string
@@ -223,9 +220,9 @@ func NewCore(cfg Config) *Core {
 		return &team.EventRSVPs{Sent: sent, Answers: answers}
 	}
 	activityEmailList := func(id string) string { return loopCache.Model().Tagged(who.ListActivity + ":" + id) }
-	team.Register(teamMux, teamCache, cfg.Store, cache.Model, settings.Settings, cfg.ImageSearch, cfg.Mail, cfg.MailFrom, eventRSVPs, activityEmailList, teamStyle)
+	team.Register(teamMux, teamCache, cfg.Store, cache.Model, settings.Settings, cfg.ImageSearch, cfg.Mail, eventRSVPs, activityEmailList, teamStyle)
 	birthdayMux := http.NewServeMux()
-	birthday.Register(birthdayMux, birthdayCache, cache.Model, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(ctx context.Context, email string) error {
+	birthday.Register(birthdayMux, birthdayCache, cache.Model, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayBase, func(ctx context.Context, email string) error {
 		return home.Grant(ctx, homeCache, "birthday", email)
 	}, birthdayAbout)
 	celebrateMux := http.NewServeMux()
@@ -236,7 +233,7 @@ func NewCore(cfg Config) *Core {
 		}
 		return &celebrate.PartyRSVPs{Sent: sent, Answers: answers}
 	}
-	celebrate.Register(celebrateMux, celebrateCache, cfg.Store, cache.Model, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom, partyRSVPs, func(ctx context.Context, actor access.Actor, old, to, name string) {
+	celebrate.Register(celebrateMux, celebrateCache, cfg.Store, cache.Model, cfg.ImageSearch, cfg.CelebrateMail, partyRSVPs, func(ctx context.Context, actor access.Actor, old, to, name string) {
 		hooks.MoveAddress(ctx, actor, old, to, name)
 	}, celebrateStyle)
 	askMux := http.NewServeMux()
@@ -265,7 +262,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load feedback model", "error", err)
 	}
-	notifier := feedback.Notifier{Sender: cfg.Mail, From: cfg.MailFrom, Base: cfg.FeedbackBase, SuperAdmins: settings.SuperAdmins}
+	notifier := feedback.Notifier{Sender: cfg.Mail, Base: cfg.FeedbackBase, SuperAdmins: settings.SuperAdmins}
 	feedbackIntake := feedback.NewIntake(feedbackCache, notifier.Notify)
 	optIn := who.OptInForm(func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn })
 	suggestions := geocode.NewSuggestions(cfg.Geocoder)
@@ -363,12 +360,9 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		ImageSearch:   ImageSearchKeys(),
 		Describer:     ClaudeDescriber(),
 		Mail:          newMailer(mailFrom),
-		MailFrom:      mailFrom,
 		CelebrateMail: newMailer(celebrateMailFrom),
-		CelebrateFrom: celebrateMailFrom,
 		CalendarMail:  calendarMail(sessionKey),
 		BirthdayMail:  newMailer(birthdayMailFrom),
-		BirthdayFrom:  birthdayMailFrom,
 		BirthdayBase:  birthdayBase,
 		FeedbackFiler: githubApp(),
 		FeedbackBase:  feedbackBase,

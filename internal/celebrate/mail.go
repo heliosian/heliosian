@@ -37,7 +37,7 @@ func (a app) event(directory *who.Model, p *Party, purchaser, page string, to []
 		return e, false
 	}
 	e.UID = fmt.Sprintf("celebrate-%s-%s@heliosian.com", p.ID, purchaser)
-	e.Organizer = mail.Person{Name: brand.Name, Email: a.from}
+	e.Organizer = mail.Person{Name: brand.Name, Email: a.mailer.From()}
 	for _, email := range to {
 		e.Attendees = append(e.Attendees, mail.Person{Name: attendeeName(directory, p, email), Email: email})
 	}

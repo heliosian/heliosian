@@ -25,7 +25,6 @@ import (
 
 type Mail struct {
 	Sender     mail.Sender
-	From       string
 	ReplyTo    string
 	Base       string
 	SigningKey string

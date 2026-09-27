@@ -32,7 +32,6 @@ type app struct {
 	directory func() *who.Model
 	describer Describer
 	mailer    mail.Sender
-	from      string
 	base      string
 	joinHome  func(ctx context.Context, email string) error
 }
@@ -107,8 +106,8 @@ type dateRun struct {
 	To      string `json:"to"`
 }
 
-func Register(mux *http.ServeMux, cache *Cache, directory func() *who.Model, describer Describer, mailer mail.Sender, from, base string, joinHome func(ctx context.Context, email string) error, about *sharecard.About) {
-	a := app{cache: cache, directory: directory, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
+func Register(mux *http.ServeMux, cache *Cache, directory func() *who.Model, describer Describer, mailer mail.Sender, base string, joinHome func(ctx context.Context, email string) error, about *sharecard.About) {
+	a := app{cache: cache, directory: directory, describer: describer, mailer: mailer, base: base, joinHome: joinHome}
 	go a.remindLoop()
 	go a.exportLoop()
 	for _, page := range pages {

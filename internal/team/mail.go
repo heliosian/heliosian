@@ -110,7 +110,7 @@ func (a app) event(m *Model, act *Activity, email, page string, to []string) (ma
 		Description: page,
 		Location:    act.Location,
 		URL:         page,
-		Organizer:   mail.Person{Name: brand.Name, Email: a.from},
+		Organizer:   mail.Person{Name: brand.Name, Email: a.mailer.From()},
 	}
 	for _, t := range to {
 		e.Attendees = append(e.Attendees, mail.Person{Name: a.nameOf(t), Email: t})

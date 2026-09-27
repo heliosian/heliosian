@@ -35,15 +35,14 @@ type app struct {
 	settings  func() *config.Settings
 	search    imagesearch.Search
 	mailer    mail.Sender
-	from      string
 	rsvps     RSVPLookup
 	lists     EmailListLookup
 	style     *sharecard.Style
 }
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory func() *who.Model, settings func() *config.Settings, search imagesearch.Search, mailer mail.Sender, from string, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory func() *who.Model, settings func() *config.Settings, search imagesearch.Search, mailer mail.Sender, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
 	search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
-	a := app{cache: cache, media: media, directory: directory, settings: settings, search: search, mailer: mailer, from: from, rsvps: rsvps, lists: lists, style: style}
+	a := app{cache: cache, media: media, directory: directory, settings: settings, search: search, mailer: mailer, rsvps: rsvps, lists: lists, style: style}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
