@@ -178,7 +178,7 @@
 
 .rsvp-count, .late-count, .alerts-summary-count { background: var(--alert); color: #fff; }
 
-.alerts-summary-wrap { display: none; }
+.topbar-alert-wrap.alerts-summary-wrap { display: none; }
 
 .topbar.alerts-collapsed .alerts-summary-wrap { display: flex; }
 
