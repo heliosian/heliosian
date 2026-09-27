@@ -168,16 +168,21 @@
    and the count on a dot at its top right, ringed in the bar's own colour -
    red for replies owed, late birthdays and things to update, yellow for a privacy mismatch,
    amber for approvals. */
-.rsvp-alert, .approvals-alert, .late-alert, .topbar-alert.stale-alert, .topbar-alert.privacy-alert { position: relative; width: 32px; height: 32px; border-radius: 50%; background: var(--badge); color: #fff; }
+.rsvp-alert, .approvals-alert, .late-alert, .topbar-alert.stale-alert, .topbar-alert.privacy-alert, .topbar-alert.alerts-summary { position: relative; width: 32px; height: 32px; border-radius: 50%; background: var(--badge); color: #fff; }
 
-.rsvp-alert:hover, .approvals-alert:hover, .late-alert:hover, .topbar-alert.stale-alert:hover, .topbar-alert.privacy-alert:hover { background: var(--badge-hover); opacity: 1; }
+.rsvp-alert:hover, .approvals-alert:hover, .late-alert:hover, .topbar-alert.stale-alert:hover, .topbar-alert.privacy-alert:hover, .topbar-alert.alerts-summary:hover { background: var(--badge-hover); opacity: 1; }
 
-.rsvp-alert svg, .approvals-alert svg, .late-alert svg, .stale-alert svg, .topbar-alert.privacy-alert svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; }
+.rsvp-alert svg, .approvals-alert svg, .late-alert svg, .stale-alert svg, .topbar-alert.privacy-alert svg, .topbar-alert.alerts-summary svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; }
 
-.rsvp-count, .approvals-count, .late-count, .topbar-alert-count.stale-alert .stale-count { position: absolute; top: -5px; right: -6px; width: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; box-shadow: 0 0 0 2px var(--toolbar, #ecf3f2); font-size: 10.5px; font-weight: 700; line-height: 18px; text-align: center; }
+.rsvp-count, .approvals-count, .late-count, .topbar-alert-count.stale-alert .stale-count, .alerts-summary-count { position: absolute; top: -5px; right: -6px; width: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; box-shadow: 0 0 0 2px var(--toolbar, #ecf3f2); font-size: 10.5px; font-weight: 700; line-height: 18px; text-align: center; }
 
-.rsvp-count, .late-count { background: var(--alert); color: #fff; }
+.rsvp-count, .late-count, .alerts-summary-count { background: var(--alert); color: #fff; }
 
+.alerts-summary-wrap { display: none; }
+
+.topbar.alerts-collapsed .alerts-summary-wrap { display: flex; }
+
+.topbar.alerts-collapsed .topbar-alert-wrap:not(.alerts-summary-wrap) { display: none; }
 .topbar-alert-count.stale-alert .stale-count { display: block; background: var(--alert); color: #fff; }
 
 .approvals-count { background: #e8a33d; color: #fff; }
@@ -1033,6 +1038,7 @@ body.is-super .user-avatar {
     padding: env(safe-area-inset-top) 12px 0;
   }
   .topbar-menu { display: flex; }
+  .topbar-search { min-width: 80px; }
   .topbar-search input { padding-right: 16px; }
   /* No keyboard to press it on. */
   .topbar-key { display: none; }

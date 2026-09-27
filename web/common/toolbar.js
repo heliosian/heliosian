@@ -386,23 +386,97 @@ export function renderAvatars({photoUrl, initial}) {
   }
 }
 
+const alertBuilds = new WeakMap();
+
 export function alertMenu(badge, build) {
+  alertBuilds.set(badge, build);
   const wrap = badge.parentElement;
   let menu = wrap.querySelector('.topbar-alert-menu');
   if (!menu) {
     menu = el('div', 'topbar-alert-menu');
     menu.hidden = true;
     wrap.append(menu);
-    hoverMenu(badge, menu, () => {
-      menu.replaceChildren(build());
-      menu.hidden = false;
-      clampMenu(wrap, menu);
-    }, () => {
+    hoverMenu(badge, menu, () => openAlertMenu(badge, menu), () => {
       menu.hidden = true;
     });
   }
   return menu;
 }
+
+function openAlertMenu(badge, menu) {
+  menu.replaceChildren(alertBuilds.get(badge)());
+  menu.hidden = false;
+  clampMenu(badge.parentElement, menu);
+}
+
+const shownAlerts = '.topbar-alert-wrap:not(.alerts-summary-wrap) > .topbar-alert:not([hidden])';
+const alertCounts = '.rsvp-count, .approvals-count, .late-count, .stale-count, .privacy-count';
+
+function alertSummary(user) {
+  const existing = user.parentElement.querySelector('.alerts-summary');
+  if (existing) {
+    return existing;
+  }
+  const wrap = el('span', 'topbar-alert-wrap alerts-summary-wrap');
+  const badge = el('button', 'topbar-alert alerts-summary');
+  badge.type = 'button';
+  badge.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>';
+  badge.append(el('span', 'alerts-summary-count'));
+  wrap.append(badge);
+  (user.parentElement.querySelector('.topbar-alert-wrap') || user).before(wrap);
+  const menu = alertMenu(badge, () => {
+    const count = badge.querySelector('.alerts-summary-count').textContent;
+    return alertList({
+      count,
+      words: count === '1' ? 'alert' : 'alerts',
+      items: [...user.parentElement.querySelectorAll(shownAlerts)].map(other => ({
+        title: other.getAttribute('aria-label'),
+        href: other.href,
+        icon: other.querySelector('svg').outerHTML,
+      })),
+      icon: badge.querySelector('svg').outerHTML,
+    });
+  });
+  badge.addEventListener('click', e => {
+    if (hoverClick(e)) {
+      return;
+    }
+    e.stopPropagation();
+    if (menu.hidden) {
+      openAlertMenu(badge, menu);
+    } else {
+      menu.hidden = true;
+    }
+  });
+  document.addEventListener('click', e => {
+    if (!wrap.contains(e.target)) {
+      menu.hidden = true;
+    }
+  });
+  return badge;
+}
+
+function fitAlerts() {
+  const bar = document.querySelector('.topbar');
+  const user = document.querySelector('#user');
+  if (!bar || !user) {
+    return;
+  }
+  const summary = alertSummary(user);
+  bar.classList.remove('alerts-collapsed');
+  const shown = [...bar.querySelectorAll(shownAlerts)];
+  const tile = bar.querySelector('.app-switch');
+  const edge = bar.getBoundingClientRect().right - parseFloat(getComputedStyle(bar).paddingRight);
+  if (shown.length < 2 || tile.getBoundingClientRect().right <= edge + 0.5) {
+    return;
+  }
+  bar.classList.add('alerts-collapsed');
+  const total = shown.reduce((sum, badge) => sum + (parseInt(badge.querySelector(alertCounts)?.textContent, 10) || 0), 0);
+  summary.querySelector('.alerts-summary-count').textContent = String(total);
+  summary.setAttribute('aria-label', `${total} alert${total === 1 ? '' : 's'}`);
+}
+
+window.addEventListener('resize', fitAlerts);
 
 function clampMenu(wrap, menu) {
   const margin = 12;
@@ -572,6 +646,7 @@ export function renderAlerts({stale = [], privacy = [], broken = false} = {}) {
     badge.removeAttribute('title');
     alertMenu(badge, () => privacyCard(fields, badge.href));
   }
+  fitAlerts();
 }
 
 const rsvpDay = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
@@ -611,6 +686,7 @@ function initRSVP() {
       button: 'Open RSVP in Helios When',
       href: badge.href,
     }));
+    fitAlerts();
   }).catch(() => {});
 }
 
@@ -647,6 +723,7 @@ function initApprovals() {
       icon: '<svg viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/></svg>',
       tone: 'amber',
     }));
+    fitAlerts();
   }).catch(() => {});
 }
 
@@ -691,6 +768,7 @@ function initLate() {
       button: view.admin ? 'Open Process in Birthday' : 'Open My Jobs in Birthday',
       href: badge.href,
     }));
+    fitAlerts();
   }).catch(() => {});
 }
 
@@ -746,6 +824,7 @@ function buildSpoof(user, state) {
     pill.append(stop);
   }
   user.before(wrap);
+  fitAlerts();
 
   if (state.spoofing) {
     const head = el('div', 'spoof-head');
@@ -922,6 +1001,7 @@ export function renderSuperToggle({show, on, onToggle}) {
   superButton.setAttribute('aria-label', 'Super Admin Mode');
   superButton.title = on ? 'Super Admin Mode is on: click to turn it off' : 'Super Admin Mode: edit anything';
   markSuper(on);
+  fitAlerts();
 }
 
 export function isEditableTarget(target) {
