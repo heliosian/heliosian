@@ -4263,8 +4263,6 @@ a.person-card:hover .photo-wrap-peek::before {
   .sidebar {
     display: none;
   }
-  /* The shared toolbar is pinned on top (toolbar.css); the title strip sits
-     under it, and both clear the banners above them. */
   .topbar { top: var(--banner-h); }
   .app-shell {
     display: block;
@@ -4274,7 +4272,8 @@ a.person-card:hover .photo-wrap-peek::before {
     display: block;
   }
   main {
-    height: var(--vh100, 100dvh);
+    position: fixed;
+    inset: 0;
     margin-top: 0;
     padding-top: calc(88px + var(--banner-h) + env(safe-area-inset-top));
     padding-bottom: calc(62px + env(safe-area-inset-bottom));
