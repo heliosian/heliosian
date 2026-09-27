@@ -1,5 +1,5 @@
 import {state, parseDate, staffPath, stageClass, stageName, stages} from '../state.js';
-import {el, link, svg, button} from '../dom.js';
+import {el, link, svg, button} from '/elements.js';
 import {setTitle} from '/shell.js';
 
 let month = null;
@@ -100,11 +100,11 @@ export function monthNav(step) {
   nav.append(button('Today', null, 'button button-secondary button-small', () => step(0)));
   const prev = el('button', 'icon-button');
   prev.type = 'button';
-  prev.append(svg('prev'));
+  prev.append(svg('chevron-left'));
   prev.addEventListener('click', () => step(-1));
   const next = el('button', 'icon-button');
   next.type = 'button';
-  next.append(svg('next'));
+  next.append(svg('chevron-right'));
   next.addEventListener('click', () => step(1));
   nav.append(prev, next);
   return nav;

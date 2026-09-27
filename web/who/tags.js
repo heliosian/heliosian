@@ -1,6 +1,7 @@
 import {state, tags, tagManagers, shared, lists, byEmail} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
-import {el, svg, firstName} from './dom.js';
+import {firstName} from './dom.js';
+import {el, svg} from '/elements.js';
 import {appOrigin} from '/toolbar.js';
 import {api} from '/api.js';
 import {photoOrInitials, personPhotoUrl} from './people.js';
@@ -252,7 +253,7 @@ export function manageControl(key, onManagersChange) {
   const wrap = el('div', 'filter-wrap');
   const button = el('button', 'filter-button facet-button tag-manage');
   button.type = 'button';
-  button.append(svg('gear'), el('span', '', 'Manage'), svg('chevron'));
+  button.append(svg('gear'), el('span', '', 'Manage'), svg('chevron-down'));
 
   const menu = el('div', 'filter-panel manage-menu');
   menu.hidden = true;
@@ -280,7 +281,7 @@ export function manageControl(key, onManagersChange) {
     return row;
   };
   if (!isShared) {
-    item('pencil', 'Edit name', 'Give this tag a new name', async () => {
+    item('edit', 'Edit name', 'Give this tag a new name', async () => {
       open(null);
       const to = (prompt('New name for the tag', name) || '').trim().slice(0, 40);
       if (!to || to === name) {
@@ -305,7 +306,7 @@ export function manageControl(key, onManagersChange) {
   let shareItem = null;
   if (isShared) {
     const t = shared[key];
-    item('x', 'Leave', `Stop managing this tag - it stays ${t.ownerName}'s`, async () => {
+    item('close', 'Leave', `Stop managing this tag - it stays ${t.ownerName}'s`, async () => {
       open(null);
       if (!confirm(`Leave "${name}"? You'll no longer see or manage it unless ${t.ownerName} shares it again.`)) {
         return;
@@ -366,7 +367,7 @@ export function manageControl(key, onManagersChange) {
       const remove = el('button', 'share-remove');
       remove.type = 'button';
       remove.title = `Stop ${firstName(p.fullName)} managing this tag`;
-      remove.append(svg('x'));
+      remove.append(svg('close'));
       remove.addEventListener('click', async () => {
         if (await shareTag(name, email, false)) {
           paintManagers();

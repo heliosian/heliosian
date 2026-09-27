@@ -1,5 +1,6 @@
 import {state, isAdmin, year, staffFor, charity, longDate, mediumDate, monthDay, dateCell, parseDate, newsletterPath} from '../state.js';
-import {el, link, svg, thumb, button, pageHead, menu, copyRich} from '../dom.js';
+import {pageHead, menu, copyRich} from '../dom.js';
+import {el, link, svg, thumb, button} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
 import {staffRow, emptyPanel} from '../cards.js';
 import {openNewsletterDate, openChangeNewsletterDate, addNextWeek, removeNewsletterDate, clearFutureNewsletterDates, openCreateNewsletterDates, markUsed, markAllUsed, toShare, shareIssue} from '../edit.js';
@@ -67,7 +68,7 @@ function issueRow(date, actions) {
   for (const a of actions) {
     side.append(a);
   }
-  const chevron = svg('chevron');
+  const chevron = svg('chevron-right');
   chevron.classList.add('chevron');
   side.append(chevron);
   row.append(side);
@@ -219,7 +220,7 @@ export function newsletterPage(date) {
   const page = el('div', 'list-page');
   const nav = el('div', 'crumb');
   const back = link('/newsletters', '');
-  back.append(svg('back'));
+  back.append(svg('chevron-left'));
   nav.append(back, link('/newsletters', '', 'Newsletters'), el('span', '', '/'), el('span', 'current', longDate(date)));
   page.append(nav);
   const people = staffFor(date);

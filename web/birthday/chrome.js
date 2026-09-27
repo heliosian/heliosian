@@ -1,9 +1,9 @@
 import {state, me, isSystemAdmin, isAdmin, isUnassigned, commsOnly, onComms, mine, urgency} from './state.js';
-import {el, svg, link} from './dom.js';
+import {el, svg, link} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {render, setPath} from '/router.js';
 
-const unassignedItem = {href: '/unassigned', icon: 'users', label: 'Unassigned'};
+const unassignedItem = {href: '/unassigned', icon: 'groups', label: 'Unassigned'};
 const calendarItem = {href: '/calendar', icon: 'calendar', label: 'Calendar'};
 const newslettersItem = {href: '/newsletters', icon: 'newsletter', label: 'Newsletters'};
 
@@ -22,7 +22,7 @@ function primary() {
 
 const moreItems = [newslettersItem, {href: '/charities', icon: 'gift', label: 'Charities'}];
 
-const skippedItem = {href: '/skipped', icon: 'skipped', label: 'Skipped'};
+const skippedItem = {href: '/skipped', icon: 'warn', label: 'Skipped'};
 
 function more() {
   if (commsOnly()) {

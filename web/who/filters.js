@@ -1,5 +1,6 @@
 import {state, byEmail} from './state.js';
-import {el, svg, segments} from './dom.js';
+import {segments} from './dom.js';
+import {el, svg} from '/elements.js';
 import {familyOf, familiesOf} from './families.js';
 import {members, tagFacetOptions} from './tags.js';
 
@@ -196,7 +197,7 @@ export function familyDropdown(values, set, onChange) {
   const wrap = el('div', 'filter-wrap');
   const button = el('button', 'filter-button facet-button');
   const labelSpan = el('span', '', 'Add');
-  button.append(svg('families'), labelSpan, svg('chevron'));
+  button.append(svg('families'), labelSpan, svg('chevron-down'));
   const panel = el('div', 'filter-panel family-panel');
   panel.hidden = true;
   button.addEventListener('click', () => {
@@ -246,7 +247,7 @@ export function facetDropdown(label, values, set, rerender) {
   const wrap = el('div', 'filter-wrap');
   const button = el('button', 'filter-button facet-button');
   const labelSpan = el('span', '', label);
-  button.append(labelSpan, svg('chevron'));
+  button.append(labelSpan, svg('chevron-down'));
   const panel = el('div', 'filter-panel facet-panel');
   panel.hidden = true;
   button.addEventListener('click', () => {
@@ -297,7 +298,7 @@ export function filterControl(rerender, options = {}) {
   const wrap = el('div', 'filter-wrap');
   const button = el('button', 'filter-button');
   const labelSpan = el('span', '', 'Filter');
-  button.append(svg('filter'), labelSpan, svg('chevron'));
+  button.append(svg('filter'), labelSpan, svg('chevron-down'));
   const panel = el('div', 'filter-panel');
   panel.hidden = true;
   button.addEventListener('click', () => {
@@ -342,7 +343,7 @@ export function filterControl(rerender, options = {}) {
   for (const s of sections) {
     const head = el('div', 'filter-section');
     s.labelSpan = el('span', '', s.label);
-    head.append(s.labelSpan, svg('chevron'));
+    head.append(s.labelSpan, svg('chevron-down'));
     const body = el('div', 'filter-options');
     body.hidden = true;
     head.addEventListener('click', () => {

@@ -1,5 +1,6 @@
 import {state, isAdmin, categoryTitles, linkCategoryTitles, tagLabelsOf} from './state.js';
-import {el, svg, categoryIcons, iconOf, toast} from './dom.js';
+import {categoryIcons, iconOf, categoryMark} from './dom.js';
+import {el, svg, toast} from '/elements.js';
 import {load} from '/router.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
@@ -16,7 +17,7 @@ const widgetModal = document.querySelector('#widget-modal');
 const appForm = document.querySelector('#app-form');
 const categoryForm = document.querySelector('#category-form');
 const categoriesModal = document.querySelector('#categories-modal');
-const {imagePicker} = imageTools('/api/apps', {state, toast});
+const {imagePicker} = imageTools('/api/apps', {state});
 
 let editingLink = null;
 let editingCategory = null;
@@ -40,7 +41,6 @@ function fillCategories(selected) {
 }
 
 const rules = rulesEditor({
-  el, svg,
   options: () => state.model.options,
   personName: () => '',
 });
@@ -219,7 +219,7 @@ function wireEmojiPicker() {
     button.dataset.icon = 'icon:' + name;
     button.title = words;
     button.setAttribute('aria-label', words);
-    button.append(svg(name), el('span', '', words));
+    button.append(categoryMark(name), el('span', '', words));
     button.addEventListener('click', () => setEmoji('icon:' + name));
     grid.append(button);
   }
@@ -424,7 +424,7 @@ async function removeCategory(category) {
 function categoryRow(category, at, total) {
   const row = el('div', 'category-row');
   const mark = el('div', 'category-row-image');
-  mark.append(svg(iconOf(category)));
+  mark.append(categoryMark(iconOf(category)));
   row.append(mark);
   const body = el('div', 'category-row-body');
   body.append(el('div', 'category-row-title', category.title));

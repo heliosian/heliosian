@@ -1,5 +1,6 @@
 import {state, byEmail} from '../state.js';
-import {el, svg, firstName, lastName, hue, slugify, csvField, copyGlyph} from '../dom.js';
+import {firstName, lastName, hue, slugify, csvField, copyGlyph} from '../dom.js';
+import {el, svg} from '/elements.js';
 import {familyOf, familyLink, familySearchText} from '../families.js';
 import {personLink} from '../people.js';
 import {tagFacetOptions} from '../tags.js';
@@ -543,7 +544,7 @@ function gvServiceSelect(seg, systems, onChange) {
   const button = el('button', 'filter-button gv-service-button');
   button.type = 'button';
   const current = systems.find(s => s.name === state.gvSystem) || systems[0];
-  button.append(serviceIcon(current.name), el('span', '', current.name), svg('chevron'));
+  button.append(serviceIcon(current.name), el('span', '', current.name), svg('chevron-down'));
   const panel = el('div', 'filter-panel gv-service-panel');
   panel.hidden = true;
   button.addEventListener('click', () => {
@@ -591,7 +592,7 @@ function openGreetingDialog(onSaved) {
 
   const header = el('div', 'greeting-dialog-header');
   const headerIcon = el('div', 'greeting-dialog-icon');
-  headerIcon.append(svg('sparkles'));
+  headerIcon.append(svg('sparkle'));
   header.append(headerIcon);
   const headerText = el('div', 'greeting-dialog-header-text');
   headerText.append(
@@ -602,7 +603,7 @@ function openGreetingDialog(onSaved) {
   const headerClose = el('button', 'greeting-dialog-close');
   headerClose.type = 'button';
   headerClose.setAttribute('aria-label', 'Close');
-  headerClose.append(svg('x'));
+  headerClose.append(svg('close'));
   headerClose.addEventListener('click', close);
   header.append(headerClose);
   panel.append(header);
@@ -661,7 +662,7 @@ function openGreetingDialog(onSaved) {
       const editBtn = el('button', 'gv-greeting-card-btn');
       editBtn.type = 'button';
       editBtn.title = 'Edit';
-      editBtn.append(svg('pencil'));
+      editBtn.append(svg('edit'));
       editBtn.addEventListener('click', () => loadGreeting(g));
       const deleteBtn = el('button', 'gv-greeting-card-btn gv-greeting-card-btn-delete');
       deleteBtn.type = 'button';

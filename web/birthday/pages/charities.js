@@ -1,5 +1,6 @@
 import {state, isAdmin, charityPath, staffPath} from '../state.js';
-import {el, link, svg, button, pageHead} from '../dom.js';
+import {pageHead} from '../dom.js';
+import {el, link, svg, button} from '/elements.js';
 import {tabStrip} from '/tabs.js';
 import {setTitle, setSearch} from '/shell.js';
 import {charityRow, emptyPanel} from '../cards.js';
@@ -52,7 +53,7 @@ export function charityPage(c) {
   const page = el('div', 'list-page');
   const nav = el('div', 'crumb');
   const back = link('/charities', '');
-  back.append(svg('back'));
+  back.append(svg('chevron-left'));
   nav.append(back, link('/charities', '', 'Charities'), el('span', '', '/'), el('span', 'current', c.name));
   page.append(nav);
   const head = el('div', 'page-head');
@@ -89,7 +90,7 @@ export function charityPage(c) {
       const rb = el('div', 'row-body');
       rb.append(el('div', 'row-title', sv.name), el('div', 'row-text', sv.donation && sv.donation.charity === c.name ? 'This year' : 'Last year'));
       row.append(rb);
-      const chevron = svg('chevron');
+      const chevron = svg('chevron-right');
       chevron.classList.add('chevron');
       row.append(chevron);
       panel.append(row);

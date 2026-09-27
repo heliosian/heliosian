@@ -1,5 +1,6 @@
 import {state, byDepartment, matches} from '../state.js';
-import {el, button, pageHead} from '../dom.js';
+import {pageHead} from '../dom.js';
+import {el, button} from '/elements.js';
 import {tabStrip} from '/tabs.js';
 import {setTitle, setSearch} from '/shell.js';
 import {staffRow, emptyPanel} from '../cards.js';
@@ -28,7 +29,7 @@ function list() {
         lines.push(`Birthday ${sv.birthdayThisYear}`);
       }
       const items = tab === 'missing'
-        ? [{icon: 'plus', label: 'Add birthday', onClick: () => openBirthday(sv)}, {icon: 'skipped', label: 'Opt out', onClick: () => openParticipation(sv)}]
+        ? [{icon: 'plus', label: 'Add birthday', onClick: () => openBirthday(sv)}, {icon: 'warn', label: 'Opt out', onClick: () => openParticipation(sv)}]
         : [{icon: 'edit', label: 'Edit preference', onClick: () => openParticipation(sv)}, {icon: 'plus', label: sv.birthday ? 'Edit birthday' : 'Add birthday', onClick: () => openBirthday(sv)}];
       panel.append(staffRow(sv, {noActions: true, lines, menu: items}));
     }

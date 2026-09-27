@@ -1,8 +1,8 @@
 import {state} from './state.js';
-import {el, svg, button, toast} from './dom.js';
+import {el, svg, button, toast} from '/elements.js';
 import {imageTools} from '/images.js';
 
-export const {uploadImage, imageSearchOn, openImageSearch} = imageTools('/api/when', {state, toast});
+export const {uploadImage, imageSearchOn, openImageSearch} = imageTools('/api/when', {state});
 
 export function imageControl(t, onChange) {
   const wrap = el('span', 'admin-image');

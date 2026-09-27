@@ -2,7 +2,7 @@ import {state, isAdmin} from './state.js';
 import {appOrigin} from '/toolbar.js';
 import {searchInput} from '/shell.js';
 import {api} from '/api.js';
-import {el, svg} from './dom.js';
+import {el, svg} from '/elements.js';
 import {calendarMark, calendarMenu, dropdown, audienceWords} from './cards.js';
 import {openWidgetAudience, moveWidget} from './edit.js';
 import {dayTypeClass} from '/daytype.js';
@@ -70,7 +70,7 @@ function calendarPick(month) {
   const toggle = el('button', 'category-calendar-toggle');
   toggle.type = 'button';
   toggle.title = current.locked ? 'The calendar\u2019s own view, for everyone' : 'The saved calendar these events come from';
-  toggle.append(calendarMark(current), el('span', '', current.name), svg('chevron'));
+  toggle.append(calendarMark(current), el('span', '', current.name), svg('chevron-right'));
   const menu = calendarMenu(list, current, chosen, c => pick(c.token));
   dropdown(toggle, menu);
   wrap.append(toggle, menu);
@@ -131,7 +131,7 @@ function wgRow(className, href, parts) {
   const go = el('a', 'wg-go');
   go.href = href;
   go.setAttribute('aria-label', 'Open');
-  go.append(svg('chevron'));
+  go.append(svg('chevron-right'));
   row.append(go);
   row.addEventListener('click', e => {
     if (!e.target.closest('a')) {
@@ -211,7 +211,7 @@ function widgetFoot(name, total, seeAll) {
   const act = (words, next, dir) => {
     const b = el('button', 'wg-more ' + dir);
     b.type = 'button';
-    b.append(el('span', '', words), svg('chevron'));
+    b.append(el('span', '', words), svg('chevron-right'));
     b.addEventListener('click', () => {
       shownCounts.set(name, next);
       renderWidgets(searchInput().value);
@@ -266,7 +266,7 @@ function widgetTitle(app, words) {
 function moreLink(words, href) {
   const a = el('a', 'widget-more');
   a.href = href;
-  a.append(el('span', '', words), svg('chevron'));
+  a.append(el('span', '', words), svg('chevron-right'));
   return a;
 }
 
@@ -443,7 +443,7 @@ function pictureRow({href, image, title, line, pill, tone}) {
   const go = el('a', 'wg-go');
   go.href = href;
   go.setAttribute('aria-label', 'Open ' + title);
-  go.append(svg('chevron'));
+  go.append(svg('chevron-right'));
   row.append(pic, text, go);
   row.addEventListener('click', e => {
     if (!e.target.closest('a')) {
@@ -576,7 +576,7 @@ function emailRow(email, n, open) {
   const when = `${date.toLocaleDateString('en-US', {weekday: 'short'})}, ${date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;
   const to = el('span', 'wg-email-to', sentTo(email));
   to.title = sentTo(email);
-  head.append(el('span', 'wg-dot'), el('span', 'wg-email-date', when), el('span', 'wg-email-title', email.title), to, svg('chevron'));
+  head.append(el('span', 'wg-dot'), el('span', 'wg-email-date', when), el('span', 'wg-email-title', email.title), to, svg('chevron-right'));
   const body = el('div', 'wg-email-body');
   if (email.points.length) {
     const points = el('ul', 'wg-points');
@@ -590,7 +590,7 @@ function emailRow(email, n, open) {
   const day = date.toLocaleDateString('en-US', {weekday: 'long', month: 'long', day: 'numeric'});
   const ask = el('a', 'wg-ask');
   ask.href = appOrigin('ask') + '/?q=' + encodeURIComponent(`What should I know from the school email "${email.title}" sent ${day}?`);
-  ask.append(el('span', '', 'Ask about this'), svg('chevron'));
+  ask.append(el('span', '', 'Ask about this'), svg('chevron-right'));
   body.append(ask);
   head.addEventListener('click', () => {
     const opening = !row.classList.contains('is-open');
@@ -644,7 +644,7 @@ function typePick() {
   const toggle = el('button', 'category-calendar-toggle');
   toggle.type = 'button';
   toggle.title = 'Show one kind of email';
-  toggle.append(el('span', '', schoolType || 'All'), svg('chevron'));
+  toggle.append(el('span', '', schoolType || 'All'), svg('chevron-right'));
   const menu = el('div', 'category-calendar-menu');
   menu.hidden = true;
   for (const [type, n] of [[null, rsvps.length + school.length], ...counts]) {

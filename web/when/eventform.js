@@ -1,7 +1,7 @@
 import {state, isAdmin, tagGroups, bands, classroomNames, eventDates, eventPath, addDays, parseDate} from './state.js';
 import {addressSuggest} from '/address.js';
 import {api} from '/api.js';
-import {el, svg, toast} from './dom.js';
+import {el, svg, toast, longToast} from '/elements.js';
 
 function randomID() {
   const alphabet = 'abcdefghjkmnpqrstvwxyz0123456789';
@@ -277,7 +277,7 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
   const nextRow = el('div', 'modal-actions');
   const next = el('button', 'button');
   next.type = 'button';
-  next.append(el('span', '', 'Next'), svg('chevron'));
+  next.append(el('span', '', 'Next'), svg('chevron-right'));
   next.addEventListener('click', () => {
     if (!title.value.trim() || !startDate.value) {
       form.reportValidity();
@@ -347,7 +347,7 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       return;
     }
     const {ids, pending} = made;
-    toast(pending ? 'Shared - an admin will approve it onto the calendar. It is on yours now, and its link works right away.' : 'Added - invite people from the event\u2019s page, or send them its link.', 6000);
+    longToast(pending ? 'Shared - an admin will approve it onto the calendar. It is on yours now, and its link works right away.' : 'Added - invite people from the event\u2019s page, or send them its link.');
     await onDone(ids);
   });
   return form;

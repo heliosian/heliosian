@@ -1,5 +1,6 @@
 import {state, colors} from '../state.js';
-import {el, svg, thumbUrl, firstName} from '../dom.js';
+import {thumbUrl, firstName} from '../dom.js';
+import {el, svg} from '/elements.js';
 import {tabStrip, tabHref} from '/tabs.js';
 import {familiesOf, familyOf} from '../families.js';
 import {personCard, personLink, photoOrInitials, cardMore, gradeChain, guestCard} from '../people.js';
@@ -114,7 +115,7 @@ export function peoplePage() {
   pageHeader.append(el('div', 'page-subtitle', 'Find and connect with the Helios community.'));
   page.append(pageHeader);
 
-  const items = peopleTabs.map(t => ({...t, icon: svg(t.key === 'staff' ? 'staff-tab' : t.key)}));
+  const items = peopleTabs.map(t => ({...t, icon: svg(t.key)}));
   const strip = tabStrip(items, state.tab, 2, key => {
     state.tab = key;
     state.q = '';

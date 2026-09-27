@@ -1,5 +1,6 @@
 import {state, isAdmin, years, allYears, sortByStart, matches, selectedYear, listedIn, canAdd, addLabel, categoryPath, categoryFromAddress, PRIORITY, isPriority, descendants} from '../state.js';
-import {el, toggle, selectPill, thumb, button, svg} from '../dom.js';
+import {toggle, selectPill} from '../dom.js';
+import {el, imageThumb, button, svg} from '/elements.js';
 import {setTitle, setSearch, renderChrome} from '/shell.js';
 import {render} from '/router.js';
 import {activityCard, categoryClass, priorityRow, wanted} from '../cards.js';
@@ -31,7 +32,7 @@ function yearGrid(year) {
     }
     const head = el('div', 'group-head');
     if (c.imageUrl) {
-      head.append(thumb(c.imageUrl, c.title, 'group-image'));
+      head.append(imageThumb(c.imageUrl, c.title, 'group-image'));
     }
     const heading = el('div', 'group-heading');
     heading.append(el('h3', 'group-name', c.title));

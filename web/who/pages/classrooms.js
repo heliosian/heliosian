@@ -1,5 +1,6 @@
 import {state, byEmail, colors} from '../state.js';
-import {el, svg, withFrom, slugify, ordinal, thumbUrl, firstName, listSub, paletteColor} from '../dom.js';
+import {withFrom, slugify, ordinal, thumbUrl, firstName, listSub, paletteColor} from '../dom.js';
+import {el, svg} from '/elements.js';
 import {tabStrip, tabHref} from '/tabs.js';
 import {familyOf, familiesOf} from '../families.js';
 import {personLink, photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl, sortPeople} from '../people.js';
@@ -349,7 +350,7 @@ function rosterPage(title, image, groups, backLabel, sectionColorFor) {
   const parents = parentsOf(allStudents);
   const memberTabs = [
     {key: 'students', label: 'Students', icon: svg('students'), count: allStudents.length},
-    {key: 'staff', label: 'Staff', icon: svg('staff-tab'), count: teachers.length},
+    {key: 'staff', label: 'Staff', icon: svg('staff'), count: teachers.length},
     {key: 'parents', label: 'Parents', icon: svg('families'), count: parents.length},
   ];
 

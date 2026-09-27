@@ -1,20 +1,4 @@
-const moreIcon = '<svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>';
-const chevronIcon = '<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
-
-function node(tag, className, text) {
-  const n = document.createElement(tag);
-  n.className = className;
-  if (text !== undefined) {
-    n.textContent = text;
-  }
-  return n;
-}
-
-function icon(markup) {
-  const holder = document.createElement('template');
-  holder.innerHTML = markup;
-  return holder.content.firstChild;
-}
+import {el, svg} from '/elements.js';
 
 function closeMenus() {
   for (const menu of document.querySelectorAll('.tab-strip-menu')) {
@@ -41,9 +25,9 @@ function fill(target, item) {
   if (item.icon) {
     target.append(item.icon.cloneNode(true));
   }
-  target.append(node('span', '', item.label));
+  target.append(el('span', '', item.label));
   if (item.count !== undefined) {
-    target.append(node('span', 'tab-strip-count', String(item.count)));
+    target.append(el('span', 'tab-strip-count', String(item.count)));
   }
 }
 
@@ -58,25 +42,25 @@ export function tabHref(key) {
 }
 
 export function tabStrip(items, activeKey, mobileVisible, onSelect) {
-  const strip = node('div', 'tab-strip');
+  const strip = el('div', 'tab-strip');
   const mobile = matchMedia('(max-width: 900px)').matches;
   const visible = mobile ? items.slice(0, mobileVisible) : items;
   const hidden = mobile ? items.slice(mobileVisible) : [];
   for (const item of visible) {
-    const tab = node('div', 'tab-strip-item' + (item.key === activeKey ? ' active' : ''));
+    const tab = el('div', 'tab-strip-item' + (item.key === activeKey ? ' active' : ''));
     fill(tab, item);
     tab.addEventListener('click', () => onSelect(item.key));
     strip.append(tab);
   }
   if (hidden.length) {
     listen();
-    const wrap = node('div', 'tab-strip-more');
-    const more = node('div', 'tab-strip-item' + (hidden.some(t => t.key === activeKey) ? ' active' : ''));
-    more.append(icon(moreIcon), node('span', '', 'More'), icon(chevronIcon));
-    const menu = node('div', 'tab-strip-menu');
+    const wrap = el('div', 'tab-strip-more');
+    const more = el('div', 'tab-strip-item' + (hidden.some(t => t.key === activeKey) ? ' active' : ''));
+    more.append(svg('more'), el('span', '', 'More'), svg('chevron-down'));
+    const menu = el('div', 'tab-strip-menu');
     menu.hidden = true;
     for (const item of hidden) {
-      const entry = node('div', 'tab-strip-menu-item' + (item.key === activeKey ? ' active' : ''));
+      const entry = el('div', 'tab-strip-menu-item' + (item.key === activeKey ? ' active' : ''));
       fill(entry, item);
       entry.addEventListener('click', () => onSelect(item.key));
       menu.append(entry);
@@ -94,7 +78,7 @@ export function tabStrip(items, activeKey, mobileVisible, onSelect) {
 }
 
 export function tabbedFields(panels) {
-  const wrap = node('div', 'form-tabs');
+  const wrap = el('div', 'form-tabs');
   const items = panels.map((panel, i) => ({key: String(i), label: panel.label, icon: panel.icon || null}));
   const bodies = [];
   let active = 0;
@@ -112,7 +96,7 @@ export function tabbedFields(panels) {
   };
   show(0);
   panels.forEach((panel, i) => {
-    const body = node('div', 'form-tab-body');
+    const body = el('div', 'form-tab-body');
     body.hidden = i !== 0;
     body.append(...panel.fields);
     body.addEventListener('invalid', () => {

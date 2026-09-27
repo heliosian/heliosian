@@ -1,5 +1,5 @@
 import {me, isSystemAdmin, settings} from '../state.js';
-import {el, button} from '../dom.js';
+import {el, button} from '/elements.js';
 import {createPersonPicker} from '/picker.js';
 import {api} from '/api.js';
 import {openSettings} from '../edit.js';

@@ -3,14 +3,14 @@ import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
 import {whoLink} from '/toolbar.js';
 import {api} from '/api.js';
-import {el, svg, toast, button, avatar} from './dom.js';
+import {el, svg, toast, button, avatar} from '/elements.js';
 import {tabbedFields} from '/tabs.js';
 import {imageTools} from '/images.js';
 import {openModal, closeModal, popup} from '/modal.js';
 import {load, navigate} from '/router.js';
 import {field, text, textarea, select, checkbox, segmented, whenPickers} from '/form.js';
 
-export const {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/celebrate', {state, toast});
+export const {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/celebrate', {state});
 
 let asked = null;
 
@@ -360,7 +360,7 @@ export function emojiPicker(value) {
   const caret = el('button', 'emoji-pick-caret');
   caret.type = 'button';
   caret.setAttribute('aria-label', 'Choose an emoji');
-  caret.append(svg('caret'));
+  caret.append(svg('chevron-down'));
   const menu = el('div', 'emoji-pick-menu');
   menu.hidden = true;
   for (const e of calloutEmoji) {

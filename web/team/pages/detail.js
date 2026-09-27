@@ -1,5 +1,6 @@
 import {state, me, family, isAdmin, isSystemAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel} from '../state.js';
-import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor, toast} from '../dom.js';
+import {badge, searchBox, whenEditor} from '../dom.js';
+import {el, link, svg, imageThumb, avatar, button, copyText, toast} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {load, render} from '/router.js';
 import {approvalButtons} from './approvals.js';
@@ -46,7 +47,7 @@ function heroStamp(act) {
     return act.timing ? el('div', 'hero-stamp hero-stamp-text', act.timing) : null;
   }
   const details = [act.description, location.origin + activityPath(act)].filter(Boolean).join('\n\n');
-  return dateCard(el, {start: act.start, end: act.end, location: act.location || '', add: googleCalendarLink({title: act.title, start: act.start, end: act.end, location: act.location || '', details})});
+  return dateCard({start: act.start, end: act.end, location: act.location || '', add: googleCalendarLink({title: act.title, start: act.start, end: act.end, location: act.location || '', details})});
 }
 
 function heroImageBar(node, save) {
@@ -68,7 +69,7 @@ function heroImageBar(node, save) {
     const toggle = el('button', 'hero-image-action');
     toggle.type = 'button';
     toggle.setAttribute('aria-haspopup', 'menu');
-    toggle.append(svg('image'), el('span', '', label), svg('caret'));
+    toggle.append(svg('image'), el('span', '', label), svg('chevron-down'));
     const menu = el('div', 'hero-image-menu');
     menu.hidden = true;
     const item = (icon, text, onClick) => {
@@ -125,16 +126,16 @@ function prevNext(node) {
   const make = (target, label, icon, cls) => {
     if (!target) {
       const dead = el('span', 'detail-jump-link is-off');
-      dead.append(icon === 'back' ? svg('back') : el('span', '', label));
-      dead.append(icon === 'back' ? el('span', '', label) : svg('chevron'));
+      dead.append(icon === 'back' ? svg('chevron-left') : el('span', '', label));
+      dead.append(icon === 'back' ? el('span', '', label) : svg('chevron-right'));
       return dead;
     }
     const a = link(activityPath(target), 'detail-jump-link');
     a.title = target.title;
     if (icon === 'back') {
-      a.append(svg('back'), el('span', '', label));
+      a.append(svg('chevron-left'), el('span', '', label));
     } else {
-      a.append(el('span', '', label), svg('chevron'));
+      a.append(el('span', '', label), svg('chevron-right'));
     }
     return a;
   };
@@ -441,7 +442,7 @@ function treeFilter(node, below, onChange) {
   const toggle = el('button', 'side-filter-toggle');
   toggle.type = 'button';
   const summary = el('span', '', self);
-  toggle.append(summary, svg('caret'));
+  toggle.append(summary, svg('chevron-down'));
   const menu = el('div', 'side-filter-menu');
   menu.hidden = true;
   const depthOf = n => {
@@ -735,7 +736,7 @@ function resourcesCard(node, editing) {
     row.removeAttribute('data-link');
     row.target = '_blank';
     row.rel = 'noopener';
-    row.append(thumb(item.imageUrl || node.imageUrl || rootOf(node).imageUrl, item.title, 'side-link-thumb'));
+    row.append(imageThumb(item.imageUrl || node.imageUrl || rootOf(node).imageUrl, item.title, 'side-link-thumb'));
     const body = el('div', 'side-row-body');
     body.append(el('div', 'side-link-title', item.title));
     body.append(el('div', 'side-link-desc', item.description || item.url.replace(/^https?:\/\//, '').replace(/\/$/, '')));
@@ -1096,7 +1097,7 @@ export function activityPage(node) {
 
   const top = el('div', 'detail-top');
   const back = link(parent ? activityPath(parent) : '/', 'detail-back');
-  back.append(svg('back'), el('span', '', parent ? `Back to ${parent.title}` : 'Back to Opportunities'));
+  back.append(svg('chevron-left'), el('span', '', parent ? `Back to ${parent.title}` : 'Back to Opportunities'));
   top.append(back, prevNext(node));
   page.append(top);
 
@@ -1105,7 +1106,7 @@ export function activityPage(node) {
   }
 
   const hero = el('div', 'detail-hero');
-  hero.append(thumb(node.imageUrl || root.imageUrl, node.title, 'detail-hero-image ' + categoryClass(root.category)));
+  hero.append(imageThumb(node.imageUrl || root.imageUrl, node.title, 'detail-hero-image ' + categoryClass(root.category)));
   const stamp = heroStamp(node);
   if (stamp) {
     hero.append(stamp);

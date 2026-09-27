@@ -1,5 +1,5 @@
 import {state, me, tagGroups, classroomNames, event, eventPath, dayLabel} from '../state.js';
-import {el, link, svg, button, toast} from '../dom.js';
+import {el, link, svg, button, toast} from '/elements.js';
 import {popup} from '/modal.js';
 import {api} from '/api.js';
 import {adminPage as buildAdminPage} from '/admin.js';
@@ -135,20 +135,20 @@ function categoriesTool() {
     });
     head.append(name);
     head.append(el('span', 'admin-count', `${g.tags.length} categor${g.tags.length === 1 ? 'y' : 'ies'}`));
-    head.append(button('Rename group', 'pencil', 'button button-secondary button-small admin-rename', () => {
+    head.append(button('Rename group', 'edit', 'button button-secondary button-small admin-rename', () => {
       name.readOnly = false;
       name.focus();
       name.select();
     }));
-    head.append(arrow('back', 'Move group up', gi === 0, () => {
+    head.append(arrow('chevron-left', 'Move group up', gi === 0, () => {
       move(groups, gi, gi - 1);
       paint();
     }));
-    head.append(arrow('chevron', 'Move group down', gi === groups.length - 1, () => {
+    head.append(arrow('chevron-right', 'Move group down', gi === groups.length - 1, () => {
       move(groups, gi, gi + 1);
       paint();
     }));
-    const fold = button('', 'chevron', 'icon-button admin-fold', () => {
+    const fold = button('', 'chevron-right', 'icon-button admin-fold', () => {
       g.open = !g.open;
       paint();
     });

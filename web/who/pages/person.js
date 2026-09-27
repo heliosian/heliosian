@@ -1,7 +1,8 @@
 import {load, render} from '/router.js';
 import {api} from '/api.js';
 import {colors} from '../state.js';
-import {el, svg, withFrom, slugify, thumbUrl, firstName, iconButton, copyButton, pronouncePill, contactRow, aboutMeText, paletteColor} from '../dom.js';
+import {withFrom, slugify, thumbUrl, firstName, copyButton, pronouncePill, contactRow, aboutMeText, paletteColor} from '../dom.js';
+import {el, svg, iconButton, iconLink} from '/elements.js';
 import {familiesOf} from '../families.js';
 import {personByKey, baseRole, gradeChain, photoOrInitials, formatPronouns} from '../people.js';
 import {photoNeedsUpdate, factsNeedUpdate, staleItems, todoChecklist, monthYear} from '../stale.js';
@@ -168,7 +169,7 @@ export function personPage(email) {
     const topActions = el('div', 'detail-top-actions');
     const toggle = editing
       ? el('button', 'media-button edit-toggle', 'Done')
-      : iconButton('pencil', 'Edit info', () => {
+      : iconButton('edit', 'Edit info', '', () => {
         personEdit = p.email;
         render();
       });
@@ -234,7 +235,7 @@ export function personPage(email) {
     const emailValue = el('div', 'contact-value');
     emailValue.append(svg('mail'), el('span', '', p.email));
     right.append(contactRow(emailValue, [
-      iconButton('mail', 'Email', 'mailto:' + p.email),
+      iconLink('mail', 'Email', 'mailto:' + p.email),
       copyButton(p.email),
     ]));
   }
@@ -242,8 +243,8 @@ export function personPage(email) {
     const phoneValue = el('div', 'contact-value');
     phoneValue.append(svg('phone'), el('span', '', p.phone));
     right.append(contactRow(phoneValue, [
-      iconButton('message', 'Text', 'sms:' + p.phone),
-      iconButton('phone', 'Call', 'tel:' + p.phone),
+      iconLink('chat', 'Text', 'sms:' + p.phone),
+      iconLink('phone', 'Call', 'tel:' + p.phone),
       copyButton(p.phone),
     ]));
   }
@@ -251,7 +252,7 @@ export function personPage(email) {
     const addressValue = el('div', 'contact-value');
     addressValue.append(svg('map'), el('span', '', family.address));
     right.append(contactRow(addressValue, [
-      iconButton('map', 'Map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
+      iconLink('map', 'Map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
       copyButton(family.address),
     ]));
   }
@@ -293,7 +294,7 @@ export function personPage(email) {
     if (showFactsEdit) {
       const pencil = el('button', 'edit-icon inline');
       pencil.title = 'Edit';
-      pencil.append(svg('pencil'));
+      pencil.append(svg('edit'));
       header.append(pencil);
       pencil.addEventListener('click', () => {
         const editor = el('textarea', 'about-editor');

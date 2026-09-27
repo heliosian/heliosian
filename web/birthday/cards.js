@@ -1,5 +1,6 @@
 import {longDate, mediumDate, isUnassigned, staffPath, charityPath, stageClass, stageName, emailLink, urgency, urgencyWords} from './state.js';
-import {el, link, svg, thumb, button, menu} from './dom.js';
+import {menu} from './dom.js';
+import {el, link, svg, thumb, button} from '/elements.js';
 import {assignToMe, markContacted, openDonation, useDefault, markUsed} from './edit.js';
 
 export function staffRow(sv, options) {
@@ -55,7 +56,7 @@ export function staffRow(sv, options) {
   if (opts.menu) {
     actions.append(menu(opts.menu));
   }
-  const chevron = svg('chevron');
+  const chevron = svg('chevron-right');
   chevron.classList.add('chevron');
   actions.append(chevron);
   row.append(actions);

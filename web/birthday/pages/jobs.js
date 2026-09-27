@@ -1,5 +1,6 @@
 import {state, mine, matches} from '../state.js';
-import {el, pageHead} from '../dom.js';
+import {pageHead} from '../dom.js';
+import {el} from '/elements.js';
 import {tabStrip} from '/tabs.js';
 import {setTitle, setSearch} from '/shell.js';
 import {staffRow, emptyPanel, dateSummary} from '../cards.js';

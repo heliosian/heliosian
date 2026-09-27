@@ -1,5 +1,5 @@
 import {state, me, isSystemAdmin, applySuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown} from './state.js';
-import {el, svg, link, button} from './dom.js';
+import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {navigate, render, setPath} from '/router.js';
 import {openParty} from './edit.js';

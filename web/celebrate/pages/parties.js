@@ -1,5 +1,6 @@
 import {state, parties, matches, celebration, whenParts, currentCelebration, celebrationCalendarLink} from '../state.js';
-import {el, selectPill, svg} from '../dom.js';
+import {selectPill} from '../dom.js';
+import {el, svg} from '/elements.js';
 import {tabStrip} from '/tabs.js';
 import {inTab, listTabs, listPath, listTab, listCategory} from '../chrome.js';
 import {setTitle, setSearch, renderChrome} from '/shell.js';
@@ -131,7 +132,7 @@ export function partiesPage(code) {
       history.pushState(null, '', listPath(state.tab, state.category));
       paint();
     });
-    filter.append(sel, svg('caret'));
+    filter.append(sel, svg('chevron-down'));
     bar.append(filter);
   };
   paintTabs();

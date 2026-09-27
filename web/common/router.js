@@ -1,4 +1,4 @@
-import {el} from '/toolbar.js';
+import {el} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {closeLayers} from '/modal.js';
 

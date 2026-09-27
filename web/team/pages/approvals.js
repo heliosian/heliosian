@@ -1,5 +1,5 @@
 import {pendingItems, activityPath, rootOf, longDate} from '../state.js';
-import {el, link, svg, thumb, button} from '../dom.js';
+import {el, link, svg, imageThumb, button} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {saveActivityFields} from '../edit.js';
 
@@ -23,7 +23,7 @@ export function approvalsPage() {
   for (const {act} of items) {
     const root = rootOf(act);
     const row = link(activityPath(act), 'row is-link');
-    row.append(thumb(act.imageUrl || root.imageUrl, act.title));
+    row.append(imageThumb(act.imageUrl || root.imageUrl, act.title));
     const body = el('div', 'row-body');
     body.append(el('div', 'label', `Proposed by ${act.addedBy || 'someone'} on ${longDate(act.added)}`));
     const title = el('div', 'row-title', root === act ? act.title : root.title);
@@ -37,7 +37,7 @@ export function approvalsPage() {
     row.append(body);
     const actions = el('div', 'row-actions');
     actions.append(...approvalButtons(act));
-    const chevron = svg('chevron');
+    const chevron = svg('chevron-right');
     chevron.classList.add('chevron');
     actions.append(chevron);
     row.append(actions);

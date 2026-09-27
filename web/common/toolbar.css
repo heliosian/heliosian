@@ -1031,20 +1031,6 @@ body.is-spoofing .spoof-stop { color: #c2185b; }
   color: var(--muted);
 }
 
-.feedback-toast {
-  position: fixed;
-  left: 50%;
-  bottom: 28px;
-  transform: translateX(-50%);
-  padding: 10px 18px;
-  border-radius: 999px;
-  background: var(--ink);
-  color: var(--page);
-  font-size: 14px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  z-index: var(--z-toast);
-}
-
 /* The hamburger that opens an app's drawer on a phone (Who?, HCA-Team); the
    desktop rail makes it needless there. */
 .topbar-menu {

@@ -1,5 +1,5 @@
 import {state, me, team, isAdmin, isSystemAdmin, settings, charity, longDate, dateCell, parseDate, year} from './state.js';
-import {el, button, toast} from './dom.js';
+import {el, button, toast} from '/elements.js';
 import {appOrigin} from '/toolbar.js';
 import {api} from '/api.js';
 import {openModal} from '/modal.js';

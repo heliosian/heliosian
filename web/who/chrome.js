@@ -1,5 +1,6 @@
 import {state, byEmail} from './state.js';
-import {el, svg, segments, hue, firstName, trimMiddle} from './dom.js';
+import {segments, hue, firstName, trimMiddle} from './dom.js';
+import {el, svg} from '/elements.js';
 import {saveNavOpen, loadNavScroll, saveNavScroll} from './storage.js';
 import {familyOf, myFamilyKey} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
@@ -160,7 +161,7 @@ function fillNav(nav) {
     if (indicator === 'alert') {
       const alert = el('span', 'nav-item-alert');
       alert.title = 'Some family info is missing or out of date';
-      alert.append(svg('alert'));
+      alert.append(svg('warn'));
       a.append(alert);
     } else if (indicator) {
       a.append(navBadge(indicator));
@@ -172,14 +173,14 @@ function fillNav(nav) {
     const open = state.navOpen[key] || forceOpen;
     const heading = el('div', 'nav-heading nav-heading-toggle' + (open ? ' open' : ''));
     const chevron = el('span', 'nav-chevron');
-    chevron.append(svg('chevron'));
+    chevron.append(svg('chevron-down'));
     const headingIcon = icon === 'app' ? el('span', 'app-symbol') : svg(icon);
     headingIcon.classList.add('nav-heading-icon-' + icon);
     heading.append(chevron, headingIcon, el('span', 'nav-heading-title', title));
     if (indicator === 'alert') {
       const alert = el('span', 'nav-heading-alert');
       alert.title = 'Some family info is missing or out of date';
-      alert.append(svg('alert'));
+      alert.append(svg('warn'));
       heading.append(alert);
     } else if (indicator) {
       heading.append(navBadge(indicator));
@@ -489,7 +490,7 @@ export function renderUserChrome() {
   const mismatch = myPrivacyWarnings().length > 0;
   privacyAlert.hidden = !mismatch;
   if (mismatch && !privacyAlert.firstChild) {
-    privacyAlert.append(svg('alert'));
+    privacyAlert.append(svg('warn'));
   }
 }
 

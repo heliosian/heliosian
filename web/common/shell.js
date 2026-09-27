@@ -1,4 +1,5 @@
-import {el, renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
+import {el} from '/elements.js';
 import {superEditOn, setSuperEdit} from '/superedit.js';
 
 let app = null;

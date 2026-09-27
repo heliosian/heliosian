@@ -1,5 +1,6 @@
 import {state, byEmail, lists, tags} from '../state.js';
-import {el, svg, csvField, copyGlyph} from '../dom.js';
+import {csvField, copyGlyph} from '../dom.js';
+import {el, svg} from '/elements.js';
 import {familiesOf, familyOf, familySearchText} from '../families.js';
 import {personCard, personLink, guestCard, guestPerson} from '../people.js';
 import {tagControl, onTagsChange, listLabel, tagFacetOptions, listSource, sharedOf, managersOf, manageControl, selectedGuests} from '../tags.js';
@@ -109,7 +110,7 @@ export function listPage() {
     const line = el('div', 'page-subtitle magic-source');
     const source = listSource(smart.key);
     if (source) {
-      line.append(svg('sparkles'), el('span', '', 'Magic Tag from '));
+      line.append(svg('sparkle'), el('span', '', 'Magic Tag from '));
       const link = el('a');
       link.href = source.href;
       const mark = el('img');
@@ -118,7 +119,7 @@ export function listPage() {
       link.append(mark, el('span', '', `${source.name} - open this ${source.thing}`));
       line.append(link);
     } else {
-      line.append(svg('sparkles'), el('span', '', 'Magic Tag from the directory - the families of the grades you are a room parent for'));
+      line.append(svg('sparkle'), el('span', '', 'Magic Tag from the directory - the families of the grades you are a room parent for'));
     }
     titleWrap.append(line);
   }

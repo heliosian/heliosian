@@ -1,5 +1,6 @@
 import {state, isAdmin, canApprove, isKid, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
-import {el, link, svg, button, avatar, thumb, paragraphs, copyText, toast} from '../dom.js';
+import {paragraphs} from '../dom.js';
+import {el, link, svg, button, avatar, imageThumb, copyText, toast} from '/elements.js';
 import {listPath} from '../chrome.js';
 import {setTitle} from '/shell.js';
 import {appOrigin} from '/toolbar.js';
@@ -22,7 +23,7 @@ function heroStamp(p) {
     stamp.textContent = 'Date to come';
     return stamp;
   }
-  return dateCard(el, {start: p.start, end: p.end, location: p.location || '', add: partyCalendarLink(p)});
+  return dateCard({start: p.start, end: p.end, location: p.location || '', add: partyCalendarLink(p)});
 }
 
 function heroTools(p, editing) {
@@ -74,7 +75,7 @@ function heroImageBar(p, save) {
     const toggle = el('button', 'hero-image-action');
     toggle.type = 'button';
     toggle.setAttribute('aria-haspopup', 'menu');
-    toggle.append(svg('image'), el('span', '', label), svg('caret'));
+    toggle.append(svg('image'), el('span', '', label), svg('chevron-down'));
     const menu = el('div', 'hero-image-menu');
     menu.hidden = true;
     const item = (icon, words, onClick) => {
@@ -123,7 +124,7 @@ function heroImageBar(p, save) {
 
 function hero(p, editing, save) {
   const wrap = el('div', 'detail-hero');
-  const image = thumb(p.imageUrl, p.title, 'detail-hero-image');
+  const image = imageThumb(p.imageUrl, p.title, 'detail-hero-image');
   if (p.imageUrl) {
     image.classList.add('is-openable');
     image.addEventListener('click', () => openPhotoLightbox(p.imageUrl));
@@ -470,7 +471,7 @@ function factsCard(p, editing, save) {
       mapLink.append(svg('open'), el('span', '', p.address));
       note = el('div', 'side-note', 'Address shown to signed-in Helios members only');
     }
-    card.append(pencilFor(sideRow('pin', 'Where', p.location || '', mapLink, note), 'Edit where', () => {
+    card.append(pencilFor(sideRow('map', 'Where', p.location || '', mapLink, note), 'Edit where', () => {
       const place = textInput(p.location || '', {placeholder: "The Parks' House in Los Altos", maxLength: 120});
       const address = addressSuggest(textInput(p.address || '', {placeholder: '1420 Alder Court, Los Altos, CA 94024', maxLength: 200}));
       const stack = el('div', 'field-editor-stack');
@@ -482,7 +483,7 @@ function factsCard(p, editing, save) {
       return {input: stack, value: () => ({location: place.value, address: address.value})};
     }));
   } else if (editing) {
-    card.append(pencilFor(sideRow('pin', 'Where', 'Not set yet'), 'Edit where', () => {
+    card.append(pencilFor(sideRow('map', 'Where', 'Not set yet'), 'Edit where', () => {
       const place = textInput('', {placeholder: "The Parks' House in Los Altos", maxLength: 120});
       const address = addressSuggest(textInput('', {placeholder: '1420 Alder Court, Los Altos, CA 94024', maxLength: 200}));
       const stack = el('div', 'field-editor-stack');
@@ -629,7 +630,7 @@ export function partyPage(p) {
   const page = el('div', 'party-page' + (editing ? ' is-editing' : ''));
   const top = el('div', 'detail-top');
   const back = link(listPath(state.tab, state.category), 'detail-back');
-  back.append(svg('back'), el('span', '', 'Back to Parties'));
+  back.append(svg('chevron-left'), el('span', '', 'Back to Parties'));
   top.append(back);
   page.append(top, hero(p, editing, save));
 

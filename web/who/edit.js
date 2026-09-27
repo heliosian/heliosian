@@ -1,5 +1,5 @@
 import {state, byEmail} from './state.js';
-import {el, svg} from './dom.js';
+import {el, svg} from '/elements.js';
 import {familiesOf} from './families.js';
 import {load} from '/router.js';
 import {api} from '/api.js';
@@ -25,7 +25,7 @@ export async function submitField(key, field, value, status) {
 export function editPencil(title) {
   const pencil = el('button', 'edit-icon inline');
   pencil.title = title;
-  pencil.append(svg('pencil'));
+  pencil.append(svg('edit'));
   return pencil;
 }
 

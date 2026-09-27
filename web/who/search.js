@@ -1,5 +1,6 @@
 import {state, byEmail} from './state.js';
-import {el, withFrom, slugify, firstName} from './dom.js';
+import {withFrom, slugify, firstName} from './dom.js';
+import {el} from '/elements.js';
 import {familyOf} from './families.js';
 import {personLink, photoOrInitials, personPhotoUrl, roleLabel, gradeChain} from './people.js';
 import {gradeImage} from './pages/classrooms.js';

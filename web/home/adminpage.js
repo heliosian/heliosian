@@ -1,5 +1,6 @@
 import {state} from './state.js';
-import {el, svg, iconOf} from './dom.js';
+import {iconOf, categoryMark} from './dom.js';
+import {el} from '/elements.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 import {api} from '/api.js';
 import {render} from '/router.js';
@@ -13,7 +14,7 @@ function categoriesCard() {
   for (const category of model.categories) {
     const row = el('div', 'admin-row');
     const emoji = el('div', 'category-row-image');
-    emoji.append(svg(iconOf(category)));
+    emoji.append(categoryMark(iconOf(category)));
     let meta = '';
     if (category.style === 'events') {
       meta = `Upcoming events from HCA-Team · ${(model.upcoming || []).length} ahead`;

@@ -1,5 +1,5 @@
 import {state, applyModel, isSystemAdmin, isAdmin} from './state.js';
-import {el} from './dom.js';
+import {el} from '/elements.js';
 import {renderCategories, renderNav} from './cards.js';
 import {renderMonth} from './month.js';
 import {renderWidgets} from './widgets.js';

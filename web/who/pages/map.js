@@ -1,5 +1,6 @@
 import {state, byEmail} from '../state.js';
-import {el, svg, thumbUrl, withFrom} from '../dom.js';
+import {thumbUrl, withFrom} from '../dom.js';
+import {el, svg} from '/elements.js';
 import {familyLink, familySearchText} from '../families.js';
 import {matchesFilters, familyMatchesFilters, filterControl} from '../filters.js';
 
@@ -152,7 +153,7 @@ export function mapPage() {
   const update = el('div', 'map-update');
   const action = el('a', 'map-update-link');
   action.href = withFrom('/my-privacy');
-  action.append(svg('zap'), el('span', '', 'Update My Address'));
+  action.append(svg('bolt'), el('span', '', 'Update My Address'));
   update.append(action);
   content.append(update);
   page.append(content);

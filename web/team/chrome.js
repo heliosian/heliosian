@@ -1,5 +1,5 @@
 import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, applyModel, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
-import {el, svg, link, button} from './dom.js';
+import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {navigate, render, setPath} from '/router.js';
 import {openActivity} from './edit.js';
@@ -35,7 +35,7 @@ function navLink(item) {
 }
 
 function suggestButton() {
-  return button('Suggest an Idea', 'idea', 'button nav-action', () => {
+  return button('Suggest an Idea', 'bulb', 'button nav-action', () => {
     const ideas = state.model.categories.find(c => c.title === 'Just an Idea');
     openActivity(null, {category: ideas ? ideas.id : ''});
   });
@@ -123,7 +123,7 @@ function eventTree(current) {
     b.type = 'button';
     b.setAttribute('aria-expanded', String(open));
     b.setAttribute('aria-label', open ? 'Collapse' : 'Expand');
-    b.append(svg('chevron'));
+    b.append(svg('chevron-right'));
     b.addEventListener('click', e => {
       e.preventDefault();
       e.stopPropagation();
@@ -162,7 +162,7 @@ function eventTree(current) {
     const toggle = el('button', 'nav-sub-item nav-tree-group' + (open ? ' is-open' : ''));
     toggle.type = 'button';
     toggle.setAttribute('aria-expanded', String(open));
-    toggle.append(svg('chevron'), el('span', 'nav-sub-name', group.title),
+    toggle.append(svg('chevron-right'), el('span', 'nav-sub-name', group.title),
       el('span', 'nav-sub-count', String(members.reduce((n, m) => n + signUps(m), 0))));
     toggle.addEventListener('click', () => flip(key));
     list.append(toggle);

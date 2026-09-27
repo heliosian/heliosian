@@ -1,22 +1,10 @@
+import {el, svg} from '/elements.js';
+
 const token = location.pathname.split('/').filter(Boolean).pop();
 const api = '/open/ext/' + encodeURIComponent(token);
 const card = document.getElementById('card');
 let view = null;
-const icons = {
-  yes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
-  maybe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
-  no: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>'
-};
-function el(tag, cls, text) {
-  const n = document.createElement(tag);
-  if (cls) {
-    n.className = cls;
-  }
-  if (text != null) {
-    n.textContent = text;
-  }
-  return n;
-}
+const icons = {yes: 'check', maybe: 'clock', no: 'close'};
 function send(method, path, body) {
   return fetch(path, {method: method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(res => {
     if (!res.ok) {
@@ -74,7 +62,7 @@ function paint() {
   [['yes', 'Yes'], ['maybe', 'Maybe'], ['no', 'No']].forEach(pair => {
     const b = el('button', 'choice choice-' + pair[0] + (word === pair[0] ? ' is-on' : ''));
     b.type = 'button';
-    b.innerHTML = icons[pair[0]] + '<span>' + pair[1] + '</span>';
+    b.append(svg(icons[pair[0]]), el('span', '', pair[1]));
     b.addEventListener('click', () => {
       const next = word === pair[0] ? '' : pair[0];
       send('POST', api, {answer: next}).then(() => {
@@ -95,7 +83,7 @@ function paint() {
       [['yes', 'Yes'], ['maybe', 'Maybe'], ['no', 'No']].forEach(pair => {
         const b = el('button', 'family-pick choice-' + pair[0] + (m.answer === pair[0] ? ' is-on' : ''));
         b.type = 'button';
-        b.innerHTML = icons[pair[0]] + '<span>' + pair[1] + '</span>';
+        b.append(svg(icons[pair[0]]), el('span', '', pair[1]));
         b.addEventListener('click', () => {
           const next = m.answer === pair[0] ? '' : pair[0];
           send('POST', api, {answer: next, key: m.key}).then(() => {

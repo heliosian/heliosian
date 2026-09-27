@@ -1,5 +1,5 @@
 import {state} from '../state.js';
-import {el} from '../dom.js';
+import {el} from '/elements.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 import {createPersonPicker} from '/picker.js';
 import {popup} from '/modal.js';

@@ -1,6 +1,7 @@
 import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, eventTint, timeLine, startTime, eventPath, weekdayShort, isMatch, isHidden, isGray} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
-import {el, link, svg, button, peopleLine, toast, copyText, feedMark} from '../dom.js';
+import {peopleLine, feedMark} from '../dom.js';
+import {el, link, svg, button, toast, longToast, copyText} from '/elements.js';
 import {popup} from '/modal.js';
 import {setSearch, fillFilters, renderRailDay, editFeedPopup, makeDefaultFeed, calendarMenu} from '../chrome.js';
 import {setTitle} from '/shell.js';
@@ -377,7 +378,7 @@ function saveCalendar() {
     }
     shut();
     setActiveFeed(made.token);
-    toast(`Saved. ${body.name} is under Calendar in the rail.`, 5000);
+    longToast(`Saved. ${body.name} is under Calendar in the rail.`);
     await load();
   });
   name.focus();
@@ -406,7 +407,7 @@ function subscribeMenu(f) {
       }, {once: true});
     }
   });
-  open.append(svg('down'));
+  open.append(svg('chevron-down'));
   const menu = el('div', 'subscribe-menu');
   menu.hidden = true;
   menu.addEventListener('click', e => e.stopPropagation());
@@ -458,7 +459,7 @@ function saveButton() {
   const split = el('div', 'split-button pager-feed');
   const main = button('Save Calendar', 'save', 'button button-secondary button-small', () => working ? saveOnto(working) : saveCalendar());
   main.title = working ? `Save these filters onto ${working.name}` : 'Keep what the filters show, by name, under Calendar in the rail';
-  const caret = button('', 'down', 'button button-secondary button-small split-caret', () => {
+  const caret = button('', 'chevron-down', 'button button-secondary button-small split-caret', () => {
     menu.hidden = !menu.hidden;
     if (!menu.hidden) {
       setTimeout(() => document.addEventListener('click', () => {
@@ -504,7 +505,7 @@ async function saveOnto(f) {
     return;
   }
   setActiveFeed(f.token);
-  toast(`Saved onto ${f.name}.`, 4000);
+  longToast(`Saved onto ${f.name}.`);
   await load();
 }
 
@@ -519,12 +520,12 @@ function monthGrid() {
     wrap.replaceChildren();
     const month = state.month;
     const pager = el('div', 'pager');
-    const back = button('', 'back', 'icon-button strip-arrow', () => {
+    const back = button('', 'chevron-left', 'icon-button strip-arrow', () => {
       state.month = shiftMonth(month, -1);
       paint();
     });
     back.setAttribute('aria-label', 'Previous month');
-    const fwd = button('', 'chevron', 'icon-button strip-arrow', () => {
+    const fwd = button('', 'chevron-right', 'icon-button strip-arrow', () => {
       state.month = shiftMonth(month, 1);
       paint();
     });
@@ -586,7 +587,7 @@ export function homePage(date) {
     const name = el('button', 'calendar-headline-name');
     name.type = 'button';
     name.title = 'Switch calendar';
-    name.append(el('h1', '', shown.name), svg('down'));
+    name.append(el('h1', '', shown.name), svg('chevron-down'));
     const menu = calendarMenu(() => {
       menu.hidden = true;
     });
@@ -617,11 +618,11 @@ export function homePage(date) {
     headline.append(subscribeMenu(shown));
     if (shown.token === defaultFeed().token) {
       const badge = el('span', 'calendar-default');
-      badge.append(svg('pushpin'), el('span', '', 'Default Calendar'));
+      badge.append(svg('pin'), el('span', '', 'Default Calendar'));
       badge.title = 'The calendar this page opens to, and Heliosian reads';
       headline.append(badge);
     } else {
-      const make = button('Make Default', 'pushpin', 'calendar-make-default', () => makeDefaultFeed(shown));
+      const make = button('Make Default', 'pin', 'calendar-make-default', () => makeDefaultFeed(shown));
       make.title = 'Open the calendar and Heliosian to ' + shown.name + ' from now on';
       headline.append(make);
     }

@@ -1,6 +1,6 @@
 import {state, descendants, activityPath, mySignUp, rootOf, parentOf, revealed} from '../state.js';
 import {parseWhen} from '/datecard.js';
-import {el, link, svg, button} from '../dom.js';
+import {el, link, svg, button} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {categoryClass} from '../cards.js';
 
@@ -132,11 +132,11 @@ export function calendarPage() {
   }));
   const prev = el('button', 'icon-button');
   prev.type = 'button';
-  prev.append(svg('prev'));
+  prev.append(svg('chevron-left'));
   prev.addEventListener('click', () => step(-1));
   const next = el('button', 'icon-button');
   next.type = 'button';
-  next.append(svg('next'));
+  next.append(svg('chevron-right'));
   next.addEventListener('click', () => step(1));
   nav.append(prev, next);
   head.append(title, nav);

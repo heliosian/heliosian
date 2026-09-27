@@ -1,5 +1,6 @@
 import {state} from '../state.js';
-import {el, svg, paletteColor} from '../dom.js';
+import {paletteColor} from '../dom.js';
+import {el, svg} from '/elements.js';
 import {personLink, photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl} from '../people.js';
 import {matchesFilters} from '../filters.js';
 

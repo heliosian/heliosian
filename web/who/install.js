@@ -1,4 +1,4 @@
-import {el, svg} from './dom.js';
+import {el, svg} from '/elements.js';
 
 let deferredInstallPrompt = null;
 const INSTALL_PROMPT_DISMISS_KEY = 'installPromptDismissedAt';
@@ -86,7 +86,7 @@ function installPromptOverlay(isIOS) {
     if (iosChrome()) {
       hint.append('Open this page in Safari to install it.');
     } else if (iosMajorVersion() >= 26) {
-      const dots = svg('ellipsis');
+      const dots = svg('more');
       dots.classList.add('install-prompt-dots');
       hint.append('Tap ', dots, ' then ', svg('upload'), ' Share, then “Add to Home Screen”');
     } else {

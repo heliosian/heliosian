@@ -1,23 +1,4 @@
-const icons = {
-  clock: 'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM12 7v5l3 2',
-  pin: 'M12 22s7-7.6 7-12a7 7 0 1 0-14 0c0 4.4 7 12 7 12zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
-  calendar: 'M4 5h16a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM3 10h18M8 3v4M16 3v4',
-  calendarPlus: 'M12 20H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v6M3 10h18M8 3v4M16 3v4M18 15v6M15 18h6',
-};
-
-function icon(name) {
-  const mark = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  mark.setAttribute('viewBox', '0 0 24 24');
-  mark.setAttribute('fill', 'none');
-  mark.setAttribute('stroke', 'currentColor');
-  mark.setAttribute('stroke-width', '1.8');
-  mark.setAttribute('stroke-linecap', 'round');
-  mark.setAttribute('stroke-linejoin', 'round');
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', icons[name]);
-  mark.append(path);
-  return mark;
-}
+import {el, svg} from '/elements.js';
 
 const sunArt = {
   morning: '<svg viewBox="0 0 40 24" aria-hidden="true"><g stroke="#f5b400" stroke-width="2.4" stroke-linecap="round"><path d="M20 3v4M8.5 7.5l2.8 2.8M31.5 7.5l-2.8 2.8M3 19h5M32 19h5"/></g><path d="M11 21a9 9 0 0 1 18 0z" fill="#f5b400"/></svg>',
@@ -86,7 +67,7 @@ function placeLines(location) {
   return [location.slice(0, comma), location.slice(comma + 1).trim()];
 }
 
-export function dateCard(el, {start, end, allDay = false, location = '', add = ''}) {
+export function dateCard({start, end, allDay = false, location = '', add = ''}) {
   const from = parseWhen(start);
   if (!from) {
     return null;
@@ -110,7 +91,7 @@ export function dateCard(el, {start, end, allDay = false, location = '', add = '
   const lines = el('div', 'hero-lines');
   const line = (name, ...words) => {
     const row = el('div', 'hero-line');
-    row.append(icon(name));
+    row.append(svg(name));
     const text = el('div', 'hero-line-text');
     for (const w of words) {
       text.append(el('div', '', w));
@@ -125,7 +106,7 @@ export function dateCard(el, {start, end, allDay = false, location = '', add = '
       button.target = '_blank';
       button.rel = 'noopener';
       button.title = 'Add to Google Calendar';
-      button.append(icon('calendarPlus'), el('span', '', 'Add'));
+      button.append(svg('calendar-plus'), el('span', '', 'Add'));
       row.append(button);
     }
     return row;
@@ -139,7 +120,7 @@ export function dateCard(el, {start, end, allDay = false, location = '', add = '
     const hours = !timed ? 'All day' : to.hasTime && to.date > from.date ? timeRange(from.date, to.date) : clockFormat.format(from.date);
     lines.append(withAdd(line('clock', hours)));
     if (location) {
-      lines.append(line('pin', ...placeLines(location)));
+      lines.append(line('map', ...placeLines(location)));
     }
   }
   card.append(el('span', 'hero-sep'), lines);

@@ -1,5 +1,6 @@
 import {byEmail, staleYears} from './state.js';
-import {el, svg, withFrom, firstName, infoBanner} from './dom.js';
+import {withFrom, firstName, infoBanner} from './dom.js';
+import {el, svg} from '/elements.js';
 import {familyOf, canEditFamily} from './families.js';
 import {personSlug} from './people.js';
 import {submitMedia} from './edit.js';
@@ -59,7 +60,7 @@ export function familyInfoBanner(items) {
   const count = items.length;
   const title = `${count} Update${count === 1 ? '' : 's'} Needed`;
   const desc = items.map(i => i.label).join(', ');
-  return infoBanner('alert', 'alert', title, desc, 'Update Family Info', '/my-family', false);
+  return infoBanner('alert', 'warn', title, desc, 'Update Family Info', '/my-family', false);
 }
 
 function todoPhotoRow(item) {

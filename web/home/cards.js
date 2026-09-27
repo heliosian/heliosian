@@ -1,5 +1,6 @@
 import {state, isAdmin, tagLabelsOf} from './state.js';
-import {el, svg, iconOf, toast} from './dom.js';
+import {iconOf, categoryMark} from './dom.js';
+import {el, svg, toast} from '/elements.js';
 import {openLinkEditor, openCategoryEditor, openAppEditor, moveApp, moveLink} from './edit.js';
 import {appOrigin} from '/toolbar.js';
 import {api} from '/api.js';
@@ -40,7 +41,7 @@ function editPencil(link, category) {
 
 function categoryGlyph(category, className) {
   const wrap = el('span', className);
-  wrap.append(svg(iconOf(category)));
+  wrap.append(categoryMark(iconOf(category)));
   return wrap;
 }
 
@@ -53,7 +54,7 @@ function artwork(link, category, imageClass, initialClass) {
     return img;
   }
   const mark = el('div', initialClass + ' is-icon');
-  mark.append(svg(iconOf(category)));
+  mark.append(categoryMark(iconOf(category)));
   return mark;
 }
 
@@ -146,7 +147,7 @@ function limited(category, items, needle) {
 function seeMore(category, hidden, rerender) {
   const button = el('button', 'button button-secondary see-more');
   button.type = 'button';
-  button.append(el('span', '', `See more (${hidden})`), svg('chevron'));
+  button.append(el('span', '', `See more (${hidden})`), svg('chevron-right'));
   button.addEventListener('click', () => {
     expanded.add(category.title);
     rerender();
@@ -265,7 +266,7 @@ export function rsvpButtons(event) {
       const send = el('button', 'event-invite');
       send.type = 'button';
       const label = () => {
-        send.replaceChildren(svg(event.answer === 'yes' ? 'check' : 'calendarAdd'), el('span', '', event.answer === 'yes' ? 'Invite sent' : 'Add to My Calendar'));
+        send.replaceChildren(svg(event.answer === 'yes' ? 'check' : 'calendar-plus'), el('span', '', event.answer === 'yes' ? 'Invite sent' : 'Add to My Calendar'));
         send.classList.toggle('is-sent', event.answer === 'yes');
         send.title = event.answer === 'yes' ? 'Sent to your email - click to send it again' : 'Email me a calendar invite';
       };

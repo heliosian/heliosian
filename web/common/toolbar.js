@@ -1,5 +1,6 @@
 import {modeRow, offerQuan} from '/mode.js';
 import {api} from '/api.js';
+import {el, toast} from '/elements.js';
 
 const homeApp = {key: 'home', name: 'Heliosian', tagline: 'Helios Community Apps'};
 
@@ -237,17 +238,6 @@ window.addEventListener('unhandledrejection', e => {
   noteError(reason && reason.stack ? reason.stack.split('\n').slice(0, 2).join(' ') : String(reason));
 });
 
-export function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) {
-    node.className = className;
-  }
-  if (text) {
-    node.textContent = text;
-  }
-  return node;
-}
-
 const prompts = {
   bug: {summary: 'What went wrong?', details: 'What you did, what you expected, and what happened instead.'},
   idea: {summary: 'What would you like?', details: 'Where it would help, and what it would do.'},
@@ -417,22 +407,6 @@ function openFeedback() {
   feedback.status.textContent = '';
   feedback.overlay.hidden = false;
   feedback.summary.focus();
-}
-
-let toastTimer;
-
-function toast(message) {
-  let node = document.querySelector('.feedback-toast');
-  if (!node) {
-    node = el('div', 'feedback-toast');
-    document.body.append(node);
-  }
-  node.textContent = message;
-  node.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    node.hidden = true;
-  }, 2400);
 }
 
 export function renderAvatars({photoUrl, initial}) {

@@ -1,5 +1,5 @@
 import {state, me, isSystemAdmin, applySuperEdit, managed, groupPath} from './state.js';
-import {el, svg, link} from './dom.js';
+import {el, svg, link} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {render} from '/router.js';
 
@@ -73,7 +73,7 @@ function fillNav(nav) {
       heading.type = 'button';
       heading.setAttribute('aria-expanded', String(open));
       const chevron = el('span', 'nav-chevron');
-      chevron.append(svg('chevron'));
+      chevron.append(svg('chevron-down'));
       heading.append(svg('archive'), el('span', 'nav-heading-title', 'Archived'), el('span', 'nav-sub-count', String(archived.length)), chevron);
       heading.addEventListener('click', () => {
         setArchivedOpen(!open);

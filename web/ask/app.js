@@ -2,6 +2,7 @@ import {onSlash} from '/toolbar.js';
 import {api, signedIn} from '/api.js';
 import {initTopbar, renderAccount} from '/shell.js';
 import {render, stable} from '/markdown.js';
+import {el, toast} from '/elements.js';
 
 const maxChats = 50;
 const ivLength = 12;
@@ -81,29 +82,6 @@ function saveChats() {
 
 function textMessage(role, text) {
   return {role, content: [{type: 'text', text}]};
-}
-
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
-}
-
-let toastTimer;
-
-function toast(message) {
-  const node = document.querySelector('#toast');
-  node.textContent = message;
-  node.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    node.hidden = true;
-  }, 2600);
 }
 
 function thread() {

@@ -1,5 +1,5 @@
 import {state, isAdmin, isSystemAdmin, canApprove, hostedParties, pendingParties, partyPath, whenLine, money, canHost} from '../state.js';
-import {el, link, button, thumb, svg} from '../dom.js';
+import {el, link, button, imageThumb, svg} from '/elements.js';
 import {tabStrip} from '/tabs.js';
 import {hostingShown} from '../chrome.js';
 import {setTitle, setSearch, renderChrome} from '/shell.js';
@@ -10,7 +10,7 @@ let query = '';
 
 function hostRow(p) {
   const row = link(partyPath(p), 'row is-link' + (p.status !== 'Open' ? ' is-muted' : ''));
-  row.append(thumb(p.imageUrl, p.title));
+  row.append(imageThumb(p.imageUrl, p.title));
   const body = el('div', 'row-body');
   const label = el('div', 'label');
   label.append(el('span', '', whenLine(p) || 'Date to come'));
@@ -35,7 +35,7 @@ function hostRow(p) {
   if (p.canEdit) {
     actions.append(button('', 'edit', 'edit-icon', () => openParty(p)));
   }
-  const chevron = svg('chevron');
+  const chevron = svg('chevron-right');
   chevron.classList.add('chevron');
   actions.append(chevron);
   row.append(actions);

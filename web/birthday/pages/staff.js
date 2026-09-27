@@ -1,12 +1,12 @@
 import {me, isAdmin, settings, charity, longDate, mediumDate, emailLink, newsletterText} from '../state.js';
-import {el, link, svg, thumb, button, iconButton, copyText} from '../dom.js';
+import {el, link, svg, thumb, button, iconButton, copyText} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {openAssign, markContacted, markUsed, useDefault, reuseLast, openDonation, openBirthday, openParticipation, openNote, removeNote} from '../edit.js';
 
 function crumb(sv) {
   const nav = el('div', 'crumb');
   const back = link('/process', '');
-  back.append(svg('back'));
+  back.append(svg('chevron-left'));
   nav.append(back, link('/process', '', 'Process'), el('span', '', '/'), el('span', 'current', sv.name));
   return nav;
 }
@@ -200,12 +200,12 @@ function donationBand(sv) {
   const cols = el('div', 'year-cards');
   cols.append(donationColumn('This Year', 'mint', sv, sv.donation, sv.donation ? [outlined('Edit Donation', 'edit', () => openDonation(sv))] : []));
   if (sv.lastDonation) {
-    const reuse = outlined('Re-Use Donation', 'reuse', () => reuseLast(sv));
+    const reuse = outlined('Re-Use Donation', 'sync', () => reuseLast(sv));
     reuse.disabled = Boolean(sv.donation && sv.donation.charity === sv.lastDonation.charity);
     cols.append(donationColumn('Last Year', 'sky', sv, sv.lastDonation, [reuse]));
   } else {
     const d = settings().defaultCharity;
-    const useDefaultButton = outlined('Use Default Charity', 'reuse', () => useDefault(sv));
+    const useDefaultButton = outlined('Use Default Charity', 'sync', () => useDefault(sv));
     useDefaultButton.disabled = Boolean(sv.donation && sv.donation.charity === d);
     const c = charity(d);
     cols.append(donationColumn('Default Donation', 'sky', sv, {charity: d, note: c ? c.about : ''}, [useDefaultButton]));
@@ -225,7 +225,7 @@ function notes(sv) {
   }
   const actions = el('div', 'center-actions');
   actions.append(button('Add Note', 'plus', 'button button-secondary', () => openNote(sv)));
-  actions.append(button(sv.level ? 'Edit Preference' : 'Set Preference', 'skipped', 'button button-secondary', () => openParticipation(sv)));
+  actions.append(button(sv.level ? 'Edit Preference' : 'Set Preference', 'warn', 'button button-secondary', () => openParticipation(sv)));
   wrap.append(actions);
   return wrap;
 }
@@ -242,7 +242,7 @@ export function staffPage(sv) {
     band.append(body);
     const actions = el('div', 'row-actions');
     actions.append(filled('Add Birthday', 'plus', () => openBirthday(sv)));
-    actions.append(outlined(sv.level ? 'Edit Preference' : 'Set Preference', 'skipped', () => openParticipation(sv)));
+    actions.append(outlined(sv.level ? 'Edit Preference' : 'Set Preference', 'warn', () => openParticipation(sv)));
     band.append(actions);
     page.append(band);
     return page;
@@ -255,7 +255,7 @@ export function staffPage(sv) {
     body.append(el('div', 'row-title', 'Opted out'), el('div', 'row-text', sv.levelNote || 'Asked not to take part.'));
     band.append(body);
     const actions = el('div', 'row-actions');
-    actions.append(outlined('Edit Preference', 'skipped', () => openParticipation(sv)));
+    actions.append(outlined('Edit Preference', 'warn', () => openParticipation(sv)));
     band.append(actions);
     page.append(band);
     return page;

@@ -1,6 +1,6 @@
 import {eventPath, timeColumn, whenLine, timeRange, audienceWords, categoryTags, eventColors, plan, specials, isSchoolDay, dayLabel, today, selectedClassrooms, classroomNames, linkURL} from './state.js';
 import {dayTypeClass} from '/daytype.js';
-import {el, link, svg} from './dom.js';
+import {el, link, svg} from '/elements.js';
 
 export function audienceChips(e) {
   const wrap = el('div', 'chips');

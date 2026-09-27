@@ -1,5 +1,6 @@
 import {state, isAdmin, managed, matches, groupPath} from '../state.js';
-import {el, svg, link, button, iconButton, copyText, pageHead} from '../dom.js';
+import {pageHead} from '../dom.js';
+import {el, svg, link, button, iconButton, copyText} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
 import {navigate} from '/router.js';
 

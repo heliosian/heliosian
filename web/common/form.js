@@ -1,13 +1,4 @@
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
-}
+import {el, svg} from '/elements.js';
 
 export function field(label, input, hint, required) {
   const wrap = el('label', 'field' + (required ? ' is-required' : ''));
@@ -125,8 +116,7 @@ export function whenPickers(label, value, onChange, clearLabel) {
   clear.type = 'button';
   clear.title = clearLabel;
   clear.setAttribute('aria-label', clearLabel);
-  clear.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
-  clear.append(el('span', '', clearLabel));
+  clear.append(svg('close'), el('span', '', clearLabel));
   clear.addEventListener('click', () => {
     date.value = '';
     time.value = '';

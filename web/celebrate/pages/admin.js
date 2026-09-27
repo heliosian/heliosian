@@ -1,5 +1,5 @@
 import {state, isSystemAdmin, me, money, whenLine, celebration} from '../state.js';
-import {el, button, svg} from '../dom.js';
+import {el, button, svg} from '/elements.js';
 import {openCelebration, openCategory, openSettings, openMoveAddress, people} from '../edit.js';
 import {load} from '/router.js';
 import {api} from '/api.js';

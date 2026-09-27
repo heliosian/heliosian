@@ -1,5 +1,6 @@
 import {byEmail, colors} from './state.js';
-import {el, withFrom, thumbUrl, hue, lastName} from './dom.js';
+import {withFrom, thumbUrl, hue, lastName} from './dom.js';
+import {el} from '/elements.js';
 import {familyOf} from './families.js';
 import {tagControl} from './tags.js';
 

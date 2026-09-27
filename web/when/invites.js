@@ -1,5 +1,5 @@
 import {state, me, isAdmin, postedAndHosting, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
-import {el, svg, button, toast, avatar, copyText} from './dom.js';
+import {el, svg, button, toast, longToast, avatar, copyText} from '/elements.js';
 import {popup} from '/modal.js';
 import {load} from '/router.js';
 import {whoLink} from '/toolbar.js';
@@ -212,7 +212,7 @@ export function familyBand(e, view, refresh) {
         said.append(mark, el('span', '', `${r.key === me().email ? 'You' : firstName(r)} said `), el('strong', '', answerWords[r.answer]));
         tools.append(said);
         if (r.mine) {
-          tools.append(button('Edit', 'pencil', 'link-button fam-edit', () => paintTools(true)));
+          tools.append(button('Edit', 'edit', 'link-button fam-edit', () => paintTools(true)));
         }
         return;
       }
@@ -545,7 +545,7 @@ function openMessage(e, view, refresh, preset = {}) {
     send.disabled = true;
     try {
       const made = await api('POST', '/api/when/invites/message', {id: e.id, subject: subject.value.trim(), message: message.value.trim(), to: [...to], emails: [...picked], attach: Boolean(preset.attach)});
-      toast(made.messages === 1 ? 'Sent to one person' : `Sent to ${made.messages} people`, 4000);
+      longToast(made.messages === 1 ? 'Sent to one person' : `Sent to ${made.messages} people`);
       shut();
       refresh();
     } catch (err) {
@@ -686,7 +686,7 @@ function menuButton(label, icon, items) {
   const toggle = el('button', 'button button-secondary button-small');
   toggle.type = 'button';
   toggle.setAttribute('aria-haspopup', 'menu');
-  toggle.append(svg(icon), el('span', '', label), svg('down'));
+  toggle.append(svg(icon), el('span', '', label), svg('chevron-down'));
   const menu = el('div', 'hero-image-menu');
   menu.hidden = true;
   for (const item of items) {
@@ -794,7 +794,7 @@ function openPending(e, view, refresh) {
   const sendTo = async (emails, words) => {
     try {
       const made = await api('POST', '/api/when/invites/send', {id: e.id, emails});
-      toast(made.messages === 1 ? 'One invite is on its way' : `${made.messages} invites are on their way`, 4000);
+      longToast(made.messages === 1 ? 'One invite is on its way' : `${made.messages} invites are on their way`);
       shut();
       refresh();
     } catch (err) {
@@ -970,7 +970,7 @@ function openGuestCard(e, p, view, refresh) {
     links.append(button(p.sent ? 'Resend invitation' : 'Send invitation', 'calendar', 'link-button', async () => {
       try {
         const made = await api('POST', '/api/when/invites/send', {id: e.id, emails: [p.key]});
-        toast(made.messages === 1 ? 'The invitation is on its way' : `${made.messages} emails are on their way`, 4000);
+        longToast(made.messages === 1 ? 'The invitation is on its way' : `${made.messages} emails are on their way`);
         shut();
         refresh();
       } catch (err) {
@@ -1084,7 +1084,7 @@ async function sendInvites(e, to, words, refresh) {
   }
   try {
     const made = await api('POST', '/api/when/invites/send', {id: e.id, to});
-    toast(made.messages === 1 ? 'One invite is on its way' : `${made.messages} invites are on their way`, 4000);
+    longToast(made.messages === 1 ? 'One invite is on its way' : `${made.messages} invites are on their way`);
     refresh();
   } catch (err) {
     toast(err.message);
@@ -1216,7 +1216,7 @@ export function guestListSection(e, view, refresh) {
     const toggle = el('button', 'guests-group-toggle');
     toggle.type = 'button';
     toggle.title = 'Show or hide the people in this group';
-    toggle.append(svg('down'));
+    toggle.append(svg('chevron-down'));
     toggle.addEventListener('click', onToggle);
     row.append(toggle);
     const foot = el('div', 'guests-group-foot');
@@ -1434,7 +1434,7 @@ export function guestListSection(e, view, refresh) {
   openMark.append(svg('menu'));
   const openWords = el('div', 'guests-table-words');
   openWords.append(el('div', 'guests-table-title', 'Guest table'), el('div', 'guests-table-sub', 'View and manage your full guest list.'));
-  open.append(openMark, openWords, svg('chevron'));
+  open.append(openMark, openWords, svg('chevron-right'));
   open.addEventListener('click', () => openTable(e, view, refresh));
   section.append(open);
   if (view.sent) {
@@ -1484,7 +1484,7 @@ function openCancel(e, view, refresh) {
   const cancel = async notify => {
     try {
       const made = await api('POST', '/api/when/events/cancel', {id: e.id, notify, note: note.value});
-      toast(notify ? `Cancelled - ${made.told} ${made.told === 1 ? 'person' : 'people'} told` : 'Cancelled', 4000);
+      longToast(notify ? `Cancelled - ${made.told} ${made.told === 1 ? 'person' : 'people'} told` : 'Cancelled');
       shut();
       refresh();
     } catch (err) {
@@ -1510,7 +1510,7 @@ function openCancel(e, view, refresh) {
 }
 
 function listFilters(all, view, onChange, {answer = '', opened = '', rsvp = true} = {}) {
-  const {chipToggle, filterControl} = filterWidgets({el, svg, button});
+  const {chipToggle, filterControl} = filterWidgets();
   const bar = el('div', 'guest-table-bar');
   const search = el('input', 'rule-search');
   search.type = 'search';
@@ -1871,7 +1871,7 @@ export async function offerUpdate(e, changed) {
   actions.append(button(`Send the update to ${people.length}`, 'mail', 'button', async () => {
     try {
       const made = await api('POST', '/api/when/invites/send', {id: e.id, to: 'sent', update: true});
-      toast(made.messages === 1 ? 'The update is on its way' : `${made.messages} updates are on their way`, 4000);
+      longToast(made.messages === 1 ? 'The update is on its way' : `${made.messages} updates are on their way`);
       shut();
     } catch (err) {
       toast(err.message);
@@ -1899,7 +1899,6 @@ function pickerPeople(e, keep) {
 let ruleOptions = null;
 
 const rules = rulesEditor({
-  el, svg,
   options: () => ruleOptions,
   personName: () => '',
 });
@@ -1941,7 +1940,7 @@ async function openPicker(e, view, refresh) {
   }
   let shut = null;
   const done = async words => {
-    toast(words, 5000);
+    longToast(words);
     shut();
     refresh();
   };
@@ -2298,7 +2297,7 @@ export function inviteHostCall(e, view, refresh) {
       try {
         const made = await startParty(e);
         const who = party ? ['ticket holders', 'the tickets'] : ['volunteers', 'the sign-ups'];
-        toast(made.added ? `${made.added} ${who[0]} on the list - it follows ${who[1]} from here.` : `The list follows ${who[1]} from here.`, 5000);
+        longToast(made.added ? `${made.added} ${who[0]} on the list - it follows ${who[1]} from here.` : `The list follows ${who[1]} from here.`);
         refresh();
       } catch (err) {
         toast(err.message);

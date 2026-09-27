@@ -1,6 +1,7 @@
 import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, canJoin, isFull, mySignUp, signUpOf, activityPath, rootOf, parentOf, category, UNCATEGORIZED} from './state.js';
 import {parseWhen} from '/datecard.js';
-import {el, link, svg, thumb, badge, button} from './dom.js';
+import {badge} from './dom.js';
+import {el, link, svg, imageThumb, button} from '/elements.js';
 import {openSignUp, openActivity} from './edit.js';
 import {navigate} from '/router.js';
 
@@ -139,7 +140,7 @@ function joinButton(node) {
 
 export function childRow(node, editing, moves) {
   const row = link(activityPath(node), 'row is-link' + (node.status === 'Hidden' || node.status === 'Pending' ? ' is-muted' : ''));
-  row.append(thumb(node.imageUrl || rootOf(node).imageUrl, node.title));
+  row.append(imageThumb(node.imageUrl || rootOf(node).imageUrl, node.title));
   const body = el('div', 'row-body');
   body.append(labelLine(node));
   const title = el('div', 'row-title', node.title);
@@ -201,7 +202,7 @@ export function childRow(node, editing, moves) {
     pencil.setAttribute('aria-label', pencil.title);
     actions.append(pencil);
   }
-  const chevron = svg('chevron');
+  const chevron = svg('chevron-right');
   chevron.classList.add('chevron');
   actions.append(chevron);
   row.append(actions);
@@ -210,7 +211,7 @@ export function childRow(node, editing, moves) {
 
 export function linkRow(act, item, editor, onEdit) {
   const row = el('div', 'row');
-  row.append(thumb(item.imageUrl || act.imageUrl, item.title, 'small'));
+  row.append(imageThumb(item.imageUrl || act.imageUrl, item.title, 'small'));
   const body = el('div', 'row-body');
   body.append(el('div', 'row-title', item.title));
   const anchor = el('a', 'row-text', item.url.replace(/^https?:\/\//, ''));
@@ -269,7 +270,7 @@ export function activityCard(act, opts = {}) {
 function activityCardBody(act, opts) {
   const card = el('div', 'card' + (act.status === 'Hidden' || act.status === 'Pending' ? ' is-muted' : ''));
   const media = link(activityPath(act), 'card-media');
-  media.append(thumb(act.imageUrl, act.title, 'card-image ' + categoryClass(act.category)));
+  media.append(imageThumb(act.imageUrl, act.title, 'card-image ' + categoryClass(act.category)));
   if (act.coLeaderNeeded) {
     const need = el('span', 'card-chip card-need');
     need.append(svg('people'), el('span', '', 'Co-chair needed'));
@@ -350,7 +351,7 @@ function activityCardBody(act, opts) {
 export function priorityRow(node) {
   const root = rootOf(node);
   const row = link(activityPath(node), 'prio-row');
-  row.append(thumb(node.imageUrl || root.imageUrl, node.title, 'prio-pic'));
+  row.append(imageThumb(node.imageUrl || root.imageUrl, node.title, 'prio-pic'));
   const main = el('div', 'prio-main');
   const above = [];
   for (let up = parentOf(node); up; up = parentOf(up)) {
@@ -403,7 +404,7 @@ export function priorityRow(node) {
     act.append(button('Sign up', null, 'button prio-signup', () => openSignUp(node, null)));
   }
   row.append(act);
-  const chevron = svg('chevron');
+  const chevron = svg('chevron-right');
   chevron.classList.add('chevron');
   row.append(chevron);
   return row;

@@ -1,5 +1,6 @@
 import {byEmail, privacyLinks} from '../state.js';
-import {el, svg, infoBanner} from '../dom.js';
+import {infoBanner} from '../dom.js';
+import {el, svg} from '/elements.js';
 import {familyOf} from '../families.js';
 
 const veracrossAddressLabels = {full: 'Full Address', partial: 'Partial (City Only)', hidden: 'Hidden'};
@@ -49,7 +50,7 @@ function privacyRow(label, veracrossState, veracrossLabels, masked, shownValue) 
 
 function privacyWarningBanner(label) {
   return infoBanner(
-    'alert', 'alert',
+    'alert', 'warn',
     `Your ${label} is visible on Veracross but hidden here`,
     "Hiding it in the Helios Who app does not hide it on Veracross - anyone with Veracross access can still see it there. " +
       "To match what Veracross already shows, sync your Helios Who opt-in.",
@@ -117,7 +118,7 @@ export function privacyPage() {
 
   const actions = el('div', 'privacy-actions');
   actions.append(
-    privacyActionButton('pencil', 'Update Veracross', privacyLinks.veracrossPreferences),
+    privacyActionButton('edit', 'Update Veracross', privacyLinks.veracrossPreferences),
     privacyActionButton('sync', 'Update Helios Who Visibility', privacyLinks.heliosWhoOptIn));
   content.append(actions);
 
@@ -179,7 +180,7 @@ export function privacyMismatchText(warnings) {
 
 export function privacyMismatchCard(warnings) {
   return infoBanner(
-    'alert', 'alert', 'Privacy Settings Mismatch', privacyMismatchText(warnings),
+    'alert', 'warn', 'Privacy Settings Mismatch', privacyMismatchText(warnings),
     'See Details', '/my-privacy', false,
     () => {
       localStorage.setItem('privacyMismatchCardDismissed', '1');

@@ -1,15 +1,5 @@
 import {openLayer} from '/modal.js';
-
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
-}
+import {el} from '/elements.js';
 
 export function openPhotoLightbox(url) {
   const overlay = el('div', 'photo-lightbox');

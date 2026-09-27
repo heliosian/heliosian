@@ -1,4 +1,4 @@
-import {el} from '/toolbar.js';
+import {el} from '/elements.js';
 import {api} from '/api.js';
 import {createPersonPicker} from '/picker.js';
 

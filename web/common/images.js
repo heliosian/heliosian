@@ -1,38 +1,9 @@
 import {openCropTool} from '/crop.js';
 import {popup} from '/modal.js';
 import {api} from '/api.js';
+import {el, svg, toast} from '/elements.js';
 
-const paths = {
-  image: 'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5-8 8',
-  search: 'M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14zM20 20l-4-4',
-};
-
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
-}
-
-function icon(name) {
-  const node = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  node.setAttribute('viewBox', '0 0 24 24');
-  node.setAttribute('fill', 'none');
-  node.setAttribute('stroke', 'currentColor');
-  node.setAttribute('stroke-width', '2');
-  node.setAttribute('stroke-linecap', 'round');
-  node.setAttribute('stroke-linejoin', 'round');
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', paths[name]);
-  node.append(path);
-  return node;
-}
-
-export function imageTools(apiBase, {state, toast}) {
+export function imageTools(apiBase, {state}) {
   async function uploadImage(file) {
     const body = new FormData();
     body.append('image', file);
@@ -62,7 +33,7 @@ export function imageTools(apiBase, {state, toast}) {
     input.placeholder = 'Search for a picture…';
     const go = el('button', 'button');
     go.type = 'button';
-    go.append(icon('search'), el('span', '', 'Search'));
+    go.append(svg('search'), el('span', '', 'Search'));
     go.addEventListener('click', () => run());
     bar.append(input, go);
     const status = el('div', 'image-search-status');
@@ -141,9 +112,9 @@ export function imageTools(apiBase, {state, toast}) {
     preview.alt = '';
     const placeholder = el('div', 'image-placeholder');
     if (dropzone) {
-      placeholder.append(icon('image'), el('strong', '', 'Drag and drop an image here'), el('small', '', 'or click to choose a file'));
+      placeholder.append(svg('image'), el('strong', '', 'Drag and drop an image here'), el('small', '', 'or click to choose a file'));
     } else {
-      placeholder.append(icon('image'), el('strong', '', 'No image'), el('small', '', 'JPG, PNG or GIF'));
+      placeholder.append(svg('image'), el('strong', '', 'No image'), el('small', '', 'JPG, PNG or GIF'));
     }
     const choose = el('label', 'button button-secondary button-small', dropzone ? 'Choose image' : 'Choose');
     const file = el('input');

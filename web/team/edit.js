@@ -6,7 +6,8 @@ function* allNodes() {
     yield* descendants(root);
   }
 }
-import {el, svg, toast, button, thumb, whenEditor} from './dom.js';
+import {whenEditor} from './dom.js';
+import {el, svg, toast, button, imageThumb} from '/elements.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
 import {whoLink} from '/toolbar.js';
@@ -16,7 +17,7 @@ import {load, navigate, render} from '/router.js';
 import {field, text, textarea, select, checkbox, segmented} from '/form.js';
 import {tabbedFields} from '/tabs.js';
 
-export const {uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/team', {state, toast});
+export const {uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/team', {state});
 
 export async function saveActivity(body) {
   const before = body.id && activity(body.id) ? activityPath(activity(body.id)) : null;
@@ -782,7 +783,7 @@ export function openVolunteerGrid(root, nodes, pathOf) {
     const sort = el('button', 'roster-sort');
     sort.type = 'button';
     sort.title = `Sort by ${c.label}`;
-    sort.append(el('span', '', c.label), svg('chevron'));
+    sort.append(el('span', '', c.label), svg('chevron-right'));
     sort.addEventListener('click', () => sortBy(c, th));
     th.append(sort, copyGlyph(`Copy the ${c.label} column`, () => rows.map(c.get).filter(Boolean).join('\n')));
     head.append(th);
@@ -1010,7 +1011,7 @@ export function categoryList(root, after) {
   list.forEach((category, i) => {
     const row = el('div', 'admin-row');
     if (category.imageUrl) {
-      row.append(thumb(category.imageUrl, category.title, 'small'));
+      row.append(imageThumb(category.imageUrl, category.title, 'small'));
     }
     const body = el('div', 'grow');
     body.append(el('div', '', category.title));

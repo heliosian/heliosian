@@ -1,5 +1,6 @@
 import {state} from './state.js';
-import {el, svg, slugify} from './dom.js';
+import {slugify} from './dom.js';
+import {el, svg} from '/elements.js';
 import {tagsOf, tagControl, tagLabel, tagHref} from './tags.js';
 import {setChrome} from './chrome.js';
 

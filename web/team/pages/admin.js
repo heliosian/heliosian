@@ -1,5 +1,5 @@
 import {state, isSystemAdmin, me} from '../state.js';
-import {el, button} from '../dom.js';
+import {el, button} from '/elements.js';
 import {categoryList, openSettings, openRedirect, people} from '../edit.js';
 import {api} from '/api.js';
 import {checkbox} from '/form.js';

@@ -1,4 +1,5 @@
 import {appOrigin} from '/toolbar.js';
+import {el} from '/elements.js';
 
 const appHosts = /^https?:\/\/(who|team|hca|celebrate|birthday|calendar|cal|when|loop|ask|home|www)\.heliosian\.com(\/.*)?$/;
 const apex = /^https?:\/\/heliosian\.com(\/.*)?$/;
@@ -15,17 +16,6 @@ export function localizeLink(href) {
     return appOrigin('home') + (m[1] || '/');
   }
   return href;
-}
-
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
 }
 
 export function stable(text) {

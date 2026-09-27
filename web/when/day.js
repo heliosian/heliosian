@@ -1,6 +1,6 @@
 import {eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, weekdayLong, specials, isSchoolDay, eventTint, timeLine, eventPath, isMatch, isGray} from './state.js';
 import {dayTypeClass} from '/daytype.js';
-import {el, link, svg, button} from './dom.js';
+import {el, link, svg, button} from '/elements.js';
 import {popup} from '/modal.js';
 import {load, navigate} from '/router.js';
 import {eventForm} from './eventform.js';
@@ -15,12 +15,12 @@ function miniMonth(date, paging) {
     const month = paging.month;
     const head = el('div', 'mini-head');
     const arrows = el('span', 'mini-arrows');
-    const back = button('', 'back', 'mini-arrow', () => {
+    const back = button('', 'chevron-left', 'mini-arrow', () => {
       paging.month = shiftMonth(month, -1);
       paint();
     });
     back.setAttribute('aria-label', 'Previous month');
-    const fwd = button('', 'chevron', 'mini-arrow', () => {
+    const fwd = button('', 'chevron-right', 'mini-arrow', () => {
       paging.month = shiftMonth(month, 1);
       paint();
     });

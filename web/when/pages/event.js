@@ -1,6 +1,7 @@
 import {state, isAdmin, isSystemAdmin, postedAndHosting, sourceWords, dayType, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
-import {el, svg, paragraphs, button, toast, avatar, copyText} from '../dom.js';
+import {paragraphs} from '../dom.js';
+import {el, svg, button, toast, longToast, avatar, copyText} from '/elements.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
 import {whoLink} from '/toolbar.js';
@@ -21,7 +22,7 @@ function hero(e) {
     }
   }, {once: true});
   wrap.append(img);
-  wrap.append(dateCard(el, {start: e.start, end: e.end, allDay: e.allDay, location: e.location, add: googleCalendarLink({title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location || '', details: [e.description, location.origin + eventPath(e)].filter(Boolean).join('\n\n')})}));
+  wrap.append(dateCard({start: e.start, end: e.end, allDay: e.allDay, location: e.location, add: googleCalendarLink({title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location || '', details: [e.description, location.origin + eventPath(e)].filter(Boolean).join('\n\n')})}));
   if (e.link) {
     wrap.append(linkedBadge(e));
   }
@@ -77,7 +78,7 @@ function heroImageBar(e) {
   const toggle = el('button', 'hero-image-action');
   toggle.type = 'button';
   toggle.setAttribute('aria-haspopup', 'menu');
-  toggle.append(svg('image'), el('span', '', e.image ? 'Replace image' : 'Add an image'), svg('down'));
+  toggle.append(svg('image'), el('span', '', e.image ? 'Replace image' : 'Add an image'), svg('chevron-down'));
   const menu = el('div', 'hero-image-menu');
   menu.hidden = true;
   const item = (icon, words, onClick) => {
@@ -127,10 +128,10 @@ export function eventPage(e) {
   const back = el('a', 'detail-back');
   back.href = '/day/' + eventDates(e)[0];
   back.setAttribute('data-link', '');
-  back.append(svg('back'), el('span', '', monthLabel(monthOf(eventDates(e)[0]))));
+  back.append(svg('chevron-left'), el('span', '', monthLabel(monthOf(eventDates(e)[0]))));
   top.append(back);
   if ((imported(e) && isAdmin()) || (e.source === 'sheet' && (isAdmin() || postedAndHosting(e)))) {
-    tools.append(button('Edit', 'pencil', 'button button-secondary button-small detail-edit', async () => {
+    tools.append(button('Edit', 'edit', 'button button-secondary button-small detail-edit', async () => {
       const {openEditor} = await import('../invites.js');
       openEditor(e, editorView, async () => {
         await load();
@@ -235,7 +236,7 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
     try {
       const made = await startParty(e);
       const who = isParty(e) ? ['ticket holders', 'the tickets'] : ['volunteers', 'the sign-ups'];
-      toast(made.added ? `Guest list started with ${made.added} ${who[0]} - it follows ${who[1]} from here. Send the invites when it is ready.` : `Guest list started - it follows ${who[1]} from here.`, 6000);
+      longToast(made.added ? `Guest list started with ${made.added} ${who[0]} - it follows ${who[1]} from here. Send the invites when it is ready.` : `Guest list started - it follows ${who[1]} from here.`);
     } catch (err) {
       toast(err.message);
     }
@@ -253,7 +254,7 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
   if (view.host) {
     const tools = ask.closest('.event-page')?.querySelector('.detail-tools');
     if (tools && !tools.querySelector('.detail-edit')) {
-      tools.append(button('Edit', 'pencil', 'button button-secondary button-small detail-edit', () => openEditor(e, view, refresh, {tab: 'invitation'})));
+      tools.append(button('Edit', 'edit', 'button button-secondary button-small detail-edit', () => openEditor(e, view, refresh, {tab: 'invitation'})));
     }
   }
   const invited = (view.host ? view.list : view.coming || []).some(r => r.invited);
@@ -527,7 +528,7 @@ function keywordsEditor(e) {
       }
       wrap.append(chips);
     }
-    const edit = button('Edit search words', 'pencil', 'link-button', () => {
+    const edit = button('Edit search words', 'edit', 'link-button', () => {
       wrap.replaceChildren();
       const input = el('input', 'side-keywords-edit');
       input.type = 'text';

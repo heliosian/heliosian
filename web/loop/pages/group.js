@@ -1,5 +1,6 @@
 import {state, me, isAdmin, options, groupPath} from '../state.js';
-import {el, svg, button, iconButton, copyText, toast, personRow, pageHead, thumb} from '../dom.js';
+import {personRow, pageHead} from '../dom.js';
+import {el, svg, button, iconButton, copyText, toast, thumb} from '/elements.js';
 import {whoLink} from '/toolbar.js';
 import {setTitle} from '/shell.js';
 import {api} from '/api.js';
@@ -11,7 +12,7 @@ import {rulesEditor} from '/rules.js';
 import {visibilityWords} from './groups.js';
 
 const {ruleRow, newRule, ruleSaysSomething, personWords, ruleWords} = rulesEditor({
-  el, svg, options,
+  options,
   personName: email => (state.model.people.find(p => p.email === email) || {}).name || '',
 });
 
@@ -1130,7 +1131,7 @@ function messageRow(m) {
   for (const [key, n] of [['delivered', m.delivered], ['failed', m.failed], ['pending', m.pending]]) {
     toggle.append(el('span', `delivery-count is-${key}${n ? '' : ' is-zero'}`, `${n} ${key}`));
   }
-  toggle.append(svg('chevron'));
+  toggle.append(svg('chevron-down'));
   head.append(toggle);
   row.append(head);
   const details = el('div', 'delivery-list');

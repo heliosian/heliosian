@@ -1,26 +1,17 @@
 import {appOrigin} from '/toolbar.js';
+import {el, svg, button, iconButton} from '/elements.js';
 
 function plural(role) {
   return role === 'Staff' ? 'Staff' : role + 's';
 }
 
 function chevron() {
-  const ns = 'http://www.w3.org/2000/svg';
-  const node = document.createElementNS(ns, 'svg');
-  node.setAttribute('viewBox', '0 0 24 24');
-  node.setAttribute('fill', 'none');
-  node.setAttribute('stroke', 'currentColor');
-  node.setAttribute('stroke-width', '2');
-  node.setAttribute('stroke-linecap', 'round');
-  node.setAttribute('stroke-linejoin', 'round');
+  const node = svg('chevron-right');
   node.classList.add('facet-chevron');
-  const path = document.createElementNS(ns, 'path');
-  path.setAttribute('d', 'M9 6l6 6-6 6');
-  node.append(path);
   return node;
 }
 
-export function filterWidgets({el, svg, button}) {
+export function filterWidgets() {
   function chipToggle(label, on, onChange, key) {
     const b = el('button', 'chip-toggle' + (key ? ' chip-toggle-' + key : '') + (on ? ' active' : ''), label);
     b.type = 'button';
@@ -191,38 +182,8 @@ export function filterWidgets({el, svg, button}) {
   return {chipToggle, facetDropdown, filterControl};
 }
 
-export function rulesEditor({el, svg, options, personName}) {
-  function button(label, icon, className, onClick) {
-    const node = el('button', className || 'button');
-    node.type = 'button';
-    if (icon) {
-      node.append(svg(icon));
-    }
-    node.append(el('span', '', label));
-    if (onClick) {
-      node.addEventListener('click', e => {
-        e.preventDefault();
-        onClick(e);
-      });
-    }
-    return node;
-  }
-
-  function iconButton(icon, label, className, onClick) {
-    const node = el('button', 'icon-button ' + (className || ''));
-    node.type = 'button';
-    node.setAttribute('aria-label', label);
-    node.title = label;
-    node.append(svg(icon));
-    node.addEventListener('click', e => {
-      e.preventDefault();
-      e.stopPropagation();
-      onClick(e);
-    });
-    return node;
-  }
-
-  const {chipToggle, facetDropdown} = filterWidgets({el, svg, button});
+export function rulesEditor({options, personName}) {
+  const {chipToggle, facetDropdown} = filterWidgets();
 
   const listIcons = {party: 'party', activity: 'activity', room: 'classrooms'};
 

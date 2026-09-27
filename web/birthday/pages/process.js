@@ -1,10 +1,11 @@
 import {state, stageName, stageClass, isUnassigned, matches, staffPath, tableDate, weekday, team} from '../state.js';
-import {el, link, svg, thumb, button, pageHead} from '../dom.js';
+import {pageHead} from '../dom.js';
+import {el, link, svg, thumb, button} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
 import {assignToMe} from '../edit.js';
 
 const pipeline = [
-  {key: 'unassigned', icon: 'users', tint: 'grey', note: 'These staff members are not assigned to anyone yet. Pick some up for yourself.'},
+  {key: 'unassigned', icon: 'groups', tint: 'grey', note: 'These staff members are not assigned to anyone yet. Pick some up for yourself.'},
   {key: 'Wait', icon: 'calendar', tint: 'teal', note: 'These staff members are assigned, but their outreach date hasn\'t arrived yet.'},
   {key: 'Awaiting Outreach', icon: 'send', tint: 'yellow', note: 'These staff members are due for outreach. If they are assigned to you, please contact them soon.'},
   {key: 'Awaiting Response', icon: 'chat', tint: 'orange', note: 'Waiting to hear back. If they do not reply before the newsletter deadline, the donation goes to the default charity.'},
@@ -51,7 +52,7 @@ function tiles(onPick) {
   pipeline.forEach((stage, i) => {
     if (i) {
       const arrow = el('div', 'pipeline-arrow');
-      arrow.append(svg('chevron'));
+      arrow.append(svg('chevron-right'));
       strip.append(arrow);
     }
     const tile = el('button', `pipeline-tile tint-${stage.tint}${stage.key === tab ? ' is-active' : ''}`);
@@ -183,7 +184,7 @@ function row(sv) {
   } else {
     status.append(el('span', 'status-pill ' + stageClass(sv.stage), stageName(sv.stage)));
   }
-  status.append(svg('chevron'));
+  status.append(svg('chevron-right'));
   tr.append(who, el('div', 'cell-role', sv.jobTitle || ''), dateCell('cake', sv.birthdayThisYear), dateCell('mail', sv.requestBy), assignee, status);
   return tr;
 }

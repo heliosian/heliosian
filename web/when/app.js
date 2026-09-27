@@ -1,5 +1,5 @@
 import {applyModel, event, eventPath, fetchEvent, today, parseDate, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
-import {el} from './dom.js';
+import {el} from '/elements.js';
 import {initChrome, clearSearch} from './chrome.js';
 import {showPage} from '/shell.js';
 import {api} from '/api.js';

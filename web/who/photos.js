@@ -1,4 +1,5 @@
-import {el, svg, thumbUrl} from './dom.js';
+import {thumbUrl} from './dom.js';
+import {el, svg} from '/elements.js';
 import {submitMedia, submitPhotoOrder, submitCrop} from './edit.js';
 import {openLayer} from '/modal.js';
 

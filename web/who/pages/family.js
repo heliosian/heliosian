@@ -1,5 +1,6 @@
 import {state, byEmail, colors} from '../state.js';
-import {el, svg, thumbUrl, firstName, iconButton, copyButton, pronouncePill, contactRow, withFrom, slugify} from '../dom.js';
+import {thumbUrl, firstName, copyButton, pronouncePill, contactRow, withFrom, slugify} from '../dom.js';
+import {el, svg, iconButton, iconLink} from '/elements.js';
 import {myFamilyKey, familyLink, canEditFamily} from '../families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl, roleWithPronouns, gradeChain} from '../people.js';
 import {familyPhotoNeedsUpdate, staleItems, todoChecklist} from '../stale.js';
@@ -33,10 +34,8 @@ function familyCardRow(p, subtitle) {
   if (p.phone) {
     const actions = el('div', 'fcard-actions');
     actions.append(el('span', 'fcard-phone', p.phone));
-    for (const [name, label, scheme] of [['message', 'Text', 'sms:'], ['phone', 'Call', 'tel:']]) {
-      actions.append(iconButton(name, label, e => {
-        e.preventDefault();
-        e.stopPropagation();
+    for (const [name, label, scheme] of [['chat', 'Text', 'sms:'], ['phone', 'Call', 'tel:']]) {
+      actions.append(iconButton(name, label, '', () => {
         location.href = scheme + p.phone;
       }));
     }
@@ -230,7 +229,7 @@ export function familyPage(key) {
     const topActions = el('div', 'detail-top-actions');
     const toggle = editing
       ? el('button', 'media-button edit-toggle', 'Done')
-      : iconButton('pencil', 'Edit info', () => {
+      : iconButton('edit', 'Edit info', '', () => {
         familyEdit = key;
         render();
       });
@@ -258,7 +257,7 @@ export function familyPage(key) {
     const addressValue = el('div', 'contact-value');
     addressValue.append(svg('map'), el('span', '', family.address));
     right.append(contactRow(addressValue, [
-      iconButton('map', 'Map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
+      iconLink('map', 'Map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
       copyButton(family.address),
     ]));
   }

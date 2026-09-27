@@ -1,5 +1,6 @@
 import {lists, byEmail} from '../state.js';
-import {el, svg, withFrom, iconButton, copyButton, contactRow} from '../dom.js';
+import {withFrom, copyButton, contactRow} from '../dom.js';
+import {el, svg, iconLink} from '/elements.js';
 import {personLink, photoOrInitials} from '../people.js';
 import {fromCrumbs, breadcrumbs} from '../crumbs.js';
 
@@ -65,7 +66,7 @@ export function guestPage(id) {
     const emailValue = el('div', 'contact-value');
     emailValue.append(svg('mail'), el('span', '', guest.email));
     right.append(contactRow(emailValue, [
-      iconButton('mail', 'Email', 'mailto:' + guest.email),
+      iconLink('mail', 'Email', 'mailto:' + guest.email),
       copyButton(guest.email),
     ]));
   }

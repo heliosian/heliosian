@@ -1,6 +1,7 @@
 import {partyPath, availabilityLabel, myTickets, isKid} from './state.js';
 import {parseWhen} from '/datecard.js';
-import {el, link, svg, thumb, badge, button} from './dom.js';
+import {badge} from './dom.js';
+import {el, link, svg, imageThumb, button} from '/elements.js';
 import {openBuy} from './edit.js';
 
 export function statusBadges(p) {
@@ -68,7 +69,7 @@ export function partyCard(p) {
 function partyCardBody(p) {
   const card = el('div', 'card' + (p.status !== 'Open' ? ' is-muted' : ''));
   const media = link(partyPath(p), 'card-media');
-  media.append(thumb(p.imageUrl, p.title, 'card-image'));
+  media.append(imageThumb(p.imageUrl, p.title, 'card-image'));
   const stamp = dateStamp(p);
   if (stamp) {
     media.append(stamp);

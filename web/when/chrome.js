@@ -1,5 +1,6 @@
 import {state, me, isSystemAdmin, applySuperEdit, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
-import {el, svg, link, button, toast, feedMark, emojiPicker} from './dom.js';
+import {feedMark, emojiPicker} from './dom.js';
+import {el, svg, link, button, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
 import {dayColumn} from './day.js';
 import {onSlash} from '/toolbar.js';
@@ -87,7 +88,7 @@ export function editFeedPopup(f) {
   });
   actions.append(submit, button('Cancel', '', 'button button-secondary', shut), status, remove);
   if (defaultFeed().token !== f.token) {
-    const first = button('Make default', 'pushpin', 'button button-secondary modal-default', async () => {
+    const first = button('Make default', 'pin', 'button button-secondary modal-default', async () => {
       shut();
       await makeDefaultFeed(f);
     });
@@ -130,7 +131,7 @@ export async function makeDefaultFeed(f) {
     toast(err.message);
     return;
   }
-  toast(`${f.name} is your default calendar now.`, 4000);
+  longToast(`${f.name} is your default calendar now.`);
   await load();
 }
 
@@ -156,7 +157,7 @@ export function calendarMenu(onPick) {
     const tail = el('span', 'calendar-menu-tail');
     if (f.token === chosen.token) {
       const star = el('span', 'nav-sub-star');
-      star.append(svg('pushpin'));
+      star.append(svg('pin'));
       tail.append(star);
     }
     if (f.locked) {
@@ -193,7 +194,7 @@ function fillNav(nav) {
       pencil.type = 'button';
       pencil.title = editingNav ? 'Done editing' : 'Edit your saved calendars';
       pencil.setAttribute('aria-label', pencil.title);
-      pencil.append(svg(editingNav ? 'check' : 'pencil'));
+      pencil.append(svg(editingNav ? 'check' : 'edit'));
       pencil.addEventListener('click', e => {
         e.preventDefault();
         e.stopPropagation();
@@ -257,7 +258,7 @@ function fillNav(nav) {
       if (f.token === chosen.token) {
         const star = el('span', 'nav-sub-star');
         star.title = 'Your default calendar';
-        star.append(svg('pushpin'));
+        star.append(svg('pin'));
         marks.append(star);
       }
       if (f.locked && !editingNav) {
@@ -285,7 +286,7 @@ function fillNav(nav) {
         edit.type = 'button';
         edit.title = 'Edit ' + f.name;
         edit.setAttribute('aria-label', edit.title);
-        edit.append(svg('pencil'));
+        edit.append(svg('edit'));
         edit.addEventListener('click', () => editFeedPopup(f));
         row.append(edit);
         if (f.locked) {
@@ -444,7 +445,7 @@ export function fillFilters(wrap, opts = {}) {
     const chevron = el('button', 'filters-chevron');
     chevron.type = 'button';
     chevron.setAttribute('aria-label', open ? 'Fold the filters' : 'Unfold the filters');
-    chevron.append(svg('chevron'));
+    chevron.append(svg('chevron-right'));
     chevron.addEventListener('click', () => {
       filtersUnfolded = !open;
       fillFilters(wrap, opts);
@@ -524,7 +525,7 @@ export function fillFilters(wrap, opts = {}) {
         toast(err.message);
         return;
       }
-      toast('My Heliosian is back to the calendar\u2019s own defaults, here and on the Heliosian home page.', 5000);
+      longToast('My Heliosian is back to the calendar\u2019s own defaults, here and on the Heliosian home page.');
       await load();
     }));
   }

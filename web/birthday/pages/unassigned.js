@@ -1,5 +1,6 @@
 import {state, isUnassigned, parseDate, staffPath, newsletterPath, stageClass, stageName, mediumDate, shortDate, staffFor} from '../state.js';
-import {el, link, svg, thumb, button, pageHead} from '../dom.js';
+import {pageHead} from '../dom.js';
+import {el, link, svg, thumb, button} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {emptyPanel} from '../cards.js';
 import {assignToMe} from '../edit.js';
@@ -56,7 +57,7 @@ function row(sv, rerender) {
   r.append(when);
   const open = link(staffPath(sv), 'urow-open');
   open.setAttribute('aria-label', `Open ${sv.name}`);
-  open.append(svg('chevron'));
+  open.append(svg('chevron-right'));
   open.addEventListener('click', e => e.stopPropagation());
   r.append(open);
   r.addEventListener('click', () => {

@@ -1,5 +1,5 @@
 import {state} from './state.js';
-import {el, svg} from './dom.js';
+import {el, svg} from '/elements.js';
 import {rsvpButtons, calendarMark, calendarMenu, dropdown} from './cards.js';
 import {dayTypeClass} from '/daytype.js';
 import {appOrigin} from '/toolbar.js';
@@ -76,7 +76,7 @@ function picker() {
   const toggle = el('button', 'mini-calendar-toggle');
   toggle.type = 'button';
   toggle.title = current.locked ? 'The calendar\u2019s own view, for everyone' : 'The saved calendar this month is read under';
-  toggle.append(calendarMark(current), el('span', 'mini-calendar-name', current.name), svg('chevron'));
+  toggle.append(calendarMark(current), el('span', 'mini-calendar-name', current.name), svg('chevron-right'));
   const menu = calendarMenu(list, current, chosen, c => fetchMonth(month.month, c.token));
   dropdown(toggle, menu);
   wrap.append(toggle, menu);
@@ -89,12 +89,12 @@ function grid() {
   const back = el('button', 'mini-page');
   back.type = 'button';
   back.setAttribute('aria-label', 'Previous month');
-  back.append(svg('chevron'));
+  back.append(svg('chevron-right'));
   back.addEventListener('click', () => page(-1));
   const next = el('button', 'mini-page');
   next.type = 'button';
   next.setAttribute('aria-label', 'Next month');
-  next.append(svg('chevron'));
+  next.append(svg('chevron-right'));
   next.addEventListener('click', () => page(1));
   head.append(back, el('span', 'mini-title', monthLabel(month.month)), next);
   const pick = picker();

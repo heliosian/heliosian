@@ -1,5 +1,5 @@
 import {myEvents, eventPath, eventImage, eventDates, parseDate, timeLine, answerOf} from '../state.js';
-import {el, link, svg} from '../dom.js';
+import {el, link, svg} from '/elements.js';
 import {setTitle} from '/shell.js';
 
 export function minePage(which) {
@@ -72,7 +72,7 @@ function eventCard(e, key) {
   body.append(when);
   if (e.location) {
     const where = el('div', 'mine-card-line');
-    where.append(svg('pin'), el('span', '', e.location));
+    where.append(svg('map'), el('span', '', e.location));
     body.append(where);
   }
   card.append(body);
