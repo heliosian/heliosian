@@ -298,6 +298,20 @@ export function finishRender() {
 }
 
 let scrollProbe = null;
+let probeUpdates = 0;
+let probeScrolled = '-';
+let probeTouched = '-';
+
+function describeNode(node) {
+  if (node === document) {
+    return 'document';
+  }
+  if (!node || !node.tagName) {
+    return String(node);
+  }
+  const cls = typeof node.className === 'string' && node.className ? '.' + node.className.trim().split(/\s+/).join('.') : '';
+  return node.tagName.toLowerCase() + (node.id ? '#' + node.id : '') + cls;
+}
 
 function updateScrollProbe() {
   if (!state.model.user.isAdmin || !window.matchMedia('(max-width: 900px)').matches) {
@@ -308,9 +322,21 @@ function updateScrollProbe() {
     scrollProbe = el('pre', 'scroll-probe');
     document.body.append(scrollProbe);
     main.addEventListener('scroll', updateScrollProbe, {passive: true});
+    document.addEventListener('scroll', e => {
+      const node = e.target === document ? document.scrollingElement : e.target;
+      probeScrolled = `${describeNode(e.target)} top ${Math.round(node.scrollTop)}`;
+      updateScrollProbe();
+    }, {capture: true, passive: true});
+    document.addEventListener('touchstart', e => {
+      probeTouched = describeNode(e.target);
+      updateScrollProbe();
+    }, {capture: true, passive: true});
+    document.addEventListener('touchend', updateScrollProbe, {capture: true, passive: true});
     window.addEventListener('resize', updateScrollProbe);
     window.visualViewport.addEventListener('resize', updateScrollProbe);
+    window.visualViewport.addEventListener('scroll', updateScrollProbe);
   }
+  probeUpdates++;
   const wrap = main.querySelector('.page-content-wrap');
   const last = wrap.lastElementChild;
   const tabbar = document.querySelector('#tabbar');
@@ -323,7 +349,11 @@ function updateScrollProbe() {
     `last ${last ? last.className : '-'} bottom ${last ? px(r(last).bottom) : '-'}`,
     `tabbar top ${px(r(tabbar).top)} bottom ${px(r(tabbar).bottom)} safe ${getComputedStyle(tabbar).paddingBottom}`,
     `inner ${window.innerHeight} vv ${px(window.visualViewport.height)}+${px(window.visualViewport.offsetTop)} doc ${document.documentElement.clientHeight} screen ${screen.height}`,
-    `doc scroll ${px(document.scrollingElement.scrollTop)} / ${document.scrollingElement.scrollHeight}`,
+    `doc scroll ${px(document.scrollingElement.scrollTop)} / ${document.scrollingElement.scrollHeight} win ${px(window.scrollY)} vv page ${px(window.visualViewport.pageTop)}`,
+    `scrolled ${probeScrolled}`,
+    `touched ${probeTouched}`,
+    `mid ${describeNode(document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2))}`,
+    `updates ${probeUpdates}`,
   ].join('\n');
 }
 
