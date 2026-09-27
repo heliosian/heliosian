@@ -996,15 +996,15 @@ func enrich(ctx context.Context, client anthropic.Client, inputs []enrichInput, 
 			"keywords": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		},
 	}
-	sent := make([]enrichInput, len(representatives))
+	sent := []enrichInput{}
 	byHandle := map[string]string{}
 	properties := map[string]any{}
 	required := []string{}
 	for i, in := range representatives {
 		handle := "e" + strconv.Itoa(i+1)
 		byHandle[handle] = in.ID
-		sent[i] = in
-		sent[i].ID = handle
+		in.ID = handle
+		sent = append(sent, in)
 		properties[handle] = map[string]any{"$ref": "#/$defs/answer"}
 		required = append(required, handle)
 	}

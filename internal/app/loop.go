@@ -77,7 +77,7 @@ func (d loopDirectory) Person(email string) (loop.Person, bool) {
 
 func (d loopDirectory) People() []loop.Person {
 	model := d.cache.Model()
-	out := make([]loop.Person, 0, len(model.People))
+	out := []loop.Person{}
 	for i := range model.People {
 		if model.People[i].EmailMasked {
 			continue

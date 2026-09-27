@@ -43,7 +43,7 @@ var GreetingColumns = []string{"Name", "Format", "Grouped", "Individual", "Email
 
 func buildGreetings(tables store.Tables) ([]GreetingTemplate, error) {
 	rows := tables[greetingsTab]
-	greetings := make([]GreetingTemplate, 0, len(rows))
+	greetings := []GreetingTemplate{}
 	for _, row := range rows {
 		name, format := row["Name"], row["Format"]
 		if name == "" || format == "" {
@@ -65,7 +65,7 @@ func loadInviteTemplates(source data.Source) ([]InviteTemplate, error) {
 	if err != nil {
 		return nil, err
 	}
-	templates := make([]InviteTemplate, 0, len(systems))
+	templates := []InviteTemplate{}
 	for _, sys := range systems {
 		name, tab := sys["Display Name"], sys["Sheet"]
 		if name == "" || tab == "" {
@@ -208,7 +208,7 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, invites *Invites) {
 }
 
 func visibleGreetings(greetings []GreetingTemplate, email string) []GreetingTemplate {
-	visible := make([]GreetingTemplate, 0, len(greetings))
+	visible := []GreetingTemplate{}
 	for _, g := range greetings {
 		if g.CreatedBy == "" || g.CreatedBy == email {
 			visible = append(visible, g)

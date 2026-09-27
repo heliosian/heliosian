@@ -224,7 +224,7 @@ func (a app) person(email string) Person {
 }
 
 func (a app) people(emails []string) []Person {
-	out := make([]Person, 0, len(emails))
+	out := []Person{}
 	for _, email := range emails {
 		out = append(out, a.person(email))
 	}

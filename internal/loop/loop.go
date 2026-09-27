@@ -322,12 +322,12 @@ func Normalize(g Group) Group {
 		g.Replying = PostingEveryone
 	}
 	g.Managers = config.NormalizeEmails(g.Managers)
-	rules := make([]Rule, 0, len(g.Rules))
+	rules := []Rule{}
 	for _, r := range g.Rules {
 		rules = append(rules, filter.Clean(r))
 	}
 	g.Rules = rules
-	additions := make([]Addition, 0, len(g.Additions))
+	additions := []Addition{}
 	for _, a := range g.Additions {
 		a.Email = config.NormalizeEmail(a.Email)
 		a.Name = strings.Join(strings.Fields(a.Name), " ")
@@ -336,7 +336,7 @@ func Normalize(g Group) Group {
 		}
 	}
 	g.Additions = additions
-	excluded := make([]Excluded, 0, len(g.Excluded))
+	excluded := []Excluded{}
 	for _, e := range g.Excluded {
 		e.Email = config.NormalizeEmail(e.Email)
 		e.Note = strings.Join(strings.Fields(e.Note), " ")

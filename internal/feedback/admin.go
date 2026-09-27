@@ -98,7 +98,7 @@ func (a admin) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reports := a.cache.Reports()
-	out := make([]summary, 0, len(reports))
+	out := []summary{}
 	for _, report := range reports {
 		out = append(out, summaryOf(report))
 	}

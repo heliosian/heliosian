@@ -439,10 +439,10 @@ func ParseAliases(rows []store.Row) (Aliases, error) {
 }
 
 func (a Aliases) Rewrite(rows []store.Row, columns ...string) ([]store.Row, map[string]bool) {
-	out := make([]store.Row, len(rows))
+	out := []store.Row{}
 	used := map[string]bool{}
-	for i, row := range rows {
-		out[i] = row
+	for _, row := range rows {
+		rewritten := row
 		cloned := false
 		for _, column := range columns {
 			alias := strings.ToLower(strings.TrimSpace(row[column]))
@@ -451,12 +451,13 @@ func (a Aliases) Rewrite(rows []store.Row, columns ...string) ([]store.Row, map[
 				continue
 			}
 			if !cloned {
-				out[i] = maps.Clone(row)
+				rewritten = maps.Clone(row)
 				cloned = true
 			}
-			out[i][column] = email
+			rewritten[column] = email
 			used[alias] = true
 		}
+		out = append(out, rewritten)
 	}
 	return out, used
 }
@@ -1022,7 +1023,7 @@ func (l *loader) applyFamilies() error {
 
 func (l *loader) indexFamilies() error {
 	l.model.familyKeysByEmail = map[string][]string{}
-	keys := make([]string, 0, len(l.model.Families))
+	keys := []string{}
 	for key := range l.model.Families {
 		keys = append(keys, key)
 	}
@@ -1229,7 +1230,7 @@ func classifyPhone(family Family, people map[string]*Person) string {
 }
 
 func (l *loader) removeOptedOut() error {
-	hidden := make([]string, 0, len(l.optedOut))
+	hidden := []string{}
 	for email := range l.optedOut {
 		hidden = append(hidden, email)
 	}

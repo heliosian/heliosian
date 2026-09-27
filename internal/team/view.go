@@ -287,7 +287,7 @@ func (v viewer) people(model *Model) []PersonView {
 			count(c.Volunteers)
 		}
 	}
-	out := make([]PersonView, 0, len(byEmail))
+	out := []PersonView{}
 	for _, p := range byEmail {
 		out = append(out, *p)
 	}

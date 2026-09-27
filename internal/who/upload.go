@@ -58,9 +58,9 @@ func clearable(value string) string {
 }
 
 func refsOf(person *Person) []photoRef {
-	refs := make([]photoRef, len(person.Photos))
-	for i, photo := range person.Photos {
-		refs[i] = photoRef{Name: photo.Name, CropName: photo.cropName, order: photo.order, stored: photo.stored}
+	refs := []photoRef{}
+	for _, photo := range person.Photos {
+		refs = append(refs, photoRef{Name: photo.Name, CropName: photo.cropName, order: photo.order, stored: photo.stored})
 	}
 	return refs
 }

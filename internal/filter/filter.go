@@ -167,7 +167,7 @@ func (r *reader) tagged(rules []Rule, editors []string) map[string][]string {
 
 func (s Sources) TagLabels(r Rule, editors []string, viewer string) []string {
 	rd := s.reader()
-	out := make([]string, 0, len(r.Tags))
+	out := []string{}
 	for _, tag := range r.Tags {
 		owner, name, isTag := tagRef(tag)
 		if !isTag {
@@ -290,7 +290,7 @@ func Matches(r Rule, s Sources, tagged map[string][]string) map[string]Reason {
 }
 
 func SortedKeys(m map[string]bool) []string {
-	keys := make([]string, 0, len(m))
+	keys := []string{}
 	for k := range m {
 		keys = append(keys, k)
 	}
@@ -344,11 +344,12 @@ func RuleCounts(l List, s Sources) []int {
 		return p != nil && !p.EmailMasked
 	}
 	in := map[string]bool{}
-	matched := make([]map[string]Reason, len(l.Rules))
-	for i, r := range l.Rules {
-		matched[i] = Matches(r, s, tagged)
+	matched := []map[string]Reason{}
+	for _, r := range l.Rules {
+		reasons := Matches(r, s, tagged)
+		matched = append(matched, reasons)
 		if r.Kind == KindInclude {
-			for email := range matched[i] {
+			for email := range reasons {
 				if real(email) {
 					in[email] = true
 				}

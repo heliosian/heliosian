@@ -135,12 +135,12 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 	}
 	email := v.Email
 	model := a.cache.Model()
-	classrooms := make([]imageInfo, 0, len(model.Classrooms))
+	classrooms := []imageInfo{}
 	for _, c := range model.Classrooms {
 		classrooms = append(classrooms, imageInfo{Name: c.Name, ImageURL: c.ImageURL})
 	}
-	grades := make([]imageInfo, 0, len(model.Grades))
-	bands := make([]string, 0, len(model.Grades))
+	grades := []imageInfo{}
+	bands := []string{}
 	seenBand := map[string]bool{}
 	for _, g := range model.Grades {
 		grades = append(grades, imageInfo{Name: g.Name, ImageURL: g.ImageURL})
@@ -149,14 +149,14 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 			bands = append(bands, g.Band)
 		}
 	}
-	crews := make([]crewOption, 0, len(model.Crews))
+	crews := []crewOption{}
 	for _, cr := range model.Crews {
 		if cr.Name == "" {
 			continue
 		}
 		crews = append(crews, crewOption{Classroom: cr.Classroom, Name: cr.Name})
 	}
-	people := make([]personOption, 0, len(model.People))
+	people := []personOption{}
 	for i := range model.People {
 		p := &model.People[i]
 		family, _ := model.FamilyOf(p.Email)

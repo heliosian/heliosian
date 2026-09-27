@@ -70,13 +70,13 @@ func (d *Dir) load(app, name string) (*table, error) {
 	if err != nil {
 		return nil, err
 	}
-	values := make([][]interface{}, len(records))
-	for i, row := range records {
-		cells := make([]interface{}, len(row))
-		for j, cell := range row {
-			cells[j] = cell
+	values := [][]any{}
+	for _, row := range records {
+		cells := []any{}
+		for _, cell := range row {
+			cells = append(cells, cell)
 		}
-		values[i] = cells
+		values = append(values, cells)
 	}
 	header, rows, err := parseTable(name, values)
 	if err != nil {
@@ -116,9 +116,9 @@ func (d *Dir) Table(app, name string) ([]string, []map[string]string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	rows := make([]map[string]string, len(t.rows))
-	for i, row := range t.rows {
-		rows[i] = maps.Clone(row)
+	rows := []map[string]string{}
+	for _, row := range t.rows {
+		rows = append(rows, maps.Clone(row))
 	}
 	return slices.Clone(t.header), rows, nil
 }

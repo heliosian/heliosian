@@ -86,7 +86,7 @@ func (c *Cache) CategoriesFor(v access.Actor) []Category {
 		return len(rules) == 0 || c.includes(rules, v.Email)
 	}
 	full := c.Model()
-	out := make([]Category, 0, len(full.Categories))
+	out := []Category{}
 	for _, category := range full.Categories {
 		sectionMine := forMe(category.Rules)
 		if !sectionMine && !v.Admin {
@@ -158,7 +158,7 @@ func orderedApps(model *Model) []App {
 
 func (c *Cache) AppVisibilities() []AppVisibility {
 	model := c.Model()
-	out := make([]AppVisibility, 0, len(Apps))
+	out := []AppVisibility{}
 	for _, app := range orderedApps(model) {
 		v := visibilityOf(model, app)
 		app.Name, app.Tagline, app.Mark = v.Name, v.Tagline, markVersion(app.Key)
@@ -169,7 +169,7 @@ func (c *Cache) AppVisibilities() []AppVisibility {
 
 func (c *Cache) AppList() []App {
 	model := c.Model()
-	out := make([]App, 0, len(Apps))
+	out := []App{}
 	for _, app := range orderedApps(model) {
 		v := visibilityOf(model, app)
 		app.Name, app.Tagline, app.Mark = v.Name, v.Tagline, markVersion(app.Key)

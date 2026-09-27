@@ -114,7 +114,7 @@ type Roster struct {
 }
 
 func (r Roster) Names() []string {
-	out := make([]string, 0, len(r.Classrooms))
+	out := []string{}
 	for _, c := range r.Classrooms {
 		out = append(out, c.Name)
 	}

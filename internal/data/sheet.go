@@ -118,13 +118,13 @@ func (s *Sheet) Raw(app, name string) ([][]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows := make([][]string, len(resp.Values))
-	for i, row := range resp.Values {
-		cells := make([]string, len(row))
-		for j, cell := range row {
-			cells[j] = strings.TrimSpace(fmt.Sprint(cell))
+	rows := [][]string{}
+	for _, row := range resp.Values {
+		cells := []string{}
+		for _, cell := range row {
+			cells = append(cells, strings.TrimSpace(fmt.Sprint(cell)))
 		}
-		rows[i] = cells
+		rows = append(rows, cells)
 	}
 	return rows, nil
 }
@@ -159,7 +159,7 @@ func (s *Sheet) set(app, table string, match, cells map[string]string, upsert bo
 		for column, value := range cells {
 			ranges = append(ranges, &sheets.ValueRange{
 				Range:  fmt.Sprintf("%s!%s%d", quoted, columnName(g.index[column]), i+2),
-				Values: [][]interface{}{{value}},
+				Values: [][]any{{value}},
 			})
 		}
 	}
@@ -174,7 +174,7 @@ func (s *Sheet) set(app, table string, match, cells map[string]string, upsert bo
 		for column, value := range cells {
 			row[g.index[column]] = value
 		}
-		return s.writeRows(g.id, table, len(g.values), [][]interface{}{row})
+		return s.writeRows(g.id, table, len(g.values), [][]any{row})
 	}
 	if len(ranges) == 0 {
 		return nil
@@ -219,7 +219,7 @@ func (s *Sheet) SetMany(app, table, keyColumn string, cells map[string]map[strin
 		for column, value := range cells[key] {
 			ranges = append(ranges, &sheets.ValueRange{
 				Range:  fmt.Sprintf("%s!%s%d", quoted, columnName(g.index[column]), i+2),
-				Values: [][]interface{}{{value}},
+				Values: [][]any{{value}},
 			})
 		}
 	}
@@ -246,7 +246,7 @@ func (s *Sheet) Insert(app, table string, rows []map[string]string) error {
 	if err != nil {
 		return err
 	}
-	values := [][]interface{}{}
+	values := [][]any{}
 	for _, cells := range rows {
 		if err := requireColumns(table, g.index, slices.Collect(maps.Keys(cells))...); err != nil {
 			return err
@@ -260,7 +260,7 @@ func (s *Sheet) Insert(app, table string, rows []map[string]string) error {
 	return s.writeRows(g.id, table, len(g.values), values)
 }
 
-func (s *Sheet) writeRows(id, table string, used int, rows [][]interface{}) error {
+func (s *Sheet) writeRows(id, table string, used int, rows [][]any) error {
 	quoted := quoteTab(table)
 	tab, err := s.tabID(id, table)
 	if err != nil {
@@ -327,7 +327,7 @@ func (s *Sheet) Delete(app, table string, match map[string]string) error {
 	return err
 }
 
-func valuesMatch(row []interface{}, index map[string]int, match map[string]string) bool {
+func valuesMatch(row []any, index map[string]int, match map[string]string) bool {
 	cells := map[string]string{}
 	for column := range match {
 		if i := index[column]; i < len(row) {
@@ -374,19 +374,19 @@ func columnName(idx int) string {
 	return name
 }
 
-func parseHeader(name string, values [][]interface{}) ([]string, error) {
+func parseHeader(name string, values [][]any) ([]string, error) {
 	if len(values) == 0 {
 		return nil, fmt.Errorf("table %s has no header row", name)
 	}
-	header := make([]string, len(values[0]))
+	header := []string{}
 	seen := map[string]bool{}
-	for i, cell := range values[0] {
+	for _, cell := range values[0] {
 		h := strings.TrimSpace(fmt.Sprint(cell))
 		if h != "" && seen[h] {
 			return nil, fmt.Errorf("table %s has duplicate header %q", name, h)
 		}
 		seen[h] = true
-		header[i] = h
+		header = append(header, h)
 	}
 	return header, nil
 }
@@ -403,7 +403,7 @@ func indexOf(header []string) map[string]int {
 
 type grid struct {
 	id     string
-	values [][]interface{}
+	values [][]any
 	index  map[string]int
 }
 
@@ -432,15 +432,15 @@ func requireColumns(table string, index map[string]int, columns ...string) error
 	return nil
 }
 
-func (g *grid) blankRow() []interface{} {
-	row := []interface{}{}
+func (g *grid) blankRow() []any {
+	row := []any{}
 	for range g.values[0] {
 		row = append(row, "")
 	}
 	return row
 }
 
-func parseTable(name string, values [][]interface{}) ([]string, []map[string]string, error) {
+func parseTable(name string, values [][]any) ([]string, []map[string]string, error) {
 	header, err := parseHeader(name, values)
 	if err != nil {
 		return nil, nil, err

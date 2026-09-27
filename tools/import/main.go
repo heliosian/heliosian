@@ -121,7 +121,7 @@ func websiteRows(out string) ([]map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	flattened := make([]map[string]string, 0, len(rows))
+	flattened := []map[string]string{}
 	bios := 0
 	for _, row := range rows {
 		bio, err := flattenBio(row["bio_html"])

@@ -230,7 +230,7 @@ func (d directory) GradeColors() map[string]string {
 
 func (d directory) HomePeople() []home.Person {
 	model := d.cache.Model()
-	out := make([]home.Person, 0, len(model.People))
+	out := []home.Person{}
 	for _, p := range model.People {
 		if p.Email != "" {
 			out = append(out, home.Person{Name: p.FullName, Email: p.Email})
@@ -262,7 +262,7 @@ func (d directory) SpoofPerson(email string) (auth.Person, bool) {
 
 func (d directory) SpoofPeople() []auth.Person {
 	model := d.cache.Model()
-	out := make([]auth.Person, 0, len(model.People))
+	out := []auth.Person{}
 	for _, p := range model.People {
 		out = append(out, auth.Person{Email: p.Email, Name: p.FullName, Words: placeWords(p)})
 	}
@@ -290,7 +290,7 @@ func placeWords(p who.Person) string {
 
 func (d directory) People() []team.DirectoryPerson {
 	model := d.cache.Model()
-	out := make([]team.DirectoryPerson, 0, len(model.People))
+	out := []team.DirectoryPerson{}
 	for _, p := range model.People {
 		title := placeWords(p)
 		person := team.DirectoryPerson{
@@ -475,7 +475,7 @@ func (d celebrateDirectory) Family(email string) map[string]bool {
 
 func (d celebrateDirectory) People() []celebrate.Person {
 	model := d.cache.Model()
-	out := make([]celebrate.Person, 0, len(model.People))
+	out := []celebrate.Person{}
 	for i := range model.People {
 		person := celebratePerson(model, &model.People[i])
 		if person.IsParent {
@@ -500,7 +500,7 @@ type calendarDirectory struct {
 
 func (d calendarDirectory) People() []calendar.Person {
 	model := d.cache.Model()
-	out := make([]calendar.Person, 0, len(model.People))
+	out := []calendar.Person{}
 	for i := range model.People {
 		out = append(out, calendarPerson(model, &model.People[i]))
 	}

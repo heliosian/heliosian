@@ -19,7 +19,8 @@ How code is written in this repository, for coding agents and the people driving
 ## Go
 
 - `go run`, never `go build`, so no binaries land in the tree. Use `go vet` to check compilation.
-- Literal initialization (`map[string]bool{}`) over `make()`.
+- Literal initialization (`map[string]bool{}`, `[]string{}`) over `make()`. `make` only for a slice that needs its length up front: slots written by index or a byte buffer, never for a capacity hint.
+- `any`, never `interface{}`.
 - All-lowercase log messages, through `slog` at the level that fits; severity is the level, never a prefix in the message.
 - Keep every Go file gofmt-clean.
 - The server is pure Go: no cgo, no external binaries or subprocesses, and no Debian (or other distro) base image. Don't propose any of them, not even as an option.

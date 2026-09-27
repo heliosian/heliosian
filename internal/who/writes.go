@@ -21,9 +21,9 @@ func setFamily(key string, cells store.Row) store.Op {
 }
 
 func photoOps(email string, before []photoRef, after []photoRef) []store.Op {
-	keys := make([]string, len(after))
-	for i, ref := range after {
-		keys[i] = ref.order
+	keys := []string{}
+	for _, ref := range after {
+		keys = append(keys, ref.order)
 	}
 	keys = store.Order(keys)
 	ops := []store.Op{}
@@ -490,9 +490,9 @@ func (m *Model) reorderPhotos(actor access.Actor, superEdit bool, key string, na
 		return nil, access.Invalid("order must name only this person's current photos, with no duplicates")
 	}
 	before := refsOf(person)
-	after := make([]photoRef, len(names))
-	for i, name := range names {
-		after[i] = before[slices.IndexFunc(before, func(ref photoRef) bool { return ref.Name == name })]
+	after := []photoRef{}
+	for _, name := range names {
+		after = append(after, before[slices.IndexFunc(before, func(ref photoRef) bool { return ref.Name == name })])
 	}
 	ops := photoOps(key, before, after)
 	if person.primaryPhotoOverride != "" {

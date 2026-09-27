@@ -136,9 +136,9 @@ func (c *Cache) setWidgetOrder(actor access.Actor, widgets []string) ([]store.Op
 		return nil, access.Invalid("the order must list every widget once: %s", strings.Join(Widgets, ", "))
 	}
 	model := c.Model()
-	current := make([]string, len(widgets))
-	for i, name := range widgets {
-		current[i] = model.widgetKeys[name]
+	current := []string{}
+	for _, name := range widgets {
+		current = append(current, model.widgetKeys[name])
 	}
 	next := store.Order(current)
 	ops := []store.Op{}
@@ -205,15 +205,16 @@ func categoryOrder(model *Model, titles []string, events store.Row) ([]store.Op,
 	if len(titles) != len(byTitle) {
 		return nil, access.Invalid("the order must name every category exactly once")
 	}
-	current := make([]string, len(titles))
-	virtual := make([]bool, len(titles))
-	for i, title := range titles {
+	current := []string{}
+	virtual := []bool{}
+	for _, title := range titles {
 		c, ok := byTitle[title]
 		if !ok {
 			return nil, access.Invalid("unknown category %s", title)
 		}
 		delete(byTitle, title)
-		current[i], virtual[i] = c.order, c.Virtual
+		current = append(current, c.order)
+		virtual = append(virtual, c.Virtual)
 	}
 	keys := store.Order(current)
 	ops := []store.Op{}

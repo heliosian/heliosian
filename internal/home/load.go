@@ -498,7 +498,7 @@ func joinEmails(emails []string) string {
 }
 
 func appKeys() []string {
-	keys := make([]string, 0, len(Apps))
+	keys := []string{}
 	for _, app := range Apps {
 		keys = append(keys, app.Key)
 	}

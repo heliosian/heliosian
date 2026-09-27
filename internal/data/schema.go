@@ -58,12 +58,12 @@ func (s *Sheet) AddTab(app, title string, header []string) error {
 	s.mu.Lock()
 	s.ids = nil
 	s.mu.Unlock()
-	cells := make([]interface{}, len(header))
-	for i, name := range header {
-		cells[i] = name
+	cells := []any{}
+	for _, name := range header {
+		cells = append(cells, name)
 	}
 	_, err = call("header "+title, s.service.Spreadsheets.Values.Update(id, quoteTab(title)+"!1:1", &sheets.ValueRange{
-		Values: [][]interface{}{cells},
+		Values: [][]any{cells},
 	}).ValueInputOption("RAW").Do)
 	if err != nil {
 		return fmt.Errorf("write header of %q: %w", title, err)
@@ -110,12 +110,12 @@ func (s *Sheet) AddColumns(app, table string, names []string) error {
 			}
 		}
 	}
-	cells := make([]interface{}, len(names))
-	for i, name := range names {
-		cells[i] = name
+	cells := []any{}
+	for _, name := range names {
+		cells = append(cells, name)
 	}
 	_, err = call("add columns "+table, s.service.Spreadsheets.Values.Update(id, fmt.Sprintf("%s!%s1", quoteTab(table), columnName(width)),
-		&sheets.ValueRange{Values: [][]interface{}{cells}}).ValueInputOption("RAW").Do)
+		&sheets.ValueRange{Values: [][]any{cells}}).ValueInputOption("RAW").Do)
 	if err != nil {
 		return fmt.Errorf("add columns to %q: %w", table, err)
 	}

@@ -21,7 +21,7 @@ type SyncResult struct {
 	Detached []string
 }
 
-func cellAt(row []interface{}, i int) string {
+func cellAt(row []any, i int) string {
 	if i >= len(row) {
 		return ""
 	}
@@ -51,7 +51,7 @@ func (s *Sheet) Sync(app, table string, header []string, rows []map[string]strin
 
 	result := &SyncResult{}
 	updates := []*sheets.ValueRange{}
-	appends := [][]interface{}{}
+	appends := [][]any{}
 	seen := map[string]bool{}
 	for _, row := range rows {
 		key := row[keyCol]
@@ -79,7 +79,7 @@ func (s *Sheet) Sync(app, table string, header []string, rows []map[string]strin
 			}
 			updates = append(updates, &sheets.ValueRange{
 				Range:  fmt.Sprintf("%s!%s%d", quoted, columnName(g.index[name]), n),
-				Values: [][]interface{}{{want}},
+				Values: [][]any{{want}},
 			})
 			result.Edits = append(result.Edits, Edit{
 				Key: key, Column: name, From: cellAt(g.values[n-1], g.index[name]), To: want,
