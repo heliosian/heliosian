@@ -29,7 +29,7 @@ var commands = map[string]command{
 	"write":  {"write a local csv into a tab, header-checked", write},
 	"sync":   {"sync a tab's cells to a local csv by key column", sync},
 	"set":    {"set one cell by key column, appending the row if missing", set},
-	"delete": {"delete the rows matching a column value", deleteRows},
+	"delete": {"delete the rows matching a key column value", deleteRows},
 	"rename": {"rename a tab", rename},
 	"drop":   {"delete named columns from a tab, header and cells", drop},
 }
@@ -234,11 +234,12 @@ func dump(args []string) {
 
 func write(args []string) {
 	var tab, in *string
-	var appendRows *bool
+	var appendRows, apply *bool
 	source := parse("write", args, func(fs *flag.FlagSet) {
 		tab = fs.String("tab", "", "tab title")
 		in = fs.String("in", "", "input csv path (first row must match the tab header)")
 		appendRows = fs.Bool("append", false, "append below existing rows instead of requiring an empty tab")
+		apply = fs.Bool("apply", false, "write the rows; without it the run only reports them")
 	}, "tab", "in")
 	recs := readCSV(*in)
 	existing := raw(source, *tab)
@@ -252,6 +253,11 @@ func write(args []string) {
 		log.Fatalf("header mismatch:\n tab: %q\n csv: %q", existing[0], recs[0])
 	}
 	added := records(recs[0], recs[1:])
+	log.Printf("%d csv rows go below the %d rows in %s", len(added), len(existing), *tab)
+	if !*apply {
+		log.Printf("reporting only, pass --apply to write")
+		return
+	}
 	if err := source.Insert("sheet", *tab, added); err != nil {
 		log.Fatalf("write rows: %v", err)
 	}
@@ -297,15 +303,59 @@ func sync(args []string) {
 	log.Printf("wrote %d cells to %s", len(result.Edits), *tab)
 }
 
+func column(all [][]string, tab, name string) int {
+	if len(all) == 0 {
+		log.Fatalf("tab %q has no header row", tab)
+	}
+	i := slices.Index(all[0], name)
+	if i < 0 {
+		log.Fatalf("tab %q has no column %q", tab, name)
+	}
+	return i
+}
+
+func matching(all [][]string, keyIndex int, keyCol, key string) []int {
+	out := []int{}
+	for i, row := range all[1:] {
+		cell := ""
+		if keyIndex < len(row) {
+			cell = row[keyIndex]
+		}
+		if data.Matches(map[string]string{keyCol: cell}, map[string]string{keyCol: key}) {
+			out = append(out, i+1)
+		}
+	}
+	return out
+}
+
 func set(args []string) {
 	var tab, keyCol, key, col, value *string
+	var apply *bool
 	source := parse("set", args, func(fs *flag.FlagSet) {
 		tab = fs.String("tab", "", "tab title")
-		keyCol = fs.String("keycol", "Email", "key column name")
-		key = fs.String("key", "", "key value")
-		col = fs.String("col", "", "column to set")
+		keyCol = fs.String("keycol", "", "column whose value picks the row")
+		key = fs.String("key", "", "value of --keycol in the row to set")
+		col = fs.String("col", "", "column to write")
 		value = fs.String("value", "", "value to write")
-	}, "tab", "key", "col")
+		apply = fs.Bool("apply", false, "write the cell; without it the run only reports it")
+	}, "tab", "keycol", "key", "col")
+	all := raw(source, *tab)
+	keyIndex, colIndex := column(all, *tab, *keyCol), column(all, *tab, *col)
+	found := matching(all, keyIndex, *keyCol, *key)
+	for _, i := range found {
+		from := ""
+		if colIndex < len(all[i]) {
+			from = all[i][colIndex]
+		}
+		log.Printf("  row %d %s: %q -> %q", i+1, *col, from, *value)
+	}
+	if len(found) == 0 {
+		log.Printf("no row has %s = %q, so a row is appended", *keyCol, *key)
+	}
+	if !*apply {
+		log.Printf("reporting only, pass --apply to write")
+		return
+	}
 	if err := source.Upsert("sheet", *tab, map[string]string{*keyCol: *key}, map[string]string{*col: *value}); err != nil {
 		log.Fatalf("set %s[%s=%s].%s: %v", *tab, *keyCol, *key, *col, err)
 	}
@@ -313,24 +363,58 @@ func set(args []string) {
 }
 
 func deleteRows(args []string) {
-	var tab, col, value *string
+	var tab, keyCol, key *string
+	var apply *bool
 	source := parse("delete", args, func(fs *flag.FlagSet) {
 		tab = fs.String("tab", "", "tab title")
-		col = fs.String("col", "Email", "column to match")
-		value = fs.String("value", "", "value to match")
-	}, "tab", "value")
-	if err := source.Delete("sheet", *tab, map[string]string{*col: *value}); err != nil {
-		log.Fatalf("delete from %s where %s=%s: %v", *tab, *col, *value, err)
+		keyCol = fs.String("keycol", "", "column whose value picks the rows")
+		key = fs.String("key", "", "value of --keycol in the rows to delete")
+		apply = fs.Bool("apply", false, "delete the rows; without it the run only reports them")
+	}, "tab", "keycol", "key")
+	all := raw(source, *tab)
+	found := matching(all, column(all, *tab, *keyCol), *keyCol, *key)
+	if len(found) == 0 {
+		log.Fatalf("tab %q has no row with %s = %q", *tab, *keyCol, *key)
 	}
-	log.Printf("deleted rows from %s where %s = %q", *tab, *col, *value)
+	for _, i := range found {
+		log.Printf("  row %d: %q", i+1, all[i])
+	}
+	if !*apply {
+		log.Printf("reporting only, pass --apply to delete %d rows", len(found))
+		return
+	}
+	if err := source.Delete("sheet", *tab, map[string]string{*keyCol: *key}); err != nil {
+		log.Fatalf("delete from %s where %s=%s: %v", *tab, *keyCol, *key, err)
+	}
+	log.Printf("deleted %d rows from %s where %s = %q", len(found), *tab, *keyCol, *key)
 }
 
 func rename(args []string) {
 	var from, to *string
+	var apply *bool
 	source := parse("rename", args, func(fs *flag.FlagSet) {
 		from = fs.String("from", "", "current tab title")
 		to = fs.String("to", "", "new tab title")
+		apply = fs.Bool("apply", false, "rename the tab; without it the run only reports it")
 	}, "from", "to")
+	_, sizes, err := source.Layout("sheet")
+	if err != nil {
+		log.Fatalf("get spreadsheet: %v", err)
+	}
+	titles := []string{}
+	for _, t := range sizes {
+		titles = append(titles, t.Title)
+	}
+	if !slices.Contains(titles, *from) {
+		log.Fatalf("spreadsheet has no tab %q", *from)
+	}
+	if slices.Contains(titles, *to) {
+		log.Fatalf("spreadsheet already has a tab %q", *to)
+	}
+	if !*apply {
+		log.Printf("reporting only, pass --apply to rename %q to %q", *from, *to)
+		return
+	}
 	if err := source.RenameTab("sheet", *from, *to); err != nil {
 		log.Fatalf("rename %q: %v", *from, err)
 	}
