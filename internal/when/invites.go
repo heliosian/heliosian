@@ -424,9 +424,10 @@ func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
 	}
 	out := []GuestRow{}
 	seen := map[string]bool{}
+	host := a.isHost(viewer, e)
 	row := func(email, name string, invited bool) GuestRow {
 		p, known := a.personOf(email, name)
-		g := GuestRow{Person: p, Key: email, Invited: invited, Outside: known == nil, Ticket: tickets[email], Mine: a.mayAnswerFor(viewer, email, e), Household: householdOf(email)}
+		g := GuestRow{Person: p, Key: email, Invited: invited, Outside: known == nil, Ticket: tickets[email], Mine: host || a.speaksFor(viewer, email, e), Household: householdOf(email)}
 		if known != nil {
 			g.Grades, g.Classrooms = a.facetsOf(known)
 		}
@@ -441,7 +442,6 @@ func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
 		}
 		return g
 	}
-	host := a.isHost(viewer, e)
 	for _, inv := range model.Invites[e.ID] {
 		g := row(inv.Email, inv.Name, true)
 		g.GuestOf, g.Via, g.Sent, g.Opened = inv.GuestOf, inv.Via, inv.Sent, inv.Opened

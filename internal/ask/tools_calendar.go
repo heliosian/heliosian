@@ -108,8 +108,7 @@ var calendarEvents = tool{
 		out := []eventCard{}
 		total := 0
 		for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.sources.Linked(v.email)) {
-			start, end := eventSpan(e)
-			if end.Before(from) || start.After(to.AddDate(0, 0, 1).Add(-time.Second)) {
+			if e.EndTime().Before(from) || e.StartTime().After(to.AddDate(0, 0, 1).Add(-time.Second)) {
 				continue
 			}
 			if in.Query != "" && !contains(e.Title, in.Query) && !contains(e.Description, in.Query) && !contains(strings.Join(e.Keywords, " "), in.Query) {
@@ -128,21 +127,6 @@ var calendarEvents = tool{
 		}
 		return map[string]any{"today": today.Format(when.DateFormat), "from": from.Format(when.DateFormat), "to": to.Format(when.DateFormat), "events": out, "matched": total, "shown": len(out)}, nil
 	},
-}
-
-func eventSpan(e *when.Event) (time.Time, time.Time) {
-	parse := func(cell string) time.Time {
-		if t, err := time.ParseInLocation(when.DateTimeFormat, cell, when.Location); err == nil {
-			return t
-		}
-		t, _ := time.ParseInLocation(when.DateFormat, cell, when.Location)
-		return t
-	}
-	start, end := parse(e.Start), parse(e.End)
-	if e.AllDay {
-		end = end.AddDate(0, 0, 1).Add(-time.Second)
-	}
-	return start, end
 }
 
 var dayPlan = tool{

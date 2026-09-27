@@ -72,9 +72,9 @@ func (v *viewer) exampleLinks() []string {
 			}
 		}
 	}
-	today := v.now.Format(when.DateFormat)
+	today := time.Date(v.now.Year(), v.now.Month(), v.now.Day(), 0, 0, 0, 0, when.Location)
 	for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.sources.Linked(v.email)) {
-		if app, _ := when.Page(e); app == "when" && e.Start >= today {
+		if app, _ := when.Page(e); app == "when" && !e.StartTime().Before(today) {
 			out = append(out, eventLink(e))
 			break
 		}

@@ -2,9 +2,7 @@ package ask
 
 import (
 	"strings"
-	"time"
 
-	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -45,13 +43,7 @@ func (v *viewer) linkCard(address string) (linkCard, bool) {
 			if eventLink(e) != address {
 				continue
 			}
-			card := linkCard{URL: address, Kind: "event", Name: e.Title}
-			if len(e.Start) >= len(when.DateFormat) {
-				if day, err := time.ParseInLocation(when.DateFormat, e.Start[:len(when.DateFormat)], when.Location); err == nil {
-					card.Badge = day.Format("Mon Jan 2")
-				}
-			}
-			return card, true
+			return linkCard{URL: address, Kind: "event", Name: e.Title, Badge: e.StartTime().Format("Mon Jan 2")}, true
 		}
 	case strings.HasPrefix(address, loopBase+"/"):
 		sources := v.sources.LoopSources()

@@ -121,7 +121,7 @@ func (r Roster) Names() []string {
 }
 
 func (r Roster) has(name string) bool {
-	return slices.Contains(r.Names(), name)
+	return slices.ContainsFunc(r.Classrooms, func(c Classroom) bool { return c.Name == name })
 }
 
 func RosterOf(m *who.Model) Roster {
@@ -209,6 +209,14 @@ type Event struct {
 	Hidden       bool       `json:"-"`
 	duplicate    bool
 	start, end   time.Time
+}
+
+func (e *Event) StartTime() time.Time {
+	return e.start
+}
+
+func (e *Event) EndTime() time.Time {
+	return e.end
 }
 
 func (e *Event) written() []string {

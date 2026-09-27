@@ -112,7 +112,11 @@ func (a app) householdOn(e *Event, email string) []string {
 }
 
 func (a app) mayAnswerFor(actor access.Actor, subject string, e *Event) bool {
-	if actor.Mine(subject) || a.isHost(actor, e) {
+	return a.isHost(actor, e) || a.speaksFor(actor, subject, e)
+}
+
+func (a app) speaksFor(actor access.Actor, subject string, e *Event) bool {
+	if actor.Mine(subject) {
 		return true
 	}
 	inv := a.cache.Model().InviteOf(e.ID, subject)
