@@ -82,7 +82,7 @@ func TestParseMailReadsHeadersAndBody(t *testing.T) {
 	if m.Text != "Pack a lunch." || m.HTML != "<p>We walk to the library on Thursday. Pack a lunch – and a hat.</p>" {
 		t.Fatalf("body: text %q, html %q", m.Text, m.HTML)
 	}
-	doc, err := Build(m, NewResolver(), Fake{}.Model())
+	doc, err := m.Build(&Resolver{}, Fake{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}

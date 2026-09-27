@@ -136,15 +136,11 @@ func (m *Model) InView(e *Event, answer string, classrooms, tags []string) bool 
 	return going || e.Invited || admits(m, e, classrooms, tags)
 }
 
-func (m *Model) viewOf(directory Directory, email string) (classrooms, tags []string) {
+func (m *Model) ViewOf(directory Directory, email string) (classrooms, tags []string) {
 	if chosen := m.DefaultCalendar(email); chosen != nil {
 		return m.feedView(chosen)
 	}
 	return m.myHeliosianView(directory, email)
-}
-
-func (m *Model) ViewOf(directory Directory, email string) (classrooms, tags []string) {
-	return m.viewOf(directory, email)
 }
 
 func (m *Model) viewUnder(directory Directory, email, token string) (classrooms, tags []string) {
@@ -154,7 +150,7 @@ func (m *Model) viewUnder(directory Directory, email, token string) (classrooms,
 	if f := m.Feed(token); f != nil && token != "" && config.NormalizeEmail(f.Email) == config.NormalizeEmail(email) {
 		return m.feedView(f)
 	}
-	return m.viewOf(directory, email)
+	return m.ViewOf(directory, email)
 }
 
 func (m *Model) myHeliosianView(directory Directory, email string) (classrooms, tags []string) {
@@ -242,10 +238,6 @@ func (m *Model) card(e *Event) Card {
 		}
 	}
 	return u
-}
-
-func (m *Model) Upcoming(directory Directory, email string, linked []Linked, now time.Time, limit int) []Card {
-	return m.UpcomingUnder(directory, email, linked, now, limit, "")
 }
 
 func (m *Model) UpcomingUnder(directory Directory, email string, linked []Linked, now time.Time, limit int, token string) []Card {

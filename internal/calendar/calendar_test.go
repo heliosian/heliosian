@@ -616,7 +616,7 @@ func TestUpcoming(t *testing.T) {
 		{Source: SourceTeam, ID: "E001", Title: "HCA International Night 2026", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open"},
 		{Source: SourceTeam, ID: "E005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/E005", Availability: "done"},
 	}
-	got := m.Upcoming(d, "jordan.whitfield@heliosschool.org", linked, at, 0)
+	got := m.UpcomingUnder(d, "jordan.whitfield@heliosschool.org", linked, at, 0, "")
 	titles := []string{}
 	for i, u := range got {
 		titles = append(titles, u.Title)
@@ -642,13 +642,13 @@ func TestUpcoming(t *testing.T) {
 	}
 	// A stranger sees two classroom events the parent's classrooms leave
 	// out, and the parent two invitations sent them, so they see as many.
-	if all := m.Upcoming(d, "nobody@x.org", linked, at, 0); len(all) != len(got) {
+	if all := m.UpcomingUnder(d, "nobody@x.org", linked, at, 0, ""); len(all) != len(got) {
 		t.Errorf("a stranger sees %d, a parent %d", len(all), len(got))
 	}
-	if two := m.Upcoming(d, "jordan.whitfield@heliosschool.org", linked, at, 2); len(two) != 2 || two[1].Title != party.Title {
+	if two := m.UpcomingUnder(d, "jordan.whitfield@heliosschool.org", linked, at, 2, ""); len(two) != 2 || two[1].Title != party.Title {
 		t.Errorf("limit 2 = %+v", two)
 	}
-	if later := m.Upcoming(d, "nobody@x.org", nil, at.AddDate(1, 0, 0), 0); len(later) != 0 {
+	if later := m.UpcomingUnder(d, "nobody@x.org", nil, at.AddDate(1, 0, 0), 0, ""); len(later) != 0 {
 		t.Errorf("a year on = %+v", later)
 	}
 }

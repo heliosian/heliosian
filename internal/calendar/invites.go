@@ -1336,10 +1336,6 @@ func (a app) sendMessage(ctx context.Context, to string, cc, replyTo []string, h
 	slog.InfoContext(ctx, "calendar: message sent", "to", to, "event", e.ID)
 }
 
-func (c *Cache) PartyRSVPs(partyID string) (sent bool, answers map[string]string, ok bool) {
-	return c.LinkedRSVPs(nil, SourceCelebrate, partyID)
-}
-
 func (c *Cache) LinkedRSVPs(linked []Linked, source, id string) (sent bool, answers map[string]string, ok bool) {
 	model := c.Model()
 	key := source + "/" + id

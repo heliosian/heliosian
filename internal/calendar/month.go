@@ -23,10 +23,6 @@ type Kind struct {
 	Words string `json:"words"`
 }
 
-func (m *Model) Month(directory Directory, email string, linked []Linked, now time.Time, month string) Month {
-	return m.MonthUnder(directory, email, linked, now, month, "")
-}
-
 func (m *Model) MonthUnder(directory Directory, email string, linked []Linked, now time.Time, month, token string) Month {
 	first, err := time.ParseInLocation(MonthFormat, month, Location)
 	if err != nil {

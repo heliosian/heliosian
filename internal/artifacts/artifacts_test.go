@@ -16,7 +16,7 @@ func sampleIssue(t *testing.T) *Document {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := Build(message, NewResolver(), Fake{}.Model())
+	doc, err := message.Build(&Resolver{}, Fake{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestPlainTextMessageKeepsItsParagraphs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := Build(message, NewResolver(), Fake{}.Model())
+	doc, err := message.Build(&Resolver{}, Fake{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestPageBecomesMarkdown(t *testing.T) {
 	if _, ok := saved.(Page); !ok {
 		t.Fatalf("read as %T", saved)
 	}
-	doc, err := saved.Build(NewResolver(), Fake{}.Model())
+	doc, err := saved.Build(&Resolver{}, Fake{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestExcludedPagesAreRefused(t *testing.T) {
 		if !Excluded(address) {
 			t.Errorf("%s is not excluded", address)
 		}
-		if _, err := BuildPage(Page{URL: address, HTML: "<main><p>Words.</p></main>"}, Fake{}.Model()); !errors.Is(err, ErrExcluded) {
+		if _, err := (Page{URL: address, HTML: "<main><p>Words.</p></main>"}).Build(&Resolver{}, Fake{}.Model()); !errors.Is(err, ErrExcluded) {
 			t.Errorf("%s: %v", address, err)
 		}
 	}
@@ -141,7 +141,7 @@ func TestPortalResourceBecomesMarkdown(t *testing.T) {
 		Format:  FormatHTML,
 		Body:    `<h2>Ordering</h2><p>Order by Thursday on <a href="https://www.google.com/url?q=https://www.choicelunch.com/&amp;sa=D&amp;usg=x">Choicelunch</a>, and see <a href="/heliosschool/parent/pages/Aftercare-Program">aftercare</a>.</p>`,
 	}
-	doc, err := r.Build(NewResolver(), Fake{}.Model())
+	doc, err := r.Build(&Resolver{}, Fake{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,14 +157,14 @@ func TestPortalResourceBecomesMarkdown(t *testing.T) {
 func TestTextResourceKeepsItsLines(t *testing.T) {
 	r := Resource{URL: "https://docs.google.com/presentation/d/x/edit", Title: "SEL", Fetched: "2026-09-17T19:00:00Z", Format: FormatText,
 		Body: "Day in the Life\r\nSEL skills   matter.\n\n1\n\nEssential Skills\nAsk for help\n\fRespect others\n"}
-	doc, err := r.Build(NewResolver(), Fake{}.Model())
+	doc, err := r.Build(&Resolver{}, Fake{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if doc.Markdown != "Day in the Life\nSEL skills matter.\n\nEssential Skills\nAsk for help\n\nRespect others" {
 		t.Fatalf("markdown:\n%q", doc.Markdown)
 	}
-	if _, err := (Resource{URL: r.URL, Title: "Empty", Fetched: r.Fetched, Format: FormatText, Body: "\f 2 \n"}).Build(NewResolver(), Fake{}.Model()); !errors.Is(err, ErrNoWords) {
+	if _, err := (Resource{URL: r.URL, Title: "Empty", Fetched: r.Fetched, Format: FormatText, Body: "\f 2 \n"}).Build(&Resolver{}, Fake{}.Model()); !errors.Is(err, ErrNoWords) {
 		t.Fatalf("an empty resource: %v", err)
 	}
 }
@@ -358,7 +358,7 @@ func TestTrackingLinksAreTheOnlyOnesTouched(t *testing.T) {
 			t.Errorf("%q does not read as a tracking link", address)
 		}
 	}
-	r := NewResolver()
+	r := &Resolver{}
 	if got := r.Resolve("https://example.org/page"); got != "https://example.org/page" {
 		t.Fatalf("plain link: %q", got)
 	}
@@ -366,7 +366,7 @@ func TestTrackingLinksAreTheOnlyOnesTouched(t *testing.T) {
 
 func TestVeracrossLinksAreReadWithoutAsking(t *testing.T) {
 	const wrapped = "https://email.mail1.veracross.com/c/eJxMzT1u7SAQhuHVQGnB8F9Q3MbbOIIBH9DlGAscrz9CKZJynnmlL3lpLKfZc2Md11oIS4tPwiiUGuOhdIyodU7WhATKpuisi7R6YKCZ4xxAWGU3riCZw0UjxRGMQSLZJ9TGtyePgKPPuWH_0ObLfV-TiH8EdgJ7wbCV3GqfNZyrILDT4dfx_mqtPnkQyX6KiaX3tvXxpo8H-uALW83n7f--F-e1_Lr-eyucXnDlMfv56wCMgfgOAAD__5zzUBI"
-	r := NewResolver()
+	r := &Resolver{}
 	if got := r.Resolve(wrapped); got != "https://hca.heliosian.com/" {
 		t.Fatalf("unwrapped: %q", got)
 	}
@@ -379,7 +379,7 @@ func TestVeracrossLinksAreReadWithoutAsking(t *testing.T) {
 }
 
 func TestAnUnreadableTrackingLinkKeepsItsWords(t *testing.T) {
-	r := NewResolver()
+	r := &Resolver{}
 	markdown, err := Markdown(`<p>Please <a href="https://email.mail1.veracross.com/c/not-a-real-blob">sign up here</a> today.</p>`, r.Resolve)
 	if err != nil {
 		t.Fatal(err)
@@ -393,7 +393,7 @@ func TestAnUnreadableTrackingLinkKeepsItsWords(t *testing.T) {
 }
 
 func TestInlineMarkupAroundBlocksKeepsItsWords(t *testing.T) {
-	r := NewResolver()
+	r := &Resolver{}
 	markdown, err := Markdown(`<a href="https://example.org/"><table><tr><td><p>Read the notice</p></td></tr><tr><td><p>Second row</p></td></tr></table></a><p>After.</p>`, r.Resolve)
 	if err != nil {
 		t.Fatal(err)
@@ -413,7 +413,7 @@ func TestInlineMarkupAroundBlocksKeepsItsWords(t *testing.T) {
 }
 
 func TestOtherLinksAreKeptAsWritten(t *testing.T) {
-	r := NewResolver()
+	r := &Resolver{}
 	for _, address := range []string{
 		"https://anything.example.org/page?email=someone%40example.org",
 		"http://10.0.0.1/c/l?email=x",
@@ -430,7 +430,7 @@ func TestOtherLinksAreKeptAsWritten(t *testing.T) {
 }
 
 func TestBoldCapitalsBecomeHeadings(t *testing.T) {
-	markdown, err := Markdown(`<p><strong>A NOTE FROM BEN</strong></p><p>Dear Helios Families,</p><p><b><a href="https://example.org/map">HELIOS WORLD COMMUNITY MAP</a></b></p><p>Instructions below.</p><p><strong>Ben</strong></p>`, NewResolver().Resolve)
+	markdown, err := Markdown(`<p><strong>A NOTE FROM BEN</strong></p><p>Dear Helios Families,</p><p><b><a href="https://example.org/map">HELIOS WORLD COMMUNITY MAP</a></b></p><p>Instructions below.</p><p><strong>Ben</strong></p>`, (&Resolver{}).Resolve)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -338,11 +338,12 @@ func (d calendarDirectory) People() []calendar.Person {
 
 func (d calendarDirectory) Lists(email string) []calendar.List {
 	out := []calendar.List{}
-	tags := d.cache.Tags(email)
+	model := d.cache.Model()
+	tags := model.Tags(email)
 	for _, name := range slices.Sorted(maps.Keys(tags)) {
 		out = append(out, calendar.List{Key: "tag:" + name, Name: name, Kind: "tag", People: tags[name]})
 	}
-	for _, shared := range d.cache.SharedTags(email) {
+	for _, shared := range model.SharedTags(email) {
 		out = append(out, calendar.List{Key: "shared:" + shared.Owner + ":" + shared.Name, Name: shared.Name + " (" + shared.OwnerName + "'s)", Kind: "tag", People: shared.People})
 	}
 	if d.lists != nil {

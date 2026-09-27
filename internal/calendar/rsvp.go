@@ -17,14 +17,6 @@ type Answerer func(ctx context.Context, email, id, answer string) error
 
 var errNotRecorded = errors.New("the answer was not recorded")
 
-func (a app) answer(ctx context.Context, email, id, answer string) error {
-	return a.record(ctx, a.as(config.NormalizeEmail(email)), id, answer, true)
-}
-
-func (a app) record(ctx context.Context, actor access.Actor, id, answer string, invite bool) error {
-	return a.recordBy(ctx, actor, actor.Email, id, answer, ViaPage, invite, false)
-}
-
 func (a app) recordBy(ctx context.Context, actor access.Actor, email, id, answer, via string, invite, wait bool) error {
 	email = config.NormalizeEmail(email)
 	answer = strings.ToLower(strings.TrimSpace(answer))
@@ -129,7 +121,7 @@ func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	if err := a.record(r.Context(), actor, body.ID, body.Answer, true); err != nil {
+	if err := a.recordBy(r.Context(), actor, actor.Email, body.ID, body.Answer, ViaPage, true, false); err != nil {
 		refuse(w, err)
 		return
 	}

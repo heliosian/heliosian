@@ -111,7 +111,11 @@ func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Dir
 	mux.HandleFunc("GET /open/banner/{id...}", a.banner)
 	mux.HandleFunc("POST /hooks/replies/mime", a.replies)
 	mux.HandleFunc("POST /hooks/events", a.deliveryEvents)
-	return Hooks{Answer: a.answer, MakeDefault: a.makeDefault, RSVPs: a.rsvps, MoveAddress: a.moveAddress}
+	answer := func(ctx context.Context, email, id, answer string) error {
+		actor := a.as(config.NormalizeEmail(email))
+		return a.recordBy(ctx, actor, actor.Email, id, answer, ViaPage, true, false)
+	}
+	return Hooks{Answer: answer, MakeDefault: a.makeDefault, RSVPs: a.rsvps, MoveAddress: a.moveAddress}
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -433,7 +437,7 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.InfoContext(r.Context(), "calendar: events added", "actor", actor.Email, "title", strings.TrimSpace(body.Title), "count", len(ids), "pending", pending)
 	for _, id := range ids {
-		if err := a.record(r.Context(), actor, id, AnswerYes, false); err != nil {
+		if err := a.recordBy(r.Context(), actor, actor.Email, id, AnswerYes, ViaPage, false, false); err != nil {
 			slog.WarnContext(r.Context(), "calendar: host's yes", "event", id, "error", err)
 		}
 	}

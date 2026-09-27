@@ -74,7 +74,7 @@ func main() {
 		}
 	}
 	log.Printf("%d documents on file, %d files to consider", len(objects), len(files))
-	resolver := artifacts.NewResolver()
+	resolver := &artifacts.Resolver{}
 
 	pending := []work{}
 	drops := []store.Op{}

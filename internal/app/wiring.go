@@ -208,7 +208,7 @@ func NewCore(cfg Config) *Core {
 	partyCalendar := calendar.Celebrate{Party: partyPeople{celebrateCache}.people, IsAdmin: celebrateCache.IsAdmin, MoveAddress: moveAddress}
 	hooks = calendar.Register(calendarMux, calendarCache, cfg.Store, calendarDir, settings.SuperAdmins, linked, partyCalendar, audienceSources{loopDir}.Sources, cfg.ImageSearch, cfg.CalendarMail, calendarStyle)
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, homeCache, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault, homeStyle)
+	home.Register(homeMux, homeCache, cfg.Store, settings.SuperAdmins, func(email string) string { return cache.Model().HeroPhoto(email) }, directory{cache, settings}.HomePeople, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault, homeStyle)
 	teamMux := http.NewServeMux()
 	eventRSVPs := func(id string) *team.EventRSVPs {
 		sent, answers, ok := calendarCache.LinkedRSVPs(linked(""), calendar.SourceTeam, id)
@@ -224,7 +224,7 @@ func NewCore(cfg Config) *Core {
 	}, birthdayAbout)
 	celebrateMux := http.NewServeMux()
 	partyRSVPs := func(partyID string) *celebrate.PartyRSVPs {
-		sent, answers, ok := calendarCache.PartyRSVPs(partyID)
+		sent, answers, ok := calendarCache.LinkedRSVPs(nil, calendar.SourceCelebrate, partyID)
 		if !ok {
 			return nil
 		}

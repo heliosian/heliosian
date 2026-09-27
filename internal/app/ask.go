@@ -17,7 +17,9 @@ import (
 func askSources(cache *who.Cache, settings *config.Cache, teamCache *team.Cache, celebrateCache *celebrate.Cache, calendarCache *calendar.Cache, loopCache *loop.Cache, homeCache *home.Cache, artifactsCache *artifacts.Cache, embedder artifacts.Embedder, lists smartLists, loopDir loopDirectory, linked func(email string) []calendar.Linked) ask.Sources {
 	return ask.Sources{
 		Directory: cache.Model,
-		Tags:      cache.Tags,
+		Tags: func(owner string) map[string][]string {
+			return cache.Model().Tags(owner)
+		},
 		Lists: func(email string) []who.List {
 			return append(cache.Model().RoomParentLists(email), lists.Lists(email)...)
 		},

@@ -122,7 +122,7 @@ func (in *Filer) FileSaved(ctx context.Context, actor access.Actor, path string)
 	if err != nil {
 		return err
 	}
-	doc, err := saved.Build(NewResolver(), in.embedder.Model())
+	doc, err := saved.Build(&Resolver{}, in.embedder.Model())
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
@@ -130,7 +130,7 @@ func (in *Filer) FileSaved(ctx context.Context, actor access.Actor, path string)
 }
 
 func (in *Filer) file(ctx context.Context, actor access.Actor, m Message) error {
-	doc, err := Build(m, NewResolver(), in.embedder.Model())
+	doc, err := m.Build(&Resolver{}, in.embedder.Model())
 	if errors.Is(err, ErrNotBroadcast) || errors.Is(err, ErrNoWords) {
 		slog.Info("artifacts: mail left out", "from", m.From, "subject", m.Subject, "reason", err)
 		return nil

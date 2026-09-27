@@ -29,7 +29,7 @@ func (d loopDirectory) Model() *who.Model {
 }
 
 func (d loopDirectory) Tags(owner string) map[string][]string {
-	return d.cache.Tags(owner)
+	return d.cache.Model().Tags(owner)
 }
 
 func (d loopDirectory) Lists(owner string) []who.List {
@@ -37,7 +37,7 @@ func (d loopDirectory) Lists(owner string) []who.List {
 }
 
 func (d loopDirectory) Shared(email string) []who.SharedTag {
-	return d.cache.SharedTags(email)
+	return d.cache.Model().SharedTags(email)
 }
 
 func loopPerson(model *who.Model, p *who.Person) loop.Person {

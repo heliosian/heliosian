@@ -46,7 +46,7 @@ func Excluded(address string) bool {
 
 var ErrExcluded = errors.New("the page is not one the documents carry")
 
-func BuildPage(p Page, model string) (*Document, error) {
+func (p Page) Build(_ *Resolver, model string) (*Document, error) {
 	if Excluded(p.URL) {
 		return nil, fmt.Errorf("%s: %w", p.URL, ErrExcluded)
 	}

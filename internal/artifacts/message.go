@@ -38,16 +38,8 @@ func (m Message) Key() string {
 	return Key(m.MessageID)
 }
 
-func (m Message) Build(links *Resolver, model string) (*Document, error) {
-	return Build(m, links, model)
-}
-
 func (p Page) Key() string {
 	return Key(p.URL)
-}
-
-func (p Page) Build(_ *Resolver, model string) (*Document, error) {
-	return BuildPage(p, model)
 }
 
 func ReadSaved(path string) (Saved, error) {
@@ -101,7 +93,7 @@ var ErrNoWords = errors.New("the message has no words")
 
 var ErrNotBroadcast = errors.New("the message is not one the community was sent")
 
-func Build(m Message, links *Resolver, model string) (*Document, error) {
+func (m Message) Build(links *Resolver, model string) (*Document, error) {
 	channel, kind, ok := m.Broadcast()
 	if !ok {
 		return nil, fmt.Errorf("%s: %w", m.MessageID, ErrNotBroadcast)

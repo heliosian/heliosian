@@ -140,15 +140,15 @@ func TestTagChangesReachMemoryTheSheetAndTheLog(t *testing.T) {
 	s.form(t, jordan, "/api/directory/tag-rename", url.Values{"tag": {"Soccer Team"}, "name": {"Football"}})
 	s.form(t, jordan, "/api/directory/tag-copy", url.Values{"tag": {"Football"}, "name": {"Kicks"}})
 	s.form(t, jordan, "/api/directory/tag-share", url.Values{"tag": {"Kicks"}, "manager": {abena}, "on": {"1"}})
-	if len(s.cache.SharedTags(abena)) != 1 {
-		t.Fatalf("shared tags of %s: %+v", abena, s.cache.SharedTags(abena))
+	if len(s.cache.Model().SharedTags(abena)) != 1 {
+		t.Fatalf("shared tags of %s: %+v", abena, s.cache.Model().SharedTags(abena))
 	}
 	s.form(t, abena, "/api/directory/tag-leave", url.Values{"tag": {"Kicks"}, "owner": {jordan}})
 	s.form(t, jordan, "/api/directory/tag-delete", url.Values{"tag": {"Kicks"}})
 	s.form(t, jordan, "/api/directory/tag-delete", url.Values{"tag": {"Nothing Here"}})
 	s.post(t, jordan, "/api/admin/admins", "application/json", []byte(`{"admins":["`+abena+`"]}`))
 
-	tags := s.cache.Tags(jordan)
+	tags := s.cache.Model().Tags(jordan)
 	if len(tags["Carpool"]) != 1 || len(tags["Football"]) != 3 || len(tags["Kicks"]) != 0 || len(tags["Soccer Team"]) != 0 {
 		t.Fatalf("tags in memory: %v", tags)
 	}
@@ -191,7 +191,7 @@ func TestRenamingAnAddedPersonCarriesTheirRows(t *testing.T) {
 	if s.cache.Model().Person(noa) != nil || s.cache.Model().Person(renamed) == nil {
 		t.Fatal("the rename did not reach memory")
 	}
-	if len(s.cache.Tags(jordan)["Band"]) != 1 || len(s.cache.Tags(renamed)["Choir"]) != 1 || len(s.cache.Model().Person(renamed).Photos) != 1 {
+	if len(s.cache.Model().Tags(jordan)["Band"]) != 1 || len(s.cache.Model().Tags(renamed)["Choir"]) != 1 || len(s.cache.Model().Person(renamed).Photos) != 1 {
 		t.Fatal("the rename stranded tags or photos in memory")
 	}
 	for _, tab := range []string{tagsTable, managersTable, photosTab} {

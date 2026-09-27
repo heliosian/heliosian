@@ -192,11 +192,3 @@ func (c *Cache) IsSuperAdmin(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
 	return slices.Contains(c.superAdmins(), email)
 }
-
-func (c *Cache) HeroPhoto(email string) string { return c.Model().HeroPhoto(email) }
-
-func (c *Cache) Tags(owner string) map[string][]string { return c.Model().Tags(owner) }
-
-func (c *Cache) TagManagers(owner string) map[string][]string { return c.Model().TagManagers(owner) }
-
-func (c *Cache) SharedTags(email string) []SharedTag { return c.Model().SharedTags(email) }

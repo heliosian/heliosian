@@ -18,10 +18,6 @@ type Resolver struct {
 	Dropped int
 }
 
-func NewResolver() *Resolver {
-	return &Resolver{}
-}
-
 func tracking(address string) bool {
 	u, err := url.Parse(address)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {

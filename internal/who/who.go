@@ -108,9 +108,9 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Model:       a.cache.Model(),
 		User:        user{Name: name, Initial: strings.ToUpper(name[:1]), Email: effective, Slug: slug, IsAdmin: v.Admin},
 		MapsKey:     a.mapsKey,
-		Tags:        a.cache.Tags(effective),
-		TagManagers: a.cache.TagManagers(effective),
-		SharedTags:  a.cache.SharedTags(effective),
+		Tags:        a.cache.Model().Tags(effective),
+		TagManagers: a.cache.Model().TagManagers(effective),
+		SharedTags:  a.cache.Model().SharedTags(effective),
 		Lists:       append(a.cache.Model().RoomParentLists(effective), a.lister.Lists(effective)...),
 		SuperEdit:   superEditing(v, superEditOn(r)),
 	}

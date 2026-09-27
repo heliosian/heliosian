@@ -902,17 +902,17 @@ func TestPartyStart(t *testing.T) {
 	if rec.Code != 200 || again.Group != made.Group || len(cache.Model().Groups[partyA]) != 1 {
 		t.Errorf("a second start: %d %+v, groups %d", rec.Code, again, len(cache.Model().Groups[partyA]))
 	}
-	if sent, _, ok := cache.PartyRSVPs("p1"); !ok || sent {
+	if sent, _, ok := cache.LinkedRSVPs(nil, SourceCelebrate, "p1"); !ok || sent {
 		t.Errorf("rsvps before sending: ok %v sent %v", ok, sent)
 	}
 	call(t, miaH, "POST", "/api/calendar/invites/people", `{"id":"`+partyA+`","people":[{"email":"`+robin+`"},{"email":"`+sam+`"}]}`)
 	call(t, miaH, "POST", "/api/calendar/invites/send", `{"id":"`+partyA+`"}`)
 	call(t, miaH, "POST", "/api/calendar/invites/answer", `{"id":"`+partyA+`","email":"`+robin+`","answer":"maybe"}`)
-	sent, answers, ok := cache.PartyRSVPs("p1")
+	sent, answers, ok := cache.LinkedRSVPs(nil, SourceCelebrate, "p1")
 	if !ok || !sent || answers[robin] != AnswerMaybe || answers[sam] != "none" || answers[mia] != "" {
 		t.Errorf("rsvps = ok %v sent %v %v", ok, sent, answers)
 	}
-	if _, _, ok := cache.PartyRSVPs("nope"); ok {
+	if _, _, ok := cache.LinkedRSVPs(nil, SourceCelebrate, "nope"); ok {
 		t.Errorf("a party with no list has rsvps")
 	}
 }

@@ -30,10 +30,6 @@ func (r Resource) Key() string {
 	return Key(r.URL)
 }
 
-func (r Resource) Build(links *Resolver, model string) (*Document, error) {
-	return BuildResource(r, links, model)
-}
-
 func ReadResource(path string) (Resource, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -49,7 +45,7 @@ func ReadResource(path string) (Resource, error) {
 	return r, nil
 }
 
-func BuildResource(r Resource, links *Resolver, model string) (*Document, error) {
+func (r Resource) Build(links *Resolver, model string) (*Document, error) {
 	base, err := url.Parse(r.URL)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", r.URL, err)

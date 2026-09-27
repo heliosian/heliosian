@@ -252,7 +252,7 @@ func TestSavedView(t *testing.T) {
 	if view.User.Saved == nil || strings.Join(view.User.Saved.Classrooms, ",") != "Hawks" || strings.Join(view.User.Saved.Tags, ",") != "Community,HCA" {
 		t.Errorf("saved view = %+v", view.User.Saved)
 	}
-	for _, u := range cache.Model().Upcoming(fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}, me, nil, now(), 0) {
+	for _, u := range cache.Model().UpcomingUnder(fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}, me, nil, now(), 0, "") {
 		if !strings.Contains(u.Title, "Hawks") && !strings.Contains(u.Title, "CAFE") && u.Title != "International Night" && u.Title != "Halloween Parade" && u.Title != "HCA Meeting" && u.Title != "All School Movie Night" && u.Title != "Cocoa & Cookies" && u.Title != "Talent Show" && u.Title != "Back to School Social" && u.Title != "Spring Celebration" && u.Title != "Fall Potluck at the Torres'" && u.Title != "Jays & Ravens Beach Picnic" {
 			t.Errorf("upcoming under the saved view lists %q", u.Title)
 		}
@@ -275,7 +275,7 @@ func TestDefaultCalendar(t *testing.T) {
 	viewer := as(me, handler)
 	dir := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
 	found := false
-	for _, u := range cache.Model().Upcoming(dir, me, nil, now(), 0) {
+	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, "") {
 		found = found || u.Title == "International Night"
 	}
 	if !found {
@@ -293,7 +293,7 @@ func TestDefaultCalendar(t *testing.T) {
 	if mine := cache.Model().MyCalendars(me); len(mine) != 2 || mine[0].Token != "sample7feedtoken4jordan2whitfield" || !mine[1].Locked {
 		t.Errorf("rail = %+v", mine)
 	}
-	for _, u := range cache.Model().Upcoming(dir, me, nil, now(), 0) {
+	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, "") {
 		if u.Title == "International Night" {
 			t.Errorf("under the saved calendar, upcoming lists %q", u.Title)
 		}
@@ -549,7 +549,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	}
 	found := false
 	dir := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
-	for _, u := range cache.Model().Upcoming(dir, "robin.whitfield@heliosschool.org", nil, now(), 0) {
+	for _, u := range cache.Model().UpcomingUnder(dir, "robin.whitfield@heliosschool.org", nil, now(), 0, "") {
 		found = found || u.ID == shared.IDs[0]
 	}
 	if !found {
@@ -649,7 +649,7 @@ func TestAnswers(t *testing.T) {
 		t.Errorf("answers = %v", view.User.Answers)
 	}
 	dir := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
-	for _, u := range cache.Model().Upcoming(dir, me, nil, now(), 0) {
+	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, "") {
 		if u.ID == "a7@sample" {
 			t.Errorf("a hidden event is in Upcoming")
 		}
@@ -674,7 +674,7 @@ func TestAnswers(t *testing.T) {
 		t.Fatalf("yes: %d %s", rec.Code, rec.Body)
 	}
 	found := false
-	for _, u := range cache.Model().Upcoming(dir, me, nil, now(), 0) {
+	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, "") {
 		if u.ID == "a7@sample" {
 			found = u.Answer == AnswerYes
 		}
