@@ -1,5 +1,6 @@
 import {state, me, isAdmin, options, groupPath} from '../state.js';
-import {el, svg, link, button, iconButton, copyText, toast, personRow, pageHead, thumb, whoLink} from '../dom.js';
+import {el, svg, link, button, iconButton, copyText, toast, personRow, pageHead, thumb} from '../dom.js';
+import {whoLink} from '/toolbar.js';
 import {setTitle} from '/shell.js';
 import {load, navigate} from '../app.js';
 import {createPersonPicker} from '/picker.js';

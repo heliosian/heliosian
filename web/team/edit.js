@@ -9,6 +9,7 @@ function* allNodes() {
 import {el, svg, toast, button, thumb, whenEditor} from './dom.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
+import {whoLink} from '/toolbar.js';
 import {openModal, closeModal} from '/modal.js';
 import {field, text, textarea, select, checkbox, segmented} from '/form.js';
 import {tabbedFields} from '/tabs.js';
@@ -104,11 +105,6 @@ export function people() {
 export async function personInfo(email) {
   const all = await people();
   return all.find(p => p.email === email) || null;
-}
-
-export function whoProfile(email) {
-  const host = location.host.replace(/^(team|hca)\./, 'who.');
-  return `${location.protocol}//${host}/people/${encodeURIComponent((email || '').split('@')[0])}`;
 }
 
 export async function openPerson(v, node) {
@@ -241,7 +237,7 @@ function personFoot(v, info, done) {
   if (info) {
     const profile = el('a', 'button', '');
     profile.append(svg('open'), el('span', '', 'Open Helios Who? Profile'));
-    profile.href = whoProfile(v.email);
+    profile.href = whoLink(v.email);
     profile.target = '_blank';
     profile.rel = 'noopener';
     foot.append(profile);

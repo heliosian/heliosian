@@ -4,7 +4,7 @@ import {setTitle} from '/shell.js';
 import {emptyPanel} from '../cards.js';
 import {assignToMe} from '../edit.js';
 import {monthGrid, monthNav, showToggle} from './calendar.js';
-import {appOrigin} from '/toolbar.js';
+import {whoLink} from '/toolbar.js';
 
 let month = null;
 let picked = '';
@@ -121,12 +121,12 @@ function pickCard(sv) {
   facts.append(when);
   card.append(facts);
   const actions = el('div', 'pick-actions');
-  const whoLink = el('a', 'button button-secondary');
-  whoLink.href = appOrigin('who') + '/people/' + encodeURIComponent(sv.email);
-  whoLink.target = '_blank';
-  whoLink.rel = 'noopener';
-  whoLink.append(svg('open'), el('span', '', 'Open Helios Who'));
-  actions.append(whoLink, button('Assign to Me', null, 'button', () => assignToMe(sv)));
+  const profile = el('a', 'button button-secondary');
+  profile.href = whoLink(sv.email);
+  profile.target = '_blank';
+  profile.rel = 'noopener';
+  profile.append(svg('open'), el('span', '', 'Open Helios Who'));
+  actions.append(profile, button('Assign to Me', null, 'button', () => assignToMe(sv)));
   card.append(actions);
   return card;
 }

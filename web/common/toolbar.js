@@ -33,6 +33,10 @@ export function appOrigin(key) {
   return location.protocol + '//' + host.join('.') + (location.port ? ':' + location.port : '');
 }
 
+export function whoLink(email) {
+  return appOrigin('who') + '/people/' + encodeURIComponent((email || '').split('@')[0]);
+}
+
 async function switchList() {
   try {
     const res = await fetch('/api/apps/switch');
@@ -897,9 +901,8 @@ async function setSpoof(email) {
 }
 
 export function renderProfileLink(email) {
-  const slug = email.split('@')[0];
   for (const link of document.querySelectorAll('.user-menu-profile')) {
-    link.href = appOrigin('who') + '/people/' + encodeURIComponent(slug);
+    link.href = whoLink(email);
   }
 }
 

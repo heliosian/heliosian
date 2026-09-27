@@ -1,8 +1,4 @@
-import {appOrigin} from '/toolbar.js';
-
-export function whoLink(email) {
-  return appOrigin('who') + '/people/' + encodeURIComponent((email || '').split('@')[0]);
-}
+import {whoLink} from '/toolbar.js';
 
 export function el(tag, className, text) {
   const node = document.createElement(tag);

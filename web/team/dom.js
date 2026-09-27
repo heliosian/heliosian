@@ -126,8 +126,8 @@ export function displayURL(url) {
   return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
 
-export function searchBox(placeholder, onInput, light) {
-  const box = el('div', 'search' + (light ? ' light' : ''));
+export function searchBox(placeholder, onInput) {
+  const box = el('div', 'search');
   const input = el('input');
   input.type = 'search';
   input.placeholder = placeholder || 'Search';

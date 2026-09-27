@@ -30,6 +30,12 @@ const sectionTitles = {
   admin: 'Admin Tools',
 };
 
+function resetTagFilter() {
+  state.q = '';
+  state.filterTags = new Set();
+  state.filterTagRelations = new Set();
+}
+
 function render() {
   renderNav();
   setChrome(sectionTitles[segments()[0]] || 'Helios Who?', null);
@@ -70,15 +76,11 @@ function render() {
     state.q = '';
     renderStaffPage();
   } else if (seg[0] === 'email-list') {
-    state.q = '';
-    state.filterTags = new Set();
-    state.filterTagRelations = new Set();
+    resetTagFilter();
     state.tagListView = 'emails';
     renderListPage();
   } else if (seg[0] === 'greenvelope') {
-    state.q = '';
-    state.filterTags = new Set();
-    state.filterTagRelations = new Set();
+    resetTagFilter();
     renderGreenvelopePage();
   } else if (seg[0] === 'map') {
     state.q = '';

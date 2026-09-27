@@ -1,6 +1,7 @@
 import {state, me, isAdmin, household, billable, admits, audienceWords, ticketFor, money, currentCelebration, partyPath, party} from './state.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
+import {whoLink} from '/toolbar.js';
 import {el, svg, toast, button, avatar} from './dom.js';
 import {tabbedFields} from '/tabs.js';
 import {imageTools} from '/images.js';
@@ -50,11 +51,6 @@ function peoplePicker(options) {
 export async function personInfo(email) {
   const all = await people();
   return all.find(p => p.email === email) || null;
-}
-
-export function whoProfile(email) {
-  const host = location.host.replace(/^celebrate\./, 'who.');
-  return `${location.protocol}//${host}/people/${encodeURIComponent((email || '').split('@')[0])}`;
 }
 
 export async function openPerson(v) {
@@ -175,7 +171,7 @@ function personFoot(v, info, done) {
   if (info) {
     const profile = el('a', 'button', '');
     profile.append(svg('open'), el('span', '', 'Open Helios Who? Profile'));
-    profile.href = whoProfile(v.email);
+    profile.href = whoLink(v.email);
     profile.target = '_blank';
     profile.rel = 'noopener';
     foot.append(profile);

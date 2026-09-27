@@ -1,7 +1,7 @@
 import {state, me, isAdmin, postedAndHosting, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
 import {el, svg, button, toast, avatar, copyText} from './dom.js';
 import {popup} from '/modal.js';
-import {appOrigin} from '/toolbar.js';
+import {whoLink} from '/toolbar.js';
 import {rulesEditor, filterWidgets} from '/rules.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
@@ -594,7 +594,7 @@ export function hostsRow(e, view, refresh) {
   for (const h of view.hosts) {
     const tile = el(h.email ? 'a' : 'div', 'contact-card');
     if (h.email) {
-      tile.href = appOrigin('who') + '/people/' + encodeURIComponent(h.email);
+      tile.href = whoLink(h.email);
     }
     tile.title = [h.name, h.line].filter(Boolean).join(' \u00b7 ');
     tile.append(face(h, 'contact-photo'), el('span', 'contact-name', h.name || h.email));
@@ -952,7 +952,7 @@ function openGuestCard(e, p, view, refresh) {
   }
   if (p.email && !p.outside) {
     const open = el('a', 'link-button guest-card-open');
-    open.href = appOrigin('who') + '/people/' + encodeURIComponent(p.email);
+    open.href = whoLink(p.email);
     open.append(svg('open'), el('span', '', 'Open in Helios Who?'));
     who.append(open);
   }

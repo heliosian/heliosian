@@ -4,7 +4,7 @@ import {el, link, svg, paragraphs, button, toast, avatar, copyText} from '../dom
 import {popup} from '/modal.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
-import {appOrigin} from '/toolbar.js';
+import {whoLink} from '/toolbar.js';
 import {setTitle} from '/shell.js';
 import {audienceChips, blocks} from '../events.js';
 import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow} from '../invites.js';
@@ -487,7 +487,7 @@ function rsvpsCard(e) {
     const list = el('div', 'rsvps-grid');
     for (const p of people) {
       const tile = el('a', 'contact-card');
-      tile.href = appOrigin('who') + '/people/' + encodeURIComponent(p.email);
+      tile.href = whoLink(p.email);
       tile.title = [p.name, p.line].filter(Boolean).join(' · ');
       const face = avatar(p, 'contact-photo');
       if (p.grade) {
