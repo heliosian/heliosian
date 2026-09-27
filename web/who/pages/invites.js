@@ -5,7 +5,8 @@ import {familyOf, familyLink, familySearchText} from '../families.js';
 import {personLink} from '../people.js';
 import {tagFacetOptions} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
-import {anyFiltersActive, matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, tagRelationOptionsFor} from '../filters.js';
+import {anyFiltersActive, matchesFilters, familyMatchesFilters, roleChips, gradeOptions, tagRelationOptionsFor} from '../filters.js';
+import {facetDropdown, clampFilterPanel} from '/rules.js';
 import {render} from '/router.js';
 import {openLayer} from '/modal.js';
 import {api} from '/api.js';
@@ -376,16 +377,16 @@ export function invitesPage() {
       });
       search.append(input);
       controls.append(
-        facetDropdown('Grade', gradeOptions(), state.filterGrades, renderGrid),
-        facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, renderGrid),
+        facetDropdown('Grade', null, gradeOptions(), state.filterGrades, renderGrid),
+        facetDropdown('Classroom', null, state.model.classrooms.map(c => c.name), state.filterClassrooms, renderGrid),
       );
       if (tagFacetOptions().length) {
-        controls.append(facetDropdown('Tags', tagFacetOptions(), state.filterTags, renderAll));
+        controls.append(facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, renderAll));
       }
       const relationOptions = state.filterTags.size === 1 ? tagRelationOptionsFor([...state.filterTags][0]) : [];
       if (relationOptions.length) {
         const [activeTag] = state.filterTags;
-        controls.append(facetDropdown('Include', relationOptions, state.filterTagRelations, () => {
+        controls.append(facetDropdown('Include', null, relationOptions, state.filterTagRelations, () => {
           saveTagRelations(activeTag, state.filterTagRelations);
           renderGrid();
         }));
@@ -550,6 +551,10 @@ function gvServiceSelect(seg, systems, onChange) {
   button.addEventListener('click', () => {
     panel.hidden = !panel.hidden;
     button.classList.toggle('open', !panel.hidden);
+    if (!panel.hidden) {
+      panel.style.width = `${wrap.offsetWidth}px`;
+      clampFilterPanel(wrap, panel);
+    }
   });
   for (const s of systems) {
     const option = el('div', 'filter-option gv-service-option');

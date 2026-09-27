@@ -5,7 +5,6 @@ import {saveNavOpen, loadNavScroll, saveNavScroll} from './storage.js';
 import {familyOf, myFamilyKey} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
 import {tagNames, listKeys, listLabel, listApp, sharedKeys, sharedOf, managersOf, tagHref, onTagsChange, onTagsChangeChrome} from './tags.js';
-import {closeFilterPanels} from './filters.js';
 import {staleItems, familyInfoBanner, familyNavPeople, personTodoCount} from './stale.js';
 import {searchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
@@ -533,18 +532,11 @@ export function initChrome() {
         menu.hidden = true;
       }
     }
-    for (const panel of document.querySelectorAll('.filter-panel')) {
-      if (!panel.hidden && !panel.parentElement.contains(e.target)) {
-        panel.hidden = true;
-        panel.parentElement.querySelector('.filter-button').classList.remove('open');
-      }
-    }
   });
   onSlash(() => searchInput().focus());
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       searchResults().hidden = true;
-      closeFilterPanels();
       for (const menu of document.querySelectorAll('.card-menu, .photo-menu')) {
         menu.hidden = true;
       }

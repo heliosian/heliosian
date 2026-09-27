@@ -5,7 +5,8 @@ import {familiesOf, familyOf, familySearchText} from '../families.js';
 import {personCard, personLink, guestCard, guestPerson} from '../people.js';
 import {tagControl, onTagsChange, listLabel, tagFacetOptions, listSource, sharedOf, managersOf, manageControl, selectedGuests} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
-import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl, tagRelationOptionsFor, familyDropdown} from '../filters.js';
+import {matchesFilters, familyMatchesFilters, roleChips, gradeOptions, directoryFilter, tagRelationOptionsFor} from '../filters.js';
+import {facetDropdown, familyDropdown} from '/rules.js';
 import {initFamilyMap} from './map.js';
 
 const tagListViews = [
@@ -192,8 +193,8 @@ export function listPage() {
   const facetFilters = el('div', 'facet-filters');
   if (!onTagPage) {
     facetFilters.append(
-      facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderGrid()),
-      facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
+      facetDropdown('Grade', null, gradeOptions(), state.filterGrades, () => renderGrid()),
+      facetDropdown('Classroom', null, state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
     );
     controls.append(facetFilters);
   }
@@ -205,10 +206,10 @@ export function listPage() {
       tagsFacet = null;
     }
     if (!onTagPage && tagFacetOptions().length) {
-      tagsFacet = facetDropdown('Tags', tagFacetOptions(), state.filterTags, () => renderGrid());
+      tagsFacet = facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, () => renderGrid());
       facetFilters.append(tagsFacet);
     }
-    const next = filterControl(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false});
+    const next = directoryFilter(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false});
     if (!onTagPage) {
       next.classList.add('mobile-filter');
     }

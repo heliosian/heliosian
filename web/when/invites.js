@@ -4,7 +4,7 @@ import {popup} from '/modal.js';
 import {load} from '/router.js';
 import {whoLink} from '/toolbar.js';
 import {api} from '/api.js';
-import {rulesEditor, filterWidgets} from '/rules.js';
+import {rulesEditor, chipToggle, filterControl, familyDropdown} from '/rules.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
 import {uploadImage} from './imagecontrol.js';
@@ -1510,7 +1510,6 @@ function openCancel(e, view, refresh) {
 }
 
 function listFilters(all, view, onChange, {answer = '', opened = '', rsvp = true} = {}) {
-  const {chipToggle, filterControl} = filterWidgets();
   const bar = el('div', 'guest-table-bar');
   const search = el('input', 'rule-search');
   search.type = 'search';
@@ -1974,25 +1973,20 @@ function personPanel(e, data, onList, done) {
   wrap.append(search);
   const roles = new Set();
   const bar = el('div', 'picker-bar');
-  const chips = el('div', 'filter-chips picker-roles');
-  for (const [role, label, test] of [['student', 'Students', p => p.isStudent], ['parent', 'Parents', p => p.isParent], ['staff', 'Staff', p => p.isStaff]]) {
-    const chip = el('button', 'filter-chip', label);
-    chip.type = 'button';
-    chip.test = test;
-    chip.addEventListener('click', () => {
-      if (roles.has(role)) {
-        roles.delete(role);
-      } else {
+  const roleTests = {student: p => p.isStudent, parent: p => p.isParent, staff: p => p.isStaff};
+  const chips = el('div', 'chip-row picker-roles');
+  for (const [role, label] of [['student', 'Students'], ['parent', 'Parents'], ['staff', 'Staff']]) {
+    chips.append(chipToggle(label, false, on => {
+      if (on) {
         roles.add(role);
+      } else {
+        roles.delete(role);
       }
-      chip.classList.toggle('is-on', roles.has(role));
       paintList();
-    });
-    chips.append(chip);
+    }, role));
   }
   bar.append(chips);
-  const relations = [{value: 'Parents', label: 'Their parents'}, {value: 'Children', label: 'Their children'}, {value: 'Siblings', label: 'Their siblings'}];
-  bar.append(rules.facetDropdown('Add family', 'families', relations, family, () => {
+  bar.append(familyDropdown(['Parents', 'Children', 'Siblings'], family, () => {
     paintList();
     paintButton();
   }));
@@ -2037,7 +2031,7 @@ function personPanel(e, data, onList, done) {
   const paintList = () => {
     list.replaceChildren();
     const q = search.value.trim().toLowerCase();
-    const tests = [...chips.children].filter(c => c.classList.contains('is-on')).map(c => c.test);
+    const tests = [...roles].map(role => roleTests[role]);
     const found = data.people.filter(p => (!q || (p.name || '').toLowerCase().includes(q) || p.email.toLowerCase().includes(q)) && (!tests.length || tests.some(t => t(p))));
     if (!found.length) {
       list.append(el('div', 'picker-note', 'Nobody by that name. Someone outside Helios goes on Add Non-Helios.'));

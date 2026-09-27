@@ -5,7 +5,7 @@ import {el, svg} from '/elements.js';
 import {appOrigin} from '/toolbar.js';
 import {api} from '/api.js';
 import {photoOrInitials, personPhotoUrl} from './people.js';
-import {clampFilterPanel} from './filters.js';
+import {clampFilterPanel} from '/rules.js';
 
 export function tagNames() {
   return Object.keys(tags).sort((a, b) => a.localeCompare(b));

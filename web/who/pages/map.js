@@ -2,7 +2,7 @@ import {state, byEmail} from '../state.js';
 import {thumbUrl, withFrom} from '../dom.js';
 import {el, svg} from '/elements.js';
 import {familyLink, familySearchText} from '../families.js';
-import {matchesFilters, familyMatchesFilters, filterControl} from '../filters.js';
+import {matchesFilters, familyMatchesFilters, directoryFilter} from '../filters.js';
 
 let mapsPromise = null;
 
@@ -143,7 +143,7 @@ export function mapPage() {
     renderPins();
   });
   search.append(input);
-  controls.append(search, filterControl(() => renderPins()));
+  controls.append(search, directoryFilter(() => renderPins()));
   header.append(controls);
   content.append(header);
 

@@ -28,15 +28,6 @@ function navLink(item) {
   return a;
 }
 
-function closeMenus() {
-  for (const menu of document.querySelectorAll('.facet-panel')) {
-    menu.hidden = true;
-  }
-  for (const open of document.querySelectorAll('.facet-button.open')) {
-    open.classList.remove('open');
-  }
-}
-
 function groupRows(groups) {
   const sub = el('div', 'nav-sub');
   for (const g of groups) {
@@ -116,7 +107,5 @@ export function initChrome() {
     fillNav,
     fillTabbar,
     search: {placeholder: 'Search groups…'},
-    keepOpen: '.facet-wrap',
-    closeMenus,
   });
 }

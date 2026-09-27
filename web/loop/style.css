@@ -590,7 +590,6 @@ a.compact-row:hover { background: var(--input); }
   .page-head { gap: 12px; }
   .group-list { grid-template-columns: 1fr; }
   .card { padding: 14px; }
-  .facet-panel { left: auto; right: 0; }
   /* The bar sits at the foot of main, which already stops above the tab bar. */
   .editor-actions { margin: 8px -12px -40px; padding: 10px 12px; }
 }

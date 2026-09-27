@@ -5,7 +5,8 @@ import {tabStrip, tabHref} from '/tabs.js';
 import {familiesOf, familyOf} from '../families.js';
 import {personCard, personLink, photoOrInitials, cardMore, gradeChain, guestCard} from '../people.js';
 import {tagFacetOptions, onTagsChange, selectedGuests} from '../tags.js';
-import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl} from '../filters.js';
+import {matchesFilters, familyMatchesFilters, roleChips, gradeOptions, directoryFilter} from '../filters.js';
+import {facetDropdown} from '/rules.js';
 import {render} from '/router.js';
 import {renderStaff} from './staff.js';
 import {familyDetailChip} from './family.js';
@@ -145,8 +146,8 @@ export function peoplePage() {
   search.append(input);
   const facetFilters = el('div', 'facet-filters');
   facetFilters.append(
-    facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderGrid()),
-    facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
+    facetDropdown('Grade', null, gradeOptions(), state.filterGrades, () => renderGrid()),
+    facetDropdown('Classroom', null, state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
   );
   controls.append(facetFilters, search);
   let tagsFacet = null;
@@ -157,10 +158,10 @@ export function peoplePage() {
       tagsFacet = null;
     }
     if (isEveryone && tagFacetOptions().length) {
-      tagsFacet = facetDropdown('Tags', tagFacetOptions(), state.filterTags, () => renderGrid());
+      tagsFacet = facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, () => renderGrid());
       facetFilters.append(tagsFacet);
     }
-    const next = filterControl(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false, tags: isEveryone});
+    const next = directoryFilter(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false, tags: isEveryone});
     next.classList.add('mobile-filter');
     if (mobileFilter) {
       mobileFilter.replaceWith(next);
