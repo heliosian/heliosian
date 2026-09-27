@@ -2,6 +2,7 @@ package data
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -28,34 +29,17 @@ func cellAt(row []interface{}, i int) string {
 }
 
 func (s *Sheet) Sync(app, table string, header []string, rows []map[string]string, keyCol string, apply bool) (*SyncResult, error) {
-	id, ok := s.spreadsheets[app]
-	if !ok {
-		return nil, fmt.Errorf("no spreadsheet configured for app %q", app)
+	g, err := s.read(app, table)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireColumns(table, g.index, append(slices.Clone(header), keyCol)...); err != nil {
+		return nil, err
 	}
 	quoted := quoteTab(table)
-	resp, err := call("get "+table, s.service.Spreadsheets.Values.Get(id, quoted).Do)
-	if err != nil {
-		return nil, fmt.Errorf("read tab %s: %w", table, err)
-	}
-	if len(resp.Values) == 0 {
-		return nil, fmt.Errorf("table %s has no header row", table)
-	}
-	index := map[string]int{}
-	for i, c := range resp.Values[0] {
-		index[strings.TrimSpace(fmt.Sprint(c))] = i
-	}
-	for _, name := range header {
-		if _, ok := index[name]; !ok {
-			return nil, fmt.Errorf("table %s is missing column %q", table, name)
-		}
-	}
-	if _, ok := index[keyCol]; !ok {
-		return nil, fmt.Errorf("table %s is missing column %q", table, keyCol)
-	}
-
 	position := map[string]int{}
-	for i, row := range resp.Values[1:] {
-		key := cellAt(row, index[keyCol])
+	for i, row := range g.values[1:] {
+		key := cellAt(row, g.index[keyCol])
 		if key == "" {
 			continue
 		}
@@ -80,12 +64,9 @@ func (s *Sheet) Sync(app, table string, header []string, rows []map[string]strin
 		seen[key] = true
 		n, ok := position[key]
 		if !ok {
-			out := make([]interface{}, len(resp.Values[0]))
-			for i := range out {
-				out[i] = ""
-			}
+			out := g.blankRow()
 			for _, name := range header {
-				out[index[name]] = strings.TrimSpace(row[name])
+				out[g.index[name]] = strings.TrimSpace(row[name])
 			}
 			appends = append(appends, out)
 			result.Added = append(result.Added, key)
@@ -95,15 +76,15 @@ func (s *Sheet) Sync(app, table string, header []string, rows []map[string]strin
 			// Trimmed, as the tab reads back: an untrimmed value would differ forever and
 			// rewrite itself on every run.
 			want := strings.TrimSpace(row[name])
-			if name == keyCol || want == cellAt(resp.Values[n-1], index[name]) {
+			if name == keyCol || want == cellAt(g.values[n-1], g.index[name]) {
 				continue
 			}
 			updates = append(updates, &sheets.ValueRange{
-				Range:  fmt.Sprintf("%s!%s%d", quoted, columnName(index[name]), n),
+				Range:  fmt.Sprintf("%s!%s%d", quoted, columnName(g.index[name]), n),
 				Values: [][]interface{}{{want}},
 			})
 			result.Edits = append(result.Edits, Edit{
-				Key: key, Column: name, From: cellAt(resp.Values[n-1], index[name]), To: want,
+				Key: key, Column: name, From: cellAt(g.values[n-1], g.index[name]), To: want,
 			})
 		}
 	}
@@ -120,7 +101,7 @@ func (s *Sheet) Sync(app, table string, header []string, rows []map[string]strin
 	}
 
 	if len(updates) > 0 {
-		_, err := call("sync "+table, s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
+		_, err := call("sync "+table, s.service.Spreadsheets.Values.BatchUpdate(g.id, &sheets.BatchUpdateValuesRequest{
 			ValueInputOption: "RAW", Data: updates,
 		}).Do)
 		if err != nil {
@@ -128,7 +109,7 @@ func (s *Sheet) Sync(app, table string, header []string, rows []map[string]strin
 		}
 	}
 	if len(appends) > 0 {
-		if err := s.writeRows(id, table, len(resp.Values), appends); err != nil {
+		if err := s.writeRows(g.id, table, len(g.values), appends); err != nil {
 			return nil, fmt.Errorf("add rows to %s: %w", table, err)
 		}
 	}

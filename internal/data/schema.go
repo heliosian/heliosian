@@ -3,7 +3,6 @@ package data
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"google.golang.org/api/sheets/v4"
 )
@@ -128,24 +127,17 @@ func (s *Sheet) DropColumns(app, table string, names []string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := call("header "+table, s.service.Spreadsheets.Values.Get(id, quoteTab(table)+"!1:1").Do)
+	header, err := s.Header(app, table)
 	if err != nil {
 		return err
 	}
-	if len(resp.Values) == 0 {
-		return fmt.Errorf("table %s has no header row", table)
-	}
-	index := map[string]int{}
-	for i, cell := range resp.Values[0] {
-		index[strings.TrimSpace(fmt.Sprint(cell))] = i
+	index := indexOf(header)
+	if err := requireColumns(table, index, names...); err != nil {
+		return err
 	}
 	indexes := []int{}
 	for _, name := range names {
-		i, ok := index[name]
-		if !ok {
-			return fmt.Errorf("table %s is missing column %q", table, name)
-		}
-		indexes = append(indexes, i)
+		indexes = append(indexes, index[name])
 	}
 	tab, err := s.tabID(id, table)
 	if err != nil {
