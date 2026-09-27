@@ -287,17 +287,23 @@ func (m *Model) ByPretty(pretty string) *Activity {
 }
 
 func (m *Model) PathOf(a *Activity) string {
-	if a.Parent == "" {
-		if a.PrettyID != "" {
-			return "/v/" + a.PrettyID
+	return activityPath(a.ID, a.Parent, a.PrettyID, func(parent string) string {
+		return m.PathOf(m.byID[parent])
+	})
+}
+
+func activityPath(id, parent, pretty string, parentPath func(string) string) string {
+	if parent == "" {
+		if pretty != "" {
+			return "/v/" + pretty
 		}
-		return "/activities/" + a.ID
+		return "/activities/" + id
 	}
-	seg := a.ID
-	if a.PrettyID != "" {
-		seg = a.PrettyID
+	seg := id
+	if pretty != "" {
+		seg = pretty
 	}
-	return m.PathOf(m.byID[a.Parent]) + "/" + seg
+	return parentPath(parent) + "/" + seg
 }
 
 func (m *Model) walk(path string) *Activity {

@@ -47,16 +47,48 @@ func spec(images ImageChecker) store.Spec[*Model] {
 	}
 }
 
-func carryActivity(before, after store.Row) []store.Op {
+func carryActivity(tables store.Tables, before, after store.Row) []store.Op {
 	switch {
 	case before == nil || before["Event ID"] == "":
 		return nil
 	case after == nil:
 		return []store.Op{store.Delete(linksTab, store.Row{"Event ID": before["Event ID"]})}
-	case before["Year"] != after["Year"]:
-		return []store.Op{store.Update(activitiesTab, store.Row{"Parent": after["Event ID"]}, store.Row{"Year": after["Year"]})}
+	}
+	ops := []store.Op{}
+	if before["Year"] != after["Year"] {
+		ops = append(ops, store.Update(activitiesTab, store.Row{"Parent": after["Event ID"]}, store.Row{"Year": after["Year"]}))
+	}
+	rows := tables[activitiesTab]
+	was, now := rowPath(rows, before), rowPath(rows, after)
+	if was == now || heldBy(rows, was, after) {
+		return ops
+	}
+	return append(ops, store.Insert(redirectsTab, store.Row{"Type": RedirectActivity, "Old": was, "New": now, "Date": today()}))
+}
+
+func rowPath(rows []store.Row, row store.Row) string {
+	return activityPath(strings.TrimSpace(row["Event ID"]), strings.TrimSpace(row["Parent"]), NormalizePretty(row["Pretty ID"]), func(parent string) string {
+		return rowPath(rows, activityRow(rows, parent))
+	})
+}
+
+func activityRow(rows []store.Row, id string) store.Row {
+	for _, row := range rows {
+		if strings.TrimSpace(row["Event ID"]) == id {
+			return row
+		}
 	}
 	return nil
+}
+
+func heldBy(rows []store.Row, path string, self store.Row) bool {
+	for _, row := range rows {
+		id := strings.TrimSpace(row["Event ID"])
+		if id != "" && id != strings.TrimSpace(self["Event ID"]) && rowPath(rows, row) == path {
+			return true
+		}
+	}
+	return false
 }
 
 func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmin func(string) bool, queue *store.Queue) (*Cache, error) {

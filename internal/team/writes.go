@@ -360,25 +360,6 @@ func (m *Model) saveActivity(actor access.Actor, body activityBody) (activitySav
 		cells[k] = v
 	}
 	ops := []store.Op{}
-	if displaced != nil {
-		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": displaced.ID}, store.Row{"Pretty ID": renamed}))
-	}
-	if current != nil {
-		was := m.PathOf(current)
-		now := "/activities/" + id
-		if parent != "" {
-			seg := id
-			if pretty != "" {
-				seg = pretty
-			}
-			now = m.PathOf(m.Activity(parent)) + "/" + seg
-		} else if pretty != "" {
-			now = "/v/" + pretty
-		}
-		if was != now {
-			ops = append(ops, store.Insert(redirectsTab, store.Row{"Type": RedirectActivity, "Old": was, "New": now, "Date": today()}))
-		}
-	}
 	action := "edit"
 	if adding {
 		action = "add"
@@ -393,6 +374,9 @@ func (m *Model) saveActivity(actor access.Actor, body activityBody) (activitySav
 			cells[store.OrderColumn] = ""
 		}
 		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": id}, cells))
+	}
+	if displaced != nil {
+		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": displaced.ID}, store.Row{"Pretty ID": renamed}))
 	}
 	return activitySave{ops: ops, id: id, title: title, year: year, status: status, action: action, adding: adding}, nil
 }

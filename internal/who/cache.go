@@ -68,7 +68,7 @@ func spec(blobs, static BlobChecker, idKey []byte, loaded func()) store.Spec[*Mo
 	}
 }
 
-func carryPerson(before, after store.Row) []store.Op {
+func carryPerson(_ store.Tables, before, after store.Row) []store.Op {
 	if before == nil || before["Added"] != "TRUE" {
 		return nil
 	}

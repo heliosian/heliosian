@@ -57,11 +57,11 @@ func carryAudience(thing string, before, after store.Row) []store.Op {
 	return nil
 }
 
-func carryLink(before, after store.Row) []store.Op {
+func carryLink(_ store.Tables, before, after store.Row) []store.Op {
 	return carryAudience(thingLink, before, after)
 }
 
-func carryCategory(before, after store.Row) []store.Op {
+func carryCategory(_ store.Tables, before, after store.Row) []store.Op {
 	ops := carryAudience(thingCategory, before, after)
 	if before != nil && after != nil && before["Title"] != after["Title"] {
 		ops = append(ops, store.Update(linksTab, store.Row{"Category": before["Title"]}, store.Row{"Category": after["Title"]}))

@@ -54,7 +54,7 @@ var spec = store.Spec[*Model]{
 	},
 }
 
-func renameCharity(before, after store.Row) []store.Op {
+func renameCharity(_ store.Tables, before, after store.Row) []store.Op {
 	if before == nil || after == nil || before["Name"] == after["Name"] {
 		return nil
 	}
@@ -64,7 +64,7 @@ func renameCharity(before, after store.Row) []store.Op {
 	}
 }
 
-func moveNewsletterDate(before, after store.Row) []store.Op {
+func moveNewsletterDate(_ store.Tables, before, after store.Row) []store.Op {
 	if before == nil || after == nil || before["Date"] == after["Date"] {
 		return nil
 	}

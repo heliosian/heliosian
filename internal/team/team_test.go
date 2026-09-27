@@ -1045,6 +1045,9 @@ func TestPrettyIDs(t *testing.T) {
 	if m.Activity("E002").PrettyID != "international-night-2025" || m.Activity(last.ID).PrettyID != "international-night-2025-2025" {
 		t.Fatalf("after take-over: %q %q", m.Activity("E002").PrettyID, m.Activity(last.ID).PrettyID)
 	}
+	if n := cache.Count(redirectsTab, store.Row{"Old": "/v/international-night-2025"}); n != 0 {
+		t.Fatalf("the address taken over was redirected to the displaced event: %+v", m.Redirects)
+	}
 	if m.Resolve("intl-night") != m.Activity("E001") || m.Resolve("/v/intl-night") != m.Activity("E001") || m.Resolve("nope") != nil {
 		t.Fatalf("sample redirect")
 	}
@@ -1062,6 +1065,12 @@ func TestPrettyIDs(t *testing.T) {
 	}
 	if n := cache.Count(redirectsTab, store.Row{"Type": RedirectActivity, "Old": "/v/spring-party", "New": "/activities/E002"}); n != 1 {
 		t.Fatalf("a removed address should redirect to the row: %+v", m.Redirects)
+	}
+	if err := cache.Commit(context.Background(), viewerOf(admin, true), store.Update(activitiesTab, store.Row{"Event ID": "E002"}, store.Row{"Pretty ID": "spring-fling"})); err != nil {
+		t.Fatal(err)
+	}
+	if n := cache.Count(redirectsTab, store.Row{"Type": RedirectActivity, "Old": "/activities/E002", "New": "/v/spring-fling"}); n != 1 {
+		t.Fatalf("a write outside the save handler moved the event without a redirect: %+v", cache.Model().Redirects)
 	}
 	if rec := edit("E002", "international-night-2025", false); rec.Code != http.StatusNoContent {
 		t.Fatalf("restore: %d %s", rec.Code, rec.Body)

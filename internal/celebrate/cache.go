@@ -47,7 +47,7 @@ func spec(images ImageChecker) store.Spec[*Model] {
 	}
 }
 
-func carryCelebration(before, after store.Row) []store.Op {
+func carryCelebration(_ store.Tables, before, after store.Row) []store.Op {
 	if before == nil || after == nil || before["Code"] == after["Code"] {
 		return nil
 	}
@@ -57,14 +57,14 @@ func carryCelebration(before, after store.Row) []store.Op {
 	}
 }
 
-func carryCategory(before, after store.Row) []store.Op {
+func carryCategory(_ store.Tables, before, after store.Row) []store.Op {
 	if before == nil || after == nil || before["Title"] == after["Title"] {
 		return nil
 	}
 	return []store.Op{store.Update(partiesTab, store.Row{"Category": before["Title"]}, store.Row{"Category": after["Title"]})}
 }
 
-func carryParty(before, after store.Row) []store.Op {
+func carryParty(_ store.Tables, before, after store.Row) []store.Op {
 	switch {
 	case before == nil || before["Party ID"] == "":
 		return nil

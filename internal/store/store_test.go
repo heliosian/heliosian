@@ -35,7 +35,7 @@ func spec() Spec[map[string]int] {
 	return Spec[map[string]int]{
 		App: "app",
 		Tabs: []Tab{
-			{Name: "Things", Columns: []string{"Name", "Color", "Size"}, Key: []string{"Name"}, Cascade: func(before, after Row) []Op {
+			{Name: "Things", Columns: []string{"Name", "Color", "Size"}, Key: []string{"Name"}, Cascade: func(_ Tables, before, after Row) []Op {
 				if before == nil || after == nil || before["Name"] == after["Name"] {
 					return nil
 				}

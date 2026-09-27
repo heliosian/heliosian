@@ -59,7 +59,7 @@ type Tab struct {
 	Name       string
 	Columns    []string
 	Key        []string
-	Cascade    func(before, after Row) []Op
+	Cascade    func(tables Tables, before, after Row) []Op
 	AppendOnly bool
 }
 
@@ -176,7 +176,7 @@ func (b *Book) Plan(ctx context.Context, tables Tables, actor string, ops []Op) 
 				log = append(log, entries(stamp, actor, real, tab, c)...)
 			}
 			if tab.Cascade != nil {
-				pending = append(pending, tab.Cascade(c.before, c.after)...)
+				pending = append(pending, tab.Cascade(tables, c.before, c.after)...)
 			}
 		}
 	}

@@ -48,7 +48,7 @@ func spec() store.Spec[*Model] {
 	}
 }
 
-func carryGroup(before, after store.Row) []store.Op {
+func carryGroup(_ store.Tables, before, after store.Row) []store.Op {
 	if before == nil || after != nil || before["Name"] == "" {
 		return nil
 	}

@@ -56,14 +56,14 @@ func spec(roster func() Roster, images ImageChecker) store.Spec[*Model] {
 	}
 }
 
-func carryEvent(before, after store.Row) []store.Op {
+func carryEvent(_ store.Tables, before, after store.Row) []store.Op {
 	if before == nil || after != nil || before["Event ID"] == "" {
 		return nil
 	}
 	return append(dropGuestList(before["Event ID"]), store.Delete(InvitationsTab, store.Row{"Event ID": before["Event ID"]}))
 }
 
-func carryInvitation(before, after store.Row) []store.Op {
+func carryInvitation(_ store.Tables, before, after store.Row) []store.Op {
 	if before == nil || after != nil || before["Event ID"] == "" {
 		return nil
 	}
@@ -78,7 +78,7 @@ func dropGuestList(id string) []store.Op {
 	return ops
 }
 
-func carryInvite(before, after store.Row) []store.Op {
+func carryInvite(_ store.Tables, before, after store.Row) []store.Op {
 	if before == nil || before["Email"] == "" {
 		return nil
 	}
