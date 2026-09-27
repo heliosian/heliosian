@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"log/slog"
-	"strings"
 
 	"heliosian/internal/calendarimport"
 	"heliosian/internal/data"
@@ -40,15 +39,9 @@ func main() {
 	if err != nil {
 		logging.Fatal("periodicsync: load calendar model", "error", err)
 	}
-	failures := []string{}
-	slog.InfoContext(ctx, "periodicsync: stage", "stage", "year calendar pdf")
 	opts := calendarimport.Options{Source: source, Cache: cache, Roster: roster, AnthropicKey: key, DryRun: *dryRun}
 	if err := calendarimport.RunPDF(ctx, opts); err != nil {
-		slog.ErrorContext(ctx, "periodicsync: stage failed", "stage", "year calendar pdf", "error", err)
-		failures = append(failures, "year calendar pdf")
+		logging.Fatal("periodicsync: year calendar pdf", "error", err)
 	}
-	if len(failures) > 0 {
-		logging.Fatal("periodicsync: stages failed", "failed", strings.Join(failures, "; "))
-	}
-	slog.InfoContext(ctx, "periodicsync: every stage completed")
+	slog.InfoContext(ctx, "periodicsync: completed")
 }
