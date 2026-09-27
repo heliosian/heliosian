@@ -8,13 +8,6 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
-type Policy int
-
-const (
-	Mirror Policy = iota
-	Merge
-)
-
 type Edit struct {
 	Key      string
 	Column   string
@@ -24,7 +17,6 @@ type Edit struct {
 type SyncResult struct {
 	Edits    []Edit
 	Added    []string
-	Removed  []string
 	Detached []string
 }
 
@@ -35,7 +27,7 @@ func cellAt(row []interface{}, i int) string {
 	return strings.TrimSpace(fmt.Sprint(row[i]))
 }
 
-func (s *Sheet) Sync(app, table string, header []string, rows []map[string]string, keyCol string, policy Policy, apply bool) (*SyncResult, error) {
+func (s *Sheet) Sync(app, table string, header []string, rows []map[string]string, keyCol string, apply bool) (*SyncResult, error) {
 	id, ok := s.spreadsheets[app]
 	if !ok {
 		return nil, fmt.Errorf("no spreadsheet configured for app %q", app)
@@ -119,21 +111,14 @@ func (s *Sheet) Sync(app, table string, header []string, rows []map[string]strin
 		if seen[key] {
 			continue
 		}
-		if policy == Mirror {
-			result.Removed = append(result.Removed, key)
-			continue
-		}
 		result.Detached = append(result.Detached, key)
 	}
 	sort.Strings(result.Added)
-	sort.Strings(result.Removed)
 	sort.Strings(result.Detached)
 	if !apply {
 		return result, nil
 	}
 
-	// Cells while every row is where it was read, deletions from the bottom, then new
-	// rows past everything the first two touched.
 	if len(updates) > 0 {
 		_, err := call("sync "+table, s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
 			ValueInputOption: "RAW", Data: updates,
@@ -142,31 +127,8 @@ func (s *Sheet) Sync(app, table string, header []string, rows []map[string]strin
 			return nil, fmt.Errorf("update cells of %s: %w", table, err)
 		}
 	}
-	if len(result.Removed) > 0 {
-		tab, err := s.tabID(id, table)
-		if err != nil {
-			return nil, err
-		}
-		doomed := []int{}
-		for _, key := range result.Removed {
-			doomed = append(doomed, position[key])
-		}
-		sort.Sort(sort.Reverse(sort.IntSlice(doomed)))
-		requests := []*sheets.Request{}
-		for _, n := range doomed {
-			requests = append(requests, &sheets.Request{DeleteDimension: &sheets.DeleteDimensionRequest{
-				Range: &sheets.DimensionRange{
-					SheetId: tab, Dimension: "ROWS",
-					StartIndex: int64(n - 1), EndIndex: int64(n),
-				},
-			}})
-		}
-		if _, err := call("delete "+table, s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{Requests: requests}).Do); err != nil {
-			return nil, fmt.Errorf("delete rows of %s: %w", table, err)
-		}
-	}
 	if len(appends) > 0 {
-		if err := s.writeRows(id, table, len(resp.Values)-len(result.Removed), appends); err != nil {
+		if err := s.writeRows(id, table, len(resp.Values), appends); err != nil {
 			return nil, fmt.Errorf("add rows to %s: %w", table, err)
 		}
 	}
