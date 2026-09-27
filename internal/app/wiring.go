@@ -34,6 +34,8 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
+	"heliosian/internal/spreadsheets"
+	"heliosian/internal/static"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
@@ -123,7 +125,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load celebrate data", "error", err)
 	}
-	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Store, StaticFiles{Root: "web/who"}, queue, cfg.FamilyIDKey, settings.SuperAdmins)
+	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Store, static.Files{Root: "web/who"}, queue, cfg.FamilyIDKey, settings.SuperAdmins)
 	if err != nil {
 		logging.Fatal("load directory data", "error", err)
 	}
@@ -332,7 +334,7 @@ func (c *Core) Aliased() map[string]http.Handler {
 
 func Production(domain string) (*http.Server, *store.Queue) {
 	sessionKey := env.Required("SESSION_KEY")
-	sheet, err := data.NewSheet(SheetIDs(Spreadsheets))
+	sheet, err := data.NewSheet(spreadsheets.IDs(spreadsheets.All))
 	if err != nil {
 		logging.Fatal("load directory sheet", "error", err)
 	}

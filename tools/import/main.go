@@ -19,10 +19,10 @@ import (
 	"golang.org/x/net/html/atom"
 
 	"heliosian/internal/access"
-	"heliosian/internal/app"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/env"
+	"heliosian/internal/static"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -510,7 +510,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("plan the import: %v", err)
 	}
-	model, err := who.BuildModel(context.Background(), plan.Tables, nil, app.StaticFiles{Root: "web/who"}, []byte(actor))
+	model, err := who.BuildModel(context.Background(), plan.Tables, nil, static.Files{Root: "web/who"}, []byte(actor))
 	if err != nil {
 		log.Fatalf("the directory does not load with the import: %v", err)
 	}

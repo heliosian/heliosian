@@ -7,7 +7,6 @@ import (
 	"slices"
 
 	"heliosian/internal/admins"
-	"heliosian/internal/app"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/birthday"
 	"heliosian/internal/celebrate"
@@ -17,6 +16,7 @@ import (
 	"heliosian/internal/feedback"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
+	"heliosian/internal/spreadsheets"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
@@ -194,14 +194,14 @@ func applyLayout(source *data.Sheet, layout string) (tabs, columns int, err erro
 }
 
 func main() {
-	spreadsheets := []app.Spreadsheet{}
-	for _, s := range app.Spreadsheets {
+	sheets := []spreadsheets.Spreadsheet{}
+	for _, s := range spreadsheets.All {
 		if _, ok := layouts[s.Title]; ok {
-			spreadsheets = append(spreadsheets, s)
+			sheets = append(sheets, s)
 		}
 	}
 	ids := map[string]string{}
-	for _, s := range spreadsheets {
+	for _, s := range sheets {
 		ids[s.Title] = env.Required(s.Env)
 	}
 	source, err := data.NewSheet(ids)
@@ -209,7 +209,7 @@ func main() {
 		log.Fatalf("sheet source: %v", err)
 	}
 	tabs, columns := 0, 0
-	for _, s := range spreadsheets {
+	for _, s := range sheets {
 		created, added, err := applyLayout(source, s.Title)
 		if err != nil {
 			log.Fatalf("%s: %v", s.Env, err)
@@ -217,5 +217,5 @@ func main() {
 		tabs += created
 		columns += added
 	}
-	log.Printf("checked %d spreadsheets: %d tabs created, %d columns added", len(spreadsheets), tabs, columns)
+	log.Printf("checked %d spreadsheets: %d tabs created, %d columns added", len(sheets), tabs, columns)
 }

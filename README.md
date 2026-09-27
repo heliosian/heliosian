@@ -19,6 +19,8 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/app` — server wiring shared by production and the dev server: host routing, file serving, and the production assembly
 - `internal/auth` — Google sign-in and session cookies
 - `internal/data` — tabular data sources: sample CSVs and Google Sheets
+- `internal/spreadsheets` — which Google Sheets the server and the periodic sync read, the environment variable holding each one's ID, and its title in Drive
+- `internal/static` — reads the bundled files under `web/` that the models check image names against
 - `internal/config` — the Config sheet: super admins and the platform settings, served at `/api/config`
 - `internal/who` — the directory app: model load, handlers, admin tools, self-service edits
 - `internal/home` — the link portal: model load, handlers, admin edits

@@ -32,6 +32,7 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
+	"heliosian/internal/spreadsheets"
 	"heliosian/internal/store"
 	"heliosian/internal/when"
 )
@@ -160,7 +161,7 @@ func localTLS(server *http.Server, queue *store.Queue) (*http.Server, *store.Que
 
 func detachReal(email string) {
 	key := env.Required("SESSION_KEY")
-	app.SheetIDs(app.Spreadsheets)
+	spreadsheets.IDs(spreadsheets.All)
 
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		logging.Fatal("create local directory", "error", err)

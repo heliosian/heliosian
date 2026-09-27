@@ -2,32 +2,11 @@ package app
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"heliosian/internal/blob"
+	"heliosian/internal/static"
 )
-
-type StaticFiles struct {
-	Root string
-}
-
-func (s StaticFiles) Has(key string) (bool, error) {
-	info, err := os.Stat(filepath.Join(s.Root, filepath.FromSlash(key)))
-	return err == nil && info.Mode().IsRegular(), nil
-}
-
-func (StaticFiles) Prefetch(context.Context, []string) error { return nil }
-
-func Bundled(roots []string, key string) bool {
-	for _, root := range roots {
-		if found, _ := (StaticFiles{Root: root}).Has(key); found {
-			return true
-		}
-	}
-	return false
-}
 
 func prefetchUploaded(ctx context.Context, store *blob.Store, folder string, names []string) error {
 	keys := []string{}
@@ -47,7 +26,7 @@ func (h homeImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "link-images/") {
 		return h.store.Has(key)
 	}
-	return Bundled([]string{"web/home", "web/public/home"}, key), nil
+	return static.Bundled([]string{"web/home", "web/public/home"}, key), nil
 }
 
 func (h homeImages) Prefetch(ctx context.Context, names []string) error {
@@ -62,7 +41,7 @@ func (e teamImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "activity-images/") {
 		return e.store.Has(key)
 	}
-	return Bundled([]string{"web/team", "web/public/team"}, key), nil
+	return static.Bundled([]string{"web/team", "web/public/team"}, key), nil
 }
 
 func (e teamImages) Prefetch(ctx context.Context, names []string) error {
@@ -77,7 +56,7 @@ func (c celebrateImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "party-images/") {
 		return c.store.Has(key)
 	}
-	return Bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
+	return static.Bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
 }
 
 func (c celebrateImages) Prefetch(ctx context.Context, names []string) error {
@@ -92,7 +71,7 @@ func (c calendarImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "category-images/") {
 		return c.store.Has(key)
 	}
-	return Bundled([]string{"web/when", "web/public/when"}, key), nil
+	return static.Bundled([]string{"web/when", "web/public/when"}, key), nil
 }
 
 func (c calendarImages) Prefetch(ctx context.Context, names []string) error {

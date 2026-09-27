@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/app"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
 	"heliosian/internal/celebrate"
@@ -18,6 +17,8 @@ import (
 	"heliosian/internal/devcache"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
+	"heliosian/internal/spreadsheets"
+	"heliosian/internal/static"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
@@ -30,7 +31,7 @@ func (homeImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "link-images/") {
 		return true, nil
 	}
-	return app.Bundled([]string{"web/home", "web/public/home"}, key), nil
+	return static.Bundled([]string{"web/home", "web/public/home"}, key), nil
 }
 
 func (homeImages) Prefetch(context.Context, []string) error { return nil }
@@ -41,7 +42,7 @@ func (teamImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "activity-images/") {
 		return true, nil
 	}
-	return app.Bundled([]string{"web/team", "web/public/team"}, key), nil
+	return static.Bundled([]string{"web/team", "web/public/team"}, key), nil
 }
 
 func (teamImages) Prefetch(context.Context, []string) error { return nil }
@@ -52,7 +53,7 @@ func (celebrateImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "party-images/") {
 		return true, nil
 	}
-	return app.Bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
+	return static.Bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
 }
 
 func (celebrateImages) Prefetch(context.Context, []string) error { return nil }
@@ -65,7 +66,7 @@ func main() {
 	if *dir != "" {
 		source = &data.Dir{Root: *dir}
 	} else {
-		live, err := data.NewSheet(app.SheetIDs(app.SpreadsheetsOf([]string{"directory", "preferences", "invites", "apps", "events", "celebrate", "calendar", "config", "groups", "artifacts"})))
+		live, err := data.NewSheet(spreadsheets.IDs(spreadsheets.Of([]string{"directory", "preferences", "invites", "apps", "events", "celebrate", "calendar", "config", "groups", "artifacts"})))
 		if err != nil {
 			log.Fatalf("sheet source: %v", err)
 		}
@@ -75,7 +76,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("blob store: %v", err)
 	}
-	model, err := who.LoadModel(source, blob.New(objects), app.StaticFiles{Root: "web/who"}, []byte("loadcheck"))
+	model, err := who.LoadModel(source, blob.New(objects), static.Files{Root: "web/who"}, []byte("loadcheck"))
 	if err != nil {
 		log.Fatalf("load directory model: %v", err)
 	}

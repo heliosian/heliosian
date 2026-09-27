@@ -1,4 +1,4 @@
-package app
+package spreadsheets
 
 import (
 	"slices"
@@ -13,7 +13,7 @@ type Spreadsheet struct {
 	Title  string
 }
 
-var Spreadsheets = []Spreadsheet{
+var All = []Spreadsheet{
 	{"directory", "DIRECTORY_SHEET", "Directory"},
 	{"preferences", "PREFERENCES_SHEET", "Preferences"},
 	{"invites", "INVITES_SHEET", "Invite List Builder"},
@@ -31,19 +31,19 @@ var Spreadsheets = []Spreadsheet{
 
 var SyncSources = []string{"calendar", "directory", "preferences", "config"}
 
-func SpreadsheetsOf(sources []string) []Spreadsheet {
+func Of(sources []string) []Spreadsheet {
 	out := []Spreadsheet{}
 	for _, source := range sources {
-		i := slices.IndexFunc(Spreadsheets, func(s Spreadsheet) bool { return s.Source == source })
+		i := slices.IndexFunc(All, func(s Spreadsheet) bool { return s.Source == source })
 		if i < 0 {
 			logging.Fatal("unknown spreadsheet source", "source", source)
 		}
-		out = append(out, Spreadsheets[i])
+		out = append(out, All[i])
 	}
 	return out
 }
 
-func SheetIDs(sheets []Spreadsheet) map[string]string {
+func IDs(sheets []Spreadsheet) map[string]string {
 	ids := map[string]string{}
 	for _, s := range sheets {
 		ids[s.Source] = env.Required(s.Env)

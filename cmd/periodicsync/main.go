@@ -6,11 +6,12 @@ import (
 	"log/slog"
 	"strings"
 
-	"heliosian/internal/app"
 	"heliosian/internal/calendarimport"
 	"heliosian/internal/data"
 	"heliosian/internal/env"
 	"heliosian/internal/logging"
+	"heliosian/internal/spreadsheets"
+	"heliosian/internal/static"
 	"heliosian/internal/store"
 	"heliosian/internal/when"
 	"heliosian/internal/who"
@@ -24,14 +25,13 @@ func main() {
 	if !*permitted {
 		logging.Fatal("periodicsync: this run spends money on Claude; pass --i-have-user-permission-to-spend-money only when the user has said to run it")
 	}
-	spreadsheets := app.SheetIDs(app.SpreadsheetsOf(app.SyncSources))
 	key := env.Key("ANTHROPIC_API_KEY", "local/creds/anthropic.key")
 	ctx := context.Background()
-	source, err := data.NewSheet(spreadsheets)
+	source, err := data.NewSheet(spreadsheets.IDs(spreadsheets.Of(spreadsheets.SyncSources)))
 	if err != nil {
 		logging.Fatal("periodicsync: sheet source", "error", err)
 	}
-	directory, err := who.LoadModel(source, nil, app.StaticFiles{Root: "web/who"}, []byte("periodicsync"))
+	directory, err := who.LoadModel(source, nil, static.Files{Root: "web/who"}, []byte("periodicsync"))
 	if err != nil {
 		logging.Fatal("periodicsync: load directory model", "error", err)
 	}

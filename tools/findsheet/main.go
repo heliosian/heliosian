@@ -8,12 +8,12 @@ import (
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 
-	"heliosian/internal/app"
+	"heliosian/internal/spreadsheets"
 )
 
 func main() {
 	variables := map[string]string{}
-	for _, s := range app.Spreadsheets {
+	for _, s := range spreadsheets.All {
 		variables[s.Title] = s.Env
 	}
 	svc, err := drive.NewService(context.Background(),
@@ -43,7 +43,7 @@ func main() {
 		}
 		found[variable] = f.Id
 	}
-	for _, s := range app.Spreadsheets {
+	for _, s := range spreadsheets.All {
 		id, ok := found[s.Env]
 		if !ok {
 			log.Fatalf("no spreadsheet found for %s", s.Env)
