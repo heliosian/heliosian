@@ -102,7 +102,6 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins f
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /api/admin/visibility", a.setVisibility)
 	mux.HandleFunc("POST /api/admin/visibility/order", a.setAppOrder)
-	RegisterSwitch(mux, cache)
 	a.discoverApps()
 }
 

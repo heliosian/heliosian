@@ -75,32 +75,25 @@ type Config struct {
 	KeyPoints     keypoints.Summarizer
 }
 
+type appSpec struct {
+	Key         string
+	Title       string
+	Mux         *http.ServeMux
+	Preview     func(r *http.Request) string
+	Wrap        func(http.Handler) http.Handler
+	ImageFolder string
+}
+
 type Core struct {
-	Mux           *http.ServeMux
-	HomeMux       *http.ServeMux
-	TeamMux       *http.ServeMux
-	TeamCache     *team.Cache
-	BirthdayMux   *http.ServeMux
-	CelebrateMux  *http.ServeMux
-	CalendarMux   *http.ServeMux
 	CalendarCache *calendar.Cache
-	LoopMux       *http.ServeMux
 	LoopCache     *loop.Cache
-	AskMux        *http.ServeMux
 	Cache         *who.Cache
 	Documents     *artifacts.Filer
 	Queue         *store.Queue
 	Spoof         *auth.Spoof
 	Member        func(email string) bool
 	Sessions      auth.Sessions
-	Home          http.Handler
-	Team          http.Handler
-	Birthday      http.Handler
-	Celebrate     http.Handler
-	Calendar      http.Handler
-	Loop          http.Handler
-	Ask           http.Handler
-	Previews      map[string]func(r *http.Request) string
+	apps          []appSpec
 }
 
 func NewCore(cfg Config) *Core {
@@ -198,6 +191,7 @@ func NewCore(cfg Config) *Core {
 	who.RegisterTags(mux, cache)
 	who.RegisterAdmin(mux, cache, cfg.Store)
 	who.RegisterInvites(mux, cache, invites)
+	blob.Register(mux, cfg.Store, "pronunciation")
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	linked := calendarLinked{celebrateCache, teamCache, celebrateDirectory{cache, settings}}.list
 	calendarDir := calendarDirectory{cache, settings, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}.Lists}
@@ -246,16 +240,20 @@ func NewCore(cfg Config) *Core {
 	loopMux := http.NewServeMux()
 	loop.Register(loopMux, loopCache, cfg.Store, loopDir, settings.SuperAdmins, loopMail, cfg.LoopDescriber, loopAbout)
 	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker, spend, cfg.ChatKey)
+	apps := []appSpec{
+		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
+		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: home.PreviewHead(homeCache, homeStyle), ImageFolder: "link-images"},
+		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: team.PreviewHead(teamCache, teamStyle), ImageFolder: "activity-images", Wrap: func(next http.Handler) http.Handler {
+			return team.Redirected(teamCache, next)
+		}},
+		{Key: "birthday", Title: "Helios Staff Birthdays", Mux: birthdayMux, Preview: birthdayAbout.PreviewHead},
+		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: celebrate.PreviewHead(celebrateCache, celebrateStyle), ImageFolder: "party-images"},
+		{Key: "calendar", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: calendar.PreviewHead(calendarCache, linked, calendarStyle), ImageFolder: "category-images"},
+		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
+		{Key: "ask", Title: "Helios Ask", Mux: askMux},
+	}
 	waitingApprovals := approvals(cache, teamCache, celebrateCache, calendarCache)
 	behind := lateBirthdays(cache, birthdayCache, birthdayDirectory{cache, settings})
-	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux, askMux} {
-		home.RegisterSwitch(m, homeCache)
-		if m != calendarMux {
-			m.HandleFunc("GET /api/apps/rsvp", hooks.RSVPs)
-		}
-		m.HandleFunc("GET /api/apps/approvals", waitingApprovals)
-		m.HandleFunc("GET /api/apps/late", behind)
-	}
 	feedbackCache, err := feedback.NewCache(cfg.Source, cfg.Writer, queue)
 	if err != nil {
 		logging.Fatal("load feedback model", "error", err)
@@ -267,52 +265,58 @@ func NewCore(cfg Config) *Core {
 	if s, ok := cfg.Geocoder.(geocode.Suggester); ok {
 		suggestions = geocode.NewSuggestions(s)
 	}
-	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": teamMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux, "loop": loopMux, "ask": askMux} {
-		m.Handle("GET /optin", optIn)
-		feedback.Register(m, key, appName(key), superAdmin, feedbackIntake)
-		if suggestions != nil {
-			suggestions.Register(m)
+	for _, a := range apps {
+		home.RegisterSwitch(a.Mux, homeCache)
+		if a.Key != "calendar" {
+			a.Mux.HandleFunc("GET /api/apps/rsvp", hooks.RSVPs)
 		}
+		a.Mux.HandleFunc("GET /api/apps/approvals", waitingApprovals)
+		a.Mux.HandleFunc("GET /api/apps/late", behind)
+		a.Mux.Handle("GET /optin", optIn)
+		feedback.Register(a.Mux, a.Key, appName(a.Key), superAdmin, feedbackIntake)
+		if suggestions != nil {
+			suggestions.Register(a.Mux)
+		}
+		folders := []string{"photos"}
+		if a.ImageFolder != "" {
+			folders = append(folders, a.ImageFolder)
+		}
+		blob.Register(a.Mux, cfg.Store, folders...)
 	}
-	homeMux.HandleFunc("GET /api/apps/rsvp", hooks.RSVPs)
-	homeMux.HandleFunc("GET /api/apps/approvals", waitingApprovals)
-	homeMux.HandleFunc("GET /api/apps/late", behind)
 	homeMux.HandleFunc("GET /api/apps/team", teamWidget(cache, teamCache))
 	homeMux.HandleFunc("GET /api/apps/celebrate", celebrateWidget(cache, calendarCache, calendarDir, linked))
 	homeMux.HandleFunc("GET /api/apps/school", schoolWidget(cache, artifactsCache))
 	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.FeedbackFiler, superAdmin)
-	blob.Register(mux, cfg.Store)
-	blob.RegisterHome(homeMux, cfg.Store)
-	blob.RegisterTeam(teamMux, cfg.Store)
-	blob.RegisterBirthday(birthdayMux, cfg.Store)
-	blob.RegisterCelebrate(celebrateMux, cfg.Store)
-	blob.RegisterCalendar(calendarMux, cfg.Store)
-	blob.RegisterLoop(loopMux, cfg.Store)
-	blob.RegisterAsk(askMux, cfg.Store)
 	go queue.Tick()
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
 		queue.Refresh()
 	})
 	return &Core{
-		Mux: mux, HomeMux: homeMux, TeamMux: teamMux, TeamCache: teamCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux,
-		CalendarMux: calendarMux, CalendarCache: calendarCache, LoopMux: loopMux, LoopCache: loopCache, AskMux: askMux, Cache: cache, Documents: documents, Queue: queue,
+		CalendarCache: calendarCache, LoopCache: loopCache, Cache: cache, Documents: documents, Queue: queue,
 		Spoof:  &auth.Spoof{Allowed: superAdmin, Person: directory{cache, settings}.SpoofPerson, People: directory{cache, settings}.SpoofPeople},
-		Member: func(email string) bool { return who.Member(cache, email) }, Sessions: settings, Home: homeMux, Team: teamMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux, Loop: loopMux, Ask: askMux,
-		Previews: map[string]func(r *http.Request) string{
-			"who":       whoAbout.PreviewHead,
-			"home":      home.PreviewHead(homeCache, homeStyle),
-			"team":      team.PreviewHead(teamCache, teamStyle),
-			"birthday":  birthdayAbout.PreviewHead,
-			"celebrate": celebrate.PreviewHead(celebrateCache, celebrateStyle),
-			"calendar":  calendar.PreviewHead(calendarCache, linked, calendarStyle),
-			"loop":      loopAbout.PreviewHead,
-		},
+		Member: func(email string) bool { return who.Member(cache, email) }, Sessions: settings, apps: apps,
 	}
 }
 
 func (c *Core) Muxes() map[string]*http.ServeMux {
-	return map[string]*http.ServeMux{"who": c.Mux, "home": c.HomeMux, "team": c.TeamMux, "birthday": c.BirthdayMux, "celebrate": c.CelebrateMux, "calendar": c.CalendarMux, "loop": c.LoopMux, "ask": c.AskMux}
+	out := map[string]*http.ServeMux{}
+	for _, a := range c.apps {
+		out[a.Key] = a.Mux
+	}
+	return out
+}
+
+func (c *Core) Handlers(gate func(key string, next http.Handler) http.Handler) map[string]http.Handler {
+	out := map[string]http.Handler{}
+	for _, a := range c.apps {
+		h := gate(a.Key, Logged(a.Key, Files(a.Key, a.Mux)))
+		if a.Wrap != nil {
+			h = a.Wrap(h)
+		}
+		out[a.Key] = Public(a.Key, h)
+	}
+	return out
 }
 
 func Production(domain string) (*http.Server, *store.Queue) {
@@ -378,49 +382,23 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		Embedder:      embedder,
 		ArtifactsMail: artifactsMail(bucket),
 	})
-	who.RegisterUpload(core.Mux, core.Cache, store)
+	muxes := core.Muxes()
+	who.RegisterUpload(muxes["who"], core.Cache, store)
 	client := clientID()
-	newAuth := func(login auth.Login) *auth.Auth {
-		a := auth.New(domain, client, []byte(sessionKey), login, core.Member, core.Sessions)
-		a.Spoof = core.Spoof
-		return a
+	auths := map[string]*auth.Auth{}
+	for _, a := range core.apps {
+		gate := auth.New(domain, client, []byte(sessionKey), auth.Login{Title: a.Title}, core.Member, core.Sessions)
+		gate.Spoof = core.Spoof
+		gate.Preview = a.Preview
+		gate.Register(a.Mux)
+		auths[a.Key] = gate
 	}
-	whoAuth := newAuth(auth.Login{Title: "Helios Who?"})
-	whoAuth.Preview = core.Previews["who"]
-	whoAuth.Register(core.Mux)
-	homeAuth := newAuth(auth.Login{Title: "Heliosian: Helios Community Apps"})
-	homeAuth.Preview = core.Previews["home"]
-	homeAuth.Register(core.HomeMux)
-	teamAuth := newAuth(auth.Login{Title: "HCA Volunteer Portal"})
-	teamAuth.Preview = core.Previews["team"]
-	teamAuth.Register(core.TeamMux)
-	birthdayAuth := newAuth(auth.Login{Title: "Helios Staff Birthdays"})
-	birthdayAuth.Preview = core.Previews["birthday"]
-	birthdayAuth.Register(core.BirthdayMux)
-	celebrateAuth := newAuth(auth.Login{Title: "Helios Celebrate: Fun(d)raiser Parties"})
-	celebrateAuth.Preview = core.Previews["celebrate"]
-	celebrateAuth.Register(core.CelebrateMux)
-	calendarAuth := newAuth(auth.Login{Title: "Helios When: The school year, day by day"})
-	calendarAuth.Preview = core.Previews["calendar"]
-	calendarAuth.Register(core.CalendarMux)
-	loopAuth := newAuth(auth.Login{Title: "Helios Loop"})
-	loopAuth.Preview = core.Previews["loop"]
-	loopAuth.Register(core.LoopMux)
-	askAuth := newAuth(auth.Login{Title: "Helios Ask"})
-	askAuth.Register(core.AskMux)
-	server := Server(domain, map[string]http.Handler{
-		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Mux)))),
-		"home":      Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
-		"team":      Public("team", team.Redirected(core.TeamCache, teamAuth.Wrap(Logged("team", Files("team", core.Team))))),
-		"birthday":  Public("birthday", birthdayAuth.Wrap(Logged("birthday", Files("birthday", core.Birthday)))),
-		"celebrate": Public("celebrate", celebrateAuth.Wrap(Logged("celebrate", Files("celebrate", core.Celebrate)))),
-		"calendar":  Public("calendar", calendarAuth.Wrap(Logged("calendar", Files("calendar", core.Calendar)))),
-		"loop":      Public("loop", loopAuth.Wrap(Logged("loop", Files("loop", core.Loop)))),
-		"ask":       Public("ask", askAuth.Wrap(Logged("ask", Files("ask", core.Ask)))),
-	})
+	server := Server(domain, core.Handlers(func(key string, next http.Handler) http.Handler {
+		return auths[key].Wrap(next)
+	}))
 	if os.Getenv("K_SERVICE") != "" {
 		watcher := calendarWatcher(sheet, core, sessionKey)
-		core.CalendarMux.Handle("POST "+calendarimport.HookPath, watcher)
+		muxes["calendar"].Handle("POST "+calendarimport.HookPath, watcher)
 		watcher.Start()
 		server.RegisterOnShutdown(func() { core.Queue.Add(watcher.Stop) })
 	}

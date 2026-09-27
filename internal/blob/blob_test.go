@@ -25,7 +25,7 @@ func TestOnlyWhatARefreshNamesIsKept(t *testing.T) {
 		}
 	}
 	mux := http.NewServeMux()
-	Register(mux, s)
+	Register(mux, s, "pronunciation")
 	swap, err := s.Load(context.Background())
 	if err != nil {
 		t.Fatal(err)

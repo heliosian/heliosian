@@ -32,7 +32,6 @@ import (
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
-	"heliosian/internal/team"
 )
 
 const logPath = "local/heliosian-server.log"
@@ -125,16 +124,9 @@ func sampleServer() (*http.Server, *store.Queue) {
 		signIn.RegisterSpoof(m)
 	}
 	slog.Info("serving sample data", "as", sampleUser)
-	return localTLS(app.Server(app.DevDomain, map[string]http.Handler{
-		"who":       app.Public("who", signIn.Fixed(sampleUser, app.Logged("who", app.Files("who", core.Mux)))),
-		"home":      app.Public("home", signIn.Fixed(sampleUser, app.Logged("home", app.Files("home", core.Home)))),
-		"team":      app.Public("team", team.Redirected(core.TeamCache, signIn.Fixed(sampleUser, app.Logged("team", app.Files("team", core.Team))))),
-		"birthday":  app.Public("birthday", signIn.Fixed(sampleUser, app.Logged("birthday", app.Files("birthday", core.Birthday)))),
-		"celebrate": app.Public("celebrate", signIn.Fixed(sampleUser, app.Logged("celebrate", app.Files("celebrate", core.Celebrate)))),
-		"calendar":  app.Public("calendar", signIn.Fixed(sampleUser, app.Logged("calendar", app.Files("calendar", core.Calendar)))),
-		"loop":      app.Public("loop", signIn.Fixed(sampleUser, app.Logged("loop", app.Files("loop", core.Loop)))),
-		"ask":       app.Public("ask", signIn.Fixed(sampleUser, app.Logged("ask", app.Files("ask", core.Ask)))),
-	}), core.Queue)
+	return localTLS(app.Server(app.DevDomain, core.Handlers(func(_ string, next http.Handler) http.Handler {
+		return signIn.Fixed(sampleUser, next)
+	})), core.Queue)
 }
 
 func sampleAsker() ask.Responder {

@@ -235,41 +235,10 @@ func New(bucket *Bucket) *Store {
 	return &Store{bucket: bucket, entries: map[string]*entry{}}
 }
 
-func Register(mux *http.ServeMux, s *Store) {
-	mux.HandleFunc("GET /photos/{name}", s.serve)
-	mux.HandleFunc("GET /pronunciation/{name}", s.serve)
-}
-
-func RegisterHome(mux *http.ServeMux, s *Store) {
-	mux.HandleFunc("GET /link-images/{name}", s.serve)
-	mux.HandleFunc("GET /photos/{name}", s.serve)
-}
-
-func RegisterTeam(mux *http.ServeMux, s *Store) {
-	mux.HandleFunc("GET /photos/{name}", s.serve)
-	mux.HandleFunc("GET /activity-images/{name}", s.serve)
-}
-
-func RegisterBirthday(mux *http.ServeMux, s *Store) {
-	mux.HandleFunc("GET /photos/{name}", s.serve)
-}
-
-func RegisterCelebrate(mux *http.ServeMux, s *Store) {
-	mux.HandleFunc("GET /photos/{name}", s.serve)
-	mux.HandleFunc("GET /party-images/{name}", s.serve)
-}
-
-func RegisterCalendar(mux *http.ServeMux, s *Store) {
-	mux.HandleFunc("GET /photos/{name}", s.serve)
-	mux.HandleFunc("GET /category-images/{name}", s.serve)
-}
-
-func RegisterLoop(mux *http.ServeMux, s *Store) {
-	mux.HandleFunc("GET /photos/{name}", s.serve)
-}
-
-func RegisterAsk(mux *http.ServeMux, s *Store) {
-	mux.HandleFunc("GET /photos/{name}", s.serve)
+func Register(mux *http.ServeMux, s *Store, folders ...string) {
+	for _, folder := range folders {
+		mux.HandleFunc("GET /"+folder+"/{name}", s.serve)
+	}
 }
 
 func (s *Store) Load(context.Context) (func(), error) {
