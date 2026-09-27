@@ -72,7 +72,7 @@ func (c *Cache) grant(actor access.Actor, appKey string) ([]store.Op, error) {
 }
 
 func (c *Cache) checkRules(existing, rules []filter.Rule, actor string) ([]filter.Rule, error) {
-	options := filter.OptionsFor(c.directory.Sources(), actor)
+	options := filter.OptionsFor(c.sources(), actor)
 	out := []filter.Rule{}
 	for _, r := range rules {
 		r = filter.Clean(r)
@@ -91,7 +91,7 @@ func (c *Cache) checkRules(existing, rules []filter.Rule, actor string) ([]filte
 		}
 		out = append(out, r)
 	}
-	if err := filter.Writable(c.directory.Sources(), actor, c.Admins(), existing, out); err != nil {
+	if err := filter.Writable(c.sources(), actor, c.Admins(), existing, out); err != nil {
 		return nil, err
 	}
 	return out, nil

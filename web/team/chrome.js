@@ -232,7 +232,6 @@ export function initChrome() {
   initShell({
     name: 'HCA-Team',
     me,
-    alerts: () => state.model.alerts,
     isSystemAdmin,
     onSuper: () => {
       if (!isAdmin()) {

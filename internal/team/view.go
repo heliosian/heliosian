@@ -7,24 +7,9 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
+	"heliosian/internal/config"
+	"heliosian/internal/who"
 )
-
-type Directory interface {
-	Resolve(email string) string
-	Person(email string) (name, photoURL string, ok bool)
-	Grade(email string) string
-	GradeColors() map[string]string
-	Parents(email string) []string
-	People() []DirectoryPerson
-	Household(email string) (adults, kids []Child)
-	Family(email string) map[string]bool
-	Alerts(email string) (stale []string, privacy []string)
-}
-
-type Alerts struct {
-	Stale   []string `json:"stale"`
-	Privacy []string `json:"privacy"`
-}
 
 type DirectoryPerson struct {
 	Email        string   `json:"email"`
@@ -49,16 +34,53 @@ type Child struct {
 	Grade string `json:"grade,omitempty"`
 }
 
+func directoryPeople(model *who.Model) []DirectoryPerson {
+	out := []DirectoryPerson{}
+	for _, p := range model.Listed() {
+		person := DirectoryPerson{
+			Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), Title: p.Words(),
+			IsStudent: p.IsStudent, ParentEmails: p.ParentContactEmails,
+			Pronouns: p.Pronouns, Phone: p.Phone, Grade: p.Grade, Classroom: p.Classroom,
+			JobTitle: p.JobTitle, Department: p.Department,
+		}
+		person.Spouses, person.Children = household(model, p)
+		out = append(out, person)
+	}
+	return out
+}
+
+func household(model *who.Model, p *who.Person) (adults, kids []Child) {
+	if p == nil || !p.IsParent {
+		return nil, nil
+	}
+	grown, young := model.Household(p.Email)
+	for _, a := range grown {
+		adults = append(adults, Child{Email: a.Email, Name: a.FullName})
+	}
+	for _, k := range young {
+		kids = append(kids, Child{Email: k.Email, Name: k.FullName, Grade: k.Grade})
+	}
+	return adults, kids
+}
+
+func parentsOf(model *who.Model, email string) []string {
+	p := model.Person(email)
+	if p == nil || !p.IsStudent {
+		return nil
+	}
+	return p.ParentContactEmails
+}
+
 func (d viewer) person(email string) (string, string) {
-	if name, photo, ok := d.directory.Person(d.directory.Resolve(strings.ToLower(email))); ok {
-		return name, photo
+	if p := d.directory.Person(d.directory.Resolve(strings.ToLower(email))); p != nil {
+		return p.FullName, d.directory.HeroPhoto(p.Email)
 	}
 	return cells.DisplayName(email), ""
 }
 
 type viewer struct {
 	access.Actor
-	directory Directory
+	directory *who.Model
 }
 
 type Years struct {
@@ -105,7 +127,6 @@ type View struct {
 	People      []PersonView      `json:"people,omitempty"`
 	Redirects   []Redirect        `json:"redirects"`
 	ImageSearch bool              `json:"imageSearch"`
-	Alerts      Alerts            `json:"alerts"`
 	GradeColors map[string]string `json:"gradeColors,omitempty"`
 }
 
@@ -180,7 +201,9 @@ func (v viewer) volunteers(list []Volunteer) []Volunteer {
 	out := []Volunteer{}
 	for _, vol := range list {
 		vol.Name, vol.PhotoURL = v.person(vol.Email)
-		vol.Grade = v.directory.Grade(vol.Email)
+		if p := v.directory.Person(vol.Email); p != nil && p.IsStudent {
+			vol.Grade = p.Grade
+		}
 		if vol.AddedBy != "" && vol.AddedBy != vol.Email {
 			vol.AddedByName, _ = v.person(vol.AddedBy)
 		}
@@ -212,26 +235,24 @@ func (v viewer) activity(model *Model, a *Activity, runs bool, lists EmailListLo
 	return view
 }
 
-func Render(model *Model, directory Directory, as access.Actor, now time.Time) View {
-	return RenderWith(model, directory, nil, nil, as, now)
+func Render(model *Model, directory *who.Model, settings *config.Settings, as access.Actor, now time.Time) View {
+	return RenderWith(model, directory, settings, nil, nil, as, now)
 }
 
-func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, lists EmailListLookup, as access.Actor, now time.Time) View {
+func RenderWith(model *Model, directory *who.Model, settings *config.Settings, rsvps RSVPLookup, lists EmailListLookup, as access.Actor, now time.Time) View {
 	v := viewer{Actor: as, directory: directory}
 	email, admin := as.Email, as.Admin
 	name, photo := v.person(email)
-	spouses, children := directory.Household(email)
+	spouses, children := household(directory, directory.Person(email))
 	current := SchoolYear(now)
-	stale, privacy := directory.Alerts(email)
 	view := View{
 		User:        User{Email: email, Name: name, Initial: strings.ToUpper(name[:1]), PhotoURL: photo, IsAdmin: admin, Spouses: spouses, Children: children},
-		Alerts:      Alerts{Stale: stale, Privacy: privacy},
 		Years:       Years{Current: current, Last: ShiftYear(current, -1), Next: ShiftYear(current, 1)},
 		Settings:    model.Settings,
 		Categories:  model.Categories,
 		Activities:  []ActivityView{},
 		Redirects:   model.Redirects,
-		GradeColors: directory.GradeColors(),
+		GradeColors: settings.GradeColors,
 	}
 	for _, raw := range model.Activities {
 		a := model.ActivityFor(raw, as)

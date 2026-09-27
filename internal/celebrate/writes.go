@@ -10,6 +10,7 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
 func requireAdmin(actor access.Actor) error {
@@ -19,9 +20,9 @@ func requireAdmin(actor access.Actor) error {
 	return nil
 }
 
-func isKid(directory Directory, email string) bool {
-	person, known := directory.Person(email)
-	return known && person.IsStudent && !person.IsParent && !person.IsStaff
+func isKid(directory *who.Model, email string) bool {
+	person := directory.Person(email)
+	return person != nil && person.IsStudent && !person.IsParent && !person.IsStaff
 }
 
 func owns(t *Ticket, actor access.Actor) bool {
@@ -44,7 +45,7 @@ func (m *Model) findTicket(id string) (*Ticket, *Party, error) {
 	return t, p, nil
 }
 
-func current(m *Model, directory Directory, email string) string {
+func current(m *Model, directory *who.Model, email string) string {
 	return m.CurrentAddress(directory.Resolve(email))
 }
 
@@ -59,7 +60,7 @@ func countCell(n int) string {
 	return strconv.Itoa(n)
 }
 
-func invoiceRow(directory Directory, p *Party, cells store.Row) store.Row {
+func invoiceRow(directory *who.Model, p *Party, cells store.Row) store.Row {
 	price, _ := ParsePrice(cells["Price"])
 	if cells["Status"] != TicketSold || price <= 0 {
 		return nil
@@ -70,7 +71,7 @@ func invoiceRow(directory Directory, p *Party, cells store.Row) store.Row {
 	}
 }
 
-func ticketOps(directory Directory, p *Party, added []store.Row) []store.Op {
+func ticketOps(directory *who.Model, p *Party, added []store.Row) []store.Op {
 	ops := []store.Op{}
 	for _, cells := range added {
 		ops = append(ops, store.Insert(ticketsTab, cells))
@@ -109,7 +110,7 @@ type taken struct {
 	waitlisted int
 }
 
-func (m *Model) takeTickets(actor access.Actor, directory Directory, order ticketOrder) (taken, error) {
+func (m *Model) takeTickets(actor access.Actor, directory *who.Model, order ticketOrder) (taken, error) {
 	p, err := m.findParty(order.PartyID)
 	if err != nil {
 		return taken{}, err
@@ -151,7 +152,7 @@ func (m *Model) takeTickets(actor access.Actor, directory Directory, order ticke
 	}
 	gift := order.Free && purchaser != actor.Email
 	if gift {
-		if host, known := directory.Person(purchaser); !known || host.IsStudent {
+		if host := directory.Person(purchaser); host == nil || host.IsStudent {
 			return taken{}, access.Invalid("a guest's host is an adult in the directory")
 		}
 	} else if !slices.Contains(Billable(directory, actor.Email), purchaser) {
@@ -182,8 +183,8 @@ func (m *Model) takeTickets(actor access.Actor, directory Directory, order ticke
 			continue
 		}
 		seen[email] = true
-		person, known := directory.Person(email)
-		if !known && name != "" {
+		person := directory.Person(email)
+		if person == nil && name != "" {
 			rows = append(rows, row{email, name, purchaser})
 			continue
 		}
@@ -193,16 +194,16 @@ func (m *Model) takeTickets(actor access.Actor, directory Directory, order ticke
 				return taken{}, access.Forbidden("you can take tickets for yourself and your family; a friend goes in as a guest by name")
 			}
 			switch {
-			case known && person.IsStudent && len(person.ParentEmails) > 0:
-				bill = directory.Resolve(person.ParentEmails[0])
-			case known && person.IsStudent:
-				return taken{}, access.Invalid("%s has no parent on file to bill", person.Name)
+			case person != nil && person.IsStudent && len(person.ParentContactEmails) > 0:
+				bill = directory.Resolve(person.ParentContactEmails[0])
+			case person != nil && person.IsStudent:
+				return taken{}, access.Invalid("%s has no parent on file to bill", person.FullName)
 			default:
 				bill = email
 			}
 		}
-		if known && !p.Admits(person, known) {
-			return taken{}, access.Invalid("%s can't hold a ticket: this party is for %s", person.Name, audienceWords(p))
+		if !p.Admits(person) {
+			return taken{}, access.Invalid("%s can't hold a ticket: this party is for %s", person.FullName, audienceWords(p))
 		}
 		for _, t := range p.Tickets {
 			if t.Email == email && t.Status == TicketSold {
@@ -259,7 +260,7 @@ type joined struct {
 	changed   bool
 }
 
-func (m *Model) joinWaitlist(actor access.Actor, directory Directory, order waitlistOrder) (joined, error) {
+func (m *Model) joinWaitlist(actor access.Actor, directory *who.Model, order waitlistOrder) (joined, error) {
 	p, err := m.findParty(order.PartyID)
 	if err != nil {
 		return joined{}, err
@@ -309,7 +310,7 @@ type offered struct {
 	left    int
 }
 
-func (m *Model) offerTickets(actor access.Actor, directory Directory, o offer) (offered, error) {
+func (m *Model) offerTickets(actor access.Actor, directory *who.Model, o offer) (offered, error) {
 	t, p, err := m.findTicket(o.TicketID)
 	if err != nil {
 		return offered{}, err
@@ -324,9 +325,9 @@ func (m *Model) offerTickets(actor access.Actor, directory Directory, o offer) (
 	if n <= 0 || n > t.Quantity {
 		n = t.Quantity
 	}
-	holder, known := directory.Person(directory.Resolve(t.Purchaser))
+	holder := directory.Person(directory.Resolve(t.Purchaser))
 	holderName := nameOf(directory, t.Purchaser)
-	selfTicket := known && p.Admits(holder, true)
+	selfTicket := holder != nil && p.Admits(holder)
 	for _, other := range p.Tickets {
 		if other.Status == TicketSold && other.Email == t.Purchaser {
 			selfTicket = false
@@ -356,7 +357,7 @@ func (m *Model) offerTickets(actor access.Actor, directory Directory, o offer) (
 	return offered{party: p, ticket: t, added: added, ops: ops, offered: n, left: left}, nil
 }
 
-func (m *Model) removeTicket(actor access.Actor, directory Directory, id string) (*Ticket, *Party, []store.Op, error) {
+func (m *Model) removeTicket(actor access.Actor, id string) (*Ticket, *Party, []store.Op, error) {
 	t, p, err := m.findTicket(id)
 	if err != nil {
 		return nil, nil, nil, err
@@ -380,7 +381,7 @@ type ticketEdit struct {
 	Note     *string `json:"note"`
 }
 
-func (m *Model) editTicket(actor access.Actor, directory Directory, edit ticketEdit) (*Ticket, *Party, []store.Op, []string, error) {
+func (m *Model) editTicket(actor access.Actor, edit ticketEdit) (*Ticket, *Party, []store.Op, []string, error) {
 	t, p, err := m.findTicket(edit.TicketID)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -423,7 +424,7 @@ type reassignment struct {
 	Name     string `json:"name"`
 }
 
-func (m *Model) reassignTicket(actor access.Actor, directory Directory, re reassignment) (*Ticket, *Party, []store.Op, string, error) {
+func (m *Model) reassignTicket(actor access.Actor, directory *who.Model, re reassignment) (*Ticket, *Party, []store.Op, string, error) {
 	t, p, err := m.findTicket(re.TicketID)
 	if err != nil {
 		return nil, nil, nil, "", err
@@ -450,11 +451,11 @@ func (m *Model) reassignTicket(actor access.Actor, directory Directory, re reass
 			return nil, nil, nil, "", access.Invalid("%s", err)
 		}
 		email = current(m, directory, email)
-		person, known := directory.Person(email)
-		if known && !p.Admits(person, known) {
-			return nil, nil, nil, "", access.Invalid("%s can't hold a ticket: this party is for %s", person.Name, audienceWords(p))
+		person := directory.Person(email)
+		if !p.Admits(person) {
+			return nil, nil, nil, "", access.Invalid("%s can't hold a ticket: this party is for %s", person.FullName, audienceWords(p))
 		}
-		if known {
+		if person != nil {
 			name = ""
 		}
 		for _, other := range p.Tickets {
@@ -849,11 +850,11 @@ func (m *Model) setAdmins(actor access.Actor, superAdmins, requested []string) (
 	return ops, admins, nil
 }
 
-func (m *Model) moveUnlisted(actor access.Actor, directory Directory, old, to, name string) ([]store.Op, int, error) {
+func (m *Model) moveUnlisted(actor access.Actor, directory *who.Model, old, to, name string) ([]store.Op, int, error) {
 	if err := requireAdmin(actor); err != nil {
 		return nil, 0, err
 	}
-	if _, known := directory.Person(directory.Resolve(config.NormalizeEmail(old))); known {
+	if directory.Member(directory.Resolve(config.NormalizeEmail(old))) {
 		return nil, 0, access.Invalid("their address is the directory's to change")
 	}
 	return m.moveAddress(actor, old, to, name)

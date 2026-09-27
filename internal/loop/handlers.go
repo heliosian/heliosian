@@ -15,6 +15,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/claude"
+	"heliosian/internal/config"
 	"heliosian/internal/describe"
 	"heliosian/internal/filter"
 	"heliosian/internal/serve"
@@ -37,22 +38,45 @@ type Person struct {
 	Context  string `json:"context,omitempty"`
 }
 
-type Directory interface {
-	Resolve(email string) string
-	Model() *who.Model
-	Tags(owner string) map[string][]string
-	Lists(owner string) []who.List
-	Shared(email string) []who.SharedTag
-	Person(email string) (Person, bool)
-	People() []Person
-	Alerts(email string) ([]string, []string)
-	GradeColors() map[string]string
+func personView(model *who.Model, p *who.Person) Person {
+	out := Person{Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), Words: p.Words()}
+	switch {
+	case p.IsStaff:
+		out.Role, out.Context = "Staff", p.Words()
+	case p.IsStudent:
+		out.Role, out.Grade, out.Context = "Student", p.Grade, p.Words()
+	case p.IsParent:
+		out.Role = "Parent"
+		kids := []string{}
+		_, children := model.Household(p.Email)
+		for _, k := range children {
+			if k.Grade != "" {
+				kids = append(kids, k.FullName+" ("+k.Grade+")")
+			} else {
+				kids = append(kids, k.FullName)
+			}
+		}
+		out.Context = "Parent"
+		if len(kids) > 0 {
+			out.Context = "Parent to " + strings.Join(kids, ", ")
+		}
+	}
+	return out
+}
+
+func lookup(model *who.Model, email string) (Person, bool) {
+	p := model.Person(email)
+	if p == nil {
+		return Person{}, false
+	}
+	return personView(model, p), true
 }
 
 type app struct {
 	cache       *Cache
 	media       *blob.Store
-	directory   Directory
+	sources     func() Sources
+	settings    func() *config.Settings
 	superAdmins func() []string
 	mail        Mail
 	mailer      *mailer
@@ -63,9 +87,9 @@ type Describer interface {
 	Group(ctx context.Context, actor string, facts describe.GroupFacts) (string, error)
 }
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Directory, superAdmins func() []string, mailbox Mail, describer Describer, about *sharecard.About) {
-	a := app{cache: cache, media: media, directory: directory, superAdmins: superAdmins, mail: mailbox, describer: describer}
-	a.mailer = newMailer(cache, directory, mailbox)
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, sources func() Sources, settings func() *config.Settings, superAdmins func() []string, mailbox Mail, describer Describer, about *sharecard.About) {
+	a := app{cache: cache, media: media, sources: sources, settings: settings, superAdmins: superAdmins, mail: mailbox, describer: describer}
+	a.mailer = newMailer(cache, sources, mailbox)
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -92,16 +116,8 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) actor(r *http.Request) access.Actor {
-	email := a.directory.Resolve(strings.ToLower(auth.Email(r)))
+	email := a.sources().Directory.Resolve(strings.ToLower(auth.Email(r)))
 	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email)}
-}
-
-func SourcesOf(directory Directory) Sources {
-	return Sources{Directory: directory.Model(), Tags: directory.Tags, Lists: directory.Lists, Shared: directory.Shared}
-}
-
-func (a app) sources() Sources {
-	return SourcesOf(a.directory)
 }
 
 func decode(w http.ResponseWriter, r *http.Request, into any) bool {
@@ -119,11 +135,6 @@ type user struct {
 	PhotoURL     string `json:"photoUrl,omitempty"`
 	IsAdmin      bool   `json:"isAdmin"`
 	IsSuperAdmin bool   `json:"isSuperAdmin"`
-}
-
-type alerts struct {
-	Stale   []string `json:"stale"`
-	Privacy []string `json:"privacy"`
 }
 
 type ruleView struct {
@@ -199,13 +210,14 @@ const SuggestionTag = "tag"
 
 func (a app) suggestions(viewer string) []suggestion {
 	out := []suggestion{}
-	for _, name := range SuggestedTags(a.directory.Tags(viewer), a.cache.Model().Groups, viewer) {
+	sources := a.sources()
+	for _, name := range SuggestedTags(sources.Tags(viewer), a.cache.Model().Groups, viewer) {
 		out = append(out, suggestion{Key: filter.TagKey(viewer, name), Name: name, Kind: SuggestionTag, Managers: []Person{a.person(viewer)}})
 	}
-	for _, l := range Suggested(a.directory.Lists(viewer), a.cache.Model().Groups) {
+	for _, l := range Suggested(sources.Lists(viewer), a.cache.Model().Groups) {
 		managers := []Person{a.person(viewer)}
 		for _, host := range l.Hosts {
-			if p, ok := a.directory.Person(host); ok && host != viewer {
+			if p, ok := lookup(sources.Directory, host); ok && host != viewer {
 				managers = append(managers, p)
 			}
 		}
@@ -217,7 +229,7 @@ func (a app) suggestions(viewer string) []suggestion {
 type options = filter.Options
 
 func (a app) person(email string) Person {
-	if p, ok := a.directory.Person(email); ok {
+	if p, ok := lookup(a.sources().Directory, email); ok {
 		return p
 	}
 	return Person{Email: email, Name: email}
@@ -232,7 +244,8 @@ func (a app) people(emails []string) []Person {
 }
 
 func (a app) members(g Group) []Member {
-	reasons := Reasons(g, a.sources())
+	sources := a.sources()
+	reasons := Reasons(g, sources)
 	inside, outside := []Member{}, []Member{}
 	for _, email := range filter.SortedKeys(func() map[string]bool {
 		emails := map[string]bool{}
@@ -241,7 +254,7 @@ func (a app) members(g Group) []Member {
 		}
 		return emails
 	}()) {
-		if p, ok := a.directory.Person(email); ok {
+		if p, ok := lookup(sources.Directory, email); ok {
 			inside = append(inside, Member{Person: p, Reasons: reasons[email]})
 			continue
 		}
@@ -301,7 +314,6 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Suggestions []suggestion      `json:"suggestions"`
 		Options     options           `json:"options"`
 		People      []Person          `json:"people"`
-		Alerts      alerts            `json:"alerts"`
 		GradeColors map[string]string `json:"gradeColors,omitempty"`
 	}{
 		User:        user{Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: actor.Admin, IsSuperAdmin: a.cache.IsSuperAdmin(email)},
@@ -309,15 +321,18 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Groups:      []groupView{},
 		Suggestions: a.suggestions(email),
 		Options:     a.options(email),
-		People:      a.directory.People(),
-		GradeColors: a.directory.GradeColors(),
+		People:      []Person{},
+		GradeColors: a.settings().GradeColors,
+	}
+	directory := a.sources().Directory
+	for _, p := range directory.Listed() {
+		view.People = append(view.People, personView(directory, p))
 	}
 	for _, g := range a.cache.Model().Groups {
 		if v, ok := a.view(g, actor); ok {
 			view.Groups = append(view.Groups, v)
 		}
 	}
-	view.Alerts.Stale, view.Alerts.Privacy = a.directory.Alerts(email)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode groups model", "error", err)
@@ -355,7 +370,7 @@ func (a app) draftMembers(w http.ResponseWriter, r *http.Request, body draftBody
 			return nil, nil, false
 		}
 	}
-	if err := checkAdditions(a.directory, draft.Additions); err != nil {
+	if err := checkAdditions(a.sources().Directory, draft.Additions); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return nil, nil, false
 	}
@@ -392,7 +407,7 @@ func (a app) describe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	facts := describe.GroupFacts{Title: body.Title, Rules: body.RuleWords, Members: len(members), Roles: map[string]int{}, Grades: map[string]int{}, Classrooms: map[string]int{}}
-	model := a.directory.Model()
+	model := a.sources().Directory
 	for _, m := range members {
 		p := model.Person(m.Email)
 		if p == nil {
@@ -452,7 +467,7 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	ops, g, action, err := a.cache.Model().SaveGroup(actor, a.directory, body.Original, body.Group)
+	ops, g, action, err := a.cache.Model().SaveGroup(actor, a.sources(), body.Original, body.Group)
 	if err != nil {
 		http.Error(w, err.Error(), access.Status(err))
 		return

@@ -38,7 +38,7 @@ type partyCard struct {
 }
 
 func (v *viewer) partyCard(raw *celebrate.Party) partyCard {
-	p := raw.For(v.partyAs, v.sources.CelebrateDirectory)
+	p := raw.For(v.partyAs, v.directory)
 	c := partyCard{
 		Title: p.Title, Subtitle: p.Subtitle, Summary: p.Summary, NeedToKnow: clip(p.NeedToKnow, 400), Category: p.Category, Start: p.Start, End: p.End, When: v.timing(p.Start, p.End), Past: p.Past(v.now), Location: p.Location, Address: p.Address,
 		Price: p.Price, Unit: p.Unit, Capacity: p.Capacity, Sold: p.Sold(), Remaining: p.Remaining(), Waiting: p.Waiting(), Availability: p.Availability(v.now),

@@ -9,17 +9,13 @@ import (
 
 func TestMonth(t *testing.T) {
 	m := load(t)
-	sam := Person{Email: "sam@x.org", Name: "Sam", IsStudent: true, Grade: "Grade 3", Classroom: "Jays"}
-	d := fakeDirectory{
-		people: map[string]Person{"p@x.org": {Email: "p@x.org", Name: "Pat", IsParent: true}, "sam@x.org": sam},
-		kids:   map[string][]Person{"p@x.org": {sam}},
-	}
+	d := sampleDirectory(t, "../../sampledata")
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-13 08:00", Location)
 	linked := []Linked{
 		{Source: SourceCelebrate, ID: "P001", Title: "Fondue & Fort Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available"},
 		{Source: SourceTeam, ID: "E005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/E005", Availability: "done"},
 	}
-	got := m.MonthUnder(d, "p@x.org", linked, at, "2026-09", "")
+	got := m.MonthUnder(d, sam, linked, at, "2026-09", "")
 	if got.Month != "2026-09" || got.Today != "2026-09-13" {
 		t.Errorf("month %q today %q", got.Month, got.Today)
 	}
@@ -60,13 +56,13 @@ func TestMonth(t *testing.T) {
 	if k := before.Days["2026-08-19"].Kinds; len(k) != 1 || k[0].Words != "Early Dismissal · Hummingbirds" {
 		t.Errorf("kindergarten's short day for a stranger = %+v", k)
 	}
-	if k := before.Days["2026-08-19"]; len(m.MonthUnder(d, "p@x.org", nil, at, "2026-08", "").Days["2026-08-19"].Kinds) != 0 {
-		t.Errorf("a Jays parent sees the kindergarten's short day: %+v", k)
+	if k := before.Days["2026-08-19"]; len(m.MonthUnder(d, sam, nil, at, "2026-08", "").Days["2026-08-19"].Kinds) != 0 {
+		t.Errorf("a Jays student sees the kindergarten's short day: %+v", k)
 	}
-	if fallback := m.MonthUnder(d, "p@x.org", nil, at, "next", ""); fallback.Month != "2026-09" {
+	if fallback := m.MonthUnder(d, sam, nil, at, "next", ""); fallback.Month != "2026-09" {
 		t.Errorf("fallback month = %q", fallback.Month)
 	}
-	if summer := m.MonthUnder(d, "p@x.org", nil, at, "2027-07", ""); len(summer.Days) != 0 || len(summer.Events) != 0 {
+	if summer := m.MonthUnder(d, sam, nil, at, "2027-07", ""); len(summer.Days) != 0 || len(summer.Events) != 0 {
 		t.Errorf("July = %d days %d events", len(summer.Days), len(summer.Events))
 	}
 }

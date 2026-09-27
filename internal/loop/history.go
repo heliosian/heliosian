@@ -56,7 +56,8 @@ func messageKey(id string) string {
 
 func (a app) sender(from string) Person {
 	email := strings.ToLower(mail.AddressOf(from))
-	if p, ok := a.directory.Person(a.directory.Resolve(email)); ok {
+	directory := a.sources().Directory
+	if p, ok := lookup(directory, directory.Resolve(email)); ok {
 		return p
 	}
 	return Person{Email: email, Name: senderName(from)}

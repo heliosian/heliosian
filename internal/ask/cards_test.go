@@ -5,21 +5,17 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/config"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
-type coloredDirectory struct {
-	when.Directory
-	colors map[string]string
-}
-
-func (d coloredDirectory) ClassroomColors() map[string]string { return d.colors }
-
 func TestClassroomChipsWearTheirColor(t *testing.T) {
 	sources := sampleSources(t)
-	sources.CalendarDirectory = coloredDirectory{sources.CalendarDirectory, map[string]string{"Jays": "#1f6fb2"}}
+	sources.Settings = func() *config.Settings {
+		return &config.Settings{ClassroomColors: map[string]string{"Jays": "#1f6fb2"}}
+	}
 	v := app{sources: sources}.viewer(jordan)
 	jays, _ := v.linkCard(whoBase + who.ClassroomPath("Jays"))
 	if jays.Color != "#1f6fb2" || jays.Image == "" {
@@ -80,7 +76,7 @@ func TestLinkCardsKeepEachAppsVisibility(t *testing.T) {
 			}
 		}
 		seen := map[string]bool{}
-		for _, e := range v.calendar.EventsFor(v.whenAs, v.sources.CalendarDirectory, v.sources.Linked(email)) {
+		for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.sources.Linked(email)) {
 			seen[e.ID] = true
 			if !strings.HasPrefix(eventLink(e), whenBase) {
 				continue

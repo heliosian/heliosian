@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
@@ -32,26 +33,11 @@ func (staticFiles) Has(key string) (bool, error) {
 
 func (staticFiles) Prefetch(context.Context, []string) error { return nil }
 
-type sampleDirectory struct {
-	model *who.Model
-}
-
-func (d sampleDirectory) Resolve(email string) string           { return d.model.Resolve(email) }
-func (d sampleDirectory) Model() *who.Model                     { return d.model }
-func (d sampleDirectory) Tags(owner string) map[string][]string { return d.model.Tags(owner) }
-func (d sampleDirectory) Lists(owner string) []who.List         { return d.model.RoomParentLists(owner) }
-func (d sampleDirectory) Shared(email string) []who.SharedTag   { return d.model.SharedTags(email) }
-func (d sampleDirectory) Person(email string) (Person, bool) {
-	p := d.model.Person(email)
-	if p == nil {
-		return Person{}, false
+func sampleSources(model *who.Model) func() Sources {
+	return func() Sources {
+		return Sources{Directory: model, Tags: model.Tags, Lists: model.RoomParentLists, Shared: model.SharedTags}
 	}
-	return Person{Email: p.Email, Name: p.FullName}, true
 }
-func (d sampleDirectory) People() []Person                   { return nil }
-func (d sampleDirectory) Alerts(string) ([]string, []string) { return nil, nil }
-
-func (d sampleDirectory) GradeColors() map[string]string { return nil }
 
 type sent struct {
 	from string
@@ -157,7 +143,7 @@ type harness struct {
 	mux       *http.ServeMux
 	dir       *data.Dir
 	cache     *Cache
-	directory sampleDirectory
+	sources   func() Sources
 	sender    *fakeSender
 	archive   *fakeArchive
 	documents *fakeDocuments
@@ -178,9 +164,9 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, directory: sampleDirectory{model}, sender: &fakeSender{}, archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
+	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, sources: sampleSources(model), sender: &fakeSender{}, archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
 	h.mailbox = Mail{Sender: h.sender, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
-	Register(h.mux, cache, nil, h.directory, func() []string { return nil }, h.mailbox, nil, About(func() string { return "Helios Loop" }, func() string { return "Email groups drawn from the directory" }))
+	Register(h.mux, cache, nil, h.sources, func() *config.Settings { return &config.Settings{} }, func() []string { return nil }, h.mailbox, nil, About(func() string { return "Helios Loop" }, func() string { return "Email groups drawn from the directory" }))
 	return h
 }
 
@@ -268,7 +254,7 @@ func (h *harness) messageState(id, group string) string {
 }
 
 func (h *harness) members(name string) []string {
-	return Members(*h.cache.Model().Group(name), SourcesOf(h.directory))
+	return Members(*h.cache.Model().Group(name), h.sources())
 }
 
 var unsubscribeLink = regexp.MustCompile(`List-Unsubscribe: <mailto:unsubscribe@loop\.heliosian\.com\?subject=([^>]+)>, <https://loop\.test/open/unsubscribe/([^>]+)>`)
@@ -571,7 +557,7 @@ func TestARestartResumesAMessageFromItsArchivedCopy(t *testing.T) {
 	if err := h.cache.CommitAndWait(context.Background(), access.System("test"), store.Upsert(messagesTab, store.Row{"ID": id(post), "Group": "soccer-team"}, cells)); err != nil {
 		t.Fatal(err)
 	}
-	newMailer(h.cache, h.directory, h.mailbox).recover()
+	newMailer(h.cache, h.sources, h.mailbox).recover()
 	h.waitFor("the resumed forward", func() bool { return h.messageState(id(post), "soccer-team") == stateSent })
 	if len(h.sender.all()) != len(h.members("soccer-team")) || h.archive.count() != 1 {
 		t.Fatalf("%d sends, %d objects", len(h.sender.all()), h.archive.count())

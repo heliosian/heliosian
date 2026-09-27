@@ -107,7 +107,7 @@ func (a app) recordReminder(ctx context.Context, sv StaffView, kind, to string, 
 func (a app) reminderMessage(model *Model, rem reminder) mail.Message {
 	sv := rem.sv
 	link := a.base + staffPath(sv.Email)
-	assignee, _ := viewer{directory: a.directory}.person(rem.to)
+	assignee, _ := viewer{directory: a.directory()}.person(rem.to)
 	var text, htm strings.Builder
 	p := func(t string) {
 		text.WriteString(t + "\n\n")

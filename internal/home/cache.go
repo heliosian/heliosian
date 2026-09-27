@@ -18,7 +18,7 @@ import (
 type Cache struct {
 	*store.Store[*Model]
 	superAdmins func() []string
-	directory   Directory
+	sources     func() filter.Sources
 }
 
 func spec(images ImageChecker) store.Spec[*Model] {
@@ -69,16 +69,16 @@ func carryCategory(_ store.Tables, before, after store.Row) []store.Op {
 	return ops
 }
 
-func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmins func() []string, directory Directory, queue *store.Queue) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmins func() []string, sources func() filter.Sources, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec(images), source, writer, queue)
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, superAdmins: superAdmins, directory: directory}, nil
+	return &Cache{Store: s, superAdmins: superAdmins, sources: sources}, nil
 }
 
 func (c *Cache) includes(rules []filter.Rule, email string) bool {
-	return len(rules) > 0 && filter.OnList(filter.List{Rules: rules, Editors: c.Admins()}, c.directory.Sources(), email)
+	return len(rules) > 0 && filter.OnList(filter.List{Rules: rules, Editors: c.Admins()}, c.sources(), email)
 }
 
 func (c *Cache) CategoriesFor(v access.Actor) []Category {
@@ -179,7 +179,7 @@ func (c *Cache) AppList() []App {
 }
 
 func (c *Cache) HiddenApps(email string) []string {
-	email = c.directory.Resolve(strings.ToLower(strings.TrimSpace(email)))
+	email = c.sources().Directory.Resolve(strings.ToLower(strings.TrimSpace(email)))
 	hidden := []string{}
 	model := c.Model()
 	for _, app := range Apps {

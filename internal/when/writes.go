@@ -18,7 +18,7 @@ import (
 func (a app) hostsOf(e *Event) []string {
 	out := []string{}
 	add := func(email string) {
-		if email = a.directory.Resolve(config.NormalizeEmail(email)); email != "" && !slices.Contains(out, email) {
+		if email = a.directory().Resolve(config.NormalizeEmail(email)); email != "" && !slices.Contains(out, email) {
 			out = append(out, email)
 		}
 	}
@@ -68,7 +68,7 @@ func (a app) inviterEvent(actor access.Actor, id string) (*Event, bool, error) {
 		return nil, false, err
 	}
 	host := a.isHost(actor, e)
-	if !host && e.Sharing != SharingPublic && !a.cache.Model().Invited(a.directory, actor.Email, e.ID) {
+	if !host && e.Sharing != SharingPublic && !a.cache.Model().Invited(a.directory(), actor.Email, e.ID) {
 		return nil, false, access.Forbidden("only a host, or someone invited, may invite others")
 	}
 	return e, host, nil
@@ -86,11 +86,16 @@ func (a app) hostedEvent(actor access.Actor, id string) (*Event, error) {
 }
 
 func (a app) household(email string) []string {
-	return append([]string{email}, a.directory.Household(email)...)
+	out := []string{email}
+	adults, kids := a.directory().Household(email)
+	for _, p := range append(adults, kids...) {
+		out = append(out, p.Email)
+	}
+	return out
 }
 
 func (a app) householdOn(e *Event, email string) []string {
-	if _, known := a.directory.Person(email); known {
+	if a.directory().Person(email) != nil {
 		return a.household(email)
 	}
 	model := a.cache.Model()
@@ -570,8 +575,8 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 	if body.Hosts != nil {
 		hosts := []string{}
 		for _, h := range body.Hosts {
-			h = a.directory.Resolve(config.NormalizeEmail(h))
-			if _, known := a.directory.Person(h); !known {
+			h = a.directory().Resolve(config.NormalizeEmail(h))
+			if a.directory().Person(h) == nil {
 				return nil, nil, nil, access.Invalid("%s is not in the directory", h)
 			}
 			if !slices.Contains(hosts, h) {
@@ -592,12 +597,12 @@ func (a app) stepDownOps(actor access.Actor, id, email string) ([]store.Op, *Eve
 		return nil, nil, "", false, err
 	}
 	who := actor.Email
-	if email := a.directory.Resolve(config.NormalizeEmail(email)); email != "" {
+	if email := a.directory().Resolve(config.NormalizeEmail(email)); email != "" {
 		who = email
 	}
 	inv := a.cache.Model().Invitations[e.ID]
 	cohost := inv != nil && slices.Contains(inv.Hosts, who)
-	poster := e.Source == SourceSheet && !e.PosterLeft && a.directory.Resolve(config.NormalizeEmail(e.AddedBy)) == who
+	poster := e.Source == SourceSheet && !e.PosterLeft && a.directory().Resolve(config.NormalizeEmail(e.AddedBy)) == who
 	if !cohost && !poster {
 		return nil, nil, "", false, access.Invalid("that person hosts this event on the app that runs it, or not at all - step down there")
 	}
@@ -634,7 +639,7 @@ func (a app) inviteOps(actor access.Actor, id string, people []invitee) ([]store
 	for _, p := range people {
 		name := strings.TrimSpace(p.Name)
 		household := config.NormalizeEmail(p.Household)
-		email := a.directory.Resolve(config.NormalizeEmail(p.Email))
+		email := a.directory().Resolve(config.NormalizeEmail(p.Email))
 		token := ""
 		switch {
 		case email == "" && household != "" && name != "":
@@ -643,8 +648,8 @@ func (a app) inviteOps(actor access.Actor, id string, people []invitee) ([]store
 			return nil, nil, nil, false, access.Invalid("%q is not an email address", p.Email)
 		default:
 			token = NewToken()
-			if person, known := a.directory.Person(email); known {
-				name, token, household = person.Name, "", ""
+			if person := a.directory().Person(email); person != nil {
+				name, token, household = person.FullName, "", ""
 			}
 		}
 		if slices.Contains(emails, email) || model.InviteOf(e.ID, email) != nil {
@@ -714,12 +719,12 @@ func (a app) guestOps(actor access.Actor, g broughtGuest, name, email string) ([
 		if !emailForm.MatchString(email) {
 			return nil, g, access.Invalid("that is not an email address")
 		}
-		email = a.directory.Resolve(email)
+		email = a.directory().Resolve(email)
 		if model.InviteOf(e.ID, email) != nil {
 			return nil, g, access.Invalid("they are on the list already")
 		}
-		if p, known := a.directory.Person(email); known {
-			row["Name"] = p.Name
+		if p := a.directory().Person(email); p != nil {
+			row["Name"] = p.FullName
 		} else {
 			row["Token"] = NewToken()
 		}
@@ -754,7 +759,7 @@ func (a app) bringGuestOps(actor access.Actor, body guestBody) ([]store.Op, brou
 		g.invite = *body.Invite
 	}
 	if body.Of != "" {
-		g.of = a.directory.Resolve(config.NormalizeEmail(body.Of))
+		g.of = a.directory().Resolve(config.NormalizeEmail(body.Of))
 	}
 	if !a.isHost(actor, e) {
 		if inv == nil || !inv.Guests {
@@ -808,7 +813,7 @@ func (a app) answerSubject(actor access.Actor, id, email, answer string) (*Event
 	}
 	subject := config.NormalizeEmail(email)
 	if !isGuestKey(subject) {
-		subject = a.directory.Resolve(subject)
+		subject = a.directory().Resolve(subject)
 	}
 	if !a.mayAnswerFor(actor, subject, e) {
 		return nil, "", access.Forbidden("you can answer for yourself and your household")
@@ -985,8 +990,8 @@ func (a app) fillOps(actor access.Actor, e *Event, g InviteGroup, wait bool) ([]
 			continue
 		}
 		name, token := email, ""
-		if p, known := a.directory.Person(email); known {
-			name = p.Name
+		if p := a.directory().Person(email); p != nil {
+			name = p.FullName
 		} else if guest, ok := guests[email]; ok {
 			name, token = guest, NewToken()
 			if name == "" {
@@ -1038,7 +1043,7 @@ func (a app) changeAddressOps(actor access.Actor, id, email, to string, everywhe
 	case model.InviteOf(e.ID, c.to) != nil && !everywhere:
 		return nil, c, access.Invalid("that address is on the list already")
 	}
-	if _, known := a.directory.Person(c.from); known {
+	if a.directory().Person(c.from) != nil {
 		return nil, c, access.Invalid("their address is the directory's to change")
 	}
 	c.name = inv.Name
@@ -1054,7 +1059,7 @@ func (a app) changeAddressOps(actor access.Actor, id, email, to string, everywhe
 
 func (a app) moveAddressOps(actor access.Actor, old, to, name string) ([]store.Op, []string) {
 	model := a.cache.Model()
-	person, known := a.directory.Person(to)
+	person := a.directory().Person(to)
 	ops := []store.Op{}
 	resend := []string{}
 	for id := range model.Invites {
@@ -1071,8 +1076,8 @@ func (a app) moveAddressOps(actor access.Actor, old, to, name string) ([]store.O
 		} else {
 			cells := store.Row{"Email": to, "Token": "", "Household": ""}
 			switch {
-			case known:
-				cells["Name"] = person.Name
+			case person != nil:
+				cells["Name"] = person.FullName
 			default:
 				cells["Token"], cells["Household"] = row.Token, row.Household
 				if cells["Token"] == "" {

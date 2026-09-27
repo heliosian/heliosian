@@ -78,7 +78,6 @@ function initChrome() {
   initTopbar({
     name: 'Heliosian',
     me: () => state.model.user,
-    alerts: () => state.model.alerts,
     isSystemAdmin,
     onSuper: () => {
       renderChrome();

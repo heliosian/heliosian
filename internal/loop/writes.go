@@ -10,12 +10,13 @@ import (
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
-func checkAdditions(directory Directory, additions []Addition) error {
+func checkAdditions(directory *who.Model, additions []Addition) error {
 	for _, added := range additions {
-		if p, ok := directory.Person(directory.Resolve(added.Email)); ok {
-			return access.Invalid("%s is in the directory as %s; add them with a rule", added.Email, p.Name)
+		if p := directory.Person(directory.Resolve(added.Email)); p != nil {
+			return access.Invalid("%s is in the directory as %s; add them with a rule", added.Email, p.FullName)
 		}
 	}
 	return nil
@@ -73,7 +74,7 @@ func groupOps(was Group, g Group, adding bool) []store.Op {
 	return ops
 }
 
-func (m *Model) SaveGroup(actor access.Actor, directory Directory, original string, g Group) ([]store.Op, Group, string, error) {
+func (m *Model) SaveGroup(actor access.Actor, sources Sources, original string, g Group) ([]store.Op, Group, string, error) {
 	g = Normalize(g)
 	original = strings.ToLower(strings.TrimSpace(original))
 	for _, local := range g.Names() {
@@ -104,13 +105,13 @@ func (m *Model) SaveGroup(actor access.Actor, directory Directory, original stri
 		was = *current
 		action = "edit"
 	}
-	if err := filter.Writable(SourcesOf(directory), actor.Email, g.Managers, was.Rules, g.Rules); err != nil {
+	if err := filter.Writable(sources, actor.Email, g.Managers, was.Rules, g.Rules); err != nil {
 		return nil, Group{}, "", access.Invalid("%v", err)
 	}
 	if err := CheckGroup(g); err != nil {
 		return nil, Group{}, "", access.Invalid("%v", err)
 	}
-	if err := checkAdditions(directory, g.Additions); err != nil {
+	if err := checkAdditions(sources.Directory, g.Additions); err != nil {
 		return nil, Group{}, "", err
 	}
 	return groupOps(was, g, action == "add"), g, action, nil

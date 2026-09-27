@@ -17,6 +17,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
 type sentMail struct {
@@ -61,54 +62,15 @@ const (
 	admin  = "jordan.whitfield@heliosschool.org"
 )
 
-type fakeDirectory struct{}
+type noFiles struct{}
 
-var staff = []Person{
-	{Email: "dana.hawkins@heliosschool.org", Name: "Dana Hawkins", JobTitle: "Art Teacher", Department: "Co-Curriculars and Specialists"},
-	{Email: "grace.kim@heliosschool.org", Name: "Grace Kim", JobTitle: "Head of School", Department: "Admin and Office Staff"},
-	{Email: "bill.ryder@heliosschool.org", Name: "Bill Ryder", JobTitle: "Office Manager", Department: "Admin and Office Staff"},
-	{Email: "ruth.amari@heliosschool.org", Name: "Ruth Amari", JobTitle: "Kindergarten Teacher", Department: "Classroom Teachers"},
-	{Email: "miguel.santos@heliosschool.org", Name: "Miguel Santos", JobTitle: "1st Grade Teacher", Department: "Classroom Teachers"},
-	{Email: "alice.fontaine@heliosschool.org", Name: "Alice Fontaine", JobTitle: "2nd Grade Teacher", Department: "Classroom Teachers"},
-	{Email: "peter.okafor@heliosschool.org", Name: "Peter Okafor", JobTitle: "3rd Grade Teacher", Department: "Classroom Teachers"},
-	{Email: "susan.byrne@heliosschool.org", Name: "Susan Byrne", JobTitle: "4th Grade Teacher", Department: "Classroom Teachers"},
-	{Email: "hana.ito@heliosschool.org", Name: "Hana Ito", JobTitle: "5th/6th Grade Teacher", Department: "Classroom Teachers"},
-	{Email: "marcus.bell@heliosschool.org", Name: "Marcus Bell", JobTitle: "5th/6th Grade Teacher", Department: "Classroom Teachers"},
-	{Email: "lena.vogel@heliosschool.org", Name: "Lena Vogel", JobTitle: "5th/6th Grade Teacher", Department: "Classroom Teachers"},
-	{Email: "tom.grady@heliosschool.org", Name: "Tom Grady", JobTitle: "5th/6th Grade Teacher", Department: "Classroom Teachers"},
-	{Email: "ivy.chen@heliosschool.org", Name: "Ivy Chen", JobTitle: "Humanities Teacher", Department: "Classroom Teachers"},
-	{Email: "raj.malhotra@heliosschool.org", Name: "Raj Malhotra", JobTitle: "Science Teacher", Department: "Classroom Teachers"},
-	{Email: "kate.doyle@heliosschool.org", Name: "Kate Doyle", JobTitle: "Humanities Teacher", Department: "Classroom Teachers"},
-	{Email: "omar.farouk@heliosschool.org", Name: "Omar Farouk", JobTitle: "Science Teacher", Department: "Classroom Teachers"},
-	{Email: "hank.morrow@heliosschool.org", Name: "Hank Morrow", JobTitle: "Facilities Manager", Department: "Facilities Staff"},
-	{Email: "sasha.pike@heliosschool.org", Name: "Sasha Pike", JobTitle: "Chess Club", Department: "Co-Curriculars and Specialists"},
-}
+func (noFiles) Has(string) (bool, error) { return false, nil }
 
-func (fakeDirectory) Resolve(email string) string { return email }
+func (noFiles) Prefetch(context.Context, []string) error { return nil }
 
-func (fakeDirectory) Person(email string) (Person, bool) {
-	for _, p := range staff {
-		if p.Email == email {
-			return p, true
-		}
-	}
-	if email == admin {
-		return Person{Email: email, Name: "Jordan Whitfield"}, true
-	}
-	return Person{}, false
-}
+var people *who.Model
 
-func (fakeDirectory) Staff() []Person { return staff }
-
-func (fakeDirectory) People() []Person {
-	return append([]Person{{Email: admin, Name: "Jordan Whitfield"}}, staff...)
-}
-
-func (fakeDirectory) Alerts(string) ([]string, []string) { return nil, nil }
-
-func (fakeDirectory) Departments() []string {
-	return []string{"Admin and Office Staff", "Co-Curriculars and Specialists", "Classroom Teachers", "Facilities Staff"}
-}
+func directory() *who.Model { return people }
 
 func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	t.Helper()
@@ -117,6 +79,11 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	dir := &data.Dir{Root: "sampledata"}
 	sheet = dir
 	queue = store.NewQueue()
+	model, err := who.LoadModel(dir, nil, noFiles{}, []byte("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	people = model
 	cache, err := NewCache(dir, dir, func(e string) bool { return e == admin }, queue)
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +91,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	mux := http.NewServeMux()
 	sent = &sentMail{}
 	joined = nil
-	Register(mux, cache, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(_ context.Context, email string) error {
+	Register(mux, cache, directory, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(_ context.Context, email string) error {
 		joined = append(joined, email)
 		return nil
 	}, About(func() string { return "Helios Birthday Team" }, func() string { return "Staff birthday donations" }))
@@ -142,7 +109,7 @@ func call(t *testing.T, mux *http.ServeMux, as, method, path string, body any) *
 
 func view(t *testing.T, cache *Cache, as string) View {
 	t.Helper()
-	return Render(cache.Model(), fakeDirectory{}, access.Actor{Email: as, Admin: as == admin}, now())
+	return Render(cache.Model(), directory, access.Actor{Email: as, Admin: as == admin}, now())
 }
 
 func find(list []StaffView, email string) *StaffView {
@@ -217,7 +184,6 @@ func TestRenderStages(t *testing.T) {
 	}
 	want := map[string]string{
 		"dana.hawkins@heliosschool.org":   StageComplete,
-		"grace.kim@heliosschool.org":      StageNewsletter,
 		"bill.ryder@heliosschool.org":     StageResponse,
 		"ruth.amari@heliosschool.org":     StageOutreach,
 		"miguel.santos@heliosschool.org":  StageOutreach,
@@ -253,8 +219,10 @@ func TestRenderStages(t *testing.T) {
 	if omar := find(v.Staff, "omar.farouk@heliosschool.org"); omar.Level != LevelNoNewsletter || omar.Donation == nil || omar.Donation.UsedOn != "" {
 		t.Errorf("no newsletter: %+v", omar)
 	}
-	if find(v.Staff, "former.teacher@heliosschool.org") != nil {
-		t.Error("someone the directory does not list reached the pipeline")
+	for _, unlisted := range []string{"former.teacher@heliosschool.org", "grace.kim@heliosschool.org"} {
+		if find(v.Staff, unlisted) != nil {
+			t.Errorf("%s, whom the directory does not list, reached the pipeline", unlisted)
+		}
 	}
 	if bill := find(v.Staff, "bill.ryder@heliosschool.org"); len(bill.Notes) != 1 {
 		t.Errorf("notes: %+v", bill.Notes)
@@ -265,7 +233,7 @@ func TestRenderStages(t *testing.T) {
 	if len(v.Skipped) != 1 || v.Skipped[0].Email != "hank.morrow@heliosschool.org" || v.Skipped[0].Name != "Hank Morrow" {
 		t.Errorf("skipped: %+v", v.Skipped)
 	}
-	if len(v.Missing) != 1 || v.Missing[0].Email != "sasha.pike@heliosschool.org" {
+	if len(v.Missing) != 2 || v.Missing[0].Email != "luis.ortega@heliosschool.org" || v.Missing[1].Email != "noa.adler@heliosschool.org" {
 		t.Errorf("missing: %+v", v.Missing)
 	}
 	if v.User.Name != "Robin Whitfield" || v.User.IsAdmin || !view(t, cache, admin).User.IsAdmin {
@@ -342,7 +310,7 @@ func TestPipeline(t *testing.T) {
 	if rec := call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": "hank.morrow@heliosschool.org"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("assigned someone who opted out: %d", rec.Code)
 	}
-	if rec := call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": "sasha.pike@heliosschool.org"}); rec.Code != http.StatusNotFound {
+	if rec := call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": "noa.adler@heliosschool.org"}); rec.Code != http.StatusNotFound {
 		t.Fatalf("assigned someone with no birthday: %d", rec.Code)
 	}
 	if rec := call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": miguel["email"], "assignedTo": "x@elsewhere.example"}); rec.Code != http.StatusBadRequest {
@@ -374,22 +342,22 @@ func TestPipeline(t *testing.T) {
 	if b := cache.Model().Birthday("miguel.santos@heliosschool.org"); b == nil || b.Level != "" || b.Birthday != "09-14" {
 		t.Fatalf("after unskipping: %+v", b)
 	}
-	sasha := map[string]any{"email": "sasha.pike@heliosschool.org", "level": LevelNoNewsletter, "note": "Asked by email"}
-	if rec := call(t, mux, parent, "POST", "/api/birthday/participation", sasha); rec.Code != http.StatusBadRequest {
+	noa := map[string]any{"email": "noa.adler@heliosschool.org", "level": LevelNoNewsletter, "note": "Asked by email"}
+	if rec := call(t, mux, parent, "POST", "/api/birthday/participation", noa); rec.Code != http.StatusBadRequest {
 		t.Fatalf("no-newsletter without a birthday was accepted: %d", rec.Code)
 	}
-	sasha["level"] = LevelSkip
-	if rec := call(t, mux, parent, "POST", "/api/birthday/participation", sasha); rec.Code != http.StatusNoContent {
+	noa["level"] = LevelSkip
+	if rec := call(t, mux, parent, "POST", "/api/birthday/participation", noa); rec.Code != http.StatusNoContent {
 		t.Fatalf("skip without a birthday: %d %s", rec.Code, rec.Body)
 	}
 	v = view(t, cache, parent)
-	if find(v.Skipped, "sasha.pike@heliosschool.org") == nil || len(v.Missing) != 0 {
+	if find(v.Skipped, "noa.adler@heliosschool.org") == nil || find(v.Missing, "noa.adler@heliosschool.org") != nil {
 		t.Fatalf("skipping someone with no birthday: skipped %v, missing %v", v.Skipped, v.Missing)
 	}
-	if rec := call(t, mux, parent, "DELETE", "/api/birthday/participation", sasha); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, parent, "DELETE", "/api/birthday/participation", noa); rec.Code != http.StatusNoContent {
 		t.Fatalf("clear skip: %d %s", rec.Code, rec.Body)
 	}
-	if cache.Model().Birthday("sasha.pike@heliosschool.org") != nil || len(view(t, cache, parent).Missing) != 1 {
+	if cache.Model().Birthday("noa.adler@heliosschool.org") != nil || find(view(t, cache, parent).Missing, "noa.adler@heliosschool.org") == nil {
 		t.Fatal("a preference-only row survived clearing the preference")
 	}
 	if rec := call(t, mux, parent, "POST", "/api/birthday/note", map[string]any{"email": miguel["email"], "note": "Out until Monday"}); rec.Code != http.StatusNoContent {
@@ -406,32 +374,32 @@ func TestPipeline(t *testing.T) {
 
 func TestBirthdays(t *testing.T) {
 	cache, mux := newServer(t)
-	sasha := map[string]any{"email": "sasha.pike@heliosschool.org", "birthday": "09-12", "override": ""}
-	if rec := call(t, mux, parent, "POST", "/api/birthday/birthday", sasha); rec.Code != http.StatusNoContent {
+	noa := map[string]any{"email": "noa.adler@heliosschool.org", "birthday": "09-12", "override": ""}
+	if rec := call(t, mux, parent, "POST", "/api/birthday/birthday", noa); rec.Code != http.StatusNoContent {
 		t.Fatalf("add birthday: %d %s", rec.Code, rec.Body)
 	}
 	v := view(t, cache, parent)
-	if sv := find(v.Staff, "sasha.pike@heliosschool.org"); sv == nil || sv.NewsletterDate != "2026-09-11" || len(v.Missing) != 0 {
+	if sv := find(v.Staff, "noa.adler@heliosschool.org"); sv == nil || sv.NewsletterDate != "2026-09-11" || find(v.Missing, "noa.adler@heliosschool.org") != nil {
 		t.Fatalf("after adding a birthday: %+v, missing %v", sv, v.Missing)
 	}
 	for _, bad := range []string{"September 12", "1995-09-12"} {
-		if rec := call(t, mux, parent, "POST", "/api/birthday/birthday", map[string]any{"email": "sasha.pike@heliosschool.org", "birthday": bad}); rec.Code != http.StatusBadRequest {
+		if rec := call(t, mux, parent, "POST", "/api/birthday/birthday", map[string]any{"email": "noa.adler@heliosschool.org", "birthday": bad}); rec.Code != http.StatusBadRequest {
 			t.Fatalf("birthday %q was accepted: %d", bad, rec.Code)
 		}
 	}
 	if sv := find(view(t, cache, parent).Staff, "dana.hawkins@heliosschool.org"); sv == nil || sv.Birthday != "08-20" {
 		t.Fatalf("the model carries more than a month and day: %+v", sv)
 	}
-	if rec := call(t, mux, parent, "DELETE", "/api/birthday/birthday", sasha); rec.Code != http.StatusForbidden {
+	if rec := call(t, mux, parent, "DELETE", "/api/birthday/birthday", noa); rec.Code != http.StatusForbidden {
 		t.Fatalf("a non-admin removed a birthday: %d", rec.Code)
 	}
 	if rec := call(t, mux, admin, "DELETE", "/api/birthday/birthday", map[string]any{"email": "dana.hawkins@heliosschool.org"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("removed a birthday with records: %d", rec.Code)
 	}
-	if rec := call(t, mux, admin, "DELETE", "/api/birthday/birthday", sasha); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, admin, "DELETE", "/api/birthday/birthday", noa); rec.Code != http.StatusNoContent {
 		t.Fatalf("remove birthday: %d %s", rec.Code, rec.Body)
 	}
-	if len(view(t, cache, parent).Missing) != 1 {
+	if find(view(t, cache, parent).Missing, "noa.adler@heliosschool.org") == nil {
 		t.Fatal("the removed birthday did not return to missing")
 	}
 }
@@ -568,7 +536,7 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 
 func TestReminders(t *testing.T) {
 	cache, mux := newServer(t)
-	app := app{cache: cache, directory: fakeDirectory{}, mailer: sent, from: "Helios Staff Birthdays <birthday@example.org>", base: "https://birthday.example.org"}
+	app := app{cache: cache, directory: directory, mailer: sent, from: "Helios Staff Birthdays <birthday@example.org>", base: "https://birthday.example.org"}
 	kinds := func(day string) []string {
 		out := []string{}
 		for _, r := range app.dueReminders(cache.Model(), mustTime(day)) {
@@ -844,7 +812,7 @@ func TestShareIssue(t *testing.T) {
 	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"date": "2026-09-12"}); rec.Code != 400 {
 		t.Fatalf("a day that is no issue: %d", rec.Code)
 	}
-	a := app{cache: cache, directory: fakeDirectory{}}
+	a := app{cache: cache, directory: directory}
 	n, err := a.weeklyExport(context.Background(), "2026-09-11")
 	if err != nil {
 		t.Fatal(err)

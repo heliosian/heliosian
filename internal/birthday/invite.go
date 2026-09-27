@@ -27,7 +27,7 @@ func (a app) staffView(model *Model, staffEmail string) (StaffView, bool) {
 	if b == nil {
 		return StaffView{}, false
 	}
-	v := viewer{directory: a.directory}
+	v := viewer{directory: a.directory()}
 	month, day, _ := ParseMonthDay(model.Settings.YearStart)
 	return v.staff(model, b, YearContaining(now(), month, day), now()), true
 }

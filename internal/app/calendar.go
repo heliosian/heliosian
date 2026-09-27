@@ -16,13 +16,7 @@ import (
 type calendarLinked struct {
 	celebrate *celebrate.Cache
 	team      *team.Cache
-	directory familyLookup
-}
-
-type familyLookup interface {
-	Household(email string) (adults, kids []celebrate.Person)
-	Family(email string) map[string]bool
-	Person(email string) (celebrate.Person, bool)
+	directory func() *who.Model
 }
 
 type familyNames map[string]string
@@ -42,18 +36,19 @@ func firstName(name, email string) string {
 
 func (c calendarLinked) list(email string) []when.Linked {
 	now := time.Now().In(when.Location)
-	as := access.Actor{Email: email, Household: c.directory.Family(email)}
+	model := c.directory()
+	as := access.Actor{Email: email, Household: model.Family(email)}
 	family := familyNames{email: ""}
 	full := map[string]string{}
-	adults, kids := c.directory.Household(email)
-	for _, p := range append(append([]celebrate.Person{}, adults...), kids...) {
+	adults, kids := model.Household(email)
+	for _, p := range append(adults, kids...) {
 		if as.Household[p.Email] {
-			full[p.Email] = p.Name
-			family[p.Email] = firstName(p.Name, p.Email)
+			full[p.Email] = p.FullName
+			family[p.Email] = firstName(p.FullName, p.Email)
 		}
 	}
-	if me, ok := c.directory.Person(email); ok && me.Name != "" {
-		full[email] = me.Name
+	if me := model.Person(email); me != nil && me.FullName != "" {
+		full[email] = me.FullName
 	}
 	return append(c.parties(now, family, full), c.activities(as, family, full)...)
 }

@@ -105,7 +105,9 @@ export function syncViewportHeight() {
 export function renderAccount() {
   const user = app.me();
   renderAvatars({photoUrl: user.photoUrl && user.photoUrl + '?thumb=1', initial: user.initial});
-  renderAlerts(app.alerts() || {});
+  if (app.alerts) {
+    renderAlerts(app.alerts());
+  }
   renderProfileLink(user.email);
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
@@ -192,6 +194,9 @@ export function initTopbar(config) {
   }
   initUserMenu();
   initSpoof();
+  if (!app.alerts) {
+    fetch('/api/apps/alerts').then(res => res.ok ? res.json() : null).then(view => renderAlerts(view || {})).catch(() => {});
+  }
   document.addEventListener('click', e => {
     if (app.keepOpen && e.target.closest(app.keepOpen)) {
       return;

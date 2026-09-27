@@ -13,12 +13,14 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
+	"heliosian/internal/config"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
 const (
@@ -43,7 +45,8 @@ func mustLocation(name string) *time.Location {
 type app struct {
 	cache       *Cache
 	media       *blob.Store
-	directory   Directory
+	directory   func() *who.Model
+	settings    func() *config.Settings
 	superAdmins func() []string
 	search      ImageSearch
 	mailer      mail.Sender
@@ -55,11 +58,11 @@ type app struct {
 
 type ImageSearch = imagesearch.Search
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory func() *who.Model, settings func() *config.Settings, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
 	if search.UserAgent == "" {
 		search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
 	}
-	a := app{cache: cache, media: media, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps, lists: lists, style: style}
+	a := app{cache: cache, media: media, directory: directory, settings: settings, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps, lists: lists, style: style}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -110,8 +113,9 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) actor(r *http.Request) access.Actor {
-	email := a.directory.Resolve(strings.ToLower(auth.Email(r)))
-	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email), Household: a.directory.Family(email)}
+	directory := a.directory()
+	email := directory.Resolve(strings.ToLower(auth.Email(r)))
+	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email), Household: directory.Family(email)}
 }
 
 func today() string {
@@ -120,7 +124,7 @@ func today() string {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	actor := a.actor(r)
-	view := RenderWith(a.cache.Model(), a.directory, a.rsvps, a.lists, actor, time.Now().In(local))
+	view := RenderWith(a.cache.Model(), a.directory(), a.settings(), a.rsvps, a.lists, actor, time.Now().In(local))
 	view.ImageSearch = a.search.On()
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(actor.Email)
 	w.Header().Set("Content-Type", "application/json")
@@ -168,7 +172,7 @@ func newID() string {
 
 func (a app) people(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.directory.People()); err != nil {
+	if err := json.NewEncoder(w).Encode(directoryPeople(a.directory())); err != nil {
 		slog.ErrorContext(r.Context(), "team:encode people", "error", err)
 	}
 }
@@ -179,7 +183,7 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := a.actor(r)
-	s, err := a.cache.Model().saveVolunteer(actor, a.directory, body)
+	s, err := a.cache.Model().saveVolunteer(actor, a.directory(), body)
 	if err != nil {
 		refuse(w, err)
 		return
@@ -201,7 +205,7 @@ func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := a.actor(r)
-	act, email, ops, err := a.cache.Model().removeVolunteer(actor, a.directory, body.ID, body.Email)
+	act, email, ops, err := a.cache.Model().removeVolunteer(actor, body.ID, body.Email)
 	if err != nil {
 		refuse(w, err)
 		return

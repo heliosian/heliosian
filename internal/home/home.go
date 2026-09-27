@@ -23,19 +23,11 @@ import (
 
 const imageFolder = "link-images"
 
-type Directory interface {
-	Sources() filter.Sources
-	Resolve(email string) string
-}
-
 type app struct {
 	cache       *Cache
 	store       *blob.Store
 	superAdmins func() []string
-	heroPhoto   func(string) string
-	people      func() []Person
-	directory   Directory
-	alerts      func(string) ([]string, []string)
+	sources     func() filter.Sources
 	upcoming    func(email, token string) Upcoming
 	makeDefault func(ctx context.Context, email, token string) error
 	month       func(email, month, token string) Month
@@ -66,16 +58,11 @@ type Month struct {
 	Calendar string              `json:"calendar,omitempty"`
 }
 
-type alerts struct {
-	Stale   []string `json:"stale"`
-	Privacy []string `json:"privacy"`
-}
-
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) ([]string, []string), upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error, style *sharecard.Style) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins func() []string, upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error, style *sharecard.Style) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	}
-	a := app{cache: cache, store: media, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, directory: cache.directory, alerts: alerts, upcoming: upcoming, month: month, search: search, answer: answer, makeDefault: makeDefault, style: style}
+	a := app{cache: cache, store: media, superAdmins: superAdmins, sources: cache.sources, upcoming: upcoming, month: month, search: search, answer: answer, makeDefault: makeDefault, style: style}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /admin", a.page)
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
@@ -174,7 +161,7 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) actor(r *http.Request) access.Actor {
-	email := a.directory.Resolve(strings.ToLower(auth.Email(r)))
+	email := a.sources().Directory.Resolve(strings.ToLower(auth.Email(r)))
 	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email)}
 }
 
@@ -276,7 +263,6 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Categories       []Category            `json:"categories"`
 		User             user                  `json:"user"`
 		ImageSearch      bool                  `json:"imageSearch"`
-		Alerts           alerts                `json:"alerts"`
 		Upcoming         []when.Card           `json:"upcoming"`
 		UpcomingCalendar *Upcoming             `json:"upcomingCalendar,omitempty"`
 		Calendar         Month                 `json:"calendar"`
@@ -287,7 +273,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		WidgetOrder      []string              `json:"widgetOrder"`
 	}{
 		Categories:  categories,
-		User:        user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
+		User:        user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.sources().Directory.HeroPhoto(email), IsAdmin: admin},
 		ImageSearch: a.search.On(),
 		Calendar:    a.month(email, "", ""),
 		Apps:        a.appViews(email, admin),
@@ -303,7 +289,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		view.Widgets[key] = v
 	}
 	if admin {
-		options := filter.OptionsFor(a.directory.Sources(), actor.Email)
+		options := filter.OptionsFor(a.sources(), actor.Email)
 		view.Options = &options
 		view.TagLabels = a.tagLabels(categories, view.Apps, actor.Email)
 	}
@@ -312,7 +298,6 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	if ahead.Calendar != "" {
 		view.UpcomingCalendar = &Upcoming{Calendar: ahead.Calendar, Default: ahead.Default, Calendars: ahead.Calendars}
 	}
-	view.Alerts.Stale, view.Alerts.Privacy = a.alerts(email)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode apps model", "error", err)
@@ -320,7 +305,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) tagLabels(categories []Category, apps []appView, viewer string) map[string]string {
-	sources := a.directory.Sources()
+	sources := a.sources()
 	admins := a.cache.Admins()
 	out := map[string]string{}
 	add := func(rules []filter.Rule) {
@@ -462,7 +447,7 @@ func (a app) audienceOptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(filter.OptionsFor(a.directory.Sources(), actor.Email)); err != nil {
+	if err := json.NewEncoder(w).Encode(filter.OptionsFor(a.sources(), actor.Email)); err != nil {
 		slog.ErrorContext(r.Context(), "encode audience options", "error", err)
 	}
 }
@@ -484,7 +469,7 @@ func (a app) audiencePreview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	sources := a.directory.Sources()
+	sources := a.sources()
 	list := filter.List{Rules: rules, Editors: a.cache.Admins()}
 	members := filter.Members(list, sources)
 	names := []string{}
@@ -635,7 +620,10 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 		Apps         []AppVisibility `json:"apps"`
 		People       []Person        `json:"people"`
 		IsSuperAdmin bool            `json:"isSuperAdmin"`
-	}{Email: actor.Email, Admins: a.cache.Admins(), Apps: a.cache.AppVisibilities(), People: a.people(), IsSuperAdmin: a.cache.IsSuperAdmin(actor.Email)}
+	}{Email: actor.Email, Admins: a.cache.Admins(), Apps: a.cache.AppVisibilities(), People: []Person{}, IsSuperAdmin: a.cache.IsSuperAdmin(actor.Email)}
+	for _, p := range a.sources().Directory.Listed() {
+		view.People = append(view.People, Person{Name: p.FullName, Email: p.Email})
+	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode apps admin state", "error", err)

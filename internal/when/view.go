@@ -9,33 +9,27 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
+	"heliosian/internal/who"
 )
 
 type Person struct {
-	Email       string `json:"email"`
-	Name        string `json:"name"`
-	PhotoURL    string `json:"photoUrl,omitempty"`
-	IsStudent   bool   `json:"isStudent,omitempty"`
-	IsParent    bool   `json:"isParent,omitempty"`
-	IsStaff     bool   `json:"isStaff,omitempty"`
-	Grade       string `json:"grade,omitempty"`
-	Classroom   string `json:"classroom,omitempty"`
-	Line        string `json:"line,omitempty"`
-	EmailMasked bool   `json:"-"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	PhotoURL  string `json:"photoUrl,omitempty"`
+	IsStudent bool   `json:"isStudent,omitempty"`
+	IsParent  bool   `json:"isParent,omitempty"`
+	IsStaff   bool   `json:"isStaff,omitempty"`
+	Grade     string `json:"grade,omitempty"`
+	Classroom string `json:"classroom,omitempty"`
+	Line      string `json:"line,omitempty"`
 }
 
-type Directory interface {
-	Resolve(email string) string
-	Person(email string) (Person, bool)
-	Children(email string) []Person
-	Household(email string) []string
-	Family(email string) map[string]bool
-	Parents(email string) []string
-	Alerts(email string) (stale []string, privacy []string)
-	ClassroomColors() map[string]string
-	GradeColors() map[string]string
-	People() []Person
-	Lists(email string) []List
+func personView(directory *who.Model, p *who.Person) Person {
+	return Person{
+		Email: p.Email, Name: p.FullName, PhotoURL: thumb(directory.HeroPhoto(p.Email)),
+		IsStudent: p.IsStudent, IsParent: p.IsParent, IsStaff: p.IsStaff,
+		Grade: p.Grade, Classroom: p.Classroom, Line: contactLine(directory, p),
+	}
 }
 
 type Responses struct {
@@ -44,9 +38,8 @@ type Responses struct {
 	No    []Person `json:"no,omitempty"`
 }
 
-func contactLine(directory Directory, p Person) string {
-	switch {
-	case p.IsStudent:
+func contactLine(directory *who.Model, p *who.Person) string {
+	if p.IsStudent {
 		parts := []string{}
 		if p.Grade != "" {
 			parts = append(parts, p.Grade)
@@ -55,10 +48,11 @@ func contactLine(directory Directory, p Person) string {
 			parts = append(parts, p.Classroom)
 		}
 		return strings.Join(parts, " · ")
-	case p.IsParent:
+	}
+	if p.IsParent {
 		kids := []string{}
 		for _, k := range directory.Children(p.Email) {
-			name := FirstWord(k.Name)
+			name := FirstWord(k.FullName)
 			if k.Grade != "" {
 				name += " (" + k.Grade + ")"
 			}
@@ -67,11 +61,8 @@ func contactLine(directory Directory, p Person) string {
 		if len(kids) > 0 {
 			return "Parent to " + strings.Join(kids, ", ")
 		}
-		return "Parent"
-	case p.IsStaff:
-		return "Staff"
 	}
-	return ""
+	return p.Words()
 }
 
 func thumb(url string) string {
@@ -79,11 +70,6 @@ func thumb(url string) string {
 		return ""
 	}
 	return url + "?thumb=1"
-}
-
-type Alerts struct {
-	Stale   []string `json:"stale"`
-	Privacy []string `json:"privacy"`
 }
 
 type User struct {
@@ -120,28 +106,27 @@ type View struct {
 	GradeColors map[string]string            `json:"gradeColors,omitempty"`
 	Names       map[string]string            `json:"names,omitempty"`
 	Feeds       []Feed                       `json:"feeds"`
-	Alerts      Alerts                       `json:"alerts"`
 }
 
-func students(directory Directory, me Person) []Person {
-	out := []Person{}
-	if me.IsStudent {
+func students(directory *who.Model, email string) []*who.Person {
+	out := []*who.Person{}
+	if me := directory.Person(email); me != nil && me.IsStudent {
 		out = append(out, me)
 	}
-	for _, kid := range directory.Children(me.Email) {
-		if !slices.ContainsFunc(out, func(p Person) bool { return p.Email == kid.Email }) {
+	for _, kid := range directory.Children(email) {
+		if !slices.ContainsFunc(out, func(p *who.Person) bool { return p.Email == kid.Email }) {
 			out = append(out, kid)
 		}
 	}
 	return out
 }
 
-func classroomsOf(model *Model, me Person, kids []Person) []string {
+func classroomsOf(model *Model, me *who.Person, kids []*who.Person) []string {
 	wanted := map[string]bool{}
 	for _, kid := range kids {
 		wanted[kid.Classroom] = true
 	}
-	if me.IsStaff {
+	if me != nil && me.IsStaff {
 		wanted[me.Classroom] = true
 	}
 	out := []string{}
@@ -153,7 +138,7 @@ func classroomsOf(model *Model, me Person, kids []Person) []string {
 	return out
 }
 
-func (m *Model) EventsFor(v access.Actor, directory Directory, linked []Linked) []*Event {
+func (m *Model) EventsFor(v access.Actor, directory *who.Model, linked []Linked) []*Event {
 	events := m.eventsFor(directory, v.Email, linked)
 	carried := map[string]bool{}
 	for _, e := range events {
@@ -167,7 +152,7 @@ func (m *Model) EventsFor(v access.Actor, directory Directory, linked []Linked) 
 	return events
 }
 
-func (m *Model) ResponsesFor(v access.Actor, directory Directory) map[string]*Responses {
+func (m *Model) ResponsesFor(v access.Actor, directory *who.Model) map[string]*Responses {
 	mine := map[string]bool{}
 	for _, e := range append(append([]*Event{}, m.Events...), m.Pending...) {
 		if e.AddedBy != "" && !e.PosterLeft && config.NormalizeEmail(e.AddedBy) == config.NormalizeEmail(v.Email) {
@@ -179,12 +164,10 @@ func (m *Model) ResponsesFor(v access.Actor, directory Directory) map[string]*Re
 	}
 	responses := map[string]*Responses{}
 	for who, answers := range m.Answers {
-		person, ok := directory.Person(who)
-		if !ok {
-			person = Person{Email: who, Name: cells.DisplayName(who)}
+		person := Person{Email: who, Name: cells.DisplayName(who)}
+		if p := directory.Person(who); p != nil {
+			person = personView(directory, p)
 		}
-		person.PhotoURL = thumb(person.PhotoURL)
-		person.Line = contactLine(directory, person)
 		for id, answer := range answers {
 			if !v.Admin && !mine[id] {
 				continue
@@ -215,21 +198,20 @@ func (m *Model) ResponsesFor(v access.Actor, directory Directory) map[string]*Re
 	return responses
 }
 
-func Render(model *Model, directory Directory, as access.Actor, now time.Time, linked []Linked) View {
+func Render(model *Model, directory *who.Model, settings *config.Settings, as access.Actor, now time.Time, linked []Linked) View {
 	email, admin := as.Email, as.Admin
-	me, known := directory.Person(email)
-	if !known {
-		me = Person{Email: email, Name: cells.DisplayName(email)}
+	me := directory.Person(email)
+	kids := students(directory, email)
+	user := User{Email: email, Name: cells.DisplayName(email), IsAdmin: admin, Students: []Person{}, Classrooms: classroomsOf(model, me, kids)}
+	if me != nil {
+		user.Name, user.PhotoURL = me.FullName, directory.HeroPhoto(email)
+		user.IsStudent, user.IsParent, user.IsStaff = me.IsStudent, me.IsParent, me.IsStaff
 	}
-	initial := ""
-	if me.Name != "" {
-		initial = strings.ToUpper(me.Name[:1])
+	if user.Name != "" {
+		user.Initial = strings.ToUpper(user.Name[:1])
 	}
-	kids := students(directory, me)
-	user := User{
-		Email: email, Name: me.Name, Initial: initial, PhotoURL: me.PhotoURL, IsAdmin: admin,
-		IsStudent: me.IsStudent, IsParent: me.IsParent, IsStaff: me.IsStaff,
-		Students: kids, Classrooms: classroomsOf(model, me, kids),
+	for _, kid := range kids {
+		user.Students = append(user.Students, personView(directory, kid))
 	}
 	if saved, ok := model.Settings[config.NormalizeEmail(email)]; ok && (len(saved.Classrooms) > 0 || len(saved.Tags) > 0) {
 		user.Saved = &saved
@@ -242,12 +224,11 @@ func Render(model *Model, directory Directory, as access.Actor, now time.Time, l
 			feeds = append(feeds, f)
 		}
 	}
-	stale, privacy := directory.Alerts(email)
 	names := map[string]string{}
 	for _, e := range append(append([]*Event{}, model.Events...), model.Pending...) {
 		if e.AddedBy != "" {
-			if p, ok := directory.Person(e.AddedBy); ok && p.Name != "" {
-				names[e.AddedBy] = p.Name
+			if p := directory.Person(e.AddedBy); p != nil && p.FullName != "" {
+				names[e.AddedBy] = p.FullName
 			}
 		}
 	}
@@ -257,9 +238,9 @@ func Render(model *Model, directory Directory, as access.Actor, now time.Time, l
 		provenance = model.Provenance
 	}
 	return View{
-		Provenance: provenance, Responses: model.ResponsesFor(as, directory), GradeColors: directory.GradeColors(), Names: names,
+		Provenance: provenance, Responses: model.ResponsesFor(as, directory), GradeColors: settings.GradeColors, Names: names,
 		User: user, Today: now.Format(DateFormat), Now: now.Format(DateTimeFormat),
-		Classrooms: model.Roster.Classrooms, Colors: directory.ClassroomColors(), Tags: append(append([]Tag{}, model.Tags...), builtinTags...), DayTypes: model.DayTypes, Years: model.Years,
-		Days: model.Days, Events: events, Feeds: feeds, Alerts: Alerts{Stale: stale, Privacy: privacy},
+		Classrooms: model.Roster.Classrooms, Colors: settings.ClassroomColors, Tags: append(append([]Tag{}, model.Tags...), builtinTags...), DayTypes: model.DayTypes, Years: model.Years,
+		Days: model.Days, Events: events, Feeds: feeds,
 	}
 }

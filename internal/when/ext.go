@@ -100,8 +100,8 @@ func (a app) extView(w http.ResponseWriter, r *http.Request) {
 		view.Answer = ""
 	}
 	for _, h := range a.hostsOf(e) {
-		if p, known := a.directory.Person(h); known && p.Name != "" {
-			view.Hosts = append(view.Hosts, p.Name)
+		if p := a.directory().Person(h); p != nil && p.FullName != "" {
+			view.Hosts = append(view.Hosts, p.FullName)
 		}
 	}
 	if settings := model.Invitations[e.ID]; settings != nil {

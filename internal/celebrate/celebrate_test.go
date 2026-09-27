@@ -19,6 +19,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
 const (
@@ -38,62 +39,19 @@ func testNow() time.Time {
 	return t
 }
 
-type fakeDirectory struct{}
+var sampleDirectory *who.Model
 
-var people = map[string]Person{
-	parent:  {Email: parent, Name: "Jordan Whitfield", IsParent: true, PhotoURL: "/photos/jordan.jpg"},
-	partner: {Email: partner, Name: "Robin Whitfield", IsParent: true},
-	kid:     {Email: kid, Name: "Sam Whitfield", IsStudent: true, Grade: "Grade 3", ParentEmails: []string{parent, partner}},
-	teen:    {Email: teen, Name: "Ella Whitfield", IsStudent: true, Grade: "Grade 6", ParentEmails: []string{parent, partner}},
-	admin:   {Email: admin, Name: "Dana Hawkins", IsStaff: true, IsParent: true, JobTitle: "Art Teacher"},
-	other:   {Email: other, Name: "Elena Torres", IsParent: true},
-	teacher: {Email: teacher, Name: "Grace Kim", IsStaff: true, JobTitle: "Head of School"},
-}
+func directory() *who.Model { return sampleDirectory }
 
-func (fakeDirectory) Resolve(email string) string { return email }
+type noFiles struct{}
 
-func (fakeDirectory) Person(email string) (Person, bool) {
-	p, ok := people[email]
-	return p, ok
-}
+func (noFiles) Has(string) (bool, error) { return false, nil }
 
-func (fakeDirectory) Household(email string) (adults, kids []Person) {
-	whitfields := map[string]bool{parent: true, partner: true, kid: true, teen: true}
-	if !whitfields[email] {
-		return nil, nil
-	}
-	for _, e := range []string{parent, partner} {
-		if e != email {
-			adults = append(adults, people[e])
-		}
-	}
-	for _, e := range []string{kid, teen} {
-		if e != email {
-			kids = append(kids, people[e])
-		}
-	}
-	return adults, kids
-}
-
-func (d fakeDirectory) Family(email string) map[string]bool {
-	out := map[string]bool{}
-	if !people[email].IsParent {
-		return out
-	}
-	adults, kids := d.Household(email)
-	for _, p := range append(adults, kids...) {
-		out[p.Email] = true
-	}
-	return out
-}
+func (noFiles) Prefetch(context.Context, []string) error { return nil }
 
 func viewerOf(email string, admin bool) access.Actor {
-	return access.Actor{Email: email, Admin: admin, Household: fakeDirectory{}.Family(email)}
+	return access.Actor{Email: email, Admin: admin, Household: sampleDirectory.Family(email)}
 }
-
-func (fakeDirectory) People() []Person { return nil }
-
-func (fakeDirectory) Alerts(string) ([]string, []string) { return nil, nil }
 
 type bundled struct{}
 
@@ -112,12 +70,16 @@ func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 	now = testNow
 	sheet = &data.Dir{Root: "sampledata"}
 	queue = store.NewQueue()
+	var err error
+	if sampleDirectory, err = who.LoadModel(sheet, nil, noFiles{}, []byte("test")); err != nil {
+		t.Fatal(err)
+	}
 	cache, err := NewCache(sheet, sheet, bundled{}, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, mailer, testFrom, nil, nil, testStyle)
+	Register(mux, cache, nil, directory, func() []string { return nil }, ImageSearch{}, mailer, testFrom, nil, nil, testStyle)
 	return cache, mux
 }
 
@@ -263,7 +225,7 @@ func TestBrokenSheetRefusesToLoad(t *testing.T) {
 
 func TestRenderHidesWhatItShould(t *testing.T) {
 	cache, _ := newServer(t)
-	view := Render(cache.Model(), fakeDirectory{}, viewerOf(other, false), testNow())
+	view := Render(cache.Model(), sampleDirectory, viewerOf(other, false), testNow())
 	for _, p := range view.Parties {
 		if p.Status != StatusOpen {
 			t.Errorf("%s reached a parent as %s", p.Title, p.Status)
@@ -272,7 +234,7 @@ func TestRenderHidesWhatItShould(t *testing.T) {
 			t.Errorf("%s is editable by someone who does not host it", p.Title)
 		}
 	}
-	host := Render(cache.Model(), fakeDirectory{}, viewerOf("layla.haddad@heliosschool.org", false), testNow())
+	host := Render(cache.Model(), sampleDirectory, viewerOf("layla.haddad@heliosschool.org", false), testNow())
 	found := false
 	for _, p := range host.Parties {
 		if p.ID == "P013" {
@@ -282,17 +244,17 @@ func TestRenderHidesWhatItShould(t *testing.T) {
 	if !found {
 		t.Error("a host cannot see or edit their own pending party")
 	}
-	if got := Render(cache.Model(), fakeDirectory{}, viewerOf(admin, true), testNow()); len(got.Parties) != 16 {
+	if got := Render(cache.Model(), sampleDirectory, viewerOf(admin, true), testNow()); len(got.Parties) != 16 {
 		t.Errorf("admin view: %d parties", len(got.Parties))
 	}
-	if got := Render(cache.Model(), fakeDirectory{}, viewerOf(parent, false), testNow()); got.User.PhotoURL != "/photos/jordan.jpg" || len(got.User.Children) != 2 {
+	if got := Render(cache.Model(), sampleDirectory, viewerOf(parent, false), testNow()); got.User.Name != "Jordan Whitfield" || got.User.PhotoURL != sampleDirectory.HeroPhoto(parent) || len(got.User.Children) != 2 {
 		t.Errorf("admin view: %d parties, user %+v", len(got.Parties), got.User)
 	}
 }
 
 func TestAttendeeLines(t *testing.T) {
 	cache, _ := newServer(t)
-	view := Render(cache.Model(), fakeDirectory{}, viewerOf(other, false), testNow())
+	view := Render(cache.Model(), sampleDirectory, viewerOf(other, false), testNow())
 	var fondue PartyView
 	for _, p := range view.Parties {
 		if p.ID == "P001" {
@@ -319,7 +281,7 @@ func TestAttendeeLines(t *testing.T) {
 	if notes["Zander Whitfield (cousin, age 8)"] != "" {
 		t.Errorf("a stranger saw a note: %q", notes["Zander Whitfield (cousin, age 8)"])
 	}
-	mine := Render(cache.Model(), fakeDirectory{}, viewerOf(partner, false), testNow())
+	mine := Render(cache.Model(), sampleDirectory, viewerOf(partner, false), testNow())
 	for _, p := range mine.Parties {
 		if p.ID != "P001" {
 			continue
@@ -330,7 +292,7 @@ func TestAttendeeLines(t *testing.T) {
 			}
 		}
 	}
-	student := Render(cache.Model(), fakeDirectory{}, viewerOf(kid, false), testNow())
+	student := Render(cache.Model(), sampleDirectory, viewerOf(kid, false), testNow())
 	for _, p := range student.Parties {
 		if p.ID != "P001" {
 			continue
@@ -541,10 +503,10 @@ func TestFreeTicket(t *testing.T) {
 	if n := len(cache.Model().Invoicing); n != before+1 {
 		t.Fatalf("model ledger %d, want %d", n, before+1)
 	}
-	if v := Render(cache.Model(), fakeDirectory{}, viewerOf(other, false), testNow()); len(v.Invoicing) != 0 {
+	if v := Render(cache.Model(), sampleDirectory, viewerOf(other, false), testNow()); len(v.Invoicing) != 0 {
 		t.Fatalf("a parent was shown the ledger")
 	}
-	if v := Render(cache.Model(), fakeDirectory{}, viewerOf(admin, true), testNow()); len(v.Invoicing) != before+1 {
+	if v := Render(cache.Model(), sampleDirectory, viewerOf(admin, true), testNow()); len(v.Invoicing) != before+1 {
 		t.Fatalf("the admin was not shown the ledger")
 	}
 	logged := 0
@@ -1212,7 +1174,7 @@ func TestMoveAddress(t *testing.T) {
 	type move struct{ actor, old, to, name string }
 	told := []move{}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom, nil, func(_ context.Context, actor access.Actor, old, to, name string) {
+	Register(mux, cache, nil, directory, func() []string { return nil }, ImageSearch{}, nil, testFrom, nil, func(_ context.Context, actor access.Actor, old, to, name string) {
 		told = append(told, move{actor.Email, old, to, name})
 	}, testStyle)
 	const (

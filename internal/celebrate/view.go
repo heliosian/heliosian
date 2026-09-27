@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/who"
 )
 
 type Person struct {
@@ -29,18 +30,25 @@ type Person struct {
 	Children     []Person `json:"children,omitempty"`
 }
 
-type Directory interface {
-	Resolve(email string) string
-	Person(email string) (Person, bool)
-	Household(email string) (adults, kids []Person)
-	Family(email string) map[string]bool
-	People() []Person
-	Alerts(email string) (stale []string, privacy []string)
-}
-
-type Alerts struct {
-	Stale   []string `json:"stale"`
-	Privacy []string `json:"privacy"`
+func personOf(directory *who.Model, p *who.Person) Person {
+	flat := func(p *who.Person) Person {
+		return Person{
+			Email: p.Email, Name: p.FullName, PhotoURL: directory.HeroPhoto(p.Email), IsStudent: p.IsStudent, IsParent: p.IsParent,
+			IsStaff: p.IsStaff, Grade: p.Grade, JobTitle: p.JobTitle, Title: p.Words(),
+			Pronouns: p.Pronouns, Phone: p.Phone, Classroom: p.Classroom, Department: p.Department, ParentEmails: p.ParentContactEmails,
+		}
+	}
+	out := flat(p)
+	if p.IsParent {
+		adults, kids := directory.Household(p.Email)
+		for _, a := range adults {
+			out.Spouses = append(out.Spouses, flat(a))
+		}
+		for _, k := range kids {
+			out.Children = append(out.Children, flat(k))
+		}
+	}
+	return out
 }
 
 func DisplayName(email string) string {
@@ -54,13 +62,13 @@ func DisplayName(email string) string {
 
 type viewer struct {
 	access.Actor
-	directory Directory
+	directory *who.Model
 	rsvps     RSVPLookup
 }
 
 func (v viewer) person(email string) Person {
-	if p, ok := v.directory.Person(v.directory.Resolve(email)); ok {
-		return p
+	if p := v.directory.Person(v.directory.Resolve(email)); p != nil {
+		return personOf(v.directory, p)
 	}
 	return Person{Email: email, Name: DisplayName(email)}
 }
@@ -72,9 +80,9 @@ const (
 	KindGuest   = "Guest"
 )
 
-func kindOf(p Person, known bool) string {
+func kindOf(p *who.Person) string {
 	switch {
-	case !known:
+	case p == nil:
 		return KindGuest
 	case p.IsStudent:
 		return KindStudent
@@ -86,8 +94,8 @@ func kindOf(p Person, known bool) string {
 	return KindGuest
 }
 
-func (p *Party) Admits(person Person, known bool) bool {
-	if !known {
+func (p *Party) Admits(person *who.Person) bool {
+	if person == nil {
 		return true
 	}
 	return ((person.IsParent || person.IsStaff) && p.Adults) || (person.IsStudent && p.Students)
@@ -163,11 +171,10 @@ type View struct {
 	Redirects    []Redirect     `json:"redirects"`
 	Invoicing    []InvoiceLine  `json:"invoicing,omitempty"`
 	ImageSearch  bool           `json:"imageSearch"`
-	Alerts       Alerts         `json:"alerts"`
 }
 
-func (v viewer) line(t Ticket, person Person, known bool, purchaserName string) string {
-	switch kindOf(person, known) {
+func (v viewer) line(t Ticket, person *who.Person, purchaserName string) string {
+	switch kindOf(person) {
 	case KindStudent:
 		return person.Grade
 	case KindStaff:
@@ -177,9 +184,9 @@ func (v viewer) line(t Ticket, person Person, known bool, purchaserName string) 
 		names := []string{}
 		for _, k := range kids {
 			if k.Grade != "" {
-				names = append(names, fmt.Sprintf("%s (%s)", k.Name, k.Grade))
+				names = append(names, fmt.Sprintf("%s (%s)", k.FullName, k.Grade))
 			} else {
-				names = append(names, k.Name)
+				names = append(names, k.FullName)
 			}
 		}
 		if len(names) == 0 {
@@ -194,28 +201,25 @@ func (v viewer) line(t Ticket, person Person, known bool, purchaserName string) 
 }
 
 func (v viewer) attendee(t Ticket, editor bool) Attendee {
-	var person Person
-	known := false
+	var person *who.Person
+	name := t.Name
 	if t.Email != "" {
-		if p, ok := v.directory.Person(v.directory.Resolve(t.Email)); ok {
-			person, known = p, true
-		} else {
-			person = Person{Email: t.Email, Name: t.Name}
-			if person.Name == "" {
-				person.Name = DisplayName(t.Email)
-			}
+		person = v.directory.Person(v.directory.Resolve(t.Email))
+		if name == "" {
+			name = DisplayName(t.Email)
 		}
-	} else {
-		person = Person{Name: t.Name}
 	}
-	purchaser := v.person(t.Purchaser)
+	purchaserName := nameOf(v.directory, t.Purchaser)
 	a := Attendee{
-		TicketID: t.ID, Email: t.Email, Name: person.Name, PhotoURL: person.PhotoURL, Kind: kindOf(person, known),
-		Grade: person.Grade, Line: v.line(t, person, known, purchaser.Name), Status: t.Status, Quantity: t.Quantity, Added: t.Added,
+		TicketID: t.ID, Email: t.Email, Name: name, Kind: kindOf(person),
+		Line: v.line(t, person, purchaserName), Status: t.Status, Quantity: t.Quantity, Added: t.Added,
+	}
+	if person != nil {
+		a.Name, a.PhotoURL, a.Grade = person.FullName, v.directory.HeroPhoto(person.Email), person.Grade
 	}
 	a.Mine = v.Mine(t.Purchaser) || v.Mine(t.Email)
 	if editor || a.Mine {
-		a.Purchaser, a.PurchaserName, a.Price, a.Note, a.AddedBy = t.Purchaser, purchaser.Name, t.Price, t.Note, t.AddedBy
+		a.Purchaser, a.PurchaserName, a.Price, a.Note, a.AddedBy = t.Purchaser, purchaserName, t.Price, t.Note, t.AddedBy
 	}
 	return a
 }
@@ -252,19 +256,18 @@ func (v viewer) party(raw *Party, now time.Time) PartyView {
 	return pv
 }
 
-func Render(model *Model, directory Directory, as access.Actor, now time.Time) View {
+func Render(model *Model, directory *who.Model, as access.Actor, now time.Time) View {
 	return RenderWith(model, directory, nil, as, now)
 }
 
-func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, as access.Actor, now time.Time) View {
+func RenderWith(model *Model, directory *who.Model, rsvps RSVPLookup, as access.Actor, now time.Time) View {
 	v := viewer{Actor: as, directory: directory, rsvps: rsvps}
 	email, admin := as.Email, as.Admin
 	me := v.person(email)
-	adults, kids := directory.Household(email)
 	view := View{
 		User: User{
 			Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: admin,
-			IsStudent: me.IsStudent, IsParent: me.IsParent, IsStaff: me.IsStaff, Adults: adults, Children: kids,
+			IsStudent: me.IsStudent, IsParent: me.IsParent, IsStaff: me.IsStaff, Adults: []Person{}, Children: []Person{},
 		},
 		Today:        now.Format(DateFormat),
 		Now:          now.Format(DateTimeFormat),
@@ -274,11 +277,12 @@ func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, as access.A
 		Parties:      []PartyView{},
 		Redirects:    model.Redirects,
 	}
-	if view.User.Adults == nil {
-		view.User.Adults = []Person{}
+	adults, kids := directory.Household(email)
+	for _, a := range adults {
+		view.User.Adults = append(view.User.Adults, personOf(directory, a))
 	}
-	if view.User.Children == nil {
-		view.User.Children = []Person{}
+	for _, k := range kids {
+		view.User.Children = append(view.User.Children, personOf(directory, k))
 	}
 	if c := model.Current(); c != nil {
 		view.Current = c.Code
@@ -289,8 +293,6 @@ func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, as access.A
 	if admin {
 		view.Invoicing = model.Invoicing
 	}
-	stale, privacy := directory.Alerts(email)
-	view.Alerts = Alerts{Stale: stale, Privacy: privacy}
 	for _, p := range model.SortedParties("") {
 		if !p.VisibleTo(as) {
 			continue
@@ -300,10 +302,9 @@ func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, as access.A
 	return view
 }
 
-func Billable(directory Directory, viewer string) []string {
+func Billable(directory *who.Model, viewer string) []string {
 	out := []string{}
-	me, known := directory.Person(viewer)
-	if !known || !me.IsStudent {
+	if me := directory.Person(viewer); me == nil || !me.IsStudent {
 		out = append(out, viewer)
 	}
 	adults, _ := directory.Household(viewer)

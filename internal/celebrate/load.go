@@ -16,6 +16,7 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
 const (
@@ -318,7 +319,7 @@ func (p *Party) VisibleTo(v access.Actor) bool {
 	return p.Status == StatusOpen || p.Edits(v)
 }
 
-func (p *Party) For(v access.Actor, directory Directory) *Party {
+func (p *Party) For(v access.Actor, directory *who.Model) *Party {
 	if !p.VisibleTo(v) {
 		return nil
 	}
@@ -326,7 +327,7 @@ func (p *Party) For(v access.Actor, directory Directory) *Party {
 	c.Tickets = []Ticket{}
 	for _, t := range p.Tickets {
 		if !p.Edits(v) && !v.Mine(t.Purchaser) && !v.Mine(t.Email) {
-			if t.Email != "" && (t.Email == t.Purchaser || known(directory, t.Email)) {
+			if t.Email != "" && (t.Email == t.Purchaser || directory.Member(directory.Resolve(t.Email))) {
 				t.Purchaser = ""
 			}
 			t.Price, t.Note, t.AddedBy = 0, "", ""
@@ -334,11 +335,6 @@ func (p *Party) For(v access.Actor, directory Directory) *Party {
 		c.Tickets = append(c.Tickets, t)
 	}
 	return &c
-}
-
-func known(directory Directory, email string) bool {
-	_, ok := directory.Person(directory.Resolve(email))
-	return ok
 }
 
 func (p *Party) Sold() int {

@@ -19,6 +19,7 @@ import (
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
 const shell = "web/birthday/index.html"
@@ -39,7 +40,7 @@ func mustLocation(name string) *time.Location {
 
 type app struct {
 	cache       *Cache
-	directory   Directory
+	directory   func() *who.Model
 	superAdmins func() []string
 	describer   Describer
 	mailer      mail.Sender
@@ -52,7 +53,7 @@ type Describer interface {
 	Charity(ctx context.Context, actor, name, link string) (describe.Info, error)
 }
 
-func Register(mux *http.ServeMux, cache *Cache, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(ctx context.Context, email string) error, about *sharecard.About) {
+func Register(mux *http.ServeMux, cache *Cache, directory func() *who.Model, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(ctx context.Context, email string) error, about *sharecard.About) {
 	a := app{cache: cache, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
 	if mailer != nil {
 		go a.remindLoop()
@@ -98,7 +99,7 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) actor(r *http.Request) access.Actor {
-	email := a.directory.Resolve(strings.ToLower(auth.Email(r)))
+	email := a.directory().Resolve(strings.ToLower(auth.Email(r)))
 	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email)}
 }
 
@@ -561,10 +562,15 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 	}
 	model := a.cache.Model()
 	team := []TeamView{}
-	v := viewer{directory: a.directory}
+	directory := a.directory()
+	v := viewer{directory: directory}
 	for _, m := range model.Team {
 		p, _ := v.person(m.Email)
 		team = append(team, TeamView{Email: m.Email, Name: p.Name, Role: m.Role})
+	}
+	people := []Person{}
+	for _, p := range directory.Listed() {
+		people = append(people, personView(p))
 	}
 	view := struct {
 		Email  string     `json:"email"`
@@ -572,7 +578,7 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 		Team   []TeamView `json:"team"`
 		Roles  []string   `json:"roles"`
 		People []Person   `json:"people"`
-	}{Email: actor.Email, Admins: a.cache.Admins(a.superAdmins()), Team: team, Roles: Roles, People: a.directory.People()}
+	}{Email: actor.Email, Admins: a.cache.Admins(a.superAdmins()), Team: team, Roles: Roles, People: people}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode birthday admin state", "error", err)

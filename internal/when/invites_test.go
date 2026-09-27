@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/mail"
@@ -29,7 +30,15 @@ const (
 	partyA = "celebrate/p1"
 )
 
-var testDirectory fakeDirectory
+var testDirectory *who.Model
+
+func directoryOf() *who.Model { return testDirectory }
+
+func noSettings() *config.Settings { return &config.Settings{} }
+
+func testLists(string) []List {
+	return []List{{Key: "tag:Carpool", Name: "Carpool", Kind: "tag", People: []string{mia, robin}}, {Key: "activity:e1", Name: "Book Fair", Kind: "activity", People: []string{mia, robin, ella}}}
+}
 
 var (
 	testAttendees      []Attendee
@@ -48,27 +57,12 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSourc
 	t.Chdir("../..")
 	sheet = &data.Dir{Root: "sampledata"}
 	queue = store.NewQueue()
-	households := map[string][]string{robin: {sam, ella}, sam: {robin, ella}, ella: {robin, sam}}
-	parents := map[string][]string{sam: {robin}, ella: {robin}}
 	cache, err := NewCache(sheet, sheet, func() Roster { return roster }, nil, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	samP := Person{Email: sam, Name: "Sam Whitfield", IsStudent: true, Grade: "Grade 3", Classroom: "Jays"}
-	ellaP := Person{Email: ella, Name: "Ella Whitfield", IsStudent: true, Grade: "Grade 6", Classroom: "Ospreys"}
-	testDirectory = fakeDirectory{
-		people: map[string]Person{
-			host:  {Email: host, Name: "Jordan Whitfield", IsParent: true},
-			robin: {Email: robin, Name: "Robin Whitfield", IsParent: true},
-			sam:   samP,
-			ella:  ellaP,
-			mia:   {Email: mia, Name: "Mia Torres", IsParent: true},
-		},
-		kids:       map[string][]Person{robin: {samP, ellaP}},
-		households: households,
-		parents:    parents,
-		lists:      []List{{Key: "tag:Carpool", Name: "Carpool", Kind: "tag", People: []string{mia, robin}}, {Key: "activity:e1", Name: "Book Fair", Kind: "activity", People: []string{mia, robin, ella}}},
-	}
+	sources := newSampleSources(t)
+	testDirectory = sources.model
 	kept := &keptMail{}
 	parties := func(id string) *PartyPeople {
 		if id != "p1" {
@@ -92,8 +86,7 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSourc
 		}
 	}
 	mux := http.NewServeMux()
-	sources := newSampleSources(t)
-	testHooks = Register(mux, cache, nil, testDirectory, func() []string { return nil }, linked, celebrate, sources.sources, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", Base: "https://when.heliosian.com", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}, testStyle)
+	testHooks = Register(mux, cache, nil, directoryOf, noSettings, testLists, func() []string { return nil }, linked, celebrate, sources.sources, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", Base: "https://when.heliosian.com", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}, testStyle)
 	return mux, cache, kept, sources
 }
 
@@ -128,12 +121,7 @@ func (s *sampleSources) sources() filter.Sources {
 
 func newSampleSources(t *testing.T) *sampleSources {
 	t.Helper()
-	dir := &data.Dir{Root: "sampledata"}
-	model, err := who.LoadModel(dir, nil, noFiles{}, []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &sampleSources{model: model, tagged: map[string][]string{}}
+	return &sampleSources{model: sampleDirectory(t, "sampledata"), tagged: map[string][]string{}}
 }
 
 type noFiles struct{}
@@ -190,7 +178,7 @@ func TestSendWithoutMailMarksNothingSent(t *testing.T) {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
 	unmailed := http.NewServeMux()
-	Register(unmailed, cache, nil, testDirectory, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{}, testStyle)
+	Register(unmailed, cache, nil, directoryOf, noSettings, testLists, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{}, testStyle)
 	if rec := call(t, as(host, unmailed), "POST", "/api/when/invites/send", `{"id":"meetup","to":"new"}`); rec.Code != 400 || !strings.Contains(rec.Body.String(), "mail is not set up") {
 		t.Errorf("send without mail: %d %s", rec.Code, rec.Body)
 	}
@@ -217,7 +205,7 @@ func TestCancelWithoutMailTellsNobody(t *testing.T) {
 		t.Fatalf("send: %d %s", rec.Code, rec.Body)
 	}
 	unmailed := http.NewServeMux()
-	Register(unmailed, cache, nil, testDirectory, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{}, testStyle)
+	Register(unmailed, cache, nil, directoryOf, noSettings, testLists, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{}, testStyle)
 	if rec := call(t, as(host, unmailed), "POST", "/api/when/events/cancel", `{"id":"meetup","notify":true}`); rec.Code != 200 || rec.Body.String() != "{\"told\":0}\n" {
 		t.Errorf("cancel without mail: %d %s", rec.Code, rec.Body)
 	}
@@ -253,10 +241,10 @@ func TestInvitationLifecycle(t *testing.T) {
 	rec = call(t, jordan, "GET", "/api/when/invites/people?id=meetup", "")
 	var picker PickerView
 	json.Unmarshal(rec.Body.Bytes(), &picker)
-	if rec.Code != 200 || len(picker.People) != 5 || len(picker.Lists) != 2 || len(picker.Classrooms) != 9 || len(picker.OnList) != 0 {
+	if rec.Code != 200 || len(picker.People) != 50 || len(picker.Lists) != 2 || len(picker.Classrooms) != 9 || len(picker.OnList) != 0 {
 		t.Errorf("picker: %d people %d lists %d classrooms %d on list %d", rec.Code, len(picker.People), len(picker.Lists), len(picker.Classrooms), len(picker.OnList))
 	}
-	if p := picker.People[slices.IndexFunc(picker.People, func(p PickerPerson) bool { return p.Email == robin })]; strings.Join(p.Household, ",") != sam+","+ella || p.Line != "Parent to Sam (Grade 3), Ella (Grade 6)" {
+	if p := picker.People[slices.IndexFunc(picker.People, func(p PickerPerson) bool { return p.Email == robin })]; strings.Join(p.Household, ",") != host+","+sam+","+ella || strings.Join(p.Children, ",") != sam+","+ella || p.Line != "Parent to Sam (Grade 3), Ella (Grade 6)" {
 		t.Errorf("robin in the picker = %+v", p)
 	}
 	rec = call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`","via":"family"},{"email":"`+sam+`","via":"family"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"},{"email":"`+robin+`"},{"email":"not-an-address"}]}`)
@@ -335,12 +323,16 @@ func TestInvitationLifecycle(t *testing.T) {
 	if i < 0 || !view.Events[i].Invitation || !view.Events[i].Invited || slices.Contains(view.Events[i].Tags, TagGoing) {
 		t.Errorf("robin's calendar after sending: %d %+v", i, view.Events)
 	}
-	hawk := Person{Email: "hawk@x.org", Name: "Hawk", IsStudent: true, Classroom: "Hawks"}
-	elsewhere := fakeDirectory{people: map[string]Person{robin: {Email: robin, Name: "Robin", IsParent: true}, "hawk@x.org": hawk}, kids: map[string][]Person{robin: {hawk}}}
-	if up := cache.Model().UpcomingUnder(elsewhere, robin, nil, now(), 0, ""); !slices.ContainsFunc(up, func(u Card) bool { return u.ID == "meetup" }) {
+	if rec := call(t, robinH, "POST", "/api/when/settings", `{"classrooms":["Hawks"],"tags":["Community"]}`); rec.Code != 204 {
+		t.Fatalf("robin's saved view: %d %s", rec.Code, rec.Body)
+	}
+	if up := cache.Model().UpcomingUnder(testDirectory, robin, nil, now(), 0, ""); !slices.ContainsFunc(up, func(u Card) bool { return u.ID == "meetup" }) {
 		t.Errorf("an invitation is not in Robin's Upcoming")
 	}
-	if up := cache.Model().UpcomingUnder(elsewhere, mia, nil, now(), 0, ""); slices.ContainsFunc(up, func(u Card) bool { return u.ID == "meetup" }) {
+	if rec := call(t, robinH, "DELETE", "/api/when/settings", ""); rec.Code != 204 {
+		t.Fatalf("robin forgets the view: %d %s", rec.Code, rec.Body)
+	}
+	if up := cache.Model().UpcomingUnder(testDirectory, mia, nil, now(), 0, ""); slices.ContainsFunc(up, func(u Card) bool { return u.ID == "meetup" }) {
 		t.Errorf("the event is in Mia's Upcoming, uninvited")
 	}
 	v := inviteView(t, robinH, "meetup")
@@ -829,10 +821,11 @@ func TestInviteGroups(t *testing.T) {
 func TestHostMessage(t *testing.T) {
 	mux, _, kept := invitesApp(t)
 	jordan := as(host, mux)
+	const mina = "mina.park@heliosschool.org"
 	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
-	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"},{"email":"`+sam+`"},{"email":"`+mia+`"},{"email":"`+coach+`","name":"Coach Lee"}]}`)
+	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"},{"email":"`+sam+`"},{"email":"`+mina+`"},{"email":"`+coach+`","name":"Coach Lee"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/answer", `{"id":"meetup","email":"`+robin+`","answer":"yes"}`)
-	call(t, jordan, "POST", "/api/when/invites/answer", `{"id":"meetup","email":"`+mia+`","answer":"no"}`)
+	call(t, jordan, "POST", "/api/when/invites/answer", `{"id":"meetup","email":"`+mina+`","answer":"no"}`)
 	waitFor(kept, 1)
 	before := len(kept.all())
 	if rec := call(t, jordan, "POST", "/api/when/invites/message", `{"id":"meetup","subject":"Chairs","message":"","to":["yes"]}`); rec.Code != 400 {
@@ -841,7 +834,7 @@ func TestHostMessage(t *testing.T) {
 	if rec := call(t, jordan, "POST", "/api/when/invites/message", `{"id":"meetup","subject":"  ","message":"Hi","to":["yes"]}`); rec.Code != 400 {
 		t.Errorf("no subject: %d", rec.Code)
 	}
-	if rec := call(t, as(mia, mux), "POST", "/api/when/invites/message", `{"id":"meetup","subject":"Hi","message":"Hi","to":["yes"]}`); rec.Code != 403 {
+	if rec := call(t, as(mina, mux), "POST", "/api/when/invites/message", `{"id":"meetup","subject":"Hi","message":"Hi","to":["yes"]}`); rec.Code != 403 {
 		t.Errorf("someone else's message: %d", rec.Code)
 	}
 	rec := call(t, jordan, "POST", "/api/when/invites/message", `{"id":"meetup","subject":"Chairs, please","message":"Bring a chair!","to":["yes","maybe","none"]}`)
@@ -863,13 +856,13 @@ func TestHostMessage(t *testing.T) {
 	if len(c) != 1 || !strings.Contains(c[0].Text, "You: No response yet") || !strings.Contains(c[0].Text, "/ext/") {
 		t.Errorf("coach's message = %+v", c)
 	}
-	if m := mailTo(kept, mia); len(m) != 0 {
+	if m := mailTo(kept, mina); len(m) != 0 {
 		t.Errorf("a no was written to: %+v", m)
 	}
 	call(t, jordan, "POST", "/api/when/invites/message", `{"id":"meetup","subject":"Next time","message":"Sorry you can't make it.","to":["no"],"attach":true}`)
 	waitFor(kept, before+4)
-	if m := mailTo(kept, mia); len(m) != 1 || !strings.Contains(m[0].Text, "You: No") || strings.Contains(m[0].Text, "not answered") || len(m[0].Attachments) != 1 || !strings.Contains(string(m[0].Attachments[0].Content), "UID:meetup@") {
-		t.Errorf("mia's message = %+v", m)
+	if m := mailTo(kept, mina); len(m) != 1 || !strings.Contains(m[0].Text, "You: No") || strings.Contains(m[0].Text, "not answered") || len(m[0].Attachments) != 1 || !strings.Contains(string(m[0].Attachments[0].Content), "UID:meetup@") {
+		t.Errorf("mina's message = %+v", m)
 	}
 	if r := mailTo(kept, robin); len(r[0].Attachments) != 0 {
 		t.Errorf("a plain message carried an invite")
@@ -927,13 +920,13 @@ func TestStudentInviteCcsParents(t *testing.T) {
 		t.Fatalf("mail after sending: %+v", sent)
 	}
 	m := mailTo(kept, sam)
-	if len(m) != 1 || strings.Join(m[0].CC, ",") != robin || len(m[0].Attachments) != 0 || strings.Contains(m[0].Text, "invite attached") || strings.Contains(m[0].HTML, "invite attached") {
+	if len(m) != 1 || strings.Join(m[0].CC, ",") != host+","+robin || len(m[0].Attachments) != 0 || strings.Contains(m[0].Text, "invite attached") || strings.Contains(m[0].HTML, "invite attached") {
 		t.Fatalf("sam's mail = %+v", m)
 	}
 	if !strings.Contains(m[0].HTML, "Mia Torres sent Sam an invitation for") || !strings.Contains(m[0].HTML, `<a href="https://when.heliosian.com/e/celebrate/p1" style="color:#1b2a2c;font-weight:700">RSVP for Sam and Ella here</a>`) || !strings.Contains(m[0].Text, "Mia Torres sent Sam an invitation for") || !strings.Contains(m[0].Text, "RSVP for Sam and Ella here") {
 		t.Errorf("sam's words:\n%s", m[0].Text)
 	}
-	if e := mailTo(kept, ella); len(e) != 1 || strings.Join(e[0].CC, ",") != robin || !strings.Contains(e[0].HTML, "sent Ella an invitation for") {
+	if e := mailTo(kept, ella); len(e) != 1 || strings.Join(e[0].CC, ",") != host+","+robin || !strings.Contains(e[0].HTML, "sent Ella an invitation for") {
 		t.Errorf("ella's mail = %+v", e)
 	}
 	if got := joinNames([]string{"Sam", "Ella", "Robin", "Mia"}); got != "Sam, Ella, Robin and Mia" {
@@ -961,7 +954,7 @@ func TestStudentMessagesCcParentsWithoutCalendarFiles(t *testing.T) {
 		t.Fatalf("sam's mail %d, robin's %d", len(s), len(r))
 	}
 	for i, m := range s {
-		if strings.Join(m.CC, ",") != robin || len(m.Attachments) != 0 || strings.Contains(m.Text, "attached") {
+		if strings.Join(m.CC, ",") != host+","+robin || len(m.Attachments) != 0 || strings.Contains(m.Text, "attached") {
 			t.Errorf("sam's mail %d = %+v", i, m)
 		}
 	}
@@ -1354,7 +1347,11 @@ func TestInvitationIsPersonal(t *testing.T) {
 	if v := inviteView(t, as(robin, mux), "kids"); len(v.Mine) != 1 || v.Mine[0].Email != sam || !v.Mine[0].Mine {
 		t.Errorf("robin's ask for sam's invitation: %+v", v.Mine)
 	}
-	testDirectory.parents[sam] = nil
+	for _, key := range testDirectory.FamilyKeysOf(sam) {
+		family := testDirectory.Families[key]
+		family.AdultEmails = slices.DeleteFunc(slices.Clone(family.AdultEmails), func(e string) bool { return e == robin })
+		testDirectory.Families[key] = family
+	}
 	if kids(robin) || m.Invited(testDirectory, robin, "kids") {
 		t.Errorf("a parent the directory no longer lists still sees sam's invitation")
 	}
@@ -1811,7 +1808,7 @@ func TestSweepActsOnlyForAHost(t *testing.T) {
 	if rec := call(t, jordan, "POST", "/api/when/invites/group", `{"id":"meetup","rule":{"roles":["Student"],"classrooms":["Jays"]},"auto":false}`); rec.Code != 200 {
 		t.Fatalf("group: %d %s", rec.Code, rec.Body)
 	}
-	a := app{cache: cache, directory: testDirectory, linked: func(string) []Linked { return nil }, sources: sources.sources, clock: &matchClock{}}
+	a := app{cache: cache, directory: directoryOf, settings: noSettings, lists: testLists, linked: func(string) []Linked { return nil }, sources: sources.sources, clock: &matchClock{}}
 	gone := cache.Model().Invites["meetup"][0].Email
 	drop := func() {
 		t.Helper()

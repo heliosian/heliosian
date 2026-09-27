@@ -23,6 +23,7 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/celebrate"
+	"heliosian/internal/config"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
 	"heliosian/internal/ratelimit"
@@ -43,23 +44,21 @@ const (
 )
 
 type Sources struct {
-	Directory          func() *who.Model
-	Tags               func(owner string) map[string][]string
-	Lists              func(email string) []who.List
-	Calendar           func() *when.Model
-	CalendarDirectory  when.Directory
-	Linked             func(email string) []when.Linked
-	Team               func() *team.Model
-	Celebrate          func() *celebrate.Model
-	CelebrateDirectory celebrate.Directory
-	Loop               func() *loop.Model
-	LoopSources        func() loop.Sources
-	Links              func(v access.Actor) []home.Category
-	Alerts             func(email string) (stale []string, privacy []string)
-	Artifacts          func() *artifacts.Model
-	Embedder           artifacts.Embedder
-	Admins             Admins
-	Now                func() time.Time
+	Directory   func() *who.Model
+	Tags        func(owner string) map[string][]string
+	Lists       func(email string) []who.List
+	Settings    func() *config.Settings
+	Calendar    func() *when.Model
+	Linked      func(email string) []when.Linked
+	Team        func() *team.Model
+	Celebrate   func() *celebrate.Model
+	Loop        func() *loop.Model
+	LoopSources func() loop.Sources
+	Links       func(v access.Actor) []home.Category
+	Artifacts   func() *artifacts.Model
+	Embedder    artifacts.Embedder
+	Admins      Admins
+	Now         func() time.Time
 }
 
 type Admins struct {
@@ -96,11 +95,6 @@ type user struct {
 	PhotoURL string `json:"photoUrl,omitempty"`
 }
 
-type alerts struct {
-	Stale   []string `json:"stale"`
-	Privacy []string `json:"privacy"`
-}
-
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email := a.who(r)
 	v := a.viewer(email)
@@ -111,11 +105,9 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	u.PhotoURL = v.directory.HeroPhoto(email)
 	view := struct {
 		User     user     `json:"user"`
-		Alerts   alerts   `json:"alerts"`
 		Starters []string `json:"starters"`
 		MaxTurns int      `json:"maxTurns"`
 	}{User: u, Starters: v.starters(), MaxTurns: maxTurns}
-	view.Alerts.Stale, view.Alerts.Privacy = a.sources.Alerts(email)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode ask model", "error", err)

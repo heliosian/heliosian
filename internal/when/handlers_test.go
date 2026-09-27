@@ -13,9 +13,11 @@ import (
 	"time"
 
 	"heliosian/internal/auth"
+	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
 var testNow = time.Date(2026, 9, 17, 12, 0, 0, 0, Location)
@@ -55,12 +57,9 @@ func sampleCache(t *testing.T) *Cache {
 func testApp(t *testing.T) (http.Handler, *Cache) {
 	t.Helper()
 	cache := sampleCache(t)
-	d := fakeDirectory{
-		people: map[string]Person{"jordan.whitfield@heliosschool.org": {Email: "jordan.whitfield@heliosschool.org", Name: "Jordan", IsParent: true}},
-		kids:   map[string][]Person{},
-	}
+	d := sampleDirectory(t, "sampledata")
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{}, testStyle)
+	Register(mux, cache, nil, func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{}, testStyle)
 	return mux, cache
 }
 
@@ -252,7 +251,7 @@ func TestSavedView(t *testing.T) {
 	if view.User.Saved == nil || strings.Join(view.User.Saved.Classrooms, ",") != "Hawks" || strings.Join(view.User.Saved.Tags, ",") != "Community,HCA" {
 		t.Errorf("saved view = %+v", view.User.Saved)
 	}
-	for _, u := range cache.Model().UpcomingUnder(fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}, me, nil, now(), 0, "") {
+	for _, u := range cache.Model().UpcomingUnder(sampleDirectory(t, "sampledata"), me, nil, now(), 0, "") {
 		if !strings.Contains(u.Title, "Hawks") && !strings.Contains(u.Title, "CAFE") && u.Title != "International Night" && u.Title != "Halloween Parade" && u.Title != "HCA Meeting" && u.Title != "All School Movie Night" && u.Title != "Cocoa & Cookies" && u.Title != "Talent Show" && u.Title != "Back to School Social" && u.Title != "Spring Celebration" && u.Title != "Fall Potluck at the Torres'" && u.Title != "Jays & Ravens Beach Picnic" {
 			t.Errorf("upcoming under the saved view lists %q", u.Title)
 		}
@@ -273,7 +272,7 @@ func TestDefaultCalendar(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
 	viewer := as(me, handler)
-	dir := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
+	dir := sampleDirectory(t, "sampledata")
 	found := false
 	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, "") {
 		found = found || u.Title == "International Night"
@@ -363,10 +362,10 @@ func (k *keptMail) all() []mail.Message {
 
 func TestAdminsToldOfSharedEvents(t *testing.T) {
 	cache := sampleCache(t)
-	d := fakeDirectory{people: map[string]Person{"jordan.whitfield@heliosschool.org": {Email: "jordan.whitfield@heliosschool.org", Name: "Jordan", IsParent: true}}, kids: map[string][]Person{}}
+	d := sampleDirectory(t, "sampledata")
 	kept := &keptMail{}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", Base: "https://when.heliosian.com"}, testStyle)
+	Register(mux, cache, nil, func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", Base: "https://when.heliosian.com"}, testStyle)
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {
@@ -548,8 +547,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 		t.Errorf("a yes did not put the link event under Going on the other's calendar")
 	}
 	found := false
-	dir := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
-	for _, u := range cache.Model().UpcomingUnder(dir, "robin.whitfield@heliosschool.org", nil, now(), 0, "") {
+	for _, u := range cache.Model().UpcomingUnder(sampleDirectory(t, "sampledata"), "robin.whitfield@heliosschool.org", nil, now(), 0, "") {
 		found = found || u.ID == shared.IDs[0]
 	}
 	if !found {
@@ -619,7 +617,7 @@ func TestFeedCarriesLinked(t *testing.T) {
 	handler, cache := testApp(t)
 	linked := []Linked{{Source: SourceCelebrate, ID: "P9", Title: "Fondue Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing}}
 	f := &Feed{Token: "t", Email: "jordan.whitfield@heliosschool.org", Name: "Mine", Tags: []string{TagGoing}}
-	out := string(ICS(cache.Model(), fakeDirectory{}, f, linked, "https://when.heliosiandev.com:8080", now()))
+	out := string(ICS(cache.Model(), sampleDirectory(t, "sampledata"), f, linked, "https://when.heliosiandev.com:8080", now()))
 	if !strings.Contains(out, "SUMMARY:Fondue Night") || !strings.Contains(out, "URL:https://when.heliosiandev.com:8080/e/celebrate/P9") {
 		t.Errorf("feed lacks the party:\n%s", out)
 	}
@@ -648,26 +646,26 @@ func TestAnswers(t *testing.T) {
 	if view.User.Answers["a7@sample"] != AnswerHidden {
 		t.Errorf("answers = %v", view.User.Answers)
 	}
-	dir := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
+	dir := sampleDirectory(t, "sampledata")
 	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, "") {
 		if u.ID == "a7@sample" {
 			t.Errorf("a hidden event is in Upcoming")
 		}
 	}
 	f := &Feed{Token: "t", Email: me, Name: "Mine"}
-	if strings.Contains(string(ICS(cache.Model(), fakeDirectory{}, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
+	if strings.Contains(string(ICS(cache.Model(), dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a hidden event is in the owner's feed")
 	}
 	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"no"}`); rec.Code != 204 {
 		t.Fatalf("no: %d %s", rec.Code, rec.Body)
 	}
-	if strings.Contains(string(ICS(cache.Model(), fakeDirectory{}, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
+	if strings.Contains(string(ICS(cache.Model(), dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("an event the owner said no to is in their feed")
 	}
 	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":""}`); rec.Code != 204 {
 		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
 	}
-	if !strings.Contains(string(ICS(cache.Model(), fakeDirectory{}, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
+	if !strings.Contains(string(ICS(cache.Model(), dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a cleared answer left the event out of the feed")
 	}
 	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"yes"}`); rec.Code != 204 {
@@ -698,7 +696,7 @@ func TestAnswers(t *testing.T) {
 		t.Errorf("a yes changed the model's own event")
 	}
 	going := &Feed{Token: "g", Email: me, Name: "Going", Tags: []string{TagGoing}}
-	if !strings.Contains(string(ICS(cache.Model(), fakeDirectory{}, going, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
+	if !strings.Contains(string(ICS(cache.Model(), dir, going, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a yes is not in the owner's Going feed")
 	}
 	sender := app{mail: Mail{ReplyTo: "Helios When <when@reply.heliosian.com>", Key: []byte("key")}}
@@ -716,7 +714,7 @@ func TestResponsesForAdmins(t *testing.T) {
 	rec := call(t, as("dana.hawkins@heliosschool.org", handler), "GET", "/api/when/model", "")
 	json.NewDecoder(rec.Body).Decode(&view)
 	r := view.Responses["a7@sample"]
-	if r == nil || len(r.Yes) != 1 || r.Yes[0].Name != "Jordan" || len(r.No) != 1 {
+	if r == nil || len(r.Yes) != 1 || r.Yes[0].Name != "Jordan Whitfield" || r.Yes[0].Line != "Parent to Sam (Grade 3), Ella (Grade 6)" || len(r.No) != 1 {
 		t.Errorf("responses = %+v", r)
 	}
 	rec = call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/when/model", "")

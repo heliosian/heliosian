@@ -21,6 +21,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/claude"
+	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/home"
@@ -38,43 +39,6 @@ type anyImages struct{}
 func (anyImages) Has(string) (bool, error) { return true, nil }
 
 func (anyImages) Prefetch(context.Context, []string) error { return nil }
-
-type sampleDirectory struct{ model *who.Model }
-
-func (d sampleDirectory) Resolve(email string) string { return d.model.Resolve(email) }
-
-func (d sampleDirectory) Sources() filter.Sources { return filter.Sources{Directory: d.model} }
-
-func (d sampleDirectory) Person(email string) (when.Person, bool) {
-	p := d.model.Person(email)
-	if p == nil {
-		return when.Person{}, false
-	}
-	return when.Person{Email: p.Email, Name: p.FullName, IsStudent: p.IsStudent, IsParent: p.IsParent, IsStaff: p.IsStaff, Grade: p.Grade, Classroom: p.Classroom}, true
-}
-
-func (d sampleDirectory) Children(email string) []when.Person {
-	out := []when.Person{}
-	for _, key := range d.model.FamilyKeysOf(email) {
-		for _, kid := range d.model.Families[key].KidEmails {
-			if p, ok := d.Person(kid); ok {
-				out = append(out, p)
-			}
-		}
-	}
-	return out
-}
-
-func (sampleDirectory) Household(string) []string { return nil }
-func (d sampleDirectory) Family(email string) map[string]bool {
-	return d.model.Family(email)
-}
-func (sampleDirectory) Parents(string) []string            { return nil }
-func (sampleDirectory) Alerts(string) ([]string, []string) { return nil, nil }
-func (sampleDirectory) ClassroomColors() map[string]string { return map[string]string{} }
-func (sampleDirectory) GradeColors() map[string]string     { return map[string]string{} }
-func (sampleDirectory) People() []when.Person              { return nil }
-func (sampleDirectory) Lists(string) []when.List           { return nil }
 
 var sampleNow = time.Date(2026, 9, 12, 9, 0, 0, 0, when.Location)
 
@@ -122,7 +86,7 @@ func sampleSources(t *testing.T) Sources {
 		t.Fatal(err)
 	}
 	loopModel := loopCache.Model()
-	homeCache, err := home.NewCache(dir, dir, anyImages{}, func() []string { return nil }, sampleDirectory{directory}, queue)
+	homeCache, err := home.NewCache(dir, dir, anyImages{}, func() []string { return nil }, func() filter.Sources { return filter.Sources{Directory: directory} }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,25 +109,23 @@ func sampleSources(t *testing.T) Sources {
 	tags := directory.Tags
 	lists := directory.RoomParentLists
 	return Sources{
-		Directory:         func() *who.Model { return directory },
-		Tags:              tags,
-		Lists:             lists,
-		Calendar:          func() *when.Model { return calendarModel },
-		CalendarDirectory: sampleDirectory{directory},
-		Linked:            func(string) []when.Linked { return nil },
-		Team:              func() *team.Model { return teamModel },
-		Celebrate:         func() *celebrate.Model { return celebrateModel },
-		Loop:              func() *loop.Model { return loopModel },
+		Directory: func() *who.Model { return directory },
+		Tags:      tags,
+		Lists:     lists,
+		Settings:  func() *config.Settings { return &config.Settings{} },
+		Calendar:  func() *when.Model { return calendarModel },
+		Linked:    func(string) []when.Linked { return nil },
+		Team:      func() *team.Model { return teamModel },
+		Celebrate: func() *celebrate.Model { return celebrateModel },
+		Loop:      func() *loop.Model { return loopModel },
 		LoopSources: func() loop.Sources {
 			return loop.Sources{Directory: directory, Tags: tags, Lists: lists, Shared: directory.SharedTags}
 		},
-		CelebrateDirectory: sampleParties{directory},
-		Links:              homeCache.CategoriesFor,
-		Alerts:             func(string) ([]string, []string) { return nil, nil },
-		Artifacts:          func() *artifacts.Model { return documents },
-		Embedder:           artifacts.Fake{},
-		Admins:             Admins{Team: isAdmin, Celebrate: isAdmin, Loop: isAdmin, Calendar: isAdmin, Home: isAdmin},
-		Now:                func() time.Time { return sampleNow },
+		Links:     homeCache.CategoriesFor,
+		Artifacts: func() *artifacts.Model { return documents },
+		Embedder:  artifacts.Fake{},
+		Admins:    Admins{Team: isAdmin, Celebrate: isAdmin, Loop: isAdmin, Calendar: isAdmin, Home: isAdmin},
+		Now:       func() time.Time { return sampleNow },
 	}
 }
 
@@ -171,38 +133,6 @@ const sampleAdmin = "grace.kim@heliosschool.org"
 
 func isAdmin(email string) bool {
 	return email == sampleAdmin
-}
-
-type sampleParties struct {
-	model *who.Model
-}
-
-func (d sampleParties) Resolve(email string) string {
-	return d.model.Resolve(email)
-}
-
-func (d sampleParties) Person(email string) (celebrate.Person, bool) {
-	p := d.model.Person(email)
-	if p == nil {
-		return celebrate.Person{}, false
-	}
-	return celebrate.Person{Email: p.Email, Name: p.FullName, IsStudent: p.IsStudent, IsParent: p.IsParent, IsStaff: p.IsStaff}, true
-}
-
-func (d sampleParties) Household(string) (adults, kids []celebrate.Person) {
-	return nil, nil
-}
-
-func (d sampleParties) Family(email string) map[string]bool {
-	return d.model.Family(email)
-}
-
-func (d sampleParties) People() []celebrate.Person {
-	return nil
-}
-
-func (d sampleParties) Alerts(string) ([]string, []string) {
-	return nil, nil
 }
 
 func sampleViewer(t *testing.T, email string) *viewer {

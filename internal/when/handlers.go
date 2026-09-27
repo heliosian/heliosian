@@ -21,6 +21,7 @@ import (
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
 const shell = "web/when/index.html"
@@ -30,7 +31,9 @@ var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/e/{id...}", "/events
 type app struct {
 	cache       *Cache
 	store       *blob.Store
-	directory   Directory
+	directory   func() *who.Model
+	settings    func() *config.Settings
+	lists       func(email string) []List
 	superAdmins func() []string
 	linked      func(email string) []Linked
 	parties     func(id string) *PartyPeople
@@ -46,11 +49,11 @@ type ImageSearch = imagesearch.Search
 
 const imageFolder = "category-images"
 
-func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search ImageSearch, mailbox Mail, style *sharecard.Style) Hooks {
+func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, settings func() *config.Settings, lists func(email string) []List, superAdmins func() []string, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search ImageSearch, mailbox Mail, style *sharecard.Style) Hooks {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
 	}
-	a := app{cache: cache, store: store, directory: directory, superAdmins: superAdmins, linked: linked, parties: celebrate.Party, celebrate: celebrate, sources: sources, clock: &matchClock{}, search: search, mail: mailbox, style: style}
+	a := app{cache: cache, store: store, directory: directory, settings: settings, lists: lists, superAdmins: superAdmins, linked: linked, parties: celebrate.Party, celebrate: celebrate, sources: sources, clock: &matchClock{}, search: search, mail: mailbox, style: style}
 	if sources != nil {
 		go a.sweepLoop()
 	}
@@ -123,7 +126,7 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) who(r *http.Request) (string, bool) {
-	email := a.directory.Resolve(strings.ToLower(auth.Email(r)))
+	email := a.directory().Resolve(strings.ToLower(auth.Email(r)))
 	return email, a.cache.IsAdmin(email)
 }
 
@@ -133,7 +136,8 @@ var now = func() time.Time {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
-	view := Render(a.cache.Model(), a.directory, access.Actor{Email: email, Admin: admin}, now(), a.linked(email))
+	directory := a.directory()
+	view := Render(a.cache.Model(), directory, a.settings(), access.Actor{Email: email, Admin: admin}, now(), a.linked(email))
 	for i, e := range view.Events {
 		hosted := (e.Source == SourceSheet || e.linked() || e.imported()) && a.isHost(access.Actor{Email: email}, e)
 		if !hosted && len(e.Hosts) == 0 {
@@ -142,8 +146,8 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		c := *e
 		c.Hosted = hosted
 		for _, h := range e.Hosts {
-			if p, known := a.directory.Person(a.directory.Resolve(config.NormalizeEmail(h))); known && p.Name != "" {
-				c.HostNames = append(c.HostNames, p.Name)
+			if p := directory.Person(directory.Resolve(config.NormalizeEmail(h))); p != nil && p.FullName != "" {
+				c.HostNames = append(c.HostNames, p.FullName)
 			}
 		}
 		view.Events[i] = &c
@@ -165,7 +169,7 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 }
 
 func (a app) as(email string) access.Actor {
-	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email), Household: a.directory.Family(email)}
+	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email), Household: a.directory().Family(email)}
 }
 
 func (a app) actor(r *http.Request) access.Actor {
@@ -463,8 +467,8 @@ func (a app) tellAdmins(ctx context.Context, by string, e *Event) {
 		return
 	}
 	who := by
-	if p, ok := a.directory.Person(by); ok && p.Name != "" {
-		who = p.Name + " (" + by + ")"
+	if p := a.directory().Person(by); p != nil && p.FullName != "" {
+		who = p.FullName + " (" + by + ")"
 	}
 	day, _ := whenLines(e)
 	lead := who + " shared an event on Helios When that is waiting for approval."
@@ -641,7 +645,7 @@ func (a app) feed(w http.ResponseWriter, r *http.Request) {
 	if email := model.myHeliosianFeed(token); f == nil && email != "" {
 		home := model.MyHeliosian(email)
 		home.Token = token
-		home.Classrooms, home.Tags = model.myHeliosianView(a.directory, email)
+		home.Classrooms, home.Tags = model.myHeliosianView(a.directory(), email)
 		f = &home
 	}
 	if f == nil {
@@ -651,7 +655,7 @@ func (a app) feed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", "helios-calendar.ics"))
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Write(ICS(model, a.directory, f, a.linked(f.Email), "https://"+r.Host, now()))
+	w.Write(ICS(model, a.directory(), f, a.linked(f.Email), "https://"+r.Host, now()))
 }
 
 func (a app) myHeliosianToken(w http.ResponseWriter, r *http.Request) {

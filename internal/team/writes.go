@@ -11,6 +11,7 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
 func (m *Model) find(id string) (*Activity, error) {
@@ -47,7 +48,7 @@ type signUp struct {
 	existed  bool
 }
 
-func (m *Model) saveVolunteer(actor access.Actor, directory Directory, body volunteerBody) (signUp, error) {
+func (m *Model) saveVolunteer(actor access.Actor, directory *who.Model, body volunteerBody) (signUp, error) {
 	act, err := m.find(body.ID)
 	if err != nil {
 		return signUp{}, err
@@ -99,7 +100,7 @@ func (m *Model) saveVolunteer(actor access.Actor, directory Directory, body volu
 		ops = append(ops, store.Delete(volunteersTab, store.Row{"Event ID": from.ID, "Email": email}))
 	}
 	existing := current != nil
-	if _, _, listed := directory.Person(email); !existing && !listed {
+	if !existing && directory.Person(email) == nil {
 		return signUp{}, access.Invalid("that address is not in the directory")
 	}
 	if !editor {
@@ -131,7 +132,7 @@ func (m *Model) saveVolunteer(actor access.Actor, directory Directory, body volu
 	return signUp{ops: ops, act: act, email: email, position: body.Position, note: note, was: was, action: action, existed: existing || from != nil}, nil
 }
 
-func (m *Model) removeVolunteer(actor access.Actor, directory Directory, id, email string) (*Activity, string, []store.Op, error) {
+func (m *Model) removeVolunteer(actor access.Actor, id, email string) (*Activity, string, []store.Op, error) {
 	act, err := m.find(id)
 	if err != nil {
 		return nil, "", nil, err

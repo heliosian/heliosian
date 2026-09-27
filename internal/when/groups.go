@@ -120,7 +120,7 @@ func (a app) members(e *Event, g InviteGroup) []string {
 	}
 	out := []string{}
 	for _, m := range filter.Members(filter.List{Rules: []filter.Rule{g.Rule}, Editors: a.hostsOf(e)}, a.sources()) {
-		if m = a.directory.Resolve(config.NormalizeEmail(m)); m != "" && !slices.Contains(out, m) {
+		if m = a.directory().Resolve(config.NormalizeEmail(m)); m != "" && !slices.Contains(out, m) {
 			out = append(out, m)
 		}
 	}
@@ -137,11 +137,11 @@ func (a app) ticketHolders(g InviteGroup, members []string) []string {
 	}
 	keep := map[string]bool{}
 	for _, host := range p.Hosts {
-		keep[a.directory.Resolve(config.NormalizeEmail(host))] = true
+		keep[a.directory().Resolve(config.NormalizeEmail(host))] = true
 	}
 	for _, t := range p.Attendees {
 		if t.Email != "" {
-			keep[a.directory.Resolve(config.NormalizeEmail(t.Email))] = true
+			keep[a.directory().Resolve(config.NormalizeEmail(t.Email))] = true
 		}
 	}
 	out := []string{}
@@ -168,11 +168,11 @@ func (a app) ticketGuests(g InviteGroup) map[string]string {
 		return out
 	}
 	for _, t := range p.Attendees {
-		email := a.directory.Resolve(config.NormalizeEmail(t.Email))
+		email := a.directory().Resolve(config.NormalizeEmail(t.Email))
 		if email == "" || t.Status == "waitlist" || !emailForm.MatchString(email) {
 			continue
 		}
-		if _, known := a.directory.Person(email); known {
+		if a.directory().Person(email) != nil {
 			continue
 		}
 		if out[email] == "" {
@@ -216,8 +216,8 @@ func (a app) groupPreview(w http.ResponseWriter, r *http.Request) {
 	members := a.members(e, InviteGroup{Rule: rule})
 	names := []string{}
 	for _, m := range members {
-		if p, known := a.directory.Person(m); known && p.Name != "" {
-			names = append(names, p.Name)
+		if p := a.directory().Person(m); p != nil && p.FullName != "" {
+			names = append(names, p.FullName)
 		} else {
 			names = append(names, cells.DisplayName(m))
 		}

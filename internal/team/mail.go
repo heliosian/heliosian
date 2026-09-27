@@ -130,7 +130,7 @@ func (a app) mailRemoved(r *http.Request, act *Activity, email, actor string) {
 		l.Intro = fmt.Sprintf("%s removed your sign-up for %s, so it comes off your calendar. If that's a surprise, the chairs can put you back - just reply.", a.nameOf(actor), act.Title)
 	}
 	l.Button = "See the details"
-	msg := l.Message("Removed: "+act.Title, append([]string{email}, a.directory.Parents(email)...), nil, without(chairsAround(m, act), email))
+	msg := l.Message("Removed: "+act.Title, append([]string{email}, parentsOf(a.directory(), email)...), nil, without(chairsAround(m, act), email))
 	e, ok := a.event(m, act, email, l.Path, msg.To)
 	if !ok {
 		return
@@ -140,11 +140,11 @@ func (a app) mailRemoved(r *http.Request, act *Activity, email, actor string) {
 }
 
 func (a app) nameOf(email string) string {
-	name, _, _ := a.directory.Person(email)
-	if name == "" {
+	p := a.directory().Person(email)
+	if p == nil || p.FullName == "" {
 		return cells.DisplayName(email)
 	}
-	return name
+	return p.FullName
 }
 
 func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, actor string, existed bool, was string) {
@@ -205,7 +205,7 @@ func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, a
 		l.Button = "See the details"
 		l.Footnote = "Need to change or cancel? Open the page and use Edit my sign-up."
 		subject := fmt.Sprintf("Thanks for volunteering for %s", act.Title)
-		to := append([]string{email}, a.directory.Parents(email)...)
+		to := append([]string{email}, parentsOf(a.directory(), email)...)
 		replyTo := without(chairs, email)
 		e, dated := a.event(model, act, email, l.Path, nil)
 		if dated {

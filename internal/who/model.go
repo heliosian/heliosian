@@ -2,6 +2,7 @@ package who
 
 import (
 	"net/url"
+	"slices"
 	"strings"
 
 	"heliosian/internal/store"
@@ -231,6 +232,37 @@ func (m *Model) HeroPhoto(email string) string {
 
 func (m *Model) Member(email string) bool {
 	return m.Person(email) != nil
+}
+
+func (p *Person) Words() string {
+	switch {
+	case p.IsStaff:
+		if p.JobTitle == "" {
+			return "Staff"
+		}
+		return p.JobTitle
+	case p.IsStudent:
+		if p.Grade == "" {
+			return "Student"
+		}
+		return p.Grade
+	case p.IsParent:
+		return "Parent"
+	}
+	return ""
+}
+
+func (m *Model) Listed() []*Person {
+	out := []*Person{}
+	for i := range m.People {
+		if m.People[i].Email != "" && !m.People[i].EmailMasked {
+			out = append(out, &m.People[i])
+		}
+	}
+	slices.SortStableFunc(out, func(a, b *Person) int {
+		return strings.Compare(strings.ToLower(a.FullName), strings.ToLower(b.FullName))
+	})
+	return out
 }
 
 func Slug(email string) string {

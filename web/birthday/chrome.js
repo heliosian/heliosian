@@ -113,7 +113,6 @@ export function initChrome() {
   initShell({
     name: 'Helios Staff Birthdays',
     me,
-    alerts: () => state.model.alerts,
     isSystemAdmin,
     onSuper: () => {
       document.dispatchEvent(new CustomEvent('birthday:refresh'));

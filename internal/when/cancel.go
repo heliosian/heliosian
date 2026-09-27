@@ -73,8 +73,8 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hostName := actor.Email
-	if p, known := a.directory.Person(actor.Email); known && p.Name != "" {
-		hostName = p.Name
+	if p := a.directory().Person(actor.Email); p != nil && p.FullName != "" {
+		hostName = p.FullName
 	}
 	replyTo := a.hostsOf(e)
 	if !slices.Contains(replyTo, actor.Email) {

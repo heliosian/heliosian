@@ -25,29 +25,13 @@ func (noFiles) Has(string) (bool, error) { return false, nil }
 
 func (noFiles) Prefetch(context.Context, []string) error { return nil }
 
-type sampleDirectory struct {
-	model   *who.Model
-	aliases map[string]string
-}
-
-func (d sampleDirectory) Sources() filter.Sources {
-	return filter.Sources{Directory: d.model}
-}
-
-func (d sampleDirectory) Resolve(email string) string {
-	if to, ok := d.aliases[email]; ok {
-		return to
-	}
-	return d.model.Resolve(email)
-}
-
-func directoryOf(t *testing.T) sampleDirectory {
+func sampleSources(t *testing.T) func() filter.Sources {
 	t.Helper()
 	model, err := who.LoadModel(&data.Dir{Root: "../../sampledata"}, nil, noFiles{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return sampleDirectory{model: model}
+	return func() filter.Sources { return filter.Sources{Directory: model} }
 }
 
 func call(t *testing.T, handler http.HandlerFunc, body any) *httptest.ResponseRecorder {
@@ -136,7 +120,7 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 
 func TestCategoryRenameCarriesItsLinksAndAudience(t *testing.T) {
 	c, dir := sampleCache(t)
-	a := app{cache: c, directory: c.directory}
+	a := app{cache: c, sources: c.sources}
 	chats := c.Model().category("Chats")
 	rec := call(t, a.saveCategory, map[string]any{"original": "Chats", "title": "Group Chats", "emoji": chats.Emoji, "style": chats.Style, "rules": chats.Rules})
 	if rec.Code != http.StatusNoContent {
@@ -165,7 +149,7 @@ func TestCategoryRenameCarriesItsLinksAndAudience(t *testing.T) {
 
 func TestMoveLinkTradesPlacesWithinItsCategory(t *testing.T) {
 	c, dir := sampleCache(t)
-	a := app{cache: c, directory: c.directory}
+	a := app{cache: c, sources: c.sources}
 	if rec := call(t, a.moveLink, map[string]any{"title": "Parent Portal", "by": 1}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move: %d %s", rec.Code, rec.Body)
 	}
@@ -190,7 +174,7 @@ func TestMoveLinkTradesPlacesWithinItsCategory(t *testing.T) {
 
 func TestARowWithNoOrderSortsLast(t *testing.T) {
 	c, dir := sampleCache(t)
-	a := app{cache: c, directory: c.directory}
+	a := app{cache: c, sources: c.sources}
 	if err := c.Commit(context.Background(), access.System("test"), store.Insert(linksTab, store.Row{"Title": "Lunch Menu", "URL": "https://lunch.example.org/", "Category": "School", "Visible": "Yes"}), store.Update(linksTab, store.Row{"Title": "Directory"}, store.Row{store.OrderColumn: ""})); err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +202,7 @@ func TestARowWithNoOrderSortsLast(t *testing.T) {
 
 func TestCategoryOrderKeysOnlyWhatMoved(t *testing.T) {
 	c, dir := sampleCache(t)
-	a := app{cache: c, directory: c.directory}
+	a := app{cache: c, sources: c.sources}
 	titles := []string{"Helios Community Apps", "Upcoming Events", "Events", "School", "Chats"}
 	if rec := call(t, a.reorderCategories, map[string]any{"titles": titles}); rec.Code != http.StatusNoContent {
 		t.Fatalf("reorder: %d %s", rec.Code, rec.Body)
@@ -242,7 +226,7 @@ func TestTheEventsSectionIsWrittenWhereItStands(t *testing.T) {
 	if err := c.Commit(context.Background(), access.System("test"), store.Delete(categoriesTab, store.Row{"Title": EventsTitle})); err != nil {
 		t.Fatal(err)
 	}
-	a := app{cache: c, directory: c.directory}
+	a := app{cache: c, sources: c.sources}
 	if !c.Model().virtualEvents(EventsTitle) {
 		t.Fatal("no synthesized events section")
 	}
@@ -261,7 +245,7 @@ func TestTheEventsSectionIsWrittenWhereItStands(t *testing.T) {
 
 func TestAppOrderIsAKey(t *testing.T) {
 	c, _ := sampleCache(t)
-	a := app{cache: c, directory: c.directory}
+	a := app{cache: c, sources: c.sources}
 	order := []string{"ask", "who", "team", "celebrate", "birthday", "when", "loop"}
 	if rec := call(t, a.setAppOrder, map[string]any{"apps": order}); rec.Code != http.StatusNoContent {
 		t.Fatalf("order: %d %s", rec.Code, rec.Body)
@@ -277,7 +261,7 @@ func TestAppOrderIsAKey(t *testing.T) {
 
 func TestWidgetOrderIsAKey(t *testing.T) {
 	c, _ := sampleCache(t)
-	a := app{cache: c, directory: c.directory}
+	a := app{cache: c, sources: c.sources}
 	if got := c.Model().WidgetOrder; !slices.Equal(got, Widgets) {
 		t.Fatalf("unset order = %v, want %v", got, Widgets)
 	}
@@ -297,11 +281,9 @@ func TestWidgetOrderIsAKey(t *testing.T) {
 func TestOnlyAdminsGetTheRules(t *testing.T) {
 	c, _ := sampleCache(t)
 	a := app{
-		cache: c, directory: c.directory,
-		heroPhoto: func(string) string { return "" },
-		alerts:    func(string) ([]string, []string) { return nil, nil },
-		upcoming:  func(string, string) Upcoming { return Upcoming{} },
-		month:     func(string, string, string) Month { return Month{} },
+		cache: c, sources: c.sources,
+		upcoming: func(string, string) Upcoming { return Upcoming{} },
+		month:    func(string, string, string) Month { return Month{} },
 	}
 	modelOf := func(email string) (view struct {
 		Categories []Category `json:"categories"`
@@ -349,17 +331,17 @@ func TestOnlyAdminsGetTheRules(t *testing.T) {
 
 func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 	c, dir := sampleCache(t)
-	const alias = "jw@example.org"
-	directory := directoryOf(t)
-	directory.aliases = map[string]string{alias: admin}
-	c.directory = directory
+	const alias, admin = "facilities@heliosschool.org", "hank.morrow@heliosschool.org"
+	if err := c.Commit(context.Background(), access.System("test"), store.Insert(adminsTab, store.Row{"Email": admin})); err != nil {
+		t.Fatal(err)
+	}
+	setVisibility(t, c, "celebrate", Visibility{Mode: VisibleToList, Emails: []string{admin}})
+	before := len(changeLog(t, dir))
 	seen := map[string]string{}
 	a := app{
-		cache: c, directory: directory,
-		heroPhoto: func(email string) string { seen["photo"] = email; return "" },
-		alerts:    func(string) ([]string, []string) { return nil, nil },
-		upcoming:  func(email, _ string) Upcoming { seen["upcoming"] = email; return Upcoming{} },
-		month:     func(email, _, _ string) Month { seen["month"] = email; return Month{} },
+		cache: c, sources: c.sources,
+		upcoming: func(email, _ string) Upcoming { seen["upcoming"] = email; return Upcoming{} },
+		month:    func(email, _, _ string) Month { seen["month"] = email; return Month{} },
 		answer: func(_ context.Context, email, _, _ string) error {
 			seen["answer"] = email
 			return nil
@@ -402,7 +384,7 @@ func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 	if !view.User.IsAdmin || view.User.Email != admin {
 		t.Errorf("the alias's model is not the admin's: %s", rec.Body)
 	}
-	for _, key := range []string{"photo", "upcoming", "month"} {
+	for _, key := range []string{"upcoming", "month"} {
 		if seen[key] != admin {
 			t.Errorf("%s got %q, want the admin the alias resolves to", key, seen[key])
 		}
@@ -416,7 +398,7 @@ func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("the alias's move: %d %s", rec.Code, rec.Body)
 	}
-	if log := changeLog(t, dir); len(log) != 1 || log[0]["Actor"] != admin {
+	if log := changeLog(t, dir)[before:]; len(log) != 1 || log[0]["Actor"] != admin {
 		t.Errorf("change log = %v, want one row by the admin the alias resolves to", log)
 	}
 	rec = httptest.NewRecorder()
@@ -429,11 +411,9 @@ func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 func TestWidgetAudience(t *testing.T) {
 	c, _ := sampleCache(t)
 	a := app{
-		cache: c, directory: c.directory,
-		heroPhoto: func(string) string { return "" },
-		alerts:    func(string) ([]string, []string) { return nil, nil },
-		upcoming:  func(string, string) Upcoming { return Upcoming{} },
-		month:     func(string, string, string) Month { return Month{} },
+		cache: c, sources: c.sources,
+		upcoming: func(string, string) Upcoming { return Upcoming{} },
+		month:    func(string, string, string) Month { return Month{} },
 	}
 	parentsOnly := []filter.Rule{{Kind: filter.KindInclude, Roles: []string{"Parent"}}}
 	if rec := call(t, a.saveWidgetAudience, map[string]any{"widget": "team", "rules": parentsOnly}); rec.Code != http.StatusNoContent {

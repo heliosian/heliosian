@@ -13,6 +13,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/config"
+	"heliosian/internal/who"
 )
 
 type AddressMoved func(ctx context.Context, actor access.Actor, old, to, name string)
@@ -38,7 +39,7 @@ func (a app) moveAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := a.actor(r)
-	ops, moved, err := a.cache.Model().moveUnlisted(actor, a.directory, body.Old, body.To, body.Name)
+	ops, moved, err := a.cache.Model().moveUnlisted(actor, a.directory(), body.Old, body.To, body.Name)
 	if err != nil {
 		refuse(w, err)
 		return
@@ -76,7 +77,7 @@ type Moved struct {
 	Changed string `json:"changed,omitempty"`
 }
 
-func Problems(model *Model, directory Directory, now time.Time) []Problem {
+func Problems(model *Model, directory *who.Model, now time.Time) []Problem {
 	byEmail := map[string]*Problem{}
 	order := []string{}
 	note := func(email, name string, p *Party, role string) {
@@ -84,7 +85,7 @@ func Problems(model *Model, directory Directory, now time.Time) []Problem {
 		if email == "" || !strings.HasSuffix(email, "@"+auth.Domain) {
 			return
 		}
-		if _, known := directory.Person(email); known {
+		if directory.Member(email) {
 			return
 		}
 		pr := byEmail[email]
@@ -159,7 +160,7 @@ func (a app) addresses(w http.ResponseWriter, r *http.Request) {
 	view := struct {
 		Problems []Problem `json:"problems"`
 		Moved    []Moved   `json:"moved"`
-	}{Problems(model, a.directory, now()), model.MovedAddresses()}
+	}{Problems(model, a.directory(), now()), model.MovedAddresses()}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "celebrate: encode addresses", "error", err)

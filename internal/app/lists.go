@@ -8,6 +8,7 @@ import (
 
 	"heliosian/internal/celebrate"
 	"heliosian/internal/cells"
+	"heliosian/internal/filter"
 	"heliosian/internal/loop"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
@@ -19,12 +20,12 @@ type smartLists struct {
 	team      *team.Cache
 	celebrate *celebrate.Cache
 	loop      *loop.Cache
-	directory loopDirectory
+	sources   func() filter.Sources
 }
 
 func (s smartLists) Lists(email string) []who.List {
 	lists := SmartLists(s.cache.Model(), s.team.Model(), s.celebrate.Model(), email, time.Now().In(when.Location))
-	return append(lists, GroupLists(s.loop.Model(), loop.SourcesOf(s.directory), email)...)
+	return append(lists, GroupLists(s.loop.Model(), s.sources(), email)...)
 }
 
 func GroupLists(model *loop.Model, sources loop.Sources, email string) []who.List {

@@ -10,6 +10,7 @@ import (
 	"heliosian/internal/store"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
+	"heliosian/internal/who"
 )
 
 type sampleImages struct{}
@@ -19,37 +20,6 @@ func (sampleImages) Has(key string) (bool, error) {
 }
 
 func (sampleImages) Prefetch(context.Context, []string) error { return nil }
-
-type sampleHousehold struct{}
-
-func (sampleHousehold) Household(email string) (adults, kids []celebrate.Person) {
-	switch email {
-	case "jordan.whitfield@heliosschool.org":
-		return []celebrate.Person{{Email: "robin.whitfield@heliosschool.org", Name: "Robin Whitfield"}}, []celebrate.Person{{Email: "sam.whitfield@heliosschool.org", Name: "Sam Whitfield"}, {Email: "ella.whitfield@heliosschool.org", Name: "Ella Whitfield"}}
-	case "sam.whitfield@heliosschool.org":
-		return []celebrate.Person{{Email: "jordan.whitfield@heliosschool.org", Name: "Jordan Whitfield"}, {Email: "robin.whitfield@heliosschool.org", Name: "Robin Whitfield"}}, []celebrate.Person{{Email: "ella.whitfield@heliosschool.org", Name: "Ella Whitfield"}}
-	}
-	return nil, nil
-}
-
-func (h sampleHousehold) Family(email string) map[string]bool {
-	out := map[string]bool{}
-	if email != "jordan.whitfield@heliosschool.org" {
-		return out
-	}
-	adults, kids := h.Household(email)
-	for _, p := range append(adults, kids...) {
-		out[p.Email] = true
-	}
-	return out
-}
-
-func (sampleHousehold) Person(email string) (celebrate.Person, bool) {
-	if email == "jordan.whitfield@heliosschool.org" {
-		return celebrate.Person{Email: email, Name: "Jordan Whitfield"}, true
-	}
-	return celebrate.Person{}, false
-}
 
 func samplesLinked(t *testing.T) calendarLinked {
 	t.Helper()
@@ -64,7 +34,11 @@ func samplesLinked(t *testing.T) calendarLinked {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return calendarLinked{parties, activities, sampleHousehold{}}
+	directory, err := who.LoadModel(dir, nil, StaticFiles{Root: "web/who"}, []byte("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return calendarLinked{parties, activities, func() *who.Model { return directory }}
 }
 
 func linkedFromSamples(t *testing.T) []when.Linked {

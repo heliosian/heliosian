@@ -15,10 +15,11 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
-	"heliosian/internal/cells"
+	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
 const (
@@ -27,63 +28,26 @@ const (
 	chair  = "mina.park@heliosschool.org"
 
 	testFrom = "HCA-Team <hca@example.org>"
-	spouse   = "sam.whitfield@heliosschool.org"
-	kid      = "kit.whitfield@heliosschool.org"
+	kid      = "ella.whitfield@heliosschool.org"
+	student  = "sam.whitfield@heliosschool.org"
 )
 
 var (
-	sheet *data.Dir
-	queue *store.Queue
+	sheet     *data.Dir
+	queue     *store.Queue
+	directory *who.Model
+	settings  = &config.Settings{}
 )
 
-type fakeDirectory struct{}
-
-const parentAlias = "robin@heliosschool.org"
-
-func (fakeDirectory) Resolve(email string) string {
-	if email == parentAlias {
-		return parent
-	}
-	return email
-}
-
-func (fakeDirectory) People() []DirectoryPerson { return nil }
-
-func (fakeDirectory) Household(email string) (adults, kids []Child) {
-	if email == parent {
-		return []Child{{Email: spouse, Name: "Sam Whitfield"}}, []Child{{Email: kid, Name: "Kit Whitfield", Grade: "3"}}
-	}
-	return nil, nil
-}
-
-func (fakeDirectory) Family(email string) map[string]bool {
-	if email == parent {
-		return map[string]bool{spouse: true, kid: true}
-	}
-	return map[string]bool{}
-}
-
 func viewerOf(email string, admin bool) access.Actor {
-	return access.Actor{Email: email, Admin: admin, Household: fakeDirectory{}.Family(email)}
+	return access.Actor{Email: email, Admin: admin, Household: directory.Family(email)}
 }
 
-func (fakeDirectory) Grade(string) string { return "" }
+type noFiles struct{}
 
-func (fakeDirectory) Alerts(string) ([]string, []string) { return nil, nil }
+func (noFiles) Has(string) (bool, error) { return false, nil }
 
-func (fakeDirectory) GradeColors() map[string]string { return nil }
-
-func (fakeDirectory) Parents(string) []string { return nil }
-
-func (fakeDirectory) Person(email string) (string, string, bool) {
-	if email == parent {
-		return "Robin Whitfield", "/photos/robin.jpg", true
-	}
-	if strings.HasSuffix(email, "@heliosschool.org") {
-		return cells.DisplayName(email), "", true
-	}
-	return "", "", false
-}
+func (noFiles) Prefetch(context.Context, []string) error { return nil }
 
 type bundled struct{}
 
@@ -96,12 +60,16 @@ func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 	t.Chdir("../..")
 	sheet = &data.Dir{Root: "sampledata"}
 	queue = store.NewQueue()
+	var err error
+	if directory, err = who.LoadModel(sheet, nil, noFiles{}, []byte("test")); err != nil {
+		t.Fatal(err)
+	}
 	cache, err := NewCache(sheet, sheet, bundled{}, func(e string) bool { return e == admin }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, mailer, testFrom, nil, nil, testStyle)
+	Register(mux, cache, nil, func() *who.Model { return directory }, func() *config.Settings { return settings }, func() []string { return []string{admin} }, ImageSearch{}, mailer, testFrom, nil, nil, testStyle)
 	return cache, mux
 }
 
@@ -199,7 +167,7 @@ func TestVisibleToIsWhatRenderShows(t *testing.T) {
 			}
 		}
 		as := viewerOf(c.email, c.admin)
-		for _, a := range Render(m, fakeDirectory{}, as, now()).Activities {
+		for _, a := range Render(m, directory, settings, as, now()).Activities {
 			shown[a.ID] = true
 			walk(a.Children)
 		}
@@ -220,7 +188,7 @@ func TestVisibleToIsWhatRenderShows(t *testing.T) {
 
 func TestRenderHidesWhatItShould(t *testing.T) {
 	cache, _ := newServer(t)
-	view := Render(cache.Model(), fakeDirectory{}, viewerOf(parent, false), now())
+	view := Render(cache.Model(), directory, settings, viewerOf(parent, false), now())
 	for _, a := range view.Activities {
 		if a.Status == StatusHidden || a.Status == StatusPending {
 			t.Errorf("%s reached a parent as %s", a.Title, a.Status)
@@ -236,10 +204,10 @@ func TestRenderHidesWhatItShould(t *testing.T) {
 			}
 		}
 	}
-	if view.User.Name != "Robin Whitfield" || view.User.PhotoURL != "/photos/robin.jpg" || view.People != nil {
+	if view.User.Name != "Robin Whitfield" || len(view.User.Spouses) != 1 || view.User.Spouses[0].Email != admin || len(view.User.Children) != 2 || view.User.Children[0] != (Child{Email: student, Name: "Sam Whitfield", Grade: "Grade 3"}) || view.People != nil {
 		t.Errorf("user %+v, people %v", view.User, view.People)
 	}
-	suggester := Render(cache.Model(), fakeDirectory{}, viewerOf("elena.torres@heliosschool.org", false), now())
+	suggester := Render(cache.Model(), directory, settings, viewerOf("elena.torres@heliosschool.org", false), now())
 	found := false
 	for _, a := range suggester.Activities {
 		if a.Title == "Family Escape Room Night" {
@@ -249,7 +217,7 @@ func TestRenderHidesWhatItShould(t *testing.T) {
 	if !found {
 		t.Error("a suggester cannot see their own pending suggestion")
 	}
-	if got := Render(cache.Model(), fakeDirectory{}, viewerOf("someone.new@heliosschool.org", false), now()).User.Name; got != "Someone New" {
+	if got := Render(cache.Model(), directory, settings, viewerOf("someone.new@heliosschool.org", false), now()).User.Name; got != "Someone New" {
 		t.Errorf("display name %q", got)
 	}
 }
@@ -321,10 +289,10 @@ func TestSignUpAndRemove(t *testing.T) {
 	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", full); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a full role took a sign-up: %d", rec.Code)
 	}
-	if rec := call(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E001", "email": "Robin@heliosschool.org", "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E001", "email": "Facilities@heliosschool.org", "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
 		t.Fatalf("an admin could not sign up an alias: %d %s", rec.Code, rec.Body)
 	}
-	if v := cache.Model().Activity("E001").volunteer(parent); v == nil {
+	if v := cache.Model().Activity("E001").volunteer("hank.morrow@heliosschool.org"); v == nil {
 		t.Fatalf("a sign-up by alias was not stored as the directory's address: %+v", cache.Model().Activity("E001").Volunteers)
 	}
 	for _, as := range []string{parent, admin} {
@@ -430,19 +398,23 @@ func TestMail(t *testing.T) {
 	if m.Subject != "You're a co-chair of Clean Up Crew" || !slices.Equal(m.To, []string{parent}) || !slices.Contains(m.CC, chair) {
 		t.Fatalf("co-chair note: %+v", m)
 	}
-	other := "sam.whitfield@heliosschool.org"
+	other := student
 	if r := call(t, mux, other, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer}); r.Code != http.StatusNoContent {
 		t.Fatalf("second sign up: %d %s", r.Code, r.Body)
+	}
+	family := append([]string{other}, directory.Person(other).ParentContactEmails...)
+	if !slices.Contains(family, parent) || !slices.Contains(family, admin) {
+		t.Fatalf("the sample student's parents: %v", family)
 	}
 	for range 3 {
 		m := rec.next(t)
 		switch {
 		case strings.HasPrefix(m.Subject, "Thanks for volunteering"):
-			if !strings.Contains(m.Text, "Clean Up Crew Leads: Robin Whitfield\n") || !strings.Contains(m.Text, "Event Chairs: ") || !slices.Equal(m.CC, []string{parent, admin, chair}) {
-				t.Fatalf("thank-you under a lead: %q cc %v", m.Text, m.CC)
+			if !strings.Contains(m.Text, "Clean Up Crew Leads: Robin Whitfield\n") || !strings.Contains(m.Text, "Event Chairs: ") || !slices.Equal(m.To, family) || !slices.Equal(m.CC, []string{chair}) {
+				t.Fatalf("thank-you under a lead: %q to %v cc %v", m.Text, m.To, m.CC)
 			}
 		case strings.HasPrefix(m.Subject, "Calendar invite"):
-			if !slices.Equal(m.To, []string{other}) || len(m.CC) != 0 || !strings.Contains(string(m.Attachments[0].Content), "mailto:"+other) {
+			if !slices.Equal(m.To, family) || len(m.CC) != 0 || !strings.Contains(string(m.Attachments[0].Content), "mailto:"+other) {
 				t.Fatalf("a student's invite: to %v cc %v", m.To, m.CC)
 			}
 		}
@@ -452,7 +424,7 @@ func TestMail(t *testing.T) {
 	}
 	m = rec.next(t)
 	cancel := strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", "")
-	if m.Subject != "Removed: Clean Up Crew" || !slices.Equal(m.To, []string{other}) || !strings.HasPrefix(m.Attachments[0].ContentType, "text/calendar; method=CANCEL") || !strings.Contains(cancel, "METHOD:CANCEL") || !strings.Contains(cancel, "STATUS:CANCELLED") || !strings.Contains(cancel, "UID:team-E017-"+other+"@heliosian.com") {
+	if m.Subject != "Removed: Clean Up Crew" || !slices.Equal(m.To, family) || !strings.HasPrefix(m.Attachments[0].ContentType, "text/calendar; method=CANCEL") || !strings.Contains(cancel, "METHOD:CANCEL") || !strings.Contains(cancel, "STATUS:CANCELLED") || !strings.Contains(cancel, "UID:team-E017-"+other+"@heliosian.com") {
 		t.Fatalf("cancellation: %+v\n%s", m, cancel)
 	}
 	if !strings.Contains(m.Text, "Mina Park removed your sign-up for Clean Up Crew") {
@@ -469,7 +441,7 @@ func TestMail(t *testing.T) {
 	if thanks := bySubject["Thanks for volunteering for Clean Up Crew"]; !strings.Contains(thanks.Text, "Note from Robin Whitfield: bring snacks") {
 		t.Errorf("a note someone else wrote is not theirs: %q", thanks.Text)
 	}
-	if offer := bySubject["Co-chair offer: Kit Whitfield for Clean Up Crew"]; !strings.Contains(offer.Text, "Robin Whitfield added Kit Whitfield as co-chair of Clean Up Crew") || !strings.Contains(offer.Text, "Added by: Robin Whitfield") {
+	if offer := bySubject["Co-chair offer: Ella Whitfield for Clean Up Crew"]; !strings.Contains(offer.Text, "Robin Whitfield added Ella Whitfield as co-chair of Clean Up Crew") || !strings.Contains(offer.Text, "Added by: Robin Whitfield") {
 		t.Errorf("offer notice does not name who made it: %q (subjects %v)", offer.Text, keys(bySubject))
 	}
 }

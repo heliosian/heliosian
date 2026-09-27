@@ -7,6 +7,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
+	"heliosian/internal/who"
 )
 
 type Person struct {
@@ -17,27 +18,17 @@ type Person struct {
 	Department string `json:"department,omitempty"`
 }
 
-type Directory interface {
-	Resolve(email string) string
-	Person(email string) (Person, bool)
-	Staff() []Person
-	People() []Person
-	Departments() []string
-	Alerts(email string) (stale []string, privacy []string)
-}
-
-type Alerts struct {
-	Stale   []string `json:"stale"`
-	Privacy []string `json:"privacy"`
+func personView(p *who.Person) Person {
+	return Person{Email: p.Email, Name: p.FullName, PhotoURL: p.PhotoURL, JobTitle: p.JobTitle, Department: p.Department}
 }
 
 type viewer struct {
-	directory Directory
+	directory *who.Model
 }
 
 func (v viewer) person(email string) (Person, bool) {
-	if p, ok := v.directory.Person(v.directory.Resolve(email)); ok {
-		return p, true
+	if p := v.directory.Person(v.directory.Resolve(email)); p != nil {
+		return personView(p), true
 	}
 	return Person{Email: email, Name: cells.DisplayName(email)}, false
 }
@@ -98,7 +89,6 @@ type View struct {
 	Charities       []Charity   `json:"charities"`
 	NewsletterDates []string    `json:"newsletterDates"`
 	Team            []TeamView  `json:"team"`
-	Alerts          Alerts      `json:"alerts"`
 	Departments     []string    `json:"departments"`
 }
 
@@ -152,9 +142,10 @@ func (v viewer) staff(model *Model, b *Birthday, year Year, today time.Time) Sta
 	return sv
 }
 
-func Render(model *Model, directory Directory, as access.Actor, now time.Time) View {
+func Render(model *Model, directory func() *who.Model, as access.Actor, now time.Time) View {
 	email, admin := as.Email, as.Admin
-	v := viewer{directory: directory}
+	people := directory()
+	v := viewer{directory: people}
 	me, _ := v.person(email)
 	month, day, _ := ParseMonthDay(model.Settings.YearStart)
 	year := YearContaining(now, month, day)
@@ -169,14 +160,12 @@ func Render(model *Model, directory Directory, as access.Actor, now time.Time) V
 		Charities:       []Charity{},
 		NewsletterDates: []string{},
 		Team:            []TeamView{},
-		Departments:     directory.Departments(),
+		Departments:     people.Departments,
 	}
 	for _, m := range model.Team {
 		p, _ := v.person(m.Email)
 		view.Team = append(view.Team, TeamView{Email: m.Email, Name: p.Name, Role: m.Role})
 	}
-	stale, privacy := directory.Alerts(email)
-	view.Alerts = Alerts{Stale: stale, Privacy: privacy}
 	if !model.Sees(as) {
 		return view
 	}
@@ -184,7 +173,7 @@ func Render(model *Model, directory Directory, as access.Actor, now time.Time) V
 	recorded := map[string]bool{}
 	for i := range model.Birthdays {
 		b := &model.Birthdays[i]
-		recorded[directory.Resolve(b.Email)] = true
+		recorded[people.Resolve(b.Email)] = true
 		sv := v.staff(model, b, year, today)
 		if !sv.InDirectory {
 			continue
@@ -202,11 +191,12 @@ func Render(model *Model, directory Directory, as access.Actor, now time.Time) V
 		return view.Staff[i].Name < view.Staff[j].Name
 	})
 	sort.SliceStable(view.Skipped, func(i, j int) bool { return view.Skipped[i].Name < view.Skipped[j].Name })
-	for _, p := range directory.Staff() {
-		if recorded[p.Email] {
+	for i := range people.People {
+		p := &people.People[i]
+		if !p.IsStaff || recorded[p.Email] {
 			continue
 		}
-		view.Missing = append(view.Missing, StaffView{Person: p, InDirectory: true, Year: year.Label, Notes: []Note{}})
+		view.Missing = append(view.Missing, StaffView{Person: personView(p), InDirectory: true, Year: year.Label, Notes: []Note{}})
 	}
 	sort.SliceStable(view.Missing, func(i, j int) bool { return view.Missing[i].Name < view.Missing[j].Name })
 	return view

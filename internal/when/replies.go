@@ -118,7 +118,7 @@ func (a app) takeReply(ctx context.Context, reply Reply, from, tag string) error
 	}
 	email := config.NormalizeEmail(reply.Email)
 	id := idOfUID(reply.UID)
-	if _, known := a.directory.Person(email); !known && a.cache.Model().InviteOf(id, email) == nil {
+	if a.directory().Person(email) == nil && a.cache.Model().InviteOf(id, email) == nil {
 		return fmt.Errorf("attendee is not in the directory")
 	}
 	if sender := config.NormalizeEmail(mail.AddressOf(from)); sender != email {

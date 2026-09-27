@@ -24,7 +24,7 @@ func TestOnlyAdminsAddImages(t *testing.T) {
 	store := blob.New(bucket)
 	search := imagesearch.Search{Stock: imagesearch.NewStock(bucket, store), Limits: imagesearch.NewLimits()}
 	mux := http.NewServeMux()
-	Register(mux, c, store, func() []string { return nil }, nil, nil, nil, nil, nil, search, nil, nil, nil)
+	Register(mux, c, store, func() []string { return nil }, nil, nil, search, nil, nil, nil)
 
 	var pic bytes.Buffer
 	if err := png.Encode(&pic, image.NewGray(image.Rect(0, 0, 8, 8))); err != nil {

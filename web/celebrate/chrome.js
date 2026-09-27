@@ -168,7 +168,6 @@ export function initChrome() {
   initShell({
     name: 'Helios Celebrate',
     me,
-    alerts: () => state.model.alerts,
     isSystemAdmin,
     onSuper: () => {
       applyModel(state.model);

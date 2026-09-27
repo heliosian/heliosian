@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"heliosian/internal/mail"
+	"heliosian/internal/who"
 )
 
 var brand = mail.Brand{Name: "Helios Celebrate", Color: "#0f4e54", Tagline: "the fun(d)raiser parties site"}
@@ -29,7 +30,7 @@ func partyEvent(p *Party, page string) (mail.Event, bool) {
 	return mail.Event{Start: start, End: until, AllDay: allDay, Summary: p.Title, Description: details + page, Location: where, URL: page}, true
 }
 
-func (a app) event(p *Party, purchaser, page string, to []string) (mail.Event, bool) {
+func (a app) event(directory *who.Model, p *Party, purchaser, page string, to []string) (mail.Event, bool) {
 	e, ok := partyEvent(p, page)
 	if !ok {
 		return e, false
@@ -37,7 +38,7 @@ func (a app) event(p *Party, purchaser, page string, to []string) (mail.Event, b
 	e.UID = fmt.Sprintf("celebrate-%s-%s@heliosian.com", p.ID, purchaser)
 	e.Organizer = mail.Person{Name: brand.Name, Email: a.from}
 	for _, email := range to {
-		e.Attendees = append(e.Attendees, mail.Person{Name: a.attendeeName(p, email), Email: email})
+		e.Attendees = append(e.Attendees, mail.Person{Name: attendeeName(directory, p, email), Email: email})
 	}
 	return e, true
 }
@@ -50,13 +51,13 @@ func calendarLink(p *Party, page string) string {
 	return e.GoogleLink()
 }
 
-func (a app) attendeeName(p *Party, email string) string {
+func attendeeName(directory *who.Model, p *Party, email string) string {
 	for _, t := range p.Tickets {
 		if t.Email == email {
-			return ticketName(a.directory, map[string]string{"Email": t.Email, "Name": t.Name})
+			return ticketName(directory, map[string]string{"Email": t.Email, "Name": t.Name})
 		}
 	}
-	return nameOf(a.directory, email)
+	return nameOf(directory, email)
 }
 
 func (a app) letterFor(base string, p *Party) mail.Letter {
@@ -74,11 +75,11 @@ func (a app) letterFor(base string, p *Party) mail.Letter {
 	return l
 }
 
-func (a app) sendGoing(ctx context.Context, subject string, to []string, cc []string, l mail.Letter, p *Party, purchaser string) {
+func (a app) sendGoing(ctx context.Context, directory *who.Model, subject string, to []string, cc []string, l mail.Letter, p *Party, purchaser string) {
 	replyTo := without(p.HostEmails, purchaser)
 	note := l.Message(subject, to, cc, replyTo)
 	mail.Post(ctx, a.mailer, note)
-	e, ok := a.event(p, purchaser, l.Path, note.To)
+	e, ok := a.event(directory, p, purchaser, l.Path, note.To)
 	if !ok {
 		return
 	}
@@ -102,8 +103,8 @@ func without(list []string, drop string) []string {
 	return out
 }
 
-func (a app) firstName(email string) string {
-	words := strings.Fields(nameOf(a.directory, email))
+func firstName(directory *who.Model, email string) string {
+	words := strings.Fields(nameOf(directory, email))
 	if len(words) == 0 {
 		return ""
 	}
@@ -116,6 +117,7 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 	}
 	base := mail.Base(r)
 	model := a.cache.Model()
+	directory := a.directory()
 	if now := model.Party(p.ID); now != nil {
 		p = now
 	}
@@ -124,7 +126,7 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 	waiting := 0
 	total := 0.0
 	for _, t := range taken {
-		who := ticketName(a.directory, t)
+		who := ticketName(directory, t)
 		if t["Status"] == TicketSold {
 			sold = append(sold, who)
 			price, _ := ParsePrice(t["Price"])
@@ -141,8 +143,8 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 		if t["Email"] != purchaser {
 			holder = sold[0]
 			if t["Email"] != "" {
-				if person, known := a.directory.Person(t["Email"]); known && person.IsStudent {
-					to = append(to, person.ParentEmails...)
+				if person := directory.Person(t["Email"]); person != nil && person.IsStudent {
+					to = append(to, person.ParentContactEmails...)
 				} else {
 					to = append(to, t["Email"])
 				}
@@ -156,19 +158,19 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 		if words := strings.Fields(holder); len(words) > 0 {
 			hi = "Hi " + words[0]
 		}
-	} else if first := a.firstName(purchaser); first != "" {
+	} else if first := firstName(directory, purchaser); first != "" {
 		hi = "Hi " + first
 	}
 	by := ""
 	switch {
 	case free && purchaser != actor:
-		by = fmt.Sprintf(" %s has added you at no charge as %s's guest - a gift from the hosts.", nameOf(a.directory, actor), nameOf(a.directory, purchaser))
+		by = fmt.Sprintf(" %s has added you at no charge as %s's guest - a gift from the hosts.", nameOf(directory, actor), nameOf(directory, purchaser))
 	case free:
-		by = fmt.Sprintf(" %s has added you at no charge - a gift from the hosts.", nameOf(a.directory, actor))
+		by = fmt.Sprintf(" %s has added you at no charge - a gift from the hosts.", nameOf(directory, actor))
 	case holder != "":
-		by = fmt.Sprintf(" %s took it for you.", nameOf(a.directory, actor))
+		by = fmt.Sprintf(" %s took it for you.", nameOf(directory, actor))
 	case actor != purchaser:
-		by = fmt.Sprintf(" %s took them for your family.", nameOf(a.directory, actor))
+		by = fmt.Sprintf(" %s took them for your family.", nameOf(directory, actor))
 	}
 	subject := ""
 	switch {
@@ -178,7 +180,7 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 		subject = "Your tickets to " + p.Title
 	case guestOf:
 		l.Heading = strings.Fields(holder)[0] + " is going!"
-		l.Intro = fmt.Sprintf("%s - %s has a ticket to %s as your guest; %s added them at no charge - a gift from the hosts. The ticket sits with your family, yours to pass on if plans change. The hosts are copied here, so just reply if you have a question.", hi, holder, p.Title, nameOf(a.directory, actor))
+		l.Intro = fmt.Sprintf("%s - %s has a ticket to %s as your guest; %s added them at no charge - a gift from the hosts. The ticket sits with your family, yours to pass on if plans change. The hosts are copied here, so just reply if you have a question.", hi, holder, p.Title, nameOf(directory, actor))
 		subject = holder + "'s ticket to " + p.Title
 	case holder != "":
 		l.Heading = strings.Fields(holder)[0] + ", you're going!"
@@ -206,12 +208,12 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 		l.Rows = append(l.Rows, [2]string{"Total", fmt.Sprintf("$%s (%d × $%s)", PriceCell(total), len(sold), PriceCell(p.Price))})
 	}
 	if !free {
-		l.Rows = append(l.Rows, [2]string{"Billed to", fmt.Sprintf("%s (%s)", nameOf(a.directory, purchaser), purchaser)})
+		l.Rows = append(l.Rows, [2]string{"Billed to", fmt.Sprintf("%s (%s)", nameOf(directory, purchaser), purchaser)})
 	}
 	if note := taken[0]["Note"]; note != "" {
 		l.Rows = append(l.Rows, [2]string{"Your note", note})
 	}
-	if names := a.hostNames(p); names != "" {
+	if names := hostNames(directory, p); names != "" {
 		l.Rows = append(l.Rows, [2]string{"Hosts", names})
 	}
 	l.Button = "See the party"
@@ -226,24 +228,24 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 		cc = append(cc, actor)
 	}
 	if len(sold) > 0 {
-		a.sendGoing(r.Context(), subject, to, append(cc, without(p.HostEmails, purchaser)...), l, p, purchaser)
+		a.sendGoing(r.Context(), directory, subject, to, append(cc, without(p.HostEmails, purchaser)...), l, p, purchaser)
 		return
 	}
 	mail.Post(r.Context(), a.mailer, l.Message(subject, to, cc, without(p.HostEmails, purchaser)))
-	a.mailWaitlistHosts(r, p, purchaser, waiting, taken[0]["Note"], actor)
+	a.mailWaitlistHosts(r, directory, p, purchaser, waiting, taken[0]["Note"], actor)
 }
 
-func (a app) mailWaitlistHosts(r *http.Request, p *Party, purchaser string, waiting int, note, actor string) {
+func (a app) mailWaitlistHosts(r *http.Request, directory *who.Model, p *Party, purchaser string, waiting int, note, actor string) {
 	hosts := without(p.HostEmails, purchaser)
 	if a.mailer == nil || len(hosts) == 0 {
 		return
 	}
 	l := a.letterFor(mail.Base(r), p)
-	who := nameOf(a.directory, purchaser)
+	who := nameOf(directory, purchaser)
 	l.Heading = fmt.Sprintf("%s joined the waitlist", who)
 	l.Intro = fmt.Sprintf("%s would like %d %s to %s once places open up. Nothing is billed until you offer them - open the party and use Offer beside the request when you can. Reply to this note to reach %s directly.", who, waiting, plural(waiting, "ticket"), p.Title, who)
 	if actor != purchaser {
-		l.Intro += fmt.Sprintf(" (%s made the request for the family.)", nameOf(a.directory, actor))
+		l.Intro += fmt.Sprintf(" (%s made the request for the family.)", nameOf(directory, actor))
 	}
 	l.Rows = [][2]string{{"Waiting", fmt.Sprintf("%s (%s)", who, purchaser)}, {"Tickets", fmt.Sprintf("%d", waiting)}}
 	if note != "" {
@@ -259,41 +261,42 @@ func (a app) mailOffered(r *http.Request, p *Party, purchaser string, tickets []
 		return
 	}
 	base := mail.Base(r)
+	directory := a.directory()
 	if now := a.cache.Model().Party(p.ID); now != nil {
 		p = now
 	}
 	l := a.letterFor(base, p)
 	hi := "Hi"
-	if first := a.firstName(purchaser); first != "" {
+	if first := firstName(directory, purchaser); first != "" {
 		hi = "Hi " + first
 	}
 	n := len(tickets)
 	names := []string{}
 	total := 0.0
 	for _, t := range tickets {
-		names = append(names, ticketName(a.directory, t))
+		names = append(names, ticketName(directory, t))
 		price, _ := ParsePrice(t["Price"])
 		total += price
 	}
 	l.Heading = "A place opened up!"
-	l.Intro = fmt.Sprintf("%s - %s has offered your family %d %s to %s, off the waitlist. They're yours now. The hosts are copied here, so just reply if you have a question.", hi, nameOf(a.directory, actor), n, plural(n, "ticket"), p.Title)
-	l.Rows = [][2]string{{"Tickets", strings.Join(names, ", ")}, {"Total", fmt.Sprintf("$%s (%d × $%s)", PriceCell(total), n, PriceCell(total/float64(n)))}, {"Billed to", fmt.Sprintf("%s (%s)", nameOf(a.directory, purchaser), purchaser)}}
-	if hosts := a.hostNames(p); hosts != "" {
+	l.Intro = fmt.Sprintf("%s - %s has offered your family %d %s to %s, off the waitlist. They're yours now. The hosts are copied here, so just reply if you have a question.", hi, nameOf(directory, actor), n, plural(n, "ticket"), p.Title)
+	l.Rows = [][2]string{{"Tickets", strings.Join(names, ", ")}, {"Total", fmt.Sprintf("$%s (%d × $%s)", PriceCell(total), n, PriceCell(total/float64(n)))}, {"Billed to", fmt.Sprintf("%s (%s)", nameOf(directory, purchaser), purchaser)}}
+	if hosts := hostNames(directory, p); hosts != "" {
 		l.Rows = append(l.Rows, [2]string{"Hosts", hosts})
 	}
 	l.Button = "See the party"
 	l.Calendar = calendarLink(p, l.Path)
 	l.Footnote = "A ticket marked \"to be named\" is a guest's: open the party and use Reassign beside it to say who is coming. " + a.cache.Model().Settings.TicketNote
-	a.sendGoing(r.Context(), fmt.Sprintf("You're in: %d %s to %s", n, plural(n, "ticket"), p.Title), []string{purchaser}, without(p.HostEmails, purchaser), l, p, purchaser)
+	a.sendGoing(r.Context(), directory, fmt.Sprintf("You're in: %d %s to %s", n, plural(n, "ticket"), p.Title), []string{purchaser}, without(p.HostEmails, purchaser), l, p, purchaser)
 }
 
-func (a app) hostNames(p *Party) string {
+func hostNames(directory *who.Model, p *Party) string {
 	if p.Hosts != "" {
 		return p.Hosts
 	}
 	names := []string{}
 	for _, h := range p.HostEmails {
-		names = append(names, nameOf(a.directory, h))
+		names = append(names, nameOf(directory, h))
 	}
 	return strings.Join(names, ", ")
 }

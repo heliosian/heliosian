@@ -21,6 +21,7 @@ import (
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
 const (
@@ -48,7 +49,7 @@ type ImageSearch = imagesearch.Search
 type app struct {
 	cache       *Cache
 	store       *blob.Store
-	directory   Directory
+	directory   func() *who.Model
 	superAdmins func() []string
 	search      ImageSearch
 	mailer      mail.Sender
@@ -58,7 +59,7 @@ type app struct {
 	style       *sharecard.Style
 }
 
-func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup, moved AddressMoved, style *sharecard.Style) {
+func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup, moved AddressMoved, style *sharecard.Style) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
 	}
@@ -99,8 +100,9 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) actor(r *http.Request) access.Actor {
-	email := a.directory.Resolve(strings.ToLower(auth.Email(r)))
-	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email), Household: a.directory.Family(email)}
+	directory := a.directory()
+	email := directory.Resolve(strings.ToLower(auth.Email(r)))
+	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email), Household: directory.Family(email)}
 }
 
 func (a app) requireAdmin(w http.ResponseWriter, r *http.Request) (access.Actor, bool) {
@@ -126,7 +128,7 @@ func stamp() string {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	actor := a.actor(r)
-	view := RenderWith(a.cache.Model(), a.directory, a.rsvps, actor, now())
+	view := RenderWith(a.cache.Model(), a.directory(), a.rsvps, actor, now())
 	view.ImageSearch = a.search.On()
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(actor.Email)
 	w.Header().Set("Content-Type", "application/json")
@@ -136,8 +138,13 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) people(w http.ResponseWriter, r *http.Request) {
+	directory := a.directory()
+	people := []Person{}
+	for _, p := range directory.Listed() {
+		people = append(people, personOf(directory, p))
+	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.directory.People()); err != nil {
+	if err := json.NewEncoder(w).Encode(people); err != nil {
 		slog.ErrorContext(r.Context(), "celebrate: encode people", "error", err)
 	}
 }
@@ -175,17 +182,17 @@ func NewID() string {
 	return string(out)
 }
 
-func nameOf(directory Directory, email string) string {
-	if p, ok := directory.Person(directory.Resolve(email)); ok {
-		return p.Name
+func nameOf(directory *who.Model, email string) string {
+	if p := directory.Person(directory.Resolve(email)); p != nil {
+		return p.FullName
 	}
 	return DisplayName(email)
 }
 
-func ticketName(directory Directory, t map[string]string) string {
+func ticketName(directory *who.Model, t map[string]string) string {
 	if t["Email"] != "" {
-		if p, ok := directory.Person(directory.Resolve(t["Email"])); ok && p.Name != "" {
-			return p.Name
+		if p := directory.Person(directory.Resolve(t["Email"])); p != nil && p.FullName != "" {
+			return p.FullName
 		}
 	}
 	if t["Name"] != "" {
@@ -211,7 +218,7 @@ func (a app) buyTickets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := a.actor(r)
-	got, err := a.cache.Model().takeTickets(actor, a.directory, body)
+	got, err := a.cache.Model().takeTickets(actor, a.directory(), body)
 	if err != nil {
 		refuse(w, err)
 		return
@@ -248,7 +255,7 @@ func (a app) joinWaitlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := a.actor(r)
-	got, err := a.cache.Model().joinWaitlist(actor, a.directory, body)
+	got, err := a.cache.Model().joinWaitlist(actor, a.directory(), body)
 	if err != nil {
 		refuse(w, err)
 		return
@@ -272,7 +279,7 @@ func (a app) offerTickets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := a.actor(r)
-	got, err := a.cache.Model().offerTickets(actor, a.directory, body)
+	got, err := a.cache.Model().offerTickets(actor, a.directory(), body)
 	if err != nil {
 		refuse(w, err)
 		return
@@ -300,7 +307,7 @@ func (a app) removeTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := a.actor(r)
-	t, p, ops, err := a.cache.Model().removeTicket(actor, a.directory, body.TicketID)
+	t, p, ops, err := a.cache.Model().removeTicket(actor, body.TicketID)
 	if err != nil {
 		refuse(w, err)
 		return
@@ -319,7 +326,7 @@ func (a app) editTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := a.actor(r)
-	t, p, ops, details, err := a.cache.Model().editTicket(actor, a.directory, body)
+	t, p, ops, details, err := a.cache.Model().editTicket(actor, body)
 	if err != nil {
 		refuse(w, err)
 		return
@@ -338,7 +345,7 @@ func (a app) reassignTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := a.actor(r)
-	t, p, ops, who, err := a.cache.Model().reassignTicket(actor, a.directory, body)
+	t, p, ops, who, err := a.cache.Model().reassignTicket(actor, a.directory(), body)
 	if err != nil {
 		refuse(w, err)
 		return

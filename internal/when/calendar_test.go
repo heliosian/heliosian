@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
 var roster = Roster{Classrooms: []Classroom{
@@ -422,7 +424,7 @@ func TestICS(t *testing.T) {
 	m := load(t)
 	f := m.Feed("sample7feedtoken4jordan2whitfield")
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-01 08:00", Location)
-	out := string(ICS(m, fakeDirectory{}, f, nil, "https://calendar.heliosiandev.com:8080", at))
+	out := string(ICS(m, sampleDirectory(t, "../../sampledata"), f, nil, "https://calendar.heliosiandev.com:8080", at))
 	for _, want := range []string{
 		"BEGIN:VCALENDAR\r\n", "X-WR-CALNAME:Whitfield school days\r\n", "END:VCALENDAR\r\n",
 		"UID:a4@sample\r\n", "DTSTART;VALUE=DATE:20260907\r\n", "DTEND;VALUE=DATE:20260908\r\n",
@@ -446,98 +448,45 @@ func TestICS(t *testing.T) {
 	}
 }
 
-type fakeDirectory struct {
-	people     map[string]Person
-	kids       map[string][]Person
-	households map[string][]string
-	parents    map[string][]string
-	lists      []List
-}
-
-func (d fakeDirectory) Household(email string) []string { return d.households[email] }
-
-func (d fakeDirectory) Family(email string) map[string]bool {
-	out := map[string]bool{}
-	if p, ok := d.people[email]; !ok || !p.IsParent {
-		return out
+func sampleDirectory(t *testing.T, root string) *who.Model {
+	t.Helper()
+	model, err := who.LoadModel(&data.Dir{Root: root}, nil, noFiles{}, []byte("test"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, member := range d.households[email] {
-		out[member] = true
-	}
-	return out
-}
-
-func (d fakeDirectory) Parents(email string) []string { return d.parents[email] }
-
-func (d fakeDirectory) Resolve(email string) string { return email }
-
-func (d fakeDirectory) Person(email string) (Person, bool) {
-	p, ok := d.people[email]
-	return p, ok
-}
-
-func (d fakeDirectory) Children(email string) []Person { return d.kids[email] }
-
-func (d fakeDirectory) People() []Person {
-	out := []Person{}
-	for _, p := range d.people {
-		out = append(out, p)
-	}
-	return out
-}
-
-func (d fakeDirectory) Lists(string) []List { return d.lists }
-
-func (d fakeDirectory) Alerts(string) ([]string, []string) {
-	return []string{"Sam's photo", "Family photo"}, []string{"address"}
-}
-
-func (d fakeDirectory) GradeColors() map[string]string { return nil }
-
-func (d fakeDirectory) ClassroomColors() map[string]string {
-	return map[string]string{"Jays": "#fec502", "Ravens": "#fec502"}
+	return model
 }
 
 func TestRender(t *testing.T) {
 	m := load(t)
-	sam := Person{Email: "sam@x.org", Name: "Sam", IsStudent: true, Grade: "Grade 3", Classroom: "Jays"}
-	ella := Person{Email: "ella@x.org", Name: "Ella", IsStudent: true, Grade: "Grade 6", Classroom: "Ospreys"}
-	d := fakeDirectory{
-		people: map[string]Person{
-			"jordan.whitfield@heliosschool.org": {Email: "jordan.whitfield@heliosschool.org", Name: "Jordan", IsParent: true},
-			"sam@x.org":                         sam,
-			"ella@x.org":                        ella,
-			"teacher@x.org":                     {Email: "teacher@x.org", Name: "Ms Finch", IsStaff: true, Classroom: "Hawks"},
-			"office@x.org":                      {Email: "office@x.org", Name: "Pat", IsStaff: true},
-		},
-		kids: map[string][]Person{"jordan.whitfield@heliosschool.org": {ella, sam}},
-	}
+	d := sampleDirectory(t, "../../sampledata")
+	settings := &config.Settings{ClassroomColors: map[string]string{"Jays": "#fec502", "Ravens": "#fec502"}}
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-08 08:00", Location)
-	v := Render(m, d, access.Actor{Email: "jordan.whitfield@heliosschool.org"}, at, nil)
+	v := Render(m, d, settings, access.Actor{Email: "jordan.whitfield@heliosschool.org"}, at, nil)
 	if strings.Join(v.User.Classrooms, ",") != "Jays,Ospreys" || len(v.User.Students) != 2 || v.User.Initial != "J" {
 		t.Errorf("parent = %+v", v.User)
 	}
-	if len(v.Feeds) != 1 || v.Today != "2026-09-08" || len(v.Events) != 22 || len(v.Alerts.Stale) != 2 || len(v.Alerts.Privacy) != 1 {
-		t.Errorf("view = feeds %d today %s events %d alerts %+v", len(v.Feeds), v.Today, len(v.Events), v.Alerts)
+	if len(v.Feeds) != 1 || v.Today != "2026-09-08" || len(v.Events) != 22 {
+		t.Errorf("view = feeds %d today %s events %d", len(v.Feeds), v.Today, len(v.Events))
 	}
 	if v.Days["2026-09-08"]["Jays"] != "Regular" || len(v.Classrooms) != 9 || len(v.Tags) != 20 || v.Colors["Jays"] != "#fec502" {
 		t.Errorf("plan, vocabulary, or colors missing")
 	}
-	cases := map[string]string{"sam@x.org": "Jays", "teacher@x.org": "Hawks", "office@x.org": "", "nobody@x.org": ""}
+	cases := map[string]string{"sam.whitfield@heliosschool.org": "Jays", "miguel.santos@heliosschool.org": "Hawks", "bill.ryder@heliosschool.org": "", "nobody@x.org": ""}
 	for email, want := range cases {
-		v := Render(m, d, access.Actor{Email: email}, at, nil)
+		v := Render(m, d, settings, access.Actor{Email: email}, at, nil)
 		if got := strings.Join(v.User.Classrooms, ","); got != want || len(v.Feeds) != 0 {
 			t.Errorf("%s: classrooms %q, want %q; feeds %d", email, got, want, len(v.Feeds))
 		}
 	}
-	if v := Render(m, d, access.Actor{Email: "nobody@x.org", Admin: true}, at, nil); v.User.Name != "Nobody" || !v.User.IsAdmin {
+	if v := Render(m, d, settings, access.Actor{Email: "nobody@x.org", Admin: true}, at, nil); v.User.Name != "Nobody" || !v.User.IsAdmin {
 		t.Errorf("stranger = %+v", v.User)
 	}
 }
 
 func TestRenderLinked(t *testing.T) {
 	m := load(t)
-	d := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
+	d := sampleDirectory(t, "../../sampledata")
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-08 08:00", Location)
 	linked := []Linked{
 		{Source: SourceCelebrate, ID: "P001", Title: "Fondue & Fort Night", Summary: "A cozy evening of fondue", Description: "Join us.", Location: "The Parks' House", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineWaitlisted},
@@ -545,7 +494,7 @@ func TestRenderLinked(t *testing.T) {
 		{Source: SourceTeam, ID: "E001", Title: "HCA International Night 2026", Description: "Booths wanted.", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open", Mine: MineGoing},
 		{Source: SourceTeam, ID: "E005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/E005", Availability: "done"},
 	}
-	v := Render(m, d, access.Actor{Email: "nobody@x.org"}, at, linked)
+	v := Render(m, d, &config.Settings{}, access.Actor{Email: "nobody@x.org"}, at, linked)
 	if len(v.Events) != 23 {
 		t.Fatalf("events = %d", len(v.Events))
 	}
@@ -600,16 +549,7 @@ func TestRenderLinked(t *testing.T) {
 
 func TestUpcoming(t *testing.T) {
 	m := load(t)
-	sam := Person{Email: "sam@x.org", Name: "Sam", IsStudent: true, Grade: "Grade 3", Classroom: "Jays"}
-	ella := Person{Email: "ella@x.org", Name: "Ella", IsStudent: true, Grade: "Grade 6", Classroom: "Ospreys"}
-	d := fakeDirectory{
-		people: map[string]Person{
-			"jordan.whitfield@heliosschool.org": {Email: "jordan.whitfield@heliosschool.org", Name: "Jordan", IsParent: true},
-			"sam@x.org":                         sam,
-			"ella@x.org":                        ella,
-		},
-		kids: map[string][]Person{"jordan.whitfield@heliosschool.org": {ella, sam}},
-	}
+	d := sampleDirectory(t, "../../sampledata")
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-10 08:00", Location)
 	linked := []Linked{
 		{Source: SourceCelebrate, ID: "P001", Title: "Fondue & Fort Night", Summary: "A cozy evening of fondue", Location: "The Parks' House", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineWaitlisted, Image: "/party-images/fondue.jpg"},
@@ -755,7 +695,7 @@ func TestPartiesFor(t *testing.T) {
 		{Source: SourceCelebrate, ID: "P003", Title: "Wurst", Start: "2026-10-03 15:30", End: "2026-10-03 18:30", Path: "/p/wurst", Availability: "available"},
 		{Source: SourceTeam, ID: "E001", Title: "HCA International Night 2026", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open"},
 	}
-	got := m.PartiesFor(fakeDirectory{}, "nobody@heliosschool.org", linked, at)
+	got := m.PartiesFor(sampleDirectory(t, "../../sampledata"), "nobody@heliosschool.org", linked, at)
 	if len(got) != 2 || got[0].Title != "Fondue & Fort Night" || got[1].Title != "Wurst" {
 		t.Fatalf("parties: %+v", got)
 	}

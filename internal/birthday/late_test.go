@@ -10,13 +10,13 @@ func TestLate(t *testing.T) {
 	cache, mux := newServer(t)
 	steps := func(email string) map[string]Late {
 		out := map[string]Late{}
-		for _, l := range cache.Late(fakeDirectory{}, email) {
+		for _, l := range cache.Late(directory, email) {
 			out[l.Name+" "+l.Step] = l
 		}
 		return out
 	}
 	all := steps(admin)
-	if len(all) != 3 {
+	if len(all) != 2 {
 		t.Fatalf("admin: %+v", all)
 	}
 	if l := all["Miguel Santos outreach"]; l.Due != "2026-09-03" || l.Assignee != "" || l.Path != "/staff/miguel.santos" {
@@ -25,8 +25,11 @@ func TestLate(t *testing.T) {
 	if l := all["Ruth Amari outreach"]; l.Assignee != "Mina Park" {
 		t.Errorf("assigned outreach: %+v", l)
 	}
-	if _, ok := all["Grace Kim newsletter"]; !ok {
-		t.Errorf("newsletter past its day: %+v", all)
+	if rec := call(t, mux, admin, "POST", "/api/birthday/used", map[string]any{"email": "dana.hawkins@heliosschool.org", "used": false}); rec.Code != http.StatusNoContent {
+		t.Fatalf("unused: %d %s", rec.Code, rec.Body)
+	}
+	if l, ok := steps(admin)["Dana Hawkins newsletter"]; !ok || l.Due != "2026-08-21" {
+		t.Errorf("newsletter past its day: %+v", steps(admin))
 	}
 	if got := steps(parent); len(got) != 0 {
 		t.Errorf("volunteer with nothing late: %+v", got)

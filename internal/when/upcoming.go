@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"heliosian/internal/config"
+	"heliosian/internal/who"
 )
 
 type Card struct {
@@ -136,14 +137,14 @@ func (m *Model) InView(e *Event, answer string, classrooms, tags []string) bool 
 	return going || e.Invited || admits(m, e, classrooms, tags)
 }
 
-func (m *Model) ViewOf(directory Directory, email string) (classrooms, tags []string) {
+func (m *Model) ViewOf(directory *who.Model, email string) (classrooms, tags []string) {
 	if chosen := m.DefaultCalendar(email); chosen != nil {
 		return m.feedView(chosen)
 	}
 	return m.myHeliosianView(directory, email)
 }
 
-func (m *Model) viewUnder(directory Directory, email, token string) (classrooms, tags []string) {
+func (m *Model) viewUnder(directory *who.Model, email, token string) (classrooms, tags []string) {
 	if token == MyHeliosianToken {
 		return m.myHeliosianView(directory, email)
 	}
@@ -153,12 +154,8 @@ func (m *Model) viewUnder(directory Directory, email, token string) (classrooms,
 	return m.ViewOf(directory, email)
 }
 
-func (m *Model) myHeliosianView(directory Directory, email string) (classrooms, tags []string) {
-	me, known := directory.Person(email)
-	if !known {
-		me = Person{Email: email}
-	}
-	classrooms = classroomsOf(m, me, students(directory, me))
+func (m *Model) myHeliosianView(directory *who.Model, email string) (classrooms, tags []string) {
+	classrooms = classroomsOf(m, directory.Person(email), students(directory, email))
 	if len(classrooms) == 0 {
 		classrooms = m.Roster.Names()
 	}
@@ -210,7 +207,7 @@ func (m *Model) DefaultCalendar(email string) *Feed {
 	return m.Feed(mine[0].Token)
 }
 
-func (m *Model) PartiesFor(directory Directory, email string, linked []Linked, now time.Time) []Card {
+func (m *Model) PartiesFor(directory *who.Model, email string, linked []Linked, now time.Time) []Card {
 	today := now.Format(DateFormat)
 	out := []Card{}
 	for _, e := range m.eventsFor(directory, email, linked) {
@@ -240,7 +237,7 @@ func (m *Model) card(e *Event) Card {
 	return u
 }
 
-func (m *Model) UpcomingUnder(directory Directory, email string, linked []Linked, now time.Time, limit int, token string) []Card {
+func (m *Model) UpcomingUnder(directory *who.Model, email string, linked []Linked, now time.Time, limit int, token string) []Card {
 	classrooms, tags := m.viewUnder(directory, email, token)
 	today := now.Format(DateFormat)
 	out := []Card{}

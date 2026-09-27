@@ -92,19 +92,19 @@ var deliveryBatch = 5 * time.Second
 var mailerActor = access.System("loop mailer")
 
 type mailer struct {
-	cache     *Cache
-	directory Directory
-	mail      Mail
-	mu        sync.Mutex
-	busy      map[string]bool
-	done      map[string]bool
-	work      chan job
-	pending   []store.Row
-	flushing  bool
+	cache    *Cache
+	sources  func() Sources
+	mail     Mail
+	mu       sync.Mutex
+	busy     map[string]bool
+	done     map[string]bool
+	work     chan job
+	pending  []store.Row
+	flushing bool
 }
 
-func newMailer(cache *Cache, directory Directory, mailbox Mail) *mailer {
-	m := &mailer{cache: cache, directory: directory, mail: mailbox, busy: map[string]bool{}, done: map[string]bool{}, work: make(chan job, 256)}
+func newMailer(cache *Cache, sources func() Sources, mailbox Mail) *mailer {
+	m := &mailer{cache: cache, sources: sources, mail: mailbox, busy: map[string]bool{}, done: map[string]bool{}, work: make(chan job, 256)}
 	go m.run()
 	return m
 }
@@ -313,9 +313,10 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 		m.mark(j, stateDropped, map[string]string{"Detail": reason})
 		return stateDropped
 	}
-	sender := m.directory.Resolve(strings.ToLower(mail.AddressOf(mail.Header(lines, "from"))))
+	sources := m.sources()
+	sender := sources.Directory.Resolve(strings.ToLower(mail.AddressOf(mail.Header(lines, "from"))))
 	reply := m.repliesTo(g.Name, lines)
-	if !g.PostableBy(sender, reply, SourcesOf(m.directory)) {
+	if !g.PostableBy(sender, reply, sources) {
 		audience, verb := g.Posting, "post"
 		if reply {
 			audience, verb = g.Replying, "reply"
@@ -332,7 +333,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	if err != nil {
 		return fail("rewrite", err)
 	}
-	members := Members(*g, SourcesOf(m.directory))
+	members := Members(*g, sources)
 	sent, failures := 0, []string{}
 	for _, rcpt := range members {
 		tok := token(m.mail.Key, g.Name, rcpt)

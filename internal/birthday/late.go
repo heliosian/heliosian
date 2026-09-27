@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/who"
 )
 
 const (
@@ -22,7 +23,7 @@ type Late struct {
 	Path     string `json:"path"`
 }
 
-func (c *Cache) Late(directory Directory, email string) []Late {
+func (c *Cache) Late(directory func() *who.Model, email string) []Late {
 	email = strings.ToLower(strings.TrimSpace(email))
 	model := c.Model()
 	admin := c.IsAdmin(email)
@@ -30,7 +31,7 @@ func (c *Cache) Late(directory Directory, email string) []Late {
 	if !model.Sees(access.Actor{Email: email, Admin: admin}) {
 		return []Late{}
 	}
-	v := viewer{directory: directory}
+	v := viewer{directory: directory()}
 	month, day, _ := ParseMonthDay(model.Settings.YearStart)
 	at := now()
 	year := YearContaining(at, month, day)

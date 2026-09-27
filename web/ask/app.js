@@ -513,7 +513,6 @@ function initChrome() {
   initTopbar({
     name: 'Helios Ask',
     me: () => state.model.user,
-    alerts: () => state.model.alerts,
     isSystemAdmin: () => false,
     onSuper: () => {},
     menuButton: false,

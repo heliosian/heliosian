@@ -51,16 +51,16 @@ func (a app) recordBy(ctx context.Context, actor access.Actor, email, id, answer
 func (a app) sendAnswerNote(ctx context.Context, to, actor, email, answer string, e *Event) {
 	model := a.cache.Model()
 	name := email
-	if p, known := a.directory.Person(email); known && p.Name != "" {
-		name = p.Name
+	if p := a.directory().Person(email); p != nil && p.FullName != "" {
+		name = p.FullName
 	} else if inv := model.InviteOf(e.ID, email); inv != nil && inv.Name != "" {
 		name = inv.Name
 	}
 	by := ""
 	if actor != email {
 		who := actor
-		if p, known := a.directory.Person(actor); known && p.Name != "" {
-			who = p.Name
+		if p := a.directory().Person(actor); p != nil && p.FullName != "" {
+			who = p.FullName
 		}
 		by = " (answered by " + who + ")"
 	}
@@ -107,7 +107,7 @@ func (a app) sees(email string, admin bool, e *Event) bool {
 		return true
 	}
 	if e.Sharing == SharingInvited {
-		return a.cache.Model().Listed(a.directory, email, e.ID)
+		return a.cache.Model().Listed(a.directory(), email, e.ID)
 	}
 	return true
 }

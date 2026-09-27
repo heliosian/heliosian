@@ -107,7 +107,7 @@ var calendarEvents = tool{
 		limit := limitOf(in.Limit, 40, 80)
 		out := []eventCard{}
 		total := 0
-		for _, e := range v.calendar.EventsFor(v.whenAs, v.sources.CalendarDirectory, v.sources.Linked(v.email)) {
+		for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.sources.Linked(v.email)) {
 			start, end := eventSpan(e)
 			if end.Before(from) || start.After(to.AddDate(0, 0, 1).Add(-time.Second)) {
 				continue
@@ -175,7 +175,7 @@ var dayPlan = tool{
 				return nil, fmt.Errorf("there is no classroom called %q", in.Classroom)
 			}
 		} else {
-			classrooms, _ = v.calendar.ViewOf(v.sources.CalendarDirectory, v.email)
+			classrooms, _ = v.calendar.ViewOf(v.directory, v.email)
 		}
 		key := day.Format(when.DateFormat)
 		plans := []map[string]any{}

@@ -29,7 +29,7 @@ func sampleCache(t *testing.T) (*Cache, sheet) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	c, err := NewCache(dir, dir, noImages{}, func() []string { return nil }, directoryOf(t), queue)
+	c, err := NewCache(dir, dir, noImages{}, func() []string { return nil }, sampleSources(t), queue)
 	if err != nil {
 		t.Fatalf("load sample apps sheet: %v", err)
 	}

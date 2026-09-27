@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"heliosian/internal/config"
 	"heliosian/internal/mail"
+	"heliosian/internal/who"
 )
 
 const (
@@ -98,7 +100,7 @@ func postReply(mux http.Handler, to, from, raw string, signed bool) int {
 func TestRepliesRecordAnswers(t *testing.T) {
 	cache := sampleCache(t)
 	me := "jordan.whitfield@heliosschool.org"
-	d := fakeDirectory{people: map[string]Person{me: {Email: me, Name: "Jordan", IsParent: true}}, kids: map[string][]Person{}}
+	d := sampleDirectory(t, "sampledata")
 	const school, elsewhere = "dmarc=pass header.from=heliosschool.org", "dmarc=pass header.from=example.org"
 	replies := map[string]string{
 		"yes":      replyMail("Jordan <"+me+">", me, "a7@sample", "ACCEPTED", school),
@@ -109,7 +111,7 @@ func TestRepliesRecordAnswers(t *testing.T) {
 	}
 	m := Mail{SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, m, testStyle)
+	Register(mux, cache, nil, func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, m, testStyle)
 	own := replyAddress("a7@sample", me)
 	if own != "Helios When <rsvp+"+(app{mail: m}).replyToken("a7@sample", me)+"@reply.heliosian.com>" {
 		t.Fatalf("organizer = %q", own)

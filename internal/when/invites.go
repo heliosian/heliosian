@@ -20,6 +20,7 @@ import (
 	"heliosian/internal/config"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/who"
 )
 
 const (
@@ -158,18 +159,19 @@ func (b *builder) invitations(settings, rows []store.Row) {
 	}
 }
 
-func (m *Model) mine(directory Directory, email string) []string {
+func (m *Model) mine(directory *who.Model, email string) []string {
 	email = config.NormalizeEmail(email)
 	out := []string{email}
-	for _, member := range directory.Household(email) {
-		if slices.Contains(directory.Parents(member), email) {
-			out = append(out, member)
+	adults, kids := directory.Household(email)
+	for _, member := range append(adults, kids...) {
+		if slices.ContainsFunc(directory.Parents(member.Email), func(p *who.Person) bool { return p.Email == email }) {
+			out = append(out, member.Email)
 		}
 	}
 	return out
 }
 
-func (m *Model) Listed(directory Directory, email, id string) bool {
+func (m *Model) Listed(directory *who.Model, email, id string) bool {
 	return slices.ContainsFunc(m.mine(directory, email), func(who string) bool { return m.listed[who][id] })
 }
 
@@ -187,7 +189,7 @@ func (m *Model) InviteByToken(token string) (Invite, bool) {
 	return inv, ok
 }
 
-func (m *Model) Invited(directory Directory, email, id string) bool {
+func (m *Model) Invited(directory *who.Model, email, id string) bool {
 	return m.invitedAny(m.mine(directory, email), id)
 }
 
@@ -253,9 +255,8 @@ func (a app) party(e *Event) *PartyPeople {
 	return a.parties(strings.TrimPrefix(e.ID, SourceCelebrate+"/"))
 }
 
-func (a app) isAdult(email string) bool {
-	p, known := a.directory.Person(email)
-	return !known || !p.IsStudent || p.IsParent || p.IsStaff
+func isAdult(p *who.Person) bool {
+	return !p.IsStudent || p.IsParent || p.IsStaff
 }
 
 type GuestRow struct {
@@ -283,8 +284,8 @@ type GuestRow struct {
 	Classrooms   []string `json:"classrooms,omitempty"`
 }
 
-func (a app) facetsOf(p Person) (grades, classrooms []string) {
-	add := func(k Person) {
+func (a app) facetsOf(p *who.Person) (grades, classrooms []string) {
+	add := func(k *who.Person) {
 		if k.Grade != "" && !slices.Contains(grades, k.Grade) {
 			grades = append(grades, k.Grade)
 		}
@@ -296,7 +297,7 @@ func (a app) facetsOf(p Person) (grades, classrooms []string) {
 		add(p)
 	}
 	if p.IsParent {
-		for _, k := range a.directory.Children(p.Email) {
+		for _, k := range a.directory().Children(p.Email) {
 			add(k)
 		}
 	}
@@ -378,21 +379,19 @@ type InviteView struct {
 	Counts         Counts        `json:"counts"`
 }
 
-func (a app) personOf(email, name string) (Person, bool) {
-	p, known := a.directory.Person(email)
-	if known {
-		p.PhotoURL = thumb(p.PhotoURL)
-		p.Line = contactLine(a.directory, p)
-		return p, true
+func (a app) personOf(email, name string) (Person, *who.Person) {
+	directory := a.directory()
+	if known := directory.Person(email); known != nil {
+		return personView(directory, known), known
 	}
-	p = Person{Email: email, Name: name}
+	p := Person{Email: email, Name: name}
 	if p.Name == "" && !isGuestKey(email) {
 		p.Name = cells.DisplayName(email)
 	}
 	if isGuestKey(email) {
 		p.Email = ""
 	}
-	return p, false
+	return p, nil
 }
 
 func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
@@ -410,8 +409,8 @@ func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
 		names[inv.Email] = inv.Name
 	}
 	nameOf := func(email string) string {
-		if p, known := a.directory.Person(email); known && p.Name != "" {
-			return p.Name
+		if p := a.directory().Person(email); p != nil && p.FullName != "" {
+			return p.FullName
 		}
 		if names[email] != "" {
 			return names[email]
@@ -427,11 +426,11 @@ func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
 	seen := map[string]bool{}
 	row := func(email, name string, invited bool) GuestRow {
 		p, known := a.personOf(email, name)
-		g := GuestRow{Person: p, Key: email, Invited: invited, Outside: !known, Ticket: tickets[email], Mine: a.mayAnswerFor(viewer, email, e), Household: householdOf(email)}
-		if known {
-			g.Grades, g.Classrooms = a.facetsOf(p)
+		g := GuestRow{Person: p, Key: email, Invited: invited, Outside: known == nil, Ticket: tickets[email], Mine: a.mayAnswerFor(viewer, email, e), Household: householdOf(email)}
+		if known != nil {
+			g.Grades, g.Classrooms = a.facetsOf(known)
 		}
-		g.Warning, g.WarningWords = a.addressWarning(model, email, known)
+		g.Warning, g.WarningWords = a.addressWarning(model, email, known != nil)
 		if ans, ok := model.Answered[email][e.ID]; ok && ans.Answer != AnswerHidden {
 			g.Answer = ans.Answer
 			g.AnsweredAt = ans.At
@@ -493,9 +492,9 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 	adminHost := host && !slices.Contains(a.hostsOf(e), viewer)
 	poster := ""
 	if e.Source == SourceSheet && !e.PosterLeft {
-		poster = a.directory.Resolve(config.NormalizeEmail(e.AddedBy))
+		poster = a.directory().Resolve(config.NormalizeEmail(e.AddedBy))
 	}
-	view := InviteView{Host: host, AdminHost: adminHost, Poster: poster, MayInvite: host || e.Sharing == SharingPublic || model.Invited(a.directory, viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
+	view := InviteView{Host: host, AdminHost: adminHost, Poster: poster, MayInvite: host || e.Sharing == SharingPublic || model.Invited(a.directory(), viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
 	view.MoveEverywhere = host && view.Party && a.celebrate.IsAdmin != nil && a.celebrate.IsAdmin(viewer)
 	if inv != nil && inv.Flyer != "" {
 		view.Flyer = flyerPath(e.ID)
@@ -519,7 +518,7 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rows := a.rows(actor, e)
-	mine := model.mine(a.directory, viewer)
+	mine := model.mine(a.directory(), viewer)
 	for _, g := range rows {
 		if g.Invited && (slices.Contains(mine, g.Email) || (g.GuestOf != "" && slices.Contains(mine, g.GuestOf))) {
 			view.Mine = append(view.Mine, g)
@@ -620,28 +619,24 @@ func (a app) invitePeople(w http.ResponseWriter, r *http.Request) {
 	}
 	model := a.cache.Model()
 	view := PickerView{People: []PickerPerson{}, Classrooms: model.Roster.Classrooms, Lists: []List{}, OnList: []string{}}
-	for _, p := range a.directory.People() {
-		p.PhotoURL = thumb(p.PhotoURL)
-		p.Line = contactLine(a.directory, p)
-		pp := PickerPerson{Person: p, Household: a.directory.Household(p.Email)}
-		for _, other := range pp.Household {
-			o, known := a.directory.Person(other)
-			if !known {
-				continue
-			}
+	directory := a.directory()
+	for _, p := range directory.Listed() {
+		pp := PickerPerson{Person: personView(directory, p), Household: []string{}}
+		adults, kids := directory.Household(p.Email)
+		for _, o := range append(adults, kids...) {
+			pp.Household = append(pp.Household, o.Email)
 			switch {
 			case p.IsStudent && o.IsParent:
-				pp.Parents = append(pp.Parents, other)
+				pp.Parents = append(pp.Parents, o.Email)
 			case p.IsStudent && o.IsStudent:
-				pp.Siblings = append(pp.Siblings, other)
+				pp.Siblings = append(pp.Siblings, o.Email)
 			case p.IsParent && o.IsStudent:
-				pp.Children = append(pp.Children, other)
+				pp.Children = append(pp.Children, o.Email)
 			}
 		}
 		view.People = append(view.People, pp)
 	}
-	sort.Slice(view.People, func(i, j int) bool { return view.People[i].Name < view.People[j].Name })
-	if lists := a.directory.Lists(actor.Email); lists != nil {
+	if lists := a.lists(actor.Email); lists != nil {
 		view.Lists = lists
 	}
 	if e != nil {
@@ -721,8 +716,8 @@ func (a app) stepDown(w http.ResponseWriter, r *http.Request) {
 func (a app) sendCohostNote(ctx context.Context, to, actor string, e *Event) {
 	e = a.cache.Model().invitedEvent(e)
 	who := actor
-	if p, known := a.directory.Person(actor); known && p.Name != "" {
-		who = p.Name
+	if p := a.directory().Person(actor); p != nil && p.FullName != "" {
+		who = p.FullName
 	}
 	l := a.letterFor(e, EventPath(e))
 	l.Heading = "You're a co-host"
@@ -974,18 +969,20 @@ func (a app) skipInvites(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) ccFor(email string) ([]string, bool) {
-	p, known := a.directory.Person(email)
-	if !known {
+	directory := a.directory()
+	p := directory.Person(email)
+	if p == nil {
 		return nil, true
 	}
 	if p.EmailMasked {
 		return nil, false
 	}
 	cc := []string{}
-	if p.IsStudent && !p.IsParent && !p.IsStaff {
-		for _, member := range a.directory.Household(email) {
-			if a.isAdult(member) && !slices.Contains(cc, member) {
-				cc = append(cc, member)
+	if !isAdult(p) {
+		adults, kids := directory.Household(email)
+		for _, member := range append(adults, kids...) {
+			if isAdult(member) && !slices.Contains(cc, member.Email) {
+				cc = append(cc, member.Email)
 			}
 		}
 	}
@@ -1027,8 +1024,8 @@ func (a app) send(ctx context.Context, actor access.Actor, host string, e *Event
 				continue
 			}
 			name := row.Name
-			if p, known := a.directory.Person(row.Email); known && p.Name != "" {
-				name = p.Name
+			if p := a.directory().Person(row.Email); p != nil && p.FullName != "" {
+				name = p.FullName
 			}
 			if row.Email == t {
 				names = append([]string{FirstWord(name)}, names...)
@@ -1043,8 +1040,8 @@ func (a app) send(ctx context.Context, actor access.Actor, host string, e *Event
 	}
 	a.markSent(ctx, actor, e, emails)
 	hostName := host
-	if p, known := a.directory.Person(host); known && p.Name != "" {
-		hostName = p.Name
+	if p := a.directory().Person(host); p != nil && p.FullName != "" {
+		hostName = p.FullName
 	}
 	message := ""
 	if inv != nil {
@@ -1081,8 +1078,8 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 	}
 	hosts := []string{}
 	for _, h := range a.hostsOf(e) {
-		if p, known := a.directory.Person(h); known && p.Name != "" {
-			hosts = append(hosts, p.Name)
+		if p := a.directory().Person(h); p != nil && p.FullName != "" {
+			hosts = append(hosts, p.FullName)
 		}
 	}
 	if len(hosts) == 0 {
@@ -1272,8 +1269,8 @@ func (a app) messageInvites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hostName := actor.Email
-	if p, known := a.directory.Person(actor.Email); known && p.Name != "" {
-		hostName = p.Name
+	if p := a.directory().Person(actor.Email); p != nil && p.FullName != "" {
+		hostName = p.FullName
 	}
 	replyTo := a.hostsOf(e)
 	if !slices.Contains(replyTo, actor.Email) {
@@ -1303,8 +1300,8 @@ func (a app) sendMessage(ctx context.Context, to string, cc, replyTo []string, h
 			continue
 		}
 		name := inv.Name
-		if p, known := a.directory.Person(inv.Email); known && p.Name != "" {
-			name = p.Name
+		if p := a.directory().Person(inv.Email); p != nil && p.FullName != "" {
+			name = p.FullName
 		}
 		if inv.Email == to {
 			name = "You"
