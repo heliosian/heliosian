@@ -63,7 +63,7 @@ The portal sends four kinds of mail (`internal/team/mail.go`, over `internal/mai
 - **You're a co-chair** — to someone made a co-chair, copied to the other chairs.
 - **Admin notices** — to each admin who turned them on in Admin Tools › Email notifications: a new event, a new thing under an event (each saying whether it awaits approval), a new sign-up, an offer to co-chair - each naming who made it when someone signed another person up ("Robin Whitfield added Kit Whitfield as co-chair of Clean Up Crew"). Choices are one `Notifications` row per admin (`docs/team/data.md`); the person acting never gets a notice about their own action.
 
-Sending happens off the request and a failure is logged, never shown - the sign-up itself already took. Mail goes out through Mailgun, from team@loop.heliosian.com with Reply-To set to the chairs, so a reply reaches a person (`docs/deploy.md`); without a key nothing is sent and the Admin Tools card says so; in sample mode each message is written as an `.html` file under `MAIL_DIR` (default `$TMPDIR/hca-mail`) to open in a browser, its invite as an `-invite.ics` beside it.
+Sending happens off the request and a failure is logged, never shown - the sign-up itself already took. Mail goes out through Mailgun, from team@loop.heliosian.com with Reply-To set to the chairs, so a reply reaches a person (`docs/deploy.md`); in sample mode each message is written as an `.html` file under `MAIL_DIR` (default `$TMPDIR/hca-mail`) to open in a browser, its invite as an `-invite.ics` beside it.
 
 ## Sign-in and install
 

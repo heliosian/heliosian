@@ -17,6 +17,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
+	"heliosian/internal/intercept"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
@@ -117,11 +118,11 @@ func TestStripRedactsAnAddressInTheSummary(t *testing.T) {
 	}
 }
 
-func appServer(t *testing.T, issue string) (*httptest.Server, *map[string]any, *string) {
+func appServer(t *testing.T, issue string) (*map[string]any, *string) {
 	t.Helper()
 	var created map[string]any
 	var issueAuth string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	intercept.Install(GitHubHost, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/repos/" + Repo + "/installation":
 			io.WriteString(w, `{"id":4242}`)
@@ -143,22 +144,21 @@ func appServer(t *testing.T, issue string) (*httptest.Server, *map[string]any, *
 			t.Errorf("unexpected path %s", r.URL.Path)
 		}
 	}))
-	return server, &created, &issueAuth
+	return &created, &issueAuth
 }
 
-func testApp(t *testing.T, endpoint string) *GitHubApp {
+func testApp(t *testing.T) *GitHubApp {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &GitHubApp{ID: "12345", PrivateKey: key, Endpoint: endpoint}
+	return &GitHubApp{ID: "12345", PrivateKey: key}
 }
 
 func TestGitHubAppFiles(t *testing.T) {
-	server, created, issueAuth := appServer(t, "https://github.com/heliosian/heliosian/issues/9")
-	defer server.Close()
-	g := testApp(t, server.URL)
+	created, issueAuth := appServer(t, "https://github.com/heliosian/heliosian/issues/9")
+	g := testApp(t)
 	issue, err := g.File(context.Background(), "A title", "A body", "Bug", []string{"app:calendar"})
 	if err != nil {
 		t.Fatal(err)
@@ -179,7 +179,7 @@ func TestGitHubAppFiles(t *testing.T) {
 
 func TestGitHubAppReusesItsToken(t *testing.T) {
 	mints := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	intercept.Install(GitHubHost, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/repos/" + Repo + "/installation":
 			io.WriteString(w, `{"id":7}`)
@@ -192,8 +192,7 @@ func TestGitHubAppReusesItsToken(t *testing.T) {
 			io.WriteString(w, `{"html_url":"https://github.com/x/y/issues/1"}`)
 		}
 	}))
-	defer server.Close()
-	g := testApp(t, server.URL)
+	g := testApp(t)
 	for range 3 {
 		if _, err := g.File(context.Background(), "t", "b", "Bug", nil); err != nil {
 			t.Fatal(err)
@@ -205,11 +204,10 @@ func TestGitHubAppReusesItsToken(t *testing.T) {
 }
 
 func TestGitHubAppRefused(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	intercept.Install(GitHubHost, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"message":"Bad credentials"}`, http.StatusUnauthorized)
 	}))
-	defer server.Close()
-	g := testApp(t, server.URL)
+	g := testApp(t)
 	_, err := g.File(context.Background(), "t", "b", "Bug", nil)
 	if err == nil || !strings.Contains(err.Error(), "401") {
 		t.Errorf("err = %v", err)

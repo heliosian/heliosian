@@ -2,6 +2,7 @@ package home
 
 import (
 	"bytes"
+	"context"
 	"image"
 	"image/png"
 	"mime/multipart"
@@ -24,7 +25,9 @@ func TestOnlyAdminsAddImages(t *testing.T) {
 	store := blob.New(bucket)
 	search := imagesearch.Search{Stock: imagesearch.NewStock(bucket, store), Limits: imagesearch.NewLimits()}
 	mux := http.NewServeMux()
-	Register(mux, c, store, nil, nil, search, nil, nil, nil)
+	answer := func(context.Context, string, string, string) error { return nil }
+	makeDefault := func(context.Context, string, string) error { return nil }
+	Register(mux, c, store, nil, nil, search, answer, makeDefault, nil)
 
 	var pic bytes.Buffer
 	if err := png.Encode(&pic, image.NewGray(image.Rect(0, 0, 8, 8))); err != nil {

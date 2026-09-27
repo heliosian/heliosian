@@ -33,9 +33,6 @@ func (a app) staffView(model *Model, staffEmail string) (StaffView, bool) {
 }
 
 func (a app) mailAssignment(r *http.Request, staffEmail, to string) {
-	if a.mailer == nil {
-		return
-	}
 	sv, ok := a.staffView(a.cache.Model(), staffEmail)
 	if !ok {
 		return
@@ -66,9 +63,6 @@ func (a app) askDays(model *Model) map[string]askDay {
 }
 
 func (a app) mailMovedAskDays(r *http.Request, before, after map[string]askDay) {
-	if a.mailer == nil {
-		return
-	}
 	model := a.cache.Model()
 	for email, now := range after {
 		was, had := before[email]

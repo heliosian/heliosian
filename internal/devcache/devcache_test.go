@@ -1,16 +1,14 @@
 package devcache
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"io"
 	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"heliosian/internal/intercept"
 )
 
 type bucket struct {
@@ -44,22 +42,9 @@ func (b *bucket) count(key string) int {
 }
 
 func client(t *testing.T, upstream http.RoundTripper) (*http.Client, string) {
-	caKey, ca := mintCA()
 	dir := t.TempDir()
-	p := &proxy{
-		dir:      dir,
-		upstream: upstream,
-		tls:      &tls.Config{Certificates: []tls.Certificate{mintLeaf(caKey, ca)}, NextProtos: []string{"http/1.1"}},
-	}
-	server := httptest.NewServer(p)
-	t.Cleanup(server.Close)
-	through, err := url.Parse(server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	roots := x509.NewCertPool()
-	roots.AddCert(ca)
-	return &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(through), TLSClientConfig: &tls.Config{RootCAs: roots}}}, dir
+	intercept.Install(host, &proxy{dir: dir, upstream: upstream})
+	return http.DefaultClient, dir
 }
 
 func fetch(t *testing.T, c *http.Client, method, target string) (int, string, http.Header) {

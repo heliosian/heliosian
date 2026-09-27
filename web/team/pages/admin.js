@@ -61,8 +61,7 @@ function notifyCard() {
     boxes[kind] = box.input;
     stack.append(box.wrap);
   }
-  const notice = el('div');
-  card.append(notice, stack, status);
+  card.append(stack, status);
   fetch('/api/admin/state').then(async res => {
     if (!res.ok) {
       return;
@@ -71,9 +70,6 @@ function notifyCard() {
     for (const kind of Object.keys(boxes)) {
       boxes[kind].checked = (data.notify || []).includes(kind);
       boxes[kind].disabled = false;
-    }
-    if (!data.mail) {
-      notice.append(el('div', 'notice', 'Email is not set up on this server yet, so nothing is sent; the choices are kept for when it is.'));
     }
   });
   return card;

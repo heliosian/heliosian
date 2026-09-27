@@ -113,7 +113,7 @@ func firstName(directory *who.Model, email string) string {
 }
 
 func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []map[string]string, actor string) {
-	if a.mailer == nil || len(taken) == 0 {
+	if len(taken) == 0 {
 		return
 	}
 	base := mail.Base(r)
@@ -238,7 +238,7 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 
 func (a app) mailWaitlistHosts(r *http.Request, directory *who.Model, p *Party, purchaser string, waiting int, note, actor string) {
 	hosts := without(p.HostEmails, purchaser)
-	if a.mailer == nil || len(hosts) == 0 {
+	if len(hosts) == 0 {
 		return
 	}
 	l := a.letterFor(mail.Base(r), p)
@@ -258,7 +258,7 @@ func (a app) mailWaitlistHosts(r *http.Request, directory *who.Model, p *Party, 
 }
 
 func (a app) mailOffered(r *http.Request, p *Party, purchaser string, tickets []map[string]string, actor string) {
-	if a.mailer == nil || len(tickets) == 0 {
+	if len(tickets) == 0 {
 		return
 	}
 	base := mail.Base(r)

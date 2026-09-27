@@ -4,17 +4,18 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+
+	"heliosian/internal/intercept"
 )
 
 func TestMailgunPostsTheMessage(t *testing.T) {
 	var path, contentType string
 	var got map[string][]string
 	var attachment struct{ name, kind, content string }
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	intercept.Install(Host, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path = r.URL.Path
 		contentType = r.Header.Get("Content-Type")
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
@@ -29,8 +30,7 @@ func TestMailgunPostsTheMessage(t *testing.T) {
 		attachment.name, attachment.kind, attachment.content = header.Filename, header.Header.Get("Content-Type"), string(body)
 		w.Write([]byte(`{"id":"<x@example.org>","message":"Queued. Thank you."}`))
 	}))
-	defer srv.Close()
-	m := &Mailgun{Key: "key-test", From: "HCA-Team <team@example.org>", Endpoint: srv.URL}
+	m := &Mailgun{Key: "key-test", From: "HCA-Team <team@example.org>"}
 	msg := Message{To: []string{"a@example.org"}, CC: []string{"b@example.org"}, ReplyTo: []string{"b@example.org"}, Subject: "Hi", HTML: "<p>Hi</p>", Text: "Hi",
 		Headers:     map[string]string{"Message-Id": "<one@example.org>", "In-Reply-To": "<zero@example.org>"},
 		Attachments: []Attachment{{Name: "invite.ics", ContentType: "text/calendar; method=REQUEST", Content: []byte("BEGIN:VCALENDAR")}}}

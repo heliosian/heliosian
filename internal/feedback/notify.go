@@ -22,9 +22,6 @@ type Notifier struct {
 }
 
 func (n Notifier) Notify(r Report) {
-	if n.Sender == nil {
-		return
-	}
 	to := []string{}
 	for _, email := range n.SuperAdmins() {
 		if email = strings.ToLower(strings.TrimSpace(email)); email != "" {

@@ -110,9 +110,9 @@ func TestRepliesRecordAnswers(t *testing.T) {
 		"forged":   replyMail("x@example.org", me, "a7@sample", "DECLINED", elsewhere),
 		"spoofed":  replyMail(me, me, "a7@sample", "DECLINED", "dkim=pass header.d=example.org; spf=pass smtp.mailfrom=x@example.org; dmarc=fail header.from=heliosschool.org"),
 	}
-	m := Mail{SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}
+	m := Mail{Sender: &keptMail{}, SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, imagesearch.Search{}, m, testStyle)
+	Register(mux, cache, memoryStore(), func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, noCelebrate(), newSampleSources(t).sources, imagesearch.Search{}, m, testStyle)
 	own := replyAddress("a7@sample", me)
 	if own != "Helios When <rsvp+"+(app{mail: m}).replyToken("a7@sample", me)+"@reply.heliosian.com>" {
 		t.Fatalf("organizer = %q", own)

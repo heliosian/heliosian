@@ -29,11 +29,9 @@ func (a app) hostsOf(e *Event) []string {
 			add(e.AddedBy)
 		}
 	case SourceCelebrate:
-		if a.parties != nil {
-			if p := a.parties(strings.TrimPrefix(e.ID, SourceCelebrate+"/")); p != nil {
-				for _, h := range p.Hosts {
-					add(h)
-				}
+		if p := a.parties(strings.TrimPrefix(e.ID, SourceCelebrate+"/")); p != nil {
+			for _, h := range p.Hosts {
+				add(h)
 			}
 		}
 	}
@@ -526,7 +524,7 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 	}
 	if body.Flyer != nil {
 		flyer := strings.Trim(strings.TrimSpace(*body.Flyer), "/")
-		if flyer != "" && a.store != nil && a.readImage(flyer) == nil {
+		if flyer != "" && a.readImage(flyer) == nil {
 			return nil, nil, nil, access.Invalid("that picture is not here")
 		}
 		row["Flyer"] = flyer
@@ -869,9 +867,6 @@ func (a app) openedOps(actor access.Actor, e *Event) []store.Op {
 }
 
 func (a app) checkRule(actor access.Actor, r filter.Rule, e *Event) (filter.Rule, error) {
-	if a.sources == nil {
-		return r, fmt.Errorf("groups are not set up")
-	}
 	r = filter.Clean(r)
 	r.Kind = filter.KindInclude
 	if err := filter.Check(r); err != nil {
@@ -954,9 +949,6 @@ func (a app) startPartyOps(actor access.Actor, id string) ([]store.Op, *Event, I
 	}
 	if !e.linked() {
 		return nil, nil, InviteGroup{}, access.Invalid("only a party or an HCA event starts this way")
-	}
-	if a.sources == nil {
-		return nil, nil, InviteGroup{}, access.Missing("groups are not set up")
 	}
 	key := "party:" + e.linkedID()
 	if e.Source != SourceCelebrate {
@@ -1049,7 +1041,7 @@ func (a app) changeAddressOps(actor access.Actor, id, email, to string, everywhe
 	}
 	c.name = inv.Name
 	if everywhere {
-		if e.Source != SourceCelebrate || a.celebrate.MoveAddress == nil || a.celebrate.IsAdmin == nil || !a.celebrate.IsAdmin(actor.Email) {
+		if e.Source != SourceCelebrate || !a.celebrate.IsAdmin(actor.Email) {
 			return nil, c, access.Forbidden("only Celebrate's admins move an address on every party")
 		}
 		c.everywhere = true

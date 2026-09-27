@@ -3,27 +3,18 @@ package devcache
 import (
 	"bufio"
 	"bytes"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"math/big"
-	"net"
+	"maps"
 	"net/http"
 	"net/textproto"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"heliosian/internal/logging"
+	"heliosian/internal/intercept"
 )
 
 const (
@@ -33,125 +24,21 @@ const (
 )
 
 func Install() {
-	caKey, caCert := mintCA()
-	leaf := mintLeaf(caKey, caCert)
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		logging.Fatal("devcache: listen", "error", err)
-	}
-	transport := http.DefaultTransport.(*http.Transport)
-	p := &proxy{
-		dir:      dir,
-		upstream: transport.Clone(),
-		tls:      &tls.Config{Certificates: []tls.Certificate{leaf}, NextProtos: []string{"http/1.1"}},
-	}
-	go func() {
-		logging.Fatal("devcache: serve", "error", http.Serve(listener, p))
-	}()
-	roots, err := x509.SystemCertPool()
-	if err != nil {
-		logging.Fatal("devcache: system roots", "error", err)
-	}
-	roots.AddCert(caCert)
-	through := &url.URL{Scheme: "http", Host: listener.Addr().String()}
-	transport.Proxy = func(r *http.Request) (*url.URL, error) {
-		if r.URL.Hostname() == host {
-			return through, nil
-		}
-		return http.ProxyFromEnvironment(r)
-	}
-	transport.TLSClientConfig = &tls.Config{RootCAs: roots}
+	intercept.Install(host, &proxy{dir: dir, upstream: http.DefaultTransport.(*http.Transport).Clone()})
 	slog.Info("devcache: caching storage reads", "dir", dir)
-}
-
-func mintCA() (*ecdsa.PrivateKey, *x509.Certificate) {
-	key := newKey()
-	template := &x509.Certificate{
-		SerialNumber:          serial(),
-		Subject:               pkix.Name{CommonName: "heliosian devcache"},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().AddDate(0, 0, 30),
-		KeyUsage:              x509.KeyUsageCertSign,
-		IsCA:                  true,
-		BasicConstraintsValid: true,
-	}
-	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
-	if err != nil {
-		logging.Fatal("devcache: sign ca", "error", err)
-	}
-	cert, err := x509.ParseCertificate(der)
-	if err != nil {
-		logging.Fatal("devcache: parse ca", "error", err)
-	}
-	return key, cert
-}
-
-func mintLeaf(caKey *ecdsa.PrivateKey, ca *x509.Certificate) tls.Certificate {
-	key := newKey()
-	template := &x509.Certificate{
-		SerialNumber: serial(),
-		Subject:      pkix.Name{CommonName: host},
-		DNSNames:     []string{host},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().AddDate(0, 0, 30),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-	}
-	der, err := x509.CreateCertificate(rand.Reader, template, ca, &key.PublicKey, caKey)
-	if err != nil {
-		logging.Fatal("devcache: sign leaf", "error", err)
-	}
-	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
-}
-
-func newKey() *ecdsa.PrivateKey {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		logging.Fatal("devcache: generate key", "error", err)
-	}
-	return key
-}
-
-func serial() *big.Int {
-	n, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
-		logging.Fatal("devcache: generate serial", "error", err)
-	}
-	return n
 }
 
 type proxy struct {
 	dir      string
 	upstream http.RoundTripper
-	tls      *tls.Config
 }
 
 func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodConnect || r.Host != host+":443" {
-		http.Error(w, "devcache tunnels only "+host, http.StatusBadGateway)
-		return
-	}
-	conn, _, err := http.NewResponseController(w).Hijack()
-	if err != nil {
-		slog.Error("devcache: hijack", "error", err)
-		return
-	}
-	defer conn.Close()
-	if _, err := io.WriteString(conn, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
-		return
-	}
-	tlsConn := tls.Server(conn, p.tls)
-	reader := bufio.NewReader(tlsConn)
-	for {
-		req, err := http.ReadRequest(reader)
-		if err != nil {
-			return
-		}
-		resp := p.answer(req)
-		if err := resp.Write(tlsConn); err != nil || req.Close || resp.Close {
-			return
-		}
-	}
+	resp := p.answer(r)
+	defer resp.Body.Close()
+	maps.Copy(w.Header(), resp.Header)
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 func (p *proxy) answer(req *http.Request) *http.Response {
@@ -304,7 +191,5 @@ func response(req *http.Request, status int, header http.Header, body []byte) *h
 
 func failed(req *http.Request, err error) *http.Response {
 	slog.Error("devcache: request failed", "method", req.Method, "path", req.URL.Path, "error", err)
-	resp := response(req, http.StatusBadGateway, http.Header{"Content-Type": {"text/plain"}}, []byte(err.Error()))
-	resp.Close = true
-	return resp
+	return response(req, http.StatusBadGateway, http.Header{"Content-Type": {"text/plain"}}, []byte(err.Error()))
 }

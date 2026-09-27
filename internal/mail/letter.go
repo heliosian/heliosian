@@ -128,7 +128,7 @@ func (l Letter) Message(subject string, to, cc, replyTo []string) Message {
 }
 
 func Post(ctx context.Context, s Sender, m Message) {
-	if s == nil || len(m.To) == 0 {
+	if len(m.To) == 0 {
 		return
 	}
 	go func() {

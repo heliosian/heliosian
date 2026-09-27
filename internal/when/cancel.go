@@ -44,7 +44,7 @@ func (a app) cancelEvent(r *http.Request, body cancelBody) (any, error) {
 	model := a.cache.Model()
 	targets := []string{}
 	cc := map[string][]string{}
-	if body.Notify && a.mail.Sender != nil {
+	if body.Notify {
 		for _, inv := range model.Invites[e.ID] {
 			if inv.Sent == "" || isGuestKey(inv.Email) || slices.Contains(targets, inv.Email) {
 				continue

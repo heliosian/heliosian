@@ -40,7 +40,7 @@ func calendarMail(sessionKey string) when.Mail {
 }
 
 func mailgunKey() string {
-	return env.OptionalKey("MAILGUN_KEY", "local/creds/mailgun.key")
+	return env.Key("MAILGUN_KEY", "local/creds/mailgun.key")
 }
 
 func mailgunSigningKey() string {
@@ -48,7 +48,7 @@ func mailgunSigningKey() string {
 }
 
 func newMailer(from string) mail.Sender {
-	return mail.New(mailgunKey(), from, "")
+	return mail.NewMailgun(mailgunKey(), from)
 }
 
 func loopMail(sessionKey string) loop.Mail {
@@ -56,11 +56,7 @@ func loopMail(sessionKey string) loop.Mail {
 	if err != nil {
 		logging.Fatal("mail archive", "error", err)
 	}
-	m := loop.Mail{SigningKey: mailgunSigningKey(), Key: []byte(sessionKey), Base: "https://loop.heliosian.com", Archive: archive}
-	if key := mailgunKey(); key != "" {
-		m.Sender = mail.NewMailgun(key, "")
-	}
-	return m
+	return loop.Mail{Sender: mail.NewMailgun(mailgunKey(), ""), SigningKey: mailgunSigningKey(), Key: []byte(sessionKey), Base: "https://loop.heliosian.com", Archive: archive}
 }
 
 func artifactsMail(bucket *blob.Bucket) artifacts.Inbox {

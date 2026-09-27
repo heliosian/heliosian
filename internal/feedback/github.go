@@ -20,7 +20,10 @@ import (
 	"time"
 )
 
-const Repo = "heliosian/heliosian"
+const (
+	Repo       = "heliosian/heliosian"
+	GitHubHost = "api.github.com"
+)
 
 const (
 	jwtLife     = 9 * time.Minute
@@ -31,7 +34,6 @@ const (
 type GitHubApp struct {
 	ID         string
 	PrivateKey *rsa.PrivateKey
-	Endpoint   string
 
 	mu           sync.Mutex
 	installation int64
@@ -67,13 +69,6 @@ func parseKey(pemKey string) (*rsa.PrivateKey, error) {
 		return nil, fmt.Errorf("feedback: the github app key is %T, not RSA", parsed)
 	}
 	return key, nil
-}
-
-func (g *GitHubApp) endpoint() string {
-	if g.Endpoint != "" {
-		return g.Endpoint
-	}
-	return "https://api.github.com"
 }
 
 func (g *GitHubApp) assertion(now time.Time) (string, error) {
@@ -116,7 +111,7 @@ func (g *GitHubApp) call(ctx context.Context, method, path, auth string, payload
 		}
 		body = bytes.NewReader(raw)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, g.endpoint()+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, "https://"+GitHubHost+path, body)
 	if err != nil {
 		return err
 	}

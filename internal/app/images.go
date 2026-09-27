@@ -29,17 +29,7 @@ func Bundled(roots []string, key string) bool {
 	return false
 }
 
-func uploaded(store *blob.Store, key string) (bool, error) {
-	if store == nil {
-		return false, nil
-	}
-	return store.Has(key)
-}
-
 func prefetchUploaded(ctx context.Context, store *blob.Store, folder string, names []string) error {
-	if store == nil {
-		return nil
-	}
 	keys := []string{}
 	for _, name := range names {
 		if strings.HasPrefix(name, folder) {
@@ -55,7 +45,7 @@ type homeImages struct {
 
 func (h homeImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "link-images/") {
-		return uploaded(h.store, key)
+		return h.store.Has(key)
 	}
 	return Bundled([]string{"web/home", "web/public/home"}, key), nil
 }
@@ -70,7 +60,7 @@ type teamImages struct {
 
 func (e teamImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "activity-images/") {
-		return uploaded(e.store, key)
+		return e.store.Has(key)
 	}
 	return Bundled([]string{"web/team", "web/public/team"}, key), nil
 }
@@ -85,7 +75,7 @@ type celebrateImages struct {
 
 func (c celebrateImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "party-images/") {
-		return uploaded(c.store, key)
+		return c.store.Has(key)
 	}
 	return Bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
 }
@@ -100,7 +90,7 @@ type calendarImages struct {
 
 func (c calendarImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "category-images/") {
-		return uploaded(c.store, key)
+		return c.store.Has(key)
 	}
 	return Bundled([]string{"web/when", "web/public/when"}, key), nil
 }

@@ -44,9 +44,7 @@ type app struct {
 }
 
 func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, search imagesearch.Search, mailer mail.Sender, from string, rsvps RSVPLookup, moved AddressMoved, style *sharecard.Style) {
-	if search.UserAgent == "" {
-		search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
-	}
+	search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
 	a := app{cache: cache, store: store, directory: directory, search: search, mailer: mailer, from: from, rsvps: rsvps, moved: moved, style: style}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)

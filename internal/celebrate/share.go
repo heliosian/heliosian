@@ -179,9 +179,6 @@ func (a app) readImage(key string) []byte {
 		return nil
 	}
 	if strings.HasPrefix(key, imageFolder+"/") {
-		if a.store == nil {
-			return nil
-		}
 		data, _, ok := a.store.Bytes(key)
 		if !ok {
 			return nil

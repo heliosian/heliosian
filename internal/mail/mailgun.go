@@ -21,20 +21,14 @@ import (
 	"time"
 )
 
+const Host = "api.mailgun.net"
+
 type Mailgun struct {
 	Key, From string
-	Endpoint  string
 }
 
 func NewMailgun(key, from string) *Mailgun {
 	return &Mailgun{Key: key, From: from}
-}
-
-func (m *Mailgun) api() string {
-	if m.Endpoint != "" {
-		return m.Endpoint
-	}
-	return "https://api.mailgun.net"
 }
 
 func domainOf(from string) (string, error) {
@@ -66,7 +60,7 @@ func (m *Mailgun) do(ctx context.Context, req *http.Request) (*http.Response, er
 func (m *Mailgun) post(ctx context.Context, domain, endpoint string, body *bytes.Buffer, contentType string) error {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	req, err := http.NewRequest(http.MethodPost, m.api()+"/v3/"+domain+"/"+endpoint, body)
+	req, err := http.NewRequest(http.MethodPost, "https://"+Host+"/v3/"+domain+"/"+endpoint, body)
 	if err != nil {
 		return err
 	}

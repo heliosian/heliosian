@@ -17,6 +17,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/admins"
 	"heliosian/internal/auth"
+	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
@@ -81,7 +82,7 @@ func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, directory, imagesearch.Search{}, mailer, testFrom, nil, nil, testStyle)
+	Register(mux, cache, blob.New(blob.NewMemoryBucket()), directory, imagesearch.Search{}, mailer, testFrom, nil, nil, testStyle)
 	return cache, mux
 }
 
@@ -89,8 +90,12 @@ var testStyle = CardStyle(func() string { return "Helios Celebrate" }, func() st
 
 func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	t.Helper()
-	return serveWith(t, nil)
+	return serveWith(t, discard{})
 }
+
+type discard struct{}
+
+func (discard) Send(context.Context, mail.Message) error { return nil }
 
 func tables(t *testing.T) store.Tables {
 	t.Helper()
@@ -1176,7 +1181,7 @@ func TestMoveAddress(t *testing.T) {
 	type move struct{ actor, old, to, name string }
 	told := []move{}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, directory, imagesearch.Search{}, nil, testFrom, nil, func(_ context.Context, actor access.Actor, old, to, name string) {
+	Register(mux, cache, blob.New(blob.NewMemoryBucket()), directory, imagesearch.Search{}, discard{}, testFrom, nil, func(_ context.Context, actor access.Actor, old, to, name string) {
 		told = append(told, move{actor.Email, old, to, name})
 	}, testStyle)
 	const (

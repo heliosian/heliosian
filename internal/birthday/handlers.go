@@ -109,9 +109,7 @@ type dateRun struct {
 
 func Register(mux *http.ServeMux, cache *Cache, directory func() *who.Model, describer Describer, mailer mail.Sender, from, base string, joinHome func(ctx context.Context, email string) error, about *sharecard.About) {
 	a := app{cache: cache, directory: directory, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
-	if mailer != nil {
-		go a.remindLoop()
-	}
+	go a.remindLoop()
 	go a.exportLoop()
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
@@ -524,9 +522,6 @@ func (a app) resendInvites(r *http.Request, _ serve.None) (map[string]int, error
 	if err != nil {
 		return nil, err
 	}
-	if a.mailer == nil {
-		return nil, access.Refuse(http.StatusServiceUnavailable, "mail is not set up on this server")
-	}
 	model := a.cache.Model()
 	n := 0
 	for i := range model.Birthdays {
@@ -550,10 +545,8 @@ func (a app) joinTeam(r *http.Request, _ serve.None) (serve.None, error) {
 	if err := a.commit(r, actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	if a.joinHome != nil {
-		if err := a.joinHome(r.Context(), actor.Email); err != nil {
-			slog.ErrorContext(r.Context(), "birthday: put a joiner on the app's list", "error", err, "email", actor.Email)
-		}
+	if err := a.joinHome(r.Context(), actor.Email); err != nil {
+		slog.ErrorContext(r.Context(), "birthday: put a joiner on the app's list", "error", err, "email", actor.Email)
 	}
 	slog.InfoContext(r.Context(), "birthday: joined the team", "email", actor.Email)
 	return serve.None{}, nil

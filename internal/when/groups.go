@@ -115,9 +115,6 @@ func (m *Model) GroupOf(id, gid string) *InviteGroup {
 }
 
 func (a app) members(e *Event, g InviteGroup) []string {
-	if a.sources == nil {
-		return nil
-	}
 	out := []string{}
 	for _, m := range filter.Members(filter.List{Rules: []filter.Rule{g.Rule}, Editors: a.hostsOf(e)}, a.sources()) {
 		if m = a.directory().Resolve(config.NormalizeEmail(m)); m != "" && !slices.Contains(out, m) {
@@ -128,7 +125,7 @@ func (a app) members(e *Event, g InviteGroup) []string {
 }
 
 func (a app) ticketHolders(g InviteGroup, members []string) []string {
-	if a.parties == nil || len(g.Rule.Tags) != 1 || !strings.HasPrefix(g.Rule.Tags[0], "party:") {
+	if len(g.Rule.Tags) != 1 || !strings.HasPrefix(g.Rule.Tags[0], "party:") {
 		return members
 	}
 	p := a.parties(strings.TrimPrefix(g.Rule.Tags[0], "party:"))
@@ -160,7 +157,7 @@ func (a app) ticketHolders(g InviteGroup, members []string) []string {
 
 func (a app) ticketGuests(g InviteGroup) map[string]string {
 	out := map[string]string{}
-	if a.parties == nil || len(g.Rule.Tags) != 1 || !strings.HasPrefix(g.Rule.Tags[0], "party:") {
+	if len(g.Rule.Tags) != 1 || !strings.HasPrefix(g.Rule.Tags[0], "party:") {
 		return out
 	}
 	p := a.parties(strings.TrimPrefix(g.Rule.Tags[0], "party:"))
@@ -183,9 +180,6 @@ func (a app) ticketGuests(g InviteGroup) map[string]string {
 }
 
 func (a app) groupOptions(r *http.Request, _ serve.None) (filter.Options, error) {
-	if a.sources == nil {
-		return filter.Options{}, access.Missing("groups are not set up")
-	}
 	actor, _ := a.who(r)
 	return filter.OptionsFor(a.sources(), actor), nil
 }
@@ -304,7 +298,7 @@ func (a app) fill(ctx context.Context, actor access.Actor, e *Event, g InviteGro
 }
 
 func (a app) sweepEvent(ctx context.Context, e *Event) {
-	if a.sources == nil || e == nil || e.end.Before(now()) {
+	if e == nil || e.end.Before(now()) {
 		return
 	}
 	for _, g := range a.cache.Model().Groups[e.ID] {
@@ -315,9 +309,6 @@ func (a app) sweepEvent(ctx context.Context, e *Event) {
 }
 
 func (a app) sweep(ctx context.Context) {
-	if a.sources == nil {
-		return
-	}
 	for id, groups := range a.cache.Model().Groups {
 		if len(groups) > 0 {
 			a.sweepEvent(ctx, a.sweptEvent(a.as(groups[0].AddedBy), id))

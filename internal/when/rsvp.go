@@ -36,10 +36,10 @@ func (a app) recordBy(ctx context.Context, actor access.Actor, email, id, answer
 		return fmt.Errorf("%w: %w", errNotRecorded, err)
 	}
 	model := a.cache.Model()
-	if invite && answer == AnswerYes && a.mail.Sender != nil && !isGuestKey(email) {
+	if invite && answer == AnswerYes && !isGuestKey(email) {
 		go a.sendInvite(context.WithoutCancel(ctx), email, e)
 	}
-	if inv := model.Invitations[e.ID]; inv != nil && a.mail.Sender != nil && answer != "" && answer != AnswerHidden {
+	if inv := model.Invitations[e.ID]; inv != nil && answer != "" && answer != AnswerHidden {
 		for _, h := range inv.Notify {
 			if h != actor.Email {
 				go a.sendAnswerNote(context.WithoutCancel(ctx), h, actor.Email, email, answer, model.invitedEvent(e))

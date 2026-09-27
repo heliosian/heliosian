@@ -67,9 +67,6 @@ func (a app) remindLoop() {
 }
 
 func (a app) sendDueReminders(ctx context.Context, today time.Time) int {
-	if a.mailer == nil {
-		return 0
-	}
 	model := a.cache.Model()
 	due := a.dueReminders(model, today)
 	n := 0

@@ -249,7 +249,7 @@ func newGuestKey() string {
 }
 
 func (a app) party(e *Event) *PartyPeople {
-	if e == nil || e.Source != SourceCelebrate || a.parties == nil {
+	if e == nil || e.Source != SourceCelebrate {
 		return nil
 	}
 	return a.parties(strings.TrimPrefix(e.ID, SourceCelebrate+"/"))
@@ -494,7 +494,7 @@ func (a app) invitesView(r *http.Request, _ serve.None) (InviteView, error) {
 		poster = a.directory().Resolve(config.NormalizeEmail(e.AddedBy))
 	}
 	view := InviteView{Host: host, AdminHost: adminHost, Poster: poster, MayInvite: host || e.Sharing == SharingPublic || model.Invited(a.directory(), viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
-	view.MoveEverywhere = host && view.Party && a.celebrate.IsAdmin != nil && a.celebrate.IsAdmin(viewer)
+	view.MoveEverywhere = host && view.Party && a.celebrate.IsAdmin(viewer)
 	if inv != nil && inv.Flyer != "" {
 		view.Flyer = flyerPath(e.ID)
 	}
@@ -671,10 +671,8 @@ func (a app) inviteSettings(r *http.Request, body settingsBody) (serve.None, err
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: guest list settings", "actor", actor.Email, "event", e.ID)
-	if a.mail.Sender != nil {
-		for _, h := range newHosts {
-			go a.sendCohostNote(context.WithoutCancel(r.Context()), h, actor.Email, e)
-		}
+	for _, h := range newHosts {
+		go a.sendCohostNote(context.WithoutCancel(r.Context()), h, actor.Email, e)
 	}
 	return serve.None{}, nil
 }
@@ -863,9 +861,6 @@ func (a app) sendInvites(r *http.Request, body sendBody) (map[string]int, error)
 	if len(emails) == 0 {
 		return nil, access.Invalid("nobody to send to")
 	}
-	if a.mail.Sender == nil {
-		return nil, access.Invalid("mail is not set up")
-	}
 	kind := ""
 	switch {
 	case body.Update:
@@ -948,9 +943,6 @@ const (
 )
 
 func (a app) send(ctx context.Context, actor access.Actor, host string, e *Event, emails []string, kind string) int {
-	if a.mail.Sender == nil {
-		return 0
-	}
 	model := a.cache.Model()
 	e = model.invitedEvent(e)
 	inv := model.Invitations[e.ID]
@@ -1185,9 +1177,6 @@ func (a app) messageInvites(r *http.Request, body messageBody) (map[string]int, 
 	}
 	if len(wanted) == 0 && len(body.Emails) == 0 {
 		return nil, access.Invalid("pick who to send to")
-	}
-	if a.mail.Sender == nil {
-		return nil, access.Invalid("mail is not set up")
 	}
 	model := a.cache.Model()
 	standing := func(email string) string {

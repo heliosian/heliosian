@@ -16,6 +16,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/admins"
 	"heliosian/internal/auth"
+	"heliosian/internal/blob"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/imagesearch"
@@ -71,7 +72,7 @@ func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, func() *who.Model { return directory }, func() *config.Settings { return settings }, imagesearch.Search{}, mailer, testFrom, nil, nil, testStyle)
+	Register(mux, cache, blob.New(blob.NewMemoryBucket()), func() *who.Model { return directory }, func() *config.Settings { return settings }, imagesearch.Search{}, mailer, testFrom, nil, nil, testStyle)
 	return cache, mux
 }
 
@@ -79,8 +80,12 @@ var testStyle = CardStyle(func() string { return "HCA-Team" }, func() string { r
 
 func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	t.Helper()
-	return serveWith(t, nil)
+	return serveWith(t, discard{})
 }
+
+type discard struct{}
+
+func (discard) Send(context.Context, mail.Message) error { return nil }
 
 func tables(t *testing.T) store.Tables {
 	t.Helper()

@@ -27,6 +27,7 @@ import (
 	"heliosian/internal/devtls"
 	"heliosian/internal/env"
 	"heliosian/internal/geocode"
+	"heliosian/internal/intercept"
 	"heliosian/internal/keypoints"
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
@@ -79,6 +80,7 @@ func mailDir() string {
 }
 
 func sampleServer() (*http.Server, *store.Queue) {
+	intercept.Install(mail.Host, mailFiles{dir: mailDir()})
 	dir := &data.Dir{Root: "sampledata"}
 	bucket := blob.NewMemoryBucket()
 	media := blob.New(bucket)
@@ -93,16 +95,16 @@ func sampleServer() (*http.Server, *store.Queue) {
 		BrowserKey:    os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch:   app.ImageSearchKeys(),
 		Describer:     sampleDescriber(),
-		Mail:          mail.New("", "HCA-Team <hca@example.org>", mailDir()),
+		Mail:          mail.NewMailgun("sample", "HCA-Team <hca@example.org>"),
 		MailFrom:      "HCA-Team <hca@example.org>",
-		CelebrateMail: mail.New("", "Helios Celebrate <celebrate@example.org>", mailDir()),
+		CelebrateMail: mail.NewMailgun("sample", "Helios Celebrate <celebrate@example.org>"),
 		CelebrateFrom: "Helios Celebrate <celebrate@example.org>",
-		CalendarMail:  when.Mail{Sender: mail.New("", "Helios When <when@example.org>", mailDir()), From: "Helios When <when@example.org>", ReplyTo: "Helios When <rsvp@reply.example.org>", Key: []byte("sample")},
-		BirthdayMail:  mail.New("", "Helios Staff Birthdays <birthday@example.org>", mailDir()),
+		CalendarMail:  when.Mail{Sender: mail.NewMailgun("sample", "Helios When <when@example.org>"), From: "Helios When <when@example.org>", ReplyTo: "Helios When <rsvp@reply.example.org>", Key: []byte("sample")},
+		BirthdayMail:  mail.NewMailgun("sample", "Helios Staff Birthdays <birthday@example.org>"),
 		BirthdayFrom:  "Helios Staff Birthdays <birthday@example.org>",
 		BirthdayBase:  "https://birthday.heliosiandev.com:" + app.Port(),
 		FeedbackBase:  "https://home.heliosiandev.com:" + app.Port(),
-		Loop:          loop.Mail{Sender: &mail.Files{Dir: mailDir(), From: "Helios Loop"}, Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir()}},
+		Loop:          loop.Mail{Sender: mail.NewMailgun("sample", ""), Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir()}},
 		LoopDescriber: sampleGroupDescriber(),
 		Asker:         sampleAsker(),
 		Embedder:      artifacts.Fake{},

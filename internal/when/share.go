@@ -186,10 +186,8 @@ func (a app) readImage(key string) []byte {
 	if key == "" {
 		return nil
 	}
-	if a.store != nil {
-		if data, _, ok := a.store.Bytes(key); ok {
-			return data
-		}
+	if data, _, ok := a.store.Bytes(key); ok {
+		return data
 	}
 	for _, dir := range []string{"web/when", "web/public/when", "web/celebrate", "web/public/celebrate", "web/team", "web/public/team"} {
 		if data, err := os.ReadFile(path.Join(dir, key)); err == nil {

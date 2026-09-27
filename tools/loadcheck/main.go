@@ -71,7 +71,11 @@ func main() {
 		}
 		source = live
 	}
-	model, err := who.LoadModel(source, nil, app.StaticFiles{Root: "web/who"}, []byte("loadcheck"))
+	objects, err := blob.Open(blob.MediaBucket)
+	if err != nil {
+		log.Fatalf("blob store: %v", err)
+	}
+	model, err := who.LoadModel(source, blob.New(objects), app.StaticFiles{Root: "web/who"}, []byte("loadcheck"))
 	if err != nil {
 		log.Fatalf("load directory model: %v", err)
 	}
@@ -291,10 +295,6 @@ func main() {
 	}
 	fmt.Printf("groups admins: %d\n", len(groupCache.Admins()))
 
-	objects, err := blob.Open(blob.MediaBucket)
-	if err != nil {
-		log.Fatalf("blob store: %v", err)
-	}
 	embedder, err := artifacts.NewVertex()
 	if err != nil {
 		log.Fatalf("embedder: %v", err)

@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/blob"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/imagesearch"
@@ -60,8 +62,20 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 	cache := sampleCache(t)
 	d := sampleDirectory(t, "sampledata")
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, imagesearch.Search{}, Mail{}, testStyle)
+	Register(mux, cache, memoryStore(), func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, noCelebrate(), newSampleSources(t).sources, imagesearch.Search{}, Mail{Sender: &keptMail{}}, testStyle)
 	return mux, cache
+}
+
+func memoryStore() *blob.Store {
+	return blob.New(blob.NewMemoryBucket())
+}
+
+func noCelebrate() Celebrate {
+	return Celebrate{
+		Party:       func(string) *PartyPeople { return nil },
+		IsAdmin:     func(string) bool { return false },
+		MoveAddress: func(context.Context, access.Actor, string, string, string) error { return nil },
+	}
 }
 
 var testStyle = CardStyle(func() string { return "Helios When" }, func() string { return "The school year, day by day" })
@@ -366,7 +380,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	d := sampleDirectory(t, "sampledata")
 	kept := &keptMail{}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, imagesearch.Search{}, Mail{Sender: kept, From: "Helios When <when@example.org>", Base: "https://when.heliosian.com"}, testStyle)
+	Register(mux, cache, memoryStore(), func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, noCelebrate(), newSampleSources(t).sources, imagesearch.Search{}, Mail{Sender: kept, From: "Helios When <when@example.org>", Base: "https://when.heliosian.com"}, testStyle)
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {
@@ -812,7 +826,7 @@ func TestOverrideFromThePage(t *testing.T) {
 	if rec := call(t, admin, "PUT", "/api/when/overrides/image", `{"id":"a2@sample","image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Event("a2@sample").Image != "/category-images/night.jpg" || row()["Image"] != "category-images/night.jpg" {
 		t.Errorf("a picture: %d %+v", rec.Code, row())
 	}
-	if rec := call(t, admin, "PUT", "/api/when/invites/settings", `{"id":"a2@sample","flyer":"sample/flyer.jpg"}`); rec.Code != 204 || cache.Model().Invitations["a2@sample"] == nil || cache.Model().Invitations["a2@sample"].Flyer != "sample/flyer.jpg" || len(cache.Model().Invitations["a2@sample"].Hosts) != 0 {
+	if rec := call(t, admin, "PUT", "/api/when/invites/settings", `{"id":"a2@sample","flyer":"sample/community.jpg"}`); rec.Code != 204 || cache.Model().Invitations["a2@sample"] == nil || cache.Model().Invitations["a2@sample"].Flyer != "sample/community.jpg" || len(cache.Model().Invitations["a2@sample"].Hosts) != 0 {
 		t.Errorf("a flyer: %d %s", rec.Code, rec.Body)
 	}
 	if rec := call(t, admin, "PUT", "/api/when/overrides/image", `{"id":"a2@sample","image":""}`); rec.Code != 204 || cache.Model().Event("a2@sample").Image != "" {

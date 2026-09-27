@@ -43,7 +43,7 @@ type Mail struct {
 }
 
 func (m Mail) ready() bool {
-	return m.SigningKey != "" && m.Sender != nil
+	return m.SigningKey != ""
 }
 
 type DirArchive struct {

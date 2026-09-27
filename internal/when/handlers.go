@@ -45,13 +45,9 @@ type app struct {
 const imageFolder = "category-images"
 
 func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, settings func() *config.Settings, lists func(email string) []List, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search imagesearch.Search, mailbox Mail, style *sharecard.Style) Hooks {
-	if search.UserAgent == "" {
-		search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
-	}
+	search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
 	a := app{cache: cache, store: store, directory: directory, settings: settings, lists: lists, linked: linked, parties: celebrate.Party, celebrate: celebrate, sources: sources, clock: &matchClock{}, search: search, mail: mailbox, style: style}
-	if sources != nil {
-		go a.sweepLoop()
-	}
+	go a.sweepLoop()
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -352,10 +348,8 @@ func (a app) addEvents(r *http.Request, body eventBody) (map[string]any, error) 
 			slog.WarnContext(r.Context(), "calendar: host's yes", "event", id, "error", err)
 		}
 	}
-	if a.mail.Sender != nil {
-		if e := a.cache.Model().Event(ids[0]); e != nil {
-			go a.tellAdmins(context.WithoutCancel(r.Context()), actor.Email, e)
-		}
+	if e := a.cache.Model().Event(ids[0]); e != nil {
+		go a.tellAdmins(context.WithoutCancel(r.Context()), actor.Email, e)
 	}
 	return map[string]any{"ids": ids, "pending": pending}, nil
 }
@@ -425,7 +419,7 @@ func (a app) editEvent(r *http.Request, body eventBody) (serve.None, error) {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: event changed", "actor", actor.Email, "event", e.ID, "title", cells["Title"])
-	if cells["Status"] == StatusPending && a.mail.Sender != nil {
+	if cells["Status"] == StatusPending {
 		if changed := a.cache.Model().Event(e.ID); changed != nil {
 			go a.tellAdmins(context.WithoutCancel(r.Context()), actor.Email, changed)
 		}

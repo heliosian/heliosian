@@ -40,7 +40,8 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/geocode` — address → coordinates for the map
 - `internal/capture` — drive Chrome and screenshot a page, for the dev tools
 - `internal/devtls` — the in-memory self-signed certificate local HTTPS runs on
-- `internal/devcache` — the dev tools' loopback proxy that caches bucket reads under `local/cache/blobs/`
+- `internal/intercept` — a loopback proxy, trusted through a certificate authority minted in memory, that answers one host's HTTPS in-process for the dev tools and tests
+- `internal/devcache` — the dev tools' intercept of the storage API that caches bucket reads under `local/cache/blobs/`
 - `web/` — one directory per app, named for its hostname, holding its pages and every file it serves behind sign-in, `web/common/` for what all apps share, and `web/public/<app>/` and `web/public/common/` for the few files served before sign-in (frameworkless JavaScript throughout)
 - `sampledata/` — the fictional community served by default
 - `cmd/` — the binaries production runs besides `main.go`: `cmd/periodicsync`, the scheduled job that reads the school's year calendar PDF

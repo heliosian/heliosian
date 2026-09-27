@@ -4,11 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log/slog"
 	"maps"
 	"mime"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -41,19 +38,6 @@ type Attachment struct {
 
 type Sender interface {
 	Send(ctx context.Context, m Message) error
-}
-
-func New(mailgunKey, from, dir string) Sender {
-	switch {
-	case mailgunKey != "":
-		slog.Info("mail: sending through Mailgun", "from", from)
-		return NewMailgun(mailgunKey, from)
-	case dir != "":
-		slog.Info("mail: writing messages to files", "dir", dir)
-		return &Files{Dir: dir, From: from}
-	}
-	slog.Warn("mail: not configured; messages are dropped")
-	return nil
 }
 
 func Compose(from string, m Message) string {
@@ -103,50 +87,4 @@ func Compose(from string, m Message) string {
 
 func crlf(s string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\n", "\r\n")
-}
-
-type Files struct {
-	Dir, From string
-}
-
-func (f *Files) Send(ctx context.Context, m Message) error {
-	if err := os.MkdirAll(f.Dir, 0o755); err != nil {
-		return err
-	}
-	to := ""
-	if len(m.To) > 0 {
-		to = "-" + slug(strings.SplitN(m.To[0], "@", 2)[0])
-	}
-	name := filepath.Join(f.Dir, fmt.Sprintf("%s-%s%s.html", time.Now().Format("20060102-150405.000"), slug(m.Subject), to))
-	extra := ""
-	for _, k := range slices.Sorted(maps.Keys(m.Headers)) {
-		extra += fmt.Sprintf("\n%s: %s", k, m.Headers[k])
-	}
-	head := fmt.Sprintf("<!-- From: %s\nTo: %s\nCc: %s\nReply-To: %s\nSubject: %s%s -->\n", FromLine(f.From, m), strings.Join(m.To, ", "), strings.Join(m.CC, ", "), strings.Join(m.ReplyTo, ", "), m.Subject, extra)
-	if err := os.WriteFile(name, []byte(head+m.HTML), 0o644); err != nil {
-		return err
-	}
-	for _, a := range m.Attachments {
-		if err := os.WriteFile(strings.TrimSuffix(name, ".html")+"-"+a.Name, a.Content, 0o644); err != nil {
-			return err
-		}
-	}
-	slog.InfoContext(ctx, "mail: wrote message", "file", name, "to", m.To, "cc", m.CC, "subject", m.Subject, "attachments", len(m.Attachments))
-	return nil
-}
-
-func slug(s string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(s) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case b.Len() > 0 && !strings.HasSuffix(b.String(), "-"):
-			b.WriteByte('-')
-		}
-		if b.Len() >= 40 {
-			break
-		}
-	}
-	return strings.Trim(b.String(), "-")
 }

@@ -4,17 +4,18 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"heliosian/internal/intercept"
 )
 
 func TestMailgunSendsRawToEachRecipient(t *testing.T) {
 	var path, auth, contentType string
 	var to []string
 	var raw string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	intercept.Install(Host, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path = r.URL.Path
 		auth = r.Header.Get("Authorization")
 		contentType = r.Header.Get("Content-Type")
@@ -30,8 +31,7 @@ func TestMailgunSendsRawToEachRecipient(t *testing.T) {
 		raw = string(body)
 		w.Write([]byte(`{"id":"<x@y>","message":"Queued. Thank you."}`))
 	}))
-	defer srv.Close()
-	m := &Mailgun{Key: "key-test", Endpoint: srv.URL}
+	m := &Mailgun{Key: "key-test"}
 	if err := m.SendRaw(context.Background(), "team@loop.example.org", []string{"a@example.org"}, []byte("From: x\r\n\r\nhi\r\n")); err != nil {
 		t.Fatal(err)
 	}
@@ -46,11 +46,10 @@ func TestMailgunSendsRawToEachRecipient(t *testing.T) {
 }
 
 func TestMailgunReportsRefusal(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	intercept.Install(Host, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"message":"Domain not found"}`, http.StatusNotFound)
 	}))
-	defer srv.Close()
-	m := &Mailgun{Key: "key-test", Endpoint: srv.URL}
+	m := &Mailgun{Key: "key-test"}
 	err := m.SendRaw(context.Background(), "x@loop.example.org", []string{"a@example.org"}, []byte("hi"))
 	if err == nil || !strings.Contains(err.Error(), "404") || !strings.Contains(err.Error(), "Domain not found") {
 		t.Fatalf("err = %v", err)

@@ -44,11 +44,15 @@ const deployOverlap = 30 * time.Second
 
 var spend = claude.NewLimiter()
 
+type Geocoder interface {
+	who.Geocoder
+	geocode.Suggester
+}
+
 type Config struct {
 	Source        data.Source
 	Writer        data.Writer
-	Geocoder      who.Geocoder
-	Blobs         who.BlobChecker
+	Geocoder      Geocoder
 	Bucket        *blob.Bucket
 	Store         *blob.Store
 	FamilyIDKey   []byte
@@ -119,7 +123,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load celebrate data", "error", err)
 	}
-	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Blobs, StaticFiles{Root: "web/who"}, queue, cfg.FamilyIDKey, settings.SuperAdmins)
+	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Store, StaticFiles{Root: "web/who"}, queue, cfg.FamilyIDKey, settings.SuperAdmins)
 	if err != nil {
 		logging.Fatal("load directory data", "error", err)
 	}
@@ -258,10 +262,7 @@ func NewCore(cfg Config) *Core {
 	notifier := feedback.Notifier{Sender: cfg.Mail, From: cfg.MailFrom, Base: cfg.FeedbackBase, SuperAdmins: settings.SuperAdmins}
 	feedbackIntake := feedback.NewIntake(feedbackCache, notifier.Notify)
 	optIn := who.OptInForm(func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn })
-	var suggestions *geocode.Suggestions
-	if s, ok := cfg.Geocoder.(geocode.Suggester); ok {
-		suggestions = geocode.NewSuggestions(s)
-	}
+	suggestions := geocode.NewSuggestions(cfg.Geocoder)
 	for _, a := range apps {
 		home.RegisterSwitch(a.Mux, homeCache)
 		if a.Key != "when" {
@@ -272,9 +273,7 @@ func NewCore(cfg Config) *Core {
 		a.Mux.HandleFunc("GET /api/apps/alerts", alerts)
 		a.Mux.Handle("GET /optin", optIn)
 		feedback.Register(a.Mux, a.Key, appName(a.Key), settings.IsSuperAdmin, feedbackIntake)
-		if suggestions != nil {
-			suggestions.Register(a.Mux)
-		}
+		suggestions.Register(a.Mux)
 		folders := []string{"photos"}
 		if a.ImageFolder != "" {
 			folders = append(folders, a.ImageFolder)
@@ -350,7 +349,6 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		Source:        sheet,
 		Writer:        sheet,
 		Geocoder:      geocode.New(env.Key("GOOGLE_MAPS_SERVER_KEY", "local/creds/geocoding.key")),
-		Blobs:         store,
 		Bucket:        bucket,
 		Store:         store,
 		FamilyIDKey:   familyIDKey.Sum(nil),
