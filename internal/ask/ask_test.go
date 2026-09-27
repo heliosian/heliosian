@@ -66,22 +66,22 @@ func sampleSources(t *testing.T) Sources {
 		roster.Classrooms = append(roster.Classrooms, room)
 	}
 	queue := store.NewQueue()
-	calendarCache, err := when.NewCache(dir, dir, func() when.Roster { return roster }, nil, func(string) bool { return false }, queue)
+	calendarCache, err := when.NewCache(dir, dir, func() when.Roster { return roster }, nil, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	calendarModel := calendarCache.Model()
-	teamCache, err := team.NewCache(dir, dir, anyImages{}, func(string) bool { return false }, queue)
+	teamCache, err := team.NewCache(dir, dir, anyImages{}, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	teamModel := teamCache.Model()
-	celebrateCache, err := celebrate.NewCache(dir, dir, anyImages{}, func(string) bool { return false }, queue)
+	celebrateCache, err := celebrate.NewCache(dir, dir, anyImages{}, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	celebrateModel := celebrateCache.Model()
-	loopCache, err := loop.NewCache(dir, dir, func(string) bool { return false }, queue)
+	loopCache, err := loop.NewCache(dir, dir, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}

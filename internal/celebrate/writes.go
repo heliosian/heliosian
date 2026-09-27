@@ -823,34 +823,6 @@ func (m *Model) saveSettings(actor access.Actor, s Settings) ([]store.Op, error)
 	return ops, nil
 }
 
-func (m *Model) setAdmins(actor access.Actor, superAdmins, requested []string) ([]store.Op, []string, error) {
-	if err := requireAdmin(actor); err != nil {
-		return nil, nil, err
-	}
-	super := map[string]bool{}
-	for _, e := range superAdmins {
-		super[e] = true
-	}
-	admins := []string{}
-	for _, e := range config.NormalizeEmails(requested) {
-		if !super[e] {
-			admins = append(admins, e)
-		}
-	}
-	ops := []store.Op{}
-	for _, e := range m.admins {
-		if !slices.Contains(admins, e) {
-			ops = append(ops, store.Delete(adminsTab, store.Row{"Email": e}))
-		}
-	}
-	for _, e := range admins {
-		if !slices.Contains(m.admins, e) {
-			ops = append(ops, store.Insert(adminsTab, store.Row{"Email": e}))
-		}
-	}
-	return ops, admins, nil
-}
-
 func (m *Model) moveUnlisted(actor access.Actor, directory *who.Model, old, to, name string) ([]store.Op, int, error) {
 	if err := requireAdmin(actor); err != nil {
 		return nil, 0, err

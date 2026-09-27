@@ -6,6 +6,7 @@ import (
 	"log"
 	"slices"
 
+	"heliosian/internal/admins"
 	"heliosian/internal/app"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/birthday"
@@ -56,7 +57,7 @@ var layouts = map[string][]tab{
 	"Apps": {
 		{"Categories", home.CategoryColumns},
 		{"Links", home.LinkColumns},
-		{"Admins", home.AdminColumns},
+		{admins.Tab, admins.Columns},
 		{"Visibility", home.VisibilityColumns},
 		{"Audience", home.AudienceColumns},
 		{"Widgets", home.WidgetColumns},
@@ -69,7 +70,7 @@ var layouts = map[string][]tab{
 		{"Links", team.LinkColumns},
 		{"Settings", team.SettingColumns},
 		{"Notifications", team.NotificationColumns},
-		{"Admins", team.AdminColumns},
+		{admins.Tab, admins.Columns},
 		{"Redirects", team.RedirectColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
@@ -82,7 +83,7 @@ var layouts = map[string][]tab{
 		{"Charities", birthday.CharityColumns},
 		{"Newsletter Dates", birthday.NewsletterDateColumns},
 		{"Settings", birthday.SettingColumns},
-		{"Admins", birthday.AdminColumns},
+		{admins.Tab, admins.Columns},
 		{"Team", birthday.TeamColumns},
 		{"Reminders", birthday.ReminderColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
@@ -97,7 +98,7 @@ var layouts = map[string][]tab{
 		{"Hosts", celebrate.HostColumns},
 		{"Tickets", celebrate.TicketColumns},
 		{"Settings", celebrate.SettingColumns},
-		{"Admins", celebrate.AdminColumns},
+		{admins.Tab, admins.Columns},
 		{"Redirects", celebrate.RedirectColumns},
 		{"INVOICING", celebrate.InvoicingColumns},
 		{"Former Addresses", celebrate.FormerColumns},
@@ -112,7 +113,7 @@ var layouts = map[string][]tab{
 		{when.DayTypesTab, when.DayTypeColumns},
 		{when.DayOverridesTab, when.DayOverrideColumns},
 		{when.TagsTab, when.TagColumns},
-		{when.AdminsTab, when.AdminColumns},
+		{admins.Tab, admins.Columns},
 		{when.FeedsTab, when.FeedColumns},
 		{when.SettingsTab, when.SettingColumns},
 		{when.RSVPsTab, when.RSVPColumns},
@@ -132,7 +133,7 @@ var layouts = map[string][]tab{
 		{"Aliases", loop.AliasColumns},
 		{"Messages", loop.MessageColumns},
 		{"Deliveries", loop.DeliveryColumns},
-		{"Admins", loop.AdminColumns},
+		{admins.Tab, admins.Columns},
 		{"Archived", loop.ArchivedColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},

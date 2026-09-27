@@ -23,7 +23,7 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	groups, err := loop.NewCache(dir, dir, func(string) bool { return false }, store.NewQueue())
+	groups, err := loop.NewCache(dir, dir, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,12 +84,12 @@ func TestMagicTagsCarryTheirHosts(t *testing.T) {
 		t.Fatal(err)
 	}
 	queue := store.NewQueue()
-	portalCache, err := team.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, queue)
+	portalCache, err := team.NewCache(dir, dir, anyImage{}, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	portal := portalCache.Model()
-	siteCache, err := celebrate.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, queue)
+	siteCache, err := celebrate.NewCache(dir, dir, anyImage{}, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestCommitteesAreListsToo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	teamCache, err := team.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, store.NewQueue())
+	teamCache, err := team.NewCache(dir, dir, anyImage{}, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}

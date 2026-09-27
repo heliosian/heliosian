@@ -16,6 +16,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"heliosian/internal/admins"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
@@ -26,7 +27,6 @@ const (
 	appName        = "apps"
 	categoriesTab  = "Categories"
 	linksTab       = "Links"
-	adminsTab      = "Admins"
 	visibilityTab  = "Visibility"
 	audienceTab    = "Audience"
 	widgetsTab     = "Widgets"
@@ -47,12 +47,10 @@ var (
 	categoryColumns   = []string{"Title", "Emoji", "Style", "Max", store.OrderColumn}
 	linkColumns       = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added", store.OrderColumn}
 	AudienceColumns   = append([]string{"Thing"}, filter.RuleColumns...)
-	adminColumns      = []string{"Email"}
 	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline", "Name", store.OrderColumn}
 	widgetColumns     = []string{"Widget", store.OrderColumn}
 	CategoryColumns   = categoryColumns
 	LinkColumns       = linkColumns
-	AdminColumns      = adminColumns
 	VisibilityColumns = visibilityColumns
 	WidgetColumns     = widgetColumns
 )
@@ -278,10 +276,7 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 	if err := buildWidgetOrder(model, tables[widgetsTab]); err != nil {
 		return nil, err
 	}
-	for _, row := range tables[adminsTab] {
-		model.admins = append(model.admins, row["Email"])
-	}
-	model.admins = config.NormalizeEmails(model.admins)
+	model.admins = admins.Read(tables)
 	index := map[string]int{}
 	events, apps := false, false
 	for _, row := range tables[categoriesTab] {

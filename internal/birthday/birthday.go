@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
 	"heliosian/internal/store"
 )
 
@@ -25,7 +25,6 @@ const (
 	charitiesTab       = "Charities"
 	newsletterDatesTab = "Newsletter Dates"
 	settingsTab        = "Settings"
-	adminsTab          = "Admins"
 	teamTab            = "Team"
 	remindersTab       = "Reminders"
 )
@@ -85,7 +84,6 @@ var (
 	CharityColumns        = []string{"Name", "Donation Link", "About", "EIN", "Allowed", "Why Not Allowed", "Added On"}
 	NewsletterDateColumns = []string{"Date"}
 	SettingColumns        = []string{"Key", "Value"}
-	AdminColumns          = []string{"Email"}
 	TeamColumns           = []string{"Email", "Role"}
 	ReminderColumns       = []string{"Email", "Year", "Kind", "Sent On", "Sent To"}
 )
@@ -169,7 +167,7 @@ type Model struct {
 	Team            []TeamMember
 	Reminders       map[string]bool
 	Settings        Settings
-	Admins          []string
+	admins          []string
 	byEmail         map[string]*Birthday
 	byCharity       map[string]*Charity
 }
@@ -324,11 +322,7 @@ func BuildModel(tables store.Tables) (*Model, error) {
 		Outreach: map[string]Outreach{}, Donations: map[string]Donation{}, Notes: []Note{}, Charities: []Charity{},
 		NewsletterDates: []string{}, Team: []TeamMember{}, Reminders: map[string]bool{}, Settings: settings, byEmail: map[string]*Birthday{}, byCharity: map[string]*Charity{},
 	}
-	admins := []string{}
-	for _, row := range tables[adminsTab] {
-		admins = append(admins, row["Email"])
-	}
-	model.Admins = config.NormalizeEmails(admins)
+	model.admins = admins.Read(tables)
 	for _, row := range tables[remindersTab] {
 		model.Reminders[reminderKey(row["Email"], row["Year"], row["Kind"])] = true
 	}

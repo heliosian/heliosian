@@ -8,12 +8,13 @@ import (
 	"testing"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
 
-var tabNames = []string{groupsTab, managersTab, rulesTab, additionsTab, excludedTab, aliasesTab, messagesTab, deliveriesTab, adminsTab, archivedTab}
+var tabNames = []string{groupsTab, managersTab, rulesTab, additionsTab, excludedTab, aliasesTab, messagesTab, deliveriesTab, admins.Tab, archivedTab}
 
 func sampleTables(t *testing.T) store.Tables {
 	t.Helper()
@@ -31,7 +32,7 @@ func sampleTables(t *testing.T) store.Tables {
 func sampleCache(t *testing.T) (*Cache, *data.Dir) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	cache, err := NewCache(dir, dir, func(string) bool { return false }, store.NewQueue())
+	cache, err := NewCache(dir, dir, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,33 +163,6 @@ func TestChecksRefuseBadGroups(t *testing.T) {
 		if err := CheckGroup(g); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
-	}
-}
-
-func TestSavingAdminsDropsEntriesWithoutAnAt(t *testing.T) {
-	cache, _ := sampleCache(t)
-	ctx := context.Background()
-	admin := access.Actor{Email: "a@x.org", Admin: true}
-	requested := []string{"jsmith", " New.Admin@X.org "}
-	ops, admins, err := cache.Model().SetAdmins(admin, nil, requested)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if slices.Contains(admins, "jsmith") || !slices.Contains(admins, "new.admin@x.org") {
-		t.Fatalf("admins: %v", admins)
-	}
-	if err := cache.CommitAndWait(ctx, admin, ops...); err != nil {
-		t.Fatal(err)
-	}
-	if cache.Count(adminsTab, store.Row{"Email": "jsmith"}) != 0 {
-		t.Fatal("jsmith was written to the admins tab")
-	}
-	again, _, err := cache.Model().SetAdmins(admin, nil, requested)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(again) != 0 {
-		t.Fatalf("saving the same list again wrote %v", again)
 	}
 }
 

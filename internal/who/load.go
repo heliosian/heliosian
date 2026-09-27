@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/admins"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
 	"heliosian/internal/store"
 )
 
@@ -205,8 +205,6 @@ var familyColumns = []string{
 	"Family Photo Updated", "Family Photo", "Family Photo Crop", "Family Pronunciation",
 }
 
-const adminsTable = "Admins"
-
 const geocodeTable = "Geocode"
 
 const (
@@ -318,7 +316,6 @@ type loader struct {
 	websiteRows    []store.Row
 	imageRows      []store.Row
 	geocodeRows    []store.Row
-	adminRows      []store.Row
 	nameToEmail    map[string]string
 	images         map[string]string
 
@@ -367,7 +364,6 @@ func BuildModel(ctx context.Context, tables store.Tables, blobs, static BlobChec
 		websiteRows:      tables[WebsiteTable],
 		imageRows:        tables[imagesTab],
 		geocodeRows:      tables[geocodeTable],
-		adminRows:        tables[adminsTable],
 		people:           map[string]*Person{},
 		households:       map[string]*household{},
 		personHouseholds: map[string][]string{},
@@ -379,6 +375,7 @@ func BuildModel(ctx context.Context, tables store.Tables, blobs, static BlobChec
 		model: &Model{
 			Families: map[string]Family{}, RoomParents: map[string][]string{},
 			tags: tables[tagsTable], managers: tables[managersTable],
+			admins: admins.Read(tables),
 		},
 	}
 	steps := []func() error{
@@ -404,7 +401,6 @@ func BuildModel(ctx context.Context, tables store.Tables, blobs, static BlobChec
 		l.deriveClassrooms,
 		l.deriveStructure,
 		l.locate,
-		l.readAdmins,
 	}
 	for _, step := range steps {
 		if err := step(); err != nil {
@@ -1610,15 +1606,6 @@ func (l *loader) locate() error {
 	}
 	sort.Strings(unlocated)
 	l.model.unlocated = unlocated
-	return nil
-}
-
-func (l *loader) readAdmins() error {
-	emails := []string{}
-	for _, row := range l.adminRows {
-		emails = append(emails, row["Email"])
-	}
-	l.model.admins = config.NormalizeEmails(emails)
 	return nil
 }
 

@@ -9,8 +9,6 @@ import (
 	"mime"
 	"net/http"
 	"os"
-	"slices"
-	"strings"
 	"time"
 
 	gcal "google.golang.org/api/calendar/v3"
@@ -109,18 +107,15 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load config", "error", err)
 	}
-	superAdmin := func(email string) bool {
-		return slices.Contains(settings.SuperAdmins(), strings.ToLower(strings.TrimSpace(email)))
-	}
-	teamCache, err := team.NewCache(cfg.Source, cfg.Writer, teamImages{cfg.Store}, superAdmin, queue)
+	teamCache, err := team.NewCache(cfg.Source, cfg.Writer, teamImages{cfg.Store}, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load team data", "error", err)
 	}
-	birthdayCache, err := birthday.NewCache(cfg.Source, cfg.Writer, superAdmin, queue)
+	birthdayCache, err := birthday.NewCache(cfg.Source, cfg.Writer, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load birthdays data", "error", err)
 	}
-	celebrateCache, err := celebrate.NewCache(cfg.Source, cfg.Writer, celebrateImages{cfg.Store}, superAdmin, queue)
+	celebrateCache, err := celebrate.NewCache(cfg.Source, cfg.Writer, celebrateImages{cfg.Store}, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load celebrate data", "error", err)
 	}
@@ -133,11 +128,11 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load invites data", "error", err)
 	}
-	calendarCache, err := when.NewCache(cfg.Source, cfg.Writer, func() when.Roster { return CalendarRoster(cache.Model()) }, calendarImages{cfg.Store}, superAdmin, queue)
+	calendarCache, err := when.NewCache(cfg.Source, cfg.Writer, func() when.Roster { return CalendarRoster(cache.Model()) }, calendarImages{cfg.Store}, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load calendar data", "error", err)
 	}
-	loopCache, err := loop.NewCache(cfg.Source, cfg.Writer, superAdmin, queue)
+	loopCache, err := loop.NewCache(cfg.Source, cfg.Writer, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load loop data", "error", err)
 	}
@@ -207,9 +202,9 @@ func NewCore(cfg Config) *Core {
 		return nil
 	}
 	partyCalendar := when.Celebrate{Party: partyPeople{celebrateCache}.people, IsAdmin: celebrateCache.IsAdmin, MoveAddress: moveAddress}
-	hooks = when.Register(calendarMux, calendarCache, cfg.Store, cache.Model, settings.Settings, calendarLists(cache, lists.Lists), settings.SuperAdmins, linked, partyCalendar, sources, cfg.ImageSearch, cfg.CalendarMail, calendarStyle)
+	hooks = when.Register(calendarMux, calendarCache, cfg.Store, cache.Model, settings.Settings, calendarLists(cache, lists.Lists), linked, partyCalendar, sources, cfg.ImageSearch, cfg.CalendarMail, calendarStyle)
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, homeCache, cfg.Store, settings.SuperAdmins, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault, homeStyle)
+	home.Register(homeMux, homeCache, cfg.Store, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault, homeStyle)
 	teamMux := http.NewServeMux()
 	eventRSVPs := func(id string) *team.EventRSVPs {
 		sent, answers, ok := calendarCache.LinkedRSVPs(linked(""), when.SourceTeam, id)
@@ -218,9 +213,9 @@ func NewCore(cfg Config) *Core {
 		}
 		return &team.EventRSVPs{Sent: sent, Answers: answers}
 	}
-	team.Register(teamMux, teamCache, cfg.Store, cache.Model, settings.Settings, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail, cfg.MailFrom, eventRSVPs, activityEmailList(loopCache.Model), teamStyle)
+	team.Register(teamMux, teamCache, cfg.Store, cache.Model, settings.Settings, cfg.ImageSearch, cfg.Mail, cfg.MailFrom, eventRSVPs, activityEmailList(loopCache.Model), teamStyle)
 	birthdayMux := http.NewServeMux()
-	birthday.Register(birthdayMux, birthdayCache, cache.Model, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(ctx context.Context, email string) error {
+	birthday.Register(birthdayMux, birthdayCache, cache.Model, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(ctx context.Context, email string) error {
 		return home.Grant(ctx, homeCache, "birthday", email)
 	}, birthdayAbout)
 	celebrateMux := http.NewServeMux()
@@ -231,7 +226,7 @@ func NewCore(cfg Config) *Core {
 		}
 		return &celebrate.PartyRSVPs{Sent: sent, Answers: answers}
 	}
-	celebrate.Register(celebrateMux, celebrateCache, cfg.Store, cache.Model, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom, partyRSVPs, func(ctx context.Context, actor access.Actor, old, to, name string) {
+	celebrate.Register(celebrateMux, celebrateCache, cfg.Store, cache.Model, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom, partyRSVPs, func(ctx context.Context, actor access.Actor, old, to, name string) {
 		hooks.MoveAddress(ctx, actor, old, to, name)
 	}, celebrateStyle)
 	askMux := http.NewServeMux()
@@ -239,7 +234,7 @@ func NewCore(cfg Config) *Core {
 	documents := artifacts.Register(askMux, artifactsCache, cfg.Embedder, queue, cfg.ArtifactsMail)
 	loopMail.Documents = documents
 	loopMux := http.NewServeMux()
-	loop.Register(loopMux, loopCache, cfg.Store, sources, settings.Settings, settings.SuperAdmins, loopMail, cfg.LoopDescriber, loopAbout)
+	loop.Register(loopMux, loopCache, cfg.Store, sources, settings.Settings, loopMail, cfg.LoopDescriber, loopAbout)
 	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, lists, sources, linked), cfg.Asker, spend, cfg.ChatKey)
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
@@ -276,7 +271,7 @@ func NewCore(cfg Config) *Core {
 		a.Mux.HandleFunc("GET /api/apps/late", behind)
 		a.Mux.HandleFunc("GET /api/apps/alerts", alerts)
 		a.Mux.Handle("GET /optin", optIn)
-		feedback.Register(a.Mux, a.Key, appName(a.Key), superAdmin, feedbackIntake)
+		feedback.Register(a.Mux, a.Key, appName(a.Key), settings.IsSuperAdmin, feedbackIntake)
 		if suggestions != nil {
 			suggestions.Register(a.Mux)
 		}
@@ -289,7 +284,7 @@ func NewCore(cfg Config) *Core {
 	homeMux.HandleFunc("GET /api/apps/team", teamWidget(cache, teamCache))
 	homeMux.HandleFunc("GET /api/apps/celebrate", celebrateWidget(cache, calendarCache, linked))
 	homeMux.HandleFunc("GET /api/apps/school", schoolWidget(cache, artifactsCache))
-	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.FeedbackFiler, superAdmin)
+	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.FeedbackFiler, settings.IsSuperAdmin)
 	go queue.Tick()
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
@@ -297,7 +292,7 @@ func NewCore(cfg Config) *Core {
 	})
 	return &Core{
 		CalendarCache: calendarCache, LoopCache: loopCache, Cache: cache, Documents: documents, Queue: queue,
-		Spoof:  &auth.Spoof{Allowed: superAdmin, Person: spoofPerson(cache), People: spoofPeople(cache)},
+		Spoof:  &auth.Spoof{Allowed: settings.IsSuperAdmin, Person: spoofPerson(cache), People: spoofPeople(cache)},
 		Member: func(email string) bool { return who.Member(cache, email) }, Sessions: settings, apps: apps,
 	}
 }

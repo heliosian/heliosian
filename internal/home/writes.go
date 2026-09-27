@@ -416,35 +416,6 @@ func (c *Cache) deleteCategory(actor access.Actor, title string) ([]store.Op, er
 	return []store.Op{store.Delete(categoriesTab, store.Row{"Title": title})}, nil
 }
 
-func (c *Cache) setAdmins(actor access.Actor, emails []string) ([]string, []store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
-		return nil, nil, err
-	}
-	super := map[string]bool{}
-	for _, e := range c.superAdmins() {
-		super[e] = true
-	}
-	admins := []string{}
-	for _, e := range config.NormalizeEmails(emails) {
-		if !super[e] {
-			admins = append(admins, e)
-		}
-	}
-	current := c.Model().admins
-	ops := []store.Op{}
-	for _, e := range current {
-		if !slices.Contains(admins, e) {
-			ops = append(ops, store.Delete(adminsTab, store.Row{"Email": e}))
-		}
-	}
-	for _, e := range admins {
-		if !slices.Contains(current, e) {
-			ops = append(ops, store.Insert(adminsTab, store.Row{"Email": e}))
-		}
-	}
-	return admins, ops, nil
-}
-
 func (c *Cache) setVisibility(actor access.Actor, in visibilityEdit) (string, Visibility, []store.Op, error) {
 	if err := requireAdmin(actor); err != nil {
 		return "", Visibility{}, nil, err

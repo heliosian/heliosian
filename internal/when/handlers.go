@@ -27,29 +27,28 @@ const shell = "web/when/index.html"
 var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/e/{id...}", "/events/{id...}", "/mine", "/mine/{list}", "/admin"}
 
 type app struct {
-	cache       *Cache
-	store       *blob.Store
-	directory   func() *who.Model
-	settings    func() *config.Settings
-	lists       func(email string) []List
-	superAdmins func() []string
-	linked      func(email string) []Linked
-	parties     func(id string) *PartyPeople
-	celebrate   Celebrate
-	sources     func() filter.Sources
-	clock       *matchClock
-	search      imagesearch.Search
-	mail        Mail
-	style       *sharecard.Style
+	cache     *Cache
+	store     *blob.Store
+	directory func() *who.Model
+	settings  func() *config.Settings
+	lists     func(email string) []List
+	linked    func(email string) []Linked
+	parties   func(id string) *PartyPeople
+	celebrate Celebrate
+	sources   func() filter.Sources
+	clock     *matchClock
+	search    imagesearch.Search
+	mail      Mail
+	style     *sharecard.Style
 }
 
 const imageFolder = "category-images"
 
-func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, settings func() *config.Settings, lists func(email string) []List, superAdmins func() []string, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search imagesearch.Search, mailbox Mail, style *sharecard.Style) Hooks {
+func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, settings func() *config.Settings, lists func(email string) []List, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search imagesearch.Search, mailbox Mail, style *sharecard.Style) Hooks {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
 	}
-	a := app{cache: cache, store: store, directory: directory, settings: settings, lists: lists, superAdmins: superAdmins, linked: linked, parties: celebrate.Party, celebrate: celebrate, sources: sources, clock: &matchClock{}, search: search, mail: mailbox, style: style}
+	a := app{cache: cache, store: store, directory: directory, settings: settings, lists: lists, linked: linked, parties: celebrate.Party, celebrate: celebrate, sources: sources, clock: &matchClock{}, search: search, mail: mailbox, style: style}
 	if sources != nil {
 		go a.sweepLoop()
 	}
@@ -376,7 +375,7 @@ func (a app) oneEvent(r *http.Request, _ serve.None) (oneEventView, error) {
 }
 
 func (a app) tellAdmins(ctx context.Context, by string, e *Event) {
-	admins := a.cache.Admins(a.superAdmins())
+	admins := a.cache.Admins()
 	if len(admins) == 0 {
 		return
 	}

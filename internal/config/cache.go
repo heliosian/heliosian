@@ -51,7 +51,7 @@ func (c *Cache) SuperAdmins() []string {
 }
 
 func (c *Cache) IsSuperAdmin(email string) bool {
-	return slices.Contains(c.SuperAdmins(), email)
+	return slices.Contains(c.SuperAdmins(), NormalizeEmail(email))
 }
 
 func (c *Cache) SignedOut(email string) (time.Time, bool) {

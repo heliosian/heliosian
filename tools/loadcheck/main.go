@@ -174,7 +174,7 @@ func main() {
 	}
 	fmt.Printf("apps admins: %d\n", len(appsCache.Admins()))
 
-	eventsCache, err := team.NewCache(source, nil, teamImages{}, func(string) bool { return false }, store.NewQueue())
+	eventsCache, err := team.NewCache(source, nil, teamImages{}, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load events model: %v", err)
 	}
@@ -200,9 +200,9 @@ func main() {
 				a.Title, a.Category, a.Status, len(a.Descendants()), len(a.Links), volunteers, a.ImageURL != "")
 		}
 	}
-	fmt.Printf("events admins: %d\n", len(eventsCache.Admins(nil)))
+	fmt.Printf("events admins: %d\n", len(eventsCache.Admins()))
 
-	celebrateCache, err := celebrate.NewCache(source, nil, celebrateImages{}, func(string) bool { return false }, store.NewQueue())
+	celebrateCache, err := celebrate.NewCache(source, nil, celebrateImages{}, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load celebrate model: %v", err)
 	}
@@ -226,7 +226,7 @@ func main() {
 	for reason, n := range site.Skipped {
 		fmt.Printf("  skipped %d: %s\n", n, reason)
 	}
-	fmt.Printf("celebrate admins: %d\n", len(celebrateCache.Admins(nil)))
+	fmt.Printf("celebrate admins: %d\n", len(celebrateCache.Admins()))
 
 	configCache, err := config.NewCache(source, nil, store.NewQueue())
 	if err != nil {
@@ -236,7 +236,7 @@ func main() {
 	fmt.Printf("config: %d super admins, stale years %+v, staff color %s, %d grade colors, %d classroom colors\n",
 		len(settings.SuperAdmins), settings.StaleYears, settings.StaffColor, len(settings.GradeColors), len(settings.ClassroomColors))
 
-	calendarCache, err := when.NewCache(source, nil, func() when.Roster { return app.CalendarRoster(model) }, nil, func(string) bool { return false }, store.NewQueue())
+	calendarCache, err := when.NewCache(source, nil, func() when.Roster { return app.CalendarRoster(model) }, nil, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load calendar model: %v", err)
 	}
@@ -269,9 +269,9 @@ func main() {
 	for _, d := range plan.DayTypes {
 		fmt.Printf("    %s: %d classroom-days\n", d.Name, byType[d.Name])
 	}
-	fmt.Printf("calendar admins: %d\n", len(calendarCache.Admins(nil)))
+	fmt.Printf("calendar admins: %d\n", len(calendarCache.Admins()))
 
-	groupCache, err := loop.NewCache(source, nil, func(string) bool { return false }, store.NewQueue())
+	groupCache, err := loop.NewCache(source, nil, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load groups model: %v", err)
 	}
@@ -289,7 +289,7 @@ func main() {
 	for _, g := range groupModel.Groups {
 		fmt.Printf("  %s %q: aliases %v, %d managers, %d rules, %d members, %d excluded, prefix %v, visibility %s, posting %s, replying %s\n", g.Address(), g.Title, g.Aliases, len(g.Managers), len(g.Rules), len(loop.Members(g, sources)), len(g.Excluded), g.Prefix, g.Visibility, g.Posting, g.Replying)
 	}
-	fmt.Printf("groups admins: %d\n", len(groupCache.Admins(nil)))
+	fmt.Printf("groups admins: %d\n", len(groupCache.Admins()))
 
 	objects, err := blob.Open(blob.MediaBucket)
 	if err != nil {

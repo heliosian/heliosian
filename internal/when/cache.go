@@ -4,10 +4,10 @@ import (
 	"context"
 	"log/slog"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
+	"heliosian/internal/admins"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -15,7 +15,7 @@ import (
 
 type Cache struct {
 	*store.Store[*Model]
-	superAdmin func(email string) bool
+	admins.List
 }
 
 var guestListTabs = []string{InvitesTab, InviteGroupsTab, RSVPsTab}
@@ -32,7 +32,7 @@ func spec(roster func() Roster, images ImageChecker) store.Spec[*Model] {
 			{Name: DayTypesTab, Columns: DayTypeColumns, Key: []string{"Day Type"}},
 			{Name: DayOverridesTab, Columns: DayOverrideColumns, Key: []string{"Date", "Classrooms"}},
 			{Name: TagsTab, Columns: TagColumns, Key: []string{"Tag"}},
-			{Name: AdminsTab, Columns: AdminColumns, Key: []string{"Email"}},
+			admins.Spec,
 			{Name: FeedsTab, Columns: FeedColumns, Key: []string{"Token"}},
 			{Name: SettingsTab, Columns: SettingColumns, Key: []string{"Email"}},
 			{Name: RSVPsTab, Columns: RSVPColumns, Key: []string{"Event ID", "Email"}},
@@ -92,12 +92,12 @@ func carryInvite(_ store.Tables, before, after store.Row) []store.Op {
 	return []store.Op{store.Update(RSVPsTab, was, store.Row{"Email": after["Email"]})}
 }
 
-func NewCache(source data.Source, writer data.Writer, roster func() Roster, images ImageChecker, superAdmin func(string) bool, queue *store.Queue) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, roster func() Roster, images ImageChecker, superAdmins func() []string, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec(roster, images), source, writer, queue)
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, superAdmin: superAdmin}, nil
+	return &Cache{Store: s, List: admins.New(superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
 }
 
 func resolveImages(ctx context.Context, images ImageChecker, model *Model) {
@@ -149,19 +149,4 @@ func resolveImages(ctx context.Context, images ImageChecker, model *Model) {
 			slog.Warn("calendar: picture does not exist", "of", what, "image", name)
 		}
 	}
-}
-
-func (c *Cache) IsSuperAdmin(email string) bool {
-	return c.superAdmin(strings.ToLower(strings.TrimSpace(email)))
-}
-
-func (c *Cache) IsAdmin(email string) bool {
-	email = strings.ToLower(strings.TrimSpace(email))
-	return slices.Contains(c.Model().admins, email) || c.superAdmin(email)
-}
-
-func (c *Cache) Admins(superAdmins []string) []string {
-	admins := config.NormalizeEmails(append(slices.Clone(c.Model().admins), superAdmins...))
-	sort.Strings(admins)
-	return admins
 }

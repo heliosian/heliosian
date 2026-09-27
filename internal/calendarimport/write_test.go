@@ -17,7 +17,7 @@ func sampleCache(t *testing.T) (*data.Dir, *when.Cache) {
 	for _, name := range []string{"Hummingbirds", "Hawks", "Falcons", "Jays", "Ravens", "Condors", "Ospreys", "Egrets", "Herons"} {
 		roster.Classrooms = append(roster.Classrooms, when.Classroom{Name: name})
 	}
-	cache, err := when.NewCache(sheet, sheet, func() when.Roster { return roster }, nil, func(string) bool { return false }, store.NewQueue())
+	cache, err := when.NewCache(sheet, sheet, func() when.Roster { return roster }, nil, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}

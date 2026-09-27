@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/claude"
@@ -69,22 +70,21 @@ func lookup(model *who.Model, email string) (Person, bool) {
 }
 
 type app struct {
-	cache       *Cache
-	media       *blob.Store
-	sources     func() Sources
-	settings    func() *config.Settings
-	superAdmins func() []string
-	mail        Mail
-	mailer      *mailer
-	describer   Describer
+	cache     *Cache
+	media     *blob.Store
+	sources   func() Sources
+	settings  func() *config.Settings
+	mail      Mail
+	mailer    *mailer
+	describer Describer
 }
 
 type Describer interface {
 	Group(ctx context.Context, actor string, facts describe.GroupFacts) (string, error)
 }
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, sources func() Sources, settings func() *config.Settings, superAdmins func() []string, mailbox Mail, describer Describer, about *sharecard.About) {
-	a := app{cache: cache, media: media, sources: sources, settings: settings, superAdmins: superAdmins, mail: mailbox, describer: describer}
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, sources func() Sources, settings func() *config.Settings, mailbox Mail, describer Describer, about *sharecard.About) {
+	a := app{cache: cache, media: media, sources: sources, settings: settings, mail: mailbox, describer: describer}
 	a.mailer = newMailer(cache, sources, mailbox)
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
@@ -97,8 +97,7 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, sources func(
 	mux.HandleFunc("GET /api/loop/messages", serve.JSON(a.messages))
 	mux.HandleFunc("POST /api/loop/subscription", serve.JSON(a.subscription))
 	mux.HandleFunc("POST /api/loop/archive", serve.JSON(a.archive))
-	mux.HandleFunc("GET /api/admin/state", serve.JSON(a.adminState))
-	mux.HandleFunc("POST /api/admin/admins", serve.JSON(a.setAdmins))
+	admins.Register(mux, "loop", cache.List, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
 	mux.HandleFunc("POST /hooks/mail/mime", a.inbound)
 	mux.HandleFunc("POST /hooks/events", a.events)
 	mux.Handle("GET /open/share/about.png", about)
@@ -486,35 +485,4 @@ func (a app) archive(r *http.Request, body archiveBody) (*groupView, error) {
 	}
 	slog.InfoContext(r.Context(), "loop:archived", "group", g.Name, "email", actor.Email, "archived", body.Archived)
 	return a.shown(g.Name, actor), nil
-}
-
-type adminView struct {
-	Email        string   `json:"email"`
-	Admins       []string `json:"admins"`
-	IsSuperAdmin bool     `json:"isSuperAdmin"`
-}
-
-func (a app) adminState(r *http.Request, _ serve.None) (adminView, error) {
-	actor := a.actor(r)
-	if !actor.Admin {
-		return adminView{}, access.Forbidden("admin access required")
-	}
-	return adminView{Email: actor.Email, Admins: a.cache.Admins(a.superAdmins()), IsSuperAdmin: a.cache.IsSuperAdmin(actor.Email)}, nil
-}
-
-type adminsBody struct {
-	Admins []string `json:"admins"`
-}
-
-func (a app) setAdmins(r *http.Request, body adminsBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, admins, err := a.cache.Model().SetAdmins(actor, a.superAdmins(), body.Admins)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "loop:set the admin list", "admins", admins)
-	return serve.None{}, nil
 }

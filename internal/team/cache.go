@@ -3,20 +3,18 @@ package team
 import (
 	"context"
 	"log/slog"
-	"slices"
-	"sort"
 	"strings"
 	"time"
 
+	"heliosian/internal/admins"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 )
 
 type Cache struct {
 	*store.Store[*Model]
-	superAdmin func(email string) bool
+	admins.List
 }
 
 func spec(images ImageChecker) store.Spec[*Model] {
@@ -29,7 +27,7 @@ func spec(images ImageChecker) store.Spec[*Model] {
 			{Name: linksTab, Columns: LinkColumns, Key: []string{"Event ID", "Title"}},
 			{Name: settingsTab, Columns: SettingColumns, Key: []string{"Key"}},
 			{Name: notificationsTab, Columns: NotificationColumns, Key: []string{"Email"}},
-			{Name: adminsTab, Columns: AdminColumns, Key: []string{"Email"}},
+			admins.Spec,
 			{Name: redirectsTab, Columns: RedirectColumns, Key: []string{"Old"}},
 		},
 		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {
@@ -93,25 +91,10 @@ func heldBy(rows []store.Row, path string, self store.Row) bool {
 	return false
 }
 
-func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmin func(string) bool, queue *store.Queue) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmins func() []string, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec(images), source, writer, queue)
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, superAdmin: superAdmin}, nil
-}
-
-func (c *Cache) IsSuperAdmin(email string) bool {
-	return c.superAdmin(strings.ToLower(strings.TrimSpace(email)))
-}
-
-func (c *Cache) IsAdmin(email string) bool {
-	email = strings.ToLower(strings.TrimSpace(email))
-	return slices.Contains(c.Model().admins, email) || c.superAdmin(email)
-}
-
-func (c *Cache) Admins(superAdmins []string) []string {
-	admins := config.NormalizeEmails(append(slices.Clone(c.Model().admins), superAdmins...))
-	sort.Strings(admins)
-	return admins
+	return &Cache{Store: s, List: admins.New(superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
 }

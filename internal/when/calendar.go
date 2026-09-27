@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/admins"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
@@ -28,7 +29,6 @@ const (
 	DayTypesTab     = "Day Types"
 	DayOverridesTab = "Day Overrides"
 	TagsTab         = "Tags"
-	AdminsTab       = "Admins"
 	FeedsTab        = "Feeds"
 	SettingsTab     = "Settings"
 	RSVPsTab        = "RSVPs"
@@ -76,7 +76,6 @@ var (
 	DayTypeColumns     = []string{"Day Type", "Dropoff Start", "Dropoff End", "School Start", "School End", "Pickup Start", "Pickup End", "Aftercare Start", "Aftercare End"}
 	DayOverrideColumns = []string{"Date", "Classrooms", "Day Type", "Note"}
 	TagColumns         = []string{"Tag", "Description", "Group", "Default", "Image", store.OrderColumn}
-	AdminColumns       = []string{"Email"}
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji", store.OrderColumn}
 	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position", "Feed Token"}
 	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered", "Answered By", "Via"}
@@ -1191,11 +1190,7 @@ func BuildModel(tables store.Tables, roster Roster) (*Model, error) {
 	for _, t := range tags {
 		m.tags[t.Name] = true
 	}
-	admins := []string{}
-	for _, row := range tables[AdminsTab] {
-		admins = append(admins, row["Email"])
-	}
-	m.admins = config.NormalizeEmails(admins)
+	m.admins = admins.Read(tables)
 	b := &builder{model: m}
 	for _, row := range tables[GoogleTab] {
 		e, err := b.event(SourceGoogle, row["Key"], row)

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/auth"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
@@ -65,12 +66,12 @@ func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 	if directory, err = who.LoadModel(sheet, nil, noFiles{}, []byte("test")); err != nil {
 		t.Fatal(err)
 	}
-	cache, err := NewCache(sheet, sheet, bundled{}, func(e string) bool { return e == admin }, queue)
+	cache, err := NewCache(sheet, sheet, bundled{}, func() []string { return []string{admin} }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, func() *who.Model { return directory }, func() *config.Settings { return settings }, func() []string { return []string{admin} }, imagesearch.Search{}, mailer, testFrom, nil, nil, testStyle)
+	Register(mux, cache, nil, func() *who.Model { return directory }, func() *config.Settings { return settings }, imagesearch.Search{}, mailer, testFrom, nil, nil, testStyle)
 	return cache, mux
 }
 
@@ -83,7 +84,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 
 func tables(t *testing.T) store.Tables {
 	t.Helper()
-	names := []string{categoriesTab, activitiesTab, volunteersTab, linksTab, settingsTab, adminsTab, redirectsTab}
+	names := []string{categoriesTab, activitiesTab, volunteersTab, linksTab, settingsTab, admins.Tab, redirectsTab}
 	queue.Flush()
 	tabs, err := sheet.Tabs(context.Background(), appName, names, nil)
 	if err != nil {
@@ -892,7 +893,7 @@ func TestBrokenSheetRefusesToLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := &data.Dir{Root: broken}
-	if _, err := NewCache(dir, dir, bundled{}, func(string) bool { return false }, store.NewQueue()); err == nil || !strings.Contains(err.Error(), `missing column "Event ID"`) {
+	if _, err := NewCache(dir, dir, bundled{}, func() []string { return nil }, store.NewQueue()); err == nil || !strings.Contains(err.Error(), `missing column "Event ID"`) {
 		t.Fatalf("a broken sheet loaded: %v", err)
 	}
 }

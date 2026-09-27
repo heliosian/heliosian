@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
@@ -158,7 +159,7 @@ func TestTagChangesReachMemoryTheSheetAndTheLog(t *testing.T) {
 	if s.count(t, managersTable, store.Row{tagOwner: jordan, tagName: "Football", managerEmail: "asha.chandra@heliosschool.org"}) != 1 || s.count(t, managersTable, store.Row{tagName: "Kicks"}) != 0 {
 		t.Fatalf("managers in the sheet: %v", s.rows(t, managersTable))
 	}
-	if !s.cache.IsAdmin(abena) || s.count(t, adminsTable, store.Row{"Email": abena}) != 1 {
+	if !s.cache.IsAdmin(abena) || s.count(t, admins.Tab, store.Row{"Email": abena}) != 1 {
 		t.Fatal("the admin list did not take")
 	}
 	logged(t, s.changeLog(t),

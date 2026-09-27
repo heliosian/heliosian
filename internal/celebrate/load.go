@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
@@ -27,7 +28,6 @@ const (
 	hostsTab        = "Hosts"
 	ticketsTab      = "Tickets"
 	settingsTab     = "Settings"
-	adminsTab       = "Admins"
 	redirectsTab    = "Redirects"
 	invoicingTab    = "INVOICING"
 	formerTab       = "Former Addresses"
@@ -72,7 +72,6 @@ var (
 	HostColumns        = []string{"Party ID", "Email"}
 	TicketColumns      = []string{"Ticket ID", "Party ID", "Email", "Name", "Purchaser", "Status", "Quantity", "Price", "Note", "Added By", "Added"}
 	SettingColumns     = []string{"Key", "Value"}
-	AdminColumns       = []string{"Email"}
 	RedirectColumns    = []string{"Type", "Old", "New", "Date"}
 	InvoicingColumns   = []string{"Date", "Party Title", "Event Code", "Purchaser Email", "Guest Name", "Action", "Quantity", "Cost", "Invoice", "Invoice To"}
 	FormerColumns      = []string{"Old", "New", "Name", "Changed"}
@@ -519,11 +518,7 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 		byTicket: map[string]*Ticket{}, ticketParties: map[string]*Party{}, pretty: map[string]*Party{}, Redirects: []Redirect{}, Invoicing: []InvoiceLine{},
 		former: map[string]Former{},
 	}
-	admins := []string{}
-	for _, row := range tables[adminsTab] {
-		admins = append(admins, row["Email"])
-	}
-	model.admins = config.NormalizeEmails(admins)
+	model.admins = admins.Read(tables)
 	for _, row := range tables[celebrationsTab] {
 		code := strings.TrimSpace(row["Code"])
 		if code == "" {

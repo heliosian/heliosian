@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/imagesearch"
@@ -31,23 +32,22 @@ var pages = []string{
 }
 
 type app struct {
-	cache       *Cache
-	store       *blob.Store
-	directory   func() *who.Model
-	superAdmins func() []string
-	search      imagesearch.Search
-	mailer      mail.Sender
-	from        string
-	rsvps       RSVPLookup
-	moved       AddressMoved
-	style       *sharecard.Style
+	cache     *Cache
+	store     *blob.Store
+	directory func() *who.Model
+	search    imagesearch.Search
+	mailer    mail.Sender
+	from      string
+	rsvps     RSVPLookup
+	moved     AddressMoved
+	style     *sharecard.Style
 }
 
-func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, superAdmins func() []string, search imagesearch.Search, mailer mail.Sender, from string, rsvps RSVPLookup, moved AddressMoved, style *sharecard.Style) {
+func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, search imagesearch.Search, mailer mail.Sender, from string, rsvps RSVPLookup, moved AddressMoved, style *sharecard.Style) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
 	}
-	a := app{cache: cache, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps, moved: moved, style: style}
+	a := app{cache: cache, store: store, directory: directory, search: search, mailer: mailer, from: from, rsvps: rsvps, moved: moved, style: style}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -75,8 +75,7 @@ func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory fun
 	mux.HandleFunc("POST /api/celebrate/categories/order", serve.JSON(a.reorderCategories))
 	mux.HandleFunc("POST /api/celebrate/settings", serve.JSON(a.saveSettings))
 	mux.HandleFunc("GET /api/celebrate/invoices.csv", a.invoicesCSV)
-	mux.HandleFunc("GET /api/admin/state", serve.JSON(a.adminState))
-	mux.HandleFunc("POST /api/admin/admins", serve.JSON(a.setAdmins))
+	admins.Register(mux, "celebrate", cache.List, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -459,34 +458,4 @@ func csvCell(s string) string {
 		return s
 	}
 	return "'" + s
-}
-
-type adminView struct {
-	Email  string   `json:"email"`
-	Admins []string `json:"admins"`
-}
-
-func (a app) adminState(r *http.Request, _ serve.None) (adminView, error) {
-	actor := a.actor(r)
-	if err := requireAdmin(actor); err != nil {
-		return adminView{}, err
-	}
-	return adminView{Email: actor.Email, Admins: a.cache.Admins(a.superAdmins())}, nil
-}
-
-type adminList struct {
-	Admins []string `json:"admins"`
-}
-
-func (a app) setAdmins(r *http.Request, body adminList) (serve.None, error) {
-	actor := a.actor(r)
-	ops, admins, err := a.cache.Model().setAdmins(actor, a.superAdmins(), body.Admins)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "celebrate: set the admin list", "actor", actor.Email, "admins", admins)
-	return serve.None{}, nil
 }

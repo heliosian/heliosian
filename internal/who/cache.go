@@ -4,14 +4,13 @@ import (
 	"context"
 	"log/slog"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/geocode"
 	"heliosian/internal/store"
@@ -23,8 +22,8 @@ type Geocoder interface {
 
 type Cache struct {
 	*store.Store[*Model]
-	superAdmins func() []string
-	unlocated   chan struct{}
+	admins.List
+	unlocated chan struct{}
 }
 
 var Tabs = []store.Tab{
@@ -39,7 +38,7 @@ var Tabs = []store.Tab{
 	{Name: managersTable, Columns: managerColumns, Key: managerColumns},
 	{Name: photosTab, Columns: photoColumns, Key: []string{"Email", "Photo Name"}},
 	{Name: imagesTab, Columns: imageColumns, Key: []string{imageKind, imageName}},
-	{Name: adminsTable, Columns: []string{"Email"}, Key: []string{"Email"}},
+	admins.Spec,
 	{Name: geocodeTable, Columns: geocodeColumns, Key: []string{geocodeAddress}, AppendOnly: true},
 }
 
@@ -111,12 +110,13 @@ func LoadModel(source data.Source, blobs, static BlobChecker, idKey []byte) (*Mo
 }
 
 func NewCache(source data.Source, writer data.Writer, blobs, static BlobChecker, queue *store.Queue, idKey []byte, superAdmins func() []string) (*Cache, error) {
-	c := &Cache{superAdmins: superAdmins, unlocated: make(chan struct{}, 1)}
+	c := &Cache{unlocated: make(chan struct{}, 1)}
 	s, err := store.New(spec(blobs, static, idKey, c.locate), source, writer, queue)
 	if err != nil {
 		return nil, err
 	}
 	c.Store = s
+	c.List = admins.New(superAdmins, func() []string { return s.Model().admins }, s.Commit)
 	return c, nil
 }
 
@@ -177,20 +177,4 @@ func (c *Cache) geocode(geocoder Geocoder) {
 		slog.Error("record geocoded addresses", "error", err)
 	}
 	slog.Info("geocoded family addresses", "looked up", len(missing), "found", len(ops), "took", time.Since(start).Round(time.Millisecond))
-}
-
-func (c *Cache) IsAdmin(email string) bool {
-	email = strings.ToLower(strings.TrimSpace(email))
-	return c.IsSuperAdmin(email) || slices.Contains(c.Model().admins, email)
-}
-
-func (c *Cache) Admins() []string {
-	admins := config.NormalizeEmails(append(slices.Clone(c.Model().admins), c.superAdmins()...))
-	sort.Strings(admins)
-	return admins
-}
-
-func (c *Cache) IsSuperAdmin(email string) bool {
-	email = strings.ToLower(strings.TrimSpace(email))
-	return slices.Contains(c.superAdmins(), email)
 }

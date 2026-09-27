@@ -8,7 +8,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
 	"heliosian/internal/geocode"
 	"heliosian/internal/store"
 )
@@ -50,26 +49,6 @@ func mayAdminister(actor access.Actor) error {
 		return access.Forbidden("admin access required")
 	}
 	return nil
-}
-
-func (c *Cache) setAdmins(actor access.Actor, emails []string) ([]store.Op, []string, error) {
-	if err := mayAdminister(actor); err != nil {
-		return nil, nil, err
-	}
-	admins := withoutSuperAdmins(config.NormalizeEmails(emails), c.superAdmins())
-	current := c.Model().admins
-	ops := []store.Op{}
-	for _, e := range current {
-		if !slices.Contains(admins, e) {
-			ops = append(ops, store.Delete(adminsTable, store.Row{"Email": e}))
-		}
-	}
-	for _, e := range admins {
-		if !slices.Contains(current, e) {
-			ops = append(ops, store.Insert(adminsTable, store.Row{"Email": e}))
-		}
-	}
-	return ops, admins, nil
 }
 
 func (m *Model) adminTarget(actor access.Actor, email string) (*Person, error) {

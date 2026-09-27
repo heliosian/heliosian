@@ -3,20 +3,17 @@ package birthday
 import (
 	"context"
 	"log/slog"
-	"slices"
-	"sort"
-	"strings"
 	"time"
 
-	"heliosian/internal/config"
+	"heliosian/internal/admins"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 )
 
 type Cache struct {
 	*store.Store[*Model]
-	shared     *store.Store[int]
-	superAdmin func(email string) bool
+	admins.List
+	shared *store.Store[int]
 }
 
 var sharedSpec = store.Spec[int]{
@@ -41,7 +38,7 @@ var spec = store.Spec[*Model]{
 		{Name: charitiesTab, Columns: CharityColumns, Key: []string{"Name"}, Cascade: renameCharity},
 		{Name: newsletterDatesTab, Columns: NewsletterDateColumns, Key: []string{"Date"}, Cascade: moveNewsletterDate},
 		{Name: settingsTab, Columns: SettingColumns, Key: []string{"Key"}},
-		{Name: adminsTab, Columns: AdminColumns, Key: []string{"Email"}},
+		admins.Spec,
 		{Name: teamTab, Columns: TeamColumns, Key: []string{"Email", "Role"}},
 		{Name: remindersTab, Columns: ReminderColumns, Key: []string{"Email", "Year", "Kind"}},
 	},
@@ -71,7 +68,7 @@ func moveNewsletterDate(_ store.Tables, before, after store.Row) []store.Op {
 	return []store.Op{store.Update(birthdaysTab, store.Row{"Newsletter Override": before["Date"]}, store.Row{"Newsletter Override": after["Date"]})}
 }
 
-func NewCache(source data.Source, writer data.Writer, superAdmin func(string) bool, queue *store.Queue) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, superAdmins func() []string, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec, source, writer, queue)
 	if err != nil {
 		return nil, err
@@ -80,20 +77,5 @@ func NewCache(source data.Source, writer data.Writer, superAdmin func(string) bo
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, shared: shared, superAdmin: superAdmin}, nil
-}
-
-func (c *Cache) IsSuperAdmin(email string) bool {
-	return c.superAdmin(strings.ToLower(strings.TrimSpace(email)))
-}
-
-func (c *Cache) IsAdmin(email string) bool {
-	email = strings.ToLower(strings.TrimSpace(email))
-	return slices.Contains(c.Model().Admins, email) || c.superAdmin(email)
-}
-
-func (c *Cache) Admins(superAdmins []string) []string {
-	admins := config.NormalizeEmails(append(slices.Clone(c.Model().Admins), superAdmins...))
-	sort.Strings(admins)
-	return admins
+	return &Cache{Store: s, List: admins.New(superAdmins, func() []string { return s.Model().admins }, s.Commit), shared: shared}, nil
 }

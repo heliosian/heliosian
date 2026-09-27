@@ -419,30 +419,6 @@ func saveSettings(actor access.Actor, s Settings) ([]store.Op, error) {
 	return ops, nil
 }
 
-func (m *Model) setAdmins(actor access.Actor, requested, superAdmins []string) ([]store.Op, []string, error) {
-	if err := requireAdmin(actor); err != nil {
-		return nil, nil, err
-	}
-	admins := []string{}
-	for _, e := range config.NormalizeEmails(requested) {
-		if !slices.Contains(superAdmins, e) {
-			admins = append(admins, e)
-		}
-	}
-	ops := []store.Op{}
-	for _, e := range m.Admins {
-		if !slices.Contains(admins, e) {
-			ops = append(ops, store.Delete(adminsTab, store.Row{"Email": e}))
-		}
-	}
-	for _, e := range admins {
-		if !slices.Contains(m.Admins, e) {
-			ops = append(ops, store.Insert(adminsTab, store.Row{"Email": e}))
-		}
-	}
-	return ops, admins, nil
-}
-
 func (c *Cache) joinTeam(actor access.Actor) ([]store.Op, error) {
 	if err := checkEmail(actor.Email); err != nil {
 		return nil, access.Invalid("%v", err)

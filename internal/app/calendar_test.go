@@ -26,11 +26,11 @@ func samplesLinked(t *testing.T) calendarLinked {
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
 	queue := store.NewQueue()
-	parties, err := celebrate.NewCache(dir, dir, sampleImages{}, func(string) bool { return false }, queue)
+	parties, err := celebrate.NewCache(dir, dir, sampleImages{}, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	activities, err := team.NewCache(dir, dir, sampleImages{}, func(string) bool { return false }, queue)
+	activities, err := team.NewCache(dir, dir, sampleImages{}, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}

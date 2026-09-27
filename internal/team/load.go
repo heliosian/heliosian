@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/admins"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
@@ -23,7 +24,6 @@ const (
 	linksTab         = "Links"
 	settingsTab      = "Settings"
 	notificationsTab = "Notifications"
-	adminsTab        = "Admins"
 	redirectsTab     = "Redirects"
 )
 
@@ -70,7 +70,6 @@ var (
 	SettingColumns      = []string{"Key", "Value"}
 	NotificationColumns = []string{"Email", "Kinds"}
 	RedirectColumns     = []string{"Type", "Old", "New", "Date"}
-	AdminColumns        = []string{"Email"}
 )
 
 var yearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
@@ -563,11 +562,7 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 	}
 	model := &Model{Categories: []Category{}, Activities: []*Activity{}, Settings: settings, notify: notify,
 		byID: map[string]*Activity{}, categories: map[string]*Category{}, pretty: map[string]*Activity{}, Redirects: []Redirect{}}
-	admins := []string{}
-	for _, row := range tables[adminsTab] {
-		admins = append(admins, row["Email"])
-	}
-	model.admins = config.NormalizeEmails(admins)
+	model.admins = admins.Read(tables)
 	scoped := []*Category{}
 	for _, row := range tables[categoriesTab] {
 		id, title := strings.TrimSpace(row["Category ID"]), row["Title"]

@@ -4,12 +4,11 @@ import (
 	"context"
 	"log/slog"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/config"
+	"heliosian/internal/admins"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
@@ -17,8 +16,8 @@ import (
 
 type Cache struct {
 	*store.Store[*Model]
-	superAdmins func() []string
-	sources     func() filter.Sources
+	admins.List
+	sources func() filter.Sources
 }
 
 func spec(images ImageChecker) store.Spec[*Model] {
@@ -27,7 +26,7 @@ func spec(images ImageChecker) store.Spec[*Model] {
 		Tabs: []store.Tab{
 			{Name: categoriesTab, Columns: categoryColumns, Key: []string{"Title"}, Cascade: carryCategory},
 			{Name: linksTab, Columns: linkColumns, Key: []string{"Title"}, Cascade: carryLink},
-			{Name: adminsTab, Columns: adminColumns, Key: []string{"Email"}},
+			admins.Spec,
 			{Name: visibilityTab, Columns: visibilityColumns, Key: []string{"App"}},
 			{Name: audienceTab, Columns: AudienceColumns, Key: AudienceColumns},
 			{Name: widgetsTab, Columns: widgetColumns, Key: []string{"Widget"}},
@@ -74,7 +73,7 @@ func NewCache(source data.Source, writer data.Writer, images ImageChecker, super
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, superAdmins: superAdmins, sources: sources}, nil
+	return &Cache{Store: s, List: admins.New(superAdmins, func() []string { return s.Model().admins }, s.Commit), sources: sources}, nil
 }
 
 func (c *Cache) includes(rules []filter.Rule, email string) bool {
@@ -200,20 +199,6 @@ func (c *Cache) MissingVisibility() []App {
 		}
 	}
 	return out
-}
-
-func (c *Cache) IsSuperAdmin(email string) bool {
-	return slices.Contains(config.NormalizeEmails(c.superAdmins()), strings.ToLower(strings.TrimSpace(email)))
-}
-
-func (c *Cache) IsAdmin(email string) bool {
-	return slices.Contains(c.Admins(), strings.ToLower(strings.TrimSpace(email)))
-}
-
-func (c *Cache) Admins() []string {
-	admins := config.NormalizeEmails(append(slices.Clone(c.Model().admins), c.superAdmins()...))
-	sort.Strings(admins)
-	return admins
 }
 
 func Grant(ctx context.Context, cache *Cache, appKey, email string) error {

@@ -247,7 +247,7 @@ func TestAdditionsJoinTheMembersOnce(t *testing.T) {
 func TestSampleGroupsLoadAndHaveMembers(t *testing.T) {
 	s, _ := sample(t)
 	dir := &data.Dir{Root: "../../sampledata"}
-	cache, err := loop.NewCache(dir, dir, func(string) bool { return false }, store.NewQueue())
+	cache, err := loop.NewCache(dir, dir, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}

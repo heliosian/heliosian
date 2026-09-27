@@ -36,7 +36,7 @@ func main() {
 		logging.Fatal("periodicsync: load directory model", "error", err)
 	}
 	roster := func() when.Roster { return app.CalendarRoster(directory) }
-	cache, err := when.NewCache(source, source, roster, nil, func(string) bool { return false }, store.NewQueue())
+	cache, err := when.NewCache(source, source, roster, nil, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		logging.Fatal("periodicsync: load calendar model", "error", err)
 	}

@@ -9,7 +9,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
@@ -711,34 +710,6 @@ func saveNotify(actor access.Actor, wanted []string) (string, []store.Op, error)
 	}
 	value := strings.Join(kinds, ",")
 	return value, []store.Op{store.Upsert(notificationsTab, store.Row{"Email": actor.Email}, store.Row{"Kinds": value})}, nil
-}
-
-func (m *Model) setAdmins(actor access.Actor, superAdmins, wanted []string) ([]string, []store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
-		return nil, nil, err
-	}
-	super := map[string]bool{}
-	for _, e := range superAdmins {
-		super[e] = true
-	}
-	admins := []string{}
-	for _, e := range config.NormalizeEmails(wanted) {
-		if !super[e] {
-			admins = append(admins, e)
-		}
-	}
-	ops := []store.Op{}
-	for _, e := range m.admins {
-		if !slices.Contains(admins, e) {
-			ops = append(ops, store.Delete(adminsTab, store.Row{"Email": e}))
-		}
-	}
-	for _, e := range admins {
-		if !slices.Contains(m.admins, e) {
-			ops = append(ops, store.Insert(adminsTab, store.Row{"Email": e}))
-		}
-	}
-	return admins, ops, nil
 }
 
 var reservedPaths = map[string]bool{"": true, "my": true, "calendar": true, "approvals": true, "admin": true, "years": true, "api": true, "auth": true, "hooks": true, "open": true, "blob": true}

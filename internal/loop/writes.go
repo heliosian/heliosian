@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
@@ -176,34 +175,6 @@ func (m *Model) SetArchived(actor access.Actor, s Sources, name string, archived
 		return []store.Op{store.Upsert(archivedTab, match, store.Row{})}, g, nil
 	}
 	return []store.Op{store.Delete(archivedTab, match)}, g, nil
-}
-
-func (m *Model) SetAdmins(actor access.Actor, superAdmins, requested []string) ([]store.Op, []string, error) {
-	if !actor.Admin {
-		return nil, nil, access.Forbidden("admin access required")
-	}
-	super := map[string]bool{}
-	for _, e := range superAdmins {
-		super[e] = true
-	}
-	admins := []string{}
-	for _, e := range config.NormalizeEmails(requested) {
-		if !super[e] {
-			admins = append(admins, e)
-		}
-	}
-	ops := []store.Op{}
-	for _, e := range m.admins {
-		if !slices.Contains(admins, e) {
-			ops = append(ops, store.Delete(adminsTab, store.Row{"Email": e}))
-		}
-	}
-	for _, e := range admins {
-		if !slices.Contains(m.admins, e) {
-			ops = append(ops, store.Insert(adminsTab, store.Row{"Email": e}))
-		}
-	}
-	return ops, admins, nil
 }
 
 func recordMessage(actor access.Actor, id, group string, cells store.Row) []store.Op {

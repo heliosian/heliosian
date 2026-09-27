@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/serve"
@@ -24,8 +25,7 @@ type admin struct {
 
 func RegisterAdmin(mux *http.ServeMux, cache *Cache, media *blob.Store) {
 	a := admin{cache: cache, media: media}
-	mux.HandleFunc("GET /api/admin/state", serve.JSON(a.state))
-	mux.HandleFunc("POST /api/admin/admins", serve.JSON(a.setAdmins))
+	admins.Register(mux, "who", cache.List, func(r *http.Request) access.Actor { return requestActor(cache, r) }, a.state)
 	mux.HandleFunc("POST /api/admin/images", a.setImage)
 	mux.HandleFunc("POST /api/admin/person-fields", serve.JSON(a.setPersonFields))
 	mux.HandleFunc("POST /api/admin/student-fields", serve.JSON(a.setStudentFields))
@@ -43,11 +43,6 @@ func actorOf(cache *Cache, email string) access.Actor {
 
 func requestActor(cache *Cache, r *http.Request) access.Actor {
 	return actorOf(cache, effectiveEmail(cache, r))
-}
-
-func (a admin) requireAdmin(r *http.Request) (access.Actor, error) {
-	v := requestActor(a.cache, r)
-	return v, mayAdminister(v)
 }
 
 type imageInfo struct {
@@ -122,25 +117,7 @@ type crewOption struct {
 	Name      string `json:"name"`
 }
 
-type adminState struct {
-	Email        string         `json:"email"`
-	Admins       []string       `json:"admins"`
-	Classrooms   []imageInfo    `json:"classrooms"`
-	Grades       []imageInfo    `json:"grades"`
-	Bands        []string       `json:"bands"`
-	Crews        []crewOption   `json:"crews"`
-	Departments  []string       `json:"departments"`
-	People       []personOption `json:"people"`
-	HiddenEmails []string       `json:"hiddenEmails"`
-	IsSuperAdmin bool           `json:"isSuperAdmin"`
-}
-
-func (a admin) state(r *http.Request, _ serve.None) (adminState, error) {
-	v, err := a.requireAdmin(r)
-	if err != nil {
-		return adminState{}, err
-	}
-	email := v.Email
+func (a admin) state(*http.Request, access.Actor) map[string]any {
 	model := a.cache.Model()
 	classrooms := []imageInfo{}
 	for _, c := range model.Classrooms {
@@ -204,43 +181,10 @@ func (a admin) state(r *http.Request, _ serve.None) (adminState, error) {
 		})
 	}
 	sort.Slice(people, func(i, j int) bool { return people[i].Name < people[j].Name })
-	return adminState{
-		Email: email, Admins: a.cache.Admins(),
-		Classrooms: classrooms, Grades: grades, Bands: bands, Crews: crews, Departments: model.Departments,
-		People: people, HiddenEmails: model.hiddenEmails,
-		IsSuperAdmin: a.cache.IsSuperAdmin(email),
-	}, nil
-}
-
-type adminList struct {
-	Admins []string `json:"admins"`
-}
-
-func (a admin) setAdmins(r *http.Request, body adminList) (serve.None, error) {
-	actor := requestActor(a.cache, r)
-	ops, admins, err := a.cache.setAdmins(actor, body.Admins)
-	if err != nil {
-		return serve.None{}, err
+	return map[string]any{
+		"classrooms": classrooms, "grades": grades, "bands": bands, "crews": crews, "departments": model.Departments,
+		"people": people, "hiddenEmails": model.hiddenEmails,
 	}
-	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "who:set the admin list", "actor", actor.Email, "admins", admins)
-	return serve.None{}, nil
-}
-
-func withoutSuperAdmins(emails, superAdmins []string) []string {
-	super := map[string]bool{}
-	for _, e := range superAdmins {
-		super[e] = true
-	}
-	out := []string{}
-	for _, e := range emails {
-		if !super[e] {
-			out = append(out, e)
-		}
-	}
-	return out
 }
 
 const superEditCookie = "heliosian-super-edit"

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/imagesearch"
@@ -75,12 +76,12 @@ func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 	if sampleDirectory, err = who.LoadModel(sheet, nil, noFiles{}, []byte("test")); err != nil {
 		t.Fatal(err)
 	}
-	cache, err := NewCache(sheet, sheet, bundled{}, func(string) bool { return false }, queue)
+	cache, err := NewCache(sheet, sheet, bundled{}, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, directory, func() []string { return nil }, imagesearch.Search{}, mailer, testFrom, nil, nil, testStyle)
+	Register(mux, cache, nil, directory, imagesearch.Search{}, mailer, testFrom, nil, nil, testStyle)
 	return cache, mux
 }
 
@@ -93,7 +94,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 
 func tables(t *testing.T) store.Tables {
 	t.Helper()
-	names := []string{celebrationsTab, categoriesTab, partiesTab, hostsTab, ticketsTab, settingsTab, adminsTab, redirectsTab, invoicingTab}
+	names := []string{celebrationsTab, categoriesTab, partiesTab, hostsTab, ticketsTab, settingsTab, admins.Tab, redirectsTab, invoicingTab}
 	queue.Flush()
 	tabs, err := sheet.Tabs(context.Background(), appName, names, nil)
 	if err != nil {
@@ -163,7 +164,7 @@ func TestSampleLoads(t *testing.T) {
 		t.Errorf("bagels waitlist %d full %v", m.Party("P006").Waiting(), m.Party("P006").Full())
 	}
 	if !cache.IsAdmin(admin) || cache.IsAdmin(other) {
-		t.Errorf("admins: %v", cache.Admins(nil))
+		t.Errorf("admins: %v", cache.Admins())
 	}
 }
 
@@ -219,7 +220,7 @@ func TestBrokenSheetRefusesToLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := &data.Dir{Root: broken}
-	if _, err := NewCache(dir, dir, bundled{}, func(string) bool { return false }, store.NewQueue()); err == nil || !strings.Contains(err.Error(), "ends in 0") {
+	if _, err := NewCache(dir, dir, bundled{}, func() []string { return nil }, store.NewQueue()); err == nil || !strings.Contains(err.Error(), "ends in 0") {
 		t.Fatalf("a broken sheet loaded: %v", err)
 	}
 }
@@ -1175,7 +1176,7 @@ func TestMoveAddress(t *testing.T) {
 	type move struct{ actor, old, to, name string }
 	told := []move{}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, directory, func() []string { return nil }, imagesearch.Search{}, nil, testFrom, nil, func(_ context.Context, actor access.Actor, old, to, name string) {
+	Register(mux, cache, nil, directory, imagesearch.Search{}, nil, testFrom, nil, func(_ context.Context, actor access.Actor, old, to, name string) {
 		told = append(told, move{actor.Email, old, to, name})
 	}, testStyle)
 	const (

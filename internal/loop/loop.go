@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"heliosian/internal/admins"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
@@ -23,7 +24,6 @@ const (
 	aliasesTab    = "Aliases"
 	messagesTab   = "Messages"
 	deliveriesTab = "Deliveries"
-	adminsTab     = "Admins"
 	archivedTab   = "Archived"
 
 	prefixColumn = "Subject Prefix"
@@ -64,7 +64,6 @@ var (
 	AliasColumns    = []string{"Group", "Alias"}
 	MessageColumns  = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail", "Message ID"}
 	DeliveryColumns = []string{"Timestamp", "Group", "Email", "Event", "Message", "Detail"}
-	AdminColumns    = []string{"Email"}
 	ArchivedColumns = []string{"Group", "Email"}
 
 	Roles     = filter.Roles
@@ -377,11 +376,7 @@ func groupCells(g Group) store.Row {
 
 func BuildModel(tables store.Tables) (*Model, error) {
 	model := &Model{Groups: []Group{}, Messages: []Message{}, Deliveries: []Delivery{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
-	admins := []string{}
-	for _, row := range tables[adminsTab] {
-		admins = append(admins, row["Email"])
-	}
-	model.admins = config.NormalizeEmails(admins)
+	model.admins = admins.Read(tables)
 	for _, row := range tables[groupsTab] {
 		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff, Visibility: row[visibleColumn], Posting: row[postingColumn], Replying: row[replyingColumn]})
 		if _, dup := model.byName[g.Name]; dup {

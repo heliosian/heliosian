@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
@@ -333,7 +334,7 @@ func TestOnlyAdminsGetTheRules(t *testing.T) {
 func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 	c, dir := sampleCache(t)
 	const alias, admin = "facilities@heliosschool.org", "hank.morrow@heliosschool.org"
-	if err := c.Commit(context.Background(), access.System("test"), store.Insert(adminsTab, store.Row{"Email": admin})); err != nil {
+	if err := c.Commit(context.Background(), access.System("test"), store.Insert(admins.Tab, store.Row{"Email": admin})); err != nil {
 		t.Fatal(err)
 	}
 	setVisibility(t, c, "celebrate", Visibility{Mode: VisibleToList, Emails: []string{admin}})

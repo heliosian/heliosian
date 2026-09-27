@@ -3,19 +3,16 @@ package loop
 import (
 	"context"
 	"log/slog"
-	"slices"
-	"sort"
-	"strings"
 	"time"
 
-	"heliosian/internal/config"
+	"heliosian/internal/admins"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 )
 
 type Cache struct {
 	*store.Store[*Model]
-	superAdmin func(email string) bool
+	admins.List
 }
 
 var groupTabs = []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab, archivedTab, messagesTab, deliveriesTab}
@@ -32,7 +29,7 @@ func spec() store.Spec[*Model] {
 			{Name: aliasesTab, Columns: AliasColumns, Key: []string{"Group", "Alias"}},
 			{Name: messagesTab, Columns: MessageColumns, Key: []string{"ID", "Group"}},
 			{Name: deliveriesTab, Columns: DeliveryColumns, Key: []string{"Timestamp", "Group", "Email", "Event"}, AppendOnly: true},
-			{Name: adminsTab, Columns: AdminColumns, Key: []string{"Email"}},
+			admins.Spec,
 			{Name: archivedTab, Columns: ArchivedColumns, Key: []string{"Group", "Email"}},
 		},
 		Build: func(_ context.Context, tables store.Tables) (*Model, error) {
@@ -59,25 +56,10 @@ func carryGroup(_ store.Tables, before, after store.Row) []store.Op {
 	return ops
 }
 
-func NewCache(source data.Source, writer data.Writer, superAdmin func(string) bool, queue *store.Queue) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, superAdmins func() []string, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec(), source, writer, queue)
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, superAdmin: superAdmin}, nil
-}
-
-func (c *Cache) IsSuperAdmin(email string) bool {
-	return c.superAdmin(strings.ToLower(strings.TrimSpace(email)))
-}
-
-func (c *Cache) IsAdmin(email string) bool {
-	email = strings.ToLower(strings.TrimSpace(email))
-	return slices.Contains(c.Model().admins, email) || c.superAdmin(email)
-}
-
-func (c *Cache) Admins(superAdmins []string) []string {
-	admins := config.NormalizeEmails(append(slices.Clone(c.Model().admins), superAdmins...))
-	sort.Strings(admins)
-	return admins
+	return &Cache{Store: s, List: admins.New(superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
 }

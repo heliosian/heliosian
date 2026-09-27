@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/config"
@@ -28,24 +29,23 @@ var pages = []string{
 }
 
 type app struct {
-	cache       *Cache
-	media       *blob.Store
-	directory   func() *who.Model
-	settings    func() *config.Settings
-	superAdmins func() []string
-	search      imagesearch.Search
-	mailer      mail.Sender
-	from        string
-	rsvps       RSVPLookup
-	lists       EmailListLookup
-	style       *sharecard.Style
+	cache     *Cache
+	media     *blob.Store
+	directory func() *who.Model
+	settings  func() *config.Settings
+	search    imagesearch.Search
+	mailer    mail.Sender
+	from      string
+	rsvps     RSVPLookup
+	lists     EmailListLookup
+	style     *sharecard.Style
 }
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory func() *who.Model, settings func() *config.Settings, superAdmins func() []string, search imagesearch.Search, mailer mail.Sender, from string, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory func() *who.Model, settings func() *config.Settings, search imagesearch.Search, mailer mail.Sender, from string, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
 	if search.UserAgent == "" {
 		search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
 	}
-	a := app{cache: cache, media: media, directory: directory, settings: settings, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps, lists: lists, style: style}
+	a := app{cache: cache, media: media, directory: directory, settings: settings, search: search, mailer: mailer, from: from, rsvps: rsvps, lists: lists, style: style}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -67,8 +67,7 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory fun
 	mux.HandleFunc("POST /api/team/copy", serve.JSON(a.copyActivity))
 	mux.HandleFunc("POST /api/team/settings", serve.JSON(a.saveSettings))
 	mux.HandleFunc("POST /api/team/notify", serve.JSON(a.saveNotify))
-	mux.HandleFunc("GET /api/admin/state", serve.JSON(a.adminState))
-	mux.HandleFunc("POST /api/admin/admins", serve.JSON(a.setAdmins))
+	admins.Register(mux, "team", cache.List, a.actor, a.adminState)
 	mux.HandleFunc("POST /api/team/redirect", serve.JSON(a.saveRedirect))
 	mux.HandleFunc("DELETE /api/team/redirect", serve.JSON(a.deleteRedirect))
 }
@@ -352,18 +351,7 @@ func (a app) saveNotify(r *http.Request, body notifyBody) (serve.None, error) {
 	return serve.None{}, nil
 }
 
-type adminView struct {
-	Email  string   `json:"email"`
-	Admins []string `json:"admins"`
-	Notify []string `json:"notify"`
-	Mail   bool     `json:"mail"`
-}
-
-func (a app) adminState(r *http.Request, _ serve.None) (adminView, error) {
-	actor := a.actor(r)
-	if err := requireAdmin(actor); err != nil {
-		return adminView{}, err
-	}
+func (a app) adminState(_ *http.Request, actor access.Actor) map[string]any {
 	prefs := a.cache.Model().notifyPrefs(actor.Email)
 	notify := []string{}
 	for _, k := range NotifyKinds {
@@ -371,24 +359,7 @@ func (a app) adminState(r *http.Request, _ serve.None) (adminView, error) {
 			notify = append(notify, k)
 		}
 	}
-	return adminView{Email: actor.Email, Admins: a.cache.Admins(a.superAdmins()), Notify: notify, Mail: a.mailer != nil}, nil
-}
-
-type adminsBody struct {
-	Admins []string `json:"admins"`
-}
-
-func (a app) setAdmins(r *http.Request, body adminsBody) (serve.None, error) {
-	actor := a.actor(r)
-	admins, ops, err := a.cache.Model().setAdmins(actor, a.superAdmins(), body.Admins)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:set the admin list", "actor", actor.Email, "admins", admins)
-	return serve.None{}, nil
+	return map[string]any{"notify": notify, "mail": a.mailer != nil}
 }
 
 type redirectBody struct {

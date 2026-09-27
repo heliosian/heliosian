@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/filter"
@@ -23,7 +24,6 @@ const imageFolder = "link-images"
 type app struct {
 	cache       *Cache
 	store       *blob.Store
-	superAdmins func() []string
 	sources     func() filter.Sources
 	upcoming    func(email, token string) Upcoming
 	makeDefault func(ctx context.Context, email, token string) error
@@ -55,11 +55,11 @@ type Month struct {
 	Calendar string              `json:"calendar,omitempty"`
 }
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins func() []string, upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error, style *sharecard.Style) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error, style *sharecard.Style) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	}
-	a := app{cache: cache, store: media, superAdmins: superAdmins, sources: cache.sources, upcoming: upcoming, month: month, search: search, answer: answer, makeDefault: makeDefault, style: style}
+	a := app{cache: cache, store: media, sources: cache.sources, upcoming: upcoming, month: month, search: search, answer: answer, makeDefault: makeDefault, style: style}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /admin", a.page)
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
@@ -82,8 +82,7 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins f
 	mux.HandleFunc("POST /api/apps/widgets/audience", serve.JSON(a.saveWidgetAudience))
 	mux.HandleFunc("POST /api/apps/widgets/order", serve.JSON(a.setWidgetOrder))
 	a.search.Register(mux, "/api/apps", imageFolder, a.requireAdminFunc)
-	mux.HandleFunc("GET /api/admin/state", serve.JSON(a.adminState))
-	mux.HandleFunc("POST /api/admin/admins", serve.JSON(a.setAdmins))
+	admins.Register(mux, "home", cache.List, a.actor, a.adminState)
 	mux.HandleFunc("POST /api/admin/visibility", serve.JSON(a.setVisibility))
 	mux.HandleFunc("POST /api/admin/visibility/order", serve.JSON(a.setAppOrder))
 	a.discoverApps()
@@ -503,41 +502,12 @@ func (a app) deleteCategory(r *http.Request, body titleBody) (serve.None, error)
 	return serve.None{}, nil
 }
 
-type adminView struct {
-	Email        string          `json:"email"`
-	Admins       []string        `json:"admins"`
-	Apps         []AppVisibility `json:"apps"`
-	People       []Person        `json:"people"`
-	IsSuperAdmin bool            `json:"isSuperAdmin"`
-}
-
-func (a app) adminState(r *http.Request, _ serve.None) (adminView, error) {
-	actor := a.actor(r)
-	if err := requireAdmin(actor); err != nil {
-		return adminView{}, err
-	}
-	view := adminView{Email: actor.Email, Admins: a.cache.Admins(), Apps: a.cache.AppVisibilities(), People: []Person{}, IsSuperAdmin: a.cache.IsSuperAdmin(actor.Email)}
+func (a app) adminState(*http.Request, access.Actor) map[string]any {
+	people := []Person{}
 	for _, p := range a.sources().Directory.Listed() {
-		view.People = append(view.People, Person{Name: p.FullName, Email: p.Email})
+		people = append(people, Person{Name: p.FullName, Email: p.Email})
 	}
-	return view, nil
-}
-
-type adminsBody struct {
-	Admins []string `json:"admins"`
-}
-
-func (a app) setAdmins(r *http.Request, body adminsBody) (serve.None, error) {
-	actor := a.actor(r)
-	admins, ops, err := a.cache.setAdmins(actor, body.Admins)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "home:set the admin list", "admins", admins)
-	return serve.None{}, nil
+	return map[string]any{"apps": a.cache.AppVisibilities(), "people": people}
 }
 
 func (a app) setVisibility(r *http.Request, body visibilityEdit) (serve.None, error) {

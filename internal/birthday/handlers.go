@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/admins"
 	"heliosian/internal/auth"
 	"heliosian/internal/claude"
 	"heliosian/internal/describe"
@@ -27,14 +28,13 @@ var pages = []string{
 }
 
 type app struct {
-	cache       *Cache
-	directory   func() *who.Model
-	superAdmins func() []string
-	describer   Describer
-	mailer      mail.Sender
-	from        string
-	base        string
-	joinHome    func(ctx context.Context, email string) error
+	cache     *Cache
+	directory func() *who.Model
+	describer Describer
+	mailer    mail.Sender
+	from      string
+	base      string
+	joinHome  func(ctx context.Context, email string) error
 }
 
 type Describer interface {
@@ -107,20 +107,8 @@ type dateRun struct {
 	To      string `json:"to"`
 }
 
-type adminList struct {
-	Admins []string `json:"admins"`
-}
-
-type adminView struct {
-	Email  string     `json:"email"`
-	Admins []string   `json:"admins"`
-	Team   []TeamView `json:"team"`
-	Roles  []string   `json:"roles"`
-	People []Person   `json:"people"`
-}
-
-func Register(mux *http.ServeMux, cache *Cache, directory func() *who.Model, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(ctx context.Context, email string) error, about *sharecard.About) {
-	a := app{cache: cache, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
+func Register(mux *http.ServeMux, cache *Cache, directory func() *who.Model, describer Describer, mailer mail.Sender, from, base string, joinHome func(ctx context.Context, email string) error, about *sharecard.About) {
+	a := app{cache: cache, directory: directory, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
 	if mailer != nil {
 		go a.remindLoop()
 	}
@@ -152,8 +140,7 @@ func Register(mux *http.ServeMux, cache *Cache, directory func() *who.Model, sup
 	mux.HandleFunc("POST /api/birthday/newsletter-dates/create", serve.JSON(a.createNewsletterDates))
 	mux.HandleFunc("POST /api/birthday/newsletter/share", serve.JSON(a.shareIssue))
 	mux.HandleFunc("POST /api/birthday/settings", serve.JSON(a.saveSettings))
-	mux.HandleFunc("GET /api/admin/state", serve.JSON(a.adminState))
-	mux.HandleFunc("POST /api/admin/admins", serve.JSON(a.setAdmins))
+	admins.Register(mux, "birthday", cache.List, a.actor, a.adminState)
 	mux.HandleFunc("POST /api/admin/resend-invites", serve.JSON(a.resendInvites))
 	mux.HandleFunc("POST /api/birthday/team/join", serve.JSON(a.joinTeam))
 	mux.HandleFunc("POST /api/admin/team", serve.JSON(a.addTeamMember))
@@ -516,11 +503,7 @@ func (a app) saveSettings(r *http.Request, body Settings) (serve.None, error) {
 	return serve.None{}, nil
 }
 
-func (a app) adminState(r *http.Request, _ serve.None) (adminView, error) {
-	actor, err := a.requireAdmin(r)
-	if err != nil {
-		return adminView{}, err
-	}
+func (a app) adminState(*http.Request, access.Actor) map[string]any {
 	model := a.cache.Model()
 	team := []TeamView{}
 	directory := a.directory()
@@ -533,20 +516,7 @@ func (a app) adminState(r *http.Request, _ serve.None) (adminView, error) {
 	for _, p := range directory.Listed() {
 		people = append(people, personView(p))
 	}
-	return adminView{Email: actor.Email, Admins: a.cache.Admins(a.superAdmins()), Team: team, Roles: Roles, People: people}, nil
-}
-
-func (a app) setAdmins(r *http.Request, body adminList) (serve.None, error) {
-	actor := a.actor(r)
-	ops, admins, err := a.cache.Model().setAdmins(actor, body.Admins, a.superAdmins())
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r, actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "birthday: set the admin list", "actor", actor.Email, "admins", admins)
-	return serve.None{}, nil
+	return map[string]any{"team": team, "roles": Roles, "people": people}
 }
 
 func (a app) resendInvites(r *http.Request, _ serve.None) (map[string]int, error) {

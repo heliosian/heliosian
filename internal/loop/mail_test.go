@@ -160,13 +160,13 @@ func newHarness(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 	queue := store.NewQueue()
-	cache, err := NewCache(dir, dir, func(string) bool { return false }, queue)
+	cache, err := NewCache(dir, dir, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, sources: sampleSources(model), sender: &fakeSender{}, archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
 	h.mailbox = Mail{Sender: h.sender, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
-	Register(h.mux, cache, nil, h.sources, func() *config.Settings { return &config.Settings{} }, func() []string { return nil }, h.mailbox, nil, About(func() string { return "Helios Loop" }, func() string { return "Email groups drawn from the directory" }))
+	Register(h.mux, cache, nil, h.sources, func() *config.Settings { return &config.Settings{} }, h.mailbox, nil, About(func() string { return "Helios Loop" }, func() string { return "Email groups drawn from the directory" }))
 	return h
 }
 

@@ -85,14 +85,14 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	people = model
-	cache, err := NewCache(dir, dir, func(e string) bool { return e == admin }, queue)
+	cache, err := NewCache(dir, dir, func() []string { return []string{admin} }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
 	sent = &sentMail{}
 	joined = nil
-	Register(mux, cache, directory, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(_ context.Context, email string) error {
+	Register(mux, cache, directory, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(_ context.Context, email string) error {
 		joined = append(joined, email)
 		return nil
 	}, About(func() string { return "Helios Birthday Team" }, func() string { return "Staff birthday donations" }))

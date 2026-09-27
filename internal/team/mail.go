@@ -19,7 +19,7 @@ var brand = mail.Brand{Name: "HCA-Team", Color: "#1f4d53", Tagline: "the HCA vol
 func (a app) adminsWanting(kind string, except ...string) []string {
 	model := a.cache.Model()
 	out := []string{}
-	for _, admin := range a.cache.Admins(a.superAdmins()) {
+	for _, admin := range a.cache.Admins() {
 		if slices.Contains(except, admin) {
 			continue
 		}
