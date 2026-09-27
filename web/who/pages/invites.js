@@ -7,12 +7,6 @@ import {saveTagRelations} from '../storage.js';
 import {anyFiltersActive, matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, tagRelationOptionsFor} from '../filters.js';
 import {resetMain} from '../chrome.js';
 
-// Combines a list of people into one greeting phrase. Two or more people who all
-// share a last name are introduced by first name only, with the surname stated once
-// at the end ("Alice & Bob McDowell", "Alice, Bob & Carol McDowell"); anyone who
-// doesn't share that surname (blended families, a spouse who kept their own name) is
-// spelled out in full instead, so nobody's identity is silently merged into someone
-// else's. A single person is just their full name.
 function joinFamilyNames(people) {
   if (!people.length) {
     return '';
@@ -27,10 +21,6 @@ function joinFamilyNames(people) {
   return shared ? `${line} ${surname}` : line;
 }
 
-// Like joinFamilyNames, but first names only, with no trailing surname even
-// when everyone shares one - what "First name" (as opposed to "Full name")
-// means once Include siblings turns a single kid's individual greeting into
-// a group of two or more (see buildGreeting).
 function joinFirstNames(people) {
   if (!people.length) {
     return '';
@@ -39,20 +29,6 @@ function joinFirstNames(people) {
   return names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
 }
 
-// The _Greetings sheet's Format column is a worked example, not a {{ token }}
-// template: it's written against one made-up family - parents Pat and Quinn,
-// kids Ali and Bo, everyone surnamed Ender - so writing or editing a greeting
-// means describing what it would look like for that one family rather than
-// learning template syntax. These are the exact phrases recognized in a
-// Format string and what each is replaced with - read from the sheet's own
-// "Whole family" / "Kids only" / "Adults only" / "Full name" / "First name"
-// rows (via refreshGreetingPhrases, called once loadInviteSystems has the
-// greetings) rather than hardcoded here a second time, so the reference
-// family lives in exactly one place and editing those rows is all it takes
-// to change it. The literals are only a fallback for a sheet missing one of
-// those rows - matched longest-first so a bare "Pat" inside "Pat & Quinn
-// Ender" doesn't get consumed by the shorter phrase before the longer one
-// gets a chance to match.
 let GREETING_WHOLE_FAMILY = 'Ali, Bo, Pat & Quinn Ender';
 let GREETING_KIDS = 'Ali & Bo Ender';
 let GREETING_ADULTS = 'Pat & Quinn Ender';
@@ -71,14 +47,6 @@ function refreshGreetingPhrases() {
   GREETING_FIRST_NAME = phraseOf('First name', GREETING_FIRST_NAME);
 }
 
-// The standalone Ender token (see substituteNameTokens) always stands for
-// the family's own last name, not just one shared by everyone in the
-// household - unlike joinFamilyNames' surname (which only appends one when
-// the whole group agrees, falling back to full names otherwise), a bare
-// "Ender" has nowhere else to fall back to, so it takes whichever surname
-// the greeting would naturally be filed under: the primary adult's for a
-// family (kids listed first in the group only for name-joining purposes,
-// not surname), or the addressed person's own for an individual.
 function greetingSurname({kids, adults, person}) {
   if (person) {
     return lastName(person.fullName);
@@ -87,12 +55,6 @@ function greetingSurname({kids, adults, person}) {
   return primary ? lastName(primary.fullName) : '';
 }
 
-// splitLastFirst divides a list of people's first names into "everyone but
-// the last, comma-joined" and "the last one" - what Ali/Pat and Bo/Quinn
-// respectively stand for once they're used loosely rather than as part of
-// one of the fixed phrases above. Lines up with joinFamilyNames' own
-// comma-then-last shape, so a Format that keeps that same punctuation around
-// the tokens reads identically to using the whole-list phrase would.
 function splitLastFirst(people) {
   if (!people.length) {
     return {rest: '', last: ''};
@@ -101,23 +63,6 @@ function splitLastFirst(people) {
   return {rest: names.slice(0, -1).join(', '), last: names[names.length - 1]};
 }
 
-// Beyond the fixed phrases buildGreeting checks first (which cover the
-// common, cleanly-grouped cases), each individual example name is also
-// recognized on its own, wherever it lands in the text - so a Format that
-// wraps or rearranges them in its own words (say, "The Ender Family (Ali,
-// Bo, Pat & Quinn)") still personalizes per family, instead of only working
-// when it reproduces one of the exact phrases verbatim. Runs after those
-// fixed-phrase checks, on whatever text they left untouched, so a template
-// that does use one of the exact phrases keeps that phrase's own clean
-// grouping (correct for 1, 2, or more people) rather than this word-by-word
-// fallback's cruder splitting.
-// Ali and Pat each stand for "everyone but the last one" in their group,
-// which is empty for the common case of a single kid or single parent - a
-// plain substitution would then leave whatever separator conventionally
-// follows the token (", " in a list, " & " right before the last name)
-// stranded at the start (e.g. "(Ali, Bo" -> "(, Bo"). When there's nothing
-// to say, this swallows that separator along with the token instead, so it
-// reads "(Bo" the way someone writing it by hand would have.
 function replaceRestToken(text, token, value) {
   if (value) {
     return text.replace(new RegExp(`\\b${token}\\b`, 'g'), value);
@@ -137,21 +82,10 @@ function substituteNameTokens(text, {kids, adults, person}) {
     text = replaceRestToken(text, 'Pat', adultsSplit.rest);
     text = text.replace(/\bQuinn\b/g, adultsSplit.last);
   }
-  // Also matches "Enders" (the plural a template might use for "the Enders")
-  // - only the root swaps for the real surname, so the trailing s (if any)
-  // stays put rather than needing its own token.
   const surname = greetingSurname({kids, adults, person});
   return text.replace(/\bEnder(s?)\b/g, `${surname}$1`);
 }
 
-// Turns one greeting's Format into real text for a family (kids/adults) or a
-// single person (optionally with their siblings folded in too - see
-// personInviteParams and Include siblings), by substituting whichever example
-// phrases or names actually appear in it - a Format that doesn't use any of
-// them at all (a fixed greeting with no names) just passes through
-// unchanged. The joined-kids phrase falls back to the adults when there are
-// no kids, so a childless couple's "Family of the kids"-style greeting
-// doesn't come out blank.
 function buildGreeting(format, {kids = [], adults = [], person, siblings = []} = {}) {
   let text = format;
   if (GREETING_WHOLE_FAMILY && text.includes(GREETING_WHOLE_FAMILY)) {
@@ -164,8 +98,6 @@ function buildGreeting(format, {kids = [], adults = [], person, siblings = []} =
     text = text.replaceAll(GREETING_ADULTS, joinFamilyNames(adults));
   }
   if (person) {
-    // With no siblings (the common case - an adult's row, or Include siblings
-    // off), this is just person's own name either way, same as always.
     const group = [person, ...siblings];
     if (GREETING_FULL_NAME && text.includes(GREETING_FULL_NAME)) {
       text = text.replaceAll(GREETING_FULL_NAME, joinFamilyNames(group));
@@ -177,28 +109,11 @@ function buildGreeting(format, {kids = [], adults = [], person, siblings = []} =
   return substituteNameTokens(text, {kids, adults, person, siblings});
 }
 
-// Individual mode always uses greetings checked Individual - there's no
-// family left to build a joint name from once every person gets their own
-// row. Group mode uses ones checked Grouped, unless the system itself has no
-// way to address a group at all (Punchbowl, Partiful - see
-// system.supportsGroups), in which case even a family's one row can only be
-// addressed with its primary contact's own name. Grouped and Individual are
-// independent (see GreetingTemplate in invites.go) - a greeting can be, and a
-// fixed line with no names in it typically would be, both at once.
 function greetingFormatsFor(inviteBy, supportsGroups) {
   const wantGrouped = inviteBy === 'group' && supportsGroups;
   return inviteGreetings.filter(g => wantGrouped ? g.grouped : g.individual);
 }
 
-// Shared by both invite-by modes: builds the token params a template can pull
-// from - primary_email/first/last/phone from whoever is standing in as this
-// row's addressee (the family's primary contact in Group mode, or the person
-// themself in Individual mode), plus member_1..N, every other person
-// flattened into numbered slots ("Name <email>" or just "Name" - what
-// Greenvelope/Evite/Punchbowl/Partiful's one-row-per-addressee templates use).
-// `people` (addressee first, then members) is the alternate shape a template
-// that repeats one row per person (Paperless Post) uses instead - see
-// applyInviteTemplate, which decides which shape a given template wants.
 function buildInviteParams(addressee, addresseeContact, greeting, members) {
   const params = {
     greeting,
@@ -217,31 +132,15 @@ function buildInviteParams(addressee, addresseeContact, greeting, members) {
   };
 }
 
-// A kid's contact, per state.gvKidEmail: off lists them without a way to
-// reach them directly, on gives them their own reachable address (blank if
-// they don't have one, or it's a masked Veracross placeholder).
 function kidContact(kid) {
   return state.gvKidEmail && kid.email && !kid.emailMasked ? kid.email : '';
 }
 
-// A family's adults with a real, reachable email - a Veracross placeholder
-// address doesn't belong on a mailing list, matching emailEntries - deduped,
-// since a family's own adultEmails list is assumed unique but a caller
-// merging more than one source (none currently do) shouldn't double-invite
-// someone as a result.
 function parentContactsOf(adultEmails) {
   const emails = [...new Set(adultEmails || [])];
   return emails.map(e => byEmail[e]).filter(a => a && !a.emailMasked);
 }
 
-// A family's kids to actually put on the invite. With Include siblings on,
-// that's everyone. Off, it's still not necessarily nobody: if the current
-// filters/search single out specific students (a grade, a tag, a name typed
-// into search), whichever of this family's kids match are the ones actually
-// being invited, not incidental siblings - they stay on regardless, and it's
-// only their non-matching siblings that Include siblings is left to add back
-// in. With no filter or search narrowing things down at all, there's no
-// "invited kid" to distinguish from a sibling, so off just means no kids.
 function invitedKids(family) {
   const kids = (family.kidEmails || []).map(e => byEmail[e]).filter(Boolean);
   if (state.gvSiblings) {
@@ -254,11 +153,6 @@ function invitedKids(family) {
     (!state.q || k.fullName.toLowerCase().includes(state.q) || k.email.toLowerCase().includes(state.q)));
 }
 
-// Group mode: one row per family. The primary contact is the first listed
-// adult with a real, reachable email (matching emailEntries' rule that a
-// Veracross placeholder address doesn't belong on a mailing list); everyone
-// else (other adults, then kids per invitedKids) becomes a member. Returns
-// null for a family with no usable primary contact at all.
 function familyInviteParams(family) {
   const adults = (family.adultEmails || []).map(e => byEmail[e]).filter(p => p && !p.emailMasked);
   if (!adults.length) {
@@ -278,29 +172,11 @@ function familyInviteParams(family) {
   };
 }
 
-// One real contact email can only ever appear once in Individual mode's
-// output - never two rows to the same inbox, whatever caused the collision
-// (two siblings who each separately qualify, a parent who also independently
-// qualifies as their own invitee, or - with Include siblings off - two
-// separately-matching kids who just happen to share a parent). Rather than
-// dropping whichever candidate loses the collision (silently losing a real
-// kid's invite), every candidate reaching the same contact is merged into one
-// row that names everyone routed there - see mergeCandidates.
-//
-// A candidate is {contact, person}: person is who this candidate is "about"
-// (whose name should count toward the merged greeting), contact is where it
-// would be delivered - blank if a student has no parent on record to route
-// through (never merged with anything else, so that student's own row still
-// shows up rather than silently vanishing).
 function individualCandidates(p) {
   if (!p.isStudent) {
     return p.emailMasked ? [] : [{contact: p.email, person: p}];
   }
   const family = familyOf(p);
-  // With Include siblings on, every kid in the household is folded into the
-  // same set of candidates the first time any of them is reached - the later
-  // merge pass then naturally collapses them into one row per parent, same as
-  // it would for any other collision.
   let kids = [p];
   if (state.gvSiblings && family) {
     kids = invitedKids(family);
@@ -318,13 +194,6 @@ function individualCandidates(p) {
   return candidates;
 }
 
-// Turns a merged group of people (everyone whose invite collided on the same
-// contact - see individualCandidates) into one row: the first person is the
-// addressee (whoever's own name/email columns represent the row - an
-// independently-matching adult, if there is one, since candidates are built
-// adults-first), everyone else is folded into the greeting as "siblings" (see
-// buildGreeting - the name is a holdover from the common case, but this works
-// for any group of people sharing one contact, related or not).
 function buildMergedEntry(people, contact) {
   const addressee = people[0];
   const format = inviteGreetings.find(g => g.name === state.gvGreeting) || greetingFormatsFor('individual', false)[0];
@@ -336,11 +205,6 @@ function buildMergedEntry(people, contact) {
   };
 }
 
-// Groups every candidate (see individualCandidates) by contact email and
-// builds one merged row per group (see buildMergedEntry) - the one place
-// Individual mode's "never the same email twice" rule is actually enforced.
-// A blank contact (no parent on record) is never merged with anything else,
-// each becomes its own row.
 function mergeCandidates(candidates) {
   const byContact = new Map();
   const rows = [];
@@ -363,31 +227,17 @@ function mergeCandidates(candidates) {
   return rows;
 }
 
-// Every family (Group mode) or person (Individual mode) with a usable
-// addressee, filtered and searched the same way the rest of the list pages
-// are - familyMatchesFilters/familySearchText for Group mode (the same ones
-// the Families tab and the map rely on), plain matchesFilters/name-or-email
-// search for Individual mode, matching emailEntries. Sorted by last name -
-// the anchor kid's, for a family, matching the order the original Greenvelope
-// sheet this page grew out of already used.
 function invitesEntries() {
   const rows = [];
   if (state.gvInviteBy === 'individual') {
     const matches = p => matchesFilters(p) && (p.fullName.toLowerCase().includes(state.q) || p.email.toLowerCase().includes(state.q));
     const candidates = [];
-    // Adults first, deliberately: when an adult's own invite and their kid's
-    // routed-through-them invite land on the same contact and get merged, the
-    // adult - added to the candidate list first - is the one buildMergedEntry
-    // picks as the addressee.
+    // Adults go first so a merged row is addressed to the adult, not their kid.
     for (const p of state.model.people) {
       if (!p.isStudent && matches(p)) {
         candidates.push(...individualCandidates(p));
       }
     }
-    // With Include siblings on, a household's candidates all get generated
-    // together the first time any of its kids is reached (individualCandidates
-    // expands to the whole household); mergedFamilies then skips that
-    // household's other kids so they don't generate the same candidates again.
     const mergedFamilies = new Set();
     for (const p of state.model.people) {
       if (!p.isStudent || !matches(p)) {
@@ -420,35 +270,18 @@ function invitesEntries() {
   return rows;
 }
 
-// Fills a template string's {{ token }} placeholders from params; a token with
-// no value (including one this app doesn't compute at all, like Paperless
-// Post's optional Message column) just renders blank rather than erroring.
 function fillTemplate(template, params) {
   return (template || '').replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => params[key] ?? '');
 }
 
-// Whether a template's row(s) use the per-member tokens (member_name/
-// member_contact) rather than the numbered member_N slots - a template that
-// does (Paperless Post's, so far) wants one output row per family MEMBER, not
-// one row per family; see that system's Notes in the Invite List Builder sheet.
 function templateRepeatsPerMember(rows) {
   return rows.some(row => row.some(cell => /\{\{\s*member_(name|contact)\s*\}\}/.test(cell || '')));
 }
 
-// Whether a template actually uses {{ greeting }} anywhere - the Couple /
-// Family greeting picker only matters, and only shows, for a system whose
-// template references it. A system that greets some other way (or not at all)
-// has no use for the setting.
 function templateUsesGreeting(rows) {
   return rows.some(row => row.some(cell => /\{\{\s*greeting\s*\}\}/.test(cell || '')));
 }
 
-// Turns one invite system's template (its tab's header + template row, as read
-// from the Invite List Builder sheet by the server) into real output rows for
-// the given family entries - the one place a sheet template plus computed
-// family params actually becomes a CSV. Row shape (one per family, or one per
-// family member) is inferred from which tokens the template uses, not
-// hardcoded per system, so a new system's tab just needs the right tokens.
 function applyInviteTemplate(system, entries) {
   const templateRow = system.rows[0] || [];
   const perMember = templateRepeatsPerMember(system.rows);
@@ -466,8 +299,6 @@ function applyInviteTemplate(system, entries) {
   return rows;
 }
 
-// Cached after the first successful fetch - the templates only change when
-// someone edits the Invite List Builder sheet, not per page visit.
 let inviteSystems = null;
 let inviteGreetings = [];
 let inviteLoadError = '';
@@ -488,11 +319,6 @@ async function loadInviteSystems() {
   return inviteSystems;
 }
 
-// The formatted-CSV export page: pick a destination system (Greenvelope, Evite,
-// ... - whatever the Invite List Builder sheet's _Services tab lists), then export
-// the currently filtered families through that system's own template. One row
-// per family, or one row per family member, depending on the template - see
-// applyInviteTemplate.
 export function renderGreenvelopePage() {
   const main = resetMain();
 
@@ -524,12 +350,6 @@ export function renderGreenvelopePage() {
       state.gvSystem = systems[0].name;
     }
 
-    // Rebuilds the whole page: needed whenever which system is selected
-    // changes, since that decides which other settings (right now, just the
-    // Couple / Family greeting picker) even apply. Everything else (role
-    // chips, search, Grade/Classroom/Tags) only needs the cheaper renderGrid,
-    // wired up below - renderGrid is a hoisted declaration, so it's already
-    // callable here even though it's defined later in this same function.
     function renderAll() {
       settings.replaceChildren();
       content.replaceChildren();
@@ -553,15 +373,8 @@ export function renderGreenvelopePage() {
         facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, renderGrid),
       );
       if (tagFacetOptions().length) {
-        // Rebuilds the whole page, not just the grid - selecting down to (or
-        // away from) exactly one tag changes whether the Include control just
-        // below even applies.
         controls.append(facetDropdown('Tags', tagFacetOptions(), state.filterTags, renderAll));
       }
-      // Who to include beyond the tagged person themselves - only meaningful
-      // for a single tag; with several selected at once (or none) there's no
-      // one list to pull relatives in from. Mirrors renderListPage's identical
-      // control exactly, down to persisting the choice per tag.
       const relationOptions = state.filterTags.size === 1 ? tagRelationOptionsFor([...state.filterTags][0]) : [];
       if (relationOptions.length) {
         const [activeTag] = state.filterTags;
@@ -603,10 +416,6 @@ export function renderGreenvelopePage() {
         const table = el('table', 'email-table');
         const thead = el('thead');
         const headRow = el('tr');
-        // Whichever column the template maps to {{ greeting }} gets the
-        // format picker right in its header, instead of a plain label - the
-        // same choice as the Couple / Family greeting setting above (changing
-        // either updates both, since both just read/write state.gvGreeting).
         const greetingCol = system.rows[0] ? system.rows[0].findIndex(cell => /\{\{\s*greeting\s*\}\}/.test(cell || '')) : -1;
         const leadTh = el('th', 'email-copy-cell');
         const copyTable = el('button', 'email-copy-columns');
@@ -638,9 +447,6 @@ export function renderGreenvelopePage() {
                 parent.append(option);
               }
             };
-            // Only splits into "Yours"/"Everyone's" once there's actually
-            // something of the viewer's own to set apart - otherwise it's
-            // just the one flat list it's always been.
             if (mine.length) {
               const mineGroup = el('optgroup');
               mineGroup.label = 'Yours';
@@ -704,12 +510,6 @@ export function renderGreenvelopePage() {
   });
 }
 
-// Real per-service icons (small favicons, not full marketing logos) so the
-// destination is recognizable at a glance in the Export for picker. Keyed by
-// the exact Display Name from the Invite List Builder's _Services tab; a
-// system added there without a matching icon here just falls back to a
-// colored initial, the same way a person with no photo does elsewhere in
-// this app (see photoOrInitials).
 const serviceLogos = {
   Greenvelope: '/services/greenvelope.png',
   Evite: '/services/evite.png',
@@ -731,13 +531,6 @@ function serviceIcon(name) {
   return div;
 }
 
-// A custom Export for picker in place of a plain <select> - only so each
-// system's icon (serviceIcon) can show both on the closed button and in the
-// open list, which a native select can't render at all. Built from the app's
-// existing .filter-button/.filter-panel/.filter-option classes so the one
-// global click-outside handler that already closes every other dropdown in
-// the app (see the document click listener in chrome.js) closes this one
-// too, for free.
 function gvServiceSelect(seg, systems, onChange) {
   const wrap = el('div', 'filter-wrap gv-service-wrap');
   const button = el('button', 'filter-button gv-service-button');
@@ -760,41 +553,15 @@ function gvServiceSelect(seg, systems, onChange) {
   seg.append(wrap);
 }
 
-// The default starting point for a brand new greeting - a worked example
-// that already reads as a real greeting rather than an empty box, using the
-// same made-up family (kids Ali & Bo, parents Pat & Quinn, surname Ender) the
-// recognized phrases below are drawn from, so it edits cleanly into a real
-// one just by trimming or rearranging. Mode-dependent because the phrases
-// that actually substitute anything differ: a family's kids/adults are only
-// ever populated for a Grouped call, a lone person only for an Individual
-// one (see buildGreeting) - defaulting to the wrong kind would silently
-// render as flat, unpersonalized text for every row, same as the bug this
-// default (and the live preview below) exists to avoid.
 function defaultGreetingFormat() {
   return state.gvInviteBy === 'group' ? `The ${GREETING_WHOLE_FAMILY} Family` : `Dear ${GREETING_FIRST_NAME}`;
 }
 
-// A second, differently-named made-up family (not Ender) to run a candidate
-// Format through live as the person types - proves whether it actually
-// personalizes per family rather than just echoing the Ender example back
-// unchanged, which would look "correct" without proving the substitution
-// fired at all.
 const GREETING_PREVIEW_FAMILY = {
   kids: [{fullName: 'Nora Rivera'}, {fullName: 'Theo Rivera'}],
   adults: [{fullName: 'Sam Rivera'}, {fullName: 'Jamie Rivera'}],
 };
 
-// The pop-up behind "(Edit Greetings)" at the bottom of the greeting picker
-// in the table header - lists whatever custom greetings the viewer has
-// already created, lets picking one load it below for editing, and otherwise
-// starts a new one. There's no separate name to write: a greeting's Format
-// text doubles as its Name (see GreetingTemplate in invites.go), so the only
-// field here is the greeting itself. A true modal (built like openCropTool's
-// overlay - appended to document.body, closes on backdrop click or Escape)
-// rather than an anchored dropdown panel, since the form is too tall to hang
-// cleanly off a table header cell. onSaved is called after a successful
-// save, with inviteSystems already cleared so the next fetch picks up the
-// change.
 function openGreetingDialog(onSaved) {
   const overlay = el('div', 'greeting-dialog-overlay');
   const panel = el('div', 'greeting-dialog-panel');
@@ -835,13 +602,8 @@ function openGreetingDialog(onSaved) {
 
   const form = el('form', 'gv-new-greeting-form');
 
-  // Fixed for the life of this dialog - which kind of call (a family's
-  // kids/adults, or one person) this greeting will actually be run through
-  // is decided by which mode it's saved under, not by anything typed here.
   const grouped = state.gvInviteBy === 'group';
 
-  // original names the existing _Greetings row currently loaded into the
-  // field below (so Save edits it in place), or '' while writing a new one.
   let original = '';
   let cards = [];
 
@@ -852,12 +614,6 @@ function openGreetingDialog(onSaved) {
   formatInput.required = true;
   formatLabel.append(formatInput);
 
-  // Runs the candidate text through buildGreeting against a sample family
-  // that isn't Ender, live as the person types - the whole point is to make
-  // it obvious when a phrase doesn't actually match (a typo, wrong
-  // punctuation, names in the wrong order) instead of silently saving flat
-  // text that renders identically for every family, which is exactly what
-  // happened before this preview existed.
   const previewValue = el('span', 'gv-new-greeting-preview-value');
   const preview = el('div', 'gv-new-greeting-preview');
   preview.append(el('div', 'gv-new-greeting-preview-label', 'Preview'), previewValue);
@@ -874,16 +630,8 @@ function openGreetingDialog(onSaved) {
   }
   formatInput.addEventListener('input', updatePreview);
 
-  // Holds the Greeting field itself plus everything tied to it (preview,
-  // hint, Cancel/Save) - hidden until there's actually something to edit, so
-  // opening the dialog onto an existing list of greetings doesn't also throw
-  // a blank editor at the person before they've picked (or asked for) one.
   const editorSection = el('div', 'gv-greeting-editor');
 
-  // Loads an existing greeting into the field to edit it, or (passed null,
-  // from Add another greeting) clears it back to a fresh default - either
-  // way this is the one place that changes what Save will do, and what
-  // reveals the editor in the first place.
   function loadGreeting(g) {
     original = g ? g.name : '';
     formatInput.value = g ? g.format : defaultGreetingFormat();
@@ -919,10 +667,7 @@ function openGreetingDialog(onSaved) {
         error.hidden = true;
         deleteBtn.disabled = true;
         try {
-          // As a query parameter, not a body - Go's ParseForm only reads a
-          // request body for POST/PUT/PATCH, so a DELETE's body would
-          // silently go unread server-side and every delete would 400 as
-          // "missing name".
+          // Go's ParseForm ignores a DELETE body, so the name rides in the query.
           const res = await fetch(`/api/directory/greetings?${new URLSearchParams({name: g.name})}`, {method: 'DELETE'});
           if (!res.ok) {
             throw new Error(await res.text());
@@ -949,8 +694,6 @@ function openGreetingDialog(onSaved) {
     addButton.addEventListener('click', () => loadGreeting(null));
     listWrap.append(addButton);
     form.append(listWrap);
-    // Lives inside editorSection (its top edge) rather than out here, so it
-    // only shows once there's an editor below it to divide the list from.
     editorSection.append(el('div', 'gv-greeting-divider'));
   }
 
@@ -959,8 +702,6 @@ function openGreetingDialog(onSaved) {
   editorSection.append(preview, previewNote);
   updatePreview();
 
-  // Same worked-example names buildGreeting recognizes - see GreetingTemplate
-  // in invites.go for why this is examples, not {{ token }} syntax.
   const hint = el('div', 'gv-new-greeting-hint',
     'Use the family’s actual names (e.g., Pat, Quinn, Ali, Bo) in your own words.');
   editorSection.append(hint);
@@ -977,9 +718,6 @@ function openGreetingDialog(onSaved) {
   save.type = 'submit';
   actions.append(cancel, save);
   editorSection.append(actions);
-  // Nothing to browse first (no custom greetings yet) - open straight into
-  // the editor instead of showing an empty "Your greetings" list with
-  // nothing but an Add button in it.
   editorSection.hidden = mine.length > 0;
   form.append(editorSection);
 
@@ -992,10 +730,6 @@ function openGreetingDialog(onSaved) {
     error.hidden = true;
     save.disabled = true;
     try {
-      // Applies to whichever mode the picker this dialog was opened from is
-      // currently showing, not asked for - Group by family vs. Individual is
-      // already a choice the person made just above the table, and asking
-      // them to repeat it here would just be one more thing to get wrong.
       const body = new URLSearchParams({
         format,
         original,
@@ -1006,8 +740,6 @@ function openGreetingDialog(onSaved) {
       if (!res.ok) {
         throw new Error(await res.text());
       }
-      // Cleared so the next loadInviteSystems call refetches instead of
-      // serving the cached list, which is missing the row just changed.
       inviteSystems = null;
       state.gvGreeting = format;
       close();
@@ -1026,9 +758,6 @@ function openGreetingDialog(onSaved) {
   formatInput.select();
 }
 
-// A settings-bar segment: a label (with an optional info button explaining a
-// less self-evident setting) above whatever control the caller appends next -
-// a <select> for Export for, a switch for everything else.
 function gvSegment(row, label, infoText) {
   const seg = el('div', 'gv-settings-segment');
   const labelRow = el('div', 'gv-setting-label');
@@ -1055,25 +784,11 @@ function gvSwitch(seg, checked, onChange) {
   return toggle;
 }
 
-// One bar - Export for, then whichever of Group by family/Include siblings/
-// Send to Kid Emails apply - divided into segments rather than separate
-// cards, with the selected system's own description as a single summary line
-// underneath instead of scattered per-control. onSystemChange rebuilds this
-// whole bar (and the page around it) - needed whenever which system, or Group
-// vs. Individual, changes, since those decide which segments even show and
-// which greeting options apply (chosen in the table header - see renderGrid's
-// greetingCol). onSettingChange just re-runs the grid, for Include siblings/
-// Send to Kid Emails, which never change what's shown here.
 function renderInviteSettings(systems, settings, onSystemChange, onSettingChange) {
   const system = systems.find(s => s.name === state.gvSystem) || systems[0];
-  // A system with no group concept has no Group by family choice to offer -
-  // it's always Individual, silently, rather than a switch that doesn't work.
   if (!system.supportsGroups) {
     state.gvInviteBy = 'individual';
   }
-  // Keep state.gvGreeting valid for whichever formats currently apply (see
-  // greetingFormatsFor) - switching Group by family or system can leave a
-  // stale key selected that's no longer one of the current options.
   if (templateUsesGreeting(system.rows)) {
     const formats = greetingFormatsFor(state.gvInviteBy, system.supportsGroups);
     if (formats.length && !formats.some(f => f.name === state.gvGreeting)) {
@@ -1089,15 +804,10 @@ function renderInviteSettings(systems, settings, onSystemChange, onSettingChange
   gvServiceSelect(exportSeg, systems, name => {
     const next = systems.find(s => s.name === name);
     state.gvSystem = name;
-    // Picking a different system resets Group by family to that system's own
-    // default (on if it supports one, otherwise off) rather than carrying
-    // over whatever the previous system happened to be set to.
     state.gvInviteBy = next && next.supportsGroups ? 'group' : 'individual';
     onSystemChange();
   });
 
-  // Hidden entirely for a system with no group concept (Punchbowl, Partiful) -
-  // there's no Group option to offer, so it's always Individual, silently.
   if (system.supportsGroups) {
     row.append(el('div', 'gv-settings-divider'));
     const groupSeg = gvSegment(row, 'Group by family',
@@ -1115,10 +825,6 @@ function renderInviteSettings(systems, settings, onSystemChange, onSettingChange
     onSettingChange();
   });
 
-  // Only meaningful in Group mode, where it decides how a sibling appears in
-  // the family's member columns (name only, or name plus their own email). In
-  // Individual mode a student is never emailed directly at all - see
-  // personInviteParams - so there's nothing here for this switch to control.
   if (state.gvInviteBy === 'group') {
     row.append(el('div', 'gv-settings-divider'));
     const emailSeg = gvSegment(row, 'Send to Kid Emails', 'Will include the student emails of the invitees.');

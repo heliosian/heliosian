@@ -33,8 +33,6 @@ export async function load() {
   renderNav();
   renderCategories(searchInput().value);
   refreshCategoryManager();
-  // The rail's month is drawn last: it is fed by another app's model, and a
-  // failure there must not cost the links and categories drawn above it.
   renderMonth();
   renderWidgets(searchInput().value);
 }

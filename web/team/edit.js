@@ -25,23 +25,17 @@ export async function send(method, url, body) {
   if (!res.ok) {
     const text = await res.text();
     const err = new Error(text);
-    // A conflict comes back as JSON with the details of what stands in the
-    // way, so the caller can offer a way round it.
     if (res.status === 409 && (res.headers.get('Content-Type') || '').includes('json')) {
       try {
         Object.assign(err, {conflict: JSON.parse(text)});
         err.message = err.conflict.error || text;
       } catch {
-        // Not JSON after all; the text is the message.
       }
     }
     throw err;
   }
 }
 
-// saveActivity posts one activity, and when its Pretty ID belongs to a prior
-// year's activity, asks whether to rename that one out of the way and then
-// posts again with the agreement.
 export async function saveActivity(body) {
   const before = body.id && activity(body.id) ? activityPath(activity(body.id)) : null;
   try {
@@ -57,8 +51,6 @@ export async function saveActivity(body) {
     await send('POST', '/api/team/activity', {...body, takeOver: true});
   }
   await reload();
-  // Changing the friendly address while on its page moves the page: the old
-  // address no longer names anything, so the bar follows to the new one.
   const now = body.id ? activity(body.id) : null;
   if (before && now && location.pathname === before && activityPath(now) !== before) {
     history.replaceState(null, '', activityPath(now));
@@ -67,8 +59,6 @@ export async function saveActivity(body) {
   }
 }
 
-// settingCard is a bordered panel for one setting: its name and a sentence,
-// then whatever controls it takes, one under another.
 function settingCard(label, hint, ...controls) {
   const card = el('div', 'setting-card');
   card.append(el('div', 'setting-label', label), el('div', 'setting-hint', hint));
@@ -78,8 +68,6 @@ function settingCard(label, hint, ...controls) {
   return card;
 }
 
-// settingRow is one line of a settings-style form: what the setting is and a
-// sentence about it on the left, the control on the right, a hairline under.
 function settingRow(label, hint, control) {
   const row = el('div', 'setting-row');
   const text = el('div', 'setting-text');
@@ -113,32 +101,20 @@ export function people() {
   return asked;
 }
 
-// personInfo is the directory's row for an address, or null for someone it does
-// not know - a guest, or a family that has not been imported yet.
 export async function personInfo(email) {
   const all = await people();
   return all.find(p => p.email === email) || null;
 }
 
-// whoProfile is a person's page on Helios Who?, on this tier: team.x.heliosian.com
-// (or its alias hca.x.heliosian.com) pairs with who.x.heliosian.com, and the page
-// is named by the address's local part, as Who's own links are.
 export function whoProfile(email) {
   const host = location.host.replace(/^(team|hca)\./, 'who.');
   return `${location.protocol}//${host}/people/${encodeURIComponent((email || '').split('@')[0])}`;
 }
 
-// openPerson opens from a person's chip: a header with their face, name and
-// how to reach them, then the contact card. For whoever runs the event a
-// volunteer's chip opens instead on a Sign up tab, with their sign-up and
-// the co-chair appointment - what a chair clicking a face mostly wants -
-// with Contact beside it.
 export async function openPerson(v, node) {
   const info = await personInfo(v.email);
   const head = personHead(v, info);
   const contact = personContact(v, info);
-  // Whoever runs the thing reaches the sign-up from the face, and so does
-  // the person's own household.
   if (!node || !(node.canEdit || isFamily(v.email)) || !v.position) {
     const done = el('button', 'button button-secondary', 'Done');
     done.type = 'button';
@@ -154,9 +130,6 @@ export async function openPerson(v, node) {
   openModal('', [head, tabs], {...form, wide: 'person', replace: true});
 }
 
-// personHead is the top of a person's window: the big face, the name with
-// pronouns and what places them (grade and classroom, job and department, or
-// Parent), and captioned round buttons to email, text, call or copy them.
 function personHead(v, info) {
   const head = el('div', 'who-head');
   const face = el('div', 'avatar who-face');
@@ -212,9 +185,6 @@ function personHead(v, info) {
   return head;
 }
 
-// personContact is the card's rows: how to reach them, then the household -
-// each name a chip that opens that person's own window. Someone the directory
-// does not know gets just their address.
 function personContact(v, info) {
   const card = el('div', 'who-rows');
   let group = null;
@@ -266,8 +236,6 @@ function personContact(v, info) {
   return card;
 }
 
-// personFoot is the band under the card: the way through to their Helios Who?
-// page for someone the directory knows, and whatever button closes the window.
 function personFoot(v, info, done) {
   const foot = el('div', 'who-foot');
   if (info) {
@@ -289,8 +257,6 @@ export function openSignUp(node, existing, someoneElse) {
   openModal(existing ? `Edit sign-up for ${node.title}` : `Sign up for ${node.title}`, form.fields, form);
 }
 
-// signUpForm is the sign-up editor's fields and the modal options that save
-// them, so the same form opens on its own and as a tab of a person's window.
 function signUpForm(node, existing, someoneElse) {
   const editor = node.canEdit;
   const picker = createPersonPicker(el('div'), {people});
@@ -303,13 +269,7 @@ function signUpForm(node, existing, someoneElse) {
       }
     });
   emailField.hidden = who.value !== 'other';
-  // Nobody picks Co-Chair for themselves: it is an appointment by whoever runs
-  // the event - an admin or one of its co-chairs - so only they see it in the
-  // list. Anyone else chooses between the two kinds of volunteer, and a sitting
-  // co-chair editing their own note keeps the position.
   const isChair = Boolean(existing && existing.position === 'Co-Chair');
-  // Offering to co-chair is only a choice where a co-chair is wanted - or
-  // where the offer already stands, so it is not lost by opening the form.
   const positions = [{label: 'Volunteer', value: 'Volunteer'}];
   if (node.coLeaderNeeded || (existing && existing.position === 'Open to Co-Chair')) {
     positions.push({label: 'Volunteer, and open to co-chairing', value: 'Open to Co-Chair'});
@@ -323,9 +283,6 @@ function signUpForm(node, existing, someoneElse) {
   if (!existing) {
     fields.push(field('Who', who.wrap), emailField);
   }
-  // An existing sign-up can move to a neighbour: what this sits under, the
-  // things beside it, the things under it - whichever take sign-ups (or any,
-  // for whoever runs it). The row leaves the old thing as it lands on the new.
   let where = null;
   if (existing) {
     const options = [];
@@ -334,8 +291,6 @@ function signUpForm(node, existing, someoneElse) {
         options.push({label: n.title, value: n.id, group});
       }
     };
-    // In the order someone reaches for them: this, what it is part of, what
-    // is under it, then the rest beside it.
     const up = parentOf(node);
     options.push({label: node.title, value: node.id, group: 'This'});
     if (up) {
@@ -377,9 +332,6 @@ function signUpForm(node, existing, someoneElse) {
   const noteLabel = el('span', '', 'Note ');
   noteLabel.append(el('small', '', '(optional)'));
   fields.push(field(noteLabel, note));
-  // Whoever runs the event appoints a co-chair - or lets one step down - with
-  // one button; the change is saved at once, since it is a decision rather
-  // than part of the form.
   if (existing && editor) {
     const card = el('div', 'appoint-card');
     const icon = el('div', 'appoint-icon');
@@ -435,10 +387,6 @@ export async function removeVolunteer(node, volunteer) {
   }
 }
 
-// highlightInputs is the callout's three fields - the headline, the body and
-// an emoji for it, with a row of usual ones to tap or any typed in - shared by
-// the activity editor's Basics tab and the page's inline pencil. Its value is
-// null when there is nothing to show, which is how a highlight comes off.
 export function highlightInputs(current) {
   const wrap = el('div', 'highlight-inputs');
   const headline = text(current ? current.headline : '', {maxLength: 80, placeholder: 'Performances'});
@@ -447,8 +395,6 @@ export function highlightInputs(current) {
   const icon = text(current ? current.icon || '' : '', {maxLength: 8, placeholder: '📣'});
   icon.classList.add('highlight-icon-input');
   const picks = el('div', 'emoji-picks');
-  // The usual suspects for a school callout - announce, warn, celebrate, feed,
-  // perform, build, thank - any emoji still goes in the box.
   const usual = [
     '📣', '📢', '⭐', '✨', '⚠️', '❗', '💡', '✅', '📌', '📅', '⏰', '🗓️',
     '🎉', '🎊', '🎈', '🎂', '🎁', '❤️', '🙏', '👏', '🤝', '🙋', '👋', '👨‍👩‍👧',
@@ -474,7 +420,6 @@ export function highlightInputs(current) {
   const iconRow = el('div', 'emoji-row');
   iconRow.append(icon, picks);
   wrap.append(field('Headline', headline), field('Body', body), field('Emoji', iconRow));
-  // fieldEditor focuses whatever it is handed.
   wrap.focus = () => headline.focus();
   return {
     wrap,
@@ -493,9 +438,6 @@ export function highlightInputs(current) {
   };
 }
 
-// highlightFields is the Basics tab's callout editor. It starts as one button,
-// Add Highlight Section, and opens into the fields with a way to take the
-// section off again.
 function highlightFields(current) {
   const wrap = el('div', 'highlight-fields');
   const inputs = highlightInputs(current);
@@ -522,8 +464,6 @@ function highlightFields(current) {
   };
 }
 
-// whenFields is the When tab: the shared when editor (dom.js) in a form field,
-// offered the parent's timing to follow when the thing sits under one.
 function whenFields(act, parent) {
   const own = act ? act.own : {start: '', end: '', timing: ''};
   const when = whenEditor(own.start, own.end, own.timing, parent, 'rows');
@@ -531,13 +471,9 @@ function whenFields(act, parent) {
   return when;
 }
 
-// openActivity edits an activity, or with none adds one: an admin's addition
-// opens right away, anyone else's is a suggestion that waits for approval.
 export function openActivity(act, options) {
   const opts = options || {};
   const admin = isAdmin();
-  // Whoever runs the thing it goes under gets the full form: what they add
-  // is live at once, so there is nothing to suggest.
   const suggesting = !act && !admin && !(opts.parent && opts.parent.canEdit);
   const yearOptions = allYears().map(y => ({label: y, value: y}));
   const known = new Set(yearOptions.map(y => y.value));
@@ -548,21 +484,13 @@ export function openActivity(act, options) {
   }
   const year = select(yearOptions, act ? act.year : years().current);
   const title = text(act ? act.title : '', {required: true, maxLength: 120});
-  // Everything is an activity; what it sits under is the only difference between
-  // a headline event and a shift on its sign-up sheet.
   const under = act ? act.parent : (opts.parent ? opts.parent.id : '');
   const root = act ? rootOf(act) : (opts.parent ? rootOf(opts.parent) : null);
-  // Where it can move to is one level: a thing under an event may move to any
-  // of that event's siblings, and an event may move under any other event of
-  // the year. Never itself or anything under it - the server refuses the loop.
   const yearOf = act ? act.year : (opts.parent ? opts.parent.year : year.value);
   const roots = state.model.activities.filter(a => a.year === yearOf);
   const currentParent = under ? activity(under) : null;
   const grandparent = currentParent ? parentOf(currentParent) : null;
   const level = currentParent ? (grandparent ? grandparent.children : roots) : roots;
-  // Without the admin hat a thing moves only under something the viewer runs,
-  // and standing on its own is an admin's to decide - the server refuses the
-  // rest. Where it sits now is always offered, so the select can show it.
   const mine = new Set(act ? [act.id, ...descendants(act).map(d => d.id)] : []);
   const parents = admin || !under ? [{label: 'Nothing - this stands on its own', value: ''}] : [];
   for (const n of level) {
@@ -571,8 +499,6 @@ export function openActivity(act, options) {
     }
   }
   const parentSelect = select(parents, under);
-  // An event's Under select stays out of the way behind a small link until it
-  // is wanted; a thing already under something shows it outright.
   const moveLink = el('button', 'link-button move-under', 'Move under an event…');
   moveLink.type = 'button';
   moveLink.addEventListener('click', () => {
@@ -581,14 +507,8 @@ export function openActivity(act, options) {
     parentSelect.focus();
   });
   const underField = field('Parent Event', parentSelect, 'What this is part of, if anything');
-  // The category select follows where the row sits: a root picks one of the
-  // page's headings, a child picks one of its root event's own, or none. Someone
-  // proposing rather than running the event only sees categories that allow it;
-  // running what it goes under is running it, as the server reckons.
   const runsHere = currentParent || root;
   const editor = admin || Boolean(runsHere && runsHere.canEdit);
-  // Uncategorized is only for editors: it is where things land without a
-  // heading, not a heading people propose into.
   const headings = headingChoices(c => editor || canAdd(c)).filter(c => editor || c.value !== UNCATEGORIZED);
   const category = select(headings,
     act ? act.category : (opts.category || (headings[0] ? headings[0].value : '')));
@@ -596,8 +516,6 @@ export function openActivity(act, options) {
   const eventCategory = select([{label: 'None', value: ''}, ...own.map(c => ({label: c.title, value: c.id}))],
     act ? act.category : (opts.category || ''));
   const status = select(['Pending', 'Open', 'Done', 'Hidden'], act ? act.status : 'Open');
-  // A coloured dot beside a policy select: green for yes, yellow for approval,
-  // red for no, grey for "same as the parent". `blank` says what a blank means.
   const policyDot = (sel, blank) => {
     const wrap = el('div', 'status-select policy-select');
     const paint = () => {
@@ -608,7 +526,6 @@ export function openActivity(act, options) {
     wrap.append(sel);
     return wrap;
   };
-  // A coloured dot beside the status, the way the mockup reads it at a glance.
   const dotted = sel => {
     const wrap = el('div', 'status-select');
     wrap.dataset.status = sel.value;
@@ -624,8 +541,6 @@ export function openActivity(act, options) {
   const spots = text(act && act.spots ? String(act.spots) : '', {type: 'number'});
   spots.min = '1';
   spots.max = '99';
-  // Unlimited by default; switching that off shows a small box for the number,
-  // with its unit beside it.
   const unlimited = checkbox('Unlimited spots', !(act && act.spots), 'Allow unlimited volunteers to sign up.');
   const spotsRow = el('div', 'field-unit');
   spotsRow.append(spots, el('span', 'field-unit-label', 'people'));
@@ -645,12 +560,8 @@ export function openActivity(act, options) {
     }
   });
   paintSpots();
-  // A new thing starts wanting a co-chair - most do, and the sheet's own
-  // default for a blank cell says the same.
   const coLeader = checkbox('Co-chair needed', act ? act.coLeaderNeeded : true,
     'This lets people offer to be a co-chair; you still confirm them as co-chairs.');
-  // A new thing under a parent starts with the parent's privacy - a private
-  // event's committees are usually private too - and can be switched after.
   const hidden = checkbox('Keep volunteers secret',
     act ? act.volunteersHidden : Boolean(opts.parent && opts.parent.volunteersHidden),
     'E.g., hide room parent applications, which are secret.');
@@ -658,9 +569,6 @@ export function openActivity(act, options) {
     'Say the volunteers are all set, whatever the count; this shows a Volunteers Complete badge and stops sign-ups.');
   const direct = checkbox(under ? 'Allow volunteers for this itself' : 'Allow volunteers for the event itself', act ? act.directSignUp : true,
     under ? 'Unchecking this will allow volunteers for subcommittees, but not this itself.' : 'Unchecking this will allow volunteers for subcommittees, but not the event itself.');
-  // Whoever adds a thing says whether they are on it - as a volunteer, as
-  // one open to co-chairing, or not at all - and must say: the box starts
-  // blank and the form will not go without an answer.
   const signMe = select([
     {label: 'Choose one…', value: ''},
     {label: 'Volunteer', value: 'Volunteer'},
@@ -669,11 +577,7 @@ export function openActivity(act, options) {
   ], '');
   signMe.required = true;
   const signMeRow = act ? null : settingRow('Sign me up as', 'Whether you are on this yourself.', signMe);
-  // What people who do not run this may add under it - and the default for
-  // the event's own categories. Blank takes the parent's; an event's blank is No.
   const inheritLabel = under ? 'Same as the parent' : 'No, unless a category says otherwise';
-  // An event's blank already means No, so it needs no No of its own; a
-  // committee under a permissive parent does.
   const allowAdding = select([
     {label: inheritLabel, value: ''},
     {label: 'Yes - people can add, and it goes live', value: ADDING.yes},
@@ -683,14 +587,10 @@ export function openActivity(act, options) {
   const allowAddingRow = settingRow('Allow adding subactivities',
     'Can users add subactivities? Note that this is a default and can be overwritten by the settings of a category.',
     policyDot(allowAdding, under ? 'inherit' : ADDING.no));
-  // The search opens on the title, which is usually what the picture is of.
   const image = imagePicker(act ? act.image : '', act ? act.imageUrl : '', {query: () => title.value.trim()});
-  // The compact picker for a suggestion under an event.
   const suggestImage = imagePicker('', '', {dropzone: true, query: () => title.value.trim()});
   const flyer = imagePicker(act ? act.flyer : '', act ? act.flyerUrl : '', {plain: true});
   const pretty = text(act ? act.prettyId || '' : '', {placeholder: 'applause', maxLength: 40});
-  // The address as it will read, kept current as the field is typed in, with a
-  // way to copy it - what the form is for, in the end.
   const addressBase = () => `${location.origin}${under ? activityPath(root) + '/' : '/v/'}`;
   const addressLine = el('div', 'address-line');
   const addressText = el('code', 'address-text');
@@ -706,15 +606,8 @@ export function openActivity(act, options) {
   paintAddress();
   addressLine.append(addressText, addressCopy);
   const fields = [field('Title', title)];
-  // Only an event has a year of its own; everything under it lives in the event's.
   const yearField = (admin || !act) && !under ? settingRow('School year', 'The year this event belongs to.', year) : null;
-  // A suggestion asks for the least: a title, a few lines, roughly when. The
-  // year is this one and the category is where the button was pressed - the
-  // Just an Idea heading, or the event's category - so neither is asked.
   if (suggesting) {
-    // What happens next is the policy of where it is added - the category's,
-    // or the parent's - unless the adder runs the event, whose additions are
-    // live at once whatever the policy says.
     const policy = opts.category ? categoryOf(opts.category) : opts.parent;
     const live = under && ((opts.parent && opts.parent.canEdit) || (policy && policy.allowAdding === ADDING.yes));
     const lead = el('p', 'field-lead suggest-lead', under
@@ -734,15 +627,11 @@ export function openActivity(act, options) {
     }
   }
   if (!under && !suggesting && parents.length > 1) {
-    // The link takes the slot beside Category, where Under would have been.
     underField.hidden = true;
     const slot = el('div', 'field field-link-slot');
     slot.append(moveLink);
     fields.push(slot, underField);
   }
-  // Without the hat, status is open or done: a hidden thing may stay hidden,
-  // and a pending one is approved - opened or finished - only by whoever runs
-  // what it was suggested under; to anyone else it stays pending, unasked.
   let statusSelect = null;
   if (admin && act) {
     statusSelect = status;
@@ -755,19 +644,11 @@ export function openActivity(act, options) {
   } else if (act) {
     statusSelect = select(['Open', 'Done'], act.status === 'Done' ? 'Done' : 'Open');
   }
-  // Status lives on the Sign-ups tab as a settings row; the short Suggest form
-  // never shows it (a suggestion is pending until approved).
   const statusRow = statusSelect ? settingRow('Status', 'Control whether this activity is open for sign-ups.', dotted(statusSelect)) : null;
   fields.push(field('Description', description));
   const highlight = highlightFields(act ? act.highlight : null);
   let body;
   if (!suggesting) {
-    // The full form is long, so it is a wide modal with the fields sorted into
-    // tabs: what it is, when and where, who may sign up, how it looks and
-    // where it lives. The short selects pair up across the width; the title
-    // and description keep the whole line. A suggestion stays one column.
-    // Basics as settings rows, like the other tabs: the title, what it is
-    // part of and where it is listed, then the description across the width.
     const basics = [settingRow('Title', 'What this is called.', title)];
     if (under) {
       basics.push(settingRow('Parent Event', 'What this is part of.', parentSelect));
@@ -799,8 +680,6 @@ export function openActivity(act, options) {
         pretty, addressLine),
       ]},
     ])];
-    // The question sits under the tabs, in view whichever is open, so a
-    // blank answer is seen when the form refuses to go.
     if (signMeRow) {
       body.push(signMeRow);
     }
@@ -808,9 +687,6 @@ export function openActivity(act, options) {
     description.rows = 4;
     description.placeholder = 'What is it, and what would volunteers do?';
     if (under) {
-      // Under an event the when is the event's, and it is the chairs' to
-      // place: a title, where it goes among the event's categories (when it
-      // has any), a few lines and a picture are all that is asked.
       if (own.length) {
         fields.splice(fields.indexOf(fields.find(f => f.querySelector && f.querySelector('textarea'))), 0, field('Category', eventCategory));
       }
@@ -838,7 +714,6 @@ export function openActivity(act, options) {
         status: statusSelect ? statusSelect.value : '',
         description: description.value, image: suggesting && under ? suggestImage.value() : image.value(), flyer: flyer.value(), timing: scheduled.timing,
         highlight: highlight.value(),
-        // Location is no longer asked for or shown; a value already in the sheet is kept.
         start: scheduled.start, end: scheduled.end, location: act ? act.location || '' : '', spots: unlimited.input.checked ? 0 : Number(spots.value) || 0,
         coLeaderNeeded: coLeader.input.checked, volunteersHidden: hidden.input.checked, volunteersComplete: complete.input.checked, directSignUp: direct.input.checked,
         priority: Boolean(act && act.priority),
@@ -846,8 +721,6 @@ export function openActivity(act, options) {
       };
       await saveActivity(body);
       if (!act) {
-        // The server minted the id, so find the new row by the one thing we
-        // know about it - the reload has already run, so the model is current.
         await reload();
         const made = [...allNodes()].find(n => n.year === body.year && n.title === body.title && n.parent === body.parent);
         if (made) {
@@ -857,9 +730,6 @@ export function openActivity(act, options) {
     },
     onDelete: act && admin ? () => send('DELETE', '/api/team/activity', {id: act.id}) : null,
     confirmDelete: act ? `Delete “${act.title}” (${act.year})? Its links go with it.` : '',
-    // A deleted thing under an event sends you back up to that event; a
-    // deleted event, to the front page. The path is taken now, while the
-    // parent is still in the model as this thing's parent.
     afterDelete: () => goTo(currentParent ? activityPath(currentParent) : '/'),
   });
 }
@@ -883,12 +753,6 @@ export function openLink(node, item) {
   });
 }
 
-// openVolunteerGrid is the organizers' roster for an event: every sign-up in the
-// tree, with where it is (category > committee > ... , or "(itself)"), the
-// position, the day they signed up, the address, and for a student the
-// parents' addresses - the people an organizer actually needs to reach. Copy
-// emails copies every address in it. A heading sorts by its column, a second
-// click the other way; the copies follow the order on screen.
 export function openVolunteerGrid(root, nodes, pathOf) {
   const rows = [];
   for (const node of nodes) {
@@ -896,14 +760,10 @@ export function openVolunteerGrid(root, nodes, pathOf) {
       rows.push({node, v, parents: []});
     }
   }
-  // The columns as text, for copying: each header has a glyph that copies its
-  // column one value per line, and the toolbar copies the whole table
-  // tab-separated with its headings, which pastes into a spreadsheet as cells.
   const columns = [
     {label: 'Volunteer', get: r => r.v.name || r.v.email},
     {label: 'Where', get: r => pathOf(r.node)},
     {label: 'As', get: r => r.v.position},
-    // The sheet's day, YYYY-MM-DD, sorts as it stands; the table shows it long.
     {label: 'Sign Up Date', get: r => r.v.added || '', show: r => (r.v.added ? longDate(r.v.added) : '')},
     {label: 'Email', get: r => r.v.email},
     {label: "Parents' email", get: r => r.parents.join(', ')},
@@ -931,8 +791,6 @@ export function openVolunteerGrid(root, nodes, pathOf) {
   };
   const table = el('table', 'roster');
   const head = el('tr');
-  // The rows keep the tree's order until a heading is clicked. Blanks - no
-  // date on an old sign-up, no parents - stay at the foot either way.
   let sortedBy = null;
   let ascending = true;
   const sortBy = (c, th) => {
@@ -998,8 +856,6 @@ export function openVolunteerGrid(root, nodes, pathOf) {
     body.append(tr);
   }
   table.append(body);
-  // The directory lookup is the slow part, and only the parents column needs
-  // it, so the roster shows at once and that column fills in behind it.
   people().then(all => {
     const byEmail = new Map(all.map(p => [p.email, p]));
     for (const {cell, row} of parentCells) {
@@ -1042,10 +898,6 @@ function mailto(email) {
   return a;
 }
 
-// editPencil and fieldEditor are the inline editing pattern Helios Who? uses:
-// a small pencil beside a value, and on click the value and its pencil step
-// aside for an input with Save/Cancel right there. Nothing else on the page
-// moves, and the reader never leaves the page to change one thing.
 export function editPencil(label) {
   const pencil = el('button', 'edit-icon');
   pencil.type = 'button';
@@ -1055,10 +907,6 @@ export function editPencil(label) {
   return pencil;
 }
 
-// opts: {input, value(), submit(value), hint}. A successful submit reloads the
-// model and repaints the page, which takes the editor with it - so there is no
-// close-on-success path to get wrong. Failures surface as a toast, the way every
-// other write in this app reports itself.
 export function fieldEditor(anchor, pencil, opts) {
   const box = el('div', 'field-editor');
   box.append(opts.input);
@@ -1081,8 +929,6 @@ export function fieldEditor(anchor, pencil, opts) {
   cancel.addEventListener('click', close);
   save.addEventListener('click', async () => {
     const value = opts.value();
-    // A validate() that returns a message stops the save and says why, right
-    // beside the buttons - nothing is sent and the editor stays open.
     const problem = opts.validate ? opts.validate(value) : '';
     if (problem) {
       status.classList.add('error');
@@ -1112,8 +958,6 @@ export function fieldEditor(anchor, pencil, opts) {
   opts.input.focus();
 }
 
-// editable hangs a pencil off a rendered value and wires it to one field of the
-// activity. The caller says how to render the input and what to send.
 export function editable(anchor, label, make, submit) {
   const pencil = editPencil(label);
   pencil.addEventListener('click', () => {
@@ -1129,16 +973,12 @@ export function editable(anchor, label, make, submit) {
   return pencil;
 }
 
-// openCategory edits one category, or adds one to `eventId`'s event - or to the
-// page's headings when eventId is empty.
 export function openCategory(category, eventId, after) {
   const title = text(category ? category.title : '', {required: true, maxLength: 120});
   const description = textarea(category ? category.description : '', 3);
   description.placeholder = 'Add a brief description (optional).';
   const image = imagePicker(category ? category.image : '', category ? category.imageUrl : '',
     {dropzone: true, hint: 'Add an image to represent this category (optional).'});
-  // What people may add here: live, after approval, or not at all - and for an
-  // event's own category, the event's own setting unless said otherwise.
   const policies = [
     ...(eventId ? [{label: 'Same as the event', value: ''}] : []),
     {label: 'Yes - people can add, and it goes live', value: ADDING.yes},
@@ -1158,8 +998,6 @@ export function openCategory(category, eventId, after) {
   const addingField = field('Allow adding', addingWrap, 'Control whether people can add activities to this category.');
   addingField.classList.add('is-required');
   const fields = [titleField, field('Description', description), image.wrap, addingField];
-  // Only a page heading can be kept off the main page; it still sits in the
-  // rail with its count, and clicking it there shows its events.
   const onMain = eventId ? null : checkbox('Show on the main page (it stays in the toolbar either way)', category ? category.showOnMain : true);
   if (onMain) {
     fields.push(onMain.wrap);
@@ -1179,18 +1017,12 @@ export function openCategory(category, eventId, after) {
   });
 }
 
-// addingWords is a category's policy in a phrase for the manager's list.
 function addingWords(category) {
   const own = category.allowAddingOwn || '';
   const word = {[ADDING.yes]: 'People can add here', [ADDING.approval]: 'People can suggest here', [ADDING.no]: 'Only organizers add here'}[category.allowAdding] || '';
   return own ? word : (category.eventId ? `${word} (same as the event)` : word);
 }
 
-// categoryList is the one list of categories with reorder, edit and add. The
-// Admin Tools card and the manager an editor opens from an event both show it,
-// so they cannot drift. `after` runs once the model has reloaded from a change -
-// the manager passes itself, so it comes back showing the new state; the admin
-// page passes nothing, since it re-renders on its own.
 export function categoryList(root, after) {
   const wrap = el('div', 'category-list');
   const eventId = root ? root.id : '';
@@ -1239,8 +1071,6 @@ export function categoryList(root, after) {
   return wrap;
 }
 
-// openCategoryManager is an event's own categories in a modal, for whoever runs
-// it: the headings its committees, booths and shifts are grouped under.
 export function openCategoryManager(root) {
   const again = () => openCategoryManager(root);
   openModal(`${root.title}: Categories`, [
@@ -1258,9 +1088,6 @@ export function openSettings() {
   });
 }
 
-// openRedirect adds a redirect from Admin Tools, or edits one: an old address
-// here - a link from the old volunteer site pasted whole, or a path - and
-// where it should go, a page here or an address elsewhere.
 export function openRedirect(item) {
   const old = text(item ? item.old : '', {required: true, placeholder: 'https://hca.heliosian.com/dl/signup/... or /old/path'});
   const to = text(item ? item.new : '', {required: true, placeholder: '/v/spring-celebration, or https://...'});
@@ -1288,14 +1115,11 @@ export async function copyToNextYear(act) {
   }
 }
 
-// setControls posts one of the editor panel's switches by resubmitting the
-// whole record with that field changed.
 export async function saveActivityFields(act, changes) {
   const body = {
     id: act.id,
     year: act.year, title: act.title, parent: act.parent || '',
     category: act.category || '', status: act.status,
-    // The sheet's own dates, not the ones inherited for display (state.js).
     description: act.description || '', image: act.image || '', flyer: act.flyer || '', timing: act.own.timing,
     start: act.own.start, end: act.own.end, location: act.location || '', spots: act.spots || 0,
     coLeaderNeeded: act.coLeaderNeeded, volunteersHidden: act.volunteersHidden, volunteersComplete: Boolean(act.volunteersComplete), directSignUp: act.directSignUp,

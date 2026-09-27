@@ -78,8 +78,6 @@ export function render() {
   clearSearch();
   page.replaceChildren(route());
   document.body.classList.toggle('is-admin', location.pathname === '/admin');
-  // After the page, so the rail's active item and its per-category counts
-  // reflect where we just landed and what that page filtered to.
   renderChrome();
 }
 

@@ -4,9 +4,6 @@ import {openCelebration, openCategory, openSettings, openMoveAddress, send, relo
 import {celebrationBand} from './parties.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 
-// bannerCard is the band across the top of the parties page as it is now,
-// with one button to change it: the current celebration's picture, title,
-// theme, date and button.
 function bannerCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Banner'));
@@ -16,7 +13,6 @@ function bannerCard() {
     card.append(el('div', 'notice', 'No celebration to show yet - add one under Celebrations.'));
     return card;
   }
-  // Which celebration the band shows, switched right here.
   const pick = el('select');
   for (const each of state.model.celebrations) {
     const o = new Option(each.title, each.code);
@@ -55,9 +51,6 @@ function celebrationsCard() {
   for (const c of state.model.celebrations) {
     const row = el('div', 'admin-row');
     const body = el('div', 'grow');
-    // Each row says what the site does with it: whose parties are listed,
-    // and whose banner is shown - two flags, so they can sit on different
-    // years.
     const name = el('div', 'admin-row-name');
     name.append(el('span', '', c.title));
     if (c.current) {
@@ -76,8 +69,6 @@ function celebrationsCard() {
   return card;
 }
 
-// categoriesCard lists the categories in their order, each renamable, with
-// arrows to reorder and a way to add one.
 function categoriesCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Categories'));
@@ -137,11 +128,6 @@ function settingsCard() {
   return card;
 }
 
-// invoicesCard is the INVOICING ledger - the sheet's own accounting tab -
-// for the chosen celebration, grouped by who is billed, with filters to
-// find a family, a party, or what is still to be invoiced. The app writes
-// a row when a ticket sells; accounting fills in Invoice and Invoice To in
-// the sheet, and this is where it shows.
 function invoicesCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Invoicing'));
@@ -170,8 +156,6 @@ function invoicesCard() {
   const table = el('div');
   card.append(totals, table);
   const ledger = () => (state.model.invoicing || []).filter(l => l.code === code);
-  // The ledger holds addresses; the parties' tickets know the names, the
-  // hidden parties' too.
   const names = new Map();
   for (const p of state.model.allParties) {
     for (const a of [...p.attendees, ...p.waitlisted]) {
@@ -252,11 +236,6 @@ function invoicesCard() {
   return card;
 }
 
-// addressesCard lists the school addresses on the parties that the
-// directory does not have - most often an alum's account, closed after
-// graduation, so invitations to it reach nobody - each with the parties it
-// stands on and Change address, and under them the changes already made
-// (the sheet's Former Addresses tab).
 function addressesCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Addresses'));

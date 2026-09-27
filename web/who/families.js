@@ -13,9 +13,6 @@ export function familyOf(p) {
   return familiesOf(p)[0];
 }
 
-// A family page is its adults' to edit - not a kid's, so not the other
-// household of a kid who has two - or anyone's with the pencil on, as the
-// server's mayEdit has it.
 export function canEditFamily(family) {
   return state.model.superEdit || (family.adultEmails || []).includes(document.body.dataset.userEmail);
 }
@@ -25,10 +22,6 @@ export function myFamilyKey() {
   return (family && family.key) || '';
 }
 
-// Only families with at least one kid on record - a staff member with no kids
-// (a Family record with no kidEmails, or no Family record at all) isn't a
-// family in the school-community sense the Families tab is showing, so those
-// don't get an entry here at all.
 export function familyEntries() {
   return Object.values(state.model.families)
     .filter(f => (f.kidEmails || []).length)

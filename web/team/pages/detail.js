@@ -10,14 +10,8 @@ import {send, reload, openSignUp, openActivity, openLink, saveActivityFields, op
 import {text as textInput, textarea as textAreaInput, select as selectInput} from '/form.js';
 
 
-// Which activity is in edit mode, by id. Keyed rather than a bare boolean so
-// opening a different activity never inherits the last one's edit mode. Mirrors
-// Helios Who?'s personEdit: one Edit button reveals every field's pencil, and
-// becomes Done.
 let editingPath = null;
 
-// phone is the rail-less layout (style.css's breakpoint); crossing it lays
-// the page out again, since the facts card sits in a different place.
 const phone = window.matchMedia('(max-width: 900px)');
 phone.addEventListener('change', () => document.dispatchEvent(new CustomEvent('hca:refresh')));
 
@@ -25,17 +19,12 @@ const weekdayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short'});
 const fullDate = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
 const clock = new Intl.DateTimeFormat('en-US', {hour: 'numeric', minute: '2-digit'});
 
-// spansDays says whether a thing runs past the day it starts: its end, when
-// it has one, falls on a later day.
 function spansDays(node) {
   const start = parseWhen(node.start);
   const end = parseWhen(node.end);
   return Boolean(start && end && end.date.toDateString() !== start.date.toDateString());
 }
 
-// timeRange is the hours line: "4:00 PM – 6:00 PM" on a single day; across
-// days each time carries its weekday - "Fri 4:00 PM – Sun 12:00 PM" - since
-// the days line no longer says which is which.
 function timeRange(node) {
   const start = parseWhen(node.start);
   if (!start || !start.hasTime) {
@@ -49,10 +38,6 @@ function timeRange(node) {
   return end && end.hasTime ? `${clock.format(start.date)} – ${clock.format(end.date)}` : clock.format(start.date);
 }
 
-// heroStamp is the card floating over the hero image - the date card
-// every app shares (datecard.js): the day's tile, the hours, the place,
-// and Add to Google Calendar. An activity with no parsed date shows its
-// timing words instead.
 function heroStamp(act) {
   const start = parseWhen(act.start);
   if (act.timing || !start) {
@@ -62,9 +47,6 @@ function heroStamp(act) {
   return dateCard(el, {start: act.start, end: act.end, location: act.location || '', add: googleCalendarLink({title: act.title, start: act.start, end: act.end, location: act.location || '', details})});
 }
 
-// heroImageBar is the strip across the foot of the hero while editing: pick a
-// file and it uploads and saves in one go, since an image the reader picked but
-// did not save would be a half-finished state with nothing to show for it.
 function heroImageBar(node, save) {
   const bar = el('div', 'hero-image-bar');
   const file = el('input');
@@ -78,9 +60,6 @@ function heroImageBar(node, save) {
     bar.replaceChildren(el('span', 'hero-image-status', 'Uploading…'));
     await uploadAndSave(save, file.files[0]);
   });
-  // The image comes from a file or from a stock library; with search set up
-  // the button is a small menu of the two, otherwise it is the file picker
-  // itself.
   const label = node.image ? 'Replace image' : 'Add an image';
   if (imageSearchOn()) {
     const holder = el('div', 'hero-image-menu-holder');
@@ -117,8 +96,6 @@ function heroImageBar(node, save) {
     bar.append(choose);
   }
   if (node.image) {
-    // Crop opens the tool over the current picture; what is inside the frame
-    // is uploaded as a new image and saved in the picture's place.
     const crop = el('button', 'hero-image-action');
     crop.type = 'button';
     crop.append(svg('crop'), el('span', '', 'Crop'));
@@ -136,9 +113,6 @@ function heroImageBar(node, save) {
   return bar;
 }
 
-// prevNext walks the same list, in the same order, that the opportunities grid
-// shows for this year, so "next" means what the reader would expect from where
-// they came in.
 function prevNext(node) {
   const parent = parentOf(node);
   const siblings = parent
@@ -185,14 +159,11 @@ function sideRow(icon, title, lines) {
   return row;
 }
 
-// facts is the summary rail beside the description: when it happens, where, and
-// who runs it. Anything the sheet leaves blank simply doesn't appear.
 function factsCard(node, editing, save) {
   const card = sideCard();
   let any = false;
   const start = parseWhen(node.start);
   const when = [];
-  // Timing words stand in for the date and time when both are set.
   if (node.timing) {
     when.push(node.timing);
   } else if (start) {
@@ -205,15 +176,10 @@ function factsCard(node, editing, save) {
   if (when.length && node.whenFrom) {
     when.push(`Same as ${node.whenFrom.title}`);
   }
-  // A scheduled thing's date and hours are on the banner's card, with
-  // Add; the row stays for timing words, for nothing scheduled, and while
-  // editing, where the when editor lives.
   if ((when.length && !start) || editing) {
     const row = sideRow('calendar', 'Date & Time', when.length ? when : ['Not scheduled']);
     const body = row.querySelector('.side-row-body');
     if (editing) {
-      // Start, end and the free-text timing are one thought, so they are one
-      // editor rather than three pencils in a row.
       const lines = el('div', 'side-when');
       while (body.children.length > 1) {
         lines.append(body.children[1]);
@@ -231,20 +197,13 @@ function factsCard(node, editing, save) {
     any = true;
   }
   const chairs = coChairs(node);
-  // Who has offered to co-chair is public - a secret list still keeps its
-  // offers to the editors - and an offer stands even once the want is
-  // switched off, so it is what keeps the row up.
   const options = shownVolunteers(node, node.canEdit).filter(v => v.position === 'Open to Co-Chair');
-  // Whether a co-chair is wanted lives here, with the co-chairs themselves: the
-  // row shows when there are any, when one is wanted or offered, or while
-  // editing (so the switch is reachable even when none of that is true yet).
   if (chairs.length || node.coLeaderNeeded || options.length || editing) {
     const row = el('div', 'side-row');
     const mark = el('div', 'side-icon');
     mark.append(svg('people'));
     row.append(mark);
     const body = el('div', 'side-row-body');
-    // One person chairs; two or more co-chair.
     body.append(el('div', 'side-title', chairs.length === 1 ? 'Chair' : 'Co-Chairs'));
     if (chairs.length) {
       const list = el('div', 'side-chairs');
@@ -258,10 +217,6 @@ function factsCard(node, editing, save) {
     if (options.length) {
       body.append(el('div', 'side-subtitle', 'Co-Chair Options'));
       if (node.canEdit) {
-        // Whoever runs it sees each offer as a card - the face and name, what
-        // they offered, and the button that takes them up on it, after a word
-        // of confirmation since it hands them the page. The face still opens
-        // the sign-up for a closer look.
         for (const v of options) {
           const card = el('div', 'side-option');
           const who = el('button', 'side-option-who');
@@ -300,9 +255,6 @@ function factsCard(node, editing, save) {
       wants.append(box, el('span', '', 'A co-chair is needed'));
       body.append(wants);
     } else if (node.coLeaderNeeded && node.canEdit) {
-      // Whoever runs the page is not asked to co-chair their own thing: the
-      // ask becomes the question, answered in place, with the way into
-      // editing beside it.
       const ask = el('div', 'side-ask');
       const wants = el('label', 'side-switch');
       const box = checkbox(true, on => save({coLeaderNeeded: on}));
@@ -315,9 +267,6 @@ function factsCard(node, editing, save) {
       ask.append(wants, pencil);
       body.append(ask);
     } else if (node.coLeaderNeeded) {
-      // One click offers: the viewer's sign-up becomes (or starts as) open to
-      // co-chairing, and the chairs see them under Co-Chair Options. Once
-      // they have, the ask gives way to the thanks.
       const mine = mySignUp(node);
       if (mine && mine.position === 'Open to Co-Chair') {
         body.append(el('div', 'side-line side-offered', 'You have offered to co-chair - thank you!'));
@@ -343,33 +292,24 @@ function factsCard(node, editing, save) {
   return any ? card : null;
 }
 
-// personTile is one avatar and name in the rail. It opens the person's window:
-// the contact card, with their sign-up alongside for whoever runs the event.
 function personTile(owner, v, editing, star, chair, option) {
   const tile = el('button', 'side-chair' + (editing ? ' is-editable' : '') + (chair ? ' is-chair' : '') + (option ? ' is-option' : ''));
   tile.type = 'button';
   tile.title = owner.canEdit ? `${v.name} and their sign-up` : `About ${v.name}`;
   tile.addEventListener('click', () => openPerson(v, owner));
   const face = avatar(v);
-  // A student's grade rides on the corner of their face, short: "5", "K".
   if (v.grade) {
     const grade = el('span', 'grade-badge', /^kindergarten$/i.test(v.grade) ? 'K' : v.grade.replace(/^grade\s*/i, ''));
     grade.title = v.grade;
-    // Helios Who?'s colour for the grade, darkened as Who? darkens it, so
-    // white text stays legible even on a yellow.
     const color = (state.model.gradeColors || {})[v.grade];
     if (color) {
       grade.style.background = `color-mix(in srgb, ${color} 65%, black)`;
     }
     face.append(grade);
   }
-  // A note left with the sign-up shows as a notepad on the other corner, to
-  // everyone who sees the face - "bringing a truck" is for the whole crew.
   if (v.note) {
     const bubble = el('span', 'note-badge');
     bubble.setAttribute('aria-label', 'Left a note');
-    // A notepad, filled: a white page with a band across the top and three
-    // ruled lines in the badge's own colour - line icons are too thin here.
     bubble.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5" fill="currentColor"/><path class="note-ink" d="M5 5.5A2.5 2.5 0 0 1 7.5 3h9A2.5 2.5 0 0 1 19 5.5V7.5H5z"/><rect class="note-ink" x="8" y="10.5" width="8" height="1.6" rx="0.8"/><rect class="note-ink" x="8" y="14" width="8" height="1.6" rx="0.8"/><rect class="note-ink" x="8" y="17.5" width="5" height="1.6" rx="0.8"/></svg>';
     face.append(bubble);
   }
@@ -379,16 +319,10 @@ function personTile(owner, v, editing, star, chair, option) {
   } else if (option) {
     tile.append(el('div', 'side-chair-role is-option', 'Chair opt'));
   }
-  // Whoever runs the event reads their RSVP to its invitation on Helios
-  // When, once the invites are out. The server sends it to a system admin
-  // whatever the hat; the page shows it only to whoever may edit the thing.
   if (v.rsvp && owner.canEdit) {
     const words = {yes: 'RSVP: Yes', maybe: 'RSVP: Maybe', no: 'RSVP: No', none: 'No RSVP yet'};
     tile.append(el('div', 'side-chair-rsvp is-' + v.rsvp, words[v.rsvp] || ''));
   }
-  // Resting on the tile tells the story of the sign-up: the day, who did it
-  // when it was somebody else (which only whoever runs the thing is told),
-  // and the note.
   const tip = el('div', 'tile-tip');
   tip.setAttribute('role', 'tooltip');
   const by = owner.canEdit ? v.addedByName : '';
@@ -406,9 +340,6 @@ function personTile(owner, v, editing, star, chair, option) {
   return tile;
 }
 
-// whereIs names a node's place in its event the way organizers say it: the top
-// committee's category, then each committee down to the node - "Booths > Poland
-// > Performance". The event itself is just "(itself)".
 function whereIs(root, node) {
   if (node === root) {
     return '(itself)';
@@ -422,8 +353,6 @@ function whereIs(root, node) {
   return [cat ? cat.title : null, ...chain.map(n => n.title)].filter(Boolean).join(' > ');
 }
 
-// chainBelow is a thing's titles from just under root down to itself, so a
-// list on the event tells one country's Performance from another's.
 function chainBelow(root, node) {
   const titles = [];
   for (let n = node; n && n !== root; n = parentOf(n)) {
@@ -432,12 +361,6 @@ function chainBelow(root, node) {
   return titles.join(' › ');
 }
 
-// editCrumb is the line above the hero while editing: school year, then the
-// parent for a child, then the category - each its own thing to change. Only an
-// admin moves something between years; the server refuses anyone else, so the
-// pencil is not offered to them. The category menu also offers "Change Parent
-// Event…", which turns this event into a child of another and drops its page
-// category, since children name their event's categories instead.
 function editCrumb(node, parent, root, save) {
   const crumb = el('div', 'detail-crumb');
   const yearItem = el('span', 'crumb-item', node.year);
@@ -476,8 +399,6 @@ function editCrumb(node, parent, root, save) {
       const wrap = el('div', 'field-when');
       const pick = selectInput(choices, node.category || '');
       wrap.append(pick);
-      // Every activity in this year except the row itself and what sits under it;
-      // nested ones are labelled by their path so the list reads as a tree.
       const mine = new Set([node.id, ...descendants(node).map(d => d.id)]);
       const candidates = [];
       for (const top of state.model.activities.filter(a => a.year === node.year)) {
@@ -511,11 +432,6 @@ function editCrumb(node, parent, root, save) {
   return crumb;
 }
 
-// treeFilter is the dropdown that picks which of a thing's descendants the
-// volunteers list includes: a summary button that drops a list of checkboxes,
-// one for the thing itself - named as itself, so the label reads the same for
-// an event, a committee or a shift - and one per thing under it, indented by
-// depth, with Select All / Clear All. `onChange` runs with the chosen nodes.
 function treeFilter(node, below, onChange) {
   const chosen = new Set([node.id]);
   const self = `${node.title} (itself)`;
@@ -558,8 +474,6 @@ function treeFilter(node, below, onChange) {
     item.append(box, el('span', '', label));
     return item;
   };
-  // Select All / Clear All set every box and the selection in one go, so a
-  // long list can be flipped without walking it.
   const bulk = el('div', 'side-filter-bulk');
   const setAll = on => {
     chosen.clear();
@@ -595,11 +509,6 @@ function treeFilter(node, below, onChange) {
   return {wrap: filter, sources, self};
 }
 
-// familyBox is the viewer's household on this thing and everything under it:
-// a row each - the face, the name, what they are on - with Edit at the right
-// into that sign-up (where Remove is), so a family's own sign-ups are found
-// and changed without hunting for each face in the lists. Nothing when none
-// of the household is on any.
 function familyBox(node) {
   const mine = [me().email, ...family().map(c => c.email)];
   const rows = [];
@@ -634,24 +543,14 @@ function familyBox(node) {
   return box;
 }
 
-// volunteersBox is the sign-up surface for this thing itself: who is on it, the
-// way to join, and - while editing - whether people may join it directly and
-// whether the list is private. Sign-ups for the things under it live on their
-// own pages; the rail's filter is the cross-tree view.
 function volunteersBox(node, editing, save) {
   const people = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair');
   const chairs = coChairs(node);
-  // Whether anything sits under the node for a reader to sign up for; without
-  // it, the lines that point "below" say nothing.
   const somethingBelow = node.children.some(c => c.status !== 'Hidden' && c.status !== 'Pending');
   const box = el('div', 'vol-box');
   const head = el('div', 'vol-head');
   const title = el('div', 'vol-title');
-  // A thing that takes no sign-ups itself and has nobody chairing it has no
-  // list to head: the section shrinks to one quiet line - where to sign up
-  // instead, with the committee filter beside it - rather than an empty box.
   const quiet = !node.directSignUp && !chairs.length && !editing;
-  // The count is everyone on it, chairs included.
   const count = chairs.length + people.length;
   if (quiet) {
     box.classList.add('is-quiet');
@@ -662,7 +561,6 @@ function volunteersBox(node, editing, save) {
     title.append(el('h2', 'section section-swoosh', count ? `Who's Involved (${count})` : "Who's Involved"));
   }
   if (editing) {
-    // The cap on sign-ups sits by the count it caps: a small button, a prompt.
     const setMax = button(node.spots ? `Max ${node.spots}` : 'Set Max', '', 'button button-secondary button-small vol-max', () => {
       const answer = prompt('How many people can sign up here? Leave blank for no limit.', node.spots ? String(node.spots) : '');
       if (answer === null) {
@@ -673,14 +571,10 @@ function volunteersBox(node, editing, save) {
     });
     setMax.title = 'Set the most people who can sign up here';
     title.append(setMax);
-    // The organizers' say-so that the thing is staffed, whatever the count:
-    // it wears the Volunteers Complete badge and takes no more sign-ups.
     const done = el('label', 'side-switch vol-complete');
     done.append(checkbox(Boolean(node.volunteersComplete), on => save({volunteersComplete: on})), el('span', '', 'Volunteers complete'));
     title.append(done);
   }
-  // With things under it, a filter beside the heading brings their
-  // volunteers into the list too, each run under its committee's name.
   const below = descendants(node);
   const listing = el('div', 'vol-listing');
   let filter = null;
@@ -688,27 +582,18 @@ function volunteersBox(node, editing, save) {
     filter = treeFilter(node, below, () => paintListing());
   }
   head.append(title);
-  // With volunteers not allowed here there is nothing to join and nothing to
-  // edit, so the buttons go; a secret list keeps its buttons but shows nobody
-  // to anyone not editing or showing hidden things.
   const actions = el('div', 'vol-actions');
   if (filter) {
     actions.append(filter.wrap);
   }
   const mine = mySignUp(node);
   if (node.directSignUp) {
-    // Removing yourself lives inside that editor, as its Remove action.
     const me = mine
       ? {label: 'Edit my sign-up', icon: 'edit', onClick: () => openSignUp(node, mine)}
       : (canJoin(node) || node.canEdit ? {label: 'Join', icon: 'join', onClick: () => openSignUp(node, null)} : null);
-    // Anyone may sign up someone else - a partner, a child, a friend who said
-    // yes - so while it is open the two ways to sign up are one control:
-    // "Sign up: Me | Someone else". Whoever runs it keeps it at all times.
     const others = node.canEdit || (node.status === 'Open' && !isFull(node));
     if (others) {
       const split = el('div', 'split-button');
-      // The label is a button too: it does what Me does, or with no Me
-      // to do, signs someone else up.
       const label = el('button', 'split-label');
       label.type = 'button';
       label.textContent = 'Sign up';
@@ -723,8 +608,6 @@ function volunteersBox(node, editing, save) {
       actions.append(button(me.label, me.icon, 'button button-small', me.onClick));
     }
   }
-  // Its email list lives on Helios Loop: Create Decor Email List makes one
-  // from the volunteers, and once there is one the button opens it.
   if (node.runs) {
     const list = el('a', 'button button-small' + (node.emailList ? ' button-secondary' : ''));
     list.href = emailListPath(node);
@@ -733,10 +616,6 @@ function volunteersBox(node, editing, save) {
   }
   head.append(actions);
   box.append(head);
-  // The chairs lead the list whatever else it shows - they are public, and
-  // they keep the section from standing bare - each marked as a chair; then
-  // the volunteers, or the reason there are none to show; then, when the
-  // filter brings them in, each chosen committee's volunteers under its name.
   const revealed = listRevealed(node, editing);
   const showPeople = node.directSignUp && revealed ? people : [];
   const paintListing = () => {
@@ -750,8 +629,6 @@ function volunteersBox(node, editing, save) {
         for (const v of chairs) {
           grid.append(personTile(node, v, editing, false, true));
         }
-        // Those open to co-chairing come next, marked for everyone - an offer
-        // is public, and seeing one is what nudges the next.
         const isOption = v => v.position === 'Open to Co-Chair';
         for (const v of showPeople.filter(isOption)) {
           grid.append(personTile(node, v, editing, false, false, true));
@@ -765,13 +642,9 @@ function volunteersBox(node, editing, save) {
         listing.append(grid);
       }
       if (!node.directSignUp) {
-        // Volunteers are taken only by the things under it, so say so where
-        // the sign-up button would be - unless the heading already does.
         if (!quiet && somethingBelow) {
           listing.append(el('div', 'vol-note', 'Sign up for something below.'));
         }
-        // Those who signed up before it was switched off are still on it,
-        // just not listed; tell whoever is editing, so they don't look lost.
         if (editing && people.length) {
           const n = people.length;
           listing.append(el('div', 'vol-note vol-held',
@@ -780,14 +653,10 @@ function volunteersBox(node, editing, save) {
       } else if (!revealed) {
         listing.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
       } else if (!people.length && !chairs.length) {
-        // The chairs above are enough to say who's involved; only an empty
-        // section needs the note.
         listing.append(el('div', 'vol-note', 'Nobody yet.'));
       }
     }
     for (const src of others) {
-      // Named by its chain from here down - "India › Performance" - since
-      // several countries may each have a Performance.
       listing.append(el('div', 'side-group', chainBelow(node, src)));
       const theirs = shownVolunteers(src, editing);
       if (!theirs.length) {
@@ -807,8 +676,6 @@ function volunteersBox(node, editing, save) {
   paintListing();
   box.append(listing);
   if (node.canEdit) {
-    // The organizers' roster: every sign-up in the tree with where it is and
-    // how to reach them, including a student's parents - under the list it sums up.
     const roster = el('div', 'vol-roster');
     roster.append(button('Volunteer Info', 'list', 'button button-secondary button-small roster-open',
       () => openVolunteerGrid(node, [node, ...below], n => whereIs(node, n))));
@@ -843,14 +710,7 @@ function volunteersBox(node, editing, save) {
   return box;
 }
 
-// priorityCard is an admin's way - with the pencil on - to mark a thing
-// the community most needs hands for, or to take the mark off: a button at
-// the foot of the sidebar, while it still wants people. A marked thing leads the Opportunities page
-// under the High Priority chip and fills the Priority chip of the Team
-// widget on Heliosian's front page.
 function priorityCard(node, save) {
-  // A thing with its volunteers complete, or every spot taken, needs no
-  // more hands, so it is no one's priority.
   if (!isAdmin() || isFull(node)) {
     return null;
   }
@@ -861,17 +721,11 @@ function priorityCard(node, save) {
   return card;
 }
 
-// resourcesCard is the activity's own links, plus the editor's way to add one.
 function resourcesCard(node, editing) {
-  // The card earns its place with links, or while editing so one can be added.
   if (!node.links.length && !editing) {
     return null;
   }
-  // The resources speak for themselves - no heading over them.
   const card = sideCard();
-  // Each resource is a picture, its title and a line about it - the host when
-  // nobody wrote one - and opens in a new tab. While editing, a pencil beside
-  // the row opens its editor.
   const links = el('div', 'side-links');
   card.append(links);
   for (const item of node.links) {
@@ -905,9 +759,6 @@ function resourcesCard(node, editing) {
   return card;
 }
 
-// highlightCard is the callout on the page: the emoji large at the left, the
-// headline, and the body with its **bold** runs made bold - the only markup
-// the sheet allows, so a line can stress "one performance" without HTML.
 function highlightCard(node) {
   const h = node.highlight;
   if (!h) {
@@ -933,9 +784,6 @@ function highlightCard(node) {
   return card;
 }
 
-// flyerCard is the event's poster in the rail, under the details: the whole
-// picture at the rail's width, a click to see it full size, and while editing
-// a way to put one up or take it down.
 function flyerCard(node, editing, save) {
   if (!node.flyerUrl && !editing) {
     return null;
@@ -970,8 +818,6 @@ function flyerCard(node, editing, save) {
     });
     const upload = el('label', 'button button-secondary button-small');
     upload.append(svg('up'), el('span', '', node.flyer ? 'Replace' : 'Upload'), file);
-    // A flyer is a finished poster: it is uploaded whole, never found in a
-    // library or cropped.
     bar.append(upload);
     if (node.flyer) {
       bar.append(button('Remove', 'trash', 'button button-secondary button-small', () => save({flyer: ''})));
@@ -981,12 +827,6 @@ function flyerCard(node, editing, save) {
   return card;
 }
 
-// helpCard points at the people who run the activity. Only shown when there is
-// somebody to point at - co-chairs are the ones with a published address here.
-// emailListPath is this thing's email list on Helios Loop, or - while it
-// has none - Loop's new-list form filled in from its volunteers: the list
-// of everyone signed up here and under it, with its co-chairs, which Loop
-// offers the chairs (/new?from=activity:<id>).
 function emailListPath(node) {
   if (node.emailList) {
     return appOrigin('loop') + '/groups/' + encodeURIComponent(node.emailList);
@@ -994,18 +834,10 @@ function emailListPath(node) {
   return appOrigin('loop') + '/new?from=' + encodeURIComponent('activity:' + node.id);
 }
 
-// emailListWords names the list by what it is for - "Create Decor Email
-// List" - so a committee's is plainly the committee's and not the event's.
 function emailListWords(node) {
   return node.emailList ? `${node.title} Email List` : `Create ${node.title} Email List`;
 }
 
-// emailListCard is a chair's own word in the rail, highlighted so it is not
-// missed: an email list for this thing - the event, or one committee in it
-// - reaching everyone signed up here and under it, and its co-chairs, as
-// they come and go. Before there is one it says how Create makes one on
-// Helios Loop; after, its address and the way to it. For whoever runs it
-// or something above it.
 function emailListCard(node) {
   if (!node.runs) {
     return null;
@@ -1050,15 +882,12 @@ function heroButton(icon, label, onClick) {
 
 function shareButton(node) {
   return heroButton('share', 'Share this page', async () => {
-    // The friendly address when there is one, however this page was reached.
     const url = location.origin + activityPath(node);
     if (navigator.share) {
       try {
         await navigator.share({title: node.title, url});
         return;
       } catch {
-        // The reader dismissed the sheet, or the browser refused it - fall
-        // through to the clipboard rather than leaving the button dead.
       }
     }
     copyText(url, 'Link copied');
@@ -1073,13 +902,8 @@ function childrenSection(node, editing) {
   const actions = el('div', 'row-actions');
   let query = '';
   const list = el('div');
-  // Hidden and pending rows join the list, muted, for whoever runs the thing
-  // while editing or with Show Hidden Things on - and a pending one always,
-  // since approving it is theirs to do (its page's status control).
   const unlisted = r => r.status === 'Hidden' || r.status === 'Pending';
   const roles = node.children.filter(r => !unlisted(r) || (node.canEdit && (editing || state.showHidden || r.status === 'Pending')));
-  // Nothing under it yet, and no categories to lay out: the whole section is
-  // one button for whoever runs it, and nothing at all for anyone else.
   if (!roles.length && (node.parent || !eventCategories(root).length)) {
     if (!node.canEdit) {
       return null;
@@ -1088,18 +912,11 @@ function childrenSection(node, editing) {
     bar.append(button('Add Activity', 'plus', 'button button-secondary button-small', () => openActivity(null, {parent: node, category: ''})));
     return bar;
   }
-  // Children are grouped by the root event's own categories, in the order the
-  // event keeps them, with the uncategorised run last. Each category carries its
-  // own add button when it allows adding - so a new thing lands where you were
-  // looking - and whoever runs the event can add into any of them regardless.
-  // `others` says whether named groups are on the page too: the run without a
-  // category is only worth calling Uncategorized when there are.
   const groupHead = (cat, others) => {
     const row = el('div', 'group-row');
     row.append(el('div', 'group-title', cat ? cat.title : (others ? 'Uncategorized' : '')));
     const open = () => openActivity(null, {parent: node, category: cat ? cat.id : ''});
     let add = null;
-    // Into a category, its policy; straight under the thing, the thing's own.
     const policy = cat || node;
     if (node.canEdit) {
       add = button('Add', 'plus', 'button button-secondary button-small', open);
@@ -1112,14 +929,8 @@ function childrenSection(node, editing) {
     }
     return row;
   };
-  // reorder saves the children in a new order: every child of the thing, as
-  // they stand, with `id` moved to sit just before `before` - or at the end
-  // of its category when there is no before. Groups keep their own runs,
-  // since the page shows them apart.
   let reordering = false;
   const reorder = async (id, before, categoryId) => {
-    // One at a time: a second click before the first has saved would be
-    // computed from an order that is about to change.
     if (reordering) {
       return;
     }
@@ -1128,7 +939,6 @@ function childrenSection(node, editing) {
     const ids = node.children.map(c => c.id).filter(x => x !== id);
     let at = before ? ids.indexOf(before) : -1;
     if (at < 0) {
-      // After the last of its category, or at the very end.
       at = ids.length;
       for (let i = ids.length - 1; i >= 0; i--) {
         const c = node.children.find(x => x.id === ids[i]);
@@ -1149,10 +959,6 @@ function childrenSection(node, editing) {
       list.classList.remove('is-reordering');
     }
   };
-  // While editing, every category's panel takes a dropped row: the row's id
-  // rides along in the drag, and landing it saves the new category - or,
-  // dropped among its own siblings, its new place. The browser insists on
-  // preventDefault during dragover for a drop to happen.
   const dropTarget = (panel, categoryId) => {
     if (!editing) {
       return panel;
@@ -1174,8 +980,6 @@ function childrenSection(node, editing) {
         saveActivityFields(moved, {category: categoryId});
         return;
       }
-      // Onto one of its siblings: take that row's place; onto the panel's
-      // empty space: go last.
       const over = e.target.closest('.row');
       const before = over && over.dataset.id !== moved.id ? over.dataset.id : '';
       if (before || !over) {
@@ -1189,8 +993,6 @@ function childrenSection(node, editing) {
     const shown = roles.filter(r => matches(r, query));
     const order = [...eventCategories(root).map(c => c.id), ''];
     const present = new Set(shown.map(r => r.category || ''));
-    // Named groups on this page: the ones with things in them, plus on the
-    // event itself every category, since those all get a heading below.
     const others = node.parent ? [...present].some(Boolean) : eventCategories(root).length > 0;
     for (const id of order) {
       if (!present.has(id)) {
@@ -1200,8 +1002,6 @@ function childrenSection(node, editing) {
       const panel = dropTarget(el('div', 'panel'), id);
       const group = shown.filter(x => (x.category || '') === id);
       group.forEach((r, i) => {
-        // Up swaps with the row above (moving before it); down moves past the
-        // row below (before the one after that, or to the end).
         const moves = editing ? {
           up: i > 0 ? () => reorder(r.id, group[i - 1].id, id) : null,
           down: i < group.length - 1 ? () => reorder(r.id, group[i + 2] ? group[i + 2].id : '', id) : null,
@@ -1220,11 +1020,6 @@ function childrenSection(node, editing) {
       });
       list.append(panel);
     }
-    // On the event itself a category with nothing in it yet still gets its
-    // heading and add button, otherwise there would be no way to put the first
-    // thing into it - and, while editing, an empty panel to drop something
-    // into. Under a committee only the categories its own things use appear:
-    // the event's full list belongs to the event's page.
     if (!query && !node.parent) {
       for (const c of eventCategories(root)) {
         if (!present.has(c.id)) {
@@ -1246,7 +1041,6 @@ function childrenSection(node, editing) {
       list.append(panel);
     }
   };
-  // A search box only once there is enough to search through.
   if (roles.length >= 10) {
     actions.append(searchBox('Search', q => {
       query = q;
@@ -1280,9 +1074,6 @@ function statusSelect(current, options, onChange) {
   return input;
 }
 
-// editorBand is the quiet tail of the page for whoever runs the thing: one
-// small button into the full form, and who proposed it. The pencil on the hero
-// is the editing entrance; this is the fallback for everything at once.
 function editorBand(node) {
   const band = el('div', 'editor-band');
   band.append(button('Edit', 'edit', 'button button-secondary button-small', () => openActivity(node)));
@@ -1293,16 +1084,11 @@ function editorBand(node) {
   return band;
 }
 
-// activityPage is every node's page: a headline event and a single shift on
-// its sign-up sheet are the same kind of thing at a different depth, so they
-// get the same page. What varies follows from having a parent or not.
 export function activityPage(node) {
   const root = rootOf(node);
   const parent = parentOf(node);
   const save = changes => saveActivityFields(node, changes);
   setTitle(node.title);
-  // Keyed by id, not address: giving the thing a friendly address while
-  // editing must not drop it out of edit mode.
   const editing = node.canEdit && editingPath === node.id;
   const page = el('div', 'detail');
 
@@ -1335,17 +1121,10 @@ export function activityPage(node) {
   }
   heroActions.append(shareButton(node));
   if (node.imageUrl) {
-    // The hero crops a picture to its band; this shows the whole of it.
     heroActions.append(heroButton('expand', 'View full size', () => openPhotoLightbox(node.imageUrl)));
   }
   hero.append(heroActions);
   if (editing) {
-    // Status sits right under the pencil that revealed it: a co-chair may only
-    // open or finish a thing; an admin can also park it as pending or hidden.
-    // A pending thing is approved - opened or finished - by an admin or by
-    // whoever runs what it was suggested under; to anyone else it stays
-    // pending, so there is nothing to pick.
-    // One an admin hid stays hidden until it is opened.
     let statuses = node.status === 'Hidden' ? ['Hidden', 'Open', 'Done'] : ['Open', 'Done'];
     if (isAdmin()) {
       statuses = ['Pending', 'Open', 'Done', 'Hidden'];
@@ -1366,8 +1145,6 @@ export function activityPage(node) {
   const marks = el('div', 'detail-marks');
   if (!editing) {
     if (parent) {
-      // A child's chip is the thing it sits under, in its root's colour - the way
-      // back up, and the reminder of what this is part of.
       marks.append(link(activityPath(parent), 'card-chip is-inline is-link ' + categoryClass(root.category), parent.title));
     } else if (category(node.category)) {
       marks.append(el('span', 'card-chip is-inline ' + categoryClass(node.category), category(node.category).title));
@@ -1378,8 +1155,6 @@ export function activityPage(node) {
   }
   if (node.status !== 'Open') {
     marks.append(badge(node.status === 'Pending' ? 'Needs approval' : node.status, node.status.toLowerCase()));
-    // A suggestion reaches the admin list hat or not, so its page answers it
-    // as the Approval Needed page does - and that alone, without the hat.
     if (node.status === 'Pending' && isSystemAdmin() && !editing) {
       marks.append(...approvalButtons(node));
     }
@@ -1387,8 +1162,6 @@ export function activityPage(node) {
     marks.append(completeBadge());
   }
   if (editing && !parent) {
-    // An event's own categories are what its committees, booths and shifts are
-    // grouped under; whoever runs the event shapes them from here.
     marks.append(button('Edit Categories', 'list', 'button button-secondary button-small', () => openCategoryManager(node)));
   }
   if (marks.children.length) {
@@ -1408,8 +1181,6 @@ export function activityPage(node) {
   main.append(heading);
   const blurb = el('div', 'detail-blurb');
   if (node.description) {
-    // The sheet holds one text cell, so blank lines are the only paragraph
-    // marks there are.
     for (const para of node.description.split(/\n\s*\n/).filter(t => t.trim())) {
       blurb.append(el('p', 'detail-text', para.trim()));
     }
@@ -1428,9 +1199,6 @@ export function activityPage(node) {
     }
   }
 
-  // The highlight is the one thing organizers most want read, so it follows
-  // the write-up as a warm callout: emoji, headline, a few lines. In edit
-  // mode it takes a pencil, or - with none yet - a quiet button to add one.
   const highlight = highlightCard(node);
   const highlightHint = 'Clear the headline and body to take the highlight off.';
   if (highlight) {
@@ -1452,29 +1220,18 @@ export function activityPage(node) {
     slot.append(add);
     main.append(slot);
   }
-  // Resources read as part of the write-up, so they sit under it rather than in
-  // the rail with the facts.
   const resources = resourcesCard(node, editing);
   if (resources) {
     resources.classList.add('resources-main');
     main.append(resources);
   }
-  // On a phone there is no rail, and the facts - when it is, who runs it -
-  // matter more than the sign-up list, so the card takes its place here,
-  // right after the write-up, before the volunteers.
   const facts = factsCard(node, editing, save);
   if (facts && phone.matches) {
     facts.classList.add('facts-inline');
     main.append(facts);
   }
 
-  // Volunteers live in the rail now, with a filter over the tree. What sits
-  // under this thing is one list; its hidden and pending rows join it only for
-  // an editor who is editing or has Show Hidden Things on, muted.
   const under = node.children.filter(c => c.status !== 'Hidden' && c.status !== 'Pending');
-  // The volunteers section always shows; what it holds follows the switches
-  // (see volunteersBox): no buttons when volunteers are not allowed here, and
-  // nobody listed when the list is secret, until editing or Show Hidden Things.
   const familyRoles = familyBox(node);
   if (familyRoles) {
     main.append(familyRoles);
@@ -1486,7 +1243,6 @@ export function activityPage(node) {
       main.append(things);
     }
   }
-  // The way out of a committee is worth saying only where there are some.
   if (!parent && under.length) {
     main.append(el('div', 'footnote', 'To leave a committee, open it and use Edit my sign-up.'));
   }

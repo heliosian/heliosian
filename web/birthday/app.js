@@ -23,7 +23,6 @@ export async function load() {
   }
   applyModel(await res.json());
   render();
-  // Once the first page is up, the newcomer's question.
   if (!offered && location.pathname !== '/admin') {
     offered = true;
     offerTeam();
@@ -45,8 +44,6 @@ function notFound(what) {
 
 function route() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-  // The front page is the unassigned birthdays while there are any, and
-  // My Jobs once everyone has someone.
   if (!parts.length) {
     if (commsOnly()) {
       return newslettersPage();

@@ -17,7 +17,6 @@ export function staffRow(sv, options) {
   if (opts.stage && sv.stage) {
     label.append(el('span', 'stage-chip ' + stageClass(sv.stage), stageName(sv.stage)));
   }
-  // Late or due today, beside the stage, in the rail's red and amber.
   const due = urgency(sv);
   if (due.when) {
     label.append(el('span', 'urgency-chip is-' + due.when, urgencyWords(due)));
@@ -39,14 +38,12 @@ export function staffRow(sv, options) {
       actions.append(button('Assign to Me', 'bolt', 'button button-small', () => assignToMe(sv)));
     }
     if (sv.stage === 'Awaiting Outreach') {
-      // The letter, addressed and written, in their mail app.
       const mail = el('a', 'button button-small');
       mail.href = emailLink(sv);
       mail.append(svg('mail'), el('span', '', 'Compose Email'));
       mail.addEventListener('click', e => e.stopPropagation());
       actions.append(mail, button('Mark Contacted', 'check', 'button button-secondary button-small', () => markContacted(sv, true)));
     }
-    // Whatever the stage, the row offers its next step.
     if (sv.stage === 'Awaiting Response') {
       actions.append(button('Record Donation', 'gift', 'button button-small', () => openDonation(sv)));
       actions.append(button('Use Default', 'vault', 'button button-secondary button-small', () => useDefault(sv)));

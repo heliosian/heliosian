@@ -3,12 +3,8 @@ import {el, link, svg, button} from '../dom.js';
 import {setTitle} from '/shell.js';
 
 let month = null;
-// showBy is which day the month places each person on: their actual
-// birthday this year, to start, or the day to ask them by.
 let showBy = 'birthday';
 
-// The legend doubles as a filter: every kind shows until one is clicked, then
-// only the clicked kinds do, and clicking the last one on shows everything again.
 const kinds = [...stages.map(s => ({key: stageClass(s), label: stageName(s)})), {key: 'newsletter', label: 'Newsletter'}];
 let shown = new Set();
 
@@ -29,9 +25,6 @@ function entries() {
   return out;
 }
 
-// monthGrid draws one month of items - each keyed by its day's toDateString,
-// with a title, a chip class, and a link or an onClick - with a class of its
-// own for a compact drawing.
 export function monthGrid(month, items, className) {
   const cal = el('div', 'calendar' + (className ? ' ' + className : ''));
   for (const d of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']) {
@@ -55,8 +48,6 @@ export function monthGrid(month, items, className) {
       } else {
         chip = link(item.href, 'chip ' + item.className, item.title);
       }
-      // A chip with a card to show - a heading and rows of who, when and
-      // whose - shows it on hover, instead of the browser's own tip.
       if (item.card) {
         const wrap = el('span', 'chip-wrap');
         const pop = el('span', 'chip-pop');
@@ -85,9 +76,6 @@ export function monthGrid(month, items, className) {
   return cal;
 }
 
-// showToggle is the switch between the two days a month can place a person
-// on - the day to ask them by, or their actual birthday - lit on value, and
-// calling onPick with the key picked.
 export function showToggle(value, onPick) {
   const wrap = el('div', 'show-toggle');
   wrap.append(el('span', 'show-toggle-label', 'Show:'));
@@ -107,7 +95,6 @@ export function showToggle(value, onPick) {
   return wrap;
 }
 
-// monthNav is the Today button and the arrows, calling step with -1, 0 or 1.
 export function monthNav(step) {
   const nav = el('div', 'page-actions calendar-nav');
   nav.append(button('Today', null, 'button button-secondary button-small', () => step(0)));
@@ -171,7 +158,6 @@ export function calendarPage() {
     legend.append(chip);
   }
   paint();
-  // The legend at the left, the switch between the two days at the right.
   const controls = el('div', 'calendar-controls');
   controls.append(legend, showToggle(showBy, key => {
     showBy = key;

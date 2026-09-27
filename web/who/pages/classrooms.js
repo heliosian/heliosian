@@ -71,11 +71,6 @@ function listRow(image, label, title, sub, href) {
   return row;
 }
 
-// Shares .person-card/.person-photo/.photo-wrap-peek with personCard (see
-// ../people.js) instead of a parallel .classroom-card/.classroom-photo set,
-// so a classroom or grade tile looks and behaves exactly like a person one -
-// same outline, same peek card, same hover animation - not a lookalike with
-// its own slightly-different rules to keep in sync.
 function badgeCard(imageUrl, label, name, href, color) {
   const card = el('a', 'person-card');
   card.href = href;
@@ -147,8 +142,6 @@ function renderGradesList(list) {
   return count;
 }
 
-// abbreviateGrade turns a grade's full name ("Kindergarten", "Grade 4") into
-// the short form used in a parenthetical like "Harrison (Ravens - 4)".
 function abbreviateGrade(name) {
   if (name === 'Kindergarten') {
     return 'K';
@@ -299,14 +292,6 @@ function otherFamilyMembers(student) {
   return names.join(', ');
 }
 
-// Section chips let an admin narrow a multi-crew classroom (or a multi-classroom
-// grade) down to just some groups, toggled on/off independently rather than
-// picking one at a time - every section is on by default. Each chip is labeled
-// with the group's full header (e.g. "Great Egrets"), while chipLabel - the
-// shorter crew name alone (e.g. "Great") - is the filter key, matching what
-// visibleGroups matches against elsewhere in renderRoster. state.rosterSectionExcluded
-// tracks only the deselected keys, and stale entries left over from a different
-// classroom/grade are pruned whenever the available keys change.
 function sectionFilterBar(groups, rerender, colorFor) {
   const sections = groups.filter(g => g.header);
   if (sections.length < 2) {
@@ -451,10 +436,6 @@ export function renderGradeDetail(slug) {
   const groups = classrooms.length
     ? classrooms.map(name => ({header: name, students: students.filter(s => s.classroom === name)}))
     : [{header: '', students}];
-  // Groups here are split by classroom (see above) - color each section chip
-  // with that classroom's own admin-configured color, same as everywhere else
-  // a classroom's color shows (person cards, hover rings), instead of a
-  // generic hash-based one.
   renderRoster(grade.name, gradeImage(grade.name), groups, undefined, name => colors.classrooms[name]);
 }
 

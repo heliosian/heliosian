@@ -2,8 +2,6 @@ import {state, me, isAdmin, tagGroups, bands, classroomNames, eventDates, eventP
 import {addressSuggest} from '/address.js';
 import {el, svg, toast} from './dom.js';
 
-// randomID is an event's address to start with, the shape the server
-// mints: eight letters and digits, the confusable ones left out.
 function randomID() {
   const alphabet = 'abcdefghjkmnpqrstvwxyz0123456789';
   const raw = new Uint8Array(8);
@@ -11,39 +9,20 @@ function randomID() {
   return [...raw].map(b => alphabet[b % alphabet.length]).join('');
 }
 
-// eventForm is the form that adds an event, for an admin and for anyone
-// else: the event itself and, for a public one, a second tab with the
-// classrooms and categories it is filed under - a private one needs none,
-// being for whoever is invited from its page once it exists - every field
-// staying in the form so nothing typed is lost in switching. An admin's
-// public event goes straight onto the calendar; anyone else's is shared,
-// and waits for an admin's approval. Filled from an event to clone when
-// there is one, its dates moved on by the weeks asked.
-//
-// With override, the form is an admin's correction of an event the school's
-// calendars bring, saved to the Overrides tab over the school's version:
-// no sharing, address or source, a Note saying why, and a save that the
-// server sets against the school's own values, keeping only what differs.
 export function eventForm({from = null, shift = 0, edit = null, override = false, onDone}) {
-  // An admin's form with Super Admin Mode on; off, anyone's.
   const admin = isAdmin();
-  // Editing fills from the event itself, dates as they are.
   if (edit) {
     from = edit;
     shift = 0;
   }
   const form = el('form', 'admin-form');
   form.append(el('p', 'hint', override ? 'This event comes from the school\u2019s calendar. What you change here is kept over the school\u2019s version through every sync; anything put back the way the school has it follows the school again.' : edit ? 'Change what you need to; the event keeps its place on the calendar.' : 'Shared under your name. You will see who answers it.'));
-  // Two tabs: the event itself, and who it is for - the second only for
-  // a public event. Every field stays in the form - only the panels hide
-  // - so nothing typed is lost in switching.
   const tabs = el('div', 'tabs');
   const eventPanel = el('div');
   const tagPanel = el('div');
   tagPanel.hidden = true;
   const tagFields = el('div');
   tagPanel.append(tagFields);
-  // The first tab ends in Next, the second in the button that adds.
   let showPanel = null;
   const tabButton = (label, panel) => {
     const b = el('button', 'tab-button', label);
@@ -82,9 +61,6 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
   title.maxLength = 200;
   eventPanel.append(field('Title', title));
 
-  // Who can find it: the people the host invites from its page; them and
-  // anyone sent its link; or everyone, on the calendar (an admin approves
-  // it first, an admin's own too). Invite only to start.
   let sharing = override ? 'Public' : edit && from && from.source === 'sheet' ? from.sharing : 'Invite Only';
   const whoField = el('div', 'field');
   whoField.append(el('span', '', 'Who can find it'));
@@ -112,9 +88,6 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     eventPanel.append(whoField);
   }
 
-  // The event's web address: a random one to start, or one the host
-  // types - letters, digits and dashes - for a link worth sending. Set
-  // once; an event keeps its address after that.
   let slug = null;
   if (!edit) {
     slug = el('input', 'event-slug');
@@ -139,8 +112,6 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     eventPanel.append(slugField);
   }
 
-  // When: a date and, unless it is all day, a time, for the start and the
-  // end. A cloned event's dates move on by the weeks asked.
   const startDate = el('input');
   startDate.type = 'date';
   startDate.required = true;
@@ -160,8 +131,6 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       endTime.value = from.end.slice(11, 16);
     }
   }
-  // Moving the start moves the end with it, keeping the span - so a copy
-  // dragged to another day stays as long as it was.
   let lastStart = startDate.value;
   startDate.addEventListener('change', () => {
     if (lastStart && startDate.value && endDate.value) {
@@ -170,8 +139,6 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     }
     lastStart = startDate.value;
   });
-  // A start time given sets the end two hours on, until the end is set by
-  // hand; the end date follows the start's when it was blank.
   let endTouched = Boolean(endTime.value);
   endTime.addEventListener('input', () => {
     endTouched = Boolean(endTime.value);
@@ -195,18 +162,13 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
   addressSuggest(place);
   eventPanel.append(field('Location', place));
   const source = text(from ? from.sourceUrl || from.sourceNote || '' : '', 'https://…');
-  // Where to read more is a public event's; a private one says it all on
-  // its own page and in its invitation.
   const sourceField = field('More Information or Source', source, admin ? 'Where this came from, or where to read more - a web address links from the event\u2019s page; any other words are shown as written.' : 'A web address with more about it, if there is one.');
   eventPanel.append(sourceField);
   const description = el('textarea');
   description.rows = 4;
   description.value = from ? from.description || '' : '';
   eventPanel.append(field('Description', description));
-  // A correction's reason, for the admins who read the page after.
   const note = text(override ? (state.model.provenance || {})[edit.id]?.note || '' : '', 'Why it was corrected');
-  // A friendly web address in place of the import key, /e/{address}; the
-  // old link keeps working.
   const address = el('input', 'event-slug');
   address.type = 'text';
   address.maxLength = 40;
@@ -225,16 +187,8 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     eventPanel.append(field('Note', note, 'Shown to the admins on the event\u2019s page, beside what was corrected.'));
   }
 
-  // The picture across the top of the event's page is set from the
-  // banner on the page itself - Add an image there - never here; the
-  // form keeps what the event has.
   const picture = {name: from ? from.title : '', image: from && from.source === 'sheet' && from.image ? from.image.replace(/^\//, '') : '', imageUrl: from && from.source === 'sheet' ? from.image || '' : ''};
 
-  // Who and what: the classroom chips and the categories, as the filters
-  // have them.
-  // The event's own categories: not its classrooms, and not the built-in
-  // tags the model adds (Misc, Going and the apps'), which no sheet row
-  // may name.
   const builtIn = new Set(state.model.tags.filter(t => t.builtIn).map(t => t.name));
   const rooms = new Set(from ? from.classrooms : classroomNames());
   const cats = new Set(from ? from.tags.filter(t => !classroomNames().includes(t) && !builtIn.has(t)) : []);
@@ -306,12 +260,9 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
   const keywords = text(from ? (from.keywords || []).join(', ') : '', 'half day, kinder, short day');
   tagFields.append(field('Search words', keywords, 'Words a parent might type that are not in the title, separated by commas.'));
 
-  // Public or not decides the tabs: a public event's Who tab, and Next
-  // to reach it; any other adds from the first tab.
   const paintWho = () => {
     const invite = sharing !== 'Public';
     tagTab.hidden = invite;
-    // One tab is no tab bar.
     tabs.hidden = invite;
     nextRow.hidden = invite;
     sourceField.hidden = invite || override;
@@ -322,8 +273,6 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       tagPanel.append(actions);
     }
   };
-  // Next, under the first tab, checks what it holds and turns to the
-  // second, whose own button adds the event.
   const nextRow = el('div', 'modal-actions');
   const next = el('button', 'button');
   next.type = 'button';
@@ -353,13 +302,9 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       return;
     }
     const when = (date, time) => (date ? date + (time ? ' ' + time : '') : '');
-    // An end with no time of its own ends when it starts, as the sheet
-    // takes it; an all-day end is its day.
     const body = {
       title: title.value.trim(), start: when(startDate.value, startTime.value), end: when(endDate.value || startDate.value, endTime.value || startTime.value),
       location: place.value.trim(), description: description.value.trim(), source: invite ? '' : source.value.trim(), image: picture.image, sharing,
-      // An event that is not public is for whoever is sent it: no
-      // classrooms, no categories.
       tags: invite ? [] : [...classroomNames().filter(c => rooms.has(c)), ...cats], keywords: keywords.value.split(',').map(w => w.trim()).filter(Boolean),
     };
     submit.disabled = true;
@@ -384,7 +329,6 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     status.textContent = '';
     if (override) {
       toast('Saved over the school\u2019s version');
-      // A new address takes the page's place in the address bar.
       const now = address.value.trim();
       if (now !== (edit.address || '')) {
         history.replaceState(null, '', eventPath(now ? {address: now} : {id: edit.id}));
@@ -394,8 +338,6 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     }
     if (edit) {
       toast('Saved');
-      // What changed of the details an invitation carries, for whoever
-      // opened the form to ask about sending an update.
       const changed = [['title', edit.title], ['start', edit.start], ['end', edit.end || edit.start], ['location', edit.location || '']].filter(([key, was]) => (body[key] || (key === 'end' ? body.start : '')) !== was).map(([key]) => key);
       await onDone([edit.id], changed);
       return;

@@ -45,10 +45,6 @@ function familyMapPopup(family) {
   return box;
 }
 
-// Shared by the standalone Map page and a tag list's own Map view: builds the
-// map into canvas, showing only families for which familyMatches(family) is
-// true, and returns a renderPins() to call again after a filter/search change
-// without recreating the map itself.
 export function initFamilyMap(canvas, familyMatches) {
   let map = null;
   let info = null;

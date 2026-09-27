@@ -1,9 +1,5 @@
 import {appOrigin} from '/toolbar.js';
 
-// The answers arrive as light markdown - paragraphs, lists, bold, links -
-// and are drawn as DOM, never as HTML strings. Links to the apps are
-// written by their production names and land on the page's own tier.
-
 const appHosts = /^https?:\/\/(who|team|hca|celebrate|birthday|calendar|cal|when|loop|ask|home|www)\.heliosian\.com(\/.*)?$/;
 const apex = /^https?:\/\/heliosian\.com(\/.*)?$/;
 
@@ -32,9 +28,6 @@ function el(tag, className, text) {
   return node;
 }
 
-// stable is the part of a streaming answer safe to draw: a link still being
-// written shows as its words alone until it closes, and drawing stops short
-// of a bold run, code span or bare address still being written.
 export function stable(text) {
   text = text.replace(/\[([^[\]\n]*)(\](\([^)\s]*)?)?$/, '$1');
   let cut = text.length;
@@ -57,8 +50,6 @@ export function stable(text) {
   return text.slice(0, cut);
 }
 
-// inline fills a node with a line's text: bold (with a link inside it, when
-// there is one), code, links in brackets, and bare addresses.
 const inlinePattern = /(\*\*[^*]+\*\*|\*[^*\s](?:[^*]*[^*\s])?\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<>)]+[^\s<>).,;:!?])/g;
 
 function inline(node, text, cards) {
@@ -178,9 +169,6 @@ function table(lines, i, cards) {
   return [wrap, i];
 }
 
-// render draws markdown text into a fresh fragment: blocks split on blank
-// lines, each a table, a list, a heading, a quote, a fenced block, or a
-// paragraph; a link with a card is drawn as a chip.
 export function render(text, cards = {}) {
   const out = document.createDocumentFragment();
   const lines = text.replace(/\r/g, '').split('\n');

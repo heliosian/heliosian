@@ -30,8 +30,6 @@ function settingsCard() {
   return card;
 }
 
-// notifyCard is the signed-in admin's own email notices: four switches, each
-// saved the moment it is flipped. Every admin has their own set.
 function notifyCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Email notifications'));
@@ -81,9 +79,6 @@ function notifyCard() {
   return card;
 }
 
-// redirectsCard is the Redirects tab: every old address the portal sends on,
-// the ones renames wrote as well as the ones added here, each with where it
-// goes. A link from the old volunteer site is the usual reason to add one.
 function redirectsCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Redirects'));

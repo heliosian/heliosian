@@ -1,9 +1,5 @@
 import {el, svg} from './dom.js';
 
-// Neither iOS Safari nor Chrome expose an install API - the closest thing is
-// pointing people at the share sheet's "Add to Home Screen" entry by hand.
-// Android/desktop Chrome instead fire `beforeinstallprompt`, which we stash
-// here so the card's button can trigger the real native prompt on demand.
 let deferredInstallPrompt = null;
 const INSTALL_PROMPT_DISMISS_KEY = 'installPromptDismissedAt';
 const INSTALL_PROMPT_COOLDOWN_DAYS = 30;
@@ -21,7 +17,6 @@ function dismissInstallPrompt() {
   try {
     localStorage.setItem(INSTALL_PROMPT_DISMISS_KEY, String(Date.now()));
   } catch (e) {
-    // ignore - the card just may reappear sooner than intended
   }
 }
 
@@ -34,25 +29,14 @@ function iosDevice() {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
-// Chrome on iOS (CriOS) is still WebKit under the hood, but its own "Add to
-// Home Screen" only makes a bookmark that reopens in Chrome - no standalone
-// window, no installed icon behaving like an app. Safari is the only iOS
-// browser whose Home Screen entry actually installs the PWA, so Chrome users
-// need to be sent there instead of handed Share-sheet steps that don't do
-// what the prompt promises.
 function iosChrome() {
   return iosDevice() && /crios/i.test(navigator.userAgent);
 }
 
-// beforeinstallprompt also fires on desktop Chrome/Edge, but "add to home
-// screen" is a phone/tablet idea - desktop already has a real taskbar.
 function mobileDevice() {
   return iosDevice() || /android/i.test(navigator.userAgent);
 }
 
-// iOS 26's Safari redesign folded the toolbar's standalone Share icon into a
-// "..." overflow button, so the old "tap Share" instructions point at nothing
-// on 26+. Below that, Share still has its own icon in the toolbar.
 function iosMajorVersion() {
   const match = navigator.userAgent.match(/OS (\d+)_/) || navigator.userAgent.match(/Version\/(\d+)/);
   return match ? Number(match[1]) : 0;

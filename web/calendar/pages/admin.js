@@ -10,12 +10,6 @@ async function refreshModel() {
   await load();
 }
 
-// The categories tool works on its own copy of the sheet's tags, grouped as
-// the filters show them: every change - a description, a group's name, a
-// category moved between or within groups, a group moved, a category or
-// group added, a default switched - is on the page until Save writes them
-// all at once. A group with nothing in it lives only on the page: the sheet
-// knows a group by the tags that name it.
 function working() {
   return tagGroups().map(g => ({name: g.name, open: true, tags: g.tags.filter(t => !t.builtIn).map(t => ({name: t.name, description: t.description, on: t.default, image: t.image || '', imageUrl: t.imageUrl || ''}))})).filter(g => g.tags.length);
 }
@@ -35,8 +29,6 @@ function arrow(icon, label, disabled, onClick) {
   return b;
 }
 
-// The value the group picker's last option carries, standing for a group
-// named on the spot.
 const newGroupChoice = '+new';
 
 function categoriesTool() {
@@ -48,8 +40,6 @@ function categoriesTool() {
 
   const groupNames = () => groups.map(g => g.name).filter(Boolean);
 
-  // placeGroup adds a group to the board: a named one ahead of the unnamed
-  // group when there is one, the unnamed one last.
   const placeGroup = name => {
     const group = {name, open: true, tags: []};
     const loose = groups.findIndex(g => !g.name);
@@ -74,8 +64,6 @@ function categoriesTool() {
   wrap.append(head);
   wrap.append(el('p', 'hint', 'The categories events are filed under, in the groups and the order the filters show them. A group with no name is the plain Categories line at the end. Rename a group here to rename it for every category in it; a category itself keeps its name, since every event carries it. A category that is off by default is one people see only when they switch it on, and Reset filters leaves it off. A category\u2019s picture is what an event under it wears across the top of its page when it has none of its own; the first of an event\u2019s categories with a picture wins.'));
 
-  // groupPicker moves a category to another group, the unnamed one, or a
-  // new one named on the spot.
   const groupPicker = (g, t) => {
     const select = el('select', 'admin-select');
     for (const name of [...groupNames(), '']) {
@@ -105,8 +93,6 @@ function categoriesTool() {
     return select;
   };
 
-  // Dragging: a row picked up by its handle drops before or after another
-  // row, or onto a group's head to join that group at the end.
   const dropOn = (dest, index) => {
     if (!dragging) {
       return;
@@ -255,15 +241,11 @@ function categoriesTool() {
   paint();
   wrap.append(board);
 
-  // The built-in tags, for the record: they sit on their line and cannot
-  // be moved, so they are named rather than listed for editing.
   const builtIn = state.model.tags.filter(t => t.builtIn);
   if (builtIn.length) {
     wrap.append(el('p', 'admin-note', `${builtIn.map(t => t.name).join(', ')} are built in and always sit under ${builtIn[0].group}.`));
   }
 
-  // Adding a category: its name, its description for the classifier, and
-  // the group it starts in. It joins the list here; Save writes it.
   const add = el('form', 'feed-form admin-add');
   add.append(el('h3', 'section-title', 'Add a category'));
   const nameField = el('label', 'field');
@@ -348,13 +330,6 @@ function categoriesTool() {
   return wrap;
 }
 
-// addEventTool is the form that puts an event in the Events tab: what it
-// is, when, where, who it is for and what kind of thing it is, the day type
-// it imposes, its search words - and, to repeat it, how many weeks apart
-// and how many more times. Opened from an event's page to clone it, the
-// form starts filled from that event with its dates four weeks on.
-// openAddEvent is the add-event form in a sheet over the page, filled from
-// an event to clone when there is one; done, the list is drawn again.
 function openAddEvent(from, shift, repaint) {
   let shut = null;
   const form = eventForm({from, shift, onDone: async () => {
@@ -365,8 +340,6 @@ function openAddEvent(from, shift, repaint) {
   shut = popup(from ? 'Add a copy of ' + from.title : 'Add an event', form, {wide: true}).shut;
 }
 
-// whenPicker is a date and a time for one end of an event, blank time for
-// all day, reading back as the sheet writes a moment.
 function whenPicker(value) {
   const wrap = el('span', 'admin-when-pick');
   const date = el('input');
@@ -379,16 +352,11 @@ function whenPicker(value) {
   return {node: wrap, inputs: [date, time], value: () => (date.value ? date.value + (time.value ? ' ' + time.value : '') : '')};
 }
 
-// eventsTool is the Events tab: the hand-added events as a list, each with
-// its start and end as pickers that save on change, and Add Event, which
-// opens the form. Opened to clone an event, the form is already up.
 function eventsTool() {
   const card = el('div', 'card');
   const head = el('div', 'admin-tool-head');
   head.append(el('h2', '', 'Events'));
   const list = el('div', 'admin-events');
-  // The filters over the list: words in the title, a category, a
-  // classroom, a span of dates, and whether past events show.
   const filters = el('div', 'admin-filters');
   const search = el('input', 'admin-filter-search');
   search.type = 'search';
@@ -460,8 +428,6 @@ function eventsTool() {
   const paint = () => {
     list.replaceChildren();
     fillSelects();
-    // The events people shared wait at the top, each with Approve and
-    // Decline, until an admin decides.
     const waiting = state.model.events.filter(e => e.pending || e.declined).sort((a, b) => (a.declined ? 1 : 0) - (b.declined ? 1 : 0) || a.start.localeCompare(b.start));
     if (waiting.length) {
       const pending = waiting.filter(e => e.pending).length;

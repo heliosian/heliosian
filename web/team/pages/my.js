@@ -6,14 +6,7 @@ import {activityCard} from '../cards.js';
 let year = null;
 let query = '';
 
-// list is the year's sign-ups in date order, one card per event, as on the
-// opportunities page, each naming the sign-ups on it: the event itself when
-// signed up for directly, then whatever was signed up for under it, by date
-// and then in the event's own order - a committee alone does not say which
-// event it belongs to. Events with no date come last.
 function list(rows, who) {
-  // A sign-up under a done or past event is done with it, whatever its own
-  // status says.
   const over = node => isPrevious(node) || (parentOf(node) ? over(parentOf(node)) : false);
   const shown = rows.filter(r => (state.showPrevious || !over(r.act)) && (matches(r.act, query) || matches(rootOf(r.act), query)));
   const signed = new Set(shown.map(r => r.act));
@@ -33,8 +26,6 @@ function list(rows, who) {
   return grid;
 }
 
-// myPage is the viewer's own sign-ups, or - given the address of someone in
-// their household - that person's, which are theirs to change as well.
 export function myPage(email) {
   const who = email ? family().find(c => c.email === email) : null;
   const heading = who ? `${who.name}'s Activities` : 'My Activities';
@@ -47,7 +38,6 @@ export function myPage(email) {
     year = years().current;
   }
   const page = el('div', 'list-page');
-  // The year is a pill beside the title, as on the opportunities page.
   const head = el('div', 'list-head');
   head.append(el('h1', '', heading));
   const body = el('div');

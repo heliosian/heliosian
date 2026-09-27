@@ -118,10 +118,6 @@ function scrollDown() {
   main.scrollTo({top: main.scrollHeight});
 }
 
-// A turn on the thread: the person's words plain on the right, the
-// answer on the left as a sequence of what happened in order - words,
-// then a chip for a lookup, then more words - each piece drawn from
-// markdown as it streams and after.
 function addTurn(role) {
   const row = el('div', 'turn turn-' + role);
   row.append(el('div', 'turn-body'));
@@ -129,9 +125,6 @@ function addTurn(role) {
   return row;
 }
 
-// segments is an answer as pieces in order: {kind: 'text', text} and
-// {kind: 'tool', words}. A chat kept before the pieces were recorded has
-// only its tools and text, drawn as chips then words.
 function segmentsOf(turn) {
   if (turn.segments) {
     return turn.segments;
@@ -190,8 +183,6 @@ function placeSpinner(row, node) {
   host.append(node);
 }
 
-// The empty thread: a greeting and the starters the server drew from the
-// person's own circumstances, each a question to send as is.
 function renderEmpty() {
   const empty = el('div', 'empty');
   empty.append(el('h1', 'page-title', 'Ask'));
@@ -232,8 +223,6 @@ function asked(chat) {
   return chat.turns.filter(t => t.role === 'user').length;
 }
 
-// The rail's list of chats, newest first, the open one lit, each with a
-// remove; the same list fills the phone's drawer.
 function renderChats() {
   for (const list of document.querySelectorAll('.chat-list')) {
     list.replaceChildren();
@@ -344,8 +333,6 @@ function note(text) {
   document.querySelector('#composer-note').textContent = text;
 }
 
-// readEvents reads server-sent events off a stream, calling on(kind, data)
-// for each complete one; the tail of a chunk waits for the next.
 async function readEvents(response, on) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

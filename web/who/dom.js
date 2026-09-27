@@ -77,8 +77,6 @@ export function withFrom(href) {
   return href + (href.includes('?') ? '&' : '?') + 'from=' + from;
 }
 
-// onDismiss, if given, adds a small close button that removes the banner and fires the
-// callback - the caller decides what "dismissed" means (e.g. persisting it), not this.
 export function infoBanner(kind, iconName, title, desc, buttonLabel, buttonHref, external, onDismiss) {
   const wrap = el('div', 'container infobanner-wrap');
   const card = el('div', `infobanner infobanner-${kind}`);
@@ -148,9 +146,6 @@ export function lastName(fullName) {
   return parts[parts.length - 1] || '';
 }
 
-// Fisher-Yates, returning a new array so callers can shuffle once at load and
-// keep that order stable across re-renders (typing in search shouldn't also
-// reshuffle everything still on screen) - a fresh page load reshuffles again.
 export function shuffled(items) {
   const copy = [...items];
   for (let i = copy.length - 1; i > 0; i--) {
@@ -248,10 +243,6 @@ const LIST_SUB_TRUNCATE_LENGTH = 280;
 const LIST_SUB_LINE_PREVIEW = 4;
 const BULLET_LINE = /^\s*(?:[*]|-{1,2})\s+(.+)$/;
 
-// The profile page's own "About Me" card: plain text (manual line breaks preserved
-// via the .about-text CSS) unless every line is bullet-marked (see parseBullets
-// below), in which case it's a real bulleted list instead of showing the literal
-// *, -, or -- markers as text.
 export function aboutMeText(className, facts) {
   const lines = facts.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const bullets = lines.length > 1 ? parseBullets(lines) : null;
@@ -265,10 +256,6 @@ export function aboutMeText(className, facts) {
   return list;
 }
 
-// Recognizes "About Me" text that's really a bullet list - every non-blank line
-// starts with *, -, or -- - and returns the items with their markers stripped.
-// A single stray non-bulleted line (a mixed intro-plus-bullets bio) falls back
-// to plain multi-line rendering rather than a half-bulleted list.
 function parseBullets(lines) {
   const items = [];
   for (const line of lines) {
@@ -281,15 +268,6 @@ function parseBullets(lines) {
   return items;
 }
 
-// A row's "About Me" (or similar) text. A bullet list is capped by item count
-// (LIST_SUB_LINE_PREVIEW) since each item is a discrete thing to show or hide;
-// anything else - a single paragraph or a few manual line breaks alike - is
-// capped by total character count instead, so a short bio that merely happens
-// to have a couple of line breaks isn't truncated any more eagerly than an
-// equally-short single-line one, and a long one is capped regardless of how
-// many line breaks it does or doesn't have. Either way, stopPropagation on the
-// toggle keeps that click from also triggering the surrounding card's own
-// navigation link.
 export function listSub(text) {
   const wrap = el('div', 'list-sub');
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -321,8 +299,6 @@ export function listSub(text) {
   return wrap;
 }
 
-// Renders items as wrapTag > itemTag*, capped at LIST_SUB_LINE_PREVIEW with a
-// More(+N)/Less toggle when there are more than that many.
 function collapsibleLines(items, wrapTag, wrapClass, itemTag) {
   const frag = document.createDocumentFragment();
   const list = el(wrapTag, wrapClass);

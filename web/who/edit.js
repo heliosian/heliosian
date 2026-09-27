@@ -27,13 +27,6 @@ export function editPencil(title) {
   return pencil;
 }
 
-// fieldEditor is the shared text-field editor behind every simple Overrides
-// field (preferred name, phone, address, pronouns...): an input, a Save/Cancel
-// pair, and (when opts.allowHide and there's a current value) a Hide button
-// that clears it. opts.presets, if given ([{label, value}]), adds a row of
-// quick-pick buttons above the input - each just fills it in rather than
-// submitting immediately, so picking one still goes through the same explicit
-// Save as typing a custom value, and both are always available side by side.
 export function fieldEditor(anchor, pencil, opts) {
   const box = el('div', 'field-editor');
   const input = el('input');
@@ -94,13 +87,6 @@ export async function submitMedia(target, key, kind, file, name, status) {
   await load();
 }
 
-// submitPhotoOrder posts a person's complete photo order to the reorder-photos
-// endpoint - reordering (drag), deleting (order with one name missing), and
-// setting a photo primary (order with that name moved to the front) are all just
-// this same request, so drag-reorder, delete, and the photo menu's "Set as
-// primary" all funnel through it instead of three separate copies of this fetch.
-// onError, if given, runs only on failure - drag-reorder uses it to snap the tiles
-// back to where they were; delete and "Set as primary" have no DOM order to revert.
 export async function submitPhotoOrder(key, order, status, onError) {
   status.classList.remove('error');
   const res = await fetch('/api/directory/reorder-photos', {
@@ -120,9 +106,6 @@ export async function submitPhotoOrder(key, order, status, onError) {
   return true;
 }
 
-// submitCrop posts a cropped image as the crop for one of a person's photos
-// (target 'person', name identifies which) or for a family's single photo
-// (target 'family', name unused).
 export async function submitCrop(target, key, name, blob, status) {
   status.classList.remove('error');
   status.textContent = 'Saving crop…';
@@ -146,9 +129,6 @@ export function canEditPerson(email) {
   if (email === meEmail || state.model.superEdit) {
     return true;
   }
-  // An adult edits everyone in the household they are an adult of - its kids
-  // and its other adult, never the other household of a kid who has two. A
-  // student is an adult of none, so edits only themselves.
   return familiesOf(byEmail[meEmail]).some(family => (family.adultEmails || []).includes(meEmail) &&
     [...(family.kidEmails || []), ...(family.adultEmails || [])].includes(email));
 }

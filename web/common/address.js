@@ -1,20 +1,9 @@
-// addressSuggest attaches address suggestions to a text input, the way a
-// map app's search box offers them: as the person types, the app's
-// /api/address/suggest is asked - Google's Places behind it - and whole
-// addresses drop down under the box; an arrow key or a click takes one,
-// Escape or a click elsewhere leaves the typing as it is. Nothing about
-// the box changes otherwise - what is typed by hand is what is saved.
-
 export function addressSuggest(input) {
   if (!input || input.dataset.suggest) {
     return input;
   }
   input.dataset.suggest = '1';
   input.setAttribute('autocomplete', 'off');
-  // The box may not be in the page yet when it is handed over: the list
-  // is put beside it once it is - on the next tick, and at the latest
-  // when it first takes focus, before anything is typed (moving a box
-  // with focus in it would lose the focus).
   const list = document.createElement('div');
   list.className = 'address-list';
   list.hidden = true;

@@ -109,8 +109,6 @@ export function thumb(person, className) {
   return el('div', 'thumb initial ' + (className || ''), (person.name || '?').slice(0, 1).toUpperCase());
 }
 
-// pageHead is the headline over the swoosh, as every app draws it, with
-// whatever actions belong beside it on the right.
 export function pageHead(title, actions) {
   const head = el('div', 'page-head');
   const main = el('div', 'page-head-main');
@@ -124,7 +122,6 @@ export function pageHead(title, actions) {
   return head;
 }
 
-// tabs draws the list's tabs, each with its count when the item carries one.
 export function menu(items) {
   const wrap = el('div', 'more-wrap');
   const trigger = iconButton('more', 'More', '', () => {
@@ -172,9 +169,6 @@ export async function copyText(text, message) {
   toast(message || 'Copied');
 }
 
-// copyRich puts both a formatted and a plain version on the clipboard, so a
-// paste into mail or a document keeps the bold, the picture and the links,
-// and a paste into a plain box gets the words.
 export async function copyRich(text, html, message) {
   try {
     await navigator.clipboard.write([new ClipboardItem({

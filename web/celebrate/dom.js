@@ -98,7 +98,6 @@ export function thumb(url, title, className) {
   return el('div', 'thumb initial ' + (className || ''), (title || '?').slice(0, 1).toUpperCase());
 }
 
-// avatar is a person's face, or their initial standing in for it.
 export function avatar(person, className) {
   const node = el('div', 'avatar ' + (className || ''));
   if (person.photoUrl) {
@@ -149,7 +148,6 @@ export async function copyText(text, message) {
   toast(message || 'Copied');
 }
 
-// paragraphs renders sheet text with its blank-line breaks kept.
 export function paragraphs(text, className) {
   const wrap = el('div', className || 'prose');
   for (const chunk of (text || '').split(/\n\s*\n/)) {

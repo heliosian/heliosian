@@ -118,8 +118,6 @@ function navScrollFade() {
   nav.style.setProperty('--fade-bottom', below ? '48px' : '0px');
 }
 
-// The rail is laid out before its logo has loaded, so an offset restored then can
-// be clamped to nothing; the resize observer re-places it until the person scrolls.
 let navSettled = false;
 let navExpected = 0;
 

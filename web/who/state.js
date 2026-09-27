@@ -4,17 +4,10 @@ export const state = {model: null, tab: 'everyone', classTab: 'by-classroom', ro
 
 export let byEmail = {};
 export let tags = {};
-// tagManagers is who else manages each of the user's own tags (absent when
-// nobody does); shared the tags others let them manage, keyed
-// "shared:<owner>:<name>" so one can't collide with an own tag of the same
-// name (see sharedKey in tags.js).
 export let tagManagers = {};
 export let shared = {};
 export let lists = {};
 
-// familiesByEmail inverts the model's family member lists once per load: every
-// family a person belongs to, in sorted key order - one for a parent (an adult
-// belongs to at most one household), one or more for a kid in two households.
 export let familiesByEmail = {};
 
 function indexFamilies() {
@@ -27,9 +20,6 @@ function indexFamilies() {
   }
 }
 
-// The platform config, fetched from /api/config beside the model: the privacy links
-// (admin-editable, since both URLs belong to other systems this app doesn't control),
-// the staleness thresholds, and the colors keyed by grade and classroom name.
 export let privacyLinks = null;
 export let staleYears = null;
 export let colors = null;

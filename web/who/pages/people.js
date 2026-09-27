@@ -64,9 +64,6 @@ function renderStudents(grid) {
   return matches.length;
 }
 
-// Shares .person-card/.person-photo/.photo-wrap-peek with personCard (see
-// ../people.js), same as badgeCard in classrooms.js - a family tile looks
-// like every other card in the app rather than its own older, plainer style.
 function renderFamilies(grid) {
   grid.className = 'people-grid directory-grid';
   const matches = state.familyOrder.filter(f =>
@@ -75,10 +72,6 @@ function renderFamilies(grid) {
     const card = el('a', 'person-card');
     card.href = f.href;
     const photo = photoOrInitials(f.photoUrl, f.name, 'person-photo');
-    // A family can span more than one grade - the first kid's grade color
-    // stands in as the one representative color for the photo/peek, same as
-    // ringColorFor does for a parent (picks one kid's grade rather than
-    // trying to blend several).
     const color = f.grades.length ? colors.grades[f.grades[0]] : null;
     const wrap = el('div', 'photo-wrap photo-wrap-peek');
     if (color) {
@@ -90,10 +83,6 @@ function renderFamilies(grid) {
     }
     wrap.append(photo);
     if (f.grades.length) {
-      // Pinned to the photo's own top-left corner (photoWithTag's cardMore
-      // tag button owns the top-right one) instead of sitting as its own row
-      // below the photo, same corner-badge treatment as gradeBadge does for
-      // an individual student's card.
       const chipRow = el('div', 'chip-row chip-row-overlay');
       for (const g of f.grades) {
         chipRow.append(familyDetailChip(g, colors.grades[g]));
@@ -129,12 +118,6 @@ export function renderPeople() {
   const strip = tabStrip(items, state.tab, 2, key => {
     state.tab = key;
     state.q = '';
-    // The Tags dropdown only exists on the Everyone tab - clear it on every
-    // switch so a filter set there can't silently keep narrowing results on a
-    // tab with no control showing it's active. Role chips get the same
-    // treatment without losing the selection: matchesFilters only applies
-    // filterRoleExcluded while state.tab is 'everyone' (see below), so
-    // switching to Families and back restores whatever was toggled off.
     state.filterTags.clear();
     history.replaceState(null, '', tabHref(key));
     renderPeople();
@@ -177,10 +160,6 @@ export function renderPeople() {
       tagsFacet = facetDropdown('Tags', tagFacetOptions(), state.filterTags, () => renderGrid());
       facetFilters.append(tagsFacet);
     }
-    // Small-screen stand-in for the Grade/Classroom/Tags dropdowns above: same
-    // filters, collapsed into one funnel-icon button so the mobile controls row
-    // doesn't have to fit every facet dropdown individually. CSS swaps which of
-    // the two is visible per breakpoint (see .facet-filters/.mobile-filter).
     const next = filterControl(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false, tags: isEveryone});
     next.classList.add('mobile-filter');
     if (mobileFilter) {

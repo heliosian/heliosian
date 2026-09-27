@@ -2,24 +2,17 @@ import {appOrigin} from '/toolbar.js';
 import {parseWhen} from '/datecard.js';
 import {superEditOn} from '/superedit.js';
 
-// activeFeed is the token of the saved calendar the viewer last opened from
-// the rail (or that the filters matched on load): Save Calendar saves the
-// filters back onto it.
 const remembered = readFilters();
 export const state = {model: null, filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active};
 
-// isSystemAdmin is the admin list itself, whatever the hat: what the
-// pencil, Admin Tools and the server go by.
 export function isSystemAdmin() {
   return Boolean(state.model && state.model.user.isAdmin);
 }
 
-// isAdmin is an admin with the hat on - what the pages' admin controls go by.
 export function isAdmin() {
   return isSystemAdmin() && superEditOn();
 }
 
-// setActiveFeed marks the saved calendar the viewer is working from.
 export function setActiveFeed(token) {
   state.activeFeed = token;
   saveFilters();
@@ -34,13 +27,10 @@ function readFilters() {
   }
 }
 
-// The filters and the saved calendar being worked from are kept together,
-// so a reload picks up where the viewer was.
 function saveFilters() {
   try {
     localStorage.setItem('calendar.filters', JSON.stringify({...state.filters, active: state.activeFeed}));
   } catch (err) {
-    // A browser that refuses storage just forgets the choice on reload.
   }
 }
 
@@ -49,16 +39,10 @@ const byDate = new Map();
 
 export function applyModel(model) {
   state.model = model;
-  // The server sends an admin everyone's waiting and declined events; with
-  // the hat off the page keeps only the viewer's own - shared or hosted -
-  // as anyone else sees.
-  // allEvents holds the whole list so the hat can bring them back.
   model.allEvents = model.allEvents || model.events;
   model.events = isAdmin() || !isSystemAdmin() ? model.allEvents : model.allEvents.filter(e => !(e.pending || e.declined) || e.addedBy === model.user.email || e.hosted);
   byId.clear();
   byDate.clear();
-  // An event waiting for approval is an admin's alert: its page opens from
-  // the approvals badge with the hat off too, though the lists leave it out.
   for (const e of model.allEvents) {
     if (e.pending && !e.declined) {
       byId.set(e.id, e);
@@ -66,7 +50,6 @@ export function applyModel(model) {
   }
   for (const e of model.events) {
     byId.set(e.id, e);
-    // A friendly address an admin gave it finds it too.
     if (e.address) {
       byId.set(e.address, e);
     }
@@ -77,8 +60,6 @@ export function applyModel(model) {
       byDate.get(date).push(e);
     }
   }
-  // Every filter is checked against the live vocabulary, so a classroom
-  // renamed since the choice was made drops out rather than hiding everything.
   const names = classroomNames();
   if (state.filters.classrooms) {
     state.filters.classrooms = state.filters.classrooms.filter(c => names.includes(c));
@@ -93,9 +74,6 @@ export function me() {
   return state.model.user;
 }
 
-// postedAndHosting says the viewer added a hand-added event and still hosts
-// it - they may have stepped down, leaving it theirs only as the one who
-// shared it.
 export function postedAndHosting(e) {
   return e.source === 'sheet' && e.addedBy === state.model.user.email && !e.posterLeft;
 }
@@ -103,13 +81,8 @@ export function postedAndHosting(e) {
 export function event(id) {
   if (byId.has(id)) {
     const e = byId.get(id);
-    // One the viewer may open only as an admin is not there for them
-    // with Super Admin Mode off.
     return e.adminOnly && !isAdmin() ? null : e;
   }
-  // An HCA event the school also lists is folded into the school's
-  // listing, under the school's id: HCA-Team's link, by the event's own,
-  // finds it there.
   const [source, rest] = id.split('/', 2);
   if (source === 'team' && rest) {
     return state.model.events.find(e => e.linkedId === rest && e.link) || null;
@@ -117,9 +90,6 @@ export function event(id) {
   return null;
 }
 
-// fetchEvent asks the server for an event the model does not carry - an
-// invite-only one reached by its link - and keeps it for the page; null
-// when there is none to be had.
 export async function fetchEvent(id) {
   try {
     const res = await fetch('/api/calendar/event?id=' + encodeURIComponent(id));
@@ -137,16 +107,11 @@ export async function fetchEvent(id) {
   }
 }
 
-// defaultFeedName is the name a saved calendar starts with: the viewer's
-// own first name on it, "Sam's Heliosian Calendar" - the name their
-// calendar app lists its feed by.
 export function defaultFeedName() {
   const first = (me().name || '').trim().split(/\s+/)[0];
   return unusedFeedName(first ? `${first}\u2019s Heliosian Calendar` : 'Heliosian Calendar');
 }
 
-// unusedFeedName is a name none of the viewer's saved calendars has: the
-// one given, or it with the first free number after it - "… 2", "… 3".
 export function unusedFeedName(name) {
   const taken = new Set((state.model.feeds || []).map(f => f.name.toLowerCase()));
   if (!taken.has(name.toLowerCase())) {
@@ -159,9 +124,6 @@ export function unusedFeedName(name) {
   }
 }
 
-// feedURL is a feed's address for a calendar app; webcalURL the same as
-// webcal://, which Apple's and most others open straight into a
-// subscription.
 export function feedURL(token) {
   return `${location.origin}/open/feed/${token}.ics`;
 }
@@ -170,9 +132,6 @@ export function webcalURL(token) {
   return `webcal://${location.host}/open/feed/${token}.ics`;
 }
 
-// My Heliosian is the calendar everyone has and nobody can change: the
-// calendar's own defaults under a lock, first in the rail, and everyone's
-// default calendar until they make one of their own so.
 export const MY_HELIOSIAN = 'my-heliosian';
 
 export function myHeliosian() {
@@ -180,8 +139,6 @@ export function myHeliosian() {
   return {token: MY_HELIOSIAN, name: home.name || 'My Heliosian', emoji: home.emoji || '', locked: true, position: home.position || 0, classrooms: [], tags: []};
 }
 
-// allCalendars are the rail's calendars: the viewer's saved ones in their
-// order, with My Heliosian among them at its place.
 export function allCalendars() {
   const feeds = [...(state.model.feeds || [])];
   const home = myHeliosian();
@@ -189,9 +146,6 @@ export function allCalendars() {
   return feeds;
 }
 
-// feedClassrooms and feedTags are a saved calendar's filter as the
-// calendar's own: every classroom or tag where it carries no filter - and
-// for My Heliosian, the calendar's own defaults.
 export function feedClassrooms(f) {
   if (f.locked) {
     return builtinClassrooms();
@@ -210,8 +164,6 @@ function sameSet(a, b) {
   return a.length === b.length && a.every(x => b.includes(x));
 }
 
-// showsFeed says whether the calendar's filters are one saved calendar's
-// exactly; savedAlready whether they are any saved calendar's.
 export function showsFeed(f) {
   return sameSet(selectedClassrooms(), feedClassrooms(f)) && sameSet(selectedTags(), feedTags(f));
 }
@@ -220,9 +172,6 @@ export function savedAlready() {
   return allCalendars().some(showsFeed);
 }
 
-// activeFeed is the calendar the viewer is working from: the one the
-// filters are exactly, else the one last opened from the rail if it still
-// exists, else their default calendar.
 export function activeFeed() {
   const feeds = allCalendars();
   const shown = feeds.find(showsFeed);
@@ -239,9 +188,6 @@ export function classroomNames() {
   return state.model.classrooms.map(c => c.name);
 }
 
-// tagGroups are the tags by the group the sheet files them under, in the
-// order the groups first occur; the tags with no group come last as one
-// unnamed group.
 export function tagGroups() {
   const groups = [];
   let loose = null;
@@ -282,21 +228,14 @@ export function myClassrooms() {
   return me().classrooms;
 }
 
-// savedView is the view this person kept, on the server, for every device
-// and for Heliosian's Upcoming Events - or nothing.
 export function savedView() {
   return me().saved || null;
 }
 
-// defaultFeed is the viewer's default calendar: the first in the rail.
 export function defaultFeed() {
   return allCalendars()[0];
 }
 
-// builtinClassrooms and builtinTags are My Heliosian's view: the ones the
-// viewer saved earlier if any, else their own classrooms - every classroom
-// for someone with none - and the categories the Tags tab (and Admin
-// Tools) mark on by default.
 export function builtinClassrooms() {
   const saved = savedView();
   if (saved && saved.classrooms.length) {
@@ -313,14 +252,10 @@ export function builtinTags() {
   return state.model.tags.filter(t => t.default).map(t => t.name);
 }
 
-// defaultClassrooms are the classrooms on for someone who has not chosen
-// today: their default calendar's.
 export function defaultClassrooms() {
   return feedClassrooms(defaultFeed());
 }
 
-// selectedClassrooms is the filter in force: the viewer's choice, else the
-// default.
 export function selectedClassrooms() {
   return state.filters.classrooms || defaultClassrooms();
 }
@@ -335,8 +270,6 @@ export function toggleClassroom(name) {
   setClassrooms(current.includes(name) ? current.filter(c => c !== name) : classroomNames().filter(c => c === name || current.includes(c)));
 }
 
-// defaultTags are the categories on for someone who has not chosen today:
-// their default calendar's.
 export function defaultTags() {
   return feedTags(defaultFeed());
 }
@@ -382,9 +315,6 @@ function tagsAdmit(e) {
   return !categories.length || overlaps(categories, selectedTags());
 }
 
-// An event the viewer said yes to is on their calendar whatever its
-// classrooms, so long as Going is on: an invite reaches across rooms -
-// and so does an invitation to the household, whatever is on.
 export function eventVisible(e) {
   if (e.invited || (answerOf(e) === 'yes' && selectedTags().includes('Going'))) {
     return true;
@@ -392,8 +322,6 @@ export function eventVisible(e) {
   return classroomsAdmit(e) && tagsAdmit(e);
 }
 
-// hiddenMatches counts the events the search words find under a tag that is
-// switched off - what the reader would see if they turned it on.
 export function hiddenMatches(tag) {
   if (!state.query) {
     return 0;
@@ -401,7 +329,6 @@ export function hiddenMatches(tag) {
   return state.model.events.filter(e => e.tags.includes(tag) && matches(e, state.query) && classroomsAdmit(e) && !tagsAdmit(e)).length;
 }
 
-// hiddenClassroomMatches is the same for a classroom that is switched off.
 export function hiddenClassroomMatches(classroom) {
   if (!state.query) {
     return 0;
@@ -417,15 +344,11 @@ function words(query) {
   return (query || '').toLowerCase().split(/\s+/).filter(Boolean);
 }
 
-// matches is the search: every word typed is found somewhere in the title,
-// the description, the place, the tags, or the hidden keywords.
 export function matches(e, query) {
   const hay = `${e.title} ${e.description || ''} ${e.location || ''} ${e.tags.join(' ')} ${(e.keywords || []).join(' ')} ${e.dayType || ''}`.toLowerCase();
   return words(query).every(w => hay.includes(w));
 }
 
-// dayTypeMatches is the search over the schedule: a day type lights up
-// while every word typed is in its name.
 export function dayTypeMatches(name, query) {
   const hay = name.toLowerCase();
   return words(query).every(w => hay.includes(w));
@@ -435,15 +358,10 @@ export function eventsOn(date) {
   return (byDate.get(date) || []).filter(eventVisible);
 }
 
-// isMatch says the search words find this event - the highlight the page
-// gives it while there are words.
 export function isMatch(e) {
   return Boolean(state.query) && matches(e, state.query);
 }
 
-// searchResults are every event the words find, whatever the filters say,
-// in date order - what the search box lists. hidden marks one the filters
-// keep off the page.
 export function searchResults(query) {
   if (!words(query).length) {
     return [];
@@ -483,16 +401,10 @@ export function shiftMonth(month, n) {
   return formatDate(d).slice(0, 7);
 }
 
-// weekStart is the Sunday on or before a date, the way a US wall calendar
-// starts its rows.
 export function weekStart(date) {
   return addDays(date, -parseDate(date).getDay());
 }
 
-// eventDates are the days an event sits on, as the model settles them
-// (Event.Dates): a camp-out that runs from Friday evening to Sunday noon is
-// on all three days, and a conference week written across a weekend is on
-// the school days alone.
 export function eventDates(e) {
   return e.dates;
 }
@@ -516,7 +428,6 @@ export function longDayLabel(date) {
   return longDayFormat.format(parseDate(date));
 }
 
-// shortDayLabel is the rail's date line: "Sun, Sep 13, 2026".
 export function shortDayLabel(date) {
   return shortDayFormat.format(parseDate(date));
 }
@@ -533,17 +444,12 @@ export function weekdayShort(date) {
   return parseDate(date).toLocaleDateString('en-US', {weekday: 'short'});
 }
 
-// clock is one wall-clock time as every page writes it: "8:15 AM". A
-// one-digit hour is padded with a figure space, so times line up in a column
-// and a day's hours keep their place when the digits change.
 export function clock(hhmm) {
   const [h, m] = hhmm.split(':').map(Number);
   const out = timeFormat.format(new Date(2000, 0, 1, h, m));
   return out.length < 8 ? ' ' + out : out;
 }
 
-// timeRange is two times as one span, the AM or PM written once when both
-// share it: "8:00–8:15 AM", "11:30 AM–12:15 PM".
 export function timeRange(from, to) {
   const a = clock(from);
   const b = clock(to).trimStart();
@@ -553,9 +459,6 @@ export function timeRange(from, to) {
   return `${a}–${b}`;
 }
 
-// whenLine is an event's date line: "Mon Sep 7" for a day, "Sep 9 – Sep 11"
-// for a span, "Thu Sep 24 · 4:00–6:00 PM" with hours, and "Fri Oct 2 4:00 PM
-// – Sun Oct 4 12:00 PM" for hours that run across days.
 export function whenLine(e) {
   if (e.allDay) {
     return daysLine(e);
@@ -566,7 +469,6 @@ export function whenLine(e) {
   return `${daysLine(e)} · ${timeLine(e)}`;
 }
 
-// daysLine is the day or days alone: "Mon Sep 7", or "Sep 9 – Sep 11".
 export function daysLine(e) {
   const start = parseWhen(e.start);
   if (spansDays(e)) {
@@ -575,17 +477,10 @@ export function daysLine(e) {
   return dayFormat.format(start.date);
 }
 
-// timeLine is an event's hours, for a line of its own. For hours that run
-// across days it is both ends with their days - or, given the date of the
-// row it sits in, what that day sees of it: "From 4:00 PM", "All day",
-// "Until 12:00 PM".
 export function timeLine(e, date) {
   return timeColumn(e, date).trimStart();
 }
 
-// startTime is when an event begins on a day, alone - "5:00 PM" - as the
-// Upcoming Events panel shows it; a day inside a run of days keeps its
-// "From" or "Until", which a bare start would misstate.
 export function startTime(e, date) {
   if (e.allDay) {
     return 'All day';
@@ -596,8 +491,6 @@ export function startTime(e, date) {
   return clock(e.start.slice(11)).trimStart();
 }
 
-// timeColumn is the same words padded as clock pads them, so a column of
-// them lines up - the event list's.
 export function timeColumn(e, date) {
   if (e.allDay) {
     return 'All day';
@@ -623,8 +516,6 @@ export function timeColumn(e, date) {
   return timeRange(e.start.slice(11), e.end.slice(11));
 }
 
-// eventPath is an event's page: its friendly address when an admin gave it
-// one, else its id.
 export function eventPath(e) {
   if (e.address) {
     return '/e/' + encodeURIComponent(e.address);
@@ -636,8 +527,6 @@ export function dayType(name) {
   return state.model.dayTypes.find(d => d.name === name) || null;
 }
 
-// plan is the day as the selected classrooms have it: the classrooms grouped
-// by day type, in the day types' order, or nothing outside the school year.
 export function plan(date, classrooms) {
   const byClassroom = state.model.days[date];
   if (!byClassroom) {
@@ -671,14 +560,10 @@ export function specials(date) {
 
 const scheduleTag = 'Schedule';
 
-// scheduleOn says the Upcoming panel lists the days that are not regular:
-// the Schedule tag is on, or the sheet has no such tag to switch them off.
 export function scheduleOn() {
   return !tagNames().includes(scheduleTag) || selectedTags().includes(scheduleTag);
 }
 
-// nextSpecials walks forward from a date to the next n days that are not
-// regular for the selected classrooms.
 export function nextSpecials(from, n) {
   const out = [];
   const dates = Object.keys(state.model.days).filter(d => d > from).sort();
@@ -698,9 +583,6 @@ export function colorOf(classroom) {
   return state.model.colors[classroom] || '';
 }
 
-// eventColors is who an event is for as colors: one per distinct classroom
-// color among its classrooms, each naming the classrooms it stands for, and
-// none for an event that is everyone's.
 export function eventColors(e) {
   if (!e.classrooms.length || e.classrooms.length === classroomNames().length) {
     return [];
@@ -718,10 +600,6 @@ export function eventColors(e) {
   return out;
 }
 
-// eventTint is the one color an event wears in the month's pills, the
-// rail's timeline and the upcoming rows: its first classroom color, or for
-// an event that is everyone's, a color for where it comes from - Celebrate's
-// parties pink, HCA's events purple, the school's own blue.
 export function eventTint(e) {
   const first = eventColors(e).find(c => c.color);
   if (first) {
@@ -736,8 +614,6 @@ export function eventTint(e) {
   return '#3b7dc4';
 }
 
-// audienceWords compresses an event's classrooms: every classroom is
-// "Everyone", both classrooms of a band are the band, the rest are named.
 export function audienceWords(e) {
   if (!e.classrooms.length || e.classrooms.length === classroomNames().length) {
     return ['Everyone'];
@@ -771,12 +647,6 @@ export function sourceWords(e) {
   return 'Added by the community';
 }
 
-// linkURL is a linked event's page on the app that runs it, on this page's
-// own tier.
-// linkedApp is the app that runs a linked event: Celebrate for a party,
-// HCA-Team for everything else with a way in - including the school's own
-// listing of an HCA event, which keeps the school as its source once the
-// two are folded together.
 function linkedApp(e) {
   return e.source === 'celebrate' ? 'celebrate' : 'team';
 }
@@ -785,7 +655,6 @@ export function linkURL(e) {
   return appOrigin(linkedApp(e)) + e.link;
 }
 
-// answerOf is the viewer's word on an event: yes, no, hidden, or nothing.
 export function answerOf(e) {
   return (me().answers || {})[e.id] || '';
 }
@@ -794,17 +663,11 @@ export function isHidden(e) {
   return answerOf(e) === 'hidden';
 }
 
-// isGray says whether the month and the timeline show an event in plain
-// gray rather than a pill: one the viewer hid, or said no to.
 export function isGray(e) {
   const word = answerOf(e);
   return word === 'hidden' || word === 'no';
 }
 
-// answer tells the calendar the viewer's word on an event and keeps it in
-// the model at once, so the page redraws without a reload: a yes puts the
-// event under Going, as the server files it, and taking the yes back lifts
-// it unless a ticket keeps it there.
 export async function answer(e, word) {
   const res = await fetch('/api/calendar/rsvp', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: e.id, answer: word})});
   if (!res.ok) {
@@ -825,14 +688,7 @@ export async function answer(e, word) {
   }
 }
 
-// eventImage is the picture across the top of an event's page and on its
-// card: the event's own, where the app that runs it has one (served by the
-// calendar's own host); else the image of the first of its tags that has one,
-// in the order the event carries them; else the calendar's own header.
 export function eventImage(e) {
-  // Another app's picture comes through the calendar's own host, as the
-  // page for someone from outside has it (/open/banner/), so it never waits
-  // on reaching that app's.
   if (e.image) {
     return e.link ? '/open/banner/' + e.id.split('/').map(encodeURIComponent).join('/') : e.image;
   }
@@ -845,21 +701,13 @@ export function eventImage(e) {
   return '/brand/default-header.jpg';
 }
 
-// isParty says which app runs a linked event: a Celebrate party, else an
-// HCA-Team event - the school's own event when one is folded into it.
 export function isParty(e) {
   return e.source === 'celebrate';
 }
 
-// myEvents is the viewer's own standing with what is coming up, in date
-// order: hosted, the events they run; waiting, the invitations sent to
-// their household they have not answered; going, the rest they said yes
-// to. The rail lists them under My Events, and the page of that name.
 export function myEvents() {
   const day = today();
   const upcoming = state.model.events.filter(e => eventDates(e)[eventDates(e).length - 1] >= day);
-  // What the viewer shared that waits for an admin's approval is its own
-  // list, not among what they host until it is on the calendar.
   const pending = e => e.pending && !e.declined && e.addedBy === me().email;
   return {
     hosted: upcoming.filter(e => e.hosted && !pending(e)),

@@ -8,14 +8,6 @@ import {openPhotoLightbox, cropBadge, familyPhotoMenu, togglePhotoMenu} from '..
 import {fromURL, breadcrumbs} from '../crumbs.js';
 import {resetMain, finishRender} from '../chrome.js';
 
-// A grade/homeroom chip tinted with that grade or classroom's own
-// admin-configured color (light background, solid text - same pairing as
-// .role-label-student/parent/staff) instead of the flat default role-label
-// styling, so it visually matches ringColorFor/applyRingColor's use of the
-// same color elsewhere (person cards, hover). Falls back to the default
-// role-label look if that grade/classroom has no color configured. href, when
-// given, makes it a link to that grade/classroom/staff page (same href shape
-// gradeCard/classroomCard and the Staff nav item use elsewhere).
 export function familyDetailChip(text, color, href) {
   const chip = el(href ? 'a' : 'div', 'role-label', text);
   if (href) {
@@ -64,9 +56,6 @@ export function familyCard(p, family) {
   const left = el('div');
   const familyEditable = canEditFamily(family);
   const showFamilyPhotoEdit = familyEditable && familyPhotoNeedsUpdate(family);
-  // The "update for the new year" nagging (dashed outline + reminder text) is meant
-  // for students, same as personal photos/facts - an adult visiting their own page
-  // still gets the camera icon to make uploading easy, just without the nag.
   const nagFamilyPhoto = showFamilyPhotoEdit && p.isStudent;
   const photoWrap = el('div', 'photo-wrap' + (nagFamilyPhoto ? ' needs-update' : ''));
   const status = el('div', 'media-status');
@@ -163,8 +152,6 @@ export function renderFamilyDetail(key) {
   }
   main.append(breadcrumbs(crumbs));
 
-  // The to-do list is the viewer's own, so it shows on their own family page
-  // alone, not on every family the pencil opens.
   if (key === myFamilyKey()) {
     const items = staleItems();
     if (items.length) {
@@ -227,11 +214,6 @@ export function renderFamilyDetail(key) {
   const homerooms = [...new Set(kids.map(k => k.classroom).filter(Boolean))];
   const topRow = el('div', 'detail-top');
   const chipRow = el('div', 'chip-row');
-  // Each kid's grade and homeroom as its own chip, colored with that grade's
-  // or classroom's admin-configured color (see colors in state.js) rather
-  // than one "GRADE 3, GRADE 6" chip lumping every kid's grade into a single
-  // label - a family with kids spread across grades/homerooms shows one clear
-  // chip per grade and per homeroom instead.
   for (const g of grades) {
     chipRow.append(familyDetailChip(g, colors.grades[g], withFrom('/grades/' + slugify(g))));
   }

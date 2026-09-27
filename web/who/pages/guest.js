@@ -14,9 +14,6 @@ function findGuest(id) {
   return null;
 }
 
-// A guest's page: a party's ticket holder the directory has no record for,
-// or someone a manager put on a group by hand, either way with the list
-// they came in on and the address to reach them at.
 export function renderGuestDetail(id) {
   const main = resetMain();
   const found = findGuest(id);

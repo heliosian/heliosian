@@ -4,8 +4,6 @@ import {setTitle, setSearch} from '/shell.js';
 import {emptyPanel} from '../cards.js';
 import {assignToMe} from '../edit.js';
 
-// The pipeline, one tile per stage in the order a birthday moves through it,
-// with the unassigned ones gathered first so they get picked up.
 const pipeline = [
   {key: 'unassigned', icon: 'users', tint: 'grey', note: 'These staff members are not assigned to anyone yet. Pick some up for yourself.'},
   {key: 'Wait', icon: 'calendar', tint: 'teal', note: 'These staff members are assigned, but their outreach date hasn\'t arrived yet.'},
@@ -17,7 +15,6 @@ const pipeline = [
 
 const dayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric'});
 
-// tab is the stage in view, '' for every stage at once.
 let tab = '';
 let query = '';
 let filters = {department: '', month: '', assignedTo: '', sort: 'contact'};
@@ -50,7 +47,6 @@ function rowsFor(key) {
     .sort(sorts[filters.sort]);
 }
 
-// tiles is the pipeline: each stage with its count, the one in view ringed.
 function tiles(onPick) {
   const strip = el('div', 'pipeline');
   pipeline.forEach((stage, i) => {
@@ -66,15 +62,12 @@ function tiles(onPick) {
     const body = el('div');
     body.append(el('div', 'pipeline-label', tileName(stage.key)), el('div', 'pipeline-count', String(state.model.staff.filter(sv => inTab(sv, stage.key)).length)));
     tile.append(icon, body);
-    // A tile picks its stage; the one already picked clears back to all.
     tile.addEventListener('click', () => onPick(stage.key === tab ? '' : stage.key));
     strip.append(tile);
   });
   return strip;
 }
 
-// summary is the band under the pipeline: the stage in view, how many are in
-// it and what it means, and the next date that matters for them.
 function summary(stage, rows) {
   const everything = {key: '', icon: 'jobs', tint: 'teal', note: 'Every birthday this year. Pick a stage above, or filter below - by who holds them, say.'};
   stage = stage || everything;
@@ -115,8 +108,6 @@ function selectOf(options, value, onChange) {
   return sel;
 }
 
-// filterBar is the search and the pickers over the table: department, birthday
-// month, who it is assigned to, and the order.
 function filterBar(rerender) {
   const bar = el('div', 'filter-bar');
   const search = el('div', 'filter-search');
@@ -135,7 +126,6 @@ function filterBar(rerender) {
     filters = {...filters, [key]: value};
     rerender(false);
   };
-  // Status is the same choice as the tiles above, and clears them too.
   const status = selectOf([{label: 'All Statuses', value: ''}, ...pipeline.map(st => ({label: tileName(st.key), value: st.key}))], tab, key => {
     tab = key;
     rerender(true);

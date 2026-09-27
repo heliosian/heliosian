@@ -37,9 +37,6 @@ const suggestionWords = {
   tag: 'Everyone under this tag of yours in Helios Who?, and the parents of any student among them, as the tag stands now.',
 };
 
-// A suggestion's icon is the mark of the app its Magic Tag is kept up in -
-// Celebrate's for a party, HCA-Team's for an activity - the coloured marks
-// the app switch wears, so the card says where the people would come from.
 const suggestionApp = {party: 'celebrate', activity: 'team', tag: 'who'};
 
 function suggestionCard(s) {
@@ -87,8 +84,6 @@ export function groupsPage() {
   others.append(el('p', 'page-lead', 'Groups their managers have opened to everyone in Loop, and groups you are on whose managers have opened them to their members. Open one to see who is on it; if you are, you can take yourself off it there, or put yourself back.'));
   const othersList = el('div', 'group-list');
   others.append(othersList);
-  // A group the viewer has archived is off the page altogether; the rail's
-  // Archived is where it lives.
   const render = query => {
     list.replaceChildren();
     suggestedList.replaceChildren();

@@ -22,9 +22,6 @@ function settingsCard() {
   return card;
 }
 
-// teamCard is the birthday team by role: who volunteers to work the birthdays
-// and who carries them into the newsletter. Each role takes someone from the
-// directory or an address typed in, and loses them with Remove.
 function teamCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Team'));
@@ -117,8 +114,6 @@ function teamCard() {
   return card;
 }
 
-// invitesCard resends every assignee's calendar invite, for after the dates'
-// rules change under them.
 function invitesCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Calendar Invites'));

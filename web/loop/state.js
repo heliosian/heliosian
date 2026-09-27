@@ -4,9 +4,6 @@ export const state = {model: null};
 
 const byName = new Map();
 
-// The server sends an admin every group; with the hat off the page keeps
-// only those anyone else would see (open), allGroups holding the whole list
-// so the hat can bring them back.
 export function applyModel(model) {
   state.model = model;
   model.allGroups = model.allGroups || model.groups;
@@ -21,13 +18,10 @@ export function me() {
   return state.model.user;
 }
 
-// isSystemAdmin is the admin list itself, whatever the hat: what the
-// pencil and Admin Tools go by.
 export function isSystemAdmin() {
   return Boolean(state.model && state.model.user.isAdmin);
 }
 
-// isAdmin is an admin with the hat on - what the pages' admin powers go by.
 export function isAdmin() {
   return isSystemAdmin() && superEditOn();
 }

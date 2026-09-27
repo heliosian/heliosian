@@ -4,10 +4,6 @@ import {imageTools} from '/images.js';
 
 export const {uploadImage, imageSearchOn, openImageSearch} = imageTools('/api/calendar', {state, toast});
 
-// imageControl is a category's picture: a thumbnail that opens a file
-// chooser, a search of the picture libraries, and a way to take the
-// picture off. The picture is what an event under the tag wears when it
-// has none of its own.
 export function imageControl(t, onChange) {
   const wrap = el('span', 'admin-image');
   const pick = el('label', 'admin-image-pick');

@@ -14,10 +14,6 @@ const tagListViews = [
   {key: 'map', label: 'Map', icon: 'map'},
 ];
 
-// Single-select, icon-only segmented control for how to view a list - it's
-// the same filtered data underneath either way, just displayed differently,
-// so it reads as a display-mode switch (like a grid/list view toggle) rather
-// than a top-level tab or another filter chip.
 function tagListViewSwitch(rerender) {
   const bar = el('div', 'view-switch');
   for (const v of tagListViews) {
@@ -41,9 +37,6 @@ function tagListViewSwitch(rerender) {
   return bar;
 }
 
-// The Map view of a tag list - families that have someone matching the same
-// filters (tag, relations, search, ...) as Faces/Emails, sharing the map
-// plumbing with the standalone Map page.
 function renderTagMap(container) {
   const canvas = el('div', 'map-canvas');
   container.append(canvas);
@@ -69,18 +62,10 @@ function kidsField(parent, field) {
   return [...new Set(values)].join(', ');
 }
 
-// Every student, their parents, and staff, deduped by email (a parent who's
-// also staff keeps whichever role they were added under first). Role/grade/
-// classroom filtering down from this full set happens the same way the
-// Directory page's Everyone tab does it - via matchesFilters, driven by the
-// role chips and the Grade/Classroom/Tags dropdowns.
 function emailEntries() {
   const rows = [];
   const seen = new Set();
   const add = (p, role, grade, classroom) => {
-    // A masked email is a Veracross placeholder nobody can actually reach - it has no
-    // place in a mailing list, so this person is left out of it entirely rather than
-    // appearing with a blank or fake address.
     if (p.emailMasked || seen.has(p.email)) {
       return;
     }
@@ -110,31 +95,18 @@ function emailEntries() {
   return rows;
 }
 
-// The unified "list" page: a tag's people (/people?tag=X) or literally
-// everyone (/email-list, kept as the URL for continuity) viewed as Faces,
-// Emails, or Map - the same filtered data underneath either way, just a
-// different display of it. Emails is the fullest-featured view (CSV export,
-// per-column copy, a column picker) since that's what this page grew out of.
 export function renderListPage() {
   const main = resetMain();
 
   const title = state.filterTags.size ? [...state.filterTags].map(listLabel).join(', ') : 'Everyone';
   const smart = state.filterTags.size === 1 ? lists[[...state.filterTags][0]] : null;
-  // The one tag this page is showing when it's the user's own (not a smart
-  // list, not several tags picked in the Tags dropdown) - the only case where
-  // deleting "the tag" means something.
   const ownTag = state.filterTags.size === 1 && !smart && tags[[...state.filterTags][0]] ? [...state.filterTags][0] : null;
-  // Or one somebody else shared with the user - theirs to tag on, not to
-  // delete; the user can leave it.
   const sharedTag = state.filterTags.size === 1 ? sharedOf([...state.filterTags][0]) : null;
 
   const pageHeader = el('div', 'page-header container page-header-list');
   const titleWrap = el('div');
   titleWrap.append(el('h1', 'page-title', title));
   if (smart) {
-    // A Magic Tag says what it mirrors and, for one from another app, links
-    // to the thing itself - the party or activity - the way the app switch
-    // does, in the same tab.
     const line = el('div', 'page-subtitle magic-source');
     const source = listSource(smart.key);
     if (source) {
@@ -151,11 +123,6 @@ export function renderListPage() {
     }
     titleWrap.append(line);
   }
-  // Whose tag it is and who else keeps it up: an own tag with managers
-  // names them (the Share button adds and removes them), a shared tag names
-  // its owner and any other managers.
-  // Each person named is a chip to their page, the way a person's own page
-  // shows their tags as chips.
   const chip = email => {
     const p = byEmail[email];
     const a = el('a', 'tag-chip person-chip', p ? p.fullName : email);
@@ -197,13 +164,6 @@ export function renderListPage() {
   const content = el('div', 'content container');
   const header = el('div', 'content-header content-header-solo');
   const controls = el('div', 'controls');
-  // Add and Manage lead the row, ahead of the role chips: Add widens who
-  // the list is of - the parents, children or siblings of whoever is tagged
-  // - where everything after it only narrows that down, and Manage is the
-  // tag's own housekeeping. Add only means something for a single tag (with
-  // several selected at once, or none as on the plain Everyone list,
-  // there's no one list to pull relatives in from), and only offers the
-  // relations the tagged people actually have.
   const lead = el('div', 'controls-lead');
   const familyOptions = state.filterTags.size === 1 ? tagRelationOptionsFor([...state.filterTags][0]) : [];
   if (familyOptions.length) {
@@ -228,10 +188,6 @@ export function renderListPage() {
     renderGrid();
   });
   search.append(input);
-  // A tag's page (one tag or Magic Tag, or several picked together) keeps
-  // Grade, Classroom and Tags behind one Filter button - the row there has
-  // Add, Manage and CSV to fit as well - while the
-  // plain Everyone list still lays the three out as their own dropdowns.
   const onTagPage = state.filterTags.size > 0;
   const facetFilters = el('div', 'facet-filters');
   if (!onTagPage) {
@@ -252,11 +208,6 @@ export function renderListPage() {
       tagsFacet = facetDropdown('Tags', tagFacetOptions(), state.filterTags, () => renderGrid());
       facetFilters.append(tagsFacet);
     }
-    // The one Filter button: what a tag's page shows at every width, and
-    // what the Everyone list falls back to on a small screen (same as the
-    // Directory page's mobile-filter, see renderPeople), collapsing the
-    // Grade/Classroom/Tags dropdowns so the controls row doesn't wrap across
-    // several lines.
     const next = filterControl(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false});
     if (!onTagPage) {
       next.classList.add('mobile-filter');
@@ -288,8 +239,6 @@ export function renderListPage() {
   content.append(grid);
   main.append(content);
 
-  // Emails-view state that should survive a search/filter change, or a trip
-  // through Faces/Map and back, rather than resetting on every render.
   const selectedColumns = new Set(emailColumns.map((c, i) => i));
   let currentRows = [];
   const copyColumns = el('button', 'email-copy-columns');

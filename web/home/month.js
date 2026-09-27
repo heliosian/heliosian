@@ -3,25 +3,10 @@ import {el, svg} from './dom.js';
 import {whenOrigin, rsvpButtons, calendarMark, calendarMenu, dropdown} from './cards.js';
 import {dayTypeClass} from '/daytype.js';
 
-// The rail's calendar, from Helios When: a small month, paged on its own,
-// with a dot under each day in the colour of what is on it and today ringed
-// in amber, and under it the day picked - today until one is - as a card:
-// the date, what kind of day it is for this person's classrooms when it is
-// not simply regular, and every event on it, each opening its page on When
-// with its Yes and No under it.
-// The month is the viewer's as When first shows it - their default
-// calendar - until they pick another of their saved calendars from the
-// faint dropdown above the month's name, which the paging then keeps to;
-// today is the school's, reckoned by the server, so the ring does not
-// drift with the browser's clock.
-
 let month = null;
 let selected = '';
-// loaded is the model's month the one shown came from; a fresh model -
-// after Make default - starts the rail over from its month.
 let loaded = null;
 
-// A YYYY-MM-DD as a local date, without the time zone shifting it.
 function parseDate(date) {
   const [y, m, d] = date.split('-').map(Number);
   return new Date(y, m - 1, d);
@@ -33,8 +18,6 @@ function dateOf(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// tint is where an event comes from, as When colours it: a party pink, an
-// HCA event purple, the school's own blue.
 function tint(event) {
   return event.linkApp === 'celebrate' ? 'is-celebrate' : event.linkApp === 'team' ? 'is-team' : 'is-school';
 }
@@ -47,9 +30,6 @@ function eventsOn(date) {
   return (month.events || []).filter(e => e.dates.includes(date));
 }
 
-// hours are what a row says beside the title: the hours the event's when
-// line carries, else how far a whole-day event runs - "All day", or
-// "Through Fri" while it has days to go.
 function hours(event, date) {
   const [, time] = event.when.split(' · ');
   if (time) {
@@ -72,10 +52,6 @@ function shiftMonth(ym, by) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 }
 
-// fetchMonth asks the server for a month read under a saved calendar -
-// paging keeps the calendar and moves the month, the picker keeps the
-// month and moves the calendar; the day picked becomes today when it is
-// in the month, else the first.
 async function fetchMonth(ym, calendar) {
   try {
     const res = await fetch('/api/apps/calendar?month=' + ym + '&calendar=' + encodeURIComponent(calendar || ''));
@@ -94,9 +70,6 @@ function page(by) {
   return fetchMonth(shiftMonth(month.month, by), month.calendar);
 }
 
-// picker is the saved calendar the month is read under, as a faint line
-// above the month's name that drops the rest down to pick from - the same
-// list Upcoming Events offers, without its Make default.
 function picker() {
   const cal = state.model.upcomingCalendar;
   const list = (cal && cal.calendars) || [];
@@ -202,8 +175,6 @@ function dayCard() {
   if (!events.length) {
     list.append(el('div', 'rail-day-empty', day ? 'Nothing on the calendar.' : 'No school.'));
   }
-  // Each event is its row, opening its page on When, with its answer's
-  // buttons under it - the same Yes and No the Upcoming cards carry.
   for (const event of events) {
     const item = el('div', 'rail-item');
     const row = el('a', 'rail-event ' + tint(event));

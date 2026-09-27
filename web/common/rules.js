@@ -61,7 +61,6 @@ export function filterWidgets({el, svg, button}) {
     }
     for (const v of values) {
       const {value, label: text, icon: mark, depth} = typeof v === 'string' ? {value: v, label: v} : v;
-      // A committee's list sits under its event's, set in by how deep it is.
       const row = el('label', 'facet-option' + (depth ? ' is-under' : ''));
       if (depth) {
         row.style.setProperty('--depth', depth);
@@ -336,9 +335,6 @@ export function rulesEditor({el, svg, options, personName}) {
       changed();
     }));
     const tags = new Set(rule.tags);
-    // A committee's list follows its event's - the names sort so - set in
-    // beneath it under its own short name ("K - 2 Spellers"), though the
-    // rule still says it whole.
     const depthOf = l => {
       let depth = 0;
       for (let at = l; at && at.parent; at = options().lists.find(x => x.key === at.parent)) {

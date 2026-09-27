@@ -16,12 +16,10 @@ export function me() {
   return state.model.user;
 }
 
-// isSystemAdmin says the person is on the admin list, hat or no hat.
 export function isSystemAdmin() {
   return state.model.user.isAdmin;
 }
 
-// isAdmin is what the page offers: the list and the hat together.
 export function isAdmin() {
   return isSystemAdmin() && superEditOn();
 }
@@ -34,8 +32,6 @@ export function settings() {
   return state.model.settings;
 }
 
-// staff finds a person by the address in their page's path - the part before
-// the @ for a school address, the whole address for anyone else.
 export function staff(handle) {
   if (handle.includes('@')) {
     return byEmail.get(handle) || null;
@@ -62,8 +58,6 @@ export function stageLabel(stage) {
   return `${stageNumbers[stage]}. ${stage}`;
 }
 
-// stageName is the stage as the pages word it for the team: what to do next
-// rather than what is being awaited.
 const stageNames = {'Wait': 'Scheduled', 'Awaiting Outreach': 'Ready to Contact', 'Awaiting Response': 'Waiting for Reply', 'Awaiting Newsletter': 'Ready for Newsletter', 'Complete': 'Complete'};
 
 export function stageName(stage) {
@@ -100,14 +94,11 @@ export function mediumDate(s) {
   return d ? mediumFormat.format(d) : s || '';
 }
 
-// monthDay is a date without its year, September 26, as the birthday letter says it.
 export function monthDay(s) {
   const d = parseDate(s);
   return d ? monthDayFormat.format(d) : s || '';
 }
 
-// tableDate is a date as a table column shows it, Oct 5, 2026, and weekday its
-// day of the week, Mon.
 export function tableDate(s) {
   const d = parseDate(s);
   return d ? tableFormat.format(d) : s || '';
@@ -131,12 +122,6 @@ export function mine(sv) {
   return sv.assignedTo === me().email;
 }
 
-// urgency is where a birthday stands against its days, reckoned as the
-// toolbar's late badge reckons it (internal/birthday/late.go), and a day
-// early too: {when: 'late' | 'today' | '', step}. The steps are the
-// birthday's information - the charity, due by dueBy - and before that the
-// outreach, due by requestBy, both the assignee's; and once the charity is
-// in, the newsletter, the comms team's. A late step outranks one due today.
 export function urgency(sv) {
   if (sv.stage === 'Complete') {
     return {when: '', step: ''};
@@ -157,14 +142,11 @@ export function urgency(sv) {
   return {when: '', step: ''};
 }
 
-// urgencyWords is a birthday's urgency as a row's chip says it.
 export function urgencyWords({when, step}) {
   const what = {info: 'Charity', outreach: 'Outreach', newsletter: 'Newsletter'}[step];
   return when === 'late' ? `${what} late` : when === 'today' ? `${what} due today` : '';
 }
 
-// commsOnly says the viewer is on the comms team and nothing else - not a
-// volunteer, not an admin - so the app shows them the newsletters alone.
 export function onComms() {
   const email = me().email;
   return state.model.team.some(m => m.email === email && m.role === 'Comms Team');
@@ -176,9 +158,6 @@ export function commsOnly() {
   return roles.includes('Comms Team') && !roles.includes('Volunteer') && !isSystemAdmin();
 }
 
-// team is who a birthday can be assigned to: the volunteers on the Team tab
-// and everyone who already has a staff member assigned to them, by name, with
-// the viewer first whether or not they are either.
 export function team() {
   const seen = new Map([[me().email, me().name]]);
   for (const m of state.model.team) {
@@ -210,10 +189,6 @@ export function firstName(sv) {
   return sv.name.split(' ')[0];
 }
 
-// lastYearLines is what {last year} stands for: a heading, the charity and
-// the staff member's note from last year, and nothing when there is no last
-// year. The heading wears asterisks, the plain-text mark for bold, since a
-// mailto draft carries no formatting.
 function lastYearLines(sv) {
   const d = sv.lastDonation;
   if (!d) {
@@ -222,7 +197,6 @@ function lastYearLines(sv) {
   return ["*Last Year's Charity*", d.charity, d.note || ''].filter(Boolean).join('\n');
 }
 
-// tidy drops the blank lines and trailing spaces an empty placeholder leaves behind.
 function tidy(text) {
   return text.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -238,9 +212,6 @@ export function fill(template, sv) {
     .replaceAll('{last year}', lastYearLines(sv));
 }
 
-// emailLink is the draft: the body with the person filled in, and the no-newsletter note for anyone who
-// asked to stay out of the newsletter, placed where {no newsletter note} sits or at the end when the body
-// does not say.
 export function emailLink(sv) {
   const note = sv.level === 'No Newsletter' ? fill(settings().noNewsletterNote, sv) : '';
   let body = settings().emailBody;

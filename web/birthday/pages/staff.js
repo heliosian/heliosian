@@ -41,7 +41,6 @@ function header(sv) {
   return head;
 }
 
-// fact is one of the three date tiles: an icon in a pale disc beside its label and value.
 function fact(icon, label, value) {
   const wrap = el('div', 'fact');
   const disc = el('div', 'fact-icon');
@@ -60,9 +59,6 @@ function facts(sv) {
   return row;
 }
 
-// step is one row of the workflow: its number in a disc on the timeline - ticked in teal when done, teal
-// when it is the step in hand, amber when it wants someone's attention, pale while it waits its turn -
-// then the title, the text with an optional aside in lighter ink, and the actions.
 function step(n, title, text, actions, status, aside) {
   const row = el('div', 'step step-' + status);
   const disc = el('div', 'step-num');
@@ -95,8 +91,6 @@ function filled(label, icon, onClick) {
   return button(label, icon, 'button', onClick);
 }
 
-// stepStatus places a step against the stage: every step before the stage's own is done, the stage's is
-// in hand, and the rest wait. Assignment stands apart: done once someone has it, wanting attention until.
 function stepStatus(sv, n) {
   const current = {'Wait': 2, 'Awaiting Outreach': 3, 'Awaiting Response': 4, 'Awaiting Newsletter': 5, 'Complete': 6}[sv.stage] || 6;
   if (n === 1) {
@@ -105,7 +99,6 @@ function stepStatus(sv, n) {
   return n < current ? 'done' : n === current ? 'current' : 'pending';
 }
 
-// status is the pill in the workflow's header: where the person stands, in a word.
 function status(sv) {
   const pill = el('div', 'workflow-status');
   const word = sv.stage === 'Complete' ? 'Complete' : sv.stage === 'Wait' ? 'Waiting' : 'In Progress';
@@ -161,7 +154,6 @@ function askBand(sv) {
   return band;
 }
 
-// sprig is the little plant that stands in for a donation not yet chosen.
 function sprig(className) {
   const node = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   node.setAttribute('viewBox', '0 0 64 64');

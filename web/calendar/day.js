@@ -1,8 +1,3 @@
-// The day column: a small month to pick a day from, and the chosen day as a
-// card - its name, its date, the day plan with its hours, and its events
-// down a timeline. On a wide window it lives in the rail (chrome.js
-// draws it there for every page); on a phone the calendar page draws the
-// card at the top of the page.
 import {state, eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, weekdayLong, specials, isSchoolDay, eventTint, timeLine, eventPath, isMatch, isGray} from './state.js';
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg, button} from './dom.js';
@@ -10,15 +5,8 @@ import {popup} from '/modal.js';
 import {eventForm} from './eventform.js';
 import {planCards} from './events.js';
 
-// The rail's paging, kept across renders: the month its small month is
-// open to, and the day that set it.
 const railPaging = {month: '', date: ''};
 
-// miniMonth is a small month: a row of weekday letters and the days, the
-// chosen day filled, today in amber, the days of the months either side
-// faded, and under a day a dot in the color of what is on it - its first
-// event's, or its day type's. Its arrows page it alone, through paging
-// (the month it is open to), which the caller keeps as long as it likes.
 function miniMonth(date, paging) {
   const wrap = el('div', 'mini-month');
   const paint = () => {
@@ -67,8 +55,6 @@ function miniMonth(date, paging) {
   return wrap;
 }
 
-// timelineRow is one event down the day's timeline: a dot in its color on
-// the line, then its hours, its title and its place.
 function timelineRow(e, date) {
   const row = link(eventPath(e), 'timeline-row' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.sharing !== 'Public' ? ' is-invite' : ''));
   const dot = el('span', 'timeline-dot');
@@ -82,8 +68,6 @@ function timelineRow(e, date) {
   return row;
 }
 
-// dayNote is the card's word when a day has no events: a soft box with a
-// ticked calendar.
 function dayNote(words) {
   const note = el('div', 'day-note');
   note.append(svg('calcheck'), el('span', '', words));
@@ -102,14 +86,6 @@ function timeline(date) {
   return list;
 }
 
-// dayColumn is the small month and the day card. paint redraws both when
-// the search words change, so the matching events light up. Without a
-// paging of its own it is the rail's, whose month is kept across renders
-// until a different day is opened.
-// openAddEvent is Add Event, over the month beside Today: anyone can share
-// an event with the community - a public one waits for an admin's
-// approval before the calendar carries it. Added, the event's own page
-// opens - where its link, and its guest list, are.
 export function openAddEvent() {
   let shut = null;
   const form = eventForm({onDone: async ids => {

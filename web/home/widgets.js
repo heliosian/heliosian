@@ -6,11 +6,6 @@ import {whenOrigin, calendarMark, calendarMenu, dropdown, audienceWords} from '.
 import {openWidgetAudience, moveWidget} from './edit.js';
 import {dayTypeClass} from '/daytype.js';
 
-// The widgets across the top of the page, each a card with one app's view
-// of what matters now: what is coming up on Helios When, what HCA-Team
-// needs people for, and Helios Celebrate's parties.
-
-// A YYYY-MM-DD as a local date, without the time zone shifting it.
 function parseDate(date) {
   const [y, m, d] = date.split('-').map(Number);
   return new Date(y, m - 1, d);
@@ -18,15 +13,10 @@ function parseDate(date) {
 
 const pad = n => String(n).padStart(2, '0');
 
-// tint is where an event comes from, as When colours it: a party pink, an
-// HCA event purple, the school's own blue.
 function tint(event) {
   return event.linkApp === 'celebrate' ? 'is-celebrate' : event.linkApp === 'team' ? 'is-team' : 'is-school';
 }
 
-// startTime is when an event starts on a day, as the widget's time column
-// says it: "3:30 PM" on its first day, "All day" for a whole-day event or a
-// day after its first.
 function startTime(event, date) {
   const [day, time] = event.startAt.split(' ');
   if (!time || day !== date) {
@@ -36,23 +26,15 @@ function startTime(event, date) {
   return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
 }
 
-// sortKey puts a day's whole-day events first, then the timed ones by
-// their start.
 function sortKey(event, date) {
   const [day, time] = event.startAt.split(' ');
   return !time || day !== date ? '' : time;
 }
 
-// shown is what the widget lists: everything the month carries but what
-// the viewer said no to.
 function shown(event) {
   return event.answer !== 'no' && event.answer !== 'hidden';
 }
 
-// picked is the month read under the calendar picked in the widget's
-// dropdown, or null for the rail's - the viewer's default calendar;
-// base is the rail's month it was picked over, so a fresh model (after
-// Make default) starts the widget over from its own.
 let picked = null;
 let base = null;
 
@@ -64,8 +46,6 @@ function currentMonth() {
   return picked || base;
 }
 
-// pick reads this month under another saved calendar and draws the
-// widget from it.
 async function pick(token) {
   const month = currentMonth();
   try {
@@ -81,8 +61,6 @@ async function pick(token) {
   renderWidgets(searchInput().value);
 }
 
-// calendarPick is the saved calendar the widget reads, as a quiet dropdown
-// beside the date - the list Upcoming Events and the rail's month offer.
 function calendarPick(month) {
   const cal = state.model.upcomingCalendar;
   const list = (cal && cal.calendars) || [];
@@ -102,8 +80,6 @@ function calendarPick(month) {
   return wrap;
 }
 
-// allEvents are the month's events - with the next month's once the week
-// runs into it - from today through six days on.
 let nextMonth = null;
 
 function allEvents(month) {
@@ -118,9 +94,6 @@ function allEvents(month) {
   return events.filter(shown);
 }
 
-// fetchNext asks for the month after, under the same calendar, so what is
-// upcoming runs on past the month's end, and draws the widget again once it
-// is in.
 let nextAsked = null;
 
 async function fetchNext(month) {
@@ -143,9 +116,6 @@ async function fetchNext(month) {
   renderWidgets(searchInput().value);
 }
 
-// dayBar is a day's heading inside a widget: a pale bar with the weekday
-// and the date - or a word in their place - and how many things fall on
-// it at its far end, and any chips after the date.
 function dayBar(day, count, noun, chips = []) {
   const bar = el('div', 'wg-day');
   const label = el('span', 'wg-day-label');
@@ -161,9 +131,6 @@ function dayBar(day, count, noun, chips = []) {
   return bar;
 }
 
-// wgRow is one row under a day: a dot in its colour on a line running down
-// the day, what it is, and a chevron, the whole row opening href but for
-// any link inside it, which goes where it says.
 function wgRow(className, href, parts) {
   const row = el('li', 'wg-row ' + className);
   row.dataset.row = '';
@@ -181,9 +148,6 @@ function wgRow(className, href, parts) {
   return row;
 }
 
-// standing is the household's part in an event another app runs, as When
-// words it - "John has a ticket", "You have a ticket" - on an outlined pill
-// behind a tick.
 function standing(event) {
   if (!event.mine || !event.call) {
     return null;
@@ -193,11 +157,6 @@ function standing(event) {
   return pill;
 }
 
-// action is the pill when the viewer has something to do: RSVP, in green,
-// on an invitation still waiting on their word, to its page on When; else,
-// for an event another app runs that is still open to them and where the
-// household has no standing yet, the way in as When words it - Join, Get
-// tickets, Join the waitlist - in the event's colour, to its page there.
 function action(event) {
   if (event.invited && !event.answer) {
     const pill = el('a', 'wg-pill is-rsvp', 'RSVP');
@@ -213,8 +172,6 @@ function action(event) {
   return null;
 }
 
-// eventRow is one event on one day: its start, its title with the
-// household's standing or a pill to act on beside it.
 function eventRow(event, day) {
   const href = whenOrigin('calendar') + event.path;
   const title = el('a', 'wg-title', event.title);
@@ -228,9 +185,6 @@ function eventRow(event, day) {
   return wgRow(tint(event), href, [el('span', 'wg-time', startTime(event, day)), main]);
 }
 
-// upcomingGroups is what is ahead from today on: every day with something
-// on it, each event once, on its first day from today - so one under way
-// sits on today - whole-day ones first and then by start.
 function upcomingGroups(events, today) {
   const byDay = new Map();
   for (const event of events) {
@@ -245,33 +199,16 @@ function upcomingGroups(events, today) {
   return [...byDay.keys()].sort().map(d => ({day: d, events: byDay.get(d).sort((a, b) => sortKey(a, d).localeCompare(sortKey(b, d)))}));
 }
 
-// pageRows is how many rows every widget shows at first, and how many more
-// each Show more adds.
 const pageRows = 3;
 
-// shownCounts are how many rows each list shows now, by name - a widget's,
-// with its chip or kind when it has them, so each keeps its own - kept
-// while the widgets redraw.
 const shownCounts = new Map();
 
-// fills are the rows each list adds on its own to fill the room its card
-// has - a card in a row stretches to the row's tallest, leaving the rest
-// blank at the foot - by name, cleared and measured again each time the
-// widgets are drawn (fitWidgets).
 const fills = new Map();
 
-// shownCount is how many rows a list shows now: the first few, or as many
-// as Show more reached, and whatever fills its card's room.
 function shownCount(name) {
   return (shownCounts.get(name) || pageRows) + (fills.get(name) || 0);
 }
 
-// widgetFoot is the foot every widget ends with, the same on each - one
-// quiet line under a hairline: Show N more while rows are held back,
-// adding the next few, and Show less beside it once any were added,
-// folding back to the first few, at the left; See all across to the app,
-// when there is one to go to, at the right. Nothing when none of them is
-// wanted.
 function widgetFoot(name, total, seeAll) {
   const foot = el('footer', 'widget-foot');
   foot.dataset.list = name;
@@ -303,9 +240,6 @@ function widgetFoot(name, total, seeAll) {
   return foot.children.length ? foot : null;
 }
 
-// grouped draws groups of rows under their day bars, as many rows as the
-// list shows now (shownCount): a group cut short keeps its bar, with the
-// day's whole count on it; a group past the cut is left out.
 function grouped(name, groups, bar, row) {
   const out = [];
   const limit = shownCount(name);
@@ -326,9 +260,6 @@ function grouped(name, groups, bar, row) {
   return out;
 }
 
-// widgetTitle is a widget's heading: the mark of the app its things come
-// from - the same the app switch and the page's app cards show, kept
-// fresh by the app's mark - then its words.
 function widgetTitle(app, words) {
   const title = el('h2', 'widget-title');
   const icon = el('img', 'widget-icon');
@@ -339,7 +270,6 @@ function widgetTitle(app, words) {
   return title;
 }
 
-// moreLink is a widget's way across: words and an arrow.
 function moreLink(words, href) {
   const a = el('a', 'widget-more');
   a.href = href;
@@ -347,14 +277,6 @@ function moreLink(words, href) {
   return a;
 }
 
-// whenWidget is Helios When's card, Upcoming: the calendar picker at the
-// heading's end, then what is ahead from today through the month after,
-// each day with something on it under its bar - the weekday, the date,
-// any kind of day it is for the viewer's classrooms when not simply
-// regular, and how many events - and its events under it; and at its foot View full calendar
-// across to When; the first few until Show N more. It reads the month the
-// rail's calendar was first drawn from - the viewer's default calendar -
-// so the two agree, until another is picked from the dropdown.
 function whenWidget() {
   const month = currentMonth();
   if (!month || !month.today) {
@@ -382,8 +304,6 @@ function whenWidget() {
   return card;
 }
 
-// HCA-Team's lists come from Heliosian's host (/api/apps/team), asked once
-// per model - the page's load - and kept while the widgets are drawn again.
 let team = null;
 let teamFor = null;
 
@@ -401,22 +321,10 @@ async function fetchTeam() {
   renderWidgets(searchInput().value);
 }
 
-// teamChip is the chip picked - All, what needs people; Priority, what an
-// admin marked as most needing hands; or Mine, what the viewer is on - kept
-// while the widgets redraw.
 let teamChip = 'all';
 
-// The dots' and pills' colours, in turn down the list: red, blue, gold,
-// green.
 const teamTones = ['is-red', 'is-blue', 'is-gold', 'is-green'];
 
-// teamWidget is HCA-Team's card, headed Team: View all across to the
-// portal at the heading's end; three chips - All, what needs people that
-// the viewer is not on, each saying what it still wants with Sign up;
-// Priority, what an admin marked a priority, the same way, a chip only
-// while something is; and Mine, what they are on that is still ahead, with
-// the event it sits under and their position - each a picture list, as
-// Celebrate's, the first three until More.
 function teamWidget() {
   if (teamFor !== state.model) {
     team = null;
@@ -433,7 +341,6 @@ function teamWidget() {
   const foot = el('div', 'widget-foot-slot');
   const paint = () => {
     chips.replaceChildren();
-    // Priority is a chip only while an admin has marked something.
     const priority = (team.priority || []).length > 0;
     if (!priority && teamChip === 'priority') {
       teamChip = 'all';
@@ -441,8 +348,6 @@ function teamWidget() {
     for (const [key, label] of [['all', 'All'], ['priority', 'Priority'], ['mine', 'Mine']].filter(([key]) => key !== 'priority' || priority)) {
       const chip = el('button', 'wg-chip tone-' + key + (teamChip === key ? ' is-on' : ''), label);
       chip.type = 'button';
-      // Priority and Mine say how many they hold; All is the first few
-      // of what needs hands, so it has no count.
       const count = key === 'priority' ? team.priority.length : key === 'mine' ? team.mine.length : null;
       if (count !== null) {
         chip.append(el('span', 'wg-chip-count', String(count)));
@@ -482,9 +387,6 @@ function teamWidget() {
   return card;
 }
 
-// Helios Celebrate's parties come from Heliosian's host
-// (/api/apps/celebrate), asked once per model and kept while the widgets
-// redraw, as HCA-Team's are.
 let parties = null;
 let partiesFor = null;
 
@@ -502,13 +404,8 @@ async function fetchParties() {
   renderWidgets(searchInput().value);
 }
 
-// partyChip is the chip picked - Available, the parties ahead with tickets
-// still to be had that the household holds none to; All, every party
-// ahead; or Mine, those the household holds a ticket to or waits for -
-// kept while the widgets redraw. Available is where it starts.
 let partyChip = 'available';
 
-// partiesUnder are the parties a chip lists.
 function partiesUnder(chip) {
   if (chip === 'mine') {
     return parties.filter(p => p.mine);
@@ -519,9 +416,6 @@ function partiesUnder(chip) {
   return parties;
 }
 
-// partyPill is a party's standing or way in: the household's tickets as
-// When words them, else Get tickets or Join the waitlist while there is a
-// way in, to its page on Celebrate; nothing for one sold out or closed.
 function partyPill(p) {
   const held = standing(p);
   if (held) {
@@ -535,10 +429,6 @@ function partyPill(p) {
   return null;
 }
 
-// pictureRow is one row of a picture list - Celebrate's parties, Team's
-// needs: the picture (else the title's first letter on a pale tile), the
-// title over a line, a pill under them when there is one, and a chevron,
-// the whole row opening href but for a link inside it.
 function pictureRow({href, image, title, line, pill, tone}) {
   const row = el('li', 'wg-party' + (tone ? ' ' + tone : ''));
   row.dataset.row = '';
@@ -578,8 +468,6 @@ function pictureRow({href, image, title, line, pill, tone}) {
   return row;
 }
 
-// partyRow is one party: its picture, its title over its day and hours,
-// and its pill.
 function partyRow(p) {
   const day = parseDate(p.start).toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
   return pictureRow({
@@ -588,17 +476,12 @@ function partyRow(p) {
   });
 }
 
-// pictureList is a widget's list of picture rows, as many as the list
-// shows now (shownCount).
 function pictureList(name, items, row) {
   const list = el('ol', 'wg-parties');
   items.slice(0, shownCount(name)).forEach((item, i) => list.append(row(item, i)));
   return list;
 }
 
-// celebrateWidget is Helios Celebrate's card: View all across to it at the
-// heading's end; Available, All and Mine; then the next parties, each with its
-// picture, the first three until More.
 function celebrateWidget() {
   if (partiesFor !== state.model) {
     parties = null;
@@ -640,11 +523,6 @@ function celebrateWidget() {
   return card;
 }
 
-// School email comes from Heliosian's host (/api/apps/school): the last
-// week's, each with its key points; and the invitations still waiting for
-// the viewer's reply from the same host (/api/apps/rsvp, the toolbar's
-// badge's list) - both asked once per model and kept while the widgets
-// redraw.
 let school = null;
 let rsvps = [];
 let schoolFor = null;
@@ -664,19 +542,11 @@ async function fetchSchool() {
   renderWidgets(searchInput().value);
 }
 
-// listNames are the school's lists as the widget says them.
 const listNames = {
   newsletter: 'Newsletter', parentsandstaff: 'Parents & staff', parentsonly: 'Parents', parentsandstudents: 'Parents & students',
   community: 'Community', parents: 'All parents', newstudentfamilies: 'New families', 'new.parents': 'New families',
 };
 
-// sentTo is whom an email went to, as its chip says it. A list's mail
-// says so by its list: every family's ("Parents & staff"), a classroom's
-// parents or students ("Jays parents"), a grade band ("Jays & Ravens").
-// Mail the school sends through Veracross - the newsletter, a teacher's
-// note - says nothing of it, so it goes by whom it was judged to be
-// written to: the classrooms it names, the grades ("Grades 2, 4, 6 & 8"),
-// both ("Condors · Grade 6"), else every family.
 function sentTo(email) {
   const cap = w => w.charAt(0).toUpperCase() + w.slice(1);
   if (email.kind !== 'list') {
@@ -709,21 +579,10 @@ function sentTo(email) {
   return room.split('and').map(cap).join(' & ');
 }
 
-// schoolTones are the colours Inbox's rows wear in turn, the dot
-// on the line and the chip alike.
 const schoolTones = ['is-teal', 'is-lime', 'is-pink', 'is-blue'];
 
-// schoolOpen is the email whose key points are showing, by key: undefined
-// for the newest, as the widget first opens; null once the viewer folds
-// it away. Only one is open at a time, and it stays open while the widgets
-// redraw.
 let schoolOpen;
 
-// emailRow is one school email on the widget's line: a dot in its colour,
-// the day it came, its subject, a chip saying whom it went to, and a
-// chevron; a click opens its key points - or word that they are on their
-// way - and Ask about this, which opens Helios Ask on a question about it,
-// folding away whichever was open before.
 function emailRow(email, n, open) {
   const row = el('li', 'wg-email ' + schoolTones[n % schoolTones.length]);
   row.dataset.row = '';
@@ -766,15 +625,8 @@ function emailRow(email, n, open) {
 }
 
 
-// rsvpType is the Inbox dropdown's name for the invitations waiting on a
-// reply.
 const rsvpType = 'RSVP needed';
 
-// rsvpPanel is the invitations waiting on the viewer's reply, at the top
-// of the Inbox until they answer, set apart from the email in a green
-// panel: how many need an RSVP and View all across to My Events' RSVP on
-// When, then a white card of them, each its day, its title and an RSVP
-// pill, the whole row opening its page on When, where they answer.
 function rsvpPanel(waiting) {
   const panel = el('section', 'wg-rsvps');
   const head = el('div', 'wg-rsvps-head');
@@ -796,14 +648,8 @@ function rsvpPanel(waiting) {
   return panel;
 }
 
-// schoolType is the chip the Inbox's dropdown narrows it to - one whom
-// the email went to ("Parents & staff") - or null for all of them, kept
-// while the widgets redraw.
 let schoolType = null;
 
-// typePick is the Inbox's dropdown at its heading: All, then each whom the
-// two weeks' email went to as its chips say it, with how many; picking one
-// shows only those.
 function typePick() {
   const counts = new Map();
   if (rsvps.length) {
@@ -835,14 +681,6 @@ function typePick() {
   return wrap;
 }
 
-// schoolWidget is Inbox: every invitation still waiting on the viewer's
-// reply, soonest first, until they answer it; then the last two weeks of the
-// school's email - the newsletter, the lists to every family, and the
-// viewer's own classrooms' - newest first down a line, each its day,
-// subject and whom it went to, the first opened on its key points. A
-// dropdown at the heading narrows it to the invitations or to one whom the
-// email went to. The three most recent emails show, and each Show more
-// adds the next three; once all show, Show less folds back to three.
 function schoolWidget() {
   if (schoolFor !== state.model) {
     school = null;
@@ -883,15 +721,10 @@ function schoolWidget() {
   return card;
 }
 
-// widgetMakers draw each widget, by its name.
 const widgetMakers = {when: whenWidget, team: teamWidget, celebrate: celebrateWidget, school: schoolWidget};
 
-// widgetNames are the widgets' names as an admin's pencil says them.
 const widgetNames = {when: 'Upcoming', team: 'Team', celebrate: 'Celebrate', school: 'Inbox'};
 
-// adminTools puts, in Super Admin Mode, a pencil at a widget's heading that
-// opens who it is for, and says so beside the title: Hidden when the admin
-// is not among them, else the rules in short.
 function adminTools(card, key) {
   const head = card.querySelector('.widget-head');
   const v = (state.model.widgets || {})[key] || {forMe: true, rules: []};
@@ -923,20 +756,12 @@ function adminTools(card, key) {
   head.insertBefore(moves, edit.nextSibling);
 }
 
-// widgetOrder is the widgets' names in the order the page draws them, as
-// an admin set it for everyone.
 function widgetOrder() {
   const makers = Object.keys(widgetMakers);
   const set = (state.model.widgetOrder || []).filter(k => makers.includes(k));
   return [...set, ...makers.filter(k => !set.includes(k))];
 }
 
-// fitWidgets fills each card's room: a card with rows still to show and
-// blank space above its foot - because another card in its row is taller -
-// takes as many more rows as that space holds, by the height its rows run
-// to, so it grows no taller; then the widgets are drawn once more with
-// them. It measures the page as drawn, so it runs straight after a draw,
-// before the page is painted.
 function fitWidgets(query) {
   let changed = false;
   for (const card of document.querySelector('#widgets').children) {
@@ -965,19 +790,12 @@ function fitWidgets(query) {
   }
 }
 
-// The cards' room changes with the window, so a resize measures it again.
 let resizing = null;
 window.addEventListener('resize', () => {
   clearTimeout(resizing);
   resizing = setTimeout(() => renderWidgets(searchInput().value), 150);
 });
 
-// renderWidgets draws the row in the order an admin set, or leaves it
-// empty while a search is filtering the page below. A widget not for the
-// viewer - its rules, set by an admin, leave them out - is left out; in
-// Super Admin Mode every widget shows, with the pencil that sets who it is
-// for. Each draw then fills the cards' room afresh (fitWidgets); fitted is
-// the draw that carries those fills, which measures nothing more.
 export function renderWidgets(query = '', fitted = false) {
   if (!fitted) {
     fills.clear();

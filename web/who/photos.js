@@ -7,17 +7,12 @@ const photoLabels = {
   upload: 'Uploaded photo',
 };
 
-// A photo the school supplied is harder to get back than a self-uploaded one, so
-// removing it asks a question that names where it came from.
 const photoRemoveWarnings = {
   veracross: 'This is the school portrait from Veracross. Remove it anyway?',
   website: 'This is the headshot from the school website. Remove it anyway?',
   upload: 'Remove this photo?',
 };
 
-// The hero photo is always a square crop (same treatment as every other avatar in
-// the app), which can crop a photo awkwardly - this is the escape hatch: click it
-// to see the whole, uncropped image in an overlay. Closes on click-anywhere or Esc.
 export function openPhotoLightbox(url) {
   const overlay = el('div', 'photo-lightbox');
   const img = el('img');
@@ -38,12 +33,6 @@ export function openPhotoLightbox(url) {
   document.body.append(overlay);
 }
 
-// togglePhotoMenu opens/closes a photoMenu. Its CSS anchors with `right: 0`,
-// which keeps it on screen for a trigger near the right edge (e.g. the "more"
-// menu, always top-right) but a photo tile can sit anywhere across a grid - on a
-// narrow/mobile viewport a tile nearer the left edge pushes the menu's left side
-// past x=0. After opening, nudge it back on screen with a transform once we can
-// measure where the pure-CSS position actually landed.
 export function togglePhotoMenu(menu) {
   menu.hidden = !menu.hidden;
   if (menu.hidden) {
@@ -64,15 +53,6 @@ export function togglePhotoMenu(menu) {
   }
 }
 
-// cropBadge marks the hero photo as showing a manually cropped square rather
-// than the plain auto-crop of the original - grid tiles are small enough that
-// it would just add clutter, so this is hero-only. A photo's url differs from
-// its originalUrl exactly when a crop is currently applied and resolves (see
-// attachBlobs, internal/who/load.go) - that's the signal used here rather
-// than a separate field, since it's already exactly what "has a crop" means.
-// Purely decorative (pointer-events: none in CSS) - the hero image underneath
-// already opens the original in the lightbox on click, so the badge just
-// labels that behavior rather than duplicating it.
 export function cropBadge() {
   const badge = el('div', 'photo-crop-badge');
   badge.title = 'Manually cropped';
@@ -80,24 +60,6 @@ export function cropBadge() {
   return badge;
 }
 
-// photoMenu builds the Facebook-style "View photo / Set as primary / Delete
-// photo / Crop photo" popup for whichever photo the hero is currently showing.
-// Hidden by default; the caller wires a trigger to call togglePhotoMenu(menu),
-// which rebuilds the item list fresh on every open (via menu.rebuild, set here)
-// and appends the menu inside that trigger's own position:relative container.
-// Reuses the app-wide outside-click/Escape closer (in chrome.js, alongside
-// .card-menu) for free - no bespoke close handling here.
-//
-// getPhoto() returns the photo currently shown in the hero, which isn't always
-// p.photos[0]: tapping a grid tile (photoGrid's previewPhoto) swaps the hero's
-// preview without touching this menu, so the menu has to ask fresh each time it
-// opens rather than close over one photo at build time - otherwise it would
-// keep acting on the primary photo even while a different one is on screen.
-// "Set as primary" is hidden when the current photo already is; a grid tile's
-// own click never opens a menu at all (see photoGrid) - drag it to the front,
-// or preview it and use this menu, both end up here. Delete only shows in
-// editing mode, same convention as the grid tiles' own delete "x" -
-// destructive actions wait for edit mode.
 export function photoMenu(p, getPhoto, editing, status) {
   const menu = el('div', 'photo-menu');
   menu.hidden = true;
@@ -141,17 +103,10 @@ export function photoMenu(p, getPhoto, editing, status) {
   return menu;
 }
 
-// familyPhotoMenu is photoMenu's family equivalent: a family only ever has one
-// photo (no primary to set, no gallery to delete from), so it's just "View
-// photo" and "Crop photo". Only built when the caller may edit the family -
-// same convention as photoMenu, whose caller (the person hero) does the same
-// check before constructing one at all.
 export function familyPhotoMenu(family, status) {
   const menu = el('div', 'photo-menu');
   menu.hidden = true;
-  // togglePhotoMenu (shared with photoMenu above) always calls menu.rebuild()
-  // on open - a family's items never change between opens, so there's
-  // nothing to rebuild, but the hook still needs to exist.
+  // togglePhotoMenu calls rebuild on every open; a family's items never change.
   menu.rebuild = () => {};
   const item = (iconName, label, action) => {
     const btn = el('button', 'photo-menu-item');
@@ -165,23 +120,11 @@ export function familyPhotoMenu(family, status) {
     menu.append(btn);
   };
   item('eye', 'View photo', () => openPhotoLightbox(family.originalPhotoUrl || family.photoUrl));
-  // Unlike a profile photo, a family photo isn't shown anywhere as a fixed
-  // shape (a circle, a square tile), so its crop tool is fully freeform (see
-  // openCropTool's square param) rather than locked to a square.
   item('crop', 'Crop photo', () => openCropTool(family.originalPhotoUrl || family.photoUrl, false,
     blob => submitCrop('family', family.key, '', blob, status)));
   return menu;
 }
 
-// openCropTool is a full-screen crop editor for one photo. When square is
-// true the frame is locked to 1:1, same as a person's profile photo has
-// always been; when false the frame is fully freeform (any position, any
-// size, any shape), for a family photo, which isn't shown anywhere as a fixed
-// shape the way a profile photo is. There's no stored crop rectangle to
-// restore - only the resulting cropped image is saved - so cropping a photo
-// that already has a crop just starts fresh from the original and replaces
-// it. onSave(blob) performs the actual upload and resolves to whether it
-// succeeded; the tool only closes itself on success.
 function openCropTool(imageUrl, square, onSave) {
   const overlay = el('div', 'crop-overlay');
   const panel = el('div', 'crop-panel');
@@ -220,8 +163,6 @@ function openCropTool(imageUrl, square, onSave) {
     }
   }
   overlay.addEventListener('click', e => {
-    // Only the dark backdrop closes on click - not the panel, stage, or frame,
-    // which all live inside it and need their own clicks/drags to work.
     if (e.target === overlay) {
       close();
     }
@@ -247,13 +188,6 @@ function openCropTool(imageUrl, square, onSave) {
     maskRight.style.cssText = `top:${top}px; left:${left + width}px; right:0; height:${height}px`;
   }
 
-  // In square mode every call passes nextWidth === nextHeight (see the drag
-  // handlers below, which move both in lockstep) - but clamping each against
-  // its own axis independently would still let the frame outgrow whichever
-  // axis is shorter (the stage is rarely itself square) and stop being
-  // square, so both are first capped to the same shared bound before the
-  // per-axis clamp below, mirroring the single min(side, width, height) the
-  // old single-side version used.
   function setFrame(nextLeft, nextTop, nextWidth, nextHeight) {
     const stageRect = stage.getBoundingClientRect();
     if (square) {
@@ -285,9 +219,6 @@ function openCropTool(imageUrl, square, onSave) {
     img.addEventListener('load', init);
   }
 
-  // Shared pointer-drag wiring for both moving the frame and resizing it from a
-  // corner handle - same pointerdown/pointermove/pointerup(+capture) pattern
-  // photoGrid's own drag-to-reorder already uses, for mobile/touch reliability.
   function drag(target, onMove) {
     target.addEventListener('pointerdown', e => {
       e.preventDefault();
@@ -327,10 +258,6 @@ function openCropTool(imageUrl, square, onSave) {
     const corner = handle.dataset.corner;
     drag(handle, (dx, dy, startLeft, startTop, startWidth, startHeight) => {
       if (square) {
-        // A square frame must grow/shrink the same amount on both axes to stay
-        // square, so both corners being dragged move by one shared delta - the
-        // larger of the two axis deltas, so the frame always follows whichever
-        // direction the pointer moved furthest in.
         let delta;
         let nextLeft = startLeft;
         let nextTop = startTop;
@@ -350,8 +277,6 @@ function openCropTool(imageUrl, square, onSave) {
         setFrame(nextLeft, nextTop, startWidth + delta, startHeight + delta);
         return;
       }
-      // Freeform: each corner drags its own two edges independently, with no
-      // coupling between width and height.
       let nextLeft = startLeft;
       let nextTop = startTop;
       let nextWidth = startWidth;
@@ -412,23 +337,6 @@ function openCropTool(imageUrl, square, onSave) {
   });
 }
 
-// photoGrid shows up to 5 photo tiles (already primary-first - the server always
-// returns them in the order that's shown everywhere). Anyone who may edit the
-// record can always drag a tile to reorder it, or add one while under the cap -
-// no separate edit mode needed for either. The delete "x" on each tile is the one
-// control that waits for edit mode, same convention as every other field on this
-// page, since it's destructive. Clicking (rather than dragging) a tile - for
-// anyone, editable or not - just shows that photo bigger in the hero image above
-// (onPreview, if given, also redirects the hero's own View/Set as primary/Delete/
-// Crop menu to that photo - see photoMenu's getPhoto param); it changes nothing
-// until a drag actually reorders something, or an action is chosen from that
-// menu. Tiles don't get a menu of their own - no room to open one well on a
-// narrow screen - so cropping or deleting a non-primary photo means previewing
-// or dragging it to the front first, either of which puts it in reach of the
-// hero's menu. Reordering is pointer-events based rather than native HTML5
-// drag-and-drop, since the latter doesn't work reliably on mobile/touch (iOS
-// Safari in particular) and this app is used heavily on phones. status is shared
-// with the hero photo's own menu so both report errors in the same place.
 export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
   const grid = el('div', 'photo-grid');
 
@@ -467,9 +375,6 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
       if (e.pointerType === 'mouse' && e.button !== 0) {
         return;
       }
-      // Without this, holding and moving over the photo also kicks off the browser's
-      // own image-drag ghost and text/image selection highlight, fighting visually
-      // with the custom drag below.
       e.preventDefault();
       pointerId = e.pointerId;
       startX = e.clientX;
@@ -517,7 +422,6 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
           commitOrder(startOrder);
         }
       } else {
-        // A tap that never crossed the drag threshold: just preview it bigger.
         previewPhoto(photo);
       }
       pointerId = null;
@@ -583,8 +487,6 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
       tile.classList.add('photo-slot-draggable');
       wireDrag(tile, photo);
     } else {
-      // No drag wired up here to distinguish a tap from a drag, so a plain click is
-      // always just a preview.
       tile.addEventListener('click', () => previewPhoto(photo));
     }
     grid.append(tile);

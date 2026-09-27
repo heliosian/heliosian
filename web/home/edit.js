@@ -143,8 +143,6 @@ let appAudience = null;
 let widgetAudience = null;
 let editingWidget = '';
 
-// openWidgetAudience opens who a front-page widget is for - the same rules a
-// section's Visibility takes - for an admin in Super Admin Mode.
 export function openWidgetAudience(key, title) {
   editingWidget = key;
   const rules = ((state.model.widgets || {})[key] || {}).rules || [];
@@ -271,8 +269,6 @@ export async function moveApp(key, by) {
   }
 }
 
-// moveWidget moves a front-page widget one place earlier or later, for
-// everyone.
 export async function moveWidget(key, by) {
   const keys = [...(state.model.widgetOrder || [])];
   const i = keys.indexOf(key);
@@ -406,8 +402,6 @@ export function refreshCategoryManager() {
 }
 
 async function moveCategory(title, by) {
-  // The events section, off the page, keeps its place at the end, so a
-  // move is always past a section the admin can see.
   const hidden = state.model.categories.filter(c => c.style === 'events').map(c => c.title);
   const titles = categoryTitles().filter(t => !hidden.includes(t));
   const at = titles.indexOf(title);
@@ -493,7 +487,6 @@ function categoryRow(category, at, total) {
 
 function renderCategoryList() {
   const list = document.querySelector('#category-list');
-  // The events section is off the page, so off this list too.
   const categories = state.model.categories.filter(c => c.style !== 'events');
   list.replaceChildren();
   if (!categories.length) {

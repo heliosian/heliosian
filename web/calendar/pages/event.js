@@ -9,15 +9,11 @@ import {setTitle} from '/shell.js';
 import {audienceChips, blocks} from '../events.js';
 import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow} from '../invites.js';
 
-// hero is the picture across the top of the page - the event's own, its
-// first tag's, or the calendar's - with the date on a card at its corner:
-// the weekday, the day, and the hours or the days it runs across.
 function hero(e) {
   const wrap = el('div', 'detail-hero');
   const img = el('img');
   img.src = eventImage(e);
   img.alt = '';
-  // A picture another app serves may be gone; the calendar's own stands in.
   img.addEventListener('error', () => {
     if (!img.src.endsWith('/brand/default-header.jpg')) {
       img.src = '/brand/default-header.jpg';
@@ -25,40 +21,27 @@ function hero(e) {
   }, {once: true});
   wrap.append(img);
   wrap.append(dateCard(el, {start: e.start, end: e.end, allDay: e.allDay, location: e.location, add: googleCalendarLink({title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location || '', details: [e.description, location.origin + eventPath(e)].filter(Boolean).join('\n\n')})}));
-  // A linked event says which app runs it on a card at the banner's foot,
-  // the way to its page there.
   if (e.link) {
     wrap.append(linkedBadge(e));
   }
-  // The poster's or an admin's hand-added event takes a picture from the
-  // strip across the banner's foot, the way the other apps' pages do.
   if ((e.source === 'sheet' && (isAdmin() || postedAndHosting(e))) || (imported(e) && isAdmin())) {
     wrap.append(heroImageBar(e));
   }
   return wrap;
 }
 
-// imported says an event comes from the school's calendars, which its
-// admins host and correct.
 function imported(e) {
   return e.source === 'google' || e.source === 'pdf';
 }
 
-// sheetTags are an event's tags as its sheet row holds them: without the
-// built-in ones the model adds (Misc, Going and the apps').
 function sheetTags(e) {
   const builtIn = new Set(state.model.tags.filter(t => t.builtIn).map(t => t.name));
   return e.tags.filter(t => !builtIn.has(t));
 }
 
-// heroImageBar is the strip across the foot of the banner: upload a
-// picture, find one in the image libraries, or take the event's own off -
-// each saved onto the event at once.
 function heroImageBar(e) {
   const bar = el('div', 'hero-image-bar');
   const save = async image => {
-    // An event the school's calendars bring keeps its picture in the
-    // Overrides tab, over the school's version.
     const override = imported(e);
     const body = override ? {id: e.id, image} : {
       id: e.id, title: e.title, start: e.start, end: e.end, location: e.location || '', description: e.description || '',
@@ -132,8 +115,6 @@ function heroImageBar(e) {
   return bar;
 }
 
-// editorView is the guest list's view, once fetched, for Edit's
-// Invitation tab.
 let editorView = null;
 
 export function eventPage(e) {
@@ -145,15 +126,8 @@ export function eventPage(e) {
   const back = el('a', 'detail-back');
   back.href = '/day/' + eventDates(e)[0];
   back.setAttribute('data-link', '');
-  // The way back is to the calendar open to the event's month, so it says so.
   back.append(svg('back'), el('span', '', monthLabel(monthOf(eventDates(e)[0]))));
   top.append(back);
-  // A hand-added event is the poster's, or an admin's, to correct.
-  // One Edit for the event and its invitation, in tabs; the invitation's
-  // tab joins once the guest list is fetched (fillInvites), which also
-  // gives a linked event's host their Edit.
-  // An event the school's calendars bring is an admin's to correct, over
-  // the school's version, in the Overrides tab.
   if ((imported(e) && isAdmin()) || (e.source === 'sheet' && (isAdmin() || postedAndHosting(e)))) {
     tools.append(button('Edit', 'pencil', 'button button-secondary button-small detail-edit', async () => {
       const {openEditor} = await import('../invites.js');
@@ -183,13 +157,9 @@ export function eventPage(e) {
   if (e.dayType) {
     marks.append(el('span', 'chip chip-day ' + dayTypeClass(e.dayType), e.dayType));
   }
-  // An event by invitation or link with no classrooms is for whoever is
-  // sent it, not Everyone.
   if (!((e.sharing !== 'Public' || e.cancelled) && !e.classrooms.length)) {
     marks.append(audienceChips(e));
   }
-  // A hand-added event says how it is shared: public, by link, invite
-  // only, waiting for approval, or declined.
   if (e.source === 'sheet') {
     const status = e.cancelled ? ['Cancelled', 'chip-status-declined'] : e.declined ? ['Declined', 'chip-status-declined'] : e.pending ? ['Pending approval', 'chip-status-pending'] : e.sharing === 'Link' ? ['Anyone with the link', 'chip-status-link'] : e.sharing === 'Invite Only' ? ['Invite only', 'chip-status-link'] : ['Public', 'chip-status-public'];
     marks.append(el('span', 'chip chip-status ' + status[1], status[0]));
@@ -213,10 +183,7 @@ export function eventPage(e) {
     main.append(el('h2', 'section-title', 'The day for ' + (e.classrooms.length ? e.classrooms.join(', ') : 'everyone')));
     main.append(card);
   }
-  // The ask, under the event itself: are you going? - or, for someone
-  // invited, who in the household is - and, for a host, the guest list.
   const ask = el('div', 'detail-ask');
-  // The rail's quieter card for an answer already given (rsvpCard).
   const mineCard = el('div', 'side-card rsvp-compact');
   mineCard.hidden = true;
   if (!e.cancelled) {
@@ -226,23 +193,14 @@ export function eventPage(e) {
   cols.append(main);
 
   const side = el('div', 'detail-side');
-  // The date, the hours and the place are on the banner's card; the
-  // rail's card holds the hosts and My RSVP, once a guest list gives it
-  // them (fillInvites), and hides while empty.
   const when = el('div', 'side-card side-card-facts');
   side.append(when);
-  // The viewer's own answer, under the hosts.
   side.append(mineCard);
-  // Who answered: for an admin, and for whoever shared the event - until
-  // a guest list takes its place.
   const answered = el('div', 'detail-answered');
   if (!e.cancelled && (isAdmin() || postedAndHosting(e))) {
     answered.append(rsvpsCard(e));
   }
   side.append(answered);
-  // Where the event came from, last.
-  // Where the event came from - not for an event another app runs, whose
-  // badge on the banner says it, unless an admin's own lines are due.
   const linked = e.source === 'celebrate' || e.source === 'team';
   const source = !linked || isAdmin() ? sourceCard(e, linked) : null;
   if (source) {
@@ -254,13 +212,7 @@ export function eventPage(e) {
   return page;
 }
 
-// fillInvites fetches the event's guest list and draws what the viewer
-// may see of it: the family band in place of the plain ask for someone
-// invited, the guest list section for a host, and who is coming in the
-// rail - or, for a host with no list yet, the way to start one.
 async function fillInvites(e, ask, answered, {info, linkedLine}) {
-  // Every hand-added or linked event asks, whoever is viewing: its Hosts
-  // card is always drawn, even when nobody hosts it.
   if (e.cancelled || (e.source !== 'sheet' && !e.link && !imported(e))) {
     return;
   }
@@ -272,10 +224,6 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
     const {load} = await import('../app.js');
     await load();
   };
-  // Create Invite on Helios Celebrate or HCA-Team sends a host here with
-  // ?invite=1: the list is started - the invitation, and a group for the
-  // ticket holders or the volunteers that follows them - and the address
-  // tidied.
   if (view.host && e.link && new URLSearchParams(location.search).get('invite') && !view.settings) {
     try {
       const made = await startParty(e);
@@ -290,32 +238,17 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
       return;
     }
   }
-  // The ask heads the page until the family has answered in full; My
-  // RSVP in the rail's card carries the answers throughout.
   if (view.mine.length) {
-    // My RSVP in the rail's card carries an invited household's answers,
-    // so the plain answer's card goes with the plain ask.
     ask.closest('.event-page')?.querySelector('.rsvp-compact')?.remove();
     ask.replaceChildren(familyAnswered(view) ? '' : familyBand(e, view, refresh));
   }
-  // The invitation's tab joins Edit for a host; a linked event's host,
-  // with no event form of their own, gets Edit for the invitation alone.
   editorView = view;
-  // A linked event's host - a party's, an HCA event's chair - edits the
-  // invitation from the start: its own words for the event, the email's
-  // text, the flyer, who may see who is coming.
   if (view.host) {
     const tools = ask.closest('.event-page')?.querySelector('.detail-tools');
     if (tools && !tools.querySelector('.detail-edit')) {
       tools.append(button('Edit', 'pencil', 'button button-secondary button-small detail-edit', () => openEditor(e, view, refresh, {tab: 'invitation'})));
     }
   }
-  // Who's coming takes the page's width under the ask, as Celebrate lays
-  // out its party; a host's Guest list - the tools and every row - is
-  // the rail's, where who answered used to be.
-  // An event another app runs - a party, an HCA event - has nobody coming
-  // here until someone is invited from its page, so it says nothing of it
-  // until then.
   const invited = (view.host ? view.list : view.coming || []).some(r => r.invited);
   if (view.coming && (!e.link || invited)) {
     ask.append(comingCard(e, view, refresh));
@@ -328,28 +261,18 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
       answered.replaceChildren();
     }
   } else if (e.invitation) {
-    // A guest list takes the place of who answered; with none, an
-    // admin's answers card stays.
     answered.replaceChildren();
   }
-  // The rail's card gains Hosts, and My RSVP for anyone on the list; the
-  // flyer sits right under the linked app's card. Hosts show whenever
-  // anyone hosts - a host adds co-hosts and steps down there - unless the
-  // hosts hid them, when the card is theirs alone.
-  // A host - an admin on a school event among them - sees it even with
-  // nobody listed, to add co-hosts.
   if ((view.hosts.length || view.host) && (view.host || !view.hostsHidden)) {
     info.append(hostsRow(e, view, refresh));
   }
   if (view.mine.length) {
     info.append(rsvpRow(e, view, refresh));
   }
-  // The flyer follows the rail's card; the banner's badge names the hosts.
   const flyer = flyerCard(e, view, refresh);
   if (flyer) {
     info.after(flyer);
   }
-  // Without one, a small Add a flyer at the rail's foot for a host.
   const addFlyer = addFlyerLink(e, view, refresh);
   if (addFlyer) {
     info.closest('.detail-side').append(addFlyer);
@@ -365,8 +288,6 @@ const aboutWords = {
   team: 'Run by the Helios Community Association. The event page has the roles to fill, who runs it, and who has signed up.',
 };
 
-// stampWords is a sheet timestamp, "2026-08-01 09:00" or a bare date, as
-// "Aug 1, 2026".
 function stampWords(stamp) {
   const day = (stamp || '').slice(0, 10);
   return parseDate(day) ? parseDate(day).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) : stamp;
@@ -381,21 +302,8 @@ function outLink(href, words) {
   return a;
 }
 
-// rsvpCard is the ask under the event, behind a ticked calendar: are you
-// going? Yes, Maybe and No, the one given filled, and under them small
-// links: Clear my RSVP once one is given, and Hide event (Show event once
-// hidden) - a yes brings a calendar invite by email. A party has no yes
-// or no: Add to my calendar with a ticket in the household, Add Ticket
-// without one. Hiding is the cross on Heliosian's cards.
-//
-// Once a yes, a maybe or a no is given the band steps aside for a quieter
-// card in the rail under the hosts, slot: My RSVP with the answer behind its
-// mark, and under it Change response - which opens the three answers
-// there, small, with Clear my RSVP - and Hide event; clearing the answer,
-// or hiding the event, brings the band back.
 function rsvpCard(e, slot) {
   const band = el('div', 'rsvp-band');
-  // changing opens the rail's card to the three answers.
   let changing = false;
   const paint = () => {
     band.replaceChildren();
@@ -414,8 +322,6 @@ function rsvpCard(e, slot) {
         toast(err.message);
       }
     };
-    // Under the buttons: an answer given can be taken back, and the event
-    // hidden from the viewer's lists - or shown again once it is.
     const links = el('div', 'rsvp-links');
     const small = (text, next) => {
       const b = el('button', 'rsvp-clear', text);
@@ -443,8 +349,6 @@ function rsvpCard(e, slot) {
       const body = el('div', 'side-row-body');
       body.append(el('div', 'side-title', 'My RSVP'));
       if (changing) {
-        // Changing: the three answers, small, the one given filled, with
-        // Clear and a way back to the answer as it stands.
         const buttons = el('div', 'rsvp-compact-buttons');
         buttons.append(...answers());
         const back = el('button', 'rsvp-clear', 'Cancel');
@@ -456,9 +360,6 @@ function rsvpCard(e, slot) {
         links.replaceChildren(links.firstChild, back);
         body.append(buttons, links);
       } else {
-        // The answer as it stands - a mark and the words, as an invited
-        // household's My RSVP reads - and quietly under it, Change
-        // response and Hide event.
         const said = el('div', 'invite-said rsvp-compact-said is-' + word);
         const mark = el('span', 'invite-said-mark');
         mark.append(svg(word === 'yes' ? 'check' : word === 'maybe' ? 'clock' : 'close'));
@@ -499,8 +400,6 @@ function rsvpCard(e, slot) {
         buttons.append(add);
       }
     } else {
-      // A yes, a maybe or a no is the rail's card, above; here the event
-      // is unanswered or hidden.
       words.append(el('div', 'rsvp-title', word === 'hidden' ? 'Hidden' : 'Are you going?'), el('div', 'rsvp-lead', word === 'hidden' ? 'On the month in gray.' : 'Yes sends you a calendar invite.'));
       buttons.append(...answers());
     }
@@ -517,9 +416,6 @@ function rsvpCard(e, slot) {
   return band;
 }
 
-// inviteBand says an event is private - found by invitation or by its
-// link alone - and offers the link to copy: whoever answers it has it on
-// their calendar.
 function inviteBand(e) {
   const band = el('div', 'pending-band is-invite');
   const words = el('div', 'pending-words');
@@ -535,17 +431,11 @@ function inviteBand(e) {
   return band;
 }
 
-// pendingBand says a shared event is waiting for an admin - and, to an
-// admin, offers to approve it onto the calendar or decline it away.
 function pendingBand(e) {
   const band = el('div', 'pending-band' + (e.declined ? ' is-declined' : ''));
   const words = el('div', 'pending-words');
   const who = state.model.names && state.model.names[e.addedBy] ? state.model.names[e.addedBy] : e.addedBy;
   const mine = e.addedBy === state.model.user.email;
-  // Only an admin with the hat on is asked to decide; anyone else reads
-  // where it stands.
-  // Deciding on a waiting event is any admin's, hat or not - an alert
-  // for them; bringing back a declined one wants the hat.
   const decides = (e.pending && !e.declined ? isSystemAdmin() : isAdmin()) && !mine;
   if (e.declined) {
     words.append(el('div', 'pending-title', 'Declined'), el('div', 'pending-lead', mine ? 'An admin declined this event, so it is not on the calendar. You can still edit it; an admin can approve it later.' : decides ? `Shared by ${who} and declined. Approve it to put it on the calendar after all.` : `Shared by ${who}. An admin declined it, so it is not on the calendar.`));
@@ -578,9 +468,6 @@ function pendingBand(e) {
   return band;
 }
 
-// rsvpsCard is who answered, for an admin: the yeses and the nos as little
-// contact cards - photo or initial, name, address - with counts. Who hid
-// the event is nobody's business but theirs.
 function rsvpsCard(e) {
   const card = el('div', 'side-card rsvps-card');
   const r = (state.model.responses || {})[e.id] || {};
@@ -597,9 +484,6 @@ function rsvpsCard(e) {
       continue;
     }
     card.append(el('div', 'rsvps-head', `${label} · ${people.length}`));
-    // Each is a face tile as HCA-Team draws its volunteers: the face, a
-    // student's grade badged on its corner in Who?'s colour, the name
-    // under it - opening their page on Who?.
     const list = el('div', 'rsvps-grid');
     for (const p of people) {
       const tile = el('a', 'contact-card');
@@ -623,9 +507,6 @@ function rsvpsCard(e) {
   return card;
 }
 
-// keywordsEditor is the search words an admin can change from the page:
-// the words as chips, Edit making them a box, Save writing them to the
-// event's Overrides row.
 function keywordsEditor(e) {
   const wrap = el('div');
   const paint = () => {
@@ -668,13 +549,6 @@ function keywordsEditor(e) {
   return wrap;
 }
 
-// sourceCard says where the event's dates came from and links to the
-// original: the feed's event in Google Calendar, the school's calendar page
-// for a line of the year calendar, or who added it by hand and when. An HCA
-// event the school also lists says so, with the way to HCA-Team's page. An
-// admin also sees what the admins' tabs did: the classifier's filing and
-// any correction, with its note - and for an event another app runs, whose
-// badge on the banner says whose it is, that alone (adminOnly).
 function sourceCard(e, adminOnly = false) {
   const card = el('div', 'side-card side-card-help');
   const row = el('div', 'side-row');
@@ -718,14 +592,11 @@ function sourceCard(e, adminOnly = false) {
     body.append(el('div', 'side-line', words));
   }
   if (adminOnly) {
-    // The badge on the banner has said whose the event is.
   } else if (e.source === 'pdf') {
     body.append(outLink(e.sourceUrl, 'Open the school\u2019s calendar page'));
   } else if (e.source === 'google' && e.sourceUrl) {
     body.append(outLink(e.sourceUrl, 'Open in Google Calendar'));
   } else if (e.source === 'sheet' && e.sourceUrl) {
-    // The proof behind a hand-added event, named by where it lives; the
-    // Veracross portal wants a parent login.
     const host = new URL(e.sourceUrl).hostname.replace(/^www\./, '');
     body.append(outLink(e.sourceUrl, host.includes('veracross') ? 'Open the source on Veracross' : `Open the source (${host})`));
     if (host.includes('veracross')) {
@@ -734,7 +605,6 @@ function sourceCard(e, adminOnly = false) {
   } else if (e.link && (e.source === 'celebrate' || e.source === 'team')) {
     body.append(outLink(linkURL(e), isParty(e) ? 'Open on Helios Celebrate' : 'Open on HCA-Team'));
   }
-  // The school's listing of an HCA event carries HCA-Team's link too.
   if (!adminOnly && e.link && e.source !== 'celebrate' && e.source !== 'team') {
     body.append(el('div', 'side-line', 'Also listed on HCA-Team, which runs it.'), outLink(linkURL(e), 'Open on HCA-Team'));
   }
@@ -752,7 +622,6 @@ function sourceCard(e, adminOnly = false) {
       admin.append(keywordsEditor(e));
     }
     if (adminOnly && admin.childElementCount === 1) {
-      // Nothing to say beyond the title: no card.
       return null;
     }
     body.append(admin);
@@ -777,12 +646,6 @@ const linkedTitles = {celebrate: 'Fun(d)raiser party', team: 'HCA Team event'};
 
 const seeWords = {celebrate: 'See the party', team: 'See the event'};
 
-// linkedBadge is the card at the banner's foot for an event another app
-// runs: that app's mark, what the event is there - a Fun(d)raiser party,
-// an HCA volunteer event - and a line under it: who hosts it once the
-// page knows (fillInvites fills it in), until then the household's own
-// standing or where the tickets or sign-ups stand. The whole card is the
-// way to the event's page on that app.
 function linkedBadge(e) {
   const kind = isParty(e) ? 'celebrate' : 'team';
   const card = el('a', 'hero-linked' + (e.mine ? ' is-mine' : ''));
@@ -801,8 +664,6 @@ function linkedBadge(e) {
   return card;
 }
 
-// linkedLineWords is the badge's line before the hosts are known: the
-// household's part, each by name, or where the tickets or sign-ups stand.
 function linkedLineWords(e, kind) {
   if (e.hostNames && e.hostNames.length) {
     const names = e.hostNames;

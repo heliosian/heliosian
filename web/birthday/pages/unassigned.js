@@ -6,19 +6,12 @@ import {assignToMe} from '../edit.js';
 import {monthGrid, monthNav, showToggle} from './calendar.js';
 import {appOrigin} from '/toolbar.js';
 
-// The unassigned birthdays two ways at once: a list to pick from, by
-// birthday, and the month they fall in. Picking one, in either, shows it
-// under the month with the way to take it.
 let month = null;
 let picked = '';
-// showBy is which day the month places each person on: the day to ask them
-// by, or the birthday itself.
 let showBy = 'ask';
 
 const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'long', year: 'numeric'});
 
-// A face's colour, for someone without a photo, settled by their name so it
-// stays theirs from page to page.
 const tints = ['orange', 'sky', 'green', 'yellow', 'red', 'teal'];
 
 function tintOf(sv) {
@@ -29,8 +22,6 @@ function tintOf(sv) {
   return 'face-' + tints[n % tints.length];
 }
 
-// dateLeaf is a day as a leaf off a tear-off calendar: the month on a red
-// band, the day large, the weekday under it.
 const leafMonth = new Intl.DateTimeFormat('en-US', {month: 'short'});
 const leafWeekday = new Intl.DateTimeFormat('en-US', {weekday: 'short'});
 
@@ -55,13 +46,9 @@ function row(sv, rerender) {
   const body = el('div', 'urow-body');
   const top = el('div', 'urow-top');
   top.append(el('span', 'label', sv.jobTitle || ''));
-  // The day the month shows sits on the right with its icon; the other day
-  // goes under the name.
   const byAsk = showBy === 'ask';
   body.append(top, el('div', 'urow-name', sv.name), el('div', 'urow-text', byAsk ? `Birthday ${mediumDate(sv.birthdayThisYear)}` : `Ask by ${mediumDate(sv.requestBy)}`));
   r.append(body);
-  // The day the month shows, as a page off a calendar, on the right.
-  // Beside the leaf, what the day is for: a letter to write, or a cake.
   const when = el('div', 'urow-when');
   const mark = svg(byAsk ? 'edit' : 'cake');
   mark.classList.add('day-mark');
@@ -86,7 +73,6 @@ function list(rows, rerender) {
   const panel = el('div', 'urows');
   for (const sv of rows) {
     panel.append(row(sv, rerender));
-    // The card sits right under the row picked, where the eye is.
     if (sv.email === picked) {
       panel.append(pickCard(sv));
     }
@@ -96,7 +82,6 @@ function list(rows, rerender) {
 
 function grid(rows, rerender) {
   const items = [];
-  // Each issue, with who is announced in it and who holds each, on hover.
   for (const date of state.model.newsletterDates) {
     const day = parseDate(date);
     if (!day) {
@@ -127,8 +112,6 @@ function grid(rows, rerender) {
   return monthGrid(month, items, 'compact picker');
 }
 
-// pickCard sits under the row picked with what the row does not say - the
-// stage, the dates, and the ways on - so nothing is said twice.
 function pickCard(sv) {
   const card = el('div', 'pick-card');
   const facts = el('div', 'pick-facts');
@@ -138,7 +121,6 @@ function pickCard(sv) {
   facts.append(when);
   card.append(facts);
   const actions = el('div', 'pick-actions');
-  // Their page on Helios Who, in a tab of its own.
   const whoLink = el('a', 'button button-secondary');
   whoLink.href = appOrigin('who') + '/people/' + encodeURIComponent(sv.email);
   whoLink.target = '_blank';

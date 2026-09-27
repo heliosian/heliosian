@@ -20,14 +20,6 @@ function statusBadges(node) {
   return out;
 }
 
-// peopleLine is who is on a thing, one line under the row's text: the leads
-// first, in ink and each marked "(Lead)", then the volunteers in sign-up
-// order - one open to co-chairing marked "(Co-Chair Opt)", in the accent, so
-// an offer is seen from the list - then everyone under its sub-activities
-// with the sub-activity named - "Alice Che (Performance)" - up to twelve
-// names in all, then "and 5 more". The server already withholds a hidden
-// list from anyone who does not run the thing, so whatever arrives may be
-// shown.
 function peopleLine(node, editing) {
   const line = el('div', 'row-people');
   const parts = [];
@@ -61,14 +53,8 @@ function peopleLine(node, editing) {
   return line;
 }
 
-// labelLine is the small first line over a title: the day and time, each
-// behind an icon, and any status badges. Who is on it is its own line below
-// (peopleLine), so the two never jostle for one row.
 function labelLine(node) {
   const label = el('div', 'label');
-  // A thing that just happens when its parent does says nothing about when:
-  // the parent's page already does, and a list of rows all saying the same
-  // date is noise.
   const when = node.whenFrom ? {} : whenParts(node);
   const iconed = (icon, text) => {
     const span = el('span', 'label-when');
@@ -91,15 +77,12 @@ function labelLine(node) {
 }
 
 
-// completeBadge is the Volunteers Complete mark: a green check and the words,
-// no ground - good news, not a warning.
 export function completeBadge() {
   const mark = el('span', 'badge complete');
   mark.append(svg('check'), el('span', '', 'Volunteers Complete'));
   return mark;
 }
 
-// needChip is the co-chair-wanted chip, which sits beside the row's title.
 function needChip(node) {
   if (!node.coLeaderNeeded) {
     return null;
@@ -109,14 +92,10 @@ function needChip(node) {
   return chip;
 }
 
-// wanted says a thing is marked a priority and still wants people: open,
-// and neither complete nor with every spot taken.
 export function wanted(node) {
   return Boolean(node.priority) && node.status === 'Open' && !isFull(node);
 }
 
-// priorityChip is High Priority beside a row's title, in the deep red
-// behind a star, while the thing is one.
 function priorityChip(node) {
   if (!wanted(node)) {
     return null;
@@ -126,9 +105,6 @@ function priorityChip(node) {
   return chip;
 }
 
-// priorityCallout is an event card's word that it - or things under it -
-// are a priority: "High priority: Decor · Check-In", each a link to the
-// thing, or "High priority" alone for the event itself.
 function priorityCallout(act) {
   const inside = descendants(act).filter(wanted);
   if (!wanted(act) && !inside.length) {
@@ -160,19 +136,12 @@ function joinButton(node) {
   return button('Join', 'join', 'button button-small', () => openSignUp(node, null));
 }
 
-// childRow is the row a thing under an activity gets in its parent's list. While
-// the parent is in edit mode, each row carries a pencil that opens that child's
-// editor in place - fixing three titles should not mean visiting three pages.
-// moves, while editing, is {up, down}: what to do when the row is nudged a
-// place in either direction, null where it is already at that end.
 export function childRow(node, editing, moves) {
   const row = link(activityPath(node), 'row is-link' + (node.status === 'Hidden' || node.status === 'Pending' ? ' is-muted' : ''));
   row.append(thumb(node.imageUrl || rootOf(node).imageUrl, node.title));
   const body = el('div', 'row-body');
   body.append(labelLine(node));
   const title = el('div', 'row-title', node.title);
-  // The asks sit right by the name, where they are read first: High
-  // Priority, then Co-chair needed.
   const urgent = priorityChip(node);
   if (urgent) {
     title.append(urgent);
@@ -186,11 +155,6 @@ export function childRow(node, editing, moves) {
     body.append(el('div', 'row-text clamp', node.description));
   }
   if (node.children.length) {
-    // What sits under it, each a small chip - plainly not part of the
-    // description - naming the committee with how many are on it, chairs
-    // included, as "3" or, against a cap, "2 of 5". The row is itself a
-    // link, so a chip is a button that goes to the committee instead (an
-    // anchor inside an anchor is not a thing).
     const under = node.children.filter(c => c.status !== 'Hidden' && c.status !== 'Pending');
     if (under.length) {
       const line = el('div', 'row-under');
@@ -205,7 +169,6 @@ export function childRow(node, editing, moves) {
       body.append(line);
     }
   }
-  // Who is on it comes last, leads first.
   const people = peopleLine(node, editing);
   if (people) {
     body.append(people);
@@ -217,8 +180,6 @@ export function childRow(node, editing, moves) {
     actions.append(join);
   }
   if (editing) {
-    // While editing, a row can be picked up and dropped on another category's
-    // panel (detail.js wires the targets); the row carries its id along.
     row.draggable = true;
     row.addEventListener('dragstart', e => {
       e.dataTransfer.setData('text/plain', node.id);
@@ -226,7 +187,6 @@ export function childRow(node, editing, moves) {
       row.classList.add('is-dragging');
     });
     row.addEventListener('dragend', () => row.classList.remove('is-dragging'));
-    // A place up or down among its siblings, for anyone not dragging.
     if (moves) {
       const nudge = el('div', 'row-nudge');
       for (const [dir, fn] of [['up', moves.up], ['down', moves.down]]) {
@@ -238,7 +198,6 @@ export function childRow(node, editing, moves) {
       }
       actions.append(nudge);
     }
-    // button() swallows the click so the row's link does not fire underneath.
     const pencil = button('', 'edit', 'edit-icon', () => openActivity(node));
     pencil.title = `Edit ${node.title}`;
     pencil.setAttribute('aria-label', pencil.title);
@@ -274,9 +233,6 @@ export function linkRow(act, item, editor, onEdit) {
 
 const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'short'});
 
-// dateBadge is the little month-over-day stamp in a card's image corner. An
-// activity with no parsed date (a committee that runs all year, an idea nobody
-// has scheduled) gets its timing word instead, so the corner is never empty.
 function dateBadge(act) {
   const start = parseWhen(act.start);
   if (act.timing || !start) {
@@ -286,10 +242,6 @@ function dateBadge(act) {
   const end = parseWhen(act.end);
   const spans = end && end.date.toDateString() !== start.date.toDateString();
   const sameMonth = spans && end.date.getMonth() === start.date.getMonth() && end.date.getFullYear() === start.date.getFullYear();
-  // A tear-off calendar: the month as the red band across the top, the day
-  // large, and the weekday under it - for a single day only; a span of days
-  // reads "3-5" under its month, or "30-1" under "OCT-NOV" when it crosses
-  // into the next.
   const month = monthFormat.format(start.date).toUpperCase();
   stamp.append(el('div', 'card-stamp-month', spans && !sameMonth ? `${month}-${monthFormat.format(end.date).toUpperCase()}` : month),
     el('div', 'card-stamp-day', spans ? `${start.date.getDate()}-${end.date.getDate()}` : String(start.date.getDate())));
@@ -299,8 +251,6 @@ function dateBadge(act) {
   return stamp;
 }
 
-// The card's corner counts what is left; the Volunteers Complete mark above
-// already says when nothing is.
 function spotsNote(act) {
   if (isFull(act)) {
     return '';
@@ -312,29 +262,15 @@ function spotsNote(act) {
   return '';
 }
 
-// activityCard is the grid tile the opportunities page shows: image with its
-// date stamp - and a chip when a co-chair is wanted, the one thing worth
-// flagging on the picture; the category is the heading the card sits under -
-// then title, blurb, and the sign-up action.
-// opts.signUps lists one person's sign-ups on the activity and under it, for
-// My Sign Ups - opts.email says whose: the viewer's, or someone in their
-// household - each a link with a check - the event itself by its own title
-// when signed up for directly - with its own date when it has one, and a
-// pencil into the sign-up itself, where it can be changed or removed; all in
-// place of the foot, since the card says where they are, not what to join.
 export function activityCard(act, opts = {}) {
   const slot = el('div', 'card-slot ' + categoryClass(act.category));
   slot.append(activityCardBody(act, opts));
   return slot;
 }
 
-// activityCardBody is the card itself; activityCard puts it in a slot with a
-// card of its category's colour peeking out behind, as Heliosian's do.
 function activityCardBody(act, opts) {
   const card = el('div', 'card' + (act.status === 'Hidden' || act.status === 'Pending' ? ' is-muted' : ''));
   const media = link(activityPath(act), 'card-media');
-  // Without a photo the tile falls back to a big initial; tinting it by category
-  // keeps a grid of image-less activities from reading as a wall of one colour.
   media.append(thumb(act.imageUrl, act.title, 'card-image ' + categoryClass(act.category)));
   if (act.coLeaderNeeded) {
     const need = el('span', 'card-chip card-need');
@@ -371,22 +307,18 @@ function activityCardBody(act, opts) {
     for (const node of opts.signUps) {
       const item = link(activityPath(node), 'card-under-item');
       item.append(svg('join'), el('span', 'card-under-title', node.title));
-      // Chairing it, or offering to, is tagged the way the faces on its page
-      // tag it.
       const mine = signUpOf(node, opts.email || me().email);
       if (mine && mine.position === 'Co-Chair') {
         item.append(el('span', 'side-chair-role', 'Chair'));
       } else if (mine && mine.position === 'Open to Co-Chair') {
         item.append(el('span', 'side-chair-role is-option', 'Chair opt'));
       }
-      // The card's stamp already dates the event itself.
       const when = node.whenFrom || node === act ? {} : whenParts(node);
       const own = [when.words, when.day, when.time].filter(Boolean).join(' · ');
       if (own) {
         item.append(el('span', 'card-under-when', own));
       }
       if (mine) {
-        // button() swallows the click so the item's link does not fire.
         const pencil = button('', 'edit', 'edit-icon card-under-edit', () => openSignUp(node, mine));
         pencil.title = 'Edit or remove this sign-up';
         pencil.setAttribute('aria-label', `Edit ${mine.name}'s sign-up for ${node.title}`);
@@ -417,10 +349,6 @@ function activityCardBody(act, opts) {
   return card;
 }
 
-// priorityRow is one row of the High Priority panel: its picture - its
-// own, else its event's - the things above it over its title and a line
-// of what it is and its category as a small tag, its day and hours, Co-chair needed
-// when it wants one, and Sign up; the whole row opens its page.
 export function priorityRow(node) {
   const root = rootOf(node);
   const row = link(activityPath(node), 'prio-row');
@@ -483,10 +411,6 @@ export function priorityRow(node) {
   return row;
 }
 
-// rolesLine is the household's part in an event, as Heliosian's calendar
-// tells it: the viewer's own roles named - "Co-Chair · Performance Tech" -
-// then, on a row of its own with the family's mark, the rest of the
-// household as a count of roles. Nothing when none of them is on it.
 function rolesLine(act) {
   const mine = me().email;
   const household = new Set(family().map(c => c.email));
@@ -514,7 +438,6 @@ function rolesLine(act) {
     line.append(r);
   };
   if (own.length) {
-    // One role a line: bulleted together they wrap mid-name in a card.
     const list = el('span', 'card-role');
     own.forEach(words => list.append(el('span', 'card-role-item', words)));
     const r = el('span', 'card-roles-row');
@@ -527,11 +450,6 @@ function rolesLine(act) {
   return line;
 }
 
-// Categories come from the sheet, so the tint is picked by position rather than
-// by name - a renamed or newly added category still gets a colour. The order is
-// read from the model on every call rather than pushed in by whichever page
-// happens to render first, so a link straight to an activity tints it the same
-// way the grid does.
 export function categoryClass(id) {
   if (id === UNCATEGORIZED) {
     return 'cat-none';

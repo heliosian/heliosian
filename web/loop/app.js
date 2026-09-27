@@ -16,7 +16,6 @@ export async function load() {
 }
 
 export function navigate(path) {
-  // A window open over the page - the editor - goes with the page.
   for (const overlay of document.querySelectorAll('.modal-overlay')) {
     overlay.remove();
   }
@@ -39,8 +38,6 @@ function route() {
   }
   switch (parts[0]) {
     case 'new': {
-      // The front page, with the new group's window opened over it once
-      // the page is in place.
       setTimeout(newGroupModal);
       return groupsPage();
     }

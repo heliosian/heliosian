@@ -6,8 +6,6 @@ import {openNewsletterDate, openChangeNewsletterDate, addNextWeek, removeNewslet
 
 let query = '';
 
-// Past issues are hidden until asked for, and the asking is remembered on
-// this browser.
 const pastKey = 'birthday.showPastIssues';
 
 function showPast() {
@@ -22,12 +20,9 @@ function setShowPast(on) {
   try {
     localStorage.setItem(pastKey, on ? '1' : '0');
   } catch {
-    // Then it is forgotten on the next visit.
   }
 }
 
-// issueMenu is an admin's actions on an issue, moving or removing the date;
-// nobody else gets a menu.
 function issueMenu(date) {
   if (!isAdmin()) {
     return null;
@@ -46,13 +41,10 @@ function thisYear() {
   return state.model.newsletterDates.filter(d => d >= year().start && d <= year().end);
 }
 
-// nextIssue is the first issue on or after today, the one the team is working towards.
 function nextIssue() {
   return thisYear().find(d => d >= state.model.today) || '';
 }
 
-// issueRow is one issue: its day on a badge, the date, who is announced in it
-// as small faces, and its count, ringed when it is the next one.
 function issueRow(date, actions) {
   const row = link(newsletterPath(date), 'issue' + (date < state.model.today ? ' is-past' : '') + (date === nextIssue() ? ' is-next' : ''));
   const day = parseDate(date);
@@ -120,17 +112,11 @@ function list() {
   return root;
 }
 
-// entry is what Copy Info hands the newsletter writer about one staff
-// member: the name and title, the birthday, the photo and its address, the charity,
-// where to give, and what it does - and their own words when they left some.
-// It comes as words and as a formatted twin for a paste into mail or a doc.
 function entry(sv) {
   const c = charity(sv.donation.charity);
   const photo = sv.photoUrl ? new URL(sv.photoUrl, location.origin).href : '';
   const esc = t => String(t).replace(/[&<>"]/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[ch]));
   const linked = v => /^https?:\/\//.test(v) ? `<a href="${esc(v)}">${esc(v)}</a>` : esc(v);
-  // Who they are, then under a DONATION heading the charity, where to give,
-  // what it does, and their own words when they left some.
   const who = [`Birthday: ${monthDay(sv.birthdayThisYear)}`, `Photo: ${photo || 'None on file'}`];
   const donation = [sv.donation.charity];
   if (c && c.donationLink) {
@@ -152,8 +138,6 @@ function entry(sv) {
   return {text, html};
 }
 
-// nextCard is the next issue on its own, ahead of the list, so it is never
-// lost among the rest.
 function nextCard() {
   const next = nextIssue();
   const wrap = el('div', 'next-issue');
@@ -163,8 +147,6 @@ function nextCard() {
   wrap.append(el('div', 'section-title', 'Next issue'));
   const panel = el('div', 'panel issues next-panel');
   const actions = [];
-  // Copy to Shared Sheet does by hand what Thursday night does: the issue's
-  // birthdays to the Staff Birthday List (Shared), each marked done.
   const waiting = toShare(next).length;
   const share = button('Copy to Shared Sheet', 'send', 'button button-small', () => shareIssue(next));
   share.disabled = !waiting;
@@ -182,7 +164,6 @@ function nextCard() {
   return wrap;
 }
 
-// pastSwitch shows or hides the issues already out, just over the list.
 function pastSwitch(onChange) {
   const past = thisYear().filter(d => d < state.model.today).length;
   const row = el('label', 'switch-row');
@@ -203,8 +184,6 @@ function pastSwitch(onChange) {
   return row;
 }
 
-// overview is the band under the title: the year, the count of issues, and
-// the next issue with who is in it.
 function overview() {
   const band = el('div', 'stage-summary tint-teal');
   const icon = el('div', 'summary-icon');
@@ -242,8 +221,6 @@ export function newslettersPage() {
   return page;
 }
 
-// newsletterPage is one issue: who is announced in it, each with their stage
-// and what has been recorded, so the team can see what the issue still needs.
 export function newsletterPage(date) {
   setTitle(longDate(date));
   const page = el('div', 'list-page');
@@ -255,7 +232,6 @@ export function newsletterPage(date) {
   const people = staffFor(date);
   const requestBy = parseDate(date);
   requestBy.setDate(requestBy.getDate() - state.model.settings.requestLeadDays);
-  // Copy All is every recorded donation in the issue, ready for the newsletter.
   const recorded = people.filter(sv => sv.donation);
   const copyAll = button('Copy All', 'copy', 'button', () => {
     const entries = recorded.map(entry);
@@ -263,7 +239,6 @@ export function newsletterPage(date) {
   });
   copyAll.disabled = !recorded.length;
   copyAll.title = recorded.length ? '' : 'No donations recorded yet';
-  // Mark All Used says the issue carried every donation recorded and not yet marked.
   const unused = recorded.filter(sv => !sv.donation.usedOn);
   const markAll = button('Mark All Used', 'circlecheck', 'button button-secondary', () => {
     if (confirm(`Mark ${unused.length} ${unused.length === 1 ? 'donation' : 'donations'} as used in this issue?`)) {
@@ -289,7 +264,6 @@ export function newsletterPage(date) {
       lines.push(sv.assignedTo ? `${sv.assignedToName} to ask by ${mediumDate(sv.requestBy)}` : 'Unassigned');
     }
     const row = staffRow(sv, {stage: true, noActions: true, lines});
-    // Copy Info is this one's entry - name, title, charity and note.
     const copy = button('Copy Info', 'copy', 'button button-secondary button-small', () => {
       const e = entry(sv);
       copyRich(e.text, e.html, `Copied ${sv.name}`);

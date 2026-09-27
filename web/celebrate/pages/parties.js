@@ -11,17 +11,11 @@ function shown(code) {
   return parties(code).filter(p => inTab(p, state.tab) && matches(p, query) && (!state.category || p.category === state.category));
 }
 
-// celebrationBand is the year's gala itself, across the top of the parties
-// page: its picture as the background, theme, title, when
-// and where, and its button - Learn More, to the celebration's own site.
-// Admins edit it from Admin Tools › Banner.
 export function celebrationBand(c) {
   const band = el('div', 'gala-band' + (c.imageUrl ? ' has-image' : ''));
   if (c.imageUrl) {
     band.style.backgroundImage = `url("${c.imageUrl}")`;
   }
-  // The title is the big line; the subtitle - the theme - the small one
-  // above it.
   const words = el('div', 'gala-words');
   if (c.subtitle) {
     words.append(el('div', 'gala-kicker', c.subtitle));
@@ -33,8 +27,6 @@ export function celebrationBand(c) {
     words.append(el('div', 'gala-when', line));
   }
   band.append(words);
-  // The button opens a page, or - "calendar" - adds the gala to the
-  // reader's calendar as a Save the Date.
   const href = c.buttonUrl === 'calendar' ? celebrationCalendarLink(c) : c.buttonUrl;
   if (href && c.buttonText) {
     const a = el('a', 'button button-small gala-button');
@@ -79,14 +71,11 @@ export function partiesPage(code) {
   } else if (state.model.current) {
     state.celebration = state.model.current;
   }
-  // The tab and the category are the address's (listPath).
   state.tab = listTab();
   state.category = listCategory();
   const c = currentCelebration();
   setTitle('Parties');
   const page = el('div');
-  // The band advertises the banner celebration - next year's gala, say -
-  // whichever year's parties are listed under it.
   const banner = celebration(state.model.banner) || c;
   if (banner) {
     page.append(celebrationBand(banner));
@@ -98,9 +87,6 @@ export function partiesPage(code) {
     main.append(el('p', 'page-intro', state.model.settings.partiesIntro));
   }
   head.append(main);
-  // The picker offers the years that have parties to show - and the one
-  // being looked at, so it never lists what it stands on. A gala posted
-  // ahead of its parties stays out until the first is approved.
   const options = state.model.celebrations
     .filter(x => x.code === state.celebration || parties(x.code).length)
     .map(x => ({key: x.code, label: x.title}));

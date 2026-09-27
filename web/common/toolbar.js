@@ -1,25 +1,9 @@
 import {modeRow, offerQuan} from '/mode.js';
-// The pieces of the shared toolbar (web/common/toolbar.css) that need script:
-// filling the avatar and opening its menu, the "/" shortcut into search, and
-// the switch to the other apps. What the search actually searches is each
-// app's own business, wired in its chrome.
 
-// The apps the switch lists come from Heliosian (internal/home.Apps), each
-// keyed by its hostname's first label with its mark served from
-// web/public/common/brand/apps/<key>.png. Home heads the list, and is what
-// the switch falls back to when the ask fails - always a way home.
 const homeApp = {key: 'home', name: 'Heliosian', tagline: 'Helios Community Apps'};
 
-// Hostnames follow the tier of the page's own: beside who.heliosian.com sits
-// team.heliosian.com, and beside who.heliosiandev.com:8080 sits
-// team.heliosiandev.com:8080. The link portal is the apex (heliosian.com or
-// heliosiandev.com, also www). The app label comes off the front and the
-// app's own goes on - hca.<tier> is the volunteer portal's older name, so it
-// counts as team's.
 const appLabels = ['who', 'team', 'hca', 'celebrate', 'birthday', 'calendar', 'cal', 'when', 'loop', 'ask', 'home', 'www'];
 
-// The calendar answers as cal.<tier> and when.<tier> too, the way hca.<tier>
-// is the volunteer portal's.
 const aliases = {hca: 'team', cal: 'calendar', when: 'calendar'};
 
 function tierLabels() {
@@ -49,10 +33,6 @@ export function appOrigin(key) {
   return location.protocol + '//' + host.join('.') + (location.port ? ':' + location.port : '');
 }
 
-// What the switch lists and which rows Heliosian's Visibility tab keeps off
-// this person's - asked of the page's own origin (every app serves the
-// route). Purely presentation - a direct link still opens an app - so a
-// failed ask lists just the way home rather than nothing.
 async function switchList() {
   try {
     const res = await fetch('/api/apps/switch');
@@ -66,12 +46,6 @@ async function switchList() {
   }
 }
 
-// Both of the bar's dropdowns - the account menu under the avatar and the
-// switch under the Heliosian tile - open on hover: the menu shows while the
-// mouse is over its button or over the menu itself, and goes once the mouse
-// has left both. The going waits a moment so that crossing the gap between
-// button and menu does not shut it. Touch and pen make no hover, so their
-// taps fall to the click handlers, which is where the menus toggle.
 const hoverGrace = 150;
 
 export function hoverMenu(button, menu, open, close) {
@@ -96,13 +70,6 @@ export function hoverMenu(button, menu, open, close) {
   }
 }
 
-// Whether a click came from something that hovers. On a phone or a tablet -
-// any device whose primary pointer cannot hover - nothing does, whatever the
-// event claims, since some mobile browsers report a tap as a mouse click;
-// the media query is the reliable tell, and Safari, Chrome and Firefox all
-// answer it. Elsewhere it is the event's pointer: a mouse, or the keyboard
-// (whose synthetic click names no pointer), does; a finger or a pen on a
-// laptop's touchscreen does not.
 export function hoverClick(e) {
   if (matchMedia('(hover: none)').matches) {
     return false;
@@ -110,22 +77,13 @@ export function hoverClick(e) {
   return !e.pointerType || e.pointerType === 'mouse';
 }
 
-// Wires the avatar to the account menu under it: the menu opens on hover,
-// and a click leaves it open where the mouse already holds it (or opens it
-// again after Escape), while a tap toggles it. The click stops at the button
-// so the document click each app uses to close its menus lets this one be.
-// The menu's rows, and closing it from that document click and Escape, are
-// each app's own.
 export function initUserMenu() {
   const button = document.querySelector('#user');
   const menu = document.querySelector('#user-menu');
-  // Every app calls this, so the RSVP and approvals badges ride along, and
-  // the directory's count gets its bell.
   initRSVP();
   initApprovals();
   initLate();
   bellStale();
-  // Dark mode's row goes in every app's menu, above Sign Out.
   if (!menu.querySelector('.user-menu-mode')) {
     const signOut = menu.querySelector('form');
     menu.insertBefore(modeRow(), signOut || null);
@@ -154,14 +112,6 @@ function closeUserMenus() {
   }
 }
 
-// Fills every .app-switch in the page (the desktop bar's and, where an app has
-// one, the phone bar's) and wires it: the list opens on hover, and the tile
-// is a link home - to Heliosian on the page's own tier - so a click goes
-// there. A tap, which cannot hover, toggles the list instead, since it is
-// the only way to the list on a phone; a tap anywhere else or Escape closes
-// it. The rows wait on the switch ask, which is well over before anyone
-// opens the list; the app being viewed is always listed, whether or not the
-// reader is on its list, since it is where they already are.
 export function initAppSwitch() {
   const current = currentApp();
   const wraps = document.querySelectorAll('.app-switch');
@@ -187,9 +137,6 @@ export function initAppSwitch() {
       menu.hidden = false;
     };
     hoverMenu(button, menu, open, closeAppSwitches);
-    // The tap runs on to the document, where each app's own handler closes
-    // its menus - so opening the list closes the account menu, and the
-    // document's listener below leaves the switch itself alone.
     button.addEventListener('click', e => {
       if (hoverClick(e)) {
         return;
@@ -215,7 +162,6 @@ export function initAppSwitch() {
   });
 }
 
-// One app's row of the switch: its mark, name and tagline, linking to it.
 function appRow(app, isCurrent) {
   const row = document.createElement('a');
   row.href = appOrigin(app.host || app.key);
@@ -260,7 +206,6 @@ function feedbackLine() {
   return line;
 }
 
-// The line under the apps: the octocat and a link to where they are built.
 function repoLine() {
   const line = document.createElement('a');
   line.className = 'app-switch-repo';
@@ -442,9 +387,6 @@ function toast(message) {
   }, 2400);
 }
 
-// Every .user-avatar in the page (the desktop bar's and, where an app has one,
-// the phone bar's) shows the hero photo when there is one, else the initial
-// standing in for it.
 export function renderAvatars({photoUrl, initial}) {
   for (const avatar of document.querySelectorAll('.user-avatar')) {
     if (photoUrl) {
@@ -458,12 +400,6 @@ export function renderAvatars({photoUrl, initial}) {
   }
 }
 
-// The card under an alert badge, on the same hover as the menus, in the
-// badge's .topbar-alert-wrap: built afresh by build() on each open, so it
-// says what the badge says now, and kept inside the viewport on a narrow
-// screen, where a card right-aligned to a badge near the bar's left would
-// run off it. A tap does nothing here - the badge is a link, and a phone
-// follows it - so the card is wired once, whatever fills it later.
 export function alertMenu(badge, build) {
   const wrap = badge.parentElement;
   let menu = wrap.querySelector('.topbar-alert-menu');
@@ -489,13 +425,9 @@ function clampMenu(wrap, menu) {
   const left = Math.max(margin, Math.min(wrapRect.right - width, window.innerWidth - margin - width));
   menu.style.left = `${left - wrapRect.left}px`;
   menu.style.right = 'auto';
-  // The card's point sits under the badge it hangs from.
   menu.style.setProperty('--notch', `${wrapRect.left + wrapRect.width / 2 - left}px`);
 }
 
-// alertIcons are the rows' own marks, so each says what it is at a glance:
-// a photo, a family photo, facts, an address, a phone, and the three apps'
-// things waiting for approval.
 export const alertIcons = {
   photo: '<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>',
   family: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.6 2.7-6 6-6s6 2.4 6 6"/><circle cx="17" cy="9.5" r="2.6"/><path d="M15.5 14.3c3 .1 5.5 2.3 5.5 5.7"/></svg>',
@@ -507,8 +439,6 @@ export const alertIcons = {
   calendar: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
 };
 
-// updateIcon is the mark for one thing the directory wants updated, by
-// what its label says it is.
 function updateIcon(label) {
   if (/^family photo/i.test(label)) {
     return alertIcons.family;
@@ -516,11 +446,6 @@ function updateIcon(label) {
   return /facts$/i.test(label) ? alertIcons.facts : alertIcons.photo;
 }
 
-// alertList is the card for a badge that lists things - RSVP's invitations,
-// the approvals: the count large in its tone beside what they are and a
-// close, a row for each - its icon in a pale disc beside a chip with the
-// title and its note, to its page - and a button across the foot to the
-// whole list. tone is the card's colour, red or amber.
 export function alertList({count, words, items, icon, button, href, tone}) {
   const card = el('div', 'alert-card alert-list' + (tone ? ' is-' + tone : ''));
   const head = el('div', 'alert-list-head');
@@ -541,9 +466,6 @@ export function alertList({count, words, items, icon, button, href, tone}) {
     const row = el('div', 'alert-list-row');
     const disc = el('span', 'alert-card-disc');
     disc.innerHTML = item.icon || icon;
-    // A row goes to its page, or - given an action - does it in place, as
-    // Who?'s photo rows open the file picker; the note can be told how it
-    // went (item.status is handed the note's node).
     const chip = el(item.action ? 'button' : 'a', 'alert-list-chip');
     if (item.action) {
       chip.type = 'button';
@@ -559,7 +481,6 @@ export function alertList({count, words, items, icon, button, href, tone}) {
       item.status(note);
     }
     row.append(disc, chip);
-    // The whole row is the chip's: its icon too.
     row.addEventListener('click', e => {
       if (!chip.contains(e.target)) {
         chip.click();
@@ -567,7 +488,6 @@ export function alertList({count, words, items, icon, button, href, tone}) {
     });
     card.append(row);
   }
-  // The foot's link to the whole list, where there is one list to go to.
   if (button) {
     const go = el('a', 'alert-list-button');
     go.href = href;
@@ -581,10 +501,6 @@ export function alertList({count, words, items, icon, button, href, tone}) {
   return card;
 }
 
-// The card an alert badge drops down: a pale yellow card with a gold bar
-// at its left and a warning mark in a gold disc, the badge's message as
-// its title, a line more when there is one, and a chevron at its end - the
-// whole card the link to what resolves it, linkText its title.
 export function alertCard(title, text, linkText, href) {
   const card = el('a', 'alert-card');
   card.href = href;
@@ -600,15 +516,6 @@ export function alertCard(title, text, linkText, href) {
   return card;
 }
 
-// Fills the toolbar's alert badges from the directory's reckoning - the
-// count of things to update for the new year, and the privacy-mismatch
-// triangle - linking each across to the page in Who? that resolves it, and
-// hanging a card off each that says so on hover. Who? itself reckons these
-// client-side, with the checklist itself under its count, and does not call
-// this.
-// bellStale puts a bell in each of the directory's count badges - Who?'s own
-// and the one every other app draws - so it wears the count on a dot at
-// its corner, as the RSVP and approvals badges do.
 function bellStale() {
   for (const badge of document.querySelectorAll('.stale-alert')) {
     if (badge.querySelector('svg')) {
@@ -622,9 +529,6 @@ function bellStale() {
   }
 }
 
-// privacyCount puts on the triangle how many details Veracross shows that
-// the directory hides - the address, the phone - on a dot at its corner,
-// as the other badges carry theirs; Who? calls it with its own reckoning.
 export function privacyCount(n) {
   for (const badge of document.querySelectorAll('.privacy-alert')) {
     let dot = badge.querySelector('.privacy-count');
@@ -637,10 +541,6 @@ export function privacyCount(n) {
   }
 }
 
-// privacyCard is the triangle's card: how many details Veracross shows that
-// Helios Who hides, and a row for each - the address, the phone number -
-// to My Privacy, where they are set. fields are the server's words
-// ("address", "phone") or Who?'s own ("address", "phone number").
 const privacyNames = {address: 'Address', phone: 'Phone number', 'phone number': 'Phone number'};
 
 export function privacyCard(fields, href, button = 'Review My Privacy in Helios Who') {
@@ -661,8 +561,6 @@ export function renderAlerts({stale = [], privacy = []} = {}) {
   const updates = Array.isArray(stale) ? stale : [];
   privacyCount(fields.length);
   const who = appOrigin('who');
-  // The bell's card lists each thing to update - "Sam's photo", "Family
-  // photo" - to My Family, where it is done.
   for (const badge of document.querySelectorAll('.stale-alert')) {
     badge.hidden = !updates.length;
     badge.href = who + '/my-family';
@@ -689,12 +587,6 @@ export function renderAlerts({stale = [], privacy = []} = {}) {
   }
 }
 
-// The RSVP badge, in every app's bar before the other alerts while any
-// invitation waits for the viewer's reply: a calendar with their count on
-// a red dot, going to the RSVP list on Helios When, and under it - on the
-// same hover as the other badges - a card listing each, soonest first, to
-// its page there. The page's own host answers (/api/apps/rsvp, the
-// calendar's, served on every app), so it is the same list everywhere.
 const rsvpDay = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
 
 function initRSVP() {
@@ -735,12 +627,6 @@ function initRSVP() {
   }).catch(() => {});
 }
 
-// The approvals badge, for an admin of any app, in every app's bar while
-// anything waits for their approval - with Super Admin Mode on or off,
-// approvals being an admin's alert: an hourglass with the count on an amber
-// dot, going to the approvals of the app with the first of them, and under
-// it a card listing each under its app's name, soonest first, to its page
-// there (/api/apps/approvals, served on every app).
 const approvalLists = {team: '/approvals', celebrate: '/approvals', calendar: '/admin'};
 const approvalApps = {team: 'HCA-Team', celebrate: 'Helios Celebrate', calendar: 'Helios When'};
 
@@ -764,7 +650,6 @@ function initApprovals() {
     icon.innerHTML = '<path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/>';
     badge.append(icon, el('span', 'approvals-count', String(waiting.length)));
     wrap.append(badge);
-    // Beside the RSVP badge when there is one, first among the rest.
     const rsvp = document.querySelector('.rsvp-alert');
     const first = user.parentElement.querySelector('.topbar-alert');
     (rsvp ? rsvp.closest('.topbar-alert-wrap') : first ? first.closest('.topbar-alert-wrap') || first : user).before(wrap);
@@ -773,20 +658,11 @@ function initApprovals() {
       words: waiting.length === 1 ? 'thing waits for your approval' : 'things wait for your approval',
       items: waiting.map(a => ({title: a.title, note: approvalApps[a.app] + (a.start ? ' \u00b7 ' + rsvpDay.format(new Date(a.start.slice(0, 10) + 'T12:00:00')) : ''), href: appOrigin(a.app) + a.path, icon: alertIcons[a.app]})),
       icon: '<svg viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/></svg>',
-      // No foot: the things come from several apps, each row to its own.
       tone: 'amber',
     }));
   }).catch(() => {});
 }
 
-// The late-birthdays badge, in every app's bar while a birthday step the
-// viewer owes is past its day - a birthday assigned to them whose charity is
-// not in by its due-by day, or whose outreach is past the day to ask; or, on
-// the comms team, a birthday past its newsletter not yet marked used; a birthday admin sees everyone's, the unassigned included, with or
-// without Super Admin Mode, as approvals. A cake with the count on a red
-// dot, to Birthday's My Jobs (an admin's, Process), and under it a card
-// listing each, oldest first, to the staff member's page there
-// (/api/apps/late, served on every app).
 const lateCake = '<path d="M4 21V13a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8"/><path d="M4 16c1.3 0 1.3 1 2.7 1s1.3-1 2.6-1 1.3 1 2.7 1 1.3-1 2.6-1 1.3 1 2.7 1 1.3-1 2.7-1"/><path d="M2 21h20M12 11V7"/><path d="M12 7c-1.1 0-2-.9-2-2 0-1.4 2-3 2-3s2 1.6 2 3c0 1.1-.9 2-2 2z"/>';
 const lateSteps = {outreach: 'Outreach was due', info: 'Birthday info was due', newsletter: 'Newsletter went out'};
 
@@ -811,7 +687,6 @@ function initLate() {
     icon.innerHTML = lateCake;
     badge.append(icon, el('span', 'late-count', String(late.length)));
     wrap.append(badge);
-    // First among the bar's badges: it is the most overdue thing there.
     const first = user.parentElement.querySelector('.topbar-alert');
     (first ? first.closest('.topbar-alert-wrap') || first : user).before(wrap);
     const day = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});
@@ -820,7 +695,6 @@ function initLate() {
       words: late.length === 1 ? 'birthday step is late' : 'birthday steps are late',
       items: late.map(l => {
         let note = `${lateSteps[l.step] || 'Due'} ${day.format(new Date(l.due + 'T12:00:00'))}`;
-        // An admin sees whose each assignee's step is.
         if (view.admin && l.step !== 'newsletter') {
           note += ' \u00b7 ' + (l.assignee || 'Unassigned');
         }
@@ -833,15 +707,6 @@ function initLate() {
   }).catch(() => {});
 }
 
-// Spoof Mode's switch, for super admins: an eye beside the avatar, a red
-// pill saying whom while it is on, and under it - on the same hover as the
-// bar's other menus - Stop, the last five people viewed as, and a search of
-// the whole directory. Sign-in answers for all of it (/auth/spoof,
-// internal/auth) as the person really signed in, so the switch is there and
-// the way back stays open whoever the page is drawn for; a page drawn for
-// someone who may not spoof gets no switch at all. Starting lands on the
-// app's front page, since the person viewed as may not be allowed where the
-// admin was; stopping reloads in place.
 export function initSpoof() {
   const user = document.querySelector('#user');
   if (!user) {
@@ -880,8 +745,6 @@ function buildSpoof(user, state) {
   const menu = el('div', 'spoof-menu');
   menu.hidden = true;
   wrap.append(pill, menu);
-  // While viewing as someone else the whole bar goes hot pink, in every app
-  // and every theme, so it cannot be forgotten whose account this is.
   document.body.classList.toggle('is-spoofing', Boolean(state.spoofing));
   if (state.spoofing) {
     wrap.classList.add('is-on');
@@ -897,7 +760,6 @@ function buildSpoof(user, state) {
   }
   user.before(wrap);
 
-  // The menu: Stop while viewing as someone, the recent five, then the search.
   if (state.spoofing) {
     const head = el('div', 'spoof-head');
     head.append(el('span', '', 'Viewing as '), el('b', '', state.spoofing.name));
@@ -924,9 +786,6 @@ function buildSpoof(user, state) {
   const results = el('div', 'spoof-results');
   menu.append(search, results);
 
-  // The directory comes over once, the first time the menu opens; the box
-  // filters it by name, address or the word that places someone, eight
-  // rows at a time, and Enter takes the first (or the one arrowed to).
   let people = null;
   let active = -1;
   const load = () => {
@@ -985,9 +844,6 @@ function buildSpoof(user, state) {
     menu.hidden = false;
     load();
   };
-  // Leaving the menu with the mouse does not close it while the search box
-  // has focus - the mouse wanders while typing - so a click elsewhere, or
-  // Escape, is what closes it then.
   const close = () => {
     if (menu.contains(document.activeElement)) {
       return;
@@ -1014,8 +870,6 @@ function buildSpoof(user, state) {
   });
 }
 
-// One person of the switch's menu: their name over the word that places
-// them, or their address; the one being viewed as is marked.
 function spoofRow(p, isCurrent) {
   const row = el('button', 'spoof-row' + (isCurrent ? ' is-current' : ''));
   row.type = 'button';
@@ -1042,9 +896,6 @@ async function setSpoof(email) {
   }
 }
 
-// Points every View Profile row of the account menu at the signed-in
-// person's page in Who?, whose address is their email's local part. Who?
-// fills its own, from its model.
 export function renderProfileLink(email) {
   const slug = email.split('@')[0];
   for (const link of document.querySelectorAll('.user-menu-profile')) {
@@ -1052,17 +903,10 @@ export function renderProfileLink(email) {
   }
 }
 
-// markSuper shows or hides the avatar's red ring for Super Admin Mode.
 export function markSuper(on) {
   document.body.classList.toggle('is-super', Boolean(on));
 }
 
-// Super Admin Mode's switch, for whoever is on the app's admin list: a pencil
-// in the bar, before Spoof Mode's eye and the avatar - teal while the mode is
-// off, white on red while it is on - and the avatar's ring to match
-// (markSuper). Each app calls it whenever it draws the account, with whether
-// to offer it, whether it is on, and what a click does with the new state;
-// the button is made once and a click goes to the latest handler.
 let superButton = null;
 let superToggle = () => {};
 
@@ -1102,9 +946,6 @@ export function isEditableTarget(target) {
   return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable;
 }
 
-// A bare "/" (no modifiers, and not already typing somewhere) jumps straight to
-// search, the way GitHub and Slack do - skipped while any text field, including
-// the search box itself, has focus so a literal "/" can still be typed.
 export function onSlash(open) {
   document.addEventListener('keydown', e => {
     if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {

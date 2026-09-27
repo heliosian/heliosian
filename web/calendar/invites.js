@@ -28,11 +28,8 @@ export async function fetchInvites(e) {
       return null;
     }
     const view = await res.json();
-    // An admin hosts an event the school's calendars bring only with Super
-    // Admin Mode on; off, the page is theirs as any guest's.
     if (view.adminHost && !isAdmin()) {
       view.host = false;
-      // A list kept to the hosts is not a guest's to read either.
       if (view.listPrivate) {
         view.coming = null;
       }
@@ -376,8 +373,6 @@ export function comingCard(e, view, refresh) {
   if (view.mayInvite && !view.host && view.sent) {
     head.append(button('Invite people', 'plus', 'button button-secondary button-small', () => openPicker(e, view, refresh)));
   }
-  // An event the school's calendars bring keeps who is coming to its hosts
-  // until they open it to everyone; every other event's list is public.
   const imported = e.source === 'google' || e.source === 'pdf';
   if (view.host && imported) {
     const open = !view.listPrivate;
@@ -603,12 +598,7 @@ export function hostsRow(e, view, refresh) {
     }
     tile.title = [h.name, h.line].filter(Boolean).join(' \u00b7 ');
     tile.append(face(h, 'contact-photo'), el('span', 'contact-name', h.name || h.email));
-    // An × on each co-host, for the hosts to take them off, and on the
-    // viewer's own picture, to step down - whoever added the event too. A
-    // party's hosts and an HCA event's chairs step down on their own app.
     const own = h.email === self;
-    // An admin, with Super Admin Mode on, steps down whoever added the
-    // event, as they could themselves.
     const poster = !own && isAdmin() && h.email === view.poster;
     if (view.host && (own ? cohosts.has(self) || postedAndHosting(e) : cohosts.has(h.email) || poster)) {
       const x = el('button', 'hosts-card-remove');
@@ -648,7 +638,6 @@ export function hostsRow(e, view, refresh) {
     list.append(tile);
   }
   card.append(list);
-  // Add co-host, and beside it the switch that keeps this card to the hosts.
   if (view.host) {
     const tools = el('div', 'hosts-tools');
     tools.append(button('Add co-host', 'plus', 'link-button', () => openAddHost(e, view, refresh)));
@@ -774,9 +763,6 @@ function openEmailEdit(e, view, r, refresh) {
   input.value = r.email;
   field.append(el('span', '', 'Email address'), input);
   form.append(field);
-  // One of Celebrate's admins may move the address on every party at once -
-  // an alum's closed school account - tickets and guest lists alike, and it
-  // is remembered, so the old address typed in later lands on the new one.
   let everywhere = null;
   if (view.moveEverywhere) {
     everywhere = el('input');
@@ -1806,12 +1792,7 @@ export function settingsForm(e, view, refresh, shut, part = 'invitation') {
 
 export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
   const {eventForm} = await import('./eventform.js');
-  // A hand-added event's details are its poster's while they host it, and
-  // an admin's; a co-host has the invitation's tabs alone, as the server
-  // has it.
   const own = e.source === 'sheet' && (postedAndHosting(e) || isAdmin());
-  // An event the school's calendars bring is an admin's to correct, over
-  // the school's version, in the Overrides tab.
   const imported = (e.source === 'google' || e.source === 'pdf') && isAdmin();
   let shut = null;
   const box = el('div', 'editor');
@@ -1864,8 +1845,6 @@ export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
   } else {
     box.append(...Object.values(panels));
   }
-  // A hand-added event's hosts delete it before anyone is sent the
-  // invitation, and cancel it after - here, whatever its guest list holds.
   if (view && view.host && e.source === 'sheet' && !e.cancelled) {
     const foot = el('div', 'editor-danger');
     foot.append(view.sent

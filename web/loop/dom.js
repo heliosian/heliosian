@@ -1,6 +1,5 @@
 import {appOrigin} from '/toolbar.js';
 
-// whoLink is a person's page in Helios Who?, on the page's own tier.
 export function whoLink(email) {
   return appOrigin('who') + '/people/' + encodeURIComponent((email || '').split('@')[0]);
 }
@@ -107,8 +106,6 @@ export function thumb(person, className) {
   return el('div', 'thumb initial ' + (className || ''), (person.name || '?').slice(0, 1).toUpperCase());
 }
 
-// pageHead is the headline over the swoosh, as every app draws it, with
-// whatever actions belong beside it on the right.
 export function pageHead(title, actions) {
   const head = el('div', 'page-head');
   const main = el('div', 'page-head-main');
@@ -139,13 +136,6 @@ export async function copyText(text, message) {
   toast(message || 'Copied');
 }
 
-// personRow is one person as the member and manager lists show them: face,
-// name linking to their page in Who? - plain for someone outside the
-// directory, who has none - the word that places them, and a note under
-// those when there is one - on a member, why they are on the group.
-// A row with nothing else on it is the link to the person in Who?, whole
-// (not for someone outside); one carrying a control keeps the link on the
-// name alone.
 export function personRow(person, extra, note) {
   const whole = !extra && !person.outside;
   const row = el(whole ? 'a' : 'div', 'person-row' + (whole ? ' person-row-link' : ''));

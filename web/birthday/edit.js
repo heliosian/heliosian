@@ -41,9 +41,6 @@ export function unassign(sv) {
   return act('DELETE', '/api/birthday/assign', {email: sv.email});
 }
 
-// openAssign offers the birthday team - the viewer first, then whoever else has
-// someone assigned - with the current assignee kept on the list even when they
-// have nobody else.
 export function openAssign(sv) {
   const people = team();
   if (sv.assignedTo && !people.some(p => p.email === sv.assignedTo)) {
@@ -63,8 +60,6 @@ export function markContacted(sv, contacted) {
   return act('POST', '/api/birthday/outreach', {email: sv.email, contacted}, contacted ? 'Marked as contacted' : 'Outreach reopened');
 }
 
-// markAllUsed marks every donation given as carried by the newsletter, one
-// after another, then says how many.
 export async function markAllUsed(list) {
   let n = 0;
   try {
@@ -80,15 +75,10 @@ export async function markAllUsed(list) {
   }
 }
 
-// toShare is who an issue would copy to the shared sheet: everyone it
-// carries, No Newsletter too, not yet marked done.
 export function toShare(date) {
   return state.model.staff.filter(sv => sv.newsletterDate === date && sv.level !== 'Skip' && !(sv.donation && sv.donation.usedOn));
 }
 
-// shareIssue runs the Thursday night export by hand: the issue's birthdays to
-// the Staff Birthday List (Shared), each then marked done, the default
-// charity recorded for anyone without one.
 export async function shareIssue(date) {
   const list = toShare(date);
   const bare = list.filter(sv => !sv.donation).length;
@@ -136,15 +126,11 @@ export function openDonation(sv) {
   const add = el('div', 'field-note');
   const addLink = el('button', 'link-button', 'Not on the list? Add a charity.');
   addLink.type = 'button';
-  // The charity form opens over this one; saving it brings this one back with
-  // the new charity picked.
   addLink.addEventListener('click', () => openCharity(null, {afterSave: name => {
     fillSelect(pick, charityOptions(name), name);
     showBlurb();
   }}));
   add.append(addLink);
-  // The charity's own sentence, above the note, so the person can see what
-  // the newsletter already says and write the staff member's reason to it.
   const blurb = el('div', 'charity-blurb');
   const showBlurb = () => {
     const c = charity(pick.value);
@@ -238,8 +224,6 @@ export function removeNote(note) {
   return act('DELETE', '/api/birthday/note', note);
 }
 
-// describeCharity asks the server what Claude finds: where to donate and the
-// newsletter's sentence.
 async function describeCharity(name, donationLink) {
   const res = await fetch('/api/birthday/charity/describe', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, donationLink})});
   if (!res.ok) {
@@ -248,15 +232,10 @@ async function describeCharity(name, donationLink) {
   return res.json();
 }
 
-// openCharity is the charity form, whole: the name, then Generate with
-// Claude, which finds where to donate and writes the sentence into the
-// fields below for reading over, or the fields typed by hand.
 export function openCharity(c, options) {
   openCharityForm(c, {}, options);
 }
 
-// openCharityForm is the full form, for an existing charity or a new one
-// whose fields start as given.
 function openCharityForm(c, start, options) {
   const admin = isAdmin();
   const name = text(c ? c.name : start.name || '', {required: true, maxLength: 120});
@@ -269,10 +248,6 @@ function openCharityForm(c, start, options) {
   allowed.input.addEventListener('change', () => {
     whyField.hidden = allowed.input.checked;
   });
-  // Generate with Claude looks the charity up by its name and fills the link
-  // and the sentence below, for reading over; from the link too, when one is
-  // typed. A field that already says something different is not overwritten:
-  // the two are shown side by side to choose between.
   const suggestRow = el('div', 'suggest-row');
   const compares = [];
   const offer = (input, found, label) => {
@@ -373,8 +348,6 @@ export function addNextWeek(after) {
   return act('POST', '/api/birthday/newsletter-date', {date: dateCell(next)}, `Added ${longDate(dateCell(next))}`);
 }
 
-// openCreateNewsletterDates lays out a weekly run of issues: a weekday, from
-// a date to a final one, skipping any already listed.
 export function openCreateNewsletterDates() {
   const dates = state.model.newsletterDates;
   const last = dates.length ? parseDate(dates[dates.length - 1]) : null;
@@ -399,7 +372,6 @@ export function openCreateNewsletterDates() {
   });
 }
 
-// clearFutureNewsletterDates removes every issue from today on, after a word.
 export function clearFutureNewsletterDates(count) {
   if (!confirm(`Remove the ${count} newsletter ${count === 1 ? 'date' : 'dates'} from today on? The ones already out stay.`)) {
     return;
@@ -414,10 +386,6 @@ export function removeNewsletterDate(date) {
   return act('DELETE', '/api/birthday/newsletter-date', {date});
 }
 
-// Someone who is not on the birthday team is asked, whenever the app opens
-// for them, whether they want to be. Yes puts them on it as a volunteer and
-// opens the app to them on their Heliosian home; No sends them back to the
-// Heliosian home. Admins run the app without being asked.
 export function offerTeam() {
   const email = me().email;
   if (isSystemAdmin() || state.model.team.some(m => m.email === email)) {

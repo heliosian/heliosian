@@ -36,10 +36,8 @@ const paths = {
   down: 'M6 9l6 6 6-6',
   grip: 'M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01',
   star: 'M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z',
-  // The pushpin on the default calendar.
   chat: 'M21 12a8 8 0 0 1-11.6 7.2L4 21l1.8-4.4A8 8 0 1 1 21 12z',
   pushpin: 'M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6zM12 14v7',
-  // The rule editor's marks (rules.js), as Loop draws them.
   groups: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
   'user-minus': 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 11h-6',
   families: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
@@ -121,8 +119,6 @@ export function avatar(person, className) {
 
 let toastTimer;
 
-// toast shows a line at the foot of the page for a moment - longer, given
-// a duration, for a line worth reading twice.
 export function toast(message, duration = 2600) {
   const node = document.querySelector('#toast');
   node.textContent = message;
@@ -140,12 +136,6 @@ export async function copyText(text, message) {
 
 const urlForm = /https?:\/\/[^\s<>"']+/g;
 
-// paragraphs renders sheet text with its blank-line breaks kept and every
-// web address made a link, since a Zoom link is the point of some.
-// With lines, every line is a paragraph of its own - the way the school's
-// calendar writes an event's description, a paragraph to a line with no
-// blank line between - save a list item (a line starting -, •, * or 1.),
-// which stays tight under the line before it.
 const listItem = /^\s*([-•*]|\d+[.)])\s/;
 
 export function paragraphs(text, className, {lines = false} = {}) {
@@ -190,9 +180,6 @@ export function paragraphs(text, className, {lines = false} = {}) {
   return wrap;
 }
 
-// peopleLine is the household's part in an event on one line behind one
-// icon: the names in order with a dot between each, and a note - a role, a
-// waitlist place, a guest still to be named - in parentheses after its name.
 export function peopleLine(list, icon) {
   const line = el('div', 'side-people');
   line.append(svg(icon));
@@ -210,10 +197,6 @@ export function peopleLine(list, icon) {
   return line;
 }
 
-// peopleList is the household's part in an event as a list, one block per
-// person behind the icon - the name, and under it each of their roles, or
-// the ticket's note - for where there is room, as the event page's side
-// has. Someone with two roles is listed once, both roles under them.
 export function peopleList(list, icon) {
   const byName = new Map();
   for (const p of list) {
@@ -242,11 +225,6 @@ export function peopleList(list, icon) {
   return rows;
 }
 
-// feedMark is a saved calendar's mark: the emoji its owner gave it, else
-// the calendar icon - or, where the calendar is the page's headline, When's
-// own symbol, the designer's white outline drawn through a mask so it takes
-// the colour of the words beside it. The rail's rows under Calendar and the
-// switch menu keep the plain icon, so only the top wears the symbol.
 export function feedMark(f, symbol) {
   if (f.emoji) {
     return el('span', 'feed-mark', f.emoji);
@@ -261,14 +239,8 @@ export function feedMark(f, symbol) {
   return mark;
 }
 
-// feedEmoji are the usual marks for a saved calendar, offered beside the
-// field that takes any.
 const feedEmoji = ['\ud83d\udcc5', '\ud83c\udfeb', '\ud83c\udf92', '\ud83d\ude8c', '\u26bd', '\ud83c\udfad', '\ud83c\udf89', '\ud83c\udfd5\ufe0f', '\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67', '\ud83c\udf1f', '\u2764\ufe0f', '\ud83d\udcda'];
 
-// emojiPicker is the field for a saved calendar's mark: a small input to
-// type any emoji into, the usual ones to pick, None for the calendar icon,
-// and under them the whole library - every emoji by group, searched by its
-// Unicode name, loaded from /emoji.json the first time. Returns {node, input}.
 let emojiLibrary = null;
 
 export function emojiPicker(value) {

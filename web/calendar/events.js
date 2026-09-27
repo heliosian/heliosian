@@ -2,8 +2,6 @@ import {eventPath, timeColumn, whenLine, timeRange, audienceWords, categoryTags,
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg} from './dom.js';
 
-// audienceChips are the event page's full account of who an event is for
-// and what it is; the lists carry colors instead.
 export function audienceChips(e) {
   const wrap = el('div', 'chips');
   for (const word of audienceWords(e)) {
@@ -15,8 +13,6 @@ export function audienceChips(e) {
   return wrap;
 }
 
-// roomDots are who an event is for as the classroom colors: one dot per
-// color, named on hover, a plain one when it is everyone's.
 export function roomDots(e) {
   const wrap = el('span', 'room-dots');
   const entries = eventColors(e);
@@ -37,10 +33,6 @@ export function roomDots(e) {
   return wrap;
 }
 
-// eventRow is one event in a day's list: its hours, the title, the place,
-// and the classroom colors at the end and down its left edge. opts.date is
-// the day the row sits under, for what that day sees of hours that run
-// across days; opts.showDate writes the date in front of the hours instead.
 export function eventRow(e, opts = {}) {
   const row = link(eventPath(e), 'event-row');
   const first = eventColors(e)[0];
@@ -50,7 +42,6 @@ export function eventRow(e, opts = {}) {
   row.append(el('span', 'event-time', opts.showDate ? whenLine(e) : timeColumn(e, opts.date)));
   const body = el('span', 'event-body');
   const title = el('span', 'event-title', e.title);
-  // A star on an event the viewer hosts.
   if (e.hosted) {
     const star = svg('star');
     star.classList.add('host-star');
@@ -68,10 +59,6 @@ export function eventRow(e, opts = {}) {
   return row;
 }
 
-// callPill sits in a linked event's row and goes straight to its page on
-// the app that runs it - where the tickets or the sign-up are - without
-// opening the event here first; one the household is already in wears its
-// standing instead.
 export function callPill(e) {
   const open = e.availability === 'available' || e.availability === 'open';
   const pill = el('span', 'event-pill' + (e.mine ? ' is-mine' : open ? ' is-open' : ''), e.call);
@@ -83,9 +70,6 @@ export function callPill(e) {
   return pill;
 }
 
-// dayWords say what kind of day it is for the selected classrooms, when it
-// is not simply regular, as colored words: "Early Dismissal", or "Early
-// Dismissal · Hummingbirds" when only some of them.
 export function dayWords(date) {
   const wrap = el('span', 'day-words');
   const all = selectedClassrooms();
@@ -110,8 +94,6 @@ export function dayHeading(date, withDayWords) {
   return head;
 }
 
-// blockIcons are the four parts of a school day as pictures: a car at the
-// curb twice, the school, and the people who stay after.
 const blockIcons = {Dropoff: 'car', School: 'school', Pickup: 'car', Aftercare: 'people'};
 
 export function blocks(type) {
@@ -123,8 +105,6 @@ export function blocks(type) {
     icon.append(svg(blockIcons[name]));
     const body = el('span', 'block-body');
     body.append(el('span', 'block-name', name));
-    // The hours stand alone in their block, so the figure space that lines
-    // up a column of them elsewhere would only read as an indent here.
     body.append(el('span', 'block-hours', block ? timeRange(block.start, block.end).trimStart() : '—'));
     cell.append(icon, body);
     strip.append(cell);
@@ -132,8 +112,6 @@ export function blocks(type) {
   return strip;
 }
 
-// planCards are the day plan for the selected classrooms: one card per day
-// type in force, naming the classrooms it covers when they are not all.
 export function planCards(date, groups = plan(date)) {
   const wrap = el('div', 'plan-cards');
   const all = selectedClassrooms();

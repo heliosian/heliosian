@@ -21,7 +21,6 @@ const paths = {
   star: 'M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z',
   chat: 'M21 12a8 8 0 0 1-11.6 7.2L4 21l1.8-4.4A8 8 0 1 1 21 12z',
   plus: 'M12 5v14M5 12h14',
-  // The rule editor's marks (rules.js), as Loop draws them.
   groups: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
   'user-minus': 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 11h-6',
   trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
@@ -39,9 +38,6 @@ const paths = {
   chevron: 'm9 6 6 6-6 6',
   arrow: 'M5 12h14M13 6l6 6-6 6',
   family: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM17 10a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1M15.5 14H16a4 4 0 0 1 4 4v2',
-  // The marks a category can go by (categoryIcons), drawn in one line
-  // like the rest: Heliosian's own petals and sun, a pushpin, a link, a
-  // map pin, and the everyday things a section holds.
   heliosian: 'M6 3h3a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM15 3h3a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3h-3a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM6 12h3a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-3a3 3 0 0 1 3-3zM15 12h3a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3h-3a3 3 0 0 1-3-3v-3a3 3 0 0 1 3-3zM12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7z',
   pin: 'M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6zM12 14v7',
   link: 'M10 14a4.5 4.5 0 0 0 6.4 0l2.2-2.2a4.5 4.5 0 0 0-6.4-6.4l-1.1 1.1M14 10a4.5 4.5 0 0 0-6.4 0l-2.2 2.2a4.5 4.5 0 0 0 6.4 6.4l1.1-1.1',
@@ -61,12 +57,8 @@ const paths = {
   hand: 'M8 13V5a1.5 1.5 0 0 1 3 0v6M11 11V4a1.5 1.5 0 0 1 3 0v7M14 11V5.5a1.5 1.5 0 0 1 3 0V13M17 12a1.5 1.5 0 0 1 3 1v2a6 6 0 0 1-6 6h-2a6 6 0 0 1-5-2.7L4 14a1.5 1.5 0 0 1 2.4-1.8L8 14',
 };
 
-// maskedIcons are the marks drawn from a picture rather than a path
-// (web/home/brand/symbol-<name>.png, and style.css's .icon-<name>).
 const maskedIcons = ['heliosian', 'when'];
 
-// categoryIcons are the marks the category editor offers, in the order it
-// shows them, each with the words under it.
 export const categoryIcons = [
   ['heliosian', 'Heliosian'], ['when', 'When'], ['pin', 'Pin'], ['link', 'Link'], ['calendar', 'Event'], ['chat', 'Chat'],
   ['school', 'School'], ['volunteer', 'People'], ['family', 'Family'], ['star', 'Star'], ['heart', 'Heart'],
@@ -75,9 +67,6 @@ export const categoryIcons = [
   ['bulb', 'Idea'], ['megaphone', 'News'], ['hand', 'Help'], ['home', 'Home'], ['section', 'Grid'],
 ];
 
-// iconOf reads a category's mark: "icon:<name>" in the sheet's Emoji cell
-// names one of the marks above; anything else (an emoji from before) is
-// read as none, and the mark comes off the title instead.
 export function iconOf(category) {
   const value = category.emoji || '';
   if (value.startsWith('icon:') && (paths[value.slice(5)] || maskedIcons.includes(value.slice(5)))) {
@@ -86,9 +75,6 @@ export function iconOf(category) {
   return categoryIcon(category.title);
 }
 
-// The glyph a category goes by, in the rail and at the head of its section:
-// read off its title, since the sheet's image is a picture rather than an
-// outline - a school building, a calendar, a chat bubble, else a plain grid.
 export function categoryIcon(title) {
   const t = title.toLowerCase();
   if (/school|class|campus/.test(t)) {
@@ -104,9 +90,6 @@ export function categoryIcon(title) {
 }
 
 export function svg(name) {
-  // The apps' own marks are the designer's white outlines (each app's
-  // symbol_white export), drawn through a mask so they take the text
-  // colour like the rest.
   if (maskedIcons.includes(name)) {
     const node = document.createElement('span');
     node.className = 'icon-mask icon-' + name;

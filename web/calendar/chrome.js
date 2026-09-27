@@ -69,8 +69,6 @@ export function editFeedPopup(f) {
   submit.type = 'submit';
   submit.append(svg('check'), el('span', '', 'Save'));
   const {shut} = popup('Edit calendar', form);
-  // Delete, at the row's far end, takes the calendar and its feed away -
-  // not My Heliosian's, which everyone keeps.
   const remove = f.locked ? el('span', 'modal-delete modal-locked', '\ud83d\udd12 Everyone keeps this one') : button('Delete calendar', 'trash', 'link-button danger modal-delete', async () => {
     if (!confirm(`Delete ${f.name}? A calendar app subscribed to its feed stops updating.`)) {
       return;
@@ -86,8 +84,6 @@ export function editFeedPopup(f) {
     await load();
   });
   actions.append(submit, button('Cancel', '', 'button button-secondary', shut), status, remove);
-  // Make default moves it to the head of the rail: the calendar the page
-  // opens to, and Heliosian reads.
   if (defaultFeed().token !== f.token) {
     const first = button('Make default', 'pushpin', 'button button-secondary modal-default', async () => {
       shut();
@@ -124,8 +120,6 @@ export function editFeedPopup(f) {
   name.select();
 }
 
-// makeDefaultFeed makes one calendar - a saved one, or My Heliosian - the
-// viewer's default, and reloads.
 export async function makeDefaultFeed(f) {
   const res = await fetch('/api/calendar/default', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: f.token})});
   if (!res.ok) {
@@ -137,8 +131,6 @@ export async function makeDefaultFeed(f) {
   await load();
 }
 
-// orderFeeds puts the viewer's saved calendars in the order the tokens
-// give and reloads; the first is their default calendar.
 async function orderFeeds(tokens) {
   const res = await fetch('/api/calendar/feeds/order', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tokens})});
   if (!res.ok) {
@@ -150,9 +142,6 @@ async function orderFeeds(tokens) {
   return true;
 }
 
-// calendarMenu is a dropdown of the viewer's calendars - My Heliosian and
-// the saved ones, the default pinned - each opening the calendar as it
-// sees it; the headline drops it, so a phone without the rail can switch.
 export function calendarMenu(onPick) {
   const menu = el('div', 'calendar-menu');
   const chosen = defaultFeed();
@@ -217,8 +206,6 @@ function fillNav(nav) {
     }
     let dragging = null;
     if (editingNav && !nav.dataset.dropReady) {
-      // The gaps between rows and the nav's own ground take a drop too, so
-      // letting go there is not a cancelled drag.
       nav.dataset.dropReady = '1';
       nav.addEventListener('dragover', e => {
         if (nav.querySelector('.is-dragging')) {
@@ -231,13 +218,9 @@ function fillNav(nav) {
     const working = activeFeed();
     const all = allCalendars();
     for (const f of all) {
-      // My Heliosian drags and renames like the rest; only its filters are
-      // locked and it cannot be removed.
       const row = el('div', 'nav-sub-row' + (editingNav ? ' is-draggable' : '') + (f.locked ? ' is-locked' : ''));
       row.dataset.token = f.token;
       if (editingNav) {
-        // Rows drag into a new order; the drop saves it, the first being
-        // the default calendar.
         row.draggable = true;
         row.addEventListener('dragstart', e => {
           dragging = row;
@@ -245,9 +228,6 @@ function fillNav(nav) {
           e.dataTransfer.effectAllowed = 'move';
           e.dataTransfer.setData('text/plain', f.token);
         });
-        // The rows shuffle as the pointer passes over them; the drop is
-        // allowed everywhere so the browser fires dragend either way, and
-        // dragend saves whatever order the rows are in then.
         row.addEventListener('dragover', e => {
           if (!dragging) {
             return;
@@ -271,15 +251,10 @@ function fillNav(nav) {
           }
         });
       }
-      // Lit while the filters are its own; softer while the viewer is
-      // working from it with the filters moved.
       const a = el('a', 'nav-sub' + (active('/') && showsFeed(f) ? ' is-active' : active('/') && working && working.token === f.token ? ' is-working' : ''));
       a.href = '/c/' + f.token;
       a.append(feedMark(f), el('span', '', f.name));
       a.title = f.locked ? 'The calendar\u2019s own view, for everyone' : 'Show the calendar as ' + f.name + ' sees it';
-      // The default calendar wears a pushpin at its end, My Heliosian a
-      // lock - always, so its standing shows wherever it sits; while the
-      // rail is being edited the lock is the tool where its cross would be.
       const marks = el('span', 'nav-sub-marks');
       if (f.token === chosen.token) {
         const star = el('span', 'nav-sub-star');
@@ -321,7 +296,6 @@ function fillNav(nav) {
         edit.addEventListener('click', () => editFeedPopup(f));
         row.append(edit);
         if (f.locked) {
-          // A lock where the cross would be: it cannot be removed.
           const lock = el('span', 'nav-sub-tool nav-sub-lock');
           lock.title = 'You can\u2019t modify this calendar, but you can create a new one based off of it.';
           lock.append(svg('lock'));
@@ -370,8 +344,6 @@ function chip(label, on, onClick, color) {
   return b;
 }
 
-// action is one of the pills after a row's label - All, Mine, None - the
-// same shape in every row, All first.
 function action(label, on, onClick) {
   const b = el('button', 'filter-action' + (on ? ' is-on' : ''), label);
   b.type = 'button';
@@ -379,7 +351,6 @@ function action(label, on, onClick) {
   return b;
 }
 
-// filterRow is one row of the filters: its label, its pills, then its chips.
 function filterRow(label, actions, chips) {
   const row = el('div', 'filter-row');
   row.append(el('span', 'filter-label', label));
@@ -424,8 +395,6 @@ function tagChips(tags) {
       refresh();
     });
     c.title = t.description;
-    // A tag that is off but hides things the search words find lights up,
-    // with how many.
     const hidden = on.includes(t.name) ? 0 : hiddenMatches(t.name);
     if (hidden) {
       c.classList.add('has-hidden');
@@ -435,11 +404,6 @@ function tagChips(tags) {
   });
 }
 
-// filterSummary is the one line the folded filters show: the classrooms
-// in view by name - "All classrooms" when every one is - then each
-// category line the same way, "All School day" for a whole line, its
-// chosen names otherwise, a line with none chosen left out. The line
-// ellipsizes where the window is narrow.
 function filterSummary() {
   const rooms = selectedClassrooms();
   const parts = [rooms.length === classroomNames().length ? 'All classrooms' : rooms.length ? classroomNames().filter(c => rooms.includes(c)).join(', ') : 'No classrooms'];
@@ -459,18 +423,8 @@ function filterSummary() {
   return parts.join(' · ') + saved;
 }
 
-// Whether the calendar page's filters are unfolded: folded on every visit,
-// open only while someone has opened them.
 let filtersUnfolded = false;
 
-// fillFilters draws the rows: the classrooms, band by band in their colors,
-// then the categories, one row per group the sheet files them under (the
-// ungrouped last, as plain Categories), each in alphabetical order and
-// headed by its label and its pills - All and None for that row alone -
-// with the way to reset everything at the end. Every change is remembered
-// and repaints. With opts.collapsible the rows sit under a head that folds
-// them away to one line, as on the calendar page; the drawer shows them
-// plain.
 export function fillFilters(wrap, opts = {}) {
   wrap.replaceChildren();
   const open = !opts.collapsible || filtersUnfolded;
@@ -512,8 +466,6 @@ export function fillFilters(wrap, opts = {}) {
     }));
   }
   rows.append(filterRow('Classrooms', roomActions, classroomChips()));
-  // pick keeps the tags in the sheet's order, and the default set is the
-  // default rather than a list of it.
   const pick = list => {
     const ordered = tagNames().filter(t => list.includes(t));
     setTags(ordered.join() === defaultTags().join() ? null : ordered);
@@ -536,10 +488,6 @@ export function fillFilters(wrap, opts = {}) {
     rows.append(last);
   }
   wrap.append(rows);
-  // Under the rows, the three sweeps: Select all turns every classroom and
-  // category on, Clear all turns every category off (the classrooms stay,
-  // since none at all shows nothing), and Reset filters returns to the
-  // defaults - each only while it would change something.
   const foot = el('div', 'filters-foot');
   const everything = selectedClassrooms().length === classroomNames().length && selectedTags().length === tagNames().length;
   if (!everything) {
@@ -555,9 +503,6 @@ export function fillFilters(wrap, opts = {}) {
       refresh();
     }));
   }
-  // Reset filters goes back to the saved calendar being worked from, and
-  // shows only while the filters have moved off it; with none, back to
-  // the calendar's own defaults.
   const working = activeFeed();
   if (working ? !showsFeed(working) : !filtersAreDefault()) {
     foot.append(button('Reset filters', null, 'button button-secondary button-small', () => {
@@ -570,8 +515,6 @@ export function fillFilters(wrap, opts = {}) {
       refresh();
     }));
   } else if (working && working.locked && savedView()) {
-    // A view saved earlier, before My Heliosian was locked, still stands
-    // in for the calendar's defaults until let go.
     foot.append(button('Forget my saved view', null, 'button button-secondary button-small', async () => {
       const res = await fetch('/api/calendar/settings', {method: 'DELETE'});
       if (!res.ok) {
@@ -720,8 +663,6 @@ function showResults(query) {
     }
     body.append(el('span', 'search-row-line', line.join(' · ')));
     row.append(el('span', 'search-row-bar'), when, body);
-    // The box keeps focus through a click on a row, so the list is still
-    // there for the click to land on.
     row.addEventListener('mousedown', e => e.preventDefault());
     row.addEventListener('click', closeResults);
     row.addEventListener('mouseenter', () => setActive(resultRows.indexOf(row)));

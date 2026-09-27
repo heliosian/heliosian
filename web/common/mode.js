@@ -1,21 +1,6 @@
-// Dark mode, the same across every app: the choice - light, dark, or the
-// device's setting - lives in a cookie on the parent domain, so it is one
-// choice for heliosian.com and every app under it, and each page applies
-// it before its stylesheet paints (web/public/common/theme.js, a plain
-// script in every shell's head, repeats the read, since this module loads
-// later). A dark page carries
-// data-theme="dark" on its root; light carries nothing. Quan mode is the
-// easter egg beside them (quan.css): found by typing "quan" on a page or
-// opening one with ?mode=quan, and offered in the menu only while it is
-// on - except to the super admins and anyone with "quan" in their address,
-// who always see the choice (offerQuan, which the toolbar calls once
-// sign-in says so). Nobody starts on it: Auto is everyone's default.
 const cookie = 'heliosian-mode';
 const modes = 'light|dark|system|quan';
 
-// The cookie sits on the root domain - heliosian.com - so heliosian.com,
-// who.heliosian.com and the local hosts under it all read one choice; a
-// bare host or an address gets no domain.
 export function domain() {
   const labels = location.hostname.split('.');
   if (labels.length < 2 || /^\d+$/.test(labels[labels.length - 1])) {
@@ -24,8 +9,6 @@ export function domain() {
   return '.' + labels.slice(-2).join('.');
 }
 
-// Where earlier builds left the cookie - on the host alone, and one label
-// up - which would shadow the root one; setMode clears those.
 function strays() {
   const labels = location.hostname.split('.');
   const places = [''];
@@ -61,18 +44,13 @@ export function applyMode() {
   }
 }
 
-// offered says the menu shows Quan as a choice in its own right.
 let offered = false;
 
-// offerQuan is for the people Quan mode is meant for: the choice joins the
-// menu for good; what they are on stays as it is.
 export function offerQuan() {
   offered = true;
   document.dispatchEvent(new CustomEvent('heliosian-mode'));
 }
 
-// The egg: the letters q-u-a-n typed in a row, anywhere but a field, turn
-// Quan mode on - or, when it is on, off again to the device's setting.
 let typed = '';
 document.addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) {
@@ -90,15 +68,12 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// The device's setting can change while a page is open.
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   if (readMode() === 'system') {
     applyMode();
   }
 });
 
-// modeRow is the user menu's row for it: three small choices, the current
-// one lit.
 export function modeRow() {
   const row = document.createElement('div');
   row.className = 'user-menu-mode';
@@ -120,8 +95,6 @@ export function modeRow() {
     buttons[mode] = b;
     group.append(b);
   }
-  // Quan's button shows while Quan is on - the way back, not the way in -
-  // and always for those it is offered to.
   const mark = () => {
     const current = readMode();
     for (const [mode, b] of Object.entries(buttons)) {

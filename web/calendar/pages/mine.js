@@ -2,13 +2,6 @@ import {myEvents, eventPath, eventImage, eventDates, parseDate, timeLine, answer
 import {el, link, svg} from '../dom.js';
 import {setTitle} from '/shell.js';
 
-// minePage is My Events: the viewer's own standing with what is coming
-// up, a group per standing as the rail names them - RSVP, the invitations
-// waiting for their reply; Attending, the yeses; Hosting - each event a card as
-// HCA-Team's and Celebrate's grids have them.
-//
-// The rail's three rows open one group each: /mine/rsvp, /mine/attending,
-// /mine/hosting.
 export function minePage(which) {
   const mine = myEvents();
   const all = [
@@ -23,20 +16,17 @@ export function minePage(which) {
   const head = el('div', 'page-head');
   const main = el('div', 'page-head-main');
   main.append(el('h1', 'page-title', one ? one[1] : 'My Events'));
-  // A single list's title says what it is; the whole page says what it holds.
   if (!one) {
     main.append(el('p', 'page-intro', 'The invitations waiting for your reply, the events you host, and the ones you said yes to. Each opens its page, where the RSVPs are.'));
   }
   head.append(main);
   page.append(head);
-  // The whole page shows only the groups with something in them.
   const shown = one ? [one] : all.filter(g => g[3].length);
   if (!shown.length) {
     page.append(el('p', 'mine-empty', 'Nothing coming up: no invitations waiting on you, nothing you said yes to, and nothing you host.'));
   }
   for (const [key, , label, events, empty] of shown) {
     const group = el('section', 'mine-group');
-    // A page of one group needs no heading over it.
     if (!one) {
       group.append(el('h2', 'mine-heading', events.length ? `${label} · ${events.length}` : label));
     }
@@ -56,10 +46,6 @@ export function minePage(which) {
 
 const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'short'});
 
-// eventCard is one event as a card: its picture with the tear-off date
-// stamp at the corner and a Hosting chip on the viewer's own, then the
-// title, the hours and the place, and a foot with what to do - RSVP for an
-// invitation waiting, Manage for one hosted, the answer for one attended.
 function eventCard(e, key) {
   const slot = el('div', 'mine-slot');
   const card = el('div', 'mine-card');

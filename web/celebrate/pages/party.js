@@ -10,23 +10,11 @@ import {openPhotoLightbox, openCropTool} from '/crop.js';
 import {dateCard, parseWhen} from '/datecard.js';
 import {addressSuggest} from '/address.js';
 
-// The page is laid out the way HCA-Team lays out an event: the wide banner
-// with the date stamp and the tools floating over it, then the words beside a
-// rail of facts, the flyer, and who to ask.
-
-// Which party is in edit mode, by id - as HCA-Team's event page has it: the
-// hero's pencil reveals every section's pencil, and becomes Done. Keyed
-// rather than a bare boolean so opening another party never inherits it.
 let editingId = null;
 
-// phone is the rail-less layout (style.css's breakpoint); crossing it lays the
-// page out again, since the facts card sits in a different place.
 const phone = window.matchMedia('(max-width: 900px)');
 phone.addEventListener('change', () => document.dispatchEvent(new CustomEvent('celebrate:refresh')));
 
-// heroStamp is the card floating over the banner - the date card every
-// app shares (datecard.js): the day's tile, the hours, the place, and
-// Add. A party with no date yet says so on a plain stamp instead.
 function heroStamp(p) {
   if (!parseWhen(p.start)) {
     const stamp = el('div', 'hero-stamp hero-stamp-text');
@@ -36,9 +24,6 @@ function heroStamp(p) {
   return dateCard(el, {start: p.start, end: p.end, location: p.location || '', add: partyCalendarLink(p)});
 }
 
-// heroTools are the round buttons at the banner's top-left: the pencil for
-// whoever runs the party (edit mode on and off) and the share. The picture
-// itself opens full size on a click.
 function heroTools(p, editing) {
   const tools = el('div', 'hero-actions');
   const tool = (icon, label, onClick) => {
@@ -55,8 +40,6 @@ function heroTools(p, editing) {
     toggle.classList.toggle('is-editing', editing);
     tools.append(toggle);
   }
-  // Share hands the link to the phone's share sheet, as HCA-Team does; where
-  // there is none it copies the link instead.
   tools.append(tool('share', 'Share this party', async () => {
     const url = location.origin + partyPath(p);
     if (navigator.share) {
@@ -64,7 +47,6 @@ function heroTools(p, editing) {
         await navigator.share({title: p.title, url});
         return;
       } catch {
-        // Dismissed or refused: fall through to the clipboard.
       }
     }
     copyText(url, 'Link copied');
@@ -72,9 +54,6 @@ function heroTools(p, editing) {
   return tools;
 }
 
-// heroImageBar is the strip across the foot of the banner while editing:
-// pick a file and it uploads and saves in one go, find one in the image
-// libraries, crop, or remove.
 function heroImageBar(p, save) {
   const bar = el('div', 'hero-image-bar');
   const file = el('input');
@@ -143,7 +122,6 @@ function heroImageBar(p, save) {
 
 function hero(p, editing, save) {
   const wrap = el('div', 'detail-hero');
-  // The banner itself opens full size on a click; there is no tool for it.
   const image = thumb(p.imageUrl, p.title, 'detail-hero-image');
   if (p.imageUrl) {
     image.classList.add('is-openable');
@@ -156,15 +134,12 @@ function hero(p, editing, save) {
   return wrap;
 }
 
-// withPencil puts a value and its pencil on one row, while editing.
 function withPencil(node, pencil) {
   const row = el('div', 'edit-row');
   row.append(node, pencil);
   return row;
 }
 
-// emptyPrompt is what an empty section shows in edit mode: an invitation
-// that opens the editor for it.
 function emptyPrompt(label, make, submit) {
   const b = el('button', 'edit-empty');
   b.type = 'button';
@@ -176,9 +151,6 @@ function emptyPrompt(label, make, submit) {
   return b;
 }
 
-// ticketWords is the headline of the ticket band, in the old site's voice.
-// A full party a family is already on says so rather than asking them to
-// join its waitlist.
 function ticketWords(p, mine) {
   switch (p.availability) {
     case 'available':
@@ -203,9 +175,6 @@ function ticketBand(p) {
   const mine = myTickets(p);
   const band = el('div', 'ticket-band avail-band-' + p.availability);
   band.append(el('h2', 'ticket-words', ticketWords(p, mine)));
-  // The family's own place on the waitlist sits in the band with the
-  // request as they made it - who asked, for how many, and their note -
-  // so the button to update it has something to update in view.
   for (const a of mine.filter(a => a.status !== 'Ticket')) {
     const row = el('div', 'ticket-mine');
     row.append(avatar(a, 'my-ticket-face'));
@@ -220,13 +189,7 @@ function ticketBand(p) {
   }
   const actions = el('div', 'ticket-actions');
   const selling = p.availability === 'available' || p.availability === 'waitlist';
-  // A family holding a ticket to a full party may still want more, so the
-  // way onto the waitlist stays; a family already waiting gets a way to
-  // change their request instead. A host's family is no different: a full
-  // party sells nothing more until a place is offered off the waitlist.
   const waiting = p.availability === 'waitlist' && mine.some(a => a.status !== 'Ticket');
-  // A student sees the party and who is coming; a parent takes the
-  // tickets and passes them on.
   if (isKid() && !p.canEdit) {
     if (selling && !mine.length) {
       actions.append(el('span', 'ticket-kid-note', 'Ask a parent to sign in to get tickets.'));
@@ -244,13 +207,6 @@ function ticketBand(p) {
   return band;
 }
 
-// myTicketsSection lists the household's own sold tickets under their own
-// heading, so a family's tickets don't read as part of the sales band
-// above - a sold-out party's band is all about the waitlist, and a ticket
-// the family holds is not. A place on the waitlist is not a ticket: it
-// stays in the waitlist below, in its turn, with its way out there. A sold
-// ticket stays sold - it is a fundraiser - so here a ticket can only be
-// passed on.
 function myTicketsSection(p) {
   const mine = myTickets(p).filter(a => a.status === 'Ticket');
   if (!mine.length) {
@@ -274,15 +230,10 @@ function myTicketsSection(p) {
   return section;
 }
 
-// swooshHeading is the section heading with the brand's yellow swipe under
-// it, as HCA-Team heads Volunteers.
 function swooshHeading(text) {
   return el('h2', 'section-swoosh', text);
 }
 
-// attendeeTile is one face on the Who's Coming grid: photo, name, and the
-// line that places them. A click opens the person's card; whoever runs the
-// party gets the ticket instead, since a host clicking a face wants that.
 function attendeeTile(p, a) {
   const tile = el('button', 'attendee' + (p.canEdit ? ' is-editable' : ''));
   tile.type = 'button';
@@ -301,9 +252,6 @@ function attendeeTile(p, a) {
   if (a.mine) {
     tile.append(el('div', 'attendee-mine', 'Your family'));
   }
-  // The hosts read each face's answer to the party's invitation on
-  // Helios When, once the invites have gone out; an admin reads them only
-  // with the hat on.
   if (a.rsvp && p.canEdit) {
     tile.append(el('div', 'attendee-rsvp is-' + a.rsvp, rsvpWords[a.rsvp] || a.rsvp));
   }
@@ -320,9 +268,6 @@ function attendeesSection(p) {
   if (p.canEdit) {
     const tools = el('div', 'section-tools');
     tools.append(button('Attendee contact info', 'mail', 'button button-secondary button-small', () => openContacts(p)));
-    // The invitation lives on Helios When: Create Invite starts the party's
-    // guest list there from the ticket holders; once the invites are out
-    // the same page is where the RSVPs are.
     if (p.availability !== 'past') {
       const invite = el('a', 'button button-small' + (p.started ? ' button-secondary' : ''));
       invite.href = invitePath(p);
@@ -351,7 +296,6 @@ function waitlistSection(p) {
   const section = el('section', 'attendees waitlist');
   section.append(el('h3', 'section-title', `Waitlist (${p.waitlisted.length})`));
   const list = el('div', 'wait-list');
-  // Each entry is a family's request: who asked, and for how many.
   p.waitlisted.forEach((a, i) => {
     const row = el('div', 'wait-row');
     row.append(el('span', 'wait-num', String(i + 1)), avatar(a, 'wait-face'));
@@ -360,7 +304,6 @@ function waitlistSection(p) {
     const n = a.quantity || 1;
     words.append(el('span', 'wait-line', `${n} ${n === 1 ? 'ticket' : 'tickets'}${a.line ? ` · ${a.line}` : ''}`));
     row.append(words);
-    // The family's own request is marked as their faces are on the grid.
     if (a.mine) {
       row.append(el('span', 'wait-mine', 'Your family'));
     }
@@ -376,9 +319,6 @@ function waitlistSection(p) {
   return section;
 }
 
-// callout is the party's need-to-know line in the tinted card HCA-Team uses
-// for an event's highlight, behind a megaphone and "Good to know" unless
-// the host has dressed it with their own emoji and title.
 function callout(p, editing, save) {
   const make = () => noteInputs(p);
   if (!p.needToKnow) {
@@ -395,8 +335,6 @@ function callout(p, editing, save) {
   return card;
 }
 
-// noteInputs is the callout's editor: the emoji and the title on one line,
-// the words under them.
 function noteInputs(p) {
   const emojiPick = emojiPicker(p.noteEmoji);
   const emoji = emojiPick.input;
@@ -414,7 +352,6 @@ function noteInputs(p) {
   };
 }
 
-// switchRow is one of the host's switches, saved the moment it is flipped.
 function switchRow(label, hint, on, onChange) {
   const row = el('div', 'host-switch');
   const words = el('div', 'host-switch-words');
@@ -429,8 +366,6 @@ function switchRow(label, hint, on, onChange) {
   return row;
 }
 
-// hostBand is the band whoever runs the party gets: the switches, Edit
-// Party, and for an admin the status.
 function hostBand(p) {
   const band = el('div', 'host-band');
   const head = el('div', 'host-band-head');
@@ -464,7 +399,6 @@ function hostBand(p) {
   return band;
 }
 
-// approvalButtons are Approve and Hide, the answer to a Pending party.
 function approvalButtons(actions, p) {
   actions.append(
     button('Approve', 'check', 'button', () => setPartyStatus(p, 'Open')),
@@ -472,8 +406,6 @@ function approvalButtons(actions, p) {
   );
 }
 
-// approvalBand is what an admin with the hat off gets on someone else's
-// Pending party: the approval alone. Editing it still takes the hat.
 function approvalBand(p) {
   const band = el('div', 'host-band');
   const head = el('div', 'host-band-head');
@@ -485,7 +417,6 @@ function approvalBand(p) {
   return band;
 }
 
-// The rail's cards, as HCA-Team draws them: an icon, a title, and lines.
 function sideCard(className) {
   return el('div', 'side-card ' + (className || ''));
 }
@@ -509,14 +440,9 @@ function sideRow(icon, title, ...lines) {
   return row;
 }
 
-// factsCard is the rail's facts: the street address, what a ticket costs,
-// and who hosts - the date and the place in words being on the banner's
-// card, with Add.
 function factsCard(p, editing, save) {
   const card = sideCard('facts-card');
   const when = whenParts(p);
-  // In edit mode each row grows a pencil; the row's own body is what the
-  // editor stands in for.
   const pencilFor = (row, label, make) => {
     if (!editing) {
       return row;
@@ -526,18 +452,12 @@ function factsCard(p, editing, save) {
     row.append(pencil);
     return row;
   };
-  // The date and hours are on the banner's card, with Add; the row is
-  // here while editing, where the date editor lives, and for a party
-  // with no date yet.
   if (editing || !when.longDay) {
     card.append(pencilFor(sideRow('calendar', 'Date & Time', when.longDay || 'Date to come', when.time || ''), 'Edit the date and time', () => {
       const w = whenInputs(p.start, p.end);
       return {input: w.input, value: w.value, validate: w.validate};
     }));
   }
-  // Where: the place in words is on the banner's card; the row is here
-  // for the street address - which only signed-in members ever see - with
-  // its map link, and while editing, where the place editor lives.
   if (p.address || (p.location && editing)) {
     let mapLink = null;
     let note = null;
@@ -579,8 +499,6 @@ function factsCard(p, editing, save) {
   } else {
     ticketLines.push(`${p.sold} sold · no limit`);
   }
-  // The minimum is the host's business - a line for whoever runs it, not a
-  // worry for guests.
   if (p.minimum && p.canEdit) {
     ticketLines.push(`Goes ahead with at least ${p.minimum} tickets sold`);
   }
@@ -597,11 +515,9 @@ function factsCard(p, editing, save) {
     }
     return {input: stack, value: () => ({price: Number(price.value || 0), unit: unit.value, capacity: Number(capacity.value || 0), minimum: Number(minimum.value || 0)})};
   }));
-  // The hosts: faces with names, the way the portal shows co-chairs.
   if (p.hostPeople.length || p.hosts) {
     const hostsRow = sideRow('people', p.hostPeople.length === 1 ? 'Host' : 'Hosts', p.hosts || '');
     const faces = el('div', 'side-chairs');
-    // Each face opens the host's card, as a co-chair's does in HCA-Team.
     for (const h of p.hostPeople) {
       const tile = el('button', 'side-chair');
       tile.type = 'button';
@@ -614,7 +530,6 @@ function factsCard(p, editing, save) {
       hostsRow.querySelector('.side-row-body').append(faces);
     }
     if (editing) {
-      // Who runs it is a list of people; the full editor's Hosts tab does that.
       const pencil = editPencil('Edit the hosts');
       pencil.addEventListener('click', () => openParty(p));
       hostsRow.append(pencil);
@@ -624,9 +539,6 @@ function factsCard(p, editing, save) {
   return card;
 }
 
-// flyerCard is the party's poster in the rail, under the facts: the whole
-// picture at the rail's width, a click to see it full size, and for whoever
-// runs the party a way to put one up or take it down.
 function flyerCard(p, editing) {
   if (!p.flyerUrl && !editing) {
     return null;
@@ -665,8 +577,6 @@ function flyerCard(p, editing) {
     });
     const upload = el('label', 'button button-secondary button-small');
     upload.append(svg('up'), el('span', '', p.flyer ? 'Replace' : 'Upload'), file);
-    // A flyer is a finished poster: it is uploaded whole, never found in a
-    // library or cropped.
     bar.append(upload);
     if (p.flyer) {
       bar.append(button('Remove', 'trash', 'button button-secondary button-small', () => savePartyFields(p, {flyer: ''})));
@@ -676,18 +586,10 @@ function flyerCard(p, editing) {
   return card;
 }
 
-// helpCard is who to ask: a mail to the hosts.
-// invitePath is the party's page on Helios When - with ?invite=1, which
-// starts the guest list there, while none exists yet.
 function invitePath(p) {
   return appOrigin('calendar') + '/e/celebrate/' + encodeURIComponent(p.id) + (p.started ? '' : '?invite=1');
 }
 
-// inviteCard is a host's own word in the rail, highlighted so it is not
-// missed: the invitation lives on Helios When. Before a guest list exists
-// it says how Create Invite starts one; with a list still to be sent, that
-// the invite is waiting there; once the invites are out, that the RSVPs
-// are there.
 function inviteCard(p) {
   if (!p.canEdit || p.availability === 'past') {
     return null;
@@ -735,7 +637,6 @@ export function partyPage(p) {
   const side = el('div', 'detail-side');
 
   const marks = el('div', 'detail-marks');
-  // The viewer's own party says so first, in the card's yellow.
   if (p.hosting) {
     marks.append(el('span', 'audience-chip hosting-chip', 'Hosting'));
   }
@@ -778,7 +679,6 @@ export function partyPage(p) {
   } else if (editing) {
     main.append(emptyPrompt('Add a subtitle', subtitleMake, save));
   }
-  // On a phone the facts come up under the title, where the rail would be.
   if (phone.matches) {
     const facts = factsCard(p, editing, save);
     facts.classList.add('facts-inline');

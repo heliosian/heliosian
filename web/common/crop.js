@@ -1,10 +1,3 @@
-// Cropping and the full-size view for a picture, ported from Helios Who?'s
-// photos.js so the apps handle one the same way; HCA-Team and Heliosian share
-// this copy (served from web/common/). The crop tool is freeform: a frame
-// dragged over the image, corners to resize, and Save hands the caller a JPEG
-// blob of what is inside it (at most 1600px a side). The styles it needs
-// (.crop-* and .photo-lightbox) live in each app's own stylesheet.
-
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) {
@@ -16,9 +9,6 @@ function el(tag, className, text) {
   return node;
 }
 
-// openPhotoLightbox shows the whole image over the page - the hero and card
-// crops can cut a picture awkwardly, and this is the way to see all of it.
-// Closes on click-anywhere or Esc.
 export function openPhotoLightbox(url) {
   const overlay = el('div', 'photo-lightbox');
   const img = el('img');
@@ -77,8 +67,6 @@ export function openCropTool(imageUrl, square, onSave) {
     }
   }
   overlay.addEventListener('click', e => {
-    // Only the dark backdrop closes on click - not the panel, stage, or frame,
-    // which all live inside it and need their own clicks/drags to work.
     if (e.target === overlay) {
       close();
     }
@@ -104,13 +92,6 @@ export function openCropTool(imageUrl, square, onSave) {
     maskRight.style.cssText = `top:${top}px; left:${left + width}px; right:0; height:${height}px`;
   }
 
-  // In square mode every call passes nextWidth === nextHeight (see the drag
-  // handlers below, which move both in lockstep) - but clamping each against
-  // its own axis independently would still let the frame outgrow whichever
-  // axis is shorter (the stage is rarely itself square) and stop being
-  // square, so both are first capped to the same shared bound before the
-  // per-axis clamp below, mirroring the single min(side, width, height) the
-  // old single-side version used.
   function setFrame(nextLeft, nextTop, nextWidth, nextHeight) {
     const stageRect = stage.getBoundingClientRect();
     if (square) {
@@ -142,9 +123,6 @@ export function openCropTool(imageUrl, square, onSave) {
     img.addEventListener('load', init);
   }
 
-  // Shared pointer-drag wiring for both moving the frame and resizing it from a
-  // corner handle - same pointerdown/pointermove/pointerup(+capture) pattern
-  // photoGrid's own drag-to-reorder already uses, for mobile/touch reliability.
   function drag(target, onMove) {
     target.addEventListener('pointerdown', e => {
       e.preventDefault();
@@ -184,10 +162,6 @@ export function openCropTool(imageUrl, square, onSave) {
     const corner = handle.dataset.corner;
     drag(handle, (dx, dy, startLeft, startTop, startWidth, startHeight) => {
       if (square) {
-        // A square frame must grow/shrink the same amount on both axes to stay
-        // square, so both corners being dragged move by one shared delta - the
-        // larger of the two axis deltas, so the frame always follows whichever
-        // direction the pointer moved furthest in.
         let delta;
         let nextLeft = startLeft;
         let nextTop = startTop;
@@ -207,8 +181,6 @@ export function openCropTool(imageUrl, square, onSave) {
         setFrame(nextLeft, nextTop, startWidth + delta, startHeight + delta);
         return;
       }
-      // Freeform: each corner drags its own two edges independently, with no
-      // coupling between width and height.
       let nextLeft = startLeft;
       let nextTop = startTop;
       let nextWidth = startWidth;

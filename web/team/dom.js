@@ -181,18 +181,9 @@ export async function copyText(text, message) {
   toast(message || 'Copied');
 }
 
-// whenEditor is the one editor for when a thing happens, shared by the event
-// page's inline pencil and the edit form: a start and an end, each clearable,
-// an all-day switch that puts the times away, and the free-text timing for
-// things without a date. Moving the start drags the end with it, so the length
-// of the thing stays put and only its position changes.
 export function whenEditor(start, end, timing, parent, layout) {
   const rows = layout === 'rows';
   const wrap = el('div', 'field-when' + (rows ? ' is-rows' : ''));
-  // Under a parent, the usual answer is "when the parent is": a switch at the
-  // top says so, and while it is on the pickers stay out of sight and the
-  // thing is saved with no dates of its own, so it follows the parent's even
-  // when those change. Switching it off starts from the parent's times.
   const own = el('div', 'field-when-own');
   let same = null;
   if (parent) {
@@ -209,8 +200,6 @@ export function whenEditor(start, end, timing, parent, layout) {
     const knob = el('span', 'switch');
     knob.append(same, el('span'));
     if (rows) {
-      // A tinted band: what the switch does on the left, the switch and the
-      // parent's own time on the right.
       const lead = el('span', 'field-when-same-lead');
       lead.append(el('span', '', 'Use the same date and time as the parent event'),
         el('small', '', 'Keep this activity in sync with the event it is part of.'));
@@ -246,7 +235,6 @@ export function whenEditor(start, end, timing, parent, layout) {
   const from = whenPickers('Starts', start, shiftEnd, 'No start time');
   const to = whenPickers('Ends', end, null, 'No end time');
   to.date.min = from.date.value;
-  // All day: the times are put away and cleared, so the dates stand alone.
   const allDay = el('label', 'field-when-allday');
   const allDayBox = el('input');
   allDayBox.type = 'checkbox';
@@ -268,8 +256,6 @@ export function whenEditor(start, end, timing, parent, layout) {
   timingInput.value = timing || '';
   timingInput.placeholder = 'All Year, Late February, A few times per year';
   if (rows) {
-    // Settings rows: each picker's label and a sentence on the left, the
-    // pickers and their clear control in one line on the right.
     const row = (label, hint, control) => {
       const r = el('div', 'setting-row');
       const t = el('div', 'setting-text');
@@ -283,7 +269,6 @@ export function whenEditor(start, end, timing, parent, layout) {
       return r;
     };
     for (const p of [from, to]) {
-      // The label moves to the row's left side; the clear control joins the pickers' line.
       const head = p.wrap.querySelector('.field-when-head');
       const clear = head.querySelector('.field-when-clear');
       p.wrap.querySelector('.field-when-pair').append(clear);

@@ -9,9 +9,6 @@ export function tagNames() {
   return Object.keys(tags).sort((a, b) => a.localeCompare(b));
 }
 
-// A tag shared with the user goes by "shared:<owner>:<name>" wherever a key
-// names a list - filterTags, members(), the sidebar - the owner's address
-// having no colon of its own, so the name is whatever follows the second.
 export function sharedKey(owner, name) {
   return `shared:${owner}:${name}`;
 }
@@ -28,13 +25,10 @@ export function sharedOf(key) {
   return shared[key];
 }
 
-// The people managing one of the user's own tags with them, if any.
 export function managersOf(name) {
   return tagManagers[name] || [];
 }
 
-// What to call a key of any kind - own tag, shared tag, Magic Tag - and
-// where its page is.
 export function tagLabel(key) {
   if (shared[key]) {
     return shared[key].name;
@@ -54,9 +48,6 @@ export function tagHref(key) {
 
 const listIcons = {party: 'party', activity: 'activity', room: 'classrooms', group: 'people'};
 
-// The Magic Tags on offer, by name. A group's list its manager has
-// archived in Loop stays off the rail and the filters, though its page
-// still opens from a link, since the list itself is still here.
 export function listKeys() {
   return Object.keys(lists).filter(key => !lists[key].archived).sort((a, b) => lists[a].name.localeCompare(lists[b].name));
 }
@@ -69,14 +60,6 @@ export function listIcon(key) {
   return listIcons[lists[key].kind];
 }
 
-// Where a Magic Tag's people come from - the party in Celebrate, the
-// activity in HCA-Team or the group in Helios Loop it mirrors - so the
-// list page can link back to the thing itself. A room parent's list is the
-// directory's own (its families are worked out here from the grades they
-// look after), so it has no page elsewhere to point at. The key's id is
-// what the source app's own /parties/{id}, /activities/{id} and
-// /groups/{name} resolve, redirecting on to the friendly address if the
-// thing has one.
 const listSources = {
   party: {app: 'celebrate', name: 'Celebrate', path: '/parties/', thing: 'party'},
   activity: {app: 'team', name: 'HCA-Team', path: '/activities/', thing: 'activity'},
@@ -92,8 +75,6 @@ export function listSource(key) {
   return {...source, href: appOrigin(source.app) + source.path + encodeURIComponent(id)};
 }
 
-// The app a Magic Tag comes from, for its mark in the sidebar: a party from
-// Celebrate, an activity from HCA-Team, a room parent's list from Who itself.
 export function listApp(key) {
   const kind = lists[key] && lists[key].kind;
   return kind === 'room' ? 'who' : listSources[kind] ? listSources[kind].app : 'who';
@@ -106,12 +87,6 @@ export function members(key) {
   return lists[key] ? lists[key].people : tags[key] || [];
 }
 
-// The guests of the one party or group list currently selected - a party's
-// ticket holders the directory has no record for, a group's people added by
-// hand - for the grids that show them after its directory people; none
-// while a grade, classroom or role filter narrows the list, since none of
-// those can say anything about a guest, and none with several tags
-// selected at once.
 export function selectedGuests() {
   if (state.filterTags.size !== 1 || state.filterGrades.size || state.filterClassrooms.size || state.filterRoles.size) {
     return [];
@@ -142,9 +117,6 @@ export function onTagsChangeChrome(fn) {
   chromeChanged = fn;
 }
 
-// Drops one of the user's own tags whole - everyone in it at once - as the
-// list page's Delete tag button does after they've confirmed. Smart lists
-// (lists) aren't the user's to delete and never come through here.
 export async function deleteTag(name) {
   const form = new FormData();
   form.append('tag', name);
@@ -159,7 +131,6 @@ export async function deleteTag(name) {
   return true;
 }
 
-// Gives one of the user's own tags a new name, its managers following.
 export async function renameTag(from, to) {
   const form = new FormData();
   form.append('tag', from);
@@ -180,8 +151,6 @@ export async function renameTag(from, to) {
   return true;
 }
 
-// Makes the user a new tag with the same people as one of their own, or as
-// one shared with them (given by its shared key) - the copy theirs alone.
 export async function copyTag(key, to) {
   const form = new FormData();
   if (shared[key]) {
@@ -202,18 +171,11 @@ export async function copyTag(key, to) {
   return true;
 }
 
-// Same set of tags as tagNames(), ordered most-recently-used first (falling
-// back to alphabetical for tags this browser has no usage record for, e.g.
-// after clearing localStorage or on another device) - this is the order the
-// tag picker's checkbox list shows, so the tags someone actually uses rise to
-// the top instead of sitting wherever the alphabet puts them.
 function tagNamesByRecency() {
   const usage = loadTagUsage();
   return tagNames().sort((a, b) => (usage[b] || 0) - (usage[a] || 0));
 }
 
-// Every key - own tags first, then tags shared with the user - that has
-// this person in it.
 export function tagsOf(email) {
   return [...tagNames().filter(name => tags[name].includes(email)), ...sharedKeys().filter(key => shared[key].people.includes(email))];
 }
@@ -222,10 +184,6 @@ function isTagged(email) {
   return tagsOf(email).length > 0;
 }
 
-// Tags or untags one person on a key of the user's own or shared with them
-// - a shared one names its owner to the server, which checks the user still
-// manages it. A shared tag that empties stays listed (its owner's rows are
-// theirs to drop), where an own tag that empties is gone.
 async function setTag(email, key, on) {
   const form = new FormData();
   form.append('person', email);
@@ -259,7 +217,6 @@ async function setTag(email, key, on) {
   }
 }
 
-// Lets someone else manage one of the user's own tags, or takes that back.
 export async function shareTag(name, manager, on) {
   const form = new FormData();
   form.append('tag', name);
@@ -283,14 +240,6 @@ export async function shareTag(name, manager, on) {
   return true;
 }
 
-// The Manage button on a tag's page: a small menu - Edit name, Duplicate,
-// Share, Delete tag on the user's own; Duplicate and Leave on one shared
-// with them - the tag's housekeeping kept together and
-// out of the row's way. Share swaps the menu for its own panel: who manages
-// the tag with the user, each with an x to take them off, and a search of
-// the whole directory to add one - a student too, for a team or club they
-// run themselves. onManagersChange runs after each such change, for the
-// page's line naming the managers.
 export function manageControl(key, onManagersChange) {
   const isShared = !!shared[key];
   const name = isShared ? shared[key].name : key;
@@ -463,7 +412,6 @@ export function manageControl(key, onManagersChange) {
   return wrap;
 }
 
-// Takes the user off a tag shared with them.
 export async function leaveTag(key) {
   const t = shared[key];
   const form = new FormData();
@@ -483,10 +431,6 @@ export async function leaveTag(key) {
 function tagMenu(email, onChange) {
   const menu = el('div', 'card-menu tag-menu');
   menu.hidden = true;
-  // render() rebuilds every checkbox from scratch on each toggle (simplest way to
-  // stay in sync with tagNamesByRecency() gaining/losing/reordering entries), which would otherwise
-  // drop keyboard focus back to nothing on every Space press - focusTag puts it
-  // back on the same tag's (new) checkbox so arrow keys/Space can keep going.
   menu.focusTag = name => {
     menu.querySelector(`.tag-option input[data-tag-name="${CSS.escape(name)}"]`)?.focus();
   };
@@ -515,8 +459,6 @@ function tagMenu(email, onChange) {
     for (const name of tagNamesByRecency()) {
       option(name, name, '');
     }
-    // Tags shared with the user come after their own, each saying whose it
-    // is, since a shared "Carpool" and an own "Carpool" are different lists.
     for (const key of sharedKeys()) {
       option(key, shared[key].name, `${firstName(shared[key].ownerName)}'s`);
     }
@@ -540,22 +482,14 @@ function tagMenu(email, onChange) {
     menu.append(form);
   };
   render();
-  // The menu lives inside the card's own <a>, so a plain click here would
-  // otherwise bubble up to (or, for a non-self-activating target like the
-  // "New tag" input, resolve straight to) the card's link and navigate to
-  // the profile page. Checkboxes and their labels already shield themselves
-  // from that - they're self-activating - and must keep working natively
-  // (preventDefault on them would cancel their own toggle too), so this only
-  // steps in for everything else in the menu.
+  // The menu sits inside the card's <a>; preventDefault on a checkbox would cancel
+  // its own toggle, so only other targets are kept from following the link.
   menu.addEventListener('click', e => {
     e.stopPropagation();
     if (!e.target.closest('.tag-option')) {
       e.preventDefault();
     }
   });
-  // Checkboxes only take Tab natively - Up/Down lets a keyboard user walk the
-  // list the same way the global search dropdown's results do, so reaching a
-  // tag to toggle off never requires the mouse.
   menu.addEventListener('keydown', e => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') {
       return;
@@ -573,11 +507,6 @@ function tagMenu(email, onChange) {
   return menu;
 }
 
-// The tag to quick-assign on a click: the last one used, but only if it's
-// still one of the user's actual current tags - a remembered name whose last
-// person got untagged is gone from tagNames() even though localStorage still
-// has it, and reapplying it would resurrect a tag the user no longer has.
-// With no current tags at all, "My List" is the starting point.
 function mostRecentTag() {
   const existing = [...tagNames(), ...sharedKeys()];
   if (!existing.length) {
@@ -605,33 +534,17 @@ export function tagControl(email, wrapClass, buttonClass, onChange) {
       return;
     }
     if (isTagged(email)) {
-      // Already has at least one tag - just show them to review or adjust,
-      // rather than guessing another one on top.
       menu.refreshTags();
       menu.querySelector('.tag-option input')?.focus();
       return;
     }
-    // Opening the dropdown for someone with no tags yet applies the user's
-    // most recently used tag first (creating "My List" the very first time),
-    // so tagging someone new is a single click in the common case; the
-    // dropdown that comes up right after still shows every tag as a checkbox
-    // to adjust or undo the guess.
     const tag = mostRecentTag();
     await setTag(email, tag, true);
     menu.refreshTags();
     button.classList.toggle('active', isTagged(email));
     onChange();
-    // Land keyboard focus straight on the tag that was just applied, so a
-    // keyboard user's very next keystroke - Space - undoes it without first
-    // hunting for it via Tab or the arrow keys.
     menu.focusTag(tag);
   });
-  // On a mouse-driven desktop, hovering the button previews the dropdown
-  // without the click handler's "apply my most recent tag" side effect -
-  // hover is just a look, a click is a commitment. The brief delay before
-  // hiding survives the small visual gap between the button and the menu
-  // below it, so crossing that gap doesn't flicker the menu shut. Skipped
-  // entirely on touch, where there's no hover state to preview with.
   if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
     let closeTimer = null;
     wrap.addEventListener('mouseenter', () => {

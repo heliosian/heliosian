@@ -10,9 +10,6 @@ import {fromCrumbs, breadcrumbs} from '../crumbs.js';
 import {resetMain, finishRender} from '../chrome.js';
 import {familyCard} from './family.js';
 
-// Light-tint pairing (pale background, solid text) matching role-label and
-// the family-card grade chips, instead of .tag-chip's flat neutral gray -
-// so a classroom/crew chip reads with that classroom's own admin color.
 function tintChip(chip, color) {
   if (color) {
     chip.style.background = `color-mix(in srgb, ${color} 20%, white)`;
@@ -65,17 +62,10 @@ export function renderPersonDetail(email) {
     personEdit = email;
   }
   const origin = fromCrumbs() || [['People', '/people']];
-  // Held rather than appended immediately - on mobile the crumb trail itself is
-  // hidden (see .crumbs), leaving just the tag button, which reads better below
-  // the alert cards and right above the profile than sandwiched between them.
   const crumbsRow = breadcrumbs([...origin, [p.fullName, null]], p.email);
 
   const editable = canEditPerson(p.email);
   const editing = editable && personEdit === p.email;
-  // The "update for the new year" nag (dashed outline + reminder text) is student-only,
-  // same as elsewhere. The camera icon is now only for bootstrapping someone with no
-  // photo at all - once they have at least one, the photo grid below (with its own
-  // "+" tile) is the only way to add more, so there's exactly one way to do it.
   const nagPhoto = editable && photoNeedsUpdate(p);
   const showPhotoEdit = editable && (p.photos || []).length === 0;
   const showFactsEdit = editing || (editable && factsNeedUpdate(p));
@@ -96,29 +86,17 @@ export function renderPersonDetail(email) {
   const grid = el('div', 'detail-grid');
   const left = el('div');
   const wrap = el('div', 'photo-wrap' + (nagPhoto ? ' needs-update' : ''));
-  // Shared between the hero's own photo menu and photoGrid below, so an action
-  // from either place reports success/error in the same spot.
   const status = el('div', 'media-status');
-  // Set by photoGrid below, if rendered, so tapping a grid tile to preview a
-  // different photo in the hero also redirects the hero's own menu to act on
-  // that photo instead of always the primary one - see the comment on
-  // photoMenu's getPhoto param.
   let onHeroPreview = null;
   const families = familiesOf(p);
   const family = families[0];
   if (p.photoUrl) {
-    // Person.Photos is `omitempty` in the JSON, so p.photos is undefined - not []
-    // - whenever nobody has ever uploaded a photo for this person; every other
-    // read of it already guards for that except the two below.
     const photos = p.photos || [];
     const img = el('img', 'detail-photo');
     img.src = p.photoUrl;
     img.alt = '';
     wrap.append(img);
     const initialHeroPhoto = photos.length ? photos[0] : {name: '', url: p.photoUrl, originalUrl: p.photoUrl};
-    // Reflects whichever photo the hero is currently showing, same as
-    // photoMenu's getPhoto - a preview swap (photoGrid's previewPhoto) can put a
-    // different photo on screen than the one the page rendered with.
     const updateCropBadge = photo => {
       wrap.querySelector('.photo-crop-badge')?.remove();
       if (photo.url !== photo.originalUrl) {
@@ -140,18 +118,12 @@ export function renderPersonDetail(email) {
       onHeroPreview = updateCropBadge;
     }
   } else if (family && family.photoUrl) {
-    // No uploaded photo of their own: fall back to the family photo rather than a
-    // colored-initials placeholder, since that's the more recognizable default for
-    // a parent (or a kid) whose own photo hasn't been added yet.
     const img = el('img', 'detail-photo');
     img.src = thumbUrl(family.photoUrl);
     img.alt = '';
     img.addEventListener('click', () => openPhotoLightbox(family.photoUrl));
     wrap.append(img);
   } else {
-    // No uploaded photo, own or family's: fall back to the same colored-initials
-    // shape the directory grid uses instead of an empty gray box, so a profile
-    // never looks broken.
     wrap.append(photoOrInitials(null, p.fullName, 'detail-photo detail-photo-empty'));
   }
   left.append(wrap);
@@ -174,9 +146,6 @@ export function renderPersonDetail(email) {
   const right = el('div');
   const topRow = el('div', 'detail-top');
   const role = baseRole(p);
-  // Staff has its own dedicated page; Student and Parent don't (Directory's
-  // role chips filter it in place instead of linking anywhere), so both land
-  // on Directory - still somewhere real and relevant, just not pre-filtered.
   const roleRow = el('a', 'role-label role-label-' + role.toLowerCase(), role);
   roleRow.href = withFrom(role === 'Staff' ? '/staff' : '/people');
   topRow.append(roleRow);
@@ -191,8 +160,6 @@ export function renderPersonDetail(email) {
     if (p.crew) {
       const crewChip = el('a', 'tag-chip', p.crew);
       crewChip.href = withFrom('/classrooms/' + slugify(p.classroom));
-      // Crews have no admin-configured color (unlike grades/classrooms), so
-      // this falls back to the same per-name hash color tags/departments use.
       tintChip(crewChip, paletteColor(p.crew));
       topRight.append(crewChip);
     }
@@ -370,9 +337,6 @@ export function renderPersonDetail(email) {
 
   main.append(content);
 
-  // One identical card per family - a kid in two households gets both side by
-  // side (stacking on narrow screens) rather than one buried below the other,
-  // so it reads as "these are the two households" instead of a repeat.
   if (families.length) {
     const wrap = el('div', 'container fcard-wrap' + (families.length > 1 ? ' fcard-wrap-multi' : ''));
     const row = el('div', 'fcard-columns');

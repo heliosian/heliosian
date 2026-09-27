@@ -5,27 +5,18 @@ import {setTitle} from '/shell.js';
 import {categoryClass} from '../cards.js';
 
 let month = null;
-// filter is the category chip chosen on this page: '' for all, 'mine' for
-// the viewer's own sign-ups, else a category id. It lasts the session.
 let filter = '';
 
 const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'long', year: 'numeric'});
 
-// shown follows the account menu's Show Hidden Things: open and done things
-// always, pending and hidden ones with it on to whoever may edit them.
 function shown(node) {
   return revealed(node);
 }
 
-// mine is a thing the viewer is on, as a volunteer or a chair.
 function mine(node) {
   return Boolean(mySignUp(node));
 }
 
-// entries lists every dated activity, root or child, one per day it spans. A
-// child that simply happens when its parent does - no time of its own, or
-// the same one - stays off the calendar, since the parent already stands for
-// it; unless the viewer is on it, which is what they came to see.
 function entries() {
   const out = [];
   const add = (node, isChild) => {
@@ -63,8 +54,6 @@ function entries() {
   return out;
 }
 
-// chipRow is the filter across the top: All, Mine, then one chip per
-// category with something dated this year, each in its own tint.
 function chipRow(onChange) {
   const row = el('div', 'chip-row calendar-chips');
   const paint = () => {
@@ -109,8 +98,6 @@ function grid() {
     const cell = el('div', 'day' + (day.getMonth() !== month.getMonth() ? ' other' : '') + (day.toDateString() === today ? ' today' : ''));
     cell.append(el('div', 'num', String(day.getDate())));
     for (const item of items.filter(e => e.key === day.toDateString())) {
-      // Coloured by the event's category; a thing under an event in the
-      // lighter tint; the viewer's own in yellow with a star.
       const cls = item.mine ? ' mine' : ' ' + categoryClass(item.category) + (item.isChild ? ' role' : '');
       const chip = link(item.href, 'chip' + cls, (item.mine ? '⭐ ' : '') + item.title);
       chip.title = item.title;

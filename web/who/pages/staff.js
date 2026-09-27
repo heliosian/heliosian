@@ -43,10 +43,6 @@ export function renderStaff(grid, autoFit) {
   return count;
 }
 
-// Department toggle chips for the Staff page, mirroring roleChips: an
-// exclusion set (state.staffDeptExcluded) so every department starts active,
-// with stale entries pruned whenever the set of departments actually present
-// among staff changes.
 function departmentChips(rerender) {
   const departments = state.model.departments || [];
   const present = new Set(state.model.people.filter(p => p.isStaff).map(p => p.department || 'Staff'));

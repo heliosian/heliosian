@@ -199,9 +199,6 @@ function privacyCard() {
     () => Object.fromEntries(Object.entries(links).map(([key, input]) => [key, input.value.trim()])));
 }
 
-// A select keeps the override it was given even when it is not among the
-// choices - a Crew override can stand with no Classroom override - so
-// loading and saving never quietly erases one.
 function fillSelect(select, values, current) {
   select.replaceChildren(new Option('— none —', ''));
   for (const value of current && !values.includes(current) ? [current, ...values] : values) {

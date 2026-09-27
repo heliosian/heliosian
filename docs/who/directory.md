@@ -62,7 +62,7 @@ The sidebar's Lists section holds the user's own tags and, under them, the lists
 ## Behaviors
 
 - Everything is cross-linked: parents ↔ kids ↔ families ↔ classrooms; any person reference navigates to that person.
-- Search is per-list and immediate; filters cover role, class, grade, city, pronouns, and new-to-Helios.
+- Search is per-list and immediate; filters cover role, class, grade, city, pronouns, and new-to-Helios. The grade and classroom filters read a student's own, a parent's children's, and none for staff - a teacher is not in the room they teach. The client's `personFacets` (`web/who/filters.js`) and the server's `who.Model.Facets` (`internal/who/facets.go`, which Loop's rules and Heliosian's audiences read through) must read alike; a change to one is a change to the other.
 - Tags file people under named groups — a person can be in several at once (soccer team, class party, carpool) — and feed the email list's My Tags tab and tag filter. A member's tags are private to them, until they name one in a rule on Loop, Heliosian or When, which discloses who it holds to whoever sees that thing (`docs/loop/loop.md`, A rule discloses the tags it names). Lists (above) sit beside them wherever tags are offered, except in a card's tag menu, since they cannot be changed.
 - Photos lazy-load; full-size view on click where the photo is the subject (family pages).
 - All data is community-only, behind sign-in; opt-out removes a person on request.

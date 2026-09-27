@@ -47,25 +47,16 @@ function peoplePicker(options) {
   return createPersonPicker(el('div'), {people, address: true, ...options});
 }
 
-// personInfo is the directory's row for an address, or null for someone it
-// does not know - a guest, or a family not yet imported.
 export async function personInfo(email) {
   const all = await people();
   return all.find(p => p.email === email) || null;
 }
 
-// whoProfile is a person's page on Helios Who?, on this tier: celebrate.x
-// pairs with who.x, and the page is named by the address's local part.
 export function whoProfile(email) {
   const host = location.host.replace(/^celebrate\./, 'who.');
   return `${location.protocol}//${host}/people/${encodeURIComponent((email || '').split('@')[0])}`;
 }
 
-// openPerson is the little window that opens from a face - a host's, or
-// someone who is coming - as HCA-Team opens one from a volunteer: the big
-// face, the name with pronouns and what places them, round buttons to email,
-// text, call or copy them, the contact rows and the household, and the way
-// through to their Helios Who? page.
 export async function openPerson(v) {
   const info = v.email ? await personInfo(v.email) : null;
   const done = el('button', 'button button-secondary', 'Done');
@@ -126,8 +117,6 @@ function personHead(v, info) {
   return head;
 }
 
-// personContact is the card's rows: how to reach them, then the household -
-// each name a chip that opens that person's own window.
 function personContact(v, info) {
   const card = el('div', 'who-rows');
   let group = null;
@@ -181,8 +170,6 @@ function personContact(v, info) {
   return card;
 }
 
-// personFoot is the band under the card: the way through to their Helios
-// Who? page for someone the directory knows, and Done.
 function personFoot(v, info, done) {
   const foot = el('div', 'who-foot');
   if (info) {
@@ -199,7 +186,6 @@ function personFoot(v, info, done) {
   return foot.children.length ? foot : el('div');
 }
 
-// personChip is one member of the household as a pick: face, name, a line.
 function personChip(person, on, disabledWhy) {
   const chip = el('button', 'person-chip' + (on ? ' is-on' : ''));
   chip.type = 'button';
@@ -217,14 +203,8 @@ function personChip(person, on, disabledWhy) {
   return chip;
 }
 
-// openBuy is the ticket form: who to bill, who is coming - the household
-// by face, with an Add someone button under them for a guest by name (or,
-// for whoever runs the party, anyone in the directory) - and a note.
 export function openBuy(p) {
   const editor = p.canEdit;
-  // A full party takes requests, not purchases: its own form, for whoever
-  // runs the party as much as anyone - a host's own family waits its turn
-  // too, and places open up through Offer on the waitlist.
   if (p.availability === 'waitlist') {
     openWaitlist(p);
     return;
@@ -234,13 +214,8 @@ export function openBuy(p) {
   const chosen = new Set();
   let purchaser = '';
   const bills = billable();
-  // People added through the popup: from the directory (email, name, face)
-  // or guests by name, with an address when one was given.
   const added = [];
 
-  // Who should we bill? An adult of the buyer's own family, nobody else -
-  // hosts included. Someone a host adds from outside the family pays their
-  // own way (a student through a parent).
   const billRow = el('div', 'chip-pick');
   const billField = field('Who should we bill?', billRow, 'Tickets are invoiced to an adult in your family.', true);
   const paintBill = () => {
@@ -262,8 +237,6 @@ export function openBuy(p) {
     fields.push(billField);
   }
 
-  // Who's coming? The household as chips to tap, then whoever was added,
-  // then the button that adds someone else.
   const who = el('div', 'chip-pick');
   const whoWrap = el('div');
   whoWrap.append(who);
@@ -319,9 +292,6 @@ export function openBuy(p) {
   note.placeholder = 'Anything the hosts should know (optional)';
   fields.push(field('Note', note));
 
-  // The tally: who the tickets are for, tickets × price, and whether they
-  // will be sold or waitlisted. On the waitlist there is no sum - only who
-  // is waiting, and who would be billed if a place comes up.
   const total = el('div', 'buy-total');
   const paintTotal = () => {
     const n = chosen.size + added.length;
@@ -379,10 +349,6 @@ export function openBuy(p) {
   });
 }
 
-// openWaitlist is the form for a full party: a request, not a purchase. It
-// is for the viewer's own family, asks how many tickets they want and for a
-// note, and bills nothing until a host offers the places. Asking again
-// changes the request.
 export function openWaitlist(p) {
   const bills = billable();
   const purchaser = bills.length ? bills[0].email : '';
@@ -410,16 +376,8 @@ export function openWaitlist(p) {
   });
 }
 
-// openAddSomeone is the popup behind Add someone: a guest by name, with an
-// address if they have one, or - for whoever runs the party - anyone in the
-// directory the party admits, behind a switch. It sits above the ticket form,
-// which keeps everything picked so far.
-// The emoji a callout is likely to want, offered in a grid behind the
-// field's caret; anything else can be typed in.
 const calloutEmoji = ['📣', '⚠️', 'ℹ️', '⭐', '🎉', '🎈', '🎁', '🍫', '🍕', '🍷', '🍸', '🧁', '🎂', '🎶', '🎮', '🏊', '🌧️', '☀️', '👟', '🧥', '🚗', '🅿️', '🐶', '🧒', '👨‍👩‍👧', '🔥', '💡', '❤️', '✅', '🕒'];
 
-// emojiPicker is the callout's emoji field: a small input to type into, with
-// a caret that drops a grid of the usual choices. Returns {wrap, input}.
 export function emojiPicker(value) {
   const input = text(value || '', {maxLength: 16, placeholder: '📣'});
   input.className = 'note-emoji-input';
@@ -445,8 +403,6 @@ export function emojiPicker(value) {
     e.stopPropagation();
     menu.hidden = !menu.hidden;
     if (!menu.hidden) {
-      // Up when the field sits low in its scrolling form, so the grid is
-      // not lost below the fold.
       const box = wrap.getBoundingClientRect();
       menu.classList.toggle('is-up', window.innerHeight - box.bottom < 280);
       document.addEventListener('click', () => {
@@ -459,9 +415,6 @@ export function emojiPicker(value) {
   return {wrap, input};
 }
 
-// guestWords says who a guest can be on this party, since the audience
-// rule cannot read a name: a child where only students come, an adult where
-// only adults do, anyone otherwise.
 function guestWords(p) {
   if (p.students && !p.adults) {
     return {lead: 'This party is for students, so a guest is a child who isn\u2019t in the directory - a cousin, a friend from another school.', label: 'Full name of the child', example: 'e.g., Percy Jackson'};
@@ -472,8 +425,6 @@ function guestWords(p) {
   return {lead: 'A guest is anyone who isn\u2019t in the directory - a visiting cousin, a non-Helios sibling, a friend.', label: 'Full name', example: 'e.g., Percy Jackson'};
 }
 
-// guestFields is the guest half of Add someone and Reassign: the lead that
-// says who a guest can be, the name, and an optional address.
 function guestFields(p, name, email) {
   const words = guestWords(p);
   return [
@@ -522,8 +473,6 @@ function openAddSomeone(p, editor, onAdd, opts = {}) {
 
   let directoryPanel = null;
   if (editor) {
-    // The search says who it is for - "a student" where only students may
-    // come - and offers only them.
     const kinds = [];
     if (p.adults) {
       kinds.push('an adult');
@@ -548,8 +497,6 @@ function openAddSomeone(p, editor, onAdd, opts = {}) {
     guestPanel.hidden = true;
     wrap.append(which.wrap);
   }
-  // Anything else the occasion asks sits above the person, since picking
-  // one from the directory - or Add guest - is what sends the form.
   if (opts.extra) {
     wrap.append(opts.extra);
   }
@@ -565,11 +512,6 @@ function openAddSomeone(p, editor, onAdd, opts = {}) {
   }
 }
 
-// openReassign moves a ticket to someone else - the family passing it to a
-// sibling or reselling it to another family, or a host doing the same for
-// them: a person from the directory the party admits, or a guest by name.
-// The ticket, its price, its place and who is billed all stay; only the
-// name changes - a resale is settled between the families themselves.
 export function openReassign(p, a) {
   const fields = [];
   fields.push(el('p', 'form-lead', `${a.name}'s ticket to ${p.title} goes to whoever you pick; ${a.name} comes off the list.`));
@@ -620,12 +562,6 @@ export function openReassign(p, a) {
   });
 }
 
-// openMoveAddress is an admin's fix for an address that no longer reaches
-// anyone - an alum's school account, closed after graduation: every ticket
-// and waitlist request on every party moves to the new one, so do the party
-// guest lists on Helios When, and an invitation already sent to the old one
-// goes again. Former Addresses in the sheet keeps the record, so the old
-// address typed in later lands on the new one.
 export function openMoveAddress(a, onDone) {
   const to = text('', {type: 'email', placeholder: 'percy.jackson@gmail.com', maxLength: 200});
   const name = text(a.name || '', {placeholder: 'Percy Jackson', maxLength: 120});
@@ -652,8 +588,6 @@ export function openMoveAddress(a, onDone) {
   });
 }
 
-// removeTicket takes a ticket off a party (a host) or a name off the
-// waitlist (the family too), after a word of confirmation.
 export async function removeTicket(p, a) {
   const what = a.status === 'Ticket' ? `Remove ${a.name}'s ticket to ${p.title}?` : `Take ${a.name} off the waitlist for ${p.title}?`;
   if (!confirm(what)) {
@@ -668,8 +602,6 @@ export async function removeTicket(p, a) {
   }
 }
 
-// offerTickets answers a waitlist request: the family gets the tickets it
-// asked for (a host may say fewer), and the request comes off the list.
 export async function offerTickets(p, a, quantity) {
   const n = quantity || a.quantity || 1;
   if (!confirm(`Offer ${a.name} ${n === 1 ? 'a ticket' : n + ' tickets'} to ${p.title}? They\u2019ll be billed and told by email.`)) {
@@ -684,18 +616,10 @@ export async function offerTickets(p, a, quantity) {
   }
 }
 
-// openFreeTicket is the host's gift: pick anyone the party admits, from the
-// directory or by name, and they hold a ticket at no charge - nothing lands
-// on an invoice, and the host is never refused for room.
 export function openFreeTicket(p) {
-  // Whose guest the ticket holder is: an adult from the directory, who
-  // holds the ticket for them - it shows under their family, is theirs to
-  // pass on, and the note goes to them. Left blank, the host themselves.
   const guestOf = peoplePicker({placeholder: 'Search for an adult\u2026', allow: person => !person.isStudent});
   const extra = el('div');
   extra.append(field('Guest of', guestOf.mount, 'Optional - who is bringing them. They get the note, and the ticket sits with their family to pass on. Blank means you.'));
-  // With a cap, the gift can come out of the paid places or be one more
-  // on top of them.
   const raise = p.capacity ? checkbox('Raise the capacity by one', true, `So this ticket takes none of the ${p.capacity} paid places.`) : null;
   if (raise) {
     extra.append(raise.wrap);
@@ -715,10 +639,6 @@ export function openFreeTicket(p) {
   }, {title: 'Add a free ticket', lead: 'A ticket at no charge - for a helper, a performer, a family you\u2019d like to treat. Nothing is billed.', extra});
 }
 
-// openTicket is a host's window on someone who is coming, as HCA-Team opens
-// a volunteer's for whoever runs the event: the person's head, then two tabs
-// - Contact, the same card everyone else gets, and Ticket, who bought it, the
-// note, the waitlist offer, and Reassign.
 export async function openTicket(p, a) {
   const info = a.email ? await personInfo(a.email) : null;
   const form = ticketForm(p, a);
@@ -729,9 +649,6 @@ export async function openTicket(p, a) {
   openModal('', [personHead(a, info), tabs], {...form, wide: 'person'});
 }
 
-// ticketForm is the Ticket tab's fields and the modal options that save
-// them. Where the invoice stands is the sheet's INVOICING tab's business,
-// shown in Admin Tools; nothing here touches it.
 function ticketForm(p, a) {
   const fields = [];
   const facts = el('div', 'ticket-facts');
@@ -751,7 +668,6 @@ function ticketForm(p, a) {
   fields.push(facts);
   const note = textarea(a.note || '', 2);
   fields.push(field('Note', note));
-  // A waitlist request: how many they asked for, and the offer.
   let quantity = null;
   if (a.status === 'Waitlist') {
     quantity = text(a.quantity || 1, {type: 'number', min: 1, step: 1});
@@ -766,8 +682,6 @@ function ticketForm(p, a) {
     }));
     fields.push(card);
   }
-  // Reassign: the ticket goes to someone else - a sibling, or another family
-  // it was resold to - and the old holder comes off.
   if (a.status === 'Ticket') {
     const card = el('div', 'appoint-card');
     const words = el('div', 'setting-text');
@@ -775,8 +689,6 @@ function ticketForm(p, a) {
     card.append(words, button('Reassign', 'people', 'button button-secondary button-small', () => openReassign(p, a)));
     fields.push(card);
   }
-  // Change address: an admin's, for a holder the directory does not know -
-  // most often an alum whose school address closed.
   if (isAdmin() && a.email && a.kind === 'Guest') {
     const card = el('div', 'appoint-card');
     const words = el('div', 'setting-text');
@@ -799,8 +711,6 @@ function ticketForm(p, a) {
   };
 }
 
-// hostChips is the list of a party's hosts by address, each removable, with a
-// picker to add another from the directory.
 function hostChips(initial) {
   const hosts = initial.map(h => ({...h}));
   const wrap = el('div');
@@ -836,8 +746,6 @@ function hostChips(initial) {
   return {wrap, value: () => hosts.map(h => h.email)};
 }
 
-// openParty adds a party or edits one. A new one lands as Pending for an
-// admin; a host's edits keep the status.
 export function openParty(p) {
   const adding = !p;
   const user = me();
@@ -849,17 +757,12 @@ export function openParty(p) {
   description.placeholder = 'Everything a guest should know about the party';
   const needToKnow = textarea(p ? p.needToKnow : '', 2);
   needToKnow.placeholder = 'Adults only; bring a swimsuit; drop-off is fine';
-  // The callout's dress: its emoji and title, blank for the megaphone and
-  // "Good to know".
   const emojiPick = emojiPicker(p ? p.noteEmoji : '');
   const noteEmoji = emojiPick.input;
   const noteTitle = text(p ? p.noteTitle : '', {maxLength: 60, placeholder: 'Good to know'});
   noteTitle.setAttribute('aria-label', 'Title');
   const noteHead = el('div', 'note-head-inputs');
   noteHead.append(emojiPick.wrap, noteTitle);
-  // The callout is its own boxed section, tinted as the callout itself is,
-  // behind a Create Callout button until the party has one; Remove empties
-  // it and folds it away again.
   const calloutBox = el('div', 'callout-editor');
   const calloutHead = el('div', 'callout-editor-head');
   const removeCallout = el('button', 'link-button', 'Remove callout');
@@ -890,7 +793,6 @@ export function openParty(p) {
   const audience = text(p ? p.audience : '', {maxLength: 60, placeholder: 'Adults, Families, Kids & Adults, Grades 3-6'});
   const image = imagePicker(p ? p.image : '', p ? p.imageUrl : '', {dropzone: true, query: () => title.value, hint: 'The wide banner across the page and the card.'});
   const flyer = imagePicker(p ? p.flyer : '', p ? p.flyerUrl : '', {dropzone: true, label: 'Flyer', plain: true, hint: 'The party\u2019s poster, shown whole beside the page. Optional.'});
-  // The friendly address, with the whole address it makes shown under it.
   const pretty = text(p ? p.prettyId : '', {maxLength: 40, placeholder: 'fondue'});
   const prettyHint = el('small', '', '');
   const paintPretty = () => {
@@ -901,8 +803,6 @@ export function openParty(p) {
   paintPretty();
   const prettyField = field('Friendly address', pretty);
   prettyField.append(prettyHint);
-  // The friendly address is the hosts' to choose, as a co-chair's is on
-  // HCA-Team; a taken or malformed one is refused on Save.
   const basics = [
     field('Title', title, '', true), field('Subtitle', subtitle), field('Summary', summary, 'Shown on the party card.'),
     field('Description', description), callout, prettyField,
@@ -955,8 +855,6 @@ export function openParty(p) {
     {label: 'Tickets', icon: svg('ticket'), fields: tickets},
     {label: 'Hosts', icon: svg('people'), fields: hosts},
   ];
-  // Status, celebration and category are an admin's to set; the server
-  // keeps a host's as they are.
   let status = null;
   let celebrationPick = null;
   let category = null;
@@ -986,7 +884,6 @@ export function openParty(p) {
     }),
     afterSave: result => {
       if (result && result.id && party(result.id)) {
-        // Changing the friendly address moves the page: the bar follows.
         goTo(partyPath(party(result.id)));
         if (adding && !isAdmin()) {
           toast('Submitted - an admin will review it');
@@ -999,8 +896,6 @@ export function openParty(p) {
   });
 }
 
-// savePartyFields saves a party as it is with a few fields changed - the
-// rail's flyer upload, say - so a change from the page needs no form.
 export async function savePartyFields(p, changes) {
   const body = {
     id: p.id, celebration: p.celebration, title: p.title, subtitle: p.subtitle || '', summary: p.summary || '', description: p.description || '',
@@ -1018,7 +913,6 @@ export async function savePartyFields(p, changes) {
   }
 }
 
-// setFlags posts the party page's row of switches, all together.
 export async function setFlags(p, changes) {
   const body = {
     id: p.id, ticketsOpen: p.ticketsOpen, waitlist: p.waitlist, adults: p.adults, students: p.students,
@@ -1043,10 +937,6 @@ export async function setPartyStatus(p, status) {
   }
 }
 
-// contactFor is what the hosts need to reach one ticket holder: their grade
-// (or, for a parent, their children's), their own address - or, without
-// one, the address of whoever bought the ticket - and, for a student, the
-// parents' addresses.
 async function contactFor(a) {
   const info = a.email ? await personInfo(a.email) : null;
   const out = {description: a.line || '', email: a.email || '', parents: []};
@@ -1058,18 +948,10 @@ async function contactFor(a) {
   return out;
 }
 
-// openContacts is the hosts' attendee list: every ticket with the person's
-// name, what places them (a grade, "Parent to Sam Whitfield (Grade 3)", a
-// job, "Guest of Jordan Whitfield"), their own address, a student's parents'
-// addresses, and who bought the ticket - the whole table and the addresses
-// alone each a click to copy.
 export async function openContacts(p) {
   const all = [...p.attendees, ...p.waitlisted];
   const rows = await Promise.all(all.map(async a => ({a, contact: await contactFor(a)})));
   const statusOf = a => (a.status === 'Waitlist' ? `Waitlist (${a.quantity || 1})` : a.status);
-  // Each column as words: what the cell shows, and what a copy of the column
-  // gives - addresses joined with commas for a mail client, the rest one a
-  // line. The table itself copies as tab-separated lines for a sheet.
   const columns = [
     {name: 'Name', value: ({a}) => a.name},
     {name: 'Description', value: ({contact}) => contact.description},
@@ -1157,10 +1039,6 @@ export async function openContacts(p) {
   openModal(`Who's coming to ${p.title}`, [actions, wrap], {wide: 'table'});
 }
 
-// The inline editors the party page uses in edit mode, as HCA-Team's event
-// page has them: a pencil beside a value swaps it for a small editor with
-// Save and Cancel. A successful save reloads the model and repaints the
-// page, which takes the editor with it.
 export function editPencil(label) {
   const pencil = el('button', 'edit-icon');
   pencil.type = 'button';
@@ -1170,8 +1048,6 @@ export function editPencil(label) {
   return pencil;
 }
 
-// fieldEditor: opts is {input, value(), submit(value), hint, validate}.
-// Failures surface as a toast, the way every other write here does.
 export function fieldEditor(anchor, pencil, opts) {
   const box = el('div', 'field-editor');
   box.append(opts.input);
@@ -1230,8 +1106,6 @@ export function fieldEditor(anchor, pencil, opts) {
   }
 }
 
-// editable hangs a pencil off a rendered value and wires it to a field of
-// the party: make() builds {input, value, hint, validate}, submit saves.
 export function editable(anchor, label, make, submit) {
   const pencil = editPencil(label);
   pencil.addEventListener('click', () => {
@@ -1253,7 +1127,6 @@ export function whenInputs(startValue, endValue) {
   };
 }
 
-// openCelebration adds or edits a year's celebration.
 export function openCelebration(c) {
   const code = text(c ? c.code : '', {required: true, maxLength: 20, placeholder: 'SC-2027'});
   const title = text(c ? c.title : '', {required: true, maxLength: 120, placeholder: 'Helios Spring Celebration 2027'});
@@ -1265,8 +1138,6 @@ export function openCelebration(c) {
   const place = text(c ? c.location : '', {maxLength: 120});
   const address = text(c ? c.address : '', {maxLength: 200});
   const description = textarea(c ? c.description : '', 4);
-  // The button opens a page, or adds the gala to the reader's calendar as
-  // a Save the Date - "calendar" in the sheet's Button URL cell.
   const isCalendar = Boolean(c && c.buttonUrl === 'calendar');
   const buttonText = text(c ? c.buttonText : '', {maxLength: 40, placeholder: 'Learn More'});
   const buttonUrl = text(c && !isCalendar ? c.buttonUrl : '', {type: 'url', maxLength: 500, placeholder: 'https://www.heliosschool.org/spring-celebration'});

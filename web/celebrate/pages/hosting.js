@@ -8,8 +8,6 @@ import {availabilityBadge} from '../cards.js';
 
 let query = '';
 
-// hostRow is one party as its host sees it: the picture, the title and date,
-// the counts, and the ticket switch's state.
 function hostRow(p) {
   const row = link(partyPath(p), 'row is-link' + (p.status !== 'Open' ? ' is-muted' : ''));
   row.append(thumb(p.imageUrl, p.title));
@@ -60,15 +58,12 @@ export function hostingPage() {
   const bar = el('div', 'list-bar');
   page.append(bar, body);
   const items = [{key: 'mine', label: 'My Parties', count: hostedParties().length}];
-  // Approval Needed goes with the admin list, hat or no hat; All Parties
-  // with the hat.
   if (isSystemAdmin()) {
     items.push({key: 'approvals', label: 'Approval Needed', count: pendingParties().length});
   }
   if (isAdmin()) {
     items.push({key: 'all', label: 'All Parties', count: state.model.parties.length});
   }
-  // The tab is the address's: ?show=approvals or ?show=all, none for mine.
   state.hostingTab = hostingShown();
   if (!items.some(i => i.key === state.hostingTab)) {
     state.hostingTab = 'mine';
