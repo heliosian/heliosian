@@ -389,7 +389,7 @@ async function fetchParties() {
   renderWidgets(searchInput().value);
 }
 
-let partyChip = 'available';
+let partyChip = 'all';
 
 function partiesUnder(chip) {
   if (chip === 'mine') {
@@ -483,7 +483,7 @@ function celebrateWidget() {
   const foot = el('div', 'widget-foot-slot');
   const paint = () => {
     chips.replaceChildren();
-    for (const [key, label] of [['available', 'Available'], ['all', 'All'], ['mine', 'Mine']]) {
+    for (const [key, label] of [['all', 'All'], ['available', 'Available'], ['mine', 'Mine']]) {
       const chip = el('button', 'wg-chip' + (partyChip === key ? ' is-on' : ''), label);
       chip.type = 'button';
       chip.addEventListener('click', () => {
