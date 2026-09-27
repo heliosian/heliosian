@@ -389,14 +389,14 @@ async function fetchParties() {
   renderWidgets(searchInput().value);
 }
 
-let partyChip = 'all';
+let partyChip = 'upcoming';
 
 function partiesUnder(chip) {
   if (chip === 'mine') {
     return parties.filter(p => p.mine);
   }
-  if (chip === 'available') {
-    return parties.filter(p => !p.mine && p.availability === 'available');
+  if (chip === 'upcoming') {
+    return parties.filter(p => p.mine || p.availability === 'available');
   }
   return parties;
 }
@@ -483,7 +483,7 @@ function celebrateWidget() {
   const foot = el('div', 'widget-foot-slot');
   const paint = () => {
     chips.replaceChildren();
-    for (const [key, label] of [['all', 'All'], ['available', 'Available'], ['mine', 'Mine']]) {
+    for (const [key, label] of [['upcoming', 'Upcoming'], ['all', 'All'], ['mine', 'Mine']]) {
       const chip = el('button', 'wg-chip' + (partyChip === key ? ' is-on' : ''), label);
       chip.type = 'button';
       chip.addEventListener('click', () => {
@@ -497,7 +497,7 @@ function celebrateWidget() {
     const end = widgetFoot('celebrate-' + partyChip, items.length, {href: appOrigin('celebrate')});
     foot.replaceChildren(...(end ? [end] : []));
     if (!items.length) {
-      const empty = {mine: 'Your household has no tickets to anything coming up.', available: 'Nothing new with tickets to be had just now.'}[partyChip] || 'No parties coming up.';
+      const empty = {mine: 'Your household has no tickets to anything coming up.', upcoming: 'Nothing with tickets to be had or held just now.'}[partyChip] || 'No parties coming up.';
       body.append(el('p', 'wg-empty', empty));
       return;
     }
