@@ -2,7 +2,6 @@ package describe
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -49,9 +48,6 @@ type Describer struct {
 }
 
 func New(key string, limit *ratelimit.Limiter) *Describer {
-	if key == "" {
-		return nil
-	}
 	return &Describer{client: anthropic.NewClient(option.WithAPIKey(key)), limit: limit}
 }
 
@@ -61,9 +57,6 @@ type Info struct {
 }
 
 func (d *Describer) Charity(ctx context.Context, actor, name, link string) (Info, error) {
-	if d == nil {
-		return Info{}, fmt.Errorf("describing charities is not set up: no Anthropic key")
-	}
 	if !d.limit.Allow(actor, time.Now()) {
 		return Info{}, claude.ErrTooMany
 	}
@@ -77,7 +70,8 @@ func (d *Describer) Charity(ctx context.Context, actor, name, link string) (Info
 		return Info{}, ErrTooLong
 	}
 	fetch := anthropic.WebFetchTool20260209Param{MaxUses: anthropic.Int(4)}
-	stream := d.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
+	var out Info
+	if _, err := claude.JSON(ctx, d.client, anthropic.MessageNewParams{
 		Model:     model,
 		MaxTokens: 16000,
 		System:    []anthropic.TextBlockParam{{Text: system, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
@@ -87,33 +81,10 @@ func (d *Describer) Charity(ctx context.Context, actor, name, link string) (Info
 			{OfWebSearchTool20260209: &anthropic.WebSearchTool20260209Param{MaxUses: anthropic.Int(3)}},
 		},
 		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffortLow, Format: anthropic.JSONOutputFormatParam{Schema: schema}},
-	})
-	resp := anthropic.Message{}
-	for stream.Next() {
-		if err := resp.Accumulate(stream.Current()); err != nil {
-			return Info{}, err
-		}
-	}
-	if err := stream.Err(); err != nil {
+	}, &out); err != nil {
 		return Info{}, err
 	}
-	if resp.StopReason == anthropic.StopReasonRefusal {
-		return Info{}, fmt.Errorf("claude declined: %s", resp.StopDetails.Explanation)
-	}
-	if resp.StopReason != anthropic.StopReasonEndTurn {
-		return Info{}, fmt.Errorf("claude stopped early: %s", resp.StopReason)
-	}
-	text := &strings.Builder{}
-	for _, block := range resp.Content {
-		if t, ok := block.AsAny().(anthropic.TextBlock); ok {
-			text.WriteString(t.Text)
-		}
-	}
-	var out Info
-	if err := json.Unmarshal([]byte(text.String()), &out); err != nil {
-		return Info{}, fmt.Errorf("read claude's answer: %w", err)
-	}
-	slog.InfoContext(ctx, "described charity", "name", name, "input_tokens", resp.Usage.InputTokens+resp.Usage.CacheReadInputTokens+resp.Usage.CacheCreationInputTokens, "output_tokens", resp.Usage.OutputTokens)
+	slog.InfoContext(ctx, "described charity", "name", name)
 	out.Sentence, out.DonationLink = strings.TrimSpace(out.Sentence), strings.TrimSpace(out.DonationLink)
 	if strings.EqualFold(out.Sentence, "unknown") {
 		out.Sentence = ""
@@ -157,9 +128,6 @@ var groupSchema = map[string]any{
 }
 
 func (d *Describer) Group(ctx context.Context, actor string, facts GroupFacts) (string, error) {
-	if d == nil {
-		return "", fmt.Errorf("describing groups is not set up: no Anthropic key")
-	}
 	if !d.limit.Allow(actor, time.Now()) {
 		return "", claude.ErrTooMany
 	}
@@ -184,41 +152,19 @@ func (d *Describer) Group(ctx context.Context, actor string, facts GroupFacts) (
 	if prompt.Len() > maxPrompt {
 		return "", ErrTooLong
 	}
-	stream := d.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
+	var out struct {
+		Description string `json:"description"`
+	}
+	if _, err := claude.JSON(ctx, d.client, anthropic.MessageNewParams{
 		Model:        model,
 		MaxTokens:    4000,
 		System:       []anthropic.TextBlockParam{{Text: groupSystem, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt.String()))},
 		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffortLow, Format: anthropic.JSONOutputFormatParam{Schema: groupSchema}},
-	})
-	resp := anthropic.Message{}
-	for stream.Next() {
-		if err := resp.Accumulate(stream.Current()); err != nil {
-			return "", err
-		}
-	}
-	if err := stream.Err(); err != nil {
+	}, &out); err != nil {
 		return "", err
 	}
-	if resp.StopReason == anthropic.StopReasonRefusal {
-		return "", fmt.Errorf("claude declined: %s", resp.StopDetails.Explanation)
-	}
-	if resp.StopReason != anthropic.StopReasonEndTurn {
-		return "", fmt.Errorf("claude stopped early: %s", resp.StopReason)
-	}
-	text := &strings.Builder{}
-	for _, block := range resp.Content {
-		if t, ok := block.AsAny().(anthropic.TextBlock); ok {
-			text.WriteString(t.Text)
-		}
-	}
-	var out struct {
-		Description string `json:"description"`
-	}
-	if err := json.Unmarshal([]byte(text.String()), &out); err != nil {
-		return "", fmt.Errorf("read claude's answer: %w", err)
-	}
-	slog.InfoContext(ctx, "described group", "title", facts.Title, "input_tokens", resp.Usage.InputTokens+resp.Usage.CacheReadInputTokens+resp.Usage.CacheCreationInputTokens, "output_tokens", resp.Usage.OutputTokens)
+	slog.InfoContext(ctx, "described group", "title", facts.Title)
 	return strings.TrimSpace(out.Description), nil
 }
 
@@ -238,31 +184,4 @@ func tallyWords(counts map[string]int) string {
 		parts = append(parts, fmt.Sprintf("%s %d", k, counts[k]))
 	}
 	return strings.Join(parts, ", ")
-}
-
-type Fake struct{}
-
-func (Fake) Charity(ctx context.Context, actor, name, link string) (Info, error) {
-	select {
-	case <-ctx.Done():
-		return Info{}, ctx.Err()
-	case <-time.After(1500 * time.Millisecond):
-	}
-	name = strings.TrimSpace(name)
-	if link == "" {
-		link = "https://www." + strings.ToLower(strings.Join(strings.Fields(name), "")) + ".org/donate"
-	}
-	return Info{DonationLink: link, Sentence: name + " provides sample support to the sample community by doing sample things, as the sample server says."}, nil
-}
-
-func (Fake) Group(ctx context.Context, actor string, facts GroupFacts) (string, error) {
-	select {
-	case <-ctx.Done():
-		return "", ctx.Err()
-	case <-time.After(1200 * time.Millisecond):
-	}
-	if len(facts.Rules) == 0 {
-		return "A group with nobody on it yet, as the sample server describes it.", nil
-	}
-	return fmt.Sprintf("%s, %d of them today, as the sample server describes it.", strings.Join(facts.Rules, "; "), facts.Members), nil
 }

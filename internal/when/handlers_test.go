@@ -8,7 +8,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +20,7 @@ import (
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
+	"heliosian/internal/testkit/mailtest"
 	"heliosian/internal/who"
 )
 
@@ -63,7 +63,7 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 	cache := sampleCache(t)
 	d := sampleDirectory(t, "sampledata")
 	mux := http.NewServeMux()
-	Register(mux, cache, memoryStore(), func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, noCelebrate(), newSampleSources(t).sources, imagesearch.Search{}, Mail{Sender: &keptMail{}}, testStyle)
+	Register(mux, cache, memoryStore(), func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, noCelebrate(), newSampleSources(t).sources, imagesearch.Search{}, Mail{Sender: keptMail().Mailgun}, testStyle)
 	return mux, cache
 }
 
@@ -333,39 +333,23 @@ func TestDefaultCalendar(t *testing.T) {
 	}
 }
 
-type keptMail struct {
-	mu   sync.Mutex
-	sent []mail.Message
-}
-
-func (k *keptMail) Send(ctx context.Context, m mail.Message) error {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	k.sent = append(k.sent, m)
-	return nil
-}
-
-func (k *keptMail) From() string { return "Helios When <when@example.org>" }
-
-func (k *keptMail) all() []mail.Message {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	return slices.Clone(k.sent)
+func keptMail() *mailtest.Recorder {
+	return mailtest.NewRecorder("Helios When <when@example.org>")
 }
 
 func TestAdminsToldOfSharedEvents(t *testing.T) {
 	cache := sampleCache(t)
 	d := sampleDirectory(t, "sampledata")
-	kept := &keptMail{}
+	kept := keptMail()
 	mux := http.NewServeMux()
-	Register(mux, cache, memoryStore(), func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, noCelebrate(), newSampleSources(t).sources, imagesearch.Search{}, Mail{Sender: kept, Base: "https://when.heliosian.com"}, testStyle)
+	Register(mux, cache, memoryStore(), func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, noCelebrate(), newSampleSources(t).sources, imagesearch.Search{}, Mail{Sender: kept.Mailgun, Base: "https://when.heliosian.com"}, testStyle)
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {
-		for i := 0; i < 50 && len(kept.all()) < n; i++ {
+		for i := 0; i < 50 && len(kept.Messages()) < n; i++ {
 			time.Sleep(20 * time.Millisecond)
 		}
-		return kept.all()
+		return kept.Messages()
 	}
 	call(t, parent, "POST", "/api/when/events", `{"title":"Bake sale","start":"2026-10-01 15:00","tags":["Jays","Community"],"sharing":"Public"}`)
 	sent := wait(1)

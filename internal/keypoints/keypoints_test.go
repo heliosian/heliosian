@@ -1,7 +1,6 @@
 package keypoints
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -33,23 +32,11 @@ func TestMissing(t *testing.T) {
 	}
 }
 
-func TestFake(t *testing.T) {
-	points := fakePoints("Hello all.\n\n## Picture Day\n\nTuesday.\n\n## Book Fair\n")
-	if len(points) != 2 || points[0] != "Picture Day" || points[1] != "Book Fair" {
-		t.Errorf("headings: %v", points)
-	}
-	points = fakePoints("Please send snacks. Thanks!")
-	if len(points) != 1 || points[0] != "Please send snacks" {
-		t.Errorf("first sentence: %v", points)
-	}
+func TestCleanAndKnown(t *testing.T) {
 	if got := clean([]string{"  a   b ", "", "c"}); len(got) != 2 || got[0] != "a b" {
 		t.Errorf("clean: %v", got)
 	}
 	if got := known([]string{"condors", "Nowhere", "Condors"}, []string{"Condors", "Jays"}); len(got) != 1 || got[0] != "Condors" {
 		t.Errorf("known: %v", got)
-	}
-	r, _ := Fake{}.Read(context.Background(), Email{Markdown: "Hi.", Teaches: []string{"Condors"}})
-	if len(r.Classrooms) != 1 || r.Classrooms[0] != "Condors" {
-		t.Errorf("fake reading: %+v", r)
 	}
 }

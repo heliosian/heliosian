@@ -221,7 +221,7 @@ func record(ctx context.Context, cache *artifacts.Cache, bucket *blob.Bucket, gr
 	return nil
 }
 
-func embedAndStore(ctx context.Context, cache *artifacts.Cache, embedder artifacts.Embedder, bucket *blob.Bucket, group []work) error {
+func embedAndStore(ctx context.Context, cache *artifacts.Cache, embedder *artifacts.Vertex, bucket *blob.Bucket, group []work) error {
 	var mu sync.Mutex
 	var first error
 	var wg sync.WaitGroup
@@ -247,7 +247,7 @@ func embedAndStore(ctx context.Context, cache *artifacts.Cache, embedder artifac
 	return first
 }
 
-func put(ctx context.Context, cache *artifacts.Cache, embedder artifacts.Embedder, bucket *blob.Bucket, doc *artifacts.Document) error {
+func put(ctx context.Context, cache *artifacts.Cache, embedder *artifacts.Vertex, bucket *blob.Bucket, doc *artifacts.Document) error {
 	if err := doc.Embed(ctx, embedder); err != nil {
 		return err
 	}

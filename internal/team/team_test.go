@@ -46,7 +46,7 @@ func viewerOf(email string, admin bool) access.Actor {
 
 var bundled = testkit.Images(func(key string) bool { return strings.HasPrefix(key, "brand/") })
 
-func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
+func serveWith(t *testing.T, mailer *mail.Mailgun) (*Cache, *http.ServeMux) {
 	t.Helper()
 	t.Chdir("../..")
 	sheet = &data.Dir{Root: "sampledata"}
@@ -68,7 +68,7 @@ var testStyle = CardStyle(func() string { return "HCA-Team" }, func() string { r
 
 func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	t.Helper()
-	return serveWith(t, mailtest.Discard{})
+	return serveWith(t, mailtest.Discard())
 }
 
 func tables(t *testing.T) store.Tables {
@@ -295,8 +295,8 @@ func TestSignUpAndRemove(t *testing.T) {
 }
 
 func TestMail(t *testing.T) {
-	rec := mailtest.NewRecorder()
-	_, mux := serveWith(t, rec)
+	rec := mailtest.NewRecorder(mailtest.From)
+	_, mux := serveWith(t, rec.Mailgun)
 	if r := testkit.Call(t, mux, admin, "POST", "/api/team/notify", map[string]any{"kinds": []string{"signups", "offers"}}); r.Code != http.StatusNoContent {
 		t.Fatalf("notify prefs: %d %s", r.Code, r.Body)
 	}

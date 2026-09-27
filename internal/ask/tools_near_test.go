@@ -7,9 +7,12 @@ import (
 	"testing"
 
 	"heliosian/internal/geocode"
+	"heliosian/internal/intercept"
 )
 
 func TestNearbyFamiliesReadWhatTheMapShows(t *testing.T) {
+	intercept.Install(intercept.GeocodeHost, intercept.Geocode())
+	geocoder := geocode.New("test")
 	sources := sampleSources(t)
 	directory := sources.Directory()
 	masked := ""
@@ -20,7 +23,7 @@ func TestNearbyFamiliesReadWhatTheMapShows(t *testing.T) {
 			}
 			continue
 		}
-		point, err := geocode.Fake{}.Lookup(family.Address)
+		point, err := geocoder.Lookup(family.Address)
 		if err != nil {
 			t.Fatal(err)
 		}

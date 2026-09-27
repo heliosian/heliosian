@@ -17,6 +17,7 @@ import (
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit/mailtest"
 	"heliosian/internal/who"
 )
 
@@ -47,17 +48,17 @@ var (
 	testHooks          Hooks
 )
 
-func invitesApp(t *testing.T) (http.Handler, *Cache, *keptMail) {
+func invitesApp(t *testing.T) (http.Handler, *Cache, *mailtest.Recorder) {
 	h, c, k, _ := invitesAppWith(t)
 	return h, c, k
 }
 
-func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSources) {
+func invitesAppWith(t *testing.T) (http.Handler, *Cache, *mailtest.Recorder, *sampleSources) {
 	t.Helper()
 	cache := sampleCache(t)
 	sources := newSampleSources(t)
 	testDirectory = sources.model
-	kept := &keptMail{}
+	kept := keptMail()
 	parties := func(id string) *PartyPeople {
 		if id != "p1" {
 			return nil
@@ -80,7 +81,7 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSourc
 		}
 	}
 	mux := http.NewServeMux()
-	testHooks = Register(mux, cache, memoryStore(), directoryOf, noSettings, testLists, linked, celebrate, sources.sources, imagesearch.Search{}, Mail{Sender: kept, Base: "https://when.heliosian.com", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}, testStyle)
+	testHooks = Register(mux, cache, memoryStore(), directoryOf, noSettings, testLists, linked, celebrate, sources.sources, imagesearch.Search{}, Mail{Sender: kept.Mailgun, Base: "https://when.heliosian.com", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}, testStyle)
 	return mux, cache, kept, sources
 }
 
@@ -118,11 +119,11 @@ func newSampleSources(t *testing.T) *sampleSources {
 	return &sampleSources{model: sampleDirectory(t, "sampledata"), tagged: map[string][]string{}}
 }
 
-func waitFor(kept *keptMail, n int) []mail.Message {
-	for i := 0; i < 100 && len(kept.all()) < n; i++ {
+func waitFor(kept *mailtest.Recorder, n int) []mail.Message {
+	for i := 0; i < 100 && len(kept.Messages()) < n; i++ {
 		time.Sleep(10 * time.Millisecond)
 	}
-	return kept.all()
+	return kept.Messages()
 }
 
 func inviteView(t *testing.T, h http.Handler, id string) InviteView {
@@ -147,9 +148,9 @@ func rowOf(v InviteView, key string) *GuestRow {
 	return nil
 }
 
-func mailTo(kept *keptMail, to string) []mail.Message {
+func mailTo(kept *mailtest.Recorder, to string) []mail.Message {
 	out := []mail.Message{}
-	for _, m := range kept.all() {
+	for _, m := range kept.Messages() {
 		if m.To[0] == to {
 			out = append(out, m)
 		}
@@ -172,7 +173,7 @@ func TestInvitationLifecycle(t *testing.T) {
 		t.Fatalf("shared event = %+v", e)
 	}
 	waitFor(kept, 1)
-	if sent := kept.all(); len(sent) != 1 || !strings.HasPrefix(sent[0].Subject, "Link event added") {
+	if sent := kept.Messages(); len(sent) != 1 || !strings.HasPrefix(sent[0].Subject, "Link event added") {
 		t.Errorf("admins' mail = %+v", sent)
 	}
 	if rec := call(t, miaH, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`); rec.Code != 403 {
@@ -305,8 +306,8 @@ func TestInvitationLifecycle(t *testing.T) {
 		t.Errorf("sam's answer = %+v", got)
 	}
 	time.Sleep(30 * time.Millisecond)
-	if len(kept.all()) != 6 {
-		t.Errorf("mail after answering: %d", len(kept.all()))
+	if len(kept.Messages()) != 6 {
+		t.Errorf("mail after answering: %d", len(kept.Messages()))
 	}
 	rec = call(t, robinH, "POST", "/api/when/invites/guest", `{"id":"meetup","name":"Grandma June"}`)
 	if rec.Code != 200 {
@@ -701,12 +702,12 @@ func TestInviteGroups(t *testing.T) {
 		t.Errorf("the group is not marked sent after its invites went: %+v", g)
 	}
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
-	before := len(kept.all())
+	before := len(kept.Messages())
 	if rec := call(t, jordan, "POST", "/api/when/invites/skip", `{"id":"meetup","emails":["`+robin+`"]}`); rec.Code != 200 || rec.Body.String() != "{\"skipped\":1}\n" {
 		t.Errorf("skip: %d %s", rec.Code, rec.Body)
 	}
-	if r := rowOf(inviteView(t, jordan, "meetup"), robin); r == nil || r.Sent == "" || len(kept.all()) != before {
-		t.Errorf("skipped row = %+v, mail %d -> %d", r, before, len(kept.all()))
+	if r := rowOf(inviteView(t, jordan, "meetup"), robin); r == nil || r.Sent == "" || len(kept.Messages()) != before {
+		t.Errorf("skipped row = %+v, mail %d -> %d", r, before, len(kept.Messages()))
 	}
 	if rec := call(t, jordan, "POST", "/api/when/invites/skip", `{"id":"meetup","emails":["`+robin+`"]}`); rec.Code != 400 {
 		t.Errorf("skipping someone sent: %d", rec.Code)
@@ -770,7 +771,7 @@ func TestHostMessage(t *testing.T) {
 	call(t, jordan, "POST", "/api/when/invites/answer", `{"id":"meetup","email":"`+robin+`","answer":"yes"}`)
 	call(t, jordan, "POST", "/api/when/invites/answer", `{"id":"meetup","email":"`+mina+`","answer":"no"}`)
 	waitFor(kept, 1)
-	before := len(kept.all())
+	before := len(kept.Messages())
 	if rec := call(t, jordan, "POST", "/api/when/invites/message", `{"id":"meetup","subject":"Chairs","message":"","to":["yes"]}`); rec.Code != 400 {
 		t.Errorf("no words: %d", rec.Code)
 	}
@@ -1092,7 +1093,7 @@ func TestDeleteAndCancel(t *testing.T) {
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
 	waitFor(kept, 3)
-	before := len(kept.all())
+	before := len(kept.Messages())
 	if rec := call(t, jordan, "POST", "/api/when/invites/delete", `{"id":"meetup"}`); rec.Code != 400 {
 		t.Errorf("deleting once sent: %d", rec.Code)
 	}
@@ -1134,7 +1135,7 @@ func TestUpdatedInvitation(t *testing.T) {
 	waitFor(kept, 3)
 	call(t, jordan, "POST", "/api/when/invites/answer", `{"id":"meetup","email":"`+coach+`","answer":"no"}`)
 	call(t, jordan, "PUT", "/api/when/events", `{"id":"meetup","title":"Meetup","start":"2026-10-10 16:00","end":"2026-10-10 16:00","location":"The park","tags":[],"sharing":"Link"}`)
-	before := len(kept.all())
+	before := len(kept.Messages())
 	if rec := call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup","to":"sent","update":true}`); rec.Code != 200 || rec.Body.String() != "{\"invites\":1,\"messages\":1}\n" {
 		t.Fatalf("update: %d %s", rec.Code, rec.Body)
 	}
@@ -1180,7 +1181,7 @@ func TestOutsideFamily(t *testing.T) {
 		t.Errorf("the coach's invite: %+v", msgs)
 	}
 	invites := 0
-	for _, msg := range kept.all() {
+	for _, msg := range kept.Messages() {
 		if strings.Contains(msg.Subject, "You're invited!") {
 			invites++
 		}
@@ -1377,7 +1378,7 @@ func TestNotifyHost(t *testing.T) {
 	}
 	before := len(mailTo(kept, host))
 	call(t, as(robin, mux), "POST", "/api/when/rsvp", `{"id":"meetup","answer":"yes"}`)
-	waitFor(kept, len(kept.all())+1)
+	waitFor(kept, len(kept.Messages())+1)
 	notes := mailTo(kept, host)
 	if len(notes) != before+1 || notes[len(notes)-1].Subject != "[Meetup] Robin Whitfield said Yes" || !strings.Contains(notes[len(notes)-1].Text, "1 yes, 0 maybe, 0 no, 0 still to answer") {
 		t.Errorf("the host's note: %+v", notes)

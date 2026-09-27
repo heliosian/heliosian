@@ -82,7 +82,7 @@ func TestParseMailReadsHeadersAndBody(t *testing.T) {
 	if m.Text != "Pack a lunch." || m.HTML != "<p>We walk to the library on Thursday. Pack a lunch – and a hat.</p>" {
 		t.Fatalf("body: text %q, html %q", m.Text, m.HTML)
 	}
-	doc, err := m.Build(&Resolver{}, Fake{}.Model())
+	doc, err := m.Build(&Resolver{}, Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,11 +164,12 @@ func testInbox(t *testing.T) (*Filer, *blob.Bucket, *data.Dir, *store.Queue) {
 	objects := blob.NewMemoryBucket()
 	sheet := &data.Dir{Root: root}
 	queue := store.NewQueue()
-	cache, err := NewCache(sheet, sheet, objects, Fake{}, queue)
+	embedder := vertex(t)
+	cache, err := NewCache(sheet, sheet, objects, embedder, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Filer{Inbox: Inbox{SigningKey: "key", Bucket: objects}, cache: cache, embedder: Fake{}, holder: queue}, objects, sheet, queue
+	return &Filer{Inbox: Inbox{SigningKey: "key", Bucket: objects}, cache: cache, embedder: embedder, holder: queue}, objects, sheet, queue
 }
 
 func sampleModel(t *testing.T) *Model {
@@ -192,7 +193,7 @@ func TestAFreshStoreReadsWhatWasFiled(t *testing.T) {
 		t.Fatal(err)
 	}
 	queue.Flush()
-	again, err := NewCache(sheet, sheet, objects, Fake{}, queue)
+	again, err := NewCache(sheet, sheet, objects, in.embedder, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +242,7 @@ func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 	if len(model.Documents) != 1 || model.Documents[0].Key != rows[0]["Key"] {
 		t.Fatalf("the model holds %d documents, not the one imported", len(model.Documents))
 	}
-	query, err := Fake{}.Embed(context.Background(), []string{"field trip to the library"}, true)
+	query, err := in.embedder.Embed(context.Background(), []string{"field trip to the library"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

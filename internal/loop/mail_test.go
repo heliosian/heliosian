@@ -15,11 +15,14 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/claude"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/describe"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
+	"heliosian/internal/testkit/mailtest"
 	"heliosian/internal/who"
 )
 
@@ -27,30 +30,6 @@ func sampleSources(model *who.Model) func() Sources {
 	return func() Sources {
 		return Sources{Directory: model, Tags: model.Tags, Lists: model.RoomParentLists, Shared: model.SharedTags}
 	}
-}
-
-type sent struct {
-	from string
-	to   []string
-	raw  []byte
-}
-
-type fakeSender struct {
-	mu    sync.Mutex
-	sends []sent
-}
-
-func (f *fakeSender) SendRaw(_ context.Context, from string, to []string, raw []byte) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.sends = append(f.sends, sent{from, to, raw})
-	return nil
-}
-
-func (f *fakeSender) all() []sent {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]sent{}, f.sends...)
 }
 
 type fakeArchive struct {
@@ -134,7 +113,7 @@ type harness struct {
 	dir       *data.Dir
 	cache     *Cache
 	sources   func() Sources
-	sender    *fakeSender
+	sender    *mailtest.Recorder
 	archive   *fakeArchive
 	documents *fakeDocuments
 	mailbox   Mail
@@ -154,9 +133,9 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, sources: sampleSources(model), sender: &fakeSender{}, archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
-	h.mailbox = Mail{Sender: h.sender, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
-	Register(h.mux, cache, nil, h.sources, func() *config.Settings { return &config.Settings{} }, h.mailbox, nil, About(func() string { return "Helios Loop" }, func() string { return "Email groups drawn from the directory" }))
+	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, sources: sampleSources(model), sender: mailtest.NewRecorder(mailtest.From), archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
+	h.mailbox = Mail{Sender: h.sender.Mailgun, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
+	Register(h.mux, cache, nil, h.sources, func() *config.Settings { return &config.Settings{} }, h.mailbox, describe.New("test", claude.NewLimiter()), About(func() string { return "Helios Loop" }, func() string { return "Email groups drawn from the directory" }))
 	return h
 }
 
@@ -265,18 +244,18 @@ func TestAPostIsForwardedToEveryMemberOnce(t *testing.T) {
 	if filed := h.documents.filed(); filed[0] != "soccer-team" {
 		t.Fatalf("filed under %v", filed)
 	}
-	sends := h.sender.all()
+	sends := h.sender.Raws()
 	want := h.members("soccer-team")
 	if len(want) < 3 || len(sends) != len(want) {
 		t.Fatalf("%d sends for %d members", len(sends), len(want))
 	}
 	seen := map[string]bool{}
 	for _, s := range sends {
-		if s.from != "soccer-team@loop.heliosian.com" || len(s.to) != 1 {
+		if s.Domain != Domain || len(s.To) != 1 {
 			t.Fatalf("send %+v", s)
 		}
-		seen[s.to[0]] = true
-		out := string(s.raw)
+		seen[s.To[0]] = true
+		out := string(s.Message)
 		m := unsubscribeLink.FindStringSubmatch(out)
 		if m == nil {
 			t.Fatalf("no unsubscribe link in:\n%s", out)
@@ -285,8 +264,8 @@ func TestAPostIsForwardedToEveryMemberOnce(t *testing.T) {
 			t.Fatalf("the mailto and https tokens differ: %s %s", m[1], m[2])
 		}
 		name, email, ok := parseToken(h.mailbox.Key, m[2])
-		if !ok || name != "soccer-team" || email != s.to[0] {
-			t.Fatalf("token for %s reads %q %q %v", s.to[0], name, email, ok)
+		if !ok || name != "soccer-team" || email != s.To[0] {
+			t.Fatalf("token for %s reads %q %q %v", s.To[0], name, email, ok)
 		}
 		if !strings.Contains(out, "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n") || !strings.Contains(out, "Subject: Re: [Soccer Team Families] Saturday's game\r\n") || !strings.Contains(out, "To: soccer-team@loop.heliosian.com\r\n") || !strings.HasSuffix(out, "\r\n\r\nSee you at 9.\r\n") {
 			t.Fatalf("headers:\n%s", out)
@@ -313,7 +292,7 @@ func TestAPostIsForwardedToEveryMemberOnce(t *testing.T) {
 		t.Fatalf("replay answered %d", rec.Code)
 	}
 	time.Sleep(100 * time.Millisecond)
-	if len(h.sender.all()) != len(want) || h.archive.count() != 1 {
+	if len(h.sender.Raws()) != len(want) || h.archive.count() != 1 {
 		t.Fatal("a replayed notification sent or archived the post again")
 	}
 }
@@ -330,12 +309,12 @@ func TestOneClickUnsubscribeTakesThemOffTheGroup(t *testing.T) {
 	h := newHarness(t)
 	h.inbound(notify(post, "soccer-team@loop.heliosian.com"))
 	h.waitFor("the forward", func() bool { return h.messageState(id(post), "soccer-team") == stateSent })
-	first := h.sender.all()[0]
-	tok := unsubscribeLink.FindStringSubmatch(string(first.raw))[2]
+	first := h.sender.Raws()[0]
+	tok := unsubscribeLink.FindStringSubmatch(string(first.Message))[2]
 	req := httptest.NewRequest(http.MethodGet, "/open/unsubscribe/"+tok, nil)
 	rec := httptest.NewRecorder()
 	h.mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Soccer Team Families") || !strings.Contains(rec.Body.String(), first.to[0]) {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Soccer Team Families") || !strings.Contains(rec.Body.String(), first.To[0]) {
 		t.Fatalf("page %d: %s", rec.Code, rec.Body)
 	}
 	form := url.Values{"List-Unsubscribe": {"One-Click"}}.Encode()
@@ -344,18 +323,18 @@ func TestOneClickUnsubscribeTakesThemOffTheGroup(t *testing.T) {
 		t.Fatalf("one-click answered %d: %s", rec.Code, rec.Body)
 	}
 	g := h.cache.Model().Group("soccer-team")
-	if !g.HasExcluded(first.to[0]) || g.Excluded[0].Note != "Unsubscribed by one-click" {
+	if !g.HasExcluded(first.To[0]) || g.Excluded[0].Note != "Unsubscribed by one-click" {
 		t.Fatalf("not excluded: %+v", g.Excluded)
 	}
 	for _, m := range h.members("soccer-team") {
-		if m == first.to[0] {
+		if m == first.To[0] {
 			t.Fatal("still a member")
 		}
 	}
 	rowsFor := func() int {
 		n := 0
 		for _, row := range h.rows(excludedTab) {
-			if row["Group"] == "soccer-team" && row["Email"] == first.to[0] && row["Note"] == "Unsubscribed by one-click" && row["Timestamp"] != "" {
+			if row["Group"] == "soccer-team" && row["Email"] == first.To[0] && row["Note"] == "Unsubscribed by one-click" && row["Timestamp"] != "" {
 				n++
 			}
 		}
@@ -381,13 +360,13 @@ func TestUnsubscribeByMailTakesThemOffTheGroup(t *testing.T) {
 	h := newHarness(t)
 	h.inbound(notify(post, "soccer-team@loop.heliosian.com"))
 	h.waitFor("the forward", func() bool { return h.messageState(id(post), "soccer-team") == stateSent })
-	first := h.sender.all()[0]
-	tok := unsubscribeLink.FindStringSubmatch(string(first.raw))[1]
-	unsubscribe := "From: Someone <" + first.to[0] + ">\r\nTo: unsubscribe@loop.heliosian.com\r\nSubject: Re: " + tok + "\r\n\r\n\r\n"
+	first := h.sender.Raws()[0]
+	tok := unsubscribeLink.FindStringSubmatch(string(first.Message))[1]
+	unsubscribe := "From: Someone <" + first.To[0] + ">\r\nTo: unsubscribe@loop.heliosian.com\r\nSubject: Re: " + tok + "\r\n\r\n\r\n"
 	fields := signed(map[string]string{
 		"recipient": "unsubscribe@loop.heliosian.com",
-		"sender":    first.to[0],
-		"from":      "Someone <" + first.to[0] + ">",
+		"sender":    first.To[0],
+		"from":      "Someone <" + first.To[0] + ">",
 		"subject":   "Re: " + tok,
 		"body-mime": unsubscribe,
 	})
@@ -395,7 +374,7 @@ func TestUnsubscribeByMailTakesThemOffTheGroup(t *testing.T) {
 		t.Fatalf("inbound answered %d: %s", rec.Code, rec.Body)
 	}
 	g := h.cache.Model().Group("soccer-team")
-	if !g.HasExcluded(first.to[0]) || g.Excluded[0].Note != "Unsubscribed by mail from "+first.to[0] {
+	if !g.HasExcluded(first.To[0]) || g.Excluded[0].Note != "Unsubscribed by mail from "+first.To[0] {
 		t.Fatalf("the mail did not exclude them: %+v", g.Excluded)
 	}
 	time.Sleep(100 * time.Millisecond)
@@ -413,8 +392,8 @@ func TestAnAliasReachesItsGroup(t *testing.T) {
 	if h.messageRow(id(post), "hummingbirds-families") != nil {
 		t.Fatal("the alias got a row of its own")
 	}
-	if len(h.sender.all()) != len(h.members("hummingbird-families")) {
-		t.Fatalf("%d sends", len(h.sender.all()))
+	if len(h.sender.Raws()) != len(h.members("hummingbird-families")) {
+		t.Fatalf("%d sends", len(h.sender.Raws()))
 	}
 }
 
@@ -423,7 +402,7 @@ func TestALoopedPostIsDropped(t *testing.T) {
 	looped := "From: a@x.org\r\nTo: soccer-team@loop.heliosian.com\r\nX-Helios-Loop: pta\r\n\r\nhi\r\n"
 	h.inbound(notify(looped, "soccer-team@loop.heliosian.com"))
 	h.waitFor("the drop", func() bool { return h.messageState(id(looped), "soccer-team") == stateDropped })
-	if len(h.sender.all()) != 0 || len(h.documents.filed()) != 0 {
+	if len(h.sender.Raws()) != 0 || len(h.documents.filed()) != 0 {
 		t.Fatal("a looped post went out")
 	}
 	if h.archive.count() != 1 {
@@ -441,20 +420,20 @@ func TestAPostFromSomeoneTheGroupDoesNotLetPostIsDropped(t *testing.T) {
 	if len(h.documents.filed()) != 0 {
 		t.Fatal("a refused post went out")
 	}
-	sends := h.sender.all()
-	if len(sends) != 1 || sends[0].from != bounceFrom || len(sends[0].to) != 1 || sends[0].to[0] != "alice@gmail.com" {
+	sends := h.sender.Raws()
+	if len(sends) != 1 || sends[0].Domain != Domain || len(sends[0].To) != 1 || sends[0].To[0] != "alice@gmail.com" {
 		t.Fatalf("the bounce: %+v", sends)
 	}
 	for _, want := range []string{"To: alice@gmail.com\r\n", "Subject: Not delivered: Re: Saturday's game\r\n", "Auto-Submitted: auto-replied\r\n", "X-Helios-Loop: middle-school-parents\r\n", "In-Reply-To: <abc@gmail.com>\r\n", "only its managers can post to it"} {
-		if !strings.Contains(string(sends[0].raw), want) {
-			t.Errorf("the bounce lacks %q:\n%s", want, sends[0].raw)
+		if !strings.Contains(string(sends[0].Message), want) {
+			t.Errorf("the bounce lacks %q:\n%s", want, sends[0].Message)
 		}
 	}
 	managers := strings.NewReplacer("alice@gmail.com", "Dana.Hawkins@heliosschool.org", "gmail.com", "heliosschool.org").Replace(post)
 	h.inbound(notify(managers, "middle-school-parents@loop.heliosian.com"))
 	h.waitFor("the forward", func() bool { return h.messageState(id(managers), "middle-school-parents") == stateSent })
-	if len(h.sender.all()) != 1+len(h.members("middle-school-parents")) {
-		t.Fatalf("%d sends", len(h.sender.all()))
+	if len(h.sender.Raws()) != 1+len(h.members("middle-school-parents")) {
+		t.Fatalf("%d sends", len(h.sender.Raws()))
 	}
 }
 
@@ -468,7 +447,7 @@ func TestAnUnauthenticatedPostIsDroppedWithoutABounce(t *testing.T) {
 	if detail := h.messageRow(id(forged), "middle-school-parents")["Detail"]; detail != "the sender's address passed neither SPF nor DKIM" {
 		t.Fatalf("detail %q", detail)
 	}
-	if len(h.sender.all()) != 0 || len(h.documents.filed()) != 0 {
+	if len(h.sender.Raws()) != 0 || len(h.documents.filed()) != 0 {
 		t.Fatal("an unauthenticated post went out or was answered")
 	}
 }
@@ -510,10 +489,10 @@ func TestRepliesToTheGroupsOwnMailAnswerToWhoCanReply(t *testing.T) {
 	deliver(testMessage(member, "p4@heliosschool.org", ""), stateDropped, "only the group's managers may post")
 	deliver(testMessage(member, "p5@heliosschool.org", "<CAF1x7qNw3pR@mail.gmail.com>"), stateDropped, "only the group's managers may post")
 	deliver(testMessage("alice@gmail.com", "p6@gmail.com", "<other@x.org> <p1@heliosschool.org>"), stateDropped, "only the group's members may reply")
-	sends := h.sender.all()
+	sends := h.sender.Raws()
 	last := sends[len(sends)-1]
-	if last.to[0] != "alice@gmail.com" || !strings.Contains(string(last.raw), "only the people on it and its managers can reply to it") {
-		t.Fatalf("the reply's bounce: %s", last.raw)
+	if last.To[0] != "alice@gmail.com" || !strings.Contains(string(last.Message), "only the people on it and its managers can reply to it") {
+		t.Fatalf("the reply's bounce: %s", last.Message)
 	}
 }
 
@@ -524,7 +503,7 @@ func TestAnArchiveFailureIsAnsweredWithAnErrorAndTheRetryLands(t *testing.T) {
 		t.Fatalf("inbound answered %d with the archive down", rec.Code)
 	}
 	time.Sleep(100 * time.Millisecond)
-	if h.messageRow(id(post), "soccer-team") != nil || len(h.sender.all()) != 0 {
+	if h.messageRow(id(post), "soccer-team") != nil || len(h.sender.Raws()) != 0 {
 		t.Fatal("a message the archive refused was recorded or sent")
 	}
 	h.archive.fail(nil)
@@ -532,7 +511,7 @@ func TestAnArchiveFailureIsAnsweredWithAnErrorAndTheRetryLands(t *testing.T) {
 		t.Fatalf("the retry answered %d", rec.Code)
 	}
 	h.waitFor("the retry", func() bool { return h.messageState(id(post), "soccer-team") == stateSent })
-	if len(h.sender.all()) == 0 {
+	if len(h.sender.Raws()) == 0 {
 		t.Fatal("the retry sent nothing")
 	}
 }
@@ -549,8 +528,8 @@ func TestARestartResumesAMessageFromItsArchivedCopy(t *testing.T) {
 	}
 	newMailer(h.cache, h.sources, h.mailbox).recover()
 	h.waitFor("the resumed forward", func() bool { return h.messageState(id(post), "soccer-team") == stateSent })
-	if len(h.sender.all()) != len(h.members("soccer-team")) || h.archive.count() != 1 {
-		t.Fatalf("%d sends, %d objects", len(h.sender.all()), h.archive.count())
+	if len(h.sender.Raws()) != len(h.members("soccer-team")) || h.archive.count() != 1 {
+		t.Fatalf("%d sends, %d objects", len(h.sender.Raws()), h.archive.count())
 	}
 }
 
@@ -561,7 +540,7 @@ func TestMailForNoGroupIsIgnored(t *testing.T) {
 		t.Fatalf("inbound answered %d", rec.Code)
 	}
 	time.Sleep(100 * time.Millisecond)
-	if len(h.sender.all()) != 0 || len(h.rows(messagesTab)) != before || h.archive.count() != 0 {
+	if len(h.sender.Raws()) != 0 || len(h.rows(messagesTab)) != before || h.archive.count() != 0 {
 		t.Fatal("mail for no group was taken")
 	}
 }

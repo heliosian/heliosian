@@ -123,7 +123,7 @@ func (d *Document) embedText(c Chunk) string {
 	return head + "\n\n" + c.Text
 }
 
-func (d *Document) Embed(ctx context.Context, embedder Embedder) error {
+func (d *Document) Embed(ctx context.Context, embedder *Vertex) error {
 	if embedder.Model() != d.Model {
 		return fmt.Errorf("the document is for %s, the embedder is %s", d.Model, embedder.Model())
 	}
@@ -167,7 +167,7 @@ type Model struct {
 
 type documents struct {
 	objects  *blob.Bucket
-	embedder Embedder
+	embedder *Vertex
 	mu       sync.Mutex
 	held     map[string]*Document
 }
@@ -249,7 +249,7 @@ func (d *documents) build(ctx context.Context, tables store.Tables) (*Model, err
 	return m, nil
 }
 
-func read(ctx context.Context, objects *blob.Bucket, row map[string]string, embedder Embedder) (*Document, error) {
+func read(ctx context.Context, objects *blob.Bucket, row map[string]string, embedder *Vertex) (*Document, error) {
 	raw, _, err := objects.Get(ctx, row["Object"])
 	if err != nil {
 		return nil, fmt.Errorf("document %s: %w", row["Key"], err)
@@ -412,7 +412,7 @@ type Cache struct {
 	documents *documents
 }
 
-func NewCache(source data.Source, writer data.Writer, objects *blob.Bucket, embedder Embedder, queue *store.Queue) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, objects *blob.Bucket, embedder *Vertex, queue *store.Queue) (*Cache, error) {
 	d := &documents{objects: objects, embedder: embedder, held: map[string]*Document{}}
 	s, err := store.New(store.Spec[*Model]{
 		App:   appName,

@@ -1,7 +1,6 @@
 package loop
 
 import (
-	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -76,14 +75,10 @@ type app struct {
 	settings  func() *config.Settings
 	mail      Mail
 	mailer    *mailer
-	describer Describer
+	describer *describe.Describer
 }
 
-type Describer interface {
-	Group(ctx context.Context, actor string, facts describe.GroupFacts) (string, error)
-}
-
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, sources func() Sources, settings func() *config.Settings, mailbox Mail, describer Describer, about *sharecard.About) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, sources func() Sources, settings func() *config.Settings, mailbox Mail, describer *describe.Describer, about *sharecard.About) {
 	a := app{cache: cache, media: media, sources: sources, settings: settings, mail: mailbox, describer: describer}
 	a.mailer = newMailer(cache, sources, mailbox)
 	for _, page := range pages {
@@ -365,9 +360,6 @@ func (a app) preview(r *http.Request, body draftBody) (map[string]any, error) {
 
 func (a app) describe(r *http.Request, body draftBody) (map[string]string, error) {
 	email := a.actor(r).Email
-	if a.describer == nil {
-		return nil, access.Refuse(http.StatusServiceUnavailable, "writing a description is not set up on this server")
-	}
 	members, _, err := a.draftMembers(r, body)
 	if err != nil {
 		return nil, err

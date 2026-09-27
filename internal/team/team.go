@@ -34,13 +34,13 @@ type app struct {
 	directory func() *who.Model
 	settings  func() *config.Settings
 	search    imagesearch.Search
-	mailer    mail.Sender
+	mailer    *mail.Mailgun
 	rsvps     RSVPLookup
 	lists     EmailListLookup
 	style     *sharecard.Style
 }
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory func() *who.Model, settings func() *config.Settings, search imagesearch.Search, mailer mail.Sender, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory func() *who.Model, settings func() *config.Settings, search imagesearch.Search, mailer *mail.Mailgun, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
 	search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
 	a := app{cache: cache, media: media, directory: directory, settings: settings, search: search, mailer: mailer, rsvps: rsvps, lists: lists, style: style}
 	for _, page := range pages {

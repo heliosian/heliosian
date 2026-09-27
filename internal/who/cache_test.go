@@ -22,20 +22,28 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/geocode"
+	"heliosian/internal/intercept"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 )
 
 type countingGeocoder struct {
-	mu    sync.Mutex
-	calls int
+	mu     sync.Mutex
+	calls  int
+	answer http.Handler
 }
 
-func (g *countingGeocoder) Lookup(address string) (geocode.Point, error) {
+func (g *countingGeocoder) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	g.mu.Lock()
+	g.calls++
+	g.mu.Unlock()
+	g.answer.ServeHTTP(w, r)
+}
+
+func (g *countingGeocoder) count() int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.calls++
-	return geocode.Fake{}.Lookup(address)
+	return g.calls
 }
 
 type server struct {
@@ -269,10 +277,12 @@ func TestGeocoderRecordsWhatItFinds(t *testing.T) {
 	if len(s.cache.unlocated) != 1 {
 		t.Fatal("the load did not wake the geocoder")
 	}
-	geocoder := &countingGeocoder{}
+	counted := &countingGeocoder{answer: intercept.Geocode()}
+	intercept.Install(intercept.GeocodeHost, counted)
+	geocoder := geocode.New("test")
 	s.cache.geocode(geocoder)
-	if geocoder.calls != unlocated || len(s.rows(t, geocodeTable)) != unlocated || len(s.cache.Model().unlocated) != 0 {
-		t.Fatalf("%d lookups, %d rows, %d still unlocated, of %d", geocoder.calls, len(s.rows(t, geocodeTable)), len(s.cache.Model().unlocated), unlocated)
+	if counted.count() != unlocated || len(s.rows(t, geocodeTable)) != unlocated || len(s.cache.Model().unlocated) != 0 {
+		t.Fatalf("%d lookups, %d rows, %d still unlocated, of %d", counted.count(), len(s.rows(t, geocodeTable)), len(s.cache.Model().unlocated), unlocated)
 	}
 	located := 0
 	for _, family := range s.cache.Model().Families {
@@ -284,8 +294,8 @@ func TestGeocoderRecordsWhatItFinds(t *testing.T) {
 		t.Fatal("no family has coordinates")
 	}
 	s.cache.geocode(geocoder)
-	if geocoder.calls != unlocated {
-		t.Fatalf("a second pass looked up %d more", geocoder.calls-unlocated)
+	if counted.count() != unlocated {
+		t.Fatalf("a second pass looked up %d more", counted.count()-unlocated)
 	}
 	for _, line := range s.changeLog(t) {
 		if strings.Contains(line, "|Geocode|") {

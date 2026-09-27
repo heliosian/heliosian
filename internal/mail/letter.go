@@ -127,7 +127,7 @@ func (l Letter) Message(subject string, to, cc, replyTo []string) Message {
 	return m
 }
 
-func Post(ctx context.Context, s Sender, m Message) {
+func Post(ctx context.Context, s *Mailgun, m Message) {
 	if len(m.To) == 0 {
 		return
 	}

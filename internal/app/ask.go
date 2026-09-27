@@ -15,7 +15,7 @@ import (
 	"heliosian/internal/who"
 )
 
-func askSources(cache *who.Cache, settings *config.Cache, teamCache *team.Cache, celebrateCache *celebrate.Cache, calendarCache *when.Cache, loopCache *loop.Cache, homeCache *home.Cache, artifactsCache *artifacts.Cache, embedder artifacts.Embedder, lists smartLists, sources func() filter.Sources, linked func(email string) []when.Linked) ask.Sources {
+func askSources(cache *who.Cache, settings *config.Cache, teamCache *team.Cache, celebrateCache *celebrate.Cache, calendarCache *when.Cache, loopCache *loop.Cache, homeCache *home.Cache, artifactsCache *artifacts.Cache, embedder *artifacts.Vertex, lists smartLists, sources func() filter.Sources, linked func(email string) []when.Linked) ask.Sources {
 	return ask.Sources{
 		Directory: cache.Model,
 		Tags: func(owner string) map[string][]string {

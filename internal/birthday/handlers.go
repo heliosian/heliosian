@@ -30,14 +30,10 @@ var pages = []string{
 type app struct {
 	cache     *Cache
 	directory func() *who.Model
-	describer Describer
-	mailer    mail.Sender
+	describer *describe.Describer
+	mailer    *mail.Mailgun
 	base      string
 	joinHome  func(ctx context.Context, email string) error
-}
-
-type Describer interface {
-	Charity(ctx context.Context, actor, name, link string) (describe.Info, error)
 }
 
 type emailRef struct {
@@ -106,7 +102,7 @@ type dateRun struct {
 	To      string `json:"to"`
 }
 
-func Register(mux *http.ServeMux, cache *Cache, directory func() *who.Model, describer Describer, mailer mail.Sender, base string, joinHome func(ctx context.Context, email string) error, about *sharecard.About) {
+func Register(mux *http.ServeMux, cache *Cache, directory func() *who.Model, describer *describe.Describer, mailer *mail.Mailgun, base string, joinHome func(ctx context.Context, email string) error, about *sharecard.About) {
 	a := app{cache: cache, directory: directory, describer: describer, mailer: mailer, base: base, joinHome: joinHome}
 	go a.remindLoop()
 	go a.exportLoop()
@@ -380,9 +376,6 @@ func (a app) describeCharity(r *http.Request, body charityLookup) (describe.Info
 	name, link := strings.TrimSpace(body.Name), strings.TrimSpace(body.DonationLink)
 	if name == "" {
 		return describe.Info{}, access.Invalid("give the charity's name first")
-	}
-	if a.describer == nil {
-		return describe.Info{}, access.Refuse(http.StatusServiceUnavailable, "suggesting a sentence is not set up on this server")
 	}
 	info, err := a.describer.Charity(r.Context(), actor.Email, name, link)
 	if errors.Is(err, claude.ErrTooMany) {

@@ -55,7 +55,7 @@ var (
 	queue *store.Queue
 )
 
-func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
+func serveWith(t *testing.T, mailer *mail.Mailgun) (*Cache, *http.ServeMux) {
 	t.Helper()
 	t.Chdir("../..")
 	now = testNow
@@ -78,7 +78,7 @@ var testStyle = CardStyle(func() string { return "Helios Celebrate" }, func() st
 
 func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	t.Helper()
-	return serveWith(t, mailtest.Discard{})
+	return serveWith(t, mailtest.Discard())
 }
 
 func tables(t *testing.T) store.Tables {
@@ -906,8 +906,8 @@ func TestSharePreview(t *testing.T) {
 }
 
 func TestMail(t *testing.T) {
-	rec := mailtest.NewRecorder()
-	cache, mux := serveWith(t, rec)
+	rec := mailtest.NewRecorder(mailtest.From)
+	cache, mux := serveWith(t, rec.Mailgun)
 	buy := func(as, party, purchaser string, attendees ...map[string]string) *httptest.ResponseRecorder {
 		return testkit.Call(t, mux, as, "POST", "/api/celebrate/tickets", map[string]any{"partyId": party, "purchaser": purchaser, "note": "We\u2019ll be a little late", "attendees": attendees})
 	}
@@ -1090,7 +1090,7 @@ func TestMoveAddress(t *testing.T) {
 	type move struct{ actor, old, to, name string }
 	told := []move{}
 	mux := http.NewServeMux()
-	Register(mux, cache, blob.New(blob.NewMemoryBucket()), directory, imagesearch.Search{}, mailtest.Discard{}, nil, func(_ context.Context, actor access.Actor, old, to, name string) {
+	Register(mux, cache, blob.New(blob.NewMemoryBucket()), directory, imagesearch.Search{}, mailtest.Discard(), nil, func(_ context.Context, actor access.Actor, old, to, name string) {
 		told = append(told, move{actor.Email, old, to, name})
 	}, testStyle)
 	const (

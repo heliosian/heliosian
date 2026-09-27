@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,8 +17,8 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/intercept"
-	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit/mailtest"
 )
 
 func sample() Report {
@@ -508,32 +507,18 @@ func TestAdminWithoutAGitHubApp(t *testing.T) {
 	}
 }
 
-type sentMail struct {
-	mu       sync.Mutex
-	messages []mail.Message
-}
-
-func (s *sentMail) Send(ctx context.Context, m mail.Message) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.messages = append(s.messages, m)
-	return nil
-}
-
-func (s *sentMail) From() string { return "HCA-Team <team@example.org>" }
-
 func TestNotifyTellsTheSuperAdmins(t *testing.T) {
-	sent := &sentMail{}
+	sent := mailtest.NewRecorder("HCA-Team <team@example.org>")
 	n := Notifier{
-		Sender:      sent,
+		Sender:      sent.Mailgun,
 		Base:        "https://heliosian.com",
 		SuperAdmins: func() []string { return []string{"Admin@example.org", " ", "other@example.org"} },
 	}
 	n.Notify(sample())
-	if len(sent.messages) != 1 {
-		t.Fatalf("sent %d messages", len(sent.messages))
+	if len(sent.Messages()) != 1 {
+		t.Fatalf("sent %d messages", len(sent.Messages()))
 	}
-	m := sent.messages[0]
+	m := sent.Messages()[0]
 	if strings.Join(m.To, ",") != "admin@example.org,other@example.org" {
 		t.Errorf("to = %v", m.To)
 	}
@@ -548,10 +533,10 @@ func TestNotifyTellsTheSuperAdmins(t *testing.T) {
 }
 
 func TestNotifyWithNobodyToTell(t *testing.T) {
-	sent := &sentMail{}
-	n := Notifier{Sender: sent, SuperAdmins: func() []string { return nil }}
+	sent := mailtest.NewRecorder("HCA-Team <team@example.org>")
+	n := Notifier{Sender: sent.Mailgun, SuperAdmins: func() []string { return nil }}
 	n.Notify(sample())
-	if len(sent.messages) != 0 {
-		t.Errorf("sent %d messages", len(sent.messages))
+	if len(sent.Messages()) != 0 {
+		t.Errorf("sent %d messages", len(sent.Messages()))
 	}
 }

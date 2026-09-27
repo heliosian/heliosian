@@ -34,7 +34,7 @@ type Documents interface {
 }
 
 type Mail struct {
-	Sender     mail.RawSender
+	Sender     *mail.Mailgun
 	SigningKey string
 	Key        []byte
 	Base       string

@@ -20,7 +20,7 @@ import (
 )
 
 type Mail struct {
-	Sender     mail.Sender
+	Sender     *mail.Mailgun
 	ReplyTo    string
 	Base       string
 	SigningKey string

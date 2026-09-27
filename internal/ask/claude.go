@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -54,10 +53,6 @@ func (u *Usage) add(usage anthropic.BetaUsage) {
 type toolCall struct {
 	use    anthropic.BetaToolUseBlock
 	result anthropic.BetaContentBlockParamUnion
-}
-
-type Responder interface {
-	Respond(ctx context.Context, req Request, emit Emitter) (Reply, error)
 }
 
 type Claude struct {
@@ -154,38 +149,4 @@ func (c *Claude) Respond(ctx context.Context, req Request, emit Emitter) (Reply,
 	}
 	reply.Text = text.String()
 	return reply, nil
-}
-
-type Fake struct{}
-
-const fakeAnswer = "This is the sample server, so nothing is asking Claude. With ANTHROPIC_API_KEY set the real answer streams in here, drawn from the directory, the calendar, HCA-Team, Celebrate, Loop and Heliosian's links."
-
-func (Fake) Respond(ctx context.Context, req Request, emit Emitter) (Reply, error) {
-	words := req.Label("day_plan")
-	emit("tool", words)
-	out, err := req.Run(ctx, "day_plan", json.RawMessage(`{}`))
-	if err != nil {
-		out = err.Error()
-	}
-	text := &strings.Builder{}
-	for i, word := range strings.Fields(fakeAnswer) {
-		select {
-		case <-ctx.Done():
-			return Reply{Text: text.String()}, ctx.Err()
-		case <-time.After(30 * time.Millisecond):
-		}
-		if i > 0 {
-			word = " " + word
-		}
-		text.WriteString(word)
-		emit("text", word)
-	}
-	tail := "\n\nToday's plan, as the tool returned it: " + out
-	if len(tail) > 600 {
-		tail = tail[:600] + "…"
-	}
-	text.WriteString(tail)
-	emit("text", tail)
-	messages := append(req.Messages, anthropic.BetaMessageParam{Role: anthropic.BetaMessageParamRoleAssistant, Content: []anthropic.BetaContentBlockParamUnion{anthropic.NewBetaTextBlock(text.String())}})
-	return Reply{Messages: messages, Text: text.String(), Tools: []string{words}, Usage: Usage{Rounds: 1}}, nil
 }

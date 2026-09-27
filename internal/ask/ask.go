@@ -56,7 +56,7 @@ type Sources struct {
 	LoopSources func() loop.Sources
 	Links       func(v access.Actor) []home.Category
 	Artifacts   func() *artifacts.Model
-	Embedder    artifacts.Embedder
+	Embedder    *artifacts.Vertex
 	Admins      Admins
 	Now         func() time.Time
 }
@@ -66,14 +66,14 @@ type Admins struct {
 }
 
 type app struct {
-	sources   Sources
-	responder Responder
-	recent    *ratelimit.Limiter
-	chatKey   []byte
+	sources Sources
+	claude  *Claude
+	recent  *ratelimit.Limiter
+	chatKey []byte
 }
 
-func Register(mux *http.ServeMux, sources Sources, responder Responder, recent *ratelimit.Limiter, chatKey []byte) {
-	a := app{sources: sources, responder: responder, recent: recent, chatKey: chatKey}
+func Register(mux *http.ServeMux, sources Sources, claude *Claude, recent *ratelimit.Limiter, chatKey []byte) {
+	a := app{sources: sources, claude: claude, recent: recent, chatKey: chatKey}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /api/ask/model", serve.JSON(a.model))
 	mux.HandleFunc("GET /api/ask/key", a.key)
@@ -210,7 +210,7 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	started := time.Now()
 	out := &expander{links: links, emit: emit, cards: v.linkCard, sent: map[string]bool{}}
-	reply, err := a.responder.Respond(ctx, req, out.send)
+	reply, err := a.claude.Respond(ctx, req, out.send)
 	out.flush()
 	if err != nil && r.Context().Err() != nil {
 		slog.InfoContext(r.Context(), "ask: stopped", "conversation", body.Conversation, "turn", asked(history)+1, "took", time.Since(started).Round(time.Millisecond))

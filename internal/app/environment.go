@@ -4,14 +4,10 @@ import (
 	"os"
 
 	"heliosian/internal/artifacts"
-	"heliosian/internal/ask"
-	"heliosian/internal/birthday"
 	"heliosian/internal/blob"
-	"heliosian/internal/describe"
 	"heliosian/internal/env"
 	"heliosian/internal/feedback"
 	"heliosian/internal/imagesearch"
-	"heliosian/internal/keypoints"
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
@@ -49,7 +45,7 @@ func mailgunSigningKey() string {
 	return os.Getenv("MAILGUN_WEBHOOK_KEY")
 }
 
-func newMailer(from string) mail.Sender {
+func newMailer(from string) *mail.Mailgun {
 	return mail.NewMailgun(mailgunKey(), from)
 }
 
@@ -63,35 +59,6 @@ func loopMail(sessionKey string) loop.Mail {
 
 func artifactsMail(bucket *blob.Bucket) artifacts.Inbox {
 	return artifacts.Inbox{SigningKey: mailgunSigningKey(), Bucket: bucket}
-}
-
-// A nil *describe.Describer must stay a nil interface, or the app would call it.
-func ClaudeDescriber() birthday.Describer {
-	if d := describe.New(os.Getenv("ANTHROPIC_API_KEY"), spend); d != nil {
-		return d
-	}
-	return nil
-}
-
-func ClaudeGroupDescriber() loop.Describer {
-	if d := describe.New(os.Getenv("ANTHROPIC_API_KEY"), spend); d != nil {
-		return d
-	}
-	return nil
-}
-
-func ClaudeKeyPoints() keypoints.Summarizer {
-	if c := keypoints.New(os.Getenv("ANTHROPIC_API_KEY")); c != nil {
-		return c
-	}
-	return nil
-}
-
-func ClaudeAsker() ask.Responder {
-	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
-		return ask.NewClaude(key)
-	}
-	return nil
 }
 
 func ImageSearchKeys() imagesearch.Search {

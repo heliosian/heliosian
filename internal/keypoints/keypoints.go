@@ -2,7 +2,6 @@ package keypoints
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -14,6 +13,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
+	"heliosian/internal/claude"
 )
 
 const model = "claude-sonnet-5"
@@ -56,10 +56,6 @@ type Reading struct {
 	Grades     []string
 }
 
-type Summarizer interface {
-	Read(ctx context.Context, e Email) (Reading, error)
-}
-
 type School interface {
 	Classrooms() []string
 	Grades() []string
@@ -71,9 +67,6 @@ type Claude struct {
 }
 
 func New(key string) *Claude {
-	if key == "" {
-		return nil
-	}
 	return &Claude{client: anthropic.NewClient(option.WithAPIKey(key))}
 }
 
@@ -90,44 +83,22 @@ func (c *Claude) Read(ctx context.Context, e Email) (Reading, error) {
 	}
 	prompt := fmt.Sprintf("The school's classrooms: %s\nThe school's grades: %s\nThe sender teaches: %s\n\nSubject: %s\nFrom: %s\nSent: %s\n\n%s",
 		strings.Join(e.Classrooms, ", "), strings.Join(e.Grades, ", "), teaches, e.Title, e.Author, e.Date, markdown)
-	stream := c.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
-		Model:        model,
-		MaxTokens:    2000,
-		System:       []anthropic.TextBlockParam{{Text: system, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
-		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt))},
-		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffortLow, Format: anthropic.JSONOutputFormatParam{Schema: schema}},
-	})
-	resp := anthropic.Message{}
-	for stream.Next() {
-		if err := resp.Accumulate(stream.Current()); err != nil {
-			return Reading{}, err
-		}
-	}
-	if err := stream.Err(); err != nil {
-		return Reading{}, err
-	}
-	if resp.StopReason == anthropic.StopReasonRefusal {
-		return Reading{}, fmt.Errorf("claude declined: %s", resp.StopDetails.Explanation)
-	}
-	if resp.StopReason != anthropic.StopReasonEndTurn {
-		return Reading{}, fmt.Errorf("claude stopped early: %s", resp.StopReason)
-	}
-	text := &strings.Builder{}
-	for _, block := range resp.Content {
-		if t, ok := block.AsAny().(anthropic.TextBlock); ok {
-			text.WriteString(t.Text)
-		}
-	}
 	var out struct {
 		Points     []string `json:"points"`
 		Classrooms []string `json:"classrooms"`
 		Grades     []string `json:"grades"`
 	}
-	if err := json.Unmarshal([]byte(text.String()), &out); err != nil {
-		return Reading{}, fmt.Errorf("read claude's answer: %w", err)
+	if _, err := claude.JSON(ctx, c.client, anthropic.MessageNewParams{
+		Model:        model,
+		MaxTokens:    2000,
+		System:       []anthropic.TextBlockParam{{Text: system, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
+		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt))},
+		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffortLow, Format: anthropic.JSONOutputFormatParam{Schema: schema}},
+	}, &out); err != nil {
+		return Reading{}, err
 	}
 	reading := Reading{Points: clean(out.Points), Classrooms: known(out.Classrooms, e.Classrooms), Grades: known(out.Grades, e.Grades)}
-	slog.InfoContext(ctx, "keypoints: read an email", "title", e.Title, "points", len(reading.Points), "classrooms", strings.Join(reading.Classrooms, ", "), "grades", strings.Join(reading.Grades, ", "), "input_tokens", resp.Usage.InputTokens+resp.Usage.CacheReadInputTokens+resp.Usage.CacheCreationInputTokens, "output_tokens", resp.Usage.OutputTokens)
+	slog.InfoContext(ctx, "keypoints: read an email", "title", e.Title, "points", len(reading.Points), "classrooms", strings.Join(reading.Classrooms, ", "), "grades", strings.Join(reading.Grades, ", "))
 	return reading, nil
 }
 
@@ -153,30 +124,6 @@ func clean(points []string) []string {
 	return out
 }
 
-type Fake struct{}
-
-func (Fake) Read(_ context.Context, e Email) (Reading, error) {
-	return Reading{Points: fakePoints(e.Markdown), Classrooms: e.Teaches}, nil
-}
-
-func fakePoints(markdown string) []string {
-	out := []string{}
-	for _, line := range strings.Split(markdown, "\n") {
-		if heading, ok := strings.CutPrefix(strings.TrimSpace(line), "#"); ok && len(out) < 4 {
-			if h := strings.TrimSpace(strings.TrimLeft(heading, "#")); h != "" {
-				out = append(out, h)
-			}
-		}
-	}
-	if len(out) == 0 {
-		first, _, _ := strings.Cut(strings.Join(strings.Fields(markdown), " "), ". ")
-		if first != "" {
-			out = append(out, first)
-		}
-	}
-	return out
-}
-
 func Missing(m *artifacts.Model, now time.Time) []*artifacts.Document {
 	since := now.Add(-Window).Format("2006-01-02")
 	unread, stale := []*artifacts.Document{}, []*artifacts.Document{}
@@ -193,7 +140,7 @@ func Missing(m *artifacts.Model, now time.Time) []*artifacts.Document {
 	return append(unread, stale...)
 }
 
-func Pass(ctx context.Context, cache *artifacts.Cache, s Summarizer, school School, now time.Time) int {
+func Pass(ctx context.Context, cache *artifacts.Cache, s *Claude, school School, now time.Time) int {
 	written := 0
 	for _, d := range Missing(cache.Model(), now) {
 		if written == perRun {
@@ -217,7 +164,7 @@ func Pass(ctx context.Context, cache *artifacts.Cache, s Summarizer, school Scho
 	return written
 }
 
-func Run(cache *artifacts.Cache, s Summarizer, school School) {
+func Run(cache *artifacts.Cache, s *Claude, school School) {
 	time.Sleep(time.Minute)
 	for {
 		if n := Pass(context.Background(), cache, s, school, time.Now()); n > 0 {

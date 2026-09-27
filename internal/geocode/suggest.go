@@ -17,42 +17,14 @@ const (
 	suggestCached    = 2000
 )
 
-type Suggester interface {
-	Suggest(input string) ([]Suggestion, error)
-}
-
-func (Fake) Suggest(input string) ([]Suggestion, error) {
-	all := []string{
-		"865 Waverley St, Palo Alto, CA 94301, USA",
-		"88 Castro St, Mountain View, CA 94041, USA",
-		"1420 Alder Ct, Los Altos, CA 94024, USA",
-		"600 W Middlefield Rd, Mountain View, CA 94043, USA",
-		"Rinconada Park, 777 Embarcadero Rd, Palo Alto, CA 94303, USA",
-		"Mitchell Park, 600 E Meadow Dr, Palo Alto, CA 94306, USA",
-	}
-	out := []Suggestion{}
-	q := strings.ToLower(strings.TrimSpace(input))
-	for _, a := range all {
-		if q == "" || strings.Contains(strings.ToLower(a), q) {
-			out = append(out, Suggestion{Text: a})
-		}
-	}
-	if len(out) == 0 {
-		for _, a := range all[:3] {
-			out = append(out, Suggestion{Text: a})
-		}
-	}
-	return out, nil
-}
-
 type Suggestions struct {
-	suggester Suggester
-	recent    *ratelimit.Limiter
-	cache     *lru.Cache[string, []Suggestion]
+	client *Client
+	recent *ratelimit.Limiter
+	cache  *lru.Cache[string, []Suggestion]
 }
 
-func NewSuggestions(s Suggester) *Suggestions {
-	return &Suggestions{suggester: s, recent: ratelimit.New(suggestPerMinute, time.Minute), cache: lru.New[string, []Suggestion](suggestCached)}
+func NewSuggestions(c *Client) *Suggestions {
+	return &Suggestions{client: c, recent: ratelimit.New(suggestPerMinute, time.Minute), cache: lru.New[string, []Suggestion](suggestCached)}
 }
 
 func (s *Suggestions) Register(mux *http.ServeMux) {
@@ -77,7 +49,7 @@ func (s *Suggestions) suggest(r *http.Request) []Suggestion {
 		slog.WarnContext(r.Context(), "address suggestions: over the limit", "email", email)
 		return []Suggestion{}
 	}
-	out, err := s.suggester.Suggest(q)
+	out, err := s.client.Suggest(q)
 	if err != nil {
 		slog.WarnContext(r.Context(), "address suggestions", "error", err)
 		return []Suggestion{}

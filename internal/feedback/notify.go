@@ -15,7 +15,7 @@ import (
 const notifyTimeout = 30 * time.Second
 
 type Notifier struct {
-	Sender      mail.Sender
+	Sender      *mail.Mailgun
 	Base        string
 	SuperAdmins func() []string
 }

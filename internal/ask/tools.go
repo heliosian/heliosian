@@ -85,7 +85,7 @@ type viewer struct {
 	celebrate *celebrate.Model
 	loop      *loop.Model
 	artifacts *artifacts.Model
-	embedder  artifacts.Embedder
+	embedder  *artifacts.Vertex
 	sources   Sources
 	now       time.Time
 	teamAs    access.Actor

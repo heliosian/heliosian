@@ -1,9 +1,11 @@
 package ask
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -25,6 +27,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/home"
+	"heliosian/internal/intercept"
 	"heliosian/internal/loop"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
@@ -67,11 +70,17 @@ func sampleSources(t *testing.T) Sources {
 		t.Fatal(err)
 	}
 	bucket := blob.NewMemoryBucket()
-	artifactsCache, err := artifacts.NewCache(dir, dir, bucket, artifacts.Fake{}, queue)
+	intercept.GoogleLogin(t.TempDir())
+	intercept.Install(intercept.VertexHost, intercept.Vertex())
+	embedder, err := artifacts.NewVertex()
 	if err != nil {
 		t.Fatal(err)
 	}
-	filer := artifacts.Register(http.NewServeMux(), artifactsCache, artifacts.Fake{}, queue, artifacts.Inbox{Bucket: bucket})
+	artifactsCache, err := artifacts.NewCache(dir, dir, bucket, embedder, queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filer := artifacts.Register(http.NewServeMux(), artifactsCache, embedder, queue, artifacts.Inbox{Bucket: bucket})
 	saved, err := filepath.Glob("../../sampledata/artifacts/*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +108,7 @@ func sampleSources(t *testing.T) Sources {
 		},
 		Links:     homeCache.CategoriesFor,
 		Artifacts: func() *artifacts.Model { return documents },
-		Embedder:  artifacts.Fake{},
+		Embedder:  embedder,
 		Admins:    Admins{Team: isAdmin, Celebrate: isAdmin, Loop: isAdmin, Calendar: isAdmin, Home: isAdmin},
 		Now:       func() time.Time { return sampleNow },
 	}
@@ -167,21 +176,57 @@ func TestRecentBlockListsTheNewestDocuments(t *testing.T) {
 	}
 }
 
-type recording struct {
-	Fake
-	requests *[]Request
+type sentMessage struct {
+	Role    string `json:"role"`
+	Content []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"content"`
 }
 
-func (r recording) Respond(ctx context.Context, req Request, emit Emitter) (Reply, error) {
-	*r.requests = append(*r.requests, req)
-	return r.Fake.Respond(ctx, req, emit)
+type sentRequest struct {
+	System []struct {
+		Text string `json:"text"`
+	} `json:"system"`
+	Messages []sentMessage `json:"messages"`
 }
 
-func systemMessages(messages []anthropic.BetaMessageParam) []string {
+func interceptClaude(t *testing.T) func() []sentRequest {
+	t.Helper()
+	mu := sync.Mutex{}
+	turns := []sentRequest{}
+	answer := intercept.Claude()
+	intercept.Install(intercept.ClaudeHost, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		var req sentRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Error(err)
+			return
+		}
+		if last := req.Messages[len(req.Messages)-1]; last.Content[0].Type != "tool_result" {
+			mu.Lock()
+			turns = append(turns, req)
+			mu.Unlock()
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		answer.ServeHTTP(w, r)
+	}))
+	return func() []sentRequest {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(turns)
+	}
+}
+
+func systemMessages(messages []sentMessage) []string {
 	out := []string{}
 	for _, m := range messages {
-		if m.Role == anthropic.BetaMessageParamRoleSystem {
-			out = append(out, *m.Content[0].GetText())
+		if m.Role == string(anthropic.BetaMessageParamRoleSystem) {
+			out = append(out, m.Content[0].Text)
 		}
 	}
 	return out
@@ -229,9 +274,9 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 	documents := sources.Artifacts()
 	current := documents
 	sources.Artifacts = func() *artifacts.Model { return current }
-	requests := []Request{}
+	sent := interceptClaude(t)
 	mux := http.NewServeMux()
-	Register(mux, sources, recording{requests: &requests}, claude.NewLimiter(), []byte("test"))
+	Register(mux, sources, NewClaude("test"), claude.NewLimiter(), []byte("test"))
 	handler := auth.Fixed(jordan, mux)
 	chat := &transcript{}
 	first := chat.keep(t, post(t, handler, chat.body(t, "Anything new?")))
@@ -245,6 +290,7 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 		t.Fatalf("the arrival was not kept as known: %v", second["known"])
 	}
 	chat.keep(t, post(t, handler, chat.body(t, "Still?")))
+	requests := sent()
 	if len(requests) != 3 {
 		t.Fatalf("%d requests", len(requests))
 	}
@@ -252,7 +298,7 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 		t.Fatalf("the first turn was told of %v", told)
 	}
 	messages := requests[1].Messages
-	if last := messages[len(messages)-1]; last.Role != anthropic.BetaMessageParamRoleSystem || messages[len(messages)-2].Role != anthropic.BetaMessageParamRoleUser {
+	if last := messages[len(messages)-1]; last.Role != string(anthropic.BetaMessageParamRoleSystem) || messages[len(messages)-2].Role != string(anthropic.BetaMessageParamRoleUser) {
 		t.Fatalf("the arrival does not follow the question: %v", messages)
 	}
 	told := systemMessages(messages)
@@ -263,7 +309,7 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 		t.Fatal("the prompt lists the arrival only once it has been told")
 	}
 	third := requests[2].Messages
-	if len(systemMessages(third)) != 1 || third[len(third)-1].Role != anthropic.BetaMessageParamRoleUser {
+	if len(systemMessages(third)) != 1 || third[len(third)-1].Role != string(anthropic.BetaMessageParamRoleUser) {
 		t.Fatalf("the arrival was told again: %v", systemMessages(third))
 	}
 }
@@ -597,10 +643,10 @@ func anyStrings(list any) []string {
 	return out
 }
 
-func serveApp(t *testing.T, responder Responder) http.Handler {
+func serveApp(t *testing.T) http.Handler {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), responder, claude.NewLimiter(), []byte("test"))
+	Register(mux, sampleSources(t), NewClaude("test"), claude.NewLimiter(), []byte("test"))
 	return auth.Fixed(jordan, mux)
 }
 
@@ -625,13 +671,13 @@ func chatKey(t *testing.T, handler http.Handler) string {
 }
 
 func TestChatKeyIsTheSameEachLoadAndGoesWithTheServerKey(t *testing.T) {
-	handler := serveApp(t, Fake{})
+	handler := serveApp(t)
 	first := chatKey(t, handler)
 	if again := chatKey(t, handler); again != first {
 		t.Fatalf("a second load gave %q, not %q", again, first)
 	}
 	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), Fake{}, claude.NewLimiter(), []byte("other"))
+	Register(mux, sampleSources(t), NewClaude("test"), claude.NewLimiter(), []byte("other"))
 	if other := chatKey(t, auth.Fixed(jordan, mux)); other == first {
 		t.Fatalf("a different server key gave the same chat key")
 	}
@@ -646,10 +692,8 @@ func post(t *testing.T, handler http.Handler, body string) *httptest.ResponseRec
 }
 
 func TestChatStreamsAndKeepsTheConversation(t *testing.T) {
-	requests := []Request{}
-	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), recording{requests: &requests}, claude.NewLimiter(), []byte("test"))
-	handler := auth.Fixed(jordan, mux)
+	sentTurns := interceptClaude(t)
+	handler := serveApp(t)
 	chat := &transcript{}
 	rec := post(t, handler, chat.body(t, "What kind of day is today?"))
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/event-stream" {
@@ -662,30 +706,29 @@ func TestChatStreamsAndKeepsTheConversation(t *testing.T) {
 		}
 	}
 	first := chat.keep(t, rec)
-	if first["turns"] != 1.0 || first["text"] == "" || !slices.Equal(anyStrings(first["tools"]), []string{"Checking the day plan"}) {
+	if first["turns"] != 1.0 || first["text"] == "" || !slices.Equal(anyStrings(first["tools"]), []string{findPeople.words}) {
 		t.Fatalf("done lacks the answer for the browser to keep: %v", first)
 	}
-	if len(chat.context) != 2 || len(chat.known) == 0 {
+	if len(chat.context) != 4 || len(chat.known) == 0 {
 		t.Fatalf("the browser was handed %d messages and %d known documents", len(chat.context), len(chat.known))
 	}
 	second := chat.keep(t, post(t, handler, chat.body(t, "And tomorrow?")))
+	requests := sentTurns()
 	if second["turns"] != 2.0 || len(requests) != 2 {
 		t.Fatalf("second turn: %v after %d requests", second, len(requests))
 	}
 	sent := requests[1].Messages
-	if len(sent) != 3 || sent[0].Role != anthropic.BetaMessageParamRoleUser || sent[1].Role != anthropic.BetaMessageParamRoleAssistant || sent[2].Content[0].OfText.Text != "And tomorrow?" {
-		t.Fatalf("the second turn was sent %v", sent)
+	if len(sent) != 5 || sent[0].Role != "user" || sent[1].Content[0].Type != "tool_use" || sent[2].Content[0].Type != "tool_result" || sent[3].Role != "assistant" || sent[4].Content[0].Text != "And tomorrow?" {
+		t.Fatalf("the second turn was sent %+v", sent)
 	}
-	if got := sent[1].Content[0].OfText.Text; !strings.HasPrefix(got, fakeAnswer) {
+	if got := sent[3].Content[0].Text; !strings.HasPrefix(got, "This is the sample server") {
 		t.Fatalf("the model's own answer came back changed: %q", got)
 	}
 }
 
 func TestChatReadsTheBrowsersContextWithKeys(t *testing.T) {
-	requests := []Request{}
-	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), recording{requests: &requests}, claude.NewLimiter(), []byte("test"))
-	handler := auth.Fixed(jordan, mux)
+	sentTurns := interceptClaude(t)
+	handler := serveApp(t)
 	chat := &transcript{}
 	if err := json.Unmarshal([]byte(`[{"role":"user","content":[{"type":"text","text":"Is `+samURL+` here?"}]},{"role":"assistant","content":[{"type":"text","text":"Yes, [Sam](`+samURL+`)."}]},{"role":"user","content":[{"type":"text","text":"Two"}]},{"role":"assistant","content":[{"type":"text","text":"B"}]}]`), &chat.context); err != nil {
 		t.Fatal(err)
@@ -694,8 +737,8 @@ func TestChatReadsTheBrowsersContextWithKeys(t *testing.T) {
 	if d["turns"] != 3.0 {
 		t.Fatalf("turns %v", d["turns"])
 	}
-	sent := requests[0].Messages
-	if got := sent[1].Content[0].OfText.Text; got != "Yes, [Sam]("+keyOf(samURL)+")." {
+	sent := sentTurns()[0].Messages
+	if got := sent[1].Content[0].Text; got != "Yes, [Sam]("+keyOf(samURL)+")." {
 		t.Fatalf("the model read %q", got)
 	}
 	if len(systemMessages(sent)) != 1 {
@@ -704,7 +747,7 @@ func TestChatReadsTheBrowsersContextWithKeys(t *testing.T) {
 }
 
 func TestChatRefusesAConversationPastItsLength(t *testing.T) {
-	handler := serveApp(t, Fake{})
+	handler := serveApp(t)
 	chat := &transcript{context: []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "One"}}}, map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "text", "text": strings.Repeat("a", maxConversationLength)}}}}}
 	rec := post(t, handler, chat.body(t, "Two"))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "new one") {
@@ -716,30 +759,26 @@ func TestChatRefusesAConversationPastItsLength(t *testing.T) {
 }
 
 type stopping struct {
+	*httptest.ResponseRecorder
 	cancel context.CancelFunc
-	calls  *int
 }
 
-func (s stopping) Respond(ctx context.Context, req Request, emit Emitter) (Reply, error) {
-	*s.calls++
-	if *s.calls > 1 {
-		return Fake{}.Respond(ctx, req, emit)
+func (s stopping) Write(b []byte) (int, error) {
+	if strings.Contains(string(b), "event: tool") {
+		s.cancel()
 	}
-	emit("text", "The first words")
-	s.cancel()
-	<-ctx.Done()
-	return Reply{Text: "The first words"}, ctx.Err()
+	return s.ResponseRecorder.Write(b)
 }
 
 func TestChatLeavesAStoppedAnswerToTheBrowser(t *testing.T) {
+	interceptClaude(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	calls := 0
-	handler := serveApp(t, stopping{cancel: cancel, calls: &calls})
+	handler := serveApp(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/ask/chat", strings.NewReader(`{"message":"What kind of day is today?"}`)).WithContext(ctx)
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
+	handler.ServeHTTP(stopping{ResponseRecorder: rec, cancel: cancel}, req)
 	body := rec.Body.String()
-	if !strings.Contains(body, "The first words") || strings.Contains(body, "event: error") || strings.Contains(body, "event: done") {
+	if !strings.Contains(body, "event: tool") || strings.Contains(body, "event: error") || strings.Contains(body, "event: done") {
 		t.Fatalf("a stopped answer was answered: %s", body)
 	}
 }
@@ -754,7 +793,8 @@ func (w wrapped) WriteHeader(status int)      { w.inner.WriteHeader(status) }
 func (w wrapped) Unwrap() http.ResponseWriter { return w.inner }
 
 func TestChatStreamsThroughAWrappedWriter(t *testing.T) {
-	handler := serveApp(t, Fake{})
+	interceptClaude(t)
+	handler := serveApp(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/ask/chat", strings.NewReader(`{"message":"Hello"}`))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(wrapped{rec}, req)
@@ -764,7 +804,7 @@ func TestChatStreamsThroughAWrappedWriter(t *testing.T) {
 }
 
 func TestChatRefusesEmptyAndOverlongMessages(t *testing.T) {
-	handler := serveApp(t, Fake{})
+	handler := serveApp(t)
 	if rec := post(t, handler, `{"message":"   "}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("blank: %d", rec.Code)
 	}

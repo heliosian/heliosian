@@ -6,9 +6,22 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"heliosian/internal/intercept"
 )
 
 const samples = "../../sampledata/artifacts"
+
+func vertex(t *testing.T) *Vertex {
+	t.Helper()
+	intercept.GoogleLogin(t.TempDir())
+	intercept.Install(intercept.VertexHost, intercept.Vertex())
+	v, err := NewVertex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
 
 func sampleIssue(t *testing.T) *Document {
 	t.Helper()
@@ -16,7 +29,7 @@ func sampleIssue(t *testing.T) *Document {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := message.Build(&Resolver{}, Fake{}.Model())
+	doc, err := message.Build(&Resolver{}, Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +70,7 @@ func TestPlainTextMessageKeepsItsParagraphs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := message.Build(&Resolver{}, Fake{}.Model())
+	doc, err := message.Build(&Resolver{}, Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +95,7 @@ func TestPageBecomesMarkdown(t *testing.T) {
 	if _, ok := saved.(Page); !ok {
 		t.Fatalf("read as %T", saved)
 	}
-	doc, err := saved.Build(&Resolver{}, Fake{}.Model())
+	doc, err := saved.Build(&Resolver{}, Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +129,7 @@ func TestEveryKindUnwrapsLinks(t *testing.T) {
 	const body = `<p>See <a href="https://www.google.com/url?q=https://www.choicelunch.com/&amp;sa=D">Choicelunch</a>, <a href="https://email.mail1.veracross.com/c/eJxMzT1u7SAQhuHVQGnB8F9Q3MbbOIIBH9DlGAscrz9CKZJynnmlL3lpLKfZc2Md11oIS4tPwiiUGuOhdIyodU7WhATKpuisi7R6YKCZ4xxAWGU3riCZw0UjxRGMQSLZJ9TGtyePgKPPuWH_0ObLfV-TiH8EdgJ7wbCV3GqfNZyrILDT4dfx_mqtPnkQyX6KiaX3tvXxpo8H-uALW83n7f--F-e1_Lr-eyucXnDlMfv56wCMgfgOAAD__5zzUBI">the form</a> and <a href="/about">about</a>.</p>`
 	const want = "See [Choicelunch](https://www.choicelunch.com/), [the form](https://hca.heliosian.com/) and "
 	page := Page{URL: "https://www.heliosschool.org/student-life/lunch", HTML: `<html><head><title>Lunch - Helios School</title><meta name="page-published" content="2026-09-01T12:00:00Z"></head><body><main>` + body + `</main></body></html>`}
-	doc, err := page.Build(&Resolver{}, Fake{}.Model())
+	doc, err := page.Build(&Resolver{}, Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +137,7 @@ func TestEveryKindUnwrapsLinks(t *testing.T) {
 		t.Errorf("page markdown:\n%s", doc.Markdown)
 	}
 	message := Message{MessageID: "m@x", Date: "2026-09-01T12:00:00Z", Subject: "Lunch", Channel: "parents", Kind: KindList, HTML: body}
-	if doc, err = message.Build(&Resolver{}, Fake{}.Model()); err != nil {
+	if doc, err = message.Build(&Resolver{}, Vertex{}.Model()); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(doc.Markdown, want) {
@@ -142,7 +155,7 @@ func TestExcludedPagesAreRefused(t *testing.T) {
 		if !Excluded(address) {
 			t.Errorf("%s is not excluded", address)
 		}
-		if _, err := (Page{URL: address, HTML: "<main><p>Words.</p></main>"}).Build(&Resolver{}, Fake{}.Model()); !errors.Is(err, ErrExcluded) {
+		if _, err := (Page{URL: address, HTML: "<main><p>Words.</p></main>"}).Build(&Resolver{}, Vertex{}.Model()); !errors.Is(err, ErrExcluded) {
 			t.Errorf("%s: %v", address, err)
 		}
 	}
@@ -161,7 +174,7 @@ func TestPortalResourceBecomesMarkdown(t *testing.T) {
 		Format:  FormatHTML,
 		Body:    `<h2>Ordering</h2><p>Order by Thursday on <a href="https://www.google.com/url?q=https://www.choicelunch.com/&amp;sa=D&amp;usg=x">Choicelunch</a>, and see <a href="/heliosschool/parent/pages/Aftercare-Program">aftercare</a>.</p>`,
 	}
-	doc, err := r.Build(&Resolver{}, Fake{}.Model())
+	doc, err := r.Build(&Resolver{}, Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,14 +190,14 @@ func TestPortalResourceBecomesMarkdown(t *testing.T) {
 func TestTextResourceKeepsItsLines(t *testing.T) {
 	r := Resource{URL: "https://docs.google.com/presentation/d/x/edit", Title: "SEL", Fetched: "2026-09-17T19:00:00Z", Format: FormatText,
 		Body: "Day in the Life\r\nSEL skills   matter.\n\n1\n\nEssential Skills\nAsk for help\n\fRespect others\n"}
-	doc, err := r.Build(&Resolver{}, Fake{}.Model())
+	doc, err := r.Build(&Resolver{}, Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if doc.Markdown != "Day in the Life\nSEL skills matter.\n\nEssential Skills\nAsk for help\n\nRespect others" {
 		t.Fatalf("markdown:\n%q", doc.Markdown)
 	}
-	if _, err := (Resource{URL: r.URL, Title: "Empty", Fetched: r.Fetched, Format: FormatText, Body: "\f 2 \n"}).Build(&Resolver{}, Fake{}.Model()); !errors.Is(err, ErrNoWords) {
+	if _, err := (Resource{URL: r.URL, Title: "Empty", Fetched: r.Fetched, Format: FormatText, Body: "\f 2 \n"}).Build(&Resolver{}, Vertex{}.Model()); !errors.Is(err, ErrNoWords) {
 		t.Fatalf("an empty resource: %v", err)
 	}
 }
@@ -254,7 +267,7 @@ func TestObjectNamesFollowTheRenderedDocument(t *testing.T) {
 	if !strings.HasPrefix(before, Folder+"/"+doc.Key+"-") || before != Folder+"/"+doc.ObjectFile() {
 		t.Fatalf("object: %s", before)
 	}
-	if err := doc.Embed(context.Background(), Fake{}); err != nil {
+	if err := doc.Embed(context.Background(), vertex(t)); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Object() != before {
@@ -268,7 +281,7 @@ func TestObjectNamesFollowTheRenderedDocument(t *testing.T) {
 
 func TestVectorsRoundTripAsBase64(t *testing.T) {
 	doc := sampleIssue(t)
-	if err := doc.Embed(context.Background(), Fake{}); err != nil {
+	if err := doc.Embed(context.Background(), vertex(t)); err != nil {
 		t.Fatal(err)
 	}
 	encoded, err := doc.Chunks[0].Vector.MarshalJSON()
@@ -300,9 +313,10 @@ func TestSearchRanksTheMatchingChunkFirst(t *testing.T) {
 	if oldest, newest := m.Span(); oldest != "2026-08-30" || newest != "2026-09-25" {
 		t.Fatalf("span: %s to %s", oldest, newest)
 	}
+	embedder := vertex(t)
 	first := func(query string) Hit {
 		t.Helper()
-		vectors, err := Fake{}.Embed(context.Background(), []string{query}, true)
+		vectors, err := embedder.Embed(context.Background(), []string{query}, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -326,21 +340,22 @@ func TestSearchRanksTheMatchingChunkFirst(t *testing.T) {
 
 func TestAQuotedPassageIsReturnedOnce(t *testing.T) {
 	original := "The bake sale is on Friday in the courtyard and every plate needs its ingredients written on it so families with allergies can read them before their children choose."
-	model := Fake{}.Model()
+	model := Vertex{}.Model()
 	m := &Model{Documents: []*Document{
 		{Key: "a", Title: "Bake sale", Date: "2026-09-01", Model: model, Chunks: []Chunk{{Text: original}}},
 		{Key: "b", Title: "Re: Bake sale", Date: "2026-09-02", Model: model, Chunks: []Chunk{{Text: "Thanks for organising!\n\n" + original}}},
 		{Key: "c", Title: "Picture day", Date: "2026-09-03", Model: model, Chunks: []Chunk{{Text: "Picture day is Tuesday and order forms go home on Monday."}}},
 	}}
+	embedder := vertex(t)
 	for _, d := range m.Documents {
-		if err := d.Embed(context.Background(), Fake{}); err != nil {
+		if err := d.Embed(context.Background(), embedder); err != nil {
 			t.Fatal(err)
 		}
 		if err := d.normalize(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	vectors, err := Fake{}.Embed(context.Background(), []string{"bake sale ingredients allergies"}, true)
+	vectors, err := embedder.Embed(context.Background(), []string{"bake sale ingredients allergies"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -42,11 +42,11 @@ type Holder interface {
 type Filer struct {
 	Inbox
 	cache    *Cache
-	embedder Embedder
+	embedder *Vertex
 	holder   Holder
 }
 
-func Register(mux *http.ServeMux, cache *Cache, embedder Embedder, holder Holder, mailbox Inbox) *Filer {
+func Register(mux *http.ServeMux, cache *Cache, embedder *Vertex, holder Holder, mailbox Inbox) *Filer {
 	in := &Filer{Inbox: mailbox, cache: cache, embedder: embedder, holder: holder}
 	mux.HandleFunc("POST /hooks/mail/mime", in.hook)
 	return in

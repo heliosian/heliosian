@@ -36,13 +36,13 @@ type app struct {
 	store     *blob.Store
 	directory func() *who.Model
 	search    imagesearch.Search
-	mailer    mail.Sender
+	mailer    *mail.Mailgun
 	rsvps     RSVPLookup
 	moved     AddressMoved
 	style     *sharecard.Style
 }
 
-func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, search imagesearch.Search, mailer mail.Sender, rsvps RSVPLookup, moved AddressMoved, style *sharecard.Style) {
+func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, search imagesearch.Search, mailer *mail.Mailgun, rsvps RSVPLookup, moved AddressMoved, style *sharecard.Style) {
 	search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
 	a := app{cache: cache, store: store, directory: directory, search: search, mailer: mailer, rsvps: rsvps, moved: moved, style: style}
 	for _, page := range pages {

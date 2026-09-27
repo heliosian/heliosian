@@ -18,9 +18,9 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/ask"
 	"heliosian/internal/auth"
-	"heliosian/internal/birthday"
 	"heliosian/internal/blob"
 	"heliosian/internal/capture"
+	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
 	"heliosian/internal/devcache"
@@ -77,20 +77,29 @@ func main() {
 
 func sampleServer() (*http.Server, *store.Queue) {
 	intercept.Install(mail.Host, mailFiles{dir: mailDir})
+	intercept.Install(intercept.ClaudeHost, intercept.Claude())
+	intercept.Install(intercept.GeocodeHost, intercept.Geocode())
+	intercept.Install(intercept.PlacesHost, intercept.Places())
+	intercept.GoogleLogin("local/google")
+	intercept.Install(intercept.VertexHost, intercept.Vertex())
+	embedder, err := artifacts.NewVertex()
+	if err != nil {
+		logging.Fatal("vertex embedder", "error", err)
+	}
 	dir := &data.Dir{Root: "sampledata"}
 	bucket := blob.NewMemoryBucket()
 	media := blob.New(bucket)
 	core := app.NewCore(app.Config{
 		Source:        dir,
 		Writer:        dir,
-		Geocoder:      geocode.Fake{},
+		Geocoder:      geocode.New("sample"),
 		Bucket:        bucket,
 		Store:         media,
 		FamilyIDKey:   []byte("sample"),
 		ChatKey:       []byte("sample"),
 		BrowserKey:    os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch:   app.ImageSearchKeys(),
-		Describer:     sampleDescriber(),
+		Describer:     describe.New("sample", claude.NewLimiter()),
 		Mail:          mail.NewMailgun("sample", "HCA-Team <hca@example.org>"),
 		CelebrateMail: mail.NewMailgun("sample", "Helios Celebrate <celebrate@example.org>"),
 		CalendarMail:  when.Mail{Sender: mail.NewMailgun("sample", "Helios When <when@example.org>"), ReplyTo: "Helios When <rsvp@reply.example.org>", Key: []byte("sample")},
@@ -98,11 +107,10 @@ func sampleServer() (*http.Server, *store.Queue) {
 		BirthdayBase:  "https://birthday.heliosiandev.com:" + app.Port(),
 		FeedbackBase:  "https://home.heliosiandev.com:" + app.Port(),
 		Loop:          loop.Mail{Sender: mail.NewMailgun("sample", ""), Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir}},
-		LoopDescriber: sampleGroupDescriber(),
-		Asker:         sampleAsker(),
-		Embedder:      artifacts.Fake{},
+		Asker:         ask.NewClaude("sample"),
+		Embedder:      embedder,
 		ArtifactsMail: artifacts.Inbox{Bucket: bucket},
-		KeyPoints:     keypoints.Fake{},
+		KeyPoints:     keypoints.New("sample"),
 	})
 	saved, err := filepath.Glob("sampledata/artifacts/*.json")
 	if err != nil {
@@ -123,27 +131,6 @@ func sampleServer() (*http.Server, *store.Queue) {
 	return localTLS(app.Server(app.DevDomain, core.Handlers(func(_ string, next http.Handler) http.Handler {
 		return signIn.Fixed(sampleUser, next)
 	}), core.Aliased()), core.Queue)
-}
-
-func sampleAsker() ask.Responder {
-	if c := app.ClaudeAsker(); c != nil {
-		return c
-	}
-	return ask.Fake{}
-}
-
-func sampleDescriber() birthday.Describer {
-	if d := app.ClaudeDescriber(); d != nil {
-		return d
-	}
-	return describe.Fake{}
-}
-
-func sampleGroupDescriber() loop.Describer {
-	if d := app.ClaudeGroupDescriber(); d != nil {
-		return d
-	}
-	return describe.Fake{}
 }
 
 func localTLS(server *http.Server, queue *store.Queue) (*http.Server, *store.Queue) {

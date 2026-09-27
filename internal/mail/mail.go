@@ -1,7 +1,6 @@
 package mail
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"maps"
@@ -34,11 +33,6 @@ type Attachment struct {
 	Name        string
 	ContentType string
 	Content     []byte
-}
-
-type Sender interface {
-	Send(ctx context.Context, m Message) error
-	From() string
 }
 
 func Compose(from string, m Message) string {

@@ -25,6 +25,7 @@ import (
 	"heliosian/internal/claude"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/describe"
 	"heliosian/internal/env"
 	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
@@ -48,35 +49,29 @@ const OptInPath = "/optin"
 
 var spend = claude.NewLimiter()
 
-type Geocoder interface {
-	who.Geocoder
-	geocode.Suggester
-}
-
 type Config struct {
 	Source        data.Source
 	Writer        data.Writer
-	Geocoder      Geocoder
+	Geocoder      *geocode.Client
 	Bucket        *blob.Bucket
 	Store         *blob.Store
 	FamilyIDKey   []byte
 	ChatKey       []byte
 	BrowserKey    string
 	ImageSearch   imagesearch.Search
-	Mail          mail.Sender
-	CelebrateMail mail.Sender
+	Mail          *mail.Mailgun
+	CelebrateMail *mail.Mailgun
 	CalendarMail  when.Mail
-	BirthdayMail  mail.Sender
+	BirthdayMail  *mail.Mailgun
 	BirthdayBase  string
 	FeedbackFiler feedback.IssueFiler
 	FeedbackBase  string
-	Describer     birthday.Describer
+	Describer     *describe.Describer
 	Loop          loop.Mail
-	LoopDescriber loop.Describer
-	Asker         ask.Responder
-	Embedder      artifacts.Embedder
+	Asker         *ask.Claude
+	Embedder      *artifacts.Vertex
 	ArtifactsMail artifacts.Inbox
-	KeyPoints     keypoints.Summarizer
+	KeyPoints     *keypoints.Claude
 }
 
 type appSpec struct {
@@ -184,9 +179,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load artifacts data", "error", err)
 	}
-	if cfg.KeyPoints != nil {
-		go keypoints.Run(artifactsCache, cfg.KeyPoints, cache)
-	}
+	go keypoints.Run(artifactsCache, cfg.KeyPoints, cache)
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cache.IsAdmin)
 	who.Register(mux, cache, cfg.BrowserKey, lists, whoAbout)
@@ -243,7 +236,7 @@ func NewCore(cfg Config) *Core {
 	documents := artifacts.Register(askMux, artifactsCache, cfg.Embedder, queue, cfg.ArtifactsMail)
 	loopMail.Documents = documents
 	loopMux := http.NewServeMux()
-	loop.Register(loopMux, loopCache, cfg.Store, sources, settings.Settings, loopMail, cfg.LoopDescriber, loopAbout)
+	loop.Register(loopMux, loopCache, cfg.Store, sources, settings.Settings, loopMail, cfg.Describer, loopAbout)
 	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, lists, sources, linked), cfg.Asker, spend, cfg.ChatKey)
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
@@ -350,6 +343,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	familyIDKey.Write([]byte("family id"))
 	chatKey := hmac.New(sha256.New, []byte(sessionKey))
 	chatKey.Write([]byte("ask chats"))
+	anthropicKey := env.Required("ANTHROPIC_API_KEY")
 	core := NewCore(Config{
 		Source:        sheet,
 		Writer:        sheet,
@@ -360,7 +354,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		ChatKey:       chatKey.Sum(nil),
 		BrowserKey:    env.Required("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch:   ImageSearchKeys(),
-		Describer:     ClaudeDescriber(),
+		Describer:     describe.New(anthropicKey, spend),
 		Mail:          newMailer(mailFrom),
 		CelebrateMail: newMailer(celebrateMailFrom),
 		CalendarMail:  calendarMail(sessionKey),
@@ -369,9 +363,8 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		FeedbackFiler: githubApp(),
 		FeedbackBase:  feedbackBase,
 		Loop:          loopMail(sessionKey),
-		LoopDescriber: ClaudeGroupDescriber(),
-		Asker:         ask.NewClaude(env.Required("ANTHROPIC_API_KEY")),
-		KeyPoints:     ClaudeKeyPoints(),
+		Asker:         ask.NewClaude(anthropicKey),
+		KeyPoints:     keypoints.New(anthropicKey),
 		Embedder:      embedder,
 		ArtifactsMail: artifactsMail(bucket),
 	})
@@ -390,7 +383,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		return auths[key].Wrap(next)
 	}), core.Aliased())
 	if os.Getenv("K_SERVICE") != "" {
-		watcher := calendarWatcher(sheet, core, sessionKey)
+		watcher := calendarWatcher(sheet, core, sessionKey, anthropicKey)
 		muxes["when"].Handle("POST "+calendarimport.HookPath, watcher)
 		watcher.Start()
 		server.RegisterOnShutdown(func() { core.Queue.Add(watcher.Stop) })
@@ -398,7 +391,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	return server, core.Queue
 }
 
-func calendarWatcher(sheet *data.Sheet, core *Core, sessionKey string) *calendarimport.Watcher {
+func calendarWatcher(sheet *data.Sheet, core *Core, sessionKey, anthropicKey string) *calendarimport.Watcher {
 	cal, err := gcal.NewService(context.Background(), option.WithScopes(gcal.CalendarReadonlyScope))
 	if err != nil {
 		logging.Fatal("calendar client", "error", err)
@@ -408,7 +401,7 @@ func calendarWatcher(sheet *data.Sheet, core *Core, sessionKey string) *calendar
 	opts := calendarimport.Options{
 		Source: sheet, Cache: core.CalendarCache, Calendar: cal,
 		Roster:       func() when.Roster { return when.RosterOf(core.Cache.Model()) },
-		AnthropicKey: env.Required("ANTHROPIC_API_KEY"),
+		AnthropicKey: anthropicKey,
 	}
 	return calendarimport.NewWatcher(opts, hex.EncodeToString(mac.Sum(nil)))
 }

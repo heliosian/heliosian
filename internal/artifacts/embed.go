@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"math"
 	"net/http"
@@ -24,13 +23,7 @@ const (
 	vertexRegion  = "us-west1"
 	vertexBatch   = 25
 	vertexDims    = 768
-	fakeDims      = 256
 )
-
-type Embedder interface {
-	Embed(ctx context.Context, texts []string, query bool) ([]Vector, error)
-	Model() string
-}
 
 type Vector []float32
 
@@ -141,27 +134,6 @@ func (v *Vertex) predict(ctx context.Context, texts []string, query bool) ([]Vec
 			return nil, fmt.Errorf("embed: vector %d has %d dimensions, not %d", i, len(p.Embeddings.Values), vertexDims)
 		}
 		out = append(out, p.Embeddings.Values)
-	}
-	return out, nil
-}
-
-type Fake struct{}
-
-func (Fake) Model() string {
-	return fmt.Sprintf("fake-bag-of-words@%d", fakeDims)
-}
-
-func (Fake) Embed(ctx context.Context, texts []string, query bool) ([]Vector, error) {
-	out := []Vector{}
-	for _, text := range texts {
-		vector := make(Vector, fakeDims)
-		for _, token := range tokens(text) {
-			h := fnv.New32a()
-			h.Write([]byte(token))
-			vector[h.Sum32()%fakeDims]++
-		}
-		Normalize(vector)
-		out = append(out, vector)
 	}
 	return out, nil
 }

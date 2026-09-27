@@ -35,6 +35,7 @@ import (
 	"google.golang.org/api/googleapi"
 
 	"heliosian/internal/cells"
+	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 	"heliosian/internal/when"
@@ -282,7 +283,7 @@ func slug(s string) string {
 }
 
 func ask(ctx context.Context, client anthropic.Client, system string, content []anthropic.ContentBlockParamUnion, schema map[string]any, effort anthropic.OutputConfigEffort, out any) (string, error) {
-	stream := client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
+	return claude.JSON(ctx, client, anthropic.MessageNewParams{
 		Model:     modelName,
 		MaxTokens: 64000,
 		System: []anthropic.TextBlockParam{{
@@ -291,33 +292,7 @@ func ask(ctx context.Context, client anthropic.Client, system string, content []
 		}},
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(content...)},
 		OutputConfig: anthropic.OutputConfigParam{Effort: effort, Format: anthropic.JSONOutputFormatParam{Schema: schema}},
-	})
-	resp := anthropic.Message{}
-	for stream.Next() {
-		if err := resp.Accumulate(stream.Current()); err != nil {
-			return "", err
-		}
-	}
-	if err := stream.Err(); err != nil {
-		return "", err
-	}
-	if resp.StopReason == anthropic.StopReasonRefusal {
-		return "", fmt.Errorf("claude refused: %s %s", resp.StopDetails.Category, resp.StopDetails.Explanation)
-	}
-	if resp.StopReason != anthropic.StopReasonEndTurn {
-		return "", fmt.Errorf("claude stopped early: %s", resp.StopReason)
-	}
-	text := &strings.Builder{}
-	for _, block := range resp.Content {
-		if t, ok := block.AsAny().(anthropic.TextBlock); ok {
-			text.WriteString(t.Text)
-		}
-	}
-	slog.InfoContext(ctx, "calendar import: claude usage", "input", resp.Usage.InputTokens+resp.Usage.CacheReadInputTokens+resp.Usage.CacheCreationInputTokens, "cached", resp.Usage.CacheReadInputTokens, "output", resp.Usage.OutputTokens)
-	if err := json.Unmarshal([]byte(text.String()), out); err != nil {
-		return "", fmt.Errorf("decode claude's answer: %w: %s", err, text.String())
-	}
-	return text.String(), nil
+	}, out)
 }
 
 func enumOf(values []string) map[string]any {

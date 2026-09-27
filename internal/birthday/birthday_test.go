@@ -6,50 +6,22 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/claude"
 	"heliosian/internal/data"
+	"heliosian/internal/describe"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
+	"heliosian/internal/testkit/mailtest"
 	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
-type sentMail struct {
-	mu       sync.Mutex
-	messages []mail.Message
-}
-
-func (s *sentMail) Send(_ context.Context, m mail.Message) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.messages = append(s.messages, m)
-	return nil
-}
-
-func (s *sentMail) From() string { return "Helios Staff Birthdays <birthday@example.org>" }
-
-func (s *sentMail) wait(t *testing.T, n int) []mail.Message {
-	t.Helper()
-	for i := 0; i < 100; i++ {
-		s.mu.Lock()
-		if len(s.messages) >= n {
-			out := append([]mail.Message{}, s.messages...)
-			s.mu.Unlock()
-			return out
-		}
-		s.mu.Unlock()
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("waited for %d messages", n)
-	return nil
-}
-
-var sent = &sentMail{}
+var sent *mailtest.Recorder
 
 var joined []string
 
@@ -84,9 +56,9 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	sent = &sentMail{}
+	sent = mailtest.NewRecorder("Helios Staff Birthdays <birthday@example.org>")
 	joined = nil
-	Register(mux, cache, directory, nil, sent, "https://birthday.example.org", func(_ context.Context, email string) error {
+	Register(mux, cache, directory, describe.New("test", claude.NewLimiter()), sent.Mailgun, "https://birthday.example.org", func(_ context.Context, email string) error {
 		joined = append(joined, email)
 		return nil
 	}, About(func() string { return "Helios Birthday Team" }, func() string { return "Staff birthday donations" }))
@@ -237,7 +209,7 @@ func TestPipeline(t *testing.T) {
 	if sv.AssignedTo != parent || sv.AssignedOn != "2026-09-09" || sv.Stage != StageOutreach {
 		t.Fatalf("after assign: %+v", sv)
 	}
-	invites := sent.wait(t, 1)
+	invites := sent.Wait(t, 1)
 	m := invites[len(invites)-1]
 	if len(m.To) != 1 || m.To[0] != parent || m.Subject != "Ask Miguel Santos about their birthday charity" || !strings.Contains(m.HTML, "/staff/miguel.santos\"") || m.Headers["Message-ID"] == "" {
 		t.Fatalf("invite mail: %+v", m)
@@ -308,7 +280,7 @@ func TestPipeline(t *testing.T) {
 	if sv = find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.AssignedTo != admin {
 		t.Fatalf("after assigning to an admin: %+v", sv)
 	}
-	sent.wait(t, 2)
+	sent.Wait(t, 2)
 	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/birthday/assign", miguel); rec.Code != http.StatusNoContent {
 		t.Fatalf("unassign: %d %s", rec.Code, rec.Body)
 	}
@@ -491,14 +463,14 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": "miguel.santos@heliosschool.org"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("assign: %d %s", rec.Code, rec.Body)
 	}
-	sent.wait(t, 1)
+	sent.Wait(t, 1)
 	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2026-09-11", "date": "2026-09-12"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move: %d %s", rec.Code, rec.Body)
 	}
 	if sv := find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.RequestBy != "2026-09-04" {
 		t.Fatalf("request by after the move: %+v", sv)
 	}
-	msgs := sent.wait(t, 4)
+	msgs := sent.Wait(t, 4)
 	var m *mail.Message
 	for i := range msgs[1:] {
 		if strings.Contains(msgs[i+1].Subject, "Miguel Santos") {
@@ -515,14 +487,14 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 		t.Fatalf("note: %d %s", rec.Code, rec.Body)
 	}
 	time.Sleep(50 * time.Millisecond)
-	if got := len(sent.wait(t, 4)); got != 4 {
+	if got := len(sent.Wait(t, 4)); got != 4 {
 		t.Fatalf("a note sent mail: %d messages", got)
 	}
 }
 
 func TestReminders(t *testing.T) {
 	cache, mux := newServer(t)
-	app := app{cache: cache, directory: directory, mailer: sent, base: "https://birthday.example.org"}
+	app := app{cache: cache, directory: directory, mailer: sent.Mailgun, base: "https://birthday.example.org"}
 	kinds := func(day string) []string {
 		out := []string{}
 		for _, r := range app.dueReminders(cache.Model(), testkit.MustTime(day)) {
@@ -539,7 +511,7 @@ func TestReminders(t *testing.T) {
 	if n := app.sendDueReminders(context.Background(), testkit.MustTime("2026-09-03")); n != 1 {
 		t.Fatalf("sent %d", n)
 	}
-	ask := sent.wait(t, 1)[0]
+	ask := sent.Wait(t, 1)[0]
 	if ask.To[0] != "mina.park@heliosschool.org" || ask.Subject != "Re: Ask Ruth Amari about their birthday charity" || ask.Headers["In-Reply-To"] == "" {
 		t.Fatalf("ask reminder: %+v", ask)
 	}
@@ -558,7 +530,7 @@ func TestReminders(t *testing.T) {
 		t.Fatalf("two days on, due: %v", got)
 	}
 	app.sendDueReminders(context.Background(), testkit.MustTime("2026-09-05"))
-	late := sent.wait(t, 2)[1]
+	late := sent.Wait(t, 2)[1]
 	if !strings.Contains(late.Text, "not marked done") || !strings.Contains(late.Text, "mailto:ruth.amari") {
 		t.Fatalf("late reminder: %s", late.Text)
 	}
@@ -567,7 +539,7 @@ func TestReminders(t *testing.T) {
 		t.Fatalf("before the newsletter, due: %v", got)
 	}
 	app.sendDueReminders(context.Background(), testkit.MustTime("2026-09-09"))
-	donation := sent.wait(t, 4)[2]
+	donation := sent.Wait(t, 4)[2]
 	if !strings.Contains(donation.Text, "no need to ask again") || !strings.Contains(donation.Text, "Second Harvest of Silicon Valley") {
 		t.Fatalf("donation reminder: %s", donation.Text)
 	}
@@ -655,7 +627,7 @@ func TestResendInvites(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"sent":4`) {
 		t.Fatalf("resend: %d %s", rec.Code, rec.Body)
 	}
-	msgs := sent.wait(t, 4)
+	msgs := sent.Wait(t, 4)
 	for _, m := range msgs {
 		if len(m.Attachments) != 1 || m.Headers["Message-ID"] == "" {
 			t.Fatalf("resent invite: %+v", m)

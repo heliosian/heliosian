@@ -16,10 +16,6 @@ import (
 	"heliosian/internal/store"
 )
 
-type Geocoder interface {
-	Lookup(address string) (geocode.Point, error)
-}
-
 type Cache struct {
 	*store.Store[*Model]
 	admins.List
@@ -135,13 +131,13 @@ func (c *Cache) locate() {
 	}
 }
 
-func (c *Cache) Locate(geocoder Geocoder) {
+func (c *Cache) Locate(geocoder *geocode.Client) {
 	for range c.unlocated {
 		c.geocode(geocoder)
 	}
 }
 
-func (c *Cache) geocode(geocoder Geocoder) {
+func (c *Cache) geocode(geocoder *geocode.Client) {
 	model := c.Model()
 	missing := model.unlocated
 	if len(missing) == 0 {
