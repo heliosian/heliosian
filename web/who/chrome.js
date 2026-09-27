@@ -10,7 +10,7 @@ import {searchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
 import {load} from './app.js';
 import {onSlash, isEditableTarget} from '/toolbar.js';
-import {initShell, renderAccount, searchInput, syncViewportHeight} from '/shell.js';
+import {initShell, renderAccount, searchInput} from '/shell.js';
 import {setSuperEdit} from '/superedit.js';
 
 const primaryNavItems = [
@@ -290,7 +290,6 @@ export function renderNav() {
 onTagsChangeChrome(renderNav);
 
 export function finishRender() {
-  syncViewportHeight();
   const main = document.querySelector('#main');
   const contentWrap = el('div', 'page-content-wrap');
   contentWrap.append(...main.childNodes);

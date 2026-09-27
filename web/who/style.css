@@ -357,12 +357,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   display: flex;
   flex-direction: column;
-  /* --vh100 (set in app.js from window.innerHeight) stands in for 100dvh - in
-     standalone iOS PWA mode, dvh can settle on a shorter value after an
-     in-page route change than it reported on first load, leaving fixed
-     bottom bars short of the real screen edge. innerHeight matches what
-     position:fixed elements are actually anchored to, so it doesn't drift. */
-  height: var(--vh100, 100dvh);
+  height: 100dvh;
   overflow: hidden;
   color: var(--ink);
   background: var(--page);
@@ -4279,9 +4274,12 @@ a.person-card:hover .photo-wrap-peek::before {
     display: block;
   }
   main {
-    height: var(--vh100, 100dvh);
+    position: fixed;
+    inset: 0;
     margin-top: 0;
     padding-top: calc(88px + var(--banner-h) + env(safe-area-inset-top));
+  }
+  .page-content-wrap {
     padding-bottom: calc(62px + env(safe-area-inset-bottom));
   }
   .container {

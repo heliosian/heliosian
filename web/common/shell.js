@@ -96,12 +96,6 @@ export function setTitle(title) {
   document.title = title === app.name ? title : `${title} · ${app.name}`;
 }
 
-export function syncViewportHeight() {
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-  const height = standalone ? screen.height : window.innerHeight;
-  document.documentElement.style.setProperty('--vh100', height + 'px');
-}
-
 export function renderAccount() {
   const user = app.me();
   renderAvatars({photoUrl: user.photoUrl && user.photoUrl + '?thumb=1', initial: user.initial});
@@ -171,7 +165,6 @@ function closeMenus() {
 }
 
 export function renderChrome() {
-  syncViewportHeight();
   renderAccount();
   const nav = document.querySelector('#nav');
   nav.replaceChildren();
@@ -228,6 +221,4 @@ export function initShell(config) {
       closeDrawer();
     }
   });
-  window.addEventListener('resize', syncViewportHeight);
-  window.addEventListener('orientationchange', syncViewportHeight);
 }

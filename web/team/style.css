@@ -2526,9 +2526,8 @@ h2.section .link-button { font-size: 14px; }
   .content-col { display: block; }
   main {
     display: block;
-    /* --vh100 (chrome.js) stands in for 100dvh, which drifts in standalone
-       iOS mode - see syncViewportHeight. */
-    height: var(--vh100, 100dvh);
+    position: fixed;
+    inset: 0;
     overflow-y: auto;
     padding-top: calc(88px + env(safe-area-inset-top));
     padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom));
