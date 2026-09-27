@@ -488,19 +488,12 @@ func parseCount(what, cell string) (int, error) {
 }
 
 func parseSettings(rows []store.Row) (Settings, error) {
-	values := map[string]string{}
-	for _, row := range rows {
-		key := row["Key"]
-		if slices.Contains(legacyThemeKeys, key) {
-			continue
-		}
-		if !slices.Contains(settingKeys, key) {
-			return Settings{}, fmt.Errorf("%s has unknown key %q", settingsTab, key)
-		}
-		if _, dup := values[key]; dup {
-			return Settings{}, fmt.Errorf("%s has duplicate key %q", settingsTab, key)
-		}
-		values[key] = row["Value"]
+	rows = slices.DeleteFunc(slices.Clone(rows), func(row store.Row) bool {
+		return slices.Contains(legacyThemeKeys, row["Key"])
+	})
+	values, err := store.ParseSettings(rows, settingKeys, settingKeys)
+	if err != nil {
+		return Settings{}, err
 	}
 	hosting, err := cells.YesNo(values[HostingOpenKey], true)
 	if err != nil {

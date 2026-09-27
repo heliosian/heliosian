@@ -519,7 +519,7 @@ func checkID(kind, title, id string) error {
 }
 
 func parseSettings(rows []store.Row) (Settings, map[string]map[string]bool, error) {
-	values := map[string]string{}
+	settings := []store.Row{}
 	notify := map[string]map[string]bool{}
 	for _, row := range rows {
 		key := row["Key"]
@@ -537,18 +537,11 @@ func parseSettings(rows []store.Row) (Settings, map[string]map[string]bool, erro
 		if slices.Contains(legacyThemeKeys, key) {
 			continue
 		}
-		if !slices.Contains(settingKeys, key) {
-			return Settings{}, nil, fmt.Errorf("%s has unknown key %q", settingsTab, key)
-		}
-		if _, dup := values[key]; dup {
-			return Settings{}, nil, fmt.Errorf("%s has duplicate key %q", settingsTab, key)
-		}
-		values[key] = row["Value"]
+		settings = append(settings, row)
 	}
-	for _, key := range settingKeys {
-		if values[key] == "" {
-			return Settings{}, nil, fmt.Errorf("%s is missing %q", settingsTab, key)
-		}
+	values, err := store.ParseSettings(settings, settingKeys, nil)
+	if err != nil {
+		return Settings{}, nil, err
 	}
 	if !strings.HasPrefix(values[ExpenseFormKey], "https://") {
 		return Settings{}, nil, fmt.Errorf("setting %q must be a full https:// url", ExpenseFormKey)
