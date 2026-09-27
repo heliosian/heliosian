@@ -15,6 +15,7 @@ How code is written in this repository, for coding agents and the people driving
 - Only reformat lines you touch, gofmt aside.
 - When something fails, add debugging output to find out why before changing code. Don't guess.
 - Test a change before committing it.
+- One-off tools - a data migration, a single investigation - go in `local/<name>/`, which git ignores, and run as `go run ./local/<name>`. `tools/` is for tools that stay.
 
 ## Go
 

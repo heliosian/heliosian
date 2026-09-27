@@ -74,8 +74,6 @@ var Roles = []string{RoleVolunteer, RoleComms}
 
 var settingKeys = []string{DefaultCharityKey, YearStartKey, EmailSubjectKey, EmailBodyKey, NoNewsletterNoteKey, OutreachCCKey, RequestLeadKey, DueByLeadKey}
 
-var legacyThemeKeys = []string{"Sidebar Color", "Sidebar Color 2", "Sidebar Text Color", "Page Color", "Page Color 2", "Logo", "Sidebar Image"}
-
 var optionalSettingKeys = []string{OutreachCCKey, RequestLeadKey, DueByLeadKey}
 
 var (
@@ -282,9 +280,6 @@ func checkName(kind, name string) error {
 }
 
 func parseSettings(rows []store.Row) (Settings, error) {
-	rows = slices.DeleteFunc(slices.Clone(rows), func(row store.Row) bool {
-		return slices.Contains(legacyThemeKeys, row["Key"])
-	})
 	values, err := store.ParseSettings(rows, settingKeys, optionalSettingKeys)
 	if err != nil {
 		return Settings{}, err

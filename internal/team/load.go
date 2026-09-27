@@ -58,8 +58,6 @@ const (
 
 var settingKeys = []string{ExpenseFormKey, IntroKey}
 
-var legacyThemeKeys = []string{"Sidebar Color", "Sidebar Color 2", "Sidebar Text Color", "Page Color", "Page Color 2", "Logo", "Sidebar Image"}
-
 const CompleteColumn = "Volunteers Complete"
 
 const PriorityColumn = "Priority"
@@ -521,9 +519,6 @@ func checkID(kind, title, id string) error {
 }
 
 func parseSettings(rows []store.Row) (Settings, error) {
-	rows = slices.DeleteFunc(slices.Clone(rows), func(row store.Row) bool {
-		return slices.Contains(legacyThemeKeys, row["Key"])
-	})
 	values, err := store.ParseSettings(rows, settingKeys, nil)
 	if err != nil {
 		return Settings{}, err

@@ -64,8 +64,6 @@ const (
 
 var settingKeys = []string{PartiesIntroKey, TicketNoteKey, HostingOpenKey}
 
-var legacyThemeKeys = []string{"Sidebar Color", "Sidebar Color 2", "Sidebar Text Color", "Page Color", "Page Color 2", "Logo", "Sidebar Image"}
-
 var (
 	CelebrationColumns = []string{"Code", "Title", "Subtitle", "Start", "End", "Location", "Address", "Description", "Image", "Button Text", "Button URL", "Current", "Banner"}
 	CategoryColumns    = []string{"Title", store.OrderColumn}
@@ -488,9 +486,6 @@ func parseCount(what, cell string) (int, error) {
 }
 
 func parseSettings(rows []store.Row) (Settings, error) {
-	rows = slices.DeleteFunc(slices.Clone(rows), func(row store.Row) bool {
-		return slices.Contains(legacyThemeKeys, row["Key"])
-	})
 	values, err := store.ParseSettings(rows, settingKeys, settingKeys)
 	if err != nil {
 		return Settings{}, err

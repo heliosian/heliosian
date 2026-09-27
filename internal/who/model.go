@@ -26,36 +26,35 @@ type Photo struct {
 }
 
 type Person struct {
-	Email                string  `json:"email"`
-	FullName             string  `json:"fullName"`
-	LegalName            string  `json:"legalName,omitempty"`
-	PreferredName        string  `json:"preferredName,omitempty"`
-	IsStaff              bool    `json:"isStaff"`
-	IsParent             bool    `json:"isParent"`
-	IsStudent            bool    `json:"isStudent"`
-	IsNew                bool    `json:"isNew,omitempty"`
-	Pronouns             string  `json:"pronouns,omitempty"`
-	Facts                string  `json:"facts,omitempty"`
-	FactsUpdated         string  `json:"factsUpdated,omitempty"`
-	PronunciationURL     string  `json:"pronunciationUrl,omitempty"`
-	HasOwnPronunciation  bool    `json:"hasOwnPronunciation,omitempty"`
-	PhotoURL             string  `json:"photoUrl,omitempty"`
-	Photos               []Photo `json:"photos,omitempty"`
-	primaryPhotoOverride string
-	veracrossPhoto       string
-	websitePhoto         string
-	pronunciation        string
-	overrideRow          map[string]string
-	imported             map[string]string
-	PhotoUpdated         string   `json:"photoUpdated,omitempty"`
-	Grade                string   `json:"grade,omitempty"`
-	Classroom            string   `json:"classroom,omitempty"`
-	Crew                 string   `json:"crew,omitempty"`
-	Phone                string   `json:"phone,omitempty"`
-	ParentContactEmails  []string `json:"parentContactEmails,omitempty"`
-	JobTitle             string   `json:"jobTitle,omitempty"`
-	Department           string   `json:"department,omitempty"`
-	GradeBand            string   `json:"gradeBand,omitempty"`
+	Email               string  `json:"email"`
+	FullName            string  `json:"fullName"`
+	LegalName           string  `json:"legalName,omitempty"`
+	PreferredName       string  `json:"preferredName,omitempty"`
+	IsStaff             bool    `json:"isStaff"`
+	IsParent            bool    `json:"isParent"`
+	IsStudent           bool    `json:"isStudent"`
+	IsNew               bool    `json:"isNew,omitempty"`
+	Pronouns            string  `json:"pronouns,omitempty"`
+	Facts               string  `json:"facts,omitempty"`
+	FactsUpdated        string  `json:"factsUpdated,omitempty"`
+	PronunciationURL    string  `json:"pronunciationUrl,omitempty"`
+	HasOwnPronunciation bool    `json:"hasOwnPronunciation,omitempty"`
+	PhotoURL            string  `json:"photoUrl,omitempty"`
+	Photos              []Photo `json:"photos,omitempty"`
+	veracrossPhoto      string
+	websitePhoto        string
+	pronunciation       string
+	overrideRow         map[string]string
+	imported            map[string]string
+	PhotoUpdated        string   `json:"photoUpdated,omitempty"`
+	Grade               string   `json:"grade,omitempty"`
+	Classroom           string   `json:"classroom,omitempty"`
+	Crew                string   `json:"crew,omitempty"`
+	Phone               string   `json:"phone,omitempty"`
+	ParentContactEmails []string `json:"parentContactEmails,omitempty"`
+	JobTitle            string   `json:"jobTitle,omitempty"`
+	Department          string   `json:"department,omitempty"`
+	GradeBand           string   `json:"gradeBand,omitempty"`
 
 	OptStatus     OptStatus `json:"optStatus"`
 	AddressMasked bool      `json:"addressMasked,omitempty"`

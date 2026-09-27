@@ -512,20 +512,6 @@ func TestStaffNotInVeracrossStillLoad(t *testing.T) {
 	}
 }
 
-func TestClearingLegacyPrimaryPhotoOverrideSucceeds(t *testing.T) {
-	email := "ruth.amari@heliosschool.org"
-	withPrimary := withOverride(sampleTables(t), email, store.Row{"Primary Photo": "somephoto.jpg"})
-	if _, err := BuildModel(context.Background(), withPrimary, noBlobs{}, noBlobs{}, testKey); err != nil {
-		t.Fatalf("seed a legacy Primary Photo override: %v", err)
-	}
-	if _, err := BuildModel(context.Background(), withOverride(withPrimary, email, store.Row{"Primary Photo": ""}), noBlobs{}, noBlobs{}, testKey); err != nil {
-		t.Errorf("clearing Primary Photo with an empty string should succeed, got: %v", err)
-	}
-	if _, err := BuildModel(context.Background(), withOverride(withPrimary, email, store.Row{"Primary Photo": "-"}), noBlobs{}, noBlobs{}, testKey); err == nil {
-		t.Errorf("clearing Primary Photo with \"-\" should still fail the useless-override check, documenting why \"\" is required")
-	}
-}
-
 func TestClearingPronounsSucceeds(t *testing.T) {
 	email := "ruth.amari@heliosschool.org"
 	withPronouns := withOverride(sampleTables(t), email, store.Row{"Pronouns": "she/her"})

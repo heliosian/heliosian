@@ -495,11 +495,7 @@ func (m *Model) reorderPhotos(actor access.Actor, superEdit bool, key string, na
 	for _, name := range names {
 		after = append(after, before[slices.IndexFunc(before, func(ref photoRef) bool { return ref.Name == name })])
 	}
-	ops := photoOps(key, before, after)
-	if person.primaryPhotoOverride != "" {
-		ops = append(ops, setOverride(key, store.Row{"Primary Photo": ""}))
-	}
-	return ops, nil
+	return photoOps(key, before, after), nil
 }
 
 func (m *Model) cropPhoto(actor access.Actor, superEdit bool, target, key, name, cropName string) ([]store.Op, error) {

@@ -197,7 +197,7 @@ var overrideColumns = []string{
 	"Is Student", "Is Parent", "Is Staff", "New to Helios", "Pronouns", "Facts",
 	"Grade", "Classroom", "Crew", "Phone", "Job Title", "Department", "Grade Band", "Room Parent",
 	"Opted Out", "Photo Updated", "Facts Updated",
-	"Veracross Photo", "Primary Photo", "Pronunciation",
+	"Veracross Photo", "Pronunciation",
 }
 
 var familyColumns = []string{
@@ -885,7 +885,6 @@ func (l *loader) applyOverrides() error {
 		}
 		apply("Photo Updated", &p.PhotoUpdated)
 		apply("Veracross Photo", &p.veracrossPhoto)
-		apply("Primary Photo", &p.primaryPhotoOverride)
 		apply("Pronunciation", &p.pronunciation)
 		if cell := row["Grade"]; cell != "" && cell != "-" && !added && gradeBands[cell] == "" {
 			return fmt.Errorf("overrides row %s has unknown grade %q", email, cell)
@@ -1273,20 +1272,6 @@ func (l *loader) removePeople(gone map[string]bool) {
 	}
 }
 
-func (l *loader) reconcileLegacyPrimary(p *Person) {
-	if p.primaryPhotoOverride == "" {
-		return
-	}
-	for i, photo := range p.Photos {
-		if photo.Name == p.primaryPhotoOverride {
-			if i != 0 {
-				p.Photos[0], p.Photos[i] = p.Photos[i], p.Photos[0]
-			}
-			return
-		}
-	}
-}
-
 func (l *loader) readImages() error {
 	l.images = map[string]string{}
 	for _, row := range l.imageRows {
@@ -1371,7 +1356,6 @@ func (l *loader) attachBlobs() error {
 			}
 			p.Photos = append(p.Photos, photo)
 		}
-		l.reconcileLegacyPrimary(p)
 		if len(p.Photos) > 0 {
 			p.PhotoURL = p.Photos[0].URL
 		}
