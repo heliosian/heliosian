@@ -28,6 +28,7 @@ func spec(images ImageChecker) store.Spec[*Model] {
 			{Name: volunteersTab, Columns: VolunteerColumns, Key: []string{"Event ID", "Email"}},
 			{Name: linksTab, Columns: LinkColumns, Key: []string{"Event ID", "Title"}},
 			{Name: settingsTab, Columns: SettingColumns, Key: []string{"Key"}},
+			{Name: notificationsTab, Columns: NotificationColumns, Key: []string{"Email"}},
 			{Name: adminsTab, Columns: AdminColumns, Key: []string{"Email"}},
 			{Name: redirectsTab, Columns: RedirectColumns, Key: []string{"Old"}},
 		},

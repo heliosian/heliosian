@@ -906,7 +906,7 @@ func TestBrokenSheetRefusesToLoad(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(broken, "events"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"Categories", "Activities", "Links", "Settings", "Admins", "Redirects", "Change Log"} {
+	for _, name := range []string{"Categories", "Activities", "Links", "Settings", "Notifications", "Admins", "Redirects", "Change Log"} {
 		raw, err := os.ReadFile(filepath.Join("sampledata", "events", name+".csv"))
 		if err != nil {
 			t.Fatal(err)

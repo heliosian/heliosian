@@ -68,6 +68,7 @@ var layouts = map[string][]tab{
 		{"Volunteers", team.VolunteerColumns},
 		{"Links", team.LinkColumns},
 		{"Settings", team.SettingColumns},
+		{"Notifications", team.NotificationColumns},
 		{"Admins", team.AdminColumns},
 		{"Redirects", team.RedirectColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},

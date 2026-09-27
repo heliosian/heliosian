@@ -13,6 +13,7 @@ The portal's data lives in one Google Sheet, `Events`, in the community shared d
 
 - `Redirects` — Type, Old, New, Date. Old is a path here as the site serves it (`/v/inight/poland`, `/dl/signup/s/768d91/…` from the old volunteer site; a bare word is `/v/{word}`, a whole link is read as its path), New a path here the same way or a whole `https://` address elsewhere, Type what wrote the row - `Activity` for a rename, `Admin` for Admin Tools - and Date when. A row with a blank Old or New is skipped. Followed ahead of sign-in and by the shell (`docs/team/team.md`, Redirects); a live address always wins over a redirect of the same name.
 - `Settings` — Key, Value: `Expense Form URL` and `Intro`, both required.
+- `Notifications` — Email, Kinds. One row per admin who chose Email notifications in Admin Tools; Kinds is the comma-separated notices they want, from `events`, `activities`, `signups` and `offers`.
 - `Change Log` — the store's, one row per changed cell holding what it held before (`docs/storage.md`). Never read back.
 
 **Column order does not matter, column names do.** Every write places each cell under the column of that name wherever the tab keeps it (`docs/storage.md`, IO), so columns may be rearranged by hand. Every tab needs the columns listed; a column the app does not read is somebody else's business and is left alone (`data.CheckColumns`), as is a tab the app never touches, such as one kept for backup.

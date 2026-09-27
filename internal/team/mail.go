@@ -11,8 +11,6 @@ import (
 	"heliosian/internal/mail"
 )
 
-const notifyPrefix = "notify:"
-
 var NotifyKinds = []string{"events", "activities", "signups", "offers"}
 
 var brand = mail.Brand{Name: "HCA-Team", Color: "#1f4d53", Tagline: "the HCA volunteer portal"}

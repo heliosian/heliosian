@@ -16,14 +16,15 @@ import (
 )
 
 const (
-	appName       = "events"
-	categoriesTab = "Categories"
-	activitiesTab = "Activities"
-	volunteersTab = "Volunteers"
-	linksTab      = "Links"
-	settingsTab   = "Settings"
-	adminsTab     = "Admins"
-	redirectsTab  = "Redirects"
+	appName          = "events"
+	categoriesTab    = "Categories"
+	activitiesTab    = "Activities"
+	volunteersTab    = "Volunteers"
+	linksTab         = "Links"
+	settingsTab      = "Settings"
+	notificationsTab = "Notifications"
+	adminsTab        = "Admins"
+	redirectsTab     = "Redirects"
 )
 
 const (
@@ -64,13 +65,14 @@ const CompleteColumn = "Volunteers Complete"
 const PriorityColumn = "Priority"
 
 var (
-	CategoryColumns  = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page", store.OrderColumn}
-	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Flyer Image", "Highlight Headline", "Highlight Body", "Highlight Icon", "Added By", "Added", store.OrderColumn, CompleteColumn, PriorityColumn}
-	VolunteerColumns = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
-	LinkColumns      = []string{"Event ID", "Title", "URL", "Image", "Description"}
-	SettingColumns   = []string{"Key", "Value"}
-	RedirectColumns  = []string{"Type", "Old", "New", "Date"}
-	AdminColumns     = []string{"Email"}
+	CategoryColumns     = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page", store.OrderColumn}
+	ActivityColumns     = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Flyer Image", "Highlight Headline", "Highlight Body", "Highlight Icon", "Added By", "Added", store.OrderColumn, CompleteColumn, PriorityColumn}
+	VolunteerColumns    = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
+	LinkColumns         = []string{"Event ID", "Title", "URL", "Image", "Description"}
+	SettingColumns      = []string{"Key", "Value"}
+	NotificationColumns = []string{"Email", "Kinds"}
+	RedirectColumns     = []string{"Type", "Old", "New", "Date"}
+	AdminColumns        = []string{"Email"}
 )
 
 var yearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
@@ -518,39 +520,46 @@ func checkID(kind, title, id string) error {
 	return nil
 }
 
-func parseSettings(rows []store.Row) (Settings, map[string]map[string]bool, error) {
-	settings := []store.Row{}
-	notify := map[string]map[string]bool{}
-	for _, row := range rows {
-		key := row["Key"]
-		if email, ok := strings.CutPrefix(strings.ToLower(strings.TrimSpace(key)), notifyPrefix); ok {
-			if notify[email] == nil {
-				notify[email] = map[string]bool{}
-			}
-			for _, k := range strings.Split(row["Value"], ",") {
-				if k = strings.TrimSpace(k); k != "" {
-					notify[email][k] = true
-				}
-			}
-			continue
-		}
-		if slices.Contains(legacyThemeKeys, key) {
-			continue
-		}
-		settings = append(settings, row)
-	}
-	values, err := store.ParseSettings(settings, settingKeys, nil)
+func parseSettings(rows []store.Row) (Settings, error) {
+	rows = slices.DeleteFunc(slices.Clone(rows), func(row store.Row) bool {
+		return slices.Contains(legacyThemeKeys, row["Key"])
+	})
+	values, err := store.ParseSettings(rows, settingKeys, nil)
 	if err != nil {
-		return Settings{}, nil, err
+		return Settings{}, err
 	}
 	if !strings.HasPrefix(values[ExpenseFormKey], "https://") {
-		return Settings{}, nil, fmt.Errorf("setting %q must be a full https:// url", ExpenseFormKey)
+		return Settings{}, fmt.Errorf("setting %q must be a full https:// url", ExpenseFormKey)
 	}
-	return Settings{ExpenseFormURL: values[ExpenseFormKey], Intro: values[IntroKey]}, notify, nil
+	return Settings{ExpenseFormURL: values[ExpenseFormKey], Intro: values[IntroKey]}, nil
+}
+
+func parseNotifications(rows []store.Row) (map[string]map[string]bool, error) {
+	notify := map[string]map[string]bool{}
+	for _, row := range rows {
+		email := config.NormalizeEmail(row["Email"])
+		if email == "" {
+			return nil, fmt.Errorf("%s row %v has no email", notificationsTab, row)
+		}
+		if notify[email] != nil {
+			return nil, fmt.Errorf("%s has duplicate rows for %q", notificationsTab, email)
+		}
+		notify[email] = map[string]bool{}
+		for _, k := range strings.Split(row["Kinds"], ",") {
+			if k = strings.TrimSpace(k); k != "" {
+				notify[email][k] = true
+			}
+		}
+	}
+	return notify, nil
 }
 
 func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (*Model, error) {
-	settings, notify, err := parseSettings(tables[settingsTab])
+	settings, err := parseSettings(tables[settingsTab])
+	if err != nil {
+		return nil, err
+	}
+	notify, err := parseNotifications(tables[notificationsTab])
 	if err != nil {
 		return nil, err
 	}

@@ -707,7 +707,7 @@ func saveNotify(actor access.Actor, wanted []string) (string, []store.Op, error)
 		}
 	}
 	value := strings.Join(kinds, ",")
-	return value, []store.Op{store.Upsert(settingsTab, store.Row{"Key": notifyPrefix + actor.Email}, store.Row{"Value": value})}, nil
+	return value, []store.Op{store.Upsert(notificationsTab, store.Row{"Email": actor.Email}, store.Row{"Kinds": value})}, nil
 }
 
 func (m *Model) setAdmins(actor access.Actor, superAdmins, wanted []string) ([]string, []store.Op, error) {
