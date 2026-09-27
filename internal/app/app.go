@@ -764,7 +764,37 @@ func NewCore(cfg Config) *Core {
 	superAdmin := func(email string) bool {
 		return slices.Contains(settings.SuperAdmins(), strings.ToLower(strings.TrimSpace(email)))
 	}
-	homeCache, err := home.NewCache(cfg.Source, cfg.Writer, homeImages{cfg.Store}, settings.SuperAdmins, queue)
+	teamCache, err := team.NewCache(cfg.Source, cfg.Writer, teamImages{cfg.Store}, superAdmin, queue)
+	if err != nil {
+		logging.Fatal("load team data", "error", err)
+	}
+	birthdayCache, err := birthday.NewCache(cfg.Source, cfg.Writer, superAdmin, queue)
+	if err != nil {
+		logging.Fatal("load birthdays data", "error", err)
+	}
+	celebrateCache, err := celebrate.NewCache(cfg.Source, cfg.Writer, celebrateImages{cfg.Store}, superAdmin, queue)
+	if err != nil {
+		logging.Fatal("load celebrate data", "error", err)
+	}
+	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Blobs, staticFiles{}, queue, cfg.FamilyIDKey, settings.SuperAdmins)
+	if err != nil {
+		logging.Fatal("load directory data", "error", err)
+	}
+	go cache.Locate(cfg.Geocoder)
+	invites, err := who.NewInvites(cfg.Source, cfg.Writer, queue)
+	if err != nil {
+		logging.Fatal("load invites data", "error", err)
+	}
+	calendarCache, err := calendar.NewCache(cfg.Source, cfg.Writer, func() calendar.Roster { return CalendarRoster(cache.Model()) }, calendarImages{cfg.Store}, superAdmin, queue)
+	if err != nil {
+		logging.Fatal("load calendar data", "error", err)
+	}
+	loopCache, err := loop.NewCache(cfg.Source, cfg.Writer, superAdmin, queue)
+	if err != nil {
+		logging.Fatal("load loop data", "error", err)
+	}
+	loopDir := loopDirectory{cache, settings, teamCache, celebrateCache}
+	homeCache, err := home.NewCache(cfg.Source, cfg.Writer, homeImages{cfg.Store}, settings.SuperAdmins, audienceSources{loopDir}, queue)
 	if err != nil {
 		logging.Fatal("load apps data", "error", err)
 	}
@@ -801,36 +831,6 @@ func NewCore(cfg Config) *Core {
 	teamStyle := team.CardStyle(appName("team"), taglineOf("team"))
 	celebrateStyle := celebrate.CardStyle(appName("celebrate"), taglineOf("celebrate"))
 	calendarStyle := calendar.CardStyle(appName("calendar"), taglineOf("calendar"))
-	teamCache, err := team.NewCache(cfg.Source, cfg.Writer, teamImages{cfg.Store}, superAdmin, queue)
-	if err != nil {
-		logging.Fatal("load team data", "error", err)
-	}
-	birthdayCache, err := birthday.NewCache(cfg.Source, cfg.Writer, superAdmin, queue)
-	if err != nil {
-		logging.Fatal("load birthdays data", "error", err)
-	}
-	celebrateCache, err := celebrate.NewCache(cfg.Source, cfg.Writer, celebrateImages{cfg.Store}, superAdmin, queue)
-	if err != nil {
-		logging.Fatal("load celebrate data", "error", err)
-	}
-	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Blobs, staticFiles{}, queue, cfg.FamilyIDKey, settings.SuperAdmins)
-	if err != nil {
-		logging.Fatal("load directory data", "error", err)
-	}
-	go cache.Locate(cfg.Geocoder)
-	invites, err := who.NewInvites(cfg.Source, cfg.Writer, queue)
-	if err != nil {
-		logging.Fatal("load invites data", "error", err)
-	}
-	calendarCache, err := calendar.NewCache(cfg.Source, cfg.Writer, func() calendar.Roster { return CalendarRoster(cache.Model()) }, calendarImages{cfg.Store}, superAdmin, queue)
-	if err != nil {
-		logging.Fatal("load calendar data", "error", err)
-	}
-	loopCache, err := loop.NewCache(cfg.Source, cfg.Writer, superAdmin, queue)
-	if err != nil {
-		logging.Fatal("load loop data", "error", err)
-	}
-	loopDir := loopDirectory{cache, settings, teamCache, celebrateCache}
 	artifactsCache, err := artifacts.NewCache(cfg.Source, cfg.Writer, cfg.Store, cfg.Embedder, queue)
 	if err != nil {
 		logging.Fatal("load artifacts data", "error", err)
@@ -862,7 +862,7 @@ func NewCore(cfg Config) *Core {
 	partyCalendar := calendar.Celebrate{Party: partyPeople{celebrateCache}.people, IsAdmin: celebrateCache.IsAdmin, MoveAddress: moveAddress}
 	hooks = calendar.Register(calendarMux, calendarCache, cfg.Store, calendarDir, settings.SuperAdmins, linked, partyCalendar, audienceSources{loopDir}.Sources, cfg.ImageSearch, cfg.CalendarMail, calendarStyle)
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, homeCache, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, audienceSources{loopDir}, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault, homeStyle)
+	home.Register(homeMux, homeCache, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault, homeStyle)
 	teamMux := http.NewServeMux()
 	eventRSVPs := func(id string) *team.EventRSVPs {
 		sent, answers, ok := calendarCache.LinkedRSVPs(linked(""), calendar.SourceTeam, id)

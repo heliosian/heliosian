@@ -68,7 +68,6 @@ func changeLog(t *testing.T, s sheet) []store.Row {
 
 func TestAudienceIsAListOfRules(t *testing.T) {
 	c, _ := sampleCache(t)
-	c.directory = directoryOf(t)
 	links := map[string]Link{}
 	var chats Category
 	for _, cat := range c.Model().Categories {
@@ -137,7 +136,6 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 
 func TestCategoryRenameCarriesItsLinksAndAudience(t *testing.T) {
 	c, dir := sampleCache(t)
-	c.directory = directoryOf(t)
 	a := app{cache: c, directory: c.directory}
 	chats := c.Model().category("Chats")
 	rec := call(t, a.saveCategory, map[string]any{"original": "Chats", "title": "Group Chats", "emoji": chats.Emoji, "style": chats.Style, "rules": chats.Rules})
@@ -167,7 +165,6 @@ func TestCategoryRenameCarriesItsLinksAndAudience(t *testing.T) {
 
 func TestMoveLinkTradesPlacesWithinItsCategory(t *testing.T) {
 	c, dir := sampleCache(t)
-	c.directory = directoryOf(t)
 	a := app{cache: c, directory: c.directory}
 	if rec := call(t, a.moveLink, map[string]any{"title": "Parent Portal", "by": 1}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move: %d %s", rec.Code, rec.Body)
@@ -193,7 +190,6 @@ func TestMoveLinkTradesPlacesWithinItsCategory(t *testing.T) {
 
 func TestARowWithNoOrderSortsLast(t *testing.T) {
 	c, dir := sampleCache(t)
-	c.directory = directoryOf(t)
 	a := app{cache: c, directory: c.directory}
 	if err := c.Commit(context.Background(), access.System("test"), store.Insert(linksTab, store.Row{"Title": "Lunch Menu", "URL": "https://lunch.example.org/", "Category": "School", "Visible": "Yes"}), store.Update(linksTab, store.Row{"Title": "Directory"}, store.Row{store.OrderColumn: ""})); err != nil {
 		t.Fatal(err)
@@ -222,7 +218,6 @@ func TestARowWithNoOrderSortsLast(t *testing.T) {
 
 func TestCategoryOrderKeysOnlyWhatMoved(t *testing.T) {
 	c, dir := sampleCache(t)
-	c.directory = directoryOf(t)
 	a := app{cache: c, directory: c.directory}
 	titles := []string{"Helios Community Apps", "Upcoming Events", "Events", "School", "Chats"}
 	if rec := call(t, a.reorderCategories, map[string]any{"titles": titles}); rec.Code != http.StatusNoContent {
@@ -244,7 +239,6 @@ func TestCategoryOrderKeysOnlyWhatMoved(t *testing.T) {
 
 func TestTheEventsSectionIsWrittenWhereItStands(t *testing.T) {
 	c, _ := sampleCache(t)
-	c.directory = directoryOf(t)
 	if err := c.Commit(context.Background(), access.System("test"), store.Delete(categoriesTab, store.Row{"Title": EventsTitle})); err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +261,6 @@ func TestTheEventsSectionIsWrittenWhereItStands(t *testing.T) {
 
 func TestAppOrderIsAKey(t *testing.T) {
 	c, _ := sampleCache(t)
-	c.directory = directoryOf(t)
 	a := app{cache: c, directory: c.directory}
 	order := []string{"ask", "who", "team", "celebrate", "birthday", "calendar", "loop"}
 	if rec := call(t, a.setAppOrder, map[string]any{"apps": order}); rec.Code != http.StatusNoContent {
@@ -284,7 +277,6 @@ func TestAppOrderIsAKey(t *testing.T) {
 
 func TestWidgetOrderIsAKey(t *testing.T) {
 	c, _ := sampleCache(t)
-	c.directory = directoryOf(t)
 	a := app{cache: c, directory: c.directory}
 	if got := c.Model().WidgetOrder; !slices.Equal(got, Widgets) {
 		t.Fatalf("unset order = %v, want %v", got, Widgets)
@@ -304,7 +296,6 @@ func TestWidgetOrderIsAKey(t *testing.T) {
 
 func TestOnlyAdminsGetTheRules(t *testing.T) {
 	c, _ := sampleCache(t)
-	c.directory = directoryOf(t)
 	a := app{
 		cache: c, directory: c.directory,
 		heroPhoto: func(string) string { return "" },
@@ -437,7 +428,6 @@ func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 
 func TestWidgetAudience(t *testing.T) {
 	c, _ := sampleCache(t)
-	c.directory = directoryOf(t)
 	a := app{
 		cache: c, directory: c.directory,
 		heroPhoto: func(string) string { return "" },

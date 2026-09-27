@@ -68,12 +68,12 @@ func carryCategory(before, after store.Row) []store.Op {
 	return ops
 }
 
-func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmins func() []string, queue *store.Queue) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmins func() []string, directory Directory, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec(images), source, writer, queue)
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, superAdmins: superAdmins}, nil
+	return &Cache{Store: s, superAdmins: superAdmins, directory: directory}, nil
 }
 
 func (c *Cache) includes(rules []filter.Rule, email string) bool {

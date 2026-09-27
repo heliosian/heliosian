@@ -71,12 +71,11 @@ type alerts struct {
 	Privacy []string `json:"privacy"`
 }
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, directory Directory, alerts func(string) ([]string, []string), upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error, style *sharecard.Style) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) ([]string, []string), upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error, style *sharecard.Style) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	}
-	a := app{cache: cache, store: media, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, directory: directory, alerts: alerts, upcoming: upcoming, month: month, search: search, answer: answer, makeDefault: makeDefault, style: style}
-	cache.directory = directory
+	a := app{cache: cache, store: media, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, directory: cache.directory, alerts: alerts, upcoming: upcoming, month: month, search: search, answer: answer, makeDefault: makeDefault, style: style}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /admin", a.adminPage)
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {

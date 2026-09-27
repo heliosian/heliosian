@@ -23,6 +23,7 @@ import (
 	"heliosian/internal/celebrate"
 	"heliosian/internal/claude"
 	"heliosian/internal/data"
+	"heliosian/internal/filter"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
 	"heliosian/internal/store"
@@ -41,6 +42,8 @@ func (anyImages) Prefetch(context.Context, []string) error { return nil }
 type sampleDirectory struct{ model *who.Model }
 
 func (d sampleDirectory) Resolve(email string) string { return d.model.Resolve(email) }
+
+func (d sampleDirectory) Sources() filter.Sources { return filter.Sources{Directory: d.model} }
 
 func (d sampleDirectory) Person(email string) (calendar.Person, bool) {
 	p := d.model.Person(email)
@@ -119,7 +122,7 @@ func sampleSources(t *testing.T) Sources {
 		t.Fatal(err)
 	}
 	loopModel := loopCache.Model()
-	homeCache, err := home.NewCache(dir, dir, anyImages{}, func() []string { return nil }, queue)
+	homeCache, err := home.NewCache(dir, dir, anyImages{}, func() []string { return nil }, sampleDirectory{directory}, queue)
 	if err != nil {
 		t.Fatal(err)
 	}

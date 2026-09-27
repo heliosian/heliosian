@@ -195,7 +195,7 @@ func main() {
 		fmt.Printf("  %s -> %s (%s -> %s)\n", g.Name, g.NextName, g.Band, g.NextBand)
 	}
 
-	appsCache, err := home.NewCache(source, nil, homeImages{}, func() []string { return nil }, store.NewQueue())
+	appsCache, err := home.NewCache(source, nil, homeImages{}, func() []string { return nil }, nil, store.NewQueue())
 	if err != nil {
 		log.Fatalf("[ERROR] load apps model: %v", err)
 	}

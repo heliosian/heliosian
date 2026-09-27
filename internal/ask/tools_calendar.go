@@ -26,6 +26,7 @@ type eventCard struct {
 	Link         string   `json:"link"`
 	Availability string   `json:"availability,omitempty"`
 	MyAnswer     string   `json:"myAnswer,omitempty"`
+	Invited      bool     `json:"invited,omitempty"`
 	Household    []string `json:"household,omitempty"`
 }
 
@@ -33,6 +34,7 @@ func (v *viewer) eventCard(e *calendar.Event) eventCard {
 	c := eventCard{
 		ID: e.ID, Title: e.Title, Start: e.Start, AllDay: e.AllDay, Location: e.Location, Description: clip(e.Description, 400),
 		Tags: e.Tags, Classrooms: e.Classrooms, DayType: e.DayType, Availability: e.Availability, MyAnswer: v.calendar.AnswerOf(v.email, e.ID),
+		Invited: e.Invited,
 	}
 	if e.End != e.Start {
 		c.End = e.End
@@ -65,7 +67,7 @@ func eventLink(e *calendar.Event) string {
 
 var calendarEvents = tool{
 	name:        "calendar_events",
-	description: "Events from the school calendar (Helios When) in a date range, the other apps' parties and HCA events folded in, each with the viewer's own standing. Without dates, the next two weeks; with a query, the whole calendar. mine narrows to the viewer's default view: their classrooms and the categories on by default, the way the calendar opens for them.",
+	description: "Events from the school calendar (Helios When) in a date range, the other apps' parties and HCA events folded in, each with the viewer's own standing: myAnswer is yes, no, maybe or hidden, and invited marks an event they were invited to. Without dates, the next two weeks; with a query, the whole calendar.",
 	words:       "Looking at the calendar",
 	properties: map[string]any{
 		"from":      str("First day, like 2026-09-24. Today unless said."),
@@ -73,13 +75,11 @@ var calendarEvents = tool{
 		"query":     str("Words to find in a title, description or keywords."),
 		"classroom": str("Only events for this classroom (and events for everyone)."),
 		"tag":       str("Only events filed under this category or classroom tag."),
-		"mine":      boolean("Only what the viewer's default view of the calendar shows."),
 		"limit":     integer("How many to return, 40 unless said, 80 at most."),
 	},
 	run: func(v *viewer, input json.RawMessage) (any, error) {
 		in, err := decodeInput[struct {
 			From, To, Query, Classroom, Tag string
-			Mine                            bool
 			Limit                           int
 		}](input)
 		if err != nil {
@@ -104,10 +104,6 @@ var calendarEvents = tool{
 		if to.Before(from) {
 			return nil, fmt.Errorf("the range ends before it starts")
 		}
-		var classrooms, tags []string
-		if in.Mine {
-			classrooms, tags = v.calendar.ViewOf(v.sources.CalendarDirectory, v.email)
-		}
 		limit := limitOf(in.Limit, 40, 80)
 		out := []eventCard{}
 		total := 0
@@ -123,9 +119,6 @@ var calendarEvents = tool{
 				continue
 			}
 			if in.Tag != "" && !slices.ContainsFunc(e.Tags, func(t string) bool { return strings.EqualFold(t, in.Tag) }) {
-				continue
-			}
-			if in.Mine && !admits(v.calendar, e, classrooms, tags) {
 				continue
 			}
 			total++
@@ -151,31 +144,6 @@ func eventSpan(e *calendar.Event) (time.Time, time.Time) {
 		end = end.AddDate(0, 0, 1).Add(-time.Second)
 	}
 	return start, end
-}
-
-// admits is the calendar's own first-view rule: an event reaches a view
-// when one of its classrooms is among the view's (or it has none) and one
-// of its categories is on (or it has none).
-func admits(m *calendar.Model, e *calendar.Event, classrooms, tags []string) bool {
-	if len(e.Classrooms) > 0 && !overlaps(e.Classrooms, classrooms) {
-		return false
-	}
-	categories := []string{}
-	for _, t := range e.Tags {
-		if !slices.Contains(m.Roster.Names(), t) {
-			categories = append(categories, t)
-		}
-	}
-	return len(categories) == 0 || overlaps(categories, tags)
-}
-
-func overlaps(a, b []string) bool {
-	for _, item := range a {
-		if slices.Contains(b, item) {
-			return true
-		}
-	}
-	return false
 }
 
 var dayPlan = tool{

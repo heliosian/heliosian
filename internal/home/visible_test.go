@@ -29,7 +29,7 @@ func sampleCache(t *testing.T) (*Cache, sheet) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	c, err := NewCache(dir, dir, noImages{}, func() []string { return nil }, queue)
+	c, err := NewCache(dir, dir, noImages{}, func() []string { return nil }, directoryOf(t), queue)
 	if err != nil {
 		t.Fatalf("load sample apps sheet: %v", err)
 	}
@@ -45,7 +45,6 @@ func setVisibility(t *testing.T, c *Cache, app string, v Visibility) {
 
 func TestVisibilityNarrowsAnApp(t *testing.T) {
 	c, _ := sampleCache(t)
-	c.directory = directoryOf(t)
 	if got := c.HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
 		t.Errorf("hidden from the sample parent = %v, want just the app with no row", got)
 	}
@@ -94,7 +93,6 @@ func TestVisibilityNarrowsAnApp(t *testing.T) {
 
 func TestGrantAddsToAnAppsList(t *testing.T) {
 	c, dir := sampleCache(t)
-	c.directory = directoryOf(t)
 	const email = "sam.whitfield@heliosschool.org"
 	if err := Grant(context.Background(), c, "celebrate", " Sam.Whitfield@heliosschool.org "); err != nil {
 		t.Fatal(err)
