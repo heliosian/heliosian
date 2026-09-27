@@ -275,6 +275,7 @@ export function emojiPicker(value) {
   search.placeholder = 'Search all emoji\u2026';
   search.setAttribute('aria-label', 'Search emoji');
   const library = el('div', 'emoji-library');
+  let failed = false;
   const paint = () => {
     const needle = search.value.trim().toLowerCase();
     library.replaceChildren();
@@ -298,19 +299,25 @@ export function emojiPicker(value) {
       shown += matches.length;
     }
     if (!shown) {
-      library.append(el('div', 'emoji-none', emojiLibrary ? 'Nothing by that name.' : 'Loading\u2026'));
+      library.append(el('div', 'emoji-none', failed ? 'Couldn\u2019t load emoji.' : emojiLibrary ? 'Nothing by that name.' : 'Loading\u2026'));
     }
   };
   search.addEventListener('input', paint);
   node.append(search, library);
   paint();
   if (!emojiLibrary) {
-    fetch('/emoji.json').then(res => res.ok ? res.json() : []).then(list => {
+    fetch('/emoji.json').then(res => {
+      if (!res.ok) {
+        throw new Error('emoji.json: ' + res.status);
+      }
+      return res.json();
+    }).then(list => {
       emojiLibrary = list;
       paint();
-    }).catch(() => {
-      emojiLibrary = [];
+    }).catch(err => {
+      failed = true;
       paint();
+      throw err;
     });
   }
   return {node, input};

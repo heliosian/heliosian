@@ -1,4 +1,4 @@
-import {state, me, isSystemAdmin, applyModel, managed, groupPath} from './state.js';
+import {state, me, isSystemAdmin, applySuperEdit, managed, groupPath} from './state.js';
 import {el, svg, link} from './dom.js';
 import {initShell, appSymbol} from '/shell.js';
 
@@ -90,19 +90,11 @@ function fillNav(nav) {
 const archivedKey = 'loop.archivedOpen';
 
 function archivedOpen() {
-  try {
-    return localStorage.getItem(archivedKey) === '1';
-  } catch {
-    return false;
-  }
+  return localStorage.getItem(archivedKey) === '1';
 }
 
 function setArchivedOpen(open) {
-  try {
-    localStorage.setItem(archivedKey, open ? '1' : '0');
-  } catch {
-    return;
-  }
+  localStorage.setItem(archivedKey, open ? '1' : '0');
 }
 
 function fillTabbar(bar) {
@@ -117,7 +109,7 @@ export function initChrome() {
     me,
     isSystemAdmin,
     onSuper: async () => {
-      applyModel(state.model);
+      applySuperEdit();
       const {render} = await import('./app.js');
       render();
     },

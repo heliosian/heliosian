@@ -9,18 +9,11 @@ let query = '';
 const pastKey = 'birthday.showPastIssues';
 
 function showPast() {
-  try {
-    return localStorage.getItem(pastKey) === '1';
-  } catch {
-    return false;
-  }
+  return localStorage.getItem(pastKey) === '1';
 }
 
 function setShowPast(on) {
-  try {
-    localStorage.setItem(pastKey, on ? '1' : '0');
-  } catch {
-  }
+  localStorage.setItem(pastKey, on ? '1' : '0');
 }
 
 function issueMenu(date) {

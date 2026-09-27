@@ -1,69 +1,42 @@
 export function loadNavOpen() {
-  try {
-    const raw = localStorage.getItem('navOpen');
-    if (raw) {
-      return JSON.parse(raw);
-    }
-  } catch (e) {
+  const raw = localStorage.getItem('navOpen');
+  if (raw) {
+    return JSON.parse(raw);
   }
   return {directory: true, family: false, tools: true};
 }
 
 export function saveNavOpen(navOpen) {
-  try {
-    localStorage.setItem('navOpen', JSON.stringify(navOpen));
-  } catch (e) {
-  }
+  localStorage.setItem('navOpen', JSON.stringify(navOpen));
 }
 
 export function loadLastTag() {
-  try {
-    return localStorage.getItem('lastTag') || '';
-  } catch (e) {
-    return '';
-  }
+  return localStorage.getItem('lastTag') || '';
 }
 
 export function saveLastTag(tag) {
-  try {
-    localStorage.setItem('lastTag', tag);
-  } catch (e) {
-  }
+  localStorage.setItem('lastTag', tag);
 }
 
 export function loadTagUsage() {
-  try {
-    return JSON.parse(localStorage.getItem('tagUsage') || '{}');
-  } catch (e) {
-    return {};
-  }
+  return JSON.parse(localStorage.getItem('tagUsage') || '{}');
 }
 
 export function recordTagUsage(tag) {
-  try {
-    const usage = loadTagUsage();
-    usage[tag] = Date.now();
-    localStorage.setItem('tagUsage', JSON.stringify(usage));
-  } catch (e) {
-  }
+  const usage = loadTagUsage();
+  usage[tag] = Date.now();
+  localStorage.setItem('tagUsage', JSON.stringify(usage));
 }
 
 export function loadTagRelations(tag) {
-  try {
-    const all = JSON.parse(localStorage.getItem('tagRelations') || '{}');
-    return new Set(all[tag] || []);
-  } catch (e) {
-    return new Set();
-  }
+  const all = JSON.parse(localStorage.getItem('tagRelations') || '{}');
+  return new Set(all[tag] || []);
 }
 
 export function saveTagRelations(tag, relations) {
-  try {
-    const all = JSON.parse(localStorage.getItem('tagRelations') || '{}');
-    all[tag] = [...relations];
-    localStorage.setItem('tagRelations', JSON.stringify(all));
-  } catch (e) {
-  }
+  const all = JSON.parse(localStorage.getItem('tagRelations') || '{}');
+  all[tag] = [...relations];
+  localStorage.setItem('tagRelations', JSON.stringify(all));
 }
 
 export function loadNavScroll() {

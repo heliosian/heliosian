@@ -15,18 +15,14 @@ export function startParty(e) {
 }
 
 export async function fetchInvites(e) {
-  try {
-    const view = await api('GET', '/api/when/invites?id=' + encodeURIComponent(e.id));
-    if (view.adminHost && !isAdmin()) {
-      view.host = false;
-      if (view.listPrivate) {
-        view.coming = null;
-      }
+  const view = await api('GET', '/api/when/invites?id=' + encodeURIComponent(e.id));
+  if (view.adminHost && !isAdmin()) {
+    view.host = false;
+    if (view.listPrivate) {
+      view.coming = null;
     }
-    return view;
-  } catch (err) {
-    return null;
   }
+  return view;
 }
 
 function firstName(p) {
@@ -1271,7 +1267,7 @@ export function guestListSection(e, view, refresh) {
         ruleOptions = options;
         section.replaceWith(guestListSection(e, view, refresh));
       }
-    }).catch(() => {});
+    }).catch(err => toast('Couldn’t load the group names: ' + err.message));
   }
   if (!view.list.length) {
     return section;
@@ -1851,8 +1847,14 @@ export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
 }
 
 export async function offerUpdate(e, changed) {
-  const view = await fetchInvites(e);
-  if (!view || !view.host || !view.sent) {
+  let view;
+  try {
+    view = await fetchInvites(e);
+  } catch (err) {
+    toast('Couldn’t check who has the invitation: ' + err.message);
+    return;
+  }
+  if (!view.host || !view.sent) {
     return;
   }
   const people = view.list.filter(r => r.invited && r.sent && r.email && r.answer !== 'no');
@@ -1898,7 +1900,7 @@ let ruleOptions = null;
 
 const rules = rulesEditor({
   el, svg,
-  options: () => ruleOptions || {classrooms: [], grades: [], tags: [], lists: [], roles: ['Student', 'Parent', 'Staff'], relations: ['Parents', 'Children', 'Siblings']},
+  options: () => ruleOptions,
   personName: () => '',
 });
 
@@ -1914,7 +1916,7 @@ export function groupWords(g) {
 async function openPicker(e, view, refresh) {
   let data = null;
   try {
-    [data, ruleOptions] = await Promise.all([fetchPickerData(e), view.host ? api('GET', '/api/when/invites/options').catch(() => null) : ruleOptions]);
+    [data, ruleOptions] = await Promise.all([fetchPickerData(e), view.host ? api('GET', '/api/when/invites/options') : ruleOptions]);
   } catch (err) {
     toast(err.message);
     return;
@@ -2098,10 +2100,6 @@ function personPanel(e, data, onList, done) {
 
 function groupPanel(e, done) {
   const wrap = el('div', 'picker-group');
-  if (!ruleOptions) {
-    wrap.append(el('div', 'picker-note', 'Groups are not set up on this server.'));
-    return wrap;
-  }
   const rule = rules.newRule('include');
   const holder = el('div', 'rule is-include picker-rule');
   const preview = el('div', 'audience-preview picker-preview');

@@ -1,4 +1,4 @@
-import {state, me, isSystemAdmin, applyModel, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown} from './state.js';
+import {state, me, isSystemAdmin, applySuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {initShell, appSymbol} from '/shell.js';
 import {openParty} from './edit.js';
@@ -170,7 +170,7 @@ export function initChrome() {
     me,
     isSystemAdmin,
     onSuper: () => {
-      applyModel(state.model);
+      applySuperEdit();
       document.dispatchEvent(new CustomEvent('celebrate:refresh'));
     },
     fillNav,

@@ -169,11 +169,7 @@ export function myPrivacyWarnings() {
 }
 
 export function privacyMismatchCardDismissed() {
-  try {
-    return localStorage.getItem('privacyMismatchCardDismissed') === '1';
-  } catch (e) {
-    return false;
-  }
+  return localStorage.getItem('privacyMismatchCardDismissed') === '1';
 }
 
 export function privacyMismatchText(warnings) {
@@ -186,9 +182,6 @@ export function privacyMismatchCard(warnings) {
     'alert', 'alert', 'Privacy Settings Mismatch', privacyMismatchText(warnings),
     'See Details', '/my-privacy', false,
     () => {
-      try {
-        localStorage.setItem('privacyMismatchCardDismissed', '1');
-      } catch (e) {
-      }
+      localStorage.setItem('privacyMismatchCardDismissed', '1');
     });
 }

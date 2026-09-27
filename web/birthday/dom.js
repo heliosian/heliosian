@@ -175,8 +175,9 @@ export async function copyRich(text, html, message) {
       'text/plain': new Blob([text], {type: 'text/plain'}),
       'text/html': new Blob([html], {type: 'text/html'}),
     })]);
-  } catch {
-    await navigator.clipboard.writeText(text);
+  } catch (err) {
+    toast('Couldn’t copy: ' + err.message);
+    return;
   }
   toast(message || 'Copied');
 }

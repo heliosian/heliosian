@@ -1,15 +1,19 @@
 import {superEditOn} from '/superedit.js';
 
-export const state = {model: null};
+export const state = {model: null, allGroups: []};
 
 const byName = new Map();
 
 export function applyModel(model) {
   state.model = model;
-  model.allGroups = model.allGroups || model.groups;
-  model.groups = isAdmin() || !isSystemAdmin() ? model.allGroups : model.allGroups.filter(g => g.open || g.mine);
+  state.allGroups = model.groups;
+  applySuperEdit();
+}
+
+export function applySuperEdit() {
+  state.model.groups = isAdmin() || !isSystemAdmin() ? state.allGroups : state.allGroups.filter(g => g.open || g.mine);
   byName.clear();
-  for (const g of model.groups) {
+  for (const g of state.model.groups) {
     byName.set(g.name, g);
   }
 }

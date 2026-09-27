@@ -1,7 +1,7 @@
 import {googleCalendarLink, parseWhen} from '/datecard.js';
 import {superEditOn} from '/superedit.js';
 
-export const state = {model: null, celebration: '', tab: 'available', hostingTab: 'mine', category: '', showPast: true};
+export const state = {model: null, allParties: [], celebration: '', tab: 'available', hostingTab: 'mine', category: '', showPast: true};
 
 export function familyShown(p) {
   return state.showPast || p.availability !== 'past';
@@ -15,8 +15,13 @@ const byId = new Map();
 
 export function applyModel(model) {
   state.model = model;
-  model.allParties = model.allParties || model.parties;
-  model.parties = model.allParties.filter(p => p.status === 'Open' || p.hosting || isAdmin());
+  state.allParties = model.parties;
+  applySuperEdit();
+}
+
+export function applySuperEdit() {
+  const model = state.model;
+  model.parties = state.allParties.filter(p => p.status === 'Open' || p.hosting || isAdmin());
   byId.clear();
   for (const p of findable()) {
     byId.set(p.id, p);
@@ -166,11 +171,11 @@ function findable() {
   if (!isSystemAdmin() || isAdmin()) {
     return model.parties;
   }
-  return model.parties.concat(model.allParties.filter(p => p.status === 'Pending' && !p.hosting));
+  return model.parties.concat(state.allParties.filter(p => p.status === 'Pending' && !p.hosting));
 }
 
 export function pendingParties() {
-  const list = isSystemAdmin() ? state.model.allParties : state.model.parties;
+  const list = isSystemAdmin() ? state.allParties : state.model.parties;
   return list.filter(p => p.status === 'Pending');
 }
 

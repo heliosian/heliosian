@@ -41,7 +41,7 @@ function fillCategories(selected) {
 
 const rules = rulesEditor({
   el, svg,
-  options: () => state.model.options || {classrooms: [], grades: [], tags: [], lists: [], roles: ['Student', 'Parent', 'Staff'], relations: ['Parents', 'Children', 'Siblings']},
+  options: () => state.model.options,
   personName: () => '',
 });
 

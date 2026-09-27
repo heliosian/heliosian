@@ -218,7 +218,15 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
   if (e.cancelled || (e.source !== 'sheet' && !e.link && !imported(e))) {
     return;
   }
-  let view = await fetchInvites(e);
+  const fetched = async () => {
+    try {
+      return await fetchInvites(e);
+    } catch (err) {
+      answered.replaceChildren(el('p', 'save-status error', 'Couldn’t load the guest list: ' + err.message));
+      return null;
+    }
+  };
+  let view = await fetched();
   if (!view || !ask.isConnected) {
     return;
   }
@@ -235,7 +243,7 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
       toast(err.message);
     }
     history.replaceState(null, '', location.pathname);
-    view = await fetchInvites(e);
+    view = await fetched();
     if (!view || !ask.isConnected) {
       return;
     }

@@ -4,7 +4,7 @@ import {parseWhen} from '/datecard.js';
 import {superEditOn} from '/superedit.js';
 
 const remembered = readFilters();
-export const state = {model: null, filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active};
+export const state = {model: null, allEvents: [], filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active};
 
 export function isSystemAdmin() {
   return Boolean(state.model && state.model.user.isAdmin);
@@ -20,19 +20,12 @@ export function setActiveFeed(token) {
 }
 
 function readFilters() {
-  try {
-    const raw = JSON.parse(localStorage.getItem('calendar.filters') || '{}');
-    return {classrooms: Array.isArray(raw.classrooms) ? raw.classrooms : null, tags: Array.isArray(raw.tags) ? raw.tags : null, active: typeof raw.active === 'string' ? raw.active : ''};
-  } catch (err) {
-    return {classrooms: null, tags: null, active: ''};
-  }
+  const raw = JSON.parse(localStorage.getItem('calendar.filters') || '{}');
+  return {classrooms: Array.isArray(raw.classrooms) ? raw.classrooms : null, tags: Array.isArray(raw.tags) ? raw.tags : null, active: typeof raw.active === 'string' ? raw.active : ''};
 }
 
 function saveFilters() {
-  try {
-    localStorage.setItem('calendar.filters', JSON.stringify({...state.filters, active: state.activeFeed}));
-  } catch (err) {
-  }
+  localStorage.setItem('calendar.filters', JSON.stringify({...state.filters, active: state.activeFeed}));
 }
 
 const byId = new Map();
@@ -40,11 +33,16 @@ const byDate = new Map();
 
 export function applyModel(model) {
   state.model = model;
-  model.allEvents = model.allEvents || model.events;
-  model.events = isAdmin() || !isSystemAdmin() ? model.allEvents : model.allEvents.filter(e => !(e.pending || e.declined) || e.addedBy === model.user.email || e.hosted);
+  state.allEvents = model.events;
+  applySuperEdit();
+}
+
+export function applySuperEdit() {
+  const model = state.model;
+  model.events = isAdmin() || !isSystemAdmin() ? state.allEvents : state.allEvents.filter(e => !(e.pending || e.declined) || e.addedBy === model.user.email || e.hosted);
   byId.clear();
   byDate.clear();
-  for (const e of model.allEvents) {
+  for (const e of state.allEvents) {
     if (e.pending && !e.declined) {
       byId.set(e.id, e);
     }

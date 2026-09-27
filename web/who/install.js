@@ -5,19 +5,12 @@ const INSTALL_PROMPT_DISMISS_KEY = 'installPromptDismissedAt';
 const INSTALL_PROMPT_COOLDOWN_DAYS = 30;
 
 function installPromptDismissedRecently() {
-  try {
-    const at = Number(localStorage.getItem(INSTALL_PROMPT_DISMISS_KEY));
-    return Boolean(at) && Date.now() - at < INSTALL_PROMPT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
-  } catch (e) {
-    return false;
-  }
+  const at = Number(localStorage.getItem(INSTALL_PROMPT_DISMISS_KEY));
+  return Boolean(at) && Date.now() - at < INSTALL_PROMPT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
 }
 
 function dismissInstallPrompt() {
-  try {
-    localStorage.setItem(INSTALL_PROMPT_DISMISS_KEY, String(Date.now()));
-  } catch (e) {
-  }
+  localStorage.setItem(INSTALL_PROMPT_DISMISS_KEY, String(Date.now()));
 }
 
 function runningStandalone() {
