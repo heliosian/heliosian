@@ -96,14 +96,14 @@ func (f *fakeArchive) Put(_ context.Context, name, mimeType string, content []by
 	return nil
 }
 
-func (f *fakeArchive) Get(_ context.Context, name string) ([]byte, error) {
+func (f *fakeArchive) Get(_ context.Context, name string) ([]byte, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	content, ok := f.objects[name]
 	if !ok {
-		return nil, fmt.Errorf("no object %s", name)
+		return nil, "", fmt.Errorf("no object %s", name)
 	}
-	return content, nil
+	return content, mailType, nil
 }
 
 func (f *fakeArchive) fail(err error) {

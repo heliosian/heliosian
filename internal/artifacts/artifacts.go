@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/blob"
 	"heliosian/internal/calendar"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -182,12 +183,8 @@ type Model struct {
 	Judged   map[string]string
 }
 
-type Objects interface {
-	Get(name string) ([]byte, error)
-}
-
 type documents struct {
-	objects  Objects
+	objects  *blob.Bucket
 	embedder Embedder
 	mu       sync.Mutex
 	held     map[string]*Document
@@ -209,7 +206,7 @@ func (d *documents) keep(m *Model) {
 	d.held = held
 }
 
-func (d *documents) build(_ context.Context, tables store.Tables) (*Model, error) {
+func (d *documents) build(ctx context.Context, tables store.Tables) (*Model, error) {
 	rows := tables[documentsTab]
 	d.mu.Lock()
 	held := maps.Clone(d.held)
@@ -244,7 +241,7 @@ func (d *documents) build(_ context.Context, tables store.Tables) (*Model, error
 		go func() {
 			defer wg.Done()
 			defer func() { <-slots }()
-			doc, err := read(d.objects, rows[i], d.embedder)
+			doc, err := read(ctx, d.objects, rows[i], d.embedder)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -270,8 +267,8 @@ func (d *documents) build(_ context.Context, tables store.Tables) (*Model, error
 	return m, nil
 }
 
-func read(objects Objects, row map[string]string, embedder Embedder) (*Document, error) {
-	raw, err := objects.Get(row["Object"])
+func read(ctx context.Context, objects *blob.Bucket, row map[string]string, embedder Embedder) (*Document, error) {
+	raw, _, err := objects.Get(ctx, row["Object"])
 	if err != nil {
 		return nil, fmt.Errorf("document %s: %w", row["Key"], err)
 	}
@@ -433,7 +430,7 @@ type Cache struct {
 	documents *documents
 }
 
-func NewCache(source data.Source, writer data.Writer, objects Objects, embedder Embedder, queue *store.Queue) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, objects *blob.Bucket, embedder Embedder, queue *store.Queue) (*Cache, error) {
 	d := &documents{objects: objects, embedder: embedder, held: map[string]*Document{}}
 	s, err := store.New(store.Spec[*Model]{
 		App:   appName,

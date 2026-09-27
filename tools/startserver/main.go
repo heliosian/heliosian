@@ -80,11 +80,13 @@ func mailDir() string {
 
 func sampleServer() (*http.Server, *store.Queue) {
 	dir := &data.Dir{Root: "sampledata"}
-	media := blob.NewMemory()
+	bucket := blob.NewMemoryBucket()
+	media := blob.New(bucket)
 	core := app.NewCore(app.Config{
 		Source:        dir,
 		Writer:        dir,
 		Geocoder:      geocode.Fake{},
+		Bucket:        bucket,
 		Store:         media,
 		FamilyIDKey:   []byte("sample"),
 		ChatKey:       []byte("sample"),
@@ -104,7 +106,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 		LoopDescriber: sampleGroupDescriber(),
 		Asker:         sampleAsker(),
 		Embedder:      artifacts.Fake{},
-		ArtifactsMail: artifacts.Inbox{Bucket: media},
+		ArtifactsMail: artifacts.Inbox{Bucket: bucket},
 		KeyPoints:     keypoints.Fake{},
 	})
 	saved, err := filepath.Glob("sampledata/artifacts/*.json")

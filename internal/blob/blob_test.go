@@ -14,9 +14,10 @@ import (
 )
 
 func TestOnlyWhatARefreshNamesIsKept(t *testing.T) {
-	s := NewMemory()
+	bucket := NewMemoryBucket()
+	s := New(bucket)
 	for _, name := range []string{"pronunciation/kept.m4a", "pronunciation/dropped.m4a"} {
-		if err := s.Write(context.Background(), name, "audio/mp4", []byte(name)); err != nil {
+		if err := bucket.Put(context.Background(), name, "audio/mp4", []byte(name)); err != nil {
 			t.Fatal(err)
 		}
 		if found, err := s.Has(name); err != nil || !found {

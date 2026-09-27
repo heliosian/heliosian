@@ -57,7 +57,7 @@ func newServer(t *testing.T) server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	media := blob.NewMemory()
+	media := blob.New(blob.NewMemoryBucket())
 	mux := http.NewServeMux()
 	RegisterTags(mux, cache)
 	RegisterAdmin(mux, cache, media)

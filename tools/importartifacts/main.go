@@ -57,17 +57,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-	reader, err := blob.New()
+	bucket, err := blob.Open(blob.MediaBucket)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-	cache, err := artifacts.NewCache(source, source, reader, embedder, store.NewQueue())
+	cache, err := artifacts.NewCache(source, source, bucket, embedder, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load the documents on file: %v", err)
-	}
-	uploader, err := blob.NewUploader()
-	if err != nil {
-		log.Fatalf("%v", err)
 	}
 	objects := map[string]string{}
 	issues := map[string]string{}
@@ -176,7 +172,7 @@ func main() {
 			log.Fatalf("drop the documents with no words: %v", err)
 		}
 		for _, object := range dropped {
-			if err := uploader.Remove(object); err != nil {
+			if err := bucket.Remove(ctx, object); err != nil {
 				log.Fatalf("drop %s: %v", object, err)
 			}
 		}
@@ -185,10 +181,10 @@ func main() {
 	for start := 0; start < len(pending); start += batch {
 		end := min(start+batch, len(pending))
 		group := pending[start:end]
-		if err := embedAndStore(cache, embedder, uploader, group); err != nil {
+		if err := embedAndStore(ctx, cache, embedder, bucket, group); err != nil {
 			log.Fatalf("%v", err)
 		}
-		if err := record(ctx, cache, uploader, group); err != nil {
+		if err := record(ctx, cache, bucket, group); err != nil {
 			log.Fatalf("%v", err)
 		}
 		imported += len(group)
@@ -208,7 +204,7 @@ type work struct {
 	replacing string
 }
 
-func record(ctx context.Context, cache *artifacts.Cache, uploader *blob.Uploader, group []work) error {
+func record(ctx context.Context, cache *artifacts.Cache, bucket *blob.Bucket, group []work) error {
 	model := cache.Model()
 	ops := []store.Op{}
 	for _, item := range group {
@@ -225,14 +221,14 @@ func record(ctx context.Context, cache *artifacts.Cache, uploader *blob.Uploader
 		if item.replacing == "" {
 			continue
 		}
-		if err := uploader.Remove(item.replacing); err != nil {
+		if err := bucket.Remove(ctx, item.replacing); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func embedAndStore(cache *artifacts.Cache, embedder artifacts.Embedder, uploader *blob.Uploader, group []work) error {
+func embedAndStore(ctx context.Context, cache *artifacts.Cache, embedder artifacts.Embedder, bucket *blob.Bucket, group []work) error {
 	var mu sync.Mutex
 	var first error
 	var wg sync.WaitGroup
@@ -243,7 +239,7 @@ func embedAndStore(cache *artifacts.Cache, embedder artifacts.Embedder, uploader
 		go func() {
 			defer wg.Done()
 			defer func() { <-slots }()
-			err := put(cache, embedder, uploader, item.doc)
+			err := put(ctx, cache, embedder, bucket, item.doc)
 			if err == nil {
 				return
 			}
@@ -258,15 +254,15 @@ func embedAndStore(cache *artifacts.Cache, embedder artifacts.Embedder, uploader
 	return first
 }
 
-func put(cache *artifacts.Cache, embedder artifacts.Embedder, uploader *blob.Uploader, doc *artifacts.Document) error {
-	if err := doc.Embed(context.Background(), embedder); err != nil {
+func put(ctx context.Context, cache *artifacts.Cache, embedder artifacts.Embedder, bucket *blob.Bucket, doc *artifacts.Document) error {
+	if err := doc.Embed(ctx, embedder); err != nil {
 		return err
 	}
 	body, err := json.Marshal(doc)
 	if err != nil {
 		return err
 	}
-	if _, err := uploader.Put(artifacts.Folder, doc.ObjectFile(), "application/json", body); err != nil {
+	if err := bucket.Put(ctx, doc.Object(), "application/json", body); err != nil {
 		return err
 	}
 	return cache.Hold(doc)

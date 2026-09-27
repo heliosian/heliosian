@@ -20,16 +20,13 @@ import (
 	"golang.org/x/net/html/charset"
 
 	"heliosian/internal/access"
+	"heliosian/internal/blob"
 	"heliosian/internal/mail"
 )
 
-type Bucket interface {
-	Put(folder, name, mimeType string, content []byte) error
-}
-
 type Inbox struct {
 	SigningKey string
-	Bucket     Bucket
+	Bucket     *blob.Bucket
 }
 
 func (i Inbox) ready() bool {
@@ -160,7 +157,7 @@ func (in *Filer) record(ctx context.Context, actor access.Actor, doc *Document) 
 	if err != nil {
 		return err
 	}
-	if err := in.Bucket.Put(Folder, doc.ObjectFile(), "application/json", body); err != nil {
+	if err := in.Bucket.Put(ctx, doc.Object(), "application/json", body); err != nil {
 		return err
 	}
 	if err := in.cache.Hold(doc); err != nil {

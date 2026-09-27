@@ -126,12 +126,12 @@ func sampleSources(t *testing.T) Sources {
 	if err != nil {
 		t.Fatal(err)
 	}
-	media := blob.NewMemory()
-	artifactsCache, err := artifacts.NewCache(dir, dir, media, artifacts.Fake{}, queue)
+	bucket := blob.NewMemoryBucket()
+	artifactsCache, err := artifacts.NewCache(dir, dir, bucket, artifacts.Fake{}, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	filer := artifacts.Register(http.NewServeMux(), artifactsCache, artifacts.Fake{}, queue, artifacts.Inbox{Bucket: media})
+	filer := artifacts.Register(http.NewServeMux(), artifactsCache, artifacts.Fake{}, queue, artifacts.Inbox{Bucket: bucket})
 	saved, err := filepath.Glob("../../sampledata/artifacts/*.json")
 	if err != nil {
 		t.Fatal(err)

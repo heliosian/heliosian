@@ -25,7 +25,7 @@ import (
 
 type Archive interface {
 	Put(ctx context.Context, name, mimeType string, content []byte) error
-	Get(ctx context.Context, name string) ([]byte, error)
+	Get(ctx context.Context, name string) ([]byte, string, error)
 }
 
 type Documents interface {
@@ -58,8 +58,9 @@ func (d DirArchive) Put(_ context.Context, name, _ string, content []byte) error
 	return os.WriteFile(path, content, 0o644)
 }
 
-func (d DirArchive) Get(_ context.Context, name string) ([]byte, error) {
-	return os.ReadFile(filepath.Join(d.Dir, filepath.FromSlash(name)))
+func (d DirArchive) Get(_ context.Context, name string) ([]byte, string, error) {
+	content, err := os.ReadFile(filepath.Join(d.Dir, filepath.FromSlash(name)))
+	return content, mailType, err
 }
 
 const (
@@ -297,7 +298,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	if j.object == "" {
 		return fail("archive", fmt.Errorf("the message names no archive object"))
 	}
-	raw, err := m.mail.Archive.Get(ctx, j.object)
+	raw, _, err := m.mail.Archive.Get(ctx, j.object)
 	if err != nil {
 		return fail("archive", err)
 	}

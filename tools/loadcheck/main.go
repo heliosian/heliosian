@@ -332,7 +332,7 @@ func main() {
 	}
 	fmt.Printf("groups admins: %d\n", len(groupCache.Admins(nil)))
 
-	objects, err := blob.New()
+	objects, err := blob.Open(blob.MediaBucket)
 	if err != nil {
 		log.Fatalf("blob store: %v", err)
 	}

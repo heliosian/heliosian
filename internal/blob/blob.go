@@ -30,7 +30,8 @@ import (
 )
 
 const (
-	Bucket       = "heliosian-media"
+	MediaBucket  = "heliosian-media"
+	MailBucket   = "heliosian-mail"
 	thumbWidth   = 480
 	thumbSuffix  = "-thumb"
 	thumbExt     = ".jpg"
@@ -57,21 +58,12 @@ type objects interface {
 	remove(ctx context.Context, name string) error
 }
 
-type bucket struct {
+type gcs struct {
 	service *storage.Service
 	name    string
 }
 
-func newBucket(name string) (bucket, error) {
-	service, err := storage.NewService(context.Background(),
-		option.WithScopes(storage.DevstorageReadWriteScope))
-	if err != nil {
-		return bucket{}, fmt.Errorf("storage client: %w", err)
-	}
-	return bucket{service: service, name: name}, nil
-}
-
-func (b bucket) get(ctx context.Context, name string) (object, error) {
+func (b gcs) get(ctx context.Context, name string) (object, error) {
 	resp, err := b.service.Objects.Get(b.name, name).Context(ctx).Download()
 	if notFound(err) {
 		return object{}, ErrNotFound
@@ -91,7 +83,7 @@ func (b bucket) get(ctx context.Context, name string) (object, error) {
 	return object{mimeType: resp.Header.Get("Content-Type"), generation: generation, data: data}, nil
 }
 
-func (b bucket) put(ctx context.Context, name, mimeType string, content []byte) error {
+func (b gcs) put(ctx context.Context, name, mimeType string, content []byte) error {
 	// A chunk size of zero sends the object in one request; the default of
 	// sixteen megabytes is allocated whole for every upload, however small.
 	_, err := b.service.Objects.Insert(b.name, &storage.Object{Name: name, ContentType: mimeType}).
@@ -103,7 +95,7 @@ func (b bucket) put(ctx context.Context, name, mimeType string, content []byte) 
 	return nil
 }
 
-func (b bucket) exists(ctx context.Context, name string) (bool, error) {
+func (b gcs) exists(ctx context.Context, name string) (bool, error) {
 	_, err := b.service.Objects.Get(b.name, name).Fields("name").Context(ctx).Do()
 	if notFound(err) {
 		return false, nil
@@ -114,7 +106,7 @@ func (b bucket) exists(ctx context.Context, name string) (bool, error) {
 	return true, nil
 }
 
-func (b bucket) remove(ctx context.Context, name string) error {
+func (b gcs) remove(ctx context.Context, name string) error {
 	err := b.service.Objects.Delete(b.name, name).Context(ctx).Do()
 	if notFound(err) {
 		return nil
@@ -123,6 +115,58 @@ func (b bucket) remove(ctx context.Context, name string) error {
 		return fmt.Errorf("delete %s: %w", name, err)
 	}
 	return nil
+}
+
+type Bucket struct {
+	objects objects
+}
+
+func Open(name string) (*Bucket, error) {
+	service, err := storage.NewService(context.Background(),
+		option.WithScopes(storage.DevstorageReadWriteScope))
+	if err != nil {
+		return nil, fmt.Errorf("storage client: %w", err)
+	}
+	return &Bucket{objects: gcs{service: service, name: name}}, nil
+}
+
+func NewMemoryBucket() *Bucket {
+	return &Bucket{objects: &memory{objects: map[string]object{}}}
+}
+
+func (b *Bucket) Get(ctx context.Context, name string) ([]byte, string, error) {
+	o, err := b.objects.get(ctx, name)
+	if err != nil {
+		return nil, "", err
+	}
+	return o.data, o.mimeType, nil
+}
+
+func (b *Bucket) Put(ctx context.Context, name, mimeType string, content []byte) error {
+	return b.objects.put(ctx, name, mimeType, content)
+}
+
+func (b *Bucket) PutMedia(ctx context.Context, name, mimeType string, content []byte) error {
+	if !strings.HasPrefix(mimeType, "image/") {
+		return b.objects.put(ctx, name, mimeType, content)
+	}
+	thumb, err := Thumbnail(content)
+	if err != nil {
+		return fmt.Errorf("thumbnail %s: %w", name, err)
+	}
+	// The thumbnail first, so an image in the bucket always has one.
+	if err := b.objects.put(ctx, thumbName(name), thumbMime, thumb); err != nil {
+		return err
+	}
+	return b.objects.put(ctx, name, mimeType, content)
+}
+
+func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
+	return b.objects.exists(ctx, name)
+}
+
+func (b *Bucket) Remove(ctx context.Context, name string) error {
+	return b.objects.remove(ctx, name)
 }
 
 type memory struct {
@@ -184,38 +228,14 @@ type entry struct {
 }
 
 type Store struct {
-	objects objects
+	bucket  *Bucket
 	mu      sync.RWMutex
 	entries map[string]*entry
 	named   map[string]bool
 }
 
-func New() (*Store, error) {
-	b, err := newBucket(Bucket)
-	if err != nil {
-		return nil, err
-	}
-	return &Store{objects: b, entries: map[string]*entry{}}, nil
-}
-
-func NewMemory() *Store {
-	return &Store{objects: &memory{objects: map[string]object{}}, entries: map[string]*entry{}}
-}
-
-func (s *Store) Read(ctx context.Context, name string) ([]byte, string, error) {
-	o, err := s.objects.get(ctx, name)
-	if err != nil {
-		return nil, "", err
-	}
-	return o.data, o.mimeType, nil
-}
-
-func (s *Store) Write(ctx context.Context, name, mimeType string, content []byte) error {
-	return s.objects.put(ctx, name, mimeType, content)
-}
-
-func (s *Store) Exists(ctx context.Context, name string) (bool, error) {
-	return s.objects.exists(ctx, name)
+func New(bucket *Bucket) *Store {
+	return &Store{bucket: bucket, entries: map[string]*entry{}}
 }
 
 func Register(mux *http.ServeMux, s *Store) {
@@ -300,14 +320,6 @@ func (s *Store) keep(key string) (*entry, bool) {
 	return e, ok
 }
 
-func (s *Store) Get(name string) ([]byte, error) {
-	e, err := s.download(context.Background(), name)
-	if err != nil {
-		return nil, err
-	}
-	return e.data, nil
-}
-
 func (s *Store) Bytes(name string) ([]byte, string, bool) {
 	e, ok := s.held(trimExt(name))
 	if !ok {
@@ -387,7 +399,7 @@ func (s *Store) count() int {
 }
 
 func (s *Store) download(ctx context.Context, name string) (*entry, error) {
-	o, err := s.objects.get(ctx, name)
+	o, err := s.bucket.objects.get(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -395,7 +407,7 @@ func (s *Store) download(ctx context.Context, name string) (*entry, error) {
 	if !strings.HasPrefix(o.mimeType, "image/") {
 		return e, nil
 	}
-	thumb, err := s.objects.get(ctx, thumbName(name))
+	thumb, err := s.bucket.objects.get(ctx, thumbName(name))
 	if errors.Is(err, ErrNotFound) {
 		return nil, fmt.Errorf("no thumbnail stored for %s", name)
 	}
@@ -406,68 +418,12 @@ func (s *Store) download(ctx context.Context, name string) (*entry, error) {
 	return e, nil
 }
 
-type Uploader struct {
-	objects objects
-}
-
-func NewUploader() (*Uploader, error) {
-	b, err := newBucket(Bucket)
-	if err != nil {
-		return nil, err
-	}
-	return &Uploader{objects: b}, nil
-}
-
-func (u *Uploader) Has(name string) (bool, error) {
-	return u.objects.exists(context.Background(), name)
-}
-
-func (u *Uploader) Remove(name string) error {
-	return u.objects.remove(context.Background(), name)
-}
-
-func (u *Uploader) Put(folder, name, mimeType string, content []byte) (bool, error) {
-	ctx := context.Background()
-	full := folder + "/" + name
-	present, err := u.objects.exists(ctx, full)
-	if err != nil {
-		return false, err
-	}
-	if present && strings.HasPrefix(mimeType, "image/") {
-		present, err = u.objects.exists(ctx, thumbName(full))
-		if err != nil {
-			return false, err
-		}
-	}
-	if present {
-		return false, nil
-	}
-	if err := writeWithThumbnail(ctx, u.objects, full, mimeType, content); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func writeWithThumbnail(ctx context.Context, into objects, name, mimeType string, content []byte) error {
-	if !strings.HasPrefix(mimeType, "image/") {
-		return into.put(ctx, name, mimeType, content)
-	}
-	thumb, err := Thumbnail(content)
-	if err != nil {
-		return fmt.Errorf("thumbnail %s: %w", name, err)
-	}
-	if err := into.put(ctx, name, mimeType, content); err != nil {
-		return err
-	}
-	return into.put(ctx, thumbName(name), thumbMime, thumb)
-}
-
 func (s *Store) Put(folder, name, mimeType string, content []byte) error {
 	full := folder + "/" + name
 	if _, ok := s.keep(trimExt(full)); ok {
 		return nil
 	}
-	if err := writeWithThumbnail(context.Background(), s.objects, full, mimeType, content); err != nil {
+	if err := s.bucket.PutMedia(context.Background(), full, mimeType, content); err != nil {
 		return err
 	}
 	return s.take(full)

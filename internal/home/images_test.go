@@ -20,8 +20,9 @@ func TestOnlyAdminsAddImages(t *testing.T) {
 	if !c.IsAdmin(admin) || c.IsAdmin(member) {
 		t.Fatalf("sample admins: %s %v, %s %v", admin, c.IsAdmin(admin), member, c.IsAdmin(member))
 	}
-	store := blob.NewMemory()
-	search := imagesearch.Search{Stock: imagesearch.NewStock(store), Limits: imagesearch.NewLimits()}
+	bucket := blob.NewMemoryBucket()
+	store := blob.New(bucket)
+	search := imagesearch.Search{Stock: imagesearch.NewStock(bucket, store), Limits: imagesearch.NewLimits()}
 	mux := http.NewServeMux()
 	Register(mux, c, store, func() []string { return nil }, nil, nil, nil, nil, nil, search, nil, nil, nil)
 

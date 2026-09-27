@@ -28,6 +28,11 @@ func picture(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+func memoryStock() *Stock {
+	bucket := blob.NewMemoryBucket()
+	return NewStock(bucket, blob.New(bucket))
+}
+
 func TestStockFetchedOnce(t *testing.T) {
 	pic := picture(t)
 	fetches := map[string]int{}
@@ -37,13 +42,13 @@ func TestStockFetchedOnce(t *testing.T) {
 		w.Write(pic)
 	}))
 	defer provider.Close()
-	s := Search{Pexels: "key", UserAgent: "test", Stock: NewStock(blob.NewMemory())}
+	s := Search{Pexels: "key", UserAgent: "test", Stock: memoryStock()}
 	id := key("Pexels", "42")
 	rec, err := json.Marshal(record{Source: "Pexels", SourceID: "42", Thumb: provider.URL + "/thumb", URL: provider.URL + "/full"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Stock.store.Write(context.Background(), recordName(id), "application/json", rec); err != nil {
+	if err := s.Stock.bucket.Put(context.Background(), recordName(id), "application/json", rec); err != nil {
 		t.Fatal(err)
 	}
 
@@ -93,7 +98,7 @@ func TestStockFetchedOnce(t *testing.T) {
 	if fetches["/full"] != 1 {
 		t.Errorf("full image fetched %d times, want once", fetches["/full"])
 	}
-	if ok, err := s.Stock.store.Has(first); err != nil || !ok {
+	if ok, err := s.Stock.media.Has(first); err != nil || !ok {
 		t.Errorf("imported image in the store: %v %v", ok, err)
 	}
 	if code, _ := imported(`{"id":"` + key("Pexels", "43") + `"}`); code != http.StatusNotFound {
@@ -107,7 +112,7 @@ func TestStockFetchedOnce(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	Search{Stock: NewStock(blob.NewMemory())}.serveSearch(w, httptest.NewRequest(http.MethodGet, "/api/team/images/search?q=soccer", nil))
+	Search{Stock: memoryStock()}.serveSearch(w, httptest.NewRequest(http.MethodGet, "/api/team/images/search?q=soccer", nil))
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("search with no library: %d, want 400", w.Code)
 	}
@@ -123,7 +128,7 @@ func TestThumbnailFetchedOnceUnderLoad(t *testing.T) {
 		w.Write(pic)
 	}))
 	defer provider.Close()
-	s := Search{Pixabay: "key", UserAgent: "test", Stock: NewStock(blob.NewMemory())}
+	s := Search{Pixabay: "key", UserAgent: "test", Stock: memoryStock()}
 	results := []result{}
 	for i := range 30 {
 		sourceID := letters(i)
@@ -156,7 +161,7 @@ func TestThumbnailFetchedOnceUnderLoad(t *testing.T) {
 		t.Errorf("fetched %d thumbnails from the library, want %d", got, len(results))
 	}
 	for _, res := range results {
-		if held, err := s.Stock.store.Exists(context.Background(), thumbName(res.hit.ID)); err != nil || !held {
+		if held, err := s.Stock.bucket.Exists(context.Background(), thumbName(res.hit.ID)); err != nil || !held {
 			t.Errorf("thumbnail of %s in the bucket: %v %v", res.rec.SourceID, held, err)
 		}
 	}
@@ -184,7 +189,7 @@ func upload(t *testing.T, mux *http.ServeMux, as, path string, content []byte) *
 }
 
 func TestUploadThroughRegister(t *testing.T) {
-	s := Search{Stock: NewStock(blob.NewMemory()), Limits: NewLimits()}
+	s := Search{Stock: memoryStock(), Limits: NewLimits()}
 	mux := http.NewServeMux()
 	s.Register(mux, "/api/team", "activity-images", Members)
 	refused := func(next http.HandlerFunc) http.HandlerFunc {
@@ -202,7 +207,7 @@ func TestUploadThroughRegister(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(answer.Name, "activity-images/") || !strings.HasSuffix(answer.Name, ".png") {
 		t.Fatalf("member upload: %d %s", rec.Code, rec.Body)
 	}
-	if ok, err := s.Stock.store.Has(answer.Name); err != nil || !ok {
+	if ok, err := s.Stock.media.Has(answer.Name); err != nil || !ok {
 		t.Errorf("uploaded image in the store: %v %v", ok, err)
 	}
 	if rec := upload(t, mux, "robin.whitfield@heliosschool.org", "/api/team/image", []byte("<svg></svg>")); rec.Code != http.StatusBadRequest {
@@ -221,7 +226,7 @@ func TestUploadThroughRegister(t *testing.T) {
 }
 
 func TestUploadsAreLimited(t *testing.T) {
-	s := Search{Stock: NewStock(blob.NewMemory()), Limits: NewLimits()}
+	s := Search{Stock: memoryStock(), Limits: NewLimits()}
 	mux := http.NewServeMux()
 	s.Register(mux, "/api/team", "activity-images", Members)
 	for i := range storesPerHour {

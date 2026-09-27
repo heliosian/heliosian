@@ -61,7 +61,8 @@ type result struct {
 }
 
 type Stock struct {
-	store   *blob.Store
+	bucket  *blob.Bucket
+	media   *blob.Store
 	slots   chan struct{}
 	mu      sync.Mutex
 	records map[string]record
@@ -69,8 +70,8 @@ type Stock struct {
 	pending map[string]chan struct{}
 }
 
-func NewStock(store *blob.Store) *Stock {
-	return &Stock{store: store, slots: make(chan struct{}, workers), records: map[string]record{}, have: map[string]bool{}, pending: map[string]chan struct{}{}}
+func NewStock(bucket *blob.Bucket, media *blob.Store) *Stock {
+	return &Stock{bucket: bucket, media: media, slots: make(chan struct{}, workers), records: map[string]record{}, have: map[string]bool{}, pending: map[string]chan struct{}{}}
 }
 
 type Limits struct {
@@ -160,7 +161,7 @@ func (s Search) serveUpload(w http.ResponseWriter, r *http.Request, folder strin
 func (s Search) store(w http.ResponseWriter, r *http.Request, folder, mimeType string, content []byte) {
 	sum := sha256.Sum256(content)
 	name := hex.EncodeToString(sum[:]) + extensions[mimeType]
-	if err := s.Stock.store.Put(folder, name, mimeType, content); err != nil {
+	if err := s.Stock.media.Put(folder, name, mimeType, content); err != nil {
 		slog.ErrorContext(r.Context(), "store image", "folder", folder, "error", err)
 		http.Error(w, "could not store the image", http.StatusInternalServerError)
 		return
@@ -281,7 +282,7 @@ func (st *Stock) prefetch(results []result, userAgent string) {
 	st.each(results, func(res result) {
 		body, err := json.Marshal(res.rec)
 		if err == nil {
-			err = st.store.Write(ctx, recordName(res.hit.ID), "application/json", body)
+			err = st.bucket.Put(ctx, recordName(res.hit.ID), "application/json", body)
 		}
 		if err != nil {
 			slog.Error("keep a search result", "id", res.hit.ID, "error", err)
@@ -315,7 +316,7 @@ func (st *Stock) record(ctx context.Context, id string) (record, error) {
 	if ok {
 		return rec, nil
 	}
-	body, _, err := st.store.Read(ctx, recordName(id))
+	body, _, err := st.bucket.Get(ctx, recordName(id))
 	if err != nil {
 		return record{}, err
 	}
@@ -363,7 +364,7 @@ func (st *Stock) thumbnail(ctx context.Context, id, userAgent string) error {
 
 func (st *Stock) fetchThumbnail(ctx context.Context, id, userAgent string) error {
 	name := thumbName(id)
-	held, err := st.store.Exists(ctx, name)
+	held, err := st.bucket.Exists(ctx, name)
 	if err != nil || held {
 		return err
 	}
@@ -375,7 +376,7 @@ func (st *Stock) fetchThumbnail(ctx context.Context, id, userAgent string) error
 	if err != nil {
 		return err
 	}
-	return st.store.Write(ctx, name, mimeType, content)
+	return st.bucket.Put(ctx, name, mimeType, content)
 }
 
 func (s Search) searchUnsplash(ctx context.Context, q string) ([]result, error) {
@@ -567,7 +568,7 @@ func (s Search) serveThumb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not fetch that picture", http.StatusBadGateway)
 		return
 	}
-	content, mimeType, err := s.Stock.store.Read(r.Context(), thumbName(id))
+	content, mimeType, err := s.Stock.bucket.Get(r.Context(), thumbName(id))
 	if err != nil {
 		slog.ErrorContext(r.Context(), "stock thumbnail", "id", id, "error", err)
 		http.Error(w, "could not read that picture", http.StatusInternalServerError)
@@ -591,7 +592,7 @@ func (s Search) serveImport(w http.ResponseWriter, r *http.Request, folder strin
 		return
 	}
 	ctx := r.Context()
-	content, mimeType, err := s.Stock.store.Read(ctx, imageName(body.ID))
+	content, mimeType, err := s.Stock.bucket.Get(ctx, imageName(body.ID))
 	fetched := false
 	download := ""
 	if errors.Is(err, blob.ErrNotFound) {
@@ -613,7 +614,7 @@ func (s Search) serveImport(w http.ResponseWriter, r *http.Request, folder strin
 			http.Error(w, "could not fetch that image", http.StatusBadGateway)
 			return
 		}
-		if err := s.Stock.store.Write(ctx, imageName(body.ID), mimeType, content); err != nil {
+		if err := s.Stock.bucket.Put(ctx, imageName(body.ID), mimeType, content); err != nil {
 			slog.ErrorContext(ctx, "keep stock image", "id", body.ID, "error", err)
 			http.Error(w, "could not store the image", http.StatusInternalServerError)
 			return

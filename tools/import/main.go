@@ -241,11 +241,12 @@ func uploadPhotos(dir string, apply bool) error {
 	if err != nil {
 		return err
 	}
-	uploader, err := blob.NewUploader()
+	bucket, err := blob.Open(blob.MediaBucket)
 	if err != nil {
 		return err
 	}
-	uploaded, pending := 0, 0
+	ctx := context.Background()
+	pending := 0
 	for _, entry := range entries {
 		content, err := os.ReadFile(filepath.Join(dir, entry.Name()))
 		if err != nil {
@@ -254,29 +255,27 @@ func uploadPhotos(dir string, apply bool) error {
 		if want := fmt.Sprintf("%x%s", sha256.Sum256(content), filepath.Ext(entry.Name())); want != entry.Name() {
 			return fmt.Errorf("photo %s is not named for its content, want %s", entry.Name(), want)
 		}
-		if !apply {
-			present, err := uploader.Has("photos/" + entry.Name())
-			if err != nil {
-				return err
-			}
-			if !present {
-				pending++
-			}
-			continue
-		}
-		written, err := uploader.Put("photos", entry.Name(), http.DetectContentType(content), content)
+		name := "photos/" + entry.Name()
+		present, err := bucket.Exists(ctx, name)
 		if err != nil {
 			return err
 		}
-		if written {
-			uploaded++
+		if present {
+			continue
+		}
+		pending++
+		if !apply {
+			continue
+		}
+		if err := bucket.PutMedia(ctx, name, http.DetectContentType(content), content); err != nil {
+			return err
 		}
 	}
 	if !apply {
 		log.Printf("photos: %d in the export, %d not in the bucket yet", len(entries), pending)
 		return nil
 	}
-	log.Printf("photos: %d uploaded, %d already in the bucket", uploaded, len(entries)-uploaded)
+	log.Printf("photos: %d uploaded, %d already in the bucket", pending, len(entries)-pending)
 	return nil
 }
 

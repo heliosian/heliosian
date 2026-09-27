@@ -29,7 +29,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("sheet source: %v", err)
 	}
-	reader, err := blob.New()
+	reader, err := blob.Open(blob.MediaBucket)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}

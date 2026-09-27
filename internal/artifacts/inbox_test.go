@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
@@ -148,22 +149,7 @@ func TestVouchTakesTheForwardingMailboxsSealedResults(t *testing.T) {
 	}
 }
 
-type bucket map[string][]byte
-
-func (b bucket) Put(folder, name, _ string, content []byte) error {
-	b[folder+"/"+name] = content
-	return nil
-}
-
-func (b bucket) Get(name string) ([]byte, error) {
-	content, ok := b[name]
-	if !ok {
-		return nil, os.ErrNotExist
-	}
-	return content, nil
-}
-
-func testInbox(t *testing.T) (*Filer, bucket, *data.Dir, *store.Queue) {
+func testInbox(t *testing.T) (*Filer, *blob.Bucket, *data.Dir, *store.Queue) {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, appName), 0o755); err != nil {
@@ -174,7 +160,7 @@ func testInbox(t *testing.T) (*Filer, bucket, *data.Dir, *store.Queue) {
 			t.Fatal(err)
 		}
 	}
-	objects := bucket{}
+	objects := blob.NewMemoryBucket()
 	sheet := &data.Dir{Root: root}
 	queue := store.NewQueue()
 	cache, err := NewCache(sheet, sheet, objects, Fake{}, queue)
@@ -247,8 +233,8 @@ func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 	if len(rows) != 1 || rows[0]["Key"] != Key("class-1@heliosschool.org") || rows[0]["Channel"] != "falcons.parents" || rows[0]["Kind"] != KindList {
 		t.Fatalf("rows: %+v", rows)
 	}
-	if _, ok := objects[rows[0]["Object"]]; !ok || len(objects) != 1 {
-		t.Fatalf("objects: %d, none named %s", len(objects), rows[0]["Object"])
+	if held, err := objects.Exists(context.Background(), rows[0]["Object"]); err != nil || !held {
+		t.Fatalf("no object named %s: %v", rows[0]["Object"], err)
 	}
 	model := in.cache.Model()
 	if len(model.Documents) != 1 || model.Documents[0].Key != rows[0]["Key"] {
@@ -295,6 +281,14 @@ func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testi
 			t.Fatalf("%s: %v", group, err)
 		}
 	}
+	queue.Flush()
+	_, filed, err := sheet.Table(appName, documentsTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filed) != 2 {
+		t.Fatalf("filed: %+v", filed)
+	}
 	if err := in.Remove(context.Background(), access.System("owner@example.org"), "soccer-team"); err != nil {
 		t.Fatal(err)
 	}
@@ -306,8 +300,10 @@ func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testi
 	if len(rows) != 1 || rows[0]["Channel"] != "chess-club" {
 		t.Fatalf("rows: %+v", rows)
 	}
-	if _, ok := objects[rows[0]["Object"]]; !ok || len(objects) != 2 {
-		t.Fatalf("objects: %d, none named %s", len(objects), rows[0]["Object"])
+	for _, row := range filed {
+		if held, err := objects.Exists(context.Background(), row["Object"]); err != nil || !held {
+			t.Fatalf("the object %s went with its row: %v", row["Object"], err)
+		}
 	}
 	if model := in.cache.Model(); len(model.Documents) != 1 || model.Documents[0].Channel != "chess-club" {
 		t.Fatalf("the model holds %+v", model.Documents)
@@ -339,11 +335,16 @@ func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testi
 }
 
 func TestInboxRefusesAnUnsignedCall(t *testing.T) {
-	in, objects, _, _ := testInbox(t)
+	in, _, sheet, queue := testInbox(t)
 	if code := hook(in, "another key", classMail); code != http.StatusNotAcceptable {
 		t.Fatalf("status %d", code)
 	}
-	if len(objects) != 0 {
-		t.Fatal("an unsigned call was filed")
+	queue.Flush()
+	_, rows, err := sheet.Table(appName, documentsTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 || len(in.cache.Model().Documents) != 0 {
+		t.Fatalf("an unsigned call was filed: %+v", rows)
 	}
 }

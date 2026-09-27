@@ -695,6 +695,7 @@ type Config struct {
 	Writer        data.Writer
 	Geocoder      who.Geocoder
 	Blobs         who.BlobChecker
+	Bucket        *blob.Bucket
 	Store         *blob.Store
 	FamilyIDKey   []byte
 	ChatKey       []byte
@@ -716,9 +717,7 @@ type Config struct {
 	Asker         ask.Responder
 	Embedder      artifacts.Embedder
 	ArtifactsMail artifacts.Inbox
-	// KeyPoints reads each school email's key points for the Inbox
-	// widget; nil runs nothing.
-	KeyPoints keypoints.Summarizer
+	KeyPoints     keypoints.Summarizer
 }
 
 type Core struct {
@@ -755,7 +754,7 @@ func NewCore(cfg Config) *Core {
 	}
 	queue := store.NewQueue()
 	queue.Register(cfg.Store.Load)
-	cfg.ImageSearch.Stock = imagesearch.NewStock(cfg.Store)
+	cfg.ImageSearch.Stock = imagesearch.NewStock(cfg.Bucket, cfg.Store)
 	cfg.ImageSearch.Limits = imagesearch.NewLimits()
 	settings, err := config.NewCache(cfg.Source, cfg.Writer, queue)
 	if err != nil {
@@ -831,7 +830,7 @@ func NewCore(cfg Config) *Core {
 	teamStyle := team.CardStyle(appName("team"), taglineOf("team"))
 	celebrateStyle := celebrate.CardStyle(appName("celebrate"), taglineOf("celebrate"))
 	calendarStyle := calendar.CardStyle(appName("calendar"), taglineOf("calendar"))
-	artifactsCache, err := artifacts.NewCache(cfg.Source, cfg.Writer, cfg.Store, cfg.Embedder, queue)
+	artifactsCache, err := artifacts.NewCache(cfg.Source, cfg.Writer, cfg.Bucket, cfg.Embedder, queue)
 	if err != nil {
 		logging.Fatal("load artifacts data", "error", err)
 	}
@@ -1058,7 +1057,7 @@ func newMailer(from string) mail.Sender {
 }
 
 func loopMail(sessionKey string) loop.Mail {
-	archive, err := blob.NewArchive(blob.MailBucket)
+	archive, err := blob.Open(blob.MailBucket)
 	if err != nil {
 		logging.Fatal("mail archive", "error", err)
 	}
@@ -1069,8 +1068,8 @@ func loopMail(sessionKey string) loop.Mail {
 	return m
 }
 
-func artifactsMail(store *blob.Store) artifacts.Inbox {
-	return artifacts.Inbox{SigningKey: mailgunSigningKey(), Bucket: store}
+func artifactsMail(bucket *blob.Bucket) artifacts.Inbox {
+	return artifacts.Inbox{SigningKey: mailgunSigningKey(), Bucket: bucket}
 }
 
 // A nil *describe.Describer must stay a nil interface, or the app would call it.
@@ -1159,10 +1158,11 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	if err != nil {
 		logging.Fatal("load directory sheet", "error", err)
 	}
-	store, err := blob.New()
+	bucket, err := blob.Open(blob.MediaBucket)
 	if err != nil {
-		logging.Fatal("blob store", "error", err)
+		logging.Fatal("media bucket", "error", err)
 	}
+	store := blob.New(bucket)
 	embedder, err := artifacts.NewVertex()
 	if err != nil {
 		logging.Fatal("vertex embedder", "error", err)
@@ -1176,6 +1176,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		Writer:        sheet,
 		Geocoder:      geocode.New(mapsKey("GOOGLE_MAPS_SERVER_KEY", "local/creds/geocoding.key")),
 		Blobs:         store,
+		Bucket:        bucket,
 		Store:         store,
 		FamilyIDKey:   familyIDKey.Sum(nil),
 		ChatKey:       chatKey.Sum(nil),
@@ -1197,7 +1198,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		Asker:         ask.NewClaude(mapsKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key")),
 		KeyPoints:     ClaudeKeyPoints(),
 		Embedder:      embedder,
-		ArtifactsMail: artifactsMail(store),
+		ArtifactsMail: artifactsMail(bucket),
 	})
 	who.RegisterUpload(core.Mux, core.Cache, store)
 	client := clientID()
