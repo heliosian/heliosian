@@ -1,6 +1,7 @@
 import {state, applyModel, applyConfig} from './state.js';
 import {segments, shuffled} from './dom.js';
 import {tabParam} from '/tabs.js';
+import {api} from '/api.js';
 import {loadTagRelations} from './storage.js';
 import {familyEntries} from './families.js';
 import {initChrome, renderNav, setChrome, finishRender, renderUserChrome, renderSuperEditBanner} from './chrome.js';
@@ -92,15 +93,9 @@ function render() {
 }
 
 export async function load() {
-  const [res, configRes] = await Promise.all([fetch('/api/directory/model'), fetch('/api/config')]);
-  if (!res.ok) {
-    throw new Error(`loading model failed: ${res.status}`);
-  }
-  if (!configRes.ok) {
-    throw new Error(`loading config failed: ${configRes.status}`);
-  }
-  applyConfig(await configRes.json());
-  applyModel(await res.json());
+  const [model, config] = await Promise.all([api('GET', '/api/directory/model'), api('GET', '/api/config')]);
+  applyConfig(config);
+  applyModel(model);
   state.everyoneOrder = shuffled(state.model.people);
   state.familyOrder = shuffled(familyEntries());
   renderUserChrome();

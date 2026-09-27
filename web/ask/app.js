@@ -1,4 +1,5 @@
-import {onSlash, signedIn} from '/toolbar.js';
+import {onSlash} from '/toolbar.js';
+import {api, signedIn} from '/api.js';
 import {initTopbar, renderAccount} from '/shell.js';
 import {render, stable} from '/markdown.js';
 
@@ -20,11 +21,7 @@ function fromBase64(text) {
   return Uint8Array.from(atob(text), c => c.charCodeAt(0));
 }
 
-async function openStorage(res) {
-  if (!res.ok) {
-    throw new Error(`loading key failed: ${res.status}`);
-  }
-  const {key} = await res.json();
+async function openStorage({key}) {
   state.key = await crypto.subtle.importKey('raw', fromBase64(key), 'AES-GCM', false, ['encrypt', 'decrypt']);
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(state.model.user.email)));
   state.storageKey = 'chats-' + Array.from(digest, b => b.toString(16).padStart(2, '0')).join('');
@@ -552,14 +549,10 @@ function initChrome() {
 }
 
 async function load() {
-  const keyed = fetch('/api/ask/key');
-  const res = await signedIn(await fetch('/api/ask/model'));
-  if (!res.ok) {
-    throw new Error(`loading model failed: ${res.status}`);
-  }
-  state.model = await res.json();
+  const keyed = api('GET', '/api/ask/key');
+  state.model = await api('GET', '/api/ask/model');
   renderAccount();
-  await openStorage(await signedIn(await keyed));
+  await openStorage(await keyed);
   await loadChats();
   renderChats();
   renderThread();

@@ -1,4 +1,5 @@
 import {el} from '/toolbar.js';
+import {api} from '/api.js';
 import {createPersonPicker} from '/picker.js';
 
 let remembered = '';
@@ -107,9 +108,10 @@ export function adminsCard({hint, people, title = 'Admins', read = '/api/admin/s
   };
   const persist = async () => {
     say('Saving…', false);
-    const res = await fetch(write, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({[key]: list})});
-    if (!res.ok) {
-      say(await res.text(), true);
+    try {
+      await api('POST', write, {[key]: list});
+    } catch (err) {
+      say(err.message, true);
       return;
     }
     say('Saved.', false);
@@ -167,12 +169,8 @@ export function adminsCard({hint, people, title = 'Admins', read = '/api/admin/s
   const bar = el('div', 'add-row');
   bar.append(mount, add, status);
   card.append(rows, bar);
-  Promise.all([fetch(read), people()]).then(async ([res, everyone]) => {
-    if (!res.ok) {
-      say(`Failed to load the list: ${await res.text()}`, true);
-      return;
-    }
-    list = (await res.json())[key];
+  Promise.all([api('GET', read), people()]).then(([data, everyone]) => {
+    list = data[key];
     names = new Map(everyone.map(p => [p.email, p.name]));
     render();
   }).catch(err => say(`Failed to load the list: ${err.message}`, true));

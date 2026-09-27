@@ -4,6 +4,7 @@ import {load} from './app.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
 import {appOrigin} from '/toolbar.js';
+import {api} from '/api.js';
 import {rulesEditor} from '/rules.js';
 import {tabStrip} from '/tabs.js';
 
@@ -25,13 +26,6 @@ function setStatus(selector, message, error) {
   const status = document.querySelector(selector);
   status.textContent = message;
   status.classList.toggle('error', Boolean(error));
-}
-
-async function send(method, url, body) {
-  const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
 }
 
 function fillCategories(selected) {
@@ -81,11 +75,7 @@ function audienceCard(mount, initial, everyoneNote, thing, withHead = true) {
         return;
       }
       try {
-        const res = await fetch('/api/apps/audience/preview', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({thing, rules: said})});
-        if (!res.ok) {
-          throw new Error(await res.text());
-        }
-        const answer = await res.json();
+        const answer = await api('POST', '/api/apps/audience/preview', {thing, rules: said});
         counts = [];
         said.forEach((r, i) => {
           counts[draft.indexOf(r)] = answer.ruleCounts[i];
@@ -156,7 +146,7 @@ async function saveWidgetAudience(e) {
   e.preventDefault();
   setStatus('#widget-status', 'Saving…');
   try {
-    await send('POST', '/api/apps/widgets/audience', {widget: editingWidget, rules: widgetAudience.rules});
+    await api('POST', '/api/apps/widgets/audience', {widget: editingWidget, rules: widgetAudience.rules});
     closeModals();
     await load();
   } catch (err) {
@@ -246,7 +236,7 @@ function closeModals() {
 
 export async function moveLink(title, by) {
   try {
-    await send('POST', '/api/apps/link/move', {title, by});
+    await api('POST', '/api/apps/link/move', {title, by});
     await load();
   } catch (err) {
     toast(err.message);
@@ -262,7 +252,7 @@ export async function moveApp(key, by) {
   }
   [keys[i], keys[j]] = [keys[j], keys[i]];
   try {
-    await send('POST', '/api/admin/visibility/order', {apps: keys});
+    await api('POST', '/api/admin/visibility/order', {apps: keys});
     await load();
   } catch (err) {
     toast(err.message);
@@ -278,7 +268,7 @@ export async function moveWidget(key, by) {
   }
   [keys[i], keys[j]] = [keys[j], keys[i]];
   try {
-    await send('POST', '/api/apps/widgets/order', {widgets: keys});
+    await api('POST', '/api/apps/widgets/order', {widgets: keys});
     await load();
   } catch (err) {
     toast(err.message);
@@ -293,11 +283,7 @@ let appPicker = null;
 
 async function loadAdminState() {
   if (!adminState) {
-    const res = await fetch('/api/admin/state');
-    if (!res.ok) {
-      throw new Error(await res.text());
-    }
-    adminState = await res.json();
+    adminState = await api('GET', '/api/admin/state');
   }
   return adminState;
 }
@@ -380,7 +366,7 @@ async function saveApp(e) {
   e.preventDefault();
   setStatus('#app-status', 'Saving…');
   try {
-    await send('POST', '/api/admin/visibility', {
+    await api('POST', '/api/admin/visibility', {
       app: editingApp.key,
       visibility: appMode,
       emails: appEmails,
@@ -413,7 +399,7 @@ async function moveCategory(title, by) {
   titles.push(...hidden);
   setStatus('#categories-status', 'Saving…');
   try {
-    await send('POST', '/api/apps/categories/order', {titles});
+    await api('POST', '/api/apps/categories/order', {titles});
     setStatus('#categories-status', '');
     await load();
   } catch (err) {
@@ -427,7 +413,7 @@ async function removeCategory(category) {
   }
   setStatus('#categories-status', 'Deleting\u2026');
   try {
-    await send('DELETE', '/api/apps/category', {title: category.title});
+    await api('DELETE', '/api/apps/category', {title: category.title});
     setStatus('#categories-status', '');
     await load();
   } catch (err) {
@@ -509,7 +495,7 @@ async function saveLink(e) {
   e.preventDefault();
   setStatus('#link-status', 'Saving…');
   try {
-    await send('POST', '/api/apps/link', {
+    await api('POST', '/api/apps/link', {
       original: editingLink ? editingLink.title : '',
       title: document.querySelector('#link-title').value,
       description: document.querySelector('#link-description').value,
@@ -532,7 +518,7 @@ async function deleteLink() {
   }
   setStatus('#link-status', 'Deleting…');
   try {
-    await send('DELETE', '/api/apps/link', {title: editingLink.title});
+    await api('DELETE', '/api/apps/link', {title: editingLink.title});
     closeModals();
     await load();
   } catch (err) {
@@ -544,7 +530,7 @@ async function saveCategory(e) {
   e.preventDefault();
   setStatus('#category-status', 'Saving…');
   try {
-    await send('POST', '/api/apps/category', {
+    await api('POST', '/api/apps/category', {
       original: editingCategory ? editingCategory.title : '',
       title: document.querySelector('#category-title').value,
       style: editingCategory && editingCategory.style === 'events' ? 'events' : document.querySelector('#category-style').value,
@@ -565,7 +551,7 @@ async function deleteCategory() {
   }
   setStatus('#category-status', 'Deleting…');
   try {
-    await send('DELETE', '/api/apps/category', {title: editingCategory.title});
+    await api('DELETE', '/api/apps/category', {title: editingCategory.title});
     closeModals();
     await load();
   } catch (err) {

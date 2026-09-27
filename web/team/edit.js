@@ -10,6 +10,7 @@ import {el, svg, toast, button, thumb, whenEditor} from './dom.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
 import {whoLink} from '/toolbar.js';
+import {api} from '/api.js';
 import {openModal, closeModal} from '/modal.js';
 import {field, text, textarea, select, checkbox, segmented} from '/form.js';
 import {tabbedFields} from '/tabs.js';
@@ -21,26 +22,10 @@ export async function reload() {
   await load();
 }
 
-export async function send(method, url, body) {
-  const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-  if (!res.ok) {
-    const text = await res.text();
-    const err = new Error(text);
-    if (res.status === 409 && (res.headers.get('Content-Type') || '').includes('json')) {
-      try {
-        Object.assign(err, {conflict: JSON.parse(text)});
-        err.message = err.conflict.error || text;
-      } catch {
-      }
-    }
-    throw err;
-  }
-}
-
 export async function saveActivity(body) {
   const before = body.id && activity(body.id) ? activityPath(activity(body.id)) : null;
   try {
-    await send('POST', '/api/team/activity', body);
+    await api('POST', '/api/team/activity', body);
   } catch (err) {
     const c = err.conflict;
     if (!c || !c.prior) {
@@ -49,7 +34,7 @@ export async function saveActivity(body) {
     if (!confirm(`“${body.prettyId}” is the address of “${c.title}” from ${c.year}. Rename that one to “${c.renamed}” and use “${body.prettyId}” here?`)) {
       throw new Error('Pick another address, or agree to rename the old one.');
     }
-    await send('POST', '/api/team/activity', {...body, takeOver: true});
+    await api('POST', '/api/team/activity', {...body, takeOver: true});
   }
   await reload();
   const now = body.id ? activity(body.id) : null;
@@ -90,12 +75,7 @@ async function goTo(path) {
 let asked = null;
 
 export function people() {
-  asked = asked || fetch('/api/team/people').then(async res => {
-    if (!res.ok) {
-      throw new Error(await res.text());
-    }
-    return res.json();
-  }).catch(err => {
+  asked = asked || api('GET', '/api/team/people').catch(err => {
     asked = null;
     throw err;
   });
@@ -338,7 +318,7 @@ function signUpForm(node, existing, someoneElse) {
     const appoint = button(isChair ? 'Remove as co-chair' : 'Make co-chair', isChair ? 'close' : 'plus',
       'button button-secondary button-small', async () => {
         try {
-          await send('POST', '/api/team/volunteer', {
+          await api('POST', '/api/team/volunteer', {
             id: node.id, email: existing.email, position: isChair ? 'Volunteer' : 'Co-Chair', note: note.value,
           });
           closeModal();
@@ -358,14 +338,14 @@ function signUpForm(node, existing, someoneElse) {
       if (!existing && who.value === 'other' && !picker.value) {
         throw new Error('Pick who to sign up from the directory');
       }
-      return send('POST', '/api/team/volunteer', {
+      return api('POST', '/api/team/volunteer', {
         id: where ? where.value : node.id,
         from: where && where.value !== node.id ? node.id : '',
         email: existing ? existing.email : (who.value === 'other' ? picker.value : ''),
         position: isChair && !editor ? 'Co-Chair' : position.value, note: note.value,
       });
     },
-    onDelete: existing ? () => send('DELETE', '/api/team/volunteer', {id: node.id, email: existing.email}) : null,
+    onDelete: existing ? () => api('DELETE', '/api/team/volunteer', {id: node.id, email: existing.email}) : null,
     deleteLabel: 'Remove',
     confirmDelete: existing ? `Remove ${existing.name} from ${node.title}?` : '',
   };
@@ -376,7 +356,7 @@ export async function removeVolunteer(node, volunteer) {
     return;
   }
   try {
-    await send('DELETE', '/api/team/volunteer', {id: node.id, email: volunteer.email});
+    await api('DELETE', '/api/team/volunteer', {id: node.id, email: volunteer.email});
     await reload();
   } catch (err) {
     toast(err.message);
@@ -724,7 +704,7 @@ export function openActivity(act, options) {
         }
       }
     },
-    onDelete: act && admin ? () => send('DELETE', '/api/team/activity', {id: act.id}) : null,
+    onDelete: act && admin ? () => api('DELETE', '/api/team/activity', {id: act.id}) : null,
     confirmDelete: act ? `Delete “${act.title}” (${act.year})? Its links go with it.` : '',
     afterDelete: () => goTo(currentParent ? activityPath(currentParent) : '/'),
   });
@@ -740,11 +720,11 @@ export function openLink(node, item) {
     field('Description', description, 'A line about what people will find there'),
     image.wrap,
   ], {
-    submit: () => send('POST', '/api/team/link', {
+    submit: () => api('POST', '/api/team/link', {
       id: node.id, original: item ? item.title : '',
       title: title.value, url: url.value, description: description.value, image: image.value(),
     }),
-    onDelete: item ? () => send('DELETE', '/api/team/link', {id: node.id, title: item.title}) : null,
+    onDelete: item ? () => api('DELETE', '/api/team/link', {id: node.id, title: item.title}) : null,
     confirmDelete: item ? `Remove the link “${item.title}”?` : '',
   });
 }
@@ -1001,13 +981,13 @@ export function openCategory(category, eventId, after) {
   openModal(category ? 'Edit Category' : 'Add Category', fields, {
     replace: true,
     saveLabel: category ? 'Save changes' : 'Add',
-    submit: () => send('POST', '/api/team/category', {
+    submit: () => api('POST', '/api/team/category', {
       id: category ? category.id : '', eventId: eventId || '',
       title: title.value, description: description.value, image: image.value(), allowAdding: adding.value,
       showOnMain: onMain ? onMain.input.checked : true,
     }),
     afterSave: after,
-    onDelete: category ? () => send('DELETE', '/api/team/category', {id: category.id}) : null,
+    onDelete: category ? () => api('DELETE', '/api/team/category', {id: category.id}) : null,
     confirmDelete: category ? `Delete the category “${category.title}”?` : '',
     afterDelete: after,
   });
@@ -1028,7 +1008,7 @@ export function categoryList(root, after) {
     const [moved] = ids.splice(from, 1);
     ids.splice(to, 0, moved);
     try {
-      await send('POST', '/api/team/categories/order', {eventId, ids});
+      await api('POST', '/api/team/categories/order', {eventId, ids});
       await reload();
       if (after) {
         after();
@@ -1080,7 +1060,7 @@ export function openSettings() {
   const expense = text(settings.expenseFormUrl, {type: 'url', required: true});
   const intro = textarea(settings.intro, 4);
   openModal('Settings', [field('Expense form URL', expense), field('Intro', intro, 'Shown under the Sign Up heading')], {
-    submit: () => send('POST', '/api/team/settings', {expenseFormUrl: expense.value, intro: intro.value}),
+    submit: () => api('POST', '/api/team/settings', {expenseFormUrl: expense.value, intro: intro.value}),
   });
 }
 
@@ -1091,8 +1071,8 @@ export function openRedirect(item) {
     field('Old address', old, 'The link people still hold: paste the whole link, or its path. A bare word is a friendly address, /v/word.'),
     field('Send them to', to, 'A page here, as its path, or a whole address on another site. A link into what sits under the old address follows along.'),
   ], {
-    submit: () => send('POST', '/api/team/redirect', {original: item ? item.old : '', old: old.value, new: to.value}),
-    onDelete: item ? () => send('DELETE', '/api/team/redirect', {old: item.old}) : null,
+    submit: () => api('POST', '/api/team/redirect', {original: item ? item.old : '', old: old.value, new: to.value}),
+    onDelete: item ? () => api('DELETE', '/api/team/redirect', {old: item.old}) : null,
     confirmDelete: item ? `Remove the redirect from ${item.old}? Anyone holding that link will get Not found.` : '',
     deleteLabel: 'Remove',
   });
@@ -1103,7 +1083,7 @@ export async function copyToNextYear(act) {
     return;
   }
   try {
-    await send('POST', '/api/team/copy', {id: act.id});
+    await api('POST', '/api/team/copy', {id: act.id});
     await reload();
     toast(`Copied to ${years().next}`);
   } catch (err) {

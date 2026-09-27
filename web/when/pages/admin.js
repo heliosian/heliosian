@@ -1,6 +1,7 @@
 import {state, me, tagGroups, bands, classroomNames, myClassrooms, event, eventDates, eventPath, addDays, parseDate, dayLabel} from '../state.js';
 import {el, link, svg, button, toast} from '../dom.js';
 import {popup} from '/modal.js';
+import {api} from '/api.js';
 import {adminPage as buildAdminPage} from '/admin.js';
 import {eventForm} from '../eventform.js';
 import {imageControl} from '../imagecontrol.js';
@@ -314,12 +315,14 @@ function categoriesTool() {
     save.disabled = true;
     status.classList.remove('error');
     status.textContent = 'Saving…';
-    const res = await fetch('/api/when/tags', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tags})});
-    save.disabled = false;
-    if (!res.ok) {
-      status.textContent = await res.text();
+    try {
+      await api('POST', '/api/when/tags', {tags});
+    } catch (err) {
+      status.textContent = err.message;
       status.classList.add('error');
       return;
+    } finally {
+      save.disabled = false;
     }
     status.textContent = '';
     toast('Categories saved');
@@ -416,9 +419,10 @@ function eventsTool() {
     return true;
   };
   const decide = async (e, path, done) => {
-    const res = await fetch('/api/when/events/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: e.id})});
-    if (!res.ok) {
-      toast(await res.text());
+    try {
+      await api('POST', '/api/when/events/' + path, {id: e.id});
+    } catch (err) {
+      toast(err.message);
       return;
     }
     toast(done);
@@ -476,9 +480,10 @@ function eventsTool() {
       const start = whenPicker(e.start);
       const end = whenPicker(e.end);
       const save = button('Save', 'check', 'button button-small admin-event-save', async () => {
-        const res = await fetch('/api/when/events/when', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: e.id, start: start.value(), end: end.value()})});
-        if (!res.ok) {
-          toast(await res.text());
+        try {
+          await api('POST', '/api/when/events/when', {id: e.id, start: start.value(), end: end.value()});
+        } catch (err) {
+          toast(err.message);
           return;
         }
         toast('Moved');

@@ -1,6 +1,7 @@
 import {state, me, team, isAdmin, isSystemAdmin, settings, charity, longDate, dateCell, parseDate, year} from './state.js';
 import {el, button, toast} from './dom.js';
 import {appOrigin} from '/toolbar.js';
+import {api} from '/api.js';
 import {openModal} from '/modal.js';
 import {field, text, textarea, select, fillSelect, checkbox} from '/form.js';
 
@@ -9,16 +10,9 @@ export async function reload() {
   await load();
 }
 
-export async function send(method, url, body) {
-  const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-}
-
 export async function act(method, url, body, message) {
   try {
-    await send(method, url, body);
+    await api(method, url, body);
     await reload();
     if (message) {
       toast(message);
@@ -49,8 +43,8 @@ export function openAssign(sv) {
   const who = select(people.map(p => ({label: p.name, value: p.email})), sv.assignedTo || me().email);
   openModal(`Assign ${sv.name}`, [field('To', who)], {
     saveLabel: 'Assign',
-    submit: () => send('POST', '/api/birthday/assign', {email: sv.email, assignedTo: who.value === me().email ? '' : who.value}),
-    onDelete: sv.assignedTo ? () => send('DELETE', '/api/birthday/assign', {email: sv.email}) : null,
+    submit: () => api('POST', '/api/birthday/assign', {email: sv.email, assignedTo: who.value === me().email ? '' : who.value}),
+    onDelete: sv.assignedTo ? () => api('DELETE', '/api/birthday/assign', {email: sv.email}) : null,
     deleteLabel: 'Unassign',
     confirmDelete: `Unassign ${sv.name}?`,
   });
@@ -64,7 +58,7 @@ export async function markAllUsed(list) {
   let n = 0;
   try {
     for (const sv of list) {
-      await send('POST', '/api/birthday/used', {email: sv.email, used: true});
+      await api('POST', '/api/birthday/used', {email: sv.email, used: true});
       n++;
     }
     await reload();
@@ -88,11 +82,7 @@ export async function shareIssue(date) {
     return;
   }
   try {
-    const res = await fetch('/api/birthday/newsletter/share', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({date})});
-    if (!res.ok) {
-      throw new Error(await res.text());
-    }
-    const {copied} = await res.json();
+    const {copied} = await api('POST', '/api/birthday/newsletter/share', {date});
     await reload();
     toast(`Copied ${copied} to the shared sheet`);
   } catch (err) {
@@ -156,8 +146,8 @@ export function openDonation(sv) {
   pick.addEventListener('change', showBlurb);
   showBlurb();
   openModal(existing ? `Edit ${sv.name}'s donation` : `Record ${sv.name}'s donation`, [field('Charity', pick), add, blurb, field('Their note', note, 'Why they chose it, in their words, for the newsletter')], {
-    submit: () => send('POST', '/api/birthday/donation', {email: sv.email, charity: pick.value, note: note.value}),
-    onDelete: existing ? () => send('DELETE', '/api/birthday/donation', {email: sv.email}) : null,
+    submit: () => api('POST', '/api/birthday/donation', {email: sv.email, charity: pick.value, note: note.value}),
+    onDelete: existing ? () => api('DELETE', '/api/birthday/donation', {email: sv.email}) : null,
     deleteLabel: 'Remove',
     confirmDelete: existing ? `Remove ${sv.name}'s donation this year?` : '',
   });
@@ -181,8 +171,8 @@ export function openBirthday(sv) {
   }
   fields.push(field('Birthday', birthday), field('Newsletter', override, 'Which issue carries the birthday, when the first one on or after it is wrong'));
   openModal(sv.birthday ? `Edit ${sv.name}'s birthday` : `Add ${sv.name ? `${sv.name}'s` : 'a'} birthday`, fields, {
-    submit: () => send('POST', '/api/birthday/birthday', {email: sv.birthday ? sv.email : email.value, birthday: `${month.value}-${day.value}`, override: override.value}),
-    onDelete: sv.birthday && isAdmin() ? () => send('DELETE', '/api/birthday/birthday', {email: sv.email}) : null,
+    submit: () => api('POST', '/api/birthday/birthday', {email: sv.birthday ? sv.email : email.value, birthday: `${month.value}-${day.value}`, override: override.value}),
+    onDelete: sv.birthday && isAdmin() ? () => api('DELETE', '/api/birthday/birthday', {email: sv.email}) : null,
     deleteLabel: 'Remove birthday',
     confirmDelete: `Remove ${sv.name}'s birthday? Their assignments, outreach, donations, and notes must already be gone.`,
     afterDelete: () => goTo('/skipped'),
@@ -202,8 +192,8 @@ export function openParticipation(sv) {
   }
   fields.push(field('Preference', level), field('Note', note, 'Who asked, when, anything the team should know'));
   openModal(sv.level ? `Edit ${sv.name}'s preference` : `Set ${sv.name ? `${sv.name}'s` : 'a'} preference`, fields, {
-    submit: () => send('POST', '/api/birthday/participation', {email: sv.email || email.value, level: level.value, note: note.value}),
-    onDelete: sv.level ? () => send('DELETE', '/api/birthday/participation', {email: sv.email}) : null,
+    submit: () => api('POST', '/api/birthday/participation', {email: sv.email || email.value, level: level.value, note: note.value}),
+    onDelete: sv.level ? () => api('DELETE', '/api/birthday/participation', {email: sv.email}) : null,
     deleteLabel: 'Clear preference',
     confirmDelete: `Clear ${sv.name}'s preference and treat them like everyone else?`,
   });
@@ -213,7 +203,7 @@ export function openNote(sv) {
   const note = textarea('', 4);
   openModal(`Note on ${sv.name}`, [field('Note', note)], {
     saveLabel: 'Add Note',
-    submit: () => send('POST', '/api/birthday/note', {email: sv.email, note: note.value}),
+    submit: () => api('POST', '/api/birthday/note', {email: sv.email, note: note.value}),
   });
 }
 
@@ -224,12 +214,8 @@ export function removeNote(note) {
   return act('DELETE', '/api/birthday/note', note);
 }
 
-async function describeCharity(name, donationLink) {
-  const res = await fetch('/api/birthday/charity/describe', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, donationLink})});
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return res.json();
+function describeCharity(name, donationLink) {
+  return api('POST', '/api/birthday/charity/describe', {name, donationLink});
 }
 
 export function openCharity(c, options) {
@@ -308,7 +294,7 @@ function openCharityForm(c, start, options) {
   openModal(c ? 'Edit Charity' : 'Add Charity', fields, {
     replace: !c,
     submit: async () => {
-      await send('POST', '/api/birthday/charity', {
+      await api('POST', '/api/birthday/charity', {
         original: c ? c.name : '', name: name.value, donationLink: linkInput.value, about: about.value, ein: c ? c.ein : '',
         allowed: admin ? allowed.input.checked : true, whyNotAllowed: why.value,
       });
@@ -318,7 +304,7 @@ function openCharityForm(c, start, options) {
       return name.value.trim();
     },
     afterSave: options && options.afterSave,
-    onDelete: c && admin ? () => send('DELETE', '/api/birthday/charity', {name: c.name}) : null,
+    onDelete: c && admin ? () => api('DELETE', '/api/birthday/charity', {name: c.name}) : null,
     confirmDelete: c ? `Delete “${c.name}”? Charities with donations can only be marked not allowed.` : '',
     afterDelete: () => goTo('/charities'),
   });
@@ -331,14 +317,14 @@ export function openNewsletterDate() {
   const date = text(dateCell(last), {type: 'date', required: true});
   openModal('Add Newsletter Date', [field('Date', date)], {
     saveLabel: 'Add',
-    submit: () => send('POST', '/api/birthday/newsletter-date', {date: date.value}),
+    submit: () => api('POST', '/api/birthday/newsletter-date', {date: date.value}),
   });
 }
 
 export function openChangeNewsletterDate(original) {
   const date = text(original, {type: 'date', required: true});
   openModal('Change Newsletter Date', [field('Date', date, 'Anyone pinned to this issue moves with it')], {
-    submit: () => send('PUT', '/api/birthday/newsletter-date', {original, date: date.value}),
+    submit: () => api('PUT', '/api/birthday/newsletter-date', {original, date: date.value}),
   });
 }
 
@@ -362,11 +348,7 @@ export function openCreateNewsletterDates() {
   ], {
     saveLabel: 'Create',
     submit: async () => {
-      const res = await fetch('/api/birthday/newsletter-dates/create', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({weekday: Number(weekday.value), from: from.value, to: to.value})});
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
-      const {added} = await res.json();
+      const {added} = await api('POST', '/api/birthday/newsletter-dates/create', {weekday: Number(weekday.value), from: from.value, to: to.value});
       toast(`Added ${added} ${added === 1 ? 'date' : 'dates'}`);
     },
   });
@@ -398,7 +380,7 @@ export function offerTeam() {
   );
   openModal('Join the Birthday Team?', [blurb], {
     saveLabel: 'Join the Team',
-    submit: () => send('POST', '/api/birthday/team/join', {}),
+    submit: () => api('POST', '/api/birthday/team/join', {}),
     afterSave: () => toast('Welcome to the team!'),
     alternate: {label: 'No thanks', onClick: () => {
       location.href = appOrigin('home');
@@ -432,7 +414,7 @@ export function openSettings() {
     field('No-newsletter note', note, 'Put where {no newsletter note} sits in the body, or at the end, for anyone who asked to stay out of the newsletter'),
     field('CC on outreach', cc, 'Copied on the outreach email a reminder hands over; blank for nobody'),
   ], {
-    submit: () => send('POST', '/api/birthday/settings', {
+    submit: () => api('POST', '/api/birthday/settings', {
       defaultCharity: defaultCharity.value, yearStart: yearStart.value, emailSubject: subject.value, emailBody: body.value, noNewsletterNote: note.value, outreachCC: cc.value, requestLeadDays: Number(lead.value), dueByLeadDays: Number(dueBy.value),
     }),
   });

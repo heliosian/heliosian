@@ -3,6 +3,7 @@ import {el, svg} from './dom.js';
 import {rsvpButtons, calendarMark, calendarMenu, dropdown} from './cards.js';
 import {dayTypeClass} from '/daytype.js';
 import {appOrigin} from '/toolbar.js';
+import {api} from '/api.js';
 
 let month = null;
 let selected = '';
@@ -55,11 +56,7 @@ function shiftMonth(ym, by) {
 
 async function fetchMonth(ym, calendar) {
   try {
-    const res = await fetch('/api/apps/calendar?month=' + ym + '&calendar=' + encodeURIComponent(calendar || ''));
-    if (!res.ok) {
-      return;
-    }
-    month = await res.json();
+    month = await api('GET', '/api/apps/calendar?month=' + ym + '&calendar=' + encodeURIComponent(calendar || ''));
   } catch {
     return;
   }

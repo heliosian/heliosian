@@ -1,4 +1,5 @@
 import {modeRow, offerQuan} from '/mode.js';
+import {api} from '/api.js';
 
 const homeApp = {key: 'home', name: 'Heliosian', tagline: 'Helios Community Apps'};
 
@@ -10,14 +11,6 @@ function tierLabels() {
 export function currentApp() {
   const labels = location.hostname.split('.');
   return labels.length > 2 ? labels[0] : 'home';
-}
-
-export function signedIn(res) {
-  if (res.status === 401) {
-    location.reload();
-    return new Promise(() => {});
-  }
-  return res;
 }
 
 export function appOrigin(key) {
@@ -330,7 +323,7 @@ function buildFeedback() {
     status.textContent = 'Sending…';
     send.disabled = true;
     try {
-      const res = await fetch('/api/feedback', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({
+      await api('POST', '/api/feedback', {
         kind: form.elements.kind.value,
         summary: summary.value,
         details: details.value,
@@ -341,17 +334,13 @@ function buildFeedback() {
         language: navigator.language,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         errors: recentErrors,
-      })});
-      if (!res.ok) {
-        status.textContent = await res.text();
-        return;
-      }
+      });
       hide();
       form.reset();
       prompt('bug');
       toast('Thanks, we got it.');
-    } catch {
-      status.textContent = 'Couldn’t send; check your connection and try again.';
+    } catch (err) {
+      status.textContent = err.message;
     } finally {
       send.disabled = false;
     }
@@ -552,28 +541,29 @@ export function privacyCard(fields, href, button = 'Review My Privacy in Helios 
   });
 }
 
-export function renderAlerts({stale = [], privacy = []} = {}) {
+export function renderAlerts({stale = [], privacy = [], broken = false} = {}) {
   bellStale();
   const fields = Array.isArray(privacy) ? privacy : [];
   const updates = Array.isArray(stale) ? stale : [];
+  const count = broken ? '?' : String(updates.length);
   privacyCount(fields.length);
   const who = appOrigin('who');
   for (const badge of document.querySelectorAll('.stale-alert')) {
-    badge.hidden = !updates.length;
+    badge.hidden = !broken && !updates.length;
     badge.href = who + '/my-family';
-    badge.setAttribute('aria-label', `${updates.length} thing${updates.length === 1 ? '' : 's'} to update for the new year`);
+    badge.setAttribute('aria-label', broken ? 'Couldn’t check for things to update for the new year' : `${updates.length} thing${updates.length === 1 ? '' : 's'} to update for the new year`);
     badge.removeAttribute('title');
     alertMenu(badge, () => alertList({
-      count: updates.length,
-      words: updates.length === 1 ? 'thing to update for the new year' : 'things to update for the new year',
+      count,
+      words: broken ? 'couldn’t check for things to update for the new year' : updates.length === 1 ? 'thing to update for the new year' : 'things to update for the new year',
       items: updates.map(label => ({title: label, note: 'Update it for the new year', href: badge.href, icon: updateIcon(label)})),
       icon: '<svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
       button: 'Open My Family in Helios Who',
       href: badge.href,
     }));
   }
-  for (const count of document.querySelectorAll('.stale-count')) {
-    count.textContent = String(updates.length);
+  for (const node of document.querySelectorAll('.stale-count')) {
+    node.textContent = count;
   }
   for (const badge of document.querySelectorAll('.privacy-alert')) {
     badge.hidden = !fields.length;
@@ -790,7 +780,7 @@ function buildSpoof(user, state) {
       return;
     }
     people = [];
-    fetch('/auth/spoof/people').then(res => res.ok ? res.json() : []).then(list => {
+    api('GET', '/auth/spoof/people').then(list => {
       people = list;
       filter();
     }).catch(() => {});
@@ -877,13 +867,9 @@ function spoofRow(p, isCurrent) {
 
 async function setSpoof(email) {
   try {
-    const res = await fetch('/auth/spoof', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({email})});
-    if (!res.ok) {
-      toast(await res.text());
-      return;
-    }
-  } catch {
-    toast('Couldn’t switch; check your connection and try again.');
+    await api('POST', '/auth/spoof', {email});
+  } catch (err) {
+    toast(err.message);
     return;
   }
   if (email) {

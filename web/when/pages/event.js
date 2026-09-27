@@ -6,6 +6,7 @@ import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
 import {whoLink} from '/toolbar.js';
 import {setTitle} from '/shell.js';
+import {api} from '/api.js';
 import {audienceChips, blocks} from '../events.js';
 import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow} from '../invites.js';
 
@@ -47,9 +48,10 @@ function heroImageBar(e) {
       id: e.id, title: e.title, start: e.start, end: e.end, location: e.location || '', description: e.description || '',
       tags: sheetTags(e), keywords: e.keywords || [], source: e.sourceUrl || e.sourceNote || '', image, sharing: e.sharing,
     };
-    const res = await fetch(override ? '/api/when/overrides/image' : '/api/when/events', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-    if (!res.ok) {
-      toast(await res.text());
+    try {
+      await api('PUT', override ? '/api/when/overrides/image' : '/api/when/events', body);
+    } catch (err) {
+      toast(err.message);
       return;
     }
     toast(image ? 'Picture saved' : 'Picture removed');
@@ -446,9 +448,10 @@ function pendingBand(e) {
   if (e.pending && !e.declined ? isSystemAdmin() : isAdmin()) {
     const actions = el('div', 'pending-actions');
     const decide = async (path, done) => {
-      const res = await fetch('/api/when/events/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: e.id})});
-      if (!res.ok) {
-        toast(await res.text());
+      try {
+        await api('POST', '/api/when/events/' + path, {id: e.id});
+      } catch (err) {
+        toast(err.message);
         return;
       }
       toast(done);
@@ -528,9 +531,10 @@ function keywordsEditor(e) {
       input.placeholder = 'words, separated by commas';
       const save = button('Save', 'check', 'button button-small', async () => {
         const keywords = input.value.split(',').map(w => w.trim()).filter(Boolean);
-        const res = await fetch('/api/when/keywords', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: e.id, keywords})});
-        if (!res.ok) {
-          toast(await res.text());
+        try {
+          await api('POST', '/api/when/keywords', {id: e.id, keywords});
+        } catch (err) {
+          toast(err.message);
           return;
         }
         toast('Search words saved');

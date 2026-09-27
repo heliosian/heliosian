@@ -2,6 +2,7 @@ import {state, applyModel, resolvePath, redirectTarget, activityPath, isFamily, 
 import {el} from './dom.js';
 import {initChrome} from './chrome.js';
 import {renderChrome, setTitle, clearSearch} from '/shell.js';
+import {api} from '/api.js';
 import {initModal} from '/modal.js';
 import {signUpPage} from './pages/signup.js';
 import {myPage} from './pages/my.js';
@@ -11,11 +12,7 @@ import {adminPage} from './pages/admin.js';
 import {approvalsPage} from './pages/approvals.js';
 
 export async function load() {
-  const res = await fetch('/api/team/model');
-  if (!res.ok) {
-    throw new Error(`loading model failed: ${res.status}`);
-  }
-  applyModel(await res.json());
+  applyModel(await api('GET', '/api/team/model'));
   render();
 }
 

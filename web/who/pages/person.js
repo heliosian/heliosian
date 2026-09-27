@@ -1,4 +1,5 @@
 import {load} from '../app.js';
+import {api} from '/api.js';
 import {colors} from '../state.js';
 import {el, svg, withFrom, slugify, thumbUrl, firstName, iconButton, copyButton, pronouncePill, contactRow, aboutMeText, paletteColor} from '../dom.js';
 import {familiesOf} from '../families.js';
@@ -319,10 +320,11 @@ export function renderPersonDetail(email) {
           const form = new FormData();
           form.append('key', p.email);
           form.append('facts', editor.value);
-          const res = await fetch('/api/directory/facts', {method: 'POST', body: form});
-          if (!res.ok) {
+          try {
+            await api('POST', '/api/directory/facts', form);
+          } catch (err) {
             status.classList.add('error');
-            status.textContent = await res.text();
+            status.textContent = err.message;
             return;
           }
           await load();

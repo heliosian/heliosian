@@ -1,6 +1,7 @@
 import {state} from './state.js';
 import {el, svg, iconOf} from './dom.js';
 import {adminPage, adminsCard} from '/admin.js';
+import {api} from '/api.js';
 
 const feedback = {rows: [], filter: 'New', canFile: false, repo: '', open: new URLSearchParams(location.search).get('report') || ''};
 
@@ -62,11 +63,7 @@ function field(tag, label, value, attrs = {}) {
 }
 
 async function loadFeedback() {
-  const res = await fetch('/api/admin/feedback');
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  const data = await res.json();
+  const data = await api('GET', '/api/admin/feedback');
   feedback.rows = data.reports;
   feedback.canFile = data.canFile;
   feedback.repo = data.repo;
@@ -75,12 +72,13 @@ async function loadFeedback() {
 async function fillReport(card, id, redraw) {
   card.hidden = false;
   card.replaceChildren();
-  const res = await fetch('/api/admin/feedback/' + encodeURIComponent(id));
-  if (!res.ok) {
-    card.textContent = 'Could not open that report.';
+  let report;
+  try {
+    report = await api('GET', '/api/admin/feedback/' + encodeURIComponent(id));
+  } catch (err) {
+    card.textContent = `Could not open that report: ${err.message}`;
     return;
   }
-  const report = await res.json();
   const facts = el('dl');
   const rows = [
     ['Reporter', `${report.email} (${report.role})`],
@@ -115,13 +113,14 @@ async function fillReport(card, id, redraw) {
   const issueType = field('input', 'Type', report.draft.type, {type: 'text'});
   const labels = field('input', 'Labels', (report.draft.labels || []).join(', '), {type: 'text'});
   const status = el('span', 'save-status');
-  const act = async (url, working, options) => {
+  const act = async (url, working, body) => {
     status.classList.remove('error');
     status.textContent = working;
-    const res = await fetch(url, options);
-    if (!res.ok) {
+    try {
+      await api('POST', url, body);
+    } catch (err) {
       status.classList.add('error');
-      status.textContent = await res.text();
+      status.textContent = err.message;
       return false;
     }
     await redraw();
@@ -133,20 +132,16 @@ async function fillReport(card, id, redraw) {
   fileButton.addEventListener('click', async () => {
     fileButton.disabled = true;
     const done = await act(`/api/admin/feedback/${encodeURIComponent(id)}/file`, 'Filing…', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        title: title.input.value,
-        body: body.input.value,
-        type: issueType.input.value,
-        labels: labels.input.value.split(',').map(l => l.trim()).filter(Boolean),
-      }),
+      title: title.input.value,
+      body: body.input.value,
+      type: issueType.input.value,
+      labels: labels.input.value.split(',').map(l => l.trim()).filter(Boolean),
     });
     fileButton.disabled = done;
   });
   const dismissButton = el('button', 'link-button danger', 'Dismiss');
   dismissButton.type = 'button';
-  dismissButton.addEventListener('click', () => act(`/api/admin/feedback/${encodeURIComponent(id)}/dismiss`, 'Dismissing…', {method: 'POST'}));
+  dismissButton.addEventListener('click', () => act(`/api/admin/feedback/${encodeURIComponent(id)}/dismiss`, 'Dismissing…'));
   const actions = el('div', 'report-actions');
   actions.append(fileButton, dismissButton, status);
   card.append(el('div', 'hint', hint), title.wrap, body.wrap, issueType.wrap, labels.wrap, actions);
@@ -216,12 +211,13 @@ export async function renderAdminPage() {
     main.replaceChildren(adminPage({appName: 'Heliosian', allowed: false, email: user.email, sections: []}));
     return;
   }
-  const res = await fetch('/api/admin/state');
-  if (!res.ok) {
-    main.replaceChildren(el('p', 'hint', `Failed to load admin state: ${await res.text()}`));
+  let admin;
+  try {
+    admin = await api('GET', '/api/admin/state');
+  } catch (err) {
+    main.replaceChildren(el('p', 'hint', `Failed to load admin state: ${err.message}`));
     return;
   }
-  const admin = await res.json();
   const control = [{key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can add, edit, and delete links and categories, and reach this page. Changes save immediately.', people: () => admin.people})}];
   if (admin.isSuperAdmin) {
     try {

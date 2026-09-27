@@ -4,6 +4,7 @@ import {popup} from '/modal.js';
 import {dayColumn} from './day.js';
 import {onSlash} from '/toolbar.js';
 import {initShell, appSymbol} from '/shell.js';
+import {api} from '/api.js';
 
 const primary = [
   {href: '/', icon: 'app', label: 'Calendar'},
@@ -73,9 +74,10 @@ export function editFeedPopup(f) {
     if (!confirm(`Delete ${f.name}? A calendar app subscribed to its feed stops updating.`)) {
       return;
     }
-    const res = await fetch('/api/when/feeds', {method: 'DELETE', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: f.token})});
-    if (!res.ok) {
-      toast(await res.text());
+    try {
+      await api('DELETE', '/api/when/feeds', {token: f.token});
+    } catch (err) {
+      toast(err.message);
       return;
     }
     shut();
@@ -105,12 +107,14 @@ export function editFeedPopup(f) {
     status.classList.remove('error');
     status.textContent = 'Saving\u2026';
     const body = {token: f.token, name: name.value.trim(), emoji: input.value.trim(), classrooms: f.classrooms, tags: f.tags};
-    const res = await fetch('/api/when/feeds', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-    submit.disabled = false;
-    if (!res.ok) {
-      status.textContent = await res.text();
+    try {
+      await api('PUT', '/api/when/feeds', body);
+    } catch (err) {
+      status.textContent = err.message;
       status.classList.add('error');
       return;
+    } finally {
+      submit.disabled = false;
     }
     shut();
     const {load} = await import('./app.js');
@@ -121,9 +125,10 @@ export function editFeedPopup(f) {
 }
 
 export async function makeDefaultFeed(f) {
-  const res = await fetch('/api/when/default', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: f.token})});
-  if (!res.ok) {
-    toast(await res.text());
+  try {
+    await api('POST', '/api/when/default', {token: f.token});
+  } catch (err) {
+    toast(err.message);
     return;
   }
   toast(`${f.name} is your default calendar now.`, 4000);
@@ -132,9 +137,10 @@ export async function makeDefaultFeed(f) {
 }
 
 async function orderFeeds(tokens) {
-  const res = await fetch('/api/when/feeds/order', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tokens})});
-  if (!res.ok) {
-    toast(await res.text());
+  try {
+    await api('PUT', '/api/when/feeds/order', {tokens});
+  } catch (err) {
+    toast(err.message);
     return false;
   }
   const {load} = await import('./app.js');
@@ -312,9 +318,10 @@ function fillNav(nav) {
           if (!confirm(`Remove ${f.name}? A calendar app subscribed to its feed stops updating.`)) {
             return;
           }
-          const res = await fetch('/api/when/feeds', {method: 'DELETE', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: f.token})});
-          if (!res.ok) {
-            toast(await res.text());
+          try {
+            await api('DELETE', '/api/when/feeds', {token: f.token});
+          } catch (err) {
+            toast(err.message);
             return;
           }
           toast(`${f.name} removed`);
@@ -516,9 +523,10 @@ export function fillFilters(wrap, opts = {}) {
     }));
   } else if (working && working.locked && savedView()) {
     foot.append(button('Forget my saved view', null, 'button button-secondary button-small', async () => {
-      const res = await fetch('/api/when/settings', {method: 'DELETE'});
-      if (!res.ok) {
-        toast(await res.text());
+      try {
+        await api('DELETE', '/api/when/settings');
+      } catch (err) {
+        toast(err.message);
         return;
       }
       toast('My Heliosian is back to the calendar\u2019s own defaults, here and on the Heliosian home page.', 5000);

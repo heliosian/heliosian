@@ -2,6 +2,7 @@ import {state, me, isAdmin, options, groupPath} from '../state.js';
 import {el, svg, link, button, iconButton, copyText, toast, personRow, pageHead, thumb} from '../dom.js';
 import {whoLink} from '/toolbar.js';
 import {setTitle} from '/shell.js';
+import {api} from '/api.js';
 import {load, navigate} from '../app.js';
 import {createPersonPicker} from '/picker.js';
 import {tabStrip, tabParam, tabHref} from '/tabs.js';
@@ -49,14 +50,6 @@ function audienceField(label, notes, value, onChange) {
   });
   field.append(el('span', '', label), select, note);
   return field;
-}
-
-async function send(method, url, body) {
-  const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return res.status === 204 ? null : res.json();
 }
 
 function editor(g, isNew, closeModal, startTab) {
@@ -214,7 +207,7 @@ function editor(g, isNew, closeModal, startTab) {
     descStatus.textContent = 'Writing…';
     try {
       const rules = draft.rules.filter(ruleSaysSomething);
-      const {description} = await send('POST', '/api/loop/describe', {name: isNew ? '' : draft.name, title: draft.title, ruleWords: rules.map(r => (r.kind === 'exclude' ? 'Leaving out: ' : '') + ruleWords(r)), rules, additions: draft.additions, excluded: draft.excluded});
+      const {description} = await api('POST', '/api/loop/describe', {name: isNew ? '' : draft.name, title: draft.title, ruleWords: rules.map(r => (r.kind === 'exclude' ? 'Leaving out: ' : '') + ruleWords(r)), rules, additions: draft.additions, excluded: draft.excluded});
       desc.value = description;
       draft.description = description;
       descStatus.textContent = '';
@@ -431,7 +424,7 @@ function editor(g, isNew, closeModal, startTab) {
     previewStatus.textContent = 'Working out the members…';
     try {
       const rules = draft.rules.filter(ruleSaysSomething);
-      const {members, ruleCounts: counts} = await send('POST', '/api/loop/preview', {name: isNew ? '' : draft.name, rules, additions: draft.additions, excluded: draft.excluded});
+      const {members, ruleCounts: counts} = await api('POST', '/api/loop/preview', {name: isNew ? '' : draft.name, rules, additions: draft.additions, excluded: draft.excluded});
       previewHead.textContent = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
       renderChanges(members, rules);
       showRuleCounts(rules, counts || []);
@@ -613,7 +606,7 @@ function editor(g, isNew, closeModal, startTab) {
     save.disabled = true;
     try {
       const body = {original: isNew ? '' : draft.name, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visibility: draft.visibility, posting: draft.posting, replying: draft.replying, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
-      const saved = await send('POST', '/api/loop/group', body);
+      const saved = await api('POST', '/api/loop/group', body);
       if (closeModal) {
         closeModal();
       }
@@ -645,7 +638,7 @@ function editor(g, isNew, closeModal, startTab) {
         return;
       }
       try {
-        await send('DELETE', '/api/loop/group', {name: g.name});
+        await api('DELETE', '/api/loop/group', {name: g.name});
         if (closeModal) {
           closeModal();
         }
@@ -767,7 +760,7 @@ export function groupPage(g) {
     const toggle = button(g.unsubscribed ? 'Resubscribe' : 'Unsubscribe', null, 'button button-secondary', async () => {
       toggle.disabled = true;
       try {
-        await send('POST', '/api/loop/subscription', {name: g.name, subscribed: g.unsubscribed});
+        await api('POST', '/api/loop/subscription', {name: g.name, subscribed: g.unsubscribed});
         await load();
         toast(g.unsubscribed ? 'Resubscribed' : 'Unsubscribed');
       } catch (err) {
@@ -780,7 +773,7 @@ export function groupPage(g) {
   const archive = button(g.archived ? 'Unarchive' : 'Archive', 'archive', 'button button-secondary', async () => {
     archive.disabled = true;
     try {
-      await send('POST', '/api/loop/archive', {name: g.name, archived: !g.archived});
+      await api('POST', '/api/loop/archive', {name: g.name, archived: !g.archived});
       await load();
       toast(g.archived ? 'Back among your groups' : 'Archived');
     } catch (err) {
@@ -958,7 +951,7 @@ function managersCard(g, canEdit) {
     status.classList.remove('error');
     status.textContent = 'Saving…';
     try {
-      await send('POST', '/api/loop/group', {original: g.name, name: g.name, aliases: g.aliases, title: g.title, description: g.description, prefix: g.prefix, visibility: g.visibility, posting: g.posting, replying: g.replying, managers, rules: g.rules, additions: g.additions, excluded: g.excluded});
+      await api('POST', '/api/loop/group', {original: g.name, name: g.name, aliases: g.aliases, title: g.title, description: g.description, prefix: g.prefix, visibility: g.visibility, posting: g.posting, replying: g.replying, managers, rules: g.rules, additions: g.additions, excluded: g.excluded});
       await load();
       toast('Managers saved');
     } catch (err) {
@@ -1104,11 +1097,7 @@ function historyTab(g) {
   const load = async () => {
     loaded = true;
     try {
-      const res = await fetch('/api/loop/messages?name=' + encodeURIComponent(g.name));
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
-      const {messages} = await res.json();
+      const {messages} = await api('GET', '/api/loop/messages?name=' + encodeURIComponent(g.name));
       status.textContent = messages.length ? '' : 'Nothing has been sent to the group yet.';
       for (const m of messages) {
         list.append(messageRow(m));

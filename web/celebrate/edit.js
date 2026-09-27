@@ -2,6 +2,7 @@ import {state, me, isAdmin, household, billable, admits, audienceWords, ticketFo
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
 import {whoLink} from '/toolbar.js';
+import {api} from '/api.js';
 import {el, svg, toast, button, avatar} from './dom.js';
 import {tabbedFields} from '/tabs.js';
 import {imageTools} from '/images.js';
@@ -15,15 +16,6 @@ export async function reload() {
   await load();
 }
 
-export async function send(method, url, body) {
-  const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  const type = res.headers.get('Content-Type') || '';
-  return type.includes('json') ? res.json() : null;
-}
-
 async function goTo(path) {
   const {navigate} = await import('./app.js');
   navigate(path);
@@ -32,12 +24,7 @@ async function goTo(path) {
 let asked = null;
 
 export function people() {
-  asked = asked || fetch('/api/celebrate/people').then(async res => {
-    if (!res.ok) {
-      throw new Error(await res.text());
-    }
-    return res.json();
-  }).catch(err => {
+  asked = asked || api('GET', '/api/celebrate/people').catch(err => {
     asked = null;
     throw err;
   });
@@ -330,7 +317,7 @@ export function openBuy(p) {
       if (!attendees.length) {
         throw new Error('Pick at least one person.');
       }
-      return send('POST', '/api/celebrate/tickets', {partyId: p.id, purchaser, note: note.value, attendees});
+      return api('POST', '/api/celebrate/tickets', {partyId: p.id, purchaser, note: note.value, attendees});
     },
     afterSave: result => {
       const parts = [];
@@ -364,9 +351,9 @@ export function openWaitlist(p) {
   }
   openModal(have ? `Your place on the waitlist for ${p.title}` : `Join the waitlist for ${p.title}`, fields, {
     saveLabel: have ? 'Update' : 'Join Waitlist',
-    submit: () => send('POST', '/api/celebrate/waitlist', {partyId: p.id, purchaser, quantity: Number(quantity.value) || 1, note: note.value}),
+    submit: () => api('POST', '/api/celebrate/waitlist', {partyId: p.id, purchaser, quantity: Number(quantity.value) || 1, note: note.value}),
     afterSave: () => toast(have ? 'Waitlist request updated' : 'You\u2019re on the waitlist'),
-    onDelete: have ? () => send('DELETE', '/api/celebrate/ticket', {ticketId: have.ticketId}) : null,
+    onDelete: have ? () => api('DELETE', '/api/celebrate/ticket', {ticketId: have.ticketId}) : null,
     deleteLabel: 'Leave waitlist',
     confirmDelete: `Leave the waitlist for ${p.title}?`,
   });
@@ -552,7 +539,7 @@ export function openReassign(p, a) {
         body.name = name.value.trim();
         body.email = email.value.trim().toLowerCase();
       }
-      return send('POST', '/api/celebrate/ticket/reassign', body);
+      return api('POST', '/api/celebrate/ticket/reassign', body);
     },
     afterSave: () => toast('Ticket reassigned'),
   });
@@ -573,7 +560,7 @@ export function openMoveAddress(a, onDone) {
       if (!to.value.trim()) {
         throw new Error('Give the new address.');
       }
-      return send('POST', '/api/celebrate/address', {old: a.email, to: to.value.trim().toLowerCase(), name: name.value.trim()});
+      return api('POST', '/api/celebrate/address', {old: a.email, to: to.value.trim().toLowerCase(), name: name.value.trim()});
     },
     afterSave: () => {
       toast('Address changed on every party');
@@ -590,7 +577,7 @@ export async function removeTicket(p, a) {
     return;
   }
   try {
-    await send('DELETE', '/api/celebrate/ticket', {ticketId: a.ticketId});
+    await api('DELETE', '/api/celebrate/ticket', {ticketId: a.ticketId});
     await reload();
     toast(a.status === 'Ticket' ? 'Ticket removed' : 'Off the waitlist');
   } catch (err) {
@@ -604,7 +591,7 @@ export async function offerTickets(p, a, quantity) {
     return;
   }
   try {
-    await send('POST', '/api/celebrate/waitlist/offer', {ticketId: a.ticketId, quantity: n});
+    await api('POST', '/api/celebrate/waitlist/offer', {ticketId: a.ticketId, quantity: n});
     await reload();
     toast(`${a.name} now has ${n === 1 ? 'a ticket' : n + ' tickets'}`);
   } catch (err) {
@@ -622,7 +609,7 @@ export function openFreeTicket(p) {
   }
   openAddSomeone(p, true, async person => {
     try {
-      await send('POST', '/api/celebrate/tickets', {
+      await api('POST', '/api/celebrate/tickets', {
         partyId: p.id, free: true, purchaser: guestOf.value, raiseCapacity: Boolean(raise && raise.input.checked), note: 'Free ticket from the hosts',
         attendees: [{email: person.email || '', name: person.guest ? person.name : ''}],
       });
@@ -699,9 +686,9 @@ function ticketForm(p, a) {
       if (quantity) {
         body.quantity = Number(quantity.value) || 1;
       }
-      return send('POST', '/api/celebrate/ticket', body);
+      return api('POST', '/api/celebrate/ticket', body);
     },
-    onDelete: () => send('DELETE', '/api/celebrate/ticket', {ticketId: a.ticketId}),
+    onDelete: () => api('DELETE', '/api/celebrate/ticket', {ticketId: a.ticketId}),
     deleteLabel: 'Remove',
     confirmDelete: `Remove ${a.name} from ${p.title}?`,
   };
@@ -868,7 +855,7 @@ export function openParty(p) {
   openModal(adding ? 'Host a Party' : `Edit ${p.title}`, [...intro, tabbedFields(panels)], {
     wide: true,
     saveLabel: adding ? (isAdmin() ? 'Add Party' : 'Submit for Approval') : 'Save',
-    submit: () => send('POST', '/api/celebrate/party', {
+    submit: () => api('POST', '/api/celebrate/party', {
       id: p ? p.id : '', celebration: celebrationPick ? celebrationPick.value : '',
       title: title.value, subtitle: subtitle.value, summary: summary.value, description: description.value, needToKnow: needToKnow.value,
       noteEmoji: noteEmoji.value.trim(), noteTitle: noteTitle.value.trim(),
@@ -886,7 +873,7 @@ export function openParty(p) {
         }
       }
     },
-    onDelete: p && isAdmin() ? () => send('DELETE', '/api/celebrate/party', {id: p.id}) : null,
+    onDelete: p && isAdmin() ? () => api('DELETE', '/api/celebrate/party', {id: p.id}) : null,
     confirmDelete: p ? `Delete ${p.title}? This cannot be undone.` : '',
     afterDelete: () => goTo('/'),
   });
@@ -902,7 +889,7 @@ export async function savePartyFields(p, changes) {
     ...changes,
   };
   try {
-    await send('POST', '/api/celebrate/party', body);
+    await api('POST', '/api/celebrate/party', body);
     await reload();
   } catch (err) {
     toast(err.message);
@@ -915,7 +902,7 @@ export async function setFlags(p, changes) {
     dropOff: p.dropOff, parentTicket: p.parentTicket, ...changes,
   };
   try {
-    await send('POST', '/api/celebrate/party/flags', body);
+    await api('POST', '/api/celebrate/party/flags', body);
     await reload();
   } catch (err) {
     toast(err.message);
@@ -925,7 +912,7 @@ export async function setFlags(p, changes) {
 
 export async function setPartyStatus(p, status) {
   try {
-    await send('POST', '/api/celebrate/party/status', {id: p.id, status});
+    await api('POST', '/api/celebrate/party/status', {id: p.id, status});
     await reload();
     toast(status === 'Open' ? `${p.title} is open` : `${p.title} is ${status.toLowerCase()}`);
   } catch (err) {
@@ -1159,11 +1146,11 @@ export function openCelebration(c) {
     kindField, field('Button text', buttonText, 'Leave it blank for no button.'), urlField,
     current.wrap, banner.wrap, image.wrap,
   ], {
-    submit: () => send('POST', '/api/celebrate/celebration', {
+    submit: () => api('POST', '/api/celebrate/celebration', {
       original: c ? c.code : '', code: code.value.trim(), title: title.value, subtitle: subtitle.value, start: start.value(), end: end.value(),
       location: place.value, address: address.value, description: description.value, image: image.value(), buttonText: buttonText.value, buttonUrl: buttonKind === 'calendar' ? 'calendar' : buttonUrl.value, current: current.input.checked, banner: banner.input.checked,
     }),
-    onDelete: c ? () => send('DELETE', '/api/celebrate/celebration', {code: c.code}) : null,
+    onDelete: c ? () => api('DELETE', '/api/celebrate/celebration', {code: c.code}) : null,
     confirmDelete: c ? `Delete ${c.title}?` : '',
   });
 }
@@ -1171,9 +1158,9 @@ export function openCelebration(c) {
 export function openCategory(title, after) {
   const input = text(title || '', {required: true, maxLength: 120});
   openModal(title ? 'Rename category' : 'Add a category', [field('Title', input, '', true)], {
-    submit: () => send('POST', '/api/celebrate/category', {original: title || '', title: input.value}),
+    submit: () => api('POST', '/api/celebrate/category', {original: title || '', title: input.value}),
     afterSave: after,
-    onDelete: title ? () => send('DELETE', '/api/celebrate/category', {title}) : null,
+    onDelete: title ? () => api('DELETE', '/api/celebrate/category', {title}) : null,
     confirmDelete: title ? `Delete the category ${title}?` : '',
     afterDelete: after,
   });
@@ -1189,6 +1176,6 @@ export function openSettings() {
     field('Ticket note', note, 'Shown on the ticket form: how invoicing works, the refund policy.'),
     hosting.wrap,
   ], {
-    submit: () => send('POST', '/api/celebrate/settings', {partiesIntro: intro.value, ticketNote: note.value, hostingOpen: hosting.input.checked}),
+    submit: () => api('POST', '/api/celebrate/settings', {partiesIntro: intro.value, ticketNote: note.value, hostingOpen: hosting.input.checked}),
   });
 }

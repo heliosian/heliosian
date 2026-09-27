@@ -2,6 +2,7 @@ import {state, me, isAdmin, postedAndHosting, answer, isParty, eventDates, weekd
 import {el, svg, button, toast, avatar, copyText} from './dom.js';
 import {popup} from '/modal.js';
 import {whoLink} from '/toolbar.js';
+import {api} from '/api.js';
 import {rulesEditor, filterWidgets} from '/rules.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
@@ -9,25 +10,13 @@ import {imageControl, uploadImage} from './imagecontrol.js';
 
 const answerWords = {yes: 'Yes', maybe: 'Maybe', no: 'No'};
 
-async function post(method, path, body) {
-  const res = await fetch(path, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return res.status === 204 ? null : res.json();
-}
-
 export function startParty(e) {
-  return post('POST', '/api/when/invites/start', {id: e.id});
+  return api('POST', '/api/when/invites/start', {id: e.id});
 }
 
 export async function fetchInvites(e) {
   try {
-    const res = await fetch('/api/when/invites?id=' + encodeURIComponent(e.id));
-    if (!res.ok) {
-      return null;
-    }
-    const view = await res.json();
+    const view = await api('GET', '/api/when/invites?id=' + encodeURIComponent(e.id));
     if (view.adminHost && !isAdmin()) {
       view.host = false;
       if (view.listPrivate) {
@@ -59,7 +48,7 @@ function answerButtons(row, e, onChange, {small = true} = {}) {
           if (row.key === me().email) {
             await answer(e, next);
           } else {
-            await post('POST', '/api/when/invites/answer', {id: e.id, email: row.key, answer: next});
+            await api('POST', '/api/when/invites/answer', {id: e.id, email: row.key, answer: next});
           }
           row.answer = next;
           paint();
@@ -178,7 +167,7 @@ function guestForm(e, of, onDone) {
     }
     submit.disabled = true;
     try {
-      await post('POST', '/api/when/invites/guest', body);
+      await api('POST', '/api/when/invites/guest', body);
       toast(`${body.name} added`);
       onDone();
     } catch (err) {
@@ -242,7 +231,7 @@ export function familyBand(e, view, refresh) {
       remove.append(svg('close'));
       remove.addEventListener('click', async () => {
         try {
-          await post('DELETE', '/api/when/invites/people', {id: e.id, email: r.key});
+          await api('DELETE', '/api/when/invites/people', {id: e.id, email: r.key});
           toast(`${r.name} removed`);
           refresh();
         } catch (err) {
@@ -315,7 +304,7 @@ export function rsvpRow(e, view, refresh) {
         remove.append(svg('close'));
         remove.addEventListener('click', async () => {
           try {
-            await post('DELETE', '/api/when/invites/people', {id: e.id, email: r.key});
+            await api('DELETE', '/api/when/invites/people', {id: e.id, email: r.key});
             toast(`${r.name} removed`);
             refresh();
           } catch (err) {
@@ -378,7 +367,7 @@ export function comingCard(e, view, refresh) {
     const open = !view.listPrivate;
     head.append(button(open ? 'Keep to hosts' : 'Show to everyone', open ? 'eye-off' : 'eye', 'link-button', async () => {
       try {
-        await post('PUT', '/api/when/invites/settings', {id: e.id, publicList: !open});
+        await api('PUT', '/api/when/invites/settings', {id: e.id, publicList: !open});
         toast(open ? 'Only the hosts see who is coming now.' : 'Everyone who opens the event sees who is coming now.');
         refresh();
       } catch (err) {
@@ -450,7 +439,7 @@ export function comingCard(e, view, refresh) {
     box.checked = Boolean(view.notifyMe);
     box.addEventListener('change', async () => {
       try {
-        await post('PUT', '/api/when/invites/settings', {id: e.id, notifyMe: box.checked});
+        await api('PUT', '/api/when/invites/settings', {id: e.id, notifyMe: box.checked});
         toast(box.checked ? 'You\u2019ll get an email as answers come in' : 'No more emails about answers');
       } catch (err) {
         toast(err.message);
@@ -558,7 +547,7 @@ function openMessage(e, view, refresh, preset = {}) {
     }
     send.disabled = true;
     try {
-      const made = await post('POST', '/api/when/invites/message', {id: e.id, subject: subject.value.trim(), message: message.value.trim(), to: [...to], emails: [...picked], attach: Boolean(preset.attach)});
+      const made = await api('POST', '/api/when/invites/message', {id: e.id, subject: subject.value.trim(), message: message.value.trim(), to: [...to], emails: [...picked], attach: Boolean(preset.attach)});
       toast(made.messages === 1 ? 'Sent to one person' : `Sent to ${made.messages} people`, 4000);
       shut();
       refresh();
@@ -620,13 +609,13 @@ export function hostsRow(e, view, refresh) {
         }
         try {
           if (own) {
-            await post('POST', '/api/when/invites/step-down', {id: e.id});
+            await api('POST', '/api/when/invites/step-down', {id: e.id});
             toast('You no longer host this event.');
           } else if (poster) {
-            await post('POST', '/api/when/invites/step-down', {id: e.id, email: h.email});
+            await api('POST', '/api/when/invites/step-down', {id: e.id, email: h.email});
             toast(`${h.name} no longer hosts this event.`);
           } else {
-            await post('PUT', '/api/when/invites/settings', {id: e.id, hosts: [...cohosts].filter(x => x !== h.email)});
+            await api('PUT', '/api/when/invites/settings', {id: e.id, hosts: [...cohosts].filter(x => x !== h.email)});
           }
           refresh();
         } catch (err) {
@@ -644,7 +633,7 @@ export function hostsRow(e, view, refresh) {
     const hidden = Boolean(view.hostsHidden);
     tools.append(button(hidden ? 'Show hosts' : 'Hide hosts', hidden ? 'eye' : 'eye-off', 'link-button', async () => {
       try {
-        await post('PUT', '/api/when/invites/settings', {id: e.id, hideHosts: !hidden});
+        await api('PUT', '/api/when/invites/settings', {id: e.id, hideHosts: !hidden});
         toast(hidden ? 'Everyone who opens the event sees its hosts again.' : 'Only the hosts see who hosts this event now.');
         refresh();
       } catch (err) {
@@ -681,7 +670,7 @@ function openAddHost(e, view, refresh) {
     }
     submit.disabled = true;
     try {
-      await post('PUT', '/api/when/invites/settings', {id: e.id, hosts: [...((view.settings || {}).hosts || []), email]});
+      await api('PUT', '/api/when/invites/settings', {id: e.id, hosts: [...((view.settings || {}).hosts || []), email]});
       toast('Co-host added');
       shut();
       refresh();
@@ -785,7 +774,7 @@ function openEmailEdit(e, view, r, refresh) {
     submit.disabled = true;
     try {
       const all = Boolean(everywhere && everywhere.checked);
-      await post('POST', '/api/when/invites/email', {id: e.id, email: r.key, to: input.value.trim(), everywhere: all});
+      await api('POST', '/api/when/invites/email', {id: e.id, email: r.key, to: input.value.trim(), everywhere: all});
       toast(all ? 'Address changed on every party' : 'Address changed');
       shut();
       refresh();
@@ -807,7 +796,7 @@ function openPending(e, view, refresh) {
   let shut = null;
   const sendTo = async (emails, words) => {
     try {
-      const made = await post('POST', '/api/when/invites/send', {id: e.id, emails});
+      const made = await api('POST', '/api/when/invites/send', {id: e.id, emails});
       toast(made.messages === 1 ? 'One invite is on its way' : `${made.messages} invites are on their way`, 4000);
       shut();
       refresh();
@@ -840,7 +829,7 @@ function openPending(e, view, refresh) {
         return;
       }
       try {
-        await post('POST', '/api/when/invites/skip', {id: e.id, emails: [r.key]});
+        await api('POST', '/api/when/invites/skip', {id: e.id, emails: [r.key]});
         toast(`${name} moved to No reply yet - no email sent`);
         shut();
         refresh();
@@ -877,7 +866,7 @@ export function flyerCard(e, view, refresh) {
   if (view.host) {
     const save = async image => {
       try {
-        await post('PUT', '/api/when/invites/settings', {id: e.id, flyer: image});
+        await api('PUT', '/api/when/invites/settings', {id: e.id, flyer: image});
         toast(image ? 'Flyer saved' : 'Flyer removed');
         refresh();
       } catch (err) {
@@ -925,7 +914,7 @@ export function addFlyerLink(e, view, refresh) {
     }
     try {
       const made = await uploadImage(file.files[0]);
-      await post('PUT', '/api/when/invites/settings', {id: e.id, flyer: made.name});
+      await api('PUT', '/api/when/invites/settings', {id: e.id, flyer: made.name});
       toast('Flyer saved');
       refresh();
     } catch (err) {
@@ -983,7 +972,7 @@ function openGuestCard(e, p, view, refresh) {
   if (view.host && p.invited && p.email) {
     links.append(button(p.sent ? 'Resend invitation' : 'Send invitation', 'calendar', 'link-button', async () => {
       try {
-        const made = await post('POST', '/api/when/invites/send', {id: e.id, emails: [p.key]});
+        const made = await api('POST', '/api/when/invites/send', {id: e.id, emails: [p.key]});
         toast(made.messages === 1 ? 'The invitation is on its way' : `${made.messages} emails are on their way`, 4000);
         shut();
         refresh();
@@ -998,7 +987,7 @@ function openGuestCard(e, p, view, refresh) {
         return;
       }
       try {
-        await post('DELETE', '/api/when/invites/people', {id: e.id, email: p.key});
+        await api('DELETE', '/api/when/invites/people', {id: e.id, email: p.key});
         shut();
         refresh();
       } catch (err) {
@@ -1097,7 +1086,7 @@ async function sendInvites(e, to, words, refresh) {
     return;
   }
   try {
-    const made = await post('POST', '/api/when/invites/send', {id: e.id, to});
+    const made = await api('POST', '/api/when/invites/send', {id: e.id, to});
     toast(made.messages === 1 ? 'One invite is on its way' : `${made.messages} invites are on their way`, 4000);
     refresh();
   } catch (err) {
@@ -1240,7 +1229,7 @@ export function guestListSection(e, view, refresh) {
     box.checked = g.auto;
     box.addEventListener('change', async () => {
       try {
-        await post('PUT', '/api/when/invites/group', {id: e.id, group: g.id, auto: box.checked});
+        await api('PUT', '/api/when/invites/group', {id: e.id, group: g.id, auto: box.checked});
         toast(box.checked ? (g.sent ? 'Auto-invite on: newcomers are sent their invitation' : 'Auto-invite on: newcomers are sent theirs once you have sent this group its invites') : 'Auto-invite off: newcomers wait in Pending for you to send');
         if (box.checked) {
           refresh();
@@ -1265,7 +1254,7 @@ export function guestListSection(e, view, refresh) {
         return;
       }
       try {
-        const made = await post('DELETE', '/api/when/invites/group', {id: e.id, group: g.id});
+        const made = await api('DELETE', '/api/when/invites/group', {id: e.id, group: g.id});
         toast(made.dropped ? `Group removed, and ${made.dropped} with it` : 'Group removed');
         refresh();
       } catch (err) {
@@ -1277,12 +1266,12 @@ export function guestListSection(e, view, refresh) {
     return row;
   };
   if ((view.groups || []).length && !ruleOptions) {
-    fetch('/api/when/invites/options').then(r => (r.ok ? r.json() : null)).then(options => {
-      if (options && section.isConnected) {
+    api('GET', '/api/when/invites/options').then(options => {
+      if (section.isConnected) {
         ruleOptions = options;
         section.replaceWith(guestListSection(e, view, refresh));
       }
-    });
+    }).catch(() => {});
   }
   if (!view.list.length) {
     return section;
@@ -1371,7 +1360,7 @@ export function guestListSection(e, view, refresh) {
           return;
         }
         try {
-          await post('DELETE', '/api/when/invites/people', {id: e.id, email: r.key});
+          await api('DELETE', '/api/when/invites/people', {id: e.id, email: r.key});
           refresh();
         } catch (err) {
           toast(err.message);
@@ -1471,7 +1460,7 @@ async function deleteInvitation(e, view) {
     return;
   }
   try {
-    const made = await post('POST', '/api/when/invites/delete', {id: e.id});
+    const made = await api('POST', '/api/when/invites/delete', {id: e.id});
     toast(made.event ? 'Event deleted' : 'Invitation deleted');
     if (made.event) {
       location.href = '/';
@@ -1498,7 +1487,7 @@ function openCancel(e, view, refresh) {
   let shut = null;
   const cancel = async notify => {
     try {
-      const made = await post('POST', '/api/when/events/cancel', {id: e.id, notify, note: note.value});
+      const made = await api('POST', '/api/when/events/cancel', {id: e.id, notify, note: note.value});
       toast(notify ? `Cancelled - ${made.told} ${made.told === 1 ? 'person' : 'people'} told` : 'Cancelled', 4000);
       shut();
       refresh();
@@ -1770,7 +1759,7 @@ export function settingsForm(e, view, refresh, shut, part = 'invitation') {
     submit.disabled = true;
     try {
       const own = details ? details() : {};
-      await post('PUT', '/api/when/invites/settings', {id: e.id, ...(invitation ? {} : {message: message.value}), ...own});
+      await api('PUT', '/api/when/invites/settings', {id: e.id, ...(invitation ? {} : {message: message.value}), ...own});
       toast('Saved');
       shut();
       await refresh();
@@ -1879,7 +1868,7 @@ export async function offerUpdate(e, changed) {
   let shut = null;
   actions.append(button(`Send the update to ${people.length}`, 'mail', 'button', async () => {
     try {
-      const made = await post('POST', '/api/when/invites/send', {id: e.id, to: 'sent', update: true});
+      const made = await api('POST', '/api/when/invites/send', {id: e.id, to: 'sent', update: true});
       toast(made.messages === 1 ? 'The update is on its way' : `${made.messages} updates are on their way`, 4000);
       shut();
     } catch (err) {
@@ -1890,12 +1879,8 @@ export async function offerUpdate(e, changed) {
   shut = popup('Send an updated invitation?', box).shut;
 }
 
-async function fetchPickerData(e) {
-  const res = await fetch('/api/when/invites/people?id=' + encodeURIComponent(e.id));
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return res.json();
+function fetchPickerData(e) {
+  return api('GET', '/api/when/invites/people?id=' + encodeURIComponent(e.id));
 }
 
 function pickerPeople(e, keep) {
@@ -1929,7 +1914,7 @@ export function groupWords(g) {
 async function openPicker(e, view, refresh) {
   let data = null;
   try {
-    [data, ruleOptions] = await Promise.all([fetchPickerData(e), view.host ? fetch('/api/when/invites/options').then(r => (r.ok ? r.json() : null)) : ruleOptions]);
+    [data, ruleOptions] = await Promise.all([fetchPickerData(e), view.host ? api('GET', '/api/when/invites/options').catch(() => null) : ruleOptions]);
   } catch (err) {
     toast(err.message);
     return;
@@ -2095,7 +2080,7 @@ function personPanel(e, data, onList, done) {
   add.addEventListener('click', async () => {
     add.disabled = true;
     try {
-      const made = await post('POST', '/api/when/invites/people', {id: e.id, people: [...everyone().values()]});
+      const made = await api('POST', '/api/when/invites/people', {id: e.id, people: [...everyone().values()]});
       done(made.sent ? `${made.added} invited - the invitation is on its way.` : `${made.added} added to the list.`);
     } catch (err) {
       status.textContent = err.message;
@@ -2129,7 +2114,7 @@ function groupPanel(e, done) {
         return;
       }
       try {
-        const answer = await post('POST', '/api/when/invites/preview', {id: e.id, rule});
+        const answer = await api('POST', '/api/when/invites/preview', {id: e.id, rule});
         preview.textContent = answer.count ? `Picks out ${answer.count} ${answer.count === 1 ? 'person' : 'people'} now: ${answer.names.join(', ')}${answer.count > answer.names.length ? '…' : ''}` : 'Picks out nobody yet.';
       } catch (err) {
         preview.textContent = err.message;
@@ -2154,7 +2139,7 @@ function groupPanel(e, done) {
     }
     add.disabled = true;
     try {
-      const made = await post('POST', '/api/when/invites/group', {id: e.id, rule, auto: box.checked});
+      const made = await api('POST', '/api/when/invites/group', {id: e.id, rule, auto: box.checked});
       done(`Group added, with ${made.added} ${made.added === 1 ? 'person' : 'people'} on the list now.`);
     } catch (err) {
       status.textContent = err.message;
@@ -2289,7 +2274,7 @@ function outsidePanel(e, onList, done) {
     }
     add.disabled = true;
     try {
-      const made = await post('POST', '/api/when/invites/people', {id: e.id, people});
+      const made = await api('POST', '/api/when/invites/people', {id: e.id, people});
       done(made.sent ? (made.added === 1 ? `${people[0].name} invited - the invitation is on its way.` : `${made.added} people invited - the invitations are on their way.`) : made.added === 1 ? `${people[0].name} added to the list.` : `${made.added} people added to the list.`);
     } catch (err) {
       status.textContent = err.message;

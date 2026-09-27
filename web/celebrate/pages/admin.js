@@ -1,6 +1,7 @@
 import {state, isSystemAdmin, me, money, whenLine, celebration} from '../state.js';
 import {el, button, svg} from '../dom.js';
-import {openCelebration, openCategory, openSettings, openMoveAddress, send, reload, people} from '../edit.js';
+import {openCelebration, openCategory, openSettings, openMoveAddress, reload, people} from '../edit.js';
+import {api} from '/api.js';
 import {celebrationBand} from './parties.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 
@@ -22,7 +23,7 @@ function bannerCard() {
   pick.addEventListener('change', async () => {
     const chosen = celebration(pick.value);
     try {
-      await send('POST', '/api/celebrate/celebration', {
+      await api('POST', '/api/celebrate/celebration', {
         original: chosen.code, code: chosen.code, title: chosen.title, subtitle: chosen.subtitle || '', start: chosen.start || '', end: chosen.end || '',
         location: chosen.location || '', address: chosen.address || '', description: chosen.description || '', image: chosen.image || '',
         buttonText: chosen.buttonText || '', buttonUrl: chosen.buttonUrl || '', current: chosen.current, banner: true,
@@ -85,7 +86,7 @@ function categoriesCard() {
         const order = [...cats];
         order.splice(to, 0, order.splice(from, 1)[0]);
         try {
-          await send('POST', '/api/celebrate/categories/order', {titles: order});
+          await api('POST', '/api/celebrate/categories/order', {titles: order});
           await reload();
           paint();
         } catch (err) {
@@ -291,11 +292,7 @@ function addressesCard() {
   };
   const load = async () => {
     try {
-      const res = await fetch('/api/celebrate/addresses');
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
-      data = await res.json();
+      data = await api('GET', '/api/celebrate/addresses');
       paint();
     } catch (err) {
       list.replaceChildren(el('div', 'hint error', err.message));

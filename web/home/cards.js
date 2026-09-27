@@ -2,6 +2,7 @@ import {state, isAdmin, tagLabelsOf} from './state.js';
 import {el, svg, iconOf, toast} from './dom.js';
 import {openLinkEditor, openCategoryEditor, openAppEditor, moveApp, moveLink} from './edit.js';
 import {appOrigin} from '/toolbar.js';
+import {api} from '/api.js';
 
 function editPencil(link, category) {
   if (!isAdmin()) {
@@ -372,9 +373,10 @@ export function dropdown(toggle, menu) {
 }
 
 async function answer(event, word) {
-  const res = await fetch('/api/apps/rsvp', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: event.id, answer: word})});
-  if (!res.ok) {
-    toast(await res.text());
+  try {
+    await api('POST', '/api/apps/rsvp', {id: event.id, answer: word});
+  } catch (err) {
+    toast(err.message);
     return false;
   }
   return true;

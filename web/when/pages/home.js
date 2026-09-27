@@ -4,6 +4,7 @@ import {el, link, svg, button, peopleLine, toast, copyText, feedMark} from '../d
 import {popup} from '/modal.js';
 import {setSearch, fillFilters, renderRailDay, editFeedPopup, makeDefaultFeed, calendarMenu} from '../chrome.js';
 import {setTitle} from '/shell.js';
+import {api} from '/api.js';
 import {dayColumn, openAddEvent} from '../day.js';
 import {callPill, emptyNote, roomDots, planCards} from '../events.js';
 import {answerOf, answer, linkURL, selectedTags, classroomNames, tagNames, defaultFeedName, showsFeed, activeFeed, setActiveFeed, defaultFeed, feedURL, webcalURL} from '../state.js';
@@ -368,15 +369,17 @@ function saveCalendar() {
       classrooms: rooms.length === classroomNames().length ? [] : classroomNames().filter(c => rooms.includes(c)),
       tags: tags.length === tagNames().length ? [] : tagNames().filter(t => tags.includes(t)),
     };
-    const res = await fetch('/api/when/feeds', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-    submit.disabled = false;
-    if (!res.ok) {
-      status.textContent = await res.text();
+    let made;
+    try {
+      made = await api('POST', '/api/when/feeds', body);
+    } catch (err) {
+      status.textContent = err.message;
       status.classList.add('error');
       return;
+    } finally {
+      submit.disabled = false;
     }
     shut();
-    const made = await res.json();
     setActiveFeed(made.token);
     toast(`Saved. ${body.name} is under Calendar in the rail.`, 5000);
     const {load} = await import('../app.js');
@@ -390,11 +393,7 @@ async function feedToken(f) {
   if (!f.locked) {
     return f.token;
   }
-  const res = await fetch('/api/when/feeds/my-heliosian', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return (await res.json()).token;
+  return (await api('POST', '/api/when/feeds/my-heliosian', {})).token;
 }
 
 const brandMarks = {
@@ -503,9 +502,10 @@ async function saveOnto(f) {
     classrooms: rooms.length === classroomNames().length ? [] : classroomNames().filter(c => rooms.includes(c)),
     tags: tags.length === tagNames().length ? [] : tagNames().filter(t => tags.includes(t)),
   };
-  const res = await fetch('/api/when/feeds', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-  if (!res.ok) {
-    toast(await res.text());
+  try {
+    await api('PUT', '/api/when/feeds', body);
+  } catch (err) {
+    toast(err.message);
     return;
   }
   setActiveFeed(f.token);

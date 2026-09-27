@@ -195,7 +195,7 @@ export function initTopbar(config) {
   initUserMenu();
   initSpoof();
   if (!app.alerts) {
-    fetch('/api/apps/alerts').then(res => res.ok ? res.json() : null).then(view => renderAlerts(view || {})).catch(() => {});
+    fetch('/api/apps/alerts').then(res => res.ok ? res.json() : {broken: true}).catch(() => ({broken: true})).then(renderAlerts);
   }
   document.addEventListener('click', e => {
     if (app.keepOpen && e.target.closest(app.keepOpen)) {

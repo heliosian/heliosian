@@ -2,16 +2,13 @@ import {state, applyModel, group} from './state.js';
 import {el} from './dom.js';
 import {initChrome} from './chrome.js';
 import {renderChrome, setTitle, clearSearch} from '/shell.js';
+import {api} from '/api.js';
 import {groupsPage} from './pages/groups.js';
 import {groupPage, newGroupModal} from './pages/group.js';
 import {adminPage} from './pages/admin.js';
 
 export async function load() {
-  const res = await fetch('/api/loop/model');
-  if (!res.ok) {
-    throw new Error(`loading model failed: ${res.status}`);
-  }
-  applyModel(await res.json());
+  applyModel(await api('GET', '/api/loop/model'));
   render();
 }
 

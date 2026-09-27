@@ -1,4 +1,5 @@
 import {appOrigin} from '/toolbar.js';
+import {api} from '/api.js';
 import {parseWhen} from '/datecard.js';
 import {superEditOn} from '/superedit.js';
 
@@ -92,11 +93,7 @@ export function event(id) {
 
 export async function fetchEvent(id) {
   try {
-    const res = await fetch('/api/when/event?id=' + encodeURIComponent(id));
-    if (!res.ok) {
-      return null;
-    }
-    const e = await res.json();
+    const e = await api('GET', '/api/when/event?id=' + encodeURIComponent(id));
     byId.set(e.id, e);
     if (e.address) {
       byId.set(e.address, e);
@@ -669,10 +666,7 @@ export function isGray(e) {
 }
 
 export async function answer(e, word) {
-  const res = await fetch('/api/when/rsvp', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: e.id, answer: word})});
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
+  await api('POST', '/api/when/rsvp', {id: e.id, answer: word});
   const answers = {...(me().answers || {})};
   if (word) {
     answers[e.id] = word;

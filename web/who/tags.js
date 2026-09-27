@@ -2,6 +2,7 @@ import {state, tags, tagManagers, shared, lists, byEmail} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {el, svg, firstName} from './dom.js';
 import {appOrigin} from '/toolbar.js';
+import {api} from '/api.js';
 import {photoOrInitials, personPhotoUrl} from './people.js';
 import {clampFilterPanel} from './filters.js';
 
@@ -120,9 +121,10 @@ export function onTagsChangeChrome(fn) {
 export async function deleteTag(name) {
   const form = new FormData();
   form.append('tag', name);
-  const res = await fetch('/api/directory/tag-delete', {method: 'POST', body: form});
-  if (!res.ok) {
-    alert(await res.text());
+  try {
+    await api('POST', '/api/directory/tag-delete', form);
+  } catch (err) {
+    alert(err.message);
     return false;
   }
   delete tags[name];
@@ -135,9 +137,10 @@ export async function renameTag(from, to) {
   const form = new FormData();
   form.append('tag', from);
   form.append('name', to);
-  const res = await fetch('/api/directory/tag-rename', {method: 'POST', body: form});
-  if (!res.ok) {
-    alert(await res.text());
+  try {
+    await api('POST', '/api/directory/tag-rename', form);
+  } catch (err) {
+    alert(err.message);
     return false;
   }
   tags[to] = tags[from];
@@ -160,9 +163,10 @@ export async function copyTag(key, to) {
     form.append('tag', key);
   }
   form.append('name', to);
-  const res = await fetch('/api/directory/tag-copy', {method: 'POST', body: form});
-  if (!res.ok) {
-    alert(await res.text());
+  try {
+    await api('POST', '/api/directory/tag-copy', form);
+  } catch (err) {
+    alert(err.message);
     return false;
   }
   tags[to] = [...members(key)];
@@ -211,9 +215,10 @@ async function setTag(email, key, on) {
   }
   chromeChanged();
   pageChanged();
-  const res = await fetch('/api/directory/tag', {method: 'POST', body: form});
-  if (!res.ok) {
-    alert(await res.text());
+  try {
+    await api('POST', '/api/directory/tag', form);
+  } catch (err) {
+    alert(err.message);
   }
 }
 
@@ -222,9 +227,10 @@ export async function shareTag(name, manager, on) {
   form.append('tag', name);
   form.append('manager', manager);
   form.append('on', on ? '1' : '0');
-  const res = await fetch('/api/directory/tag-share', {method: 'POST', body: form});
-  if (!res.ok) {
-    alert(await res.text());
+  try {
+    await api('POST', '/api/directory/tag-share', form);
+  } catch (err) {
+    alert(err.message);
     return false;
   }
   const current = (tagManagers[name] || []).filter(e => e !== manager);
@@ -417,9 +423,10 @@ export async function leaveTag(key) {
   const form = new FormData();
   form.append('owner', t.owner);
   form.append('tag', t.name);
-  const res = await fetch('/api/directory/tag-leave', {method: 'POST', body: form});
-  if (!res.ok) {
-    alert(await res.text());
+  try {
+    await api('POST', '/api/directory/tag-leave', form);
+  } catch (err) {
+    alert(err.message);
     return false;
   }
   delete shared[key];

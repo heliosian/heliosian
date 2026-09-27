@@ -1,6 +1,7 @@
 import {state, isAdmin} from './state.js';
 import {appOrigin} from '/toolbar.js';
 import {searchInput} from '/shell.js';
+import {api} from '/api.js';
 import {el, svg} from './dom.js';
 import {calendarMark, calendarMenu, dropdown, audienceWords} from './cards.js';
 import {openWidgetAudience, moveWidget} from './edit.js';
@@ -49,11 +50,7 @@ function currentMonth() {
 async function pick(token) {
   const month = currentMonth();
   try {
-    const res = await fetch('/api/apps/calendar?month=' + month.today.slice(0, 7) + '&calendar=' + encodeURIComponent(token));
-    if (!res.ok) {
-      return;
-    }
-    picked = await res.json();
+    picked = await api('GET', '/api/apps/calendar?month=' + month.today.slice(0, 7) + '&calendar=' + encodeURIComponent(token));
   } catch {
     return;
   }
@@ -105,11 +102,7 @@ async function fetchNext(month) {
   }
   nextAsked = want;
   try {
-    const res = await fetch('/api/apps/calendar?month=' + after + '&calendar=' + encodeURIComponent(month.calendar || ''));
-    if (!res.ok) {
-      return;
-    }
-    nextMonth = await res.json();
+    nextMonth = await api('GET', '/api/apps/calendar?month=' + after + '&calendar=' + encodeURIComponent(month.calendar || ''));
   } catch {
     return;
   }
@@ -310,11 +303,7 @@ let teamFor = null;
 async function fetchTeam() {
   teamFor = state.model;
   try {
-    const res = await fetch('/api/apps/team');
-    if (!res.ok) {
-      return;
-    }
-    team = await res.json();
+    team = await api('GET', '/api/apps/team');
   } catch {
     return;
   }
@@ -393,11 +382,7 @@ let partiesFor = null;
 async function fetchParties() {
   partiesFor = state.model;
   try {
-    const res = await fetch('/api/apps/celebrate');
-    if (!res.ok) {
-      return;
-    }
-    parties = (await res.json()).parties || [];
+    parties = (await api('GET', '/api/apps/celebrate')).parties || [];
   } catch {
     return;
   }
@@ -530,12 +515,9 @@ let schoolFor = null;
 async function fetchSchool() {
   schoolFor = state.model;
   try {
-    const [mail, waiting] = await Promise.all([fetch('/api/apps/school'), fetch('/api/apps/rsvp')]);
-    if (!mail.ok) {
-      return;
-    }
-    school = (await mail.json()).emails || [];
-    rsvps = waiting.ok ? (await waiting.json()).waiting || [] : [];
+    const [mail, waiting] = await Promise.all([api('GET', '/api/apps/school'), api('GET', '/api/apps/rsvp').catch(() => ({}))]);
+    school = mail.emails || [];
+    rsvps = waiting.waiting || [];
   } catch {
     return;
   }

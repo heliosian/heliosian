@@ -2,17 +2,14 @@ import {applyModel, event, eventPath, fetchEvent, today, parseDate, state, event
 import {el} from './dom.js';
 import {initChrome, clearSearch} from './chrome.js';
 import {renderChrome, setTitle} from '/shell.js';
+import {api} from '/api.js';
 import {homePage} from './pages/home.js';
 import {eventPage} from './pages/event.js';
 import {adminPage} from './pages/admin.js';
 import {minePage} from './pages/mine.js';
 
 export async function load() {
-  const res = await fetch('/api/when/model');
-  if (!res.ok) {
-    throw new Error(`loading model failed: ${res.status}`);
-  }
-  applyModel(await res.json());
+  applyModel(await api('GET', '/api/when/model'));
   render();
 }
 

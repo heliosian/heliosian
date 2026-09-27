@@ -6,6 +6,7 @@ import {renderWidgets} from './widgets.js';
 import {initEditing, refreshCategoryManager} from './edit.js';
 import {onSlash} from '/toolbar.js';
 import {initTopbar, renderAccount, searchInput} from '/shell.js';
+import {api} from '/api.js';
 import {renderAdminPage} from './adminpage.js';
 
 const editCategories = el('button', 'user-menu-super', 'Edit Categories');
@@ -19,11 +20,7 @@ function renderChrome() {
 }
 
 export async function load() {
-  const res = await fetch('/api/apps/model');
-  if (!res.ok) {
-    throw new Error(`loading model failed: ${res.status}`);
-  }
-  applyModel(await res.json());
+  applyModel(await api('GET', '/api/apps/model'));
   renderChrome();
   if (location.pathname === '/admin') {
     document.body.classList.add('is-admin');

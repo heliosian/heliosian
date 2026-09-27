@@ -2,6 +2,7 @@ import {state, byEmail} from './state.js';
 import {el, svg} from './dom.js';
 import {familiesOf} from './families.js';
 import {load} from './app.js';
+import {api} from '/api.js';
 
 export async function submitField(key, field, value, status) {
   status.classList.remove('error');
@@ -10,10 +11,11 @@ export async function submitField(key, field, value, status) {
   form.append('key', key);
   form.append('field', field);
   form.append('value', value);
-  const res = await fetch('/api/directory/edit', {method: 'POST', body: form});
-  if (!res.ok) {
+  try {
+    await api('POST', '/api/directory/edit', form);
+  } catch (err) {
     status.classList.add('error');
-    status.textContent = await res.text();
+    status.textContent = err.message;
     return false;
   }
   await load();
@@ -78,10 +80,11 @@ export async function submitMedia(target, key, kind, file, name, status) {
   form.append('key', key);
   form.append('kind', kind);
   form.append('file', file, name);
-  const res = await fetch('/api/directory/upload', {method: 'POST', body: form});
-  if (!res.ok) {
+  try {
+    await api('POST', '/api/directory/upload', form);
+  } catch (err) {
     status.classList.add('error');
-    status.textContent = await res.text();
+    status.textContent = err.message;
     return;
   }
   await load();
@@ -89,14 +92,14 @@ export async function submitMedia(target, key, kind, file, name, status) {
 
 export async function submitPhotoOrder(key, order, status, onError) {
   status.classList.remove('error');
-  const res = await fetch('/api/directory/reorder-photos', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: new URLSearchParams({key, order: order.join(',')}),
-  });
-  if (!res.ok) {
+  const form = new FormData();
+  form.append('key', key);
+  form.append('order', order.join(','));
+  try {
+    await api('POST', '/api/directory/reorder-photos', form);
+  } catch (err) {
     status.classList.add('error');
-    status.textContent = await res.text();
+    status.textContent = err.message;
     if (onError) {
       onError();
     }
@@ -114,10 +117,11 @@ export async function submitCrop(target, key, name, blob, status) {
   form.append('key', key);
   form.append('name', name);
   form.append('file', blob, 'crop.jpg');
-  const res = await fetch('/api/directory/crop-photo', {method: 'POST', body: form});
-  if (!res.ok) {
+  try {
+    await api('POST', '/api/directory/crop-photo', form);
+  } catch (err) {
     status.classList.add('error');
-    status.textContent = await res.text();
+    status.textContent = err.message;
     return false;
   }
   await load();

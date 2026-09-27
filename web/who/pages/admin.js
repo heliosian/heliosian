@@ -3,20 +3,15 @@ import {el} from '../dom.js';
 import {adminPage, adminsCard} from '/admin.js';
 import {createPersonPicker} from '/picker.js';
 import {popup} from '/modal.js';
+import {api} from '/api.js';
 
 let data = null;
 const painters = [];
 
 async function fetchState() {
-  const [res, configRes] = await Promise.all([fetch('/api/admin/state'), fetch('/api/config')]);
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  if (!configRes.ok) {
-    throw new Error(await configRes.text());
-  }
-  data = await res.json();
-  data.config = await configRes.json();
+  const [admin, config] = await Promise.all([api('GET', '/api/admin/state'), api('GET', '/api/config')]);
+  data = admin;
+  data.config = config;
 }
 
 async function refresh() {
@@ -38,17 +33,10 @@ function actionButton(label, className, onClick) {
   return b;
 }
 
-async function post(url, body) {
-  const res = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-}
-
 async function setColor(kind, name, input, status) {
   say(status, 'Saving…');
   try {
-    await post('/api/config/color', {kind, name, color: input.value});
+    await api('POST','/api/config/color', {kind, name, color: input.value});
     say(status, '');
   } catch (err) {
     say(status, err.message, true);
@@ -92,9 +80,10 @@ async function uploadImage(kind, name, input, status) {
   form.append('kind', kind);
   form.append('name', name);
   form.append('file', input.files[0]);
-  const res = await fetch('/api/admin/images', {method: 'POST', body: form});
-  if (!res.ok) {
-    say(status, await res.text(), true);
+  try {
+    await api('POST', '/api/admin/images', form);
+  } catch (err) {
+    say(status, err.message, true);
     return;
   }
   say(status, '');
@@ -157,7 +146,7 @@ function savingCard(title, hint, fields, url, body) {
     save.disabled = true;
     say(status, 'Saving…');
     try {
-      await post(url, body());
+      await api('POST',url, body());
       say(status, 'Saved.');
       await refresh();
     } catch (err) {
@@ -287,7 +276,7 @@ function overridesPanel({title, hint, endpoint, filter, fields}) {
     save.disabled = true;
     say(status, 'Saving…');
     try {
-      await post(endpoint, body);
+      await api('POST',endpoint, body);
       say(status, 'Saved.');
       await refresh();
     } catch (err) {
@@ -424,7 +413,7 @@ function openAddPerson() {
   let shut = null;
   const form = personForm('Create someone Veracross genuinely doesn’t have a record for yet - Overrides becomes the only source of their name and role. Pick at least one role; you can add the rest of their details (classroom, phone, and so on) afterward from the table or the other Overrides tabs.',
     {email: '', name: ''}, 'Add', async person => {
-      await post('/api/admin/add-person', person);
+      await api('POST','/api/admin/add-person', person);
       shut();
       await refresh();
     });
@@ -435,7 +424,7 @@ function openEditPerson(p) {
   let shut = null;
   const form = personForm('Changing the email renames this person everywhere they’re keyed by it - their Overrides row, and any Tags or Photos rows they already have.',
     p, 'Save', async person => {
-      await post('/api/admin/added-fields', {...person, email: p.email, newEmail: person.email});
+      await api('POST','/api/admin/added-fields', {...person, email: p.email, newEmail: person.email});
       shut();
       await refresh();
     }, async () => {
@@ -443,7 +432,7 @@ function openEditPerson(p) {
         return;
       }
       try {
-        await post('/api/admin/delete-person', {email: p.email});
+        await api('POST','/api/admin/delete-person', {email: p.email});
       } catch (err) {
         alert(err.message);
         return;
@@ -494,7 +483,7 @@ function hiddenPanel() {
     go.disabled = true;
     say(status, 'Hiding…');
     try {
-      await post('/api/admin/hide-person', {email});
+      await api('POST','/api/admin/hide-person', {email});
       picker.reset();
       say(status, '');
       await refresh();
@@ -520,7 +509,7 @@ function hiddenPanel() {
       const unhide = actionButton('Unhide', 'button button-secondary button-small', async () => {
         unhide.disabled = true;
         try {
-          await post('/api/admin/unhide-person', {email});
+          await api('POST','/api/admin/unhide-person', {email});
         } catch (err) {
           alert(err.message);
           unhide.disabled = false;

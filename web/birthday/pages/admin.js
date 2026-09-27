@@ -1,6 +1,7 @@
 import {me, isSystemAdmin, settings} from '../state.js';
 import {el, button} from '../dom.js';
 import {createPersonPicker} from '/picker.js';
+import {api} from '/api.js';
 import {openSettings} from '../edit.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 
@@ -83,23 +84,25 @@ function teamCard() {
   const change = async (method, email, role) => {
     status.classList.remove('error');
     status.textContent = 'Saving…';
-    const res = await fetch('/api/admin/team', {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify({email, role})});
-    if (!res.ok) {
+    try {
+      await api(method, '/api/admin/team', {email, role});
+    } catch (err) {
       status.classList.add('error');
-      status.textContent = await res.text();
+      status.textContent = err.message;
       return;
     }
     await load();
     status.textContent = 'Saved.';
   };
   const load = async () => {
-    const res = await fetch('/api/admin/state');
-    if (!res.ok) {
+    let data;
+    try {
+      data = await api('GET', '/api/admin/state');
+    } catch (err) {
       status.classList.add('error');
-      status.textContent = 'Failed to load the team.';
+      status.textContent = err.message;
       return;
     }
-    const data = await res.json();
     team = data.team;
     people = data.people;
     if (!renders.length) {
@@ -127,13 +130,12 @@ function invitesCard() {
     send.disabled = true;
     status.classList.remove('error');
     status.textContent = 'Sending…';
-    const res = await fetch('/api/admin/resend-invites', {method: 'POST'});
-    if (!res.ok) {
-      status.classList.add('error');
-      status.textContent = await res.text();
-    } else {
-      const {sent} = await res.json();
+    try {
+      const {sent} = await api('POST', '/api/admin/resend-invites');
       status.textContent = `Sent ${sent} ${sent === 1 ? 'invite' : 'invites'}.`;
+    } catch (err) {
+      status.classList.add('error');
+      status.textContent = err.message;
     }
     send.disabled = false;
   });
@@ -154,11 +156,7 @@ const sections = [
 ];
 
 async function directory() {
-  const res = await fetch('/api/admin/state');
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return (await res.json()).people;
+  return (await api('GET', '/api/admin/state')).people;
 }
 
 export function adminPage() {

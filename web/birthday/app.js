@@ -2,6 +2,7 @@ import {state, applyModel, staff, charity, isUnassigned, isAdmin, commsOnly} fro
 import {el} from './dom.js';
 import {initChrome} from './chrome.js';
 import {renderChrome, setTitle, clearSearch} from '/shell.js';
+import {api} from '/api.js';
 import {offerTeam} from './edit.js';
 import {initModal} from '/modal.js';
 import {jobsPage} from './pages/jobs.js';
@@ -17,11 +18,7 @@ import {adminPage} from './pages/admin.js';
 let offered = false;
 
 export async function load() {
-  const res = await fetch('/api/birthday/model');
-  if (!res.ok) {
-    throw new Error(`loading model failed: ${res.status}`);
-  }
-  applyModel(await res.json());
+  applyModel(await api('GET', '/api/birthday/model'));
   render();
   if (!offered && location.pathname !== '/admin') {
     offered = true;

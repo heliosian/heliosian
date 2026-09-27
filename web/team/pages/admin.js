@@ -1,6 +1,7 @@
 import {state, isSystemAdmin, me} from '../state.js';
 import {el, button} from '../dom.js';
-import {categoryList, openSettings, openRedirect, send, people} from '../edit.js';
+import {categoryList, openSettings, openRedirect, people} from '../edit.js';
+import {api} from '/api.js';
 import {checkbox} from '/form.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 
@@ -47,7 +48,7 @@ function notifyCard() {
     status.classList.remove('error');
     status.textContent = 'Saving…';
     try {
-      await send('POST', '/api/team/notify', {kinds: kinds.map(k => k[0]).filter(k => boxes[k].checked)});
+      await api('POST', '/api/team/notify', {kinds: kinds.map(k => k[0]).filter(k => boxes[k].checked)});
       status.textContent = 'Saved.';
     } catch (err) {
       status.classList.add('error');
@@ -62,15 +63,14 @@ function notifyCard() {
     stack.append(box.wrap);
   }
   card.append(stack, status);
-  fetch('/api/admin/state').then(async res => {
-    if (!res.ok) {
-      return;
-    }
-    const data = await res.json();
+  api('GET', '/api/admin/state').then(data => {
     for (const kind of Object.keys(boxes)) {
       boxes[kind].checked = (data.notify || []).includes(kind);
       boxes[kind].disabled = false;
     }
+  }).catch(err => {
+    status.classList.add('error');
+    status.textContent = err.message;
   });
   return card;
 }

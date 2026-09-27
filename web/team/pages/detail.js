@@ -6,7 +6,8 @@ import {dateCard, googleCalendarLink, parseWhen} from '/datecard.js';
 import {appOrigin} from '/toolbar.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
 import {openCropTool, openPhotoLightbox} from '/crop.js';
-import {send, reload, openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, uploadAndSave, openCategoryManager, openVolunteerGrid, editPencil} from '../edit.js';
+import {api} from '/api.js';
+import {reload, openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, uploadAndSave, openCategoryManager, openVolunteerGrid, editPencil} from '../edit.js';
 import {text as textInput, textarea as textAreaInput, select as selectInput} from '/form.js';
 
 
@@ -232,7 +233,7 @@ function factsCard(node, editing, save) {
               return;
             }
             try {
-              await send('POST', '/api/team/volunteer', {id: node.id, email: v.email, position: 'Co-Chair', note: v.note || ''});
+              await api('POST', '/api/team/volunteer', {id: node.id, email: v.email, position: 'Co-Chair', note: v.note || ''});
               await reload();
               toast(`${v.name} is now a co-chair`);
             } catch (err) {
@@ -276,7 +277,7 @@ function factsCard(node, editing, save) {
       if (!mine || mine.position === 'Volunteer') {
         body.append(button('Offer to Co-Chair', 'people', 'button button-small side-offer', async () => {
           try {
-            await send('POST', '/api/team/volunteer', {id: node.id, position: 'Open to Co-Chair', note: mine ? mine.note : ''});
+            await api('POST', '/api/team/volunteer', {id: node.id, position: 'Open to Co-Chair', note: mine ? mine.note : ''});
             await reload();
             toast('Thank you - the organizers will be in touch.');
           } catch (err) {
@@ -950,7 +951,7 @@ function childrenSection(node, editing) {
     }
     ids.splice(at, 0, id);
     try {
-      await send('POST', '/api/team/order', {parent: node.id, ids});
+      await api('POST', '/api/team/order', {parent: node.id, ids});
       await reload();
     } catch (err) {
       toast(err.message);

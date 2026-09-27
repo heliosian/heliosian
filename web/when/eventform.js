@@ -1,5 +1,6 @@
 import {state, me, isAdmin, tagGroups, bands, classroomNames, eventDates, eventPath, addDays, parseDate} from './state.js';
 import {addressSuggest} from '/address.js';
+import {api} from '/api.js';
 import {el, svg, toast} from './dom.js';
 
 function randomID() {
@@ -319,12 +320,15 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       body.note = note.value.trim();
       body.address = address.value.trim();
     }
-    const res = await fetch(override ? '/api/when/overrides' : '/api/when/events', {method: edit ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-    submit.disabled = false;
-    if (!res.ok) {
-      status.textContent = await res.text();
+    let made;
+    try {
+      made = await api(edit ? 'PUT' : 'POST', override ? '/api/when/overrides' : '/api/when/events', body);
+    } catch (err) {
+      status.textContent = err.message;
       status.classList.add('error');
       return;
+    } finally {
+      submit.disabled = false;
     }
     status.textContent = '';
     if (override) {
@@ -342,7 +346,7 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       await onDone([edit.id], changed);
       return;
     }
-    const {ids, pending} = await res.json();
+    const {ids, pending} = made;
     toast(pending ? 'Shared - an admin will approve it onto the calendar. It is on yours now, and its link works right away.' : 'Added - invite people from the event\u2019s page, or send them its link.', 6000);
     await onDone(ids);
   });

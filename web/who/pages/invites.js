@@ -6,6 +6,7 @@ import {tagFacetOptions} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
 import {anyFiltersActive, matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, tagRelationOptionsFor} from '../filters.js';
 import {resetMain} from '../chrome.js';
+import {api} from '/api.js';
 
 function joinFamilyNames(people) {
   if (!people.length) {
@@ -307,14 +308,15 @@ async function loadInviteSystems() {
   if (inviteSystems) {
     return inviteSystems;
   }
-  const res = await fetch('/api/directory/invite-templates');
-  const body = await res.json().catch(() => ({}));
-  inviteSystems = body.systems && body.systems.length ? body.systems : [];
-  inviteGreetings = body.greetings || [];
-  inviteLoadError = body.error || '';
-  if (body.error) {
-    console.error('invite templates:', body.error);
+  let body = {};
+  inviteLoadError = '';
+  try {
+    body = await api('GET', '/api/directory/invite-templates');
+  } catch (err) {
+    inviteLoadError = err.message;
   }
+  inviteSystems = body.systems || [];
+  inviteGreetings = body.greetings || [];
   refreshGreetingPhrases();
   return inviteSystems;
 }
@@ -668,10 +670,7 @@ function openGreetingDialog(onSaved) {
         deleteBtn.disabled = true;
         try {
           // Go's ParseForm ignores a DELETE body, so the name rides in the query.
-          const res = await fetch(`/api/directory/greetings?${new URLSearchParams({name: g.name})}`, {method: 'DELETE'});
-          if (!res.ok) {
-            throw new Error(await res.text());
-          }
+          await api('DELETE', `/api/directory/greetings?${new URLSearchParams({name: g.name})}`);
           inviteSystems = null;
           close();
           onSaved();
@@ -730,16 +729,12 @@ function openGreetingDialog(onSaved) {
     error.hidden = true;
     save.disabled = true;
     try {
-      const body = new URLSearchParams({
-        format,
-        original,
-        grouped: state.gvInviteBy === 'group' ? '1' : '0',
-        individual: state.gvInviteBy !== 'group' ? '1' : '0',
-      });
-      const res = await fetch('/api/directory/greetings', {method: 'POST', body});
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
+      const body = new FormData();
+      body.append('format', format);
+      body.append('original', original);
+      body.append('grouped', state.gvInviteBy === 'group' ? '1' : '0');
+      body.append('individual', state.gvInviteBy !== 'group' ? '1' : '0');
+      await api('POST', '/api/directory/greetings', body);
       inviteSystems = null;
       state.gvGreeting = format;
       close();

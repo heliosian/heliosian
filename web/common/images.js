@@ -1,5 +1,6 @@
 import {openCropTool} from '/crop.js';
 import {popup} from '/modal.js';
+import {api} from '/api.js';
 
 const paths = {
   image: 'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5-8 8',
@@ -31,18 +32,11 @@ function icon(name) {
   return node;
 }
 
-async function answer(res) {
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return res.json();
-}
-
 export function imageTools(apiBase, {state, toast}) {
   async function uploadImage(file) {
     const body = new FormData();
     body.append('image', file);
-    const {name} = await answer(await fetch(`${apiBase}/image`, {method: 'POST', body}));
+    const {name} = await api('POST', `${apiBase}/image`, body);
     return {name, url: '/' + name};
   }
 
@@ -83,9 +77,7 @@ export function imageTools(apiBase, {state, toast}) {
       status.textContent = 'Importing…';
       tile.classList.add('is-picked');
       try {
-        const {name} = await answer(await fetch(`${apiBase}/images/import`, {
-          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: hit.id}),
-        }));
+        const {name} = await api('POST', `${apiBase}/images/import`, {id: hit.id});
         shut();
         await onPicked({name, url: '/' + name});
       } catch (err) {
@@ -103,7 +95,7 @@ export function imageTools(apiBase, {state, toast}) {
       status.textContent = 'Searching…';
       grid.replaceChildren();
       try {
-        const hits = await answer(await fetch(`${apiBase}/images/search?q=${encodeURIComponent(q)}`));
+        const hits = await api('GET', `${apiBase}/images/search?q=${encodeURIComponent(q)}`);
         status.textContent = hits.length ? '' : 'Nothing found.';
         for (const hit of hits) {
           const tile = el('button', 'image-search-hit');

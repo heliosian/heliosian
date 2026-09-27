@@ -1,3 +1,5 @@
+import {api} from '/api.js';
+
 export function addressSuggest(input) {
   if (!input || input.dataset.suggest) {
     return input;
@@ -67,11 +69,7 @@ export function addressSuggest(input) {
     }
     controller = new AbortController();
     try {
-      const res = await fetch('/api/address/suggest?q=' + encodeURIComponent(q), {signal: controller.signal});
-      if (!res.ok) {
-        return;
-      }
-      const got = await res.json();
+      const got = await api('GET', '/api/address/suggest?q=' + encodeURIComponent(q), undefined, controller.signal);
       if (input.value.trim() !== q) {
         return;
       }

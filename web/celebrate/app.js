@@ -2,6 +2,7 @@ import {state, applyModel, celebration, familyMember, resolvePath, partyPath} fr
 import {el} from './dom.js';
 import {initChrome} from './chrome.js';
 import {renderChrome, setTitle, clearSearch} from '/shell.js';
+import {api} from '/api.js';
 import {initModal} from '/modal.js';
 import {partiesPage} from './pages/parties.js';
 import {partyPage} from './pages/party.js';
@@ -10,11 +11,7 @@ import {hostingPage} from './pages/hosting.js';
 import {adminPage} from './pages/admin.js';
 
 export async function load() {
-  const res = await fetch('/api/celebrate/model');
-  if (!res.ok) {
-    throw new Error(`loading model failed: ${res.status}`);
-  }
-  applyModel(await res.json());
+  applyModel(await api('GET', '/api/celebrate/model'));
   render();
 }
 
