@@ -591,7 +591,20 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 		}
 		row["Hosts"] = cells.JoinList(hosts)
 	}
-	return a.invitationOps(actor, e.ID, row), e, newHosts, nil
+	return append(a.invitationOps(actor, e.ID, row), a.hostYesOps(actor, e, newHosts)...), e, newHosts, nil
+}
+
+func (a app) hostYesOps(actor access.Actor, e *Event, hosts []string) []store.Op {
+	model := a.cache.Model()
+	stamp := now().Format(DateTimeFormat)
+	ops := []store.Op{}
+	for _, h := range hosts {
+		if model.AnswerOf(h, e.ID) != "" {
+			continue
+		}
+		ops = append(ops, store.Upsert(RSVPsTab, store.Row{"Event ID": e.ID, "Email": h}, store.Row{"Answer": AnswerYes, "Answered": stamp, "Answered By": actor.Email, "Via": ViaPage}))
+	}
+	return ops
 }
 
 func (a app) stepDownOps(actor access.Actor, id, email string) ([]store.Op, *Event, string, bool, error) {
@@ -964,7 +977,7 @@ func (a app) startPartyOps(actor access.Actor, id string) ([]store.Op, *Event, I
 		}
 	}
 	g := InviteGroup{ID: strings.ToLower(newEventID()), Rule: filter.Rule{Kind: filter.KindInclude, Tags: []string{key}}, Auto: true, AddedBy: actor.Email, Added: now().Format(DateTimeFormat)}
-	return a.newGroupOps(actor, e, g), e, g, nil
+	return append(a.newGroupOps(actor, e, g), a.hostYesOps(actor, e, a.hostsOf(e))...), e, g, nil
 }
 
 func (a app) fillOps(actor access.Actor, e *Event, g InviteGroup, wait bool) ([]store.Op, []string) {

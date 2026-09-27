@@ -227,6 +227,9 @@ func TestInvitationLifecycle(t *testing.T) {
 	if inv := cache.Model().Invitations["meetup"]; inv.Audience != AudienceStudents || inv.Message != "Bring a snack to share!" || strings.Join(inv.Hosts, ",") != mia {
 		t.Errorf("invitation after settings = %+v", inv)
 	}
+	if got := cache.Model().Answered[mia]["meetup"]; got.Answer != AnswerYes || got.By != host {
+		t.Errorf("the co-host's answer = %+v", got)
+	}
 	waitFor(kept, 2)
 	if m := mailTo(kept, mia); len(m) != 1 || m[0].Subject != "[Class meetup] You're a co-host" || !strings.Contains(m[0].Text, "Jordan Whitfield made you a co-host") || m[0].ReplyTo[0] != host {
 		t.Errorf("co-host note = %+v", m)
@@ -286,8 +289,8 @@ func TestInvitationLifecycle(t *testing.T) {
 	if rec := call(t, robinH, "DELETE", "/api/when/settings", ""); rec.Code != 204 {
 		t.Fatalf("robin forgets the view: %d %s", rec.Code, rec.Body)
 	}
-	if up := cache.Model().UpcomingUnder(testDirectory, mia, nil, now(), 0, ""); slices.ContainsFunc(up, func(u Card) bool { return u.ID == "meetup" }) {
-		t.Errorf("the event is in Mia's Upcoming, uninvited")
+	if up := cache.Model().UpcomingUnder(testDirectory, mia, nil, now(), 0, ""); !slices.ContainsFunc(up, func(u Card) bool { return u.ID == "meetup" && u.Answer == AnswerYes }) {
+		t.Errorf("the event is not in the co-host's Upcoming as a yes")
 	}
 	v := inviteView(t, robinH, "meetup")
 	if v.Host || len(v.Mine) != 3 || v.Mine[0].Email != robin || !v.Mine[0].Mine || !v.Mine[1].Mine || !v.Mine[2].Mine || v.List != nil || v.Settings != nil || !v.Guests || len(v.Hosts) != 2 || v.Hosts[0].Name != "Jordan Whitfield" || v.Counts.Invited != 4 || v.Counts.Waiting != 4 {
@@ -1361,6 +1364,9 @@ func TestTeamStart(t *testing.T) {
 	if g == nil || !g.Auto || strings.Join(g.Rule.Tags, ",") != "activity:e1" || cache.Model().Invitations[teamA] == nil {
 		t.Errorf("team group = %+v", g)
 	}
+	if cache.Model().AnswerOf(mia, teamA) != AnswerYes {
+		t.Errorf("the chair's answer = %q", cache.Model().AnswerOf(mia, teamA))
+	}
 	if sent, _, ok := cache.LinkedRSVPs(nil, SourceTeam, "e1"); !ok || sent {
 		t.Errorf("rsvps before sending: ok %v sent %v", ok, sent)
 	}
@@ -1707,7 +1713,16 @@ func TestCohostsRunTheEvent(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	jordan, miaH, robinH := as(host, mux), as(mia, mux), as(robin, mux)
 	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	if rec := call(t, robinH, "POST", "/api/when/rsvp", `{"id":"meetup","answer":"no"}`); rec.Code != 204 {
+		t.Fatalf("robin says no: %d %s", rec.Code, rec.Body)
+	}
 	call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"meetup","hosts":["`+mia+`","`+robin+`"]}`)
+	if cache.Model().AnswerOf(mia, "meetup") != AnswerYes || cache.Model().AnswerOf(robin, "meetup") != AnswerNo || cache.Model().AnswerOf(host, "meetup") != AnswerYes {
+		t.Errorf("the hosts' answers: mia %q robin %q poster %q", cache.Model().AnswerOf(mia, "meetup"), cache.Model().AnswerOf(robin, "meetup"), cache.Model().AnswerOf(host, "meetup"))
+	}
+	if rec := call(t, miaH, "POST", "/api/when/rsvp", `{"id":"meetup","answer":"no"}`); rec.Code != 204 || cache.Model().AnswerOf(mia, "meetup") != AnswerNo {
+		t.Errorf("a co-host saying no: %d %q", rec.Code, cache.Model().AnswerOf(mia, "meetup"))
+	}
 	if rec := call(t, as(sam, mux), "PUT", "/api/when/events", `{"id":"meetup","title":"Meetup?","start":"2026-10-10 15:00","tags":[],"sharing":"Link"}`); rec.Code != 403 {
 		t.Errorf("someone not hosting editing the event: %d", rec.Code)
 	}
