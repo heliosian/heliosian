@@ -1,4 +1,3 @@
-// Package logging emits structured records that Cloud Logging indexes: severity, the signed-in user, the app, and the request's trace.
 package logging
 
 import (
@@ -30,8 +29,6 @@ type handler struct {
 	inner slog.Handler
 }
 
-// Fatal logs at ERROR through the default logger, so a startup failure carries
-// that severity into Cloud Logging, then exits.
 func Fatal(msg string, args ...any) {
 	slog.Error(msg, args...)
 	os.Exit(1)
@@ -96,20 +93,14 @@ func cloudKeys(groups []string, a slog.Attr) slog.Attr {
 	return a
 }
 
-// Cloud is the production logger: one JSON object per line on stdout, keyed
-// the way Cloud Logging's agent promotes severity, message, and trace.
 func Cloud() *slog.Logger {
 	return slog.New(handler{slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{ReplaceAttr: cloudKeys})})
 }
 
-// Console is the development logger: readable text on stderr carrying the
-// same per-request fields.
 func Console() *slog.Logger {
 	return slog.New(handler{slog.NewTextHandler(os.Stderr, nil)})
 }
 
-// traceOf reads Cloud Run's X-Cloud-Trace-Context header, TRACE_ID/SPAN_ID;o=1,
-// into the trace resource name and the hex span id Cloud Logging correlates on.
 func traceOf(header string) (string, string) {
 	id, rest, ok := strings.Cut(header, "/")
 	if !ok || len(id) != 32 {
@@ -137,12 +128,6 @@ func (r *recorder) Unwrap() http.ResponseWriter {
 	return r.ResponseWriter
 }
 
-// Requests tags every record logged while handling a request with the app, the
-// signed-in user - and, while a super admin is viewing as someone else, whom,
-// as `as` - and the request's trace, and writes one record per request
-// with its status and latency. Media requests are tagged but get no record of
-// their own: a photo-heavy page fans out hundreds, and Cloud Run's request log
-// already lists them.
 func Requests(app string, media func(path string) bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

@@ -20,26 +20,14 @@ import (
 	"time"
 )
 
-// Repo is where a kept report becomes an issue: the primary repository, in
-// the open, which is why nothing personal may reach it (Strip).
 const Repo = "heliosian/heliosian"
 
-// jwtLife is how long the app's own assertion is good for. GitHub refuses one
-// older than ten minutes and allows for a minute of clock drift, so the
-// backdated issue time keeps a slightly fast clock from being refused.
 const (
-	jwtLife  = 9 * time.Minute
-	jwtDrift = 30 * time.Second
-	// tokenMargin renews an installation token before its hour is out rather
-	// than discovering it has expired mid-filing.
+	jwtLife     = 9 * time.Minute
+	jwtDrift    = 30 * time.Second
 	tokenMargin = 5 * time.Minute
 )
 
-// GitHubApp files issues as the Heliosian GitHub App rather than as a person:
-// the issue's author is the app's bot account, so an issue built out of
-// somebody's report is plainly the robot's doing and not an admin's own words.
-// It holds the app's id and signing key, and trades them for an installation
-// token as needed.
 type GitHubApp struct {
 	ID         string
 	PrivateKey *rsa.PrivateKey
@@ -51,9 +39,6 @@ type GitHubApp struct {
 	expires      time.Time
 }
 
-// NewGitHubApp reads the PEM signing key GitHub issued with the app. An empty
-// id or key means the app is not set up, and nil is what callers treat as
-// "filing is unavailable".
 func NewGitHubApp(id, pemKey string) (*GitHubApp, error) {
 	if strings.TrimSpace(id) == "" || strings.TrimSpace(pemKey) == "" {
 		return nil, nil
@@ -65,8 +50,6 @@ func NewGitHubApp(id, pemKey string) (*GitHubApp, error) {
 	return &GitHubApp{ID: strings.TrimSpace(id), PrivateKey: key}, nil
 }
 
-// parseKey takes the PKCS#1 key GitHub hands out, and a PKCS#8 one besides,
-// since a key round-tripped through another tool often comes back as that.
 func parseKey(pemKey string) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode([]byte(pemKey))
 	if block == nil {
@@ -93,8 +76,6 @@ func (g *GitHubApp) endpoint() string {
 	return "https://api.github.com"
 }
 
-// assertion is the app's own JWT, which buys an installation token and nothing
-// else.
 func (g *GitHubApp) assertion(now time.Time) (string, error) {
 	header := map[string]string{"alg": "RS256", "typ": "JWT"}
 	claims := map[string]any{
@@ -160,9 +141,6 @@ func (g *GitHubApp) call(ctx context.Context, method, path, auth string, payload
 	return json.NewDecoder(resp.Body).Decode(into)
 }
 
-// accessToken is the installation's token, minted on first use and again once
-// the one in hand is nearly out. The installation is looked up from the
-// repository itself, so nothing has to carry its id.
 func (g *GitHubApp) accessToken(ctx context.Context) (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

@@ -6,9 +6,6 @@ import (
 	"heliosian/internal/artifacts"
 )
 
-// TestForClassrooms checks which school lists reach a Jays family: the
-// newsletter and every family's lists, the Jays' own lists and the grade band
-// that holds them, and no other classroom's.
 func TestForClassrooms(t *testing.T) {
 	mine := []seat{{"jays", "Grade 3"}}
 	grades := []string{"Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8"}
@@ -21,8 +18,6 @@ func TestForClassrooms(t *testing.T) {
 			t.Errorf("%s: %v, want %v", channel, got, want)
 		}
 	}
-	// Veracross mail waits to be judged, then reaches everyone, or a seat in
-	// one of the classrooms and one of the grades it names.
 	news := &artifacts.Document{Kind: artifacts.KindNewsletter, Channel: "newsletter"}
 	for _, tc := range []struct {
 		audience string
@@ -38,9 +33,6 @@ func TestForClassrooms(t *testing.T) {
 	}
 }
 
-// TestGradesMissAFamilyInTheClassroom is the note to "parents of 2nd, 4th,
-// 6th, and 8th graders": a Condors family of a 5th and a 7th grader does
-// not get it, a 6th grader's does, and the Condors' teacher does.
 func TestGradesMissAFamilyInTheClassroom(t *testing.T) {
 	grades := []string{"Grade 2", "Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8"}
 	news := &artifacts.Document{Kind: artifacts.KindNewsletter, Channel: "newsletter"}

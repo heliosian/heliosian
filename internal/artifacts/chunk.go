@@ -23,9 +23,8 @@ func Chunks(markdown string) []Chunk {
 	for _, line := range strings.Split(markdown, "\n") {
 		if level, text, ok := heading(line); ok {
 			emit()
-			// A mailer that marks every heading h1 still sets its sections
-			// in capitals, so a heading in mixed case sits inside the one
-			// in capitals before it at the same level.
+			// A mixed-case heading nests under the all-capitals one before it at
+			// the same level: one mailer marks every heading h1.
 			if !capitals(text) && level <= len(path) && capitals(path[level-1]) {
 				level++
 			}

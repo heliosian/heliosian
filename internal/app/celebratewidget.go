@@ -11,10 +11,6 @@ import (
 	"heliosian/internal/who"
 )
 
-// celebrateWidget answers GET /api/apps/celebrate on Heliosian's host: the
-// home page's Helios Celebrate widget for the viewer - every party still
-// ahead with their household's standing and the way in, as the calendar
-// cards them (calendar.Model.PartiesFor).
 func celebrateWidget(directory *who.Cache, calendarCache *calendar.Cache, people calendar.Directory, linked func(email string) []calendar.Linked) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		email := directory.Model().Resolve(auth.Email(r))

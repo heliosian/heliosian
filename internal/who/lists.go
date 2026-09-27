@@ -7,24 +7,16 @@ import (
 )
 
 type List struct {
-	Key    string   `json:"key"`
-	Name   string   `json:"name"`
-	Kind   string   `json:"kind"`
-	People []string `json:"people"`
-	Guests []Guest  `json:"guests"`
-	Hosts  []string `json:"-"`
-	// Parent is the list this one sits under - an event's, for one of its
-	// committees - so a picker can show it beneath its event; blank at the
-	// top.
-	Parent string `json:"parent,omitempty"`
-	// Archived is a group's list its manager has put away in Loop: kept
-	// off Who?'s rail and filters for them, though its page still opens.
-	Archived bool `json:"archived,omitempty"`
+	Key      string   `json:"key"`
+	Name     string   `json:"name"`
+	Kind     string   `json:"kind"`
+	People   []string `json:"people"`
+	Guests   []Guest  `json:"guests"`
+	Hosts    []string `json:"-"`
+	Parent   string   `json:"parent,omitempty"`
+	Archived bool     `json:"archived,omitempty"`
 }
 
-// Guest is someone on a list the directory does not hold: a party's ticket
-// holder, keyed by the ticket, or a group's addition, keyed by the group and
-// the address. Purchaser is a party guest's alone.
 type Guest struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`

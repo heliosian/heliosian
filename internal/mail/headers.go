@@ -59,8 +59,6 @@ func AddressOf(from string) string {
 	return strings.Trim(strings.TrimSpace(from), "<>")
 }
 
-// Mailgun prepends its own Authentication-Results, so only the topmost one
-// counts; any further down are the sender's to write.
 func Authenticated(lines []HeaderLine) string {
 	results, ok := mailgunResults(lines)
 	if !ok {
@@ -135,8 +133,6 @@ func passes(results, from string) (passed, arc bool) {
 	return passed, arc
 }
 
-// Mailgun's arc=pass vouches that every ARC set is its sealer's own, so the
-// newest set's results stand for the sender only when google.com sealed it.
 func sealedResults(lines []HeaderLine) string {
 	newest, sealer := 0, ""
 	for _, l := range lines {

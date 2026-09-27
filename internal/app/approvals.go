@@ -13,9 +13,6 @@ import (
 	"heliosian/internal/who"
 )
 
-// An approval is one thing waiting for an admin's word, as the shared
-// toolbar's badge lists it in every app: which app, the thing's title and
-// start, and its page there, a path on that app's host.
 type approval struct {
 	App   string `json:"app"`
 	Title string `json:"title"`
@@ -23,11 +20,6 @@ type approval struct {
 	Path  string `json:"path"`
 }
 
-// approvals answers GET /api/apps/approvals on every app's host: what waits
-// for the viewer's approval in each app they are an admin of - HCA-Team's
-// pending activities, Celebrate's pending parties, the calendar's shared
-// events - with or without Super Admin Mode, approvals being an admin's
-// alert; soonest first, the undated last.
 func approvals(directory *who.Cache, teamCache *team.Cache, celebrateCache *celebrate.Cache, calendarCache *calendar.Cache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		email := directory.Model().Resolve(auth.Email(r))

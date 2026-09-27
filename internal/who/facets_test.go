@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// A grade or classroom is read one way for every filter: a student's own,
-// a parent's children's, and none for staff - a teacher is not in the room
-// they teach. The sample directory has the Whitfields in Jays and Ospreys
-// and Ruth Amari teaching the Hummingbirds.
 func TestFacetsReadOneWay(t *testing.T) {
 	m := sampleModel(t)
 	for email, want := range map[string][]string{

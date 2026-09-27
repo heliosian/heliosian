@@ -11,11 +11,6 @@ import (
 	"heliosian/internal/config"
 )
 
-// Linked is an event another app runs - a Helios Celebrate party, an
-// HCA-Team event - as the calendar lists it for one viewer: what and when,
-// its page on that site, what a reader can do there now, and Mine, where the
-// viewer's household already stands with it - MineGoing, MineWaitlisted, or
-// nothing.
 type Linked struct {
 	Source       string
 	ID           string
@@ -28,31 +23,18 @@ type Linked struct {
 	Path         string
 	Availability string
 	Mine         string
-	// Who names the household members the standing is theirs, when the
-	// viewer is not among them; People is everyone in the household with a
-	// part in it, each with what that part is.
-	Who    []string
-	People []Standing
-	Image  string
-	// Hosts are whoever runs it on the other app - an HCA event's chairs
-	// - who run its guest list here too.
-	Hosts []string
+	Who          []string
+	People       []Standing
+	Image        string
+	Hosts        []string
 }
 
-// A Standing is one household member's part in a linked event: a ticket
-// held (or a waitlist place), or the role they volunteer for.
 type Standing struct {
 	Name string `json:"name"`
 	Note string `json:"note,omitempty"`
-	// Mine marks the viewer's own standing among their household's.
-	Mine bool `json:"mine,omitempty"`
+	Mine bool   `json:"mine,omitempty"`
 }
 
-// builtinTags are the tags the load and the linked events file under that no
-// sheet row names: one per app, one per standing the viewer's household can
-// have with a linked event, and Misc for an event the sheet gave an audience
-// but no category. Every view carries them beside the sheet's own so the
-// rail can switch each off.
 var builtinTags = []Tag{
 	{Name: TagCelebrate, Description: "Fun(d)raiser parties on Helios Celebrate.", Group: BuiltinGroup, Default: true, BuiltIn: true},
 	{Name: TagHCA, Description: "Events the HCA runs, from HCA-Team.", Group: BuiltinGroup, Default: true, BuiltIn: true},
@@ -61,8 +43,6 @@ var builtinTags = []Tag{
 	{Name: TagWaitlisted, Description: "Parties your household is on the waitlist for.", Group: BuiltinGroup, Default: true, BuiltIn: true},
 }
 
-// BuiltinGroup is the line of the filters the built-in tags sit on - a
-// sheet tag given the same group shares it.
 const BuiltinGroup = "Other"
 
 var tagBySource = map[string]string{SourceCelebrate: TagCelebrate, SourceTeam: TagHCA}
@@ -87,8 +67,6 @@ func linkedEvent(l Linked) *Event {
 	if e.End == "" {
 		e.End = e.Start
 	}
-	// Another app's event carries no day type, so it sits on every day it
-	// names, the way the builder settles one of the calendar's own.
 	e.Dates = e.written()
 	standing(e)
 	return e
@@ -98,8 +76,6 @@ var noiseWords = map[string]bool{"hca": true, "helios": true, "the": true, "a": 
 
 var yearForm = regexp.MustCompile(`^\d{4}$`)
 
-// titleWords is a title as the words that carry it: lower-cased, without
-// punctuation, the association's and the school's names, filler, and years.
 func titleWords(title string) map[string]bool {
 	out := map[string]bool{}
 	for _, w := range strings.FieldsFunc(strings.ToLower(title), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
@@ -110,10 +86,6 @@ func titleWords(title string) map[string]bool {
 	return out
 }
 
-// sameEvent says an HCA-Team event and a school event are one thing: the
-// same day, hours that overlap (or either whole-day), and titles that agree
-// once the noise is out - one's words all in the other's, or at least half
-// of the words they have between them shared.
 func sameEvent(a, b *Event) bool {
 	if a.start.Format(DateFormat) != b.start.Format(DateFormat) {
 		return false
@@ -134,9 +106,6 @@ func sameEvent(a, b *Event) bool {
 	return shared == len(x) || shared == len(y) || shared*2 >= len(x)+len(y)-shared
 }
 
-// folded is the school's event carrying the HCA event's way in - its link,
-// its availability, the viewer's standing, and the HCA tag with the standing's
-// - on a copy, so the model's own event stays as loaded.
 func folded(school, hca *Event) *Event {
 	c := *school
 	c.Tags = append(append([]string{}, school.Tags...), TagHCA)
@@ -145,9 +114,6 @@ func folded(school, hca *Event) *Event {
 	}
 	c.Link, c.Availability, c.Mine, c.MineWho, c.MinePeople, c.Hosts = hca.Link, hca.Availability, hca.Mine, hca.MineWho, hca.MinePeople, hca.Hosts
 	c.LinkedID = strings.TrimPrefix(hca.ID, SourceTeam+"/")
-	// The school's listing has no picture of its own, and a line of text at
-	// most: HCA-Team's picture stands in, the longer of the two descriptions
-	// is the one, and the school's place is kept only where it has one.
 	if c.Image == "" {
 		c.Image = hca.Image
 	}
@@ -161,19 +127,10 @@ func folded(school, hca *Event) *Event {
 	return &c
 }
 
-// eventsFor is every event as one viewer stands with them: the sheet's and
-// the linked ones as one list (withLinked), the invite-only ones they have
-// answered or been invited to among them, each the viewer said yes to
-// wearing the Going tag - on a copy, as a party they hold a ticket to does
-// - so the filters, the feeds and the front page file it with the rest of
-// what they are going to, and each with a guest list flagged as such.
 func (m *Model) eventsFor(directory Directory, email string, linked []Linked) []*Event {
 	email = config.NormalizeEmail(email)
 	answers := m.Answers[email]
 	mine := m.mine(directory, email)
-	// An event shared by link or by invitation that the person has
-	// answered, or their household was invited to, is on their calendar -
-	// and one waiting for approval or declined, whose link works regardless.
 	events := m.Events
 	for _, e := range m.Pending {
 		if !e.Cancelled && (answers[e.ID] != "" || m.invitedAny(mine, e.ID)) {
@@ -188,7 +145,6 @@ func (m *Model) eventsFor(directory Directory, email string, linked []Linked) []
 		if !going && !invitation && !invited {
 			continue
 		}
-		// Someone invited sees the event as the invitation says it.
 		if invited {
 			e = m.invitedEvent(e)
 		}
@@ -203,13 +159,10 @@ func (m *Model) eventsFor(directory Directory, email string, linked []Linked) []
 	return out
 }
 
-// linked says another app runs the event: a party on Helios Celebrate, an
-// HCA event on HCA-Team - or the school's listing of one, folded with it.
 func (e *Event) linked() bool {
 	return e.Link != ""
 }
 
-// linkedID is the id the other app knows the event by.
 func (e *Event) linkedID() string {
 	if e.LinkedID != "" {
 		return e.LinkedID
@@ -217,10 +170,6 @@ func (e *Event) linkedID() string {
 	return strings.TrimPrefix(strings.TrimPrefix(e.ID, SourceCelebrate+"/"), SourceTeam+"/")
 }
 
-// withLinked is the sheet's events and the linked ones as one list in date
-// order, the way every list and the search read it. An HCA-Team event the
-// school's calendar also lists is folded into the school's, which keeps its
-// tags and audience and gains the way to sign up; the rest stand alone.
 func withLinked(events []*Event, linked []Linked) []*Event {
 	out := append([]*Event{}, events...)
 	for _, l := range linked {

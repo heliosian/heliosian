@@ -1,4 +1,3 @@
-// Command archiveportal crawls a signed-in site through the capture browser and saves its pages, and the Google documents they link, for importartifacts.
 package main
 
 import (
@@ -61,8 +60,6 @@ type rendered struct {
 	Nav   []link `json:"nav"`
 }
 
-// The portal draws most pages from data it loads after the page itself, so
-// the content is read once it has stopped changing.
 const renderScript = `new Promise(resolve => {
 	let last = -1, same = 0;
 	const tick = () => {
@@ -322,8 +319,6 @@ func pdfText(pdf []byte) (string, error) {
 	return string(text), nil
 }
 
-// Google answers a signed-in export only to the browser that holds the
-// session, so the export is fetched from a page of the document's own origin.
 func inBrowser(ctx context.Context, page, resource string) (string, string, error) {
 	r := struct {
 		Title  string `json:"title"`

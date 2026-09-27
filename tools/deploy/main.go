@@ -1,4 +1,3 @@
-// Command deploy applies the production cloud run service configuration.
 package main
 
 import (
@@ -69,7 +68,6 @@ func gcloud(args ...string) {
 	}
 }
 
-// gcloudLines runs a gcloud command for its output, one value per line.
 func gcloudLines(args ...string) []string {
 	cmd := exec.Command("gcloud", args...)
 	cmd.Stderr = os.Stderr
@@ -80,10 +78,6 @@ func gcloudLines(args ...string) []string {
 	return strings.Fields(string(out))
 }
 
-// mapDomains gives the service a domain mapping for every hostname the
-// router answers (app.Hostnames) that it lacks. Existing mappings are left
-// as they are and none is ever removed. The registrar's wildcard records
-// already resolve every subdomain, so a new mapping needs nothing there.
 func mapDomains() {
 	have := gcloudLines("beta", "run", "domain-mappings", "list", "--region", region, "--format", "value(metadata.name)")
 	for _, host := range app.Hostnames() {

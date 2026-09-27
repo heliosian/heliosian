@@ -291,7 +291,6 @@ func Matches(row, match map[string]string) bool {
 	return true
 }
 
-// parseTable drops blank cells, so a cleared column vanishes rather than holding "".
 func Fill(row, cells map[string]string) {
 	for column, value := range cells {
 		if value == "" {

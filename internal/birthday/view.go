@@ -8,7 +8,6 @@ import (
 	"heliosian/internal/access"
 )
 
-// Person is what the directory knows about someone the app names.
 type Person struct {
 	Email      string `json:"email"`
 	Name       string `json:"name"`
@@ -17,27 +16,20 @@ type Person struct {
 	Department string `json:"department,omitempty"`
 }
 
-// Directory is what the app asks of the school directory: who a signed-in
-// address really is, who someone is, every staff member, and the order
-// departments are listed in.
 type Directory interface {
 	Resolve(email string) string
 	Person(email string) (Person, bool)
 	Staff() []Person
-	// People is everyone with an address to sign in by, for the pickers.
 	People() []Person
 	Departments() []string
 	Alerts(email string) (stale []string, privacy []string)
 }
 
-// Alerts carries the directory's badge reckoning to the toolbar.
 type Alerts struct {
 	Stale   []string `json:"stale"`
 	Privacy []string `json:"privacy"`
 }
 
-// displayName reads a name out of an address for someone the directory does not
-// list, so a list never shows a bare email.
 func displayName(email string) string {
 	local, _, _ := strings.Cut(email, "@")
 	words := strings.FieldsFunc(local, func(r rune) bool { return r == '.' || r == '_' || r == '-' })
@@ -51,8 +43,6 @@ type viewer struct {
 	directory Directory
 }
 
-// person looks someone up through the directory's aliases, so a row recorded
-// under a secondary address still finds them.
 func (v viewer) person(email string) (Person, bool) {
 	if p, ok := v.directory.Person(v.directory.Resolve(email)); ok {
 		return p, true
@@ -60,31 +50,27 @@ func (v viewer) person(email string) (Person, bool) {
 	return Person{Email: email, Name: displayName(email)}, false
 }
 
-// StaffView is one staff member's birthday this year with everything derived
-// from it and everything recorded about it.
 type StaffView struct {
 	Person
-	InDirectory      bool   `json:"inDirectory"`
-	Year             string `json:"year"`
-	Birthday         string `json:"birthday,omitempty"`
-	BirthdayThisYear string `json:"birthdayThisYear,omitempty"`
-	NewsletterDate   string `json:"newsletterDate,omitempty"`
-	RequestBy        string `json:"requestBy,omitempty"`
-	// DueBy is the day the birthday's information - the charity - is due
-	// in: the Due By Lead Days setting before the newsletter.
-	DueBy          string    `json:"dueBy,omitempty"`
-	Override       string    `json:"override,omitempty"`
-	Level          string    `json:"level,omitempty"`
-	LevelNote      string    `json:"levelNote,omitempty"`
-	Stage          string    `json:"stage,omitempty"`
-	AssignedTo     string    `json:"assignedTo,omitempty"`
-	AssignedToName string    `json:"assignedToName,omitempty"`
-	AssignedOn     string    `json:"assignedOn,omitempty"`
-	ContactedOn    string    `json:"contactedOn,omitempty"`
-	ContactedBy    string    `json:"contactedBy,omitempty"`
-	Donation       *Donation `json:"donation,omitempty"`
-	LastDonation   *Donation `json:"lastDonation,omitempty"`
-	Notes          []Note    `json:"notes"`
+	InDirectory      bool      `json:"inDirectory"`
+	Year             string    `json:"year"`
+	Birthday         string    `json:"birthday,omitempty"`
+	BirthdayThisYear string    `json:"birthdayThisYear,omitempty"`
+	NewsletterDate   string    `json:"newsletterDate,omitempty"`
+	RequestBy        string    `json:"requestBy,omitempty"`
+	DueBy            string    `json:"dueBy,omitempty"`
+	Override         string    `json:"override,omitempty"`
+	Level            string    `json:"level,omitempty"`
+	LevelNote        string    `json:"levelNote,omitempty"`
+	Stage            string    `json:"stage,omitempty"`
+	AssignedTo       string    `json:"assignedTo,omitempty"`
+	AssignedToName   string    `json:"assignedToName,omitempty"`
+	AssignedOn       string    `json:"assignedOn,omitempty"`
+	ContactedOn      string    `json:"contactedOn,omitempty"`
+	ContactedBy      string    `json:"contactedBy,omitempty"`
+	Donation         *Donation `json:"donation,omitempty"`
+	LastDonation     *Donation `json:"lastDonation,omitempty"`
+	Notes            []Note    `json:"notes"`
 }
 
 type YearView struct {
@@ -95,17 +81,14 @@ type YearView struct {
 }
 
 type User struct {
-	Email    string `json:"email"`
-	Name     string `json:"name"`
-	Initial  string `json:"initial"`
-	PhotoURL string `json:"photoUrl,omitempty"`
-	IsAdmin  bool   `json:"isAdmin"`
-	// IsSuperAdmin is the platform's tier, for the Appearance tab alone.
-	IsSuperAdmin bool `json:"isSuperAdmin,omitempty"`
+	Email        string `json:"email"`
+	Name         string `json:"name"`
+	Initial      string `json:"initial"`
+	PhotoURL     string `json:"photoUrl,omitempty"`
+	IsAdmin      bool   `json:"isAdmin"`
+	IsSuperAdmin bool   `json:"isSuperAdmin,omitempty"`
 }
 
-// TeamView is a team member as the pages see them: the role, and the name
-// the directory has for them, or the address when it has none.
 type TeamView struct {
 	Email string `json:"email"`
 	Name  string `json:"name"`
@@ -133,8 +116,6 @@ func dateCell(t time.Time) string {
 
 func (v viewer) staff(model *Model, b *Birthday, year Year, today time.Time) StaffView {
 	person, listed := v.person(b.Email)
-	// The row's own address stays the key every write uses, whatever the
-	// directory calls the person.
 	person.Email = b.Email
 	sv := StaffView{Person: person, InDirectory: listed, Year: year.Label, Birthday: b.Birthday, Override: b.Override, Level: b.Level, LevelNote: b.Note, Notes: []Note{}}
 	if b.Birthday == "" {
@@ -179,7 +160,6 @@ func (v viewer) staff(model *Model, b *Birthday, year Year, today time.Time) Sta
 	return sv
 }
 
-// Render is the model as one signed-in person sees it.
 func Render(model *Model, directory Directory, as access.Actor, now time.Time) View {
 	email, admin := as.Email, as.Admin
 	v := viewer{directory: directory}
@@ -209,8 +189,6 @@ func Render(model *Model, directory Directory, as access.Actor, now time.Time) V
 		return view
 	}
 	view.Settings, view.Charities, view.NewsletterDates = model.Settings, model.Charities, model.NewsletterDates
-	// Someone the directory no longer lists has left the school: their row
-	// keeps its history but they are nobody's job.
 	recorded := map[string]bool{}
 	for i := range model.Birthdays {
 		b := &model.Birthdays[i]

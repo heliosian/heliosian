@@ -1,4 +1,3 @@
-// Command capturebrowser launches the headed capture browser used to screenshot authenticated sites.
 package main
 
 import (

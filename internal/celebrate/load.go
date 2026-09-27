@@ -223,17 +223,12 @@ type Model struct {
 	former        map[string]Former
 }
 
-// Former is where an address nobody reads any more - an alum's closed school
-// account - has moved to, and the name to call its owner by, since the
-// directory no longer holds them.
 type Former struct {
 	New     string
 	Name    string
 	Changed string
 }
 
-// CurrentAddress is the address to use for email: the one it moved to, when
-// it is a former address, and itself otherwise.
 func (m *Model) CurrentAddress(email string) string {
 	if f, ok := m.former[email]; ok {
 		return f.New
@@ -354,7 +349,6 @@ func (p *Party) For(v access.Actor, directory Directory) *Party {
 	c.Tickets = []Ticket{}
 	for _, t := range p.Tickets {
 		if !p.Edits(v) && !v.Mine(t.Purchaser) && !v.Mine(t.Email) {
-			// A guest's line names who bought for them, to everyone.
 			if t.Email != "" && (t.Email == t.Purchaser || known(directory, t.Email)) {
 				t.Purchaser = ""
 			}
@@ -883,8 +877,6 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 		if err != nil {
 			return nil, fmt.Errorf("ticket %s on %s: %w", id, p.Title, err)
 		}
-		// A ticket still naming a former address is read as naming where it
-		// went, so a row pasted into Former Addresses by hand takes at once.
 		if f, ok := model.former[t.Email]; ok {
 			t.Email = f.New
 			if t.Name == "" {

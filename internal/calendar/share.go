@@ -10,18 +10,6 @@ import (
 	"heliosian/internal/sharecard"
 )
 
-// A shared link to an event is fetched by whatever chat app it lands in,
-// with no session, so the preview it shows comes from two public things:
-// Open Graph tags slipped into the sign-in page served at the event's
-// address, and a card image at /open/share/{id}.png drawn here - the brand, the
-// title, the day, the hours and the place, over the picture the event's
-// page wears. A link to anything else previews the calendar itself: the
-// next few events, at /open/share/upcoming.png. The tags say what the school's
-// own calendar says and nothing about who is going.
-
-// CardStyle is the calendar's dress for the card: the standard palette in
-// the calendar's own teal and the amber of today, and the mark beside the
-// wordmark - the lockups as drawn stand taller than the card's header allows.
 func CardStyle(name, tagline func() string) *sharecard.Style {
 	palette := sharecard.Standard
 	palette.Brand = color.RGBA{0x0e, 0x4d, 0x54, 0xff}
@@ -29,12 +17,8 @@ func CardStyle(name, tagline func() string) *sharecard.Style {
 	return &sharecard.Style{Palette: palette, Name: name, Tagline: tagline, Wordmark: "Helios When", Mark: "web/public/calendar/brand/logo-mark.png"}
 }
 
-// defaultHeader is the picture an event wears when neither it nor its
-// categories have one.
 const defaultHeader = "brand/default-header.jpg"
 
-// whenLines is the card's day and time lines: "Thursday, September 24"
-// and "4:00 – 6:00 PM"; for days that run across, the days.
 func whenLines(e *Event) (string, string) {
 	if e.AllDay || spansDays(e) {
 		if e.start.Equal(e.end) || e.start.Format(DateFormat) == e.end.Format(DateFormat) {
@@ -49,7 +33,6 @@ func spansDays(e *Event) bool {
 	return e.start.Format(DateFormat) != e.end.Format(DateFormat) && !e.AllDay
 }
 
-// when is the one line the tags carry: the day and the hours together.
 func when(e *Event) string {
 	day, hours := whenLines(e)
 	if hours != "" {
@@ -58,7 +41,6 @@ func when(e *Event) string {
 	return day
 }
 
-// blurb is the description cut to a sentence or two.
 func blurb(e *Event) string {
 	text := strings.Join(strings.Fields(e.Description), " ")
 	if len(text) > 200 {
@@ -71,8 +53,6 @@ func blurb(e *Event) string {
 	return text
 }
 
-// category is the first of an event's tags that is a category rather than
-// a classroom - what the card's kicker says.
 func (m *Model) category(e *Event) string {
 	for _, t := range e.Tags {
 		if !m.Roster.has(t) {
@@ -82,8 +62,6 @@ func (m *Model) category(e *Event) string {
 	return ""
 }
 
-// events is every event a stranger may be shown, the sheet's and the
-// linked ones, as the page lists them.
 func (a app) events() []*Event {
 	return withLinked(a.cache.Model().Events, a.linked(""))
 }
@@ -94,12 +72,9 @@ func (a app) event(id string) *Event {
 			return e
 		}
 	}
-	// A direct-link or pending event has a page and a card too.
 	return a.cache.Model().Event(id)
 }
 
-// cutEventPath is the event id an event page's path names: /e/{id}, or
-// the older /events/{id} that links in the wild still carry.
 func cutEventPath(path string) (string, bool) {
 	if id, ok := strings.CutPrefix(path, "/e/"); ok {
 		return id, true
@@ -107,10 +82,6 @@ func cutEventPath(path string) (string, bool) {
 	return strings.CutPrefix(path, "/events/")
 }
 
-// PreviewHead is the Open Graph markup for a request's path: the event
-// there when the path names one, else the calendar's own preview of what
-// is coming. Wired into the sign-in page, which is what an unauthenticated
-// fetch of the address gets.
 func PreviewHead(cache *Cache, linked func(email string) []Linked, style *sharecard.Style) func(r *http.Request) string {
 	return func(r *http.Request) string {
 		a := app{cache: cache, linked: linked, style: style}
@@ -135,25 +106,17 @@ func (a app) eventHead(e *Event, origin string) string {
 	return a.style.PreviewTags(e.Title, strings.Join(parts, " — "), origin+EventPath(e), origin+"/open/share/"+e.ID+".png")
 }
 
-// upcomingHead is the calendar's own preview: what it is, in words, with
-// the card that says so.
 func (a app) upcomingHead(origin string) string {
 	return a.style.PreviewTags(a.style.Name(), whenWords, origin+"/", origin+"/open/share/upcoming.png")
 }
 
-// shareUpcoming serves /open/share/upcoming.png: the card for the calendar
-// itself.
 func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	card := whenCard(a.readImage(defaultHeader))
 	a.style.Serve(w, r, card, card.Kicker, card.Title, card.Button)
 }
 
-// whenWords is what Helios When is, for a link to it - the page rather
-// than an event - in a chat app's preview.
 const whenWords = "One calendar for everything at Helios: every school day, early dismissal and break for your classrooms, every event from the school, the HCA and Helios Celebrate, and calendars you save and subscribe to in your own app."
 
-// whenCard is the card for a link to Helios When itself: what it is, in
-// three lines, over the calendar's own picture.
 func whenCard(picture []byte) sharecard.Card {
 	return sharecard.Card{
 		Kicker: "One calendar for everything at Helios",
@@ -168,9 +131,6 @@ func whenCard(picture []byte) sharecard.Card {
 	}
 }
 
-// shareButton is the word on the card's button, what the event's page
-// asks: tickets for a party, a sign-up for an HCA event, and an RSVP for
-// everything else - the same for everyone, since the card is public.
 func shareButton(e *Event) string {
 	switch e.Source {
 	case SourceCelebrate:
@@ -184,9 +144,6 @@ func shareButton(e *Event) string {
 	return "RSVP"
 }
 
-// shareCard serves /open/share/{id}.png: the card for one event. It depends only
-// on the title, the lines, the picture and the button's word, so its ETag
-// is a hash of those and a chat app that fetched it once need not again.
 func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(r.PathValue("id"), ".png")
 	e := a.event(id)
@@ -194,11 +151,8 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	// A party's card says what its invitation says, where that differs.
 	e = a.cache.Model().invitedEvent(e)
 	picture := a.cache.Model().pictureOf(e)
-	// An invitation's flyer is the card's picture, shown whole, when the
-	// event has one.
 	whole := false
 	if inv := a.cache.Model().Invitations[e.ID]; inv != nil && inv.Flyer != "" {
 		picture, whole = inv.Flyer, true
@@ -214,10 +168,6 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	a.style.Serve(w, r, card, e.Title, kicker, day, hours, e.Location, picture, button)
 }
 
-// pictureOf is the name of the picture an event's page wears, as the page
-// chooses it: the event's own, the first of its tags that has one, else
-// the calendar's header. A name is a path the app that owns it serves,
-// less its leading slash.
 func (m *Model) pictureOf(e *Event) string {
 	if e.Image != "" {
 		return strings.TrimPrefix(e.Image, "/")
@@ -232,9 +182,6 @@ func (m *Model) pictureOf(e *Event) string {
 	return defaultHeader
 }
 
-// readImage is a picture as bytes: an upload from the shared blob store -
-// the calendar's own folder or another app's, as a linked event's is - or
-// a file bundled with whichever app serves it. Nothing when it is not held.
 func (a app) readImage(key string) []byte {
 	if key == "" {
 		return nil

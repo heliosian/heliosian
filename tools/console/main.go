@@ -1,6 +1,3 @@
-// Command console loads one page in headless Chrome and prints what its
-// JavaScript said: every console message and every uncaught exception, so a
-// page that renders blank can say why without a human opening devtools.
 package main
 
 import (
@@ -53,8 +50,6 @@ func main() {
 		case *page.EventJavascriptDialogOpening:
 			n++
 			fmt.Printf("%s: %s\n", e.Type, e.Message)
-			// Headless Chrome otherwise leaves the dialog up, and every later
-			// action - the next click, the screenshot - hangs behind it.
 			handle := page.HandleJavaScriptDialog(*dialog == "accept")
 			if *answer != "" {
 				handle = handle.WithPromptText(*answer)
@@ -74,8 +69,6 @@ func main() {
 			fmt.Printf("exception%s: %s\n", where, text)
 		}
 	})
-	// The same viewport tools/screenshot captures at, so a click lands on the
-	// desktop layout rather than the phone one.
 	actions := []chromedp.Action{chromedp.EmulateViewport(1280, int64(*height)), chromedp.Navigate(*url), chromedp.Sleep(*wait / 2)}
 	if *click != "" {
 		for _, sel := range strings.Split(*click, "|") {
@@ -95,8 +88,6 @@ func main() {
 			actions = append(actions, chromedp.WaitVisible(sel, chromedp.ByQuery), chromedp.Click(sel, chromedp.ByQuery), chromedp.Sleep(500*time.Millisecond))
 		}
 	}
-	// Headless Chrome has no pointer to rest anywhere, so the hover is the
-	// events a real one would raise on the element, in order.
 	if *scroll != "" {
 		to := "document.documentElement.scrollHeight"
 		if *scroll != "bottom" {

@@ -9,17 +9,12 @@ import (
 	"golang.org/x/image/vector"
 )
 
-// The two glyphs on the share card, drawn with the vector rasterizer so they
-// stay crisp at any size: a calendar and a clock in the site's icon style -
-// round-cornered strokes, nothing filled but the strokes themselves.
-
-// iconPath collects an outline; strokes are built as an outer shape wound one
-// way and an inner shape wound the other, which the rasterizer's winding
-// leaves as a ring.
+// A stroke is an outer shape wound one way and an inner shape wound the
+// other, which the rasterizer's winding leaves as a ring.
 type iconPath struct{ r *vector.Rasterizer }
 
 func (p iconPath) roundRect(x, y, w, h, rad float32, clockwise bool) {
-	k := rad * 0.5523 // cubic approximation of a quarter circle
+	k := rad * 0.5523
 	if clockwise {
 		p.r.MoveTo(x+rad, y)
 		p.r.LineTo(x+w-rad, y)
@@ -61,7 +56,6 @@ func (p iconPath) circle(cx, cy, rad float32, clockwise bool) {
 	p.r.ClosePath()
 }
 
-// line is a stroke from one point to another with round ends.
 func (p iconPath) line(x1, y1, x2, y2, t float32) {
 	dx, dy := x2-x1, y2-y1
 	n := float32(math.Hypot(float64(dx), float64(dy)))
@@ -84,8 +78,6 @@ func paintIcon(dst draw.Image, r *vector.Rasterizer, at image.Rectangle, c color
 	draw.DrawMask(dst, at, image.NewUniform(c), image.Point{}, mask, image.Point{}, draw.Over)
 }
 
-// DrawCalendarIcon is the site's calendar glyph: a round-cornered frame, a
-// rule under its header, two pegs on top.
 func DrawCalendarIcon(dst draw.Image, at image.Rectangle, c color.Color) {
 	s := float32(at.Dx())
 	t := s * 0.1
@@ -99,7 +91,6 @@ func DrawCalendarIcon(dst draw.Image, at image.Rectangle, c color.Color) {
 	paintIcon(dst, r, at, c)
 }
 
-// DrawClockIcon is the clock glyph: a ring with the hands at four o'clock.
 func DrawClockIcon(dst draw.Image, at image.Rectangle, c color.Color) {
 	s := float32(at.Dx())
 	t := s * 0.1
@@ -112,13 +103,11 @@ func DrawClockIcon(dst draw.Image, at image.Rectangle, c color.Color) {
 	paintIcon(dst, r, at, c)
 }
 
-// DrawPinIcon is the map-pin glyph: a teardrop ring with a dot in it.
 func DrawPinIcon(dst draw.Image, at image.Rectangle, c color.Color) {
 	s := float32(at.Dx())
 	t := s * 0.1
 	r := vector.NewRasterizer(at.Dx(), at.Dy())
 	p := iconPath{r}
-	// The head, as a ring, and the point as two strokes down to the tip.
 	p.circle(s/2, s*0.4, s*0.32, true)
 	p.circle(s/2, s*0.4, s*0.32-t, false)
 	p.line(s*0.28, s*0.62, s/2, s*0.96, t)
@@ -127,7 +116,6 @@ func DrawPinIcon(dst draw.Image, at image.Rectangle, c color.Color) {
 	paintIcon(dst, r, at, c)
 }
 
-// DrawDot is a filled circle - a bullet - filling its rectangle.
 func DrawDot(dst draw.Image, at image.Rectangle, c color.Color) {
 	s := float32(at.Dx())
 	r := vector.NewRasterizer(at.Dx(), at.Dy())
@@ -135,8 +123,6 @@ func DrawDot(dst draw.Image, at image.Rectangle, c color.Color) {
 	paintIcon(dst, r, at, c)
 }
 
-// DrawPill is a filled round-ended rectangle - a button's ground - filling
-// its rectangle.
 func DrawPill(dst draw.Image, at image.Rectangle, c color.Color) {
 	r := vector.NewRasterizer(at.Dx(), at.Dy())
 	p := iconPath{r}
@@ -145,7 +131,6 @@ func DrawPill(dst draw.Image, at image.Rectangle, c color.Color) {
 	paintIcon(dst, r, at, c)
 }
 
-// DrawCheckIcon is a check mark: two round-ended strokes.
 func DrawCheckIcon(dst draw.Image, at image.Rectangle, c color.Color) {
 	r := vector.NewRasterizer(at.Dx(), at.Dy())
 	p := iconPath{r}

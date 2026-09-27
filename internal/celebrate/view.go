@@ -10,23 +10,16 @@ import (
 	"heliosian/internal/access"
 )
 
-// Person is what the directory knows about someone the app names: enough to
-// picture them and to say what kind of ticket they may hold.
 type Person struct {
-	Email     string `json:"email"`
-	Name      string `json:"name"`
-	PhotoURL  string `json:"photoUrl,omitempty"`
-	IsStudent bool   `json:"isStudent,omitempty"`
-	IsParent  bool   `json:"isParent,omitempty"`
-	IsStaff   bool   `json:"isStaff,omitempty"`
-	Grade     string `json:"grade,omitempty"`
-	JobTitle  string `json:"jobTitle,omitempty"`
-	// Title is the one word that places them in a picker: a grade, a job,
-	// "Parent".
-	Title string `json:"title,omitempty"`
-	// The rest fills the card that opens from a person's face: how to reach
-	// them (as the directory would show it, so a masked phone stays blank),
-	// what places them, and their household.
+	Email        string   `json:"email"`
+	Name         string   `json:"name"`
+	PhotoURL     string   `json:"photoUrl,omitempty"`
+	IsStudent    bool     `json:"isStudent,omitempty"`
+	IsParent     bool     `json:"isParent,omitempty"`
+	IsStaff      bool     `json:"isStaff,omitempty"`
+	Grade        string   `json:"grade,omitempty"`
+	JobTitle     string   `json:"jobTitle,omitempty"`
+	Title        string   `json:"title,omitempty"`
 	Pronouns     string   `json:"pronouns,omitempty"`
 	Phone        string   `json:"phone,omitempty"`
 	Classroom    string   `json:"classroom,omitempty"`
@@ -36,28 +29,20 @@ type Person struct {
 	Children     []Person `json:"children,omitempty"`
 }
 
-// Directory is what the app asks of the school directory: who a signed-in
-// address really is, who someone is, their household, everyone for the
-// picker, and the toolbar's badges.
 type Directory interface {
 	Resolve(email string) string
 	Person(email string) (Person, bool)
-	// Household is a person's family as the directory lists it: the other
-	// adults in it, then the children (themselves left out of both).
 	Household(email string) (adults, kids []Person)
 	Family(email string) map[string]bool
 	People() []Person
 	Alerts(email string) (stale []string, privacy []string)
 }
 
-// Alerts carries the directory's badge reckoning to the toolbar.
 type Alerts struct {
 	Stale   []string `json:"stale"`
 	Privacy []string `json:"privacy"`
 }
 
-// DisplayName reads a name out of an address for someone the directory does
-// not list, so a list never shows a bare email.
 func DisplayName(email string) string {
 	local, _, _ := strings.Cut(email, "@")
 	words := strings.FieldsFunc(local, func(r rune) bool { return r == '.' || r == '_' || r == '-' })
@@ -80,8 +65,6 @@ func (v viewer) person(email string) Person {
 	return Person{Email: email, Name: DisplayName(email)}
 }
 
-// Kind is what sort of ticket holder someone is, for the attendee tile and
-// the party's audience rules.
 const (
 	KindParent  = "Parent"
 	KindStudent = "Student"
@@ -89,8 +72,6 @@ const (
 	KindGuest   = "Guest"
 )
 
-// kindOf is the one word for a person: a student first, else staff, else a
-// parent; someone the directory does not know is a guest.
 func kindOf(p Person, known bool) string {
 	switch {
 	case !known:
@@ -105,9 +86,6 @@ func kindOf(p Person, known bool) string {
 	return KindGuest
 }
 
-// Admits says whether the party's audience rules let this kind of person
-// hold a ticket: adults are parents and staff alike. A guest fits wherever
-// anyone does, since the host is the one who reads the name.
 func (p *Party) Admits(person Person, known bool) bool {
 	if !known {
 		return true
@@ -115,88 +93,61 @@ func (p *Party) Admits(person Person, known bool) bool {
 	return ((person.IsParent || person.IsStaff) && p.Adults) || (person.IsStudent && p.Students)
 }
 
-// Attendee is one ticket as the page shows it: a face, a name, a line that
-// places them - "Grade 7", "Parent to Sam Whitfield (Grade 3)", "Guest of
-// Jordan Whitfield" - and, for whoever may act on it, the ticket itself.
 type Attendee struct {
-	TicketID string `json:"ticketId"`
-	Email    string `json:"email,omitempty"`
-	Name     string `json:"name"`
-	PhotoURL string `json:"photoUrl,omitempty"`
-	Kind     string `json:"kind"`
-	Grade    string `json:"grade,omitempty"`
-	Line     string `json:"line,omitempty"`
-	Status   string `json:"status"`
-	// Quantity is how many tickets a waitlist request asks for.
-	Quantity int    `json:"quantity,omitempty"`
-	Added    string `json:"added,omitempty"`
-	// Mine says the viewer bought it or it is for their household - so the
-	// page offers the way to take it back.
-	Mine bool `json:"mine,omitempty"`
-	// The rest reaches the party's hosts, admins, and the household itself.
+	TicketID      string  `json:"ticketId"`
+	Email         string  `json:"email,omitempty"`
+	Name          string  `json:"name"`
+	PhotoURL      string  `json:"photoUrl,omitempty"`
+	Kind          string  `json:"kind"`
+	Grade         string  `json:"grade,omitempty"`
+	Line          string  `json:"line,omitempty"`
+	Status        string  `json:"status"`
+	Quantity      int     `json:"quantity,omitempty"`
+	Added         string  `json:"added,omitempty"`
+	Mine          bool    `json:"mine,omitempty"`
 	Purchaser     string  `json:"purchaser,omitempty"`
 	PurchaserName string  `json:"purchaserName,omitempty"`
 	Price         float64 `json:"price,omitempty"`
 	Note          string  `json:"note,omitempty"`
 	AddedBy       string  `json:"addedBy,omitempty"`
-	// RSVP is their answer to the party's invitation on Helios When, for
-	// the hosts once the invites have gone out: yes, maybe, no, none for
-	// one still to answer, or blank for someone not invited.
-	RSVP string `json:"rsvp,omitempty"`
+	RSVP          string  `json:"rsvp,omitempty"`
 }
 
-// PartyRSVPs is a party's guest list on Helios When as the hosts read it
-// here: whether the invites have gone out, and each invitee's answer by
-// address - yes, maybe, no, or none for one still to answer.
 type PartyRSVPs struct {
 	Sent    bool
 	Answers map[string]string
 }
 
-// RSVPLookup is Helios When's word on a party's guest list, or nil when
-// there is none.
 type RSVPLookup func(partyID string) *PartyRSVPs
 
-// PartyView is a party as one viewer sees it: the row, its counts and
-// availability, its attendees, and what the viewer may do with it.
 type PartyView struct {
 	*Party
-	Availability string `json:"availability"`
-	Sold         int    `json:"sold"`
-	Waiting      int    `json:"waiting"`
-	// Raised sums the sold tickets at the price each was taken - a free
-	// ticket adds nothing, an old price stays what it was.
-	Raised float64 `json:"raised"`
-	// Remaining is what is left against the cap, or -1 with no cap.
-	Remaining  int        `json:"remaining"`
-	HostPeople []Person   `json:"hostPeople"`
-	Attendees  []Attendee `json:"attendees"`
-	Waitlisted []Attendee `json:"waitlisted"`
-	// CanEdit says the viewer runs it: an admin, or one of its hosts. Hosting
-	// says they are a host, admin or not.
-	CanEdit bool `json:"canEdit"`
-	Hosting bool `json:"hosting,omitempty"`
-	// Started says a guest list exists for it on Helios When, and Invited
-	// that the invites have gone out - each for whoever runs it.
-	Started bool `json:"started,omitempty"`
-	Invited bool `json:"invited,omitempty"`
+	Availability string     `json:"availability"`
+	Sold         int        `json:"sold"`
+	Waiting      int        `json:"waiting"`
+	Raised       float64    `json:"raised"`
+	Remaining    int        `json:"remaining"`
+	HostPeople   []Person   `json:"hostPeople"`
+	Attendees    []Attendee `json:"attendees"`
+	Waitlisted   []Attendee `json:"waitlisted"`
+	CanEdit      bool       `json:"canEdit"`
+	Hosting      bool       `json:"hosting,omitempty"`
+	Started      bool       `json:"started,omitempty"`
+	Invited      bool       `json:"invited,omitempty"`
 }
 
 type User struct {
-	Email    string `json:"email"`
-	Name     string `json:"name"`
-	Initial  string `json:"initial"`
-	PhotoURL string `json:"photoUrl,omitempty"`
-	IsAdmin  bool   `json:"isAdmin"`
-	// IsSuperAdmin is the platform's tier, for the Appearance tab alone.
-	IsSuperAdmin bool `json:"isSuperAdmin,omitempty"`
-	IsStudent    bool `json:"isStudent,omitempty"`
-	IsParent     bool `json:"isParent,omitempty"`
-	IsStaff      bool `json:"isStaff,omitempty"`
-	// Adults and Children are the viewer's household: who may be billed, and
-	// who they may take tickets for.
-	Adults   []Person `json:"adults"`
-	Children []Person `json:"children"`
+	Email        string   `json:"email"`
+	Name         string   `json:"name"`
+	Initial      string   `json:"initial"`
+	PhotoURL     string   `json:"photoUrl,omitempty"`
+	IsAdmin      bool     `json:"isAdmin"`
+	IsSuperAdmin bool     `json:"isSuperAdmin,omitempty"`
+	IsStudent    bool     `json:"isStudent,omitempty"`
+	IsParent     bool     `json:"isParent,omitempty"`
+	IsStaff      bool     `json:"isStaff,omitempty"`
+	Adults       []Person `json:"adults"`
+	Children     []Person `json:"children"`
 }
 
 type View struct {
@@ -206,24 +157,15 @@ type View struct {
 	Settings     Settings       `json:"settings"`
 	Celebrations []*Celebration `json:"celebrations"`
 	Current      string         `json:"current,omitempty"`
-	// Banner is the celebration the band across the top shows.
-	Banner     string      `json:"banner,omitempty"`
-	Categories []string    `json:"categories"`
-	Parties    []PartyView `json:"parties"`
-	// Redirects let the client send an old friendly address to where the
-	// party is now, without a round trip.
-	Redirects []Redirect `json:"redirects"`
-	// Invoicing is the accounting ledger, for an admin alone; everyone else
-	// gets none of it.
-	Invoicing []InvoiceLine `json:"invoicing,omitempty"`
-	// ImageSearch says the server can search for a picture.
-	ImageSearch bool   `json:"imageSearch"`
-	Alerts      Alerts `json:"alerts"`
+	Banner       string         `json:"banner,omitempty"`
+	Categories   []string       `json:"categories"`
+	Parties      []PartyView    `json:"parties"`
+	Redirects    []Redirect     `json:"redirects"`
+	Invoicing    []InvoiceLine  `json:"invoicing,omitempty"`
+	ImageSearch  bool           `json:"imageSearch"`
+	Alerts       Alerts         `json:"alerts"`
 }
 
-// line places an attendee under their name, the way the old site did: a
-// student's grade, a parent's children, a staff member's job, a guest's
-// purchaser.
 func (v viewer) line(t Ticket, person Person, known bool, purchaserName string) string {
 	switch kindOf(person, known) {
 	case KindStudent:
@@ -289,8 +231,6 @@ func (v viewer) party(raw *Party, now time.Time) PartyView {
 	for _, email := range p.HostEmails {
 		pv.HostPeople = append(pv.HostPeople, v.person(email))
 	}
-	// The hosts read each ticket holder's answer to the invitation on
-	// Helios When, once the invites have gone out.
 	var rsvps *PartyRSVPs
 	if editor && v.rsvps != nil {
 		rsvps = v.rsvps(p.ID)
@@ -308,18 +248,14 @@ func (v viewer) party(raw *Party, now time.Time) PartyView {
 			pv.Waitlisted = append(pv.Waitlisted, a)
 		}
 	}
-	// The waitlist is a queue: earliest first.
 	sort.SliceStable(pv.Waitlisted, func(i, j int) bool { return pv.Waitlisted[i].Added < pv.Waitlisted[j].Added })
 	return pv
 }
 
-// Render is the model as one signed-in person sees it.
 func Render(model *Model, directory Directory, as access.Actor, now time.Time) View {
 	return RenderWith(model, directory, nil, as, now)
 }
 
-// RenderWith is Render with Helios When's word on each party's guest list
-// for its hosts.
 func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, as access.Actor, now time.Time) View {
 	v := viewer{Actor: as, directory: directory, rsvps: rsvps}
 	email, admin := as.Email, as.Admin
@@ -364,9 +300,6 @@ func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, as access.A
 	return view
 }
 
-// Billable says who may be invoiced for a ticket the viewer takes: an adult
-// - themselves when they are one, and the other adults of their household -
-// so a student's tickets go to a parent.
 func Billable(directory Directory, viewer string) []string {
 	out := []string{}
 	me, known := directory.Person(viewer)

@@ -159,23 +159,14 @@ type Category struct {
 }
 
 type Model struct {
-	Categories []Category            `json:"categories"`
-	Visibility map[string]Visibility `json:"-"`
-	// WidgetRules are who each of the front page's widgets is for, by the
-	// widget's name (Widgets); no rules is everyone.
+	Categories  []Category               `json:"categories"`
+	Visibility  map[string]Visibility    `json:"-"`
 	WidgetRules map[string][]filter.Rule `json:"-"`
-	// WidgetOrder is every widget's name in the order the page draws them,
-	// as an admin set it (widgetsTab); a widget without a place follows the
-	// rest in Widgets' order.
-	WidgetOrder []string `json:"-"`
-	// widgetKeys are the widgets' places (store.OrderColumn), by name.
-	widgetKeys map[string]string
-	admins     []string
+	WidgetOrder []string                 `json:"-"`
+	widgetKeys  map[string]string
+	admins      []string
 }
 
-// Widgets are the front page's widgets, by the names their audience and
-// order rows carry ("widget:when", "when"), in the order the page draws
-// them until an admin moves one.
 var Widgets = []string{"when", "team", "celebrate", "school"}
 
 func compareOrder(a, b, aTitle, bTitle string) int {
@@ -192,8 +183,6 @@ const (
 	thingWidget   = "widget:"
 )
 
-// buildWidgetOrder reads widgetsTab into the model's WidgetOrder: the
-// widgets with a place by it, then the rest as Widgets has them.
 func buildWidgetOrder(model *Model, rows []store.Row) error {
 	model.widgetKeys = map[string]string{}
 	for _, row := range rows {

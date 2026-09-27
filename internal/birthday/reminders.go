@@ -83,7 +83,6 @@ func (a app) sendDueReminders(ctx context.Context, today time.Time) int {
 		slog.InfoContext(ctx, "birthday: sent reminder", "kind", rem.kind, "email", rem.sv.Email, "to", rem.to)
 		kinds := []string{rem.kind}
 		if rem.kind == remindLate && !model.Reminders[reminderKey(rem.sv.Email, rem.sv.Year, remindAsk)] {
-			// A late reminder stands in for the day-of one it follows.
 			kinds = append(kinds, remindAsk)
 		}
 		for _, kind := range kinds {

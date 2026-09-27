@@ -15,11 +15,7 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// The script runs in the page and answers with the findings. Colours are
-// read as computed rgb(a); a background-image (a gradient, a picture) stops
-// the walk with an unknown ground, which is reported only when asked.
 const script = `(() => {
-  // A computed colour is rgb(a); one mixed with color-mix comes back as color(srgb r g b / a), on 0..1.
   const parse = c => {
     let m = (c || '').match(/rgba?\(([^)]+)\)/);
     if (m) {
@@ -36,7 +32,6 @@ const script = `(() => {
   const ratio = (a, b) => { const la = lum(a), lb = lum(b); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05); };
   const over = (top, under) => { const a = top.a + under.a * (1 - top.a); return {r: (top.r * top.a + under.r * under.a * (1 - top.a)) / a, g: (top.g * top.a + under.g * under.a * (1 - top.a)) / a, b: (top.b * top.a + under.b * under.a * (1 - top.a)) / a, a}; };
   const hex = c => '#' + [c.r, c.g, c.b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
-  // ground composites an element's own background over its ancestors' until one is opaque.
   const ground = el => {
     let acc = null;
     for (let e = el; e; e = e.parentElement) {
@@ -84,7 +79,6 @@ const script = `(() => {
     }
     const cs = getComputedStyle(el);
     const own = parse(cs.backgroundColor);
-    // Text: elements with their own non-blank text nodes.
     let text = '';
     for (const n of el.childNodes) {
       if (n.nodeType === 3) {
@@ -106,7 +100,6 @@ const script = `(() => {
         }
       }
     }
-    // Light surfaces: an opaque fill lighter than mid-grey, of some size.
     if (own && own.a > 0.5) {
       const under = own.a < 1 ? ground(el.parentElement || el) : null;
       const bgc = own.a < 1 ? (under ? over(own, under) : null) : own;
@@ -123,7 +116,6 @@ const script = `(() => {
       }
     }
   }
-  // Tab strips: a fill of their own that is not their parent's ground.
   for (const el of document.body.querySelectorAll('.tabs, .tab-strip, .tabbar, .form-tabs, [role=tablist], .segments, .view-switch, .mobile-tabs')) {
     if (!visible(el)) {
       continue;
@@ -214,7 +206,6 @@ func main() {
 	}
 }
 
-// check reads one page in a tab of its own, which closes with it.
 func check(ctx context.Context, u, cookie, click, wait string, settle time.Duration, width, height int) (*report, error) {
 	ctx, cancelTab := chromedp.NewContext(ctx)
 	defer cancelTab()
@@ -257,9 +248,6 @@ func check(ctx context.Context, u, cookie, click, wait string, settle time.Durat
 	return &rep, nil
 }
 
-// key names a finding by where it is and what colours it wears, so the
-// same label on twenty cards is one line, and a light-mode run can say
-// whether dark mode made it.
 func (f finding) key() string { return f.Path + " " + f.FG + " " + f.BG }
 func (l light) key() string   { return l.Path + " " + l.BG }
 func (t tab) key() string     { return t.Path }

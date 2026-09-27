@@ -2,14 +2,6 @@ package loop
 
 import "heliosian/internal/sharecard"
 
-// A link to Loop pasted into a chat app is fetched with no session, so what
-// it previews comes from two public things: Open Graph tags slipped into the
-// sign-in page, and a card at /open/share/about.png. A group's page is its
-// members', so the preview says what Loop is and never what any group
-// holds: the same card and the same words at every address.
-
-// About is Loop's card, under its name and tagline as the registry has
-// them: the standard palette and the horizontal lockup as drawn.
 func About(name, tagline func() string) *sharecard.About {
 	return &sharecard.About{
 		Style: &sharecard.Style{Palette: sharecard.Standard, Name: name, Tagline: tagline, Lockup: "web/public/loop/brand/logo-lockup-horizontal.png"},

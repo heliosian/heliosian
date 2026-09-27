@@ -11,9 +11,6 @@ import (
 	"heliosian/internal/who"
 )
 
-// groupCard is one email group as the tools answer it: its address and
-// words, who runs it, whether the viewer is on it, and its members for a
-// group the viewer manages.
 type groupCard struct {
 	Title       string   `json:"title"`
 	Address     string   `json:"address"`

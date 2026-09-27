@@ -11,13 +11,8 @@ import (
 	"heliosian/internal/mail"
 )
 
-// notifyTimeout bounds one announcement; it runs off the request already, so
-// the only thing waiting on it is the next report in the queue.
 const notifyTimeout = 30 * time.Second
 
-// Notifier tells the super admins a report came in, so the queue is something
-// they hear about rather than somewhere they remember to look. base is the
-// address of Heliosian's admin page, which the mail links to.
 type Notifier struct {
 	Sender      mail.Sender
 	From        string
@@ -25,8 +20,6 @@ type Notifier struct {
 	SuperAdmins func() []string
 }
 
-// Notify is the queue's announcement hook. A report nobody can be told about -
-// no sender, or nobody to tell - is simply not announced; it is already saved.
 func (n Notifier) Notify(r Report) {
 	if n.Sender == nil {
 		return

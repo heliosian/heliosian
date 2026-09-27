@@ -23,25 +23,15 @@ const (
 	vertexProject = "heliosian"
 	vertexRegion  = "us-west1"
 	vertexBatch   = 25
-	// vertexDims is the width asked for. The model writes three thousand,
-	// nested so that a prefix is itself a good vector; a few hundred is as
-	// accurate for a corpus this size and a quarter of the bytes to keep,
-	// fetch and hold.
-	vertexDims = 768
-	fakeDims   = 256
+	vertexDims    = 768
+	fakeDims      = 256
 )
 
-// An Embedder turns text into vectors: the documents' chunks when they are
-// imported, and a question when one is asked. Model names the embedding, and
-// a document embedded by one model is never compared against another's.
 type Embedder interface {
 	Embed(ctx context.Context, texts []string, query bool) ([]Vector, error)
 	Model() string
 }
 
-// A Vector is one chunk's embedding, written as base64 little-endian
-// float32: a document of a hundred chunks is then hundreds of kilobytes
-// rather than the megabytes the same numbers as decimal text would take.
 type Vector []float32
 
 func (v Vector) MarshalJSON() ([]byte, error) {
@@ -72,8 +62,6 @@ func (v *Vector) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Vertex embeds through Gemini's embedding model on Vertex AI, as the
-// Google credentials at hand.
 type Vertex struct {
 	client *http.Client
 }
@@ -161,13 +149,8 @@ func (v *Vertex) predict(ctx context.Context, texts []string, query bool) ([]Vec
 	return out, nil
 }
 
-// Billed is how many characters the model has charged for this run, for the
-// import to report what it spent.
 var Billed int
 
-// Fake stands in for the model in sample mode and in the tests: a hashed bag
-// of the words, which finds the right passage for a plain question without
-// asking anything of anyone.
 type Fake struct{}
 
 func (Fake) Model() string {

@@ -1,6 +1,3 @@
-// Package mail sends the portal's email: one Sender interface, a Mailgun
-// implementation for real mail, and a Files one for development that writes
-// each message to disk where it can be opened in a browser.
 package mail
 
 import (
@@ -17,29 +14,18 @@ import (
 	"time"
 )
 
-// Message is one email: who gets it, what it says, in HTML with a plain-text
-// twin for clients that want one.
 type Message struct {
-	To      []string
-	CC      []string
-	ReplyTo []string
-	// FromName, when set, is the name shown on the From line in place of
-	// the sender's own - the hosts of an invitation, say - over the
-	// sender's own address, which stays what the domain signs for.
-	FromName string
-	Subject  string
-	HTML     string
-	Text     string
-	// Attachments ride along, a calendar invite for one.
+	To          []string
+	CC          []string
+	ReplyTo     []string
+	FromName    string
+	Subject     string
+	HTML        string
+	Text        string
 	Attachments []Attachment
-	// Headers are extra ones on the wire - Message-ID, In-Reply-To and
-	// References, for the messages about one birthday to make one thread.
-	Headers map[string]string
+	Headers     map[string]string
 }
 
-// FromLine is the From a message goes out under: the sender's own, or
-// with the message's FromName in place of the sender's name, over the
-// same address.
 func FromLine(from string, m Message) string {
 	if m.FromName == "" {
 		return from
@@ -47,7 +33,6 @@ func FromLine(from string, m Message) string {
 	return fmt.Sprintf("%s <%s>", strings.ReplaceAll(m.FromName, "<", ""), AddressOf(from))
 }
 
-// Attachment is one file on a message.
 type Attachment struct {
 	Name        string
 	ContentType string
@@ -58,9 +43,6 @@ type Sender interface {
 	Send(ctx context.Context, m Message) error
 }
 
-// New picks the sender the environment describes: Mailgun when it has a key,
-// else files in dir when one is given, else nil - no mail, logged once -
-// which callers treat as "not set up".
 func New(mailgunKey, from, dir string) Sender {
 	switch {
 	case mailgunKey != "":
@@ -74,9 +56,6 @@ func New(mailgunKey, from, dir string) Sender {
 	return nil
 }
 
-// Compose is the message as bytes on the wire: headers, then a
-// multipart/alternative body carrying the text and the HTML - wrapped in a
-// multipart/mixed with the attachments after it when there are any.
 func Compose(from string, m Message) string {
 	boundary := fmt.Sprintf("hca-%d", time.Now().UnixNano())
 	outer := "mixed-" + boundary
@@ -126,8 +105,6 @@ func crlf(s string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\n", "\r\n")
 }
 
-// Files writes each message as an .html file (the HTML part, with the
-// envelope in a comment at the top) into Dir - the development sender.
 type Files struct {
 	Dir, From string
 }
@@ -136,8 +113,6 @@ func (f *Files) Send(ctx context.Context, m Message) error {
 	if err := os.MkdirAll(f.Dir, 0o755); err != nil {
 		return err
 	}
-	// The first recipient is in the name, since one occasion can send the
-	// same subject to two sets of people in the same instant.
 	to := ""
 	if len(m.To) > 0 {
 		to = "-" + slug(strings.SplitN(m.To[0], "@", 2)[0])

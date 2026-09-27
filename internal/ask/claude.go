@@ -83,15 +83,11 @@ func (c *Claude) Respond(ctx context.Context, req Request, emit Emitter) (Reply,
 			OutputConfig: anthropic.BetaOutputConfigParam{Effort: anthropic.BetaOutputConfigEffortMedium},
 			CacheControl: anthropic.NewBetaCacheControlEphemeralParam(),
 		}
-		// The last round allowed has to be the answer, so the tools are
-		// kept on offer for the history's sake but closed to use.
 		if round == maxRounds-1 {
 			params.ToolChoice = anthropic.BetaToolChoiceUnionParam{OfNone: &anthropic.BetaToolChoiceNoneParam{}}
 		}
 		stream := c.client.Beta.Messages.NewStreaming(ctx, params)
 		msg := anthropic.BetaMessage{}
-		// Words written before a tool call and words written after it are
-		// kept as separate paragraphs in the text the browser stores.
 		first := true
 		for stream.Next() {
 			event := stream.Current()

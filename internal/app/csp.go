@@ -10,13 +10,6 @@ import (
 
 const reportPath = "/csp-report"
 
-// policy is the content security policy for a server answering domain: the
-// apps' own origins - every script is a file under web/, none inline - Google
-// sign-in by the sources Google documents, the Maps JavaScript API by the
-// hosts a rendered map is seen to reach - its modules, RPCs and tiles from
-// maps.googleapis.com, its cursors and logo from maps.gstatic.com, and
-// Google Sans for its info window and hints from Google Fonts. Styles allow
-// inline because Maps and sign-in inject theirs.
 func policy(domain string) string {
 	apps := "https://*." + domain + ":*"
 	return strings.Join([]string{
@@ -36,9 +29,6 @@ func policy(domain string) string {
 	}, "; ")
 }
 
-// report takes what a browser posts to report-uri and logs the page, the
-// directive, what was blocked and where in the source it came from, so a
-// violation shows in the server log wherever the browser is.
 func report(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Report struct {

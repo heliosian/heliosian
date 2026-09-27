@@ -188,7 +188,6 @@ func detachReal(email string) {
 	cmd := exec.Command(self, "--real")
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	// Its own group, so the printed stop command reaps the server and nothing else.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		logging.Fatal("start server", "error", err)

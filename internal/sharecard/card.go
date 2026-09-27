@@ -1,8 +1,3 @@
-// Package sharecard draws the 1200x630 picture a chat app shows for a shared
-// link - the one image it can fetch without signing in - for every app that
-// previews its pages: the brand, a title over the brand's yellow swoosh, a
-// few lines behind icons, and the thing's own picture on the right. Each app
-// brings its own palette, lockup and corner art; the layout is one.
 package sharecard
 
 import (
@@ -29,76 +24,51 @@ const (
 	Height = 630
 )
 
-// Palette is the card's colours.
 type Palette struct {
 	Page, Brand, Accent, Ink, Yellow, Panel color.RGBA
 }
 
-// Standard is the palette an app's card wears unless it changes a colour.
 var Standard = Palette{
 	Page: color.RGBA{0xf4, 0xf8, 0xf8, 0xff}, Brand: color.RGBA{0x0f, 0x4e, 0x54, 0xff}, Accent: color.RGBA{0x1f, 0x83, 0x8a, 0xff},
 	Ink: color.RGBA{0x0a, 0x32, 0x36, 0xff}, Yellow: color.RGBA{0xfa, 0xe1, 0x05, 0xff}, Panel: color.RGBA{0xdc, 0xe9, 0xe8, 0xff},
 }
 
-// Style is one app's dress for the card: its palette, its name and tagline
-// as the registry has them now, asked at each use, its wordmark, its mark,
-// and the art that sits in the bottom-left corner.
 type Style struct {
 	Palette
-	Name, Tagline func() string
-	Wordmark      string
-	// Mark, Lockup and Corner are file paths, read once; any may be blank.
-	// A Lockup - the brand's own art, mark and words together - stands in
-	// for the mark, wordmark and tagline the card would otherwise set.
+	Name, Tagline        func() string
+	Wordmark             string
 	Mark, Lockup, Corner string
 	marks                sync.Once
 	mark, lockup, corner image.Image
 }
 
-// Line is one line under the title: an icon and the words.
 type Line struct {
-	Icon string // "calendar", "clock", "pin"
+	Icon string
 	Text string
 }
 
-// Card is what to draw: a kicker above the title (what the thing sits under,
-// or blank), the title, the lines, and the picture - shown whole, as a flyer
-// is, or scaled to cover the panel, as a banner is. A Listing takes the
-// picture's place: the right half becomes a panel of headed bullets.
 type Card struct {
-	Kicker string
-	Title  string
-	// Subtitle sits under the title's swoosh, in the accent colour.
+	Kicker   string
+	Title    string
 	Subtitle string
 	Lines    []Line
-	// Button is the word on a button drawn under the lines - RSVP, Get
-	// Tickets - so the card says the page takes an answer; blank for none.
-	Button  string
-	Picture []byte
-	Whole   bool
-	Listing *Listing
+	Button   string
+	Picture  []byte
+	Whole    bool
+	Listing  *Listing
 }
 
-// Listing is the right half of a card that names several things rather than
-// showing one picture: a heading over bullets, each a title with a note
-// under it, and a line to show when there are no items at all. Without a
-// heading the bullets start at the top, and however many there are they
-// share the panel's height, closing up as they must.
 type Listing struct {
 	Heading string
 	Items   []Item
 	Empty   string
 }
 
-// Item is one bullet of a Listing: what it is, and a note under it - a
-// date, an address. An Icon, when there is one, stands where the dot would.
 type Item struct {
 	Title, Note string
 	Icon        image.Image
 }
 
-// The two faces the card is set in, parsed once. Montserrat is the sites'
-// headline face, so the card reads as the pages do.
 var (
 	facesOnce sync.Once
 	faces     struct {
@@ -150,8 +120,6 @@ func face(f *opentype.Font, size float64) (font.Face, error) {
 	return opentype.NewFace(f, &opentype.FaceOptions{Size: size, DPI: 72, Hinting: font.HintingFull})
 }
 
-// Wrap breaks text into lines no wider than width, on spaces; a single word
-// wider than the line stands alone and is clipped by the canvas.
 func Wrap(d *font.Drawer, text string, width fixed.Int26_6) []string {
 	lines := []string{}
 	line := ""
@@ -173,12 +141,6 @@ func Wrap(d *font.Drawer, text string, width fixed.Int26_6) []string {
 	return lines
 }
 
-// Draw lays the card out the way the sites' own heroes do: on the left, on
-// the pale wash, the lockup, the kicker, the title with its yellow swoosh,
-// then the lines each behind its icon, with the corner art growing out of
-// the bottom-left; on the right, the picture. A flyer is shown whole, the
-// panel taking the flyer's own proportions so it fills edge to edge; a
-// banner is scaled to cover a fixed panel and cropped to it.
 func (s *Style) Draw(c Card) ([]byte, error) {
 	bold, medium, err := loadFaces()
 	if err != nil {
@@ -187,7 +149,6 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 	img := image.NewRGBA(image.Rect(0, 0, Width, Height))
 	draw.Draw(img, img.Bounds(), image.NewUniform(s.Page), image.Point{}, draw.Src)
 
-	// The picture's panel on the right, and where the text column ends.
 	textRight := Width - 72
 	if c.Listing != nil {
 		panel := image.Rect(Width/2, 0, Width, Height)
@@ -199,7 +160,6 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		b := pic.Bounds()
 		panelW := 480
 		if c.Whole {
-			// The flyer's own proportions, within reason, so it fills the panel.
 			panelW = min(max(Height*b.Dx()/max(b.Dy(), 1), 380), 540)
 		}
 		panel := image.Rect(Width-panelW, 0, Width, Height)
@@ -221,8 +181,6 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 	}
 
 	mark, corner := s.art()
-	// The corner art, whole and small - a quarter of the card's height, clear
-	// of the text above - so nothing in it is cropped or faded.
 	if corner != nil {
 		b := corner.Bounds()
 		h := Height / 4
@@ -231,9 +189,6 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		draw.CatmullRom.Scale(img, dst, corner, b, draw.Over, nil)
 	}
 
-	// The brand, top left: the lockup as the designer drew it, tall enough
-	// to read yet clear of the kicker below; without one, the mark beside
-	// a set wordmark and tagline.
 	x, y := 72, 56
 	d := &font.Drawer{Dst: img, Src: image.NewUniform(s.Brand)}
 	if s.lockup != nil {
@@ -263,8 +218,6 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		d.DrawString(strings.ToUpper(s.Tagline()))
 	}
 
-	// The kicker above the title, so a thing under another plainly belongs
-	// to it.
 	width := fixed.I(textRight - 72)
 	top := 226
 	if c.Kicker != "" {
@@ -283,8 +236,6 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		top = 238
 	}
 
-	// The title, shrunk until it fits three lines, in the deep ink the pages'
-	// own headlines use.
 	var lines []string
 	size := 66.0
 	if c.Kicker != "" {
@@ -307,15 +258,11 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		d.Dot = fixed.P(72, top+i*lineHeight)
 		d.DrawString(l)
 	}
-	// The swoosh: a yellow stroke as wide as the text column, under the last
-	// line's descenders, like the one under the sites' headlines.
 	last := top + (len(lines)-1)*lineHeight
 	swooshY := last + int(size*0.34)
 	draw.Draw(img, image.Rect(72, swooshY, textRight, swooshY+6), image.NewUniform(s.Yellow), image.Point{}, draw.Over)
 
 	y = swooshY + 58
-	// The subtitle under the swoosh, in the accent, two lines at most and
-	// shrunk to fit them; the lines below step down to make room.
 	if c.Subtitle != "" {
 		var subLines []string
 		subSize := 26.0
@@ -343,8 +290,6 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		y = subY + (len(subLines)-1)*int(subSize*1.25) + 52
 	}
 
-	// The lines, each behind its icon - the day behind a calendar, the time
-	// behind a clock, the place behind a pin. Each shrinks to fit if it must.
 	for _, line := range c.Lines {
 		if line.Text == "" {
 			continue
@@ -375,8 +320,6 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		y += int(lineSize * 1.55)
 	}
 
-	// The button: a pill in the brand colour with a check and the word in
-	// white, under the lines, drawn only where it clears the bottom.
 	if c.Button != "" && y+66 <= Height-14 {
 		label, err := face(bold, 26)
 		if err != nil {
@@ -402,12 +345,6 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// drawListing paints the right half's panel: the heading over its own yellow
-// swoosh, level with the brand on the left, then the bullets - a dot in the
-// accent, or the item's own icon, the title in ink on one line, shrunk and
-// then cut to fit, and the note under it in the accent. With no items, the
-// Empty line stands alone. The rows are spaced to fill the panel, no closer
-// than the icons allow.
 func (s *Style) drawListing(img *image.RGBA, panel image.Rectangle, l *Listing, bold, medium *opentype.Font) error {
 	draw.Draw(img, panel, image.NewUniform(s.Panel), image.Point{}, draw.Src)
 	left, right := panel.Min.X+56, panel.Max.X-56
@@ -440,8 +377,6 @@ func (s *Style) drawListing(img *image.RGBA, panel image.Rectangle, l *Listing, 
 		}
 		return nil
 	}
-	// The rows step down to share what is left of the panel, at most as far
-	// apart as a short list is set; a long one closes up, its type with it.
 	step := 116
 	if n := len(l.Items); n > 0 {
 		step = min(step, max((panel.Max.Y-40-y)/n, 72))
@@ -476,7 +411,6 @@ func (s *Style) drawListing(img *image.RGBA, panel image.Rectangle, l *Listing, 
 		}
 		mid := y - int(size*0.36)
 		if item.Icon != nil {
-			// The icon centred on the row's two lines, not the title alone.
 			if item.Note != "" {
 				mid = y + int(noteSize*0.55) - int(size*0.36)
 			}

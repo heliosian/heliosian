@@ -5,11 +5,6 @@ import (
 	"strings"
 )
 
-// The outreach letter, filled the way the client fills it (web/birthday/
-// state.js), so a reminder carries the same words the Email button would.
-
-// Letter is the outreach email as a reminder hands it over: whom to send it
-// to, whom to copy, and what it says.
 type Letter struct {
 	To      string
 	CC      string
@@ -17,9 +12,6 @@ type Letter struct {
 	Body    string
 }
 
-// letter fills the settings' template for one staff member, signed by the
-// assignee, with the no-newsletter note where the body puts it, or at the
-// end, for someone who asked to stay out.
 func letter(settings Settings, sv StaffView, senderName string) Letter {
 	note := ""
 	if sv.Level == LevelNoNewsletter {
@@ -65,8 +57,6 @@ var (
 	manyBlank     = regexp.MustCompile(`\n{3,}`)
 )
 
-// tidyLetter drops the blank lines and trailing spaces an empty placeholder
-// leaves behind.
 func tidyLetter(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = trailingSpace.ReplaceAllString(s, "$1")
@@ -74,7 +64,6 @@ func tidyLetter(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// monthDay is a date without its year, September 26.
 func monthDay(cell string) string {
 	if t, err := ParseDate(cell); err == nil {
 		return t.Format("January 2")

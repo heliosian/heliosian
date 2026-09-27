@@ -848,8 +848,6 @@ func NewCore(cfg Config) *Core {
 	calendarDir := calendarDirectory{cache, settings, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}.Lists}
 	frontEvents := upcomingEvents{calendarCache, calendarDir, linked}
 	calendarMux := http.NewServeMux()
-	// Moving an alum's address is Celebrate's to record and its tickets to
-	// follow, then the parties' guest lists here - from either app's page.
 	var hooks calendar.Hooks
 	moveAddress := func(ctx context.Context, actor access.Actor, old, to, name string) error {
 		if _, err := celebrate.MoveAddress(ctx, celebrateCache, actor, old, to, name); err != nil {
@@ -1087,8 +1085,6 @@ func ClaudeGroupDescriber() loop.Describer {
 	return nil
 }
 
-// ClaudeKeyPoints reads school emails' key points with Claude, or nil with
-// no key.
 func ClaudeKeyPoints() keypoints.Summarizer {
 	if c := keypoints.New(optionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key")); c != nil {
 		return c

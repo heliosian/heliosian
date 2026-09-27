@@ -100,13 +100,10 @@ func (a app) deliveryEvents(w http.ResponseWriter, r *http.Request) {
 
 func (a app) changeInviteEmail(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID    string `json:"id"`
-		Email string `json:"email"`
-		To    string `json:"to"`
-		// Everywhere moves the address on every Celebrate party at once,
-		// tickets and guest lists alike, and remembers where it went: one of
-		// Celebrate's admins, on a party's list.
-		Everywhere bool `json:"everywhere"`
+		ID         string `json:"id"`
+		Email      string `json:"email"`
+		To         string `json:"to"`
+		Everywhere bool   `json:"everywhere"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -136,13 +133,6 @@ func (a app) changeInviteEmail(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// moveAddress follows an address Celebrate's admins moved (celebrate's
-// MoveAddress) onto the guest list of every Celebrate party: the row takes
-// the new address, its answer with it (carryInvite), a name for someone the
-// directory does not hold, and an outside person's own link; a family or a
-// guest brought under the old address follows too. Where the new address is
-// on a list already, the old row simply goes. Anyone who had been sent the
-// invitation at the old address - which reached nobody - is sent it again.
 func (a app) moveAddress(ctx context.Context, actor access.Actor, old, to, name string) {
 	old, to = config.NormalizeEmail(old), config.NormalizeEmail(to)
 	ops, resend := a.moveAddressOps(actor, old, to, name)

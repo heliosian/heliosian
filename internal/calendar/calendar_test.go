@@ -746,9 +746,6 @@ func TestSharingWords(t *testing.T) {
 	}
 }
 
-// TestPartiesFor checks Heliosian's Celebrate widget: every party still
-// ahead, whatever the viewer's filters, with its standing and way in, and
-// nothing else the calendar holds.
 func TestPartiesFor(t *testing.T) {
 	m := load(t)
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-10 08:00", Location)

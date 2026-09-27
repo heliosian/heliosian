@@ -84,8 +84,6 @@ func (b gcs) get(ctx context.Context, name string) (object, error) {
 }
 
 func (b gcs) put(ctx context.Context, name, mimeType string, content []byte) error {
-	// A chunk size of zero sends the object in one request; the default of
-	// sixteen megabytes is allocated whole for every upload, however small.
 	_, err := b.service.Objects.Insert(b.name, &storage.Object{Name: name, ContentType: mimeType}).
 		Media(bytes.NewReader(content), googleapi.ContentType(mimeType), googleapi.ChunkSize(0)).
 		Context(ctx).Do()
@@ -154,7 +152,6 @@ func (b *Bucket) PutMedia(ctx context.Context, name, mimeType string, content []
 	if err != nil {
 		return fmt.Errorf("thumbnail %s: %w", name, err)
 	}
-	// The thumbnail first, so an image in the bucket always has one.
 	if err := b.objects.put(ctx, thumbName(name), thumbMime, thumb); err != nil {
 		return err
 	}

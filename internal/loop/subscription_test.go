@@ -285,9 +285,6 @@ func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
 	}
 }
 
-// Open says whether the viewer would see the group were they not an admin,
-// so the page can list an admin with the hat off only those: their own
-// hidden group is, as it is to any manager, and an everyone group is.
 func TestOpenIsWhatANonAdminSees(t *testing.T) {
 	h := newHarness(t)
 	manager := h.cache.Model().Group("soccer-team").Managers[0]

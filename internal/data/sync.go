@@ -73,8 +73,6 @@ func (s *Sheet) Sync(app, table string, header []string, rows []map[string]strin
 			continue
 		}
 		for _, name := range header {
-			// Trimmed, as the tab reads back: an untrimmed value would differ forever and
-			// rewrite itself on every run.
 			want := strings.TrimSpace(row[name])
 			if name == keyCol || want == cellAt(g.values[n-1], g.index[name]) {
 				continue

@@ -8,9 +8,6 @@ import (
 	"heliosian/internal/artifacts"
 )
 
-// TestMissing checks which emails want reading: school mail within the
-// window whose audience is not yet judged, then any judged before Revision
-// - not the chat, not an older email, not one judged since.
 func TestMissing(t *testing.T) {
 	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	m := &artifacts.Model{
@@ -36,8 +33,6 @@ func TestMissing(t *testing.T) {
 	}
 }
 
-// TestFake checks the sample server's stand-in: an email's headings, else
-// its first sentence.
 func TestFake(t *testing.T) {
 	points := fakePoints("Hello all.\n\n## Picture Day\n\nTuesday.\n\n## Book Fair\n")
 	if len(points) != 2 || points[0] != "Picture Day" || points[1] != "Book Fair" {

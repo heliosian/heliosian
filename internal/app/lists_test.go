@@ -120,10 +120,6 @@ func TestMagicTagsCarryTheirHosts(t *testing.T) {
 	}
 }
 
-// TestCommitteesAreListsToo checks that a co-chair's lists hold each
-// committee under the event they chair, by the event's name and the
-// committee's, so a committee can have an email list of its own; and that
-// the activity page finds a Loop group whose rule names an activity's list.
 func TestCommitteesAreListsToo(t *testing.T) {
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}

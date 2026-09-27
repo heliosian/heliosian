@@ -62,9 +62,6 @@ func TestPublic(t *testing.T) {
 	}
 }
 
-// The worker that replaces the previous host's service worker answers on
-// every app's host, without a session and whatever version its query names,
-// as a script a browser will install.
 func TestTheOldServiceWorkerIsReplacedEverywhere(t *testing.T) {
 	t.Chdir("../..")
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,8 +75,6 @@ func TestTheOldServiceWorkerIsReplacedEverywhere(t *testing.T) {
 	}
 }
 
-// A server answers its own domain's names and nothing else: production's
-// never a developer's, a developer's never production's.
 func TestAppFor(t *testing.T) {
 	cases := map[string]string{
 		"who.heliosian.com":              "who",
@@ -122,9 +117,6 @@ func TestAppFor(t *testing.T) {
 	}
 }
 
-// TestHostnamesCoverTheRouter pins the mapping list to what appFor answers:
-// every hostname listed routes to an app, and every app and alias the router
-// knows is listed in production.
 func TestHostnamesCoverTheRouter(t *testing.T) {
 	hosts := Hostnames()
 	for _, host := range hosts {

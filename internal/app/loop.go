@@ -13,10 +13,6 @@ import (
 	"heliosian/internal/who"
 )
 
-// loopDirectory hands Helios Loop the directory's view of people: who
-// an address resolves to, the model its rules are read against, a person's
-// tags, Magic Tags and the tags shared with them, everyone for the pickers,
-// and the toolbar's badges.
 type loopDirectory struct {
 	cache     *who.Cache
 	settings  *config.Cache
@@ -36,22 +32,16 @@ func (d loopDirectory) Tags(owner string) map[string][]string {
 	return d.cache.Tags(owner)
 }
 
-// Lists is a person's Magic Tags as the rules may name them: the room
-// parent lists the directory itself derives, then the other apps' - never
-// the groups', since a group's rule cannot name another group.
 func (d loopDirectory) Lists(owner string) []who.List {
 	return append(d.cache.Model().RoomParentLists(owner), SmartLists(d.cache.Model(), d.team.Model(), d.celebrate.Model(), owner, time.Now().In(calendar.Location))...)
 }
 
-// Shared is the tags other people have let this person manage.
 func (d loopDirectory) Shared(email string) []who.SharedTag {
 	return d.cache.SharedTags(email)
 }
 
 func loopPerson(model *who.Model, p *who.Person) loop.Person {
 	out := loop.Person{Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), Words: placeWords(*p)}
-	// The card's line, worded as Celebrate's tiles word theirs: a student's
-	// grade, a staff member's job, a parent's children with their grades.
 	switch {
 	case p.IsStudent:
 		out.Role, out.Grade, out.Context = "Student", p.Grade, placeWords(*p)

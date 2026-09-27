@@ -10,11 +10,6 @@ import (
 	"heliosian/internal/who"
 )
 
-// lateBirthdays answers GET /api/apps/late on every app's host: the
-// birthday steps the viewer is behind on - an admin, everyone's - for the
-// shared toolbar's alert (birthday.Cache.Late), with or without Super Admin
-// Mode, as approvals are - and whether it is an admin's list, everyone's,
-// so the badge goes to Process rather than My Jobs.
 func lateBirthdays(directory *who.Cache, birthdayCache *birthday.Cache, people birthday.Directory) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		email := directory.Model().Resolve(auth.Email(r))

@@ -1656,8 +1656,6 @@ func TestAdminActsAsHost(t *testing.T) {
 	}
 }
 
-// The toolbar's RSVP badge lists what someone owes a reply: an invitation
-// sent them and unanswered, gone once they answer, and never the host's.
 func TestToolbarRSVPs(t *testing.T) {
 	mux, _, kept := invitesApp(t)
 	jordan, robinH := as(host, mux), as(robin, mux)
@@ -1716,8 +1714,6 @@ func TestTicketGuestsAndMovedAddresses(t *testing.T) {
 	}
 	call(t, miaH, "POST", "/api/calendar/invites/answer", `{"id":"`+partyA+`","email":"`+alum+`","answer":"maybe"}`)
 
-	// A host who is not one of Celebrate's admins sees no way to move it
-	// everywhere, and is refused if they try.
 	if v := inviteView(t, miaH, partyA); v.MoveEverywhere {
 		t.Errorf("a host who is no admin of Celebrate may move addresses everywhere")
 	}
@@ -1736,7 +1732,6 @@ func TestTicketGuestsAndMovedAddresses(t *testing.T) {
 		t.Fatalf("Celebrate was asked %v", testMoves)
 	}
 
-	// Celebrate moves its tickets, then tells the calendar (the Hooks).
 	token := cache.Model().InviteOf(partyA, alum).Token
 	testAttendees[0].Email = home
 	testHooks.MoveAddress(context.Background(), access.Actor{Email: mia}, alum, home, "Ella Whitfield")
@@ -1752,8 +1747,6 @@ func TestTicketGuestsAndMovedAddresses(t *testing.T) {
 	if len(mailTo(kept, home)) != 1 {
 		t.Errorf("the invitation was not sent again to the new address: %d", len(mailTo(kept, home)))
 	}
-	// The group's next sweep finds the ticket at the new address on the
-	// list already, and adds nobody.
 	if n := testHooksFill(t, cache, mux); n != 0 {
 		t.Errorf("the sweep added %d after the move", n)
 	}

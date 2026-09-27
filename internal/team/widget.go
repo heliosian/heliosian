@@ -9,12 +9,6 @@ import (
 	"heliosian/internal/access"
 )
 
-// WidgetItem is one row of the home page's HCA-Team widget: the thing, the
-// event it sits under, the day it happens (Start, YYYY-MM-DD, taken from the
-// nearest dated ancestor for a role with no date of its own) or its free
-// timing ("All Year"), and its page on the portal; for one of the viewer's
-// sign-ups their position, for one needing people what it still wants
-// (openNote).
 type WidgetItem struct {
 	Title    string `json:"title"`
 	Under    string `json:"under,omitempty"`
@@ -23,30 +17,17 @@ type WidgetItem struct {
 	Position string `json:"position,omitempty"`
 	Note     string `json:"note,omitempty"`
 	Path     string `json:"path"`
-	// Image is its picture, a path on the portal's host: its own, else the
-	// nearest one above it - a role wears its event's.
-	Image string `json:"image,omitempty"`
+	Image    string `json:"image,omitempty"`
 }
 
-// Widget is what the home page's HCA-Team widget shows one person: what
-// they are signed up for that is still ahead, what needs people, and what
-// an admin has marked a priority.
 type Widget struct {
 	Mine     []WidgetItem `json:"mine"`
 	Open     []WidgetItem `json:"open"`
 	Priority []WidgetItem `json:"priority"`
 }
 
-// widgetOpen is how many things needing people the widget offers, its
-// first few shown until More.
 const widgetOpen = 12
 
-// Widget reads this school year for one person: every activity, at any
-// depth, they are on and that has not passed or been marked done, dated
-// ones soonest first and the undated after; the things the portal's
-// Volunteers needed list names (needs) that they are not already on, the
-// first few; and every activity, at any depth, an admin marked a priority
-// that still wants people and that they are not on, in the same order.
 func (c *Cache) Widget(email string, at time.Time) Widget {
 	m := c.Model()
 	year, today := SchoolYear(at), at.Format(DateFormat)
@@ -98,7 +79,6 @@ func (c *Cache) Widget(email string, at time.Time) Widget {
 	return out
 }
 
-// byDay puts dated rows soonest first and the undated after.
 func byDay(x, y WidgetItem) int {
 	if (x.Start == "") != (y.Start == "") {
 		if x.Start == "" {
@@ -109,10 +89,6 @@ func byDay(x, y WidgetItem) int {
 	return strings.Compare(x.Start, y.Start)
 }
 
-// wanted says an activity, at any depth, still wants people this school
-// year: open, visible to everyone, not passed, not marked complete, and not
-// full where it counts its spots - as the Volunteers needed list (needs)
-// has it for the top level.
 func (m *Model) wanted(a *Activity, year, today string) bool {
 	if a.Year != year || a.Status != StatusOpen || !m.VisibleTo(a, access.Actor{}) || a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots) {
 		return false
@@ -121,7 +97,6 @@ func (m *Model) wanted(a *Activity, year, today string) bool {
 	return last == "" || last >= today
 }
 
-// widgetItem is an activity as a widget row, without the viewer's part.
 func (m *Model) widgetItem(a *Activity) WidgetItem {
 	dated := timed(m, a)
 	image := ""
@@ -131,12 +106,10 @@ func (m *Model) widgetItem(a *Activity) WidgetItem {
 	return WidgetItem{Title: a.Title, Under: lineage(m, a), Start: dayOf(dated.Start), Timing: dated.Timing, Path: m.PathOf(a), Image: image}
 }
 
-// dayOf is the date part of a start or end cell.
 func dayOf(cell string) string {
 	return cell[:min(len(cell), len(DateFormat))]
 }
 
-// lastDay is the last day an activity runs, its end's or else its start's.
 func lastDay(a *Activity) string {
 	if a.End != "" {
 		return dayOf(a.End)
@@ -144,12 +117,6 @@ func lastDay(a *Activity) string {
 	return dayOf(a.Start)
 }
 
-// openNote is what a thing needing people still wants, as the widget's
-// second line says it: the co-chair when one is wanted, else the first of
-// its open roles with spots to fill; and how many volunteers it still
-// needs, over its own spots and every open role's under it - "Tech Setup ·
-// 4 volunteers needed", "Co-chair · 2 volunteers needed" - or, counting no
-// spots at all, Co-chair wanted or Volunteers wanted.
 func (m *Model) openNote(a *Activity) string {
 	label, needed := "", 0
 	if a.CoLeaderNeeded {

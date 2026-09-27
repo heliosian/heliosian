@@ -1,4 +1,3 @@
-// Package capture screenshots pages with a headless (or remote) Chrome.
 package capture
 
 import (
@@ -13,18 +12,15 @@ import (
 )
 
 type Options struct {
-	URL    string
-	Wait   string
-	Remote bool
-	Cookie string
-	// Click is one selector, or several separated by "|", each waited for
-	// and clicked in turn; Settle is how long to wait after the last.
+	URL           string
+	Wait          string
+	Remote        bool
+	Cookie        string
 	Click         string
 	Settle        time.Duration
 	Width, Height int
 }
 
-// PNG captures one page as a full-page screenshot.
 func PNG(opts Options) ([]byte, error) {
 	ctx := context.Background()
 	var cancelAllocator context.CancelFunc
@@ -39,9 +35,6 @@ func PNG(opts Options) ([]byte, error) {
 	ctx, cancelTimeout := context.WithTimeout(ctx, 30*time.Second)
 	defer cancelTimeout()
 	actions := []chromedp.Action{chromedp.EmulateViewport(int64(opts.Width), int64(opts.Height))}
-	// Cookies, name=value, several separated by semicolons as a Cookie
-	// header carries them - the mode cookies, say, to capture a page in
-	// dark mode.
 	for _, pair := range strings.Split(opts.Cookie, ";") {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {

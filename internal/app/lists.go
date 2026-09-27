@@ -134,9 +134,6 @@ func activities(directory *who.Model, model *team.Model, email string, now time.
 		last, _ := team.ParseWhen(cell)
 		return last.Before(today)
 	}
-	// Every thing at or under one the viewer co-chairs is a list of theirs:
-	// the event's whole team, and each committee's ("Spring Celebration:
-	// Decor"), so a committee can have its own email list.
 	var walk func(a, root *team.Activity, parent string)
 	walk = func(a, root *team.Activity, parent string) {
 		if over(a) {
@@ -177,10 +174,6 @@ func activities(directory *who.Model, model *team.Model, email string, now time.
 	return out
 }
 
-// activityEmailList is Team's lookup of an activity's email list: the Helios
-// Loop group one of whose rules names the activity's list of volunteers
-// ("activity:<id>"), by its name, or blank - so the activity page offers the
-// list that is there rather than making another.
 func activityEmailList(groups func() *loop.Model) team.EmailListLookup {
 	return func(id string) string {
 		key := who.ListActivity + ":" + id

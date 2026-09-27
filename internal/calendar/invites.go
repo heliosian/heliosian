@@ -69,10 +69,6 @@ type PartyPeople struct {
 	Attendees []Attendee
 }
 
-// Celebrate is what the calendar asks of Helios Celebrate: a party's hosts
-// and tickets, whether someone is one of its admins, and moving an address
-// on every party - its tickets there, and the guest lists here - when an
-// alum's school account closes.
 type Celebrate struct {
 	Party       func(id string) *PartyPeople
 	IsAdmin     func(email string) bool
@@ -350,10 +346,8 @@ type Counts struct {
 }
 
 type InviteView struct {
-	Host      bool `json:"host"`
-	AdminHost bool `json:"adminHost,omitempty"`
-	// MoveEverywhere says the viewer may move an address on every Celebrate
-	// party at once: a party's list, opened by one of Celebrate's admins.
+	Host           bool          `json:"host"`
+	AdminHost      bool          `json:"adminHost,omitempty"`
 	MoveEverywhere bool          `json:"moveEverywhere,omitempty"`
 	Poster         string        `json:"poster,omitempty"`
 	MayInvite      bool          `json:"mayInvite,omitempty"`

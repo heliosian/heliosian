@@ -1,4 +1,3 @@
-// Command findsheet prints the spreadsheet id environment as shell exports.
 package main
 
 import (

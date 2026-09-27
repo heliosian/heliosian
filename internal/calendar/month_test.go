@@ -7,9 +7,6 @@ import (
 	"time"
 )
 
-// The rail's month on Heliosian: the school days with what kind of day each
-// is for the viewer's classrooms, and the viewer's events that touch the
-// month - past ones too, and one that runs in from the month before.
 func TestMonth(t *testing.T) {
 	m := load(t)
 	sam := Person{Email: "sam@x.org", Name: "Sam", IsStudent: true, Grade: "Grade 3", Classroom: "Jays"}
@@ -44,8 +41,6 @@ func TestMonth(t *testing.T) {
 		if e.Start > "2026-09-30" || strings.Compare(e.EndAt[:10], "2026-09-01") < 0 {
 			t.Errorf("outside the month: %+v", e)
 		}
-		// The rail places an event by the days it sits on, so a card without
-		// them lands on no day at all.
 		if len(e.Dates) == 0 || e.Dates[0] != e.Start {
 			t.Errorf("card carries no days to sit on: %+v", e)
 		}
@@ -58,8 +53,6 @@ func TestMonth(t *testing.T) {
 	if slices.Contains(titles, "Hummingbird CAFE") || slices.Contains(titles, "MS Back to School Night") || slices.Contains(titles, "Back to School Social") {
 		t.Errorf("month lists another classroom's, the middle school's, or last month's: %v", titles)
 	}
-	// The month before holds the social and the first days of school, whose
-	// early dismissal is the kindergarten's alone.
 	before := m.Month(d, "nobody@x.org", linked, at, "2026-08")
 	if !slices.ContainsFunc(before.Events, func(u Card) bool { return u.Title == "Back to School Social" && u.LinkApp == "team" }) {
 		t.Errorf("August lacks the social: %+v", before.Events)
@@ -70,8 +63,6 @@ func TestMonth(t *testing.T) {
 	if k := before.Days["2026-08-19"]; len(m.Month(d, "p@x.org", nil, at, "2026-08").Days["2026-08-19"].Kinds) != 0 {
 		t.Errorf("a Jays parent sees the kindergarten's short day: %+v", k)
 	}
-	// A month that does not parse is the month now is in; a summer month is
-	// empty of school days.
 	if fallback := m.Month(d, "p@x.org", nil, at, "next"); fallback.Month != "2026-09" {
 		t.Errorf("fallback month = %q", fallback.Month)
 	}

@@ -90,8 +90,6 @@ func (v *viewer) familyKeys(email, name string) []string {
 	return keys
 }
 
-// findByEmailOrName is the people an email or a name picks out: the one
-// the address keys, else everyone whose name holds the words.
 func (v *viewer) findByEmailOrName(email, name string) []*who.Person {
 	if email = strings.ToLower(strings.TrimSpace(email)); email != "" {
 		if p := v.directory.Person(v.directory.Resolve(email)); p != nil {
@@ -158,8 +156,6 @@ var findPeople = tool{
 	},
 }
 
-// matches is Who?'s filters as the tool reads them: a parent's grade and
-// classroom are their children's.
 func (v *viewer) matches(p *who.Person, query, role, grade, classroom, department string) bool {
 	if query != "" && !contains(p.FullName, query) && !contains(p.Email, query) && !contains(p.JobTitle, query) && !contains(p.PreferredName, query) {
 		return false
@@ -190,8 +186,6 @@ func (v *viewer) matches(p *who.Person, query, role, grade, classroom, departmen
 	return true
 }
 
-// facets is a person's grade or classroom as the filters read it: a
-// student's own, a staff member's classroom, a parent's children's.
 func (v *viewer) facets(p *who.Person, classroom bool) []string {
 	pick := func(q *who.Person) string {
 		if classroom {

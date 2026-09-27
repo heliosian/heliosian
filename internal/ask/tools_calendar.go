@@ -130,7 +130,6 @@ var calendarEvents = tool{
 	},
 }
 
-// eventSpan is an event's first and last moment, from the cells.
 func eventSpan(e *calendar.Event) (time.Time, time.Time) {
 	parse := func(cell string) time.Time {
 		if t, err := time.ParseInLocation(calendar.DateTimeFormat, cell, calendar.Location); err == nil {

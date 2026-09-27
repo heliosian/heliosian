@@ -260,9 +260,7 @@ type Setting struct {
 	HomeName     string   `json:"homeName,omitempty"`
 	HomeEmoji    string   `json:"homeEmoji,omitempty"`
 	HomePosition int      `json:"homePosition"`
-	// FeedToken is the secret in My Heliosian's feed address, minted the
-	// first time its owner asks to subscribe; blank until then.
-	FeedToken string `json:"-"`
+	FeedToken    string   `json:"-"`
 }
 
 const (
@@ -286,8 +284,6 @@ const (
 	MyHeliosianEmoji = ""
 )
 
-// myHeliosianFeed is the owner of a My Heliosian feed address by its
-// token, or "" when no one's is.
 func (m *Model) myHeliosianFeed(token string) string {
 	if token == "" {
 		return ""

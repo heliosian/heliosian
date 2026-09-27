@@ -2,15 +2,6 @@ package who
 
 import "heliosian/internal/sharecard"
 
-// A link to the directory pasted into a chat app is fetched with no session,
-// so what it previews comes from two public things: Open Graph tags slipped
-// into the sign-in page, and a card at /open/share/about.png. The directory
-// is people, so the preview says what the directory is and never who is in
-// it: the same card and the same words at every address, with no name,
-// photo, count or classroom from the model.
-
-// About is the directory's card, under its name and tagline as the registry
-// has them: the standard palette and the horizontal lockup as drawn.
 func About(name, tagline func() string) *sharecard.About {
 	return &sharecard.About{
 		Style: &sharecard.Style{Palette: sharecard.Standard, Name: name, Tagline: tagline, Lockup: "web/public/who/brand/logo-lockup.png"},

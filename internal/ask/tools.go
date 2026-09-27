@@ -30,9 +30,6 @@ const (
 	loopBase      = "https://loop.heliosian.com"
 )
 
-// A tool is one thing the model may look up: its name and description for
-// the model, the words the page shows while it runs, its input's schema,
-// and what it does for one viewer.
 type tool struct {
 	name        string
 	description string
@@ -54,7 +51,6 @@ func integer(description string) map[string]any {
 	return map[string]any{"type": "integer", "description": description}
 }
 
-// definitions is every tool as the API takes them.
 func definitions() []anthropic.BetaToolUnionParam {
 	out := []anthropic.BetaToolUnionParam{}
 	for _, t := range tools {
@@ -71,7 +67,6 @@ func definitions() []anthropic.BetaToolUnionParam {
 	return out
 }
 
-// label is the words the page shows for a tool at work.
 func label(name string) string {
 	for _, t := range tools {
 		if t.name == name {
@@ -81,8 +76,6 @@ func label(name string) string {
 	return "Looking something up"
 }
 
-// A viewer is one turn's reader: the person, and every model as it stood
-// when the turn began, so a refresh mid-answer changes nothing under it.
 type viewer struct {
 	email     string
 	me        *who.Person
@@ -119,9 +112,6 @@ func (a app) viewer(email string) *viewer {
 	return v
 }
 
-// run answers one tool call for the viewer: the result as JSON, or an
-// error the model reads. An answer too big to be useful is refused with
-// a word on narrowing it.
 func (v *viewer) run(ctx context.Context, name string, input json.RawMessage) (string, error) {
 	i := slices.IndexFunc(tools, func(t tool) bool { return t.name == name })
 	if i < 0 {
@@ -156,8 +146,6 @@ func decodeInput[T any](input json.RawMessage) (T, error) {
 	return in, nil
 }
 
-// name is someone's name as the directory has it, else their address
-// before the @.
 func (v *viewer) name(email string) string {
 	if p := v.directory.Person(v.directory.Resolve(email)); p != nil {
 		return p.FullName
@@ -180,8 +168,6 @@ func whoLink(email string) string {
 
 var appBases = map[string]string{"calendar": whenBase, "team": teamBase, "celebrate": celebrateBase}
 
-// classroomTeachers is the staff who teach in a classroom, by name: the
-// crews' teachers, and any staff member placed in it.
 func (v *viewer) classroomTeachers(classroom string) []string {
 	seen := map[string]bool{}
 	out := []string{}
@@ -209,8 +195,6 @@ func (v *viewer) classroomTeachers(classroom string) []string {
 	return out
 }
 
-// crewTeachers is a student's teachers: their crew's when the classroom
-// has crews and they are in one, else the classroom's.
 func (v *viewer) crewTeachers(classroom, crew string) []string {
 	if crew != "" {
 		for _, c := range v.directory.Crews {
@@ -241,7 +225,6 @@ func limitOf(n, fallback, ceiling int) int {
 	return min(n, ceiling)
 }
 
-// rolesOf are the words for a person's roles.
 func rolesOf(p *who.Person) string {
 	roles := []string{}
 	if p.IsStudent {
@@ -256,9 +239,6 @@ func rolesOf(p *who.Person) string {
 	return strings.Join(roles, ", ")
 }
 
-// daysAway is how many days from today a Start or End cell falls: negative
-// for a day gone by, zero for today. A blank or unreadable cell gives no
-// answer.
 func (v *viewer) daysAway(cell string) (int, bool) {
 	cell = strings.TrimSpace(cell)
 	if len(cell) < len(calendar.DateFormat) {
@@ -272,9 +252,6 @@ func (v *viewer) daysAway(cell string) (int, bool) {
 	return int(day.Sub(today).Hours() / 24), true
 }
 
-// timing is the words for when a thing is against today, so the model
-// never has to reckon dates itself: "past", "today", "in 3 days", or
-// "12 days ago".
 func (v *viewer) timing(start, end string) string {
 	last := end
 	if last == "" {
@@ -296,7 +273,6 @@ func (v *viewer) timing(start, end string) string {
 	return fmt.Sprintf("in %d days", from)
 }
 
-// date reads a date the model gives, in the school's clock.
 func date(cell string) (time.Time, error) {
 	t, err := time.ParseInLocation(calendar.DateFormat, strings.TrimSpace(cell), calendar.Location)
 	if err != nil {

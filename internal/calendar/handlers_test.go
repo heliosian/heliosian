@@ -830,9 +830,6 @@ func TestOverrideFromThePage(t *testing.T) {
 	}
 }
 
-// My Heliosian subscribes like a saved calendar: its owner is given a
-// feed address once, the same one on every later ask, and it serves their
-// My Heliosian as it stands; a token nobody holds serves nothing.
 func TestMyHeliosianFeed(t *testing.T) {
 	handler, cache := testApp(t)
 	parent := as("jordan.whitfield@heliosschool.org", handler)

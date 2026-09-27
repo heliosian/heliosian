@@ -107,7 +107,6 @@ func (a app) toExport(model *Model, issue string) []exported {
 	return out
 }
 
-// The copy is queued ahead of the marks, so no birthday is marked without its row.
 func (a app) commitExport(ctx context.Context, actor access.Actor, rows, marks []store.Op) error {
 	if len(rows) == 0 {
 		return nil

@@ -61,7 +61,6 @@ var legacyThemeKeys = []string{"Sidebar Color", "Sidebar Color 2", "Sidebar Text
 
 const CompleteColumn = "Volunteers Complete"
 
-// PriorityColumn is an activity's admin-only Priority flag (Activity.Priority).
 const PriorityColumn = "Priority"
 
 var (
@@ -140,42 +139,39 @@ type Volunteer struct {
 }
 
 type Activity struct {
-	ID                 string     `json:"id"`
-	Year               string     `json:"year"`
-	Title              string     `json:"title"`
-	Parent             string     `json:"parent,omitempty"`
-	Category           string     `json:"category,omitempty"`
-	Status             string     `json:"status"`
-	Description        string     `json:"description,omitempty"`
-	Image              string     `json:"image,omitempty"`
-	ImageURL           string     `json:"imageUrl,omitempty"`
-	Flyer              string     `json:"flyer,omitempty"`
-	FlyerURL           string     `json:"flyerUrl,omitempty"`
-	Highlight          *Highlight `json:"highlight,omitempty"`
-	Order              string     `json:"-"`
-	Timing             string     `json:"timing,omitempty"`
-	Start              string     `json:"start,omitempty"`
-	End                string     `json:"end,omitempty"`
-	Location           string     `json:"location,omitempty"`
-	Spots              int        `json:"spots,omitempty"`
-	CoLeaderNeeded     bool       `json:"coLeaderNeeded"`
-	VolunteersComplete bool       `json:"volunteersComplete"`
-	VolunteersHidden   bool       `json:"volunteersHidden"`
-	DirectSignUp       bool       `json:"directSignUp"`
-	// Priority is an admin's mark on something the community most needs
-	// hands for, which Heliosian's Team widget lists under its own chip.
-	Priority    bool        `json:"priority"`
-	PrettyID    string      `json:"prettyId,omitempty"`
-	AllowAdding string      `json:"allowAddingOwn,omitempty"`
-	Adding      string      `json:"allowAdding"`
-	AddedBy     string      `json:"addedBy,omitempty"`
-	Added       string      `json:"added,omitempty"`
-	Children    []*Activity `json:"children"`
-	Links       []Link      `json:"links"`
-	Volunteers  []Volunteer `json:"volunteers"`
-	Categories  []Category  `json:"categories,omitempty"`
-	// Set on ActivityFor's copy alone: every sign-up, withheld ones included.
-	Taken int `json:"-"`
+	ID                 string      `json:"id"`
+	Year               string      `json:"year"`
+	Title              string      `json:"title"`
+	Parent             string      `json:"parent,omitempty"`
+	Category           string      `json:"category,omitempty"`
+	Status             string      `json:"status"`
+	Description        string      `json:"description,omitempty"`
+	Image              string      `json:"image,omitempty"`
+	ImageURL           string      `json:"imageUrl,omitempty"`
+	Flyer              string      `json:"flyer,omitempty"`
+	FlyerURL           string      `json:"flyerUrl,omitempty"`
+	Highlight          *Highlight  `json:"highlight,omitempty"`
+	Order              string      `json:"-"`
+	Timing             string      `json:"timing,omitempty"`
+	Start              string      `json:"start,omitempty"`
+	End                string      `json:"end,omitempty"`
+	Location           string      `json:"location,omitempty"`
+	Spots              int         `json:"spots,omitempty"`
+	CoLeaderNeeded     bool        `json:"coLeaderNeeded"`
+	VolunteersComplete bool        `json:"volunteersComplete"`
+	VolunteersHidden   bool        `json:"volunteersHidden"`
+	DirectSignUp       bool        `json:"directSignUp"`
+	Priority           bool        `json:"priority"`
+	PrettyID           string      `json:"prettyId,omitempty"`
+	AllowAdding        string      `json:"allowAddingOwn,omitempty"`
+	Adding             string      `json:"allowAdding"`
+	AddedBy            string      `json:"addedBy,omitempty"`
+	Added              string      `json:"added,omitempty"`
+	Children           []*Activity `json:"children"`
+	Links              []Link      `json:"links"`
+	Volunteers         []Volunteer `json:"volunteers"`
+	Categories         []Category  `json:"categories,omitempty"`
+	Taken              int         `json:"-"`
 }
 
 type Category struct {

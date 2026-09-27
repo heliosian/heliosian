@@ -135,8 +135,6 @@ func (r *renderer) space() {
 	r.line.WriteString(" ")
 }
 
-// An inline element wrapping whole blocks (mail templates put links around
-// tables) has already written them, leaving nothing to wrap: inline is false.
 func (r *renderer) capture(n *html.Node) (core string, leading, trailing, inline bool) {
 	blocks := len(r.blocks)
 	before := r.line.String()
@@ -225,7 +223,6 @@ func (r *renderer) flush() {
 	if len(lines) == 0 {
 		return
 	}
-	// One mailer sets its section banners as bold capitals rather than headings.
 	if prefix == "" && len(lines) == 1 {
 		if banner, ok := sectionBanner(lines[0]); ok {
 			r.blocks = append(r.blocks, "# "+banner)

@@ -81,8 +81,6 @@ func spread(keys []string, lo, hi string) {
 	spread(keys[mid+1:], keys[mid], hi)
 }
 
-// between is a key sorting after lo and before hi, either blank for no bound;
-// no key ends in 0, so a longer key can always fit between two neighbours.
 func between(lo, hi string) string {
 	if hi != "" {
 		n := 0

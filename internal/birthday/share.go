@@ -2,15 +2,6 @@ package birthday
 
 import "heliosian/internal/sharecard"
 
-// A link to the app pasted into a chat app is fetched with no session, so
-// what it previews comes from two public things: Open Graph tags slipped
-// into the sign-in page, and a card at /open/share/about.png. The app is
-// about the staff and who is looking after whom, none of which a stranger
-// sees: the preview asks them to join the Birthday team, the same card and
-// the same words at every address.
-
-// About is the app's card, under its name and tagline as the registry has
-// them: the standard palette and the horizontal lockup as drawn.
 func About(name, tagline func() string) *sharecard.About {
 	return &sharecard.About{
 		Style: &sharecard.Style{Palette: sharecard.Standard, Name: name, Tagline: tagline, Lockup: "web/public/birthday/brand/logo-lockup.png"},

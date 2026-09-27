@@ -72,13 +72,9 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("got %d, want redirect", rec.Code)
 	}
-	// The sign-out is recorded against the person really signed in, never
-	// the one they are viewing as.
 	if len(ended.ended) != 1 || ended.ended[0] != "admin@heliosschool.org" {
 		t.Errorf("signed out %v, want the admin alone", ended.ended)
 	}
-	// The session and the spoof both end, host-only and on the server's
-	// domain, and no other domain is touched.
 	domains := map[string]map[string]bool{cookieName: {}, spoofCookie: {}}
 	for _, c := range rec.Result().Cookies() {
 		if domains[c.Name] == nil || c.MaxAge != -1 || !c.Secure || c.SameSite != http.SameSiteLaxMode {
@@ -121,12 +117,6 @@ func TestSignInAndOutRefuseOtherSites(t *testing.T) {
 	}
 }
 
-// Signed out, a stylesheet, script, image, worker or API call gets a bare
-// 401, so a browser never keeps the login page under an asset's address,
-// and anything else - a navigation, a chat app naming no destination, a
-// service worker fetching the page for its tab, a destination never seen -
-// gets the login page at the address asked for; nothing answered signed
-// out may be stored.
 func TestSignedOutGetsTheLoginPageOnlyForAPage(t *testing.T) {
 	t.Chdir("../..")
 	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, noSessions())
@@ -197,11 +187,6 @@ func TestLoginPageFillsEachApp(t *testing.T) {
 	}
 }
 
-// Signing in sets the session for the domain and deletes the host-only
-// copy, so a stale one from before the cookie was scoped to the domain -
-// sent first by the browser, and read first by the server - cannot shadow
-// the session just set; a host outside the domain's shape gets the
-// host-only cookie alone and nothing deleted.
 func TestSignInDeletesTheHostOnlyCopy(t *testing.T) {
 	key := []byte("key")
 	a := New("heliosian.com", "client", key, Login{Title: "Helios Who?"}, everyone, noSessions())
@@ -241,21 +226,11 @@ func TestSignInDeletesTheHostOnlyCopy(t *testing.T) {
 	}
 }
 
-// bareToken is a session cookie as it was before the cookie was JSON: the
-// address, a pipe and an expiry, base64url, a dot, and their signature.
 func bareToken(key []byte, email string, expiry time.Time) string {
 	payload := email + "|" + strconv.FormatInt(expiry.Unix(), 10)
 	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + sign(key, payload)
 }
 
-// A session is the signed address and the moment it was issued, good for
-// sessionLength from then unless the address signs out later: a token
-// issued at or before the recorded sign-out is refused, one issued after
-// it holds, one of the old shape - every cookie from before the cookie
-// was JSON, whose number is an expiry still ahead - is refused, and a
-// sign-out the record refuses is answered with a 500 and
-// no cleared cookie, so the browser's copy is not dropped while every
-// other copy still verifies.
 func TestSessionEndsAtSignOut(t *testing.T) {
 	key := []byte("key")
 	out := time.Now().Add(-10 * time.Minute).Truncate(time.Second)
@@ -298,10 +273,6 @@ func TestSessionEndsAtSignOut(t *testing.T) {
 	}
 }
 
-// A spoof cookie signed with the key, for the admin the session names,
-// makes Email the target and keeps RealEmail the admin; one for another
-// admin, one for someone the community does not list, or one the admin may
-// no longer use is ignored, and Email stays the signed-in address.
 func TestSpoofResolvesTheTargetOnlyWhenItHolds(t *testing.T) {
 	key := []byte("key")
 	a := New("heliosian.com", "client", key, Login{Title: "Helios Who?"}, everyone, noSessions())
@@ -351,11 +322,6 @@ func TestSpoofResolvesTheTargetOnlyWhenItHolds(t *testing.T) {
 	}
 }
 
-// A session alone admits nothing: someone the directory does not list gets
-// the no-access page, or a bare 403 from a script's fetch, everywhere but
-// signing out and the way to the consent form, and an admin viewing as
-// someone the directory has dropped is refused as they would be. The
-// sample server's fixed sign-in admits by the same check.
 func TestWrapAdmitsOnlyMembers(t *testing.T) {
 	t.Chdir("../..")
 	key := []byte("key")
@@ -429,10 +395,6 @@ func TestWrapAdmitsOnlyMembers(t *testing.T) {
 	}
 }
 
-// Starting a spoof sets the signed cookie for the tier and notes the person
-// at the head of the recent list, five at most and never twice; stopping
-// clears the spoof and leaves the list; and someone who is not allowed gets
-// nothing.
 func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 	key := []byte("key")
 	a := New("heliosiandev.com", "client", key, Login{Title: "Helios Who?"}, everyone, noSessions())
@@ -490,8 +452,6 @@ func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 	}
 }
 
-// The session is scoped to the server's own domain and never another: a
-// production sign-in never reaches a developer's names, nor the reverse.
 func TestCookieDomain(t *testing.T) {
 	production := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, noSessions())
 	cases := map[string]string{
@@ -518,8 +478,6 @@ func TestCookieDomain(t *testing.T) {
 	}
 }
 
-// Quan mode is offered to the super admins and to anyone with "quan" in
-// their address, and to nobody else.
 func TestQuanFor(t *testing.T) {
 	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, noSessions())
 	a.Spoof = &Spoof{Allowed: func(email string) bool { return email == "admin@heliosschool.org" }}

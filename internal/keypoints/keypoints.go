@@ -1,8 +1,3 @@
-// Package keypoints writes the key points of each school email - the
-// newsletter, the all-family and classroom lists - once it is in, for
-// Heliosian's Inbox widget: a few short lines, what to do and by
-// when first, read by Claude from the email's words and kept in the
-// artifacts Documents tab's Key Points column.
 package keypoints
 
 import (
@@ -21,30 +16,16 @@ import (
 	"heliosian/internal/artifacts"
 )
 
-// model reads the emails: quick and inexpensive, and a summary wants no
-// more.
 const model = "claude-sonnet-5"
 
-// maxEmail is how much of an email Claude is given; a newsletter runs long,
-// and its key points are near its top.
 const maxEmail = 24 << 10
 
-// Window is how far back the widget reads, and so how far back points are
-// written: a week's mail, and a week more for the edges of it.
 const Window = 14 * 24 * time.Hour
 
-// Revision is the day the audience question last changed - it learned to
-// name grades as well as classrooms. An email in the window judged before
-// it is read again, and its new answer written over the old in place, so
-// it never goes unjudged - and out of the widget - on the way. Moving it
-// on reads the window again after a change to the question.
 const Revision = "2026-09-26"
 
-// perRun caps how many emails one pass reads, so a backlog - the first run,
-// or a day of many emails - spreads over several passes.
 const perRun = 8
 
-// every is how often a pass runs.
 const every = 10 * time.Minute
 
 const system = `You read one email the Helios School community received - the school's newsletter, or a message to all the families or to one class - and do two things.
@@ -64,42 +45,31 @@ var schema = map[string]any{
 	"additionalProperties": false,
 }
 
-// Email is one email as Claude is given it: its subject, when and by whom
-// it was sent, its words, the school's classrooms and grades, and the
-// classrooms its sender teaches.
 type Email struct {
 	Title, Date, Author, Markdown string
 	Classrooms, Grades, Teaches   []string
 }
 
-// Reading is what an email comes to: its key points, and the classrooms
-// and grades it was written to - neither for the whole school.
 type Reading struct {
 	Points     []string
 	Classrooms []string
 	Grades     []string
 }
 
-// Summarizer reads an email.
 type Summarizer interface {
 	Read(ctx context.Context, e Email) (Reading, error)
 }
 
-// School is what the pass needs of the directory: the school's classrooms
-// and grades, and the classrooms an email's sender teaches, by the name the
-// email gives.
 type School interface {
 	Classrooms() []string
 	Grades() []string
 	Teaches(author string) []string
 }
 
-// Claude is the Summarizer that asks Claude.
 type Claude struct {
 	client anthropic.Client
 }
 
-// New is Claude with the key, or nil with none.
 func New(key string) *Claude {
 	if key == "" {
 		return nil
@@ -161,8 +131,6 @@ func (c *Claude) Read(ctx context.Context, e Email) (Reading, error) {
 	return reading, nil
 }
 
-// known keeps the classrooms or grades Claude named that the school has,
-// by the school's own spelling, each once.
 func known(named, school []string) []string {
 	out := []string{}
 	for _, n := range named {
@@ -175,7 +143,6 @@ func known(named, school []string) []string {
 	return out
 }
 
-// clean keeps the points that say something, trimmed, one line each.
 func clean(points []string) []string {
 	out := []string{}
 	for _, p := range points {
@@ -186,9 +153,6 @@ func clean(points []string) []string {
 	return out
 }
 
-// Fake is the sample server's Summarizer: an email's section headings, or
-// its first sentence, as its points, and the classrooms its sender teaches
-// as whom it went to - no key, no cost.
 type Fake struct{}
 
 func (Fake) Read(_ context.Context, e Email) (Reading, error) {
@@ -213,9 +177,6 @@ func fakePoints(markdown string) []string {
 	return out
 }
 
-// Missing is the school emails within the window not yet read - no
-// audience written - newest first, then those judged before Revision,
-// newest first.
 func Missing(m *artifacts.Model, now time.Time) []*artifacts.Document {
 	since := now.Add(-Window).Format("2006-01-02")
 	unread, stale := []*artifacts.Document{}, []*artifacts.Document{}
@@ -232,9 +193,6 @@ func Missing(m *artifacts.Model, now time.Time) []*artifacts.Document {
 	return append(unread, stale...)
 }
 
-// Pass reads the next few emails not yet read, writing each one's points
-// and whom it went to - the classrooms and grades named, or Everyone when
-// Claude names neither.
 func Pass(ctx context.Context, cache *artifacts.Cache, s Summarizer, school School, now time.Time) int {
 	written := 0
 	for _, d := range Missing(cache.Model(), now) {
@@ -259,8 +217,6 @@ func Pass(ctx context.Context, cache *artifacts.Cache, s Summarizer, school Scho
 	return written
 }
 
-// Run passes over the mail every few minutes, from a minute after the start
-// so the caches have settled.
 func Run(cache *artifacts.Cache, s Summarizer, school School) {
 	time.Sleep(time.Minute)
 	for {

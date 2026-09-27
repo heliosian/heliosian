@@ -6,11 +6,6 @@ import (
 	"time"
 )
 
-// TestWidget checks the home page's HCA-Team widget on the sample's 25
-// September: a role takes its day from the event it sits under, the dated
-// come before the all-year, the position rides along, and what needs people
-// leaves out what the viewer is already on - someone on nothing gets the
-// list alone.
 func TestWidget(t *testing.T) {
 	cache, _ := newServer(t)
 	at := time.Date(2026, 9, 25, 12, 0, 0, 0, local)
@@ -32,7 +27,6 @@ func TestWidget(t *testing.T) {
 			t.Errorf("open lists what they are on: %+v", o)
 		}
 	}
-	// A day past the Movie Night, its role has passed.
 	later := cache.Widget("jordan.whitfield@heliosschool.org", time.Date(2026, 11, 7, 12, 0, 0, 0, local))
 	for _, m := range later.Mine {
 		if m.Title == "Tech Setup" {
@@ -42,16 +36,11 @@ func TestWidget(t *testing.T) {
 	if none := cache.Widget(parent, at); len(none.Mine) != 0 || len(none.Open) == 0 {
 		t.Errorf("on nothing: %+v", none)
 	}
-	// The sample marks Spring Celebration and Helios Cares a priority; only
-	// this year's come through, dated first.
 	if p := w.Priority; len(p) != 2 || p[0].Title != "Spring Celebration" || p[1].Title != "Helios Cares" || p[0].Note == "" {
 		t.Errorf("priority: %+v", p)
 	}
 }
 
-// TestPriorityIsAnAdmins checks that marking something a priority is an
-// admin's alone: a co-chair's save of the thing they run keeps the mark as
-// it was, whatever the body says, and an admin's sets and clears it.
 func TestPriorityIsAnAdmins(t *testing.T) {
 	cache, mux := newServer(t)
 	edit := map[string]any{
@@ -77,8 +66,6 @@ func TestPriorityIsAnAdmins(t *testing.T) {
 	if !cache.Model().Activity("E020").Priority {
 		t.Fatal("a co-chair cleared an admin's mark")
 	}
-	// Volunteers complete takes the mark off, whoever saves it, and an admin
-	// cannot mark a complete thing.
 	edit["volunteersComplete"] = true
 	if rec := call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("complete: %d %s", rec.Code, rec.Body)

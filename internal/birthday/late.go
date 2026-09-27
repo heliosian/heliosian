@@ -8,21 +8,12 @@ import (
 	"heliosian/internal/access"
 )
 
-// The steps a birthday can fall behind on, each with a day it is due by:
-// outreach, the assignee's, by the day to ask; the birthday's information -
-// the charity - the assignee's too, by the day it is due (Due By Lead Days
-// before the newsletter); and the newsletter, the comms team's, by the issue
-// it goes in.
 const (
 	LateOutreach   = "outreach"
 	LateInfo       = "info"
 	LateNewsletter = "newsletter"
 )
 
-// Late is one birthday step past its day and not done, as the shared
-// toolbar's alert lists it in every app: whose birthday, which step, the
-// day it was due, who it waits on (blank for an unassigned outreach), and
-// the staff member's page, a path on the birthday app's host.
 type Late struct {
 	Name     string `json:"name"`
 	Step     string `json:"step"`
@@ -31,12 +22,6 @@ type Late struct {
 	Path     string `json:"path"`
 }
 
-// Late is what the viewer is behind on: a birthday assigned to them whose
-// charity is not in by its due-by day, or, before then, whose outreach is
-// past its day to ask and not marked done; and - on the comms team - a
-// birthday with its charity in, past its newsletter's day and not yet
-// marked used. One step a birthday, the furthest along that is late. An
-// admin gets everyone's, the unassigned included. Oldest first.
 func (c *Cache) Late(directory Directory, email string) []Late {
 	email = strings.ToLower(strings.TrimSpace(email))
 	model := c.Model()
@@ -57,8 +42,6 @@ func (c *Cache) Late(directory Directory, email string) []Late {
 			continue
 		}
 		sv := v.staff(model, b, year, at)
-		// Someone the directory no longer lists has left: nobody's job, as
-		// the app's own lists have it (Render).
 		if !sv.InDirectory {
 			continue
 		}

@@ -260,8 +260,6 @@ func (s *Sheet) Insert(app, table string, rows []map[string]string) error {
 	return s.writeRows(g.id, table, len(g.values), values)
 }
 
-// An explicit address, not the append call: append's table detection starts a
-// row in the wrong column past a blank row.
 func (s *Sheet) writeRows(id, table string, used int, rows [][]interface{}) error {
 	quoted := quoteTab(table)
 	tab, err := s.tabID(id, table)

@@ -12,9 +12,6 @@ import (
 	"heliosian/internal/who"
 )
 
-// teamWidget answers GET /api/apps/team on Heliosian's host: the home
-// page's HCA-Team widget for the viewer - what they are signed up for that
-// is still ahead, and what needs people (team.Cache.Widget).
 func teamWidget(directory *who.Cache, teamCache *team.Cache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		email := directory.Model().Resolve(auth.Email(r))

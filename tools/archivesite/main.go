@@ -1,4 +1,3 @@
-// Command archivesite saves every page the school website's sitemap names under local/imports/site, for importartifacts to read into Helios Ask.
 package main
 
 import (
@@ -18,8 +17,7 @@ import (
 )
 
 const (
-	out = "local/imports/site"
-	// The site's robots.txt asks for Crawl-delay: 5.
+	out        = "local/imports/site"
 	crawlDelay = 5 * time.Second
 )
 
@@ -109,7 +107,6 @@ func main() {
 	}
 }
 
-// The site answers 406 to a request with no Accept header.
 func get(client *http.Client, address string) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodGet, address, nil)
 	if err != nil {

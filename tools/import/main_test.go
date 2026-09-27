@@ -13,7 +13,6 @@ func TestFlattenBioSeparatesParagraphsAndDecodesEntities(t *testing.T) {
 	}
 }
 
-// A link keeps its words and loses its address: the About Me card renders text.
 func TestFlattenBioKeepsLinkTextAndDropsMarkup(t *testing.T) {
 	bio, err := flattenBio(`<p>He works at <a href="https://example.org/">the lab</a>.<br>Ask him about it.</p>`)
 	if err != nil {
@@ -25,8 +24,6 @@ func TestFlattenBioKeepsLinkTextAndDropsMarkup(t *testing.T) {
 	}
 }
 
-// The bio and the override say the same thing in the punctuation each was typed
-// with, so the override is dead weight the load would refuse to carry.
 func TestCaughtUpIgnoresPunctuationAndSpacing(t *testing.T) {
 	if !caughtUp("Runs the front office.  Knows where everything is.",
 		"Runs the front office. Knows where everything is.") {
@@ -37,7 +34,6 @@ func TestCaughtUpIgnoresPunctuationAndSpacing(t *testing.T) {
 	}
 }
 
-// An override saying something of its own is a person's own words, and survives.
 func TestCaughtUpLeavesADifferentOverrideAlone(t *testing.T) {
 	if caughtUp("Ask me about the worm farm.", "Ruth has taught kindergarten for twelve years.") {
 		t.Error("an override with its own content should be left alone")

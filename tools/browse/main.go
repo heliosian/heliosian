@@ -1,4 +1,3 @@
-// Command browse drives the capture browser one step at a time: act, capture, report.
 package main
 
 import (
@@ -20,8 +19,6 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// apps that scroll an inner container leave window.scrollBy a no-op, so scroll
-// the tallest element that actually has overflow to scroll
 const scrollScript = `(() => {
 	const candidates = [...document.querySelectorAll("*")].filter(
 		el => el.scrollHeight > el.clientHeight + 1 &&

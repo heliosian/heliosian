@@ -153,11 +153,6 @@ func (a app) ticketHolders(g InviteGroup, members []string) []string {
 	return out
 }
 
-// ticketGuests are a party's ticket holders the directory does not hold but
-// who came with an address - an alum, a cousin whose address the family gave
-// - by address, with the name on the ticket. The directory's lists count
-// such guests without naming them, so the ticket holders' group adds them
-// here, each as someone from outside with their own link.
 func (a app) ticketGuests(g InviteGroup) map[string]string {
 	out := map[string]string{}
 	if a.parties == nil || len(g.Rule.Tags) != 1 || !strings.HasPrefix(g.Rule.Tags[0], "party:") {

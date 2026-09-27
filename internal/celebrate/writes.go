@@ -879,8 +879,6 @@ func (m *Model) moveAddress(actor access.Actor, old, to, name string) ([]store.O
 		return nil, 0, access.Invalid("%s has already moved to %s", old, f.New)
 	}
 	ops := []store.Op{}
-	// Moving back to an address it once left drops that record rather than
-	// making a loop of two.
 	if f, ok := m.former[to]; ok && f.New == old {
 		ops = append(ops, store.Delete(formerTab, store.Row{"Old": to}))
 	}

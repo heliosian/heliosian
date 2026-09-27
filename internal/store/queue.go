@@ -70,7 +70,6 @@ func (q *Queue) run() {
 		for len(q.pending) == 0 && (!q.draining || q.holds > 0) {
 			q.cond.Wait()
 		}
-		// Emptiness is only rechecked between tasks, so a running task never reads as empty.
 		if len(q.pending) == 0 {
 			q.mu.Unlock()
 			close(q.done)

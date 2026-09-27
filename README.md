@@ -30,6 +30,9 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/loop` — Helios Loop: the Groups sheet's model, the rule evaluator, the mail received and forwarded, handlers, and admin edits
 - `internal/ask` — Helios Ask: the chat with Claude over every app's data - the prompt, the conversation, the streaming turn and the read-only tools
 - `internal/artifacts` — the community's documents Helios Ask searches: which mail, website pages and parent portal resources belong, each to markdown, the chunks, their embeddings through Vertex AI, and the model that scans them
+- `internal/keypoints` — the few short lines Claude reads out of each school email for Heliosian's Inbox widget, what to do and by when first, kept in the artifacts Documents tab's Key Points column
+- `internal/mail` — outgoing email: Mailgun in production, and in development each message written to disk to open in a browser
+- `internal/logging` — structured records Cloud Logging indexes: severity, the signed-in user, the app, and the request's trace
 - `internal/feedback` — the toolbar's reports: the Reports sheet they land in, the word of them to the super admins, and the triage queue that edits one into a GitHub issue
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
 - `internal/sharecard` — the 1200x630 picture a chat app shows for a shared link, and the preview tags that name it, for every app in its own dress over a standard palette, under the app's name and tagline as the registry has them

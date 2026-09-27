@@ -8,21 +8,11 @@ import (
 	"heliosian/internal/config"
 )
 
-// Alerts is what the toolbar's badges say for a person, the same in every
-// app: which of their family's photos and facts want a new-year update -
-// "Sam's photo", "Your facts", "Family photo" - (the bell's count and its
-// card's rows), and which details their Veracross privacy settings
-// show that their Helios Who? ones hide - "address", "phone" - (the warning
-// triangle, its count and its card's rows). It mirrors the
-// directory's own client-side reckoning in web/who/stale.js and
-// web/who/pages/privacy.js, so the badges agree wherever they show.
 type Alerts struct {
 	Stale   []string `json:"stale"`
 	Privacy []string `json:"privacy"`
 }
 
-// firstName is the name a person goes by, first word alone, as the bell's
-// card calls them: their preferred name, else their full one.
 func firstName(p *Person) string {
 	name := p.PreferredName
 	if name == "" {
@@ -34,8 +24,6 @@ func firstName(p *Person) string {
 	return p.Email
 }
 
-// agedPast says whether something last updated on `updated` (a YYYY-MM-DD
-// cell, or blank) is older than `years`; an unreadable date counts as old.
 func agedPast(updated string, years float64, now time.Time) bool {
 	when, err := time.Parse(updatedFormat, updated)
 	if err != nil {
@@ -44,8 +32,6 @@ func agedPast(updated string, years float64, now time.Time) bool {
 	return now.Sub(when) > time.Duration(years*365.25*24)*time.Hour
 }
 
-// Alerts reckons the badges for the person signed in as email, against the
-// config sheet's staleness thresholds.
 func (m *Model) Alerts(email string, years config.StaleYears, now time.Time) Alerts {
 	me := m.Person(email)
 	if me == nil {
@@ -56,11 +42,9 @@ func (m *Model) Alerts(email string, years config.StaleYears, now time.Time) Ale
 		family = &f
 	}
 	var alerts Alerts
-	// Staff with no family of their own have nothing to keep fresh here.
 	if !me.IsStaff || me.IsParent {
 		adults, kids := m.Household(me.Email)
 		for _, p := range append(append([]*Person{me}, adults...), kids...) {
-			// Each by what it is and whose: "Your photo", "Sam's facts".
 			whose := "Your"
 			if p.Email != me.Email {
 				whose = firstName(p) + "'s"
@@ -72,13 +56,10 @@ func (m *Model) Alerts(email string, years config.StaleYears, now time.Time) Ale
 				alerts.Stale = append(alerts.Stale, whose+" facts")
 			}
 		}
-		// The family photo is its adults' to keep, not a student's.
 		if family != nil && slices.Contains(family.AdultEmails, email) && (family.PhotoURL == "" || agedPast(family.PhotoUpdated, years.FamilyPhoto, now)) {
 			alerts.Stale = append(alerts.Stale, "Family photo")
 		}
 	}
-	// One for each detail hidden here but visible on Veracross: the
-	// address, the phone.
 	if family != nil {
 		if family.AddressMasked && family.VeracrossAddress != "hidden" {
 			alerts.Privacy = append(alerts.Privacy, "address")
@@ -90,8 +71,6 @@ func (m *Model) Alerts(email string, years config.StaleYears, now time.Time) Ale
 	return alerts
 }
 
-// Alerts is the model's reckoning for the signed-in address, as the other
-// apps' toolbars ask for it.
 func (c *Cache) Alerts(email string, years config.StaleYears) Alerts {
 	model := c.Model()
 	return model.Alerts(model.Resolve(email), years, time.Now())

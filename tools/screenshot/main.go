@@ -1,4 +1,3 @@
-// Command screenshot captures a page from the local dev server as a PNG.
 package main
 
 import (

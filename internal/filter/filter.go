@@ -389,11 +389,9 @@ type TagOption struct {
 }
 
 type ListOption struct {
-	Key  string `json:"key"`
-	Name string `json:"name"`
-	Kind string `json:"kind"`
-	// Parent is the list's own parent list (who.List.Parent), for a
-	// committee under its event.
+	Key    string `json:"key"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
 	Parent string `json:"parent,omitempty"`
 }
 

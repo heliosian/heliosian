@@ -23,42 +23,27 @@ import (
 )
 
 const (
-	appName        = "artifacts"
-	documentsTab   = "Documents"
-	Folder         = "artifacts"
-	lexicalWeight  = 0.15
-	readers        = 32
-	KindNewsletter = "newsletter"
-	KindList       = "list"
-	KindPage       = "page"
-	KindPortal     = "portal"
-	KindGroup      = "group"
-	// KindAnnouncement is mail of that shape already in the corpus; nothing
-	// files more of it (docs/ask/artifacts.md).
+	appName          = "artifacts"
+	documentsTab     = "Documents"
+	Folder           = "artifacts"
+	lexicalWeight    = 0.15
+	readers          = 32
+	KindNewsletter   = "newsletter"
+	KindList         = "list"
+	KindPage         = "page"
+	KindPortal       = "portal"
+	KindGroup        = "group"
 	KindAnnouncement = "announcement"
 )
 
 var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object", PointsColumn, AudienceColumn, JudgedColumn}
 
-// PointsColumn holds a school email's key points, one a line, written once
-// the email is in (internal/keypoints) for Heliosian's Inbox
-// widget; blank until then, and for everything else.
 const PointsColumn = "Key Points"
 
-// AudienceColumn is who a school email was written to, judged with its key
-// points: Everyone, or the classrooms and grades it names ("Condors,
-// Ospreys", "Grade 2, Grade 4", "Condors, Grade 6") - for
-// mail the school sends through Veracross, which says nothing of whom it
-// went to; blank until judged.
 const AudienceColumn = "Audience"
 
-// JudgedColumn is the day a school email's points and audience were
-// written (YYYY-MM-DD), so the key points pass can read again the emails
-// judged before its question last changed (keypoints.Revision); blank
-// until judged, and for a row judged before the column was.
 const JudgedColumn = "Judged"
 
-// Everyone is the Audience of an email to the whole school.
 const Everyone = "Everyone"
 
 var stopwords = map[string]bool{"the": true, "and": true, "for": true, "are": true, "was": true, "our": true, "you": true, "your": true, "with": true, "this": true, "that": true, "from": true, "what": true, "when": true, "where": true, "who": true, "how": true, "does": true, "did": true, "will": true, "about": true, "there": true, "have": true, "has": true, "any": true, "can": true, "is": true, "in": true, "on": true, "at": true, "to": true, "of": true, "an": true, "or": true, "be": true, "it": true, "my": true, "me": true, "we": true, "us": true, "do": true, "up": true, "so": true, "if": true, "as": true, "by": true, "its": true, "not": true, "tell": true, "know": true, "say": true, "said": true, "school": true, "helios": true}
@@ -175,12 +160,9 @@ func (d *Document) normalize() error {
 type Model struct {
 	Documents []*Document
 	Fetched   int
-	// Points are the key points written for a document, by key, Audience
-	// who it was judged to be written to (AudienceColumn), and Judged the
-	// day that was (JudgedColumn).
-	Points   map[string][]string
-	Audience map[string]string
-	Judged   map[string]string
+	Points    map[string][]string
+	Audience  map[string]string
+	Judged    map[string]string
 }
 
 type documents struct {
@@ -449,7 +431,6 @@ func NewCache(source data.Source, writer data.Writer, objects *blob.Bucket, embe
 	return &Cache{Store: s, documents: d}, nil
 }
 
-// splitPoints reads a Key Points cell: one point a line, blanks passed over.
 func splitPoints(cell string) []string {
 	out := []string{}
 	for _, line := range strings.Split(cell, "\n") {
@@ -464,8 +445,6 @@ func (c *Cache) SetPoints(ctx context.Context, actor access.Actor, key string, p
 	return c.Commit(ctx, actor, c.Model().setPoints(actor, key, points, audience, judged)...)
 }
 
-// Classrooms are the classrooms and grades an Audience names, none for
-// Everyone; the directory's grade names tell the two apart.
 func Classrooms(audience string) []string {
 	out := []string{}
 	if audience == Everyone {
@@ -479,9 +458,6 @@ func Classrooms(audience string) []string {
 	return out
 }
 
-// School says a document is mail the school sent everyone or a whole class:
-// the newsletter, an all-family or classroom list, an announcement - not the
-// everyone chat, and not a Loop group's post, which only its members read.
 func School(d *Document) bool {
 	switch d.Kind {
 	case KindNewsletter, KindAnnouncement:

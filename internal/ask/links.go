@@ -116,8 +116,6 @@ func (l *links) expandInput(input []byte) []byte {
 	})
 }
 
-// mapStrings applies f to every string in decoded JSON but those inside a
-// thinking block, which goes back to the model exactly as it came.
 func mapStrings(v any, f func(string) string) any {
 	switch v := v.(type) {
 	case string:

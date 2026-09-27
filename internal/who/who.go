@@ -1,4 +1,3 @@
-// Package who serves the school directory app, Helios Who?.
 package who
 
 import (
@@ -30,25 +29,14 @@ type app struct {
 	lister  Lister
 }
 
-// effectiveEmail is who the directory renders as, and acts as: the person
-// sign-in says - the signed-in address, or whoever a super admin is viewing
-// as in Spoof Mode (internal/auth) - resolved through Email Aliases, since
-// which of a person's addresses their Workspace account calls primary is
-// nobody's deliberate choice. Reads and writes alike run as them, so a
-// spoofed view does exactly what that person could.
 func effectiveEmail(cache *Cache, r *http.Request) string {
 	return cache.Model().Resolve(strings.ToLower(auth.Email(r)))
 }
 
-// Member says whether the directory lists someone, by any of their
-// addresses; it is what sign-in admits every app's requests by.
 func Member(cache *Cache, email string) bool {
 	return cache.Model().Member(cache.Model().Resolve(strings.ToLower(strings.TrimSpace(email))))
 }
 
-// OptInForm sends someone to the consent form, the only way into the
-// directory. It takes the form's address as a function because it lives in
-// the Config sheet, where an admin can change it between requests.
 func OptInForm(optIn func() string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, optIn(), http.StatusFound)
@@ -89,17 +77,10 @@ func (a app) legacyRedirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, target, http.StatusMovedPermanently)
 }
 
-// page serves the one static shell every directory route shares; the client
-// reads who it is, and everything else, from the model.
 func (a app) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, "web/who/index.html")
 }
 
-// user is the signed-in identity as the shell shows it. Admin-ness (and so the
-// menu link to /admin) follows who's actually being viewed, not who's signed
-// in - while spoofing, the page should look exactly like it does to the person
-// being spoofed. The toolbar's switch, which asks sign-in rather than the
-// directory, is the way back.
 type user struct {
 	Name    string `json:"name"`
 	Initial string `json:"initial"`
@@ -116,12 +97,9 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	slug := Slug(effective)
 	view := struct {
 		*Model
-		User    user                `json:"user"`
-		MapsKey string              `json:"mapsKey"`
-		Tags    map[string][]string `json:"tags"`
-		// TagManagers is who else manages each of this person's tags (tags
-		// with none are absent); SharedTags the tags others have let them
-		// manage.
+		User        user                `json:"user"`
+		MapsKey     string              `json:"mapsKey"`
+		Tags        map[string][]string `json:"tags"`
 		TagManagers map[string][]string `json:"tagManagers"`
 		SharedTags  []SharedTag         `json:"sharedTags"`
 		Lists       []List              `json:"lists"`
@@ -134,10 +112,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		TagManagers: a.cache.TagManagers(effective),
 		SharedTags:  a.cache.SharedTags(effective),
 		Lists:       append(a.cache.Model().RoomParentLists(effective), a.lister.Lists(effective)...),
-		// Both computed from the effective identity, so a spoofed view shows exactly
-		// what that person sees — a regular parent's simulated view never carries the
-		// real admin's super-edit powers along with it.
-		SuperEdit: superEditing(v, superEditOn(r)),
+		SuperEdit:   superEditing(v, superEditOn(r)),
 	}
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode model", "error", err)

@@ -11,9 +11,6 @@ import (
 	"heliosian/internal/config"
 )
 
-// An RSVP is an invitation waiting for someone's reply, as the shared
-// toolbar lists it in every app: the event's title, its start, and its page
-// on the calendar, a path there.
 type RSVP struct {
 	Title  string `json:"title"`
 	Start  string `json:"start"`
@@ -21,9 +18,6 @@ type RSVP struct {
 	Path   string `json:"path"`
 }
 
-// waiting is what a person owes a reply, as My Events' RSVP has it: the
-// events their household is invited to, still to come or under way, not
-// called off, that they do not host and have not answered - soonest first.
 func (a app) waiting(email string) []RSVP {
 	email = config.NormalizeEmail(email)
 	model := a.cache.Model()
@@ -44,9 +38,6 @@ func (a app) waiting(email string) []RSVP {
 	return out
 }
 
-// rsvps is GET /api/apps/rsvp, served on every app's host (Hooks.RSVPs)
-// for the shared toolbar's badge: the invitations waiting for the viewer's
-// reply.
 func (a app) rsvps(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(struct {

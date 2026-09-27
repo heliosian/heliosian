@@ -11,20 +11,16 @@ import (
 )
 
 type Person struct {
-	Email     string `json:"email"`
-	Name      string `json:"name"`
-	PhotoURL  string `json:"photoUrl,omitempty"`
-	IsStudent bool   `json:"isStudent,omitempty"`
-	IsParent  bool   `json:"isParent,omitempty"`
-	IsStaff   bool   `json:"isStaff,omitempty"`
-	Grade     string `json:"grade,omitempty"`
-	Classroom string `json:"classroom,omitempty"`
-	// Line is the word under a name on a contact card: a student's grade
-	// and classroom, a parent's children, a staff member's place.
-	Line string `json:"line,omitempty"`
-	// EmailMasked marks a placeholder address nothing can reach, as the
-	// directory has it for some students: no mail goes there.
-	EmailMasked bool `json:"-"`
+	Email       string `json:"email"`
+	Name        string `json:"name"`
+	PhotoURL    string `json:"photoUrl,omitempty"`
+	IsStudent   bool   `json:"isStudent,omitempty"`
+	IsParent    bool   `json:"isParent,omitempty"`
+	IsStaff     bool   `json:"isStaff,omitempty"`
+	Grade       string `json:"grade,omitempty"`
+	Classroom   string `json:"classroom,omitempty"`
+	Line        string `json:"line,omitempty"`
+	EmailMasked bool   `json:"-"`
 }
 
 type Directory interface {
@@ -37,24 +33,16 @@ type Directory interface {
 	Alerts(email string) (stale []string, privacy []string)
 	ClassroomColors() map[string]string
 	GradeColors() map[string]string
-	// People is everyone in the directory, and Lists one person's lists in
-	// Helios Who? - their tags and the lists the other apps give them - for
-	// a guest list's picker (invites.go).
 	People() []Person
 	Lists(email string) []List
 }
 
-// Responses are the people who answered an event, for an admin: each as
-// the directory knows them, with their photo, for a contact card.
 type Responses struct {
 	Yes   []Person `json:"yes,omitempty"`
 	Maybe []Person `json:"maybe,omitempty"`
 	No    []Person `json:"no,omitempty"`
 }
 
-// contactLine is the word under a name on a contact card, as Who? has it:
-// a student's grade and classroom, a parent's children with their grades,
-// a staff member's place.
 func contactLine(directory Directory, p Person) string {
 	switch {
 	case p.IsStudent:
@@ -85,7 +73,6 @@ func contactLine(directory Directory, p Person) string {
 	return ""
 }
 
-// thumb is a photo's address at thumbnail size, or nothing.
 func thumb(url string) string {
 	if url == "" {
 		return ""
@@ -99,34 +86,24 @@ type Alerts struct {
 }
 
 type User struct {
-	Email    string `json:"email"`
-	Name     string `json:"name"`
-	Initial  string `json:"initial"`
-	PhotoURL string `json:"photoUrl,omitempty"`
-	IsAdmin  bool   `json:"isAdmin"`
-	// IsSuperAdmin is the platform's tier, for the Appearance tab alone.
-	IsSuperAdmin bool     `json:"isSuperAdmin,omitempty"`
-	IsStudent    bool     `json:"isStudent,omitempty"`
-	IsParent     bool     `json:"isParent,omitempty"`
-	IsStaff      bool     `json:"isStaff,omitempty"`
-	Students     []Person `json:"students"`
-	Classrooms   []string `json:"classrooms"`
-	// Saved is the view this person kept, when they have: what the calendar
-	// opens to for them in place of its own defaults.
-	Saved *Setting `json:"saved,omitempty"`
-	// Home is My Heliosian as this person has it: their name and mark for
-	// it, and its place among their calendars - the first being their
-	// default calendar.
-	Home Feed `json:"home"`
-	// Answers is this person's word on each event they have answered, by
-	// event id: yes, no, maybe, or hidden.
-	Answers map[string]string `json:"answers,omitempty"`
+	Email        string            `json:"email"`
+	Name         string            `json:"name"`
+	Initial      string            `json:"initial"`
+	PhotoURL     string            `json:"photoUrl,omitempty"`
+	IsAdmin      bool              `json:"isAdmin"`
+	IsSuperAdmin bool              `json:"isSuperAdmin,omitempty"`
+	IsStudent    bool              `json:"isStudent,omitempty"`
+	IsParent     bool              `json:"isParent,omitempty"`
+	IsStaff      bool              `json:"isStaff,omitempty"`
+	Students     []Person          `json:"students"`
+	Classrooms   []string          `json:"classrooms"`
+	Saved        *Setting          `json:"saved,omitempty"`
+	Home         Feed              `json:"home"`
+	Answers      map[string]string `json:"answers,omitempty"`
 }
 
 type View struct {
-	User User `json:"user"`
-	// ImageSearch says the server can search for a picture - for a
-	// category's picture in Admin Tools, and for an event anyone shares.
+	User        User                         `json:"user"`
 	ImageSearch bool                         `json:"imageSearch"`
 	Today       string                       `json:"today"`
 	Now         string                       `json:"now"`
@@ -137,17 +114,12 @@ type View struct {
 	Years       []Year                       `json:"years"`
 	Days        map[string]map[string]string `json:"days"`
 	Events      []*Event                     `json:"events"`
-	// Provenance is each event's admin-side story, for an admin alone; Names
-	// puts a name to the addresses the events name.
-	Provenance map[string]*Provenance `json:"provenance,omitempty"`
-	// Responses is who said yes and who said no to each event, by event id,
-	// for an admin alone; hidden is a person's own and named to nobody.
-	Responses map[string]*Responses `json:"responses,omitempty"`
-	// GradeColors are Who?'s colours per grade, for a student's badge.
-	GradeColors map[string]string `json:"gradeColors,omitempty"`
-	Names       map[string]string `json:"names,omitempty"`
-	Feeds       []Feed            `json:"feeds"`
-	Alerts      Alerts            `json:"alerts"`
+	Provenance  map[string]*Provenance       `json:"provenance,omitempty"`
+	Responses   map[string]*Responses        `json:"responses,omitempty"`
+	GradeColors map[string]string            `json:"gradeColors,omitempty"`
+	Names       map[string]string            `json:"names,omitempty"`
+	Feeds       []Feed                       `json:"feeds"`
+	Alerts      Alerts                       `json:"alerts"`
 }
 
 func displayName(email string) string {

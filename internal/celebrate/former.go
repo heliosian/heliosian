@@ -15,17 +15,8 @@ import (
 	"heliosian/internal/config"
 )
 
-// AddressMoved is told when an admin moves someone's address, after
-// Celebrate's own rows have moved, so Helios When can move the party guest
-// lists with them.
 type AddressMoved func(ctx context.Context, actor access.Actor, old, to, name string)
 
-// MoveAddress records that old has moved to to - an alum's school account
-// closing after graduation - and moves every ticket, waitlist request and
-// host row on every party with it. The ledger in INVOICING is the
-// bookkeeper's and keeps the address it was billed under. A ticket that took
-// its name from the directory, while the directory still held them, keeps
-// the name given here.
 func MoveAddress(ctx context.Context, cache *Cache, actor access.Actor, old, to, name string) (int, error) {
 	ops, moved, err := cache.Model().moveAddress(actor, old, to, name)
 	if err != nil {
@@ -63,28 +54,21 @@ func (a app) moveAddress(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// AddressUse is one place an address stands on a party.
 type AddressUse struct {
 	PartyID string `json:"partyId"`
 	Party   string `json:"party"`
 	Path    string `json:"path"`
 	Past    bool   `json:"past,omitempty"`
-	// Role is Ticket, Waitlist, Billed or Host.
-	Role string `json:"role"`
+	Role    string `json:"role"`
 }
 
-// Problem is an address on the parties that may reach nobody: a school
-// address the directory does not have - an alum's closed account, or a
-// typo.
 type Problem struct {
-	Email string       `json:"email"`
-	Name  string       `json:"name"`
-	Uses  []AddressUse `json:"uses"`
-	// Upcoming says one of its uses is on a party still to come.
-	Upcoming bool `json:"upcoming"`
+	Email    string       `json:"email"`
+	Name     string       `json:"name"`
+	Uses     []AddressUse `json:"uses"`
+	Upcoming bool         `json:"upcoming"`
 }
 
-// Moved is a row of Former Addresses, for Admin Tools.
 type Moved struct {
 	Old     string `json:"old"`
 	New     string `json:"new"`
@@ -92,10 +76,6 @@ type Moved struct {
 	Changed string `json:"changed,omitempty"`
 }
 
-// Problems lists every address on a party - a ticket holder's, a waitlist
-// request's, whoever is billed, a host - that the directory does not hold
-// and that is a school address, with every party it stands on; the upcoming
-// ones first, then by name.
 func Problems(model *Model, directory Directory, now time.Time) []Problem {
 	byEmail := map[string]*Problem{}
 	order := []string{}
@@ -157,7 +137,6 @@ func Problems(model *Model, directory Directory, now time.Time) []Problem {
 	return out
 }
 
-// MovedAddresses is Former Addresses, the latest change first.
 func (m *Model) MovedAddresses() []Moved {
 	out := []Moved{}
 	for old, f := range m.former {

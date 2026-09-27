@@ -192,8 +192,6 @@ func (b *Book) Write(p Plan) <-chan struct{} {
 	return done
 }
 
-// A write the sheet refuses leaves memory ahead of it, and every write queued
-// behind may build on the refused one, so nothing after it may run.
 func (b *Book) write(writes []Op, log []Row) {
 	for len(writes) > 0 {
 		run := batch(writes)

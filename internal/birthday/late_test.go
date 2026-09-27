@@ -6,11 +6,6 @@ import (
 	"time"
 )
 
-// TestLate checks who the toolbar's late-birthdays alert reaches on the
-// sample's 9 September: an admin sees every late step - the unassigned
-// outreach too, and whose each assigned one is - a volunteer only the
-// outreach they took on once it is late, someone off the team nothing, and
-// a birthday whose charity is not in by its due-by day late in its own right.
 func TestLate(t *testing.T) {
 	cache, mux := newServer(t)
 	steps := func(email string) map[string]Late {
@@ -45,9 +40,6 @@ func TestLate(t *testing.T) {
 	if got := steps("nobody@heliosschool.org"); len(got) != 0 {
 		t.Errorf("off the team: %+v", got)
 	}
-	// A day on, Ruth's newsletter of the 11th is two days off - the default
-	// Due By Lead Days - and her charity is not in: the outreach gives way
-	// to the birthday itself being late.
 	now = func() time.Time { return mustTime("2026-09-10") }
 	all = steps(admin)
 	if l, ok := all["Ruth Amari info"]; !ok || l.Due != "2026-09-09" || l.Assignee != "Mina Park" {

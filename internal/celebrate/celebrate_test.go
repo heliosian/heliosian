@@ -1226,8 +1226,6 @@ func TestMoveAddress(t *testing.T) {
 			held = tk.ID
 		}
 	}
-	// A ticket that took its name from the directory while its holder was
-	// still in it: an address and no name.
 	if rec := call(t, mux, admin, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": held, "email": school}); rec.Code != http.StatusNoContent {
 		t.Fatalf("set up the alum's ticket: %d %s", rec.Code, rec.Body)
 	}
@@ -1252,8 +1250,6 @@ func TestMoveAddress(t *testing.T) {
 		t.Fatalf("moved the same address twice: %d", rec.Code)
 	}
 
-	// A ticket row still naming the old address - pasted in by hand - reads
-	// as the new one.
 	if err := cache.Commit(context.Background(), access.System(admin), store.Insert(ticketsTab, store.Row{"Ticket ID": "TOLD", "Party ID": "P002", "Email": school, "Purchaser": school, "Status": TicketSold, "Price": "0"})); err != nil {
 		t.Fatal(err)
 	}
@@ -1261,8 +1257,6 @@ func TestMoveAddress(t *testing.T) {
 		t.Fatalf("a row naming the old address: %+v", tk)
 	}
 
-	// Moving again points the first move at the last address too, so no
-	// address is ever a step away from where it went.
 	if rec := call(t, mux, admin, "POST", "/api/celebrate/address", map[string]any{"old": home, "to": later}); rec.Code != http.StatusNoContent {
 		t.Fatalf("second move: %d %s", rec.Code, rec.Body)
 	}
@@ -1320,8 +1314,6 @@ func TestProblemAddresses(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil || rec.Code != 200 {
 		t.Fatalf("addresses: %d %s", rec.Code, rec.Body)
 	}
-	// The test directory holds a handful of people, so the sample's other
-	// school addresses are listed too; what matters is who is and is not.
 	find := func(email string) *Problem {
 		for i := range view.Problems {
 			if view.Problems[i].Email == email {

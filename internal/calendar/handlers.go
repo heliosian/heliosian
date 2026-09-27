@@ -244,12 +244,7 @@ func (a app) editFeed(w http.ResponseWriter, r *http.Request) {
 type Hooks struct {
 	Answer      Answerer
 	MakeDefault func(ctx context.Context, email, token string) error
-	// RSVPs answers GET /api/apps/rsvp, which every app's host serves for
-	// the shared toolbar - the calendar's own registers it itself: the
-	// invitations waiting for the viewer's reply.
-	RSVPs http.HandlerFunc
-	// MoveAddress moves an address on the guest list of every Celebrate
-	// party, once Celebrate has moved its own rows (MoveAddress there).
+	RSVPs       http.HandlerFunc
 	MoveAddress func(ctx context.Context, actor access.Actor, old, to, name string)
 }
 
@@ -646,8 +641,6 @@ func (a app) feed(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSuffix(r.PathValue("file"), ".ics")
 	model := a.cache.Model()
 	f := model.Feed(token)
-	// A My Heliosian address is its owner's My Heliosian as it stands now:
-	// their classrooms and the default categories, or the view they saved.
 	if email := model.myHeliosianFeed(token); f == nil && email != "" {
 		home := model.MyHeliosian(email)
 		home.Token = token
@@ -664,10 +657,6 @@ func (a app) feed(w http.ResponseWriter, r *http.Request) {
 	w.Write(ICS(model, a.directory, f, a.linked(f.Email), "https://"+r.Host, now()))
 }
 
-// myHeliosianToken is POST /api/calendar/feeds/my-heliosian: the secret in
-// the viewer's own My Heliosian feed address, minted and kept on their
-// Settings row the first time they ask - the Subscribe menu's, for the
-// calendar that is not a saved one.
 func (a app) myHeliosianToken(w http.ResponseWriter, r *http.Request) {
 	actor := a.actor(r)
 	ops, token := a.feedTokenOps(actor)

@@ -41,7 +41,6 @@ func (r *Resolver) Resolve(address string) string {
 	return target
 }
 
-// A Veracross link's path is a deflated query whose l is the destination.
 func unwrap(address string) string {
 	u, err := url.Parse(address)
 	if err != nil {

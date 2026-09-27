@@ -53,15 +53,12 @@ func New(domain, clientID string, key []byte, login Login, member func(email str
 	return &Auth{domain: domain, clientID: clientID, key: key, page: login, member: member, sessions: sessions}
 }
 
-// Fixed signs every request in as email, with no session at all - for tests.
 func Fixed(email string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, identity{real: email, effective: email})))
 	})
 }
 
-// Fixed signs every request in as email with no session, the way the sample
-// server does, but still honours a spoof, so Spoof Mode can be tried there.
 func (a *Auth) Fixed(email string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if Public(r.URL.Path) {
@@ -74,8 +71,6 @@ func (a *Auth) Fixed(email string, next http.Handler) http.Handler {
 
 const noAccessPage = "web/public/common/no-access.html"
 
-// The check is on the effective identity: an admin viewing as someone the
-// directory has dropped is refused as that person would be.
 func (a *Auth) admit(w http.ResponseWriter, r *http.Request, id identity, next http.Handler) {
 	if !a.member(id.effective) && r.URL.Path != "/auth/logout" && r.URL.Path != "/optin" {
 		a.deny(w, r)
@@ -84,7 +79,6 @@ func (a *Auth) admit(w http.ResponseWriter, r *http.Request, id identity, next h
 	next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, id)))
 }
 
-// fetched is a request a page's script makes, which wants a status, not a page.
 func fetched(path string) bool {
 	return strings.Contains(path, "/api/") || strings.HasPrefix(path, "/blob/")
 }
@@ -108,13 +102,6 @@ func (a *Auth) deny(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Public is what serves without a session: the sign-in exchange itself,
-// everything under /hooks/, the callbacks the service asked other services
-// for, everything under /open/, the addresses it hands out - share cards,
-// the calendar's personal feeds, Loop's unsubscribe links - that a crawler,
-// a calendar app or a mail client follows, each proving its caller its own
-// way, and everything under /ext/, the calendar's pages for people outside
-// the community it has invited, each found by its own secret.
 func Public(path string) bool {
 	return path == "/auth/login" || path == "/auth/client" || strings.HasPrefix(path, "/hooks/") || strings.HasPrefix(path, "/open/") || strings.HasPrefix(path, "/ext/")
 }
@@ -194,11 +181,6 @@ var assetDests = map[string]bool{
 	"worker": true, "sharedworker": true, "serviceworker": true,
 }
 
-// page is a request the login page may answer: anything but an API or
-// media path and an asset a browser names as one. A stylesheet or script
-// answered with the login page is kept under that address and used again
-// once signed in; a page fetched by a service worker says "empty", as a
-// script's fetch does, and must still reach sign-in.
 func page(r *http.Request) bool {
 	if fetched(r.URL.Path) {
 		return false
@@ -206,9 +188,6 @@ func page(r *http.Request) bool {
 	return !assetDests[r.Header.Get("Sec-Fetch-Dest")]
 }
 
-// cookieDomain is the domain the session is scoped to, so one sign-in covers
-// every app under it: the server's own, for the domain itself or an app's
-// name one label under it. A host outside that shape gets a host-only cookie.
 func (a *Auth) cookieDomain(host string) string {
 	host, _, _ = strings.Cut(host, ":")
 	if host == a.domain {
@@ -280,11 +259,6 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// setSession sets the session cookie for the domain and deletes the copy
-// under any other domain a cookie of the name could sit at for this host,
-// since the browser sends every copy and the server reads the first: a
-// stale one, host-only from before the cookie was scoped to the domain,
-// would otherwise shadow the one just set on every request.
 func (a *Auth) setSession(w http.ResponseWriter, r *http.Request, email string) {
 	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	domain := a.cookieDomain(r.Host)
@@ -309,10 +283,6 @@ func (a *Auth) setSession(w http.ResponseWriter, r *http.Request, email string) 
 	}
 }
 
-// logoutDomains lists every domain a session cookie reaching this host could
-// have been set for: host-only, and the server's domain. Sessions issued
-// before the cookie was scoped to the domain were host-only; signing out has
-// to end all of them.
 func (a *Auth) logoutDomains(host string) []string {
 	domains := []string{""}
 	if domain := a.cookieDomain(host); domain != "" {
@@ -321,9 +291,6 @@ func (a *Auth) logoutDomains(host string) []string {
 	return domains
 }
 
-// logout ends every session of the signed-in address, this browser's copy
-// and any other, and any spoof with it: the next person to sign in on this
-// browser must not inherit a view as someone else.
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
 	if !sameOrigin(w, r) {
 		return
