@@ -5,7 +5,8 @@ import {personLink} from '../people.js';
 import {tagFacetOptions} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
 import {anyFiltersActive, matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, tagRelationOptionsFor} from '../filters.js';
-import {resetMain} from '../chrome.js';
+import {render} from '/router.js';
+import {openLayer} from '/modal.js';
 import {api} from '/api.js';
 
 function joinFamilyNames(people) {
@@ -324,23 +325,23 @@ async function loadInviteSystems() {
   return inviteSystems;
 }
 
-export function renderGreenvelopePage() {
-  const main = resetMain();
+export function invitesPage() {
+  const page = document.createDocumentFragment();
 
   const pageHeader = el('div', 'page-header container page-header-list');
   const titleWrap = el('div');
   titleWrap.append(el('h1', 'page-title', 'Invites'));
   titleWrap.append(el('div', 'page-subtitle', 'Export a formatted CSV of families, grouped and greeted the way you choose, for invitations.'));
   pageHeader.append(titleWrap);
-  main.append(pageHeader);
+  page.append(pageHeader);
 
   const settings = el('div', 'gv-settings container');
   const loading = el('div', 'gv-setting-group', 'Loading invite templates…');
   settings.append(loading);
-  main.append(settings);
+  page.append(settings);
 
   const content = el('div', 'content container');
-  main.append(content);
+  page.append(content);
 
   loadInviteSystems().then(systems => {
     if (!systems.length) {
@@ -474,7 +475,7 @@ export function renderGreenvelopePage() {
             headSelect.addEventListener('change', () => {
               if (headSelect.value === '__new__') {
                 headSelect.value = state.gvGreeting;
-                openGreetingDialog(renderGreenvelopePage);
+                openGreetingDialog(render);
                 return;
               }
               state.gvGreeting = headSelect.value;
@@ -513,6 +514,7 @@ export function renderGreenvelopePage() {
     }
     renderAll();
   });
+  return page;
 }
 
 const serviceLogos = {
@@ -571,10 +573,10 @@ function openGreetingDialog(onSaved) {
   const overlay = el('div', 'greeting-dialog-overlay');
   const panel = el('div', 'greeting-dialog-panel');
 
-  const close = () => {
+  const close = openLayer(() => {
     overlay.remove();
     document.removeEventListener('keydown', onKey);
-  };
+  });
   function onKey(e) {
     if (e.key === 'Escape') {
       close();

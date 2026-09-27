@@ -1,6 +1,7 @@
 import {state, isAdmin, years, allYears, sortByStart, matches, selectedYear, listedIn, canAdd, addLabel, categoryPath, categoryFromAddress, PRIORITY, isPriority, descendants} from '../state.js';
 import {el, toggle, selectPill, thumb, button, svg} from '../dom.js';
 import {setTitle, setSearch, renderChrome} from '/shell.js';
+import {render} from '/router.js';
 import {activityCard, categoryClass, priorityRow, wanted} from '../cards.js';
 import {openActivity} from '../edit.js';
 
@@ -158,7 +159,7 @@ export function signUpPage(yearParam) {
   head.append(main);
 
   const body = el('div');
-  const render = () => {
+  const paintYear = () => {
     setTitle(year);
     body.replaceChildren(yearContent(year, year === years().current));
   };
@@ -166,10 +167,10 @@ export function signUpPage(yearParam) {
     state.year = picked;
     query = '';
     history.replaceState(null, '', picked === years().current ? '/' : `/years/${encodeURIComponent(picked)}`);
-    document.dispatchEvent(new CustomEvent('hca:refresh'));
+    render();
   }));
 
   page.append(head, body);
-  render();
+  paintYear();
   return page;
 }

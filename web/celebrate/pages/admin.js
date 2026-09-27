@@ -1,6 +1,7 @@
 import {state, isSystemAdmin, me, money, whenLine, celebration} from '../state.js';
 import {el, button, svg} from '../dom.js';
-import {openCelebration, openCategory, openSettings, openMoveAddress, reload, people} from '../edit.js';
+import {openCelebration, openCategory, openSettings, openMoveAddress, people} from '../edit.js';
+import {load} from '/router.js';
 import {api} from '/api.js';
 import {celebrationBand} from './parties.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
@@ -28,7 +29,7 @@ function bannerCard() {
         location: chosen.location || '', address: chosen.address || '', description: chosen.description || '', image: chosen.image || '',
         buttonText: chosen.buttonText || '', buttonUrl: chosen.buttonUrl || '', current: chosen.current, banner: true,
       });
-      await reload();
+      await load();
     } catch (err) {
       alert(err.message);
     }
@@ -87,7 +88,7 @@ function categoriesCard() {
         order.splice(to, 0, order.splice(from, 1)[0]);
         try {
           await api('POST', '/api/celebrate/categories/order', {titles: order});
-          await reload();
+          await load();
           paint();
         } catch (err) {
           status.classList.add('error');

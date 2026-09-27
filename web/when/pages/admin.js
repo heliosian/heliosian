@@ -1,15 +1,11 @@
-import {state, me, tagGroups, bands, classroomNames, myClassrooms, event, eventDates, eventPath, addDays, parseDate, dayLabel} from '../state.js';
+import {state, me, tagGroups, classroomNames, event, eventPath, dayLabel} from '../state.js';
 import {el, link, svg, button, toast} from '../dom.js';
 import {popup} from '/modal.js';
 import {api} from '/api.js';
 import {adminPage as buildAdminPage} from '/admin.js';
 import {eventForm} from '../eventform.js';
 import {imageControl} from '../imagecontrol.js';
-
-async function refreshModel() {
-  const {load} = await import('../app.js');
-  await load();
-}
+import {load} from '/router.js';
 
 function working() {
   return tagGroups().map(g => ({name: g.name, open: true, tags: g.tags.filter(t => !t.builtIn).map(t => ({name: t.name, description: t.description, on: t.default, image: t.image || '', imageUrl: t.imageUrl || ''}))})).filter(g => g.tags.length);
@@ -326,7 +322,7 @@ function categoriesTool() {
     }
     status.textContent = '';
     toast('Categories saved');
-    await refreshModel();
+    await load();
   });
   actions.append(save, status);
   wrap.append(actions);
@@ -336,7 +332,7 @@ function categoriesTool() {
 function openAddEvent(from, shift, repaint) {
   let shut = null;
   const form = eventForm({from, shift, onDone: async () => {
-    await refreshModel();
+    await load();
     shut();
     repaint();
   }});
@@ -426,7 +422,7 @@ function eventsTool() {
       return;
     }
     toast(done);
-    await refreshModel();
+    await load();
     paint();
   };
   const paint = () => {
@@ -487,7 +483,7 @@ function eventsTool() {
           return;
         }
         toast('Moved');
-        await refreshModel();
+        await load();
         paint();
       });
       save.hidden = true;

@@ -5,7 +5,7 @@ import {familiesOf, familyOf} from '../families.js';
 import {personCard, personLink, photoOrInitials, cardMore, gradeChain, guestCard} from '../people.js';
 import {tagFacetOptions, onTagsChange, selectedGuests} from '../tags.js';
 import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl} from '../filters.js';
-import {resetMain, finishRender} from '../chrome.js';
+import {render} from '/router.js';
 import {renderStaff} from './staff.js';
 import {familyDetailChip} from './family.js';
 
@@ -106,13 +106,13 @@ const tabRenderers = {
   staff: renderStaff,
 };
 
-export function renderPeople() {
-  const main = resetMain();
+export function peoplePage() {
+  const page = document.createDocumentFragment();
 
   const pageHeader = el('div', 'page-header container');
   pageHeader.append(el('h1', 'page-title', 'Directory'));
   pageHeader.append(el('div', 'page-subtitle', 'Find and connect with the Helios community.'));
-  main.append(pageHeader);
+  page.append(pageHeader);
 
   const items = peopleTabs.map(t => ({...t, icon: svg(t.key === 'staff' ? 'staff-tab' : t.key)}));
   const strip = tabStrip(items, state.tab, 2, key => {
@@ -120,11 +120,10 @@ export function renderPeople() {
     state.q = '';
     state.filterTags.clear();
     history.replaceState(null, '', tabHref(key));
-    renderPeople();
-    finishRender();
+    render();
   });
   strip.classList.add('container');
-  main.append(strip);
+  page.append(strip);
 
   const content = el('div', 'content container');
   const isEveryone = state.tab === 'everyone';
@@ -181,7 +180,7 @@ export function renderPeople() {
 
   const grid = el('div');
   content.append(grid);
-  main.append(content);
+  page.append(content);
 
   function renderGrid() {
     grid.replaceChildren();
@@ -190,5 +189,7 @@ export function renderPeople() {
     }
   }
   renderGrid();
-  input.focus();
+  // The router mounts the page after this returns.
+  queueMicrotask(() => input.focus());
+  return page;
 }

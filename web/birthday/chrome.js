@@ -1,6 +1,7 @@
 import {state, me, isSystemAdmin, isAdmin, isUnassigned, commsOnly, onComms, mine, urgency} from './state.js';
 import {el, svg, link} from './dom.js';
 import {initShell, appSymbol} from '/shell.js';
+import {render, setPath} from '/router.js';
 
 const unassignedItem = {href: '/unassigned', icon: 'users', label: 'Unassigned'};
 const calendarItem = {href: '/calendar', icon: 'calendar', label: 'Calendar'};
@@ -114,17 +115,12 @@ export function initChrome() {
     name: 'Helios Staff Birthdays',
     me,
     isSystemAdmin,
-    onSuper: () => {
-      document.dispatchEvent(new CustomEvent('birthday:refresh'));
-    },
+    onSuper: render,
     fillNav,
     fillTabbar,
     search: {
       placeholder: 'Search staff…',
-      carry: () => {
-        history.pushState(null, '', '/process');
-        document.dispatchEvent(new CustomEvent('birthday:refresh'));
-      },
+      carry: () => setPath('/process'),
     },
     closeMenus,
   });

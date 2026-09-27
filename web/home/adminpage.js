@@ -1,7 +1,8 @@
 import {state} from './state.js';
 import {el, svg, iconOf} from './dom.js';
-import {adminPage, adminsCard} from '/admin.js';
+import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 import {api} from '/api.js';
+import {render} from '/router.js';
 
 const feedback = {rows: [], filter: 'New', canFile: false, repo: '', open: new URLSearchParams(location.search).get('report') || ''};
 
@@ -181,7 +182,7 @@ function feedbackCard() {
   const open = id => {
     feedback.open = id;
     paint();
-    fillReport(detail, id, renderAdminPage);
+    fillReport(detail, id, render);
   };
   for (const [label, value] of [['New', 'New'], ['Filed', 'Filed'], ['Dismissed', 'Dismissed'], ['All', '']]) {
     const chip = el('button', 'filter-chip' + (feedback.filter === value ? ' active' : ''), label);
@@ -198,24 +199,18 @@ function feedbackCard() {
   card.append(filters, list);
   paint();
   if (feedback.open) {
-    fillReport(detail, feedback.open, renderAdminPage).then(() => detail.scrollIntoView({block: 'start'}));
+    fillReport(detail, feedback.open, render).then(() => detail.scrollIntoView({block: 'start'}));
   }
   wrap.append(card, detail);
   return wrap;
 }
 
-export async function renderAdminPage() {
-  const main = document.querySelector('#main');
-  const user = state.model.user;
-  if (!user.isAdmin) {
-    main.replaceChildren(adminPage({appName: 'Heliosian', allowed: false, email: user.email, sections: []}));
-    return;
-  }
+async function fillAdminPage(slot) {
   let admin;
   try {
     admin = await api('GET', '/api/admin/state');
   } catch (err) {
-    main.replaceChildren(el('p', 'hint', `Failed to load admin state: ${err.message}`));
+    slot.replaceWith(el('p', 'hint', `Failed to load admin state: ${err.message}`));
     return;
   }
   const control = [{key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can add, edit, and delete links and categories, and reach this page. Changes save immediately.', people: () => admin.people})}];
@@ -223,13 +218,23 @@ export async function renderAdminPage() {
     try {
       await loadFeedback();
     } catch (err) {
-      main.replaceChildren(el('p', 'hint', `Could not load the reports: ${err.message}`));
+      slot.replaceWith(el('p', 'hint', `Could not load the reports: ${err.message}`));
       return;
     }
     control.push({key: 'feedback', label: 'Feedback', count: feedback.rows.filter(r => r.status === 'New').length, card: feedbackCard});
   }
-  main.replaceChildren(adminPage({appName: 'Heliosian', allowed: true, email: user.email, sections: [
+  slot.replaceWith(buildAdminPage({appName: 'Heliosian', allowed: true, email: state.model.user.email, sections: [
     {title: 'Display', tabs: [{key: 'categories', label: 'Categories', card: categoriesCard}]},
     {title: 'Editing & Control', tabs: control},
   ]}));
+}
+
+export function adminPage() {
+  const user = state.model.user;
+  if (!user.isAdmin) {
+    return buildAdminPage({appName: 'Heliosian', allowed: false, email: user.email, sections: []});
+  }
+  const slot = el('div');
+  fillAdminPage(slot);
+  return slot;
 }

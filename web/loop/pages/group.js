@@ -1,9 +1,10 @@
 import {state, me, isAdmin, options, groupPath} from '../state.js';
-import {el, svg, link, button, iconButton, copyText, toast, personRow, pageHead, thumb} from '../dom.js';
+import {el, svg, button, iconButton, copyText, toast, personRow, pageHead, thumb} from '../dom.js';
 import {whoLink} from '/toolbar.js';
 import {setTitle} from '/shell.js';
 import {api} from '/api.js';
-import {load, navigate} from '../app.js';
+import {load, navigate} from '/router.js';
+import {openLayer} from '/modal.js';
 import {createPersonPicker} from '/picker.js';
 import {tabStrip, tabParam, tabHref} from '/tabs.js';
 import {rulesEditor} from '/rules.js';
@@ -682,10 +683,10 @@ function editModal(g, startTab, isNew) {
       }
     }
   };
-  const close = () => {
+  const close = openLayer(() => {
     overlay.remove();
     document.removeEventListener('keydown', onKey);
-  };
+  });
   const form = editor(g, isNew, close, startTab);
   const header = el('div', 'modal-header');
   const heading = el('div', 'modal-heading');

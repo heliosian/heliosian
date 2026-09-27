@@ -1,7 +1,6 @@
 import {byEmail, privacyLinks} from '../state.js';
 import {el, svg, infoBanner} from '../dom.js';
 import {familyOf} from '../families.js';
-import {resetMain} from '../chrome.js';
 
 const veracrossAddressLabels = {full: 'Full Address', partial: 'Partial (City Only)', hidden: 'Hidden'};
 const veracrossPhoneLabels = {visible: 'Visible', mixed: 'Mixed', hidden: 'Hidden'};
@@ -74,18 +73,18 @@ function privacyActionButton(iconName, label, href) {
   return a;
 }
 
-export function renderPrivacyPage() {
-  const main = resetMain();
+export function privacyPage() {
+  const page = document.createDocumentFragment();
   const me = byEmail[document.body.dataset.userEmail];
   const family = familyOf(me);
   if (!family) {
-    main.append(el('div', 'container', 'No family record found for your account.'));
-    return;
+    page.append(el('div', 'container', 'No family record found for your account.'));
+    return page;
   }
 
   const warnings = privacyWarnings(family);
   for (const label of warnings) {
-    main.append(privacyWarningBanner(label));
+    page.append(privacyWarningBanner(label));
   }
 
   const content = el('div', 'content container privacy-page');
@@ -149,7 +148,8 @@ export function renderPrivacyPage() {
     content.append(howTo);
   }
 
-  main.append(content);
+  page.append(content);
+  return page;
 }
 
 function privacyWarnings(family) {

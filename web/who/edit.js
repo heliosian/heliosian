@@ -1,7 +1,7 @@
 import {state, byEmail} from './state.js';
 import {el, svg} from './dom.js';
 import {familiesOf} from './families.js';
-import {load} from './app.js';
+import {load} from '/router.js';
 import {api} from '/api.js';
 
 export async function submitField(key, field, value, status) {

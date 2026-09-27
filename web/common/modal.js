@@ -12,9 +12,29 @@ function el(tag, className, text) {
 let current = null;
 let reload = null;
 const stack = [];
+const layers = new Set();
 
 const overlay = () => document.querySelector('#modal-overlay');
 const form = () => document.querySelector('#modal');
+
+export function openLayer(shut) {
+  const close = () => {
+    layers.delete(close);
+    shut();
+  };
+  layers.add(close);
+  return close;
+}
+
+export function closeLayers() {
+  for (const close of [...layers]) {
+    close();
+  }
+  stack.length = 0;
+  if (current) {
+    closeModal();
+  }
+}
 
 export function closeModal() {
   const below = stack.pop();
@@ -152,10 +172,10 @@ export function popup(title, node, {wide = false} = {}) {
   const close = el('button', 'modal-close', '×');
   close.type = 'button';
   close.setAttribute('aria-label', 'Close');
-  const shut = () => {
+  const shut = openLayer(() => {
     layer.remove();
     document.removeEventListener('keydown', onKey, true);
-  };
+  });
   const onKey = e => {
     if (e.key === 'Escape') {
       e.stopImmediatePropagation();

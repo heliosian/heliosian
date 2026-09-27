@@ -1,6 +1,6 @@
 import {state} from '../state.js';
 import {el} from '../dom.js';
-import {adminPage, adminsCard} from '/admin.js';
+import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 import {createPersonPicker} from '/picker.js';
 import {popup} from '/modal.js';
 import {api} from '/api.js';
@@ -557,22 +557,26 @@ function sections() {
   ];
 }
 
-export async function renderAdminPage() {
-  const main = document.querySelector('#main');
-  const user = state.model.user;
-  if (!user.isAdmin) {
-    main.replaceChildren(adminPage({appName: 'Helios Who?', allowed: false, email: user.email, sections: []}));
-    return;
-  }
+async function fillAdminPage(slot) {
   try {
     await fetchState();
   } catch (err) {
-    main.replaceChildren(el('p', 'hint', `Failed to load admin state: ${err.message}`));
+    slot.replaceWith(el('p', 'hint', `Failed to load admin state: ${err.message}`));
     return;
   }
   painters.length = 0;
-  main.replaceChildren(adminPage({appName: 'Helios Who?', allowed: true, email: user.email, sections: sections()}));
+  slot.replaceWith(buildAdminPage({appName: 'Helios Who?', allowed: true, email: state.model.user.email, sections: sections()}));
   for (const paint of painters) {
     paint();
   }
+}
+
+export function adminPage() {
+  const user = state.model.user;
+  if (!user.isAdmin) {
+    return buildAdminPage({appName: 'Helios Who?', allowed: false, email: user.email, sections: []});
+  }
+  const slot = el('div');
+  fillAdminPage(slot);
+  return slot;
 }

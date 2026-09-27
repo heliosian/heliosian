@@ -7,19 +7,10 @@ import {el, svg, toast, button, avatar} from './dom.js';
 import {tabbedFields} from '/tabs.js';
 import {imageTools} from '/images.js';
 import {openModal, closeModal, popup} from '/modal.js';
+import {load, navigate} from '/router.js';
 import {field, text, textarea, select, checkbox, segmented, whenPickers} from '/form.js';
 
 export const {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/celebrate', {state, toast});
-
-export async function reload() {
-  const {load} = await import('./app.js');
-  await load();
-}
-
-async function goTo(path) {
-  const {navigate} = await import('./app.js');
-  navigate(path);
-}
 
 let asked = null;
 
@@ -578,7 +569,7 @@ export async function removeTicket(p, a) {
   }
   try {
     await api('DELETE', '/api/celebrate/ticket', {ticketId: a.ticketId});
-    await reload();
+    await load();
     toast(a.status === 'Ticket' ? 'Ticket removed' : 'Off the waitlist');
   } catch (err) {
     toast(err.message);
@@ -592,7 +583,7 @@ export async function offerTickets(p, a, quantity) {
   }
   try {
     await api('POST', '/api/celebrate/waitlist/offer', {ticketId: a.ticketId, quantity: n});
-    await reload();
+    await load();
     toast(`${a.name} now has ${n === 1 ? 'a ticket' : n + ' tickets'}`);
   } catch (err) {
     toast(err.message);
@@ -613,7 +604,7 @@ export function openFreeTicket(p) {
         partyId: p.id, free: true, purchaser: guestOf.value, raiseCapacity: Boolean(raise && raise.input.checked), note: 'Free ticket from the hosts',
         attendees: [{email: person.email || '', name: person.guest ? person.name : ''}],
       });
-      await reload();
+      await load();
       const host = guestOf.person;
       toast(host ? `${person.name} has a free ticket as ${host.name}'s guest` : `${person.name} has a free ticket`);
     } catch (err) {
@@ -867,7 +858,7 @@ export function openParty(p) {
     }),
     afterSave: result => {
       if (result && result.id && party(result.id)) {
-        goTo(partyPath(party(result.id)));
+        navigate(partyPath(party(result.id)));
         if (adding && !isAdmin()) {
           toast('Submitted - an admin will review it');
         }
@@ -875,7 +866,7 @@ export function openParty(p) {
     },
     onDelete: p && isAdmin() ? () => api('DELETE', '/api/celebrate/party', {id: p.id}) : null,
     confirmDelete: p ? `Delete ${p.title}? This cannot be undone.` : '',
-    afterDelete: () => goTo('/'),
+    afterDelete: () => navigate('/'),
   });
 }
 
@@ -890,7 +881,7 @@ export async function savePartyFields(p, changes) {
   };
   try {
     await api('POST', '/api/celebrate/party', body);
-    await reload();
+    await load();
   } catch (err) {
     toast(err.message);
   }
@@ -903,17 +894,17 @@ export async function setFlags(p, changes) {
   };
   try {
     await api('POST', '/api/celebrate/party/flags', body);
-    await reload();
+    await load();
   } catch (err) {
     toast(err.message);
-    await reload();
+    await load();
   }
 }
 
 export async function setPartyStatus(p, status) {
   try {
     await api('POST', '/api/celebrate/party/status', {id: p.id, status});
-    await reload();
+    await load();
     toast(status === 'Open' ? `${p.title} is open` : `${p.title} is ${status.toLowerCase()}`);
   } catch (err) {
     toast(err.message);

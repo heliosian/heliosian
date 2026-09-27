@@ -1,7 +1,8 @@
-import {state, eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, weekdayLong, specials, isSchoolDay, eventTint, timeLine, eventPath, isMatch, isGray} from './state.js';
+import {eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, weekdayLong, specials, isSchoolDay, eventTint, timeLine, eventPath, isMatch, isGray} from './state.js';
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg, button} from './dom.js';
 import {popup} from '/modal.js';
+import {load, navigate} from '/router.js';
 import {eventForm} from './eventform.js';
 import {planCards} from './events.js';
 
@@ -90,7 +91,6 @@ export function openAddEvent() {
   let shut = null;
   const form = eventForm({onDone: async ids => {
     shut();
-    const {load, navigate} = await import('./app.js');
     await load();
     if (ids && ids.length) {
       navigate('/e/' + ids[0]);

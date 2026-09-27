@@ -2,6 +2,7 @@ import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, ca
 import {parseWhen} from '/datecard.js';
 import {el, link, svg, thumb, badge, button} from './dom.js';
 import {openSignUp, openActivity} from './edit.js';
+import {navigate} from '/router.js';
 
 function statusBadges(node) {
   const out = [];
@@ -159,10 +160,7 @@ export function childRow(node, editing, moves) {
     if (under.length) {
       const line = el('div', 'row-under');
       for (const c of under) {
-        const chip = button(`${c.title} (${c.spots > 0 ? `${c.taken} of ${c.spots}` : c.taken})`, null, 'row-under-chip', async () => {
-          const {navigate} = await import('./app.js');
-          navigate(activityPath(c));
-        });
+        const chip = button(`${c.title} (${c.spots > 0 ? `${c.taken} of ${c.spots}` : c.taken})`, null, 'row-under-chip', () => navigate(activityPath(c)));
         chip.title = `Open ${c.title}`;
         line.append(chip);
       }

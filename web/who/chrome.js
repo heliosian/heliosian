@@ -8,7 +8,7 @@ import {closeFilterPanels} from './filters.js';
 import {staleItems, familyInfoBanner, familyNavPeople, personTodoCount} from './stale.js';
 import {searchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
-import {load} from './app.js';
+import {load} from '/router.js';
 import {onSlash, isEditableTarget} from '/toolbar.js';
 import {initShell, renderAccount, searchInput, syncViewportHeight} from '/shell.js';
 import {setSuperEdit} from '/superedit.js';
@@ -64,15 +64,24 @@ function updateMobileTitleInset() {
   document.documentElement.style.setProperty('--mobile-title-inset', leftWidth + 'px');
 }
 
-export function resetMain(...children) {
-  const main = document.querySelector('#main');
-  main.replaceChildren();
+export function preparePage(title) {
+  renderNav();
+  setChrome(title, null);
   onTagsChange(() => {});
+}
+
+export function showPage(node) {
+  const main = document.querySelector('#main');
   const seg = segments();
+  if (seg[0] === 'admin') {
+    main.replaceChildren(node);
+    return;
+  }
+  const wrap = el('div', 'page-content-wrap');
   if (seg[0] !== 'my-privacy' && !privacyMismatchCardDismissed()) {
     const warnings = myPrivacyWarnings();
     if (warnings.length) {
-      main.append(privacyMismatchCard(warnings));
+      wrap.append(privacyMismatchCard(warnings));
     }
   }
   const onOwnFamilyPage = seg[0] === 'families' && seg[1] === myFamilyKey();
@@ -82,11 +91,12 @@ export function resetMain(...children) {
   if (!onOwnFamilyPage && !onOwnFamilyMemberPage && seg[0] !== 'my-privacy') {
     const stale = staleItems();
     if (stale.length) {
-      main.append(familyInfoBanner(stale));
+      wrap.append(familyInfoBanner(stale));
     }
   }
-  main.append(...children);
-  return main;
+  wrap.append(node);
+  main.replaceChildren(wrap);
+  syncViewportHeight();
 }
 
 function navBadge(count) {
@@ -288,14 +298,6 @@ export function renderNav() {
 }
 
 onTagsChangeChrome(renderNav);
-
-export function finishRender() {
-  syncViewportHeight();
-  const main = document.querySelector('#main');
-  const contentWrap = el('div', 'page-content-wrap');
-  contentWrap.append(...main.childNodes);
-  main.append(contentWrap);
-}
 
 const mobileListsMenu = document.querySelector('#mobile-lists-menu');
 const mobileListsOverlay = document.querySelector('#mobile-lists-overlay');

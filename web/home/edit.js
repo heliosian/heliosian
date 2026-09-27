@@ -1,6 +1,6 @@
 import {state, isAdmin, categoryTitles, linkCategoryTitles, tagLabelsOf} from './state.js';
 import {el, svg, categoryIcons, iconOf, toast} from './dom.js';
-import {load} from './app.js';
+import {load} from '/router.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
 import {appOrigin} from '/toolbar.js';

@@ -1,9 +1,10 @@
-import {state, me, isAdmin, isSystemAdmin, applySuperEdit, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, dayLabel, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents, eventDates} from './state.js';
+import {state, me, isSystemAdmin, applySuperEdit, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
 import {el, svg, link, button, toast, feedMark, emojiPicker} from './dom.js';
 import {popup} from '/modal.js';
 import {dayColumn} from './day.js';
 import {onSlash} from '/toolbar.js';
 import {initShell, appSymbol} from '/shell.js';
+import {load, render, setPath} from '/router.js';
 import {api} from '/api.js';
 
 const primary = [
@@ -82,7 +83,6 @@ export function editFeedPopup(f) {
     }
     shut();
     toast(`${f.name} deleted`);
-    const {load} = await import('./app.js');
     await load();
   });
   actions.append(submit, button('Cancel', '', 'button button-secondary', shut), status, remove);
@@ -117,7 +117,6 @@ export function editFeedPopup(f) {
       submit.disabled = false;
     }
     shut();
-    const {load} = await import('./app.js');
     await load();
   });
   name.focus();
@@ -132,7 +131,6 @@ export async function makeDefaultFeed(f) {
     return;
   }
   toast(`${f.name} is your default calendar now.`, 4000);
-  const {load} = await import('./app.js');
   await load();
 }
 
@@ -143,7 +141,6 @@ async function orderFeeds(tokens) {
     toast(err.message);
     return false;
   }
-  const {load} = await import('./app.js');
   await load();
   return true;
 }
@@ -170,12 +167,7 @@ export function calendarMenu(onPick) {
     item.append(tail);
     item.addEventListener('click', () => {
       onPick();
-      setActiveFeed(f.token);
-      setClassrooms(feedClassrooms(f));
-      setTags(feedTags(f));
-      history.pushState(null, '', '/c/' + f.token);
-      document.dispatchEvent(new CustomEvent('calendar:navigate'));
-      refresh();
+      pickFeed(f);
     });
     menu.append(item);
   }
@@ -279,12 +271,7 @@ function fillNav(nav) {
       }
       a.addEventListener('click', e => {
         e.preventDefault();
-        setActiveFeed(f.token);
-        setClassrooms(feedClassrooms(f));
-        setTags(feedTags(f));
-        history.pushState(null, '', '/c/' + f.token);
-        document.dispatchEvent(new CustomEvent('calendar:navigate'));
-        refresh();
+        pickFeed(f);
       });
       if (editingNav) {
         const grip = el('span', 'nav-sub-grip');
@@ -325,7 +312,6 @@ function fillNav(nav) {
             return;
           }
           toast(`${f.name} removed`);
-          const {load} = await import('./app.js');
           await load();
         });
         row.append(remove);
@@ -337,7 +323,16 @@ function fillNav(nav) {
 
 function refresh() {
   carriedQuery = typed();
-  document.dispatchEvent(new CustomEvent('calendar:refresh'));
+  render();
+}
+
+function pickFeed(f) {
+  setActiveFeed(f.token);
+  setClassrooms(feedClassrooms(f));
+  setTags(feedTags(f));
+  state.appliedCalendar = '';
+  carriedQuery = typed();
+  setPath('/c/' + f.token);
 }
 
 function chip(label, on, onClick, color) {
@@ -530,17 +525,12 @@ export function fillFilters(wrap, opts = {}) {
         return;
       }
       toast('My Heliosian is back to the calendar\u2019s own defaults, here and on the Heliosian home page.', 5000);
-      await reloadModel();
+      await load();
     }));
   }
   if (foot.childElementCount) {
     wrap.append(foot);
   }
-}
-
-async function reloadModel() {
-  const {load} = await import('./app.js');
-  await load();
 }
 
 export function renderRailDay() {
@@ -724,9 +714,8 @@ export function initChrome() {
     name: 'Helios When',
     me,
     isSystemAdmin,
-    onSuper: async () => {
+    onSuper: () => {
       applySuperEdit();
-      const {render} = await import('./app.js');
       render();
     },
     fillNav,

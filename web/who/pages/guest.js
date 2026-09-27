@@ -2,7 +2,6 @@ import {lists, byEmail} from '../state.js';
 import {el, svg, withFrom, iconButton, copyButton, contactRow} from '../dom.js';
 import {personLink, photoOrInitials} from '../people.js';
 import {fromCrumbs, breadcrumbs} from '../crumbs.js';
-import {resetMain} from '../chrome.js';
 
 function findGuest(id) {
   for (const list of Object.values(lists)) {
@@ -14,17 +13,17 @@ function findGuest(id) {
   return null;
 }
 
-export function renderGuestDetail(id) {
-  const main = resetMain();
+export function guestPage(id) {
+  const page = document.createDocumentFragment();
   const found = findGuest(id);
   if (!found) {
-    main.append(el('div', 'empty', 'Not found.'));
-    return;
+    page.append(el('div', 'empty', 'Not found.'));
+    return page;
   }
   const {list, guest} = found;
   const listHref = withFrom('/people?list=' + encodeURIComponent(list.key));
   const origin = fromCrumbs() || [['People', '/people']];
-  main.append(breadcrumbs([...origin, [guest.name, null]]));
+  page.append(breadcrumbs([...origin, [guest.name, null]]));
 
   const content = el('div', 'container detail-content');
   const card = el('div', 'detail-card');
@@ -73,5 +72,6 @@ export function renderGuestDetail(id) {
   grid.append(right);
   card.append(grid);
   content.append(card);
-  main.append(content);
+  page.append(content);
+  return page;
 }

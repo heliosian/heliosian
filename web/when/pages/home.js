@@ -4,6 +4,7 @@ import {el, link, svg, button, peopleLine, toast, copyText, feedMark} from '../d
 import {popup} from '/modal.js';
 import {setSearch, fillFilters, renderRailDay, editFeedPopup, makeDefaultFeed, calendarMenu} from '../chrome.js';
 import {setTitle} from '/shell.js';
+import {load, setPath} from '/router.js';
 import {api} from '/api.js';
 import {dayColumn, openAddEvent} from '../day.js';
 import {callPill, emptyNote, roomDots, planCards} from '../events.js';
@@ -88,11 +89,6 @@ function upcomingPanel(date) {
   paint();
   panel.append(head, body);
   return {node: panel, paint};
-}
-
-function go(path) {
-  history.pushState(null, '', path);
-  document.dispatchEvent(new CustomEvent('calendar:refresh'));
 }
 
 let peek = null;
@@ -282,7 +278,7 @@ function dayCell(date, month) {
       return;
     }
     hidePeek();
-    go('/day/' + date);
+    setPath('/day/' + date);
   });
   const groups = specials(date);
   const all = selectedClassrooms();
@@ -382,7 +378,6 @@ function saveCalendar() {
     shut();
     setActiveFeed(made.token);
     toast(`Saved. ${body.name} is under Calendar in the rail.`, 5000);
-    const {load} = await import('../app.js');
     await load();
   });
   name.focus();
@@ -510,13 +505,12 @@ async function saveOnto(f) {
   }
   setActiveFeed(f.token);
   toast(`Saved onto ${f.name}.`, 4000);
-  const {load} = await import('../app.js');
   await load();
 }
 
 function goToday() {
   state.month = monthOf(today());
-  go('/');
+  setPath('/');
 }
 
 function monthGrid() {

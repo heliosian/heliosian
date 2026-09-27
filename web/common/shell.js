@@ -184,6 +184,13 @@ export function renderChrome() {
   }
 }
 
+export function showPage(node) {
+  const page = document.querySelector('#page');
+  page.className = '';
+  page.replaceChildren(node);
+  renderChrome();
+}
+
 const heldSafeArea = {};
 
 // iOS reports a zero safe area once an in-app browser closes over a home-screen app,

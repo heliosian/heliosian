@@ -3,28 +3,19 @@ import {el, button, toast} from './dom.js';
 import {appOrigin} from '/toolbar.js';
 import {api} from '/api.js';
 import {openModal} from '/modal.js';
+import {load, navigate} from '/router.js';
 import {field, text, textarea, select, fillSelect, checkbox} from '/form.js';
-
-export async function reload() {
-  const {load} = await import('./app.js');
-  await load();
-}
 
 export async function act(method, url, body, message) {
   try {
     await api(method, url, body);
-    await reload();
+    await load();
     if (message) {
       toast(message);
     }
   } catch (err) {
     toast(err.message);
   }
-}
-
-async function goTo(path) {
-  const {navigate} = await import('./app.js');
-  navigate(path);
 }
 
 export function assignToMe(sv) {
@@ -61,10 +52,10 @@ export async function markAllUsed(list) {
       await api('POST', '/api/birthday/used', {email: sv.email, used: true});
       n++;
     }
-    await reload();
+    await load();
     toast(`Marked ${n} as used`);
   } catch (err) {
-    await reload();
+    await load();
     toast(err.message);
   }
 }
@@ -83,10 +74,10 @@ export async function shareIssue(date) {
   }
   try {
     const {copied} = await api('POST', '/api/birthday/newsletter/share', {date});
-    await reload();
+    await load();
     toast(`Copied ${copied} to the shared sheet`);
   } catch (err) {
-    await reload();
+    await load();
     toast(err.message);
   }
 }
@@ -175,7 +166,7 @@ export function openBirthday(sv) {
     onDelete: sv.birthday && isAdmin() ? () => api('DELETE', '/api/birthday/birthday', {email: sv.email}) : null,
     deleteLabel: 'Remove birthday',
     confirmDelete: `Remove ${sv.name}'s birthday? Their assignments, outreach, donations, and notes must already be gone.`,
-    afterDelete: () => goTo('/skipped'),
+    afterDelete: () => navigate('/skipped'),
   });
 }
 
@@ -299,14 +290,14 @@ function openCharityForm(c, start, options) {
         allowed: admin ? allowed.input.checked : true, whyNotAllowed: why.value,
       });
       if (c && c.name !== name.value.trim() && location.pathname.startsWith('/charities/')) {
-        await goTo(`/charities/${encodeURIComponent(name.value.trim())}`);
+        navigate(`/charities/${encodeURIComponent(name.value.trim())}`);
       }
       return name.value.trim();
     },
     afterSave: options && options.afterSave,
     onDelete: c && admin ? () => api('DELETE', '/api/birthday/charity', {name: c.name}) : null,
     confirmDelete: c ? `Delete “${c.name}”? Charities with donations can only be marked not allowed.` : '',
-    afterDelete: () => goTo('/charities'),
+    afterDelete: () => navigate('/charities'),
   });
 }
 

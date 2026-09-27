@@ -1,4 +1,4 @@
-import {load} from '../app.js';
+import {load, render} from '/router.js';
 import {api} from '/api.js';
 import {colors} from '../state.js';
 import {el, svg, withFrom, slugify, thumbUrl, firstName, iconButton, copyButton, pronouncePill, contactRow, aboutMeText, paletteColor} from '../dom.js';
@@ -8,7 +8,6 @@ import {photoNeedsUpdate, factsNeedUpdate, staleItems, todoChecklist, monthYear}
 import {canEditPerson, submitField, editPencil, fieldEditor, uploadIcon, pronounceEditor} from '../edit.js';
 import {openPhotoLightbox, cropBadge, photoMenu, togglePhotoMenu, photoGrid} from '../photos.js';
 import {fromCrumbs, breadcrumbs} from '../crumbs.js';
-import {resetMain, finishRender} from '../chrome.js';
 import {familyCard} from './family.js';
 
 function tintChip(chip, color) {
@@ -46,12 +45,12 @@ function displayNameLine(p) {
 
 let personEdit = null;
 
-export function renderPersonDetail(email) {
-  const main = resetMain();
+export function personPage(email) {
+  const page = document.createDocumentFragment();
   const p = personByKey(email);
   if (!p) {
-    main.append(el('div', 'empty', 'Not found.'));
-    return;
+    page.append(el('div', 'empty', 'Not found.'));
+    return page;
   }
   const params = new URLSearchParams(location.search);
   const focusFacts = params.get('focus') === 'facts';
@@ -77,10 +76,10 @@ export function renderPersonDetail(email) {
     if (personTasks.length) {
       const wrap = el('div', 'container');
       wrap.append(todoChecklist(personTasks));
-      main.append(wrap);
+      page.append(wrap);
     }
   }
-  main.append(crumbsRow);
+  page.append(crumbsRow);
 
   const content = el('div', 'container detail-content');
   const headerCard = el('div', 'detail-card');
@@ -171,14 +170,12 @@ export function renderPersonDetail(email) {
       ? el('button', 'media-button edit-toggle', 'Done')
       : iconButton('pencil', 'Edit info', () => {
         personEdit = p.email;
-        renderPersonDetail(email);
-        finishRender();
+        render();
       });
     if (editing) {
       toggle.addEventListener('click', () => {
         personEdit = null;
-        renderPersonDetail(email);
-        finishRender();
+        render();
       });
     }
     topActions.append(toggle);
@@ -331,13 +328,13 @@ export function renderPersonDetail(email) {
         });
       });
       if (focusFacts) {
-        pencil.click();
+        queueMicrotask(() => pencil.click());
       }
     }
     content.append(aboutCard);
   }
 
-  main.append(content);
+  page.append(content);
 
   if (families.length) {
     const wrap = el('div', 'container fcard-wrap' + (families.length > 1 ? ' fcard-wrap-multi' : ''));
@@ -346,6 +343,7 @@ export function renderPersonDetail(email) {
       row.append(familyCard(p, f));
     }
     wrap.append(row);
-    main.append(wrap);
+    page.append(wrap);
   }
+  return page;
 }

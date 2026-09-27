@@ -16,10 +16,6 @@ function parseDate(date) {
 
 const pad = n => String(n).padStart(2, '0');
 
-function dateOf(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 function tint(event) {
   return event.linkApp === 'celebrate' ? 'is-celebrate' : event.linkApp === 'team' ? 'is-team' : 'is-school';
 }

@@ -2,10 +2,9 @@ import {state, byEmail, lists, tags} from '../state.js';
 import {el, svg, csvField, copyGlyph} from '../dom.js';
 import {familiesOf, familyOf, familySearchText} from '../families.js';
 import {personCard, personLink, guestCard, guestPerson} from '../people.js';
-import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, listSource, sharedOf, managersOf, manageControl, selectedGuests} from '../tags.js';
+import {tagControl, onTagsChange, listLabel, tagFacetOptions, listSource, sharedOf, managersOf, manageControl, selectedGuests} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
 import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl, tagRelationOptionsFor, familyDropdown} from '../filters.js';
-import {resetMain} from '../chrome.js';
 import {initFamilyMap} from './map.js';
 
 const tagListViews = [
@@ -95,8 +94,8 @@ function emailEntries() {
   return rows;
 }
 
-export function renderListPage() {
-  const main = resetMain();
+export function listPage() {
+  const page = document.createDocumentFragment();
 
   const title = state.filterTags.size ? [...state.filterTags].map(listLabel).join(', ') : 'Everyone';
   const smart = state.filterTags.size === 1 ? lists[[...state.filterTags][0]] : null;
@@ -159,7 +158,7 @@ export function renderListPage() {
   titleWrap.append(ownership);
   pageHeader.append(titleWrap);
   pageHeader.append(tagListViewSwitch(() => renderGrid()));
-  main.append(pageHeader);
+  page.append(pageHeader);
 
   const content = el('div', 'content container');
   const header = el('div', 'content-header content-header-solo');
@@ -237,7 +236,7 @@ export function renderListPage() {
 
   const grid = el('div');
   content.append(grid);
-  main.append(content);
+  page.append(content);
 
   const selectedColumns = new Set(emailColumns.map((c, i) => i));
   let currentRows = [];
@@ -353,5 +352,7 @@ export function renderListPage() {
     }
   }
   renderGrid();
-  input.focus();
+  // The router mounts the page after this returns.
+  queueMicrotask(() => input.focus());
+  return page;
 }

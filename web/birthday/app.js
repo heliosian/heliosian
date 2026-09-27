@@ -1,10 +1,10 @@
 import {state, applyModel, staff, charity, isUnassigned, isAdmin, commsOnly} from './state.js';
-import {el} from './dom.js';
 import {initChrome} from './chrome.js';
-import {renderChrome, setTitle, clearSearch} from '/shell.js';
+import {showPage, clearSearch} from '/shell.js';
 import {api} from '/api.js';
 import {offerTeam} from './edit.js';
 import {initModal} from '/modal.js';
+import {startApp, load, notFound} from '/router.js';
 import {jobsPage} from './pages/jobs.js';
 import {processPage} from './pages/process.js';
 import {calendarPage} from './pages/calendar.js';
@@ -15,89 +15,43 @@ import {skippedPage} from './pages/skipped.js';
 import {unassignedPage} from './pages/unassigned.js';
 import {adminPage} from './pages/admin.js';
 
-let offered = false;
-
-export async function load() {
-  applyModel(await api('GET', '/api/birthday/model'));
-  render();
-  if (!offered && location.pathname !== '/admin') {
-    offered = true;
-    offerTeam();
-  }
-}
-
-export function navigate(path) {
-  history.pushState(null, '', path);
-  render();
-  document.querySelector('#main').scrollTo(0, 0);
-}
-
-function notFound(what) {
-  const page = el('div', 'list-page');
-  page.append(el('h1', '', 'Not here'), el('p', 'row-text', `${what} is not in the app.`));
-  setTitle('Not here');
-  return page;
-}
-
-function route() {
-  const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-  if (!parts.length) {
+const routes = {
+  '': () => {
     if (commsOnly()) {
       return newslettersPage();
     }
     return state.model.staff.some(isUnassigned) ? unassignedPage() : jobsPage();
-  }
-  switch (parts[0]) {
-    case 'jobs':
-      return jobsPage();
-    case 'process':
-      return processPage();
-    case 'calendar':
-      return calendarPage();
-    case 'charities': {
-      if (!parts[1]) {
-        return charitiesPage();
-      }
-      const c = charity(parts[1]);
-      return c ? charityPage(c) : notFound(parts[1]);
+  },
+  jobs: () => jobsPage(),
+  process: () => processPage(),
+  calendar: () => calendarPage(),
+  charities: parts => {
+    if (!parts[1]) {
+      return charitiesPage();
     }
-    case 'newsletters':
-      return parts[1] && state.model.newsletterDates.includes(parts[1]) ? newsletterPage(parts[1]) : parts[1] ? notFound(parts[1]) : newslettersPage();
-    case 'skipped':
-      return isAdmin() ? skippedPage() : notFound('That page');
-    case 'unassigned':
-      return unassignedPage();
-    case 'admin':
-      return adminPage();
-    case 'staff': {
-      const sv = staff(parts[1]);
-      return sv ? staffPage(sv) : notFound(parts[1] || 'That person');
-    }
-  }
-  return notFound('That page');
-}
-
-export function render() {
-  const page = document.querySelector('#page');
-  page.className = '';
-  clearSearch();
-  page.replaceChildren(route());
-  document.body.classList.toggle('is-admin', location.pathname === '/admin');
-  renderChrome();
-}
-
-document.addEventListener('click', e => {
-  const a = e.target.closest('a[data-link]');
-  if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) {
-    return;
-  }
-  e.preventDefault();
-  navigate(a.getAttribute('href'));
-});
-
-window.addEventListener('popstate', render);
-document.addEventListener('birthday:refresh', render);
+    const c = charity(parts[1]);
+    return c ? charityPage(c) : notFound(parts[1]);
+  },
+  newsletters: parts => parts[1] && state.model.newsletterDates.includes(parts[1]) ? newsletterPage(parts[1]) : parts[1] ? notFound(parts[1]) : newslettersPage(),
+  skipped: () => isAdmin() ? skippedPage() : notFound('That page'),
+  unassigned: () => unassignedPage(),
+  admin: () => adminPage(),
+  staff: parts => {
+    const sv = staff(parts[1]);
+    return sv ? staffPage(sv) : notFound(parts[1] || 'That person');
+  },
+};
 
 initChrome();
 initModal(load);
-load();
+startApp({
+  model: async () => applyModel(await api('GET', '/api/birthday/model')),
+  routes,
+  missing: 'is not in the app.',
+  prepare: clearSearch,
+  show: showPage,
+}).then(() => {
+  if (location.pathname !== '/admin') {
+    offerTeam();
+  }
+});

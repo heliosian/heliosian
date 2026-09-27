@@ -2,7 +2,6 @@ import {state, byEmail} from '../state.js';
 import {el, svg, thumbUrl, withFrom} from '../dom.js';
 import {familyLink, familySearchText} from '../families.js';
 import {matchesFilters, familyMatchesFilters, filterControl} from '../filters.js';
-import {resetMain} from '../chrome.js';
 
 let mapsPromise = null;
 
@@ -125,8 +124,8 @@ export function initFamilyMap(canvas, familyMatches) {
   return () => renderPins();
 }
 
-export function renderMapPage() {
-  const main = resetMain();
+export function mapPage() {
+  const page = document.createDocumentFragment();
 
   const content = el('div', 'content container');
   const header = el('div', 'content-header');
@@ -156,7 +155,8 @@ export function renderMapPage() {
   action.append(svg('zap'), el('span', '', 'Update My Address'));
   update.append(action);
   content.append(update);
-  main.append(content);
+  page.append(content);
 
   renderPins = initFamilyMap(canvas, family => familyMatchesFilters(family.key) && familySearchText(family).includes(state.q));
+  return page;
 }

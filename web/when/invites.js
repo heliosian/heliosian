@@ -1,12 +1,13 @@
 import {state, me, isAdmin, postedAndHosting, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
 import {el, svg, button, toast, avatar, copyText} from './dom.js';
 import {popup} from '/modal.js';
+import {load} from '/router.js';
 import {whoLink} from '/toolbar.js';
 import {api} from '/api.js';
 import {rulesEditor, filterWidgets} from '/rules.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
-import {imageControl, uploadImage} from './imagecontrol.js';
+import {uploadImage} from './imagecontrol.js';
 
 const answerWords = {yes: 'Yes', maybe: 'Maybe', no: 'No'};
 
@@ -1461,7 +1462,6 @@ async function deleteInvitation(e, view) {
     if (made.event) {
       location.href = '/';
     } else {
-      const {load} = await import('./app.js');
       await load();
     }
   } catch (err) {

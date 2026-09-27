@@ -2,22 +2,23 @@ import {state, applyModel, applyConfig} from './state.js';
 import {segments, shuffled} from './dom.js';
 import {tabParam} from '/tabs.js';
 import {api} from '/api.js';
+import {startApp, notFound} from '/router.js';
 import {loadTagRelations} from './storage.js';
 import {familyEntries} from './families.js';
-import {initChrome, renderNav, setChrome, finishRender, renderUserChrome, renderSuperEditBanner} from './chrome.js';
+import {initChrome, preparePage, showPage, renderUserChrome, renderSuperEditBanner} from './chrome.js';
 import {initSearch} from './search.js';
 import {maybeShowInstallPrompt} from './install.js';
-import {renderPeople} from './pages/people.js';
-import {renderListPage} from './pages/list.js';
-import {renderGreenvelopePage} from './pages/invites.js';
-import {renderPersonDetail} from './pages/person.js';
-import {renderGuestDetail} from './pages/guest.js';
-import {renderFamilyDetail} from './pages/family.js';
-import {renderClassroomsPage, renderGradeDetail, renderClassroomDetail} from './pages/classrooms.js';
-import {renderStaffPage} from './pages/staff.js';
-import {renderPrivacyPage} from './pages/privacy.js';
-import {renderMapPage} from './pages/map.js';
-import {renderAdminPage} from './pages/admin.js';
+import {peoplePage} from './pages/people.js';
+import {listPage} from './pages/list.js';
+import {invitesPage} from './pages/invites.js';
+import {personPage} from './pages/person.js';
+import {guestPage} from './pages/guest.js';
+import {familyPage} from './pages/family.js';
+import {classroomsPage, gradePage, classroomPage} from './pages/classrooms.js';
+import {staffPage} from './pages/staff.js';
+import {privacyPage} from './pages/privacy.js';
+import {mapPage} from './pages/map.js';
+import {adminPage} from './pages/admin.js';
 
 const sectionTitles = {
   people: 'People',
@@ -37,73 +38,77 @@ function resetTagFilter() {
   state.filterTagRelations = new Set();
 }
 
-function render() {
-  renderNav();
-  setChrome(sectionTitles[segments()[0]] || 'Helios Who?', null);
-  const seg = segments();
-  document.body.classList.toggle('is-admin', seg[0] === 'admin');
-  if (seg[0] === 'admin') {
-    renderAdminPage();
-    return;
+function people(parts) {
+  if (parts[1] && parts[1].startsWith('guest:')) {
+    return guestPage(parts[1].slice('guest:'.length));
   }
-  if (seg[0] === 'people' && seg[1] && seg[1].startsWith('guest:')) {
-    renderGuestDetail(seg[1].slice('guest:'.length));
-  } else if (seg[0] === 'people' && seg[1]) {
-    renderPersonDetail(seg[1]);
-  } else if (seg[0] === 'families' && seg[1]) {
-    renderFamilyDetail(seg[1]);
-  } else if (seg[0] === 'people') {
-    const params = new URLSearchParams(location.search);
-    const tagParam = params.get('tag') || params.get('list') || (params.get('shared') ? 'shared:' + params.get('shared') : '');
-    if (tagParam) {
-      state.filterTags = new Set([tagParam]);
-      state.filterTagRelations = loadTagRelations(tagParam);
-      state.tagListView = 'faces';
-      renderListPage();
-    } else {
-      state.tab = tabParam('everyone');
-      renderPeople();
-    }
-  } else if (seg[0] === 'classrooms' && seg[1]) {
-    state.rosterTab = tabParam('students');
-    renderClassroomDetail(seg[1]);
-  } else if (seg[0] === 'grades' && seg[1]) {
-    state.rosterTab = tabParam('students');
-    renderGradeDetail(seg[1]);
-  } else if (seg[0] === 'classrooms') {
-    state.classTab = tabParam('by-classroom');
-    renderClassroomsPage();
-  } else if (seg[0] === 'staff') {
-    state.q = '';
-    renderStaffPage();
-  } else if (seg[0] === 'email-list') {
-    resetTagFilter();
-    state.tagListView = 'emails';
-    renderListPage();
-  } else if (seg[0] === 'greenvelope') {
-    resetTagFilter();
-    renderGreenvelopePage();
-  } else if (seg[0] === 'map') {
-    state.q = '';
-    renderMapPage();
-  } else if (seg[0] === 'my-privacy') {
-    renderPrivacyPage();
+  if (parts[1]) {
+    return personPage(parts[1]);
   }
-  finishRender();
+  const params = new URLSearchParams(location.search);
+  const tagParam = params.get('tag') || params.get('list') || (params.get('shared') ? 'shared:' + params.get('shared') : '');
+  if (tagParam) {
+    state.filterTags = new Set([tagParam]);
+    state.filterTagRelations = loadTagRelations(tagParam);
+    state.tagListView = 'faces';
+    return listPage();
+  }
+  state.tab = tabParam('everyone');
+  return peoplePage();
 }
 
-export async function load() {
-  const [model, config] = await Promise.all([api('GET', '/api/directory/model'), api('GET', '/api/config')]);
+const routes = {
+  admin: () => adminPage(),
+  people,
+  families: parts => parts[1] ? familyPage(parts[1]) : notFound('That family'),
+  classrooms: parts => {
+    if (parts[1]) {
+      state.rosterTab = tabParam('students');
+      return classroomPage(parts[1]);
+    }
+    state.classTab = tabParam('by-classroom');
+    return classroomsPage();
+  },
+  grades: parts => {
+    state.rosterTab = tabParam('students');
+    return parts[1] ? gradePage(parts[1]) : notFound('That grade');
+  },
+  staff: () => {
+    state.q = '';
+    return staffPage();
+  },
+  'email-list': () => {
+    resetTagFilter();
+    state.tagListView = 'emails';
+    return listPage();
+  },
+  greenvelope: () => {
+    resetTagFilter();
+    return invitesPage();
+  },
+  map: () => {
+    state.q = '';
+    return mapPage();
+  },
+  'my-privacy': () => privacyPage(),
+};
+
+async function model() {
+  const [directory, config] = await Promise.all([api('GET', '/api/directory/model'), api('GET', '/api/config')]);
   applyConfig(config);
-  applyModel(model);
+  applyModel(directory);
   state.everyoneOrder = shuffled(state.model.people);
   state.familyOrder = shuffled(familyEntries());
   renderUserChrome();
   renderSuperEditBanner();
-  render();
-  maybeShowInstallPrompt();
 }
 
 initChrome();
 initSearch();
-load();
+startApp({
+  model,
+  routes,
+  missing: 'is not in the directory.',
+  prepare: () => preparePage(sectionTitles[segments()[0]] || 'Helios Who?'),
+  show: showPage,
+}).then(maybeShowInstallPrompt);

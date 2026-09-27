@@ -1,20 +1,21 @@
-import {state, me, family, isAdmin, isSystemAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel, ADDING} from '../state.js';
+import {state, me, family, isAdmin, isSystemAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel} from '../state.js';
 import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor, toast} from '../dom.js';
 import {setTitle} from '/shell.js';
+import {load, render} from '/router.js';
 import {approvalButtons} from './approvals.js';
 import {dateCard, googleCalendarLink, parseWhen} from '/datecard.js';
 import {appOrigin} from '/toolbar.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
 import {openCropTool, openPhotoLightbox} from '/crop.js';
 import {api} from '/api.js';
-import {reload, openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, uploadAndSave, openCategoryManager, openVolunteerGrid, editPencil} from '../edit.js';
+import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, uploadAndSave, openCategoryManager, openVolunteerGrid, editPencil} from '../edit.js';
 import {text as textInput, textarea as textAreaInput, select as selectInput} from '/form.js';
 
 
 let editingPath = null;
 
 const phone = window.matchMedia('(max-width: 900px)');
-phone.addEventListener('change', () => document.dispatchEvent(new CustomEvent('hca:refresh')));
+phone.addEventListener('change', render);
 
 const weekdayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short'});
 const fullDate = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
@@ -234,7 +235,7 @@ function factsCard(node, editing, save) {
             }
             try {
               await api('POST', '/api/team/volunteer', {id: node.id, email: v.email, position: 'Co-Chair', note: v.note || ''});
-              await reload();
+              await load();
               toast(`${v.name} is now a co-chair`);
             } catch (err) {
               toast(err.message);
@@ -263,7 +264,7 @@ function factsCard(node, editing, save) {
       const pencil = editPencil('Edit this page');
       pencil.addEventListener('click', () => {
         editingPath = node.id;
-        document.dispatchEvent(new CustomEvent('hca:refresh'));
+        render();
       });
       ask.append(wants, pencil);
       body.append(ask);
@@ -278,7 +279,7 @@ function factsCard(node, editing, save) {
         body.append(button('Offer to Co-Chair', 'people', 'button button-small side-offer', async () => {
           try {
             await api('POST', '/api/team/volunteer', {id: node.id, position: 'Open to Co-Chair', note: mine ? mine.note : ''});
-            await reload();
+            await load();
             toast('Thank you - the organizers will be in touch.');
           } catch (err) {
             toast(err.message);
@@ -952,7 +953,7 @@ function childrenSection(node, editing) {
     ids.splice(at, 0, id);
     try {
       await api('POST', '/api/team/order', {parent: node.id, ids});
-      await reload();
+      await load();
     } catch (err) {
       toast(err.message);
     } finally {
@@ -1113,7 +1114,7 @@ export function activityPage(node) {
   if (node.canEdit) {
     const toggle = heroButton(editing ? 'join' : 'edit', editing ? 'Done editing' : 'Edit this page', () => {
       editingPath = editing ? null : node.id;
-      document.dispatchEvent(new CustomEvent('hca:refresh'));
+      render();
     });
     if (editing) {
       toggle.classList.add('is-editing');

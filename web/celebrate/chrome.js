@@ -1,6 +1,7 @@
 import {state, me, isSystemAdmin, applySuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {initShell, appSymbol} from '/shell.js';
+import {navigate, render, setPath} from '/router.js';
 import {openParty} from './edit.js';
 
 const primary = [
@@ -109,10 +110,7 @@ function tabLinks() {
     const item = el('button', 'nav-sub-item' + (on ? ' is-on' : ''));
     item.type = 'button';
     item.append(el('span', 'nav-sub-name', t.label), el('span', 'nav-sub-count', String(n)));
-    item.addEventListener('click', async () => {
-      const {navigate} = await import('./app.js');
-      navigate(listPath(t.key, onList ? state.category : ''));
-    });
+    item.addEventListener('click', () => navigate(listPath(t.key, onList ? state.category : '')));
     wrap.append(item);
   }
   return wrap;
@@ -171,16 +169,13 @@ export function initChrome() {
     isSystemAdmin,
     onSuper: () => {
       applySuperEdit();
-      document.dispatchEvent(new CustomEvent('celebrate:refresh'));
+      render();
     },
     fillNav,
     fillTabbar,
     search: {
       placeholder: 'Search parties…',
-      carry: () => {
-        history.pushState(null, '', listPath(state.tab, state.category));
-        document.dispatchEvent(new CustomEvent('celebrate:refresh'));
-      },
+      carry: () => setPath(listPath(state.tab, state.category)),
     },
   });
 }

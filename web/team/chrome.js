@@ -1,6 +1,7 @@
 import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, applyModel, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {initShell, appSymbol} from '/shell.js';
+import {navigate, render, setPath} from '/router.js';
 import {openActivity} from './edit.js';
 
 const primary = [
@@ -55,10 +56,7 @@ function categoryLinks() {
     const item = el('button', 'nav-sub-item' + (on ? ' is-on' : ''));
     item.type = 'button';
     item.append(el('span', 'nav-sub-name', c.title), el('span', 'nav-sub-count', String(n)));
-    item.addEventListener('click', async () => {
-      const {navigate} = await import('./app.js');
-      navigate(categoryPath(on ? '' : c.id));
-    });
+    item.addEventListener('click', () => navigate(categoryPath(on ? '' : c.id)));
     wrap.append(item);
   }
   return wrap.children.length ? wrap : null;
@@ -220,7 +218,7 @@ hiddenRow.hidden = true;
 hiddenRow.append(el('span', '', 'Show Hidden Things'), hiddenBox);
 hiddenBox.addEventListener('change', () => {
   state.showHidden = hiddenBox.checked;
-  document.dispatchEvent(new CustomEvent('hca:refresh'));
+  render();
 });
 
 function renderHiddenRow() {
@@ -238,16 +236,13 @@ export function initChrome() {
         state.showHidden = false;
       }
       applyModel(state.model);
-      document.dispatchEvent(new CustomEvent('hca:refresh'));
+      render();
     },
     fillNav,
     fillTabbar,
     search: {
       placeholder: 'Search opportunities…',
-      carry: () => {
-        history.pushState(null, '', yearPath());
-        document.dispatchEvent(new CustomEvent('hca:refresh'));
-      },
+      carry: () => setPath(yearPath()),
     },
     menuRows: [hiddenRow],
     afterRender: renderHiddenRow,

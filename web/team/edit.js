@@ -12,15 +12,11 @@ import {createPersonPicker} from '/picker.js';
 import {whoLink} from '/toolbar.js';
 import {api} from '/api.js';
 import {openModal, closeModal} from '/modal.js';
+import {load, navigate, render} from '/router.js';
 import {field, text, textarea, select, checkbox, segmented} from '/form.js';
 import {tabbedFields} from '/tabs.js';
 
 export const {uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/team', {state, toast});
-
-export async function reload() {
-  const {load} = await import('./app.js');
-  await load();
-}
 
 export async function saveActivity(body) {
   const before = body.id && activity(body.id) ? activityPath(activity(body.id)) : null;
@@ -36,11 +32,10 @@ export async function saveActivity(body) {
     }
     await api('POST', '/api/team/activity', {...body, takeOver: true});
   }
-  await reload();
+  await load();
   const now = body.id ? activity(body.id) : null;
   if (before && now && location.pathname === before && activityPath(now) !== before) {
     history.replaceState(null, '', activityPath(now));
-    const {render} = await import('./app.js');
     render();
   }
 }
@@ -65,11 +60,6 @@ function settingRow(label, hint, control) {
   side.append(control);
   row.append(text, side);
   return row;
-}
-
-async function goTo(path) {
-  const {navigate} = await import('./app.js');
-  navigate(path);
 }
 
 let asked = null;
@@ -322,7 +312,7 @@ function signUpForm(node, existing, someoneElse) {
             id: node.id, email: existing.email, position: isChair ? 'Volunteer' : 'Co-Chair', note: note.value,
           });
           closeModal();
-          await reload();
+          await load();
           toast(isChair ? `${existing.name} is no longer a co-chair` : `${existing.name} is now a co-chair`);
         } catch (err) {
           toast(err.message);
@@ -357,7 +347,7 @@ export async function removeVolunteer(node, volunteer) {
   }
   try {
     await api('DELETE', '/api/team/volunteer', {id: node.id, email: volunteer.email});
-    await reload();
+    await load();
   } catch (err) {
     toast(err.message);
   }
@@ -697,16 +687,16 @@ export function openActivity(act, options) {
       };
       await saveActivity(body);
       if (!act) {
-        await reload();
+        await load();
         const made = [...allNodes()].find(n => n.year === body.year && n.title === body.title && n.parent === body.parent);
         if (made) {
-          await goTo(activityPath(made));
+          navigate(activityPath(made));
         }
       }
     },
     onDelete: act && admin ? () => api('DELETE', '/api/team/activity', {id: act.id}) : null,
     confirmDelete: act ? `Delete “${act.title}” (${act.year})? Its links go with it.` : '',
-    afterDelete: () => goTo(currentParent ? activityPath(currentParent) : '/'),
+    afterDelete: () => navigate(currentParent ? activityPath(currentParent) : '/'),
   });
 }
 
@@ -1009,7 +999,7 @@ export function categoryList(root, after) {
     ids.splice(to, 0, moved);
     try {
       await api('POST', '/api/team/categories/order', {eventId, ids});
-      await reload();
+      await load();
       if (after) {
         after();
       }
@@ -1084,7 +1074,7 @@ export async function copyToNextYear(act) {
   }
   try {
     await api('POST', '/api/team/copy', {id: act.id});
-    await reload();
+    await load();
     toast(`Copied to ${years().next}`);
   } catch (err) {
     toast(err.message);
@@ -1107,7 +1097,7 @@ export async function saveActivityFields(act, changes) {
     await saveActivity(body);
   } catch (err) {
     toast(err.message);
-    await reload();
+    await load();
   }
 }
 

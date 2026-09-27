@@ -2,7 +2,6 @@ import {state} from '../state.js';
 import {el, svg, paletteColor} from '../dom.js';
 import {personLink, photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl} from '../people.js';
 import {matchesFilters} from '../filters.js';
-import {resetMain} from '../chrome.js';
 
 export function renderStaff(grid, autoFit) {
   grid.className = '';
@@ -76,12 +75,12 @@ function departmentChips(rerender) {
   return bar;
 }
 
-export function renderStaffPage() {
-  const main = resetMain();
+export function staffPage() {
+  const page = document.createDocumentFragment();
 
   const pageHeader = el('div', 'page-header-plain container');
   pageHeader.append(el('h1', 'page-title', 'Staff'));
-  main.append(pageHeader);
+  page.append(pageHeader);
 
   const content = el('div', 'content container');
   const header = el('div', 'content-header content-header-solo');
@@ -103,7 +102,7 @@ export function renderStaffPage() {
 
   const list = el('div');
   content.append(list);
-  main.append(content);
+  page.append(content);
 
   function renderList() {
     list.replaceChildren();
@@ -112,4 +111,5 @@ export function renderStaffPage() {
     }
   }
   renderList();
+  return page;
 }

@@ -4,7 +4,7 @@ import {tabStrip, tabHref} from '/tabs.js';
 import {familyOf, familiesOf} from '../families.js';
 import {personLink, photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl, sortPeople} from '../people.js';
 import {fromURL, breadcrumbs} from '../crumbs.js';
-import {resetMain, finishRender} from '../chrome.js';
+import {render} from '/router.js';
 
 function bandGroups() {
   const groups = [];
@@ -195,22 +195,21 @@ const classroomsTabRenderers = {
   'room-parents': renderRoomParents,
 };
 
-export function renderClassroomsPage() {
-  const main = resetMain();
+export function classroomsPage() {
+  const page = document.createDocumentFragment();
 
   const pageHeader = el('div', 'page-header container');
   pageHeader.append(el('h1', 'page-title', 'Gradebands'));
-  main.append(pageHeader);
+  page.append(pageHeader);
 
   const strip = tabStrip(classroomsTabs, state.classTab, 1, key => {
     state.classTab = key;
     state.q = '';
     history.replaceState(null, '', tabHref(key));
-    renderClassroomsPage();
-    finishRender();
+    render();
   });
   strip.classList.add('container');
-  main.append(strip);
+  page.append(strip);
 
   const content = el('div', 'content container');
   const header = el('div', 'content-header');
@@ -233,7 +232,7 @@ export function renderClassroomsPage() {
 
   const list = el('div');
   content.append(list);
-  main.append(content);
+  page.append(content);
 
   function renderList() {
     list.replaceChildren();
@@ -242,6 +241,7 @@ export function renderClassroomsPage() {
     }
   }
   renderList();
+  return page;
 }
 
 function parentsOf(students) {
@@ -324,8 +324,8 @@ function sectionFilterBar(groups, rerender, colorFor) {
   return bar;
 }
 
-function renderRoster(title, image, groups, backLabel, sectionColorFor) {
-  const main = resetMain();
+function rosterPage(title, image, groups, backLabel, sectionColorFor) {
+  const page = document.createDocumentFragment();
   const from = fromURL();
   const back = from && from.pathname === '/classrooms' ? from.pathname + from.search : '/classrooms';
 
@@ -356,19 +356,18 @@ function renderRoster(title, image, groups, backLabel, sectionColorFor) {
   const strip = tabStrip(memberTabs, state.rosterTab, 2, key => {
     state.rosterTab = key;
     history.replaceState(null, '', tabHref(key));
-    renderRoster(title, image, groups, backLabel, sectionColorFor);
+    render();
   });
   strip.classList.add('container', 'roster-tabs');
   header.append(strip);
-  main.append(header);
+  page.append(header);
 
   const content = el('div', 'container detail-content');
   const list = el('div');
-  const rerender = () => renderRoster(title, image, groups, backLabel, sectionColorFor);
   if (state.rosterTab === 'students') {
     const headingRow = el('div', 'roster-heading-row');
     headingRow.append(el('h2', 'roster-heading', `${allStudents.length} Students`));
-    const filterBar = sectionFilterBar(groups, rerender, sectionColorFor);
+    const filterBar = sectionFilterBar(groups, render, sectionColorFor);
     if (filterBar) {
       headingRow.append(filterBar);
     }
@@ -404,7 +403,7 @@ function renderRoster(title, image, groups, backLabel, sectionColorFor) {
     const headingRow = el('div', 'roster-heading-row');
     headingRow.append(el('h2', 'roster-heading', `${parents.length} Parents`));
     const parentGroups = groups.map(g => ({header: g.header, chipLabel: g.chipLabel, parents: parentsOf(g.students)}));
-    const filterBar = sectionFilterBar(parentGroups, rerender, sectionColorFor);
+    const filterBar = sectionFilterBar(parentGroups, render, sectionColorFor);
     if (filterBar) {
       headingRow.append(filterBar);
     }
@@ -422,33 +421,32 @@ function renderRoster(title, image, groups, backLabel, sectionColorFor) {
     list.append(listBody);
   }
   content.append(list);
-  main.append(content);
+  page.append(content);
+  return page;
 }
 
-export function renderGradeDetail(slug) {
+export function gradePage(slug) {
   const grade = state.model.grades.find(g => slugify(g.name) === slug);
   if (!grade) {
-    resetMain(el('div', 'empty', 'Not found.'));
-    return;
+    return el('div', 'empty', 'Not found.');
   }
   const students = studentsOf(p => p.grade === grade.name);
   const classrooms = [...new Set(students.map(s => s.classroom).filter(Boolean))].sort();
   const groups = classrooms.length
     ? classrooms.map(name => ({header: name, students: students.filter(s => s.classroom === name)}))
     : [{header: '', students}];
-  renderRoster(grade.name, gradeImage(grade.name), groups, undefined, name => colors.classrooms[name]);
+  return rosterPage(grade.name, gradeImage(grade.name), groups, undefined, name => colors.classrooms[name]);
 }
 
-export function renderClassroomDetail(slug) {
+export function classroomPage(slug) {
   const classroom = state.model.classrooms.find(c => slugify(c.name) === slug);
   if (!classroom) {
-    resetMain(el('div', 'empty', 'Not found.'));
-    return;
+    return el('div', 'empty', 'Not found.');
   }
   const students = studentsOf(p => p.classroom === classroom.name);
   const crews = [...new Set(students.map(s => s.crew).filter(Boolean))].sort();
   const groups = crews.length
     ? crews.map(name => ({header: `${name} ${classroom.name}`, chipLabel: name, students: students.filter(s => s.crew === name)}))
     : [{header: '', students}];
-  renderRoster(classroom.name, classroom.imageUrl, groups);
+  return rosterPage(classroom.name, classroom.imageUrl, groups);
 }

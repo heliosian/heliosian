@@ -1,6 +1,7 @@
 import {state, me, isSystemAdmin, applySuperEdit, managed, groupPath} from './state.js';
 import {el, svg, link} from './dom.js';
 import {initShell, appSymbol} from '/shell.js';
+import {render} from '/router.js';
 
 const items = [
   {href: '/', icon: 'app', label: 'My Groups'},
@@ -108,9 +109,8 @@ export function initChrome() {
     name: 'Helios Loop',
     me,
     isSystemAdmin,
-    onSuper: async () => {
+    onSuper: () => {
       applySuperEdit();
-      const {render} = await import('./app.js');
       render();
     },
     fillNav,

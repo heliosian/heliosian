@@ -1,5 +1,6 @@
 import {el, svg, thumbUrl} from './dom.js';
 import {submitMedia, submitPhotoOrder, submitCrop} from './edit.js';
+import {openLayer} from '/modal.js';
 
 const photoLabels = {
   veracross: 'School portrait',
@@ -19,10 +20,10 @@ export function openPhotoLightbox(url) {
   img.src = url;
   img.alt = '';
   overlay.append(img);
-  const close = () => {
+  const close = openLayer(() => {
     overlay.remove();
     document.removeEventListener('keydown', onKey);
-  };
+  });
   function onKey(e) {
     if (e.key === 'Escape') {
       close();
@@ -153,10 +154,10 @@ function openCropTool(imageUrl, square, onSave) {
   panel.append(stage, actions);
   overlay.append(panel);
 
-  const close = () => {
+  const close = openLayer(() => {
     overlay.remove();
     document.removeEventListener('keydown', onKey);
-  };
+  });
   function onKey(e) {
     if (e.key === 'Escape') {
       close();

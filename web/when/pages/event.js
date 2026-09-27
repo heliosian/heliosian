@@ -1,11 +1,11 @@
 import {state, isAdmin, isSystemAdmin, postedAndHosting, sourceWords, dayType, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
-import {el, link, svg, paragraphs, button, toast, avatar, copyText} from '../dom.js';
-import {popup} from '/modal.js';
+import {el, svg, paragraphs, button, toast, avatar, copyText} from '../dom.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
 import {whoLink} from '/toolbar.js';
 import {setTitle} from '/shell.js';
+import {load} from '/router.js';
 import {api} from '/api.js';
 import {audienceChips, blocks} from '../events.js';
 import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow} from '../invites.js';
@@ -55,7 +55,6 @@ function heroImageBar(e) {
       return;
     }
     toast(image ? 'Picture saved' : 'Picture removed');
-    const {load} = await import('../app.js');
     await load();
   };
   const file = el('input');
@@ -134,7 +133,6 @@ export function eventPage(e) {
     tools.append(button('Edit', 'pencil', 'button button-secondary button-small detail-edit', async () => {
       const {openEditor} = await import('../invites.js');
       openEditor(e, editorView, async () => {
-        const {load} = await import('../app.js');
         await load();
       });
     }));
@@ -231,7 +229,6 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
     return;
   }
   const refresh = async () => {
-    const {load} = await import('../app.js');
     await load();
   };
   if (view.host && e.link && new URLSearchParams(location.search).get('invite') && !view.settings) {
@@ -463,7 +460,6 @@ function pendingBand(e) {
         return;
       }
       toast(done);
-      const {load} = await import('../app.js');
       await load();
     };
     actions.append(button('Approve', 'check', 'button button-small', () => decide('approve', 'On the calendar')));
@@ -546,7 +542,6 @@ function keywordsEditor(e) {
           return;
         }
         toast('Search words saved');
-        const {load} = await import('../app.js');
         await load();
       });
       const cancel = button('Cancel', null, 'button button-secondary button-small', paint);

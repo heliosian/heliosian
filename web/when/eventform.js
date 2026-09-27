@@ -1,4 +1,4 @@
-import {state, me, isAdmin, tagGroups, bands, classroomNames, eventDates, eventPath, addDays, parseDate} from './state.js';
+import {state, isAdmin, tagGroups, bands, classroomNames, eventDates, eventPath, addDays, parseDate} from './state.js';
 import {addressSuggest} from '/address.js';
 import {api} from '/api.js';
 import {el, svg, toast} from './dom.js';

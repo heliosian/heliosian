@@ -1,4 +1,4 @@
-import {state, byEmail, colors} from './state.js';
+import {byEmail, colors} from './state.js';
 import {el, withFrom, thumbUrl, hue, lastName} from './dom.js';
 import {familyOf} from './families.js';
 import {tagControl} from './tags.js';

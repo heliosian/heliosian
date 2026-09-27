@@ -3,6 +3,7 @@ import {el, selectPill, svg} from '../dom.js';
 import {tabStrip} from '/tabs.js';
 import {inTab, listTabs, listPath, listTab, listCategory} from '../chrome.js';
 import {setTitle, setSearch, renderChrome} from '/shell.js';
+import {render} from '/router.js';
 import {partyCard} from '../cards.js';
 
 let query = '';
@@ -95,7 +96,7 @@ export function partiesPage(code) {
       state.celebration = picked;
       query = '';
       history.replaceState(null, '', picked === state.model.current ? '/' : `/celebrations/${encodeURIComponent(picked)}`);
-      document.dispatchEvent(new CustomEvent('celebrate:refresh'));
+      render();
     }));
   }
   page.append(head);

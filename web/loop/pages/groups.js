@@ -1,7 +1,7 @@
 import {state, isAdmin, managed, matches, groupPath} from '../state.js';
 import {el, svg, link, button, iconButton, copyText, pageHead} from '../dom.js';
 import {setTitle, setSearch} from '/shell.js';
-import {navigate} from '../app.js';
+import {navigate} from '/router.js';
 
 export const visibilityWords = {hidden: 'Hidden', members: 'Visible to members', everyone: 'Visible to everyone'};
 

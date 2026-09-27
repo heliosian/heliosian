@@ -7,7 +7,8 @@ import {initEditing, refreshCategoryManager} from './edit.js';
 import {onSlash} from '/toolbar.js';
 import {initTopbar, renderAccount, searchInput} from '/shell.js';
 import {api} from '/api.js';
-import {renderAdminPage} from './adminpage.js';
+import {startApp, render} from '/router.js';
+import {adminPage} from './adminpage.js';
 
 const editCategories = el('button', 'user-menu-super', 'Edit Categories');
 editCategories.type = 'button';
@@ -19,19 +20,23 @@ function renderChrome() {
   editCategories.hidden = !isAdmin();
 }
 
-export async function load() {
-  applyModel(await api('GET', '/api/apps/model'));
-  renderChrome();
-  if (location.pathname === '/admin') {
-    document.body.classList.add('is-admin');
-    await renderAdminPage();
-    return;
-  }
+const main = document.querySelector('#main');
+const view = [...main.children];
+
+function paintHome() {
   renderNav();
   renderCategories(searchInput().value);
   refreshCategoryManager();
   renderMonth();
   renderWidgets(searchInput().value);
+}
+
+function homePage() {
+  // The widgets measure themselves, so paint once the router has mounted the view.
+  queueMicrotask(paintHome);
+  const page = document.createDocumentFragment();
+  page.append(...view);
+  return page;
 }
 
 function initSearch() {
@@ -76,12 +81,7 @@ function initChrome() {
     name: 'Heliosian',
     me: () => state.model.user,
     isSystemAdmin,
-    onSuper: () => {
-      renderChrome();
-      renderNav();
-      renderCategories(searchInput().value);
-      renderWidgets(searchInput().value);
-    },
+    onSuper: render,
     search: {placeholder: 'Search apps, links, or events…', own: true},
     menuRows: [editCategories],
   });
@@ -91,4 +91,13 @@ function initChrome() {
 initChrome();
 initSearch();
 initEditing();
-load();
+startApp({
+  model: async () => applyModel(await api('GET', '/api/apps/model')),
+  routes: {
+    '': homePage,
+    admin: () => adminPage(),
+  },
+  missing: 'is not on Heliosian.',
+  prepare: renderChrome,
+  show: node => main.replaceChildren(node),
+});

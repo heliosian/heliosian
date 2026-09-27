@@ -1,7 +1,6 @@
-import {state, stages, stageName, stageClass, isUnassigned, matches, staffPath, tableDate, weekday, team} from '../state.js';
+import {state, stageName, stageClass, isUnassigned, matches, staffPath, tableDate, weekday, team} from '../state.js';
 import {el, link, svg, thumb, button, pageHead} from '../dom.js';
 import {setTitle, setSearch} from '/shell.js';
-import {emptyPanel} from '../cards.js';
 import {assignToMe} from '../edit.js';
 
 const pipeline = [

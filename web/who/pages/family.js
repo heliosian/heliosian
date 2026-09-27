@@ -6,7 +6,7 @@ import {familyPhotoNeedsUpdate, staleItems, todoChecklist} from '../stale.js';
 import {submitField, editPencil, fieldEditor, uploadIcon, pronounceEditor} from '../edit.js';
 import {openPhotoLightbox, cropBadge, familyPhotoMenu, togglePhotoMenu} from '../photos.js';
 import {fromURL, breadcrumbs} from '../crumbs.js';
-import {resetMain, finishRender} from '../chrome.js';
+import {render} from '/router.js';
 
 export function familyDetailChip(text, color, href) {
   const chip = el(href ? 'a' : 'div', 'role-label', text);
@@ -121,12 +121,12 @@ export function familyCard(p, family) {
 
 let familyEdit = null;
 
-export function renderFamilyDetail(key) {
-  const main = resetMain();
+export function familyPage(key) {
+  const page = document.createDocumentFragment();
   const family = state.model.families[key];
   if (!family) {
-    main.append(el('div', 'empty', 'Not found.'));
-    return;
+    page.append(el('div', 'empty', 'Not found.'));
+    return page;
   }
   const editable = canEditFamily(family);
   const editing = editable && familyEdit === key;
@@ -150,14 +150,14 @@ export function renderFamilyDetail(key) {
       crumbs = [['Map', back], [shortName, null], ['Family', null]];
     }
   }
-  main.append(breadcrumbs(crumbs));
+  page.append(breadcrumbs(crumbs));
 
   if (key === myFamilyKey()) {
     const items = staleItems();
     if (items.length) {
       const wrap = el('div', 'container');
       wrap.append(todoChecklist(items));
-      main.append(wrap);
+      page.append(wrap);
     }
   }
 
@@ -232,14 +232,12 @@ export function renderFamilyDetail(key) {
       ? el('button', 'media-button edit-toggle', 'Done')
       : iconButton('pencil', 'Edit info', () => {
         familyEdit = key;
-        renderFamilyDetail(key);
-        finishRender();
+        render();
       });
     if (editing) {
       toggle.addEventListener('click', () => {
         familyEdit = null;
-        renderFamilyDetail(key);
-        finishRender();
+        render();
       });
     }
     topActions.append(toggle);
@@ -278,7 +276,7 @@ export function renderFamilyDetail(key) {
   grid.append(right);
   headerCard.append(grid);
   content.append(headerCard);
-  main.append(content);
+  page.append(content);
 
   const band = el('div', 'container fcard-wrap');
   const membersCard = el('div', 'detail-card fcard');
@@ -301,12 +299,15 @@ export function renderFamilyDetail(key) {
   cols.append(adultsCol, kidsCol);
   membersCard.append(cols);
   band.append(membersCard);
-  main.append(band);
+  page.append(band);
 
   if (location.hash) {
-    const target = document.querySelector(location.hash);
-    if (target) {
-      target.scrollIntoView({block: 'center'});
-    }
+    queueMicrotask(() => {
+      const target = document.querySelector(location.hash);
+      if (target) {
+        target.scrollIntoView({block: 'center'});
+      }
+    });
   }
+  return page;
 }

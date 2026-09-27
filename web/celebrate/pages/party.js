@@ -9,11 +9,12 @@ import {statusBadges} from '../cards.js';
 import {openPhotoLightbox, openCropTool} from '/crop.js';
 import {dateCard, parseWhen} from '/datecard.js';
 import {addressSuggest} from '/address.js';
+import {render} from '/router.js';
 
 let editingId = null;
 
 const phone = window.matchMedia('(max-width: 900px)');
-phone.addEventListener('change', () => document.dispatchEvent(new CustomEvent('celebrate:refresh')));
+phone.addEventListener('change', render);
 
 function heroStamp(p) {
   if (!parseWhen(p.start)) {
@@ -35,7 +36,7 @@ function heroTools(p, editing) {
   if (p.canEdit) {
     const toggle = tool(editing ? 'check' : 'edit', editing ? 'Done editing' : 'Edit party', () => {
       editingId = editing ? null : p.id;
-      document.dispatchEvent(new CustomEvent('celebrate:refresh'));
+      render();
     });
     toggle.classList.toggle('is-editing', editing);
     tools.append(toggle);
