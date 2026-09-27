@@ -1,5 +1,3 @@
-// Heliosian serves the Helios school community apps in production. Local
-// development against sample data runs through tools/startserver instead.
 package main
 
 import (
@@ -11,5 +9,5 @@ import (
 
 func main() {
 	slog.SetDefault(logging.Cloud())
-	app.Serve(app.Production(app.Domain, ""))
+	app.Serve(app.Production(app.Domain))
 }

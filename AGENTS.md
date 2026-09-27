@@ -8,6 +8,7 @@ How code is written in this repository, for coding agents and the people driving
 - Flags are liabilities. Hardcode settled values; prefer always-on behavior to switches, and add no opt-out for behavior that is always right.
 - No fallback paths. Assume required resources exist and fail loudly; fatal is fine. One path through the code, not two.
 - Converting from A to B means switching to B and deleting A: no interface with two implementations, no adapter, no translation layer keeping both alive.
+- Production code never exists only for tests. No test wrappers, no interfaces or indirection added just so a test can swap in a fake, no test hooks, seams, exported-for-test helpers, or test-only parameters and branches. Tests exercise the real code as it ships; anything only a test needs lives in a `_test.go` file.
 - A client request that takes 750ms is far too slow. Move slow work off the request path (queue it, write it back later) rather than making the person wait.
 - Prefer an early return to a nested if/else when the if branch exits.
 - Always use braces on the body of `if`, `else`, `for`, even for a single statement.

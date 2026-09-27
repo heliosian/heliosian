@@ -10,9 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"path"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -179,7 +177,6 @@ func thumbName(name string) string {
 }
 
 type entry struct {
-	name       string
 	generation int64
 	mimeType   string
 	data       []byte
@@ -187,23 +184,18 @@ type entry struct {
 }
 
 type Store struct {
-	objects  objects
-	cacheDir string
-	mu       sync.RWMutex
-	entries  map[string]*entry
-	named    map[string]bool
+	objects objects
+	mu      sync.RWMutex
+	entries map[string]*entry
+	named   map[string]bool
 }
 
-func New(cacheDir string) (*Store, error) {
+func New() (*Store, error) {
 	b, err := newBucket(Bucket)
 	if err != nil {
 		return nil, err
 	}
-	s := &Store{objects: b, cacheDir: cacheDir, entries: map[string]*entry{}}
-	if cacheDir != "" {
-		slog.Info("blob store: caching fetched objects on disk", "dir", cacheDir)
-	}
-	return s, nil
+	return &Store{objects: b, entries: map[string]*entry{}}, nil
 }
 
 func NewMemory() *Store {
@@ -224,84 +216,6 @@ func (s *Store) Write(ctx context.Context, name, mimeType string, content []byte
 
 func (s *Store) Exists(ctx context.Context, name string) (bool, error) {
 	return s.objects.exists(ctx, name)
-}
-
-func (s *Store) cachePath(name string) string {
-	return filepath.Join(s.cacheDir, filepath.FromSlash(name))
-}
-
-func (s *Store) cached(name string) (*entry, error) {
-	if s.cacheDir == "" {
-		return nil, nil
-	}
-	meta, err := os.ReadFile(s.cachePath(name) + ".meta")
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read the cache of %s: %w", name, err)
-	}
-	generationText, mimeType, ok := strings.Cut(strings.TrimSpace(string(meta)), "\n")
-	if !ok {
-		return nil, fmt.Errorf("read the cache of %s: the meta file is not generation and type", name)
-	}
-	generation, err := strconv.ParseInt(generationText, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("read the cache of %s: %w", name, err)
-	}
-	data, err := os.ReadFile(s.cachePath(name))
-	if err != nil {
-		return nil, fmt.Errorf("read the cache of %s: %w", name, err)
-	}
-	e := &entry{name: name, generation: generation, mimeType: mimeType, data: data}
-	if strings.HasPrefix(mimeType, "image/") {
-		if e.thumb, err = os.ReadFile(s.cachePath(thumbName(name))); err != nil {
-			return nil, fmt.Errorf("read the cache of %s: %w", name, err)
-		}
-	}
-	return e, nil
-}
-
-func (s *Store) cache(e *entry) error {
-	if s.cacheDir == "" {
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(s.cachePath(e.name)), 0o755); err != nil {
-		return fmt.Errorf("cache %s: %w", e.name, err)
-	}
-	if err := writeFile(s.cachePath(e.name), e.data); err != nil {
-		return fmt.Errorf("cache %s: %w", e.name, err)
-	}
-	if e.thumb != nil {
-		if err := writeFile(s.cachePath(thumbName(e.name)), e.thumb); err != nil {
-			return fmt.Errorf("cache %s: %w", e.name, err)
-		}
-	}
-	if err := writeFile(s.cachePath(e.name)+".meta", []byte(strconv.FormatInt(e.generation, 10)+"\n"+e.mimeType+"\n")); err != nil {
-		return fmt.Errorf("cache %s: %w", e.name, err)
-	}
-	return nil
-}
-
-func writeFile(name string, data []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(name), filepath.Base(name)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
-		return err
-	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
-		os.Remove(tmp.Name())
-		return err
-	}
-	return os.Rename(tmp.Name(), name)
 }
 
 func Register(mux *http.ServeMux, s *Store) {
@@ -387,7 +301,7 @@ func (s *Store) keep(key string) (*entry, bool) {
 }
 
 func (s *Store) Get(name string) ([]byte, error) {
-	e, err := s.fetch(context.Background(), name)
+	e, err := s.download(context.Background(), name)
 	if err != nil {
 		return nil, err
 	}
@@ -412,7 +326,7 @@ func (s *Store) has(ctx context.Context, name string) (bool, error) {
 		return true, nil
 	}
 	start := time.Now()
-	e, err := s.fetch(ctx, name)
+	e, err := s.download(ctx, name)
 	if errors.Is(err, ErrNotFound) {
 		return false, nil
 	}
@@ -472,26 +386,12 @@ func (s *Store) count() int {
 	return len(s.entries)
 }
 
-func (s *Store) fetch(ctx context.Context, name string) (*entry, error) {
-	if e, err := s.cached(name); err != nil || e != nil {
-		return e, err
-	}
-	e, err := s.download(ctx, name)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.cache(e); err != nil {
-		return nil, err
-	}
-	return e, nil
-}
-
 func (s *Store) download(ctx context.Context, name string) (*entry, error) {
 	o, err := s.objects.get(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	e := &entry{name: name, generation: o.generation, mimeType: o.mimeType, data: o.data}
+	e := &entry{generation: o.generation, mimeType: o.mimeType, data: o.data}
 	if !strings.HasPrefix(o.mimeType, "image/") {
 		return e, nil
 	}

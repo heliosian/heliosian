@@ -1137,7 +1137,7 @@ func mapsKey(envName, file string) string {
 	return key
 }
 
-func Production(domain, blobCache string) (*http.Server, *store.Queue) {
+func Production(domain string) (*http.Server, *store.Queue) {
 	spreadsheets := map[string]string{
 		"directory":      requiredEnv("DIRECTORY_SHEET"),
 		"preferences":    requiredEnv("PREFERENCES_SHEET"),
@@ -1158,7 +1158,7 @@ func Production(domain, blobCache string) (*http.Server, *store.Queue) {
 	if err != nil {
 		logging.Fatal("load directory sheet", "error", err)
 	}
-	store, err := blob.New(blobCache)
+	store, err := blob.New()
 	if err != nil {
 		logging.Fatal("blob store", "error", err)
 	}

@@ -9,9 +9,7 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -47,61 +45,6 @@ func TestOnlyWhatARefreshNamesIsKept(t *testing.T) {
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/pronunciation/dropped.m4a", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("an object no sheet names, fetched during the refresh, still served: %d", rec.Code)
-	}
-}
-
-func TestDiskCacheRoundTrips(t *testing.T) {
-	s := &Store{cacheDir: t.TempDir(), entries: map[string]*entry{}}
-	photo := &entry{name: "photos/abc.jpg", generation: 7, mimeType: "image/jpeg", data: []byte("photo"), thumb: []byte("photo-thumb")}
-	if err := s.cache(photo); err != nil {
-		t.Fatal(err)
-	}
-	got, err := s.cached("photos/abc.jpg")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got == nil || got.generation != 7 || got.mimeType != "image/jpeg" || !bytes.Equal(got.data, photo.data) || !bytes.Equal(got.thumb, photo.thumb) {
-		t.Fatalf("photo: %+v", got)
-	}
-	audio := &entry{name: "pronunciation/def.m4a", generation: 3, mimeType: "audio/mp4", data: []byte("say it")}
-	if err := s.cache(audio); err != nil {
-		t.Fatal(err)
-	}
-	if got, err = s.cached("pronunciation/def.m4a"); err != nil || got == nil || got.thumb != nil || !bytes.Equal(got.data, audio.data) {
-		t.Fatalf("audio: %+v %v", got, err)
-	}
-	if got, err = s.cached("photos/missing.jpg"); err != nil || got != nil {
-		t.Fatalf("missing: %+v %v", got, err)
-	}
-	var wg sync.WaitGroup
-	errs := make(chan error, 8)
-	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			errs <- s.cache(photo)
-		}()
-	}
-	wg.Wait()
-	close(errs)
-	for err := range errs {
-		if err != nil {
-			t.Fatalf("concurrent writers: %v", err)
-		}
-	}
-	if got, err = s.cached("photos/abc.jpg"); err != nil || got == nil || !bytes.Equal(got.data, photo.data) {
-		t.Fatalf("after concurrent writers: %+v %v", got, err)
-	}
-	leftovers, err := filepath.Glob(filepath.Join(s.cacheDir, "photos", "*.tmp"))
-	if err != nil || len(leftovers) != 0 {
-		t.Fatalf("temp files left behind: %v %v", leftovers, err)
-	}
-	none := &Store{entries: map[string]*entry{}}
-	if err := none.cache(photo); err != nil {
-		t.Fatal(err)
-	}
-	if got, err = none.cached("photos/abc.jpg"); err != nil || got != nil {
-		t.Fatalf("no cache dir: %+v %v", got, err)
 	}
 }
 

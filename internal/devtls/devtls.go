@@ -1,4 +1,3 @@
-// Package devtls mints the in-memory self-signed certificate local HTTPS development runs on.
 package devtls
 
 import (
@@ -14,8 +13,6 @@ import (
 	"heliosian/internal/logging"
 )
 
-// Certificate is a fresh self-signed certificate for the domain and every
-// name under it.
 func Certificate(domain string) tls.Certificate {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {

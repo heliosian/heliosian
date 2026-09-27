@@ -16,6 +16,7 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/devcache"
 	"heliosian/internal/store"
 )
 
@@ -47,6 +48,7 @@ func main() {
 		log.Fatal("this run spends money embedding; pass --i-have-user-permission-to-spend-money only when the user has said to run it")
 	}
 	sort.Strings(files)
+	devcache.Install()
 	source, err := data.NewSheet(map[string]string{"artifacts": requiredEnv("ARTIFACTS_SHEET")})
 	if err != nil {
 		log.Fatalf("sheet source: %v", err)
@@ -55,7 +57,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-	reader, err := blob.New("local/cache/blobs")
+	reader, err := blob.New()
 	if err != nil {
 		log.Fatalf("%v", err)
 	}

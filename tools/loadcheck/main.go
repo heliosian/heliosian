@@ -18,6 +18,7 @@ import (
 	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/devcache"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
 	"heliosian/internal/store"
@@ -89,6 +90,7 @@ func requiredEnv(name string) string {
 func main() {
 	dir := flag.String("dir", "", "load from a directory of dumped tabs instead of the live sheets")
 	flag.Parse()
+	devcache.Install()
 	var source data.Source
 	if *dir != "" {
 		source = &data.Dir{Root: *dir}
@@ -330,7 +332,7 @@ func main() {
 	}
 	fmt.Printf("groups admins: %d\n", len(groupCache.Admins(nil)))
 
-	objects, err := blob.New("local/cache/blobs")
+	objects, err := blob.New()
 	if err != nil {
 		log.Fatalf("blob store: %v", err)
 	}

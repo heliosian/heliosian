@@ -24,6 +24,7 @@ import (
 	"heliosian/internal/capture"
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
+	"heliosian/internal/devcache"
 	"heliosian/internal/devtls"
 	"heliosian/internal/geocode"
 	"heliosian/internal/keypoints"
@@ -37,8 +38,6 @@ import (
 const logPath = "local/heliosian-server.log"
 
 const sampleUser = "jordan.whitfield@heliosschool.org"
-
-const blobCache = "local/cache/blobs"
 
 func main() {
 	email := flag.String("email", "ian.gulliver@heliosschool.org", "session email for --detach's minted cookie")
@@ -57,7 +56,8 @@ func main() {
 
 	switch {
 	case *real:
-		app.Serve(localTLS(app.Production(app.DevDomain, blobCache)))
+		devcache.Install()
+		app.Serve(localTLS(app.Production(app.DevDomain)))
 	case *detach:
 		detachReal(*email)
 	case *capturePath != "":

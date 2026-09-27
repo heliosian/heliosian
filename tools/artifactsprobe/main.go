@@ -11,6 +11,7 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/devcache"
 	"heliosian/internal/store"
 )
 
@@ -23,11 +24,12 @@ func main() {
 	if sheetID == "" {
 		log.Fatal("ARTIFACTS_SHEET is required")
 	}
+	devcache.Install()
 	source, err := data.NewSheet(map[string]string{"artifacts": sheetID})
 	if err != nil {
 		log.Fatalf("sheet source: %v", err)
 	}
-	reader, err := blob.New("local/cache/blobs")
+	reader, err := blob.New()
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
