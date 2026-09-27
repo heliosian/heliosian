@@ -60,9 +60,11 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 		kids:   map[string][]Person{},
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{})
+	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{}, testStyle)
 	return mux, cache
 }
+
+var testStyle = CardStyle(func() string { return "Helios When" }, func() string { return "The school year, day by day" })
 
 func changeLog(t *testing.T) []string {
 	t.Helper()
@@ -182,7 +184,7 @@ func TestModelRoute(t *testing.T) {
 
 func TestSharePreview(t *testing.T) {
 	handler, cache := testApp(t)
-	head := PreviewHead(cache, func(string) []Linked { return nil })
+	head := PreviewHead(cache, func(string) []Linked { return nil }, testStyle)
 	req := httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/e/a7@sample", nil)
 	req.Host = "when.heliosiandev.com:8080"
 	tags := head(req)
@@ -364,7 +366,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	d := fakeDirectory{people: map[string]Person{"jordan.whitfield@heliosschool.org": {Email: "jordan.whitfield@heliosschool.org", Name: "Jordan", IsParent: true}}, kids: map[string][]Person{}}
 	kept := &keptMail{}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>"})
+	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>"}, testStyle)
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {
@@ -565,7 +567,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec := call(t, handler, "GET", "/open/share/sams-party.png", ""); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
 		t.Errorf("a link event's card: %d", rec.Code)
 	}
-	if head := PreviewHead(cache, func(string) []Linked { return nil })(httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/open/share/sams-party.png") {
+	if head := PreviewHead(cache, func(string) []Linked { return nil }, testStyle)(httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/open/share/sams-party.png") {
 		t.Errorf("a link event's preview:\n%s", head)
 	}
 	if rec := call(t, parent, "POST", "/api/calendar/events", `{"id":"sams-party","title":"Again","start":"2026-10-04","tags":["Jays"],"sharing":"Public"}`); rec.Code != 400 {

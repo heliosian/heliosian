@@ -100,9 +100,11 @@ func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, mailer, testFrom, nil, nil)
+	Register(mux, cache, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, mailer, testFrom, nil, nil, testStyle)
 	return cache, mux
 }
+
+var testStyle = CardStyle(func() string { return "HCA-Team" }, func() string { return "HCA Volunteer Portal" })
 
 func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	t.Helper()
@@ -1112,7 +1114,7 @@ func TestPrettyIDs(t *testing.T) {
 
 func TestSharePreview(t *testing.T) {
 	cache, mux := newServer(t)
-	head := PreviewHead(cache)
+	head := PreviewHead(cache, testStyle)
 	tags := head(httptest.NewRequest("GET", "https://team.heliosian.com/v/intl-night/", nil))
 	for _, want := range []string{`og:title" content="International Night"`, `og:url" content="https://team.heliosian.com/v/international-night"`,
 		`og:image" content="https://team.heliosian.com/open/share/E001.png"`, `Thursday, September 24 · 4:00 – 6:00 PM — We invite you`} {

@@ -1,8 +1,6 @@
 package home
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"image"
 	"image/color"
 	"net/http"
@@ -23,14 +21,13 @@ import (
 // to a list is nobody's to preview and is left off; the tags name the same
 // apps in words, each with its address on the tier the link was to.
 
-// cardStyle is the portal's dress for the card: the page's white, the deep
-// teal the site's headlines use, the lockup's olive for the tagline and the
-// notes, and the four-petal mark beside the wordmark.
-var cardStyle = &sharecard.Style{
-	Page: color.RGBA{0xf4, 0xf8, 0xf8, 0xff}, Brand: color.RGBA{0x0f, 0x4e, 0x54, 0xff}, Accent: color.RGBA{0x6f, 0x8f, 0x1a, 0xff},
-	Ink: color.RGBA{0x0a, 0x32, 0x36, 0xff}, Yellow: color.RGBA{0xfa, 0xe1, 0x05, 0xff}, Panel: color.RGBA{0xdc, 0xe9, 0xe8, 0xff},
-	Wordmark: "Heliosian", Tagline: "Helios Community Apps",
-	Mark: "web/public/home/brand/logo-mark.png",
+// CardStyle is the portal's dress for the card: the standard palette with
+// the lockup's olive for the tagline and the notes, and the four-petal mark
+// beside the wordmark.
+func CardStyle(name, tagline func() string) *sharecard.Style {
+	palette := sharecard.Standard
+	palette.Accent = color.RGBA{0x6f, 0x8f, 0x1a, 0xff}
+	return &sharecard.Style{Palette: palette, Name: name, Tagline: tagline, Wordmark: "Heliosian", Mark: "web/public/home/brand/logo-mark.png"}
 }
 
 // shareTitle and shareLead are the card's and the tags' words.
@@ -81,28 +78,20 @@ func hostOf(app App, tier string) string {
 // PreviewHead is the Open Graph markup for any address on the portal: what
 // Heliosian is, the apps everyone has, and the card that draws them. Wired
 // into the sign-in page, which is what an unauthenticated fetch gets.
-func PreviewHead(cache *Cache) func(r *http.Request) string {
+func PreviewHead(cache *Cache, style *sharecard.Style) func(r *http.Request) string {
 	return func(r *http.Request) string {
-		if cache.Model() == nil {
-			return ""
-		}
 		origin := "https://" + r.Host
 		tier := tierOf(r.Host)
 		names := []string{}
 		for _, app := range cache.sharedApps() {
 			names = append(names, app.Name+" ("+strings.TrimSuffix(app.Tagline, ".")+", "+hostOf(app, tier)+")")
 		}
-		desc := cardStyle.TaglineText() + ". " + shareLead
+		desc := style.Tagline() + ". " + shareLead
 		if len(names) > 0 {
-			desc = cardStyle.TaglineText() + ": " + strings.Join(names, "; ") + ". " + shareLead
+			desc = style.Tagline() + ": " + strings.Join(names, "; ") + ". " + shareLead
 		}
-		return previewTags(shareTitle, desc, origin+"/", origin+"/open/share/apps.png")
+		return style.PreviewTags(shareTitle, desc, origin+"/", origin+"/open/share/apps.png")
 	}
-}
-
-// previewTags is the markup itself, as every app's sign-in page carries it.
-func previewTags(title, desc, url, image string) string {
-	return sharecard.PreviewTags("Heliosian", title, desc, url, image)
 }
 
 // appMarks holds each app's mark, read once from the shared brand folder.
@@ -126,31 +115,12 @@ func appMark(key string) image.Image {
 // apps everyone has, each with its tagline. It changes as apps are renamed,
 // described or let out, so its ETag hashes what it names.
 func (a app) shareApps(w http.ResponseWriter, r *http.Request) {
-	apps := a.cache.sharedApps()
-	parts := []string{cardStyle.TaglineText()}
+	parts := []string{}
 	listing := &sharecard.Listing{Empty: "The apps are on their way - check back soon."}
-	for _, app := range apps {
+	for _, app := range a.cache.sharedApps() {
 		listing.Items = append(listing.Items, sharecard.Item{Title: app.Name, Note: app.Tagline, Icon: appMark(app.Key)})
 		parts = append(parts, app.Key, app.Name, app.Tagline)
 	}
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
-	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	png, err := cardStyle.Draw(sharecard.Card{
-		Title:    shareTitle,
-		Subtitle: shareLead,
-		Button:   "Open Heliosian",
-		Listing:  listing,
-	})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", "public, max-age=3600")
-	w.Write(png)
+	card := sharecard.Card{Title: shareTitle, Subtitle: shareLead, Button: "Open Heliosian", Listing: listing}
+	a.style.Serve(w, r, card, parts...)
 }

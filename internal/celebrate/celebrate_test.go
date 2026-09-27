@@ -117,9 +117,11 @@ func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, mailer, testFrom, nil, nil)
+	Register(mux, cache, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, mailer, testFrom, nil, nil, testStyle)
 	return cache, mux
 }
+
+var testStyle = CardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" })
 
 func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	t.Helper()
@@ -966,7 +968,7 @@ func TestFriendlyAddresses(t *testing.T) {
 
 func TestSharePreview(t *testing.T) {
 	cache, mux := newServer(t)
-	head := PreviewHead(cache)
+	head := PreviewHead(cache, testStyle)
 	req := httptest.NewRequest("GET", "/p/fondue", nil)
 	req.Host = "celebrate.heliosian.com"
 	got := head(req)
@@ -1212,7 +1214,7 @@ func TestMoveAddress(t *testing.T) {
 	mux := http.NewServeMux()
 	Register(mux, cache, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom, nil, func(_ context.Context, actor access.Actor, old, to, name string) {
 		told = append(told, move{actor.Email, old, to, name})
-	})
+	}, testStyle)
 	const (
 		school = "ella.graduated@heliosschool.org"
 		home   = "ella.w@gmail.com"

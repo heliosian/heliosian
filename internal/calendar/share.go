@@ -1,8 +1,6 @@
 package calendar
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"image/color"
 	"net/http"
 	"os"
@@ -21,20 +19,14 @@ import (
 // next few events, at /open/share/upcoming.png. The tags say what the school's
 // own calendar says and nothing about who is going.
 
-// cardStyle is the calendar's dress for the card: the brand teal, the
-// amber of today, and the mark beside the wordmark - the lockups as drawn
-// stand taller than the card's header allows.
-var cardStyle = &sharecard.Style{
-	Page: color.RGBA{0xf4, 0xf8, 0xf8, 0xff}, Brand: color.RGBA{0x0e, 0x4d, 0x54, 0xff}, Accent: color.RGBA{0x1f, 0x83, 0x8a, 0xff},
-	Ink: color.RGBA{0x0a, 0x32, 0x36, 0xff}, Yellow: color.RGBA{0xe8, 0xa3, 0x3d, 0xff}, Panel: color.RGBA{0xdc, 0xe9, 0xe8, 0xff},
-	Wordmark: "Helios When", Tagline: "HELIOS CALENDAR OF EVERYTHING",
-	Mark: "web/public/calendar/brand/logo-mark.png",
-}
-
-// ShareTagline gives the card the app's tagline as the registry has it
-// now, in place of the one written here.
-func ShareTagline(now func() string) {
-	cardStyle.TaglineNow = now
+// CardStyle is the calendar's dress for the card: the standard palette in
+// the calendar's own teal and the amber of today, and the mark beside the
+// wordmark - the lockups as drawn stand taller than the card's header allows.
+func CardStyle(name, tagline func() string) *sharecard.Style {
+	palette := sharecard.Standard
+	palette.Brand = color.RGBA{0x0e, 0x4d, 0x54, 0xff}
+	palette.Yellow = color.RGBA{0xe8, 0xa3, 0x3d, 0xff}
+	return &sharecard.Style{Palette: palette, Name: name, Tagline: tagline, Wordmark: "Helios When", Mark: "web/public/calendar/brand/logo-mark.png"}
 }
 
 // defaultHeader is the picture an event wears when neither it nor its
@@ -119,12 +111,9 @@ func cutEventPath(path string) (string, bool) {
 // there when the path names one, else the calendar's own preview of what
 // is coming. Wired into the sign-in page, which is what an unauthenticated
 // fetch of the address gets.
-func PreviewHead(cache *Cache, linked func(email string) []Linked) func(r *http.Request) string {
+func PreviewHead(cache *Cache, linked func(email string) []Linked, style *sharecard.Style) func(r *http.Request) string {
 	return func(r *http.Request) string {
-		if cache.Model() == nil {
-			return ""
-		}
-		a := app{cache: cache, linked: linked}
+		a := app{cache: cache, linked: linked, style: style}
 		origin := "https://" + r.Host
 		if id, ok := cutEventPath(r.URL.Path); ok {
 			if e := a.event(id); e != nil {
@@ -143,41 +132,20 @@ func (a app) eventHead(e *Event, origin string) string {
 	if b := blurb(e); b != "" {
 		parts = append(parts, b)
 	}
-	return previewTags(e.Title, strings.Join(parts, " — "), origin+EventPath(e), origin+"/open/share/"+e.ID+".png")
+	return a.style.PreviewTags(e.Title, strings.Join(parts, " — "), origin+EventPath(e), origin+"/open/share/"+e.ID+".png")
 }
 
-// upcomingHead is the calendar's own preview: the next few events, in words,
-// with the card that draws them.
+// upcomingHead is the calendar's own preview: what it is, in words, with
+// the card that says so.
 func (a app) upcomingHead(origin string) string {
-	return previewTags("Helios When", whenWords, origin+"/", origin+"/open/share/upcoming.png")
-}
-
-// previewTags is the markup itself, as every app's sign-in page carries it.
-func previewTags(title, desc, url, image string) string {
-	return sharecard.PreviewTags("Helios When", title, desc, url, image)
+	return a.style.PreviewTags(a.style.Name(), whenWords, origin+"/", origin+"/open/share/upcoming.png")
 }
 
 // shareUpcoming serves /open/share/upcoming.png: the card for the calendar
-// itself - the next event dressed as its own card would be, beside a list
-// of the few after it. It changes as days pass, so its ETag hashes what it
-// names.
+// itself.
 func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	card := whenCard(a.readImage(defaultHeader))
-	sum := sha256.Sum256([]byte(strings.Join([]string{cardStyle.TaglineText(), card.Kicker, card.Title, card.Button}, "\x00")))
-	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	png, err := cardStyle.Draw(card)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", "public, max-age=3600")
-	w.Write(png)
+	a.style.Serve(w, r, card, card.Kicker, card.Title, card.Button)
 }
 
 // whenWords is what Helios When is, for a link to it - the page rather
@@ -238,25 +206,12 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	day, hours := whenLines(e)
 	kicker := a.cache.Model().category(e)
 	button := shareButton(e)
-	sum := sha256.Sum256([]byte(strings.Join([]string{e.Title, kicker, day, hours, e.Location, picture, button}, "\x00")))
-	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	card, err := cardStyle.Draw(sharecard.Card{
+	card := sharecard.Card{
 		Kicker: kicker, Title: e.Title, Picture: a.readImage(picture), Whole: whole,
 		Lines:  []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: e.Location}},
 		Button: button,
-	})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
 	}
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", "public, max-age=3600")
-	w.Write(card)
+	a.style.Serve(w, r, card, e.Title, kicker, day, hours, e.Location, picture, button)
 }
 
 // pictureOf is the name of the picture an event's page wears, as the page

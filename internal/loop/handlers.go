@@ -18,6 +18,7 @@ import (
 	"heliosian/internal/describe"
 	"heliosian/internal/filter"
 	"heliosian/internal/serve"
+	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -62,7 +63,7 @@ type Describer interface {
 	Group(ctx context.Context, actor string, facts describe.GroupFacts) (string, error)
 }
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Directory, superAdmins func() []string, mailbox Mail, describer Describer) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Directory, superAdmins func() []string, mailbox Mail, describer Describer, about *sharecard.About) {
 	a := app{cache: cache, media: media, directory: directory, superAdmins: superAdmins, mail: mailbox, describer: describer}
 	a.mailer = newMailer(cache, directory, mailbox)
 	for _, page := range pages {
@@ -80,7 +81,7 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Dir
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /hooks/mail/mime", a.inbound)
 	mux.HandleFunc("POST /hooks/events", a.events)
-	mux.HandleFunc("GET /open/share/about.png", a.shareCard)
+	mux.Handle("GET /open/share/about.png", about)
 	mux.HandleFunc("GET /open/unsubscribe/{token}", a.unsubscribePage)
 	mux.HandleFunc("POST /open/unsubscribe/{token}", a.unsubscribe)
 	a.mailer.recover()

@@ -93,7 +93,7 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSourc
 	}
 	mux := http.NewServeMux()
 	sources := newSampleSources(t)
-	testHooks = Register(mux, cache, nil, testDirectory, func() []string { return nil }, linked, celebrate, sources.sources, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey})
+	testHooks = Register(mux, cache, nil, testDirectory, func() []string { return nil }, linked, celebrate, sources.sources, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}, testStyle)
 	return mux, cache, kept, sources
 }
 
@@ -190,7 +190,7 @@ func TestSendWithoutMailMarksNothingSent(t *testing.T) {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
 	unmailed := http.NewServeMux()
-	Register(unmailed, cache, nil, testDirectory, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{})
+	Register(unmailed, cache, nil, testDirectory, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{}, testStyle)
 	if rec := call(t, as(host, unmailed), "POST", "/api/calendar/invites/send", `{"id":"meetup","to":"new"}`); rec.Code != 400 || !strings.Contains(rec.Body.String(), "mail is not set up") {
 		t.Errorf("send without mail: %d %s", rec.Code, rec.Body)
 	}
@@ -217,7 +217,7 @@ func TestCancelWithoutMailTellsNobody(t *testing.T) {
 		t.Fatalf("send: %d %s", rec.Code, rec.Body)
 	}
 	unmailed := http.NewServeMux()
-	Register(unmailed, cache, nil, testDirectory, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{})
+	Register(unmailed, cache, nil, testDirectory, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{}, testStyle)
 	if rec := call(t, as(host, unmailed), "POST", "/api/calendar/events/cancel", `{"id":"meetup","notify":true}`); rec.Code != 200 || rec.Body.String() != "{\"told\":0}\n" {
 		t.Errorf("cancel without mail: %d %s", rec.Code, rec.Body)
 	}

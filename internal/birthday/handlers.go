@@ -17,6 +17,7 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
+	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
 )
 
@@ -51,7 +52,7 @@ type Describer interface {
 	Charity(ctx context.Context, actor, name, link string) (describe.Info, error)
 }
 
-func Register(mux *http.ServeMux, cache *Cache, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(ctx context.Context, email string) error) {
+func Register(mux *http.ServeMux, cache *Cache, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(ctx context.Context, email string) error, about *sharecard.About) {
 	a := app{cache: cache, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
 	if mailer != nil {
 		go a.remindLoop()
@@ -60,7 +61,7 @@ func Register(mux *http.ServeMux, cache *Cache, directory Directory, superAdmins
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
-	mux.HandleFunc("GET /open/share/about.png", a.shareCard)
+	mux.Handle("GET /open/share/about.png", about)
 	mux.HandleFunc("GET /api/birthday/model", a.model)
 	mux.HandleFunc("POST /api/birthday/assign", a.assign)
 	mux.HandleFunc("DELETE /api/birthday/assign", a.unassign)

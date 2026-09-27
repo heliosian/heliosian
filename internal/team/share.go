@@ -1,8 +1,6 @@
 package team
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"image/color"
 	"net/http"
@@ -16,27 +14,15 @@ import (
 	"heliosian/internal/sharecard"
 )
 
-var cardStyle = &sharecard.Style{
-	Page: color.RGBA{0xee, 0xf6, 0xea, 0xff}, Brand: color.RGBA{0x0c, 0x4c, 0x54, 0xff}, Accent: color.RGBA{0x00, 0x74, 0x6f, 0xff},
-	Ink: color.RGBA{0x0e, 0x3a, 0x42, 0xff}, Yellow: color.RGBA{0xf8, 0xd9, 0x08, 0xff}, Panel: color.RGBA{0xdc, 0xe9, 0xe4, 0xff},
-	Wordmark: "HCA-Team", Tagline: "HCA VOLUNTEER PORTAL",
-	Mark: "web/public/team/brand/logo-mark.png", Lockup: "web/public/team/brand/logo-lockup.png", Corner: "web/team/toolbar_background.png",
-}
-
-func ShareWords(name, tagline func() string) {
-	shareName = name
-	cardStyle.TaglineNow = tagline
-}
-
-var shareName func() string
-
-func title() string {
-	if shareName != nil {
-		if now := strings.TrimSpace(shareName()); now != "" {
-			return now
-		}
+func CardStyle(name, tagline func() string) *sharecard.Style {
+	return &sharecard.Style{
+		Palette: sharecard.Palette{
+			Page: color.RGBA{0xee, 0xf6, 0xea, 0xff}, Brand: color.RGBA{0x0c, 0x4c, 0x54, 0xff}, Accent: color.RGBA{0x00, 0x74, 0x6f, 0xff},
+			Ink: color.RGBA{0x0e, 0x3a, 0x42, 0xff}, Yellow: color.RGBA{0xf8, 0xd9, 0x08, 0xff}, Panel: color.RGBA{0xdc, 0xe9, 0xe4, 0xff},
+		},
+		Name: name, Tagline: tagline,
+		Mark: "web/public/team/brand/logo-mark.png", Lockup: "web/public/team/brand/logo-lockup.png", Corner: "web/team/toolbar_background.png",
 	}
-	return cardStyle.Wordmark
 }
 
 func previewable(m *Model, a *Activity) bool {
@@ -80,7 +66,7 @@ func blurb(a *Activity) string {
 	return text
 }
 
-func PreviewHead(cache *Cache) func(r *http.Request) string {
+func PreviewHead(cache *Cache, style *sharecard.Style) func(r *http.Request) string {
 	return func(r *http.Request) string {
 		model := cache.Model()
 		origin := "https://" + r.Host
@@ -90,7 +76,7 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 			a = model.Resolve(r.URL.Path)
 		}
 		if !previewable(model, a) {
-			return upcomingHead(model, origin, time.Now().In(local))
+			return upcomingHead(style, model, origin, time.Now().In(local))
 		}
 		desc := blurb(a)
 		if line := when(timed(model, a)); line != "" {
@@ -107,12 +93,8 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 		if under := lineage(model, a); under != "" {
 			title = a.Title + " · " + under
 		}
-		return previewTags(title, desc, origin+model.PathOf(a), origin+"/open/share/"+a.ID+".png")
+		return style.PreviewTags(title, desc, origin+model.PathOf(a), origin+"/open/share/"+a.ID+".png")
 	}
-}
-
-func previewTags(title, desc, url, image string) string {
-	return sharecard.PreviewTags("HCA-Team", title, desc, url, image)
 }
 
 func needs(m *Model, at time.Time) []*Activity {
@@ -157,8 +139,8 @@ const (
 	upcomingEmpty = "Nothing needs hands just now - check back soon."
 )
 
-func upcomingHead(m *Model, origin string, at time.Time) string {
-	desc := cardStyle.TaglineText() + ". " + upcomingLead
+func upcomingHead(style *sharecard.Style, m *Model, origin string, at time.Time) string {
+	desc := style.Tagline() + ". " + upcomingLead
 	if list := needs(m, at); len(list) > 0 {
 		names := []string{}
 		for _, a := range list[:min(len(list), needsCount)] {
@@ -170,7 +152,7 @@ func upcomingHead(m *Model, origin string, at time.Time) string {
 		}
 		desc = "Volunteers needed: " + strings.Join(names, "; ") + ". " + upcomingLead
 	}
-	return previewTags(title(), desc, origin+"/", origin+"/open/share/upcoming.png")
+	return style.PreviewTags(style.Name(), desc, origin+"/", origin+"/open/share/upcoming.png")
 }
 
 func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
@@ -181,8 +163,8 @@ func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 		}
 		listing.Items = append(listing.Items, sharecard.Item{Title: act.Title, Note: needNote(act)})
 	}
-	card := sharecard.Card{Title: title(), Subtitle: cardStyle.TaglineText(), Button: "See what's open", Listing: listing}
-	cardStyle.Serve(w, r, card, sharecard.ETag(append(listing.Words(), title(), cardStyle.TaglineText())...))
+	card := sharecard.Card{Title: a.style.Name(), Subtitle: a.style.Tagline(), Button: "See what's open", Listing: listing}
+	a.style.Serve(w, r, card, listing.Words()...)
 }
 
 func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
@@ -200,27 +182,13 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 			picture, isFlyer = n.Image, false
 		}
 	}
-	imageBytes := a.readImage(picture)
-	line, under := when(timed(model, act)), lineage(model, act)
-	sum := sha256.Sum256([]byte(act.Title + "\x00" + under + "\x00" + line + "\x00" + picture + "\x00" + cardStyle.TaglineText()))
-	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
+	under := lineage(model, act)
 	day, hours := whenLines(timed(model, act))
-	card, err := cardStyle.Draw(sharecard.Card{
-		Kicker: under, Title: act.Title, Picture: imageBytes, Whole: isFlyer,
+	card := sharecard.Card{
+		Kicker: under, Title: act.Title, Picture: a.readImage(picture), Whole: isFlyer,
 		Lines: []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}},
-	})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
 	}
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", "public, max-age=3600")
-	w.Write(card)
+	a.style.Serve(w, r, card, act.Title, under, day, hours, picture)
 }
 
 func (a app) readImage(key string) []byte {

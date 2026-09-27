@@ -20,6 +20,7 @@ import (
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
+	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
 )
 
@@ -39,17 +40,18 @@ type app struct {
 	clock       *matchClock
 	search      ImageSearch
 	mail        Mail
+	style       *sharecard.Style
 }
 
 type ImageSearch = imagesearch.Search
 
 const imageFolder = "category-images"
 
-func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search ImageSearch, mailbox Mail) Hooks {
+func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search ImageSearch, mailbox Mail, style *sharecard.Style) Hooks {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
 	}
-	a := app{cache: cache, store: store, directory: directory, superAdmins: superAdmins, linked: linked, parties: celebrate.Party, celebrate: celebrate, sources: sources, clock: &matchClock{}, search: search, mail: mailbox}
+	a := app{cache: cache, store: store, directory: directory, superAdmins: superAdmins, linked: linked, parties: celebrate.Party, celebrate: celebrate, sources: sources, clock: &matchClock{}, search: search, mail: mailbox, style: style}
 	if sources != nil {
 		go a.sweepLoop()
 	}

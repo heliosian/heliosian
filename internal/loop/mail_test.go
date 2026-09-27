@@ -180,7 +180,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, directory: sampleDirectory{model}, sender: &fakeSender{}, archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
 	h.mailbox = Mail{Sender: h.sender, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
-	Register(h.mux, cache, nil, h.directory, func() []string { return nil }, h.mailbox, nil)
+	Register(h.mux, cache, nil, h.directory, func() []string { return nil }, h.mailbox, nil, About(func() string { return "Helios Loop" }, func() string { return "Email groups drawn from the directory" }))
 	return h
 }
 

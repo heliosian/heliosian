@@ -29,15 +29,24 @@ const (
 	Height = 630
 )
 
-// Style is one app's dress for the card: its colours, its wordmark and
-// tagline, its mark, and the art that sits in the bottom-left corner.
-type Style struct {
+// Palette is the card's colours.
+type Palette struct {
 	Page, Brand, Accent, Ink, Yellow, Panel color.RGBA
-	Wordmark, Tagline                       string
-	// TaglineNow, when set, is asked for the tagline at each draw - the
-	// registry's, as an admin may have edited it - with Tagline as the
-	// fallback for a blank answer.
-	TaglineNow func() string
+}
+
+// Standard is the palette an app's card wears unless it changes a colour.
+var Standard = Palette{
+	Page: color.RGBA{0xf4, 0xf8, 0xf8, 0xff}, Brand: color.RGBA{0x0f, 0x4e, 0x54, 0xff}, Accent: color.RGBA{0x1f, 0x83, 0x8a, 0xff},
+	Ink: color.RGBA{0x0a, 0x32, 0x36, 0xff}, Yellow: color.RGBA{0xfa, 0xe1, 0x05, 0xff}, Panel: color.RGBA{0xdc, 0xe9, 0xe8, 0xff},
+}
+
+// Style is one app's dress for the card: its palette, its name and tagline
+// as the registry has them now, asked at each use, its wordmark, its mark,
+// and the art that sits in the bottom-left corner.
+type Style struct {
+	Palette
+	Name, Tagline func() string
+	Wordmark      string
 	// Mark, Lockup and Corner are file paths, read once; any may be blank.
 	// A Lockup - the brand's own art, mark and words together - stands in
 	// for the mark, wordmark and tagline the card would otherwise set.
@@ -128,16 +137,6 @@ func readImage(path string) image.Image {
 	}
 	img, _, _ := image.Decode(bytes.NewReader(data))
 	return img
-}
-
-// TaglineText is the tagline the next draw will use, for a caller's ETag.
-func (s *Style) TaglineText() string {
-	if s.TaglineNow != nil {
-		if now := strings.TrimSpace(s.TaglineNow()); now != "" {
-			return now
-		}
-	}
-	return s.Tagline
 }
 
 func (s *Style) art() (image.Image, image.Image) {
@@ -261,7 +260,7 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		}
 		d.Face, d.Src = small, image.NewUniform(s.Accent)
 		d.Dot = fixed.P(x+2, y+62)
-		d.DrawString(strings.ToUpper(s.TaglineText()))
+		d.DrawString(strings.ToUpper(s.Tagline()))
 	}
 
 	// The kicker above the title, so a thing under another plainly belongs

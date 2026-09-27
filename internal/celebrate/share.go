@@ -1,9 +1,6 @@
 package celebrate
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"image/color"
 	"net/http"
 	"os"
 	"path"
@@ -14,16 +11,12 @@ import (
 	"heliosian/internal/sharecard"
 )
 
-var cardStyle = &sharecard.Style{
-	Page: color.RGBA{0xf4, 0xf8, 0xf8, 0xff}, Brand: color.RGBA{0x0f, 0x4e, 0x54, 0xff}, Accent: color.RGBA{0x1f, 0x83, 0x8a, 0xff},
-	Ink: color.RGBA{0x0a, 0x32, 0x36, 0xff}, Yellow: color.RGBA{0xfa, 0xe1, 0x05, 0xff}, Panel: color.RGBA{0xdc, 0xe9, 0xe8, 0xff},
-	Wordmark: "Helios Celebrate", Tagline: "FUN(D)RAISER PARTIES",
-	Mark:   "web/public/celebrate/brand/logo-mark.png",
-	Lockup: "web/public/celebrate/brand/logo-lockup.png",
-}
-
-func ShareTagline(now func() string) {
-	cardStyle.TaglineNow = now
+func CardStyle(name, tagline func() string) *sharecard.Style {
+	return &sharecard.Style{
+		Palette: sharecard.Standard, Name: name, Tagline: tagline,
+		Mark:   "web/public/celebrate/brand/logo-mark.png",
+		Lockup: "web/public/celebrate/brand/logo-lockup.png",
+	}
 }
 
 func previewable(p *Party) bool {
@@ -87,7 +80,7 @@ func blurb(p *Party) string {
 	return text
 }
 
-func PreviewHead(cache *Cache) func(r *http.Request) string {
+func PreviewHead(cache *Cache, style *sharecard.Style) func(r *http.Request) string {
 	return func(r *http.Request) string {
 		model := cache.Model()
 		origin := "https://" + r.Host
@@ -97,7 +90,7 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 			p = model.Resolve(r.URL.Path)
 		}
 		if !previewable(p) {
-			return upcomingHead(model, origin)
+			return upcomingHead(style, model, origin)
 		}
 		parts := []string{}
 		if line := when(p); line != "" {
@@ -113,11 +106,11 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 		if desc == "" {
 			desc = "A fun(d)raiser party for the Helios community."
 		}
-		return previewTags(p.Title, desc, origin+model.PathOf(p), origin+"/open/share/"+p.ID+".png")
+		return style.PreviewTags(p.Title, desc, origin+model.PathOf(p), origin+"/open/share/"+p.ID+".png")
 	}
 }
 
-func upcomingHead(m *Model, origin string) string {
+func upcomingHead(style *sharecard.Style, m *Model, origin string) string {
 	parties := upcoming(m)
 	desc := "Fun(d)raiser parties for the Helios community. New parties are on the way."
 	if len(parties) > 0 {
@@ -137,11 +130,7 @@ func upcomingHead(m *Model, origin string) string {
 			desc += ". Also coming: " + strings.Join(names, ", ") + "."
 		}
 	}
-	return previewTags("Upcoming Parties", desc, origin+"/", origin+"/open/share/upcoming.png")
-}
-
-func previewTags(title, desc, url, image string) string {
-	return sharecard.PreviewTags("Helios Celebrate", title, desc, url, image)
+	return style.PreviewTags("Upcoming Parties", desc, origin+"/", origin+"/open/share/upcoming.png")
 }
 
 func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +139,7 @@ func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 		Title:   "New parties are on the way",
 		Listing: &sharecard.Listing{Heading: "Upcoming Parties", Empty: "Nothing is on sale just now - check back soon."},
 	}
-	parts := []string{cardStyle.TaglineText()}
+	parts := []string{}
 	if len(parties) > 0 {
 		next := parties[0]
 		day, hours := whenLines(next)
@@ -162,21 +151,7 @@ func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 			parts = append(parts, p.Title, p.Start)
 		}
 	}
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
-	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	png, err := cardStyle.Draw(card)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", "public, max-age=3600")
-	w.Write(png)
+	a.style.Serve(w, r, card, parts...)
 }
 
 func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
@@ -191,24 +166,11 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 		picture, whole = p.Image, false
 	}
 	day, hours := whenLines(p)
-	sum := sha256.Sum256([]byte(strings.Join([]string{p.Title, p.Subtitle, day, hours, p.Location, picture}, "\x00")))
-	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	card, err := cardStyle.Draw(sharecard.Card{
+	card := sharecard.Card{
 		Title: p.Title, Subtitle: p.Subtitle, Picture: a.readImage(picture), Whole: whole,
 		Lines: []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: p.Location}},
-	})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
 	}
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", "public, max-age=3600")
-	w.Write(card)
+	a.style.Serve(w, r, card, p.Title, p.Subtitle, day, hours, p.Location, picture)
 }
 
 func (a app) readImage(key string) []byte {

@@ -10,6 +10,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/serve"
+	"heliosian/internal/sharecard"
 )
 
 var sections = []string{"people", "classrooms", "staff", "map", "email-list", "greenvelope", "my-privacy"}
@@ -54,9 +55,9 @@ func OptInForm(optIn func() string) http.Handler {
 	})
 }
 
-func Register(mux *http.ServeMux, cache *Cache, mapsKey string, lister Lister) {
+func Register(mux *http.ServeMux, cache *Cache, mapsKey string, lister Lister, about *sharecard.About) {
 	a := app{cache: cache, mapsKey: mapsKey, lister: lister}
-	mux.HandleFunc("GET /open/share/about.png", a.shareCard)
+	mux.Handle("GET /open/share/about.png", about)
 	for _, section := range sections {
 		mux.HandleFunc("GET /"+section, a.page)
 	}

@@ -6,16 +6,18 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"slices"
 	"strings"
 )
 
 // PreviewTags is the markup a sign-in page carries for a chat app: the Open
-// Graph and Twitter tags for a site, a title, a description, the page and
-// its card, and the plain description tag beside them.
-func PreviewTags(site, title, desc, url, image string) string {
+// Graph and Twitter tags for the app, named as the registry has it, a title,
+// a description, the page and its card, and the plain description tag
+// beside them.
+func (s *Style) PreviewTags(title, desc, url, image string) string {
 	tags := [][2]string{
 		{"og:type", "website"},
-		{"og:site_name", site},
+		{"og:site_name", s.Name()},
 		{"og:title", title},
 		{"og:description", desc},
 		{"og:url", url},
@@ -48,8 +50,10 @@ func ETag(parts ...string) string {
 }
 
 // Serve draws the card and writes it as the response, or a 304 when the
-// caller's ETag is the one the client already holds.
-func (s *Style) Serve(w http.ResponseWriter, r *http.Request, c Card, etag string) {
+// client already holds it. The ETag hashes the parts the caller names - what
+// the card says - and the app's name and tagline, so a rename reaches it.
+func (s *Style) Serve(w http.ResponseWriter, r *http.Request, c Card, parts ...string) {
+	etag := ETag(slices.Concat(parts, []string{s.Name(), s.Tagline()})...)
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
@@ -72,4 +76,25 @@ func (l *Listing) Words() []string {
 		out = append(out, it.Title, it.Note)
 	}
 	return out
+}
+
+// About is an app's card for what the app is, the same at every address:
+// its name over its tagline, a button, and a listing down the right.
+type About struct {
+	Style   *Style
+	Desc    string
+	Listing Listing
+	Button  string
+}
+
+// PreviewHead is the Open Graph markup for any address on the app.
+func (a *About) PreviewHead(r *http.Request) string {
+	origin := "https://" + r.Host
+	return a.Style.PreviewTags(a.Style.Name(), a.Style.Tagline()+". "+a.Desc, origin+"/", origin+"/open/share/about.png")
+}
+
+// ServeHTTP serves the card at /open/share/about.png.
+func (a *About) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	card := Card{Title: a.Style.Name(), Subtitle: a.Style.Tagline(), Button: a.Button, Listing: &a.Listing}
+	a.Style.Serve(w, r, card, a.Listing.Words()...)
 }

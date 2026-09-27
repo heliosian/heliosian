@@ -722,33 +722,31 @@ type Config struct {
 }
 
 type Core struct {
-	Mux            *http.ServeMux
-	HomeMux        *http.ServeMux
-	HomeCache      *home.Cache
-	TeamMux        *http.ServeMux
-	TeamCache      *team.Cache
-	BirthdayMux    *http.ServeMux
-	CelebrateMux   *http.ServeMux
-	CelebrateCache *celebrate.Cache
-	CalendarMux    *http.ServeMux
-	CalendarCache  *calendar.Cache
-	CalendarLinked func(email string) []calendar.Linked
-	LoopMux        *http.ServeMux
-	LoopCache      *loop.Cache
-	AskMux         *http.ServeMux
-	Cache          *who.Cache
-	Documents      *artifacts.Filer
-	Queue          *store.Queue
-	Spoof          *auth.Spoof
-	Member         func(email string) bool
-	Sessions       auth.Sessions
-	Home           http.Handler
-	Team           http.Handler
-	Birthday       http.Handler
-	Celebrate      http.Handler
-	Calendar       http.Handler
-	Loop           http.Handler
-	Ask            http.Handler
+	Mux           *http.ServeMux
+	HomeMux       *http.ServeMux
+	TeamMux       *http.ServeMux
+	TeamCache     *team.Cache
+	BirthdayMux   *http.ServeMux
+	CelebrateMux  *http.ServeMux
+	CalendarMux   *http.ServeMux
+	CalendarCache *calendar.Cache
+	LoopMux       *http.ServeMux
+	LoopCache     *loop.Cache
+	AskMux        *http.ServeMux
+	Cache         *who.Cache
+	Documents     *artifacts.Filer
+	Queue         *store.Queue
+	Spoof         *auth.Spoof
+	Member        func(email string) bool
+	Sessions      auth.Sessions
+	Home          http.Handler
+	Team          http.Handler
+	Birthday      http.Handler
+	Celebrate     http.Handler
+	Calendar      http.Handler
+	Loop          http.Handler
+	Ask           http.Handler
+	Previews      map[string]func(r *http.Request) string
 }
 
 func NewCore(cfg Config) *Core {
@@ -772,6 +770,9 @@ func NewCore(cfg Config) *Core {
 	}
 	taglineOf := func(key string) func() string {
 		return func() string {
+			if key == "home" {
+				return home.Home.Tagline
+			}
 			for _, a := range homeCache.AppList() {
 				if a.Key == key {
 					return a.Tagline
@@ -783,7 +784,7 @@ func NewCore(cfg Config) *Core {
 	appName := func(key string) func() string {
 		return func() string {
 			if key == "home" {
-				return "Heliosian"
+				return home.Home.Name
 			}
 			for _, a := range homeCache.AppList() {
 				if a.Key == key {
@@ -793,12 +794,13 @@ func NewCore(cfg Config) *Core {
 			return key
 		}
 	}
-	celebrate.ShareTagline(taglineOf("celebrate"))
-	calendar.ShareTagline(taglineOf("calendar"))
-	team.ShareWords(appName("team"), taglineOf("team"))
-	who.ShareWords(appName("who"), taglineOf("who"))
-	birthday.ShareWords(appName("birthday"), taglineOf("birthday"))
-	loop.ShareWords(appName("loop"), taglineOf("loop"))
+	whoAbout := who.About(appName("who"), taglineOf("who"))
+	birthdayAbout := birthday.About(appName("birthday"), taglineOf("birthday"))
+	loopAbout := loop.About(appName("loop"), taglineOf("loop"))
+	homeStyle := home.CardStyle(appName("home"), taglineOf("home"))
+	teamStyle := team.CardStyle(appName("team"), taglineOf("team"))
+	celebrateStyle := celebrate.CardStyle(appName("celebrate"), taglineOf("celebrate"))
+	calendarStyle := calendar.CardStyle(appName("calendar"), taglineOf("calendar"))
 	teamCache, err := team.NewCache(cfg.Source, cfg.Writer, teamImages{cfg.Store}, superAdmin, queue)
 	if err != nil {
 		logging.Fatal("load team data", "error", err)
@@ -838,7 +840,7 @@ func NewCore(cfg Config) *Core {
 	}
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cache.IsAdmin)
-	who.Register(mux, cache, cfg.BrowserKey, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir})
+	who.Register(mux, cache, cfg.BrowserKey, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, whoAbout)
 	who.RegisterTags(mux, cache)
 	who.RegisterAdmin(mux, cache, cfg.Store)
 	who.RegisterInvites(mux, cache, invites)
@@ -858,9 +860,9 @@ func NewCore(cfg Config) *Core {
 		return nil
 	}
 	partyCalendar := calendar.Celebrate{Party: partyPeople{celebrateCache}.people, IsAdmin: celebrateCache.IsAdmin, MoveAddress: moveAddress}
-	hooks = calendar.Register(calendarMux, calendarCache, cfg.Store, calendarDir, settings.SuperAdmins, linked, partyCalendar, audienceSources{loopDir}.Sources, cfg.ImageSearch, cfg.CalendarMail)
+	hooks = calendar.Register(calendarMux, calendarCache, cfg.Store, calendarDir, settings.SuperAdmins, linked, partyCalendar, audienceSources{loopDir}.Sources, cfg.ImageSearch, cfg.CalendarMail, calendarStyle)
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, homeCache, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, audienceSources{loopDir}, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault)
+	home.Register(homeMux, homeCache, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, audienceSources{loopDir}, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault, homeStyle)
 	teamMux := http.NewServeMux()
 	eventRSVPs := func(id string) *team.EventRSVPs {
 		sent, answers, ok := calendarCache.LinkedRSVPs(linked(""), calendar.SourceTeam, id)
@@ -869,11 +871,11 @@ func NewCore(cfg Config) *Core {
 		}
 		return &team.EventRSVPs{Sent: sent, Answers: answers}
 	}
-	team.Register(teamMux, teamCache, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail, cfg.MailFrom, eventRSVPs, activityEmailList(loopCache.Model))
+	team.Register(teamMux, teamCache, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail, cfg.MailFrom, eventRSVPs, activityEmailList(loopCache.Model), teamStyle)
 	birthdayMux := http.NewServeMux()
 	birthday.Register(birthdayMux, birthdayCache, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(ctx context.Context, email string) error {
 		return home.Grant(ctx, homeCache, "birthday", email)
-	})
+	}, birthdayAbout)
 	celebrateMux := http.NewServeMux()
 	partyRSVPs := func(partyID string) *celebrate.PartyRSVPs {
 		sent, answers, ok := calendarCache.PartyRSVPs(partyID)
@@ -884,13 +886,13 @@ func NewCore(cfg Config) *Core {
 	}
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom, partyRSVPs, func(ctx context.Context, actor access.Actor, old, to, name string) {
 		hooks.MoveAddress(ctx, actor, old, to, name)
-	})
+	}, celebrateStyle)
 	askMux := http.NewServeMux()
 	loopMail := cfg.Loop
 	documents := artifacts.Register(askMux, artifactsCache, cfg.Embedder, queue, cfg.ArtifactsMail)
 	loopMail.Documents = documents
 	loopMux := http.NewServeMux()
-	loop.Register(loopMux, loopCache, cfg.Store, loopDir, settings.SuperAdmins, loopMail, cfg.LoopDescriber)
+	loop.Register(loopMux, loopCache, cfg.Store, loopDir, settings.SuperAdmins, loopMail, cfg.LoopDescriber, loopAbout)
 	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker, spend, cfg.ChatKey)
 	waitingApprovals := approvals(cache, teamCache, celebrateCache, calendarCache)
 	behind := lateBirthdays(cache, birthdayCache, birthdayDirectory{cache, settings})
@@ -941,10 +943,19 @@ func NewCore(cfg Config) *Core {
 		queue.Refresh()
 	})
 	return &Core{
-		Mux: mux, HomeMux: homeMux, HomeCache: homeCache, TeamMux: teamMux, TeamCache: teamCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
-		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, LoopMux: loopMux, LoopCache: loopCache, AskMux: askMux, Cache: cache, Documents: documents, Queue: queue,
+		Mux: mux, HomeMux: homeMux, TeamMux: teamMux, TeamCache: teamCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux,
+		CalendarMux: calendarMux, CalendarCache: calendarCache, LoopMux: loopMux, LoopCache: loopCache, AskMux: askMux, Cache: cache, Documents: documents, Queue: queue,
 		Spoof:  &auth.Spoof{Allowed: superAdmin, Person: directory{cache, settings}.SpoofPerson, People: directory{cache, settings}.SpoofPeople},
 		Member: func(email string) bool { return who.Member(cache, email) }, Sessions: settings, Home: homeMux, Team: teamMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux, Loop: loopMux, Ask: askMux,
+		Previews: map[string]func(r *http.Request) string{
+			"who":       whoAbout.PreviewHead,
+			"home":      home.PreviewHead(homeCache, homeStyle),
+			"team":      team.PreviewHead(teamCache, teamStyle),
+			"birthday":  birthdayAbout.PreviewHead,
+			"celebrate": celebrate.PreviewHead(celebrateCache, celebrateStyle),
+			"calendar":  calendar.PreviewHead(calendarCache, linked, calendarStyle),
+			"loop":      loopAbout.PreviewHead,
+		},
 	}
 }
 
@@ -1195,25 +1206,25 @@ func Production(domain, blobCache string) (*http.Server, *store.Queue) {
 		return a
 	}
 	whoAuth := newAuth(auth.Login{Title: "Helios Who?"})
-	whoAuth.Preview = who.PreviewHead()
+	whoAuth.Preview = core.Previews["who"]
 	whoAuth.Register(core.Mux)
 	homeAuth := newAuth(auth.Login{Title: "Heliosian: Helios Community Apps"})
-	homeAuth.Preview = home.PreviewHead(core.HomeCache)
+	homeAuth.Preview = core.Previews["home"]
 	homeAuth.Register(core.HomeMux)
 	teamAuth := newAuth(auth.Login{Title: "HCA Volunteer Portal"})
-	teamAuth.Preview = team.PreviewHead(core.TeamCache)
+	teamAuth.Preview = core.Previews["team"]
 	teamAuth.Register(core.TeamMux)
 	birthdayAuth := newAuth(auth.Login{Title: "Helios Staff Birthdays"})
-	birthdayAuth.Preview = birthday.PreviewHead()
+	birthdayAuth.Preview = core.Previews["birthday"]
 	birthdayAuth.Register(core.BirthdayMux)
 	celebrateAuth := newAuth(auth.Login{Title: "Helios Celebrate: Fun(d)raiser Parties"})
-	celebrateAuth.Preview = celebrate.PreviewHead(core.CelebrateCache)
+	celebrateAuth.Preview = core.Previews["celebrate"]
 	celebrateAuth.Register(core.CelebrateMux)
 	calendarAuth := newAuth(auth.Login{Title: "Helios When: The school year, day by day"})
-	calendarAuth.Preview = calendar.PreviewHead(core.CalendarCache, core.CalendarLinked)
+	calendarAuth.Preview = core.Previews["calendar"]
 	calendarAuth.Register(core.CalendarMux)
 	loopAuth := newAuth(auth.Login{Title: "Helios Loop"})
-	loopAuth.Preview = loop.PreviewHead()
+	loopAuth.Preview = core.Previews["loop"]
 	loopAuth.Register(core.LoopMux)
 	askAuth := newAuth(auth.Login{Title: "Helios Ask"})
 	askAuth.Register(core.AskMux)

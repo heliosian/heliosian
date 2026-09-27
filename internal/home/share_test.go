@@ -12,7 +12,8 @@ import (
 func TestPortalPreview(t *testing.T) {
 	c, _ := sampleCache(t)
 	t.Chdir("../..")
-	head := PreviewHead(c)(httptest.NewRequest("GET", "https://home.heliosiandev.com/", nil))
+	style := CardStyle(func() string { return Home.Name }, func() string { return Home.Tagline })
+	head := PreviewHead(c, style)(httptest.NewRequest("GET", "https://home.heliosiandev.com/", nil))
 	for _, want := range []string{`og:title" content="Tools and resources for the Helios Community"`, `og:url" content="https://home.heliosiandev.com/"`,
 		`og:image" content="https://home.heliosiandev.com/open/share/apps.png"`, "Helios Who? (A visual directory, who.heliosiandev.com)", "Helios Calendar (The school year, day by day, when.heliosiandev.com)"} {
 		if !strings.Contains(head, want) {
@@ -31,7 +32,7 @@ func TestPortalPreview(t *testing.T) {
 		t.Errorf("tier of the local host = %q", got)
 	}
 
-	a := app{cache: c}
+	a := app{cache: c, style: style}
 	rec := httptest.NewRecorder()
 	a.shareApps(rec, httptest.NewRequest("GET", "https://heliosian.com/open/share/apps.png", nil))
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" {

@@ -55,7 +55,7 @@ func (a app) extPage(w http.ResponseWriter, r *http.Request) {
 			if e.Location != "" {
 				parts = append(parts, e.Location)
 			}
-			head = previewTags(e.Title, strings.Join(parts, " — "), origin+extPath(inv.Token), origin+"/open/share/"+e.ID+".png")
+			head = a.style.PreviewTags(e.Title, strings.Join(parts, " — "), origin+extPath(inv.Token), origin+"/open/share/"+e.ID+".png")
 		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

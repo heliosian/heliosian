@@ -17,6 +17,7 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
+	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
 )
 
@@ -49,15 +50,16 @@ type app struct {
 	from        string
 	rsvps       RSVPLookup
 	lists       EmailListLookup
+	style       *sharecard.Style
 }
 
 type ImageSearch = imagesearch.Search
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup, lists EmailListLookup) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
 	if search.UserAgent == "" {
 		search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
 	}
-	a := app{cache: cache, media: media, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps, lists: lists}
+	a := app{cache: cache, media: media, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps, lists: lists, style: style}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
