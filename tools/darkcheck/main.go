@@ -20,7 +20,18 @@ import (
 // the walk with an unknown ground, which is reported only when asked.
 const script = `(() => {
   // A computed colour is rgb(a); one mixed with color-mix comes back as color(srgb r g b / a), on 0..1.
-  const parse = c => { let m = (c || '').match(/rgba?\(([^)]+)\)/); if (m) { const p = m[1].split(',').map(Number); return {r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1}; } m = (c || '').match(/color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)/); if (m) return {r: m[1] * 255, g: m[2] * 255, b: m[3] * 255, a: m[4] === undefined ? 1 : Number(m[4])}; return null; };
+  const parse = c => {
+    let m = (c || '').match(/rgba?\(([^)]+)\)/);
+    if (m) {
+      const p = m[1].split(',').map(Number);
+      return {r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1};
+    }
+    m = (c || '').match(/color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)/);
+    if (m) {
+      return {r: m[1] * 255, g: m[2] * 255, b: m[3] * 255, a: m[4] === undefined ? 1 : Number(m[4])};
+    }
+    return null;
+  };
   const lum = c => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
   const ratio = (a, b) => { const la = lum(a), lb = lum(b); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05); };
   const over = (top, under) => { const a = top.a + under.a * (1 - top.a); return {r: (top.r * top.a + under.r * under.a * (1 - top.a)) / a, g: (top.g * top.a + under.g * under.a * (1 - top.a)) / a, b: (top.b * top.a + under.b * under.a * (1 - top.a)) / a, a}; };
@@ -31,25 +42,55 @@ const script = `(() => {
     for (let e = el; e; e = e.parentElement) {
       const cs = getComputedStyle(e);
       const c = parse(cs.backgroundColor);
-      if (c && c.a > 0) { acc = acc ? over(acc, c) : c; if (acc.a >= 0.995) return acc; }
-      if (cs.backgroundImage && cs.backgroundImage !== 'none') return acc && acc.a > 0.9 ? acc : null;
+      if (c && c.a > 0) {
+        acc = acc ? over(acc, c) : c;
+        if (acc.a >= 0.995) {
+          return acc;
+        }
+      }
+      if (cs.backgroundImage && cs.backgroundImage !== 'none') {
+        return acc && acc.a > 0.9 ? acc : null;
+      }
     }
     const c = parse(getComputedStyle(document.documentElement).backgroundColor);
     return acc ? over(acc, c && c.a > 0 ? c : {r: 255, g: 255, b: 255, a: 1}) : (c && c.a > 0 ? c : {r: 255, g: 255, b: 255, a: 1});
   };
-  const visible = el => { const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-  const path = el => { const bits = []; for (let e = el, n = 0; e && n < 4 && e !== document.body; e = e.parentElement, n++) { let s = e.tagName.toLowerCase(); if (e.id) s += '#' + e.id; else if (e.classList.length) s += '.' + [...e.classList].slice(0, 2).join('.'); bits.unshift(s); } return bits.join(' > '); };
+  const visible = el => {
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) {
+      return false;
+    }
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  const path = el => {
+    const bits = [];
+    for (let e = el, n = 0; e && n < 4 && e !== document.body; e = e.parentElement, n++) {
+      let s = e.tagName.toLowerCase();
+      if (e.id) {
+        s += '#' + e.id;
+      } else if (e.classList.length) {
+        s += '.' + [...e.classList].slice(0, 2).join('.');
+      }
+      bits.unshift(s);
+    }
+    return bits.join(' > ');
+  };
   const out = {contrast: [], light: [], tabs: []};
   const seen = new Set();
   for (const el of document.body.querySelectorAll('*')) {
-    if (['SCRIPT', 'STYLE', 'SVG', 'PATH', 'IMG', 'CANVAS', 'VIDEO', 'BR'].includes(el.tagName)) continue;
-    if (el.closest('svg')) continue;
-    if (!visible(el)) continue;
+    if (['SCRIPT', 'STYLE', 'SVG', 'PATH', 'IMG', 'CANVAS', 'VIDEO', 'BR'].includes(el.tagName) || el.closest('svg') || !visible(el)) {
+      continue;
+    }
     const cs = getComputedStyle(el);
     const own = parse(cs.backgroundColor);
     // Text: elements with their own non-blank text nodes.
     let text = '';
-    for (const n of el.childNodes) { if (n.nodeType === 3) text += n.textContent; }
+    for (const n of el.childNodes) {
+      if (n.nodeType === 3) {
+        text += n.textContent;
+      }
+    }
     text = text.replace(/\s+/g, ' ').trim();
     if (text) {
       const fg = parse(cs.color);
@@ -67,22 +108,34 @@ const script = `(() => {
     }
     // Light surfaces: an opaque fill lighter than mid-grey, of some size.
     if (own && own.a > 0.5) {
-      const under = own.a < 1 ? ground(el.parentElement || el) : null; const bgc = own.a < 1 ? (under ? over(own, under) : null) : own;
-      if (!bgc) continue;
+      const under = own.a < 1 ? ground(el.parentElement || el) : null;
+      const bgc = own.a < 1 ? (under ? over(own, under) : null) : own;
+      if (!bgc) {
+        continue;
+      }
       const rect = el.getBoundingClientRect();
       if (lum(bgc) > 0.4 && rect.width >= 24 && rect.height >= 16) {
         const key = path(el);
-        if (!seen.has(key)) { seen.add(key); out.light.push({bg: hex(bgc), w: Math.round(rect.width), h: Math.round(rect.height), path: key, text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40)}); }
+        if (!seen.has(key)) {
+          seen.add(key);
+          out.light.push({bg: hex(bgc), w: Math.round(rect.width), h: Math.round(rect.height), path: key, text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40)});
+        }
       }
     }
   }
   // Tab strips: a fill of their own that is not their parent's ground.
-  for (const el of document.body.querySelectorAll('.tabs, .tab-strip, .tabbar, .form-tabs, [role=tablist], .segments, .view-switch, .mobile-tabs, .topnav, .subnav')) {
-    if (!visible(el)) continue;
+  for (const el of document.body.querySelectorAll('.tabs, .tab-strip, .tabbar, .form-tabs, [role=tablist], .segments, .view-switch, .mobile-tabs')) {
+    if (!visible(el)) {
+      continue;
+    }
     const own = parse(getComputedStyle(el).backgroundColor);
-    if (!own || own.a === 0) continue;
+    if (!own || own.a === 0) {
+      continue;
+    }
     const mine = ground(el), around = ground(el.parentElement);
-    if (mine && around && ratio(mine, around) > 1.15) out.tabs.push({strip: hex(mine), around: hex(around), path: path(el)});
+    if (mine && around && ratio(mine, around) > 1.15) {
+      out.tabs.push({strip: hex(mine), around: hex(around), path: path(el)});
+    }
   }
   out.contrast.sort((a, b) => a.ratio - b.ratio);
   return out;

@@ -142,10 +142,10 @@ body.admin {
   stroke-linejoin: round;
 }
 
-/* On a phone the rail becomes a strip of pills along the top. Who?'s admin
-   page has its own fold-out menu instead, so this is opt-in by class. */
 .admin .person-picker { flex: 1; }
 
+/* On a phone the rail becomes a strip of pills along the top. Who?'s admin
+   page has its own fold-out menu instead, so this is opt-in by class. */
 @media (max-width: 760px) {
   .admin.admin-strip .layout { flex-direction: column; }
   .admin.admin-strip .sidebar {

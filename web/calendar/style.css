@@ -932,8 +932,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 /* Event rows: the hours, the title, and the classroom colors as dots at the
    end and a stripe down the left. */
-.event-list { display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-
 .event-row {
   display: flex;
   align-items: center;
@@ -1891,12 +1889,6 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .cohost-picker { flex: 1; min-width: 0; }
 
-.picker-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--accent-wash, #eef6f5); color: var(--ticket-text, var(--brand)); font-size: 12.5px; font-weight: 600; }
-
-.picker-chip-x { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border: 0; border-radius: 50%; background: none; color: inherit; font-size: 15px; line-height: 1; cursor: pointer; }
-
-.picker-chip-x:hover { background: var(--glass-strong, rgba(0, 0, 0, 0.08)); }
-
 /* The invitation as it stands, under the counts: its message, its
    settings in a line, and Edit invite. */
 .invite-details { padding: 0 0 6px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
@@ -2502,10 +2494,6 @@ body.is-admin #page > :not(.home) { max-width: none; margin: 0; }
    arrows to move it. */
 .admin-head { justify-content: flex-start; align-items: center; gap: 16px; }
 
-.admin-mark { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; flex-shrink: 0; border-radius: 14px; background: var(--card); border: 1px solid var(--line); color: var(--brand); }
-
-.admin-mark svg { width: 30px; height: 30px; }
-
 .admin-tool { margin-top: 0; }
 
 .admin-tool-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 6px; }
@@ -2659,7 +2647,6 @@ body.is-admin #page > :not(.home) { max-width: none; margin: 0; }
   .home-upcoming::after { display: none; }
   .upcoming-head { position: static; height: auto; padding: 0; border: 0; background: none; margin-bottom: 8px; }
   .upcoming-body { position: static; overflow: visible; padding: 0; }
-  .upcoming-body .event-list { border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
 }
 
 @media (max-width: 900px) {

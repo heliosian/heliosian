@@ -3,7 +3,7 @@
    photo and the switch to the other apps. Each app's style.css supplies the
    palette (--brand, --line, --ink, --muted, --input) and whatever it hangs off
    the bar (Who's alert badges, the user menus); this file supplies the
-   geometry and the treatment, so the three bars read as one product. Linked
+   geometry and the treatment, so every app's bar reads as one product. Linked
    ahead of style.css so an app can still override a rule on purpose. */
 
 /* The badges, the switch's list and the key hint all set their own display,

@@ -918,20 +918,6 @@ main {
 .event-grid > :nth-child(5n+4) { --accent: #17807c; }
 .event-grid > :nth-child(5n+5) { --accent: #7a5fae; }
 
-.chip-slot > .event-card { flex: 1; min-width: 0; }
-
-.event-card {
-  display: flex;
-  flex-direction: column;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 1px 2px rgba(36, 77, 83, 0.04);
-}
-
-.event-card:hover { border-color: var(--brand); }
-
 .event-open {
   display: block;
   flex: 1;
@@ -1009,67 +995,6 @@ a.event-people:hover .event-person { text-decoration: underline; }
 /* The household's row starts flush with the roles above it. */
 .event-person-note.event-people-family { margin-left: 0; }
 
-/* The cross at the picture's corner that hides the event. */
-.event-art { position: relative; }
-
-/* Where the event comes from, at the picture's foot, in the source's tint
-   - the rail's month uses the same three. */
-.event-source { position: absolute; left: 10px; bottom: 10px; padding: 4px 10px; border-radius: 999px; background: var(--tint, #e3f0ef); color: var(--on-tint, var(--brand)); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
-
-.event-source.is-team { color: var(--on-tint, #fff); }
-
-.event-hide { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: var(--disc, rgba(255, 255, 255, 0.9)); color: var(--disc-ink, var(--muted)); cursor: pointer; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); }
-
-.event-hide:hover { color: var(--brand); background: var(--disc-hover, #fff); }
-
-.event-hide svg { width: 14px; height: 14px; }
-
-.event-art {
-  position: relative;
-  height: 120px;
-  background: var(--wash, #e3f0ef);
-  color: var(--brand);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.event-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-.event-art > svg { width: 40px; height: 40px; opacity: 0.45; }
-
-.event-stamp {
-  position: absolute;
-  right: 12px;
-  bottom: -14px;
-  width: 50px;
-  border-radius: 10px;
-  overflow: hidden;
-  background: #fff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  text-align: center;
-  line-height: 1;
-}
-
-.event-stamp-month {
-  display: block;
-  padding: 4px 0 3px;
-  background: #c04a33;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.event-stamp-day {
-  display: block;
-  padding: 5px 0 6px;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--brand-fill);
-}
-
 .event-body { padding: 20px 14px 12px; }
 
 .event-title {
@@ -1133,10 +1058,6 @@ a.event-people:hover .event-person { text-decoration: underline; }
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 28px 34px;
 }
-
-/* The event cards keep their least size; a chip is as tall as it needs,
-   its row standing as tall as its tallest. */
-.event-card { min-height: 320px; }
 
 .chip-grid > :nth-child(5n+1) { --tint: var(--chip-tint-1, #dcefee); --accent: #1f8080; }
 .chip-grid > :nth-child(5n+2) { --tint: var(--chip-tint-2, #fbe6e2); --accent: #d05540; }
