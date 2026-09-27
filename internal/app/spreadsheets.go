@@ -3,6 +3,7 @@ package app
 import (
 	"slices"
 
+	"heliosian/internal/env"
 	"heliosian/internal/logging"
 )
 
@@ -45,7 +46,7 @@ func SpreadsheetsOf(sources []string) []Spreadsheet {
 func SheetIDs(sheets []Spreadsheet) map[string]string {
 	ids := map[string]string{}
 	for _, s := range sheets {
-		ids[s.Source] = requiredEnv(s.Env)
+		ids[s.Source] = env.Required(s.Env)
 	}
 	return ids
 }

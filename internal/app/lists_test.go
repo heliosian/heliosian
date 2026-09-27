@@ -19,7 +19,7 @@ import (
 func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
-	directory, err := who.LoadModel(dir, nil, staticFiles{}, []byte("test"))
+	directory, err := who.LoadModel(dir, nil, StaticFiles{Root: "web/who"}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func (anyImage) Prefetch(context.Context, []string) error { return nil }
 func TestMagicTagsCarryTheirHosts(t *testing.T) {
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
-	directory, err := who.LoadModel(dir, nil, staticFiles{}, []byte("test"))
+	directory, err := who.LoadModel(dir, nil, StaticFiles{Root: "web/who"}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestMagicTagsCarryTheirHosts(t *testing.T) {
 func TestCommitteesAreListsToo(t *testing.T) {
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
-	directory, err := who.LoadModel(dir, nil, staticFiles{}, []byte("test"))
+	directory, err := who.LoadModel(dir, nil, StaticFiles{Root: "web/who"}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,6 +17,7 @@ import (
 
 	"heliosian/internal/app"
 	"heliosian/internal/auth"
+	"heliosian/internal/env"
 )
 
 var questions = []string{
@@ -93,10 +94,7 @@ func main() {
 	as := flag.String("as", "", "directory addresses to view as through Spoof Mode, comma-separated, the questions dealt out across them")
 	out := flag.String("out", filepath.Join("local", "ask-runs", time.Now().Format("2006-01-02-150405")+".md"), "markdown file the answers are written to")
 	flag.Parse()
-	key := os.Getenv("SESSION_KEY")
-	if key == "" {
-		log.Fatal("SESSION_KEY is required (the server and the minted cookie must share it)")
-	}
+	key := env.Required("SESSION_KEY")
 	viewers := []string{""}
 	if *as != "" {
 		viewers = strings.Split(*as, ",")

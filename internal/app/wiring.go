@@ -27,6 +27,7 @@ import (
 	"heliosian/internal/claude"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/env"
 	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
 	"heliosian/internal/home"
@@ -123,7 +124,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load celebrate data", "error", err)
 	}
-	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Blobs, staticFiles{}, queue, cfg.FamilyIDKey, settings.SuperAdmins)
+	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Blobs, StaticFiles{Root: "web/who"}, queue, cfg.FamilyIDKey, settings.SuperAdmins)
 	if err != nil {
 		logging.Fatal("load directory data", "error", err)
 	}
@@ -330,7 +331,7 @@ func (c *Core) Aliased() map[string]http.Handler {
 }
 
 func Production(domain string) (*http.Server, *store.Queue) {
-	sessionKey := requiredEnv("SESSION_KEY")
+	sessionKey := env.Required("SESSION_KEY")
 	sheet, err := data.NewSheet(SheetIDs(Spreadsheets))
 	if err != nil {
 		logging.Fatal("load directory sheet", "error", err)
@@ -351,13 +352,13 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	core := NewCore(Config{
 		Source:        sheet,
 		Writer:        sheet,
-		Geocoder:      geocode.New(mapsKey("GOOGLE_MAPS_SERVER_KEY", "local/creds/geocoding.key")),
+		Geocoder:      geocode.New(env.Key("GOOGLE_MAPS_SERVER_KEY", "local/creds/geocoding.key")),
 		Blobs:         store,
 		Bucket:        bucket,
 		Store:         store,
 		FamilyIDKey:   familyIDKey.Sum(nil),
 		ChatKey:       chatKey.Sum(nil),
-		BrowserKey:    mapsKey("GOOGLE_MAPS_BROWSER_KEY", "local/creds/maps.key"),
+		BrowserKey:    env.Key("GOOGLE_MAPS_BROWSER_KEY", "local/creds/maps.key"),
 		ImageSearch:   ImageSearchKeys(),
 		Describer:     ClaudeDescriber(),
 		Mail:          newMailer(mailFrom),
@@ -372,14 +373,14 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		FeedbackBase:  feedbackBase,
 		Loop:          loopMail(sessionKey),
 		LoopDescriber: ClaudeGroupDescriber(),
-		Asker:         ask.NewClaude(mapsKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key")),
+		Asker:         ask.NewClaude(env.Key("ANTHROPIC_API_KEY", "local/creds/anthropic.key")),
 		KeyPoints:     ClaudeKeyPoints(),
 		Embedder:      embedder,
 		ArtifactsMail: artifactsMail(bucket),
 	})
 	muxes := core.Muxes()
 	who.RegisterUpload(muxes["who"], core.Cache, store)
-	client := clientID()
+	client := env.ClientID()
 	auths := map[string]*auth.Auth{}
 	for _, a := range core.apps {
 		gate := auth.New(domain, client, []byte(sessionKey), auth.Login{Title: a.Title}, core.Member, core.Sessions)
@@ -410,7 +411,7 @@ func calendarWatcher(sheet *data.Sheet, core *Core, sessionKey string) *calendar
 	opts := calendarimport.Options{
 		Source: sheet, Cache: core.CalendarCache, Calendar: cal,
 		Roster:       func() when.Roster { return CalendarRoster(core.Cache.Model()) },
-		AnthropicKey: mapsKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"),
+		AnthropicKey: env.Key("ANTHROPIC_API_KEY", "local/creds/anthropic.key"),
 	}
 	return calendarimport.NewWatcher(opts, hex.EncodeToString(mac.Sum(nil)))
 }

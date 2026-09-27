@@ -19,8 +19,10 @@ import (
 	"golang.org/x/net/html/atom"
 
 	"heliosian/internal/access"
+	"heliosian/internal/app"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/env"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -425,9 +427,9 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "report what the import would change, writing nothing to the sheet or the bucket")
 	flag.Parse()
 
-	sheet := os.Getenv("DIRECTORY_SHEET")
-	preferences := os.Getenv("PREFERENCES_SHEET")
-	config := os.Getenv("CONFIG_SHEET")
+	sheet := env.Required("DIRECTORY_SHEET")
+	preferences := env.Required("PREFERENCES_SHEET")
+	config := env.Required("CONFIG_SHEET")
 	exporter := os.Getenv("VCEXPORT")
 	if exporter == "" {
 		exporter = "../vcexport"
@@ -435,9 +437,6 @@ func main() {
 	website := os.Getenv("WEBEXPORT")
 	if website == "" {
 		website = "../webexport"
-	}
-	if sheet == "" || preferences == "" || config == "" {
-		log.Fatal("DIRECTORY_SHEET, PREFERENCES_SHEET, and CONFIG_SHEET are required")
 	}
 	out, err := os.MkdirTemp("", "vcexport")
 	if err != nil {
@@ -511,7 +510,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("plan the import: %v", err)
 	}
-	model, err := who.BuildModel(context.Background(), plan.Tables, nil, staticFiles{}, []byte(actor))
+	model, err := who.BuildModel(context.Background(), plan.Tables, nil, app.StaticFiles{Root: "web/who"}, []byte(actor))
 	if err != nil {
 		log.Fatalf("the directory does not load with the import: %v", err)
 	}
@@ -535,12 +534,3 @@ func main() {
 	log.Printf("loaded %d people (students %d, parents %d, staff %d), %d families",
 		len(model.People), students, parents, staff, len(model.Families))
 }
-
-type staticFiles struct{}
-
-func (staticFiles) Has(key string) (bool, error) {
-	_, err := os.Stat(filepath.Join("web/who", filepath.FromSlash(key)))
-	return err == nil, nil
-}
-
-func (staticFiles) Prefetch(context.Context, []string) error { return nil }

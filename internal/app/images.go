@@ -9,18 +9,20 @@ import (
 	"heliosian/internal/blob"
 )
 
-type staticFiles struct{}
-
-func (staticFiles) Has(key string) (bool, error) {
-	_, err := os.Stat(filepath.Join("web/who", filepath.FromSlash(key)))
-	return err == nil, nil
+type StaticFiles struct {
+	Root string
 }
 
-func (staticFiles) Prefetch(context.Context, []string) error { return nil }
+func (s StaticFiles) Has(key string) (bool, error) {
+	info, err := os.Stat(filepath.Join(s.Root, filepath.FromSlash(key)))
+	return err == nil && info.Mode().IsRegular(), nil
+}
 
-func bundled(roots []string, key string) bool {
+func (StaticFiles) Prefetch(context.Context, []string) error { return nil }
+
+func Bundled(roots []string, key string) bool {
 	for _, root := range roots {
-		if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(key))); err == nil && info.Mode().IsRegular() {
+		if found, _ := (StaticFiles{Root: root}).Has(key); found {
 			return true
 		}
 	}
@@ -55,7 +57,7 @@ func (h homeImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "link-images/") {
 		return uploaded(h.store, key)
 	}
-	return bundled([]string{"web/home", "web/public/home"}, key), nil
+	return Bundled([]string{"web/home", "web/public/home"}, key), nil
 }
 
 func (h homeImages) Prefetch(ctx context.Context, names []string) error {
@@ -70,7 +72,7 @@ func (e teamImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "activity-images/") {
 		return uploaded(e.store, key)
 	}
-	return bundled([]string{"web/team", "web/public/team"}, key), nil
+	return Bundled([]string{"web/team", "web/public/team"}, key), nil
 }
 
 func (e teamImages) Prefetch(ctx context.Context, names []string) error {
@@ -85,7 +87,7 @@ func (c celebrateImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "party-images/") {
 		return uploaded(c.store, key)
 	}
-	return bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
+	return Bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
 }
 
 func (c celebrateImages) Prefetch(ctx context.Context, names []string) error {
@@ -100,7 +102,7 @@ func (c calendarImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "category-images/") {
 		return uploaded(c.store, key)
 	}
-	return bundled([]string{"web/when", "web/public/when"}, key), nil
+	return Bundled([]string{"web/when", "web/public/when"}, key), nil
 }
 
 func (c calendarImages) Prefetch(ctx context.Context, names []string) error {

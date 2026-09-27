@@ -17,6 +17,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/devcache"
+	"heliosian/internal/env"
 	"heliosian/internal/store"
 )
 
@@ -26,14 +27,6 @@ const (
 )
 
 var actor = access.System("importartifacts")
-
-func requiredEnv(name string) string {
-	value := os.Getenv(name)
-	if value == "" {
-		log.Fatalf("%s is required", name)
-	}
-	return value
-}
 
 func main() {
 	dryRun := flag.Bool("dry-run", false, "report what each file would become, embedding and writing nothing")
@@ -49,7 +42,7 @@ func main() {
 	}
 	sort.Strings(files)
 	devcache.Install()
-	source, err := data.NewSheet(map[string]string{"artifacts": requiredEnv("ARTIFACTS_SHEET")})
+	source, err := data.NewSheet(map[string]string{"artifacts": env.Required("ARTIFACTS_SHEET")})
 	if err != nil {
 		log.Fatalf("sheet source: %v", err)
 	}

@@ -4,18 +4,18 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"heliosian/internal/auth"
+	"heliosian/internal/env"
 )
 
 func main() {
 	email := flag.String("email", "", "session email address")
 	flag.Parse()
-	key := os.Getenv("SESSION_KEY")
-	if key == "" || *email == "" {
-		log.Fatal("SESSION_KEY and --email are required")
+	key := env.Required("SESSION_KEY")
+	if *email == "" {
+		log.Fatal("--email is required")
 	}
 	fmt.Println(auth.Token([]byte(key), *email, time.Now()))
 }

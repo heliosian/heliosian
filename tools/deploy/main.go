@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"os"
 	"os/exec"
@@ -9,26 +8,8 @@ import (
 	"strings"
 
 	"heliosian/internal/app"
+	"heliosian/internal/env"
 )
-
-func clientID() string {
-	if id := os.Getenv("GOOGLE_CLIENT_ID"); id != "" {
-		return id
-	}
-	raw, err := os.ReadFile("local/creds/oauth-client.json")
-	if err != nil {
-		log.Fatalf("read local/creds/oauth-client.json (or set GOOGLE_CLIENT_ID): %v", err)
-	}
-	var parsed struct {
-		Web struct {
-			ClientID string `json:"client_id"`
-		} `json:"web"`
-	}
-	if err := json.Unmarshal(raw, &parsed); err != nil || parsed.Web.ClientID == "" {
-		log.Fatal("local/creds/oauth-client.json is not an oauth web client file")
-	}
-	return parsed.Web.ClientID
-}
 
 const (
 	service    = "heliosian"
@@ -51,18 +32,10 @@ const (
 		"ANTHROPIC_API_KEY=heliosian-anthropic-key:latest"
 )
 
-func requiredEnv(name string) string {
-	value := os.Getenv(name)
-	if value == "" {
-		log.Fatalf("%s is required", name)
-	}
-	return value
-}
-
 func sheetEnvVars(sheets []app.Spreadsheet) string {
 	pairs := []string{}
 	for _, s := range sheets {
-		pairs = append(pairs, s.Env+"="+requiredEnv(s.Env))
+		pairs = append(pairs, s.Env+"="+env.Required(s.Env))
 	}
 	return strings.Join(pairs, ",")
 }
@@ -99,7 +72,7 @@ func mapDomains() {
 
 func main() {
 	jobEnvVars := sheetEnvVars(app.SpreadsheetsOf(app.SyncSources))
-	envVars := sheetEnvVars(app.Spreadsheets) + ",GOOGLE_CLIENT_ID=" + clientID()
+	envVars := sheetEnvVars(app.Spreadsheets) + ",GOOGLE_CLIENT_ID=" + env.ClientID()
 	log.Printf("deploying %s to %s in %s", image, service, region)
 	gcloud("run", "deploy", service,
 		"--image", image,

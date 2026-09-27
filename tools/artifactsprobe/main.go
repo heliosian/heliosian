@@ -12,6 +12,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/devcache"
+	"heliosian/internal/env"
 	"heliosian/internal/store"
 )
 
@@ -20,10 +21,7 @@ func main() {
 		log.Fatal("give the question to search for")
 	}
 	query := strings.Join(os.Args[1:], " ")
-	sheetID := os.Getenv("ARTIFACTS_SHEET")
-	if sheetID == "" {
-		log.Fatal("ARTIFACTS_SHEET is required")
-	}
+	sheetID := env.Required("ARTIFACTS_SHEET")
 	devcache.Install()
 	source, err := data.NewSheet(map[string]string{"artifacts": sheetID})
 	if err != nil {

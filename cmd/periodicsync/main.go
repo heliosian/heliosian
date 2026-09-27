@@ -4,44 +4,17 @@ import (
 	"context"
 	"flag"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"heliosian/internal/app"
 	"heliosian/internal/calendarimport"
 	"heliosian/internal/data"
+	"heliosian/internal/env"
 	"heliosian/internal/logging"
 	"heliosian/internal/store"
 	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
-
-type staticFiles struct {
-	root string
-}
-
-func (s staticFiles) Has(key string) (bool, error) {
-	_, err := os.Stat(filepath.Join(s.root, filepath.FromSlash(key)))
-	return err == nil, nil
-}
-
-func (staticFiles) Prefetch(context.Context, []string) error { return nil }
-
-func apiKey() string {
-	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
-		return key
-	}
-	raw, err := os.ReadFile("local/creds/anthropic.key")
-	if err != nil {
-		logging.Fatal("periodicsync: read local/creds/anthropic.key (or set ANTHROPIC_API_KEY)", "error", err)
-	}
-	key := strings.TrimSpace(string(raw))
-	if key == "" {
-		logging.Fatal("periodicsync: local/creds/anthropic.key is empty")
-	}
-	return key
-}
 
 func main() {
 	slog.SetDefault(logging.Cloud())
@@ -52,13 +25,13 @@ func main() {
 		logging.Fatal("periodicsync: this run spends money on Claude; pass --i-have-user-permission-to-spend-money only when the user has said to run it")
 	}
 	spreadsheets := app.SheetIDs(app.SpreadsheetsOf(app.SyncSources))
-	key := apiKey()
+	key := env.Key("ANTHROPIC_API_KEY", "local/creds/anthropic.key")
 	ctx := context.Background()
 	source, err := data.NewSheet(spreadsheets)
 	if err != nil {
 		logging.Fatal("periodicsync: sheet source", "error", err)
 	}
-	directory, err := who.LoadModel(source, nil, staticFiles{"web/who"}, []byte("periodicsync"))
+	directory, err := who.LoadModel(source, nil, app.StaticFiles{Root: "web/who"}, []byte("periodicsync"))
 	if err != nil {
 		logging.Fatal("periodicsync: load directory model", "error", err)
 	}

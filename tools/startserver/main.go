@@ -25,6 +25,7 @@ import (
 	"heliosian/internal/describe"
 	"heliosian/internal/devcache"
 	"heliosian/internal/devtls"
+	"heliosian/internal/env"
 	"heliosian/internal/geocode"
 	"heliosian/internal/keypoints"
 	"heliosian/internal/logging"
@@ -156,10 +157,7 @@ func localTLS(server *http.Server, queue *store.Queue) (*http.Server, *store.Que
 }
 
 func detachReal(email string) {
-	key := os.Getenv("SESSION_KEY")
-	if key == "" {
-		logging.Fatal("SESSION_KEY is required (the server and the minted cookie must share it)")
-	}
+	key := env.Required("SESSION_KEY")
 	app.SheetIDs(app.Spreadsheets)
 
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {

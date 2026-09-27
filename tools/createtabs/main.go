@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"slices"
 
 	"heliosian/internal/app"
@@ -13,6 +12,7 @@ import (
 	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/env"
 	"heliosian/internal/feedback"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
@@ -201,11 +201,7 @@ func main() {
 	}
 	ids := map[string]string{}
 	for _, s := range spreadsheets {
-		id := os.Getenv(s.Env)
-		if id == "" {
-			log.Fatalf("%s is required", s.Env)
-		}
-		ids[s.Title] = id
+		ids[s.Title] = env.Required(s.Env)
 	}
 	source, err := data.NewSheet(ids)
 	if err != nil {

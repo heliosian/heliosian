@@ -5,8 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -26,33 +24,13 @@ import (
 	"heliosian/internal/who"
 )
 
-type staticFiles struct {
-	root string
-}
-
-func (s staticFiles) Has(key string) (bool, error) {
-	_, err := os.Stat(filepath.Join(s.root, filepath.FromSlash(key)))
-	return err == nil, nil
-}
-
-func (staticFiles) Prefetch(context.Context, []string) error { return nil }
-
-func bundled(roots []string, key string) bool {
-	for _, root := range roots {
-		if found, _ := (staticFiles{root}).Has(key); found {
-			return true
-		}
-	}
-	return false
-}
-
 type homeImages struct{}
 
 func (homeImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "link-images/") {
 		return true, nil
 	}
-	return bundled([]string{"web/home", "web/public/home"}, key), nil
+	return app.Bundled([]string{"web/home", "web/public/home"}, key), nil
 }
 
 func (homeImages) Prefetch(context.Context, []string) error { return nil }
@@ -63,7 +41,7 @@ func (teamImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "activity-images/") {
 		return true, nil
 	}
-	return bundled([]string{"web/team", "web/public/team"}, key), nil
+	return app.Bundled([]string{"web/team", "web/public/team"}, key), nil
 }
 
 func (teamImages) Prefetch(context.Context, []string) error { return nil }
@@ -74,7 +52,7 @@ func (celebrateImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "party-images/") {
 		return true, nil
 	}
-	return bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
+	return app.Bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
 }
 
 func (celebrateImages) Prefetch(context.Context, []string) error { return nil }
@@ -93,7 +71,7 @@ func main() {
 		}
 		source = live
 	}
-	model, err := who.LoadModel(source, nil, staticFiles{"web/who"}, []byte("loadcheck"))
+	model, err := who.LoadModel(source, nil, app.StaticFiles{Root: "web/who"}, []byte("loadcheck"))
 	if err != nil {
 		log.Fatalf("load directory model: %v", err)
 	}
