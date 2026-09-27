@@ -102,14 +102,24 @@ type dateRun struct {
 	To      string `json:"to"`
 }
 
-func Register(mux *http.ServeMux, cache *Cache, directory func() *who.Model, describer *describe.Describer, mailer *mail.Mailgun, base string, joinHome func(ctx context.Context, email string) error, about *sharecard.About) {
-	a := app{cache: cache, directory: directory, describer: describer, mailer: mailer, base: base, joinHome: joinHome}
+type Deps struct {
+	Cache     *Cache
+	Directory func() *who.Model
+	Describer *describe.Describer
+	Mailer    *mail.Mailgun
+	Base      string
+	JoinHome  func(ctx context.Context, email string) error
+	About     *sharecard.About
+}
+
+func Register(mux *http.ServeMux, d Deps) {
+	a := app{cache: d.Cache, directory: d.Directory, describer: d.Describer, mailer: d.Mailer, base: d.Base, joinHome: d.JoinHome}
 	go a.remindLoop()
 	go a.exportLoop()
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
-	mux.Handle("GET /open/share/about.png", about)
+	mux.Handle("GET /open/share/about.png", d.About)
 	mux.HandleFunc("GET /api/birthday/model", serve.JSON(a.model))
 	mux.HandleFunc("POST /api/birthday/assign", serve.JSON(a.assign))
 	mux.HandleFunc("DELETE /api/birthday/assign", serve.JSON(a.unassign))
@@ -133,7 +143,7 @@ func Register(mux *http.ServeMux, cache *Cache, directory func() *who.Model, des
 	mux.HandleFunc("POST /api/birthday/newsletter-dates/create", serve.JSON(a.createNewsletterDates))
 	mux.HandleFunc("POST /api/birthday/newsletter/share", serve.JSON(a.shareIssue))
 	mux.HandleFunc("POST /api/birthday/settings", serve.JSON(a.saveSettings))
-	admins.Register(mux, "birthday", cache.List, a.actor, a.adminState)
+	admins.Register(mux, "birthday", a.cache.List, a.actor, a.adminState)
 	mux.HandleFunc("POST /api/admin/resend-invites", serve.JSON(a.resendInvites))
 	mux.HandleFunc("POST /api/birthday/team/join", serve.JSON(a.joinTeam))
 	mux.HandleFunc("POST /api/admin/team", serve.JSON(a.addTeamMember))

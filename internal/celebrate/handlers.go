@@ -41,15 +41,26 @@ type app struct {
 	style     *sharecard.Style
 }
 
-func Register(mux *http.ServeMux, cache *Cache, images blob.Images, directory func() *who.Model, search imagesearch.Search, mailer *mail.Mailgun, rsvps RSVPLookup, moved AddressMoved, style *sharecard.Style) {
-	search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
-	a := app{cache: cache, images: images, directory: directory, search: search, mailer: mailer, rsvps: rsvps, moved: moved, style: style}
+type Deps struct {
+	Cache     *Cache
+	Images    blob.Images
+	Directory func() *who.Model
+	Search    imagesearch.Search
+	Mailer    *mail.Mailgun
+	RSVPs     RSVPLookup
+	Moved     AddressMoved
+	Style     *sharecard.Style
+}
+
+func Register(mux *http.ServeMux, d Deps) {
+	d.Search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
+	a := app{cache: d.Cache, images: d.Images, directory: d.Directory, search: d.Search, mailer: d.Mailer, rsvps: d.RSVPs, moved: d.Moved, style: d.Style}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("GET /api/celebrate/model", serve.JSON(a.model))
 	mux.HandleFunc("GET /api/celebrate/people", serve.JSON(a.people))
-	a.search.Register(mux, "/api/celebrate", images.Folder(), imagesearch.Members)
+	a.search.Register(mux, "/api/celebrate", a.images.Folder(), imagesearch.Members)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
 	mux.HandleFunc("POST /api/celebrate/tickets", serve.JSON(a.buyTickets))
@@ -71,7 +82,7 @@ func Register(mux *http.ServeMux, cache *Cache, images blob.Images, directory fu
 	mux.HandleFunc("POST /api/celebrate/categories/order", serve.JSON(a.reorderCategories))
 	mux.HandleFunc("POST /api/celebrate/settings", serve.JSON(a.saveSettings))
 	mux.HandleFunc("GET /api/celebrate/invoices.csv", a.invoicesCSV)
-	admins.Register(mux, "celebrate", cache.List, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
+	admins.Register(mux, "celebrate", a.cache.List, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {

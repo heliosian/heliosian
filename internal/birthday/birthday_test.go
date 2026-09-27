@@ -58,10 +58,18 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	mux := http.NewServeMux()
 	sent = mailtest.NewRecorder("Helios Staff Birthdays <birthday@example.org>")
 	joined = nil
-	Register(mux, cache, directory, describe.New("test", claude.NewLimiter()), sent.Mailgun, "https://birthday.example.org", func(_ context.Context, email string) error {
-		joined = append(joined, email)
-		return nil
-	}, About(func() string { return "Helios Birthday Team" }, func() string { return "Staff birthday donations" }))
+	Register(mux, Deps{
+		Cache:     cache,
+		Directory: directory,
+		Describer: describe.New("test", claude.NewLimiter()),
+		Mailer:    sent.Mailgun,
+		Base:      "https://birthday.example.org",
+		JoinHome: func(_ context.Context, email string) error {
+			joined = append(joined, email)
+			return nil
+		},
+		About: About(func() string { return "Helios Birthday Team" }, func() string { return "Staff birthday donations" }),
+	})
 	return cache, mux
 }
 

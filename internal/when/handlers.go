@@ -42,9 +42,23 @@ type app struct {
 	style     *sharecard.Style
 }
 
-func Register(mux *http.ServeMux, cache *Cache, images blob.Images, directory func() *who.Model, settings func() *config.Settings, lists func(email string) []List, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search imagesearch.Search, mailbox Mail, style *sharecard.Style) Hooks {
-	search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
-	a := app{cache: cache, images: images, directory: directory, settings: settings, lists: lists, linked: linked, parties: celebrate.Party, celebrate: celebrate, sources: sources, clock: &matchClock{}, search: search, mail: mailbox, style: style}
+type Deps struct {
+	Cache     *Cache
+	Images    blob.Images
+	Directory func() *who.Model
+	Settings  func() *config.Settings
+	Lists     func(email string) []List
+	Linked    func(email string) []Linked
+	Celebrate Celebrate
+	Sources   func() filter.Sources
+	Search    imagesearch.Search
+	Mail      Mail
+	Style     *sharecard.Style
+}
+
+func Register(mux *http.ServeMux, d Deps) Hooks {
+	d.Search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
+	a := app{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, lists: d.Lists, linked: d.Linked, parties: d.Celebrate.Party, celebrate: d.Celebrate, sources: d.Sources, clock: &matchClock{}, search: d.Search, mail: d.Mail, style: d.Style}
 	go a.sweepLoop()
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
@@ -95,7 +109,7 @@ func Register(mux *http.ServeMux, cache *Cache, images blob.Images, directory fu
 	mux.HandleFunc("POST /api/when/events/when", serve.JSON(a.moveEvent))
 	mux.HandleFunc("DELETE /api/when/settings", serve.JSON(a.forgetSetting))
 	mux.HandleFunc("POST /api/when/tags", serve.JSON(a.setTags))
-	a.search.Register(mux, "/api/when", images.Folder(), imagesearch.Members)
+	a.search.Register(mux, "/api/when", a.images.Folder(), imagesearch.Members)
 	mux.HandleFunc("GET /open/feed/{file}", a.feed)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id...}", a.shareCard)

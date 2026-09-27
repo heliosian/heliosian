@@ -14,7 +14,6 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
-	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit/mailtest"
@@ -81,7 +80,18 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *mailtest.Recorder, *sa
 		}
 	}
 	mux := http.NewServeMux()
-	testHooks = Register(mux, cache, memoryImages(), directoryOf, noSettings, testLists, linked, celebrate, sources.sources, imagesearch.Search{}, Mail{Sender: kept.Mailgun, Base: "https://when.heliosian.com", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}, testStyle)
+	testHooks = Register(mux, Deps{
+		Cache:     cache,
+		Images:    memoryImages(),
+		Directory: directoryOf,
+		Settings:  noSettings,
+		Lists:     testLists,
+		Linked:    linked,
+		Celebrate: celebrate,
+		Sources:   sources.sources,
+		Mail:      Mail{Sender: kept.Mailgun, Base: "https://when.heliosian.com", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey},
+		Style:     testStyle,
+	})
 	return mux, cache, kept, sources
 }
 

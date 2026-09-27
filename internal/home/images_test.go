@@ -25,9 +25,13 @@ func TestOnlyAdminsAddImages(t *testing.T) {
 	store := blob.New(bucket)
 	search := imagesearch.Search{Stock: imagesearch.NewStock(bucket, store), Limits: imagesearch.NewLimits()}
 	mux := http.NewServeMux()
-	answer := func(context.Context, string, string, string) error { return nil }
-	makeDefault := func(context.Context, string, string) error { return nil }
-	Register(mux, c, blob.NewImages(store, "home"), nil, nil, search, answer, makeDefault, nil)
+	Register(mux, Deps{
+		Cache:       c,
+		Images:      blob.NewImages(store, "home"),
+		Search:      search,
+		Answer:      func(context.Context, string, string, string) error { return nil },
+		MakeDefault: func(context.Context, string, string) error { return nil },
+	})
 
 	var pic bytes.Buffer
 	if err := png.Encode(&pic, image.NewGray(image.Rect(0, 0, 8, 8))); err != nil {

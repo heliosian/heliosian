@@ -78,9 +78,19 @@ type app struct {
 	describer *describe.Describer
 }
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, sources func() Sources, settings func() *config.Settings, mailbox Mail, describer *describe.Describer, about *sharecard.About) {
-	a := app{cache: cache, media: media, sources: sources, settings: settings, mail: mailbox, describer: describer}
-	a.mailer = newMailer(cache, sources, mailbox)
+type Deps struct {
+	Cache     *Cache
+	Media     *blob.Store
+	Sources   func() Sources
+	Settings  func() *config.Settings
+	Mail      Mail
+	Describer *describe.Describer
+	About     *sharecard.About
+}
+
+func Register(mux *http.ServeMux, d Deps) {
+	a := app{cache: d.Cache, media: d.Media, sources: d.Sources, settings: d.Settings, mail: d.Mail, describer: d.Describer}
+	a.mailer = newMailer(d.Cache, d.Sources, d.Mail)
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -92,10 +102,10 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, sources func(
 	mux.HandleFunc("GET /api/loop/messages", serve.JSON(a.messages))
 	mux.HandleFunc("POST /api/loop/subscription", serve.JSON(a.subscription))
 	mux.HandleFunc("POST /api/loop/archive", serve.JSON(a.archive))
-	admins.Register(mux, "loop", cache.List, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
+	admins.Register(mux, "loop", a.cache.List, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
 	mux.HandleFunc("POST /hooks/mail/mime", a.inbound)
 	mux.HandleFunc("POST /hooks/events", a.events)
-	mux.Handle("GET /open/share/about.png", about)
+	mux.Handle("GET /open/share/about.png", d.About)
 	mux.HandleFunc("GET /open/unsubscribe/{token}", a.unsubscribePage)
 	mux.HandleFunc("POST /open/unsubscribe/{token}", a.unsubscribe)
 	a.mailer.recover()

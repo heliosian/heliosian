@@ -16,7 +16,6 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
-	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
@@ -60,7 +59,14 @@ func serveWith(t *testing.T, mailer *mail.Mailgun) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, blob.NewImages(blob.New(blob.NewMemoryBucket()), "team"), func() *who.Model { return directory }, func() *config.Settings { return settings }, imagesearch.Search{}, mailer, nil, nil, testStyle)
+	Register(mux, Deps{
+		Cache:     cache,
+		Images:    blob.NewImages(blob.New(blob.NewMemoryBucket()), "team"),
+		Directory: func() *who.Model { return directory },
+		Settings:  func() *config.Settings { return settings },
+		Mailer:    mailer,
+		Style:     testStyle,
+	})
 	return cache, mux
 }
 

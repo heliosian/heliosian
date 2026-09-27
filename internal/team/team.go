@@ -37,14 +37,26 @@ type app struct {
 	style     *sharecard.Style
 }
 
-func Register(mux *http.ServeMux, cache *Cache, images blob.Images, directory func() *who.Model, settings func() *config.Settings, search imagesearch.Search, mailer *mail.Mailgun, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
-	search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
-	a := app{cache: cache, images: images, directory: directory, settings: settings, search: search, mailer: mailer, rsvps: rsvps, lists: lists, style: style}
+type Deps struct {
+	Cache     *Cache
+	Images    blob.Images
+	Directory func() *who.Model
+	Settings  func() *config.Settings
+	Search    imagesearch.Search
+	Mailer    *mail.Mailgun
+	RSVPs     RSVPLookup
+	Lists     EmailListLookup
+	Style     *sharecard.Style
+}
+
+func Register(mux *http.ServeMux, d Deps) {
+	d.Search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
+	a := app{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, search: d.Search, mailer: d.Mailer, rsvps: d.RSVPs, lists: d.Lists, style: d.Style}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("GET /api/team/model", serve.JSON(a.model))
-	a.search.Register(mux, "/api/team", images.Folder(), imagesearch.Members)
+	a.search.Register(mux, "/api/team", a.images.Folder(), imagesearch.Members)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
 	mux.HandleFunc("GET /api/team/people", serve.JSON(a.people))
@@ -61,7 +73,7 @@ func Register(mux *http.ServeMux, cache *Cache, images blob.Images, directory fu
 	mux.HandleFunc("POST /api/team/copy", serve.JSON(a.copyActivity))
 	mux.HandleFunc("POST /api/team/settings", serve.JSON(a.saveSettings))
 	mux.HandleFunc("POST /api/team/notify", serve.JSON(a.saveNotify))
-	admins.Register(mux, "team", cache.List, a.actor, a.adminState)
+	admins.Register(mux, "team", a.cache.List, a.actor, a.adminState)
 	mux.HandleFunc("POST /api/team/redirect", serve.JSON(a.saveRedirect))
 	mux.HandleFunc("DELETE /api/team/redirect", serve.JSON(a.deleteRedirect))
 }

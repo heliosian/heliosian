@@ -16,7 +16,6 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
-	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
@@ -63,7 +62,18 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 	cache := sampleCache(t)
 	d := sampleDirectory(t, "sampledata")
 	mux := http.NewServeMux()
-	Register(mux, cache, memoryImages(), func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, noCelebrate(), newSampleSources(t).sources, imagesearch.Search{}, Mail{Sender: keptMail().Mailgun}, testStyle)
+	Register(mux, Deps{
+		Cache:     cache,
+		Images:    memoryImages(),
+		Directory: func() *who.Model { return d },
+		Settings:  func() *config.Settings { return &config.Settings{} },
+		Lists:     func(string) []List { return nil },
+		Linked:    func(string) []Linked { return nil },
+		Celebrate: noCelebrate(),
+		Sources:   newSampleSources(t).sources,
+		Mail:      Mail{Sender: keptMail().Mailgun},
+		Style:     testStyle,
+	})
 	return mux, cache
 }
 
@@ -342,7 +352,18 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	d := sampleDirectory(t, "sampledata")
 	kept := keptMail()
 	mux := http.NewServeMux()
-	Register(mux, cache, memoryImages(), func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func(string) []Linked { return nil }, noCelebrate(), newSampleSources(t).sources, imagesearch.Search{}, Mail{Sender: kept.Mailgun, Base: "https://when.heliosian.com"}, testStyle)
+	Register(mux, Deps{
+		Cache:     cache,
+		Images:    memoryImages(),
+		Directory: func() *who.Model { return d },
+		Settings:  func() *config.Settings { return &config.Settings{} },
+		Lists:     func(string) []List { return nil },
+		Linked:    func(string) []Linked { return nil },
+		Celebrate: noCelebrate(),
+		Sources:   newSampleSources(t).sources,
+		Mail:      Mail{Sender: kept.Mailgun, Base: "https://when.heliosian.com"},
+		Style:     testStyle,
+	})
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {
