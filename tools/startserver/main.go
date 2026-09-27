@@ -118,7 +118,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 			logging.Fatal("file a sample document", "path", path, "error", err)
 		}
 	}
-	signIn := auth.New(app.DevDomain, "", []byte("sample"), auth.Login{}, core.Member, core.Sessions)
+	signIn := auth.New(app.DevDomain, "", []byte("sample"), auth.Login{}, core.Member, []string{app.OptInPath}, core.Sessions)
 	signIn.Spoof = core.Spoof
 	for _, m := range core.Muxes() {
 		m.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))

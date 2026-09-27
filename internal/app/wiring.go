@@ -44,6 +44,8 @@ import (
 
 const deployOverlap = 30 * time.Second
 
+const OptInPath = "/optin"
+
 var spend = claude.NewLimiter()
 
 type Geocoder interface {
@@ -274,7 +276,7 @@ func NewCore(cfg Config) *Core {
 		a.Mux.HandleFunc("GET /api/apps/approvals", waitingApprovals)
 		a.Mux.HandleFunc("GET /api/apps/late", behind)
 		a.Mux.HandleFunc("GET /api/apps/alerts", alerts)
-		a.Mux.Handle("GET /optin", optIn)
+		a.Mux.Handle("GET "+OptInPath, optIn)
 		feedback.Register(a.Mux, a.Key, appName(a.Key), settings.IsSuperAdmin, feedbackIntake)
 		suggestions.Register(a.Mux)
 		folders := []string{"photos"}
@@ -378,7 +380,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	client := env.ClientID()
 	auths := map[string]*auth.Auth{}
 	for _, a := range core.apps {
-		gate := auth.New(domain, client, []byte(sessionKey), auth.Login{Title: a.Title}, core.Member, core.Sessions)
+		gate := auth.New(domain, client, []byte(sessionKey), auth.Login{Title: a.Title}, core.Member, []string{OptInPath}, core.Sessions)
 		gate.Spoof = core.Spoof
 		gate.Preview = a.Preview
 		gate.Register(a.Mux)

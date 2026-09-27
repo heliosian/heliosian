@@ -12,7 +12,7 @@ import (
 )
 
 func TestLogoutDomains(t *testing.T) {
-	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, noSessions())
+	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, noSessions())
 	cases := map[string][]string{
 		"who.heliosian.com":         {"", "heliosian.com"},
 		"hca.heliosian.com:443":     {"", "heliosian.com"},
@@ -62,9 +62,8 @@ func (s *sessions) SignOut(_ context.Context, email string) error {
 
 func TestLogoutClearsEveryDomain(t *testing.T) {
 	ended := noSessions()
-	a := New("heliosiandev.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, ended)
+	a := New("heliosiandev.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, ended)
 	req := httptest.NewRequest(http.MethodPost, "https://hca.heliosiandev.com/auth/logout", nil)
-	req.Header.Set("X-Forwarded-Proto", "https")
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req = req.WithContext(context.WithValue(req.Context(), contextKey{}, identity{real: "admin@heliosschool.org", effective: "parent@heliosschool.org"}))
 	rec := httptest.NewRecorder()
@@ -92,7 +91,7 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 
 func TestSignInAndOutRefuseOtherSites(t *testing.T) {
 	s := noSessions()
-	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, s)
+	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, s)
 	for _, site := range []string{"cross-site", "same-site", ""} {
 		for _, path := range []string{"/auth/login", "/auth/logout"} {
 			req := httptest.NewRequest(http.MethodPost, "https://who.heliosian.com"+path, nil)
@@ -119,7 +118,7 @@ func TestSignInAndOutRefuseOtherSites(t *testing.T) {
 
 func TestSignedOutGetsTheLoginPageOnlyForAPage(t *testing.T) {
 	t.Chdir("../..")
-	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, noSessions())
+	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, noSessions())
 	handler := a.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("%s reached the app signed out", r.URL.Path)
 	}))
@@ -140,7 +139,6 @@ func TestSignedOutGetsTheLoginPageOnlyForAPage(t *testing.T) {
 		{"/sw.js", "serviceworker", false},
 		{"/api/directory/model", "empty", false},
 		{"/api/directory/model", "document", false},
-		{"/blob/photo", "document", false},
 	}
 	for _, c := range cases {
 		req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com"+c.path, nil)
@@ -170,7 +168,7 @@ func TestLoginPageFillsEachApp(t *testing.T) {
 		}
 		return rec.Body.String()
 	}
-	who := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, noSessions())
+	who := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, noSessions())
 	who.Preview = func(*http.Request) string { return `<meta property="og:title" content="Sam">` }
 	body := page(who)
 	for _, want := range []string{"<title>Helios Who?</title>", `alt="Helios Who?"`, `href="/brand/splash/splash-390x844-3x-portrait.png"`, `<meta property="og:title" content="Sam">`, "/brand/logo-lockup-light.png", "/login.js"} {
@@ -181,7 +179,7 @@ func TestLoginPageFillsEachApp(t *testing.T) {
 	if got := strings.Count(body, "apple-touch-startup-image"); got != 32 {
 		t.Errorf("who's splash links: %d, want 32", got)
 	}
-	loop := page(New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Loop"}, everyone, noSessions()))
+	loop := page(New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Loop"}, everyone, nil, noSessions()))
 	if strings.Count(loop, "apple-touch-startup-image") != 32 || !strings.Contains(loop, "<title>Helios Loop</title>") {
 		t.Errorf("loop's login page:\n%s", loop)
 	}
@@ -189,10 +187,9 @@ func TestLoginPageFillsEachApp(t *testing.T) {
 
 func TestSignInDeletesTheHostOnlyCopy(t *testing.T) {
 	key := []byte("key")
-	a := New("heliosian.com", "client", key, Login{Title: "Helios Who?"}, everyone, noSessions())
+	a := New("heliosian.com", "client", key, Login{Title: "Helios Who?"}, everyone, nil, noSessions())
 	set := func(host string) map[string]*http.Cookie {
 		req := httptest.NewRequest(http.MethodPost, "https://"+host+"/auth/login", nil)
-		req.Header.Set("X-Forwarded-Proto", "https")
 		rec := httptest.NewRecorder()
 		a.setSession(rec, req, "parent@heliosschool.org")
 		out := map[string]*http.Cookie{}
@@ -236,7 +233,7 @@ func TestSessionEndsAtSignOut(t *testing.T) {
 	out := time.Now().Add(-10 * time.Minute).Truncate(time.Second)
 	s := noSessions()
 	s.out["parent@heliosschool.org"] = out
-	a := New("heliosian.com", "client", key, Login{Title: "Helios Who?"}, everyone, s)
+	a := New("heliosian.com", "client", key, Login{Title: "Helios Who?"}, everyone, nil, s)
 	handler := a.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
 	cases := []struct {
 		name     string
@@ -275,7 +272,7 @@ func TestSessionEndsAtSignOut(t *testing.T) {
 
 func TestSpoofResolvesTheTargetOnlyWhenItHolds(t *testing.T) {
 	key := []byte("key")
-	a := New("heliosian.com", "client", key, Login{Title: "Helios Who?"}, everyone, noSessions())
+	a := New("heliosian.com", "client", key, Login{Title: "Helios Who?"}, everyone, nil, noSessions())
 	allowed := map[string]bool{"admin@heliosschool.org": true}
 	a.Spoof = &Spoof{
 		Allowed: func(email string) bool { return allowed[email] },
@@ -326,7 +323,7 @@ func TestWrapAdmitsOnlyMembers(t *testing.T) {
 	t.Chdir("../..")
 	key := []byte("key")
 	members := map[string]bool{"parent@heliosschool.org": true, "admin@heliosschool.org": true}
-	a := New("heliosian.com", "client", key, Login{Title: "Helios Who?"}, func(email string) bool { return members[email] }, noSessions())
+	a := New("heliosian.com", "client", key, Login{Title: "Helios Who?"}, func(email string) bool { return members[email] }, []string{"/optin"}, noSessions())
 	a.Spoof = &Spoof{
 		Allowed: func(email string) bool { return email == "admin@heliosschool.org" },
 		Person:  func(email string) (Person, bool) { return Person{Email: email}, true },
@@ -364,7 +361,6 @@ func TestWrapAdmitsOnlyMembers(t *testing.T) {
 		{"an unlisted page", a.Wrap(next), "left@heliosschool.org", "", "/people", http.StatusForbidden, true},
 		{"an unlisted static file", a.Wrap(next), "left@heliosschool.org", "", "/app.js", http.StatusForbidden, true},
 		{"an unlisted api", a.Wrap(next), "left@heliosschool.org", "", "/api/team/people", http.StatusForbidden, false},
-		{"an unlisted blob", a.Wrap(next), "left@heliosschool.org", "", "/blob/photo", http.StatusForbidden, false},
 		{"an unlisted admin", a.Wrap(next), "left@heliosschool.org", "", "/api/admin/state", http.StatusForbidden, false},
 		{"an unlisted sign-out", a.Wrap(next), "left@heliosschool.org", "", "/auth/logout", http.StatusTeapot, false},
 		{"an unlisted opt-in", a.Wrap(next), "left@heliosschool.org", "", "/optin", http.StatusTeapot, false},
@@ -397,7 +393,7 @@ func TestWrapAdmitsOnlyMembers(t *testing.T) {
 
 func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 	key := []byte("key")
-	a := New("heliosiandev.com", "client", key, Login{Title: "Helios Who?"}, everyone, noSessions())
+	a := New("heliosiandev.com", "client", key, Login{Title: "Helios Who?"}, everyone, nil, noSessions())
 	a.Spoof = &Spoof{
 		Allowed: func(email string) bool { return email == "admin@heliosschool.org" },
 		Person: func(email string) (Person, bool) {
@@ -409,7 +405,6 @@ func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 	}
 	post := func(as, body, recent string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "https://who.heliosiandev.com/auth/spoof", strings.NewReader(body))
-		req.Header.Set("X-Forwarded-Proto", "https")
 		req = req.WithContext(context.WithValue(req.Context(), contextKey{}, identity{real: as, effective: as}))
 		if recent != "" {
 			req.AddCookie(&http.Cookie{Name: recentCookie, Value: recent})
@@ -453,7 +448,7 @@ func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 }
 
 func TestCookieDomain(t *testing.T) {
-	production := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, noSessions())
+	production := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, noSessions())
 	cases := map[string]string{
 		"who.heliosian.com":         "heliosian.com",
 		"who.heliosian.com:8080":    "heliosian.com",
@@ -469,7 +464,7 @@ func TestCookieDomain(t *testing.T) {
 			t.Errorf("%s: got %q, want %q", host, got, want)
 		}
 	}
-	dev := New("heliosiandev.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, noSessions())
+	dev := New("heliosiandev.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, noSessions())
 	if got := dev.cookieDomain("who.heliosiandev.com:8080"); got != "heliosiandev.com" {
 		t.Errorf("dev: got %q, want heliosiandev.com", got)
 	}
@@ -479,7 +474,7 @@ func TestCookieDomain(t *testing.T) {
 }
 
 func TestQuanFor(t *testing.T) {
-	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, noSessions())
+	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, noSessions())
 	a.Spoof = &Spoof{Allowed: func(email string) bool { return email == "admin@heliosschool.org" }}
 	for email, want := range map[string]bool{
 		"admin@heliosschool.org":            true,

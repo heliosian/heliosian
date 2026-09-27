@@ -197,7 +197,7 @@ func TestTheChangeLogNamesWhoIsReallySignedIn(t *testing.T) {
 		t.Fatal("every member manages the group")
 	}
 	key := []byte("key")
-	a := auth.New("heliosian.com", "client", key, auth.Login{}, func(string) bool { return true }, nil)
+	a := auth.New("heliosian.com", "client", key, auth.Login{}, func(string) bool { return true }, nil, nil)
 	a.Spoof = &auth.Spoof{
 		Allowed: func(email string) bool { return email == admin },
 		Person:  func(email string) (auth.Person, bool) { return auth.Person{Email: email}, true },

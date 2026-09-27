@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -39,18 +40,19 @@ type Login struct {
 const loginTemplate = "web/templates/login.html"
 
 type Auth struct {
-	domain   string
-	clientID string
-	key      []byte
-	page     Login
-	member   func(email string) bool
-	sessions Sessions
-	Preview  func(r *http.Request) string
-	Spoof    *Spoof
+	domain    string
+	clientID  string
+	key       []byte
+	page      Login
+	member    func(email string) bool
+	nonMember []string
+	sessions  Sessions
+	Preview   func(r *http.Request) string
+	Spoof     *Spoof
 }
 
-func New(domain, clientID string, key []byte, login Login, member func(email string) bool, sessions Sessions) *Auth {
-	return &Auth{domain: domain, clientID: clientID, key: key, page: login, member: member, sessions: sessions}
+func New(domain, clientID string, key []byte, login Login, member func(email string) bool, nonMember []string, sessions Sessions) *Auth {
+	return &Auth{domain: domain, clientID: clientID, key: key, page: login, member: member, nonMember: nonMember, sessions: sessions}
 }
 
 func Fixed(email string, next http.Handler) http.Handler {
@@ -72,7 +74,7 @@ func (a *Auth) Fixed(email string, next http.Handler) http.Handler {
 const noAccessPage = "web/public/common/no-access.html"
 
 func (a *Auth) admit(w http.ResponseWriter, r *http.Request, id identity, next http.Handler) {
-	if !a.member(id.effective) && r.URL.Path != "/auth/logout" && r.URL.Path != "/optin" {
+	if !a.member(id.effective) && r.URL.Path != "/auth/logout" && !slices.Contains(a.nonMember, r.URL.Path) {
 		a.deny(w, r)
 		return
 	}
@@ -80,7 +82,7 @@ func (a *Auth) admit(w http.ResponseWriter, r *http.Request, id identity, next h
 }
 
 func fetched(path string) bool {
-	return strings.Contains(path, "/api/") || strings.HasPrefix(path, "/blob/")
+	return strings.Contains(path, "/api/")
 }
 
 func (a *Auth) deny(w http.ResponseWriter, r *http.Request) {
@@ -256,27 +258,27 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func (a *Auth) setSession(w http.ResponseWriter, r *http.Request, email string) {
-	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-	domain := a.cookieDomain(r.Host)
+func setCookie(w http.ResponseWriter, name, value, domain string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
-		Value:    Token(a.key, email, time.Now()),
+		Name:     name,
+		Value:    value,
 		Path:     "/",
 		Domain:   domain,
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(sessionLength.Seconds()),
+		MaxAge:   maxAge,
 	})
+}
+
+func (a *Auth) setSession(w http.ResponseWriter, r *http.Request, email string) {
+	domain := a.cookieDomain(r.Host)
+	setCookie(w, cookieName, Token(a.key, email, time.Now()), domain, int(sessionLength.Seconds()))
 	for _, other := range a.logoutDomains(r.Host) {
 		if other == domain {
 			continue
 		}
-		http.SetCookie(w, &http.Cookie{
-			Name: cookieName, Value: "", Path: "/", Domain: other,
-			HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
-		})
+		setCookie(w, cookieName, "", other, -1)
 	}
 }
 
@@ -297,13 +299,9 @@ func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "sign-out not recorded", http.StatusInternalServerError)
 		return
 	}
-	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	for _, domain := range a.logoutDomains(r.Host) {
 		for _, name := range []string{cookieName, spoofCookie} {
-			http.SetCookie(w, &http.Cookie{
-				Name: name, Value: "", Path: "/", Domain: domain,
-				HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
-			})
+			setCookie(w, name, "", domain, -1)
 		}
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)

@@ -190,42 +190,20 @@ func (a *Auth) setSpoof(w http.ResponseWriter, r *http.Request) {
 		}
 		target = p.Email
 	}
-	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	domain := a.cookieDomain(r.Host)
 	if target == "" || strings.EqualFold(target, real) {
-		http.SetCookie(w, &http.Cookie{
-			Name: spoofCookie, Value: "", Path: "/", Domain: domain,
-			HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
-		})
+		setCookie(w, spoofCookie, "", domain, -1)
 		slog.InfoContext(r.Context(), "spoof: stopped", "admin", real)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     spoofCookie,
-		Value:    SpoofToken(a.key, real, target, time.Now().Add(spoofLength)),
-		Path:     "/",
-		Domain:   domain,
-		HttpOnly: true,
-		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(spoofLength.Seconds()),
-	})
+	setCookie(w, spoofCookie, SpoofToken(a.key, real, target, time.Now().Add(spoofLength)), domain, int(spoofLength.Seconds()))
 	recent := slices.DeleteFunc(a.recent(r), func(e string) bool { return e == target })
 	recent = append([]string{target}, recent...)
 	if len(recent) > recentKept {
 		recent = recent[:recentKept]
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     recentCookie,
-		Value:    strings.Join(recent, "|"),
-		Path:     "/",
-		Domain:   domain,
-		HttpOnly: true,
-		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(recentLength.Seconds()),
-	})
+	setCookie(w, recentCookie, strings.Join(recent, "|"), domain, int(recentLength.Seconds()))
 	slog.InfoContext(r.Context(), "spoof: started", "admin", real, "as", target)
 	w.WriteHeader(http.StatusNoContent)
 }
