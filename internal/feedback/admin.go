@@ -2,12 +2,14 @@ package feedback
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/blob"
 	"heliosian/internal/serve"
 	"heliosian/internal/when"
 )
@@ -23,14 +25,16 @@ type IssueFiler interface {
 
 type admin struct {
 	cache      *Cache
+	bucket     *blob.Bucket
 	filer      IssueFiler
 	superAdmin func(string) bool
 }
 
-func RegisterAdmin(mux *http.ServeMux, cache *Cache, filer IssueFiler, superAdmin func(string) bool) {
-	a := admin{cache: cache, filer: filer, superAdmin: superAdmin}
+func RegisterAdmin(mux *http.ServeMux, cache *Cache, bucket *blob.Bucket, filer IssueFiler, superAdmin func(string) bool) {
+	a := admin{cache: cache, bucket: bucket, filer: filer, superAdmin: superAdmin}
 	mux.HandleFunc("GET /api/admin/feedback", serve.JSON(a.list))
 	mux.HandleFunc("GET /api/admin/feedback/{id}", serve.JSON(a.one))
+	mux.HandleFunc("GET /api/admin/feedback/{id}/screenshot", a.screenshot)
 	mux.HandleFunc("POST /api/admin/feedback/{id}/file", serve.JSON(a.file))
 	mux.HandleFunc("POST /api/admin/feedback/{id}/dismiss", serve.JSON(a.dismiss))
 }
@@ -55,18 +59,19 @@ type summary struct {
 
 type detail struct {
 	summary
-	Details  string   `json:"details"`
-	Email    string   `json:"email"`
-	Role     string   `json:"role"`
-	URL      string   `json:"url"`
-	Page     string   `json:"page"`
-	Browser  string   `json:"browser"`
-	Viewport string   `json:"viewport"`
-	Screen   string   `json:"screen"`
-	Language string   `json:"language"`
-	Timezone string   `json:"timezone"`
-	Errors   []string `json:"errors"`
-	Draft    draft    `json:"draft"`
+	Details    string   `json:"details"`
+	Email      string   `json:"email"`
+	Role       string   `json:"role"`
+	URL        string   `json:"url"`
+	Page       string   `json:"page"`
+	Browser    string   `json:"browser"`
+	Viewport   string   `json:"viewport"`
+	Screen     string   `json:"screen"`
+	Language   string   `json:"language"`
+	Timezone   string   `json:"timezone"`
+	Errors     []string `json:"errors"`
+	Screenshot bool     `json:"screenshot"`
+	Draft      draft    `json:"draft"`
 }
 
 type draft struct {
@@ -112,20 +117,45 @@ func (a admin) one(r *http.Request, _ serve.None) (detail, error) {
 	}
 	title, body, issueType, labels := Strip(report)
 	return detail{
-		summary:  summaryOf(report),
-		Details:  report.Details,
-		Email:    report.Email,
-		Role:     role(report.SuperAdmin),
-		URL:      report.URL,
-		Page:     report.Page,
-		Browser:  report.UserAgent,
-		Viewport: report.Viewport,
-		Screen:   report.Screen,
-		Language: report.Language,
-		Timezone: report.Timezone,
-		Errors:   report.Errors,
-		Draft:    draft{Title: title, Body: body, Type: issueType, Labels: labels, Repo: Repo},
+		summary:    summaryOf(report),
+		Details:    report.Details,
+		Email:      report.Email,
+		Role:       role(report.SuperAdmin),
+		URL:        report.URL,
+		Page:       report.Page,
+		Browser:    report.UserAgent,
+		Viewport:   report.Viewport,
+		Screen:     report.Screen,
+		Language:   report.Language,
+		Timezone:   report.Timezone,
+		Errors:     report.Errors,
+		Screenshot: report.Screenshot != "",
+		Draft:      draft{Title: title, Body: body, Type: issueType, Labels: labels, Repo: Repo},
 	}, nil
+}
+
+func (a admin) screenshot(w http.ResponseWriter, r *http.Request) {
+	if err := requireSuperAdmin(actorOf(r, a.superAdmin)); err != nil {
+		serve.Error(w, r, err)
+		return
+	}
+	report, ok := a.cache.Report(r.PathValue("id"))
+	if !ok || report.Screenshot == "" {
+		http.NotFound(w, r)
+		return
+	}
+	content, mimeType, err := a.bucket.Get(r.Context(), report.Screenshot)
+	if errors.Is(err, blob.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		serve.Error(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", mimeType)
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	serve.Content(w, r, report.Screenshot, content)
 }
 
 func (a admin) file(r *http.Request, in draft) (map[string]string, error) {

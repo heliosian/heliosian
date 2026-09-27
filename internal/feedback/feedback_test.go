@@ -1,12 +1,16 @@
 package feedback
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/png"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,8 +19,10 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/intercept"
+	"heliosian/internal/mail"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit/mailtest"
 )
@@ -220,19 +226,58 @@ func TestGitHubAppNotSetUp(t *testing.T) {
 	}
 }
 
-func TestHandler(t *testing.T) {
-	dir, queue, cache := testCache(t)
-	told := make(chan Report, 4)
+func reportForm(t *testing.T, report string, shot []byte) (*bytes.Buffer, string) {
+	t.Helper()
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	if err := form.WriteField("report", report); err != nil {
+		t.Fatal(err)
+	}
+	if shot != nil {
+		part, err := form.CreateFormFile("screenshot", "shot.png")
+		if err != nil {
+			t.Fatal(err)
+		}
+		part.Write(shot)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return &body, form.FormDataContentType()
+}
+
+func pngBytes(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 4, 4))); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func intakeServer(t *testing.T, cache *Cache, bucket *blob.Bucket, told chan Report) func(report string, shot []byte) *httptest.ResponseRecorder {
+	t.Helper()
 	mux := http.NewServeMux()
 	Register(mux, "calendar", func() string { return "Helios When" }, func(string) bool { return true },
-		NewIntake(cache, func(r Report) { told <- r }))
+		NewIntake(cache, bucket, func(r Report, _ []mail.Attachment) { told <- r }))
 	h := auth.Fixed("Jordan.Whitfield@example.org", mux)
-	post := func(body string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodPost, "/api/feedback", strings.NewReader(body))
+	return func(report string, shot []byte) *httptest.ResponseRecorder {
+		body, contentType := reportForm(t, report, shot)
+		req := httptest.NewRequest(http.MethodPost, "/api/feedback", body)
+		req.Header.Set("Content-Type", contentType)
 		req.Header.Set("User-Agent", "TestBrowser/1")
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 		return rec
+	}
+}
+
+func TestHandler(t *testing.T) {
+	dir, queue, cache := testCache(t)
+	told := make(chan Report, 4)
+	send := intakeServer(t, cache, blob.NewMemoryBucket(), told)
+	post := func(report string) *httptest.ResponseRecorder {
+		return send(report, nil)
 	}
 	if rec := post(`{"kind":"bug","summary":"  "}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("empty summary: %d %s", rec.Code, rec.Body.String())
@@ -274,13 +319,52 @@ func TestHandler(t *testing.T) {
 	if got.Email != "jordan.whitfield@example.org" || !got.SuperAdmin || got.AppName != "Helios When" || got.App != "calendar" {
 		t.Errorf("identity = %+v", got)
 	}
-	if got.Summary != "A dark mode" || got.Kind != "idea" || got.UserAgent != "TestBrowser/1" || len(got.Errors) != errorLimit {
+	if got.Summary != "A dark mode" || got.Kind != "idea" || got.UserAgent != "TestBrowser/1" || len(got.Errors) != errorLimit || got.Screenshot != "" {
 		t.Errorf("content = %+v", got)
 	}
 }
 
+func TestHandlerStoresAScreenshot(t *testing.T) {
+	_, _, cache := testCache(t)
+	told := make(chan Report, 4)
+	bucket := blob.NewMemoryBucket()
+	post := intakeServer(t, cache, bucket, told)
+	if rec := post(`{"kind":"bug","summary":"Blank grid"}`, []byte("not a picture")); rec.Code != http.StatusBadRequest {
+		t.Errorf("a text file as a screenshot: %d %s", rec.Code, rec.Body.String())
+	}
+	shot := pngBytes(t)
+	if rec := post(`{"kind":"bug","summary":"Blank grid"}`, shot); rec.Code != http.StatusNoContent {
+		t.Fatalf("report: %d %s", rec.Code, rec.Body.String())
+	}
+	var got Report
+	select {
+	case got = <-told:
+	case <-time.After(2 * time.Second):
+		t.Fatal("nobody was told")
+	}
+	if !strings.HasPrefix(got.Screenshot, screenshotFolder+"/") || !strings.HasSuffix(got.Screenshot, ".png") {
+		t.Fatalf("screenshot = %q", got.Screenshot)
+	}
+	stored, mimeType, err := bucket.Get(context.Background(), got.Screenshot)
+	if err != nil || mimeType != "image/png" || !bytes.Equal(stored, shot) {
+		t.Errorf("stored %d bytes as %q: %v", len(stored), mimeType, err)
+	}
+	if saved, _ := cache.Report(got.ID); saved.Screenshot != got.Screenshot {
+		t.Errorf("the report in memory names %q", saved.Screenshot)
+	}
+}
+
+func TestHandlerRefusesAnOversizedScreenshot(t *testing.T) {
+	_, _, cache := testCache(t)
+	post := intakeServer(t, cache, blob.NewMemoryBucket(), make(chan Report, 1))
+	big := append(pngBytes(t), make([]byte, screenshotLimit+1<<20)...)
+	if rec := post(`{"kind":"bug","summary":"Blank grid"}`, big); rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("oversized screenshot: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestThrottle(t *testing.T) {
-	q := NewIntake(nil, nil).recent
+	q := NewIntake(nil, nil, nil).recent
 	now := time.Now()
 	for i := range perWindow {
 		if !q.Allow("a@example.org", now.Add(time.Duration(i)*time.Second)) {
@@ -386,17 +470,52 @@ func TestCacheSavesAndHandles(t *testing.T) {
 	}
 }
 
-func adminServer(t *testing.T, cache *Cache, filer IssueFiler, who string) http.Handler {
+func adminServer(t *testing.T, cache *Cache, bucket *blob.Bucket, filer IssueFiler, who string) http.Handler {
 	t.Helper()
 	mux := http.NewServeMux()
-	RegisterAdmin(mux, cache, filer, func(email string) bool { return email == "admin@example.org" })
+	RegisterAdmin(mux, cache, bucket, filer, func(email string) bool { return email == "admin@example.org" })
 	return auth.Fixed(who, mux)
 }
 
 func testAdmin(t *testing.T, filer IssueFiler, who string) (*Cache, http.Handler) {
 	t.Helper()
 	_, _, cache := testCache(t)
-	return cache, adminServer(t, cache, filer, who)
+	return cache, adminServer(t, cache, blob.NewMemoryBucket(), filer, who)
+}
+
+func TestAdminShowsTheScreenshot(t *testing.T) {
+	_, _, cache := testCache(t)
+	bucket := blob.NewMemoryBucket()
+	shot := pngBytes(t)
+	r := sample()
+	r.Screenshot = screenshotFolder + "/" + blob.Name(shot, "png")
+	saved, err := cache.save(context.Background(), access.Actor{Email: r.Email}, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bucket.Put(context.Background(), saved.Screenshot, "image/png", shot); err != nil {
+		t.Fatal(err)
+	}
+	get := func(who, path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		adminServer(t, cache, bucket, nil, who).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec
+	}
+	rec := get("admin@example.org", "/api/admin/feedback/"+saved.ID)
+	var one detail
+	if err := json.Unmarshal(rec.Body.Bytes(), &one); err != nil || !one.Screenshot {
+		t.Errorf("the detail does not say there is a screenshot: %s %v", rec.Body.String(), err)
+	}
+	rec = get("admin@example.org", "/api/admin/feedback/"+saved.ID+"/screenshot")
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || !bytes.Equal(rec.Body.Bytes(), shot) {
+		t.Errorf("screenshot: %d %q %d bytes", rec.Code, rec.Header().Get("Content-Type"), rec.Body.Len())
+	}
+	if rec := get("member@example.org", "/api/admin/feedback/"+saved.ID+"/screenshot"); rec.Code != http.StatusForbidden {
+		t.Errorf("a member got %d", rec.Code)
+	}
+	if rec := get("admin@example.org", "/api/admin/feedback/a1b2c3d4e5f6/screenshot"); rec.Code != http.StatusNotFound {
+		t.Errorf("a report with no screenshot: %d", rec.Code)
+	}
 }
 
 type fakeFiler struct {
@@ -514,7 +633,7 @@ func TestNotifyTellsTheSuperAdmins(t *testing.T) {
 		Base:        "https://heliosian.com",
 		SuperAdmins: func() []string { return []string{"Admin@example.org", " ", "other@example.org"} },
 	}
-	n.Notify(sample())
+	n.Notify(sample(), nil)
 	if len(sent.Messages()) != 1 {
 		t.Fatalf("sent %d messages", len(sent.Messages()))
 	}
@@ -525,17 +644,37 @@ func TestNotifyTellsTheSuperAdmins(t *testing.T) {
 	if !strings.Contains(m.Subject, "Helios When") || !strings.Contains(m.Subject, "Next month") {
 		t.Errorf("subject = %q", m.Subject)
 	}
-	for _, want := range []string{"jordan.whitfield@example.org", "https://heliosian.com/admin?tab=feedback&report=abc123"} {
+	for _, want := range []string{"jordan.whitfield@example.org", "https://heliosian.com/admin?tab=feedback&report=abc123", "Browser: Mozilla/5.0", "Screen: 1440×900 window"} {
 		if !strings.Contains(m.Text, want) {
 			t.Errorf("text lacks %q:\n%s", want, m.Text)
 		}
+	}
+	if strings.Contains(m.Text, "Screenshot") || len(m.Attachments) != 0 {
+		t.Errorf("a report with no screenshot mentions or attaches one:\n%s", m.Text)
+	}
+}
+
+func TestNotifyAttachesTheScreenshot(t *testing.T) {
+	sent := mailtest.NewRecorder("HCA-Team <team@example.org>")
+	n := Notifier{Sender: sent.Mailgun, Base: "https://heliosian.com", SuperAdmins: func() []string { return []string{"admin@example.org"} }}
+	r := sample()
+	r.Screen = "2560×1440 @2x"
+	r.Screenshot = "feedback/abc.png"
+	shot := pngBytes(t)
+	n.Notify(r, []mail.Attachment{{Name: "screenshot.png", ContentType: "image/png", Content: shot}})
+	m := sent.Messages()[0]
+	if !strings.Contains(m.Text, "Screen: 1440×900 window on a 2560×1440 @2x screen") || !strings.Contains(m.Text, "Screenshot: attached") {
+		t.Errorf("text:\n%s", m.Text)
+	}
+	if len(m.Attachments) != 1 || m.Attachments[0].Name != "screenshot.png" || !bytes.Equal(m.Attachments[0].Content, shot) {
+		t.Errorf("attachments = %d", len(m.Attachments))
 	}
 }
 
 func TestNotifyWithNobodyToTell(t *testing.T) {
 	sent := mailtest.NewRecorder("HCA-Team <team@example.org>")
 	n := Notifier{Sender: sent.Mailgun, SuperAdmins: func() []string { return nil }}
-	n.Notify(sample())
+	n.Notify(sample(), nil)
 	if len(sent.Messages()) != 0 {
 		t.Errorf("sent %d messages", len(sent.Messages()))
 	}

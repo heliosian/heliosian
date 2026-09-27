@@ -1,28 +1,37 @@
 package feedback
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"strings"
 	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/blob"
+	"heliosian/internal/mail"
 	"heliosian/internal/ratelimit"
-	"heliosian/internal/serve"
 	"heliosian/internal/when"
 )
 
 const (
-	summaryLimit = 120
-	detailsLimit = 4000
-	errorLimit   = 5
-	errorChars   = 300
-	perWindow    = 5
-	window       = 10 * time.Minute
+	summaryLimit     = 120
+	detailsLimit     = 4000
+	errorLimit       = 5
+	errorChars       = 300
+	perWindow        = 5
+	window           = 10 * time.Minute
+	screenshotLimit  = 10 << 20
+	screenshotFolder = "feedback"
+	storeTimeout     = time.Minute
 )
 
 type Report struct {
@@ -43,6 +52,7 @@ type Report struct {
 	Timezone   string
 	UserAgent  string
 	Errors     []string
+	Screenshot string
 	At         time.Time
 	Issue      string
 	Handled    time.Time
@@ -51,12 +61,19 @@ type Report struct {
 
 type Intake struct {
 	cache  *Cache
-	notify func(Report)
+	bucket *blob.Bucket
+	notify func(Report, []mail.Attachment)
 	recent *ratelimit.Limiter
 }
 
-func NewIntake(cache *Cache, notify func(Report)) *Intake {
-	return &Intake{cache: cache, notify: notify, recent: ratelimit.New(perWindow, window)}
+func NewIntake(cache *Cache, bucket *blob.Bucket, notify func(Report, []mail.Attachment)) *Intake {
+	return &Intake{cache: cache, bucket: bucket, notify: notify, recent: ratelimit.New(perWindow, window)}
+}
+
+type screenshot struct {
+	name     string
+	mimeType string
+	content  []byte
 }
 
 type api struct {
@@ -90,8 +107,19 @@ func actorOf(r *http.Request, superAdmin func(string) bool) access.Actor {
 }
 
 func (a api) file(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, screenshotLimit+1<<20)
+	if err := r.ParseMultipartForm(screenshotLimit + 1<<20); err != nil {
+		http.Error(w, "that's more than a report can carry; a screenshot can be 10 MB at most", http.StatusRequestEntityTooLarge)
+		return
+	}
 	var in submission
-	if !serve.Decode(w, r, &in) {
+	if err := json.Unmarshal([]byte(r.FormValue("report")), &in); err != nil {
+		http.Error(w, "bad request body", http.StatusBadRequest)
+		return
+	}
+	shot, err := readScreenshot(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if in.Kind != "bug" && in.Kind != "idea" {
@@ -114,29 +142,64 @@ func (a api) file(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	saved, err := a.intake.cache.save(r.Context(), actor, Report{
-		App:       a.app,
-		AppName:   a.name(),
-		Kind:      in.Kind,
-		Summary:   summary,
-		Details:   strings.TrimSpace(in.Details),
-		URL:       clip(in.URL, 1000),
-		Page:      clip(in.Page, 200),
-		Viewport:  clip(in.Viewport, 40),
-		Screen:    clip(in.Screen, 40),
-		Language:  clip(in.Language, 40),
-		Timezone:  clip(in.Timezone, 80),
-		UserAgent: clip(r.UserAgent(), 400),
-		Errors:    clipAll(in.Errors),
-		At:        now,
+		App:        a.app,
+		AppName:    a.name(),
+		Kind:       in.Kind,
+		Summary:    summary,
+		Details:    strings.TrimSpace(in.Details),
+		URL:        clip(in.URL, 1000),
+		Page:       clip(in.Page, 200),
+		Viewport:   clip(in.Viewport, 40),
+		Screen:     clip(in.Screen, 40),
+		Language:   clip(in.Language, 40),
+		Timezone:   clip(in.Timezone, 80),
+		UserAgent:  clip(r.UserAgent(), 400),
+		Errors:     clipAll(in.Errors),
+		Screenshot: shot.name,
+		At:         now,
 	})
 	if err != nil {
 		slog.ErrorContext(r.Context(), "feedback: saving failed", "error", err, "kind", in.Kind, "summary", summary, "details", in.Details)
 		http.Error(w, "we couldn't take the report just now; please try again in a moment", http.StatusServiceUnavailable)
 		return
 	}
-	slog.InfoContext(r.Context(), "feedback: saved", "id", saved.ID, "kind", saved.Kind, "summary", summary)
-	go a.intake.notify(saved)
+	slog.InfoContext(r.Context(), "feedback: saved", "id", saved.ID, "kind", saved.Kind, "summary", summary, "screenshot", shot.name)
+	go a.intake.finish(saved, shot)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func readScreenshot(r *http.Request) (screenshot, error) {
+	file, _, err := r.FormFile("screenshot")
+	if errors.Is(err, http.ErrMissingFile) {
+		return screenshot{}, nil
+	}
+	if err != nil {
+		return screenshot{}, fmt.Errorf("we couldn't read that screenshot")
+	}
+	defer file.Close()
+	content, err := io.ReadAll(file)
+	if err != nil || len(content) == 0 {
+		return screenshot{}, fmt.Errorf("we couldn't read that screenshot")
+	}
+	mimeType := http.DetectContentType(content)
+	ext, ok := blob.ImageExtensions[mimeType]
+	if !ok {
+		return screenshot{}, fmt.Errorf("a screenshot has to be a picture: PNG, JPEG, GIF or WebP")
+	}
+	return screenshot{name: screenshotFolder + "/" + blob.Name(content, ext), mimeType: mimeType, content: content}, nil
+}
+
+func (in *Intake) finish(saved Report, shot screenshot) {
+	if shot.name == "" {
+		in.notify(saved, nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
+	defer cancel()
+	if err := in.bucket.Put(ctx, shot.name, shot.mimeType, shot.content); err != nil {
+		slog.Error("feedback: storing the screenshot failed", "error", err, "id", saved.ID, "name", shot.name)
+	}
+	in.notify(saved, []mail.Attachment{{Name: "screenshot" + path.Ext(shot.name), ContentType: shot.mimeType, Content: shot.content}})
 }
 
 func clip(s string, limit int) string {

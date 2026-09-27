@@ -292,7 +292,63 @@ function buildFeedback() {
   summaryField.append(el('span', '', 'In a line'), summary);
   const detailsField = el('label', 'feedback-field');
   detailsField.append(el('span', '', 'Details'), details);
-  const note = el('p', 'feedback-note', 'Goes to the people who build Heliosian, along with this page’s address, your email, and your browser details.');
+  let shot = null;
+  const picker = document.createElement('input');
+  picker.type = 'file';
+  picker.accept = 'image/png,image/jpeg,image/gif,image/webp';
+  picker.hidden = true;
+  const add = el('button', 'feedback-shot-add', 'Add a screenshot');
+  add.type = 'button';
+  const preview = el('div', 'feedback-shot-preview');
+  preview.hidden = true;
+  const thumb = document.createElement('img');
+  thumb.alt = 'Your screenshot';
+  const remove = el('button', 'feedback-shot-remove', 'Remove');
+  remove.type = 'button';
+  preview.append(thumb, remove);
+  const shotField = el('div', 'feedback-field feedback-shot');
+  shotField.append(el('span', '', 'Screenshot'), add, el('small', '', 'or paste one'), preview, picker);
+  const clearShot = () => {
+    if (thumb.src) {
+      URL.revokeObjectURL(thumb.src);
+      thumb.removeAttribute('src');
+    }
+    shot = null;
+    picker.value = '';
+    preview.hidden = true;
+    add.hidden = false;
+  };
+  const takeShot = file => {
+    if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) {
+      status.textContent = 'A screenshot has to be a picture: PNG, JPEG, GIF or WebP.';
+      return;
+    }
+    if (file.size > 10 << 20) {
+      status.textContent = 'That picture is over 10 MB; try a smaller one.';
+      return;
+    }
+    clearShot();
+    shot = file;
+    thumb.src = URL.createObjectURL(file);
+    preview.hidden = false;
+    add.hidden = true;
+    status.textContent = '';
+  };
+  add.addEventListener('click', () => picker.click());
+  remove.addEventListener('click', clearShot);
+  picker.addEventListener('change', () => {
+    if (picker.files[0]) {
+      takeShot(picker.files[0]);
+    }
+  });
+  form.addEventListener('paste', e => {
+    const file = [...e.clipboardData.files].find(f => f.type.startsWith('image/'));
+    if (file) {
+      e.preventDefault();
+      takeShot(file);
+    }
+  });
+  const note = el('p', 'feedback-note', 'Goes to the people who build Heliosian, along with this page’s address, your email, your browser details, and any screenshot you add.');
   const actions = el('div', 'feedback-actions');
   const send = el('button', 'feedback-send', 'Send');
   send.type = 'submit';
@@ -300,7 +356,7 @@ function buildFeedback() {
   cancel.type = 'button';
   const status = el('span', 'feedback-status');
   actions.append(send, cancel, status);
-  form.append(header, kinds, summaryField, detailsField, note, actions);
+  form.append(header, kinds, summaryField, detailsField, shotField, note, actions);
   overlay.append(form);
   document.body.append(overlay);
   const hide = () => {
@@ -322,21 +378,27 @@ function buildFeedback() {
     e.preventDefault();
     status.textContent = 'Sending…';
     send.disabled = true;
+    const body = new FormData();
+    body.append('report', JSON.stringify({
+      kind: form.elements.kind.value,
+      summary: summary.value,
+      details: details.value,
+      url: location.href,
+      page: document.title,
+      viewport: `${window.innerWidth}×${window.innerHeight}`,
+      screen: `${screen.width}×${screen.height} @${window.devicePixelRatio}x`,
+      language: navigator.language,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      errors: recentErrors,
+    }));
+    if (shot) {
+      body.append('screenshot', shot);
+    }
     try {
-      await api('POST', '/api/feedback', {
-        kind: form.elements.kind.value,
-        summary: summary.value,
-        details: details.value,
-        url: location.href,
-        page: document.title,
-        viewport: `${window.innerWidth}×${window.innerHeight}`,
-        screen: `${screen.width}×${screen.height} @${window.devicePixelRatio}x`,
-        language: navigator.language,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        errors: recentErrors,
-      });
+      await api('POST', '/api/feedback', body);
       hide();
       form.reset();
+      clearShot();
       prompt('bug');
       toast('Thanks, we got it.');
     } catch (err) {

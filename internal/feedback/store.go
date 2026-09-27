@@ -24,7 +24,7 @@ const (
 var ReportColumns = []string{
 	"ID", "Received", "App", "App Name", "Kind", "Status", "Summary", "Details",
 	"Email", "Role", "URL", "Page", "Browser", "Viewport", "Screen",
-	"Language", "Time Zone", "Errors", "Issue", "Handled", "Handled By",
+	"Language", "Time Zone", "Errors", "Issue", "Handled", "Handled By", "Screenshot",
 }
 
 func (r Report) cells() store.Row {
@@ -50,6 +50,7 @@ func (r Report) cells() store.Row {
 		"Issue":      r.Issue,
 		"Handled":    handledCell(r.Handled),
 		"Handled By": r.HandledBy,
+		"Screenshot": r.Screenshot,
 	}
 }
 
@@ -92,6 +93,7 @@ func reportFromRow(row store.Row) Report {
 		Language:   row["Language"],
 		Timezone:   row["Time Zone"],
 		Errors:     errors,
+		Screenshot: row["Screenshot"],
 		Issue:      row["Issue"],
 		Handled:    handled,
 		HandledBy:  row["Handled By"],

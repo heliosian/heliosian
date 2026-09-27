@@ -97,6 +97,17 @@ async function fillReport(card, id, redraw) {
     }
   }
   card.append(el('h3', '', report.summary), el('div', 'said', report.details || 'No details given.'), facts);
+  if (report.screenshot) {
+    const link = el('a', 'shot');
+    link.href = `/api/admin/feedback/${encodeURIComponent(id)}/screenshot`;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    const img = el('img');
+    img.src = link.href;
+    img.alt = 'The screenshot sent with this report';
+    link.append(img);
+    card.append(link);
+  }
   if (report.status !== 'New') {
     card.append(el('div', 'hint', `${report.status === 'Filed' ? 'Filed' : 'Dismissed'} by ${report.handledBy}.`));
     if (report.issue) {

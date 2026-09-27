@@ -337,7 +337,7 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load feedback model", "error", err)
 	}
 	notifier := feedback.Notifier{Sender: cfg.Mail, Base: cfg.FeedbackBase, SuperAdmins: settings.SuperAdmins}
-	feedbackIntake := feedback.NewIntake(feedbackCache, notifier.Notify)
+	feedbackIntake := feedback.NewIntake(feedbackCache, cfg.Bucket, notifier.Notify)
 	optIn := who.OptInForm(func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn })
 	suggestions := geocode.NewSuggestions(cfg.Geocoder)
 	for _, a := range apps {
@@ -360,7 +360,7 @@ func NewCore(cfg Config) *Core {
 	homeMux.HandleFunc("GET /api/apps/team", teamWidget(cache, teamCache))
 	homeMux.HandleFunc("GET /api/apps/celebrate", celebrateWidget(cache, calendarCache, linked))
 	homeMux.HandleFunc("GET /api/apps/school", schoolWidget(cache, artifactsCache))
-	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.FeedbackFiler, settings.IsSuperAdmin)
+	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.Bucket, cfg.FeedbackFiler, settings.IsSuperAdmin)
 	go queue.Tick()
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
