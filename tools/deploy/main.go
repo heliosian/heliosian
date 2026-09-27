@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/exec"
@@ -10,6 +11,7 @@ import (
 	"heliosian/internal/app"
 	"heliosian/internal/env"
 	"heliosian/internal/spreadsheets"
+	"heliosian/internal/spreadsheets/lookup"
 )
 
 const (
@@ -23,10 +25,10 @@ const (
 
 var jobSecrets = []string{"ANTHROPIC_API_KEY"}
 
-func sheetEnvVars(sheets []spreadsheets.Spreadsheet) string {
+func sheetEnvVars(sheets []spreadsheets.Spreadsheet, ids map[string]string) string {
 	pairs := []string{}
 	for _, s := range sheets {
-		pairs = append(pairs, s.Env+"="+env.Required(s.Env))
+		pairs = append(pairs, s.Env+"="+ids[s.Env])
 	}
 	return strings.Join(pairs, ",")
 }
@@ -80,8 +82,9 @@ func mapDomains() {
 }
 
 func main() {
-	jobEnvVars := sheetEnvVars(spreadsheets.Of(spreadsheets.SyncSources))
-	envVars := sheetEnvVars(spreadsheets.All)
+	ids, _ := lookup.Find(context.Background())
+	jobEnvVars := sheetEnvVars(spreadsheets.Of(spreadsheets.SyncSources), ids)
+	envVars := sheetEnvVars(spreadsheets.All, ids)
 	log.Printf("deploying %s to %s in %s", image, service, region)
 	gcloud("run", "deploy", service,
 		"--image", image,
