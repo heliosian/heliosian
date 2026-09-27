@@ -602,13 +602,6 @@ body.is-spoofing .spoof-stop { color: #c2185b; }
   display: block;
 }
 
-/* With Super Admin Mode on the avatar wears a red dotted ring, in every bar,
-   so the mode is never on unnoticed. Each app toggles is-super on body. */
-body.is-super .user-avatar {
-  outline: 2px dotted var(--alert);
-  outline-offset: 2px;
-}
-
 /* The account menu under the avatar, the same in every app: the signed-in
    address on top, then the app's own rows - plain links and buttons, and
    switches for the modes. It opens while the mouse is over the avatar or
