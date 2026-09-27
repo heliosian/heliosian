@@ -538,7 +538,7 @@ a.compact-row:hover { background: var(--input); }
   gap: 10px;
   flex-wrap: wrap;
   margin: 8px -24px -120px;
-  padding: 12px 24px calc(12px + env(safe-area-inset-bottom));
+  padding: 12px 24px calc(12px + var(--safe-bottom));
   background: var(--card);
   border-top: 1px solid var(--line);
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
@@ -554,14 +554,14 @@ a.compact-row:hover { background: var(--input); }
     position: fixed;
     inset: 0;
     overflow-y: auto;
-    padding-top: calc(88px + env(safe-area-inset-top));
-    padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom));
+    padding-top: calc(88px + var(--safe-top));
+    padding-bottom: calc(var(--tabbar) + var(--safe-bottom));
   }
   .mobile-top {
     display: flex;
     align-items: center;
     position: fixed;
-    top: calc(48px + env(safe-area-inset-top));
+    top: calc(48px + var(--safe-top));
     left: 0;
     right: 0;
     height: 40px;
@@ -577,8 +577,8 @@ a.compact-row:hover { background: var(--input); }
     left: 0;
     right: 0;
     bottom: 0;
-    height: calc(var(--tabbar) + env(safe-area-inset-bottom));
-    padding-bottom: env(safe-area-inset-bottom);
+    height: calc(var(--tabbar) + var(--safe-bottom));
+    padding-bottom: var(--safe-bottom);
     background: var(--card);
     border-top: 1px solid var(--line);
     z-index: 20;

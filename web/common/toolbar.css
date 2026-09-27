@@ -12,6 +12,23 @@
    in every app. */
 [hidden] { display: none !important; }
 
+:root {
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+}
+
+.safe-area-probe {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -1034,8 +1051,8 @@ body.is-super .user-avatar {
     right: 0;
     z-index: 30;
     gap: 10px;
-    height: calc(48px + env(safe-area-inset-top));
-    padding: env(safe-area-inset-top) 12px 0;
+    height: calc(48px + var(--safe-top));
+    padding: var(--safe-top) 12px 0;
   }
   .topbar-menu { display: flex; }
   .topbar-search { min-width: 80px; }

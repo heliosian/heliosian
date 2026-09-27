@@ -184,8 +184,27 @@ export function renderChrome() {
   }
 }
 
+const heldSafeArea = {};
+
+// iOS reports a zero safe area once an in-app browser closes over a home-screen app,
+// so keep the largest inset seen in each orientation.
+function holdSafeArea(probe) {
+  const style = getComputedStyle(probe);
+  const orientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
+  const held = heldSafeArea[orientation] || {top: 0, bottom: 0};
+  held.top = Math.max(held.top, parseFloat(style.paddingTop));
+  held.bottom = Math.max(held.bottom, parseFloat(style.paddingBottom));
+  heldSafeArea[orientation] = held;
+  document.documentElement.style.setProperty('--safe-top', held.top + 'px');
+  document.documentElement.style.setProperty('--safe-bottom', held.bottom + 'px');
+}
+
 export function initTopbar(config) {
   app = config;
+  const probe = el('div', 'safe-area-probe');
+  document.body.append(probe);
+  holdSafeArea(probe);
+  window.addEventListener('resize', () => holdSafeArea(probe));
   buildTopbar();
   initAppSwitch();
   if (app.search && !app.search.own) {

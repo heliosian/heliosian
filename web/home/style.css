@@ -48,7 +48,7 @@ body {
   padding: 22px 12px 0;
   display: flex;
   flex-direction: column;
-  padding-top: calc(26px + env(safe-area-inset-top));
+  padding-top: calc(26px + var(--safe-top));
 }
 
 /* Quan mode (quan.css) keeps the campsite, over the pink; html[] outranks
@@ -1833,7 +1833,7 @@ a.event-people:hover .event-person { text-decoration: underline; }
      same column - lockup, section links, bird - slid in from the left
      over a backdrop. */
   .topbar { position: fixed; }
-  .shell { padding-top: calc(48px + env(safe-area-inset-top)); }
+  .shell { padding-top: calc(48px + var(--safe-top)); }
   .sidebar {
     position: fixed;
     top: 0;
@@ -1843,7 +1843,7 @@ a.event-people:hover .event-person { text-decoration: underline; }
     height: auto;
     align-self: auto;
     z-index: 41;
-    padding-top: calc(26px + env(safe-area-inset-top));
+    padding-top: calc(26px + var(--safe-top));
     transform: translateX(-100%);
     transition: transform 0.2s ease;
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.3);

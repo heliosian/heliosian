@@ -156,7 +156,7 @@ html {
   justify-content: center;
   align-items: flex-start;
   background: rgba(0, 0, 0, 0.35);
-  padding: calc(env(safe-area-inset-top) + 60px) 16px 16px;
+  padding: calc(var(--safe-top) + 60px) 16px 16px;
 }
 
 /* Phones keep the Share/"..." button in the bottom toolbar, so anchor the
@@ -164,7 +164,7 @@ html {
 @media (max-width: 900px) {
   .install-prompt-overlay {
     align-items: flex-end;
-    padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px);
+    padding: 16px 16px calc(var(--safe-bottom) + 16px);
   }
 }
 
@@ -4275,8 +4275,8 @@ a.person-card:hover .photo-wrap-peek::before {
     position: fixed;
     inset: 0;
     margin-top: 0;
-    padding-top: calc(88px + var(--banner-h) + env(safe-area-inset-top));
-    padding-bottom: calc(62px + env(safe-area-inset-bottom));
+    padding-top: calc(88px + var(--banner-h) + var(--safe-top));
+    padding-bottom: calc(62px + var(--safe-bottom));
   }
   .container {
     padding-left: 16px;
@@ -4292,7 +4292,7 @@ a.person-card:hover .photo-wrap-peek::before {
     display: flex;
     align-items: center;
     position: fixed;
-    top: calc(48px + var(--banner-h) + env(safe-area-inset-top));
+    top: calc(48px + var(--banner-h) + var(--safe-top));
     left: 0;
     right: 0;
     height: 40px;
@@ -4342,8 +4342,8 @@ a.person-card:hover .photo-wrap-peek::before {
     bottom: 0;
     left: 0;
     right: 0;
-    height: calc(62px + env(safe-area-inset-bottom));
-    padding-bottom: env(safe-area-inset-bottom);
+    height: calc(62px + var(--safe-bottom));
+    padding-bottom: var(--safe-bottom);
     background: var(--sidebar);
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     z-index: 30;
@@ -4388,7 +4388,7 @@ a.person-card:hover .photo-wrap-peek::before {
     flex-direction: column;
     position: fixed;
     right: 10px;
-    bottom: calc(62px + env(safe-area-inset-bottom) + 10px);
+    bottom: calc(62px + var(--safe-bottom) + 10px);
     width: 200px;
     max-height: min(60vh, 320px);
     background: var(--card);
@@ -4488,7 +4488,7 @@ a.person-card:hover .photo-wrap-peek::before {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: calc(16px + env(safe-area-inset-top)) 16px 16px;
+    padding: calc(16px + var(--safe-top)) 16px 16px;
     font-weight: 700;
     font-size: 16px;
     flex-shrink: 0;
@@ -4508,7 +4508,7 @@ a.person-card:hover .photo-wrap-peek::before {
     padding: 4px 12px 12px;
   }
   .drawer-user {
-    padding: 16px 20px calc(16px + env(safe-area-inset-bottom));
+    padding: 16px 20px calc(16px + var(--safe-bottom));
   }
   .drawer-user .name {
     font-weight: 700;
@@ -4638,7 +4638,7 @@ a.person-card:hover .photo-wrap-peek::before {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: calc(6px + env(safe-area-inset-top)) 12px 6px;
+  padding: calc(6px + var(--safe-top)) 12px 6px;
   background: var(--alert);
   color: #fff;
   font-size: 12px;

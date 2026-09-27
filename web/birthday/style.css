@@ -644,8 +644,8 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
     position: fixed;
     inset: 0;
     overflow-y: auto;
-    padding-top: calc(88px + env(safe-area-inset-top));
-    padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom));
+    padding-top: calc(88px + var(--safe-top));
+    padding-bottom: calc(var(--tabbar) + var(--safe-bottom));
   }
   /* The shared toolbar is pinned on top (toolbar.css); this is the title
      strip under it. */
@@ -653,7 +653,7 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
     display: flex;
     align-items: center;
     position: fixed;
-    top: calc(48px + env(safe-area-inset-top));
+    top: calc(48px + var(--safe-top));
     left: 0;
     right: 0;
     height: 40px;
@@ -669,8 +669,8 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
     left: 0;
     right: 0;
     bottom: 0;
-    height: calc(var(--tabbar) + env(safe-area-inset-bottom));
-    padding-bottom: env(safe-area-inset-bottom);
+    height: calc(var(--tabbar) + var(--safe-bottom));
+    padding-bottom: var(--safe-bottom);
     background: var(--card);
     border-top: 1px solid var(--line);
     z-index: 20;
