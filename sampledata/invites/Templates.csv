@@ -1,0 +1,25 @@
+Service,Order,Column,Template
+Greenvelope,1,Couple / Family Greeting,{{ greeting }}
+Greenvelope,2,Email,{{ primary_email }}
+Greenvelope,3,First Name,{{ primary_first_name }}
+Greenvelope,4,Last Name,{{ primary_last_name }}
+Greenvelope,5,Couple / Family Member 1,{{ member_1 }}
+Greenvelope,6,Couple / Family Member 2,{{ member_2 }}
+Greenvelope,7,Couple / Family Member 3,{{ member_3 }}
+Greenvelope,8,Couple / Family Member 4,{{ member_4 }}
+Greenvelope,9,Couple / Family Member 5,{{ member_5 }}
+Greenvelope,a,Couple / Family Member 5,{{ member_6 }}
+Evite,1,Name,{{ greeting }}
+Evite,2,Email,{{ primary_email }}
+Evite,3,Phone,{{ primary_phone }}
+Paperless Post,1,Name,{{ member_name }}
+Paperless Post,2,Group Name,{{ greeting }}
+Paperless Post,3,Email or Phone,{{ member_contact }}
+Paperless Post,4,Total Invited,
+Paperless Post,5,Message,
+Punchbowl,1,First Name,{{ greeting }}
+Punchbowl,2,Last Name,
+Punchbowl,3,E-mail Address,{{ primary_email }}
+Punchbowl,4,Phone Number,{{ primary_phone }}
+Partiful,1,Name,{{ greeting }}
+Partiful,2,Email,{{ primary_email }}

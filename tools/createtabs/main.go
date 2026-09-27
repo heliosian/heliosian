@@ -51,7 +51,9 @@ var layouts = map[string][]tab{
 	},
 	"Directory": withChangeLog(who.Tabs),
 	"Invite List Builder": {
-		{"_Greetings", who.GreetingColumns},
+		{"Services", who.ServiceColumns},
+		{"Templates", who.TemplateColumns},
+		{"Greetings", who.GreetingColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Apps": {

@@ -14,7 +14,7 @@ No handler, background loop, mail hook, import or tool writes a tab or an object
 
 A tab is a header row and records keyed by column name; a cell's position in the row is never part of the contract, so columns may be rearranged, and added, by hand. The operations:
 
-- **Read** a spreadsheet's tabs in one batched request (`Tabs`), header-only for the tabs nothing reads rows of. `Raw` reads one tab as the cells stand, for the few read positionally (the invite templates).
+- **Read** a spreadsheet's tabs in one batched request (`Tabs`), header-only for the tabs nothing reads rows of.
 - **Insert** rows, each cell under the column of its name, at an explicit address after the last used row - never the Sheets append call, whose table detection starts a row in the wrong column past a blank row.
 - **Update** the named cells of every row matching the given columns; no row matching is an error. **SetMany** updates many rows keyed by one column in one write, with the same error for a key no row holds.
 - **Upsert** is Update, inserting one row when none matches.
@@ -77,6 +77,6 @@ What a row holds now is the tab itself; the Change Log is how to get back to wha
 
 ## The stores
 
-Every spreadsheet an app writes is a store: Staff Birthdays, Heliosian, HCA-Team, Helios Celebrate, Helios Loop, Helios When, Who?, Who?'s greetings over the invite templates' spreadsheet, Helios Ask's documents, Feedback and the platform's Config. Helios When's import commits through a calendar store: the server's own for the Google stage, and for the PDF stage one the periodic job opens (`docs/when/data.md`, The import). The documents import opens a store of its own (`docs/ask/artifacts.md`), and Who?'s import the directory's book (`docs/who/data.md`, Every write is a commit). Staff Birthdays' one write past the store is the weekly copy into the association's own spreadsheet (`docs/birthday/data.md`), an outbound export of rows the app never reads back; a birthday team joiner's place on the app's Heliosian list is a commit on Heliosian's store (`home.Grant`).
+Every spreadsheet an app writes is a store: Staff Birthdays, Heliosian, HCA-Team, Helios Celebrate, Helios Loop, Helios When, Who?, Who?'s invite templates and greetings, Helios Ask's documents, Feedback and the platform's Config. Helios When's import commits through a calendar store: the server's own for the Google stage, and for the PDF stage one the periodic job opens (`docs/when/data.md`, The import). The documents import opens a store of its own (`docs/ask/artifacts.md`), and Who?'s import the directory's book (`docs/who/data.md`, Every write is a commit). Staff Birthdays' one write past the store is the weekly copy into the association's own spreadsheet (`docs/birthday/data.md`), an outbound export of rows the app never reads back; a birthday team joiner's place on the app's Heliosian list is a commit on Heliosian's store (`home.Grant`).
 
 A spreadsheet whose app moved onto the store kept its old change log as `Change Log (old)`, renamed with `tools/sheets rename` before `tools/createtabs` made the one in this shape.

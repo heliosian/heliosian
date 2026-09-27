@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"heliosian/internal/cells"
@@ -16,14 +17,23 @@ import (
 )
 
 type InviteTemplate struct {
-	Name           string     `json:"name"`
-	Sheet          string     `json:"sheet"`
-	Description    string     `json:"description,omitempty"`
-	Notes          string     `json:"notes,omitempty"`
-	HeaderRow      bool       `json:"headerRow"`
-	SupportsGroups bool       `json:"supportsGroups"`
-	Header         []string   `json:"header"`
-	Rows           [][]string `json:"rows"`
+	Name           string           `json:"name"`
+	Description    string           `json:"description,omitempty"`
+	Notes          string           `json:"notes,omitempty"`
+	HeaderRow      bool             `json:"headerRow"`
+	SupportsGroups bool             `json:"supportsGroups"`
+	Columns        []TemplateColumn `json:"columns"`
+}
+
+type TemplateColumn struct {
+	Name     string `json:"name"`
+	Template string `json:"template"`
+	order    string
+}
+
+type InviteModel struct {
+	Systems   []InviteTemplate
+	Greetings []GreetingTemplate
 }
 
 type GreetingTemplate struct {
@@ -36,11 +46,28 @@ type GreetingTemplate struct {
 
 const (
 	invitesApp   = "invites"
-	servicesTab  = "_Services"
-	greetingsTab = "_Greetings"
+	servicesTab  = "Services"
+	templatesTab = "Templates"
+	greetingsTab = "Greetings"
 )
 
-var GreetingColumns = []string{"Name", "Format", "Grouped", "Individual", "Email"}
+var (
+	ServiceColumns  = []string{"Display Name", "Header Row", "Supports Groups", "Description", "Notes"}
+	TemplateColumns = []string{"Service", store.OrderColumn, "Column", "Template"}
+	GreetingColumns = []string{"Name", "Format", "Grouped", "Individual", "Email"}
+)
+
+func buildInvites(tables store.Tables) (*InviteModel, error) {
+	systems, err := buildSystems(tables)
+	if err != nil {
+		return nil, err
+	}
+	greetings, err := buildGreetings(tables)
+	if err != nil {
+		return nil, err
+	}
+	return &InviteModel{Systems: systems, Greetings: greetings}, nil
+}
 
 func buildGreetings(tables store.Tables) ([]GreetingTemplate, error) {
 	rows := tables[greetingsTab]
@@ -69,98 +96,81 @@ func buildGreetings(tables store.Tables) ([]GreetingTemplate, error) {
 	return greetings, nil
 }
 
-func loadInviteTemplates(source data.Source) ([]InviteTemplate, error) {
-	_, systems, err := source.Table(invitesApp, servicesTab)
-	if err != nil {
-		return nil, err
+func buildSystems(tables store.Tables) ([]InviteTemplate, error) {
+	columns := map[string][]TemplateColumn{}
+	for _, row := range tables[templatesTab] {
+		service, name := row["Service"], row["Column"]
+		if service == "" || name == "" {
+			return nil, fmt.Errorf("template row %v names no service or column", row)
+		}
+		order := row[store.OrderColumn]
+		if err := store.CheckKey(order); err != nil {
+			return nil, fmt.Errorf("%s template column %q: %w", service, name, err)
+		}
+		columns[service] = append(columns[service], TemplateColumn{Name: name, Template: row["Template"], order: order})
 	}
-	templates := []InviteTemplate{}
-	for _, sys := range systems {
-		name, tab := sys["Display Name"], sys["Sheet"]
-		if name == "" || tab == "" {
+	systems := []InviteTemplate{}
+	for _, row := range tables[servicesTab] {
+		name := row["Display Name"]
+		if name == "" {
 			continue
 		}
-		raw, err := source.Raw(invitesApp, tab)
-		if err != nil {
-			return nil, fmt.Errorf("load %s template (tab %q): %w", name, tab, err)
+		cols, ok := columns[name]
+		if !ok {
+			return nil, fmt.Errorf("service %s has no template columns", name)
 		}
-		if len(raw) == 0 {
-			continue
-		}
-		headerRow, err := cells.YesNo(sys["Header Row"], true)
+		delete(columns, name)
+		slices.SortStableFunc(cols, func(a, b TemplateColumn) int { return store.CompareKeys(a.order, b.order) })
+		headerRow, err := cells.YesNo(row["Header Row"], true)
 		if err != nil {
 			return nil, fmt.Errorf("%s template: header row %w", name, err)
 		}
-		supportsGroups, err := cells.YesNo(sys["Supports Groups"], true)
+		supportsGroups, err := cells.YesNo(row["Supports Groups"], true)
 		if err != nil {
 			return nil, fmt.Errorf("%s template: supports groups %w", name, err)
 		}
-		templates = append(templates, InviteTemplate{
+		systems = append(systems, InviteTemplate{
 			Name:           name,
-			Sheet:          tab,
-			Description:    sys["Description"],
-			Notes:          sys["Notes"],
+			Description:    row["Description"],
+			Notes:          row["Notes"],
 			HeaderRow:      headerRow,
 			SupportsGroups: supportsGroups,
-			Header:         raw[0],
-			Rows:           raw[1:],
+			Columns:        cols,
 		})
 	}
-	return templates, nil
+	if len(columns) > 0 {
+		return nil, fmt.Errorf("template columns name unknown services %v", slices.Sorted(maps.Keys(columns)))
+	}
+	return systems, nil
 }
 
 type Invites struct {
-	*store.Store[[]GreetingTemplate]
-	source  data.Source
-	mu      sync.RWMutex
-	systems []InviteTemplate
+	*store.Store[*InviteModel]
 }
 
 func NewInvites(source data.Source, writer data.Writer, queue *store.Queue) (*Invites, error) {
-	s, err := store.New(store.Spec[[]GreetingTemplate]{
-		App:  invitesApp,
-		Tabs: []store.Tab{{Name: greetingsTab, Columns: GreetingColumns, Key: []string{"Name"}}},
-		Build: func(_ context.Context, tables store.Tables) ([]GreetingTemplate, error) {
-			return buildGreetings(tables)
+	s, err := store.New(store.Spec[*InviteModel]{
+		App: invitesApp,
+		Tabs: []store.Tab{
+			{Name: servicesTab, Columns: ServiceColumns, Key: []string{"Display Name"}},
+			{Name: templatesTab, Columns: TemplateColumns, Key: []string{"Service", store.OrderColumn}},
+			{Name: greetingsTab, Columns: GreetingColumns, Key: []string{"Name"}},
 		},
-		Loaded: func(greetings []GreetingTemplate, took time.Duration) {
-			slog.Info("loaded greetings", "greetings", len(greetings), "took", took.Round(time.Millisecond))
+		Build: func(_ context.Context, tables store.Tables) (*InviteModel, error) {
+			return buildInvites(tables)
+		},
+		Loaded: func(model *InviteModel, took time.Duration) {
+			slog.Info("loaded invites", "systems", len(model.Systems), "greetings", len(model.Greetings), "took", took.Round(time.Millisecond))
 		},
 	}, source, writer, queue)
 	if err != nil {
 		return nil, err
 	}
-	i := &Invites{Store: s, source: source}
-	swap, err := i.loadSystems(context.Background())
-	if err != nil {
-		return nil, err
-	}
-	swap()
-	queue.Register(i.loadSystems)
-	return i, nil
-}
-
-func (i *Invites) loadSystems(context.Context) (func(), error) {
-	systems, err := loadInviteTemplates(i.source)
-	if err != nil {
-		return nil, fmt.Errorf("load invite templates: %w", err)
-	}
-	return func() {
-		i.mu.Lock()
-		i.systems = systems
-		i.mu.Unlock()
-		slog.Info("loaded invite templates", "systems", len(systems))
-	}, nil
-}
-
-func (i *Invites) Systems() []InviteTemplate {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-	return i.systems
+	return &Invites{Store: s}, nil
 }
 
 func (i *Invites) greeting(name string) (GreetingTemplate, bool) {
-	for _, g := range i.Model() {
+	for _, g := range i.Model().Greetings {
 		if strings.EqualFold(g.Name, name) {
 			return g, true
 		}
@@ -175,7 +185,8 @@ type inviteTemplates struct {
 
 func RegisterInvites(mux *http.ServeMux, cache *Cache, invites *Invites) {
 	mux.HandleFunc("GET /api/directory/invite-templates", serve.JSON(func(r *http.Request, _ serve.None) (inviteTemplates, error) {
-		return inviteTemplates{Systems: invites.Systems(), Greetings: visibleGreetings(invites.Model(), effectiveEmail(cache, r))}, nil
+		model := invites.Model()
+		return inviteTemplates{Systems: model.Systems, Greetings: visibleGreetings(model.Greetings, effectiveEmail(cache, r))}, nil
 	}))
 
 	mux.HandleFunc("POST /api/directory/greetings", func(w http.ResponseWriter, r *http.Request) {

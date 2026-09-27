@@ -275,26 +275,29 @@ function fillTemplate(template, params) {
   return (template || '').replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => params[key] ?? '');
 }
 
-function templateRepeatsPerMember(rows) {
-  return rows.some(row => row.some(cell => /\{\{\s*member_(name|contact)\s*\}\}/.test(cell || '')));
+function templateRepeatsPerMember(system) {
+  return system.columns.some(c => /\{\{\s*member_(name|contact)\s*\}\}/.test(c.template));
 }
 
-function templateUsesGreeting(rows) {
-  return rows.some(row => row.some(cell => /\{\{\s*greeting\s*\}\}/.test(cell || '')));
+function isGreetingTemplate(template) {
+  return /\{\{\s*greeting\s*\}\}/.test(template);
+}
+
+function templateUsesGreeting(system) {
+  return system.columns.some(c => isGreetingTemplate(c.template));
 }
 
 function applyInviteTemplate(system, entries) {
-  const templateRow = system.rows[0] || [];
-  const perMember = templateRepeatsPerMember(system.rows);
+  const perMember = templateRepeatsPerMember(system);
   const rows = [];
   for (const entry of entries) {
     if (!perMember) {
-      rows.push({entry, cells: system.header.map((_, i) => fillTemplate(templateRow[i], entry.params))});
+      rows.push({entry, cells: system.columns.map(c => fillTemplate(c.template, entry.params))});
       continue;
     }
     for (const person of entry.people) {
       const params = {...entry.params, member_name: person.name, member_contact: person.contact};
-      rows.push({entry, cells: system.header.map((_, i) => fillTemplate(templateRow[i], params))});
+      rows.push({entry, cells: system.columns.map(c => fillTemplate(c.template, params))});
     }
   }
   return rows;
@@ -345,7 +348,7 @@ export function renderGreenvelopePage() {
       content.replaceChildren();
       settings.append(el('div', 'gv-setting-group', inviteLoadError
         ? `Couldn't load invite templates: ${inviteLoadError}`
-        : 'No invite templates are set up yet - add one to the Invite List Builder sheet\'s _Services tab.'));
+        : 'No invite templates are set up yet - add one to the Invite List Builder sheet\'s Services and Templates tabs.'));
       return;
     }
     if (!systems.some(s => s.name === state.gvSystem)) {
@@ -402,9 +405,10 @@ export function renderGreenvelopePage() {
         const entries = invitesEntries();
         const rows = applyInviteTemplate(system, entries);
 
+        const header = system.columns.map(c => c.name);
         const csvLines = rows.map(r => r.cells.map(csvField).join(','));
         if (system.headerRow) {
-          csvLines.unshift(system.header.map(csvField).join(','));
+          csvLines.unshift(header.map(csvField).join(','));
         }
         download.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvLines.join('\n'));
         download.download = slugify(system.name) + '.csv';
@@ -418,13 +422,12 @@ export function renderGreenvelopePage() {
         const table = el('table', 'email-table');
         const thead = el('thead');
         const headRow = el('tr');
-        const greetingCol = system.rows[0] ? system.rows[0].findIndex(cell => /\{\{\s*greeting\s*\}\}/.test(cell || '')) : -1;
         const leadTh = el('th', 'email-copy-cell');
         const copyTable = el('button', 'email-copy-columns');
         copyTable.title = 'Copy the whole table to the clipboard';
         copyTable.append(svg('copy'));
         copyTable.addEventListener('click', () => {
-          const lines = [system.header.join('\t')].concat(rows.map(r => r.cells.join('\t')));
+          const lines = [header.join('\t')].concat(rows.map(r => r.cells.join('\t')));
           navigator.clipboard.writeText(lines.join('\n'));
           copyTable.classList.add('copied');
           copyTable.replaceChildren(svg('check'));
@@ -435,9 +438,9 @@ export function renderGreenvelopePage() {
         });
         leadTh.append(copyTable);
         headRow.append(leadTh);
-        system.header.forEach((label, i) => {
+        system.columns.forEach(column => {
           const th = el('th');
-          if (i === greetingCol) {
+          if (isGreetingTemplate(column.template)) {
             const headSelect = el('select', 'gv-select gv-th-select');
             const formats = greetingFormatsFor(state.gvInviteBy, system.supportsGroups);
             const meEmail = document.body.dataset.userEmail;
@@ -479,7 +482,7 @@ export function renderGreenvelopePage() {
             });
             th.append(headSelect);
           } else {
-            th.append(el('span', '', label));
+            th.append(el('span', '', column.name));
           }
           headRow.append(th);
         });
@@ -784,7 +787,7 @@ function renderInviteSettings(systems, settings, onSystemChange, onSettingChange
   if (!system.supportsGroups) {
     state.gvInviteBy = 'individual';
   }
-  if (templateUsesGreeting(system.rows)) {
+  if (templateUsesGreeting(system)) {
     const formats = greetingFormatsFor(state.gvInviteBy, system.supportsGroups);
     if (formats.length && !formats.some(f => f.name === state.gvGreeting)) {
       state.gvGreeting = formats[0].name;

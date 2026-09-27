@@ -34,7 +34,6 @@ type Source interface {
 	Table(app, name string) ([]string, []map[string]string, error)
 	Header(app, name string) ([]string, error)
 	Tabs(ctx context.Context, app string, tables, headers []string) (map[string]Tab, error)
-	Raw(app, name string) ([][]string, error)
 }
 
 type Writer interface {
@@ -98,15 +97,6 @@ func (d *Dir) Header(app, name string) ([]string, error) {
 		return nil, err
 	}
 	return slices.Clone(t.header), nil
-}
-
-func (d *Dir) Raw(app, name string) ([][]string, error) {
-	f, err := os.Open(filepath.Join(d.Root, app, name+".csv"))
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	return csv.NewReader(f).ReadAll()
 }
 
 func (d *Dir) Table(app, name string) ([]string, []map[string]string, error) {

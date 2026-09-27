@@ -121,7 +121,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("load invites: %v", err)
 	}
-	fmt.Printf("invites: %d systems, %d greetings\n", len(invites.Systems()), len(invites.Model()))
+	fmt.Printf("invites: %d systems, %d greetings\n", len(invites.Model().Systems), len(invites.Model().Greetings))
 	fmt.Println("grades:")
 	for _, g := range model.Grades {
 		fmt.Printf("  %s -> %s (%s -> %s)\n", g.Name, g.NextName, g.Band, g.NextBand)
