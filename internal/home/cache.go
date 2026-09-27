@@ -77,7 +77,7 @@ func NewCache(source data.Source, writer data.Writer, images ImageChecker, super
 }
 
 func (c *Cache) includes(rules []filter.Rule, email string) bool {
-	return c.directory != nil && len(rules) > 0 && filter.OnList(filter.List{Rules: rules, Editors: c.Admins()}, c.directory.Sources(), email)
+	return len(rules) > 0 && filter.OnList(filter.List{Rules: rules, Editors: c.Admins()}, c.directory.Sources(), email)
 }
 
 func (c *Cache) CategoriesFor(v access.Actor) []Category {
@@ -192,7 +192,7 @@ func (c *Cache) AppList() []App {
 }
 
 func (c *Cache) HiddenApps(email string) []string {
-	email = strings.ToLower(strings.TrimSpace(email))
+	email = c.directory.Resolve(strings.ToLower(strings.TrimSpace(email)))
 	hidden := []string{}
 	model := c.Model()
 	for _, app := range Apps {

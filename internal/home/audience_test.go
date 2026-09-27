@@ -362,16 +362,44 @@ func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 	directory := directoryOf(t)
 	directory.aliases = map[string]string{alias: admin}
 	c.directory = directory
+	seen := map[string]string{}
 	a := app{
 		cache: c, directory: directory,
-		heroPhoto: func(string) string { return "" },
+		heroPhoto: func(email string) string { seen["photo"] = email; return "" },
 		alerts:    func(string) ([]string, []string) { return nil, nil },
-		upcoming:  func(string, string) Upcoming { return Upcoming{} },
-		month:     func(string, string, string) Month { return Month{} },
+		upcoming:  func(email, _ string) Upcoming { seen["upcoming"] = email; return Upcoming{} },
+		month:     func(email, _, _ string) Month { seen["month"] = email; return Month{} },
+		answer: func(_ context.Context, email, _, _ string) error {
+			seen["answer"] = email
+			return nil
+		},
+		makeDefault: func(_ context.Context, email, _ string) error {
+			seen["default"] = email
+			return nil
+		},
 	}
 	if c.IsAdmin(alias) {
 		t.Fatal("the alias is listed as an admin itself")
 	}
+	if hidden := c.HiddenApps(alias); slices.Contains(hidden, "celebrate") {
+		t.Errorf("the alias is kept from an app listed for the admin by address: %v", hidden)
+	}
+	for _, h := range []http.HandlerFunc{a.calendar, a.upcomingUnder} {
+		auth.Fixed(alias, h).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	}
+	for _, h := range []http.HandlerFunc{a.rsvp, a.setDefault} {
+		rec := httptest.NewRecorder()
+		auth.Fixed(alias, h).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(`{}`))))
+		if rec.Code != http.StatusNoContent {
+			t.Errorf("the alias's post: %d %s", rec.Code, rec.Body)
+		}
+	}
+	for _, key := range []string{"upcoming", "month", "answer", "default"} {
+		if seen[key] != admin {
+			t.Errorf("%s got %q, want the admin the alias resolves to", key, seen[key])
+		}
+	}
+	clear(seen)
 	rec := httptest.NewRecorder()
 	auth.Fixed(alias, http.HandlerFunc(a.model)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/apps/model", nil))
 	var view struct {
@@ -380,8 +408,13 @@ func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
 		t.Fatal(err)
 	}
-	if !view.User.IsAdmin {
-		t.Errorf("the alias's model is not an admin's: %s", rec.Body)
+	if !view.User.IsAdmin || view.User.Email != admin {
+		t.Errorf("the alias's model is not the admin's: %s", rec.Body)
+	}
+	for _, key := range []string{"photo", "upcoming", "month"} {
+		if seen[key] != admin {
+			t.Errorf("%s got %q, want the admin the alias resolves to", key, seen[key])
+		}
 	}
 	raw, err := json.Marshal(map[string]any{"title": "Parent Portal", "by": 1})
 	if err != nil {

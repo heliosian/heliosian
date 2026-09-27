@@ -210,7 +210,7 @@ type user struct {
 }
 
 func (a app) calendar(w http.ResponseWriter, r *http.Request) {
-	email := strings.ToLower(auth.Email(r))
+	email := a.actor(r).Email
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.month(email, r.URL.Query().Get("month"), r.URL.Query().Get("calendar"))); err != nil {
 		slog.ErrorContext(r.Context(), "[ERROR] encode apps calendar", "error", err)
@@ -218,7 +218,7 @@ func (a app) calendar(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
-	email := strings.ToLower(auth.Email(r))
+	email := a.actor(r).Email
 	var body struct {
 		ID     string `json:"id"`
 		Answer string `json:"answer"`
@@ -239,7 +239,7 @@ func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) upcomingUnder(w http.ResponseWriter, r *http.Request) {
-	email := strings.ToLower(auth.Email(r))
+	email := a.actor(r).Email
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.upcoming(email, r.URL.Query().Get("calendar"))); err != nil {
 		slog.ErrorContext(r.Context(), "[ERROR] encode upcoming", "error", err)
@@ -247,7 +247,7 @@ func (a app) upcomingUnder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) setDefault(w http.ResponseWriter, r *http.Request) {
-	email := strings.ToLower(auth.Email(r))
+	email := a.actor(r).Email
 	var body struct {
 		Token string `json:"token"`
 	}
@@ -267,8 +267,8 @@ func (a app) setDefault(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
-	email := strings.ToLower(auth.Email(r))
 	actor := a.actor(r)
+	email := actor.Email
 	admin := actor.Admin
 	hidden := hiddenHosts(r.Host, a.cache.HiddenApps(email))
 	full := a.cache.Model()
