@@ -26,6 +26,7 @@ type Mail struct {
 	Sender     mail.Sender
 	From       string
 	ReplyTo    string
+	Base       string
 	SigningKey string
 	Key        []byte
 }
@@ -85,9 +86,9 @@ func (a app) replies(w http.ResponseWriter, r *http.Request) {
 }
 
 func addressed(replyTo string, recipients []string) (string, bool) {
-	want := normalizeEmail(mailAddress(replyTo))
+	want := normalizeEmail(mail.Address(replyTo))
 	for _, r := range recipients {
-		local, domain, _ := strings.Cut(normalizeEmail(mailAddress(r)), "@")
+		local, domain, _ := strings.Cut(normalizeEmail(mail.Address(r)), "@")
 		base, tag, _ := strings.Cut(local, "+")
 		if base+"@"+domain == want {
 			return tag, true
@@ -119,7 +120,7 @@ func (a app) takeReply(ctx context.Context, reply Reply, from, tag string) error
 	if _, known := a.directory.Person(email); !known && a.cache.Model().InviteOf(id, email) == nil {
 		return fmt.Errorf("attendee is not in the directory")
 	}
-	if sender := normalizeEmail(mailAddress(from)); sender != email {
+	if sender := normalizeEmail(mail.Address(from)); sender != email {
 		return fmt.Errorf("sent by %s, not the attendee", sender)
 	}
 	if !hmac.Equal([]byte(tag), []byte(a.replyToken(id, email))) {

@@ -13,7 +13,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
@@ -721,35 +720,11 @@ func (a app) sendCohostNote(ctx context.Context, to, actor string, e *Event) {
 	if p, known := a.directory.Person(actor); known && p.Name != "" {
 		who = p.Name
 	}
-	link := "https://when.heliosian.com" + EventPath(e)
-	day, hours := whenLines(e)
-	when := day
-	if hours != "" {
-		when += " \u00b7 " + hours
-	}
-	font := "-apple-system,Segoe UI,Roboto,sans-serif"
-	var text, htm strings.Builder
-	fmt.Fprintf(&text, "%s made you a co-host of %s.\n\n%s\n", who, e.Title, when)
-	if e.Location != "" {
-		fmt.Fprintf(&text, "%s\n", e.Location)
-	}
-	fmt.Fprintf(&text, "\nAs a co-host you can build and send the guest list, read every answer, message the guests, and replies to the invitation reach you. The event's page: %s\n", link)
-	fmt.Fprintf(&htm, "<p style=\"font:16px/1.5 %s\">%s made you a co-host of <strong>%s</strong>.</p>", font, html.EscapeString(who), html.EscapeString(e.Title))
-	fmt.Fprintf(&htm, "<p style=\"font:15px/1.5 %s;color:#0e4d54\">%s", font, html.EscapeString(when))
-	if e.Location != "" {
-		fmt.Fprintf(&htm, "<br>%s", html.EscapeString(e.Location))
-	}
-	htm.WriteString("</p>")
-	fmt.Fprintf(&htm, "<p style=\"font:14px/1.5 %s;color:#333\">As a co-host you can build and send the guest list, read every answer, message the guests, and replies to the invitation reach you.</p>", font)
-	fmt.Fprintf(&htm, "<p style=\"margin:20px 0\"><a href=\"%s\" style=\"display:inline-block;padding:10px 18px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px %s;text-decoration:none\">Open the event</a></p>", html.EscapeString(link), font)
-	err := a.mail.Sender.Send(ctx, mail.Message{
-		To:      []string{to},
-		ReplyTo: []string{actor},
-		Subject: "[" + e.Title + "] You're a co-host",
-		Text:    text.String(),
-		HTML:    htm.String(),
-	})
-	if err != nil {
+	l := a.letterFor(e, EventPath(e))
+	l.Heading = "You're a co-host"
+	l.Intro = fmt.Sprintf("%s made you a co-host of %s. As a co-host you can build and send the guest list, read every answer, message the guests, and replies to the invitation reach you.", who, e.Title)
+	l.Button = "Open the event"
+	if err := a.mail.Sender.Send(ctx, l.Message("["+e.Title+"] You're a co-host", []string{to}, nil, []string{actor})); err != nil {
 		slog.ErrorContext(ctx, "calendar: send co-host note", "to", to, "event", e.ID, "error", err)
 		return
 	}
@@ -1072,9 +1047,9 @@ func (a app) send(ctx context.Context, actor access.Actor, host string, e *Event
 		message = inv.Message
 	}
 	for _, to := range order {
-		link := "https://when.heliosian.com" + EventPath(e)
+		link := a.mail.Base + EventPath(e)
 		if row := model.InviteOf(e.ID, to); row != nil && row.Token != "" {
-			link = "https://when.heliosian.com" + extPath(row.Token)
+			link = a.mail.Base + extPath(row.Token)
 		}
 		go a.sendInvitation(context.WithoutCancel(ctx), to, cc[to], recipients[to], hostName, message, e, link, a.replyTo(e, to), kind)
 	}
@@ -1093,7 +1068,7 @@ func FirstWord(name string) string {
 }
 
 func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, host, message string, e *Event, link string, replyTo []string, kind string) {
-	origin := "https://when.heliosian.com"
+	origin := a.mail.Base
 	outside := strings.Contains(link, "/ext/")
 	day, hours := whenLines(e)
 	when := day
@@ -1175,7 +1150,7 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 		fmt.Fprintf(&htm, "<p style=\"margin:0\"><a href=\"%s\" style=\"color:#1a73e8\">%s</a> <a href=\"%s\" style=\"color:#2f9e6a;text-decoration:none\">(View Map)</a></p>", esc(maps), esc(e.Location), esc(maps))
 	}
 	fmt.Fprintf(&htm, "<p style=\"margin:0\">%s</p>", esc(when))
-	fmt.Fprintf(&htm, "<p style=\"margin:10px 0 0\"><a href=\"%s\" style=\"color:#2f9e6a;text-decoration:none;margin:0 8px\">Add to Google</a> <a href=\"%s\" style=\"color:#2f9e6a;text-decoration:none;margin:0 8px\">RSVP</a></p>", esc(googleCalendarURL(e, link)), esc(link))
+	fmt.Fprintf(&htm, "<p style=\"margin:10px 0 0\"><a href=\"%s\" style=\"color:#2f9e6a;text-decoration:none;margin:0 8px\">Add to Google</a> <a href=\"%s\" style=\"color:#2f9e6a;text-decoration:none;margin:0 8px\">RSVP</a></p>", esc(e.mailEvent(link).GoogleLink()), esc(link))
 	if outside {
 		fmt.Fprintf(&htm, "<p style=\"margin:12px 0 0;font-size:12px;color:#777\">The page is yours alone - no account needed.%s</p>", attached)
 	} else {
@@ -1201,39 +1176,13 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 		HTML:     htm.String(),
 	}
 	if len(cc) == 0 {
-		msg.Attachments = []mail.Attachment{{
-			Name:        "invite.ics",
-			ContentType: "text/calendar; method=REQUEST; charset=utf-8",
-			Content:     []byte(invite(a.organizer(e.ID, to), to, e, link, now())),
-		}}
+		msg.Attachments = []mail.Attachment{a.invite(e, to, link, mail.MethodRequest)}
 	}
 	if err := a.mail.Sender.Send(ctx, msg); err != nil {
 		slog.ErrorContext(ctx, "calendar: send invitation", "to", to, "event", e.ID, "error", err)
 		return
 	}
 	slog.InfoContext(ctx, "calendar: invitation sent", "to", to, "event", e.ID, "kind", kind)
-}
-
-func googleCalendarURL(e *Event, link string) string {
-	stamp := func(t time.Time) string {
-		if e.AllDay {
-			return t.Format("20060102")
-		}
-		return t.UTC().Format("20060102T150405Z")
-	}
-	until := e.end
-	if e.AllDay {
-		until = e.end.AddDate(0, 0, 1)
-	} else if !e.end.After(e.start) {
-		until = e.start.Add(time.Hour)
-	}
-	q := url.Values{}
-	q.Set("action", "TEMPLATE")
-	q.Set("text", e.Title)
-	q.Set("dates", stamp(e.start)+"/"+stamp(until))
-	q.Set("details", strings.TrimSpace(e.Description+"\n\n"+link))
-	q.Set("location", e.Location)
-	return "https://calendar.google.com/calendar/render?" + q.Encode()
 }
 
 func answerWord(answer string) string {
@@ -1337,19 +1286,12 @@ func (a app) messageInvites(w http.ResponseWriter, r *http.Request) {
 func (a app) sendMessage(ctx context.Context, to string, cc, replyTo []string, hostName, subject, message string, e *Event, attach bool) {
 	model := a.cache.Model()
 	e = model.invitedEvent(e)
-	origin := "https://when.heliosian.com"
-	link := origin + EventPath(e)
+	path := EventPath(e)
 	if row := model.InviteOf(e.ID, to); row != nil && row.Token != "" {
-		link = origin + extPath(row.Token)
-	}
-	day, hours := whenLines(e)
-	when := day
-	if hours != "" {
-		when += " \u00b7 " + hours
+		path = extPath(row.Token)
 	}
 	household := a.householdOn(e, to)
-	type line struct{ name, answer string }
-	lines := []line{}
+	lines := [][2]string{}
 	waiting := false
 	for _, inv := range model.Invites[e.ID] {
 		mine := slices.Contains(household, inv.Email) || (inv.GuestOf != "" && slices.Contains(household, inv.GuestOf))
@@ -1370,60 +1312,26 @@ func (a app) sendMessage(ctx context.Context, to string, cc, replyTo []string, h
 		if answer == "" {
 			waiting = true
 		}
-		l := line{name, answerWord(answer)}
+		l := [2]string{name, answerWord(answer)}
 		if inv.Email == to {
-			lines = append([]line{l}, lines...)
+			lines = append([][2]string{l}, lines...)
 		} else {
 			lines = append(lines, l)
 		}
 	}
-	font := "-apple-system,Segoe UI,Roboto,sans-serif"
-	var text, htm strings.Builder
-	fmt.Fprintf(&text, "A message from %s about %s:\n\n%s\n\n%s\n%s\n", hostName, e.Title, message, e.Title, when)
-	fmt.Fprintf(&htm, "<p style=\"font:14px/1.5 %s;color:#647071\">A message from %s about <strong>%s</strong></p>", font, html.EscapeString(hostName), html.EscapeString(e.Title))
-	fmt.Fprintf(&htm, "<div style=\"font:16px/1.55 %s;white-space:pre-wrap\">%s</div>", font, html.EscapeString(message))
-	fmt.Fprintf(&htm, "<p style=\"font:15px/1.5 %s;color:#0e4d54;margin-top:18px\"><strong>%s</strong><br>%s", font, html.EscapeString(e.Title), html.EscapeString(when))
-	if e.Location != "" {
-		fmt.Fprintf(&text, "%s\n", e.Location)
-		fmt.Fprintf(&htm, "<br>%s", html.EscapeString(e.Location))
-	}
-	htm.WriteString("</p>")
-	if len(lines) > 0 {
-		text.WriteString("\nYour RSVP:\n")
-		fmt.Fprintf(&htm, "<table style=\"border-collapse:collapse;font:14px/1.5 %s;margin-top:10px\"><tr><td colspan=\"2\" style=\"padding:0 0 4px;font-weight:700\">Your RSVP</td></tr>", font)
-		for _, l := range lines {
-			fmt.Fprintf(&text, "  %s: %s\n", l.name, l.answer)
-			color := "#1d6b48"
-			switch l.answer {
-			case "Maybe":
-				color = "#8a5a00"
-			case "No":
-				color = "#333"
-			case "No response yet":
-				color = "#b3261e"
-			}
-			fmt.Fprintf(&htm, "<tr><td style=\"padding:2px 14px 2px 0\">%s</td><td style=\"padding:2px 0;color:%s;font-weight:600\">%s</td></tr>", html.EscapeString(l.name), color, l.answer)
-		}
-		htm.WriteString("</table>")
-	}
+	l := a.letterFor(e, path)
+	l.Heading = subject
+	l.Intro = fmt.Sprintf("A message from %s about %s:", hostName, e.Title)
+	l.Note = message
+	l.Rows = lines
+	l.Button = "Open the event"
 	if waiting {
-		fmt.Fprintf(&text, "\nSomeone in your household has not answered yet - please RSVP: %s\n", link)
-		fmt.Fprintf(&htm, "<p style=\"font:14px/1.5 %s;color:#b3261e;margin-top:14px\">Someone in your household has not answered yet - the hosts would love to know.</p>", font)
-		fmt.Fprintf(&htm, "<p style=\"margin:12px 0\"><a href=\"%s\" style=\"display:inline-block;padding:10px 18px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px %s;text-decoration:none\">RSVP now</a></p>", html.EscapeString(link), font)
-	} else {
-		fmt.Fprintf(&text, "\nThe event's page: %s\n", link)
-		fmt.Fprintf(&htm, "<p style=\"margin:16px 0\"><a href=\"%s\" style=\"display:inline-block;padding:10px 18px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px %s;text-decoration:none\">Open the event</a></p>", html.EscapeString(link), font)
+		l.Button = "RSVP now"
+		l.Footnote = "Someone in your household has not answered yet - the hosts would love to know."
 	}
-	msg := mail.Message{
-		To:      []string{to},
-		CC:      cc,
-		ReplyTo: replyTo,
-		Subject: "[" + e.Title + "] " + subject,
-		Text:    text.String(),
-		HTML:    htm.String(),
-	}
+	msg := l.Message("["+e.Title+"] "+subject, []string{to}, cc, replyTo)
 	if attach && len(cc) == 0 {
-		msg.Attachments = []mail.Attachment{{Name: "invite.ics", ContentType: "text/calendar; method=REQUEST; charset=utf-8", Content: []byte(invite(a.organizer(e.ID, to), to, e, link, now()))}}
+		msg.Attachments = []mail.Attachment{a.invite(e, to, l.Path, mail.MethodRequest)}
 	}
 	err := a.mail.Sender.Send(ctx, msg)
 	if err != nil {

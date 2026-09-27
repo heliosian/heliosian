@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"log/slog"
 	"net/http"
@@ -18,7 +17,6 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/filter"
 	"heliosian/internal/imagesearch"
-	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
@@ -445,7 +443,7 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	if a.mail.Sender != nil {
 		if e := a.cache.Model().Event(ids[0]); e != nil {
-			go a.tellAdmins(context.WithoutCancel(r.Context()), r.Host, actor.Email, e)
+			go a.tellAdmins(context.WithoutCancel(r.Context()), actor.Email, e)
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -466,7 +464,7 @@ func (a app) oneEvent(w http.ResponseWriter, r *http.Request) {
 	}{e, admin && a.eventFor(actor, false, e.ID) == nil})
 }
 
-func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
+func (a app) tellAdmins(ctx context.Context, by string, e *Event) {
 	admins := a.cache.Admins(a.superAdmins())
 	if len(admins) == 0 {
 		return
@@ -475,12 +473,7 @@ func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
 	if p, ok := a.directory.Person(by); ok && p.Name != "" {
 		who = p.Name + " (" + by + ")"
 	}
-	link := "https://" + host + EventPath(e)
-	day, hours := whenLines(e)
-	when := day
-	if hours != "" {
-		when += " · " + hours
-	}
+	day, _ := whenLines(e)
 	lead := who + " shared an event on Helios When that is waiting for approval."
 	closing := "Approve and Decline are at the top of its page. Until then it is shared by link: anyone with its link can open it."
 	subject := "Event to approve: "
@@ -494,32 +487,18 @@ func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
 		closing = "Nothing is needed from you; this is so the admins know what is being shared."
 		subject = "Invite-only event added: "
 	}
-	var text strings.Builder
-	fmt.Fprintf(&text, "%s\n\n%s\n%s\n", lead, e.Title, when)
-	if e.Location != "" {
-		fmt.Fprintf(&text, "%s\n", e.Location)
-	}
+	l := a.letterFor(e, EventPath(e))
+	l.Heading = strings.TrimSuffix(subject, ": ")
+	l.Intro = lead
 	if e.Description != "" {
-		fmt.Fprintf(&text, "\n%s\n", e.Description)
+		l.Rows = [][2]string{{"Details", e.Description}}
 	}
-	fmt.Fprintf(&text, "\nIts page: %s\n%s\n", link, closing)
-	var htm strings.Builder
-	fmt.Fprintf(&htm, "<p style=\"font:16px/1.5 -apple-system,Segoe UI,Roboto,sans-serif\">%s</p>", html.EscapeString(lead))
-	fmt.Fprintf(&htm, "<p style=\"font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#0e4d54\"><strong>%s</strong><br>%s", html.EscapeString(e.Title), html.EscapeString(when))
-	if e.Location != "" {
-		fmt.Fprintf(&htm, "<br>%s", html.EscapeString(e.Location))
+	l.Button = "See the event"
+	if e.Sharing == SharingPublic {
+		l.Button = "Review the event"
 	}
-	htm.WriteString("</p>")
-	if e.Description != "" {
-		fmt.Fprintf(&htm, "<p style=\"font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#333\">%s</p>", html.EscapeString(e.Description))
-	}
-	fmt.Fprintf(&htm, "<p style=\"margin:20px 0\"><a href=\"%s\" style=\"display:inline-block;padding:10px 18px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none\">%s</a></p>", html.EscapeString(link), map[bool]string{true: "Review the event", false: "See the event"}[e.Sharing == SharingPublic])
-	fmt.Fprintf(&htm, "<p style=\"font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#647071\">%s</p>", html.EscapeString(closing))
-	err := a.mail.Sender.Send(ctx, mail.Message{
-		To: admins, Subject: subject + e.Title + " · " + day,
-		Text: text.String(), HTML: htm.String(),
-	})
-	if err != nil {
+	l.Footnote = closing
+	if err := a.mail.Sender.Send(ctx, l.Message(subject+e.Title+" · "+day, admins, nil, nil)); err != nil {
 		slog.ErrorContext(ctx, "calendar: tell admins", "event", e.ID, "error", err)
 		return
 	}
@@ -543,7 +522,7 @@ func (a app) editEvent(w http.ResponseWriter, r *http.Request) {
 	slog.InfoContext(r.Context(), "calendar: event changed", "actor", actor.Email, "event", e.ID, "title", cells["Title"])
 	if cells["Status"] == StatusPending && a.mail.Sender != nil {
 		if changed := a.cache.Model().Event(e.ID); changed != nil {
-			go a.tellAdmins(context.WithoutCancel(r.Context()), r.Host, actor.Email, changed)
+			go a.tellAdmins(context.WithoutCancel(r.Context()), actor.Email, changed)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)

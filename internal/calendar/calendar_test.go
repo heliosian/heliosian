@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"heliosian/internal/access"
 	"heliosian/internal/data"
@@ -441,21 +440,9 @@ func TestICS(t *testing.T) {
 		}
 	}
 	for _, line := range strings.Split(out, "\r\n") {
-		if len(line) > icsLineMax {
-			t.Errorf("line over %d octets: %q", icsLineMax, line)
+		if len(line) > 75 {
+			t.Errorf("line over 75 octets: %q", line)
 		}
-	}
-	long := strings.Repeat("ünïcödé ", 30)
-	for _, piece := range fold("DESCRIPTION:" + long) {
-		if len(piece) > icsLineMax || !utf8.ValidString(piece) {
-			t.Errorf("fold broke a line: %q", piece)
-		}
-	}
-	if got := strings.Join(fold("DESCRIPTION:"+long), ""); strings.ReplaceAll(got, " ", "") != strings.ReplaceAll("DESCRIPTION:"+long, " ", "") {
-		t.Errorf("fold lost text")
-	}
-	if got := icsText("a;b,c\\d\nline"); got != `a\;b\,c\\d\nline` {
-		t.Errorf("escape = %q", got)
 	}
 }
 

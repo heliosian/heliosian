@@ -1029,6 +1029,7 @@ const (
 	feedbackBase      = "https://heliosian.com"
 	calendarMailFrom  = "Helios When <when@reply.heliosian.com>"
 	calendarReplyTo   = "Helios When <when@reply.heliosian.com>"
+	calendarBase      = "https://when.heliosian.com"
 	celebrateMailFrom = "Helios Celebrate <celebrate@reply.heliosian.com>"
 )
 
@@ -1041,7 +1042,7 @@ func githubApp() feedback.IssueFiler {
 }
 
 func calendarMail(sessionKey string) calendar.Mail {
-	return calendar.Mail{Sender: newMailer(calendarMailFrom), From: calendarMailFrom, ReplyTo: calendarReplyTo, SigningKey: mailgunSigningKey(), Key: []byte(sessionKey)}
+	return calendar.Mail{Sender: newMailer(calendarMailFrom), From: calendarMailFrom, ReplyTo: calendarReplyTo, Base: calendarBase, SigningKey: mailgunSigningKey(), Key: []byte(sessionKey)}
 }
 
 func mailgunKey() string {

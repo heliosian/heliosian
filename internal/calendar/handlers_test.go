@@ -366,7 +366,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	d := fakeDirectory{people: map[string]Person{"jordan.whitfield@heliosschool.org": {Email: "jordan.whitfield@heliosschool.org", Name: "Jordan", IsParent: true}}, kids: map[string][]Person{}}
 	kept := &keptMail{}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>"}, testStyle)
+	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", Base: "https://when.heliosian.com"}, testStyle)
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {
@@ -701,7 +701,8 @@ func TestAnswers(t *testing.T) {
 	if !strings.Contains(string(ICS(cache.Model(), fakeDirectory{}, going, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a yes is not in the owner's Going feed")
 	}
-	if got := invite("Helios When <when@reply.heliosian.com>", me, cache.Model().Event("a7@sample"), "https://when.heliosian.com/e/a7@sample", now()); !strings.Contains(got, "METHOD:REQUEST") || !strings.Contains(got, "ORGANIZER;CN=Helios When:mailto:when@reply.heliosian.com") || !strings.Contains(got, "ATTENDEE;CN="+me) {
+	sender := app{mail: Mail{ReplyTo: "Helios When <when@reply.heliosian.com>", Key: []byte("key")}}
+	if got := string(sender.invite(cache.Model().Event("a7@sample"), me, "https://when.heliosian.com/e/a7@sample", mail.MethodRequest).Content); !strings.Contains(got, "METHOD:REQUEST") || !strings.Contains(got, "ORGANIZER;CN=Helios When:mailto:when+") || !strings.Contains(got, "ATTENDEE;CN="+me) {
 		t.Errorf("invite:\n%s", got)
 	}
 }

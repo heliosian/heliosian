@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"html"
 	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	"heliosian/internal/mail"
 )
@@ -101,75 +99,18 @@ func (a app) sendCancellation(ctx context.Context, to string, cc, replyTo []stri
 	if len(cc) == 0 {
 		foot = "The cancellation attached takes it off your calendar. " + foot
 	}
-	var text strings.Builder
-	fmt.Fprintf(&text, "%s\n", lead)
-	if note != "" {
-		fmt.Fprintf(&text, "\n%s\n", note)
-	}
-	fmt.Fprintf(&text, "\n%s\n", foot)
-	font := "-apple-system,Segoe UI,Roboto,sans-serif"
-	var htm strings.Builder
-	htm.WriteString("<div style=\"max-width:560px\">")
-	fmt.Fprintf(&htm, "<p style=\"font:700 22px/1.3 %s;color:#b3261e;margin:0 0 6px\">Cancelled</p>", font)
-	fmt.Fprintf(&htm, "<p style=\"font:15px/1.5 %s;margin:0 0 12px\">%s</p>", font, html.EscapeString(lead))
-	if note != "" {
-		fmt.Fprintf(&htm, "<blockquote style=\"margin:0 0 14px;padding:10px 16px;border-left:3px solid #0e4d54;font:15px/1.5 %s;white-space:pre-wrap\">%s</blockquote>", font, html.EscapeString(note))
-	}
-	fmt.Fprintf(&htm, "<p style=\"font:13px/1.5 %s;color:#647071\">%s</p>", font, html.EscapeString(foot))
-	htm.WriteString("</div>")
-	msg := mail.Message{
-		To:      []string{to},
-		CC:      cc,
-		ReplyTo: replyTo,
-		Subject: "[" + e.Title + "] Cancelled",
-		Text:    text.String(),
-		HTML:    htm.String(),
-	}
+	l := a.letterFor(e, EventPath(e))
+	l.Heading = "Cancelled"
+	l.Intro = lead
+	l.Note = note
+	l.Footnote = foot
+	msg := l.Message("["+e.Title+"] Cancelled", []string{to}, cc, replyTo)
 	if len(cc) == 0 {
-		msg.Attachments = []mail.Attachment{{
-			Name:        "cancel.ics",
-			ContentType: "text/calendar; method=CANCEL; charset=utf-8",
-			Content:     []byte(cancellation(a.organizer(e.ID, to), to, e, now())),
-		}}
+		msg.Attachments = []mail.Attachment{a.invite(e, to, l.Path, mail.MethodCancel)}
 	}
 	if err := a.mail.Sender.Send(ctx, msg); err != nil {
 		slog.ErrorContext(ctx, "calendar: send cancellation", "to", to, "event", e.ID, "error", err)
 		return
 	}
 	slog.InfoContext(ctx, "calendar: cancellation sent", "to", to, "event", e.ID)
-}
-
-func cancellation(from, to string, e *Event, at time.Time) string {
-	stamp := at.UTC().Format(icsStamp)
-	lines := []string{
-		"BEGIN:VCALENDAR",
-		"VERSION:2.0",
-		"PRODID:-//Heliosian//Helios When//EN",
-		"METHOD:CANCEL",
-		"BEGIN:VEVENT",
-		"UID:" + uidOf(e.ID),
-		"DTSTAMP:" + stamp,
-		"SEQUENCE:" + fmt.Sprint(at.Unix()),
-		"STATUS:CANCELLED",
-	}
-	if e.AllDay {
-		lines = append(lines, "DTSTART;VALUE=DATE:"+e.start.Format(icsDate))
-	} else {
-		lines = append(lines, "DTSTART:"+e.start.UTC().Format(icsStamp))
-	}
-	lines = append(lines,
-		"SUMMARY:"+icsText("Cancelled: "+e.Title),
-		"ORGANIZER;CN=Helios When:mailto:"+mailAddress(from),
-		"ATTENDEE;CN="+icsText(to)+":mailto:"+to,
-		"END:VEVENT",
-		"END:VCALENDAR",
-	)
-	out := strings.Builder{}
-	for _, line := range lines {
-		for _, piece := range fold(line) {
-			out.WriteString(piece)
-			out.WriteString("\r\n")
-		}
-	}
-	return out.String()
 }

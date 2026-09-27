@@ -75,7 +75,7 @@ func (a app) deliveryEvents(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	email := normalizeEmail(mailAddress(d.Recipient))
+	email := normalizeEmail(mail.Address(d.Recipient))
 	if email == "" {
 		w.WriteHeader(http.StatusOK)
 		return

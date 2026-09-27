@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html"
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/mail"
@@ -86,18 +84,13 @@ func (a app) sendAnswerNote(ctx context.Context, to, actor, email, answer string
 			waiting++
 		}
 	}
-	link := "https://when.heliosian.com" + EventPath(e)
-	line := fmt.Sprintf("%s said %s to %s%s.", name, answerWord(answer), e.Title, by)
-	standing := fmt.Sprintf("So far: %d yes, %d maybe, %d no, %d still to answer.", yes, maybe, no, waiting)
-	font := "-apple-system,Segoe UI,Roboto,sans-serif"
-	htm := fmt.Sprintf("<p style=\"font:16px/1.5 %s\">%s</p><p style=\"font:14px/1.5 %s;color:#647071\">%s</p><p style=\"margin:16px 0\"><a href=\"%s\" style=\"display:inline-block;padding:10px 18px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px %s;text-decoration:none\">See the guest list</a></p><p style=\"font:12px/1.5 %s;color:#647071\">You asked to hear as answers come in; turn it off under Who's coming on the event's page.</p>", font, html.EscapeString(line), font, html.EscapeString(standing), html.EscapeString(link), font, font)
-	err := a.mail.Sender.Send(ctx, mail.Message{
-		To:      []string{to},
-		Subject: "[" + e.Title + "] " + name + " said " + answerWord(answer),
-		Text:    line + "\n\n" + standing + "\n\n" + link + "\n",
-		HTML:    htm,
-	})
-	if err != nil {
+	l := a.letterFor(e, EventPath(e))
+	l.Heading = name + " said " + answerWord(answer)
+	l.Intro = fmt.Sprintf("%s said %s to %s%s.", name, answerWord(answer), e.Title, by)
+	l.Rows = [][2]string{{"So far", fmt.Sprintf("%d yes, %d maybe, %d no, %d still to answer", yes, maybe, no, waiting)}}
+	l.Button = "See the guest list"
+	l.Footnote = "You asked to hear as answers come in; turn it off under Who's coming on the event's page."
+	if err := a.mail.Sender.Send(ctx, l.Message("["+e.Title+"] "+name+" said "+answerWord(answer), []string{to}, nil, nil)); err != nil {
 		slog.ErrorContext(ctx, "calendar: send answer note", "to", to, "event", e.ID, "error", err)
 	}
 }
@@ -144,41 +137,15 @@ func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) sendInvite(ctx context.Context, email string, e *Event) {
-	origin := "https://when.heliosian.com"
-	link := origin + EventPath(e)
-	day, hours := whenLines(e)
-	when := day
-	if hours != "" {
-		when += " · " + hours
-	}
-	var text strings.Builder
-	fmt.Fprintf(&text, "You said yes to %s.\n\n%s\n", e.Title, when)
-	if e.Location != "" {
-		fmt.Fprintf(&text, "%s\n", e.Location)
-	}
-	fmt.Fprintf(&text, "\nThe invite attached puts it on your calendar. The event's page: %s\n", link)
-	var htm strings.Builder
-	fmt.Fprintf(&htm, "<p style=\"font:16px/1.5 -apple-system,Segoe UI,Roboto,sans-serif\">You said yes to <strong>%s</strong>.</p>", html.EscapeString(e.Title))
-	fmt.Fprintf(&htm, "<p style=\"font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#0e4d54\">%s", html.EscapeString(when))
-	if e.Location != "" {
-		fmt.Fprintf(&htm, "<br>%s", html.EscapeString(e.Location))
-	}
-	htm.WriteString("</p>")
-	fmt.Fprintf(&htm, "<p style=\"margin:20px 0\"><a href=\"%s\" style=\"display:inline-block;padding:10px 18px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none\">Open the event</a></p>", html.EscapeString(link))
-	htm.WriteString("<p style=\"font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#647071\">The invite attached puts it on your calendar.</p>")
-	err := a.mail.Sender.Send(ctx, mail.Message{
-		To:      []string{email},
-		ReplyTo: a.replyTo(e, email),
-		Subject: "Invitation: " + e.Title + " · " + day,
-		Text:    text.String(),
-		HTML:    htm.String(),
-		Attachments: []mail.Attachment{{
-			Name:        "invite.ics",
-			ContentType: "text/calendar; method=REQUEST; charset=utf-8",
-			Content:     []byte(invite(a.organizer(e.ID, email), email, e, link, now())),
-		}},
-	})
-	if err != nil {
+	day, _ := whenLines(e)
+	l := a.letterFor(e, EventPath(e))
+	l.Heading = "You said yes"
+	l.Intro = "You said yes to " + e.Title + "."
+	l.Button = "Open the event"
+	l.Footnote = "The invite attached puts it on your calendar."
+	msg := l.Message("Invitation: "+e.Title+" · "+day, []string{email}, nil, a.replyTo(e, email))
+	msg.Attachments = []mail.Attachment{a.invite(e, email, l.Path, mail.MethodRequest)}
+	if err := a.mail.Sender.Send(ctx, msg); err != nil {
 		slog.ErrorContext(ctx, "calendar: send invite", "to", email, "event", e.ID, "error", err)
 		return
 	}
@@ -186,57 +153,35 @@ func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 }
 
 func (a app) organizer(id, email string) string {
-	address := mailAddress(a.mail.ReplyTo)
+	address := mail.Address(a.mail.ReplyTo)
 	local, domain, _ := strings.Cut(address, "@")
 	return strings.Replace(a.mail.ReplyTo, address, local+"+"+a.replyToken(id, email)+"@"+domain, 1)
 }
 
-func invite(from, to string, e *Event, link string, at time.Time) string {
-	stamp := at.UTC().Format(icsStamp)
-	lines := []string{
-		"BEGIN:VCALENDAR",
-		"VERSION:2.0",
-		"PRODID:-//Heliosian//Helios When//EN",
-		"METHOD:REQUEST",
-		"BEGIN:VEVENT",
-		"UID:" + uidOf(e.ID),
-		"DTSTAMP:" + stamp,
-		"SEQUENCE:" + fmt.Sprint(at.Unix()),
+func (a app) letterFor(e *Event, path string) mail.Letter {
+	day, hours := whenLines(e)
+	when := day
+	if hours != "" {
+		when += " · " + hours
 	}
-	if e.AllDay {
-		lines = append(lines, "DTSTART;VALUE=DATE:"+e.start.Format(icsDate), "DTEND;VALUE=DATE:"+e.end.AddDate(0, 0, 1).Format(icsDate))
-	} else {
-		lines = append(lines, "DTSTART:"+e.start.UTC().Format(icsStamp))
-		if e.end.After(e.start) {
-			lines = append(lines, "DTEND:"+e.end.UTC().Format(icsStamp))
-		}
-	}
-	lines = append(lines, "SUMMARY:"+icsText(e.Title))
-	description := strings.TrimSpace(e.Description + "\n\n" + link)
-	lines = append(lines, "DESCRIPTION:"+icsText(description))
-	if e.Location != "" {
-		lines = append(lines, "LOCATION:"+icsText(e.Location))
-	}
-	lines = append(lines,
-		"URL:"+link,
-		"ORGANIZER;CN=Helios When:mailto:"+mailAddress(from),
-		"ATTENDEE;CN="+icsText(to)+";ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:"+to,
-		"END:VEVENT",
-		"END:VCALENDAR",
-	)
-	out := strings.Builder{}
-	for _, line := range lines {
-		for _, piece := range fold(line) {
-			out.WriteString(piece)
-			out.WriteString("\r\n")
-		}
-	}
-	return out.String()
+	return mail.Letter{Brand: brand, Base: a.mail.Base, Title: e.Title, When: when, Where: e.Location, Path: a.mail.Base + path}
 }
 
-func mailAddress(from string) string {
-	if i := strings.LastIndex(from, "<"); i >= 0 {
-		return strings.TrimSuffix(from[i+1:], ">")
+func (e *Event) mailEvent(link string) mail.Event {
+	m := mail.Event{UID: uidOf(e.ID), Start: e.start, End: e.end, AllDay: e.AllDay, Summary: e.Title, Description: strings.TrimSpace(e.Description + "\n\n" + link), Location: e.Location, URL: link}
+	if e.AllDay {
+		m.End = e.end.AddDate(0, 0, 1)
 	}
-	return from
+	return m
+}
+
+func (a app) invite(e *Event, to, link, method string) mail.Attachment {
+	m := e.mailEvent(link)
+	if method == mail.MethodCancel {
+		m.Summary = "Cancelled: " + e.Title
+	}
+	m.Organizer = mail.Person{Name: brand.Name, Email: a.organizer(e.ID, to)}
+	m.Attendees = []mail.Person{{Name: to, Email: to}}
+	m.RSVP = method == mail.MethodRequest
+	return mail.Calendar{Product: brand.Name, Method: method, Stamp: now(), Events: []mail.Event{m}}.Attachment()
 }
