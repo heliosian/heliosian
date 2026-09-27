@@ -91,6 +91,9 @@ func Redirected(cache *Cache, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
 			if to := cache.Model().Destination(r.URL.Path); to != "" {
+				if strings.HasPrefix(to, "/") {
+					to = "https://" + r.Host + to
+				}
 				if r.URL.RawQuery != "" && !strings.Contains(to, "?") {
 					to += "?" + r.URL.RawQuery
 				}

@@ -13,7 +13,7 @@ func uidOf(id string) string {
 	if strings.Contains(id, "@") {
 		return id
 	}
-	return id + "@calendar.heliosian.com"
+	return id + "@when.heliosian.com"
 }
 
 func ICS(model *Model, directory Directory, f *Feed, linked []Linked, origin string, now time.Time) []byte {

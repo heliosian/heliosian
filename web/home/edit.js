@@ -309,7 +309,7 @@ export async function openAppEditor(app) {
   appEmails = [...(v.emails || [])];
   document.querySelector('#app-modal-title').textContent = 'Edit ' + app.name;
   document.querySelector('#app-modal-mark').src = `/brand/apps/${app.key}.png` + (app.mark ? `?v=${app.mark}` : '');
-  document.querySelector('#app-modal-host').textContent = appOrigin(app.host || app.key).replace(/^https?:\/\//, '');
+  document.querySelector('#app-modal-host').textContent = appOrigin(app.key).replace(/^https?:\/\//, '');
   document.querySelector('#app-name').value = v.name || app.name;
   document.querySelector('#app-tagline').value = v.tagline || app.tagline;
   setStatus('#app-status', '');

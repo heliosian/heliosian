@@ -75,7 +75,7 @@ func TestTheOldServiceWorkerIsReplacedEverywhere(t *testing.T) {
 	}
 }
 
-func TestAppFor(t *testing.T) {
+func TestHostsFor(t *testing.T) {
 	cases := map[string]string{
 		"who.heliosian.com":              "who",
 		"home.heliosian.com":             "home",
@@ -94,8 +94,9 @@ func TestAppFor(t *testing.T) {
 		"who.staging.heliosian.com":      "",
 		"who.heliosian.com.evil.example": "",
 	}
+	hosts := hostsFor(Domain)
 	for host, want := range cases {
-		if got := appFor(Domain, host); got != want {
+		if got := hosts[host].app; got != want {
 			t.Errorf("%s: got %q, want %q", host, got, want)
 		}
 	}
@@ -110,17 +111,19 @@ func TestAppFor(t *testing.T) {
 		"who.lab.heliosiandev.com":  "",
 		"who.heliosiandev.com.evil": "",
 	}
+	devHosts := hostsFor(DevDomain)
 	for host, want := range dev {
-		if got := appFor(DevDomain, host); got != want {
+		if got := devHosts[host].app; got != want {
 			t.Errorf("%s: got %q, want %q", host, got, want)
 		}
 	}
 }
 
 func TestHostnamesCoverTheRouter(t *testing.T) {
-	hosts := Hostnames()
+	hosts := Hostnames(Domain)
+	routed := hostsFor(Domain)
 	for _, host := range hosts {
-		if appFor(Domain, host) == "" {
+		if routed[host].app == "" {
 			t.Errorf("%s is listed but routes nowhere", host)
 		}
 	}
@@ -139,7 +142,7 @@ func TestHostnamesCoverTheRouter(t *testing.T) {
 func TestRoute(t *testing.T) {
 	handler := route(Domain, map[string]http.Handler{"who": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
-	})})
+	})}, nil)
 	for _, host := range []string{"who.heliosian.com:8080", "who.heliosian.com"} {
 		if rec := get(t, handler, host, "/people"); rec.Code != http.StatusTeapot {
 			t.Errorf("%s: got %d, want routed", host, rec.Code)
@@ -163,7 +166,7 @@ func TestSecureHeaders(t *testing.T) {
 		{Domain, "localhost:8080", "max-age=31536000; includeSubDomains"},
 		{DevDomain, "who.heliosiandev.com", ""},
 	} {
-		rec := get(t, Server(c.domain, apps).Handler, c.host, "/people")
+		rec := get(t, Server(c.domain, apps, nil).Handler, c.host, "/people")
 		h := rec.Header()
 		if got := h.Get("Strict-Transport-Security"); got != c.hsts {
 			t.Errorf("%s %s: hsts %q, want %q", c.domain, c.host, got, c.hsts)
@@ -228,7 +231,7 @@ func TestNoInlineScripts(t *testing.T) {
 
 func TestReportSink(t *testing.T) {
 	t.Chdir("../..")
-	handler := Server(Domain, map[string]http.Handler{}).Handler
+	handler := Server(Domain, map[string]http.Handler{}, nil).Handler
 	req := httptest.NewRequest(http.MethodPost, "https://who.heliosian.com/csp-report", strings.NewReader(`{"csp-report":{"blocked-uri":"https://evil.example"}}`))
 	req.Host = "who.heliosian.com"
 	req.Header.Set("Content-Type", "application/csp-report")
@@ -249,35 +252,54 @@ func TestCanonicalHost(t *testing.T) {
 		"cal.heliosiandev.com":        "",
 		"when.heliosian.com":          "",
 		"who.heliosian.com":           "",
-		"hca.heliosian.com":           "",
+		"hca.heliosian.com":           "team.heliosian.com",
+		"team.heliosian.com":          "",
 		"heliosian.com":               "",
+		"www.heliosian.com":           "heliosian.com",
+		"home.heliosian.com":          "heliosian.com",
 		"calendar.heliosian.com.evil": "",
 	}
+	hosts := hostsFor(Domain)
 	for host, want := range cases {
-		if got := canonicalHost(Domain, host); got != want {
-			t.Errorf("canonicalHost(%q) = %q, want %q", host, got, want)
+		if got := hosts[host].canonical; got != want {
+			t.Errorf("canonical of %q = %q, want %q", host, got, want)
 		}
 	}
-	if got := canonicalHost(DevDomain, "cal.heliosiandev.com"); got != "when.heliosiandev.com" {
-		t.Errorf("canonicalHost(dev, cal) = %q, want when.heliosiandev.com", got)
+	if got := hostsFor(DevDomain)["cal.heliosiandev.com"].canonical; got != "when.heliosiandev.com" {
+		t.Errorf("canonical of dev cal = %q, want when.heliosiandev.com", got)
 	}
 }
 
-func TestRouteSendsAliasesToWhen(t *testing.T) {
+func TestRouteAliases(t *testing.T) {
 	served := false
-	apps := map[string]http.Handler{"calendar": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { served = true })}
-	handler := route(Domain, apps)
+	serve := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { served = true })
+	apps := map[string]http.Handler{"calendar": serve, "team": serve, "home": serve}
+	aliased := map[string]http.Handler{"team": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/dl/signup" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Redirect(w, r, "https://"+r.Host+"/v/fall", http.StatusFound)
+	})}
+	handler := route(Domain, apps, aliased)
 	for _, c := range []struct {
 		method, host, path string
 		want               int
 		location           string
 	}{
-		{"GET", "calendar.heliosian.com", "/day/2026-09-13?x=1", 301, "https://when.heliosian.com/day/2026-09-13?x=1"},
-		{"GET", "cal.heliosian.com:8080", "/", 301, "https://when.heliosian.com:8080/"},
-		{"GET", "calendar.heliosian.com", "/open/feed/abc.ics", 200, ""},
-		{"GET", "calendar.heliosian.com", "/api/calendar/model", 200, ""},
-		{"POST", "calendar.heliosian.com", "/api/calendar/x", 200, ""},
+		{"GET", "calendar.heliosian.com", "/", 301, "https://when.heliosian.com/"},
+		{"GET", "cal.heliosian.com:8080", "/?x=1", 301, "https://when.heliosian.com:8080/"},
+		{"GET", "calendar.heliosian.com", "/day/2026-09-13", 404, ""},
+		{"GET", "calendar.heliosian.com", "/open/feed/abc.ics", 404, ""},
+		{"POST", "calendar.heliosian.com", "/api/calendar/x", 404, ""},
 		{"GET", "when.heliosian.com", "/", 200, ""},
+		{"GET", "www.heliosian.com", "/", 301, "https://heliosian.com/"},
+		{"GET", "home.heliosian.com", "/people", 404, ""},
+		{"GET", "heliosian.com", "/", 200, ""},
+		{"GET", "hca.heliosian.com", "/", 301, "https://team.heliosian.com/"},
+		{"GET", "hca.heliosian.com:8080", "/dl/signup", 302, "https://team.heliosian.com:8080/v/fall"},
+		{"GET", "hca.heliosian.com", "/v/fall", 404, ""},
+		{"GET", "team.heliosian.com", "/v/fall", 200, ""},
 	} {
 		served = false
 		r := httptest.NewRequest(c.method, "https://"+c.host+c.path, nil)

@@ -312,7 +312,7 @@ func TestInvitationLifecycle(t *testing.T) {
 	if m, ok := byTo[sam]; !ok || !strings.Contains(m.Text, "Invited: Sam, Robin, Ella") {
 		t.Errorf("sam's own mail = %+v", m)
 	}
-	if m, ok := byTo[robin]; !ok || strings.Join(m.ReplyTo, ",") != host+","+mia+","+replyAddress("meetup", robin) || strings.Join(byTo[sam].ReplyTo, ",") == strings.Join(m.ReplyTo, ",") || m.Subject != "[Class meetup] You're invited!" || !strings.Contains(m.Text, "Hosted by Jordan Whitfield and Mia Torres") || !strings.Contains(m.HTML, "/open/share/meetup.png") || !strings.Contains(m.Text, "Invited: Robin, Sam, Ella") || !strings.Contains(m.HTML, "Bring a snack to share!") || !strings.Contains(m.HTML, "https://when.heliosian.com/e/meetup") || len(m.Attachments) != 1 || !strings.Contains(string(m.Attachments[0].Content), "ATTENDEE;CN="+robin) || !strings.Contains(string(m.Attachments[0].Content), "UID:meetup@calendar.heliosian.com") || !strings.Contains(strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", ""), "ORGANIZER;CN=Helios When:mailto:"+mail.AddressOf(replyAddress("meetup", robin))+"\r\n") {
+	if m, ok := byTo[robin]; !ok || strings.Join(m.ReplyTo, ",") != host+","+mia+","+replyAddress("meetup", robin) || strings.Join(byTo[sam].ReplyTo, ",") == strings.Join(m.ReplyTo, ",") || m.Subject != "[Class meetup] You're invited!" || !strings.Contains(m.Text, "Hosted by Jordan Whitfield and Mia Torres") || !strings.Contains(m.HTML, "/open/share/meetup.png") || !strings.Contains(m.Text, "Invited: Robin, Sam, Ella") || !strings.Contains(m.HTML, "Bring a snack to share!") || !strings.Contains(m.HTML, "https://when.heliosian.com/e/meetup") || len(m.Attachments) != 1 || !strings.Contains(string(m.Attachments[0].Content), "ATTENDEE;CN="+robin) || !strings.Contains(string(m.Attachments[0].Content), "UID:meetup@when.heliosian.com") || !strings.Contains(strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", ""), "ORGANIZER;CN=Helios When:mailto:"+mail.AddressOf(replyAddress("meetup", robin))+"\r\n") {
 		t.Errorf("robin's mail = %+v\n%s", m, m.Text)
 	}
 	if m, ok := byTo[coach]; !ok || !strings.Contains(m.Text, "Invited: Coach") {
@@ -496,7 +496,7 @@ func TestPartyInvitation(t *testing.T) {
 		t.Fatalf("party send: %d %s", rec.Code, rec.Body)
 	}
 	sent := waitFor(kept, 3)
-	if r := mailTo(kept, robin); len(sent) != 3 || len(r) != 1 || !strings.Contains(r[0].Subject, "[Fondue Night] You're invited!") || !strings.Contains(string(r[0].Attachments[0].Content), "UID:celebrate/p1@calendar.heliosian.com") || len(mailTo(kept, sam)) != 1 {
+	if r := mailTo(kept, robin); len(sent) != 3 || len(r) != 1 || !strings.Contains(r[0].Subject, "[Fondue Night] You're invited!") || !strings.Contains(string(r[0].Attachments[0].Content), "UID:celebrate/p1@when.heliosian.com") || len(mailTo(kept, sam)) != 1 {
 		t.Errorf("party invite = %+v", sent)
 	}
 	call(t, robinH, "POST", "/api/calendar/invites/answer", `{"id":"`+partyA+`","email":"`+sam+`","answer":"yes"}`)

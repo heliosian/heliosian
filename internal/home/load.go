@@ -60,11 +60,11 @@ var (
 )
 
 type App struct {
-	Key     string `json:"key"`
-	Name    string `json:"name"`
-	Tagline string `json:"tagline"`
-	Host    string `json:"host,omitempty"`
-	Mark    string `json:"mark,omitempty"`
+	Key     string   `json:"key"`
+	Name    string   `json:"name"`
+	Tagline string   `json:"tagline"`
+	Hosts   []string `json:"-"`
+	Mark    string   `json:"mark,omitempty"`
 }
 
 var marks sync.Map
@@ -82,16 +82,23 @@ func markVersion(key string) string {
 	return version
 }
 
-var Home = App{Key: "home", Name: "Heliosian", Tagline: "Helios Community Apps"}
+var Home = App{Key: "home", Name: "Heliosian", Tagline: "Helios Community Apps", Hosts: []string{"", "www", "home"}}
 
 var Apps = []App{
-	{Key: "who", Name: "Helios Who?", Tagline: "A visual directory"},
-	{Key: "team", Name: "HCA-Team", Tagline: "HCA Volunteer Portal"},
-	{Key: "celebrate", Name: "Helios Celebrate", Tagline: "Fun(d)raiser Parties"},
-	{Key: "birthday", Name: "Helios Birthday Team", Tagline: "Staff birthday donations"},
-	{Key: "calendar", Name: "Helios Calendar", Tagline: "The school year, day by day", Host: "when"},
-	{Key: "loop", Name: "Helios Loop", Tagline: "Email groups drawn from the directory"},
-	{Key: "ask", Name: "Helios Ask", Tagline: "Ask about the school, your family and what's on"},
+	{Key: "who", Name: "Helios Who?", Tagline: "A visual directory", Hosts: []string{"who"}},
+	{Key: "team", Name: "HCA-Team", Tagline: "HCA Volunteer Portal", Hosts: []string{"team", "hca"}},
+	{Key: "celebrate", Name: "Helios Celebrate", Tagline: "Fun(d)raiser Parties", Hosts: []string{"celebrate"}},
+	{Key: "birthday", Name: "Helios Birthday Team", Tagline: "Staff birthday donations", Hosts: []string{"birthday"}},
+	{Key: "calendar", Name: "Helios Calendar", Tagline: "The school year, day by day", Hosts: []string{"when", "calendar", "cal"}},
+	{Key: "loop", Name: "Helios Loop", Tagline: "Email groups drawn from the directory", Hosts: []string{"loop"}},
+	{Key: "ask", Name: "Helios Ask", Tagline: "Ask about the school, your family and what's on", Hosts: []string{"ask"}},
+}
+
+func Qualify(label, domain string) string {
+	if label == "" {
+		return domain
+	}
+	return label + "." + domain
 }
 
 func appByKey(key string) (App, bool) {

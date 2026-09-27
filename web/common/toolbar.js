@@ -2,21 +2,16 @@ import {modeRow, offerQuan} from '/mode.js';
 
 const homeApp = {key: 'home', name: 'Heliosian', tagline: 'Helios Community Apps'};
 
-const appLabels = ['who', 'team', 'hca', 'celebrate', 'birthday', 'calendar', 'cal', 'when', 'loop', 'ask', 'home', 'www'];
-
-const aliases = {hca: 'team', cal: 'calendar', when: 'calendar'};
+const hostLabels = {who: 'who', team: 'team', celebrate: 'celebrate', birthday: 'birthday', calendar: 'when', loop: 'loop', ask: 'ask'};
 
 function tierLabels() {
   const labels = location.hostname.split('.');
-  return appLabels.includes(labels[0]) ? labels.slice(1) : labels;
+  return Object.values(hostLabels).includes(labels[0]) ? labels.slice(1) : labels;
 }
 
 export function currentApp() {
   const first = location.hostname.split('.')[0];
-  if (first === 'who' || first === 'team' || first === 'celebrate' || first === 'birthday' || first === 'calendar' || first === 'loop' || first === 'ask') {
-    return first;
-  }
-  return aliases[first] || 'home';
+  return Object.keys(hostLabels).find(key => hostLabels[key] === first) || 'home';
 }
 
 export function signedIn(res) {
@@ -29,7 +24,7 @@ export function signedIn(res) {
 
 export function appOrigin(key) {
   const tier = tierLabels();
-  const host = key === 'home' && tier.length === 2 ? tier : [key, ...tier];
+  const host = key === 'home' ? tier : [hostLabels[key], ...tier];
   return location.protocol + '//' + host.join('.') + (location.port ? ':' + location.port : '');
 }
 
@@ -168,7 +163,7 @@ export function initAppSwitch() {
 
 function appRow(app, isCurrent) {
   const row = document.createElement('a');
-  row.href = appOrigin(app.host || app.key);
+  row.href = appOrigin(app.key);
   row.className = isCurrent ? 'is-current' : '';
   const icon = document.createElement('img');
   icon.src = `/brand/apps/${app.key}.png` + (app.mark ? `?v=${app.mark}` : '');

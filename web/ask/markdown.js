@@ -8,7 +8,7 @@ export function localizeLink(href) {
   if (m) {
     const label = {hca: 'team', cal: 'calendar', when: 'calendar', www: 'home'}[m[1]] || m[1];
     const path = m[2] || '/';
-    return appOrigin(label === 'calendar' ? 'when' : label) + path;
+    return appOrigin(label) + path;
   }
   m = href.match(apex);
   if (m) {

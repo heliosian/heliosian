@@ -24,35 +24,28 @@ const (
 	DevDomain = "heliosiandev.com"
 )
 
-var aliases = map[string]string{"hca": "team", "cal": "calendar", "when": "calendar"}
-
-func appFor(domain, host string) string {
-	if host == domain || host == "www."+domain {
-		return "home"
-	}
-	app, ok := strings.CutSuffix(host, "."+domain)
-	if !ok || strings.Contains(app, ".") {
-		return ""
-	}
-	if canonical, ok := aliases[app]; ok {
-		return canonical
-	}
-	return app
+type destination struct {
+	app       string
+	canonical string
 }
 
-func Hostnames() []string {
-	labels := []string{"home"}
-	for _, a := range home.Apps {
-		labels = append(labels, a.Key)
+func hostsFor(domain string) map[string]destination {
+	out := map[string]destination{}
+	for _, a := range append([]home.App{home.Home}, home.Apps...) {
+		out[home.Qualify(a.Hosts[0], domain)] = destination{app: a.Key}
+		for _, alias := range a.Hosts[1:] {
+			out[home.Qualify(alias, domain)] = destination{app: a.Key, canonical: home.Qualify(a.Hosts[0], domain)}
+		}
 	}
-	for alias := range aliases {
-		labels = append(labels, alias)
+	return out
+}
+
+func Hostnames(domain string) []string {
+	out := []string{}
+	for host := range hostsFor(domain) {
+		out = append(out, host)
 	}
-	slices.Sort(labels)
-	out := []string{"heliosian.com", "www.heliosian.com"}
-	for _, label := range labels {
-		out = append(out, label+".heliosian.com")
-	}
+	slices.Sort(out)
 	return out
 }
 
@@ -115,38 +108,36 @@ func Logged(app string, next http.Handler) http.Handler {
 	return logging.Requests(app, blob.Media, next)
 }
 
-func route(domain string, apps map[string]http.Handler) http.Handler {
+func route(domain string, apps, aliased map[string]http.Handler) http.Handler {
+	hosts := hostsFor(domain)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, port, _ := strings.Cut(r.Host, ":")
-		app, ok := apps[appFor(domain, host)]
+		dest := hosts[host]
+		app, ok := apps[dest.app]
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
-		if canonical := canonicalHost(domain, host); canonical != "" && redirectable(r) {
-			if port != "" {
-				canonical += ":" + port
-			}
-			http.Redirect(w, r, "https://"+canonical+r.URL.RequestURI(), http.StatusMovedPermanently)
+		if dest.canonical == "" {
+			app.ServeHTTP(w, r)
 			return
 		}
-		app.ServeHTTP(w, r)
+		canonical := dest.canonical
+		if port != "" {
+			canonical += ":" + port
+		}
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "https://"+canonical+"/", http.StatusMovedPermanently)
+			return
+		}
+		alias, ok := aliased[dest.app]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		r.Host = canonical
+		alias.ServeHTTP(w, r)
 	})
-}
-
-func canonicalHost(domain, host string) string {
-	switch host {
-	case "calendar." + domain, "cal." + domain:
-		return "when." + domain
-	}
-	return ""
-}
-
-func redirectable(r *http.Request) bool {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		return false
-	}
-	return !strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/open/feed/")
 }
 
 func Port() string {
@@ -156,11 +147,11 @@ func Port() string {
 	return "8080"
 }
 
-func Server(domain string, apps map[string]http.Handler) *http.Server {
+func Server(domain string, apps, aliased map[string]http.Handler) *http.Server {
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
-	return &http.Server{Addr: ":" + Port(), Handler: secure(domain, cacheControl(route(domain, apps))), Protocols: protocols}
+	return &http.Server{Addr: ":" + Port(), Handler: secure(domain, cacheControl(route(domain, apps, aliased))), Protocols: protocols}
 }
 
 func Serve(server *http.Server, queue *store.Queue) {

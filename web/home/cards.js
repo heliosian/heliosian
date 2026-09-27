@@ -256,10 +256,6 @@ export function renderCategories(query = '') {
   }
 }
 
-export function whenOrigin(app) {
-  return appOrigin(app === 'calendar' ? 'when' : app);
-}
-
 export function rsvpButtons(event) {
   const rsvp = el('div', 'event-rsvp');
   if (event.linkApp === 'celebrate') {
@@ -284,7 +280,7 @@ export function rsvpButtons(event) {
     } else {
       const live = event.availability === 'available';
       const add = el('a', 'button button-small' + (live ? '' : ' button-secondary'));
-      add.href = whenOrigin(event.linkApp) + event.link;
+      add.href = appOrigin(event.linkApp) + event.link;
       add.append(svg('ticket'), el('span', '', live ? 'Add Ticket' : event.call || 'See the party'));
       rsvp.append(add);
     }
@@ -407,7 +403,7 @@ function appBadge(app) {
 function appCard(app) {
   const slot = el('div', 'chip-slot');
   const card = el('a', 'chip');
-  card.href = appOrigin(app.host || app.key);
+  card.href = appOrigin(app.key);
   const disc = el('div', 'chip-disc');
   const icon = el('img', 'chip-image');
   icon.src = `/brand/apps/${app.key}.png` + (app.mark ? `?v=${app.mark}` : '');

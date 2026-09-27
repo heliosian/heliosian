@@ -1308,8 +1308,8 @@ func TestRedirects(t *testing.T) {
 	handler := Redirected(cache, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
 	for path, want := range map[string]string{
 		"/dl/signup/s/768d91/r/nsSPomxFcPrSfoRCAgzI?x=1": elsewhere + "/r/nsSPomxFcPrSfoRCAgzI?x=1",
-		"/v/intl-nite": "/v/international-night", "/v/international-night": "", "/calendar": "", "/nowhere": "",
-		"/v/fair": "/", "/v/fair/calendar": "/calendar", "/v/fair//elsewhere.example": "", "/v/fair/\\elsewhere.example": "",
+		"/v/intl-nite": "https://example.com/v/international-night", "/v/international-night": "", "/calendar": "", "/nowhere": "",
+		"/v/fair": "https://example.com/", "/v/fair/calendar": "https://example.com/calendar", "/v/fair//elsewhere.example": "", "/v/fair/\\elsewhere.example": "",
 	} {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))

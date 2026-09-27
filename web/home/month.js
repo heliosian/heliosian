@@ -1,7 +1,8 @@
 import {state} from './state.js';
 import {el, svg} from './dom.js';
-import {whenOrigin, rsvpButtons, calendarMark, calendarMenu, dropdown} from './cards.js';
+import {rsvpButtons, calendarMark, calendarMenu, dropdown} from './cards.js';
 import {dayTypeClass} from '/daytype.js';
+import {appOrigin} from '/toolbar.js';
 
 let month = null;
 let selected = '';
@@ -158,7 +159,7 @@ function dayCard() {
   const card = el('div', 'rail-day');
   const date = parseDate(selected);
   const head = el('a', 'rail-day-head');
-  head.href = whenOrigin('calendar') + '/day/' + selected;
+  head.href = appOrigin('calendar') + '/day/' + selected;
   head.append(el('span', 'rail-day-title', selected === month.today ? 'Today' : date.toLocaleDateString('en-US', {weekday: 'long'})));
   head.append(el('span', 'rail-day-date', date.toLocaleDateString('en-US', {month: 'long', day: 'numeric'})));
   card.append(head);
@@ -178,7 +179,7 @@ function dayCard() {
   for (const event of events) {
     const item = el('div', 'rail-item');
     const row = el('a', 'rail-event ' + tint(event));
-    row.href = whenOrigin('calendar') + event.path;
+    row.href = appOrigin('calendar') + event.path;
     row.append(el('span', 'rail-event-dot'));
     const body = el('span', 'rail-event-body');
     body.append(el('span', 'rail-event-title', event.title));

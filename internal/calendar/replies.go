@@ -135,7 +135,7 @@ func (a app) takeReply(ctx context.Context, reply Reply, from, tag string) error
 }
 
 func idOfUID(uid string) string {
-	return strings.TrimSuffix(strings.TrimSpace(uid), "@calendar.heliosian.com")
+	return strings.TrimSuffix(strings.TrimSpace(uid), "@when.heliosian.com")
 }
 
 func ParseReply(raw []byte) (Reply, error) {

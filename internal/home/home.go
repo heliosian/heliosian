@@ -353,10 +353,10 @@ func hiddenHosts(pageHost string, apps []string) map[string]bool {
 	}
 	tier := tierOf(pageHost)
 	hidden := map[string]bool{}
-	for _, app := range apps {
-		hidden[app+"."+tier] = true
-		if app == "team" {
-			hidden["hca."+tier] = true
+	for _, key := range apps {
+		app, _ := appByKey(key)
+		for _, label := range app.Hosts {
+			hidden[Qualify(label, tier)] = true
 		}
 	}
 	return hidden

@@ -52,11 +52,7 @@ func tierOf(pageHost string) string {
 }
 
 func hostOf(app App, tier string) string {
-	label := app.Host
-	if label == "" {
-		label = app.Key
-	}
-	return label + "." + tier
+	return Qualify(app.Hosts[0], tier)
 }
 
 func PreviewHead(cache *Cache, style *sharecard.Style) func(r *http.Request) string {

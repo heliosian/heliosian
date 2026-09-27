@@ -2,7 +2,7 @@ import {state, isAdmin} from './state.js';
 import {appOrigin} from '/toolbar.js';
 import {searchInput} from '/shell.js';
 import {el, svg} from './dom.js';
-import {whenOrigin, calendarMark, calendarMenu, dropdown, audienceWords} from './cards.js';
+import {calendarMark, calendarMenu, dropdown, audienceWords} from './cards.js';
 import {openWidgetAudience, moveWidget} from './edit.js';
 import {dayTypeClass} from '/daytype.js';
 
@@ -160,20 +160,20 @@ function standing(event) {
 function action(event) {
   if (event.invited && !event.answer) {
     const pill = el('a', 'wg-pill is-rsvp', 'RSVP');
-    pill.href = whenOrigin('calendar') + event.path;
+    pill.href = appOrigin('calendar') + event.path;
     pill.title = 'You\u2019re invited - answer on its page';
     return pill;
   }
   if (event.link && event.call && !event.mine && ['available', 'open', 'waitlist'].includes(event.availability)) {
     const pill = el('a', 'wg-pill', event.call);
-    pill.href = whenOrigin(event.linkApp) + event.link;
+    pill.href = appOrigin(event.linkApp) + event.link;
     return pill;
   }
   return null;
 }
 
 function eventRow(event, day) {
-  const href = whenOrigin('calendar') + event.path;
+  const href = appOrigin('calendar') + event.path;
   const title = el('a', 'wg-title', event.title);
   title.href = href;
   const main = el('div', 'wg-main');
@@ -299,7 +299,7 @@ function whenWidget() {
     g => dayBar(g.day, g.rows.length, 'event', (((month.days || {})[g.day] || {}).kinds || []).map(k => el('span', 'widget-kind ' + dayTypeClass(k.name), k.words))),
     (event, g) => eventRow(event, g.day)));
   const total = groups.reduce((n, g) => n + g.events.length, 0);
-  card.append(widgetFoot('when', total, {href: whenOrigin('calendar')}));
+  card.append(widgetFoot('when', total, {href: appOrigin('calendar')}));
   fetchNext(month);
   return card;
 }
@@ -423,7 +423,7 @@ function partyPill(p) {
   }
   if (p.call && (p.availability === 'available' || p.availability === 'waitlist')) {
     const pill = el('a', 'wg-pill', p.call);
-    pill.href = whenOrigin('celebrate') + p.link;
+    pill.href = appOrigin('celebrate') + p.link;
     return pill;
   }
   return null;
@@ -471,7 +471,7 @@ function pictureRow({href, image, title, line, pill, tone}) {
 function partyRow(p) {
   const day = parseDate(p.start).toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
   return pictureRow({
-    href: whenOrigin('celebrate') + p.link, image: p.image ? whenOrigin(p.imageApp) + p.image : '',
+    href: appOrigin('celebrate') + p.link, image: p.image ? appOrigin(p.imageApp) + p.image : '',
     title: p.title, line: day + ' · ' + startTime(p, p.start), pill: partyPill(p),
   });
 }
@@ -631,12 +631,12 @@ function rsvpPanel(waiting) {
   const panel = el('section', 'wg-rsvps');
   const head = el('div', 'wg-rsvps-head');
   const n = waiting.length;
-  head.append(svg('calendar'), el('span', 'wg-rsvps-words', `${n} ${n === 1 ? 'event needs' : 'events need'} your RSVP`), moreLink('View all', whenOrigin('calendar') + '/mine/rsvp'));
+  head.append(svg('calendar'), el('span', 'wg-rsvps-words', `${n} ${n === 1 ? 'event needs' : 'events need'} your RSVP`), moreLink('View all', appOrigin('calendar') + '/mine/rsvp'));
   const list = el('ol', 'wg-rsvp-list');
   for (const rsvp of waiting) {
     const row = el('li');
     const a = el('a', 'wg-rsvp');
-    a.href = whenOrigin('calendar') + rsvp.path;
+    a.href = appOrigin('calendar') + rsvp.path;
     a.title = 'You\u2019re invited - answer on its page';
     const date = parseDate(rsvp.start.split(' ')[0]);
     const when = `${date.toLocaleDateString('en-US', {weekday: 'short'})}, ${date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;

@@ -319,6 +319,16 @@ func (c *Core) Handlers(gate func(key string, next http.Handler) http.Handler) m
 	return out
 }
 
+func (c *Core) Aliased() map[string]http.Handler {
+	out := map[string]http.Handler{}
+	for _, a := range c.apps {
+		if a.Wrap != nil {
+			out[a.Key] = a.Wrap(http.NotFoundHandler())
+		}
+	}
+	return out
+}
+
 func Production(domain string) (*http.Server, *store.Queue) {
 	sessionKey := requiredEnv("SESSION_KEY")
 	sheet, err := data.NewSheet(SheetIDs(Spreadsheets))
@@ -380,7 +390,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	}
 	server := Server(domain, core.Handlers(func(key string, next http.Handler) http.Handler {
 		return auths[key].Wrap(next)
-	}))
+	}), core.Aliased())
 	if os.Getenv("K_SERVICE") != "" {
 		watcher := calendarWatcher(sheet, core, sessionKey)
 		muxes["calendar"].Handle("POST "+calendarimport.HookPath, watcher)

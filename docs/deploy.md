@@ -171,7 +171,7 @@ The web client's authorized JavaScript origins have to hold every origin a sign-
 
 ## Domain
 
-Every hostname is a Cloud Run domain mapping on the one service, one per app plus `www` and the apex. `tools/deploy` keeps them: the list of hostnames is the router's own (`app.Hostnames` in `internal/app` - every app in the registry, every alias, the apex and `www`), and after the service deploy it creates whatever mapping the service lacks. A mapping already there is left as it is and none is ever removed, so a hostname that leaves the router stays mapped until someone deletes it by hand. A new app therefore takes nothing here beyond its registry entry, a `tools/deploy` run, and its origins in the OAuth client. The current set, with each certificate's status:
+Every hostname is a Cloud Run domain mapping on the one service. `tools/deploy` keeps them: the list of hostnames is the router's own (`app.Hostnames` in `internal/app` - every entry of every app's `Hosts` in `internal/home/load.go`), and after the service deploy it creates whatever mapping the service lacks. A mapping already there is left as it is and none is ever removed, so a hostname that leaves the router stays mapped until someone deletes it by hand. A new app therefore takes nothing here beyond its registry entry, a `tools/deploy` run, and its origins in the OAuth client. The current set, with each certificate's status:
 
     gcloud beta run domain-mappings list --region us-west1 --project heliosian --format "table(metadata.name,status.conditions[0].status)"
 

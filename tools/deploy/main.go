@@ -88,7 +88,7 @@ func gcloudLines(args ...string) []string {
 
 func mapDomains() {
 	have := gcloudLines("beta", "run", "domain-mappings", "list", "--region", region, "--format", "value(metadata.name)")
-	for _, host := range app.Hostnames() {
+	for _, host := range app.Hostnames(app.Domain) {
 		if slices.Contains(have, host) {
 			continue
 		}

@@ -1,6 +1,6 @@
 # Helios When
 
-Helios When is the school year as one family sees it: what kind of day today is for their students' classrooms, what is coming up, and the whole year to browse, with the school's two published sources merged, classified, and corrected in one sheet. It lives at when.heliosian.com; calendar.heliosian.com and cal.heliosian.com are ways of typing it, and a page load at either is sent there (`canonicalHost` in `internal/app`), while a feed fetch or an API call is answered where it arrives, so a calendar subscribed at an older address keeps working. The sheet is `Calendar` (`data.md`), the package is `internal/calendar`, and the API is `/api/calendar/`.
+Helios When is the school year as one family sees it: what kind of day today is for their students' classrooms, what is coming up, and the whole year to browse, with the school's two published sources merged, classified, and corrected in one sheet. It lives at the first of its `Hosts` in `internal/home/load.go`; the others there only send their root to it and answer 404 for anything else (`route` in `internal/app/server.go`). The sheet is `Calendar` (`data.md`), the package is `internal/calendar`, and the API is `/api/calendar/`.
 
 ## What a viewer sees
 

@@ -126,7 +126,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 	slog.Info("serving sample data", "as", sampleUser)
 	return localTLS(app.Server(app.DevDomain, core.Handlers(func(_ string, next http.Handler) http.Handler {
 		return signIn.Fixed(sampleUser, next)
-	})), core.Queue)
+	}), core.Aliased()), core.Queue)
 }
 
 func sampleAsker() ask.Responder {
