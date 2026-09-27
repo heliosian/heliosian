@@ -136,7 +136,7 @@ func (a api) file(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.InfoContext(r.Context(), "feedback: saved", "id", saved.ID, "kind", saved.Kind, "summary", summary)
 	go a.intake.notify(saved)
-	w.WriteHeader(http.StatusAccepted)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func clip(s string, limit int) string {

@@ -244,7 +244,7 @@ func TestHandler(t *testing.T) {
 		t.Errorf("long summary: %d %s", rec.Code, rec.Body.String())
 	}
 	rec := post(`{"kind":"idea","summary":" A dark mode ","details":"Please","url":"https://when.heliosian.com/","page":"Helios When","errors":["a","b","c","d","e","f","g"]}`)
-	if rec.Code != http.StatusAccepted {
+	if rec.Code != http.StatusNoContent {
 		t.Fatalf("report: %d %s", rec.Code, rec.Body.String())
 	}
 	var got Report
