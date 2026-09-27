@@ -294,6 +294,37 @@ export function finishRender() {
   const contentWrap = el('div', 'page-content-wrap');
   contentWrap.append(...main.childNodes);
   main.append(contentWrap);
+  updateScrollProbe();
+}
+
+let scrollProbe = null;
+
+function updateScrollProbe() {
+  if (!state.model.user.isAdmin || !window.matchMedia('(max-width: 900px)').matches) {
+    return;
+  }
+  const main = document.querySelector('#main');
+  if (!scrollProbe) {
+    scrollProbe = el('pre', 'scroll-probe');
+    document.body.append(scrollProbe);
+    main.addEventListener('scroll', updateScrollProbe, {passive: true});
+    window.addEventListener('resize', updateScrollProbe);
+    window.visualViewport.addEventListener('resize', updateScrollProbe);
+  }
+  const wrap = main.querySelector('.page-content-wrap');
+  const last = wrap.lastElementChild;
+  const tabbar = document.querySelector('#tabbar');
+  const r = node => node.getBoundingClientRect();
+  const px = n => Math.round(n);
+  scrollProbe.textContent = [
+    `main scroll ${px(main.scrollTop)} / ${main.scrollHeight - main.clientHeight} (sh ${main.scrollHeight} ch ${main.clientHeight})`,
+    `main top ${px(r(main).top)} bottom ${px(r(main).bottom)} pb ${getComputedStyle(main).paddingBottom}`,
+    `wrap h ${wrap.offsetHeight} bottom ${px(r(wrap).bottom)} pb ${getComputedStyle(wrap).paddingBottom}`,
+    `last ${last ? last.className : '-'} bottom ${last ? px(r(last).bottom) : '-'}`,
+    `tabbar top ${px(r(tabbar).top)} bottom ${px(r(tabbar).bottom)} safe ${getComputedStyle(tabbar).paddingBottom}`,
+    `inner ${window.innerHeight} vv ${px(window.visualViewport.height)}+${px(window.visualViewport.offsetTop)} doc ${document.documentElement.clientHeight} screen ${screen.height}`,
+    `doc scroll ${px(document.scrollingElement.scrollTop)} / ${document.scrollingElement.scrollHeight}`,
+  ].join('\n');
 }
 
 const mobileListsMenu = document.querySelector('#mobile-lists-menu');
