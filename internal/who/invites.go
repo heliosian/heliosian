@@ -19,7 +19,6 @@ import (
 type InviteTemplate struct {
 	Name           string           `json:"name"`
 	Description    string           `json:"description,omitempty"`
-	Notes          string           `json:"notes,omitempty"`
 	HeaderRow      bool             `json:"headerRow"`
 	SupportsGroups bool             `json:"supportsGroups"`
 	Columns        []TemplateColumn `json:"columns"`
@@ -52,7 +51,7 @@ const (
 )
 
 var (
-	ServiceColumns  = []string{"Display Name", "Header Row", "Supports Groups", "Description", "Notes"}
+	ServiceColumns  = []string{"Display Name", "Header Row", "Supports Groups", "Description"}
 	TemplateColumns = []string{"Service", store.OrderColumn, "Column", "Template"}
 	GreetingColumns = []string{"Name", "Format", "Grouped", "Individual", "Email"}
 )
@@ -132,7 +131,6 @@ func buildSystems(tables store.Tables) ([]InviteTemplate, error) {
 		systems = append(systems, InviteTemplate{
 			Name:           name,
 			Description:    row["Description"],
-			Notes:          row["Notes"],
 			HeaderRow:      headerRow,
 			SupportsGroups: supportsGroups,
 			Columns:        cols,
