@@ -11,6 +11,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/config"
 	"heliosian/internal/mail"
+	"heliosian/internal/serve"
 )
 
 type Answerer func(ctx context.Context, email, id, answer string) error
@@ -112,21 +113,18 @@ func (a app) sees(email string, admin bool, e *Event) bool {
 	return true
 }
 
-func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
+type rsvpBody struct {
+	ID     string `json:"id"`
+	Answer string `json:"answer"`
+}
+
+func (a app) rsvp(r *http.Request, body rsvpBody) (serve.None, error) {
 	actor := a.actor(r)
-	var body struct {
-		ID     string `json:"id"`
-		Answer string `json:"answer"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
 	if err := a.recordBy(r.Context(), actor, actor.Email, body.ID, body.Answer, ViaPage, true, false); err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: answered", "actor", actor.Email, "event", body.ID, "answer", body.Answer)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 func (a app) sendInvite(ctx context.Context, email string, e *Event) {

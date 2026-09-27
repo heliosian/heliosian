@@ -2,7 +2,6 @@ package who
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,6 +13,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -24,17 +24,17 @@ type admin struct {
 
 func RegisterAdmin(mux *http.ServeMux, cache *Cache, media *blob.Store) {
 	a := admin{cache: cache, media: media}
-	mux.HandleFunc("GET /api/admin/state", a.state)
-	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
+	mux.HandleFunc("GET /api/admin/state", serve.JSON(a.state))
+	mux.HandleFunc("POST /api/admin/admins", serve.JSON(a.setAdmins))
 	mux.HandleFunc("POST /api/admin/images", a.setImage)
-	mux.HandleFunc("POST /api/admin/person-fields", a.setPersonFields)
-	mux.HandleFunc("POST /api/admin/student-fields", a.setStudentFields)
-	mux.HandleFunc("POST /api/admin/parent-fields", a.setParentFields)
-	mux.HandleFunc("POST /api/admin/added-fields", a.setAddedFields)
-	mux.HandleFunc("POST /api/admin/add-person", a.addPerson)
-	mux.HandleFunc("POST /api/admin/delete-person", a.deletePerson)
-	mux.HandleFunc("POST /api/admin/hide-person", a.hidePerson)
-	mux.HandleFunc("POST /api/admin/unhide-person", a.unhidePerson)
+	mux.HandleFunc("POST /api/admin/person-fields", serve.JSON(a.setPersonFields))
+	mux.HandleFunc("POST /api/admin/student-fields", serve.JSON(a.setStudentFields))
+	mux.HandleFunc("POST /api/admin/parent-fields", serve.JSON(a.setParentFields))
+	mux.HandleFunc("POST /api/admin/added-fields", serve.JSON(a.setAddedFields))
+	mux.HandleFunc("POST /api/admin/add-person", serve.JSON(a.addPerson))
+	mux.HandleFunc("POST /api/admin/delete-person", serve.JSON(a.deletePerson))
+	mux.HandleFunc("POST /api/admin/hide-person", serve.JSON(a.hidePerson))
+	mux.HandleFunc("POST /api/admin/unhide-person", serve.JSON(a.unhidePerson))
 }
 
 func actorOf(cache *Cache, email string) access.Actor {
@@ -45,13 +45,9 @@ func requestActor(cache *Cache, r *http.Request) access.Actor {
 	return actorOf(cache, effectiveEmail(cache, r))
 }
 
-func (a admin) requireAdmin(w http.ResponseWriter, r *http.Request) (access.Actor, bool) {
+func (a admin) requireAdmin(r *http.Request) (access.Actor, error) {
 	v := requestActor(a.cache, r)
-	if err := mayAdminister(v); err != nil {
-		refuse(w, err)
-		return v, false
-	}
-	return v, true
+	return v, mayAdminister(v)
 }
 
 type imageInfo struct {
@@ -126,10 +122,23 @@ type crewOption struct {
 	Name      string `json:"name"`
 }
 
-func (a admin) state(w http.ResponseWriter, r *http.Request) {
-	v, ok := a.requireAdmin(w, r)
-	if !ok {
-		return
+type adminState struct {
+	Email        string         `json:"email"`
+	Admins       []string       `json:"admins"`
+	Classrooms   []imageInfo    `json:"classrooms"`
+	Grades       []imageInfo    `json:"grades"`
+	Bands        []string       `json:"bands"`
+	Crews        []crewOption   `json:"crews"`
+	Departments  []string       `json:"departments"`
+	People       []personOption `json:"people"`
+	HiddenEmails []string       `json:"hiddenEmails"`
+	IsSuperAdmin bool           `json:"isSuperAdmin"`
+}
+
+func (a admin) state(r *http.Request, _ serve.None) (adminState, error) {
+	v, err := a.requireAdmin(r)
+	if err != nil {
+		return adminState{}, err
 	}
 	email := v.Email
 	model := a.cache.Model()
@@ -195,55 +204,29 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	sort.Slice(people, func(i, j int) bool { return people[i].Name < people[j].Name })
-	view := struct {
-		Email        string         `json:"email"`
-		Admins       []string       `json:"admins"`
-		Classrooms   []imageInfo    `json:"classrooms"`
-		Grades       []imageInfo    `json:"grades"`
-		Bands        []string       `json:"bands"`
-		Crews        []crewOption   `json:"crews"`
-		Departments  []string       `json:"departments"`
-		People       []personOption `json:"people"`
-		HiddenEmails []string       `json:"hiddenEmails"`
-		IsSuperAdmin bool           `json:"isSuperAdmin"`
-	}{
+	return adminState{
 		Email: email, Admins: a.cache.Admins(),
 		Classrooms: classrooms, Grades: grades, Bands: bands, Crews: crews, Departments: model.Departments,
 		People: people, HiddenEmails: model.hiddenEmails,
-	}
-	view.IsSuperAdmin = a.cache.IsSuperAdmin(email)
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode admin state", "error", err)
-	}
+		IsSuperAdmin: a.cache.IsSuperAdmin(email),
+	}, nil
 }
 
-func decodeBody(w http.ResponseWriter, r *http.Request, limit int64, body any) bool {
-	if err := json.NewDecoder(io.LimitReader(r.Body, limit)).Decode(body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return false
-	}
-	return true
+type adminList struct {
+	Admins []string `json:"admins"`
 }
 
-func (a admin) setAdmins(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Admins []string `json:"admins"`
-	}
-	if !decodeBody(w, r, 8<<10, &body) {
-		return
-	}
+func (a admin) setAdmins(r *http.Request, body adminList) (serve.None, error) {
 	actor := requestActor(a.cache, r)
 	ops, admins, err := a.cache.setAdmins(actor, body.Admins)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.cache.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:set the admin list", "actor", actor.Email, "admins", admins)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 func withoutSuperAdmins(emails, superAdmins []string) []string {
@@ -288,26 +271,20 @@ type personFields struct {
 	Facts         string `json:"facts"`
 }
 
-func (a admin) setPersonFields(w http.ResponseWriter, r *http.Request) {
-	var body personFields
-	if !decodeBody(w, r, 8<<10, &body) {
-		return
-	}
+func (a admin) setPersonFields(r *http.Request, body personFields) (serve.None, error) {
 	actor := requestActor(a.cache, r)
 	target, cells, ops, err := a.cache.Model().setPersonFields(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
 	if len(ops) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
+		return serve.None{}, nil
 	}
-	if !a.cache.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:edited person fields", "actor", actor.Email, "target", target, "cells", cells)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 func diffBoolCell(row store.Row, column string, next, current bool) {
@@ -395,26 +372,20 @@ type studentFields struct {
 	Crew          string `json:"crew"`
 }
 
-func (a admin) setStudentFields(w http.ResponseWriter, r *http.Request) {
-	var body studentFields
-	if !decodeBody(w, r, 8<<10, &body) {
-		return
-	}
+func (a admin) setStudentFields(r *http.Request, body studentFields) (serve.None, error) {
 	actor := requestActor(a.cache, r)
 	target, cells, ops, err := a.cache.Model().setStudentFields(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
 	if len(ops) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
+		return serve.None{}, nil
 	}
-	if !a.cache.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:edited student fields", "actor", actor.Email, "target", target, "cells", cells)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 type parentFields struct {
@@ -427,26 +398,20 @@ type parentFields struct {
 	Address       string `json:"address"`
 }
 
-func (a admin) setParentFields(w http.ResponseWriter, r *http.Request) {
-	var body parentFields
-	if !decodeBody(w, r, 8<<10, &body) {
-		return
-	}
+func (a admin) setParentFields(r *http.Request, body parentFields) (serve.None, error) {
 	actor := requestActor(a.cache, r)
 	target, cells, familyCells, ops, err := a.cache.Model().setParentFields(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
 	if len(ops) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
+		return serve.None{}, nil
 	}
-	if !a.cache.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:edited parent fields", "actor", actor.Email, "target", target, "cells", cells, "familyCells", familyCells)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 type addedFields struct {
@@ -458,26 +423,20 @@ type addedFields struct {
 	IsStaff   bool   `json:"isStaff"`
 }
 
-func (a admin) setAddedFields(w http.ResponseWriter, r *http.Request) {
-	var body addedFields
-	if !decodeBody(w, r, 4<<10, &body) {
-		return
-	}
+func (a admin) setAddedFields(r *http.Request, body addedFields) (serve.None, error) {
 	actor := requestActor(a.cache, r)
 	target, cells, ops, err := a.cache.Model().setAddedFields(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
 	if len(ops) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
+		return serve.None{}, nil
 	}
-	if !a.cache.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:edited added-person fields", "actor", actor.Email, "target", target, "cells", cells)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 type newPerson struct {
@@ -488,80 +447,60 @@ type newPerson struct {
 	IsStaff   bool   `json:"isStaff"`
 }
 
-func (a admin) addPerson(w http.ResponseWriter, r *http.Request) {
-	var body newPerson
-	if !decodeBody(w, r, 4<<10, &body) {
-		return
-	}
+func (a admin) addPerson(r *http.Request, body newPerson) (serve.None, error) {
 	actor := requestActor(a.cache, r)
 	email, fullName, ops, err := a.cache.Model().addPerson(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.cache.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:added a new person", "actor", actor.Email, "email", email, "name", fullName)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 type personEmail struct {
 	Email string `json:"email"`
 }
 
-func (a admin) deletePerson(w http.ResponseWriter, r *http.Request) {
-	var body personEmail
-	if !decodeBody(w, r, 1<<10, &body) {
-		return
-	}
+func (a admin) deletePerson(r *http.Request, body personEmail) (serve.None, error) {
 	actor := requestActor(a.cache, r)
 	target, ops, err := a.cache.Model().deletePerson(actor, body.Email)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.cache.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:deleted added person", "actor", actor.Email, "target", target)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a admin) hidePerson(w http.ResponseWriter, r *http.Request) {
-	var body personEmail
-	if !decodeBody(w, r, 1<<10, &body) {
-		return
-	}
+func (a admin) hidePerson(r *http.Request, body personEmail) (serve.None, error) {
 	actor := requestActor(a.cache, r)
 	target, ops, err := a.cache.Model().hidePerson(actor, body.Email)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.cache.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:hid person from the directory", "actor", actor.Email, "target", target)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a admin) unhidePerson(w http.ResponseWriter, r *http.Request) {
-	var body personEmail
-	if !decodeBody(w, r, 1<<10, &body) {
-		return
-	}
+func (a admin) unhidePerson(r *http.Request, body personEmail) (serve.None, error) {
 	actor := requestActor(a.cache, r)
 	target, ops, err := a.cache.Model().unhidePerson(actor, body.Email)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.cache.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:unhid person from the directory", "actor", actor.Email, "target", target)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 var imageExtensions = map[string]string{
@@ -599,14 +538,15 @@ func (a admin) setImage(w http.ResponseWriter, r *http.Request) {
 	actor := requestActor(a.cache, r)
 	ops, err := a.cache.Model().setImage(actor, kind, name, image)
 	if err != nil {
-		refuse(w, err)
+		serve.Error(w, r, err)
 		return
 	}
 	if err := a.media.Put("photos", image, sniffed, content); err != nil {
-		serverError(w, r, err)
+		serve.Error(w, r, err)
 		return
 	}
-	if !a.cache.commit(w, r, actor, ops...) {
+	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+		serve.Error(w, r, err)
 		return
 	}
 	slog.InfoContext(r.Context(), "who:replaced image", "actor", actor.Email, "kind", kind, "name", name)

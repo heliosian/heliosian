@@ -139,17 +139,14 @@ func verify(key []byte, payload, signature string) bool {
 }
 
 func (a *Auth) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /auth/client", a.client)
+	mux.HandleFunc("GET /auth/client", serve.JSON(a.client))
 	mux.HandleFunc("POST /auth/login", a.login)
 	mux.HandleFunc("POST /auth/logout", a.logout)
 	a.RegisterSpoof(mux)
 }
 
-func (a *Auth) client(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]string{"clientId": a.clientID}); err != nil {
-		slog.ErrorContext(r.Context(), "encode client id", "error", err)
-	}
+func (a *Auth) client(r *http.Request, _ serve.None) (map[string]string, error) {
+	return map[string]string{"clientId": a.clientID}, nil
 }
 
 func (a *Auth) Wrap(next http.Handler) http.Handler {

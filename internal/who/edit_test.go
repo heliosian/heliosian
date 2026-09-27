@@ -2,6 +2,7 @@ package who
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/serve"
 )
 
 const (
@@ -65,10 +67,11 @@ func TestSuperEditIsAnAdminsCookie(t *testing.T) {
 	if err := model.mayEdit(actorOf(cache, jordan), superEditOn(on), "family", rohans); err != nil {
 		t.Errorf("an admin with the pencil on cannot edit another family: %v", err)
 	}
-	if err := model.mayEdit(actorOf(cache, jordan), superEditOn(off), "family", rohans); access.Status(err) != http.StatusForbidden {
+	var refusal *access.Refusal
+	if err := model.mayEdit(actorOf(cache, jordan), superEditOn(off), "family", rohans); !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
 		t.Errorf("an admin with the pencil off edits another family: %v", err)
 	}
-	if err := model.mayEdit(actorOf(cache, asha), superEditOn(on), "family", rohans); access.Status(err) != http.StatusForbidden {
+	if err := model.mayEdit(actorOf(cache, asha), superEditOn(on), "family", rohans); !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
 		t.Errorf("a parent with the cookie set edits another family: %v", err)
 	}
 }
@@ -92,7 +95,7 @@ func TestSpoofedParentGetsNoSuperEdit(t *testing.T) {
 			r.AddCookie(&http.Cookie{Name: "spoof", Value: auth.SpoofToken(key, jordan, c.as, time.Now().Add(time.Hour))})
 		}
 		w := httptest.NewRecorder()
-		signin.Fixed(jordan, http.HandlerFunc(app.model)).ServeHTTP(w, r)
+		signin.Fixed(jordan, serve.JSON(app.model)).ServeHTTP(w, r)
 		var view struct {
 			User      user `json:"user"`
 			SuperEdit bool `json:"superEdit"`

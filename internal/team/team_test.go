@@ -17,6 +17,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
@@ -69,7 +70,7 @@ func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, func() *who.Model { return directory }, func() *config.Settings { return settings }, func() []string { return []string{admin} }, ImageSearch{}, mailer, testFrom, nil, nil, testStyle)
+	Register(mux, cache, nil, func() *who.Model { return directory }, func() *config.Settings { return settings }, func() []string { return []string{admin} }, imagesearch.Search{}, mailer, testFrom, nil, nil, testStyle)
 	return cache, mux
 }
 
@@ -1190,8 +1191,8 @@ func TestWhenSpansDays(t *testing.T) {
 		{"2026-10-30 09:00", "2026-11-01", "Friday, October 30 – Sunday, November 1 · Fri 9:00 AM", "Friday, October 30 – Sunday, November 1", "Fri 9:00 AM"},
 	} {
 		a := &Activity{Start: tc.start, End: tc.end}
-		if got := when(a); got != tc.line {
-			t.Errorf("when(%q, %q) = %q, want %q", tc.start, tc.end, got, tc.line)
+		if got := whenText(a); got != tc.line {
+			t.Errorf("whenText(%q, %q) = %q, want %q", tc.start, tc.end, got, tc.line)
 		}
 		if day, hours := whenLines(a); day != tc.day || hours != tc.hours {
 			t.Errorf("whenLines(%q, %q) = %q, %q, want %q, %q", tc.start, tc.end, day, hours, tc.day, tc.hours)

@@ -2,8 +2,6 @@ package home
 
 import (
 	"context"
-	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -17,7 +15,6 @@ import (
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
-	"heliosian/internal/store"
 	"heliosian/internal/when"
 )
 
@@ -69,26 +66,26 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins f
 		http.Redirect(w, r, "/", http.StatusMovedPermanently)
 	})
 	mux.HandleFunc("GET /open/share/apps.png", a.shareApps)
-	mux.HandleFunc("GET /api/apps/model", a.model)
-	mux.HandleFunc("GET /api/apps/calendar", a.calendar)
-	mux.HandleFunc("GET /api/apps/upcoming", a.upcomingUnder)
-	mux.HandleFunc("POST /api/apps/calendar/default", a.setDefault)
-	mux.HandleFunc("POST /api/apps/link", a.saveLink)
-	mux.HandleFunc("GET /api/apps/audience/options", a.audienceOptions)
-	mux.HandleFunc("POST /api/apps/audience/preview", a.audiencePreview)
-	mux.HandleFunc("POST /api/apps/rsvp", a.rsvp)
-	mux.HandleFunc("DELETE /api/apps/link", a.deleteLink)
-	mux.HandleFunc("POST /api/apps/link/move", a.moveLink)
-	mux.HandleFunc("POST /api/apps/category", a.saveCategory)
-	mux.HandleFunc("DELETE /api/apps/category", a.deleteCategory)
-	mux.HandleFunc("POST /api/apps/categories/order", a.reorderCategories)
-	mux.HandleFunc("POST /api/apps/widgets/audience", a.saveWidgetAudience)
-	mux.HandleFunc("POST /api/apps/widgets/order", a.setWidgetOrder)
+	mux.HandleFunc("GET /api/apps/model", serve.JSON(a.model))
+	mux.HandleFunc("GET /api/apps/calendar", serve.JSON(a.calendar))
+	mux.HandleFunc("GET /api/apps/upcoming", serve.JSON(a.upcomingUnder))
+	mux.HandleFunc("POST /api/apps/calendar/default", serve.JSON(a.setDefault))
+	mux.HandleFunc("POST /api/apps/link", serve.JSON(a.saveLink))
+	mux.HandleFunc("GET /api/apps/audience/options", serve.JSON(a.audienceOptions))
+	mux.HandleFunc("POST /api/apps/audience/preview", serve.JSON(a.audiencePreview))
+	mux.HandleFunc("POST /api/apps/rsvp", serve.JSON(a.rsvp))
+	mux.HandleFunc("DELETE /api/apps/link", serve.JSON(a.deleteLink))
+	mux.HandleFunc("POST /api/apps/link/move", serve.JSON(a.moveLink))
+	mux.HandleFunc("POST /api/apps/category", serve.JSON(a.saveCategory))
+	mux.HandleFunc("DELETE /api/apps/category", serve.JSON(a.deleteCategory))
+	mux.HandleFunc("POST /api/apps/categories/order", serve.JSON(a.reorderCategories))
+	mux.HandleFunc("POST /api/apps/widgets/audience", serve.JSON(a.saveWidgetAudience))
+	mux.HandleFunc("POST /api/apps/widgets/order", serve.JSON(a.setWidgetOrder))
 	a.search.Register(mux, "/api/apps", imageFolder, a.requireAdminFunc)
-	mux.HandleFunc("GET /api/admin/state", a.adminState)
-	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
-	mux.HandleFunc("POST /api/admin/visibility", a.setVisibility)
-	mux.HandleFunc("POST /api/admin/visibility/order", a.setAppOrder)
+	mux.HandleFunc("GET /api/admin/state", serve.JSON(a.adminState))
+	mux.HandleFunc("POST /api/admin/admins", serve.JSON(a.setAdmins))
+	mux.HandleFunc("POST /api/admin/visibility", serve.JSON(a.setVisibility))
+	mux.HandleFunc("POST /api/admin/visibility/order", serve.JSON(a.setAppOrder))
 	a.discoverApps()
 }
 
@@ -104,16 +101,14 @@ func (a app) discoverApps() {
 }
 
 func RegisterSwitch(mux *http.ServeMux, cache *Cache) {
-	mux.HandleFunc("GET /api/apps/switch", func(w http.ResponseWriter, r *http.Request) {
-		view := struct {
-			Apps   []App    `json:"apps"`
-			Hidden []string `json:"hidden"`
-		}{Apps: append([]App{homeApp()}, cache.AppList()...), Hidden: cache.HiddenApps(auth.Email(r))}
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(view); err != nil {
-			slog.ErrorContext(r.Context(), "encode app switch", "error", err)
-		}
-	})
+	mux.HandleFunc("GET /api/apps/switch", serve.JSON(func(r *http.Request, _ serve.None) (switchView, error) {
+		return switchView{Apps: append([]App{homeApp()}, cache.AppList()...), Hidden: cache.HiddenApps(auth.Email(r))}, nil
+	}))
+}
+
+type switchView struct {
+	Apps   []App    `json:"apps"`
+	Hidden []string `json:"hidden"`
 }
 
 func homeApp() App {
@@ -165,20 +160,13 @@ func (a app) actor(r *http.Request) access.Actor {
 	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email)}
 }
 
-func (a app) admin(w http.ResponseWriter, r *http.Request) (access.Actor, bool) {
-	actor := a.actor(r)
-	if err := requireAdmin(actor); err != nil {
-		http.Error(w, err.Error(), access.Status(err))
-		return access.Actor{}, false
-	}
-	return actor, true
-}
-
 func (a app) requireAdminFunc(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := a.admin(w, r); ok {
-			next(w, r)
+		if err := requireAdmin(a.actor(r)); err != nil {
+			serve.Error(w, r, err)
+			return
 		}
+		next(w, r)
 	}
 }
 
@@ -189,64 +177,46 @@ type user struct {
 	IsAdmin  bool   `json:"isAdmin"`
 }
 
-func (a app) calendar(w http.ResponseWriter, r *http.Request) {
-	email := a.actor(r).Email
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.month(email, r.URL.Query().Get("month"), r.URL.Query().Get("calendar"))); err != nil {
-		slog.ErrorContext(r.Context(), "encode apps calendar", "error", err)
-	}
+func (a app) calendar(r *http.Request, _ serve.None) (Month, error) {
+	return a.month(a.actor(r).Email, r.URL.Query().Get("month"), r.URL.Query().Get("calendar")), nil
 }
 
-func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
-	email := a.actor(r).Email
-	var body struct {
-		ID     string `json:"id"`
-		Answer string `json:"answer"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return
-	}
-	if a.answer == nil {
-		http.Error(w, "the calendar is not set up", http.StatusBadRequest)
-		return
-	}
-	if err := a.answer(r.Context(), email, body.ID, body.Answer); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+type rsvpBody struct {
+	ID     string `json:"id"`
+	Answer string `json:"answer"`
 }
 
-func (a app) upcomingUnder(w http.ResponseWriter, r *http.Request) {
-	email := a.actor(r).Email
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.upcoming(email, r.URL.Query().Get("calendar"))); err != nil {
-		slog.ErrorContext(r.Context(), "encode upcoming", "error", err)
-	}
+func (a app) rsvp(r *http.Request, body rsvpBody) (serve.None, error) {
+	return serve.None{}, a.answer(r.Context(), a.actor(r).Email, body.ID, body.Answer)
 }
 
-func (a app) setDefault(w http.ResponseWriter, r *http.Request) {
-	email := a.actor(r).Email
-	var body struct {
-		Token string `json:"token"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return
-	}
-	if a.makeDefault == nil {
-		http.Error(w, "the calendar is not set up", http.StatusBadRequest)
-		return
-	}
-	if err := a.makeDefault(r.Context(), email, body.Token); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+func (a app) upcomingUnder(r *http.Request, _ serve.None) (Upcoming, error) {
+	return a.upcoming(a.actor(r).Email, r.URL.Query().Get("calendar")), nil
 }
 
-func (a app) model(w http.ResponseWriter, r *http.Request) {
+type defaultBody struct {
+	Token string `json:"token"`
+}
+
+func (a app) setDefault(r *http.Request, body defaultBody) (serve.None, error) {
+	return serve.None{}, a.makeDefault(r.Context(), a.actor(r).Email, body.Token)
+}
+
+type modelView struct {
+	Categories       []Category            `json:"categories"`
+	User             user                  `json:"user"`
+	ImageSearch      bool                  `json:"imageSearch"`
+	Upcoming         []when.Card           `json:"upcoming"`
+	UpcomingCalendar *Upcoming             `json:"upcomingCalendar,omitempty"`
+	Calendar         Month                 `json:"calendar"`
+	Apps             []appView             `json:"apps"`
+	Options          *filter.Options       `json:"options,omitempty"`
+	TagLabels        map[string]string     `json:"tagLabels,omitempty"`
+	Widgets          map[string]widgetView `json:"widgets"`
+	WidgetOrder      []string              `json:"widgetOrder"`
+}
+
+func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
 	actor := a.actor(r)
 	email := actor.Email
 	admin := actor.Admin
@@ -259,19 +229,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	for i := range categories {
 		categories[i].Links = slices.DeleteFunc(categories[i].Links, func(l Link) bool { return linksInto(hidden, l.URL) })
 	}
-	view := struct {
-		Categories       []Category            `json:"categories"`
-		User             user                  `json:"user"`
-		ImageSearch      bool                  `json:"imageSearch"`
-		Upcoming         []when.Card           `json:"upcoming"`
-		UpcomingCalendar *Upcoming             `json:"upcomingCalendar,omitempty"`
-		Calendar         Month                 `json:"calendar"`
-		Apps             []appView             `json:"apps"`
-		Options          *filter.Options       `json:"options,omitempty"`
-		TagLabels        map[string]string     `json:"tagLabels,omitempty"`
-		Widgets          map[string]widgetView `json:"widgets"`
-		WidgetOrder      []string              `json:"widgetOrder"`
-	}{
+	view := modelView{
 		Categories:  categories,
 		User:        user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.sources().Directory.HeroPhoto(email), IsAdmin: admin},
 		ImageSearch: a.search.On(),
@@ -298,10 +256,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	if ahead.Calendar != "" {
 		view.UpcomingCalendar = &Upcoming{Calendar: ahead.Calendar, Default: ahead.Default, Calendars: ahead.Calendars}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode apps model", "error", err)
-	}
+	return view, nil
 }
 
 func (a app) tagLabels(categories []Category, apps []appView, viewer string) map[string]string {
@@ -358,26 +313,6 @@ func linksInto(hosts map[string]bool, link string) bool {
 	return hosts[strings.ToLower(u.Host)]
 }
 
-func decode(w http.ResponseWriter, r *http.Request, into any) bool {
-	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(into); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return false
-	}
-	return true
-}
-
-func (a app) commit(w http.ResponseWriter, r *http.Request, actor access.Actor, ops ...store.Op) bool {
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return false
-	}
-	return true
-}
-
-func refuse(w http.ResponseWriter, err error) {
-	http.Error(w, err.Error(), access.Status(err))
-}
-
 func rulesOf(model *Model, key string) []filter.Rule {
 	for _, c := range model.Categories {
 		if thingCategory+c.Title == key {
@@ -400,74 +335,68 @@ type widgetView struct {
 	Rules []filter.Rule `json:"rules,omitempty"`
 }
 
-func (a app) saveWidgetAudience(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Widget string        `json:"widget"`
-		Rules  []filter.Rule `json:"rules"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type widgetAudienceBody struct {
+	Widget string        `json:"widget"`
+	Rules  []filter.Rule `json:"rules"`
+}
+
+func (a app) saveWidgetAudience(r *http.Request, body widgetAudienceBody) (serve.None, error) {
 	actor := a.actor(r)
 	ops, err := a.cache.saveWidgetAudience(actor, body.Widget, body.Rules)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if len(ops) > 0 && !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home: set a widget's audience", "actor", actor.Email, "widget", body.Widget, "rules", len(body.Rules))
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) setWidgetOrder(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Widgets []string `json:"widgets"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type widgetOrderBody struct {
+	Widgets []string `json:"widgets"`
+}
+
+func (a app) setWidgetOrder(r *http.Request, body widgetOrderBody) (serve.None, error) {
 	actor := a.actor(r)
 	ops, err := a.cache.setWidgetOrder(actor, body.Widgets)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if len(ops) > 0 && !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home: set the widgets' order", "actor", actor.Email, "widgets", body.Widgets)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) audienceOptions(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.admin(w, r)
-	if !ok {
-		return
+func (a app) audienceOptions(r *http.Request, _ serve.None) (filter.Options, error) {
+	actor := a.actor(r)
+	if err := requireAdmin(actor); err != nil {
+		return filter.Options{}, err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(filter.OptionsFor(a.sources(), actor.Email)); err != nil {
-		slog.ErrorContext(r.Context(), "encode audience options", "error", err)
-	}
+	return filter.OptionsFor(a.sources(), actor.Email), nil
 }
 
-func (a app) audiencePreview(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.admin(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		Thing string        `json:"thing"`
-		Rules []filter.Rule `json:"rules"`
-	}
-	if !decode(w, r, &body) {
-		return
+type previewBody struct {
+	Thing string        `json:"thing"`
+	Rules []filter.Rule `json:"rules"`
+}
+
+type previewView struct {
+	Count      int      `json:"count"`
+	Names      []string `json:"names"`
+	RuleCounts []int    `json:"ruleCounts"`
+}
+
+func (a app) audiencePreview(r *http.Request, body previewBody) (previewView, error) {
+	actor := a.actor(r)
+	if err := requireAdmin(actor); err != nil {
+		return previewView{}, err
 	}
 	rules, err := a.cache.checkRules(rulesOf(a.cache.Model(), body.Thing), body.Rules, actor.Email)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return previewView{}, err
 	}
 	sources := a.sources()
 	list := filter.List{Rules: rules, Editors: a.cache.Admins()}
@@ -477,213 +406,166 @@ func (a app) audiencePreview(w http.ResponseWriter, r *http.Request) {
 		names = append(names, sources.Directory.DisplayName(m))
 	}
 	slices.Sort(names)
-	view := struct {
-		Count      int      `json:"count"`
-		Names      []string `json:"names"`
-		RuleCounts []int    `json:"ruleCounts"`
-	}{Count: len(members), Names: names[:min(len(names), 12)], RuleCounts: filter.RuleCounts(list, sources)}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode audience preview", "error", err)
-	}
+	return previewView{Count: len(members), Names: names[:min(len(names), 12)], RuleCounts: filter.RuleCounts(list, sources)}, nil
 }
 
-func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
-	var body linkEdit
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) saveLink(r *http.Request, body linkEdit) (serve.None, error) {
 	actor := a.actor(r)
 	action, title, ops, err := a.cache.saveLink(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:saved link", "action", action, "title", title)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Title string `json:"title"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type titleBody struct {
+	Title string `json:"title"`
+}
+
+func (a app) deleteLink(r *http.Request, body titleBody) (serve.None, error) {
 	actor := a.actor(r)
 	ops, err := a.cache.deleteLink(actor, body.Title)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:deleted link", "title", body.Title)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
-	var body categoryEdit
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) saveCategory(r *http.Request, body categoryEdit) (serve.None, error) {
 	actor := a.actor(r)
 	action, title, ops, err := a.cache.saveCategory(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:saved category", "action", action, "title", title)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Titles []string `json:"titles"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type titlesBody struct {
+	Titles []string `json:"titles"`
+}
+
+func (a app) reorderCategories(r *http.Request, body titlesBody) (serve.None, error) {
 	actor := a.actor(r)
 	ops, err := a.cache.reorderCategories(actor, body.Titles)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:reordered categories", "count", len(body.Titles))
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) moveLink(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Title string `json:"title"`
-		By    int    `json:"by"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type moveBody struct {
+	Title string `json:"title"`
+	By    int    `json:"by"`
+}
+
+func (a app) moveLink(r *http.Request, body moveBody) (serve.None, error) {
 	actor := a.actor(r)
 	ops, err := a.cache.moveLink(actor, body.Title, body.By)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
 	if len(ops) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
+		return serve.None{}, nil
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:moved link", "title", body.Title, "by", body.By)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Title string `json:"title"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) deleteCategory(r *http.Request, body titleBody) (serve.None, error) {
 	actor := a.actor(r)
 	ops, err := a.cache.deleteCategory(actor, body.Title)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:deleted category", "title", body.Title)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) adminState(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.admin(w, r)
-	if !ok {
-		return
+type adminView struct {
+	Email        string          `json:"email"`
+	Admins       []string        `json:"admins"`
+	Apps         []AppVisibility `json:"apps"`
+	People       []Person        `json:"people"`
+	IsSuperAdmin bool            `json:"isSuperAdmin"`
+}
+
+func (a app) adminState(r *http.Request, _ serve.None) (adminView, error) {
+	actor := a.actor(r)
+	if err := requireAdmin(actor); err != nil {
+		return adminView{}, err
 	}
-	view := struct {
-		Email        string          `json:"email"`
-		Admins       []string        `json:"admins"`
-		Apps         []AppVisibility `json:"apps"`
-		People       []Person        `json:"people"`
-		IsSuperAdmin bool            `json:"isSuperAdmin"`
-	}{Email: actor.Email, Admins: a.cache.Admins(), Apps: a.cache.AppVisibilities(), People: []Person{}, IsSuperAdmin: a.cache.IsSuperAdmin(actor.Email)}
+	view := adminView{Email: actor.Email, Admins: a.cache.Admins(), Apps: a.cache.AppVisibilities(), People: []Person{}, IsSuperAdmin: a.cache.IsSuperAdmin(actor.Email)}
 	for _, p := range a.sources().Directory.Listed() {
 		view.People = append(view.People, Person{Name: p.FullName, Email: p.Email})
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode apps admin state", "error", err)
-	}
+	return view, nil
 }
 
-func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Admins []string `json:"admins"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type adminsBody struct {
+	Admins []string `json:"admins"`
+}
+
+func (a app) setAdmins(r *http.Request, body adminsBody) (serve.None, error) {
 	actor := a.actor(r)
 	admins, ops, err := a.cache.setAdmins(actor, body.Admins)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:set the admin list", "admins", admins)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
-	var body visibilityEdit
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) setVisibility(r *http.Request, body visibilityEdit) (serve.None, error) {
 	actor := a.actor(r)
 	key, v, ops, err := a.cache.setVisibility(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:set an app's visibility", "app", key, "visibility", v.Mode, "emails", len(v.Emails), "name", v.Name, "tagline", v.Tagline)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) setAppOrder(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Apps []string `json:"apps"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type appsBody struct {
+	Apps []string `json:"apps"`
+}
+
+func (a app) setAppOrder(r *http.Request, body appsBody) (serve.None, error) {
 	actor := a.actor(r)
 	ops, err := a.cache.setAppOrder(actor, body.Apps)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:set the apps' order", "apps", body.Apps)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"heliosian/internal/mail"
+	"heliosian/internal/when"
 )
 
 const notifyTimeout = 30 * time.Second
@@ -55,9 +56,9 @@ func (n Notifier) message(to []string, r Report) mail.Message {
 	fmt.Fprintf(&b, "<p>%s reported from %s by %s.</p>", html.EscapeString(what), html.EscapeString(r.AppName), html.EscapeString(r.Email))
 	fmt.Fprintf(&b, "<p><strong>%s</strong></p>", html.EscapeString(r.Summary))
 	fmt.Fprintf(&b, "<p>%s</p>", strings.ReplaceAll(html.EscapeString(details), "\n", "<br>"))
-	fmt.Fprintf(&b, "<p>They were on %s at %s.</p>", html.EscapeString(r.Page), html.EscapeString(r.At.In(school).Format("2006-01-02 15:04 MST")))
+	fmt.Fprintf(&b, "<p>They were on %s at %s.</p>", html.EscapeString(r.Page), html.EscapeString(r.At.In(when.Location).Format("2006-01-02 15:04 MST")))
 	fmt.Fprintf(&b, "<p><a href=%q>Read it, edit it and file it</a></p>", link)
 	text := fmt.Sprintf("%s reported from %s by %s.\n\n%s\n\n%s\n\nThey were on %s at %s.\n\nRead it, edit it and file it: %s\n",
-		what, r.AppName, r.Email, r.Summary, details, r.Page, r.At.In(school).Format("2006-01-02 15:04 MST"), link)
+		what, r.AppName, r.Email, r.Summary, details, r.Page, r.At.In(when.Location).Format("2006-01-02 15:04 MST"), link)
 	return mail.Message{To: to, Subject: subject, HTML: b.String(), Text: text}
 }

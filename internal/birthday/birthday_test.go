@@ -17,6 +17,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -803,10 +804,10 @@ func TestShareIssue(t *testing.T) {
 	if at := nextExport(mustTime("2026-09-09")); at.Format("2006-01-02 15:04 Mon") != "2026-09-10 23:59 Thu" {
 		t.Fatalf("next export = %v", at)
 	}
-	if at := nextExport(time.Date(2026, 9, 10, 23, 59, 30, 0, local)); at.Format(DateFormat) != "2026-09-17" {
+	if at := nextExport(time.Date(2026, 9, 10, 23, 59, 30, 0, when.Location)); at.Format(DateFormat) != "2026-09-17" {
 		t.Fatalf("the export after one just run = %v", at)
 	}
-	if issue := weekIssue(cache.Model(), time.Date(2026, 9, 10, 23, 59, 0, 0, local)); issue != "2026-09-11" {
+	if issue := weekIssue(cache.Model(), time.Date(2026, 9, 10, 23, 59, 0, 0, when.Location)); issue != "2026-09-11" {
 		t.Fatalf("the week's issue = %q", issue)
 	}
 	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"date": "2026-09-12"}); rec.Code != 400 {

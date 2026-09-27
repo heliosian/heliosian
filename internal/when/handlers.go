@@ -3,9 +3,7 @@ package when
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -40,16 +38,14 @@ type app struct {
 	celebrate   Celebrate
 	sources     func() filter.Sources
 	clock       *matchClock
-	search      ImageSearch
+	search      imagesearch.Search
 	mail        Mail
 	style       *sharecard.Style
 }
 
-type ImageSearch = imagesearch.Search
-
 const imageFolder = "category-images"
 
-func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, settings func() *config.Settings, lists func(email string) []List, superAdmins func() []string, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search ImageSearch, mailbox Mail, style *sharecard.Style) Hooks {
+func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, settings func() *config.Settings, lists func(email string) []List, superAdmins func() []string, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search imagesearch.Search, mailbox Mail, style *sharecard.Style) Hooks {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
 	}
@@ -60,52 +56,52 @@ func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory fun
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
-	mux.HandleFunc("GET /api/when/model", a.model)
-	mux.HandleFunc("GET /api/apps/rsvp", a.rsvps)
-	mux.HandleFunc("POST /api/when/feeds", a.addFeed)
-	mux.HandleFunc("PUT /api/when/feeds", a.editFeed)
-	mux.HandleFunc("POST /api/when/feeds/my-heliosian", a.myHeliosianToken)
-	mux.HandleFunc("PUT /api/when/feeds/order", a.orderFeeds)
-	mux.HandleFunc("POST /api/when/default", a.setDefault)
-	mux.HandleFunc("DELETE /api/when/feeds", a.removeFeed)
-	mux.HandleFunc("POST /api/when/rsvp", a.rsvp)
-	mux.HandleFunc("GET /api/when/invites", a.invitesView)
-	mux.HandleFunc("GET /api/when/invites/people", a.invitePeople)
-	mux.HandleFunc("POST /api/when/invites/people", a.addInvites)
-	mux.HandleFunc("DELETE /api/when/invites/people", a.removeInvite)
-	mux.HandleFunc("PUT /api/when/invites/settings", a.inviteSettings)
-	mux.HandleFunc("POST /api/when/invites/step-down", a.stepDown)
-	mux.HandleFunc("POST /api/when/invites/guest", a.addGuest)
-	mux.HandleFunc("POST /api/when/invites/answer", a.answerFor)
-	mux.HandleFunc("POST /api/when/invites/send", a.sendInvites)
-	mux.HandleFunc("POST /api/when/invites/skip", a.skipInvites)
-	mux.HandleFunc("POST /api/when/invites/email", a.changeInviteEmail)
-	mux.HandleFunc("POST /api/when/invites/delete", a.deleteInvitation)
-	mux.HandleFunc("POST /api/when/events/cancel", a.cancelEvent)
-	mux.HandleFunc("POST /api/when/invites/message", a.messageInvites)
-	mux.HandleFunc("GET /api/when/invites/options", a.groupOptions)
-	mux.HandleFunc("POST /api/when/invites/preview", a.groupPreview)
-	mux.HandleFunc("POST /api/when/invites/group", a.addGroup)
-	mux.HandleFunc("PUT /api/when/invites/group", a.setGroup)
-	mux.HandleFunc("DELETE /api/when/invites/group", a.removeGroup)
-	mux.HandleFunc("POST /api/when/invites/start", a.startParty)
+	mux.HandleFunc("GET /api/when/model", serve.JSON(a.model))
+	mux.HandleFunc("GET /api/apps/rsvp", serve.JSON(a.rsvps))
+	mux.HandleFunc("POST /api/when/feeds", serve.JSON(a.addFeed))
+	mux.HandleFunc("PUT /api/when/feeds", serve.JSON(a.editFeed))
+	mux.HandleFunc("POST /api/when/feeds/my-heliosian", serve.JSON(a.myHeliosianToken))
+	mux.HandleFunc("PUT /api/when/feeds/order", serve.JSON(a.orderFeeds))
+	mux.HandleFunc("POST /api/when/default", serve.JSON(a.setDefault))
+	mux.HandleFunc("DELETE /api/when/feeds", serve.JSON(a.removeFeed))
+	mux.HandleFunc("POST /api/when/rsvp", serve.JSON(a.rsvp))
+	mux.HandleFunc("GET /api/when/invites", serve.JSON(a.invitesView))
+	mux.HandleFunc("GET /api/when/invites/people", serve.JSON(a.invitePeople))
+	mux.HandleFunc("POST /api/when/invites/people", serve.JSON(a.addInvites))
+	mux.HandleFunc("DELETE /api/when/invites/people", serve.JSON(a.removeInvite))
+	mux.HandleFunc("PUT /api/when/invites/settings", serve.JSON(a.inviteSettings))
+	mux.HandleFunc("POST /api/when/invites/step-down", serve.JSON(a.stepDown))
+	mux.HandleFunc("POST /api/when/invites/guest", serve.JSON(a.addGuest))
+	mux.HandleFunc("POST /api/when/invites/answer", serve.JSON(a.answerFor))
+	mux.HandleFunc("POST /api/when/invites/send", serve.JSON(a.sendInvites))
+	mux.HandleFunc("POST /api/when/invites/skip", serve.JSON(a.skipInvites))
+	mux.HandleFunc("POST /api/when/invites/email", serve.JSON(a.changeInviteEmail))
+	mux.HandleFunc("POST /api/when/invites/delete", serve.JSON(a.deleteInvitation))
+	mux.HandleFunc("POST /api/when/events/cancel", serve.JSON(a.cancelEvent))
+	mux.HandleFunc("POST /api/when/invites/message", serve.JSON(a.messageInvites))
+	mux.HandleFunc("GET /api/when/invites/options", serve.JSON(a.groupOptions))
+	mux.HandleFunc("POST /api/when/invites/preview", serve.JSON(a.groupPreview))
+	mux.HandleFunc("POST /api/when/invites/group", serve.JSON(a.addGroup))
+	mux.HandleFunc("PUT /api/when/invites/group", serve.JSON(a.setGroup))
+	mux.HandleFunc("DELETE /api/when/invites/group", serve.JSON(a.removeGroup))
+	mux.HandleFunc("POST /api/when/invites/start", serve.JSON(a.startParty))
 	mux.HandleFunc("GET /ext/{token}", a.extPage)
-	mux.HandleFunc("GET /open/ext/{token}", a.extView)
-	mux.HandleFunc("POST /open/ext/{token}", a.extAnswer)
-	mux.HandleFunc("POST /open/ext/{token}/guest", a.extGuest)
-	mux.HandleFunc("DELETE /open/ext/{token}/guest", a.extRemoveGuest)
-	mux.HandleFunc("POST /api/when/settings", a.saveSetting)
-	mux.HandleFunc("POST /api/when/keywords", a.admin(a.setKeywords))
-	mux.HandleFunc("PUT /api/when/overrides", a.admin(a.setOverride))
-	mux.HandleFunc("PUT /api/when/overrides/image", a.admin(a.setOverrideImage))
-	mux.HandleFunc("POST /api/when/events", a.addEvents)
-	mux.HandleFunc("PUT /api/when/events", a.editEvent)
-	mux.HandleFunc("GET /api/when/event", a.oneEvent)
-	mux.HandleFunc("POST /api/when/events/approve", a.admin(a.approveEvent))
-	mux.HandleFunc("POST /api/when/events/decline", a.admin(a.declineEvent))
-	mux.HandleFunc("POST /api/when/events/when", a.admin(a.moveEvent))
-	mux.HandleFunc("DELETE /api/when/settings", a.forgetSetting)
-	mux.HandleFunc("POST /api/when/tags", a.setTags)
+	mux.HandleFunc("GET /open/ext/{token}", serve.JSON(a.extView))
+	mux.HandleFunc("POST /open/ext/{token}", serve.JSON(a.extAnswer))
+	mux.HandleFunc("POST /open/ext/{token}/guest", serve.JSON(a.extGuest))
+	mux.HandleFunc("DELETE /open/ext/{token}/guest", serve.JSON(a.extRemoveGuest))
+	mux.HandleFunc("POST /api/when/settings", serve.JSON(a.saveSetting))
+	mux.HandleFunc("POST /api/when/keywords", serve.JSON(a.setKeywords))
+	mux.HandleFunc("PUT /api/when/overrides", serve.JSON(a.setOverride))
+	mux.HandleFunc("PUT /api/when/overrides/image", serve.JSON(a.setOverrideImage))
+	mux.HandleFunc("POST /api/when/events", serve.JSON(a.addEvents))
+	mux.HandleFunc("PUT /api/when/events", serve.JSON(a.editEvent))
+	mux.HandleFunc("GET /api/when/event", serve.JSON(a.oneEvent))
+	mux.HandleFunc("POST /api/when/events/approve", serve.JSON(a.approveEvent))
+	mux.HandleFunc("POST /api/when/events/decline", serve.JSON(a.declineEvent))
+	mux.HandleFunc("POST /api/when/events/when", serve.JSON(a.moveEvent))
+	mux.HandleFunc("DELETE /api/when/settings", serve.JSON(a.forgetSetting))
+	mux.HandleFunc("POST /api/when/tags", serve.JSON(a.setTags))
 	a.search.Register(mux, "/api/when", imageFolder, imagesearch.Members)
 	mux.HandleFunc("GET /open/feed/{file}", a.feed)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
@@ -118,7 +114,7 @@ func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory fun
 		actor := a.as(config.NormalizeEmail(email))
 		return a.recordBy(ctx, actor, actor.Email, id, answer, ViaPage, true, false)
 	}
-	return Hooks{Answer: answer, MakeDefault: a.makeDefault, RSVPs: a.rsvps, MoveAddress: a.moveAddress}
+	return Hooks{Answer: answer, MakeDefault: a.makeDefault, RSVPs: serve.JSON(a.rsvps), MoveAddress: a.moveAddress}
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +130,7 @@ var now = func() time.Time {
 	return time.Now().In(Location)
 }
 
-func (a app) model(w http.ResponseWriter, r *http.Request) {
+func (a app) model(r *http.Request, _ serve.None) (View, error) {
 	email, admin := a.who(r)
 	directory := a.directory()
 	view := Render(a.cache.Model(), directory, a.settings(), access.Actor{Email: email, Admin: admin}, now(), a.linked(email))
@@ -154,18 +150,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	}
 	view.ImageSearch = a.search.On()
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode calendar model", "error", err)
-	}
-}
-
-func decode(w http.ResponseWriter, r *http.Request, into any) bool {
-	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(into); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return false
-	}
-	return true
+	return view, nil
 }
 
 func (a app) as(email string) access.Actor {
@@ -175,31 +160,6 @@ func (a app) as(email string) access.Actor {
 func (a app) actor(r *http.Request) access.Actor {
 	email, _ := a.who(r)
 	return a.as(email)
-}
-
-func refuse(w http.ResponseWriter, err error) {
-	http.Error(w, err.Error(), access.Status(err))
-}
-
-func (a app) commit(w http.ResponseWriter, r *http.Request, actor access.Actor, ops ...store.Op) bool {
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		refuse(w, err)
-		return false
-	}
-	return true
-}
-
-func NewToken() string {
-	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
-	var raw [24]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		panic(err)
-	}
-	out := make([]byte, len(raw))
-	for i, b := range raw {
-		out[i] = alphabet[int(b)%len(alphabet)]
-	}
-	return string(out)
 }
 
 func feedURL(r *http.Request, token string) string {
@@ -214,39 +174,29 @@ type feedBody struct {
 	Tags       []string `json:"tags"`
 }
 
-func (a app) addFeed(w http.ResponseWriter, r *http.Request) {
+func (a app) addFeed(r *http.Request, body feedBody) (map[string]string, error) {
 	actor := a.actor(r)
-	var body feedBody
-	if !decode(w, r, &body) {
-		return
-	}
 	ops, cells := a.newFeed(actor, body)
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return nil, err
 	}
 	slog.InfoContext(r.Context(), "calendar: feed added", "actor", actor.Email, "name", cells["Name"], "classrooms", cells["Classrooms"], "tags", cells["Tags"])
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": cells["Token"], "url": feedURL(r, cells["Token"])})
+	return map[string]string{"token": cells["Token"], "url": feedURL(r, cells["Token"])}, nil
 }
 
-func (a app) editFeed(w http.ResponseWriter, r *http.Request) {
+func (a app) editFeed(r *http.Request, body feedBody) (serve.None, error) {
 	actor := a.actor(r)
-	var body feedBody
-	if !decode(w, r, &body) {
-		return
-	}
 	ops, cells, err := a.changeFeed(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	if cells != nil {
 		slog.InfoContext(r.Context(), "calendar: feed changed", "actor", actor.Email, "name", cells["Name"], "classrooms", cells["Classrooms"], "tags", cells["Tags"])
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 type Hooks struct {
@@ -269,19 +219,13 @@ func (a app) makeDefault(ctx context.Context, email, token string) error {
 	return nil
 }
 
-func (a app) setDefault(w http.ResponseWriter, r *http.Request) {
+type tokenBody struct {
+	Token string `json:"token"`
+}
+
+func (a app) setDefault(r *http.Request, body tokenBody) (serve.None, error) {
 	actor := a.actor(r)
-	var body struct {
-		Token string `json:"token"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
-	if err := a.makeDefault(r.Context(), actor.Email, strings.TrimSpace(body.Token)); err != nil {
-		refuse(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, a.makeDefault(r.Context(), actor.Email, strings.TrimSpace(body.Token))
 }
 
 func (a app) saveOrder(ctx context.Context, actor access.Actor, tokens []string, ops []store.Op) error {
@@ -292,24 +236,17 @@ func (a app) saveOrder(ctx context.Context, actor access.Actor, tokens []string,
 	return nil
 }
 
-func (a app) orderFeeds(w http.ResponseWriter, r *http.Request) {
+type tokensBody struct {
+	Tokens []string `json:"tokens"`
+}
+
+func (a app) orderFeeds(r *http.Request, body tokensBody) (serve.None, error) {
 	actor := a.actor(r)
-	var body struct {
-		Tokens []string `json:"tokens"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
 	ops, err := a.orderOps(actor, body.Tokens)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if err := a.saveOrder(r.Context(), actor, body.Tokens, ops); err != nil {
-		refuse(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, a.saveOrder(r.Context(), actor, body.Tokens, ops)
 }
 
 func feedEmoji(s string) string {
@@ -320,55 +257,38 @@ func feedEmoji(s string) string {
 	return s
 }
 
-func (a app) removeFeed(w http.ResponseWriter, r *http.Request) {
+func (a app) removeFeed(r *http.Request, body tokenBody) (serve.None, error) {
 	actor := a.actor(r)
-	var body struct {
-		Token string `json:"token"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
 	ops, name, err := a.dropFeed(actor, body.Token)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: feed removed", "actor", actor.Email, "name", name)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) admin(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if _, admin := a.who(r); !admin {
-			http.Error(w, "only a calendar admin can do that", http.StatusForbidden)
-			return
-		}
-		next(w, r)
-	}
+type keywordsBody struct {
+	ID       string   `json:"id"`
+	Keywords []string `json:"keywords"`
 }
 
-func (a app) setKeywords(w http.ResponseWriter, r *http.Request) {
+func (a app) setKeywords(r *http.Request, body keywordsBody) (serve.None, error) {
 	actor := a.actor(r)
-	var body struct {
-		ID       string   `json:"id"`
-		Keywords []string `json:"keywords"`
-	}
-	if !decode(w, r, &body) {
-		return
+	if err := adminOnly(actor); err != nil {
+		return serve.None{}, err
 	}
 	ops, e, cell, err := a.keywordOps(actor, body.ID, body.Keywords)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: keywords set", "actor", actor.Email, "event", e.ID, "keywords", cell)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 var eventIDForm = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`)
@@ -418,19 +338,14 @@ type eventBody struct {
 	RepeatTimes int      `json:"repeatTimes"`
 }
 
-func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
+func (a app) addEvents(r *http.Request, body eventBody) (map[string]any, error) {
 	actor := a.actor(r)
-	var body eventBody
-	if !decode(w, r, &body) {
-		return
-	}
 	ops, ids, pending, err := a.newEvents(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return nil, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return nil, err
 	}
 	slog.InfoContext(r.Context(), "calendar: events added", "actor", actor.Email, "title", strings.TrimSpace(body.Title), "count", len(ids), "pending", pending)
 	for _, id := range ids {
@@ -443,22 +358,21 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 			go a.tellAdmins(context.WithoutCancel(r.Context()), actor.Email, e)
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ids": ids, "pending": pending})
+	return map[string]any{"ids": ids, "pending": pending}, nil
 }
 
-func (a app) oneEvent(w http.ResponseWriter, r *http.Request) {
+type oneEventView struct {
+	*Event
+	AdminOnly bool `json:"adminOnly,omitempty"`
+}
+
+func (a app) oneEvent(r *http.Request, _ serve.None) (oneEventView, error) {
 	actor, admin := a.who(r)
 	e := a.eventFor(actor, admin, strings.TrimSpace(r.URL.Query().Get("id")))
 	if e == nil {
-		http.NotFound(w, r)
-		return
+		return oneEventView{}, access.Missing("404 page not found")
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(struct {
-		*Event
-		AdminOnly bool `json:"adminOnly,omitempty"`
-	}{e, admin && a.eventFor(actor, false, e.ID) == nil})
+	return oneEventView{e, admin && a.eventFor(actor, false, e.ID) == nil}, nil
 }
 
 func (a app) tellAdmins(ctx context.Context, by string, e *Event) {
@@ -502,19 +416,14 @@ func (a app) tellAdmins(ctx context.Context, by string, e *Event) {
 	slog.InfoContext(ctx, "calendar: admins told", "event", e.ID, "to", len(admins))
 }
 
-func (a app) editEvent(w http.ResponseWriter, r *http.Request) {
+func (a app) editEvent(r *http.Request, body eventBody) (serve.None, error) {
 	actor := a.actor(r)
-	var body eventBody
-	if !decode(w, r, &body) {
-		return
-	}
 	ops, e, cells, err := a.changeEvent(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: event changed", "actor", actor.Email, "event", e.ID, "title", cells["Title"])
 	if cells["Status"] == StatusPending && a.mail.Sender != nil {
@@ -522,46 +431,47 @@ func (a app) editEvent(w http.ResponseWriter, r *http.Request) {
 			go a.tellAdmins(context.WithoutCancel(r.Context()), actor.Email, changed)
 		}
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) approveEvent(w http.ResponseWriter, r *http.Request) {
-	a.setStatus(w, r, StatusApproved, "approved")
+type idBody struct {
+	ID string `json:"id"`
 }
 
-func (a app) declineEvent(w http.ResponseWriter, r *http.Request) {
-	a.setStatus(w, r, StatusDeclined, "declined")
+func (a app) approveEvent(r *http.Request, body idBody) (serve.None, error) {
+	return a.setStatus(r, body, StatusApproved, "approved")
 }
 
-func (a app) setStatus(w http.ResponseWriter, r *http.Request, status, did string) {
+func (a app) declineEvent(r *http.Request, body idBody) (serve.None, error) {
+	return a.setStatus(r, body, StatusDeclined, "declined")
+}
+
+func (a app) setStatus(r *http.Request, body idBody, status, did string) (serve.None, error) {
 	actor := a.actor(r)
-	var body struct {
-		ID string `json:"id"`
-	}
-	if !decode(w, r, &body) {
-		return
+	if err := adminOnly(actor); err != nil {
+		return serve.None{}, err
 	}
 	ops, e, err := a.statusOps(actor, body.ID, status)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: event "+did, "actor", actor.Email, "event", e.ID, "title", e.Title, "by", e.AddedBy)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) moveEvent(w http.ResponseWriter, r *http.Request) {
+type moveBody struct {
+	ID    string `json:"id"`
+	Start string `json:"start"`
+	End   string `json:"end"`
+}
+
+func (a app) moveEvent(r *http.Request, body moveBody) (serve.None, error) {
 	actor := a.actor(r)
-	var body struct {
-		ID    string `json:"id"`
-		Start string `json:"start"`
-		End   string `json:"end"`
-	}
-	if !decode(w, r, &body) {
-		return
+	if err := adminOnly(actor); err != nil {
+		return serve.None{}, err
 	}
 	start, end := strings.TrimSpace(body.Start), strings.TrimSpace(body.End)
 	if end == "" {
@@ -569,45 +479,41 @@ func (a app) moveEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	ops, e, err := a.moveOps(actor, body.ID, start, end)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: event moved", "actor", actor.Email, "event", e.ID, "start", start, "end", end)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) saveSetting(w http.ResponseWriter, r *http.Request) {
+type viewBody struct {
+	Classrooms []string `json:"classrooms"`
+	Tags       []string `json:"tags"`
+}
+
+func (a app) saveSetting(r *http.Request, body viewBody) (serve.None, error) {
 	actor := a.actor(r)
-	var body struct {
-		Classrooms []string `json:"classrooms"`
-		Tags       []string `json:"tags"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
 	ops, cells := saveViewOps(actor, body.Classrooms, body.Tags)
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: view saved", "actor", actor.Email, "classrooms", cells["Classrooms"], "tags", cells["Categories"])
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) forgetSetting(w http.ResponseWriter, r *http.Request) {
+func (a app) forgetSetting(r *http.Request, _ serve.None) (serve.None, error) {
 	actor := a.actor(r)
 	ops := a.forgetViewOps(actor)
 	if len(ops) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
+		return serve.None{}, nil
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: view forgotten", "actor", actor.Email)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 type tagBody struct {
@@ -618,24 +524,21 @@ type tagBody struct {
 	Image       string `json:"image"`
 }
 
-func (a app) setTags(w http.ResponseWriter, r *http.Request) {
+type tagsBody struct {
+	Tags []tagBody `json:"tags"`
+}
+
+func (a app) setTags(r *http.Request, body tagsBody) (serve.None, error) {
 	actor := a.actor(r)
-	var body struct {
-		Tags []tagBody `json:"tags"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
 	ops, added, err := a.tagOps(actor, body.Tags)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: categories saved", "actor", actor.Email, "added", added)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 func (a app) feed(w http.ResponseWriter, r *http.Request) {
@@ -658,15 +561,14 @@ func (a app) feed(w http.ResponseWriter, r *http.Request) {
 	w.Write(ICS(model, a.directory(), f, a.linked(f.Email), "https://"+r.Host, now()))
 }
 
-func (a app) myHeliosianToken(w http.ResponseWriter, r *http.Request) {
+func (a app) myHeliosianToken(r *http.Request, _ serve.None) (tokenBody, error) {
 	actor := a.actor(r)
 	ops, token := a.feedTokenOps(actor)
 	if len(ops) > 0 {
-		if !a.commit(w, r, actor, ops...) {
-			return
+		if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+			return tokenBody{}, err
 		}
 		slog.InfoContext(r.Context(), "calendar: my heliosian feed made", "actor", actor.Email)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": token})
+	return tokenBody{Token: token}, nil
 }

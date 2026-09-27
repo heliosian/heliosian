@@ -18,9 +18,11 @@ import (
 	"sync"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/ratelimit"
+	"heliosian/internal/serve"
 )
 
 type Search struct {
@@ -118,11 +120,19 @@ func (s Search) Register(mux *http.ServeMux, prefix, folder string, gate func(ht
 	mux.HandleFunc("POST "+prefix+"/image", gate(s.limited(stores, storeRefusal, func(w http.ResponseWriter, r *http.Request) {
 		s.serveUpload(w, r, folder)
 	})))
-	mux.HandleFunc("GET "+prefix+"/images/search", gate(s.limited(searches, searchRefusal, s.serveSearch)))
+	mux.HandleFunc("GET "+prefix+"/images/search", gate(s.limited(searches, searchRefusal, serve.JSON(s.search))))
 	mux.HandleFunc("GET "+prefix+"/images/thumb", gate(s.serveThumb))
-	mux.HandleFunc("POST "+prefix+"/images/import", gate(s.limited(stores, storeRefusal, func(w http.ResponseWriter, r *http.Request) {
-		s.serveImport(w, r, folder)
-	})))
+	mux.HandleFunc("POST "+prefix+"/images/import", gate(s.limited(stores, storeRefusal, serve.JSON(func(r *http.Request, body importRequest) (stored, error) {
+		return s.importImage(r, body, folder)
+	}))))
+}
+
+type importRequest struct {
+	ID string `json:"id"`
+}
+
+type stored struct {
+	Name string `json:"name"`
 }
 
 func (s Search) limited(which func(*Limits) *ratelimit.Limiter, refusal string, next http.HandlerFunc) http.HandlerFunc {
@@ -130,7 +140,7 @@ func (s Search) limited(which func(*Limits) *ratelimit.Limiter, refusal string, 
 		email := strings.ToLower(auth.RealEmail(r))
 		if !which(s.Limits).Allow(email, time.Now()) {
 			slog.WarnContext(r.Context(), "image limit reached", "path", r.URL.Path, "email", email)
-			http.Error(w, refusal, http.StatusTooManyRequests)
+			serve.Error(w, r, access.Refuse(http.StatusTooManyRequests, "%s", refusal))
 			return
 		}
 		next(w, r)
@@ -139,37 +149,38 @@ func (s Search) limited(which func(*Limits) *ratelimit.Limiter, refusal string, 
 
 func (s Search) serveUpload(w http.ResponseWriter, r *http.Request, folder string) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize)
+	out, err := s.upload(r, folder)
+	if err != nil {
+		serve.Error(w, r, err)
+		return
+	}
+	serve.Write(w, r, http.StatusOK, out)
+}
+
+func (s Search) upload(r *http.Request, folder string) (stored, error) {
 	file, header, err := r.FormFile("image")
 	if err != nil {
-		http.Error(w, "an image file is required", http.StatusBadRequest)
-		return
+		return stored{}, access.Invalid("an image file is required")
 	}
 	defer file.Close()
 	content, err := io.ReadAll(file)
 	if err != nil {
-		http.Error(w, "could not read the image", http.StatusBadRequest)
-		return
+		return stored{}, access.Invalid("could not read the image")
 	}
 	mimeType := http.DetectContentType(content)
 	if extensions[mimeType] == "" {
-		http.Error(w, fmt.Sprintf("%s is not a supported image", header.Filename), http.StatusBadRequest)
-		return
+		return stored{}, access.Invalid("%s is not a supported image", header.Filename)
 	}
-	s.store(w, r, folder, mimeType, content)
+	return s.store(folder, mimeType, content)
 }
 
-func (s Search) store(w http.ResponseWriter, r *http.Request, folder, mimeType string, content []byte) {
+func (s Search) store(folder, mimeType string, content []byte) (stored, error) {
 	sum := sha256.Sum256(content)
 	name := hex.EncodeToString(sum[:]) + extensions[mimeType]
 	if err := s.Stock.media.Put(folder, name, mimeType, content); err != nil {
-		slog.ErrorContext(r.Context(), "store image", "folder", folder, "error", err)
-		http.Error(w, "could not store the image", http.StatusInternalServerError)
-		return
+		return stored{}, fmt.Errorf("store image in %s: %w", folder, err)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]string{"name": folder + "/" + name}); err != nil {
-		slog.ErrorContext(r.Context(), "encode image name", "error", err)
-	}
+	return stored{Name: folder + "/" + name}, nil
 }
 
 func key(source, sourceID string) string {
@@ -189,15 +200,13 @@ func imageName(id string) string {
 	return stockPrefix + id
 }
 
-func (s Search) serveSearch(w http.ResponseWriter, r *http.Request) {
+func (s Search) search(r *http.Request, _ serve.None) ([]Hit, error) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if q == "" {
-		http.Error(w, "say what to search for", http.StatusBadRequest)
-		return
+		return nil, access.Invalid("say what to search for")
 	}
 	if !s.On() {
-		http.Error(w, "there is nowhere to search for pictures", http.StatusBadRequest)
-		return
+		return nil, access.Invalid("there is nowhere to search for pictures")
 	}
 	searches := []func(context.Context, string) ([]result, error){}
 	if s.Unsplash != "" {
@@ -211,8 +220,7 @@ func (s Search) serveSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	results, err := gather(r.Context(), q, searches)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
+		return nil, access.Refuse(http.StatusBadGateway, "%s", err.Error())
 	}
 	s.Stock.remember(results)
 	go s.Stock.prefetch(results, s.UserAgent)
@@ -223,8 +231,7 @@ func (s Search) serveSearch(w http.ResponseWriter, r *http.Request) {
 		hit.Thumb = thumbPath + "?id=" + hit.ID
 		hits = append(hits, hit)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(hits)
+	return hits, nil
 }
 
 func gather(ctx context.Context, q string, searches []func(context.Context, string) ([]result, error)) ([]result, error) {
@@ -579,17 +586,9 @@ func (s Search) serveThumb(w http.ResponseWriter, r *http.Request) {
 	w.Write(content)
 }
 
-func (s Search) serveImport(w http.ResponseWriter, r *http.Request, folder string) {
-	var body struct {
-		ID string `json:"id"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return
-	}
+func (s Search) importImage(r *http.Request, body importRequest, folder string) (stored, error) {
 	if !s.On() || !idPattern.MatchString(body.ID) {
-		http.Error(w, "no such picture", http.StatusNotFound)
-		return
+		return stored{}, access.Missing("no such picture")
 	}
 	ctx := r.Context()
 	content, mimeType, err := s.Stock.bucket.Get(ctx, imageName(body.ID))
@@ -599,37 +598,29 @@ func (s Search) serveImport(w http.ResponseWriter, r *http.Request, folder strin
 		var rec record
 		rec, err = s.Stock.record(ctx, body.ID)
 		if errors.Is(err, blob.ErrNotFound) {
-			http.Error(w, "no such picture", http.StatusNotFound)
-			return
+			return stored{}, access.Missing("no such picture")
 		}
 		if err == nil {
 			content, mimeType, err = fetch(ctx, s.UserAgent, rec.URL, maxImageSize)
 		}
 		switch {
 		case errors.Is(err, errTooLarge), errors.Is(err, errNotImage):
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			return stored{}, access.Invalid("%s", err.Error())
 		case err != nil:
 			slog.ErrorContext(ctx, "stock image", "id", body.ID, "error", err)
-			http.Error(w, "could not fetch that image", http.StatusBadGateway)
-			return
+			return stored{}, access.Refuse(http.StatusBadGateway, "could not fetch that image")
 		}
 		if err := s.Stock.bucket.Put(ctx, imageName(body.ID), mimeType, content); err != nil {
-			slog.ErrorContext(ctx, "keep stock image", "id", body.ID, "error", err)
-			http.Error(w, "could not store the image", http.StatusInternalServerError)
-			return
+			return stored{}, fmt.Errorf("keep stock image %s: %w", body.ID, err)
 		}
 		fetched = true
 		download = rec.Download
 	}
 	if err != nil {
-		slog.ErrorContext(ctx, "stock image", "id", body.ID, "error", err)
-		http.Error(w, "could not read that image", http.StatusInternalServerError)
-		return
+		return stored{}, fmt.Errorf("read stock image %s: %w", body.ID, err)
 	}
 	if int64(len(content)) > maxImageSize {
-		http.Error(w, errTooLarge.Error(), http.StatusBadRequest)
-		return
+		return stored{}, access.Invalid("%s", errTooLarge.Error())
 	}
 	if fetched && strings.HasPrefix(download, "https://api.unsplash.com/") && s.Unsplash != "" {
 		go func(endpoint string) {
@@ -641,5 +632,5 @@ func (s Search) serveImport(w http.ResponseWriter, r *http.Request, folder strin
 		}(download)
 	}
 	slog.InfoContext(ctx, "imported image", "id", body.ID, "folder", folder, "fetched", fetched)
-	s.store(w, r, folder, mimeType, content)
+	return s.store(folder, mimeType, content)
 }

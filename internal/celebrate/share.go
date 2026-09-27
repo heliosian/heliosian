@@ -9,6 +9,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/sharecard"
+	"heliosian/internal/when"
 )
 
 func CardStyle(name, tagline func() string) *sharecard.Style {
@@ -24,22 +25,22 @@ func previewable(p *Party) bool {
 }
 
 func whenLines(p *Party) (string, string) {
-	start, err := time.ParseInLocation(DateTimeFormat, p.Start, local)
+	start, err := time.ParseInLocation(DateTimeFormat, p.Start, when.Location)
 	if err != nil {
-		if day, err := time.ParseInLocation(DateFormat, p.Start, local); err == nil {
+		if day, err := time.ParseInLocation(DateFormat, p.Start, when.Location); err == nil {
 			return day.Format("Monday, January 2"), ""
 		}
 		return "", ""
 	}
 	day := start.Format("Monday, January 2")
-	end, err := time.ParseInLocation(DateTimeFormat, p.End, local)
+	end, err := time.ParseInLocation(DateTimeFormat, p.End, when.Location)
 	if err != nil {
 		return day, start.Format("3:04 PM")
 	}
 	return day, sharecard.Hours(start, end)
 }
 
-func when(p *Party) string {
+func whenLine(p *Party) string {
 	day, hours := whenLines(p)
 	if hours != "" {
 		return day + " · " + hours
@@ -93,7 +94,7 @@ func PreviewHead(cache *Cache, style *sharecard.Style) func(r *http.Request) str
 			return upcomingHead(style, model, origin)
 		}
 		parts := []string{}
-		if line := when(p); line != "" {
+		if line := whenLine(p); line != "" {
 			parts = append(parts, line)
 		}
 		if p.Location != "" {
@@ -116,7 +117,7 @@ func upcomingHead(style *sharecard.Style, m *Model, origin string) string {
 	if len(parties) > 0 {
 		next := parties[0]
 		desc = "Next up: " + next.Title
-		if line := when(next); line != "" {
+		if line := whenLine(next); line != "" {
 			desc += " — " + line
 		}
 		if next.Location != "" {

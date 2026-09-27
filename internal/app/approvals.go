@@ -1,13 +1,12 @@
 package app
 
 import (
-	"encoding/json"
-	"log/slog"
 	"net/http"
 	"sort"
 
 	"heliosian/internal/auth"
 	"heliosian/internal/celebrate"
+	"heliosian/internal/serve"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
 	"heliosian/internal/who"
@@ -20,8 +19,12 @@ type approval struct {
 	Path  string `json:"path"`
 }
 
+type approvalsView struct {
+	Waiting []approval `json:"waiting"`
+}
+
 func approvals(directory *who.Cache, teamCache *team.Cache, celebrateCache *celebrate.Cache, calendarCache *when.Cache) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return serve.JSON(func(r *http.Request, _ serve.None) (approvalsView, error) {
 		email := directory.Model().Resolve(auth.Email(r))
 		out := []approval{}
 		if teamCache.IsAdmin(email) {
@@ -58,11 +61,6 @@ func approvals(directory *who.Cache, teamCache *team.Cache, celebrateCache *cele
 			}
 			return out[i].Start < out[j].Start
 		})
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(struct {
-			Waiting []approval `json:"waiting"`
-		}{out}); err != nil {
-			slog.ErrorContext(r.Context(), "encode approvals", "error", err)
-		}
-	}
+		return approvalsView{out}, nil
+	})
 }

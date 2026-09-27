@@ -1,7 +1,6 @@
 package access
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 )
@@ -23,6 +22,7 @@ func (a Actor) Mine(email string) bool {
 type Refusal struct {
 	Status  int
 	Message string
+	Body    any
 }
 
 func (r *Refusal) Error() string {
@@ -43,12 +43,4 @@ func Missing(format string, args ...any) error {
 
 func Invalid(format string, args ...any) error {
 	return Refuse(http.StatusBadRequest, format, args...)
-}
-
-func Status(err error) int {
-	var r *Refusal
-	if errors.As(err, &r) {
-		return r.Status
-	}
-	return http.StatusBadRequest
 }

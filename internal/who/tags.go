@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+
+	"heliosian/internal/serve"
 )
 
 const maxTagLength = 40
@@ -131,14 +133,15 @@ func (t tagger) rename(w http.ResponseWriter, r *http.Request) {
 	actor := requestActor(t.cache, r)
 	ops, people, err := t.cache.Model().renameTag(actor, from, to)
 	if err != nil {
-		refuse(w, err)
+		serve.Error(w, r, err)
 		return
 	}
 	if len(ops) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !t.cache.commit(w, r, actor, ops...) {
+	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
+		serve.Error(w, r, err)
 		return
 	}
 	slog.InfoContext(r.Context(), "tag: renamed", "owner", actor.Email, "from", from, "to", to, "people", people)
@@ -152,10 +155,11 @@ func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 	actor := requestActor(t.cache, r)
 	ops, fromOwner, people, err := t.cache.Model().copyTag(actor, formEmail(r, "owner"), from, to)
 	if err != nil {
-		refuse(w, err)
+		serve.Error(w, r, err)
 		return
 	}
-	if !t.cache.commit(w, r, actor, ops...) {
+	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
+		serve.Error(w, r, err)
 		return
 	}
 	slog.InfoContext(r.Context(), "tag: copied", "owner", actor.Email, "fromOwner", fromOwner, "from", from, "to", to, "people", people)
@@ -170,10 +174,11 @@ func (t tagger) share(w http.ResponseWriter, r *http.Request) {
 	actor := requestActor(t.cache, r)
 	ops, err := t.cache.Model().shareTag(actor, tag, manager, on)
 	if err != nil {
-		refuse(w, err)
+		serve.Error(w, r, err)
 		return
 	}
-	if !t.cache.commit(w, r, actor, ops...) {
+	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
+		serve.Error(w, r, err)
 		return
 	}
 	slog.InfoContext(r.Context(), "tag: shared", "owner", actor.Email, "on", on, "tag", tag, "manager", manager)
@@ -187,10 +192,11 @@ func (t tagger) leave(w http.ResponseWriter, r *http.Request) {
 	actor := requestActor(t.cache, r)
 	ops, err := t.cache.Model().leaveTag(actor, owner, tag)
 	if err != nil {
-		refuse(w, err)
+		serve.Error(w, r, err)
 		return
 	}
-	if !t.cache.commit(w, r, actor, ops...) {
+	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
+		serve.Error(w, r, err)
 		return
 	}
 	slog.InfoContext(r.Context(), "tag: left", "owner", owner, "tag", tag, "manager", actor.Email)
@@ -203,10 +209,11 @@ func (t tagger) drop(w http.ResponseWriter, r *http.Request) {
 	actor := requestActor(t.cache, r)
 	ops, people, err := t.cache.Model().dropTag(actor, tag)
 	if err != nil {
-		refuse(w, err)
+		serve.Error(w, r, err)
 		return
 	}
-	if !t.cache.commit(w, r, actor, ops...) {
+	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
+		serve.Error(w, r, err)
 		return
 	}
 	slog.InfoContext(r.Context(), "tag: deleted", "owner", actor.Email, "tag", tag, "people", people)
@@ -221,14 +228,15 @@ func (t tagger) set(w http.ResponseWriter, r *http.Request) {
 	actor := requestActor(t.cache, r)
 	ops, owner, err := t.cache.Model().setTag(actor, formEmail(r, "owner"), tag, person, on)
 	if err != nil {
-		refuse(w, err)
+		serve.Error(w, r, err)
 		return
 	}
 	if len(ops) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !t.cache.commit(w, r, actor, ops...) {
+	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
+		serve.Error(w, r, err)
 		return
 	}
 	slog.InfoContext(r.Context(), "tag: changed", "owner", owner, "on", on, "tag", tag, "person", person)

@@ -17,6 +17,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
+	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
@@ -79,7 +80,7 @@ func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, directory, func() []string { return nil }, ImageSearch{}, mailer, testFrom, nil, nil, testStyle)
+	Register(mux, cache, nil, directory, func() []string { return nil }, imagesearch.Search{}, mailer, testFrom, nil, nil, testStyle)
 	return cache, mux
 }
 
@@ -1174,7 +1175,7 @@ func TestMoveAddress(t *testing.T) {
 	type move struct{ actor, old, to, name string }
 	told := []move{}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, directory, func() []string { return nil }, ImageSearch{}, nil, testFrom, nil, func(_ context.Context, actor access.Actor, old, to, name string) {
+	Register(mux, cache, nil, directory, func() []string { return nil }, imagesearch.Search{}, nil, testFrom, nil, func(_ context.Context, actor access.Actor, old, to, name string) {
 		told = append(told, move{actor.Email, old, to, name})
 	}, testStyle)
 	const (

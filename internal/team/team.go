@@ -1,10 +1,6 @@
 package team
 
 import (
-	"crypto/rand"
-	"encoding/json"
-	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -15,11 +11,10 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/config"
 	"heliosian/internal/imagesearch"
-	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
-	"heliosian/internal/store"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -32,23 +27,13 @@ var pages = []string{
 	"/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/activities/{path...}", "/v/{path...}",
 }
 
-var local = mustLocation("America/Los_Angeles")
-
-func mustLocation(name string) *time.Location {
-	loc, err := time.LoadLocation(name)
-	if err != nil {
-		logging.Fatal("load time zone", "name", name, "error", err)
-	}
-	return loc
-}
-
 type app struct {
 	cache       *Cache
 	media       *blob.Store
 	directory   func() *who.Model
 	settings    func() *config.Settings
 	superAdmins func() []string
-	search      ImageSearch
+	search      imagesearch.Search
 	mailer      mail.Sender
 	from        string
 	rsvps       RSVPLookup
@@ -56,9 +41,7 @@ type app struct {
 	style       *sharecard.Style
 }
 
-type ImageSearch = imagesearch.Search
-
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory func() *who.Model, settings func() *config.Settings, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory func() *who.Model, settings func() *config.Settings, superAdmins func() []string, search imagesearch.Search, mailer mail.Sender, from string, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
 	if search.UserAgent == "" {
 		search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
 	}
@@ -66,28 +49,28 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory fun
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
-	mux.HandleFunc("GET /api/team/model", a.model)
+	mux.HandleFunc("GET /api/team/model", serve.JSON(a.model))
 	a.search.Register(mux, "/api/team", imageFolder, imagesearch.Members)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
-	mux.HandleFunc("GET /api/team/people", a.people)
-	mux.HandleFunc("POST /api/team/volunteer", a.saveVolunteer)
-	mux.HandleFunc("DELETE /api/team/volunteer", a.removeVolunteer)
-	mux.HandleFunc("POST /api/team/activity", a.saveActivity)
-	mux.HandleFunc("POST /api/team/order", a.orderChildren)
-	mux.HandleFunc("DELETE /api/team/activity", a.deleteActivity)
-	mux.HandleFunc("POST /api/team/link", a.saveLink)
-	mux.HandleFunc("DELETE /api/team/link", a.deleteLink)
-	mux.HandleFunc("POST /api/team/category", a.saveCategory)
-	mux.HandleFunc("DELETE /api/team/category", a.deleteCategory)
-	mux.HandleFunc("POST /api/team/categories/order", a.reorderCategories)
-	mux.HandleFunc("POST /api/team/copy", a.copyActivity)
-	mux.HandleFunc("POST /api/team/settings", a.saveSettings)
-	mux.HandleFunc("POST /api/team/notify", a.saveNotify)
-	mux.HandleFunc("GET /api/admin/state", a.adminState)
-	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
-	mux.HandleFunc("POST /api/team/redirect", a.saveRedirect)
-	mux.HandleFunc("DELETE /api/team/redirect", a.deleteRedirect)
+	mux.HandleFunc("GET /api/team/people", serve.JSON(a.people))
+	mux.HandleFunc("POST /api/team/volunteer", serve.JSON(a.saveVolunteer))
+	mux.HandleFunc("DELETE /api/team/volunteer", serve.JSON(a.removeVolunteer))
+	mux.HandleFunc("POST /api/team/activity", serve.JSON(a.saveActivity))
+	mux.HandleFunc("POST /api/team/order", serve.JSON(a.orderChildren))
+	mux.HandleFunc("DELETE /api/team/activity", serve.JSON(a.deleteActivity))
+	mux.HandleFunc("POST /api/team/link", serve.JSON(a.saveLink))
+	mux.HandleFunc("DELETE /api/team/link", serve.JSON(a.deleteLink))
+	mux.HandleFunc("POST /api/team/category", serve.JSON(a.saveCategory))
+	mux.HandleFunc("DELETE /api/team/category", serve.JSON(a.deleteCategory))
+	mux.HandleFunc("POST /api/team/categories/order", serve.JSON(a.reorderCategories))
+	mux.HandleFunc("POST /api/team/copy", serve.JSON(a.copyActivity))
+	mux.HandleFunc("POST /api/team/settings", serve.JSON(a.saveSettings))
+	mux.HandleFunc("POST /api/team/notify", serve.JSON(a.saveNotify))
+	mux.HandleFunc("GET /api/admin/state", serve.JSON(a.adminState))
+	mux.HandleFunc("POST /api/admin/admins", serve.JSON(a.setAdmins))
+	mux.HandleFunc("POST /api/team/redirect", serve.JSON(a.saveRedirect))
+	mux.HandleFunc("DELETE /api/team/redirect", serve.JSON(a.deleteRedirect))
 }
 
 func Redirected(cache *Cache, next http.Handler) http.Handler {
@@ -119,103 +102,56 @@ func (a app) actor(r *http.Request) access.Actor {
 }
 
 func today() string {
-	return time.Now().In(local).Format(DateFormat)
+	return time.Now().In(when.Location).Format(DateFormat)
 }
 
-func (a app) model(w http.ResponseWriter, r *http.Request) {
+func (a app) model(r *http.Request, _ serve.None) (View, error) {
 	actor := a.actor(r)
-	view := RenderWith(a.cache.Model(), a.directory(), a.settings(), a.rsvps, a.lists, actor, time.Now().In(local))
+	view := RenderWith(a.cache.Model(), a.directory(), a.settings(), a.rsvps, a.lists, actor, time.Now().In(when.Location))
 	view.ImageSearch = a.search.On()
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(actor.Email)
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode events model", "error", err)
-	}
-}
-
-func decode(w http.ResponseWriter, r *http.Request, into any) bool {
-	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(into); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return false
-	}
-	return true
-}
-
-func refuse(w http.ResponseWriter, err error) {
-	http.Error(w, err.Error(), access.Status(err))
-}
-
-func (a app) commit(w http.ResponseWriter, r *http.Request, actor access.Actor, ops ...store.Op) bool {
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		refuse(w, err)
-		return false
-	}
-	return true
+	return view, nil
 }
 
 type activityRef struct {
 	ID string `json:"id"`
 }
 
-func newID() string {
-	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
-	var raw [8]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		panic(err)
-	}
-	out := make([]byte, len(raw))
-	for i, b := range raw {
-		out[i] = alphabet[int(b)%len(alphabet)]
-	}
-	return string(out)
+func (a app) people(r *http.Request, _ serve.None) ([]DirectoryPerson, error) {
+	return directoryPeople(a.directory()), nil
 }
 
-func (a app) people(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(directoryPeople(a.directory())); err != nil {
-		slog.ErrorContext(r.Context(), "team:encode people", "error", err)
-	}
-}
-
-func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
-	var body volunteerBody
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) saveVolunteer(r *http.Request, body volunteerBody) (serve.None, error) {
 	actor := a.actor(r)
 	s, err := a.cache.Model().saveVolunteer(actor, a.directory(), body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, s.ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, s.ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:saved volunteer", "actor", actor.Email, "action", s.action, "email", s.email, "activity", s.act.Title, "year", s.act.Year)
 	a.mailSignUp(r, s.act, s.email, s.position, s.note, actor.Email, s.existed, s.was)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID    string `json:"id"`
-		Email string `json:"email"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type removeVolunteerBody struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+}
+
+func (a app) removeVolunteer(r *http.Request, body removeVolunteerBody) (serve.None, error) {
 	actor := a.actor(r)
 	act, email, ops, err := a.cache.Model().removeVolunteer(actor, body.ID, body.Email)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:removed volunteer", "actor", actor.Email, "email", email, "activity", act.Title, "year", act.Year)
 	a.mailRemoved(r, act, email, actor.Email)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 type activityBody struct {
@@ -245,236 +181,188 @@ type activityBody struct {
 	TakeOver           bool       `json:"takeOver"`
 }
 
-func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
-	var body activityBody
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) saveActivity(r *http.Request, body activityBody) (serve.None, error) {
 	actor := a.actor(r)
 	s, err := a.cache.Model().saveActivity(actor, body)
-	var conflict *prettyConflict
-	if errors.As(err, &conflict) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(conflict)
-		return
-	}
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, s.ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, s.ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:saved activity", "actor", actor.Email, "action", s.action, "activity", s.title, "id", s.id, "year", s.year, "status", s.status)
 	if s.adding {
 		a.mailNewActivity(r, a.cache.Model().Activity(s.id), actor.Email)
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) deleteActivity(w http.ResponseWriter, r *http.Request) {
-	var body activityRef
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) deleteActivity(r *http.Request, body activityRef) (serve.None, error) {
 	actor := a.actor(r)
 	act, ops, err := a.cache.Model().deleteActivity(actor, body.ID)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:deleted activity", "actor", actor.Email, "activity", act.Title, "year", act.Year)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
-	var body linkBody
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) saveLink(r *http.Request, body linkBody) (serve.None, error) {
 	actor := a.actor(r)
 	act, action, ops, err := a.cache.Model().saveLink(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:saved link", "actor", actor.Email, "action", action, "link", strings.TrimSpace(body.Title), "activity", act.Title, "year", act.Year)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) orderChildren(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Parent string   `json:"parent"`
-		IDs    []string `json:"ids"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type orderBody struct {
+	Parent string   `json:"parent"`
+	IDs    []string `json:"ids"`
+}
+
+func (a app) orderChildren(r *http.Request, body orderBody) (serve.None, error) {
 	actor := a.actor(r)
 	parent, ops, err := a.cache.Model().orderChildren(actor, body.Parent, body.IDs)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:reordered", "actor", actor.Email, "parent", parent.Title, "year", parent.Year, "changed", len(ops))
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID    string `json:"id"`
-		Title string `json:"title"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type deleteLinkBody struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+func (a app) deleteLink(r *http.Request, body deleteLinkBody) (serve.None, error) {
 	actor := a.actor(r)
 	act, ops, err := a.cache.Model().deleteLink(actor, body.ID, body.Title)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:deleted link", "actor", actor.Email, "link", body.Title, "activity", act.Title, "year", act.Year)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
-	var body categoryBody
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) saveCategory(r *http.Request, body categoryBody) (serve.None, error) {
 	actor := a.actor(r)
 	s, err := a.cache.Model().saveCategory(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, s.op) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, s.op); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:saved category", "actor", actor.Email, "action", s.action, "category", s.title, "id", s.id, "event", s.eventID)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		EventID string   `json:"eventId"`
-		IDs     []string `json:"ids"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type categoryOrderBody struct {
+	EventID string   `json:"eventId"`
+	IDs     []string `json:"ids"`
+}
+
+func (a app) reorderCategories(r *http.Request, body categoryOrderBody) (serve.None, error) {
 	actor := a.actor(r)
 	eventID := strings.TrimSpace(body.EventID)
 	ops, err := a.cache.Model().reorderCategories(actor, eventID, body.IDs)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:reordered categories", "actor", actor.Email, "event", eventID, "count", len(body.IDs))
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID string `json:"id"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) deleteCategory(r *http.Request, body activityRef) (serve.None, error) {
 	actor := a.actor(r)
 	cat, ops, err := a.cache.deleteCategory(actor, body.ID)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:deleted category", "actor", actor.Email, "category", cat.Title, "id", cat.ID)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
-	var body activityRef
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) copyActivity(r *http.Request, body activityRef) (serve.None, error) {
 	actor := a.actor(r)
 	act, id, year, ops, err := a.cache.Model().copyActivity(actor, body.ID)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:copied activity", "actor", actor.Email, "activity", act.Title, "from", act.Year, "to", year, "id", id)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ExpenseFormURL string `json:"expenseFormUrl"`
-		Intro          string `json:"intro"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type settingsBody struct {
+	ExpenseFormURL string `json:"expenseFormUrl"`
+	Intro          string `json:"intro"`
+}
+
+func (a app) saveSettings(r *http.Request, body settingsBody) (serve.None, error) {
 	actor := a.actor(r)
 	ops, err := saveSettings(actor, body.ExpenseFormURL, body.Intro)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:changed the settings", "actor", actor.Email)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) saveNotify(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Kinds []string `json:"kinds"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type notifyBody struct {
+	Kinds []string `json:"kinds"`
+}
+
+func (a app) saveNotify(r *http.Request, body notifyBody) (serve.None, error) {
 	actor := a.actor(r)
 	value, ops, err := saveNotify(actor, body.Kinds)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:set notifications", "actor", actor.Email, "kinds", value)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) adminState(w http.ResponseWriter, r *http.Request) {
+type adminView struct {
+	Email  string   `json:"email"`
+	Admins []string `json:"admins"`
+	Notify []string `json:"notify"`
+	Mail   bool     `json:"mail"`
+}
+
+func (a app) adminState(r *http.Request, _ serve.None) (adminView, error) {
 	actor := a.actor(r)
 	if err := requireAdmin(actor); err != nil {
-		refuse(w, err)
-		return
+		return adminView{}, err
 	}
 	prefs := a.cache.Model().notifyPrefs(actor.Email)
 	notify := []string{}
@@ -483,76 +371,58 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 			notify = append(notify, k)
 		}
 	}
-	view := struct {
-		Email  string   `json:"email"`
-		Admins []string `json:"admins"`
-		Notify []string `json:"notify"`
-		Mail   bool     `json:"mail"`
-	}{Email: actor.Email, Admins: a.cache.Admins(a.superAdmins()), Notify: notify, Mail: a.mailer != nil}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode events admin state", "error", err)
-	}
+	return adminView{Email: actor.Email, Admins: a.cache.Admins(a.superAdmins()), Notify: notify, Mail: a.mailer != nil}, nil
 }
 
-func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Admins []string `json:"admins"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type adminsBody struct {
+	Admins []string `json:"admins"`
+}
+
+func (a app) setAdmins(r *http.Request, body adminsBody) (serve.None, error) {
 	actor := a.actor(r)
 	admins, ops, err := a.cache.Model().setAdmins(actor, a.superAdmins(), body.Admins)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:set the admin list", "actor", actor.Email, "admins", admins)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) saveRedirect(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Original string `json:"original"`
-		Old      string `json:"old"`
-		New      string `json:"new"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type redirectBody struct {
+	Original string `json:"original"`
+	Old      string `json:"old"`
+	New      string `json:"new"`
+}
+
+func (a app) saveRedirect(r *http.Request, body redirectBody) (serve.None, error) {
 	actor := a.actor(r)
 	s, err := a.cache.Model().saveRedirect(actor, body.Original, body.Old, body.New)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, s.op) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, s.op); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:saved redirect", "actor", actor.Email, "action", s.action, "old", s.old, "new", s.to)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) deleteRedirect(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Old string `json:"old"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type redirectRef struct {
+	Old string `json:"old"`
+}
+
+func (a app) deleteRedirect(r *http.Request, body redirectRef) (serve.None, error) {
 	actor := a.actor(r)
 	redirect, ops, err := a.cache.Model().deleteRedirect(actor, body.Old)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:deleted redirect", "actor", actor.Email, "old", redirect.Old)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }

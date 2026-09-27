@@ -1,11 +1,11 @@
 package app
 
 import (
-	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"heliosian/internal/serve"
 )
 
 const reportPath = "/csp-report"
@@ -40,8 +40,7 @@ func report(w http.ResponseWriter, r *http.Request) {
 			Sample     string `json:"script-sample"`
 		} `json:"csp-report"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&body); err != nil {
-		http.Error(w, "unreadable report", http.StatusBadRequest)
+	if !serve.Decode(w, r, &body) {
 		return
 	}
 	v := body.Report

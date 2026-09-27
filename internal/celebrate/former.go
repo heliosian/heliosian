@@ -2,7 +2,6 @@ package celebrate
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -13,6 +12,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/config"
+	"heliosian/internal/serve"
 	"heliosian/internal/who"
 )
 
@@ -29,30 +29,27 @@ func MoveAddress(ctx context.Context, cache *Cache, actor access.Actor, old, to,
 	return moved, nil
 }
 
-func (a app) moveAddress(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Old  string `json:"old"`
-		To   string `json:"to"`
-		Name string `json:"name"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type addressMove struct {
+	Old  string `json:"old"`
+	To   string `json:"to"`
+	Name string `json:"name"`
+}
+
+func (a app) moveAddress(r *http.Request, body addressMove) (serve.None, error) {
 	actor := a.actor(r)
 	ops, moved, err := a.cache.Model().moveUnlisted(actor, a.directory(), body.Old, body.To, body.Name)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	old, to := config.NormalizeEmail(body.Old), config.NormalizeEmail(body.To)
 	if a.moved != nil {
 		a.moved(r.Context(), actor, old, to, strings.TrimSpace(body.Name))
 	}
 	slog.InfoContext(r.Context(), "celebrate: address moved", "actor", actor.Email, "from", old, "to", to, "tickets", moved)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 type AddressUse struct {
@@ -152,17 +149,15 @@ func (m *Model) MovedAddresses() []Moved {
 	return out
 }
 
-func (a app) addresses(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.requireAdmin(w, r); !ok {
-		return
+type addressesView struct {
+	Problems []Problem `json:"problems"`
+	Moved    []Moved   `json:"moved"`
+}
+
+func (a app) addresses(r *http.Request, _ serve.None) (addressesView, error) {
+	if err := requireAdmin(a.actor(r)); err != nil {
+		return addressesView{}, err
 	}
 	model := a.cache.Model()
-	view := struct {
-		Problems []Problem `json:"problems"`
-		Moved    []Moved   `json:"moved"`
-	}{Problems(model, a.directory(), now()), model.MovedAddresses()}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "celebrate: encode addresses", "error", err)
-	}
+	return addressesView{Problems(model, a.directory(), now()), model.MovedAddresses()}, nil
 }

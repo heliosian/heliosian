@@ -2,15 +2,15 @@ package loop
 
 import (
 	"cmp"
-	"encoding/json"
-	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/mail"
+	"heliosian/internal/serve"
 )
 
 const (
@@ -139,19 +139,14 @@ func (a app) sentCount(name string) int {
 	return n
 }
 
-func (a app) messages(w http.ResponseWriter, r *http.Request) {
+func (a app) messages(r *http.Request, _ serve.None) (map[string]any, error) {
 	actor := a.actor(r)
 	g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("name"))))
 	if g == nil {
-		http.Error(w, "no such group", http.StatusNotFound)
-		return
+		return nil, access.Missing("no such group")
 	}
 	if !g.Edits(actor) {
-		http.Error(w, "you do not manage this group", http.StatusForbidden)
-		return
+		return nil, access.Forbidden("you do not manage this group")
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]any{"messages": a.history(g.Name)}); err != nil {
-		slog.ErrorContext(r.Context(), "encode groups messages", "error", err)
-	}
+	return map[string]any{"messages": a.history(g.Name)}, nil
 }

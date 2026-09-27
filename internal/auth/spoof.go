@@ -3,15 +3,16 @@ package auth
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"heliosian/internal/access"
+	"heliosian/internal/serve"
 )
 
 const (
@@ -113,7 +114,7 @@ func (a *Auth) spoofFields(value string) (real, target string, ok bool) {
 
 func (a *Auth) RegisterSpoof(mux *http.ServeMux) {
 	mux.HandleFunc("GET /auth/spoof", a.spoofState)
-	mux.HandleFunc("GET /auth/spoof/people", a.spoofPeople)
+	mux.HandleFunc("GET /auth/spoof/people", serve.JSON(a.spoofPeople))
 	mux.HandleFunc("POST /auth/spoof", a.setSpoof)
 }
 
@@ -153,38 +154,30 @@ func (a *Auth) spoofState(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode spoof state", "error", err)
-	}
+	serve.Write(w, r, http.StatusOK, view)
 }
 
-func (a *Auth) spoofPeople(w http.ResponseWriter, r *http.Request) {
+func (a *Auth) spoofPeople(r *http.Request, _ serve.None) ([]Person, error) {
 	if !a.canSpoof(r) {
-		http.Error(w, "super admin access required", http.StatusForbidden)
-		return
+		return nil, access.Forbidden("super admin access required")
 	}
 	people := a.Spoof.People()
 	if people == nil {
 		people = []Person{}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(people); err != nil {
-		slog.ErrorContext(r.Context(), "encode spoof people", "error", err)
-	}
+	return people, nil
 }
 
 func (a *Auth) setSpoof(w http.ResponseWriter, r *http.Request) {
 	if !a.canSpoof(r) {
-		http.Error(w, "super admin access required", http.StatusForbidden)
+		serve.Error(w, r, access.Forbidden("super admin access required"))
 		return
 	}
 	var body struct {
 		Email string `json:"email"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
+	if !serve.Decode(w, r, &body) {
 		return
 	}
 	real := RealEmail(r)
@@ -192,7 +185,7 @@ func (a *Auth) setSpoof(w http.ResponseWriter, r *http.Request) {
 	if target != "" {
 		p, ok := a.Spoof.Person(target)
 		if !ok {
-			http.Error(w, "nobody in the directory has that address", http.StatusBadRequest)
+			serve.Error(w, r, access.Invalid("nobody in the directory has that address"))
 			return
 		}
 		target = p.Email

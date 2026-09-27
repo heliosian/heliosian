@@ -12,6 +12,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/config"
 	"heliosian/internal/mail"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -98,39 +99,30 @@ func (a app) deliveryEvents(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (a app) changeInviteEmail(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID         string `json:"id"`
-		Email      string `json:"email"`
-		To         string `json:"to"`
-		Everywhere bool   `json:"everywhere"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type addressBody struct {
+	ID         string `json:"id"`
+	Email      string `json:"email"`
+	To         string `json:"to"`
+	Everywhere bool   `json:"everywhere"`
+}
+
+func (a app) changeInviteEmail(r *http.Request, body addressBody) (serve.None, error) {
 	actor := a.actor(r)
 	ops, c, err := a.changeAddressOps(actor, body.ID, body.Email, body.To, body.Everywhere)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
 	if c.everywhere {
-		if err := a.celebrate.MoveAddress(r.Context(), actor, c.from, c.to, c.name); err != nil {
-			refuse(w, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-		return
+		return serve.None{}, a.celebrate.MoveAddress(r.Context(), actor, c.from, c.to, c.name)
 	}
 	if len(ops) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
+		return serve.None{}, nil
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: invite address changed", "actor", actor.Email, "event", c.event.ID, "from", c.from, "to", c.to)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
 func (a app) moveAddress(ctx context.Context, actor access.Actor, old, to, name string) {

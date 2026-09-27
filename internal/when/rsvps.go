@@ -1,14 +1,13 @@
 package when
 
 import (
-	"encoding/json"
-	"log/slog"
 	"net/http"
 	"sort"
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/config"
+	"heliosian/internal/serve"
 )
 
 type RSVP struct {
@@ -38,11 +37,10 @@ func (a app) waiting(email string) []RSVP {
 	return out
 }
 
-func (a app) rsvps(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(struct {
-		Waiting []RSVP `json:"waiting"`
-	}{a.waiting(auth.Email(r))}); err != nil {
-		slog.ErrorContext(r.Context(), "encode rsvps", "error", err)
-	}
+type rsvpsView struct {
+	Waiting []RSVP `json:"waiting"`
+}
+
+func (a app) rsvps(r *http.Request, _ serve.None) (rsvpsView, error) {
+	return rsvpsView{a.waiting(auth.Email(r))}, nil
 }

@@ -1,9 +1,7 @@
 package feedback
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -13,8 +11,9 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
-	"heliosian/internal/logging"
 	"heliosian/internal/ratelimit"
+	"heliosian/internal/serve"
+	"heliosian/internal/when"
 )
 
 const (
@@ -25,16 +24,6 @@ const (
 	perWindow    = 5
 	window       = 10 * time.Minute
 )
-
-var school = schoolZone()
-
-func schoolZone() *time.Location {
-	zone, err := time.LoadLocation("America/Los_Angeles")
-	if err != nil {
-		logging.Fatal("load school time zone", "error", err)
-	}
-	return zone
-}
 
 type Report struct {
 	ID         string
@@ -102,8 +91,7 @@ func actorOf(r *http.Request, superAdmin func(string) bool) access.Actor {
 
 func (a api) file(w http.ResponseWriter, r *http.Request) {
 	var in submission
-	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&in); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
+	if !serve.Decode(w, r, &in) {
 		return
 	}
 	if in.Kind != "bug" && in.Kind != "idea" {
@@ -217,7 +205,7 @@ func Strip(r Report) (title, body, issueType string, labels []string) {
 	row("Screen", r.Screen)
 	row("Language", r.Language)
 	row("Time zone", r.Timezone)
-	row("Reported", r.At.In(school).Format("2006-01-02 15:04 MST"))
+	row("Reported", r.At.In(when.Location).Format("2006-01-02 15:04 MST"))
 	if len(r.Errors) > 0 {
 		fmt.Fprintf(&b, "\n<details>\n<summary>Recent errors (%d)</summary>\n\n```\n%s\n```\n\n</details>\n", len(r.Errors), Redact(strings.Join(r.Errors, "\n")))
 	}

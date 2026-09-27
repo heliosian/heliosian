@@ -3,7 +3,6 @@ package who
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"slices"
 	"sort"
 	"strings"
@@ -121,13 +120,12 @@ func NewCache(source data.Source, writer data.Writer, blobs, static BlobChecker,
 	return c, nil
 }
 
-func (c *Cache) commit(w http.ResponseWriter, r *http.Request, actor access.Actor, ops ...store.Op) bool {
-	if err := c.Commit(r.Context(), actor, ops...); err != nil {
-		serverError(w, r, err)
-		return false
+func (c *Cache) commit(ctx context.Context, actor access.Actor, ops ...store.Op) error {
+	if err := c.Commit(ctx, actor, ops...); err != nil {
+		return err
 	}
 	c.locate()
-	return true
+	return nil
 }
 
 func (c *Cache) locate() {

@@ -2,7 +2,6 @@ package when
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -14,6 +13,7 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -182,36 +182,33 @@ func (a app) ticketGuests(g InviteGroup) map[string]string {
 	return out
 }
 
-func (a app) groupOptions(w http.ResponseWriter, r *http.Request) {
+func (a app) groupOptions(r *http.Request, _ serve.None) (filter.Options, error) {
 	if a.sources == nil {
-		http.Error(w, "groups are not set up", http.StatusNotFound)
-		return
+		return filter.Options{}, access.Missing("groups are not set up")
 	}
 	actor, _ := a.who(r)
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(filter.OptionsFor(a.sources(), actor)); err != nil {
-		slog.ErrorContext(r.Context(), "encode group options", "error", err)
-	}
+	return filter.OptionsFor(a.sources(), actor), nil
 }
 
-func (a app) groupPreview(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID   string      `json:"id"`
-		Rule filter.Rule `json:"rule"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type ruleBody struct {
+	ID   string      `json:"id"`
+	Rule filter.Rule `json:"rule"`
+}
+
+type groupPreviewView struct {
+	Count int      `json:"count"`
+	Names []string `json:"names"`
+}
+
+func (a app) groupPreview(r *http.Request, body ruleBody) (groupPreviewView, error) {
 	actor := a.actor(r)
 	e, err := a.hostedEvent(actor, body.ID)
 	if err != nil {
-		refuse(w, err)
-		return
+		return groupPreviewView{}, err
 	}
 	rule, err := a.checkRule(actor, body.Rule, e)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return groupPreviewView{}, access.Invalid("%v", err)
 	}
 	members := a.members(e, InviteGroup{Rule: rule})
 	names := []string{}
@@ -223,85 +220,72 @@ func (a app) groupPreview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	slices.Sort(names)
-	view := struct {
-		Count int      `json:"count"`
-		Names []string `json:"names"`
-	}{Count: len(members), Names: names[:min(len(names), 12)]}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode group preview", "error", err)
-	}
+	return groupPreviewView{Count: len(members), Names: names[:min(len(names), 12)]}, nil
 }
 
-func (a app) addGroup(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID   string      `json:"id"`
-		Rule filter.Rule `json:"rule"`
-		Auto *bool       `json:"auto"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type addGroupBody struct {
+	ID   string      `json:"id"`
+	Rule filter.Rule `json:"rule"`
+	Auto *bool       `json:"auto"`
+}
+
+type groupAdded struct {
+	Group string `json:"group"`
+	Added int    `json:"added"`
+}
+
+func (a app) addGroup(r *http.Request, body addGroupBody) (groupAdded, error) {
 	actor := a.actor(r)
 	ops, e, g, err := a.addGroupOps(actor, body.ID, body.Rule, body.Auto)
 	if err != nil {
-		refuse(w, err)
-		return
+		return groupAdded{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return groupAdded{}, err
 	}
 	added := a.fill(r.Context(), actor, e, g, false)
 	slog.InfoContext(r.Context(), "calendar: group added", "actor", actor.Email, "event", e.ID, "group", g.ID, "added", added)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"group": g.ID, "added": added})
+	return groupAdded{Group: g.ID, Added: added}, nil
 }
 
-func (a app) setGroup(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID    string `json:"id"`
-		Group string `json:"group"`
-		Auto  bool   `json:"auto"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type setGroupBody struct {
+	ID    string `json:"id"`
+	Group string `json:"group"`
+	Auto  bool   `json:"auto"`
+}
+
+func (a app) setGroup(r *http.Request, body setGroupBody) (serve.None, error) {
 	actor := a.actor(r)
 	ops, e, g, err := a.setGroupOps(actor, body.ID, body.Group, body.Auto)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	if body.Auto {
 		a.fill(r.Context(), actor, e, *a.cache.Model().GroupOf(e.ID, g.ID), false)
 	}
 	slog.InfoContext(r.Context(), "calendar: group changed", "actor", actor.Email, "event", e.ID, "group", g.ID, "auto", body.Auto)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) removeGroup(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID    string `json:"id"`
-		Group string `json:"group"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type groupBody struct {
+	ID    string `json:"id"`
+	Group string `json:"group"`
+}
+
+func (a app) removeGroup(r *http.Request, body groupBody) (map[string]int, error) {
 	actor := a.actor(r)
 	ops, e, g, err := a.removeGroupOps(actor, body.ID, body.Group)
 	if err != nil {
-		refuse(w, err)
-		return
+		return nil, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return nil, err
 	}
 	slog.InfoContext(r.Context(), "calendar: group removed", "actor", actor.Email, "event", e.ID, "group", g.ID, "dropped", len(ops)-1)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]int{"dropped": len(ops) - 1})
+	return map[string]int{"dropped": len(ops) - 1}, nil
 }
 
 func (a app) fill(ctx context.Context, actor access.Actor, e *Event, g InviteGroup, wait bool) int {
@@ -347,29 +331,19 @@ func (a app) sweepLoop() {
 	}
 }
 
-func (a app) startParty(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID string `json:"id"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) startParty(r *http.Request, body idBody) (groupAdded, error) {
 	actor := a.actor(r)
 	ops, e, g, err := a.startPartyOps(actor, body.ID)
 	if err != nil {
-		refuse(w, err)
-		return
+		return groupAdded{}, err
 	}
 	if len(ops) == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"group": g.ID, "added": 0})
-		return
+		return groupAdded{Group: g.ID}, nil
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return groupAdded{}, err
 	}
 	added := a.fill(r.Context(), actor, e, g, false)
 	slog.InfoContext(r.Context(), "calendar: party list started", "actor", actor.Email, "event", e.ID, "group", g.ID, "added", added)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"group": g.ID, "added": added})
+	return groupAdded{Group: g.ID, Added: added}, nil
 }

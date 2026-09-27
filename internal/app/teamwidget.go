@@ -1,23 +1,19 @@
 package app
 
 import (
-	"encoding/json"
-	"log/slog"
 	"net/http"
 	"time"
 
 	"heliosian/internal/auth"
+	"heliosian/internal/serve"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
 func teamWidget(directory *who.Cache, teamCache *team.Cache) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return serve.JSON(func(r *http.Request, _ serve.None) (team.Widget, error) {
 		email := directory.Model().Resolve(auth.Email(r))
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(teamCache.Widget(email, time.Now().In(when.Location))); err != nil {
-			slog.ErrorContext(r.Context(), "encode team widget", "error", err)
-		}
-	}
+		return teamCache.Widget(email, time.Now().In(when.Location)), nil
+	})
 }

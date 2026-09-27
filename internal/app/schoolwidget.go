@@ -1,8 +1,6 @@
 package app
 
 import (
-	"encoding/json"
-	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -11,6 +9,7 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/keypoints"
+	"heliosian/internal/serve"
 	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
@@ -29,8 +28,12 @@ type schoolEmail struct {
 	Points   []string `json:"points"`
 }
 
+type schoolView struct {
+	Emails []schoolEmail `json:"emails"`
+}
+
 func schoolWidget(directory *who.Cache, artifactsCache *artifacts.Cache) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return serve.JSON(func(r *http.Request, _ serve.None) (schoolView, error) {
 		people := directory.Model()
 		email := people.Resolve(auth.Email(r))
 		seats, grades := seatsOf(people, email), gradeNames(people)
@@ -50,13 +53,8 @@ func schoolWidget(directory *who.Cache, artifactsCache *artifacts.Cache) http.Ha
 			}
 			out = append(out, schoolEmail{Key: d.Key, Title: d.Title, Date: d.Date, Kind: d.Kind, Channel: d.Channel, Audience: m.Audience[d.Key], Points: points})
 		}
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(struct {
-			Emails []schoolEmail `json:"emails"`
-		}{out}); err != nil {
-			slog.ErrorContext(r.Context(), "encode school widget", "error", err)
-		}
-	}
+		return schoolView{out}, nil
+	})
 }
 
 type schoolDirectory struct {

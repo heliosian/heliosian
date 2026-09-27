@@ -9,13 +9,14 @@ import (
 	"time"
 
 	"heliosian/internal/mail"
+	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
 var brand = mail.Brand{Name: "Helios Celebrate", Color: "#0f4e54", Tagline: "the fun(d)raiser parties site"}
 
 func partyEvent(p *Party, page string) (mail.Event, bool) {
-	start, until, allDay, ok := mail.Span(p.Start, p.End, local)
+	start, until, allDay, ok := mail.Span(p.Start, p.End, when.Location)
 	if !ok {
 		return mail.Event{}, false
 	}
@@ -62,7 +63,7 @@ func attendeeName(directory *who.Model, p *Party, email string) string {
 
 func (a app) letterFor(base string, p *Party) mail.Letter {
 	model := a.cache.Model()
-	l := mail.Letter{Brand: brand, Base: base, Title: p.Title, Subtitle: p.Subtitle, When: when(p), Where: p.Location, Path: base + model.PathOf(p)}
+	l := mail.Letter{Brand: brand, Base: base, Title: p.Title, Subtitle: p.Subtitle, When: whenLine(p), Where: p.Location, Path: base + model.PathOf(p)}
 	if p.Address != "" {
 		if l.Where != "" {
 			l.Where += " · "

@@ -13,6 +13,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/sharecard"
+	"heliosian/internal/when"
 )
 
 func CardStyle(name, tagline func() string) *sharecard.Style {
@@ -47,7 +48,7 @@ func lineage(m *Model, a *Activity) string {
 	return strings.Join(names, " › ")
 }
 
-func when(a *Activity) string {
+func whenText(a *Activity) string {
 	day, hours := whenLines(a)
 	if hours != "" {
 		return day + " · " + hours
@@ -77,10 +78,10 @@ func PreviewHead(cache *Cache, style *sharecard.Style) func(r *http.Request) str
 			a = model.Resolve(r.URL.Path)
 		}
 		if !previewable(model, a) {
-			return upcomingHead(style, model, origin, time.Now().In(local))
+			return upcomingHead(style, model, origin, time.Now().In(when.Location))
 		}
 		desc := blurb(a)
-		if line := when(timed(model, a)); line != "" {
+		if line := whenText(timed(model, a)); line != "" {
 			if desc != "" {
 				desc = line + " — " + desc
 			} else {
@@ -158,7 +159,7 @@ func upcomingHead(style *sharecard.Style, m *Model, origin string, at time.Time)
 
 func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	listing := &sharecard.Listing{Heading: "Volunteers needed", Empty: upcomingEmpty}
-	for _, act := range needs(a.cache.Model(), time.Now().In(local)) {
+	for _, act := range needs(a.cache.Model(), time.Now().In(when.Location)) {
 		if len(listing.Items) == needsCount {
 			break
 		}
@@ -221,15 +222,15 @@ func whenLines(a *Activity) (string, string) {
 	if days, hours := spanLines(a); days != "" {
 		return days, hours
 	}
-	start, err := time.ParseInLocation(DateTimeFormat, a.Start, local)
+	start, err := time.ParseInLocation(DateTimeFormat, a.Start, when.Location)
 	if err != nil {
-		if day, err := time.ParseInLocation(DateFormat, a.Start, local); err == nil {
+		if day, err := time.ParseInLocation(DateFormat, a.Start, when.Location); err == nil {
 			return day.Format("Monday, January 2"), ""
 		}
 		return "", ""
 	}
 	day := start.Format("Monday, January 2")
-	end, err := time.ParseInLocation(DateTimeFormat, a.End, local)
+	end, err := time.ParseInLocation(DateTimeFormat, a.End, when.Location)
 	if err != nil {
 		return day, start.Format("3:04 PM")
 	}

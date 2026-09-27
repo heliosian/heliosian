@@ -75,7 +75,7 @@ type app struct {
 func Register(mux *http.ServeMux, sources Sources, responder Responder, recent *ratelimit.Limiter, chatKey []byte) {
 	a := app{sources: sources, responder: responder, recent: recent, chatKey: chatKey}
 	mux.HandleFunc("GET /{$}", a.page)
-	mux.HandleFunc("GET /api/ask/model", a.model)
+	mux.HandleFunc("GET /api/ask/model", serve.JSON(a.model))
 	mux.HandleFunc("GET /api/ask/key", a.key)
 	mux.HandleFunc("POST /api/ask/chat", a.chat)
 }
@@ -95,7 +95,13 @@ type user struct {
 	PhotoURL string `json:"photoUrl,omitempty"`
 }
 
-func (a app) model(w http.ResponseWriter, r *http.Request) {
+type modelView struct {
+	User     user     `json:"user"`
+	Starters []string `json:"starters"`
+	MaxTurns int      `json:"maxTurns"`
+}
+
+func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
 	email := a.who(r)
 	v := a.viewer(email)
 	u := user{Email: email, Name: v.name(email), Initial: strings.ToUpper(email[:1])}
@@ -103,25 +109,14 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		u.Initial = strings.ToUpper(u.Name[:1])
 	}
 	u.PhotoURL = v.directory.HeroPhoto(email)
-	view := struct {
-		User     user     `json:"user"`
-		Starters []string `json:"starters"`
-		MaxTurns int      `json:"maxTurns"`
-	}{User: u, Starters: v.starters(), MaxTurns: maxTurns}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode ask model", "error", err)
-	}
+	return modelView{User: u, Starters: v.starters(), MaxTurns: maxTurns}, nil
 }
 
 func (a app) key(w http.ResponseWriter, r *http.Request) {
 	mac := hmac.New(sha256.New, a.chatKey)
 	mac.Write([]byte(a.who(r)))
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	if err := json.NewEncoder(w).Encode(map[string]string{"key": base64.StdEncoding.EncodeToString(mac.Sum(nil))}); err != nil {
-		slog.ErrorContext(r.Context(), "encode ask key", "error", err)
-	}
+	serve.Write(w, r, http.StatusOK, map[string]string{"key": base64.StdEncoding.EncodeToString(mac.Sum(nil))})
 }
 
 func (a app) chat(w http.ResponseWriter, r *http.Request) {

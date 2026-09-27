@@ -1,12 +1,9 @@
 package who
 
 import (
-	"encoding/json"
-	"log/slog"
 	"net/http"
 	"strings"
 
-	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
@@ -55,7 +52,7 @@ func Register(mux *http.ServeMux, cache *Cache, mapsKey string, lister Lister, a
 	mux.HandleFunc("GET /classrooms/{name}", a.page)
 	mux.HandleFunc("GET /grades/{name}", a.page)
 	mux.HandleFunc("GET /dl/", a.legacyRedirect)
-	mux.HandleFunc("GET /api/directory/model", a.model)
+	mux.HandleFunc("GET /api/directory/model", serve.JSON(a.model))
 }
 
 func (a app) myFamily(w http.ResponseWriter, r *http.Request) {
@@ -89,22 +86,23 @@ type user struct {
 	IsAdmin bool   `json:"isAdmin"`
 }
 
-func (a app) model(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+type modelView struct {
+	*Model
+	User        user                `json:"user"`
+	MapsKey     string              `json:"mapsKey"`
+	Tags        map[string][]string `json:"tags"`
+	TagManagers map[string][]string `json:"tagManagers"`
+	SharedTags  []SharedTag         `json:"sharedTags"`
+	Lists       []List              `json:"lists"`
+	SuperEdit   bool                `json:"superEdit,omitempty"`
+}
+
+func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
 	v := requestActor(a.cache, r)
 	effective := v.Email
 	name := a.cache.Model().DisplayName(effective)
 	slug := Slug(effective)
-	view := struct {
-		*Model
-		User        user                `json:"user"`
-		MapsKey     string              `json:"mapsKey"`
-		Tags        map[string][]string `json:"tags"`
-		TagManagers map[string][]string `json:"tagManagers"`
-		SharedTags  []SharedTag         `json:"sharedTags"`
-		Lists       []List              `json:"lists"`
-		SuperEdit   bool                `json:"superEdit,omitempty"`
-	}{
+	return modelView{
 		Model:       a.cache.Model(),
 		User:        user{Name: name, Initial: strings.ToUpper(name[:1]), Email: effective, Slug: slug, IsAdmin: v.Admin},
 		MapsKey:     a.mapsKey,
@@ -113,17 +111,5 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		SharedTags:  a.cache.Model().SharedTags(effective),
 		Lists:       append(a.cache.Model().RoomParentLists(effective), a.lister.Lists(effective)...),
 		SuperEdit:   superEditing(v, superEditOn(r)),
-	}
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode model", "error", err)
-	}
-}
-
-func serverError(w http.ResponseWriter, r *http.Request, err error) {
-	slog.ErrorContext(r.Context(), "directory request failed", "error", err)
-	http.Error(w, "internal error", http.StatusInternalServerError)
-}
-
-func refuse(w http.ResponseWriter, err error) {
-	http.Error(w, err.Error(), access.Status(err))
+	}, nil
 }

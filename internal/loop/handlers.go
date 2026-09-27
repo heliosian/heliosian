@@ -2,10 +2,7 @@ package loop
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -20,7 +17,6 @@ import (
 	"heliosian/internal/filter"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
-	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
 
@@ -93,16 +89,16 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, sources func(
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
-	mux.HandleFunc("GET /api/loop/model", a.model)
-	mux.HandleFunc("POST /api/loop/preview", a.preview)
-	mux.HandleFunc("POST /api/loop/describe", a.describe)
-	mux.HandleFunc("POST /api/loop/group", a.saveGroup)
-	mux.HandleFunc("DELETE /api/loop/group", a.deleteGroup)
-	mux.HandleFunc("GET /api/loop/messages", a.messages)
-	mux.HandleFunc("POST /api/loop/subscription", a.subscription)
-	mux.HandleFunc("POST /api/loop/archive", a.archive)
-	mux.HandleFunc("GET /api/admin/state", a.adminState)
-	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
+	mux.HandleFunc("GET /api/loop/model", serve.JSON(a.model))
+	mux.HandleFunc("POST /api/loop/preview", serve.JSON(a.preview))
+	mux.HandleFunc("POST /api/loop/describe", serve.JSON(a.describe))
+	mux.HandleFunc("POST /api/loop/group", serve.JSON(a.saveGroup))
+	mux.HandleFunc("DELETE /api/loop/group", serve.JSON(a.deleteGroup))
+	mux.HandleFunc("GET /api/loop/messages", serve.JSON(a.messages))
+	mux.HandleFunc("POST /api/loop/subscription", serve.JSON(a.subscription))
+	mux.HandleFunc("POST /api/loop/archive", serve.JSON(a.archive))
+	mux.HandleFunc("GET /api/admin/state", serve.JSON(a.adminState))
+	mux.HandleFunc("POST /api/admin/admins", serve.JSON(a.setAdmins))
 	mux.HandleFunc("POST /hooks/mail/mime", a.inbound)
 	mux.HandleFunc("POST /hooks/events", a.events)
 	mux.Handle("GET /open/share/about.png", about)
@@ -118,14 +114,6 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 func (a app) actor(r *http.Request) access.Actor {
 	email := a.sources().Directory.Resolve(strings.ToLower(auth.Email(r)))
 	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email)}
-}
-
-func decode(w http.ResponseWriter, r *http.Request, into any) bool {
-	if err := json.NewDecoder(io.LimitReader(r.Body, 256<<10)).Decode(into); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return false
-	}
-	return true
 }
 
 type user struct {
@@ -287,35 +275,33 @@ func (a app) view(g Group, as access.Actor) (groupView, bool) {
 	return v, true
 }
 
-func (a app) sendView(w http.ResponseWriter, r *http.Request, g Group, as access.Actor) {
-	v, ok := a.view(g, as)
+func (a app) shown(name string, as access.Actor) *groupView {
+	v, ok := a.view(*a.cache.Model().Group(name), as)
 	if !ok {
-		w.WriteHeader(http.StatusNoContent)
-		return
+		return nil
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		slog.ErrorContext(r.Context(), "encode group", "error", err)
-	}
+	return &v
 }
 
 func (a app) options(viewer string) options {
 	return filter.OptionsFor(a.sources(), viewer)
 }
 
-func (a app) model(w http.ResponseWriter, r *http.Request) {
+type modelView struct {
+	User        user              `json:"user"`
+	Domain      string            `json:"domain"`
+	Groups      []groupView       `json:"groups"`
+	Suggestions []suggestion      `json:"suggestions"`
+	Options     options           `json:"options"`
+	People      []Person          `json:"people"`
+	GradeColors map[string]string `json:"gradeColors,omitempty"`
+}
+
+func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
 	actor := a.actor(r)
 	email := actor.Email
 	me := a.person(email)
-	view := struct {
-		User        user              `json:"user"`
-		Domain      string            `json:"domain"`
-		Groups      []groupView       `json:"groups"`
-		Suggestions []suggestion      `json:"suggestions"`
-		Options     options           `json:"options"`
-		People      []Person          `json:"people"`
-		GradeColors map[string]string `json:"gradeColors,omitempty"`
-	}{
+	view := modelView{
 		User:        user{Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: actor.Admin, IsSuperAdmin: a.cache.IsSuperAdmin(email)},
 		Domain:      Domain,
 		Groups:      []groupView{},
@@ -333,10 +319,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 			view.Groups = append(view.Groups, v)
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode groups model", "error", err)
-	}
+	return view, nil
 }
 
 type draftBody struct {
@@ -348,63 +331,47 @@ type draftBody struct {
 	Excluded  []Excluded `json:"excluded"`
 }
 
-func (a app) draftMembers(w http.ResponseWriter, r *http.Request, body draftBody) ([]Member, []int, bool) {
+func (a app) draftMembers(r *http.Request, body draftBody) ([]Member, []int, error) {
 	actor := a.actor(r)
 	email := actor.Email
 	draft := Normalize(Group{Name: "preview", Title: "preview", Managers: []string{email}, Rules: body.Rules, Additions: body.Additions, Excluded: body.Excluded})
 	var existing []Rule
 	if g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name))); g != nil {
 		if !g.Edits(actor) {
-			http.Error(w, "you do not manage this group", http.StatusForbidden)
-			return nil, nil, false
+			return nil, nil, access.Forbidden("you do not manage this group")
 		}
 		existing, draft.Managers = g.Rules, g.Managers
 	}
 	if err := filter.Writable(a.sources(), email, draft.Managers, existing, draft.Rules); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return nil, nil, false
+		return nil, nil, access.Invalid("%v", err)
 	}
 	for i, rule := range draft.Rules {
 		if err := CheckRule(rule); err != nil {
-			http.Error(w, fmt.Sprintf("rule %d: %v", i+1, err), http.StatusBadRequest)
-			return nil, nil, false
+			return nil, nil, access.Invalid("rule %d: %v", i+1, err)
 		}
 	}
 	if err := checkAdditions(a.sources().Directory, draft.Additions); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return nil, nil, false
+		return nil, nil, err
 	}
-	return a.members(draft), RuleCounts(draft, a.sources()), true
+	return a.members(draft), RuleCounts(draft, a.sources()), nil
 }
 
-func (a app) preview(w http.ResponseWriter, r *http.Request) {
-	var body draftBody
-	if !decode(w, r, &body) {
-		return
+func (a app) preview(r *http.Request, body draftBody) (map[string]any, error) {
+	members, counts, err := a.draftMembers(r, body)
+	if err != nil {
+		return nil, err
 	}
-	members, counts, ok := a.draftMembers(w, r, body)
-	if !ok {
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]any{"members": members, "ruleCounts": counts}); err != nil {
-		slog.ErrorContext(r.Context(), "encode groups preview", "error", err)
-	}
+	return map[string]any{"members": members, "ruleCounts": counts}, nil
 }
 
-func (a app) describe(w http.ResponseWriter, r *http.Request) {
+func (a app) describe(r *http.Request, body draftBody) (map[string]string, error) {
 	email := a.actor(r).Email
-	var body draftBody
-	if !decode(w, r, &body) {
-		return
-	}
 	if a.describer == nil {
-		http.Error(w, "writing a description is not set up on this server", http.StatusServiceUnavailable)
-		return
+		return nil, access.Refuse(http.StatusServiceUnavailable, "writing a description is not set up on this server")
 	}
-	members, _, ok := a.draftMembers(w, r, body)
-	if !ok {
-		return
+	members, _, err := a.draftMembers(r, body)
+	if err != nil {
+		return nil, err
 	}
 	facts := describe.GroupFacts{Title: body.Title, Rules: body.RuleWords, Members: len(members), Roles: map[string]int{}, Grades: map[string]int{}, Classrooms: map[string]int{}}
 	model := a.sources().Directory
@@ -431,156 +398,123 @@ func (a app) describe(w http.ResponseWriter, r *http.Request) {
 	}
 	description, err := a.describer.Group(r.Context(), email, facts)
 	if errors.Is(err, claude.ErrTooMany) {
-		http.Error(w, err.Error(), http.StatusTooManyRequests)
-		return
+		return nil, access.Refuse(http.StatusTooManyRequests, "%v", err)
 	}
 	if errors.Is(err, describe.ErrTooLong) {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, access.Invalid("%v", err)
 	}
 	if err != nil {
 		slog.ErrorContext(r.Context(), "loop:describe", "actor", email, "title", body.Title, "error", err)
-		http.Error(w, "could not write a description right now", http.StatusBadGateway)
-		return
+		return nil, access.Refuse(http.StatusBadGateway, "could not write a description right now")
 	}
 	slog.InfoContext(r.Context(), "loop:described", "actor", email, "title", body.Title, "members", len(members))
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]string{"description": description}); err != nil {
-		slog.ErrorContext(r.Context(), "encode groups description", "error", err)
-	}
+	return map[string]string{"description": description}, nil
 }
 
-func (a app) commit(w http.ResponseWriter, r *http.Request, actor access.Actor, ops ...store.Op) bool {
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		http.Error(w, err.Error(), access.Status(err))
-		return false
-	}
-	return true
+type saveBody struct {
+	Original string `json:"original"`
+	Group
 }
 
-func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
+func (a app) saveGroup(r *http.Request, body saveBody) (*groupView, error) {
 	actor := a.actor(r)
-	var body struct {
-		Original string `json:"original"`
-		Group
-	}
-	if !decode(w, r, &body) {
-		return
-	}
 	ops, g, action, err := a.cache.Model().SaveGroup(actor, a.sources(), body.Original, body.Group)
 	if err != nil {
-		http.Error(w, err.Error(), access.Status(err))
-		return
+		return nil, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return nil, err
 	}
 	slog.InfoContext(r.Context(), "loop:saved group", "action", action, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility, "posting", g.Posting, "replying", g.Replying)
-	a.sendView(w, r, *a.cache.Model().Group(g.Name), actor)
+	return a.shown(g.Name, actor), nil
 }
 
-func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
+type groupRef struct {
+	Name string `json:"name"`
+}
+
+func (a app) deleteGroup(r *http.Request, body groupRef) (serve.None, error) {
 	actor := a.actor(r)
-	var body struct {
-		Name string `json:"name"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
 	ops, name, err := a.cache.Model().DeleteGroup(actor, body.Name)
 	if err != nil {
-		http.Error(w, err.Error(), access.Status(err))
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	if err := a.mail.Documents.Remove(r.Context(), actor, name); err != nil {
 		slog.ErrorContext(r.Context(), "loop:filed mail not removed", "group", name, "error", err)
 	}
 	slog.InfoContext(r.Context(), "loop:deleted group", "group", name)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) subscription(w http.ResponseWriter, r *http.Request) {
+type subscriptionBody struct {
+	Name       string `json:"name"`
+	Subscribed bool   `json:"subscribed"`
+}
+
+func (a app) subscription(r *http.Request, body subscriptionBody) (*groupView, error) {
 	actor := a.actor(r)
-	var body struct {
-		Name       string `json:"name"`
-		Subscribed bool   `json:"subscribed"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
 	ops, g, err := a.cache.Model().SetSubscription(actor, a.sources(), body.Name, body.Subscribed)
 	if err != nil {
-		http.Error(w, err.Error(), access.Status(err))
-		return
+		return nil, err
 	}
 	how := ""
 	if !body.Subscribed {
 		how = loopPage
 	}
 	if err := a.commitSubscription(r.Context(), actor, *g, how, ops); err != nil {
-		http.Error(w, err.Error(), access.Status(err))
-		return
+		return nil, err
 	}
-	a.sendView(w, r, *a.cache.Model().Group(g.Name), actor)
+	return a.shown(g.Name, actor), nil
 }
 
-func (a app) archive(w http.ResponseWriter, r *http.Request) {
+type archiveBody struct {
+	Name     string `json:"name"`
+	Archived bool   `json:"archived"`
+}
+
+func (a app) archive(r *http.Request, body archiveBody) (*groupView, error) {
 	actor := a.actor(r)
-	var body struct {
-		Name     string `json:"name"`
-		Archived bool   `json:"archived"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
 	ops, g, err := a.cache.Model().SetArchived(actor, a.sources(), body.Name, body.Archived)
 	if err != nil {
-		http.Error(w, err.Error(), access.Status(err))
-		return
+		return nil, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return nil, err
 	}
 	slog.InfoContext(r.Context(), "loop:archived", "group", g.Name, "email", actor.Email, "archived", body.Archived)
-	a.sendView(w, r, *a.cache.Model().Group(g.Name), actor)
+	return a.shown(g.Name, actor), nil
 }
 
-func (a app) adminState(w http.ResponseWriter, r *http.Request) {
+type adminView struct {
+	Email        string   `json:"email"`
+	Admins       []string `json:"admins"`
+	IsSuperAdmin bool     `json:"isSuperAdmin"`
+}
+
+func (a app) adminState(r *http.Request, _ serve.None) (adminView, error) {
 	actor := a.actor(r)
 	if !actor.Admin {
-		http.Error(w, "admin access required", http.StatusForbidden)
-		return
+		return adminView{}, access.Forbidden("admin access required")
 	}
-	view := struct {
-		Email        string   `json:"email"`
-		Admins       []string `json:"admins"`
-		IsSuperAdmin bool     `json:"isSuperAdmin"`
-	}{Email: actor.Email, Admins: a.cache.Admins(a.superAdmins()), IsSuperAdmin: a.cache.IsSuperAdmin(actor.Email)}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode groups admin state", "error", err)
-	}
+	return adminView{Email: actor.Email, Admins: a.cache.Admins(a.superAdmins()), IsSuperAdmin: a.cache.IsSuperAdmin(actor.Email)}, nil
 }
 
-func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
+type adminsBody struct {
+	Admins []string `json:"admins"`
+}
+
+func (a app) setAdmins(r *http.Request, body adminsBody) (serve.None, error) {
 	actor := a.actor(r)
-	var body struct {
-		Admins []string `json:"admins"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
 	ops, admins, err := a.cache.Model().SetAdmins(actor, a.superAdmins(), body.Admins)
 	if err != nil {
-		http.Error(w, err.Error(), access.Status(err))
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "loop:set the admin list", "admins", admins)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }

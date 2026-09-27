@@ -2,13 +2,13 @@ package when
 
 import (
 	"bytes"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/serve"
 )
 
 const extShell = "web/public/when/ext.html"
@@ -63,25 +63,23 @@ func (a app) extPage(w http.ResponseWriter, r *http.Request) {
 	w.Write(bytes.Replace(page, []byte("<!--preview-->"), []byte(head), 1))
 }
 
-func (a app) extInvite(w http.ResponseWriter, r *http.Request) (Invite, *Event, bool) {
+func (a app) extInvite(r *http.Request) (Invite, *Event, error) {
 	model := a.cache.Model()
 	inv, ok := model.InviteByToken(r.PathValue("token"))
 	if !ok {
-		http.Error(w, "that invitation is not here", http.StatusNotFound)
-		return Invite{}, nil, false
+		return Invite{}, nil, access.Missing("that invitation is not here")
 	}
 	e := a.eventFor(inv.Email, false, inv.EventID)
 	if e == nil {
-		http.Error(w, "that event is not on the calendar", http.StatusNotFound)
-		return Invite{}, nil, false
+		return Invite{}, nil, access.Missing("that event is not on the calendar")
 	}
-	return inv, model.invitedEvent(e), true
+	return inv, model.invitedEvent(e), nil
 }
 
-func (a app) extView(w http.ResponseWriter, r *http.Request) {
-	inv, e, ok := a.extInvite(w, r)
-	if !ok {
-		return
+func (a app) extView(r *http.Request, _ serve.None) (ExtView, error) {
+	inv, e, err := a.extInvite(r)
+	if err != nil {
+		return ExtView{}, err
 	}
 	a.noteOpened(r.Context(), access.Actor{Email: inv.Email}, e)
 	model := a.cache.Model()
@@ -115,85 +113,70 @@ func (a app) extView(w http.ResponseWriter, r *http.Request) {
 			view.Brought = append(view.Brought, ExtGuest{Key: g.Email, Name: g.Name, Answer: model.AnswerOf(g.Email, e.ID)})
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode outside invitation", "error", err)
-	}
+	return view, nil
 }
 
-func (a app) extAnswer(w http.ResponseWriter, r *http.Request) {
-	inv, e, ok := a.extInvite(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		Answer string `json:"answer"`
-		Key    string `json:"key"`
-	}
-	if !decode(w, r, &body) {
-		return
+type extAnswerBody struct {
+	Answer string `json:"answer"`
+	Key    string `json:"key"`
+}
+
+func (a app) extAnswer(r *http.Request, body extAnswerBody) (serve.None, error) {
+	inv, e, err := a.extInvite(r)
+	if err != nil {
+		return serve.None{}, err
 	}
 	actor := access.Actor{Email: inv.Email}
 	subject, err := a.extSubject(actor, e, body.Key, body.Answer)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
 	answer := strings.ToLower(strings.TrimSpace(body.Answer))
 	if err := a.recordBy(r.Context(), actor, subject, e.ID, answer, ViaPage, false, false); err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: answered from outside", "actor", actor.Email, "for", subject, "event", e.ID, "answer", answer)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) extGuest(w http.ResponseWriter, r *http.Request) {
-	inv, e, ok := a.extInvite(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		Name  string `json:"name"`
-		Email string `json:"email"`
-	}
-	if !decode(w, r, &body) {
-		return
+type extGuestBody struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+func (a app) extGuest(r *http.Request, body extGuestBody) (guestKey, error) {
+	inv, e, err := a.extInvite(r)
+	if err != nil {
+		return guestKey{}, err
 	}
 	actor := access.Actor{Email: inv.Email}
 	ops, g, err := a.extGuestOps(actor, e, body.Name, body.Email)
 	if err != nil {
-		refuse(w, err)
-		return
+		return guestKey{}, err
 	}
 	if err := a.bringGuest(r.Context(), actor, ops, g); err != nil {
-		refuse(w, err)
-		return
+		return guestKey{}, err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"email": g.key})
+	return guestKey{Email: g.key}, nil
 }
 
-func (a app) extRemoveGuest(w http.ResponseWriter, r *http.Request) {
-	inv, e, ok := a.extInvite(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		Key string `json:"key"`
-	}
-	if !decode(w, r, &body) {
-		return
+type keyBody struct {
+	Key string `json:"key"`
+}
+
+func (a app) extRemoveGuest(r *http.Request, body keyBody) (serve.None, error) {
+	inv, e, err := a.extInvite(r)
+	if err != nil {
+		return serve.None{}, err
 	}
 	actor := access.Actor{Email: inv.Email}
 	ops, key, err := a.extRemoveGuestOps(actor, e, body.Key)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: guest removed from outside", "actor", actor.Email, "event", e.ID, "guest", key)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }

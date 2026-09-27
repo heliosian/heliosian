@@ -13,6 +13,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/mail"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -145,7 +146,7 @@ func (a app) unsubscribe(w http.ResponseWriter, r *http.Request) {
 		how = "one-click"
 	}
 	if err := a.unsubscribeAddress(r.Context(), *g, email, how); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		serve.Error(w, r, err)
 		return
 	}
 	if oneClick {

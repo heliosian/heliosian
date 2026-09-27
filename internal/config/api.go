@@ -1,15 +1,13 @@
 package config
 
 import (
-	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
-	"heliosian/internal/store"
+	"heliosian/internal/serve"
 )
 
 type api struct {
@@ -17,15 +15,29 @@ type api struct {
 	isAdmin func(email string) bool
 }
 
+type colorBody struct {
+	Kind  string `json:"kind"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+type superAdminsBody struct {
+	SuperAdmins []string `json:"superAdmins"`
+}
+
+type signOutBody struct {
+	Email string `json:"email"`
+}
+
 func Register(mux *http.ServeMux, cache *Cache, isAdmin func(email string) bool) {
 	a := api{cache: cache, isAdmin: isAdmin}
-	mux.HandleFunc("GET /api/config", a.settings)
-	mux.HandleFunc("GET /api/config/super-admins", a.superAdmins)
-	mux.HandleFunc("POST /api/config/stale-years", a.setStaleYears)
-	mux.HandleFunc("POST /api/config/privacy-links", a.setPrivacyLinks)
-	mux.HandleFunc("POST /api/config/color", a.setColor)
-	mux.HandleFunc("POST /api/config/super-admins", a.setSuperAdmins)
-	mux.HandleFunc("POST /api/config/sign-out", a.signOut)
+	mux.HandleFunc("GET /api/config", serve.JSON(a.settings))
+	mux.HandleFunc("GET /api/config/super-admins", serve.JSON(a.superAdmins))
+	mux.HandleFunc("POST /api/config/stale-years", serve.JSON(a.setStaleYears))
+	mux.HandleFunc("POST /api/config/privacy-links", serve.JSON(a.setPrivacyLinks))
+	mux.HandleFunc("POST /api/config/color", serve.JSON(a.setColor))
+	mux.HandleFunc("POST /api/config/super-admins", serve.JSON(a.setSuperAdmins))
+	mux.HandleFunc("POST /api/config/sign-out", serve.JSON(a.signOut))
 }
 
 func (a api) actor(r *http.Request, admin func(email string) bool) access.Actor {
@@ -41,139 +53,78 @@ func (a api) superActor(r *http.Request) access.Actor {
 	return a.actor(r, a.cache.IsSuperAdmin)
 }
 
-func decode(w http.ResponseWriter, r *http.Request, into any) bool {
-	if err := json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(into); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return false
-	}
-	return true
+func (a api) settings(r *http.Request, _ serve.None) (*Settings, error) {
+	return a.cache.Settings(), nil
 }
 
-func encode(w http.ResponseWriter, r *http.Request, view any) {
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode config", "error", err)
-	}
-}
-
-func refuse(w http.ResponseWriter, err error) {
-	http.Error(w, err.Error(), access.Status(err))
-}
-
-func (a api) commit(w http.ResponseWriter, r *http.Request, actor access.Actor, ops ...store.Op) bool {
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return false
-	}
-	return true
-}
-
-func (a api) settings(w http.ResponseWriter, r *http.Request) {
-	encode(w, r, a.cache.Settings())
-}
-
-func (a api) superAdmins(w http.ResponseWriter, r *http.Request) {
+func (a api) superAdmins(r *http.Request, _ serve.None) (map[string][]string, error) {
 	if err := requireAdmin(a.superActor(r)); err != nil {
-		refuse(w, err)
-		return
+		return nil, err
 	}
-	encode(w, r, map[string][]string{"superAdmins": a.cache.SuperAdmins()})
+	return map[string][]string{"superAdmins": a.cache.SuperAdmins()}, nil
 }
 
-func (a api) setStaleYears(w http.ResponseWriter, r *http.Request) {
-	var years StaleYears
-	if !decode(w, r, &years) {
-		return
-	}
+func (a api) setStaleYears(r *http.Request, years StaleYears) (serve.None, error) {
 	actor := a.settingsActor(r)
 	ops, err := a.cache.Settings().setStaleYears(actor, years)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "config: set stale-years thresholds", "photo", years.Photo, "facts", years.Facts, "familyPhoto", years.FamilyPhoto)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a api) setPrivacyLinks(w http.ResponseWriter, r *http.Request) {
-	var body PrivacyLinks
-	if !decode(w, r, &body) {
-		return
-	}
+func (a api) setPrivacyLinks(r *http.Request, body PrivacyLinks) (serve.None, error) {
 	actor := a.settingsActor(r)
 	links, ops, err := a.cache.Settings().setPrivacyLinks(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "config: set privacy links", "veracrossPreferences", links.VeracrossPreferences, "heliosWhoOptIn", links.HeliosWhoOptIn)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a api) setColor(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Kind  string `json:"kind"`
-		Name  string `json:"name"`
-		Color string `json:"color"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+func (a api) setColor(r *http.Request, body colorBody) (serve.None, error) {
 	actor := a.settingsActor(r)
 	name, ops, err := a.cache.Settings().setColor(actor, body.Kind, body.Name, body.Color)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "config: set color", "kind", body.Kind, "name", name, "color", body.Color)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a api) setSuperAdmins(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		SuperAdmins []string `json:"superAdmins"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+func (a api) setSuperAdmins(r *http.Request, body superAdminsBody) (serve.None, error) {
 	actor := a.superActor(r)
 	admins, ops, err := a.cache.Settings().setSuperAdmins(actor, body.SuperAdmins)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "config: set the super admin list", "admins", admins)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a api) signOut(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Email string `json:"email"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+func (a api) signOut(r *http.Request, body signOutBody) (serve.None, error) {
 	actor := a.superActor(r)
 	email, ops, err := a.cache.Settings().signOut(actor, body.Email)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "config: signed out every session", "email", email, "by", actor.Email)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }

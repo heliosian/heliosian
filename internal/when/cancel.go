@@ -2,7 +2,6 @@ package when
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -10,47 +9,36 @@ import (
 	"strings"
 
 	"heliosian/internal/mail"
+	"heliosian/internal/serve"
 )
 
-func (a app) deleteInvitation(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID string `json:"id"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) deleteInvitation(r *http.Request, body idBody) (map[string]bool, error) {
 	actor := a.actor(r)
 	ops, e, own, err := a.deleteInvitationOps(actor, body.ID)
 	if err != nil {
-		refuse(w, err)
-		return
+		return nil, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return nil, err
 	}
 	slog.InfoContext(r.Context(), "calendar: invitation deleted", "actor", actor.Email, "event", e.ID, "title", e.Title, "event too", own)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"event": own})
+	return map[string]bool{"event": own}, nil
 }
 
-func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID     string `json:"id"`
-		Notify bool   `json:"notify"`
-		Note   string `json:"note"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+type cancelBody struct {
+	ID     string `json:"id"`
+	Notify bool   `json:"notify"`
+	Note   string `json:"note"`
+}
+
+func (a app) cancelEvent(r *http.Request, body cancelBody) (any, error) {
 	actor := a.actor(r)
 	ops, e, err := a.cancelOps(actor, body.ID, body.Note)
 	if err != nil {
-		refuse(w, err)
-		return
+		return nil, err
 	}
 	if len(ops) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
+		return serve.None{}, nil
 	}
 	note := strings.TrimSpace(body.Note)
 	model := a.cache.Model()
@@ -69,8 +57,8 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 			targets = append(targets, inv.Email)
 		}
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return nil, err
 	}
 	hostName := actor.Email
 	if p := a.directory().Person(actor.Email); p != nil && p.FullName != "" {
@@ -84,8 +72,7 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 		go a.sendCancellation(context.WithoutCancel(r.Context()), to, cc[to], replyTo, hostName, note, model.invitedEvent(e))
 	}
 	slog.InfoContext(r.Context(), "calendar: event cancelled", "actor", actor.Email, "event", e.ID, "title", e.Title, "told", len(targets))
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]int{"told": len(targets)})
+	return map[string]int{"told": len(targets)}, nil
 }
 
 func (a app) sendCancellation(ctx context.Context, to string, cc, replyTo []string, hostName, note string, e *Event) {

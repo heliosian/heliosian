@@ -13,6 +13,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -122,7 +123,7 @@ func TestCategoryRenameCarriesItsLinksAndAudience(t *testing.T) {
 	c, dir := sampleCache(t)
 	a := app{cache: c, sources: c.sources}
 	chats := c.Model().category("Chats")
-	rec := call(t, a.saveCategory, map[string]any{"original": "Chats", "title": "Group Chats", "emoji": chats.Emoji, "style": chats.Style, "rules": chats.Rules})
+	rec := call(t, serve.JSON(a.saveCategory), map[string]any{"original": "Chats", "title": "Group Chats", "emoji": chats.Emoji, "style": chats.Style, "rules": chats.Rules})
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
@@ -150,7 +151,7 @@ func TestCategoryRenameCarriesItsLinksAndAudience(t *testing.T) {
 func TestMoveLinkTradesPlacesWithinItsCategory(t *testing.T) {
 	c, dir := sampleCache(t)
 	a := app{cache: c, sources: c.sources}
-	if rec := call(t, a.moveLink, map[string]any{"title": "Parent Portal", "by": 1}); rec.Code != http.StatusNoContent {
+	if rec := call(t, serve.JSON(a.moveLink), map[string]any{"title": "Parent Portal", "by": 1}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move: %d %s", rec.Code, rec.Body)
 	}
 	var school []string
@@ -167,7 +168,7 @@ func TestMoveLinkTradesPlacesWithinItsCategory(t *testing.T) {
 	if want := []string{"set Title=Parent Portal Order 6"}; !slices.Equal(got, want) {
 		t.Fatalf("change log = %v, want %v", got, want)
 	}
-	if rec := call(t, a.moveLink, map[string]any{"title": "Parent Portal", "by": 1}); rec.Code != http.StatusNoContent || len(changeLog(t, dir)) != 1 {
+	if rec := call(t, serve.JSON(a.moveLink), map[string]any{"title": "Parent Portal", "by": 1}); rec.Code != http.StatusNoContent || len(changeLog(t, dir)) != 1 {
 		t.Fatalf("a move past the end: %d, log %v", rec.Code, changeLog(t, dir))
 	}
 }
@@ -189,7 +190,7 @@ func TestARowWithNoOrderSortsLast(t *testing.T) {
 		t.Fatalf("school = %v, want %v", school(), want)
 	}
 	before := len(changeLog(t, dir))
-	if rec := call(t, a.moveLink, map[string]any{"title": "Lunch Menu", "by": -1}); rec.Code != http.StatusNoContent {
+	if rec := call(t, serve.JSON(a.moveLink), map[string]any{"title": "Lunch Menu", "by": -1}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move: %d %s", rec.Code, rec.Body)
 	}
 	if want := []string{"Calendar", "Parent Portal", "Staff Room", "Lunch Menu", "Directory"}; !slices.Equal(school(), want) {
@@ -204,7 +205,7 @@ func TestCategoryOrderKeysOnlyWhatMoved(t *testing.T) {
 	c, dir := sampleCache(t)
 	a := app{cache: c, sources: c.sources}
 	titles := []string{"Helios Community Apps", "Upcoming Events", "Events", "School", "Chats"}
-	if rec := call(t, a.reorderCategories, map[string]any{"titles": titles}); rec.Code != http.StatusNoContent {
+	if rec := call(t, serve.JSON(a.reorderCategories), map[string]any{"titles": titles}); rec.Code != http.StatusNoContent {
 		t.Fatalf("reorder: %d %s", rec.Code, rec.Body)
 	}
 	got := []string{}
@@ -215,7 +216,7 @@ func TestCategoryOrderKeysOnlyWhatMoved(t *testing.T) {
 		t.Fatalf("categories = %v, log %v", got, changeLog(t, dir))
 	}
 	for _, bad := range [][]string{titles[1:], append(slices.Clone(titles[1:]), "Events"), append(slices.Clone(titles[1:]), "Nowhere")} {
-		if rec := call(t, a.reorderCategories, map[string]any{"titles": bad}); rec.Code != http.StatusBadRequest {
+		if rec := call(t, serve.JSON(a.reorderCategories), map[string]any{"titles": bad}); rec.Code != http.StatusBadRequest {
 			t.Errorf("%v was taken as an order: %d", bad, rec.Code)
 		}
 	}
@@ -231,7 +232,7 @@ func TestTheEventsSectionIsWrittenWhereItStands(t *testing.T) {
 		t.Fatal("no synthesized events section")
 	}
 	titles := []string{"Helios Community Apps", EventsTitle, "School", "Events", "Chats"}
-	if rec := call(t, a.reorderCategories, map[string]any{"titles": titles}); rec.Code != http.StatusNoContent {
+	if rec := call(t, serve.JSON(a.reorderCategories), map[string]any{"titles": titles}); rec.Code != http.StatusNoContent {
 		t.Fatalf("reorder: %d %s", rec.Code, rec.Body)
 	}
 	got := []string{}
@@ -247,7 +248,7 @@ func TestAppOrderIsAKey(t *testing.T) {
 	c, _ := sampleCache(t)
 	a := app{cache: c, sources: c.sources}
 	order := []string{"ask", "who", "team", "celebrate", "birthday", "when", "loop"}
-	if rec := call(t, a.setAppOrder, map[string]any{"apps": order}); rec.Code != http.StatusNoContent {
+	if rec := call(t, serve.JSON(a.setAppOrder), map[string]any{"apps": order}); rec.Code != http.StatusNoContent {
 		t.Fatalf("order: %d %s", rec.Code, rec.Body)
 	}
 	got := []string{}
@@ -266,14 +267,14 @@ func TestWidgetOrderIsAKey(t *testing.T) {
 		t.Fatalf("unset order = %v, want %v", got, Widgets)
 	}
 	for _, order := range [][]string{{"school", "when", "team", "celebrate"}, {"school", "celebrate", "when", "team"}} {
-		if rec := call(t, a.setWidgetOrder, map[string]any{"widgets": order}); rec.Code != http.StatusNoContent {
+		if rec := call(t, serve.JSON(a.setWidgetOrder), map[string]any{"widgets": order}); rec.Code != http.StatusNoContent {
 			t.Fatalf("order: %d %s", rec.Code, rec.Body)
 		}
 		if got := c.Model().WidgetOrder; !slices.Equal(got, order) {
 			t.Fatalf("widgets = %v, want %v", got, order)
 		}
 	}
-	if rec := call(t, a.setWidgetOrder, map[string]any{"widgets": []string{"school", "when"}}); rec.Code != http.StatusBadRequest {
+	if rec := call(t, serve.JSON(a.setWidgetOrder), map[string]any{"widgets": []string{"school", "when"}}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a partial order: %d, want 400", rec.Code)
 	}
 }
@@ -290,7 +291,7 @@ func TestOnlyAdminsGetTheRules(t *testing.T) {
 		User       user       `json:"user"`
 	}) {
 		rec := httptest.NewRecorder()
-		auth.Fixed(email, http.HandlerFunc(a.model)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/apps/model", nil))
+		auth.Fixed(email, serve.JSON(a.model)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/apps/model", nil))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("model for %s: %d %s", email, rec.Code, rec.Body)
 		}
@@ -357,10 +358,10 @@ func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 	if hidden := c.HiddenApps(alias); slices.Contains(hidden, "celebrate") {
 		t.Errorf("the alias is kept from an app listed for the admin by address: %v", hidden)
 	}
-	for _, h := range []http.HandlerFunc{a.calendar, a.upcomingUnder} {
+	for _, h := range []http.HandlerFunc{serve.JSON(a.calendar), serve.JSON(a.upcomingUnder)} {
 		auth.Fixed(alias, h).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 	}
-	for _, h := range []http.HandlerFunc{a.rsvp, a.setDefault} {
+	for _, h := range []http.HandlerFunc{serve.JSON(a.rsvp), serve.JSON(a.setDefault)} {
 		rec := httptest.NewRecorder()
 		auth.Fixed(alias, h).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(`{}`))))
 		if rec.Code != http.StatusNoContent {
@@ -374,7 +375,7 @@ func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 	}
 	clear(seen)
 	rec := httptest.NewRecorder()
-	auth.Fixed(alias, http.HandlerFunc(a.model)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/apps/model", nil))
+	auth.Fixed(alias, serve.JSON(a.model)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/apps/model", nil))
 	var view struct {
 		User user `json:"user"`
 	}
@@ -394,7 +395,7 @@ func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec = httptest.NewRecorder()
-	auth.Fixed(alias, http.HandlerFunc(a.moveLink)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(raw)))
+	auth.Fixed(alias, serve.JSON(a.moveLink)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(raw)))
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("the alias's move: %d %s", rec.Code, rec.Body)
 	}
@@ -402,7 +403,7 @@ func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 		t.Errorf("change log = %v, want one row by the admin the alias resolves to", log)
 	}
 	rec = httptest.NewRecorder()
-	auth.Fixed("robin.whitfield@heliosschool.org", http.HandlerFunc(a.moveLink)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(raw)))
+	auth.Fixed("robin.whitfield@heliosschool.org", serve.JSON(a.moveLink)).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(raw)))
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("a member's move: %d, want 403", rec.Code)
 	}
@@ -416,15 +417,15 @@ func TestWidgetAudience(t *testing.T) {
 		month:    func(string, string, string) Month { return Month{} },
 	}
 	parentsOnly := []filter.Rule{{Kind: filter.KindInclude, Roles: []string{"Parent"}}}
-	if rec := call(t, a.saveWidgetAudience, map[string]any{"widget": "team", "rules": parentsOnly}); rec.Code != http.StatusNoContent {
+	if rec := call(t, serve.JSON(a.saveWidgetAudience), map[string]any{"widget": "team", "rules": parentsOnly}); rec.Code != http.StatusNoContent {
 		t.Fatalf("save: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, a.saveWidgetAudience, map[string]any{"widget": "nope", "rules": parentsOnly}); rec.Code != http.StatusNotFound {
+	if rec := call(t, serve.JSON(a.saveWidgetAudience), map[string]any{"widget": "nope", "rules": parentsOnly}); rec.Code != http.StatusNotFound {
 		t.Errorf("an unknown widget: %d", rec.Code)
 	}
 	widgets := func(email string) map[string]widgetView {
 		rec := httptest.NewRecorder()
-		auth.Fixed(email, http.HandlerFunc(a.model)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/apps/model", nil))
+		auth.Fixed(email, serve.JSON(a.model)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/apps/model", nil))
 		var view struct {
 			Widgets map[string]widgetView `json:"widgets"`
 		}

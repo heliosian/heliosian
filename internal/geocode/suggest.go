@@ -1,7 +1,6 @@
 package geocode
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/lru"
 	"heliosian/internal/ratelimit"
+	"heliosian/internal/serve"
 )
 
 const (
@@ -60,32 +60,31 @@ func (s *Suggestions) Register(mux *http.ServeMux) {
 }
 
 func (s *Suggestions) serve(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
+	serve.Write(w, r, http.StatusOK, s.suggest(r))
+}
+
+func (s *Suggestions) suggest(r *http.Request) []Suggestion {
 	q := strings.ToLower(strings.Join(strings.Fields(r.URL.Query().Get("q")), " "))
 	if len(q) < 3 || len(q) > 200 {
-		w.Write([]byte("[]"))
-		return
+		return []Suggestion{}
 	}
 	if out, ok := s.cache.Get(q); ok {
-		json.NewEncoder(w).Encode(out)
-		return
+		return out
 	}
 	email := strings.ToLower(auth.RealEmail(r))
 	if !s.recent.Allow(email, time.Now()) {
 		slog.WarnContext(r.Context(), "address suggestions: over the limit", "email", email)
-		w.Write([]byte("[]"))
-		return
+		return []Suggestion{}
 	}
 	out, err := s.suggester.Suggest(q)
 	if err != nil {
 		slog.WarnContext(r.Context(), "address suggestions", "error", err)
-		w.Write([]byte("[]"))
-		return
+		return []Suggestion{}
 	}
 	if len(out) > 5 {
 		out = out[:5]
 	}
 	s.cache.Put(q, out)
-	json.NewEncoder(w).Encode(out)
+	return out
 }

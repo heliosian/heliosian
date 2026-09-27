@@ -115,7 +115,7 @@ func (s *Store[M]) commit(ctx context.Context, actor access.Actor, ops []Op) (<-
 	}
 	model, err := s.spec.Build(ctx, plan.Tables)
 	if err != nil {
-		return nil, err
+		return nil, access.Invalid("%v", err)
 	}
 	s.queue.interrupt()
 	s.mu.Lock()

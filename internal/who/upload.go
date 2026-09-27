@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/blob"
+	"heliosian/internal/serve"
 )
 
 const maxPhotos = 5
@@ -73,10 +75,11 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	actor := requestActor(u.cache, r)
 	ops, err := u.cache.Model().editField(actor, superEditOn(r), field, key, value)
 	if err != nil {
-		refuse(w, err)
+		serve.Error(w, r, err)
 		return
 	}
-	if !u.cache.commit(w, r, actor, ops...) {
+	if err := u.cache.commit(r.Context(), actor, ops...); err != nil {
+		serve.Error(w, r, err)
 		return
 	}
 	slog.InfoContext(r.Context(), "edit: set field", "actor", actor.Email, "field", field, "key", key)
@@ -90,10 +93,11 @@ func (u uploader) facts(w http.ResponseWriter, r *http.Request) {
 	actor := requestActor(u.cache, r)
 	ops, err := u.cache.Model().setFacts(actor, superEditOn(r), key, facts)
 	if err != nil {
-		refuse(w, err)
+		serve.Error(w, r, err)
 		return
 	}
-	if !u.cache.commit(w, r, actor, ops...) {
+	if err := u.cache.commit(r.Context(), actor, ops...); err != nil {
+		serve.Error(w, r, err)
 		return
 	}
 	slog.InfoContext(r.Context(), "facts: set", "actor", actor.Email, "key", key, "chars", len(facts))
@@ -123,7 +127,7 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 
 	mimeType, ext, err := mediaType(kind, content, header.Header.Get("Content-Type"))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		serve.Error(w, r, err)
 		return
 	}
 
@@ -135,14 +139,15 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 	actor := requestActor(u.cache, r)
 	ops, err := u.cache.Model().upload(actor, superEditOn(r), target, kind, key, name)
 	if err != nil {
-		refuse(w, err)
+		serve.Error(w, r, err)
 		return
 	}
 	if err := u.store.Put(folder, name, mimeType, content); err != nil {
-		serverError(w, r, err)
+		serve.Error(w, r, err)
 		return
 	}
-	if !u.cache.commit(w, r, actor, ops...) {
+	if err := u.cache.commit(r.Context(), actor, ops...); err != nil {
+		serve.Error(w, r, err)
 		return
 	}
 	if kind == "photo" && target == "person" {
@@ -161,10 +166,11 @@ func (u uploader) reorderPhotos(w http.ResponseWriter, r *http.Request) {
 	actor := requestActor(u.cache, r)
 	ops, err := u.cache.Model().reorderPhotos(actor, superEditOn(r), key, names)
 	if err != nil {
-		refuse(w, err)
+		serve.Error(w, r, err)
 		return
 	}
-	if !u.cache.commit(w, r, actor, ops...) {
+	if err := u.cache.commit(r.Context(), actor, ops...); err != nil {
+		serve.Error(w, r, err)
 		return
 	}
 	slog.InfoContext(r.Context(), "reorder-photos: set photo list", "actor", actor.Email, "photos", len(names), "key", key)
@@ -196,21 +202,22 @@ func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 	mimeType, ext, err := mediaType("photo", content, header.Header.Get("Content-Type"))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		serve.Error(w, r, err)
 		return
 	}
 	cropName := fmt.Sprintf("%x.%s", sha256.Sum256(content), ext)
 	actor := requestActor(u.cache, r)
 	ops, err := u.cache.Model().cropPhoto(actor, superEditOn(r), target, key, name, cropName)
 	if err != nil {
-		refuse(w, err)
+		serve.Error(w, r, err)
 		return
 	}
 	if err := u.store.Put("photos", cropName, mimeType, content); err != nil {
-		serverError(w, r, err)
+		serve.Error(w, r, err)
 		return
 	}
-	if !u.cache.commit(w, r, actor, ops...) {
+	if err := u.cache.commit(r.Context(), actor, ops...); err != nil {
+		serve.Error(w, r, err)
 		return
 	}
 	if target == "family" {
@@ -252,7 +259,7 @@ func mediaType(kind string, content []byte, declared string) (string, string, er
 		sniffed := http.DetectContentType(content)
 		ext, ok := photoExtensions[sniffed]
 		if !ok {
-			return "", "", fmt.Errorf("unsupported photo type %s", sniffed)
+			return "", "", access.Invalid("unsupported photo type %s", sniffed)
 		}
 		return sniffed, ext, nil
 	}
@@ -260,7 +267,7 @@ func mediaType(kind string, content []byte, declared string) (string, string, er
 	base = strings.TrimSpace(strings.ToLower(base))
 	ext, ok := audioExtensions[base]
 	if !ok {
-		return "", "", fmt.Errorf("unsupported audio type %s", declared)
+		return "", "", access.Invalid("unsupported audio type %s", declared)
 	}
 	if strings.HasPrefix(base, "video/") {
 		base = "audio/" + strings.TrimPrefix(base, "video/")

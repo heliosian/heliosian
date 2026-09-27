@@ -2,7 +2,6 @@ package who
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 
 	"heliosian/internal/cells"
 	"heliosian/internal/data"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -168,17 +168,15 @@ func (i *Invites) greeting(name string) (GreetingTemplate, bool) {
 	return GreetingTemplate{}, false
 }
 
+type inviteTemplates struct {
+	Systems   []InviteTemplate   `json:"systems"`
+	Greetings []GreetingTemplate `json:"greetings"`
+}
+
 func RegisterInvites(mux *http.ServeMux, cache *Cache, invites *Invites) {
-	mux.HandleFunc("GET /api/directory/invite-templates", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		view := struct {
-			Systems   []InviteTemplate   `json:"systems"`
-			Greetings []GreetingTemplate `json:"greetings"`
-		}{Systems: invites.Systems(), Greetings: visibleGreetings(invites.Model(), effectiveEmail(cache, r))}
-		if err := json.NewEncoder(w).Encode(view); err != nil {
-			slog.ErrorContext(r.Context(), "encode invite templates", "error", err)
-		}
-	})
+	mux.HandleFunc("GET /api/directory/invite-templates", serve.JSON(func(r *http.Request, _ serve.None) (inviteTemplates, error) {
+		return inviteTemplates{Systems: invites.Systems(), Greetings: visibleGreetings(invites.Model(), effectiveEmail(cache, r))}, nil
+	}))
 
 	mux.HandleFunc("POST /api/directory/greetings", func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
@@ -191,11 +189,11 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, invites *Invites) {
 		actor := requestActor(cache, r)
 		ops, err := invites.saveGreeting(actor, format, original, r.FormValue("grouped") == "1", r.FormValue("individual") == "1")
 		if err != nil {
-			refuse(w, err)
+			serve.Error(w, r, err)
 			return
 		}
 		if err := invites.Commit(r.Context(), actor, ops...); err != nil {
-			serverError(w, r, err)
+			serve.Error(w, r, err)
 			return
 		}
 		slog.InfoContext(r.Context(), "greeting: saved", "actor", actor.Email, "from", original, "name", format)
@@ -212,11 +210,11 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, invites *Invites) {
 		actor := requestActor(cache, r)
 		ops, err := invites.deleteGreeting(actor, name)
 		if err != nil {
-			refuse(w, err)
+			serve.Error(w, r, err)
 			return
 		}
 		if err := invites.Commit(r.Context(), actor, ops...); err != nil {
-			serverError(w, r, err)
+			serve.Error(w, r, err)
 			return
 		}
 		slog.InfoContext(r.Context(), "greeting: deleted", "actor", actor.Email, "name", name)

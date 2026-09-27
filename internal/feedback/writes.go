@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -16,7 +17,7 @@ func requireSuperAdmin(actor access.Actor) error {
 }
 
 func (m *Model) submit(actor access.Actor, r Report) (Report, []store.Op) {
-	r.ID = newID()
+	r.ID = serve.ID(12)
 	r.Status = StatusNew
 	r.Email = actor.Email
 	r.SuperAdmin = actor.Admin

@@ -77,22 +77,22 @@ func (c *Cache) checkRules(existing, rules []filter.Rule, actor string) ([]filte
 	for _, r := range rules {
 		r = filter.Clean(r)
 		if err := filter.Check(r); err != nil {
-			return nil, err
+			return nil, access.Invalid("%s", err)
 		}
 		for _, g := range r.Grades {
 			if !slices.Contains(options.Grades, g) {
-				return nil, fmt.Errorf("the directory has no grade %s", g)
+				return nil, access.Invalid("the directory has no grade %s", g)
 			}
 		}
 		for _, room := range r.Classrooms {
 			if !slices.Contains(options.Classrooms, room) {
-				return nil, fmt.Errorf("the directory has no classroom %s", room)
+				return nil, access.Invalid("the directory has no classroom %s", room)
 			}
 		}
 		out = append(out, r)
 	}
 	if err := filter.Writable(c.sources(), actor, c.Admins(), existing, out); err != nil {
-		return nil, err
+		return nil, access.Invalid("%s", err)
 	}
 	return out, nil
 }
@@ -305,7 +305,7 @@ func (c *Cache) saveCategory(actor access.Actor, in categoryEdit) (string, strin
 	}
 	emoji := strings.TrimSpace(in.Emoji)
 	if err := checkEmoji(emoji); err != nil {
-		return "", "", nil, err
+		return "", "", nil, access.Invalid("%s", err)
 	}
 	virtual := model.virtualEvents(in.Original)
 	if virtual {
@@ -324,7 +324,7 @@ func (c *Cache) saveCategory(actor access.Actor, in categoryEdit) (string, strin
 		}
 	}
 	if _, err := checkMax(in.Max); err != nil {
-		return "", "", nil, err
+		return "", "", nil, access.Invalid("%s", err)
 	}
 	cells := store.Row{"Title": title, "Emoji": emoji, "Style": style, "Max": strings.TrimSpace(in.Max)}
 	action := "edit"

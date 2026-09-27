@@ -18,6 +18,7 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
+	"heliosian/internal/serve"
 )
 
 func picture(t *testing.T) []byte {
@@ -81,7 +82,9 @@ func TestStockFetchedOnce(t *testing.T) {
 
 	imported := func(body string) (int, string) {
 		w := httptest.NewRecorder()
-		s.serveImport(w, httptest.NewRequest(http.MethodPost, "/api/team/images/import", strings.NewReader(body)), "activity-images")
+		serve.JSON(func(r *http.Request, body importRequest) (stored, error) {
+			return s.importImage(r, body, "activity-images")
+		})(w, httptest.NewRequest(http.MethodPost, "/api/team/images/import", strings.NewReader(body)))
 		var answer struct {
 			Name string `json:"name"`
 		}
@@ -112,7 +115,7 @@ func TestStockFetchedOnce(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	Search{Stock: memoryStock()}.serveSearch(w, httptest.NewRequest(http.MethodGet, "/api/team/images/search?q=soccer", nil))
+	serve.JSON(Search{Stock: memoryStock()}.search)(w, httptest.NewRequest(http.MethodGet, "/api/team/images/search?q=soccer", nil))
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("search with no library: %d, want 400", w.Code)
 	}

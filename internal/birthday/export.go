@@ -2,7 +2,6 @@ package birthday
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/store"
+	"heliosian/internal/when"
 )
 
 const (
@@ -28,17 +28,17 @@ const (
 )
 
 func nextExport(t time.Time) time.Time {
-	t = t.In(local)
-	at := time.Date(t.Year(), t.Month(), t.Day(), exportHour, exportMinute, 0, 0, local)
+	t = t.In(when.Location)
+	at := time.Date(t.Year(), t.Month(), t.Day(), exportHour, exportMinute, 0, 0, when.Location)
 	for at.Weekday() != exportDay || !at.After(t) {
-		at = time.Date(at.Year(), at.Month(), at.Day()+1, exportHour, exportMinute, 0, 0, local)
+		at = time.Date(at.Year(), at.Month(), at.Day()+1, exportHour, exportMinute, 0, 0, when.Location)
 	}
 	return at
 }
 
 func weekIssue(model *Model, t time.Time) string {
-	from := t.In(local).Format(DateFormat)
-	to := t.In(local).AddDate(0, 0, 7).Format(DateFormat)
+	from := t.In(when.Location).Format(DateFormat)
+	to := t.In(when.Location).AddDate(0, 0, 7).Format(DateFormat)
 	for _, d := range model.NewsletterDates {
 		if d > from && d <= to {
 			return d
@@ -133,29 +133,18 @@ func (a app) weeklyExport(ctx context.Context, issue string) (int, error) {
 	return len(rows), nil
 }
 
-func (a app) shareIssue(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Date string `json:"date"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
+func (a app) shareIssue(r *http.Request, body dateRef) (map[string]int, error) {
 	actor := a.actor(r)
 	issue := strings.TrimSpace(body.Date)
 	model := a.cache.Model()
 	rows, marks, err := model.shareIssue(actor, issue, a.toExport(model, issue))
 	if err != nil {
-		refuse(w, err)
-		return
+		return nil, err
 	}
 	if err := a.commitExport(r.Context(), actor, rows, marks); err != nil {
 		slog.ErrorContext(r.Context(), "birthday: copy to the shared sheet", "actor", actor.Email, "issue", issue, "copied", 0, "error", err)
-		http.Error(w, fmt.Sprintf("copied 0, then: %v", err), http.StatusBadGateway)
-		return
+		return nil, access.Refuse(http.StatusBadGateway, "copied 0, then: %v", err)
 	}
 	slog.InfoContext(r.Context(), "birthday: copied to the shared sheet", "actor", actor.Email, "issue", issue, "copied", len(rows))
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]int{"copied": len(rows)}); err != nil {
-		slog.ErrorContext(r.Context(), "encode copied count", "error", err)
-	}
+	return map[string]int{"copied": len(rows)}, nil
 }

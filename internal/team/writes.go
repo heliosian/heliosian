@@ -10,6 +10,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -153,8 +154,8 @@ type prettyConflict struct {
 	Renamed string `json:"renamed,omitempty"`
 }
 
-func (c *prettyConflict) Error() string {
-	return c.Message
+func (c *prettyConflict) refusal() error {
+	return &access.Refusal{Status: http.StatusConflict, Message: c.Message, Body: c}
 }
 
 func renamedPretty(model *Model, pretty, year string) string {
@@ -289,7 +290,7 @@ func (m *Model) saveActivity(actor access.Actor, body activityBody) (activitySav
 	}
 	id := body.ID
 	if adding {
-		id = newID()
+		id = serve.ID(8)
 	}
 	joining := ""
 	if adding {
@@ -320,8 +321,9 @@ func (m *Model) saveActivity(actor access.Actor, body activityBody) (activitySav
 	if pretty != "" && parent != "" {
 		for _, sibling := range m.Activity(parent).Children {
 			if sibling.ID != id && sibling.PrettyID == pretty {
-				return activitySave{}, &prettyConflict{ID: sibling.ID, Title: sibling.Title, Year: sibling.Year,
+				conflict := &prettyConflict{ID: sibling.ID, Title: sibling.Title, Year: sibling.Year,
 					Message: fmt.Sprintf("%q is already the address of %q under the same parent", pretty, sibling.Title)}
+				return activitySave{}, conflict.refusal()
 			}
 		}
 	}
@@ -336,7 +338,7 @@ func (m *Model) saveActivity(actor access.Actor, body activityBody) (activitySav
 			} else {
 				conflict.Message = fmt.Sprintf("%q is already the address of %q (%s)", pretty, other.Title, other.Year)
 			}
-			return activitySave{}, conflict
+			return activitySave{}, conflict.refusal()
 		}
 		displaced, renamed = other, conflict.Renamed
 	}
@@ -540,7 +542,7 @@ func (m *Model) saveCategory(actor access.Actor, body categoryBody) (categorySav
 		return categorySave{}, access.Invalid("%s", err.Error())
 	}
 	if adding {
-		id = newID()
+		id = serve.ID(8)
 	}
 	row := store.Row{
 		"Category ID":       id,
@@ -630,10 +632,10 @@ func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, 
 			return nil, "", "", nil, access.Invalid("%q already exists in %s", act.Title, year)
 		}
 	}
-	fresh := map[string]string{act.ID: newID()}
+	fresh := map[string]string{act.ID: serve.ID(8)}
 	ops := []store.Op{}
 	for _, c := range act.Categories {
-		fresh[c.ID] = newID()
+		fresh[c.ID] = serve.ID(8)
 		ops = append(ops, store.Insert(categoriesTab, store.Row{
 			"Category ID": fresh[c.ID], "Event ID": fresh[act.ID], "Title": c.Title, "Description": c.Description,
 			"Image": c.Image, "Allow Adding": c.AllowAdding, store.OrderColumn: c.Order,
@@ -673,7 +675,7 @@ func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, 
 		if _, ok := fresh[c.Parent]; !ok {
 			continue
 		}
-		fresh[c.ID] = newID()
+		fresh[c.ID] = serve.ID(8)
 		ops = append(ops, store.Insert(activitiesTab, rowFor(c, fresh[c.Parent])))
 		copied = append(copied, c)
 	}

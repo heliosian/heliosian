@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"heliosian/internal/config"
+	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
 	"heliosian/internal/who"
 )
@@ -111,7 +112,7 @@ func TestRepliesRecordAnswers(t *testing.T) {
 	}
 	m := Mail{SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, m, testStyle)
+	Register(mux, cache, nil, func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, imagesearch.Search{}, m, testStyle)
 	own := replyAddress("a7@sample", me)
 	if own != "Helios When <rsvp+"+(app{mail: m}).replyToken("a7@sample", me)+"@reply.heliosian.com>" {
 		t.Fatalf("organizer = %q", own)

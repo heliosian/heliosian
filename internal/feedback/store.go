@@ -2,8 +2,6 @@ package feedback
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"log/slog"
 	"slices"
 	"strings"
@@ -11,7 +9,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/data"
-	"heliosian/internal/logging"
 	"heliosian/internal/store"
 )
 
@@ -28,14 +25,6 @@ var ReportColumns = []string{
 	"ID", "Received", "App", "App Name", "Kind", "Status", "Summary", "Details",
 	"Email", "Role", "URL", "Page", "Browser", "Viewport", "Screen",
 	"Language", "Time Zone", "Errors", "Issue", "Handled", "Handled By",
-}
-
-func newID() string {
-	b := make([]byte, 6)
-	if _, err := rand.Read(b); err != nil {
-		logging.Fatal("feedback: read random bytes", "error", err)
-	}
-	return hex.EncodeToString(b)
 }
 
 func (r Report) cells() store.Row {

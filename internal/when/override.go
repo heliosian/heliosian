@@ -3,6 +3,8 @@ package when
 import (
 	"log/slog"
 	"net/http"
+
+	"heliosian/internal/serve"
 )
 
 type overrideBody struct {
@@ -18,41 +20,39 @@ type overrideBody struct {
 	Address     string   `json:"address"`
 }
 
-func (a app) setOverride(w http.ResponseWriter, r *http.Request) {
+func (a app) setOverride(r *http.Request, body overrideBody) (serve.None, error) {
 	actor := a.actor(r)
-	var body overrideBody
-	if !decode(w, r, &body) {
-		return
+	if err := adminOnly(actor); err != nil {
+		return serve.None{}, err
 	}
 	ops, id, empty, err := a.overrideOps(actor, body)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: override set", "actor", actor.Email, "event", id, "cleared", empty)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }
 
-func (a app) setOverrideImage(w http.ResponseWriter, r *http.Request) {
+type overrideImageBody struct {
+	ID    string `json:"id"`
+	Image string `json:"image"`
+}
+
+func (a app) setOverrideImage(r *http.Request, body overrideImageBody) (serve.None, error) {
 	actor := a.actor(r)
-	var body struct {
-		ID    string `json:"id"`
-		Image string `json:"image"`
-	}
-	if !decode(w, r, &body) {
-		return
+	if err := adminOnly(actor); err != nil {
+		return serve.None{}, err
 	}
 	ops, e, image, err := a.overrideImageOps(actor, body.ID, body.Image)
 	if err != nil {
-		refuse(w, err)
-		return
+		return serve.None{}, err
 	}
-	if !a.commit(w, r, actor, ops...) {
-		return
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: override image", "actor", actor.Email, "event", e.ID, "image", image)
-	w.WriteHeader(http.StatusNoContent)
+	return serve.None{}, nil
 }

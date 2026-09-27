@@ -15,6 +15,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
@@ -59,7 +60,7 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 	cache := sampleCache(t)
 	d := sampleDirectory(t, "sampledata")
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{}, testStyle)
+	Register(mux, cache, nil, func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, imagesearch.Search{}, Mail{}, testStyle)
 	return mux, cache
 }
 
@@ -365,7 +366,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	d := sampleDirectory(t, "sampledata")
 	kept := &keptMail{}
 	mux := http.NewServeMux()
-	Register(mux, cache, nil, func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", Base: "https://when.heliosian.com"}, testStyle)
+	Register(mux, cache, nil, func() *who.Model { return d }, func() *config.Settings { return &config.Settings{} }, func(string) []List { return nil }, func() []string { return nil }, func(string) []Linked { return nil }, Celebrate{}, nil, imagesearch.Search{}, Mail{Sender: kept, From: "Helios When <when@example.org>", Base: "https://when.heliosian.com"}, testStyle)
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {

@@ -9,6 +9,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -84,7 +85,7 @@ func ticketOps(directory *who.Model, p *Party, added []store.Row) []store.Op {
 
 func waitlistRequest(p *Party, purchaser string, quantity int, note, actor string) store.Row {
 	return store.Row{
-		"Ticket ID": NewID(), "Party ID": p.ID, "Email": purchaser, "Name": "", "Purchaser": purchaser,
+		"Ticket ID": serve.ID(8), "Party ID": p.ID, "Email": purchaser, "Name": "", "Purchaser": purchaser,
 		"Status": TicketWaitlist, "Quantity": strconv.Itoa(quantity), "Price": PriceCell(p.Price), "Note": note, "Added By": actor, "Added": stamp(),
 	}
 }
@@ -231,7 +232,7 @@ func (m *Model) takeTickets(actor access.Actor, directory *who.Model, order tick
 		}
 		out.sold++
 		out.added = append(out.added, store.Row{
-			"Ticket ID": NewID(), "Party ID": p.ID, "Email": rw.email, "Name": rw.name, "Purchaser": rw.purchaser,
+			"Ticket ID": serve.ID(8), "Party ID": p.ID, "Email": rw.email, "Name": rw.name, "Purchaser": rw.purchaser,
 			"Status": TicketSold, "Quantity": "1", "Price": price, "Note": strings.TrimSpace(order.Note), "Added By": actor.Email, "Added": stamp(),
 		})
 	}
@@ -336,7 +337,7 @@ func (m *Model) offerTickets(actor access.Actor, directory *who.Model, o offer) 
 	added := []store.Row{}
 	for i := 0; i < n; i++ {
 		cells := store.Row{
-			"Ticket ID": NewID(), "Party ID": p.ID, "Purchaser": t.Purchaser, "Status": TicketSold, "Quantity": "1",
+			"Ticket ID": serve.ID(8), "Party ID": p.ID, "Purchaser": t.Purchaser, "Status": TicketSold, "Quantity": "1",
 			"Price": PriceCell(t.Price), "Note": t.Note, "Added By": actor.Email, "Added": stamp(),
 		}
 		if i == 0 && selfTicket {
@@ -577,7 +578,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 	}
 	id := strings.TrimSpace(body.ID)
 	if adding {
-		id = NewID()
+		id = serve.ID(8)
 	}
 	pretty := cells.NormalizePretty(body.PrettyID)
 	if cells.CheckPretty(pretty) != nil {

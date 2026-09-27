@@ -12,6 +12,7 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -132,7 +133,7 @@ func feedCells(body feedBody) store.Row {
 
 func (a app) newFeed(actor access.Actor, body feedBody) ([]store.Op, store.Row) {
 	cells := feedCells(body)
-	cells["Token"], cells["Email"], cells["Created"] = NewToken(), actor.Email, now().Format(DateTimeFormat)
+	cells["Token"], cells["Email"], cells["Created"] = serve.ID(24), actor.Email, now().Format(DateTimeFormat)
 	cells["Name"] = a.cache.Model().unusedFeedName(actor.Email, strings.TrimSpace(body.Name))
 	return []store.Op{store.Insert(FeedsTab, cells)}, cells
 }
@@ -219,7 +220,7 @@ func (a app) feedTokenOps(actor access.Actor) ([]store.Op, string) {
 	if token := a.cache.Model().Settings[actor.Email].FeedToken; token != "" {
 		return nil, token
 	}
-	token := NewToken()
+	token := serve.ID(24)
 	return []store.Op{homeOp(actor.Email, store.Row{"Feed Token": token})}, token
 }
 
@@ -647,7 +648,7 @@ func (a app) inviteOps(actor access.Actor, id string, people []invitee) ([]store
 		case !emailForm.MatchString(email):
 			return nil, nil, nil, false, access.Invalid("%q is not an email address", p.Email)
 		default:
-			token = NewToken()
+			token = serve.ID(24)
 			if person := a.directory().Person(email); person != nil {
 				name, token, household = person.FullName, "", ""
 			}
@@ -726,7 +727,7 @@ func (a app) guestOps(actor access.Actor, g broughtGuest, name, email string) ([
 		if p := a.directory().Person(email); p != nil {
 			row["Name"] = p.FullName
 		} else {
-			row["Token"] = NewToken()
+			row["Token"] = serve.ID(24)
 		}
 	} else {
 		email = newGuestKey()
@@ -993,7 +994,7 @@ func (a app) fillOps(actor access.Actor, e *Event, g InviteGroup, wait bool) ([]
 		if p := a.directory().Person(email); p != nil {
 			name = p.FullName
 		} else if guest, ok := guests[email]; ok {
-			name, token = guest, NewToken()
+			name, token = guest, serve.ID(24)
 			if name == "" {
 				name = cells.DisplayName(email)
 			}
@@ -1081,7 +1082,7 @@ func (a app) moveAddressOps(actor access.Actor, old, to, name string) ([]store.O
 			default:
 				cells["Token"], cells["Household"] = row.Token, row.Household
 				if cells["Token"] == "" {
-					cells["Token"] = NewToken()
+					cells["Token"] = serve.ID(24)
 				}
 				if name != "" {
 					cells["Name"] = name

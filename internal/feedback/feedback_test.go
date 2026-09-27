@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -365,10 +366,11 @@ func TestCacheSavesAndHandles(t *testing.T) {
 	if got, _ := cache.Report("a1b2c3d4e5f6"); got.Status != StatusDismissed {
 		t.Errorf("dismissed = %+v", got)
 	}
-	if _, err := cache.Model().filed(superAdmin, "nope", "x", now); access.Status(err) != http.StatusNotFound {
+	var refusal *access.Refusal
+	if _, err := cache.Model().filed(superAdmin, "nope", "x", now); !errors.As(err, &refusal) || refusal.Status != http.StatusNotFound {
 		t.Errorf("filing a report that does not exist: %v", err)
 	}
-	if _, err := cache.Model().dismissed(access.Actor{Email: "member@example.org"}, saved.ID, now); access.Status(err) != http.StatusForbidden {
+	if _, err := cache.Model().dismissed(access.Actor{Email: "member@example.org"}, saved.ID, now); !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
 		t.Errorf("a member dismissing a report: %v", err)
 	}
 	queue.Flush()
