@@ -181,10 +181,10 @@ func main() {
 			log.Fatalf("%v", err)
 		}
 		imported += len(group)
-		log.Printf("imported %d of %d (%.1fM characters embedded)", imported, len(pending), float64(artifacts.Billed)/1e6)
+		log.Printf("imported %d of %d", imported, len(pending))
 	}
-	fmt.Printf("\n%d files: %d imported, %d already on file, %d with no words (%d taken off the corpus), %d withheld, %d failed\n%d chunks, %.1fM characters embedded, %d links dropped\n",
-		len(files), imported, skipped, empty, len(dropped), withheld, failed, chunks, float64(artifacts.Billed)/1e6, resolver.Dropped)
+	fmt.Printf("\n%d files: %d imported, %d already on file, %d with no words (%d taken off the corpus), %d withheld, %d failed\n%d chunks, %d links dropped\n",
+		len(files), imported, skipped, empty, len(dropped), withheld, failed, chunks, resolver.Dropped)
 	report("by kind", kinds)
 	report("by channel", channels)
 	if failed > 0 {

@@ -128,9 +128,6 @@ func (v *Vertex) predict(ctx context.Context, texts []string, query bool) ([]Vec
 				Values []float32 `json:"values"`
 			} `json:"embeddings"`
 		} `json:"predictions"`
-		Metadata struct {
-			BillableCharacterCount int `json:"billableCharacterCount"`
-		} `json:"metadata"`
 	}
 	if err := json.Unmarshal(answer, &parsed); err != nil {
 		return nil, fmt.Errorf("embed: read the answer: %w", err)
@@ -138,7 +135,6 @@ func (v *Vertex) predict(ctx context.Context, texts []string, query bool) ([]Vec
 	if len(parsed.Predictions) != len(texts) {
 		return nil, fmt.Errorf("embed: %d texts sent, %d vectors returned", len(texts), len(parsed.Predictions))
 	}
-	Billed += parsed.Metadata.BillableCharacterCount
 	out := []Vector{}
 	for i, p := range parsed.Predictions {
 		if len(p.Embeddings.Values) != vertexDims {
@@ -148,8 +144,6 @@ func (v *Vertex) predict(ctx context.Context, texts []string, query bool) ([]Vec
 	}
 	return out, nil
 }
-
-var Billed int
 
 type Fake struct{}
 
