@@ -1,6 +1,8 @@
 package app
 
 import (
+	"os"
+
 	"heliosian/internal/artifacts"
 	"heliosian/internal/ask"
 	"heliosian/internal/birthday"
@@ -28,7 +30,7 @@ const (
 )
 
 func githubApp() feedback.IssueFiler {
-	app, err := feedback.NewGitHubApp(env.Key("GITHUB_APP_ID", "local/creds/github-app.id"), env.Key("GITHUB_APP_KEY", "local/creds/github-app.pem"))
+	app, err := feedback.NewGitHubApp(env.Required("GITHUB_APP_ID"), env.Required("GITHUB_APP_KEY"))
 	if err != nil {
 		logging.Fatal("read the github app key", "error", err)
 	}
@@ -40,11 +42,11 @@ func calendarMail(sessionKey string) when.Mail {
 }
 
 func mailgunKey() string {
-	return env.Key("MAILGUN_KEY", "local/creds/mailgun.key")
+	return env.Required("MAILGUN_KEY")
 }
 
 func mailgunSigningKey() string {
-	return env.OptionalKey("MAILGUN_WEBHOOK_KEY", "local/creds/mailgun-webhook.key")
+	return os.Getenv("MAILGUN_WEBHOOK_KEY")
 }
 
 func newMailer(from string) mail.Sender {
@@ -65,28 +67,28 @@ func artifactsMail(bucket *blob.Bucket) artifacts.Inbox {
 
 // A nil *describe.Describer must stay a nil interface, or the app would call it.
 func ClaudeDescriber() birthday.Describer {
-	if d := describe.New(env.OptionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"), spend); d != nil {
+	if d := describe.New(os.Getenv("ANTHROPIC_API_KEY"), spend); d != nil {
 		return d
 	}
 	return nil
 }
 
 func ClaudeGroupDescriber() loop.Describer {
-	if d := describe.New(env.OptionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"), spend); d != nil {
+	if d := describe.New(os.Getenv("ANTHROPIC_API_KEY"), spend); d != nil {
 		return d
 	}
 	return nil
 }
 
 func ClaudeKeyPoints() keypoints.Summarizer {
-	if c := keypoints.New(env.OptionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key")); c != nil {
+	if c := keypoints.New(os.Getenv("ANTHROPIC_API_KEY")); c != nil {
 		return c
 	}
 	return nil
 }
 
 func ClaudeAsker() ask.Responder {
-	if key := env.OptionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"); key != "" {
+	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
 		return ask.NewClaude(key)
 	}
 	return nil
@@ -94,8 +96,8 @@ func ClaudeAsker() ask.Responder {
 
 func ImageSearchKeys() imagesearch.Search {
 	return imagesearch.Search{
-		Unsplash: env.OptionalKey("UNSPLASH_KEY", "local/creds/unsplash.key"),
-		Pexels:   env.OptionalKey("PEXELS_KEY", "local/creds/pexels.key"),
-		Pixabay:  env.OptionalKey("PIXABAY_KEY", "local/creds/pixabay.key"),
+		Unsplash: os.Getenv("UNSPLASH_KEY"),
+		Pexels:   os.Getenv("PEXELS_KEY"),
+		Pixabay:  os.Getenv("PIXABAY_KEY"),
 	}
 }

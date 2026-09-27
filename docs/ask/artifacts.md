@@ -44,7 +44,7 @@ A group's post comes in from Loop itself. When Loop's mailer records a post `sen
 
 `tools/importartifacts` turns saved messages into documents:
 
-    eval "$(go run ./tools/findsheet)"
+    eval "$(go run ./tools/devenv)"
     go run ./tools/importartifacts --dry-run local/imports/mail/*.json
     go run ./tools/importartifacts --i-have-user-permission-to-spend-money local/imports/mail/*.json
 
@@ -59,7 +59,7 @@ Every link a Veracross newsletter carries is a redirect under a `.veracross.com`
 `tools/archivesite` reads the sitemap Finalsite publishes at `/fs/pages/sitemap` and saves each page it names under `local/imports/site/` as a `Page`: the address the request ended at and the whole HTML. A page that redirects off the site (the parent portal, the inquiry form, social media) is not saved. Several sitemap entries can redirect to the same page, which is saved once under its own address. The archiver waits five seconds between requests, as the site's robots.txt asks, and sends an Accept header, since without one the site answers 406.
 
     go run ./tools/archivesite
-    eval "$(go run ./tools/findsheet)"
+    eval "$(go run ./tools/devenv)"
     go run ./tools/importartifacts --dry-run local/imports/site/*.json
 
 `tools/importartifacts` takes saved pages and saved messages alike; a file with a `url` is a page. A page's document is its `<main>` content without what the site repeats around it. The page title is dropped from the text because it is the document's title (the `<title>` less the site's name). The section menus and forms are dropped. So is the row of tabs over a set of panels, since each panel's title appears again as its heading. Relative links become absolute against the page's address. The document is dated by the day the site last published the page (`page-published`), its author is Helios School, and its source is its address, which the tools give the model as the document's url.
@@ -71,7 +71,7 @@ The portal and the HELP site sit behind the school's sign-in and draw most of th
     go run ./tools/capturebrowser
     go run ./tools/archivebrowser --start https://portals.veracross.com/heliosschool/parent --prefix https://portals.veracross.com/heliosschool/parent/pages/ --selector .app-container --out local/imports/portal
     go run ./tools/archivebrowser --start https://sites.google.com/heliosns.org/help/welcome --prefix https://sites.google.com/heliosns.org/help/ --selector section --out local/imports/help
-    eval "$(go run ./tools/findsheet)"
+    eval "$(go run ./tools/devenv)"
     go run ./tools/importartifacts --dry-run local/imports/portal/*.json local/imports/help/*.json
 
 `tools/importartifacts` knows a resource by its `format`. HTML is rendered by the same walker as mail, with relative links made whole against the resource's address and Google's `google.com/url?q=` wrappers turned back into the address they carry. Text keeps its lines, a page break becomes a paragraph break, and a line that is only a number, a deck's slide number, is dropped. A resource is dated by the day it was fetched, since the portal says nothing of when a page last changed, its author is Helios School, and its source is its address, which the tools give the model as the document's url.

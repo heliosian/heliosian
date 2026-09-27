@@ -13,25 +13,15 @@ import (
 )
 
 const (
-	service    = "heliosian"
-	region     = "us-west1"
-	image      = "us-west1-docker.pkg.dev/heliosian/heliosian/heliosian:latest"
-	job        = "periodicsync"
-	jobImage   = "us-west1-docker.pkg.dev/heliosian/heliosian/periodicsync:latest"
-	jobSecrets = "ANTHROPIC_API_KEY=heliosian-anthropic-key:latest"
-	identity   = "directory@heliosian.iam.gserviceaccount.com"
-	secrets    = "SESSION_KEY=heliosian-session-key:latest," +
-		"GOOGLE_MAPS_SERVER_KEY=heliosian-geocoding-key:latest," +
-		"GOOGLE_MAPS_BROWSER_KEY=heliosian-maps-browser-key:latest," +
-		"UNSPLASH_KEY=heliosian-unsplash-key:latest," +
-		"PEXELS_KEY=heliosian-pexels-key:latest," +
-		"PIXABAY_KEY=heliosian-pixabay-key:latest," +
-		"MAILGUN_KEY=heliosian-mailgun-key:latest," +
-		"MAILGUN_WEBHOOK_KEY=heliosian-mailgun-webhook-key:latest," +
-		"GITHUB_APP_ID=heliosian-github-app-id:latest," +
-		"GITHUB_APP_KEY=heliosian-github-app-key:latest," +
-		"ANTHROPIC_API_KEY=heliosian-anthropic-key:latest"
+	service  = "heliosian"
+	region   = "us-west1"
+	image    = "us-west1-docker.pkg.dev/heliosian/heliosian/heliosian:latest"
+	job      = "periodicsync"
+	jobImage = "us-west1-docker.pkg.dev/heliosian/heliosian/periodicsync:latest"
+	identity = "directory@heliosian.iam.gserviceaccount.com"
 )
+
+var jobSecrets = []string{"ANTHROPIC_API_KEY"}
 
 func sheetEnvVars(sheets []spreadsheets.Spreadsheet) string {
 	pairs := []string{}
@@ -39,6 +29,24 @@ func sheetEnvVars(sheets []spreadsheets.Spreadsheet) string {
 		pairs = append(pairs, s.Env+"="+env.Required(s.Env))
 	}
 	return strings.Join(pairs, ",")
+}
+
+func secretRefs(secrets []env.Secret) string {
+	pairs := []string{}
+	for _, s := range secrets {
+		pairs = append(pairs, s.Env+"="+s.Name+":latest")
+	}
+	return strings.Join(pairs, ",")
+}
+
+func secretsNamed(names []string) []env.Secret {
+	out := []env.Secret{}
+	for _, s := range env.Secrets {
+		if slices.Contains(names, s.Env) {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func gcloud(args ...string) {
@@ -73,7 +81,7 @@ func mapDomains() {
 
 func main() {
 	jobEnvVars := sheetEnvVars(spreadsheets.Of(spreadsheets.SyncSources))
-	envVars := sheetEnvVars(spreadsheets.All) + ",GOOGLE_CLIENT_ID=" + env.ClientID()
+	envVars := sheetEnvVars(spreadsheets.All)
 	log.Printf("deploying %s to %s in %s", image, service, region)
 	gcloud("run", "deploy", service,
 		"--image", image,
@@ -87,7 +95,7 @@ func main() {
 		"--no-cpu-throttling",
 		"--use-http2",
 		"--set-env-vars", envVars,
-		"--set-secrets", secrets,
+		"--set-secrets", secretRefs(env.Secrets),
 		"--quiet")
 	mapDomains()
 	log.Printf("deploying %s to job %s in %s", jobImage, job, region)
@@ -100,6 +108,6 @@ func main() {
 		"--max-retries", "0",
 		"--args=--i-have-user-permission-to-spend-money",
 		"--set-env-vars", jobEnvVars,
-		"--set-secrets", jobSecrets,
+		"--set-secrets", secretRefs(secretsNamed(jobSecrets)),
 		"--quiet")
 }

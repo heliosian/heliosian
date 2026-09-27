@@ -62,7 +62,7 @@ The people to think about:
 
 ### Storage and integrations
 
-- How each secret reaches the process and where else it ends up: pages, logs, the image, the build's uploaded source, the repository, `local/`, the log file and the minted cookie `tools/startserver --detach` leaves behind, the capture browser's profile holding a real session, Chrome's debugging port while it runs.
+- How each secret reaches the process and where else it ends up: pages, logs, the image, the build's uploaded source, the repository, `local/`, the shell environment `tools/devenv` exports every production key into, the log file `tools/startserver --detach` leaves behind, the cookies `tools/cookie` and `tools/askrun` mint, the capture browser's profile holding a real session, Chrome's debugging port while it runs.
 - Keys rendered into pages (the Maps browser key) and how each is restricted; server keys that would work from anywhere if they leaked.
 - One key doing every job: the Mailgun key across all domains, the GitHub App's installed permissions against what filing an issue needs, the Anthropic key shared by the service and the job.
 - Buckets and sheets: that nothing is readable by address alone, what `directory@` can do beyond what the server needs, who can act as it (`serviceAccountTokenCreator`), and who is in the shared drive - since whoever can edit an `Admins` or `Super Admins` tab by hand is an admin.

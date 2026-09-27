@@ -37,14 +37,16 @@ import (
 	"heliosian/internal/when"
 )
 
-const logPath = "local/heliosian-server.log"
+const (
+	logPath = "local/heliosian-server.log"
+	mailDir = "local/mail"
+)
 
 const sampleUser = "jordan.whitfield@heliosschool.org"
 
 func main() {
-	email := flag.String("email", "ian.gulliver@heliosschool.org", "session email for --detach's minted cookie")
 	real := flag.Bool("real", false, "serve the production assembly in the foreground")
-	detach := flag.Bool("detach", false, "launch --real in the background with a log file and a minted cookie")
+	detach := flag.Bool("detach", false, "launch --real in the background with a log file")
 	capturePath := flag.String("capture", "", "serve sample data in-process, capture this url (on any app's local hostname) as a PNG, and exit")
 	out := flag.String("out", "local/screenshots/capture.png", "output png path for --capture")
 	wait := flag.String("wait", "body", "css selector that must be visible before capturing, for --capture")
@@ -61,7 +63,7 @@ func main() {
 		devcache.Install()
 		app.Serve(localTLS(app.Production(app.DevDomain)))
 	case *detach:
-		detachReal(*email)
+		detachReal()
 	case *capturePath != "":
 		cookie := "heliosian-quan-shown=1"
 		if *as != "" {
@@ -73,15 +75,8 @@ func main() {
 	}
 }
 
-func mailDir() string {
-	if dir := os.Getenv("MAIL_DIR"); dir != "" {
-		return dir
-	}
-	return filepath.Join(os.TempDir(), "hca-mail")
-}
-
 func sampleServer() (*http.Server, *store.Queue) {
-	intercept.Install(mail.Host, mailFiles{dir: mailDir()})
+	intercept.Install(mail.Host, mailFiles{dir: mailDir})
 	dir := &data.Dir{Root: "sampledata"}
 	bucket := blob.NewMemoryBucket()
 	media := blob.New(bucket)
@@ -102,7 +97,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 		BirthdayMail:  mail.NewMailgun("sample", "Helios Staff Birthdays <birthday@example.org>"),
 		BirthdayBase:  "https://birthday.heliosiandev.com:" + app.Port(),
 		FeedbackBase:  "https://home.heliosiandev.com:" + app.Port(),
-		Loop:          loop.Mail{Sender: mail.NewMailgun("sample", ""), Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir()}},
+		Loop:          loop.Mail{Sender: mail.NewMailgun("sample", ""), Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir}},
 		LoopDescriber: sampleGroupDescriber(),
 		Asker:         sampleAsker(),
 		Embedder:      artifacts.Fake{},
@@ -156,8 +151,8 @@ func localTLS(server *http.Server, queue *store.Queue) (*http.Server, *store.Que
 	return server, queue
 }
 
-func detachReal(email string) {
-	key := env.Required("SESSION_KEY")
+func detachReal() {
+	env.Required("SESSION_KEY")
 	spreadsheets.IDs(spreadsheets.All)
 
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
@@ -179,10 +174,8 @@ func detachReal(email string) {
 		logging.Fatal("start server", "error", err)
 	}
 
-	cookie := auth.Token([]byte(key), email, time.Now())
 	fmt.Printf("log: %s\n", logPath)
 	fmt.Printf("stop with: kill -- -%d\n", cmd.Process.Pid)
-	fmt.Printf("header: Cookie: session=%s\n", cookie)
 }
 
 func captureOnce(opts capture.Options, out string) {

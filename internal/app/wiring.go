@@ -353,12 +353,12 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	core := NewCore(Config{
 		Source:        sheet,
 		Writer:        sheet,
-		Geocoder:      geocode.New(env.Key("GOOGLE_MAPS_SERVER_KEY", "local/creds/geocoding.key")),
+		Geocoder:      geocode.New(env.Required("GOOGLE_MAPS_SERVER_KEY")),
 		Bucket:        bucket,
 		Store:         store,
 		FamilyIDKey:   familyIDKey.Sum(nil),
 		ChatKey:       chatKey.Sum(nil),
-		BrowserKey:    env.Key("GOOGLE_MAPS_BROWSER_KEY", "local/creds/maps.key"),
+		BrowserKey:    env.Required("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch:   ImageSearchKeys(),
 		Describer:     ClaudeDescriber(),
 		Mail:          newMailer(mailFrom),
@@ -370,14 +370,14 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		FeedbackBase:  feedbackBase,
 		Loop:          loopMail(sessionKey),
 		LoopDescriber: ClaudeGroupDescriber(),
-		Asker:         ask.NewClaude(env.Key("ANTHROPIC_API_KEY", "local/creds/anthropic.key")),
+		Asker:         ask.NewClaude(env.Required("ANTHROPIC_API_KEY")),
 		KeyPoints:     ClaudeKeyPoints(),
 		Embedder:      embedder,
 		ArtifactsMail: artifactsMail(bucket),
 	})
 	muxes := core.Muxes()
 	who.RegisterUpload(muxes["who"], core.Cache, store)
-	client := env.ClientID()
+	client := env.Required("GOOGLE_CLIENT_ID")
 	auths := map[string]*auth.Auth{}
 	for _, a := range core.apps {
 		gate := auth.New(domain, client, []byte(sessionKey), auth.Login{Title: a.Title}, core.Member, []string{OptInPath}, core.Sessions)
@@ -408,7 +408,7 @@ func calendarWatcher(sheet *data.Sheet, core *Core, sessionKey string) *calendar
 	opts := calendarimport.Options{
 		Source: sheet, Cache: core.CalendarCache, Calendar: cal,
 		Roster:       func() when.Roster { return when.RosterOf(core.Cache.Model()) },
-		AnthropicKey: env.Key("ANTHROPIC_API_KEY", "local/creds/anthropic.key"),
+		AnthropicKey: env.Required("ANTHROPIC_API_KEY"),
 	}
 	return calendarimport.NewWatcher(opts, hex.EncodeToString(mac.Sum(nil)))
 }

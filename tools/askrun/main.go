@@ -90,11 +90,14 @@ type result struct {
 
 func main() {
 	base := flag.String("base", "https://ask.heliosiandev.com:"+app.Port(), "the running server's Helios Ask origin")
-	email := flag.String("email", "ian.gulliver@heliosschool.org", "session email for the minted cookie")
+	email := flag.String("email", "", "session email for the minted cookie")
 	as := flag.String("as", "", "directory addresses to view as through Spoof Mode, comma-separated, the questions dealt out across them")
 	out := flag.String("out", filepath.Join("local", "ask-runs", time.Now().Format("2006-01-02-150405")+".md"), "markdown file the answers are written to")
 	flag.Parse()
 	key := env.Required("SESSION_KEY")
+	if *email == "" {
+		log.Fatal("--email is required")
+	}
 	viewers := []string{""}
 	if *as != "" {
 		viewers = strings.Split(*as, ",")

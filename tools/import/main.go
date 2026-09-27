@@ -430,14 +430,8 @@ func main() {
 	sheet := env.Required("DIRECTORY_SHEET")
 	preferences := env.Required("PREFERENCES_SHEET")
 	config := env.Required("CONFIG_SHEET")
-	exporter := os.Getenv("VCEXPORT")
-	if exporter == "" {
-		exporter = "../vcexport"
-	}
-	website := os.Getenv("WEBEXPORT")
-	if website == "" {
-		website = "../webexport"
-	}
+	exporter := env.Required("VCEXPORT")
+	website := env.Required("WEBEXPORT")
 	out, err := os.MkdirTemp("", "vcexport")
 	if err != nil {
 		log.Fatalf("create output dir: %v", err)

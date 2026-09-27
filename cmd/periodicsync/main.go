@@ -24,7 +24,7 @@ func main() {
 	if !*permitted {
 		logging.Fatal("periodicsync: this run spends money on Claude; pass --i-have-user-permission-to-spend-money only when the user has said to run it")
 	}
-	key := env.Key("ANTHROPIC_API_KEY", "local/creds/anthropic.key")
+	key := env.Required("ANTHROPIC_API_KEY")
 	ctx := context.Background()
 	source, err := data.NewSheet(spreadsheets.IDs(spreadsheets.Of(spreadsheets.SyncSources)))
 	if err != nil {

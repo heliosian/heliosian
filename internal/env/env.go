@@ -1,12 +1,30 @@
 package env
 
 import (
-	"encoding/json"
 	"os"
-	"strings"
 
 	"heliosian/internal/logging"
 )
+
+type Secret struct {
+	Env  string
+	Name string
+}
+
+var Secrets = []Secret{
+	{"SESSION_KEY", "heliosian-session-key"},
+	{"GOOGLE_CLIENT_ID", "heliosian-oauth-client-id"},
+	{"GOOGLE_MAPS_SERVER_KEY", "heliosian-geocoding-key"},
+	{"GOOGLE_MAPS_BROWSER_KEY", "heliosian-maps-browser-key"},
+	{"UNSPLASH_KEY", "heliosian-unsplash-key"},
+	{"PEXELS_KEY", "heliosian-pexels-key"},
+	{"PIXABAY_KEY", "heliosian-pixabay-key"},
+	{"MAILGUN_KEY", "heliosian-mailgun-key"},
+	{"MAILGUN_WEBHOOK_KEY", "heliosian-mailgun-webhook-key"},
+	{"GITHUB_APP_ID", "heliosian-github-app-id"},
+	{"GITHUB_APP_KEY", "heliosian-github-app-key"},
+	{"ANTHROPIC_API_KEY", "heliosian-anthropic-key"},
+}
 
 func Required(name string) string {
 	value := os.Getenv(name)
@@ -14,49 +32,4 @@ func Required(name string) string {
 		logging.Fatal("environment variable is required", "name", name)
 	}
 	return value
-}
-
-func ClientID() string {
-	if id := os.Getenv("GOOGLE_CLIENT_ID"); id != "" {
-		return id
-	}
-	raw, err := os.ReadFile("local/creds/oauth-client.json")
-	if err != nil {
-		logging.Fatal("read local/creds/oauth-client.json (or set GOOGLE_CLIENT_ID)", "error", err)
-	}
-	var parsed struct {
-		Web struct {
-			ClientID string `json:"client_id"`
-		} `json:"web"`
-	}
-	if err := json.Unmarshal(raw, &parsed); err != nil || parsed.Web.ClientID == "" {
-		logging.Fatal("local/creds/oauth-client.json is not an oauth web client file")
-	}
-	return parsed.Web.ClientID
-}
-
-func Key(envName, file string) string {
-	if key := os.Getenv(envName); key != "" {
-		return key
-	}
-	raw, err := os.ReadFile(file)
-	if err != nil {
-		logging.Fatal("read key file", "file", file, "or set", envName, "error", err)
-	}
-	key := strings.TrimSpace(string(raw))
-	if key == "" {
-		logging.Fatal("key file is empty", "file", file)
-	}
-	return key
-}
-
-func OptionalKey(envName, file string) string {
-	if key := os.Getenv(envName); key != "" {
-		return key
-	}
-	raw, err := os.ReadFile(file)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(raw))
 }
