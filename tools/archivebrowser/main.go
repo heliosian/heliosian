@@ -9,7 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,8 +23,10 @@ import (
 
 	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/cdproto/runtime"
-	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
+
+	"heliosian/internal/capture"
+	"heliosian/internal/logging"
 )
 
 var skippedPages = []string{"School-Year-Calendar"}
@@ -98,19 +100,18 @@ func main() {
 	out := flag.String("out", "", "the folder the pages and documents are saved in")
 	flag.Parse()
 	if *start == "" || *prefix == "" || *selector == "" || *out == "" {
-		log.Fatal("--start, --prefix, --selector and --out are all required")
+		logging.Fatal("--start, --prefix, --selector and --out are all required")
 	}
-	id, err := newTab()
+	id, err := capture.NewTab()
 	if err != nil {
-		log.Fatalf("%v", err)
+		logging.Fatal("new tab", "error", err)
 	}
-	allocCtx, _ := chromedp.NewRemoteAllocator(context.Background(), "http://localhost:9222")
-	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(id)))
+	ctx, cancel := capture.Attach(id)
 	defer cancel()
 	ctx, cancelTimeout := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancelTimeout()
 	if err := os.MkdirAll(*out, 0o755); err != nil {
-		log.Fatalf("%v", err)
+		logging.Fatal("create output dir", "error", err)
 	}
 
 	script := strings.Replace(renderScript, "SELECTOR", strconv.Quote(*selector), 1)
@@ -127,7 +128,7 @@ func main() {
 			return p.WithAwaitPromise(true)
 		}))
 		if err != nil {
-			log.Printf("%s: %v", address, err)
+			slog.Error("read page", "url", address, "error", err)
 			failed++
 			continue
 		}
@@ -154,11 +155,11 @@ func main() {
 			linked = append(linked, Doc{URL: l.Href, Title: l.Text, LinkedFrom: address})
 		}
 	}
-	log.Printf("%d pages saved", saved)
+	slog.Info("pages saved", "count", saved)
 
 	downloads, err := newDownloader(ctx)
 	if err != nil {
-		log.Fatalf("downloads: %v", err)
+		logging.Fatal("downloads", "error", err)
 	}
 	defer downloads.close(ctx)
 	handled := map[string]bool{}
@@ -170,13 +171,13 @@ func main() {
 		}
 		handled[name] = true
 		if personal.MatchString(doc.Title) {
-			log.Printf("%s (%q): personal; skipped", doc.URL, doc.Title)
+			slog.Info("personal, skipped", "url", doc.URL, "title", doc.Title)
 			skipped++
 			continue
 		}
 		result, err := fetch(ctx, downloads)
 		if err != nil {
-			log.Printf("%s: %v", doc.URL, err)
+			slog.Error("fetch document", "url", doc.URL, "error", err)
 			failed++
 			continue
 		}
@@ -184,7 +185,7 @@ func main() {
 		write(*out, name, result)
 		saved++
 	}
-	log.Printf("%d saved, %d skipped, %d failed", saved, skipped, failed)
+	slog.Info("done", "saved", saved, "skipped", skipped, "failed", failed)
 	if failed > 0 {
 		downloads.close(ctx)
 		os.Exit(1)
@@ -275,7 +276,7 @@ func newDownloader(ctx context.Context) (*downloader, error) {
 
 func (d *downloader) close(ctx context.Context) {
 	if err := chromedp.Run(ctx, browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorDefault)); err != nil {
-		log.Printf("restore the browser's downloads: %v", err)
+		slog.Error("restore the browser's downloads", "error", err)
 	}
 	os.RemoveAll(d.dir)
 }
@@ -437,13 +438,13 @@ func write(out, name string, doc Doc) {
 	doc.Fetched = time.Now().UTC().Format(time.RFC3339)
 	encoded, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
-		log.Fatalf("%v", err)
+		logging.Fatal("encode document", "error", err)
 	}
 	file := filepath.Join(out, name+".json")
 	if err := os.WriteFile(file, encoded, 0o644); err != nil {
-		log.Fatalf("%v", err)
+		logging.Fatal("write document", "path", file, "error", err)
 	}
-	log.Printf("%q saved as %s", doc.Title, file)
+	slog.Info("saved", "title", doc.Title, "path", file)
 }
 
 func pageAddress(href string) string {
@@ -462,26 +463,4 @@ func path(address string) string {
 
 func slug(name string) string {
 	return strings.ToLower(strings.Trim(strings.ReplaceAll(name, " ", "-"), "-"))
-}
-
-func newTab() (string, error) {
-	req, err := http.NewRequest(http.MethodPut, "http://localhost:9222/json/new?url=about:blank", nil)
-	if err != nil {
-		return "", err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("capture browser not reachable on localhost:9222, run tools/capturebrowser first: %w", err)
-	}
-	defer resp.Body.Close()
-	t := struct {
-		ID string `json:"id"`
-	}{}
-	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
-		return "", err
-	}
-	if t.ID == "" {
-		return "", fmt.Errorf("capture browser did not create a tab")
-	}
-	return t.ID, nil
 }

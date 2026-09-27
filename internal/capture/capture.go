@@ -2,13 +2,21 @@ package capture
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
+)
+
+const (
+	Port     = "9222"
+	DevTools = "http://localhost:" + Port
 )
 
 type Options struct {
@@ -21,55 +29,109 @@ type Options struct {
 	Width, Height int
 }
 
-func PNG(opts Options) ([]byte, error) {
-	ctx := context.Background()
-	var cancelAllocator context.CancelFunc
-	if opts.Remote {
-		ctx, cancelAllocator = chromedp.NewRemoteAllocator(ctx, "http://localhost:9222")
-	} else {
-		ctx, cancelAllocator = chromedp.NewExecAllocator(ctx, append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("ignore-certificate-errors", true))...)
+func Launch() (context.Context, context.CancelFunc) {
+	return chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("ignore-certificate-errors", true))...)
+}
+
+func Attach(id string) (context.Context, context.CancelFunc) {
+	ctx, cancelAllocator := chromedp.NewRemoteAllocator(context.Background(), DevTools)
+	ctx, cancelTab := chromedp.NewContext(ctx, chromedp.WithTargetID(target.ID(id)))
+	return ctx, func() {
+		cancelTab()
+		cancelAllocator()
 	}
-	defer cancelAllocator()
-	ctx, cancelBrowser := chromedp.NewContext(ctx)
-	defer cancelBrowser()
-	ctx, cancelTimeout := context.WithTimeout(ctx, 30*time.Second)
-	defer cancelTimeout()
-	actions := []chromedp.Action{chromedp.EmulateViewport(int64(opts.Width), int64(opts.Height))}
-	for _, pair := range strings.Split(opts.Cookie, ";") {
+}
+
+func NewTab() (string, error) {
+	req, err := http.NewRequest(http.MethodPut, DevTools+"/json/new?url=about:blank", nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("capture browser not reachable on %s, run tools/capturebrowser first: %w", DevTools, err)
+	}
+	defer resp.Body.Close()
+	t := struct {
+		ID string `json:"id"`
+	}{}
+	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
+		return "", err
+	}
+	if t.ID == "" {
+		return "", fmt.Errorf("capture browser did not create a tab")
+	}
+	return t.ID, nil
+}
+
+func Cookies(address, header string) ([]chromedp.Action, error) {
+	u, err := url.Parse(address)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", address, err)
+	}
+	actions := []chromedp.Action{}
+	for _, pair := range strings.Split(header, ";") {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
 			continue
 		}
 		name, value, ok := strings.Cut(pair, "=")
 		if !ok {
-			return nil, fmt.Errorf("cookie must be name=value")
+			return nil, fmt.Errorf("cookie must be name=value, got %q", pair)
 		}
-		u, err := url.Parse(opts.URL)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", opts.URL, err)
-		}
-		actions = append(actions, chromedp.ActionFunc(func(ctx context.Context) error {
-			return network.SetCookie(name, value).WithDomain(u.Hostname()).WithPath("/").Do(ctx)
-		}))
+		actions = append(actions, network.SetCookie(name, value).WithDomain(u.Hostname()).WithPath("/"))
 	}
-	var png []byte
+	return actions, nil
+}
+
+func Clicks(selectors string) []chromedp.Action {
+	actions := []chromedp.Action{}
+	if selectors == "" {
+		return actions
+	}
+	for _, sel := range strings.Split(selectors, "|") {
+		sel = strings.TrimSpace(sel)
+		actions = append(actions,
+			chromedp.WaitVisible(sel, chromedp.ByQuery),
+			chromedp.Click(sel, chromedp.ByQuery),
+			chromedp.Sleep(500*time.Millisecond),
+		)
+	}
+	return actions
+}
+
+func PNG(opts Options) ([]byte, error) {
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if opts.Remote {
+		id, err := NewTab()
+		if err != nil {
+			return nil, err
+		}
+		ctx, cancel = Attach(id)
+	} else {
+		var cancelAllocator context.CancelFunc
+		ctx, cancelAllocator = Launch()
+		defer cancelAllocator()
+		ctx, cancel = chromedp.NewContext(ctx)
+	}
+	defer cancel()
+	ctx, cancelTimeout := context.WithTimeout(ctx, 30*time.Second)
+	defer cancelTimeout()
+	cookies, err := Cookies(opts.URL, opts.Cookie)
+	if err != nil {
+		return nil, err
+	}
+	actions := append([]chromedp.Action{chromedp.EmulateViewport(int64(opts.Width), int64(opts.Height))}, cookies...)
 	actions = append(actions,
 		chromedp.Navigate(opts.URL),
 		chromedp.WaitVisible(opts.Wait, chromedp.ByQuery),
 	)
-	if opts.Click != "" {
-		for _, sel := range strings.Split(opts.Click, "|") {
-			sel = strings.TrimSpace(sel)
-			actions = append(actions,
-				chromedp.WaitVisible(sel, chromedp.ByQuery),
-				chromedp.Click(sel, chromedp.ByQuery),
-				chromedp.Sleep(500*time.Millisecond),
-			)
-		}
-	}
+	actions = append(actions, Clicks(opts.Click)...)
 	if opts.Settle > 0 {
 		actions = append(actions, chromedp.Sleep(opts.Settle))
 	}
+	var png []byte
 	actions = append(actions, chromedp.FullScreenshot(&png, 100))
 	if err := chromedp.Run(ctx, actions...); err != nil {
 		return nil, fmt.Errorf("capture %s: %w", opts.URL, err)

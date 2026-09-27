@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,9 +13,10 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/input"
-	"github.com/chromedp/cdproto/network"
-	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
+
+	"heliosian/internal/capture"
+	"heliosian/internal/logging"
 )
 
 const scrollScript = `(() => {
@@ -38,9 +38,9 @@ type pageTarget struct {
 }
 
 func currentTarget() (string, error) {
-	resp, err := http.Get("http://localhost:9222/json/list")
+	resp, err := http.Get(capture.DevTools + "/json/list")
 	if err != nil {
-		return "", fmt.Errorf("capture browser not reachable on localhost:9222, run tools/capturebrowser first: %w", err)
+		return "", fmt.Errorf("capture browser not reachable on %s, run tools/capturebrowser first: %w", capture.DevTools, err)
 	}
 	defer resp.Body.Close()
 	targets := []pageTarget{}
@@ -56,27 +56,7 @@ func currentTarget() (string, error) {
 		}
 		return t.ID, nil
 	}
-	return newTab()
-}
-
-func newTab() (string, error) {
-	req, err := http.NewRequest(http.MethodPut, "http://localhost:9222/json/new?url=about:blank", nil)
-	if err != nil {
-		return "", err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	t := pageTarget{}
-	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
-		return "", err
-	}
-	if t.ID == "" {
-		return "", fmt.Errorf("capture browser did not create a tab")
-	}
-	return t.ID, nil
+	return capture.NewTab()
 }
 
 func parseXY(coords string) (float64, float64, error) {
@@ -119,7 +99,7 @@ func main() {
 	typeText := flag.String("type", "", "insert text into the focused element")
 	key := flag.String("key", "", "press a key: enter, tab, escape, backspace, or a literal character")
 	wait := flag.String("wait", "", "css selector that must be visible before capturing")
-	cookie := flag.String("cookie", "", "set a name=value cookie on who.heliosiandev.com before acting")
+	cookie := flag.String("cookie", "", "name=value cookie(s) to set on the --nav url's host before loading it, ; separated")
 	mobile := flag.Bool("mobile", false, "emulate a phone viewport (390x844, touch) instead of desktop 1280x800")
 	size := flag.String("size", "", "viewport size as WxH, overriding the desktop default")
 	dump := flag.Bool("dump", false, "print page html instead of writing a screenshot")
@@ -127,13 +107,15 @@ func main() {
 	out := flag.String("out", "local/screenshots/browse.png", "output png path")
 	flag.Parse()
 
+	if *cookie != "" && *nav == "" {
+		logging.Fatal("--cookie needs --nav, whose host the cookie is set on")
+	}
 	id, err := currentTarget()
 	if err != nil {
-		log.Fatalf("%v", err)
+		logging.Fatal("find tab", "error", err)
 	}
-	allocCtx, _ := chromedp.NewRemoteAllocator(context.Background(), "http://localhost:9222")
 	// cancelling the chromedp context closes the attached tab; the tab must outlive this process
-	ctx, _ := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(id)))
+	ctx, _ := capture.Attach(id)
 	ctx, cancelTimeout := context.WithTimeout(ctx, 15*time.Second)
 	defer cancelTimeout()
 
@@ -146,7 +128,7 @@ func main() {
 		width, werr := strconv.ParseInt(w, 10, 64)
 		height, herr := strconv.ParseInt(h, 10, 64)
 		if !ok || werr != nil || herr != nil {
-			log.Fatalf("size must be WxH, got %q", *size)
+			logging.Fatal("size must be WxH", "size", *size)
 		}
 		viewport = chromedp.EmulateViewport(width, height)
 	}
@@ -156,14 +138,12 @@ func main() {
 		ClientHeight float64 `json:"clientHeight"`
 	}{}
 	actions := []chromedp.Action{viewport}
-	if *cookie != "" {
-		name, value, ok := strings.Cut(*cookie, "=")
-		if !ok {
-			log.Fatalf("cookie must be name=value, got %q", *cookie)
-		}
-		actions = append(actions, network.SetCookie(name, value).WithDomain("who.heliosiandev.com").WithPath("/"))
-	}
 	if *nav != "" {
+		cookies, err := capture.Cookies(*nav, *cookie)
+		if err != nil {
+			logging.Fatal("cookies", "error", err)
+		}
+		actions = append(actions, cookies...)
 		actions = append(actions, chromedp.Navigate(*nav))
 	}
 	if *back {
@@ -178,7 +158,7 @@ func main() {
 	if *click != "" {
 		x, y, err := parseXY(*click)
 		if err != nil {
-			log.Fatalf("%v", err)
+			logging.Fatal("click coordinates", "error", err)
 		}
 		actions = append(actions, chromedp.MouseClickXY(x, y))
 	}
@@ -206,22 +186,22 @@ func main() {
 	var location, title string
 	actions = append(actions, chromedp.Location(&location), chromedp.Title(&title))
 	if err := chromedp.Run(ctx, actions...); err != nil {
-		log.Fatalf("browse: %v", err)
+		logging.Fatal("browse", "error", err)
 	}
 	if *dump {
 		fmt.Println(html)
 	} else if *eval != "" {
 		encoded, err := json.MarshalIndent(evalResult, "", "  ")
 		if err != nil {
-			log.Fatalf("encode eval result: %v", err)
+			logging.Fatal("encode eval result", "error", err)
 		}
 		fmt.Println(string(encoded))
 	} else {
 		if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
-			log.Fatalf("create output dir: %v", err)
+			logging.Fatal("create output dir", "error", err)
 		}
 		if err := os.WriteFile(*out, png, 0o644); err != nil {
-			log.Fatalf("write %s: %v", *out, err)
+			logging.Fatal("write screenshot", "path", *out, "error", err)
 		}
 	}
 	fmt.Printf("url: %s\ntitle: %s\n", location, title)

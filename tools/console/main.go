@@ -5,12 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
+
+	"heliosian/internal/capture"
 )
 
 func main() {
@@ -27,7 +28,7 @@ func main() {
 	keys := flag.String("keys", "", "text to type at the page itself, with nothing focused, for a shortcut the page listens for")
 	after := flag.String("after", "", "css selector(s) to click after typing, | separated, for the result the typing brought up")
 	flag.Parse()
-	ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("ignore-certificate-errors", true))...)
+	ctx, cancel := capture.Launch()
 	defer cancel()
 	ctx, cancelBrowser := chromedp.NewContext(ctx)
 	defer cancelBrowser()
@@ -70,24 +71,14 @@ func main() {
 		}
 	})
 	actions := []chromedp.Action{chromedp.EmulateViewport(1280, int64(*height)), chromedp.Navigate(*url), chromedp.Sleep(*wait / 2)}
-	if *click != "" {
-		for _, sel := range strings.Split(*click, "|") {
-			sel = strings.TrimSpace(sel)
-			actions = append(actions, chromedp.WaitVisible(sel, chromedp.ByQuery), chromedp.Click(sel, chromedp.ByQuery), chromedp.Sleep(500*time.Millisecond))
-		}
-	}
+	actions = append(actions, capture.Clicks(*click)...)
 	if *typed != "" {
 		actions = append(actions, chromedp.SendKeys(":focus", *typed, chromedp.ByQuery), chromedp.Sleep(500*time.Millisecond))
 	}
 	if *keys != "" {
 		actions = append(actions, chromedp.KeyEvent(*keys), chromedp.Sleep(500*time.Millisecond))
 	}
-	if *after != "" {
-		for _, sel := range strings.Split(*after, "|") {
-			sel = strings.TrimSpace(sel)
-			actions = append(actions, chromedp.WaitVisible(sel, chromedp.ByQuery), chromedp.Click(sel, chromedp.ByQuery), chromedp.Sleep(500*time.Millisecond))
-		}
-	}
+	actions = append(actions, capture.Clicks(*after)...)
 	if *scroll != "" {
 		to := "document.documentElement.scrollHeight"
 		if *scroll != "bottom" {

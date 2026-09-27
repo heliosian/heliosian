@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
-	"net/url"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+
+	"heliosian/internal/capture"
+	"heliosian/internal/logging"
 )
 
 const script = `(() => {
@@ -174,9 +175,9 @@ func main() {
 	minRatio := flag.Float64("min", 3, "report words whose contrast is under this, or under what their size needs if lower")
 	flag.Parse()
 	if *urls == "" {
-		log.Fatal("--url is required")
+		logging.Fatal("--url is required")
 	}
-	ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("ignore-certificate-errors", true))...)
+	ctx, cancel := capture.Launch()
 	defer cancel()
 	failed := 0
 	for _, u := range strings.Split(*urls, ",") {
@@ -186,7 +187,7 @@ func main() {
 		}
 		rep, err := check(ctx, u, *cookie, *click, *wait, *settle, *width, *height)
 		if err != nil {
-			log.Printf("%s: %v", u, err)
+			slog.Error("read page", "url", u, "error", err)
 			failed++
 			continue
 		}
@@ -194,7 +195,7 @@ func main() {
 		if *compare {
 			day, err = check(ctx, u, "heliosian-mode=light", *click, *wait, *settle, *width, *height)
 			if err != nil {
-				log.Printf("%s by day: %v", u, err)
+				slog.Error("read page by day", "url", u, "error", err)
 				failed++
 				continue
 			}
@@ -202,7 +203,7 @@ func main() {
 		print(u, rep, day, *showLight, *minRatio)
 	}
 	if failed > 0 {
-		log.Fatalf("%d page(s) could not be read", failed)
+		logging.Fatal("pages could not be read", "failed", failed)
 	}
 }
 
@@ -211,31 +212,13 @@ func check(ctx context.Context, u, cookie, click, wait string, settle time.Durat
 	defer cancelTab()
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	parsed, err := url.Parse(u)
+	cookies, err := capture.Cookies(u, cookie)
 	if err != nil {
 		return nil, err
 	}
-	actions := []chromedp.Action{chromedp.EmulateViewport(int64(width), int64(height))}
-	for _, pair := range strings.Split(cookie, ";") {
-		pair = strings.TrimSpace(pair)
-		if pair == "" {
-			continue
-		}
-		name, value, ok := strings.Cut(pair, "=")
-		if !ok {
-			return nil, fmt.Errorf("cookie must be name=value")
-		}
-		actions = append(actions, chromedp.ActionFunc(func(ctx context.Context) error {
-			return network.SetCookie(name, value).WithDomain(parsed.Hostname()).WithPath("/").Do(ctx)
-		}))
-	}
+	actions := append([]chromedp.Action{chromedp.EmulateViewport(int64(width), int64(height))}, cookies...)
 	actions = append(actions, chromedp.Navigate(u), chromedp.WaitVisible(wait, chromedp.ByQuery))
-	if click != "" {
-		for _, sel := range strings.Split(click, "|") {
-			sel = strings.TrimSpace(sel)
-			actions = append(actions, chromedp.WaitVisible(sel, chromedp.ByQuery), chromedp.Click(sel, chromedp.ByQuery), chromedp.Sleep(500*time.Millisecond))
-		}
-	}
+	actions = append(actions, capture.Clicks(click)...)
 	var raw json.RawMessage
 	actions = append(actions, chromedp.Sleep(settle), chromedp.Evaluate(script, &raw))
 	if err := chromedp.Run(ctx, actions...); err != nil {
