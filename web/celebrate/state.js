@@ -1,40 +1,18 @@
 import {googleCalendarLink, parseWhen} from '/datecard.js';
+import {superEditOn} from '/superedit.js';
 
 // The model as the server rendered it for the viewer, plus the page's own
 // choices: which celebration's parties are showing, the list's tab, the
 // Hosting page's tab, the category filter.
-// superEdit is a system admin's hat, as HCA-Team has it: off, they see and
-// can do what any parent can (plus whatever they host); on, every admin
-// control comes back. It is remembered per browser. The server keeps
-// enforcing by the admin list either way; the switch is about what the page
-// shows and offers.
 // showPast is the switch on My Family's Parties and the pages under it: on,
 // as it starts, the parties that have been are listed after those to come;
 // off, only what is still ahead. It lasts the visit and comes back on.
-export const state = {model: null, celebration: '', tab: 'available', hostingTab: 'mine', category: '', superEdit: readSuperEdit(), showPast: true};
+export const state = {model: null, celebration: '', tab: 'available', hostingTab: 'mine', category: '', showPast: true};
 
 // familyShown says whether a party belongs on the family's pages with the
 // past switch as it is.
 export function familyShown(p) {
   return state.showPast || p.availability !== 'past';
-}
-
-function readSuperEdit() {
-  try {
-    return localStorage.getItem('celebrate.superEdit') === '1';
-  } catch (err) {
-    return false;
-  }
-}
-
-export function setSuperEdit(on) {
-  state.superEdit = on;
-  try {
-    localStorage.setItem('celebrate.superEdit', on ? '1' : '0');
-  } catch (err) {
-    // A browser that refuses storage just forgets the choice on reload.
-  }
-  applyModel(state.model);
 }
 
 // isSystemAdmin says the person is on the admin list, hat or no hat.
@@ -72,7 +50,7 @@ export function me() {
 }
 
 export function isAdmin() {
-  return state.model.user.isAdmin && state.superEdit;
+  return state.model.user.isAdmin && superEditOn();
 }
 
 export function settings() {

@@ -26,7 +26,6 @@ func RegisterAdmin(mux *http.ServeMux, cache *Cache, media *blob.Store) {
 	mux.HandleFunc("GET /api/admin/state", a.state)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /api/admin/images", a.setImage)
-	mux.HandleFunc("POST /api/admin/super-edit", a.setSuperEdit)
 	mux.HandleFunc("POST /api/admin/person-fields", a.setPersonFields)
 	mux.HandleFunc("POST /api/admin/student-fields", a.setStudentFields)
 	mux.HandleFunc("POST /api/admin/parent-fields", a.setParentFields)
@@ -263,41 +262,11 @@ func withoutSuperAdmins(emails, superAdmins []string) []string {
 	return out
 }
 
-const (
-	superEditCookie = "who-super-edit"
-	superEditLength = 400 * 24 * 60 * 60
-)
+const superEditCookie = "heliosian-super-edit"
 
 func superEditOn(r *http.Request) bool {
 	cookie, err := r.Cookie(superEditCookie)
 	return err == nil && cookie.Value == "1"
-}
-
-func (a admin) setSuperEdit(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		Enabled bool `json:"enabled"`
-	}
-	if !decodeBody(w, r, 1<<10, &body) {
-		return
-	}
-	cookie := &http.Cookie{
-		Name:     superEditCookie,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   -1,
-	}
-	if body.Enabled {
-		cookie.Value, cookie.MaxAge = "1", superEditLength
-	}
-	http.SetCookie(w, cookie)
-	slog.InfoContext(r.Context(), "who:set super edit mode", "actor", actor.Email, "enabled", body.Enabled)
-	w.WriteHeader(http.StatusNoContent)
 }
 
 const (

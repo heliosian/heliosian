@@ -1,4 +1,4 @@
-import {state, me, isSystemAdmin, isAdmin, setSuperEdit, isUnassigned, commsOnly, onComms, mine, urgency} from './state.js';
+import {state, me, isSystemAdmin, isAdmin, isUnassigned, commsOnly, onComms, mine, urgency} from './state.js';
 import {el, svg, link} from './dom.js';
 import {initShell, appSymbol} from '/shell.js';
 
@@ -114,10 +114,8 @@ export function initChrome() {
     name: 'Helios Staff Birthdays',
     me,
     alerts: () => state.model.alerts,
-    isAdmin: isSystemAdmin,
-    superOn: () => state.superEdit,
-    onSuper: on => {
-      setSuperEdit(on);
+    isSystemAdmin,
+    onSuper: () => {
       document.dispatchEvent(new CustomEvent('birthday:refresh'));
     },
     fillNav,

@@ -1,25 +1,6 @@
-// superEdit is an admin's hat, as the other apps have it: off, they see and
-// can do what anyone else can (plus the groups they manage); on, every
-// group is theirs to open and edit. It is remembered per browser.
-export const state = {model: null, superEdit: readSuperEdit()};
+import {superEditOn} from '/superedit.js';
 
-function readSuperEdit() {
-  try {
-    return localStorage.getItem('loop.superEdit') === '1';
-  } catch (err) {
-    return false;
-  }
-}
-
-export function setSuperEdit(on) {
-  state.superEdit = on;
-  try {
-    localStorage.setItem('loop.superEdit', on ? '1' : '0');
-  } catch (err) {
-    // A browser that refuses storage just forgets the choice on reload.
-  }
-  applyModel(state.model);
-}
+export const state = {model: null};
 
 const byName = new Map();
 
@@ -48,7 +29,7 @@ export function isSystemAdmin() {
 
 // isAdmin is an admin with the hat on - what the pages' admin powers go by.
 export function isAdmin() {
-  return isSystemAdmin() && state.superEdit;
+  return isSystemAdmin() && superEditOn();
 }
 
 export function managed(g) {

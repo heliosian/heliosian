@@ -1,4 +1,4 @@
-import {state, superOn} from './state.js';
+import {state, isAdmin} from './state.js';
 import {appOrigin} from '/toolbar.js';
 import {searchInput} from '/shell.js';
 import {el, svg} from './dom.js';
@@ -988,7 +988,7 @@ export function renderWidgets(query = '', fitted = false) {
   if (root.hidden) {
     return;
   }
-  const admin = superOn();
+  const admin = isAdmin();
   for (const key of widgetOrder()) {
     const make = widgetMakers[key];
     const forMe = ((state.model.widgets || {})[key] || {}).forMe !== false;

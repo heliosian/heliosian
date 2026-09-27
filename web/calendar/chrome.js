@@ -1,4 +1,4 @@
-import {state, me, isAdmin, isSystemAdmin, setSuperEdit, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, dayLabel, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents, eventDates} from './state.js';
+import {state, me, isAdmin, isSystemAdmin, applyModel, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, dayLabel, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents, eventDates} from './state.js';
 import {el, svg, link, button, toast, feedMark, emojiPicker} from './dom.js';
 import {popup} from '/modal.js';
 import {dayColumn} from './day.js';
@@ -775,10 +775,9 @@ export function initChrome() {
     name: 'Helios When',
     me,
     alerts: () => state.model.alerts,
-    isAdmin: isSystemAdmin,
-    superOn: () => state.superEdit,
-    onSuper: async on => {
-      setSuperEdit(on);
+    isSystemAdmin,
+    onSuper: async () => {
+      applyModel(state.model);
       const {render} = await import('./app.js');
       render();
     },

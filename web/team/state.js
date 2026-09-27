@@ -1,28 +1,7 @@
 import {parseWhen} from '/datecard.js';
+import {superEditOn} from '/superedit.js';
 
-export const state = {model: null, showPrevious: false, showHidden: false, superEdit: readSuperEdit(), year: '', category: ''};
-
-function readSuperEdit() {
-  try {
-    return localStorage.getItem('team.superEdit') === '1';
-  } catch (err) {
-    return false;
-  }
-}
-
-export function setSuperEdit(on) {
-  state.superEdit = on;
-  if (!on) {
-    state.showHidden = false;
-  }
-  try {
-    localStorage.setItem('team.superEdit', on ? '1' : '0');
-  } catch (err) {
-    // A browser that refuses storage just forgets the choice on reload.
-  }
-  // canEdit is derived from the hat, so the tree is re-derived.
-  applyModel(state.model);
-}
+export const state = {model: null, showPrevious: false, showHidden: false, year: '', category: ''};
 
 const index = new Map();
 
@@ -61,7 +40,7 @@ export function me() {
 
 // isAdmin is the admin hat as worn: a system admin in Super Admin Mode.
 export function isAdmin() {
-  return state.model.user.isAdmin && state.superEdit;
+  return state.model.user.isAdmin && superEditOn();
 }
 
 // isSystemAdmin is the admin list itself, whatever the hat - what decides

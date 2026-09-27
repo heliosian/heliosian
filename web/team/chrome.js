@@ -1,4 +1,4 @@
-import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, setSuperEdit, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
+import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, applyModel, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {initShell, appSymbol} from '/shell.js';
 import {openActivity} from './edit.js';
@@ -233,10 +233,12 @@ export function initChrome() {
     name: 'HCA-Team',
     me,
     alerts: () => state.model.alerts,
-    isAdmin: isSystemAdmin,
-    superOn: () => state.superEdit,
-    onSuper: on => {
-      setSuperEdit(on);
+    isSystemAdmin,
+    onSuper: () => {
+      if (!isAdmin()) {
+        state.showHidden = false;
+      }
+      applyModel(state.model);
       document.dispatchEvent(new CustomEvent('hca:refresh'));
     },
     fillNav,

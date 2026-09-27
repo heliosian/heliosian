@@ -1,4 +1,4 @@
-import {state, superOn, categoryTitles, linkCategoryTitles, tagLabelsOf} from './state.js';
+import {state, isAdmin, categoryTitles, linkCategoryTitles, tagLabelsOf} from './state.js';
 import {el, svg, categoryIcons, iconOf, toast} from './dom.js';
 import {load} from './app.js';
 import {imageTools} from '/images.js';
@@ -504,7 +504,7 @@ function renderCategoryList() {
 }
 
 export function openCategoryManager() {
-  if (!superOn()) {
+  if (!isAdmin()) {
     return;
   }
   setStatus('#categories-status', '');

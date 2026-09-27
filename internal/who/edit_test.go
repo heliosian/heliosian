@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -71,31 +70,6 @@ func TestSuperEditIsAnAdminsCookie(t *testing.T) {
 	}
 	if err := model.mayEdit(actorOf(cache, asha), superEditOn(on), "family", rohans); access.Status(err) != http.StatusForbidden {
 		t.Errorf("a parent with the cookie set edits another family: %v", err)
-	}
-}
-
-func TestSettingSuperEditWritesTheCookie(t *testing.T) {
-	a := admin{cache: sampleCache(t)}
-	for _, enabled := range []bool{true, false} {
-		r := httptest.NewRequest("POST", "/api/admin/super-edit", strings.NewReader(`{"enabled":`+map[bool]string{true: "true", false: "false"}[enabled]+`}`))
-		r.Header.Set("X-Forwarded-Proto", "https")
-		w := httptest.NewRecorder()
-		auth.Fixed(jordan, http.HandlerFunc(a.setSuperEdit)).ServeHTTP(w, r)
-		if w.Code != http.StatusNoContent {
-			t.Fatalf("enabled %v: status %d", enabled, w.Code)
-		}
-		cookies := w.Result().Cookies()
-		if len(cookies) != 1 || cookies[0].Name != superEditCookie || !cookies[0].Secure || cookies[0].Path != "/" || cookies[0].SameSite != http.SameSiteLaxMode {
-			t.Fatalf("enabled %v: cookies %+v", enabled, cookies)
-		}
-		if enabled && (cookies[0].Value != "1" || cookies[0].MaxAge <= 0) || !enabled && cookies[0].MaxAge >= 0 {
-			t.Errorf("enabled %v: cookie %+v", enabled, cookies[0])
-		}
-	}
-	w := httptest.NewRecorder()
-	auth.Fixed(asha, http.HandlerFunc(a.setSuperEdit)).ServeHTTP(w, httptest.NewRequest("POST", "/api/admin/super-edit", strings.NewReader(`{"enabled":true}`)))
-	if w.Code != http.StatusForbidden || len(w.Result().Cookies()) != 0 {
-		t.Errorf("a parent turning the pencil on: status %d, cookies %v", w.Code, w.Result().Cookies())
 	}
 }
 

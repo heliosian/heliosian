@@ -11,6 +11,7 @@ import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} fr
 import {load} from './app.js';
 import {onSlash, isEditableTarget} from '/toolbar.js';
 import {initShell, renderAccount, searchInput, syncViewportHeight} from '/shell.js';
+import {setSuperEdit} from '/superedit.js';
 
 const primaryNavItems = [
   {path: 'people', label: 'Directory'},
@@ -439,25 +440,6 @@ function updateBannerOffset() {
   document.documentElement.style.setProperty('--banner-h', stack ? stack.offsetHeight + 'px' : '0px');
 }
 
-async function setSuperEdit(enabled) {
-  let res;
-  try {
-    res = await fetch('/api/admin/super-edit', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({enabled}),
-    });
-  } catch (err) {
-    alert(`Couldn’t change Super Admin Mode: ${err.message}`);
-    return;
-  }
-  if (!res.ok) {
-    alert(`Couldn’t change Super Admin Mode: ${await res.text()}`);
-    return;
-  }
-  await load();
-}
-
 export function renderSuperEditBanner() {
   let banner = document.querySelector('.super-edit-banner');
   if (!state.model.superEdit) {
@@ -476,7 +458,8 @@ export function renderSuperEditBanner() {
   link.href = '#';
   link.addEventListener('click', async e => {
     e.preventDefault();
-    await setSuperEdit(false);
+    setSuperEdit(false);
+    await load();
   });
   banner.append(link);
   topBanners().append(banner);
@@ -515,9 +498,8 @@ export function initChrome() {
     name: 'Helios Who?',
     me,
     alerts,
-    isAdmin: () => state.model.user.isAdmin,
-    superOn: () => state.model.superEdit,
-    onSuper: setSuperEdit,
+    isSystemAdmin: () => state.model.user.isAdmin,
+    onSuper: load,
     fillNav,
     fillTabbar,
     search: {placeholder: 'Search by name, student, grade, or classroom…', results: true, own: true},

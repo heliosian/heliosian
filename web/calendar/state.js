@@ -1,34 +1,12 @@
 import {appOrigin} from '/toolbar.js';
 import {parseWhen} from '/datecard.js';
+import {superEditOn} from '/superedit.js';
 
 // activeFeed is the token of the saved calendar the viewer last opened from
 // the rail (or that the filters matched on load): Save Calendar saves the
 // filters back onto it.
 const remembered = readFilters();
-// superEdit is an admin's hat, as HCA-Team has it: off, they see and can do
-// what any parent can (plus whatever they host); on, every admin control
-// comes back. It is remembered per browser.
-export const state = {model: null, filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active, superEdit: readSuperEdit()};
-
-function readSuperEdit() {
-  try {
-    return localStorage.getItem('calendar.superEdit') === '1';
-  } catch (err) {
-    return false;
-  }
-}
-
-export function setSuperEdit(on) {
-  state.superEdit = on;
-  try {
-    localStorage.setItem('calendar.superEdit', on ? '1' : '0');
-  } catch (err) {
-    // A browser that refuses storage just forgets the choice on reload.
-  }
-  // Who sees whose waiting events turns on the hat, so the model is
-  // applied again.
-  applyModel(state.model);
-}
+export const state = {model: null, filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active};
 
 // isSystemAdmin is the admin list itself, whatever the hat: what the
 // pencil, Admin Tools and the server go by.
@@ -38,7 +16,7 @@ export function isSystemAdmin() {
 
 // isAdmin is an admin with the hat on - what the pages' admin controls go by.
 export function isAdmin() {
-  return isSystemAdmin() && state.superEdit;
+  return isSystemAdmin() && superEditOn();
 }
 
 // setActiveFeed marks the saved calendar the viewer is working from.

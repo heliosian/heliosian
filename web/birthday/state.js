@@ -1,25 +1,6 @@
-// superEdit is an admin's hat, as HCA-Team has it: off, they see and can do
-// what any team member can; on, every admin control comes back. It is
-// remembered per browser. The server keeps enforcing by the admin list
-// either way; the switch is about what the page shows and offers.
-export const state = {model: null, superEdit: readSuperEdit()};
+import {superEditOn} from '/superedit.js';
 
-function readSuperEdit() {
-  try {
-    return localStorage.getItem('birthday.superEdit') === '1';
-  } catch (err) {
-    return false;
-  }
-}
-
-export function setSuperEdit(on) {
-  state.superEdit = on;
-  try {
-    localStorage.setItem('birthday.superEdit', on ? '1' : '0');
-  } catch (err) {
-    // A browser that refuses storage just forgets the choice on reload.
-  }
-}
+export const state = {model: null};
 
 const byEmail = new Map();
 
@@ -42,7 +23,7 @@ export function isSystemAdmin() {
 
 // isAdmin is what the page offers: the list and the hat together.
 export function isAdmin() {
-  return isSystemAdmin() && state.superEdit;
+  return isSystemAdmin() && superEditOn();
 }
 
 export function year() {

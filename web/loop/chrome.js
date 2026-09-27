@@ -1,4 +1,4 @@
-import {state, me, isSystemAdmin, setSuperEdit, managed, groupPath} from './state.js';
+import {state, me, isSystemAdmin, applyModel, managed, groupPath} from './state.js';
 import {el, svg, link} from './dom.js';
 import {initShell, appSymbol} from '/shell.js';
 
@@ -116,10 +116,9 @@ export function initChrome() {
     name: 'Helios Loop',
     me,
     alerts: () => state.model.alerts,
-    isAdmin: isSystemAdmin,
-    superOn: () => state.superEdit,
-    onSuper: async on => {
-      setSuperEdit(on);
+    isSystemAdmin,
+    onSuper: async () => {
+      applyModel(state.model);
       const {render} = await import('./app.js');
       render();
     },

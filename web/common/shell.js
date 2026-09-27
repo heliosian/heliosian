@@ -1,4 +1,5 @@
 import {el, renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
+import {superEditOn, setSuperEdit} from '/superedit.js';
 
 let app = null;
 let onSearch = null;
@@ -110,9 +111,12 @@ export function renderAccount() {
     line.textContent = user.email;
   }
   for (const row of document.querySelectorAll('.user-menu-admin')) {
-    row.hidden = !app.isAdmin();
+    row.hidden = !app.isSystemAdmin();
   }
-  renderSuperToggle({show: app.isAdmin(), on: app.superOn(), onToggle: app.onSuper});
+  renderSuperToggle({show: app.isSystemAdmin(), on: superEditOn(), onToggle: on => {
+    setSuperEdit(on);
+    app.onSuper();
+  }});
 }
 
 function renderDrawer() {
@@ -132,7 +136,7 @@ function renderDrawer() {
   app.fillNav(nav);
   const user = el('div', 'drawer-user');
   user.append(el('div', 'name', app.me().name), el('div', 'email', app.me().email));
-  if (app.isAdmin()) {
+  if (app.isSystemAdmin()) {
     const admin = el('a', 'drawer-admin', 'Admin Tools');
     admin.href = '/admin';
     admin.setAttribute('data-link', '');

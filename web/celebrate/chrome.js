@@ -1,4 +1,4 @@
-import {state, me, isSystemAdmin, setSuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown} from './state.js';
+import {state, me, isSystemAdmin, applyModel, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {initShell, appSymbol} from '/shell.js';
 import {openParty} from './edit.js';
@@ -169,10 +169,9 @@ export function initChrome() {
     name: 'Helios Celebrate',
     me,
     alerts: () => state.model.alerts,
-    isAdmin: isSystemAdmin,
-    superOn: () => state.superEdit,
-    onSuper: on => {
-      setSuperEdit(on);
+    isSystemAdmin,
+    onSuper: () => {
+      applyModel(state.model);
       document.dispatchEvent(new CustomEvent('celebrate:refresh'));
     },
     fillNav,

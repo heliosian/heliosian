@@ -1,4 +1,4 @@
-import {state, applyModel, setSuperAdmin, superOn} from './state.js';
+import {state, applyModel, isSystemAdmin, isAdmin} from './state.js';
 import {el} from './dom.js';
 import {renderCategories, renderNav} from './cards.js';
 import {renderMonth} from './month.js';
@@ -15,7 +15,7 @@ editCategories.hidden = true;
 
 function renderChrome() {
   renderAccount();
-  editCategories.hidden = !superOn();
+  editCategories.hidden = !isAdmin();
 }
 
 export async function load() {
@@ -81,10 +81,8 @@ function initChrome() {
     name: 'Heliosian',
     me: () => state.model.user,
     alerts: () => state.model.alerts,
-    isAdmin: () => state.model.user.isAdmin,
-    superOn: () => state.superAdmin,
-    onSuper: on => {
-      setSuperAdmin(on);
+    isSystemAdmin,
+    onSuper: () => {
       renderChrome();
       renderNav();
       renderCategories(searchInput().value);

@@ -1,35 +1,19 @@
-export const state = {model: null, superAdmin: readSuperAdmin()};
+import {superEditOn} from '/superedit.js';
 
-function readSuperAdmin() {
-  try {
-    return localStorage.getItem('heliosian.superAdmin') === '1';
-  } catch {
-    return false;
-  }
-}
-
-export function setSuperAdmin(on) {
-  state.superAdmin = on;
-  try {
-    localStorage.setItem('heliosian.superAdmin', on ? '1' : '0');
-  } catch {
-    return;
-  }
-}
+export const state = {model: null};
 
 export function applyModel(model) {
   state.model = model;
 }
 
-export function isAdmin() {
+export function isSystemAdmin() {
   return Boolean(state.model && state.model.user.isAdmin);
 }
 
-// superOn is Super Admin Mode as the page acts on it: the switch is kept per
-// browser, so it outlives losing admin, a spoofed standard user or another
-// person on the same device, and counts only while the model says admin.
-export function superOn() {
-  return isAdmin() && state.superAdmin;
+// The switch outlives losing admin, a spoofed standard user or another person
+// on the same device, so it counts only while the model says admin.
+export function isAdmin() {
+  return isSystemAdmin() && superEditOn();
 }
 
 export function tagLabelsOf(rule) {

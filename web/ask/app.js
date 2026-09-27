@@ -527,8 +527,7 @@ function initChrome() {
     name: 'Helios Ask',
     me: () => state.model.user,
     alerts: () => state.model.alerts,
-    isAdmin: () => false,
-    superOn: () => false,
+    isSystemAdmin: () => false,
     onSuper: () => {},
     menuButton: false,
   });

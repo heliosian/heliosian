@@ -16,7 +16,7 @@ const modes = 'light|dark|system|quan';
 // The cookie sits on the root domain - heliosian.com - so heliosian.com,
 // who.heliosian.com and the local hosts under it all read one choice; a
 // bare host or an address gets no domain.
-function domain() {
+export function domain() {
   const labels = location.hostname.split('.');
   if (labels.length < 2 || /^\d+$/.test(labels[labels.length - 1])) {
     return '';
