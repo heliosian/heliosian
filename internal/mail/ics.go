@@ -46,13 +46,6 @@ type Person struct {
 	Name, Email string
 }
 
-func Address(from string) string {
-	if i := strings.LastIndex(from, "<"); i >= 0 {
-		return strings.TrimSuffix(strings.TrimSpace(from[i+1:]), ">")
-	}
-	return strings.TrimSpace(from)
-}
-
 func (c Calendar) ICS() string {
 	lines := []string{
 		"BEGIN:VCALENDAR",
@@ -120,7 +113,7 @@ func (c Calendar) event(e Event) []string {
 		lines = append(lines, "URL:"+e.URL)
 	}
 	if e.Organizer.Email != "" {
-		lines = append(lines, "ORGANIZER"+cn(e.Organizer)+":mailto:"+Address(e.Organizer.Email))
+		lines = append(lines, "ORGANIZER"+cn(e.Organizer)+":mailto:"+AddressOf(e.Organizer.Email))
 	}
 	answer := "PARTSTAT=ACCEPTED;RSVP=FALSE"
 	if e.RSVP {

@@ -807,7 +807,7 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 	}
 
 	for _, row := range tables[invoicingTab] {
-		title, purchaser := strings.TrimSpace(row["Party Title"]), cleanEmail(row["Purchaser Email"])
+		title, purchaser := strings.TrimSpace(row["Party Title"]), config.NormalizeEmail(row["Purchaser Email"])
 		if title == "" || purchaser == "" {
 			model.Skipped["invoicing rows naming no party or purchaser"]++
 			continue
@@ -837,7 +837,7 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 	}
 
 	for _, row := range tables[formerTab] {
-		old, to := cleanEmail(row["Old"]), cleanEmail(row["New"])
+		old, to := config.NormalizeEmail(row["Old"]), config.NormalizeEmail(row["New"])
 		if old == "" && to == "" {
 			continue
 		}

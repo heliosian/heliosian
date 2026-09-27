@@ -86,7 +86,7 @@ func carryInvite(before, after store.Row) []store.Op {
 	if after == nil {
 		return []store.Op{store.Delete(RSVPsTab, was)}
 	}
-	if normalizeEmail(after["Email"]) == normalizeEmail(before["Email"]) {
+	if config.NormalizeEmail(after["Email"]) == config.NormalizeEmail(before["Email"]) {
 		return nil
 	}
 	return []store.Op{store.Update(RSVPsTab, was, store.Row{"Email": after["Email"]})}

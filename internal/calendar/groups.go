@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
 )
@@ -83,7 +84,7 @@ func (b *builder) groups(rows []store.Row) {
 		}
 		b.model.Groups[id] = append(b.model.Groups[id], InviteGroup{
 			ID: gid, Rule: rule, Auto: !strings.EqualFold(strings.TrimSpace(row["Auto"]), "No"),
-			AddedBy: normalizeEmail(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]),
+			AddedBy: config.NormalizeEmail(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]),
 			Removed: splitEmails(row["Removed"]),
 		})
 	}
@@ -92,7 +93,7 @@ func (b *builder) groups(rows []store.Row) {
 func splitEmails(cell string) []string {
 	out := []string{}
 	for _, part := range strings.Split(cell, ",") {
-		if email := normalizeEmail(part); email != "" && !slices.Contains(out, email) {
+		if email := config.NormalizeEmail(part); email != "" && !slices.Contains(out, email) {
 			out = append(out, email)
 		}
 	}
@@ -114,7 +115,7 @@ func (a app) members(e *Event, g InviteGroup) []string {
 	}
 	out := []string{}
 	for _, m := range filter.Members(filter.List{Rules: []filter.Rule{g.Rule}, Editors: a.hostsOf(e)}, a.sources()) {
-		if m = a.directory.Resolve(normalizeEmail(m)); m != "" && !slices.Contains(out, m) {
+		if m = a.directory.Resolve(config.NormalizeEmail(m)); m != "" && !slices.Contains(out, m) {
 			out = append(out, m)
 		}
 	}
@@ -131,11 +132,11 @@ func (a app) ticketHolders(g InviteGroup, members []string) []string {
 	}
 	keep := map[string]bool{}
 	for _, host := range p.Hosts {
-		keep[a.directory.Resolve(normalizeEmail(host))] = true
+		keep[a.directory.Resolve(config.NormalizeEmail(host))] = true
 	}
 	for _, t := range p.Attendees {
 		if t.Email != "" {
-			keep[a.directory.Resolve(normalizeEmail(t.Email))] = true
+			keep[a.directory.Resolve(config.NormalizeEmail(t.Email))] = true
 		}
 	}
 	out := []string{}
@@ -167,7 +168,7 @@ func (a app) ticketGuests(g InviteGroup) map[string]string {
 		return out
 	}
 	for _, t := range p.Attendees {
-		email := a.directory.Resolve(normalizeEmail(t.Email))
+		email := a.directory.Resolve(config.NormalizeEmail(t.Email))
 		if email == "" || t.Status == "waitlist" || !emailForm.MatchString(email) {
 			continue
 		}

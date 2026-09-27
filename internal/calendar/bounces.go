@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/config"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
@@ -26,7 +27,7 @@ const (
 
 func (b *builder) bounces(rows []store.Row) {
 	for _, row := range rows {
-		email := normalizeEmail(row["Email"])
+		email := config.NormalizeEmail(row["Email"])
 		if email == "" {
 			continue
 		}
@@ -75,7 +76,7 @@ func (a app) deliveryEvents(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	email := normalizeEmail(mail.Address(d.Recipient))
+	email := config.NormalizeEmail(mail.AddressOf(d.Recipient))
 	if email == "" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -143,7 +144,7 @@ func (a app) changeInviteEmail(w http.ResponseWriter, r *http.Request) {
 // on a list already, the old row simply goes. Anyone who had been sent the
 // invitation at the old address - which reached nobody - is sent it again.
 func (a app) moveAddress(ctx context.Context, actor access.Actor, old, to, name string) {
-	old, to = normalizeEmail(old), normalizeEmail(to)
+	old, to = config.NormalizeEmail(old), config.NormalizeEmail(to)
 	ops, resend := a.moveAddressOps(actor, old, to, name)
 	if len(ops) == 0 {
 		return

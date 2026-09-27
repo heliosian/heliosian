@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/config"
 )
 
 type Person struct {
@@ -195,7 +196,7 @@ func (m *Model) EventsFor(v access.Actor, directory Directory, linked []Linked) 
 		carried[e.ID] = true
 	}
 	for _, e := range m.Pending {
-		if !e.Cancelled && (v.Admin || normalizeEmail(e.AddedBy) == normalizeEmail(v.Email)) && !carried[e.ID] {
+		if !e.Cancelled && (v.Admin || config.NormalizeEmail(e.AddedBy) == config.NormalizeEmail(v.Email)) && !carried[e.ID] {
 			events = append(events, m.withInvitation(e))
 		}
 	}
@@ -205,7 +206,7 @@ func (m *Model) EventsFor(v access.Actor, directory Directory, linked []Linked) 
 func (m *Model) ResponsesFor(v access.Actor, directory Directory) map[string]*Responses {
 	mine := map[string]bool{}
 	for _, e := range append(append([]*Event{}, m.Events...), m.Pending...) {
-		if e.AddedBy != "" && !e.PosterLeft && normalizeEmail(e.AddedBy) == normalizeEmail(v.Email) {
+		if e.AddedBy != "" && !e.PosterLeft && config.NormalizeEmail(e.AddedBy) == config.NormalizeEmail(v.Email) {
 			mine[e.ID] = true
 		}
 	}
@@ -266,11 +267,11 @@ func Render(model *Model, directory Directory, as access.Actor, now time.Time, l
 		IsStudent: me.IsStudent, IsParent: me.IsParent, IsStaff: me.IsStaff,
 		Students: kids, Classrooms: classroomsOf(model, me, kids),
 	}
-	if saved, ok := model.Settings[normalizeEmail(email)]; ok && (len(saved.Classrooms) > 0 || len(saved.Tags) > 0) {
+	if saved, ok := model.Settings[config.NormalizeEmail(email)]; ok && (len(saved.Classrooms) > 0 || len(saved.Tags) > 0) {
 		user.Saved = &saved
 	}
 	user.Home = model.MyHeliosian(email)
-	user.Answers = model.Answers[normalizeEmail(email)]
+	user.Answers = model.Answers[config.NormalizeEmail(email)]
 	feeds := []Feed{}
 	for _, f := range model.Feeds {
 		if f.Email == email {

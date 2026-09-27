@@ -16,6 +16,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/config"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
@@ -99,11 +100,11 @@ func (b *builder) invitations(settings, rows []store.Row) {
 		}
 		inv := &Invitation{
 			EventID: id, Hosts: []string{}, Audience: strings.ToLower(strings.TrimSpace(row["Audience"])), Guests: true, Message: strings.TrimSpace(row["Message"]),
-			CreatedBy: normalizeEmail(row["Created By"]), Created: strings.TrimSpace(row["Created"]), Sent: strings.TrimSpace(row["Sent"]),
+			CreatedBy: config.NormalizeEmail(row["Created By"]), Created: strings.TrimSpace(row["Created"]), Sent: strings.TrimSpace(row["Sent"]),
 			Title: strings.TrimSpace(row["Title"]), Start: strings.TrimSpace(row["Start"]), End: strings.TrimSpace(row["End"]),
 			Location: strings.TrimSpace(row["Location"]), Description: strings.TrimSpace(row["Description"]),
 			Flyer: strings.Trim(strings.TrimSpace(row["Flyer"]), "/"), Notify: splitEmails(row["Notify"]),
-			SteppedDown: normalizeEmail(row["Stepped Down"]),
+			SteppedDown: config.NormalizeEmail(row["Stepped Down"]),
 			HideHosts:   strings.EqualFold(strings.TrimSpace(row["Hide Hosts"]), "Yes"),
 			PublicList:  strings.EqualFold(strings.TrimSpace(row["Public Guest List"]), "Yes"),
 		}
@@ -114,7 +115,7 @@ func (b *builder) invitations(settings, rows []store.Row) {
 			}
 		}
 		for _, h := range SplitList(row["Hosts"]) {
-			inv.Hosts = append(inv.Hosts, normalizeEmail(h))
+			inv.Hosts = append(inv.Hosts, config.NormalizeEmail(h))
 		}
 		if inv.Audience != AudienceAdults && inv.Audience != AudienceStudents {
 			inv.Audience = AudienceBoth
@@ -122,7 +123,7 @@ func (b *builder) invitations(settings, rows []store.Row) {
 		b.model.Invitations[id] = inv
 	}
 	for _, row := range rows {
-		id, email := strings.TrimSpace(row["Event ID"]), normalizeEmail(row["Email"])
+		id, email := strings.TrimSpace(row["Event ID"]), config.NormalizeEmail(row["Email"])
 		if id == "" || email == "" {
 			continue
 		}
@@ -130,9 +131,9 @@ func (b *builder) invitations(settings, rows []store.Row) {
 			continue
 		}
 		inv := Invite{
-			EventID: id, Email: email, Name: strings.TrimSpace(row["Name"]), GuestOf: normalizeEmail(row["Guest Of"]), Via: strings.TrimSpace(row["Via"]),
-			AddedBy: normalizeEmail(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]), Token: strings.TrimSpace(row["Token"]),
-			Household: normalizeEmail(row["Household"]), Opened: strings.TrimSpace(row["Opened"]),
+			EventID: id, Email: email, Name: strings.TrimSpace(row["Name"]), GuestOf: config.NormalizeEmail(row["Guest Of"]), Via: strings.TrimSpace(row["Via"]),
+			AddedBy: config.NormalizeEmail(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]), Token: strings.TrimSpace(row["Token"]),
+			Household: config.NormalizeEmail(row["Household"]), Opened: strings.TrimSpace(row["Opened"]),
 		}
 		b.model.Invites[id] = append(b.model.Invites[id], inv)
 		if inv.Token != "" {
@@ -153,7 +154,7 @@ func (b *builder) invitations(settings, rows []store.Row) {
 }
 
 func (m *Model) mine(directory Directory, email string) []string {
-	email = normalizeEmail(email)
+	email = config.NormalizeEmail(email)
 	out := []string{email}
 	for _, member := range directory.Household(email) {
 		if slices.Contains(directory.Parents(member), email) {
@@ -169,7 +170,7 @@ func (m *Model) Listed(directory Directory, email, id string) bool {
 
 func (m *Model) InviteOf(id, email string) *Invite {
 	for i := range m.Invites[id] {
-		if m.Invites[id][i].Email == normalizeEmail(email) {
+		if m.Invites[id][i].Email == config.NormalizeEmail(email) {
 			return &m.Invites[id][i]
 		}
 	}
@@ -397,7 +398,7 @@ func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
 	if p := a.party(e); p != nil {
 		for _, t := range p.Attendees {
 			if t.Email != "" {
-				tickets[normalizeEmail(t.Email)] = t.Status
+				tickets[config.NormalizeEmail(t.Email)] = t.Status
 			}
 		}
 	}
@@ -489,7 +490,7 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 	adminHost := host && !slices.Contains(a.hostsOf(e), viewer)
 	poster := ""
 	if e.Source == SourceSheet && !e.PosterLeft {
-		poster = a.directory.Resolve(normalizeEmail(e.AddedBy))
+		poster = a.directory.Resolve(config.NormalizeEmail(e.AddedBy))
 	}
 	view := InviteView{Host: host, AdminHost: adminHost, Poster: poster, MayInvite: host || e.Sharing == SharingPublic || model.Invited(a.directory, viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
 	view.MoveEverywhere = host && view.Party && a.celebrate.IsAdmin != nil && a.celebrate.IsAdmin(viewer)
@@ -954,7 +955,7 @@ func (a app) skipInvites(w http.ResponseWriter, r *http.Request) {
 	model := a.cache.Model()
 	emails := []string{}
 	for _, email := range body.Emails {
-		email = normalizeEmail(email)
+		email = config.NormalizeEmail(email)
 		if inv := model.InviteOf(e.ID, email); inv != nil && inv.Sent == "" {
 			emails = append(emails, email)
 		}

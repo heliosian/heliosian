@@ -8,6 +8,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/config"
 )
 
 // An RSVP is an invitation waiting for someone's reply, as the shared
@@ -24,7 +25,7 @@ type RSVP struct {
 // events their household is invited to, still to come or under way, not
 // called off, that they do not host and have not answered - soonest first.
 func (a app) waiting(email string) []RSVP {
-	email = normalizeEmail(email)
+	email = config.NormalizeEmail(email)
 	model := a.cache.Model()
 	answers := model.Answers[email]
 	today := now().Format(DateFormat)

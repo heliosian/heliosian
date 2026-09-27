@@ -165,6 +165,33 @@ func TestChecksRefuseBadGroups(t *testing.T) {
 	}
 }
 
+func TestSavingAdminsDropsEntriesWithoutAnAt(t *testing.T) {
+	cache, _ := sampleCache(t)
+	ctx := context.Background()
+	admin := access.Actor{Email: "a@x.org", Admin: true}
+	requested := []string{"jsmith", " New.Admin@X.org "}
+	ops, admins, err := cache.Model().SetAdmins(admin, nil, requested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(admins, "jsmith") || !slices.Contains(admins, "new.admin@x.org") {
+		t.Fatalf("admins: %v", admins)
+	}
+	if err := cache.CommitAndWait(ctx, admin, ops...); err != nil {
+		t.Fatal(err)
+	}
+	if cache.Count(adminsTab, store.Row{"Email": "jsmith"}) != 0 {
+		t.Fatal("jsmith was written to the admins tab")
+	}
+	again, _, err := cache.Model().SetAdmins(admin, nil, requested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again) != 0 {
+		t.Fatalf("saving the same list again wrote %v", again)
+	}
+}
+
 func TestSavingAGroupWritesOnlyWhatChanged(t *testing.T) {
 	cache, dir := sampleCache(t)
 	ctx := context.Background()

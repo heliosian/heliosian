@@ -301,8 +301,8 @@ func (m *Model) myHeliosianFeed(token string) string {
 }
 
 func (m *Model) MyHeliosian(email string) Feed {
-	setting := m.Settings[normalizeEmail(email)]
-	f := Feed{Token: MyHeliosianToken, Email: normalizeEmail(email), Name: MyHeliosianName, Emoji: MyHeliosianEmoji, Classrooms: []string{}, Tags: []string{}, Locked: true, Position: setting.HomePosition}
+	setting := m.Settings[config.NormalizeEmail(email)]
+	f := Feed{Token: MyHeliosianToken, Email: config.NormalizeEmail(email), Name: MyHeliosianName, Emoji: MyHeliosianEmoji, Classrooms: []string{}, Tags: []string{}, Locked: true, Position: setting.HomePosition}
 	if setting.HomeName != "" {
 		f.Name = setting.HomeName
 	}
@@ -422,7 +422,7 @@ func (m *Model) unusedFeedName(email, name string) string {
 	}
 	taken := map[string]bool{}
 	for _, f := range m.Feeds {
-		if normalizeEmail(f.Email) == normalizeEmail(email) {
+		if config.NormalizeEmail(f.Email) == config.NormalizeEmail(email) {
 			taken[strings.ToLower(f.Name)] = true
 		}
 	}
@@ -883,13 +883,9 @@ func (b *builder) checkFeed(f Feed) error {
 	return nil
 }
 
-func normalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
-}
-
 func (b *builder) settings(rows []store.Row) {
 	for _, row := range rows {
-		email := normalizeEmail(row["Email"])
+		email := config.NormalizeEmail(row["Email"])
 		if email == "" {
 			continue
 		}
@@ -930,7 +926,7 @@ func isAnswer(word string) bool {
 
 func (b *builder) answers(rows []store.Row) {
 	for _, row := range rows {
-		email, id, answer := normalizeEmail(row["Email"]), strings.TrimSpace(row["Event ID"]), strings.ToLower(strings.TrimSpace(row["Answer"]))
+		email, id, answer := config.NormalizeEmail(row["Email"]), strings.TrimSpace(row["Event ID"]), strings.ToLower(strings.TrimSpace(row["Answer"]))
 		if email == "" || id == "" || !isAnswer(answer) {
 			continue
 		}
@@ -939,12 +935,12 @@ func (b *builder) answers(rows []store.Row) {
 			b.model.Answered[email] = map[string]Answered{}
 		}
 		b.model.Answers[email][id] = answer
-		b.model.Answered[email][id] = Answered{Answer: answer, By: normalizeEmail(row["Answered By"]), At: strings.TrimSpace(row["Answered"]), Via: strings.ToLower(strings.TrimSpace(row["Via"]))}
+		b.model.Answered[email][id] = Answered{Answer: answer, By: config.NormalizeEmail(row["Answered By"]), At: strings.TrimSpace(row["Answered"]), Via: strings.ToLower(strings.TrimSpace(row["Via"]))}
 	}
 }
 
 func (m *Model) AnswerOf(email, id string) string {
-	return m.Answers[normalizeEmail(email)][id]
+	return m.Answers[config.NormalizeEmail(email)][id]
 }
 
 func (b *builder) feeds(rows []store.Row) error {
@@ -1328,7 +1324,7 @@ func BuildModel(tables store.Tables, roster Roster) (*Model, error) {
 	b.answers(tables[RSVPsTab])
 	b.invitations(tables[InvitationsTab], tables[InvitesTab])
 	for _, e := range m.Events {
-		if inv := m.Invitations[e.ID]; inv != nil && e.AddedBy != "" && inv.SteppedDown == normalizeEmail(e.AddedBy) {
+		if inv := m.Invitations[e.ID]; inv != nil && e.AddedBy != "" && inv.SteppedDown == config.NormalizeEmail(e.AddedBy) {
 			e.PosterLeft = true
 		}
 	}

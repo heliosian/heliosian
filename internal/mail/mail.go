@@ -44,7 +44,7 @@ func FromLine(from string, m Message) string {
 	if m.FromName == "" {
 		return from
 	}
-	return fmt.Sprintf("%s <%s>", strings.ReplaceAll(m.FromName, "<", ""), Address(from))
+	return fmt.Sprintf("%s <%s>", strings.ReplaceAll(m.FromName, "<", ""), AddressOf(from))
 }
 
 // Attachment is one file on a message.

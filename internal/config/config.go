@@ -200,11 +200,15 @@ func FormatYears(years float64) string {
 	return strconv.FormatFloat(years, 'f', -1, 64)
 }
 
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
 func NormalizeEmails(emails []string) []string {
 	seen := map[string]bool{}
 	out := []string{}
 	for _, e := range emails {
-		e = strings.ToLower(strings.TrimSpace(e))
+		e = NormalizeEmail(e)
 		if e == "" || !strings.Contains(e, "@") || seen[e] {
 			continue
 		}

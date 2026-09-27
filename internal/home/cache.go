@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
@@ -118,20 +119,6 @@ func (c *Cache) CategoriesFor(v access.Actor) []Category {
 	return out
 }
 
-func normalizeEmails(emails []string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, e := range emails {
-		e = strings.ToLower(strings.TrimSpace(e))
-		if e == "" || !strings.Contains(e, "@") || seen[e] {
-			continue
-		}
-		seen[e] = true
-		out = append(out, e)
-	}
-	return out
-}
-
 type Person struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
@@ -216,7 +203,7 @@ func (c *Cache) MissingVisibility() []App {
 }
 
 func (c *Cache) IsSuperAdmin(email string) bool {
-	return slices.Contains(normalizeEmails(c.superAdmins()), strings.ToLower(strings.TrimSpace(email)))
+	return slices.Contains(config.NormalizeEmails(c.superAdmins()), strings.ToLower(strings.TrimSpace(email)))
 }
 
 func (c *Cache) IsAdmin(email string) bool {
@@ -224,7 +211,7 @@ func (c *Cache) IsAdmin(email string) bool {
 }
 
 func (c *Cache) Admins() []string {
-	admins := normalizeEmails(append(slices.Clone(c.Model().admins), c.superAdmins()...))
+	admins := config.NormalizeEmails(append(slices.Clone(c.Model().admins), c.superAdmins()...))
 	sort.Strings(admins)
 	return admins
 }

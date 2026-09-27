@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"heliosian/internal/config"
 )
 
 // Card is an event as another app lists it - Heliosian's Upcoming Events,
@@ -201,7 +203,7 @@ func (m *Model) viewUnder(directory Directory, email, token string) (classrooms,
 	if token == MyHeliosianToken {
 		return m.myHeliosianView(directory, email)
 	}
-	if f := m.Feed(token); f != nil && token != "" && normalizeEmail(f.Email) == normalizeEmail(email) {
+	if f := m.Feed(token); f != nil && token != "" && config.NormalizeEmail(f.Email) == config.NormalizeEmail(email) {
 		return m.feedView(f)
 	}
 	return m.viewOf(directory, email)
@@ -226,7 +228,7 @@ func (m *Model) myHeliosianView(directory Directory, email string) (classrooms, 
 	}
 	// A saved view stands in for both - a Settings row that holds one,
 	// rather than only a default calendar.
-	if saved, ok := m.Settings[normalizeEmail(email)]; ok && (len(saved.Classrooms) > 0 || len(saved.Tags) > 0) {
+	if saved, ok := m.Settings[config.NormalizeEmail(email)]; ok && (len(saved.Classrooms) > 0 || len(saved.Tags) > 0) {
 		if len(saved.Classrooms) > 0 {
 			classrooms = saved.Classrooms
 		}
@@ -255,7 +257,7 @@ func (m *Model) feedView(f *Feed) (classrooms, tags []string) {
 func (m *Model) MyCalendars(email string) []Feed {
 	out := []Feed{}
 	for _, f := range m.Feeds {
-		if normalizeEmail(f.Email) == normalizeEmail(email) {
+		if config.NormalizeEmail(f.Email) == config.NormalizeEmail(email) {
 			out = append(out, f)
 		}
 	}

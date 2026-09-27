@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/config"
 	"heliosian/internal/store"
 )
 
@@ -140,7 +141,7 @@ func (m *Model) takeTickets(actor access.Actor, directory Directory, order ticke
 			return taken{}, access.Invalid("this party is full; join the waitlist instead")
 		}
 	}
-	purchaser := cleanEmail(order.Purchaser)
+	purchaser := config.NormalizeEmail(order.Purchaser)
 	if purchaser == "" {
 		purchaser = actor.Email
 	}
@@ -161,7 +162,7 @@ func (m *Model) takeTickets(actor access.Actor, directory Directory, order ticke
 	rows := []row{}
 	seen := map[string]bool{}
 	for _, att := range order.Attendees {
-		email, name := cleanEmail(att.Email), strings.TrimSpace(att.Name)
+		email, name := config.NormalizeEmail(att.Email), strings.TrimSpace(att.Name)
 		if email == "" && name == "" {
 			return taken{}, access.Invalid("each ticket needs a person or a guest's name")
 		}
@@ -271,7 +272,7 @@ func (m *Model) joinWaitlist(actor access.Actor, directory Directory, order wait
 	if err := checkText("note", order.Note); err != nil {
 		return joined{}, access.Invalid("%s", err)
 	}
-	purchaser := cleanEmail(order.Purchaser)
+	purchaser := config.NormalizeEmail(order.Purchaser)
 	if purchaser == "" {
 		purchaser = actor.Email
 	}
@@ -436,7 +437,7 @@ func (m *Model) reassignTicket(actor access.Actor, directory Directory, re reass
 	if !editor && p.Past(now()) {
 		return nil, nil, nil, "", access.Invalid("this party has already happened")
 	}
-	email, name := cleanEmail(re.Email), strings.TrimSpace(re.Name)
+	email, name := config.NormalizeEmail(re.Email), strings.TrimSpace(re.Name)
 	if email == "" && name == "" {
 		return nil, nil, nil, "", access.Invalid("pick someone, or name a guest")
 	}
@@ -560,7 +561,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 	if !body.Adults && !body.Students {
 		return savedParty{}, access.Invalid("let adults, students, or both hold a ticket")
 	}
-	hosts := normalizeEmails(body.HostEmails)
+	hosts := config.NormalizeEmails(body.HostEmails)
 	if adding && !actor.Admin && !slices.Contains(hosts, actor.Email) {
 		hosts = append(hosts, actor.Email)
 	}
@@ -828,7 +829,7 @@ func (m *Model) setAdmins(actor access.Actor, superAdmins, requested []string) (
 		super[e] = true
 	}
 	admins := []string{}
-	for _, e := range normalizeEmails(requested) {
+	for _, e := range config.NormalizeEmails(requested) {
 		if !super[e] {
 			admins = append(admins, e)
 		}
@@ -851,7 +852,7 @@ func (m *Model) moveUnlisted(actor access.Actor, directory Directory, old, to, n
 	if err := requireAdmin(actor); err != nil {
 		return nil, 0, err
 	}
-	if _, known := directory.Person(directory.Resolve(cleanEmail(old))); known {
+	if _, known := directory.Person(directory.Resolve(config.NormalizeEmail(old))); known {
 		return nil, 0, access.Invalid("their address is the directory's to change")
 	}
 	return m.moveAddress(actor, old, to, name)
@@ -861,7 +862,7 @@ func (m *Model) moveAddress(actor access.Actor, old, to, name string) ([]store.O
 	if err := requireAdmin(actor); err != nil {
 		return nil, 0, err
 	}
-	old, to, name = cleanEmail(old), cleanEmail(to), strings.TrimSpace(name)
+	old, to, name = config.NormalizeEmail(old), config.NormalizeEmail(to), strings.TrimSpace(name)
 	if err := checkEmail(old); err != nil {
 		return nil, 0, access.Invalid("%s", err)
 	}

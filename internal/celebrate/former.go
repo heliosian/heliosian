@@ -12,6 +12,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/config"
 )
 
 // AddressMoved is told when an admin moves someone's address, after
@@ -54,7 +55,7 @@ func (a app) moveAddress(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	old, to := cleanEmail(body.Old), cleanEmail(body.To)
+	old, to := config.NormalizeEmail(body.Old), config.NormalizeEmail(body.To)
 	if a.moved != nil {
 		a.moved(r.Context(), actor, old, to, strings.TrimSpace(body.Name))
 	}
@@ -99,7 +100,7 @@ func Problems(model *Model, directory Directory, now time.Time) []Problem {
 	byEmail := map[string]*Problem{}
 	order := []string{}
 	note := func(email, name string, p *Party, role string) {
-		email = model.CurrentAddress(directory.Resolve(cleanEmail(email)))
+		email = model.CurrentAddress(directory.Resolve(config.NormalizeEmail(email)))
 		if email == "" || !strings.HasSuffix(email, "@"+auth.Domain) {
 			return
 		}

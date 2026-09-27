@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
 )
@@ -185,7 +186,7 @@ func (m *Model) SetAdmins(actor access.Actor, superAdmins, requested []string) (
 		super[e] = true
 	}
 	admins := []string{}
-	for _, e := range cleanEmails(requested) {
+	for _, e := range config.NormalizeEmails(requested) {
 		if !super[e] {
 			admins = append(admins, e)
 		}

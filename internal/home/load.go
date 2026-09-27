@@ -18,6 +18,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
 )
@@ -334,7 +335,7 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 	for _, row := range tables[adminsTab] {
 		model.admins = append(model.admins, row["Email"])
 	}
-	model.admins = normalizeEmails(model.admins)
+	model.admins = config.NormalizeEmails(model.admins)
 	index := map[string]int{}
 	events, apps := false, false
 	for _, row := range tables[categoriesTab] {
@@ -498,7 +499,7 @@ func buildVisibility(rows []store.Row) (map[string]Visibility, error) {
 }
 
 func splitEmails(cell string) []string {
-	return normalizeEmails(strings.FieldsFunc(cell, func(r rune) bool {
+	return config.NormalizeEmails(strings.FieldsFunc(cell, func(r rune) bool {
 		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == ' '
 	}))
 }

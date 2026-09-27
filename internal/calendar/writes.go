@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
 )
@@ -16,7 +17,7 @@ import (
 func (a app) hostsOf(e *Event) []string {
 	out := []string{}
 	add := func(email string) {
-		if email = a.directory.Resolve(normalizeEmail(email)); email != "" && !slices.Contains(out, email) {
+		if email = a.directory.Resolve(config.NormalizeEmail(email)); email != "" && !slices.Contains(out, email) {
 			out = append(out, email)
 		}
 	}
@@ -167,7 +168,7 @@ func (a app) orderOps(actor access.Actor, tokens []string) ([]store.Op, error) {
 	}
 	mine := map[string]string{}
 	for _, f := range a.cache.Model().Feeds {
-		if normalizeEmail(f.Email) == actor.Email {
+		if config.NormalizeEmail(f.Email) == actor.Email {
 			mine[f.Token] = f.order
 		}
 	}
@@ -574,7 +575,7 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 	if body.Hosts != nil {
 		hosts := []string{}
 		for _, h := range body.Hosts {
-			h = a.directory.Resolve(normalizeEmail(h))
+			h = a.directory.Resolve(config.NormalizeEmail(h))
 			if _, known := a.directory.Person(h); !known {
 				return nil, nil, nil, access.Invalid("%s is not in the directory", h)
 			}
@@ -596,18 +597,18 @@ func (a app) stepDownOps(actor access.Actor, id, email string) ([]store.Op, *Eve
 		return nil, nil, "", false, err
 	}
 	who := actor.Email
-	if email := a.directory.Resolve(normalizeEmail(email)); email != "" {
+	if email := a.directory.Resolve(config.NormalizeEmail(email)); email != "" {
 		who = email
 	}
 	inv := a.cache.Model().Invitations[e.ID]
 	cohost := inv != nil && slices.Contains(inv.Hosts, who)
-	poster := e.Source == SourceSheet && !e.PosterLeft && a.directory.Resolve(normalizeEmail(e.AddedBy)) == who
+	poster := e.Source == SourceSheet && !e.PosterLeft && a.directory.Resolve(config.NormalizeEmail(e.AddedBy)) == who
 	if !cohost && !poster {
 		return nil, nil, "", false, access.Invalid("that person hosts this event on the app that runs it, or not at all - step down there")
 	}
 	cells := store.Row{}
 	if poster {
-		cells["Stepped Down"] = normalizeEmail(e.AddedBy)
+		cells["Stepped Down"] = config.NormalizeEmail(e.AddedBy)
 	}
 	if inv != nil {
 		if cohost {
@@ -637,8 +638,8 @@ func (a app) inviteOps(actor access.Actor, id string, people []invitee) ([]store
 	emails := []string{}
 	for _, p := range people {
 		name := strings.TrimSpace(p.Name)
-		household := normalizeEmail(p.Household)
-		email := a.directory.Resolve(normalizeEmail(p.Email))
+		household := config.NormalizeEmail(p.Household)
+		email := a.directory.Resolve(config.NormalizeEmail(p.Email))
 		token := ""
 		switch {
 		case email == "" && household != "" && name != "":
@@ -675,7 +676,7 @@ func (a app) uninviteOps(actor access.Actor, id, email string) ([]store.Op, *Eve
 	if e == nil {
 		return nil, nil, "", false, access.Missing("that event is not on the calendar")
 	}
-	email = normalizeEmail(email)
+	email = config.NormalizeEmail(email)
 	inv := a.cache.Model().InviteOf(e.ID, email)
 	if inv == nil {
 		return nil, nil, "", false, access.Missing("they are not on the list")
@@ -711,7 +712,7 @@ func (a app) guestOps(actor access.Actor, g broughtGuest, name, email string) ([
 	if name == "" || len(name) > maxTitleLength {
 		return nil, g, access.Invalid("a guest needs a name")
 	}
-	email = normalizeEmail(email)
+	email = config.NormalizeEmail(email)
 	stamp := now().Format(DateTimeFormat)
 	row := store.Row{"Event ID": e.ID, "Name": name, "Guest Of": g.of, "Via": ViaGuest, "Added By": actor.Email, "Added": stamp}
 	if email != "" {
@@ -758,7 +759,7 @@ func (a app) bringGuestOps(actor access.Actor, body guestBody) ([]store.Op, brou
 		g.invite = *body.Invite
 	}
 	if body.Of != "" {
-		g.of = a.directory.Resolve(normalizeEmail(body.Of))
+		g.of = a.directory.Resolve(config.NormalizeEmail(body.Of))
 	}
 	if !a.isHost(actor, e) {
 		if inv == nil || !inv.Guests {
@@ -780,7 +781,7 @@ func (a app) extGuestOps(actor access.Actor, e *Event, name, email string) ([]st
 }
 
 func (a app) extRemoveGuestOps(actor access.Actor, e *Event, key string) ([]store.Op, string, error) {
-	key = normalizeEmail(key)
+	key = config.NormalizeEmail(key)
 	guest := a.cache.Model().InviteOf(e.ID, key)
 	if guest == nil || guest.GuestOf != actor.Email {
 		return nil, "", access.Missing("that is not a guest of yours")
@@ -789,7 +790,7 @@ func (a app) extRemoveGuestOps(actor access.Actor, e *Event, key string) ([]stor
 }
 
 func (a app) answerOps(actor access.Actor, email, id, answer, via string) ([]store.Op, *Event, error) {
-	email = normalizeEmail(email)
+	email = config.NormalizeEmail(email)
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	if answer != "" && !isAnswer(answer) {
 		return nil, nil, access.Invalid("an answer is yes, no, maybe, or hidden")
@@ -810,7 +811,7 @@ func (a app) answerSubject(actor access.Actor, id, email, answer string) (*Event
 	if e == nil {
 		return nil, "", access.Missing("that event is not on the calendar")
 	}
-	subject := normalizeEmail(email)
+	subject := config.NormalizeEmail(email)
 	if !isGuestKey(subject) {
 		subject = a.directory.Resolve(subject)
 	}
@@ -827,7 +828,7 @@ func (a app) extSubject(actor access.Actor, e *Event, key, answer string) (strin
 	if strings.ToLower(strings.TrimSpace(answer)) == AnswerHidden {
 		return "", access.Invalid("an answer is yes, no, maybe, or blank")
 	}
-	key = normalizeEmail(key)
+	key = config.NormalizeEmail(key)
 	if key == "" || key == actor.Email {
 		return actor.Email, nil
 	}
@@ -1028,7 +1029,7 @@ func (a app) changeAddressOps(actor access.Actor, id, email, to string, everywhe
 		return nil, addressChange{}, err
 	}
 	model := a.cache.Model()
-	c := addressChange{event: e, from: normalizeEmail(email), to: normalizeEmail(to)}
+	c := addressChange{event: e, from: config.NormalizeEmail(email), to: config.NormalizeEmail(to)}
 	inv := model.InviteOf(e.ID, c.from)
 	switch {
 	case inv == nil:

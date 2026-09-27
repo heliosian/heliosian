@@ -193,21 +193,6 @@ func JoinList(items []string) string {
 	return strings.Join(items, ", ")
 }
 
-func cleanEmail(raw string) string {
-	return strings.ToLower(strings.TrimSpace(raw))
-}
-
-func cleanEmails(raw []string) []string {
-	out := []string{}
-	for _, e := range raw {
-		e = cleanEmail(e)
-		if e != "" && !slices.Contains(out, e) {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
 func CheckName(name string) error {
 	if !nameForm.MatchString(name) || strings.Contains(name, "..") {
 		return fmt.Errorf("a group's name is two to forty lowercase letters, digits, dots and hyphens, starting and ending with a letter or digit, with no two dots together")
@@ -336,7 +321,7 @@ func Normalize(g Group) Group {
 	if g.Replying == "" {
 		g.Replying = PostingEveryone
 	}
-	g.Managers = cleanEmails(g.Managers)
+	g.Managers = config.NormalizeEmails(g.Managers)
 	rules := make([]Rule, 0, len(g.Rules))
 	for _, r := range g.Rules {
 		rules = append(rules, filter.Clean(r))
@@ -344,7 +329,7 @@ func Normalize(g Group) Group {
 	g.Rules = rules
 	additions := make([]Addition, 0, len(g.Additions))
 	for _, a := range g.Additions {
-		a.Email = cleanEmail(a.Email)
+		a.Email = config.NormalizeEmail(a.Email)
 		a.Name = strings.Join(strings.Fields(a.Name), " ")
 		if a.Email != "" && !slices.ContainsFunc(additions, func(b Addition) bool { return b.Email == a.Email }) {
 			additions = append(additions, a)
@@ -353,7 +338,7 @@ func Normalize(g Group) Group {
 	g.Additions = additions
 	excluded := make([]Excluded, 0, len(g.Excluded))
 	for _, e := range g.Excluded {
-		e.Email = cleanEmail(e.Email)
+		e.Email = config.NormalizeEmail(e.Email)
 		e.Note = strings.Join(strings.Fields(e.Note), " ")
 		e.When = strings.TrimSpace(e.When)
 		if e.Email != "" && !slices.ContainsFunc(excluded, func(v Excluded) bool { return v.Email == e.Email }) {
@@ -432,7 +417,7 @@ func BuildModel(tables store.Tables) (*Model, error) {
 		if err != nil {
 			return nil, err
 		}
-		email := cleanEmail(row["Email"])
+		email := config.NormalizeEmail(row["Email"])
 		if !slices.Contains(g.Managers, email) {
 			g.Managers = append(g.Managers, email)
 		}
@@ -466,7 +451,7 @@ func BuildModel(tables store.Tables) (*Model, error) {
 		if model.archived[g.Name] == nil {
 			model.archived[g.Name] = map[string]bool{}
 		}
-		model.archived[g.Name][cleanEmail(row["Email"])] = true
+		model.archived[g.Name][config.NormalizeEmail(row["Email"])] = true
 	}
 	for _, row := range tables[messagesTab] {
 		model.Messages = append(model.Messages, Message{
@@ -476,7 +461,7 @@ func BuildModel(tables store.Tables) (*Model, error) {
 	}
 	for _, row := range tables[deliveriesTab] {
 		model.Deliveries = append(model.Deliveries, Delivery{
-			Timestamp: row["Timestamp"], Group: strings.ToLower(strings.TrimSpace(row["Group"])), Email: cleanEmail(row["Email"]),
+			Timestamp: row["Timestamp"], Group: strings.ToLower(strings.TrimSpace(row["Group"])), Email: config.NormalizeEmail(row["Email"]),
 			Event: row["Event"], Message: row["Message"], Detail: row["Detail"],
 		})
 	}

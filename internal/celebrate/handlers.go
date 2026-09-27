@@ -162,10 +162,6 @@ func (a app) commit(w http.ResponseWriter, r *http.Request, actor access.Actor, 
 	return true
 }
 
-func cleanEmail(raw string) string {
-	return strings.ToLower(strings.TrimSpace(raw))
-}
-
 func NewID() string {
 	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
 	var raw [8]byte
@@ -623,18 +619,4 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.InfoContext(r.Context(), "celebrate: set the admin list", "actor", actor.Email, "admins", admins)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func normalizeEmails(emails []string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, e := range emails {
-		e = cleanEmail(e)
-		if e == "" || !strings.Contains(e, "@") || seen[e] {
-			continue
-		}
-		seen[e] = true
-		out = append(out, e)
-	}
-	return out
 }

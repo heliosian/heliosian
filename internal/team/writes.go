@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/config"
 	"heliosian/internal/store"
 )
 
@@ -724,20 +725,6 @@ func saveNotify(actor access.Actor, wanted []string) (string, []store.Op, error)
 	return value, []store.Op{store.Upsert(settingsTab, store.Row{"Key": notifyPrefix + actor.Email}, store.Row{"Value": value})}, nil
 }
 
-func normalizeEmails(emails []string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, e := range emails {
-		e = strings.ToLower(strings.TrimSpace(e))
-		if e == "" || !strings.Contains(e, "@") || seen[e] {
-			continue
-		}
-		seen[e] = true
-		out = append(out, e)
-	}
-	return out
-}
-
 func (m *Model) setAdmins(actor access.Actor, superAdmins, wanted []string) ([]string, []store.Op, error) {
 	if err := requireAdmin(actor); err != nil {
 		return nil, nil, err
@@ -747,7 +734,7 @@ func (m *Model) setAdmins(actor access.Actor, superAdmins, wanted []string) ([]s
 		super[e] = true
 	}
 	admins := []string{}
-	for _, e := range normalizeEmails(wanted) {
+	for _, e := range config.NormalizeEmails(wanted) {
 		if !super[e] {
 			admins = append(admins, e)
 		}

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/config"
 	"heliosian/internal/mail"
 )
 
@@ -17,7 +18,7 @@ type Answerer func(ctx context.Context, email, id, answer string) error
 var errNotRecorded = errors.New("the answer was not recorded")
 
 func (a app) answer(ctx context.Context, email, id, answer string) error {
-	return a.record(ctx, a.as(normalizeEmail(email)), id, answer, true)
+	return a.record(ctx, a.as(config.NormalizeEmail(email)), id, answer, true)
 }
 
 func (a app) record(ctx context.Context, actor access.Actor, id, answer string, invite bool) error {
@@ -25,7 +26,7 @@ func (a app) record(ctx context.Context, actor access.Actor, id, answer string, 
 }
 
 func (a app) recordBy(ctx context.Context, actor access.Actor, email, id, answer, via string, invite, wait bool) error {
-	email = normalizeEmail(email)
+	email = config.NormalizeEmail(email)
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	ops, e, err := a.answerOps(actor, email, id, answer, via)
 	if err != nil {
@@ -110,7 +111,7 @@ func (a app) eventFor(email string, admin bool, id string) *Event {
 }
 
 func (a app) sees(email string, admin bool, e *Event) bool {
-	if admin || normalizeEmail(e.AddedBy) == email || a.isHost(access.Actor{Email: email, Admin: admin}, e) {
+	if admin || config.NormalizeEmail(e.AddedBy) == email || a.isHost(access.Actor{Email: email, Admin: admin}, e) {
 		return true
 	}
 	if e.Sharing == SharingInvited {
@@ -153,7 +154,7 @@ func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 }
 
 func (a app) organizer(id, email string) string {
-	address := mail.Address(a.mail.ReplyTo)
+	address := mail.AddressOf(a.mail.ReplyTo)
 	local, domain, _ := strings.Cut(address, "@")
 	return strings.Replace(a.mail.ReplyTo, address, local+"+"+a.replyToken(id, email)+"@"+domain, 1)
 }

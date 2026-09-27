@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"heliosian/internal/config"
 )
 
 // Linked is an event another app runs - a Helios Celebrate party, an
@@ -166,7 +168,7 @@ func folded(school, hca *Event) *Event {
 // - so the filters, the feeds and the front page file it with the rest of
 // what they are going to, and each with a guest list flagged as such.
 func (m *Model) eventsFor(directory Directory, email string, linked []Linked) []*Event {
-	email = normalizeEmail(email)
+	email = config.NormalizeEmail(email)
 	answers := m.Answers[email]
 	mine := m.mine(directory, email)
 	// An event shared by link or by invitation that the person has

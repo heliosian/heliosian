@@ -15,6 +15,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
+	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/serve"
@@ -137,7 +138,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		c := *e
 		c.Hosted = hosted
 		for _, h := range e.Hosts {
-			if p, known := a.directory.Person(a.directory.Resolve(normalizeEmail(h))); known && p.Name != "" {
+			if p, known := a.directory.Person(a.directory.Resolve(config.NormalizeEmail(h))); known && p.Name != "" {
 				c.HostNames = append(c.HostNames, p.Name)
 			}
 		}
@@ -253,7 +254,7 @@ type Hooks struct {
 }
 
 func (a app) makeDefault(ctx context.Context, email, token string) error {
-	actor := a.as(normalizeEmail(email))
+	actor := a.as(config.NormalizeEmail(email))
 	ops, tokens, err := a.defaultOps(actor, token)
 	if err != nil {
 		return err

@@ -169,10 +169,6 @@ func (a app) write(w http.ResponseWriter, r *http.Request, actor access.Actor, o
 	return true
 }
 
-func cleanEmail(raw string) string {
-	return strings.ToLower(strings.TrimSpace(raw))
-}
-
 func (a app) assign(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Email      string `json:"email"`
@@ -676,18 +672,4 @@ func (a app) removeTeamMember(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.InfoContext(r.Context(), "birthday: removed team member", "actor", actor.Email, "email", member.Email, "role", member.Role)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func normalizeEmails(emails []string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, e := range emails {
-		e = cleanEmail(e)
-		if e == "" || !strings.Contains(e, "@") || seen[e] {
-			continue
-		}
-		seen[e] = true
-		out = append(out, e)
-	}
-	return out
 }

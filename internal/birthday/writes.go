@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/config"
 	"heliosian/internal/store"
 )
 
@@ -49,7 +50,7 @@ func requireSystem(actor access.Actor, name string) error {
 }
 
 func (m *Model) findStaff(raw string) (string, error) {
-	email := cleanEmail(raw)
+	email := config.NormalizeEmail(raw)
 	if m.Skipped(email) {
 		return "", access.Invalid("%s asked to be left out", email)
 	}
@@ -76,7 +77,7 @@ func (c *Cache) assign(actor access.Actor, rawEmail, rawTo string) ([]store.Op, 
 	if err != nil {
 		return nil, target{}, err
 	}
-	t.to = cleanEmail(rawTo)
+	t.to = config.NormalizeEmail(rawTo)
 	if t.to == "" {
 		t.to = actor.Email
 	}
@@ -156,7 +157,7 @@ func (m *Model) saveBirthday(actor access.Actor, rawEmail, birthday, override st
 	if err := m.requireTeam(actor); err != nil {
 		return nil, "", err
 	}
-	email := cleanEmail(rawEmail)
+	email := config.NormalizeEmail(rawEmail)
 	if err := checkEmail(email); err != nil {
 		return nil, "", access.Invalid("%v", err)
 	}
@@ -168,7 +169,7 @@ func (c *Cache) deleteBirthday(actor access.Actor, rawEmail string) ([]store.Op,
 	if err := requireAdmin(actor); err != nil {
 		return nil, "", err
 	}
-	email := cleanEmail(rawEmail)
+	email := config.NormalizeEmail(rawEmail)
 	match := store.Row{"Email": email}
 	if c.Count(birthdaysTab, match) == 0 {
 		return nil, "", access.Missing("no such birthday")
@@ -185,7 +186,7 @@ func (m *Model) saveParticipation(actor access.Actor, rawEmail, level, note stri
 	if err := m.requireTeam(actor); err != nil {
 		return nil, "", err
 	}
-	email := cleanEmail(rawEmail)
+	email := config.NormalizeEmail(rawEmail)
 	if err := checkEmail(email); err != nil {
 		return nil, "", access.Invalid("%v", err)
 	}
@@ -202,7 +203,7 @@ func (m *Model) deleteParticipation(actor access.Actor, rawEmail string) ([]stor
 	if err := m.requireTeam(actor); err != nil {
 		return nil, "", err
 	}
-	email := cleanEmail(rawEmail)
+	email := config.NormalizeEmail(rawEmail)
 	b := m.Birthday(email)
 	if b == nil || b.Level == "" {
 		return nil, "", access.Missing("no preference is recorded")
@@ -218,7 +219,7 @@ func (m *Model) addNote(actor access.Actor, rawEmail, text string) ([]store.Op, 
 	if err := m.requireTeam(actor); err != nil {
 		return nil, "", err
 	}
-	email := cleanEmail(rawEmail)
+	email := config.NormalizeEmail(rawEmail)
 	if b := m.Birthday(email); b == nil || b.Birthday == "" {
 		return nil, "", access.Missing("%s has no birthday on file", email)
 	}
@@ -237,7 +238,7 @@ func (m *Model) deleteNote(actor access.Actor, given Note) ([]store.Op, string, 
 	if err := m.requireTeam(actor); err != nil {
 		return nil, "", err
 	}
-	match := store.Row{"Email": cleanEmail(given.Email), "Note": given.Note, "Added By": cleanEmail(given.AddedBy), "Added": given.Added}
+	match := store.Row{"Email": config.NormalizeEmail(given.Email), "Note": given.Note, "Added By": config.NormalizeEmail(given.AddedBy), "Added": given.Added}
 	if !actor.Admin && match["Added By"] != actor.Email {
 		return nil, "", access.Forbidden("only the note's author or an admin can remove it")
 	}
@@ -422,7 +423,7 @@ func (m *Model) setAdmins(actor access.Actor, requested, superAdmins []string) (
 		return nil, nil, err
 	}
 	admins := []string{}
-	for _, e := range normalizeEmails(requested) {
+	for _, e := range config.NormalizeEmails(requested) {
 		if !slices.Contains(superAdmins, e) {
 			admins = append(admins, e)
 		}
@@ -453,7 +454,7 @@ func (c *Cache) joinTeam(actor access.Actor) ([]store.Op, error) {
 }
 
 func teamMember(rawEmail, rawRole string) (TeamMember, error) {
-	email := cleanEmail(rawEmail)
+	email := config.NormalizeEmail(rawEmail)
 	if err := checkEmail(email); err != nil {
 		return TeamMember{}, access.Invalid("%v", err)
 	}
