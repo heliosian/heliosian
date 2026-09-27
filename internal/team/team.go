@@ -19,10 +19,7 @@ import (
 	"heliosian/internal/who"
 )
 
-const (
-	imageFolder = "activity-images"
-	shell       = "web/team/index.html"
-)
+const shell = "web/team/index.html"
 
 var pages = []string{
 	"/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/activities/{path...}", "/v/{path...}",
@@ -30,7 +27,7 @@ var pages = []string{
 
 type app struct {
 	cache     *Cache
-	media     *blob.Store
+	images    blob.Images
 	directory func() *who.Model
 	settings  func() *config.Settings
 	search    imagesearch.Search
@@ -40,14 +37,14 @@ type app struct {
 	style     *sharecard.Style
 }
 
-func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory func() *who.Model, settings func() *config.Settings, search imagesearch.Search, mailer *mail.Mailgun, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
+func Register(mux *http.ServeMux, cache *Cache, images blob.Images, directory func() *who.Model, settings func() *config.Settings, search imagesearch.Search, mailer *mail.Mailgun, rsvps RSVPLookup, lists EmailListLookup, style *sharecard.Style) {
 	search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
-	a := app{cache: cache, media: media, directory: directory, settings: settings, search: search, mailer: mailer, rsvps: rsvps, lists: lists, style: style}
+	a := app{cache: cache, images: images, directory: directory, settings: settings, search: search, mailer: mailer, rsvps: rsvps, lists: lists, style: style}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("GET /api/team/model", serve.JSON(a.model))
-	a.search.Register(mux, "/api/team", imageFolder, imagesearch.Members)
+	a.search.Register(mux, "/api/team", images.Folder(), imagesearch.Members)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
 	mux.HandleFunc("GET /api/team/people", serve.JSON(a.people))

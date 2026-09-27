@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"heliosian/internal/admins"
+	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -17,7 +18,7 @@ type Cache struct {
 	admins.List
 }
 
-func spec(images ImageChecker) store.Spec[*Model] {
+func spec(images blob.Checker) store.Spec[*Model] {
 	return store.Spec[*Model]{
 		App: appName,
 		Tabs: []store.Tab{
@@ -91,7 +92,7 @@ func heldBy(rows []store.Row, path string, self store.Row) bool {
 	return false
 }
 
-func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmins func() []string, queue *store.Queue) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, images blob.Checker, superAdmins func() []string, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec(images), source, writer, queue)
 	if err != nil {
 		return nil, err

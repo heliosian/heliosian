@@ -70,7 +70,7 @@ func serveWith(t *testing.T, mailer *mail.Mailgun) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, blob.New(blob.NewMemoryBucket()), directory, imagesearch.Search{}, mailer, nil, nil, testStyle)
+	Register(mux, cache, blob.NewImages(blob.New(blob.NewMemoryBucket()), "celebrate"), directory, imagesearch.Search{}, mailer, nil, nil, testStyle)
 	return cache, mux
 }
 
@@ -1090,7 +1090,7 @@ func TestMoveAddress(t *testing.T) {
 	type move struct{ actor, old, to, name string }
 	told := []move{}
 	mux := http.NewServeMux()
-	Register(mux, cache, blob.New(blob.NewMemoryBucket()), directory, imagesearch.Search{}, mailtest.Discard(), nil, func(_ context.Context, actor access.Actor, old, to, name string) {
+	Register(mux, cache, blob.NewImages(blob.New(blob.NewMemoryBucket()), "celebrate"), directory, imagesearch.Search{}, mailtest.Discard(), nil, func(_ context.Context, actor access.Actor, old, to, name string) {
 		told = append(told, move{actor.Email, old, to, name})
 	}, testStyle)
 	const (

@@ -1,8 +1,6 @@
 package who
 
 import (
-	"crypto/sha256"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -447,12 +445,6 @@ func (a admin) unhidePerson(r *http.Request, body personEmail) (serve.None, erro
 	return serve.None{}, nil
 }
 
-var imageExtensions = map[string]string{
-	"image/jpeg": "jpg",
-	"image/png":  "png",
-	"image/webp": "webp",
-}
-
 func (a admin) setImage(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
@@ -473,12 +465,12 @@ func (a admin) setImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sniffed := http.DetectContentType(content)
-	ext, ok := imageExtensions[sniffed]
+	ext, ok := blob.ImageExtensions[sniffed]
 	if !ok {
 		http.Error(w, "unsupported image type "+sniffed, http.StatusBadRequest)
 		return
 	}
-	image := fmt.Sprintf("%x.%s", sha256.Sum256(content), ext)
+	image := blob.Name(content, ext)
 	actor := requestActor(a.cache, r)
 	ops, err := a.cache.Model().setImage(actor, kind, name, image)
 	if err != nil {

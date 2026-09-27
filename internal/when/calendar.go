@@ -1,7 +1,6 @@
 package when
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"regexp"
@@ -251,11 +250,6 @@ type Tag struct {
 	Image       string `json:"image,omitempty"`
 	ImageURL    string `json:"imageUrl,omitempty"`
 	order       string
-}
-
-type ImageChecker interface {
-	Has(key string) (bool, error)
-	Prefetch(ctx context.Context, names []string) error
 }
 
 type Provenance struct {

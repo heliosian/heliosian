@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"heliosian/internal/admins"
+	"heliosian/internal/blob"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -20,7 +21,7 @@ type Cache struct {
 
 var guestListTabs = []string{InvitesTab, InviteGroupsTab, RSVPsTab}
 
-func spec(roster func() Roster, images ImageChecker) store.Spec[*Model] {
+func spec(roster func() Roster, images blob.Checker) store.Spec[*Model] {
 	return store.Spec[*Model]{
 		App: appName,
 		Tabs: []store.Tab{
@@ -92,7 +93,7 @@ func carryInvite(_ store.Tables, before, after store.Row) []store.Op {
 	return []store.Op{store.Update(RSVPsTab, was, store.Row{"Email": after["Email"]})}
 }
 
-func NewCache(source data.Source, writer data.Writer, roster func() Roster, images ImageChecker, superAdmins func() []string, queue *store.Queue) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, roster func() Roster, images blob.Checker, superAdmins func() []string, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec(roster, images), source, writer, queue)
 	if err != nil {
 		return nil, err
@@ -113,7 +114,7 @@ func (c *Cache) Pending(email string) []admins.Approval {
 	return out
 }
 
-func resolveImages(ctx context.Context, images ImageChecker, model *Model) {
+func resolveImages(ctx context.Context, images blob.Checker, model *Model) {
 	if images == nil {
 		return
 	}

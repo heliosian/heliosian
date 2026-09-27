@@ -60,7 +60,7 @@ func serveWith(t *testing.T, mailer *mail.Mailgun) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, blob.New(blob.NewMemoryBucket()), func() *who.Model { return directory }, func() *config.Settings { return settings }, imagesearch.Search{}, mailer, nil, nil, testStyle)
+	Register(mux, cache, blob.NewImages(blob.New(blob.NewMemoryBucket()), "team"), func() *who.Model { return directory }, func() *config.Settings { return settings }, imagesearch.Search{}, mailer, nil, nil, testStyle)
 	return cache, mux
 }
 

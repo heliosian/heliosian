@@ -3,8 +3,6 @@ package when
 import (
 	"image/color"
 	"net/http"
-	"os"
-	"path"
 	"strings"
 
 	"heliosian/internal/sharecard"
@@ -111,7 +109,7 @@ func (a app) upcomingHead(origin string) string {
 }
 
 func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
-	card := whenCard(a.readImage(defaultHeader))
+	card := whenCard(a.images.Read(defaultHeader))
 	a.style.Serve(w, r, card, card.Kicker, card.Title, card.Button)
 }
 
@@ -161,7 +159,7 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	kicker := a.cache.Model().category(e)
 	button := shareButton(e)
 	card := sharecard.Card{
-		Kicker: kicker, Title: e.Title, Picture: a.readImage(picture), Whole: whole,
+		Kicker: kicker, Title: e.Title, Picture: a.images.Read(picture), Whole: whole,
 		Lines:  []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: e.Location}},
 		Button: button,
 	}
@@ -180,19 +178,4 @@ func (m *Model) pictureOf(e *Event) string {
 		}
 	}
 	return defaultHeader
-}
-
-func (a app) readImage(key string) []byte {
-	if key == "" {
-		return nil
-	}
-	if data, _, ok := a.store.Bytes(key); ok {
-		return data
-	}
-	for _, dir := range []string{"web/when", "web/public/when", "web/celebrate", "web/public/celebrate", "web/team", "web/public/team"} {
-		if data, err := os.ReadFile(path.Join(dir, key)); err == nil {
-			return data
-		}
-	}
-	return nil
 }

@@ -1,12 +1,10 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log"
 	"sort"
-	"strings"
 	"time"
 
 	"heliosian/internal/artifacts"
@@ -24,39 +22,6 @@ import (
 	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
-
-type homeImages struct{}
-
-func (homeImages) Has(key string) (bool, error) {
-	if strings.HasPrefix(key, "link-images/") {
-		return true, nil
-	}
-	return static.Bundled([]string{"web/home", "web/public/home"}, key), nil
-}
-
-func (homeImages) Prefetch(context.Context, []string) error { return nil }
-
-type teamImages struct{}
-
-func (teamImages) Has(key string) (bool, error) {
-	if strings.HasPrefix(key, "activity-images/") {
-		return true, nil
-	}
-	return static.Bundled([]string{"web/team", "web/public/team"}, key), nil
-}
-
-func (teamImages) Prefetch(context.Context, []string) error { return nil }
-
-type celebrateImages struct{}
-
-func (celebrateImages) Has(key string) (bool, error) {
-	if strings.HasPrefix(key, "party-images/") {
-		return true, nil
-	}
-	return static.Bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
-}
-
-func (celebrateImages) Prefetch(context.Context, []string) error { return nil }
 
 func main() {
 	dir := flag.String("dir", "", "load from a directory of dumped tabs instead of the live sheets")
@@ -76,7 +41,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("blob store: %v", err)
 	}
-	model, err := who.LoadModel(source, blob.New(objects), static.Files{Root: "web/who"}, []byte("loadcheck"))
+	media := blob.New(objects)
+	model, err := who.LoadModel(source, media, static.Files{Root: "web/who"}, []byte("loadcheck"))
 	if err != nil {
 		log.Fatalf("load directory model: %v", err)
 	}
@@ -161,7 +127,7 @@ func main() {
 		fmt.Printf("  %s -> %s (%s -> %s)\n", g.Name, g.NextName, g.Band, g.NextBand)
 	}
 
-	appsCache, err := home.NewCache(source, nil, homeImages{}, func() []string { return nil }, nil, store.NewQueue())
+	appsCache, err := home.NewCache(source, nil, blob.NewImages(media, "home"), func() []string { return nil }, nil, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load apps model: %v", err)
 	}
@@ -179,7 +145,7 @@ func main() {
 	}
 	fmt.Printf("apps admins: %d\n", len(appsCache.Admins()))
 
-	eventsCache, err := team.NewCache(source, nil, teamImages{}, func() []string { return nil }, store.NewQueue())
+	eventsCache, err := team.NewCache(source, nil, blob.NewImages(media, "team"), func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load events model: %v", err)
 	}
@@ -207,7 +173,7 @@ func main() {
 	}
 	fmt.Printf("events admins: %d\n", len(eventsCache.Admins()))
 
-	celebrateCache, err := celebrate.NewCache(source, nil, celebrateImages{}, func() []string { return nil }, store.NewQueue())
+	celebrateCache, err := celebrate.NewCache(source, nil, blob.NewImages(media, "celebrate"), func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load celebrate model: %v", err)
 	}

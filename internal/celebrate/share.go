@@ -2,8 +2,6 @@ package celebrate
 
 import (
 	"net/http"
-	"os"
-	"path"
 	"strings"
 	"time"
 
@@ -168,27 +166,8 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	}
 	day, hours := whenLines(p)
 	card := sharecard.Card{
-		Title: p.Title, Subtitle: p.Subtitle, Picture: a.readImage(picture), Whole: whole,
+		Title: p.Title, Subtitle: p.Subtitle, Picture: a.images.Read(picture), Whole: whole,
 		Lines: []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: p.Location}},
 	}
 	a.style.Serve(w, r, card, p.Title, p.Subtitle, day, hours, p.Location, picture)
-}
-
-func (a app) readImage(key string) []byte {
-	if key == "" {
-		return nil
-	}
-	if strings.HasPrefix(key, imageFolder+"/") {
-		data, _, ok := a.store.Bytes(key)
-		if !ok {
-			return nil
-		}
-		return data
-	}
-	for _, dir := range []string{"web/celebrate", "web/public/celebrate"} {
-		if data, err := os.ReadFile(path.Join(dir, key)); err == nil {
-			return data
-		}
-	}
-	return nil
 }

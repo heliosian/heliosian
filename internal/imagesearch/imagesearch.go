@@ -98,7 +98,6 @@ const (
 
 var (
 	idPattern   = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	extensions  = map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}
 	errTooLarge = errors.New("that image is too large")
 	errNotImage = errors.New("that is not a supported image")
 	imageClient = &http.Client{Timeout: 20 * time.Second}
@@ -168,15 +167,14 @@ func (s Search) upload(r *http.Request, folder string) (stored, error) {
 		return stored{}, access.Invalid("could not read the image")
 	}
 	mimeType := http.DetectContentType(content)
-	if extensions[mimeType] == "" {
+	if blob.ImageExtensions[mimeType] == "" {
 		return stored{}, access.Invalid("%s is not a supported image", header.Filename)
 	}
 	return s.store(folder, mimeType, content)
 }
 
 func (s Search) store(folder, mimeType string, content []byte) (stored, error) {
-	sum := sha256.Sum256(content)
-	name := hex.EncodeToString(sum[:]) + extensions[mimeType]
+	name := blob.Name(content, blob.ImageExtensions[mimeType])
 	if err := s.Stock.media.Put(folder, name, mimeType, content); err != nil {
 		return stored{}, fmt.Errorf("store image in %s: %w", folder, err)
 	}
@@ -553,7 +551,7 @@ func fetch(ctx context.Context, userAgent, src string, limit int64) ([]byte, str
 		return nil, "", errTooLarge
 	}
 	mimeType := http.DetectContentType(content)
-	if extensions[mimeType] == "" {
+	if blob.ImageExtensions[mimeType] == "" {
 		return nil, "", errNotImage
 	}
 	return content, mimeType, nil

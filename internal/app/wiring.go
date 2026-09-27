@@ -75,12 +75,11 @@ type Config struct {
 }
 
 type appSpec struct {
-	Key         string
-	Title       string
-	Mux         *http.ServeMux
-	Preview     func(r *http.Request) string
-	Wrap        func(http.Handler) http.Handler
-	ImageFolder string
+	Key     string
+	Title   string
+	Mux     *http.ServeMux
+	Preview func(r *http.Request) string
+	Wrap    func(http.Handler) http.Handler
 }
 
 type Core struct {
@@ -107,7 +106,11 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load config", "error", err)
 	}
-	teamCache, err := team.NewCache(cfg.Source, cfg.Writer, teamImages{cfg.Store}, settings.SuperAdmins, queue)
+	homeImages := blob.NewImages(cfg.Store, "home")
+	teamImages := blob.NewImages(cfg.Store, "team")
+	celebrateImages := blob.NewImages(cfg.Store, "celebrate")
+	whenImages := blob.NewImages(cfg.Store, "when", "celebrate", "team")
+	teamCache, err := team.NewCache(cfg.Source, cfg.Writer, teamImages, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load team data", "error", err)
 	}
@@ -115,7 +118,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load birthdays data", "error", err)
 	}
-	celebrateCache, err := celebrate.NewCache(cfg.Source, cfg.Writer, celebrateImages{cfg.Store}, settings.SuperAdmins, queue)
+	celebrateCache, err := celebrate.NewCache(cfg.Source, cfg.Writer, celebrateImages, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load celebrate data", "error", err)
 	}
@@ -128,7 +131,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load invites data", "error", err)
 	}
-	calendarCache, err := when.NewCache(cfg.Source, cfg.Writer, func() when.Roster { return when.RosterOf(cache.Model()) }, calendarImages{cfg.Store}, settings.SuperAdmins, queue)
+	calendarCache, err := when.NewCache(cfg.Source, cfg.Writer, func() when.Roster { return when.RosterOf(cache.Model()) }, whenImages, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load calendar data", "error", err)
 	}
@@ -138,7 +141,7 @@ func NewCore(cfg Config) *Core {
 	}
 	sources := audience(cache, teamCache, celebrateCache)
 	lists := smartLists{cache, teamCache, celebrateCache, loopCache, sources}
-	homeCache, err := home.NewCache(cfg.Source, cfg.Writer, homeImages{cfg.Store}, settings.SuperAdmins, sources, queue)
+	homeCache, err := home.NewCache(cfg.Source, cfg.Writer, homeImages, settings.SuperAdmins, sources, queue)
 	if err != nil {
 		logging.Fatal("load apps data", "error", err)
 	}
@@ -203,9 +206,9 @@ func NewCore(cfg Config) *Core {
 		return nil
 	}
 	partyCalendar := when.Celebrate{Party: func(id string) *when.PartyPeople { return celebrateCache.Model().PartyPeople(id) }, IsAdmin: celebrateCache.IsAdmin, MoveAddress: moveAddress}
-	hooks = when.Register(calendarMux, calendarCache, cfg.Store, cache.Model, settings.Settings, calendarLists(cache, lists.Lists), linked, partyCalendar, sources, cfg.ImageSearch, cfg.CalendarMail, calendarStyle)
+	hooks = when.Register(calendarMux, calendarCache, whenImages, cache.Model, settings.Settings, calendarLists(cache, lists.Lists), linked, partyCalendar, sources, cfg.ImageSearch, cfg.CalendarMail, calendarStyle)
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, homeCache, cfg.Store, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault, homeStyle)
+	home.Register(homeMux, homeCache, homeImages, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault, homeStyle)
 	teamMux := http.NewServeMux()
 	eventRSVPs := func(id string) *team.EventRSVPs {
 		sent, answers, ok := calendarCache.LinkedRSVPs(linked(""), when.SourceTeam, id)
@@ -215,7 +218,7 @@ func NewCore(cfg Config) *Core {
 		return &team.EventRSVPs{Sent: sent, Answers: answers}
 	}
 	activityEmailList := func(id string) string { return loopCache.Model().Tagged(who.ListActivity + ":" + id) }
-	team.Register(teamMux, teamCache, cfg.Store, cache.Model, settings.Settings, cfg.ImageSearch, cfg.Mail, eventRSVPs, activityEmailList, teamStyle)
+	team.Register(teamMux, teamCache, teamImages, cache.Model, settings.Settings, cfg.ImageSearch, cfg.Mail, eventRSVPs, activityEmailList, teamStyle)
 	birthdayMux := http.NewServeMux()
 	birthday.Register(birthdayMux, birthdayCache, cache.Model, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayBase, func(ctx context.Context, email string) error {
 		return home.Grant(ctx, homeCache, "birthday", email)
@@ -228,7 +231,7 @@ func NewCore(cfg Config) *Core {
 		}
 		return &celebrate.PartyRSVPs{Sent: sent, Answers: answers}
 	}
-	celebrate.Register(celebrateMux, celebrateCache, cfg.Store, cache.Model, cfg.ImageSearch, cfg.CelebrateMail, partyRSVPs, func(ctx context.Context, actor access.Actor, old, to, name string) {
+	celebrate.Register(celebrateMux, celebrateCache, celebrateImages, cache.Model, cfg.ImageSearch, cfg.CelebrateMail, partyRSVPs, func(ctx context.Context, actor access.Actor, old, to, name string) {
 		hooks.MoveAddress(ctx, actor, old, to, name)
 	}, celebrateStyle)
 	askMux := http.NewServeMux()
@@ -240,13 +243,13 @@ func NewCore(cfg Config) *Core {
 	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, lists, sources, linked), cfg.Asker, spend, cfg.ChatKey)
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
-		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: home.PreviewHead(homeCache, homeStyle), ImageFolder: "link-images"},
-		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: team.PreviewHead(teamCache, teamStyle), ImageFolder: "activity-images", Wrap: func(next http.Handler) http.Handler {
+		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: home.PreviewHead(homeCache, homeStyle)},
+		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: team.PreviewHead(teamCache, teamStyle), Wrap: func(next http.Handler) http.Handler {
 			return team.Redirected(teamCache, next)
 		}},
 		{Key: "birthday", Title: "Helios Staff Birthdays", Mux: birthdayMux, Preview: birthdayAbout.PreviewHead},
-		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: celebrate.PreviewHead(celebrateCache, celebrateStyle), ImageFolder: "party-images"},
-		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: when.PreviewHead(calendarCache, linked, calendarStyle), ImageFolder: "category-images"},
+		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: celebrate.PreviewHead(celebrateCache, celebrateStyle)},
+		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: when.PreviewHead(calendarCache, linked, calendarStyle)},
 		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
 		{Key: "ask", Title: "Helios Ask", Mux: askMux},
 	}
@@ -273,8 +276,8 @@ func NewCore(cfg Config) *Core {
 		feedback.Register(a.Mux, a.Key, appName(a.Key), settings.IsSuperAdmin, feedbackIntake)
 		suggestions.Register(a.Mux)
 		folders := []string{"photos"}
-		if a.ImageFolder != "" {
-			folders = append(folders, a.ImageFolder)
+		if folder, ok := blob.ImageFolder(a.Key); ok {
+			folders = append(folders, folder)
 		}
 		blob.Register(a.Mux, cfg.Store, folders...)
 	}

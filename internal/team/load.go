@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"heliosian/internal/admins"
+	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
@@ -75,11 +76,6 @@ var (
 var yearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
-
-type ImageChecker interface {
-	Has(key string) (bool, error)
-	Prefetch(ctx context.Context, names []string) error
-}
 
 type Link struct {
 	Title       string `json:"title"`
@@ -548,7 +544,7 @@ func parseNotifications(rows []store.Row) (map[string]map[string]bool, error) {
 	return notify, nil
 }
 
-func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (*Model, error) {
+func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (*Model, error) {
 	settings, err := parseSettings(tables[settingsTab])
 	if err != nil {
 		return nil, err
@@ -777,7 +773,7 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 	return model, nil
 }
 
-func parseActivity(row map[string]string, images ImageChecker) (*Activity, error) {
+func parseActivity(row map[string]string, images blob.Checker) (*Activity, error) {
 	title, year := row["Title"], row["Year"]
 	if err := cells.Title("activity", title, maxTitleLength); err != nil {
 		return nil, err

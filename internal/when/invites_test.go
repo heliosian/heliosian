@@ -81,7 +81,7 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *mailtest.Recorder, *sa
 		}
 	}
 	mux := http.NewServeMux()
-	testHooks = Register(mux, cache, memoryStore(), directoryOf, noSettings, testLists, linked, celebrate, sources.sources, imagesearch.Search{}, Mail{Sender: kept.Mailgun, Base: "https://when.heliosian.com", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}, testStyle)
+	testHooks = Register(mux, cache, memoryImages(), directoryOf, noSettings, testLists, linked, celebrate, sources.sources, imagesearch.Search{}, Mail{Sender: kept.Mailgun, Base: "https://when.heliosian.com", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}, testStyle)
 	return mux, cache, kept, sources
 }
 

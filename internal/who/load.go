@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"heliosian/internal/admins"
+	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/store"
 )
@@ -227,11 +228,6 @@ func checkUpdated(email, column, cell string) error {
 	return nil
 }
 
-type BlobChecker interface {
-	Has(name string) (bool, error)
-	Prefetch(ctx context.Context, names []string) error
-}
-
 type parsedName struct {
 	display, legal, preferred string
 }
@@ -301,8 +297,8 @@ func gradeSlug(name string) string {
 
 type loader struct {
 	ctx    context.Context
-	blobs  BlobChecker
-	static BlobChecker
+	blobs  blob.Checker
+	static blob.Checker
 	idKey  []byte
 
 	aliasRows      []store.Row
@@ -347,7 +343,7 @@ func familyID(idKey []byte, email string) string {
 	return hex.EncodeToString(mac.Sum(nil))[:16]
 }
 
-func BuildModel(ctx context.Context, tables store.Tables, blobs, static BlobChecker, idKey []byte) (*Model, error) {
+func BuildModel(ctx context.Context, tables store.Tables, blobs, static blob.Checker, idKey []byte) (*Model, error) {
 	l := &loader{
 		ctx:              ctx,
 		blobs:            blobs,

@@ -10,6 +10,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/admins"
+	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/data"
 	"heliosian/internal/geocode"
@@ -48,7 +49,7 @@ func NewBook(source data.Source, writer data.Writer, queue *store.Queue) (*store
 	return store.NewBook(appName, modelTabs(), source, writer, queue)
 }
 
-func spec(blobs, static BlobChecker, idKey []byte, loaded func()) store.Spec[*Model] {
+func spec(blobs, static blob.Checker, idKey []byte, loaded func()) store.Spec[*Model] {
 	return store.Spec[*Model]{
 		App:  appName,
 		Tabs: modelTabs(),
@@ -93,11 +94,11 @@ func carryPerson(_ store.Tables, before, after store.Row) []store.Op {
 	}
 }
 
-func Open(source data.Source, writer data.Writer, blobs, static BlobChecker, idKey []byte, queue *store.Queue) (*store.Store[*Model], error) {
+func Open(source data.Source, writer data.Writer, blobs, static blob.Checker, idKey []byte, queue *store.Queue) (*store.Store[*Model], error) {
 	return store.New(spec(blobs, static, idKey, func() {}), source, writer, queue)
 }
 
-func LoadModel(source data.Source, blobs, static BlobChecker, idKey []byte) (*Model, error) {
+func LoadModel(source data.Source, blobs, static blob.Checker, idKey []byte) (*Model, error) {
 	s, err := Open(source, nil, blobs, static, idKey, store.NewQueue())
 	if err != nil {
 		return nil, err
@@ -105,7 +106,7 @@ func LoadModel(source data.Source, blobs, static BlobChecker, idKey []byte) (*Mo
 	return s.Model(), nil
 }
 
-func NewCache(source data.Source, writer data.Writer, blobs, static BlobChecker, queue *store.Queue, idKey []byte, superAdmins func() []string) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, blobs, static blob.Checker, queue *store.Queue, idKey []byte, superAdmins func() []string) (*Cache, error) {
 	c := &Cache{unlocated: make(chan struct{}, 1)}
 	s, err := store.New(spec(blobs, static, idKey, c.locate), source, writer, queue)
 	if err != nil {

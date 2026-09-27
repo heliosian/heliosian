@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"image/color"
 	"net/http"
-	"os"
-	"path"
 	"slices"
 	"strings"
 	"time"
@@ -187,32 +185,10 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	under := lineage(model, act)
 	day, hours := whenLines(timed(model, act))
 	card := sharecard.Card{
-		Kicker: under, Title: act.Title, Picture: a.readImage(picture), Whole: isFlyer,
+		Kicker: under, Title: act.Title, Picture: a.images.Read(picture), Whole: isFlyer,
 		Lines: []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}},
 	}
 	a.style.Serve(w, r, card, act.Title, under, day, hours, picture)
-}
-
-func (a app) readImage(key string) []byte {
-	if key == "" {
-		return nil
-	}
-	if strings.HasPrefix(key, "activity-images/") {
-		if a.media == nil {
-			return nil
-		}
-		data, _, ok := a.media.Bytes(key)
-		if !ok {
-			return nil
-		}
-		return data
-	}
-	for _, dir := range []string{"web/team", "web/public/team"} {
-		if data, err := os.ReadFile(path.Join(dir, key)); err == nil {
-			return data
-		}
-	}
-	return nil
 }
 
 func whenLines(a *Activity) (string, string) {

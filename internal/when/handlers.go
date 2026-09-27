@@ -28,7 +28,7 @@ var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/e/{id...}", "/events
 
 type app struct {
 	cache     *Cache
-	store     *blob.Store
+	images    blob.Images
 	directory func() *who.Model
 	settings  func() *config.Settings
 	lists     func(email string) []List
@@ -42,11 +42,9 @@ type app struct {
 	style     *sharecard.Style
 }
 
-const imageFolder = "category-images"
-
-func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, settings func() *config.Settings, lists func(email string) []List, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search imagesearch.Search, mailbox Mail, style *sharecard.Style) Hooks {
+func Register(mux *http.ServeMux, cache *Cache, images blob.Images, directory func() *who.Model, settings func() *config.Settings, lists func(email string) []List, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search imagesearch.Search, mailbox Mail, style *sharecard.Style) Hooks {
 	search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
-	a := app{cache: cache, store: store, directory: directory, settings: settings, lists: lists, linked: linked, parties: celebrate.Party, celebrate: celebrate, sources: sources, clock: &matchClock{}, search: search, mail: mailbox, style: style}
+	a := app{cache: cache, images: images, directory: directory, settings: settings, lists: lists, linked: linked, parties: celebrate.Party, celebrate: celebrate, sources: sources, clock: &matchClock{}, search: search, mail: mailbox, style: style}
 	go a.sweepLoop()
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
@@ -97,7 +95,7 @@ func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory fun
 	mux.HandleFunc("POST /api/when/events/when", serve.JSON(a.moveEvent))
 	mux.HandleFunc("DELETE /api/when/settings", serve.JSON(a.forgetSetting))
 	mux.HandleFunc("POST /api/when/tags", serve.JSON(a.setTags))
-	a.search.Register(mux, "/api/when", imageFolder, imagesearch.Members)
+	a.search.Register(mux, "/api/when", images.Folder(), imagesearch.Members)
 	mux.HandleFunc("GET /open/feed/{file}", a.feed)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id...}", a.shareCard)

@@ -1309,7 +1309,7 @@ func (a app) banner(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data := a.readImage(a.cache.Model().pictureOf(e))
+	data := a.images.Read(a.cache.Model().pictureOf(e))
 	if data == nil {
 		http.NotFound(w, r)
 		return
@@ -1325,7 +1325,7 @@ func (a app) flyer(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data := a.readImage(inv.Flyer)
+	data := a.images.Read(inv.Flyer)
 	if data == nil {
 		http.NotFound(w, r)
 		return

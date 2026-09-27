@@ -524,7 +524,7 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 	}
 	if body.Flyer != nil {
 		flyer := strings.Trim(strings.TrimSpace(*body.Flyer), "/")
-		if flyer != "" && a.readImage(flyer) == nil {
+		if flyer != "" && a.images.Read(flyer) == nil {
 			return nil, nil, nil, access.Invalid("that picture is not here")
 		}
 		row["Flyer"] = flyer

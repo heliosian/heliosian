@@ -1,8 +1,6 @@
 package who
 
 import (
-	"crypto/sha256"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,13 +13,6 @@ import (
 )
 
 const maxPhotos = 5
-
-var photoExtensions = map[string]string{
-	"image/jpeg": "jpg",
-	"image/png":  "png",
-	"image/gif":  "gif",
-	"image/webp": "webp",
-}
 
 var audioExtensions = map[string]string{
 	"audio/webm":  "webm",
@@ -135,7 +126,7 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 	if kind != "photo" {
 		folder = "pronunciation"
 	}
-	name := fmt.Sprintf("%x.%s", sha256.Sum256(content), ext)
+	name := blob.Name(content, ext)
 	actor := requestActor(u.cache, r)
 	ops, err := u.cache.Model().upload(actor, superEditOn(r), target, kind, key, name)
 	if err != nil {
@@ -205,7 +196,7 @@ func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, err)
 		return
 	}
-	cropName := fmt.Sprintf("%x.%s", sha256.Sum256(content), ext)
+	cropName := blob.Name(content, ext)
 	actor := requestActor(u.cache, r)
 	ops, err := u.cache.Model().cropPhoto(actor, superEditOn(r), target, key, name, cropName)
 	if err != nil {
@@ -257,7 +248,7 @@ func isPhotoSubset(order []string, photos []Photo) bool {
 func mediaType(kind string, content []byte, declared string) (string, string, error) {
 	if kind == "photo" {
 		sniffed := http.DetectContentType(content)
-		ext, ok := photoExtensions[sniffed]
+		ext, ok := blob.ImageExtensions[sniffed]
 		if !ok {
 			return "", "", access.Invalid("unsupported photo type %s", sniffed)
 		}

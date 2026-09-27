@@ -27,7 +27,7 @@ func TestOnlyAdminsAddImages(t *testing.T) {
 	mux := http.NewServeMux()
 	answer := func(context.Context, string, string, string) error { return nil }
 	makeDefault := func(context.Context, string, string) error { return nil }
-	Register(mux, c, store, nil, nil, search, answer, makeDefault, nil)
+	Register(mux, c, blob.NewImages(store, "home"), nil, nil, search, answer, makeDefault, nil)
 
 	var pic bytes.Buffer
 	if err := png.Encode(&pic, image.NewGray(image.Rect(0, 0, 8, 8))); err != nil {

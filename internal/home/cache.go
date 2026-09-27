@@ -9,6 +9,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/admins"
+	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/store"
@@ -20,7 +21,7 @@ type Cache struct {
 	sources func() filter.Sources
 }
 
-func spec(images ImageChecker) store.Spec[*Model] {
+func spec(images blob.Checker) store.Spec[*Model] {
 	return store.Spec[*Model]{
 		App: appName,
 		Tabs: []store.Tab{
@@ -68,7 +69,7 @@ func carryCategory(_ store.Tables, before, after store.Row) []store.Op {
 	return ops
 }
 
-func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmins func() []string, sources func() filter.Sources, queue *store.Queue) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, images blob.Checker, superAdmins func() []string, sources func() filter.Sources, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec(images), source, writer, queue)
 	if err != nil {
 		return nil, err

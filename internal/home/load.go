@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"heliosian/internal/admins"
+	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
@@ -127,11 +128,6 @@ func (v Visibility) cells() store.Row {
 func appKnown(key string) bool {
 	_, ok := appByKey(key)
 	return ok
-}
-
-type ImageChecker interface {
-	Has(key string) (bool, error)
-	Prefetch(ctx context.Context, names []string) error
 }
 
 type Link struct {
@@ -260,7 +256,7 @@ func checkEmoji(cell string) error {
 	return nil
 }
 
-func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (*Model, error) {
+func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (*Model, error) {
 	if err := images.Prefetch(ctx, cells.ImageNames([]string{"Image"}, tables[linksTab])); err != nil {
 		return nil, err
 	}

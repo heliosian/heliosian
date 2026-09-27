@@ -22,7 +22,6 @@ import (
 )
 
 const (
-	imageFolder           = "party-images"
 	shell                 = "web/celebrate/index.html"
 	maxTicketsPerPurchase = 20
 )
@@ -33,7 +32,7 @@ var pages = []string{
 
 type app struct {
 	cache     *Cache
-	store     *blob.Store
+	images    blob.Images
 	directory func() *who.Model
 	search    imagesearch.Search
 	mailer    *mail.Mailgun
@@ -42,15 +41,15 @@ type app struct {
 	style     *sharecard.Style
 }
 
-func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory func() *who.Model, search imagesearch.Search, mailer *mail.Mailgun, rsvps RSVPLookup, moved AddressMoved, style *sharecard.Style) {
+func Register(mux *http.ServeMux, cache *Cache, images blob.Images, directory func() *who.Model, search imagesearch.Search, mailer *mail.Mailgun, rsvps RSVPLookup, moved AddressMoved, style *sharecard.Style) {
 	search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
-	a := app{cache: cache, store: store, directory: directory, search: search, mailer: mailer, rsvps: rsvps, moved: moved, style: style}
+	a := app{cache: cache, images: images, directory: directory, search: search, mailer: mailer, rsvps: rsvps, moved: moved, style: style}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("GET /api/celebrate/model", serve.JSON(a.model))
 	mux.HandleFunc("GET /api/celebrate/people", serve.JSON(a.people))
-	a.search.Register(mux, "/api/celebrate", imageFolder, imagesearch.Members)
+	a.search.Register(mux, "/api/celebrate", images.Folder(), imagesearch.Members)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
 	mux.HandleFunc("POST /api/celebrate/tickets", serve.JSON(a.buyTickets))

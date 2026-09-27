@@ -14,6 +14,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/admins"
+	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/store"
@@ -100,11 +101,6 @@ func redirectPath(cell string) string {
 }
 
 var codeForm = regexp.MustCompile(`^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$`)
-
-type ImageChecker interface {
-	Has(key string) (bool, error)
-	Prefetch(ctx context.Context, names []string) error
-}
 
 type Celebration struct {
 	Code        string `json:"code"`
@@ -504,7 +500,7 @@ func compareAdded(a, b Ticket) int {
 	return strings.Compare(a.Added, b.Added)
 }
 
-func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (*Model, error) {
+func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (*Model, error) {
 	settings, err := parseSettings(tables[settingsTab])
 	if err != nil {
 		return nil, err
@@ -743,7 +739,7 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 	return model, nil
 }
 
-func parseParty(row store.Row, model *Model, images ImageChecker) (*Party, error) {
+func parseParty(row store.Row, model *Model, images blob.Checker) (*Party, error) {
 	celebration := strings.TrimSpace(row["Celebration"])
 	if model.Celebration(celebration) == nil {
 		return nil, fmt.Errorf("names celebration %q, which is not on the Celebrations tab", celebration)
