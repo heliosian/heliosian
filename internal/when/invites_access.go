@@ -34,34 +34,33 @@ func isAdult(p *who.Person) bool {
 	return !p.IsStudent || p.IsParent || p.IsStaff
 }
 
-func (a app) hostsOf(e *Event) []string {
+func (m *Model) hostsOf(directory *who.Model, e *Event) []string {
 	out := []string{}
 	add := func(email string) {
-		if email = a.directory().Resolve(config.NormalizeEmail(email)); email != "" && !slices.Contains(out, email) {
+		if email = directory.Resolve(config.NormalizeEmail(email)); email != "" && !slices.Contains(out, email) {
 			out = append(out, email)
 		}
 	}
-	switch e.Source {
-	case SourceSheet:
-		if !e.PosterLeft {
-			add(e.AddedBy)
-		}
-	case SourceCelebrate:
-		if p := a.parties(strings.TrimPrefix(e.ID, SourceCelebrate+"/")); p != nil {
-			for _, h := range p.Hosts {
-				add(h)
-			}
-		}
+	if e.Source == SourceSheet && !e.PosterLeft {
+		add(e.AddedBy)
 	}
 	for _, h := range e.Hosts {
 		add(h)
 	}
-	if inv := a.cache.Model().Invitations[e.ID]; inv != nil {
+	if inv := m.Invitations[e.ID]; inv != nil {
 		for _, h := range inv.Hosts {
 			add(h)
 		}
 	}
 	return out
+}
+
+func (m *Model) hostedBy(directory *who.Model, email string, e *Event) bool {
+	return e.keepsGuestList() && slices.Contains(m.hostsOf(directory, e), config.NormalizeEmail(email))
+}
+
+func (a app) hostsOf(e *Event) []string {
+	return a.cache.Model().hostsOf(a.directory(), e)
 }
 
 func (a app) isHost(actor access.Actor, e *Event) bool {

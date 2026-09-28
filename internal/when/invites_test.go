@@ -75,7 +75,7 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *mailtest.Recorder, *sa
 	}
 	linked := func(email string) []Linked {
 		return []Linked{
-			{Source: SourceCelebrate, ID: "p1", Title: "Fondue Night", Start: "2026-11-14 18:00", End: "2026-11-14 21:00", Path: "/parties/p1", Availability: "available"},
+			{Source: SourceCelebrate, ID: "p1", Title: "Fondue Night", Start: "2026-11-14 18:00", End: "2026-11-14 21:00", Path: "/parties/p1", Availability: "available", Hosts: []string{mia}},
 			{Source: SourceTeam, ID: "e1", Title: "Book Fair", Start: "2026-11-20 08:00", End: "2026-11-20 15:00", Path: "/activities/e1", Availability: "open", Hosts: []string{mia}},
 		}
 	}

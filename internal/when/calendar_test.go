@@ -706,4 +706,23 @@ func TestPartiesFor(t *testing.T) {
 	if w := got[1]; w.Mine != "" || w.Call != "Get tickets" || w.StartAt != "2026-10-03 15:30" {
 		t.Errorf("wurst: %+v", w)
 	}
+	if got[0].Hosted || got[1].Hosted {
+		t.Errorf("a party nobody hosts is marked hosted: %+v", got)
+	}
+}
+
+func TestCardsMarkHosted(t *testing.T) {
+	m := load(t)
+	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-10 08:00", Location)
+	host := "jordan.whitfield@heliosschool.org"
+	linked := []Linked{
+		{Source: SourceCelebrate, ID: "P003", Title: "Wurst", Start: "2026-10-03 15:30", End: "2026-10-03 18:30", Path: "/p/wurst", Availability: "available", Hosts: []string{host}},
+	}
+	dir := sampleDirectory(t, "../../sampledata")
+	if got := m.PartiesFor(dir, host, linked, at); len(got) != 1 || !got[0].Hosted {
+		t.Errorf("the host's own party: %+v", got)
+	}
+	if got := m.PartiesFor(dir, "nobody@heliosschool.org", linked, at); len(got) != 1 || got[0].Hosted {
+		t.Errorf("someone else's party: %+v", got)
+	}
 }

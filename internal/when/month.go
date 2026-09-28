@@ -65,9 +65,7 @@ func (m *Model) MonthUnder(directory *who.Model, email string, linked []Linked, 
 		if e.start.Format(DateFormat) > to || e.end.Format(DateFormat) < from || !m.InView(e, answer, classrooms, tags) {
 			continue
 		}
-		u := m.card(e)
-		u.Answer = answer
-		out.Events = append(out.Events, u)
+		out.Events = append(out.Events, m.card(directory, email, e))
 	}
 	return out
 }

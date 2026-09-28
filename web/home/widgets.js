@@ -6,6 +6,8 @@ import {el, svg} from '/elements.js';
 import {calendarMark, calendarMenu, dropdown, audienceWords} from './cards.js';
 import {openWidgetAudience, moveWidget} from './edit.js';
 import {dayTypeClass} from '/daytype.js';
+import {dayBar, dayRow, eventRow, standing} from '/dayrows.js';
+import {rsvpPanel} from '/rsvps.js';
 
 function parseDate(date) {
   const [y, m, d] = date.split('-').map(Number);
@@ -113,43 +115,6 @@ async function fetchNext(month) {
   renderWidgets(searchInput().value);
 }
 
-function dayBar(day, count, noun, chips = []) {
-  const bar = el('div', 'wg-day');
-  const label = el('span', 'wg-day-label');
-  if (day) {
-    const date = parseDate(day);
-    label.append(el('span', 'wg-day-weekday', date.toLocaleDateString('en-US', {weekday: 'short'})), el('span', 'wg-day-sep', '\u00b7'), el('span', '', date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})));
-  } else {
-    label.append(el('span', '', 'Ongoing'));
-  }
-  label.append(...chips);
-  const plural = noun.endsWith('y') ? noun.slice(0, -1) + 'ies' : noun + 's';
-  bar.append(label, el('span', 'wg-day-count', `${count} ${count === 1 ? noun : plural}`));
-  return bar;
-}
-
-function wgRow(className, {title, chips, time, after}, click) {
-  const row = el('li', 'wg-row ' + className);
-  row.dataset.row = '';
-  const side = el('div', 'wg-side');
-  side.append(el('span', 'wg-time', time));
-  const shown = chips.filter(Boolean);
-  if (shown.length) {
-    const tags = el('div', 'wg-tags');
-    tags.append(...shown);
-    side.append(tags);
-  }
-  const text = el('div', 'wg-text');
-  text.append(side, title, ...(after ? [after] : []));
-  row.append(el('span', 'wg-dot'), text);
-  row.addEventListener('click', e => {
-    if (!e.target.closest('a')) {
-      click(e);
-    }
-  });
-  return row;
-}
-
 function dayGroups(items, dayOf, order) {
   const byDay = new Map();
   for (const item of items) {
@@ -163,39 +128,6 @@ function dayGroups(items, dayOf, order) {
     byDay.get(day).push(item);
   }
   return [...byDay.keys()].sort().map(d => ({day: d, rows: byDay.get(d).sort((a, b) => order(a, d).localeCompare(order(b, d)))}));
-}
-
-function standing(event) {
-  if (!event.mine || !event.call) {
-    return null;
-  }
-  const pill = el('span', 'wg-standing');
-  pill.append(svg('check'), el('span', '', event.call));
-  return pill;
-}
-
-function action(event) {
-  if (event.invited && !event.answer) {
-    const pill = el('a', 'wg-pill is-rsvp', 'RSVP');
-    pill.href = appOrigin('when') + event.path;
-    pill.title = 'You\u2019re invited - answer on its page';
-    return pill;
-  }
-  if (event.link && event.call && !event.mine && ['available', 'open', 'waitlist'].includes(event.availability)) {
-    const pill = el('a', 'wg-pill', event.call);
-    pill.href = appOrigin(event.linkApp) + event.link;
-    return pill;
-  }
-  return null;
-}
-
-function eventRow(event, day) {
-  const href = appOrigin('when') + event.path;
-  const title = el('a', 'wg-title', event.title);
-  title.href = href;
-  return wgRow(tint(event), {title, chips: [standing(event) || action(event)], time: startTime(event, day)}, () => {
-    location.href = href;
-  });
 }
 
 const pageRows = 3;
@@ -276,10 +208,26 @@ function moreLink(words, href) {
   return a;
 }
 
+let rsvps = [];
+let rsvpsFor = null;
+
+async function fetchRsvps() {
+  rsvpsFor = state.model;
+  try {
+    rsvps = (await api('GET', '/api/apps/rsvp')).waiting || [];
+  } catch {
+    return;
+  }
+  renderWidgets(searchInput().value);
+}
+
 function whenWidget() {
   const month = currentMonth();
   if (!month || !month.today) {
     return null;
+  }
+  if (rsvpsFor !== state.model) {
+    fetchRsvps();
   }
   const events = allEvents(month);
   const card = el('article', 'widget widget-when');
@@ -290,13 +238,16 @@ function whenWidget() {
     head.append(choose);
   }
   card.append(head);
+  if (rsvps.length) {
+    card.append(rsvpPanel(rsvps, appOrigin('when')));
+  }
   const groups = dayGroups(events, event => [...event.dates].sort().find(d => d >= month.today), sortKey);
   if (!groups.length) {
     card.append(el('p', 'wg-empty', 'Nothing coming up on the calendar.'));
   }
   card.append(...grouped('when', groups,
     g => dayBar(g.day, g.rows.length, 'event', (((month.days || {})[g.day] || {}).kinds || []).map(k => el('span', 'widget-kind ' + dayTypeClass(k.name), k.words))),
-    (event, g) => eventRow(event, g.day)));
+    (event, g) => eventRow(event, {base: appOrigin('when'), time: startTime(event, g.day), className: tint(event)})));
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
   card.append(widgetFoot('when', total, {href: appOrigin('when')}));
   fetchNext(month);
@@ -515,15 +466,12 @@ function celebrateWidget() {
 }
 
 let school = null;
-let rsvps = [];
 let schoolFor = null;
 
 async function fetchSchool() {
   schoolFor = state.model;
   try {
-    const [mail, waiting] = await Promise.all([api('GET', '/api/apps/school'), api('GET', '/api/apps/rsvp').catch(() => ({}))]);
-    school = mail.emails || [];
-    rsvps = waiting.waiting || [];
+    school = (await api('GET', '/api/apps/school')).emails || [];
   } catch {
     return;
   }
@@ -593,7 +541,7 @@ function emailRow(email, n, open) {
   ask.href = appOrigin('ask') + '/?q=' + encodeURIComponent(`What should I know from the school email "${email.title}" sent ${day}?`);
   ask.append(el('span', '', 'Ask about this'), svg('chevron-right'));
   body.append(ask);
-  const row = wgRow('wg-email ' + schoolTones[n % schoolTones.length], {title, chips: [to], time: email.time ? clock(email.time) : '', after: body}, e => {
+  const row = dayRow('wg-email ' + schoolTones[n % schoolTones.length], {title, chips: [to], time: email.time ? clock(email.time) : '', after: body}, e => {
     if (e.target.closest('.wg-email-body')) {
       return;
     }
@@ -610,48 +558,10 @@ function emailRow(email, n, open) {
   return row;
 }
 
-const rsvpType = 'RSVP needed';
-
-let rsvpsOpen = false;
-
-function rsvpPanel(waiting) {
-  const panel = el('section', 'wg-rsvps');
-  panel.classList.toggle('is-open', rsvpsOpen);
-  const head = el('div', 'wg-rsvps-head');
-  const n = waiting.length;
-  const toggle = el('button', 'wg-rsvps-words');
-  toggle.type = 'button';
-  toggle.setAttribute('aria-expanded', String(rsvpsOpen));
-  toggle.append(el('span', '', `${n} ${n === 1 ? 'event needs' : 'events need'} your RSVP`), svg('chevron-right'));
-  toggle.addEventListener('click', () => {
-    rsvpsOpen = !rsvpsOpen;
-    panel.classList.toggle('is-open', rsvpsOpen);
-    toggle.setAttribute('aria-expanded', String(rsvpsOpen));
-  });
-  head.append(svg('calendar'), toggle, moreLink('View all', appOrigin('when') + '/mine/rsvp'));
-  const list = el('ol', 'wg-rsvp-list');
-  for (const rsvp of waiting) {
-    const row = el('li');
-    const a = el('a', 'wg-rsvp');
-    a.href = appOrigin('when') + rsvp.path;
-    a.title = 'You\u2019re invited - answer on its page';
-    const date = parseDate(rsvp.start.split(' ')[0]);
-    const when = `${date.toLocaleDateString('en-US', {weekday: 'short'})}, ${date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;
-    a.append(el('span', 'wg-rsvp-date', when), el('span', 'wg-rsvp-title', rsvp.title), el('span', 'wg-rsvp-pill', 'RSVP'));
-    row.append(a);
-    list.append(row);
-  }
-  panel.append(head, list);
-  return panel;
-}
-
 let schoolType = null;
 
 function typePick() {
   const counts = new Map();
-  if (rsvps.length) {
-    counts.set(rsvpType, rsvps.length);
-  }
   for (const e of school) {
     counts.set(sentTo(e), (counts.get(sentTo(e)) || 0) + 1);
   }
@@ -662,7 +572,7 @@ function typePick() {
   toggle.append(el('span', '', schoolType || 'All'), svg('chevron-right'));
   const menu = el('div', 'category-calendar-menu');
   menu.hidden = true;
-  for (const [type, n] of [[null, rsvps.length + school.length], ...counts]) {
+  for (const [type, n] of [[null, school.length], ...counts]) {
     const item = el('button', 'category-calendar-item' + (type === schoolType ? ' is-on' : ''));
     item.type = 'button';
     item.append(el('span', '', type || 'All'), el('span', 'category-calendar-tail wg-type-count', String(n)));
@@ -690,20 +600,15 @@ function schoolWidget() {
   const head = el('header', 'widget-head');
   head.append(widgetTitle('ask', 'Inbox'));
   card.append(head);
-  if (!school.length && !rsvps.length) {
+  if (!school.length) {
     card.append(el('p', 'wg-empty', 'No school email in the last two weeks.'));
     return card;
   }
-  const types = [...(rsvps.length ? [rsvpType] : []), ...school.map(sentTo)];
-  if (schoolType && !types.includes(schoolType)) {
+  if (schoolType && !school.map(sentTo).includes(schoolType)) {
     schoolType = null;
   }
   head.append(typePick());
-  const waiting = !schoolType || schoolType === rsvpType ? rsvps : [];
   const shown = !schoolType ? school : school.filter(e => sentTo(e) === schoolType);
-  if (waiting.length) {
-    card.append(rsvpPanel(waiting));
-  }
   const name = 'school-' + (schoolType || 'all');
   const groups = dayGroups(shown, e => e.date, e => e.time || '').reverse();
   const first = groups.length ? groups[0].rows[0].key : null;

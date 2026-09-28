@@ -1,4 +1,4 @@
-import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, eventTint, timeLine, startTime, eventPath, weekdayShort, isMatch, isHidden, isGray} from '../state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, eventTint, timeLine, startTime, eventPath, isMatch, isHidden, isGray, myEvents, linkedApp} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {peopleLine, feedMark} from '../dom.js';
 import {el, link, svg, button, toast, longToast, copyText} from '/elements.js';
@@ -6,48 +6,31 @@ import {popup} from '/modal.js';
 import {setSearch, fillFilters, renderRailDay, editFeedPopup, makeDefaultFeed, calendarMenu} from '../chrome.js';
 import {setTitle} from '/shell.js';
 import {load, setPath} from '/router.js';
+import {dayBar, dayRow, eventRow} from '/dayrows.js';
+import {rsvpPanel} from '/rsvps.js';
 import {api} from '/api.js';
 import {dayColumn, openAddEvent} from '../day.js';
-import {callPill, emptyNote, roomDots, planCards} from '../events.js';
+import {emptyNote, roomDots, planCards} from '../events.js';
 import {answerOf, answer, linkURL, selectedTags, classroomNames, tagNames, defaultFeedName, showsFeed, activeFeed, setActiveFeed, defaultFeed, feedURL, webcalURL} from '../state.js';
 
 let lastDate = '';
 
 function upcomingDay(date, count) {
   const head = link('/day/' + date, 'up-dayhead');
-  const when = el('span', 'up-dayhead-date');
-  when.append(el('span', 'up-dayhead-dow', weekdayShort(date)), el('span', 'up-dayhead-sep', '\u00b7'), el('span', '', parseDate(date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})));
-  head.append(when, el('span', 'up-dayhead-count', `${count} ${count === 1 ? 'event' : 'events'}`));
+  head.append(dayBar(date, count, 'event'));
   return head;
 }
 
 function upcomingRow(date, e, group) {
-  const row = link(e ? eventPath(e) : '/day/' + date, 'up-row' + (e ? (isMatch(e) ? ' is-match' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.sharing !== 'Public' ? ' is-invite' : '') : ' ' + dayTypeClass(group.name)));
-  const rail = el('span', 'up-rail');
-  rail.append(el('span', 'up-dot'));
-  const body = el('span', 'up-body');
-  const when = el('span', 'up-time');
-  if (e) {
-    row.style.setProperty('--c', eventTint(e));
-    const title = el('span', 'up-title', e.title);
-    if (e.hosted) {
-      const star = svg('star');
-      star.classList.add('host-star');
-      star.setAttribute('aria-label', 'You host this');
-      title.prepend(star);
-    }
-    body.append(title);
-    if (e.link && e.call) {
-      body.append(callPill(e));
-    } else if (e.invited && !e.hosted && !e.cancelled && !answerOf(e)) {
-      body.append(el('span', 'event-pill', 'RSVP'));
-    }
-    when.textContent = e.allDay ? 'All day' : startTime(e, date);
-  } else {
+  if (!e) {
     const all = selectedClassrooms();
-    body.append(el('span', 'up-title', group.classrooms.length === all.length ? group.name : `${group.name} \u00b7 ${group.classrooms.join(', ')}`));
+    const title = link('/day/' + date, 'wg-title', group.classrooms.length === all.length ? group.name : `${group.name} \u00b7 ${group.classrooms.join(', ')}`);
+    return dayRow(dayTypeClass(group.name), {title, chips: [], time: ''}, () => title.click());
   }
-  row.append(rail, body, when);
+  const states = [[isMatch(e), 'is-match'], [e.pending, 'is-pending'], [e.declined, 'is-declined'], [e.sharing !== 'Public', 'is-invite']];
+  const card = {...e, path: eventPath(e), answer: answerOf(e), linkApp: linkedApp(e)};
+  const row = eventRow(card, {base: '', time: e.allDay ? 'All day' : startTime(e, date), className: states.filter(([on]) => on).map(([, name]) => name).join(' ')});
+  row.style.setProperty('--ink-tint', eventTint(e));
   return row;
 }
 
@@ -57,6 +40,10 @@ function upcomingPanel(date) {
   const body = el('div', 'upcoming-body');
   const paint = () => {
     body.replaceChildren();
+    const waiting = myEvents().waiting.filter(e => !e.cancelled).sort((a, b) => a.start.localeCompare(b.start));
+    if (waiting.length) {
+      body.append(rsvpPanel(waiting.map(e => ({title: e.title, start: e.start, path: eventPath(e)})), ''));
+    }
     const from = date;
     const soon = addDays(from, 14);
     const days = scheduleOn();
@@ -80,7 +67,9 @@ function upcomingPanel(date) {
         continue;
       }
       const day = el('div', 'up-day');
-      day.append(upcomingDay(d, rows.length), ...rows);
+      const list = el('ol', 'wg-list');
+      list.append(...rows);
+      day.append(upcomingDay(d, rows.length), list);
       body.append(day);
     }
     if (!any) {

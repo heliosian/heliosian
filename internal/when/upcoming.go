@@ -30,6 +30,8 @@ type Card struct {
 	Availability string     `json:"availability,omitempty"`
 	Answer       string     `json:"answer,omitempty"`
 	Invited      bool       `json:"invited,omitempty"`
+	Hosted       bool       `json:"hosted,omitempty"`
+	Cancelled    bool       `json:"cancelled,omitempty"`
 	People       []Standing `json:"people,omitempty"`
 }
 
@@ -214,18 +216,17 @@ func (m *Model) PartiesFor(directory *who.Model, email string, linked []Linked, 
 		if e.Source != SourceCelebrate || e.end.Format(DateFormat) < today {
 			continue
 		}
-		u := m.card(e)
-		u.Answer = m.AnswerOf(email, e.ID)
-		out = append(out, u)
+		out = append(out, m.card(directory, email, e))
 	}
 	return out
 }
 
-func (m *Model) card(e *Event) Card {
+func (m *Model) card(directory *who.Model, email string, e *Event) Card {
 	u := Card{
 		ID: e.ID, Title: e.Title, Path: EventPath(e), Start: e.start.Format(DateFormat), When: when(e),
 		StartAt: e.Start, EndAt: e.End, Dates: e.Dates, Location: e.Location, Description: blurb(e),
 		Image: "/" + m.pictureOf(e), ImageApp: appCalendar, Invited: e.Invited,
+		Hosted: m.hostedBy(directory, email, e), Cancelled: e.Cancelled, Answer: m.AnswerOf(email, e.ID),
 	}
 	if e.Link != "" {
 		u.Link, u.LinkApp = e.Link, linkedApp(e)
@@ -249,9 +250,7 @@ func (m *Model) UpcomingUnder(directory *who.Model, email string, linked []Linke
 		if limit > 0 && len(out) == limit {
 			break
 		}
-		u := m.card(e)
-		u.Answer = answer
-		out = append(out, u)
+		out = append(out, m.card(directory, email, e))
 	}
 	return out
 }

@@ -345,7 +345,6 @@ button { font: inherit; }
    sun behind, its words clear of the art. */
 /* The star on an event the viewer hosts, before its title in the rail's
    RSVPs and in the lists. */
-.host-star { width: 13px; height: 13px; margin-right: 4px; vertical-align: -1px; color: var(--amber); fill: var(--amber); }
 
 .sidebar .rsvp-rail { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.14); }
 
@@ -696,7 +695,7 @@ button { font: inherit; }
 
 body.is-searching .month-pip:not(.is-match), body.is-searching .month-mark:not(.is-match) { opacity: 0.4; }
 
-.timeline-row.is-match .timeline-title, .up-row.is-match .up-title { background: var(--match-wash, color-mix(in srgb, var(--amber) 28%, #fff)); box-shadow: 0 0 0 3px var(--match-wash, color-mix(in srgb, var(--amber) 28%, #fff)); border-radius: 3px; }
+.timeline-row.is-match .timeline-title, .wg-row.is-match .wg-title { background: var(--match-wash, color-mix(in srgb, var(--amber) 28%, #fff)); box-shadow: 0 0 0 3px var(--match-wash, color-mix(in srgb, var(--amber) 28%, #fff)); border-radius: 3px; }
 
 
 /* The feeds form's categories: one line per group, its name at the left. */
@@ -767,59 +766,27 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .upcoming-later { margin: 10px 0 6px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13.5px; font-weight: 700; color: var(--brand); }
 
-/* A day: a band with its date and how many, then a row for each thing -
-   a dot on a line in the thing's colour, the words, the hours, a chevron. */
 .up-day { margin-bottom: 6px; }
 
-.up-dayhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border-radius: 8px; background: var(--input); text-decoration: none; color: var(--brand); }
+.up-dayhead { display: block; text-decoration: none; }
 
-.up-dayhead:hover { background: color-mix(in srgb, var(--accent) 12%, var(--input)); }
+.up-dayhead:hover .wg-day { background: color-mix(in srgb, var(--accent) 12%, var(--input)); }
 
-.up-dayhead-date { display: flex; align-items: baseline; gap: 6px; font-size: 13px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; }
+.home-upcoming .wg-row { --ink-tint: var(--other); }
 
-.up-dayhead-dow { color: var(--brand); }
+.home-upcoming .wg-row.dt-no-school { --ink-tint: var(--no-school); }
 
-.up-dayhead-sep { color: var(--muted); }
+.home-upcoming .wg-row.dt-early { --ink-tint: var(--early); }
 
-.up-dayhead-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.home-upcoming .wg-row.dt-no-aftercare { --ink-tint: var(--no-aftercare); }
 
-.up-row { --c: var(--other); display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: start; gap: 10px; padding: 9px 6px 9px 4px; text-decoration: none; color: inherit; }
+.wg-row.dt-no-school .wg-title { color: var(--no-school-mark, var(--no-school)); }
 
-.up-row + .up-row { border-top: 1px solid var(--wash-line, #eef2f3); }
+.wg-row.dt-early .wg-title { color: var(--early-mark, var(--early)); }
 
-.up-rail { align-self: stretch; position: relative; display: flex; justify-content: center; }
+.wg-row.dt-no-aftercare .wg-title { color: var(--no-aftercare); }
 
-.up-rail::before { content: ""; position: absolute; top: -9px; bottom: -9px; width: 2px; border-radius: 1px; background: color-mix(in srgb, var(--c) 40%, transparent); }
-
-.up-dot { position: relative; width: 10px; height: 10px; margin-top: 4px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px var(--card); }
-
-.up-row.dt-no-school { --c: var(--no-school); }
-
-.up-row.dt-early { --c: var(--early); }
-
-.up-row.dt-no-aftercare { --c: var(--no-aftercare); }
-
-.up-body { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
-
-.up-title { font-size: 14px; font-weight: 700; line-height: 1.3; color: var(--ink); }
-
-.up-row:hover .up-title { text-decoration: underline; }
-
-.up-row.dt-no-school .up-title { color: var(--no-school-mark, var(--no-school)); }
-
-.up-row.dt-early .up-title { color: var(--early-mark, var(--early)); }
-
-.up-row.dt-no-aftercare .up-title { color: var(--no-aftercare); }
-
-.up-row.dt-other .up-title { color: var(--other); }
-
-.up-time { padding-top: 1px; font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-
-
-.up-body .event-pill { padding: 3px 11px; }
-
-.up-body .event-pill:not(.is-mine) { background: var(--brand-fill); border-color: var(--brand-fill); color: #fff; }
-
+.wg-row.dt-other .wg-title { color: var(--other); }
 .home-month { min-width: 0; display: flex; flex-direction: column; container-type: inline-size; }
 
 /* In a narrow month the hours would only be clipped; the title alone. */
@@ -968,7 +935,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .event-pill.is-mine { background: var(--early-wash); border-color: var(--amber); color: var(--early); }
 
 .event-pill.is-mine::before { content: "✓ "; }
-
 .event-pill.is-mine:hover { background: var(--amber); border-color: var(--amber); color: #fff; }
 
 .side-card-linked.is-mine { border-color: var(--amber); background: var(--early-wash); }
@@ -1153,7 +1119,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 /* An event waiting for approval: dashed, wherever it is listed. */
 .month-pip.is-pending { outline: 1.5px dashed var(--amber); outline-offset: -1.5px; background: #fff8e8; }
 
-.timeline-row.is-pending, .up-row.is-pending { outline: 1.5px dashed var(--amber); outline-offset: -1.5px; border-radius: 10px; }
+.timeline-row.is-pending, .wg-row.is-pending { outline: 1.5px dashed var(--amber); outline-offset: -1.5px; border-radius: 10px; }
 
 /* The event's web address: the host's prefix, then the part they choose. */
 .event-slug-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -1192,7 +1158,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .admin-declined-note { font-size: 12px; font-weight: 700; color: #b3261e; }
 
-.month-pip.is-declined, .timeline-row.is-declined, .up-row.is-declined { outline: 1.5px dashed #b3261e; outline-offset: -1.5px; opacity: 0.6; }
+.month-pip.is-declined, .timeline-row.is-declined, .wg-row.is-declined { outline: 1.5px dashed #b3261e; outline-offset: -1.5px; opacity: 0.6; }
 
 .month-pip.is-declined { background: #fbeeee; }
 
@@ -1200,7 +1166,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .pending-band.is-declined > svg { color: #b3261e; }
 
-.month-pip.is-invite, .timeline-row.is-invite, .up-row.is-invite { outline: 1.5px dotted var(--accent); outline-offset: -1.5px; }
+.month-pip.is-invite, .timeline-row.is-invite, .wg-row.is-invite { outline: 1.5px dotted var(--accent); outline-offset: -1.5px; }
 
 .pending-band.is-invite { border-style: dotted; border-color: var(--accent); background: var(--teal-wash, #eef6f5); color: var(--brand); }
 

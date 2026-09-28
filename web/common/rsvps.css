@@ -1,0 +1,46 @@
+.wg-rsvps { container-type: inline-size; margin: 0 0 14px; padding: 12px 10px 10px; border-radius: 16px; background: var(--rsvps-wash, #e9f5ec); }
+
+.wg-rsvps-head { display: flex; align-items: center; gap: 10px; padding: 0 6px 10px; }
+
+.wg-rsvps-head > svg { flex-shrink: 0; width: 22px; height: 22px; color: var(--rsvps-ink, #1f7a3a); }
+
+.wg-rsvps-words { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; font: inherit; font-size: 16px; font-weight: 700; text-align: left; color: var(--rsvps-ink, #1f7a3a); cursor: pointer; }
+
+.wg-rsvps-words svg { flex-shrink: 0; width: 18px; height: 18px; transition: transform 0.15s; }
+
+.wg-rsvps.is-open .wg-rsvps-words svg { transform: rotate(90deg); }
+
+.wg-rsvps-all { flex-shrink: 0; display: inline-flex; align-items: center; gap: 2px; font-size: 14px; font-weight: 600; color: var(--brand); text-decoration: none; white-space: nowrap; }
+
+.wg-rsvps-all:hover { text-decoration: underline; }
+
+.wg-rsvps-all svg { width: 16px; height: 16px; }
+
+.wg-rsvps:not(.is-open) { padding-bottom: 12px; }
+
+.wg-rsvps:not(.is-open) .wg-rsvps-head { padding-bottom: 0; }
+
+.wg-rsvps:not(.is-open) .wg-rsvp-list, .wg-rsvps:not(.is-open) .wg-rsvps-all { display: none; }
+
+.wg-rsvp-list { list-style: none; margin: 0; padding: 0 12px; border-radius: 12px; background: var(--card); }
+
+.wg-rsvp-list li + li { border-top: 1px solid var(--line); }
+
+.wg-rsvp { display: flex; align-items: center; gap: 14px; padding: 10px 0; text-decoration: none; }
+
+.wg-rsvp-date { flex: 0 0 auto; min-width: 88px; padding-right: 14px; border-right: 1px solid var(--line); font-size: 14px; color: var(--muted); white-space: nowrap; }
+
+.wg-rsvp-title { flex: 1; min-width: 0; font-weight: 700; font-size: 15.5px; line-height: 20px; color: var(--brand); }
+
+.wg-rsvp:hover .wg-rsvp-title { text-decoration: underline; }
+
+.wg-rsvp-pill { flex-shrink: 0; padding: 6px 16px; border-radius: 10px; background: #2e8a45; color: #fff; font-size: 14px; font-weight: 700; }
+
+.wg-rsvp:hover .wg-rsvp-pill { filter: brightness(1.08); }
+
+@container (max-width: 360px) {
+  .wg-rsvp { gap: 10px; }
+  .wg-rsvp-date { min-width: 0; padding-right: 10px; font-size: 13px; }
+  .wg-rsvp-title { font-size: 14.5px; }
+  .wg-rsvp-pill { padding: 5px 12px; font-size: 13px; }
+}

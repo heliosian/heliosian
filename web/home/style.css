@@ -506,58 +506,7 @@ main {
 
 .wg-row.is-green { --ink-tint: #2e8a45; --pale-tint: #e2f3e5; }
 
-.wg-day { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; padding: 5px 12px; border-radius: 8px; background: var(--glass-soft, #eef3f3); font-size: 13px; }
-
-.wg-day-label { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 700; color: var(--brand); text-transform: uppercase; letter-spacing: 0.02em; }
-
 .wg-day-label .widget-kind { text-transform: none; letter-spacing: 0; font-weight: 600; }
-
-.wg-day-weekday { color: var(--muted); }
-
-.wg-day-sep { color: var(--muted); font-weight: 400; }
-
-.wg-day-count { flex-shrink: 0; color: var(--muted); }
-
-.wg-list { list-style: none; margin: 0; padding: 0; }
-
-.wg-row { position: relative; display: flex; align-items: flex-start; gap: 14px; min-height: 44px; padding: 10px 4px 10px 32px; cursor: pointer; border-radius: 8px; }
-
-.wg-row + .wg-row::after { content: ''; position: absolute; left: 32px; right: 4px; top: 0; border-top: 1px solid var(--line); }
-
-.wg-row:hover { background: var(--input); }
-
-/* The dot, and a faint line in its colour running the row's height. */
-.wg-row::before { content: ''; position: absolute; left: 15px; top: 0; bottom: 0; width: 2px; background: var(--ink-tint); opacity: 0.3; }
-
-.wg-dot { position: relative; flex: 0 0 12px; height: 12px; margin: 4px -4px 0 -22px; border-radius: 50%; background: var(--ink-tint); }
-
-.wg-time { flex-shrink: 0; font-size: 13.5px; line-height: 20px; color: var(--muted); white-space: nowrap; }
-
-.wg-text { flex: 1; min-width: 0; }
-
-.wg-side { float: right; max-width: 45%; margin-left: 14px; display: flex; flex-direction: column; align-items: flex-end; }
-
-.wg-text::after { content: ''; display: block; clear: both; }
-
-.wg-tags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-top: 6px; max-width: 100%; }
-
-.wg-tags .wg-pill { padding: 2px 10px; border-radius: 999px; font-size: 12.5px; }
-
-.wg-title { font-weight: 700; font-size: 15px; line-height: 20px; color: var(--brand); text-decoration: none; }
-
-.wg-row .wg-title { display: block; }
-
-.wg-title:hover { text-decoration: underline; }
-
-.wg-sub { margin-top: 2px; font-size: 13.5px; color: var(--muted); }
-
-.wg-standing { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border: 1.5px solid #f0a53a; border-radius: 999px; color: #c0740a; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
-
-.wg-standing svg { width: 13px; height: 13px; }
-
-.wg-pill { flex-shrink: 0; padding: 7px 18px; border-radius: 10px; background: var(--glass, var(--pale-tint)); color: var(--ink-tint); font-size: 14px; font-weight: 700; text-decoration: none; white-space: nowrap; }
-
-.wg-pill.is-rsvp { background: var(--glass, #e2f3e5); color: #1f7a3a; }
 
 /* Celebrate's parties: each its picture beside its title over its day and
    hours and its pill, a hairline between them. */
@@ -592,8 +541,6 @@ main {
    as the portal's own cards show one. */
 .wg-party-pic.is-letter { background: var(--pale-tint, var(--input)); color: var(--ink-tint, var(--muted)); font-family: Montserrat, Roboto, sans-serif; font-size: 30px; font-weight: 700; }
 
-.wg-pill:hover { filter: brightness(0.96); }
-
 .wg-go { flex-shrink: 0; display: inline-flex; color: var(--brand); }
 
 .wg-go svg { width: 18px; height: 18px; }
@@ -611,47 +558,6 @@ main {
 .wg-email.is-pink { --ink-tint: #d0346a; --pale-tint: #fde4ec; --dot-tint: #e8577f; }
 
 .wg-email.is-blue { --ink-tint: #2f6fb0; --pale-tint: #e3effb; --dot-tint: #6f8391; }
-
-/* The invitations waiting on a reply, set apart above the email: a pale
-   green panel headed with how many and View all, over a white card of
-   them, each its day, a hairline, its title and a solid green RSVP pill. */
-.wg-rsvps { margin: 0 0 14px; padding: 12px 10px 10px; border-radius: 16px; background: var(--rsvps-wash, #e9f5ec); }
-
-.wg-rsvps-head { display: flex; align-items: center; gap: 10px; padding: 0 6px 10px; }
-
-.wg-rsvps-head > svg { flex-shrink: 0; width: 22px; height: 22px; color: var(--rsvps-ink, #1f7a3a); }
-
-.wg-rsvps-words { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; font: inherit; font-size: 16px; font-weight: 700; text-align: left; color: var(--rsvps-ink, #1f7a3a); cursor: pointer; }
-
-.wg-rsvps-words svg { flex-shrink: 0; width: 18px; height: 18px; transition: transform 0.15s; }
-
-.wg-rsvps.is-open .wg-rsvps-words svg { transform: rotate(90deg); }
-
-.wg-rsvps:not(.is-open) { padding-bottom: 12px; }
-
-.wg-rsvps:not(.is-open) .wg-rsvps-head { padding-bottom: 0; }
-
-.wg-rsvps:not(.is-open) .wg-rsvp-list, .wg-rsvps:not(.is-open) .widget-more { display: none; }
-
-.wg-rsvp-list { list-style: none; margin: 0; padding: 0 12px; border-radius: 12px; background: var(--card); }
-
-.wg-rsvp-list li + li { border-top: 1px solid var(--line); }
-
-.wg-rsvp { display: flex; align-items: center; gap: 14px; padding: 10px 0; text-decoration: none; }
-
-.wg-rsvp-date { flex: 0 0 auto; min-width: 88px; padding-right: 14px; border-right: 1px solid var(--line); font-size: 14px; color: var(--muted); white-space: nowrap; }
-
-.wg-rsvp-title { flex: 1; min-width: 0; font-weight: 700; font-size: 15.5px; line-height: 20px; color: var(--brand); }
-
-.wg-rsvp:hover .wg-rsvp-title { text-decoration: underline; }
-
-.wg-rsvp-pill { flex-shrink: 0; padding: 6px 16px; border-radius: 10px; background: #2e8a45; color: #fff; font-size: 14px; font-weight: 700; }
-
-.wg-rsvp:hover .wg-rsvp-pill { filter: brightness(1.08); }
-
-@container (max-width: 380px) {
-  .wg-rsvp-date { min-width: 0; padding-right: 10px; }
-}
 
 .wg-email-to { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 10px; border-radius: 999px; background: var(--glass, var(--pale-tint)); color: color-mix(in srgb, var(--ink-tint) var(--tint-share, 100%), white); font-size: 12.5px; font-weight: 600; }
 

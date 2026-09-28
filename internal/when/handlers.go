@@ -135,9 +135,10 @@ func (a app) model(r *http.Request, _ serve.None) (View, error) {
 	actor := a.actor(r)
 	email := actor.Email
 	directory := a.directory()
-	view := Render(a.cache.Model(), directory, a.settings(), actor, now(), a.linked(email))
+	model := a.cache.Model()
+	view := Render(model, directory, a.settings(), actor, now(), a.linked(email))
 	for i, e := range view.Events {
-		hosted := e.keepsGuestList() && a.isHost(access.Actor{Email: email}, e)
+		hosted := model.hostedBy(directory, email, e)
 		if !hosted && len(e.Hosts) == 0 {
 			continue
 		}

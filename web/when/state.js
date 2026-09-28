@@ -629,7 +629,7 @@ export function sourceWords(e) {
   return 'Added by the community';
 }
 
-function linkedApp(e) {
+export function linkedApp(e) {
   return e.source === 'celebrate' ? 'celebrate' : 'team';
 }
 
