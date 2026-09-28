@@ -190,9 +190,6 @@ export function comingCard(e, view, refresh) {
   const rows = (view.host ? view.list : view.coming).filter(r => r.answer === 'yes' || r.answer === 'maybe' || (view.host && r.answer === 'no') || (r.invited && !r.answer));
   const head = el('div', 'rsvps-card-head');
   head.append(el('h2', 'section section-swoosh', 'Who\u2019s coming'));
-  if (view.mayInvite && !view.host && view.sent) {
-    head.append(button('Invite people', 'plus', 'button button-secondary button-small', () => openPicker(e, view, refresh)));
-  }
   const imported = e.source === 'google' || e.source === 'pdf';
   if (view.host && imported) {
     const open = !view.listPrivate;
@@ -281,6 +278,18 @@ export function comingCard(e, view, refresh) {
     visible.append(notify);
     card.append(visible);
   }
+  return card;
+}
+
+export function inviteCall(e, view, refresh) {
+  if (!view.mayInvite || view.host) {
+    return null;
+  }
+  const card = el('div', 'guests-start');
+  card.append(svg('people'));
+  const words = el('div', 'guests-start-words');
+  words.append(el('div', 'guests-start-title', 'Invite others'), el('div', 'guests-start-lead', 'Share this event with friends and family who might be interested. They get the invitation by email.'));
+  card.append(words, button('Invite others', 'people', 'button', () => openPicker(e, view, refresh)));
   return card;
 }
 

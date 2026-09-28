@@ -9,7 +9,7 @@ import {setTitle} from '/shell.js';
 import {load} from '/router.js';
 import {api} from '/api.js';
 import {audienceChips, blocks} from '../events.js';
-import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow} from '../invites.js';
+import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow, inviteCall} from '../invites.js';
 
 function hero(e) {
   const wrap = el('div', 'detail-hero');
@@ -260,6 +260,10 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
     if ((e.source === 'sheet' || imported(e)) && heroWrap && !heroWrap.querySelector('.hero-image-bar')) {
       heroWrap.append(heroImageBar(e));
     }
+  }
+  const call = inviteCall(e, view, refresh);
+  if (call) {
+    ask.append(call);
   }
   const invited = (view.host ? view.list : view.coming || []).some(r => r.invited);
   if (view.coming && (!e.link || invited)) {

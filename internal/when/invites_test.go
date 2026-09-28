@@ -1344,6 +1344,29 @@ func TestGuestsInvite(t *testing.T) {
 	}
 }
 
+func TestGuestInvitesBeforeTheHosts(t *testing.T) {
+	mux, cache, kept := invitesApp(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Parade","start":"2026-10-30 08:15","tags":["Jays"],"sharing":"Public","id":"parade"}`)
+	if v := inviteView(t, as(robin, mux), "parade"); !v.MayInvite || v.Sent != "" {
+		t.Errorf("robin's view before any send: invite %v sent %q", v.MayInvite, v.Sent)
+	}
+	rec := call(t, as(robin, mux), "POST", "/api/when/invites/people", `{"id":"parade","people":[{"email":"`+mia+`"}]}`)
+	if rec.Code != 200 || rec.Body.String() != "{\"added\":1,\"sent\":1}\n" {
+		t.Fatalf("robin inviting mia: %d %s", rec.Code, rec.Body)
+	}
+	if inv := cache.Model().InviteOf("parade", mia); inv == nil || inv.Via != ViaInvited || inv.Sent == "" {
+		t.Errorf("mia's row = %+v", inv)
+	}
+	if inv := cache.Model().Invitations["parade"]; inv == nil || inv.Sent == "" {
+		t.Errorf("the invitation after robin's send = %+v", inv)
+	}
+	waitFor(kept, 2)
+	if msgs := mailTo(kept, mia); len(msgs) != 1 {
+		t.Errorf("mia's invite: %d messages", len(msgs))
+	}
+}
+
 func TestPermissions(t *testing.T) {
 	mux, cache, kept := invitesApp(t)
 	jordan, robinH := as(host, mux), as(robin, mux)

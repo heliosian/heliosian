@@ -478,9 +478,7 @@ func (a app) addInvites(r *http.Request, body inviteesBody) (map[string]int, err
 	}
 	sent := 0
 	if !host {
-		if inv := a.cache.Model().Invitations[e.ID]; inv != nil && inv.Sent != "" {
-			sent = a.send(r.Context(), actor, actor.Email, e, emails, "")
-		}
+		sent = a.send(r.Context(), actor, actor.Email, e, emails, "")
 	}
 	slog.InfoContext(r.Context(), "calendar: guests added", "actor", actor.Email, "event", e.ID, "count", len(emails), "host", host, "sent", sent)
 	return map[string]int{"added": len(emails), "sent": sent}, nil
