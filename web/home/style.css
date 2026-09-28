@@ -520,22 +520,32 @@ main {
 
 .wg-list { list-style: none; margin: 0; padding: 0; }
 
-.wg-row { position: relative; display: flex; align-items: center; gap: 14px; min-height: 44px; padding: 8px 4px 8px 32px; cursor: pointer; border-radius: 8px; }
+.wg-row { position: relative; display: flex; align-items: flex-start; gap: 14px; min-height: 44px; padding: 10px 4px 10px 32px; cursor: pointer; border-radius: 8px; }
+
+.wg-row + .wg-row::after { content: ''; position: absolute; left: 32px; right: 4px; top: 0; border-top: 1px solid var(--line); }
 
 .wg-row:hover { background: var(--input); }
 
 /* The dot, and a faint line in its colour running the row's height. */
 .wg-row::before { content: ''; position: absolute; left: 15px; top: 0; bottom: 0; width: 2px; background: var(--ink-tint); opacity: 0.3; }
 
-.wg-dot { position: relative; flex: 0 0 12px; height: 12px; margin: 0 -4px 0 -22px; border-radius: 50%; background: var(--ink-tint); }
+.wg-dot { position: relative; flex: 0 0 12px; height: 12px; margin: 4px -4px 0 -22px; border-radius: 50%; background: var(--ink-tint); }
 
-.wg-time { flex: 0 0 76px; font-size: 14px; color: var(--muted); white-space: nowrap; }
-
-.wg-main { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.wg-time { flex-shrink: 0; font-size: 13.5px; line-height: 20px; color: var(--muted); white-space: nowrap; }
 
 .wg-text { flex: 1; min-width: 0; }
 
+.wg-side { float: right; max-width: 45%; margin-left: 14px; display: flex; flex-direction: column; align-items: flex-end; }
+
+.wg-text::after { content: ''; display: block; clear: both; }
+
+.wg-tags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-top: 6px; max-width: 100%; }
+
+.wg-tags .wg-pill { padding: 2px 10px; border-radius: 999px; font-size: 12.5px; }
+
 .wg-title { font-weight: 700; font-size: 15px; line-height: 20px; color: var(--brand); text-decoration: none; }
+
+.wg-row .wg-title { display: block; }
 
 .wg-title:hover { text-decoration: underline; }
 
@@ -590,13 +600,9 @@ main {
 
 .wg-empty { margin: 8px 0; font-size: 14px; color: var(--muted); }
 
-.wg-email { flex-wrap: wrap; row-gap: 0; }
-
 .wg-email::before, .wg-email .wg-dot { background: var(--dot-tint); }
 
-.wg-email .wg-title { display: block; padding: 0; border: 0; background: none; font: inherit; font-weight: 700; font-size: 15.5px; line-height: 20px; color: var(--brand); text-align: left; cursor: pointer; }
-
-.wg-email-side { flex-shrink: 0; max-width: 40%; display: flex; flex-direction: column; align-items: flex-end; }
+.wg-email .wg-title { padding: 0; border: 0; background: none; font: inherit; font-weight: 700; font-size: 15px; line-height: 20px; color: var(--brand); text-align: left; cursor: pointer; }
 
 .wg-email.is-teal { --ink-tint: #0f7c80; --pale-tint: #dff3f2; --dot-tint: #e8577f; }
 
@@ -647,11 +653,11 @@ main {
   .wg-rsvp-date { min-width: 0; padding-right: 10px; }
 }
 
-.wg-email-to { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 12px; border-radius: 999px; background: var(--glass, var(--pale-tint)); color: color-mix(in srgb, var(--ink-tint) var(--tint-share, 100%), white); font-size: 13px; font-weight: 600; }
+.wg-email-to { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 10px; border-radius: 999px; background: var(--glass, var(--pale-tint)); color: color-mix(in srgb, var(--ink-tint) var(--tint-share, 100%), white); font-size: 12.5px; font-weight: 600; }
 
 .wg-email:hover .wg-title { text-decoration: underline; }
 
-.wg-email-body { display: none; flex: 1 0 100%; padding: 6px 0 4px 90px; cursor: default; }
+.wg-email-body { display: none; padding: 6px 0 4px; cursor: default; }
 
 .wg-email.is-open .wg-email-body { display: block; }
 

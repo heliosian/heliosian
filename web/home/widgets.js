@@ -128,24 +128,26 @@ function dayBar(day, count, noun, chips = []) {
   return bar;
 }
 
-function wgRow(className, parts, click) {
+function wgRow(className, {title, chips, time, after}, click) {
   const row = el('li', 'wg-row ' + className);
   row.dataset.row = '';
-  row.append(el('span', 'wg-dot'), ...parts);
+  const side = el('div', 'wg-side');
+  side.append(el('span', 'wg-time', time));
+  const shown = chips.filter(Boolean);
+  if (shown.length) {
+    const tags = el('div', 'wg-tags');
+    tags.append(...shown);
+    side.append(tags);
+  }
+  const text = el('div', 'wg-text');
+  text.append(side, title, ...(after ? [after] : []));
+  row.append(el('span', 'wg-dot'), text);
   row.addEventListener('click', e => {
     if (!e.target.closest('a')) {
       click(e);
     }
   });
   return row;
-}
-
-function goLink(href) {
-  const go = el('a', 'wg-go');
-  go.href = href;
-  go.setAttribute('aria-label', 'Open');
-  go.append(svg('chevron-right'));
-  return go;
 }
 
 function dayGroups(items, dayOf, order) {
@@ -191,13 +193,7 @@ function eventRow(event, day) {
   const href = appOrigin('when') + event.path;
   const title = el('a', 'wg-title', event.title);
   title.href = href;
-  const main = el('div', 'wg-main');
-  main.append(title);
-  const extra = standing(event) || action(event);
-  if (extra) {
-    main.append(extra);
-  }
-  return wgRow(tint(event), [el('span', 'wg-time', startTime(event, day)), main, goLink(href)], () => {
+  return wgRow(tint(event), {title, chips: [standing(event) || action(event)], time: startTime(event, day)}, () => {
     location.href = href;
   });
 }
@@ -580,12 +576,8 @@ function emailRow(email, n, open) {
   const title = el('button', 'wg-title', email.title);
   title.type = 'button';
   title.setAttribute('aria-expanded', String(open));
-  const text = el('div', 'wg-text');
-  text.append(title);
   const to = el('span', 'wg-email-to', sentTo(email));
   to.title = sentTo(email);
-  const side = el('div', 'wg-email-side');
-  side.append(to);
   const body = el('div', 'wg-email-body');
   if (email.points.length) {
     const points = el('ul', 'wg-points');
@@ -601,7 +593,7 @@ function emailRow(email, n, open) {
   ask.href = appOrigin('ask') + '/?q=' + encodeURIComponent(`What should I know from the school email "${email.title}" sent ${day}?`);
   ask.append(el('span', '', 'Ask about this'), svg('chevron-right'));
   body.append(ask);
-  const row = wgRow('wg-email ' + schoolTones[n % schoolTones.length], [el('span', 'wg-time', email.time ? clock(email.time) : ''), text, side, body], e => {
+  const row = wgRow('wg-email ' + schoolTones[n % schoolTones.length], {title, chips: [to], time: email.time ? clock(email.time) : '', after: body}, e => {
     if (e.target.closest('.wg-email-body')) {
       return;
     }
