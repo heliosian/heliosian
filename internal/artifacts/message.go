@@ -118,6 +118,7 @@ func (m Message) Build(links *Resolver, model string) (*Document, error) {
 	return finish(&Document{
 		Key:      m.Key(),
 		Title:    title,
+		Time:     day.In(when.Location).Format("15:04"),
 		Author:   strings.TrimSpace(m.From),
 		Kind:     kind,
 		Channel:  channel,

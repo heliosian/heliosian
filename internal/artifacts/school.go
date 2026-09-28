@@ -13,6 +13,7 @@ type SchoolEmail struct {
 	Key      string   `json:"key"`
 	Title    string   `json:"title"`
 	Date     string   `json:"date"`
+	Time     string   `json:"time"`
 	Kind     string   `json:"kind"`
 	Channel  string   `json:"channel"`
 	Audience string   `json:"audience"`
@@ -33,7 +34,7 @@ func (m *Model) SchoolMail(people *who.Model, email, since string) []SchoolEmail
 		if points == nil {
 			points = []string{}
 		}
-		out = append(out, SchoolEmail{Key: d.Key, Title: d.Title, Date: d.Date, Kind: d.Kind, Channel: d.Channel, Audience: m.Audience[d.Key], Points: points})
+		out = append(out, SchoolEmail{Key: d.Key, Title: d.Title, Date: d.Date, Time: d.Time, Kind: d.Kind, Channel: d.Channel, Audience: m.Audience[d.Key], Points: points})
 	}
 	return out
 }

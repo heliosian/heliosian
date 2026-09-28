@@ -52,6 +52,7 @@ type Document struct {
 	Key      string  `json:"key"`
 	Title    string  `json:"title"`
 	Date     string  `json:"date"`
+	Time     string  `json:"time,omitempty"`
 	Author   string  `json:"author"`
 	Kind     string  `json:"kind"`
 	Channel  string  `json:"channel"`

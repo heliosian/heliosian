@@ -18,13 +18,17 @@ function tint(event) {
   return event.linkApp === 'celebrate' ? 'is-celebrate' : event.linkApp === 'team' ? 'is-team' : 'is-school';
 }
 
+function clock(time) {
+  const [h, m] = time.split(':').map(Number);
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
+}
+
 function startTime(event, date) {
   const [day, time] = event.startAt.split(' ');
   if (!time || day !== date) {
     return 'All day';
   }
-  const [h, m] = time.split(':').map(Number);
-  return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
+  return clock(time);
 }
 
 function sortKey(event, date) {
@@ -124,21 +128,39 @@ function dayBar(day, count, noun, chips = []) {
   return bar;
 }
 
-function wgRow(className, href, parts) {
+function wgRow(className, parts, click) {
   const row = el('li', 'wg-row ' + className);
   row.dataset.row = '';
   row.append(el('span', 'wg-dot'), ...parts);
+  row.addEventListener('click', e => {
+    if (!e.target.closest('a')) {
+      click(e);
+    }
+  });
+  return row;
+}
+
+function goLink(href) {
   const go = el('a', 'wg-go');
   go.href = href;
   go.setAttribute('aria-label', 'Open');
   go.append(svg('chevron-right'));
-  row.append(go);
-  row.addEventListener('click', e => {
-    if (!e.target.closest('a')) {
-      location.href = href;
+  return go;
+}
+
+function dayGroups(items, dayOf, order) {
+  const byDay = new Map();
+  for (const item of items) {
+    const day = dayOf(item);
+    if (!day) {
+      continue;
     }
-  });
-  return row;
+    if (!byDay.has(day)) {
+      byDay.set(day, []);
+    }
+    byDay.get(day).push(item);
+  }
+  return [...byDay.keys()].sort().map(d => ({day: d, rows: byDay.get(d).sort((a, b) => order(a, d).localeCompare(order(b, d)))}));
 }
 
 function standing(event) {
@@ -175,21 +197,9 @@ function eventRow(event, day) {
   if (extra) {
     main.append(extra);
   }
-  return wgRow(tint(event), href, [el('span', 'wg-time', startTime(event, day)), main]);
-}
-
-function upcomingGroups(events, today) {
-  const byDay = new Map();
-  for (const event of events) {
-    const first = [...event.dates].sort().find(d => d >= today);
-    if (first) {
-      if (!byDay.has(first)) {
-        byDay.set(first, []);
-      }
-      byDay.get(first).push(event);
-    }
-  }
-  return [...byDay.keys()].sort().map(d => ({day: d, events: byDay.get(d).sort((a, b) => sortKey(a, d).localeCompare(sortKey(b, d)))}));
+  return wgRow(tint(event), [el('span', 'wg-time', startTime(event, day)), main, goLink(href)], () => {
+    location.href = href;
+  });
 }
 
 const pageRows = 3;
@@ -284,14 +294,14 @@ function whenWidget() {
     head.append(choose);
   }
   card.append(head);
-  const groups = upcomingGroups(events, month.today);
+  const groups = dayGroups(events, event => [...event.dates].sort().find(d => d >= month.today), sortKey);
   if (!groups.length) {
     card.append(el('p', 'wg-empty', 'Nothing coming up on the calendar.'));
   }
-  card.append(...grouped('when', groups.map(g => ({day: g.day, rows: g.events})),
+  card.append(...grouped('when', groups,
     g => dayBar(g.day, g.rows.length, 'event', (((month.days || {})[g.day] || {}).kinds || []).map(k => el('span', 'widget-kind ' + dayTypeClass(k.name), k.words))),
     (event, g) => eventRow(event, g.day)));
-  const total = groups.reduce((n, g) => n + g.events.length, 0);
+  const total = groups.reduce((n, g) => n + g.rows.length, 0);
   card.append(widgetFoot('when', total, {href: appOrigin('when')}));
   fetchNext(month);
   return card;
@@ -566,17 +576,16 @@ const schoolTones = ['is-teal', 'is-lime', 'is-pink', 'is-blue'];
 let schoolOpen;
 
 function emailRow(email, n, open) {
-  const row = el('li', 'wg-email ' + schoolTones[n % schoolTones.length]);
-  row.dataset.row = '';
-  row.classList.toggle('is-open', open);
   const date = parseDate(email.date);
-  const head = el('button', 'wg-email-head');
-  head.type = 'button';
-  head.setAttribute('aria-expanded', String(open));
-  const when = `${date.toLocaleDateString('en-US', {weekday: 'short'})}, ${date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;
+  const title = el('button', 'wg-title', email.title);
+  title.type = 'button';
+  title.setAttribute('aria-expanded', String(open));
+  const text = el('div', 'wg-text');
+  text.append(title);
   const to = el('span', 'wg-email-to', sentTo(email));
   to.title = sentTo(email);
-  head.append(el('span', 'wg-dot'), el('span', 'wg-email-date', when), el('span', 'wg-email-title', email.title), to, svg('chevron-right'));
+  const side = el('div', 'wg-email-side');
+  side.append(to);
   const body = el('div', 'wg-email-body');
   if (email.points.length) {
     const points = el('ul', 'wg-points');
@@ -592,28 +601,42 @@ function emailRow(email, n, open) {
   ask.href = appOrigin('ask') + '/?q=' + encodeURIComponent(`What should I know from the school email "${email.title}" sent ${day}?`);
   ask.append(el('span', '', 'Ask about this'), svg('chevron-right'));
   body.append(ask);
-  head.addEventListener('click', () => {
+  const row = wgRow('wg-email ' + schoolTones[n % schoolTones.length], [el('span', 'wg-time', email.time ? clock(email.time) : ''), text, side, body], e => {
+    if (e.target.closest('.wg-email-body')) {
+      return;
+    }
     const opening = !row.classList.contains('is-open');
-    for (const other of row.parentNode.children) {
+    for (const other of row.closest('.widget').querySelectorAll('.wg-email')) {
       other.classList.remove('is-open');
-      other.querySelector('.wg-email-head').setAttribute('aria-expanded', 'false');
+      other.querySelector('.wg-title').setAttribute('aria-expanded', 'false');
     }
     row.classList.toggle('is-open', opening);
-    head.setAttribute('aria-expanded', String(opening));
+    title.setAttribute('aria-expanded', String(opening));
     schoolOpen = opening ? email.key : null;
   });
-  row.append(head, body);
+  row.classList.toggle('is-open', open);
   return row;
 }
 
-
 const rsvpType = 'RSVP needed';
+
+let rsvpsOpen = false;
 
 function rsvpPanel(waiting) {
   const panel = el('section', 'wg-rsvps');
+  panel.classList.toggle('is-open', rsvpsOpen);
   const head = el('div', 'wg-rsvps-head');
   const n = waiting.length;
-  head.append(svg('calendar'), el('span', 'wg-rsvps-words', `${n} ${n === 1 ? 'event needs' : 'events need'} your RSVP`), moreLink('View all', appOrigin('when') + '/mine/rsvp'));
+  const toggle = el('button', 'wg-rsvps-words');
+  toggle.type = 'button';
+  toggle.setAttribute('aria-expanded', String(rsvpsOpen));
+  toggle.append(el('span', '', `${n} ${n === 1 ? 'event needs' : 'events need'} your RSVP`), svg('chevron-right'));
+  toggle.addEventListener('click', () => {
+    rsvpsOpen = !rsvpsOpen;
+    panel.classList.toggle('is-open', rsvpsOpen);
+    toggle.setAttribute('aria-expanded', String(rsvpsOpen));
+  });
+  head.append(svg('calendar'), toggle, moreLink('View all', appOrigin('when') + '/mine/rsvp'));
   const list = el('ol', 'wg-rsvp-list');
   for (const rsvp of waiting) {
     const row = el('li');
@@ -690,12 +713,10 @@ function schoolWidget() {
     card.append(rsvpPanel(waiting));
   }
   const name = 'school-' + (schoolType || 'all');
-  const list = el('ol', 'wg-emails');
-  if (shown.length) {
-    const openKey = schoolOpen === undefined || (schoolOpen && !shown.some(e => e.key === schoolOpen)) ? shown[0].key : schoolOpen;
-    shown.slice(0, shownCount(name)).forEach((e, n) => list.append(emailRow(e, n, e.key === openKey)));
-  }
-  card.append(list);
+  const groups = dayGroups(shown, e => e.date, e => e.time || '').reverse();
+  const first = groups.length ? groups[0].rows[0].key : null;
+  const openKey = schoolOpen === undefined || (schoolOpen && !shown.some(e => e.key === schoolOpen)) ? first : schoolOpen;
+  card.append(...grouped(name, groups, g => dayBar(g.day, g.rows.length, 'email'), (e, g, n) => emailRow(e, n, e.key === openKey)));
   const foot = widgetFoot(name, shown.length, null);
   if (foot) {
     card.append(foot);
