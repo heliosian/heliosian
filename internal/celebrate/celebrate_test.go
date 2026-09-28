@@ -133,6 +133,23 @@ func TestSampleLoads(t *testing.T) {
 	}
 }
 
+func TestInvoicingNamesAPartyOrAnItem(t *testing.T) {
+	newServer(t)
+	rows := tables(t)
+	m, err := BuildModel(context.Background(), rows, bundled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(m.Invoicing, func(l InvoiceLine) bool { return l.PartyID == "" })
+	if i < 0 || m.Invoicing[i].Party != "Head of School for a Day" || m.Invoicing[i].Code != "SC-2026" {
+		t.Fatalf("the item line: %+v", m.Invoicing)
+	}
+	rows[invoicingTab] = append(rows[invoicingTab], store.Row{"Date": "2026-09-10", "Party ID": "pty0000000001", "Party Title": "Fondue", "Celebration": "cbn0000002026", "Purchaser Email": "dana.hawkins@heliosschool.org"})
+	if _, err := BuildModel(context.Background(), rows, bundled); err == nil || !strings.Contains(err.Error(), "names both") {
+		t.Errorf("a line naming a party and an item loaded: %v", err)
+	}
+}
+
 func TestRowOrderIsNotTabOrder(t *testing.T) {
 	newServer(t)
 	rows := tables(t)

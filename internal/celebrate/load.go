@@ -75,7 +75,7 @@ var (
 	TicketColumns      = []string{"Ticket ID", "Party ID", "Email", "Name", "Purchaser", "Status", "Quantity", "Price", "Note", "Added By", "Added"}
 	SettingColumns     = []string{"Key", "Value"}
 	RedirectColumns    = []string{"Type", "Old", "New", "Date"}
-	InvoicingColumns   = []string{"Date", "Party ID", "Celebration", "Purchaser Email", "Guest Name", "Action", "Quantity", "Cost", "Invoice", "Invoice To"}
+	InvoicingColumns   = []string{"Date", "Party ID", "Party Title", "Celebration", "Purchaser Email", "Guest Name", "Action", "Quantity", "Cost", "Invoice", "Invoice To"}
 	FormerColumns      = []string{"Old", "New", "Name", "Changed"}
 )
 
@@ -582,7 +582,9 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 		return nil, err
 	}
 	model.readRedirects(tables[redirectsTab])
-	model.readInvoicing(tables[invoicingTab])
+	if err := model.readInvoicing(tables[invoicingTab]); err != nil {
+		return nil, err
+	}
 	if err := model.readHosts(tables[hostsTab]); err != nil {
 		return nil, err
 	}
@@ -752,14 +754,20 @@ func (m *Model) readRedirects(rows []store.Row) {
 	}
 }
 
-func (m *Model) readInvoicing(rows []store.Row) {
+func (m *Model) readInvoicing(rows []store.Row) error {
 	for _, row := range rows {
-		partyID, purchaser := strings.TrimSpace(row["Party ID"]), config.NormalizeEmail(row["Purchaser Email"])
-		if partyID == "" || purchaser == "" {
+		partyID, item, purchaser := strings.TrimSpace(row["Party ID"]), strings.TrimSpace(row["Party Title"]), config.NormalizeEmail(row["Purchaser Email"])
+		if (partyID == "" && item == "") || purchaser == "" {
 			m.Skipped["invoicing rows naming no party or purchaser"]++
 			continue
 		}
-		title := partyID
+		if partyID != "" && item != "" {
+			return fmt.Errorf("%s row of %s for %s names both party %s and %q", invoicingTab, row["Date"], purchaser, partyID, item)
+		}
+		title := item
+		if partyID != "" {
+			title = partyID
+		}
 		if p := m.Party(partyID); p != nil {
 			title = p.Title
 		}
@@ -776,6 +784,7 @@ func (m *Model) readInvoicing(rows []store.Row) {
 			Invoice: strings.TrimSpace(row["Invoice"]), InvoiceTo: strings.TrimSpace(row["Invoice To"]),
 		})
 	}
+	return nil
 }
 
 func (m *Model) readHosts(rows []store.Row) error {
