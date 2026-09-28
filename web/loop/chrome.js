@@ -1,7 +1,6 @@
 import {state, me, managed, groupPath} from './state.js';
 import {el, svg, link} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
-import {load} from '/router.js';
 
 const items = [
   {href: '/', icon: 'app', label: 'My Email Lists'},
@@ -99,7 +98,6 @@ export function initChrome() {
   initShell({
     name: 'Helios Loop',
     me,
-    onSuper: load,
     fillNav,
     fillTabbar,
     search: {placeholder: 'Search email lists…'},

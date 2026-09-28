@@ -9,7 +9,7 @@ const feedback = {rows: [], filter: 'New', canFile: false, repo: '', open: new U
 
 function categoriesCard() {
   const card = el('div', 'card');
-  card.append(el('h2', '', 'Categories'), el('div', 'hint', 'The sections of the front page, in this order, with their emoji and what each holds. Rename, re-mark, reorder and add them from the front page in Super Admin Mode, through Edit Categories in the account menu.'));
+  card.append(el('h2', '', 'Categories'), el('div', 'hint', 'The sections of the front page, in this order, with their emoji and what each holds. Rename, re-mark, reorder and add them from the front page, through Edit Categories in the account menu.'));
   const model = state.model;
   for (const category of model.categories) {
     const row = el('div', 'admin-row');

@@ -977,8 +977,8 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .chip-slot .link-edit { position: absolute; top: 12px; right: 12px; z-index: 2; }
 
-/* An app's tools in Super Admin Mode: the two arrows and the pencil, in
-   the card's corner. */
+/* An app's tools for an admin: the two arrows and the pencil, in the card's
+   corner. */
 .chip-slot .app-tools { position: absolute; top: 12px; right: 12px; z-index: 2; display: flex; gap: 4px; }
 
 .chip-slot .app-tools .link-edit { position: static; }
@@ -1222,7 +1222,7 @@ a.event-people:hover .event-person { text-decoration: underline; }
   text-transform: uppercase;
 }
 
-/* Who a link or a section is kept to, after its title, in Super Admin Mode. */
+/* Who a link or a section is kept to, after its title, for an admin. */
 .hidden-badge.audience-badge { background: var(--accent); margin-left: 6px; text-transform: none; letter-spacing: 0; }
 
 /* The app editor: the mark and address at the top, which are the code's;

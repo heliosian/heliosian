@@ -315,45 +315,6 @@ a.alert-card:hover { background: color-mix(in srgb, var(--tone) 5%, var(--alert-
 
 .alert-list-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
-/* Super Admin Mode's switch, for the app's admins (renderSuperToggle in
-   usermenu.js): a pencil in the brand teal ahead of Spoof Mode's eye, white on
-   the red of the avatar's ring while the mode is on. */
-.super-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: none;
-  color: var(--brand);
-  cursor: pointer;
-}
-
-.super-toggle[hidden] { display: none; }
-
-.super-toggle svg {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.super-toggle:hover { background: rgba(36, 77, 83, 0.08); }
-
-.super-toggle.is-on {
-  background: var(--alert);
-  color: #fff;
-}
-
-.super-toggle.is-on:hover { background: #c9523e; }
-
 /* While Spoof Mode views as someone else (body.is-spoofing, set by
    buildSpoof), the whole bar is hot pink in every theme, and the pill saying
    whom turns white on it. */

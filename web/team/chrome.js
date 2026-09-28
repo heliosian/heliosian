@@ -1,7 +1,7 @@
 import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
-import {navigate, render, load, setPath} from '/router.js';
+import {navigate, render, setPath} from '/router.js';
 import {openActivity} from './edit.js';
 
 const primary = [
@@ -230,12 +230,6 @@ export function initChrome() {
   initShell({
     name: 'HCA-Team',
     me,
-    onSuper: () => {
-      if (!isAdmin()) {
-        state.showHidden = false;
-      }
-      return load();
-    },
     fillNav,
     fillTabbar,
     search: {

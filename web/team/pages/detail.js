@@ -654,9 +654,6 @@ function childrenSection(node) {
       paintChildren(section);
     }, true));
   }
-  if (node.canEdit) {
-    actions.append(settingsButton(node));
-  }
   head.append(actions);
   const wrap = el('div');
   wrap.append(head);
@@ -686,10 +683,12 @@ function groupHead(node, cat, others) {
   } else if (node.status === 'Open' && canAdd(policy)) {
     add = button(addLabel(policy), 'plus', 'button button-secondary button-small', open);
   }
+  const tools = el('div', 'group-tools');
   if (add) {
     add.title = cat ? `Add to ${cat.title}` : 'Add without a category';
-    row.append(add);
+    tools.append(add);
   }
+  row.append(tools);
   return row;
 }
 
@@ -796,6 +795,10 @@ function paintChildren(section) {
     const panel = el('div', 'panel');
     panel.append(el('div', 'panel-empty', query ? 'Nothing matches.' : 'Nothing here yet.'));
     list.append(panel);
+  }
+  const first = list.querySelector('.group-tools');
+  if (node.canEdit && first) {
+    first.prepend(settingsButton(node));
   }
 }
 

@@ -487,7 +487,6 @@ function initChrome() {
   initTopbar({
     name: 'Helios Ask',
     me: () => state.model.user,
-    onSuper: () => {},
     menuButton: false,
   });
   onSlash(() => composer().focus());

@@ -1096,6 +1096,8 @@ h2.section.section-swoosh::after {
 
 .group-row .group-title { margin: 0; }
 
+.group-tools { display: flex; align-items: center; gap: 8px; }
+
 .card-chip.is-inline { position: static; max-width: none; }
 
 /* A role's chip is the way back up to what it sits under, so it has to read as

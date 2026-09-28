@@ -1,7 +1,7 @@
 import {state, me, isAdmin, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown, celebration, category} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
-import {navigate, load, setPath} from '/router.js';
+import {navigate, setPath} from '/router.js';
 import {openParty} from './edit.js';
 
 const primary = [
@@ -170,7 +170,6 @@ export function initChrome() {
   initShell({
     name: 'Helios Celebrate',
     me,
-    onSuper: load,
     fillNav,
     fillTabbar,
     search: {

@@ -1,11 +1,10 @@
 import {initAppSwitch, currentApp} from '/appswitch.js';
-import {initUserMenu, renderAvatars, renderProfileLink, renderSuperToggle} from '/usermenu.js';
+import {initUserMenu, renderAvatars, renderProfileLink} from '/usermenu.js';
 import {initAlerts, renderAlerts} from '/alerts.js';
 import {initSpoof} from '/spoof.js';
 import {noteError} from '/feedback.js';
 import {api} from '/api.js';
 import {el} from '/elements.js';
-import {superEditOn, setSuperEdit} from '/superedit.js';
 import {me} from '/data.js';
 
 let app = null;
@@ -140,18 +139,10 @@ function adminHere() {
   return allowances.includes(currentApp() + '.admins');
 }
 
-function superAdmin() {
-  return allowances.includes('super-admins');
-}
-
 function renderAdmin() {
   for (const row of document.querySelectorAll('.user-menu-admin')) {
     row.hidden = !adminHere();
   }
-  renderSuperToggle({show: superAdmin(), on: superEditOn(), onToggle: on => {
-    setSuperEdit(on);
-    app.onSuper();
-  }});
 }
 
 function renderDrawer() {

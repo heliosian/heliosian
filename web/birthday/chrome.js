@@ -1,7 +1,7 @@
 import {state, me, isAdmin, isUnassigned, commsOnly, onComms, mine, urgency} from './state.js';
 import {el, svg, link} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
-import {load, setPath} from '/router.js';
+import {setPath} from '/router.js';
 
 const unassignedItem = {href: '/unassigned', icon: 'groups', label: 'Unassigned'};
 const calendarItem = {href: '/calendar', icon: 'calendar', label: 'Calendar'};
@@ -114,7 +114,6 @@ export function initChrome() {
   initShell({
     name: 'Helios Staff Birthdays',
     me,
-    onSuper: load,
     fillNav,
     fillTabbar,
     search: {

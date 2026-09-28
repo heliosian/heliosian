@@ -723,7 +723,6 @@ export function initChrome() {
   initShell({
     name: 'Helios When',
     me,
-    onSuper: load,
     fillNav,
     fillTabbar,
     search: {placeholder: defaultPlaceholder, results: true, own: true},

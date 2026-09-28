@@ -8,7 +8,6 @@ import {tagKeys, tagLabel, listKeys, listLabel, listApp, sharedKeys, sharedOf, m
 import {staleItems, familyInfoBanner, familyNavPeople, personTodoCount} from './stale.js';
 import {searchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
-import {load} from '/router.js';
 import {initShell, renderAccount, searchInput, syncViewportHeight, onSlash, isEditableTarget} from '/shell.js';
 
 const primaryNavItems = [
@@ -447,7 +446,6 @@ export function initChrome() {
     name: 'Helios Who?',
     me,
     alerts,
-    onSuper: load,
     fillNav,
     fillTabbar,
     search: {placeholder: 'Search by name, student, grade, or classroom…', results: true, own: true},

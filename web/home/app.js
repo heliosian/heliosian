@@ -6,7 +6,7 @@ import {renderWidgets} from './widgets.js';
 import {initEditing, refreshCategoryManager} from './edit.js';
 import {initTopbar, renderAccount, searchInput, onSlash} from '/shell.js';
 import {api} from '/api.js';
-import {startApp, render} from '/router.js';
+import {startApp} from '/router.js';
 import {adminPage} from './adminpage.js';
 
 const editCategories = el('button', 'user-menu-super', 'Edit Categories');
@@ -79,7 +79,6 @@ function initChrome() {
   initTopbar({
     name: 'Heliosian',
     me: () => state.model.user,
-    onSuper: render,
     search: {placeholder: 'Search apps, links, or events…', own: true},
     menuRows: [editCategories],
   });
