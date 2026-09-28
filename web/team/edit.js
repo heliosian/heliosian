@@ -1156,7 +1156,7 @@ export function openVolunteerSettings(node, replace) {
       }
     }
   }
-  openModal(`${node.title}: Volunteer settings`, [el('p', 'vol-settings-lead', 'Configure sign up and visibility settings for activities and categories. Activities and categories can override its parent’s settings, or default to them.'), list], {wide: true, replace});
+  openModal(`${node.title}: Volunteer settings`, [el('p', 'vol-settings-lead', 'Configure sign up and visibility settings for activities and categories. Activities and categories can override its parent’s settings, or default to them.'), list], {wide: 'table', replace});
 }
 
 export async function openVolunteerGrid(root, nodes, pathOf) {

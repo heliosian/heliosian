@@ -1593,7 +1593,7 @@ button.side-chair:hover { background: var(--input); }
 
 .vol-settings-lead { margin: -6px 0 16px; font-size: 14.5px; color: var(--muted); }
 
-.vol-settings { overflow-x: auto; display: flex; flex-direction: column; gap: 6px; }
+.vol-settings { overflow-x: auto; scrollbar-gutter: stable; display: flex; flex-direction: column; gap: 6px; padding-bottom: 6px; }
 
 .vol-settings-row { display: grid; grid-template-columns: 36px minmax(220px, 1fr) 220px repeat(2, 160px); align-items: center; gap: 10px; min-width: 820px; padding: 8px 12px; }
 
@@ -1756,6 +1756,8 @@ button.side-chair:hover { background: var(--input); }
 
 /* The organizers' roster modal: wider than a form, a scrolling table inside. */
 .modal.modal-wide { max-width: 900px; }
+
+.modal.modal-table { max-width: min(1240px, calc(100vw - 40px)); }
 
 .form-tab-body { min-height: 300px; }
 
