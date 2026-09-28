@@ -54,6 +54,8 @@ const (
 	TagCelebrate    = "Celebrate"
 	TagHCA          = "HCA"
 	TagMisc         = "Misc"
+	TagParents      = "Parents"
+	TagStaff        = "Staff"
 	TagGoing        = "Going"
 	TagWaitlisted   = "Waitlisted"
 	MineGoing       = "going"

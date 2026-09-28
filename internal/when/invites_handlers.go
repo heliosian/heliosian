@@ -316,10 +316,13 @@ func (a app) invitesView(r *http.Request, _ serve.None) (InviteView, error) {
 		}
 	}
 	if e.openToAll() && len(actor.Household) > 0 {
-		family := []string{viewer}
+		family := []string{}
+		if me := a.directory().Person(viewer); me != nil && e.asks(me) {
+			family = append(family, viewer)
+		}
 		adults, kids := a.directory().Household(viewer)
 		for _, p := range append(adults, kids...) {
-			if actor.Household[p.Email] {
+			if actor.Household[p.Email] && e.asks(p) {
 				family = append(family, p.Email)
 			}
 		}

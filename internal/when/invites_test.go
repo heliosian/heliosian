@@ -1376,8 +1376,19 @@ func TestFamilyAnswersAnOpenEvent(t *testing.T) {
 	for _, r := range v.Mine {
 		keys = append(keys, r.Key)
 	}
-	if len(keys) < 3 || keys[0] != robin || !slices.Contains(keys, sam) || !slices.Contains(keys, ella) || slices.ContainsFunc(v.Mine, func(r GuestRow) bool { return r.Invited || !r.Mine }) {
+	if len(keys) < 2 || keys[0] != robin || !slices.Contains(keys, sam) || slices.Contains(keys, ella) || slices.ContainsFunc(v.Mine, func(r GuestRow) bool { return r.Invited || !r.Mine }) {
 		t.Errorf("robin's family on an open event = %v", keys)
+	}
+	if rec := call(t, as(mia, mux), "POST", "/api/when/events", `{"title":"Parent coffee","start":"2026-10-29 08:30","tags":["Community","Parents","Jays"],"sharing":"Public","id":"coffee"}`); rec.Code != 200 {
+		t.Fatalf("adding the coffee: %d %s", rec.Code, rec.Body)
+	}
+	coffee := inviteView(t, robinH, "coffee")
+	if len(coffee.Mine) < 2 || coffee.Mine[0].Key != robin || !slices.ContainsFunc(coffee.Mine, func(r GuestRow) bool { return r.Key == host }) || slices.ContainsFunc(coffee.Mine, func(r GuestRow) bool { return r.Key == sam || r.Key == ella }) {
+		t.Errorf("robin's family on a parents' event = %+v", coffee.Mine)
+	}
+	call(t, as(mia, mux), "POST", "/api/when/events", `{"title":"Staff meeting","start":"2026-10-28 15:30","tags":["Staff"],"sharing":"Public","id":"staffmeeting"}`)
+	if v := inviteView(t, robinH, "staffmeeting"); len(v.Mine) != 0 {
+		t.Errorf("robin's family on a staff event = %+v", v.Mine)
 	}
 	if rec := call(t, robinH, "POST", "/api/when/invites/answer", `{"id":"parade","email":"`+sam+`","answer":"yes"}`); rec.Code != 204 {
 		t.Fatalf("robin answering for sam: %d %s", rec.Code, rec.Body)

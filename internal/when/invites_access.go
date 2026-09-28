@@ -19,6 +19,16 @@ func (e *Event) openToAll() bool {
 	return e.Sharing == SharingPublic && e.Source != SourceCelebrate && !e.Cancelled
 }
 
+func (e *Event) asks(p *who.Person) bool {
+	if slices.Contains(e.Tags, TagStaff) {
+		return p.IsStaff
+	}
+	if isAdult(p) {
+		return true
+	}
+	return !slices.Contains(e.Tags, TagParents) && (len(e.Classrooms) == 0 || slices.Contains(e.Classrooms, p.Classroom))
+}
+
 func (e *Event) keepsGuestList() bool {
 	return e.Source == SourceSheet || e.linked() || e.imported()
 }
