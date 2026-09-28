@@ -41,12 +41,23 @@ func Members(g Group, s Sources) []string {
 	return filter.Members(list(g), s)
 }
 
+var (
+	SeeAll       = access.Standing("loop.see-all")
+	ActAsManager = access.Acting("loop.act-as-manager")
+)
+
+var AdminAllowances = []access.Allowance{SeeAll, ActAsManager}
+
 func (g Group) Edits(v access.Actor) bool {
-	return v.Admin || g.Manages(v.Email)
+	return v.May(ActAsManager) || g.Manages(v.Email)
+}
+
+func (g Group) Sees(v access.Actor) bool {
+	return v.May(SeeAll) || g.Manages(v.Email)
 }
 
 func (g Group) VisibleTo(v access.Actor, s Sources) bool {
-	if g.Edits(v) || g.Visibility == VisibilityEveryone {
+	if g.Sees(v) || g.Visibility == VisibilityEveryone {
 		return true
 	}
 	return g.Visibility == VisibilityMembers && OnList(g, s, v.Email)
@@ -56,7 +67,7 @@ func (g Group) For(v access.Actor, s Sources) *Group {
 	if !g.VisibleTo(v, s) {
 		return nil
 	}
-	if !g.Edits(v) {
+	if !g.Sees(v) {
 		g.Rules = []Rule{}
 		g.Excluded = []Excluded{}
 	}

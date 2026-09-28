@@ -89,7 +89,15 @@ func (a app) sendAnswerNote(ctx context.Context, to, actor, email, answer string
 	}
 }
 
-func (a app) eventFor(email string, admin bool, id string) *Event {
+func (a app) eventFor(actor access.Actor, id string) *Event {
+	return a.lookup(actor.Email, id, func(e *Event) bool { return a.sees(actor, e) })
+}
+
+func (a app) anyEvent(email, id string) *Event {
+	return a.lookup(email, id, func(*Event) bool { return true })
+}
+
+func (a app) lookup(email, id string, sees func(*Event) bool) *Event {
 	model := a.cache.Model()
 	for _, e := range withLinked(model.Events, a.linked(email)) {
 		if e.ID == id || (e.Address != "" && e.Address == id) {
@@ -97,18 +105,18 @@ func (a app) eventFor(email string, admin bool, id string) *Event {
 		}
 	}
 	e := model.Event(id)
-	if e == nil || !a.sees(email, admin, e) {
+	if e == nil || !sees(e) {
 		return nil
 	}
 	return model.withInvitation(e)
 }
 
-func (a app) sees(email string, admin bool, e *Event) bool {
-	if admin || config.NormalizeEmail(e.AddedBy) == email || a.isHost(access.Actor{Email: email, Admin: admin}, e) {
+func (a app) sees(actor access.Actor, e *Event) bool {
+	if actor.May(SeeAll) || config.NormalizeEmail(e.AddedBy) == actor.Email || a.isHost(actor, e) {
 		return true
 	}
 	if e.Sharing == SharingInvited {
-		return a.cache.Model().Listed(a.directory(), email, e.ID)
+		return a.cache.Model().Listed(a.directory(), actor.Email, e.ID)
 	}
 	return true
 }

@@ -22,8 +22,17 @@ func (m *Model) find(id string) (*Activity, error) {
 	return act, nil
 }
 
-func requireAdmin(actor access.Actor) error {
-	if !actor.Admin {
+var (
+	SeeAll       = access.Standing("team.see-all")
+	Curate       = access.Standing("team.curate")
+	Configure    = access.Standing("team.configure")
+	ActAsCochair = access.Acting("team.act-as-cochair")
+)
+
+var AdminAllowances = []access.Allowance{SeeAll, Curate, Configure, ActAsCochair}
+
+func require(actor access.Actor, allowance access.Allowance) error {
+	if !actor.May(allowance) {
 		return access.Forbidden("admin access required")
 	}
 	return nil
@@ -197,11 +206,31 @@ type activitySave struct {
 	adding bool
 }
 
-func (m *Model) saveActivity(actor access.Actor, body activityBody) (activitySave, error) {
-	title := strings.TrimSpace(body.Title)
-	year := strings.TrimSpace(body.Year)
+var fieldColumns = map[string][]string{
+	"year": {"Year"}, "title": {"Title"}, "parent": {"Parent", store.OrderColumn}, "category": {"Category"}, "status": {"Status"},
+	"description": {"Description"}, "image": {"Image"}, "flyer": {"Flyer Image"}, "highlight": {"Highlight Headline", "Highlight Body", "Highlight Icon"},
+	"timing": {"Timing"}, "start": {"Start"}, "end": {"End"}, "location": {"Location"}, "spots": {"Spots"},
+	"coLeaderNeeded": {"Co-Leader Needed"}, "volunteersHidden": {"Volunteers Hidden"}, "volunteersComplete": {CompleteColumn, PriorityColumn},
+	"directSignUp": {"Direct Sign-Up"}, "priority": {PriorityColumn}, "prettyId": {"Pretty ID"}, "allowAdding": {"Allow Adding"},
+}
+
+func bodyOf(a *Activity) activityBody {
+	return activityBody{
+		ID: a.ID, Year: a.Year, Title: a.Title, Parent: a.Parent, Category: a.Category, Status: a.Status,
+		Description: a.Description, Image: a.Image, Flyer: a.Flyer, Highlight: a.Highlight, Timing: a.Timing, Start: a.Start, End: a.End,
+		Location: a.Location, Spots: a.Spots, CoLeaderNeeded: a.CoLeaderNeeded, VolunteersHidden: a.VolunteersHidden, VolunteersComplete: a.VolunteersComplete,
+		DirectSignUp: a.DirectSignUp, Priority: a.Priority, PrettyID: a.PrettyID, AllowAdding: a.AllowAdding,
+	}
+}
+
+func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activitySave, error) {
+	body := activityBody{}
+	if err := patch.into(&body); err != nil {
+		return activitySave{}, access.Invalid("bad request body")
+	}
 	adding := body.ID == ""
 	var current *Activity
+	approving := false
 	if !adding {
 		act, err := m.find(body.ID)
 		if err != nil {
@@ -209,16 +238,25 @@ func (m *Model) saveActivity(actor access.Actor, body activityBody) (activitySav
 		}
 		current = act
 		if !m.Edits(act, actor) {
-			return activitySave{}, access.Forbidden("only a co-chair or admin can edit this")
+			if !actor.May(Curate) {
+				return activitySave{}, access.Forbidden("only a co-chair or admin can edit this")
+			}
+			approving = true
+		}
+		body = bodyOf(current)
+		if err := patch.into(&body); err != nil {
+			return activitySave{}, access.Invalid("bad request body")
 		}
 	}
+	title := strings.TrimSpace(body.Title)
+	year := strings.TrimSpace(body.Year)
 	status := body.Status
 	switch {
-	case adding && !actor.Admin:
+	case adding && !actor.May(Curate):
 		status = StatusOpen
 	case adding && status == "":
 		status = StatusOpen
-	case !adding && !actor.Admin:
+	case !adding && !actor.May(Curate):
 		approver := current.Parent != "" && m.Runs(m.Activity(current.Parent), actor.Email)
 		switch {
 		case status == current.Status:
@@ -246,16 +284,16 @@ func (m *Model) saveActivity(actor access.Actor, body activityBody) (activitySav
 			}
 		}
 	}
-	if current != nil && !actor.Admin && parent != current.Parent && (parent == "" || !m.Runs(m.Activity(parent), actor.Email)) {
+	if current != nil && !actor.May(Curate) && parent != current.Parent && (parent == "" || !m.Runs(m.Activity(parent), actor.Email)) {
 		return activitySave{}, access.Forbidden("only an admin can move this there")
 	}
 	category := strings.TrimSpace(body.Category)
 	if category == UncategorizedID {
 		category = ""
 	}
-	editor := actor.Admin
+	editor := actor.May(Curate)
 	if parent != "" {
-		editor = editor || m.Runs(m.Activity(parent), actor.Email)
+		editor = actor.May(ActAsCochair) || m.Runs(m.Activity(parent), actor.Email)
 	}
 	policy := AddingNo
 	if parent != "" {
@@ -352,7 +390,7 @@ func (m *Model) saveActivity(actor access.Actor, body activityBody) (activitySav
 		"Direct Sign-Up": cells.YesNoCell(body.DirectSignUp), "Pretty ID": pretty, "Allow Adding": allowAdding,
 	}
 	priority := body.Priority
-	if !actor.Admin {
+	if !actor.May(Curate) {
 		priority = current != nil && current.Priority
 	}
 	if body.VolunteersComplete {
@@ -376,16 +414,27 @@ func (m *Model) saveActivity(actor access.Actor, body activityBody) (activitySav
 		if current.Parent != parent {
 			row[store.OrderColumn] = ""
 		}
-		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": id}, row))
+		cells := store.Row{}
+		for _, field := range patch.fields() {
+			for _, column := range fieldColumns[field] {
+				if value, ok := row[column]; ok {
+					cells[column] = value
+				}
+			}
+		}
+		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": id}, cells))
 	}
 	if displaced != nil {
 		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": displaced.ID}, store.Row{"Pretty ID": renamed}))
+	}
+	if approving && (!slices.Equal(patch.fields(), []string{"status"}) || current.Status != StatusPending || (status != StatusOpen && status != StatusHidden)) {
+		return activitySave{}, access.Forbidden("only a co-chair or admin can edit this")
 	}
 	return activitySave{ops: ops, id: id, title: title, year: year, status: status, action: action, adding: adding}, nil
 }
 
 func (m *Model) deleteActivity(actor access.Actor, id string) (*Activity, []store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Curate); err != nil {
 		return nil, nil, err
 	}
 	act, err := m.find(id)
@@ -482,11 +531,14 @@ func (m *Model) orderChildren(actor access.Actor, parentID string, order []strin
 }
 
 func (m *Model) editsCategories(actor access.Actor, eventID string) error {
-	if actor.Admin {
-		return nil
-	}
 	if eventID == "" {
+		if actor.May(Configure) {
+			return nil
+		}
 		return access.Forbidden("only an admin can change the page's categories")
+	}
+	if actor.May(ActAsCochair) {
+		return nil
 	}
 	event := m.Activity(eventID)
 	if event == nil || !m.Runs(event, actor.Email) {
@@ -615,7 +667,7 @@ func (c *Cache) deleteCategory(actor access.Actor, id string) (*Category, []stor
 }
 
 func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, string, []store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Curate); err != nil {
 		return nil, "", "", nil, err
 	}
 	act, err := m.find(id)
@@ -687,7 +739,7 @@ func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, 
 }
 
 func saveSettings(actor access.Actor, expenseFormURL, intro string) ([]store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Configure); err != nil {
 		return nil, err
 	}
 	values := map[string]string{ExpenseFormKey: strings.TrimSpace(expenseFormURL), IntroKey: strings.TrimSpace(intro)}
@@ -699,7 +751,7 @@ func saveSettings(actor access.Actor, expenseFormURL, intro string) ([]store.Op,
 }
 
 func saveNotify(actor access.Actor, wanted []string) (string, []store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Configure); err != nil {
 		return "", nil, err
 	}
 	kinds := []string{}
@@ -722,7 +774,7 @@ type redirectSave struct {
 }
 
 func (m *Model) saveRedirect(actor access.Actor, original, oldCell, newCell string) (redirectSave, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Configure); err != nil {
 		return redirectSave{}, err
 	}
 	old, to := redirectPath(oldCell), redirectTo(newCell)
@@ -766,7 +818,7 @@ func (m *Model) saveRedirect(actor access.Actor, original, oldCell, newCell stri
 }
 
 func (m *Model) deleteRedirect(actor access.Actor, old string) (*Redirect, []store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Configure); err != nil {
 		return nil, nil, err
 	}
 	redirect := m.redirect(redirectPath(old))

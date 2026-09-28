@@ -43,8 +43,12 @@ type visibilityEdit struct {
 	Rules      *[]filter.Rule `json:"rules"`
 }
 
+var Configure = access.Standing("home.configure")
+
+var AdminAllowances = []access.Allowance{Configure}
+
 func requireAdmin(actor access.Actor) error {
-	if !actor.Admin {
+	if !actor.May(Configure) {
 		return access.Forbidden("admin access required")
 	}
 	return nil

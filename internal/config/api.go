@@ -3,16 +3,15 @@ package config
 import (
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"heliosian/internal/access"
-	"heliosian/internal/auth"
 	"heliosian/internal/serve"
 )
 
 type api struct {
-	cache   *Cache
-	isAdmin func(email string) bool
+	cache  *Cache
+	actors access.Actors
+	held   func(email string) []access.Allowance
 }
 
 type colorBody struct {
@@ -29,8 +28,8 @@ type signOutBody struct {
 	Email string `json:"email"`
 }
 
-func Register(mux *http.ServeMux, cache *Cache, isAdmin func(email string) bool) {
-	a := api{cache: cache, isAdmin: isAdmin}
+func Register(mux *http.ServeMux, cache *Cache, actors access.Actors, held func(email string) []access.Allowance) {
+	a := api{cache: cache, actors: actors, held: held}
 	mux.HandleFunc("GET /api/config", serve.JSON(a.settings))
 	mux.HandleFunc("GET /api/config/super-admins", serve.JSON(a.superAdmins))
 	mux.HandleFunc("POST /api/config/stale-years", serve.JSON(a.setStaleYears))
@@ -40,17 +39,12 @@ func Register(mux *http.ServeMux, cache *Cache, isAdmin func(email string) bool)
 	mux.HandleFunc("POST /api/config/sign-out", serve.JSON(a.signOut))
 }
 
-func (a api) actor(r *http.Request, admin func(email string) bool) access.Actor {
-	email := strings.ToLower(auth.Email(r))
-	return access.Actor{Email: email, Admin: admin(email)}
-}
-
 func (a api) settingsActor(r *http.Request) access.Actor {
-	return a.actor(r, a.isAdmin)
+	return a.actors(r, a.held)
 }
 
 func (a api) superActor(r *http.Request) access.Actor {
-	return a.actor(r, a.cache.IsSuperAdmin)
+	return a.actors(r, a.cache.SuperHeld)
 }
 
 func (a api) settings(r *http.Request, _ serve.None) (*Settings, error) {
@@ -58,7 +52,7 @@ func (a api) settings(r *http.Request, _ serve.None) (*Settings, error) {
 }
 
 func (a api) superAdmins(r *http.Request, _ serve.None) (map[string][]string, error) {
-	if err := requireAdmin(a.superActor(r)); err != nil {
+	if err := require(a.superActor(r), ManageSuperAdmins); err != nil {
 		return nil, err
 	}
 	return map[string][]string{"superAdmins": a.cache.SuperAdmins()}, nil

@@ -1,7 +1,7 @@
-import {state, me, isSystemAdmin, applySuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown} from './state.js';
+import {state, me, isSystemAdmin, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
-import {navigate, render, setPath} from '/router.js';
+import {navigate, load, setPath} from '/router.js';
 import {openParty} from './edit.js';
 
 const primary = [
@@ -167,10 +167,7 @@ export function initChrome() {
     name: 'Helios Celebrate',
     me,
     isSystemAdmin,
-    onSuper: () => {
-      applySuperEdit();
-      render();
-    },
+    onSuper: load,
     fillNav,
     fillTabbar,
     search: {

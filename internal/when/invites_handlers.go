@@ -117,7 +117,6 @@ type Counts struct {
 
 type InviteView struct {
 	Host           bool          `json:"host"`
-	AdminHost      bool          `json:"adminHost,omitempty"`
 	MoveEverywhere bool          `json:"moveEverywhere,omitempty"`
 	Poster         string        `json:"poster,omitempty"`
 	MayInvite      bool          `json:"mayInvite,omitempty"`
@@ -247,12 +246,11 @@ func (a app) invitesView(r *http.Request, _ serve.None) (InviteView, error) {
 	}
 	model := a.cache.Model()
 	inv := model.Invitations[e.ID]
-	adminHost := host && !slices.Contains(a.hostsOf(e), viewer)
 	poster := ""
 	if e.Source == SourceSheet && !e.PosterLeft {
 		poster = a.directory().Resolve(config.NormalizeEmail(e.AddedBy))
 	}
-	view := InviteView{Host: host, AdminHost: adminHost, Poster: poster, MayInvite: host || e.Sharing == SharingPublic || model.Invited(a.directory(), viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
+	view := InviteView{Host: host, Poster: poster, MayInvite: host || e.Sharing == SharingPublic || model.Invited(a.directory(), viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
 	view.MoveEverywhere = host && view.Party && a.celebrate.IsAdmin(viewer)
 	if inv != nil && inv.Flyer != "" {
 		view.Flyer = flyerPath(e.ID)

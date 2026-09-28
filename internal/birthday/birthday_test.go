@@ -75,7 +75,11 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 
 func view(t *testing.T, cache *Cache, as string) View {
 	t.Helper()
-	return Render(cache.Model(), directory, access.Actor{Email: as, Admin: as == admin}, now())
+	var held []access.Allowance
+	if as == admin {
+		held = AdminAllowances
+	}
+	return Render(cache.Model(), directory, directory().ActorOf(as, held, true), now())
 }
 
 func find(list []StaffView, email string) *StaffView {

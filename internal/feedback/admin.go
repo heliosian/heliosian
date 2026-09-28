@@ -27,11 +27,12 @@ type admin struct {
 	cache      *Cache
 	bucket     *blob.Bucket
 	filer      IssueFiler
+	actors     access.Actors
 	superAdmin func(string) bool
 }
 
-func RegisterAdmin(mux *http.ServeMux, cache *Cache, bucket *blob.Bucket, filer IssueFiler, superAdmin func(string) bool) {
-	a := admin{cache: cache, bucket: bucket, filer: filer, superAdmin: superAdmin}
+func RegisterAdmin(mux *http.ServeMux, cache *Cache, bucket *blob.Bucket, filer IssueFiler, actors access.Actors, superAdmin func(string) bool) {
+	a := admin{cache: cache, bucket: bucket, filer: filer, actors: actors, superAdmin: superAdmin}
 	mux.HandleFunc("GET /api/admin/feedback", serve.JSON(a.list))
 	mux.HandleFunc("GET /api/admin/feedback/{id}", serve.JSON(a.one))
 	mux.HandleFunc("GET /api/admin/feedback/{id}/screenshot", a.screenshot)
@@ -97,7 +98,7 @@ func summaryOf(r Report) summary {
 }
 
 func (a admin) list(r *http.Request, _ serve.None) (listView, error) {
-	if err := requireSuperAdmin(actorOf(r, a.superAdmin)); err != nil {
+	if err := requireSuperAdmin(actorOf(r, a.actors, a.superAdmin)); err != nil {
 		return listView{}, err
 	}
 	out := []summary{}
@@ -108,7 +109,7 @@ func (a admin) list(r *http.Request, _ serve.None) (listView, error) {
 }
 
 func (a admin) one(r *http.Request, _ serve.None) (detail, error) {
-	if err := requireSuperAdmin(actorOf(r, a.superAdmin)); err != nil {
+	if err := requireSuperAdmin(actorOf(r, a.actors, a.superAdmin)); err != nil {
 		return detail{}, err
 	}
 	report, ok := a.cache.Report(r.PathValue("id"))
@@ -135,7 +136,7 @@ func (a admin) one(r *http.Request, _ serve.None) (detail, error) {
 }
 
 func (a admin) screenshot(w http.ResponseWriter, r *http.Request) {
-	if err := requireSuperAdmin(actorOf(r, a.superAdmin)); err != nil {
+	if err := requireSuperAdmin(actorOf(r, a.actors, a.superAdmin)); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
@@ -159,7 +160,7 @@ func (a admin) screenshot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a admin) file(r *http.Request, in draft) (map[string]string, error) {
-	actor := actorOf(r, a.superAdmin)
+	actor := actorOf(r, a.actors, a.superAdmin)
 	report, err := a.cache.Model().filing(actor, r.PathValue("id"))
 	if err != nil {
 		return nil, err
@@ -205,7 +206,7 @@ func (a admin) markFiled(ctx context.Context, actor access.Actor, id, issue stri
 }
 
 func (a admin) dismiss(r *http.Request, _ serve.None) (serve.None, error) {
-	actor := actorOf(r, a.superAdmin)
+	actor := actorOf(r, a.actors, a.superAdmin)
 	ops, err := a.cache.Model().dismissed(actor, r.PathValue("id"), time.Now())
 	if err != nil {
 		return serve.None{}, err

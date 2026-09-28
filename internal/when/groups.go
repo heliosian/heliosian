@@ -180,8 +180,7 @@ func (a app) ticketGuests(g InviteGroup) map[string]string {
 }
 
 func (a app) groupOptions(r *http.Request, _ serve.None) (filter.Options, error) {
-	actor, _ := a.who(r)
-	return filter.OptionsFor(a.sources(), actor), nil
+	return filter.OptionsFor(a.sources(), a.actor(r).Email), nil
 }
 
 type ruleBody struct {
@@ -311,7 +310,8 @@ func (a app) sweepEvent(ctx context.Context, e *Event) {
 func (a app) sweep(ctx context.Context) {
 	for id, groups := range a.cache.Model().Groups {
 		if len(groups) > 0 {
-			a.sweepEvent(ctx, a.sweptEvent(a.as(groups[0].AddedBy), id))
+			adder := groups[0].AddedBy
+			a.sweepEvent(ctx, a.sweptEvent(a.directory().ActorOf(adder, a.cache.Held(adder), true), id))
 		}
 	}
 }

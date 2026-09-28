@@ -45,7 +45,7 @@ func photoOps(email string, before []photoRef, after []photoRef) []store.Op {
 }
 
 func mayAdminister(actor access.Actor) error {
-	if !actor.Admin {
+	if !actor.May(Administer) {
 		return access.Forbidden("admin access required")
 	}
 	return nil
@@ -313,12 +313,8 @@ func (m *Model) setImage(actor access.Actor, kind, name, image string) ([]store.
 	return []store.Op{store.Upsert(imagesTab, store.Row{imageKind: kind, imageName: name}, store.Row{imageImage: image})}, nil
 }
 
-func superEditing(actor access.Actor, cookie bool) bool {
-	return actor.Admin && cookie
-}
-
-func (m *Model) mayEdit(actor access.Actor, superEdit bool, target, key string) error {
-	if superEditing(actor, superEdit) || m.familyMayEdit(actor.Email, target, key) {
+func (m *Model) mayEdit(actor access.Actor, target, key string) error {
+	if actor.May(EditAnyone) || m.familyMayEdit(actor.Email, target, key) {
 		return nil
 	}
 	return access.Forbidden("not allowed to edit this record")
@@ -344,9 +340,9 @@ func (m *Model) familyMayEdit(me, target, key string) bool {
 	return false
 }
 
-func (m *Model) editField(actor access.Actor, superEdit bool, field, key, value string) ([]store.Op, error) {
+func (m *Model) editField(actor access.Actor, field, key, value string) ([]store.Op, error) {
 	if field == "family-photo-caption" {
-		if err := m.mayEdit(actor, superEdit, "family", key); err != nil {
+		if err := m.mayEdit(actor, "family", key); err != nil {
 			return nil, err
 		}
 		family, ok := m.Families[key]
@@ -359,7 +355,7 @@ func (m *Model) editField(actor access.Actor, superEdit bool, field, key, value 
 		return []store.Op{setFamily(family.email, store.Row{"Family Photo Caption": clearable(value)})}, nil
 	}
 	if field == "family-pronunciation" {
-		if err := m.mayEdit(actor, superEdit, "family", key); err != nil {
+		if err := m.mayEdit(actor, "family", key); err != nil {
 			return nil, err
 		}
 		if value != "" {
@@ -378,7 +374,7 @@ func (m *Model) editField(actor access.Actor, superEdit bool, field, key, value 
 	cells := store.Row{}
 	switch field {
 	case "preferred-name":
-		if err := m.mayEdit(actor, superEdit, "person", key); err != nil {
+		if err := m.mayEdit(actor, "person", key); err != nil {
 			return nil, err
 		}
 		if value == "" || len(value) > 80 {
@@ -391,7 +387,7 @@ func (m *Model) editField(actor access.Actor, superEdit bool, field, key, value 
 		cells["Preferred Name"] = value
 		cells["Full Name"] = value + " " + surname(base)
 	case "pronouns":
-		if err := m.mayEdit(actor, superEdit, "person", key); err != nil {
+		if err := m.mayEdit(actor, "person", key); err != nil {
 			return nil, err
 		}
 		if len(value) > 40 {
@@ -399,7 +395,7 @@ func (m *Model) editField(actor access.Actor, superEdit bool, field, key, value 
 		}
 		cells["Pronouns"] = strings.ToLower(value)
 	case "pronunciation":
-		if err := m.mayEdit(actor, superEdit, "person", key); err != nil {
+		if err := m.mayEdit(actor, "person", key); err != nil {
 			return nil, err
 		}
 		if value != "" {
@@ -412,21 +408,21 @@ func (m *Model) editField(actor access.Actor, superEdit bool, field, key, value 
 	return []store.Op{setOverride(key, cells)}, nil
 }
 
-func (m *Model) setFacts(actor access.Actor, superEdit bool, key, facts string) ([]store.Op, error) {
+func (m *Model) setFacts(actor access.Actor, key, facts string) ([]store.Op, error) {
 	if key == "" || len(facts) > 4000 {
 		return nil, access.Invalid("bad facts request")
 	}
-	if err := m.mayEdit(actor, superEdit, "person", key); err != nil {
+	if err := m.mayEdit(actor, "person", key); err != nil {
 		return nil, err
 	}
 	return []store.Op{setOverride(key, store.Row{"Facts": facts, "Facts Updated": today()})}, nil
 }
 
-func (m *Model) upload(actor access.Actor, superEdit bool, target, kind, key, name string) ([]store.Op, error) {
+func (m *Model) upload(actor access.Actor, target, kind, key, name string) ([]store.Op, error) {
 	if (target != "person" && target != "family") || (kind != "photo" && kind != "pronunciation") || key == "" {
 		return nil, access.Invalid("bad upload request")
 	}
-	if err := m.mayEdit(actor, superEdit, target, key); err != nil {
+	if err := m.mayEdit(actor, target, key); err != nil {
 		return nil, err
 	}
 	if target == "family" {
@@ -458,12 +454,12 @@ func (m *Model) upload(actor access.Actor, superEdit bool, target, kind, key, na
 	return append(photoOps(key, before, after), setOverride(key, store.Row{"Photo Updated": today()})), nil
 }
 
-func (m *Model) reorderPhotos(actor access.Actor, superEdit bool, key string, names []string) ([]store.Op, error) {
+func (m *Model) reorderPhotos(actor access.Actor, key string, names []string) ([]store.Op, error) {
 	person := m.Person(key)
 	if person == nil {
 		return nil, access.Invalid("no such person")
 	}
-	if err := m.mayEdit(actor, superEdit, "person", key); err != nil {
+	if err := m.mayEdit(actor, "person", key); err != nil {
 		return nil, err
 	}
 	if !isPhotoSubset(names, person.Photos) {
@@ -477,7 +473,7 @@ func (m *Model) reorderPhotos(actor access.Actor, superEdit bool, key string, na
 	return photoOps(key, before, after), nil
 }
 
-func (m *Model) cropPhoto(actor access.Actor, superEdit bool, target, key, name, cropName string) ([]store.Op, error) {
+func (m *Model) cropPhoto(actor access.Actor, target, key, name, cropName string) ([]store.Op, error) {
 	var person *Person
 	var family Family
 	switch target {
@@ -495,7 +491,7 @@ func (m *Model) cropPhoto(actor access.Actor, superEdit bool, target, key, name,
 	default:
 		return nil, access.Invalid("bad crop request")
 	}
-	if err := m.mayEdit(actor, superEdit, target, key); err != nil {
+	if err := m.mayEdit(actor, target, key); err != nil {
 		return nil, err
 	}
 	if target == "family" {

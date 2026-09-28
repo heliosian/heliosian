@@ -38,12 +38,12 @@ type activityCard struct {
 
 func (v *viewer) activityCard(raw *team.Activity) activityCard {
 	a := v.team.ActivityFor(raw, v.teamAs)
-	editor := v.team.Edits(a, v.teamAs)
+	sees := v.team.Sees(a, v.teamAs)
 	start, end, from := v.dates(a)
 	c := activityCard{
 		ID: a.ID, Title: a.Title, Status: a.Status, Timing: a.Timing, Start: start, End: end, When: v.timing(start, end), DatesFrom: from, Past: v.over(a), Location: a.Location, Description: clip(a.Description, 400),
 		Spots: a.Spots, Taken: a.Taken, Full: a.VolunteersComplete || (a.Spots > 0 && a.Taken >= a.Spots), NeedsCoLead: a.CoLeaderNeeded,
-		CoChairs: []string{}, Hidden: a.VolunteersHidden && !editor, Link: teamBase + v.team.PathOf(a),
+		CoChairs: []string{}, Hidden: a.VolunteersHidden && !sees, Link: teamBase + v.team.PathOf(a),
 	}
 	if a.Parent != "" {
 		if parent := v.team.Activity(a.Parent); parent != nil {

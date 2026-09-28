@@ -73,20 +73,19 @@ func thumb(url string) string {
 }
 
 type User struct {
-	Email        string            `json:"email"`
-	Name         string            `json:"name"`
-	Initial      string            `json:"initial"`
-	PhotoURL     string            `json:"photoUrl,omitempty"`
-	IsAdmin      bool              `json:"isAdmin"`
-	IsSuperAdmin bool              `json:"isSuperAdmin,omitempty"`
-	IsStudent    bool              `json:"isStudent,omitempty"`
-	IsParent     bool              `json:"isParent,omitempty"`
-	IsStaff      bool              `json:"isStaff,omitempty"`
-	Students     []Person          `json:"students"`
-	Classrooms   []string          `json:"classrooms"`
-	Saved        *Setting          `json:"saved,omitempty"`
-	Home         Feed              `json:"home"`
-	Answers      map[string]string `json:"answers,omitempty"`
+	Email      string            `json:"email"`
+	Name       string            `json:"name"`
+	Initial    string            `json:"initial"`
+	PhotoURL   string            `json:"photoUrl,omitempty"`
+	IsAdmin    bool              `json:"isAdmin"`
+	IsStudent  bool              `json:"isStudent,omitempty"`
+	IsParent   bool              `json:"isParent,omitempty"`
+	IsStaff    bool              `json:"isStaff,omitempty"`
+	Students   []Person          `json:"students"`
+	Classrooms []string          `json:"classrooms"`
+	Saved      *Setting          `json:"saved,omitempty"`
+	Home       Feed              `json:"home"`
+	Answers    map[string]string `json:"answers,omitempty"`
 }
 
 type View struct {
@@ -145,7 +144,7 @@ func (m *Model) EventsFor(v access.Actor, directory *who.Model, linked []Linked)
 		carried[e.ID] = true
 	}
 	for _, e := range m.Pending {
-		if !e.Cancelled && (v.Admin || config.NormalizeEmail(e.AddedBy) == config.NormalizeEmail(v.Email)) && !carried[e.ID] {
+		if !e.Cancelled && (v.May(SeeAll) || config.NormalizeEmail(e.AddedBy) == config.NormalizeEmail(v.Email)) && !carried[e.ID] {
 			events = append(events, m.withInvitation(e))
 		}
 	}
@@ -159,7 +158,7 @@ func (m *Model) ResponsesFor(v access.Actor, directory *who.Model) map[string]*R
 			mine[e.ID] = true
 		}
 	}
-	if !v.Admin && len(mine) == 0 {
+	if !v.May(SeeAll) && len(mine) == 0 {
 		return nil
 	}
 	responses := map[string]*Responses{}
@@ -169,7 +168,7 @@ func (m *Model) ResponsesFor(v access.Actor, directory *who.Model) map[string]*R
 			person = personView(directory, p)
 		}
 		for id, answer := range answers {
-			if !v.Admin && !mine[id] {
+			if !v.May(SeeAll) && !mine[id] {
 				continue
 			}
 			r := responses[id]
@@ -199,7 +198,7 @@ func (m *Model) ResponsesFor(v access.Actor, directory *who.Model) map[string]*R
 }
 
 func Render(model *Model, directory *who.Model, settings *config.Settings, as access.Actor, now time.Time, linked []Linked) View {
-	email, admin := as.Email, as.Admin
+	email, admin := as.Email, as.May(SeeAll)
 	me := directory.Person(email)
 	kids := students(directory, email)
 	user := User{Email: email, Name: cells.DisplayName(email), IsAdmin: admin, Students: []Person{}, Classrooms: classroomsOf(model, me, kids)}

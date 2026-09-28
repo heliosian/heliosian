@@ -11,8 +11,7 @@ export function applyModel(model) {
   const add = (list, parent) => {
     for (const a of list) {
       index.set(a.id, a);
-      a.canEdit = Boolean(a.runs) || isAdmin();
-      a.own = {start: a.start || '', end: a.end || '', timing: a.timing || ''};
+      a.own ={start: a.start || '', end: a.end || '', timing: a.timing || ''};
       a.whenFrom = null;
       if (parent && !a.own.start && !a.own.timing) {
         a.start = parent.start || '';

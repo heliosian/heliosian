@@ -24,6 +24,7 @@ import (
 	"heliosian/internal/intercept"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 	"heliosian/internal/testkit/mailtest"
 )
 
@@ -258,7 +259,7 @@ func pngBytes(t *testing.T) []byte {
 func intakeServer(t *testing.T, cache *Cache, bucket *blob.Bucket, told chan Report) func(report string, shot []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, "calendar", func() string { return "Helios When" }, func(string) bool { return true },
+	Register(mux, "calendar", func() string { return "Helios When" }, testkit.Actors, func(string) bool { return true },
 		NewIntake(cache, bucket, func(r Report, _ []mail.Attachment) { told <- r }))
 	h := auth.Fixed("Jordan.Whitfield@example.org", mux)
 	return func(report string, shot []byte) *httptest.ResponseRecorder {
@@ -428,7 +429,7 @@ func TestCacheSavesAndHandles(t *testing.T) {
 		t.Errorf("not readable back: %+v %v", got, ok)
 	}
 	now := time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC)
-	superAdmin := access.Actor{Email: "admin@example.org", Admin: true}
+	superAdmin := access.Actor{Email: "admin@example.org", Allowances: access.Grant([]access.Allowance{Triage}, false)}
 	commit := func(ops []store.Op, err error) {
 		t.Helper()
 		if err != nil {
@@ -473,7 +474,7 @@ func TestCacheSavesAndHandles(t *testing.T) {
 func adminServer(t *testing.T, cache *Cache, bucket *blob.Bucket, filer IssueFiler, who string) http.Handler {
 	t.Helper()
 	mux := http.NewServeMux()
-	RegisterAdmin(mux, cache, bucket, filer, func(email string) bool { return email == "admin@example.org" })
+	RegisterAdmin(mux, cache, bucket, filer, testkit.Actors, func(email string) bool { return email == "admin@example.org" })
 	return auth.Fixed(who, mux)
 }
 

@@ -44,7 +44,7 @@ func (a app) changeFeed(actor access.Actor, body feedBody) ([]store.Op, store.Ro
 	if f == nil {
 		return nil, nil, access.Missing("no such feed")
 	}
-	if f.Email != actor.Email && !actor.Admin {
+	if f.Email != actor.Email && !actor.May(FeedsForAnyone) {
 		return nil, nil, access.Forbidden("only the person who made a feed, or an admin, can change it")
 	}
 	cells := feedCells(body)
@@ -56,7 +56,7 @@ func (a app) dropFeed(actor access.Actor, token string) ([]store.Op, string, err
 	if f == nil {
 		return nil, "", access.Missing("no such feed")
 	}
-	if f.Email != actor.Email && !actor.Admin {
+	if f.Email != actor.Email && !actor.May(FeedsForAnyone) {
 		return nil, "", access.Forbidden("only the person who made a feed, or an admin, can remove it")
 	}
 	return []store.Op{store.Delete(FeedsTab, store.Row{"Token": f.Token})}, f.Name, nil
@@ -133,8 +133,17 @@ func (a app) forgetViewOps(actor access.Actor) []store.Op {
 	return []store.Op{store.Update(SettingsTab, store.Row{"Email": actor.Email}, store.Row{"Classrooms": "", "Categories": "", "Saved": ""})}
 }
 
+var (
+	SeeAll         = access.Standing("when.see-all")
+	Curate         = access.Standing("when.curate")
+	ActAsHost      = access.Acting("when.act-as-host")
+	FeedsForAnyone = access.Acting("when.feeds-for-anyone")
+)
+
+var AdminAllowances = []access.Allowance{SeeAll, Curate, ActAsHost, FeedsForAnyone}
+
 func adminOnly(actor access.Actor) error {
-	if !actor.Admin {
+	if !actor.May(Curate) {
 		return access.Forbidden("only a calendar admin can do that")
 	}
 	return nil
@@ -172,7 +181,7 @@ func (a app) newEvents(actor access.Actor, body eventBody) ([]store.Op, []string
 			return nil, nil, false, access.Invalid("that web address is taken")
 		}
 	}
-	if !actor.Admin {
+	if !actor.May(Curate) {
 		body.RepeatTimes, body.DayType = 0, ""
 	}
 	pending := body.Sharing == SharingPublic
@@ -252,7 +261,7 @@ func (a app) moveOps(actor access.Actor, id, start, end string) ([]store.Op, *Ev
 }
 
 func (a app) tagOps(actor access.Actor, tags []tagBody) ([]store.Op, int, error) {
-	if !actor.Admin {
+	if !actor.May(Curate) {
 		return nil, 0, access.Forbidden("only a calendar admin can change the categories")
 	}
 	current := map[string]Tag{}
@@ -704,7 +713,7 @@ func (a app) answerOps(actor access.Actor, email, id, answer, via string) ([]sto
 	if answer != "" && !isAnswer(answer) {
 		return nil, nil, access.Invalid("an answer is yes, no, maybe, or hidden")
 	}
-	e := a.eventFor(email, false, id)
+	e := a.eventFor(access.Actor{Email: email}, id)
 	if e == nil {
 		return nil, nil, access.Invalid(notOnCalendar)
 	}
@@ -908,7 +917,7 @@ func (a app) fillOps(actor access.Actor, e *Event, g InviteGroup, wait bool) ([]
 }
 
 func (a app) sweptEvent(adder access.Actor, id string) *Event {
-	e := a.eventFor(adder.Email, false, id)
+	e := a.eventFor(access.Actor{Email: adder.Email}, id)
 	if e == nil || !a.isHost(adder, e) {
 		return nil
 	}

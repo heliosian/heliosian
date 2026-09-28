@@ -49,7 +49,7 @@ func (a app) extPage(w http.ResponseWriter, r *http.Request) {
 	}
 	head := ""
 	if inv, ok := a.cache.Model().InviteByToken(r.PathValue("token")); ok {
-		if e := a.cache.Model().invitedEvent(a.eventFor(inv.Email, false, inv.EventID)); e != nil {
+		if e := a.cache.Model().invitedEvent(a.eventFor(access.Actor{Email: inv.Email}, inv.EventID)); e != nil {
 			origin := "https://" + r.Host
 			parts := []string{when(e)}
 			if e.Location != "" {

@@ -5,14 +5,43 @@ import (
 	"net/http"
 )
 
-type Actor struct {
-	Email     string
-	Admin     bool
-	Household map[string]bool
+type Allowance struct {
+	Name   string
+	Acting bool
 }
+
+func Standing(name string) Allowance {
+	return Allowance{Name: name}
+}
+
+func Acting(name string) Allowance {
+	return Allowance{Name: name, Acting: true}
+}
+
+func Grant(held []Allowance, hat bool) map[Allowance]bool {
+	out := map[Allowance]bool{}
+	for _, a := range held {
+		if hat || !a.Acting {
+			out[a] = true
+		}
+	}
+	return out
+}
+
+type Actor struct {
+	Email      string
+	Household  map[string]bool
+	Allowances map[Allowance]bool
+}
+
+type Actors func(r *http.Request, held func(email string) []Allowance) Actor
 
 func System(name string) Actor {
 	return Actor{Email: name}
+}
+
+func (a Actor) May(allowance Allowance) bool {
+	return a.Allowances[allowance]
 }
 
 func (a Actor) Mine(email string) bool {

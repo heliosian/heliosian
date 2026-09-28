@@ -16,7 +16,7 @@ func (e *Event) keepsGuestList() bool {
 }
 
 func (a app) findEvent(actor access.Actor, id string) (*Event, error) {
-	e := a.eventFor(actor.Email, actor.Admin, strings.TrimSpace(id))
+	e := a.eventFor(actor, strings.TrimSpace(id))
 	if e == nil {
 		return nil, access.Missing(notOnCalendar)
 	}
@@ -65,7 +65,7 @@ func (a app) hostsOf(e *Event) []string {
 }
 
 func (a app) isHost(actor access.Actor, e *Event) bool {
-	return slices.Contains(a.hostsOf(e), actor.Email) || (actor.Admin && e.keepsGuestList())
+	return slices.Contains(a.hostsOf(e), actor.Email) || (actor.May(ActAsHost) && e.keepsGuestList())
 }
 
 func (a app) guestListEvent(actor access.Actor, id string) (*Event, error) {

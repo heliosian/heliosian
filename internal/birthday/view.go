@@ -64,12 +64,11 @@ type YearView struct {
 }
 
 type User struct {
-	Email        string `json:"email"`
-	Name         string `json:"name"`
-	Initial      string `json:"initial"`
-	PhotoURL     string `json:"photoUrl,omitempty"`
-	IsAdmin      bool   `json:"isAdmin"`
-	IsSuperAdmin bool   `json:"isSuperAdmin,omitempty"`
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	Initial  string `json:"initial"`
+	PhotoURL string `json:"photoUrl,omitempty"`
+	IsAdmin  bool   `json:"isAdmin"`
 }
 
 type TeamView struct {
@@ -143,7 +142,7 @@ func (v viewer) staff(model *Model, b *Birthday, year Year, today time.Time) Sta
 }
 
 func Render(model *Model, directory func() *who.Model, as access.Actor, now time.Time) View {
-	email, admin := as.Email, as.Admin
+	email, admin := as.Email, as.May(Configure)
 	people := directory()
 	v := viewer{directory: people}
 	me, _ := v.person(email)

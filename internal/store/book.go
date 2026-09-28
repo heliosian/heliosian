@@ -297,7 +297,7 @@ func apply(rows []Row, op Op) ([]Row, []change) {
 		matched = true
 		updated := maps.Clone(row)
 		data.Fill(updated, op.cells)
-		if maps.Equal(updated, row) {
+		if len(differing(row, updated)) == 0 {
 			continue
 		}
 		next[i] = updated
@@ -330,22 +330,29 @@ func entries(stamp, actor, real string, tab Tab, c change) []Row {
 	if c.before == nil {
 		return []Row{{"Timestamp": stamp, "Actor": actor, "Real Actor": real, "Action": action, "Tab": tab.Name, "Key": strings.Join(key, "; ")}}
 	}
-	columns := slices.Sorted(maps.Keys(c.before))
-	for column := range c.after {
+	out := []Row{}
+	for _, column := range differing(c.before, c.after) {
+		out = append(out, Row{
+			"Timestamp": stamp, "Actor": actor, "Real Actor": real, "Action": action,
+			"Tab": tab.Name, "Key": strings.Join(key, "; "), "Column": column, "Previous": c.before[column],
+		})
+	}
+	return out
+}
+
+func differing(before, after Row) []string {
+	columns := slices.Sorted(maps.Keys(before))
+	for column := range after {
 		if !slices.Contains(columns, column) {
 			columns = append(columns, column)
 		}
 	}
 	slices.Sort(columns)
-	out := []Row{}
+	out := []string{}
 	for _, column := range columns {
-		if c.before[column] == c.after[column] {
-			continue
+		if before[column] != after[column] {
+			out = append(out, column)
 		}
-		out = append(out, Row{
-			"Timestamp": stamp, "Actor": actor, "Real Actor": real, "Action": action,
-			"Tab": tab.Name, "Key": strings.Join(key, "; "), "Column": column, "Previous": c.before[column],
-		})
 	}
 	return out
 }

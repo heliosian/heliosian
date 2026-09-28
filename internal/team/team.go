@@ -1,14 +1,15 @@
 package team
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/admins"
-	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/config"
 	"heliosian/internal/imagesearch"
@@ -73,7 +74,7 @@ func Register(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("POST /api/team/copy", serve.JSON(a.copyActivity))
 	mux.HandleFunc("POST /api/team/settings", serve.JSON(a.saveSettings))
 	mux.HandleFunc("POST /api/team/notify", serve.JSON(a.saveNotify))
-	admins.Register(mux, "team", a.cache.List, a.actor, a.adminState)
+	admins.Register(mux, a.cache.List, a.actor, a.adminState)
 	mux.HandleFunc("POST /api/team/redirect", serve.JSON(a.saveRedirect))
 	mux.HandleFunc("DELETE /api/team/redirect", serve.JSON(a.deleteRedirect))
 }
@@ -101,9 +102,7 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) actor(r *http.Request) access.Actor {
-	directory := a.directory()
-	email := directory.Resolve(strings.ToLower(auth.Email(r)))
-	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email), Household: directory.Family(email)}
+	return a.directory().Actor(r, a.cache.Held)
 }
 
 func today() string {
@@ -114,7 +113,6 @@ func (a app) model(r *http.Request, _ serve.None) (View, error) {
 	actor := a.actor(r)
 	view := RenderWith(a.cache.Model(), a.directory(), a.settings(), a.rsvps, a.lists, actor, time.Now().In(when.Location))
 	view.ImageSearch = a.search.On()
-	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(actor.Email)
 	return view, nil
 }
 
@@ -186,9 +184,30 @@ type activityBody struct {
 	TakeOver           bool       `json:"takeOver"`
 }
 
-func (a app) saveActivity(r *http.Request, body activityBody) (serve.None, error) {
+type activityPatch map[string]json.RawMessage
+
+func (p activityPatch) into(body *activityBody) error {
+	raw, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(raw, body)
+}
+
+func (p activityPatch) fields() []string {
+	out := []string{}
+	for field := range p {
+		if field != "id" {
+			out = append(out, field)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+func (a app) saveActivity(r *http.Request, patch activityPatch) (serve.None, error) {
 	actor := a.actor(r)
-	s, err := a.cache.Model().saveActivity(actor, body)
+	s, err := a.cache.Model().saveActivity(actor, patch)
 	if err != nil {
 		return serve.None{}, err
 	}

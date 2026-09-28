@@ -36,15 +36,23 @@ func (m *Model) requireTeam(actor access.Actor) error {
 	return nil
 }
 
+var (
+	ActAsTeam     = access.Standing("birthday.act-as-team")
+	Configure     = access.Standing("birthday.configure")
+	DeleteAnyNote = access.Acting("birthday.delete-any-note")
+)
+
+var AdminAllowances = []access.Allowance{ActAsTeam, Configure, DeleteAnyNote}
+
 func requireAdmin(actor access.Actor) error {
-	if !actor.Admin {
+	if !actor.May(Configure) {
 		return access.Forbidden("admin access required")
 	}
 	return nil
 }
 
 func requireSystem(actor access.Actor, name string) error {
-	if actor.Admin || actor.Email != name {
+	if len(actor.Allowances) > 0 || actor.Email != name {
 		return access.Forbidden("only %s may make this change", name)
 	}
 	return nil
@@ -240,14 +248,14 @@ func (m *Model) deleteNote(actor access.Actor, given Note) ([]store.Op, string, 
 		return nil, "", err
 	}
 	match := store.Row{"Email": config.NormalizeEmail(given.Email), "Note": given.Note, "Added By": config.NormalizeEmail(given.AddedBy), "Added": given.Added}
-	if !actor.Admin && match["Added By"] != actor.Email {
+	if !actor.May(DeleteAnyNote) && match["Added By"] != actor.Email {
 		return nil, "", access.Forbidden("only the note's author or an admin can remove it")
 	}
 	for _, n := range m.Notes {
 		if !sameCell(n.Email, match["Email"]) || !sameCell(n.Note, match["Note"]) || !sameCell(n.AddedBy, match["Added By"]) || !sameCell(n.Added, match["Added"]) {
 			continue
 		}
-		if !actor.Admin && !sameCell(n.AddedBy, actor.Email) {
+		if !actor.May(DeleteAnyNote) && !sameCell(n.AddedBy, actor.Email) {
 			return nil, "", access.Forbidden("only the note's author or an admin can remove it")
 		}
 	}
@@ -269,7 +277,7 @@ func (m *Model) saveCharity(actor access.Actor, edit charityEdit) ([]store.Op, C
 	}
 	allowed, why := true, ""
 	switch {
-	case actor.Admin:
+	case actor.May(Configure):
 		allowed, why = edit.Allowed, strings.TrimSpace(edit.WhyNotAllowed)
 	case !adding:
 		allowed, why = current.Allowed, current.WhyNotAllowed

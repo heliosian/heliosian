@@ -1,7 +1,7 @@
-import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, applyModel, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
+import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
-import {navigate, render, setPath} from '/router.js';
+import {navigate, render, load, setPath} from '/router.js';
 import {openActivity} from './edit.js';
 
 const primary = [
@@ -235,8 +235,7 @@ export function initChrome() {
       if (!isAdmin()) {
         state.showHidden = false;
       }
-      applyModel(state.model);
-      render();
+      return load();
     },
     fillNav,
     fillTabbar,

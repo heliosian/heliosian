@@ -57,22 +57,32 @@ func sampleCache(t *testing.T) *Cache {
 	return newServer(t).cache
 }
 
-func TestSuperEditIsAnAdminsCookie(t *testing.T) {
+func requestAs(cache *Cache, email string, hat bool) access.Actor {
+	var got access.Actor
+	r := httptest.NewRequest("POST", "/", nil)
+	if hat {
+		r.AddCookie(&http.Cookie{Name: auth.HatCookie, Value: "1"})
+	}
+	auth.Fixed(email, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = requestActor(cache, r) })).ServeHTTP(httptest.NewRecorder(), r)
+	return got
+}
+
+func TestEditingAnotherFamilyNeedsAnAdminUnderTheHat(t *testing.T) {
 	cache := sampleCache(t)
 	model := cache.Model()
 	rohans := familyID(testKey, rohan)
-	on := httptest.NewRequest("POST", "/", nil)
-	on.AddCookie(&http.Cookie{Name: superEditCookie, Value: "1"})
-	off := httptest.NewRequest("POST", "/", nil)
-	if err := model.mayEdit(actorOf(cache, jordan), superEditOn(on), "family", rohans); err != nil {
+	if err := model.mayEdit(requestAs(cache, jordan, true), "family", rohans); err != nil {
 		t.Errorf("an admin with the pencil on cannot edit another family: %v", err)
 	}
 	var refusal *access.Refusal
-	if err := model.mayEdit(actorOf(cache, jordan), superEditOn(off), "family", rohans); !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
+	if err := model.mayEdit(requestAs(cache, jordan, false), "family", rohans); !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
 		t.Errorf("an admin with the pencil off edits another family: %v", err)
 	}
-	if err := model.mayEdit(actorOf(cache, asha), superEditOn(on), "family", rohans); !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
+	if err := model.mayEdit(requestAs(cache, asha, true), "family", rohans); !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
 		t.Errorf("a parent with the cookie set edits another family: %v", err)
+	}
+	if !requestAs(cache, jordan, false).May(Administer) {
+		t.Error("an admin with the pencil off lost Admin Tools")
 	}
 }
 
@@ -90,7 +100,7 @@ func TestSpoofedParentGetsNoSuperEdit(t *testing.T) {
 		want bool
 	}{{"", true}, {asha, false}} {
 		r := httptest.NewRequest("GET", "/api/directory/model", nil)
-		r.AddCookie(&http.Cookie{Name: superEditCookie, Value: "1"})
+		r.AddCookie(&http.Cookie{Name: auth.HatCookie, Value: "1"})
 		if c.as != "" {
 			r.AddCookie(&http.Cookie{Name: "spoof", Value: auth.SpoofToken(key, jordan, c.as, time.Now().Add(time.Hour))})
 		}

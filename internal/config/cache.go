@@ -54,6 +54,13 @@ func (c *Cache) IsSuperAdmin(email string) bool {
 	return slices.Contains(c.SuperAdmins(), NormalizeEmail(email))
 }
 
+func (c *Cache) SuperHeld(email string) []access.Allowance {
+	if !c.IsSuperAdmin(email) {
+		return nil
+	}
+	return SuperAllowances
+}
+
 func (c *Cache) SignedOut(email string) (time.Time, bool) {
 	at, ok := c.Settings().SignedOut[strings.ToLower(strings.TrimSpace(email))]
 	return at, ok

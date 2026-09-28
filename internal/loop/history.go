@@ -145,7 +145,7 @@ func (a app) messages(r *http.Request, _ serve.None) (map[string]any, error) {
 	if g == nil {
 		return nil, access.Missing("no such group")
 	}
-	if !g.Edits(actor) {
+	if !g.Sees(actor) {
 		return nil, access.Forbidden("you do not manage this group")
 	}
 	return map[string]any{"messages": a.history(g.Name)}, nil

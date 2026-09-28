@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
@@ -128,19 +127,15 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, shell)
 }
 
-func (a app) who(r *http.Request) (string, bool) {
-	email := a.directory().Resolve(strings.ToLower(auth.Email(r)))
-	return email, a.cache.IsAdmin(email)
-}
-
 var now = func() time.Time {
 	return time.Now().In(Location)
 }
 
 func (a app) model(r *http.Request, _ serve.None) (View, error) {
-	email, admin := a.who(r)
+	actor := a.actor(r)
+	email := actor.Email
 	directory := a.directory()
-	view := Render(a.cache.Model(), directory, a.settings(), access.Actor{Email: email, Admin: admin}, now(), a.linked(email))
+	view := Render(a.cache.Model(), directory, a.settings(), actor, now(), a.linked(email))
 	for i, e := range view.Events {
 		hosted := e.keepsGuestList() && a.isHost(access.Actor{Email: email}, e)
 		if !hosted && len(e.Hosts) == 0 {
@@ -156,17 +151,15 @@ func (a app) model(r *http.Request, _ serve.None) (View, error) {
 		view.Events[i] = &c
 	}
 	view.ImageSearch = a.search.On()
-	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)
 	return view, nil
 }
 
 func (a app) as(email string) access.Actor {
-	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email), Household: a.directory().Family(email)}
+	return a.directory().ActorOf(email, a.cache.Held(email), false)
 }
 
 func (a app) actor(r *http.Request) access.Actor {
-	email, _ := a.who(r)
-	return a.as(email)
+	return a.directory().Actor(r, a.cache.Held)
 }
 
 func feedURL(r *http.Request, token string) string {
@@ -372,12 +365,12 @@ type oneEventView struct {
 }
 
 func (a app) oneEvent(r *http.Request, _ serve.None) (oneEventView, error) {
-	actor, admin := a.who(r)
-	e := a.eventFor(actor, admin, strings.TrimSpace(r.URL.Query().Get("id")))
+	actor := a.actor(r)
+	e := a.eventFor(actor, strings.TrimSpace(r.URL.Query().Get("id")))
 	if e == nil {
 		return oneEventView{}, access.Missing("404 page not found")
 	}
-	return oneEventView{e, admin && a.eventFor(actor, false, e.ID) == nil}, nil
+	return oneEventView{e, actor.May(SeeAll) && a.eventFor(access.Actor{Email: actor.Email}, e.ID) == nil}, nil
 }
 
 func (a app) tellAdmins(ctx context.Context, by string, e *Event) {

@@ -61,6 +61,10 @@ Status is one of `Pending`, `Open`, `Done`, `Hidden`, spelled exactly so. Spots 
 
 An Image cell is an object under `activity-images/` in the media bucket, content-addressed and written by the image picker, or a path to a bundled file under `web/team/` or `web/public/team/`. A name that resolves to neither refuses the load. A role with no image shows its activity's.
 
+## Saving an activity
+
+A save names the activity's id and only the fields it changes (`POST /api/team/activity`); the server lays them over the activity as it stands, checks the result whole, and writes only the columns those fields own (`fieldColumns` in `internal/team/writes.go`), so changing one field never rewrites another, or undoes someone else's change to it in the meantime. Adding sends every field. Whoever edits the activity - its co-chairs and those of everything above it, and an admin in Super Admin Mode - may send any of them; an admin with the mode off may send `status` alone, taking a pending activity to Open or Hidden, which is approving it or turning it down.
+
 ## A load either succeeds whole or refuses
 
 The same stance as the other apps: a sheet that breaks a rule does not load, and the portal never serves a page quietly missing an event. A server that cannot load the sheet does not start, so a deploy waits on the sheet being fixed while the running revision keeps serving; a refresh that fails keeps serving the last good model and logs the reason. `go run ./tools/loadcheck` runs the same loader against the live sheets and prints the first thing it refuses.

@@ -104,9 +104,8 @@ func (a app) viewer(email string) *viewer {
 		sources: a.sources, now: a.sources.Now().In(when.Location), access: &groupAccess{}, ctx: context.Background(),
 	}
 	v.me = v.directory.Person(email)
-	household := v.directory.Family(email)
-	as := func(admin func(string) bool) access.Actor {
-		return access.Actor{Email: email, Admin: admin(email), Household: household}
+	as := func(held func(string) []access.Allowance) access.Actor {
+		return v.directory.ActorOf(email, held(email), false)
 	}
 	v.teamAs, v.partyAs, v.loopAs, v.whenAs, v.homeAs = as(a.sources.Admins.Team), as(a.sources.Admins.Celebrate), as(a.sources.Admins.Loop), as(a.sources.Admins.Calendar), as(a.sources.Admins.Home)
 	return v

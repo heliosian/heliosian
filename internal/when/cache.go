@@ -98,7 +98,7 @@ func NewCache(source data.Source, writer data.Writer, roster func() Roster, imag
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, List: admins.New(superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
+	return &Cache{Store: s, List: admins.New("when", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
 }
 
 func (c *Cache) Pending(email string) []admins.Approval {

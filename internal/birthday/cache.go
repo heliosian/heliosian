@@ -77,5 +77,5 @@ func NewCache(source data.Source, writer data.Writer, superAdmins func() []strin
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, List: admins.New(superAdmins, func() []string { return s.Model().admins }, s.Commit), shared: shared}, nil
+	return &Cache{Store: s, List: admins.New("birthday", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit), shared: shared}, nil
 }

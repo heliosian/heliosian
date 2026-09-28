@@ -109,15 +109,20 @@ func sampleSources(t *testing.T) Sources {
 		Links:     homeCache.CategoriesFor,
 		Artifacts: func() *artifacts.Model { return documents },
 		Embedder:  embedder,
-		Admins:    Admins{Team: isAdmin, Celebrate: isAdmin, Loop: isAdmin, Calendar: isAdmin, Home: isAdmin},
+		Admins:    Admins{Team: heldBy(team.AdminAllowances), Celebrate: heldBy(celebrate.AdminAllowances), Loop: heldBy(loop.AdminAllowances), Calendar: heldBy(when.AdminAllowances), Home: heldBy(home.AdminAllowances)},
 		Now:       func() time.Time { return sampleNow },
 	}
 }
 
 const sampleAdmin = "grace.kim@heliosschool.org"
 
-func isAdmin(email string) bool {
-	return email == sampleAdmin
+func heldBy(allowances []access.Allowance) func(string) []access.Allowance {
+	return func(email string) []access.Allowance {
+		if email != sampleAdmin {
+			return nil
+		}
+		return allowances
+	}
 }
 
 func sampleViewer(t *testing.T, email string) *viewer {

@@ -83,5 +83,5 @@ func NewCache(source data.Source, writer data.Writer, images blob.Checker, super
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, List: admins.New(superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
+	return &Cache{Store: s, List: admins.New("celebrate", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
 }

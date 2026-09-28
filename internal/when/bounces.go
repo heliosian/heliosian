@@ -136,7 +136,7 @@ func (a app) moveAddress(ctx context.Context, actor access.Actor, old, to, name 
 		return
 	}
 	for _, id := range resend {
-		e := a.eventFor(actor.Email, true, id)
+		e := a.anyEvent(actor.Email, id)
 		if e == nil || e.end.Before(now()) {
 			continue
 		}

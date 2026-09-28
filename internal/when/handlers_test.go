@@ -100,6 +100,14 @@ func as(email string, handler http.Handler) http.Handler {
 	return auth.Fixed(email, handler)
 }
 
+func underHat(email string, handler http.Handler) http.Handler {
+	fixed := auth.Fixed(email, handler)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.AddCookie(&http.Cookie{Name: auth.HatCookie, Value: "1"})
+		fixed.ServeHTTP(w, r)
+	})
+}
+
 func call(t *testing.T, handler http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, "https://calendar.heliosiandev.com:8080"+path, strings.NewReader(body))
@@ -229,7 +237,7 @@ func TestProvenanceForAdmins(t *testing.T) {
 	if hand == nil || hand.AddedBy != "dana.hawkins@heliosschool.org" || hand.Added == "" {
 		t.Errorf("hand-added event = %+v", hand)
 	}
-	rec = call(t, as("dana.hawkins@heliosschool.org", handler), "GET", "/api/when/model", "")
+	rec = call(t, underHat("dana.hawkins@heliosschool.org", handler), "GET", "/api/when/model", "")
 	if err := json.NewDecoder(rec.Body).Decode(&view); err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +373,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 		Style:     testStyle,
 	})
 	parent := as("jordan.whitfield@heliosschool.org", mux)
-	admin := as("dana.hawkins@heliosschool.org", mux)
+	admin := underHat("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {
 		for i := 0; i < 50 && len(kept.Messages()) < n; i++ {
 			time.Sleep(20 * time.Millisecond)
@@ -417,7 +425,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 
 func TestAdminAddsAndCorrects(t *testing.T) {
 	handler, cache := testApp(t)
-	admin := as("dana.hawkins@heliosschool.org", handler)
+	admin := underHat("dana.hawkins@heliosschool.org", handler)
 	rec := call(t, admin, "POST", "/api/when/events", `{"title":"Chess Club","start":"2026-10-01 15:30","end":"2026-10-01 16:30","tags":["Jays","Clubs"],"sharing":"Public","repeatWeeks":4,"repeatTimes":2}`)
 	if rec.Code != 200 {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
@@ -685,7 +693,7 @@ func TestAnswers(t *testing.T) {
 		t.Errorf("a yes is not under Going in the viewer's events")
 	}
 	var other View
-	rec = call(t, as("dana.hawkins@heliosschool.org", handler), "GET", "/api/when/model", "")
+	rec = call(t, underHat("dana.hawkins@heliosschool.org", handler), "GET", "/api/when/model", "")
 	json.NewDecoder(rec.Body).Decode(&other)
 	if i := slices.IndexFunc(other.Events, func(e *Event) bool { return e.ID == "a7@sample" }); i < 0 || slices.Contains(other.Events[i].Tags, TagGoing) {
 		t.Errorf("one viewer's yes is under Going for another")
@@ -706,10 +714,10 @@ func TestAnswers(t *testing.T) {
 func TestResponsesForAdmins(t *testing.T) {
 	handler, _ := testApp(t)
 	call(t, as("jordan.whitfield@heliosschool.org", handler), "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"yes"}`)
-	call(t, as("dana.hawkins@heliosschool.org", handler), "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"no"}`)
+	call(t, underHat("dana.hawkins@heliosschool.org", handler), "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"no"}`)
 	call(t, as("robin.whitfield@heliosschool.org", handler), "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"hidden"}`)
 	var view View
-	rec := call(t, as("dana.hawkins@heliosschool.org", handler), "GET", "/api/when/model", "")
+	rec := call(t, underHat("dana.hawkins@heliosschool.org", handler), "GET", "/api/when/model", "")
 	json.NewDecoder(rec.Body).Decode(&view)
 	r := view.Responses["a7@sample"]
 	if r == nil || len(r.Yes) != 1 || r.Yes[0].Name != "Jordan Whitfield" || r.Yes[0].Line != "Parent to Sam (Grade 3), Ella (Grade 6)" || len(r.No) != 1 {
@@ -725,7 +733,7 @@ func TestResponsesForAdmins(t *testing.T) {
 
 func TestOverrideFromThePage(t *testing.T) {
 	handler, cache := testApp(t)
-	admin := as("dana.hawkins@heliosschool.org", handler)
+	admin := underHat("dana.hawkins@heliosschool.org", handler)
 	e := cache.Model().Event("a2@sample")
 	builtIn := map[string]bool{}
 	for _, tag := range cache.Model().Tags {
@@ -787,13 +795,18 @@ func TestOverrideFromThePage(t *testing.T) {
 	}
 	var v InviteView
 	json.NewDecoder(call(t, admin, "GET", "/api/when/invites?id=a2@sample", "").Body).Decode(&v)
-	if !v.Host || !v.AdminHost || len(v.Hosts) != 0 {
-		t.Errorf("the admin's view: host %v adminHost %v hosts %v", v.Host, v.AdminHost, v.Hosts)
+	if !v.Host || len(v.Hosts) != 0 {
+		t.Errorf("the admin's view: host %v hosts %v", v.Host, v.Hosts)
+	}
+	v = InviteView{}
+	json.NewDecoder(call(t, as("dana.hawkins@heliosschool.org", handler), "GET", "/api/when/invites?id=a2@sample", "").Body).Decode(&v)
+	if v.Host {
+		t.Error("an admin with the pencil off hosts the event")
 	}
 	v = InviteView{}
 	json.NewDecoder(call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/when/invites?id=a2@sample", "").Body).Decode(&v)
-	if v.Host || v.AdminHost {
-		t.Errorf("a parent's view: host %v adminHost %v", v.Host, v.AdminHost)
+	if v.Host {
+		t.Errorf("a parent's view: host %v", v.Host)
 	}
 	if !v.ListPrivate || v.Coming != nil {
 		t.Errorf("a parent's view of a closed list: private %v coming %v", v.ListPrivate, v.Coming)

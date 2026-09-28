@@ -15,15 +15,8 @@ export function startParty(e) {
   return api('POST', '/api/when/invites/start', {id: e.id});
 }
 
-export async function fetchInvites(e) {
-  const view = await api('GET', '/api/when/invites?id=' + encodeURIComponent(e.id));
-  if (view.adminHost && !isAdmin()) {
-    view.host = false;
-    if (view.listPrivate) {
-      view.coming = null;
-    }
-  }
-  return view;
+export function fetchInvites(e) {
+  return api('GET', '/api/when/invites?id=' + encodeURIComponent(e.id));
 }
 
 export function familyBand(e, view, refresh) {

@@ -74,7 +74,7 @@ func NewCache(source data.Source, writer data.Writer, images blob.Checker, super
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, List: admins.New(superAdmins, func() []string { return s.Model().admins }, s.Commit), sources: sources}, nil
+	return &Cache{Store: s, List: admins.New("home", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit), sources: sources}, nil
 }
 
 func (c *Cache) includes(rules []filter.Rule, email string) bool {
@@ -85,15 +85,16 @@ func (c *Cache) CategoriesFor(v access.Actor) []Category {
 	forMe := func(rules []filter.Rule) bool {
 		return len(rules) == 0 || c.includes(rules, v.Email)
 	}
+	admin := v.May(Configure)
 	full := c.Model()
 	out := []Category{}
 	for _, category := range full.Categories {
 		sectionMine := forMe(category.Rules)
-		if !sectionMine && !v.Admin {
+		if !sectionMine && !admin {
 			continue
 		}
 		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual, Rules: []filter.Rule{}}
-		if v.Admin {
+		if admin {
 			shown.Rules = category.Rules
 		}
 		if !sectionMine {
@@ -102,14 +103,14 @@ func (c *Cache) CategoriesFor(v access.Actor) []Category {
 		}
 		for _, link := range category.Links {
 			mine := forMe(link.Rules)
-			if !(link.Visible && mine) && !v.Admin {
+			if !(link.Visible && mine) && !admin {
 				continue
 			}
 			if !mine {
 				no := false
 				link.ForMe = &no
 			}
-			if !v.Admin {
+			if !admin {
 				link.Rules = []filter.Rule{}
 			}
 			shown.Links = append(shown.Links, link)

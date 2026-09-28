@@ -145,17 +145,16 @@ type PartyView struct {
 }
 
 type User struct {
-	Email        string   `json:"email"`
-	Name         string   `json:"name"`
-	Initial      string   `json:"initial"`
-	PhotoURL     string   `json:"photoUrl,omitempty"`
-	IsAdmin      bool     `json:"isAdmin"`
-	IsSuperAdmin bool     `json:"isSuperAdmin,omitempty"`
-	IsStudent    bool     `json:"isStudent,omitempty"`
-	IsParent     bool     `json:"isParent,omitempty"`
-	IsStaff      bool     `json:"isStaff,omitempty"`
-	Adults       []Person `json:"adults"`
-	Children     []Person `json:"children"`
+	Email     string   `json:"email"`
+	Name      string   `json:"name"`
+	Initial   string   `json:"initial"`
+	PhotoURL  string   `json:"photoUrl,omitempty"`
+	IsAdmin   bool     `json:"isAdmin"`
+	IsStudent bool     `json:"isStudent,omitempty"`
+	IsParent  bool     `json:"isParent,omitempty"`
+	IsStaff   bool     `json:"isStaff,omitempty"`
+	Adults    []Person `json:"adults"`
+	Children  []Person `json:"children"`
 }
 
 type View struct {
@@ -200,7 +199,7 @@ func (v viewer) line(t Ticket, person *who.Person, purchaserName string) string 
 	return "Guest"
 }
 
-func (v viewer) attendee(t Ticket, editor bool) Attendee {
+func (v viewer) attendee(t Ticket, sees bool) Attendee {
 	var person *who.Person
 	name := t.Name
 	if t.Email != "" {
@@ -218,7 +217,7 @@ func (v viewer) attendee(t Ticket, editor bool) Attendee {
 		a.Name, a.PhotoURL, a.Grade = person.FullName, v.directory.HeroPhoto(person.Email), person.Grade
 	}
 	a.Mine = v.Mine(t.Purchaser) || v.Mine(t.Email)
-	if editor || a.Mine {
+	if sees || a.Mine {
 		a.Purchaser, a.PurchaserName, a.Price, a.Note, a.AddedBy = t.Purchaser, purchaserName, t.Price, t.Note, t.AddedBy
 	}
 	return a
@@ -227,22 +226,22 @@ func (v viewer) attendee(t Ticket, editor bool) Attendee {
 func (v viewer) party(raw *Party, now time.Time) PartyView {
 	p := raw.For(v.Actor, v.directory)
 	hosting := p.Hosted(v.Email)
-	editor := p.Edits(v.Actor)
+	sees := p.Sees(v.Actor)
 	pv := PartyView{
 		Party: p, Availability: p.Availability(now), Sold: p.Sold(), Waiting: p.Waiting(), Raised: raw.Raised(), Remaining: p.Remaining(),
-		HostPeople: []Person{}, Attendees: []Attendee{}, Waitlisted: []Attendee{}, CanEdit: editor, Hosting: hosting,
+		HostPeople: []Person{}, Attendees: []Attendee{}, Waitlisted: []Attendee{}, CanEdit: p.Edits(v.Actor), Hosting: hosting,
 	}
 	for _, email := range p.HostEmails {
 		pv.HostPeople = append(pv.HostPeople, v.person(email))
 	}
 	var rsvps *PartyRSVPs
-	if editor && v.rsvps != nil {
+	if sees && v.rsvps != nil {
 		rsvps = v.rsvps(p.ID)
 		pv.Started = rsvps != nil
 		pv.Invited = rsvps != nil && rsvps.Sent
 	}
 	for _, t := range p.Tickets {
-		a := v.attendee(t, editor)
+		a := v.attendee(t, sees)
 		if pv.Invited && t.Email != "" {
 			a.RSVP = rsvps.Answers[v.directory.Resolve(strings.ToLower(t.Email))]
 		}
@@ -262,7 +261,7 @@ func Render(model *Model, directory *who.Model, as access.Actor, now time.Time) 
 
 func RenderWith(model *Model, directory *who.Model, rsvps RSVPLookup, as access.Actor, now time.Time) View {
 	v := viewer{Actor: as, directory: directory, rsvps: rsvps}
-	email, admin := as.Email, as.Admin
+	email, admin := as.Email, as.May(SeeAll)
 	me := v.person(email)
 	view := View{
 		User: User{

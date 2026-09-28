@@ -20,6 +20,10 @@ var (
 	Spec    = store.Tab{Name: Tab, Columns: Columns, Key: Columns}
 )
 
+func Manage(app string) access.Allowance {
+	return access.Standing(app + ".admins")
+}
+
 func Read(tables store.Tables) []string {
 	emails := []string{}
 	for _, row := range tables[Tab] {
@@ -29,13 +33,15 @@ func Read(tables store.Tables) []string {
 }
 
 type List struct {
+	app         string
+	allowances  []access.Allowance
 	superAdmins func() []string
 	listed      func() []string
 	commit      func(ctx context.Context, actor access.Actor, ops ...store.Op) error
 }
 
-func New(superAdmins, listed func() []string, commit func(ctx context.Context, actor access.Actor, ops ...store.Op) error) List {
-	return List{superAdmins: superAdmins, listed: listed, commit: commit}
+func New(app string, allowances []access.Allowance, superAdmins, listed func() []string, commit func(ctx context.Context, actor access.Actor, ops ...store.Op) error) List {
+	return List{app: app, allowances: append(slices.Clone(allowances), Manage(app)), superAdmins: superAdmins, listed: listed, commit: commit}
 }
 
 func (l List) IsSuperAdmin(email string) bool {
@@ -44,6 +50,13 @@ func (l List) IsSuperAdmin(email string) bool {
 
 func (l List) IsAdmin(email string) bool {
 	return l.IsSuperAdmin(email) || slices.Contains(l.listed(), config.NormalizeEmail(email))
+}
+
+func (l List) Held(email string) []access.Allowance {
+	if !l.IsAdmin(email) {
+		return nil
+	}
+	return l.allowances
 }
 
 func (l List) Admins() []string {
@@ -56,10 +69,10 @@ type edit struct {
 	Admins []string `json:"admins"`
 }
 
-func Register(mux *http.ServeMux, app string, l List, actor func(r *http.Request) access.Actor, state func(r *http.Request, actor access.Actor) map[string]any) {
+func Register(mux *http.ServeMux, l List, actor func(r *http.Request) access.Actor, state func(r *http.Request, actor access.Actor) map[string]any) {
 	mux.HandleFunc("GET /api/admin/state", serve.JSON(func(r *http.Request, _ serve.None) (map[string]any, error) {
 		v := actor(r)
-		if !v.Admin {
+		if !v.May(Manage(l.app)) {
 			return nil, access.Forbidden("admin access required")
 		}
 		view := state(r, v)
@@ -77,7 +90,7 @@ func Register(mux *http.ServeMux, app string, l List, actor func(r *http.Request
 		if err := l.commit(r.Context(), v, ops...); err != nil {
 			return serve.None{}, err
 		}
-		slog.InfoContext(r.Context(), app+":set the admin list", "actor", v.Email, "admins", admins)
+		slog.InfoContext(r.Context(), l.app+":set the admin list", "actor", v.Email, "admins", admins)
 		return serve.None{}, nil
 	}))
 }

@@ -131,14 +131,13 @@ type View struct {
 }
 
 type User struct {
-	Email        string  `json:"email"`
-	Name         string  `json:"name"`
-	Initial      string  `json:"initial"`
-	PhotoURL     string  `json:"photoUrl,omitempty"`
-	IsAdmin      bool    `json:"isAdmin"`
-	IsSuperAdmin bool    `json:"isSuperAdmin,omitempty"`
-	Spouses      []Child `json:"spouses,omitempty"`
-	Children     []Child `json:"children,omitempty"`
+	Email    string  `json:"email"`
+	Name     string  `json:"name"`
+	Initial  string  `json:"initial"`
+	PhotoURL string  `json:"photoUrl,omitempty"`
+	IsAdmin  bool    `json:"isAdmin"`
+	Spouses  []Child `json:"spouses,omitempty"`
+	Children []Child `json:"children,omitempty"`
 }
 
 func visibleStatus(status, addedBy, email string, editor bool) bool {
@@ -152,12 +151,16 @@ func visibleStatus(status, addedBy, email string, editor bool) bool {
 }
 
 func (m *Model) Edits(a *Activity, v access.Actor) bool {
-	return v.Admin || m.Runs(a, v.Email)
+	return v.May(ActAsCochair) || m.Runs(a, v.Email)
+}
+
+func (m *Model) Sees(a *Activity, v access.Actor) bool {
+	return v.May(SeeAll) || m.Runs(a, v.Email)
 }
 
 func (m *Model) VisibleTo(a *Activity, v access.Actor) bool {
 	for node := a; node != nil; node = m.Activity(node.Parent) {
-		if !visibleStatus(node.Status, node.AddedBy, v.Email, m.Edits(node, v)) {
+		if !visibleStatus(node.Status, node.AddedBy, v.Email, m.Sees(node, v)) {
 			return false
 		}
 		if node.Parent == "" {
@@ -175,22 +178,22 @@ func (m *Model) ActivityFor(a *Activity, v access.Actor) *Activity {
 }
 
 func (m *Model) activityFor(a *Activity, v access.Actor) *Activity {
-	editor := m.Edits(a, v)
+	sees := m.Sees(a, v)
 	c := *a
 	c.Taken = len(a.Volunteers)
 	c.Volunteers = []Volunteer{}
 	for _, vol := range a.Volunteers {
-		if a.VolunteersHidden && !editor && vol.Position != PositionCoChair && !v.Mine(vol.Email) {
+		if a.VolunteersHidden && !sees && vol.Position != PositionCoChair && !v.Mine(vol.Email) {
 			continue
 		}
-		if !editor {
+		if !sees {
 			vol.AddedBy = ""
 		}
 		c.Volunteers = append(c.Volunteers, vol)
 	}
 	c.Children = []*Activity{}
 	for _, child := range a.Children {
-		if visibleStatus(child.Status, child.AddedBy, v.Email, m.Edits(child, v)) {
+		if visibleStatus(child.Status, child.AddedBy, v.Email, m.Sees(child, v)) {
 			c.Children = append(c.Children, m.activityFor(child, v))
 		}
 	}
@@ -241,7 +244,7 @@ func Render(model *Model, directory *who.Model, settings *config.Settings, as ac
 
 func RenderWith(model *Model, directory *who.Model, settings *config.Settings, rsvps RSVPLookup, lists EmailListLookup, as access.Actor, now time.Time) View {
 	v := viewer{Actor: as, directory: directory}
-	email, admin := as.Email, as.Admin
+	email, admin := as.Email, as.May(SeeAll)
 	name, photo := v.person(email)
 	spouses, children := household(directory, directory.Person(email))
 	current := SchoolYear(now)
@@ -260,7 +263,7 @@ func RenderWith(model *Model, directory *who.Model, settings *config.Settings, r
 			continue
 		}
 		av := v.activity(model, a, false, lists)
-		if av.CanEdit && rsvps != nil {
+		if model.Sees(raw, as) && rsvps != nil {
 			if r := rsvps(a.ID); r != nil {
 				av.Started, av.Invited = true, r.Sent
 				if r.Sent {

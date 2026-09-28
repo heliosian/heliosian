@@ -3,6 +3,7 @@ package who
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -113,8 +114,12 @@ func NewCache(source data.Source, writer data.Writer, blobs, static blob.Checker
 		return nil, err
 	}
 	c.Store = s
-	c.List = admins.New(superAdmins, func() []string { return s.Model().admins }, s.Commit)
+	c.List = admins.New("who", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)
 	return c, nil
+}
+
+func (c *Cache) Actor(r *http.Request, held func(email string) []access.Allowance) access.Actor {
+	return c.Model().Actor(r, held)
 }
 
 func (c *Cache) commit(ctx context.Context, actor access.Actor, ops ...store.Op) error {

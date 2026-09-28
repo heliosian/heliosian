@@ -20,6 +20,11 @@ import (
 	"heliosian/internal/store"
 )
 
+func Actors(r *http.Request, held func(string) []access.Allowance) access.Actor {
+	email := strings.ToLower(auth.Email(r))
+	return access.Actor{Email: email, Allowances: access.Grant(held(email), auth.Hat(r))}
+}
+
 type Images func(key string) bool
 
 func (i Images) Has(key string) (bool, error) { return i(key), nil }
@@ -48,12 +53,26 @@ func Files(root string) Images {
 
 func Call(t *testing.T, handler http.Handler, as, method, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
+	return call(t, handler, as, method, path, body, false)
+}
+
+func CallUnderHat(t *testing.T, handler http.Handler, as, method, path string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	return call(t, handler, as, method, path, body, true)
+}
+
+func call(t *testing.T, handler http.Handler, as, method, path string, body any, hat bool) *httptest.ResponseRecorder {
+	t.Helper()
 	raw, err := json.Marshal(body)
 	if err != nil {
 		t.Fatal(err)
 	}
+	r := httptest.NewRequest(method, path, bytes.NewReader(raw))
+	if hat {
+		r.AddCookie(&http.Cookie{Name: auth.HatCookie, Value: "1"})
+	}
 	rec := httptest.NewRecorder()
-	auth.Fixed(as, handler).ServeHTTP(rec, httptest.NewRequest(method, path, bytes.NewReader(raw)))
+	auth.Fixed(as, handler).ServeHTTP(rec, r)
 	return rec
 }
 

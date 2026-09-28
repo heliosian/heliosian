@@ -23,7 +23,7 @@ type admin struct {
 
 func RegisterAdmin(mux *http.ServeMux, cache *Cache, media *blob.Store) {
 	a := admin{cache: cache, media: media}
-	admins.Register(mux, "who", cache.List, func(r *http.Request) access.Actor { return requestActor(cache, r) }, a.state)
+	admins.Register(mux, cache.List, func(r *http.Request) access.Actor { return requestActor(cache, r) }, a.state)
 	mux.HandleFunc("POST /api/admin/images", a.setImage)
 	mux.HandleFunc("POST /api/admin/person-fields", serve.JSON(a.setPersonFields))
 	mux.HandleFunc("POST /api/admin/student-fields", serve.JSON(a.setStudentFields))
@@ -35,12 +35,8 @@ func RegisterAdmin(mux *http.ServeMux, cache *Cache, media *blob.Store) {
 	mux.HandleFunc("POST /api/admin/unhide-person", serve.JSON(a.unhidePerson))
 }
 
-func actorOf(cache *Cache, email string) access.Actor {
-	return access.Actor{Email: email, Admin: cache.IsAdmin(email), Household: cache.Model().Family(email)}
-}
-
 func requestActor(cache *Cache, r *http.Request) access.Actor {
-	return actorOf(cache, effectiveEmail(cache, r))
+	return cache.Actor(r, cache.Held)
 }
 
 type imageInfo struct {
@@ -183,13 +179,6 @@ func (a admin) state(*http.Request, access.Actor) map[string]any {
 		"classrooms": classrooms, "grades": grades, "bands": bands, "crews": crews, "departments": model.Departments,
 		"people": people, "hiddenEmails": model.hiddenEmails,
 	}
-}
-
-const superEditCookie = "heliosian-super-edit"
-
-func superEditOn(r *http.Request) bool {
-	cookie, err := r.Cookie(superEditCookie)
-	return err == nil && cookie.Value == "1"
 }
 
 const (

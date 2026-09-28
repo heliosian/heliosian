@@ -61,5 +61,5 @@ func NewCache(source data.Source, writer data.Writer, superAdmins func() []strin
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, List: admins.New(superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
+	return &Cache{Store: s, List: admins.New("loop", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
 }

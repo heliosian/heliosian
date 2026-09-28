@@ -1,7 +1,7 @@
 import {googleCalendarLink, parseWhen} from '/datecard.js';
 import {superEditOn} from '/superedit.js';
 
-export const state = {model: null, allParties: [], celebration: '', tab: 'available', hostingTab: 'mine', category: '', showPast: true};
+export const state = {model: null, celebration: '', tab: 'available', hostingTab: 'mine', category: '', showPast: true};
 
 export function familyShown(p) {
   return state.showPast || p.availability !== 'past';
@@ -15,19 +15,9 @@ const byId = new Map();
 
 export function applyModel(model) {
   state.model = model;
-  state.allParties = model.parties;
-  applySuperEdit();
-}
-
-export function applySuperEdit() {
-  const model = state.model;
-  model.parties = state.allParties.filter(p => p.status === 'Open' || p.hosting || isAdmin());
   byId.clear();
-  for (const p of findable()) {
+  for (const p of model.parties) {
     byId.set(p.id, p);
-    // The server's canEdit counts the admin hat; here it counts only when
-    // the hat is on. A host edits their own party either way.
-    p.canEdit = Boolean(p.hosting) || isAdmin();
   }
   if (!state.celebration || !model.celebrations.some(c => c.code === state.celebration)) {
     state.celebration = model.current || (model.celebrations[0] ? model.celebrations[0].code : '');
@@ -73,7 +63,7 @@ function walkPath(path) {
   }
   if (segs[0] === 'p') {
     const want = segs[1].toLowerCase();
-    return findable().find(p => p.prettyId === want) || null;
+    return state.model.parties.find(p => p.prettyId === want) || null;
   }
   if (segs[0] === 'parties') {
     return party(segs[1]);
@@ -166,17 +156,8 @@ export function isHosting(p) {
   return Boolean(p.hosting);
 }
 
-function findable() {
-  const model = state.model;
-  if (!isSystemAdmin() || isAdmin()) {
-    return model.parties;
-  }
-  return model.parties.concat(state.allParties.filter(p => p.status === 'Pending' && !p.hosting));
-}
-
 export function pendingParties() {
-  const list = isSystemAdmin() ? state.allParties : state.model.parties;
-  return list.filter(p => p.status === 'Pending');
+  return state.model.parties.filter(p => p.status === 'Pending');
 }
 
 export function canApprove(p) {

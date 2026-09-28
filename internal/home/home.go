@@ -88,7 +88,7 @@ func Register(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("POST /api/apps/widgets/audience", serve.JSON(a.saveWidgetAudience))
 	mux.HandleFunc("POST /api/apps/widgets/order", serve.JSON(a.setWidgetOrder))
 	a.search.Register(mux, "/api/apps", d.Images.Folder(), a.requireAdminFunc)
-	admins.Register(mux, "home", a.cache.List, a.actor, a.adminState)
+	admins.Register(mux, a.cache.List, a.actor, a.adminState)
 	mux.HandleFunc("POST /api/admin/visibility", serve.JSON(a.setVisibility))
 	mux.HandleFunc("POST /api/admin/visibility/order", serve.JSON(a.setAppOrder))
 	a.discoverApps()
@@ -161,8 +161,7 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) actor(r *http.Request) access.Actor {
-	email := a.sources().Directory.Resolve(strings.ToLower(auth.Email(r)))
-	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email)}
+	return a.sources().Directory.Actor(r, a.cache.Held)
 }
 
 func (a app) requireAdminFunc(next http.HandlerFunc) http.HandlerFunc {
@@ -224,7 +223,7 @@ type modelView struct {
 func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
 	actor := a.actor(r)
 	email := actor.Email
-	admin := actor.Admin
+	admin := actor.May(Configure)
 	hidden := hiddenHosts(r.Host, a.cache.HiddenApps(email))
 	full := a.cache.Model()
 	forMe := func(rules []filter.Rule) bool {

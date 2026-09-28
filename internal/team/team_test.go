@@ -40,7 +40,11 @@ var (
 )
 
 func viewerOf(email string, admin bool) access.Actor {
-	return access.Actor{Email: email, Admin: admin, Household: directory.Family(email)}
+	var held []access.Allowance
+	if admin {
+		held = AdminAllowances
+	}
+	return directory.ActorOf(email, held, true)
 }
 
 var bundled = testkit.Images(func(key string) bool { return strings.HasPrefix(key, "brand/") })
@@ -85,6 +89,59 @@ func tables(t *testing.T) store.Tables {
 func changeLog(t *testing.T) []store.Row {
 	t.Helper()
 	return testkit.ChangeLog(t, sheet, queue, appName)
+}
+
+func TestAdminApprovesWithTheHatOff(t *testing.T) {
+	for _, status := range []string{StatusOpen, StatusHidden} {
+		t.Run(status, func(t *testing.T) {
+			cache, mux := newServer(t)
+			approve := map[string]any{"id": "E012", "status": status}
+			if rec := testkit.Call(t, mux, parent, "POST", "/api/team/activity", approve); rec.Code != http.StatusForbidden {
+				t.Fatalf("a parent changed an activity's status: %d", rec.Code)
+			}
+			before := len(changeLog(t))
+			if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", approve); rec.Code != http.StatusNoContent {
+				t.Fatalf("making E012 %s with the pencil off: %d %s", status, rec.Code, rec.Body)
+			}
+			log := changeLog(t)[before:]
+			if got := cache.Model().Activity("E012").Status; got != status || len(log) != 1 || log[0]["Column"] != "Status" {
+				t.Fatalf("E012 after making it %s: status %s, change log %v", status, got, log)
+			}
+		})
+	}
+}
+
+func TestApprovingIsOnlyTheStatus(t *testing.T) {
+	cache, mux := newServer(t)
+	for _, body := range []map[string]any{
+		{"id": "E012", "status": StatusOpen, "title": "Escape Room"},
+		{"id": "E012", "title": "Escape Room"},
+		{"id": "E002", "status": StatusHidden},
+	} {
+		if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", body); rec.Code != http.StatusForbidden {
+			t.Fatalf("an admin with the pencil off saved %v: %d %s", body, rec.Code, rec.Body)
+		}
+	}
+	if got := cache.Model().Activity("E012"); got.Status != StatusPending || got.Title != "Family Escape Room Night" {
+		t.Fatalf("a refused save changed E012: %+v", got)
+	}
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", map[string]any{"id": "E002", "title": "Renamed"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("an admin with the pencil on could not edit: %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestASaveWritesOnlyWhatItNames(t *testing.T) {
+	cache, mux := newServer(t)
+	was := *cache.Model().Activity("E002")
+	before := len(changeLog(t))
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", map[string]any{"id": "E002", "title": "Renamed"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("the co-chair's rename: %d %s", rec.Code, rec.Body)
+	}
+	log := changeLog(t)[before:]
+	got := cache.Model().Activity("E002")
+	if len(log) != 1 || log[0]["Column"] != "Title" || got.Title != "Renamed" || got.Description != was.Description || got.Status != was.Status || got.Category != was.Category {
+		t.Fatalf("after a rename: %+v, change log %v", got, log)
+	}
 }
 
 func byTitle(m *Model, year, title string) *Activity {
@@ -255,14 +312,14 @@ func TestSignUpAndRemove(t *testing.T) {
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionCoChair}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a volunteer named themselves co-chair: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); rec.Code != http.StatusNoContent {
 		t.Fatalf("an admin could not promote: %d %s", rec.Code, rec.Body)
 	}
 	full := map[string]any{"id": "E026", "position": PositionVolunteer}
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", full); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a full role took a sign-up: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E001", "email": "Facilities@heliosschool.org", "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E001", "email": "Facilities@heliosschool.org", "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
 		t.Fatalf("an admin could not sign up an alias: %d %s", rec.Code, rec.Body)
 	}
 	if v := cache.Model().Activity("E001").volunteer("hank.morrow@heliosschool.org"); v == nil {
@@ -303,7 +360,7 @@ func TestSignUpAndRemove(t *testing.T) {
 func TestMail(t *testing.T) {
 	rec := mailtest.NewRecorder(mailtest.From)
 	_, mux := serveWith(t, rec.Mailgun)
-	if r := testkit.Call(t, mux, admin, "POST", "/api/team/notify", map[string]any{"kinds": []string{"signups", "offers"}}); r.Code != http.StatusNoContent {
+	if r := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/notify", map[string]any{"kinds": []string{"signups", "offers"}}); r.Code != http.StatusNoContent {
 		t.Fatalf("notify prefs: %d %s", r.Code, r.Body)
 	}
 	if r := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionOpen, "note": "happy to help"}); r.Code != http.StatusNoContent {
@@ -451,8 +508,12 @@ func TestMoveNeedsBothEnds(t *testing.T) {
 	if code := move(chair, "E016", "E017"); code != http.StatusNoContent || cache.Model().Activity("E017").volunteer(marco) == nil {
 		t.Fatalf("a co-chair could not move someone between two things they run: %d", code)
 	}
-	if code := move(admin, "E017", "E003"); code != http.StatusNoContent || cache.Model().Activity("E003").volunteer(marco) == nil {
-		t.Fatalf("an admin could not move someone: %d", code)
+	if code := move(admin, "E017", "E003"); code != http.StatusForbidden {
+		t.Fatalf("an admin with the pencil off moved someone: %d", code)
+	}
+	underHat := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E003", "email": marco, "position": PositionVolunteer, "from": "E017"}).Code
+	if underHat != http.StatusNoContent || cache.Model().Activity("E003").volunteer(marco) == nil {
+		t.Fatalf("an admin could not move someone: %d", underHat)
 	}
 }
 
@@ -504,7 +565,7 @@ func TestSuggestApproveRenameDelete(t *testing.T) {
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/activity", edit); rec.Code != http.StatusForbidden {
 		t.Fatalf("a non-chair edited an activity: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("approve and rename: %d %s", rec.Code, rec.Body)
 	}
 	if byTitle(cache.Model(), "2026 - 2027", "Kite Day") != nil {
@@ -514,13 +575,13 @@ func TestSuggestApproveRenameDelete(t *testing.T) {
 	if festival == nil || festival.Status != StatusOpen || len(festival.Volunteers) != 1 {
 		t.Fatalf("renamed activity: %+v", festival)
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": kite.ID}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.CallUnderHat(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": kite.ID}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("delete with a volunteer on it: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/team/volunteer", map[string]any{"id": kite.ID, "email": parent}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "DELETE", "/api/team/volunteer", map[string]any{"id": kite.ID, "email": parent}); rec.Code != http.StatusNoContent {
 		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": kite.ID}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": kite.ID}); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Model().Activity(kite.ID) != nil {
@@ -532,7 +593,7 @@ func TestYearMoveCarriesTheTreeAndDeleteTakesTheLinks(t *testing.T) {
 	cache, mux := newServer(t)
 	spring := cache.Model().Activity("E002")
 	edit := map[string]any{"id": "E002", "year": "2027 - 2028", "title": spring.Title, "category": spring.Category, "status": spring.Status, "directSignUp": true, "prettyId": spring.PrettyID}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("move year: %d %s", rec.Code, rec.Body)
 	}
 	for _, c := range cache.Model().Activity("E002").Children {
@@ -558,14 +619,14 @@ func TestYearMoveCarriesTheTreeAndDeleteTakesTheLinks(t *testing.T) {
 	if moved != 3 || len(years) != 4 || years["Event ID=E023 2026 - 2027"] != 1 {
 		t.Fatalf("sheet moved %d children, logged %v", moved, years)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", map[string]any{"year": "2026 - 2027", "title": "Bake Sale", "category": "C02", "status": StatusOpen, "directSignUp": true}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", map[string]any{"year": "2026 - 2027", "title": "Bake Sale", "category": "C02", "status": StatusOpen, "directSignUp": true}); rec.Code != http.StatusNoContent {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
 	sale := byTitle(cache.Model(), "2026 - 2027", "Bake Sale")
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/link", map[string]any{"id": sale.ID, "title": "Menu", "url": "https://example.org/menu"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/link", map[string]any{"id": sale.ID, "title": "Menu", "url": "https://example.org/menu"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("link: %d %s", rec.Code, rec.Body)
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": sale.ID}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": sale.ID}); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Count(linksTab, store.Row{"Event ID": sale.ID}) != 0 {
@@ -600,11 +661,11 @@ func TestRenameKeepsTheTree(t *testing.T) {
 	if booth == nil || booth.Title != "India Booth" || len(booth.Volunteers) != 1 || len(booth.Links) != 1 || len(booth.Children) != 1 || booth.Children[0].Parent != "E020" {
 		t.Fatalf("renamed: %+v", booth)
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": "E020"}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.CallUnderHat(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": "E020"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleted something with children and volunteers: %d", rec.Code)
 	}
 	loop := map[string]any{"id": "E001", "year": "2026 - 2027", "title": "International Night", "parent": "E020", "category": "", "status": StatusOpen}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", loop); rec.Code != http.StatusBadRequest {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", loop); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a parent loop was accepted: %d", rec.Code)
 	}
 }
@@ -627,7 +688,7 @@ func TestCoChairApproves(t *testing.T) {
 	if code := save(chair, "E022", "E001", "C08", StatusOpen); code != http.StatusNoContent || status("E022") != StatusOpen {
 		t.Fatalf("the event's co-chair could not approve a suggestion: %d, %s", code, status("E022"))
 	}
-	if code := testkit.Call(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E012", "email": chair, "position": PositionCoChair}).Code; code != http.StatusNoContent {
+	if code := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E012", "email": chair, "position": PositionCoChair}).Code; code != http.StatusNoContent {
 		t.Fatalf("make a co-chair: %d", code)
 	}
 	if code := save(chair, "E012", "", "C01", StatusOpen); code != http.StatusNoContent || status("E012") != StatusPending {
@@ -666,7 +727,7 @@ func TestCopyToNextYear(t *testing.T) {
 	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a co-chair copied: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("copy: %d %s", rec.Code, rec.Body)
 	}
 	next := byTitle(cache.Model(), "2027 - 2028", "International Night")
@@ -678,7 +739,7 @@ func TestCopyToNextYear(t *testing.T) {
 			t.Fatalf("copied child %q points at parent %q in the wrong year", c.Title, c.Parent)
 		}
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("copied twice: %d", rec.Code)
 	}
 }
@@ -765,10 +826,10 @@ func TestEventCategories(t *testing.T) {
 	if !slices.Equal(got, ids) || after.Categories[0].ID != "C01" || after.Activity("E013").Categories[0].ID != "C09" {
 		t.Fatalf("reorder: %v, or it leaked out of its scope", got)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/categories/order", map[string]any{"eventId": "E001", "ids": ids[1:]}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/categories/order", map[string]any{"eventId": "E001", "ids": ids[1:]}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("an order missing one was taken: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("copy: %d %s", rec.Code, rec.Body)
 	}
 	next := byTitle(cache.Model(), "2027 - 2028", "International Night")
@@ -812,17 +873,17 @@ func TestUncategorizedFallback(t *testing.T) {
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/activity", add); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a proposal without a category went through: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", add); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", add); rec.Code != http.StatusNoContent {
 		t.Fatalf("admin add: %d %s", rec.Code, rec.Body)
 	}
 	loose := byTitle(cache.Model(), "2026 - 2027", "Loose End")
 	if loose == nil || loose.Category != UncategorizedID || cache.Count(activitiesTab, store.Row{"Title": "Loose End", "Category": ""}) != 1 {
 		t.Fatalf("loose end: %+v", loose)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/category", map[string]any{"id": UncategorizedID, "title": "Misc"}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/category", map[string]any{"id": UncategorizedID, "title": "Misc"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("edited the built-in heading: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/team/category", map[string]any{"id": UncategorizedID}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.CallUnderHat(t, mux, admin, "DELETE", "/api/team/category", map[string]any{"id": UncategorizedID}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleted the built-in heading: %d", rec.Code)
 	}
 }
@@ -922,7 +983,7 @@ func TestShowOnMainPage(t *testing.T) {
 	}
 	off := false
 	edit := map[string]any{"id": "C02", "title": "Activities", "allowAdding": AddingNo, "showOnMain": off}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/category", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/category", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("edit: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Model().Category("C02").ShowOnMain || cache.Count(categoriesTab, store.Row{"Category ID": "C02", "Show On Main Page": "No"}) != 1 {
@@ -945,7 +1006,7 @@ func TestPrettyIDs(t *testing.T) {
 	}
 	edit := func(id, pretty string, takeOver bool) *httptest.ResponseRecorder {
 		act := cache.Model().Activity(id)
-		return testkit.Call(t, mux, admin, "POST", "/api/team/activity", map[string]any{
+		return testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", map[string]any{
 			"id": id, "year": act.Year, "title": act.Title, "category": act.Category, "status": act.Status,
 			"directSignUp": true, "prettyId": pretty, "takeOver": takeOver,
 		})
@@ -1009,7 +1070,7 @@ func TestPrettyIDs(t *testing.T) {
 		t.Fatalf("child path %q", m.PathOf(norway))
 	}
 	child := func(node *Activity, pretty string) *httptest.ResponseRecorder {
-		return testkit.Call(t, mux, admin, "POST", "/api/team/activity", map[string]any{
+		return testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", map[string]any{
 			"id": node.ID, "year": node.Year, "title": node.Title, "parent": node.Parent, "category": node.Category, "status": node.Status,
 			"directSignUp": true, "prettyId": pretty,
 		})
@@ -1151,7 +1212,7 @@ func TestRedirects(t *testing.T) {
 	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/redirect", map[string]string{"old": oldLink, "new": "/v/international-night"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("chair: %d %s", rec.Code, rec.Body)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"old": oldLink, "new": "/v/international-night"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"old": oldLink, "new": "/v/international-night"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
 	m := cache.Model()
@@ -1179,16 +1240,16 @@ func TestRedirects(t *testing.T) {
 		{"old": "somewhere", "new": "/v/Somewhere"}, {"old": "/a", "new": "/b"}, {"old": oldPath, "new": "/elsewhere"}, {"old": "", "new": "/x"}, {"old": "/x", "new": ""},
 	} {
 		if bad["old"] == "/a" {
-			if rec := testkit.Call(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"old": "/b", "new": "/a"}); rec.Code != http.StatusNoContent {
+			if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"old": "/b", "new": "/a"}); rec.Code != http.StatusNoContent {
 				t.Fatalf("b: %d %s", rec.Code, rec.Body)
 			}
 		}
-		if rec := testkit.Call(t, mux, admin, "POST", "/api/team/redirect", bad); rec.Code < 400 {
+		if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/redirect", bad); rec.Code < 400 {
 			t.Errorf("%v was accepted", bad)
 		}
 	}
 	elsewhere := "https://celebrate.heliosian.com/parties/abc"
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"original": oldLink, "old": "/dl/signup/s/768d91", "new": elsewhere}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"original": oldLink, "old": "/dl/signup/s/768d91", "new": elsewhere}); rec.Code != http.StatusNoContent {
 		t.Fatalf("edit: %d %s", rec.Code, rec.Body)
 	}
 	m = cache.Model()
@@ -1201,13 +1262,13 @@ func TestRedirects(t *testing.T) {
 	if m.Resolve(oldPath) != nil {
 		t.Fatalf("a chain that leaves the site names no activity")
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"original": "intl-night", "old": "/v/intl-nite", "new": "/v/international-night"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"original": "intl-night", "old": "/v/intl-nite", "new": "/v/international-night"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("edit the sample row: %d %s", rec.Code, rec.Body)
 	}
 	if n := cache.Count(redirectsTab, store.Row{"Type": "pretty", "Old": "/v/intl-nite"}); n != 1 {
 		t.Fatalf("the sample row's kind was not kept: %+v", cache.Model().Redirects)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"old": "/v/fair", "new": "/"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"old": "/v/fair", "new": "/"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("to the front page: %d %s", rec.Code, rec.Body)
 	}
 	handler := Redirected(cache, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
@@ -1231,13 +1292,13 @@ func TestRedirects(t *testing.T) {
 	if rec.Code != http.StatusTeapot {
 		t.Errorf("a POST is never redirected: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/team/redirect", map[string]string{"old": "/dl/signup/s/768d91"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "DELETE", "/api/team/redirect", map[string]string{"old": "/dl/signup/s/768d91"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
 	}
 	if got := cache.Model().Destination(oldPath); got != "" {
 		t.Fatalf("deleted redirect still sends to %q", got)
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/team/redirect", map[string]string{"old": "/dl/signup/s/768d91"}); rec.Code != http.StatusNotFound {
+	if rec := testkit.CallUnderHat(t, mux, admin, "DELETE", "/api/team/redirect", map[string]string{"old": "/dl/signup/s/768d91"}); rec.Code != http.StatusNotFound {
 		t.Fatalf("delete again: %d %s", rec.Code, rec.Body)
 	}
 }

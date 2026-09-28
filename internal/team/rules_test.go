@@ -2,6 +2,7 @@ package team
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -9,6 +10,19 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/testkit"
 )
+
+func whole(t *testing.T, b activityBody) activityPatch {
+	t.Helper()
+	raw, err := json.Marshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch := activityPatch{}
+	if err := json.Unmarshal(raw, &patch); err != nil {
+		t.Fatal(err)
+	}
+	return patch
+}
 
 func TestSaveActivityRules(t *testing.T) {
 	cache, _ := newServer(t)
@@ -51,7 +65,7 @@ func TestSaveActivityRules(t *testing.T) {
 		{"a malformed address", viewerOf(admin, true), with(existing("E002"), func(b *activityBody) { b.PrettyID = "Bad Address!" }), http.StatusBadRequest, "", 0},
 	}
 	for _, c := range cases {
-		s, err := m.saveActivity(c.actor, c.body)
+		s, err := m.saveActivity(c.actor, whole(t, c.body))
 		if got := testkit.Status(t, err); got != c.status {
 			t.Errorf("%s: status %d, want %d (%v)", c.name, got, c.status, err)
 			continue
@@ -67,7 +81,7 @@ func TestSaveActivityPrettyConflicts(t *testing.T) {
 	m := cache.Model()
 	act := m.Activity("E002")
 	body := activityBody{ID: "E002", Year: act.Year, Title: act.Title, Category: act.Category, Status: act.Status, DirectSignUp: true, PrettyID: "international-night"}
-	_, err := m.saveActivity(viewerOf(admin, true), body)
+	_, err := m.saveActivity(viewerOf(admin, true), whole(t, body))
 	var refusal *access.Refusal
 	if !errors.As(err, &refusal) || refusal.Status != http.StatusConflict {
 		t.Fatalf("same-year clash: %v", err)
@@ -77,7 +91,7 @@ func TestSaveActivityPrettyConflicts(t *testing.T) {
 	}
 	last := byTitle(m, "2025 - 2026", "International Night")
 	body.PrettyID = "international-night-2025"
-	_, err = m.saveActivity(viewerOf(admin, true), body)
+	_, err = m.saveActivity(viewerOf(admin, true), whole(t, body))
 	if !errors.As(err, &refusal) || refusal.Status != http.StatusConflict {
 		t.Fatalf("prior-year clash: %v", err)
 	}
@@ -85,7 +99,7 @@ func TestSaveActivityPrettyConflicts(t *testing.T) {
 		t.Fatalf("prior-year clash body: %+v", refusal.Body)
 	}
 	body.TakeOver = true
-	s, err := m.saveActivity(viewerOf(admin, true), body)
+	s, err := m.saveActivity(viewerOf(admin, true), whole(t, body))
 	if err != nil || len(s.ops) != 2 {
 		t.Fatalf("take-over: %v, %d ops", err, len(s.ops))
 	}
@@ -106,7 +120,7 @@ func TestSaveActivityPriority(t *testing.T) {
 		t.Helper()
 		b := body
 		b.Priority, b.VolunteersComplete = priority, complete
-		s, err := cache.Model().saveActivity(viewerOf(who, isAdmin), b)
+		s, err := cache.Model().saveActivity(viewerOf(who, isAdmin), whole(t, b))
 		if err != nil {
 			t.Fatal(err)
 		}

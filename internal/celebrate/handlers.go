@@ -11,7 +11,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/admins"
-	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
@@ -82,7 +81,7 @@ func Register(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("POST /api/celebrate/categories/order", serve.JSON(a.reorderCategories))
 	mux.HandleFunc("POST /api/celebrate/settings", serve.JSON(a.saveSettings))
 	mux.HandleFunc("GET /api/celebrate/invoices.csv", a.invoicesCSV)
-	admins.Register(mux, "celebrate", a.cache.List, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
+	admins.Register(mux, a.cache.List, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -90,9 +89,7 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) actor(r *http.Request) access.Actor {
-	directory := a.directory()
-	email := directory.Resolve(strings.ToLower(auth.Email(r)))
-	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email), Household: directory.Family(email)}
+	return a.directory().Actor(r, a.cache.Held)
 }
 
 var now = func() time.Time {
@@ -111,7 +108,6 @@ func (a app) model(r *http.Request, _ serve.None) (View, error) {
 	actor := a.actor(r)
 	view := RenderWith(a.cache.Model(), a.directory(), a.rsvps, actor, now())
 	view.ImageSearch = a.search.On()
-	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(actor.Email)
 	return view, nil
 }
 
@@ -430,7 +426,7 @@ func (a app) saveSettings(r *http.Request, body Settings) (serve.None, error) {
 }
 
 func (a app) invoicesCSV(w http.ResponseWriter, r *http.Request) {
-	if err := requireAdmin(a.actor(r)); err != nil {
+	if err := require(a.actor(r), SeeAll); err != nil {
 		serve.Error(w, r, err)
 		return
 	}

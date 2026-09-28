@@ -155,7 +155,7 @@ type addressesView struct {
 }
 
 func (a app) addresses(r *http.Request, _ serve.None) (addressesView, error) {
-	if err := requireAdmin(a.actor(r)); err != nil {
+	if err := require(a.actor(r), MoveAddresses); err != nil {
 		return addressesView{}, err
 	}
 	model := a.cache.Model()

@@ -15,8 +15,18 @@ import (
 	"heliosian/internal/who"
 )
 
-func requireAdmin(actor access.Actor) error {
-	if !actor.Admin {
+var (
+	SeeAll        = access.Standing("celebrate.see-all")
+	Curate        = access.Standing("celebrate.curate")
+	Configure     = access.Standing("celebrate.configure")
+	MoveAddresses = access.Standing("celebrate.move-addresses")
+	ActAsHost     = access.Acting("celebrate.act-as-host")
+)
+
+var AdminAllowances = []access.Allowance{SeeAll, Curate, Configure, MoveAddresses, ActAsHost}
+
+func require(actor access.Actor, allowance access.Allowance) error {
+	if !actor.May(allowance) {
 		return access.Forbidden("admin access required")
 	}
 	return nil
@@ -542,7 +552,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 	status := strings.TrimSpace(body.Status)
 	category := strings.TrimSpace(body.Category)
 	switch {
-	case adding && actor.Admin:
+	case adding && actor.May(Curate):
 		if status == "" {
 			status = StatusOpen
 		}
@@ -554,7 +564,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 		if c := m.Current(); c != nil {
 			celebration = c.Code
 		}
-	case actor.Admin:
+	case actor.May(Curate):
 		if status == "" {
 			status = was.Status
 		}
@@ -576,7 +586,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 		return savedParty{}, access.Invalid("let adults, students, or both hold a ticket")
 	}
 	hosts := config.NormalizeEmails(body.HostEmails)
-	if adding && !actor.Admin && !slices.Contains(hosts, actor.Email) {
+	if adding && !actor.May(Curate) && !slices.Contains(hosts, actor.Email) {
 		hosts = append(hosts, actor.Email)
 	}
 	for _, h := range hosts {
@@ -584,7 +594,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 			return savedParty{}, access.Invalid("%s", err)
 		}
 	}
-	if !adding && !actor.Admin && !slices.Contains(hosts, actor.Email) {
+	if !adding && !actor.May(Curate) && !slices.Contains(hosts, actor.Email) {
 		return savedParty{}, access.Invalid("you can't remove yourself as a host; ask another host or an admin")
 	}
 	id := strings.TrimSpace(body.ID)
@@ -635,7 +645,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 }
 
 func (m *Model) deleteParty(actor access.Actor, id string) (*Party, []store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Curate); err != nil {
 		return nil, nil, err
 	}
 	p, err := m.findParty(id)
@@ -678,7 +688,7 @@ func (m *Model) setFlags(actor access.Actor, flags partyFlags) (*Party, []store.
 }
 
 func (m *Model) setStatus(actor access.Actor, id, status string) (*Party, []store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Curate); err != nil {
 		return nil, nil, err
 	}
 	p, err := m.findParty(id)
@@ -709,7 +719,7 @@ type celebrationForm struct {
 }
 
 func (m *Model) saveCelebration(actor access.Actor, form celebrationForm) ([]store.Op, bool, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Configure); err != nil {
 		return nil, false, err
 	}
 	code := strings.TrimSpace(form.Code)
@@ -752,7 +762,7 @@ func (m *Model) saveCelebration(actor access.Actor, form celebrationForm) ([]sto
 }
 
 func (c *Cache) deleteCelebration(actor access.Actor, code string) ([]store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Configure); err != nil {
 		return nil, err
 	}
 	if c.Model().Celebration(code) == nil {
@@ -765,7 +775,7 @@ func (c *Cache) deleteCelebration(actor access.Actor, code string) ([]store.Op, 
 }
 
 func (m *Model) saveCategory(actor access.Actor, original, title string) ([]store.Op, bool, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Configure); err != nil {
 		return nil, false, err
 	}
 	title = strings.TrimSpace(title)
@@ -787,7 +797,7 @@ func (m *Model) saveCategory(actor access.Actor, original, title string) ([]stor
 }
 
 func (c *Cache) deleteCategory(actor access.Actor, title string) ([]store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Configure); err != nil {
 		return nil, err
 	}
 	if !slices.Contains(c.Model().Categories, title) {
@@ -800,7 +810,7 @@ func (c *Cache) deleteCategory(actor access.Actor, title string) ([]store.Op, er
 }
 
 func (m *Model) reorderCategories(actor access.Actor, order []string) ([]store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Configure); err != nil {
 		return nil, err
 	}
 	if len(order) != len(m.Categories) {
@@ -824,7 +834,7 @@ func (m *Model) reorderCategories(actor access.Actor, order []string) ([]store.O
 }
 
 func (m *Model) saveSettings(actor access.Actor, s Settings) ([]store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Configure); err != nil {
 		return nil, err
 	}
 	values := map[string]string{PartiesIntroKey: strings.TrimSpace(s.PartiesIntro), TicketNoteKey: strings.TrimSpace(s.TicketNote), HostingOpenKey: cells.YesNoCell(s.HostingOpen)}
@@ -836,7 +846,7 @@ func (m *Model) saveSettings(actor access.Actor, s Settings) ([]store.Op, error)
 }
 
 func (m *Model) moveUnlisted(actor access.Actor, directory *who.Model, old, to, name string) ([]store.Op, int, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, MoveAddresses); err != nil {
 		return nil, 0, err
 	}
 	if directory.Member(directory.Resolve(config.NormalizeEmail(old))) {
@@ -846,7 +856,7 @@ func (m *Model) moveUnlisted(actor access.Actor, directory *who.Model, old, to, 
 }
 
 func (m *Model) moveAddress(actor access.Actor, old, to, name string) ([]store.Op, int, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, MoveAddresses); err != nil {
 		return nil, 0, err
 	}
 	old, to, name = config.NormalizeEmail(old), config.NormalizeEmail(to), strings.TrimSpace(name)

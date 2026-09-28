@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"heliosian/internal/access"
 	"heliosian/internal/who"
 )
 
@@ -28,7 +27,7 @@ func (c *Cache) Late(directory func() *who.Model, email string) []Late {
 	model := c.Model()
 	admin := c.IsAdmin(email)
 	comms := slices.ContainsFunc(model.Team, func(t TeamMember) bool { return t.Email == email && t.Role == RoleComms })
-	if !model.Sees(access.Actor{Email: email, Admin: admin}) {
+	if !model.Sees(directory().ActorOf(email, c.Held(email), false)) {
 		return []Late{}
 	}
 	v := viewer{directory: directory()}

@@ -9,7 +9,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/admins"
-	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/claude"
 	"heliosian/internal/config"
@@ -102,7 +101,7 @@ func Register(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("GET /api/loop/messages", serve.JSON(a.messages))
 	mux.HandleFunc("POST /api/loop/subscription", serve.JSON(a.subscription))
 	mux.HandleFunc("POST /api/loop/archive", serve.JSON(a.archive))
-	admins.Register(mux, "loop", a.cache.List, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
+	admins.Register(mux, a.cache.List, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
 	mux.HandleFunc("POST /hooks/mail/mime", a.inbound)
 	mux.HandleFunc("POST /hooks/events", a.events)
 	mux.Handle("GET /open/share/about.png", d.About)
@@ -116,17 +115,15 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) actor(r *http.Request) access.Actor {
-	email := a.sources().Directory.Resolve(strings.ToLower(auth.Email(r)))
-	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email)}
+	return a.sources().Directory.Actor(r, a.cache.Held)
 }
 
 type user struct {
-	Email        string `json:"email"`
-	Name         string `json:"name"`
-	Initial      string `json:"initial"`
-	PhotoURL     string `json:"photoUrl,omitempty"`
-	IsAdmin      bool   `json:"isAdmin"`
-	IsSuperAdmin bool   `json:"isSuperAdmin"`
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	Initial  string `json:"initial"`
+	PhotoURL string `json:"photoUrl,omitempty"`
+	IsAdmin  bool   `json:"isAdmin"`
 }
 
 type ruleView struct {
@@ -267,7 +264,7 @@ func (a app) view(g Group, as access.Actor) (groupView, bool) {
 	viewer := as.Email
 	v := groupView{Group: *shown, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Open: g.VisibleTo(access.Actor{Email: viewer}, a.sources()), Unsubscribed: g.HasExcluded(viewer), Archived: a.cache.Model().Archived(g.Name, viewer), Sent: a.sentCount(g.Name)}
 	v.Members = a.members(g)
-	if !g.Edits(as) {
+	if !g.Sees(as) {
 		for i := range v.Members {
 			v.Members[i].Reasons = nil
 		}
@@ -306,7 +303,7 @@ func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
 	email := actor.Email
 	me := a.person(email)
 	view := modelView{
-		User:        user{Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: actor.Admin, IsSuperAdmin: a.cache.IsSuperAdmin(email)},
+		User:        user{Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: actor.May(SeeAll)},
 		Domain:      Domain,
 		Groups:      []groupView{},
 		Suggestions: a.suggestions(email),

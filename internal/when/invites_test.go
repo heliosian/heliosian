@@ -980,7 +980,7 @@ func TestInvitationDetails(t *testing.T) {
 	}
 	rec = call(t, as(sam, mux), "GET", "/api/when/model", "")
 	json.NewDecoder(rec.Body).Decode(&view)
-	rec = call(t, as("dana.hawkins@heliosschool.org", mux), "GET", "/api/when/model", "")
+	rec = call(t, underHat("dana.hawkins@heliosschool.org", mux), "GET", "/api/when/model", "")
 	json.NewDecoder(rec.Body).Decode(&view)
 	i = slices.IndexFunc(view.Events, func(e *Event) bool { return e.ID == partyA })
 	if i < 0 || view.Events[i].Title != "Fondue Night" || view.Events[i].Start != "2026-11-14 18:00" {
@@ -1521,7 +1521,7 @@ func TestBouncesAreAppendOnly(t *testing.T) {
 
 func TestCategoryOrder(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
-	admin := as("dana.hawkins@heliosschool.org", mux)
+	admin := underHat("dana.hawkins@heliosschool.org", mux)
 	tags := []map[string]any{}
 	for _, tag := range cache.Model().Tags {
 		tags = append(tags, map[string]any{"name": tag.Name, "description": tag.Description, "group": tag.Group, "default": tag.Default, "image": tag.Image})
@@ -1587,11 +1587,14 @@ func TestHideHosts(t *testing.T) {
 
 func TestAdminActsAsHost(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
-	jordan, dana := as(host, mux), as("dana.hawkins@heliosschool.org", mux)
+	jordan, dana := as(host, mux), underHat("dana.hawkins@heliosschool.org", mux)
 	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
 	v := inviteView(t, dana, "meetup")
-	if !v.Host || !v.AdminHost || v.Poster != host || slices.ContainsFunc(v.Hosts, func(p Person) bool { return p.Email == "dana.hawkins@heliosschool.org" }) {
-		t.Errorf("the admin's view: host %v adminHost %v poster %q hosts %v", v.Host, v.AdminHost, v.Poster, v.Hosts)
+	if !v.Host || v.Poster != host || slices.ContainsFunc(v.Hosts, func(p Person) bool { return p.Email == "dana.hawkins@heliosschool.org" }) {
+		t.Errorf("the admin's view: host %v poster %q hosts %v", v.Host, v.Poster, v.Hosts)
+	}
+	if off := inviteView(t, as("dana.hawkins@heliosschool.org", mux), "meetup"); off.Host {
+		t.Error("an admin with the pencil off hosts the event")
 	}
 	if rec := call(t, dana, "PUT", "/api/when/invites/settings", `{"id":"meetup","hideHosts":true}`); rec.Code != 204 {
 		t.Errorf("the admin hiding the hosts: %d %s", rec.Code, rec.Body)
@@ -1810,7 +1813,7 @@ func TestSweepActsOnlyForAHost(t *testing.T) {
 		t.Errorf("the sweep filled the group for someone who no longer hosts")
 	}
 	now = func() time.Time { return testNow.Add(grace + time.Minute) }
-	a.sweepEvent(context.Background(), a.eventFor(mia, false, "meetup"))
+	a.sweepEvent(context.Background(), a.eventFor(access.Actor{Email: mia}, "meetup"))
 	now = pinnedClock
 	if cache.Model().InviteOf("meetup", gone) == nil {
 		t.Errorf("the group no longer matches, so the sweep proved nothing")

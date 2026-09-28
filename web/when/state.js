@@ -4,7 +4,7 @@ import {parseWhen} from '/datecard.js';
 import {superEditOn} from '/superedit.js';
 
 const remembered = readFilters();
-export const state = {model: null, allEvents: [], filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active, appliedCalendar: ''};
+export const state = {model: null, filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active, appliedCalendar: ''};
 
 export function isSystemAdmin() {
   return Boolean(state.model && state.model.user.isAdmin);
@@ -33,20 +33,8 @@ const byDate = new Map();
 
 export function applyModel(model) {
   state.model = model;
-  state.allEvents = model.events;
-  applySuperEdit();
-}
-
-export function applySuperEdit() {
-  const model = state.model;
-  model.events = isAdmin() || !isSystemAdmin() ? state.allEvents : state.allEvents.filter(e => !(e.pending || e.declined) || e.addedBy === model.user.email || e.hosted);
   byId.clear();
   byDate.clear();
-  for (const e of state.allEvents) {
-    if (e.pending && !e.declined) {
-      byId.set(e.id, e);
-    }
-  }
   for (const e of model.events) {
     byId.set(e.id, e);
     if (e.address) {
@@ -79,8 +67,7 @@ export function postedAndHosting(e) {
 
 export function event(id) {
   if (byId.has(id)) {
-    const e = byId.get(id);
-    return e.adminOnly && !isAdmin() ? null : e;
+    return byId.get(id);
   }
   const [source, rest] = id.split('/', 2);
   if (source === 'team' && rest) {

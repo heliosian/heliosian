@@ -1083,19 +1083,8 @@ export async function copyToNextYear(act) {
 }
 
 export async function saveActivityFields(act, changes) {
-  const body = {
-    id: act.id,
-    year: act.year, title: act.title, parent: act.parent || '',
-    category: act.category || '', status: act.status,
-    description: act.description || '', image: act.image || '', flyer: act.flyer || '', timing: act.own.timing,
-    start: act.own.start, end: act.own.end, location: act.location || '', spots: act.spots || 0,
-    coLeaderNeeded: act.coLeaderNeeded, volunteersHidden: act.volunteersHidden, volunteersComplete: Boolean(act.volunteersComplete), directSignUp: act.directSignUp,
-    priority: Boolean(act.priority),
-    prettyId: act.prettyId || '', allowAdding: act.allowAddingOwn || '', highlight: act.highlight || null,
-    ...changes,
-  };
   try {
-    await saveActivity(body);
+    await saveActivity({id: act.id, ...changes});
   } catch (err) {
     toast(err.message);
     await load();

@@ -307,11 +307,15 @@ func (p *Party) Hosted(email string) bool {
 }
 
 func (p *Party) Edits(v access.Actor) bool {
-	return v.Admin || p.Hosted(v.Email)
+	return v.May(ActAsHost) || p.Hosted(v.Email)
+}
+
+func (p *Party) Sees(v access.Actor) bool {
+	return v.May(SeeAll) || p.Hosted(v.Email)
 }
 
 func (p *Party) VisibleTo(v access.Actor) bool {
-	return p.Status == StatusOpen || p.Edits(v)
+	return p.Status == StatusOpen || p.Sees(v)
 }
 
 func (p *Party) For(v access.Actor, directory *who.Model) *Party {
@@ -321,7 +325,7 @@ func (p *Party) For(v access.Actor, directory *who.Model) *Party {
 	c := *p
 	c.Tickets = []Ticket{}
 	for _, t := range p.Tickets {
-		if !p.Edits(v) && !v.Mine(t.Purchaser) && !v.Mine(t.Email) {
+		if !p.Sees(v) && !v.Mine(t.Purchaser) && !v.Mine(t.Email) {
 			if t.Email != "" && (t.Email == t.Purchaser || directory.Member(directory.Resolve(t.Email))) {
 				t.Purchaser = ""
 			}

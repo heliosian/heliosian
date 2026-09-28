@@ -62,7 +62,7 @@ type Sources struct {
 }
 
 type Admins struct {
-	Team, Celebrate, Loop, Calendar, Home func(email string) bool
+	Team, Celebrate, Loop, Calendar, Home func(email string) []access.Allowance
 }
 
 type app struct {

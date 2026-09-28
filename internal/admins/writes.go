@@ -9,7 +9,7 @@ import (
 )
 
 func (l List) set(actor access.Actor, requested []string) ([]store.Op, []string, error) {
-	if !actor.Admin {
+	if !actor.May(Manage(l.app)) {
 		return nil, nil, access.Forbidden("admin access required")
 	}
 	admins := []string{}

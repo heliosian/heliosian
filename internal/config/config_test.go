@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -123,11 +124,20 @@ func TestSignOutIsRecordedOncePerAddress(t *testing.T) {
 	}
 }
 
+func configures(admin string) func(string) []access.Allowance {
+	return func(email string) []access.Allowance {
+		if email != admin {
+			return nil
+		}
+		return []access.Allowance{Configure}
+	}
+}
+
 func TestAdminEditsAreCommits(t *testing.T) {
 	dir, queue, cache := sample(t)
 	const jordan = "jordan.whitfield@heliosschool.org"
 	mux := http.NewServeMux()
-	Register(mux, cache, func(email string) bool { return email == jordan })
+	Register(mux, cache, testkit.Actors, configures(jordan))
 	post := func(path, body string, want int) {
 		t.Helper()
 		rec := httptest.NewRecorder()
@@ -162,7 +172,7 @@ func TestEditsNeedTheirAdmin(t *testing.T) {
 	_, _, cache := sample(t)
 	const asha = "asha.chandra@heliosschool.org"
 	mux := http.NewServeMux()
-	Register(mux, cache, func(email string) bool { return email == asha })
+	Register(mux, cache, testkit.Actors, configures(asha))
 	for path, body := range map[string]string{
 		"/api/config/color":        `{"kind":"staff","color":"#000000"}`,
 		"/api/config/super-admins": `{"superAdmins":["` + asha + `"]}`,

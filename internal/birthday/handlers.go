@@ -10,7 +10,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/admins"
-	"heliosian/internal/auth"
 	"heliosian/internal/claude"
 	"heliosian/internal/describe"
 	"heliosian/internal/mail"
@@ -143,7 +142,7 @@ func Register(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("POST /api/birthday/newsletter-dates/create", serve.JSON(a.createNewsletterDates))
 	mux.HandleFunc("POST /api/birthday/newsletter/share", serve.JSON(a.shareIssue))
 	mux.HandleFunc("POST /api/birthday/settings", serve.JSON(a.saveSettings))
-	admins.Register(mux, "birthday", a.cache.List, a.actor, a.adminState)
+	admins.Register(mux, a.cache.List, a.actor, a.adminState)
 	mux.HandleFunc("POST /api/admin/resend-invites", serve.JSON(a.resendInvites))
 	mux.HandleFunc("POST /api/birthday/team/join", serve.JSON(a.joinTeam))
 	mux.HandleFunc("POST /api/admin/team", serve.JSON(a.addTeamMember))
@@ -155,8 +154,7 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) actor(r *http.Request) access.Actor {
-	email := a.directory().Resolve(strings.ToLower(auth.Email(r)))
-	return access.Actor{Email: email, Admin: a.cache.IsAdmin(email)}
+	return a.directory().Actor(r, a.cache.Held)
 }
 
 func (a app) requireAdmin(r *http.Request) (access.Actor, error) {
@@ -190,9 +188,7 @@ func (m *Model) year() string {
 
 func (a app) model(r *http.Request, _ serve.None) (View, error) {
 	actor := a.actor(r)
-	view := Render(a.cache.Model(), a.directory, actor, now())
-	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(actor.Email)
-	return view, nil
+	return Render(a.cache.Model(), a.directory, actor, now()), nil
 }
 
 func (a app) commit(r *http.Request, actor access.Actor, ops ...store.Op) error {

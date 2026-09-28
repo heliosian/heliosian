@@ -13,8 +13,8 @@ import (
 
 func TestSavingAdminsKeepsOnlyAddressesThatAreNotSuperAdmins(t *testing.T) {
 	listed := []string{}
-	l := New(func() []string { return []string{"boss@x.org"} }, func() []string { return listed }, nil)
-	admin := access.Actor{Email: "boss@x.org", Admin: true}
+	l := New("test", nil, func() []string { return []string{"boss@x.org"} }, func() []string { return listed }, nil)
+	admin := access.Actor{Email: "boss@x.org", Allowances: access.Grant(l.Held("boss@x.org"), false)}
 	requested := []string{"jsmith", " New.Admin@X.org ", "BOSS@x.org"}
 	ops, admins, err := l.set(admin, requested)
 	if err != nil {
@@ -37,12 +37,15 @@ func TestSavingAdminsKeepsOnlyAddressesThatAreNotSuperAdmins(t *testing.T) {
 }
 
 func TestSuperAdminsAreAdminsWhateverTheCase(t *testing.T) {
-	l := New(func() []string { return []string{"boss@x.org"} }, func() []string { return []string{"helper@x.org"} }, nil)
+	l := New("test", nil, func() []string { return []string{"boss@x.org"} }, func() []string { return []string{"helper@x.org"} }, nil)
 	if !l.IsSuperAdmin(" Boss@X.org ") || l.IsSuperAdmin("helper@x.org") {
 		t.Fatal("super admin check")
 	}
 	if !l.IsAdmin("HELPER@x.org") || !l.IsAdmin("boss@x.org") || l.IsAdmin("nobody@x.org") {
 		t.Fatal("admin check")
+	}
+	if !slices.Contains(l.Held("boss@x.org"), Manage("test")) || !slices.Contains(l.Held("helper@x.org"), Manage("test")) || l.Held("nobody@x.org") != nil {
+		t.Fatal("held allowances")
 	}
 	if got := l.Admins(); !slices.Equal(got, []string{"boss@x.org", "helper@x.org"}) {
 		t.Fatalf("admins: %v", got)

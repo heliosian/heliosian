@@ -223,7 +223,7 @@ func (m *Model) OnTeam(email string) bool {
 }
 
 func (m *Model) Sees(v access.Actor) bool {
-	return v.Admin || m.OnTeam(v.Email)
+	return v.May(ActAsTeam) || m.OnTeam(v.Email)
 }
 
 func checkEmail(email string) error {

@@ -184,7 +184,7 @@ func NewCore(cfg Config) *Core {
 	}
 	go keypoints.Run(artifactsCache, cfg.KeyPoints, cache)
 	mux := http.NewServeMux()
-	config.Register(mux, settings, cache.IsAdmin)
+	config.Register(mux, settings, cache.Actor, cache.Held)
 	who.Register(mux, cache, cfg.BrowserKey, lists, whoAbout)
 	who.RegisterTags(mux, cache)
 	who.RegisterAdmin(mux, cache, cfg.Store)
@@ -199,7 +199,8 @@ func NewCore(cfg Config) *Core {
 	calendarMux := http.NewServeMux()
 	var hooks when.Hooks
 	moveAddress := func(ctx context.Context, actor access.Actor, old, to, name string) error {
-		if _, err := celebrate.MoveAddress(ctx, celebrateCache, actor, old, to, name); err != nil {
+		as := cache.Model().ActorOf(actor.Email, celebrateCache.Held(actor.Email), false)
+		if _, err := celebrate.MoveAddress(ctx, celebrateCache, as, old, to, name); err != nil {
 			return err
 		}
 		hooks.MoveAddress(ctx, actor, old, to, name)
@@ -314,7 +315,7 @@ func NewCore(cfg Config) *Core {
 		Links:       homeCache.CategoriesFor,
 		Artifacts:   artifactsCache.Model,
 		Embedder:    cfg.Embedder,
-		Admins:      ask.Admins{Team: teamCache.IsAdmin, Celebrate: celebrateCache.IsAdmin, Loop: loopCache.IsAdmin, Calendar: calendarCache.IsAdmin, Home: homeCache.IsAdmin},
+		Admins:      ask.Admins{Team: teamCache.Held, Celebrate: celebrateCache.Held, Loop: loopCache.Held, Calendar: calendarCache.Held, Home: homeCache.Held},
 		Now:         time.Now,
 	}, cfg.Asker, spend, cfg.ChatKey)
 	apps := []appSpec{
@@ -349,7 +350,7 @@ func NewCore(cfg Config) *Core {
 		a.Mux.HandleFunc("GET /api/apps/late", behind)
 		a.Mux.HandleFunc("GET /api/apps/alerts", alerts)
 		a.Mux.Handle("GET "+OptInPath, optIn)
-		feedback.Register(a.Mux, a.Key, appName(a.Key), settings.IsSuperAdmin, feedbackIntake)
+		feedback.Register(a.Mux, a.Key, appName(a.Key), cache.Actor, settings.IsSuperAdmin, feedbackIntake)
 		suggestions.Register(a.Mux)
 		folders := []string{"photos"}
 		if folder, ok := blob.ImageFolder(a.Key); ok {
@@ -360,7 +361,7 @@ func NewCore(cfg Config) *Core {
 	homeMux.HandleFunc("GET /api/apps/team", teamWidget(cache, teamCache))
 	homeMux.HandleFunc("GET /api/apps/celebrate", celebrateWidget(cache, calendarCache, linked))
 	homeMux.HandleFunc("GET /api/apps/school", schoolWidget(cache, artifactsCache))
-	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.Bucket, cfg.FeedbackFiler, settings.IsSuperAdmin)
+	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.Bucket, cfg.FeedbackFiler, cache.Actor, settings.IsSuperAdmin)
 	go queue.Tick()
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")

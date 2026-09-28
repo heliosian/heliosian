@@ -9,8 +9,16 @@ import (
 	"heliosian/internal/store"
 )
 
-func requireAdmin(actor access.Actor) error {
-	if !actor.Admin {
+var (
+	Configure         = access.Standing("config.configure")
+	ManageSuperAdmins = access.Standing("super-admins")
+	SignOutAnyone     = access.Standing("sign-out-anyone")
+)
+
+var SuperAllowances = []access.Allowance{ManageSuperAdmins, SignOutAnyone}
+
+func require(actor access.Actor, allowance access.Allowance) error {
+	if !actor.May(allowance) {
 		return access.Forbidden("admin access required")
 	}
 	return nil
@@ -27,7 +35,7 @@ func setSettings(values map[string]string) []store.Op {
 }
 
 func (s *Settings) setStaleYears(actor access.Actor, years StaleYears) ([]store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Configure); err != nil {
 		return nil, err
 	}
 	if years.Photo <= 0 || years.Facts <= 0 || years.FamilyPhoto <= 0 {
@@ -41,7 +49,7 @@ func (s *Settings) setStaleYears(actor access.Actor, years StaleYears) ([]store.
 }
 
 func (s *Settings) setPrivacyLinks(actor access.Actor, links PrivacyLinks) (PrivacyLinks, []store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Configure); err != nil {
 		return PrivacyLinks{}, nil, err
 	}
 	links.VeracrossPreferences = strings.TrimSpace(links.VeracrossPreferences)
@@ -56,7 +64,7 @@ func (s *Settings) setPrivacyLinks(actor access.Actor, links PrivacyLinks) (Priv
 }
 
 func (s *Settings) setColor(actor access.Actor, kind, name, color string) (string, []store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, Configure); err != nil {
 		return "", nil, err
 	}
 	if !HexColor.MatchString(color) {
@@ -78,7 +86,7 @@ func (s *Settings) setColor(actor access.Actor, kind, name, color string) (strin
 }
 
 func (s *Settings) setSuperAdmins(actor access.Actor, emails []string) ([]string, []store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, ManageSuperAdmins); err != nil {
 		return nil, nil, err
 	}
 	admins := NormalizeEmails(emails)
@@ -105,7 +113,7 @@ func signedOut(email string) []store.Op {
 }
 
 func (s *Settings) signOut(actor access.Actor, email string) (string, []store.Op, error) {
-	if err := requireAdmin(actor); err != nil {
+	if err := require(actor, SignOutAnyone); err != nil {
 		return "", nil, err
 	}
 	email = strings.ToLower(strings.TrimSpace(email))

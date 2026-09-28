@@ -64,7 +64,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	field := r.FormValue("field")
 	value := strings.TrimSpace(r.FormValue("value"))
 	actor := requestActor(u.cache, r)
-	ops, err := u.cache.Model().editField(actor, superEditOn(r), field, key, value)
+	ops, err := u.cache.Model().editField(actor, field, key, value)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
@@ -82,7 +82,7 @@ func (u uploader) facts(w http.ResponseWriter, r *http.Request) {
 	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
 	facts := strings.TrimSpace(r.FormValue("facts"))
 	actor := requestActor(u.cache, r)
-	ops, err := u.cache.Model().setFacts(actor, superEditOn(r), key, facts)
+	ops, err := u.cache.Model().setFacts(actor, key, facts)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
@@ -128,7 +128,7 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	name := blob.Name(content, ext)
 	actor := requestActor(u.cache, r)
-	ops, err := u.cache.Model().upload(actor, superEditOn(r), target, kind, key, name)
+	ops, err := u.cache.Model().upload(actor, target, kind, key, name)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
@@ -155,7 +155,7 @@ func (u uploader) reorderPhotos(w http.ResponseWriter, r *http.Request) {
 	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
 	names := splitNonEmpty(r.FormValue("order"), ",")
 	actor := requestActor(u.cache, r)
-	ops, err := u.cache.Model().reorderPhotos(actor, superEditOn(r), key, names)
+	ops, err := u.cache.Model().reorderPhotos(actor, key, names)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
@@ -198,7 +198,7 @@ func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 	cropName := blob.Name(content, ext)
 	actor := requestActor(u.cache, r)
-	ops, err := u.cache.Model().cropPhoto(actor, superEditOn(r), target, key, name, cropName)
+	ops, err := u.cache.Model().cropPhoto(actor, target, key, name, cropName)
 	if err != nil {
 		serve.Error(w, r, err)
 		return

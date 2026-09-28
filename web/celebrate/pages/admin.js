@@ -159,7 +159,7 @@ function invoicesCard() {
   card.append(totals, table);
   const ledger = () => (state.model.invoicing || []).filter(l => l.code === code);
   const names = new Map();
-  for (const p of state.allParties) {
+  for (const p of state.model.parties) {
     for (const a of [...p.attendees, ...p.waitlisted]) {
       if (a.purchaser && a.purchaserName) {
         names.set(a.purchaser, a.purchaserName);

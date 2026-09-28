@@ -238,7 +238,7 @@ func TestPhotoOrderIsSortKeys(t *testing.T) {
 	s := newServer(t)
 	const elena = "elena.torres@heliosschool.org"
 	after := []photoRef{{Name: "a.jpg"}, {Name: "b.jpg"}, {Name: "c.jpg"}}
-	if err := s.cache.Commit(context.Background(), actorOf(s.cache, elena), photoOps(elena, nil, after)...); err != nil {
+	if err := s.cache.Commit(context.Background(), access.Actor{Email: elena}, photoOps(elena, nil, after)...); err != nil {
 		t.Fatal(err)
 	}
 	names := func() []string {
