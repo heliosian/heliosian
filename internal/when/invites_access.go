@@ -11,6 +11,10 @@ import (
 
 const notOnCalendar = "that event is not on the calendar"
 
+func (e *Event) guestsWithoutInvite() bool {
+	return (e.Sharing == SharingPublic || e.Sharing == SharingLink) && e.Source != SourceCelebrate
+}
+
 func (e *Event) openToAll() bool {
 	return e.Sharing == SharingPublic && e.Source != SourceCelebrate && !e.Cancelled
 }

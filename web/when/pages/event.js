@@ -9,6 +9,7 @@ import {setTitle} from '/shell.js';
 import {load} from '/router.js';
 import {api} from '/api.js';
 import {openGuestForm} from '../guestpopups.js';
+import {answerIcon} from '../inviteparts.js';
 import {audienceChips, blocks} from '../events.js';
 import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow, inviteCall} from '../invites.js';
 
@@ -375,9 +376,9 @@ function rsvpCard(e, slot, guest) {
       small('Hide event', 'hidden');
     }
     const answers = () => [
-      button('Yes', 'check', 'button rsvp-yes' + (word === 'yes' ? ' is-on' : ''), () => say(word === 'yes' ? '' : 'yes')),
-      button('Maybe', 'clock', 'button rsvp-maybe' + (word === 'maybe' ? ' is-on' : ''), () => say(word === 'maybe' ? '' : 'maybe')),
-      button('No', 'close', 'button rsvp-no' + (word === 'no' ? ' is-on' : ''), () => say(word === 'no' ? '' : 'no')),
+      button('Yes', answerIcon('yes'), 'button rsvp-yes' + (word === 'yes' ? ' is-on' : ''), () => say(word === 'yes' ? '' : 'yes')),
+      button('Maybe', answerIcon('maybe'), 'button rsvp-maybe' + (word === 'maybe' ? ' is-on' : ''), () => say(word === 'maybe' ? '' : 'maybe')),
+      button('No', answerIcon('no'), 'button rsvp-no' + (word === 'no' ? ' is-on' : ''), () => say(word === 'no' ? '' : 'no')),
     ];
     if (settled) {
       const row = el('div', 'side-row');
@@ -399,7 +400,7 @@ function rsvpCard(e, slot, guest) {
       } else {
         const said = el('div', 'invite-said rsvp-compact-said is-' + word);
         const mark = el('span', 'invite-said-mark');
-        mark.append(svg(word === 'yes' ? 'check' : word === 'maybe' ? 'clock' : 'close'));
+        mark.append(svg(answerIcon(word)));
         said.append(mark, el('strong', '', word === 'yes' ? 'You\u2019re going' : word === 'maybe' ? 'Maybe' : 'Not going'));
         body.append(said);
         if (word === 'yes') {

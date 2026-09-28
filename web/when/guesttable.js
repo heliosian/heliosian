@@ -2,7 +2,7 @@ import {el, svg, button, longToast, copyText} from '/elements.js';
 import {popup} from '/modal.js';
 import {api} from '/api.js';
 import {chipToggle, filterControl} from '/rules.js';
-import {answerWords, answerButtons, face, ticketWords, stamp} from './inviteparts.js';
+import {answerWords, answerIcon, answerButtons, face, ticketWords, stamp} from './inviteparts.js';
 
 export function listFilters(all, view, onChange, {answer = '', opened = '', rsvp = true} = {}) {
   const bar = el('div', 'guest-table-bar');
@@ -313,7 +313,7 @@ function openPick(e, view, picked, onDone) {
       row.append(who);
       const said = el('span', 'invite-said pick-said is-' + (r.answer || 'none'));
       const mark = el('span', 'invite-said-mark');
-      mark.append(svg(r.answer === 'yes' ? 'check' : r.answer === 'maybe' ? 'clock' : r.answer === 'no' ? 'close' : 'info'));
+      mark.append(svg(answerIcon(r.answer)));
       said.append(mark, el('strong', '', r.answer ? answerWords[r.answer] : 'No response'));
       row.append(said);
       row.addEventListener('click', () => {

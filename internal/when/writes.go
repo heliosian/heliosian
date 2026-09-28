@@ -702,8 +702,7 @@ func (a app) bringGuestOps(actor access.Actor, body guestBody) ([]store.Op, brou
 		if !a.mayAnswerFor(actor, g.of, e) {
 			return nil, g, access.Forbidden("a guest comes with you or someone in your household")
 		}
-		open := (e.Sharing == SharingPublic || e.Sharing == SharingLink) && e.Source != SourceCelebrate
-		if !open && model.InviteOf(e.ID, g.of) == nil {
+		if !e.guestsWithoutInvite() && model.InviteOf(e.ID, g.of) == nil {
 			return nil, g, access.Forbidden("a guest comes with someone on the list")
 		}
 	}

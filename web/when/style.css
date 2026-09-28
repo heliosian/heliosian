@@ -1184,21 +1184,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .pending-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
-.rsvp-panel { margin: 28px 0 8px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--accent-wash, #eef6f5); }
+.rsvp-panel { margin: 28px 0 8px; padding: 16px; border: 1px solid color-mix(in srgb, var(--green-2) 45%, var(--card)); border-radius: 16px; background: color-mix(in srgb, var(--green-2) 14%, var(--card)); }
 
 .rsvp-panel-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-
-.rsvp-panel-icon { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; flex-shrink: 0; border-radius: 50%; background: var(--card); color: var(--brand); }
-
-.rsvp-panel-icon svg { width: 24px; height: 24px; }
-
-.rsvp-panel-words { flex: 1 1 180px; min-width: 0; }
-
-.rsvp-panel-title { font-family: Montserrat, Roboto, sans-serif; font-size: 20px; font-weight: 700; color: var(--brand); }
-
-.rsvp-panel-subtitle { font-family: Montserrat, Roboto, sans-serif; font-size: 18px; font-weight: 700; color: var(--brand); }
-
-.rsvp-panel-lead { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
 
 .rsvp-choices { display: flex; gap: 10px; flex-wrap: wrap; }
 
@@ -1214,11 +1202,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .rsvp-choice.is-maybe .invite-said-mark { background: var(--amber); }
 
-.rsvp-choice-words { display: flex; flex-direction: column; line-height: 1.25; }
-
-.rsvp-choice-words strong { font-size: 16px; }
-
-.rsvp-choice-words small { font-size: 12.5px; color: var(--muted); }
+.rsvp-choice strong { font-size: 16px; }
 
 .rsvp-choice.is-on.is-yes { border-color: #2f9e6a; background: var(--yes-wash, #e3f3ea); color: var(--yes-text, #1d6b48); }
 
@@ -1226,7 +1210,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .rsvp-choice.is-on.is-no { border-color: var(--no-fill, #b3261e); background: var(--no-wash, #f7eeee); color: var(--no-text, #b3261e); }
 
-.rsvp-panel-family { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.rsvp-panel-family { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid color-mix(in srgb, var(--green-2) 45%, var(--card)); }
 
 .rsvp-members { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
 
@@ -1256,13 +1240,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .rsvp-member-holder .rsvp-member-menu { top: calc(100% + 6px); bottom: auto; left: 0; }
 
-.rsvp-member-add { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; border: 1.5px dashed var(--line); border-radius: 12px; background: var(--card); font: inherit; font-size: 13.5px; font-weight: 700; color: var(--brand); cursor: pointer; }
-
-.rsvp-member-add:hover { background: var(--input); }
-
-.rsvp-member-add svg { width: 14px; height: 14px; }
-
-.rsvp-panel-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+.rsvp-panel-foot { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin-top: 10px; }
 
 /* The ask under the event: a band in a green wash with a ticked calendar,
    the question large, and the buttons big at the right - Yes green, No
@@ -1319,46 +1297,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .rsvp-maybe.is-on, .rsvp-maybe.is-on:hover { background: var(--maybe-fill, var(--amber)); border-color: var(--maybe-fill, var(--amber)); color: #fff; box-shadow: 0 0 0 4px rgba(232, 163, 61, 0.3); }
 
-/* The invited household's ask, laid out as HCA-Team lays out My Family's
-   Roles: the heading over the swoosh, who by, a list card with a row per
-   person, and the links under it. */
-/* The ask for someone invited sits in a band of its own, tinted as the
-   plain ask's is, so it is not missed. */
-.invite-box { margin: 28px 0 8px; padding: 18px 20px 16px; border: 1.5px solid var(--yes-line, #bfe0cf); border-radius: 16px; background: linear-gradient(90deg, var(--go-band, #e3f3ea), var(--go-band-end, #eef7f2)); }
+.coming-section h2.section-swoosh { position: relative; z-index: 0; display: inline-block; padding-bottom: 10px; margin: 0 0 2px; font-family: Montserrat, Roboto, sans-serif; font-size: 22px; font-weight: 700; color: var(--brand); }
 
-.invite-box .fam-list { background: var(--card); }
-
-.invite-box h2.section-swoosh, .coming-section h2.section-swoosh { position: relative; z-index: 0; display: inline-block; padding-bottom: 10px; margin: 0 0 2px; font-family: Montserrat, Roboto, sans-serif; font-size: 22px; font-weight: 700; color: var(--brand); }
-
-.invite-box h2.section-swoosh { color: var(--brand-ink, var(--brand)); }
-
-.invite-box h2.section-swoosh::after, .coming-section h2.section-swoosh::after { content: ''; position: absolute; left: 2%; right: 2%; bottom: 2px; height: 12px; background-image: url('/swoosh.png'); background-repeat: no-repeat; background-size: 100% 100%; z-index: -1; }
-
-.invite-by { margin: 0 0 12px; font-size: 14.5px; color: var(--muted); }
-
-.fam-list { background: var(--card); border: 1px solid var(--hairline, var(--line)); border-radius: 14px; overflow: hidden; }
-
-.fam-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
-
-.fam-row + .fam-row { border-top: 1px solid var(--line); }
-
-.fam-row .avatar { position: relative; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%; background: var(--glass-mid, var(--input)); color: var(--yes-text, var(--brand)); font-size: 14px; font-weight: 700; }
-
-.fam-row .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
-
-.fam-row .avatar .grade-badge { left: -5px; top: -5px; min-width: 18px; height: 18px; line-height: 18px; font-size: 10px; }
-
-.fam-row.is-guest { padding-left: 40px; }
-
-.fam-text { flex: 1; min-width: 0; }
-
-.fam-name { font-size: 14px; font-weight: 700; color: var(--ink); }
-
-.fam-where { font-size: 13px; color: var(--muted); margin-top: 1px; }
-
-.fam-edit { margin-top: 0; padding: 6px 8px; font-size: 14px; white-space: nowrap; }
-
-.invite-tools { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.coming-section h2.section-swoosh::after { content: ''; position: absolute; left: 2%; right: 2%; bottom: 2px; height: 12px; background-image: url('/swoosh.png'); background-repeat: no-repeat; background-size: 100% 100%; z-index: -1; }
 
 .invite-said { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
 
@@ -1889,8 +1830,6 @@ button.guests-count:hover { filter: brightness(0.96); }
 
 .rsvp-row-line.is-guest { padding-left: 14px; }
 
-.rsvp-row-name { color: var(--ink); font-weight: 600; }
-
 .rsvp-row-said { border: 0; background: none; padding: 0; font: inherit; font-size: 14px; text-align: left; }
 
 button.rsvp-row-said { cursor: pointer; }
@@ -2009,6 +1948,10 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 .rsvp-clear { font-size: 12.5px; color: var(--soft-ink, #3b5a4b); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; font-family: inherit; }
 
 .rsvp-clear:hover { color: var(--lift-ink, #1d6b48); }
+
+.rsvp-add { display: inline-flex; align-items: center; gap: 3px; }
+
+.rsvp-add svg { width: 12px; height: 12px; }
 
 .month-pip-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

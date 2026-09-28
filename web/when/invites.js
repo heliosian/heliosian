@@ -7,7 +7,7 @@ import {checkbox} from '/form.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
 import {uploadImage} from './imagecontrol.js';
-import {answerWords, firstName, answerButtons, face, ticketWords, stamp, answeredWords, pickerPeople, ruleOptions, setRuleOptions, groupWords} from './inviteparts.js';
+import {answerWords, answerIcon, answerFor, firstName, answerButtons, face, ticketWords, stamp, answeredWords, pickerPeople, ruleOptions, setRuleOptions, groupWords} from './inviteparts.js';
 import {openGuestForm, openGuestCard, warningChip, openPending, sendInvites, deleteInvitation, openCancel} from './guestpopups.js';
 import {listFilters, openTable, openMessage} from './guesttable.js';
 import {openPicker} from './addpeople.js';
@@ -20,30 +20,18 @@ export function fetchInvites(e) {
   return api('GET', '/api/when/invites?id=' + encodeURIComponent(e.id));
 }
 
-const choiceWords = {yes: ['Yes', 'I\u2019ll be there', 'check'], maybe: ['Maybe', 'Not sure yet', 'clock'], no: ['No', 'I can\u2019t make it', 'close']};
-
-async function answerRow(e, r, next) {
-  if (r.key === me().email) {
-    await answer(e, next);
-    return;
-  }
-  await api('POST', '/api/when/invites/answer', {id: e.id, email: r.key, answer: next});
-}
-
 function bigChoices(e, r, refresh) {
   const wrap = el('div', 'rsvp-choices');
-  for (const [word, [label, lead, icon]] of Object.entries(choiceWords)) {
+  for (const [word, label] of Object.entries(answerWords)) {
     const b = el('button', 'rsvp-choice is-' + word + (r.answer === word ? ' is-on' : ''));
     b.type = 'button';
     b.disabled = !r.mine;
-    const words = el('span', 'rsvp-choice-words');
-    words.append(el('strong', '', label), el('small', '', lead));
     const mark = el('span', 'invite-said-mark');
-    mark.append(svg(icon));
-    b.append(mark, words);
+    mark.append(svg(answerIcon(word)));
+    b.append(mark, el('strong', '', label));
     b.addEventListener('click', async () => {
       try {
-        await answerRow(e, r, r.answer === word ? '' : word);
+        await answerFor(e, r, r.answer === word ? '' : word);
         refresh();
       } catch (err) {
         toast(err.message);
@@ -54,68 +42,42 @@ function bigChoices(e, r, refresh) {
   return wrap;
 }
 
-function dropMenu(holder, trigger, refresh) {
-  const menu = el('div', 'hero-image-menu rsvp-member-menu');
-  menu.hidden = true;
-  const item = (icon, label, run, word) => {
-    const b = el('button', 'hero-image-menu-item');
-    b.type = 'button';
-    if (word) {
-      const said = el('span', 'invite-said is-' + word);
-      const mark = el('span', 'invite-said-mark');
-      mark.append(svg(icon));
-      said.append(mark, el('span', '', label));
-      b.append(said);
-    } else {
-      b.append(svg(icon), el('span', '', label));
+function answerItems(e, r, refresh, clear) {
+  const run = next => async () => {
+    try {
+      await answerFor(e, r, next);
+      refresh();
+    } catch (err) {
+      toast(err.message);
     }
-    b.addEventListener('click', async () => {
-      menu.hidden = true;
-      try {
-        await run();
-        refresh();
-      } catch (err) {
-        toast(err.message);
-      }
-    });
-    menu.append(b);
   };
-  trigger.addEventListener('click', ev => {
-    ev.stopPropagation();
-    menu.hidden = !menu.hidden;
-    if (!menu.hidden) {
-      document.addEventListener('click', () => {
-        menu.hidden = true;
-      }, {once: true});
-    }
-  });
-  menu.addEventListener('click', ev => ev.stopPropagation());
-  holder.append(trigger, menu);
-  return item;
+  const items = Object.entries(answerWords).map(([word, words]) => ({icon: answerIcon(word), words, word, run: run(word)}));
+  if (clear) {
+    items.push({icon: answerIcon(''), words: clear, word: 'none', run: run('')});
+  }
+  return items;
 }
 
 function memberChip(e, r, refresh) {
-  const holder = el('div', 'rsvp-member-holder');
   const chip = el('button', 'rsvp-member');
   chip.type = 'button';
   chip.disabled = !r.mine;
   const words = el('span', 'rsvp-member-words');
   words.append(el('strong', '', firstName(r)), el('span', 'rsvp-member-answer is-' + (r.answer || 'none'), r.answer ? answerWords[r.answer] : r.guestOf ? 'Guest' : 'No response'));
   chip.append(face(r, 'invite-face rsvp-member-face'), words, svg('chevron-down'));
-  const item = dropMenu(holder, chip, refresh);
-  for (const [word, [label, , icon]] of Object.entries(choiceWords)) {
-    item(icon, label, () => answerRow(e, r, word), word);
-  }
-  if (r.answer) {
-    item('info', 'Clear answer', () => answerRow(e, r, ''), 'none');
-  }
+  const items = answerItems(e, r, refresh, r.answer ? 'Clear answer' : '');
   if (r.guestOf) {
-    item('trash', 'Remove guest', async () => {
-      await api('DELETE', '/api/when/invites/people', {id: e.id, email: r.key});
-      toast(`${r.name} removed`);
-    });
+    items.push({icon: 'trash', words: 'Remove guest', run: async () => {
+      try {
+        await api('DELETE', '/api/when/invites/people', {id: e.id, email: r.key});
+        toast(`${r.name} removed`);
+        refresh();
+      } catch (err) {
+        toast(err.message);
+      }
+    }});
   }
-  return holder;
+  return dropMenu(chip, items, true);
 }
 
 export function familyBand(e, view, refresh) {
@@ -126,34 +88,33 @@ export function familyBand(e, view, refresh) {
   const hosts = view.hosts.filter(h => h.email !== me().email).map(h => h.name).filter(Boolean);
   const by = asked && hosts.length ? `Invited by ${hosts.join(' and ')}. ` : '';
   const top = el('div', 'rsvp-panel-top');
-  const icon = el('div', 'rsvp-panel-icon');
+  const icon = el('div', 'guests-table-mark');
   icon.append(svg('person'));
-  const words = el('div', 'rsvp-panel-words');
-  words.append(el('div', 'rsvp-panel-title', self ? 'Your RSVP' : 'Your family\u2019s RSVP'), el('div', 'rsvp-panel-lead', by + (self ? 'Will you be attending?' : 'Choose who from your family will be attending.')));
+  const words = el('div', 'guests-start-words');
+  words.append(el('div', 'guests-title', self ? 'Your RSVP' : 'Your family\u2019s RSVP'), el('div', 'guests-start-lead', by + (self ? 'Will you be attending?' : 'Choose who from your family will be attending.')));
   top.append(icon, words);
   if (self) {
     top.append(bigChoices(e, self, refresh));
   }
   box.append(top);
-  const of = self ? me().email : (view.mine.find(r => r.mine && !r.guestOf) || {}).key;
-  const addGuest = of && (view.guests || view.host);
-  if (others.length || addGuest) {
+  if (others.length) {
     const fam = el('div', 'rsvp-panel-family');
-    const famIcon = el('div', 'rsvp-panel-icon');
+    const famIcon = el('div', 'guests-table-mark');
     famIcon.append(svg('people'));
-    const famWords = el('div', 'rsvp-panel-words');
-    famWords.append(el('div', 'rsvp-panel-subtitle', 'Family members'), el('div', 'rsvp-panel-lead', others.length ? 'Add family and guests' : 'Bring family or a guest along.'));
+    const famWords = el('div', 'guests-start-words');
+    famWords.append(el('div', 'guests-start-title', 'Family members'), el('div', 'guests-start-lead', 'Add family and guests'));
     const chips = el('div', 'rsvp-members');
     for (const r of others) {
       chips.append(memberChip(e, r, refresh));
-    }
-    if (addGuest) {
-      chips.append(button('Add Guests', 'plus', 'rsvp-member-add', () => openGuestForm(e, of, refresh)));
     }
     fam.append(famIcon, famWords, chips);
     box.append(fam);
   }
   const foot = el('div', 'rsvp-panel-foot');
+  const of = self ? me().email : (view.mine.find(r => r.mine && !r.guestOf) || {}).key;
+  if (of && (view.guests || view.host)) {
+    foot.append(button('Add guests', 'plus', 'rsvp-clear rsvp-add', () => openGuestForm(e, of, refresh)));
+  }
   const hide = el('button', 'rsvp-clear', 'Hide event');
   hide.type = 'button';
   hide.addEventListener('click', async () => {
@@ -187,19 +148,13 @@ export function rsvpRow(e, view, refresh) {
       line.replaceChildren();
       const said = el(r.mine ? 'button' : 'span', 'invite-said rsvp-row-said is-' + (r.answer || 'none'));
       const mark = el('span', 'invite-said-mark');
-      mark.append(svg(r.answer === 'yes' ? 'check' : r.answer === 'maybe' ? 'clock' : r.answer === 'no' ? 'close' : 'info'));
+      mark.append(svg(answerIcon(r.answer)));
       said.append(mark, el('strong', '', r.key === me().email ? 'You' : firstName(r)), el('span', 'rsvp-row-word', r.answer ? answerWords[r.answer] : 'No response'));
       if (r.mine) {
         said.type = 'button';
         said.title = 'Change the answer';
         said.append(svg('chevron-down'));
-        const holder = el('div', 'rsvp-member-holder');
-        const item = dropMenu(holder, said, refresh);
-        for (const [word, [label, , icon]] of Object.entries(choiceWords)) {
-          item(icon, label, () => answerRow(e, r, word), word);
-        }
-        item('info', 'Clear', () => answerRow(e, r, ''), 'none');
-        line.append(holder);
+        line.append(dropMenu(said, answerItems(e, r, refresh, 'Clear'), true));
       } else {
         line.append(said);
       }
@@ -490,17 +445,29 @@ function openAddHost(e, view, refresh) {
 }
 
 function menuButton(label, icon, items) {
-  const holder = el('div', 'hero-image-menu-holder');
   const toggle = el('button', 'button button-secondary button-small');
   toggle.type = 'button';
-  toggle.setAttribute('aria-haspopup', 'menu');
   toggle.append(svg(icon), el('span', '', label), svg('chevron-down'));
-  const menu = el('div', 'hero-image-menu');
+  return dropMenu(toggle, items);
+}
+
+function dropMenu(toggle, items, below = false) {
+  const holder = el('div', below ? 'rsvp-member-holder' : 'hero-image-menu-holder');
+  toggle.setAttribute('aria-haspopup', 'menu');
+  const menu = el('div', 'hero-image-menu' + (below ? ' rsvp-member-menu' : ''));
   menu.hidden = true;
   for (const item of items) {
     const b = el('button', 'hero-image-menu-item');
     b.type = 'button';
-    b.append(svg(item.icon), el('span', '', item.words));
+    if (item.word) {
+      const said = el('span', 'invite-said is-' + item.word);
+      const mark = el('span', 'invite-said-mark');
+      mark.append(svg(item.icon));
+      said.append(mark, el('span', '', item.words));
+      b.append(said);
+    } else {
+      b.append(svg(item.icon), el('span', '', item.words));
+    }
     b.addEventListener('click', () => {
       menu.hidden = true;
       item.run();
@@ -949,7 +916,7 @@ function guestPlainRow(e, view, r, refresh) {
   }
   const said = el('span', 'invite-said-mark guests-plain-mark is-' + (r.answer || 'none'));
   said.title = r.answer ? answerWords[r.answer] : 'No response';
-  said.append(svg(r.answer === 'yes' ? 'check' : r.answer === 'maybe' ? 'clock' : r.answer === 'no' ? 'close' : 'info'));
+  said.append(svg(answerIcon(r.answer)));
   row.append(said);
   row.addEventListener('click', () => openGuestCard(e, r, view, refresh));
   return row;

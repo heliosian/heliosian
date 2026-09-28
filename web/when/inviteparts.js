@@ -9,6 +9,18 @@ export function firstName(p) {
   return (p.name || p.email || '').split(' ')[0];
 }
 
+export function answerIcon(word) {
+  return word === 'yes' ? 'check' : word === 'maybe' ? 'clock' : word === 'no' ? 'close' : 'info';
+}
+
+export async function answerFor(e, row, next) {
+  if (row.key === me().email) {
+    await answer(e, next);
+    return;
+  }
+  await api('POST', '/api/when/invites/answer', {id: e.id, email: row.key, answer: next});
+}
+
 export function answerButtons(row, e, onChange, {small = true} = {}) {
   const wrap = el('div', 'rsvp-mini' + (small ? ' is-small' : ''));
   const paint = () => {
@@ -16,16 +28,12 @@ export function answerButtons(row, e, onChange, {small = true} = {}) {
     for (const [word, label] of Object.entries(answerWords)) {
       const b = el('button', 'rsvp-mini-choice rsvp-mini-' + word + (row.answer === word ? ' is-on' : ''));
       b.type = 'button';
-      b.append(svg(word === 'yes' ? 'check' : word === 'no' ? 'close' : 'clock'), el('span', '', label));
+      b.append(svg(answerIcon(word)), el('span', '', label));
       b.disabled = !row.mine;
       b.addEventListener('click', async () => {
         const next = row.answer === word ? '' : word;
         try {
-          if (row.key === me().email) {
-            await answer(e, next);
-          } else {
-            await api('POST', '/api/when/invites/answer', {id: e.id, email: row.key, answer: next});
-          }
+          await answerFor(e, row, next);
           row.answer = next;
           paint();
           onChange(row, next);
