@@ -489,7 +489,6 @@ export function initChrome() {
     name: 'Helios Who?',
     me,
     alerts,
-    isSystemAdmin: () => state.model.user.isAdmin,
     onSuper: load,
     fillNav,
     fillTabbar,

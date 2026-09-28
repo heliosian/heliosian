@@ -1,4 +1,4 @@
-import {state, applyModel, isSystemAdmin, isAdmin} from './state.js';
+import {state, applyModel, isAdmin} from './state.js';
 import {el} from '/elements.js';
 import {renderCategories, renderNav} from './cards.js';
 import {renderMonth} from './month.js';
@@ -79,7 +79,6 @@ function initChrome() {
   initTopbar({
     name: 'Heliosian',
     me: () => state.model.user,
-    isSystemAdmin,
     onSuper: render,
     search: {placeholder: 'Search apps, links, or events…', own: true},
     menuRows: [editCategories],

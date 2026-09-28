@@ -1,4 +1,4 @@
-import {initAppSwitch} from '/appswitch.js';
+import {initAppSwitch, currentApp} from '/appswitch.js';
 import {initUserMenu, renderAvatars, renderProfileLink, renderSuperToggle} from '/usermenu.js';
 import {initAlerts, renderAlerts} from '/alerts.js';
 import {initSpoof} from '/spoof.js';
@@ -6,8 +6,10 @@ import {noteError} from '/feedback.js';
 import {api} from '/api.js';
 import {el} from '/elements.js';
 import {superEditOn, setSuperEdit} from '/superedit.js';
+import {me} from '/data.js';
 
 let app = null;
+let allowances = {};
 let onSearch = null;
 let carriedQuery = '';
 
@@ -131,10 +133,18 @@ export function renderAccount() {
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }
+  renderAdmin();
+}
+
+function adminHere() {
+  return Object.hasOwn(allowances, currentApp() + '.admins');
+}
+
+function renderAdmin() {
   for (const row of document.querySelectorAll('.user-menu-admin')) {
-    row.hidden = !app.isSystemAdmin();
+    row.hidden = !adminHere();
   }
-  renderSuperToggle({show: app.isSystemAdmin(), on: superEditOn(), onToggle: on => {
+  renderSuperToggle({show: adminHere(), on: superEditOn(), onToggle: on => {
     setSuperEdit(on);
     app.onSuper();
   }});
@@ -157,7 +167,7 @@ function renderDrawer() {
   app.fillNav(nav);
   const user = el('div', 'drawer-user');
   user.append(el('div', 'name', app.me().name), el('div', 'email', app.me().email));
-  if (app.isSystemAdmin()) {
+  if (adminHere()) {
     const admin = el('a', 'drawer-admin', 'Admin Tools');
     admin.href = '/admin';
     admin.setAttribute('data-link', '');
@@ -240,6 +250,10 @@ export function initTopbar(config) {
   initAlerts();
   initUserMenu();
   initSpoof();
+  me().then(m => {
+    allowances = m.allowances;
+    renderAdmin();
+  }).catch(err => noteError('/api/me: ' + err.message));
   if (!app.alerts) {
     api('GET', '/api/apps/alerts').catch(err => {
       noteError('/api/apps/alerts: ' + err.message);

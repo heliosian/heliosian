@@ -121,5 +121,6 @@ func (s *Store[M]) commit(ctx context.Context, actor access.Actor, ops []Op) (<-
 	s.mu.Lock()
 	s.tables, s.model = plan.Tables, model
 	s.mu.Unlock()
+	s.queue.afterSwap()
 	return s.book.Write(plan), nil
 }

@@ -56,6 +56,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 Platform:
 
 - [dev.md](docs/dev.md) — the principles behind it, and local development, including real-data mode
+- [api.md](docs/api.md) — the resource API every host serves alike: the snapshot, types, reads, writes and `data.js`
 - [screenshots.md](docs/screenshots.md) — page capture for humans and agents
 - [deploy.md](docs/deploy.md) — production deployment
 - [config.md](docs/config.md) — the Config sheet: super admins and the platform settings

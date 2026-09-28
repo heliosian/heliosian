@@ -170,7 +170,6 @@ export function initChrome() {
   initShell({
     name: 'Helios Celebrate',
     me,
-    isSystemAdmin,
     onSuper: load,
     fillNav,
     fillTabbar,

@@ -1,4 +1,4 @@
-import {state, me, isSystemAdmin, managed, groupPath} from './state.js';
+import {state, me, managed, groupPath} from './state.js';
 import {el, svg, link} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {load} from '/router.js';
@@ -99,7 +99,6 @@ export function initChrome() {
   initShell({
     name: 'Helios Loop',
     me,
-    isSystemAdmin,
     onSuper: load,
     fillNav,
     fillTabbar,

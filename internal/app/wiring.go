@@ -351,12 +351,14 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load feedback model", "error", err)
 	}
+	registry := resources(caches{settings, cache, invites, teamCache, birthdayCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, feedbackCache}, queue)
 	notifier := feedback.Notifier{Sender: cfg.Mail, Base: cfg.FeedbackBase, SuperAdmins: settings.SuperAdmins}
 	feedbackIntake := feedback.NewIntake(feedbackCache, cfg.Bucket, notifier.Notify)
 	optIn := who.OptInForm(func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn })
 	suggestions := geocode.NewSuggestions(cfg.Geocoder)
 	for _, a := range apps {
 		home.RegisterSwitch(a.Mux, homeCache)
+		registry.Register(a.Mux)
 		if a.Key != "when" {
 			a.Mux.HandleFunc("GET /api/apps/rsvp", hooks.RSVPs)
 		}

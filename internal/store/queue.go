@@ -21,6 +21,7 @@ type Queue struct {
 	commits sync.Mutex
 	cancel  context.CancelFunc
 	loads   []Load
+	swapped func()
 }
 
 func NewQueue() *Queue {
@@ -88,6 +89,19 @@ func (q *Queue) Register(load Load) {
 	q.loads = append(q.loads, load)
 }
 
+func (q *Queue) OnSwap(swapped func()) {
+	q.commits.Lock()
+	defer q.commits.Unlock()
+	q.swapped = swapped
+	swapped()
+}
+
+func (q *Queue) afterSwap() {
+	if q.swapped != nil {
+		q.swapped()
+	}
+}
+
 func (q *Queue) Tick() {
 	for range time.Tick(refreshInterval) {
 		q.Refresh()
@@ -136,5 +150,6 @@ func (q *Queue) refresh() {
 	for _, swap := range swaps {
 		swap()
 	}
+	q.afterSwap()
 	slog.Info("refreshed", "took", time.Since(start).Round(time.Millisecond))
 }

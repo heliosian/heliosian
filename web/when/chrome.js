@@ -1,4 +1,4 @@
-import {state, me, isSystemAdmin, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagIds, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
+import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagIds, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
 import {feedMark, emojiPicker} from './dom.js';
 import {el, svg, link, button, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
@@ -723,7 +723,6 @@ export function initChrome() {
   initShell({
     name: 'Helios When',
     me,
-    isSystemAdmin,
     onSuper: load,
     fillNav,
     fillTabbar,

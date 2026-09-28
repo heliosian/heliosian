@@ -230,7 +230,6 @@ export function initChrome() {
   initShell({
     name: 'HCA-Team',
     me,
-    isSystemAdmin,
     onSuper: () => {
       if (!isAdmin()) {
         state.showHidden = false;

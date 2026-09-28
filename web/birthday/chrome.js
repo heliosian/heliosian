@@ -114,7 +114,6 @@ export function initChrome() {
   initShell({
     name: 'Helios Staff Birthdays',
     me,
-    isSystemAdmin,
     onSuper: render,
     fillNav,
     fillTabbar,
