@@ -319,11 +319,11 @@ func linksInto(hosts map[string]bool, link string) bool {
 
 func rulesOf(model *Model, key string) []filter.Rule {
 	for _, c := range model.Categories {
-		if thingCategory+c.Title == key {
+		if thingCategory+c.ID == key {
 			return c.Rules
 		}
 		for _, l := range c.Links {
-			if thingLink+l.Title == key {
+			if thingLink+l.ID == key {
 				return l.Rules
 			}
 		}
@@ -415,72 +415,72 @@ func (a app) audiencePreview(r *http.Request, body previewBody) (previewView, er
 
 func (a app) saveLink(r *http.Request, body linkEdit) (serve.None, error) {
 	actor := a.actor(r)
-	action, title, ops, err := a.cache.saveLink(actor, body)
+	action, key, ops, err := a.cache.saveLink(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "home:saved link", "action", action, "title", title)
+	slog.InfoContext(r.Context(), "home:saved link", "action", action, "id", key, "title", body.Title)
 	return serve.None{}, nil
 }
 
-type titleBody struct {
-	Title string `json:"title"`
+type idBody struct {
+	ID string `json:"id"`
 }
 
-func (a app) deleteLink(r *http.Request, body titleBody) (serve.None, error) {
+func (a app) deleteLink(r *http.Request, body idBody) (serve.None, error) {
 	actor := a.actor(r)
-	ops, err := a.cache.deleteLink(actor, body.Title)
+	ops, err := a.cache.deleteLink(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "home:deleted link", "title", body.Title)
+	slog.InfoContext(r.Context(), "home:deleted link", "id", body.ID)
 	return serve.None{}, nil
 }
 
 func (a app) saveCategory(r *http.Request, body categoryEdit) (serve.None, error) {
 	actor := a.actor(r)
-	action, title, ops, err := a.cache.saveCategory(actor, body)
+	action, key, ops, err := a.cache.saveCategory(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "home:saved category", "action", action, "title", title)
+	slog.InfoContext(r.Context(), "home:saved category", "action", action, "id", key, "title", body.Title)
 	return serve.None{}, nil
 }
 
-type titlesBody struct {
-	Titles []string `json:"titles"`
+type idsBody struct {
+	IDs []string `json:"ids"`
 }
 
-func (a app) reorderCategories(r *http.Request, body titlesBody) (serve.None, error) {
+func (a app) reorderCategories(r *http.Request, body idsBody) (serve.None, error) {
 	actor := a.actor(r)
-	ops, err := a.cache.reorderCategories(actor, body.Titles)
+	ops, err := a.cache.reorderCategories(actor, body.IDs)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "home:reordered categories", "count", len(body.Titles))
+	slog.InfoContext(r.Context(), "home:reordered categories", "count", len(body.IDs))
 	return serve.None{}, nil
 }
 
 type moveBody struct {
-	Title string `json:"title"`
-	By    int    `json:"by"`
+	ID string `json:"id"`
+	By int    `json:"by"`
 }
 
 func (a app) moveLink(r *http.Request, body moveBody) (serve.None, error) {
 	actor := a.actor(r)
-	ops, err := a.cache.moveLink(actor, body.Title, body.By)
+	ops, err := a.cache.moveLink(actor, body.ID, body.By)
 	if err != nil {
 		return serve.None{}, err
 	}
@@ -490,20 +490,20 @@ func (a app) moveLink(r *http.Request, body moveBody) (serve.None, error) {
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "home:moved link", "title", body.Title, "by", body.By)
+	slog.InfoContext(r.Context(), "home:moved link", "id", body.ID, "by", body.By)
 	return serve.None{}, nil
 }
 
-func (a app) deleteCategory(r *http.Request, body titleBody) (serve.None, error) {
+func (a app) deleteCategory(r *http.Request, body idBody) (serve.None, error) {
 	actor := a.actor(r)
-	ops, err := a.cache.deleteCategory(actor, body.Title)
+	ops, err := a.cache.deleteCategory(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "home:deleted category", "title", body.Title)
+	slog.InfoContext(r.Context(), "home:deleted category", "id", body.ID)
 	return serve.None{}, nil
 }
 

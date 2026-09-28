@@ -21,10 +21,6 @@ export function tagLabelsOf(rule) {
   return rule.tagLabels || (rule.tags || []).map(t => named[t] || t);
 }
 
-export function categoryTitles() {
-  return state.model.categories.map(c => c.title);
-}
-
-export function linkCategoryTitles() {
-  return state.model.categories.filter(c => c.style !== 'events').map(c => c.title);
+export function linkCategories() {
+  return state.model.categories.filter(c => c.style !== 'events');
 }

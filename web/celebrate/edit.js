@@ -834,8 +834,8 @@ export function openParty(p) {
   let category = null;
   if (isAdmin()) {
     status = select([{label: 'Open', value: 'Open'}, {label: 'Pending approval', value: 'Pending'}, {label: 'Hidden', value: 'Hidden'}], p ? p.status : 'Open');
-    celebrationPick = select(state.model.celebrations.map(c => ({label: c.title, value: c.code})), p ? p.celebration : (currentCelebration() || {}).code);
-    category = select([{label: 'No category', value: ''}, ...state.model.categories.map(c => ({label: c, value: c}))], p ? p.category : '');
+    celebrationPick = select(state.model.celebrations.map(c => ({label: c.title, value: c.id})), p ? p.celebration : (currentCelebration() || {}).id);
+    category = select([{label: 'No category', value: ''}, ...state.model.categories.map(c => ({label: c.title, value: c.id}))], p ? p.category : '');
     panels.push({label: 'Admin', icon: svg('shield'), fields: [
       field('Status', status, 'Open is listed for everyone; Pending waits for approval; Hidden is parked.'),
       field('Celebration', celebrationPick, 'Which year the party belongs to.'),
@@ -1130,7 +1130,7 @@ export function openCelebration(c) {
   const banner = checkbox('Show its banner at the top', c ? c.banner : false, 'The band across the top of the parties page advertises it, whichever year\u2019s parties are listed. Only one celebration is the banner.');
   const image = imagePicker(c ? c.image : '', c ? c.imageUrl : '', {dropzone: true, query: () => title.value, label: 'Banner image', hint: 'The background of the banner across the top of the parties page.'});
   openModal(c ? `Edit ${c.title}` : 'Add a celebration', [
-    field('Code', code, 'Short and unique, like SC-2027. Parties are filed under it.', true), field('Title', title, 'The banner\u2019s big line: "Helios Spring Celebration 2026".', true),
+    field('Code', code, 'Short and unique, like SC-2027: the celebration’s address on the site.', true), field('Title', title, 'The banner\u2019s big line: "Helios Spring Celebration 2026".', true),
     field('Subtitle', subtitle, 'The banner\u2019s small line above it: the theme.'),
     field('When', whenWrap), field('Where', place), field('Address', address), field('Description', description),
     el('div', 'field-group-label', 'Banner button'),
@@ -1138,21 +1138,21 @@ export function openCelebration(c) {
     current.wrap, banner.wrap, image.wrap,
   ], {
     submit: () => api('POST', '/api/celebrate/celebration', {
-      original: c ? c.code : '', code: code.value.trim(), title: title.value, subtitle: subtitle.value, start: start.value(), end: end.value(),
+      id: c ? c.id : '', code: code.value.trim(), title: title.value, subtitle: subtitle.value, start: start.value(), end: end.value(),
       location: place.value, address: address.value, description: description.value, image: image.value(), buttonText: buttonText.value, buttonUrl: buttonKind === 'calendar' ? 'calendar' : buttonUrl.value, current: current.input.checked, banner: banner.input.checked,
     }),
-    onDelete: c ? () => api('DELETE', '/api/celebrate/celebration', {code: c.code}) : null,
+    onDelete: c ? () => api('DELETE', '/api/celebrate/celebration', {id: c.id}) : null,
     confirmDelete: c ? `Delete ${c.title}?` : '',
   });
 }
 
-export function openCategory(title, after) {
-  const input = text(title || '', {required: true, maxLength: 120});
-  openModal(title ? 'Rename category' : 'Add a category', [field('Title', input, '', true)], {
-    submit: () => api('POST', '/api/celebrate/category', {original: title || '', title: input.value}),
+export function openCategory(c, after) {
+  const input = text(c ? c.title : '', {required: true, maxLength: 120});
+  openModal(c ? 'Rename category' : 'Add a category', [field('Title', input, '', true)], {
+    submit: () => api('POST', '/api/celebrate/category', {id: c ? c.id : '', title: input.value}),
     afterSave: after,
-    onDelete: title ? () => api('DELETE', '/api/celebrate/category', {title}) : null,
-    confirmDelete: title ? `Delete the category ${title}?` : '',
+    onDelete: c ? () => api('DELETE', '/api/celebrate/category', {id: c.id}) : null,
+    confirmDelete: c ? `Delete the category ${c.title}?` : '',
     afterDelete: after,
   });
 }

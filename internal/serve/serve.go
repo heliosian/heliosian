@@ -2,7 +2,6 @@ package serve
 
 import (
 	"bytes"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -90,16 +89,4 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	http.Error(w, refusal.Message, refusal.Status)
-}
-
-func ID(n int) string {
-	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
-	raw := make([]byte, n)
-	if _, err := rand.Read(raw); err != nil {
-		panic(err)
-	}
-	for i, b := range raw {
-		raw[i] = alphabet[int(b)%len(alphabet)]
-	}
-	return string(raw)
 }

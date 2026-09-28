@@ -45,7 +45,7 @@ const (
 
 type Sources struct {
 	Directory   func() *who.Model
-	Tags        func(owner string) map[string][]string
+	Tags        func(owner string) []who.Tag
 	Lists       func(email string) []who.List
 	Settings    func() *config.Settings
 	Calendar    func() *when.Model

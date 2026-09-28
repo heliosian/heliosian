@@ -242,10 +242,6 @@ func isGuestKey(email string) bool {
 	return strings.HasPrefix(email, guestPrefix) || !strings.Contains(email, "@")
 }
 
-func newGuestKey() string {
-	return guestPrefix + strings.ToLower(newEventID())
-}
-
 func flyerPath(id string) string {
 	return "/open/flyer/" + id
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -26,7 +27,7 @@ const (
 )
 
 var pages = []string{
-	"/{$}", "/parties/{id}", "/p/{pretty}", "/celebrations/{code}", "/my", "/my/{email}", "/hosting", "/admin",
+	"/{$}", "/p/{pretty}", "/celebrations/{code}", "/my", "/my/{email}", "/hosting", "/admin",
 }
 
 type app struct {
@@ -57,6 +58,7 @@ func Register(mux *http.ServeMux, d Deps) {
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
+	mux.HandleFunc("GET /parties/{id}", a.partyPage)
 	mux.HandleFunc("GET /api/celebrate/model", serve.JSON(a.model))
 	mux.HandleFunc("GET /api/celebrate/people", serve.JSON(a.people))
 	a.search.Register(mux, "/api/celebrate", a.images.Folder(), imagesearch.Members)
@@ -85,6 +87,15 @@ func Register(mux *http.ServeMux, d Deps) {
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
+	serve.File(w, r, shell)
+}
+
+func (a app) partyPage(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("id")
+	if p := a.cache.Model().Party(key); p != nil && p.ID != key {
+		http.Redirect(w, r, "/parties/"+url.PathEscape(p.ID), http.StatusMovedPermanently)
+		return
+	}
 	serve.File(w, r, shell)
 }
 
@@ -343,30 +354,30 @@ func (a app) saveCelebration(r *http.Request, body celebrationForm) (serve.None,
 }
 
 type celebrationRef struct {
-	Code string `json:"code"`
+	ID string `json:"id"`
 }
 
 func (a app) deleteCelebration(r *http.Request, body celebrationRef) (serve.None, error) {
 	actor := a.actor(r)
-	ops, err := a.cache.deleteCelebration(actor, body.Code)
+	c, ops, err := a.cache.deleteCelebration(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "celebrate: removed celebration", "actor", actor.Email, "code", body.Code)
+	slog.InfoContext(r.Context(), "celebrate: removed celebration", "actor", actor.Email, "code", c.Code)
 	return serve.None{}, nil
 }
 
 type categoryForm struct {
-	Original string `json:"original"`
-	Title    string `json:"title"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
 }
 
 func (a app) saveCategory(r *http.Request, body categoryForm) (serve.None, error) {
 	actor := a.actor(r)
-	ops, adding, err := a.cache.Model().saveCategory(actor, body.Original, body.Title)
+	ops, adding, err := a.cache.Model().saveCategory(actor, body.ID, body.Title)
 	if err != nil {
 		return serve.None{}, err
 	}
@@ -379,29 +390,29 @@ func (a app) saveCategory(r *http.Request, body categoryForm) (serve.None, error
 }
 
 type categoryRef struct {
-	Title string `json:"title"`
+	ID string `json:"id"`
 }
 
 func (a app) deleteCategory(r *http.Request, body categoryRef) (serve.None, error) {
 	actor := a.actor(r)
-	ops, err := a.cache.deleteCategory(actor, body.Title)
+	c, ops, err := a.cache.deleteCategory(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "celebrate: removed category", "actor", actor.Email, "category", body.Title)
+	slog.InfoContext(r.Context(), "celebrate: removed category", "actor", actor.Email, "category", c.Title)
 	return serve.None{}, nil
 }
 
-type categoryTitles struct {
-	Titles []string `json:"titles"`
+type categoryIDs struct {
+	IDs []string `json:"ids"`
 }
 
-func (a app) reorderCategories(r *http.Request, body categoryTitles) (serve.None, error) {
+func (a app) reorderCategories(r *http.Request, body categoryIDs) (serve.None, error) {
 	actor := a.actor(r)
-	ops, err := a.cache.Model().reorderCategories(actor, body.Titles)
+	ops, err := a.cache.Model().reorderCategories(actor, body.IDs)
 	if err != nil {
 		return serve.None{}, err
 	}
@@ -431,17 +442,22 @@ func (a app) invoicesCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model := a.cache.Model()
-	code := r.URL.Query().Get("celebration")
-	if code != "" && model.Celebration(code) == nil {
-		http.Error(w, "no such celebration", http.StatusNotFound)
-		return
+	key := r.URL.Query().Get("celebration")
+	code := ""
+	if key != "" {
+		c := model.CelebrationByID(key)
+		if c == nil {
+			http.Error(w, "no such celebration", http.StatusNotFound)
+			return
+		}
+		code = c.Code
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"invoicing-%s.csv\"", code))
 	out := csv.NewWriter(w)
-	out.Write(InvoicingColumns)
+	out.Write(invoiceCSVColumns)
 	for _, l := range model.Invoicing {
-		if code != "" && l.Code != code {
+		if key != "" && l.Celebration != key {
 			continue
 		}
 		row := []string{l.Date, l.Party, l.Code, l.Purchaser, l.Guest, l.Action, strconv.Itoa(l.Quantity), PriceCell(l.Cost), l.Invoice, l.InvoiceTo}
@@ -452,6 +468,8 @@ func (a app) invoicesCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	out.Flush()
 }
+
+var invoiceCSVColumns = []string{"Date", "Party Title", "Event Code", "Purchaser Email", "Guest Name", "Action", "Quantity", "Cost", "Invoice", "Invoice To"}
 
 func csvCell(s string) string {
 	if s == "" || !strings.ContainsRune("=+-@\t\r", rune(s[0])) {

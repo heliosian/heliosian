@@ -35,8 +35,8 @@ var spec = store.Spec[*Model]{
 		{Name: outreachTab, Columns: OutreachColumns, Key: []string{"Email", "Year"}},
 		{Name: donationsTab, Columns: DonationColumns, Key: []string{"Email", "Year"}},
 		{Name: notesTab, Columns: NoteColumns, Key: []string{"Email", "Added By", "Added"}},
-		{Name: charitiesTab, Columns: CharityColumns, Key: []string{"Name"}, Cascade: renameCharity},
-		{Name: newsletterDatesTab, Columns: NewsletterDateColumns, Key: []string{"Date"}, Cascade: moveNewsletterDate},
+		{Name: charitiesTab, Columns: CharityColumns, Key: []string{"Charity ID"}},
+		{Name: newsletterDatesTab, Columns: NewsletterDateColumns, Key: []string{"Newsletter Date ID"}},
 		{Name: settingsTab, Columns: SettingColumns, Key: []string{"Key"}},
 		admins.Spec,
 		{Name: teamTab, Columns: TeamColumns, Key: []string{"Email", "Role"}},
@@ -49,23 +49,6 @@ var spec = store.Spec[*Model]{
 		slog.Info("loaded birthday model", "birthdays", len(model.Birthdays), "charities", len(model.Charities),
 			"donations", len(model.Donations), "newsletters", len(model.NewsletterDates), "took", took.Round(time.Millisecond))
 	},
-}
-
-func renameCharity(_ store.Tables, before, after store.Row) []store.Op {
-	if before == nil || after == nil || before["Name"] == after["Name"] {
-		return nil
-	}
-	return []store.Op{
-		store.Update(donationsTab, store.Row{"Charity": before["Name"]}, store.Row{"Charity": after["Name"]}),
-		store.Update(settingsTab, store.Row{"Key": DefaultCharityKey, "Value": before["Name"]}, store.Row{"Value": after["Name"]}),
-	}
-}
-
-func moveNewsletterDate(_ store.Tables, before, after store.Row) []store.Op {
-	if before == nil || after == nil || before["Date"] == after["Date"] {
-		return nil
-	}
-	return []store.Op{store.Update(birthdaysTab, store.Row{"Newsletter Override": before["Date"]}, store.Row{"Newsletter Override": after["Date"]})}
 }
 
 func NewCache(source data.Source, writer data.Writer, superAdmins func() []string, queue *store.Queue) (*Cache, error) {

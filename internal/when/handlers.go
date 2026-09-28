@@ -2,7 +2,6 @@ package when
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -14,6 +13,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
+	"heliosian/internal/id"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
@@ -23,7 +23,9 @@ import (
 
 const shell = "web/when/index.html"
 
-var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/e/{id...}", "/events/{id...}", "/mine", "/mine/{list}", "/admin"}
+var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/mine", "/mine/{list}", "/admin"}
+
+var eventPages = []string{"/e/{id...}", "/events/{id...}"}
 
 type app struct {
 	cache     *Cache
@@ -32,6 +34,7 @@ type app struct {
 	settings  func() *config.Settings
 	lists     func(email string) []List
 	linked    func(email string) []Linked
+	sourceID  func(source, key string) string
 	parties   func(id string) *PartyPeople
 	celebrate Celebrate
 	sources   func() filter.Sources
@@ -48,6 +51,7 @@ type Deps struct {
 	Settings  func() *config.Settings
 	Lists     func(email string) []List
 	Linked    func(email string) []Linked
+	SourceID  func(source, key string) string
 	Celebrate Celebrate
 	Sources   func() filter.Sources
 	Search    imagesearch.Search
@@ -57,10 +61,13 @@ type Deps struct {
 
 func Register(mux *http.ServeMux, d Deps) Hooks {
 	d.Search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
-	a := app{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, lists: d.Lists, linked: d.Linked, parties: d.Celebrate.Party, celebrate: d.Celebrate, sources: d.Sources, clock: &matchClock{}, search: d.Search, mail: d.Mail, style: d.Style}
+	a := app{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, lists: d.Lists, linked: d.Linked, sourceID: d.SourceID, parties: d.Celebrate.Party, celebrate: d.Celebrate, sources: d.Sources, clock: &matchClock{}, search: d.Search, mail: d.Mail, style: d.Style}
 	go a.sweepLoop()
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
+	}
+	for _, page := range eventPages {
+		mux.HandleFunc("GET "+page, a.eventPage)
 	}
 	mux.HandleFunc("GET /api/when/model", serve.JSON(a.model))
 	mux.HandleFunc("GET /api/apps/rsvp", serve.JSON(a.rsvps))
@@ -125,6 +132,25 @@ func Register(mux *http.ServeMux, d Deps) Hooks {
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, shell)
+}
+
+func (a app) eventPage(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("id")
+	canonical := a.canonical(key)
+	if canonical == key {
+		serve.File(w, r, shell)
+		return
+	}
+	e := a.anyEvent("", canonical)
+	if e == nil {
+		serve.File(w, r, shell)
+		return
+	}
+	to := EventPath(e)
+	if r.URL.RawQuery != "" {
+		to += "?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, to, http.StatusMovedPermanently)
 }
 
 var now = func() time.Time {
@@ -292,19 +318,11 @@ func (a app) setKeywords(r *http.Request, body keywordsBody) (serve.None, error)
 	return serve.None{}, nil
 }
 
-var eventIDForm = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`)
+var addressForm = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`)
 
-func newEventID() string {
-	const alphabet = "ABCDEFGHJKMNPQRSTVWXYZ0123456789"
-	var raw [8]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		panic(err)
-	}
-	out := make([]byte, len(raw))
-	for i, b := range raw {
-		out[i] = alphabet[int(b)%len(alphabet)]
-	}
-	return string(out)
+func validAddress(address string) bool {
+	_, isID := id.Parse(address)
+	return addressForm.MatchString(address) && !isID
 }
 
 func shiftWhen(when string, weeks int) string {
@@ -324,6 +342,7 @@ func shiftWhen(when string, weeks int) string {
 
 type eventBody struct {
 	ID          string   `json:"id"`
+	Address     string   `json:"address"`
 	Title       string   `json:"title"`
 	Start       string   `json:"start"`
 	End         string   `json:"end"`
@@ -516,6 +535,7 @@ func (a app) forgetSetting(r *http.Request, _ serve.None) (serve.None, error) {
 }
 
 type tagBody struct {
+	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Group       string `json:"group"`

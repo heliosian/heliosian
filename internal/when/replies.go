@@ -112,14 +112,15 @@ func (a app) takeReply(ctx context.Context, reply Reply, from, tag string) error
 		return fmt.Errorf("standing %q changes nothing", reply.Standing)
 	}
 	email := config.NormalizeEmail(reply.Email)
-	id := idOfUID(reply.UID)
+	uid := idOfUID(reply.UID)
+	id := a.canonical(uid)
 	if a.directory().Person(email) == nil && a.cache.Model().InviteOf(id, email) == nil {
 		return fmt.Errorf("attendee is not in the directory")
 	}
 	if sender := config.NormalizeEmail(mail.AddressOf(from)); sender != email {
 		return fmt.Errorf("sent by %s, not the attendee", sender)
 	}
-	if !hmac.Equal([]byte(tag), []byte(a.replyToken(id, email))) {
+	if !hmac.Equal([]byte(tag), []byte(a.replyToken(uid, email))) {
 		return fmt.Errorf("sent to an address that is not this attendee's for this event")
 	}
 	if err := a.recordBy(ctx, access.System(email), email, id, answer, ViaCalendar, false, true); err != nil {

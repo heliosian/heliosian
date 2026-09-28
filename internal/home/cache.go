@@ -25,8 +25,8 @@ func spec(images blob.Checker) store.Spec[*Model] {
 	return store.Spec[*Model]{
 		App: appName,
 		Tabs: []store.Tab{
-			{Name: categoriesTab, Columns: categoryColumns, Key: []string{"Title"}, Cascade: carryCategory},
-			{Name: linksTab, Columns: linkColumns, Key: []string{"Title"}, Cascade: carryLink},
+			{Name: categoriesTab, Columns: categoryColumns, Key: []string{"Category ID"}, Cascade: dropCategoryAudience},
+			{Name: linksTab, Columns: linkColumns, Key: []string{"Link ID"}, Cascade: dropLinkAudience},
 			admins.Spec,
 			{Name: visibilityTab, Columns: visibilityColumns, Key: []string{"App"}},
 			{Name: audienceTab, Columns: AudienceColumns, Key: AudienceColumns},
@@ -45,28 +45,19 @@ func spec(images blob.Checker) store.Spec[*Model] {
 	}
 }
 
-func carryAudience(thing string, before, after store.Row) []store.Op {
-	switch {
-	case before == nil:
+func dropAudience(thing string, before, after store.Row) []store.Op {
+	if before == nil || after != nil {
 		return nil
-	case after == nil:
-		return []store.Op{store.Delete(audienceTab, store.Row{"Thing": thing + before["Title"]})}
-	case before["Title"] != after["Title"]:
-		return []store.Op{store.Update(audienceTab, store.Row{"Thing": thing + before["Title"]}, store.Row{"Thing": thing + after["Title"]})}
 	}
-	return nil
+	return []store.Op{store.Delete(audienceTab, store.Row{"Thing": thing})}
 }
 
-func carryLink(_ store.Tables, before, after store.Row) []store.Op {
-	return carryAudience(thingLink, before, after)
+func dropLinkAudience(_ store.Tables, before, after store.Row) []store.Op {
+	return dropAudience(thingLink+before["Link ID"], before, after)
 }
 
-func carryCategory(_ store.Tables, before, after store.Row) []store.Op {
-	ops := carryAudience(thingCategory, before, after)
-	if before != nil && after != nil && before["Title"] != after["Title"] {
-		ops = append(ops, store.Update(linksTab, store.Row{"Category": before["Title"]}, store.Row{"Category": after["Title"]}))
-	}
-	return ops
+func dropCategoryAudience(_ store.Tables, before, after store.Row) []store.Op {
+	return dropAudience(thingCategory+before["Category ID"], before, after)
 }
 
 func NewCache(source data.Source, writer data.Writer, images blob.Checker, superAdmins func() []string, sources func() filter.Sources, queue *store.Queue) (*Cache, error) {
@@ -93,7 +84,7 @@ func (c *Cache) CategoriesFor(v access.Actor) []Category {
 		if !sectionMine && !admin {
 			continue
 		}
-		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual, Rules: []filter.Rule{}}
+		shown := Category{ID: category.ID, Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual, Rules: []filter.Rule{}}
 		if admin {
 			shown.Rules = category.Rules
 		}

@@ -51,7 +51,7 @@ export function applyModel(model) {
   if (state.filters.classrooms) {
     state.filters.classrooms = state.filters.classrooms.filter(c => names.includes(c));
   }
-  const tags = tagNames();
+  const tags = tagIds();
   if (state.filters.tags) {
     state.filters.tags = state.filters.tags.filter(t => tags.includes(t));
   }
@@ -139,7 +139,7 @@ export function feedTags(f) {
   if (f.locked) {
     return builtinTags();
   }
-  return f.tags.length ? f.tags : tagNames();
+  return f.tags.length ? f.tags : tagIds();
 }
 
 function sameSet(a, b) {
@@ -189,8 +189,22 @@ export function tagGroups() {
   return loose ? [...groups, loose] : groups;
 }
 
-export function tagNames() {
-  return state.model.tags.map(t => t.name);
+export function tagIds() {
+  return state.model.tags.map(t => t.id);
+}
+
+export function tagName(id) {
+  const tag = state.model.tags.find(t => t.id === id) || state.model.classrooms.find(c => c.id === id);
+  return tag ? tag.name : '';
+}
+
+export function roleTag(role) {
+  const tag = state.model.tags.find(t => t.role === role);
+  return tag ? tag.id : '';
+}
+
+export function classroomIds() {
+  return state.model.classrooms.map(c => c.id);
 }
 
 export function bands() {
@@ -231,7 +245,7 @@ export function builtinTags() {
   if (saved) {
     return saved.tags;
   }
-  return state.model.tags.filter(t => t.default).map(t => t.name);
+  return state.model.tags.filter(t => t.default).map(t => t.id);
 }
 
 export function defaultClassrooms() {
@@ -265,9 +279,9 @@ export function setTags(list) {
   saveFilters();
 }
 
-export function toggleTag(name) {
+export function toggleTag(id) {
   const current = selectedTags();
-  setTags(current.includes(name) ? current.filter(t => t !== name) : tagNames().filter(t => t === name || current.includes(t)));
+  setTags(current.includes(id) ? current.filter(t => t !== id) : tagIds().filter(t => t === id || current.includes(t)));
 }
 
 export function filtersAreDefault() {
@@ -280,8 +294,8 @@ export function resetFilters() {
 }
 
 export function categoryTags(e) {
-  const names = classroomNames();
-  return e.tags.filter(t => !names.includes(t));
+  const rooms = classroomIds();
+  return e.tags.filter(t => !rooms.includes(t));
 }
 
 function overlaps(a, b) {
@@ -298,7 +312,7 @@ function tagsAdmit(e) {
 }
 
 export function eventVisible(e) {
-  if (e.invited || (answerOf(e) === 'yes' && selectedTags().includes('Going'))) {
+  if (e.invited || (answerOf(e) === 'yes' && selectedTags().includes(roleTag('going')))) {
     return true;
   }
   return classroomsAdmit(e) && tagsAdmit(e);
@@ -327,7 +341,7 @@ function words(query) {
 }
 
 export function matches(e, query) {
-  const hay = `${e.title} ${e.description || ''} ${e.location || ''} ${e.tags.join(' ')} ${(e.keywords || []).join(' ')} ${e.dayType || ''}`.toLowerCase();
+  const hay = `${e.title} ${e.description || ''} ${e.location || ''} ${e.tags.map(tagName).join(' ')} ${(e.keywords || []).join(' ')} ${dayTypeName(e.dayType)}`.toLowerCase();
   return words(query).every(w => hay.includes(w));
 }
 
@@ -505,8 +519,13 @@ export function eventPath(e) {
   return '/e/' + e.id.split('/').map(encodeURIComponent).join('/');
 }
 
-export function dayType(name) {
-  return state.model.dayTypes.find(d => d.name === name) || null;
+export function dayType(id) {
+  return state.model.dayTypes.find(d => d.id === id) || null;
+}
+
+export function dayTypeName(id) {
+  const type = dayType(id);
+  return type ? type.name : '';
 }
 
 export function plan(date, classrooms) {
@@ -516,19 +535,20 @@ export function plan(date, classrooms) {
   }
   const groups = [];
   for (const c of classrooms || selectedClassrooms()) {
-    const name = byClassroom[c];
-    if (!name) {
+    const id = byClassroom[c];
+    if (!id) {
       continue;
     }
-    let group = groups.find(g => g.name === name);
+    let group = groups.find(g => g.id === id);
     if (!group) {
-      group = {name, type: dayType(name), classrooms: []};
+      const type = dayType(id);
+      group = {id, name: type.name, type, classrooms: []};
       groups.push(group);
     }
     group.classrooms.push(c);
   }
-  const order = state.model.dayTypes.map(d => d.name);
-  groups.sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+  const order = state.model.dayTypes.map(d => d.id);
+  groups.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
   return groups;
 }
 
@@ -541,13 +561,12 @@ export function groupWords(group) {
 }
 
 export function specials(date) {
-  return plan(date).filter(g => g.name !== 'Regular');
+  return plan(date).filter(g => g.type.role !== 'regular');
 }
 
-const scheduleTag = 'Schedule';
-
 export function scheduleOn() {
-  return !tagNames().includes(scheduleTag) || selectedTags().includes(scheduleTag);
+  const schedule = roleTag('schedule');
+  return !schedule || selectedTags().includes(schedule);
 }
 
 export function colorOf(classroom) {
@@ -576,10 +595,10 @@ export function eventTint(e) {
   if (first) {
     return first.color;
   }
-  if (e.tags.includes('Celebrate')) {
+  if (e.tags.includes(roleTag('celebrate'))) {
     return '#d94a7c';
   }
-  if (e.tags.includes('HCA')) {
+  if (e.tags.includes(roleTag('hca'))) {
     return '#7b56c9';
   }
   return '#3b7dc4';
@@ -649,10 +668,11 @@ export async function answer(e, word) {
   }
   me().answers = answers;
   const going = word === 'yes' || e.mine === 'going';
-  if (going && !e.tags.includes('Going')) {
-    e.tags = [...e.tags, 'Going'];
+  const tag = roleTag('going');
+  if (going && !e.tags.includes(tag)) {
+    e.tags = [...e.tags, tag];
   } else if (!going) {
-    e.tags = e.tags.filter(t => t !== 'Going');
+    e.tags = e.tags.filter(t => t !== tag);
   }
 }
 
@@ -660,8 +680,8 @@ export function eventImage(e) {
   if (e.image) {
     return e.link ? '/open/banner/' + e.id.split('/').map(encodeURIComponent).join('/') : e.image;
   }
-  for (const name of e.tags) {
-    const tag = state.model.tags.find(t => t.name === name);
+  for (const id of e.tags) {
+    const tag = state.model.tags.find(t => t.id === id);
     if (tag && tag.imageUrl) {
       return tag.imageUrl;
     }

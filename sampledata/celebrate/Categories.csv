@@ -1,6 +1,6 @@
-Title,Order
-Family Social,1
-Adult Social,3
-Children Social,5
-Athletic,7
-Educational,9
+Category ID,Title,Order
+pcg0000000001,Family Social,1
+pcg0000000002,Adult Social,3
+pcg0000000003,Children Social,5
+pcg0000000004,Athletic,7
+pcg0000000005,Educational,9

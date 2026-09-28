@@ -13,7 +13,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 
-	"heliosian/internal/cells"
 	"heliosian/internal/when"
 )
 
@@ -299,19 +298,20 @@ func extractPDF(ctx context.Context, client anthropic.Client, pdf []byte, roster
 	return out, nil
 }
 
-func readPDF(ctx context.Context, client anthropic.Client, pdf []byte, hash string, roster when.Roster, dayTypes []string) ([]map[string]string, string, error) {
-	extraction, err := extractPDF(ctx, client, pdf, roster, dayTypes)
+func (r *run) readPDF(ctx context.Context, pdf []byte, hash string) ([]map[string]string, string, error) {
+	extraction, err := extractPDF(ctx, r.client, pdf, r.roster, r.dayTypes)
 	if err != nil {
 		return nil, "", err
 	}
-	rows, err := pdfRows(ctx, extraction, hash, roster)
+	rows, err := r.pdfRows(ctx, extraction, hash)
 	if err != nil {
 		return nil, "", err
 	}
 	return rows, extraction.Year, nil
 }
 
-func pdfRows(ctx context.Context, extraction pdfExtraction, hash string, roster when.Roster) ([]map[string]string, error) {
+func (r *run) pdfRows(ctx context.Context, extraction pdfExtraction, hash string) ([]map[string]string, error) {
+	roster := r.roster
 	match := schoolYearForm.FindStringSubmatch(extraction.Year)
 	if match == nil {
 		return nil, fmt.Errorf("extracted year %q is not YYYY-YYYY", extraction.Year)
@@ -356,12 +356,18 @@ func pdfRows(ctx context.Context, extraction pdfExtraction, hash string, roster 
 			key = "pdf/" + extraction.Year + "/" + e.Start + "/" + slug(e.Title) + "-" + strconv.Itoa(n)
 		}
 		keys[key] = true
+		tags, err := r.tagCell(e.Classrooms)
+		if err != nil {
+			return nil, fmt.Errorf("entry %q: %w", e.Title, err)
+		}
 		row := map[string]string{
 			"Key": key, "Year": extraction.Year, "Start": e.Start, "End": e.End, "Title": collapse(e.Title),
-			"Tags": cells.JoinList(e.Classrooms), "PDF": hash,
+			"Tags": tags, "PDF": hash,
 		}
 		if e.DayType != noDayType {
-			row["Day Type"] = e.DayType
+			if row["Day Type"], err = r.dayTypeID(e.DayType); err != nil {
+				return nil, fmt.Errorf("entry %q: %w", e.Title, err)
+			}
 		}
 		if e.Marker != noMarker {
 			row["Marker"] = e.Marker

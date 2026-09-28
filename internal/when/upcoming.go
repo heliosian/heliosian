@@ -124,7 +124,7 @@ func admits(model *Model, e *Event, classrooms, tags []string) bool {
 	}
 	categories := []string{}
 	for _, t := range e.Tags {
-		if !model.Roster.has(t) {
+		if model.Roster.byID(t) == nil {
 			categories = append(categories, t)
 		}
 	}
@@ -162,9 +162,9 @@ func (m *Model) myHeliosianView(directory *who.Model, email string) (classrooms,
 		classrooms = m.Roster.Names()
 	}
 	tags = []string{}
-	for _, t := range append(append([]Tag{}, m.Tags...), builtinTags...) {
+	for _, t := range m.Tags {
 		if t.Default {
-			tags = append(tags, t.Name)
+			tags = append(tags, t.ID)
 		}
 	}
 	if saved, ok := m.Settings[config.NormalizeEmail(email)]; ok && (len(saved.Classrooms) > 0 || len(saved.Tags) > 0) {
@@ -182,8 +182,8 @@ func (m *Model) feedView(f *Feed) (classrooms, tags []string) {
 		classrooms = m.Roster.Names()
 	}
 	if len(tags) == 0 {
-		for _, t := range append(append([]Tag{}, m.Tags...), builtinTags...) {
-			tags = append(tags, t.Name)
+		for _, t := range m.Tags {
+			tags = append(tags, t.ID)
 		}
 	}
 	return classrooms, tags

@@ -1,11 +1,5 @@
 import {state, me, isAdmin, longDate, years, allYears, activityPath, activity, parentOf, canAdd, ADDING, category as categoryOf, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED, isFamily} from './state.js';
 
-function* allNodes() {
-  for (const root of state.model.activities) {
-    yield root;
-    yield* descendants(root);
-  }
-}
 import {whenEditor} from './dom.js';
 import {el, svg, toast, button, imageThumb} from '/elements.js';
 import {imageTools} from '/images.js';
@@ -21,8 +15,9 @@ export const {uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imag
 
 export async function saveActivity(body) {
   const before = body.id && activity(body.id) ? activityPath(activity(body.id)) : null;
+  let saved;
   try {
-    await api('POST', '/api/team/activity', body);
+    saved = await api('POST', '/api/team/activity', body);
   } catch (err) {
     const c = err.conflict;
     if (!c || !c.prior) {
@@ -31,7 +26,7 @@ export async function saveActivity(body) {
     if (!confirm(`“${body.prettyId}” is the address of “${c.title}” from ${c.year}. Rename that one to “${c.renamed}” and use “${body.prettyId}” here?`)) {
       throw new Error('Pick another address, or agree to rename the old one.');
     }
-    await api('POST', '/api/team/activity', {...body, takeOver: true});
+    saved = await api('POST', '/api/team/activity', {...body, takeOver: true});
   }
   await load();
   const now = body.id ? activity(body.id) : null;
@@ -39,6 +34,7 @@ export async function saveActivity(body) {
     history.replaceState(null, '', activityPath(now));
     render();
   }
+  return saved.id;
 }
 
 function settingCard(label, hint, ...controls) {
@@ -686,13 +682,10 @@ export function openActivity(act, options) {
         priority: Boolean(act && act.priority),
         signUp: act ? '' : signMe.value, prettyId: pretty.value.trim().toLowerCase(), allowAdding: allowAdding.value,
       };
-      await saveActivity(body);
-      if (!act) {
-        await load();
-        const made = [...allNodes()].find(n => n.year === body.year && n.title === body.title && n.parent === body.parent);
-        if (made) {
-          navigate(activityPath(made));
-        }
+      const saved = await saveActivity(body);
+      const made = act ? null : activity(saved);
+      if (made) {
+        navigate(activityPath(made));
       }
     },
     onDelete: act && admin ? () => api('DELETE', '/api/team/activity', {id: act.id}) : null,
@@ -712,10 +705,10 @@ export function openLink(node, item) {
     image.wrap,
   ], {
     submit: () => api('POST', '/api/team/link', {
-      id: node.id, original: item ? item.title : '',
+      id: node.id, link: item ? item.id : '',
       title: title.value, url: url.value, description: description.value, image: image.value(),
     }),
-    onDelete: item ? () => api('DELETE', '/api/team/link', {id: node.id, title: item.title}) : null,
+    onDelete: item ? () => api('DELETE', '/api/team/link', {link: item.id}) : null,
     confirmDelete: item ? `Remove the link “${item.title}”?` : '',
   });
 }

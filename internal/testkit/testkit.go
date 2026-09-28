@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,6 +72,15 @@ func call(t *testing.T, handler http.Handler, as, method, path string, body any,
 	if hat {
 		r.AddCookie(&http.Cookie{Name: auth.HatCookie, Value: "1"})
 	}
+	rec := httptest.NewRecorder()
+	auth.Fixed(as, handler).ServeHTTP(rec, r)
+	return rec
+}
+
+func Form(t *testing.T, handler http.Handler, as, path string, values url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(values.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	auth.Fixed(as, handler).ServeHTTP(rec, r)
 	return rec

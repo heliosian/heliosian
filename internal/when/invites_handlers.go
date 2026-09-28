@@ -763,7 +763,7 @@ func (a app) banner(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) flyer(w http.ResponseWriter, r *http.Request) {
-	inv := a.cache.Model().Invitations[strings.TrimSpace(r.PathValue("id"))]
+	inv := a.cache.Model().Invitations[a.canonical(strings.TrimSpace(r.PathValue("id")))]
 	if inv == nil || inv.Flyer == "" {
 		http.NotFound(w, r)
 		return

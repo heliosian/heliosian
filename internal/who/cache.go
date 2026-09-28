@@ -32,7 +32,8 @@ var Tabs = []store.Tab{
 	{Name: overridesTab, Columns: overrideColumns, Key: []string{"Email"}, Cascade: carryPerson},
 	{Name: familiesTab, Columns: familyColumns, Key: []string{"Email"}},
 	{Name: WebsiteTable, Columns: WebsiteColumns, Key: []string{WebsiteID}},
-	{Name: tagsTable, Columns: tagColumns, Key: tagColumns},
+	{Name: tagListTable, Columns: tagListColumns, Key: []string{tagID}, Cascade: dropTagRows},
+	{Name: tagsTable, Columns: tagColumns, Key: tagColumns, Cascade: dropEmptyTag},
 	{Name: managersTable, Columns: managerColumns, Key: managerColumns},
 	{Name: photosTab, Columns: photoColumns, Key: []string{"Email", "Photo Name"}},
 	{Name: imagesTab, Columns: imageColumns, Key: []string{imageKind, imageName}},
@@ -75,9 +76,8 @@ func carryPerson(_ store.Tables, before, after store.Row) []store.Op {
 	was := before["Email"]
 	if after == nil {
 		return []store.Op{
-			store.Delete(tagsTable, store.Row{tagOwner: was}),
+			store.Delete(tagListTable, store.Row{tagOwner: was}),
 			store.Delete(tagsTable, store.Row{tagPerson: was}),
-			store.Delete(managersTable, store.Row{tagOwner: was}),
 			store.Delete(managersTable, store.Row{managerEmail: was}),
 			store.Delete(photosTab, store.Row{"Email": was}),
 		}
@@ -87,12 +87,32 @@ func carryPerson(_ store.Tables, before, after store.Row) []store.Op {
 		return nil
 	}
 	return []store.Op{
-		store.Update(tagsTable, store.Row{tagOwner: was}, store.Row{tagOwner: now}),
+		store.Update(tagListTable, store.Row{tagOwner: was}, store.Row{tagOwner: now}),
 		store.Update(tagsTable, store.Row{tagPerson: was}, store.Row{tagPerson: now}),
-		store.Update(managersTable, store.Row{tagOwner: was}, store.Row{tagOwner: now}),
 		store.Update(managersTable, store.Row{managerEmail: was}, store.Row{managerEmail: now}),
 		store.Update(photosTab, store.Row{"Email": was}, store.Row{"Email": now}),
 	}
+}
+
+func dropTagRows(_ store.Tables, before, after store.Row) []store.Op {
+	if before == nil || after != nil {
+		return nil
+	}
+	return []store.Op{
+		store.Delete(tagsTable, store.Row{tagID: before[tagID]}),
+		store.Delete(managersTable, store.Row{tagID: before[tagID]}),
+	}
+}
+
+func dropEmptyTag(tables store.Tables, before, after store.Row) []store.Op {
+	if before == nil || after != nil {
+		return nil
+	}
+	named := store.Row{tagID: before[tagID]}
+	if slices.ContainsFunc(tables[tagsTable], func(row store.Row) bool { return data.Matches(row, named) }) {
+		return nil
+	}
+	return []store.Op{store.Delete(tagListTable, named)}
 }
 
 func Open(source data.Source, writer data.Writer, blobs, static blob.Checker, idKey []byte, queue *store.Queue) (*store.Store[*Model], error) {

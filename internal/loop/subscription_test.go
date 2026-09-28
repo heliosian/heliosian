@@ -23,10 +23,10 @@ func (h *harness) as(email, method, path, body string) *httptest.ResponseRecorde
 	return rec
 }
 
-func (h *harness) excludedRows(name, email string) int {
+func (h *harness) excludedRows(groupID, email string) int {
 	n := 0
 	for _, row := range h.rows(excludedTab) {
-		if row["Group"] == name && row["Email"] == email {
+		if row["Group"] == groupID && row["Email"] == email {
 			n++
 		}
 	}
@@ -36,7 +36,7 @@ func (h *harness) excludedRows(name, email string) int {
 func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 	h := newHarness(t)
 	const name = "middle-school-parents"
-	g := h.cache.Model().Group(name)
+	g := h.cache.Model().Named(name)
 	member := ""
 	for _, m := range h.members(name) {
 		if !g.Manages(m) {
@@ -57,11 +57,11 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &model); err != nil {
 		t.Fatal(err)
 	}
-	if len(model.Groups) != 1 || model.Groups[0].Name != name || model.Groups[0].Mine || !model.Groups[0].Member || model.Groups[0].Unsubscribed || model.Groups[0].Visibility != VisibilityEveryone {
+	if len(model.Groups) != 1 || model.Groups[0].ID != middleID || model.Groups[0].Name != name || model.Groups[0].Mine || !model.Groups[0].Member || model.Groups[0].Unsubscribed || model.Groups[0].Visibility != VisibilityEveryone {
 		t.Fatalf("a member sees %+v", model.Groups)
 	}
 
-	rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":false}`)
+	rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"id":"`+middleID+`","subscribed":false}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unsubscribe answered %d: %s", rec.Code, rec.Body)
 	}
@@ -72,16 +72,16 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 	if !view.Member || !view.Unsubscribed {
 		t.Fatalf("after unsubscribing: member %v, unsubscribed %v", view.Member, view.Unsubscribed)
 	}
-	g = h.cache.Model().Group(name)
+	g = h.cache.Model().Group(middleID)
 	if !g.HasExcluded(member) || g.Excluded[0].Note != "Unsubscribed by "+loopPage {
 		t.Fatalf("not excluded: %+v", g.Excluded)
 	}
 	if slices.Contains(h.members(name), member) {
 		t.Fatal("still a member")
 	}
-	h.waitFor("the excluded row", func() bool { return h.excludedRows(name, member) == 1 })
+	h.waitFor("the excluded row", func() bool { return h.excludedRows(middleID, member) == 1 })
 
-	rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":true}`)
+	rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"id":"`+middleID+`","subscribed":true}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("resubscribe answered %d: %s", rec.Code, rec.Body)
 	}
@@ -91,27 +91,31 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 	if !view.Member || view.Unsubscribed {
 		t.Fatalf("after resubscribing: member %v, unsubscribed %v", view.Member, view.Unsubscribed)
 	}
-	if h.cache.Model().Group(name).HasExcluded(member) || !slices.Contains(h.members(name), member) {
+	if h.cache.Model().Group(middleID).HasExcluded(member) || !slices.Contains(h.members(name), member) {
 		t.Fatal("not back on the group")
 	}
-	h.waitFor("the row to go", func() bool { return h.excludedRows(name, member) == 0 })
-	if rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":true}`); rec.Code != http.StatusOK {
+	h.waitFor("the row to go", func() bool { return h.excludedRows(middleID, member) == 0 })
+	if rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"id":"`+middleID+`","subscribed":true}`); rec.Code != http.StatusOK {
 		t.Fatalf("a second resubscribe answered %d", rec.Code)
 	}
 
-	rec = h.as(member, http.MethodPost, "/api/loop/group", `{"original":"`+name+`","name":"`+name+`","title":"Taken over","managers":["`+member+`"],"rules":[]}`)
+	rec = h.as(member, http.MethodPost, "/api/loop/group", `{"id":"`+middleID+`","name":"`+name+`","title":"Taken over","managers":["`+member+`"],"rules":[]}`)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("a member's save answered %d: %s", rec.Code, rec.Body)
 	}
-	rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"soccer-team","subscribed":false}`)
+	rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"id":"`+soccerID+`","subscribed":false}`)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("a group not visible answered %d: %s", rec.Code, rec.Body)
 	}
-	rec = h.as("mia.torres@heliosschool.org", http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":false}`)
+	rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"id":"`+name+`","subscribed":false}`)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("a group named rather than identified answered %d: %s", rec.Code, rec.Body)
+	}
+	rec = h.as("mia.torres@heliosschool.org", http.MethodPost, "/api/loop/subscription", `{"id":"`+middleID+`","subscribed":false}`)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("someone not on the list answered %d: %s", rec.Code, rec.Body)
 	}
-	if h.cache.Model().Group(name).HasExcluded("mia.torres@heliosschool.org") {
+	if h.cache.Model().Group(middleID).HasExcluded("mia.torres@heliosschool.org") {
 		t.Fatal("someone not on the list was excluded")
 	}
 }
@@ -119,7 +123,7 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 func TestTheExcludedListGoesToManagersAlone(t *testing.T) {
 	h := newHarness(t)
 	const name = "middle-school-parents"
-	g := h.cache.Model().Group(name)
+	g := h.cache.Model().Named(name)
 	member := ""
 	for _, m := range h.members(name) {
 		if !g.Manages(m) {
@@ -130,7 +134,7 @@ func TestTheExcludedListGoesToManagersAlone(t *testing.T) {
 	if member == "" {
 		t.Fatal("every member manages the group")
 	}
-	rec := h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":false}`)
+	rec := h.as(member, http.MethodPost, "/api/loop/subscription", `{"id":"`+g.ID+`","subscribed":false}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unsubscribe answered %d: %s", rec.Code, rec.Body)
 	}
@@ -172,9 +176,9 @@ func TestTheExcludedListGoesToManagersAlone(t *testing.T) {
 	}
 }
 
-func (h *harness) changeLogRow(action, name string) map[string]string {
+func (h *harness) changeLogRow(action, groupID string) map[string]string {
 	for _, row := range h.rows(store.ChangeLogTab) {
-		if row["Tab"] == excludedTab && row["Action"] == action && strings.HasPrefix(row["Key"], "Group="+name+";") {
+		if row["Tab"] == excludedTab && row["Action"] == action && strings.HasPrefix(row["Key"], "Group="+groupID+";") {
 			return row
 		}
 	}
@@ -185,7 +189,7 @@ func TestTheChangeLogNamesWhoIsReallySignedIn(t *testing.T) {
 	h := newHarness(t)
 	const name = "middle-school-parents"
 	const admin = "admin@heliosschool.org"
-	g := h.cache.Model().Group(name)
+	g := h.cache.Model().Named(name)
 	member := ""
 	for _, m := range h.members(name) {
 		if !g.Manages(m) {
@@ -202,7 +206,7 @@ func TestTheChangeLogNamesWhoIsReallySignedIn(t *testing.T) {
 		Allowed: func(email string) bool { return email == admin },
 		Person:  func(email string) (auth.Person, bool) { return auth.Person{Email: email}, true },
 	}
-	req := httptest.NewRequest(http.MethodPost, "/api/loop/subscription", strings.NewReader(`{"name":"`+name+`","subscribed":false}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/loop/subscription", strings.NewReader(`{"id":"`+g.ID+`","subscribed":false}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "spoof", Value: auth.SpoofToken(key, admin, member, time.Now().Add(time.Hour))})
 	rec := httptest.NewRecorder()
@@ -210,16 +214,16 @@ func TestTheChangeLogNamesWhoIsReallySignedIn(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("the spoofed unsubscribe answered %d: %s", rec.Code, rec.Body)
 	}
-	h.waitFor("the unsubscribe's log row", func() bool { return h.changeLogRow("insert", name) != nil })
-	if row := h.changeLogRow("insert", name); row["Actor"] != member || row["Real Actor"] != admin {
+	h.waitFor("the unsubscribe's log row", func() bool { return h.changeLogRow("insert", g.ID) != nil })
+	if row := h.changeLogRow("insert", g.ID); row["Actor"] != member || row["Real Actor"] != admin {
 		t.Fatalf("the spoofed unsubscribe logged actor %q, real actor %q", row["Actor"], row["Real Actor"])
 	}
 
-	if rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":true}`); rec.Code != http.StatusOK {
+	if rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"id":"`+g.ID+`","subscribed":true}`); rec.Code != http.StatusOK {
 		t.Fatalf("the member's resubscribe answered %d: %s", rec.Code, rec.Body)
 	}
-	h.waitFor("the resubscribe's log row", func() bool { return h.changeLogRow("delete", name) != nil })
-	if row := h.changeLogRow("delete", name); row["Actor"] != member || row["Real Actor"] != member {
+	h.waitFor("the resubscribe's log row", func() bool { return h.changeLogRow("delete", g.ID) != nil })
+	if row := h.changeLogRow("delete", g.ID); row["Actor"] != member || row["Real Actor"] != member {
 		t.Fatalf("the member's own resubscribe logged actor %q, real actor %q", row["Actor"], row["Real Actor"])
 	}
 }
@@ -245,7 +249,7 @@ func (h *harness) groupNames(email string) []string {
 func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
 	h := newHarness(t)
 	const name = "middle-school-parents"
-	g := *h.cache.Model().Group(name)
+	g := *h.cache.Model().Named(name)
 	member := ""
 	for _, m := range h.members(name) {
 		if !g.Manages(m) {
@@ -259,7 +263,7 @@ func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
 	}
 	visible := func(to string) {
 		t.Helper()
-		if err := h.cache.Commit(context.Background(), access.System("test"), store.Update(groupsTab, store.Row{"Name": name}, store.Row{visibleColumn: to})); err != nil {
+		if err := h.cache.Commit(context.Background(), access.System("test"), store.Update(groupsTab, store.Row{idColumn: g.ID}, store.Row{visibleColumn: to})); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -270,10 +274,10 @@ func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
 	if len(h.groupNames(outsider)) != 0 {
 		t.Fatalf("someone not on the group sees %v", h.groupNames(outsider))
 	}
-	if rec := h.as(outsider, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":false}`); rec.Code != http.StatusNotFound {
+	if rec := h.as(outsider, http.MethodPost, "/api/loop/subscription", `{"id":"`+g.ID+`","subscribed":false}`); rec.Code != http.StatusNotFound {
 		t.Fatalf("someone not on the group answered %d: %s", rec.Code, rec.Body)
 	}
-	if rec := h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":false}`); rec.Code != http.StatusOK {
+	if rec := h.as(member, http.MethodPost, "/api/loop/subscription", `{"id":"`+g.ID+`","subscribed":false}`); rec.Code != http.StatusOK {
 		t.Fatalf("a member's unsubscribe answered %d: %s", rec.Code, rec.Body)
 	}
 	if !slices.Equal(h.groupNames(member), []string{name}) {
@@ -287,7 +291,7 @@ func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
 
 func TestOpenIsWhatANonAdminSees(t *testing.T) {
 	h := newHarness(t)
-	manager := h.cache.Model().Group("soccer-team").Managers[0]
+	manager := h.cache.Model().Group(soccerID).Managers[0]
 	rec := h.as(manager, http.MethodGet, "/api/loop/model", "")
 	var model struct {
 		Groups []groupView `json:"groups"`

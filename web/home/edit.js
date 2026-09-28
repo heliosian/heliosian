@@ -1,4 +1,4 @@
-import {state, isAdmin, categoryTitles, linkCategoryTitles, tagLabelsOf} from './state.js';
+import {state, isAdmin, linkCategories, tagLabelsOf} from './state.js';
 import {categoryIcons, iconOf, categoryMark} from './dom.js';
 import {el, svg, toast} from '/elements.js';
 import {load} from '/router.js';
@@ -32,10 +32,10 @@ function setStatus(selector, message, error) {
 function fillCategories(selected) {
   const select = document.querySelector('#link-category');
   select.replaceChildren();
-  for (const title of linkCategoryTitles()) {
-    const option = el('option', '', title);
-    option.value = title;
-    option.selected = title === selected;
+  for (const category of linkCategories()) {
+    const option = el('option', '', category.title);
+    option.value = category.id;
+    option.selected = category.id === selected;
     select.append(option);
   }
 }
@@ -174,9 +174,9 @@ export function openLinkEditor(link, category) {
   document.querySelector('#link-description').value = link ? link.description || '' : '';
   document.querySelector('#link-url').value = link ? link.url : '';
   document.querySelector('#link-visible').checked = link ? link.visible : true;
-  linkAudience = audienceCard(document.querySelector('#link-audience'), link ? link.rules : [], 'No rules means everyone.', 'link:' + (link ? link.title : ''));
+  linkAudience = audienceCard(document.querySelector('#link-audience'), link ? link.rules : [], 'No rules means everyone.', 'link:' + (link ? link.id : ''));
   document.querySelector('#link-delete').hidden = !link;
-  fillCategories(link ? link.category : category || linkCategoryTitles()[0]);
+  fillCategories(link ? link.category : category);
   setStatus('#link-status', '');
   showTab('link', 'details');
   linkModal.hidden = false;
@@ -194,7 +194,7 @@ export function openCategoryEditor(category) {
   syncAppsNote();
   document.querySelector('#category-delete').hidden = !category || events;
   document.querySelector('#category-max').value = category && category.max ? String(category.max) : '';
-  categoryAudience = audienceCard(document.querySelector('#category-audience'), category ? category.rules : [], 'No rules means everyone; the whole section, links and all.', 'category:' + (category ? category.title : ''));
+  categoryAudience = audienceCard(document.querySelector('#category-audience'), category ? category.rules : [], 'No rules means everyone; the whole section, links and all.', 'category:' + (category ? category.id : ''));
   setEmoji(category ? category.emoji || '' : '');
   setStatus('#category-status', '');
   showTab('category', 'details');
@@ -234,9 +234,9 @@ function closeModals() {
   widgetModal.hidden = true;
 }
 
-export async function moveLink(title, by) {
+export async function moveLink(id, by) {
   try {
-    await api('POST', '/api/apps/link/move', {title, by});
+    await api('POST', '/api/apps/link/move', {id, by});
     await load();
   } catch (err) {
     toast(err.message);
@@ -387,19 +387,19 @@ export function refreshCategoryManager() {
   }
 }
 
-async function moveCategory(title, by) {
-  const hidden = state.model.categories.filter(c => c.style === 'events').map(c => c.title);
-  const titles = categoryTitles().filter(t => !hidden.includes(t));
-  const at = titles.indexOf(title);
+async function moveCategory(id, by) {
+  const hidden = state.model.categories.filter(c => c.style === 'events').map(c => c.id);
+  const ids = linkCategories().map(c => c.id);
+  const at = ids.indexOf(id);
   const to = at + by;
-  if (at < 0 || to < 0 || to >= titles.length) {
+  if (at < 0 || to < 0 || to >= ids.length) {
     return;
   }
-  titles.splice(to, 0, ...titles.splice(at, 1));
-  titles.push(...hidden);
+  ids.splice(to, 0, ...ids.splice(at, 1));
+  ids.push(...hidden);
   setStatus('#categories-status', 'Saving…');
   try {
-    await api('POST', '/api/apps/categories/order', {titles});
+    await api('POST', '/api/apps/categories/order', {ids});
     setStatus('#categories-status', '');
     await load();
   } catch (err) {
@@ -413,7 +413,7 @@ async function removeCategory(category) {
   }
   setStatus('#categories-status', 'Deleting\u2026');
   try {
-    await api('DELETE', '/api/apps/category', {title: category.title});
+    await api('DELETE', '/api/apps/category', {id: category.id});
     setStatus('#categories-status', '');
     await load();
   } catch (err) {
@@ -447,13 +447,13 @@ function categoryRow(category, at, total) {
   up.setAttribute('aria-label', `Move ${category.title} up`);
   up.textContent = '\u2191';
   up.disabled = at === 0;
-  up.addEventListener('click', () => moveCategory(category.title, -1));
+  up.addEventListener('click', () => moveCategory(category.id, -1));
   const down = el('button', 'row-button');
   down.type = 'button';
   down.setAttribute('aria-label', `Move ${category.title} down`);
   down.textContent = '\u2193';
   down.disabled = at === total - 1;
-  down.addEventListener('click', () => moveCategory(category.title, 1));
+  down.addEventListener('click', () => moveCategory(category.id, 1));
   const edit = el('button', 'row-button');
   edit.type = 'button';
   edit.setAttribute('aria-label', `Edit ${category.title}`);
@@ -496,7 +496,7 @@ async function saveLink(e) {
   setStatus('#link-status', 'Saving…');
   try {
     await api('POST', '/api/apps/link', {
-      original: editingLink ? editingLink.title : '',
+      id: editingLink ? editingLink.id : '',
       title: document.querySelector('#link-title').value,
       description: document.querySelector('#link-description').value,
       url: document.querySelector('#link-url').value,
@@ -518,7 +518,7 @@ async function deleteLink() {
   }
   setStatus('#link-status', 'Deleting…');
   try {
-    await api('DELETE', '/api/apps/link', {title: editingLink.title});
+    await api('DELETE', '/api/apps/link', {id: editingLink.id});
     closeModals();
     await load();
   } catch (err) {
@@ -531,7 +531,7 @@ async function saveCategory(e) {
   setStatus('#category-status', 'Saving…');
   try {
     await api('POST', '/api/apps/category', {
-      original: editingCategory ? editingCategory.title : '',
+      id: editingCategory ? editingCategory.id : '',
       title: document.querySelector('#category-title').value,
       style: editingCategory && editingCategory.style === 'events' ? 'events' : document.querySelector('#category-style').value,
       emoji: document.querySelector('#category-emoji').value.trim(),
@@ -551,7 +551,7 @@ async function deleteCategory() {
   }
   setStatus('#category-status', 'Deleting…');
   try {
-    await api('DELETE', '/api/apps/category', {title: editingCategory.title});
+    await api('DELETE', '/api/apps/category', {id: editingCategory.id});
     closeModals();
     await load();
   } catch (err) {

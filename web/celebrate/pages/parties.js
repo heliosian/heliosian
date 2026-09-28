@@ -9,8 +9,8 @@ import {partyCard} from '../cards.js';
 
 let query = '';
 
-function shown(code) {
-  return parties(code).filter(p => inTab(p, state.tab) && matches(p, query) && (!state.category || p.category === state.category));
+function shown(id) {
+  return parties(id).filter(p => inTab(p, state.tab) && matches(p, query) && (!state.category || p.category === state.category));
 }
 
 export function celebrationBand(c) {
@@ -44,9 +44,9 @@ export function celebrationBand(c) {
   return band;
 }
 
-function grid(code) {
+function grid(id) {
   const wrap = el('div');
-  const items = shown(code);
+  const items = shown(id);
   if (!items.length) {
     const panel = el('div', 'panel');
     const words = {
@@ -67,9 +67,9 @@ function grid(code) {
   return wrap;
 }
 
-export function partiesPage(code) {
-  if (code && celebration(code)) {
-    state.celebration = code;
+export function partiesPage(id) {
+  if (id && celebration(id)) {
+    state.celebration = id;
   } else if (state.model.current) {
     state.celebration = state.model.current;
   }
@@ -90,13 +90,13 @@ export function partiesPage(code) {
   }
   head.append(main);
   const options = state.model.celebrations
-    .filter(x => x.code === state.celebration || parties(x.code).length)
-    .map(x => ({key: x.code, label: x.title}));
+    .filter(x => x.id === state.celebration || parties(x.id).length)
+    .map(x => ({key: x.id, label: x.title}));
   if (options.length > 1) {
     head.append(selectPill('calendar', options, state.celebration, picked => {
       state.celebration = picked;
       query = '';
-      history.replaceState(null, '', picked === state.model.current ? '/' : `/celebrations/${encodeURIComponent(picked)}`);
+      history.replaceState(null, '', picked === state.model.current ? '/' : `/celebrations/${encodeURIComponent(celebration(picked).code)}`);
       render();
     }));
   }
@@ -123,8 +123,8 @@ export function partiesPage(code) {
     const sel = el('select');
     sel.append(new Option('All categories', ''));
     for (const cat of state.model.categories) {
-      const o = new Option(cat, cat);
-      o.selected = state.category === cat;
+      const o = new Option(cat.title, cat.id);
+      o.selected = state.category === cat.id;
       sel.append(o);
     }
     sel.addEventListener('change', () => {

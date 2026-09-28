@@ -1,4 +1,4 @@
-import {state, applyModel, staff, charity, isUnassigned, isAdmin, commsOnly} from './state.js';
+import {state, applyModel, staff, charityNamed, newsletterOn, isUnassigned, isAdmin, commsOnly} from './state.js';
 import {initChrome} from './chrome.js';
 import {showPage, clearSearch} from '/shell.js';
 import {api} from '/api.js';
@@ -29,10 +29,10 @@ const routes = {
     if (!parts[1]) {
       return charitiesPage();
     }
-    const c = charity(parts[1]);
+    const c = charityNamed(parts[1]);
     return c ? charityPage(c) : notFound(parts[1]);
   },
-  newsletters: parts => parts[1] && state.model.newsletterDates.includes(parts[1]) ? newsletterPage(parts[1]) : parts[1] ? notFound(parts[1]) : newslettersPage(),
+  newsletters: parts => parts[1] && newsletterOn(parts[1]) ? newsletterPage(parts[1]) : parts[1] ? notFound(parts[1]) : newslettersPage(),
   skipped: () => isAdmin() ? skippedPage() : notFound('That page'),
   unassigned: () => unassignedPage(),
   admin: () => adminPage(),

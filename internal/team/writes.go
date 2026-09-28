@@ -9,7 +9,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/serve"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -64,9 +64,12 @@ func (m *Model) saveVolunteer(actor access.Actor, directory *who.Model, body vol
 	}
 	editor := m.Edits(act, actor)
 	var from *Activity
-	if strings.TrimSpace(body.From) != "" && strings.TrimSpace(body.From) != act.ID {
+	if strings.TrimSpace(body.From) != "" {
 		if from, err = m.find(body.From); err != nil {
 			return signUp{}, err
+		}
+		if from == act {
+			from = nil
 		}
 	}
 	email := directory.Resolve(strings.ToLower(strings.TrimSpace(body.Email)))
@@ -273,6 +276,7 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 		if p == nil {
 			return activitySave{}, access.Invalid("no activity with id %q to sit under", parent)
 		}
+		parent = p.ID
 		if p.Year != year {
 			return activitySave{}, access.Invalid("a parent has to be in the same school year")
 		}
@@ -307,6 +311,7 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 		if c == nil {
 			return activitySave{}, access.Invalid("no category with id %q", category)
 		}
+		category = c.ID
 		if parent == "" && c.EventID != "" {
 			return activitySave{}, access.Invalid("%q belongs to one event, not the page", c.Title)
 		}
@@ -325,9 +330,11 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 			return activitySave{}, access.Invalid("new things cannot be added here")
 		}
 	}
-	id := body.ID
+	var key string
 	if adding {
-		id = serve.ID(8)
+		key = id.New(m.taken)
+	} else {
+		key = current.ID
 	}
 	joining := ""
 	if adding {
@@ -357,14 +364,14 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 	renamed := ""
 	if pretty != "" && parent != "" {
 		for _, sibling := range m.Activity(parent).Children {
-			if sibling.ID != id && sibling.PrettyID == pretty {
+			if sibling.ID != key && sibling.PrettyID == pretty {
 				conflict := &prettyConflict{ID: sibling.ID, Title: sibling.Title, Year: sibling.Year,
 					Message: fmt.Sprintf("%q is already the address of %q under the same parent", pretty, sibling.Title)}
 				return activitySave{}, conflict.refusal()
 			}
 		}
 	}
-	if other := m.ByPretty(pretty); pretty != "" && parent == "" && other != nil && other.ID != id {
+	if other := m.ByPretty(pretty); pretty != "" && parent == "" && other != nil && other.ID != key {
 		conflict := &prettyConflict{ID: other.ID, Title: other.Title, Year: other.Year, Prior: other.Year < year}
 		if conflict.Prior {
 			conflict.Renamed = renamedPretty(m, pretty, other.Year)
@@ -380,7 +387,7 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 		displaced, renamed = other, conflict.Renamed
 	}
 	row := store.Row{
-		"Event ID": id, "Year": year, "Title": title, "Parent": parent,
+		"Event ID": key, "Year": year, "Title": title, "Parent": parent,
 		"Category": category, "Status": status,
 		"Description": strings.TrimSpace(body.Description), "Image": strings.TrimSpace(body.Image), "Flyer Image": strings.TrimSpace(body.Flyer),
 		"Timing": strings.TrimSpace(body.Timing), "Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End),
@@ -408,7 +415,7 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 		row["Added"] = today()
 		ops = append(ops, store.Insert(activitiesTab, row))
 		if joining != "" {
-			ops = append(ops, store.Insert(volunteersTab, store.Row{"Event ID": id, "Email": actor.Email, "Position": joining, "Added By": actor.Email, "Added": today()}))
+			ops = append(ops, store.Insert(volunteersTab, store.Row{"Event ID": key, "Email": actor.Email, "Position": joining, "Added By": actor.Email, "Added": today()}))
 		}
 	} else {
 		if current.Parent != parent {
@@ -422,7 +429,7 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 				}
 			}
 		}
-		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": id}, cells))
+		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": key}, cells))
 	}
 	if displaced != nil {
 		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": displaced.ID}, store.Row{"Pretty ID": renamed}))
@@ -430,7 +437,7 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 	if approving && (!slices.Equal(patch.fields(), []string{"status"}) || current.Status != StatusPending || (status != StatusOpen && status != StatusHidden)) {
 		return activitySave{}, access.Forbidden("only a co-chair or admin can edit this")
 	}
-	return activitySave{ops: ops, id: id, title: title, year: year, status: status, action: action, adding: adding}, nil
+	return activitySave{ops: ops, id: key, title: title, year: year, status: status, action: action, adding: adding}, nil
 }
 
 func (m *Model) deleteActivity(actor access.Actor, id string) (*Activity, []store.Op, error) {
@@ -452,15 +459,33 @@ func (m *Model) deleteActivity(actor access.Actor, id string) (*Activity, []stor
 
 type linkBody struct {
 	ID          string `json:"id"`
-	Original    string `json:"original"`
+	Link        string `json:"link"`
 	Title       string `json:"title"`
 	URL         string `json:"url"`
 	Description string `json:"description"`
 	Image       string `json:"image"`
 }
 
+func (m *Model) findLink(key string) (*Activity, string, error) {
+	key = strings.ToLower(strings.TrimSpace(key))
+	act := m.links[key]
+	if act == nil {
+		return nil, "", access.Missing("no link with id %q", key)
+	}
+	return act, key, nil
+}
+
 func (m *Model) saveLink(actor access.Actor, body linkBody) (*Activity, string, []store.Op, error) {
-	act, err := m.find(body.ID)
+	adding := strings.TrimSpace(body.Link) == ""
+	var act *Activity
+	var key string
+	var err error
+	if adding {
+		act, err = m.find(body.ID)
+		key = id.New(m.taken)
+	} else {
+		act, key, err = m.findLink(body.Link)
+	}
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -468,28 +493,26 @@ func (m *Model) saveLink(actor access.Actor, body linkBody) (*Activity, string, 
 		return nil, "", nil, access.Forbidden("only a co-chair or admin can add links")
 	}
 	cells := store.Row{
-		"Event ID": act.ID, "Title": strings.TrimSpace(body.Title),
-		"URL": strings.TrimSpace(body.URL), "Image": strings.TrimSpace(body.Image),
+		"Title": strings.TrimSpace(body.Title),
+		"URL":   strings.TrimSpace(body.URL), "Image": strings.TrimSpace(body.Image),
 		"Description": strings.TrimSpace(body.Description),
 	}
-	if body.Original == "" {
+	if adding {
+		cells["Link ID"], cells["Event ID"] = key, act.ID
 		return act, "add", []store.Op{store.Insert(linksTab, cells)}, nil
 	}
-	if !slices.ContainsFunc(act.Links, func(l Link) bool { return l.Title == body.Original }) {
-		return nil, "", nil, access.Missing("%s has no link %q", act.Title, body.Original)
-	}
-	return act, "edit", []store.Op{store.Update(linksTab, store.Row{"Event ID": act.ID, "Title": body.Original}, cells)}, nil
+	return act, "edit", []store.Op{store.Update(linksTab, store.Row{"Link ID": key}, cells)}, nil
 }
 
-func (m *Model) deleteLink(actor access.Actor, id, title string) (*Activity, []store.Op, error) {
-	act, err := m.find(id)
+func (m *Model) deleteLink(actor access.Actor, link string) (*Activity, []store.Op, error) {
+	act, key, err := m.findLink(link)
 	if err != nil {
 		return nil, nil, err
 	}
 	if !m.Edits(act, actor) {
 		return nil, nil, access.Forbidden("only a co-chair or admin can remove links")
 	}
-	return act, []store.Op{store.Delete(linksTab, store.Row{"Event ID": act.ID, "Title": strings.TrimSpace(title)})}, nil
+	return act, []store.Op{store.Delete(linksTab, store.Row{"Link ID": key})}, nil
 }
 
 func orderOps(tab, keyColumn string, ids, current []string) []store.Op {
@@ -520,7 +543,7 @@ func (m *Model) orderChildren(actor access.Actor, parentID string, order []strin
 	}
 	ids, current := []string{}, []string{}
 	for _, id := range order {
-		c := children[strings.TrimSpace(id)]
+		c := children[m.aliases.Resolve(strings.TrimSpace(id))]
 		if c == nil {
 			return nil, nil, access.Invalid("%q is not one of the things under %s", id, parent.Title)
 		}
@@ -569,21 +592,22 @@ func (m *Model) saveCategory(actor access.Actor, body categoryBody) (categorySav
 	title := strings.TrimSpace(body.Title)
 	eventID := strings.TrimSpace(body.EventID)
 	adding := body.ID == ""
-	id := strings.TrimSpace(body.ID)
+	key := strings.TrimSpace(body.ID)
 	if !adding {
-		current := m.Category(id)
+		current := m.Category(key)
 		if current == nil {
-			return categorySave{}, access.Missing("no category with id %q", id)
+			return categorySave{}, access.Missing("no category with id %q", key)
 		}
 		if current.BuiltIn {
 			return categorySave{}, access.Invalid("Uncategorized is built in and cannot be changed")
 		}
-		eventID = current.EventID
+		key, eventID = current.ID, current.EventID
 	} else if eventID != "" {
 		event := m.Activity(eventID)
 		if event == nil || event.Parent != "" {
 			return categorySave{}, access.Invalid("an event's category has to belong to a root event")
 		}
+		eventID = event.ID
 	}
 	if err := m.editsCategories(actor, eventID); err != nil {
 		return categorySave{}, err
@@ -593,10 +617,10 @@ func (m *Model) saveCategory(actor access.Actor, body categoryBody) (categorySav
 		return categorySave{}, access.Invalid("%s", err.Error())
 	}
 	if adding {
-		id = serve.ID(8)
+		key = id.New(m.taken)
 	}
 	row := store.Row{
-		"Category ID":       id,
+		"Category ID":       key,
 		"Event ID":          eventID,
 		"Title":             title,
 		"Description":       strings.TrimSpace(body.Description),
@@ -607,9 +631,9 @@ func (m *Model) saveCategory(actor access.Actor, body categoryBody) (categorySav
 	if eventID == "" {
 		row["Show On Main Page"] = cells.YesNoCell(body.ShowOnMain == nil || *body.ShowOnMain)
 	}
-	save := categorySave{op: store.Insert(categoriesTab, row), id: id, eventID: eventID, title: title, action: "add"}
+	save := categorySave{op: store.Insert(categoriesTab, row), id: key, eventID: eventID, title: title, action: "add"}
 	if !adding {
-		save.op = store.Update(categoriesTab, store.Row{"Category ID": id}, row)
+		save.op = store.Update(categoriesTab, store.Row{"Category ID": key}, row)
 		save.action = "edit"
 	}
 	return save, nil
@@ -637,12 +661,12 @@ func (m *Model) reorderCategories(actor access.Actor, eventID string, order []st
 		return nil, access.Invalid("the order must name every category exactly once")
 	}
 	ids, current := []string{}, []string{}
-	for _, id := range order {
-		c, ok := inScope[id]
+	for _, key := range order {
+		c, ok := inScope[m.aliases.Resolve(key)]
 		if !ok {
 			return nil, access.Invalid("the order must name every category exactly once")
 		}
-		delete(inScope, id)
+		delete(inScope, c.ID)
 		ids, current = append(ids, c.ID), append(current, c.Order)
 	}
 	return orderOps(categoriesTab, "Category ID", ids, current), nil
@@ -683,10 +707,11 @@ func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, 
 			return nil, "", "", nil, access.Invalid("%q already exists in %s", act.Title, year)
 		}
 	}
-	fresh := map[string]string{act.ID: serve.ID(8)}
+	mint := m.minter()
+	fresh := map[string]string{act.ID: mint()}
 	ops := []store.Op{}
 	for _, c := range act.Categories {
-		fresh[c.ID] = serve.ID(8)
+		fresh[c.ID] = mint()
 		ops = append(ops, store.Insert(categoriesTab, store.Row{
 			"Category ID": fresh[c.ID], "Event ID": fresh[act.ID], "Title": c.Title, "Description": c.Description,
 			"Image": c.Image, "Allow Adding": c.AllowAdding, store.OrderColumn: c.Order,
@@ -726,13 +751,13 @@ func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, 
 		if _, ok := fresh[c.Parent]; !ok {
 			continue
 		}
-		fresh[c.ID] = serve.ID(8)
+		fresh[c.ID] = mint()
 		ops = append(ops, store.Insert(activitiesTab, rowFor(c, fresh[c.Parent])))
 		copied = append(copied, c)
 	}
 	for _, node := range copied {
 		for _, l := range node.Links {
-			ops = append(ops, store.Insert(linksTab, store.Row{"Event ID": fresh[node.ID], "Title": l.Title, "URL": l.URL, "Image": l.Image, "Description": l.Description}))
+			ops = append(ops, store.Insert(linksTab, store.Row{"Link ID": mint(), "Event ID": fresh[node.ID], "Title": l.Title, "URL": l.URL, "Image": l.Image, "Description": l.Description}))
 		}
 	}
 	return act, fresh[act.ID], year, ops, nil

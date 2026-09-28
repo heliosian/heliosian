@@ -27,13 +27,13 @@ func ICS(model *Model, directory *who.Model, f *Feed, linked []Linked, origin st
 		m := e.mailEvent(origin + EventPath(e))
 		m.Description = e.Description
 		if e.DayType != "" {
-			m.Description = strings.TrimSpace(e.DayType + "\n\n" + e.Description)
+			m.Description = strings.TrimSpace(model.DayTypeName(e.DayType) + "\n\n" + e.Description)
 		}
 		if modified, err := time.ParseInLocation(DateTimeFormat, e.Updated, Location); err == nil {
 			m.Modified = modified
 		}
 		if len(e.Tags) > 0 {
-			m.Categories = cells.JoinList(e.Tags)
+			m.Categories = cells.JoinList(model.TagNames(e.Tags))
 		}
 		c.Events = append(c.Events, m)
 	}

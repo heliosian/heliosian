@@ -23,10 +23,10 @@ func (m *Model) Lists(sources Sources, email string) []who.List {
 				if added := g.Addition(member); added != nil && added.Name != "" {
 					name = added.Name
 				}
-				guests = append(guests, who.Guest{ID: g.Name + ":" + member, Name: name, Email: member})
+				guests = append(guests, who.Guest{ID: g.ID + ":" + member, Name: name, Email: member})
 			}
 		}
-		out = append(out, who.List{Key: who.ListGroup + ":" + g.Name, Name: g.Title, Kind: who.ListGroup, People: people, Guests: guests, Archived: m.Archived(g.Name, email)})
+		out = append(out, who.List{Key: who.ListGroup + ":" + g.ID, Slug: g.Name, Name: g.Title, Kind: who.ListGroup, People: people, Guests: guests, Archived: m.Archived(g.ID, email)})
 	}
 	return out
 }

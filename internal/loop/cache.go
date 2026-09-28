@@ -7,6 +7,7 @@ import (
 
 	"heliosian/internal/admins"
 	"heliosian/internal/data"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -15,18 +16,18 @@ type Cache struct {
 	admins.List
 }
 
-var groupTabs = []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab, archivedTab, messagesTab, deliveriesTab}
+var groupTabs = []string{managersTab, rulesTab, additionsTab, excludedTab, archivedTab, messagesTab, deliveriesTab}
 
 func spec() store.Spec[*Model] {
 	return store.Spec[*Model]{
 		App: appName,
 		Tabs: []store.Tab{
-			{Name: groupsTab, Columns: GroupColumns, Key: []string{"Name"}, Cascade: carryGroup},
+			{Name: groupsTab, Columns: GroupColumns, Key: []string{idColumn}, Cascade: carryGroup},
 			{Name: managersTab, Columns: ManagerColumns, Key: []string{"Group", "Email"}},
 			{Name: rulesTab, Columns: RuleColumns, Key: RuleColumns},
 			{Name: additionsTab, Columns: AdditionColumns, Key: []string{"Group", "Email"}},
 			{Name: excludedTab, Columns: ExcludedColumns, Key: []string{"Group", "Email"}},
-			{Name: aliasesTab, Columns: AliasColumns, Key: []string{"Group", "Alias"}},
+			{Name: id.AliasesTab, Columns: id.AliasColumns, Key: []string{id.AliasColumn}},
 			{Name: messagesTab, Columns: MessageColumns, Key: []string{"ID", "Group"}},
 			{Name: deliveriesTab, Columns: DeliveryColumns, Key: []string{"Timestamp", "Group", "Email", "Event"}, AppendOnly: true},
 			admins.Spec,
@@ -46,12 +47,12 @@ func spec() store.Spec[*Model] {
 }
 
 func carryGroup(_ store.Tables, before, after store.Row) []store.Op {
-	if before == nil || after != nil || before["Name"] == "" {
+	if before == nil || after != nil || before[idColumn] == "" {
 		return nil
 	}
-	ops := []store.Op{}
+	ops := []store.Op{store.Delete(id.AliasesTab, store.Row{id.IDColumn: before[idColumn]})}
 	for _, tab := range groupTabs {
-		ops = append(ops, store.Delete(tab, store.Row{"Group": before["Name"]}))
+		ops = append(ops, store.Delete(tab, store.Row{"Group": before[idColumn]}))
 	}
 	return ops
 }

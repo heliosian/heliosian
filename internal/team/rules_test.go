@@ -36,7 +36,7 @@ func TestSaveActivityRules(t *testing.T) {
 		change(&b)
 		return b
 	}
-	suggestion := activityBody{Year: "2026 - 2027", Title: "Kite Day", Category: "C06", Status: StatusOpen, SignUp: PositionOpen}
+	suggestion := activityBody{Year: "2026 - 2027", Title: "Kite Day", Category: "tcg0000000006", Status: StatusOpen, SignUp: PositionOpen}
 	cases := []struct {
 		name   string
 		actor  access.Actor
@@ -49,20 +49,20 @@ func TestSaveActivityRules(t *testing.T) {
 		{"a suggestion needs a category", viewerOf(parent, false), with(suggestion, func(b *activityBody) { b.Category = "" }), http.StatusBadRequest, "", 0},
 		{"a sign-up is volunteer, open or none", viewerOf(parent, false), with(suggestion, func(b *activityBody) { b.SignUp = PositionCoChair }), http.StatusBadRequest, "", 0},
 		{"an admin's add keeps its status", viewerOf(admin, true), with(suggestion, func(b *activityBody) { b.Status = StatusHidden; b.SignUp = "" }), http.StatusOK, StatusHidden, 1},
-		{"a parent cannot edit", viewerOf(parent, false), existing("E002"), http.StatusForbidden, "", 0},
-		{"an admin edits", viewerOf(admin, true), existing("E002"), http.StatusOK, m.Activity("E002").Status, 1},
+		{"a parent cannot edit", viewerOf(parent, false), existing("act0000000002"), http.StatusForbidden, "", 0},
+		{"an admin edits", viewerOf(admin, true), existing("act0000000002"), http.StatusOK, m.Activity("act0000000002").Status, 1},
 		{"no such activity", viewerOf(admin, true), activityBody{ID: "nope"}, http.StatusNotFound, "", 0},
-		{"a co-chair cannot hide", viewerOf(chair, false), with(existing("E022"), func(b *activityBody) { b.Status = StatusHidden }), http.StatusBadRequest, "", 0},
-		{"a co-chair may leave it pending", viewerOf(chair, false), with(existing("E022"), func(b *activityBody) { b.Status = StatusPending }), http.StatusOK, StatusPending, 1},
-		{"the event's co-chair approves", viewerOf(chair, false), with(existing("E022"), func(b *activityBody) { b.Status = StatusOpen }), http.StatusOK, StatusOpen, 1},
-		{"a co-chair moves only under their own", viewerOf(india, false), with(existing("E020"), func(b *activityBody) { b.Parent = "E002" }), http.StatusForbidden, "", 0},
-		{"a co-chair cannot make an event of it", viewerOf(india, false), with(existing("E020"), func(b *activityBody) { b.Parent = "" }), http.StatusForbidden, "", 0},
-		{"no loops", viewerOf(admin, true), with(existing("E001"), func(b *activityBody) { b.Parent = "E020"; b.Category = "" }), http.StatusBadRequest, "", 0},
-		{"a parent's booth under a Yes category opens", viewerOf(parent, false), activityBody{Year: "2026 - 2027", Title: "Sweden", Parent: "E001", Category: "C08"}, http.StatusOK, StatusOpen, 1},
-		{"a parent's booth under a closed category is refused", viewerOf(parent, false), activityBody{Year: "2026 - 2027", Title: "Sweden", Parent: "E001", Category: "C07"}, http.StatusBadRequest, "", 0},
-		{"the co-chair adds under a closed category", viewerOf(chair, false), activityBody{Year: "2026 - 2027", Title: "Sweden", Parent: "E001", Category: "C07", Status: StatusOpen}, http.StatusOK, StatusOpen, 1},
-		{"a child cannot take a page heading", viewerOf(chair, false), activityBody{Year: "2026 - 2027", Title: "Sweden", Parent: "E001", Category: "C01"}, http.StatusBadRequest, "", 0},
-		{"a malformed address", viewerOf(admin, true), with(existing("E002"), func(b *activityBody) { b.PrettyID = "Bad Address!" }), http.StatusBadRequest, "", 0},
+		{"a co-chair cannot hide", viewerOf(chair, false), with(existing("act0000000022"), func(b *activityBody) { b.Status = StatusHidden }), http.StatusBadRequest, "", 0},
+		{"a co-chair may leave it pending", viewerOf(chair, false), with(existing("act0000000022"), func(b *activityBody) { b.Status = StatusPending }), http.StatusOK, StatusPending, 1},
+		{"the event's co-chair approves", viewerOf(chair, false), with(existing("act0000000022"), func(b *activityBody) { b.Status = StatusOpen }), http.StatusOK, StatusOpen, 1},
+		{"a co-chair moves only under their own", viewerOf(india, false), with(existing("act0000000020"), func(b *activityBody) { b.Parent = "act0000000002" }), http.StatusForbidden, "", 0},
+		{"a co-chair cannot make an event of it", viewerOf(india, false), with(existing("act0000000020"), func(b *activityBody) { b.Parent = "" }), http.StatusForbidden, "", 0},
+		{"no loops", viewerOf(admin, true), with(existing("act0000000001"), func(b *activityBody) { b.Parent = "act0000000020"; b.Category = "" }), http.StatusBadRequest, "", 0},
+		{"a parent's booth under a Yes category opens", viewerOf(parent, false), activityBody{Year: "2026 - 2027", Title: "Sweden", Parent: "act0000000001", Category: "tcg0000000008"}, http.StatusOK, StatusOpen, 1},
+		{"a parent's booth under a closed category is refused", viewerOf(parent, false), activityBody{Year: "2026 - 2027", Title: "Sweden", Parent: "act0000000001", Category: "tcg0000000007"}, http.StatusBadRequest, "", 0},
+		{"the co-chair adds under a closed category", viewerOf(chair, false), activityBody{Year: "2026 - 2027", Title: "Sweden", Parent: "act0000000001", Category: "tcg0000000007", Status: StatusOpen}, http.StatusOK, StatusOpen, 1},
+		{"a child cannot take a page heading", viewerOf(chair, false), activityBody{Year: "2026 - 2027", Title: "Sweden", Parent: "act0000000001", Category: "tcg0000000001"}, http.StatusBadRequest, "", 0},
+		{"a malformed address", viewerOf(admin, true), with(existing("act0000000002"), func(b *activityBody) { b.PrettyID = "Bad Address!" }), http.StatusBadRequest, "", 0},
 	}
 	for _, c := range cases {
 		s, err := m.saveActivity(c.actor, whole(t, c.body))
@@ -79,14 +79,14 @@ func TestSaveActivityRules(t *testing.T) {
 func TestSaveActivityPrettyConflicts(t *testing.T) {
 	cache, _ := newServer(t)
 	m := cache.Model()
-	act := m.Activity("E002")
-	body := activityBody{ID: "E002", Year: act.Year, Title: act.Title, Category: act.Category, Status: act.Status, DirectSignUp: true, PrettyID: "international-night"}
+	act := m.Activity("act0000000002")
+	body := activityBody{ID: "act0000000002", Year: act.Year, Title: act.Title, Category: act.Category, Status: act.Status, DirectSignUp: true, PrettyID: "international-night"}
 	_, err := m.saveActivity(viewerOf(admin, true), whole(t, body))
 	var refusal *access.Refusal
 	if !errors.As(err, &refusal) || refusal.Status != http.StatusConflict {
 		t.Fatalf("same-year clash: %v", err)
 	}
-	if c, ok := refusal.Body.(*prettyConflict); !ok || c.ID != "E001" || c.Prior || c.Message == "" {
+	if c, ok := refusal.Body.(*prettyConflict); !ok || c.ID != "act0000000001" || c.Prior || c.Message == "" {
 		t.Fatalf("same-year clash body: %+v", refusal.Body)
 	}
 	last := byTitle(m, "2025 - 2026", "International Night")
@@ -106,15 +106,15 @@ func TestSaveActivityPrettyConflicts(t *testing.T) {
 	if err := cache.Commit(context.Background(), viewerOf(admin, true), s.ops...); err != nil {
 		t.Fatal(err)
 	}
-	if m = cache.Model(); m.Activity("E002").PrettyID != "international-night-2025" || m.Activity(last.ID).PrettyID != "international-night-2025-2025" {
-		t.Fatalf("after take-over: %q %q", m.Activity("E002").PrettyID, m.Activity(last.ID).PrettyID)
+	if m = cache.Model(); m.Activity("act0000000002").PrettyID != "international-night-2025" || m.Activity(last.ID).PrettyID != "international-night-2025-2025" {
+		t.Fatalf("after take-over: %q %q", m.Activity("act0000000002").PrettyID, m.Activity(last.ID).PrettyID)
 	}
 }
 
 func TestSaveActivityPriority(t *testing.T) {
 	cache, _ := newServer(t)
 	m := cache.Model()
-	act := m.Activity("E022")
+	act := m.Activity("act0000000022")
 	body := activityBody{ID: act.ID, Year: act.Year, Title: act.Title, Parent: act.Parent, Category: act.Category, Status: act.Status, DirectSignUp: act.DirectSignUp}
 	save := func(who string, isAdmin, priority, complete bool) bool {
 		t.Helper()

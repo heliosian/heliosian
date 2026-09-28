@@ -46,8 +46,24 @@ export function staff(handle) {
 
 const schoolDomain = '@heliosschool.org';
 
-export function charity(name) {
+export function charity(id) {
+  return state.model.charities.find(c => c.id === id) || null;
+}
+
+export function charityNamed(name) {
   return state.model.charities.find(c => c.name === name) || null;
+}
+
+export function charityName(id) {
+  return charity(id).name;
+}
+
+export function issueDates() {
+  return state.model.newsletterDates.map(n => n.date);
+}
+
+export function newsletterOn(date) {
+  return state.model.newsletterDates.find(n => n.date === date) || null;
 }
 
 export const stages = ['Wait', 'Awaiting Outreach', 'Awaiting Response', 'Awaiting Newsletter', 'Complete'];
@@ -194,7 +210,7 @@ function lastYearLines(sv) {
   if (!d) {
     return '';
   }
-  return ["*Last Year's Charity*", d.charity, d.note || ''].filter(Boolean).join('\n');
+  return ["*Last Year's Charity*", charityName(d.charity), d.note || ''].filter(Boolean).join('\n');
 }
 
 function tidy(text) {
@@ -207,7 +223,7 @@ export function fill(template, sv) {
     .replaceAll('{name}', sv.name)
     .replaceAll('{newsletter date}', mediumDate(sv.newsletterDate))
     .replaceAll('{birthday}', monthDay(sv.birthdayThisYear))
-    .replaceAll('{default charity}', settings().defaultCharity)
+    .replaceAll('{default charity}', charityName(settings().defaultCharity))
     .replaceAll('{sender}', me().name)
     .replaceAll('{last year}', lastYearLines(sv));
 }
@@ -225,7 +241,7 @@ export function emailLink(sv) {
 }
 
 export function newsletterText(sv, donation) {
-  const parts = [`${sv.name}${sv.jobTitle ? ` (${sv.jobTitle})` : ''}: ${donation.charity}`];
+  const parts = [`${sv.name}${sv.jobTitle ? ` (${sv.jobTitle})` : ''}: ${charityName(donation.charity)}`];
   if (donation.note) {
     parts.push(donation.note);
   }

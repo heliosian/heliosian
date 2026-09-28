@@ -9,6 +9,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/data"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -21,16 +22,17 @@ func spec(images blob.Checker) store.Spec[*Model] {
 	return store.Spec[*Model]{
 		App: appName,
 		Tabs: []store.Tab{
-			{Name: celebrationsTab, Columns: CelebrationColumns, Key: []string{"Code"}, Cascade: carryCelebration},
-			{Name: categoriesTab, Columns: CategoryColumns, Key: []string{"Title"}, Cascade: carryCategory},
+			{Name: celebrationsTab, Columns: CelebrationColumns, Key: []string{"Celebration ID"}},
+			{Name: categoriesTab, Columns: CategoryColumns, Key: []string{"Category ID"}},
 			{Name: partiesTab, Columns: PartyColumns, Key: []string{"Party ID"}, Cascade: carryParty},
 			{Name: hostsTab, Columns: HostColumns, Key: []string{"Party ID", "Email"}},
 			{Name: ticketsTab, Columns: TicketColumns, Key: []string{"Ticket ID"}},
 			{Name: settingsTab, Columns: SettingColumns, Key: []string{"Key"}},
 			admins.Spec,
 			{Name: redirectsTab, Columns: RedirectColumns, Key: []string{"Old"}},
-			{Name: invoicingTab, Columns: InvoicingColumns, Key: []string{"Date", "Party Title", "Purchaser Email", "Guest Name"}},
+			{Name: invoicingTab, Columns: InvoicingColumns, Key: []string{"Date", "Party ID", "Purchaser Email", "Guest Name"}},
 			{Name: formerTab, Columns: FormerColumns, Key: []string{"Old"}},
+			{Name: id.AliasesTab, Columns: id.AliasColumns, Key: []string{id.AliasColumn}},
 		},
 		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {
 			return BuildModel(ctx, tables, images)
@@ -44,23 +46,6 @@ func spec(images blob.Checker) store.Spec[*Model] {
 				"tickets", tickets, "skipped", model.Skipped, "took", took.Round(time.Millisecond))
 		},
 	}
-}
-
-func carryCelebration(_ store.Tables, before, after store.Row) []store.Op {
-	if before == nil || after == nil || before["Code"] == after["Code"] {
-		return nil
-	}
-	return []store.Op{
-		store.Update(partiesTab, store.Row{"Celebration": before["Code"]}, store.Row{"Celebration": after["Code"]}),
-		store.Update(invoicingTab, store.Row{"Event Code": before["Code"]}, store.Row{"Event Code": after["Code"]}),
-	}
-}
-
-func carryCategory(_ store.Tables, before, after store.Row) []store.Op {
-	if before == nil || after == nil || before["Title"] == after["Title"] {
-		return nil
-	}
-	return []store.Op{store.Update(partiesTab, store.Row{"Category": before["Title"]}, store.Row{"Category": after["Title"]})}
 }
 
 func carryParty(_ store.Tables, before, after store.Row) []store.Op {

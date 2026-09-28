@@ -9,6 +9,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/data"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -102,10 +103,15 @@ func reportFromRow(row store.Row) Report {
 
 type Model struct {
 	reports []Report
+	aliases id.Aliases
 }
 
 func build(_ context.Context, tables store.Tables) (*Model, error) {
-	m := &Model{reports: []Report{}}
+	aliases, err := id.ParseAliases(tables[id.AliasesTab])
+	if err != nil {
+		return nil, err
+	}
+	m := &Model{reports: []Report{}, aliases: aliases}
 	for _, row := range tables[reportsTab] {
 		if strings.TrimSpace(row["ID"]) == "" {
 			continue
@@ -122,8 +128,11 @@ type Cache struct {
 
 func NewCache(source data.Source, writer data.Writer, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(store.Spec[*Model]{
-		App:   appName,
-		Tabs:  []store.Tab{{Name: reportsTab, Columns: ReportColumns, Key: []string{"ID"}}},
+		App: appName,
+		Tabs: []store.Tab{
+			{Name: reportsTab, Columns: ReportColumns, Key: []string{"ID"}},
+			{Name: id.AliasesTab, Columns: id.AliasColumns, Key: []string{id.AliasColumn}},
+		},
 		Build: build,
 		Loaded: func(m *Model, took time.Duration) {
 			slog.Info("loaded feedback model", "reports", len(m.reports), "took", took.Round(time.Millisecond))
@@ -139,13 +148,19 @@ func (c *Cache) Reports() []Report {
 	return c.Model().reports
 }
 
-func (m *Model) report(id string) (Report, bool) {
+func (m *Model) report(key string) (Report, bool) {
+	key = m.aliases.Resolve(key)
 	for _, r := range m.reports {
-		if r.ID == id {
+		if r.ID == key {
 			return r, true
 		}
 	}
 	return Report{}, false
+}
+
+func (m *Model) taken(key string) bool {
+	_, ok := m.report(key)
+	return ok || m.aliases[key] != ""
 }
 
 func (c *Cache) Report(id string) (Report, bool) {

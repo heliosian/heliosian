@@ -81,7 +81,7 @@ func (a app) unsubscribeGroup(w http.ResponseWriter, r *http.Request) (*Group, s
 		http.Error(w, "this link is not one Helios Loop made", http.StatusNotFound)
 		return nil, "", false
 	}
-	g := a.cache.Model().Group(name)
+	g := a.cache.Model().Named(name)
 	if g == nil {
 		http.Error(w, "this email list is gone", http.StatusNotFound)
 		return nil, "", false
@@ -168,7 +168,7 @@ func (a app) unsubscribeByMail(ctx context.Context, subject, sender string) {
 		slog.WarnContext(ctx, "loop:unsubscribe mail with no token", "sender", sender, "subject", subject)
 		return
 	}
-	g := a.cache.Model().Group(name)
+	g := a.cache.Model().Named(name)
 	if g == nil {
 		slog.WarnContext(ctx, "loop:unsubscribe mail for no group", "group", name, "email", email)
 		return

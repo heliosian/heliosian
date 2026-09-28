@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/png"
@@ -22,6 +23,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/geocode"
+	"heliosian/internal/id"
 	"heliosian/internal/intercept"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
@@ -129,48 +131,195 @@ const (
 	noa   = "noa.adler@heliosschool.org"
 )
 
+const (
+	carpool    = "dtg0000000001"
+	soccerTeam = "dtg0000000002"
+	bookClub   = "dtg0000000003"
+	band       = "dtg0000000010"
+	choir      = "dtg0000000011"
+)
+
+func (s server) saveTag(t *testing.T, as, path string, values url.Values) string {
+	t.Helper()
+	rec := testkit.Form(t, s.mux, as, path, values)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
+	}
+	var saved savedTag
+	if err := json.NewDecoder(rec.Body).Decode(&saved); err != nil {
+		t.Fatal(err)
+	}
+	return saved.ID
+}
+
+func tagNamed(tags []Tag, name string) (Tag, bool) {
+	i := slices.IndexFunc(tags, func(t Tag) bool { return t.Name == name })
+	if i < 0 {
+		return Tag{}, false
+	}
+	return tags[i], true
+}
+
 func TestTagChangesReachMemoryTheSheetAndTheLog(t *testing.T) {
 	s := newServer(t)
-	s.form(t, jordan, "/api/directory/tag", url.Values{"tag": {"Carpool"}, "person": {"daniel.park@heliosschool.org"}, "on": {"0"}})
-	s.form(t, jordan, "/api/directory/tag-rename", url.Values{"tag": {"Soccer Team"}, "name": {"Football"}})
-	s.form(t, jordan, "/api/directory/tag-copy", url.Values{"tag": {"Football"}, "name": {"Kicks"}})
-	s.form(t, jordan, "/api/directory/tag-share", url.Values{"tag": {"Kicks"}, "manager": {abena}, "on": {"1"}})
-	if len(s.cache.Model().SharedTags(abena)) != 1 {
-		t.Fatalf("shared tags of %s: %+v", abena, s.cache.Model().SharedTags(abena))
+	if got := s.saveTag(t, jordan, "/api/directory/tag", url.Values{"tag": {strings.ToUpper(carpool)}, "person": {"daniel.park@heliosschool.org"}, "on": {"0"}}); got != carpool {
+		t.Fatalf("untagging answered %q, want %q", got, carpool)
 	}
-	s.form(t, abena, "/api/directory/tag-leave", url.Values{"tag": {"Kicks"}, "owner": {jordan}})
-	s.form(t, jordan, "/api/directory/tag-delete", url.Values{"tag": {"Kicks"}})
-	s.form(t, jordan, "/api/directory/tag-delete", url.Values{"tag": {"Nothing Here"}})
+	s.form(t, jordan, "/api/directory/tag-rename", url.Values{"tag": {soccerTeam}, "name": {"Football"}})
+	kicks := s.saveTag(t, jordan, "/api/directory/tag-copy", url.Values{"tag": {soccerTeam}, "name": {"Kicks"}})
+	if parsed, ok := id.Parse(kicks); !ok || parsed != kicks || kicks == soccerTeam {
+		t.Fatalf("minted tag id %q", kicks)
+	}
+	s.form(t, jordan, "/api/directory/tag-share", url.Values{"tag": {kicks}, "manager": {abena}, "on": {"1"}})
+	if shared := s.cache.Model().SharedTags(abena); len(shared) != 1 || shared[0].ID != kicks || shared[0].Name != "Kicks" || len(shared[0].People) != 3 {
+		t.Fatalf("shared tags of %s: %+v", abena, shared)
+	}
+	s.form(t, abena, "/api/directory/tag-leave", url.Values{"tag": {kicks}})
+	s.form(t, jordan, "/api/directory/tag-delete", url.Values{"tag": {kicks}})
+	s.form(t, jordan, "/api/directory/tag-delete", url.Values{"tag": {kicks}})
 	s.post(t, jordan, "/api/admin/admins", "application/json", []byte(`{"admins":["`+abena+`"]}`))
 
 	tags := s.cache.Model().Tags(jordan)
-	if len(tags["Carpool"]) != 1 || len(tags["Football"]) != 3 || len(tags["Kicks"]) != 0 || len(tags["Soccer Team"]) != 0 {
-		t.Fatalf("tags in memory: %v", tags)
+	names := []string{}
+	for _, tag := range tags {
+		names = append(names, fmt.Sprintf("%s %s %d", tag.ID, tag.Name, len(tag.People)))
 	}
-	if s.count(t, tagsTable, store.Row{tagOwner: jordan, tagName: "Football"}) != 3 || s.count(t, tagsTable, store.Row{tagName: "Kicks"}) != 0 {
-		t.Fatalf("tags in the sheet: %v", s.rows(t, tagsTable))
+	if want := []string{carpool + " Carpool 1", soccerTeam + " Football 3"}; !slices.Equal(names, want) {
+		t.Fatalf("tags in memory: %v, want %v", names, want)
 	}
-	if s.count(t, managersTable, store.Row{tagOwner: jordan, tagName: "Football", managerEmail: "asha.chandra@heliosschool.org"}) != 1 || s.count(t, managersTable, store.Row{tagName: "Kicks"}) != 0 {
+	if s.count(t, tagListTable, store.Row{tagID: soccerTeam, tagOwner: jordan, tagName: "Football"}) != 1 || s.count(t, tagsTable, store.Row{tagID: soccerTeam}) != 3 {
+		t.Fatalf("the renamed tag in the sheet: %v, %v", s.rows(t, tagListTable), s.rows(t, tagsTable))
+	}
+	for _, tab := range []string{tagListTable, tagsTable, managersTable} {
+		if n := s.count(t, tab, store.Row{tagID: kicks}); n != 0 {
+			t.Errorf("the deleted tag left %d rows in %s", n, tab)
+		}
+	}
+	if s.count(t, managersTable, store.Row{tagID: soccerTeam, managerEmail: asha}) != 1 {
 		t.Fatalf("managers in the sheet: %v", s.rows(t, managersTable))
 	}
 	if !s.cache.IsAdmin(abena) || s.count(t, admins.Tab, store.Row{"Email": abena}) != 1 {
 		t.Fatal("the admin list did not take")
 	}
 	logged(t, s.changeLog(t),
-		jordan+"|delete|Tags|Owner Email="+jordan+"; Tag=Carpool; Person Email=daniel.park@heliosschool.org|Person Email|daniel.park@heliosschool.org",
-		jordan+"|set|Tag Managers|Owner Email="+jordan+"; Tag=Football; Manager Email=asha.chandra@heliosschool.org|Tag|Soccer Team",
-		jordan+"|insert|Tag Managers|Owner Email="+jordan+"; Tag=Kicks; Manager Email="+abena+"||",
-		abena+"|delete|Tag Managers|Owner Email="+jordan+"; Tag=Kicks; Manager Email="+abena+"|Manager Email|"+abena,
+		jordan+"|delete|Tags|Tag ID="+carpool+"; Person Email=daniel.park@heliosschool.org|Person Email|daniel.park@heliosschool.org",
+		jordan+"|set|Tag List|Tag ID="+soccerTeam+"|Tag|Soccer Team",
+		jordan+"|insert|Tag List|Tag ID="+kicks+"||",
+		jordan+"|insert|Tag Managers|Tag ID="+kicks+"; Manager Email="+abena+"||",
+		abena+"|delete|Tag Managers|Tag ID="+kicks+"; Manager Email="+abena+"|Manager Email|"+abena,
+		jordan+"|delete|Tag List|Tag ID="+kicks+"|Tag|Kicks",
+		jordan+"|delete|Tags|Tag ID="+kicks+"; Person Email="+asha+"|Person Email|"+asha,
 		jordan+"|insert|Admins|Email="+abena+"||",
 	)
+	for _, line := range s.changeLog(t) {
+		if strings.Contains(line, "|set|Tags|") || strings.Contains(line, "|set|Tag Managers|") {
+			t.Errorf("the rename reached past the tag list: %s", line)
+		}
+	}
+}
+
+func TestTagsAreKeptByTheirOwnersAndManagers(t *testing.T) {
+	s := newServer(t)
+	for _, c := range []struct {
+		as, path string
+		values   url.Values
+		want     int
+	}{
+		{asha, "/api/directory/tag-rename", url.Values{"tag": {soccerTeam}, "name": {"Mine Now"}}, http.StatusForbidden},
+		{asha, "/api/directory/tag-delete", url.Values{"tag": {soccerTeam}}, http.StatusForbidden},
+		{asha, "/api/directory/tag-share", url.Values{"tag": {soccerTeam}, "manager": {abena}, "on": {"1"}}, http.StatusForbidden},
+		{abena, "/api/directory/tag", url.Values{"tag": {soccerTeam}, "person": {noa}, "on": {"1"}}, http.StatusForbidden},
+		{abena, "/api/directory/tag-copy", url.Values{"tag": {soccerTeam}, "name": {"Kicks"}}, http.StatusForbidden},
+		{jordan, "/api/directory/tag-rename", url.Values{"tag": {soccerTeam}, "name": {"carpool"}}, http.StatusConflict},
+		{jordan, "/api/directory/tag-copy", url.Values{"tag": {bookClub}, "name": {"Carpool"}}, http.StatusConflict},
+		{jordan, "/api/directory/tag-rename", url.Values{"tag": {"Soccer Team"}, "name": {"Football"}}, http.StatusBadRequest},
+		{jordan, "/api/directory/tag", url.Values{"tag": {"dtg0000000099"}, "person": {noa}, "on": {"1"}}, http.StatusBadRequest},
+	} {
+		if rec := testkit.Form(t, s.mux, c.as, c.path, c.values); rec.Code != c.want {
+			t.Errorf("%s %s %v: %d %s, want %d", c.as, c.path, c.values, rec.Code, rec.Body, c.want)
+		}
+	}
+	if got := s.saveTag(t, asha, "/api/directory/tag", url.Values{"tag": {soccerTeam}, "person": {noa}, "on": {"1"}}); got != soccerTeam {
+		t.Fatalf("a manager tagging answered %q", got)
+	}
+	copied := s.saveTag(t, jordan, "/api/directory/tag-copy", url.Values{"tag": {bookClub}, "name": {"Book Club"}})
+	if tag, ok := s.cache.Model().Tag(copied); !ok || tag.Owner != jordan || tag.Name != "Book Club" || len(tag.People) != 3 {
+		t.Fatalf("a manager's copy of the owner's tag: %+v", tag)
+	}
+}
+
+func TestANewTagNameMintsATagAndAnOldOneReusesIt(t *testing.T) {
+	s := newServer(t)
+	made := s.saveTag(t, jordan, "/api/directory/tag", url.Values{"name": {"Chess"}, "person": {noa}, "on": {"1"}})
+	if parsed, ok := id.Parse(made); !ok || parsed != made || made == carpool || made == soccerTeam || made == bookClub {
+		t.Fatalf("minted tag id %q", made)
+	}
+	if again := s.saveTag(t, jordan, "/api/directory/tag", url.Values{"name": {"chess"}, "person": {abena}, "on": {"1"}}); again != made {
+		t.Fatalf("a second tagging by name made %q, want %q", again, made)
+	}
+	if tag, ok := tagNamed(s.cache.Model().Tags(jordan), "Chess"); !ok || tag.ID != made || !slices.Equal(tag.People, []string{abena, noa}) {
+		t.Fatalf("the new tag: %+v", tag)
+	}
+	if s.count(t, tagListTable, store.Row{tagID: made, tagOwner: jordan, tagName: "Chess"}) != 1 || s.count(t, tagsTable, store.Row{tagID: made}) != 2 {
+		t.Fatalf("the new tag in the sheet: %v, %v", s.rows(t, tagListTable), s.rows(t, tagsTable))
+	}
+}
+
+func TestRemovingATagsLastMemberRemovesTheTag(t *testing.T) {
+	s := newServer(t)
+	for _, person := range []string{"daniel.park@heliosschool.org", "elena.torres@heliosschool.org", "anders.lindqvist@heliosschool.org"} {
+		s.saveTag(t, abena, "/api/directory/tag", url.Values{"tag": {bookClub}, "person": {person}, "on": {"0"}})
+	}
+	if _, ok := s.cache.Model().Tag(bookClub); ok {
+		t.Fatal("the emptied tag is still in memory")
+	}
+	if shared := s.cache.Model().SharedTags(jordan); len(shared) != 0 {
+		t.Fatalf("the emptied tag is still shared: %+v", shared)
+	}
+	for _, tab := range []string{tagListTable, tagsTable, managersTable} {
+		if n := s.count(t, tab, store.Row{tagID: bookClub}); n != 0 {
+			t.Errorf("the emptied tag left %d rows in %s", n, tab)
+		}
+	}
+	logged(t, s.changeLog(t),
+		abena+"|delete|Tag List|Tag ID="+bookClub+"|Tag|Book Club",
+		abena+"|delete|Tag Managers|Tag ID="+bookClub+"; Manager Email="+jordan+"|Manager Email|"+jordan,
+	)
+}
+
+func TestTagRowsMustHangTogether(t *testing.T) {
+	if _, err := BuildModel(context.Background(), sampleTables(t), nil, testkit.None, testKey); err != nil {
+		t.Fatal(err)
+	}
+	for name, bad := range map[string]struct {
+		tab string
+		row store.Row
+	}{
+		"a bad tag id":          {tagListTable, store.Row{tagID: "Band", tagOwner: jordan, tagName: "Band"}},
+		"a repeated tag id":     {tagListTable, store.Row{tagID: carpool, tagOwner: abena, tagName: "Other"}},
+		"a repeated name":       {tagListTable, store.Row{tagID: band, tagOwner: jordan, tagName: "CARPOOL"}},
+		"a tag with nobody":     {tagListTable, store.Row{tagID: band, tagOwner: jordan, tagName: "Band"}},
+		"an unknown member":     {tagsTable, store.Row{tagID: band, tagPerson: noa}},
+		"an unknown manager":    {managersTable, store.Row{tagID: band, managerEmail: noa}},
+		"a member tagged twice": {tagsTable, store.Row{tagID: carpool, tagPerson: "Abena.Osei@heliosschool.org"}},
+	} {
+		tb := sampleTables(t)
+		tb[bad.tab] = append(slices.Clone(tb[bad.tab]), bad.row)
+		if _, err := BuildModel(context.Background(), tb, nil, testkit.None, testKey); err == nil {
+			t.Errorf("%s: loaded", name)
+		}
+	}
 }
 
 func seedAddedPerson(t *testing.T, s server) {
 	t.Helper()
 	err := s.cache.Commit(context.Background(), access.System("test"),
-		store.Insert(tagsTable, store.Row{tagOwner: jordan, tagName: "Band", tagPerson: noa}),
-		store.Insert(tagsTable, store.Row{tagOwner: noa, tagName: "Choir", tagPerson: jordan}),
-		store.Insert(managersTable, store.Row{tagOwner: noa, tagName: "Choir", managerEmail: abena}),
+		store.Insert(tagListTable, store.Row{tagID: band, tagOwner: jordan, tagName: "Band"}),
+		store.Insert(tagsTable, store.Row{tagID: band, tagPerson: noa}),
+		store.Insert(tagListTable, store.Row{tagID: choir, tagOwner: noa, tagName: "Choir"}),
+		store.Insert(tagsTable, store.Row{tagID: choir, tagPerson: jordan}),
+		store.Insert(managersTable, store.Row{tagID: choir, managerEmail: abena}),
+		store.Insert(managersTable, store.Row{tagID: carpool, managerEmail: noa}),
 		store.Insert(photosTab, store.Row{"Email": noa, "Photo Name": "noa.jpg", store.OrderColumn: "i"}),
 	)
 	if err != nil {
@@ -186,10 +335,13 @@ func TestRenamingAnAddedPersonCarriesTheirRows(t *testing.T) {
 	if s.cache.Model().Person(noa) != nil || s.cache.Model().Person(renamed) == nil {
 		t.Fatal("the rename did not reach memory")
 	}
-	if len(s.cache.Model().Tags(jordan)["Band"]) != 1 || len(s.cache.Model().Tags(renamed)["Choir"]) != 1 || len(s.cache.Model().Person(renamed).Photos) != 1 {
-		t.Fatal("the rename stranded tags or photos in memory")
+	bandTag, _ := s.cache.Model().Tag(band)
+	choirTag, _ := s.cache.Model().Tag(choir)
+	carpoolTag, _ := s.cache.Model().Tag(carpool)
+	if !slices.Equal(bandTag.People, []string{renamed}) || choirTag.Owner != renamed || !slices.Contains(carpoolTag.Managers, renamed) || len(s.cache.Model().Person(renamed).Photos) != 1 {
+		t.Fatalf("the rename stranded tags or photos in memory: %+v %+v %+v", bandTag, choirTag, carpoolTag)
 	}
-	for _, tab := range []string{tagsTable, managersTable, photosTab} {
+	for _, tab := range []string{tagListTable, tagsTable, managersTable, photosTab} {
 		for _, row := range s.rows(t, tab) {
 			for column, value := range row {
 				if strings.EqualFold(value, noa) {
@@ -201,7 +353,9 @@ func TestRenamingAnAddedPersonCarriesTheirRows(t *testing.T) {
 	logged(t, s.changeLog(t),
 		jordan+"|set|Overrides|Email="+renamed+"|Email|"+noa,
 		jordan+"|set|Photos|Email="+renamed+"; Photo Name=noa.jpg|Email|"+noa,
-		jordan+"|set|Tags|Owner Email="+jordan+"; Tag=Band; Person Email="+renamed+"|Person Email|"+noa,
+		jordan+"|set|Tags|Tag ID="+band+"; Person Email="+renamed+"|Person Email|"+noa,
+		jordan+"|set|Tag List|Tag ID="+choir+"|Owner Email|"+noa,
+		jordan+"|set|Tag Managers|Tag ID="+carpool+"; Manager Email="+renamed+"|Manager Email|"+noa,
 	)
 }
 
@@ -212,7 +366,7 @@ func TestDeletingAnAddedPersonTakesTheirRows(t *testing.T) {
 	if s.cache.Model().Person(noa) != nil {
 		t.Fatal("the person is still in memory")
 	}
-	for _, tab := range []string{overridesTab, tagsTable, managersTable, photosTab} {
+	for _, tab := range []string{overridesTab, tagListTable, tagsTable, managersTable, photosTab} {
 		for _, row := range s.rows(t, tab) {
 			for _, value := range row {
 				if strings.EqualFold(value, noa) {
@@ -220,6 +374,16 @@ func TestDeletingAnAddedPersonTakesTheirRows(t *testing.T) {
 				}
 			}
 		}
+	}
+	for _, key := range []string{band, choir} {
+		for _, tab := range []string{tagListTable, tagsTable, managersTable} {
+			if n := s.count(t, tab, store.Row{tagID: key}); n != 0 {
+				t.Errorf("%s keeps %d rows of tag %s, whose only member or owner was deleted", tab, n, key)
+			}
+		}
+	}
+	if _, ok := s.cache.Model().Tag(carpool); !ok {
+		t.Error("a tag the deleted person only managed went with them")
 	}
 	logged(t, s.changeLog(t), jordan+"|delete|Photos|Email="+noa+"; Photo Name=noa.jpg|Photo Name|noa.jpg")
 }
@@ -229,7 +393,7 @@ func TestDeletingAnImportedPersonsOverridesKeepsTheirRows(t *testing.T) {
 	if err := s.cache.Commit(context.Background(), access.System("test"), store.Delete(overridesTab, store.Row{"Email": jordan})); err != nil {
 		t.Fatal(err)
 	}
-	if s.count(t, tagsTable, store.Row{tagOwner: jordan}) == 0 {
+	if s.count(t, tagListTable, store.Row{tagOwner: jordan}) == 0 {
 		t.Fatal("an imported person's tags went with their overrides row")
 	}
 }
@@ -342,14 +506,20 @@ func TestGreetingsAreTheirCreatorsToChange(t *testing.T) {
 	}
 	RegisterInvites(s.mux, s.cache, invites)
 	const asha = "asha.chandra@heliosschool.org"
-	s.form(t, asha, "/api/directory/greetings", url.Values{"format": {"Dear Enders"}, "grouped": {"1"}})
-	s.form(t, asha, "/api/directory/greetings", url.Values{"format": {"Hello Enders"}, "original": {"Dear Enders"}, "grouped": {"1"}})
+	key := s.saveGreeting(t, asha, url.Values{"format": {"Dear Enders"}, "grouped": {"1"}})
+	if parsed, ok := id.Parse(key); !ok || parsed != key {
+		t.Fatalf("minted greeting id %q", key)
+	}
+	if again := s.saveGreeting(t, asha, url.Values{"format": {"Hello Enders"}, "id": {strings.ToUpper(key)}, "grouped": {"1"}}); again != key {
+		t.Fatalf("the edit answered %q, want %q", again, key)
+	}
 	for _, c := range []struct {
 		as, method, query, body string
 	}{
-		{jordan, http.MethodPost, "", url.Values{"format": {"Hi"}, "original": {"Hello Enders"}}.Encode()},
-		{asha, http.MethodPost, "", url.Values{"format": {"Hi"}, "original": {"Kids only"}}.Encode()},
-		{jordan, http.MethodDelete, "?" + url.Values{"name": {"Hello Enders"}}.Encode(), ""},
+		{jordan, http.MethodPost, "", url.Values{"format": {"Hi"}, "id": {key}}.Encode()},
+		{asha, http.MethodPost, "", url.Values{"format": {"Hi"}, "id": {builtinGreetings.Kids}}.Encode()},
+		{asha, http.MethodPost, "", url.Values{"format": {"Hi"}, "id": {"Hello Enders"}}.Encode()},
+		{jordan, http.MethodDelete, "?" + url.Values{"id": {key}}.Encode(), ""},
 	} {
 		req := httptest.NewRequest(c.method, "/api/directory/greetings"+c.query, strings.NewReader(c.body))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -359,14 +529,17 @@ func TestGreetingsAreTheirCreatorsToChange(t *testing.T) {
 			t.Fatalf("%s %s %s: %d", c.as, c.method, c.body, rec.Code)
 		}
 	}
-	if _, ok := invites.greeting("Hello Enders"); !ok {
-		t.Fatal("the edit did not take")
+	if g, ok := invites.greeting(key); !ok || g.Name != "Hello Enders" || g.Format != "Hello Enders" {
+		t.Fatalf("the edit did not take: %+v", g)
 	}
-	req := httptest.NewRequest(http.MethodDelete, "/api/directory/greetings?"+url.Values{"name": {"Hello Enders"}}.Encode(), nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/directory/greetings?"+url.Values{"id": {key}}.Encode(), nil)
 	rec := httptest.NewRecorder()
 	auth.Fixed(asha, s.mux).ServeHTTP(rec, req)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
+	}
+	if _, ok := invites.greeting(key); ok {
+		t.Fatal("the delete did not take")
 	}
 	s.queue.Flush()
 	_, rows, err := dir.Table(invitesApp, greetingsTab)
@@ -380,7 +553,23 @@ func TestGreetingsAreTheirCreatorsToChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(log) == 0 || log[0]["Action"] != "insert" || log[0]["Key"] != "Name=Dear Enders" {
+	if len(log) == 0 || log[0]["Action"] != "insert" || log[0]["Key"] != "Greeting ID="+key {
 		t.Fatalf("change log %v", log)
 	}
+}
+
+func (s server) saveGreeting(t *testing.T, as string, values url.Values) string {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/directory/greetings", strings.NewReader(values.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	auth.Fixed(as, s.mux).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("save greeting: %d %s", rec.Code, rec.Body)
+	}
+	var saved savedGreeting
+	if err := json.NewDecoder(rec.Body).Decode(&saved); err != nil {
+		t.Fatal(err)
+	}
+	return saved.ID
 }

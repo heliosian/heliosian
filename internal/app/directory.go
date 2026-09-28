@@ -1,7 +1,6 @@
 package app
 
 import (
-	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -51,12 +50,11 @@ func calendarLists(cache *who.Cache, lists func(email string) []who.List) func(e
 	return func(email string) []when.List {
 		out := []when.List{}
 		model := cache.Model()
-		tags := model.Tags(email)
-		for _, name := range slices.Sorted(maps.Keys(tags)) {
-			out = append(out, when.List{Key: "tag:" + name, Name: name, Kind: "tag", People: tags[name]})
+		for _, t := range model.Tags(email) {
+			out = append(out, when.List{Key: filter.TagKey(t.ID), Name: t.Name, Kind: "tag", People: t.People})
 		}
-		for _, shared := range model.SharedTags(email) {
-			out = append(out, when.List{Key: "shared:" + shared.Owner + ":" + shared.Name, Name: shared.Name + " (" + shared.OwnerName + "'s)", Kind: "tag", People: shared.People})
+		for _, t := range model.SharedTags(email) {
+			out = append(out, when.List{Key: filter.TagKey(t.ID), Name: t.Name + " (" + t.OwnerName + "'s)", Kind: "tag", People: t.People})
 		}
 		for _, list := range lists(email) {
 			if list.Archived {

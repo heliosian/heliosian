@@ -33,7 +33,7 @@ type eventCard struct {
 func (v *viewer) eventCard(e *when.Event) eventCard {
 	c := eventCard{
 		ID: e.ID, Title: e.Title, Start: e.Start, AllDay: e.AllDay, Location: e.Location, Description: clip(e.Description, 400),
-		Tags: e.Tags, Classrooms: e.Classrooms, DayType: e.DayType, Availability: e.Availability, MyAnswer: v.calendar.AnswerOf(v.email, e.ID),
+		Tags: v.calendar.TagNames(e.Tags), Classrooms: e.Classrooms, DayType: v.calendar.DayTypeName(e.DayType), Availability: e.Availability, MyAnswer: v.calendar.AnswerOf(v.email, e.ID),
 		Invited: e.Invited,
 	}
 	if e.End != e.Start {
@@ -117,7 +117,7 @@ var calendarEvents = tool{
 			if in.Classroom != "" && len(e.Classrooms) > 0 && !slices.ContainsFunc(e.Classrooms, func(c string) bool { return strings.EqualFold(c, in.Classroom) }) {
 				continue
 			}
-			if in.Tag != "" && !slices.ContainsFunc(e.Tags, func(t string) bool { return strings.EqualFold(t, in.Tag) }) {
+			if in.Tag != "" && !slices.ContainsFunc(v.calendar.TagNames(e.Tags), func(t string) bool { return strings.EqualFold(t, in.Tag) }) {
 				continue
 			}
 			total++

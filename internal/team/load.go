@@ -14,6 +14,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -67,7 +68,7 @@ var (
 	CategoryColumns     = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page", store.OrderColumn}
 	ActivityColumns     = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Flyer Image", "Highlight Headline", "Highlight Body", "Highlight Icon", "Added By", "Added", store.OrderColumn, CompleteColumn, PriorityColumn}
 	VolunteerColumns    = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
-	LinkColumns         = []string{"Event ID", "Title", "URL", "Image", "Description"}
+	LinkColumns         = []string{"Link ID", "Event ID", "Title", "URL", "Image", "Description"}
 	SettingColumns      = []string{"Key", "Value"}
 	NotificationColumns = []string{"Email", "Kinds"}
 	RedirectColumns     = []string{"Type", "Old", "New", "Date"}
@@ -78,6 +79,7 @@ var yearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
 type Link struct {
+	ID          string `json:"id"`
 	Title       string `json:"title"`
 	URL         string `json:"url"`
 	Description string `json:"description,omitempty"`
@@ -247,6 +249,8 @@ type Model struct {
 	Skipped    Skipped     `json:"-"`
 	byID       map[string]*Activity
 	categories map[string]*Category
+	links      map[string]*Activity
+	aliases    id.Aliases
 	pretty     map[string]*Activity
 	admins     []string
 	notify     map[string]map[string]bool
@@ -277,20 +281,29 @@ func activityPath(id, parent, pretty string, parentPath func(string) string) str
 }
 
 func (m *Model) walk(path string) *Activity {
+	node, _ := m.trace(path)
+	return node
+}
+
+func (m *Model) trace(path string) (*Activity, bool) {
 	segs := strings.Split(strings.Trim(path, "/"), "/")
 	if len(segs) < 2 {
-		return nil
+		return nil, false
 	}
 	var node *Activity
+	aliased := false
 	switch segs[0] {
 	case "v":
 		node = m.pretty[cells.NormalizePretty(segs[1])]
 	case "activities":
 		node = m.byID[segs[1]]
+		if node == nil {
+			node, aliased = m.byID[m.aliases.Resolve(segs[1])], true
+		}
 	}
 	for _, seg := range segs[2:] {
 		if node == nil {
-			return nil
+			return nil, false
 		}
 		next := (*Activity)(nil)
 		for _, c := range node.Children {
@@ -299,9 +312,26 @@ func (m *Model) walk(path string) *Activity {
 				break
 			}
 		}
+		if next == nil {
+			resolved := m.aliases.Resolve(seg)
+			for _, c := range node.Children {
+				if c.ID == resolved {
+					next, aliased = c, true
+					break
+				}
+			}
+		}
 		node = next
 	}
-	return node
+	return node, aliased && node != nil
+}
+
+func (m *Model) Aliased(path string) string {
+	start := redirectPath(path)
+	if a, aliased := m.trace(start); aliased && m.PathOf(a) != start {
+		return m.PathOf(a)
+	}
+	return ""
 }
 
 func (m *Model) Resolve(path string) *Activity {
@@ -397,12 +427,27 @@ type Skipped struct {
 	PrettyIDs  int
 }
 
-func (m *Model) Activity(id string) *Activity {
-	return m.byID[id]
+func (m *Model) Activity(key string) *Activity {
+	return m.byID[m.aliases.Resolve(key)]
 }
 
-func (m *Model) Category(id string) *Category {
-	return m.categories[id]
+func (m *Model) Category(key string) *Category {
+	return m.categories[m.aliases.Resolve(key)]
+}
+
+func (m *Model) taken(key string) bool {
+	_, alias := m.aliases[key]
+	_, link := m.links[key]
+	return alias || link || m.byID[key] != nil || m.categories[key] != nil
+}
+
+func (m *Model) minter() func() string {
+	minted := map[string]bool{}
+	return func() string {
+		s := id.New(func(key string) bool { return minted[key] || m.taken(key) })
+		minted[s] = true
+		return s
+	}
 }
 
 func (m *Model) Root(a *Activity) *Activity {
@@ -556,8 +601,12 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 	if err := images.Prefetch(ctx, cells.ImageNames([]string{"Image", "Flyer Image"}, tables[categoriesTab], tables[activitiesTab], tables[linksTab])); err != nil {
 		return nil, err
 	}
-	model := &Model{Categories: []Category{}, Activities: []*Activity{}, Settings: settings, notify: notify,
-		byID: map[string]*Activity{}, categories: map[string]*Category{}, pretty: map[string]*Activity{}, Redirects: []Redirect{}}
+	aliases, err := id.ParseAliases(tables[id.AliasesTab])
+	if err != nil {
+		return nil, err
+	}
+	model := &Model{Categories: []Category{}, Activities: []*Activity{}, Settings: settings, notify: notify, aliases: aliases,
+		byID: map[string]*Activity{}, categories: map[string]*Category{}, links: map[string]*Activity{}, pretty: map[string]*Activity{}, Redirects: []Redirect{}}
 	model.admins = admins.Read(tables)
 	scoped, err := model.readCategories(tables[categoriesTab], images)
 	if err != nil {
@@ -772,7 +821,7 @@ func (m *Model) readVolunteers(rows []store.Row) error {
 		if !emailForm.MatchString(email) {
 			return fmt.Errorf("volunteer row %v has invalid email", row)
 		}
-		a := m.Activity(id)
+		a := m.byID[id]
 		if a == nil {
 			m.Skipped.Volunteers++
 			continue
@@ -798,13 +847,20 @@ func (m *Model) readVolunteers(rows []store.Row) error {
 }
 
 func (m *Model) readLinks(rows []store.Row, images blob.Checker) error {
-	keys := map[string]bool{}
 	for _, row := range rows {
-		id, title := strings.TrimSpace(row["Event ID"]), row["Title"]
+		title := row["Title"]
 		if err := cells.Title("link", title, maxTitleLength); err != nil {
 			return err
 		}
-		a := m.Activity(id)
+		key, ok := id.Parse(row["Link ID"])
+		if !ok {
+			return fmt.Errorf("link %q: link id %q is not an id", title, row["Link ID"])
+		}
+		if _, dup := m.links[key]; dup {
+			return fmt.Errorf("link id %s is used twice", key)
+		}
+		a := m.byID[strings.TrimSpace(row["Event ID"])]
+		m.links[key] = a
 		if a == nil {
 			m.Skipped.Links++
 			continue
@@ -816,12 +872,7 @@ func (m *Model) readLinks(rows []store.Row, images blob.Checker) error {
 		if err != nil {
 			return fmt.Errorf("link %q on %q: %w", title, a.Title, err)
 		}
-		key := id + "\x00" + title
-		if keys[key] {
-			return fmt.Errorf("duplicate link %q on %q (%s)", title, a.Title, id)
-		}
-		keys[key] = true
-		a.Links = append(a.Links, Link{Title: title, URL: row["URL"], Description: strings.TrimSpace(row["Description"]), Image: row["Image"], ImageURL: image})
+		a.Links = append(a.Links, Link{ID: key, Title: title, URL: row["URL"], Description: strings.TrimSpace(row["Description"]), Image: row["Image"], ImageURL: image})
 	}
 	return nil
 }

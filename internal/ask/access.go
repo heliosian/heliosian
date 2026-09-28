@@ -39,7 +39,7 @@ func (v *viewer) groupOf(d *artifacts.Document) string {
 	if d.Kind != artifacts.KindGroup {
 		return ""
 	}
-	g := v.loop.Group(d.Channel)
+	g := v.loop.Named(d.Channel)
 	if g == nil {
 		return d.Channel
 	}

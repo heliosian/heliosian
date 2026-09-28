@@ -37,10 +37,17 @@ type partyCard struct {
 	Link         string   `json:"link"`
 }
 
+func (v *viewer) partyCategory(p *celebrate.Party) string {
+	if c := v.celebrate.Category(p.Category); c != nil {
+		return c.Title
+	}
+	return ""
+}
+
 func (v *viewer) partyCard(raw *celebrate.Party) partyCard {
 	p := raw.For(v.partyAs, v.directory)
 	c := partyCard{
-		Title: p.Title, Subtitle: p.Subtitle, Summary: p.Summary, NeedToKnow: clip(p.NeedToKnow, 400), Category: p.Category, Start: p.Start, End: p.End, When: v.timing(p.Start, p.End), Past: p.Past(v.now), Location: p.Location, Address: p.Address,
+		Title: p.Title, Subtitle: p.Subtitle, Summary: p.Summary, NeedToKnow: clip(p.NeedToKnow, 400), Category: v.partyCategory(p), Start: p.Start, End: p.End, When: v.timing(p.Start, p.End), Past: p.Past(v.now), Location: p.Location, Address: p.Address,
 		Price: p.Price, Unit: p.Unit, Capacity: p.Capacity, Sold: p.Sold(), Remaining: p.Remaining(), Waiting: p.Waiting(), Availability: p.Availability(v.now),
 		Hosts: v.names(p.HostEmails), Audience: p.Audience, Who: []string{}, DropOff: p.DropOff, ParentTicket: p.ParentTicket, Link: celebrateBase + v.celebrate.PathOf(p),
 	}
@@ -93,7 +100,7 @@ var parties = tool{
 			if !p.VisibleTo(v.partyAs) {
 				continue
 			}
-			if in.Query != "" && !contains(p.Title, in.Query) && !contains(p.Summary, in.Query) && !contains(p.Category, in.Query) && !contains(p.Subtitle, in.Query) {
+			if in.Query != "" && !contains(p.Title, in.Query) && !contains(p.Summary, in.Query) && !contains(v.partyCategory(p), in.Query) && !contains(p.Subtitle, in.Query) {
 				continue
 			}
 			if p.Past(v.now) && !in.IncludePast {

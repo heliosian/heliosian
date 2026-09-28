@@ -4,8 +4,6 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-
-	"heliosian/internal/store"
 )
 
 type OptStatus string
@@ -27,6 +25,7 @@ type Photo struct {
 }
 
 type Person struct {
+	ID                  string  `json:"id,omitempty"`
 	Email               string  `json:"email"`
 	FullName            string  `json:"fullName"`
 	LegalName           string  `json:"legalName,omitempty"`
@@ -92,12 +91,14 @@ type Family struct {
 }
 
 type Classroom struct {
+	ID       string `json:"id"`
 	Name     string `json:"name"`
 	ImageURL string `json:"imageUrl,omitempty"`
 	HasCrews bool   `json:"hasCrews"`
 }
 
 type Crew struct {
+	ID        string   `json:"id"`
 	Classroom string   `json:"classroom"`
 	Name      string   `json:"name,omitempty"`
 	Teachers  []string `json:"teachers,omitempty"`
@@ -105,6 +106,7 @@ type Crew struct {
 }
 
 type Grade struct {
+	ID       string `json:"id"`
 	Name     string `json:"name"`
 	NextName string `json:"nextName,omitempty"`
 	Band     string `json:"band,omitempty"`
@@ -124,8 +126,7 @@ type Model struct {
 	familyKeysByEmail map[string][]string
 	hiddenEmails      []string
 	aliases           Aliases
-	tags              []store.Row
-	managers          []store.Row
+	tags              map[string]*tagRecord
 	admins            []string
 	unlocated         []string
 }
@@ -288,6 +289,10 @@ func ClassroomPath(name string) string {
 
 func ListPath(key string) string {
 	return "/people?list=" + url.QueryEscape(key)
+}
+
+func TagPath(key string) string {
+	return "/people?tag=" + url.QueryEscape(key)
 }
 
 func (m *Model) DisplayName(email string) string {

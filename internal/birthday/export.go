@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"heliosian/internal/access"
@@ -39,9 +38,9 @@ func nextExport(t time.Time) time.Time {
 func weekIssue(model *Model, t time.Time) string {
 	from := t.In(when.Location).Format(DateFormat)
 	to := t.In(when.Location).AddDate(0, 0, 7).Format(DateFormat)
-	for _, d := range model.NewsletterDates {
-		if d > from && d <= to {
-			return d
+	for _, n := range model.NewsletterDates {
+		if n.Date > from && n.Date <= to {
+			return n.Date
 		}
 	}
 	return ""
@@ -84,17 +83,15 @@ func (a app) toExport(model *Model, issue string) []exported {
 		if sv.Donation != nil && sv.Donation.UsedOn != "" {
 			continue
 		}
-		name, note, selected := model.Settings.DefaultCharity, "", ""
+		key, note, selected := model.Settings.DefaultCharity, "", ""
 		donation := map[string]string{}
 		if sv.Donation != nil {
-			name, note, selected = sv.Donation.Charity, sv.Donation.Note, sv.Donation.RecordedOn
+			key, note, selected = sv.Donation.Charity, sv.Donation.Note, sv.Donation.RecordedOn
 		} else {
-			donation["Charity"], donation["Note"], donation["Recorded On"], donation["Recorded By"] = name, "", day, ""
+			donation["Charity"], donation["Note"], donation["Recorded On"], donation["Recorded By"] = key, "", day, ""
 		}
-		link, about := "", ""
-		if c := model.Charity(name); c != nil {
-			link, about = c.DonationLink, c.About
-		}
+		c := model.Charity(key)
+		name, link, about := c.Name, c.DonationLink, c.About
 		out = append(out, exported{
 			email: sv.Email, year: sv.Year, donation: donation,
 			row: map[string]string{
@@ -135,9 +132,8 @@ func (a app) weeklyExport(ctx context.Context, issue string) (int, error) {
 
 func (a app) shareIssue(r *http.Request, body dateRef) (map[string]int, error) {
 	actor := a.actor(r)
-	issue := strings.TrimSpace(body.Date)
 	model := a.cache.Model()
-	rows, marks, err := model.shareIssue(actor, issue, a.toExport(model, issue))
+	rows, marks, issue, err := model.shareIssue(actor, body.ID, func(issue string) []exported { return a.toExport(model, issue) })
 	if err != nil {
 		return nil, err
 	}

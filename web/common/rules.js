@@ -479,7 +479,7 @@ export function rulesEditor({options, personName}) {
     return ruleSentence(r, (key, label) => label).join('');
   }
 
-  const listPages = {group: ['loop', '/groups/'], activity: ['team', '/activities/'], party: ['celebrate', '/parties/']};
+  const listPages = {activity: ['team', '/activities/'], party: ['celebrate', '/parties/']};
 
   function ruleNodes(r) {
     return ruleSentence(r, (key, label) => {

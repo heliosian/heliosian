@@ -23,17 +23,17 @@ func TestLinkedActivities(t *testing.T) {
 	if len(byID) != 7 {
 		t.Fatalf("activities = %d: %v", len(byID), byID)
 	}
-	for _, id := range []string{"E006", "E007", "E012", "E016"} {
+	for _, id := range []string{"act0000000006", "act0000000007", "act0000000012", "act0000000016"} {
 		if _, ok := byID[id]; ok {
 			t.Errorf("%s listed: hidden, undated, pending, or a thing under an event", id)
 		}
 	}
-	night := byID["E001"]
+	night := byID["act0000000001"]
 	if night.Title != "International Night" || night.Path != "/v/international-night" || night.Start != "2026-09-24 16:00" || night.End != "2026-09-24 18:00" || night.Location != "Helios Blacktop" || night.Availability != "open" {
 		t.Errorf("international night = %+v", night)
 	}
-	if byID["E005"].Availability != "done" || byID["E013"].Availability != "done" {
-		t.Errorf("done events = %+v %+v", byID["E005"], byID["E013"])
+	if byID["act0000000005"].Availability != "done" || byID["act0000000013"].Availability != "done" {
+		t.Errorf("done events = %+v %+v", byID["act0000000005"], byID["act0000000013"])
 	}
 	for _, l := range byID {
 		if l.Mine != "" {
@@ -45,7 +45,7 @@ func TestLinkedActivities(t *testing.T) {
 func TestLinkedActivitiesMine(t *testing.T) {
 	cache, _ := newServer(t)
 	byID := linkedFor(cache, admin)
-	for id, mine := range map[string]string{"E001": when.MineGoing, "E002": ""} {
+	for id, mine := range map[string]string{"act0000000001": when.MineGoing, "act0000000002": ""} {
 		if l, ok := byID[id]; !ok || l.Mine != mine {
 			t.Errorf("%s: listed %v, mine %q, want %q", id, ok, l.Mine, mine)
 		}
@@ -62,7 +62,7 @@ func TestLinkedActivitiesMine(t *testing.T) {
 func TestActivityListsCarryTheirHosts(t *testing.T) {
 	cache, _ := newServer(t)
 	lists := cache.Model().Lists(directory, admin, time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC))
-	i := slices.IndexFunc(lists, func(l who.List) bool { return l.Key == "activity:E001" })
+	i := slices.IndexFunc(lists, func(l who.List) bool { return l.Key == "activity:act0000000001" })
 	if i < 0 {
 		t.Fatalf("no International Night list: %+v", lists)
 	}
@@ -84,14 +84,14 @@ func TestCommitteesAreListsToo(t *testing.T) {
 	for _, l := range lists {
 		names[l.Key] = l.Name
 	}
-	if names["activity:E002"] != "Spring Celebration" || names["activity:E023"] != "Spring Celebration: Decor" {
+	if names["activity:act0000000002"] != "Spring Celebration" || names["activity:act0000000023"] != "Spring Celebration: Decor" {
 		t.Errorf("mina's lists: %v", names)
 	}
 	for _, l := range lists {
-		if l.Key == "activity:E023" && l.Parent != "activity:E002" {
+		if l.Key == "activity:act0000000023" && l.Parent != "activity:act0000000002" {
 			t.Errorf("decor sits under %q", l.Parent)
 		}
-		if l.Key == "activity:E002" && l.Parent != "" {
+		if l.Key == "activity:act0000000002" && l.Parent != "" {
 			t.Errorf("the event sits under %q", l.Parent)
 		}
 	}

@@ -51,7 +51,7 @@ function audienceField(label, notes, value, onChange) {
 
 function groupDraft(g, isNew) {
   return {
-    name: g.name, aliases: [...(g.aliases || [])], title: g.title, description: g.description || '',
+    id: isNew ? '' : g.id, name: g.name, aliases: [...(g.aliases || [])], title: g.title, description: g.description || '',
     prefix: isNew ? true : g.prefix,
     visibility: isNew ? 'hidden' : g.visibility,
     posting: isNew ? 'everyone' : g.posting,
@@ -257,7 +257,7 @@ async function describeGroup(ed, desc, status, generate) {
   status.textContent = 'Writing…';
   try {
     const rules = draft.rules.filter(ruleSaysSomething);
-    const {description} = await api('POST', '/api/loop/describe', {name: ed.isNew ? '' : draft.name, title: draft.title, ruleWords: rules.map(r => (r.kind === 'exclude' ? 'Leaving out: ' : '') + ruleWords(r)), rules, additions: draft.additions, excluded: draft.excluded});
+    const {description} = await api('POST', '/api/loop/describe', {id: draft.id, title: draft.title, ruleWords: rules.map(r => (r.kind === 'exclude' ? 'Leaving out: ' : '') + ruleWords(r)), rules, additions: draft.additions, excluded: draft.excluded});
     desc.value = description;
     draft.description = description;
     status.textContent = '';
@@ -566,7 +566,7 @@ function drawPreviewList(ed) {
 }
 
 async function refreshPreview(ed) {
-  const {draft, isNew} = ed;
+  const {draft} = ed;
   const {status, head} = ed.preview;
   if (ed.previewing) {
     ed.previewAgain = true;
@@ -577,7 +577,7 @@ async function refreshPreview(ed) {
   status.textContent = 'Working out the members…';
   try {
     const rules = draft.rules.filter(ruleSaysSomething);
-    const {members, ruleCounts: counts} = await api('POST', '/api/loop/preview', {name: isNew ? '' : draft.name, rules, additions: draft.additions, excluded: draft.excluded});
+    const {members, ruleCounts: counts} = await api('POST', '/api/loop/preview', {id: draft.id, rules, additions: draft.additions, excluded: draft.excluded});
     head.textContent = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
     renderChanges(ed, members, rules);
     showRuleCounts(ed, rules, counts || []);
@@ -687,7 +687,7 @@ async function saveGroup(ed, save, status) {
   status.textContent = 'Saving…';
   save.disabled = true;
   try {
-    const body = {original: isNew ? '' : draft.name, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visibility: draft.visibility, posting: draft.posting, replying: draft.replying, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
+    const body = {id: draft.id, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visibility: draft.visibility, posting: draft.posting, replying: draft.replying, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
     const saved = await api('POST', '/api/loop/group', body);
     if (closeModal) {
       closeModal();
@@ -710,7 +710,7 @@ async function deleteGroup(ed, status) {
     return;
   }
   try {
-    await api('DELETE', '/api/loop/group', {name: g.name});
+    await api('DELETE', '/api/loop/group', {id: g.id});
     if (closeModal) {
       closeModal();
     }
@@ -815,7 +815,7 @@ export function groupPage(g) {
     const toggle = button(g.unsubscribed ? 'Resubscribe' : 'Unsubscribe', null, 'button button-secondary', async () => {
       toggle.disabled = true;
       try {
-        await api('POST', '/api/loop/subscription', {name: g.name, subscribed: g.unsubscribed});
+        await api('POST', '/api/loop/subscription', {id: g.id, subscribed: g.unsubscribed});
         await load();
         toast(g.unsubscribed ? 'Resubscribed' : 'Unsubscribed');
       } catch (err) {
@@ -828,7 +828,7 @@ export function groupPage(g) {
   const archive = button(g.archived ? 'Unarchive' : 'Archive', 'archive', 'button button-secondary', async () => {
     archive.disabled = true;
     try {
-      await api('POST', '/api/loop/archive', {name: g.name, archived: !g.archived});
+      await api('POST', '/api/loop/archive', {id: g.id, archived: !g.archived});
       await load();
       toast(g.archived ? 'Back among your email lists' : 'Archived');
     } catch (err) {
@@ -1006,7 +1006,7 @@ function managersCard(g, canEdit) {
     status.classList.remove('error');
     status.textContent = 'Saving…';
     try {
-      await api('POST', '/api/loop/group', {original: g.name, name: g.name, aliases: g.aliases, title: g.title, description: g.description, prefix: g.prefix, visibility: g.visibility, posting: g.posting, replying: g.replying, managers, rules: g.rules, additions: g.additions, excluded: g.excluded});
+      await api('POST', '/api/loop/group', {id: g.id, name: g.name, aliases: g.aliases, title: g.title, description: g.description, prefix: g.prefix, visibility: g.visibility, posting: g.posting, replying: g.replying, managers, rules: g.rules, additions: g.additions, excluded: g.excluded});
       await load();
       toast('Managers saved');
     } catch (err) {
@@ -1152,7 +1152,7 @@ function historyTab(g) {
   const load = async () => {
     loaded = true;
     try {
-      const {messages} = await api('GET', '/api/loop/messages?name=' + encodeURIComponent(g.name));
+      const {messages} = await api('GET', '/api/loop/messages?id=' + encodeURIComponent(g.id));
       status.textContent = messages.length ? '' : 'Nothing has been sent to the email list yet.';
       for (const m of messages) {
         list.append(messageRow(m));

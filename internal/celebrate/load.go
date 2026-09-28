@@ -17,6 +17,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -67,14 +68,14 @@ const (
 var settingKeys = []string{PartiesIntroKey, TicketNoteKey, HostingOpenKey}
 
 var (
-	CelebrationColumns = []string{"Code", "Title", "Subtitle", "Start", "End", "Location", "Address", "Description", "Image", "Button Text", "Button URL", "Current", "Banner"}
-	CategoryColumns    = []string{"Title", store.OrderColumn}
+	CelebrationColumns = []string{"Celebration ID", "Code", "Title", "Subtitle", "Start", "End", "Location", "Address", "Description", "Image", "Button Text", "Button URL", "Current", "Banner"}
+	CategoryColumns    = []string{"Category ID", "Title", store.OrderColumn}
 	PartyColumns       = []string{"Party ID", "Celebration", "Title", "Subtitle", "Summary", "Description", "Need To Know", "Note Emoji", "Note Title", "Hosts", "Category", "Audience", "Ticket Unit", "Price", "Capacity", "Minimum", "Start", "End", "Location", "Address", "Image", "Flyer Image", "Pretty ID", "Status", "Tickets", "Waitlist", "Adults", "Students", "Drop-Off", "Parent Ticket Required", "Added By", "Added"}
 	HostColumns        = []string{"Party ID", "Email"}
 	TicketColumns      = []string{"Ticket ID", "Party ID", "Email", "Name", "Purchaser", "Status", "Quantity", "Price", "Note", "Added By", "Added"}
 	SettingColumns     = []string{"Key", "Value"}
 	RedirectColumns    = []string{"Type", "Old", "New", "Date"}
-	InvoicingColumns   = []string{"Date", "Party Title", "Event Code", "Purchaser Email", "Guest Name", "Action", "Quantity", "Cost", "Invoice", "Invoice To"}
+	InvoicingColumns   = []string{"Date", "Party ID", "Celebration", "Purchaser Email", "Guest Name", "Action", "Quantity", "Cost", "Invoice", "Invoice To"}
 	FormerColumns      = []string{"Old", "New", "Name", "Changed"}
 )
 
@@ -103,6 +104,7 @@ func redirectPath(cell string) string {
 var codeForm = regexp.MustCompile(`^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$`)
 
 type Celebration struct {
+	ID          string `json:"id"`
 	Code        string `json:"code"`
 	Title       string `json:"title"`
 	Subtitle    string `json:"subtitle,omitempty"`
@@ -117,6 +119,11 @@ type Celebration struct {
 	ButtonURL   string `json:"buttonUrl,omitempty"`
 	Current     bool   `json:"current"`
 	Banner      bool   `json:"banner"`
+}
+
+type Category struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
 }
 
 type Party struct {
@@ -180,15 +187,17 @@ type Settings struct {
 
 type Model struct {
 	Celebrations  []*Celebration
-	Categories    []string
+	Categories    []Category
 	Parties       []*Party
 	Settings      Settings
 	Redirects     []Redirect
 	Invoicing     []InvoiceLine
 	Skipped       map[string]int
 	admins        []string
+	aliases       id.Aliases
 	categoryOrder map[string]string
 	byCode        map[string]*Celebration
+	byCelebration map[string]*Celebration
 	byParty       map[string]*Party
 	byTicket      map[string]*Ticket
 	ticketParties map[string]*Party
@@ -210,16 +219,18 @@ func (m *Model) CurrentAddress(email string) string {
 }
 
 type InvoiceLine struct {
-	Date      string  `json:"date"`
-	Party     string  `json:"party"`
-	Code      string  `json:"code"`
-	Purchaser string  `json:"purchaser"`
-	Guest     string  `json:"guest"`
-	Action    string  `json:"action"`
-	Quantity  int     `json:"quantity"`
-	Cost      float64 `json:"cost"`
-	Invoice   string  `json:"invoice"`
-	InvoiceTo string  `json:"invoiceTo"`
+	Date        string  `json:"date"`
+	PartyID     string  `json:"partyId"`
+	Party       string  `json:"party"`
+	Celebration string  `json:"celebration"`
+	Code        string  `json:"code"`
+	Purchaser   string  `json:"purchaser"`
+	Guest       string  `json:"guest"`
+	Action      string  `json:"action"`
+	Quantity    int     `json:"quantity"`
+	Cost        float64 `json:"cost"`
+	Invoice     string  `json:"invoice"`
+	InvoiceTo   string  `json:"invoiceTo"`
 }
 
 func (m *Model) ByPretty(pretty string) *Party {
@@ -272,6 +283,43 @@ func (m *Model) Celebration(code string) *Celebration {
 	return m.byCode[code]
 }
 
+func (m *Model) CelebrationByID(key string) *Celebration {
+	return m.byCelebration[key]
+}
+
+func (m *Model) Category(key string) *Category {
+	for i := range m.Categories {
+		if m.Categories[i].ID == key {
+			return &m.Categories[i]
+		}
+	}
+	return nil
+}
+
+func (m *Model) categoryTitled(title string) *Category {
+	for i := range m.Categories {
+		if m.Categories[i].Title == title {
+			return &m.Categories[i]
+		}
+	}
+	return nil
+}
+
+func (m *Model) taken(key string) bool {
+	_, alias := m.aliases[key]
+	_, ticket := m.byTicket[key]
+	return alias || ticket || m.byParty[key] != nil || m.byCelebration[key] != nil || m.Category(key) != nil
+}
+
+func (m *Model) minter() func() string {
+	minted := map[string]bool{}
+	return func() string {
+		s := id.New(func(key string) bool { return minted[key] || m.taken(key) })
+		minted[s] = true
+		return s
+	}
+}
+
 func (m *Model) Current() *Celebration {
 	var latest *Celebration
 	for _, c := range m.Celebrations {
@@ -294,12 +342,13 @@ func (m *Model) Banner() *Celebration {
 	return m.Current()
 }
 
-func (m *Model) Party(id string) *Party {
-	return m.byParty[id]
+func (m *Model) Party(key string) *Party {
+	return m.byParty[m.aliases.Resolve(key)]
 }
 
-func (m *Model) TicketByID(id string) (*Ticket, *Party) {
-	return m.byTicket[id], m.ticketParties[id]
+func (m *Model) TicketByID(key string) (*Ticket, *Party) {
+	key = m.aliases.Resolve(key)
+	return m.byTicket[key], m.ticketParties[key]
 }
 
 func (p *Party) Hosted(email string) bool {
@@ -512,9 +561,13 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 	if err := images.Prefetch(ctx, cells.ImageNames([]string{"Image", "Flyer Image"}, tables[celebrationsTab], tables[partiesTab])); err != nil {
 		return nil, fmt.Errorf("prefetch images: %w", err)
 	}
+	aliases, err := id.ParseAliases(tables[id.AliasesTab])
+	if err != nil {
+		return nil, err
+	}
 	model := &Model{
-		Celebrations: []*Celebration{}, Categories: []string{}, Parties: []*Party{}, Settings: settings,
-		Skipped: map[string]int{}, categoryOrder: map[string]string{}, byCode: map[string]*Celebration{}, byParty: map[string]*Party{},
+		Celebrations: []*Celebration{}, Categories: []Category{}, Parties: []*Party{}, Settings: settings, aliases: aliases,
+		Skipped: map[string]int{}, categoryOrder: map[string]string{}, byCode: map[string]*Celebration{}, byCelebration: map[string]*Celebration{}, byParty: map[string]*Party{},
 		byTicket: map[string]*Ticket{}, ticketParties: map[string]*Party{}, pretty: map[string]*Party{}, Redirects: []Redirect{}, Invoicing: []InvoiceLine{},
 		former: map[string]Former{},
 	}
@@ -555,6 +608,7 @@ func (m *Model) readCelebrations(rows []store.Row, images blob.Checker) error {
 		}
 		m.Celebrations = append(m.Celebrations, c)
 		m.byCode[code] = c
+		m.byCelebration[c.ID] = c
 	}
 	slices.SortStableFunc(m.Celebrations, func(a, b *Celebration) int { return strings.Compare(b.Start, a.Start) })
 	current, banner := 0, 0
@@ -579,8 +633,18 @@ func (m *Model) parseCelebration(row store.Row, code string, images blob.Checker
 	if !codeForm.MatchString(code) {
 		return nil, fmt.Errorf("code is not letters, digits and hyphens")
 	}
+	if _, ok := id.Parse(code); ok {
+		return nil, fmt.Errorf("code reads as an id")
+	}
 	if m.Celebration(code) != nil {
 		return nil, fmt.Errorf("is listed twice")
+	}
+	key, ok := id.Parse(row["Celebration ID"])
+	if !ok {
+		return nil, fmt.Errorf("celebration id %q is not an id", row["Celebration ID"])
+	}
+	if m.byCelebration[key] != nil {
+		return nil, fmt.Errorf("celebration id %s is used twice", key)
 	}
 	if err := cells.Title("celebration", row["Title"], maxTitleLength); err != nil {
 		return nil, err
@@ -615,7 +679,7 @@ func (m *Model) parseCelebration(row store.Row, code string, images blob.Checker
 		return nil, err
 	}
 	return &Celebration{
-		Code: code, Title: strings.TrimSpace(row["Title"]), Subtitle: strings.TrimSpace(row["Subtitle"]),
+		ID: key, Code: code, Title: strings.TrimSpace(row["Title"]), Subtitle: strings.TrimSpace(row["Subtitle"]),
 		Start: row["Start"], End: row["End"], Location: strings.TrimSpace(row["Location"]), Address: strings.TrimSpace(row["Address"]),
 		Description: row["Description"], Image: image, ImageURL: url, ButtonText: strings.TrimSpace(row["Button Text"]), ButtonURL: strings.TrimSpace(row["Button URL"]), Current: current, Banner: banner,
 	}, nil
@@ -628,18 +692,25 @@ func (m *Model) readCategories(rows []store.Row) error {
 			m.Skipped["categories without a title"]++
 			continue
 		}
-		if slices.Contains(m.Categories, title) {
+		if m.categoryTitled(title) != nil {
 			return fmt.Errorf("category %q is listed twice", title)
+		}
+		key, ok := id.Parse(row["Category ID"])
+		if !ok {
+			return fmt.Errorf("category %q: category id %q is not an id", title, row["Category ID"])
+		}
+		if m.Category(key) != nil {
+			return fmt.Errorf("category id %s is used twice", key)
 		}
 		order := strings.TrimSpace(row[store.OrderColumn])
 		if err := store.CheckKey(order); err != nil {
 			return fmt.Errorf("category %q: %w", title, err)
 		}
-		m.Categories = append(m.Categories, title)
-		m.categoryOrder[title] = order
+		m.Categories = append(m.Categories, Category{ID: key, Title: title})
+		m.categoryOrder[key] = order
 	}
-	slices.SortStableFunc(m.Categories, func(a, b string) int {
-		return store.CompareKeys(m.categoryOrder[a], m.categoryOrder[b])
+	slices.SortStableFunc(m.Categories, func(a, b Category) int {
+		return store.CompareKeys(m.categoryOrder[a.ID], m.categoryOrder[b.ID])
 	})
 	return nil
 }
@@ -655,7 +726,7 @@ func (m *Model) readParties(rows []store.Row, images blob.Checker) error {
 		if err != nil {
 			return fmt.Errorf("party %s (%s): %w", id, strings.TrimSpace(row["Title"]), err)
 		}
-		if m.Party(id) != nil {
+		if m.byParty[id] != nil {
 			return fmt.Errorf("party id %s is used twice", id)
 		}
 		if p.PrettyID != "" {
@@ -683,15 +754,24 @@ func (m *Model) readRedirects(rows []store.Row) {
 
 func (m *Model) readInvoicing(rows []store.Row) {
 	for _, row := range rows {
-		title, purchaser := strings.TrimSpace(row["Party Title"]), config.NormalizeEmail(row["Purchaser Email"])
-		if title == "" || purchaser == "" {
+		partyID, purchaser := strings.TrimSpace(row["Party ID"]), config.NormalizeEmail(row["Purchaser Email"])
+		if partyID == "" || purchaser == "" {
 			m.Skipped["invoicing rows naming no party or purchaser"]++
 			continue
+		}
+		title := partyID
+		if p := m.Party(partyID); p != nil {
+			title = p.Title
+		}
+		celebration := strings.TrimSpace(row["Celebration"])
+		code := celebration
+		if c := m.CelebrationByID(celebration); c != nil {
+			code = c.Code
 		}
 		quantity, _ := strconv.Atoi(strings.TrimSpace(row["Quantity"]))
 		cost, _ := ParsePrice(row["Cost"])
 		m.Invoicing = append(m.Invoicing, InvoiceLine{
-			Date: strings.TrimSpace(row["Date"]), Party: title, Code: strings.TrimSpace(row["Event Code"]), Purchaser: purchaser,
+			Date: strings.TrimSpace(row["Date"]), PartyID: partyID, Party: title, Celebration: celebration, Code: code, Purchaser: purchaser,
 			Guest: strings.TrimSpace(row["Guest Name"]), Action: strings.TrimSpace(row["Action"]), Quantity: quantity, Cost: cost,
 			Invoice: strings.TrimSpace(row["Invoice"]), InvoiceTo: strings.TrimSpace(row["Invoice To"]),
 		})
@@ -700,7 +780,7 @@ func (m *Model) readInvoicing(rows []store.Row) {
 
 func (m *Model) readHosts(rows []store.Row) error {
 	for _, row := range rows {
-		p := m.Party(strings.TrimSpace(row["Party ID"]))
+		p := m.byParty[strings.TrimSpace(row["Party ID"])]
 		if p == nil {
 			m.Skipped["hosts of no party"]++
 			continue
@@ -763,7 +843,7 @@ func (m *Model) readTickets(rows []store.Row) error {
 			m.Skipped["tickets without an id"]++
 			continue
 		}
-		p := m.Party(strings.TrimSpace(row["Party ID"]))
+		p := m.byParty[strings.TrimSpace(row["Party ID"])]
 		if p == nil {
 			m.Skipped["tickets for no party"]++
 			continue
@@ -797,7 +877,7 @@ func (m *Model) readTickets(rows []store.Row) error {
 
 func parseParty(row store.Row, model *Model, images blob.Checker) (*Party, error) {
 	celebration := strings.TrimSpace(row["Celebration"])
-	if model.Celebration(celebration) == nil {
+	if model.CelebrationByID(celebration) == nil {
 		return nil, fmt.Errorf("names celebration %q, which is not on the Celebrations tab", celebration)
 	}
 	if err := cells.Title("party", row["Title"], maxTitleLength); err != nil {
@@ -812,7 +892,7 @@ func parseParty(row store.Row, model *Model, images blob.Checker) (*Party, error
 		return nil, err
 	}
 	category := strings.TrimSpace(row["Category"])
-	if category != "" && !slices.Contains(model.Categories, category) {
+	if category != "" && model.Category(category) == nil {
 		return nil, fmt.Errorf("names category %q, which is not on the Categories tab", category)
 	}
 	price, err := ParsePrice(row["Price"])

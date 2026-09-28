@@ -13,6 +13,7 @@ import (
 	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
+	"heliosian/internal/id"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
@@ -33,6 +34,17 @@ var (
 const (
 	parent = "robin.whitfield@heliosschool.org"
 	admin  = "jordan.whitfield@heliosschool.org"
+)
+
+const (
+	secondHarvest = "chy0000000001"
+	rocketDog     = "chy0000000002"
+	birthfund     = "chy0000000003"
+	wikipedia     = "chy0000000005"
+	sierraClub    = "chy0000000007"
+	issueSep11    = "nwd0000000024"
+	issueOct23    = "nwd0000000030"
+	unknownID     = "zzz9999999999"
 )
 
 var people *who.Model
@@ -103,6 +115,25 @@ func TestSampleLoads(t *testing.T) {
 	if _, err := BuildModel(store.Tables{birthdaysTab: {{"Email": "x@heliosschool.org", "Participation": LevelNoNewsletter}}, charitiesTab: m.charityRows(), settingsTab: m.settingRows()}); err == nil {
 		t.Fatal("a blank birthday without a skip loaded")
 	}
+	if b := m.Birthday("kate.doyle@heliosschool.org"); b.Override != issueOct23 || m.NewsletterDate(b.Override).Date != "2026-10-23" {
+		t.Fatalf("kate's override: %+v", b)
+	}
+	if _, err := BuildModel(store.Tables{birthdaysTab: {{"Email": "x@heliosschool.org", "Birthday": "09-01", "Newsletter Override": "2026-10-23"}}, charitiesTab: m.charityRows(), settingsTab: m.settingRows()}); err == nil {
+		t.Fatal("an override naming a date rather than a newsletter date's id loaded")
+	}
+	unnamed := m.charityRows()
+	unnamed[0]["Charity ID"] = ""
+	if _, err := BuildModel(store.Tables{charitiesTab: unnamed, settingsTab: m.settingRows()}); err == nil {
+		t.Fatal("a charity without an id loaded")
+	}
+	twice := m.charityRows()
+	twice[1]["Charity ID"] = twice[0]["Charity ID"]
+	if _, err := BuildModel(store.Tables{charitiesTab: twice, settingsTab: m.settingRows()}); err == nil {
+		t.Fatal("two charities sharing an id loaded")
+	}
+	if _, err := BuildModel(store.Tables{charitiesTab: m.charityRows(), settingsTab: m.settingRows(), newsletterDatesTab: {{"Newsletter Date ID": secondHarvest, "Date": "2026-09-11"}}}); err == nil {
+		t.Fatal("a newsletter date sharing a charity's id loaded")
+	}
 }
 
 func TestYears(t *testing.T) {
@@ -171,7 +202,7 @@ func TestRenderStages(t *testing.T) {
 	if dana.BirthdayThisYear != "2026-08-20" || dana.NewsletterDate != "2026-08-21" || dana.RequestBy != "2026-08-13" || dana.AssignedToName != "Jordan Whitfield" {
 		t.Errorf("dana: %+v", dana)
 	}
-	if dana.LastDonation == nil || dana.LastDonation.Charity != "Birthfund" || dana.Donation == nil || dana.Donation.UsedOn == "" {
+	if dana.LastDonation == nil || dana.LastDonation.Charity != birthfund || dana.Donation == nil || dana.Donation.UsedOn == "" {
 		t.Errorf("dana's donations: %+v %+v", dana.Donation, dana.LastDonation)
 	}
 	if miguel := find(v.Staff, "miguel.santos@heliosschool.org"); miguel.AssignedTo != "" || miguel.Department != "Classroom Teachers" {
@@ -241,16 +272,16 @@ func TestPipeline(t *testing.T) {
 	if sv = find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.Stage != StageResponse || sv.ContactedBy != parent {
 		t.Fatalf("after outreach: %+v", sv)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/donation", map[string]any{"email": miguel["email"], "charity": "Sierra Club"}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/donation", map[string]any{"email": miguel["email"], "charity": sierraClub}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a prohibited charity was accepted: %d", rec.Code)
 	}
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/used", map[string]any{"email": miguel["email"], "used": true}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("used before any donation: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/donation", map[string]any{"email": miguel["email"], "charity": "Rocket Dog Rescue", "note": "For the dogs"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/donation", map[string]any{"email": miguel["email"], "charity": rocketDog, "note": "For the dogs"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("donation: %d %s", rec.Code, rec.Body)
 	}
-	if sv = find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.Stage != StageNewsletter || sv.Donation.Note != "For the dogs" {
+	if sv = find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.Stage != StageNewsletter || sv.Donation.Note != "For the dogs" || sv.Donation.Charity != rocketDog {
 		t.Fatalf("after donation: %+v", sv)
 	}
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/used", map[string]any{"email": miguel["email"], "used": true}); rec.Code != http.StatusNoContent {
@@ -380,49 +411,62 @@ func TestCharities(t *testing.T) {
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/charity", added); rec.Code != http.StatusNoContent {
 		t.Fatalf("add charity: %d %s", rec.Code, rec.Body)
 	}
-	if c := cache.Model().Charity("Oceana"); c == nil || !c.Allowed || c.WhyNotAllowed != "" || c.AddedOn != "2026-09-09" {
-		t.Fatalf("a non-admin's addition: %+v", c)
+	oceana := cache.Model().charityNamed("Oceana")
+	if oceana == nil || !oceana.Allowed || oceana.WhyNotAllowed != "" || oceana.AddedOn != "2026-09-09" {
+		t.Fatalf("a non-admin's addition: %+v", oceana)
 	}
-	prohibit := map[string]any{"original": "Oceana", "name": "Oceana", "donationLink": "https://oceana.org/", "allowed": false, "whyNotAllowed": "Politics"}
+	if key, ok := id.Parse(oceana.ID); !ok || key != oceana.ID || strings.HasPrefix(key, "chy") {
+		t.Fatalf("the minted charity id %q", oceana.ID)
+	}
+	prohibit := map[string]any{"id": oceana.ID, "name": "Oceana", "donationLink": "https://oceana.org/", "allowed": false, "whyNotAllowed": "Politics"}
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/charity", prohibit); rec.Code != http.StatusNoContent {
 		t.Fatalf("edit charity: %d %s", rec.Code, rec.Body)
 	}
-	if !cache.Model().Charity("Oceana").Allowed {
+	if !cache.Model().Charity(oceana.ID).Allowed {
 		t.Fatal("a non-admin prohibited a charity")
 	}
 	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/charity", prohibit); rec.Code != http.StatusNoContent {
 		t.Fatalf("prohibit: %d %s", rec.Code, rec.Body)
 	}
-	if c := cache.Model().Charity("Oceana"); c.Allowed || c.WhyNotAllowed != "Politics" {
+	if c := cache.Model().Charity(oceana.ID); c.Allowed || c.WhyNotAllowed != "Politics" {
 		t.Fatalf("after prohibiting: %+v", c)
 	}
-	rename := map[string]any{"original": "Rocket Dog Rescue", "name": "Rocket Dog Rescue, Inc.", "donationLink": "https://www.rocketdogrescue.org/", "allowed": true}
+	rename := map[string]any{"id": rocketDog, "name": "Rocket Dog Rescue, Inc.", "donationLink": "https://www.rocketdogrescue.org/", "allowed": true}
 	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/charity", rename); rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
-	if d, _ := cache.Model().Donation("dana.hawkins@heliosschool.org", "2026 - 2027"); d.Charity != "Rocket Dog Rescue, Inc." {
-		t.Fatalf("the donation did not follow the rename: %+v", d)
+	if d, _ := cache.Model().Donation("dana.hawkins@heliosschool.org", "2026 - 2027"); d.Charity != rocketDog || cache.Model().charityName(d.Charity) != "Rocket Dog Rescue, Inc." {
+		t.Fatalf("the donation lost its charity in the rename: %+v", d)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/charity", map[string]any{"original": "Birthfund", "name": "Oceana", "donationLink": "https://x.org/", "allowed": true}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/charity", map[string]any{"id": birthfund, "name": "Oceana", "donationLink": "https://x.org/", "allowed": true}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("renamed onto an existing name: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/charity", map[string]any{"name": "Second Harvest of Silicon Valley"}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/charity", map[string]any{"id": unknownID, "name": "Nobody", "donationLink": "https://x.org/", "allowed": true}); rec.Code != http.StatusNotFound {
+		t.Fatalf("edited a charity that is not there: %d", rec.Code)
+	}
+	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/charity", map[string]any{"id": secondHarvest}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleted the default charity: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/charity", map[string]any{"name": "Birthfund"}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/charity", map[string]any{"id": birthfund}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleted a charity with donations: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/birthday/charity", map[string]any{"name": "Oceana"}); rec.Code != http.StatusForbidden {
+	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/birthday/charity", map[string]any{"id": oceana.ID}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a non-admin deleted: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/charity", map[string]any{"name": "Oceana"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/charity", map[string]any{"id": oceana.ID}); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/settings", map[string]any{"defaultCharity": "Rocket Dog Rescue, Inc.", "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note", "requestLeadDays": 12}); rec.Code != http.StatusNoContent {
+	if cache.Model().charityNamed("Oceana") != nil {
+		t.Fatal("the charity survived removal")
+	}
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/settings", map[string]any{"defaultCharity": rocketDog, "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note", "requestLeadDays": 12}); rec.Code != http.StatusNoContent {
 		t.Fatalf("settings: %d %s", rec.Code, rec.Body)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/settings", map[string]any{"defaultCharity": "Sierra Club", "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note"}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/settings", map[string]any{"defaultCharity": sierraClub, "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a prohibited default charity was accepted: %d", rec.Code)
+	}
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/settings", map[string]any{"defaultCharity": "Rocket Dog Rescue, Inc.", "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note"}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a default charity named by name was accepted: %d", rec.Code)
 	}
 }
 
@@ -476,7 +520,7 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 		t.Fatalf("assign: %d %s", rec.Code, rec.Body)
 	}
 	sent.Wait(t, 1)
-	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2026-09-11", "date": "2026-09-12"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"id": issueSep11, "date": "2026-09-12"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move: %d %s", rec.Code, rec.Body)
 	}
 	if sv := find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.RequestBy != "2026-09-04" {
@@ -564,46 +608,37 @@ func TestReminders(t *testing.T) {
 	_ = mux
 }
 
-func TestCharityRenameCarriesItsNameAndLogsWhatWasThere(t *testing.T) {
+func TestCharityRenameKeepsDonationsAndTheDefault(t *testing.T) {
 	cache, mux := newServer(t)
 	const old, name = "Second Harvest of Silicon Valley", "Second Harvest"
-	donations := cache.Count(donationsTab, store.Row{"Charity": old})
-	if donations == 0 {
-		t.Fatal("the sample has no donation to carry")
+	donations := cache.Count(donationsTab, store.Row{"Charity": secondHarvest})
+	if donations == 0 || cache.Model().Settings.DefaultCharity != secondHarvest {
+		t.Fatal("the sample has no donation or default naming the charity")
 	}
-	c := cache.Model().Charity(old)
+	c := cache.Model().Charity(secondHarvest)
 	rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/charity", map[string]any{
-		"original": old, "name": name, "donationLink": c.DonationLink, "about": c.About, "ein": c.EIN, "allowed": true,
+		"id": secondHarvest, "name": name, "donationLink": c.DonationLink, "about": c.About, "ein": c.EIN, "allowed": true,
 	})
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
-	if cache.Count(donationsTab, store.Row{"Charity": name}) != donations || cache.Count(donationsTab, store.Row{"Charity": old}) != 0 || cache.Model().Settings.DefaultCharity != name {
-		t.Fatal("the donations and the default did not follow the rename in memory")
+	m := cache.Model()
+	if m.Charity(secondHarvest).Name != name || m.charityNamed(old) != nil {
+		t.Fatalf("after the rename: %+v", m.Charity(secondHarvest))
+	}
+	if cache.Count(donationsTab, store.Row{"Charity": secondHarvest}) != donations || m.Settings.DefaultCharity != secondHarvest {
+		t.Fatal("the donations or the default lost the charity in the rename")
+	}
+	if v := view(t, cache, parent); v.Settings.DefaultCharity != secondHarvest {
+		t.Fatalf("the view's default: %q", v.Settings.DefaultCharity)
 	}
 	queue.Flush()
-	_, rows, err := sheet.Table(appName, donationsTab)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, row := range rows {
-		if row["Charity"] == old {
-			t.Fatalf("the sheet kept %v", row)
-		}
-	}
 	_, log, err := sheet.Table(appName, store.ChangeLogTab)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tabs := map[string]int{}
-	for _, row := range log {
-		if row["Actor"] != admin || row["Action"] != "set" || row["Previous"] != old {
-			t.Errorf("log row %v", row)
-		}
-		tabs[row["Tab"]+"/"+row["Column"]]++
-	}
-	if tabs[charitiesTab+"/Name"] != 1 || tabs[donationsTab+"/Charity"] != donations || tabs[settingsTab+"/Value"] != 1 || len(tabs) != 3 {
-		t.Fatalf("logged %v", tabs)
+	if len(log) != 1 || log[0]["Actor"] != admin || log[0]["Action"] != "set" || log[0]["Tab"] != charitiesTab || log[0]["Column"] != "Name" || log[0]["Previous"] != old {
+		t.Fatalf("logged %v", log)
 	}
 }
 
@@ -616,11 +651,24 @@ func TestCreateNewsletterDates(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"added":7`) {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body)
 	}
-	dates := cache.Model().NewsletterDates
+	m := cache.Model()
 	for _, want := range []string{"2027-08-19", "2027-08-26", "2027-09-30"} {
-		if !slices.Contains(dates, want) {
-			t.Fatalf("missing %s in %v", want, dates)
+		if m.newsletterOn(want) == nil {
+			t.Fatalf("missing %s in %v", want, m.NewsletterDates)
 		}
+	}
+	minted := map[string]bool{}
+	for _, n := range m.NewsletterDates {
+		if n.Date < "2027-08-14" {
+			continue
+		}
+		if key, ok := id.Parse(n.ID); !ok || key != n.ID || minted[key] {
+			t.Fatalf("minted newsletter date id %q", n.ID)
+		}
+		minted[n.ID] = true
+	}
+	if len(minted) != 7 {
+		t.Fatalf("minted %d ids", len(minted))
 	}
 	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/create", map[string]any{"weekday": 4, "from": "2027-08-14", "to": "2027-09-30"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("the same run again: %d %s", rec.Code, rec.Body)
@@ -657,8 +705,11 @@ func TestClearFutureNewsletterDates(t *testing.T) {
 		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
 	}
 	left := cache.Model().NewsletterDates
-	if len(left) >= before || len(left) == 0 || left[len(left)-1] >= "2026-09-09" {
+	if len(left) >= before || len(left) == 0 || left[len(left)-1].Date >= "2026-09-09" {
 		t.Fatalf("after clearing: %v", left)
+	}
+	if kate := cache.Model().Birthday("kate.doyle@heliosschool.org"); kate.Override != "" {
+		t.Fatalf("an override outlived its cleared date: %+v", kate)
 	}
 	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/clear-future", nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("clearing nothing: %d %s", rec.Code, rec.Body)
@@ -730,7 +781,7 @@ func TestNewsletterDates(t *testing.T) {
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/newsletter-date", map[string]any{"date": "2027-06-11"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a non-admin added a date: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, parent, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2027-06-04", "date": "2027-06-05"}); rec.Code != http.StatusForbidden {
+	if rec := testkit.Call(t, mux, parent, "PUT", "/api/birthday/newsletter-date", map[string]any{"id": "nwd0000000057", "date": "2027-06-05"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a non-admin moved a date: %d", rec.Code)
 	}
 	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter-date", map[string]any{"date": "2027-06-04"}); rec.Code != http.StatusBadRequest {
@@ -739,32 +790,95 @@ func TestNewsletterDates(t *testing.T) {
 	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter-date", map[string]any{"date": "2027-06-11"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("add date: %d %s", rec.Code, rec.Body)
 	}
+	added := cache.Model().newsletterOn("2027-06-11")
+	if added == nil {
+		t.Fatal("the added date is not on the list")
+	}
+	if key, ok := id.Parse(added.ID); !ok || key != added.ID {
+		t.Fatalf("the minted newsletter date id %q", added.ID)
+	}
 	if tom := find(view(t, cache, parent).Staff, "tom.grady@heliosschool.org"); tom.NewsletterDate != "2027-06-11" {
 		t.Fatalf("the summer newsletter did not move: %+v", tom)
 	}
-	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2027-06-11", "date": "2027-06-04"}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"id": added.ID, "date": "2027-06-04"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a date was moved onto another: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2027-07-01", "date": "2027-07-02"}); rec.Code != http.StatusNotFound {
+	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"id": unknownID, "date": "2027-07-02"}); rec.Code != http.StatusNotFound {
 		t.Fatalf("a date that is not on the list was moved: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2027-06-11", "date": "2027-06-18"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"id": added.ID, "date": "2027-06-18"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move date: %d %s", rec.Code, rec.Body)
 	}
 	if tom := find(view(t, cache, parent).Staff, "tom.grady@heliosschool.org"); tom.NewsletterDate != "2027-06-18" {
 		t.Fatalf("the summer newsletter did not follow the move: %+v", tom)
 	}
-	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2026-10-23", "date": "2026-10-22"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("move the overridden date: %d %s", rec.Code, rec.Body)
-	}
-	if kate := find(view(t, cache, parent).Staff, "kate.doyle@heliosschool.org"); kate.Override != "2026-10-22" || kate.NewsletterDate != "2026-10-22" {
-		t.Fatalf("the override did not move with its date: %+v", kate)
-	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/newsletter-date", map[string]any{"date": "2027-06-18"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/newsletter-date", map[string]any{"id": added.ID}); rec.Code != http.StatusNoContent {
 		t.Fatalf("remove date: %d %s", rec.Code, rec.Body)
 	}
 	if len(cache.Model().NewsletterDates) != 57 {
 		t.Fatal("the date survived removal")
+	}
+	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/newsletter-date", map[string]any{"id": added.ID}); rec.Code != http.StatusNotFound {
+		t.Fatalf("removed a date twice: %d", rec.Code)
+	}
+}
+
+func TestMovingANewsletterDateKeepsItsPinnedBirthdays(t *testing.T) {
+	cache, mux := newServer(t)
+	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"id": issueOct23, "date": "2026-10-22"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("move the overridden date: %d %s", rec.Code, rec.Body)
+	}
+	if kate := find(view(t, cache, parent).Staff, "kate.doyle@heliosschool.org"); kate.Override != issueOct23 || kate.NewsletterDate != "2026-10-22" || kate.RequestBy != "2026-10-14" {
+		t.Fatalf("the pinned birthday did not keep its issue: %+v", kate)
+	}
+	queue.Flush()
+	_, log, err := sheet.Table(appName, store.ChangeLogTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(log) != 1 || log[0]["Tab"] != newsletterDatesTab || log[0]["Column"] != "Date" || log[0]["Previous"] != "2026-10-23" {
+		t.Fatalf("logged %v", log)
+	}
+}
+
+func TestPinningABirthday(t *testing.T) {
+	cache, mux := newServer(t)
+	pin := map[string]any{"email": "tom.grady@heliosschool.org", "birthday": "06-20", "override": issueSep11}
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/birthday", pin); rec.Code != http.StatusNoContent {
+		t.Fatalf("pin: %d %s", rec.Code, rec.Body)
+	}
+	if tom := find(view(t, cache, parent).Staff, "tom.grady@heliosschool.org"); tom.Override != issueSep11 || tom.NewsletterDate != "2026-09-11" {
+		t.Fatalf("after pinning: %+v", tom)
+	}
+	for _, bad := range []string{"2026-09-11", unknownID} {
+		pin["override"] = bad
+		if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/birthday", pin); rec.Code != http.StatusBadRequest {
+			t.Fatalf("override %q was accepted: %d", bad, rec.Code)
+		}
+	}
+}
+
+func TestDeletingANewsletterDateClearsItsPins(t *testing.T) {
+	cache, mux := newServer(t)
+	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/newsletter-date", map[string]any{"id": issueOct23}); rec.Code != http.StatusNoContent {
+		t.Fatalf("remove the pinned date: %d %s", rec.Code, rec.Body)
+	}
+	m := cache.Model()
+	if m.NewsletterDate(issueOct23) != nil || m.newsletterOn("2026-10-23") != nil {
+		t.Fatal("the date survived removal")
+	}
+	if kate := find(view(t, cache, parent).Staff, "kate.doyle@heliosschool.org"); kate.Override != "" || kate.NewsletterDate != "2026-10-09" {
+		t.Fatalf("the pin outlived its date: %+v", kate)
+	}
+	queue.Flush()
+	_, rows, err := sheet.Table(appName, birthdaysTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row["Newsletter Override"] == issueOct23 {
+			t.Fatalf("the sheet kept %v", row)
+		}
 	}
 }
 
@@ -779,7 +893,7 @@ func TestShareIssue(t *testing.T) {
 	if issue := weekIssue(cache.Model(), time.Date(2026, 9, 10, 23, 59, 0, 0, when.Location)); issue != "2026-09-11" {
 		t.Fatalf("the week's issue = %q", issue)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"date": "2026-09-12"}); rec.Code != 400 {
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"id": unknownID}); rec.Code != 400 {
 		t.Fatalf("a day that is no issue: %d", rec.Code)
 	}
 	a := app{cache: cache, directory: directory}
@@ -800,18 +914,18 @@ func TestShareIssue(t *testing.T) {
 	for _, row := range rows {
 		email := row["Staff Email"]
 		d, ok := model.Donation(email, "2026 - 2027")
-		if !ok || d.UsedOn != "2026-09-09" || d.UsedBy != exportActor || row["Target Newsletter Date"] != "2026-09-11" || row["Charity Name"] != d.Charity || row["Charity Link"] == "" || row["Charity Blurb"] == "" {
+		if !ok || d.UsedOn != "2026-09-09" || d.UsedBy != exportActor || row["Target Newsletter Date"] != "2026-09-11" || row["Charity Name"] != model.charityName(d.Charity) || row["Charity Link"] == "" || row["Charity Blurb"] == "" {
 			t.Errorf("%s: row %v, donation %+v", email, row, d)
 		}
 	}
 	bill := rows[slices.IndexFunc(rows, func(r map[string]string) bool { return r["Staff Email"] == "bill.ryder@heliosschool.org" })]
-	if d, _ := model.Donation("bill.ryder@heliosschool.org", "2026 - 2027"); bill["Staff Name"] != "Bill Ryder" || bill["Staff Birthday"] != "2026-09-15" || bill["Contacted On"] != "2026-09-08" || bill["Charity Selected On"] != "" || bill["Charity Name"] != model.Settings.DefaultCharity || d.RecordedBy != "" {
+	if d, _ := model.Donation("bill.ryder@heliosschool.org", "2026 - 2027"); bill["Staff Name"] != "Bill Ryder" || bill["Staff Birthday"] != "2026-09-15" || bill["Contacted On"] != "2026-09-08" || bill["Charity Selected On"] != "" || bill["Charity Name"] != "Second Harvest of Silicon Valley" || d.Charity != secondHarvest || d.RecordedBy != "" {
 		t.Errorf("Bill, defaulted: row %v, donation %+v", bill, d)
 	}
 	if n, err := a.weeklyExport(context.Background(), "2026-09-11"); n != 0 || err != nil {
 		t.Fatalf("a second run copied %d: %v", n, err)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"date": "2026-09-11"}); rec.Code != 200 || rec.Body.String() != "{\"copied\":0}\n" {
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"id": issueSep11}); rec.Code != 200 || rec.Body.String() != "{\"copied\":0}\n" {
 		t.Fatalf("the button after the run: %d %s", rec.Code, rec.Body)
 	}
 	omar := find(view(t, cache, admin).Staff, "omar.farouk@heliosschool.org")
@@ -825,7 +939,7 @@ func TestShareIssue(t *testing.T) {
 	if i < 0 || rows[i]["Preference"] != LevelNoNewsletter || rows[i]["Charity Name"] != "Wikipedia" || rows[i]["Note"] != "Free knowledge for everyone." || rows[i]["Charity Selected On"] != "2026-09-03" || rows[i]["Contacted On"] != "2026-09-02" {
 		t.Errorf("Omar's row: %v", rows)
 	}
-	if d, _ := cache.Model().Donation("omar.farouk@heliosschool.org", "2026 - 2027"); d.UsedOn == "" || d.Charity != "Wikipedia" || d.RecordedBy != admin {
+	if d, _ := cache.Model().Donation("omar.farouk@heliosschool.org", "2026 - 2027"); d.UsedOn == "" || d.Charity != wikipedia || d.RecordedBy != admin {
 		t.Errorf("Omar's donation after: %+v", d)
 	}
 }

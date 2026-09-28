@@ -18,7 +18,7 @@ function entries() {
       out.push({key: day.toDateString(), title: sv.name, href: staffPath(sv), className: stageClass(sv.stage)});
     }
   }
-  for (const date of state.model.newsletterDates) {
+  for (const {date} of state.model.newsletterDates) {
     const day = parseDate(date);
     out.push({key: day.toDateString(), title: 'Newsletter', href: '/newsletters', className: 'newsletter'});
   }

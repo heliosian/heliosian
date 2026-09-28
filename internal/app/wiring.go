@@ -55,7 +55,7 @@ type Config struct {
 	Geocoder      *geocode.Client
 	Bucket        *blob.Bucket
 	Store         *blob.Store
-	FamilyIDKey   []byte
+	IDKey         []byte
 	ChatKey       []byte
 	BrowserKey    string
 	ImageSearch   imagesearch.Search
@@ -122,7 +122,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load celebrate data", "error", err)
 	}
-	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Store, static.Files{Root: "web/who"}, queue, cfg.FamilyIDKey, settings.SuperAdmins)
+	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Store, static.Files{Root: "web/who"}, queue, cfg.IDKey, settings.SuperAdmins)
 	if err != nil {
 		logging.Fatal("load directory data", "error", err)
 	}
@@ -195,6 +195,19 @@ func NewCore(cfg Config) *Core {
 		family := when.FamilyOf(cache.Model(), email)
 		return append(celebrateCache.Model().Linked(family, time.Now().In(when.Location)), teamCache.Model().Linked(family)...)
 	}
+	sourceID := func(source, key string) string {
+		switch source {
+		case when.SourceCelebrate:
+			if p := celebrateCache.Model().Party(key); p != nil {
+				return p.ID
+			}
+		case when.SourceTeam:
+			if a := teamCache.Model().Activity(key); a != nil {
+				return a.ID
+			}
+		}
+		return ""
+	}
 	frontEvents := upcomingEvents{calendarCache, cache.Model, linked}
 	calendarMux := http.NewServeMux()
 	var hooks when.Hooks
@@ -214,6 +227,7 @@ func NewCore(cfg Config) *Core {
 		Settings:  settings.Settings,
 		Lists:     calendarLists(cache, lists.Lists),
 		Linked:    linked,
+		SourceID:  sourceID,
 		Celebrate: partyCalendar,
 		Sources:   sources,
 		Search:    cfg.ImageSearch,
@@ -299,7 +313,7 @@ func NewCore(cfg Config) *Core {
 	})
 	ask.Register(askMux, ask.Sources{
 		Directory: cache.Model,
-		Tags: func(owner string) map[string][]string {
+		Tags: func(owner string) []who.Tag {
 			return cache.Model().Tags(owner)
 		},
 		Lists: func(email string) []who.List {
@@ -326,7 +340,7 @@ func NewCore(cfg Config) *Core {
 		}},
 		{Key: "birthday", Title: "Helios Staff Birthdays", Mux: birthdayMux, Preview: birthdayAbout.PreviewHead},
 		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: celebrate.PreviewHead(celebrateCache, celebrateStyle)},
-		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: when.PreviewHead(calendarCache, linked, calendarStyle)},
+		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: when.PreviewHead(calendarCache, linked, sourceID, calendarStyle)},
 		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
 		{Key: "ask", Title: "Helios Ask", Mux: askMux},
 	}
@@ -419,8 +433,6 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	if err != nil {
 		logging.Fatal("vertex embedder", "error", err)
 	}
-	familyIDKey := hmac.New(sha256.New, []byte(sessionKey))
-	familyIDKey.Write([]byte("family id"))
 	chatKey := hmac.New(sha256.New, []byte(sessionKey))
 	chatKey.Write([]byte("ask chats"))
 	anthropicKey := env.Required("ANTHROPIC_API_KEY")
@@ -430,7 +442,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		Geocoder:      geocode.New(env.Required("GOOGLE_MAPS_SERVER_KEY")),
 		Bucket:        bucket,
 		Store:         store,
-		FamilyIDKey:   familyIDKey.Sum(nil),
+		IDKey:         []byte(env.Required("ID_KEY")),
 		ChatKey:       chatKey.Sum(nil),
 		BrowserKey:    env.Required("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch:   ImageSearchKeys(),

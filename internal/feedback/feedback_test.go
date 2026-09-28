@@ -400,13 +400,17 @@ func TestCacheReadsNewestFirst(t *testing.T) {
 	if len(reports) != 4 {
 		t.Fatalf("read %d reports", len(reports))
 	}
-	if reports[0].ID != "b2c3d4e5f6a1" {
+	if reports[0].ID != "fbk0000000002" {
 		t.Errorf("newest = %q", reports[0].ID)
 	}
 	if reports[0].Kind != "idea" || !reports[0].SuperAdmin || reports[0].Status != StatusNew {
 		t.Errorf("newest = %+v", reports[0])
 	}
 	filed, ok := cache.Report("c3d4e5f6a1b2")
+	if !ok || filed.ID != "fbk0000000003" {
+		t.Fatalf("the old ID does not reach the report: %+v", filed)
+	}
+	filed, ok = cache.Report("fbk0000000003")
 	if !ok || filed.Status != StatusFiled || filed.Issue == "" || filed.HandledBy == "" {
 		t.Errorf("filed = %+v ok = %v", filed, ok)
 	}
@@ -444,8 +448,8 @@ func TestCacheSavesAndHandles(t *testing.T) {
 	if got.Status != StatusFiled || got.Issue != "https://github.com/x/y/issues/3" || got.HandledBy != "admin@example.org" {
 		t.Errorf("filed = %+v", got)
 	}
-	commit(cache.Model().dismissed(superAdmin, "a1b2c3d4e5f6", now))
-	if got, _ := cache.Report("a1b2c3d4e5f6"); got.Status != StatusDismissed {
+	commit(cache.Model().dismissed(superAdmin, "fbk0000000001", now))
+	if got, _ := cache.Report("fbk0000000001"); got.Status != StatusDismissed {
 		t.Errorf("dismissed = %+v", got)
 	}
 	var refusal *access.Refusal
@@ -462,7 +466,7 @@ func TestCacheSavesAndHandles(t *testing.T) {
 	}
 	dismissed := false
 	for _, row := range log {
-		if row["Actor"] == "admin@example.org" && row["Action"] == "set" && row["Key"] == "ID=a1b2c3d4e5f6" && row["Column"] == "Status" && row["Previous"] == StatusNew {
+		if row["Actor"] == "admin@example.org" && row["Action"] == "set" && row["Key"] == "ID=fbk0000000001" && row["Column"] == "Status" && row["Previous"] == StatusNew {
 			dismissed = true
 		}
 	}
@@ -514,7 +518,7 @@ func TestAdminShowsTheScreenshot(t *testing.T) {
 	if rec := get("member@example.org", "/api/admin/feedback/"+saved.ID+"/screenshot"); rec.Code != http.StatusForbidden {
 		t.Errorf("a member got %d", rec.Code)
 	}
-	if rec := get("admin@example.org", "/api/admin/feedback/a1b2c3d4e5f6/screenshot"); rec.Code != http.StatusNotFound {
+	if rec := get("admin@example.org", "/api/admin/feedback/fbk0000000001/screenshot"); rec.Code != http.StatusNotFound {
 		t.Errorf("a report with no screenshot: %d", rec.Code)
 	}
 }
@@ -556,7 +560,7 @@ func TestAdminListsAndOpens(t *testing.T) {
 		t.Fatalf("list = %+v", list)
 	}
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/admin/feedback/a1b2c3d4e5f6", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/admin/feedback/fbk0000000001", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("open: %d %s", rec.Code, rec.Body.String())
 	}
@@ -583,34 +587,34 @@ func TestAdminFilesAndDismisses(t *testing.T) {
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
 		return rec
 	}
-	if rec := post("/api/admin/feedback/a1b2c3d4e5f6/file", `{"title":"","body":"x"}`); rec.Code != http.StatusBadRequest {
+	if rec := post("/api/admin/feedback/fbk0000000001/file", `{"title":"","body":"x"}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("empty title: %d", rec.Code)
 	}
-	if rec := post("/api/admin/feedback/a1b2c3d4e5f6/file", `{"title":"Blank grid","body":"x","type":" "}`); rec.Code != http.StatusBadRequest {
+	if rec := post("/api/admin/feedback/fbk0000000001/file", `{"title":"Blank grid","body":"x","type":" "}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("empty type: %d", rec.Code)
 	}
-	rec := post("/api/admin/feedback/a1b2c3d4e5f6/file", `{"title":"Blank grid","body":"Reported by rowan.avery@example.org","type":"Bug"}`)
+	rec := post("/api/admin/feedback/fbk0000000001/file", `{"title":"Blank grid","body":"Reported by rowan.avery@example.org","type":"Bug"}`)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "rowan.avery@example.org") {
 		t.Errorf("an address slipped through: %d %s", rec.Code, rec.Body.String())
 	}
-	rec = post("/api/admin/feedback/a1b2c3d4e5f6/file", `{"title":"Blank grid","body":"Forward a month and the grid empties.","type":"Bug","labels":["app:calendar"]}`)
+	rec = post("/api/admin/feedback/fbk0000000001/file", `{"title":"Blank grid","body":"Forward a month and the grid empties.","type":"Bug","labels":["app:calendar"]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("file: %d %s", rec.Code, rec.Body.String())
 	}
 	if filer.title != "Blank grid" || filer.issueType != "Bug" || strings.Join(filer.labels, ",") != "app:calendar" {
 		t.Errorf("filed %q as %q with %v", filer.title, filer.issueType, filer.labels)
 	}
-	got, _ := cache.Report("a1b2c3d4e5f6")
+	got, _ := cache.Report("fbk0000000001")
 	if got.Status != StatusFiled || got.Issue != "https://github.com/heliosian/heliosian/issues/77" || got.HandledBy != "admin@example.org" {
 		t.Errorf("report after filing = %+v", got)
 	}
-	if rec := post("/api/admin/feedback/a1b2c3d4e5f6/file", `{"title":"Again","body":"x"}`); rec.Code != http.StatusConflict {
+	if rec := post("/api/admin/feedback/fbk0000000001/file", `{"title":"Again","body":"x"}`); rec.Code != http.StatusConflict {
 		t.Errorf("filed twice: %d", rec.Code)
 	}
-	if rec := post("/api/admin/feedback/b2c3d4e5f6a1/dismiss", ""); rec.Code != http.StatusNoContent {
+	if rec := post("/api/admin/feedback/fbk0000000002/dismiss", ""); rec.Code != http.StatusNoContent {
 		t.Errorf("dismiss: %d %s", rec.Code, rec.Body.String())
 	}
-	if got, _ := cache.Report("b2c3d4e5f6a1"); got.Status != StatusDismissed {
+	if got, _ := cache.Report("fbk0000000002"); got.Status != StatusDismissed {
 		t.Errorf("dismissed = %+v", got)
 	}
 	if rec := post("/api/admin/feedback/nope/dismiss", ""); rec.Code != http.StatusNotFound {
@@ -621,7 +625,7 @@ func TestAdminFilesAndDismisses(t *testing.T) {
 func TestAdminWithoutAGitHubApp(t *testing.T) {
 	_, h := testAdmin(t, nil, "admin@example.org")
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/admin/feedback/a1b2c3d4e5f6/file", strings.NewReader(`{"title":"t","body":"b"}`)))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/admin/feedback/fbk0000000001/file", strings.NewReader(`{"title":"t","body":"b"}`)))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("filing with no app: %d %s", rec.Code, rec.Body.String())
 	}

@@ -1,4 +1,4 @@
-import {state, isAdmin, year, staffFor, charity, longDate, mediumDate, monthDay, dateCell, parseDate, newsletterPath} from '../state.js';
+import {state, isAdmin, year, staffFor, charity, issueDates, longDate, mediumDate, monthDay, dateCell, parseDate, newsletterPath} from '../state.js';
 import {pageHead, menu, copyRich} from '../dom.js';
 import {el, link, svg, thumb, button} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
@@ -32,7 +32,7 @@ const badgeMonth = new Intl.DateTimeFormat('en-US', {month: 'short'});
 const dayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric'});
 
 function thisYear() {
-  return state.model.newsletterDates.filter(d => d >= year().start && d <= year().end);
+  return issueDates().filter(d => d >= year().start && d <= year().end);
 }
 
 function nextIssue() {
@@ -112,7 +112,7 @@ function entry(sv) {
   const esc = t => String(t).replace(/[&<>"]/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[ch]));
   const linked = v => /^https?:\/\//.test(v) ? `<a href="${esc(v)}">${esc(v)}</a>` : esc(v);
   const who = [`Birthday: ${monthDay(sv.birthdayThisYear)}`, `Photo: ${photo || 'None on file'}`];
-  const donation = [sv.donation.charity];
+  const donation = [c.name];
   if (c && c.donationLink) {
     donation.push(c.donationLink);
   }
@@ -196,7 +196,7 @@ export function newslettersPage() {
   const page = el('div', 'list-page');
   const actions = [];
   if (isAdmin()) {
-    const future = state.model.newsletterDates.filter(d => d >= state.model.today).length;
+    const future = issueDates().filter(d => d >= state.model.today).length;
     if (future) {
       actions.push(button('Clear Future Dates', 'trash', 'button button-secondary', () => clearFutureNewsletterDates(future)));
     }
@@ -251,7 +251,7 @@ export function newsletterPage(date) {
   for (const sv of people) {
     const lines = [`Birthday ${longDate(sv.birthdayThisYear)}`];
     if (sv.donation) {
-      lines.push(`${sv.donation.usedOn ? 'Used' : 'Chose'} ${sv.donation.charity}`);
+      lines.push(`${sv.donation.usedOn ? 'Used' : 'Chose'} ${charity(sv.donation.charity).name}`);
     } else if (sv.contactedOn) {
       lines.push(`Asked on ${mediumDate(sv.contactedOn)}, awaiting their answer`);
     } else {

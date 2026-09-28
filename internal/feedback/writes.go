@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/serve"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -19,7 +19,7 @@ func requireSuperAdmin(actor access.Actor) error {
 }
 
 func (m *Model) submit(actor access.Actor, r Report) (Report, []store.Op) {
-	r.ID = serve.ID(12)
+	r.ID = id.New(m.taken)
 	r.Status = StatusNew
 	r.Email = actor.Email
 	r.SuperAdmin = actor.May(Triage)
@@ -40,14 +40,15 @@ func (m *Model) filing(actor access.Actor, id string) (Report, error) {
 	return report, nil
 }
 
-func (m *Model) handle(actor access.Actor, id string, cells store.Row) ([]store.Op, error) {
+func (m *Model) handle(actor access.Actor, key string, cells store.Row) ([]store.Op, error) {
 	if err := requireSuperAdmin(actor); err != nil {
 		return nil, err
 	}
-	if _, ok := m.report(id); !ok {
+	report, ok := m.report(key)
+	if !ok {
 		return nil, access.Missing("no such report")
 	}
-	return []store.Op{store.Update(reportsTab, store.Row{"ID": id}, cells)}, nil
+	return []store.Op{store.Update(reportsTab, store.Row{"ID": report.ID}, cells)}, nil
 }
 
 func (m *Model) filed(actor access.Actor, id, issue string, now time.Time) ([]store.Op, error) {

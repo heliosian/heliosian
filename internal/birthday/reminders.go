@@ -121,7 +121,7 @@ func (a app) reminderMessage(model *Model, rem reminder) mail.Message {
 		} else {
 			p(fmt.Sprintf("%s was due to be asked about their birthday charity on %s, and their outreach is not marked done. If you have asked, mark it done on their page; if not, here is the email, ready to send.", sv.Name, mediumDate(sv.RequestBy)))
 		}
-		l := letter(model.Settings, sv, assignee.Name)
+		l := letter(model, sv, assignee.Name)
 		button("Send the email", mailto(l))
 		fmt.Fprintf(&text, "To: %s\nCC: %s\nSubject: %s\n\n%s\n\n", l.To, l.CC, l.Subject, l.Body)
 		fmt.Fprintf(&htm, "<table style=\"font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;border-collapse:collapse;color:#33474c\"><tr><td style=\"padding:2px 12px 2px 0;color:#647071\">To</td><td>%s</td></tr><tr><td style=\"padding:2px 12px 2px 0;color:#647071\">CC</td><td>%s</td></tr><tr><td style=\"padding:2px 12px 2px 0;color:#647071\">Subject</td><td>%s</td></tr></table>", html.EscapeString(l.To), html.EscapeString(l.CC), html.EscapeString(l.Subject))
@@ -130,7 +130,7 @@ func (a app) reminderMessage(model *Model, rem reminder) mail.Message {
 		button("Mark outreach done", link)
 	case remindDonation:
 		p(fmt.Sprintf("The %s newsletter is two days out and %s's charity is not recorded yet.", mediumDate(sv.NewsletterDate), sv.Name))
-		p("If they answered, record what they chose on their page. There is no need to ask again - whether to reply is their choice, and if they do not, the donation goes to " + model.Settings.DefaultCharity + ".")
+		p("If they answered, record what they chose on their page. There is no need to ask again - whether to reply is their choice, and if they do not, the donation goes to " + model.charityName(model.Settings.DefaultCharity) + ".")
 		button("Record their charity", link)
 	}
 	subject := "Re: " + threadSubject(sv)

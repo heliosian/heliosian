@@ -21,7 +21,7 @@ function editPencil(link, category) {
     b.addEventListener('click', e => {
       e.stopPropagation();
       e.preventDefault();
-      moveLink(link.title, by);
+      moveLink(link.id, by);
     });
     tools.append(b);
   }
@@ -131,14 +131,14 @@ function addCard(category, cards) {
   body.append(el('div', 'add-card-title', `Add ${singular(category.title)}`));
   body.append(el('div', 'add-card-sub', `Link something under ${category.title}`));
   card.append(disc, body);
-  card.addEventListener('click', () => openLinkEditor(null, category.title));
+  card.addEventListener('click', () => openLinkEditor(null, category.id));
   return card;
 }
 
 const expanded = new Set();
 
 function limited(category, items, needle) {
-  if (!category.max || needle || expanded.has(category.title) || items.length <= category.max) {
+  if (!category.max || needle || expanded.has(category.id) || items.length <= category.max) {
     return {shown: items, hidden: 0};
   }
   return {shown: items.slice(0, category.max), hidden: items.length - category.max};
@@ -149,7 +149,7 @@ function seeMore(category, hidden, rerender) {
   button.type = 'button';
   button.append(el('span', '', `See more (${hidden})`), svg('chevron-right'));
   button.addEventListener('click', () => {
-    expanded.add(category.title);
+    expanded.add(category.id);
     rerender();
   });
   return button;

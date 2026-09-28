@@ -1,4 +1,4 @@
-import {state, me, tagGroups, classroomNames, event, eventPath, dayLabel} from '../state.js';
+import {state, me, tagGroups, classroomNames, categoryTags, tagName, event, eventPath, dayLabel} from '../state.js';
 import {el, link, svg, button, toast} from '/elements.js';
 import {popup} from '/modal.js';
 import {api} from '/api.js';
@@ -8,7 +8,7 @@ import {imageControl} from '../imagecontrol.js';
 import {load} from '/router.js';
 
 function working() {
-  return tagGroups().map(g => ({name: g.name, open: true, tags: g.tags.filter(t => !t.builtIn).map(t => ({name: t.name, description: t.description, on: t.default, image: t.image || '', imageUrl: t.imageUrl || ''}))})).filter(g => g.tags.length);
+  return tagGroups().map(g => ({name: g.name, open: true, tags: g.tags.filter(t => !t.builtIn).map(t => ({id: t.id, name: t.name, description: t.description, on: t.default, image: t.image || '', imageUrl: t.imageUrl || ''}))})).filter(g => g.tags.length);
 }
 
 function move(list, from, to) {
@@ -240,7 +240,7 @@ function categoriesTool() {
 
   const builtIn = state.model.tags.filter(t => t.builtIn);
   if (builtIn.length) {
-    wrap.append(el('p', 'admin-note', `${builtIn.map(t => t.name).join(', ')} are built in and always sit under ${builtIn[0].group}.`));
+    wrap.append(el('p', 'admin-note', `${builtIn.map(t => t.name).join(', ')} are built in and sit under ${[...new Set(builtIn.map(t => t.group || 'Categories'))].join(', ')}; their rows are changed in the sheet.`));
   }
 
   const add = el('form', 'feed-form admin-add');
@@ -292,7 +292,7 @@ function categoriesTool() {
     }
     const target = newGroup.value.trim();
     const dest = groups.find(g => g.name === target) || placeGroup(target);
-    dest.tags.push({name, description: newDesc.value.trim(), on: true, image: '', imageUrl: ''});
+    dest.tags.push({id: '', name, description: newDesc.value.trim(), on: true, image: '', imageUrl: ''});
     dest.open = true;
     add.reset();
     paint();
@@ -305,7 +305,7 @@ function categoriesTool() {
     const tags = [];
     for (const g of groups) {
       for (const t of g.tags) {
-        tags.push({name: t.name, description: t.description, group: g.name, default: t.on, image: t.image});
+        tags.push({id: t.id, name: t.name, description: t.description, group: g.name, default: t.on, image: t.image});
       }
     }
     save.disabled = true;
@@ -374,12 +374,12 @@ function eventsTool() {
   filters.append(search, category, classroom, el('span', 'admin-event-label', 'From'), fromDate, el('span', 'admin-event-label', 'To'), toDate, past, count);
   const fillSelects = () => {
     const mine = state.model.events.filter(e => e.source === 'sheet');
-    const cats = [...new Set(mine.flatMap(e => e.tags.filter(t => !classroomNames().includes(t))))].sort();
+    const cats = [...new Set(mine.flatMap(categoryTags))].sort((a, b) => tagName(a).localeCompare(tagName(b)));
     const chosenCat = category.value;
     category.replaceChildren();
-    for (const name of ['', ...cats]) {
-      const option = el('option', '', name || 'Any category');
-      option.value = name;
+    for (const id of ['', ...cats]) {
+      const option = el('option', '', id ? tagName(id) : 'Any category');
+      option.value = id;
       category.append(option);
     }
     category.value = cats.includes(chosenCat) ? chosenCat : '';
@@ -472,7 +472,7 @@ function eventsTool() {
       const words = el('div', 'admin-row-words');
       const title = link(eventPath(e), 'admin-row-name');
       title.textContent = e.title;
-      words.append(title, el('div', 'admin-row-note', [e.location, e.tags.filter(t => !classroomNames().includes(t)).join(', ')].filter(Boolean).join(' · ')));
+      words.append(title, el('div', 'admin-row-note', [e.location, categoryTags(e).map(tagName).join(', ')].filter(Boolean).join(' · ')));
       const start = whenPicker(e.start);
       const end = whenPicker(e.end);
       const save = button('Save', 'check', 'button button-small admin-event-save', async () => {

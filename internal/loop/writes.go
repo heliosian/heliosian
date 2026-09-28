@@ -3,11 +3,11 @@ package loop
 import (
 	"maps"
 	"slices"
-	"strings"
 	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/filter"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -26,32 +26,32 @@ func sameRule(x, y Rule) bool {
 }
 
 func groupOps(was Group, g Group, adding bool) []store.Op {
-	ops := []store.Op{store.Update(groupsTab, store.Row{"Name": g.Name}, groupCells(g))}
+	ops := []store.Op{store.Update(groupsTab, store.Row{idColumn: g.ID}, groupCells(g))}
 	if adding {
 		ops = []store.Op{store.Insert(groupsTab, groupCells(g))}
 	}
 	row := func(column, value string) store.Row {
-		return store.Row{"Group": g.Name, column: value}
+		return store.Row{"Group": g.ID, column: value}
 	}
 	for _, list := range []struct {
-		tab, column string
-		was, now    []string
-	}{{managersTab, "Email", was.Managers, g.Managers}, {aliasesTab, "Alias", was.Aliases, g.Aliases}} {
+		tab, column, owner string
+		was, now           []string
+	}{{managersTab, "Email", "Group", was.Managers, g.Managers}, {id.AliasesTab, id.AliasColumn, id.IDColumn, was.Aliases, g.Aliases}} {
 		for _, v := range list.was {
 			if !slices.Contains(list.now, v) {
-				ops = append(ops, store.Delete(list.tab, row(list.column, v)))
+				ops = append(ops, store.Delete(list.tab, store.Row{list.owner: g.ID, list.column: v}))
 			}
 		}
 		for _, v := range list.now {
 			if !slices.Contains(list.was, v) {
-				ops = append(ops, store.Insert(list.tab, row(list.column, v)))
+				ops = append(ops, store.Insert(list.tab, store.Row{list.owner: g.ID, list.column: v}))
 			}
 		}
 	}
 	if !slices.EqualFunc(was.Rules, g.Rules, sameRule) {
-		ops = append(ops, store.Delete(rulesTab, store.Row{"Group": g.Name}))
+		ops = append(ops, store.Delete(rulesTab, store.Row{"Group": g.ID}))
 		for _, r := range g.Rules {
-			ops = append(ops, store.Insert(rulesTab, ruleCells(g.Name, r)))
+			ops = append(ops, store.Insert(rulesTab, ruleCells(g.ID, r)))
 		}
 	}
 	for _, added := range was.Additions {
@@ -73,31 +73,31 @@ func groupOps(was Group, g Group, adding bool) []store.Op {
 	return ops
 }
 
-func (m *Model) SaveGroup(actor access.Actor, sources Sources, original string, g Group) ([]store.Op, Group, string, error) {
+func (m *Model) SaveGroup(actor access.Actor, sources Sources, g Group) ([]store.Op, Group, string, error) {
 	g = Normalize(g)
-	original = strings.ToLower(strings.TrimSpace(original))
 	for _, local := range g.Names() {
-		if other := m.Resolve(local); other != nil && other.Name != original {
+		if other := m.Resolve(local); other != nil && other.ID != g.ID {
 			return nil, Group{}, "", access.Invalid("%s@%s is taken", local, Domain)
 		}
 	}
 	var was Group
 	action := "add"
-	if original == "" {
+	if g.ID == "" {
+		g.ID = id.New(m.taken)
 		if !g.Manages(actor.Email) {
 			g.Managers = append([]string{actor.Email}, g.Managers...)
 		}
 		g.CreatedBy = actor.Email
 		g.Created = time.Now().Format("2006-01-02")
 	} else {
-		current := m.Group(original)
+		current := m.Group(g.ID)
 		if current == nil {
 			return nil, Group{}, "", access.Missing("no such email list")
 		}
 		if !current.Edits(actor) {
 			return nil, Group{}, "", access.Forbidden("you do not manage this email list")
 		}
-		if g.Name != original {
+		if g.Name != current.Name {
 			return nil, Group{}, "", access.Invalid("an email list's name is its address and cannot change; make a new email list")
 		}
 		g.CreatedBy, g.Created = current.CreatedBy, current.Created
@@ -116,28 +116,27 @@ func (m *Model) SaveGroup(actor access.Actor, sources Sources, original string, 
 	return groupOps(was, g, action == "add"), g, action, nil
 }
 
-func (m *Model) DeleteGroup(actor access.Actor, name string) ([]store.Op, string, error) {
-	name = strings.ToLower(strings.TrimSpace(name))
-	current := m.Group(name)
+func (m *Model) DeleteGroup(actor access.Actor, groupID string) ([]store.Op, *Group, error) {
+	current := m.Group(groupID)
 	if current == nil {
-		return nil, "", access.Missing("no such email list")
+		return nil, nil, access.Missing("no such email list")
 	}
 	if !current.Edits(actor) {
-		return nil, "", access.Forbidden("you do not manage this email list")
+		return nil, nil, access.Forbidden("you do not manage this email list")
 	}
-	return []store.Op{store.Delete(groupsTab, store.Row{"Name": name})}, name, nil
+	return []store.Op{store.Delete(groupsTab, store.Row{idColumn: current.ID})}, current, nil
 }
 
-func (m *Model) visibleGroup(actor access.Actor, s Sources, name string) (*Group, error) {
-	g := m.Group(strings.ToLower(strings.TrimSpace(name)))
+func (m *Model) visibleGroup(actor access.Actor, s Sources, groupID string) (*Group, error) {
+	g := m.Group(groupID)
 	if g == nil || !g.VisibleTo(actor, s) {
 		return nil, access.Missing("no such email list")
 	}
 	return g, nil
 }
 
-func (m *Model) SetSubscription(actor access.Actor, s Sources, name string, subscribed bool) ([]store.Op, *Group, error) {
-	g, err := m.visibleGroup(actor, s, name)
+func (m *Model) SetSubscription(actor access.Actor, s Sources, groupID string, subscribed bool) ([]store.Op, *Group, error) {
+	g, err := m.visibleGroup(actor, s, groupID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -154,7 +153,7 @@ func (g Group) Unsubscribe(actor access.Actor, how string) []store.Op {
 	if g.HasExcluded(actor.Email) {
 		return nil
 	}
-	cells := store.Row{"Group": g.Name, "Email": actor.Email, "Note": "Unsubscribed by " + how, "Timestamp": time.Now().Format(time.RFC3339)}
+	cells := store.Row{"Group": g.ID, "Email": actor.Email, "Note": "Unsubscribed by " + how, "Timestamp": time.Now().Format(time.RFC3339)}
 	return []store.Op{store.Insert(excludedTab, cells)}
 }
 
@@ -162,28 +161,28 @@ func (g Group) Resubscribe(actor access.Actor) []store.Op {
 	if !g.HasExcluded(actor.Email) {
 		return nil
 	}
-	return []store.Op{store.Delete(excludedTab, store.Row{"Group": g.Name, "Email": actor.Email})}
+	return []store.Op{store.Delete(excludedTab, store.Row{"Group": g.ID, "Email": actor.Email})}
 }
 
-func (m *Model) SetArchived(actor access.Actor, s Sources, name string, archived bool) ([]store.Op, *Group, error) {
-	g, err := m.visibleGroup(actor, s, name)
+func (m *Model) SetArchived(actor access.Actor, s Sources, groupID string, archived bool) ([]store.Op, *Group, error) {
+	g, err := m.visibleGroup(actor, s, groupID)
 	if err != nil {
 		return nil, nil, err
 	}
-	match := store.Row{"Group": g.Name, "Email": actor.Email}
+	match := store.Row{"Group": g.ID, "Email": actor.Email}
 	if archived {
 		return []store.Op{store.Upsert(archivedTab, match, store.Row{})}, g, nil
 	}
 	return []store.Op{store.Delete(archivedTab, match)}, g, nil
 }
 
-func recordMessage(actor access.Actor, id, group string, cells store.Row) []store.Op {
-	return []store.Op{store.Upsert(messagesTab, store.Row{"ID": id, "Group": group}, cells)}
+func recordMessage(actor access.Actor, messageID, groupID string, cells store.Row) []store.Op {
+	return []store.Op{store.Upsert(messagesTab, store.Row{"ID": messageID, "Group": groupID}, cells)}
 }
 
-func markMessage(actor access.Actor, id, group, state string, cells store.Row) []store.Op {
+func markMessage(actor access.Actor, messageID, groupID, state string, cells store.Row) []store.Op {
 	cells["State"] = state
-	return []store.Op{store.Update(messagesTab, store.Row{"ID": id, "Group": group}, cells)}
+	return []store.Op{store.Update(messagesTab, store.Row{"ID": messageID, "Group": groupID}, cells)}
 }
 
 func recordDeliveries(actor access.Actor, rows []store.Row) []store.Op {

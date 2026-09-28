@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"sort"
 	"strings"
 
 	"heliosian/internal/access"
@@ -176,7 +175,7 @@ func Suggested(lists []who.List, groups []Group) []who.List {
 	return out
 }
 
-func SuggestedTags(tags map[string][]string, groups []Group, owner string) []string {
+func SuggestedTags(tags []who.Tag, groups []Group) []who.Tag {
 	named := map[string]bool{}
 	for _, g := range groups {
 		for _, r := range g.Rules {
@@ -185,13 +184,12 @@ func SuggestedTags(tags map[string][]string, groups []Group, owner string) []str
 			}
 		}
 	}
-	out := []string{}
-	for name, people := range tags {
-		if !named[filter.TagKey(owner, name)] && len(people) > 0 {
-			out = append(out, name)
+	out := []who.Tag{}
+	for _, t := range tags {
+		if !named[filter.TagKey(t.ID)] && len(t.People) > 0 {
+			out = append(out, t)
 		}
 	}
-	sort.Strings(out)
 	return out
 }
 
@@ -200,8 +198,8 @@ const SuggestionTag = "tag"
 func (a app) suggestions(viewer string) []suggestion {
 	out := []suggestion{}
 	sources := a.sources()
-	for _, name := range SuggestedTags(sources.Tags(viewer), a.cache.Model().Groups, viewer) {
-		out = append(out, suggestion{Key: filter.TagKey(viewer, name), Name: name, Kind: SuggestionTag, Managers: []Person{a.person(viewer)}})
+	for _, t := range SuggestedTags(sources.Tags(viewer), a.cache.Model().Groups) {
+		out = append(out, suggestion{Key: filter.TagKey(t.ID), Name: t.Name, Kind: SuggestionTag, Managers: []Person{a.person(viewer)}})
 	}
 	for _, l := range Suggested(sources.Lists(viewer), a.cache.Model().Groups) {
 		managers := []Person{a.person(viewer)}
@@ -262,7 +260,7 @@ func (a app) view(g Group, as access.Actor) (groupView, bool) {
 		return groupView{}, false
 	}
 	viewer := as.Email
-	v := groupView{Group: *shown, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Open: g.VisibleTo(access.Actor{Email: viewer}, a.sources()), Unsubscribed: g.HasExcluded(viewer), Archived: a.cache.Model().Archived(g.Name, viewer), Sent: a.sentCount(g.Name)}
+	v := groupView{Group: *shown, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Open: g.VisibleTo(access.Actor{Email: viewer}, a.sources()), Unsubscribed: g.HasExcluded(viewer), Archived: a.cache.Model().Archived(g.ID, viewer), Sent: a.sentCount(g.ID)}
 	v.Members = a.members(g)
 	if !g.Sees(as) {
 		for i := range v.Members {
@@ -276,8 +274,8 @@ func (a app) view(g Group, as access.Actor) (groupView, bool) {
 	return v, true
 }
 
-func (a app) shown(name string, as access.Actor) *groupView {
-	v, ok := a.view(*a.cache.Model().Group(name), as)
+func (a app) shown(groupID string, as access.Actor) *groupView {
+	v, ok := a.view(*a.cache.Model().Group(groupID), as)
 	if !ok {
 		return nil
 	}
@@ -324,7 +322,7 @@ func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
 }
 
 type draftBody struct {
-	Name      string     `json:"name"`
+	ID        string     `json:"id"`
 	Title     string     `json:"title"`
 	RuleWords []string   `json:"ruleWords"`
 	Rules     []Rule     `json:"rules"`
@@ -337,7 +335,7 @@ func (a app) draftMembers(r *http.Request, body draftBody) ([]Member, []int, err
 	email := actor.Email
 	draft := Normalize(Group{Name: "preview", Title: "preview", Managers: []string{email}, Rules: body.Rules, Additions: body.Additions, Excluded: body.Excluded})
 	var existing []Rule
-	if g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name))); g != nil {
+	if g := a.cache.Model().Group(body.ID); g != nil {
 		if !g.Edits(actor) {
 			return nil, nil, access.Forbidden("you do not manage this email list")
 		}
@@ -409,52 +407,47 @@ func (a app) describe(r *http.Request, body draftBody) (map[string]string, error
 	return map[string]string{"description": description}, nil
 }
 
-type saveBody struct {
-	Original string `json:"original"`
-	Group
-}
-
-func (a app) saveGroup(r *http.Request, body saveBody) (*groupView, error) {
+func (a app) saveGroup(r *http.Request, body Group) (*groupView, error) {
 	actor := a.actor(r)
-	ops, g, action, err := a.cache.Model().SaveGroup(actor, a.sources(), body.Original, body.Group)
+	ops, g, action, err := a.cache.Model().SaveGroup(actor, a.sources(), body)
 	if err != nil {
 		return nil, err
 	}
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return nil, err
 	}
-	slog.InfoContext(r.Context(), "loop:saved group", "action", action, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility, "posting", g.Posting, "replying", g.Replying)
-	return a.shown(g.Name, actor), nil
+	slog.InfoContext(r.Context(), "loop:saved group", "action", action, "id", g.ID, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility, "posting", g.Posting, "replying", g.Replying)
+	return a.shown(g.ID, actor), nil
 }
 
 type groupRef struct {
-	Name string `json:"name"`
+	ID string `json:"id"`
 }
 
 func (a app) deleteGroup(r *http.Request, body groupRef) (serve.None, error) {
 	actor := a.actor(r)
-	ops, name, err := a.cache.Model().DeleteGroup(actor, body.Name)
+	ops, g, err := a.cache.Model().DeleteGroup(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	if err := a.mail.Documents.Remove(r.Context(), actor, name); err != nil {
-		slog.ErrorContext(r.Context(), "loop:filed mail not removed", "group", name, "error", err)
+	if err := a.mail.Documents.Remove(r.Context(), actor, g.Name); err != nil {
+		slog.ErrorContext(r.Context(), "loop:filed mail not removed", "group", g.Name, "error", err)
 	}
-	slog.InfoContext(r.Context(), "loop:deleted group", "group", name)
+	slog.InfoContext(r.Context(), "loop:deleted group", "id", g.ID, "group", g.Name)
 	return serve.None{}, nil
 }
 
 type subscriptionBody struct {
-	Name       string `json:"name"`
+	ID         string `json:"id"`
 	Subscribed bool   `json:"subscribed"`
 }
 
 func (a app) subscription(r *http.Request, body subscriptionBody) (*groupView, error) {
 	actor := a.actor(r)
-	ops, g, err := a.cache.Model().SetSubscription(actor, a.sources(), body.Name, body.Subscribed)
+	ops, g, err := a.cache.Model().SetSubscription(actor, a.sources(), body.ID, body.Subscribed)
 	if err != nil {
 		return nil, err
 	}
@@ -465,23 +458,23 @@ func (a app) subscription(r *http.Request, body subscriptionBody) (*groupView, e
 	if err := a.commitSubscription(r.Context(), actor, *g, how, ops); err != nil {
 		return nil, err
 	}
-	return a.shown(g.Name, actor), nil
+	return a.shown(g.ID, actor), nil
 }
 
 type archiveBody struct {
-	Name     string `json:"name"`
+	ID       string `json:"id"`
 	Archived bool   `json:"archived"`
 }
 
 func (a app) archive(r *http.Request, body archiveBody) (*groupView, error) {
 	actor := a.actor(r)
-	ops, g, err := a.cache.Model().SetArchived(actor, a.sources(), body.Name, body.Archived)
+	ops, g, err := a.cache.Model().SetArchived(actor, a.sources(), body.ID, body.Archived)
 	if err != nil {
 		return nil, err
 	}
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return nil, err
 	}
-	slog.InfoContext(r.Context(), "loop:archived", "group", g.Name, "email", actor.Email, "archived", body.Archived)
-	return a.shown(g.Name, actor), nil
+	slog.InfoContext(r.Context(), "loop:archived", "id", g.ID, "group", g.Name, "email", actor.Email, "archived", body.Archived)
+	return a.shown(g.ID, actor), nil
 }

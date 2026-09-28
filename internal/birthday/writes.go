@@ -10,6 +10,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -20,7 +21,7 @@ type target struct {
 }
 
 type charityEdit struct {
-	Original      string `json:"original"`
+	ID            string `json:"id"`
 	Name          string `json:"name"`
 	DonationLink  string `json:"donationLink"`
 	About         string `json:"about"`
@@ -119,12 +120,12 @@ func (m *Model) outreach(actor access.Actor, rawEmail string, contacted bool) ([
 	return []store.Op{store.Upsert(outreachTab, match, store.Row{"Contacted On": today(), "Contacted By": actor.Email})}, t, nil
 }
 
-func (m *Model) saveDonation(actor access.Actor, rawEmail, charityName, note string) ([]store.Op, target, error) {
+func (m *Model) saveDonation(actor access.Actor, rawEmail, charityKey, note string) ([]store.Op, target, error) {
 	t, err := m.teamStaff(actor, rawEmail)
 	if err != nil {
 		return nil, target{}, err
 	}
-	charity := m.Charity(strings.TrimSpace(charityName))
+	charity := m.Charity(strings.TrimSpace(charityKey))
 	if charity == nil {
 		return nil, target{}, access.Invalid("pick a charity from the list")
 	}
@@ -135,7 +136,7 @@ func (m *Model) saveDonation(actor access.Actor, rawEmail, charityName, note str
 		return nil, target{}, access.Invalid("the note is too long")
 	}
 	t.charity = charity.Name
-	cells := store.Row{"Charity": charity.Name, "Note": strings.TrimSpace(note), "Recorded On": today(), "Recorded By": actor.Email}
+	cells := store.Row{"Charity": charity.ID, "Note": strings.TrimSpace(note), "Recorded On": today(), "Recorded By": actor.Email}
 	return []store.Op{store.Upsert(donationsTab, store.Row{"Email": t.email, "Year": t.year}, cells)}, t, nil
 }
 
@@ -170,7 +171,11 @@ func (m *Model) saveBirthday(actor access.Actor, rawEmail, birthday, override st
 	if err := checkEmail(email); err != nil {
 		return nil, "", access.Invalid("%v", err)
 	}
-	cells := store.Row{"Birthday": strings.TrimSpace(birthday), "Newsletter Override": strings.TrimSpace(override)}
+	pinned := strings.TrimSpace(override)
+	if pinned != "" && m.NewsletterDate(pinned) == nil {
+		return nil, "", access.Invalid("pick a newsletter date from the list")
+	}
+	cells := store.Row{"Birthday": strings.TrimSpace(birthday), "Newsletter Override": pinned}
 	return []store.Op{store.Upsert(birthdaysTab, store.Row{"Email": email}, cells)}, email, nil
 }
 
@@ -267,10 +272,11 @@ func (m *Model) saveCharity(actor access.Actor, edit charityEdit) ([]store.Op, C
 		return nil, Charity{}, false, err
 	}
 	name := strings.TrimSpace(edit.Name)
-	adding := edit.Original == ""
+	key := strings.TrimSpace(edit.ID)
+	adding := key == ""
 	var current *Charity
 	if !adding {
-		current = m.Charity(edit.Original)
+		current = m.Charity(key)
 		if current == nil {
 			return nil, Charity{}, false, access.Missing("no such charity")
 		}
@@ -289,33 +295,34 @@ func (m *Model) saveCharity(actor access.Actor, edit charityEdit) ([]store.Op, C
 		"Name": name, "Donation Link": strings.TrimSpace(edit.DonationLink), "About": strings.TrimSpace(edit.About),
 		"EIN": strings.TrimSpace(edit.EIN), "Allowed": cells.YesNoCell(allowed), "Why Not Allowed": why,
 	}
-	renamed := !adding && edit.Original != name
-	if (adding || renamed) && m.Charity(name) != nil {
+	if other := m.charityNamed(name); other != nil && (adding || other.ID != current.ID) {
 		return nil, Charity{}, false, access.Invalid("%q is already on the list", name)
 	}
-	saved := Charity{Name: name, Allowed: allowed}
 	if adding {
+		key = id.New(m.taken)
+		row["Charity ID"] = key
 		row["Added On"] = today()
-		return []store.Op{store.Insert(charitiesTab, row)}, saved, true, nil
+		return []store.Op{store.Insert(charitiesTab, row)}, Charity{ID: key, Name: name, Allowed: allowed}, true, nil
 	}
-	return []store.Op{store.Update(charitiesTab, store.Row{"Name": edit.Original}, row)}, saved, false, nil
+	return []store.Op{store.Update(charitiesTab, store.Row{"Charity ID": current.ID}, row)}, Charity{ID: current.ID, Name: name, Allowed: allowed}, false, nil
 }
 
-func (c *Cache) deleteCharity(actor access.Actor, name string) ([]store.Op, error) {
+func (c *Cache) deleteCharity(actor access.Actor, key string) ([]store.Op, *Charity, error) {
 	if err := requireAdmin(actor); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	m := c.Model()
-	if m.Charity(name) == nil {
-		return nil, access.Missing("no such charity")
+	charity := m.Charity(strings.TrimSpace(key))
+	if charity == nil {
+		return nil, nil, access.Missing("no such charity")
 	}
-	if m.Settings.DefaultCharity == name {
-		return nil, access.Invalid("pick another default charity first")
+	if m.Settings.DefaultCharity == charity.ID {
+		return nil, nil, access.Invalid("pick another default charity first")
 	}
-	if c.Count(donationsTab, store.Row{"Charity": name}) > 0 {
-		return nil, access.Invalid("donations name this charity; it can be marked not allowed instead")
+	if c.Count(donationsTab, store.Row{"Charity": charity.ID}) > 0 {
+		return nil, nil, access.Invalid("donations name this charity; it can be marked not allowed instead")
 	}
-	return []store.Op{store.Delete(charitiesTab, store.Row{"Name": name})}, nil
+	return []store.Op{store.Delete(charitiesTab, store.Row{"Charity ID": charity.ID})}, charity, nil
 }
 
 func (m *Model) addNewsletterDate(actor access.Actor, raw string) ([]store.Op, string, error) {
@@ -326,38 +333,49 @@ func (m *Model) addNewsletterDate(actor access.Actor, raw string) ([]store.Op, s
 	if _, err := ParseDate(date); err != nil {
 		return nil, "", access.Invalid("%v", err)
 	}
-	if slices.Contains(m.NewsletterDates, date) {
+	if m.newsletterOn(date) != nil {
 		return nil, "", access.Invalid("that date is already on the list")
 	}
-	return []store.Op{store.Insert(newsletterDatesTab, store.Row{"Date": date})}, date, nil
+	return []store.Op{store.Insert(newsletterDatesTab, store.Row{"Newsletter Date ID": id.New(m.taken), "Date": date})}, date, nil
 }
 
-func (m *Model) changeNewsletterDate(actor access.Actor, rawOriginal, rawDate string) ([]store.Op, error) {
+func (m *Model) changeNewsletterDate(actor access.Actor, key, rawDate string) ([]store.Op, *NewsletterDate, error) {
 	if err := requireAdmin(actor); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	original, date := strings.TrimSpace(rawOriginal), strings.TrimSpace(rawDate)
+	date := strings.TrimSpace(rawDate)
 	if _, err := ParseDate(date); err != nil {
-		return nil, access.Invalid("%v", err)
+		return nil, nil, access.Invalid("%v", err)
 	}
-	if !slices.Contains(m.NewsletterDates, original) {
-		return nil, access.Missing("no such newsletter date")
+	n := m.NewsletterDate(strings.TrimSpace(key))
+	if n == nil {
+		return nil, nil, access.Missing("no such newsletter date")
 	}
-	if date == original {
-		return nil, nil
+	if date == n.Date {
+		return nil, n, nil
 	}
-	if slices.Contains(m.NewsletterDates, date) {
-		return nil, access.Invalid("that date is already on the list")
+	if m.newsletterOn(date) != nil {
+		return nil, nil, access.Invalid("that date is already on the list")
 	}
-	return []store.Op{store.Update(newsletterDatesTab, store.Row{"Date": original}, store.Row{"Date": date})}, nil
+	return []store.Op{store.Update(newsletterDatesTab, store.Row{"Newsletter Date ID": n.ID}, store.Row{"Date": date})}, n, nil
 }
 
-func deleteNewsletterDate(actor access.Actor, raw string) ([]store.Op, string, error) {
-	if err := requireAdmin(actor); err != nil {
-		return nil, "", err
+func dropNewsletterDate(n NewsletterDate) []store.Op {
+	return []store.Op{
+		store.Update(birthdaysTab, store.Row{"Newsletter Override": n.ID}, store.Row{"Newsletter Override": ""}),
+		store.Delete(newsletterDatesTab, store.Row{"Newsletter Date ID": n.ID}),
 	}
-	date := strings.TrimSpace(raw)
-	return []store.Op{store.Delete(newsletterDatesTab, store.Row{"Date": date})}, date, nil
+}
+
+func (m *Model) deleteNewsletterDate(actor access.Actor, key string) ([]store.Op, *NewsletterDate, error) {
+	if err := requireAdmin(actor); err != nil {
+		return nil, nil, err
+	}
+	n := m.NewsletterDate(strings.TrimSpace(key))
+	if n == nil {
+		return nil, nil, access.Missing("no such newsletter date")
+	}
+	return dropNewsletterDate(*n), n, nil
 }
 
 func (m *Model) createNewsletterDates(actor access.Actor, weekday int, rawFrom, rawTo string) ([]store.Op, []string, error) {
@@ -383,13 +401,14 @@ func (m *Model) createNewsletterDates(actor access.Actor, weekday int, rawFrom, 
 	}
 	added := []string{}
 	ops := []store.Op{}
+	mint := m.minter()
 	for day := from.AddDate(0, 0, (weekday-int(from.Weekday())+7)%7); !day.After(to); day = day.AddDate(0, 0, 7) {
 		cell := day.Format(DateFormat)
-		if slices.Contains(m.NewsletterDates, cell) {
+		if m.newsletterOn(cell) != nil {
 			continue
 		}
 		added = append(added, cell)
-		ops = append(ops, store.Insert(newsletterDatesTab, store.Row{"Date": cell}))
+		ops = append(ops, store.Insert(newsletterDatesTab, store.Row{"Newsletter Date ID": mint(), "Date": cell}))
 	}
 	if len(added) == 0 {
 		return nil, nil, access.Invalid("every one of those dates is already on the list")
@@ -397,17 +416,19 @@ func (m *Model) createNewsletterDates(actor access.Actor, weekday int, rawFrom, 
 	return ops, added, nil
 }
 
-func (m *Model) clearFutureNewsletterDates(actor access.Actor, day string) ([]store.Op, error) {
+func (m *Model) clearFutureNewsletterDates(actor access.Actor, day string) ([]store.Op, int, error) {
 	if err := requireAdmin(actor); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	ops := []store.Op{}
-	for _, date := range m.NewsletterDates {
-		if date >= day {
-			ops = append(ops, store.Delete(newsletterDatesTab, store.Row{"Date": date}))
+	cleared := 0
+	for _, n := range m.NewsletterDates {
+		if n.Date >= day {
+			ops = append(ops, dropNewsletterDate(n)...)
+			cleared++
 		}
 	}
-	return ops, nil
+	return ops, cleared, nil
 }
 
 func saveSettings(actor access.Actor, s Settings) ([]store.Op, error) {
@@ -496,15 +517,16 @@ func weeklyExport(actor access.Actor, items []exported) ([]store.Op, []store.Op,
 	return rows, marks, nil
 }
 
-func (m *Model) shareIssue(actor access.Actor, issue string, items []exported) ([]store.Op, []store.Op, error) {
+func (m *Model) shareIssue(actor access.Actor, key string, items func(issue string) []exported) ([]store.Op, []store.Op, string, error) {
 	if err := m.requireTeam(actor); err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
-	if !slices.Contains(m.NewsletterDates, issue) {
-		return nil, nil, access.Invalid("that is not a newsletter date")
+	n := m.NewsletterDate(strings.TrimSpace(key))
+	if n == nil {
+		return nil, nil, "", access.Invalid("that is not a newsletter date")
 	}
-	rows, marks := exportOps(actor, items)
-	return rows, marks, nil
+	rows, marks := exportOps(actor, items(n.Date))
+	return rows, marks, n.Date, nil
 }
 
 func recordReminder(actor access.Actor, sv StaffView, kind, to string, today time.Time) ([]store.Op, error) {

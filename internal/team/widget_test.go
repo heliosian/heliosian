@@ -16,7 +16,7 @@ func TestWidget(t *testing.T) {
 	if len(w.Mine) != 3 {
 		t.Fatalf("mine: %+v", w.Mine)
 	}
-	if m := w.Mine[0]; m.Title != "Tech Setup" || m.Under != "All School Movie Night" || m.Start != "2026-11-06" || m.Position != PositionVolunteer || m.Path != "/activities/E003/E026" {
+	if m := w.Mine[0]; m.Title != "Tech Setup" || m.Under != "All School Movie Night" || m.Start != "2026-11-06" || m.Position != PositionVolunteer || m.Path != "/activities/act0000000003/act0000000026" {
 		t.Errorf("a role under a dated event: %+v", m)
 	}
 	if m := w.Mine[2]; m.Title != "Tech Team" || m.Start != "" || m.Timing != "All Year" || m.Position != PositionOpen {
@@ -47,40 +47,40 @@ func TestWidget(t *testing.T) {
 func TestPriorityIsAnAdmins(t *testing.T) {
 	cache, mux := newServer(t)
 	edit := map[string]any{
-		"id": "E020", "year": "2026 - 2027", "title": "India", "parent": "E001",
-		"category": "C08", "status": StatusOpen, "coLeaderNeeded": true, "directSignUp": true, "priority": true,
+		"id": "act0000000020", "year": "2026 - 2027", "title": "India", "parent": "act0000000001",
+		"category": "tcg0000000008", "status": StatusOpen, "coLeaderNeeded": true, "directSignUp": true, "priority": true,
 	}
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("co-chair save: %d %s", rec.Code, rec.Body)
 	}
-	if cache.Model().Activity("E020").Priority {
+	if cache.Model().Activity("act0000000020").Priority {
 		t.Fatal("a co-chair marked a priority")
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("admin save: %d %s", rec.Code, rec.Body)
 	}
-	if !cache.Model().Activity("E020").Priority {
+	if !cache.Model().Activity("act0000000020").Priority {
 		t.Fatal("an admin's mark did not stick")
 	}
 	edit["priority"] = false
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("co-chair save: %d %s", rec.Code, rec.Body)
 	}
-	if !cache.Model().Activity("E020").Priority {
+	if !cache.Model().Activity("act0000000020").Priority {
 		t.Fatal("a co-chair cleared an admin's mark")
 	}
 	edit["volunteersComplete"] = true
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("complete: %d %s", rec.Code, rec.Body)
 	}
-	if cache.Model().Activity("E020").Priority {
+	if cache.Model().Activity("act0000000020").Priority {
 		t.Fatal("a complete thing kept its priority")
 	}
 	edit["priority"] = true
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("admin save: %d %s", rec.Code, rec.Body)
 	}
-	if cache.Model().Activity("E020").Priority {
+	if cache.Model().Activity("act0000000020").Priority {
 		t.Fatal("an admin marked a complete thing")
 	}
 }

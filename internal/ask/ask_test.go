@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -44,7 +45,7 @@ var sampleNow = time.Date(2026, 9, 12, 9, 0, 0, 0, when.Location)
 func sampleSources(t *testing.T) Sources {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	directory, err := who.LoadModel(dir, testkit.All, testkit.All, []byte("test"))
+	directory, err := who.LoadModel(dir, testkit.All, testkit.All, []byte("sample"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,6 +370,13 @@ func TestCalendarEventsSearchesTheYear(t *testing.T) {
 	if len(events) != 1 || events[0].(map[string]any)["dayType"] != "No School" {
 		t.Fatalf("thanksgiving: %v", events)
 	}
+	if tags := fmt.Sprint(events[0].(map[string]any)["tags"]); !strings.Contains(tags, "Jays") || !strings.Contains(tags, "Schedule") {
+		t.Errorf("thanksgiving's tags by name: %s", tags)
+	}
+	tagged := call(t, sampleViewer(t, jordan), "calendar_events", `{"from":"2026-09-01","to":"2026-09-30","tag":"trip"}`)["events"].([]any)
+	if len(tagged) != 1 || tagged[0].(map[string]any)["title"] != "Jays and Ravens Camping" {
+		t.Errorf("trips in September: %v", tagged)
+	}
 }
 
 func TestVolunteerOpportunitiesNameTheHouseholdsSignUps(t *testing.T) {
@@ -501,9 +509,13 @@ func TestPartiesSayWhereTheyStandAgainstToday(t *testing.T) {
 		if party["past"] == true {
 			t.Errorf("a past party was listed: %v", party["title"])
 		}
-		if party["title"] == "Fondue & Fort Night" && party["whenAgainstToday"] != "tomorrow" {
-			t.Errorf("fondue: %v", party["whenAgainstToday"])
+		if party["title"] == "Fondue & Fort Night" && (party["whenAgainstToday"] != "tomorrow" || party["category"] != "Family Social") {
+			t.Errorf("fondue: %v, %v", party["whenAgainstToday"], party["category"])
 		}
+	}
+	social := call(t, v, "parties", `{"query":"children social"}`)
+	if found := social["parties"].([]any); len(found) != 1 || found[0].(map[string]any)["title"] != "Nerf Blaster Bash" {
+		t.Errorf("parties by category: %v", found)
 	}
 	all := call(t, v, "parties", `{"include_past":true}`)
 	if len(all["parties"].([]any)) <= len(result["parties"].([]any)) || result["pastPartiesLeftOut"].(float64) == 0 {

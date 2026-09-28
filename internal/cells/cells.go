@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -127,6 +128,9 @@ func CheckPretty(pretty string) error {
 	}
 	if !prettyForm.MatchString(pretty) {
 		return fmt.Errorf("pretty id %q is not lower-case letters, digits and hyphens", pretty)
+	}
+	if _, ok := id.Parse(pretty); ok {
+		return fmt.Errorf("pretty id %q reads as an id", pretty)
 	}
 	return nil
 }

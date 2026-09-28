@@ -1,4 +1,4 @@
-import {state, me, isAdmin, isSystemAdmin, postedAndHosting, sourceWords, dayType, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
+import {state, me, isAdmin, isSystemAdmin, postedAndHosting, sourceWords, dayType, dayTypeName, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {paragraphs} from '../dom.js';
 import {el, svg, button, toast, longToast, avatar, copyText} from '/elements.js';
@@ -39,7 +39,7 @@ function imported(e) {
 }
 
 function sheetTags(e) {
-  const builtIn = new Set(state.model.tags.filter(t => t.builtIn).map(t => t.name));
+  const builtIn = new Set(state.model.tags.filter(t => t.builtIn).map(t => t.id));
   return e.tags.filter(t => !builtIn.has(t));
 }
 
@@ -159,7 +159,8 @@ export function eventPage(e) {
   const main = el('div', 'detail-main');
   const marks = el('div', 'detail-marks');
   if (e.dayType) {
-    marks.append(el('span', 'chip chip-day ' + dayTypeClass(e.dayType), e.dayType));
+    const name = dayTypeName(e.dayType);
+    marks.append(el('span', 'chip chip-day ' + dayTypeClass(name), name));
   }
   if (!((e.sharing !== 'Public' || e.cancelled) && !e.classrooms.length)) {
     marks.append(audienceChips(e));

@@ -26,13 +26,13 @@ func TestLinkedParties(t *testing.T) {
 		}
 	}
 	for _, p := range parties {
-		if p.ID == "P013" || p.ID == "P014" {
+		if p.ID == "pty0000000013" || p.ID == "pty0000000014" {
 			t.Errorf("party %s is not open", p.ID)
 		}
 		if p.Start == "" || p.Title == "" || p.Path == "" || p.Availability == "" {
 			t.Errorf("party incomplete: %+v", p)
 		}
-		if p.ID == "P001" && (p.Path != "/p/fondue" || p.Location != "The Parks' House in Los Altos" || p.Start != "2026-09-19 17:00" || p.End != "2026-09-19 21:00") {
+		if p.ID == "pty0000000001" && (p.Path != "/p/fondue" || p.Location != "The Parks' House in Los Altos" || p.Start != "2026-09-19 17:00" || p.End != "2026-09-19 21:00") {
 			t.Errorf("fondue = %+v", p)
 		}
 		if strings.Contains(p.Description, "Alder Court") || strings.Contains(p.Location, "Alder Court") {
@@ -57,8 +57,8 @@ func TestLinkedPartiesMine(t *testing.T) {
 		}
 	}
 	want := map[string]string{
-		"P001": when.MineGoing, "P002": when.MineGoing, "P003": when.MineGoing, "P005": when.MineGoing, "P012": when.MineGoing,
-		"P006": when.MineWaitlisted, "P007": when.MineWaitlisted, "P004": "",
+		"pty0000000001": when.MineGoing, "pty0000000002": when.MineGoing, "pty0000000003": when.MineGoing, "pty0000000005": when.MineGoing, "pty0000000012": when.MineGoing,
+		"pty0000000006": when.MineWaitlisted, "pty0000000007": when.MineWaitlisted, "pty0000000004": "",
 	}
 	for id, mine := range want {
 		if l, ok := byID[id]; !ok || l.Mine != mine {
@@ -80,7 +80,7 @@ func TestLinkedPartiesMine(t *testing.T) {
 func TestPartyListsCarryTheirHosts(t *testing.T) {
 	cache, _ := newServer(t)
 	lists := cache.Model().Lists(sampleDirectory, parent, time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC))
-	i := slices.IndexFunc(lists, func(l who.List) bool { return l.Key == "party:P001" })
+	i := slices.IndexFunc(lists, func(l who.List) bool { return l.Key == "party:pty0000000001" })
 	if i < 0 {
 		t.Fatalf("no Fondue & Fort Night list: %+v", lists)
 	}

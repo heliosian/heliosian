@@ -83,16 +83,20 @@ type charityLookup struct {
 }
 
 type charityRef struct {
-	Name string `json:"name"`
+	ID string `json:"id"`
 }
 
-type dateRef struct {
+type newDate struct {
 	Date string `json:"date"`
 }
 
+type dateRef struct {
+	ID string `json:"id"`
+}
+
 type dateMove struct {
-	Original string `json:"original"`
-	Date     string `json:"date"`
+	ID   string `json:"id"`
+	Date string `json:"date"`
 }
 
 type dateRun struct {
@@ -370,7 +374,7 @@ func (a app) saveCharity(r *http.Request, body charityEdit) (serve.None, error) 
 	if err := a.commit(r, actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "birthday: saved charity", "actor", actor.Email, "adding", adding, "charity", saved.Name, "allowed", saved.Allowed)
+	slog.InfoContext(r.Context(), "birthday: saved charity", "actor", actor.Email, "adding", adding, "id", saved.ID, "charity", saved.Name, "allowed", saved.Allowed)
 	return serve.None{}, nil
 }
 
@@ -403,18 +407,18 @@ func (a app) describeCharity(r *http.Request, body charityLookup) (describe.Info
 
 func (a app) deleteCharity(r *http.Request, body charityRef) (serve.None, error) {
 	actor := a.actor(r)
-	ops, err := a.cache.deleteCharity(actor, body.Name)
+	ops, charity, err := a.cache.deleteCharity(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if err := a.commit(r, actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "birthday: removed charity", "actor", actor.Email, "charity", body.Name)
+	slog.InfoContext(r.Context(), "birthday: removed charity", "actor", actor.Email, "id", charity.ID, "charity", charity.Name)
 	return serve.None{}, nil
 }
 
-func (a app) addNewsletterDate(r *http.Request, body dateRef) (serve.None, error) {
+func (a app) addNewsletterDate(r *http.Request, body newDate) (serve.None, error) {
 	actor := a.actor(r)
 	ops, date, err := a.cache.Model().addNewsletterDate(actor, body.Date)
 	if err != nil {
@@ -429,7 +433,7 @@ func (a app) addNewsletterDate(r *http.Request, body dateRef) (serve.None, error
 
 func (a app) changeNewsletterDate(r *http.Request, body dateMove) (serve.None, error) {
 	actor := a.actor(r)
-	ops, err := a.cache.Model().changeNewsletterDate(actor, body.Original, body.Date)
+	ops, n, err := a.cache.Model().changeNewsletterDate(actor, body.ID, body.Date)
 	if err != nil {
 		return serve.None{}, err
 	}
@@ -439,20 +443,20 @@ func (a app) changeNewsletterDate(r *http.Request, body dateMove) (serve.None, e
 	if err := a.commit(r, actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "birthday: moved newsletter date", "actor", actor.Email, "from", strings.TrimSpace(body.Original), "to", strings.TrimSpace(body.Date))
+	slog.InfoContext(r.Context(), "birthday: moved newsletter date", "actor", actor.Email, "id", n.ID, "from", n.Date, "to", strings.TrimSpace(body.Date))
 	return serve.None{}, nil
 }
 
 func (a app) deleteNewsletterDate(r *http.Request, body dateRef) (serve.None, error) {
 	actor := a.actor(r)
-	ops, date, err := deleteNewsletterDate(actor, body.Date)
+	ops, n, err := a.cache.Model().deleteNewsletterDate(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if err := a.commit(r, actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "birthday: removed newsletter date", "actor", actor.Email, "date", date)
+	slog.InfoContext(r.Context(), "birthday: removed newsletter date", "actor", actor.Email, "id", n.ID, "date", n.Date)
 	return serve.None{}, nil
 }
 
@@ -472,7 +476,7 @@ func (a app) createNewsletterDates(r *http.Request, body dateRun) (map[string]in
 func (a app) clearFutureNewsletterDates(r *http.Request, _ serve.None) (serve.None, error) {
 	actor := a.actor(r)
 	day := today()
-	ops, err := a.cache.Model().clearFutureNewsletterDates(actor, day)
+	ops, cleared, err := a.cache.Model().clearFutureNewsletterDates(actor, day)
 	if err != nil {
 		return serve.None{}, err
 	}
@@ -482,7 +486,7 @@ func (a app) clearFutureNewsletterDates(r *http.Request, _ serve.None) (serve.No
 	if err := a.commit(r, actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "birthday: cleared future newsletter dates", "actor", actor.Email, "count", len(ops), "from", day)
+	slog.InfoContext(r.Context(), "birthday: cleared future newsletter dates", "actor", actor.Email, "count", cleared, "from", day)
 	return serve.None{}, nil
 }
 

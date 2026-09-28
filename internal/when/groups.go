@@ -106,6 +106,7 @@ func splitEmails(cell string) []string {
 }
 
 func (m *Model) GroupOf(id, gid string) *InviteGroup {
+	gid = m.aliases.Resolve(gid)
 	for i := range m.Groups[id] {
 		if m.Groups[id][i].ID == gid {
 			return &m.Groups[id][i]

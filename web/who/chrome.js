@@ -1,10 +1,10 @@
-import {state, byEmail} from './state.js';
+import {state, byEmail, tagKey} from './state.js';
 import {segments, hue, firstName, trimMiddle} from './dom.js';
 import {el, svg} from '/elements.js';
 import {saveNavOpen, loadNavScroll, saveNavScroll} from './storage.js';
 import {familyOf, myFamilyKey} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
-import {tagNames, listKeys, listLabel, listApp, sharedKeys, sharedOf, managersOf, tagHref, onTagsChange, onTagsChangeChrome} from './tags.js';
+import {tagKeys, tagLabel, listKeys, listLabel, listApp, sharedKeys, sharedOf, managersOf, tagHref, onTagsChange, onTagsChangeChrome} from './tags.js';
 import {staleItems, familyInfoBanner, familyNavPeople, personTodoCount} from './stale.js';
 import {searchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
@@ -244,8 +244,8 @@ function fillNav(nav) {
       return icon;
     };
     const {own, shared} = groupedTags();
-    for (const name of own) {
-      listLink('/people?tag=' + encodeURIComponent(name), whiteIcon('tag'), name, params.get('tag') === name);
+    for (const entry of own) {
+      listLink(entry.href, whiteIcon('tag'), entry.name, entry.active(params), entry.title);
     }
     if (shared.length) {
       toolsBody.append(sharedTagsHeading('nav-subheading'));
@@ -336,25 +336,17 @@ function magicTagsHeading(className) {
 }
 
 function groupedTags() {
-  const own = tagNames().filter(name => !managersOf(name).length);
+  const entry = (key, mine, title) => ({
+    name: tagLabel(key),
+    mine,
+    href: tagHref(key),
+    title,
+    active: params => params.has('tag') && tagKey(params.get('tag')) === key,
+  });
+  const own = tagKeys().filter(key => !managersOf(key).length).map(key => entry(key, true, tagLabel(key)));
   const shared = [
-    ...tagNames().filter(name => managersOf(name).length).map(name => ({
-      name,
-      mine: true,
-      href: '/people?tag=' + encodeURIComponent(name),
-      title: `${name} - your tag, shared with others`,
-      active: params => params.get('tag') === name,
-    })),
-    ...sharedKeys().map(key => {
-      const t = sharedOf(key);
-      return {
-        name: t.name,
-        mine: false,
-        href: tagHref(key),
-        title: `${t.name} - ${t.ownerName}'s tag, shared with you`,
-        active: params => params.get('shared') === `${t.owner}:${t.name}`,
-      };
-    }),
+    ...tagKeys().filter(key => managersOf(key).length).map(key => entry(key, true, `${tagLabel(key)} - your tag, shared with others`)),
+    ...sharedKeys().map(key => entry(key, false, `${tagLabel(key)} - ${sharedOf(key).ownerName}'s tag, shared with you`)),
   ].sort((a, b) => a.name.localeCompare(b.name));
   return {own, shared};
 }
@@ -403,10 +395,10 @@ function renderMobileListsMenu() {
     body.append(a);
   };
   const {own, shared} = groupedTags();
-  for (const name of own) {
+  for (const entry of own) {
     const icon = svg('tag');
-    icon.style.color = `hsl(${hue(name)}, 65%, 40%)`;
-    listItem('/people?tag=' + encodeURIComponent(name), icon, name, params.get('tag') === name);
+    icon.style.color = `hsl(${hue(entry.name)}, 65%, 40%)`;
+    listItem(entry.href, icon, entry.name, entry.active(params));
   }
   if (shared.length) {
     body.append(sharedTagsHeading('mobile-lists-subheading'));

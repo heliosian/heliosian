@@ -81,19 +81,26 @@ func Register(mux *http.ServeMux, d Deps) {
 
 func Redirected(cache *Cache, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet || r.Method == http.MethodHead {
-			if to := cache.Model().Destination(r.URL.Path); to != "" {
-				if strings.HasPrefix(to, "/") {
-					to = "https://" + r.Host + to
-				}
-				if r.URL.RawQuery != "" && !strings.Contains(to, "?") {
-					to += "?" + r.URL.RawQuery
-				}
-				http.Redirect(w, r, to, http.StatusFound)
-				return
-			}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			next.ServeHTTP(w, r)
+			return
 		}
-		next.ServeHTTP(w, r)
+		model := cache.Model()
+		to, status := model.Aliased(r.URL.Path), http.StatusMovedPermanently
+		if to == "" {
+			to, status = model.Destination(r.URL.Path), http.StatusFound
+		}
+		if to == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if strings.HasPrefix(to, "/") {
+			to = "https://" + r.Host + to
+		}
+		if r.URL.RawQuery != "" && !strings.Contains(to, "?") {
+			to += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, to, status)
 	})
 }
 
@@ -205,20 +212,20 @@ func (p activityPatch) fields() []string {
 	return out
 }
 
-func (a app) saveActivity(r *http.Request, patch activityPatch) (serve.None, error) {
+func (a app) saveActivity(r *http.Request, patch activityPatch) (activityRef, error) {
 	actor := a.actor(r)
 	s, err := a.cache.Model().saveActivity(actor, patch)
 	if err != nil {
-		return serve.None{}, err
+		return activityRef{}, err
 	}
 	if err := a.cache.Commit(r.Context(), actor, s.ops...); err != nil {
-		return serve.None{}, err
+		return activityRef{}, err
 	}
 	slog.InfoContext(r.Context(), "team:saved activity", "actor", actor.Email, "action", s.action, "activity", s.title, "id", s.id, "year", s.year, "status", s.status)
 	if s.adding {
 		a.mailNewActivity(r, a.cache.Model().Activity(s.id), actor.Email)
 	}
-	return serve.None{}, nil
+	return activityRef{ID: s.id}, nil
 }
 
 func (a app) deleteActivity(r *http.Request, body activityRef) (serve.None, error) {
@@ -265,21 +272,20 @@ func (a app) orderChildren(r *http.Request, body orderBody) (serve.None, error) 
 	return serve.None{}, nil
 }
 
-type deleteLinkBody struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
+type linkRef struct {
+	Link string `json:"link"`
 }
 
-func (a app) deleteLink(r *http.Request, body deleteLinkBody) (serve.None, error) {
+func (a app) deleteLink(r *http.Request, body linkRef) (serve.None, error) {
 	actor := a.actor(r)
-	act, ops, err := a.cache.Model().deleteLink(actor, body.ID, body.Title)
+	act, ops, err := a.cache.Model().deleteLink(actor, body.Link)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	slog.InfoContext(r.Context(), "team:deleted link", "actor", actor.Email, "link", body.Title, "activity", act.Title, "year", act.Year)
+	slog.InfoContext(r.Context(), "team:deleted link", "actor", actor.Email, "link", body.Link, "activity", act.Title, "year", act.Year)
 	return serve.None{}, nil
 }
 

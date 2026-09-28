@@ -78,17 +78,17 @@ type TeamView struct {
 }
 
 type View struct {
-	User            User        `json:"user"`
-	Year            YearView    `json:"year"`
-	Today           string      `json:"today"`
-	Settings        Settings    `json:"settings"`
-	Staff           []StaffView `json:"staff"`
-	Skipped         []StaffView `json:"skipped"`
-	Missing         []StaffView `json:"missing"`
-	Charities       []Charity   `json:"charities"`
-	NewsletterDates []string    `json:"newsletterDates"`
-	Team            []TeamView  `json:"team"`
-	Departments     []string    `json:"departments"`
+	User            User             `json:"user"`
+	Year            YearView         `json:"year"`
+	Today           string           `json:"today"`
+	Settings        Settings         `json:"settings"`
+	Staff           []StaffView      `json:"staff"`
+	Skipped         []StaffView      `json:"skipped"`
+	Missing         []StaffView      `json:"missing"`
+	Charities       []Charity        `json:"charities"`
+	NewsletterDates []NewsletterDate `json:"newsletterDates"`
+	Team            []TeamView       `json:"team"`
+	Departments     []string         `json:"departments"`
 }
 
 func dateCell(t time.Time) string {
@@ -105,9 +105,9 @@ func (v viewer) staff(model *Model, b *Birthday, year Year, today time.Time) Sta
 	month, day, _ := ParseMonthDay(b.Birthday)
 	occurrence := year.Occurrence(month, day)
 	sv.BirthdayThisYear = dateCell(occurrence)
-	newsletter, hasNewsletter := year.Newsletter(occurrence, model.NewsletterDates)
+	newsletter, hasNewsletter := year.Newsletter(occurrence, model.issueDates())
 	if b.Override != "" {
-		newsletter, _ = ParseDate(b.Override)
+		newsletter, _ = ParseDate(model.NewsletterDate(b.Override).Date)
 		hasNewsletter = true
 	}
 	if hasNewsletter {
@@ -157,7 +157,7 @@ func Render(model *Model, directory func() *who.Model, as access.Actor, now time
 		Skipped:         []StaffView{},
 		Missing:         []StaffView{},
 		Charities:       []Charity{},
-		NewsletterDates: []string{},
+		NewsletterDates: []NewsletterDate{},
 		Team:            []TeamView{},
 		Departments:     people.Departments,
 	}

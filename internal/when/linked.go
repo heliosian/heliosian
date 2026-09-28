@@ -35,15 +35,30 @@ type Standing struct {
 	Mine bool   `json:"mine,omitempty"`
 }
 
-var builtinTags = []Tag{
-	{Name: TagCelebrate, Description: "Fun(d)raiser parties on Helios Celebrate.", Group: BuiltinGroup, Default: true, BuiltIn: true},
-	{Name: TagHCA, Description: "Events the HCA runs, from HCA-Team.", Group: BuiltinGroup, Default: true, BuiltIn: true},
-	{Name: TagMisc, Description: "Events the sheet has not filed under a category.", Group: BuiltinGroup, Default: true, BuiltIn: true},
-	{Name: TagGoing, Description: "Events you said yes to, parties your household holds tickets to, and HCA events someone in it signed up for.", Group: BuiltinGroup, Default: true, BuiltIn: true},
-	{Name: TagWaitlisted, Description: "Parties your household is on the waitlist for.", Group: BuiltinGroup, Default: true, BuiltIn: true},
+const (
+	TagCelebrate  = "tag0000000001"
+	TagHCA        = "tag0000000002"
+	TagMisc       = "tag0000000003"
+	TagGoing      = "tag0000000004"
+	TagWaitlisted = "tag0000000005"
+	TagSchedule   = "tag0000000006"
+	TagParents    = "tag0000000007"
+	TagStaff      = "tag0000000008"
+)
+
+var builtinTags = map[string]string{TagCelebrate: "celebrate", TagHCA: "hca", TagMisc: "misc", TagGoing: "going", TagWaitlisted: "waitlisted"}
+
+func BuiltInTag(key string) bool {
+	_, ok := builtinTags[key]
+	return ok
 }
 
-const BuiltinGroup = "Other"
+func tagRole(key string) string {
+	if key == TagSchedule {
+		return "schedule"
+	}
+	return builtinTags[key]
+}
 
 var tagBySource = map[string]string{SourceCelebrate: TagCelebrate, SourceTeam: TagHCA}
 

@@ -1,4 +1,4 @@
-import {state, tags, tagManagers, shared, lists, byEmail} from './state.js';
+import {state, tags, shared, lists, byEmail, tagKey} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {firstName} from './dom.js';
 import {el, svg} from '/elements.js';
@@ -7,16 +7,8 @@ import {api} from '/api.js';
 import {photoOrInitials, personPhotoUrl} from './people.js';
 import {clampFilterPanel} from '/rules.js';
 
-export function tagNames() {
-  return Object.keys(tags).sort((a, b) => a.localeCompare(b));
-}
-
-export function sharedKey(owner, name) {
-  return `shared:${owner}:${name}`;
-}
-
-export function isSharedKey(key) {
-  return Object.hasOwn(shared, key);
+export function tagKeys() {
+  return Object.keys(tags).sort((a, b) => tags[a].name.localeCompare(tags[b].name));
 }
 
 export function sharedKeys() {
@@ -27,25 +19,26 @@ export function sharedOf(key) {
   return shared[key];
 }
 
-export function managersOf(name) {
-  return tagManagers[name] || [];
+function tagOf(key) {
+  return tags[key] || shared[key];
+}
+
+export function managersOf(key) {
+  return tagOf(key) ? tagOf(key).managers : [];
 }
 
 export function tagLabel(key) {
-  if (shared[key]) {
-    return shared[key].name;
+  if (tagOf(key)) {
+    return tagOf(key).name;
   }
   return lists[key] ? lists[key].name : key;
 }
 
 export function tagHref(key) {
-  if (shared[key]) {
-    return '/people?shared=' + encodeURIComponent(`${shared[key].owner}:${shared[key].name}`);
+  if (tagOf(key)) {
+    return '/people?tag=' + encodeURIComponent(tagOf(key).id);
   }
-  if (lists[key]) {
-    return '/people?list=' + encodeURIComponent(key);
-  }
-  return '/people?tag=' + encodeURIComponent(key);
+  return '/people?list=' + encodeURIComponent(key);
 }
 
 const listIcons = {party: 'party', activity: 'activity', room: 'classrooms', group: 'people'};
@@ -73,8 +66,8 @@ export function listSource(key) {
   if (!source) {
     return null;
   }
-  const id = key.slice(key.indexOf(':') + 1);
-  return {...source, href: appOrigin(source.app) + source.path + encodeURIComponent(id)};
+  const page = lists[key].kind === 'group' ? lists[key].slug : key.slice(key.indexOf(':') + 1);
+  return {...source, href: appOrigin(source.app) + source.path + encodeURIComponent(page)};
 }
 
 export function listApp(key) {
@@ -83,10 +76,10 @@ export function listApp(key) {
 }
 
 export function members(key) {
-  if (shared[key]) {
-    return shared[key].people;
+  if (tagOf(key)) {
+    return tagOf(key).people;
   }
-  return lists[key] ? lists[key].people : tags[key] || [];
+  return lists[key] ? lists[key].people : [];
 }
 
 export function selectedGuests() {
@@ -102,7 +95,7 @@ export function selectedGuests() {
 
 export function tagFacetOptions() {
   return [
-    ...tagNames(),
+    ...tagKeys().map(key => ({value: key, label: tags[key].name})),
     ...sharedKeys().map(key => ({value: key, label: shared[key].name, icon: 'families'})),
     ...listKeys().map(key => ({value: key, label: lists[key].name, icon: listIcon(key)})),
   ];
@@ -119,24 +112,24 @@ export function onTagsChangeChrome(fn) {
   chromeChanged = fn;
 }
 
-export async function deleteTag(name) {
+export async function deleteTag(key) {
   const form = new FormData();
-  form.append('tag', name);
+  form.append('tag', tags[key].id);
   try {
     await api('POST', '/api/directory/tag-delete', form);
   } catch (err) {
     alert(err.message);
     return false;
   }
-  delete tags[name];
+  delete tags[key];
   chromeChanged();
   pageChanged();
   return true;
 }
 
-export async function renameTag(from, to) {
+export async function renameTag(key, to) {
   const form = new FormData();
-  form.append('tag', from);
+  form.append('tag', tags[key].id);
   form.append('name', to);
   try {
     await api('POST', '/api/directory/tag-rename', form);
@@ -144,12 +137,7 @@ export async function renameTag(from, to) {
     alert(err.message);
     return false;
   }
-  tags[to] = tags[from];
-  delete tags[from];
-  if (tagManagers[from]) {
-    tagManagers[to] = tagManagers[from];
-    delete tagManagers[from];
-  }
+  tags[key].name = to;
   chromeChanged();
   pageChanged();
   return true;
@@ -157,32 +145,29 @@ export async function renameTag(from, to) {
 
 export async function copyTag(key, to) {
   const form = new FormData();
-  if (shared[key]) {
-    form.append('tag', shared[key].name);
-    form.append('owner', shared[key].owner);
-  } else {
-    form.append('tag', key);
-  }
+  form.append('tag', tagOf(key).id);
   form.append('name', to);
+  let saved;
   try {
-    await api('POST', '/api/directory/tag-copy', form);
+    saved = await api('POST', '/api/directory/tag-copy', form);
   } catch (err) {
     alert(err.message);
-    return false;
+    return null;
   }
-  tags[to] = [...members(key)];
+  const me = state.model.user;
+  tags[tagKey(saved.id)] = {id: saved.id, owner: me.email, ownerName: me.name, name: to, people: [...members(key)], managers: []};
   chromeChanged();
   pageChanged();
-  return true;
+  return saved.id;
 }
 
-function tagNamesByRecency() {
+function tagKeysByRecency() {
   const usage = loadTagUsage();
-  return tagNames().sort((a, b) => (usage[b] || 0) - (usage[a] || 0));
+  return tagKeys().sort((a, b) => (usage[b] || 0) - (usage[a] || 0));
 }
 
 export function tagsOf(email) {
-  return [...tagNames().filter(name => tags[name].includes(email)), ...sharedKeys().filter(key => shared[key].people.includes(email))];
+  return [...tagKeys(), ...sharedKeys()].filter(key => tagOf(key).people.includes(email));
 }
 
 function isTagged(email) {
@@ -190,25 +175,11 @@ function isTagged(email) {
 }
 
 async function setTag(email, key, on) {
-  const form = new FormData();
-  form.append('person', email);
-  form.append('on', on ? '1' : '0');
-  if (shared[key]) {
-    const t = shared[key];
-    t.people = on ? (t.people.includes(email) ? t.people : [...t.people, email].sort()) : t.people.filter(e => e !== email);
-    form.append('tag', t.name);
-    form.append('owner', t.owner);
-  } else {
-    const people = tags[key] || [];
-    if (on) {
-      tags[key] = people.includes(email) ? people : [...people, email];
-    } else {
-      tags[key] = people.filter(e => e !== email);
-      if (!tags[key].length) {
-        delete tags[key];
-      }
-    }
-    form.append('tag', key);
+  const t = tagOf(key);
+  t.people = on ? (t.people.includes(email) ? t.people : [...t.people, email].sort()) : t.people.filter(e => e !== email);
+  if (!t.people.length) {
+    delete tags[key];
+    delete shared[key];
   }
   if (on) {
     saveLastTag(key);
@@ -216,6 +187,10 @@ async function setTag(email, key, on) {
   }
   chromeChanged();
   pageChanged();
+  const form = new FormData();
+  form.append('person', email);
+  form.append('on', on ? '1' : '0');
+  form.append('tag', t.id);
   try {
     await api('POST', '/api/directory/tag', form);
   } catch (err) {
@@ -223,9 +198,35 @@ async function setTag(email, key, on) {
   }
 }
 
-export async function shareTag(name, manager, on) {
+async function addToNewTag(email, name) {
   const form = new FormData();
-  form.append('tag', name);
+  form.append('person', email);
+  form.append('on', '1');
+  form.append('name', name);
+  let saved;
+  try {
+    saved = await api('POST', '/api/directory/tag', form);
+  } catch (err) {
+    alert(err.message);
+    return null;
+  }
+  const key = tagKey(saved.id);
+  if (tags[key]) {
+    tags[key].people = tags[key].people.includes(email) ? tags[key].people : [...tags[key].people, email].sort();
+  } else {
+    const me = state.model.user;
+    tags[key] = {id: saved.id, owner: me.email, ownerName: me.name, name, people: [email], managers: []};
+  }
+  saveLastTag(key);
+  recordTagUsage(key);
+  chromeChanged();
+  pageChanged();
+  return key;
+}
+
+export async function shareTag(key, manager, on) {
+  const form = new FormData();
+  form.append('tag', tags[key].id);
   form.append('manager', manager);
   form.append('on', on ? '1' : '0');
   try {
@@ -234,22 +235,18 @@ export async function shareTag(name, manager, on) {
     alert(err.message);
     return false;
   }
-  const current = (tagManagers[name] || []).filter(e => e !== manager);
+  const current = tags[key].managers.filter(e => e !== manager);
   if (on) {
     current.push(manager);
     current.sort();
   }
-  if (current.length) {
-    tagManagers[name] = current;
-  } else {
-    delete tagManagers[name];
-  }
+  tags[key].managers = current;
   return true;
 }
 
 export function manageControl(key, onManagersChange) {
   const isShared = !!shared[key];
-  const name = isShared ? shared[key].name : key;
+  const name = tagOf(key).name;
   const wrap = el('div', 'filter-wrap');
   const button = el('button', 'filter-button facet-button tag-manage');
   button.type = 'button';
@@ -287,20 +284,21 @@ export function manageControl(key, onManagersChange) {
       if (!to || to === name) {
         return;
       }
-      if (await renameTag(name, to)) {
-        location.href = '/people?tag=' + encodeURIComponent(to);
+      if (await renameTag(key, to)) {
+        location.href = tagHref(key);
       }
     });
   }
   item('copy', 'Duplicate', 'Make a new tag of your own with the same people', async () => {
     open(null);
-    const suggested = isShared && !tags[name] ? name : `${name} copy`;
+    const suggested = isShared && !tagKeys().some(k => tags[k].name === name) ? name : `${name} copy`;
     const to = (prompt('Name for the copy', suggested) || '').trim().slice(0, 40);
     if (!to || (!isShared && to === name)) {
       return;
     }
-    if (await copyTag(key, to)) {
-      location.href = '/people?tag=' + encodeURIComponent(to);
+    const made = await copyTag(key, to);
+    if (made) {
+      location.href = tagHref(tagKey(made));
     }
   });
   let shareItem = null;
@@ -324,12 +322,12 @@ export function manageControl(key, onManagersChange) {
   });
   item('trash', 'Delete tag', 'Delete this tag - nobody is removed from the directory, just untagged', async () => {
     open(null);
-    const count = members(name).length;
+    const count = members(key).length;
     const who = count === 1 ? 'the one person' : `all ${count} people`;
     if (!confirm(`Delete the tag "${name}"? It comes off ${who} in it. This can't be undone.`)) {
       return;
     }
-    if (await deleteTag(name)) {
+    if (await deleteTag(key)) {
       location.href = '/people';
     }
   }).classList.add('manage-item-danger');
@@ -352,12 +350,12 @@ export function manageControl(key, onManagersChange) {
   share.append(managers, searchBox);
 
   const updateLabel = () => {
-    const n = managersOf(name).length;
+    const n = managersOf(key).length;
     shareItem.querySelector('span').textContent = n ? `Share (${n})` : 'Share';
   };
   const paintManagers = () => {
     managers.replaceChildren();
-    for (const email of managersOf(name)) {
+    for (const email of managersOf(key)) {
       const p = byEmail[email];
       if (!p) {
         continue;
@@ -369,7 +367,7 @@ export function manageControl(key, onManagersChange) {
       remove.title = `Stop ${firstName(p.fullName)} managing this tag`;
       remove.append(svg('close'));
       remove.addEventListener('click', async () => {
-        if (await shareTag(name, email, false)) {
+        if (await shareTag(key, email, false)) {
           paintManagers();
           updateLabel();
           onManagersChange();
@@ -388,7 +386,7 @@ export function manageControl(key, onManagersChange) {
     }
     const me = state.model.user.email;
     const matches = state.model.people
-      .filter(p => p.email !== me && !managersOf(name).includes(p.email))
+      .filter(p => p.email !== me && !managersOf(key).includes(p.email))
       .filter(p => p.fullName.toLowerCase().includes(q) || p.email.toLowerCase().includes(q))
       .slice(0, 6);
     if (!matches.length) {
@@ -400,7 +398,7 @@ export function manageControl(key, onManagersChange) {
       row.type = 'button';
       row.append(photoOrInitials(personPhotoUrl(p), p.fullName, 'share-avatar'), el('span', '', p.fullName), svg('plus'));
       row.addEventListener('click', async () => {
-        if (await shareTag(name, p.email, true)) {
+        if (await shareTag(key, p.email, true)) {
           input.value = '';
           paintResults();
           paintManagers();
@@ -420,10 +418,8 @@ export function manageControl(key, onManagersChange) {
 }
 
 export async function leaveTag(key) {
-  const t = shared[key];
   const form = new FormData();
-  form.append('owner', t.owner);
-  form.append('tag', t.name);
+  form.append('tag', shared[key].id);
   try {
     await api('POST', '/api/directory/tag-leave', form);
   } catch (err) {
@@ -439,8 +435,8 @@ export async function leaveTag(key) {
 function tagMenu(email, onChange) {
   const menu = el('div', 'card-menu tag-menu');
   menu.hidden = true;
-  menu.focusTag = name => {
-    menu.querySelector(`.tag-option input[data-tag-name="${CSS.escape(name)}"]`)?.focus();
+  menu.focusTag = key => {
+    menu.querySelector(`.tag-option input[data-tag-key="${CSS.escape(key)}"]`)?.focus();
   };
   const render = () => {
     const typed = menu.querySelector('.tag-new input')?.value || '';
@@ -449,7 +445,7 @@ function tagMenu(email, onChange) {
       const row = el('label', 'tag-option');
       const box = el('input');
       box.type = 'checkbox';
-      box.dataset.tagName = key;
+      box.dataset.tagKey = key;
       box.checked = members(key).includes(email);
       box.addEventListener('change', async () => {
         await setTag(email, key, box.checked);
@@ -464,8 +460,8 @@ function tagMenu(email, onChange) {
       row.append(text, box);
       menu.append(row);
     };
-    for (const name of tagNamesByRecency()) {
-      option(name, name, '');
+    for (const key of tagKeysByRecency()) {
+      option(key, tags[key].name, '');
     }
     for (const key of sharedKeys()) {
       option(key, shared[key].name, `${firstName(shared[key].ownerName)}'s`);
@@ -483,7 +479,7 @@ function tagMenu(email, onChange) {
         return;
       }
       input.value = '';
-      await setTag(email, name, true);
+      await addToNewTag(email, name);
       render();
       onChange();
     });
@@ -516,10 +512,7 @@ function tagMenu(email, onChange) {
 }
 
 function mostRecentTag() {
-  const existing = [...tagNames(), ...sharedKeys()];
-  if (!existing.length) {
-    return 'My List';
-  }
+  const existing = [...tagKeys(), ...sharedKeys()];
   const last = loadLastTag();
   return existing.includes(last) ? last : existing[0];
 }
@@ -546,8 +539,12 @@ export function tagControl(email, wrapClass, buttonClass, onChange) {
       menu.querySelector('.tag-option input')?.focus();
       return;
     }
-    const tag = mostRecentTag();
-    await setTag(email, tag, true);
+    let tag = mostRecentTag();
+    if (tag) {
+      await setTag(email, tag, true);
+    } else {
+      tag = await addToNewTag(email, 'My List');
+    }
     menu.refreshTags();
     button.classList.toggle('active', isTagged(email));
     onChange();

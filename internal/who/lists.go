@@ -8,6 +8,7 @@ import (
 
 type List struct {
 	Key      string   `json:"key"`
+	Slug     string   `json:"slug,omitempty"`
 	Name     string   `json:"name"`
 	Kind     string   `json:"kind"`
 	People   []string `json:"people"`

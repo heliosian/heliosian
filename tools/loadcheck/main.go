@@ -13,6 +13,7 @@ import (
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/devcache"
+	"heliosian/internal/env"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
 	"heliosian/internal/spreadsheets"
@@ -42,7 +43,7 @@ func main() {
 		log.Fatalf("blob store: %v", err)
 	}
 	media := blob.New(objects)
-	model, err := who.LoadModel(source, media, static.Files{Root: "web/who"}, []byte("loadcheck"))
+	model, err := who.LoadModel(source, media, static.Files{Root: "web/who"}, []byte(env.Required("ID_KEY")))
 	if err != nil {
 		log.Fatalf("load directory model: %v", err)
 	}
@@ -181,7 +182,7 @@ func main() {
 	fmt.Println("celebrate:")
 	for _, c := range site.Celebrations {
 		sold, waiting, hosts := 0, 0, 0
-		parties := site.SortedParties(c.Code)
+		parties := site.SortedParties(c.ID)
 		for _, p := range parties {
 			hosts += len(p.HostEmails)
 			for _, t := range p.Tickets {
@@ -222,7 +223,7 @@ func main() {
 	fmt.Printf("calendar: %d events (google %d, pdf %d, sheet %d), %d hidden, %d duplicates folded\n",
 		len(plan.Events), bySource[when.SourceGoogle], bySource[when.SourcePDF], bySource[when.SourceSheet], plan.Hidden, plan.Duplicates)
 	for _, t := range plan.Tags {
-		fmt.Printf("  %s: %d\n", t.Name, byTag[t.Name])
+		fmt.Printf("  %s: %d\n", t.Name, byTag[t.ID])
 	}
 	for reason, n := range plan.Skipped {
 		fmt.Printf("  skipped %d: %s\n", n, reason)
@@ -232,13 +233,13 @@ func main() {
 	}
 	byType := map[string]int{}
 	for _, byClassroom := range plan.Days {
-		for _, name := range byClassroom {
-			byType[name]++
+		for _, key := range byClassroom {
+			byType[key]++
 		}
 	}
 	fmt.Printf("  day plan: %d dates\n", len(plan.Days))
 	for _, d := range plan.DayTypes {
-		fmt.Printf("    %s: %d classroom-days\n", d.Name, byType[d.Name])
+		fmt.Printf("    %s: %d classroom-days\n", d.Name, byType[d.ID])
 	}
 	fmt.Printf("calendar admins: %d\n", len(calendarCache.Admins()))
 

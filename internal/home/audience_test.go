@@ -14,13 +14,23 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
+	"heliosian/internal/id"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 	"heliosian/internal/who"
 )
 
-const admin = "jordan.whitfield@heliosschool.org"
+const (
+	admin          = "jordan.whitfield@heliosschool.org"
+	appsID         = "hcg0000000001"
+	schoolID       = "hcg0000000002"
+	eventsID       = "hcg0000000003"
+	chatsID        = "hcg0000000004"
+	directoryID    = "hyp0000000001"
+	parentPortalID = "hyp0000000003"
+	jaysChatID     = "hyp0000000009"
+)
 
 func sampleSources(t *testing.T) func() filter.Sources {
 	t.Helper()
@@ -98,16 +108,16 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 	if hidden := c.HiddenApps(sam); !slices.Contains(hidden, "celebrate") {
 		t.Errorf("a student sees the celebration: %v", hidden)
 	}
-	if err := c.Commit(context.Background(), access.System("test"), audience(thingLink+"Directory", nil, []filter.Rule{{Kind: filter.KindExclude, Roles: []string{"Student"}}})...); err != nil {
+	if err := c.Commit(context.Background(), access.System("test"), audience(thingLink+directoryID, nil, []filter.Rule{{Kind: filter.KindExclude, Roles: []string{"Student"}}})...); err != nil {
 		t.Fatal(err)
 	}
-	if got := c.Model().Categories[2].Links[0].Rules; len(got) != 1 || got[0].Kind != filter.KindExclude {
+	if got := c.Model().link(directoryID).Rules; len(got) != 1 || got[0].Kind != filter.KindExclude {
 		t.Errorf("the Directory's rules after a save = %+v", got)
 	}
 	for _, bad := range []store.Row{
-		{"Thing": "link:Directory", "Kind": "include", "Roles": "Teachers"},
-		{"Thing": "link:Directory", "Kind": "include"},
-		{"Thing": "link:Directory", "Kind": "include", "Tags": "Carpool"},
+		{"Thing": thingLink + directoryID, "Kind": "include", "Roles": "Teachers"},
+		{"Thing": thingLink + directoryID, "Kind": "include"},
+		{"Thing": thingLink + directoryID, "Kind": "include", "Tags": "Carpool"},
 	} {
 		if err := c.Commit(context.Background(), access.System("test"), store.Insert(audienceTab, bad)); err == nil {
 			t.Errorf("a bad rule %v loaded", bad)
@@ -115,43 +125,118 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 	}
 }
 
-func TestCategoryRenameCarriesItsLinksAndAudience(t *testing.T) {
+func audienceRows(t *testing.T, s sheet, thing string) int {
+	t.Helper()
+	n := 0
+	for _, row := range s.rows(t, audienceTab) {
+		if row["Thing"] == thing {
+			n++
+		}
+	}
+	return n
+}
+
+func TestRenamingKeepsLinksAndAudience(t *testing.T) {
 	c, dir := sampleCache(t)
 	a := app{cache: c, sources: c.sources}
-	chats := c.Model().category("Chats")
-	rec := call(t, serve.JSON(a.saveCategory), map[string]any{"original": "Chats", "title": "Group Chats", "emoji": chats.Emoji, "style": chats.Style, "rules": chats.Rules})
+	chats := c.Model().category(chatsID)
+	rec := call(t, serve.JSON(a.saveCategory), map[string]any{"id": chatsID, "title": "Group Chats", "emoji": chats.Emoji, "style": chats.Style, "rules": chats.Rules})
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
-	renamed := c.Model().category("Group Chats")
-	if renamed == nil || len(renamed.Links) != len(chats.Links) || len(renamed.Rules) != 1 || c.Model().category("Chats") != nil {
-		t.Fatalf("the links and the audience did not follow the rename in memory: %+v", renamed)
+	renamed := c.Model().category(chatsID)
+	if renamed == nil || renamed.Title != "Group Chats" || len(renamed.Links) != len(chats.Links) || len(renamed.Rules) != 1 {
+		t.Fatalf("the links and the audience did not stay with the renamed category: %+v", renamed)
 	}
-	for _, row := range dir.rows(t, linksTab) {
-		if row["Category"] == "Chats" {
-			t.Fatalf("the sheet kept %v", row)
+	log := changeLog(t, dir)
+	if len(log) != 1 || log[0]["Tab"] != categoriesTab || log[0]["Column"] != "Title" || log[0]["Key"] != "Category ID="+chatsID || log[0]["Previous"] != "Chats" {
+		t.Fatalf("change log = %v, want the title alone", log)
+	}
+
+	jays := c.Model().link(jaysChatID)
+	rec = call(t, serve.JSON(a.saveLink), map[string]any{"id": jaysChatID, "title": "Jays Parents Chat", "url": jays.URL, "category": jays.Category, "visible": jays.Visible, "rules": jays.Rules})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("rename a link: %d %s", rec.Code, rec.Body)
+	}
+	if got := c.Model().link(jaysChatID); got == nil || got.Title != "Jays Parents Chat" || len(got.Rules) != 1 || got.Category != chatsID {
+		t.Fatalf("the renamed link = %+v", got)
+	}
+	if n := audienceRows(t, dir, thingLink+jaysChatID); n != 1 {
+		t.Errorf("the renamed link has %d audience rows, want 1", n)
+	}
+	if log := changeLog(t, dir)[1:]; len(log) != 1 || log[0]["Tab"] != linksTab || log[0]["Column"] != "Title" {
+		t.Fatalf("change log = %v, want the link's title alone", log)
+	}
+}
+
+func TestDeletingALinkDropsItsAudience(t *testing.T) {
+	c, dir := sampleCache(t)
+	a := app{cache: c, sources: c.sources}
+	if n := audienceRows(t, dir, thingLink+jaysChatID); n != 1 {
+		t.Fatalf("the sample chat has %d audience rows, want 1", n)
+	}
+	if rec := call(t, serve.JSON(a.deleteLink), map[string]any{"id": jaysChatID}); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
+	}
+	if c.Model().link(jaysChatID) != nil {
+		t.Fatal("the link is still in the model")
+	}
+	if n := audienceRows(t, dir, thingLink+jaysChatID); n != 0 {
+		t.Errorf("the deleted link left %d audience rows", n)
+	}
+	if n := audienceRows(t, dir, thingLink+parentPortalID); n != 1 {
+		t.Errorf("another link's audience went too: %d rows", n)
+	}
+	if rec := call(t, serve.JSON(a.deleteLink), map[string]any{"id": jaysChatID}); rec.Code != http.StatusNotFound {
+		t.Errorf("deleted a deleted link: %d", rec.Code)
+	}
+}
+
+func TestAddingMintsAnID(t *testing.T) {
+	c, dir := sampleCache(t)
+	a := app{cache: c, sources: c.sources}
+	parents := []filter.Rule{{Kind: filter.KindInclude, Roles: []string{"Parent"}}}
+	if rec := call(t, serve.JSON(a.saveCategory), map[string]any{"title": "Clubs", "style": StyleTiles, "rules": parents}); rec.Code != http.StatusNoContent {
+		t.Fatalf("add a category: %d %s", rec.Code, rec.Body)
+	}
+	var clubs *Category
+	for _, cat := range c.Model().Categories {
+		if cat.Title == "Clubs" {
+			clubs = &cat
 		}
 	}
-	tabs := map[string]int{}
-	for _, row := range changeLog(t, dir) {
-		if row["Actor"] != admin || row["Action"] != "set" || (row["Previous"] != "Chats" && row["Previous"] != thingCategory+"Chats") {
-			t.Errorf("log row %v", row)
-		}
-		tabs[row["Tab"]+"/"+row["Column"]]++
+	if clubs == nil {
+		t.Fatal("no Clubs category")
 	}
-	if tabs[categoriesTab+"/Title"] != 1 || tabs[linksTab+"/Category"] != len(chats.Links) || tabs[audienceTab+"/Thing"] != 1 || len(tabs) != 3 {
-		t.Fatalf("logged %v", tabs)
+	if key, ok := id.Parse(clubs.ID); !ok || key != clubs.ID || len(clubs.Rules) != 1 {
+		t.Fatalf("the new category = %+v", clubs)
+	}
+	if rec := call(t, serve.JSON(a.saveLink), map[string]any{"title": "Chess", "url": "https://chess.example.org/", "category": clubs.ID, "visible": true, "rules": parents}); rec.Code != http.StatusNoContent {
+		t.Fatalf("add a link: %d %s", rec.Code, rec.Body)
+	}
+	links := c.Model().category(clubs.ID).Links
+	if len(links) != 1 || links[0].Title != "Chess" || links[0].Category != clubs.ID || len(links[0].Rules) != 1 {
+		t.Fatalf("the new category's links = %+v", links)
+	}
+	if key, ok := id.Parse(links[0].ID); !ok || key != links[0].ID || key == clubs.ID {
+		t.Fatalf("the new link's id = %q", links[0].ID)
+	}
+	if n := audienceRows(t, dir, thingLink+links[0].ID); n != 1 {
+		t.Errorf("the new link has %d audience rows, want 1", n)
+	}
+	if rec := call(t, serve.JSON(a.saveLink), map[string]any{"title": "Nowhere", "url": "https://example.org/", "category": "Clubs", "visible": true}); rec.Code != http.StatusBadRequest {
+		t.Errorf("a link filed under a category's title: %d", rec.Code)
 	}
 }
 
 func TestMoveLinkTradesPlacesWithinItsCategory(t *testing.T) {
 	c, dir := sampleCache(t)
 	a := app{cache: c, sources: c.sources}
-	if rec := call(t, serve.JSON(a.moveLink), map[string]any{"title": "Parent Portal", "by": 1}); rec.Code != http.StatusNoContent {
+	if rec := call(t, serve.JSON(a.moveLink), map[string]any{"id": parentPortalID, "by": 1}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move: %d %s", rec.Code, rec.Body)
 	}
 	var school []string
-	for _, l := range c.Model().category("School").Links {
+	for _, l := range c.Model().category(schoolID).Links {
 		school = append(school, l.Title)
 	}
 	if want := []string{"Directory", "Calendar", "Staff Room", "Parent Portal"}; !slices.Equal(school, want) {
@@ -161,10 +246,10 @@ func TestMoveLinkTradesPlacesWithinItsCategory(t *testing.T) {
 	for _, row := range changeLog(t, dir) {
 		got = append(got, row["Action"]+" "+row["Key"]+" "+row["Column"]+" "+row["Previous"])
 	}
-	if want := []string{"set Title=Parent Portal Order 6"}; !slices.Equal(got, want) {
+	if want := []string{"set Link ID=" + parentPortalID + " Order 6"}; !slices.Equal(got, want) {
 		t.Fatalf("change log = %v, want %v", got, want)
 	}
-	if rec := call(t, serve.JSON(a.moveLink), map[string]any{"title": "Parent Portal", "by": 1}); rec.Code != http.StatusNoContent || len(changeLog(t, dir)) != 1 {
+	if rec := call(t, serve.JSON(a.moveLink), map[string]any{"id": parentPortalID, "by": 1}); rec.Code != http.StatusNoContent || len(changeLog(t, dir)) != 1 {
 		t.Fatalf("a move past the end: %d, log %v", rec.Code, changeLog(t, dir))
 	}
 }
@@ -172,12 +257,13 @@ func TestMoveLinkTradesPlacesWithinItsCategory(t *testing.T) {
 func TestARowWithNoOrderSortsLast(t *testing.T) {
 	c, dir := sampleCache(t)
 	a := app{cache: c, sources: c.sources}
-	if err := c.Commit(context.Background(), access.System("test"), store.Insert(linksTab, store.Row{"Title": "Lunch Menu", "URL": "https://lunch.example.org/", "Category": "School", "Visible": "Yes"}), store.Update(linksTab, store.Row{"Title": "Directory"}, store.Row{store.OrderColumn: ""})); err != nil {
+	const lunchID = "hyp0000000099"
+	if err := c.Commit(context.Background(), access.System("test"), store.Insert(linksTab, store.Row{"Link ID": lunchID, "Title": "Lunch Menu", "URL": "https://lunch.example.org/", "Category": schoolID, "Visible": "Yes"}), store.Update(linksTab, store.Row{"Link ID": directoryID}, store.Row{store.OrderColumn: ""})); err != nil {
 		t.Fatal(err)
 	}
 	school := func() []string {
 		out := []string{}
-		for _, l := range c.Model().category("School").Links {
+		for _, l := range c.Model().category(schoolID).Links {
 			out = append(out, l.Title)
 		}
 		return out
@@ -186,7 +272,7 @@ func TestARowWithNoOrderSortsLast(t *testing.T) {
 		t.Fatalf("school = %v, want %v", school(), want)
 	}
 	before := len(changeLog(t, dir))
-	if rec := call(t, serve.JSON(a.moveLink), map[string]any{"title": "Lunch Menu", "by": -1}); rec.Code != http.StatusNoContent {
+	if rec := call(t, serve.JSON(a.moveLink), map[string]any{"id": lunchID, "by": -1}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move: %d %s", rec.Code, rec.Body)
 	}
 	if want := []string{"Calendar", "Parent Portal", "Staff Room", "Lunch Menu", "Directory"}; !slices.Equal(school(), want) {
@@ -200,19 +286,19 @@ func TestARowWithNoOrderSortsLast(t *testing.T) {
 func TestCategoryOrderKeysOnlyWhatMoved(t *testing.T) {
 	c, dir := sampleCache(t)
 	a := app{cache: c, sources: c.sources}
-	titles := []string{"Helios Community Apps", "Upcoming Events", "Events", "School", "Chats"}
-	if rec := call(t, serve.JSON(a.reorderCategories), map[string]any{"titles": titles}); rec.Code != http.StatusNoContent {
+	order := []string{appsID, EventsID, eventsID, schoolID, chatsID}
+	if rec := call(t, serve.JSON(a.reorderCategories), map[string]any{"ids": order}); rec.Code != http.StatusNoContent {
 		t.Fatalf("reorder: %d %s", rec.Code, rec.Body)
 	}
 	got := []string{}
 	for _, category := range c.Model().Categories {
-		got = append(got, category.Title)
+		got = append(got, category.ID)
 	}
-	if !slices.Equal(got, titles) || len(changeLog(t, dir)) != 1 {
+	if !slices.Equal(got, order) || len(changeLog(t, dir)) != 1 {
 		t.Fatalf("categories = %v, log %v", got, changeLog(t, dir))
 	}
-	for _, bad := range [][]string{titles[1:], append(slices.Clone(titles[1:]), "Events"), append(slices.Clone(titles[1:]), "Nowhere")} {
-		if rec := call(t, serve.JSON(a.reorderCategories), map[string]any{"titles": bad}); rec.Code != http.StatusBadRequest {
+	for _, bad := range [][]string{order[1:], append(slices.Clone(order[1:]), eventsID), append(slices.Clone(order[1:]), "Helios Community Apps")} {
+		if rec := call(t, serve.JSON(a.reorderCategories), map[string]any{"ids": bad}); rec.Code != http.StatusBadRequest {
 			t.Errorf("%v was taken as an order: %d", bad, rec.Code)
 		}
 	}
@@ -220,23 +306,23 @@ func TestCategoryOrderKeysOnlyWhatMoved(t *testing.T) {
 
 func TestTheEventsSectionIsWrittenWhereItStands(t *testing.T) {
 	c, _ := sampleCache(t)
-	if err := c.Commit(context.Background(), access.System("test"), store.Delete(categoriesTab, store.Row{"Title": EventsTitle})); err != nil {
+	if err := c.Commit(context.Background(), access.System("test"), store.Delete(categoriesTab, store.Row{"Category ID": EventsID})); err != nil {
 		t.Fatal(err)
 	}
 	a := app{cache: c, sources: c.sources}
-	if !c.Model().virtualEvents(EventsTitle) {
-		t.Fatal("no synthesized events section")
+	if events := c.Model().category(EventsID); events == nil || !events.Virtual || events.Title != EventsTitle {
+		t.Fatalf("no synthesized events section: %+v", events)
 	}
-	titles := []string{"Helios Community Apps", EventsTitle, "School", "Events", "Chats"}
-	if rec := call(t, serve.JSON(a.reorderCategories), map[string]any{"titles": titles}); rec.Code != http.StatusNoContent {
+	order := []string{appsID, EventsID, schoolID, eventsID, chatsID}
+	if rec := call(t, serve.JSON(a.reorderCategories), map[string]any{"ids": order}); rec.Code != http.StatusNoContent {
 		t.Fatalf("reorder: %d %s", rec.Code, rec.Body)
 	}
 	got := []string{}
 	for _, category := range c.Model().Categories {
-		got = append(got, category.Title)
+		got = append(got, category.ID)
 	}
-	if !slices.Equal(got, titles) || c.Model().virtualEvents(EventsTitle) {
-		t.Fatalf("categories = %v, want %v with the events row written", got, titles)
+	if !slices.Equal(got, order) || c.Model().category(EventsID).Virtual {
+		t.Fatalf("categories = %v, want %v with the events row written", got, order)
 	}
 }
 
@@ -386,7 +472,7 @@ func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 			t.Errorf("%s got %q, want the admin the alias resolves to", key, seen[key])
 		}
 	}
-	raw, err := json.Marshal(map[string]any{"title": "Parent Portal", "by": 1})
+	raw, err := json.Marshal(map[string]any{"id": parentPortalID, "by": 1})
 	if err != nil {
 		t.Fatal(err)
 	}

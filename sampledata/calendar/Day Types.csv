@@ -1,5 +1,5 @@
-Day Type,Dropoff Start,Dropoff End,School Start,School End,Pickup Start,Pickup End,Aftercare Start,Aftercare End
-Regular,08:15,08:30,08:30,15:15,15:15,15:30,15:30,18:00
-No Aftercare,08:15,08:30,08:30,15:15,15:15,15:30,,
-Early Dismissal,08:15,08:30,08:30,12:30,12:30,12:45,12:45,18:00
-No School,,,,,,,,
+Day Type ID,Day Type,Dropoff Start,Dropoff End,School Start,School End,Pickup Start,Pickup End,Aftercare Start,Aftercare End
+dty0000000001,Regular,08:15,08:30,08:30,15:15,15:15,15:30,15:30,18:00
+dty0000000101,No Aftercare,08:15,08:30,08:30,15:15,15:15,15:30,,
+dty0000000003,Early Dismissal,08:15,08:30,08:30,12:30,12:30,12:45,12:45,18:00
+dty0000000002,No School,,,,,,,,

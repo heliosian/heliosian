@@ -88,13 +88,12 @@ type user struct {
 
 type modelView struct {
 	*Model
-	User        user                `json:"user"`
-	MapsKey     string              `json:"mapsKey"`
-	Tags        map[string][]string `json:"tags"`
-	TagManagers map[string][]string `json:"tagManagers"`
-	SharedTags  []SharedTag         `json:"sharedTags"`
-	Lists       []List              `json:"lists"`
-	SuperEdit   bool                `json:"superEdit,omitempty"`
+	User       user   `json:"user"`
+	MapsKey    string `json:"mapsKey"`
+	Tags       []Tag  `json:"tags"`
+	SharedTags []Tag  `json:"sharedTags"`
+	Lists      []List `json:"lists"`
+	SuperEdit  bool   `json:"superEdit,omitempty"`
 }
 
 func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
@@ -103,13 +102,12 @@ func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
 	name := a.cache.Model().DisplayName(effective)
 	slug := Slug(effective)
 	return modelView{
-		Model:       a.cache.Model(),
-		User:        user{Name: name, Initial: strings.ToUpper(name[:1]), Email: effective, Slug: slug, IsAdmin: v.May(Administer)},
-		MapsKey:     a.mapsKey,
-		Tags:        a.cache.Model().Tags(effective),
-		TagManagers: a.cache.Model().TagManagers(effective),
-		SharedTags:  a.cache.Model().SharedTags(effective),
-		Lists:       append(a.cache.Model().RoomParentLists(effective), a.lister.Lists(effective)...),
-		SuperEdit:   v.May(EditAnyone),
+		Model:      a.cache.Model(),
+		User:       user{Name: name, Initial: strings.ToUpper(name[:1]), Email: effective, Slug: slug, IsAdmin: v.May(Administer)},
+		MapsKey:    a.mapsKey,
+		Tags:       a.cache.Model().Tags(effective),
+		SharedTags: a.cache.Model().SharedTags(effective),
+		Lists:      append(a.cache.Model().RoomParentLists(effective), a.lister.Lists(effective)...),
+		SuperEdit:  v.May(EditAnyone),
 	}, nil
 }

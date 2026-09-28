@@ -11,6 +11,7 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -21,11 +22,11 @@ const (
 	rulesTab      = "Rules"
 	additionsTab  = "Additions"
 	excludedTab   = "Excluded"
-	aliasesTab    = "Aliases"
 	messagesTab   = "Messages"
 	deliveriesTab = "Deliveries"
 	archivedTab   = "Archived"
 
+	idColumn     = "Group ID"
 	prefixColumn = "Subject Prefix"
 	prefixOff    = "off"
 
@@ -56,12 +57,11 @@ const (
 )
 
 var (
-	GroupColumns    = []string{"Name", "Title", "Description", "Created By", "Created", prefixColumn, visibleColumn, postingColumn, replyingColumn}
+	GroupColumns    = []string{idColumn, "Name", "Title", "Description", "Created By", "Created", prefixColumn, visibleColumn, postingColumn, replyingColumn}
 	ManagerColumns  = []string{"Group", "Email"}
 	RuleColumns     = append([]string{"Group"}, filter.RuleColumns...)
 	AdditionColumns = []string{"Group", "Email", "Name"}
 	ExcludedColumns = []string{"Group", "Email", "Note", "Timestamp"}
-	AliasColumns    = []string{"Group", "Alias"}
 	MessageColumns  = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail", "Message ID"}
 	DeliveryColumns = []string{"Timestamp", "Group", "Email", "Event", "Message", "Detail"}
 	ArchivedColumns = []string{"Group", "Email"}
@@ -92,6 +92,7 @@ type Excluded struct {
 }
 
 type Group struct {
+	ID          string     `json:"id"`
 	Name        string     `json:"name"`
 	Aliases     []string   `json:"aliases"`
 	Title       string     `json:"title"`
@@ -164,21 +165,36 @@ type Model struct {
 	Messages   []Message
 	Deliveries []Delivery
 	admins     []string
+	byID       map[string]int
 	byName     map[string]int
 	byAddress  map[string]int
 	archived   map[string]map[string]bool
 }
 
-func (m *Model) Archived(name, email string) bool {
-	return m.archived[name][email]
+func (m *Model) Archived(groupID, email string) bool {
+	return m.archived[groupID][email]
 }
 
-func (m *Model) Group(name string) *Group {
+func (m *Model) Group(groupID string) *Group {
+	i, ok := m.byID[strings.ToLower(strings.TrimSpace(groupID))]
+	if !ok {
+		return nil
+	}
+	return &m.Groups[i]
+}
+
+func (m *Model) Named(name string) *Group {
 	i, ok := m.byName[name]
 	if !ok {
 		return nil
 	}
 	return &m.Groups[i]
+}
+
+func (m *Model) taken(key string) bool {
+	_, group := m.byID[key]
+	_, address := m.byAddress[key]
+	return group || address
 }
 
 func (m *Model) Resolve(local string) *Group {
@@ -195,6 +211,9 @@ func CheckName(name string) error {
 	}
 	if slices.Contains(reservedNames, name) {
 		return fmt.Errorf("%s is reserved", name)
+	}
+	if _, ok := id.Parse(name); ok {
+		return fmt.Errorf("%s reads as an id", name)
 	}
 	return nil
 }
@@ -294,6 +313,7 @@ func CheckGroup(g Group) error {
 }
 
 func Normalize(g Group) Group {
+	g.ID = strings.ToLower(strings.TrimSpace(g.ID))
 	g.Name = strings.ToLower(strings.TrimSpace(g.Name))
 	aliases := []string{}
 	for _, alias := range g.Aliases {
@@ -357,9 +377,9 @@ func compareWhen(x, y Excluded) int {
 	return strings.Compare(x.When, y.When)
 }
 
-func ruleCells(name string, r Rule) store.Row {
+func ruleCells(groupID string, r Rule) store.Row {
 	cells := filter.RuleCells(r)
-	cells["Group"] = name
+	cells["Group"] = groupID
 	return cells
 }
 
@@ -371,14 +391,21 @@ func prefixCell(on bool) string {
 }
 
 func groupCells(g Group) store.Row {
-	return store.Row{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: g.Visibility, postingColumn: g.Posting, replyingColumn: g.Replying}
+	return store.Row{idColumn: g.ID, "Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: g.Visibility, postingColumn: g.Posting, replyingColumn: g.Replying}
 }
 
 func BuildModel(tables store.Tables) (*Model, error) {
-	model := &Model{Groups: []Group{}, Messages: []Message{}, Deliveries: []Delivery{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
+	model := &Model{Groups: []Group{}, Messages: []Message{}, Deliveries: []Delivery{}, byID: map[string]int{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
 	model.admins = admins.Read(tables)
 	for _, row := range tables[groupsTab] {
-		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff, Visibility: row[visibleColumn], Posting: row[postingColumn], Replying: row[replyingColumn]})
+		groupID, ok := id.Parse(row[idColumn])
+		if !ok {
+			return nil, fmt.Errorf("%s row %q has no valid %s: %q", groupsTab, row["Name"], idColumn, row[idColumn])
+		}
+		g := Normalize(Group{ID: groupID, Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff, Visibility: row[visibleColumn], Posting: row[postingColumn], Replying: row[replyingColumn]})
+		if _, dup := model.byID[g.ID]; dup {
+			return nil, fmt.Errorf("%s has two rows with %s %q", groupsTab, idColumn, g.ID)
+		}
 		if _, dup := model.byName[g.Name]; dup {
 			return nil, fmt.Errorf("%s has two rows named %q", groupsTab, g.Name)
 		}
@@ -387,25 +414,31 @@ func BuildModel(tables store.Tables) (*Model, error) {
 		g.Rules = []Rule{}
 		g.Additions = []Addition{}
 		g.Excluded = []Excluded{}
+		model.byID[g.ID] = len(model.Groups)
 		model.byName[g.Name] = len(model.Groups)
 		model.Groups = append(model.Groups, g)
 	}
-	owner := func(tab string, row store.Row) (*Group, error) {
-		g := model.Group(strings.ToLower(strings.TrimSpace(row["Group"])))
+	owner := func(tab, groupID string) (*Group, error) {
+		g := model.Group(groupID)
 		if g == nil {
-			return nil, fmt.Errorf("%s names %q, which %s does not have", tab, row["Group"], groupsTab)
+			return nil, fmt.Errorf("%s names %q, which %s does not have", tab, groupID, groupsTab)
 		}
 		return g, nil
 	}
-	for _, row := range tables[aliasesTab] {
-		g, err := owner(aliasesTab, row)
+	aliases, err := id.ParseAliases(tables[id.AliasesTab])
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range tables[id.AliasesTab] {
+		alias := strings.ToLower(strings.TrimSpace(row[id.AliasColumn]))
+		g, err := owner(id.AliasesTab, aliases[alias])
 		if err != nil {
 			return nil, err
 		}
-		g.Aliases = append(g.Aliases, row["Alias"])
+		g.Aliases = append(g.Aliases, alias)
 	}
 	for _, row := range tables[managersTab] {
-		g, err := owner(managersTab, row)
+		g, err := owner(managersTab, row["Group"])
 		if err != nil {
 			return nil, err
 		}
@@ -415,35 +448,35 @@ func BuildModel(tables store.Tables) (*Model, error) {
 		}
 	}
 	for _, row := range tables[rulesTab] {
-		g, err := owner(rulesTab, row)
+		g, err := owner(rulesTab, row["Group"])
 		if err != nil {
 			return nil, err
 		}
 		g.Rules = append(g.Rules, filter.RuleFromRow(row))
 	}
 	for _, row := range tables[additionsTab] {
-		g, err := owner(additionsTab, row)
+		g, err := owner(additionsTab, row["Group"])
 		if err != nil {
 			return nil, err
 		}
 		g.Additions = append(g.Additions, Addition{Email: row["Email"], Name: row["Name"]})
 	}
 	for _, row := range tables[excludedTab] {
-		g, err := owner(excludedTab, row)
+		g, err := owner(excludedTab, row["Group"])
 		if err != nil {
 			return nil, err
 		}
 		g.Excluded = append(g.Excluded, Excluded{Email: row["Email"], Note: row["Note"], When: row["Timestamp"]})
 	}
 	for _, row := range tables[archivedTab] {
-		g, err := owner(archivedTab, row)
+		g, err := owner(archivedTab, row["Group"])
 		if err != nil {
 			return nil, err
 		}
-		if model.archived[g.Name] == nil {
-			model.archived[g.Name] = map[string]bool{}
+		if model.archived[g.ID] == nil {
+			model.archived[g.ID] = map[string]bool{}
 		}
-		model.archived[g.Name][config.NormalizeEmail(row["Email"])] = true
+		model.archived[g.ID][config.NormalizeEmail(row["Email"])] = true
 	}
 	for _, row := range tables[messagesTab] {
 		model.Messages = append(model.Messages, Message{
@@ -466,9 +499,11 @@ func BuildModel(tables store.Tables) (*Model, error) {
 		model.Groups[i] = g
 	}
 	sort.SliceStable(model.Groups, func(i, j int) bool { return model.Groups[i].Name < model.Groups[j].Name })
+	model.byID = map[string]int{}
 	model.byName = map[string]int{}
 	model.byAddress = map[string]int{}
 	for i, g := range model.Groups {
+		model.byID[g.ID] = i
 		model.byName[g.Name] = i
 		for _, local := range g.Names() {
 			if j, taken := model.byAddress[local]; taken {

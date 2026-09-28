@@ -20,7 +20,7 @@ func TestGroupMailReadsForMembersOfGroupsTheySee(t *testing.T) {
 	}}
 	sources.Artifacts = func() *artifacts.Model { return docs }
 	groups := sources.Loop()
-	members := func(name string) []string { return loop.Members(*groups.Group(name), sources.LoopSources()) }
+	members := func(name string) []string { return loop.Members(*groups.Named(name), sources.LoopSources()) }
 	pick := func(from []string, not ...[]string) string {
 		for _, email := range from {
 			if email == jordan || email == "dana.hawkins@heliosschool.org" || email == "ruth.amari@heliosschool.org" {

@@ -165,7 +165,7 @@ type View struct {
 	Celebrations []*Celebration `json:"celebrations"`
 	Current      string         `json:"current,omitempty"`
 	Banner       string         `json:"banner,omitempty"`
-	Categories   []string       `json:"categories"`
+	Categories   []Category     `json:"categories"`
 	Parties      []PartyView    `json:"parties"`
 	Redirects    []Redirect     `json:"redirects"`
 	Invoicing    []InvoiceLine  `json:"invoicing,omitempty"`
@@ -284,10 +284,10 @@ func RenderWith(model *Model, directory *who.Model, rsvps RSVPLookup, as access.
 		view.User.Children = append(view.User.Children, personOf(directory, k))
 	}
 	if c := model.Current(); c != nil {
-		view.Current = c.Code
+		view.Current = c.ID
 	}
 	if c := model.Banner(); c != nil {
-		view.Banner = c.Code
+		view.Banner = c.ID
 	}
 	if admin {
 		view.Invoicing = model.Invoicing

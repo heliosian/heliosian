@@ -1,4 +1,4 @@
-import {state, me, isSystemAdmin, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
+import {state, me, isSystemAdmin, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagIds, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
 import {feedMark, emojiPicker} from './dom.js';
 import {el, svg, link, button, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
@@ -402,12 +402,12 @@ function tagChips(tags) {
   const on = selectedTags();
   const sorted = [...tags].sort((a, b) => a.name.localeCompare(b.name));
   return sorted.map(t => {
-    const c = chip(t.name, on.includes(t.name), () => {
-      toggleTag(t.name);
+    const c = chip(t.name, on.includes(t.id), () => {
+      toggleTag(t.id);
       refresh();
     });
     c.title = t.description;
-    const hidden = on.includes(t.name) ? 0 : hiddenMatches(t.name);
+    const hidden = on.includes(t.id) ? 0 : hiddenMatches(t.id);
     if (hidden) {
       c.classList.add('has-hidden');
       c.title = `${hidden} match${hidden === 1 ? '' : 'es'} under ${t.name}, which is off`;
@@ -421,7 +421,7 @@ function filterSummary() {
   const parts = [rooms.length === classroomNames().length ? 'All classrooms' : rooms.length ? classroomNames().filter(c => rooms.includes(c)).join(', ') : 'No classrooms'];
   const tags = selectedTags();
   for (const group of tagGroups()) {
-    const chosen = group.tags.filter(t => tags.includes(t.name));
+    const chosen = group.tags.filter(t => tags.includes(t.id));
     if (!chosen.length) {
       continue;
     }
@@ -479,21 +479,21 @@ export function fillFilters(wrap, opts = {}) {
   }
   rows.append(filterRow('Classrooms', roomActions, classroomChips()));
   const pick = list => {
-    const ordered = tagNames().filter(t => list.includes(t));
+    const ordered = tagIds().filter(t => list.includes(t));
     setTags(ordered.join() === defaultTags().join() ? null : ordered);
   };
   let last = null;
   for (const group of tagGroups()) {
-    const names = group.tags.map(t => t.name);
+    const ids = group.tags.map(t => t.id);
     const on = selectedTags();
-    const onHere = names.filter(n => on.includes(n));
+    const onHere = ids.filter(id => on.includes(id));
     last = filterRow(group.name || 'Categories', [
-      action('All', onHere.length === names.length, () => {
-        pick([...on, ...names]);
+      action('All', onHere.length === ids.length, () => {
+        pick([...on, ...ids]);
         refresh();
       }),
       action('None', onHere.length === 0, () => {
-        pick(on.filter(n => !names.includes(n)));
+        pick(on.filter(id => !ids.includes(id)));
         refresh();
       }),
     ], tagChips(group.tags));
@@ -501,11 +501,11 @@ export function fillFilters(wrap, opts = {}) {
   }
   wrap.append(rows);
   const foot = el('div', 'filters-foot');
-  const everything = selectedClassrooms().length === classroomNames().length && selectedTags().length === tagNames().length;
+  const everything = selectedClassrooms().length === classroomNames().length && selectedTags().length === tagIds().length;
   if (!everything) {
     foot.append(button('Select all', null, 'button button-secondary button-small', () => {
       setClassrooms(classroomNames());
-      setTags(tagNames());
+      setTags(tagIds());
       refresh();
     }));
   }

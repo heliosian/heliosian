@@ -12,6 +12,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/admins"
 	"heliosian/internal/cells"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -81,8 +82,8 @@ var (
 	OutreachColumns       = []string{"Email", "Year", "Contacted On", "Contacted By"}
 	DonationColumns       = []string{"Email", "Year", "Charity", "Note", "Recorded On", "Recorded By", "Used On", "Used By"}
 	NoteColumns           = []string{"Email", "Note", "Added By", "Added"}
-	CharityColumns        = []string{"Name", "Donation Link", "About", "EIN", "Allowed", "Why Not Allowed", "Added On"}
-	NewsletterDateColumns = []string{"Date"}
+	CharityColumns        = []string{"Charity ID", "Name", "Donation Link", "About", "EIN", "Allowed", "Why Not Allowed", "Added On"}
+	NewsletterDateColumns = []string{"Newsletter Date ID", "Date"}
 	SettingColumns        = []string{"Key", "Value"}
 	TeamColumns           = []string{"Email", "Role"}
 	ReminderColumns       = []string{"Email", "Year", "Kind", "Sent On", "Sent To"}
@@ -131,6 +132,7 @@ type Note struct {
 }
 
 type Charity struct {
+	ID            string `json:"id"`
 	Name          string `json:"name"`
 	DonationLink  string `json:"donationLink"`
 	About         string `json:"about,omitempty"`
@@ -138,6 +140,11 @@ type Charity struct {
 	Allowed       bool   `json:"allowed"`
 	WhyNotAllowed string `json:"whyNotAllowed,omitempty"`
 	AddedOn       string `json:"addedOn,omitempty"`
+}
+
+type NewsletterDate struct {
+	ID   string `json:"id"`
+	Date string `json:"date"`
 }
 
 type Settings struct {
@@ -163,13 +170,14 @@ type Model struct {
 	Donations       map[string]Donation
 	Notes           []Note
 	Charities       []Charity
-	NewsletterDates []string
+	NewsletterDates []NewsletterDate
 	Team            []TeamMember
 	Reminders       map[string]bool
 	Settings        Settings
 	admins          []string
 	byEmail         map[string]*Birthday
 	byCharity       map[string]*Charity
+	byNewsletter    map[string]*NewsletterDate
 }
 
 func reminderKey(email, year, kind string) string {
@@ -184,8 +192,55 @@ func (m *Model) Birthday(email string) *Birthday {
 	return m.byEmail[email]
 }
 
-func (m *Model) Charity(name string) *Charity {
-	return m.byCharity[name]
+func (m *Model) Charity(key string) *Charity {
+	return m.byCharity[key]
+}
+
+func (m *Model) charityNamed(name string) *Charity {
+	for i := range m.Charities {
+		if m.Charities[i].Name == name {
+			return &m.Charities[i]
+		}
+	}
+	return nil
+}
+
+func (m *Model) charityName(key string) string {
+	return m.Charity(key).Name
+}
+
+func (m *Model) NewsletterDate(key string) *NewsletterDate {
+	return m.byNewsletter[key]
+}
+
+func (m *Model) newsletterOn(date string) *NewsletterDate {
+	for i := range m.NewsletterDates {
+		if m.NewsletterDates[i].Date == date {
+			return &m.NewsletterDates[i]
+		}
+	}
+	return nil
+}
+
+func (m *Model) issueDates() []string {
+	dates := []string{}
+	for _, n := range m.NewsletterDates {
+		dates = append(dates, n.Date)
+	}
+	return dates
+}
+
+func (m *Model) taken(key string) bool {
+	return m.byCharity[key] != nil || m.byNewsletter[key] != nil
+}
+
+func (m *Model) minter() func() string {
+	minted := map[string]bool{}
+	return func() string {
+		s := id.New(func(key string) bool { return minted[key] || m.taken(key) })
+		minted[s] = true
+		return s
+	}
 }
 
 func (m *Model) Assignment(email, year string) (Assignment, bool) {
@@ -320,7 +375,8 @@ func BuildModel(tables store.Tables) (*Model, error) {
 	model := &Model{
 		Birthdays: []Birthday{}, Assignments: map[string]Assignment{},
 		Outreach: map[string]Outreach{}, Donations: map[string]Donation{}, Notes: []Note{}, Charities: []Charity{},
-		NewsletterDates: []string{}, Team: []TeamMember{}, Reminders: map[string]bool{}, Settings: settings, byEmail: map[string]*Birthday{}, byCharity: map[string]*Charity{},
+		NewsletterDates: []NewsletterDate{}, Team: []TeamMember{}, Reminders: map[string]bool{}, Settings: settings, byEmail: map[string]*Birthday{}, byCharity: map[string]*Charity{},
+		byNewsletter: map[string]*NewsletterDate{},
 	}
 	model.admins = admins.Read(tables)
 	for _, row := range tables[remindersTab] {
@@ -349,8 +405,15 @@ func BuildModel(tables store.Tables) (*Model, error) {
 		fail := func(err error) (*Model, error) {
 			return nil, fmt.Errorf("charity %q: %w", name, err)
 		}
-		if model.Charity(name) != nil {
+		if model.charityNamed(name) != nil {
 			return fail(fmt.Errorf("is listed twice"))
+		}
+		key, ok := id.Parse(row["Charity ID"])
+		if !ok {
+			return fail(fmt.Errorf("charity id %q is not an id", row["Charity ID"]))
+		}
+		if slices.ContainsFunc(model.Charities, func(c Charity) bool { return c.ID == key }) {
+			return fail(fmt.Errorf("charity id %s is used twice", key))
 		}
 		if err := cells.URL(row["Donation Link"], false); err != nil {
 			return fail(err)
@@ -366,27 +429,38 @@ func BuildModel(tables store.Tables) (*Model, error) {
 			return fail(err)
 		}
 		model.Charities = append(model.Charities, Charity{
-			Name: name, DonationLink: row["Donation Link"], About: row["About"], EIN: row["EIN"],
+			ID: key, Name: name, DonationLink: row["Donation Link"], About: row["About"], EIN: row["EIN"],
 			Allowed: allowed, WhyNotAllowed: row["Why Not Allowed"], AddedOn: row["Added On"],
 		})
 	}
 	for i := range model.Charities {
-		model.byCharity[model.Charities[i].Name] = &model.Charities[i]
+		model.byCharity[model.Charities[i].ID] = &model.Charities[i]
 	}
 	if c := model.Charity(settings.DefaultCharity); c == nil || !c.Allowed {
-		return nil, fmt.Errorf("setting %q names %q, which is not an allowed charity", DefaultCharityKey, settings.DefaultCharity)
+		return nil, fmt.Errorf("setting %q names %q, which is not an allowed charity's id", DefaultCharityKey, settings.DefaultCharity)
 	}
 
 	for _, row := range tables[newsletterDatesTab] {
-		if _, err := ParseDate(row["Date"]); err != nil {
+		date := row["Date"]
+		if _, err := ParseDate(date); err != nil {
 			return nil, fmt.Errorf("newsletter date %w", err)
 		}
-		if slices.Contains(model.NewsletterDates, row["Date"]) {
-			return nil, fmt.Errorf("newsletter date %q is listed twice", row["Date"])
+		if model.newsletterOn(date) != nil {
+			return nil, fmt.Errorf("newsletter date %q is listed twice", date)
 		}
-		model.NewsletterDates = append(model.NewsletterDates, row["Date"])
+		key, ok := id.Parse(row["Newsletter Date ID"])
+		if !ok {
+			return nil, fmt.Errorf("newsletter date %s: newsletter date id %q is not an id", date, row["Newsletter Date ID"])
+		}
+		if slices.ContainsFunc(model.NewsletterDates, func(n NewsletterDate) bool { return n.ID == key }) || model.Charity(key) != nil {
+			return nil, fmt.Errorf("newsletter date id %s is used twice", key)
+		}
+		model.NewsletterDates = append(model.NewsletterDates, NewsletterDate{ID: key, Date: date})
 	}
-	sort.Strings(model.NewsletterDates)
+	sort.Slice(model.NewsletterDates, func(i, j int) bool { return model.NewsletterDates[i].Date < model.NewsletterDates[j].Date })
+	for i := range model.NewsletterDates {
+		model.byNewsletter[model.NewsletterDates[i].ID] = &model.NewsletterDates[i]
+	}
 
 	for _, row := range tables[birthdaysTab] {
 		email := row["Email"]
@@ -409,8 +483,8 @@ func BuildModel(tables store.Tables) (*Model, error) {
 		if err := checkMonthDay("birthday", row["Birthday"]); err != nil {
 			return fail(err)
 		}
-		if err := checkDate("newsletter override", row["Newsletter Override"]); err != nil {
-			return fail(err)
+		if o := row["Newsletter Override"]; o != "" && model.NewsletterDate(o) == nil {
+			return fail(fmt.Errorf("newsletter override %q is not a newsletter date's id", o))
 		}
 		if len(row["Note"]) > maxTextLength {
 			return fail(fmt.Errorf("note is too long"))
@@ -479,7 +553,7 @@ func BuildModel(tables store.Tables) (*Model, error) {
 			return fail(err)
 		}
 		if model.Charity(row["Charity"]) == nil {
-			return fail(fmt.Errorf("names unknown charity %q", row["Charity"]))
+			return fail(fmt.Errorf("names unknown charity id %q", row["Charity"]))
 		}
 		if len(row["Note"]) > maxTextLength {
 			return fail(fmt.Errorf("note is too long"))

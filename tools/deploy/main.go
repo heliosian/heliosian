@@ -23,7 +23,7 @@ const (
 	identity = "directory@heliosian.iam.gserviceaccount.com"
 )
 
-var jobSecrets = []string{"ANTHROPIC_API_KEY"}
+var jobSecrets = []string{"ANTHROPIC_API_KEY", "ID_KEY"}
 
 func sheetEnvVars(sheets []spreadsheets.Spreadsheet, ids map[string]string) string {
 	pairs := []string{}

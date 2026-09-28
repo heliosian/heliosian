@@ -12,11 +12,13 @@ import (
 
 	"heliosian/internal/cells"
 	"heliosian/internal/data"
+	"heliosian/internal/id"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
 type InviteTemplate struct {
+	ID             string           `json:"id"`
 	Name           string           `json:"name"`
 	Description    string           `json:"description,omitempty"`
 	HeaderRow      bool             `json:"headerRow"`
@@ -36,11 +38,34 @@ type InviteModel struct {
 }
 
 type GreetingTemplate struct {
+	ID         string `json:"id"`
 	Name       string `json:"name"`
 	Format     string `json:"format"`
 	Grouped    bool   `json:"grouped"`
 	Individual bool   `json:"individual"`
 	CreatedBy  string `json:"createdBy,omitempty"`
+}
+
+type greetingBuiltins struct {
+	Default     string `json:"default"`
+	WholeFamily string `json:"wholeFamily"`
+	Kids        string `json:"kids"`
+	Adults      string `json:"adults"`
+	FullName    string `json:"fullName"`
+	FirstName   string `json:"firstName"`
+}
+
+var builtinGreetings = greetingBuiltins{
+	Default:     "gtg0000000001",
+	Kids:        "gtg0000000002",
+	Adults:      "gtg0000000003",
+	WholeFamily: "gtg0000000005",
+	FirstName:   "gtg0000000006",
+	FullName:    "gtg0000000007",
+}
+
+func (b greetingBuiltins) ids() []string {
+	return []string{b.Default, b.WholeFamily, b.Kids, b.Adults, b.FullName, b.FirstName}
 }
 
 const (
@@ -51,30 +76,51 @@ const (
 )
 
 var (
-	ServiceColumns  = []string{"Display Name", "Header Row", "Supports Groups", "Description"}
+	ServiceColumns  = []string{"Service ID", "Display Name", "Header Row", "Supports Groups", "Description"}
 	TemplateColumns = []string{"Service", store.OrderColumn, "Column", "Template"}
-	GreetingColumns = []string{"Name", "Format", "Grouped", "Individual", "Email"}
+	GreetingColumns = []string{"Greeting ID", "Name", "Format", "Grouped", "Individual", "Email"}
 )
 
 func buildInvites(tables store.Tables) (*InviteModel, error) {
-	systems, err := buildSystems(tables)
+	ids := map[string]bool{}
+	systems, err := buildSystems(tables, ids)
 	if err != nil {
 		return nil, err
 	}
-	greetings, err := buildGreetings(tables)
+	greetings, err := buildGreetings(tables, ids)
 	if err != nil {
 		return nil, err
 	}
 	return &InviteModel{Systems: systems, Greetings: greetings}, nil
 }
 
-func buildGreetings(tables store.Tables) ([]GreetingTemplate, error) {
-	rows := tables[greetingsTab]
+func (m *InviteModel) taken(key string) bool {
+	return slices.ContainsFunc(m.Systems, func(s InviteTemplate) bool { return s.ID == key }) ||
+		slices.ContainsFunc(m.Greetings, func(g GreetingTemplate) bool { return g.ID == key })
+}
+
+func claimID(ids map[string]bool, what, raw string) (string, error) {
+	key, ok := id.Parse(raw)
+	if !ok {
+		return "", fmt.Errorf("%s: id %q is not an id", what, raw)
+	}
+	if ids[key] {
+		return "", fmt.Errorf("%s: id %s is used twice", what, key)
+	}
+	ids[key] = true
+	return key, nil
+}
+
+func buildGreetings(tables store.Tables, ids map[string]bool) ([]GreetingTemplate, error) {
 	greetings := []GreetingTemplate{}
-	for _, row := range rows {
+	for _, row := range tables[greetingsTab] {
 		name, format := row["Name"], row["Format"]
 		if name == "" || format == "" {
 			continue
+		}
+		key, err := claimID(ids, fmt.Sprintf("greeting %q", name), row["Greeting ID"])
+		if err != nil {
+			return nil, err
 		}
 		grouped, err := cells.YesNo(row["Grouped"], true)
 		if err != nil {
@@ -85,6 +131,7 @@ func buildGreetings(tables store.Tables) ([]GreetingTemplate, error) {
 			return nil, fmt.Errorf("greeting %q: individual %w", name, err)
 		}
 		greetings = append(greetings, GreetingTemplate{
+			ID:         key,
 			Name:       name,
 			Format:     format,
 			Grouped:    grouped,
@@ -92,15 +139,28 @@ func buildGreetings(tables store.Tables) ([]GreetingTemplate, error) {
 			CreatedBy:  row["Email"],
 		})
 	}
+	for _, key := range builtinGreetings.ids() {
+		i := slices.IndexFunc(greetings, func(g GreetingTemplate) bool { return g.ID == key })
+		if i < 0 {
+			return nil, fmt.Errorf("built-in greeting %s has no row", key)
+		}
+		if greetings[i].CreatedBy != "" {
+			return nil, fmt.Errorf("built-in greeting %s belongs to %s", key, greetings[i].CreatedBy)
+		}
+	}
 	return greetings, nil
 }
 
-func buildSystems(tables store.Tables) ([]InviteTemplate, error) {
+func buildSystems(tables store.Tables, ids map[string]bool) ([]InviteTemplate, error) {
 	columns := map[string][]TemplateColumn{}
 	for _, row := range tables[templatesTab] {
-		service, name := row["Service"], row["Column"]
-		if service == "" || name == "" {
+		name := row["Column"]
+		if row["Service"] == "" || name == "" {
 			return nil, fmt.Errorf("template row %v names no service or column", row)
+		}
+		service, ok := id.Parse(row["Service"])
+		if !ok {
+			return nil, fmt.Errorf("template column %q: service %q is not an id", name, row["Service"])
 		}
 		order := row[store.OrderColumn]
 		if err := store.CheckKey(order); err != nil {
@@ -114,11 +174,15 @@ func buildSystems(tables store.Tables) ([]InviteTemplate, error) {
 		if name == "" {
 			continue
 		}
-		cols, ok := columns[name]
+		key, err := claimID(ids, "service "+name, row["Service ID"])
+		if err != nil {
+			return nil, err
+		}
+		cols, ok := columns[key]
 		if !ok {
 			return nil, fmt.Errorf("service %s has no template columns", name)
 		}
-		delete(columns, name)
+		delete(columns, key)
 		slices.SortStableFunc(cols, func(a, b TemplateColumn) int { return store.CompareKeys(a.order, b.order) })
 		headerRow, err := cells.YesNo(row["Header Row"], true)
 		if err != nil {
@@ -129,6 +193,7 @@ func buildSystems(tables store.Tables) ([]InviteTemplate, error) {
 			return nil, fmt.Errorf("%s template: supports groups %w", name, err)
 		}
 		systems = append(systems, InviteTemplate{
+			ID:             key,
 			Name:           name,
 			Description:    row["Description"],
 			HeaderRow:      headerRow,
@@ -150,9 +215,9 @@ func NewInvites(source data.Source, writer data.Writer, queue *store.Queue) (*In
 	s, err := store.New(store.Spec[*InviteModel]{
 		App: invitesApp,
 		Tabs: []store.Tab{
-			{Name: servicesTab, Columns: ServiceColumns, Key: []string{"Display Name"}},
+			{Name: servicesTab, Columns: ServiceColumns, Key: []string{"Service ID"}},
 			{Name: templatesTab, Columns: TemplateColumns, Key: []string{"Service", store.OrderColumn}},
-			{Name: greetingsTab, Columns: GreetingColumns, Key: []string{"Name"}},
+			{Name: greetingsTab, Columns: GreetingColumns, Key: []string{"Greeting ID"}},
 		},
 		Build: func(_ context.Context, tables store.Tables) (*InviteModel, error) {
 			return buildInvites(tables)
@@ -167,9 +232,13 @@ func NewInvites(source data.Source, writer data.Writer, queue *store.Queue) (*In
 	return &Invites{Store: s}, nil
 }
 
-func (i *Invites) greeting(name string) (GreetingTemplate, bool) {
+func (i *Invites) greeting(raw string) (GreetingTemplate, bool) {
+	key, ok := id.Parse(raw)
+	if !ok {
+		return GreetingTemplate{}, false
+	}
 	for _, g := range i.Model().Greetings {
-		if strings.EqualFold(g.Name, name) {
+		if g.ID == key {
 			return g, true
 		}
 	}
@@ -179,12 +248,17 @@ func (i *Invites) greeting(name string) (GreetingTemplate, bool) {
 type inviteTemplates struct {
 	Systems   []InviteTemplate   `json:"systems"`
 	Greetings []GreetingTemplate `json:"greetings"`
+	Builtins  greetingBuiltins   `json:"builtins"`
+}
+
+type savedGreeting struct {
+	ID string `json:"id"`
 }
 
 func RegisterInvites(mux *http.ServeMux, cache *Cache, invites *Invites) {
 	mux.HandleFunc("GET /api/directory/invite-templates", serve.JSON(func(r *http.Request, _ serve.None) (inviteTemplates, error) {
 		model := invites.Model()
-		return inviteTemplates{Systems: model.Systems, Greetings: visibleGreetings(model.Greetings, effectiveEmail(cache, r))}, nil
+		return inviteTemplates{Systems: model.Systems, Greetings: visibleGreetings(model.Greetings, effectiveEmail(cache, r)), Builtins: builtinGreetings}, nil
 	}))
 
 	mux.HandleFunc("POST /api/directory/greetings", func(w http.ResponseWriter, r *http.Request) {
@@ -194,9 +268,8 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, invites *Invites) {
 			return
 		}
 		format := strings.TrimSpace(r.FormValue("format"))
-		original := strings.TrimSpace(r.FormValue("original"))
 		actor := requestActor(cache, r)
-		ops, err := invites.saveGreeting(actor, format, original, r.FormValue("grouped") == "1", r.FormValue("individual") == "1")
+		key, ops, err := invites.saveGreeting(actor, format, strings.TrimSpace(r.FormValue("id")), r.FormValue("grouped") == "1", r.FormValue("individual") == "1")
 		if err != nil {
 			serve.Error(w, r, err)
 			return
@@ -205,8 +278,8 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, invites *Invites) {
 			serve.Error(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "greeting: saved", "actor", actor.Email, "from", original, "name", format)
-		w.WriteHeader(http.StatusNoContent)
+		slog.InfoContext(r.Context(), "greeting: saved", "actor", actor.Email, "id", key, "name", format)
+		serve.Write(w, r, http.StatusOK, savedGreeting{ID: key})
 	})
 
 	mux.HandleFunc("DELETE /api/directory/greetings", func(w http.ResponseWriter, r *http.Request) {
@@ -215,9 +288,9 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, invites *Invites) {
 			http.Error(w, "invalid form", http.StatusBadRequest)
 			return
 		}
-		name := strings.TrimSpace(r.FormValue("name"))
+		key := strings.TrimSpace(r.FormValue("id"))
 		actor := requestActor(cache, r)
-		ops, err := invites.deleteGreeting(actor, name)
+		ops, err := invites.deleteGreeting(actor, key)
 		if err != nil {
 			serve.Error(w, r, err)
 			return
@@ -226,7 +299,7 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, invites *Invites) {
 			serve.Error(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "greeting: deleted", "actor", actor.Email, "name", name)
+		slog.InfoContext(r.Context(), "greeting: deleted", "actor", actor.Email, "id", key)
 		w.WriteHeader(http.StatusNoContent)
 	})
 }

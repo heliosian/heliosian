@@ -160,10 +160,10 @@ func (m *mailer) mark(j job, state string, cells store.Row) {
 	}
 }
 
-func (m *mailer) recordSent(ctx context.Context, j job, raw []byte, cells map[string]string) {
+func (m *mailer) recordSent(ctx context.Context, j job, g Group, raw []byte, cells map[string]string) {
 	m.mark(j, stateSent, cells)
-	if err := m.mail.Documents.Post(ctx, mailerActor, j.group, raw); err != nil {
-		slog.Error("loop:not filed for ask", "message", j.id, "group", j.group, "error", err)
+	if err := m.mail.Documents.Post(ctx, mailerActor, g.Name, raw); err != nil {
+		slog.Error("loop:not filed for ask", "message", j.id, "group", g.Name, "error", err)
 	}
 }
 
@@ -178,17 +178,17 @@ func localsIn(addresses []string) []string {
 	return out
 }
 
-func (m *mailer) groupsIn(addresses []string) []string {
+func (m *mailer) groupsIn(addresses []string) []*Group {
 	model := m.cache.Model()
-	out := []string{}
+	out := []*Group{}
 	for _, local := range localsIn(addresses) {
 		g := model.Resolve(local)
 		if g == nil {
 			slog.Warn("loop:mail for no group", "local", local)
 			continue
 		}
-		if !slices.Contains(out, g.Name) {
-			out = append(out, g.Name)
+		if !slices.Contains(out, g) {
+			out = append(out, g)
 		}
 	}
 	return out
@@ -198,22 +198,22 @@ func (m *mailer) received(ctx context.Context, raw []byte, from, subject string,
 	id := idOf(raw)
 	lines, _ := mail.SplitMessage(raw)
 	messageID := messageID(lines)
-	for _, name := range m.groupsIn(addresses) {
-		j := job{id: id, group: name}
+	for _, g := range m.groupsIn(addresses) {
+		j := job{id: id, group: g.ID}
 		if !m.take(j) {
 			continue
 		}
-		j.object = fmt.Sprintf("loop/%s/%s-%s.eml", name, time.Now().UTC().Format("20060102T150405Z"), id)
+		j.object = fmt.Sprintf("loop/%s/%s-%s.eml", g.Name, time.Now().UTC().Format("20060102T150405Z"), id)
 		if err := m.mail.Archive.Put(ctx, j.object, mailType, raw); err != nil {
 			m.release(j)
-			return fmt.Errorf("archive %s for %s: %w", id, name, err)
+			return fmt.Errorf("archive %s for %s: %w", id, g.Name, err)
 		}
 		cells := store.Row{"Received": time.Now().Format(time.RFC3339), "From": from, "Subject": subject, "State": stateReceived, "Recipients": "", "Object": j.object, "Detail": "", "Message ID": messageID}
-		if err := m.cache.CommitAndWait(ctx, mailerActor, recordMessage(mailerActor, id, name, cells)...); err != nil {
+		if err := m.cache.CommitAndWait(ctx, mailerActor, recordMessage(mailerActor, id, g.ID, cells)...); err != nil {
 			m.release(j)
-			return fmt.Errorf("record %s for %s: %w", id, name, err)
+			return fmt.Errorf("record %s for %s: %w", id, g.Name, err)
 		}
-		slog.Info("loop:mail received", "message", id, "group", name, "from", from, "subject", subject)
+		slog.Info("loop:mail received", "message", id, "group", g.Name, "from", from, "subject", subject)
 		m.work <- j
 	}
 	return nil
@@ -241,10 +241,10 @@ func (m *mailer) flush() {
 	}
 }
 
-func (m *mailer) repliesTo(group string, lines []mail.HeaderLine) bool {
+func (m *mailer) repliesTo(groupID string, lines []mail.HeaderLine) bool {
 	sent := map[string]bool{}
 	for _, msg := range m.cache.Model().Messages {
-		if msg.State == stateSent && msg.Group == group && msg.MessageID != "" {
+		if msg.State == stateSent && msg.Group == groupID && msg.MessageID != "" {
 			sent[messageKey(msg.MessageID)] = true
 		}
 	}
@@ -256,13 +256,13 @@ func (m *mailer) repliesTo(group string, lines []mail.HeaderLine) bool {
 	return false
 }
 
-func (m *mailer) sentAs(group, messageID string) bool {
+func (m *mailer) sentAs(groupID, messageID string) bool {
 	key := messageKey(messageID)
 	if key == "" {
 		return false
 	}
 	for _, msg := range m.cache.Model().Messages {
-		if msg.Group == group && messageKey(msg.MessageID) == key {
+		if msg.Group == groupID && messageKey(msg.MessageID) == key {
 			return true
 		}
 	}
@@ -270,15 +270,16 @@ func (m *mailer) sentAs(group, messageID string) bool {
 }
 
 func (m *mailer) delivery(event, from, messageID, detail string, when time.Time, address string) {
-	names := m.groupsIn([]string{from})
-	if len(names) == 0 || !m.sentAs(names[0], messageID) {
+	groups := m.groupsIn([]string{from})
+	if len(groups) == 0 || !m.sentAs(groups[0].ID, messageID) {
 		return
 	}
+	g := groups[0]
 	email := strings.ToLower(mail.AddressOf(address))
 	if event != eventDelivered {
-		slog.Warn("loop:delivery trouble", "event", event, "group", names[0], "email", email, "detail", detail)
+		slog.Warn("loop:delivery trouble", "event", event, "group", g.Name, "email", email, "detail", detail)
 	}
-	m.record(map[string]string{"Timestamp": when.Format(time.RFC3339), "Group": names[0], "Email": email, "Event": event, "Message": messageID, "Detail": detail})
+	m.record(map[string]string{"Timestamp": when.Format(time.RFC3339), "Group": g.ID, "Email": email, "Event": event, "Message": messageID, "Detail": detail})
 }
 
 func (m *mailer) forward(ctx context.Context, j job) string {
@@ -315,7 +316,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	}
 	sources := m.sources()
 	sender := sources.Directory.Resolve(strings.ToLower(mail.AddressOf(mail.Header(lines, "from"))))
-	reply := m.repliesTo(g.Name, lines)
+	reply := m.repliesTo(g.ID, lines)
 	if !g.PostableBy(sender, reply, sources) {
 		audience, verb := g.Posting, "post"
 		if reply {
@@ -344,7 +345,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 			failures = append(failures, rcpt+": "+err.Error())
 			continue
 		}
-		m.record(map[string]string{"Timestamp": time.Now().Format(time.RFC3339), "Group": g.Name, "Email": rcpt, "Event": eventSent, "Message": id})
+		m.record(map[string]string{"Timestamp": time.Now().Format(time.RFC3339), "Group": g.ID, "Email": rcpt, "Event": eventSent, "Message": id})
 		sent++
 	}
 	state := stateSent
@@ -354,7 +355,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	log.Info("loop:forwarded", "members", len(members), "sent", sent, "failed", len(failures))
 	cells := map[string]string{"Recipients": strconv.Itoa(sent), "Detail": strings.Join(failures, "; ")}
 	if state == stateSent {
-		m.recordSent(ctx, j, raw, cells)
+		m.recordSent(ctx, j, *g, raw, cells)
 		return state
 	}
 	m.mark(j, state, cells)

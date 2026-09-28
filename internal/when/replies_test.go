@@ -73,8 +73,8 @@ func TestParseReply(t *testing.T) {
 	if got.UID != "a7@sample" || got.Email != "jordan.whitfield@heliosschool.org" || got.Standing != "ACCEPTED" {
 		t.Errorf("reply = %+v", got)
 	}
-	folded := "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:7QK2M4XN@when.heliosian.com\r\nATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=DECLINED;CN=jordan.whitfield@h\r\n eliosschool.org:mailto:jordan.whitfield@h\r\n eliosschool.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-	if got, err := readReply([]byte(folded)); err != nil || got.Standing != "DECLINED" || got.Email != "jordan.whitfield@heliosschool.org" || idOfUID(got.UID) != "7QK2M4XN" {
+	folded := "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:evt0000000001@when.heliosian.com\r\nATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=DECLINED;CN=jordan.whitfield@h\r\n eliosschool.org:mailto:jordan.whitfield@h\r\n eliosschool.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	if got, err := readReply([]byte(folded)); err != nil || got.Standing != "DECLINED" || got.Email != "jordan.whitfield@heliosschool.org" || idOfUID(got.UID) != "evt0000000001" {
 		t.Errorf("declined reply = %+v, %v", got, err)
 	}
 	if _, err := ParseReply([]byte("From: a@example.org\r\nSubject: hi\r\n\r\nJust a note.\r\n")); err == nil {
@@ -100,7 +100,6 @@ func postReply(mux http.Handler, to, from, raw string, signed bool) int {
 func TestRepliesRecordAnswers(t *testing.T) {
 	cache := sampleCache(t)
 	me := "jordan.whitfield@heliosschool.org"
-	d := sampleDirectory(t, "sampledata")
 	const school, elsewhere = "dmarc=pass header.from=heliosschool.org", "dmarc=pass header.from=example.org"
 	replies := map[string]string{
 		"yes":      replyMail("Jordan <"+me+">", me, "a7@sample", "ACCEPTED", school),
@@ -110,19 +109,7 @@ func TestRepliesRecordAnswers(t *testing.T) {
 		"spoofed":  replyMail(me, me, "a7@sample", "DECLINED", "dkim=pass header.d=example.org; spf=pass smtp.mailfrom=x@example.org; dmarc=fail header.from=heliosschool.org"),
 	}
 	m := Mail{Sender: keptMail().Mailgun, SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}
-	mux := http.NewServeMux()
-	Register(mux, Deps{
-		Cache:     cache,
-		Images:    memoryImages(),
-		Directory: func() *who.Model { return d },
-		Settings:  func() *config.Settings { return &config.Settings{} },
-		Lists:     func(string) []List { return nil },
-		Linked:    func(string) []Linked { return nil },
-		Celebrate: noCelebrate(),
-		Sources:   newSampleSources(t).sources,
-		Mail:      m,
-		Style:     testStyle,
-	})
+	mux := replyApp(t, cache, m)
 	own := replyAddress("a7@sample", me)
 	if own != "Helios When <rsvp+"+(app{mail: m}).replyToken("a7@sample", me)+"@reply.heliosian.com>" {
 		t.Fatalf("organizer = %q", own)
@@ -159,5 +146,41 @@ func TestRepliesRecordAnswers(t *testing.T) {
 	to = "someone-else@reply.heliosian.com"
 	if code := post("no", true); code != 200 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
 		t.Errorf("mail for another address was taken as a reply")
+	}
+}
+
+func replyApp(t *testing.T, cache *Cache, m Mail) *http.ServeMux {
+	t.Helper()
+	d := sampleDirectory(t, "sampledata")
+	mux := http.NewServeMux()
+	Register(mux, Deps{
+		Cache:     cache,
+		Images:    memoryImages(),
+		Directory: func() *who.Model { return d },
+		Settings:  func() *config.Settings { return &config.Settings{} },
+		Lists:     func(string) []List { return nil },
+		Linked:    func(string) []Linked { return nil },
+		SourceID:  noSource,
+		Celebrate: noCelebrate(),
+		Sources:   newSampleSources(t).sources,
+		Mail:      m,
+		Style:     testStyle,
+	})
+	return mux
+}
+
+func TestReplyToAnInviteSentUnderAnOldID(t *testing.T) {
+	cache := sampleCache(t)
+	mux := replyApp(t, cache, Mail{Sender: keptMail().Mailgun, SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey})
+	const old, meeting, dev = "3PL9W2ZC", "evt0000000002", "dev.raman@example.org"
+	if cache.Model().AnswerOf(dev, meeting) != AnswerNo {
+		t.Fatalf("the sample answer = %q", cache.Model().AnswerOf(dev, meeting))
+	}
+	reply := replyMail(dev, dev, old+"@when.heliosian.com", "ACCEPTED", "dmarc=pass header.from=example.org")
+	if code := postReply(mux, replyAddress(meeting, dev), dev, reply, true); code != 200 || cache.Model().AnswerOf(dev, meeting) != AnswerNo {
+		t.Errorf("a reply signed for the new ID but naming the old one was taken: %d %q", code, cache.Model().AnswerOf(dev, meeting))
+	}
+	if code := postReply(mux, replyAddress(old, dev), dev, reply, true); code != 200 || cache.Model().AnswerOf(dev, meeting) != AnswerYes || cache.Model().Answered[dev][meeting].Via != ViaCalendar {
+		t.Errorf("a reply to an invite sent under the old ID: %d %+v", code, cache.Model().Answered[dev][meeting])
 	}
 }

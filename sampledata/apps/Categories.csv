@@ -1,6 +1,6 @@
-Title,Emoji,Style,Max,Order
-Helios Community Apps,icon:heliosian,apps,,4
-Upcoming Events,icon:when,events,,8
-School,icon:school,cards,,c
-Events,icon:calendar,tiles,1,g
-Chats,icon:chat,tiles,,k
+Category ID,Title,Emoji,Style,Max,Order
+hcg0000000001,Helios Community Apps,icon:heliosian,apps,,4
+hcg0000000000,Upcoming Events,icon:when,events,,8
+hcg0000000002,School,icon:school,cards,,c
+hcg0000000003,Events,icon:calendar,tiles,1,g
+hcg0000000004,Chats,icon:chat,tiles,,k

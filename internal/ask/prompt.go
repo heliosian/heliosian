@@ -170,9 +170,11 @@ func lingo(v *viewer) string {
 	b.WriteString("\nStaff departments: " + strings.Join(v.directory.Departments, "; ") + "\n")
 	b.WriteString("\nCalendar categories (what each files):\n")
 	for _, t := range v.calendar.Tags {
+		if t.BuiltIn && t.ID != when.TagCelebrate && t.ID != when.TagHCA {
+			continue
+		}
 		fmt.Fprintf(b, "- %s: %s\n", t.Name, t.Description)
 	}
-	b.WriteString("- Celebrate: fun(d)raiser parties from Helios Celebrate.\n- HCA: events the HCA runs, from HCA-Team.\n")
 	b.WriteString("\nDay types (the school day's hours):\n")
 	for _, d := range v.calendar.DayTypes {
 		parts := []string{}
@@ -256,10 +258,9 @@ func viewerBlock(v *viewer) string {
 	tags := v.sources.Tags(p.Email)
 	if len(tags) > 0 {
 		names := []string{}
-		for name, people := range tags {
-			names = append(names, fmt.Sprintf("%s (%d)", name, len(people)))
+		for _, t := range tags {
+			names = append(names, fmt.Sprintf("%s (%d, %s)", t.Name, len(t.People), whoBase+who.TagPath(t.ID)))
 		}
-		slices.Sort(names)
 		fmt.Fprintf(b, "\nTheir own tags in Helios Who?: %s.\n", strings.Join(names, ", "))
 	}
 	return b.String()

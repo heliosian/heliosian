@@ -21,6 +21,7 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -40,13 +41,14 @@ const (
 	StyleEvents = "events"
 	StyleApps   = "apps"
 
+	EventsID    = "hcg0000000000"
 	EventsTitle = "Upcoming Events"
 	EventsEmoji = "icon:when"
 )
 
 var (
-	categoryColumns   = []string{"Title", "Emoji", "Style", "Max", store.OrderColumn}
-	linkColumns       = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added", store.OrderColumn}
+	categoryColumns   = []string{"Category ID", "Title", "Emoji", "Style", "Max", store.OrderColumn}
+	linkColumns       = []string{"Link ID", "Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added", store.OrderColumn}
 	AudienceColumns   = append([]string{"Thing"}, filter.RuleColumns...)
 	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline", "Name", store.OrderColumn}
 	widgetColumns     = []string{"Widget", store.OrderColumn}
@@ -131,6 +133,7 @@ func appKnown(key string) bool {
 }
 
 type Link struct {
+	ID          string        `json:"id"`
 	Title       string        `json:"title"`
 	Description string        `json:"description,omitempty"`
 	URL         string        `json:"url"`
@@ -146,6 +149,7 @@ type Link struct {
 }
 
 type Category struct {
+	ID      string        `json:"id"`
 	Title   string        `json:"title"`
 	Emoji   string        `json:"emoji,omitempty"`
 	Style   string        `json:"style"`
@@ -274,15 +278,21 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 	}
 	model.admins = admins.Read(tables)
 	index := map[string]int{}
+	ids := map[string]bool{}
 	events, apps := false, false
 	for _, row := range tables[categoriesTab] {
 		title := strings.TrimSpace(row["Title"])
 		if title == "" {
 			return nil, fmt.Errorf("category row %v has no title", row)
 		}
-		if _, dup := index[title]; dup {
-			return nil, fmt.Errorf("duplicate category %q", title)
+		key, ok := id.Parse(row["Category ID"])
+		if !ok {
+			return nil, fmt.Errorf("category %q: category id %q is not an id", title, row["Category ID"])
 		}
+		if ids[key] {
+			return nil, fmt.Errorf("category %q: id %s is used twice", title, key)
+		}
+		ids[key] = true
 		emoji := strings.TrimSpace(row["Emoji"])
 		if err := checkEmoji(emoji); err != nil {
 			return nil, fmt.Errorf("category %q: %w", title, err)
@@ -311,33 +321,37 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 		if err := store.CheckKey(order); err != nil {
 			return nil, fmt.Errorf("category %q: %w", title, err)
 		}
-		rules, err := rulesFor(audience, thingCategory+title)
+		rules, err := rulesFor(audience, thingCategory+key)
 		if err != nil {
 			return nil, err
 		}
-		index[title] = len(model.Categories)
-		model.Categories = append(model.Categories, Category{Title: title, Emoji: emoji, Style: style, Max: max, Links: []Link{}, Rules: rules, order: order})
+		index[key] = len(model.Categories)
+		model.Categories = append(model.Categories, Category{ID: key, Title: title, Emoji: emoji, Style: style, Max: max, Links: []Link{}, Rules: rules, order: order})
 	}
 	if !events {
-		if _, taken := index[EventsTitle]; taken {
-			return nil, fmt.Errorf("category %q is the events section's name; give it the %s style or another title", EventsTitle, StyleEvents)
+		if ids[EventsID] {
+			return nil, fmt.Errorf("category id %s is the events section's; give its row the %s style or another id", EventsID, StyleEvents)
 		}
-		model.Categories = append([]Category{{Title: EventsTitle, Emoji: EventsEmoji, Style: StyleEvents, Links: []Link{}, Virtual: true}}, model.Categories...)
-		for title := range index {
-			index[title]++
+		model.Categories = append([]Category{{ID: EventsID, Title: EventsTitle, Emoji: EventsEmoji, Style: StyleEvents, Links: []Link{}, Virtual: true}}, model.Categories...)
+		for key := range index {
+			index[key]++
 		}
-		index[EventsTitle] = 0
+		index[EventsID] = 0
+		ids[EventsID] = true
 	}
-	titles := map[string]bool{}
 	for _, row := range tables[linksTab] {
 		title := strings.TrimSpace(row["Title"])
 		if title == "" {
 			return nil, fmt.Errorf("link row %v has no title", row)
 		}
-		if titles[title] {
-			return nil, fmt.Errorf("duplicate link %q", title)
+		key, ok := id.Parse(row["Link ID"])
+		if !ok {
+			return nil, fmt.Errorf("link %q: link id %q is not an id", title, row["Link ID"])
 		}
-		titles[title] = true
+		if ids[key] {
+			return nil, fmt.Errorf("link %q: id %s is used twice", title, key)
+		}
+		ids[key] = true
 		order := strings.TrimSpace(row[store.OrderColumn])
 		if err := store.CheckKey(order); err != nil {
 			return nil, fmt.Errorf("link %q: %w", title, err)
@@ -345,15 +359,16 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 		if err := cells.URL(row["URL"], false); err != nil {
 			return nil, fmt.Errorf("link %q: %w", title, err)
 		}
-		at, ok := index[row["Category"]]
+		category, _ := id.Parse(row["Category"])
+		at, ok := index[category]
 		if !ok {
 			return nil, fmt.Errorf("link %q names unknown category %q", title, row["Category"])
 		}
 		if model.Categories[at].Style == StyleEvents {
-			return nil, fmt.Errorf("link %q sits under %q, which holds HCA-Team's events rather than links", title, row["Category"])
+			return nil, fmt.Errorf("link %q sits under %q, which holds HCA-Team's events rather than links", title, model.Categories[at].Title)
 		}
 		if model.Categories[at].Style == StyleApps {
-			return nil, fmt.Errorf("link %q sits under %q, which holds the community apps rather than links", title, row["Category"])
+			return nil, fmt.Errorf("link %q sits under %q, which holds the community apps rather than links", title, model.Categories[at].Title)
 		}
 		visible, err := cells.YesNo(row["Visible"], false)
 		if err != nil {
@@ -366,13 +381,13 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 		if err != nil {
 			return nil, fmt.Errorf("link %q: %w", title, err)
 		}
-		rules, err := rulesFor(audience, thingLink+title)
+		rules, err := rulesFor(audience, thingLink+key)
 		if err != nil {
 			return nil, err
 		}
 		model.Categories[at].Links = append(model.Categories[at].Links, Link{
-			Title: title, Description: row["Description"], URL: row["URL"],
-			Image: row["Image"], ImageURL: image, Category: row["Category"],
+			ID: key, Title: title, Description: row["Description"], URL: row["URL"],
+			Image: row["Image"], ImageURL: image, Category: category,
 			Visible: visible, AddedBy: row["Added By"], Added: row["Added"],
 			Rules: rules, order: order,
 		})

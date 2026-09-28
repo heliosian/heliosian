@@ -1,14 +1,7 @@
-import {state, isAdmin, tagGroups, bands, classroomNames, eventDates, eventPath, addDays, parseDate} from './state.js';
+import {state, isAdmin, tagGroups, bands, classroomNames, categoryTags, eventDates, eventPath, addDays, parseDate} from './state.js';
 import {addressSuggest} from '/address.js';
 import {api} from '/api.js';
 import {el, svg, toast, longToast} from '/elements.js';
-
-function randomID() {
-  const alphabet = 'abcdefghjkmnpqrstvwxyz0123456789';
-  const raw = new Uint8Array(8);
-  crypto.getRandomValues(raw);
-  return [...raw].map(b => alphabet[b % alphabet.length]).join('');
-}
 
 export function eventForm({from = null, shift = 0, edit = null, override = false, more = [], onDone}) {
   const admin = isAdmin();
@@ -102,22 +95,15 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     slug = el('input', 'event-slug');
     slug.type = 'text';
     slug.maxLength = 40;
-    slug.value = randomID();
+    slug.placeholder = 'fall-potluck';
     slug.spellcheck = false;
     slug.addEventListener('input', () => {
       slug.value = slug.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
     });
     const row = el('div', 'event-slug-row');
     row.append(el('span', 'event-slug-prefix', location.host + '/e/'), slug);
-    const again = el('button', 'link-button');
-    again.type = 'button';
-    again.textContent = 'New random one';
-    again.addEventListener('click', () => {
-      slug.value = randomID();
-    });
-    row.append(again);
     const slugField = el('div', 'field');
-    slugField.append(el('span', '', 'Web address'), row, el('small', '', 'Letters, digits and dashes. Make it your own, or keep the random one.'));
+    slugField.append(el('span', '', 'Web address'), row, el('small', '', 'A friendly address for sharing - letters, digits and dashes. Blank for none; the event’s own link works either way.'));
     eventPanel.append(slugField);
   }
 
@@ -200,9 +186,9 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
 
   const picture = {name: from ? from.title : '', image: from && from.source === 'sheet' && from.image ? from.image.replace(/^\//, '') : '', imageUrl: from && from.source === 'sheet' ? from.image || '' : ''};
 
-  const builtIn = new Set(state.model.tags.filter(t => t.builtIn).map(t => t.name));
+  const builtIn = new Set(state.model.tags.filter(t => t.builtIn).map(t => t.id));
   const rooms = new Set(from ? from.classrooms : classroomNames());
-  const cats = new Set(from ? from.tags.filter(t => !classroomNames().includes(t) && !builtIn.has(t)) : []);
+  const cats = new Set(from ? categoryTags(from).filter(t => !builtIn.has(t)) : []);
   const chip = (label, on, onClick, color) => {
     const b = el('button', 'filter-chip' + (on ? ' is-on' : ''), label);
     b.type = 'button';
@@ -251,11 +237,11 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       line.append(el('span', 'form-tag-label', group.name || 'Other categories'));
       const chips = el('div', 'filter-chips');
       for (const t of group.tags.filter(t => !t.builtIn)) {
-        chips.append(chip(t.name, cats.has(t.name), () => {
-          if (cats.has(t.name)) {
-            cats.delete(t.name);
+        chips.append(chip(t.name, cats.has(t.id), () => {
+          if (cats.has(t.id)) {
+            cats.delete(t.id);
           } else {
-            cats.add(t.name);
+            cats.add(t.id);
           }
           paintCats();
         }));
@@ -316,7 +302,7 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     const body = {
       title: title.value.trim(), start: when(startDate.value, startTime.value), end: when(endDate.value || startDate.value, endTime.value || startTime.value),
       location: place.value.trim(), description: description.value.trim(), source: invite ? '' : source.value.trim(), image: picture.image, sharing,
-      tags: invite ? [] : [...classroomNames().filter(c => rooms.has(c)), ...cats], keywords: keywords.value.split(',').map(w => w.trim()).filter(Boolean),
+      tags: invite ? [] : [...state.model.classrooms.filter(c => rooms.has(c.name)).map(c => c.id), ...cats], keywords: keywords.value.split(',').map(w => w.trim()).filter(Boolean),
     };
     submit.disabled = true;
     status.classList.remove('error');
@@ -324,7 +310,7 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     if (edit) {
       body.id = edit.id;
     } else if (slug && slug.value.trim()) {
-      body.id = slug.value.trim();
+      body.address = slug.value.trim();
     }
     if (override) {
       body.address = address.value.trim();

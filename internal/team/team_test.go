@@ -95,17 +95,17 @@ func TestAdminApprovesWithTheHatOff(t *testing.T) {
 	for _, status := range []string{StatusOpen, StatusHidden} {
 		t.Run(status, func(t *testing.T) {
 			cache, mux := newServer(t)
-			approve := map[string]any{"id": "E012", "status": status}
+			approve := map[string]any{"id": "act0000000012", "status": status}
 			if rec := testkit.Call(t, mux, parent, "POST", "/api/team/activity", approve); rec.Code != http.StatusForbidden {
 				t.Fatalf("a parent changed an activity's status: %d", rec.Code)
 			}
 			before := len(changeLog(t))
-			if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", approve); rec.Code != http.StatusNoContent {
-				t.Fatalf("making E012 %s with the pencil off: %d %s", status, rec.Code, rec.Body)
+			if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", approve); rec.Code != http.StatusOK {
+				t.Fatalf("making act0000000012 %s with the pencil off: %d %s", status, rec.Code, rec.Body)
 			}
 			log := changeLog(t)[before:]
-			if got := cache.Model().Activity("E012").Status; got != status || len(log) != 1 || log[0]["Column"] != "Status" {
-				t.Fatalf("E012 after making it %s: status %s, change log %v", status, got, log)
+			if got := cache.Model().Activity("act0000000012").Status; got != status || len(log) != 1 || log[0]["Column"] != "Status" {
+				t.Fatalf("act0000000012 after making it %s: status %s, change log %v", status, got, log)
 			}
 		})
 	}
@@ -114,31 +114,31 @@ func TestAdminApprovesWithTheHatOff(t *testing.T) {
 func TestApprovingIsOnlyTheStatus(t *testing.T) {
 	cache, mux := newServer(t)
 	for _, body := range []map[string]any{
-		{"id": "E012", "status": StatusOpen, "title": "Escape Room"},
-		{"id": "E012", "title": "Escape Room"},
-		{"id": "E002", "status": StatusHidden},
+		{"id": "act0000000012", "status": StatusOpen, "title": "Escape Room"},
+		{"id": "act0000000012", "title": "Escape Room"},
+		{"id": "act0000000002", "status": StatusHidden},
 	} {
 		if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", body); rec.Code != http.StatusForbidden {
 			t.Fatalf("an admin with the pencil off saved %v: %d %s", body, rec.Code, rec.Body)
 		}
 	}
-	if got := cache.Model().Activity("E012"); got.Status != StatusPending || got.Title != "Family Escape Room Night" {
-		t.Fatalf("a refused save changed E012: %+v", got)
+	if got := cache.Model().Activity("act0000000012"); got.Status != StatusPending || got.Title != "Family Escape Room Night" {
+		t.Fatalf("a refused save changed act0000000012: %+v", got)
 	}
-	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", map[string]any{"id": "E002", "title": "Renamed"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", map[string]any{"id": "act0000000002", "title": "Renamed"}); rec.Code != http.StatusOK {
 		t.Fatalf("an admin with the pencil on could not edit: %d %s", rec.Code, rec.Body)
 	}
 }
 
 func TestASaveWritesOnlyWhatItNames(t *testing.T) {
 	cache, mux := newServer(t)
-	was := *cache.Model().Activity("E002")
+	was := *cache.Model().Activity("act0000000002")
 	before := len(changeLog(t))
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", map[string]any{"id": "E002", "title": "Renamed"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", map[string]any{"id": "act0000000002", "title": "Renamed"}); rec.Code != http.StatusOK {
 		t.Fatalf("the co-chair's rename: %d %s", rec.Code, rec.Body)
 	}
 	log := changeLog(t)[before:]
-	got := cache.Model().Activity("E002")
+	got := cache.Model().Activity("act0000000002")
 	if len(log) != 1 || log[0]["Column"] != "Title" || got.Title != "Renamed" || got.Description != was.Description || got.Status != was.Status || got.Category != was.Category {
 		t.Fatalf("after a rename: %+v, change log %v", got, log)
 	}
@@ -161,9 +161,9 @@ func TestSampleLoads(t *testing.T) {
 	if len(m.Categories) != 6 || len(m.Activities) != 15 {
 		t.Fatalf("got %d categories, %d root activities", len(m.Categories), len(m.Activities))
 	}
-	night := m.Activity("E001")
+	night := m.Activity("act0000000001")
 	perf := byTitle(m, "2026 - 2027", "India Performance")
-	if night == nil || len(night.Children) != 6 || perf == nil || perf.Parent != "E020" {
+	if night == nil || len(night.Children) != 6 || perf == nil || perf.Parent != "act0000000020" {
 		t.Fatalf("international night did not load as expected: %+v", night)
 	}
 	if perf.Category != "" {
@@ -187,7 +187,7 @@ func TestVisibleToIsWhatRenderShows(t *testing.T) {
 	for _, c := range []struct {
 		email string
 		admin bool
-	}{{parent, false}, {"elena.torres@heliosschool.org", false}, {m.Activity("E001").CoChairs()[0], false}, {parent, true}} {
+	}{{parent, false}, {"elena.torres@heliosschool.org", false}, {m.Activity("act0000000001").CoChairs()[0], false}, {parent, true}} {
 		shown := map[string]bool{}
 		var walk func([]*ActivityView)
 		walk = func(list []*ActivityView) {
@@ -288,11 +288,11 @@ func TestActivityForPrivateList(t *testing.T) {
 
 func TestSignUpAndRemove(t *testing.T) {
 	cache, mux := newServer(t)
-	body := map[string]any{"id": "E017", "position": PositionOpen, "note": "happy to help"}
+	body := map[string]any{"id": "act0000000017", "position": PositionOpen, "note": "happy to help"}
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", body); rec.Code != http.StatusNoContent {
 		t.Fatalf("sign up: %d %s", rec.Code, rec.Body)
 	}
-	role := cache.Model().Activity("E017")
+	role := cache.Model().Activity("act0000000017")
 	if len(role.Volunteers) != 1 || role.Volunteers[0].Email != parent || role.Volunteers[0].AddedBy != parent {
 		t.Fatalf("volunteers after sign up: %+v", role.Volunteers)
 	}
@@ -300,59 +300,59 @@ func TestSignUpAndRemove(t *testing.T) {
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", body); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent named themselves co-chair: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000017", "email": parent, "position": PositionCoChair}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a co-chair could not promote: %d %s", rec.Code, rec.Body)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionCoChair, "note": "here to lead"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000017", "position": PositionCoChair, "note": "here to lead"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a co-chair could not edit their own note: %d %s", rec.Code, rec.Body)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000017", "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a co-chair could not step down: %d %s", rec.Code, rec.Body)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionCoChair}); rec.Code != http.StatusForbidden {
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000017", "position": PositionCoChair}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a volunteer named themselves co-chair: %d", rec.Code)
 	}
-	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000017", "email": parent, "position": PositionCoChair}); rec.Code != http.StatusNoContent {
 		t.Fatalf("an admin could not promote: %d %s", rec.Code, rec.Body)
 	}
-	full := map[string]any{"id": "E026", "position": PositionVolunteer}
+	full := map[string]any{"id": "act0000000026", "position": PositionVolunteer}
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", full); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a full role took a sign-up: %d", rec.Code)
 	}
-	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E001", "email": "Facilities@heliosschool.org", "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000001", "email": "Facilities@heliosschool.org", "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
 		t.Fatalf("an admin could not sign up an alias: %d %s", rec.Code, rec.Body)
 	}
-	if v := cache.Model().Activity("E001").volunteer("hank.morrow@heliosschool.org"); v == nil {
-		t.Fatalf("a sign-up by alias was not stored as the directory's address: %+v", cache.Model().Activity("E001").Volunteers)
+	if v := cache.Model().Activity("act0000000001").volunteer("hank.morrow@heliosschool.org"); v == nil {
+		t.Fatalf("a sign-up by alias was not stored as the directory's address: %+v", cache.Model().Activity("act0000000001").Volunteers)
 	}
 	for _, as := range []string{parent, admin} {
-		if rec := testkit.Call(t, mux, as, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": "x@elsewhere.example", "position": PositionVolunteer}); rec.Code != http.StatusBadRequest {
+		if rec := testkit.Call(t, mux, as, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000017", "email": "x@elsewhere.example", "position": PositionVolunteer}); rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s signed up an address outside the directory: %d", as, rec.Code)
 		}
 	}
-	direct := map[string]any{"id": "E001", "position": PositionVolunteer}
+	direct := map[string]any{"id": "act0000000001", "position": PositionVolunteer}
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", direct); rec.Code != http.StatusBadRequest {
 		t.Fatalf("an activity without direct sign-up took one: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, "someone.else@heliosschool.org", "DELETE", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent}); rec.Code != http.StatusForbidden {
+	if rec := testkit.Call(t, mux, "someone.else@heliosschool.org", "DELETE", "/api/team/volunteer", map[string]any{"id": "act0000000017", "email": parent}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a stranger removed someone: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": kid, "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000017", "email": kid, "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a parent could not sign their child up: %d %s", rec.Code, rec.Body)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": kid, "position": PositionVolunteer, "note": "after school only"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000017", "email": kid, "position": PositionVolunteer, "note": "after school only"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a parent could not edit their child's sign-up: %d %s", rec.Code, rec.Body)
 	}
-	if rec := testkit.Call(t, mux, kid, "DELETE", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent}); rec.Code != http.StatusForbidden {
+	if rec := testkit.Call(t, mux, kid, "DELETE", "/api/team/volunteer", map[string]any{"id": "act0000000017", "email": parent}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a child removed their parent: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/team/volunteer", map[string]any{"id": "E017", "email": kid}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/team/volunteer", map[string]any{"id": "act0000000017", "email": kid}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a parent could not remove their child: %d %s", rec.Code, rec.Body)
 	}
-	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/team/volunteer", map[string]any{"id": "act0000000017", "email": parent}); rec.Code != http.StatusNoContent {
 		t.Fatalf("remove self: %d %s", rec.Code, rec.Body)
 	}
-	if n := len(cache.Model().Activity("E017").Volunteers); n != 0 {
+	if n := len(cache.Model().Activity("act0000000017").Volunteers); n != 0 {
 		t.Fatalf("%d volunteers left after removal", n)
 	}
 }
@@ -363,7 +363,7 @@ func TestMail(t *testing.T) {
 	if r := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/notify", map[string]any{"kinds": []string{"signups", "offers"}}); r.Code != http.StatusNoContent {
 		t.Fatalf("notify prefs: %d %s", r.Code, r.Body)
 	}
-	if r := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionOpen, "note": "happy to help"}); r.Code != http.StatusNoContent {
+	if r := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000017", "position": PositionOpen, "note": "happy to help"}); r.Code != http.StatusNoContent {
 		t.Fatalf("sign up: %d %s", r.Code, r.Body)
 	}
 	bySubject := map[string]mail.Message{}
@@ -372,7 +372,7 @@ func TestMail(t *testing.T) {
 		bySubject[m.Subject] = m
 	}
 	thanks := bySubject["Thanks for volunteering for Clean Up Crew"]
-	if !slices.Equal(thanks.To, []string{parent}) || !slices.Equal(thanks.CC, []string{admin, chair}) || len(thanks.Attachments) != 0 || !strings.Contains(thanks.HTML, "Hi Robin") || !strings.Contains(thanks.HTML, "/open/share/E017.png") || !strings.Contains(thanks.HTML, "Add to Calendar") {
+	if !slices.Equal(thanks.To, []string{parent}) || !slices.Equal(thanks.CC, []string{admin, chair}) || len(thanks.Attachments) != 0 || !strings.Contains(thanks.HTML, "Hi Robin") || !strings.Contains(thanks.HTML, "/open/share/act0000000017.png") || !strings.Contains(thanks.HTML, "Add to Calendar") {
 		t.Fatalf("thank-you: %+v (subjects %v)", thanks, keys(bySubject))
 	}
 	if !slices.Equal(thanks.ReplyTo, []string{admin, chair}) {
@@ -383,7 +383,7 @@ func TestMail(t *testing.T) {
 		t.Fatalf("invite note: %+v (subjects %v)", invite, keys(bySubject))
 	}
 	ics := strings.ReplaceAll(string(invite.Attachments[0].Content), "\r\n ", "")
-	for _, want := range []string{"METHOD:REQUEST", "UID:team-E017-" + parent + "@heliosian.com", "SUMMARY:Clean Up Crew (International Night)", "DTSTART:20260924T230000Z", "DTEND:20260925T010000Z", "ORGANIZER;CN=HCA-Team:mailto:" + mail.AddressOf(mailtest.From), "ATTENDEE;CN=Robin Whitfield;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "STATUS:CONFIRMED"} {
+	for _, want := range []string{"METHOD:REQUEST", "UID:team-act0000000017-" + parent + "@heliosian.com", "SUMMARY:Clean Up Crew (International Night)", "DTSTART:20260924T230000Z", "DTEND:20260925T010000Z", "ORGANIZER;CN=HCA-Team:mailto:" + mail.AddressOf(mailtest.From), "ATTENDEE;CN=Robin Whitfield;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "STATUS:CONFIRMED"} {
 		if !strings.Contains(ics, want) {
 			t.Errorf("invite lacks %q:\n%s", want, ics)
 		}
@@ -403,7 +403,7 @@ func TestMail(t *testing.T) {
 	if n, ok := bySubject["Co-chair offer: Robin Whitfield for Clean Up Crew"]; !ok || !slices.Equal(n.To, []string{admin}) {
 		t.Fatalf("offer notice: %+v", n)
 	}
-	if r := testkit.Call(t, mux, chair, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); r.Code != http.StatusNoContent {
+	if r := testkit.Call(t, mux, chair, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000017", "email": parent, "position": PositionCoChair}); r.Code != http.StatusNoContent {
 		t.Fatalf("promote: %d %s", r.Code, r.Body)
 	}
 	m := rec.Next(t)
@@ -411,7 +411,7 @@ func TestMail(t *testing.T) {
 		t.Fatalf("co-chair note: %+v", m)
 	}
 	other := student
-	if r := testkit.Call(t, mux, other, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer}); r.Code != http.StatusNoContent {
+	if r := testkit.Call(t, mux, other, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000017", "position": PositionVolunteer}); r.Code != http.StatusNoContent {
 		t.Fatalf("second sign up: %d %s", r.Code, r.Body)
 	}
 	family := append([]string{other}, directory.Person(other).ParentContactEmails...)
@@ -431,18 +431,18 @@ func TestMail(t *testing.T) {
 			}
 		}
 	}
-	if r := testkit.Call(t, mux, chair, "DELETE", "/api/team/volunteer", map[string]any{"id": "E017", "email": other}); r.Code != http.StatusNoContent {
+	if r := testkit.Call(t, mux, chair, "DELETE", "/api/team/volunteer", map[string]any{"id": "act0000000017", "email": other}); r.Code != http.StatusNoContent {
 		t.Fatalf("remove: %d %s", r.Code, r.Body)
 	}
 	m = rec.Next(t)
 	cancel := strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", "")
-	if m.Subject != "Removed: Clean Up Crew" || !slices.Equal(m.To, family) || !strings.HasPrefix(m.Attachments[0].ContentType, "text/calendar; method=CANCEL") || !strings.Contains(cancel, "METHOD:CANCEL") || !strings.Contains(cancel, "STATUS:CANCELLED") || !strings.Contains(cancel, "UID:team-E017-"+other+"@heliosian.com") {
+	if m.Subject != "Removed: Clean Up Crew" || !slices.Equal(m.To, family) || !strings.HasPrefix(m.Attachments[0].ContentType, "text/calendar; method=CANCEL") || !strings.Contains(cancel, "METHOD:CANCEL") || !strings.Contains(cancel, "STATUS:CANCELLED") || !strings.Contains(cancel, "UID:team-act0000000017-"+other+"@heliosian.com") {
 		t.Fatalf("cancellation: %+v\n%s", m, cancel)
 	}
 	if !strings.Contains(m.Text, "Mina Park removed your sign-up for Clean Up Crew") {
 		t.Errorf("cancellation does not name who removed it: %q", m.Text)
 	}
-	if r := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": kid, "position": PositionOpen, "note": "bring snacks"}); r.Code != http.StatusNoContent {
+	if r := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000017", "email": kid, "position": PositionOpen, "note": "bring snacks"}); r.Code != http.StatusNoContent {
 		t.Fatalf("sign up a child: %d %s", r.Code, r.Body)
 	}
 	bySubject = map[string]mail.Message{}
@@ -476,22 +476,22 @@ func TestMoveSignUp(t *testing.T) {
 		}
 		return false
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer, "note": "evenings"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000017", "position": PositionVolunteer, "note": "evenings"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("sign up: %d %s", rec.Code, rec.Body)
 	}
-	if rec := testkit.Call(t, mux, "someone.else@heliosschool.org", "POST", "/api/team/volunteer", map[string]any{"id": "E018", "email": parent, "position": PositionVolunteer, "from": "E017"}); rec.Code != http.StatusForbidden {
+	if rec := testkit.Call(t, mux, "someone.else@heliosschool.org", "POST", "/api/team/volunteer", map[string]any{"id": "act0000000018", "email": parent, "position": PositionVolunteer, "from": "act0000000017"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a stranger moved someone: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E018", "position": PositionVolunteer, "note": "evenings", "from": "E017"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000018", "position": PositionVolunteer, "note": "evenings", "from": "act0000000017"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move: %d %s", rec.Code, rec.Body)
 	}
-	if on("E017") || !on("E018") {
-		t.Fatalf("after the move: on E017 %v, on E018 %v", on("E017"), on("E018"))
+	if on("act0000000017") || !on("act0000000018") {
+		t.Fatalf("after the move: on act0000000017 %v, on act0000000018 %v", on("act0000000017"), on("act0000000018"))
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E019", "position": PositionVolunteer, "from": "E017"}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000019", "position": PositionVolunteer, "from": "act0000000017"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("moved from a thing not signed up for: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E016", "position": PositionOpen}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000016", "position": PositionOpen}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("offered to co-chair where none is wanted: %d", rec.Code)
 	}
 }
@@ -502,17 +502,17 @@ func TestMoveNeedsBothEnds(t *testing.T) {
 	move := func(who, from, to string) int {
 		return testkit.Call(t, mux, who, "POST", "/api/team/volunteer", map[string]any{"id": to, "email": marco, "position": PositionVolunteer, "from": from}).Code
 	}
-	if code := move(chair, "E016", "E003"); code != http.StatusForbidden || cache.Model().Activity("E016").volunteer(marco) == nil {
+	if code := move(chair, "act0000000016", "act0000000003"); code != http.StatusForbidden || cache.Model().Activity("act0000000016").volunteer(marco) == nil {
 		t.Fatalf("a co-chair moved someone into a thing they do not run: %d", code)
 	}
-	if code := move(chair, "E016", "E017"); code != http.StatusNoContent || cache.Model().Activity("E017").volunteer(marco) == nil {
+	if code := move(chair, "act0000000016", "act0000000017"); code != http.StatusNoContent || cache.Model().Activity("act0000000017").volunteer(marco) == nil {
 		t.Fatalf("a co-chair could not move someone between two things they run: %d", code)
 	}
-	if code := move(admin, "E017", "E003"); code != http.StatusForbidden {
+	if code := move(admin, "act0000000017", "act0000000003"); code != http.StatusForbidden {
 		t.Fatalf("an admin with the pencil off moved someone: %d", code)
 	}
-	underHat := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E003", "email": marco, "position": PositionVolunteer, "from": "E017"}).Code
-	if underHat != http.StatusNoContent || cache.Model().Activity("E003").volunteer(marco) == nil {
+	underHat := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000003", "email": marco, "position": PositionVolunteer, "from": "act0000000017"}).Code
+	if underHat != http.StatusNoContent || cache.Model().Activity("act0000000003").volunteer(marco) == nil {
 		t.Fatalf("an admin could not move someone: %d", underHat)
 	}
 }
@@ -521,7 +521,7 @@ func TestReorderChildren(t *testing.T) {
 	cache, mux := newServer(t)
 	titles := func() []string {
 		out := []string{}
-		for _, c := range cache.Model().Activity("E002").Children {
+		for _, c := range cache.Model().Activity("act0000000002").Children {
 			out = append(out, c.Title)
 		}
 		return out
@@ -529,7 +529,7 @@ func TestReorderChildren(t *testing.T) {
 	if got := titles(); !slices.Equal(got, []string{"Decor", "Childcare", "Marketing"}) {
 		t.Fatalf("row order to start: %v", got)
 	}
-	body := map[string]any{"parent": "E002", "ids": []string{"E025", "E023", "E024"}}
+	body := map[string]any{"parent": "act0000000002", "ids": []string{"act0000000025", "act0000000023", "act0000000024"}}
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/order", body); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent reordered: %d", rec.Code)
 	}
@@ -540,32 +540,32 @@ func TestReorderChildren(t *testing.T) {
 		t.Fatalf("order after: %v", got)
 	}
 	before := len(changeLog(t))
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/order", map[string]any{"parent": "E002", "ids": []string{"E023", "E025", "E024"}}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/order", map[string]any{"parent": "act0000000002", "ids": []string{"act0000000023", "act0000000025", "act0000000024"}}); rec.Code != http.StatusNoContent {
 		t.Fatalf("second reorder: %d %s", rec.Code, rec.Body)
 	}
 	if got := titles(); !slices.Equal(got, []string{"Decor", "Marketing", "Childcare"}) || len(changeLog(t))-before != 1 {
 		t.Fatalf("order after one move: %v, %d log rows", got, len(changeLog(t))-before)
 	}
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/order", map[string]any{"parent": "E002", "ids": []string{"E025", "E001"}}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/order", map[string]any{"parent": "act0000000002", "ids": []string{"act0000000025", "act0000000001"}}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a stranger's id was taken: %d", rec.Code)
 	}
 }
 
 func TestSuggestApproveRenameDelete(t *testing.T) {
 	cache, mux := newServer(t)
-	suggestion := map[string]any{"year": "2026 - 2027", "title": "Kite Day", "category": "C06", "status": StatusOpen, "description": "Fly kites", "signUp": PositionOpen, "directSignUp": true}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/activity", suggestion); rec.Code != http.StatusNoContent {
+	suggestion := map[string]any{"year": "2026 - 2027", "title": "Kite Day", "category": "tcg0000000006", "status": StatusOpen, "description": "Fly kites", "signUp": PositionOpen, "directSignUp": true}
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/activity", suggestion); rec.Code != http.StatusOK {
 		t.Fatalf("suggest: %d %s", rec.Code, rec.Body)
 	}
 	kite := byTitle(cache.Model(), "2026 - 2027", "Kite Day")
 	if kite == nil || kite.Status != StatusPending || kite.AddedBy != parent || len(kite.Volunteers) != 1 || kite.Volunteers[0].Position != PositionOpen {
 		t.Fatalf("suggestion landed as %+v", kite)
 	}
-	edit := map[string]any{"id": kite.ID, "year": "2026 - 2027", "title": "Kite Festival", "category": "C02", "status": StatusOpen, "directSignUp": true}
+	edit := map[string]any{"id": kite.ID, "year": "2026 - 2027", "title": "Kite Festival", "category": "tcg0000000002", "status": StatusOpen, "directSignUp": true}
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/activity", edit); rec.Code != http.StatusForbidden {
 		t.Fatalf("a non-chair edited an activity: %d", rec.Code)
 	}
-	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("approve and rename: %d %s", rec.Code, rec.Body)
 	}
 	if byTitle(cache.Model(), "2026 - 2027", "Kite Day") != nil {
@@ -591,19 +591,19 @@ func TestSuggestApproveRenameDelete(t *testing.T) {
 
 func TestYearMoveCarriesTheTreeAndDeleteTakesTheLinks(t *testing.T) {
 	cache, mux := newServer(t)
-	spring := cache.Model().Activity("E002")
-	edit := map[string]any{"id": "E002", "year": "2027 - 2028", "title": spring.Title, "category": spring.Category, "status": spring.Status, "directSignUp": true, "prettyId": spring.PrettyID}
-	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	spring := cache.Model().Activity("act0000000002")
+	edit := map[string]any{"id": "act0000000002", "year": "2027 - 2028", "title": spring.Title, "category": spring.Category, "status": spring.Status, "directSignUp": true, "prettyId": spring.PrettyID}
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("move year: %d %s", rec.Code, rec.Body)
 	}
-	for _, c := range cache.Model().Activity("E002").Children {
+	for _, c := range cache.Model().Activity("act0000000002").Children {
 		if c.Year != "2027 - 2028" {
 			t.Fatalf("%s stayed in %s", c.Title, c.Year)
 		}
 	}
 	moved := 0
 	for _, row := range tables(t)[activitiesTab] {
-		if row["Parent"] == "E002" && row["Year"] == "2027 - 2028" {
+		if row["Parent"] == "act0000000002" && row["Year"] == "2027 - 2028" {
 			moved++
 		}
 	}
@@ -616,10 +616,10 @@ func TestYearMoveCarriesTheTreeAndDeleteTakesTheLinks(t *testing.T) {
 			}
 		}
 	}
-	if moved != 3 || len(years) != 4 || years["Event ID=E023 2026 - 2027"] != 1 {
+	if moved != 3 || len(years) != 4 || years["Event ID=act0000000023 2026 - 2027"] != 1 {
 		t.Fatalf("sheet moved %d children, logged %v", moved, years)
 	}
-	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", map[string]any{"year": "2026 - 2027", "title": "Bake Sale", "category": "C02", "status": StatusOpen, "directSignUp": true}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", map[string]any{"year": "2026 - 2027", "title": "Bake Sale", "category": "tcg0000000002", "status": StatusOpen, "directSignUp": true}); rec.Code != http.StatusOK {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
 	sale := byTitle(cache.Model(), "2026 - 2027", "Bake Sale")
@@ -651,20 +651,20 @@ func TestYearMoveCarriesTheTreeAndDeleteTakesTheLinks(t *testing.T) {
 func TestRenameKeepsTheTree(t *testing.T) {
 	cache, mux := newServer(t)
 	edit := map[string]any{
-		"id": "E020", "year": "2026 - 2027", "title": "India Booth", "parent": "E001",
-		"category": "C08", "status": StatusOpen, "coLeaderNeeded": true, "directSignUp": true,
+		"id": "act0000000020", "year": "2026 - 2027", "title": "India Booth", "parent": "act0000000001",
+		"category": "tcg0000000008", "status": StatusOpen, "coLeaderNeeded": true, "directSignUp": true,
 	}
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
-	booth := cache.Model().Activity("E020")
-	if booth == nil || booth.Title != "India Booth" || len(booth.Volunteers) != 1 || len(booth.Links) != 1 || len(booth.Children) != 1 || booth.Children[0].Parent != "E020" {
+	booth := cache.Model().Activity("act0000000020")
+	if booth == nil || booth.Title != "India Booth" || len(booth.Volunteers) != 1 || len(booth.Links) != 1 || len(booth.Children) != 1 || booth.Children[0].Parent != "act0000000020" {
 		t.Fatalf("renamed: %+v", booth)
 	}
-	if rec := testkit.CallUnderHat(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": "E020"}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.CallUnderHat(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": "act0000000020"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleted something with children and volunteers: %d", rec.Code)
 	}
-	loop := map[string]any{"id": "E001", "year": "2026 - 2027", "title": "International Night", "parent": "E020", "category": "", "status": StatusOpen}
+	loop := map[string]any{"id": "act0000000001", "year": "2026 - 2027", "title": "International Night", "parent": "act0000000020", "category": "", "status": StatusOpen}
 	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", loop); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a parent loop was accepted: %d", rec.Code)
 	}
@@ -679,20 +679,20 @@ func TestCoChairApproves(t *testing.T) {
 		}).Code
 	}
 	status := func(id string) string { return cache.Model().Activity(id).Status }
-	if code := save(chair, "E022", "E001", "C08", StatusHidden); code != http.StatusBadRequest {
+	if code := save(chair, "act0000000022", "act0000000001", "tcg0000000008", StatusHidden); code != http.StatusBadRequest {
 		t.Fatalf("a co-chair hid a suggestion: %d", code)
 	}
-	if code := save(chair, "E022", "E001", "C08", StatusPending); code != http.StatusNoContent || status("E022") != StatusPending {
-		t.Fatalf("a co-chair's save that leaves it pending: %d, %s", code, status("E022"))
+	if code := save(chair, "act0000000022", "act0000000001", "tcg0000000008", StatusPending); code != http.StatusOK || status("act0000000022") != StatusPending {
+		t.Fatalf("a co-chair's save that leaves it pending: %d, %s", code, status("act0000000022"))
 	}
-	if code := save(chair, "E022", "E001", "C08", StatusOpen); code != http.StatusNoContent || status("E022") != StatusOpen {
-		t.Fatalf("the event's co-chair could not approve a suggestion: %d, %s", code, status("E022"))
+	if code := save(chair, "act0000000022", "act0000000001", "tcg0000000008", StatusOpen); code != http.StatusOK || status("act0000000022") != StatusOpen {
+		t.Fatalf("the event's co-chair could not approve a suggestion: %d, %s", code, status("act0000000022"))
 	}
-	if code := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E012", "email": chair, "position": PositionCoChair}).Code; code != http.StatusNoContent {
+	if code := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000012", "email": chair, "position": PositionCoChair}).Code; code != http.StatusNoContent {
 		t.Fatalf("make a co-chair: %d", code)
 	}
-	if code := save(chair, "E012", "", "C01", StatusOpen); code != http.StatusNoContent || status("E012") != StatusPending {
-		t.Fatalf("a co-chair approved their own pending event: %d, %s", code, status("E012"))
+	if code := save(chair, "act0000000012", "", "tcg0000000001", StatusOpen); code != http.StatusOK || status("act0000000012") != StatusPending {
+		t.Fatalf("a co-chair approved their own pending event: %d, %s", code, status("act0000000012"))
 	}
 }
 
@@ -705,33 +705,33 @@ func TestCoChairMovesOnlyUnderTheirOwn(t *testing.T) {
 			"id": id, "year": act.Year, "title": act.Title, "parent": parentID, "category": "", "status": act.Status, "directSignUp": act.DirectSignUp,
 		}).Code
 	}
-	if code := move(india, "E020", "E002"); code != http.StatusForbidden {
+	if code := move(india, "act0000000020", "act0000000002"); code != http.StatusForbidden {
 		t.Fatalf("a co-chair moved their booth under an event they do not run: %d", code)
 	}
-	if code := move(india, "E020", ""); code != http.StatusForbidden {
+	if code := move(india, "act0000000020", ""); code != http.StatusForbidden {
 		t.Fatalf("a co-chair made their booth an event of its own: %d", code)
 	}
-	if code := move(chair, "E016", "E003"); code != http.StatusForbidden {
+	if code := move(chair, "act0000000016", "act0000000003"); code != http.StatusForbidden {
 		t.Fatalf("a co-chair moved a crew under an event they do not run: %d", code)
 	}
-	if code := move(chair, "E019", "E002"); code != http.StatusNoContent || cache.Model().Activity("E019").Parent != "E002" {
+	if code := move(chair, "act0000000019", "act0000000002"); code != http.StatusOK || cache.Model().Activity("act0000000019").Parent != "act0000000002" {
 		t.Fatalf("a co-chair could not move a booth between their own events: %d", code)
 	}
-	if code := move(admin, "E016", "E003"); code != http.StatusNoContent {
+	if code := move(admin, "act0000000016", "act0000000003"); code != http.StatusOK {
 		t.Fatalf("an admin could not move a crew: %d", code)
 	}
 }
 
 func TestCopyToNextYear(t *testing.T) {
 	cache, mux := newServer(t)
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusForbidden {
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/copy", map[string]string{"id": "act0000000001"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a co-chair copied: %d", rec.Code)
 	}
-	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "act0000000001"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("copy: %d %s", rec.Code, rec.Body)
 	}
 	next := byTitle(cache.Model(), "2027 - 2028", "International Night")
-	if next == nil || next.ID == "E001" || next.Status != StatusOpen || next.Start != "" || len(next.Volunteers) != 0 || len(next.Descendants()) != 6 || byTitle(cache.Model(), "2027 - 2028", "Cybertron") != nil || len(next.Links) != 2 {
+	if next == nil || next.ID == "act0000000001" || next.Status != StatusOpen || next.Start != "" || len(next.Volunteers) != 0 || len(next.Descendants()) != 6 || byTitle(cache.Model(), "2027 - 2028", "Cybertron") != nil || len(next.Links) != 2 {
 		t.Fatalf("copied activity: %+v", next)
 	}
 	for _, c := range next.Descendants() {
@@ -739,7 +739,7 @@ func TestCopyToNextYear(t *testing.T) {
 			t.Fatalf("copied child %q points at parent %q in the wrong year", c.Title, c.Parent)
 		}
 	}
-	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "act0000000001"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("copied twice: %d", rec.Code)
 	}
 }
@@ -762,8 +762,8 @@ func TestYears(t *testing.T) {
 func TestEventCategories(t *testing.T) {
 	cache, mux := newServer(t)
 	m := cache.Model()
-	night := m.Activity("E001")
-	if len(night.Categories) != 2 || night.Categories[1].ID != "C08" || night.Categories[1].Adding != AddingYes {
+	night := m.Activity("act0000000001")
+	if len(night.Categories) != 2 || night.Categories[1].ID != "tcg0000000008" || night.Categories[1].Adding != AddingYes {
 		t.Fatalf("international night's categories: %+v", night.Categories)
 	}
 	if len(m.Categories) != 6 {
@@ -771,33 +771,33 @@ func TestEventCategories(t *testing.T) {
 	}
 	propose := func(who, category string) int {
 		return testkit.Call(t, mux, who, "POST", "/api/team/activity", map[string]any{
-			"year": "2026 - 2027", "title": "Sweden", "parent": "E001", "category": category, "status": StatusOpen, "directSignUp": true,
+			"year": "2026 - 2027", "title": "Sweden", "parent": "act0000000001", "category": category, "status": StatusOpen, "directSignUp": true,
 		}).Code
 	}
-	if code := propose(parent, "C08"); code != http.StatusNoContent {
+	if code := propose(parent, "tcg0000000008"); code != http.StatusOK {
 		t.Fatalf("a booth under an open category was refused: %d", code)
 	}
 	if sweden := byTitle(cache.Model(), "2026 - 2027", "Sweden"); sweden == nil || sweden.Status != StatusOpen {
 		t.Fatalf("a booth added under a Yes category should be open: %+v", sweden)
 	}
 	if code := testkit.Call(t, mux, parent, "POST", "/api/team/activity", map[string]any{
-		"year": "2026 - 2027", "title": "Loose Booth", "parent": "E001", "category": "", "status": StatusOpen, "directSignUp": true,
-	}).Code; code != http.StatusNoContent {
+		"year": "2026 - 2027", "title": "Loose Booth", "parent": "act0000000001", "category": "", "status": StatusOpen, "directSignUp": true,
+	}).Code; code != http.StatusOK {
 		t.Fatalf("an uncategorised proposal under an Approval Needed event was refused: %d", code)
 	}
 	if loose := byTitle(cache.Model(), "2026 - 2027", "Loose Booth"); loose == nil || loose.Status != StatusPending {
 		t.Fatalf("an uncategorised proposal should wait for approval: %+v", loose)
 	}
-	if code := propose(parent, "C07"); code != http.StatusBadRequest {
+	if code := propose(parent, "tcg0000000007"); code != http.StatusBadRequest {
 		t.Fatalf("a proposal into a closed category went through: %d", code)
 	}
-	if code := propose(chair, "C07"); code != http.StatusNoContent {
+	if code := propose(chair, "tcg0000000007"); code != http.StatusOK {
 		t.Fatalf("the co-chair could not add into a closed category: %d", code)
 	}
-	if code := propose(chair, "C01"); code != http.StatusBadRequest {
+	if code := propose(chair, "tcg0000000001"); code != http.StatusBadRequest {
 		t.Fatalf("a child took a page heading as its category: %d", code)
 	}
-	own := map[string]any{"eventId": "E001", "title": "Performances", "allowAdding": AddingYes}
+	own := map[string]any{"eventId": "act0000000001", "title": "Performances", "allowAdding": AddingYes}
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/category", own); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent made an event category: %d", rec.Code)
 	}
@@ -807,33 +807,33 @@ func TestEventCategories(t *testing.T) {
 	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/category", map[string]any{"title": "New Heading"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a co-chair made a page heading: %d", rec.Code)
 	}
-	if n := len(cache.Model().Activity("E001").Categories); n != 3 {
+	if n := len(cache.Model().Activity("act0000000001").Categories); n != 3 {
 		t.Fatalf("event categories after adding: %d", n)
 	}
 	ids := []string{}
-	for _, c := range cache.Model().Activity("E001").Categories {
+	for _, c := range cache.Model().Activity("act0000000001").Categories {
 		ids = append(ids, c.ID)
 	}
 	ids[0], ids[1] = ids[1], ids[0]
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/categories/order", map[string]any{"eventId": "E001", "ids": ids}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/categories/order", map[string]any{"eventId": "act0000000001", "ids": ids}); rec.Code != http.StatusNoContent {
 		t.Fatalf("reorder: %d %s", rec.Code, rec.Body)
 	}
 	after := cache.Model()
 	got := []string{}
-	for _, c := range after.Activity("E001").Categories {
+	for _, c := range after.Activity("act0000000001").Categories {
 		got = append(got, c.ID)
 	}
-	if !slices.Equal(got, ids) || after.Categories[0].ID != "C01" || after.Activity("E013").Categories[0].ID != "C09" {
+	if !slices.Equal(got, ids) || after.Categories[0].ID != "tcg0000000001" || after.Activity("act0000000013").Categories[0].ID != "tcg0000000009" {
 		t.Fatalf("reorder: %v, or it leaked out of its scope", got)
 	}
-	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/categories/order", map[string]any{"eventId": "E001", "ids": ids[1:]}); rec.Code != http.StatusBadRequest {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/categories/order", map[string]any{"eventId": "act0000000001", "ids": ids[1:]}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("an order missing one was taken: %d", rec.Code)
 	}
-	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "act0000000001"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("copy: %d %s", rec.Code, rec.Body)
 	}
 	next := byTitle(cache.Model(), "2027 - 2028", "International Night")
-	if next == nil || len(next.Categories) != 3 || next.Categories[0].ID == ids[0] || next.Categories[0].Title != after.Activity("E001").Categories[0].Title {
+	if next == nil || len(next.Categories) != 3 || next.Categories[0].ID == ids[0] || next.Categories[0].Title != after.Activity("act0000000001").Categories[0].Title {
 		t.Fatalf("copied categories: %+v", next.Categories)
 	}
 	norway := byTitle(cache.Model(), "2027 - 2028", "Norway")
@@ -851,8 +851,8 @@ func TestUncategorizedFallback(t *testing.T) {
 	next[activitiesTab] = append(next[activitiesTab],
 		store.Row{"Event ID": "E900", "Year": "2026 - 2027", "Title": "Blank", "Status": StatusOpen},
 		store.Row{"Event ID": "E901", "Year": "2026 - 2027", "Title": "Unknown", "Category": "nope", "Status": StatusOpen},
-		store.Row{"Event ID": "E902", "Year": "2026 - 2027", "Title": "Borrowed", "Category": "C07", "Status": StatusOpen},
-		store.Row{"Event ID": "E903", "Year": "2026 - 2027", "Title": "Child", "Parent": "E001", "Category": "C09", "Status": StatusOpen},
+		store.Row{"Event ID": "E902", "Year": "2026 - 2027", "Title": "Borrowed", "Category": "tcg0000000007", "Status": StatusOpen},
+		store.Row{"Event ID": "E903", "Year": "2026 - 2027", "Title": "Child", "Parent": "act0000000001", "Category": "tcg0000000009", "Status": StatusOpen},
 	)
 	m, err := BuildModel(context.Background(), next, bundled)
 	if err != nil {
@@ -873,7 +873,7 @@ func TestUncategorizedFallback(t *testing.T) {
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/activity", add); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a proposal without a category went through: %d", rec.Code)
 	}
-	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", add); rec.Code != http.StatusNoContent {
+	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/activity", add); rec.Code != http.StatusOK {
 		t.Fatalf("admin add: %d %s", rec.Code, rec.Body)
 	}
 	loose := byTitle(cache.Model(), "2026 - 2027", "Loose End")
@@ -894,7 +894,7 @@ func TestBrokenSheetRefusesToLoad(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(broken, "events"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"Categories", "Activities", "Links", "Settings", "Notifications", "Admins", "Redirects", "Change Log"} {
+	for _, name := range []string{"Categories", "Activities", "Links", "Settings", "Notifications", "Admins", "Redirects", "Aliases", "Change Log"} {
 		raw, err := os.ReadFile(filepath.Join("sampledata", "events", name+".csv"))
 		if err != nil {
 			t.Fatal(err)
@@ -916,11 +916,11 @@ func TestHandWrittenRows(t *testing.T) {
 	cache, _ := newServer(t)
 	next := tables(t)
 	next[activitiesTab] = append(next[activitiesTab],
-		store.Row{"Event ID": "E900", "Title": "Bare Child", "Parent": "E020", "Status": StatusOpen},
+		store.Row{"Event ID": "E900", "Title": "Bare Child", "Parent": "act0000000020", "Status": StatusOpen},
 		store.Row{"Event ID": "", "Title": "Gone", "Year": "nonsense", "Status": "Active", "Parent": "nope"},
 	)
 	next[volunteersTab] = append(next[volunteersTab], store.Row{"Event ID": "", "Email": "not an email", "Position": "Boss"})
-	next[linksTab] = append(next[linksTab], store.Row{"Event ID": "", "Title": "Old", "URL": "https://example.com"})
+	next[linksTab] = append(next[linksTab], store.Row{"Link ID": "hrf0000000901", "Event ID": "", "Title": "Old", "URL": "https://example.com"})
 	m, err := BuildModel(context.Background(), next, bundled)
 	if err != nil {
 		t.Fatal(err)
@@ -938,9 +938,9 @@ func TestHandWrittenRows(t *testing.T) {
 	)
 	next[volunteersTab] = append(next[volunteersTab],
 		store.Row{"Event ID": "gone-id", "Email": parent, "Position": PositionVolunteer},
-		store.Row{"Event ID": "E001", "Email": chair, "Position": PositionVolunteer},
+		store.Row{"Event ID": "act0000000001", "Email": chair, "Position": PositionVolunteer},
 	)
-	next[linksTab] = append(next[linksTab], store.Row{"Event ID": "E910", "Title": "Lost", "URL": "https://example.com"})
+	next[linksTab] = append(next[linksTab], store.Row{"Link ID": "hrf0000000902", "Event ID": "E910", "Title": "Lost", "URL": "https://example.com"})
 	m, err = BuildModel(context.Background(), next, bundled)
 	if err != nil {
 		t.Fatal(err)
@@ -952,10 +952,10 @@ func TestHandWrittenRows(t *testing.T) {
 	if m.Skipped != want {
 		t.Fatalf("skipped %+v, want %+v", m.Skipped, want)
 	}
-	if n := len(m.Activity("E001").Volunteers); n != len(cache.Model().Activity("E001").Volunteers) {
+	if n := len(m.Activity("act0000000001").Volunteers); n != len(cache.Model().Activity("act0000000001").Volunteers) {
 		t.Fatalf("the duplicate sign-up was added: %d volunteers", n)
 	}
-	next[activitiesTab] = append(next[activitiesTab], store.Row{"Event ID": "E901", "Title": "Lost", "Year": "2025 - 2026", "Parent": "E020", "Status": StatusOpen})
+	next[activitiesTab] = append(next[activitiesTab], store.Row{"Event ID": "E901", "Title": "Lost", "Year": "2025 - 2026", "Parent": "act0000000020", "Status": StatusOpen})
 	if _, err := BuildModel(context.Background(), next, bundled); err == nil || !strings.Contains(err.Error(), "has its parent") {
 		t.Fatalf("a child in another year loaded: %v", err)
 	}
@@ -968,7 +968,7 @@ func TestHandWrittenRows(t *testing.T) {
 
 func TestShowOnMainPage(t *testing.T) {
 	cache, mux := newServer(t)
-	if c := cache.Model().Category("C01"); !c.ShowOnMain {
+	if c := cache.Model().Category("tcg0000000001"); !c.ShowOnMain {
 		t.Fatalf("a heading defaults to being shown: %+v", c)
 	}
 	next := tables(t)
@@ -978,18 +978,18 @@ func TestShowOnMainPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !m.Category("C01").ShowOnMain || !m.Category("C07").ShowOnMain {
+	if !m.Category("tcg0000000001").ShowOnMain || !m.Category("tcg0000000007").ShowOnMain {
 		t.Fatalf("blank or event-scoped categories should be shown")
 	}
 	off := false
-	edit := map[string]any{"id": "C02", "title": "Activities", "allowAdding": AddingNo, "showOnMain": off}
+	edit := map[string]any{"id": "tcg0000000002", "title": "Activities", "allowAdding": AddingNo, "showOnMain": off}
 	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/team/category", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("edit: %d %s", rec.Code, rec.Body)
 	}
-	if cache.Model().Category("C02").ShowOnMain || cache.Count(categoriesTab, store.Row{"Category ID": "C02", "Show On Main Page": "No"}) != 1 {
+	if cache.Model().Category("tcg0000000002").ShowOnMain || cache.Count(categoriesTab, store.Row{"Category ID": "tcg0000000002", "Show On Main Page": "No"}) != 1 {
 		t.Fatalf("the heading was not taken off the page")
 	}
-	own := map[string]any{"eventId": "E001", "title": "Shifts", "allowAdding": "", "showOnMain": off}
+	own := map[string]any{"eventId": "act0000000001", "title": "Shifts", "allowAdding": "", "showOnMain": off}
 	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/category", own); rec.Code != http.StatusNoContent {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
@@ -1001,7 +1001,7 @@ func TestShowOnMainPage(t *testing.T) {
 func TestPrettyIDs(t *testing.T) {
 	cache, mux := newServer(t)
 	m := cache.Model()
-	if m.ByPretty("International-Night") != m.Activity("E001") || m.ByPretty("nope") != nil {
+	if m.ByPretty("International-Night") != m.Activity("act0000000001") || m.ByPretty("nope") != nil {
 		t.Fatalf("pretty lookup")
 	}
 	edit := func(id, pretty string, takeOver bool) *httptest.ResponseRecorder {
@@ -1011,57 +1011,57 @@ func TestPrettyIDs(t *testing.T) {
 			"directSignUp": true, "prettyId": pretty, "takeOver": takeOver,
 		})
 	}
-	if rec := edit("E002", "Bad Address!", false); rec.Code != http.StatusBadRequest {
+	if rec := edit("act0000000002", "Bad Address!", false); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a pretty id with spaces went through: %d", rec.Code)
 	}
-	rec := edit("E002", "international-night", false)
+	rec := edit("act0000000002", "international-night", false)
 	var conflict prettyConflict
-	if rec.Code != http.StatusConflict || json.Unmarshal(rec.Body.Bytes(), &conflict) != nil || conflict.Prior || conflict.ID != "E001" {
+	if rec.Code != http.StatusConflict || json.Unmarshal(rec.Body.Bytes(), &conflict) != nil || conflict.Prior || conflict.ID != "act0000000001" {
 		t.Fatalf("same-year clash: %d %s", rec.Code, rec.Body)
 	}
-	if rec := edit("E002", "international-night", true); rec.Code != http.StatusConflict {
+	if rec := edit("act0000000002", "international-night", true); rec.Code != http.StatusConflict {
 		t.Fatalf("take-over of a current address went through: %d", rec.Code)
 	}
 	last := byTitle(cache.Model(), "2025 - 2026", "International Night")
-	rec = edit("E002", "international-night-2025", false)
+	rec = edit("act0000000002", "international-night-2025", false)
 	if rec.Code != http.StatusConflict || json.Unmarshal(rec.Body.Bytes(), &conflict) != nil || !conflict.Prior || conflict.ID != last.ID || conflict.Renamed != "international-night-2025-2025" {
 		t.Fatalf("prior-year clash: %d %s", rec.Code, rec.Body)
 	}
-	if rec := edit("E002", "international-night-2025", true); rec.Code != http.StatusNoContent {
+	if rec := edit("act0000000002", "international-night-2025", true); rec.Code != http.StatusOK {
 		t.Fatalf("take-over: %d %s", rec.Code, rec.Body)
 	}
 	m = cache.Model()
-	if m.Activity("E002").PrettyID != "international-night-2025" || m.Activity(last.ID).PrettyID != "international-night-2025-2025" {
-		t.Fatalf("after take-over: %q %q", m.Activity("E002").PrettyID, m.Activity(last.ID).PrettyID)
+	if m.Activity("act0000000002").PrettyID != "international-night-2025" || m.Activity(last.ID).PrettyID != "international-night-2025-2025" {
+		t.Fatalf("after take-over: %q %q", m.Activity("act0000000002").PrettyID, m.Activity(last.ID).PrettyID)
 	}
 	if n := cache.Count(redirectsTab, store.Row{"Old": "/v/international-night-2025"}); n != 0 {
 		t.Fatalf("the address taken over was redirected to the displaced event: %+v", m.Redirects)
 	}
-	if m.Resolve("intl-night") != m.Activity("E001") || m.Resolve("/v/intl-night") != m.Activity("E001") || m.Resolve("nope") != nil {
+	if m.Resolve("intl-night") != m.Activity("act0000000001") || m.Resolve("/v/intl-night") != m.Activity("act0000000001") || m.Resolve("nope") != nil {
 		t.Fatalf("sample redirect")
 	}
-	if rec := edit("E002", "spring-party", false); rec.Code != http.StatusNoContent {
+	if rec := edit("act0000000002", "spring-party", false); rec.Code != http.StatusOK {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
-	if rec := edit("E002", "", false); rec.Code != http.StatusNoContent {
+	if rec := edit("act0000000002", "", false); rec.Code != http.StatusOK {
 		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
 	}
 	m = cache.Model()
-	for _, old := range []string{"/v/spring-celebration", "/v/international-night-2025", "/v/spring-party", "/activities/E002"} {
-		if m.Resolve(old) != m.Activity("E002") {
+	for _, old := range []string{"/v/spring-celebration", "/v/international-night-2025", "/v/spring-party", "/activities/act0000000002"} {
+		if m.Resolve(old) != m.Activity("act0000000002") {
 			t.Fatalf("%s did not reach the event: %+v", old, m.Redirects)
 		}
 	}
-	if n := cache.Count(redirectsTab, store.Row{"Type": RedirectActivity, "Old": "/v/spring-party", "New": "/activities/E002"}); n != 1 {
+	if n := cache.Count(redirectsTab, store.Row{"Type": RedirectActivity, "Old": "/v/spring-party", "New": "/activities/act0000000002"}); n != 1 {
 		t.Fatalf("a removed address should redirect to the row: %+v", m.Redirects)
 	}
-	if err := cache.Commit(context.Background(), viewerOf(admin, true), store.Update(activitiesTab, store.Row{"Event ID": "E002"}, store.Row{"Pretty ID": "spring-fling"})); err != nil {
+	if err := cache.Commit(context.Background(), viewerOf(admin, true), store.Update(activitiesTab, store.Row{"Event ID": "act0000000002"}, store.Row{"Pretty ID": "spring-fling"})); err != nil {
 		t.Fatal(err)
 	}
-	if n := cache.Count(redirectsTab, store.Row{"Type": RedirectActivity, "Old": "/activities/E002", "New": "/v/spring-fling"}); n != 1 {
+	if n := cache.Count(redirectsTab, store.Row{"Type": RedirectActivity, "Old": "/activities/act0000000002", "New": "/v/spring-fling"}); n != 1 {
 		t.Fatalf("a write outside the save handler moved the event without a redirect: %+v", cache.Model().Redirects)
 	}
-	if rec := edit("E002", "international-night-2025", false); rec.Code != http.StatusNoContent {
+	if rec := edit("act0000000002", "international-night-2025", false); rec.Code != http.StatusOK {
 		t.Fatalf("restore: %d %s", rec.Code, rec.Body)
 	}
 	m = cache.Model()
@@ -1075,7 +1075,7 @@ func TestPrettyIDs(t *testing.T) {
 			"directSignUp": true, "prettyId": pretty,
 		})
 	}
-	if rec := child(norway, "norway"); rec.Code != http.StatusNoContent {
+	if rec := child(norway, "norway"); rec.Code != http.StatusOK {
 		t.Fatalf("child pretty: %d %s", rec.Code, rec.Body)
 	}
 	if rec := child(india, "norway"); rec.Code != http.StatusConflict {
@@ -1085,14 +1085,14 @@ func TestPrettyIDs(t *testing.T) {
 	if m.Resolve("/v/international-night/norway") != m.Activity(norway.ID) || m.Resolve("/v/international-night/"+norway.ID) != m.Activity(norway.ID) || m.Resolve("/v/intl-night/norway") != m.Activity(norway.ID) {
 		t.Fatalf("child by path: %q", m.PathOf(m.Activity(norway.ID)))
 	}
-	if rec := edit("E001", "inight", false); rec.Code != http.StatusNoContent {
+	if rec := edit("act0000000001", "inight", false); rec.Code != http.StatusOK {
 		t.Fatalf("rename event: %d %s", rec.Code, rec.Body)
 	}
 	m = cache.Model()
 	if m.PathOf(m.Activity(norway.ID)) != "/v/inight/norway" || m.Resolve("/v/international-night/norway") != m.Activity(norway.ID) || m.Resolve("/v/intl-night/norway") != m.Activity(norway.ID) {
 		t.Fatalf("event rename did not carry the booth: %q", m.PathOf(m.Activity(norway.ID)))
 	}
-	if rec := edit("E002", "International-Night-2025", false); rec.Code != http.StatusNoContent {
+	if rec := edit("act0000000002", "International-Night-2025", false); rec.Code != http.StatusOK {
 		t.Fatalf("re-saving own address: %d %s", rec.Code, rec.Body)
 	}
 	next := tables(t)
@@ -1105,7 +1105,7 @@ func TestPrettyIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dup.ByPretty("inight") != dup.Activity("E001") || dup.Activity(last.ID).PrettyID != "" || dup.Skipped.PrettyIDs != 1 {
+	if dup.ByPretty("inight") != dup.Activity("act0000000001") || dup.Activity(last.ID).PrettyID != "" || dup.Skipped.PrettyIDs != 1 {
 		t.Fatalf("duplicate in the sheet: %+v", dup.Skipped)
 	}
 }
@@ -1115,16 +1115,16 @@ func TestSharePreview(t *testing.T) {
 	previews := []testkit.Preview{{
 		URL: "https://team.heliosian.com/v/intl-night/",
 		Want: []string{`og:title" content="International Night"`, `og:url" content="https://team.heliosian.com/v/international-night"`,
-			`og:image" content="https://team.heliosian.com/open/share/E001.png"`, `Thursday, September 24 · 4:00 – 6:00 PM — We invite you`},
+			`og:image" content="https://team.heliosian.com/open/share/act0000000001.png"`, `Thursday, September 24 · 4:00 – 6:00 PM — We invite you`},
 	}, {
-		URL:  "https://team.heliosian.com/v/international-night/E020",
+		URL:  "https://team.heliosian.com/v/international-night/act0000000020",
 		Want: []string{`og:title" content="India · International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`},
 	}}
-	for _, path := range []string{"/activities/E006", "/my", "/"} {
+	for _, path := range []string{"/activities/act0000000006", "/my", "/"} {
 		previews = append(previews, testkit.Preview{
 			URL:   "https://team.heliosian.com" + path,
 			Want:  []string{`og:title" content="HCA-Team"`, `og:image" content="https://team.heliosian.com/open/share/upcoming.png"`, "Volunteers needed: "},
-			Never: []string{"E006"},
+			Never: []string{"act0000000006"},
 		})
 	}
 	testkit.Previews(t, PreviewHead(cache, testStyle), previews...)
@@ -1148,11 +1148,11 @@ func TestSharePreview(t *testing.T) {
 	if note := needNote(&Activity{Start: "2026-09-24", Spots: 3, Volunteers: []Volunteer{{}}}); note != "Thursday, September 24 · 2 spots left" {
 		t.Fatalf("note: %q", note)
 	}
-	testkit.Cards(t, mux, []string{"/open/share/E001.png", "/open/share/upcoming.png"}, "/open/share/E006.png")
+	testkit.Cards(t, mux, []string{"/open/share/act0000000001.png", "/open/share/upcoming.png"}, "/open/share/act0000000006.png")
 	for _, status := range []string{StatusHidden, StatusPending} {
 		next := tables(t)
 		for _, row := range next[activitiesTab] {
-			if row["Event ID"] == "E001" {
+			if row["Event ID"] == "act0000000001" {
 				row["Status"], row["Added By"] = status, ""
 			}
 		}
@@ -1160,11 +1160,11 @@ func TestSharePreview(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if child := parked.Activity("E020"); child.Status != StatusOpen || previewable(parked, child) {
+		if child := parked.Activity("act0000000020"); child.Status != StatusOpen || previewable(parked, child) {
 			t.Fatalf("%s parent: %s (%s) previews", status, child.Title, child.Status)
 		}
 		for _, a := range needs(parked, now()) {
-			if a.ID == "E001" || a.Parent == "E001" {
+			if a.ID == "act0000000001" || a.Parent == "act0000000001" {
 				t.Fatalf("%s parent: %s is a need", status, a.Title)
 			}
 		}
@@ -1220,7 +1220,7 @@ func TestRedirects(t *testing.T) {
 	if n := cache.Count(redirectsTab, store.Row{"Type": RedirectAdmin, "Old": oldPath, "New": "/v/international-night"}); n != 1 {
 		t.Fatalf("row not written: %+v", m.Redirects)
 	}
-	if m.Resolve(oldPath) != m.Activity("E001") || m.Destination(oldPath) != "/v/international-night" {
+	if m.Resolve(oldPath) != m.Activity("act0000000001") || m.Destination(oldPath) != "/v/international-night" {
 		t.Fatalf("old link: %v %q", m.Resolve(oldPath), m.Destination(oldPath))
 	}
 	if got := m.Destination("/v/intl-night"); got != "/v/international-night" {

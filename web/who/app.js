@@ -1,4 +1,4 @@
-import {state, applyModel, applyConfig} from './state.js';
+import {state, applyModel, applyConfig, tagKey} from './state.js';
 import {segments, shuffled} from './dom.js';
 import {tabParam} from '/tabs.js';
 import {api} from '/api.js';
@@ -46,7 +46,7 @@ function people(parts) {
     return personPage(parts[1]);
   }
   const params = new URLSearchParams(location.search);
-  const tagParam = params.get('tag') || params.get('list') || (params.get('shared') ? 'shared:' + params.get('shared') : '');
+  const tagParam = params.get('tag') ? tagKey(params.get('tag')) : params.get('list') || '';
   if (tagParam) {
     state.filterTags = new Set([tagParam]);
     state.filterTagRelations = loadTagRelations(tagParam);

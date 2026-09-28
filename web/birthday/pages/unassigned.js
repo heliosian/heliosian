@@ -83,7 +83,7 @@ function list(rows, rerender) {
 
 function grid(rows, rerender) {
   const items = [];
-  for (const date of state.model.newsletterDates) {
+  for (const {date} of state.model.newsletterDates) {
     const day = parseDate(date);
     if (!day) {
       continue;

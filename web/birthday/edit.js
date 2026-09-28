@@ -1,4 +1,4 @@
-import {state, me, team, isAdmin, isSystemAdmin, settings, charity, longDate, dateCell, parseDate, year} from './state.js';
+import {state, me, team, isAdmin, isSystemAdmin, settings, charity, charityNamed, charityName, issueDates, newsletterOn, longDate, dateCell, parseDate, year} from './state.js';
 import {el, button, toast} from '/elements.js';
 import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
@@ -68,12 +68,12 @@ export async function shareIssue(date) {
   const list = toShare(date);
   const bare = list.filter(sv => !sv.donation).length;
   const words = `Copy ${list.length} ${list.length === 1 ? 'birthday' : 'birthdays'} for ${longDate(date)} to the Staff Birthday List (Shared) and mark ${list.length === 1 ? 'it' : 'them'} done?` +
-    (bare ? ` ${bare} with no charity recorded ${bare === 1 ? 'gets' : 'get'} ${settings().defaultCharity}.` : '');
+    (bare ? ` ${bare} with no charity recorded ${bare === 1 ? 'gets' : 'get'} ${charityName(settings().defaultCharity)}.` : '');
   if (!confirm(words)) {
     return;
   }
   try {
-    const {copied} = await api('POST', '/api/birthday/newsletter/share', {date});
+    const {copied} = await api('POST', '/api/birthday/newsletter/share', {id: newsletterOn(date).id});
     await load();
     toast(`Copied ${copied} to the shared sheet`);
   } catch (err) {
@@ -87,16 +87,16 @@ export function markUsed(sv, used) {
 }
 
 export function useDefault(sv) {
-  return act('POST', '/api/birthday/donation', {email: sv.email, charity: settings().defaultCharity, note: ''}, `Recorded ${settings().defaultCharity}`);
+  return act('POST', '/api/birthday/donation', {email: sv.email, charity: settings().defaultCharity, note: ''}, `Recorded ${charityName(settings().defaultCharity)}`);
 }
 
 export function reuseLast(sv) {
-  return act('POST', '/api/birthday/donation', {email: sv.email, charity: sv.lastDonation.charity, note: sv.lastDonation.note || ''}, `Recorded ${sv.lastDonation.charity} again`);
+  return act('POST', '/api/birthday/donation', {email: sv.email, charity: sv.lastDonation.charity, note: sv.lastDonation.note || ''}, `Recorded ${charityName(sv.lastDonation.charity)} again`);
 }
 
 function charityOptions(current) {
-  const options = state.model.charities.filter(c => c.allowed || c.name === current).map(c => ({label: c.allowed ? c.name : `${c.name} (not allowed)`, value: c.name}));
-  options.sort((a, b) => a.value.localeCompare(b.value));
+  const options = state.model.charities.filter(c => c.allowed || c.id === current).map(c => ({label: c.allowed ? c.name : `${c.name} (not allowed)`, value: c.id}));
+  options.sort((a, b) => a.label.localeCompare(b.label));
   return options;
 }
 
@@ -108,7 +108,8 @@ export function openDonation(sv) {
   const addLink = el('button', 'link-button', 'Not on the list? Add a charity.');
   addLink.type = 'button';
   addLink.addEventListener('click', () => openCharity(null, {afterSave: name => {
-    fillSelect(pick, charityOptions(name), name);
+    const added = charityNamed(name);
+    fillSelect(pick, charityOptions(added.id), added.id);
     showBlurb();
   }}));
   add.append(addLink);
@@ -155,7 +156,7 @@ export function openBirthday(sv) {
   const day = select(days, currentDay || '01');
   const birthday = el('div', 'field-pair');
   birthday.append(month, day);
-  const override = select([{label: 'The usual pick', value: ''}, ...state.model.newsletterDates.map(d => ({label: longDate(d), value: d}))], sv.override || '');
+  const override = select([{label: 'The usual pick', value: ''}, ...state.model.newsletterDates.map(n => ({label: longDate(n.date), value: n.id}))], sv.override || '');
   const fields = [];
   if (!sv.birthday) {
     fields.push(field('Email', email));
@@ -286,7 +287,7 @@ function openCharityForm(c, start, options) {
     replace: !c,
     submit: async () => {
       await api('POST', '/api/birthday/charity', {
-        original: c ? c.name : '', name: name.value, donationLink: linkInput.value, about: about.value, ein: c ? c.ein : '',
+        id: c ? c.id : '', name: name.value, donationLink: linkInput.value, about: about.value, ein: c ? c.ein : '',
         allowed: admin ? allowed.input.checked : true, whyNotAllowed: why.value,
       });
       if (c && c.name !== name.value.trim() && location.pathname.startsWith('/charities/')) {
@@ -295,14 +296,14 @@ function openCharityForm(c, start, options) {
       return name.value.trim();
     },
     afterSave: options && options.afterSave,
-    onDelete: c && admin ? () => api('DELETE', '/api/birthday/charity', {name: c.name}) : null,
+    onDelete: c && admin ? () => api('DELETE', '/api/birthday/charity', {id: c.id}) : null,
     confirmDelete: c ? `Delete “${c.name}”? Charities with donations can only be marked not allowed.` : '',
     afterDelete: () => navigate('/charities'),
   });
 }
 
 export function openNewsletterDate() {
-  const dates = state.model.newsletterDates;
+  const dates = issueDates();
   const last = dates.length ? parseDate(dates[dates.length - 1]) : parseDate(year().start);
   last.setDate(last.getDate() + 7);
   const date = text(dateCell(last), {type: 'date', required: true});
@@ -313,9 +314,10 @@ export function openNewsletterDate() {
 }
 
 export function openChangeNewsletterDate(original) {
+  const {id} = newsletterOn(original);
   const date = text(original, {type: 'date', required: true});
   openModal('Change Newsletter Date', [field('Date', date, 'Anyone pinned to this issue moves with it')], {
-    submit: () => api('PUT', '/api/birthday/newsletter-date', {original, date: date.value}),
+    submit: () => api('PUT', '/api/birthday/newsletter-date', {id, date: date.value}),
   });
 }
 
@@ -326,7 +328,7 @@ export function addNextWeek(after) {
 }
 
 export function openCreateNewsletterDates() {
-  const dates = state.model.newsletterDates;
+  const dates = issueDates();
   const last = dates.length ? parseDate(dates[dates.length - 1]) : null;
   const start = last && dateCell(last) >= state.model.today ? new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1) : parseDate(state.model.today);
   const weekday = select([['0', 'Sunday'], ['1', 'Monday'], ['2', 'Tuesday'], ['3', 'Wednesday'], ['4', 'Thursday'], ['5', 'Friday'], ['6', 'Saturday']].map(([value, label]) => ({value, label})), String(last ? last.getDay() : 5));
@@ -356,7 +358,7 @@ export function removeNewsletterDate(date) {
   if (!confirm(`Remove the ${longDate(date)} newsletter?`)) {
     return;
   }
-  return act('DELETE', '/api/birthday/newsletter-date', {date});
+  return act('DELETE', '/api/birthday/newsletter-date', {id: newsletterOn(date).id});
 }
 
 export function offerTeam() {
@@ -409,8 +411,4 @@ export function openSettings() {
       defaultCharity: defaultCharity.value, yearStart: yearStart.value, emailSubject: subject.value, emailBody: body.value, noNewsletterNote: note.value, outreachCC: cc.value, requestLeadDays: Number(lead.value), dueByLeadDays: Number(dueBy.value),
     }),
   });
-}
-
-export function charityNamed(name) {
-  return charity(name);
 }

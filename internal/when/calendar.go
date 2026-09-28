@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/base64"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"sort"
@@ -15,6 +16,7 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
+	"heliosian/internal/id"
 	"heliosian/internal/logging"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
@@ -43,21 +45,12 @@ const (
 	DateFormat      = "2006-01-02"
 	DateTimeFormat  = "2006-01-02 15:04"
 	TimeFormat      = "15:04"
-	RegularDayType  = "Regular"
-	NoSchoolDayType = "No School"
 	Clear           = "-"
 	SourceGoogle    = "google"
 	SourcePDF       = "pdf"
 	SourceSheet     = "sheet"
 	SourceCelebrate = "celebrate"
 	SourceTeam      = "team"
-	TagCelebrate    = "Celebrate"
-	TagHCA          = "HCA"
-	TagMisc         = "Misc"
-	TagParents      = "Parents"
-	TagStaff        = "Staff"
-	TagGoing        = "Going"
-	TagWaitlisted   = "Waitlisted"
 	MineGoing       = "going"
 	MineWaitlisted  = "waitlisted"
 	AnswerYes       = "yes"
@@ -76,9 +69,9 @@ var (
 	EventColumns       = []string{"Event ID", "Start", "End", "Title", "Location", "Description", "Tags", "Day Type", "Keywords", "Added By", "Added", "Source", "Sharing", "Status", "Image"}
 	EnrichmentColumns  = []string{"Event ID", "Tags", "Day Type", "Keywords", "Input Hash", "Model", "Enriched"}
 	OverrideColumns    = []string{"Event ID", "Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden", "Note", "Address", "Image"}
-	DayTypeColumns     = []string{"Day Type", "Dropoff Start", "Dropoff End", "School Start", "School End", "Pickup Start", "Pickup End", "Aftercare Start", "Aftercare End"}
+	DayTypeColumns     = []string{"Day Type ID", "Day Type", "Dropoff Start", "Dropoff End", "School Start", "School End", "Pickup Start", "Pickup End", "Aftercare Start", "Aftercare End"}
 	DayOverrideColumns = []string{"Date", "Classrooms", "Day Type", "Note"}
-	TagColumns         = []string{"Tag", "Description", "Group", "Default", "Image", store.OrderColumn}
+	TagColumns         = []string{"Tag ID", "Tag", "Description", "Group", "Default", "Image", store.OrderColumn}
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji", store.OrderColumn}
 	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position", "Feed Token"}
 	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered", "Answered By", "Via"}
@@ -94,6 +87,14 @@ const maxFeedNameLength = 80
 
 var Blocks = []string{"Dropoff", "School", "Pickup", "Aftercare"}
 
+const (
+	RegularDayType        = "dty0000000001"
+	NoSchoolDayType       = "dty0000000002"
+	EarlyDismissalDayType = "dty0000000003"
+)
+
+var builtinDayTypes = map[string]string{RegularDayType: "regular", NoSchoolDayType: "no-school", EarlyDismissalDayType: "early-dismissal"}
+
 var Location = mustLocation("America/Los_Angeles")
 
 func mustLocation(name string) *time.Location {
@@ -105,6 +106,7 @@ func mustLocation(name string) *time.Location {
 }
 
 type Classroom struct {
+	ID     string   `json:"id"`
 	Name   string   `json:"name"`
 	Band   string   `json:"band,omitempty"`
 	Grades []string `json:"grades"`
@@ -125,6 +127,24 @@ func (r Roster) Names() []string {
 
 func (r Roster) has(name string) bool {
 	return slices.ContainsFunc(r.Classrooms, func(c Classroom) bool { return c.Name == name })
+}
+
+func (r Roster) byID(key string) *Classroom {
+	for i := range r.Classrooms {
+		if r.Classrooms[i].ID == key {
+			return &r.Classrooms[i]
+		}
+	}
+	return nil
+}
+
+func (r Roster) IDOf(name string) string {
+	for _, c := range r.Classrooms {
+		if c.Name == name {
+			return c.ID
+		}
+	}
+	return ""
 }
 
 func RosterOf(m *who.Model) Roster {
@@ -161,7 +181,7 @@ func RosterOf(m *who.Model) Roster {
 		if len(names) > 0 {
 			band = bandOf[names[0]]
 		}
-		roster.Classrooms = append(roster.Classrooms, Classroom{Name: c.Name, Band: band, Grades: names, Crews: crews[c.Name]})
+		roster.Classrooms = append(roster.Classrooms, Classroom{ID: c.ID, Name: c.Name, Band: band, Grades: names, Crews: crews[c.Name]})
 	}
 	return roster
 }
@@ -237,7 +257,9 @@ type Block struct {
 }
 
 type DayType struct {
+	ID     string  `json:"id"`
 	Name   string  `json:"name"`
+	Role   string  `json:"role,omitempty"`
 	Blocks []Block `json:"blocks"`
 }
 
@@ -253,11 +275,13 @@ const (
 )
 
 type Tag struct {
+	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Group       string `json:"group"`
 	Default     bool   `json:"default"`
 	BuiltIn     bool   `json:"builtIn,omitempty"`
+	Role        string `json:"role,omitempty"`
 	Image       string `json:"image,omitempty"`
 	ImageURL    string `json:"imageUrl,omitempty"`
 	order       string
@@ -405,7 +429,9 @@ type Model struct {
 	Skipped     map[string]int
 	Provenance  map[string]*Provenance
 	admins      []string
+	aliases     id.Aliases
 	imports     map[string]*Event
+	eventIDs    map[string]bool
 	byID        map[string]*Event
 	byAddress   map[string]*Event
 	byToken     map[string]*Feed
@@ -416,32 +442,88 @@ func (e *Event) imported() bool {
 	return e.Source == SourceGoogle || e.Source == SourcePDF
 }
 
-func (m *Model) Event(id string) *Event {
-	if e := m.byID[id]; e != nil {
+func (m *Model) Event(key string) *Event {
+	if e := m.byID[m.aliases.Resolve(key)]; e != nil {
 		return e
 	}
-	return m.byAddress[id]
+	return m.byAddress[key]
+}
+
+func (m *Model) taken(key string) bool {
+	_, alias := m.aliases[key]
+	if alias || m.eventIDs[key] || m.byAddress[key] != nil || m.listed[guestPrefix+key] != nil || m.tags[key] || m.DayType(key) != nil {
+		return true
+	}
+	for _, groups := range m.Groups {
+		if slices.ContainsFunc(groups, func(g InviteGroup) bool { return g.ID == key }) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) minter() func() string {
+	minted := map[string]bool{}
+	return func() string {
+		s := id.New(func(key string) bool { return minted[key] || m.taken(key) })
+		minted[s] = true
+		return s
+	}
 }
 
 func (m *Model) Feed(token string) *Feed {
 	return m.byToken[token]
 }
 
-func (m *Model) DayType(name string) *DayType {
+func (m *Model) DayType(key string) *DayType {
 	for i := range m.DayTypes {
-		if m.DayTypes[i].Name == name {
+		if m.DayTypes[i].ID == key {
 			return &m.DayTypes[i]
 		}
 	}
 	return nil
 }
 
+func (m *Model) DayTypeName(key string) string {
+	if d := m.DayType(key); d != nil {
+		return d.Name
+	}
+	return ""
+}
+
+func (m *Model) Tag(key string) *Tag {
+	for i := range m.Tags {
+		if m.Tags[i].ID == key {
+			return &m.Tags[i]
+		}
+	}
+	return nil
+}
+
+func (m *Model) TagName(key string) string {
+	if t := m.Tag(key); t != nil {
+		return t.Name
+	}
+	if c := m.Roster.byID(key); c != nil {
+		return c.Name
+	}
+	return ""
+}
+
+func (m *Model) TagNames(keys []string) []string {
+	out := []string{}
+	for _, key := range keys {
+		out = append(out, m.TagName(key))
+	}
+	return out
+}
+
 func (m *Model) Plan(date, classroom string) (DayType, bool) {
-	name, ok := m.Days[date][classroom]
+	key, ok := m.Days[date][classroom]
 	if !ok {
 		return DayType{}, false
 	}
-	return *m.DayType(name), true
+	return *m.DayType(key), true
 }
 
 func SchoolYear(t time.Time) string {
@@ -527,12 +609,19 @@ func parseDayTypes(rows []store.Row) ([]DayType, error) {
 		if name == "" {
 			return nil, fmt.Errorf("%s has a row with no name", DayTypesTab)
 		}
+		key, ok := id.Parse(row["Day Type ID"])
+		if !ok {
+			return nil, fmt.Errorf("day type %q: day type id %q is not an id", name, row["Day Type ID"])
+		}
 		for _, d := range out {
 			if d.Name == name {
 				return nil, fmt.Errorf("day type %q is listed twice", name)
 			}
+			if d.ID == key {
+				return nil, fmt.Errorf("day type id %s is used twice", key)
+			}
 		}
-		dt := DayType{Name: name, Blocks: []Block{}}
+		dt := DayType{ID: key, Name: name, Role: builtinDayTypes[key], Blocks: []Block{}}
 		for _, block := range Blocks {
 			start, end := row[block+" Start"], row[block+" End"]
 			if start == "" && end == "" {
@@ -556,14 +645,10 @@ func parseDayTypes(rows []store.Row) ([]DayType, error) {
 		}
 		out = append(out, dt)
 	}
-	found := false
-	for _, d := range out {
-		if d.Name == RegularDayType {
-			found = true
+	for _, key := range slices.Sorted(maps.Keys(builtinDayTypes)) {
+		if !slices.ContainsFunc(out, func(d DayType) bool { return d.ID == key }) {
+			return nil, fmt.Errorf("%s has no row for the built-in day type %s (%s)", DayTypesTab, key, builtinDayTypes[key])
 		}
-	}
-	if !found {
-		return nil, fmt.Errorf("%s has no %q row", DayTypesTab, RegularDayType)
 	}
 	return out, nil
 }
@@ -575,9 +660,16 @@ func parseTags(rows []store.Row) ([]Tag, error) {
 		if name == "" {
 			return nil, fmt.Errorf("%s has a row with no name", TagsTab)
 		}
+		key, ok := id.Parse(row["Tag ID"])
+		if !ok {
+			return nil, fmt.Errorf("tag %q: tag id %q is not an id", name, row["Tag ID"])
+		}
 		for _, t := range out {
 			if t.Name == name {
 				return nil, fmt.Errorf("tag %q is listed twice", name)
+			}
+			if t.ID == key {
+				return nil, fmt.Errorf("tag id %s is used twice", key)
 			}
 		}
 		if row["Description"] == "" {
@@ -591,10 +683,13 @@ func parseTags(rows []store.Row) ([]Tag, error) {
 		if err != nil {
 			return nil, fmt.Errorf("tag %q: default %w", name, err)
 		}
-		out = append(out, Tag{Name: name, Description: row["Description"], Group: strings.TrimSpace(row["Group"]), Default: standard, Image: strings.TrimSpace(row["Image"]), order: order})
+		_, builtIn := builtinTags[key]
+		out = append(out, Tag{ID: key, Name: name, Description: row["Description"], Group: strings.TrimSpace(row["Group"]), Default: standard, BuiltIn: builtIn, Role: tagRole(key), Image: strings.TrimSpace(row["Image"]), order: order})
 	}
-	if len(out) == 0 {
-		return nil, fmt.Errorf("%s has no rows", TagsTab)
+	for _, key := range slices.Sorted(maps.Keys(builtinTags)) {
+		if !slices.ContainsFunc(out, func(t Tag) bool { return t.ID == key }) {
+			return nil, fmt.Errorf("%s has no row for the built-in tag %s (%s)", TagsTab, key, builtinTags[key])
+		}
 	}
 	slices.SortStableFunc(out, func(a, b Tag) int { return store.CompareKeys(a.order, b.order) })
 	return out, nil
@@ -612,17 +707,17 @@ func (b *builder) refuse(format string, args ...any) {
 	}
 }
 
-func (b *builder) checkDayType(name string) error {
-	if name != "" && b.model.DayType(name) == nil {
-		return fmt.Errorf("day type %q is not in %s", name, DayTypesTab)
+func (b *builder) checkDayType(key string) error {
+	if key != "" && b.model.DayType(key) == nil {
+		return fmt.Errorf("day type %q is not an id in %s", key, DayTypesTab)
 	}
 	return nil
 }
 
 func (b *builder) checkTags(tags []string) error {
 	for _, t := range tags {
-		if !b.model.tags[t] && !b.model.Roster.has(t) {
-			return fmt.Errorf("tag %q is neither in %s nor a classroom", t, TagsTab)
+		if !b.model.tags[t] && b.model.Roster.byID(t) == nil {
+			return fmt.Errorf("tag %q is neither an id in %s nor a classroom's id", t, TagsTab)
 		}
 	}
 	return nil
@@ -636,6 +731,7 @@ func (b *builder) add(e *Event) error {
 		return fmt.Errorf("event %q is listed twice", e.ID)
 	}
 	b.model.byID[e.ID] = e
+	b.model.eventIDs[e.ID] = true
 	b.model.Events = append(b.model.Events, e)
 	return nil
 }
@@ -798,7 +894,7 @@ func (b *builder) applyOverrides(rows []store.Row) error {
 		}
 		e.Hidden = hidden
 		if address := strings.ToLower(strings.TrimSpace(row["Address"])); address != "" && address != Clear {
-			if !eventIDForm.MatchString(address) {
+			if !validAddress(address) {
 				return fail(fmt.Errorf("the address %q is not letters, digits and dashes, 3 to 40 of them", address))
 			}
 			if other := b.model.byID[address]; other != nil || b.model.byAddress[address] != nil {
@@ -827,16 +923,16 @@ func (b *builder) applyOverrides(rows []store.Row) error {
 
 func (b *builder) settleEvent(e *Event) {
 	e.Classrooms = []string{}
-	for _, name := range b.model.Roster.Names() {
-		if slices.Contains(e.Tags, name) {
-			e.Classrooms = append(e.Classrooms, name)
+	for _, c := range b.model.Roster.Classrooms {
+		if slices.Contains(e.Tags, c.ID) {
+			e.Classrooms = append(e.Classrooms, c.Name)
 		}
 	}
 	keywords := []string{}
 	for _, k := range e.Keywords {
 		repeats := false
 		for _, t := range e.Tags {
-			if strings.EqualFold(k, t) {
+			if strings.EqualFold(k, b.model.TagName(t)) {
 				repeats = true
 			}
 		}
@@ -857,7 +953,7 @@ func (b *builder) settle() {
 		}
 		b.settleEvent(e)
 		if !e.Hidden && e.DayType != "" && !e.AllDay {
-			b.refuse("%s %q (%s) is timed but carries the day type %q, which only an all-day event can", e.Source, e.Title, e.ID, e.DayType)
+			b.refuse("%s %q (%s) is timed but carries the day type %q, which only an all-day event can", e.Source, e.Title, e.ID, b.model.DayTypeName(e.DayType))
 		}
 	}
 	for _, e := range b.model.imports {
@@ -881,8 +977,8 @@ func (b *builder) checkFeed(f Feed) error {
 		}
 	}
 	for _, t := range f.Tags {
-		if !b.model.tags[t] && !slices.ContainsFunc(builtinTags, func(bt Tag) bool { return bt.Name == t }) {
-			return fmt.Errorf("%q is not in %s", t, TagsTab)
+		if !b.model.tags[t] {
+			return fmt.Errorf("%q is not an id in %s", t, TagsTab)
 		}
 	}
 	return nil
@@ -901,7 +997,7 @@ func (b *builder) settings(rows []store.Row) {
 			}
 		}
 		for _, t := range cells.SplitList(row["Categories"]) {
-			if b.model.tags[t] || slices.ContainsFunc(builtinTags, func(bt Tag) bool { return bt.Name == t }) {
+			if b.model.tags[t] {
 				setting.Tags = append(setting.Tags, t)
 			}
 		}
@@ -1107,7 +1203,7 @@ func (b *builder) assign(layer map[string]map[string]string, date string, classr
 		case current == RegularDayType:
 			layer[date][c] = name
 		default:
-			b.refuse("%s gives %s both %q and %q on %s", by, c, current, name, date)
+			b.refuse("%s gives %s both %q and %q on %s", by, c, b.model.DayTypeName(current), b.model.DayTypeName(name), date)
 		}
 	}
 }
@@ -1207,11 +1303,11 @@ func (b *builder) days(dayOverrides []store.Row) error {
 		if len(classrooms) == 0 {
 			classrooms = everyone
 		}
-		name := row["Day Type"]
-		if name == "" || m.DayType(name) == nil {
-			return fail(fmt.Errorf("day type %q is not in %s", name, DayTypesTab))
+		key := row["Day Type"]
+		if key == "" || m.DayType(key) == nil {
+			return fail(fmt.Errorf("day type %q is not an id in %s", key, DayTypesTab))
 		}
-		b.assign(layer, date, classrooms, name, DayOverridesTab)
+		b.assign(layer, date, classrooms, key, DayOverridesTab)
 	}
 	b.merge(layer)
 	return nil
@@ -1230,14 +1326,18 @@ func BuildModel(tables store.Tables, roster Roster) (*Model, error) {
 	if err != nil {
 		return nil, err
 	}
+	aliases, err := id.ParseAliases(tables[id.AliasesTab])
+	if err != nil {
+		return nil, err
+	}
 	m := &Model{
 		Events: []*Event{}, DayTypes: dayTypes, Tags: tags, Days: map[string]map[string]string{}, Years: []Year{}, Provenance: map[string]*Provenance{},
 		Roster: roster, Feeds: []Feed{}, Settings: map[string]Setting{}, Answers: map[string]map[string]string{}, Answered: map[string]map[string]Answered{},
 		Invitations: map[string]*Invitation{}, Invites: map[string][]Invite{}, Groups: map[string][]InviteGroup{}, Bounced: map[string]Bounce{}, invited: map[string]map[string]bool{}, listed: map[string]map[string]bool{}, byInvite: map[string]Invite{},
-		Skipped: map[string]int{}, imports: map[string]*Event{}, byID: map[string]*Event{}, byAddress: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
+		Skipped: map[string]int{}, aliases: aliases, imports: map[string]*Event{}, eventIDs: map[string]bool{}, byID: map[string]*Event{}, byAddress: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
 	}
 	for _, t := range tags {
-		m.tags[t.Name] = true
+		m.tags[t.ID] = true
 	}
 	m.admins = admins.Read(tables)
 	b := &builder{model: m}

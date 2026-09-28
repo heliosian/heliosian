@@ -1,4 +1,4 @@
-import {state, me, isSystemAdmin, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown} from './state.js';
+import {state, me, isSystemAdmin, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown, celebration, category} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {navigate, load, setPath} from '/router.js';
@@ -30,21 +30,24 @@ function active(href) {
 }
 
 export function partiesPath() {
-  const code = state.celebration;
-  return code === state.model.current ? '/' : `/celebrations/${encodeURIComponent(code)}`;
+  if (state.celebration === state.model.current) {
+    return '/';
+  }
+  return `/celebrations/${encodeURIComponent(celebration(state.celebration).code)}`;
 }
 
 function slug(words) {
   return words.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-export function listPath(tab, category) {
+export function listPath(tab, categoryId) {
   const q = new URLSearchParams();
   if (tab && tab !== listTabs[0].key) {
     q.set('show', tab);
   }
-  if (category) {
-    q.set('category', slug(category));
+  const filed = category(categoryId);
+  if (filed) {
+    q.set('category', slug(filed.title));
   }
   const rest = q.toString();
   return partiesPath() + (rest ? '?' + rest : '');
@@ -57,7 +60,8 @@ export function listTab() {
 
 export function listCategory() {
   const want = new URLSearchParams(location.search).get('category');
-  return (want && state.model.categories.find(c => slug(c) === want)) || '';
+  const found = want && state.model.categories.find(c => slug(c.title) === want);
+  return found ? found.id : '';
 }
 
 export function hostingShown() {

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"sort"
 
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
@@ -71,10 +70,9 @@ var myLists = tool{
 	words:       "Reading your lists",
 	run: func(v *viewer, input json.RawMessage) (any, error) {
 		tags := []map[string]any{}
-		for name, people := range v.sources.Tags(v.email) {
-			tags = append(tags, map[string]any{"name": name, "people": v.names(people)})
+		for _, t := range v.sources.Tags(v.email) {
+			tags = append(tags, map[string]any{"id": t.ID, "name": t.Name, "people": v.names(t.People), "link": whoBase + who.TagPath(t.ID)})
 		}
-		sort.Slice(tags, func(i, j int) bool { return tags[i]["name"].(string) < tags[j]["name"].(string) })
 		lists := []map[string]any{}
 		for _, l := range v.sources.Lists(v.email) {
 			guests := []string{}

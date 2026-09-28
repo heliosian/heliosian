@@ -1,6 +1,8 @@
 package loop_test
 
 import (
+	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -36,11 +38,60 @@ func sample(t *testing.T) (loop.Sources, *who.Model) {
 	}, model
 }
 
+const (
+	carpoolID    = "dtg0000000001"
+	soccerTeamID = "dtg0000000002"
+	bookClubID   = "dtg0000000003"
+	soccerGroup  = "grp0000000001"
+)
+
+func tagged(model *who.Model, key string) []string {
+	tag, _ := model.Tag(key)
+	return tag.People
+}
+
+func sourcesOf(model *who.Model) loop.Sources {
+	return loop.Sources{Directory: model, Tags: model.Tags, Shared: model.SharedTags, Lists: model.RoomParentLists}
+}
+
+func TestRenamingATagKeepsTheGroupsThatNameIt(t *testing.T) {
+	dir := &data.Dir{Root: "../../sampledata"}
+	queue := store.NewQueue()
+	directory, err := who.NewCache(dir, dir, nil, testkit.None, queue, []byte("test"), func() []string { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups, err := loop.NewCache(dir, dir, func() []string { return nil }, queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := *groups.Model().Group(soccerGroup)
+	if !slices.Contains(g.Rules[0].Tags, filter.TagKey(soccerTeamID)) {
+		t.Fatalf("the sample group's rules do not name the soccer team: %+v", g.Rules)
+	}
+	before := loop.Members(g, sourcesOf(directory.Model()))
+	if len(before) <= len(tagged(directory.Model(), soccerTeamID)) {
+		t.Fatalf("the group's members %v do not reach past the tag to its parents", before)
+	}
+	mux := http.NewServeMux()
+	who.RegisterTags(mux, directory)
+	if rec := testkit.Form(t, mux, jordan, "/api/directory/tag-rename", url.Values{"tag": {soccerTeamID}, "name": {"Football"}}); rec.Code != http.StatusNoContent {
+		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
+	}
+	renamed := sourcesOf(directory.Model())
+	if after := loop.Members(g, renamed); !slices.Equal(after, before) {
+		t.Fatalf("the renamed tag's group: %v, before the rename %v", after, before)
+	}
+	if labels := renamed.TagLabels(g.Rules[0], g.Managers, jordan); !slices.Equal(labels, []string{"Football"}) {
+		t.Fatalf("the rule reads %q after the rename", labels)
+	}
+}
+
 func TestSharedTagsReadForTheManagers(t *testing.T) {
 	s, model := sample(t)
-	key := filter.TagKey("abena.osei@heliosschool.org", "Book Club")
+	key := filter.TagKey(bookClubID)
 	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{key} }))
-	want := model.Tags("abena.osei@heliosschool.org")["Book Club"]
+	want := tagged(model, bookClubID)
 	if len(want) == 0 || !slices.Equal(got, want) {
 		t.Fatalf("book club: got %v, want %v", got, want)
 	}
@@ -192,14 +243,14 @@ func TestExcludeRulesSubtract(t *testing.T) {
 
 func TestTagsReadTheOwnersOwn(t *testing.T) {
 	s, model := sample(t)
-	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{filter.TagKey(jordan, "Carpool")} }))
-	want := model.Tags(jordan)["Carpool"]
-	if !slices.Equal(got, want) {
+	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{filter.TagKey(carpoolID)} }))
+	want := tagged(model, carpoolID)
+	if len(want) == 0 || !slices.Equal(got, want) {
 		t.Fatalf("carpool: got %v, want %v", got, want)
 	}
-	other := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{filter.TagKey("asha.chandra@heliosschool.org", "Carpool")} }))
+	other := membersOf(t, s, []string{"colin.quinn@heliosschool.org"}, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{filter.TagKey(carpoolID)} }))
 	if len(other) != 0 {
-		t.Fatalf("another owner's tag of the same name found %v", other)
+		t.Fatalf("a manager the tag is not theirs found %v", other)
 	}
 }
 

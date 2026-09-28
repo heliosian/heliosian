@@ -97,18 +97,31 @@ func (a app) anyEvent(email, id string) *Event {
 	return a.lookup(email, id, func(*Event) bool { return true })
 }
 
-func (a app) lookup(email, id string, sees func(*Event) bool) *Event {
+func (a app) lookup(email, key string, sees func(*Event) bool) *Event {
 	model := a.cache.Model()
+	key = a.canonical(key)
 	for _, e := range withLinked(model.Events, a.linked(email)) {
-		if e.ID == id || (e.Address != "" && e.Address == id) {
+		if e.ID == key || (e.Address != "" && e.Address == key) {
 			return model.withInvitation(e)
 		}
 	}
-	e := model.Event(id)
+	e := model.Event(key)
 	if e == nil || !sees(e) {
 		return nil
 	}
 	return model.withInvitation(e)
+}
+
+func (a app) canonical(key string) string {
+	source, rest, ok := strings.Cut(key, "/")
+	if !ok || (source != SourceCelebrate && source != SourceTeam) {
+		return a.cache.Model().aliases.Resolve(key)
+	}
+	found := a.sourceID(source, rest)
+	if found == "" {
+		return key
+	}
+	return source + "/" + found
 }
 
 func (a app) sees(actor access.Actor, e *Event) bool {

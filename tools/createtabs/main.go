@@ -15,6 +15,7 @@ import (
 	"heliosian/internal/env"
 	"heliosian/internal/feedback"
 	"heliosian/internal/home"
+	"heliosian/internal/id"
 	"heliosian/internal/loop"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/store"
@@ -37,7 +38,7 @@ func withChangeLog(tabs []store.Tab) []tab {
 }
 
 var seeds = map[string]map[string]map[string]string{
-	"Apps": {"Categories": {"Title": home.EventsTitle, "Emoji": home.EventsEmoji, "Style": home.StyleEvents}},
+	"Apps": {"Categories": {"Category ID": home.EventsID, "Title": home.EventsTitle, "Emoji": home.EventsEmoji, "Style": home.StyleEvents}},
 }
 
 var layouts = map[string][]tab{
@@ -47,6 +48,7 @@ var layouts = map[string][]tab{
 	},
 	"Feedback": {
 		{"Reports", feedback.ReportColumns},
+		{id.AliasesTab, id.AliasColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Directory": withChangeLog(who.Tabs),
@@ -74,6 +76,7 @@ var layouts = map[string][]tab{
 		{"Notifications", team.NotificationColumns},
 		{admins.Tab, admins.Columns},
 		{"Redirects", team.RedirectColumns},
+		{id.AliasesTab, id.AliasColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Birthdays": {
@@ -104,6 +107,7 @@ var layouts = map[string][]tab{
 		{"Redirects", celebrate.RedirectColumns},
 		{"INVOICING", celebrate.InvoicingColumns},
 		{"Former Addresses", celebrate.FormerColumns},
+		{id.AliasesTab, id.AliasColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Calendar": {
@@ -123,6 +127,7 @@ var layouts = map[string][]tab{
 		{when.InvitesTab, when.InviteColumns},
 		{when.InviteGroupsTab, when.InviteGroupColumns},
 		{when.BouncesTab, when.BounceColumns},
+		{id.AliasesTab, id.AliasColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Config": withChangeLog(config.Tabs),
@@ -132,7 +137,7 @@ var layouts = map[string][]tab{
 		{"Rules", loop.RuleColumns},
 		{"Additions", loop.AdditionColumns},
 		{"Excluded", loop.ExcludedColumns},
-		{"Aliases", loop.AliasColumns},
+		{id.AliasesTab, id.AliasColumns},
 		{"Messages", loop.MessageColumns},
 		{"Deliveries", loop.DeliveryColumns},
 		{admins.Tab, admins.Columns},

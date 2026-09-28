@@ -11,11 +11,12 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
 type linkEdit struct {
-	Original    string        `json:"original"`
+	ID          string        `json:"id"`
 	Title       string        `json:"title"`
 	Description string        `json:"description"`
 	URL         string        `json:"url"`
@@ -26,12 +27,12 @@ type linkEdit struct {
 }
 
 type categoryEdit struct {
-	Original string        `json:"original"`
-	Title    string        `json:"title"`
-	Emoji    string        `json:"emoji"`
-	Style    string        `json:"style"`
-	Max      string        `json:"max"`
-	Rules    []filter.Rule `json:"rules"`
+	ID    string        `json:"id"`
+	Title string        `json:"title"`
+	Emoji string        `json:"emoji"`
+	Style string        `json:"style"`
+	Max   string        `json:"max"`
+	Rules []filter.Rule `json:"rules"`
 }
 
 type visibilityEdit struct {
@@ -155,10 +156,14 @@ func (c *Cache) setWidgetOrder(actor access.Actor, widgets []string) ([]store.Op
 	return ops, nil
 }
 
-func (m *Model) link(title string) *Link {
+func (m *Model) link(key string) *Link {
+	key, ok := id.Parse(key)
+	if !ok {
+		return nil
+	}
 	for _, c := range m.Categories {
 		for _, l := range c.Links {
-			if strings.EqualFold(l.Title, strings.TrimSpace(title)) {
+			if l.ID == key {
 				return &l
 			}
 		}
@@ -166,71 +171,64 @@ func (m *Model) link(title string) *Link {
 	return nil
 }
 
-func (m *Model) category(title string) *Category {
+func (m *Model) category(key string) *Category {
+	key, ok := id.Parse(key)
+	if !ok {
+		return nil
+	}
 	for _, c := range m.Categories {
-		if c.Title == title {
+		if c.ID == key {
 			return &c
 		}
 	}
 	return nil
 }
 
-func (m *Model) styleOf(title string) string {
-	for _, c := range m.Categories {
-		if c.Title == title {
-			return c.Style
-		}
-	}
-	return ""
-}
-
-func (m *Model) titleOf(style string) string {
+func (m *Model) styled(style string) *Category {
 	for _, c := range m.Categories {
 		if c.Style == style {
-			return c.Title
+			return &c
 		}
 	}
-	return ""
+	return nil
 }
 
-func (m *Model) virtualEvents(title string) bool {
-	for _, c := range m.Categories {
-		if c.Title == title {
-			return c.Virtual
-		}
-	}
-	return false
+func (m *Model) taken(key string) bool {
+	return m.category(key) != nil || m.link(key) != nil
 }
 
-func categoryOrder(model *Model, titles []string, events store.Row) ([]store.Op, error) {
-	byTitle := map[string]Category{}
+func categoryOrder(model *Model, order []string, events store.Row) ([]store.Op, error) {
+	byID := map[string]Category{}
 	for _, c := range model.Categories {
-		byTitle[c.Title] = c
+		byID[c.ID] = c
 	}
-	if len(titles) != len(byTitle) {
+	if len(order) != len(byID) {
 		return nil, access.Invalid("the order must name every category exactly once")
 	}
+	named := []string{}
 	current := []string{}
 	virtual := []bool{}
-	for _, title := range titles {
-		c, ok := byTitle[title]
+	for _, raw := range order {
+		key, _ := id.Parse(raw)
+		c, ok := byID[key]
 		if !ok {
-			return nil, access.Invalid("unknown category %s", title)
+			return nil, access.Invalid("unknown category %s", raw)
 		}
-		delete(byTitle, title)
+		delete(byID, key)
+		named = append(named, key)
 		current = append(current, c.order)
 		virtual = append(virtual, c.Virtual)
 	}
-	keys := store.Order(current)
+	placed := store.Order(current)
 	ops := []store.Op{}
-	for i, title := range titles {
+	for i, key := range named {
 		switch {
 		case virtual[i]:
 			row := maps.Clone(events)
-			row[store.OrderColumn] = keys[i]
+			row[store.OrderColumn] = placed[i]
 			ops = append(ops, store.Insert(categoriesTab, row))
-		case keys[i] != current[i]:
-			ops = append(ops, store.Update(categoriesTab, store.Row{"Title": title}, store.Row{store.OrderColumn: keys[i]}))
+		case placed[i] != current[i]:
+			ops = append(ops, store.Update(categoriesTab, store.Row{"Category ID": key}, store.Row{store.OrderColumn: placed[i]}))
 		}
 	}
 	return ops, nil
@@ -245,45 +243,48 @@ func (c *Cache) saveLink(actor access.Actor, in linkEdit) (string, string, []sto
 		return "", "", nil, access.Invalid("title is required and fields must be short")
 	}
 	model := c.Model()
-	existing := model.link(in.Original)
-	if in.Original != "" && existing == nil {
-		return "", "", nil, access.Missing("no such link")
+	var existing *Link
+	var was []filter.Rule
+	if strings.TrimSpace(in.ID) != "" {
+		if existing = model.link(in.ID); existing == nil {
+			return "", "", nil, access.Missing("no such link")
+		}
+		was = existing.Rules
 	}
-	was := rulesOf(model, thingLink+in.Original)
 	rules, err := c.checkRules(was, in.Rules, actor.Email)
 	if err != nil {
 		return "", "", nil, err
 	}
+	category := model.category(in.Category)
+	if category == nil {
+		return "", "", nil, access.Invalid("no such category")
+	}
 	row := store.Row{
 		"Title": title, "Description": strings.TrimSpace(in.Description), "URL": strings.TrimSpace(in.URL),
-		"Image": strings.TrimSpace(in.Image), "Category": strings.TrimSpace(in.Category), "Visible": cells.YesNoCell(in.Visible),
+		"Image": strings.TrimSpace(in.Image), "Category": category.ID, "Visible": cells.YesNoCell(in.Visible),
 	}
-	if existing != nil && existing.Category != row["Category"] {
-		row[store.OrderColumn] = ""
-	}
-	action := "edit"
-	op := store.Update(linksTab, store.Row{"Title": in.Original}, row)
-	if in.Original == "" {
-		action = "add"
+	if existing == nil {
+		key := id.New(model.taken)
+		row["Link ID"] = key
 		row["Added By"] = actor.Email
 		row["Added"] = time.Now().Format(addedFormat)
-		op = store.Insert(linksTab, row)
+		return "add", key, append([]store.Op{store.Insert(linksTab, row)}, audience(thingLink+key, nil, rules)...), nil
 	}
-	ops := []store.Op{op}
-	if changed := audience(thingLink+title, was, rules); changed != nil {
-		if in.Original != "" && in.Original != title {
-			ops = append(ops, store.Delete(audienceTab, store.Row{"Thing": thingLink + in.Original}))
-		}
-		ops = append(ops, changed...)
+	if existing.Category != category.ID {
+		row[store.OrderColumn] = ""
 	}
-	return action, title, ops, nil
+	return "edit", existing.ID, append([]store.Op{store.Update(linksTab, store.Row{"Link ID": existing.ID}, row)}, audience(thingLink+existing.ID, was, rules)...), nil
 }
 
-func (c *Cache) deleteLink(actor access.Actor, title string) ([]store.Op, error) {
+func (c *Cache) deleteLink(actor access.Actor, key string) ([]store.Op, error) {
 	if err := requireAdmin(actor); err != nil {
 		return nil, err
 	}
-	return []store.Op{store.Delete(linksTab, store.Row{"Title": strings.TrimSpace(title)})}, nil
+	link := c.Model().link(key)
+	if link == nil {
+		return nil, access.Missing("no such link")
+	}
+	return []store.Op{store.Delete(linksTab, store.Row{"Link ID": link.ID})}, nil
 }
 
 func (c *Cache) saveCategory(actor access.Actor, in categoryEdit) (string, string, []store.Op, error) {
@@ -295,10 +296,14 @@ func (c *Cache) saveCategory(actor access.Actor, in categoryEdit) (string, strin
 		return "", "", nil, access.Invalid("title is required and must be short")
 	}
 	model := c.Model()
-	if in.Original != "" && model.category(in.Original) == nil {
-		return "", "", nil, access.Missing("no such category")
+	var existing *Category
+	var was []filter.Rule
+	if strings.TrimSpace(in.ID) != "" {
+		if existing = model.category(in.ID); existing == nil {
+			return "", "", nil, access.Missing("no such category")
+		}
+		was = existing.Rules
 	}
-	was := rulesOf(model, thingCategory+in.Original)
 	rules, err := c.checkRules(was, in.Rules, actor.Email)
 	if err != nil {
 		return "", "", nil, err
@@ -311,19 +316,17 @@ func (c *Cache) saveCategory(actor access.Actor, in categoryEdit) (string, strin
 	if err := checkEmoji(emoji); err != nil {
 		return "", "", nil, access.Invalid("%s", err)
 	}
-	virtual := model.virtualEvents(in.Original)
-	if virtual {
+	switch {
+	case existing != nil && existing.Style == StyleEvents:
 		style = StyleEvents
-	} else if in.Original != "" && model.styleOf(in.Original) == StyleEvents {
-		style = StyleEvents
-	} else if style == StyleEvents {
+	case style == StyleEvents:
 		return "", "", nil, access.Invalid("the events section is the one the page already has")
 	}
 	if style == StyleApps {
-		if other := model.titleOf(StyleApps); other != "" && other != in.Original {
-			return "", "", nil, access.Invalid("%q is already the community apps section", other)
+		if other := model.styled(StyleApps); other != nil && (existing == nil || other.ID != existing.ID) {
+			return "", "", nil, access.Invalid("%q is already the community apps section", other.Title)
 		}
-		if cat := model.category(in.Original); cat != nil && cat.Style != StyleApps && len(cat.Links) > 0 {
+		if existing != nil && existing.Style != StyleApps && len(existing.Links) > 0 {
 			return "", "", nil, access.Invalid("move or delete its links first: the community apps section holds no links")
 		}
 	}
@@ -331,93 +334,85 @@ func (c *Cache) saveCategory(actor access.Actor, in categoryEdit) (string, strin
 		return "", "", nil, access.Invalid("%s", err)
 	}
 	cells := store.Row{"Title": title, "Emoji": emoji, "Style": style, "Max": strings.TrimSpace(in.Max)}
-	action := "edit"
-	var ops []store.Op
-	switch {
-	case virtual:
-		titles := []string{}
-		for _, cat := range model.Categories {
-			titles = append(titles, cat.Title)
-		}
-		if ops, err = categoryOrder(model, titles, cells); err != nil {
-			return "", "", nil, err
-		}
-	case in.Original == "":
-		action = "add"
-		ops = []store.Op{store.Insert(categoriesTab, cells)}
-	default:
-		ops = []store.Op{store.Update(categoriesTab, store.Row{"Title": in.Original}, cells)}
+	if existing == nil {
+		key := id.New(model.taken)
+		cells["Category ID"] = key
+		return "add", key, append([]store.Op{store.Insert(categoriesTab, cells)}, audience(thingCategory+key, nil, rules)...), nil
 	}
-	if changed := audience(thingCategory+title, was, rules); changed != nil {
-		if in.Original != "" && in.Original != title {
-			ops = append(ops, store.Delete(audienceTab, store.Row{"Thing": thingCategory + in.Original}))
-		}
-		ops = append(ops, changed...)
+	changed := audience(thingCategory+existing.ID, was, rules)
+	if !existing.Virtual {
+		return "edit", existing.ID, append([]store.Op{store.Update(categoriesTab, store.Row{"Category ID": existing.ID}, cells)}, changed...), nil
 	}
-	return action, title, ops, nil
+	cells["Category ID"] = existing.ID
+	order := []string{}
+	for _, cat := range model.Categories {
+		order = append(order, cat.ID)
+	}
+	ops, err := categoryOrder(model, order, cells)
+	if err != nil {
+		return "", "", nil, err
+	}
+	return "edit", existing.ID, append(ops, changed...), nil
 }
 
-func (c *Cache) reorderCategories(actor access.Actor, titles []string) ([]store.Op, error) {
+func (c *Cache) reorderCategories(actor access.Actor, order []string) ([]store.Op, error) {
 	if err := requireAdmin(actor); err != nil {
 		return nil, err
 	}
-	return categoryOrder(c.Model(), titles, store.Row{"Title": EventsTitle, "Emoji": EventsEmoji, "Style": StyleEvents})
+	return categoryOrder(c.Model(), order, store.Row{"Category ID": EventsID, "Title": EventsTitle, "Emoji": EventsEmoji, "Style": StyleEvents})
 }
 
-func (c *Cache) moveLink(actor access.Actor, title string, by int) ([]store.Op, error) {
+func (c *Cache) moveLink(actor access.Actor, key string, by int) ([]store.Op, error) {
 	if err := requireAdmin(actor); err != nil {
 		return nil, err
 	}
 	if by != 1 && by != -1 {
 		return nil, access.Invalid("by must be 1 or -1")
 	}
-	var titles, current []string
-	at := -1
-	for _, cat := range c.Model().Categories {
-		for i, l := range cat.Links {
-			if l.Title == title {
-				at = i
-			}
-		}
-		if at >= 0 {
-			for _, l := range cat.Links {
-				titles, current = append(titles, l.Title), append(current, l.order)
-			}
-			break
-		}
+	model := c.Model()
+	link := model.link(key)
+	if link == nil {
+		return nil, access.Invalid("unknown link %s", key)
 	}
-	if at < 0 {
-		return nil, access.Invalid("unknown link %s", title)
+	var keys, current []string
+	at := -1
+	for i, l := range model.category(link.Category).Links {
+		if l.ID == link.ID {
+			at = i
+		}
+		keys, current = append(keys, l.ID), append(current, l.order)
 	}
 	to := at + by
-	if to < 0 || to >= len(titles) {
+	if to < 0 || to >= len(keys) {
 		return nil, nil
 	}
-	titles[at], titles[to] = titles[to], titles[at]
+	keys[at], keys[to] = keys[to], keys[at]
 	current[at], current[to] = current[to], current[at]
-	keys := store.Order(current)
+	placed := store.Order(current)
 	ops := []store.Op{}
-	for i, t := range titles {
-		if keys[i] != current[i] {
-			ops = append(ops, store.Update(linksTab, store.Row{"Title": t}, store.Row{store.OrderColumn: keys[i]}))
+	for i, k := range keys {
+		if placed[i] != current[i] {
+			ops = append(ops, store.Update(linksTab, store.Row{"Link ID": k}, store.Row{store.OrderColumn: placed[i]}))
 		}
 	}
 	return ops, nil
 }
 
-func (c *Cache) deleteCategory(actor access.Actor, title string) ([]store.Op, error) {
+func (c *Cache) deleteCategory(actor access.Actor, key string) ([]store.Op, error) {
 	if err := requireAdmin(actor); err != nil {
 		return nil, err
 	}
-	title = strings.TrimSpace(title)
-	model := c.Model()
-	if model.styleOf(title) == StyleEvents {
+	cat := c.Model().category(key)
+	if cat == nil {
+		return nil, access.Missing("no such category")
+	}
+	if cat.Style == StyleEvents {
 		return nil, access.Invalid("the events section can be renamed or moved, not deleted")
 	}
-	if cat := model.category(title); cat != nil && len(cat.Links) > 0 {
+	if len(cat.Links) > 0 {
 		return nil, access.Invalid("move or delete its links first")
 	}
-	return []store.Op{store.Delete(categoriesTab, store.Row{"Title": title})}, nil
+	return []store.Op{store.Delete(categoriesTab, store.Row{"Category ID": cat.ID})}, nil
 }
 
 func (c *Cache) setVisibility(actor access.Actor, in visibilityEdit) (string, Visibility, []store.Op, error) {

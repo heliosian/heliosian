@@ -10,6 +10,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/data"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -25,11 +26,12 @@ func spec(images blob.Checker) store.Spec[*Model] {
 			{Name: categoriesTab, Columns: CategoryColumns, Key: []string{"Category ID"}},
 			{Name: activitiesTab, Columns: ActivityColumns, Key: []string{"Event ID"}, Cascade: carryActivity},
 			{Name: volunteersTab, Columns: VolunteerColumns, Key: []string{"Event ID", "Email"}},
-			{Name: linksTab, Columns: LinkColumns, Key: []string{"Event ID", "Title"}},
+			{Name: linksTab, Columns: LinkColumns, Key: []string{"Link ID"}},
 			{Name: settingsTab, Columns: SettingColumns, Key: []string{"Key"}},
 			{Name: notificationsTab, Columns: NotificationColumns, Key: []string{"Email"}},
 			admins.Spec,
 			{Name: redirectsTab, Columns: RedirectColumns, Key: []string{"Old"}},
+			{Name: id.AliasesTab, Columns: id.AliasColumns, Key: []string{id.AliasColumn}},
 		},
 		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {
 			return BuildModel(ctx, tables, images)

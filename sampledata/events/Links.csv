@@ -1,5 +1,5 @@
-Event ID,Title,URL,Image,Description
-E001,Canva Poster Templates,https://www.canva.com/,,Start from one of these to make a poster for your booth
-E001,Booth Owner Info,https://docs.google.com/spreadsheets/d/example-booths,brand/icon-192.png,"Who has which table, and what each booth needs"
-E020,Booth Planning Chat,https://chat.example.org/india-booth,,
-E007,Sign up on Google Sheets,https://docs.google.com/spreadsheets/d/example-coffee,,Pick a Friday to bring the coffee
+Link ID,Event ID,Title,URL,Image,Description
+hrf0000000001,act0000000001,Canva Poster Templates,https://www.canva.com/,,Start from one of these to make a poster for your booth
+hrf0000000002,act0000000001,Booth Owner Info,https://docs.google.com/spreadsheets/d/example-booths,brand/icon-192.png,"Who has which table, and what each booth needs"
+hrf0000000003,act0000000020,Booth Planning Chat,https://chat.example.org/india-booth,,
+hrf0000000004,act0000000007,Sign up on Google Sheets,https://docs.google.com/spreadsheets/d/example-coffee,,Pick a Friday to bring the coffee

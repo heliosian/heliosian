@@ -64,6 +64,23 @@ func TestTitle(t *testing.T) {
 	}
 }
 
+func TestCheckPretty(t *testing.T) {
+	for _, c := range []struct {
+		pretty string
+		fails  bool
+	}{
+		{"", false},
+		{"fondue-night", false},
+		{"fondue0000001", false},
+		{"Fondue", true},
+		{"pty0000000001", true},
+	} {
+		if err := CheckPretty(c.pretty); (err != nil) != c.fails {
+			t.Errorf("CheckPretty(%q) = %v", c.pretty, err)
+		}
+	}
+}
+
 func TestAdded(t *testing.T) {
 	for _, c := range []struct {
 		cell  string

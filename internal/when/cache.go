@@ -11,6 +11,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -30,9 +31,9 @@ func spec(roster func() Roster, images blob.Checker) store.Spec[*Model] {
 			{Name: EventsTab, Columns: EventColumns, Key: []string{"Event ID"}, Cascade: carryEvent},
 			{Name: EnrichmentTab, Columns: EnrichmentColumns, Key: []string{"Event ID"}},
 			{Name: OverridesTab, Columns: OverrideColumns, Key: []string{"Event ID"}},
-			{Name: DayTypesTab, Columns: DayTypeColumns, Key: []string{"Day Type"}},
+			{Name: DayTypesTab, Columns: DayTypeColumns, Key: []string{"Day Type ID"}},
 			{Name: DayOverridesTab, Columns: DayOverrideColumns, Key: []string{"Date", "Classrooms"}},
-			{Name: TagsTab, Columns: TagColumns, Key: []string{"Tag"}},
+			{Name: TagsTab, Columns: TagColumns, Key: []string{"Tag ID"}},
 			admins.Spec,
 			{Name: FeedsTab, Columns: FeedColumns, Key: []string{"Token"}},
 			{Name: SettingsTab, Columns: SettingColumns, Key: []string{"Email"}},
@@ -41,6 +42,7 @@ func spec(roster func() Roster, images blob.Checker) store.Spec[*Model] {
 			{Name: InvitesTab, Columns: InviteColumns, Key: []string{"Event ID", "Email"}, Cascade: carryInvite},
 			{Name: InviteGroupsTab, Columns: InviteGroupColumns, Key: []string{"Event ID", "Group ID"}},
 			{Name: BouncesTab, Columns: BounceColumns, Key: []string{"Email", "When"}, AppendOnly: true},
+			{Name: id.AliasesTab, Columns: id.AliasColumns, Key: []string{id.AliasColumn}},
 		},
 		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {
 			model, err := BuildModel(tables, roster())
@@ -61,7 +63,7 @@ func carryEvent(_ store.Tables, before, after store.Row) []store.Op {
 	if before == nil || after != nil || before["Event ID"] == "" {
 		return nil
 	}
-	return append(dropGuestList(before["Event ID"]), store.Delete(InvitationsTab, store.Row{"Event ID": before["Event ID"]}))
+	return append(dropGuestList(before["Event ID"]), store.Delete(InvitationsTab, store.Row{"Event ID": before["Event ID"]}), store.Delete(OverridesTab, store.Row{"Event ID": before["Event ID"]}))
 }
 
 func carryInvitation(_ store.Tables, before, after store.Row) []store.Op {

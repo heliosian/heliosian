@@ -1,4 +1,4 @@
-import {eventPath, timeColumn, whenLine, timeRange, clock, audienceWords, categoryTags, eventColors, plan, selectedClassrooms, classroomNames, linkURL} from './state.js';
+import {eventPath, timeColumn, whenLine, timeRange, clock, audienceWords, categoryTags, tagName, eventColors, plan, selectedClassrooms, classroomNames, linkURL} from './state.js';
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg} from '/elements.js';
 
@@ -8,7 +8,7 @@ export function audienceChips(e) {
     wrap.append(el('span', 'chip chip-who', word));
   }
   for (const tag of categoryTags(e)) {
-    wrap.append(el('span', 'chip chip-tag', tag));
+    wrap.append(el('span', 'chip chip-tag', tagName(tag)));
   }
   return wrap;
 }
@@ -128,7 +128,7 @@ export function planFolds(date, groups = plan(date)) {
       words.push(g.classrooms.join(', '));
     }
     const summary = el(g.type.blocks.length ? 'summary' : 'div', 'plan-fold-head');
-    summary.append(svg(g.name === 'Regular' ? 'school' : 'bell'));
+    summary.append(svg(g.type.role === 'regular' ? 'school' : 'bell'));
     const text = el('span', 'plan-fold-text');
     text.append(el('span', 'plan-fold-title', g.name));
     if (words.some(Boolean)) {

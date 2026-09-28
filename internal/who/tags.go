@@ -1,17 +1,21 @@
 package who
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 
+	"heliosian/internal/id"
 	"heliosian/internal/serve"
+	"heliosian/internal/store"
 )
 
 const maxTagLength = 40
 
-type SharedTag struct {
+type Tag struct {
+	ID        string   `json:"id"`
 	Owner     string   `json:"owner"`
 	OwnerName string   `json:"ownerName"`
 	Name      string   `json:"name"`
@@ -19,97 +23,152 @@ type SharedTag struct {
 	Managers  []string `json:"managers"`
 }
 
-func (m *Model) Tags(owner string) map[string][]string {
-	tags := map[string][]string{}
-	for _, row := range m.tags {
-		if !strings.EqualFold(row[tagOwner], owner) {
-			continue
-		}
-		person := strings.ToLower(row[tagPerson])
-		if m.Person(person) == nil {
-			continue
-		}
-		tags[row[tagName]] = append(tags[row[tagName]], person)
-	}
-	for _, people := range tags {
-		sort.Strings(people)
-	}
-	return tags
+type tagRecord struct {
+	id, owner, name  string
+	people, managers []string
 }
 
-func (m *Model) TagManagers(owner string) map[string][]string {
+func (l *loader) readTags() error {
+	tags := map[string]*tagRecord{}
+	named := map[string]bool{}
+	for _, row := range l.tagListRows {
+		key, ok := id.Parse(row[tagID])
+		if !ok {
+			return fmt.Errorf("tag list row %v has no valid tag id", row)
+		}
+		if tags[key] != nil {
+			return fmt.Errorf("tag list has two rows for tag %s", key)
+		}
+		owner, name := strings.ToLower(strings.TrimSpace(row[tagOwner])), row[tagName]
+		if owner == "" || !validTagName(name) || name != strings.TrimSpace(name) {
+			return fmt.Errorf("tag list row %s needs an owner and a tag name of at most %d characters with no spaces around it", key, maxTagLength)
+		}
+		if named[owner+"\n"+strings.ToLower(name)] {
+			return fmt.Errorf("%s has two tags called %s", owner, name)
+		}
+		named[owner+"\n"+strings.ToLower(name)] = true
+		tags[key] = &tagRecord{id: key, owner: owner, name: name}
+	}
+	people, err := tagEmails(tags, tagsTable, tagPerson, l.tagRows)
+	if err != nil {
+		return err
+	}
+	managers, err := tagEmails(tags, managersTable, managerEmail, l.managerRows)
+	if err != nil {
+		return err
+	}
+	for key, t := range tags {
+		t.people, t.managers = people[key], managers[key]
+		if len(t.people) == 0 {
+			return fmt.Errorf("tag %s, %s's %s, has nobody on it: delete its tag list row", key, t.owner, t.name)
+		}
+	}
+	l.model.tags = tags
+	return nil
+}
+
+func tagEmails(tags map[string]*tagRecord, tab, column string, rows []store.Row) (map[string][]string, error) {
 	out := map[string][]string{}
-	for _, row := range m.managers {
-		if !strings.EqualFold(row[tagOwner], owner) {
-			continue
+	for _, row := range rows {
+		key, _ := id.Parse(row[tagID])
+		if tags[key] == nil {
+			return nil, fmt.Errorf("%s row %v names no tag in the tag list", tab, row)
 		}
-		manager := strings.ToLower(row[managerEmail])
-		if m.Person(manager) == nil {
-			continue
+		email := strings.ToLower(strings.TrimSpace(row[column]))
+		if email == "" {
+			return nil, fmt.Errorf("%s row %v has no %s", tab, row, column)
 		}
-		out[row[tagName]] = append(out[row[tagName]], manager)
+		if slices.Contains(out[key], email) {
+			return nil, fmt.Errorf("%s has two rows for %s on tag %s", tab, email, key)
+		}
+		out[key] = append(out[key], email)
 	}
-	for _, managers := range out {
-		sort.Strings(managers)
+	return out, nil
+}
+
+func (m *Model) taken(key string) bool {
+	_, ok := m.tags[key]
+	return ok
+}
+
+func (m *Model) tagByKey(raw string) *tagRecord {
+	key, ok := id.Parse(raw)
+	if !ok {
+		return nil
 	}
+	return m.tags[key]
+}
+
+func (m *Model) listed(emails []string) []string {
+	out := []string{}
+	for _, email := range emails {
+		if m.Person(email) != nil {
+			out = append(out, email)
+		}
+	}
+	slices.Sort(out)
 	return out
 }
 
-func (m *Model) SharedTags(email string) []SharedTag {
-	out := []SharedTag{}
-	for _, row := range m.managers {
-		if !strings.EqualFold(row[managerEmail], email) {
-			continue
-		}
-		owner := strings.ToLower(row[tagOwner])
-		if m.Person(owner) == nil {
-			continue
-		}
-		tag := row[tagName]
-		shared := SharedTag{Owner: owner, OwnerName: m.DisplayName(owner), Name: tag, People: []string{}, Managers: []string{}}
-		for _, t := range m.tags {
-			if strings.EqualFold(t[tagOwner], owner) && t[tagName] == tag {
-				person := strings.ToLower(t[tagPerson])
-				if m.Person(person) != nil {
-					shared.People = append(shared.People, person)
-				}
-			}
-		}
-		if len(shared.People) == 0 {
-			continue
-		}
-		for _, other := range m.managers {
-			if strings.EqualFold(other[tagOwner], owner) && other[tagName] == tag {
-				manager := strings.ToLower(other[managerEmail])
-				if m.Person(manager) != nil {
-					shared.Managers = append(shared.Managers, manager)
-				}
-			}
-		}
-		sort.Strings(shared.People)
-		sort.Strings(shared.Managers)
-		out = append(out, shared)
+func (m *Model) Tag(key string) (Tag, bool) {
+	t := m.tagByKey(key)
+	if t == nil {
+		return Tag{}, false
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Name != out[j].Name {
-			return out[i].Name < out[j].Name
+	people := m.listed(t.people)
+	if len(people) == 0 {
+		return Tag{}, false
+	}
+	return Tag{ID: t.id, Owner: t.owner, OwnerName: m.DisplayName(t.owner), Name: t.name, People: people, Managers: m.listed(t.managers)}, true
+}
+
+func (m *Model) sortedTags(keep func(t *tagRecord) bool) []Tag {
+	out := []Tag{}
+	for _, t := range m.tags {
+		if !keep(t) {
+			continue
 		}
-		return out[i].Owner < out[j].Owner
+		if tag, ok := m.Tag(t.id); ok {
+			out = append(out, tag)
+		}
+	}
+	slices.SortFunc(out, func(a, b Tag) int {
+		if c := strings.Compare(a.Name, b.Name); c != 0 {
+			return c
+		}
+		if c := strings.Compare(a.Owner, b.Owner); c != 0 {
+			return c
+		}
+		return strings.Compare(a.ID, b.ID)
 	})
 	return out
 }
 
-func (m *Model) tagged(owner, tag, person string) bool {
-	for _, row := range m.tags {
-		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[tagPerson], person) {
-			return true
+func (m *Model) Tags(owner string) []Tag {
+	owner = strings.ToLower(owner)
+	return m.sortedTags(func(t *tagRecord) bool { return t.owner == owner })
+}
+
+func (m *Model) SharedTags(email string) []Tag {
+	email = strings.ToLower(email)
+	return m.sortedTags(func(t *tagRecord) bool { return slices.Contains(t.managers, email) && m.Person(t.owner) != nil })
+}
+
+func (m *Model) ownTagNamed(owner, name string) *tagRecord {
+	for _, t := range m.tags {
+		if t.owner == owner && strings.EqualFold(t.name, name) {
+			return t
 		}
 	}
-	return false
+	return nil
 }
 
 type tagger struct {
 	cache *Cache
+}
+
+type savedTag struct {
+	ID string `json:"id"`
 }
 
 func RegisterTags(mux *http.ServeMux, cache *Cache) {
@@ -128,32 +187,28 @@ func formEmail(r *http.Request, name string) string {
 
 func (t tagger) rename(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	from := strings.TrimSpace(r.FormValue("tag"))
+	key := strings.TrimSpace(r.FormValue("tag"))
 	to := strings.TrimSpace(r.FormValue("name"))
 	actor := requestActor(t.cache, r)
-	ops, people, err := t.cache.Model().renameTag(actor, from, to)
+	ops, from, err := t.cache.Model().renameTag(actor, key, to)
 	if err != nil {
 		serve.Error(w, r, err)
-		return
-	}
-	if len(ops) == 0 {
-		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	slog.InfoContext(r.Context(), "tag: renamed", "owner", actor.Email, "from", from, "to", to, "people", people)
+	slog.InfoContext(r.Context(), "tag: renamed", "owner", actor.Email, "tag", key, "from", from, "to", to)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	from := strings.TrimSpace(r.FormValue("tag"))
+	key := strings.TrimSpace(r.FormValue("tag"))
 	to := strings.TrimSpace(r.FormValue("name"))
 	actor := requestActor(t.cache, r)
-	ops, fromOwner, people, err := t.cache.Model().copyTag(actor, formEmail(r, "owner"), from, to)
+	ops, made, people, err := t.cache.Model().copyTag(actor, key, to)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
@@ -162,17 +217,17 @@ func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, err)
 		return
 	}
-	slog.InfoContext(r.Context(), "tag: copied", "owner", actor.Email, "fromOwner", fromOwner, "from", from, "to", to, "people", people)
-	w.WriteHeader(http.StatusNoContent)
+	slog.InfoContext(r.Context(), "tag: copied", "owner", actor.Email, "from", key, "to", made, "name", to, "people", people)
+	serve.Write(w, r, http.StatusOK, savedTag{ID: made})
 }
 
 func (t tagger) share(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	tag := strings.TrimSpace(r.FormValue("tag"))
+	key := strings.TrimSpace(r.FormValue("tag"))
 	manager := formEmail(r, "manager")
 	on := r.FormValue("on") == "1"
 	actor := requestActor(t.cache, r)
-	ops, err := t.cache.Model().shareTag(actor, tag, manager, on)
+	ops, err := t.cache.Model().shareTag(actor, key, manager, on)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
@@ -181,16 +236,15 @@ func (t tagger) share(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, err)
 		return
 	}
-	slog.InfoContext(r.Context(), "tag: shared", "owner", actor.Email, "on", on, "tag", tag, "manager", manager)
+	slog.InfoContext(r.Context(), "tag: shared", "owner", actor.Email, "on", on, "tag", key, "manager", manager)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (t tagger) leave(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	owner := formEmail(r, "owner")
-	tag := strings.TrimSpace(r.FormValue("tag"))
+	key := strings.TrimSpace(r.FormValue("tag"))
 	actor := requestActor(t.cache, r)
-	ops, err := t.cache.Model().leaveTag(actor, owner, tag)
+	ops, err := t.cache.Model().leaveTag(actor, key)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
@@ -199,15 +253,15 @@ func (t tagger) leave(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, err)
 		return
 	}
-	slog.InfoContext(r.Context(), "tag: left", "owner", owner, "tag", tag, "manager", actor.Email)
+	slog.InfoContext(r.Context(), "tag: left", "tag", key, "manager", actor.Email)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (t tagger) drop(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	tag := strings.TrimSpace(r.FormValue("tag"))
+	key := strings.TrimSpace(r.FormValue("tag"))
 	actor := requestActor(t.cache, r)
-	ops, people, err := t.cache.Model().dropTag(actor, tag)
+	ops, people, err := t.cache.Model().dropTag(actor, key)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
@@ -216,29 +270,24 @@ func (t tagger) drop(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, err)
 		return
 	}
-	slog.InfoContext(r.Context(), "tag: deleted", "owner", actor.Email, "tag", tag, "people", people)
+	slog.InfoContext(r.Context(), "tag: deleted", "owner", actor.Email, "tag", key, "people", people)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (t tagger) set(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	person := formEmail(r, "person")
-	tag := strings.TrimSpace(r.FormValue("tag"))
 	on := r.FormValue("on") == "1"
 	actor := requestActor(t.cache, r)
-	ops, owner, err := t.cache.Model().setTag(actor, formEmail(r, "owner"), tag, person, on)
+	ops, key, err := t.cache.Model().setTag(actor, strings.TrimSpace(r.FormValue("tag")), strings.TrimSpace(r.FormValue("name")), person, on)
 	if err != nil {
 		serve.Error(w, r, err)
-		return
-	}
-	if len(ops) == 0 {
-		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	slog.InfoContext(r.Context(), "tag: changed", "owner", owner, "on", on, "tag", tag, "person", person)
-	w.WriteHeader(http.StatusNoContent)
+	slog.InfoContext(r.Context(), "tag: changed", "on", on, "tag", key, "person", person, "by", actor.Email)
+	serve.Write(w, r, http.StatusOK, savedTag{ID: key})
 }

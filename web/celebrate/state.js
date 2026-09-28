@@ -19,8 +19,8 @@ export function applyModel(model) {
   for (const p of model.parties) {
     byId.set(p.id, p);
   }
-  if (!state.celebration || !model.celebrations.some(c => c.code === state.celebration)) {
-    state.celebration = model.current || (model.celebrations[0] ? model.celebrations[0].code : '');
+  if (!state.celebration || !model.celebrations.some(c => c.id === state.celebration)) {
+    state.celebration = model.current || (model.celebrations[0] ? model.celebrations[0].id : '');
   }
 }
 
@@ -40,7 +40,11 @@ export function party(id) {
   return byId.get(id) || null;
 }
 
-export function celebration(code) {
+export function celebration(id) {
+  return state.model.celebrations.find(c => c.id === id) || null;
+}
+
+export function celebrationByCode(code) {
   return state.model.celebrations.find(c => c.code === code) || null;
 }
 
@@ -48,8 +52,12 @@ export function currentCelebration() {
   return celebration(state.celebration);
 }
 
-export function parties(code) {
-  return state.model.parties.filter(p => p.celebration === (code || state.celebration));
+export function category(id) {
+  return state.model.categories.find(c => c.id === id) || null;
+}
+
+export function parties(id) {
+  return state.model.parties.filter(p => p.celebration === (id || state.celebration));
 }
 
 export function partyPath(p) {
@@ -172,7 +180,8 @@ export function matches(p, query) {
   if (!query) {
     return true;
   }
-  return `${p.title} ${p.subtitle || ''} ${p.summary || ''} ${p.hosts || ''} ${p.audience || ''} ${p.category || ''} ${p.location || ''}`.toLowerCase().includes(query);
+  const filed = category(p.category);
+  return `${p.title} ${p.subtitle || ''} ${p.summary || ''} ${p.hosts || ''} ${p.audience || ''} ${filed ? filed.title : ''} ${p.location || ''}`.toLowerCase().includes(query);
 }
 
 

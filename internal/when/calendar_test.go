@@ -3,11 +3,13 @@ package when
 import (
 	"encoding/base64"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -15,17 +17,49 @@ import (
 	"heliosian/internal/who"
 )
 
+var sampleKey = []byte("sample")
+
 var roster = Roster{Classrooms: []Classroom{
-	{Name: "Hummingbirds", Band: "Hummingbirds", Grades: []string{"Kindergarten"}},
-	{Name: "Hawks", Band: "Halcons", Grades: []string{"Grade 1"}},
-	{Name: "Falcons", Band: "Halcons", Grades: []string{"Grade 2"}},
-	{Name: "Jays", Band: "Jayvens", Grades: []string{"Grade 3"}},
-	{Name: "Ravens", Band: "Jayvens", Grades: []string{"Grade 4"}},
-	{Name: "Condors", Band: "Cospreys", Grades: []string{"Grade 5"}, Crews: []string{"Big Sur", "Pinnacles"}},
-	{Name: "Ospreys", Band: "Cospreys", Grades: []string{"Grade 6"}, Crews: []string{"River", "Sea"}},
-	{Name: "Egrets", Band: "Hegrets", Grades: []string{"Grade 7"}, Crews: []string{"Great", "Snowy"}},
-	{Name: "Herons", Band: "Hegrets", Grades: []string{"Grade 8"}, Crews: []string{"Great Blue", "Green"}},
+	{ID: who.ClassroomID(sampleKey, "Hummingbirds"), Name: "Hummingbirds", Band: "Hummingbirds", Grades: []string{"Kindergarten"}},
+	{ID: who.ClassroomID(sampleKey, "Hawks"), Name: "Hawks", Band: "Halcons", Grades: []string{"Grade 1"}},
+	{ID: who.ClassroomID(sampleKey, "Falcons"), Name: "Falcons", Band: "Halcons", Grades: []string{"Grade 2"}},
+	{ID: who.ClassroomID(sampleKey, "Jays"), Name: "Jays", Band: "Jayvens", Grades: []string{"Grade 3"}},
+	{ID: who.ClassroomID(sampleKey, "Ravens"), Name: "Ravens", Band: "Jayvens", Grades: []string{"Grade 4"}},
+	{ID: who.ClassroomID(sampleKey, "Condors"), Name: "Condors", Band: "Cospreys", Grades: []string{"Grade 5"}, Crews: []string{"Big Sur", "Pinnacles"}},
+	{ID: who.ClassroomID(sampleKey, "Ospreys"), Name: "Ospreys", Band: "Cospreys", Grades: []string{"Grade 6"}, Crews: []string{"River", "Sea"}},
+	{ID: who.ClassroomID(sampleKey, "Egrets"), Name: "Egrets", Band: "Hegrets", Grades: []string{"Grade 7"}, Crews: []string{"Great", "Snowy"}},
+	{ID: who.ClassroomID(sampleKey, "Herons"), Name: "Herons", Band: "Hegrets", Grades: []string{"Grade 8"}, Crews: []string{"Great Blue", "Green"}},
 }}
+
+func sampleIDs(t *testing.T) map[string]string {
+	t.Helper()
+	tb := tables(t)
+	out := map[string]string{}
+	for _, row := range tb[TagsTab] {
+		out[row["Tag"]] = row["Tag ID"]
+	}
+	for _, row := range tb[DayTypesTab] {
+		out[row["Day Type"]] = row["Day Type ID"]
+	}
+	for _, c := range roster.Classrooms {
+		out[c.Name] = c.ID
+	}
+	return out
+}
+
+func ids(t *testing.T, names string) string {
+	t.Helper()
+	known := sampleIDs(t)
+	out := []string{}
+	for _, name := range cells.SplitList(names) {
+		key, ok := known[name]
+		if !ok {
+			t.Fatalf("the sample calendar has no id for %q", name)
+		}
+		out = append(out, key)
+	}
+	return cells.JoinList(out)
+}
 
 func readTables(t *testing.T, dir *data.Dir) store.Tables {
 	t.Helper()
@@ -42,7 +76,16 @@ func readTables(t *testing.T, dir *data.Dir) store.Tables {
 
 func tables(t *testing.T) store.Tables {
 	t.Helper()
-	return readTables(t, &data.Dir{Root: "../../sampledata"})
+	return readTables(t, &data.Dir{Root: sampleRoot})
+}
+
+func quoted(t *testing.T, names string) string {
+	t.Helper()
+	out := []string{}
+	for _, key := range cells.SplitList(ids(t, names)) {
+		out = append(out, strconv.Quote(key))
+	}
+	return strings.Join(out, ",")
 }
 
 func load(t *testing.T) *Model {
@@ -67,23 +110,26 @@ func TestSampleModel(t *testing.T) {
 			t.Errorf("hidden event listed")
 		}
 	}
-	if len(m.Tags) != 15 || m.Tags[0].Name != "Schedule" {
+	if len(m.Tags) != 20 || m.Tags[0].Name != "Schedule" || m.Tags[0].ID != TagSchedule || m.Tags[0].Role != "schedule" || m.Tags[0].BuiltIn || !m.Tags[15].BuiltIn || m.Tags[15].ID != TagCelebrate {
 		t.Errorf("tags = %+v", m.Tags)
 	}
 	camping := m.Event("a5@sample")
-	if camping.Title != "Jays and Ravens Camping" || strings.Join(camping.Classrooms, ",") != "Jays,Ravens" || strings.Join(camping.Tags, ",") != "Jays,Ravens,Trip" {
+	if camping.Title != "Jays and Ravens Camping" || strings.Join(camping.Classrooms, ",") != "Jays,Ravens" || cells.JoinList(camping.Tags) != ids(t, "Jays, Ravens, Trip") {
 		t.Errorf("override not applied: %+v", camping)
 	}
 	if !slices.Contains(camping.Keywords, "overnight") {
 		t.Errorf("enrichment keywords lost: %v", camping.Keywords)
 	}
 	bts := m.Event("a2@sample")
-	if strings.Join(bts.Classrooms, ",") != "Hummingbirds,Hawks,Falcons,Jays,Ravens" || bts.AllDay || !slices.Contains(bts.Tags, "Orientation") {
+	if strings.Join(bts.Classrooms, ",") != "Hummingbirds,Hawks,Falcons,Jays,Ravens" || bts.AllDay || !slices.Contains(bts.Tags, ids(t, "Orientation")) {
 		t.Errorf("lower school event: %+v", bts)
 	}
-	hca := m.Event("3PL9W2ZC")
-	if hca.Source != SourceSheet || !slices.Contains(hca.Tags, "Community") || len(hca.Classrooms) != 9 {
+	hca := m.Event("evt0000000002")
+	if hca.Source != SourceSheet || !slices.Contains(hca.Tags, ids(t, "Community")) || len(hca.Classrooms) != 9 {
 		t.Errorf("sheet event: %+v", hca)
+	}
+	if m.Event("3PL9W2ZC") != hca || m.Event("3pl9w2zc") != hca {
+		t.Errorf("an old ID does not reach its event")
 	}
 	kinder := m.Event("a6@sample")
 	if slices.Contains(kinder.Keywords, "kindergarten") == false || slices.Contains(kinder.Keywords, "hummingbirds") {
@@ -142,11 +188,11 @@ func TestDays(t *testing.T) {
 			t.Errorf("%s %s: got %q, want %q", c.date, c.classroom, got.Name, c.want)
 		}
 	}
-	regular := m.DayType("Regular")
-	if len(regular.Blocks) != 4 || regular.Blocks[0].Name != "Dropoff" || regular.Blocks[3].End != "18:00" {
-		t.Errorf("regular blocks = %+v", regular.Blocks)
+	regular := m.DayType(RegularDayType)
+	if regular.Name != "Regular" || regular.Role != "regular" || len(regular.Blocks) != 4 || regular.Blocks[0].Name != "Dropoff" || regular.Blocks[3].End != "18:00" {
+		t.Errorf("regular = %+v", regular)
 	}
-	if none := m.DayType("No School"); len(none.Blocks) != 0 {
+	if none := m.DayType(NoSchoolDayType); none.Name != "No School" || len(none.Blocks) != 0 {
 		t.Errorf("no school has blocks: %+v", none.Blocks)
 	}
 }
@@ -154,9 +200,9 @@ func TestDays(t *testing.T) {
 func TestNoSchoolWins(t *testing.T) {
 	tb := tables(t)
 	tb[EventsTab] = append(tb[EventsTab],
-		store.Row{"Event ID": "X1", "Start": "2026-09-08", "Title": "Short Day", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"},
-		store.Row{"Event ID": "X2", "Start": "2026-09-08", "Title": "Closed", "Tags": "Jays, Schedule", "Day Type": "No School"},
-		store.Row{"Event ID": "X3", "Start": "2026-09-08", "Title": "Still Short", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"})
+		store.Row{"Event ID": "X1", "Start": "2026-09-08", "Title": "Short Day", "Tags": ids(t, "Jays, Schedule"), "Day Type": ids(t, "Early Dismissal")},
+		store.Row{"Event ID": "X2", "Start": "2026-09-08", "Title": "Closed", "Tags": ids(t, "Jays, Schedule"), "Day Type": ids(t, "No School")},
+		store.Row{"Event ID": "X3", "Start": "2026-09-08", "Title": "Still Short", "Tags": ids(t, "Jays, Schedule"), "Day Type": ids(t, "Early Dismissal")})
 	m, err := BuildModel(tb, roster)
 	if err != nil {
 		t.Fatal(err)
@@ -169,11 +215,11 @@ func TestNoSchoolWins(t *testing.T) {
 func TestWeekendInsideASpan(t *testing.T) {
 	tb := tables(t)
 	tb[EventsTab] = append(tb[EventsTab],
-		store.Row{"Event ID": "W1", "Start": "2026-09-11", "End": "2026-09-14", "Title": "Conferences", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
-		store.Row{"Event ID": "W2", "Start": "2026-10-10", "End": "2026-10-13", "Title": "Fall Retreat", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
-		store.Row{"Event ID": "W3", "Start": "2026-11-08", "Title": "Open House", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
-		store.Row{"Event ID": "W4", "Start": "2026-12-18", "End": "2026-12-22", "Title": "Break Conferences", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
-		store.Row{"Event ID": "W5", "Start": "2026-09-11", "End": "2026-09-14", "Title": "Eighth Grade Trip", "Tags": "Jays, Trip"})
+		store.Row{"Event ID": "W1", "Start": "2026-09-11", "End": "2026-09-14", "Title": "Conferences", "Tags": ids(t, "Jays, Conference"), "Day Type": ids(t, "Early Dismissal")},
+		store.Row{"Event ID": "W2", "Start": "2026-10-10", "End": "2026-10-13", "Title": "Fall Retreat", "Tags": ids(t, "Jays, Conference"), "Day Type": ids(t, "Early Dismissal")},
+		store.Row{"Event ID": "W3", "Start": "2026-11-08", "Title": "Open House", "Tags": ids(t, "Jays, Conference"), "Day Type": ids(t, "Early Dismissal")},
+		store.Row{"Event ID": "W4", "Start": "2026-12-18", "End": "2026-12-22", "Title": "Break Conferences", "Tags": ids(t, "Jays, Conference"), "Day Type": ids(t, "Early Dismissal")},
+		store.Row{"Event ID": "W5", "Start": "2026-09-11", "End": "2026-09-14", "Title": "Eighth Grade Trip", "Tags": ids(t, "Jays, Trip")})
 	m, err := BuildModel(tb, roster)
 	if err != nil {
 		t.Fatal(err)
@@ -218,9 +264,9 @@ func TestWeekendInsideASpan(t *testing.T) {
 func TestRegularYields(t *testing.T) {
 	tb := tables(t)
 	tb[EventsTab] = append(tb[EventsTab],
-		store.Row{"Event ID": "X1", "Start": "2026-09-08", "Title": "First Day", "Tags": "Jays, Schedule", "Day Type": "Regular"},
-		store.Row{"Event ID": "X2", "Start": "2026-09-08", "Title": "Short Day", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"},
-		store.Row{"Event ID": "X3", "Start": "2026-09-08", "Title": "Still First Day", "Tags": "Jays, Schedule", "Day Type": "Regular"})
+		store.Row{"Event ID": "X1", "Start": "2026-09-08", "Title": "First Day", "Tags": ids(t, "Jays, Schedule"), "Day Type": ids(t, "Regular")},
+		store.Row{"Event ID": "X2", "Start": "2026-09-08", "Title": "Short Day", "Tags": ids(t, "Jays, Schedule"), "Day Type": ids(t, "Early Dismissal")},
+		store.Row{"Event ID": "X3", "Start": "2026-09-08", "Title": "Still First Day", "Tags": ids(t, "Jays, Schedule"), "Day Type": ids(t, "Regular")})
 	m, err := BuildModel(tb, roster)
 	if err != nil {
 		t.Fatal(err)
@@ -233,11 +279,11 @@ func TestRegularYields(t *testing.T) {
 func TestDedupe(t *testing.T) {
 	tb := tables(t)
 	tb[EventsTab] = append(tb[EventsTab],
-		store.Row{"Event ID": "D1", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "international  night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community"},
-		store.Row{"Event ID": "D2", "Start": "2026-09-24 16:00", "End": "2026-09-24 19:00", "Title": "International Night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community"},
-		store.Row{"Event ID": "D3", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "International Night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community, Parents"},
-		store.Row{"Event ID": "D4", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Cross Country", "Tags": "Condors, Ospreys, Egrets, Herons, Clubs"},
-		store.Row{"Event ID": "D5", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Science Olympiad", "Tags": "Condors, Ospreys, Egrets, Herons, Clubs"},
+		store.Row{"Event ID": "D1", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "international  night", "Tags": ids(t, "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community")},
+		store.Row{"Event ID": "D2", "Start": "2026-09-24 16:00", "End": "2026-09-24 19:00", "Title": "International Night", "Tags": ids(t, "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community")},
+		store.Row{"Event ID": "D3", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "International Night", "Tags": ids(t, "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community, Parents")},
+		store.Row{"Event ID": "D4", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Cross Country", "Tags": ids(t, "Condors, Ospreys, Egrets, Herons, Clubs")},
+		store.Row{"Event ID": "D5", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Science Olympiad", "Tags": ids(t, "Condors, Ospreys, Egrets, Herons, Clubs")},
 	)
 	m, err := BuildModel(tb, roster)
 	if err != nil {
@@ -246,10 +292,11 @@ func TestDedupe(t *testing.T) {
 	if m.Duplicates != 3 || m.Event("a7@sample") != nil || m.Event("D1") == nil || m.Event("D2") == nil || m.Event("D3") == nil || m.Event("D4") == nil || m.Event("D5") == nil {
 		t.Errorf("duplicates %d, a7 %v, D1 %v, D2 %v, D3 %v, D4 %v, D5 %v", m.Duplicates, m.Event("a7@sample"), m.Event("D1"), m.Event("D2"), m.Event("D3"), m.Event("D4"), m.Event("D5"))
 	}
-	everyone := "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Schedule"
+	everyone := ids(t, "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Schedule")
+	early := ids(t, "Early Dismissal")
 	tb = tables(t)
 	for _, date := range []string{"2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02"} {
-		tb[EventsTab] = append(tb[EventsTab], store.Row{"Event ID": "C" + date, "Start": date, "Title": "Conferences", "Tags": everyone, "Day Type": "Early Dismissal"})
+		tb[EventsTab] = append(tb[EventsTab], store.Row{"Event ID": "C" + date, "Start": date, "Title": "Conferences", "Tags": everyone, "Day Type": early})
 	}
 	m, err = BuildModel(tb, roster)
 	if err != nil {
@@ -260,7 +307,7 @@ func TestDedupe(t *testing.T) {
 	}
 	tb = tables(t)
 	for _, date := range []string{"2026-09-29", "2026-09-30"} {
-		tb[EventsTab] = append(tb[EventsTab], store.Row{"Event ID": "C" + date, "Start": date, "Title": "Conferences", "Tags": everyone, "Day Type": "Early Dismissal"})
+		tb[EventsTab] = append(tb[EventsTab], store.Row{"Event ID": "C" + date, "Start": date, "Title": "Conferences", "Tags": everyone, "Day Type": early})
 	}
 	m, err = BuildModel(tb, roster)
 	if err != nil {
@@ -269,13 +316,13 @@ func TestDedupe(t *testing.T) {
 	if m.Event("pdf/2026-2027/2026-09-29/returning-grade-ilp-conference-half-days") == nil {
 		t.Errorf("a half-covered span folded")
 	}
-	assessment := "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Assessment"
+	assessment := ids(t, "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Assessment")
 	tb = tables(t)
 	tb[GoogleTab] = append(tb[GoogleTab],
 		store.Row{"Key": "m1", "Start": "2026-08-24", "End": "2026-08-28", "Title": "MAP Assessment", "Updated": "2026-08-01 09:00", "Sequence": "0"},
 		store.Row{"Key": "m2", "Start": "2026-08-31", "End": "2026-09-02", "Title": "MAP Assessment", "Updated": "2026-08-01 09:00", "Sequence": "0"},
 	)
-	tb[PDFTab] = append(tb[PDFTab], store.Row{"Key": "pdf/2026-2027/2026-08-24/map-assessment", "Year": "2026-2027", "Start": "2026-08-24", "End": "2026-09-02", "Title": "MAP Assessment", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons"})
+	tb[PDFTab] = append(tb[PDFTab], store.Row{"Key": "pdf/2026-2027/2026-08-24/map-assessment", "Year": "2026-2027", "Start": "2026-08-24", "End": "2026-09-02", "Title": "MAP Assessment", "Tags": ids(t, "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons")})
 	for _, id := range []string{"m1", "m2", "pdf/2026-2027/2026-08-24/map-assessment"} {
 		tb[EnrichmentTab] = append(tb[EnrichmentTab], store.Row{"Event ID": id, "Tags": assessment})
 	}
@@ -288,10 +335,10 @@ func TestDedupe(t *testing.T) {
 	}
 	tb = tables(t)
 	tb[EventsTab] = append(tb[EventsTab],
-		store.Row{"Event ID": "W1", "Start": "2026-09-12", "End": "2026-09-13", "Title": "Family Camping", "Tags": "Jays, Ravens, Trip"},
-		store.Row{"Event ID": "W2", "Start": "2026-09-12", "End": "2026-09-13", "Title": "family  camping", "Tags": "Jays, Ravens, Trip"},
-		store.Row{"Event ID": "W3", "Start": "2026-09-12", "End": "2026-09-14", "Title": "Family Camping", "Tags": "Jays, Ravens, Trip"},
-		store.Row{"Event ID": "W4", "Start": "2026-09-12", "End": "2026-09-13", "Title": "Camping Weekend", "Tags": "Jays, Ravens, Trip"},
+		store.Row{"Event ID": "W1", "Start": "2026-09-12", "End": "2026-09-13", "Title": "Family Camping", "Tags": ids(t, "Jays, Ravens, Trip")},
+		store.Row{"Event ID": "W2", "Start": "2026-09-12", "End": "2026-09-13", "Title": "family  camping", "Tags": ids(t, "Jays, Ravens, Trip")},
+		store.Row{"Event ID": "W3", "Start": "2026-09-12", "End": "2026-09-14", "Title": "Family Camping", "Tags": ids(t, "Jays, Ravens, Trip")},
+		store.Row{"Event ID": "W4", "Start": "2026-09-12", "End": "2026-09-13", "Title": "Camping Weekend", "Tags": ids(t, "Jays, Ravens, Trip")},
 	)
 	m, err = BuildModel(tb, roster)
 	if err != nil {
@@ -302,7 +349,7 @@ func TestDedupe(t *testing.T) {
 	}
 	tb = tables(t)
 	tb[GoogleTab] = append(tb[GoogleTab], store.Row{"Key": "g1", "Start": "2026-08-18", "End": "2026-08-18", "Title": "first  day of SCHOOL", "Updated": "2026-08-01 09:00", "Sequence": "0"})
-	tb[EnrichmentTab] = append(tb[EnrichmentTab], store.Row{"Event ID": "g1", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Schedule"})
+	tb[EnrichmentTab] = append(tb[EnrichmentTab], store.Row{"Event ID": "g1", "Tags": ids(t, "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Schedule")})
 	m, err = BuildModel(tb, roster)
 	if err != nil {
 		t.Fatal(err)
@@ -316,11 +363,11 @@ func TestRefusals(t *testing.T) {
 	broken := map[string]func(store.Tables){
 		"conflicting day types in one layer": func(tb store.Tables) {
 			tb[EventsTab] = append(tb[EventsTab],
-				store.Row{"Event ID": "X1", "Start": "2026-09-08", "Title": "Short Day", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"},
-				store.Row{"Event ID": "X2", "Start": "2026-09-08", "Title": "No Care", "Tags": "Jays, Schedule", "Day Type": "No Aftercare"})
+				store.Row{"Event ID": "X1", "Start": "2026-09-08", "Title": "Short Day", "Tags": ids(t, "Jays, Schedule"), "Day Type": ids(t, "Early Dismissal")},
+				store.Row{"Event ID": "X2", "Start": "2026-09-08", "Title": "No Care", "Tags": ids(t, "Jays, Schedule"), "Day Type": ids(t, "No Aftercare")})
 		},
 		"timed event with a day type": func(tb store.Tables) {
-			tb[OverridesTab] = append(tb[OverridesTab], store.Row{"Event ID": "a7@sample", "Day Type": "Early Dismissal"})
+			tb[OverridesTab] = append(tb[OverridesTab], store.Row{"Event ID": "a7@sample", "Day Type": ids(t, "Early Dismissal")})
 		},
 		"no tags": func(tb store.Tables) {
 			tb[OverridesTab] = append(tb[OverridesTab], store.Row{"Event ID": "a7@sample", "Tags": Clear})
@@ -340,11 +387,38 @@ func TestRefusals(t *testing.T) {
 		"unknown tag": func(tb store.Tables) {
 			tb[OverridesTab] = append(tb[OverridesTab], store.Row{"Event ID": "a7@sample", "Tags": "Penguins"})
 		},
+		"a tags cell naming an unknown id": func(tb store.Tables) {
+			tb[OverridesTab] = append(tb[OverridesTab], store.Row{"Event ID": "a7@sample", "Tags": ids(t, "Jays") + ", tag0000000999"})
+		},
+		"a tags cell naming a tag by its name": func(tb store.Tables) {
+			tb[EnrichmentTab][0]["Tags"] = ids(t, "Hummingbirds") + ", Schedule"
+		},
+		"a tags cell naming a classroom by its name": func(tb store.Tables) {
+			tb[EnrichmentTab][0]["Tags"] = "Hummingbirds, " + ids(t, "Schedule")
+		},
+		"a tags row with no id": func(tb store.Tables) {
+			tb[TagsTab][1]["Tag ID"] = ""
+		},
+		"two tags with one id": func(tb store.Tables) {
+			tb[TagsTab][1]["Tag ID"] = tb[TagsTab][2]["Tag ID"]
+		},
+		"no row for a built-in tag": func(tb store.Tables) {
+			tb[TagsTab] = slices.DeleteFunc(tb[TagsTab], func(r store.Row) bool { return r["Tag ID"] == TagGoing })
+		},
+		"no row for a built-in day type": func(tb store.Tables) {
+			tb[DayTypesTab] = slices.DeleteFunc(tb[DayTypesTab], func(r store.Row) bool { return r["Day Type ID"] == NoSchoolDayType })
+		},
+		"a day types row with no id": func(tb store.Tables) {
+			tb[DayTypesTab][1]["Day Type ID"] = ""
+		},
 		"unknown day type": func(tb store.Tables) {
 			tb[DayOverridesTab] = append(tb[DayOverridesTab], store.Row{"Date": "2026-09-08", "Day Type": "Snow Day"})
 		},
+		"a day type named by its name": func(tb store.Tables) {
+			tb[DayOverridesTab] = append(tb[DayOverridesTab], store.Row{"Date": "2026-09-08", "Day Type": "No School"})
+		},
 		"unknown classroom in a day override": func(tb store.Tables) {
-			tb[DayOverridesTab] = append(tb[DayOverridesTab], store.Row{"Date": "2026-09-08", "Classrooms": "Penguins", "Day Type": "No School"})
+			tb[DayOverridesTab] = append(tb[DayOverridesTab], store.Row{"Date": "2026-09-08", "Classrooms": "Penguins", "Day Type": ids(t, "No School")})
 		},
 		"end before start": func(tb store.Tables) {
 			tb[OverridesTab] = append(tb[OverridesTab], store.Row{"Event ID": "a7@sample", "End": "2026-09-24 15:00"})
@@ -363,6 +437,9 @@ func TestRefusals(t *testing.T) {
 		},
 		"feed naming an unknown tag": func(tb store.Tables) {
 			tb[FeedsTab] = append(tb[FeedsTab], store.Row{"Token": "t2", "Email": "a@x.org", "Name": "Mine", "Tags": "Bake Sales"})
+		},
+		"feed naming a tag by its name": func(tb store.Tables) {
+			tb[FeedsTab] = append(tb[FeedsTab], store.Row{"Token": "t2", "Email": "a@x.org", "Name": "Mine", "Tags": "Trip"})
 		},
 		"feed with no name": func(tb store.Tables) {
 			tb[FeedsTab] = append(tb[FeedsTab], store.Row{"Token": "t2", "Email": "a@x.org"})
@@ -451,7 +528,7 @@ func TestICS(t *testing.T) {
 
 func sampleDirectory(t *testing.T, root string) *who.Model {
 	t.Helper()
-	model, err := who.LoadModel(&data.Dir{Root: root}, nil, testkit.None, []byte("test"))
+	model, err := who.LoadModel(&data.Dir{Root: root}, nil, testkit.None, sampleKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -470,7 +547,7 @@ func TestRender(t *testing.T) {
 	if len(v.Feeds) != 1 || v.Today != "2026-09-08" || len(v.Events) != 22 {
 		t.Errorf("view = feeds %d today %s events %d", len(v.Feeds), v.Today, len(v.Events))
 	}
-	if v.Days["2026-09-08"]["Jays"] != "Regular" || len(v.Classrooms) != 9 || len(v.Tags) != 20 || v.Colors["Jays"] != "#fec502" {
+	if v.Days["2026-09-08"]["Jays"] != RegularDayType || len(v.Classrooms) != 9 || v.Classrooms[3].ID != ids(t, "Jays") || len(v.Tags) != 20 || v.Colors["Jays"] != "#fec502" {
 		t.Errorf("plan, vocabulary, or colors missing")
 	}
 	cases := map[string]string{"sam.whitfield@heliosschool.org": "Jays", "miguel.santos@heliosschool.org": "Hawks", "bill.ryder@heliosschool.org": "", "nobody@x.org": ""}
@@ -490,16 +567,16 @@ func TestRenderLinked(t *testing.T) {
 	d := sampleDirectory(t, "../../sampledata")
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-08 08:00", Location)
 	linked := []Linked{
-		{Source: SourceCelebrate, ID: "P001", Title: "Fondue & Fort Night", Summary: "A cozy evening of fondue", Description: "Join us.", Location: "The Parks' House", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineWaitlisted},
-		{Source: SourceTeam, ID: "E006", Title: "Book Fair", Start: "2027-03-30", End: "2027-04-02", Path: "/activities/E006", Availability: "open"},
-		{Source: SourceTeam, ID: "E001", Title: "HCA International Night 2026", Description: "Booths wanted.", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open", Mine: MineGoing},
-		{Source: SourceTeam, ID: "E005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/E005", Availability: "done"},
+		{Source: SourceCelebrate, ID: "pty0000000001", Title: "Fondue & Fort Night", Summary: "A cozy evening of fondue", Description: "Join us.", Location: "The Parks' House", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineWaitlisted},
+		{Source: SourceTeam, ID: "act0000000006", Title: "Book Fair", Start: "2027-03-30", End: "2027-04-02", Path: "/activities/act0000000006", Availability: "open"},
+		{Source: SourceTeam, ID: "act0000000001", Title: "HCA International Night 2026", Description: "Booths wanted.", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open", Mine: MineGoing},
+		{Source: SourceTeam, ID: "act0000000005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/act0000000005", Availability: "done"},
 	}
 	v := Render(m, d, &config.Settings{}, access.Actor{Email: "nobody@x.org"}, at, linked)
 	if len(v.Events) != 23 {
 		t.Fatalf("events = %d", len(v.Events))
 	}
-	if len(v.Tags) != 20 || v.Tags[15].Name != TagCelebrate || v.Tags[16].Name != TagHCA || v.Tags[17].Name != TagMisc || v.Tags[18].Name != TagGoing || v.Tags[19].Name != TagWaitlisted || len(m.Tags) != 15 {
+	if len(v.Tags) != 20 || v.Tags[15].ID != TagCelebrate || v.Tags[16].ID != TagHCA || v.Tags[17].ID != TagMisc || v.Tags[18].ID != TagGoing || v.Tags[19].ID != TagWaitlisted || v.Tags[18].Name != "Going" || v.Tags[18].Role != "going" || len(m.Tags) != 20 {
 		t.Errorf("tags = %+v", v.Tags)
 	}
 	var fondue, fair, night, social *Event
@@ -510,28 +587,28 @@ func TestRenderLinked(t *testing.T) {
 			}
 		}
 		switch e.ID {
-		case "celebrate/P001":
+		case "celebrate/pty0000000001":
 			fondue = e
-		case "team/E006":
+		case "team/act0000000006":
 			fair = e
 		case "a7@sample":
 			night = e
-		case "team/E005":
+		case "team/act0000000005":
 			social = e
-		case "team/E001":
+		case "team/act0000000001":
 			t.Errorf("international night listed twice")
 		}
 	}
 	if fondue == nil || fair == nil || night == nil || social == nil {
 		t.Fatal("linked events missing")
 	}
-	if night.Link != "/v/international-night" || night.Availability != "open" || night.Mine != MineGoing || night.Source != SourceGoogle || !slices.Contains(night.Tags, TagHCA) || !slices.Contains(night.Tags, TagGoing) || !slices.Contains(night.Tags, "Community") || night.Description != "Booths from every classroom." {
+	if night.Link != "/v/international-night" || night.Availability != "open" || night.Mine != MineGoing || night.Source != SourceGoogle || !slices.Contains(night.Tags, TagHCA) || !slices.Contains(night.Tags, TagGoing) || !slices.Contains(night.Tags, ids(t, "Community")) || night.Description != "Booths from every classroom." {
 		t.Errorf("folded event = %+v", night)
 	}
 	if orig := m.Event("a7@sample"); orig.Link != "" || orig.Mine != "" || slices.Contains(orig.Tags, TagHCA) || slices.Contains(orig.Tags, TagGoing) {
 		t.Errorf("model event changed by folding: %+v", orig)
 	}
-	if social.Link != "/activities/E005" || social.Mine != "" || strings.Join(social.Tags, ",") != TagHCA {
+	if social.Link != "/activities/act0000000005" || social.Mine != "" || strings.Join(social.Tags, ",") != TagHCA {
 		t.Errorf("social folded into back to school night: %+v", social)
 	}
 	if fondue.Source != SourceCelebrate || fondue.Link != "/p/fondue" || fondue.Availability != "available" || fondue.Mine != MineWaitlisted || fondue.AllDay || strings.Join(fondue.Tags, ",") != TagCelebrate+","+TagWaitlisted || len(fondue.Classrooms) != 0 {
@@ -540,7 +617,7 @@ func TestRenderLinked(t *testing.T) {
 	if fondue.Description != "A cozy evening of fondue\n\nJoin us." || fondue.End != "2026-09-19 21:00" || strings.Join(fondue.Dates, ",") != "2026-09-19" {
 		t.Errorf("party text or dates = %+v", fondue)
 	}
-	if !fair.AllDay || strings.Join(fair.Tags, ",") != TagHCA || fair.Link != "/activities/E006" || len(fair.Dates) != 4 {
+	if !fair.AllDay || strings.Join(fair.Tags, ",") != TagHCA || fair.Link != "/activities/act0000000006" || len(fair.Dates) != 4 {
 		t.Errorf("hca event = %+v", fair)
 	}
 	if len(m.Events) != 20 {
@@ -553,9 +630,9 @@ func TestUpcoming(t *testing.T) {
 	d := sampleDirectory(t, "../../sampledata")
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-10 08:00", Location)
 	linked := []Linked{
-		{Source: SourceCelebrate, ID: "P001", Title: "Fondue & Fort Night", Summary: "A cozy evening of fondue", Location: "The Parks' House", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineWaitlisted, Image: "/party-images/fondue.jpg"},
-		{Source: SourceTeam, ID: "E001", Title: "HCA International Night 2026", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open"},
-		{Source: SourceTeam, ID: "E005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/E005", Availability: "done"},
+		{Source: SourceCelebrate, ID: "pty0000000001", Title: "Fondue & Fort Night", Summary: "A cozy evening of fondue", Location: "The Parks' House", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineWaitlisted, Image: "/party-images/fondue.jpg"},
+		{Source: SourceTeam, ID: "act0000000001", Title: "HCA International Night 2026", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open"},
+		{Source: SourceTeam, ID: "act0000000005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/act0000000005", Availability: "done"},
 	}
 	got := m.UpcomingUnder(d, "jordan.whitfield@heliosschool.org", linked, at, 0, "")
 	titles := []string{}
@@ -575,7 +652,7 @@ func TestUpcoming(t *testing.T) {
 		t.Errorf("first = %+v", got[0])
 	}
 	party, night := got[1], got[2]
-	if party.Title != "Fondue & Fort Night" || party.Path != "/e/celebrate/P001" || party.Link != "/p/fondue" || party.LinkApp != "celebrate" || party.Call != "Waitlisted" || party.Mine != MineWaitlisted || party.Availability != "available" || party.Image != "/party-images/fondue.jpg" || party.ImageApp != "celebrate" || party.When != "Saturday, September 19 · 5:00 – 9:00 PM" || party.Description != "A cozy evening of fondue" {
+	if party.Title != "Fondue & Fort Night" || party.Path != "/e/celebrate/pty0000000001" || party.Link != "/p/fondue" || party.LinkApp != "celebrate" || party.Call != "Waitlisted" || party.Mine != MineWaitlisted || party.Availability != "available" || party.Image != "/party-images/fondue.jpg" || party.ImageApp != "celebrate" || party.When != "Saturday, September 19 · 5:00 – 9:00 PM" || party.Description != "A cozy evening of fondue" {
 		t.Errorf("party = %+v", party)
 	}
 	if night.Title != "International Night" || night.Path != "/e/a7@sample" || night.Link != "/v/international-night" || night.LinkApp != "team" || night.Call != "Join" || night.Mine != "" || night.ImageApp != "when" || night.StartAt != "2026-09-24 16:00" || night.EndAt != "2026-09-24 18:00" {
@@ -627,17 +704,70 @@ func TestMiscTag(t *testing.T) {
 	tb := tables(t)
 	tb[EventsTab] = append(tb[EventsTab], store.Row{
 		"Event ID": "MISC0001", "Start": "2026-10-14 08:30", "End": "2026-10-14 10:00", "Title": "Vision Screening",
-		"Tags": "Hummingbirds, Hawks", "Added By": "office@x.org", "Added": "2026-09-01",
+		"Tags": ids(t, "Hummingbirds, Hawks"), "Added By": "office@x.org", "Added": "2026-09-01",
 	})
 	m, err := BuildModel(tb, roster)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e := m.Event("MISC0001"); strings.Join(e.Tags, ",") != "Hummingbirds,Hawks,Misc" || strings.Join(e.Classrooms, ",") != "Hummingbirds,Hawks" {
+	if e := m.Event("MISC0001"); cells.JoinList(e.Tags) != ids(t, "Hummingbirds, Hawks, Misc") || strings.Join(e.Classrooms, ",") != "Hummingbirds,Hawks" {
 		t.Errorf("untagged event = %+v", e)
 	}
 	if e := m.Event("a5@sample"); slices.Contains(e.Tags, TagMisc) {
 		t.Errorf("categorized event got Misc: %+v", e)
+	}
+}
+
+func TestRenamingKeepsEvents(t *testing.T) {
+	trip, early := ids(t, "Trip"), ids(t, "Early Dismissal")
+	tb := tables(t)
+	for _, row := range tb[TagsTab] {
+		switch row["Tag ID"] {
+		case trip:
+			row["Tag"] = "Outing"
+		case TagGoing:
+			row["Tag"] = "Attending"
+		}
+	}
+	for _, row := range tb[DayTypesTab] {
+		if row["Day Type ID"] == early {
+			row["Day Type"] = "Half Day"
+		}
+	}
+	m, err := BuildModel(tb, roster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	camping := m.Event("a5@sample")
+	if !slices.Contains(camping.Tags, trip) || m.TagName(trip) != "Outing" || !slices.Contains(m.TagNames(camping.Tags), "Outing") {
+		t.Errorf("a renamed tag lost its event: %v, %v", camping.Tags, m.TagNames(camping.Tags))
+	}
+	if got, _ := m.Plan("2026-08-18", "Hummingbirds"); got.ID != early || got.Name != "Half Day" {
+		t.Errorf("a renamed day type left the plan: %+v", got)
+	}
+	if e := m.Event("pdf/2026-2027/2026-08-21/professional-development-half-day"); e == nil || e.DayType != early || m.DayTypeName(e.DayType) != "Half Day" {
+		t.Errorf("a renamed day type left its event: %+v", e)
+	}
+	if g := m.Tag(TagGoing); g == nil || g.Name != "Attending" || !g.BuiltIn || g.Role != "going" {
+		t.Errorf("a renamed built-in = %+v", g)
+	}
+}
+
+func TestBuiltInRowsAreRequired(t *testing.T) {
+	tb := tables(t)
+	tb[TagsTab] = slices.DeleteFunc(tb[TagsTab], func(r store.Row) bool { return r["Tag ID"] == TagWaitlisted })
+	if _, err := BuildModel(tb, roster); err == nil || !strings.Contains(err.Error(), "built-in tag "+TagWaitlisted) {
+		t.Errorf("a missing built-in tag row: %v", err)
+	}
+	tb = tables(t)
+	tb[DayTypesTab] = slices.DeleteFunc(tb[DayTypesTab], func(r store.Row) bool { return r["Day Type ID"] == EarlyDismissalDayType })
+	if _, err := BuildModel(tb, roster); err == nil || !strings.Contains(err.Error(), "built-in day type "+EarlyDismissalDayType) {
+		t.Errorf("a missing built-in day type row: %v", err)
+	}
+	tb = tables(t)
+	tb[EventsTab][0]["Tags"] = "tag0000000999"
+	if _, err := BuildModel(tb, roster); err == nil || !strings.Contains(err.Error(), `tag "tag0000000999" is neither an id`) {
+		t.Errorf("a tags cell naming an unknown id: %v", err)
 	}
 }
 
@@ -671,7 +801,7 @@ func TestGoogleEventURL(t *testing.T) {
 func TestSharingWords(t *testing.T) {
 	for cell, want := range map[string]string{"": SharingPublic, "public": SharingPublic, "LINK": SharingLink, "invite only": SharingInvited} {
 		tb := tables(t)
-		tb[EventsTab] = append(tb[EventsTab], store.Row{"Event ID": "shared", "Start": "2026-10-01", "End": "2026-10-01", "Title": "Shared", "Tags": "Jays", "Sharing": cell})
+		tb[EventsTab] = append(tb[EventsTab], store.Row{"Event ID": "shared", "Start": "2026-10-01", "End": "2026-10-01", "Title": "Shared", "Tags": ids(t, "Jays"), "Sharing": cell})
 		m, err := BuildModel(tb, roster)
 		if err != nil {
 			t.Fatalf("%q: %v", cell, err)
@@ -681,7 +811,7 @@ func TestSharingWords(t *testing.T) {
 		}
 	}
 	tb := tables(t)
-	tb[EventsTab] = append(tb[EventsTab], store.Row{"Event ID": "shared", "Start": "2026-10-01", "End": "2026-10-01", "Title": "Shared", "Tags": "Jays", "Sharing": "Private"})
+	tb[EventsTab] = append(tb[EventsTab], store.Row{"Event ID": "shared", "Start": "2026-10-01", "End": "2026-10-01", "Title": "Shared", "Tags": ids(t, "Jays"), "Sharing": "Private"})
 	if _, err := BuildModel(tb, roster); err == nil || !strings.Contains(err.Error(), `sharing "Private"`) {
 		t.Errorf("Private read: %v", err)
 	}
@@ -691,10 +821,10 @@ func TestPartiesFor(t *testing.T) {
 	m := load(t)
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-10 08:00", Location)
 	linked := []Linked{
-		{Source: SourceCelebrate, ID: "P001", Title: "Fondue & Fort Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing, Who: []string{"Ella"}},
-		{Source: SourceCelebrate, ID: "P002", Title: "Bagels", Start: "2026-09-05 10:00", End: "2026-09-05 12:00", Path: "/p/bagels", Availability: "past"},
-		{Source: SourceCelebrate, ID: "P003", Title: "Wurst", Start: "2026-10-03 15:30", End: "2026-10-03 18:30", Path: "/p/wurst", Availability: "available"},
-		{Source: SourceTeam, ID: "E001", Title: "HCA International Night 2026", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open"},
+		{Source: SourceCelebrate, ID: "pty0000000001", Title: "Fondue & Fort Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing, Who: []string{"Ella"}},
+		{Source: SourceCelebrate, ID: "pty0000000002", Title: "Bagels", Start: "2026-09-05 10:00", End: "2026-09-05 12:00", Path: "/p/bagels", Availability: "past"},
+		{Source: SourceCelebrate, ID: "pty0000000003", Title: "Wurst", Start: "2026-10-03 15:30", End: "2026-10-03 18:30", Path: "/p/wurst", Availability: "available"},
+		{Source: SourceTeam, ID: "act0000000001", Title: "HCA International Night 2026", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open"},
 	}
 	got := m.PartiesFor(sampleDirectory(t, "../../sampledata"), "nobody@heliosschool.org", linked, at)
 	if len(got) != 2 || got[0].Title != "Fondue & Fort Night" || got[1].Title != "Wurst" {

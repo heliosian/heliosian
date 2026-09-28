@@ -14,6 +14,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/config"
 	"heliosian/internal/filter"
+	"heliosian/internal/id"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit/mailtest"
@@ -30,6 +31,11 @@ const (
 	partyA = "celebrate/p1"
 )
 
+const (
+	carpoolID  = "dtg0000000001"
+	bookClubID = "dtg0000000003"
+)
+
 var testDirectory *who.Model
 
 func directoryOf() *who.Model { return testDirectory }
@@ -37,7 +43,7 @@ func directoryOf() *who.Model { return testDirectory }
 func noSettings() *config.Settings { return &config.Settings{} }
 
 func testLists(string) []List {
-	return []List{{Key: "tag:Carpool", Name: "Carpool", Kind: "tag", People: []string{mia, robin}}, {Key: "activity:e1", Name: "Book Fair", Kind: "activity", People: []string{mia, robin, ella}}}
+	return []List{{Key: filter.TagKey(carpoolID), Name: "Carpool", Kind: "tag", People: []string{mia, robin}}, {Key: "activity:e1", Name: "Book Fair", Kind: "activity", People: []string{mia, robin, ella}}}
 }
 
 var (
@@ -87,12 +93,31 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *mailtest.Recorder, *sa
 		Settings:  noSettings,
 		Lists:     testLists,
 		Linked:    linked,
+		SourceID:  linkedSourceID,
 		Celebrate: celebrate,
 		Sources:   sources.sources,
 		Mail:      Mail{Sender: kept.Mailgun, Base: "https://when.heliosian.com", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey},
 		Style:     testStyle,
 	})
 	return mux, cache, kept, sources
+}
+
+var linkedSources = map[string]string{SourceCelebrate + "/p1": "p1", SourceCelebrate + "/P001": "p1", SourceTeam + "/e1": "e1", SourceTeam + "/E001": "e1"}
+
+func linkedSourceID(source, key string) string {
+	return linkedSources[source+"/"+key]
+}
+
+func idOf(t *testing.T, cache *Cache, address string) string {
+	t.Helper()
+	e := cache.Model().Event(address)
+	if e == nil {
+		t.Fatalf("no event at %s", address)
+	}
+	if _, ok := id.Parse(e.ID); !ok {
+		t.Fatalf("the event at %s was not minted an ID: %q", address, e.ID)
+	}
+	return e.ID
 }
 
 type sampleSources struct {
@@ -104,13 +129,10 @@ type sampleSources struct {
 func (s *sampleSources) sources() filter.Sources {
 	return filter.Sources{
 		Directory: s.model,
-		Tags: func(owner string) map[string][]string {
+		Tags: func(owner string) []who.Tag {
 			tags := s.model.Tags(owner)
-			for tag, people := range s.tagged {
-				if strings.HasPrefix(tag, owner+"\n") {
-					name := strings.TrimPrefix(tag, owner+"\n")
-					tags[name] = append(tags[name], people...)
-				}
+			for i, tag := range tags {
+				tags[i].People = append(slices.Clone(tag.People), s.tagged[tag.ID]...)
 			}
 			return tags
 		},
@@ -174,7 +196,8 @@ func TestInvitationLifecycle(t *testing.T) {
 	robinH := as(robin, mux)
 	samH := as(sam, mux)
 	miaH := as(mia, mux)
-	rec := call(t, jordan, "POST", "/api/when/events", `{"title":"Class meetup","start":"2026-10-10 15:00","end":"2026-10-10 17:00","location":"The park","tags":["Jays"],"sharing":"Link","id":"meetup"}`)
+	rec := call(t, jordan, "POST", "/api/when/events", `{"title":"Class meetup","start":"2026-10-10 15:00","end":"2026-10-10 17:00","location":"The park","tags":[`+quoted(t, "Jays")+`],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	if rec.Code != 200 {
 		t.Fatalf("share: %d %s", rec.Code, rec.Body)
 	}
@@ -209,25 +232,25 @@ func TestInvitationLifecycle(t *testing.T) {
 	if rec.Code != 200 || rec.Body.String() != "{\"added\":3,\"sent\":0}\n" {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
-	if inv := cache.Model().Invitations["meetup"]; inv == nil || inv.CreatedBy != host || inv.Audience != AudienceBoth || inv.Sent != "" {
+	if inv := cache.Model().Invitations[meetup]; inv == nil || inv.CreatedBy != host || inv.Audience != AudienceBoth || inv.Sent != "" {
 		t.Errorf("invitation = %+v", inv)
 	}
-	if rows := cache.Model().Invites["meetup"]; len(rows) != 3 || rows[0].Email != robin || rows[0].Name != "Robin Whitfield" || rows[0].Via != "family" || rows[2].Name != "Coach Lee" || rows[2].Sent != "" {
+	if rows := cache.Model().Invites[meetup]; len(rows) != 3 || rows[0].Email != robin || rows[0].Name != "Robin Whitfield" || rows[0].Via != "family" || rows[2].Name != "Coach Lee" || rows[2].Sent != "" {
 		t.Errorf("invites = %+v", rows)
 	}
 	var view View
 	rec = call(t, robinH, "GET", "/api/when/model", "")
 	json.NewDecoder(rec.Body).Decode(&view)
-	if slices.ContainsFunc(view.Events, func(e *Event) bool { return e.ID == "meetup" }) {
+	if slices.ContainsFunc(view.Events, func(e *Event) bool { return e.ID == meetup }) {
 		t.Errorf("an unsent invite put the event on Robin's calendar")
 	}
 	if rec := call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"meetup","audience":"students","message":"Bring a snack to share!","hosts":["`+mia+`"]}`); rec.Code != 204 {
 		t.Fatalf("settings: %d %s", rec.Code, rec.Body)
 	}
-	if inv := cache.Model().Invitations["meetup"]; inv.Audience != AudienceStudents || inv.Message != "Bring a snack to share!" || strings.Join(inv.Hosts, ",") != mia {
+	if inv := cache.Model().Invitations[meetup]; inv.Audience != AudienceStudents || inv.Message != "Bring a snack to share!" || strings.Join(inv.Hosts, ",") != mia {
 		t.Errorf("invitation after settings = %+v", inv)
 	}
-	if got := cache.Model().Answered[mia]["meetup"]; got.Answer != AnswerYes || got.By != host {
+	if got := cache.Model().Answered[mia][meetup]; got.Answer != AnswerYes || got.By != host {
 		t.Errorf("the co-host's answer = %+v", got)
 	}
 	waitFor(kept, 2)
@@ -257,16 +280,16 @@ func TestInvitationLifecycle(t *testing.T) {
 	if m, ok := byTo[sam]; !ok || !strings.Contains(m.Text, "Invited: Sam, Robin, Ella") {
 		t.Errorf("sam's own mail = %+v", m)
 	}
-	if m, ok := byTo[robin]; !ok || strings.Join(m.ReplyTo, ",") != host+","+mia+","+replyAddress("meetup", robin) || strings.Join(byTo[sam].ReplyTo, ",") == strings.Join(m.ReplyTo, ",") || m.Subject != "[Class meetup] You're invited!" || !strings.Contains(m.Text, "Hosted by Jordan Whitfield and Mia Torres") || !strings.Contains(m.HTML, "/open/share/meetup.png") || !strings.Contains(m.Text, "Invited: Robin, Sam, Ella") || !strings.Contains(m.HTML, "Bring a snack to share!") || !strings.Contains(m.HTML, "https://when.heliosian.com/e/meetup") || len(m.Attachments) != 1 || !strings.Contains(string(m.Attachments[0].Content), "ATTENDEE;CN="+robin) || !strings.Contains(string(m.Attachments[0].Content), "UID:meetup@when.heliosian.com") || !strings.Contains(strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", ""), "ORGANIZER;CN=Helios When:mailto:"+mail.AddressOf(replyAddress("meetup", robin))+"\r\n") {
+	if m, ok := byTo[robin]; !ok || strings.Join(m.ReplyTo, ",") != host+","+mia+","+replyAddress(meetup, robin) || strings.Join(byTo[sam].ReplyTo, ",") == strings.Join(m.ReplyTo, ",") || m.Subject != "[Class meetup] You're invited!" || !strings.Contains(m.Text, "Hosted by Jordan Whitfield and Mia Torres") || !strings.Contains(m.HTML, "/open/share/"+meetup+".png") || !strings.Contains(m.Text, "Invited: Robin, Sam, Ella") || !strings.Contains(m.HTML, "Bring a snack to share!") || !strings.Contains(m.HTML, "https://when.heliosian.com/e/meetup") || len(m.Attachments) != 1 || !strings.Contains(string(m.Attachments[0].Content), "ATTENDEE;CN="+robin) || !strings.Contains(string(m.Attachments[0].Content), "UID:"+meetup+"@when.heliosian.com") || !strings.Contains(strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", ""), "ORGANIZER;CN=Helios When:mailto:"+mail.AddressOf(replyAddress(meetup, robin))+"\r\n") {
 		t.Errorf("robin's mail = %+v\n%s", m, m.Text)
 	}
 	if m, ok := byTo[coach]; !ok || !strings.Contains(m.Text, "Invited: Coach") {
 		t.Errorf("coach's mail = %+v", m)
 	}
-	if inv := cache.Model().Invitations["meetup"]; inv.Sent == "" {
+	if inv := cache.Model().Invitations[meetup]; inv.Sent == "" {
 		t.Errorf("invitation not marked sent")
 	}
-	for _, row := range cache.Model().Invites["meetup"] {
+	for _, row := range cache.Model().Invites[meetup] {
 		if row.Sent == "" {
 			t.Errorf("%s not marked sent", row.Email)
 		}
@@ -276,27 +299,27 @@ func TestInvitationLifecycle(t *testing.T) {
 	}
 	rec = call(t, robinH, "GET", "/api/when/model", "")
 	json.NewDecoder(rec.Body).Decode(&view)
-	i := slices.IndexFunc(view.Events, func(e *Event) bool { return e.ID == "meetup" })
+	i := slices.IndexFunc(view.Events, func(e *Event) bool { return e.ID == meetup })
 	if i < 0 || !view.Events[i].Invitation || !view.Events[i].Invited || slices.Contains(view.Events[i].Tags, TagGoing) {
 		t.Errorf("robin's calendar after sending: %d %+v", i, view.Events)
 	}
-	if rec := call(t, robinH, "POST", "/api/when/settings", `{"classrooms":["Hawks"],"tags":["Community"]}`); rec.Code != 204 {
+	if rec := call(t, robinH, "POST", "/api/when/settings", `{"classrooms":["Hawks"],"tags":[`+quoted(t, "Community")+`]}`); rec.Code != 204 {
 		t.Fatalf("robin's saved view: %d %s", rec.Code, rec.Body)
 	}
-	if up := cache.Model().UpcomingUnder(testDirectory, robin, nil, now(), 0, ""); !slices.ContainsFunc(up, func(u Card) bool { return u.ID == "meetup" }) {
+	if up := cache.Model().UpcomingUnder(testDirectory, robin, nil, now(), 0, ""); !slices.ContainsFunc(up, func(u Card) bool { return u.ID == meetup }) {
 		t.Errorf("an invitation is not in Robin's Upcoming")
 	}
 	if rec := call(t, robinH, "DELETE", "/api/when/settings", ""); rec.Code != 204 {
 		t.Fatalf("robin forgets the view: %d %s", rec.Code, rec.Body)
 	}
-	if up := cache.Model().UpcomingUnder(testDirectory, mia, nil, now(), 0, ""); !slices.ContainsFunc(up, func(u Card) bool { return u.ID == "meetup" && u.Answer == AnswerYes }) {
+	if up := cache.Model().UpcomingUnder(testDirectory, mia, nil, now(), 0, ""); !slices.ContainsFunc(up, func(u Card) bool { return u.ID == meetup && u.Answer == AnswerYes }) {
 		t.Errorf("the event is not in the co-host's Upcoming as a yes")
 	}
-	v := inviteView(t, robinH, "meetup")
+	v := inviteView(t, robinH, meetup)
 	if v.Host || len(v.Mine) != 3 || v.Mine[0].Email != robin || !v.Mine[0].Mine || !v.Mine[1].Mine || !v.Mine[2].Mine || v.List != nil || v.Settings != nil || !v.Guests || len(v.Hosts) != 2 || v.Hosts[0].Name != "Jordan Whitfield" || v.Counts.Invited != 6 || v.Counts.Waiting != 4 {
 		t.Errorf("robin's view = %+v", v)
 	}
-	v = inviteView(t, samH, "meetup")
+	v = inviteView(t, samH, meetup)
 	if len(v.Mine) != 1 || v.Mine[0].Email != sam || !v.Mine[0].Mine {
 		t.Errorf("sam's view = %+v", v.Mine)
 	}
@@ -315,7 +338,7 @@ func TestInvitationLifecycle(t *testing.T) {
 	if rec := call(t, robinH, "POST", "/api/when/invites/answer", `{"id":"meetup","email":"`+sam+`","answer":"hidden"}`); rec.Code != 400 {
 		t.Errorf("hiding for someone else: %d", rec.Code)
 	}
-	if got := cache.Model().Answered[sam]["meetup"]; got.Answer != AnswerYes || got.By != robin || got.Via != ViaPage || got.At == "" {
+	if got := cache.Model().Answered[sam][meetup]; got.Answer != AnswerYes || got.By != robin || got.Via != ViaPage || got.At == "" {
 		t.Errorf("sam's answer = %+v", got)
 	}
 	time.Sleep(30 * time.Millisecond)
@@ -328,10 +351,10 @@ func TestInvitationLifecycle(t *testing.T) {
 	}
 	var made struct{ Email string }
 	json.Unmarshal(rec.Body.Bytes(), &made)
-	if !strings.HasPrefix(made.Email, guestPrefix) || cache.Model().AnswerOf(made.Email, "meetup") != AnswerYes {
-		t.Errorf("guest = %q, answer %q", made.Email, cache.Model().AnswerOf(made.Email, "meetup"))
+	if !strings.HasPrefix(made.Email, guestPrefix) || cache.Model().AnswerOf(made.Email, meetup) != AnswerYes {
+		t.Errorf("guest = %q, answer %q", made.Email, cache.Model().AnswerOf(made.Email, meetup))
 	}
-	if g := cache.Model().InviteOf("meetup", made.Email); g == nil || g.GuestOf != robin || g.Via != ViaGuest || g.Name != "Grandma June" {
+	if g := cache.Model().InviteOf(meetup, made.Email); g == nil || g.GuestOf != robin || g.Via != ViaGuest || g.Name != "Grandma June" {
 		t.Errorf("guest row = %+v", g)
 	}
 	if rec := call(t, samH, "POST", "/api/when/invites/guest", `{"id":"meetup","name":"A friend"}`); rec.Code != 200 {
@@ -352,7 +375,7 @@ func TestInvitationLifecycle(t *testing.T) {
 	if m := mailTo(kept, mia); len(m) != 2 || !strings.HasPrefix(m[1].Subject, "Invitation: Class meetup") {
 		t.Errorf("mia's own invite = %+v", m)
 	}
-	v = inviteView(t, jordan, "meetup")
+	v = inviteView(t, jordan, meetup)
 	if !v.Host || v.Settings == nil || v.Settings.Message != "Bring a snack to share!" || len(v.List) != 9 || v.Counts.Invited != 9 || v.Counts.Yes != 6 || v.Counts.Maybe != 1 || v.Counts.No != 1 || v.Counts.Waiting != 1 || v.Counts.Guests != 3 {
 		t.Errorf("host's view: host %v settings %+v list %d counts %+v", v.Host, v.Settings, len(v.List), v.Counts)
 	}
@@ -374,13 +397,13 @@ func TestInvitationLifecycle(t *testing.T) {
 	if len(v.Coming) != 8 || slices.ContainsFunc(v.Coming, func(g GuestRow) bool { return g.Answer == AnswerNo }) {
 		t.Errorf("coming = %d", len(v.Coming))
 	}
-	if v := inviteView(t, robinH, "meetup"); len(v.Coming) != 8 || len(v.Mine) != 6 || v.List != nil || slices.ContainsFunc(v.Coming, func(g GuestRow) bool { return g.Answer == AnswerNo || g.Link != "" || g.Sent != "" }) {
+	if v := inviteView(t, robinH, meetup); len(v.Coming) != 8 || len(v.Mine) != 6 || v.List != nil || slices.ContainsFunc(v.Coming, func(g GuestRow) bool { return g.Answer == AnswerNo || g.Link != "" || g.Sent != "" }) {
 		t.Errorf("robin reads who is coming: %d, mine %d, list %d", len(v.Coming), len(v.Mine), len(v.List))
 	}
 	if rec := call(t, jordan, "POST", "/api/when/invites/answer", `{"id":"meetup","email":"`+robin+`","answer":"yes"}`); rec.Code != 204 {
 		t.Errorf("host for robin: %d", rec.Code)
 	}
-	if got := cache.Model().Answered[robin]["meetup"]; got.Answer != AnswerYes || got.By != host {
+	if got := cache.Model().Answered[robin][meetup]; got.Answer != AnswerYes || got.By != host {
 		t.Errorf("robin's corrected answer = %+v", got)
 	}
 	if rec := call(t, robinH, "DELETE", "/api/when/invites/people", `{"id":"meetup","email":"`+coach+`"}`); rec.Code != 403 {
@@ -392,7 +415,7 @@ func TestInvitationLifecycle(t *testing.T) {
 	if rec := call(t, jordan, "DELETE", "/api/when/invites/people", `{"id":"meetup","email":"`+coach+`"}`); rec.Code != 204 {
 		t.Errorf("host removing the coach: %d %s", rec.Code, rec.Body)
 	}
-	if rows := cache.Model().Invites["meetup"]; len(rows) != 5 || cache.Model().InviteOf("meetup", coach) != nil || cache.Model().AnswerOf(made.Email, "meetup") != "" {
+	if rows := cache.Model().Invites[meetup]; len(rows) != 5 || cache.Model().InviteOf(meetup, coach) != nil || cache.Model().AnswerOf(made.Email, meetup) != "" {
 		t.Errorf("after removals: %+v", rows)
 	}
 	if rec := call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup","to":"unanswered"}`); rec.Code != 400 {
@@ -414,13 +437,13 @@ func TestInvitationLifecycle(t *testing.T) {
 		t.Errorf("mia's reminder = %d %+v", rec.Code, m)
 	}
 	rec = call(t, robinH, "POST", "/api/when/invites/guest", `{"id":"meetup","name":"Cousin Vi","email":"vi@example.org","answer":"","invite":false}`)
-	if rec.Code != 200 || cache.Model().AnswerOf("vi@example.org", "meetup") != "" || cache.Model().InviteOf("meetup", "vi@example.org").Sent != "" {
-		t.Errorf("a guest left to answer: %d %s, answer %q, row %+v", rec.Code, rec.Body, cache.Model().AnswerOf("vi@example.org", "meetup"), cache.Model().InviteOf("meetup", "vi@example.org"))
+	if rec.Code != 200 || cache.Model().AnswerOf("vi@example.org", meetup) != "" || cache.Model().InviteOf(meetup, "vi@example.org").Sent != "" {
+		t.Errorf("a guest left to answer: %d %s, answer %q, row %+v", rec.Code, rec.Body, cache.Model().AnswerOf("vi@example.org", meetup), cache.Model().InviteOf(meetup, "vi@example.org"))
 	}
 	if rec := call(t, robinH, "POST", "/api/when/invites/guest", `{"id":"meetup","name":"X","answer":"no"}`); rec.Code != 400 {
 		t.Errorf("a guest put down as no: %d", rec.Code)
 	}
-	if rec := call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup","emails":["vi@example.org"]}`); rec.Code != 200 || rec.Body.String() != "{\"invites\":1,\"messages\":1}\n" || cache.Model().InviteOf("meetup", "vi@example.org").Sent == "" {
+	if rec := call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup","emails":["vi@example.org"]}`); rec.Code != 200 || rec.Body.String() != "{\"invites\":1,\"messages\":1}\n" || cache.Model().InviteOf(meetup, "vi@example.org").Sent == "" {
 		t.Errorf("send to one: %d %s", rec.Code, rec.Body)
 	}
 }
@@ -429,7 +452,7 @@ func TestPartyInvitation(t *testing.T) {
 	mux, cache, kept := invitesApp(t)
 	miaH := as(mia, mux)
 	robinH := as(robin, mux)
-	if rec := call(t, robinH, "POST", "/api/when/invites/group", `{"id":"`+partyA+`","rule":{"tags":["`+host+`:Carpool"]}}`); rec.Code != 403 {
+	if rec := call(t, robinH, "POST", "/api/when/invites/group", `{"id":"`+partyA+`","rule":{"tags":["`+filter.TagKey(carpoolID)+`"]}}`); rec.Code != 403 {
 		t.Errorf("a ticket holder adding a group: %d", rec.Code)
 	}
 	rec := call(t, miaH, "GET", "/api/when/invites/people?id="+partyA, "")
@@ -472,23 +495,24 @@ func TestPartyInvitation(t *testing.T) {
 func TestRepliesFromGuests(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":["Jays"],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[`+quoted(t, "Jays")+`],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	replies := map[string]string{
-		"coach": replyMail(coach, coach, "meetup", "ACCEPTED", "dkim=pass header.d=example.org"),
-		"robin": replyMail(robin, robin, "meetup", "TENTATIVE", "spf=pass smtp.mailfrom=robin.whitfield@heliosschool.org"),
+		"coach": replyMail(coach, coach, meetup, "ACCEPTED", "dkim=pass header.d=example.org"),
+		"robin": replyMail(robin, robin, meetup, "TENTATIVE", "spf=pass smtp.mailfrom=robin.whitfield@heliosschool.org"),
 	}
 	post := func(id, from string) int {
-		return postReply(mux, replyAddress("meetup", from), from, replies[id], true)
+		return postReply(mux, replyAddress(meetup, from), from, replies[id], true)
 	}
-	if code := post("coach", coach); code != 200 || cache.Model().AnswerOf(coach, "meetup") != "" {
-		t.Errorf("a stranger's reply before the list: %d %q", code, cache.Model().AnswerOf(coach, "meetup"))
+	if code := post("coach", coach); code != 200 || cache.Model().AnswerOf(coach, meetup) != "" {
+		t.Errorf("a stranger's reply before the list: %d %q", code, cache.Model().AnswerOf(coach, meetup))
 	}
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+coach+`","name":"Coach Lee"},{"email":"`+robin+`"}]}`)
-	if code := post("coach", coach); code != 200 || cache.Model().AnswerOf(coach, "meetup") != AnswerYes {
-		t.Errorf("a guest's reply: %d %q", code, cache.Model().AnswerOf(coach, "meetup"))
+	if code := post("coach", coach); code != 200 || cache.Model().AnswerOf(coach, meetup) != AnswerYes {
+		t.Errorf("a guest's reply: %d %q", code, cache.Model().AnswerOf(coach, meetup))
 	}
-	if code := post("robin", robin); code != 200 || cache.Model().AnswerOf(robin, "meetup") != AnswerMaybe || cache.Model().Answered[robin]["meetup"].Via != ViaCalendar {
-		t.Errorf("a tentative reply: %d %+v", code, cache.Model().Answered[robin]["meetup"])
+	if code := post("robin", robin); code != 200 || cache.Model().AnswerOf(robin, meetup) != AnswerMaybe || cache.Model().Answered[robin][meetup].Via != ViaCalendar {
+		t.Errorf("a tentative reply: %d %+v", code, cache.Model().Answered[robin][meetup])
 	}
 }
 
@@ -497,7 +521,7 @@ func TestInviteOnlyIsForTheInvited(t *testing.T) {
 	jordan := as(host, mux)
 	robinH := as(robin, mux)
 	miaH := as(mia, mux)
-	rec := call(t, jordan, "POST", "/api/when/events", `{"title":"Sam’s party","start":"2026-10-10 15:00","tags":[],"sharing":"Invite Only","id":"party"}`)
+	rec := call(t, jordan, "POST", "/api/when/events", `{"title":"Sam’s party","start":"2026-10-10 15:00","tags":[],"sharing":"Invite Only","address":"party"}`)
 	if rec.Code != 200 {
 		t.Fatalf("share: %d %s", rec.Code, rec.Body)
 	}
@@ -550,7 +574,8 @@ func TestInviteOnlyIsForTheInvited(t *testing.T) {
 func TestOutsideInvitation(t *testing.T) {
 	mux, cache, kept := invitesApp(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","location":"The park","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","location":"The park","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	if e := cache.Model().Event("meetup"); e == nil || len(e.Tags) != 0 {
 		t.Fatalf("an invite-only event with no tags = %+v", e)
 	}
@@ -559,11 +584,11 @@ func TestOutsideInvitation(t *testing.T) {
 	if rec := call(t, mux, "GET", "/open/banner/meetup", ""); rec.Code != 200 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "image/") {
 		t.Errorf("banner: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	inv := cache.Model().InviteOf("meetup", coach)
-	if inv == nil || len(inv.Token) != 24 || cache.Model().InviteOf("meetup", robin).Token != "" {
-		t.Fatalf("tokens: coach %+v, robin %+v", inv, cache.Model().InviteOf("meetup", robin))
+	inv := cache.Model().InviteOf(meetup, coach)
+	if inv == nil || len(inv.Token) != 24 || cache.Model().InviteOf(meetup, robin).Token != "" {
+		t.Fatalf("tokens: coach %+v, robin %+v", inv, cache.Model().InviteOf(meetup, robin))
 	}
-	if r := rowOf(inviteView(t, jordan, "meetup"), coach); r == nil || r.Link != "/ext/"+inv.Token {
+	if r := rowOf(inviteView(t, jordan, meetup), coach); r == nil || r.Link != "/ext/"+inv.Token {
 		t.Errorf("coach's row = %+v", r)
 	}
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
@@ -589,8 +614,8 @@ func TestOutsideInvitation(t *testing.T) {
 	if body := rec.Body.String(); strings.Contains(body, robin) || strings.Contains(body, "Robin") {
 		t.Errorf("the outside view names someone else: %s", body)
 	}
-	if rec := call(t, mux, "POST", "/open/ext/"+inv.Token, `{"answer":"maybe"}`); rec.Code != 204 || cache.Model().AnswerOf(coach, "meetup") != AnswerMaybe {
-		t.Errorf("answer from outside: %d %q", rec.Code, cache.Model().AnswerOf(coach, "meetup"))
+	if rec := call(t, mux, "POST", "/open/ext/"+inv.Token, `{"answer":"maybe"}`); rec.Code != 204 || cache.Model().AnswerOf(coach, meetup) != AnswerMaybe {
+		t.Errorf("answer from outside: %d %q", rec.Code, cache.Model().AnswerOf(coach, meetup))
 	}
 	if rec := call(t, mux, "POST", "/open/ext/"+inv.Token, `{"answer":"hidden"}`); rec.Code != 400 {
 		t.Errorf("hiding from outside: %d", rec.Code)
@@ -599,8 +624,8 @@ func TestOutsideInvitation(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatalf("guest from outside: %d %s", rec.Code, rec.Body)
 	}
-	guest := cache.Model().InviteOf("meetup", "assistant@example.org")
-	if guest == nil || guest.GuestOf != coach || guest.Token == "" || cache.Model().AnswerOf("assistant@example.org", "meetup") != AnswerYes {
+	guest := cache.Model().InviteOf(meetup, "assistant@example.org")
+	if guest == nil || guest.GuestOf != coach || guest.Token == "" || cache.Model().AnswerOf("assistant@example.org", meetup) != AnswerYes {
 		t.Fatalf("guest row = %+v", guest)
 	}
 	waitFor(kept, 4)
@@ -615,7 +640,7 @@ func TestOutsideInvitation(t *testing.T) {
 	if rec := call(t, mux, "DELETE", "/open/ext/"+inv.Token+"/guest", `{"key":"`+robin+`"}`); rec.Code != 404 {
 		t.Errorf("taking someone else off from outside: %d", rec.Code)
 	}
-	if rec := call(t, mux, "DELETE", "/open/ext/"+inv.Token+"/guest", `{"key":"assistant@example.org"}`); rec.Code != 204 || cache.Model().InviteOf("meetup", "assistant@example.org") != nil {
+	if rec := call(t, mux, "DELETE", "/open/ext/"+inv.Token+"/guest", `{"key":"assistant@example.org"}`); rec.Code != 204 || cache.Model().InviteOf(meetup, "assistant@example.org") != nil {
 		t.Errorf("taking a guest back from outside: %d", rec.Code)
 	}
 	if rec := call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"meetup","flyer":"sample/community.jpg"}`); rec.Code != 204 {
@@ -623,10 +648,10 @@ func TestOutsideInvitation(t *testing.T) {
 	}
 	rec = call(t, mux, "GET", "/open/ext/"+inv.Token, "")
 	json.Unmarshal(rec.Body.Bytes(), &v)
-	if v.Flyer != "/open/flyer/meetup" {
+	if v.Flyer != "/open/flyer/"+meetup {
 		t.Errorf("outside view's flyer = %q", v.Flyer)
 	}
-	if rec := call(t, mux, "GET", "/ext/"+inv.Token, ""); !strings.Contains(rec.Body.String(), `property="og:title" content="Meetup"`) || !strings.Contains(rec.Body.String(), "/open/share/meetup.png") {
+	if rec := call(t, mux, "GET", "/ext/"+inv.Token, ""); !strings.Contains(rec.Body.String(), `property="og:title" content="Meetup"`) || !strings.Contains(rec.Body.String(), "/open/share/"+meetup+".png") {
 		t.Errorf("outside page's head lacks the preview: %s", rec.Body.String()[:400])
 	}
 }
@@ -634,11 +659,12 @@ func TestOutsideInvitation(t *testing.T) {
 func TestInviteGroups(t *testing.T) {
 	mux, cache, kept, sources := invitesAppWith(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	rec := call(t, jordan, "GET", "/api/when/invites/options", "")
 	var options filter.Options
 	json.Unmarshal(rec.Body.Bytes(), &options)
-	carpool := filter.TagKey(host, "Carpool")
+	carpool := filter.TagKey(carpoolID)
 	if rec.Code != 200 || !slices.Contains(options.Classrooms, "Jays") || !slices.ContainsFunc(options.Tags, func(t filter.TagOption) bool { return t.Key == carpool && t.Name == "Carpool" }) {
 		t.Fatalf("options: %d %+v", rec.Code, options)
 	}
@@ -651,8 +677,8 @@ func TestInviteGroups(t *testing.T) {
 	if rec.Code != 200 || preview.Count != 2 || len(preview.Names) != 2 {
 		t.Errorf("preview: %d %+v", rec.Code, preview)
 	}
-	theirs := call(t, jordan, "POST", "/api/when/invites/preview", `{"id":"meetup","rule":{"tags":["`+filter.TagKey("abena.osei@heliosschool.org", "Book Club")+`"]}}`)
-	gone := call(t, jordan, "POST", "/api/when/invites/preview", `{"id":"meetup","rule":{"tags":["`+filter.TagKey(host, "Gone")+`"]}}`)
+	theirs := call(t, jordan, "POST", "/api/when/invites/preview", `{"id":"meetup","rule":{"tags":["`+filter.TagKey(bookClubID)+`"]}}`)
+	gone := call(t, jordan, "POST", "/api/when/invites/preview", `{"id":"meetup","rule":{"tags":["`+filter.TagKey("dtg0000000099")+`"]}}`)
 	if theirs.Code != 400 || gone.Code != 400 || theirs.Body.String() != gone.Body.String() {
 		t.Errorf("someone else's tag: %d %s; a tag that does not exist: %d %s", theirs.Code, theirs.Body, gone.Code, gone.Body)
 	}
@@ -671,38 +697,38 @@ func TestInviteGroups(t *testing.T) {
 	if rec.Code != 200 || made.Added != 2 || made.Group == "" {
 		t.Fatalf("group: %d %s", rec.Code, rec.Body)
 	}
-	g := cache.Model().GroupOf("meetup", made.Group)
+	g := cache.Model().GroupOf(meetup, made.Group)
 	if g == nil || !g.Auto || g.Rule.Kind != "include" || strings.Join(g.Rule.Tags, ",") != carpool {
 		t.Fatalf("group row = %+v", g)
 	}
-	abena := cache.Model().InviteOf("meetup", "abena.osei@heliosschool.org")
+	abena := cache.Model().InviteOf(meetup, "abena.osei@heliosschool.org")
 	if abena == nil || abena.Via != ViaGroup+g.ID || abena.AddedBy != host {
 		t.Errorf("a member's row = %+v", abena)
 	}
-	v := inviteView(t, jordan, "meetup")
+	v := inviteView(t, jordan, meetup)
 	if len(v.Groups) != 1 || v.Groups[0].Count != 2 || v.Counts.Invited != 3 {
 		t.Errorf("view groups = %+v counts %+v", v.Groups, v.Counts)
 	}
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
 	waitFor(kept, 3)
-	sources.tagged[host+"\nCarpool"] = []string{mia}
-	if v := inviteView(t, jordan, "meetup"); rowOf(v, mia) != nil {
+	sources.tagged[carpoolID] = []string{mia}
+	if v := inviteView(t, jordan, meetup); rowOf(v, mia) != nil {
 		t.Errorf("a newcomer came on inside the grace")
 	}
 	start := now()
 	now = func() time.Time { return start.Add(grace - time.Minute) }
-	if v := inviteView(t, jordan, "meetup"); rowOf(v, mia) != nil {
+	if v := inviteView(t, jordan, meetup); rowOf(v, mia) != nil {
 		t.Errorf("a newcomer came on a minute short of the grace")
 	}
-	delete(sources.tagged, host+"\nCarpool")
-	inviteView(t, jordan, "meetup")
-	sources.tagged[host+"\nCarpool"] = []string{mia}
+	delete(sources.tagged, carpoolID)
+	inviteView(t, jordan, meetup)
+	sources.tagged[carpoolID] = []string{mia}
 	now = func() time.Time { return start.Add(grace + time.Minute) }
-	if v := inviteView(t, jordan, "meetup"); rowOf(v, mia) != nil {
+	if v := inviteView(t, jordan, meetup); rowOf(v, mia) != nil {
 		t.Errorf("a newcomer came on with the clock restarted")
 	}
 	now = func() time.Time { return start.Add(2*grace + 2*time.Minute) }
-	v = inviteView(t, jordan, "meetup")
+	v = inviteView(t, jordan, meetup)
 	if r := rowOf(v, mia); r == nil || r.Via != ViaGroup+g.ID || r.Sent == "" || v.Groups[0].Count != 3 {
 		t.Errorf("mia after the grace = %+v, groups %+v", r, v.Groups)
 	}
@@ -711,7 +737,7 @@ func TestInviteGroups(t *testing.T) {
 	if m := mailTo(kept, mia); len(m) != 1 || !strings.Contains(m[0].Subject, "You're invited!") {
 		t.Errorf("mia's auto invite = %+v", m)
 	}
-	if g := cache.Model().GroupOf("meetup", g.ID); g.Sent == "" {
+	if g := cache.Model().GroupOf(meetup, g.ID); g.Sent == "" {
 		t.Errorf("the group is not marked sent after its invites went: %+v", g)
 	}
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
@@ -719,7 +745,7 @@ func TestInviteGroups(t *testing.T) {
 	if rec := call(t, jordan, "POST", "/api/when/invites/skip", `{"id":"meetup","emails":["`+robin+`"]}`); rec.Code != 200 || rec.Body.String() != "{\"skipped\":1}\n" {
 		t.Errorf("skip: %d %s", rec.Code, rec.Body)
 	}
-	if r := rowOf(inviteView(t, jordan, "meetup"), robin); r == nil || r.Sent == "" || len(kept.Messages()) != before {
+	if r := rowOf(inviteView(t, jordan, meetup), robin); r == nil || r.Sent == "" || len(kept.Messages()) != before {
 		t.Errorf("skipped row = %+v, mail %d -> %d", r, before, len(kept.Messages()))
 	}
 	if rec := call(t, jordan, "POST", "/api/when/invites/skip", `{"id":"meetup","emails":["`+robin+`"]}`); rec.Code != 400 {
@@ -731,27 +757,27 @@ func TestInviteGroups(t *testing.T) {
 	if rec.Code != 200 || made.Added == 0 {
 		t.Fatalf("second group: %d %s", rec.Code, rec.Body)
 	}
-	if r := rowOf(inviteView(t, jordan, "meetup"), ella); r == nil || r.Sent != "" {
+	if r := rowOf(inviteView(t, jordan, meetup), ella); r == nil || r.Sent != "" {
 		t.Errorf("ella came on sent: %+v", r)
 	}
-	if g2 := cache.Model().GroupOf("meetup", made.Group); g2 == nil || g2.Sent != "" || len(mailTo(kept, ella)) != 0 {
+	if g2 := cache.Model().GroupOf(meetup, made.Group); g2 == nil || g2.Sent != "" || len(mailTo(kept, ella)) != 0 {
 		t.Errorf("a new group's people were sent before the host did: %+v, mail %d", g2, len(mailTo(kept, ella)))
 	}
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
 	waitFor(kept, 4+made.Added)
-	if g2 := cache.Model().GroupOf("meetup", made.Group); g2.Sent == "" || len(mailTo(kept, ella)) != 1 {
+	if g2 := cache.Model().GroupOf(meetup, made.Group); g2.Sent == "" || len(mailTo(kept, ella)) != 1 {
 		t.Errorf("after sending the second group: %+v, mail %d", g2, len(mailTo(kept, ella)))
 	}
 	if rec := call(t, jordan, "PUT", "/api/when/invites/group", `{"id":"meetup","group":"`+g.ID+`","auto":false}`); rec.Code != 204 {
 		t.Errorf("auto off: %d %s", rec.Code, rec.Body)
 	}
-	sources.tagged[host+"\nCarpool"] = append(sources.tagged[host+"\nCarpool"], robin)
+	sources.tagged[carpoolID] = append(sources.tagged[carpoolID], robin)
 	start = now()
-	if v := inviteView(t, jordan, "meetup"); rowOf(v, robin) != nil {
+	if v := inviteView(t, jordan, meetup); rowOf(v, robin) != nil {
 		t.Errorf("a newcomer came on inside the grace with auto off")
 	}
 	now = func() time.Time { return start.Add(grace + time.Minute) }
-	if r := rowOf(inviteView(t, jordan, "meetup"), robin); r == nil || r.Sent != "" || r.Via != ViaGroup+g.ID {
+	if r := rowOf(inviteView(t, jordan, meetup), robin); r == nil || r.Sent != "" || r.Via != ViaGroup+g.ID {
 		t.Errorf("a newcomer with auto off = %+v", r)
 	}
 	now = pinnedClock
@@ -761,25 +787,26 @@ func TestInviteGroups(t *testing.T) {
 	if rec := call(t, jordan, "DELETE", "/api/when/invites/group", `{"id":"meetup","group":"`+g.ID+`"}`); rec.Code != 200 || rec.Body.String() != "{\"dropped\":1}\n" {
 		t.Errorf("remove group: %d %s", rec.Code, rec.Body)
 	}
-	if cache.Model().GroupOf("meetup", g.ID) != nil || cache.Model().InviteOf("meetup", mia) == nil || cache.Model().InviteOf("meetup", robin) != nil {
-		t.Errorf("after removing: groups %d, mia %v", len(cache.Model().Groups["meetup"]), cache.Model().InviteOf("meetup", mia))
+	if cache.Model().GroupOf(meetup, g.ID) != nil || cache.Model().InviteOf(meetup, mia) == nil || cache.Model().InviteOf(meetup, robin) != nil {
+		t.Errorf("after removing: groups %d, mia %v", len(cache.Model().Groups[meetup]), cache.Model().InviteOf(meetup, mia))
 	}
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Other","start":"2026-10-11 15:00","tags":[],"sharing":"Link","id":"other"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Other","start":"2026-10-11 15:00","tags":[],"sharing":"Link","address":"other"}`)
 	rec = call(t, jordan, "POST", "/api/when/invites/group", `{"id":"other","rule":{"roles":["Student"],"classrooms":["Jays"]},"auto":false}`)
 	json.Unmarshal(rec.Body.Bytes(), &made)
 	if rec.Code != 200 || made.Added == 0 {
 		t.Fatalf("classroom group: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, jordan, "DELETE", "/api/when/invites/group", `{"id":"other","group":"`+made.Group+`"}`); rec.Code != 200 || !strings.Contains(rec.Body.String(), fmt.Sprint(made.Added)) || len(cache.Model().Invites["other"]) != 0 {
-		t.Errorf("remove unsent group: %d %s, left %d", rec.Code, rec.Body, len(cache.Model().Invites["other"]))
+	if rec := call(t, jordan, "DELETE", "/api/when/invites/group", `{"id":"other","group":"`+made.Group+`"}`); rec.Code != 200 || !strings.Contains(rec.Body.String(), fmt.Sprint(made.Added)) || len(cache.Model().Invites[idOf(t, cache, "other")]) != 0 {
+		t.Errorf("remove unsent group: %d %s, left %d", rec.Code, rec.Body, len(cache.Model().Invites[idOf(t, cache, "other")]))
 	}
 }
 
 func TestHostMessage(t *testing.T) {
-	mux, _, kept := invitesApp(t)
+	mux, cache, kept := invitesApp(t)
 	jordan := as(host, mux)
 	const mina = "mina.park@heliosschool.org"
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"},{"email":"`+sam+`"},{"email":"`+mina+`"},{"email":"`+coach+`","name":"Coach Lee"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/answer", `{"id":"meetup","email":"`+robin+`","answer":"yes"}`)
 	call(t, jordan, "POST", "/api/when/invites/answer", `{"id":"meetup","email":"`+mina+`","answer":"no"}`)
@@ -818,7 +845,7 @@ func TestHostMessage(t *testing.T) {
 	}
 	call(t, jordan, "POST", "/api/when/invites/message", `{"id":"meetup","subject":"Next time","message":"Sorry you can't make it.","to":["no"],"attach":true}`)
 	waitFor(kept, before+4)
-	if m := mailTo(kept, mina); len(m) != 1 || !strings.Contains(m[0].Text, "You: No") || strings.Contains(m[0].Text, "not answered") || len(m[0].Attachments) != 1 || !strings.Contains(string(m[0].Attachments[0].Content), "UID:meetup@") {
+	if m := mailTo(kept, mina); len(m) != 1 || !strings.Contains(m[0].Text, "You: No") || strings.Contains(m[0].Text, "not answered") || len(m[0].Attachments) != 1 || !strings.Contains(string(m[0].Attachments[0].Content), "UID:"+meetup+"@") {
 		t.Errorf("mina's message = %+v", m)
 	}
 	if r := mailTo(kept, robin); len(r[0].Attachments) != 0 {
@@ -867,6 +894,71 @@ func TestPartyStart(t *testing.T) {
 	}
 }
 
+func TestLinkedEventsBySourcesOldIDs(t *testing.T) {
+	mux, cache, _ := invitesApp(t)
+	robinH, miaH := as(robin, mux), as(mia, mux)
+	for old, want := range map[string]string{"celebrate/P001": partyA, "team/E001": "team/e1", partyA: partyA} {
+		rec := call(t, robinH, "GET", "/api/when/event?id="+old, "")
+		var e Event
+		json.Unmarshal(rec.Body.Bytes(), &e)
+		if rec.Code != 200 || e.ID != want {
+			t.Errorf("%s: %d %q, want %s", old, rec.Code, e.ID, want)
+		}
+	}
+	if rec := call(t, robinH, "GET", "/api/when/event?id=celebrate/P999", ""); rec.Code != 404 {
+		t.Errorf("an unknown party: %d", rec.Code)
+	}
+	for path, want := range map[string]string{"/e/celebrate/P001": "/e/" + partyA, "/e/team/E001": "/e/team/e1"} {
+		if rec := call(t, mux, "GET", path, ""); rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != want {
+			t.Errorf("%s: %d to %q, want a 301 to %s", path, rec.Code, rec.Header().Get("Location"), want)
+		}
+	}
+	if rec := call(t, mux, "GET", "/e/"+partyA, ""); rec.Code != 200 {
+		t.Errorf("the party's own page: %d", rec.Code)
+	}
+	rec := call(t, miaH, "POST", "/api/when/invites/start", `{"id":"celebrate/P001"}`)
+	var made struct{ Group string }
+	json.Unmarshal(rec.Body.Bytes(), &made)
+	if rec.Code != 200 || cache.Model().GroupOf(partyA, made.Group) == nil || cache.Model().Invitations[partyA] == nil || cache.Model().Invitations["celebrate/P001"] != nil {
+		t.Fatalf("a list started by the party's old ID: %d %s", rec.Code, rec.Body)
+	}
+	if _, ok := id.Parse(made.Group); !ok {
+		t.Errorf("a minted group ID does not parse: %q", made.Group)
+	}
+}
+
+func TestGuestListIDsAreMinted(t *testing.T) {
+	mux, cache, _ := invitesApp(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
+	rec := call(t, jordan, "POST", "/api/when/invites/group", `{"id":"meetup","rule":{"roles":["Student"],"classrooms":["Jays"]},"auto":false}`)
+	var group struct{ Group string }
+	json.Unmarshal(rec.Body.Bytes(), &group)
+	if _, ok := id.Parse(group.Group); rec.Code != 200 || !ok || cache.Model().GroupOf(meetup, group.Group) == nil {
+		t.Errorf("group: %d %s", rec.Code, rec.Body)
+	}
+	rec = call(t, jordan, "POST", "/api/when/invites/guest", `{"id":"meetup","name":"Grandma June"}`)
+	var guest struct{ Email string }
+	json.Unmarshal(rec.Body.Bytes(), &guest)
+	keys := []string{guest.Email}
+	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"name":"Kit Lee","via":"outside","household":"`+coach+`"},{"name":"Kim Lee","via":"outside","household":"`+coach+`"}]}`)
+	for _, inv := range cache.Model().Invites[meetup] {
+		if inv.Household == coach {
+			keys = append(keys, inv.Email)
+		}
+	}
+	if len(keys) != 3 || keys[1] == keys[2] {
+		t.Fatalf("guest keys = %v", keys)
+	}
+	for _, key := range keys {
+		minted, ok := strings.CutPrefix(key, guestPrefix)
+		if _, parses := id.Parse(minted); !ok || !parses || !isGuestKey(key) {
+			t.Errorf("a guest key is not guest- and a minted ID: %q", key)
+		}
+	}
+}
+
 func TestStudentInviteCcsParents(t *testing.T) {
 	mux, _, kept := invitesApp(t)
 	miaH := as(mia, mux)
@@ -892,9 +984,10 @@ func TestStudentInviteCcsParents(t *testing.T) {
 }
 
 func TestStudentMessagesCcParentsWithoutCalendarFiles(t *testing.T) {
-	mux, _, kept := invitesApp(t)
+	mux, cache, kept := invitesApp(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":["Jays"],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[`+quoted(t, "Jays")+`],"sharing":"Link","address":"meetup"}`)
+	idOf(t, cache, "meetup")
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+sam+`"},{"email":"`+robin+`"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
 	before := len(waitFor(kept, 2))
@@ -1012,10 +1105,11 @@ func TestInvitationDetails(t *testing.T) {
 func TestAddressWarnings(t *testing.T) {
 	mux, cache, kept := invitesApp(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	alum := "old.grad@heliosschool.org"
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+alum+`","name":"Old Grad","via":"outside"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"},{"email":"`+robin+`"}]}`)
-	v := inviteView(t, jordan, "meetup")
+	v := inviteView(t, jordan, meetup)
 	if r := rowOf(v, alum); r == nil || r.Warning != "unknown" || r.WarningWords == "" {
 		t.Errorf("a school address off the directory = %+v", r)
 	}
@@ -1046,7 +1140,7 @@ func TestAddressWarnings(t *testing.T) {
 	if b, ok := cache.Model().Bounced[coach]; !ok || b.Reason != "No such user here" {
 		t.Errorf("bounce noted = %+v (%v)", b, ok)
 	}
-	if r := rowOf(inviteView(t, jordan, "meetup"), coach); r == nil || r.Warning != "bounced" || !strings.Contains(r.WarningWords, "No such user here") {
+	if r := rowOf(inviteView(t, jordan, meetup), coach); r == nil || r.Warning != "bounced" || !strings.Contains(r.WarningWords, "No such user here") {
 		t.Errorf("a bounced address = %+v", r)
 	}
 	req := httptest.NewRequest("POST", "/hooks/events", strings.NewReader(`{"signature":{},"event-data":{"event":"failed","severity":"permanent","recipient":"x@example.org"}}`))
@@ -1061,15 +1155,15 @@ func TestAddressWarnings(t *testing.T) {
 		t.Errorf("sending to a bounced address anyway: %d mails", len(mailTo(kept, coach)))
 	}
 	call(t, jordan, "POST", "/api/when/invites/answer", `{"id":"meetup","email":"`+coach+`","answer":"yes"}`)
-	token := cache.Model().InviteOf("meetup", coach).Token
+	token := cache.Model().InviteOf(meetup, coach).Token
 	if rec := call(t, jordan, "POST", "/api/when/invites/email", `{"id":"meetup","email":"`+coach+`","to":"coach.lee@example.org"}`); rec.Code != 204 {
 		t.Fatalf("change address: %d %s", rec.Code, rec.Body)
 	}
-	moved := cache.Model().InviteOf("meetup", "coach.lee@example.org")
-	if moved == nil || moved.Token != token || moved.Sent == "" || cache.Model().InviteOf("meetup", coach) != nil || cache.Model().AnswerOf("coach.lee@example.org", "meetup") != AnswerYes {
-		t.Errorf("after the change: %+v, old %v, answer %q", moved, cache.Model().InviteOf("meetup", coach), cache.Model().AnswerOf("coach.lee@example.org", "meetup"))
+	moved := cache.Model().InviteOf(meetup, "coach.lee@example.org")
+	if moved == nil || moved.Token != token || moved.Sent == "" || cache.Model().InviteOf(meetup, coach) != nil || cache.Model().AnswerOf("coach.lee@example.org", meetup) != AnswerYes {
+		t.Errorf("after the change: %+v, old %v, answer %q", moved, cache.Model().InviteOf(meetup, coach), cache.Model().AnswerOf("coach.lee@example.org", meetup))
 	}
-	if r := rowOf(inviteView(t, jordan, "meetup"), "coach.lee@example.org"); r == nil || r.Warning != "" {
+	if r := rowOf(inviteView(t, jordan, meetup), "coach.lee@example.org"); r == nil || r.Warning != "" {
 		t.Errorf("the new address = %+v", r)
 	}
 	if rec := call(t, jordan, "POST", "/api/when/invites/email", `{"id":"meetup","email":"`+robin+`","to":"robin@example.org"}`); rec.Code != 400 {
@@ -1086,23 +1180,25 @@ func TestAddressWarnings(t *testing.T) {
 func TestDeleteAndCancel(t *testing.T) {
 	mux, cache, kept := invitesApp(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"}]}`)
 	if rec := call(t, as(mia, mux), "POST", "/api/when/invites/delete", `{"id":"meetup"}`); rec.Code != 403 {
 		t.Errorf("someone else deleting: %d", rec.Code)
 	}
-	token := cache.Model().InviteOf("meetup", coach).Token
+	token := cache.Model().InviteOf(meetup, coach).Token
 	if rec := call(t, jordan, "POST", "/api/when/invites/delete", `{"id":"meetup"}`); rec.Code != 200 || rec.Body.String() != "{\"event\":true}\n" {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
 	}
 	m := cache.Model()
-	if m.Event("meetup") != nil || m.Invitations["meetup"] != nil || len(m.Invites["meetup"]) != 0 {
-		t.Errorf("after delete: event %v, invitation %v, invites %d", m.Event("meetup"), m.Invitations["meetup"], len(m.Invites["meetup"]))
+	if m.Event("meetup") != nil || m.Invitations[meetup] != nil || len(m.Invites[meetup]) != 0 {
+		t.Errorf("after delete: event %v, invitation %v, invites %d", m.Event("meetup"), m.Invitations[meetup], len(m.Invites[meetup]))
 	}
 	if rec := call(t, mux, "GET", "/ext/"+token, ""); rec.Code != 200 {
 		t.Errorf("outside page for a deleted event: %d", rec.Code)
 	}
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup = idOf(t, cache, "meetup")
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
 	waitFor(kept, 3)
@@ -1116,7 +1212,7 @@ func TestDeleteAndCancel(t *testing.T) {
 	if e := cache.Model().Event("meetup"); e == nil || !e.Cancelled || e.Status != StatusCancelled {
 		t.Errorf("after cancel: %+v", e)
 	}
-	if events := cache.Model().eventsFor(testDirectory, robin, nil); slices.ContainsFunc(events, func(e *Event) bool { return e.ID == "meetup" }) {
+	if events := cache.Model().eventsFor(testDirectory, robin, nil); slices.ContainsFunc(events, func(e *Event) bool { return e.ID == meetup }) {
 		t.Errorf("a cancelled event still on a guest's calendar")
 	}
 	waitFor(kept, before+2)
@@ -1125,7 +1221,7 @@ func TestDeleteAndCancel(t *testing.T) {
 		t.Fatalf("the coach's cancellation: %+v", msgs)
 	}
 	ics := string(msgs[1].Attachments[0].Content)
-	if msgs[1].Attachments[0].Name != "cancel.ics" || !strings.Contains(ics, "METHOD:CANCEL") || !strings.Contains(ics, "STATUS:CANCELLED") || !strings.Contains(ics, "UID:"+uidOf("meetup")) {
+	if msgs[1].Attachments[0].Name != "cancel.ics" || !strings.Contains(ics, "METHOD:CANCEL") || !strings.Contains(ics, "STATUS:CANCELLED") || !strings.Contains(ics, "UID:"+uidOf(meetup)) {
 		t.Errorf("cancellation file:\n%s", ics)
 	}
 	if !slices.Contains(msgs[1].ReplyTo, host) {
@@ -1137,9 +1233,10 @@ func TestDeleteAndCancel(t *testing.T) {
 }
 
 func TestUpdatedInvitation(t *testing.T) {
-	mux, _, kept := invitesApp(t)
+	mux, cache, kept := invitesApp(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	idOf(t, cache, "meetup")
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
 	waitFor(kept, 2)
@@ -1169,22 +1266,23 @@ func TestUpdatedInvitation(t *testing.T) {
 func TestOutsideFamily(t *testing.T) {
 	mux, cache, kept := invitesApp(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	rec := call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+coach+`","name":"Coach Lee","via":"outside","household":"`+coach+`"},{"email":"pat@example.org","name":"Pat Lee","via":"outside","household":"`+coach+`"},{"name":"Kit Lee","via":"outside","household":"`+coach+`"}]}`)
 	if rec.Code != 200 || rec.Body.String() != "{\"added\":3,\"sent\":0}\n" {
 		t.Fatalf("family: %d %s", rec.Code, rec.Body)
 	}
 	m := cache.Model()
 	var kit string
-	for _, inv := range m.Invites["meetup"] {
+	for _, inv := range m.Invites[meetup] {
 		if inv.Name == "Kit Lee" {
 			kit = inv.Email
 		}
 	}
-	if kit == "" || !isGuestKey(kit) || m.InviteOf("meetup", kit).Token != "" || m.InviteOf("meetup", kit).Household != coach || m.InviteOf("meetup", "pat@example.org").Token == "" {
-		t.Fatalf("family rows = %+v", m.Invites["meetup"])
+	if kit == "" || !isGuestKey(kit) || m.InviteOf(meetup, kit).Token != "" || m.InviteOf(meetup, kit).Household != coach || m.InviteOf(meetup, "pat@example.org").Token == "" {
+		t.Fatalf("family rows = %+v", m.Invites[meetup])
 	}
-	v := inviteView(t, jordan, "meetup")
+	v := inviteView(t, jordan, meetup)
 	if rowOf(v, coach).Household != rowOf(v, "pat@example.org").Household || rowOf(v, kit).Household != rowOf(v, coach).Household {
 		t.Errorf("not one household: %q %q %q", rowOf(v, coach).Household, rowOf(v, "pat@example.org").Household, rowOf(v, kit).Household)
 	}
@@ -1202,23 +1300,23 @@ func TestOutsideFamily(t *testing.T) {
 	if len(mailTo(kept, "pat@example.org")) != 1 || invites != 2 {
 		t.Errorf("the family's invites: %d", invites)
 	}
-	token := m.InviteOf("meetup", "pat@example.org").Token
+	token := m.InviteOf(meetup, "pat@example.org").Token
 	rec = call(t, mux, "GET", "/open/ext/"+token, "")
-	if opened := cache.Model().InviteOf("meetup", "pat@example.org").Opened; opened == "" {
+	if opened := cache.Model().InviteOf(meetup, "pat@example.org").Opened; opened == "" {
 		t.Errorf("pat's page opened, not noted")
 	}
-	if r := rowOf(inviteView(t, jordan, "meetup"), "pat@example.org"); r == nil || r.Opened == "" {
+	if r := rowOf(inviteView(t, jordan, meetup), "pat@example.org"); r == nil || r.Opened == "" {
 		t.Errorf("the host does not see pat opened: %+v", r)
 	}
-	if r := rowOf(inviteView(t, jordan, "meetup"), coach); r == nil || r.Opened != "" {
+	if r := rowOf(inviteView(t, jordan, meetup), coach); r == nil || r.Opened != "" {
 		t.Errorf("the coach, who has not opened: %+v", r)
 	}
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
-	if v := inviteView(t, as(robin, mux), "meetup"); slices.ContainsFunc(v.Coming, func(g GuestRow) bool { return g.Opened != "" }) {
+	if v := inviteView(t, as(robin, mux), meetup); slices.ContainsFunc(v.Coming, func(g GuestRow) bool { return g.Opened != "" }) {
 		t.Errorf("a guest reads who opened")
 	}
-	if r := rowOf(inviteView(t, jordan, "meetup"), robin); r == nil || r.Opened == "" {
+	if r := rowOf(inviteView(t, jordan, meetup), robin); r == nil || r.Opened == "" {
 		t.Errorf("robin opened the page, not noted: %+v", r)
 	}
 	var ext ExtView
@@ -1232,16 +1330,17 @@ func TestOutsideFamily(t *testing.T) {
 	if rec := call(t, mux, "POST", "/open/ext/"+token, `{"answer":"yes","key":"`+robin+`"}`); rec.Code != 403 {
 		t.Errorf("answering for a stranger: %d", rec.Code)
 	}
-	if cache.Model().AnswerOf(kit, "meetup") != AnswerYes {
-		t.Errorf("kit's answer = %q", cache.Model().AnswerOf(kit, "meetup"))
+	if cache.Model().AnswerOf(kit, meetup) != AnswerYes {
+		t.Errorf("kit's answer = %q", cache.Model().AnswerOf(kit, meetup))
 	}
 }
 
 func TestRemovedStayRemoved(t *testing.T) {
 	mux, cache, _, _ := invitesAppWith(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Moms","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"moms"}`)
-	rec := call(t, jordan, "POST", "/api/when/invites/group", `{"id":"moms","rule":{"tags":["`+filter.TagKey(host, "Carpool")+`"]},"auto":false}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Moms","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"moms"}`)
+	moms := idOf(t, cache, "moms")
+	rec := call(t, jordan, "POST", "/api/when/invites/group", `{"id":"moms","rule":{"tags":["`+filter.TagKey(carpoolID)+`"]},"auto":false}`)
 	var made struct {
 		Group string
 		Added int
@@ -1254,7 +1353,7 @@ func TestRemovedStayRemoved(t *testing.T) {
 	if rec := call(t, jordan, "DELETE", "/api/when/invites/people", `{"id":"moms","email":"`+dropped+`"}`); rec.Code != 204 {
 		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
 	}
-	if g := cache.Model().GroupOf("moms", made.Group); !slices.Contains(g.Removed, dropped) {
+	if g := cache.Model().GroupOf(moms, made.Group); !slices.Contains(g.Removed, dropped) {
 		t.Errorf("the group does not remember the removal: %+v", g)
 	}
 	start := now()
@@ -1262,15 +1361,15 @@ func TestRemovedStayRemoved(t *testing.T) {
 	inviteView(t, jordan, "moms")
 	inviteView(t, jordan, "moms")
 	now = pinnedClock
-	if cache.Model().InviteOf("moms", dropped) != nil {
+	if cache.Model().InviteOf(moms, dropped) != nil {
 		t.Errorf("the group put %s back", dropped)
 	}
 	call(t, jordan, "PUT", "/api/when/invites/group", `{"id":"moms","group":"`+made.Group+`","auto":true}`)
-	if cache.Model().InviteOf("moms", dropped) != nil {
+	if cache.Model().InviteOf(moms, dropped) != nil {
 		t.Errorf("auto-invite put %s back", dropped)
 	}
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"moms","people":[{"email":"`+dropped+`"}]}`)
-	if cache.Model().InviteOf("moms", dropped) == nil {
+	if cache.Model().InviteOf(moms, dropped) == nil {
 		t.Errorf("adding %s by hand did not take", dropped)
 	}
 }
@@ -1278,12 +1377,13 @@ func TestRemovedStayRemoved(t *testing.T) {
 func TestInvitationIsPersonal(t *testing.T) {
 	mux, cache, _, _ := invitesAppWith(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Moms","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"moms"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Moms","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"moms"}`)
+	moms := idOf(t, cache, "moms")
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"moms","people":[{"email":"`+robin+`"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"moms"}`)
 	m := cache.Model()
 	on := func(email string) bool {
-		return slices.ContainsFunc(m.eventsFor(testDirectory, email, nil), func(e *Event) bool { return e.ID == "moms" })
+		return slices.ContainsFunc(m.eventsFor(testDirectory, email, nil), func(e *Event) bool { return e.ID == moms })
 	}
 	if !on(robin) || on(sam) || on(ella) {
 		t.Errorf("robin's invitation on the calendars: robin %v, sam %v, ella %v", on(robin), on(sam), on(ella))
@@ -1291,12 +1391,13 @@ func TestInvitationIsPersonal(t *testing.T) {
 	if v := inviteView(t, as(sam, mux), "moms"); len(v.Mine) != 0 {
 		t.Errorf("sam asked about his mother's invitation: %+v", v.Mine)
 	}
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Kids","start":"2026-10-11 15:00","tags":[],"sharing":"Link","id":"kids"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Kids","start":"2026-10-11 15:00","tags":[],"sharing":"Link","address":"kids"}`)
+	kidsID := idOf(t, cache, "kids")
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"kids","people":[{"email":"`+sam+`"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"kids"}`)
 	m = cache.Model()
 	kids := func(email string) bool {
-		return slices.ContainsFunc(m.eventsFor(testDirectory, email, nil), func(e *Event) bool { return e.ID == "kids" })
+		return slices.ContainsFunc(m.eventsFor(testDirectory, email, nil), func(e *Event) bool { return e.ID == kidsID })
 	}
 	if !kids(sam) || !kids(robin) || kids(ella) {
 		t.Errorf("sam's invitation on the calendars: sam %v, robin %v, ella %v", kids(sam), kids(robin), kids(ella))
@@ -1309,7 +1410,7 @@ func TestInvitationIsPersonal(t *testing.T) {
 		family.AdultEmails = slices.DeleteFunc(slices.Clone(family.AdultEmails), func(e string) bool { return e == robin })
 		testDirectory.Families[key] = family
 	}
-	if kids(robin) || m.Invited(testDirectory, robin, "kids") {
+	if kids(robin) || m.Invited(testDirectory, robin, kidsID) {
 		t.Errorf("a parent the directory no longer lists still sees sam's invitation")
 	}
 }
@@ -1317,7 +1418,8 @@ func TestInvitationIsPersonal(t *testing.T) {
 func TestGuestsInvite(t *testing.T) {
 	mux, cache, kept := invitesApp(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
 	if rec := call(t, as(mia, mux), "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+coach+`","name":"Coach Lee","via":"outside"}]}`); rec.Code != 403 {
 		t.Errorf("an outsider inviting: %d", rec.Code)
@@ -1328,7 +1430,7 @@ func TestGuestsInvite(t *testing.T) {
 	if rec.Code != 200 || rec.Body.String() != "{\"added\":1,\"sent\":1}\n" {
 		t.Fatalf("robin inviting mia: %d %s", rec.Code, rec.Body)
 	}
-	inv := cache.Model().InviteOf("meetup", mia)
+	inv := cache.Model().InviteOf(meetup, mia)
 	if inv == nil || inv.Via != ViaInvited || inv.AddedBy != robin || inv.Sent == "" {
 		t.Errorf("mia's row = %+v", inv)
 	}
@@ -1336,10 +1438,10 @@ func TestGuestsInvite(t *testing.T) {
 	if msgs := mailTo(kept, mia); len(msgs) != 1 || !strings.Contains(msgs[0].HTML, "Robin Whitfield sent Mia an invitation for") {
 		t.Errorf("mia's invite: %+v", msgs)
 	}
-	if r := rowOf(inviteView(t, jordan, "meetup"), mia); r == nil || r.InvitedBy != "Robin Whitfield" {
+	if r := rowOf(inviteView(t, jordan, meetup), mia); r == nil || r.InvitedBy != "Robin Whitfield" {
 		t.Errorf("the host's row for mia: %+v", r)
 	}
-	if rec := call(t, as(robin, mux), "POST", "/api/when/invites/group", `{"id":"meetup","rule":{"tags":["`+filter.TagKey(host, "Carpool")+`"]}}`); rec.Code != 403 {
+	if rec := call(t, as(robin, mux), "POST", "/api/when/invites/group", `{"id":"meetup","rule":{"tags":["`+filter.TagKey(carpoolID)+`"]}}`); rec.Code != 403 {
 		t.Errorf("a guest adding a group: %d", rec.Code)
 	}
 }
@@ -1347,7 +1449,8 @@ func TestGuestsInvite(t *testing.T) {
 func TestGuestInvitesBeforeTheHosts(t *testing.T) {
 	mux, cache, kept := invitesApp(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Parade","start":"2026-10-30 08:15","tags":["Jays"],"sharing":"Public","id":"parade"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Parade","start":"2026-10-30 08:15","tags":[`+quoted(t, "Jays")+`],"sharing":"Public","address":"parade"}`)
+	parade := idOf(t, cache, "parade")
 	if v := inviteView(t, as(robin, mux), "parade"); !v.MayInvite || v.Sent != "" {
 		t.Errorf("robin's view before any send: invite %v sent %q", v.MayInvite, v.Sent)
 	}
@@ -1355,10 +1458,10 @@ func TestGuestInvitesBeforeTheHosts(t *testing.T) {
 	if rec.Code != 200 || rec.Body.String() != "{\"added\":1,\"sent\":1}\n" {
 		t.Fatalf("robin inviting mia: %d %s", rec.Code, rec.Body)
 	}
-	if inv := cache.Model().InviteOf("parade", mia); inv == nil || inv.Via != ViaInvited || inv.Sent == "" {
+	if inv := cache.Model().InviteOf(parade, mia); inv == nil || inv.Via != ViaInvited || inv.Sent == "" {
 		t.Errorf("mia's row = %+v", inv)
 	}
-	if inv := cache.Model().Invitations["parade"]; inv == nil || inv.Sent == "" {
+	if inv := cache.Model().Invitations[parade]; inv == nil || inv.Sent == "" {
 		t.Errorf("the invitation after robin's send = %+v", inv)
 	}
 	waitFor(kept, 2)
@@ -1369,7 +1472,8 @@ func TestGuestInvitesBeforeTheHosts(t *testing.T) {
 
 func TestFamilyAnswersAnOpenEvent(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
-	call(t, as(mia, mux), "POST", "/api/when/events", `{"title":"Parade","start":"2026-10-30 08:15","tags":["Jays"],"sharing":"Public","id":"parade"}`)
+	call(t, as(mia, mux), "POST", "/api/when/events", `{"title":"Parade","start":"2026-10-30 08:15","tags":[`+quoted(t, "Jays")+`],"sharing":"Public","address":"parade"}`)
+	parade := idOf(t, cache, "parade")
 	robinH := as(robin, mux)
 	v := inviteView(t, robinH, "parade")
 	keys := []string{}
@@ -1379,28 +1483,28 @@ func TestFamilyAnswersAnOpenEvent(t *testing.T) {
 	if len(keys) < 2 || keys[0] != robin || !slices.Contains(keys, sam) || slices.Contains(keys, ella) || slices.ContainsFunc(v.Mine, func(r GuestRow) bool { return r.Invited || !r.Mine }) {
 		t.Errorf("robin's family on an open event = %v", keys)
 	}
-	if rec := call(t, as(mia, mux), "POST", "/api/when/events", `{"title":"Parent coffee","start":"2026-10-29 08:30","tags":["Community","Parents","Jays"],"sharing":"Public","id":"coffee"}`); rec.Code != 200 {
+	if rec := call(t, as(mia, mux), "POST", "/api/when/events", `{"title":"Parent coffee","start":"2026-10-29 08:30","tags":[`+quoted(t, "Community, Parents, Jays")+`],"sharing":"Public","address":"coffee"}`); rec.Code != 200 {
 		t.Fatalf("adding the coffee: %d %s", rec.Code, rec.Body)
 	}
 	coffee := inviteView(t, robinH, "coffee")
 	if len(coffee.Mine) < 2 || coffee.Mine[0].Key != robin || !slices.ContainsFunc(coffee.Mine, func(r GuestRow) bool { return r.Key == host }) || slices.ContainsFunc(coffee.Mine, func(r GuestRow) bool { return r.Key == sam || r.Key == ella }) {
 		t.Errorf("robin's family on a parents' event = %+v", coffee.Mine)
 	}
-	call(t, as(mia, mux), "POST", "/api/when/events", `{"title":"Staff meeting","start":"2026-10-28 15:30","tags":["Staff"],"sharing":"Public","id":"staffmeeting"}`)
+	call(t, as(mia, mux), "POST", "/api/when/events", `{"title":"Staff meeting","start":"2026-10-28 15:30","tags":[`+quoted(t, "Staff")+`],"sharing":"Public","address":"staffmeeting"}`)
 	if v := inviteView(t, robinH, "staffmeeting"); len(v.Mine) != 0 {
 		t.Errorf("robin's family on a staff event = %+v", v.Mine)
 	}
 	if rec := call(t, robinH, "POST", "/api/when/invites/answer", `{"id":"parade","email":"`+sam+`","answer":"yes"}`); rec.Code != 204 {
 		t.Fatalf("robin answering for sam: %d %s", rec.Code, rec.Body)
 	}
-	if cache.Model().AnswerOf(sam, "parade") != AnswerYes {
-		t.Errorf("sam's answer = %q", cache.Model().AnswerOf(sam, "parade"))
+	if cache.Model().AnswerOf(sam, parade) != AnswerYes {
+		t.Errorf("sam's answer = %q", cache.Model().AnswerOf(sam, parade))
 	}
 	after := inviteView(t, robinH, "parade")
 	if i := slices.IndexFunc(after.Mine, func(r GuestRow) bool { return r.Key == sam }); i < 0 || after.Mine[i].Answer != AnswerYes {
 		t.Errorf("robin's rows after = %+v", after.Mine)
 	}
-	call(t, as(mia, mux), "POST", "/api/when/events", `{"title":"Party","start":"2026-10-31 15:00","tags":[],"sharing":"Invite Only","id":"party"}`)
+	call(t, as(mia, mux), "POST", "/api/when/events", `{"title":"Party","start":"2026-10-31 15:00","tags":[],"sharing":"Invite Only","address":"party"}`)
 	call(t, as(mia, mux), "POST", "/api/when/invites/people", `{"id":"party","people":[{"email":"`+robin+`"}]}`)
 	call(t, as(mia, mux), "POST", "/api/when/invites/send", `{"id":"party"}`)
 	if v := inviteView(t, robinH, "party"); len(v.Mine) != 1 || v.Mine[0].Key != robin {
@@ -1411,12 +1515,13 @@ func TestFamilyAnswersAnOpenEvent(t *testing.T) {
 func TestGuestsWithoutAnInvitation(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	jordan, robinH := as(host, mux), as(robin, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	call(t, robinH, "POST", "/api/when/rsvp", `{"id":"meetup","answer":"yes"}`)
 	if rec := call(t, robinH, "POST", "/api/when/invites/guest", `{"id":"meetup","name":"Pat"}`); rec.Code != 200 {
 		t.Fatalf("robin bringing a guest from the link: %d %s", rec.Code, rec.Body)
 	}
-	guests := slices.DeleteFunc(slices.Clone(cache.Model().Invites["meetup"]), func(inv Invite) bool { return inv.GuestOf != robin })
+	guests := slices.DeleteFunc(slices.Clone(cache.Model().Invites[meetup]), func(inv Invite) bool { return inv.GuestOf != robin })
 	if len(guests) != 1 || guests[0].Name != "Pat" {
 		t.Errorf("robin's guests = %+v", guests)
 	}
@@ -1427,7 +1532,7 @@ func TestGuestsWithoutAnInvitation(t *testing.T) {
 	if rec := call(t, robinH, "POST", "/api/when/invites/guest", `{"id":"meetup","name":"Kim"}`); rec.Code != 403 {
 		t.Errorf("robin bringing a guest when the hosts said no: %d", rec.Code)
 	}
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Party","start":"2026-10-11 15:00","tags":[],"sharing":"Invite Only","id":"party"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Party","start":"2026-10-11 15:00","tags":[],"sharing":"Invite Only","address":"party"}`)
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"party","people":[{"email":"`+robin+`"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"party"}`)
 	if rec := call(t, robinH, "POST", "/api/when/invites/guest", `{"id":"party","name":"Lee","of":"`+sam+`"}`); rec.Code != 403 || !strings.Contains(rec.Body.String(), "on the list") {
@@ -1441,7 +1546,8 @@ func TestGuestsWithoutAnInvitation(t *testing.T) {
 func TestPermissions(t *testing.T) {
 	mux, cache, kept := invitesApp(t)
 	jordan, robinH := as(host, mux), as(robin, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
 	waitFor(kept, 1)
@@ -1451,7 +1557,7 @@ func TestPermissions(t *testing.T) {
 	if rec := call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"meetup","guests":false,"publicList":false}`); rec.Code != 204 {
 		t.Fatalf("closing: %d %s", rec.Code, rec.Body)
 	}
-	if inv := cache.Model().Invitations["meetup"]; inv.Guests || inv.PublicList == nil || *inv.PublicList {
+	if inv := cache.Model().Invitations[meetup]; inv.Guests || inv.PublicList == nil || *inv.PublicList {
 		t.Errorf("the settings after closing = %+v", inv)
 	}
 	if v := inviteView(t, robinH, "meetup"); v.MayInvite || v.Guests || !v.ListPrivate || v.Coming != nil {
@@ -1506,18 +1612,19 @@ func TestTeamStart(t *testing.T) {
 func TestNotifyHost(t *testing.T) {
 	mux, cache, kept := invitesApp(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
 	waitFor(kept, 2)
-	if inviteView(t, jordan, "meetup").NotifyMe {
+	if inviteView(t, jordan, meetup).NotifyMe {
 		t.Errorf("notify on to start")
 	}
 	if rec := call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"meetup","notifyMe":true}`); rec.Code != 204 {
 		t.Fatalf("notify me: %d %s", rec.Code, rec.Body)
 	}
-	if !inviteView(t, jordan, "meetup").NotifyMe || !slices.Contains(cache.Model().Invitations["meetup"].Notify, host) {
-		t.Errorf("notify not kept: %+v", cache.Model().Invitations["meetup"].Notify)
+	if !inviteView(t, jordan, meetup).NotifyMe || !slices.Contains(cache.Model().Invitations[meetup].Notify, host) {
+		t.Errorf("notify not kept: %+v", cache.Model().Invitations[meetup].Notify)
 	}
 	before := len(mailTo(kept, host))
 	call(t, as(robin, mux), "POST", "/api/when/rsvp", `{"id":"meetup","answer":"yes"}`)
@@ -1538,7 +1645,8 @@ func TestNotifyHost(t *testing.T) {
 func TestStepDown(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	jordan, miaH := as(host, mux), as(mia, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"meetup","hosts":["`+mia+`"],"notifyMe":true}`)
 	if rec := call(t, as(robin, mux), "POST", "/api/when/invites/step-down", `{"id":"meetup"}`); rec.Code != 403 {
 		t.Errorf("someone not hosting stepping down: %d", rec.Code)
@@ -1546,16 +1654,16 @@ func TestStepDown(t *testing.T) {
 	if rec := call(t, miaH, "POST", "/api/when/invites/step-down", `{"id":"meetup"}`); rec.Code != 204 {
 		t.Fatalf("the co-host stepping down: %d %s", rec.Code, rec.Body)
 	}
-	if inv := cache.Model().Invitations["meetup"]; len(inv.Hosts) != 0 || inv.SteppedDown != "" {
+	if inv := cache.Model().Invitations[meetup]; len(inv.Hosts) != 0 || inv.SteppedDown != "" {
 		t.Errorf("after the co-host = %+v", inv)
 	}
-	if v := inviteView(t, miaH, "meetup"); v.Host {
+	if v := inviteView(t, miaH, meetup); v.Host {
 		t.Errorf("the co-host still hosts")
 	}
 	if rec := call(t, jordan, "POST", "/api/when/invites/step-down", `{"id":"meetup"}`); rec.Code != 204 {
 		t.Fatalf("the poster stepping down: %d %s", rec.Code, rec.Body)
 	}
-	inv := cache.Model().Invitations["meetup"]
+	inv := cache.Model().Invitations[meetup]
 	if inv.SteppedDown != host || len(inv.Notify) != 0 {
 		t.Errorf("after the poster = %+v", inv)
 	}
@@ -1563,7 +1671,7 @@ func TestStepDown(t *testing.T) {
 	if e == nil || !e.PosterLeft || e.AddedBy != host {
 		t.Fatalf("the event after = %+v", e)
 	}
-	if v := inviteView(t, jordan, "meetup"); v.Host || len(v.Hosts) != 0 {
+	if v := inviteView(t, jordan, meetup); v.Host || len(v.Hosts) != 0 {
 		t.Errorf("the poster still hosts: host %v hosts %+v", v.Host, v.Hosts)
 	}
 	if rec := call(t, jordan, "PUT", "/api/when/events", `{"id":"meetup","title":"Meetup!","start":"2026-10-10 15:00","tags":[],"sharing":"Link"}`); rec.Code != 403 {
@@ -1577,7 +1685,8 @@ func TestStepDown(t *testing.T) {
 func TestCascadesReachTheSheet(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/answer", `{"id":"meetup","email":"`+coach+`","answer":"yes"}`)
 	if rec := call(t, jordan, "POST", "/api/when/invites/email", `{"id":"meetup","email":"`+coach+`","to":"coach.lee@example.org"}`); rec.Code != 204 {
@@ -1586,7 +1695,7 @@ func TestCascadesReachTheSheet(t *testing.T) {
 	answers := func() []string {
 		out := []string{}
 		for _, row := range sheetTables(t)[RSVPsTab] {
-			if row["Event ID"] == "meetup" {
+			if row["Event ID"] == meetup {
 				out = append(out, row["Email"]+"="+row["Answer"])
 			}
 		}
@@ -1596,30 +1705,31 @@ func TestCascadesReachTheSheet(t *testing.T) {
 	if got := strings.Join(answers(), ","); got != "coach.lee@example.org=yes,"+host+"=yes" {
 		t.Errorf("answers in the sheet after the address change: %s", got)
 	}
-	if !slices.Contains(changeLog(t), host+"|set|RSVPs|Event ID=meetup; Email=coach.lee@example.org|Email|"+coach) {
+	if !slices.Contains(changeLog(t), host+"|set|RSVPs|Event ID="+meetup+"; Email=coach.lee@example.org|Email|"+coach) {
 		t.Errorf("the carried answer is not logged: %v", changeLog(t))
 	}
 	if rec := call(t, jordan, "POST", "/api/when/invites/delete", `{"id":"meetup"}`); rec.Code != 200 {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
 	}
 	m := cache.Model()
-	if m.Event("meetup") != nil || m.Invitations["meetup"] != nil || len(m.Invites["meetup"]) != 0 || m.AnswerOf(host, "meetup") != "" || m.AnswerOf("coach.lee@example.org", "meetup") != "" {
-		t.Errorf("memory after the delete: event %v, invitation %v, invites %d", m.Event("meetup"), m.Invitations["meetup"], len(m.Invites["meetup"]))
+	if m.Event("meetup") != nil || m.Invitations[meetup] != nil || len(m.Invites[meetup]) != 0 || m.AnswerOf(host, meetup) != "" || m.AnswerOf("coach.lee@example.org", meetup) != "" {
+		t.Errorf("memory after the delete: event %v, invitation %v, invites %d", m.Event("meetup"), m.Invitations[meetup], len(m.Invites[meetup]))
 	}
-	for _, tab := range []string{EventsTab, InvitationsTab, InvitesTab, RSVPsTab} {
+	for _, tab := range []string{EventsTab, OverridesTab, InvitationsTab, InvitesTab, RSVPsTab} {
 		for _, row := range sheetTables(t)[tab] {
-			if row["Event ID"] == "meetup" {
+			if row["Event ID"] == meetup {
 				t.Errorf("%s kept %v", tab, row)
 			}
 		}
 	}
 	deleted := map[string]bool{}
 	for _, line := range changeLog(t) {
-		if parts := strings.Split(line, "|"); parts[1] == "delete" && strings.Contains(parts[3], "Event ID=meetup") {
+		if parts := strings.Split(line, "|"); parts[1] == "delete" && strings.Contains(parts[3], "Event ID="+meetup) {
 			deleted[parts[2]+" "+parts[3]] = true
 		}
 	}
-	for _, want := range []string{"Events Event ID=meetup", "Invitations Event ID=meetup", "Invites Event ID=meetup; Email=" + robin, "Invites Event ID=meetup; Email=coach.lee@example.org", "RSVPs Event ID=meetup; Email=" + host, "RSVPs Event ID=meetup; Email=coach.lee@example.org"} {
+	key := "Event ID=" + meetup
+	for _, want := range []string{"Events " + key, "Overrides " + key, "Invitations " + key, "Invites " + key + "; Email=" + robin, "Invites " + key + "; Email=coach.lee@example.org", "RSVPs " + key + "; Email=" + host, "RSVPs " + key + "; Email=coach.lee@example.org"} {
 		if !deleted[want] {
 			t.Errorf("the change log lacks the delete of %s: %v", want, deleted)
 		}
@@ -1649,10 +1759,16 @@ func TestBouncesAreAppendOnly(t *testing.T) {
 func TestCategoryOrder(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	admin := underHat("dana.hawkins@heliosschool.org", mux)
-	tags := []map[string]any{}
-	for _, tag := range cache.Model().Tags {
-		tags = append(tags, map[string]any{"name": tag.Name, "description": tag.Description, "group": tag.Group, "default": tag.Default, "image": tag.Image})
+	listed := func() []map[string]any {
+		tags := []map[string]any{}
+		for _, tag := range cache.Model().Tags {
+			if !tag.BuiltIn {
+				tags = append(tags, map[string]any{"id": tag.ID, "name": tag.Name, "description": tag.Description, "group": tag.Group, "default": tag.Default, "image": tag.Image})
+			}
+		}
+		return tags
 	}
+	tags := listed()
 	tags[0], tags[1] = tags[1], tags[0]
 	tags = append(tags, map[string]any{"name": "Fundraiser", "description": "Raising money.", "group": "Community", "default": false})
 	raw, _ := json.Marshal(map[string]any{"tags": tags})
@@ -1663,12 +1779,18 @@ func TestCategoryOrder(t *testing.T) {
 	for _, tag := range cache.Model().Tags {
 		names = append(names, tag.Name)
 	}
-	if len(names) != 16 || names[0] != "Conference" || names[1] != "Schedule" || names[15] != "Fundraiser" || cache.Model().Tags[15].Default {
+	fundraiser := cache.Model().Tags[15]
+	if len(names) != 21 || names[0] != "Conference" || names[1] != "Schedule" || fundraiser.Name != "Fundraiser" || fundraiser.Default || names[16] != "Celebrate" {
 		t.Errorf("categories after the save: %v", names)
+	}
+	if key, ok := id.Parse(fundraiser.ID); !ok || key != fundraiser.ID || strings.HasPrefix(key, "tag0") {
+		t.Errorf("a new category's id: %q", fundraiser.ID)
 	}
 	orders := []string{}
 	for _, row := range sheetTables(t)[TagsTab] {
-		orders = append(orders, row[store.OrderColumn])
+		if !BuiltInTag(row["Tag ID"]) {
+			orders = append(orders, row[store.OrderColumn])
+		}
 	}
 	if len(orders) != 16 || slices.Contains(orders, "") || !slices.IsSorted(append([]string{orders[1], orders[0]}, orders[2:]...)) {
 		t.Errorf("the sheet's order keys: %v", orders)
@@ -1679,16 +1801,28 @@ func TestCategoryOrder(t *testing.T) {
 		}
 	}
 	unchanged := len(changeLog(t))
+	raw, _ = json.Marshal(map[string]any{"tags": listed()})
 	if rec := call(t, admin, "POST", "/api/when/tags", string(raw)); rec.Code != 204 || len(changeLog(t)) != unchanged {
-		t.Errorf("saving again: %d, log %d then %d", rec.Code, unchanged, len(changeLog(t)))
+		t.Errorf("saving again: %d %s, log %d then %d", rec.Code, rec.Body, unchanged, len(changeLog(t)))
+	}
+	going := append(listed(), map[string]any{"id": TagGoing, "name": "Going", "description": "Mine.", "group": "Other", "default": true})
+	raw, _ = json.Marshal(map[string]any{"tags": going})
+	if rec := call(t, admin, "POST", "/api/when/tags", string(raw)); rec.Code != 400 {
+		t.Errorf("a built-in changed from Admin Tools: %d %s", rec.Code, rec.Body)
+	}
+	twin := append(listed(), map[string]any{"name": "Going", "description": "Again.", "group": "Other"})
+	raw, _ = json.Marshal(map[string]any{"tags": twin})
+	if rec := call(t, admin, "POST", "/api/when/tags", string(raw)); rec.Code != 400 {
+		t.Errorf("a new category named as a built-in: %d %s", rec.Code, rec.Body)
 	}
 }
 
 func TestHideHosts(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
-	if v := inviteView(t, as(robin, mux), "meetup"); v.HostsHidden || len(v.Hosts) != 1 {
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
+	if v := inviteView(t, as(robin, mux), meetup); v.HostsHidden || len(v.Hosts) != 1 {
 		t.Errorf("hosts before hiding: hidden %v hosts %+v", v.HostsHidden, v.Hosts)
 	}
 	if rec := call(t, as(robin, mux), "PUT", "/api/when/invites/settings", `{"id":"meetup","hideHosts":true}`); rec.Code != 403 {
@@ -1697,17 +1831,17 @@ func TestHideHosts(t *testing.T) {
 	if rec := call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"meetup","hideHosts":true}`); rec.Code != 204 {
 		t.Fatalf("hiding: %d %s", rec.Code, rec.Body)
 	}
-	if !cache.Model().Invitations["meetup"].HideHosts {
+	if !cache.Model().Invitations[meetup].HideHosts {
 		t.Errorf("not kept")
 	}
-	if v := inviteView(t, as(robin, mux), "meetup"); !v.HostsHidden || len(v.Hosts) != 0 {
+	if v := inviteView(t, as(robin, mux), meetup); !v.HostsHidden || len(v.Hosts) != 0 {
 		t.Errorf("a guest's view when hidden: hidden %v hosts %+v", v.HostsHidden, v.Hosts)
 	}
-	if v := inviteView(t, jordan, "meetup"); !v.HostsHidden || len(v.Hosts) != 1 {
+	if v := inviteView(t, jordan, meetup); !v.HostsHidden || len(v.Hosts) != 1 {
 		t.Errorf("the host's view when hidden: hidden %v hosts %+v", v.HostsHidden, v.Hosts)
 	}
 	call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"meetup","hideHosts":false}`)
-	if v := inviteView(t, as(robin, mux), "meetup"); v.HostsHidden || len(v.Hosts) != 1 {
+	if v := inviteView(t, as(robin, mux), meetup); v.HostsHidden || len(v.Hosts) != 1 {
 		t.Errorf("shown again: hidden %v hosts %+v", v.HostsHidden, v.Hosts)
 	}
 }
@@ -1715,12 +1849,13 @@ func TestHideHosts(t *testing.T) {
 func TestAdminActsAsHost(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	jordan, dana := as(host, mux), underHat("dana.hawkins@heliosschool.org", mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
-	v := inviteView(t, dana, "meetup")
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
+	v := inviteView(t, dana, meetup)
 	if !v.Host || v.Poster != host || slices.ContainsFunc(v.Hosts, func(p Person) bool { return p.Email == "dana.hawkins@heliosschool.org" }) {
 		t.Errorf("the admin's view: host %v poster %q hosts %v", v.Host, v.Poster, v.Hosts)
 	}
-	if off := inviteView(t, as("dana.hawkins@heliosschool.org", mux), "meetup"); off.Host {
+	if off := inviteView(t, as("dana.hawkins@heliosschool.org", mux), meetup); off.Host {
 		t.Error("an admin with the pencil off hosts the event")
 	}
 	if rec := call(t, dana, "PUT", "/api/when/invites/settings", `{"id":"meetup","hideHosts":true}`); rec.Code != 204 {
@@ -1735,18 +1870,19 @@ func TestAdminActsAsHost(t *testing.T) {
 	if e := cache.Model().Event("meetup"); !e.PosterLeft {
 		t.Errorf("the poster still hosts")
 	}
-	if v := inviteView(t, jordan, "meetup"); v.Host {
+	if v := inviteView(t, jordan, meetup); v.Host {
 		t.Errorf("the poster after: host %v", v.Host)
 	}
-	if v := inviteView(t, dana, "meetup"); !v.Host || v.Poster != "" {
+	if v := inviteView(t, dana, meetup); !v.Host || v.Poster != "" {
 		t.Errorf("the admin after: host %v poster %q", v.Host, v.Poster)
 	}
 }
 
 func TestToolbarRSVPs(t *testing.T) {
-	mux, _, kept := invitesApp(t)
+	mux, cache, kept := invitesApp(t)
 	jordan, robinH := as(host, mux), as(robin, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	idOf(t, cache, "meetup")
 	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
 	waitFor(kept, 1)
@@ -1842,16 +1978,17 @@ func TestTicketGuestsAndMovedAddresses(t *testing.T) {
 func TestCohostsRunTheEvent(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	jordan, miaH, robinH := as(host, mux), as(mia, mux), as(robin, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	if rec := call(t, robinH, "POST", "/api/when/rsvp", `{"id":"meetup","answer":"no"}`); rec.Code != 204 {
 		t.Fatalf("robin says no: %d %s", rec.Code, rec.Body)
 	}
 	call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"meetup","hosts":["`+mia+`","`+robin+`"]}`)
-	if cache.Model().AnswerOf(mia, "meetup") != AnswerYes || cache.Model().AnswerOf(robin, "meetup") != AnswerNo || cache.Model().AnswerOf(host, "meetup") != AnswerYes {
-		t.Errorf("the hosts' answers: mia %q robin %q poster %q", cache.Model().AnswerOf(mia, "meetup"), cache.Model().AnswerOf(robin, "meetup"), cache.Model().AnswerOf(host, "meetup"))
+	if cache.Model().AnswerOf(mia, meetup) != AnswerYes || cache.Model().AnswerOf(robin, meetup) != AnswerNo || cache.Model().AnswerOf(host, meetup) != AnswerYes {
+		t.Errorf("the hosts' answers: mia %q robin %q poster %q", cache.Model().AnswerOf(mia, meetup), cache.Model().AnswerOf(robin, meetup), cache.Model().AnswerOf(host, meetup))
 	}
-	if rec := call(t, miaH, "POST", "/api/when/rsvp", `{"id":"meetup","answer":"no"}`); rec.Code != 204 || cache.Model().AnswerOf(mia, "meetup") != AnswerNo {
-		t.Errorf("a co-host saying no: %d %q", rec.Code, cache.Model().AnswerOf(mia, "meetup"))
+	if rec := call(t, miaH, "POST", "/api/when/rsvp", `{"id":"meetup","answer":"no"}`); rec.Code != 204 || cache.Model().AnswerOf(mia, meetup) != AnswerNo {
+		t.Errorf("a co-host saying no: %d %q", rec.Code, cache.Model().AnswerOf(mia, meetup))
 	}
 	if rec := call(t, as(sam, mux), "PUT", "/api/when/events", `{"id":"meetup","title":"Meetup?","start":"2026-10-10 15:00","tags":[],"sharing":"Link"}`); rec.Code != 403 {
 		t.Errorf("someone not hosting editing the event: %d", rec.Code)
@@ -1868,7 +2005,7 @@ func TestCohostsRunTheEvent(t *testing.T) {
 	if rec := call(t, miaH, "POST", "/api/when/invites/step-down", `{"id":"meetup","email":"`+robin+`"}`); rec.Code != 204 {
 		t.Fatalf("a co-host stepping another down: %d %s", rec.Code, rec.Body)
 	}
-	if inv := cache.Model().Invitations["meetup"]; slices.Contains(inv.Hosts, robin) || !slices.Contains(inv.Hosts, mia) {
+	if inv := cache.Model().Invitations[meetup]; slices.Contains(inv.Hosts, robin) || !slices.Contains(inv.Hosts, mia) {
 		t.Errorf("hosts after the co-host was stepped down = %v", inv.Hosts)
 	}
 	if rec := call(t, robinH, "PUT", "/api/when/events", `{"id":"meetup","title":"Meetup?","start":"2026-10-10 15:00","tags":[],"sharing":"Link"}`); rec.Code != 403 {
@@ -1889,7 +2026,7 @@ func TestCohostsRunTheEvent(t *testing.T) {
 	if e := cache.Model().Event("meetup"); e == nil || !e.Cancelled {
 		t.Errorf("not cancelled: %+v", e)
 	}
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Other","start":"2026-10-11 15:00","tags":[],"sharing":"Link","id":"other"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Other","start":"2026-10-11 15:00","tags":[],"sharing":"Link","address":"other"}`)
 	call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"other","hosts":["`+mia+`"]}`)
 	if rec := call(t, miaH, "POST", "/api/when/invites/delete", `{"id":"other"}`); rec.Code != 200 {
 		t.Fatalf("a co-host deleting: %d %s", rec.Code, rec.Body)
@@ -1902,16 +2039,17 @@ func TestCohostsRunTheEvent(t *testing.T) {
 func TestSweepActsOnlyForAHost(t *testing.T) {
 	mux, cache, _, sources := invitesAppWith(t)
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
 	call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"meetup","hosts":["`+mia+`"]}`)
 	if rec := call(t, jordan, "POST", "/api/when/invites/group", `{"id":"meetup","rule":{"roles":["Student"],"classrooms":["Jays"]},"auto":false}`); rec.Code != 200 {
 		t.Fatalf("group: %d %s", rec.Code, rec.Body)
 	}
-	a := app{cache: cache, directory: directoryOf, settings: noSettings, lists: testLists, linked: func(string) []Linked { return nil }, sources: sources.sources, clock: &matchClock{}}
-	gone := cache.Model().Invites["meetup"][0].Email
+	a := app{cache: cache, directory: directoryOf, settings: noSettings, lists: testLists, linked: func(string) []Linked { return nil }, sourceID: noSource, sources: sources.sources, clock: &matchClock{}}
+	gone := cache.Model().Invites[meetup][0].Email
 	drop := func() {
 		t.Helper()
-		if err := cache.Commit(context.Background(), access.System("test"), store.Delete(InvitesTab, store.Row{"Event ID": "meetup", "Email": gone})); err != nil {
+		if err := cache.Commit(context.Background(), access.System("test"), store.Delete(InvitesTab, store.Row{"Event ID": meetup, "Email": gone})); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1924,25 +2062,25 @@ func TestSweepActsOnlyForAHost(t *testing.T) {
 	}
 	drop()
 	sweepTwice()
-	if cache.Model().InviteOf("meetup", gone) == nil {
+	if cache.Model().InviteOf(meetup, gone) == nil {
 		t.Fatalf("the sweep did not fill the group while its maker hosts")
 	}
-	if a.sweptEvent(a.as(host), "meetup") == nil {
+	if a.sweptEvent(a.as(host), meetup) == nil {
 		t.Errorf("the group's maker does not count as its host")
 	}
 	drop()
 	call(t, jordan, "POST", "/api/when/invites/step-down", `{"id":"meetup"}`)
-	if a.sweptEvent(a.as(host), "meetup") != nil {
+	if a.sweptEvent(a.as(host), meetup) != nil {
 		t.Errorf("the group's maker counts as a host after stepping down")
 	}
 	sweepTwice()
-	if cache.Model().InviteOf("meetup", gone) != nil {
+	if cache.Model().InviteOf(meetup, gone) != nil {
 		t.Errorf("the sweep filled the group for someone who no longer hosts")
 	}
 	now = func() time.Time { return testNow.Add(grace + time.Minute) }
-	a.sweepEvent(context.Background(), a.eventFor(access.Actor{Email: mia}, "meetup"))
+	a.sweepEvent(context.Background(), a.eventFor(access.Actor{Email: mia}, meetup))
 	now = pinnedClock
-	if cache.Model().InviteOf("meetup", gone) == nil {
+	if cache.Model().InviteOf(meetup, gone) == nil {
 		t.Errorf("the group no longer matches, so the sweep proved nothing")
 	}
 }

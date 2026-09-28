@@ -53,8 +53,8 @@ func blurb(e *Event) string {
 
 func (m *Model) category(e *Event) string {
 	for _, t := range e.Tags {
-		if !m.Roster.has(t) {
-			return t
+		if m.Roster.byID(t) == nil {
+			return m.TagName(t)
 		}
 	}
 	return ""
@@ -64,13 +64,14 @@ func (a app) events() []*Event {
 	return withLinked(a.cache.Model().Events, a.linked(""))
 }
 
-func (a app) event(id string) *Event {
+func (a app) event(key string) *Event {
+	key = a.canonical(key)
 	for _, e := range a.events() {
-		if e.ID == id {
+		if e.ID == key {
 			return e
 		}
 	}
-	return a.cache.Model().Event(id)
+	return a.cache.Model().Event(key)
 }
 
 func cutEventPath(path string) (string, bool) {
@@ -80,9 +81,9 @@ func cutEventPath(path string) (string, bool) {
 	return strings.CutPrefix(path, "/events/")
 }
 
-func PreviewHead(cache *Cache, linked func(email string) []Linked, style *sharecard.Style) func(r *http.Request) string {
+func PreviewHead(cache *Cache, linked func(email string) []Linked, sourceID func(source, key string) string, style *sharecard.Style) func(r *http.Request) string {
 	return func(r *http.Request) string {
-		a := app{cache: cache, linked: linked, style: style}
+		a := app{cache: cache, linked: linked, sourceID: sourceID, style: style}
 		origin := "https://" + r.Host
 		if id, ok := cutEventPath(r.URL.Path); ok {
 			if e := a.event(id); e != nil {
@@ -170,11 +171,9 @@ func (m *Model) pictureOf(e *Event) string {
 	if e.Image != "" {
 		return strings.TrimPrefix(e.Image, "/")
 	}
-	for _, name := range e.Tags {
-		for _, t := range m.Tags {
-			if t.Name == name && t.ImageURL != "" {
-				return strings.TrimPrefix(t.ImageURL, "/")
-			}
+	for _, key := range e.Tags {
+		if t := m.Tag(key); t != nil && t.ImageURL != "" {
+			return strings.TrimPrefix(t.ImageURL, "/")
 		}
 	}
 	return defaultHeader

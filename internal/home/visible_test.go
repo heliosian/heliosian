@@ -145,7 +145,7 @@ func TestVisibilityEmailsCell(t *testing.T) {
 }
 
 func TestAppsSection(t *testing.T) {
-	tables := store.Tables{categoriesTab: {category("Helios Community Apps", "📌", StyleApps), category("School", "", StyleTiles)}}
+	tables := store.Tables{categoriesTab: {category(appsID, "Helios Community Apps", "📌", StyleApps), category(schoolID, "School", "", StyleTiles)}}
 	m, err := BuildModel(context.Background(), tables, testkit.All)
 	if err != nil {
 		t.Fatalf("build with an apps row: %v", err)
@@ -153,12 +153,12 @@ func TestAppsSection(t *testing.T) {
 	if len(m.Categories) != 3 || m.Categories[1].Style != StyleApps {
 		t.Errorf("categories = %+v, want the synthesized events section, then the apps section", m.Categories)
 	}
-	tables[linksTab] = []store.Row{{"Title": "Directory", "URL": "https://who.heliosian.com/", "Category": "Helios Community Apps", "Visible": "Yes"}}
+	tables[linksTab] = []store.Row{{"Link ID": directoryID, "Title": "Directory", "URL": "https://who.heliosian.com/", "Category": appsID, "Visible": "Yes"}}
 	if _, err := BuildModel(context.Background(), tables, testkit.All); err == nil || !strings.Contains(err.Error(), "community apps") {
 		t.Errorf("a link under the apps section built: %v", err)
 	}
 	tables[linksTab] = nil
-	tables[categoriesTab] = append(tables[categoriesTab], category("More Apps", "", StyleApps))
+	tables[categoriesTab] = append(tables[categoriesTab], category(chatsID, "More Apps", "", StyleApps))
 	if _, err := BuildModel(context.Background(), tables, testkit.All); err == nil || !strings.Contains(err.Error(), "only one") {
 		t.Errorf("two apps rows built: %v", err)
 	}

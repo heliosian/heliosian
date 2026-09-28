@@ -12,8 +12,8 @@ func TestMonth(t *testing.T) {
 	d := sampleDirectory(t, "../../sampledata")
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-13 08:00", Location)
 	linked := []Linked{
-		{Source: SourceCelebrate, ID: "P001", Title: "Fondue & Fort Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available"},
-		{Source: SourceTeam, ID: "E005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/E005", Availability: "done"},
+		{Source: SourceCelebrate, ID: "pty0000000001", Title: "Fondue & Fort Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available"},
+		{Source: SourceTeam, ID: "act0000000005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/act0000000005", Availability: "done"},
 	}
 	got := m.MonthUnder(d, sam, linked, at, "2026-09", "")
 	if got.Month != "2026-09" || got.Today != "2026-09-13" {
@@ -22,7 +22,7 @@ func TestMonth(t *testing.T) {
 	if _, weekend := got.Days["2026-09-13"]; weekend || got.Days["2026-09-14"].Kinds == nil || len(got.Days["2026-09-14"].Kinds) != 0 {
 		t.Errorf("a Sunday is no school day and a regular Monday has no kinds: %v %v", got.Days["2026-09-13"], got.Days["2026-09-14"])
 	}
-	if k := got.Days["2026-09-07"].Kinds; len(k) != 1 || k[0].Name != NoSchoolDayType || k[0].Words != "No School" {
+	if k := got.Days["2026-09-07"].Kinds; len(k) != 1 || k[0].Name != "No School" || k[0].Words != "No School" {
 		t.Errorf("Labor Day = %+v", k)
 	}
 	if k := got.Days["2026-09-29"].Kinds; len(k) != 1 || k[0].Words != "Early Dismissal" {

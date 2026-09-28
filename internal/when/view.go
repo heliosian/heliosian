@@ -239,7 +239,7 @@ func Render(model *Model, directory *who.Model, settings *config.Settings, as ac
 	return View{
 		Provenance: provenance, Responses: model.ResponsesFor(as, directory), GradeColors: settings.GradeColors, Names: names,
 		User: user, Today: now.Format(DateFormat), Now: now.Format(DateTimeFormat),
-		Classrooms: model.Roster.Classrooms, Colors: settings.ClassroomColors, Tags: append(append([]Tag{}, model.Tags...), builtinTags...), DayTypes: model.DayTypes, Years: model.Years,
+		Classrooms: model.Roster.Classrooms, Colors: settings.ClassroomColors, Tags: model.Tags, DayTypes: model.DayTypes, Years: model.Years,
 		Days: model.Days, Events: events, Feeds: feeds,
 	}
 }

@@ -17,15 +17,15 @@ function bannerCard() {
   }
   const pick = el('select');
   for (const each of state.model.celebrations) {
-    const o = new Option(each.title, each.code);
-    o.selected = each.code === c.code;
+    const o = new Option(each.title, each.id);
+    o.selected = each.id === c.id;
     pick.append(o);
   }
   pick.addEventListener('change', async () => {
     const chosen = celebration(pick.value);
     try {
       await api('POST', '/api/celebrate/celebration', {
-        original: chosen.code, code: chosen.code, title: chosen.title, subtitle: chosen.subtitle || '', start: chosen.start || '', end: chosen.end || '',
+        id: chosen.id, code: chosen.code, title: chosen.title, subtitle: chosen.subtitle || '', start: chosen.start || '', end: chosen.end || '',
         location: chosen.location || '', address: chosen.address || '', description: chosen.description || '', image: chosen.image || '',
         buttonText: chosen.buttonText || '', buttonUrl: chosen.buttonUrl || '', current: chosen.current, banner: true,
       });
@@ -58,7 +58,7 @@ function celebrationsCard() {
     if (c.current) {
       name.append(el('span', 'admin-tag is-on', 'Parties listed'));
     }
-    if (c.code === state.model.banner) {
+    if (c.id === state.model.banner) {
       name.append(el('span', 'admin-tag is-on', 'Banner shown'));
     }
     body.append(name, el('div', 'sub', [c.code, c.subtitle, whenLine(c)].filter(Boolean).join(' · ')));
@@ -80,14 +80,14 @@ function categoriesCard() {
   const paint = () => {
     list.replaceChildren();
     const cats = state.model.categories;
-    cats.forEach((title, i) => {
+    cats.forEach((cat, i) => {
       const row = el('div', 'admin-row');
-      row.append(el('div', 'grow', title));
+      row.append(el('div', 'grow', cat.title));
       const move = async (from, to) => {
-        const order = [...cats];
+        const order = cats.map(c => c.id);
         order.splice(to, 0, order.splice(from, 1)[0]);
         try {
-          await api('POST', '/api/celebrate/categories/order', {titles: order});
+          await api('POST', '/api/celebrate/categories/order', {ids: order});
           await load();
           paint();
         } catch (err) {
@@ -99,7 +99,7 @@ function categoriesCard() {
       up.disabled = i === 0;
       const down = button('', 'down', 'edit-icon', () => move(i, i + 1));
       down.disabled = i === cats.length - 1;
-      row.append(up, down, button('Rename', 'edit', 'button button-secondary button-small', () => openCategory(title, paint)));
+      row.append(up, down, button('Rename', 'edit', 'button button-secondary button-small', () => openCategory(cat, paint)));
       list.append(row);
     });
     if (!cats.length) {
@@ -108,7 +108,7 @@ function categoriesCard() {
   };
   paint();
   const add = el('div', 'add-row');
-  add.append(button('Add a category', 'plus', 'button', () => openCategory('', paint)), status);
+  add.append(button('Add a category', 'plus', 'button', () => openCategory(null, paint)), status);
   card.append(list, add);
   return card;
 }
@@ -134,11 +134,11 @@ function invoicesCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Invoicing'));
   card.append(el('div', 'hint', 'The INVOICING tab of the sheet, as accounting keeps it: a row for every ticket sold, with the invoice number and who it went to once the office fills them in. Nothing is charged here.'));
-  let code = state.model.current || (state.model.celebrations[0] || {}).code;
+  let shownId = state.model.current || (state.model.celebrations[0] || {}).id;
   const pick = el('select');
   for (const c of state.model.celebrations) {
-    const o = new Option(c.title, c.code);
-    o.selected = c.code === code;
+    const o = new Option(c.title, c.id);
+    o.selected = c.id === shownId;
     pick.append(o);
   }
   const party = el('select');
@@ -157,7 +157,7 @@ function invoicesCard() {
   const totals = el('div', 'invoice-totals');
   const table = el('div');
   card.append(totals, table);
-  const ledger = () => (state.model.invoicing || []).filter(l => l.code === code);
+  const ledger = () => (state.model.invoicing || []).filter(l => l.celebration === shownId);
   const names = new Map();
   for (const p of state.model.parties) {
     for (const a of [...p.attendees, ...p.waitlisted]) {
@@ -168,17 +168,18 @@ function invoicesCard() {
   }
   const paintParties = () => {
     party.replaceChildren(new Option('All parties', ''));
-    for (const title of [...new Set(ledger().map(l => l.party))].sort((x, y) => x.localeCompare(y))) {
-      party.append(new Option(title, title));
+    const titles = new Map(ledger().map(l => [l.partyId, l.party]));
+    for (const [id, title] of [...titles].sort((x, y) => x[1].localeCompare(y[1]))) {
+      party.append(new Option(title, id));
     }
   };
   const paint = () => {
-    csv.href = `/api/celebrate/invoices.csv?celebration=${encodeURIComponent(code)}`;
+    csv.href = `/api/celebrate/invoices.csv?celebration=${encodeURIComponent(shownId)}`;
     table.replaceChildren();
     totals.replaceChildren();
     const q = find.value.trim().toLowerCase();
     const rows = ledger().filter(l => {
-      if (party.value && l.party !== party.value) {
+      if (party.value && l.partyId !== party.value) {
         return false;
       }
       if (status.value === 'open' && l.invoice) {
@@ -226,7 +227,7 @@ function invoicesCard() {
     }
   };
   pick.addEventListener('change', () => {
-    code = pick.value;
+    shownId = pick.value;
     paintParties();
     paint();
   });

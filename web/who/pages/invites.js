@@ -33,22 +33,19 @@ function joinFirstNames(people) {
   return names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
 }
 
-let GREETING_WHOLE_FAMILY = 'Ali, Bo, Pat & Quinn Ender';
-let GREETING_KIDS = 'Ali & Bo Ender';
-let GREETING_ADULTS = 'Pat & Quinn Ender';
-let GREETING_FULL_NAME = 'Pat Ender';
-let GREETING_FIRST_NAME = 'Pat';
+let GREETING_WHOLE_FAMILY = '';
+let GREETING_KIDS = '';
+let GREETING_ADULTS = '';
+let GREETING_FULL_NAME = '';
+let GREETING_FIRST_NAME = '';
 
 function refreshGreetingPhrases() {
-  const phraseOf = (name, fallback) => {
-    const g = inviteGreetings.find(g => g.name === name);
-    return g && g.format ? g.format : fallback;
-  };
-  GREETING_WHOLE_FAMILY = phraseOf('Whole family', GREETING_WHOLE_FAMILY);
-  GREETING_KIDS = phraseOf('Kids only', GREETING_KIDS);
-  GREETING_ADULTS = phraseOf('Adults only', GREETING_ADULTS);
-  GREETING_FULL_NAME = phraseOf('Full name', GREETING_FULL_NAME);
-  GREETING_FIRST_NAME = phraseOf('First name', GREETING_FIRST_NAME);
+  const phraseOf = key => inviteGreetings.find(g => g.id === key).format;
+  GREETING_WHOLE_FAMILY = phraseOf(inviteBuiltins.wholeFamily);
+  GREETING_KIDS = phraseOf(inviteBuiltins.kids);
+  GREETING_ADULTS = phraseOf(inviteBuiltins.adults);
+  GREETING_FULL_NAME = phraseOf(inviteBuiltins.fullName);
+  GREETING_FIRST_NAME = phraseOf(inviteBuiltins.firstName);
 }
 
 function greetingSurname({kids, adults, person}) {
@@ -164,7 +161,7 @@ function familyInviteParams(family) {
   }
   const kids = invitedKids(family);
   const [primary, ...otherAdults] = adults;
-  const format = inviteGreetings.find(g => g.name === state.gvGreeting) || greetingFormatsFor('group', true)[0];
+  const format = inviteGreetings.find(g => g.id === state.gvGreeting) || greetingFormatsFor('group', true)[0];
   const greeting = format ? buildGreeting(format.format, {kids, adults}) : '';
   const members = otherAdults.map(a => ({name: a.fullName, contact: a.email}))
     .concat(kids.map(k => ({name: k.fullName, contact: kidContact(k)})));
@@ -200,7 +197,7 @@ function individualCandidates(p) {
 
 function buildMergedEntry(people, contact) {
   const addressee = people[0];
-  const format = inviteGreetings.find(g => g.name === state.gvGreeting) || greetingFormatsFor('individual', false)[0];
+  const format = inviteGreetings.find(g => g.id === state.gvGreeting) || greetingFormatsFor('individual', false)[0];
   const greeting = format ? buildGreeting(format.format, {person: addressee, siblings: people.slice(1)}) : '';
   return {
     ...buildInviteParams(addressee, contact, greeting, []),
@@ -308,6 +305,7 @@ function applyInviteTemplate(system, entries) {
 
 let inviteSystems = null;
 let inviteGreetings = [];
+let inviteBuiltins = null;
 let inviteLoadError = '';
 
 async function loadInviteSystems() {
@@ -323,7 +321,10 @@ async function loadInviteSystems() {
   }
   inviteSystems = body.systems || [];
   inviteGreetings = body.greetings || [];
-  refreshGreetingPhrases();
+  if (!inviteLoadError) {
+    inviteBuiltins = body.builtins;
+    refreshGreetingPhrases();
+  }
   return inviteSystems;
 }
 
@@ -354,8 +355,11 @@ export function invitesPage() {
         : 'No invite templates are set up yet - add one to the Invite List Builder sheet\'s Services and Templates tabs.'));
       return;
     }
-    if (!systems.some(s => s.name === state.gvSystem)) {
-      state.gvSystem = systems[0].name;
+    if (!systems.some(s => s.id === state.gvSystem)) {
+      state.gvSystem = systems[0].id;
+    }
+    if (!inviteGreetings.some(g => g.id === state.gvGreeting)) {
+      state.gvGreeting = inviteBuiltins.default;
     }
     renderInvites(systems, settings, content);
   });
@@ -416,7 +420,7 @@ function renderInviteGrid(view, again) {
   const {systems, grid, download} = view;
   grid.replaceChildren();
   grid.className = '';
-  const system = systems.find(s => s.name === state.gvSystem) || systems[0];
+  const system = systems.find(s => s.id === state.gvSystem) || systems[0];
   const rows = applyInviteTemplate(system, invitesEntries());
   const header = system.columns.map(c => c.name);
   const csvLines = rows.map(r => r.cells.map(csvField).join(','));
@@ -470,7 +474,7 @@ function copyTableButton(header, rows) {
 function appendGreetingOptions(parent, list) {
   for (const f of list) {
     const option = el('option', '', f.name);
-    option.value = f.name;
+    option.value = f.id;
     parent.append(option);
   }
 }
@@ -555,7 +559,7 @@ function gvServiceSelect(seg, systems, onChange) {
   const wrap = el('div', 'filter-wrap gv-service-wrap');
   const button = el('button', 'filter-button gv-service-button');
   button.type = 'button';
-  const current = systems.find(s => s.name === state.gvSystem) || systems[0];
+  const current = systems.find(s => s.id === state.gvSystem) || systems[0];
   button.append(serviceIcon(current.name), el('span', '', current.name), svg('chevron-down'));
   const panel = el('div', 'filter-panel gv-service-panel');
   panel.hidden = true;
@@ -570,7 +574,7 @@ function gvServiceSelect(seg, systems, onChange) {
   for (const s of systems) {
     const option = el('div', 'filter-option gv-service-option');
     option.append(serviceIcon(s.name), el('span', '', s.name));
-    option.addEventListener('click', () => onChange(s.name));
+    option.addEventListener('click', () => onChange(s.id));
     panel.append(option);
   }
   wrap.append(button, panel);
@@ -625,7 +629,7 @@ function greetingDialogState(close, onSaved) {
     close,
     onSaved,
     grouped: state.gvInviteBy === 'group',
-    original: '',
+    editing: '',
     cards: [],
     formatInput,
     previewValue: el('span', 'gv-new-greeting-preview-value'),
@@ -699,7 +703,7 @@ function updateGreetingPreview(dialog) {
 }
 
 function loadGreeting(dialog, g) {
-  dialog.original = g ? g.name : '';
+  dialog.editing = g ? g.id : '';
   dialog.formatInput.value = g ? g.format : defaultGreetingFormat();
   dialog.cards.forEach(({card, greeting}) => card.classList.toggle('active', greeting === g));
   dialog.editorSection.hidden = false;
@@ -752,8 +756,8 @@ async function deleteGreeting(dialog, g, deleteBtn) {
   error.hidden = true;
   deleteBtn.disabled = true;
   try {
-    // Go's ParseForm ignores a DELETE body, so the name rides in the query.
-    await api('DELETE', `/api/directory/greetings?${new URLSearchParams({name: g.name})}`);
+    // Go's ParseForm ignores a DELETE body, so the id rides in the query.
+    await api('DELETE', `/api/directory/greetings?${new URLSearchParams({id: g.id})}`);
     inviteSystems = null;
     dialog.close();
     dialog.onSaved();
@@ -775,12 +779,12 @@ async function saveGreeting(dialog, save) {
   try {
     const body = new FormData();
     body.append('format', format);
-    body.append('original', dialog.original);
+    body.append('id', dialog.editing);
     body.append('grouped', state.gvInviteBy === 'group' ? '1' : '0');
     body.append('individual', state.gvInviteBy !== 'group' ? '1' : '0');
-    await api('POST', '/api/directory/greetings', body);
+    const saved = await api('POST', '/api/directory/greetings', body);
     inviteSystems = null;
-    state.gvGreeting = format;
+    state.gvGreeting = saved.id;
     dialog.close();
     dialog.onSaved();
   } catch (err) {
@@ -817,14 +821,14 @@ function gvSwitch(seg, checked, onChange) {
 }
 
 function renderInviteSettings(systems, settings, onSystemChange, onSettingChange) {
-  const system = systems.find(s => s.name === state.gvSystem) || systems[0];
+  const system = systems.find(s => s.id === state.gvSystem) || systems[0];
   if (!system.supportsGroups) {
     state.gvInviteBy = 'individual';
   }
   if (templateUsesGreeting(system)) {
     const formats = greetingFormatsFor(state.gvInviteBy, system.supportsGroups);
-    if (formats.length && !formats.some(f => f.name === state.gvGreeting)) {
-      state.gvGreeting = formats[0].name;
+    if (formats.length && !formats.some(f => f.id === state.gvGreeting)) {
+      state.gvGreeting = formats[0].id;
     }
   }
 
@@ -833,9 +837,9 @@ function renderInviteSettings(systems, settings, onSystemChange, onSettingChange
   bar.append(row);
 
   const exportSeg = gvSegment(row, 'Export for');
-  gvServiceSelect(exportSeg, systems, name => {
-    const next = systems.find(s => s.name === name);
-    state.gvSystem = name;
+  gvServiceSelect(exportSeg, systems, key => {
+    const next = systems.find(s => s.id === key);
+    state.gvSystem = key;
     state.gvInviteBy = next && next.supportsGroups ? 'group' : 'individual';
     onSystemChange();
   });

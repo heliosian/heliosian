@@ -1,4 +1,4 @@
-import {me, isAdmin, settings, charity, longDate, mediumDate, emailLink, newsletterText} from '../state.js';
+import {me, isAdmin, settings, charity, charityName, longDate, mediumDate, emailLink, newsletterText} from '../state.js';
 import {el, link, svg, thumb, button, iconButton, copyText} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {openAssign, markContacted, markUsed, useDefault, reuseLast, openDonation, openBirthday, openParticipation, openNote, removeNote} from '../edit.js';
@@ -124,7 +124,7 @@ function steps(sv) {
   const donationActions = sv.donation
     ? [outlined('Edit', 'edit', () => openDonation(sv))]
     : [outlined('Add Donation', 'gift', () => openDonation(sv)), outlined('Use Default', 'vault', () => useDefault(sv))];
-  inner.append(step(4, 'Record Response', sv.donation ? `Selected ${sv.donation.charity} on ${mediumDate(sv.donation.recordedOn)}` : 'No donation selected', donationActions, stepStatus(sv, 4)));
+  inner.append(step(4, 'Record Response', sv.donation ? `Selected ${charityName(sv.donation.charity)} on ${mediumDate(sv.donation.recordedOn)}` : 'No donation selected', donationActions, stepStatus(sv, 4)));
   if (sv.level === 'No Newsletter') {
     inner.append(step(5, 'Newsletter', 'Not in the newsletter, by request', [], stepStatus(sv, 5)));
   } else {
@@ -142,8 +142,8 @@ function askBand(sv) {
   band.append(el('div', 'ask-icon', '🎁'));
   const body = el('div', 'row-body');
   body.append(el('div', 'row-title', 'Select Donation'));
-  const last = sv.lastDonation ? sv.lastDonation.charity : '';
-  body.append(el('div', 'row-text', `If no donation is specified, we will default to either last year's donation${last ? ` (${last})` : ''} or the default (${settings().defaultCharity}).`));
+  const last = sv.lastDonation ? charityName(sv.lastDonation.charity) : '';
+  body.append(el('div', 'row-text', `If no donation is specified, we will default to either last year's donation${last ? ` (${last})` : ''} or the default (${charityName(settings().defaultCharity)}).`));
   band.append(body);
   const actions = el('div', 'row-actions');
   actions.append(filled('Add Donation', null, () => openDonation(sv)));
@@ -176,7 +176,7 @@ function donationColumn(title, tint, sv, donation, actions) {
   const c = charity(donation.charity);
   const card = el('div', 'donation-card');
   const text = el('div', 'donation-text');
-  text.append(el('div', 'donation-name', donation.charity));
+  text.append(el('div', 'donation-name', c.name));
   if (donation.note) {
     text.append(el('div', 'donation-note', donation.note));
   }

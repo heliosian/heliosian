@@ -164,12 +164,11 @@ func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []
 			if pdf {
 				a.DayType = noDayType
 			}
-			row := map[string]string{
-				"Event ID": a.ID, "Tags": cells.JoinList(a.Tags),
-				"Keywords": cells.JoinList(a.Keywords), "Input Hash": hashes[a.ID], "Model": modelName, "Enriched": today,
-			}
-			if a.DayType != noDayType {
-				row["Day Type"] = a.DayType
+			row, err := r.enrichmentRow(a, hashes[a.ID], today)
+			if err != nil {
+				slog.ErrorContext(ctx, "calendar import: classification names what the sheet does not have", "event", a.ID, "error", err)
+				r.failures = append(r.failures, "classifying "+a.ID)
+				continue
 			}
 			enrichment = append(enrichment, row)
 		}
@@ -182,9 +181,27 @@ func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []
 		}
 	}
 	for _, t := range r.tags {
-		if byTag[t.Name] > 0 {
-			slog.InfoContext(ctx, "calendar import: tag count", "tag", t.Name, "events", byTag[t.Name])
+		if byTag[t.ID] > 0 {
+			slog.InfoContext(ctx, "calendar import: tag count", "tag", t.Name, "events", byTag[t.ID])
 		}
 	}
 	return enrichment
+}
+
+func (r *run) enrichmentRow(a enrichOutput, hash, today string) (map[string]string, error) {
+	tags, err := r.tagCell(a.Tags)
+	if err != nil {
+		return nil, err
+	}
+	row := map[string]string{
+		"Event ID": a.ID, "Tags": tags,
+		"Keywords": cells.JoinList(a.Keywords), "Input Hash": hash, "Model": modelName, "Enriched": today,
+	}
+	if a.DayType == noDayType {
+		return row, nil
+	}
+	if row["Day Type"], err = r.dayTypeID(a.DayType); err != nil {
+		return nil, err
+	}
+	return row, nil
 }

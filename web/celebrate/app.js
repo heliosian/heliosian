@@ -1,4 +1,4 @@
-import {applyModel, celebration, familyMember, resolvePath, partyPath} from './state.js';
+import {applyModel, celebrationByCode, familyMember, resolvePath, partyPath} from './state.js';
 import {initChrome} from './chrome.js';
 import {showPage, clearSearch} from '/shell.js';
 import {api} from '/api.js';
@@ -20,7 +20,10 @@ function party(parts) {
 
 const routes = {
   '': () => partiesPage(null),
-  celebrations: parts => celebration(parts[1]) ? partiesPage(parts[1]) : notFound('That celebration'),
+  celebrations: parts => {
+    const c = celebrationByCode(parts[1]);
+    return c ? partiesPage(c.id) : notFound('That celebration');
+  },
   parties: party,
   p: party,
   my: parts => {

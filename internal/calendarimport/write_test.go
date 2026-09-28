@@ -16,7 +16,7 @@ import (
 func sampleCache(t *testing.T) (*data.Dir, *when.Cache) {
 	t.Helper()
 	sheet := &data.Dir{Root: "../../sampledata"}
-	directory, err := who.LoadModel(sheet, nil, testkit.None, []byte("test"))
+	directory, err := who.LoadModel(sheet, nil, testkit.None, []byte("sample"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,8 @@ func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
 		rows = append(rows, row)
 	}
 	rows = append(rows, map[string]string{"Key": "a13@sample", "Start": "2027-04-01", "End": "2027-04-01", "Title": "Spring Picnic", "Updated": "2026-09-01 09:00", "Sequence": "0"})
-	enriched := append(slices.Clone(enrichment), map[string]string{"Event ID": "a13@sample", "Tags": "Jays, Community", "Input Hash": "h", "Model": modelName, "Enriched": "2026-09-01"})
+	jays, community := who.ClassroomID([]byte("sample"), "Jays"), "tag0000000105"
+	enriched := append(slices.Clone(enrichment), map[string]string{"Event ID": "a13@sample", "Tags": jays + ", " + community, "Input Hash": "h", "Model": modelName, "Enriched": "2026-09-01"})
 	sync := []tabSync{
 		{when.GoogleTab, when.GoogleColumns, rows, google, "Key", true},
 		{when.EnrichmentTab, when.EnrichmentColumns, enriched, enrichment, "Event ID", false},
@@ -64,7 +65,7 @@ func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := cache.Model()
-	if m.Event("a6@sample").Title != "Hummingbird Coffee" || m.Event("a13@sample") == nil || !slices.Contains(m.Event("a13@sample").Tags, "Community") {
+	if m.Event("a6@sample").Title != "Hummingbird Coffee" || m.Event("a13@sample") == nil || !slices.Contains(m.Event("a13@sample").Tags, community) || m.TagName(community) != "Community" {
 		t.Errorf("model after the import: a6 %+v, a13 %+v", m.Event("a6@sample"), m.Event("a13@sample"))
 	}
 	keys := []string{}

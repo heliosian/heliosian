@@ -1,4 +1,4 @@
-import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, plan, dayType, clock, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, groupWords, eventTint, timeLine, startTime, eventPath, isMatch, isHidden, isGray, myEvents, linkedApp} from '../state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, plan, clock, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, groupWords, eventTint, timeLine, startTime, eventPath, isMatch, isHidden, isGray, myEvents, linkedApp} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {feedMark} from '../dom.js';
 import {el, link, svg, button, toast, longToast, copyText} from '/elements.js';
@@ -12,7 +12,7 @@ import {attachPeek, attachRowPeek, hidePeek} from '../peek.js';
 import {api} from '/api.js';
 import {dayColumn, openAddEvent} from '../day.js';
 import {emptyNote} from '../events.js';
-import {answerOf, selectedTags, classroomNames, tagNames, defaultFeedName, showsFeed, activeFeed, setActiveFeed, defaultFeed, feedURL, webcalURL} from '../state.js';
+import {answerOf, selectedTags, classroomNames, tagIds, defaultFeedName, showsFeed, activeFeed, setActiveFeed, defaultFeed, feedURL, webcalURL} from '../state.js';
 
 let lastDate = '';
 
@@ -90,7 +90,7 @@ function schoolEnd(type) {
 function dayCell(date) {
   const cell = el('div', 'month-cell' + (date === today() ? ' is-today' : '') + (date === state.day ? ' is-on' : '') + (isSchoolDay(date) ? '' : ' is-off'));
   const head = el('div', 'month-cell-head');
-  const standard = schoolEnd(dayType('Regular'));
+  const standard = schoolEnd(state.model.dayTypes.find(d => d.role === 'regular'));
   const groups = plan(date);
   const alert = (kind, words, match) => {
     const chip = el('span', 'chip month-alert is-' + kind + (match ? ' is-match' : ''));
@@ -166,7 +166,7 @@ function saveCalendar() {
   const rooms = selectedClassrooms();
   const tags = selectedTags();
   const roomWords = rooms.length === classroomNames().length ? 'every classroom' : rooms.join(', ');
-  const tagWords = tags.length === tagNames().length ? 'every category' : `${tags.length} of ${tagNames().length} categories`;
+  const tagWords = tags.length === tagIds().length ? 'every category' : `${tags.length} of ${tagIds().length} categories`;
   form.append(el('p', 'modal-intro', `Keeps what the filters show now - ${roomWords} \u00b7 ${tagWords} - under Calendar in the rail, to come back to by name. Get Feed then gives you its address for your own calendar app.`));
   const field = el('label', 'field');
   field.append(el('span', '', 'Name'));
@@ -197,7 +197,7 @@ function saveCalendar() {
     const body = {
       name: name.value.trim() || defaultFeedName(),
       classrooms: rooms.length === classroomNames().length ? [] : classroomNames().filter(c => rooms.includes(c)),
-      tags: tags.length === tagNames().length ? [] : tagNames().filter(t => tags.includes(t)),
+      tags: tags.length === tagIds().length ? [] : tagIds().filter(t => tags.includes(t)),
     };
     let made;
     try {
@@ -329,7 +329,7 @@ async function saveOnto(f) {
   const body = {
     token: f.token, name: f.name, emoji: f.emoji || '',
     classrooms: rooms.length === classroomNames().length ? [] : classroomNames().filter(c => rooms.includes(c)),
-    tags: tags.length === tagNames().length ? [] : tagNames().filter(t => tags.includes(t)),
+    tags: tags.length === tagIds().length ? [] : tagIds().filter(t => tags.includes(t)),
   };
   try {
     await api('PUT', '/api/when/feeds', body);

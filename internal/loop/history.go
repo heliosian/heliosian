@@ -85,12 +85,12 @@ func copyOf(email, name string, attempts []Attempt) Copy {
 
 var copyOrder = map[string]int{copyFailed: 0, copyPending: 1, copyDelivered: 2}
 
-func (a app) history(name string) []SentMessage {
+func (a app) history(groupID string) []SentMessage {
 	model := a.cache.Model()
 	attempts := map[string]map[string][]Attempt{}
 	for _, d := range model.Deliveries {
 		key := messageKey(d.Message)
-		if key == "" || d.Group != name {
+		if key == "" || d.Group != groupID {
 			continue
 		}
 		if attempts[key] == nil {
@@ -100,7 +100,7 @@ func (a app) history(name string) []SentMessage {
 	}
 	messages := []Message{}
 	for _, m := range model.Messages {
-		if m.State == stateSent && m.Group == name {
+		if m.State == stateSent && m.Group == groupID {
 			messages = append(messages, m)
 		}
 	}
@@ -129,10 +129,10 @@ func (a app) history(name string) []SentMessage {
 	return out
 }
 
-func (a app) sentCount(name string) int {
+func (a app) sentCount(groupID string) int {
 	n := 0
 	for _, m := range a.cache.Model().Messages {
-		if m.State == stateSent && m.Group == name {
+		if m.State == stateSent && m.Group == groupID {
 			n++
 		}
 	}
@@ -141,12 +141,12 @@ func (a app) sentCount(name string) int {
 
 func (a app) messages(r *http.Request, _ serve.None) (map[string]any, error) {
 	actor := a.actor(r)
-	g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("name"))))
+	g := a.cache.Model().Group(r.URL.Query().Get("id"))
 	if g == nil {
 		return nil, access.Missing("no such email list")
 	}
 	if !g.Sees(actor) {
 		return nil, access.Forbidden("you do not manage this email list")
 	}
-	return map[string]any{"messages": a.history(g.Name)}, nil
+	return map[string]any{"messages": a.history(g.ID)}, nil
 }

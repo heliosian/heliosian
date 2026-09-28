@@ -54,13 +54,6 @@ func TestJSON(t *testing.T) {
 	}
 }
 
-func TestID(t *testing.T) {
-	id := ID(8)
-	if len(id) != 8 || strings.Trim(id, "abcdefghjkmnpqrstuvwxyz23456789") != "" {
-		t.Errorf("id %q", id)
-	}
-}
-
 func TestFileMatchesOnlyIdenticalBytes(t *testing.T) {
 	dir := t.TempDir()
 	splash := filepath.Join(dir, "login.html")

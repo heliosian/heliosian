@@ -81,14 +81,14 @@ export function charityPage(c) {
     facts.append(added);
   }
   page.append(facts);
-  const chosen = state.model.staff.filter(sv => (sv.donation && sv.donation.charity === c.name) || (sv.lastDonation && sv.lastDonation.charity === c.name));
+  const chosen = state.model.staff.filter(sv => (sv.donation && sv.donation.charity === c.id) || (sv.lastDonation && sv.lastDonation.charity === c.id));
   if (chosen.length) {
     page.append(el('h2', 'section', 'Chosen by'));
     const panel = el('div', 'panel');
     for (const sv of chosen) {
       const row = link(staffPath(sv), 'row is-link');
       const rb = el('div', 'row-body');
-      rb.append(el('div', 'row-title', sv.name), el('div', 'row-text', sv.donation && sv.donation.charity === c.name ? 'This year' : 'Last year'));
+      rb.append(el('div', 'row-title', sv.name), el('div', 'row-text', sv.donation && sv.donation.charity === c.id ? 'This year' : 'Last year'));
       row.append(rb);
       const chevron = svg('chevron-right');
       chevron.classList.add('chevron');

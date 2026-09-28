@@ -12,10 +12,11 @@ type Letter struct {
 	Body    string
 }
 
-func letter(settings Settings, sv StaffView, senderName string) Letter {
+func letter(model *Model, sv StaffView, senderName string) Letter {
+	settings := model.Settings
 	note := ""
 	if sv.Level == LevelNoNewsletter {
-		note = fillLetter(settings.NoNewsletterNote, settings, sv, senderName)
+		note = fillLetter(settings.NoNewsletterNote, model, sv, senderName)
 	}
 	body := settings.EmailBody
 	if strings.Contains(body, "{no newsletter note}") {
@@ -26,15 +27,15 @@ func letter(settings Settings, sv StaffView, senderName string) Letter {
 	return Letter{
 		To:      sv.Email,
 		CC:      settings.OutreachCC,
-		Subject: fillLetter(settings.EmailSubject, settings, sv, senderName),
-		Body:    tidyLetter(fillLetter(body, settings, sv, senderName)),
+		Subject: fillLetter(settings.EmailSubject, model, sv, senderName),
+		Body:    tidyLetter(fillLetter(body, model, sv, senderName)),
 	}
 }
 
-func fillLetter(template string, settings Settings, sv StaffView, senderName string) string {
+func fillLetter(template string, model *Model, sv StaffView, senderName string) string {
 	lastYear := ""
 	if sv.LastDonation != nil {
-		lines := []string{"*Last Year's Charity*", sv.LastDonation.Charity}
+		lines := []string{"*Last Year's Charity*", model.charityName(sv.LastDonation.Charity)}
 		if sv.LastDonation.Note != "" {
 			lines = append(lines, sv.LastDonation.Note)
 		}
@@ -45,7 +46,7 @@ func fillLetter(template string, settings Settings, sv StaffView, senderName str
 		"{name}", sv.Name,
 		"{newsletter date}", mediumDate(sv.NewsletterDate),
 		"{birthday}", monthDay(sv.BirthdayThisYear),
-		"{default charity}", settings.DefaultCharity,
+		"{default charity}", model.charityName(model.Settings.DefaultCharity),
 		"{sender}", senderName,
 		"{last year}", lastYear,
 	)

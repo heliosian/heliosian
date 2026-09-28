@@ -2,9 +2,6 @@ package who
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -19,6 +16,7 @@ import (
 	"heliosian/internal/admins"
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -71,21 +69,25 @@ var importEmailColumns = []string{
 	"household_2_person_1_email", "household_2_person_2_email",
 }
 
-const tagsTable = "Tags"
-
 const (
-	tagOwner  = "Owner Email"
-	tagName   = "Tag"
-	tagPerson = "Person Email"
+	tagListTable  = "Tag List"
+	tagsTable     = "Tags"
+	managersTable = "Tag Managers"
 )
 
-var tagColumns = []string{tagOwner, tagName, tagPerson}
+const (
+	tagID        = "Tag ID"
+	tagOwner     = "Owner Email"
+	tagName      = "Tag"
+	tagPerson    = "Person Email"
+	managerEmail = "Manager Email"
+)
 
-const managersTable = "Tag Managers"
-
-const managerEmail = "Manager Email"
-
-var managerColumns = []string{tagOwner, tagName, managerEmail}
+var (
+	tagListColumns = []string{tagID, tagOwner, tagName}
+	tagColumns     = []string{tagID, tagPerson}
+	managerColumns = []string{tagID, managerEmail}
+)
 
 var photoColumns = []string{"Email", "Photo Name", "Crop Name", store.OrderColumn}
 
@@ -312,6 +314,9 @@ type loader struct {
 	websiteRows    []store.Row
 	imageRows      []store.Row
 	geocodeRows    []store.Row
+	tagListRows    []store.Row
+	tagRows        []store.Row
+	managerRows    []store.Row
 	nameToEmail    map[string]string
 	images         map[string]string
 
@@ -337,10 +342,20 @@ type photoRef struct {
 	stored   bool
 }
 
+const (
+	kindPerson    = "person"
+	kindFamily    = "family"
+	kindClassroom = "classroom"
+	kindGrade     = "grade"
+	kindCrew      = "crew"
+)
+
 func familyID(idKey []byte, email string) string {
-	mac := hmac.New(sha256.New, idKey)
-	mac.Write([]byte(email))
-	return hex.EncodeToString(mac.Sum(nil))[:16]
+	return id.Of(idKey, kindFamily, email)
+}
+
+func ClassroomID(idKey []byte, name string) string {
+	return id.Of(idKey, kindClassroom, name)
 }
 
 func BuildModel(ctx context.Context, tables store.Tables, blobs, static blob.Checker, idKey []byte) (*Model, error) {
@@ -360,6 +375,9 @@ func BuildModel(ctx context.Context, tables store.Tables, blobs, static blob.Che
 		websiteRows:      tables[WebsiteTable],
 		imageRows:        tables[imagesTab],
 		geocodeRows:      tables[geocodeTable],
+		tagListRows:      tables[tagListTable],
+		tagRows:          tables[tagsTable],
+		managerRows:      tables[managersTable],
 		people:           map[string]*Person{},
 		households:       map[string]*household{},
 		personHouseholds: map[string][]string{},
@@ -370,12 +388,12 @@ func BuildModel(ctx context.Context, tables store.Tables, blobs, static blob.Che
 		excluded:         map[string]bool{},
 		model: &Model{
 			Families: map[string]Family{}, RoomParents: map[string][]string{},
-			tags: tables[tagsTable], managers: tables[managersTable],
 			admins: admins.Read(tables),
 		},
 	}
 	steps := []func() error{
 		l.applyEmailAliases,
+		l.readTags,
 		l.buildNameToEmail,
 		l.applyNameToEmail,
 		l.transformImport,
@@ -1520,6 +1538,9 @@ func (l *loader) sortPeople() error {
 	l.model.byEmail = map[string]int{}
 	for i, p := range l.model.People {
 		l.model.byEmail[p.Email] = i
+		if p.Email != "" {
+			l.model.People[i].ID = id.Of(l.idKey, kindPerson, p.Email)
+		}
 	}
 	return nil
 }
@@ -1574,6 +1595,7 @@ func (l *loader) deriveClassrooms() error {
 			return err
 		}
 		model.Classrooms = append(model.Classrooms, Classroom{
+			ID:       ClassroomID(l.idKey, name),
 			Name:     name,
 			ImageURL: imageURL,
 			HasCrews: len(info.crews) > 0,
@@ -1607,7 +1629,7 @@ func (l *loader) deriveClassrooms() error {
 			crews = []string{""}
 		}
 		for _, crewName := range crews {
-			crew := Crew{Classroom: name, Name: crewName, GradeBand: band}
+			crew := Crew{ID: id.Of(l.idKey, kindCrew, name+"/"+crewName), Classroom: name, Name: crewName, GradeBand: band}
 			for _, p := range model.People {
 				if p.IsStaff && p.Classroom == name && p.Crew == crewName {
 					crew.Teachers = append(crew.Teachers, p.Email)
@@ -1626,7 +1648,7 @@ func (l *loader) deriveStructure() error {
 		if err != nil {
 			return err
 		}
-		g := Grade{Name: grade, Band: gradeBands[grade], ImageURL: imageURL}
+		g := Grade{ID: id.Of(l.idKey, kindGrade, grade), Name: grade, Band: gradeBands[grade], ImageURL: imageURL}
 		if i+1 < len(gradeOrder) {
 			g.NextName = gradeOrder[i+1]
 			g.NextBand = gradeBands[g.NextName]

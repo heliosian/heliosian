@@ -10,7 +10,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
-	"heliosian/internal/serve"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -78,7 +78,7 @@ func invoiceRow(directory *who.Model, p *Party, cells store.Row) store.Row {
 		return nil
 	}
 	return store.Row{
-		"Date": today(), "Party Title": p.Title, "Event Code": p.Celebration, "Purchaser Email": cells["Purchaser"],
+		"Date": today(), "Party ID": p.ID, "Celebration": p.Celebration, "Purchaser Email": cells["Purchaser"],
 		"Guest Name": ticketName(directory, cells), "Action": "ADD", "Quantity": "1", "Cost": PriceCell(price),
 	}
 }
@@ -94,9 +94,9 @@ func ticketOps(directory *who.Model, p *Party, added []store.Row) []store.Op {
 	return ops
 }
 
-func waitlistRequest(p *Party, purchaser string, quantity int, note, actor string) store.Row {
+func waitlistRequest(ticketID string, p *Party, purchaser string, quantity int, note, actor string) store.Row {
 	return store.Row{
-		"Ticket ID": serve.ID(8), "Party ID": p.ID, "Email": purchaser, "Name": "", "Purchaser": purchaser,
+		"Ticket ID": ticketID, "Party ID": p.ID, "Email": purchaser, "Name": "", "Purchaser": purchaser,
 		"Status": TicketWaitlist, "Quantity": strconv.Itoa(quantity), "Price": PriceCell(p.Price), "Note": note, "Added By": actor, "Added": stamp(),
 	}
 }
@@ -225,6 +225,7 @@ func (m *Model) takeTickets(actor access.Actor, directory *who.Model, order tick
 		rows = append(rows, row{email, "", bill})
 	}
 	remaining := p.Remaining()
+	mint := m.minter()
 	out := taken{party: p, purchaser: purchaser, added: []store.Row{}, ops: []store.Op{}}
 	price := PriceCell(p.Price)
 	if order.Free {
@@ -243,12 +244,12 @@ func (m *Model) takeTickets(actor access.Actor, directory *who.Model, order tick
 		}
 		out.sold++
 		out.added = append(out.added, store.Row{
-			"Ticket ID": serve.ID(8), "Party ID": p.ID, "Email": rw.email, "Name": rw.name, "Purchaser": rw.purchaser,
+			"Ticket ID": mint(), "Party ID": p.ID, "Email": rw.email, "Name": rw.name, "Purchaser": rw.purchaser,
 			"Status": TicketSold, "Quantity": "1", "Price": price, "Note": strings.TrimSpace(order.Note), "Added By": actor.Email, "Added": stamp(),
 		})
 	}
 	if out.waitlisted > 0 {
-		out.added = append(out.added, waitlistRequest(p, purchaser, out.waitlisted, strings.TrimSpace(order.Note), actor.Email))
+		out.added = append(out.added, waitlistRequest(mint(), p, purchaser, out.waitlisted, strings.TrimSpace(order.Note), actor.Email))
 	}
 	if order.Free && order.RaiseCapacity && p.Capacity > 0 && out.sold > 0 {
 		out.ops = append(out.ops, store.Update(partiesTab, store.Row{"Party ID": p.ID}, store.Row{"Capacity": countCell(p.Capacity + out.sold)}))
@@ -304,7 +305,7 @@ func (m *Model) joinWaitlist(actor access.Actor, directory *who.Model, order wai
 			return joined{party: p, purchaser: purchaser, cells: full, changed: true, ops: []store.Op{store.Update(ticketsTab, store.Row{"Ticket ID": t.ID}, cells)}}, nil
 		}
 	}
-	cells := waitlistRequest(p, purchaser, order.Quantity, note, actor.Email)
+	cells := waitlistRequest(id.New(m.taken), p, purchaser, order.Quantity, note, actor.Email)
 	return joined{party: p, purchaser: purchaser, cells: cells, ops: []store.Op{store.Insert(ticketsTab, cells)}}, nil
 }
 
@@ -346,9 +347,10 @@ func (m *Model) offerTickets(actor access.Actor, directory *who.Model, o offer) 
 		}
 	}
 	added := []store.Row{}
+	mint := m.minter()
 	for i := 0; i < n; i++ {
 		cells := store.Row{
-			"Ticket ID": serve.ID(8), "Party ID": p.ID, "Purchaser": t.Purchaser, "Status": TicketSold, "Quantity": "1",
+			"Ticket ID": mint(), "Party ID": p.ID, "Purchaser": t.Purchaser, "Status": TicketSold, "Quantity": "1",
 			"Price": PriceCell(t.Price), "Note": t.Note, "Added By": actor.Email, "Added": stamp(),
 		}
 		if i == 0 && selfTicket {
@@ -562,7 +564,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 		}
 		status, category = StatusPending, ""
 		if c := m.Current(); c != nil {
-			celebration = c.Code
+			celebration = c.ID
 		}
 	case actor.May(Curate):
 		if status == "" {
@@ -576,7 +578,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 	}
 	if celebration == "" {
 		if c := m.Current(); c != nil {
-			celebration = c.Code
+			celebration = c.ID
 		}
 	}
 	if body.Price < 0 || body.Capacity < 0 || body.Minimum < 0 {
@@ -597,15 +599,17 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 	if !adding && !actor.May(Curate) && !slices.Contains(hosts, actor.Email) {
 		return savedParty{}, access.Invalid("you can't remove yourself as a host; ask another host or an admin")
 	}
-	id := strings.TrimSpace(body.ID)
+	var partyID string
 	if adding {
-		id = serve.ID(8)
+		partyID = id.New(m.taken)
+	} else {
+		partyID = was.ID
 	}
 	pretty := cells.NormalizePretty(body.PrettyID)
 	if cells.CheckPretty(pretty) != nil {
 		return savedParty{}, access.Invalid("the friendly address can be only lower-case letters, digits and hyphens, at most %d", cells.MaxPrettyLength)
 	}
-	if other := m.ByPretty(pretty); pretty != "" && other != nil && other.ID != id {
+	if other := m.ByPretty(pretty); pretty != "" && other != nil && other.ID != partyID {
 		conflict := &prettyConflict{ID: other.ID, Title: other.Title, Message: fmt.Sprintf("%q is already the address of %s", pretty, other.Title)}
 		return savedParty{}, conflict.refusal()
 	}
@@ -623,25 +627,25 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 	ops := []store.Op{}
 	before := []string{}
 	if adding {
-		row["Party ID"] = id
+		row["Party ID"] = partyID
 		row["Added By"] = actor.Email
 		row["Added"] = today()
 		ops = append(ops, store.Insert(partiesTab, row))
 	} else {
 		before = was.HostEmails
-		ops = append(ops, store.Update(partiesTab, store.Row{"Party ID": id}, row))
+		ops = append(ops, store.Update(partiesTab, store.Row{"Party ID": partyID}, row))
 	}
 	for _, h := range before {
 		if !slices.Contains(hosts, h) {
-			ops = append(ops, store.Delete(hostsTab, store.Row{"Party ID": id, "Email": h}))
+			ops = append(ops, store.Delete(hostsTab, store.Row{"Party ID": partyID, "Email": h}))
 		}
 	}
 	for _, h := range hosts {
 		if !slices.Contains(before, h) {
-			ops = append(ops, store.Insert(hostsTab, store.Row{"Party ID": id, "Email": h}))
+			ops = append(ops, store.Insert(hostsTab, store.Row{"Party ID": partyID, "Email": h}))
 		}
 	}
-	return savedParty{id: id, title: row["Title"], status: status, adding: adding, ops: ops}, nil
+	return savedParty{id: partyID, title: row["Title"], status: status, adding: adding, ops: ops}, nil
 }
 
 func (m *Model) deleteParty(actor access.Actor, id string) (*Party, []store.Op, error) {
@@ -702,7 +706,7 @@ func (m *Model) setStatus(actor access.Actor, id, status string) (*Party, []stor
 }
 
 type celebrationForm struct {
-	Original    string `json:"original"`
+	ID          string `json:"id"`
 	Code        string `json:"code"`
 	Title       string `json:"title"`
 	Subtitle    string `json:"subtitle"`
@@ -723,12 +727,15 @@ func (m *Model) saveCelebration(actor access.Actor, form celebrationForm) ([]sto
 		return nil, false, err
 	}
 	code := strings.TrimSpace(form.Code)
-	adding := strings.TrimSpace(form.Original) == ""
-	if !adding && m.Celebration(form.Original) == nil {
+	key := strings.TrimSpace(form.ID)
+	adding := key == ""
+	if !adding && m.CelebrationByID(key) == nil {
 		return nil, false, access.Missing("no such celebration")
 	}
-	renamed := !adding && form.Original != code
-	if (adding || renamed) && m.Celebration(code) != nil {
+	if adding {
+		key = id.New(m.taken)
+	}
+	if other := m.Celebration(code); other != nil && other.ID != key {
 		return nil, false, access.Invalid("%q is already a celebration", code)
 	}
 	row := store.Row{
@@ -739,7 +746,7 @@ func (m *Model) saveCelebration(actor access.Actor, form celebrationForm) ([]sto
 	}
 	ops := []store.Op{}
 	for _, c := range m.Celebrations {
-		if c.Code == form.Original {
+		if c.ID == key {
 			continue
 		}
 		unmark := store.Row{}
@@ -750,31 +757,33 @@ func (m *Model) saveCelebration(actor access.Actor, form celebrationForm) ([]sto
 			unmark["Banner"] = "No"
 		}
 		if len(unmark) > 0 {
-			ops = append(ops, store.Update(celebrationsTab, store.Row{"Code": c.Code}, unmark))
+			ops = append(ops, store.Update(celebrationsTab, store.Row{"Celebration ID": c.ID}, unmark))
 		}
 	}
 	if adding {
+		row["Celebration ID"] = key
 		ops = append(ops, store.Insert(celebrationsTab, row))
 	} else {
-		ops = append(ops, store.Update(celebrationsTab, store.Row{"Code": form.Original}, row))
+		ops = append(ops, store.Update(celebrationsTab, store.Row{"Celebration ID": key}, row))
 	}
 	return ops, adding, nil
 }
 
-func (c *Cache) deleteCelebration(actor access.Actor, code string) ([]store.Op, error) {
+func (c *Cache) deleteCelebration(actor access.Actor, key string) (*Celebration, []store.Op, error) {
 	if err := require(actor, Configure); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if c.Model().Celebration(code) == nil {
-		return nil, access.Missing("no such celebration")
+	celebration := c.Model().CelebrationByID(strings.TrimSpace(key))
+	if celebration == nil {
+		return nil, nil, access.Missing("no such celebration")
 	}
-	if c.Count(partiesTab, store.Row{"Celebration": code}) > 0 {
-		return nil, access.Invalid("parties belong to this celebration; move or remove them first")
+	if c.Count(partiesTab, store.Row{"Celebration": celebration.ID}) > 0 {
+		return nil, nil, access.Invalid("parties belong to this celebration; move or remove them first")
 	}
-	return []store.Op{store.Delete(celebrationsTab, store.Row{"Code": code})}, nil
+	return celebration, []store.Op{store.Delete(celebrationsTab, store.Row{"Celebration ID": celebration.ID})}, nil
 }
 
-func (m *Model) saveCategory(actor access.Actor, original, title string) ([]store.Op, bool, error) {
+func (m *Model) saveCategory(actor access.Actor, key, title string) ([]store.Op, bool, error) {
 	if err := require(actor, Configure); err != nil {
 		return nil, false, err
 	}
@@ -782,31 +791,32 @@ func (m *Model) saveCategory(actor access.Actor, original, title string) ([]stor
 	if err := cells.Title("category", title, maxTitleLength); err != nil {
 		return nil, false, access.Invalid("%s", err)
 	}
-	adding := original == ""
-	if !adding && !slices.Contains(m.Categories, original) {
+	key = strings.TrimSpace(key)
+	adding := key == ""
+	if !adding && m.Category(key) == nil {
 		return nil, false, access.Missing("no such category")
 	}
-	renamed := !adding && original != title
-	if (adding || renamed) && slices.Contains(m.Categories, title) {
+	if other := m.categoryTitled(title); other != nil && (adding || other.ID != key) {
 		return nil, false, access.Invalid("%q is already a category", title)
 	}
 	if adding {
-		return []store.Op{store.Insert(categoriesTab, store.Row{"Title": title})}, true, nil
+		return []store.Op{store.Insert(categoriesTab, store.Row{"Category ID": id.New(m.taken), "Title": title})}, true, nil
 	}
-	return []store.Op{store.Update(categoriesTab, store.Row{"Title": original}, store.Row{"Title": title})}, false, nil
+	return []store.Op{store.Update(categoriesTab, store.Row{"Category ID": key}, store.Row{"Title": title})}, false, nil
 }
 
-func (c *Cache) deleteCategory(actor access.Actor, title string) ([]store.Op, error) {
+func (c *Cache) deleteCategory(actor access.Actor, key string) (*Category, []store.Op, error) {
 	if err := require(actor, Configure); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if !slices.Contains(c.Model().Categories, title) {
-		return nil, access.Missing("no such category")
+	category := c.Model().Category(strings.TrimSpace(key))
+	if category == nil {
+		return nil, nil, access.Missing("no such category")
 	}
-	if c.Count(partiesTab, store.Row{"Category": title}) > 0 {
-		return nil, access.Invalid("parties are filed under this category; move them first")
+	if c.Count(partiesTab, store.Row{"Category": category.ID}) > 0 {
+		return nil, nil, access.Invalid("parties are filed under this category; move them first")
 	}
-	return []store.Op{store.Delete(categoriesTab, store.Row{"Title": title})}, nil
+	return category, []store.Op{store.Delete(categoriesTab, store.Row{"Category ID": category.ID})}, nil
 }
 
 func (m *Model) reorderCategories(actor access.Actor, order []string) ([]store.Op, error) {
@@ -816,18 +826,18 @@ func (m *Model) reorderCategories(actor access.Actor, order []string) ([]store.O
 	if len(order) != len(m.Categories) {
 		return nil, access.Invalid("the order must name every category once")
 	}
-	titles, keys := []string{}, []string{}
-	for _, title := range order {
-		if !slices.Contains(m.Categories, title) || slices.Contains(titles, title) {
+	named, keys := []string{}, []string{}
+	for _, key := range order {
+		if m.Category(key) == nil || slices.Contains(named, key) {
 			return nil, access.Invalid("the order must name every category once")
 		}
-		titles, keys = append(titles, title), append(keys, m.categoryOrder[title])
+		named, keys = append(named, key), append(keys, m.categoryOrder[key])
 	}
 	placed := store.Order(keys)
 	ops := []store.Op{}
-	for i, title := range titles {
+	for i, key := range named {
 		if placed[i] != keys[i] {
-			ops = append(ops, store.Update(categoriesTab, store.Row{"Title": title}, store.Row{store.OrderColumn: placed[i]}))
+			ops = append(ops, store.Update(categoriesTab, store.Row{"Category ID": key}, store.Row{store.OrderColumn: placed[i]}))
 		}
 	}
 	return ops, nil

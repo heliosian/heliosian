@@ -42,13 +42,13 @@ func (m *Model) MonthUnder(directory *who.Model, email string, linked []Linked, 
 		}
 		byType := map[string][]string{}
 		for _, c := range classrooms {
-			if name := byClassroom[c]; name != "" && name != RegularDayType {
-				byType[name] = append(byType[name], c)
+			if key := byClassroom[c]; key != "" && key != RegularDayType {
+				byType[key] = append(byType[key], c)
 			}
 		}
 		day := Day{Kinds: []Kind{}}
 		for _, t := range m.DayTypes {
-			rooms, ok := byType[t.Name]
+			rooms, ok := byType[t.ID]
 			if !ok {
 				continue
 			}

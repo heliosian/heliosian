@@ -30,7 +30,7 @@ func main() {
 	if err != nil {
 		logging.Fatal("periodicsync: sheet source", "error", err)
 	}
-	directory, err := who.LoadModel(source, nil, static.Files{Root: "web/who"}, []byte("periodicsync"))
+	directory, err := who.LoadModel(source, nil, static.Files{Root: "web/who"}, []byte(env.Required("ID_KEY")))
 	if err != nil {
 		logging.Fatal("periodicsync: load directory model", "error", err)
 	}

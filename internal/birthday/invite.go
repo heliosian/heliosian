@@ -79,7 +79,7 @@ func (a app) mailMovedAskDays(r *http.Request, before, after map[string]askDay) 
 }
 
 func (a app) sendInvite(r *http.Request, sv StaffView, to, movedFrom string) {
-	m := assignmentMessage(mail.Base(r), a.mailer.From(), sv, to, movedFrom)
+	m := assignmentMessage(a.cache.Model(), mail.Base(r), a.mailer.From(), sv, to, movedFrom)
 	go func() {
 		if err := a.mailer.Send(context.WithoutCancel(r.Context()), m); err != nil {
 			slog.Error("birthday: mail invite", "error", err, "to", to, "email", sv.Email)
@@ -87,7 +87,7 @@ func (a app) sendInvite(r *http.Request, sv StaffView, to, movedFrom string) {
 	}()
 }
 
-func assignmentMessage(base, from string, sv StaffView, to, movedFrom string) mail.Message {
+func assignmentMessage(model *Model, base, from string, sv StaffView, to, movedFrom string) mail.Message {
 	link := base + staffPath(sv.Email)
 	ask := longDate(sv.RequestBy)
 	subject := threadSubject(sv)
@@ -102,7 +102,7 @@ func assignmentMessage(base, from string, sv StaffView, to, movedFrom string) ma
 		{"Newsletter", longDate(sv.NewsletterDate)},
 	}
 	if sv.LastDonation != nil {
-		last := sv.LastDonation.Charity
+		last := model.charityName(sv.LastDonation.Charity)
 		if sv.LastDonation.Note != "" {
 			last += " — " + sv.LastDonation.Note
 		}

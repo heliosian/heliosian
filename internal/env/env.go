@@ -13,6 +13,7 @@ type Secret struct {
 
 var Secrets = []Secret{
 	{"SESSION_KEY", "heliosian-session-key"},
+	{"ID_KEY", "heliosian-id-key"},
 	{"GOOGLE_CLIENT_ID", "heliosian-oauth-client-id"},
 	{"GOOGLE_MAPS_SERVER_KEY", "heliosian-geocoding-key"},
 	{"GOOGLE_MAPS_BROWSER_KEY", "heliosian-maps-browser-key"},

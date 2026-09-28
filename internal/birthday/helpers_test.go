@@ -7,7 +7,7 @@ import (
 func (m *Model) charityRows() []map[string]string {
 	rows := []map[string]string{}
 	for _, c := range m.Charities {
-		rows = append(rows, map[string]string{"Name": c.Name, "Donation Link": c.DonationLink, "Allowed": cells.YesNoCell(c.Allowed)})
+		rows = append(rows, map[string]string{"Charity ID": c.ID, "Name": c.Name, "Donation Link": c.DonationLink, "Allowed": cells.YesNoCell(c.Allowed)})
 	}
 	return rows
 }

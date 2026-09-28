@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -14,8 +15,10 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
+	"heliosian/internal/cells"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/id"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
@@ -29,8 +32,15 @@ func pinnedClock() time.Time {
 	return testNow
 }
 
+var sampleRoot string
+
 func TestMain(m *testing.M) {
 	now = pinnedClock
+	root, err := filepath.Abs("../../sampledata")
+	if err != nil {
+		panic(err)
+	}
+	sampleRoot = root
 	os.Exit(m.Run())
 }
 
@@ -69,12 +79,17 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 		Settings:  func() *config.Settings { return &config.Settings{} },
 		Lists:     func(string) []List { return nil },
 		Linked:    func(string) []Linked { return nil },
+		SourceID:  noSource,
 		Celebrate: noCelebrate(),
 		Sources:   newSampleSources(t).sources,
 		Mail:      Mail{Sender: keptMail().Mailgun},
 		Style:     testStyle,
 	})
 	return mux, cache
+}
+
+func noSource(string, string) string {
+	return ""
 }
 
 func memoryImages() blob.Images {
@@ -135,7 +150,8 @@ func TestFeedLifecycle(t *testing.T) {
 	mux, cache := testApp(t)
 	owner := as("jordan.whitfield@heliosschool.org", mux)
 	other := as("mia.torres@heliosschool.org", mux)
-	rec := call(t, owner, http.MethodPost, "/api/when/feeds", `{"name":"Just trips","classrooms":["Jays"],"tags":["Trip"]}`)
+	trip := `"tags":[` + quoted(t, "Trip") + `]`
+	rec := call(t, owner, http.MethodPost, "/api/when/feeds", `{"name":"Just trips","classrooms":["Jays"],`+trip+`}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body.String())
 	}
@@ -149,7 +165,7 @@ func TestFeedLifecycle(t *testing.T) {
 	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "SUMMARY:Jays and Ravens Camping") || strings.Contains(rec.Body.String(), "Labor Day") {
 		t.Errorf("new feed: %d %s", rec.Code, rec.Body.String())
 	}
-	rec = call(t, owner, http.MethodPost, "/api/when/feeds", `{"name":"just TRIPS","classrooms":["Jays"],"tags":["Trip"]}`)
+	rec = call(t, owner, http.MethodPost, "/api/when/feeds", `{"name":"just TRIPS","classrooms":["Jays"],`+trip+`}`)
 	var twin struct{ Token string }
 	json.Unmarshal(rec.Body.Bytes(), &twin)
 	if rec.Code != http.StatusOK || cache.Model().Feed(twin.Token).Name != "just TRIPS 2" {
@@ -162,16 +178,16 @@ func TestFeedLifecycle(t *testing.T) {
 	if rec := call(t, owner, http.MethodPost, "/api/when/feeds", `{"name":""}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("no name: %d", rec.Code)
 	}
-	if rec := call(t, other, http.MethodPut, "/api/when/feeds", `{"token":"`+made.Token+`","name":"Theirs","classrooms":["Jays"],"tags":["Trip"]}`); rec.Code != http.StatusForbidden {
+	if rec := call(t, other, http.MethodPut, "/api/when/feeds", `{"token":"`+made.Token+`","name":"Theirs","classrooms":["Jays"],`+trip+`}`); rec.Code != http.StatusForbidden {
 		t.Errorf("someone else's change: %d", rec.Code)
 	}
-	if rec := call(t, owner, http.MethodPut, "/api/when/feeds", `{"token":"`+made.Token+`","name":"","classrooms":["Jays"],"tags":["Trip"]}`); rec.Code != http.StatusBadRequest {
+	if rec := call(t, owner, http.MethodPut, "/api/when/feeds", `{"token":"`+made.Token+`","name":"","classrooms":["Jays"],`+trip+`}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("change to no name: %d", rec.Code)
 	}
-	if rec := call(t, owner, http.MethodPut, "/api/when/feeds", `{"token":"`+made.Token+`","name":"Jays days","emoji":" 🚌 ","classrooms":["Jays"],"tags":["Trip","Schedule"]}`); rec.Code != http.StatusNoContent {
+	if rec := call(t, owner, http.MethodPut, "/api/when/feeds", `{"token":"`+made.Token+`","name":"Jays days","emoji":" 🚌 ","classrooms":["Jays"],"tags":[`+quoted(t, "Trip, Schedule")+`]}`); rec.Code != http.StatusNoContent {
 		t.Errorf("owner's change: %d %s", rec.Code, rec.Body.String())
 	}
-	if f := cache.Model().Feed(made.Token); f == nil || f.Name != "Jays days" || f.Emoji != "🚌" || strings.Join(f.Tags, ",") != "Trip,Schedule" || f.Email != "jordan.whitfield@heliosschool.org" {
+	if f := cache.Model().Feed(made.Token); f == nil || f.Name != "Jays days" || f.Emoji != "🚌" || cells.JoinList(f.Tags) != ids(t, "Trip, Schedule") || f.Email != "jordan.whitfield@heliosschool.org" {
 		t.Errorf("feed after change: %+v", f)
 	}
 	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "X-WR-CALNAME:Jays days") || !strings.Contains(rec.Body.String(), "Labor Day") {
@@ -208,7 +224,7 @@ func TestModelRoute(t *testing.T) {
 
 func TestSharePreview(t *testing.T) {
 	handler, cache := testApp(t)
-	testkit.Previews(t, PreviewHead(cache, func(string) []Linked { return nil }, testStyle), testkit.Preview{
+	testkit.Previews(t, PreviewHead(cache, func(string) []Linked { return nil }, noSource, testStyle), testkit.Preview{
 		URL:  "https://when.heliosiandev.com:8080/e/a7@sample",
 		Want: []string{`property="og:title" content="International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`, `content="https://when.heliosiandev.com:8080/open/share/a7@sample.png"`},
 	}, testkit.Preview{
@@ -216,6 +232,50 @@ func TestSharePreview(t *testing.T) {
 		Want: []string{`og:title" content="Helios When"`, "One calendar", "/open/share/upcoming.png"},
 	})
 	testkit.Cards(t, handler, []string{"/open/share/a7@sample.png", "/open/share/upcoming.png"}, "/open/share/nope.png")
+}
+
+func TestOldIDsReachTheirEvents(t *testing.T) {
+	handler, cache := testApp(t)
+	jordan := as("jordan.whitfield@heliosschool.org", handler)
+	for old, want := range map[string]string{"7QK2M4XN": "evt0000000001", "3pl9w2zc": "evt0000000002", "8RV4T6PK": "evt0000000003"} {
+		rec := call(t, jordan, "GET", "/api/when/event?id="+old, "")
+		var e Event
+		json.Unmarshal(rec.Body.Bytes(), &e)
+		if rec.Code != 200 || e.ID != want {
+			t.Errorf("the event by its old ID %s: %d %s", old, rec.Code, e.ID)
+		}
+	}
+	for path, want := range map[string]string{"/e/7QK2M4XN": "/e/evt0000000001", "/events/3PL9W2ZC": "/e/evt0000000002", "/e/8rv4t6pk?from=mail": "/e/evt0000000003?from=mail"} {
+		if rec := call(t, handler, "GET", path, ""); rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != want {
+			t.Errorf("%s: %d to %q, want a 301 to %s", path, rec.Code, rec.Header().Get("Location"), want)
+		}
+	}
+	for _, path := range []string{"/e/evt0000000001", "/events/evt0000000002", "/e/a7@sample", "/e/no-such-event"} {
+		if rec := call(t, handler, "GET", path, ""); rec.Code != 200 {
+			t.Errorf("%s: %d, want the page", path, rec.Code)
+		}
+	}
+	testkit.Cards(t, handler, []string{"/open/share/3PL9W2ZC.png", "/open/share/evt0000000002.png"}, "/open/share/3PL9W2ZD.png")
+	testkit.Previews(t, PreviewHead(cache, func(string) []Linked { return nil }, noSource, testStyle), testkit.Preview{
+		URL:  "https://when.heliosiandev.com:8080/e/3PL9W2ZC",
+		Want: []string{`property="og:title" content="HCA Meeting"`, `content="https://when.heliosiandev.com:8080/open/share/evt0000000002.png"`},
+	})
+	if rec := call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"3PL9W2ZC","flyer":"sample/community.jpg"}`); rec.Code != 204 {
+		t.Fatalf("a flyer by the old ID: %d %s", rec.Code, rec.Body)
+	}
+	for _, row := range sheetTables(t)[InvitationsTab] {
+		if strings.EqualFold(row["Event ID"], "3PL9W2ZC") {
+			t.Errorf("a write by the old ID made a row under it: %v", row)
+		}
+		if row["Event ID"] == "evt0000000002" && row["Flyer"] != "sample/community.jpg" {
+			t.Errorf("the flyer did not reach the event's row: %v", row)
+		}
+	}
+	for _, path := range []string{"/open/flyer/3PL9W2ZC", "/open/flyer/evt0000000002"} {
+		if rec := call(t, handler, "GET", path, ""); rec.Code != 200 {
+			t.Errorf("%s: %d", path, rec.Code)
+		}
+	}
 }
 
 func TestProvenanceForAdmins(t *testing.T) {
@@ -230,7 +290,7 @@ func TestProvenanceForAdmins(t *testing.T) {
 	}
 	var hand *Event
 	for _, e := range view.Events {
-		if e.ID == "7QK2M4XN" {
+		if e.ID == "evt0000000001" {
 			hand = e
 		}
 	}
@@ -250,14 +310,14 @@ func TestProvenanceForAdmins(t *testing.T) {
 func TestSavedView(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
-	rec := call(t, as(me, handler), "POST", "/api/when/settings", `{"classrooms":["Hawks"],"tags":["Community","HCA","Nonsense"]}`)
+	rec := call(t, as(me, handler), "POST", "/api/when/settings", `{"classrooms":["Hawks"],"tags":[`+quoted(t, "Community, HCA")+`,"Nonsense"]}`)
 	if rec.Code != 204 {
 		t.Fatalf("save: %d %s", rec.Code, rec.Body)
 	}
 	var view View
 	rec = call(t, as(me, handler), "GET", "/api/when/model", "")
 	json.NewDecoder(rec.Body).Decode(&view)
-	if view.User.Saved == nil || strings.Join(view.User.Saved.Classrooms, ",") != "Hawks" || strings.Join(view.User.Saved.Tags, ",") != "Community,HCA" {
+	if view.User.Saved == nil || strings.Join(view.User.Saved.Classrooms, ",") != "Hawks" || cells.JoinList(view.User.Saved.Tags) != ids(t, "Community, HCA") {
 		t.Errorf("saved view = %+v", view.User.Saved)
 	}
 	for _, u := range cache.Model().UpcomingUnder(sampleDirectory(t, "sampledata"), me, nil, now(), 0, "") {
@@ -327,7 +387,7 @@ func TestDefaultCalendar(t *testing.T) {
 	if rec := call(t, viewer, "POST", "/api/when/default", `{"token":"`+MyHeliosianToken+`"}`); rec.Code != 204 || cache.Model().DefaultCalendar(me) != nil {
 		t.Errorf("back to My Heliosian: %d, default %+v", rec.Code, cache.Model().DefaultCalendar(me))
 	}
-	if rec := call(t, viewer, "PUT", "/api/when/feeds", `{"token":"`+MyHeliosianToken+`","name":"Home base","emoji":"🏠","classrooms":["Jays"],"tags":["Trip"]}`); rec.Code != 204 {
+	if rec := call(t, viewer, "PUT", "/api/when/feeds", `{"token":"`+MyHeliosianToken+`","name":"Home base","emoji":"🏠","classrooms":["Jays"],"tags":[`+quoted(t, "Trip")+`]}`); rec.Code != 204 {
 		t.Errorf("rename My Heliosian: %d %s", rec.Code, rec.Body)
 	}
 	if home := cache.Model().MyHeliosian(me); home.Name != "Home base" || home.Emoji != "🏠" || !home.Locked || len(home.Classrooms) != 0 {
@@ -367,6 +427,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 		Settings:  func() *config.Settings { return &config.Settings{} },
 		Lists:     func(string) []List { return nil },
 		Linked:    func(string) []Linked { return nil },
+		SourceID:  noSource,
 		Celebrate: noCelebrate(),
 		Sources:   newSampleSources(t).sources,
 		Mail:      Mail{Sender: kept.Mailgun, Base: "https://when.heliosian.com"},
@@ -380,17 +441,17 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 		}
 		return kept.Messages()
 	}
-	call(t, parent, "POST", "/api/when/events", `{"title":"Bake sale","start":"2026-10-01 15:00","tags":["Jays","Community"],"sharing":"Public"}`)
+	call(t, parent, "POST", "/api/when/events", `{"title":"Bake sale","start":"2026-10-01 15:00","tags":[`+quoted(t, "Jays, Community")+`],"sharing":"Public"}`)
 	sent := wait(1)
 	if len(sent) != 1 || !strings.HasPrefix(sent[0].Subject, "Event to approve: Bake sale") || !slices.Contains(sent[0].To, "dana.hawkins@heliosschool.org") || !strings.Contains(sent[0].Text, "Jordan") || !strings.Contains(sent[0].HTML, "Review the event") {
 		t.Errorf("public event mail = %+v", sent)
 	}
-	call(t, parent, "POST", "/api/when/events", `{"title":"Sam\u2019s party","start":"2026-10-03 14:00","tags":["Jays"],"sharing":"Link"}`)
+	call(t, parent, "POST", "/api/when/events", `{"title":"Sam\u2019s party","start":"2026-10-03 14:00","tags":[`+quoted(t, "Jays")+`],"sharing":"Link"}`)
 	sent = wait(2)
 	if len(sent) != 2 || !strings.HasPrefix(sent[1].Subject, "Link event added: Sam") || !strings.Contains(sent[1].HTML, "See the event") || strings.Contains(sent[1].Text, "waiting for approval") {
 		t.Errorf("link event mail = %+v", sent)
 	}
-	call(t, admin, "POST", "/api/when/events", `{"title":"Admin's own","start":"2026-10-05","tags":["Jays"],"sharing":"Public"}`)
+	call(t, admin, "POST", "/api/when/events", `{"title":"Admin's own","start":"2026-10-05","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`)
 	sent = wait(3)
 	if len(sent) != 3 || !strings.HasPrefix(sent[2].Subject, "Event to approve: Admin's own") {
 		t.Errorf("an admin's own public event waits and is mailed about too: %+v", sent)
@@ -407,7 +468,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	if party == nil {
 		t.Fatal("the party is not in the host's view")
 	}
-	if rec := call(t, parent, "PUT", "/api/when/events", `{"id":"`+party.ID+`","title":"`+party.Title+`","start":"2026-10-03 14:00","tags":["Jays"],"sharing":"Public"}`); rec.Code != 204 {
+	if rec := call(t, parent, "PUT", "/api/when/events", `{"id":"`+party.ID+`","title":"`+party.Title+`","start":"2026-10-03 14:00","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 204 {
 		t.Fatalf("switch to public: %d %s", rec.Code, rec.Body)
 	}
 	sent = wait(4)
@@ -426,7 +487,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 func TestAdminAddsAndCorrects(t *testing.T) {
 	handler, cache := testApp(t)
 	admin := underHat("dana.hawkins@heliosschool.org", handler)
-	rec := call(t, admin, "POST", "/api/when/events", `{"title":"Chess Club","start":"2026-10-01 15:30","end":"2026-10-01 16:30","tags":["Jays","Clubs"],"sharing":"Public","repeatWeeks":4,"repeatTimes":2}`)
+	rec := call(t, admin, "POST", "/api/when/events", `{"title":"Chess Club","start":"2026-10-01 15:30","end":"2026-10-01 16:30","tags":[`+quoted(t, "Jays, Clubs")+`],"sharing":"Public","repeatWeeks":4,"repeatTimes":2}`)
 	if rec.Code != 200 {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
@@ -443,6 +504,11 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if len(made.IDs) != 3 {
 		t.Fatalf("ids = %v", made.IDs)
 	}
+	for _, key := range made.IDs {
+		if parsed, ok := id.Parse(key); !ok || parsed != key {
+			t.Errorf("a minted event ID does not parse: %q", key)
+		}
+	}
 	starts := []string{}
 	for _, id := range made.IDs {
 		e := cache.Model().Event(id)
@@ -454,7 +520,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if strings.Join(starts, " ") != "2026-10-01 15:30 2026-10-29 15:30 2026-11-26 15:30" {
 		t.Errorf("starts = %v", starts)
 	}
-	if rec := call(t, admin, "POST", "/api/when/events", `{"title":"Bad","start":"not a date","tags":["Clubs"],"sharing":"Public"}`); rec.Code != 400 {
+	if rec := call(t, admin, "POST", "/api/when/events", `{"title":"Bad","start":"not a date","tags":[`+quoted(t, "Clubs")+`],"sharing":"Public"}`); rec.Code != 400 {
 		t.Errorf("bad date accepted: %d", rec.Code)
 	}
 	rec = call(t, admin, "POST", "/api/when/keywords", `{"id":"`+made.IDs[0]+`","keywords":["chess","board games"]}`)
@@ -475,7 +541,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec := call(t, parent, "POST", "/api/when/keywords", `{"id":"`+made.IDs[0]+`","keywords":["x"]}`); rec.Code != 403 {
 		t.Errorf("parent set keywords: %d", rec.Code)
 	}
-	rec = call(t, parent, "POST", "/api/when/events", `{"title":"Bake sale","start":"2026-10-01 15:00","end":"2026-10-01 17:00","tags":["Jays","Community"],"sharing":"Public","repeatWeeks":1,"repeatTimes":3}`)
+	rec = call(t, parent, "POST", "/api/when/events", `{"title":"Bake sale","start":"2026-10-01 15:00","end":"2026-10-01 17:00","tags":[`+quoted(t, "Jays, Community")+`],"sharing":"Public","repeatWeeks":1,"repeatTimes":3}`)
 	var shared struct {
 		IDs     []string `json:"ids"`
 		Pending bool     `json:"pending"`
@@ -520,16 +586,16 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if e := cache.Model().Event(shared.IDs[0]); e == nil || e.Pending || e.Status != StatusApproved || !slices.Contains(cache.Model().Events, e) {
 		t.Errorf("approved event = %+v", e)
 	}
-	if rec := call(t, parent, "PUT", "/api/when/events", `{"id":"`+shared.IDs[0]+`","title":"Bake sale!","start":"2026-10-01 15:30","end":"2026-10-01 17:30","location":"Gym","tags":["Jays","Community"],"image":"/category-images/cake.jpg","sharing":"Public"}`); rec.Code != 204 {
+	if rec := call(t, parent, "PUT", "/api/when/events", `{"id":"`+shared.IDs[0]+`","title":"Bake sale!","start":"2026-10-01 15:30","end":"2026-10-01 17:30","location":"Gym","tags":[`+quoted(t, "Jays, Community")+`],"image":"/category-images/cake.jpg","sharing":"Public"}`); rec.Code != 204 {
 		t.Errorf("owner's edit: %d %s", rec.Code, rec.Body)
 	}
 	if e := cache.Model().Event(shared.IDs[0]); e == nil || e.Title != "Bake sale!" || e.Location != "Gym" || e.Image != "/category-images/cake.jpg" || e.Start != "2026-10-01 15:30" || e.Pending {
 		t.Errorf("edited event = %+v", e)
 	}
-	if rec := call(t, other, "PUT", "/api/when/events", `{"id":"`+shared.IDs[0]+`","title":"Mine now","start":"2026-10-01","tags":["Jays"],"sharing":"Public"}`); rec.Code != 403 {
+	if rec := call(t, other, "PUT", "/api/when/events", `{"id":"`+shared.IDs[0]+`","title":"Mine now","start":"2026-10-01","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 403 {
 		t.Errorf("another parent's edit: %d", rec.Code)
 	}
-	rec = call(t, parent, "POST", "/api/when/events", `{"title":"Sam\u2019s birthday","start":"2026-10-03 14:00","end":"2026-10-03 16:00","tags":["Jays","Community"],"sharing":"Link"}`)
+	rec = call(t, parent, "POST", "/api/when/events", `{"title":"Sam\u2019s birthday","start":"2026-10-03 14:00","end":"2026-10-03 16:00","tags":[`+quoted(t, "Jays, Community")+`],"sharing":"Link"}`)
 	json.Unmarshal(rec.Body.Bytes(), &shared)
 	if rec.Code != 200 || shared.Pending {
 		t.Fatalf("link: %d %s", rec.Code, rec.Body)
@@ -559,28 +625,40 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if !found {
 		t.Errorf("a yes did not put the link event in the other's Upcoming")
 	}
-	if rec := call(t, parent, "POST", "/api/when/events", `{"title":"Unsaid","start":"2026-10-04","tags":["Jays"]}`); rec.Code != 400 {
+	if rec := call(t, parent, "POST", "/api/when/events", `{"title":"Unsaid","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`]}`); rec.Code != 400 {
 		t.Errorf("no sharing: %d", rec.Code)
 	}
-	if rec := call(t, parent, "POST", "/api/when/events", `{"title":"Unsaid","start":"2026-10-04","tags":["Jays"],"sharing":"Private"}`); rec.Code != 400 {
+	if rec := call(t, parent, "POST", "/api/when/events", `{"title":"Unsaid","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Private"}`); rec.Code != 400 {
 		t.Errorf("an old sharing word: %d", rec.Code)
 	}
-	if rec := call(t, parent, "POST", "/api/when/events", `{"id":"Sams-Party","title":"Sam\u2019s party","start":"2026-10-04","tags":["Jays"],"sharing":"Link"}`); rec.Code != 200 || cache.Model().Event("sams-party") == nil {
-		t.Errorf("chosen address: %d %s", rec.Code, rec.Body)
+	rec = call(t, parent, "POST", "/api/when/events", `{"id":"sams-party","address":"Sams-Party","title":"Sam\u2019s party","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Link"}`)
+	json.Unmarshal(rec.Body.Bytes(), &shared)
+	party := cache.Model().Event("sams-party")
+	if rec.Code != 200 || party == nil || party.ID != shared.IDs[0] || party.Address != "sams-party" || EventPath(party) != "/e/sams-party" {
+		t.Fatalf("chosen address: %d %s, event %+v", rec.Code, rec.Body, party)
+	}
+	if _, ok := id.Parse(party.ID); !ok {
+		t.Errorf("an event with an address is still minted an ID: %q", party.ID)
 	}
 	if rec := call(t, handler, "GET", "/open/share/sams-party.png", ""); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
 		t.Errorf("a link event's card: %d", rec.Code)
 	}
-	if head := PreviewHead(cache, func(string) []Linked { return nil }, testStyle)(httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/open/share/sams-party.png") {
+	if head := PreviewHead(cache, func(string) []Linked { return nil }, noSource, testStyle)(httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/open/share/"+party.ID+".png") {
 		t.Errorf("a link event's preview:\n%s", head)
 	}
-	if rec := call(t, parent, "POST", "/api/when/events", `{"id":"sams-party","title":"Again","start":"2026-10-04","tags":["Jays"],"sharing":"Public"}`); rec.Code != 400 {
+	if rec := call(t, parent, "POST", "/api/when/events", `{"address":"sams-party","title":"Again","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {
 		t.Errorf("a taken address: %d", rec.Code)
 	}
-	if rec := call(t, parent, "POST", "/api/when/events", `{"id":"a/b","title":"Odd","start":"2026-10-04","tags":["Jays"],"sharing":"Public"}`); rec.Code != 400 {
+	if rec := call(t, parent, "POST", "/api/when/events", `{"address":"`+party.ID+`","title":"Again","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {
+		t.Errorf("an address that is another event's ID: %d", rec.Code)
+	}
+	if rec := call(t, parent, "POST", "/api/when/events", `{"address":"a/b","title":"Odd","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {
 		t.Errorf("an ill-formed address: %d", rec.Code)
 	}
-	rec = call(t, parent, "POST", "/api/when/events", `{"title":"Not this","start":"2026-10-02","tags":["Jays"],"sharing":"Public"}`)
+	if rec := call(t, parent, "POST", "/api/when/events", `{"address":"evt9999999999","title":"Odd","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {
+		t.Errorf("an address that reads as an ID: %d", rec.Code)
+	}
+	rec = call(t, parent, "POST", "/api/when/events", `{"title":"Not this","start":"2026-10-02","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`)
 	json.Unmarshal(rec.Body.Bytes(), &shared)
 	if rec := call(t, admin, "POST", "/api/when/events/decline", `{"id":"`+shared.IDs[0]+`"}`); rec.Code != 204 {
 		t.Errorf("decline: %d %s", rec.Code, rec.Body)
@@ -608,10 +686,10 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 func TestFeedTags(t *testing.T) {
 	handler, _ := testApp(t)
 	me := as("jordan.whitfield@heliosschool.org", handler)
-	if rec := call(t, me, "POST", "/api/when/feeds", `{"name":"Odds and ends","classrooms":["Jays"],"tags":["Misc","Trip"]}`); rec.Code != 200 {
+	if rec := call(t, me, "POST", "/api/when/feeds", `{"name":"Odds and ends","classrooms":["Jays"],"tags":[`+quoted(t, "Misc, Trip")+`]}`); rec.Code != 200 {
 		t.Errorf("feed with Misc: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, me, "POST", "/api/when/feeds", `{"name":"Parties","classrooms":["Jays"],"tags":["Celebrate","Going"]}`); rec.Code != 200 {
+	if rec := call(t, me, "POST", "/api/when/feeds", `{"name":"Parties","classrooms":["Jays"],"tags":[`+quoted(t, "Celebrate, Going")+`]}`); rec.Code != 200 {
 		t.Errorf("feed with Celebrate and Going: %d %s", rec.Code, rec.Body)
 	}
 	if rec := call(t, me, "POST", "/api/when/feeds", `{"name":"Nope","classrooms":["Jays"],"tags":["Nonsense"]}`); rec.Code != 400 {
@@ -621,10 +699,10 @@ func TestFeedTags(t *testing.T) {
 
 func TestFeedCarriesLinked(t *testing.T) {
 	handler, cache := testApp(t)
-	linked := []Linked{{Source: SourceCelebrate, ID: "P9", Title: "Fondue Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing}}
+	linked := []Linked{{Source: SourceCelebrate, ID: "pty0000000009", Title: "Fondue Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing}}
 	f := &Feed{Token: "t", Email: "jordan.whitfield@heliosschool.org", Name: "Mine", Tags: []string{TagGoing}}
 	out := string(ICS(cache.Model(), sampleDirectory(t, "sampledata"), f, linked, "https://when.heliosiandev.com:8080", now()))
-	if !strings.Contains(out, "SUMMARY:Fondue Night") || !strings.Contains(out, "URL:https://when.heliosiandev.com:8080/e/celebrate/P9") {
+	if !strings.Contains(out, "SUMMARY:Fondue Night") || !strings.Contains(out, "URL:https://when.heliosiandev.com:8080/e/celebrate/pty0000000009") {
 		t.Errorf("feed lacks the party:\n%s", out)
 	}
 	if strings.Contains(out, "SUMMARY:Halloween Parade") {
@@ -735,11 +813,7 @@ func TestOverrideFromThePage(t *testing.T) {
 	handler, cache := testApp(t)
 	admin := underHat("dana.hawkins@heliosschool.org", handler)
 	e := cache.Model().Event("a2@sample")
-	builtIn := map[string]bool{}
-	for _, tag := range cache.Model().Tags {
-		builtIn[tag.Name] = tag.BuiltIn
-	}
-	tags := slices.DeleteFunc(slices.Clone(e.Tags), func(t string) bool { return builtIn[t] })
+	tags := slices.DeleteFunc(slices.Clone(e.Tags), BuiltInTag)
 	body := func(title, start, end, location, note string) string {
 		raw, _ := json.Marshal(map[string]any{"id": "a2@sample", "title": title, "start": start, "end": end, "location": location, "description": e.Description, "tags": tags, "keywords": e.Keywords, "note": note})
 		return string(raw)
@@ -775,7 +849,7 @@ func TestOverrideFromThePage(t *testing.T) {
 	}
 	addressed := func(id, address string) string {
 		ev := cache.Model().Event(id)
-		raw, _ := json.Marshal(map[string]any{"id": id, "title": ev.Title, "start": ev.Start, "end": ev.End, "location": ev.Location, "description": ev.Description, "tags": slices.DeleteFunc(slices.Clone(ev.Tags), func(t string) bool { return builtIn[t] }), "keywords": ev.Keywords, "address": address})
+		raw, _ := json.Marshal(map[string]any{"id": id, "title": ev.Title, "start": ev.Start, "end": ev.End, "location": ev.Location, "description": ev.Description, "tags": slices.DeleteFunc(slices.Clone(ev.Tags), BuiltInTag), "keywords": ev.Keywords, "address": address})
 		return string(raw)
 	}
 	if rec := call(t, admin, "PUT", "/api/when/overrides", addressed("a2@sample", "Back-To-School")); rec.Code != 204 {

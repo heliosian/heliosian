@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"heliosian/internal/cells"
+	"heliosian/internal/id"
 	"heliosian/internal/who"
 )
 
@@ -40,16 +41,19 @@ func (r Rule) Same(o Rule) bool {
 		slices.Equal(r.Grades, o.Grades) && slices.Equal(r.Tags, o.Tags) && slices.Equal(r.Family, o.Family)
 }
 
-func TagKey(owner, name string) string {
-	return owner + ":" + name
+const (
+	tagPrefix  = "tag:"
+	deletedTag = "Deleted tag"
+)
+
+var listKinds = []string{who.ListParty, who.ListActivity, who.ListRoom, who.ListGroup}
+
+func TagKey(key string) string {
+	return tagPrefix + key
 }
 
-func tagRef(tag string) (string, string, bool) {
-	at := strings.Index(tag, ":")
-	if at < 0 || !strings.Contains(tag[:at], "@") {
-		return "", tag, false
-	}
-	return strings.ToLower(tag[:at]), tag[at+1:], true
+func tagRef(tag string) (string, bool) {
+	return strings.CutPrefix(tag, tagPrefix)
 }
 
 func CheckFacets(r Rule) error {
@@ -67,8 +71,14 @@ func CheckFacets(r Rule) error {
 		if strings.Contains(tag, ",") {
 			return fmt.Errorf("a tag with a comma in its name cannot be used in a rule")
 		}
-		if at := strings.Index(tag, ":"); at < 1 || at == len(tag)-1 {
-			return fmt.Errorf("tag %q is not an owner's address, a colon and a name, or a Magic Tag's key", tag)
+		if key, isTag := tagRef(tag); isTag {
+			if _, ok := id.Parse(key); !ok {
+				return fmt.Errorf("tag %q does not name a tag by its ID", tag)
+			}
+			continue
+		}
+		if kind, rest, _ := strings.Cut(tag, ":"); !slices.Contains(listKinds, kind) || rest == "" {
+			return fmt.Errorf("tag %q is not a tag's key or a Magic Tag's key", tag)
 		}
 	}
 	return nil
@@ -76,23 +86,23 @@ func CheckFacets(r Rule) error {
 
 type Sources struct {
 	Directory *who.Model
-	Tags      func(owner string) map[string][]string
+	Tags      func(owner string) []who.Tag
 	Lists     func(owner string) []who.List
-	Shared    func(email string) []who.SharedTag
+	Shared    func(email string) []who.Tag
 }
 
 type reader struct {
 	s      Sources
-	tags   map[string]map[string][]string
-	shared map[string][]who.SharedTag
+	tags   map[string][]who.Tag
+	shared map[string][]who.Tag
 	lists  map[string][]who.List
 }
 
 func (s Sources) reader() *reader {
-	return &reader{s: s, tags: map[string]map[string][]string{}, shared: map[string][]who.SharedTag{}, lists: map[string][]who.List{}}
+	return &reader{s: s, tags: map[string][]who.Tag{}, shared: map[string][]who.Tag{}, lists: map[string][]who.List{}}
 }
 
-func (r *reader) tagsOf(owner string) map[string][]string {
+func (r *reader) tagsOf(owner string) []who.Tag {
 	if _, ok := r.tags[owner]; !ok {
 		if r.s.Tags != nil {
 			r.tags[owner] = r.s.Tags(owner)
@@ -103,7 +113,7 @@ func (r *reader) tagsOf(owner string) map[string][]string {
 	return r.tags[owner]
 }
 
-func (r *reader) sharedWith(email string) []who.SharedTag {
+func (r *reader) sharedWith(email string) []who.Tag {
 	if _, ok := r.shared[email]; !ok {
 		if r.s.Shared != nil {
 			r.shared[email] = r.s.Shared(email)
@@ -125,21 +135,23 @@ func (r *reader) listsOf(email string) []who.List {
 	return r.lists[email]
 }
 
-func (r *reader) manages(email, owner, name string) bool {
-	if email == owner {
-		return true
+func (r *reader) managed(email, key string) (who.Tag, bool) {
+	for _, t := range append(slices.Clone(r.tagsOf(email)), r.sharedWith(email)...) {
+		if t.ID == key {
+			return t, true
+		}
 	}
-	return slices.ContainsFunc(r.sharedWith(email), func(t who.SharedTag) bool { return t.Owner == owner && t.Name == name })
+	return who.Tag{}, false
 }
 
 func (r *reader) people(tag string, editors []string) ([]string, bool) {
-	owner, name, isTag := tagRef(tag)
-	if isTag {
-		people, ok := r.tagsOf(owner)[name]
-		if !ok || !slices.ContainsFunc(editors, func(e string) bool { return r.manages(e, owner, name) }) {
-			return nil, false
+	if key, isTag := tagRef(tag); isTag {
+		for _, e := range editors {
+			if t, ok := r.managed(e, key); ok {
+				return t.People, true
+			}
 		}
-		return people, true
+		return nil, false
 	}
 	for _, e := range editors {
 		for _, l := range r.listsOf(e) {
@@ -170,7 +182,7 @@ func (s Sources) TagLabels(r Rule, editors []string, viewer string) []string {
 	rd := s.reader()
 	out := []string{}
 	for _, tag := range r.Tags {
-		owner, name, isTag := tagRef(tag)
+		key, isTag := tagRef(tag)
 		if !isTag {
 			label := tag + " (no longer a tag)"
 			for _, e := range editors {
@@ -182,14 +194,16 @@ func (s Sources) TagLabels(r Rule, editors []string, viewer string) []string {
 			out = append(out, label)
 			continue
 		}
-		label := name
-		if owner != viewer {
-			label += " (" + s.Directory.DisplayName(owner) + "'s)"
+		t, found := s.Directory.Tag(key)
+		if !found {
+			out = append(out, deletedTag)
+			continue
 		}
-		switch _, ok := rd.people(tag, editors); {
-		case rd.tagsOf(owner)[name] == nil:
-			label += " (no longer a tag)"
-		case !ok:
+		label := t.Name
+		if t.Owner != viewer {
+			label += " (" + t.OwnerName + "'s)"
+		}
+		if _, ok := rd.people(tag, editors); !ok {
 			label += " (no longer shared)"
 		}
 		out = append(out, label)
@@ -424,20 +438,15 @@ func OptionsFor(s Sources, viewer string) Options {
 			grades = append(grades, g.Name)
 		}
 	}
-	own := []string{}
-	if s.Tags != nil {
-		for name := range s.Tags(viewer) {
-			own = append(own, name)
-		}
-	}
-	slices.Sort(own)
 	tags := []TagOption{}
-	for _, name := range own {
-		tags = append(tags, TagOption{Key: TagKey(viewer, name), Name: name})
+	if s.Tags != nil {
+		for _, t := range s.Tags(viewer) {
+			tags = append(tags, TagOption{Key: TagKey(t.ID), Name: t.Name})
+		}
 	}
 	if s.Shared != nil {
 		for _, t := range s.Shared(viewer) {
-			tags = append(tags, TagOption{Key: TagKey(t.Owner, t.Name), Name: t.Name + " (" + t.OwnerName + "'s)"})
+			tags = append(tags, TagOption{Key: TagKey(t.ID), Name: t.Name + " (" + t.OwnerName + "'s)"})
 		}
 	}
 	lists := []ListOption{}
@@ -472,8 +481,10 @@ func Clean(r Rule) Rule {
 	tags := []string{}
 	for _, t := range r.Tags {
 		t = strings.TrimSpace(t)
-		if owner, name, isTag := tagRef(t); isTag {
-			t = TagKey(owner, name)
+		if key, isTag := tagRef(t); isTag {
+			if parsed, ok := id.Parse(key); ok {
+				t = TagKey(parsed)
+			}
 		}
 		if t != "" && !slices.Contains(tags, t) {
 			tags = append(tags, t)

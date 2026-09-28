@@ -9,6 +9,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/geocode"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
@@ -513,141 +514,150 @@ func (m *Model) cropPhoto(actor access.Actor, target, key, name, cropName string
 	return append(photoOps(key, before, after), setOverride(key, store.Row{"Photo Updated": today()})), nil
 }
 
-func (m *Model) canManage(email, owner, tag string) bool {
-	if strings.EqualFold(email, owner) {
-		return true
-	}
-	for _, row := range m.managers {
-		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[managerEmail], email) {
-			return true
-		}
-	}
-	return false
-}
-
-func (m *Model) tagOwnerOf(actor access.Actor, owner, tag string) string {
-	if owner == "" || owner == actor.Email {
-		return actor.Email
-	}
-	if !m.canManage(actor.Email, owner, tag) {
-		return ""
-	}
-	return owner
-}
-
 func validTagName(tag string) bool {
 	return tag != "" && len(tag) <= maxTagLength
 }
 
-func managerOp(owner, tag, manager string, on bool) store.Op {
-	row := store.Row{tagOwner: owner, tagName: tag, managerEmail: manager}
-	if on {
-		return store.Upsert(managersTable, row, store.Row{})
+func (m *Model) ownTag(actor access.Actor, key string) (*tagRecord, error) {
+	t := m.tagByKey(key)
+	if t == nil {
+		return nil, access.Invalid("no such tag")
 	}
-	return store.Delete(managersTable, row)
+	if t.owner != actor.Email {
+		return nil, access.Forbidden("not your tag")
+	}
+	return t, nil
 }
 
-func (m *Model) renameTag(actor access.Actor, from, to string) ([]store.Op, int, error) {
-	if !validTagName(from) || !validTagName(to) {
-		return nil, 0, access.Invalid("bad tag name")
+func (m *Model) managedTag(actor access.Actor, key string) (*tagRecord, error) {
+	t := m.tagByKey(key)
+	if t == nil {
+		return nil, access.Invalid("no such tag")
 	}
-	if to == from {
-		return nil, 0, nil
+	if t.owner != actor.Email && !slices.Contains(t.managers, actor.Email) {
+		return nil, access.Forbidden("not your tag to manage")
 	}
-	own := m.Tags(actor.Email)
-	if len(own[from]) == 0 {
-		return nil, 0, access.Invalid("no such tag")
-	}
-	if len(own[to]) > 0 {
-		return nil, 0, access.Refuse(http.StatusConflict, "you already have a tag called %s", to)
-	}
-	named := store.Row{tagOwner: actor.Email, tagName: from}
-	return []store.Op{
-		store.Update(tagsTable, named, store.Row{tagName: to}),
-		store.Update(managersTable, named, store.Row{tagName: to}),
-	}, len(own[from]), nil
+	return t, nil
 }
 
-func (m *Model) copyTag(actor access.Actor, owner, from, to string) ([]store.Op, string, int, error) {
-	if !validTagName(from) || !validTagName(to) {
+func (m *Model) renameTag(actor access.Actor, key, to string) ([]store.Op, string, error) {
+	if !validTagName(to) {
+		return nil, "", access.Invalid("bad tag name")
+	}
+	t, err := m.ownTag(actor, key)
+	if err != nil {
+		return nil, "", err
+	}
+	if other := m.ownTagNamed(actor.Email, to); other != nil && other != t {
+		return nil, "", access.Refuse(http.StatusConflict, "you already have a tag called %s", to)
+	}
+	return []store.Op{store.Update(tagListTable, store.Row{tagID: t.id}, store.Row{tagName: to})}, t.name, nil
+}
+
+func (m *Model) copyTag(actor access.Actor, key, to string) ([]store.Op, string, int, error) {
+	if !validTagName(to) {
 		return nil, "", 0, access.Invalid("bad tag name")
 	}
-	fromOwner := m.tagOwnerOf(actor, owner, from)
-	if fromOwner == "" {
-		return nil, "", 0, access.Forbidden("not your tag to copy")
+	t, err := m.managedTag(actor, key)
+	if err != nil {
+		return nil, "", 0, err
 	}
-	if fromOwner == actor.Email && to == from {
-		return nil, "", 0, access.Invalid("bad tag name")
-	}
-	people := m.Tags(fromOwner)[from]
+	people := m.listed(t.people)
 	if len(people) == 0 {
 		return nil, "", 0, access.Invalid("no such tag")
 	}
-	if len(m.Tags(actor.Email)[to]) > 0 {
+	if m.ownTagNamed(actor.Email, to) != nil {
 		return nil, "", 0, access.Refuse(http.StatusConflict, "you already have a tag called %s", to)
 	}
-	ops := []store.Op{}
+	made := id.New(m.taken)
+	ops := []store.Op{store.Insert(tagListTable, store.Row{tagID: made, tagOwner: actor.Email, tagName: to})}
 	for _, person := range people {
-		ops = append(ops, store.Insert(tagsTable, store.Row{tagOwner: actor.Email, tagName: to, tagPerson: person}))
+		ops = append(ops, store.Insert(tagsTable, store.Row{tagID: made, tagPerson: person}))
 	}
-	return ops, fromOwner, len(people), nil
+	return ops, made, len(people), nil
 }
 
-func (m *Model) shareTag(actor access.Actor, tag, manager string, on bool) ([]store.Op, error) {
-	if !validTagName(tag) {
-		return nil, access.Invalid("bad tag name")
-	}
+func (m *Model) shareTag(actor access.Actor, key, manager string, on bool) ([]store.Op, error) {
 	if m.Person(manager) == nil || manager == actor.Email {
 		return nil, access.Invalid("no such person")
 	}
-	if on && len(m.Tags(actor.Email)[tag]) == 0 {
-		return nil, access.Invalid("no such tag")
+	if m.tagByKey(key) == nil && !on {
+		return nil, nil
 	}
-	return []store.Op{managerOp(actor.Email, tag, manager, on)}, nil
+	t, err := m.ownTag(actor, key)
+	if err != nil {
+		return nil, err
+	}
+	row := store.Row{tagID: t.id, managerEmail: manager}
+	if on {
+		return []store.Op{store.Upsert(managersTable, row, store.Row{})}, nil
+	}
+	return []store.Op{store.Delete(managersTable, row)}, nil
 }
 
-func (m *Model) leaveTag(actor access.Actor, owner, tag string) ([]store.Op, error) {
-	if !validTagName(tag) || owner == "" || owner == actor.Email {
-		return nil, access.Invalid("bad tag")
+func (m *Model) leaveTag(actor access.Actor, key string) ([]store.Op, error) {
+	t := m.tagByKey(key)
+	if t == nil {
+		return nil, nil
 	}
-	return []store.Op{managerOp(owner, tag, actor.Email, false)}, nil
+	if t.owner == actor.Email {
+		return nil, access.Invalid("you own this tag")
+	}
+	return []store.Op{store.Delete(managersTable, store.Row{tagID: t.id, managerEmail: actor.Email})}, nil
 }
 
-func (m *Model) dropTag(actor access.Actor, tag string) ([]store.Op, int, error) {
-	if !validTagName(tag) {
-		return nil, 0, access.Invalid("bad tag name")
+func (m *Model) dropTag(actor access.Actor, key string) ([]store.Op, int, error) {
+	if m.tagByKey(key) == nil {
+		return nil, 0, nil
 	}
-	named := store.Row{tagOwner: actor.Email, tagName: tag}
-	return []store.Op{store.Delete(tagsTable, named), store.Delete(managersTable, named)}, len(m.Tags(actor.Email)[tag]), nil
+	t, err := m.ownTag(actor, key)
+	if err != nil {
+		return nil, 0, err
+	}
+	return []store.Op{store.Delete(tagListTable, store.Row{tagID: t.id})}, len(m.listed(t.people)), nil
 }
 
-func (m *Model) setTag(actor access.Actor, owner, tag, person string, on bool) ([]store.Op, string, error) {
-	if !validTagName(tag) {
-		return nil, "", access.Invalid("bad tag name")
-	}
-	owner = m.tagOwnerOf(actor, owner, tag)
-	if owner == "" {
-		return nil, "", access.Forbidden("not your tag to manage")
-	}
+func (m *Model) setTag(actor access.Actor, key, name, person string, on bool) ([]store.Op, string, error) {
 	if m.Person(person) == nil {
 		return nil, "", access.Invalid("no such person")
 	}
-	if m.tagged(owner, tag, person) == on {
-		return nil, owner, nil
+	if key == "" {
+		return m.tagNamed(actor, name, person, on)
 	}
-	row := store.Row{tagOwner: owner, tagName: tag, tagPerson: person}
+	t, err := m.managedTag(actor, key)
+	if err != nil {
+		return nil, "", err
+	}
+	if slices.Contains(t.people, person) == on {
+		return nil, t.id, nil
+	}
+	row := store.Row{tagID: t.id, tagPerson: person}
 	if on {
-		return []store.Op{store.Insert(tagsTable, row)}, owner, nil
+		return []store.Op{store.Insert(tagsTable, row)}, t.id, nil
 	}
-	return []store.Op{store.Delete(tagsTable, row)}, owner, nil
+	return []store.Op{store.Delete(tagsTable, row)}, t.id, nil
 }
 
-func (i *Invites) saveGreeting(actor access.Actor, format, original string, grouped, individual bool) ([]store.Op, error) {
+func (m *Model) tagNamed(actor access.Actor, name, person string, on bool) ([]store.Op, string, error) {
+	if !validTagName(name) || !on {
+		return nil, "", access.Invalid("bad tag name")
+	}
+	if t := m.ownTagNamed(actor.Email, name); t != nil {
+		return m.setTag(actor, t.id, "", person, true)
+	}
+	made := id.New(m.taken)
+	return []store.Op{
+		store.Insert(tagListTable, store.Row{tagID: made, tagOwner: actor.Email, tagName: name}),
+		store.Insert(tagsTable, store.Row{tagID: made, tagPerson: person}),
+	}, made, nil
+}
+
+func (i *Invites) saveGreeting(actor access.Actor, format, key string, grouped, individual bool) (string, []store.Op, error) {
 	if format == "" {
-		return nil, access.Invalid("format is required")
+		return "", nil, access.Invalid("format is required")
 	}
 	if len(format) > 200 {
-		return nil, access.Invalid("format is too long")
+		return "", nil, access.Invalid("format is too long")
 	}
 	row := store.Row{
 		"Name":       format,
@@ -656,25 +666,26 @@ func (i *Invites) saveGreeting(actor access.Actor, format, original string, grou
 		"Individual": cells.YesNoCell(individual),
 		"Email":      actor.Email,
 	}
-	if original == "" {
-		return []store.Op{store.Insert(greetingsTab, row)}, nil
+	if key == "" {
+		row["Greeting ID"] = id.New(i.Model().taken)
+		return row["Greeting ID"], []store.Op{store.Insert(greetingsTab, row)}, nil
 	}
-	have, ok := i.greeting(original)
+	have, ok := i.greeting(key)
 	if !ok || have.CreatedBy != actor.Email {
-		return nil, access.Forbidden("you can only edit greetings you created")
+		return "", nil, access.Forbidden("you can only edit greetings you created")
 	}
-	return []store.Op{store.Update(greetingsTab, store.Row{"Name": original}, row)}, nil
+	return have.ID, []store.Op{store.Update(greetingsTab, store.Row{"Greeting ID": have.ID}, row)}, nil
 }
 
-func (i *Invites) deleteGreeting(actor access.Actor, name string) ([]store.Op, error) {
-	if name == "" {
-		return nil, access.Invalid("name is required")
+func (i *Invites) deleteGreeting(actor access.Actor, key string) ([]store.Op, error) {
+	if key == "" {
+		return nil, access.Invalid("id is required")
 	}
-	have, ok := i.greeting(name)
+	have, ok := i.greeting(key)
 	if !ok || have.CreatedBy != actor.Email {
 		return nil, access.Forbidden("you can only delete greetings you created")
 	}
-	return []store.Op{store.Delete(greetingsTab, store.Row{"Name": name})}, nil
+	return []store.Op{store.Delete(greetingsTab, store.Row{"Greeting ID": have.ID})}, nil
 }
 
 func (m *Model) locate(actor access.Actor, found map[string]geocode.Point) []store.Op {

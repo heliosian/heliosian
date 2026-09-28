@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -12,12 +13,13 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	gcal "google.golang.org/api/calendar/v3"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 	"heliosian/internal/when"
 )
 
-var legendDayTypes = []string{"No School", "Early Dismissal"}
+var legendDayTypes = []string{when.NoSchoolDayType, when.EarlyDismissalDayType}
 
 type Options struct {
 	Source       data.Source
@@ -29,13 +31,14 @@ type Options struct {
 }
 
 type run struct {
-	opts     Options
-	roster   when.Roster
-	client   anthropic.Client
-	tables   store.Tables
-	dayTypes []string
-	tags     []when.Tag
-	failures []string
+	opts       Options
+	roster     when.Roster
+	client     anthropic.Client
+	tables     store.Tables
+	dayTypes   []string
+	dayTypeIDs map[string]string
+	tags       []when.Tag
+	failures   []string
 }
 
 func begin(ctx context.Context, opts Options) (*run, error) {
@@ -53,23 +56,60 @@ func begin(ctx context.Context, opts Options) (*run, error) {
 	for _, name := range names {
 		tables[name] = tabs[name].Rows
 	}
+	r, err := vocabulary(roster, tables)
+	if err != nil {
+		return nil, err
+	}
+	r.opts, r.client = opts, anthropic.NewClient(option.WithAPIKey(opts.AnthropicKey))
+	return r, nil
+}
+
+func vocabulary(roster when.Roster, tables store.Tables) (*run, error) {
 	dayTypes := []string{}
+	dayTypeIDs := map[string]string{}
 	for _, row := range tables[when.DayTypesTab] {
 		dayTypes = append(dayTypes, row["Day Type"])
+		dayTypeIDs[row["Day Type"]] = row["Day Type ID"]
 	}
 	tags := []when.Tag{}
 	for _, row := range tables[when.TagsTab] {
-		tags = append(tags, when.Tag{Name: row["Tag"], Description: row["Description"]})
+		if when.BuiltInTag(row["Tag ID"]) {
+			continue
+		}
+		tags = append(tags, when.Tag{ID: row["Tag ID"], Name: row["Tag"], Description: row["Description"]})
 	}
 	if len(tags) == 0 {
 		return nil, fmt.Errorf("%s needs rows before the import can run", when.TagsTab)
 	}
-	for _, name := range append([]string{when.RegularDayType}, legendDayTypes...) {
-		if !slices.Contains(dayTypes, name) {
-			return nil, fmt.Errorf("%s needs a %q row before the import can run", when.DayTypesTab, name)
+	for _, key := range append([]string{when.RegularDayType}, legendDayTypes...) {
+		if !slices.Contains(slices.Collect(maps.Values(dayTypeIDs)), key) {
+			return nil, fmt.Errorf("%s needs a row with the id %s before the import can run", when.DayTypesTab, key)
 		}
 	}
-	return &run{opts: opts, roster: roster, client: anthropic.NewClient(option.WithAPIKey(opts.AnthropicKey)), tables: tables, dayTypes: dayTypes, tags: tags}, nil
+	return &run{roster: roster, tables: tables, dayTypes: dayTypes, dayTypeIDs: dayTypeIDs, tags: tags}, nil
+}
+
+func (r *run) tagCell(names []string) (string, error) {
+	out := []string{}
+	for _, name := range names {
+		key := r.roster.IDOf(name)
+		if i := slices.IndexFunc(r.tags, func(t when.Tag) bool { return t.Name == name }); key == "" && i >= 0 {
+			key = r.tags[i].ID
+		}
+		if key == "" {
+			return "", fmt.Errorf("%q is neither a classroom nor a tag", name)
+		}
+		out = append(out, key)
+	}
+	return cells.JoinList(out), nil
+}
+
+func (r *run) dayTypeID(name string) (string, error) {
+	key, ok := r.dayTypeIDs[name]
+	if !ok {
+		return "", fmt.Errorf("%q is not a day type", name)
+	}
+	return key, nil
 }
 
 func RunGoogle(ctx context.Context, opts Options) error {
@@ -130,7 +170,7 @@ func RunPDF(ctx context.Context, opts Options) error {
 		slog.InfoContext(ctx, "calendar import: pdf unchanged", "url", pdfURL, "hash", pdfHash, "kept", len(r.tables[when.PDFTab]))
 	} else {
 		slog.InfoContext(ctx, "calendar import: pdf is new, reading it", "url", pdfURL, "hash", pdfHash)
-		fresh, year, err := readPDF(ctx, r.client, pdf, pdfHash, r.roster, r.dayTypes)
+		fresh, year, err := r.readPDF(ctx, pdf, pdfHash)
 		if err != nil {
 			slog.ErrorContext(ctx, "calendar import: read the year calendar pdf, keeping the rows already there", "kept", len(r.tables[when.PDFTab]), "error", err)
 			r.failures = append(r.failures, "the year calendar pdf")
