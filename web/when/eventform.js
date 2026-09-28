@@ -163,7 +163,6 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
   description.rows = 4;
   description.value = from ? from.description || '' : '';
   eventPanel.append(field('Description', description));
-  const note = text(override ? (state.model.provenance || {})[edit.id]?.note || '' : '', 'Why it was corrected');
   const address = el('input', 'event-slug');
   address.type = 'text';
   address.maxLength = 40;
@@ -179,9 +178,6 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     const addressField = el('div', 'field');
     addressField.append(el('span', '', 'Web address'), row, el('small', '', 'A friendly address for sharing - letters, digits and dashes. Blank for none; the event\u2019s old link keeps working either way.'));
     eventPanel.append(addressField);
-    if (admin) {
-      eventPanel.append(field('Note', note, 'Shown to the admins on the event\u2019s page, beside what was corrected.'));
-    }
   }
 
   const picture = {name: from ? from.title : '', image: from && from.source === 'sheet' && from.image ? from.image.replace(/^\//, '') : '', imageUrl: from && from.source === 'sheet' ? from.image || '' : ''};
@@ -261,8 +257,15 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     const invite = sharing !== 'Public';
     tagTab.hidden = invite;
     tabs.hidden = invite && !extra.length;
-    nextRow.hidden = invite;
+    nextRow.hidden = invite || Boolean(edit);
     sourceField.hidden = invite || override;
+    if (edit) {
+      form.append(actions);
+      if (invite) {
+        showPanel(eventPanel);
+      }
+      return;
+    }
     if (invite) {
       showPanel(eventPanel);
       eventPanel.append(actions);
@@ -314,9 +317,6 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     }
     if (override) {
       body.address = address.value.trim();
-      if (admin) {
-        body.note = note.value.trim();
-      }
     }
     let made;
     try {
