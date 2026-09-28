@@ -5,6 +5,7 @@ import {popup} from '/modal.js';
 import {load, navigate} from '/router.js';
 import {eventForm} from './eventform.js';
 import {planCards} from './events.js';
+import {attachRowPeek} from './peek.js';
 
 const railPaging = {month: '', date: ''};
 
@@ -66,6 +67,7 @@ function timelineRow(e, date) {
     body.append(el('span', 'timeline-place', e.location));
   }
   row.append(dot, body);
+  attachRowPeek(row, date, e);
   return row;
 }
 
