@@ -508,11 +508,7 @@ func (a app) deleteCategory(r *http.Request, body idBody) (serve.None, error) {
 }
 
 func (a app) adminState(*http.Request, access.Actor) map[string]any {
-	people := []Person{}
-	for _, p := range a.sources().Directory.Listed() {
-		people = append(people, Person{Name: p.FullName, Email: p.Email})
-	}
-	return map[string]any{"apps": a.cache.AppVisibilities(), "people": people}
+	return map[string]any{"apps": a.cache.AppVisibilities()}
 }
 
 func (a app) setVisibility(r *http.Request, body visibilityEdit) (serve.None, error) {

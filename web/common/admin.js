@@ -1,6 +1,7 @@
 import {el} from '/elements.js';
 import {api} from '/api.js';
 import {createPersonPicker} from '/picker.js';
+import {listed} from '/directory.js';
 
 let remembered = '';
 
@@ -95,7 +96,7 @@ export function adminPage({appName, allowed, email, sections}) {
   return page;
 }
 
-export function adminsCard({hint, people, title = 'Admins', read = '/api/admin/state', write = '/api/admin/admins', key = 'admins'}) {
+export function adminsCard({hint, title = 'Admins', read = '/api/admin/state', write = '/api/admin/admins', key = 'admins'}) {
   const card = el('div', 'card');
   card.append(el('h2', '', title), el('div', 'hint', hint));
   const rows = el('div');
@@ -140,7 +141,7 @@ export function adminsCard({hint, people, title = 'Admins', read = '/api/admin/s
     }
   };
   const mount = el('div');
-  const picker = createPersonPicker(mount, {address: true, people: async () => (await people()).filter(p => !list.includes(p.email))});
+  const picker = createPersonPicker(mount, {address: true, people: async () => (await listed()).filter(p => !list.includes(p.email))});
   const addOne = () => {
     const email = picker.value;
     if (!email) {
@@ -169,9 +170,9 @@ export function adminsCard({hint, people, title = 'Admins', read = '/api/admin/s
   const bar = el('div', 'add-row');
   bar.append(mount, add, status);
   card.append(rows, bar);
-  Promise.all([api('GET', read), people()]).then(([data, everyone]) => {
+  Promise.all([api('GET', read), listed()]).then(([data, everyone]) => {
     list = data[key];
-    names = new Map(everyone.map(p => [p.email, p.name]));
+    names = new Map(everyone.map(p => [p.email, p.fullName]));
     render();
   }).catch(err => say(`Failed to load the list: ${err.message}`, true));
   return card;

@@ -29,7 +29,7 @@ function guestForm(e, of, onDone) {
   form.append(tabs);
   const helios = el('div');
   const mount = el('div', 'cohost-picker');
-  const picker = createPersonPicker(mount, {people: pickerPeople(e, () => true)});
+  const picker = createPersonPicker(mount, {people: pickerPeople(() => true)});
   helios.append(field('Who', mount));
   panels.helios = helios;
   const outside = el('div');
@@ -69,7 +69,7 @@ function guestForm(e, of, onDone) {
         return;
       }
       body.email = picker.value;
-      body.name = picker.person.name;
+      body.name = picker.person.fullName;
     } else {
       if (!name.value.trim()) {
         status.textContent = 'A name, please.';

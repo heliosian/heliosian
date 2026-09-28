@@ -1,6 +1,6 @@
 import {state, isSystemAdmin, me} from '../state.js';
 import {el, button} from '/elements.js';
-import {categoryList, openSettings, openRedirect, people} from '../edit.js';
+import {categoryList, openSettings, openRedirect} from '../edit.js';
 import {api} from '/api.js';
 import {checkbox} from '/form.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
@@ -118,7 +118,7 @@ const sections = [
   ]},
   {title: 'Editing & Control', tabs: [
     {key: 'notify', label: 'Email Notifications', card: notifyCard},
-    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can approve suggestions, edit any activity, and reach this page. Co-chairs edit their own activities without being here.', people})},
+    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can approve suggestions, edit any activity, and reach this page. Co-chairs edit their own activities without being here.'})},
   ]},
   {title: 'Addresses', tabs: [
     {key: 'redirects', label: 'Redirects', card: redirectsCard},

@@ -37,4 +37,10 @@ Every read answers `{"now", "data", "included"}`: `now` is the server's clock in
 
 ## Client
 
-`web/common/data.js`: `query(path)` and `batch({name: path})` fetch, replace the page's store whole and return `data`; `get(id)`, `all(type)` and `follow(resource, relation)` read it; `now()` is the server's clock from the last read; `act`, `create` and `remove` write, after which the page reads again; `me()` is `/api/me`.
+`web/common/data.js`: `query(path)` and `batch({name: path})` each answer a result of their own, holding that read's `data` and `now` and `get(id)`, `all(type)` and `follow(resource, relation)` over that read's `included` only. There is no page-wide store: a page keeps its read's result and replaces it when it reads again, and a picker keeps its own, so no read ever disturbs another. `act`, `create` and `remove` write, after which the page reads again; `me()` is `/api/me`.
+
+`web/common/directory.js` is the directory every picker and Spoof Mode read: `directory()` reads `/api/people?listed` with each person's `partners`, `children`, `parents` and `siblings` once per page, `listed()` is those people, and `contactLine` is the line under a name (a student's grade and classroom, a parent's children, anyone else's `words`).
+
+## The directory
+
+`internal/who/resources.go` registers `people`, `families`, `classrooms`, `grades` and `crews`. Every member sees all of them, as every member sees Who?: consent masking and opt-outs are applied when the directory loads, so no rule depends on the viewer. A person with no real address has no `email` and is left out of `people?listed`. A person resolves by their address, any Email Aliases address of theirs, and their `slug`, the part of their address before the @, unless someone else's address has the same part, when only the full address resolves. Classrooms and grades resolve by the slug in their Who? page's path.

@@ -1,22 +1,29 @@
 import {api} from '/api.js';
 
-let byType = {};
-let byId = {};
-let serverTime = '';
-
-function load(reply) {
-  byType = {};
-  byId = {};
-  for (const [type, resources] of Object.entries(reply.included)) {
-    byType[type] = resources;
+function result(reply) {
+  const byType = reply.included;
+  const byId = {};
+  for (const resources of Object.values(byType)) {
     Object.assign(byId, resources);
   }
-  serverTime = reply.now;
-  return reply.data;
+  const get = id => byId[id];
+  return {
+    data: reply.data,
+    now: reply.now,
+    get,
+    all: type => Object.values(byType[type] || {}),
+    follow(resource, relation) {
+      const target = resource[relation];
+      if (Array.isArray(target)) {
+        return target.map(get);
+      }
+      return target ? get(target) : null;
+    },
+  };
 }
 
 export async function query(path) {
-  return load(await api('GET', path));
+  return result(await api('GET', path));
 }
 
 export async function batch(paths) {
@@ -24,27 +31,7 @@ export async function batch(paths) {
   for (const [name, path] of Object.entries(paths)) {
     body[name] = {path};
   }
-  return load(await api('POST', '/api/query', body));
-}
-
-export function get(id) {
-  return byId[id];
-}
-
-export function all(type) {
-  return Object.values(byType[type] || {});
-}
-
-export function follow(resource, relation) {
-  const target = resource[relation];
-  if (Array.isArray(target)) {
-    return target.map(get);
-  }
-  return target ? get(target) : null;
-}
-
-export function now() {
-  return serverTime;
+  return result(await api('POST', '/api/query', body));
 }
 
 export function act(type, id, action, body) {

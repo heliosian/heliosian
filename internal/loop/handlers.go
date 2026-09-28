@@ -292,7 +292,6 @@ type modelView struct {
 	Groups      []groupView       `json:"groups"`
 	Suggestions []suggestion      `json:"suggestions"`
 	Options     options           `json:"options"`
-	People      []Person          `json:"people"`
 	GradeColors map[string]string `json:"gradeColors,omitempty"`
 }
 
@@ -306,12 +305,7 @@ func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
 		Groups:      []groupView{},
 		Suggestions: a.suggestions(email),
 		Options:     a.options(email),
-		People:      []Person{},
 		GradeColors: a.settings().GradeColors,
-	}
-	directory := a.sources().Directory
-	for _, p := range directory.Listed() {
-		view.People = append(view.People, personView(directory, p))
 	}
 	for _, g := range a.cache.Model().Groups {
 		if v, ok := a.view(g, actor); ok {

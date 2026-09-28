@@ -1536,10 +1536,12 @@ func (l *loader) sortPeople() error {
 		return l.model.People[i].FullName < l.model.People[j].FullName
 	})
 	l.model.byEmail = map[string]int{}
+	l.model.byID = map[string]int{}
 	for i, p := range l.model.People {
 		l.model.byEmail[p.Email] = i
 		if p.Email != "" {
 			l.model.People[i].ID = id.Of(l.idKey, kindPerson, p.Email)
+			l.model.byID[l.model.People[i].ID] = i
 		}
 	}
 	return nil

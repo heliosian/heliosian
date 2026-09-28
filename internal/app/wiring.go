@@ -385,7 +385,7 @@ func NewCore(cfg Config) *Core {
 	})
 	return &Core{
 		CalendarCache: calendarCache, LoopCache: loopCache, Cache: cache, Documents: documents, Queue: queue,
-		Spoof:  &auth.Spoof{Allowed: settings.IsSuperAdmin, Person: spoofPerson(cache), People: spoofPeople(cache)},
+		Spoof:  &auth.Spoof{Allowed: settings.IsSuperAdmin, Person: spoofPerson(cache)},
 		Member: func(email string) bool { return who.Member(cache, email) }, Sessions: settings, apps: apps,
 	}
 }

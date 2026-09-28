@@ -218,11 +218,8 @@ func TestInvitationLifecycle(t *testing.T) {
 	rec = call(t, jordan, "GET", "/api/when/invites/people?id=meetup", "")
 	var picker PickerView
 	json.Unmarshal(rec.Body.Bytes(), &picker)
-	if rec.Code != 200 || len(picker.People) != 50 || len(picker.Lists) != 2 || len(picker.Classrooms) != 9 || len(picker.OnList) != 0 {
-		t.Errorf("picker: %d people %d lists %d classrooms %d on list %d", rec.Code, len(picker.People), len(picker.Lists), len(picker.Classrooms), len(picker.OnList))
-	}
-	if p := picker.People[slices.IndexFunc(picker.People, func(p PickerPerson) bool { return p.Email == robin })]; strings.Join(p.Household, ",") != host+","+sam+","+ella || strings.Join(p.Children, ",") != sam+","+ella || p.Line != "Parent to Sam (Grade 3), Ella (Grade 6)" {
-		t.Errorf("robin in the picker = %+v", p)
+	if rec.Code != 200 || len(picker.Lists) != 2 || len(picker.Classrooms) != 9 || len(picker.OnList) != 0 {
+		t.Errorf("picker: %d lists %d classrooms %d on list %d", rec.Code, len(picker.Lists), len(picker.Classrooms), len(picker.OnList))
 	}
 	rec = call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`","via":"family"},{"email":"`+sam+`","via":"family"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"},{"email":"`+robin+`"},{"email":"not-an-address"}]}`)
 	if rec.Code != 400 {

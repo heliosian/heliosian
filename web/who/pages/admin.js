@@ -253,7 +253,7 @@ function overridesPanel({title, hint, endpoint, filter, fields}) {
     }
     selected = email;
     form.hidden = false;
-    heading.textContent = person.name;
+    heading.textContent = person.fullName;
     address.textContent = person.email;
     for (const f of fields) {
       const override = person.override[f.key] || '';
@@ -376,7 +376,7 @@ function personForm(hint, person, label, submit, remove) {
   const fullName = el('input');
   fullName.type = 'text';
   fullName.maxLength = 100;
-  fullName.value = person.name;
+  fullName.value = person.fullName;
   const roles = el('div', 'field-row roles-row');
   const boxes = {};
   for (const [key, text] of [['isStudent', 'Is Student'], ['isParent', 'Is Parent'], ['isStaff', 'Is Staff']]) {
@@ -412,7 +412,7 @@ function personForm(hint, person, label, submit, remove) {
 function openAddPerson() {
   let shut = null;
   const form = personForm('Create someone Veracross genuinely doesn’t have a record for yet - Overrides becomes the only source of their name and role. Pick at least one role; you can add the rest of their details (classroom, phone, and so on) afterward from the table or the other Overrides tabs.',
-    {email: '', name: ''}, 'Add', async person => {
+    {email: '', fullName: ''}, 'Add', async person => {
       await api('POST','/api/admin/add-person', person);
       shut();
       await refresh();
@@ -428,7 +428,7 @@ function openEditPerson(p) {
       shut();
       await refresh();
     }, async () => {
-      if (!confirm(`Permanently delete ${p.name} (${p.email})? This also removes any tags or photos they have.`)) {
+      if (!confirm(`Permanently delete ${p.fullName} (${p.email})? This also removes any tags or photos they have.`)) {
         return;
       }
       try {
@@ -457,7 +457,7 @@ function addedPanel() {
     }
     for (const p of added) {
       const row = el('tr');
-      for (const text of [p.name, p.email, p.isStudent ? '✓' : '', p.isParent ? '✓' : '', p.isStaff ? '✓' : '']) {
+      for (const text of [p.fullName, p.email, p.isStudent ? '✓' : '', p.isParent ? '✓' : '', p.isStaff ? '✓' : '']) {
         row.append(el('td', '', text));
       }
       const action = el('td');
@@ -527,19 +527,17 @@ function hiddenPanel() {
 }
 
 function sections() {
-  const people = () => data.people;
   const control = [];
   if (data.isSuperAdmin) {
     control.push({key: 'super-admins', label: 'Super Admins', card: () => adminsCard({
       title: 'Super Admins',
       hint: 'Super admins can also use Spoof Mode, from the eye beside their avatar in any app’s toolbar, and manage this list. Regular admins never see this tab. Changes save immediately.',
-      people,
       read: '/api/config/super-admins',
       write: '/api/config/super-admins',
       key: 'superAdmins',
     })});
   }
-  control.push({key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can reach this page. Changes save immediately.', people})});
+  control.push({key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can reach this page. Changes save immediately.'})});
   return [
     {title: 'Display', tabs: [
       {key: 'images', label: 'Images', card: imagesPanel},

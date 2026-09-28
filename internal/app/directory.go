@@ -32,17 +32,7 @@ func spoofPerson(cache *who.Cache) func(email string) (auth.Person, bool) {
 		if p == nil {
 			return auth.Person{}, false
 		}
-		return auth.Person{Email: p.Email, Name: p.FullName, Words: p.Words()}, true
-	}
-}
-
-func spoofPeople(cache *who.Cache) func() []auth.Person {
-	return func() []auth.Person {
-		out := []auth.Person{}
-		for _, p := range cache.Model().Listed() {
-			out = append(out, auth.Person{Email: p.Email, Name: p.FullName, Words: p.Words()})
-		}
-		return out
+		return auth.Person{Email: p.Email, FullName: p.FullName, Words: p.Words()}, true
 	}
 }
 

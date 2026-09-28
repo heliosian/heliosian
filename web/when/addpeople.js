@@ -2,14 +2,17 @@ import {el, svg, button, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
 import {text as textInput} from '/form.js';
 import {api} from '/api.js';
+import {directory, contactLine} from '/directory.js';
 import {chipToggle, familyDropdown} from '/rules.js';
 import {firstName, face, fetchPickerData, ruleOptions, setRuleOptions, rules} from './inviteparts.js';
 
 export async function openPicker(e, view, refresh) {
   let data = null;
+  let dir = null;
   try {
-    const [found, options] = await Promise.all([fetchPickerData(e), view.host ? api('GET', '/api/when/invites/options') : ruleOptions]);
+    const [found, people, options] = await Promise.all([fetchPickerData(e), directory(), view.host ? api('GET', '/api/when/invites/options') : ruleOptions]);
     data = found;
+    dir = people;
     setRuleOptions(options);
   } catch (err) {
     toast(err.message);
@@ -43,7 +46,7 @@ export async function openPicker(e, view, refresh) {
     panel.replaceChildren();
     switch (active) {
       case 'person':
-        panel.append(personPanel(e, data, onList, done));
+        panel.append(personPanel(e, dir, onList, done));
         break;
       case 'group':
         panel.append(groupPanel(e, done));
@@ -60,11 +63,11 @@ export async function openPicker(e, view, refresh) {
 
 const roleTests = {student: p => p.isStudent, parent: p => p.isParent, staff: p => p.isStaff};
 
-function personPanel(e, data, onList, done) {
+function personPanel(e, dir, onList, done) {
   const pick = {
-    data,
+    dir,
+    people: dir.data.map(dir.get),
     onList,
-    byEmail: new Map(data.people.map(p => [p.email, p])),
     picked: new Map(),
     family: new Set(),
     roles: new Set(),
@@ -114,9 +117,8 @@ function relativesOf(pick, p) {
     if (!pick.family.has(relation)) {
       continue;
     }
-    for (const email of p[relation.toLowerCase()] || []) {
-      const r = pick.byEmail.get(email);
-      if (r && !pick.onList.has(email) && !out.includes(r)) {
+    for (const r of pick.dir.follow(p, relation.toLowerCase())) {
+      if (r && r.email && !pick.onList.has(r.email) && !out.includes(r)) {
         out.push(r);
       }
     }
@@ -127,10 +129,10 @@ function relativesOf(pick, p) {
 function everyonePicked(pick) {
   const out = new Map();
   for (const p of pick.picked.values()) {
-    out.set(p.email, {email: p.email, name: p.name, via: 'search'});
+    out.set(p.email, {email: p.email, name: p.fullName, via: 'search'});
     for (const r of relativesOf(pick, p)) {
       if (!out.has(r.email)) {
-        out.set(r.email, {email: r.email, name: r.name, via: 'family'});
+        out.set(r.email, {email: r.email, name: r.fullName, via: 'family'});
       }
     }
   }
@@ -148,7 +150,7 @@ function paintPersonList(pick) {
   list.replaceChildren();
   const q = pick.search.value.trim().toLowerCase();
   const tests = [...pick.roles].map(role => roleTests[role]);
-  const found = pick.data.people.filter(p => (!q || (p.name || '').toLowerCase().includes(q) || p.email.toLowerCase().includes(q)) && (!tests.length || tests.some(t => t(p))));
+  const found = pick.people.filter(p => (!q || p.fullName.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)) && (!tests.length || tests.some(t => t(p))));
   if (!found.length) {
     list.append(el('div', 'picker-note', 'Nobody by that name. Someone outside Helios goes on Add Non-Helios.'));
   }
@@ -167,11 +169,11 @@ function personChoice(pick, p) {
   row.disabled = on;
   const mark = el('span', 'picker-check');
   mark.append(svg('check'));
-  row.append(mark, face(p));
+  row.append(mark, face({name: p.fullName, email: p.email, photoUrl: p.heroPhotoUrl && p.heroPhotoUrl + '?thumb=1', grade: p.grade}));
   const who = el('div', 'invite-who');
-  who.append(el('div', 'invite-name', p.name || p.email));
-  const along = relativesOf(pick, p).map(r => firstName(r));
-  const line = [on ? 'On the list' : p.line, along.length ? 'with ' + along.join(', ') : ''].filter(Boolean).join(' · ');
+  who.append(el('div', 'invite-name', p.fullName || p.email));
+  const along = relativesOf(pick, p).map(r => firstName({name: r.fullName, email: r.email}));
+  const line = [on ? 'On the list' : contactLine(pick.dir, p), along.length ? 'with ' + along.join(', ') : ''].filter(Boolean).join(' · ');
   if (line) {
     const words = el('div', 'invite-line', line);
     if (along.length) {

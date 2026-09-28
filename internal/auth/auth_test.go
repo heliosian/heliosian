@@ -278,7 +278,7 @@ func TestSpoofResolvesTheTargetOnlyWhenItHolds(t *testing.T) {
 		Allowed: func(email string) bool { return allowed[email] },
 		Person: func(email string) (Person, bool) {
 			if email == "parent@heliosschool.org" || email == "alias@heliosschool.org" {
-				return Person{Email: "parent@heliosschool.org", Name: "A Parent"}, true
+				return Person{Email: "parent@heliosschool.org", FullName: "A Parent"}, true
 			}
 			return Person{}, false
 		},
@@ -357,10 +357,10 @@ func TestWrapAdmitsOnlyMembers(t *testing.T) {
 		wantPage bool
 	}{
 		{"a member's page", a.Wrap(next), "parent@heliosschool.org", "", "/people", http.StatusTeapot, false},
-		{"a member's api", a.Wrap(next), "parent@heliosschool.org", "", "/api/team/people", http.StatusTeapot, false},
+		{"a member's api", a.Wrap(next), "parent@heliosschool.org", "", "/api/people", http.StatusTeapot, false},
 		{"an unlisted page", a.Wrap(next), "left@heliosschool.org", "", "/people", http.StatusForbidden, true},
 		{"an unlisted static file", a.Wrap(next), "left@heliosschool.org", "", "/app.js", http.StatusForbidden, true},
-		{"an unlisted api", a.Wrap(next), "left@heliosschool.org", "", "/api/team/people", http.StatusForbidden, false},
+		{"an unlisted api", a.Wrap(next), "left@heliosschool.org", "", "/api/people", http.StatusForbidden, false},
 		{"an unlisted admin", a.Wrap(next), "left@heliosschool.org", "", "/api/admin/state", http.StatusForbidden, false},
 		{"an unlisted sign-out", a.Wrap(next), "left@heliosschool.org", "", "/auth/logout", http.StatusTeapot, false},
 		{"an unlisted opt-in", a.Wrap(next), "left@heliosschool.org", "", "/optin", http.StatusTeapot, false},
@@ -398,7 +398,7 @@ func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 		Allowed: func(email string) bool { return email == "admin@heliosschool.org" },
 		Person: func(email string) (Person, bool) {
 			if strings.HasPrefix(email, "p") {
-				return Person{Email: email, Name: "Person " + email}, true
+				return Person{Email: email, FullName: "Person " + email}, true
 			}
 			return Person{}, false
 		},

@@ -1,5 +1,6 @@
 import {offerQuan} from '/mode.js';
 import {api} from '/api.js';
+import {listed} from '/directory.js';
 import {el, toast} from '/elements.js';
 import {hoverMenu, hoverClick, closeBarMenus} from '/appswitch.js';
 import {fitAlerts} from '/alerts.js';
@@ -67,11 +68,11 @@ function spoofPill(spoofing) {
   }
   wrap.classList.add('is-on');
   const as = el('span', 'spoof-as');
-  as.append(el('span', 'spoof-as-lead', 'Viewing as '), el('b', '', spoofing.name));
+  as.append(el('span', 'spoof-as-lead', 'Viewing as '), el('b', '', spoofing.fullName));
   button.append(as);
   const stop = el('button', 'spoof-stop', '×');
   stop.type = 'button';
-  stop.title = 'Stop viewing as ' + spoofing.name;
+  stop.title = 'Stop viewing as ' + spoofing.fullName;
   stop.setAttribute('aria-label', stop.title);
   stop.addEventListener('click', () => setSpoof(''));
   pill.append(stop);
@@ -80,7 +81,7 @@ function spoofPill(spoofing) {
 
 function spoofHead(spoofing) {
   const head = el('div', 'spoof-head');
-  head.append(el('span', '', 'Viewing as '), el('b', '', spoofing.name));
+  head.append(el('span', '', 'Viewing as '), el('b', '', spoofing.fullName));
   const stop = el('button', 'spoof-head-stop', 'Stop');
   stop.type = 'button';
   stop.addEventListener('click', () => setSpoof(''));
@@ -119,10 +120,10 @@ function spoofSearch() {
     loading = true;
     failure = '';
     try {
-      people = await api('GET', '/auth/spoof/people');
+      people = await listed();
     } catch (err) {
       failure = err.message;
-      noteError('/auth/spoof/people: ' + err.message);
+      noteError('/api/people: ' + err.message);
     }
     loading = false;
     filter();
@@ -142,7 +143,7 @@ function spoofSearch() {
       results.append(el('div', 'spoof-empty', 'Loading…'));
       return;
     }
-    const found = people.filter(p => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q) || (p.words || '').toLowerCase().includes(q)).slice(0, 8);
+    const found = people.filter(p => p.fullName.toLowerCase().includes(q) || p.email.toLowerCase().includes(q) || (p.words || '').toLowerCase().includes(q)).slice(0, 8);
     if (!found.length) {
       results.append(el('div', 'spoof-empty', 'Nobody matches.'));
       return;
@@ -212,7 +213,7 @@ function wireSpoofMenu(pill, button, menu, load) {
 function spoofRow(p, isCurrent) {
   const row = el('button', 'spoof-row' + (isCurrent ? ' is-current' : ''));
   row.type = 'button';
-  row.append(el('span', 'spoof-row-name', p.name), el('span', 'spoof-row-words', p.words || p.email));
+  row.append(el('span', 'spoof-row-name', p.fullName), el('span', 'spoof-row-words', p.words || p.email));
   row.addEventListener('click', () => setSpoof(p.email));
   return row;
 }

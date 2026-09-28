@@ -60,7 +60,6 @@ func Register(mux *http.ServeMux, d Deps) {
 	}
 	mux.HandleFunc("GET /parties/{id}", a.partyPage)
 	mux.HandleFunc("GET /api/celebrate/model", serve.JSON(a.model))
-	mux.HandleFunc("GET /api/celebrate/people", serve.JSON(a.people))
 	a.search.Register(mux, "/api/celebrate", a.images.Folder(), imagesearch.Members)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
@@ -120,15 +119,6 @@ func (a app) model(r *http.Request, _ serve.None) (View, error) {
 	view := RenderWith(a.cache.Model(), a.directory(), a.rsvps, actor, now())
 	view.ImageSearch = a.search.On()
 	return view, nil
-}
-
-func (a app) people(r *http.Request, _ serve.None) ([]Person, error) {
-	directory := a.directory()
-	people := []Person{}
-	for _, p := range directory.Listed() {
-		people = append(people, personOf(directory, p))
-	}
-	return people, nil
 }
 
 func nameOf(directory *who.Model, email string) string {

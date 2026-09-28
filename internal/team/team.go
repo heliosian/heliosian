@@ -60,7 +60,6 @@ func Register(mux *http.ServeMux, d Deps) {
 	a.search.Register(mux, "/api/team", a.images.Folder(), imagesearch.Members)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
-	mux.HandleFunc("GET /api/team/people", serve.JSON(a.people))
 	mux.HandleFunc("POST /api/team/volunteer", serve.JSON(a.saveVolunteer))
 	mux.HandleFunc("DELETE /api/team/volunteer", serve.JSON(a.removeVolunteer))
 	mux.HandleFunc("POST /api/team/activity", serve.JSON(a.saveActivity))
@@ -125,10 +124,6 @@ func (a app) model(r *http.Request, _ serve.None) (View, error) {
 
 type activityRef struct {
 	ID string `json:"id"`
-}
-
-func (a app) people(r *http.Request, _ serve.None) ([]DirectoryPerson, error) {
-	return directoryPeople(a.directory()), nil
 }
 
 func (a app) saveVolunteer(r *http.Request, body volunteerBody) (serve.None, error) {

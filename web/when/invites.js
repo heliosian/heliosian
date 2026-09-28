@@ -410,7 +410,7 @@ function openAddHost(e, view, refresh) {
   const form = el('form', 'admin-form');
   form.append(el('p', 'hint', 'A co-host builds and sends the list, reads every answer and hears replies, as you do.'));
   const mount = el('div', 'cohost-picker');
-  const picker = createPersonPicker(mount, {people: pickerPeople(e, p => !p.isStudent && !view.hosts.some(h => h.email === p.email))});
+  const picker = createPersonPicker(mount, {people: pickerPeople(p => !p.isStudent && !view.hosts.some(h => h.email === p.email))});
   form.append(mount);
   const actions = el('div', 'modal-actions');
   const status = el('span', 'save-status');

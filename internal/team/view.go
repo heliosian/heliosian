@@ -11,42 +11,10 @@ import (
 	"heliosian/internal/who"
 )
 
-type DirectoryPerson struct {
-	Email        string   `json:"email"`
-	Name         string   `json:"name"`
-	PhotoURL     string   `json:"photoUrl,omitempty"`
-	Title        string   `json:"title,omitempty"`
-	IsStudent    bool     `json:"isStudent,omitempty"`
-	ParentEmails []string `json:"parentEmails,omitempty"`
-	Pronouns     string   `json:"pronouns,omitempty"`
-	Phone        string   `json:"phone,omitempty"`
-	Grade        string   `json:"grade,omitempty"`
-	Classroom    string   `json:"classroom,omitempty"`
-	JobTitle     string   `json:"jobTitle,omitempty"`
-	Department   string   `json:"department,omitempty"`
-	Children     []Child  `json:"children,omitempty"`
-	Spouses      []Child  `json:"spouses,omitempty"`
-}
-
 type Child struct {
 	Email string `json:"email"`
 	Name  string `json:"name"`
 	Grade string `json:"grade,omitempty"`
-}
-
-func directoryPeople(model *who.Model) []DirectoryPerson {
-	out := []DirectoryPerson{}
-	for _, p := range model.Listed() {
-		person := DirectoryPerson{
-			Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), Title: p.Words(),
-			IsStudent: p.IsStudent, ParentEmails: p.ParentContactEmails,
-			Pronouns: p.Pronouns, Phone: p.Phone, Grade: p.Grade, Classroom: p.Classroom,
-			JobTitle: p.JobTitle, Department: p.Department,
-		}
-		person.Spouses, person.Children = household(model, p)
-		out = append(out, person)
-	}
-	return out
 }
 
 func household(model *who.Model, p *who.Person) (adults, kids []Child) {

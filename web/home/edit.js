@@ -4,6 +4,7 @@ import {el, svg, toast} from '/elements.js';
 import {load} from '/router.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
+import {listed} from '/directory.js';
 import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
 import {rulesEditor} from '/rules.js';
@@ -278,15 +279,8 @@ export async function moveWidget(key, by) {
 let editingApp = null;
 let appMode = 'everyone';
 let appEmails = [];
-let adminState = null;
+let everyone = [];
 let appPicker = null;
-
-async function loadAdminState() {
-  if (!adminState) {
-    adminState = await api('GET', '/api/admin/state');
-  }
-  return adminState;
-}
 
 export async function openAppEditor(app) {
   editingApp = app;
@@ -303,12 +297,12 @@ export async function openAppEditor(app) {
   appModal.hidden = false;
   appAudience = audienceCard(document.querySelector('#app-audience'), v.rules || [], 'The people these rules pick out. No rules and nobody named means nobody.', 'app:' + app.key, false);
   try {
-    await loadAdminState();
+    everyone = await listed();
   } catch (err) {
     setStatus('#app-status', err.message, true);
   }
   if (!appPicker) {
-    appPicker = createPersonPicker(document.querySelector('#app-people-picker'), {address: true, people: async () => (await loadAdminState()).people});
+    appPicker = createPersonPicker(document.querySelector('#app-people-picker'), {address: true, people: listed});
   }
   appPicker.reset();
   const modes = document.querySelector('#app-mode');
@@ -330,7 +324,7 @@ export async function openAppEditor(app) {
 }
 
 function renderAppPeople() {
-  const byEmail = new Map((adminState ? adminState.people : []).map(p => [p.email, p.name]));
+  const byEmail = new Map(everyone.map(p => [p.email, p.fullName]));
   const list = document.querySelector('#app-people');
   list.replaceChildren();
   for (const email of appEmails) {

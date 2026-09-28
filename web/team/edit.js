@@ -4,6 +4,7 @@ import {whenEditor} from './dom.js';
 import {el, svg, toast, button, imageThumb} from '/elements.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
+import {directory, listed} from '/directory.js';
 import {whoLink} from '/appswitch.js';
 import {api} from '/api.js';
 import {openModal, closeModal} from '/modal.js';
@@ -59,25 +60,11 @@ function settingRow(label, hint, control) {
   return row;
 }
 
-let asked = null;
-
-export function people() {
-  asked = asked || api('GET', '/api/team/people').catch(err => {
-    asked = null;
-    throw err;
-  });
-  return asked;
-}
-
-export async function personInfo(email) {
-  const all = await people();
-  return all.find(p => p.email === email) || null;
-}
-
 export async function openPerson(v, node) {
-  const info = await personInfo(v.email);
+  const dir = await directory();
+  const info = dir.data.map(dir.get).find(p => p.email === v.email) || null;
   const head = personHead(v, info);
-  const contact = personContact(v, info);
+  const contact = personContact(dir, v, info);
   if (!node || !(node.canEdit || isFamily(v.email)) || !v.position) {
     const done = el('button', 'button button-secondary', 'Done');
     done.type = 'button';
@@ -96,7 +83,7 @@ export async function openPerson(v, node) {
 function personHead(v, info) {
   const head = el('div', 'who-head');
   const face = el('div', 'avatar who-face');
-  const photo = (info && info.photoUrl) || v.photoUrl;
+  const photo = (info && info.heroPhotoUrl) || v.photoUrl;
   if (photo) {
     const img = el('img');
     img.src = photo;
@@ -106,14 +93,14 @@ function personHead(v, info) {
     face.textContent = (v.name || v.email).slice(0, 1).toUpperCase();
   }
   const names = el('div', 'who-names');
-  names.append(el('div', 'who-name', (info && info.name) || v.name || v.email));
+  names.append(el('div', 'who-name', (info && info.fullName) || v.name || v.email));
   if (info && info.pronouns) {
     names.append(el('div', 'who-sub', info.pronouns));
   }
   if (info) {
     const place = info.isStudent
       ? [info.grade, info.classroom].filter(Boolean).join(' · ')
-      : [info.jobTitle, info.department].filter(Boolean).join(' · ') || info.title;
+      : [info.jobTitle, info.department].filter(Boolean).join(' · ') || info.words;
     if (place) {
       names.append(el('div', 'who-sub', place));
     }
@@ -141,14 +128,14 @@ function personHead(v, info) {
     action('phone', 'Call', `tel:${digits}`);
   }
   action('copy', 'Copy info', null, () => {
-    const lines = [(info && info.name) || v.name || '', v.email, phone].filter(Boolean);
+    const lines = [(info && info.fullName) || v.name || '', v.email, phone].filter(Boolean);
     navigator.clipboard.writeText(lines.join('\n')).then(() => toast('Contact info copied'), () => toast('Could not copy'));
   });
   head.append(face, names, actions);
   return head;
 }
 
-function personContact(v, info) {
+function personContact(dir, v, info) {
   const card = el('div', 'who-rows');
   let group = null;
   const row = (icon, label, value) => {
@@ -170,26 +157,28 @@ function personContact(v, info) {
   const chips = list => {
     const wrap = el('div', 'who-card-chips');
     for (const p of list) {
-      const chip = el('button', 'who-card-chip', p.grade ? `${p.name} (${p.grade})` : p.name);
+      const chip = el('button', 'who-card-chip', p.grade ? `${p.fullName} (${p.grade})` : p.fullName);
       chip.type = 'button';
-      chip.addEventListener('click', () => openPerson({email: p.email, name: p.name}));
+      chip.addEventListener('click', () => openPerson({email: p.email, name: p.fullName}));
       wrap.append(chip);
     }
     return wrap;
   };
-  const household = info && ((info.spouses && info.spouses.length) || (info.children && info.children.length) || (info.isStudent && info.parentEmails && info.parentEmails.length));
+  const partners = info ? dir.follow(info, 'partners').filter(Boolean) : [];
+  const children = info ? dir.follow(info, 'children').filter(Boolean) : [];
+  const household = info && (partners.length || children.length || (info.isStudent && info.parentContactEmails && info.parentContactEmails.length));
   if (household) {
     divide();
   }
-  if (info && info.spouses && info.spouses.length) {
-    row('people', info.spouses.length === 1 ? 'Partner' : 'Partners', chips(info.spouses));
+  if (partners.length) {
+    row('people', partners.length === 1 ? 'Partner' : 'Partners', chips(partners));
   }
-  if (info && info.children && info.children.length) {
-    row('person', info.children.length === 1 ? 'Child' : 'Children', chips(info.children));
+  if (children.length) {
+    row('person', children.length === 1 ? 'Child' : 'Children', chips(children));
   }
-  if (info && info.isStudent && info.parentEmails && info.parentEmails.length) {
+  if (info && info.isStudent && info.parentContactEmails && info.parentContactEmails.length) {
     const parents = el('div');
-    for (const e of info.parentEmails) {
+    for (const e of info.parentContactEmails) {
       const a = el('a', 'who-card-link', e);
       a.href = `mailto:${e}`;
       parents.append(a);
@@ -222,7 +211,7 @@ export function openSignUp(node, existing, someoneElse) {
 
 function signUpForm(node, existing, someoneElse) {
   const editor = node.canEdit;
-  const picker = createPersonPicker(el('div'), {people});
+  const picker = createPersonPicker(el('div'), {people: listed});
   const emailField = field('Who is it?', picker.mount, 'Search the directory');
   const who = segmented([{label: 'Me', value: ''}, {label: 'Someone else', value: 'other'}],
     someoneElse || (existing && existing.email !== me().email) ? 'other' : '', value => {
@@ -816,14 +805,14 @@ export function openVolunteerGrid(root, nodes, pathOf) {
     body.append(tr);
   }
   table.append(body);
-  people().then(all => {
+  listed().then(all => {
     const byEmail = new Map(all.map(p => [p.email, p]));
     for (const {cell, row} of parentCells) {
       const info = byEmail.get(row.v.email);
       if (!info || !info.isStudent) {
         continue;
       }
-      row.parents = info.parentEmails || [];
+      row.parents = info.parentContactEmails || [];
       for (const e of row.parents) {
         cell.append(mailto(e));
         addresses.add(e);

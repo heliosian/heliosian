@@ -81,6 +81,9 @@ func resources(c caches, queue *store.Queue) *api.Registry[*Snapshot] {
 		Held:  c.held,
 		Now:   func() time.Time { return time.Now().In(when.Location) },
 	})
+	for _, t := range who.Resources() {
+		reg.Add(api.Lift(t, func(s *Snapshot) *who.Model { return s.Who }))
+	}
 	queue.OnSwap(func() { reg.Publish(c.snapshot()) })
 	return reg
 }

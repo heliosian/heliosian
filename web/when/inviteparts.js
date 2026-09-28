@@ -1,6 +1,7 @@
 import {state, me, answer} from './state.js';
 import {el, svg, avatar, toast} from '/elements.js';
 import {api} from '/api.js';
+import {listed} from '/directory.js';
 import {rulesEditor} from '/rules.js';
 
 export const answerWords = {yes: 'Yes', maybe: 'Maybe', no: 'No'};
@@ -103,15 +104,8 @@ export function fetchPickerData(e) {
   return api('GET', '/api/when/invites/people?id=' + encodeURIComponent(e.id));
 }
 
-export function pickerPeople(e, keep) {
-  let asked = null;
-  return async () => {
-    asked = asked || fetchPickerData(e).catch(err => {
-      asked = null;
-      throw err;
-    });
-    return (await asked).people.filter(keep).map(p => ({...p, name: p.name || p.email}));
-  };
+export function pickerPeople(keep) {
+  return async () => (await listed()).filter(keep);
 }
 
 export let ruleOptions = null;

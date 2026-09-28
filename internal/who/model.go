@@ -123,6 +123,7 @@ type Model struct {
 	RoomParents       map[string][]string `json:"roomParents"`
 	Departments       []string            `json:"departments"`
 	byEmail           map[string]int
+	byID              map[string]int
 	familyKeysByEmail map[string][]string
 	hiddenEmails      []string
 	aliases           Aliases

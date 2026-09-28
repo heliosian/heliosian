@@ -1,6 +1,7 @@
 import {state, me, isAdmin, household, billable, admits, audienceWords, ticketFor, money, currentCelebration, partyPath, party} from './state.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
+import {directory, listed} from '/directory.js';
 import {whoLink} from '/appswitch.js';
 import {api} from '/api.js';
 import {el, svg, toast, button, avatar} from '/elements.js';
@@ -12,45 +13,35 @@ import {field, text, textarea, select, checkbox, segmented, whenPickers} from '/
 
 export const {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/celebrate', {state});
 
-let asked = null;
-
-export function people() {
-  asked = asked || api('GET', '/api/celebrate/people').catch(err => {
-    asked = null;
-    throw err;
-  });
-  return asked;
-}
-
 function peoplePicker(options) {
-  return createPersonPicker(el('div'), {people, address: true, ...options});
+  return createPersonPicker(el('div'), {people: listed, address: true, ...options});
 }
 
-export async function personInfo(email) {
-  const all = await people();
-  return all.find(p => p.email === email) || null;
+async function personInfo(email) {
+  const dir = await directory();
+  return {dir, info: dir.data.map(dir.get).find(p => p.email === email) || null};
 }
 
 export async function openPerson(v) {
-  const info = v.email ? await personInfo(v.email) : null;
+  const {dir, info} = await personInfo(v.email);
   const done = el('button', 'button button-secondary', 'Done');
   done.type = 'button';
   done.addEventListener('click', closeModal);
-  openModal('', [personHead(v, info), personContact(v, info), personFoot(v, info, done)], {actions: false, wide: 'person'});
+  openModal('', [personHead(v, info), personContact(dir, v, info), personFoot(v, info, done)], {actions: false, wide: 'person'});
 }
 
 function personHead(v, info) {
   const head = el('div', 'who-head');
-  const face = avatar({name: (info && info.name) || v.name, email: v.email, photoUrl: (info && info.photoUrl) || v.photoUrl}, 'who-face');
+  const face = avatar({name: (info && info.fullName) || v.name, email: v.email, photoUrl: (info && info.heroPhotoUrl) || v.photoUrl}, 'who-face');
   const names = el('div', 'who-names');
-  names.append(el('div', 'who-name', (info && info.name) || v.name || v.email));
+  names.append(el('div', 'who-name', (info && info.fullName) || v.name || v.email));
   if (info && info.pronouns) {
     names.append(el('div', 'who-sub', info.pronouns));
   }
   if (info) {
     const place = info.isStudent
       ? [info.grade, info.classroom].filter(Boolean).join(' · ')
-      : [info.jobTitle, info.department].filter(Boolean).join(' · ') || info.title;
+      : [info.jobTitle, info.department].filter(Boolean).join(' · ') || info.words;
     if (place) {
       names.append(el('div', 'who-sub', place));
     }
@@ -83,7 +74,7 @@ function personHead(v, info) {
   }
   if (v.email) {
     action('copy', 'Copy info', null, () => {
-      const lines = [(info && info.name) || v.name || '', v.email, phone].filter(Boolean);
+      const lines = [(info && info.fullName) || v.name || '', v.email, phone].filter(Boolean);
       navigator.clipboard.writeText(lines.join('\n')).then(() => toast('Contact info copied'), () => toast('Could not copy'));
     });
   }
@@ -91,7 +82,7 @@ function personHead(v, info) {
   return head;
 }
 
-function personContact(v, info) {
+function personContact(dir, v, info) {
   const card = el('div', 'who-rows');
   let group = null;
   const row = (icon, label, value) => {
@@ -112,26 +103,28 @@ function personContact(v, info) {
   const chips = list => {
     const wrap = el('div', 'who-card-chips');
     for (const p of list) {
-      const chip = el('button', 'who-card-chip', p.grade ? `${p.name} (${p.grade})` : p.name);
+      const chip = el('button', 'who-card-chip', p.grade ? `${p.fullName} (${p.grade})` : p.fullName);
       chip.type = 'button';
-      chip.addEventListener('click', () => openPerson({email: p.email, name: p.name, photoUrl: p.photoUrl}));
+      chip.addEventListener('click', () => openPerson({email: p.email, name: p.fullName, photoUrl: p.heroPhotoUrl}));
       wrap.append(chip);
     }
     return wrap;
   };
-  const household = info && ((info.spouses && info.spouses.length) || (info.children && info.children.length) || (info.isStudent && info.parentEmails && info.parentEmails.length));
+  const partners = info ? dir.follow(info, 'partners').filter(Boolean) : [];
+  const children = info ? dir.follow(info, 'children').filter(Boolean) : [];
+  const household = info && (partners.length || children.length || (info.isStudent && info.parentContactEmails && info.parentContactEmails.length));
   if (household) {
     group = null;
   }
-  if (info && info.spouses && info.spouses.length) {
-    row('people', info.spouses.length === 1 ? 'Partner' : 'Partners', chips(info.spouses));
+  if (partners.length) {
+    row('people', partners.length === 1 ? 'Partner' : 'Partners', chips(partners));
   }
-  if (info && info.children && info.children.length) {
-    row('person', info.children.length === 1 ? 'Child' : 'Children', chips(info.children));
+  if (children.length) {
+    row('person', children.length === 1 ? 'Child' : 'Children', chips(children));
   }
-  if (info && info.isStudent && info.parentEmails && info.parentEmails.length) {
+  if (info && info.isStudent && info.parentContactEmails && info.parentContactEmails.length) {
     const parents = el('div');
-    for (const e of info.parentEmails) {
+    for (const e of info.parentContactEmails) {
       const a = el('a', 'who-card-link', e);
       a.href = `mailto:${e}`;
       parents.append(a);
@@ -456,7 +449,7 @@ function openAddSomeone(p, editor, onAdd, opts = {}) {
     }
     const label = kinds.length === 2 ? 'Search the directory…' : `Search for ${kinds.join(' or ')}…`;
     const picker = peoplePicker({placeholder: label, allow: person => admits(p, person), onPick: person => {
-      onAdd({email: person.email, name: person.name || person.email, photoUrl: person.photoUrl, title: person.title});
+      onAdd({email: person.email, name: person.fullName || person.email, photoUrl: person.heroPhotoUrl, title: person.words});
       shut();
     }});
     directoryPanel = el('div');
@@ -606,7 +599,7 @@ export function openFreeTicket(p) {
       });
       await load();
       const host = guestOf.person;
-      toast(host ? `${person.name} has a free ticket as ${host.name}'s guest` : `${person.name} has a free ticket`);
+      toast(host ? `${person.name} has a free ticket as ${host.fullName}'s guest` : `${person.name} has a free ticket`);
     } catch (err) {
       toast(err.message);
     }
@@ -614,10 +607,10 @@ export function openFreeTicket(p) {
 }
 
 export async function openTicket(p, a) {
-  const info = a.email ? await personInfo(a.email) : null;
+  const {dir, info} = await personInfo(a.email);
   const form = ticketForm(p, a);
   const tabs = tabbedFields([
-    {label: 'Contact', icon: svg('people'), fields: [personContact(a, info), personFoot(a, info, null)]},
+    {label: 'Contact', icon: svg('people'), fields: [personContact(dir, a, info), personFoot(a, info, null)]},
     {label: 'Ticket', icon: svg('ticket'), fields: form.fields},
   ]);
   openModal('', [personHead(a, info), tabs], {...form, wide: 'person'});
@@ -708,7 +701,7 @@ function hostChips(initial) {
       return;
     }
     const person = picker.person || {};
-    hosts.push({email, name: person.name || email, photoUrl: person.photoUrl});
+    hosts.push({email, name: person.fullName || email, photoUrl: person.heroPhotoUrl});
     picker.reset();
     paint();
   });
@@ -912,12 +905,13 @@ export async function setPartyStatus(p, status) {
 }
 
 async function contactFor(a) {
-  const info = a.email ? await personInfo(a.email) : null;
+  const {dir, info} = await personInfo(a.email);
   const out = {description: a.line || '', email: a.email || '', parents: []};
+  const children = info ? dir.follow(info, 'children').filter(Boolean) : [];
   if (info && info.isStudent) {
-    out.parents = info.parentEmails || [];
-  } else if (info && info.children && info.children.length && !a.line) {
-    out.description = info.children.map(c => c.grade ? `${c.name.split(' ')[0]} (${c.grade})` : c.name).join(', ');
+    out.parents = info.parentContactEmails || [];
+  } else if (children.length && !a.line) {
+    out.description = children.map(c => c.grade ? `${c.fullName.split(' ')[0]} (${c.grade})` : c.fullName).join(', ');
   }
   return out;
 }

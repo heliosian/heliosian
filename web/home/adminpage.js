@@ -225,7 +225,7 @@ async function fillAdminPage(slot) {
     slot.replaceWith(el('p', 'hint', `Failed to load admin state: ${err.message}`));
     return;
   }
-  const control = [{key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can add, edit, and delete links and categories, and reach this page. Changes save immediately.', people: () => admin.people})}];
+  const control = [{key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can add, edit, and delete links and categories, and reach this page. Changes save immediately.'})}];
   if (admin.isSuperAdmin) {
     try {
       await loadFeedback();

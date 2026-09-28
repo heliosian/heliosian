@@ -64,7 +64,7 @@ type overridableFields struct {
 }
 
 type personOption struct {
-	Name      string            `json:"name"`
+	FullName  string            `json:"fullName"`
 	Email     string            `json:"email"`
 	IsStaff   bool              `json:"isStaff,omitempty"`
 	IsStudent bool              `json:"isStudent,omitempty"`
@@ -139,7 +139,7 @@ func (a admin) state(*http.Request, access.Actor) map[string]any {
 		p := &model.People[i]
 		family, _ := model.FamilyOf(p.Email)
 		people = append(people, personOption{
-			Name: p.FullName, Email: p.Email,
+			FullName: p.FullName, Email: p.Email,
 			IsStaff: p.IsStaff, IsStudent: p.IsStudent, IsParent: p.IsParent,
 			IsAdded: overrideBoolValue(p, "Added"),
 			Override: overridableFields{
@@ -174,7 +174,7 @@ func (a admin) state(*http.Request, access.Actor) map[string]any {
 			},
 		})
 	}
-	sort.Slice(people, func(i, j int) bool { return people[i].Name < people[j].Name })
+	sort.Slice(people, func(i, j int) bool { return people[i].FullName < people[j].FullName })
 	return map[string]any{
 		"classrooms": classrooms, "grades": grades, "bands": bands, "crews": crews, "departments": model.Departments,
 		"people": people, "hiddenEmails": model.hiddenEmails,

@@ -2,15 +2,15 @@ import {el} from '/elements.js';
 
 function face(person) {
   const node = el('span', 'person-picker-face');
-  if (person.photoUrl) {
+  if (person.heroPhotoUrl) {
     const img = el('img');
-    img.src = person.photoUrl;
+    img.src = person.heroPhotoUrl;
     img.alt = '';
     img.loading = 'lazy';
     node.append(img);
     return node;
   }
-  node.textContent = (person.name || person.email || '?').slice(0, 1).toUpperCase();
+  node.textContent = (person.fullName || person.email || '?').slice(0, 1).toUpperCase();
   return node;
 }
 
@@ -52,7 +52,7 @@ export function createPersonPicker(mountEl, {people, placeholder = 'Search by na
   function row(person) {
     const option = el('div', 'person-picker-option');
     const words = el('span', 'person-picker-words');
-    words.append(el('span', 'person-picker-name', person.name || person.email), el('span', 'person-picker-line', person.title || person.email));
+    words.append(el('span', 'person-picker-name', person.fullName || person.email), el('span', 'person-picker-line', person.words || person.email));
     option.append(face(person), words);
     // mousedown, not click, so it lands before the input's blur closes the list.
     option.addEventListener('mousedown', e => {
@@ -91,7 +91,7 @@ export function createPersonPicker(mountEl, {people, placeholder = 'Search by na
       return;
     }
     const q = input.value.trim().toLowerCase();
-    found = pool.filter(p => (!allow || allow(p)) && (!q || p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q))).slice(0, 50);
+    found = pool.filter(p => (!allow || allow(p)) && (!q || p.fullName.toLowerCase().includes(q) || p.email.toLowerCase().includes(q))).slice(0, 50);
     activeIndex = -1;
     if (!found.length) {
       note(typed() ? `Nobody in the directory - “${typed()}” will be used as typed.` : 'Nobody matches.');
@@ -108,7 +108,7 @@ export function createPersonPicker(mountEl, {people, placeholder = 'Search by na
       return;
     }
     selected = person;
-    input.value = person.name || person.email;
+    input.value = person.fullName || person.email;
     close();
   }
 
@@ -134,7 +134,7 @@ export function createPersonPicker(mountEl, {people, placeholder = 'Search by na
         choose(found[activeIndex]);
       } else if (onPick && typed()) {
         e.preventDefault();
-        choose({email: typed(), name: typed()});
+        choose({email: typed(), fullName: typed()});
       }
     } else if (e.key === 'Escape') {
       close();

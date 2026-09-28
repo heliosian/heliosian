@@ -1,6 +1,6 @@
 import {state, isSystemAdmin, me, money, whenLine, celebration} from '../state.js';
 import {el, button, svg} from '/elements.js';
-import {openCelebration, openCategory, openSettings, openMoveAddress, people} from '../edit.js';
+import {openCelebration, openCategory, openSettings, openMoveAddress} from '../edit.js';
 import {load} from '/router.js';
 import {api} from '/api.js';
 import {celebrationBand} from './parties.js';
@@ -318,7 +318,7 @@ const sections = [
   ]},
   {title: 'Editing & Control', tabs: [
     {key: 'addresses', label: 'Addresses', card: addressesCard},
-    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can approve parties, edit any party, record invoicing, and reach this page. Hosts edit their own parties without being here.', people})},
+    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can approve parties, edit any party, record invoicing, and reach this page. Hosts edit their own parties without being here.'})},
   ]},
 ];
 

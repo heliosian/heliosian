@@ -1,15 +1,25 @@
 import {superEditOn} from '/superedit.js';
 
-export const state = {model: null};
+export const state = {model: null, people: []};
 
 const byName = new Map();
+const byEmail = new Map();
 
-export function applyModel(model) {
+export function applyModel(model, people) {
   state.model = model;
+  state.people = people;
   byName.clear();
   for (const g of model.groups) {
     byName.set(g.name, g);
   }
+  byEmail.clear();
+  for (const p of people) {
+    byEmail.set(p.email, p);
+  }
+}
+
+export function person(email) {
+  return byEmail.get(email) || null;
 }
 
 export function me() {

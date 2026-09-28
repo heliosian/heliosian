@@ -1,4 +1,4 @@
-import {state, me, isAdmin, options, groupPath} from '../state.js';
+import {state, me, isAdmin, options, groupPath, person} from '../state.js';
 import {personRow, pageHead} from '../dom.js';
 import {el, svg, button, iconButton, copyText, toast, thumb} from '/elements.js';
 import {whoLink} from '/appswitch.js';
@@ -14,7 +14,7 @@ import {visibilityWords} from './groups.js';
 
 const {ruleRow, newRule, ruleSaysSomething, personWords, ruleWords} = rulesEditor({
   options,
-  personName: email => (state.model.people.find(p => p.email === email) || {}).name || '',
+  personName: email => (person(email) || {}).fullName || '',
 });
 
 const visibilityNotes = {
@@ -310,7 +310,7 @@ function managersEditor(draft) {
   card.append(el('h2', '', 'Managers'), el('div', 'hint', 'Managers can edit or delete the email list.'));
   const rows = el('div');
   const mount = el('div');
-  const picker = createPersonPicker(mount, {people: () => state.model.people.filter(p => !draft.managers.includes(p.email))});
+  const picker = createPersonPicker(mount, {people: () => state.people.filter(p => !draft.managers.includes(p.email))});
   const addManager = () => {
     const email = picker.value;
     if (!email || draft.managers.includes(email)) {
@@ -336,7 +336,8 @@ function managersEditor(draft) {
 function renderManagerRows(draft, rows) {
   rows.replaceChildren();
   for (const email of draft.managers) {
-    const person = state.model.people.find(p => p.email === email) || {email, name: email};
+    const known = person(email);
+    const shown = known ? {email, name: known.fullName, photoUrl: known.heroPhotoUrl, words: known.words} : {email, name: email};
     const remove = el('button', 'link-button danger', 'Remove');
     remove.type = 'button';
     remove.disabled = draft.managers.length === 1;
@@ -344,7 +345,7 @@ function renderManagerRows(draft, rows) {
       draft.managers = draft.managers.filter(m => m !== email);
       renderManagerRows(draft, rows);
     });
-    rows.append(personRow(person, remove));
+    rows.append(personRow(shown, remove));
   }
 }
 
@@ -441,7 +442,7 @@ function additionAdder(ed) {
 function personAdder(ed) {
   const {draft} = ed;
   const mount = el('div');
-  const picker = createPersonPicker(mount, {people: () => state.model.people});
+  const picker = createPersonPicker(mount, {people: () => state.people});
   const status = el('span', 'save-status');
   const node = el('div', 'add-row addition-add');
   node.hidden = true;
@@ -1049,7 +1050,7 @@ function managersCard(g, canEdit) {
   card.append(row);
   if (editing) {
     const mount = el('div');
-    const picker = createPersonPicker(mount, {people: () => state.model.people.filter(p => !g.managers.some(m => m.email === p.email))});
+    const picker = createPersonPicker(mount, {people: () => state.people.filter(p => !g.managers.some(m => m.email === p.email))});
     const add = () => {
       if (picker.value) {
         save([...g.managers.map(m => m.email), picker.value]);
@@ -1173,8 +1174,8 @@ function historyTab(g) {
 function messageRow(m) {
   const row = el('div', 'message-row');
   const head = el('div', 'message-head');
-  const person = state.model.people.find(p => p.email === m.from.email);
-  head.append(thumb(person || m.from, 'small'));
+  const known = person(m.from.email);
+  head.append(thumb(known ? {name: known.fullName, email: known.email, photoUrl: known.heroPhotoUrl} : m.from, 'small'));
   const body = el('div', 'person-body');
   body.append(el('div', 'message-subject', m.subject || '(no subject)'));
   body.append(el('div', 'person-words', [m.from.name, stamp(m.received)].filter(Boolean).join(' · ')));
@@ -1204,9 +1205,9 @@ function messageRow(m) {
 }
 
 function copyRow(c) {
-  const known = state.model.people.find(p => p.email === c.email);
+  const known = person(c.email);
   const words = [stateWords[c.state], stamp(c.when)].filter(Boolean).join(' · ');
-  const row = personRow({email: c.email, name: c.name || c.email, photoUrl: known ? known.photoUrl : '', words, outside: !known}, el('span'));
+  const row = personRow({email: c.email, name: c.name || c.email, photoUrl: known ? known.heroPhotoUrl : '', words, outside: !known}, el('span'));
   const attempts = c.attempts.filter(a => a.event !== 'sent');
   if (!attempts.some(a => a.event !== 'delivered')) {
     return row;

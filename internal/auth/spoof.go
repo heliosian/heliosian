@@ -26,13 +26,12 @@ const (
 type Spoof struct {
 	Allowed func(email string) bool
 	Person  func(email string) (Person, bool)
-	People  func() []Person
 }
 
 type Person struct {
-	Email string `json:"email"`
-	Name  string `json:"name"`
-	Words string `json:"words,omitempty"`
+	Email    string `json:"email"`
+	FullName string `json:"fullName"`
+	Words    string `json:"words,omitempty"`
 }
 
 type identity struct {
@@ -114,7 +113,6 @@ func (a *Auth) spoofFields(value string) (real, target string, ok bool) {
 
 func (a *Auth) RegisterSpoof(mux *http.ServeMux) {
 	mux.HandleFunc("GET /auth/spoof", a.spoofState)
-	mux.HandleFunc("GET /auth/spoof/people", serve.JSON(a.spoofPeople))
 	mux.HandleFunc("POST /auth/spoof", a.setSpoof)
 }
 
@@ -156,17 +154,6 @@ func (a *Auth) spoofState(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	serve.Write(w, r, http.StatusOK, view)
-}
-
-func (a *Auth) spoofPeople(r *http.Request, _ serve.None) ([]Person, error) {
-	if !a.canSpoof(r) {
-		return nil, access.Forbidden("super admin access required")
-	}
-	people := a.Spoof.People()
-	if people == nil {
-		people = []Person{}
-	}
-	return people, nil
 }
 
 func (a *Auth) setSpoof(w http.ResponseWriter, r *http.Request) {

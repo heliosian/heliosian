@@ -1,6 +1,7 @@
 import {me, isSystemAdmin, settings, charityName} from '../state.js';
 import {el, button} from '/elements.js';
 import {createPersonPicker} from '/picker.js';
+import {listed} from '/directory.js';
 import {api} from '/api.js';
 import {openSettings} from '../edit.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
@@ -29,7 +30,6 @@ function teamCard() {
   card.append(el('div', 'hint', 'Volunteers are offered when a birthday is assigned. The comms team carries the donations into the newsletter. Pick someone from the directory, or type an address the directory does not have.'));
   const status = el('span', 'save-status');
   let team = [];
-  let people = [];
   const groups = el('div');
   const roleGroup = (role, blurb) => {
     const group = el('div', 'team-group');
@@ -37,7 +37,7 @@ function teamCard() {
     const rows = el('div');
     const add = el('div', 'add-row');
     const mount = el('div');
-    const picker = createPersonPicker(mount, {address: true, people: () => people.filter(p => !team.some(m => m.role === role && m.email === p.email))});
+    const picker = createPersonPicker(mount, {address: true, people: async () => (await listed()).filter(p => !team.some(m => m.role === role && m.email === p.email))});
     const render = () => {
       rows.replaceChildren();
       const members = team.filter(m => m.role === role);
@@ -104,7 +104,6 @@ function teamCard() {
       return;
     }
     team = data.team;
-    people = data.people;
     if (!renders.length) {
       for (const [role, blurb] of [['Volunteer', 'Offered as choices when a birthday is assigned.'], ['Comms Team', 'Carries the donations into the newsletter.']]) {
         renders.push(roleGroup(role, blurb));
@@ -151,13 +150,9 @@ const sections = [
   {title: 'Editing & Control', tabs: [
     {key: 'team', label: 'Team', card: teamCard},
     {key: 'invites', label: 'Calendar Invites', card: invitesCard},
-    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can change the settings, the newsletter dates, and which charities are allowed, and reach this page. Everyone signed in can work the process.', people: directory})},
+    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can change the settings, the newsletter dates, and which charities are allowed, and reach this page. Everyone signed in can work the process.'})},
   ]},
 ];
-
-async function directory() {
-  return (await api('GET', '/api/admin/state')).people;
-}
 
 export function adminPage() {
   return buildAdminPage({appName: 'Helios Staff Birthdays', allowed: isSystemAdmin(), email: me().email, sections});

@@ -377,20 +377,11 @@ func b2i(b bool) int {
 	return 0
 }
 
-type PickerPerson struct {
-	Person
-	Household []string `json:"household,omitempty"`
-	Parents   []string `json:"parents,omitempty"`
-	Children  []string `json:"children,omitempty"`
-	Siblings  []string `json:"siblings,omitempty"`
-}
-
 type PickerView struct {
-	People     []PickerPerson `json:"people"`
-	Classrooms []Classroom    `json:"classrooms"`
-	Lists      []List         `json:"lists"`
-	Attendees  []Attendee     `json:"attendees,omitempty"`
-	OnList     []string       `json:"onList"`
+	Classrooms []Classroom `json:"classrooms"`
+	Lists      []List      `json:"lists"`
+	Attendees  []Attendee  `json:"attendees,omitempty"`
+	OnList     []string    `json:"onList"`
 }
 
 func (a app) invitePeople(r *http.Request, _ serve.None) (PickerView, error) {
@@ -403,24 +394,7 @@ func (a app) invitePeople(r *http.Request, _ serve.None) (PickerView, error) {
 		}
 	}
 	model := a.cache.Model()
-	view := PickerView{People: []PickerPerson{}, Classrooms: model.Roster.Classrooms, Lists: []List{}, OnList: []string{}}
-	directory := a.directory()
-	for _, p := range directory.Listed() {
-		pp := PickerPerson{Person: personView(directory, p), Household: []string{}}
-		adults, kids := directory.Household(p.Email)
-		for _, o := range append(adults, kids...) {
-			pp.Household = append(pp.Household, o.Email)
-			switch {
-			case p.IsStudent && o.IsParent:
-				pp.Parents = append(pp.Parents, o.Email)
-			case p.IsStudent && o.IsStudent:
-				pp.Siblings = append(pp.Siblings, o.Email)
-			case p.IsParent && o.IsStudent:
-				pp.Children = append(pp.Children, o.Email)
-			}
-		}
-		view.People = append(view.People, pp)
-	}
+	view := PickerView{Classrooms: model.Roster.Classrooms, Lists: []List{}, OnList: []string{}}
 	if lists := a.lists(actor.Email); lists != nil {
 		view.Lists = lists
 	}

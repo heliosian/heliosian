@@ -111,11 +111,6 @@ func (c *Cache) CategoriesFor(v access.Actor) []Category {
 	return out
 }
 
-type Person struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
-}
-
 type AppVisibility struct {
 	App
 	Visibility string        `json:"visibility"`

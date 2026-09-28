@@ -512,11 +512,7 @@ func (a app) adminState(*http.Request, access.Actor) map[string]any {
 		p, _ := v.person(m.Email)
 		team = append(team, TeamView{Email: m.Email, Name: p.Name, Role: m.Role})
 	}
-	people := []Person{}
-	for _, p := range directory.Listed() {
-		people = append(people, personView(p))
-	}
-	return map[string]any{"team": team, "roles": Roles, "people": people}
+	return map[string]any{"team": team, "roles": Roles}
 }
 
 func (a app) resendInvites(r *http.Request, _ serve.None) (map[string]int, error) {
