@@ -105,6 +105,8 @@ func TestChannelKeepsOnlyBroadcasts(t *testing.T) {
 		{"", "Office <hawksandfalcons@heliosschool.org>", "", ""},
 		{"", "\"veracross.com\" <x@elsewhere.example>", "", ""},
 		{"", "x@veracross.com.elsewhere.example", "", ""},
+		{"", "Juliet Arnswald via CampSite <services@mail.campsite-mail.com>", "newsletter", KindNewsletter},
+		{"", "x@campsite-mail.com.elsewhere.example", "", ""},
 		{"<michelle-level3math.parents.heliosschool.org>", "Teacher <t@heliosschool.org>", "", ""},
 		{"<boardoftrustees.heliosschool.org>", "Chair <c@heliosschool.org>", "", ""},
 		{"<github.com>", "GitHub <noreply@github.com>", "", ""},
@@ -125,12 +127,16 @@ func TestVouchTakesTheForwardingMailboxsSealedResults(t *testing.T) {
 	}
 	const newsletter = "From: Helios School <m@mail1.veracross.com>\r\n\r\n"
 	const veracross = "dkim=pass header.i=@mail1.veracross.com; spf=pass smtp.mailfrom=m@mail1.veracross.com; dmarc=pass header.from=mail1.veracross.com"
+	const campsite = "From: Juliet Arnswald via CampSite <services@mail.campsite-mail.com>\r\n\r\n"
+	const campsiteSealed = "dkim=pass header.i=@campsite-mail.com header.s=smtpapi; spf=pass smtp.mailfrom=\"bounces+1035658-cd6e-ian.gulliver=heliosschool.org@mail.campsite-mail.com\"; dmarc=pass header.from=campsite-mail.com"
 	const list = "List-Id: <parentsandstaff.heliosschool.org>\r\nFrom: Sunny <sunny@heliosschool.org>\r\n\r\n"
 	const groups = "dkim=pass header.i=@heliosschool.org; spf=pass (google.com: domain of parentsandstaff+bnc@heliosschool.org) smtp.mailfrom=parentsandstaff+bncX@heliosschool.org; dmarc=pass header.from=heliosschool.org"
 	cases := map[string]bool{
 		mailgun + "pass\r\n" + sealed(veracross) + newsletter: true,
 		mailgun + "fail\r\n" + sealed(veracross) + newsletter: false,
 		mailgun + "pass\r\n" + sealed("dkim=pass header.i=@elsewhere.example; spf=pass smtp.mailfrom=x@elsewhere.example; dmarc=fail header.from=mail1.veracross.com") + newsletter: false,
+		mailgun + "pass\r\n" + sealed(campsiteSealed) + campsite: true,
+		mailgun + "pass\r\n" + sealed("dkim=pass header.i=@elsewhere.example; spf=pass smtp.mailfrom=x@elsewhere.example; dmarc=fail header.from=campsite-mail.com") + campsite: false,
 		mailgun + "pass\r\n" + sealed(groups) + list: true,
 		mailgun + "fail\r\n" + sealed(groups) + list: false,
 		mailgun + "pass\r\n" + sealed("spf=pass smtp.mailfrom=sunny@heliosschool.org; dmarc=pass header.from=heliosschool.org") + list:                            false,

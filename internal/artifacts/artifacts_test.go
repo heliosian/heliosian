@@ -511,6 +511,7 @@ func TestMessagesArePlacedByWhatTheyCarry(t *testing.T) {
 		{"the old domain", Message{ListID: "<hummingbirds.parents.heliosns.org>"}, "", "", false},
 		{"a list with a description", Message{ListID: "Chat <chat.heliosschool.org>"}, "chat", KindList, true},
 		{"the newsletter's mailer", Message{Sender: "m@mail1.veracross.com"}, "newsletter", KindNewsletter, true},
+		{"the school's CampSite", Message{Sender: "services@mail.campsite-mail.com"}, "newsletter", KindNewsletter, true},
 		{"the former mailer", Message{ListID: "<3064358178.560896@benchmarkemail.com>"}, "", "", false},
 		{"a broadcast address", Message{To: []string{"parentsandstaff@heliosschool.org"}}, "", "", false},
 		{"the board", Message{ListID: "<boardoftrustees.heliosschool.org>"}, "", "", false},

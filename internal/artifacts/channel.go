@@ -19,7 +19,7 @@ var broadcast = []string{
 	"hawksandfalcons", "jaysandravens", "condorsandospreys",
 }
 
-var mailers = []string{"veracross.com"}
+var mailers = []string{"veracross.com", "campsite-mail.com"}
 
 func Channel(listID, from string) (channel, kind string, ok bool) {
 	list := listName(listID)
