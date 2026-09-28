@@ -5,8 +5,7 @@ import {api} from '/api.js';
 import {el, svg} from '/elements.js';
 import {calendarMark, calendarMenu, dropdown, audienceWords} from './cards.js';
 import {openWidgetAudience, moveWidget} from './edit.js';
-import {dayTypeClass} from '/daytype.js';
-import {dayBar, dayRow, eventRow, standing} from '/dayrows.js';
+import {dayBar, dayChip, dayRow, eventRow, standing} from '/dayrows.js';
 import {rsvpPanel} from '/rsvps.js';
 
 function parseDate(date) {
@@ -97,6 +96,14 @@ function allEvents(month) {
   return events.filter(shown);
 }
 
+function dayInfo(month, day) {
+  const here = (month.days || {})[day];
+  if (here || !nextMonth || nextMonth.calendar !== month.calendar) {
+    return here || {};
+  }
+  return (nextMonth.days || {})[day] || {};
+}
+
 let nextAsked = null;
 
 async function fetchNext(month) {
@@ -118,14 +125,15 @@ async function fetchNext(month) {
 function dayGroups(items, dayOf, order) {
   const byDay = new Map();
   for (const item of items) {
-    const day = dayOf(item);
-    if (!day) {
-      continue;
+    for (const day of [dayOf(item)].flat()) {
+      if (!day) {
+        continue;
+      }
+      if (!byDay.has(day)) {
+        byDay.set(day, []);
+      }
+      byDay.get(day).push(item);
     }
-    if (!byDay.has(day)) {
-      byDay.set(day, []);
-    }
-    byDay.get(day).push(item);
   }
   return [...byDay.keys()].sort().map(d => ({day: d, rows: byDay.get(d).sort((a, b) => order(a, d).localeCompare(order(b, d)))}));
 }
@@ -241,12 +249,12 @@ function whenWidget() {
   if (rsvps.length) {
     card.append(rsvpPanel(rsvps, appOrigin('when')));
   }
-  const groups = dayGroups(events, event => [...event.dates].sort().find(d => d >= month.today), sortKey);
+  const groups = dayGroups(events, event => event.dates.filter(d => d >= month.today), sortKey);
   if (!groups.length) {
     card.append(el('p', 'wg-empty', 'Nothing coming up on the calendar.'));
   }
   card.append(...grouped('when', groups,
-    g => dayBar(g.day, g.rows.length, 'event', (((month.days || {})[g.day] || {}).kinds || []).map(k => el('span', 'widget-kind ' + dayTypeClass(k.name), k.words))),
+    g => dayBar(g.day, (dayInfo(month, g.day).kinds || []).map(k => dayChip(k.name, k.words))),
     (event, g) => eventRow(event, {base: appOrigin('when'), time: startTime(event, g.day), className: tint(event)})));
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
   card.append(widgetFoot('when', total, {href: appOrigin('when')}));
@@ -613,7 +621,7 @@ function schoolWidget() {
   const groups = dayGroups(shown, e => e.date, e => e.time || '').reverse();
   const first = groups.length ? groups[0].rows[0].key : null;
   const openKey = schoolOpen === undefined || (schoolOpen && !shown.some(e => e.key === schoolOpen)) ? first : schoolOpen;
-  card.append(...grouped(name, groups, g => dayBar(g.day, g.rows.length, 'email'), (e, g, n) => emailRow(e, n, e.key === openKey)));
+  card.append(...grouped(name, groups, g => dayBar(g.day, [el('span', 'wg-day-count', `${g.rows.length} ${g.rows.length === 1 ? 'email' : 'emails'}`)]), (e, g, n) => emailRow(e, n, e.key === openKey)));
   const foot = widgetFoot(name, shown.length, null);
   if (foot) {
     card.append(foot);

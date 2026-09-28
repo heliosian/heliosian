@@ -1,4 +1,4 @@
-import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, plan, dayType, clock, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, eventTint, timeLine, startTime, eventPath, isMatch, isHidden, isGray, myEvents, linkedApp} from '../state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, plan, dayType, clock, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, groupWords, eventTint, timeLine, startTime, eventPath, isMatch, isHidden, isGray, myEvents, linkedApp} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {feedMark} from '../dom.js';
 import {el, link, svg, button, toast, longToast, copyText} from '/elements.js';
@@ -6,7 +6,7 @@ import {popup} from '/modal.js';
 import {setSearch, fillFilters, renderRailDay, editFeedPopup, makeDefaultFeed, calendarMenu} from '../chrome.js';
 import {setTitle} from '/shell.js';
 import {load, setPath} from '/router.js';
-import {dayBar, dayRow, eventRow} from '/dayrows.js';
+import {dayBar, dayChip, dayRow, eventRow} from '/dayrows.js';
 import {rsvpPanel} from '/rsvps.js';
 import {attachPeek, attachRowPeek, hidePeek} from '../peek.js';
 import {api} from '/api.js';
@@ -16,16 +16,15 @@ import {answerOf, selectedTags, classroomNames, tagNames, defaultFeedName, shows
 
 let lastDate = '';
 
-function upcomingDay(date, count) {
+function upcomingDay(date, groups) {
   const head = link('/day/' + date, 'up-dayhead');
-  head.append(dayBar(date, count, 'event'));
+  head.append(dayBar(date, groups.map(g => dayChip(g.name, groupWords(g)))));
   return head;
 }
 
 function upcomingRow(date, e, group) {
   if (!e) {
-    const all = selectedClassrooms();
-    const title = link('/day/' + date, 'wg-title', group.classrooms.length === all.length ? group.name : `${group.name} \u00b7 ${group.classrooms.join(', ')}`);
+    const title = link('/day/' + date, 'wg-title', groupWords(group));
     return dayRow(dayTypeClass(group.name), {title, chips: [], time: ''}, () => title.click());
   }
   const states = [[isMatch(e), 'is-match'], [e.pending, 'is-pending'], [e.declined, 'is-declined'], [e.sharing !== 'Public', 'is-invite']];
@@ -71,7 +70,7 @@ function upcomingPanel(date) {
       const day = el('div', 'up-day');
       const list = el('ol', 'wg-list');
       list.append(...rows);
-      day.append(upcomingDay(d, rows.length), list);
+      day.append(upcomingDay(d, groups), list);
       body.append(day);
     }
     if (!any) {
@@ -93,7 +92,6 @@ function dayCell(date) {
   const head = el('div', 'month-cell-head');
   const standard = schoolEnd(dayType('Regular'));
   const groups = plan(date);
-  const all = selectedClassrooms();
   const alert = (kind, words, match) => {
     const chip = el('span', 'chip month-alert is-' + kind + (match ? ' is-match' : ''));
     chip.append(svg('bell'), words);
@@ -104,7 +102,7 @@ function dayCell(date) {
     alert('early', clock(end).trimStart(), state.query && groups.some(g => schoolEnd(g.type) === end && dayTypeMatches(g.name, state.query)));
   }
   for (const g of groups.filter(g => !schoolEnd(g.type))) {
-    alert('closed', g.classrooms.length === all.length ? g.name : `${g.name} (${g.classrooms.length})`, state.query && dayTypeMatches(g.name, state.query));
+    alert('closed', groupWords(g), state.query && dayTypeMatches(g.name, state.query));
   }
   if (groups.length && groups.every(g => !schoolEnd(g.type))) {
     cell.classList.add('is-closed');

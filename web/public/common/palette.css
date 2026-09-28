@@ -38,4 +38,8 @@
   --notice-disc: #f1b940;
   --notice-disc-ink: var(--brand-deep);
   --notice-text: var(--ink);
+  --early-out: #c73e7c;
+  --no-school: #c2442d;
+  --no-aftercare: #6f4fa0;
+  --other: #4c6a70;
 }

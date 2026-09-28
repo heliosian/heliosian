@@ -1,4 +1,4 @@
-import {eventPath, timeColumn, whenLine, timeRange, clock, audienceWords, categoryTags, eventColors, plan, specials, isSchoolDay, dayLabel, today, selectedClassrooms, classroomNames, linkURL} from './state.js';
+import {eventPath, timeColumn, whenLine, timeRange, clock, audienceWords, categoryTags, eventColors, plan, selectedClassrooms, classroomNames, linkURL} from './state.js';
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg} from '/elements.js';
 
@@ -68,30 +68,6 @@ export function callPill(e) {
     location.href = linkURL(e);
   });
   return pill;
-}
-
-export function dayWords(date) {
-  const wrap = el('span', 'day-words');
-  const all = selectedClassrooms();
-  specials(date).forEach((g, i) => {
-    const words = g.classrooms.length === all.length ? g.name : `${g.name} · ${g.classrooms.join(', ')}`;
-    wrap.append(el('span', 'day-type-words ' + dayTypeClass(g.name), (i ? ', ' : '') + words));
-  });
-  return wrap;
-}
-
-export function dayHeading(date, withDayWords) {
-  const head = el('div', 'day-heading' + (date === today() ? ' is-today' : ''));
-  const words = link('/day/' + date, 'day-heading-date');
-  words.append(el('span', 'day-heading-label', dayLabel(date)));
-  if (date === today()) {
-    words.append(el('span', 'day-heading-today', 'Today'));
-  }
-  head.append(words);
-  if (withDayWords && isSchoolDay(date)) {
-    head.append(dayWords(date));
-  }
-  return head;
 }
 
 const blockIcons = {Dropoff: 'car', School: 'school', Pickup: 'car', Aftercare: 'people'};
@@ -181,19 +157,6 @@ export function planFolds(date, groups = plan(date)) {
     wrap.append(card);
   }
   return wrap;
-}
-
-export function specialRow(item) {
-  const row = link('/day/' + item.date, 'special-row');
-  row.append(el('span', 'special-date', dayLabel(item.date)));
-  const all = selectedClassrooms();
-  const words = el('span', 'day-words');
-  item.groups.forEach((g, i) => {
-    const text = g.classrooms.length === all.length ? g.name : `${g.name} · ${g.classrooms.join(', ')}`;
-    words.append(el('span', 'day-type-words ' + dayTypeClass(g.name), (i ? ', ' : '') + text));
-  });
-  row.append(words);
-  return row;
 }
 
 export function emptyNote(words) {

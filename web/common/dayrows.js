@@ -1,6 +1,7 @@
 import {el, link, svg} from '/elements.js';
 import {parseWhen} from '/datecard.js';
 import {appOrigin} from '/appswitch.js';
+import {dayTypeClass} from '/daytype.js';
 
 export function anchor(base, path, className, text) {
   if (!base) {
@@ -53,7 +54,11 @@ export function eventRow(event, {base, time, className}) {
   return dayRow(className, {title, chips: [standing(event) || action(event, base)], time}, () => title.click());
 }
 
-export function dayBar(day, count, noun, chips = []) {
+export function dayChip(name, words) {
+  return el('span', 'wg-day-chip ' + dayTypeClass(name), words);
+}
+
+export function dayBar(day, side = []) {
   const bar = el('div', 'wg-day');
   const label = el('span', 'wg-day-label');
   if (day) {
@@ -62,9 +67,9 @@ export function dayBar(day, count, noun, chips = []) {
   } else {
     label.append(el('span', '', 'Ongoing'));
   }
-  label.append(...chips);
-  const plural = noun.endsWith('y') ? noun.slice(0, -1) + 'ies' : noun + 's';
-  bar.append(label, el('span', 'wg-day-count', `${count} ${count === 1 ? noun : plural}`));
+  const end = el('span', 'wg-day-side');
+  end.append(...side);
+  bar.append(label, end);
   return bar;
 }
 

@@ -457,14 +457,6 @@ main {
 
 .widget-title { margin: 0; font-family: Montserrat, Roboto, sans-serif; font-size: 22px; font-weight: 700; color: var(--brand); }
 
-.widget-kind { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; align-self: center; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #1d2b2c; background: #a9d3d8; }
-
-.widget-kind.dt-early { background: #f4c06a; }
-
-.widget-kind.dt-no-school { background: #f59d8b; }
-
-.widget-kind.dt-no-aftercare { background: #cdb3f5; }
-
 /* The calendar's dropdown sits at the heading's right end, its menu
    opening from there; its name gives way first when the heading is tight,
    shortened with an ellipsis. */
@@ -505,8 +497,6 @@ main {
 .wg-row.is-gold { --ink-tint: #d49b0b; --pale-tint: #fdf2d6; }
 
 .wg-row.is-green { --ink-tint: #2e8a45; --pale-tint: #e2f3e5; }
-
-.wg-day-label .widget-kind { text-transform: none; letter-spacing: 0; font-weight: 600; }
 
 /* Celebrate's parties: each its picture beside its title over its day and
    hours and its pill, a hairline between them. */

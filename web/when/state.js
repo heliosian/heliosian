@@ -536,6 +536,10 @@ export function isSchoolDay(date) {
   return Boolean(state.model.days[date]);
 }
 
+export function groupWords(group) {
+  return group.classrooms.length === selectedClassrooms().length ? group.name : `${group.name} (${group.classrooms.length})`;
+}
+
 export function specials(date) {
   return plan(date).filter(g => g.name !== 'Regular');
 }
@@ -544,21 +548,6 @@ const scheduleTag = 'Schedule';
 
 export function scheduleOn() {
   return !tagNames().includes(scheduleTag) || selectedTags().includes(scheduleTag);
-}
-
-export function nextSpecials(from, n) {
-  const out = [];
-  const dates = Object.keys(state.model.days).filter(d => d > from).sort();
-  for (const date of dates) {
-    const groups = specials(date);
-    if (groups.length) {
-      out.push({date, groups});
-      if (out.length >= n) {
-        break;
-      }
-    }
-  }
-  return out;
 }
 
 export function colorOf(classroom) {

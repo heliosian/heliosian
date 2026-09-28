@@ -1,18 +1,14 @@
 :root {
   --tabbar: 64px;
-  --no-school: #c2442d;
   --no-school-wash: #fbebe7;
   --early: #b8761a;
   --early-wash: #fdf3e2;
-  --no-aftercare: #6f4fa0;
   --no-aftercare-wash: #f1ebf9;
-  --other: #4c6a70;
   --other-wash: #e9f0f1;
   --off-day-wash: #f7f9f9;
   --weekend-wash: #f3f1f7;
   --closed-wash: #e4ddf0;
   --closed: #6b5a92;
-  --early-out: #c73e7c;
   --early-out-wash: #fce8f1;
   --today-wash: #fffaf0;
   --on-day-wash: #eef6f5;
@@ -832,17 +828,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .strip-arrow { border: 1px solid var(--line); background: var(--card); color: var(--brand); }
 
-/* What kind of day, as colored words wherever a list mentions it. */
-.day-words { display: inline; }
-
-.day-type-words { font-size: 12px; font-weight: 700; color: var(--other); }
-
-.day-type-words.dt-no-school { color: var(--no-school-mark, var(--no-school)); }
-
-.day-type-words.dt-early { color: var(--early-mark, var(--early)); }
-
-.day-type-words.dt-no-aftercare { color: var(--no-aftercare); }
-
 /* Chips: what kind of day, and on the event page who an event is for. */
 .chips { display: inline-flex; flex-wrap: wrap; gap: 5px; }
 
@@ -864,7 +849,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .chip-day.dt-no-school { background: var(--no-school); }
 
-.chip-day.dt-early { background: var(--early); }
+.chip-day.dt-early { background: var(--early-out); }
 
 .chip-day.dt-no-aftercare { background: var(--no-aftercare); }
 
@@ -1007,25 +992,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .room-dot.is-plain { background: #b9c6c8; }
 
-.day-group { margin-bottom: 14px; }
-
-.day-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 6px; }
-
-.day-heading-date { display: inline-flex; align-items: baseline; gap: 8px; text-decoration: none; color: var(--brand); }
-
-.day-heading-label { font-family: Montserrat, Roboto, sans-serif; font-size: 15px; font-weight: 700; }
-
 .day-heading-today { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber); }
-
-.special-list { display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-
-.special-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 7px 12px; border-top: 1px solid var(--line); text-decoration: none; color: inherit; }
-
-.special-row:first-child { border-top: 0; }
-
-.special-row:hover { background: #fafcfc; }
-
-.special-date { width: 92px; flex-shrink: 0; font-size: 12.5px; font-weight: 700; color: var(--brand); }
 
 .panel { background: var(--card); color: var(--ink); border-radius: 12px; border: 1px solid var(--line); }
 
@@ -2042,12 +2009,6 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 .day-peek .block-icon { width: 26px; height: 26px; }
 
 .day-peek .block-icon svg { width: 14px; height: 14px; }
-
-:is(.plan-card, .plan-fold).dt-early .block.block-school { background: color-mix(in srgb, var(--early-out) 16%, var(--card)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--early-out) 35%, transparent); }
-
-:is(.plan-card, .plan-fold).dt-early .block-school .block-icon { background: var(--early-out); color: #fff; }
-
-:is(.plan-card, .plan-fold).dt-early .block-school .block-hours { color: var(--early-out-mark, var(--early-out)); }
 
 .day-peek .block-body { flex-direction: column; align-items: flex-start; }
 
