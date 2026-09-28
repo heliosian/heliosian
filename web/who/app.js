@@ -5,7 +5,7 @@ import {api} from '/api.js';
 import {startApp, notFound} from '/router.js';
 import {loadTagRelations} from './storage.js';
 import {familyEntries} from './families.js';
-import {initChrome, preparePage, showPage, renderUserChrome, renderSuperEditBanner} from './chrome.js';
+import {initChrome, preparePage, showPage, renderUserChrome} from './chrome.js';
 import {initSearch} from './search.js';
 import {maybeShowInstallPrompt} from './install.js';
 import {peoplePage} from './pages/people.js';
@@ -100,7 +100,6 @@ async function model() {
   state.everyoneOrder = shuffled(state.model.people);
   state.familyOrder = shuffled(familyEntries());
   renderUserChrome();
-  renderSuperEditBanner();
 }
 
 initChrome();

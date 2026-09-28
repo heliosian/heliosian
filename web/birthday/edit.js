@@ -1,14 +1,15 @@
-import {state, me, team, isAdmin, isSystemAdmin, settings, charity, charityNamed, charityName, issueDates, newsletterOn, longDate, dateCell, parseDate, year} from './state.js';
+import {state, me, team, isAdmin, settings, charity, charityNamed, charityName, issueDates, newsletterOn, longDate, dateCell, parseDate, year} from './state.js';
 import {el, button, toast} from '/elements.js';
 import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
+import {act, actAll, create, remove} from '/data.js';
 import {openModal} from '/modal.js';
 import {load, navigate} from '/router.js';
 import {field, text, textarea, select, fillSelect, checkbox} from '/form.js';
 
-export async function act(method, url, body, message) {
+export async function run(write, message) {
   try {
-    await api(method, url, body);
+    await write();
     await load();
     if (message) {
       toast(message);
@@ -19,11 +20,11 @@ export async function act(method, url, body, message) {
 }
 
 export function assignToMe(sv) {
-  return act('POST', '/api/birthday/assign', {email: sv.email}, `${sv.name} is yours`);
+  return run(() => act('birthdays', sv.id, 'assign'), `${sv.name} is yours`);
 }
 
 export function unassign(sv) {
-  return act('DELETE', '/api/birthday/assign', {email: sv.email});
+  return run(() => act('birthdays', sv.id, 'unassign'));
 }
 
 export function openAssign(sv) {
@@ -34,37 +35,26 @@ export function openAssign(sv) {
   const who = select(people.map(p => ({label: p.name, value: p.email})), sv.assignedTo || me().email);
   openModal(`Assign ${sv.name}`, [field('To', who)], {
     saveLabel: 'Assign',
-    submit: () => api('POST', '/api/birthday/assign', {email: sv.email, assignedTo: who.value === me().email ? '' : who.value}),
-    onDelete: sv.assignedTo ? () => api('DELETE', '/api/birthday/assign', {email: sv.email}) : null,
+    submit: () => act('birthdays', sv.id, 'assign', {to: who.value === me().email ? '' : who.value}),
+    onDelete: sv.can.unassign ? () => act('birthdays', sv.id, 'unassign') : null,
     deleteLabel: 'Unassign',
     confirmDelete: `Unassign ${sv.name}?`,
   });
 }
 
 export function markContacted(sv, contacted) {
-  return act('POST', '/api/birthday/outreach', {email: sv.email, contacted}, contacted ? 'Marked as contacted' : 'Outreach reopened');
+  return run(() => act('birthdays', sv.id, contacted ? 'contact' : 'uncontact'), contacted ? 'Marked as contacted' : 'Outreach reopened');
 }
 
-export async function markAllUsed(list) {
-  let n = 0;
-  try {
-    for (const sv of list) {
-      await api('POST', '/api/birthday/used', {email: sv.email, used: true});
-      n++;
-    }
-    await load();
-    toast(`Marked ${n} as used`);
-  } catch (err) {
-    await load();
-    toast(err.message);
-  }
+export function markAllUsed(list) {
+  return run(() => actAll(list.map(sv => ({method: 'POST', path: `/api/donations/${sv.donation.id}/use`}))), `Marked ${list.length} as used`);
 }
 
 export function toShare(date) {
-  return state.model.staff.filter(sv => sv.newsletterDate === date && sv.level !== 'Skip' && !(sv.donation && sv.donation.usedOn));
+  return state.model.staff.filter(sv => sv.newsletterDate === date && !(sv.donation && sv.donation.usedOn));
 }
 
-export async function shareIssue(date) {
+export function shareIssue(date) {
   const list = toShare(date);
   const bare = list.filter(sv => !sv.donation).length;
   const words = `Copy ${list.length} ${list.length === 1 ? 'birthday' : 'birthdays'} for ${longDate(date)} to the Staff Birthday List (Shared) and mark ${list.length === 1 ? 'it' : 'them'} done?` +
@@ -72,26 +62,19 @@ export async function shareIssue(date) {
   if (!confirm(words)) {
     return;
   }
-  try {
-    const {copied} = await api('POST', '/api/birthday/newsletter/share', {id: newsletterOn(date).id});
-    await load();
-    toast(`Copied ${copied} to the shared sheet`);
-  } catch (err) {
-    await load();
-    toast(err.message);
-  }
+  return run(() => act('newsletter-dates', newsletterOn(date).id, 'share'), `Copied ${list.length} to the shared sheet`);
 }
 
 export function markUsed(sv, used) {
-  return act('POST', '/api/birthday/used', {email: sv.email, used}, used ? 'Marked as used in the newsletter' : 'Marked as not yet used');
+  return run(() => act('donations', sv.donation.id, used ? 'use' : 'unuse'), used ? 'Marked as used in the newsletter' : 'Marked as not yet used');
 }
 
 export function useDefault(sv) {
-  return act('POST', '/api/birthday/donation', {email: sv.email, charity: settings().defaultCharity, note: ''}, `Recorded ${charityName(settings().defaultCharity)}`);
+  return run(() => act('birthdays', sv.id, 'donate', {charity: settings().defaultCharity, note: ''}), `Recorded ${charityName(settings().defaultCharity)}`);
 }
 
 export function reuseLast(sv) {
-  return act('POST', '/api/birthday/donation', {email: sv.email, charity: sv.lastDonation.charity, note: sv.lastDonation.note || ''}, `Recorded ${charityName(sv.lastDonation.charity)} again`);
+  return run(() => act('birthdays', sv.id, 'donate', {charity: sv.lastDonation.charity, note: sv.lastDonation.note || ''}), `Recorded ${charityName(sv.lastDonation.charity)} again`);
 }
 
 function charityOptions(current) {
@@ -138,8 +121,8 @@ export function openDonation(sv) {
   pick.addEventListener('change', showBlurb);
   showBlurb();
   openModal(existing ? `Edit ${sv.name}'s donation` : `Record ${sv.name}'s donation`, [field('Charity', pick), add, blurb, field('Their note', note, 'Why they chose it, in their words, for the newsletter')], {
-    submit: () => api('POST', '/api/birthday/donation', {email: sv.email, charity: pick.value, note: note.value}),
-    onDelete: existing ? () => api('DELETE', '/api/birthday/donation', {email: sv.email}) : null,
+    submit: () => act('birthdays', sv.id, 'donate', {charity: pick.value, note: note.value}),
+    onDelete: existing && existing.can.delete ? () => remove('donations', existing.id) : null,
     deleteLabel: 'Remove',
     confirmDelete: existing ? `Remove ${sv.name}'s donation this year?` : '',
   });
@@ -150,7 +133,7 @@ const months = Array.from({length: 12}, (_, i) => ({label: monthFormat.format(ne
 const days = Array.from({length: 31}, (_, i) => String(i + 1).padStart(2, '0'));
 
 export function openBirthday(sv) {
-  const email = text(sv.email, {type: 'email', required: true, placeholder: 'name@heliosschool.org'});
+  const email = text(sv.email || '', {type: 'email', required: true, placeholder: 'name@heliosschool.org'});
   const [currentMonth, currentDay] = (sv.birthday || '').split('-');
   const month = select(months, currentMonth || '01');
   const day = select(days, currentDay || '01');
@@ -158,13 +141,16 @@ export function openBirthday(sv) {
   birthday.append(month, day);
   const override = select([{label: 'The usual pick', value: ''}, ...state.model.newsletterDates.map(n => ({label: longDate(n.date), value: n.id}))], sv.override || '');
   const fields = [];
-  if (!sv.birthday) {
+  if (!sv.id) {
     fields.push(field('Email', email));
   }
   fields.push(field('Birthday', birthday), field('Newsletter', override, 'Which issue carries the birthday, when the first one on or after it is wrong'));
   openModal(sv.birthday ? `Edit ${sv.name}'s birthday` : `Add ${sv.name ? `${sv.name}'s` : 'a'} birthday`, fields, {
-    submit: () => api('POST', '/api/birthday/birthday', {email: sv.birthday ? sv.email : email.value, birthday: `${month.value}-${day.value}`, override: override.value}),
-    onDelete: sv.birthday && isAdmin() ? () => api('DELETE', '/api/birthday/birthday', {email: sv.email}) : null,
+    submit: () => {
+      const values = {birthday: `${month.value}-${day.value}`, override: override.value};
+      return sv.id ? act('birthdays', sv.id, 'set', values) : create('birthdays', {email: email.value, ...values});
+    },
+    onDelete: sv.can && sv.can.delete ? () => remove('birthdays', sv.id) : null,
     deleteLabel: 'Remove birthday',
     confirmDelete: `Remove ${sv.name}'s birthday? Their assignments, outreach, donations, and notes must already be gone.`,
     afterDelete: () => navigate('/skipped'),
@@ -179,13 +165,16 @@ export function openParticipation(sv) {
   ], sv.level || 'Skip');
   const note = textarea(sv.levelNote || '', 3);
   const fields = [];
-  if (!sv.email) {
+  if (!sv.id) {
     fields.push(field('Email', email));
   }
   fields.push(field('Preference', level), field('Note', note, 'Who asked, when, anything the team should know'));
   openModal(sv.level ? `Edit ${sv.name}'s preference` : `Set ${sv.name ? `${sv.name}'s` : 'a'} preference`, fields, {
-    submit: () => api('POST', '/api/birthday/participation', {email: sv.email || email.value, level: level.value, note: note.value}),
-    onDelete: sv.level ? () => api('DELETE', '/api/birthday/participation', {email: sv.email}) : null,
+    submit: () => {
+      const values = {level: level.value, note: note.value};
+      return sv.id ? act('birthdays', sv.id, 'participation', values) : create('birthdays', {email: email.value, ...values});
+    },
+    onDelete: sv.can && sv.can['clear-participation'] ? () => act('birthdays', sv.id, 'clear-participation') : null,
     deleteLabel: 'Clear preference',
     confirmDelete: `Clear ${sv.name}'s preference and treat them like everyone else?`,
   });
@@ -195,7 +184,7 @@ export function openNote(sv) {
   const note = textarea('', 4);
   openModal(`Note on ${sv.name}`, [field('Note', note)], {
     saveLabel: 'Add Note',
-    submit: () => api('POST', '/api/birthday/note', {email: sv.email, note: note.value}),
+    submit: () => act('birthdays', sv.id, 'note', {note: note.value}),
   });
 }
 
@@ -203,7 +192,7 @@ export function removeNote(note) {
   if (!confirm('Remove this note?')) {
     return;
   }
-  return act('DELETE', '/api/birthday/note', note);
+  return run(() => remove('birthday-notes', note.id));
 }
 
 function describeCharity(name, donationLink) {
@@ -215,7 +204,7 @@ export function openCharity(c, options) {
 }
 
 function openCharityForm(c, start, options) {
-  const admin = isAdmin();
+  const admin = c ? c.can.allow : isAdmin();
   const name = text(c ? c.name : start.name || '', {required: true, maxLength: 120});
   const linkInput = text(c ? c.donationLink : start.donationLink || '', {type: 'url', required: true, placeholder: 'https://'});
   const about = textarea(c ? c.about : start.about || '', 4);
@@ -286,18 +275,25 @@ function openCharityForm(c, start, options) {
   openModal(c ? 'Edit Charity' : 'Add Charity', fields, {
     replace: !c,
     submit: async () => {
-      await api('POST', '/api/birthday/charity', {
-        id: c ? c.id : '', name: name.value, donationLink: linkInput.value, about: about.value, ein: c ? c.ein : '',
-        allowed: admin ? allowed.input.checked : true, whyNotAllowed: why.value,
-      });
+      const edit = {name: name.value, donationLink: linkInput.value, about: about.value, ein: c ? c.ein : ''};
+      const allowance = {allowed: allowed.input.checked, whyNotAllowed: why.value};
+      if (!c) {
+        await create('charities', admin ? {...edit, ...allowance} : edit);
+      } else {
+        const writes = [{method: 'POST', path: `/api/charities/${c.id}/edit`, body: edit}];
+        if (admin) {
+          writes.push({method: 'POST', path: `/api/charities/${c.id}/allow`, body: allowance});
+        }
+        await actAll(writes);
+      }
       if (c && c.name !== name.value.trim() && location.pathname.startsWith('/charities/')) {
         navigate(`/charities/${encodeURIComponent(name.value.trim())}`);
       }
       return name.value.trim();
     },
     afterSave: options && options.afterSave,
-    onDelete: c && admin ? () => api('DELETE', '/api/birthday/charity', {id: c.id}) : null,
-    confirmDelete: c ? `Delete “${c.name}”? Charities with donations can only be marked not allowed.` : '',
+    onDelete: c && c.can.delete ? () => remove('charities', c.id) : null,
+    confirmDelete: c ? `Delete “${c.name}”?` : '',
     afterDelete: () => navigate('/charities'),
   });
 }
@@ -309,7 +305,7 @@ export function openNewsletterDate() {
   const date = text(dateCell(last), {type: 'date', required: true});
   openModal('Add Newsletter Date', [field('Date', date)], {
     saveLabel: 'Add',
-    submit: () => api('POST', '/api/birthday/newsletter-date', {date: date.value}),
+    submit: () => create('newsletter-dates', {date: date.value}),
   });
 }
 
@@ -317,14 +313,24 @@ export function openChangeNewsletterDate(original) {
   const {id} = newsletterOn(original);
   const date = text(original, {type: 'date', required: true});
   openModal('Change Newsletter Date', [field('Date', date, 'Anyone pinned to this issue moves with it')], {
-    submit: () => api('PUT', '/api/birthday/newsletter-date', {id, date: date.value}),
+    submit: () => act('newsletter-dates', id, 'move', {date: date.value}),
   });
 }
 
 export function addNextWeek(after) {
   const next = parseDate(after);
   next.setDate(next.getDate() + 7);
-  return act('POST', '/api/birthday/newsletter-date', {date: dateCell(next)}, `Added ${longDate(dateCell(next))}`);
+  return run(() => create('newsletter-dates', {date: dateCell(next)}), `Added ${longDate(dateCell(next))}`);
+}
+
+function weekly(weekday, from, to) {
+  const out = [];
+  const day = parseDate(from);
+  day.setDate(day.getDate() + (weekday - day.getDay() + 7) % 7);
+  for (const end = parseDate(to); day <= end; day.setDate(day.getDate() + 7)) {
+    out.push(dateCell(day));
+  }
+  return out;
 }
 
 export function openCreateNewsletterDates() {
@@ -341,29 +347,35 @@ export function openCreateNewsletterDates() {
   ], {
     saveLabel: 'Create',
     submit: async () => {
-      const {added} = await api('POST', '/api/birthday/newsletter-dates/create', {weekday: Number(weekday.value), from: from.value, to: to.value});
-      toast(`Added ${added} ${added === 1 ? 'date' : 'dates'}`);
+      if (to.value < from.value) {
+        throw new Error('The final date is before the first.');
+      }
+      const added = weekly(Number(weekday.value), from.value, to.value).filter(d => !newsletterOn(d));
+      if (!added.length) {
+        throw new Error('Every one of those dates is already on the list.');
+      }
+      await actAll(added.map(date => ({method: 'POST', path: '/api/newsletter-dates', body: {date}})));
+      toast(`Added ${added.length} ${added.length === 1 ? 'date' : 'dates'}`);
     },
   });
 }
 
-export function clearFutureNewsletterDates(count) {
-  if (!confirm(`Remove the ${count} newsletter ${count === 1 ? 'date' : 'dates'} from today on? The ones already out stay.`)) {
+export function clearFutureNewsletterDates(future) {
+  if (!confirm(`Remove the ${future.length} newsletter ${future.length === 1 ? 'date' : 'dates'} from today on? The ones already out stay.`)) {
     return;
   }
-  return act('POST', '/api/birthday/newsletter-dates/clear-future', {}, `Removed ${count} ${count === 1 ? 'date' : 'dates'}`);
+  return run(() => actAll(future.map(n => ({method: 'DELETE', path: `/api/newsletter-dates/${n.id}`}))), `Removed ${future.length} ${future.length === 1 ? 'date' : 'dates'}`);
 }
 
 export function removeNewsletterDate(date) {
   if (!confirm(`Remove the ${longDate(date)} newsletter?`)) {
     return;
   }
-  return act('DELETE', '/api/birthday/newsletter-date', {id: newsletterOn(date).id});
+  return run(() => remove('newsletter-dates', newsletterOn(date).id));
 }
 
 export function offerTeam() {
-  const email = me().email;
-  if (isSystemAdmin() || state.model.team.some(m => m.email === email)) {
+  if (state.model.standing.team) {
     return;
   }
   const blurb = el('div', 'join-blurb');
@@ -373,7 +385,7 @@ export function offerTeam() {
   );
   openModal('Join the Birthday Team?', [blurb], {
     saveLabel: 'Join the Team',
-    submit: () => api('POST', '/api/birthday/team/join', {}),
+    submit: () => create('birthday-team', {}),
     afterSave: () => toast('Welcome to the team!'),
     alternate: {label: 'No thanks', onClick: () => {
       location.href = appOrigin('home');
@@ -407,7 +419,7 @@ export function openSettings() {
     field('No-newsletter note', note, 'Put where {no newsletter note} sits in the body, or at the end, for anyone who asked to stay out of the newsletter'),
     field('CC on outreach', cc, 'Copied on the outreach email a reminder hands over; blank for nobody'),
   ], {
-    submit: () => api('POST', '/api/birthday/settings', {
+    submit: () => act('birthday-settings', state.model.settingsId, 'edit', {
       defaultCharity: defaultCharity.value, yearStart: yearStart.value, emailSubject: subject.value, emailBody: body.value, noNewsletterNote: note.value, outreachCC: cc.value, requestLeadDays: Number(lead.value), dueByLeadDays: Number(dueBy.value),
     }),
   });

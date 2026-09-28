@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	Configure         = access.Standing("config.configure")
-	ManageSuperAdmins = access.Standing("super-admins")
-	SignOutAnyone     = access.Standing("sign-out-anyone")
+	Configure         = access.Named("config.configure")
+	ManageSuperAdmins = access.Named("super-admins")
+	SignOutAnyone     = access.Named("sign-out-anyone")
 )
 
 var SuperAllowances = []access.Allowance{ManageSuperAdmins, SignOutAnyone}

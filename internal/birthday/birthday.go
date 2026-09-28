@@ -28,6 +28,15 @@ const (
 	settingsTab        = "Settings"
 	teamTab            = "Team"
 	remindersTab       = "Reminders"
+	invitesTab         = "Invites"
+)
+
+const (
+	kindBirthday = "birthday"
+	kindDonation = "birthday-donation"
+	kindNote     = "birthday-note"
+	kindTeam     = "birthday-team"
+	kindSettings = "birthday-settings"
 )
 
 const (
@@ -87,6 +96,7 @@ var (
 	SettingColumns        = []string{"Key", "Value"}
 	TeamColumns           = []string{"Email", "Role"}
 	ReminderColumns       = []string{"Email", "Year", "Kind", "Sent On", "Sent To"}
+	InviteColumns         = []string{"Invite ID", "Email", "Year", "Requested On", "Requested By", "Sent To", "Ask Day", "Sent On"}
 )
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
@@ -163,6 +173,17 @@ type TeamMember struct {
 	Role  string `json:"role"`
 }
 
+type Invite struct {
+	ID          string
+	Email       string
+	Year        string
+	RequestedOn string
+	RequestedBy string
+	SentTo      string
+	AskDay      string
+	SentOn      string
+}
+
 type Model struct {
 	Birthdays       []Birthday
 	Assignments     map[string]Assignment
@@ -173,11 +194,17 @@ type Model struct {
 	NewsletterDates []NewsletterDate
 	Team            []TeamMember
 	Reminders       map[string]bool
+	Invites         []Invite
 	Settings        Settings
 	admins          []string
+	idKey           []byte
 	byEmail         map[string]*Birthday
 	byCharity       map[string]*Charity
 	byNewsletter    map[string]*NewsletterDate
+	donationIDs     map[string]string
+	noteIDs         map[string]int
+	teamIDs         map[string]int
+	inviteIDs       map[string]int
 }
 
 func reminderKey(email, year, kind string) string {
@@ -228,19 +255,6 @@ func (m *Model) issueDates() []string {
 		dates = append(dates, n.Date)
 	}
 	return dates
-}
-
-func (m *Model) taken(key string) bool {
-	return m.byCharity[key] != nil || m.byNewsletter[key] != nil
-}
-
-func (m *Model) minter() func() string {
-	minted := map[string]bool{}
-	return func() string {
-		s := id.New(func(key string) bool { return minted[key] || m.taken(key) })
-		minted[s] = true
-		return s
-	}
 }
 
 func (m *Model) Assignment(email, year string) (Assignment, bool) {
@@ -367,7 +381,7 @@ func leadDays(values map[string]string, key string, fallback int) (int, error) {
 	return n, nil
 }
 
-func BuildModel(tables store.Tables) (*Model, error) {
+func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 	settings, err := parseSettings(tables[settingsTab])
 	if err != nil {
 		return nil, err
@@ -375,8 +389,9 @@ func BuildModel(tables store.Tables) (*Model, error) {
 	model := &Model{
 		Birthdays: []Birthday{}, Assignments: map[string]Assignment{},
 		Outreach: map[string]Outreach{}, Donations: map[string]Donation{}, Notes: []Note{}, Charities: []Charity{},
-		NewsletterDates: []NewsletterDate{}, Team: []TeamMember{}, Reminders: map[string]bool{}, Settings: settings, byEmail: map[string]*Birthday{}, byCharity: map[string]*Charity{},
-		byNewsletter: map[string]*NewsletterDate{},
+		NewsletterDates: []NewsletterDate{}, Team: []TeamMember{}, Reminders: map[string]bool{}, Invites: []Invite{}, Settings: settings,
+		idKey: idKey, byEmail: map[string]*Birthday{}, byCharity: map[string]*Charity{}, byNewsletter: map[string]*NewsletterDate{},
+		donationIDs: map[string]string{}, noteIDs: map[string]int{}, teamIDs: map[string]int{}, inviteIDs: map[string]int{},
 	}
 	model.admins = admins.Read(tables)
 	for _, row := range tables[remindersTab] {
@@ -602,5 +617,96 @@ func BuildModel(tables store.Tables) (*Model, error) {
 		}
 		model.Notes = append(model.Notes, Note{Email: email, Note: row["Note"], AddedBy: row["Added By"], Added: row["Added"]})
 	}
+
+	for _, row := range tables[invitesTab] {
+		email, year := row["Email"], row["Year"]
+		fail := func(err error) (*Model, error) {
+			return nil, fmt.Errorf("invite for %s in %s: %w", email, year, err)
+		}
+		key, ok := id.Parse(row["Invite ID"])
+		if !ok {
+			return fail(fmt.Errorf("invite id %q is not an id", row["Invite ID"]))
+		}
+		if _, dup := model.inviteIDs[key]; dup {
+			return fail(fmt.Errorf("invite id %s is used twice", key))
+		}
+		if model.Birthday(email) == nil || model.Birthday(email).Birthday == "" {
+			return fail(fmt.Errorf("names someone with no birthday"))
+		}
+		if err := CheckYear(year); err != nil {
+			return fail(err)
+		}
+		if _, err := ParseDate(row["Requested On"]); err != nil {
+			return fail(fmt.Errorf("requested on %w", err))
+		}
+		if by := row["Requested By"]; by != invitesActor {
+			if err := checkEmail(by); err != nil {
+				return fail(fmt.Errorf("requested by %w", err))
+			}
+		}
+		sent := row["Sent On"] != ""
+		if (row["Sent To"] != "") != sent || (row["Ask Day"] != "") != sent {
+			return fail(fmt.Errorf("sent on, sent to and ask day must be set together"))
+		}
+		if sent {
+			if err := checkEmail(row["Sent To"]); err != nil {
+				return fail(fmt.Errorf("sent to %w", err))
+			}
+			if _, err := ParseDate(row["Ask Day"]); err != nil {
+				return fail(fmt.Errorf("ask day %w", err))
+			}
+			if _, err := ParseDate(row["Sent On"]); err != nil {
+				return fail(fmt.Errorf("sent on %w", err))
+			}
+		}
+		model.inviteIDs[key] = len(model.Invites)
+		model.Invites = append(model.Invites, Invite{
+			ID: key, Email: email, Year: year, RequestedOn: row["Requested On"], RequestedBy: row["Requested By"],
+			SentTo: row["Sent To"], AskDay: row["Ask Day"], SentOn: row["Sent On"],
+		})
+	}
+	model.index()
 	return model, nil
+}
+
+func (m *Model) invitesFor(email, year string) []Invite {
+	out := []Invite{}
+	for _, inv := range m.Invites {
+		if inv.Email == email && inv.Year == year {
+			out = append(out, inv)
+		}
+	}
+	return out
+}
+
+func (m *Model) index() {
+	for key, d := range m.Donations {
+		m.donationIDs[m.donationID(d.Email, d.Year)] = key
+	}
+	for i, n := range m.Notes {
+		m.noteIDs[m.noteID(n)] = i
+	}
+	for i, t := range m.Team {
+		m.teamIDs[m.teamID(t)] = i
+	}
+}
+
+func (m *Model) noteID(n Note) string {
+	return id.Of(m.idKey, kindNote, strings.Join([]string{n.Email, n.Note, n.AddedBy, n.Added}, "\x00"))
+}
+
+func (m *Model) donationID(email, year string) string {
+	return id.Of(m.idKey, kindDonation, yearKey(email, year))
+}
+
+func (m *Model) teamID(t TeamMember) string {
+	return id.Of(m.idKey, kindTeam, t.Email+"\x00"+t.Role)
+}
+
+func (m *Model) birthdayID(email string) string {
+	return id.Of(m.idKey, kindBirthday, email)
+}
+
+func (m *Model) settingsID() string {
+	return id.Of(m.idKey, kindSettings, "")
 }

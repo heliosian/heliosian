@@ -66,7 +66,7 @@ An Image cell is an object under `activity-images/` in the media bucket, content
 
 ## Saving an activity
 
-A save names the activity's id and only the fields it changes (`POST /api/team/activity`); the server lays them over the activity as it stands, checks the result whole, and writes only the columns those fields own (`fieldColumns` in `internal/team/writes.go`), so changing one field never rewrites another, or undoes someone else's change to it in the meantime. Adding sends every field. Whoever edits the activity - its co-chairs and those of everything above it, and an admin in Super Admin Mode - may send any of them; an admin with the mode off may send `status` alone, taking a pending activity to Open or Hidden, which is approving it or turning it down.
+A save names the activity's id and only the fields it changes (`POST /api/team/activity`); the server lays them over the activity as it stands, checks the result whole, and writes only the columns those fields own (`fieldColumns` in `internal/team/writes.go`), so changing one field never rewrites another, or undoes someone else's change to it in the meantime. Adding sends every field. Whoever edits the activity - its co-chairs and those of everything above it, and an admin - may send any of them; an admin taking a pending activity to Open or Hidden with `status` is approving it or turning it down.
 
 ## A load either succeeds whole or refuses
 

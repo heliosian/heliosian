@@ -1,4 +1,4 @@
-import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
+import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {navigate, render, load, setPath} from '/router.js';
@@ -12,7 +12,7 @@ const primary = [
 ];
 
 function navItems() {
-  return primary.filter(item => !item.admin || isSystemAdmin());
+  return primary.filter(item => !item.admin || isAdmin());
 }
 
 function active(href) {

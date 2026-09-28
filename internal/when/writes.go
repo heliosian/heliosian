@@ -134,10 +134,10 @@ func (a app) forgetViewOps(actor access.Actor) []store.Op {
 }
 
 var (
-	SeeAll         = access.Standing("when.see-all")
-	Curate         = access.Standing("when.curate")
-	ActAsHost      = access.Acting("when.act-as-host")
-	FeedsForAnyone = access.Acting("when.feeds-for-anyone")
+	SeeAll         = access.Named("when.see-all")
+	Curate         = access.Named("when.curate")
+	ActAsHost      = access.Named("when.act-as-host")
+	FeedsForAnyone = access.Named("when.feeds-for-anyone")
 )
 
 var AdminAllowances = []access.Allowance{SeeAll, Curate, ActAsHost, FeedsForAnyone}

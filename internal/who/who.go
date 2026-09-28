@@ -93,7 +93,7 @@ type modelView struct {
 	Tags       []Tag  `json:"tags"`
 	SharedTags []Tag  `json:"sharedTags"`
 	Lists      []List `json:"lists"`
-	SuperEdit  bool   `json:"superEdit,omitempty"`
+	EditAnyone bool   `json:"editAnyone,omitempty"`
 }
 
 func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
@@ -108,6 +108,6 @@ func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
 		Tags:       a.cache.Model().Tags(effective),
 		SharedTags: a.cache.Model().SharedTags(effective),
 		Lists:      append(a.cache.Model().RoomParentLists(effective), a.lister.Lists(effective)...),
-		SuperEdit:  v.May(EditAnyone),
+		EditAnyone: v.May(EditAnyone),
 	}, nil
 }

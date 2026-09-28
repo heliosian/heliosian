@@ -1,7 +1,7 @@
-import {state, me, isSystemAdmin, isAdmin, isUnassigned, commsOnly, onComms, mine, urgency} from './state.js';
+import {state, me, isAdmin, isUnassigned, commsOnly, onComms, mine, urgency} from './state.js';
 import {el, svg, link} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
-import {render, setPath} from '/router.js';
+import {load, setPath} from '/router.js';
 
 const unassignedItem = {href: '/unassigned', icon: 'groups', label: 'Unassigned'};
 const calendarItem = {href: '/calendar', icon: 'calendar', label: 'Calendar'};
@@ -67,9 +67,9 @@ function flag(href) {
     case '/jobs':
       return due(staff.filter(sv => mine(sv) && own(sv)));
     case '/process':
-      return isSystemAdmin() ? due(staff) : null;
+      return isAdmin() ? due(staff) : null;
     case '/newsletters':
-      return isSystemAdmin() || onComms() ? due(staff.filter(sv => urgency(sv).step === 'newsletter')) : null;
+      return isAdmin() || onComms() ? due(staff.filter(sv => urgency(sv).step === 'newsletter')) : null;
   }
   return null;
 }
@@ -114,7 +114,7 @@ export function initChrome() {
   initShell({
     name: 'Helios Staff Birthdays',
     me,
-    onSuper: render,
+    onSuper: load,
     fillNav,
     fillTabbar,
     search: {

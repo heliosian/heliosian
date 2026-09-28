@@ -14,7 +14,7 @@ export function familyOf(p) {
 }
 
 export function canEditFamily(family) {
-  return state.model.superEdit || (family.adultEmails || []).includes(document.body.dataset.userEmail);
+  return state.model.editAnyone || (family.adultEmails || []).includes(document.body.dataset.userEmail);
 }
 
 export function myFamilyKey() {

@@ -32,9 +32,10 @@ type reminder struct {
 func (a app) dueReminders(model *Model, today time.Time) []reminder {
 	out := []reminder{}
 	day := today.Format(DateFormat)
+	w := NewWorld(model, a.directory())
 	for i := range model.Birthdays {
-		sv, ok := a.staffView(model, model.Birthdays[i].Email)
-		if !ok || sv.AssignedTo == "" || sv.RequestBy == "" || sv.Stage == StageComplete {
+		sv := w.staffOf(model.Birthdays[i].Email, today)
+		if sv.AssignedTo == "" || sv.RequestBy == "" || sv.Stage == StageComplete {
 			continue
 		}
 		sent := func(kind string) bool { return model.Reminders[reminderKey(sv.Email, sv.Year, kind)] }

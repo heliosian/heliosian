@@ -14,7 +14,7 @@ import (
 func TestSavingAdminsKeepsOnlyAddressesThatAreNotSuperAdmins(t *testing.T) {
 	listed := []string{}
 	l := New("test", nil, func() []string { return []string{"boss@x.org"} }, func() []string { return listed }, nil)
-	admin := access.Actor{Email: "boss@x.org", Allowances: access.Grant(l.Held("boss@x.org"), false)}
+	admin := access.Actor{Email: "boss@x.org", Allowances: access.Grant(l.Held("boss@x.org"))}
 	requested := []string{"jsmith", " New.Admin@X.org ", "BOSS@x.org"}
 	ops, admins, err := l.set(admin, requested)
 	if err != nil {

@@ -1,7 +1,6 @@
 :root {
   --sidebar: var(--brand-fill);
   --sidebar-active: #216f76;
-  --banner-h: 0px;
   --mobile-title-inset: 156px;
   --privacy-green: var(--cat-olive);
   --privacy-yellow: var(--cat-yellow);
@@ -367,7 +366,6 @@ body {
   display: flex;
   flex: 1;
   min-height: 0;
-  margin-top: var(--banner-h);
 }
 
 .sidebar {
@@ -3969,7 +3967,7 @@ a.person-card:hover .photo-wrap-peek::before {
   .sidebar {
     display: none;
   }
-  .topbar { top: var(--banner-h); }
+  .topbar { top: 0; }
   .app-shell {
     display: block;
     margin-top: 0;
@@ -3981,7 +3979,7 @@ a.person-card:hover .photo-wrap-peek::before {
     position: fixed;
     inset: 0;
     margin-top: 0;
-    padding-top: calc(88px + var(--banner-h) + var(--safe-top));
+    padding-top: calc(88px + var(--safe-top));
     padding-bottom: calc(62px + var(--safe-bottom));
   }
   .container {
@@ -3998,7 +3996,7 @@ a.person-card:hover .photo-wrap-peek::before {
     display: flex;
     align-items: center;
     position: fixed;
-    top: calc(48px + var(--banner-h) + var(--safe-top));
+    top: calc(48px + var(--safe-top));
     left: 0;
     right: 0;
     height: 40px;
@@ -4327,35 +4325,6 @@ a.person-card:hover .photo-wrap-peek::before {
   .optin-button {
     max-width: none;
   }
-}
-
-#top-banners {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  z-index: 60;
-  display: flex;
-  flex-direction: column;
-}
-
-.super-edit-banner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: calc(6px + var(--safe-top)) 12px 6px;
-  background: var(--alert);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  text-align: center;
-}
-
-.super-edit-banner a {
-  color: #fff;
-  text-decoration: underline;
-  flex-shrink: 0;
 }
 
 /* Admin Tools' own panels: the pictures and colours, the settings rows, the

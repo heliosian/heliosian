@@ -1,5 +1,3 @@
-import {superEditOn} from '/superedit.js';
-
 export const state = {model: null, people: []};
 
 const byName = new Map();
@@ -26,12 +24,8 @@ export function me() {
   return state.model.user;
 }
 
-export function isSystemAdmin() {
-  return Boolean(state.model && state.model.user.isAdmin);
-}
-
 export function isAdmin() {
-  return isSystemAdmin() && superEditOn();
+  return Boolean(state.model && state.model.user.isAdmin);
 }
 
 export function managed(g) {

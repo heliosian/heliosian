@@ -6,24 +6,17 @@ import (
 )
 
 type Allowance struct {
-	Name   string
-	Acting bool
+	Name string
 }
 
-func Standing(name string) Allowance {
+func Named(name string) Allowance {
 	return Allowance{Name: name}
 }
 
-func Acting(name string) Allowance {
-	return Allowance{Name: name, Acting: true}
-}
-
-func Grant(held []Allowance, hat bool) map[Allowance]bool {
+func Grant(held []Allowance) map[Allowance]bool {
 	out := map[Allowance]bool{}
 	for _, a := range held {
-		if hat || !a.Acting {
-			out[a] = true
-		}
+		out[a] = true
 	}
 	return out
 }

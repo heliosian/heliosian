@@ -105,7 +105,7 @@ func (a app) viewer(email string) *viewer {
 	}
 	v.me = v.directory.Person(email)
 	as := func(held func(string) []access.Allowance) access.Actor {
-		return v.directory.ActorOf(email, held(email), false)
+		return v.directory.ActorOf(email, held(email))
 	}
 	v.teamAs, v.partyAs, v.loopAs, v.whenAs, v.homeAs = as(a.sources.Admins.Team), as(a.sources.Admins.Celebrate), as(a.sources.Admins.Loop), as(a.sources.Admins.Calendar), as(a.sources.Admins.Home)
 	return v

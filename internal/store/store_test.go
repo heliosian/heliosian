@@ -311,6 +311,42 @@ func TestRefusedChangeWritesNothing(t *testing.T) {
 	}
 }
 
+func TestATransactionCommitsEveryStageOrNone(t *testing.T) {
+	f := newFixture(t)
+	ran := false
+	_, err := f.queue.Transact(context.Background(), access.Actor{Email: "ann"}, func(tx *Tx) error {
+		tx.After(func() { ran = true })
+		if err := f.store.Stage(tx, Insert("Things", Row{"Name": "cap"})); err != nil {
+			return err
+		}
+		if f.store.In(tx)["things"] != 3 || f.store.Model()["things"] != 2 {
+			t.Errorf("staged %v, current %v", f.store.In(tx), f.store.Model())
+		}
+		return f.store.Stage(tx, Update("Things", Row{"Name": "hat"}, Row{"Color": "plaid"}))
+	})
+	if err == nil {
+		t.Fatal("a transaction with a refused stage was taken")
+	}
+	if ran || f.store.Count("Things", Row{"Name": "cap"}) != 0 || len(f.rows(t, "Things")) != 2 || len(f.log(t)) != 0 {
+		t.Fatal("a refused transaction reached memory, the sheet, the log or its after-work")
+	}
+	done, err := f.queue.Transact(context.Background(), access.Actor{Email: "ann"}, func(tx *Tx) error {
+		tx.After(func() { ran = true })
+		if err := f.store.Stage(tx, Insert("Things", Row{"Name": "cap"})); err != nil {
+			return err
+		}
+		return f.store.Stage(tx, Update("Things", Row{"Name": "cap"}, Row{"Color": "blue"}))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	if !ran || f.store.Count("Things", Row{"Name": "cap", "Color": "blue"}) != 1 {
+		t.Fatal("a transaction's stages did not all land")
+	}
+	equal(t, "change log", f.log(t), []string{"ann||insert|Things|Name=cap||", "ann||set|Things|Name=cap|Color|"})
+}
+
 type countingWriter struct {
 	*data.Dir
 	calls []string

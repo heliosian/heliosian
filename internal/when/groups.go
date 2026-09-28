@@ -312,7 +312,7 @@ func (a app) sweep(ctx context.Context) {
 	for id, groups := range a.cache.Model().Groups {
 		if len(groups) > 0 {
 			adder := groups[0].AddedBy
-			a.sweepEvent(ctx, a.sweptEvent(a.directory().ActorOf(adder, a.cache.Held(adder), true), id))
+			a.sweepEvent(ctx, a.sweptEvent(a.directory().ActorOf(adder, a.cache.Held(adder)), id))
 		}
 	}
 }

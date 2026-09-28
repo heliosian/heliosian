@@ -23,10 +23,10 @@ func (m *Model) find(id string) (*Activity, error) {
 }
 
 var (
-	SeeAll       = access.Standing("team.see-all")
-	Curate       = access.Standing("team.curate")
-	Configure    = access.Standing("team.configure")
-	ActAsCochair = access.Acting("team.act-as-cochair")
+	SeeAll       = access.Named("team.see-all")
+	Curate       = access.Named("team.curate")
+	Configure    = access.Named("team.configure")
+	ActAsCochair = access.Named("team.act-as-cochair")
 )
 
 var AdminAllowances = []access.Allowance{SeeAll, Curate, Configure, ActAsCochair}

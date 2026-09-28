@@ -1,14 +1,9 @@
 import {googleCalendarLink, parseWhen} from '/datecard.js';
-import {superEditOn} from '/superedit.js';
 
 export const state = {model: null, celebration: '', tab: 'available', hostingTab: 'mine', category: '', showPast: true};
 
 export function familyShown(p) {
   return state.showPast || p.availability !== 'past';
-}
-
-export function isSystemAdmin() {
-  return state.model.user.isAdmin;
 }
 
 const byId = new Map();
@@ -29,7 +24,7 @@ export function me() {
 }
 
 export function isAdmin() {
-  return state.model.user.isAdmin && superEditOn();
+  return state.model.user.isAdmin;
 }
 
 export function settings() {
@@ -169,7 +164,7 @@ export function pendingParties() {
 }
 
 export function canApprove(p) {
-  return isSystemAdmin() && p.status === 'Pending';
+  return isAdmin() && p.status === 'Pending';
 }
 
 export function hostedParties() {

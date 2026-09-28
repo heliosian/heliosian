@@ -1,4 +1,4 @@
-import {state, me, isAdmin, isSystemAdmin, postedAndHosting, sourceWords, dayType, dayTypeName, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
+import {state, me, isAdmin, postedAndHosting, sourceWords, dayType, dayTypeName, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {paragraphs} from '../dom.js';
 import {el, svg, button, toast, longToast, avatar, copyText} from '/elements.js';
@@ -478,14 +478,14 @@ function pendingBand(e) {
   const words = el('div', 'pending-words');
   const who = state.model.names && state.model.names[e.addedBy] ? state.model.names[e.addedBy] : e.addedBy;
   const mine = e.addedBy === state.model.user.email;
-  const decides = (e.pending && !e.declined ? isSystemAdmin() : isAdmin()) && !mine;
+  const decides = isAdmin() && !mine;
   if (e.declined) {
     words.append(el('div', 'pending-title', 'Declined'), el('div', 'pending-lead', mine ? 'An admin declined this event, so it is not on the calendar. You can still edit it; an admin can approve it later.' : decides ? `Shared by ${who} and declined. Approve it to put it on the calendar after all.` : `Shared by ${who}. An admin declined it, so it is not on the calendar.`));
   } else {
     words.append(el('div', 'pending-title', 'Waiting for approval'), el('div', 'pending-lead', mine ? 'You shared this event. An admin will approve it onto the calendar; until then it is shared by link, so anyone you send the link to can open it.' : decides ? `Shared by ${who}. Approve it onto the calendar, or decline it.` : `Shared by ${who}. It goes on the calendar once an admin approves it.`));
   }
   band.append(svg(e.declined ? 'close' : 'clock'), words);
-  if (e.pending && !e.declined ? isSystemAdmin() : isAdmin()) {
+  if (isAdmin()) {
     const actions = el('div', 'pending-actions');
     const decide = async (path, done) => {
       try {

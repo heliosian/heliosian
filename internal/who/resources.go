@@ -69,8 +69,27 @@ func GradePath(name string) string {
 	return "/grades/" + ClassroomSlug(name)
 }
 
+type departmentResource struct {
+	Name string `json:"name"`
+}
+
 func Resources() []api.Type[*Model] {
-	return []api.Type[*Model]{peopleType(), familiesType(), classroomsType(), gradesType(), crewsType()}
+	return []api.Type[*Model]{peopleType(), familiesType(), classroomsType(), gradesType(), crewsType(), departmentsType()}
+}
+
+func departmentsType() api.Type[*Model] {
+	return api.Type[*Model]{
+		Name: "departments",
+		Has:  func(m *Model, key string) bool { return slices.Contains(m.departmentIDs, key) },
+		Get: func(m *Model, _ api.Query, key string) (any, bool) {
+			i := slices.Index(m.departmentIDs, key)
+			if i < 0 {
+				return nil, false
+			}
+			return departmentResource{Name: m.Departments[i]}, true
+		},
+		List: func(m *Model, _ api.Query) []string { return slices.Clone(m.departmentIDs) },
+	}
 }
 
 func (m *Model) personByID(key string) *Person {
@@ -106,6 +125,31 @@ func noValue(name, value string) error {
 		return access.Invalid("%s takes no value", name)
 	}
 	return nil
+}
+
+func (m *Model) PersonAliases() map[string]*Person {
+	out := map[string]*Person{}
+	slugs := map[string]int{}
+	for i := range m.People {
+		p := &m.People[i]
+		if p.ID == "" {
+			continue
+		}
+		out[p.Email] = p
+		slugs[Slug(p.Email)]++
+	}
+	for i := range m.People {
+		p := &m.People[i]
+		if p.ID != "" && slugs[Slug(p.Email)] == 1 {
+			out[Slug(p.Email)] = p
+		}
+	}
+	for alias, email := range m.aliases {
+		if p := m.Person(email); p != nil && p.ID != "" {
+			out[alias] = p
+		}
+	}
+	return out
 }
 
 func personRelation(list func(m *Model, p *Person) []string) api.Relation[*Model] {
@@ -153,23 +197,8 @@ func peopleType() api.Type[*Model] {
 		},
 		Aliases: func(m *Model) map[string]string {
 			out := map[string]string{}
-			slugs := map[string]int{}
-			for _, p := range m.People {
-				if p.ID == "" {
-					continue
-				}
-				out[p.Email] = p.ID
-				slugs[Slug(p.Email)]++
-			}
-			for _, p := range m.People {
-				if p.ID != "" && slugs[Slug(p.Email)] == 1 {
-					out[Slug(p.Email)] = p.ID
-				}
-			}
-			for alias, email := range m.aliases {
-				if p := m.Person(email); p != nil && p.ID != "" {
-					out[alias] = p.ID
-				}
+			for alias, p := range m.PersonAliases() {
+				out[alias] = p.ID
 			}
 			return out
 		},

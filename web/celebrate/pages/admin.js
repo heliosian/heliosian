@@ -1,4 +1,4 @@
-import {state, isSystemAdmin, me, money, whenLine, celebration} from '../state.js';
+import {state, isAdmin, me, money, whenLine, celebration} from '../state.js';
 import {el, button, svg} from '/elements.js';
 import {openCelebration, openCategory, openSettings, openMoveAddress} from '../edit.js';
 import {load} from '/router.js';
@@ -323,5 +323,5 @@ const sections = [
 ];
 
 export function adminPage() {
-  return buildAdminPage({appName: 'Helios Celebrate', allowed: isSystemAdmin(), email: me().email, sections});
+  return buildAdminPage({appName: 'Helios Celebrate', allowed: isAdmin(), email: me().email, sections});
 }

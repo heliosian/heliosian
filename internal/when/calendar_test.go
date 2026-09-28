@@ -557,7 +557,7 @@ func TestRender(t *testing.T) {
 			t.Errorf("%s: classrooms %q, want %q; feeds %d", email, got, want, len(v.Feeds))
 		}
 	}
-	if v := Render(m, d, settings, d.ActorOf("nobody@x.org", AdminAllowances, false), at, nil); v.User.Name != "Nobody" || !v.User.IsAdmin {
+	if v := Render(m, d, settings, d.ActorOf("nobody@x.org", AdminAllowances), at, nil); v.User.Name != "Nobody" || !v.User.IsAdmin {
 		t.Errorf("stranger = %+v", v.User)
 	}
 }

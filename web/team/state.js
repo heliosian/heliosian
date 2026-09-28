@@ -1,5 +1,4 @@
 import {parseWhen} from '/datecard.js';
-import {superEditOn} from '/superedit.js';
 
 export const state = {model: null, showPrevious: false, showHidden: false, year: '', category: ''};
 
@@ -30,10 +29,6 @@ export function me() {
 }
 
 export function isAdmin() {
-  return state.model.user.isAdmin && superEditOn();
-}
-
-export function isSystemAdmin() {
   return state.model.user.isAdmin;
 }
 

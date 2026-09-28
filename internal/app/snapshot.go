@@ -25,7 +25,7 @@ type Snapshot struct {
 	Who       *who.Model
 	Invites   *who.InviteModel
 	Team      *team.Model
-	Birthday  *birthday.Model
+	Birthday  birthday.World
 	Celebrate *celebrate.Model
 	When      *when.Model
 	Loop      *loop.Model
@@ -48,19 +48,20 @@ type caches struct {
 	feedback  *feedback.Cache
 }
 
-func (c caches) snapshot() *Snapshot {
+func (c caches) snapshot(tx *store.Tx) *Snapshot {
+	directory := c.who.In(tx)
 	return &Snapshot{
-		Config:    c.settings.Model(),
-		Who:       c.who.Model(),
-		Invites:   c.invites.Model(),
-		Team:      c.team.Model(),
-		Birthday:  c.birthday.Model(),
-		Celebrate: c.celebrate.Model(),
-		When:      c.when.Model(),
-		Loop:      c.loop.Model(),
-		Home:      c.home.Model(),
-		Artifacts: c.artifacts.Model(),
-		Feedback:  c.feedback.Model(),
+		Config:    c.settings.In(tx),
+		Who:       directory,
+		Invites:   c.invites.In(tx),
+		Team:      c.team.In(tx),
+		Birthday:  birthday.NewWorld(c.birthday.In(tx), directory),
+		Celebrate: c.celebrate.In(tx),
+		When:      c.when.In(tx),
+		Loop:      c.loop.In(tx),
+		Home:      c.home.In(tx),
+		Artifacts: c.artifacts.In(tx),
+		Feedback:  c.feedback.In(tx),
 	}
 }
 
@@ -75,15 +76,20 @@ func (c caches) held(email string) []access.Allowance {
 	return out
 }
 
-func resources(c caches, queue *store.Queue) *api.Registry[*Snapshot] {
+func resources(c caches, queue *store.Queue, birthdays []api.Type[birthday.World]) *api.Registry[*Snapshot] {
 	reg := api.New(api.Config[*Snapshot]{
-		Actor: func(r *http.Request, s *Snapshot) access.Actor { return s.Who.Actor(r, c.held) },
-		Held:  c.held,
-		Now:   func() time.Time { return time.Now().In(when.Location) },
+		Actor:  func(r *http.Request, s *Snapshot) access.Actor { return s.Who.Actor(r, c.held) },
+		Held:   c.held,
+		Now:    func() time.Time { return time.Now().In(when.Location) },
+		Queue:  queue,
+		Staged: c.snapshot,
 	})
 	for _, t := range who.Resources() {
 		reg.Add(api.Lift(t, func(s *Snapshot) *who.Model { return s.Who }))
 	}
-	queue.OnSwap(func() { reg.Publish(c.snapshot()) })
+	for _, t := range birthdays {
+		reg.Add(api.Lift(t, func(s *Snapshot) birthday.World { return s.Birthday }))
+	}
+	queue.OnSwap(func() { reg.Publish(c.snapshot(nil)) })
 	return reg
 }

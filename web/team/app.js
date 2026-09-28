@@ -1,4 +1,4 @@
-import {state, applyModel, resolvePath, redirectTarget, activityPath, isFamily, isSystemAdmin} from './state.js';
+import {state, applyModel, resolvePath, redirectTarget, activityPath, isFamily, isAdmin} from './state.js';
 import {initChrome} from './chrome.js';
 import {showPage, clearSearch} from '/shell.js';
 import {api} from '/api.js';
@@ -25,7 +25,7 @@ const routes = {
   my: parts => parts[1] && !isFamily(parts[1]) ? notFound('That person') : myPage(parts[1] || null),
   calendar: () => calendarPage(),
   admin: () => adminPage(),
-  approvals: () => isSystemAdmin() ? approvalsPage() : notFound('That page'),
+  approvals: () => isAdmin() ? approvalsPage() : notFound('That page'),
   activities: activity,
   v: activity,
 };

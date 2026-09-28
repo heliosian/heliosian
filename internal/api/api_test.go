@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/store"
 )
 
 type person struct {
@@ -43,7 +44,7 @@ const (
 	admin = "admin@example.org"
 )
 
-var edit = access.Acting("groups.edit")
+var edit = access.Named("groups.edit")
 
 func sample() *fake {
 	return &fake{
@@ -64,7 +65,7 @@ func registry(w *fake) *Registry[*fake] {
 			if email == admin {
 				held = append(held, edit)
 			}
-			return access.Actor{Email: email, Allowances: access.Grant(held, r.Header.Get("X-Hat") == "on")}
+			return access.Actor{Email: email, Allowances: access.Grant(held)}
 		},
 		Held: func(email string) []access.Allowance {
 			if email == admin {
@@ -72,7 +73,9 @@ func registry(w *fake) *Registry[*fake] {
 			}
 			return nil
 		},
-		Now: func() time.Time { return time.Date(2026, 9, 27, 14, 5, 0, 0, time.UTC) },
+		Now:    func() time.Time { return time.Date(2026, 9, 27, 14, 5, 0, 0, time.UTC) },
+		Queue:  store.NewQueue(),
+		Staged: func(*store.Tx) *fake { return w },
 	})
 	reg.Add(Type[*fake]{
 		Name: "people",
@@ -110,11 +113,11 @@ func registry(w *fake) *Registry[*fake] {
 				Can: func(s *fake, q Query, key string) bool {
 					return s.groups[key].Owner == q.Actor.Email || q.Actor.May(edit)
 				},
-				Do: func(_ *http.Request, s *fake, q Query, key string) error {
-					if s.groups[key].Owner != q.Actor.Email && !q.Actor.May(edit) {
+				Do: func(w Write[*fake]) error {
+					if w.S.groups[w.ID].Owner != w.Query.Actor.Email && !w.Query.Actor.May(edit) {
 						return access.Forbidden("not yours")
 					}
-					s.renamed = append(s.renamed, key)
+					w.Tx.After(func() { w.S.renamed = append(w.S.renamed, w.ID) })
 					return nil
 				},
 			},
@@ -151,7 +154,6 @@ func call(t *testing.T, reg *Registry[*fake], method, path, as string, body any)
 	}
 	req := httptest.NewRequest(method, path, &in)
 	req.Header.Set("X-As", as)
-	req.Header.Set("X-Hat", "on")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	var out reply
@@ -321,7 +323,31 @@ func TestAnActionNeedsBothItsRuleAndItsRoute(t *testing.T) {
 		}
 	}()
 	reg := New(Config[*fake]{})
-	reg.Add(Type[*fake]{Name: "groups", Actions: map[string]Action[*fake]{"rename": {Do: func(*http.Request, *fake, Query, string) error { return nil }}}})
+	reg.Add(Type[*fake]{Name: "groups", Actions: map[string]Action[*fake]{"rename": {Do: func(Write[*fake]) error { return nil }}}})
+}
+
+func TestWritesBatchAllOrNothing(t *testing.T) {
+	w := sample()
+	reg := registry(w)
+	rename := func(key string) step { return step{Method: "POST", Path: "/api/groups/" + key + "/rename"} }
+	if code, _ := call(t, reg, "POST", "/api/act", "ann@example.org", []step{rename(chess), rename(choir)}); code != http.StatusForbidden {
+		t.Errorf("a batch with a refused write: status %d", code)
+	}
+	if len(w.renamed) != 0 {
+		t.Fatalf("a refused batch ran %v", w.renamed)
+	}
+	if code, _ := call(t, reg, "POST", "/api/act", admin, []step{rename("chess-club"), rename(choir), {Method: "DELETE", Path: "/api/groups/" + choir}}); code != http.StatusNotFound {
+		t.Errorf("a batch with a missing action: status %d", code)
+	}
+	if code, _ := call(t, reg, "POST", "/api/act", admin, []step{rename("chess-club"), rename(choir)}); code != http.StatusOK {
+		t.Errorf("admin batch: status %d", code)
+	}
+	if !slices.Equal(w.renamed, []string{chess, choir}) {
+		t.Errorf("renamed %v", w.renamed)
+	}
+	if code, _ := call(t, reg, "POST", "/api/act", admin, []step{}); code != http.StatusBadRequest {
+		t.Errorf("an empty batch: status %d", code)
+	}
 }
 
 func TestTakenCoversEveryTypesIDsAndAliases(t *testing.T) {
@@ -336,22 +362,21 @@ func TestTakenCoversEveryTypesIDsAndAliases(t *testing.T) {
 	}
 }
 
-func TestMeListsHeldAllowancesAndWhichAreOn(t *testing.T) {
+func TestMeListsHeldAllowances(t *testing.T) {
 	reg := registry(sample())
 	mux := http.NewServeMux()
 	reg.Register(mux)
-	for hat, want := range map[string]bool{"on": true, "off": false} {
+	for as, want := range map[string][]string{admin: {edit.Name}, "ann@example.org": {}} {
 		req := httptest.NewRequest("GET", "/api/me", nil)
-		req.Header.Set("X-As", admin)
-		req.Header.Set("X-Hat", hat)
+		req.Header.Set("X-As", as)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 		var got me
 		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 			t.Fatal(err)
 		}
-		if on, held := got.Allowances[edit.Name]; !held || on != want {
-			t.Errorf("hat %s: allowances %v", hat, got.Allowances)
+		if !slices.Equal(got.Allowances, want) {
+			t.Errorf("%s: allowances %v", as, got.Allowances)
 		}
 	}
 }

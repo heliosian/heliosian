@@ -42,8 +42,8 @@ func Members(g Group, s Sources) []string {
 }
 
 var (
-	SeeAll       = access.Standing("loop.see-all")
-	ActAsManager = access.Acting("loop.act-as-manager")
+	SeeAll       = access.Named("loop.see-all")
+	ActAsManager = access.Named("loop.act-as-manager")
 )
 
 var AdminAllowances = []access.Allowance{SeeAll, ActAsManager}

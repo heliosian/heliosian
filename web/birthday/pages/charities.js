@@ -1,4 +1,4 @@
-import {state, isAdmin, charityPath, staffPath} from '../state.js';
+import {state, charityPath, staffPath} from '../state.js';
 import {pageHead} from '../dom.js';
 import {el, link, svg, button} from '/elements.js';
 import {tabStrip} from '/tabs.js';
@@ -97,7 +97,7 @@ export function charityPage(c) {
     }
     page.append(panel);
   }
-  if (!isAdmin()) {
+  if (!c.can.allow) {
     page.append(el('div', 'footnote', 'Only an admin can mark a charity as not allowed or remove it.'));
   }
   return page;

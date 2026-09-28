@@ -1,4 +1,4 @@
-import {state, isSystemAdmin, me} from '../state.js';
+import {state, isAdmin, me} from '../state.js';
 import {el, button} from '/elements.js';
 import {categoryList, openSettings, openRedirect} from '../edit.js';
 import {api} from '/api.js';
@@ -126,5 +126,5 @@ const sections = [
 ];
 
 export function adminPage() {
-  return buildAdminPage({appName: 'HCA-Team', allowed: isSystemAdmin(), email: me().email, sections});
+  return buildAdminPage({appName: 'HCA-Team', allowed: isAdmin(), email: me().email, sections});
 }

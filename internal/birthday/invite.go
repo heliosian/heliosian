@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"strings"
 	"time"
 
+	"heliosian/internal/access"
+	"heliosian/internal/id"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
 const schoolDomain = "@heliosschool.org"
@@ -22,69 +24,97 @@ func staffPath(email string) string {
 	return "/staff/" + email
 }
 
-func (a app) staffView(model *Model, staffEmail string) (StaffView, bool) {
-	b := model.Birthday(staffEmail)
-	if b == nil {
-		return StaffView{}, false
-	}
-	v := viewer{directory: a.directory()}
-	month, day, _ := ParseMonthDay(model.Settings.YearStart)
-	return v.staff(model, b, YearContaining(now(), month, day), now()), true
+func (a app) world() World {
+	return NewWorld(a.cache.Model(), a.directory())
 }
 
-func (a app) mailAssignment(r *http.Request, staffEmail, to string) {
-	sv, ok := a.staffView(a.cache.Model(), staffEmail)
-	if !ok {
-		return
+func (a app) inviteLoop(kick <-chan struct{}) {
+	for range kick {
+		a.sendInvites(context.Background())
 	}
-	if sv.RequestBy == "" {
-		slog.InfoContext(r.Context(), "birthday: no invite, no newsletter date yet", "email", staffEmail, "to", to)
-		return
-	}
-	a.sendInvite(r, sv, to, "")
 }
 
-type askDay struct {
-	requestBy, assignedTo string
+func sendable(sv StaffView) bool {
+	return sv.InDirectory && sv.AssignedTo != "" && sv.RequestBy != "" && sv.Stage != StageComplete
 }
 
-func (a app) askDays(model *Model) map[string]askDay {
-	out := map[string]askDay{}
-	if model == nil {
-		return out
-	}
-	for i := range model.Birthdays {
-		sv, ok := a.staffView(model, model.Birthdays[i].Email)
-		if ok && sv.AssignedTo != "" && sv.RequestBy != "" {
-			out[sv.Email] = askDay{requestBy: sv.RequestBy, assignedTo: sv.AssignedTo}
+func (inv Invite) covers(sv StaffView) bool {
+	return inv.SentOn == "" || (inv.SentTo == sv.AssignedTo && inv.AskDay == sv.RequestBy)
+}
+
+func (m *Model) lastSent(email, year string) (Invite, bool) {
+	invites := m.invitesFor(email, year)
+	for i := len(invites) - 1; i >= 0; i-- {
+		if invites[i].SentOn != "" {
+			return invites[i], true
 		}
+	}
+	return Invite{}, false
+}
+
+func StaleInvites(w World, at time.Time) []StaffView {
+	out := []StaffView{}
+	for i := range w.Model.Birthdays {
+		sv := w.staffOf(w.Model.Birthdays[i].Email, at)
+		if !sendable(sv) {
+			continue
+		}
+		if invites := w.Model.invitesFor(sv.Email, sv.Year); len(invites) > 0 && invites[len(invites)-1].covers(sv) {
+			continue
+		}
+		out = append(out, sv)
 	}
 	return out
 }
 
-func (a app) mailMovedAskDays(r *http.Request, before, after map[string]askDay) {
-	model := a.cache.Model()
-	for email, now := range after {
-		was, had := before[email]
-		if !had || was.assignedTo != now.assignedTo || was.requestBy == now.requestBy {
-			continue
+func (a app) sendInvites(ctx context.Context) {
+	at := now()
+	actor := access.System(invitesActor)
+	w := a.world()
+	ops := []store.Op{}
+	minted := map[string]bool{}
+	for _, sv := range StaleInvites(w, at) {
+		key := id.New(func(k string) bool { return minted[k] || a.taken(k) })
+		minted[key] = true
+		queued, err := queueInvite(actor, sv, key, at)
+		if err != nil {
+			slog.ErrorContext(ctx, "birthday: queue invite", "error", err, "email", sv.Email)
+			return
 		}
-		sv, ok := a.staffView(model, email)
-		if !ok {
-			continue
-		}
-		slog.InfoContext(r.Context(), "birthday: ask day moved", "email", email, "from", was.requestBy, "to", now.requestBy, "assignee", now.assignedTo)
-		a.sendInvite(r, sv, now.assignedTo, was.requestBy)
+		ops = append(ops, queued...)
 	}
-}
-
-func (a app) sendInvite(r *http.Request, sv StaffView, to, movedFrom string) {
-	m := assignmentMessage(a.cache.Model(), mail.Base(r), a.mailer.From(), sv, to, movedFrom)
-	go func() {
-		if err := a.mailer.Send(context.WithoutCancel(r.Context()), m); err != nil {
-			slog.Error("birthday: mail invite", "error", err, "to", to, "email", sv.Email)
+	if len(ops) > 0 {
+		if err := a.cache.Commit(ctx, actor, ops...); err != nil {
+			slog.ErrorContext(ctx, "birthday: queue invites", "error", err)
+			return
 		}
-	}()
+		w = a.world()
+	}
+	for _, inv := range w.Model.Invites {
+		if inv.SentOn != "" {
+			continue
+		}
+		sv := w.staffOf(inv.Email, at)
+		if !sendable(sv) || sv.Year != inv.Year {
+			continue
+		}
+		movedFrom := ""
+		if last, ok := w.Model.lastSent(inv.Email, inv.Year); ok && last.SentTo == sv.AssignedTo && last.AskDay != sv.RequestBy {
+			movedFrom = last.AskDay
+		}
+		if err := a.mailer.Send(ctx, assignmentMessage(w.Model, a.base, a.mailer.From(), sv, sv.AssignedTo, movedFrom)); err != nil {
+			slog.ErrorContext(ctx, "birthday: mail invite", "error", err, "to", sv.AssignedTo, "email", sv.Email)
+			continue
+		}
+		slog.InfoContext(ctx, "birthday: sent invite", "id", inv.ID, "email", sv.Email, "to", sv.AssignedTo, "ask", sv.RequestBy, "moved from", movedFrom)
+		recorded, err := recordInvite(actor, inv, sv, at)
+		if err == nil {
+			err = a.cache.Commit(ctx, actor, recorded...)
+		}
+		if err != nil {
+			slog.ErrorContext(ctx, "birthday: record invite", "error", err, "email", sv.Email)
+		}
+	}
 }
 
 func assignmentMessage(model *Model, base, from string, sv StaffView, to, movedFrom string) mail.Message {

@@ -1,4 +1,4 @@
-import {state, isAdmin, year, staffFor, charity, issueDates, longDate, mediumDate, monthDay, dateCell, parseDate, newsletterPath} from '../state.js';
+import {state, isAdmin, year, staffFor, charity, issueDates, newsletterOn, longDate, mediumDate, monthDay, dateCell, parseDate, newsletterPath} from '../state.js';
 import {pageHead, menu, copyRich} from '../dom.js';
 import {el, link, svg, thumb, button} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
@@ -18,13 +18,15 @@ function setShowPast(on) {
 }
 
 function issueMenu(date) {
-  if (!isAdmin()) {
-    return null;
+  const {can} = newsletterOn(date);
+  const items = [];
+  if (can.move) {
+    items.push({icon: 'edit', label: 'Change date', onClick: () => openChangeNewsletterDate(date)});
   }
-  return menu([
-    {icon: 'edit', label: 'Change date', onClick: () => openChangeNewsletterDate(date)},
-    {icon: 'trash', label: 'Remove', danger: true, onClick: () => removeNewsletterDate(date)},
-  ]);
+  if (can.delete) {
+    items.push({icon: 'trash', label: 'Remove', danger: true, onClick: () => removeNewsletterDate(date)});
+  }
+  return items.length ? menu(items) : null;
 }
 
 const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'long', year: 'numeric'});
@@ -141,7 +143,7 @@ function nextCard() {
   wrap.append(el('div', 'section-title', 'Next issue'));
   const panel = el('div', 'panel issues next-panel');
   const actions = [];
-  const waiting = toShare(next).length;
+  const waiting = newsletterOn(next).can.share && toShare(next).length;
   const share = button('Copy to Shared Sheet', 'send', 'button button-small', () => shareIssue(next));
   share.disabled = !waiting;
   share.title = waiting ? 'Thursday night at 11:59 does this on its own' : 'Everyone in this issue is copied and done';
@@ -196,8 +198,8 @@ export function newslettersPage() {
   const page = el('div', 'list-page');
   const actions = [];
   if (isAdmin()) {
-    const future = issueDates().filter(d => d >= state.model.today).length;
-    if (future) {
+    const future = state.model.newsletterDates.filter(n => n.date >= state.model.today);
+    if (future.length) {
       actions.push(button('Clear Future Dates', 'trash', 'button button-secondary', () => clearFutureNewsletterDates(future)));
     }
     actions.push(button('Create Newsletters', 'calendar', 'button button-secondary', openCreateNewsletterDates));

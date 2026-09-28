@@ -1,4 +1,4 @@
-import {state, me, isSystemAdmin, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown, celebration, category} from './state.js';
+import {state, me, isAdmin, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown, celebration, category} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {navigate, load, setPath} from '/router.js';
@@ -12,7 +12,7 @@ const primary = [
 ];
 
 function navItems() {
-  return primary.filter(item => !item.admin || isSystemAdmin());
+  return primary.filter(item => !item.admin || isAdmin());
 }
 
 function active(href) {

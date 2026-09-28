@@ -104,23 +104,5 @@ func (s *Store[M]) CommitAndWait(ctx context.Context, actor access.Actor, ops ..
 }
 
 func (s *Store[M]) commit(ctx context.Context, actor access.Actor, ops []Op) (<-chan struct{}, error) {
-	s.queue.commits.Lock()
-	defer s.queue.commits.Unlock()
-	s.mu.RLock()
-	tables := s.tables
-	s.mu.RUnlock()
-	plan, err := s.book.Plan(ctx, tables, actor.Email, ops)
-	if err != nil || plan.Empty() {
-		return nil, err
-	}
-	model, err := s.spec.Build(ctx, plan.Tables)
-	if err != nil {
-		return nil, access.Invalid("%v", err)
-	}
-	s.queue.interrupt()
-	s.mu.Lock()
-	s.tables, s.model = plan.Tables, model
-	s.mu.Unlock()
-	s.queue.afterSwap()
-	return s.book.Write(plan), nil
+	return s.queue.Transact(ctx, actor, func(tx *Tx) error { return s.Stage(tx, ops...) })
 }

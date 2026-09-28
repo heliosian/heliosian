@@ -1,14 +1,68 @@
-import {superEditOn} from '/superedit.js';
+import {batch, me as whoAmI} from '/data.js';
 
 export const state = {model: null};
 
-const byEmail = new Map();
+const byHandle = new Map();
 
-export function applyModel(model) {
-  state.model = model;
-  byEmail.clear();
-  for (const s of [...model.staff, ...model.skipped, ...model.missing]) {
-    byEmail.set(s.email, s);
+function staffView(read, b) {
+  const person = read.follow(b, 'person') || {};
+  const assignee = read.follow(b, 'assignee');
+  return {
+    ...b,
+    name: person.fullName || b.email,
+    jobTitle: person.jobTitle || '',
+    department: person.department || '',
+    photoUrl: person.photoUrl || '',
+    assignedTo: assignee ? assignee.email || '' : b.assignedTo || '',
+    assignedToName: assignee ? assignee.fullName : b.assignedTo || '',
+    donation: read.follow(b, 'donation'),
+    lastDonation: read.follow(b, 'last-donation'),
+    notes: read.follow(b, 'notes'),
+  };
+}
+
+function teamMember(read, m) {
+  const person = read.follow(m, 'person');
+  return {...m, email: person ? person.email : m.email, name: person ? person.fullName : m.email};
+}
+
+const byName = (a, b) => a.name.localeCompare(b.name);
+
+export async function loadModel() {
+  const [read, viewer] = await Promise.all([batch({
+    settings: '/api/birthday-settings?include=viewer',
+    birthdays: '/api/birthdays?include=person,assignee,donation,last-donation,notes',
+    charities: '/api/charities',
+    newsletterDates: '/api/newsletter-dates',
+    team: '/api/birthday-team?include=person',
+    departments: '/api/departments',
+  }), whoAmI()]);
+  const s = read.get(read.data.settings[0]);
+  const person = read.follow(s, 'viewer') || {};
+  const name = person.fullName || viewer.email;
+  const everyone = read.data.birthdays.map(id => staffView(read, read.get(id)));
+  const staff = everyone.filter(sv => !sv.missing && sv.level !== 'Skip');
+  staff.sort((a, b) => (a.birthdayThisYear || '').localeCompare(b.birthdayThisYear || '') || byName(a, b));
+  state.model = {
+    user: {email: viewer.email, name, initial: name[0].toUpperCase(), photoUrl: person.photoUrl},
+    allowances: viewer.allowances,
+    settingsId: s.id,
+    standing: s.me,
+    settings: s.settings,
+    year: s.year,
+    today: read.now.slice(0, 10),
+    staff,
+    skipped: everyone.filter(sv => sv.level === 'Skip').sort(byName),
+    missing: everyone.filter(sv => sv.missing && sv.level !== 'Skip').sort(byName),
+    charities: read.data.charities.map(read.get),
+    newsletterDates: read.data.newsletterDates.map(read.get),
+    team: read.data.team.map(id => teamMember(read, read.get(id))),
+    departments: read.data.departments.map(id => read.get(id).name),
+  };
+  byHandle.clear();
+  for (const sv of everyone) {
+    byHandle.set(sv.path, sv);
+    byHandle.set(`/staff/${sv.email}`, sv);
   }
 }
 
@@ -16,12 +70,8 @@ export function me() {
   return state.model.user;
 }
 
-export function isSystemAdmin() {
-  return state.model.user.isAdmin;
-}
-
 export function isAdmin() {
-  return isSystemAdmin() && superEditOn();
+  return state.model.allowances.includes('birthday.configure');
 }
 
 export function year() {
@@ -33,18 +83,8 @@ export function settings() {
 }
 
 export function staff(handle) {
-  if (handle.includes('@')) {
-    return byEmail.get(handle) || null;
-  }
-  for (const [email, sv] of byEmail) {
-    if (email.split('@')[0] === handle && email.endsWith(schoolDomain)) {
-      return sv;
-    }
-  }
-  return null;
+  return byHandle.get(`/staff/${decodeURIComponent(handle)}`) || null;
 }
-
-const schoolDomain = '@heliosschool.org';
 
 export function charity(id) {
   return state.model.charities.find(c => c.id === id) || null;
@@ -131,31 +171,15 @@ export function shortDate(s) {
 }
 
 export function isUnassigned(sv) {
-  return !sv.assignedTo && sv.stage !== 'Complete';
+  return !sv.assigned && sv.stage !== 'Complete';
 }
 
 export function mine(sv) {
-  return sv.assignedTo === me().email;
+  return sv.me.mine;
 }
 
 export function urgency(sv) {
-  if (sv.stage === 'Complete') {
-    return {when: '', step: ''};
-  }
-  const steps = [
-    ['info', !sv.donation && sv.dueBy],
-    ['outreach', sv.stage === 'Awaiting Outreach' && sv.requestBy],
-    ['newsletter', sv.stage === 'Awaiting Newsletter' && sv.newsletterDate],
-  ];
-  const today = state.model.today;
-  for (const when of ['late', 'today']) {
-    for (const [step, day] of steps) {
-      if (day && (when === 'late' ? day < today : day === today)) {
-        return {when, step};
-      }
-    }
-  }
-  return {when: '', step: ''};
+  return sv.urgency || {when: '', step: ''};
 }
 
 export function urgencyWords({when, step}) {
@@ -164,14 +188,11 @@ export function urgencyWords({when, step}) {
 }
 
 export function onComms() {
-  const email = me().email;
-  return state.model.team.some(m => m.email === email && m.role === 'Comms Team');
+  return state.model.standing.comms;
 }
 
 export function commsOnly() {
-  const email = me().email;
-  const roles = state.model.team.filter(m => m.email === email).map(m => m.role);
-  return roles.includes('Comms Team') && !roles.includes('Volunteer') && !isSystemAdmin();
+  return state.model.standing.commsOnly;
 }
 
 export function team() {
@@ -271,8 +292,7 @@ export function byDepartment(list) {
 }
 
 export function staffPath(sv) {
-  const email = sv.email;
-  return `/staff/${encodeURIComponent(email.endsWith(schoolDomain) ? email.slice(0, -schoolDomain.length) : email)}`;
+  return sv.path;
 }
 
 export function newsletterPath(date) {
@@ -280,5 +300,5 @@ export function newsletterPath(date) {
 }
 
 export function charityPath(c) {
-  return `/charities/${encodeURIComponent(c.name)}`;
+  return c.path;
 }

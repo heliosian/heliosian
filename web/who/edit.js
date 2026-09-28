@@ -130,7 +130,7 @@ export async function submitCrop(target, key, name, blob, status) {
 
 export function canEditPerson(email) {
   const meEmail = document.body.dataset.userEmail;
-  if (email === meEmail || state.model.superEdit) {
+  if (email === meEmail || state.model.editAnyone) {
     return true;
   }
   return familiesOf(byEmail[meEmail]).some(family => (family.adultEmails || []).includes(meEmail) &&

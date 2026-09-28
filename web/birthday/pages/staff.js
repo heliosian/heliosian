@@ -1,4 +1,4 @@
-import {me, isAdmin, settings, charity, charityName, longDate, mediumDate, emailLink, newsletterText} from '../state.js';
+import {settings, charity, charityName, longDate, mediumDate, emailLink, newsletterText} from '../state.js';
 import {el, link, svg, thumb, button, iconButton, copyText} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {openAssign, markContacted, markUsed, useDefault, reuseLast, openDonation, openBirthday, openParticipation, openNote, removeNote} from '../edit.js';
@@ -24,9 +24,6 @@ function header(sv) {
   }
   if (sv.level) {
     label.append(el('span', 'need', sv.level === 'Skip' ? 'Opted out' : 'Not in the newsletter'));
-  }
-  if (!sv.inDirectory) {
-    label.append(el('span', 'need', 'Not in the directory'));
   }
   body.append(label, el('h1', '', sv.name));
   const mail = el('a', 'row-text detail-mail');
@@ -218,7 +215,7 @@ function notes(sv) {
   for (const n of sv.notes) {
     const row = el('div', 'note');
     row.append(el('div', 'note-text', n.note), el('div', 'note-meta', `${n.addedBy} · ${mediumDate(n.added)}`));
-    if (n.addedBy === me().email || isAdmin()) {
+    if (n.can.delete) {
       row.append(iconButton('trash', 'Remove note', '', () => removeNote(n)));
     }
     wrap.append(row);

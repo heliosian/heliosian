@@ -1,7 +1,6 @@
-import {state, applyModel, staff, charityNamed, newsletterOn, isUnassigned, isAdmin, commsOnly} from './state.js';
+import {state, loadModel, staff, charityNamed, newsletterOn, isUnassigned, isAdmin, commsOnly} from './state.js';
 import {initChrome} from './chrome.js';
 import {showPage, clearSearch} from '/shell.js';
-import {api} from '/api.js';
 import {offerTeam} from './edit.js';
 import {initModal} from '/modal.js';
 import {startApp, load, notFound} from '/router.js';
@@ -45,7 +44,7 @@ const routes = {
 initChrome();
 initModal(load);
 startApp({
-  model: async () => applyModel(await api('GET', '/api/birthday/model')),
+  model: loadModel,
   routes,
   missing: 'is not in the app.',
   prepare: clearSearch,

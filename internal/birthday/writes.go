@@ -10,22 +10,24 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
-	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
 
-const remindersActor = "reminders"
-
-type target struct {
-	email, year, to, charity string
-}
+const (
+	remindersActor = "reminders"
+	invitesActor   = "invites"
+)
 
 type charityEdit struct {
-	ID            string `json:"id"`
 	Name          string `json:"name"`
 	DonationLink  string `json:"donationLink"`
 	About         string `json:"about"`
 	EIN           string `json:"ein"`
+	Allowed       *bool  `json:"allowed"`
+	WhyNotAllowed string `json:"whyNotAllowed"`
+}
+
+type charityAllowance struct {
 	Allowed       bool   `json:"allowed"`
 	WhyNotAllowed string `json:"whyNotAllowed"`
 }
@@ -38,9 +40,9 @@ func (m *Model) requireTeam(actor access.Actor) error {
 }
 
 var (
-	ActAsTeam     = access.Standing("birthday.act-as-team")
-	Configure     = access.Standing("birthday.configure")
-	DeleteAnyNote = access.Acting("birthday.delete-any-note")
+	ActAsTeam     = access.Named("birthday.act-as-team")
+	Configure     = access.Named("birthday.configure")
+	DeleteAnyNote = access.Named("birthday.delete-any-note")
 )
 
 var AdminAllowances = []access.Allowance{ActAsTeam, Configure, DeleteAnyNote}
@@ -59,273 +61,336 @@ func requireSystem(actor access.Actor, name string) error {
 	return nil
 }
 
-func (m *Model) findStaff(raw string) (string, error) {
-	email := config.NormalizeEmail(raw)
+func (m *Model) findStaff(email string) error {
 	if m.Skipped(email) {
-		return "", access.Invalid("%s asked to be left out", email)
+		return access.Invalid("%s asked to be left out", email)
 	}
 	if !m.InPipeline(email) {
-		return "", access.Missing("%s has no birthday on file", email)
+		return access.Missing("%s has no birthday on file", email)
 	}
-	return email, nil
+	return nil
 }
 
-func (m *Model) teamStaff(actor access.Actor, raw string) (target, error) {
+func (m *Model) teamStaff(actor access.Actor, email string) error {
 	if err := m.requireTeam(actor); err != nil {
-		return target{}, err
+		return err
 	}
-	email, err := m.findStaff(raw)
-	if err != nil {
-		return target{}, err
-	}
-	return target{email: email, year: m.year()}, nil
+	return m.findStaff(email)
 }
 
-func (c *Cache) assign(actor access.Actor, rawEmail, rawTo string) ([]store.Op, target, error) {
-	m := c.Model()
-	t, err := m.teamStaff(actor, rawEmail)
-	if err != nil {
-		return nil, target{}, err
-	}
-	t.to = config.NormalizeEmail(rawTo)
-	if t.to == "" {
-		t.to = actor.Email
-	}
-	if err := checkEmail(t.to); err != nil {
-		return nil, target{}, access.Invalid("%v", err)
-	}
-	if t.to != actor.Email && !m.OnTeam(t.to) && !c.IsAdmin(t.to) {
-		return nil, target{}, access.Invalid("%s is not on the birthday team", t.to)
-	}
-	return []store.Op{store.Upsert(assignmentsTab, store.Row{"Email": t.email, "Year": t.year}, store.Row{"Assigned To": t.to, "Assigned On": today()})}, t, nil
+func yearRow(email, year string) store.Row {
+	return store.Row{"Email": email, "Year": year}
 }
 
-func (m *Model) unassign(actor access.Actor, rawEmail string) ([]store.Op, target, error) {
-	t, err := m.teamStaff(actor, rawEmail)
-	if err != nil {
-		return nil, target{}, err
+func (m *Model) assign(actor access.Actor, email, rawTo string, isAdmin func(string) bool, now time.Time) ([]store.Op, string, error) {
+	if err := m.teamStaff(actor, email); err != nil {
+		return nil, "", err
 	}
-	return []store.Op{store.Delete(assignmentsTab, store.Row{"Email": t.email, "Year": t.year})}, t, nil
+	to := config.NormalizeEmail(rawTo)
+	if to == "" {
+		to = actor.Email
+	}
+	if err := checkEmail(to); err != nil {
+		return nil, "", access.Invalid("%v", err)
+	}
+	if to != actor.Email && !m.OnTeam(to) && !isAdmin(to) {
+		return nil, "", access.Invalid("%s is not on the birthday team", to)
+	}
+	return []store.Op{store.Upsert(assignmentsTab, yearRow(email, m.year(now)), store.Row{"Assigned To": to, "Assigned On": dayOf(now)})}, to, nil
 }
 
-func (m *Model) outreach(actor access.Actor, rawEmail string, contacted bool) ([]store.Op, target, error) {
-	t, err := m.teamStaff(actor, rawEmail)
-	if err != nil {
-		return nil, target{}, err
+func (m *Model) canUnassign(actor access.Actor, email string, now time.Time) error {
+	if err := m.teamStaff(actor, email); err != nil {
+		return err
 	}
-	match := store.Row{"Email": t.email, "Year": t.year}
+	if _, ok := m.Assignment(email, m.year(now)); !ok {
+		return access.Invalid("nobody is assigned")
+	}
+	return nil
+}
+
+func (m *Model) unassign(actor access.Actor, email string, now time.Time) ([]store.Op, error) {
+	if err := m.canUnassign(actor, email, now); err != nil {
+		return nil, err
+	}
+	return []store.Op{store.Delete(assignmentsTab, yearRow(email, m.year(now)))}, nil
+}
+
+func (m *Model) canOutreach(actor access.Actor, email string, contacted bool, now time.Time) error {
+	if err := m.teamStaff(actor, email); err != nil {
+		return err
+	}
+	if _, done := m.OutreachFor(email, m.year(now)); done == contacted {
+		return access.Invalid("already so")
+	}
+	return nil
+}
+
+func (m *Model) outreach(actor access.Actor, email string, contacted bool, now time.Time) ([]store.Op, error) {
+	if err := m.canOutreach(actor, email, contacted, now); err != nil {
+		return nil, err
+	}
+	match := yearRow(email, m.year(now))
 	if !contacted {
-		return []store.Op{store.Delete(outreachTab, match)}, t, nil
+		return []store.Op{store.Delete(outreachTab, match)}, nil
 	}
-	return []store.Op{store.Upsert(outreachTab, match, store.Row{"Contacted On": today(), "Contacted By": actor.Email})}, t, nil
+	return []store.Op{store.Upsert(outreachTab, match, store.Row{"Contacted On": dayOf(now), "Contacted By": actor.Email})}, nil
 }
 
-func (m *Model) saveDonation(actor access.Actor, rawEmail, charityKey, note string) ([]store.Op, target, error) {
-	t, err := m.teamStaff(actor, rawEmail)
-	if err != nil {
-		return nil, target{}, err
+func (m *Model) saveDonation(actor access.Actor, email, charityKey, note string, now time.Time) ([]store.Op, *Charity, error) {
+	if err := m.teamStaff(actor, email); err != nil {
+		return nil, nil, err
 	}
 	charity := m.Charity(strings.TrimSpace(charityKey))
 	if charity == nil {
-		return nil, target{}, access.Invalid("pick a charity from the list")
+		return nil, nil, access.Invalid("pick a charity from the list")
 	}
 	if !charity.Allowed {
-		return nil, target{}, access.Invalid("%s is not an allowed charity: %s", charity.Name, charity.WhyNotAllowed)
+		return nil, nil, access.Invalid("%s is not an allowed charity: %s", charity.Name, charity.WhyNotAllowed)
 	}
 	if len(note) > maxTextLength {
-		return nil, target{}, access.Invalid("the note is too long")
+		return nil, nil, access.Invalid("the note is too long")
 	}
-	t.charity = charity.Name
-	cells := store.Row{"Charity": charity.ID, "Note": strings.TrimSpace(note), "Recorded On": today(), "Recorded By": actor.Email}
-	return []store.Op{store.Upsert(donationsTab, store.Row{"Email": t.email, "Year": t.year}, cells)}, t, nil
+	cells := store.Row{"Charity": charity.ID, "Note": strings.TrimSpace(note), "Recorded On": dayOf(now), "Recorded By": actor.Email}
+	return []store.Op{store.Upsert(donationsTab, yearRow(email, m.year(now)), cells)}, charity, nil
 }
 
-func (m *Model) deleteDonation(actor access.Actor, rawEmail string) ([]store.Op, target, error) {
-	t, err := m.teamStaff(actor, rawEmail)
-	if err != nil {
-		return nil, target{}, err
+func (m *Model) canChangeDonation(actor access.Actor, d Donation) error {
+	if err := m.teamStaff(actor, d.Email); err != nil {
+		return err
 	}
-	return []store.Op{store.Delete(donationsTab, store.Row{"Email": t.email, "Year": t.year})}, t, nil
+	return nil
 }
 
-func (m *Model) markUsed(actor access.Actor, rawEmail string, used bool) ([]store.Op, target, error) {
-	t, err := m.teamStaff(actor, rawEmail)
-	if err != nil {
-		return nil, target{}, err
+func (m *Model) deleteDonation(actor access.Actor, d Donation) ([]store.Op, error) {
+	if err := m.canChangeDonation(actor, d); err != nil {
+		return nil, err
 	}
-	if _, ok := m.Donation(t.email, t.year); !ok {
-		return nil, target{}, access.Invalid("record a donation first")
+	return []store.Op{store.Delete(donationsTab, yearRow(d.Email, d.Year))}, nil
+}
+
+func (m *Model) canMarkUsed(actor access.Actor, d Donation, used bool) error {
+	if err := m.canChangeDonation(actor, d); err != nil {
+		return err
+	}
+	if (d.UsedOn != "") == used {
+		return access.Invalid("already so")
+	}
+	return nil
+}
+
+func (m *Model) markUsed(actor access.Actor, d Donation, used bool, now time.Time) ([]store.Op, error) {
+	if err := m.canMarkUsed(actor, d, used); err != nil {
+		return nil, err
 	}
 	cells := store.Row{"Used On": "", "Used By": ""}
 	if used {
-		cells = store.Row{"Used On": today(), "Used By": actor.Email}
+		cells = store.Row{"Used On": dayOf(now), "Used By": actor.Email}
 	}
-	return []store.Op{store.Update(donationsTab, store.Row{"Email": t.email, "Year": t.year}, cells)}, t, nil
+	return []store.Op{store.Update(donationsTab, yearRow(d.Email, d.Year), cells)}, nil
 }
 
-func (m *Model) saveBirthday(actor access.Actor, rawEmail, birthday, override string) ([]store.Op, string, error) {
+func (m *Model) saveBirthday(actor access.Actor, email, birthday, override string) ([]store.Op, error) {
 	if err := m.requireTeam(actor); err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	email := config.NormalizeEmail(rawEmail)
 	if err := checkEmail(email); err != nil {
-		return nil, "", access.Invalid("%v", err)
+		return nil, access.Invalid("%v", err)
 	}
 	pinned := strings.TrimSpace(override)
 	if pinned != "" && m.NewsletterDate(pinned) == nil {
-		return nil, "", access.Invalid("pick a newsletter date from the list")
+		return nil, access.Invalid("pick a newsletter date from the list")
 	}
 	cells := store.Row{"Birthday": strings.TrimSpace(birthday), "Newsletter Override": pinned}
-	return []store.Op{store.Upsert(birthdaysTab, store.Row{"Email": email}, cells)}, email, nil
+	return []store.Op{store.Upsert(birthdaysTab, store.Row{"Email": email}, cells)}, nil
 }
 
-func (c *Cache) deleteBirthday(actor access.Actor, rawEmail string) ([]store.Op, string, error) {
-	if err := requireAdmin(actor); err != nil {
-		return nil, "", err
-	}
-	email := config.NormalizeEmail(rawEmail)
-	match := store.Row{"Email": email}
-	if c.Count(birthdaysTab, match) == 0 {
-		return nil, "", access.Missing("no such birthday")
-	}
-	for _, tab := range []string{assignmentsTab, outreachTab, donationsTab, notesTab} {
-		if c.Count(tab, match) > 0 {
-			return nil, "", access.Invalid("remove their assignments, outreach, donations, and notes first")
+func (m *Model) recorded(email string) bool {
+	for _, a := range m.Assignments {
+		if a.Email == email {
+			return true
 		}
 	}
-	return []store.Op{store.Delete(birthdaysTab, match)}, email, nil
+	for _, o := range m.Outreach {
+		if o.Email == email {
+			return true
+		}
+	}
+	for _, d := range m.Donations {
+		if d.Email == email {
+			return true
+		}
+	}
+	return slices.ContainsFunc(m.Notes, func(n Note) bool { return n.Email == email })
 }
 
-func (m *Model) saveParticipation(actor access.Actor, rawEmail, level, note string) ([]store.Op, string, error) {
-	if err := m.requireTeam(actor); err != nil {
-		return nil, "", err
+func (m *Model) canDeleteBirthday(actor access.Actor, email string) error {
+	if err := requireAdmin(actor); err != nil {
+		return err
 	}
-	email := config.NormalizeEmail(rawEmail)
+	if m.Birthday(email) == nil {
+		return access.Missing("no such birthday")
+	}
+	if m.recorded(email) {
+		return access.Invalid("remove their assignments, outreach, donations, and notes first")
+	}
+	return nil
+}
+
+func (m *Model) deleteBirthday(actor access.Actor, email string) ([]store.Op, error) {
+	if err := m.canDeleteBirthday(actor, email); err != nil {
+		return nil, err
+	}
+	return []store.Op{store.Delete(birthdaysTab, store.Row{"Email": email})}, nil
+}
+
+func (m *Model) saveParticipation(actor access.Actor, email, level, note string) ([]store.Op, error) {
+	if err := m.requireTeam(actor); err != nil {
+		return nil, err
+	}
 	if err := checkEmail(email); err != nil {
-		return nil, "", access.Invalid("%v", err)
+		return nil, access.Invalid("%v", err)
 	}
 	if !slices.Contains(Levels, level) {
-		return nil, "", access.Invalid("level must be one of %s", strings.Join(Levels, ", "))
+		return nil, access.Invalid("level must be one of %s", strings.Join(Levels, ", "))
 	}
 	if len(note) > maxTextLength {
-		return nil, "", access.Invalid("the note is too long")
+		return nil, access.Invalid("the note is too long")
 	}
-	return []store.Op{store.Upsert(birthdaysTab, store.Row{"Email": email}, store.Row{"Participation": level, "Note": strings.TrimSpace(note)})}, email, nil
+	return []store.Op{store.Upsert(birthdaysTab, store.Row{"Email": email}, store.Row{"Participation": level, "Note": strings.TrimSpace(note)})}, nil
 }
 
-func (m *Model) deleteParticipation(actor access.Actor, rawEmail string) ([]store.Op, string, error) {
+func (m *Model) canClearParticipation(actor access.Actor, email string) error {
 	if err := m.requireTeam(actor); err != nil {
-		return nil, "", err
+		return err
 	}
-	email := config.NormalizeEmail(rawEmail)
-	b := m.Birthday(email)
-	if b == nil || b.Level == "" {
-		return nil, "", access.Missing("no preference is recorded")
+	if b := m.Birthday(email); b == nil || b.Level == "" {
+		return access.Missing("no preference is recorded")
+	}
+	return nil
+}
+
+func (m *Model) deleteParticipation(actor access.Actor, email string) ([]store.Op, error) {
+	if err := m.canClearParticipation(actor, email); err != nil {
+		return nil, err
 	}
 	match := store.Row{"Email": email}
-	if b.Birthday == "" {
-		return []store.Op{store.Delete(birthdaysTab, match)}, email, nil
+	if m.Birthday(email).Birthday == "" {
+		return []store.Op{store.Delete(birthdaysTab, match)}, nil
 	}
-	return []store.Op{store.Update(birthdaysTab, match, store.Row{"Participation": "", "Note": ""})}, email, nil
+	return []store.Op{store.Update(birthdaysTab, match, store.Row{"Participation": "", "Note": ""})}, nil
 }
 
-func (m *Model) addNote(actor access.Actor, rawEmail, text string) ([]store.Op, string, error) {
+func (m *Model) canAddNote(actor access.Actor, email string) error {
 	if err := m.requireTeam(actor); err != nil {
-		return nil, "", err
+		return err
 	}
-	email := config.NormalizeEmail(rawEmail)
 	if b := m.Birthday(email); b == nil || b.Birthday == "" {
-		return nil, "", access.Missing("%s has no birthday on file", email)
+		return access.Missing("%s has no birthday on file", email)
+	}
+	return nil
+}
+
+func (m *Model) addNote(actor access.Actor, email, text string, now time.Time) ([]store.Op, error) {
+	if err := m.canAddNote(actor, email); err != nil {
+		return nil, err
 	}
 	note := strings.TrimSpace(text)
 	if note == "" || len(note) > maxTextLength {
-		return nil, "", access.Invalid("the note is empty or too long")
+		return nil, access.Invalid("the note is empty or too long")
 	}
-	return []store.Op{store.Insert(notesTab, store.Row{"Email": email, "Note": note, "Added By": actor.Email, "Added": today()})}, email, nil
+	return []store.Op{store.Insert(notesTab, store.Row{"Email": email, "Note": note, "Added By": actor.Email, "Added": dayOf(now)})}, nil
 }
 
-func sameCell(stored, given string) bool {
-	return strings.EqualFold(strings.TrimSpace(stored), strings.TrimSpace(given))
-}
-
-func (m *Model) deleteNote(actor access.Actor, given Note) ([]store.Op, string, error) {
+func (m *Model) canDeleteNote(actor access.Actor, n Note) error {
 	if err := m.requireTeam(actor); err != nil {
-		return nil, "", err
+		return err
 	}
-	match := store.Row{"Email": config.NormalizeEmail(given.Email), "Note": given.Note, "Added By": config.NormalizeEmail(given.AddedBy), "Added": given.Added}
-	if !actor.May(DeleteAnyNote) && match["Added By"] != actor.Email {
-		return nil, "", access.Forbidden("only the note's author or an admin can remove it")
+	if !actor.May(DeleteAnyNote) && n.AddedBy != actor.Email {
+		return access.Forbidden("only the note's author or an admin can remove it")
 	}
-	for _, n := range m.Notes {
-		if !sameCell(n.Email, match["Email"]) || !sameCell(n.Note, match["Note"]) || !sameCell(n.AddedBy, match["Added By"]) || !sameCell(n.Added, match["Added"]) {
-			continue
-		}
-		if !actor.May(DeleteAnyNote) && !sameCell(n.AddedBy, actor.Email) {
-			return nil, "", access.Forbidden("only the note's author or an admin can remove it")
-		}
-	}
-	return []store.Op{store.Delete(notesTab, match)}, match["Email"], nil
+	return nil
 }
 
-func (m *Model) saveCharity(actor access.Actor, edit charityEdit) ([]store.Op, Charity, bool, error) {
-	if err := m.requireTeam(actor); err != nil {
-		return nil, Charity{}, false, err
+func (m *Model) deleteNote(actor access.Actor, n Note) ([]store.Op, error) {
+	if err := m.canDeleteNote(actor, n); err != nil {
+		return nil, err
 	}
-	name := strings.TrimSpace(edit.Name)
-	key := strings.TrimSpace(edit.ID)
-	adding := key == ""
-	var current *Charity
-	if !adding {
-		current = m.Charity(key)
-		if current == nil {
-			return nil, Charity{}, false, access.Missing("no such charity")
-		}
+	return []store.Op{store.Delete(notesTab, store.Row{"Email": n.Email, "Note": n.Note, "Added By": n.AddedBy, "Added": n.Added})}, nil
+}
+
+func (m *Model) charityRow(edit charityEdit) store.Row {
+	return store.Row{
+		"Name": strings.TrimSpace(edit.Name), "Donation Link": strings.TrimSpace(edit.DonationLink),
+		"About": strings.TrimSpace(edit.About), "EIN": strings.TrimSpace(edit.EIN),
+	}
+}
+
+func (m *Model) addCharity(actor access.Actor, edit charityEdit, key string, now time.Time) ([]store.Op, error) {
+	if err := m.requireTeam(actor); err != nil {
+		return nil, err
+	}
+	row := m.charityRow(edit)
+	if m.charityNamed(row["Name"]) != nil {
+		return nil, access.Invalid("%q is already on the list", row["Name"])
 	}
 	allowed, why := true, ""
-	switch {
-	case actor.May(Configure):
-		allowed, why = edit.Allowed, strings.TrimSpace(edit.WhyNotAllowed)
-	case !adding:
-		allowed, why = current.Allowed, current.WhyNotAllowed
+	if edit.Allowed != nil && actor.May(Configure) {
+		allowed, why = *edit.Allowed, strings.TrimSpace(edit.WhyNotAllowed)
 	}
 	if allowed {
 		why = ""
 	}
-	row := store.Row{
-		"Name": name, "Donation Link": strings.TrimSpace(edit.DonationLink), "About": strings.TrimSpace(edit.About),
-		"EIN": strings.TrimSpace(edit.EIN), "Allowed": cells.YesNoCell(allowed), "Why Not Allowed": why,
-	}
-	if other := m.charityNamed(name); other != nil && (adding || other.ID != current.ID) {
-		return nil, Charity{}, false, access.Invalid("%q is already on the list", name)
-	}
-	if adding {
-		key = id.New(m.taken)
-		row["Charity ID"] = key
-		row["Added On"] = today()
-		return []store.Op{store.Insert(charitiesTab, row)}, Charity{ID: key, Name: name, Allowed: allowed}, true, nil
-	}
-	return []store.Op{store.Update(charitiesTab, store.Row{"Charity ID": current.ID}, row)}, Charity{ID: current.ID, Name: name, Allowed: allowed}, false, nil
+	row["Charity ID"], row["Added On"] = key, dayOf(now)
+	row["Allowed"], row["Why Not Allowed"] = cells.YesNoCell(allowed), why
+	return []store.Op{store.Insert(charitiesTab, row)}, nil
 }
 
-func (c *Cache) deleteCharity(actor access.Actor, key string) ([]store.Op, *Charity, error) {
+func (m *Model) editCharity(actor access.Actor, c *Charity, edit charityEdit) ([]store.Op, error) {
+	if err := m.requireTeam(actor); err != nil {
+		return nil, err
+	}
+	row := m.charityRow(edit)
+	if other := m.charityNamed(row["Name"]); other != nil && other.ID != c.ID {
+		return nil, access.Invalid("%q is already on the list", row["Name"])
+	}
+	return []store.Op{store.Update(charitiesTab, store.Row{"Charity ID": c.ID}, row)}, nil
+}
+
+func allowCharity(actor access.Actor, c *Charity, a charityAllowance) ([]store.Op, error) {
 	if err := requireAdmin(actor); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	m := c.Model()
-	charity := m.Charity(strings.TrimSpace(key))
-	if charity == nil {
-		return nil, nil, access.Missing("no such charity")
+	why := strings.TrimSpace(a.WhyNotAllowed)
+	if a.Allowed {
+		why = ""
 	}
-	if m.Settings.DefaultCharity == charity.ID {
-		return nil, nil, access.Invalid("pick another default charity first")
-	}
-	if c.Count(donationsTab, store.Row{"Charity": charity.ID}) > 0 {
-		return nil, nil, access.Invalid("donations name this charity; it can be marked not allowed instead")
-	}
-	return []store.Op{store.Delete(charitiesTab, store.Row{"Charity ID": charity.ID})}, charity, nil
+	return []store.Op{store.Update(charitiesTab, store.Row{"Charity ID": c.ID}, store.Row{"Allowed": cells.YesNoCell(a.Allowed), "Why Not Allowed": why})}, nil
 }
 
-func (m *Model) addNewsletterDate(actor access.Actor, raw string) ([]store.Op, string, error) {
+func (m *Model) canDeleteCharity(actor access.Actor, c *Charity) error {
+	if err := requireAdmin(actor); err != nil {
+		return err
+	}
+	if m.Settings.DefaultCharity == c.ID {
+		return access.Invalid("pick another default charity first")
+	}
+	for _, d := range m.Donations {
+		if d.Charity == c.ID {
+			return access.Invalid("donations name this charity; it can be marked not allowed instead")
+		}
+	}
+	return nil
+}
+
+func (m *Model) deleteCharity(actor access.Actor, c *Charity) ([]store.Op, error) {
+	if err := m.canDeleteCharity(actor, c); err != nil {
+		return nil, err
+	}
+	return []store.Op{store.Delete(charitiesTab, store.Row{"Charity ID": c.ID})}, nil
+}
+
+func (m *Model) addNewsletterDate(actor access.Actor, raw, key string) ([]store.Op, string, error) {
 	if err := requireAdmin(actor); err != nil {
 		return nil, "", err
 	}
@@ -334,101 +399,36 @@ func (m *Model) addNewsletterDate(actor access.Actor, raw string) ([]store.Op, s
 		return nil, "", access.Invalid("%v", err)
 	}
 	if m.newsletterOn(date) != nil {
-		return nil, "", access.Invalid("that date is already on the list")
+		return nil, "", access.Invalid("%s is already on the list", date)
 	}
-	return []store.Op{store.Insert(newsletterDatesTab, store.Row{"Newsletter Date ID": id.New(m.taken), "Date": date})}, date, nil
+	return []store.Op{store.Insert(newsletterDatesTab, store.Row{"Newsletter Date ID": key, "Date": date})}, date, nil
 }
 
-func (m *Model) changeNewsletterDate(actor access.Actor, key, rawDate string) ([]store.Op, *NewsletterDate, error) {
+func (m *Model) moveNewsletterDate(actor access.Actor, n *NewsletterDate, rawDate string) ([]store.Op, error) {
 	if err := requireAdmin(actor); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	date := strings.TrimSpace(rawDate)
 	if _, err := ParseDate(date); err != nil {
-		return nil, nil, access.Invalid("%v", err)
-	}
-	n := m.NewsletterDate(strings.TrimSpace(key))
-	if n == nil {
-		return nil, nil, access.Missing("no such newsletter date")
+		return nil, access.Invalid("%v", err)
 	}
 	if date == n.Date {
-		return nil, n, nil
+		return nil, nil
 	}
 	if m.newsletterOn(date) != nil {
-		return nil, nil, access.Invalid("that date is already on the list")
+		return nil, access.Invalid("%s is already on the list", date)
 	}
-	return []store.Op{store.Update(newsletterDatesTab, store.Row{"Newsletter Date ID": n.ID}, store.Row{"Date": date})}, n, nil
+	return []store.Op{store.Update(newsletterDatesTab, store.Row{"Newsletter Date ID": n.ID}, store.Row{"Date": date})}, nil
 }
 
-func dropNewsletterDate(n NewsletterDate) []store.Op {
+func deleteNewsletterDate(actor access.Actor, n *NewsletterDate) ([]store.Op, error) {
+	if err := requireAdmin(actor); err != nil {
+		return nil, err
+	}
 	return []store.Op{
 		store.Update(birthdaysTab, store.Row{"Newsletter Override": n.ID}, store.Row{"Newsletter Override": ""}),
 		store.Delete(newsletterDatesTab, store.Row{"Newsletter Date ID": n.ID}),
-	}
-}
-
-func (m *Model) deleteNewsletterDate(actor access.Actor, key string) ([]store.Op, *NewsletterDate, error) {
-	if err := requireAdmin(actor); err != nil {
-		return nil, nil, err
-	}
-	n := m.NewsletterDate(strings.TrimSpace(key))
-	if n == nil {
-		return nil, nil, access.Missing("no such newsletter date")
-	}
-	return dropNewsletterDate(*n), n, nil
-}
-
-func (m *Model) createNewsletterDates(actor access.Actor, weekday int, rawFrom, rawTo string) ([]store.Op, []string, error) {
-	if err := requireAdmin(actor); err != nil {
-		return nil, nil, err
-	}
-	from, err := ParseDate(strings.TrimSpace(rawFrom))
-	if err != nil {
-		return nil, nil, access.Invalid("from: %v", err)
-	}
-	to, err := ParseDate(strings.TrimSpace(rawTo))
-	if err != nil {
-		return nil, nil, access.Invalid("to: %v", err)
-	}
-	if weekday < 0 || weekday > 6 {
-		return nil, nil, access.Invalid("weekday must be 0 (Sunday) to 6 (Saturday)")
-	}
-	if to.Before(from) {
-		return nil, nil, access.Invalid("the final date is before the first")
-	}
-	if to.Sub(from) > 366*24*time.Hour {
-		return nil, nil, access.Invalid("at most a year at a time")
-	}
-	added := []string{}
-	ops := []store.Op{}
-	mint := m.minter()
-	for day := from.AddDate(0, 0, (weekday-int(from.Weekday())+7)%7); !day.After(to); day = day.AddDate(0, 0, 7) {
-		cell := day.Format(DateFormat)
-		if m.newsletterOn(cell) != nil {
-			continue
-		}
-		added = append(added, cell)
-		ops = append(ops, store.Insert(newsletterDatesTab, store.Row{"Newsletter Date ID": mint(), "Date": cell}))
-	}
-	if len(added) == 0 {
-		return nil, nil, access.Invalid("every one of those dates is already on the list")
-	}
-	return ops, added, nil
-}
-
-func (m *Model) clearFutureNewsletterDates(actor access.Actor, day string) ([]store.Op, int, error) {
-	if err := requireAdmin(actor); err != nil {
-		return nil, 0, err
-	}
-	ops := []store.Op{}
-	cleared := 0
-	for _, n := range m.NewsletterDates {
-		if n.Date >= day {
-			ops = append(ops, dropNewsletterDate(n)...)
-			cleared++
-		}
-	}
-	return ops, cleared, nil
+	}, nil
 }
 
 func saveSettings(actor access.Actor, s Settings) ([]store.Op, error) {
@@ -448,85 +448,90 @@ func saveSettings(actor access.Actor, s Settings) ([]store.Op, error) {
 	return ops, nil
 }
 
-func (c *Cache) joinTeam(actor access.Actor) ([]store.Op, error) {
-	if err := checkEmail(actor.Email); err != nil {
-		return nil, access.Invalid("%v", err)
+func (m *Model) addTeamMember(actor access.Actor, rawEmail, rawRole string) ([]store.Op, TeamMember, error) {
+	member := TeamMember{Email: config.NormalizeEmail(rawEmail), Role: strings.TrimSpace(rawRole)}
+	if member.Email == "" {
+		member.Email = actor.Email
 	}
-	row := store.Row{"Email": actor.Email, "Role": RoleVolunteer}
-	if c.Count(teamTab, row) > 0 {
-		return nil, nil
+	if member.Role == "" {
+		member.Role = RoleVolunteer
 	}
-	return []store.Op{store.Insert(teamTab, row)}, nil
-}
-
-func teamMember(rawEmail, rawRole string) (TeamMember, error) {
-	email := config.NormalizeEmail(rawEmail)
-	if err := checkEmail(email); err != nil {
-		return TeamMember{}, access.Invalid("%v", err)
+	if !actor.May(Configure) && (member.Email != actor.Email || member.Role != RoleVolunteer) {
+		return nil, TeamMember{}, access.Forbidden("admin access required")
 	}
-	role := strings.TrimSpace(rawRole)
-	if !slices.Contains(Roles, role) {
-		return TeamMember{}, access.Invalid("%q is not a role", role)
+	if err := checkEmail(member.Email); err != nil {
+		return nil, TeamMember{}, access.Invalid("%v", err)
 	}
-	return TeamMember{Email: email, Role: role}, nil
-}
-
-func (c *Cache) addTeamMember(actor access.Actor, rawEmail, rawRole string) ([]store.Op, TeamMember, error) {
-	if err := requireAdmin(actor); err != nil {
-		return nil, TeamMember{}, err
+	if !slices.Contains(Roles, member.Role) {
+		return nil, TeamMember{}, access.Invalid("%q is not a role", member.Role)
 	}
-	member, err := teamMember(rawEmail, rawRole)
-	if err != nil {
-		return nil, TeamMember{}, err
-	}
-	row := store.Row{"Email": member.Email, "Role": member.Role}
-	if c.Count(teamTab, row) > 0 {
+	if slices.Contains(m.Team, member) {
 		return nil, member, nil
 	}
-	return []store.Op{store.Insert(teamTab, row)}, member, nil
+	return []store.Op{store.Insert(teamTab, store.Row{"Email": member.Email, "Role": member.Role})}, member, nil
 }
 
-func removeTeamMember(actor access.Actor, rawEmail, rawRole string) ([]store.Op, TeamMember, error) {
+func removeTeamMember(actor access.Actor, member TeamMember) ([]store.Op, error) {
 	if err := requireAdmin(actor); err != nil {
-		return nil, TeamMember{}, err
+		return nil, err
 	}
-	member, err := teamMember(rawEmail, rawRole)
-	if err != nil {
-		return nil, TeamMember{}, err
-	}
-	return []store.Op{store.Delete(teamTab, store.Row{"Email": member.Email, "Role": member.Role})}, member, nil
+	return []store.Op{store.Delete(teamTab, store.Row{"Email": member.Email, "Role": member.Role})}, nil
 }
 
-func exportOps(actor access.Actor, items []exported) ([]store.Op, []store.Op) {
-	day := today()
+func inviteRow(actor access.Actor, email, year, key string, now time.Time) store.Op {
+	return store.Insert(invitesTab, store.Row{"Invite ID": key, "Email": email, "Year": year, "Requested On": dayOf(now), "Requested By": actor.Email})
+}
+
+func (m *Model) requestInvite(actor access.Actor, email, key string, now time.Time) ([]store.Op, error) {
+	if err := requireAdmin(actor); err != nil {
+		return nil, err
+	}
+	if err := m.findStaff(email); err != nil {
+		return nil, err
+	}
+	return []store.Op{inviteRow(actor, email, m.year(now), key, now)}, nil
+}
+
+func queueInvite(actor access.Actor, sv StaffView, key string, now time.Time) ([]store.Op, error) {
+	if err := requireSystem(actor, invitesActor); err != nil {
+		return nil, err
+	}
+	return []store.Op{inviteRow(actor, sv.Email, sv.Year, key, now)}, nil
+}
+
+func recordInvite(actor access.Actor, inv Invite, sv StaffView, now time.Time) ([]store.Op, error) {
+	if err := requireSystem(actor, invitesActor); err != nil {
+		return nil, err
+	}
+	return []store.Op{store.Update(invitesTab, store.Row{"Invite ID": inv.ID}, store.Row{"Sent To": sv.AssignedTo, "Ask Day": sv.RequestBy, "Sent On": dayOf(now)})}, nil
+}
+
+func exportOps(actor access.Actor, items []exported, now time.Time) ([]store.Op, []store.Op) {
+	day := dayOf(now)
 	rows, marks := []store.Op{}, []store.Op{}
 	for _, it := range items {
 		cells := maps.Clone(it.donation)
 		cells["Used On"], cells["Used By"] = day, actor.Email
 		rows = append(rows, store.Insert(sharedNewsletterTab, it.row))
-		marks = append(marks, store.Upsert(donationsTab, store.Row{"Email": it.email, "Year": it.year}, cells))
+		marks = append(marks, store.Upsert(donationsTab, yearRow(it.email, it.year), cells))
 	}
 	return rows, marks
 }
 
-func weeklyExport(actor access.Actor, items []exported) ([]store.Op, []store.Op, error) {
+func weeklyExport(actor access.Actor, items []exported, now time.Time) ([]store.Op, []store.Op, error) {
 	if err := requireSystem(actor, exportActor); err != nil {
 		return nil, nil, err
 	}
-	rows, marks := exportOps(actor, items)
+	rows, marks := exportOps(actor, items, now)
 	return rows, marks, nil
 }
 
-func (m *Model) shareIssue(actor access.Actor, key string, items func(issue string) []exported) ([]store.Op, []store.Op, string, error) {
+func (m *Model) shareIssue(actor access.Actor, items []exported, now time.Time) ([]store.Op, []store.Op, error) {
 	if err := m.requireTeam(actor); err != nil {
-		return nil, nil, "", err
+		return nil, nil, err
 	}
-	n := m.NewsletterDate(strings.TrimSpace(key))
-	if n == nil {
-		return nil, nil, "", access.Invalid("that is not a newsletter date")
-	}
-	rows, marks := exportOps(actor, items(n.Date))
-	return rows, marks, n.Date, nil
+	rows, marks := exportOps(actor, items, now)
+	return rows, marks, nil
 }
 
 func recordReminder(actor access.Actor, sv StaffView, kind, to string, today time.Time) ([]store.Op, error) {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"heliosian/internal/access"
@@ -72,12 +71,13 @@ type exported struct {
 	donation    map[string]string
 }
 
-func (a app) toExport(model *Model, issue string) []exported {
+func (w World) toExport(issue string, now time.Time) []exported {
 	out := []exported{}
-	day := today()
+	model := w.Model
+	day := dayOf(now)
 	for i := range model.Birthdays {
-		sv, ok := a.staffView(model, model.Birthdays[i].Email)
-		if !ok || !sv.InDirectory || sv.Level == LevelSkip || sv.NewsletterDate != issue {
+		sv := w.staffOf(model.Birthdays[i].Email, now)
+		if !sv.InDirectory || sv.Level == LevelSkip || sv.NewsletterDate != issue {
 			continue
 		}
 		if sv.Donation != nil && sv.Donation.UsedOn != "" {
@@ -104,14 +104,11 @@ func (a app) toExport(model *Model, issue string) []exported {
 	return out
 }
 
-func (a app) commitExport(ctx context.Context, actor access.Actor, rows, marks []store.Op) error {
-	if len(rows) == 0 {
-		return nil
-	}
-	if err := a.cache.shared.Commit(ctx, actor, rows...); err != nil {
+func (c *Cache) stageExport(tx *store.Tx, rows, marks []store.Op) error {
+	if err := c.shared.Stage(tx, rows...); err != nil {
 		return fmt.Errorf("copy to the shared sheet: %w", err)
 	}
-	if err := a.cache.Commit(ctx, actor, marks...); err != nil {
+	if err := c.Stage(tx, marks...); err != nil {
 		return fmt.Errorf("mark the copied birthdays done: %w", err)
 	}
 	return nil
@@ -119,28 +116,16 @@ func (a app) commitExport(ctx context.Context, actor access.Actor, rows, marks [
 
 func (a app) weeklyExport(ctx context.Context, issue string) (int, error) {
 	actor := access.System(exportActor)
-	model := a.cache.Model()
-	rows, marks, err := weeklyExport(actor, a.toExport(model, issue))
+	at := now()
+	rows, marks, err := weeklyExport(actor, a.world().toExport(issue, at), at)
 	if err != nil {
 		return 0, err
 	}
-	if err := a.commitExport(ctx, actor, rows, marks); err != nil {
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	if _, err := a.queue.Transact(ctx, actor, func(tx *store.Tx) error { return a.cache.stageExport(tx, rows, marks) }); err != nil {
 		return 0, err
 	}
 	return len(rows), nil
-}
-
-func (a app) shareIssue(r *http.Request, body dateRef) (map[string]int, error) {
-	actor := a.actor(r)
-	model := a.cache.Model()
-	rows, marks, issue, err := model.shareIssue(actor, body.ID, func(issue string) []exported { return a.toExport(model, issue) })
-	if err != nil {
-		return nil, err
-	}
-	if err := a.commitExport(r.Context(), actor, rows, marks); err != nil {
-		slog.ErrorContext(r.Context(), "birthday: copy to the shared sheet", "actor", actor.Email, "issue", issue, "copied", 0, "error", err)
-		return nil, access.Refuse(http.StatusBadGateway, "copied 0, then: %v", err)
-	}
-	slog.InfoContext(r.Context(), "birthday: copied to the shared sheet", "actor", actor.Email, "issue", issue, "copied", len(rows))
-	return map[string]int{"copied": len(rows)}, nil
 }

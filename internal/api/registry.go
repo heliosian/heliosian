@@ -9,14 +9,17 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/id"
+	"heliosian/internal/store"
 )
 
 const nowLayout = "2006-01-02 15:04"
 
 type Config[S any] struct {
-	Actor func(r *http.Request, s S) access.Actor
-	Held  func(email string) []access.Allowance
-	Now   func() time.Time
+	Actor  func(r *http.Request, s S) access.Actor
+	Held   func(email string) []access.Allowance
+	Now    func() time.Time
+	Queue  *store.Queue
+	Staged func(tx *store.Tx) S
 }
 
 type Registry[S any] struct {
@@ -77,19 +80,29 @@ func (reg *Registry[S]) Publish(s S) {
 
 func (reg *Registry[S]) Taken(candidate string) bool {
 	w := reg.current.Load()
-	for name, t := range reg.types {
-		if t.Has(w.s, candidate) {
-			return true
+	return reg.takenIn(w, w.s)(candidate)
+}
+
+func (reg *Registry[S]) takenIn(w *world[S], s S) func(string) bool {
+	return func(candidate string) bool {
+		for name, t := range reg.types {
+			if t.Has(s, candidate) {
+				return true
+			}
+			if _, ok := w.aliases[name][candidate]; ok {
+				return true
+			}
 		}
-		if _, ok := w.aliases[name][candidate]; ok {
-			return true
-		}
+		return false
 	}
-	return false
 }
 
 func (w *world[S]) resolve(t *Type[S], segment string) (string, bool) {
-	if parsed, ok := id.Parse(segment); ok && t.Has(w.s, parsed) {
+	return w.resolveIn(w.s, t, segment)
+}
+
+func (w *world[S]) resolveIn(s S, t *Type[S], segment string) (string, bool) {
+	if parsed, ok := id.Parse(segment); ok && t.Has(s, parsed) {
 		return parsed, true
 	}
 	target, ok := w.aliases[t.Name][strings.ToLower(strings.TrimSpace(segment))]

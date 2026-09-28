@@ -1,19 +1,11 @@
-import {superEditOn} from '/superedit.js';
-
 export const state = {model: null};
 
 export function applyModel(model) {
   state.model = model;
 }
 
-export function isSystemAdmin() {
-  return Boolean(state.model && state.model.user.isAdmin);
-}
-
-// The switch outlives losing admin, a spoofed standard user or another person
-// on the same device, so it counts only while the model says admin.
 export function isAdmin() {
-  return isSystemAdmin() && superEditOn();
+  return Boolean(state.model && state.model.user.isAdmin);
 }
 
 export function tagLabelsOf(rule) {

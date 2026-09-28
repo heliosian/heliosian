@@ -46,6 +46,10 @@ export function remove(type, id) {
   return api('DELETE', `/api/${type}/${encodeURIComponent(id)}`);
 }
 
+export function actAll(writes) {
+  return api('POST', '/api/act', writes);
+}
+
 export function me() {
   return api('GET', '/api/me');
 }

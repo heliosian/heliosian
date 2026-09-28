@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/api"
 	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
@@ -63,76 +65,174 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	people = model
-	cache, err := NewCache(dir, dir, func() []string { return []string{admin} }, queue)
+	cache, err := NewCache(dir, dir, func() []string { return []string{admin} }, queue, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
 	sent = mailtest.NewRecorder("Helios Staff Birthdays <birthday@example.org>")
 	joined = nil
+	world := func(tx *store.Tx) World { return NewWorld(cache.In(tx), people) }
+	reg := api.New(api.Config[World]{
+		Actor:  func(r *http.Request, w World) access.Actor { return w.Directory.Actor(r, cache.Held) },
+		Held:   cache.Held,
+		Now:    func() time.Time { return now() },
+		Queue:  queue,
+		Staged: world,
+	})
+	for _, rt := range who.Resources() {
+		reg.Add(api.Lift(rt, func(w World) *who.Model { return w.Directory }))
+	}
+	for _, rt := range Resources(cache, func(_ context.Context, email string) error {
+		joined = append(joined, email)
+		return nil
+	}) {
+		reg.Add(rt)
+	}
+	queue.OnSwap(func() { reg.Publish(world(nil)) })
+	reg.Register(mux)
 	Register(mux, Deps{
 		Cache:     cache,
+		Queue:     queue,
 		Directory: directory,
 		Describer: describe.New("test", claude.NewLimiter()),
 		Mailer:    sent.Mailgun,
 		Base:      "https://birthday.example.org",
-		JoinHome: func(_ context.Context, email string) error {
-			joined = append(joined, email)
-			return nil
-		},
-		About: About(func() string { return "Helios Birthday Team" }, func() string { return "Staff birthday donations" }),
+		About:     About(func() string { return "Helios Birthday Team" }, func() string { return "Staff birthday donations" }),
+		Taken:     reg.Taken,
 	})
 	return cache, mux
 }
 
-func view(t *testing.T, cache *Cache, as string) View {
-	t.Helper()
-	var held []access.Allowance
-	if as == admin {
-		held = AdminAllowances
-	}
-	return Render(cache.Model(), directory, directory().ActorOf(as, held, true), now())
+type reply struct {
+	Data     json.RawMessage                      `json:"data"`
+	Included map[string]map[string]map[string]any `json:"included"`
 }
 
-func find(list []StaffView, email string) *StaffView {
-	for i := range list {
-		if list[i].Email == email {
-			return &list[i]
-		}
+func get(t *testing.T, mux http.Handler, as, path string) reply {
+	t.Helper()
+	rec := testkit.Call(t, mux, as, "GET", path, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET %s: %d %s", path, rec.Code, rec.Body)
 	}
-	return nil
+	var out reply
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	return out
+}
+
+func (r reply) ids(t *testing.T) []string {
+	t.Helper()
+	out := []string{}
+	if err := json.Unmarshal(r.Data, &out); err != nil {
+		t.Fatalf("data %s: %v", r.Data, err)
+	}
+	return out
+}
+
+func (r reply) id(t *testing.T) string {
+	t.Helper()
+	var out string
+	if err := json.Unmarshal(r.Data, &out); err != nil {
+		t.Fatalf("data %s: %v", r.Data, err)
+	}
+	return out
+}
+
+func (r reply) follow(from map[string]any, relation, typ string) map[string]any {
+	key, _ := from[relation].(string)
+	return r.Included[typ][key]
+}
+
+const staffIncludes = "?include=person,assignee,donation,last-donation,notes,invites"
+
+func staff(t *testing.T, mux http.Handler, as, email string) (map[string]any, reply) {
+	t.Helper()
+	out := get(t, mux, as, "/api/birthdays/"+email+staffIncludes)
+	return out.Included["birthdays"][out.id(t)], out
+}
+
+func everyone(t *testing.T, mux http.Handler, as string) map[string]map[string]any {
+	t.Helper()
+	out := get(t, mux, as, "/api/birthdays")
+	byEmail := map[string]map[string]any{}
+	for _, key := range out.ids(t) {
+		b := out.Included["birthdays"][key]
+		byEmail[b["email"].(string)] = b
+	}
+	return byEmail
+}
+
+func call(t *testing.T, mux http.Handler, as, method, path string, body any, want int) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := testkit.Call(t, mux, as, method, path, body)
+	if rec.Code != want {
+		t.Fatalf("%s %s as %s: %d %s, want %d", method, path, as, rec.Code, rec.Body, want)
+	}
+	return rec
+}
+
+func created(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var out struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || out.ID == "" {
+		t.Fatalf("created %s: %v", rec.Body, err)
+	}
+	return out.ID
+}
+
+func settingsID(t *testing.T, mux http.Handler) string {
+	t.Helper()
+	return get(t, mux, parent, "/api/birthday-settings").ids(t)[0]
+}
+
+type write struct {
+	Method string `json:"method"`
+	Path   string `json:"path"`
+	Body   any    `json:"body,omitempty"`
 }
 
 func TestSampleLoads(t *testing.T) {
 	cache, _ := newServer(t)
 	m := cache.Model()
-	if len(m.Birthdays) != 18 || len(m.Charities) != 7 || len(m.NewsletterDates) != 57 {
-		t.Fatalf("got %d birthdays, %d charities, %d newsletter dates", len(m.Birthdays), len(m.Charities), len(m.NewsletterDates))
+	if len(m.Birthdays) != 18 || len(m.Charities) != 7 || len(m.NewsletterDates) != 57 || len(m.Invites) != 3 {
+		t.Fatalf("got %d birthdays, %d charities, %d newsletter dates, %d invites", len(m.Birthdays), len(m.Charities), len(m.NewsletterDates), len(m.Invites))
 	}
 	if !m.Skipped("hank.morrow@heliosschool.org") || m.InPipeline("hank.morrow@heliosschool.org") || m.Skipped("omar.farouk@heliosschool.org") || !m.InPipeline("omar.farouk@heliosschool.org") {
 		t.Fatal("participation levels did not load")
 	}
-	if _, err := BuildModel(store.Tables{birthdaysTab: {{"Email": "x@heliosschool.org", "Participation": LevelNoNewsletter}}, charitiesTab: m.charityRows(), settingsTab: m.settingRows()}); err == nil {
+	if _, err := BuildModel(store.Tables{birthdaysTab: {{"Email": "x@heliosschool.org", "Participation": LevelNoNewsletter}}, charitiesTab: m.charityRows(), settingsTab: m.settingRows()}, nil); err == nil {
 		t.Fatal("a blank birthday without a skip loaded")
 	}
 	if b := m.Birthday("kate.doyle@heliosschool.org"); b.Override != issueOct23 || m.NewsletterDate(b.Override).Date != "2026-10-23" {
 		t.Fatalf("kate's override: %+v", b)
 	}
-	if _, err := BuildModel(store.Tables{birthdaysTab: {{"Email": "x@heliosschool.org", "Birthday": "09-01", "Newsletter Override": "2026-10-23"}}, charitiesTab: m.charityRows(), settingsTab: m.settingRows()}); err == nil {
+	if _, err := BuildModel(store.Tables{birthdaysTab: {{"Email": "x@heliosschool.org", "Birthday": "09-01", "Newsletter Override": "2026-10-23"}}, charitiesTab: m.charityRows(), settingsTab: m.settingRows()}, nil); err == nil {
 		t.Fatal("an override naming a date rather than a newsletter date's id loaded")
 	}
 	unnamed := m.charityRows()
 	unnamed[0]["Charity ID"] = ""
-	if _, err := BuildModel(store.Tables{charitiesTab: unnamed, settingsTab: m.settingRows()}); err == nil {
+	if _, err := BuildModel(store.Tables{charitiesTab: unnamed, settingsTab: m.settingRows()}, nil); err == nil {
 		t.Fatal("a charity without an id loaded")
 	}
 	twice := m.charityRows()
 	twice[1]["Charity ID"] = twice[0]["Charity ID"]
-	if _, err := BuildModel(store.Tables{charitiesTab: twice, settingsTab: m.settingRows()}); err == nil {
+	if _, err := BuildModel(store.Tables{charitiesTab: twice, settingsTab: m.settingRows()}, nil); err == nil {
 		t.Fatal("two charities sharing an id loaded")
 	}
-	if _, err := BuildModel(store.Tables{charitiesTab: m.charityRows(), settingsTab: m.settingRows(), newsletterDatesTab: {{"Newsletter Date ID": secondHarvest, "Date": "2026-09-11"}}}); err == nil {
+	if _, err := BuildModel(store.Tables{charitiesTab: m.charityRows(), settingsTab: m.settingRows(), newsletterDatesTab: {{"Newsletter Date ID": secondHarvest, "Date": "2026-09-11"}}}, nil); err == nil {
 		t.Fatal("a newsletter date sharing a charity's id loaded")
+	}
+	if _, err := BuildModel(store.Tables{charitiesTab: m.charityRows(), settingsTab: m.settingRows(), invitesTab: {{"Invite ID": "bnv0000000009", "Email": "nobody@heliosschool.org", "Year": "2026 - 2027", "Requested On": "2026-09-01", "Requested By": parent}}}, nil); err == nil {
+		t.Fatal("an invite for someone with no birthday loaded")
+	}
+	half := store.Tables{birthdaysTab: {{"Email": "bill.ryder@heliosschool.org", "Birthday": "09-15"}}, charitiesTab: m.charityRows(), settingsTab: m.settingRows(),
+		invitesTab: {{"Invite ID": "bnv0000000009", "Email": "bill.ryder@heliosschool.org", "Year": "2026 - 2027", "Requested On": "2026-09-01", "Requested By": parent, "Sent On": "2026-09-01"}}}
+	if _, err := BuildModel(half, nil); err == nil {
+		t.Fatal("an invite sent to nobody loaded")
 	}
 }
 
@@ -177,12 +277,18 @@ func TestYears(t *testing.T) {
 	}
 }
 
-func TestRenderStages(t *testing.T) {
-	cache, _ := newServer(t)
-	v := view(t, cache, parent)
-	if v.Year.Current != "2026 - 2027" || v.Year.Last != "2025 - 2026" || v.Year.Start != "2026-08-14" || v.Year.End != "2027-08-13" {
-		t.Fatalf("year view: %+v", v.Year)
+func TestBirthdayResources(t *testing.T) {
+	_, mux := newServer(t)
+	settings := get(t, mux, parent, "/api/birthday-settings")
+	s := settings.Included["birthday-settings"][settings.ids(t)[0]]
+	year := s["year"].(map[string]any)
+	if year["current"] != "2026 - 2027" || year["last"] != "2025 - 2026" || year["start"] != "2026-08-14" || year["end"] != "2027-08-13" {
+		t.Fatalf("year: %+v", year)
 	}
+	if me := s["me"].(map[string]any); me["team"] != true || s["settings"] == nil {
+		t.Fatalf("robin's standing: %+v", s)
+	}
+	all := everyone(t, mux, parent)
 	want := map[string]string{
 		"dana.hawkins@heliosschool.org":   StageComplete,
 		"bill.ryder@heliosschool.org":     StageResponse,
@@ -193,63 +299,79 @@ func TestRenderStages(t *testing.T) {
 		"tom.grady@heliosschool.org":      StageWait,
 	}
 	for email, stage := range want {
-		sv := find(v.Staff, email)
-		if sv == nil || sv.Stage != stage {
-			t.Errorf("%s: want %s, got %+v", email, stage, sv)
+		if b := all[email]; b == nil || b["stage"] != stage {
+			t.Errorf("%s: want %s, got %+v", email, stage, b)
 		}
 	}
-	dana := find(v.Staff, "dana.hawkins@heliosschool.org")
-	if dana.BirthdayThisYear != "2026-08-20" || dana.NewsletterDate != "2026-08-21" || dana.RequestBy != "2026-08-13" || dana.AssignedToName != "Jordan Whitfield" {
+	dana, out := staff(t, mux, parent, "dana.hawkins@heliosschool.org")
+	if dana["birthdayThisYear"] != "2026-08-20" || dana["newsletterDate"] != "2026-08-21" || dana["requestBy"] != "2026-08-13" || out.follow(dana, "assignee", "people")["fullName"] != "Jordan Whitfield" || dana["assignedTo"] != nil {
 		t.Errorf("dana: %+v", dana)
 	}
-	if dana.LastDonation == nil || dana.LastDonation.Charity != birthfund || dana.Donation == nil || dana.Donation.UsedOn == "" {
-		t.Errorf("dana's donations: %+v %+v", dana.Donation, dana.LastDonation)
+	if last, this := out.follow(dana, "last-donation", "donations"), out.follow(dana, "donation", "donations"); last["charity"] != birthfund || this["usedOn"] == nil {
+		t.Errorf("dana's donations: %+v %+v", this, last)
 	}
-	if miguel := find(v.Staff, "miguel.santos@heliosschool.org"); miguel.AssignedTo != "" || miguel.Department != "Classroom Teachers" {
+	miguel, out := staff(t, mux, parent, "miguel.santos@heliosschool.org")
+	if miguel["assigned"] != false || out.follow(miguel, "person", "people")["department"] != "Classroom Teachers" {
 		t.Errorf("miguel: %+v", miguel)
 	}
-	if kate := find(v.Staff, "kate.doyle@heliosschool.org"); kate.NewsletterDate != "2026-10-23" || kate.RequestBy != "2026-10-15" {
+	if u := miguel["urgency"].(map[string]any); u["when"] != "late" || u["step"] != LateOutreach {
+		t.Errorf("miguel's urgency: %+v", u)
+	}
+	if kate := all["kate.doyle@heliosschool.org"]; kate["newsletterDate"] != "2026-10-23" || kate["requestBy"] != "2026-10-15" {
 		t.Errorf("override: %+v", kate)
 	}
-	if hana := find(v.Staff, "hana.ito@heliosschool.org"); hana.BirthdayThisYear != "2027-02-28" || hana.NewsletterDate != "2027-02-26" {
+	if hana := all["hana.ito@heliosschool.org"]; hana["birthdayThisYear"] != "2027-02-28" || hana["newsletterDate"] != "2027-02-26" {
 		t.Errorf("leap day: %+v", hana)
 	}
-	if tom := find(v.Staff, "tom.grady@heliosschool.org"); tom.NewsletterDate != "2027-06-04" || tom.RequestBy != "2027-05-27" {
+	if tom := all["tom.grady@heliosschool.org"]; tom["newsletterDate"] != "2027-06-04" || tom["requestBy"] != "2027-05-27" {
 		t.Errorf("summer: %+v", tom)
 	}
-	if omar := find(v.Staff, "omar.farouk@heliosschool.org"); omar.Level != LevelNoNewsletter || omar.Donation == nil || omar.Donation.UsedOn != "" {
-		t.Errorf("no newsletter: %+v", omar)
+	omar, out := staff(t, mux, parent, "omar.farouk@heliosschool.org")
+	if d := out.follow(omar, "donation", "donations"); omar["level"] != LevelNoNewsletter || d == nil || d["usedOn"] != nil {
+		t.Errorf("no newsletter: %+v %+v", omar, d)
 	}
 	for _, unlisted := range []string{"former.teacher@heliosschool.org", "grace.kim@heliosschool.org"} {
-		if find(v.Staff, unlisted) != nil {
+		if all[unlisted] != nil {
 			t.Errorf("%s, whom the directory does not list, reached the pipeline", unlisted)
 		}
 	}
-	if bill := find(v.Staff, "bill.ryder@heliosschool.org"); len(bill.Notes) != 1 {
-		t.Errorf("notes: %+v", bill.Notes)
+	if bill, _ := staff(t, mux, parent, "bill.ryder@heliosschool.org"); len(bill["notes"].([]any)) != 1 {
+		t.Errorf("notes: %+v", bill["notes"])
 	}
-	if v.Staff[0].Email != "dana.hawkins@heliosschool.org" || v.Staff[len(v.Staff)-1].Email != "raj.malhotra@heliosschool.org" {
-		t.Errorf("order: %s … %s", v.Staff[0].Email, v.Staff[len(v.Staff)-1].Email)
+	if hank := all["hank.morrow@heliosschool.org"]; hank["level"] != LevelSkip || hank["missing"] != nil {
+		t.Errorf("skipped: %+v", hank)
 	}
-	if len(v.Skipped) != 1 || v.Skipped[0].Email != "hank.morrow@heliosschool.org" || v.Skipped[0].Name != "Hank Morrow" {
-		t.Errorf("skipped: %+v", v.Skipped)
+	missing := []string{}
+	for email, b := range all {
+		if b["missing"] == true {
+			missing = append(missing, email)
+		}
 	}
-	if len(v.Missing) != 2 || v.Missing[0].Email != "luis.ortega@heliosschool.org" || v.Missing[1].Email != "noa.adler@heliosschool.org" {
-		t.Errorf("missing: %+v", v.Missing)
+	slices.Sort(missing)
+	if !slices.Equal(missing, []string{"luis.ortega@heliosschool.org", "noa.adler@heliosschool.org"}) {
+		t.Errorf("missing: %v", missing)
 	}
-	if v.User.Name != "Robin Whitfield" || v.User.IsAdmin || !view(t, cache, admin).User.IsAdmin {
-		t.Errorf("user: %+v", v.User)
+	if b, _ := staff(t, mux, parent, "dana.hawkins"); b["email"] != "dana.hawkins@heliosschool.org" || b["path"] != "/staff/dana.hawkins" {
+		t.Errorf("by the local part: %+v", b)
+	}
+	if can := all["dana.hawkins@heliosschool.org"]["can"].(map[string]any); can["delete"] != false || can["assign"] != true {
+		t.Errorf("robin's can: %+v", can)
+	}
+	if can := everyone(t, mux, admin)["noa.adler@heliosschool.org"]["can"].(map[string]any); can["set"] != true || can["delete"] != false {
+		t.Errorf("an admin's can on a missing birthday: %+v", can)
+	}
+	departments := get(t, mux, parent, "/api/departments")
+	if names := departments.ids(t); len(names) == 0 || departments.Included["departments"][names[0]]["name"] != people.Departments[0] {
+		t.Errorf("departments: %+v", departments)
 	}
 }
 
 func TestPipeline(t *testing.T) {
 	cache, mux := newServer(t)
-	miguel := map[string]any{"email": "Miguel.Santos@heliosschool.org"}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/assign", miguel); rec.Code != http.StatusNoContent {
-		t.Fatalf("assign: %d %s", rec.Code, rec.Body)
-	}
-	sv := find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org")
-	if sv.AssignedTo != parent || sv.AssignedOn != "2026-09-09" || sv.Stage != StageOutreach {
+	const miguelPath = "/api/birthdays/Miguel.Santos@heliosschool.org/"
+	call(t, mux, parent, "POST", miguelPath+"assign", nil, http.StatusNoContent)
+	sv, out := staff(t, mux, parent, "miguel.santos@heliosschool.org")
+	if out.follow(sv, "assignee", "people")["email"] != parent || sv["assignedOn"] != "2026-09-09" || sv["stage"] != StageOutreach || sv["me"].(map[string]any)["mine"] != true {
 		t.Fatalf("after assign: %+v", sv)
 	}
 	invites := sent.Wait(t, 1)
@@ -266,222 +388,161 @@ func TestPipeline(t *testing.T) {
 			t.Fatalf("invite lacks %q:\n%s", want, ics)
 		}
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/outreach", map[string]any{"email": miguel["email"], "contacted": true}); rec.Code != http.StatusNoContent {
-		t.Fatalf("outreach: %d %s", rec.Code, rec.Body)
+	queue.Flush()
+	sv, out = staff(t, mux, parent, "miguel.santos@heliosschool.org")
+	if invites := sv["invites"].([]any); len(invites) != 1 || out.Included["birthday-invites"][invites[0].(string)]["sentTo"] != parent {
+		t.Fatalf("the sent invite was not recorded: %+v %+v", sv, out.Included["birthday-invites"])
 	}
-	if sv = find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.Stage != StageResponse || sv.ContactedBy != parent {
+	call(t, mux, parent, "POST", miguelPath+"contact", nil, http.StatusNoContent)
+	if sv, _ = staff(t, mux, parent, "miguel.santos@heliosschool.org"); sv["stage"] != StageResponse || sv["contactedBy"] != parent || sv["can"].(map[string]any)["contact"] != false {
 		t.Fatalf("after outreach: %+v", sv)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/donation", map[string]any{"email": miguel["email"], "charity": sierraClub}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("a prohibited charity was accepted: %d", rec.Code)
+	call(t, mux, parent, "POST", miguelPath+"donate", map[string]any{"charity": sierraClub}, http.StatusBadRequest)
+	call(t, mux, parent, "POST", miguelPath+"donate", map[string]any{"charity": rocketDog, "note": "For the dogs"}, http.StatusNoContent)
+	sv, out = staff(t, mux, parent, "miguel.santos@heliosschool.org")
+	donation := out.follow(sv, "donation", "donations")
+	if sv["stage"] != StageNewsletter || donation["note"] != "For the dogs" || donation["charity"] != rocketDog {
+		t.Fatalf("after donation: %+v %+v", sv, donation)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/used", map[string]any{"email": miguel["email"], "used": true}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("used before any donation: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/donation", map[string]any{"email": miguel["email"], "charity": rocketDog, "note": "For the dogs"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("donation: %d %s", rec.Code, rec.Body)
-	}
-	if sv = find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.Stage != StageNewsletter || sv.Donation.Note != "For the dogs" || sv.Donation.Charity != rocketDog {
-		t.Fatalf("after donation: %+v", sv)
-	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/used", map[string]any{"email": miguel["email"], "used": true}); rec.Code != http.StatusNoContent {
-		t.Fatalf("used: %d %s", rec.Code, rec.Body)
-	}
-	if sv = find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.Stage != StageComplete || sv.Donation.UsedBy != parent {
+	donationPath := "/api/donations/" + sv["donation"].(string)
+	call(t, mux, parent, "POST", donationPath+"/unuse", nil, http.StatusBadRequest)
+	call(t, mux, parent, "POST", donationPath+"/use", nil, http.StatusNoContent)
+	sv, out = staff(t, mux, parent, "miguel.santos@heliosschool.org")
+	if sv["stage"] != StageComplete || out.follow(sv, "donation", "donations")["usedBy"] != parent {
 		t.Fatalf("after used: %+v", sv)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/used", map[string]any{"email": miguel["email"], "used": false}); rec.Code != http.StatusNoContent {
-		t.Fatalf("unused: %d %s", rec.Code, rec.Body)
-	}
-	if sv = find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.Stage != StageNewsletter || sv.Donation.UsedOn != "" {
+	call(t, mux, parent, "POST", donationPath+"/unuse", nil, http.StatusNoContent)
+	sv, out = staff(t, mux, parent, "miguel.santos@heliosschool.org")
+	if sv["stage"] != StageNewsletter || out.follow(sv, "donation", "donations")["usedOn"] != nil {
 		t.Fatalf("after unused: %+v", sv)
 	}
-	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/birthday/donation", miguel); rec.Code != http.StatusNoContent {
-		t.Fatalf("remove donation: %d %s", rec.Code, rec.Body)
-	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/outreach", map[string]any{"email": miguel["email"], "contacted": false}); rec.Code != http.StatusNoContent {
-		t.Fatalf("undo outreach: %d %s", rec.Code, rec.Body)
-	}
-	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/birthday/assign", miguel); rec.Code != http.StatusNoContent {
-		t.Fatalf("unassign: %d %s", rec.Code, rec.Body)
-	}
-	if sv = find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.Stage != StageOutreach || sv.AssignedTo != "" || sv.Donation != nil {
+	call(t, mux, parent, "DELETE", donationPath, nil, http.StatusNoContent)
+	call(t, mux, parent, "POST", miguelPath+"uncontact", nil, http.StatusNoContent)
+	call(t, mux, parent, "POST", miguelPath+"unassign", nil, http.StatusNoContent)
+	if sv, _ = staff(t, mux, parent, "miguel.santos@heliosschool.org"); sv["stage"] != StageOutreach || sv["assigned"] != false || sv["donation"] != nil {
 		t.Fatalf("back to the start: %+v", sv)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": "hank.morrow@heliosschool.org"}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("assigned someone who opted out: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": "noa.adler@heliosschool.org"}); rec.Code != http.StatusNotFound {
-		t.Fatalf("assigned someone with no birthday: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": miguel["email"], "assignedTo": "x@elsewhere.example"}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("assigned to an address off the team: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": miguel["email"], "assignedTo": admin}); rec.Code != http.StatusNoContent {
-		t.Fatalf("assign to an admin: %d %s", rec.Code, rec.Body)
-	}
-	if sv = find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.AssignedTo != admin {
+	call(t, mux, parent, "POST", "/api/birthdays/hank.morrow@heliosschool.org/assign", nil, http.StatusBadRequest)
+	call(t, mux, parent, "POST", "/api/birthdays/noa.adler@heliosschool.org/assign", nil, http.StatusNotFound)
+	call(t, mux, parent, "POST", miguelPath+"assign", map[string]any{"to": "x@elsewhere.example"}, http.StatusBadRequest)
+	call(t, mux, parent, "POST", miguelPath+"assign", map[string]any{"to": admin}, http.StatusNoContent)
+	if sv, out = staff(t, mux, parent, "miguel.santos@heliosschool.org"); out.follow(sv, "assignee", "people")["email"] != admin {
 		t.Fatalf("after assigning to an admin: %+v", sv)
 	}
-	sent.Wait(t, 2)
-	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/birthday/assign", miguel); rec.Code != http.StatusNoContent {
-		t.Fatalf("unassign: %d %s", rec.Code, rec.Body)
+	if m := sent.Wait(t, 2)[1]; m.To[0] != admin || strings.Contains(m.Text, "moved from") {
+		t.Fatalf("a new assignee's invite: %+v", m)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/participation", map[string]any{"email": miguel["email"], "level": LevelSkip, "note": "Asked in person"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("skip: %d %s", rec.Code, rec.Body)
+	call(t, mux, parent, "POST", miguelPath+"unassign", nil, http.StatusNoContent)
+	call(t, mux, parent, "POST", miguelPath+"participation", map[string]any{"level": LevelSkip, "note": "Asked in person"}, http.StatusNoContent)
+	call(t, mux, parent, "POST", miguelPath+"assign", nil, http.StatusBadRequest)
+	if sv, _ = staff(t, mux, parent, "miguel.santos@heliosschool.org"); sv["level"] != LevelSkip {
+		t.Fatalf("a skipped birthday: %+v", sv)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/assign", miguel); rec.Code != http.StatusBadRequest {
-		t.Fatalf("assigned someone who opted out: %d", rec.Code)
-	}
-	v := view(t, cache, parent)
-	if find(v.Staff, "miguel.santos@heliosschool.org") != nil || find(v.Skipped, "miguel.santos@heliosschool.org") == nil {
-		t.Fatal("a skipped birthday stayed in the pipeline")
-	}
-	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/birthday/participation", miguel); rec.Code != http.StatusNoContent {
-		t.Fatalf("unskip: %d %s", rec.Code, rec.Body)
-	}
+	call(t, mux, parent, "POST", miguelPath+"clear-participation", nil, http.StatusNoContent)
 	if b := cache.Model().Birthday("miguel.santos@heliosschool.org"); b == nil || b.Level != "" || b.Birthday != "09-14" {
 		t.Fatalf("after unskipping: %+v", b)
 	}
-	noa := map[string]any{"email": "noa.adler@heliosschool.org", "level": LevelNoNewsletter, "note": "Asked by email"}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/participation", noa); rec.Code != http.StatusBadRequest {
-		t.Fatalf("no-newsletter without a birthday was accepted: %d", rec.Code)
+	const noaPath = "/api/birthdays/noa.adler@heliosschool.org/"
+	call(t, mux, parent, "POST", noaPath+"participation", map[string]any{"level": LevelNoNewsletter, "note": "Asked by email"}, http.StatusBadRequest)
+	call(t, mux, parent, "POST", noaPath+"participation", map[string]any{"level": LevelSkip, "note": "Asked by email"}, http.StatusNoContent)
+	if noa, _ := staff(t, mux, parent, "noa.adler@heliosschool.org"); noa["level"] != LevelSkip || noa["missing"] != nil {
+		t.Fatalf("skipping someone with no birthday: %+v", noa)
 	}
-	noa["level"] = LevelSkip
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/participation", noa); rec.Code != http.StatusNoContent {
-		t.Fatalf("skip without a birthday: %d %s", rec.Code, rec.Body)
-	}
-	v = view(t, cache, parent)
-	if find(v.Skipped, "noa.adler@heliosschool.org") == nil || find(v.Missing, "noa.adler@heliosschool.org") != nil {
-		t.Fatalf("skipping someone with no birthday: skipped %v, missing %v", v.Skipped, v.Missing)
-	}
-	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/birthday/participation", noa); rec.Code != http.StatusNoContent {
-		t.Fatalf("clear skip: %d %s", rec.Code, rec.Body)
-	}
-	if cache.Model().Birthday("noa.adler@heliosschool.org") != nil || find(view(t, cache, parent).Missing, "noa.adler@heliosschool.org") == nil {
+	call(t, mux, parent, "POST", noaPath+"clear-participation", nil, http.StatusNoContent)
+	if noa, _ := staff(t, mux, parent, "noa.adler@heliosschool.org"); cache.Model().Birthday("noa.adler@heliosschool.org") != nil || noa["missing"] != true {
 		t.Fatal("a preference-only row survived clearing the preference")
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/note", map[string]any{"email": miguel["email"], "note": "Out until Monday"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("note: %d %s", rec.Code, rec.Body)
-	}
-	note := find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org").Notes[0]
-	if rec := testkit.Call(t, mux, "someone.else@heliosschool.org", "DELETE", "/api/birthday/note", note); rec.Code != http.StatusForbidden {
-		t.Fatalf("a stranger removed a note: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/birthday/note", note); rec.Code != http.StatusNoContent {
-		t.Fatalf("remove note: %d %s", rec.Code, rec.Body)
-	}
+	call(t, mux, parent, "POST", miguelPath+"note", map[string]any{"note": "Out until Monday"}, http.StatusNoContent)
+	sv, _ = staff(t, mux, parent, "miguel.santos@heliosschool.org")
+	notePath := "/api/birthday-notes/" + sv["notes"].([]any)[0].(string)
+	call(t, mux, "someone.else@heliosschool.org", "DELETE", notePath, nil, http.StatusNotFound)
+	call(t, mux, "sam.whitfield@heliosschool.org", "POST", "/api/birthday-team", nil, http.StatusOK)
+	call(t, mux, "sam.whitfield@heliosschool.org", "DELETE", notePath, nil, http.StatusForbidden)
+	call(t, mux, admin, "DELETE", notePath, nil, http.StatusNoContent)
 }
 
 func TestBirthdays(t *testing.T) {
-	cache, mux := newServer(t)
-	noa := map[string]any{"email": "noa.adler@heliosschool.org", "birthday": "09-12", "override": ""}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/birthday", noa); rec.Code != http.StatusNoContent {
-		t.Fatalf("add birthday: %d %s", rec.Code, rec.Body)
-	}
-	v := view(t, cache, parent)
-	if sv := find(v.Staff, "noa.adler@heliosschool.org"); sv == nil || sv.NewsletterDate != "2026-09-11" || find(v.Missing, "noa.adler@heliosschool.org") != nil {
-		t.Fatalf("after adding a birthday: %+v, missing %v", sv, v.Missing)
+	_, mux := newServer(t)
+	const noaPath = "/api/birthdays/noa.adler@heliosschool.org"
+	call(t, mux, parent, "POST", noaPath+"/set", map[string]any{"birthday": "09-12", "override": ""}, http.StatusNoContent)
+	if noa, _ := staff(t, mux, parent, "noa.adler@heliosschool.org"); noa["newsletterDate"] != "2026-09-11" || noa["missing"] != nil {
+		t.Fatalf("after adding a birthday: %+v", noa)
 	}
 	for _, bad := range []string{"September 12", "1995-09-12"} {
-		if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/birthday", map[string]any{"email": "noa.adler@heliosschool.org", "birthday": bad}); rec.Code != http.StatusBadRequest {
-			t.Fatalf("birthday %q was accepted: %d", bad, rec.Code)
-		}
+		call(t, mux, parent, "POST", noaPath+"/set", map[string]any{"birthday": bad}, http.StatusBadRequest)
 	}
-	if sv := find(view(t, cache, parent).Staff, "dana.hawkins@heliosschool.org"); sv == nil || sv.Birthday != "08-20" {
-		t.Fatalf("the model carries more than a month and day: %+v", sv)
+	if dana, _ := staff(t, mux, parent, "dana.hawkins@heliosschool.org"); dana["birthday"] != "08-20" {
+		t.Fatalf("the resource carries more than a month and day: %+v", dana)
 	}
-	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/birthday/birthday", noa); rec.Code != http.StatusForbidden {
-		t.Fatalf("a non-admin removed a birthday: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/birthday", map[string]any{"email": "dana.hawkins@heliosschool.org"}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("removed a birthday with records: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/birthday", noa); rec.Code != http.StatusNoContent {
-		t.Fatalf("remove birthday: %d %s", rec.Code, rec.Body)
-	}
-	if find(view(t, cache, parent).Missing, "noa.adler@heliosschool.org") == nil {
+	call(t, mux, parent, "DELETE", noaPath, nil, http.StatusForbidden)
+	call(t, mux, admin, "DELETE", "/api/birthdays/dana.hawkins@heliosschool.org", nil, http.StatusBadRequest)
+	call(t, mux, admin, "DELETE", noaPath, nil, http.StatusNoContent)
+	if noa, _ := staff(t, mux, parent, "noa.adler@heliosschool.org"); noa["missing"] != true {
 		t.Fatal("the removed birthday did not return to missing")
+	}
+	call(t, mux, parent, "POST", "/api/birthdays", map[string]any{"email": "nobody@elsewhere.example", "birthday": "09-12"}, http.StatusBadRequest)
+	key := created(t, call(t, mux, parent, "POST", "/api/birthdays", map[string]any{"email": "Noa.Adler@heliosschool.org", "level": LevelSkip, "note": "By email"}, http.StatusOK))
+	if noa, _ := staff(t, mux, parent, "noa.adler@heliosschool.org"); noa["id"] != key || noa["level"] != LevelSkip {
+		t.Fatalf("a preference added by address: %+v", noa)
 	}
 }
 
 func TestCharities(t *testing.T) {
 	cache, mux := newServer(t)
-	added := map[string]any{"name": "Oceana", "donationLink": "https://oceana.org/", "about": "Oceans", "allowed": false, "whyNotAllowed": "ignored"}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/charity", added); rec.Code != http.StatusNoContent {
-		t.Fatalf("add charity: %d %s", rec.Code, rec.Body)
-	}
-	oceana := cache.Model().charityNamed("Oceana")
-	if oceana == nil || !oceana.Allowed || oceana.WhyNotAllowed != "" || oceana.AddedOn != "2026-09-09" {
+	rec := call(t, mux, parent, "POST", "/api/charities", map[string]any{"name": "Oceana", "donationLink": "https://oceana.org/", "about": "Oceans", "allowed": false, "whyNotAllowed": "ignored"}, http.StatusOK)
+	key := created(t, rec)
+	oceana := cache.Model().Charity(key)
+	if oceana == nil || oceana.Name != "Oceana" || !oceana.Allowed || oceana.WhyNotAllowed != "" || oceana.AddedOn != "2026-09-09" {
 		t.Fatalf("a non-admin's addition: %+v", oceana)
 	}
-	if key, ok := id.Parse(oceana.ID); !ok || key != oceana.ID || strings.HasPrefix(key, "chy") {
-		t.Fatalf("the minted charity id %q", oceana.ID)
+	if parsed, ok := id.Parse(key); !ok || parsed != key || strings.HasPrefix(key, "chy") {
+		t.Fatalf("the minted charity id %q", key)
 	}
-	prohibit := map[string]any{"id": oceana.ID, "name": "Oceana", "donationLink": "https://oceana.org/", "allowed": false, "whyNotAllowed": "Politics"}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/charity", prohibit); rec.Code != http.StatusNoContent {
-		t.Fatalf("edit charity: %d %s", rec.Code, rec.Body)
+	if got := get(t, mux, parent, "/api/charities/Oceana").id(t); got != key {
+		t.Fatalf("by name: %s", got)
 	}
-	if !cache.Model().Charity(oceana.ID).Allowed {
-		t.Fatal("a non-admin prohibited a charity")
-	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/charity", prohibit); rec.Code != http.StatusNoContent {
-		t.Fatalf("prohibit: %d %s", rec.Code, rec.Body)
-	}
-	if c := cache.Model().Charity(oceana.ID); c.Allowed || c.WhyNotAllowed != "Politics" {
+	prohibit := map[string]any{"allowed": false, "whyNotAllowed": "Politics"}
+	call(t, mux, parent, "POST", "/api/charities/"+key+"/allow", prohibit, http.StatusForbidden)
+	call(t, mux, admin, "POST", "/api/charities/"+key+"/allow", prohibit, http.StatusNoContent)
+	if c := cache.Model().Charity(key); c.Allowed || c.WhyNotAllowed != "Politics" {
 		t.Fatalf("after prohibiting: %+v", c)
 	}
-	rename := map[string]any{"id": rocketDog, "name": "Rocket Dog Rescue, Inc.", "donationLink": "https://www.rocketdogrescue.org/", "allowed": true}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/charity", rename); rec.Code != http.StatusNoContent {
-		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
+	call(t, mux, parent, "POST", "/api/charities/"+key+"/edit", map[string]any{"name": "Oceana", "donationLink": "https://oceana.org/", "about": "The oceans"}, http.StatusNoContent)
+	if c := cache.Model().Charity(key); c.Allowed || c.About != "The oceans" {
+		t.Fatalf("an edit touched whether it is allowed: %+v", c)
 	}
+	call(t, mux, admin, "POST", "/api/charities/"+rocketDog+"/edit", map[string]any{"name": "Rocket Dog Rescue, Inc.", "donationLink": "https://www.rocketdogrescue.org/"}, http.StatusNoContent)
 	if d, _ := cache.Model().Donation("dana.hawkins@heliosschool.org", "2026 - 2027"); d.Charity != rocketDog || cache.Model().charityName(d.Charity) != "Rocket Dog Rescue, Inc." {
 		t.Fatalf("the donation lost its charity in the rename: %+v", d)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/charity", map[string]any{"id": birthfund, "name": "Oceana", "donationLink": "https://x.org/", "allowed": true}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("renamed onto an existing name: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/charity", map[string]any{"id": unknownID, "name": "Nobody", "donationLink": "https://x.org/", "allowed": true}); rec.Code != http.StatusNotFound {
-		t.Fatalf("edited a charity that is not there: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/charity", map[string]any{"id": secondHarvest}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("deleted the default charity: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/charity", map[string]any{"id": birthfund}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("deleted a charity with donations: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, parent, "DELETE", "/api/birthday/charity", map[string]any{"id": oceana.ID}); rec.Code != http.StatusForbidden {
-		t.Fatalf("a non-admin deleted: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/charity", map[string]any{"id": oceana.ID}); rec.Code != http.StatusNoContent {
-		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
-	}
+	call(t, mux, admin, "POST", "/api/charities/"+birthfund+"/edit", map[string]any{"name": "Oceana", "donationLink": "https://x.org/"}, http.StatusBadRequest)
+	call(t, mux, admin, "POST", "/api/charities/"+unknownID+"/edit", map[string]any{"name": "Nobody", "donationLink": "https://x.org/"}, http.StatusNotFound)
+	call(t, mux, admin, "DELETE", "/api/charities/"+secondHarvest, nil, http.StatusBadRequest)
+	call(t, mux, admin, "DELETE", "/api/charities/"+birthfund, nil, http.StatusBadRequest)
+	call(t, mux, parent, "DELETE", "/api/charities/"+key, nil, http.StatusForbidden)
+	call(t, mux, admin, "DELETE", "/api/charities/"+key, nil, http.StatusNoContent)
 	if cache.Model().charityNamed("Oceana") != nil {
 		t.Fatal("the charity survived removal")
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/settings", map[string]any{"defaultCharity": rocketDog, "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note", "requestLeadDays": 12}); rec.Code != http.StatusNoContent {
-		t.Fatalf("settings: %d %s", rec.Code, rec.Body)
-	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/settings", map[string]any{"defaultCharity": sierraClub, "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note"}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("a prohibited default charity was accepted: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/settings", map[string]any{"defaultCharity": "Rocket Dog Rescue, Inc.", "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note"}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("a default charity named by name was accepted: %d", rec.Code)
-	}
+	settings := "/api/birthday-settings/" + settingsID(t, mux) + "/edit"
+	call(t, mux, admin, "POST", settings, map[string]any{"defaultCharity": rocketDog, "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note", "requestLeadDays": 12}, http.StatusNoContent)
+	call(t, mux, admin, "POST", settings, map[string]any{"defaultCharity": sierraClub, "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note"}, http.StatusBadRequest)
+	call(t, mux, admin, "POST", settings, map[string]any{"defaultCharity": "Rocket Dog Rescue, Inc.", "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note"}, http.StatusBadRequest)
+	call(t, mux, parent, "POST", settings, map[string]any{"defaultCharity": rocketDog, "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note"}, http.StatusForbidden)
 }
 
 func TestTeam(t *testing.T) {
 	cache, mux := newServer(t)
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/admin/team", map[string]any{"email": "robin.whitfield@heliosschool.org", "role": RoleVolunteer}); rec.Code != http.StatusForbidden {
-		t.Fatalf("a non-admin added a team member: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/admin/team", map[string]any{"email": "robin.whitfield@heliosschool.org", "role": "Boss"}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("an unknown role was accepted: %d", rec.Code)
-	}
+	call(t, mux, parent, "POST", "/api/birthday-team", map[string]any{"email": "someone.new@gmail.com", "role": RoleVolunteer}, http.StatusForbidden)
+	call(t, mux, parent, "POST", "/api/birthday-team", map[string]any{"role": RoleComms}, http.StatusForbidden)
+	call(t, mux, admin, "POST", "/api/birthday-team", map[string]any{"email": parent, "role": "Boss"}, http.StatusBadRequest)
+	keys := []string{}
 	for _, role := range []string{RoleVolunteer, RoleComms, RoleVolunteer} {
-		if rec := testkit.Call(t, mux, admin, "POST", "/api/admin/team", map[string]any{"email": "Robin.Whitfield@heliosschool.org ", "role": role}); rec.Code != http.StatusNoContent {
-			t.Fatalf("add %s: %d %s", role, rec.Code, rec.Body)
-		}
+		rec := call(t, mux, admin, "POST", "/api/birthday-team", map[string]any{"email": "Robin.Whitfield@heliosschool.org ", "role": role}, http.StatusOK)
+		keys = append(keys, created(t, rec))
+	}
+	if keys[0] != keys[2] || keys[0] == keys[1] {
+		t.Fatalf("team ids: %v", keys)
 	}
 	roles := func(email string) []string {
 		out := []string{}
@@ -492,38 +553,46 @@ func TestTeam(t *testing.T) {
 		}
 		return out
 	}
-	if got := roles("robin.whitfield@heliosschool.org"); len(got) != 2 || got[0] != RoleVolunteer || got[1] != RoleComms {
+	if got := roles(parent); len(got) != 2 || got[0] != RoleVolunteer || got[1] != RoleComms {
 		t.Fatalf("roles after adding: %v", got)
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/admin/team", map[string]any{"email": "robin.whitfield@heliosschool.org", "role": RoleVolunteer}); rec.Code != http.StatusNoContent {
-		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
-	}
-	if got := roles("robin.whitfield@heliosschool.org"); len(got) != 1 || got[0] != RoleComms {
+	call(t, mux, parent, "DELETE", "/api/birthday-team/"+keys[0], nil, http.StatusForbidden)
+	call(t, mux, admin, "DELETE", "/api/birthday-team/"+keys[0], nil, http.StatusNoContent)
+	if got := roles(parent); len(got) != 1 || got[0] != RoleComms {
 		t.Fatalf("roles after removing: %v", got)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/admin/team", map[string]any{"email": "someone.new@gmail.com", "role": RoleVolunteer}); rec.Code != http.StatusNoContent {
-		t.Fatalf("add by address: %d %s", rec.Code, rec.Body)
+	call(t, mux, admin, "POST", "/api/birthday-team", map[string]any{"email": "someone.new@gmail.com", "role": RoleVolunteer}, http.StatusOK)
+	out := get(t, mux, parent, "/api/birthday-team?include=person")
+	byEmail := map[string]map[string]any{}
+	for _, key := range out.ids(t) {
+		m := out.Included["birthday-team"][key]
+		if person := out.follow(m, "person", "people"); person != nil {
+			if m["email"] != nil {
+				t.Errorf("a directory member carries an address too: %+v", m)
+			}
+			byEmail[person["email"].(string)] = m
+			continue
+		}
+		byEmail[m["email"].(string)] = m
 	}
-	v := view(t, cache, parent)
-	byEmail := map[string]TeamView{}
-	for _, m := range v.Team {
-		byEmail[m.Email+m.Role] = m
+	if m := byEmail["someone.new@gmail.com"]; m == nil || m["role"] != RoleVolunteer {
+		t.Fatalf("someone outside the directory: %+v", byEmail)
 	}
-	if m := byEmail["someone.new@gmail.comVolunteer"]; m.Name != "Someone New" {
-		t.Fatalf("someone outside the directory should be named from their address: %+v", v.Team)
+	if m := byEmail[parent]; m == nil || m["me"].(map[string]any)["mine"] != true {
+		t.Fatalf("robin's own row: %+v", m)
+	}
+	settings := get(t, mux, parent, "/api/birthday-settings")
+	if me := settings.Included["birthday-settings"][settings.ids(t)[0]]["me"].(map[string]any); me["comms"] != true || me["volunteer"] != false || me["commsOnly"] != true {
+		t.Fatalf("robin's standing: %+v", me)
 	}
 }
 
 func TestMovedNewsletterRefreshesInvite(t *testing.T) {
-	cache, mux := newServer(t)
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": "miguel.santos@heliosschool.org"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("assign: %d %s", rec.Code, rec.Body)
-	}
+	_, mux := newServer(t)
+	call(t, mux, parent, "POST", "/api/birthdays/miguel.santos@heliosschool.org/assign", nil, http.StatusNoContent)
 	sent.Wait(t, 1)
-	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"id": issueSep11, "date": "2026-09-12"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("move: %d %s", rec.Code, rec.Body)
-	}
-	if sv := find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.RequestBy != "2026-09-04" {
+	call(t, mux, admin, "POST", "/api/newsletter-dates/"+issueSep11+"/move", map[string]any{"date": "2026-09-12"}, http.StatusNoContent)
+	if sv, _ := staff(t, mux, parent, "miguel.santos@heliosschool.org"); sv["requestBy"] != "2026-09-04" {
 		t.Fatalf("request by after the move: %+v", sv)
 	}
 	msgs := sent.Wait(t, 4)
@@ -539,9 +608,7 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 	if ics := string(m.Attachments[0].Content); !strings.Contains(ics, "DTSTART;VALUE=DATE:20260904") {
 		t.Fatalf("updated invite's day:\n%s", ics)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/note", map[string]any{"email": "miguel.santos@heliosschool.org", "note": "Loves the Giants"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("note: %d %s", rec.Code, rec.Body)
-	}
+	call(t, mux, parent, "POST", "/api/birthdays/miguel.santos@heliosschool.org/note", map[string]any{"note": "Loves the Giants"}, http.StatusNoContent)
 	time.Sleep(50 * time.Millisecond)
 	if got := len(sent.Wait(t, 4)); got != 4 {
 		t.Fatalf("a note sent mail: %d messages", got)
@@ -549,8 +616,8 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 }
 
 func TestReminders(t *testing.T) {
-	cache, mux := newServer(t)
-	app := app{cache: cache, directory: directory, mailer: sent.Mailgun, base: "https://birthday.example.org"}
+	cache, _ := newServer(t)
+	app := app{cache: cache, queue: queue, directory: directory, mailer: sent.Mailgun, base: "https://birthday.example.org"}
 	kinds := func(day string) []string {
 		out := []string{}
 		for _, r := range app.dueReminders(cache.Model(), testkit.MustTime(day)) {
@@ -605,7 +672,6 @@ func TestReminders(t *testing.T) {
 	if n := cache.Count(remindersTab, nil); n != 4 {
 		t.Fatalf("reminder rows: %d", n)
 	}
-	_ = mux
 }
 
 func TestCharityRenameKeepsDonationsAndTheDefault(t *testing.T) {
@@ -616,12 +682,7 @@ func TestCharityRenameKeepsDonationsAndTheDefault(t *testing.T) {
 		t.Fatal("the sample has no donation or default naming the charity")
 	}
 	c := cache.Model().Charity(secondHarvest)
-	rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/charity", map[string]any{
-		"id": secondHarvest, "name": name, "donationLink": c.DonationLink, "about": c.About, "ein": c.EIN, "allowed": true,
-	})
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
-	}
+	call(t, mux, admin, "POST", "/api/charities/"+secondHarvest+"/edit", map[string]any{"name": name, "donationLink": c.DonationLink, "about": c.About, "ein": c.EIN}, http.StatusNoContent)
 	m := cache.Model()
 	if m.Charity(secondHarvest).Name != name || m.charityNamed(old) != nil {
 		t.Fatalf("after the rename: %+v", m.Charity(secondHarvest))
@@ -629,8 +690,9 @@ func TestCharityRenameKeepsDonationsAndTheDefault(t *testing.T) {
 	if cache.Count(donationsTab, store.Row{"Charity": secondHarvest}) != donations || m.Settings.DefaultCharity != secondHarvest {
 		t.Fatal("the donations or the default lost the charity in the rename")
 	}
-	if v := view(t, cache, parent); v.Settings.DefaultCharity != secondHarvest {
-		t.Fatalf("the view's default: %q", v.Settings.DefaultCharity)
+	settings := get(t, mux, parent, "/api/birthday-settings")
+	if s := settings.Included["birthday-settings"][settings.ids(t)[0]]["settings"].(map[string]any); s["defaultCharity"] != secondHarvest {
+		t.Fatalf("the settings' default: %v", s)
 	}
 	queue.Flush()
 	_, log, err := sheet.Table(appName, store.ChangeLogTab)
@@ -642,85 +704,108 @@ func TestCharityRenameKeepsDonationsAndTheDefault(t *testing.T) {
 	}
 }
 
-func TestCreateNewsletterDates(t *testing.T) {
+func TestARunOfNewsletterDatesIsOneBatch(t *testing.T) {
 	cache, mux := newServer(t)
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/newsletter-dates/create", map[string]any{"weekday": 4, "from": "2027-08-14", "to": "2027-09-30"}); rec.Code != http.StatusForbidden {
-		t.Fatalf("a non-admin created dates: %d", rec.Code)
+	run := []write{}
+	for day := testkit.MustTime("2027-08-19"); !day.After(testkit.MustTime("2027-09-30")); day = day.AddDate(0, 0, 7) {
+		run = append(run, write{Method: "POST", Path: "/api/newsletter-dates", Body: map[string]string{"date": day.Format(DateFormat)}})
 	}
-	rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/create", map[string]any{"weekday": 4, "from": "2027-08-14", "to": "2027-09-30"})
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"added":7`) {
-		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	call(t, mux, parent, "POST", "/api/act", run, http.StatusForbidden)
+	clash := append(slices.Clone(run), write{Method: "POST", Path: "/api/newsletter-dates", Body: map[string]string{"date": "2027-06-04"}})
+	call(t, mux, admin, "POST", "/api/act", clash, http.StatusBadRequest)
+	if len(cache.Model().NewsletterDates) != 57 {
+		t.Fatal("a refused run added dates")
+	}
+	rec := call(t, mux, admin, "POST", "/api/act", run, http.StatusOK)
+	var out struct {
+		Results []struct {
+			ID string `json:"id"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || len(out.Results) != 7 {
+		t.Fatalf("results %s: %v", rec.Body, err)
 	}
 	m := cache.Model()
+	minted := map[string]bool{}
+	for _, r := range out.Results {
+		if n := m.NewsletterDate(r.ID); n == nil || minted[r.ID] {
+			t.Fatalf("minted newsletter date id %q", r.ID)
+		}
+		minted[r.ID] = true
+	}
 	for _, want := range []string{"2027-08-19", "2027-08-26", "2027-09-30"} {
 		if m.newsletterOn(want) == nil {
 			t.Fatalf("missing %s in %v", want, m.NewsletterDates)
 		}
 	}
-	minted := map[string]bool{}
-	for _, n := range m.NewsletterDates {
-		if n.Date < "2027-08-14" {
-			continue
-		}
-		if key, ok := id.Parse(n.ID); !ok || key != n.ID || minted[key] {
-			t.Fatalf("minted newsletter date id %q", n.ID)
-		}
-		minted[n.ID] = true
+	queue.Flush()
+	_, log, err := sheet.Table(appName, store.ChangeLogTab)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(minted) != 7 {
-		t.Fatalf("minted %d ids", len(minted))
+	if len(log) != 7 {
+		t.Fatalf("logged %d rows", len(log))
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/create", map[string]any{"weekday": 4, "from": "2027-08-14", "to": "2027-09-30"}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("the same run again: %d %s", rec.Code, rec.Body)
-	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/create", map[string]any{"weekday": 4, "from": "2027-09-30", "to": "2027-08-14"}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("a backwards run: %d", rec.Code)
-	}
+	call(t, mux, admin, "POST", "/api/act", run, http.StatusBadRequest)
 }
 
-func TestResendInvites(t *testing.T) {
+func TestResendingIsAddingAnInvite(t *testing.T) {
 	_, mux := newServer(t)
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/admin/resend-invites", nil); rec.Code != http.StatusForbidden {
-		t.Fatalf("a non-admin resent invites: %d", rec.Code)
+	if got := get(t, mux, admin, "/api/birthday-invites").ids(t); len(got) != 3 {
+		t.Fatalf("invites %v", got)
 	}
-	rec := testkit.Call(t, mux, admin, "POST", "/api/admin/resend-invites", nil)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"sent":4`) {
-		t.Fatalf("resend: %d %s", rec.Code, rec.Body)
+	bill, _ := staff(t, mux, admin, "bill.ryder@heliosschool.org")
+	call(t, mux, parent, "POST", "/api/birthday-invites", map[string]any{"birthday": bill["id"]}, http.StatusForbidden)
+	resend := []write{}
+	for _, email := range []string{"bill.ryder", "ruth.amari", "alice.fontaine"} {
+		b, _ := staff(t, mux, admin, email)
+		resend = append(resend, write{Method: "POST", Path: "/api/birthday-invites", Body: map[string]any{"birthday": b["id"]}})
 	}
-	msgs := sent.Wait(t, 4)
+	call(t, mux, admin, "POST", "/api/act", resend, http.StatusOK)
+	msgs := sent.Wait(t, 3)
 	for _, m := range msgs {
-		if len(m.Attachments) != 1 || m.Headers["Message-ID"] == "" {
+		if len(m.Attachments) != 1 || m.Headers["Message-ID"] == "" || strings.Contains(m.Text, "moved from") {
 			t.Fatalf("resent invite: %+v", m)
 		}
 	}
+	queue.Flush()
+	invites := get(t, mux, admin, "/api/birthday-invites")
+	if got := invites.ids(t); len(got) != 6 {
+		t.Fatalf("invites after resending: %v", got)
+	}
+	for key, inv := range invites.Included["birthday-invites"] {
+		if inv["sentOn"] == nil {
+			t.Errorf("invite %s was not sent: %+v", key, inv)
+		}
+	}
+	if _, out := staff(t, mux, admin, "bill.ryder@heliosschool.org"); len(out.Included["birthday-invites"]) != 2 {
+		t.Errorf("bill's invites: %+v", out.Included["birthday-invites"])
+	}
 }
 
-func TestClearFutureNewsletterDates(t *testing.T) {
+func TestClearingTheFutureNewsletterDates(t *testing.T) {
 	cache, mux := newServer(t)
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/newsletter-dates/clear-future", nil); rec.Code != http.StatusForbidden {
-		t.Fatalf("a non-admin cleared the dates: %d", rec.Code)
+	dates := get(t, mux, admin, "/api/newsletter-dates")
+	clear := []write{}
+	for _, key := range dates.ids(t) {
+		if dates.Included["newsletter-dates"][key]["date"].(string) >= "2026-09-09" {
+			clear = append(clear, write{Method: "DELETE", Path: "/api/newsletter-dates/" + key})
+		}
 	}
-	before := len(cache.Model().NewsletterDates)
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/clear-future", nil); rec.Code != http.StatusNoContent {
-		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
-	}
+	call(t, mux, parent, "POST", "/api/act", clear, http.StatusForbidden)
+	call(t, mux, admin, "POST", "/api/act", clear, http.StatusOK)
 	left := cache.Model().NewsletterDates
-	if len(left) >= before || len(left) == 0 || left[len(left)-1].Date >= "2026-09-09" {
+	if len(left) != 57-len(clear) || len(left) == 0 || left[len(left)-1].Date >= "2026-09-09" {
 		t.Fatalf("after clearing: %v", left)
 	}
 	if kate := cache.Model().Birthday("kate.doyle@heliosschool.org"); kate.Override != "" {
 		t.Fatalf("an override outlived its cleared date: %+v", kate)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/clear-future", nil); rec.Code != http.StatusNoContent {
-		t.Fatalf("clearing nothing: %d %s", rec.Code, rec.Body)
-	}
 }
 
 func TestJoinTeam(t *testing.T) {
 	cache, mux := newServer(t)
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/team/join", nil); rec.Code != http.StatusNoContent {
-		t.Fatalf("join: %d %s", rec.Code, rec.Body)
-	}
+	call(t, mux, parent, "POST", "/api/birthday-team", nil, http.StatusOK)
 	n := 0
 	for _, m := range cache.Model().Team {
 		if m.Email == parent && m.Role == RoleVolunteer {
@@ -730,105 +815,71 @@ func TestJoinTeam(t *testing.T) {
 	if n != 1 || len(joined) != 1 || joined[0] != parent {
 		t.Fatalf("after robin joined: %d rows, home %v", n, joined)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/team/join", nil); rec.Code != http.StatusNoContent {
-		t.Fatalf("join: %d %s", rec.Code, rec.Body)
-	}
-	found := false
-	for _, m := range cache.Model().Team {
-		if m.Email == admin && m.Role == RoleVolunteer {
-			found = true
-		}
-	}
-	if !found || len(joined) != 2 {
-		t.Fatalf("after jordan joined: found %v, home %v", found, joined)
+	call(t, mux, admin, "POST", "/api/birthday-team", nil, http.StatusOK)
+	if !slices.Contains(cache.Model().Team, TeamMember{Email: admin, Role: RoleVolunteer}) || len(joined) != 2 {
+		t.Fatalf("after jordan joined: %v, home %v", cache.Model().Team, joined)
 	}
 }
 
 func TestStrangerSeesOnlyTheJoinQuestion(t *testing.T) {
-	cache, mux := newServer(t)
+	_, mux := newServer(t)
 	stranger := "sam.whitfield@heliosschool.org"
-	rec := testkit.Call(t, mux, stranger, "GET", "/api/birthday/model", nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("model: %d %s", rec.Code, rec.Body)
+	settings := get(t, mux, stranger, "/api/birthday-settings")
+	s := settings.Included["birthday-settings"][settings.ids(t)[0]]
+	if s["me"].(map[string]any)["team"] != false || s["settings"] != nil {
+		t.Fatalf("a stranger's settings: %+v", s)
 	}
-	var v View
-	if err := json.Unmarshal(rec.Body.Bytes(), &v); err != nil {
-		t.Fatal(err)
-	}
-	if v.User.Email != stranger || len(v.Team) != 3 || len(v.Staff)+len(v.Skipped)+len(v.Missing)+len(v.Charities)+len(v.NewsletterDates) != 0 || v.Settings.DefaultCharity != "" {
-		t.Fatalf("a stranger's model: %+v", v)
-	}
-	for _, c := range []struct{ method, path string }{
-		{"POST", "/api/birthday/assign"}, {"DELETE", "/api/birthday/assign"}, {"POST", "/api/birthday/outreach"},
-		{"POST", "/api/birthday/donation"}, {"DELETE", "/api/birthday/donation"}, {"POST", "/api/birthday/used"},
-		{"POST", "/api/birthday/birthday"}, {"POST", "/api/birthday/participation"}, {"DELETE", "/api/birthday/participation"},
-		{"POST", "/api/birthday/note"}, {"DELETE", "/api/birthday/note"}, {"POST", "/api/birthday/charity"}, {"POST", "/api/birthday/charity/describe"},
-	} {
-		if rec := testkit.Call(t, mux, stranger, c.method, c.path, map[string]any{"email": "dana.hawkins@heliosschool.org", "assignedTo": stranger, "name": "X"}); rec.Code != http.StatusForbidden {
-			t.Errorf("%s %s by a stranger: %d %s", c.method, c.path, rec.Code, rec.Body)
+	for _, path := range []string{"/api/birthdays", "/api/charities", "/api/newsletter-dates", "/api/birthday-team", "/api/donations", "/api/birthday-notes", "/api/birthday-invites"} {
+		if got := get(t, mux, stranger, path).ids(t); len(got) != 0 {
+			t.Errorf("%s for a stranger: %v", path, got)
 		}
 	}
-	if rec := testkit.Call(t, mux, stranger, "POST", "/api/birthday/team/join", nil); rec.Code != http.StatusNoContent {
-		t.Fatalf("join: %d %s", rec.Code, rec.Body)
+	for _, c := range []struct{ method, path string }{
+		{"POST", "/api/birthdays/dana.hawkins@heliosschool.org/assign"}, {"POST", "/api/birthdays/dana.hawkins@heliosschool.org/note"},
+		{"POST", "/api/charities/" + rocketDog + "/edit"}, {"POST", "/api/newsletter-dates/" + issueSep11 + "/share"},
+	} {
+		call(t, mux, stranger, c.method, c.path, map[string]any{"note": "x", "name": "X"}, http.StatusNotFound)
 	}
-	if v := view(t, cache, stranger); len(v.Staff) == 0 || len(v.Team) != 4 {
-		t.Fatalf("after joining: %d staff, %d on the team", len(v.Staff), len(v.Team))
+	call(t, mux, stranger, "POST", "/api/charities", map[string]any{"name": "X"}, http.StatusForbidden)
+	call(t, mux, stranger, "POST", "/api/birthday/charity/describe", map[string]any{"name": "X"}, http.StatusForbidden)
+	call(t, mux, stranger, "POST", "/api/birthday-team", nil, http.StatusOK)
+	if got := get(t, mux, stranger, "/api/birthdays").ids(t); len(got) == 0 {
+		t.Fatal("after joining, still nobody to see")
 	}
 }
 
 func TestNewsletterDates(t *testing.T) {
 	cache, mux := newServer(t)
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/newsletter-date", map[string]any{"date": "2027-06-11"}); rec.Code != http.StatusForbidden {
-		t.Fatalf("a non-admin added a date: %d", rec.Code)
+	call(t, mux, parent, "POST", "/api/newsletter-dates", map[string]any{"date": "2027-06-11"}, http.StatusForbidden)
+	call(t, mux, parent, "POST", "/api/newsletter-dates/nwd0000000057/move", map[string]any{"date": "2027-06-05"}, http.StatusForbidden)
+	call(t, mux, admin, "POST", "/api/newsletter-dates", map[string]any{"date": "2027-06-04"}, http.StatusBadRequest)
+	key := created(t, call(t, mux, admin, "POST", "/api/newsletter-dates", map[string]any{"date": "2027-06-11"}, http.StatusOK))
+	if added := cache.Model().newsletterOn("2027-06-11"); added == nil || added.ID != key {
+		t.Fatalf("the added date: %+v", added)
 	}
-	if rec := testkit.Call(t, mux, parent, "PUT", "/api/birthday/newsletter-date", map[string]any{"id": "nwd0000000057", "date": "2027-06-05"}); rec.Code != http.StatusForbidden {
-		t.Fatalf("a non-admin moved a date: %d", rec.Code)
+	if got := get(t, mux, parent, "/api/newsletter-dates/2027-06-11").id(t); got != key {
+		t.Fatalf("by date: %s", got)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter-date", map[string]any{"date": "2027-06-04"}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("a duplicate date was accepted: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter-date", map[string]any{"date": "2027-06-11"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("add date: %d %s", rec.Code, rec.Body)
-	}
-	added := cache.Model().newsletterOn("2027-06-11")
-	if added == nil {
-		t.Fatal("the added date is not on the list")
-	}
-	if key, ok := id.Parse(added.ID); !ok || key != added.ID {
-		t.Fatalf("the minted newsletter date id %q", added.ID)
-	}
-	if tom := find(view(t, cache, parent).Staff, "tom.grady@heliosschool.org"); tom.NewsletterDate != "2027-06-11" {
+	if tom, _ := staff(t, mux, parent, "tom.grady@heliosschool.org"); tom["newsletterDate"] != "2027-06-11" {
 		t.Fatalf("the summer newsletter did not move: %+v", tom)
 	}
-	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"id": added.ID, "date": "2027-06-04"}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("a date was moved onto another: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"id": unknownID, "date": "2027-07-02"}); rec.Code != http.StatusNotFound {
-		t.Fatalf("a date that is not on the list was moved: %d", rec.Code)
-	}
-	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"id": added.ID, "date": "2027-06-18"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("move date: %d %s", rec.Code, rec.Body)
-	}
-	if tom := find(view(t, cache, parent).Staff, "tom.grady@heliosschool.org"); tom.NewsletterDate != "2027-06-18" {
+	call(t, mux, admin, "POST", "/api/newsletter-dates/"+key+"/move", map[string]any{"date": "2027-06-04"}, http.StatusBadRequest)
+	call(t, mux, admin, "POST", "/api/newsletter-dates/"+unknownID+"/move", map[string]any{"date": "2027-07-02"}, http.StatusNotFound)
+	call(t, mux, admin, "POST", "/api/newsletter-dates/"+key+"/move", map[string]any{"date": "2027-06-18"}, http.StatusNoContent)
+	if tom, _ := staff(t, mux, parent, "tom.grady@heliosschool.org"); tom["newsletterDate"] != "2027-06-18" {
 		t.Fatalf("the summer newsletter did not follow the move: %+v", tom)
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/newsletter-date", map[string]any{"id": added.ID}); rec.Code != http.StatusNoContent {
-		t.Fatalf("remove date: %d %s", rec.Code, rec.Body)
-	}
+	call(t, mux, admin, "DELETE", "/api/newsletter-dates/"+key, nil, http.StatusNoContent)
 	if len(cache.Model().NewsletterDates) != 57 {
 		t.Fatal("the date survived removal")
 	}
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/newsletter-date", map[string]any{"id": added.ID}); rec.Code != http.StatusNotFound {
-		t.Fatalf("removed a date twice: %d", rec.Code)
-	}
+	call(t, mux, admin, "DELETE", "/api/newsletter-dates/"+key, nil, http.StatusNotFound)
 }
 
 func TestMovingANewsletterDateKeepsItsPinnedBirthdays(t *testing.T) {
-	cache, mux := newServer(t)
-	if rec := testkit.Call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"id": issueOct23, "date": "2026-10-22"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("move the overridden date: %d %s", rec.Code, rec.Body)
-	}
-	if kate := find(view(t, cache, parent).Staff, "kate.doyle@heliosschool.org"); kate.Override != issueOct23 || kate.NewsletterDate != "2026-10-22" || kate.RequestBy != "2026-10-14" {
+	_, mux := newServer(t)
+	call(t, mux, admin, "POST", "/api/newsletter-dates/"+issueOct23+"/move", map[string]any{"date": "2026-10-22"}, http.StatusNoContent)
+	if kate, _ := staff(t, mux, parent, "kate.doyle@heliosschool.org"); kate["override"] != issueOct23 || kate["newsletterDate"] != "2026-10-22" || kate["requestBy"] != "2026-10-14" {
 		t.Fatalf("the pinned birthday did not keep its issue: %+v", kate)
 	}
 	queue.Flush()
@@ -842,32 +893,25 @@ func TestMovingANewsletterDateKeepsItsPinnedBirthdays(t *testing.T) {
 }
 
 func TestPinningABirthday(t *testing.T) {
-	cache, mux := newServer(t)
-	pin := map[string]any{"email": "tom.grady@heliosschool.org", "birthday": "06-20", "override": issueSep11}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/birthday", pin); rec.Code != http.StatusNoContent {
-		t.Fatalf("pin: %d %s", rec.Code, rec.Body)
-	}
-	if tom := find(view(t, cache, parent).Staff, "tom.grady@heliosschool.org"); tom.Override != issueSep11 || tom.NewsletterDate != "2026-09-11" {
+	_, mux := newServer(t)
+	const tomPath = "/api/birthdays/tom.grady@heliosschool.org/set"
+	call(t, mux, parent, "POST", tomPath, map[string]any{"birthday": "06-20", "override": issueSep11}, http.StatusNoContent)
+	if tom, _ := staff(t, mux, parent, "tom.grady@heliosschool.org"); tom["override"] != issueSep11 || tom["newsletterDate"] != "2026-09-11" {
 		t.Fatalf("after pinning: %+v", tom)
 	}
 	for _, bad := range []string{"2026-09-11", unknownID} {
-		pin["override"] = bad
-		if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/birthday", pin); rec.Code != http.StatusBadRequest {
-			t.Fatalf("override %q was accepted: %d", bad, rec.Code)
-		}
+		call(t, mux, parent, "POST", tomPath, map[string]any{"birthday": "06-20", "override": bad}, http.StatusBadRequest)
 	}
 }
 
 func TestDeletingANewsletterDateClearsItsPins(t *testing.T) {
 	cache, mux := newServer(t)
-	if rec := testkit.Call(t, mux, admin, "DELETE", "/api/birthday/newsletter-date", map[string]any{"id": issueOct23}); rec.Code != http.StatusNoContent {
-		t.Fatalf("remove the pinned date: %d %s", rec.Code, rec.Body)
-	}
+	call(t, mux, admin, "DELETE", "/api/newsletter-dates/"+issueOct23, nil, http.StatusNoContent)
 	m := cache.Model()
 	if m.NewsletterDate(issueOct23) != nil || m.newsletterOn("2026-10-23") != nil {
 		t.Fatal("the date survived removal")
 	}
-	if kate := find(view(t, cache, parent).Staff, "kate.doyle@heliosschool.org"); kate.Override != "" || kate.NewsletterDate != "2026-10-09" {
+	if kate, _ := staff(t, mux, parent, "kate.doyle@heliosschool.org"); kate["override"] != nil || kate["newsletterDate"] != "2026-10-09" {
 		t.Fatalf("the pin outlived its date: %+v", kate)
 	}
 	queue.Flush()
@@ -893,10 +937,12 @@ func TestShareIssue(t *testing.T) {
 	if issue := weekIssue(cache.Model(), time.Date(2026, 9, 10, 23, 59, 0, 0, when.Location)); issue != "2026-09-11" {
 		t.Fatalf("the week's issue = %q", issue)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"id": unknownID}); rec.Code != 400 {
-		t.Fatalf("a day that is no issue: %d", rec.Code)
+	call(t, mux, admin, "POST", "/api/newsletter-dates/"+unknownID+"/share", nil, http.StatusNotFound)
+	issue := get(t, mux, parent, "/api/newsletter-dates/"+issueSep11)
+	if issue.Included["newsletter-dates"][issueSep11]["can"].(map[string]any)["share"] != true {
+		t.Fatalf("an issue with birthdays to copy: %+v", issue)
 	}
-	a := app{cache: cache, directory: directory}
+	a := app{cache: cache, queue: queue, directory: directory}
 	n, err := a.weeklyExport(context.Background(), "2026-09-11")
 	if err != nil {
 		t.Fatal(err)
@@ -925,13 +971,13 @@ func TestShareIssue(t *testing.T) {
 	if n, err := a.weeklyExport(context.Background(), "2026-09-11"); n != 0 || err != nil {
 		t.Fatalf("a second run copied %d: %v", n, err)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"id": issueSep11}); rec.Code != 200 || rec.Body.String() != "{\"copied\":0}\n" {
-		t.Fatalf("the button after the run: %d %s", rec.Code, rec.Body)
+	issue = get(t, mux, parent, "/api/newsletter-dates/"+issueSep11)
+	if issue.Included["newsletter-dates"][issueSep11]["can"].(map[string]any)["share"] != false {
+		t.Fatalf("an issue already copied: %+v", issue)
 	}
-	omar := find(view(t, cache, admin).Staff, "omar.farouk@heliosschool.org")
-	if _, err := a.weeklyExport(context.Background(), omar.NewsletterDate); err != nil {
-		t.Fatal(err)
-	}
+	omar, _ := staff(t, mux, admin, "omar.farouk@heliosschool.org")
+	omarIssue := get(t, mux, admin, "/api/newsletter-dates/"+omar["newsletterDate"].(string)).id(t)
+	call(t, mux, parent, "POST", "/api/newsletter-dates/"+omarIssue+"/share", nil, http.StatusNoContent)
 	queue.Flush()
 	tabs, _ = sheet.Tabs(context.Background(), sharedSheet, []string{sharedNewsletterTab}, nil)
 	rows = tabs[sharedNewsletterTab].Rows
@@ -939,7 +985,7 @@ func TestShareIssue(t *testing.T) {
 	if i < 0 || rows[i]["Preference"] != LevelNoNewsletter || rows[i]["Charity Name"] != "Wikipedia" || rows[i]["Note"] != "Free knowledge for everyone." || rows[i]["Charity Selected On"] != "2026-09-03" || rows[i]["Contacted On"] != "2026-09-02" {
 		t.Errorf("Omar's row: %v", rows)
 	}
-	if d, _ := cache.Model().Donation("omar.farouk@heliosschool.org", "2026 - 2027"); d.UsedOn == "" || d.Charity != wikipedia || d.RecordedBy != admin {
+	if d, _ := cache.Model().Donation("omar.farouk@heliosschool.org", "2026 - 2027"); d.UsedOn == "" || d.UsedBy != parent || d.Charity != wikipedia || d.RecordedBy != admin {
 		t.Errorf("Omar's donation after: %+v", d)
 	}
 }

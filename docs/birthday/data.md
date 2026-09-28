@@ -18,6 +18,7 @@ The weekly export (`birthday.md`) writes to a second spreadsheet, the associatio
 - `Settings` — Key, Value: `Default Charity` (a Charity ID), `Year Start`, `Email Subject`, `Email Body`, `No Newsletter Note`, all required; `Outreach CC`, `Request Lead Days` and `Due By Lead Days`, optional.
 - `Admins` — Email.
 - `Reminders` — Email, Year, Kind, Sent On, Sent To. One row per reminder the app has sent (`ask`, `late`, `donation`), written by the app alone.
+- `Invites` — Invite ID, Email, Year, Requested On, Requested By, Sent To, Ask Day, Sent On. One row per calendar invite, kept as history: added unsent by an admin resending (Requested By their address) or by the app's invite sender when a birthday's latest invite no longer matches (Requested By `invites`), and filled in by the sender once it goes - Sent To, Ask Day and Sent On together, blank together until then (`birthday.md`, Who may do what).
 - `Team` — Email, Role. One row per person per role: `Volunteer` (offered when a birthday is assigned) or `Comms Team` (carries the donations into the newsletter). Anyone, in the directory or not, by address.
 - `Change Log` — written by the store for every cell a change touches, with what the cell held before (`docs/storage.md`, Change Log); never read back. The Change Log from before the app moved onto the store is `Change Log (old)`.
 
@@ -25,7 +26,7 @@ The weekly export (`birthday.md`) writes to a second spreadsheet, the associatio
 
 A staff member is their email and a year is its label. Emails are stored lowercase, and the load refuses one that is not.
 
-A charity is its `Charity ID` and a newsletter date its `Newsletter Date ID`, minted by the app when it adds one (`id.New` in `internal/id`, checked against every charity and newsletter date id the sheet holds); rows added by hand need one too. The load refuses an id that is not well formed or that two rows share. References hold the id - a donation's Charity, the `Default Charity` setting, a birthday's Newsletter Override - so renaming a charity or moving a newsletter date changes one cell, and everything naming it follows without being rewritten. Removing a newsletter date, alone or with every date from today on, clears the Newsletter Override of each birthday pinned to it in the same change, and those birthdays go back to the usual pick.
+A charity is its `Charity ID`, a newsletter date its `Newsletter Date ID` and an invite its `Invite ID`, minted by the app when it adds one (`id.New` in `internal/id`, checked against every ID and alias the resource API knows, `Registry.Taken`); rows added by hand need one too. The load refuses an id that is not well formed or that two rows share. References hold the id - a donation's Charity, the `Default Charity` setting, a birthday's Newsletter Override - so renaming a charity or moving a newsletter date changes one cell, and everything naming it follows without being rewritten. Removing a newsletter date, alone or with every date from today on, clears the Newsletter Override of each birthday pinned to it in the same change, and those birthdays go back to the usual pick.
 
 ## Years and dates
 

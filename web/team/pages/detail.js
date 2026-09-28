@@ -1,4 +1,4 @@
-import {state, me, family, isAdmin, isSystemAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel} from '../state.js';
+import {state, me, family, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel} from '../state.js';
 import {badge, searchBox, whenEditor} from '../dom.js';
 import {el, link, svg, imageThumb, avatar, button, copyText, toast} from '/elements.js';
 import {setTitle} from '/shell.js';
@@ -1223,7 +1223,7 @@ export function activityPage(node) {
   }
   if (node.status !== 'Open') {
     marks.append(badge(node.status === 'Pending' ? 'Needs approval' : node.status, node.status.toLowerCase()));
-    if (node.status === 'Pending' && isSystemAdmin() && !editing) {
+    if (node.status === 'Pending' && isAdmin() && !editing) {
       marks.append(...approvalButtons(node));
     }
   } else if (isFull(node)) {

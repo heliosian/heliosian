@@ -1,17 +1,12 @@
 import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
 import {parseWhen} from '/datecard.js';
-import {superEditOn} from '/superedit.js';
 
 const remembered = readFilters();
 export const state = {model: null, filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active, appliedCalendar: ''};
 
-export function isSystemAdmin() {
-  return Boolean(state.model && state.model.user.isAdmin);
-}
-
 export function isAdmin() {
-  return isSystemAdmin() && superEditOn();
+  return Boolean(state.model && state.model.user.isAdmin);
 }
 
 export function setActiveFeed(token) {

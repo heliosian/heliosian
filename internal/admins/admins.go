@@ -21,7 +21,7 @@ var (
 )
 
 func Manage(app string) access.Allowance {
-	return access.Standing(app + ".admins")
+	return access.Named(app + ".admins")
 }
 
 func Read(tables store.Tables) []string {

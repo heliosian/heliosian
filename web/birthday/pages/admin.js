@@ -1,8 +1,9 @@
-import {me, isSystemAdmin, settings, charityName} from '../state.js';
+import {state, me, isAdmin, settings, charityName} from '../state.js';
 import {el, button} from '/elements.js';
 import {createPersonPicker} from '/picker.js';
 import {listed} from '/directory.js';
-import {api} from '/api.js';
+import {actAll, create, remove} from '/data.js';
+import {load} from '/router.js';
 import {openSettings} from '../edit.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 
@@ -29,7 +30,6 @@ function teamCard() {
   card.append(el('h2', '', 'Team'));
   card.append(el('div', 'hint', 'Volunteers are offered when a birthday is assigned. The comms team carries the donations into the newsletter. Pick someone from the directory, or type an address the directory does not have.'));
   const status = el('span', 'save-status');
-  let team = [];
   const groups = el('div');
   const roleGroup = (role, blurb) => {
     const group = el('div', 'team-group');
@@ -37,25 +37,24 @@ function teamCard() {
     const rows = el('div');
     const add = el('div', 'add-row');
     const mount = el('div');
-    const picker = createPersonPicker(mount, {address: true, people: async () => (await listed()).filter(p => !team.some(m => m.role === role && m.email === p.email))});
-    const render = () => {
-      rows.replaceChildren();
-      const members = team.filter(m => m.role === role);
-      if (!members.length) {
-        rows.append(el('div', 'hint', 'Nobody yet.'));
+    const members = state.model.team.filter(m => m.role === role);
+    const picker = createPersonPicker(mount, {address: true, people: async () => (await listed()).filter(p => !members.some(m => m.email === p.email))});
+    if (!members.length) {
+      rows.append(el('div', 'hint', 'Nobody yet.'));
+    }
+    for (const m of members) {
+      const row = el('div', 'admin-row');
+      const body = el('div', 'grow');
+      body.append(el('div', '', m.name), el('div', 'sub', m.email));
+      row.append(body);
+      if (m.can.delete) {
+        const drop = el('button', 'link-button danger', 'Remove');
+        drop.type = 'button';
+        drop.addEventListener('click', () => change(() => remove('birthday-team', m.id)));
+        row.append(drop);
       }
-      for (const m of members) {
-        const row = el('div', 'admin-row');
-        const body = el('div', 'grow');
-        body.append(el('div', '', m.name), el('div', 'sub', m.email));
-        row.append(body);
-        const remove = el('button', 'link-button danger', 'Remove');
-        remove.type = 'button';
-        remove.addEventListener('click', () => change('DELETE', m.email, role));
-        row.append(remove);
-        rows.append(row);
-      }
-    };
+      rows.append(row);
+    }
     const addOne = () => {
       const email = picker.value;
       if (!email) {
@@ -66,7 +65,7 @@ function teamCard() {
         return;
       }
       picker.reset();
-      change('POST', email, role);
+      change(() => create('birthday-team', {email, role}));
     };
     mount.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !mount.querySelector('.person-picker-option.active')) {
@@ -77,42 +76,23 @@ function teamCard() {
     add.append(mount, button('Add', null, 'button', addOne));
     group.append(rows, add);
     groups.append(group);
-    return render;
   };
-  const renders = [];
-  const renderAll = () => renders.forEach(r => r());
-  const change = async (method, email, role) => {
+  const change = async write => {
     status.classList.remove('error');
     status.textContent = 'Saving…';
     try {
-      await api(method, '/api/admin/team', {email, role});
+      await write();
     } catch (err) {
       status.classList.add('error');
       status.textContent = err.message;
       return;
     }
     await load();
-    status.textContent = 'Saved.';
   };
-  const load = async () => {
-    let data;
-    try {
-      data = await api('GET', '/api/admin/state');
-    } catch (err) {
-      status.classList.add('error');
-      status.textContent = err.message;
-      return;
-    }
-    team = data.team;
-    if (!renders.length) {
-      for (const [role, blurb] of [['Volunteer', 'Offered as choices when a birthday is assigned.'], ['Comms Team', 'Carries the donations into the newsletter.']]) {
-        renders.push(roleGroup(role, blurb));
-      }
-    }
-    renderAll();
-  };
+  for (const [role, blurb] of [['Volunteer', 'Offered as choices when a birthday is assigned.'], ['Comms Team', 'Carries the donations into the newsletter.']]) {
+    roleGroup(role, blurb);
+  }
   card.append(groups, status);
-  load();
   return card;
 }
 
@@ -122,6 +102,7 @@ function invitesCard() {
   card.append(el('div', 'hint', 'Everyone holding a birthday gets its invite when it is assigned, and again when its day to ask by moves. Resend them all so every calendar shows the dates as they stand now - each replaces its earlier one rather than adding to it.'));
   const row = el('div', 'add-row');
   const status = el('span', 'save-status');
+  const held = state.model.staff.filter(sv => sv.assigned && sv.stage !== 'Complete');
   const send = button('Resend All Invites', 'send', 'button', async () => {
     if (!confirm('Send everyone holding a birthday its invite again?')) {
       return;
@@ -130,14 +111,15 @@ function invitesCard() {
     status.classList.remove('error');
     status.textContent = 'Sending…';
     try {
-      const {sent} = await api('POST', '/api/admin/resend-invites');
-      status.textContent = `Sent ${sent} ${sent === 1 ? 'invite' : 'invites'}.`;
+      await actAll(held.map(sv => ({method: 'POST', path: '/api/birthday-invites', body: {birthday: sv.id}})));
+      status.textContent = `Sending ${held.length} ${held.length === 1 ? 'invite' : 'invites'}.`;
     } catch (err) {
       status.classList.add('error');
       status.textContent = err.message;
     }
     send.disabled = false;
   });
+  send.disabled = !held.length;
   row.append(send, status);
   card.append(row);
   return card;
@@ -155,5 +137,5 @@ const sections = [
 ];
 
 export function adminPage() {
-  return buildAdminPage({appName: 'Helios Staff Birthdays', allowed: isSystemAdmin(), email: me().email, sections});
+  return buildAdminPage({appName: 'Helios Staff Birthdays', allowed: isAdmin(), email: me().email, sections});
 }

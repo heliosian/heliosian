@@ -433,7 +433,7 @@ func TestCacheSavesAndHandles(t *testing.T) {
 		t.Errorf("not readable back: %+v %v", got, ok)
 	}
 	now := time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC)
-	superAdmin := access.Actor{Email: "admin@example.org", Allowances: access.Grant([]access.Allowance{Triage}, false)}
+	superAdmin := access.Actor{Email: "admin@example.org", Allowances: access.Grant([]access.Allowance{Triage})}
 	commit := func(ops []store.Op, err error) {
 		t.Helper()
 		if err != nil {

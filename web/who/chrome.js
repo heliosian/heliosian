@@ -10,7 +10,6 @@ import {searchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
 import {load} from '/router.js';
 import {initShell, renderAccount, searchInput, syncViewportHeight, onSlash, isEditableTarget} from '/shell.js';
-import {setSuperEdit} from '/superedit.js';
 
 const primaryNavItems = [
   {path: 'people', label: 'Directory'},
@@ -416,47 +415,6 @@ function renderMobileListsMenu() {
   }
 }
 
-function topBanners() {
-  let stack = document.querySelector('#top-banners');
-  if (!stack) {
-    stack = el('div', '');
-    stack.id = 'top-banners';
-    document.body.append(stack);
-  }
-  return stack;
-}
-
-function updateBannerOffset() {
-  const stack = document.querySelector('#top-banners');
-  document.documentElement.style.setProperty('--banner-h', stack ? stack.offsetHeight + 'px' : '0px');
-}
-
-export function renderSuperEditBanner() {
-  let banner = document.querySelector('.super-edit-banner');
-  if (!state.model.superEdit) {
-    if (banner) {
-      banner.remove();
-      updateBannerOffset();
-    }
-    return;
-  }
-  if (banner) {
-    return;
-  }
-  banner = el('div', 'super-edit-banner');
-  banner.append(el('span', '', 'Super Admin Mode is on — you can edit anyone’s info.'));
-  const link = el('a', '', 'Turn off');
-  link.href = '#';
-  link.addEventListener('click', async e => {
-    e.preventDefault();
-    setSuperEdit(false);
-    await load();
-  });
-  banner.append(link);
-  topBanners().append(banner);
-  updateBannerOffset();
-}
-
 const privacyRow = el('a', 'user-menu-privacy', 'My Privacy');
 privacyRow.href = '/my-privacy';
 const privacyAlert = el('span', 'user-menu-alert');
@@ -496,7 +454,6 @@ export function initChrome() {
     menuRows: [privacyRow],
   });
   window.addEventListener('resize', updateMobileTitleInset);
-  window.addEventListener('resize', updateBannerOffset);
   const nav = document.querySelector('#nav');
   nav.addEventListener('scroll', () => {
     if (nav.scrollTop !== navExpected) {

@@ -57,36 +57,30 @@ func sampleCache(t *testing.T) *Cache {
 	return newServer(t).cache
 }
 
-func requestAs(cache *Cache, email string, hat bool) access.Actor {
+func requestAs(cache *Cache, email string) access.Actor {
 	var got access.Actor
 	r := httptest.NewRequest("POST", "/", nil)
-	if hat {
-		r.AddCookie(&http.Cookie{Name: auth.HatCookie, Value: "1"})
-	}
 	auth.Fixed(email, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = requestActor(cache, r) })).ServeHTTP(httptest.NewRecorder(), r)
 	return got
 }
 
-func TestEditingAnotherFamilyNeedsAnAdminUnderTheHat(t *testing.T) {
+func TestEditingAnotherFamilyNeedsAnAdmin(t *testing.T) {
 	cache := sampleCache(t)
 	model := cache.Model()
 	rohans := familyID(testKey, rohan)
-	if err := model.mayEdit(requestAs(cache, jordan, true), "family", rohans); err != nil {
-		t.Errorf("an admin with the pencil on cannot edit another family: %v", err)
+	if err := model.mayEdit(requestAs(cache, jordan), "family", rohans); err != nil {
+		t.Errorf("an admin cannot edit another family: %v", err)
 	}
 	var refusal *access.Refusal
-	if err := model.mayEdit(requestAs(cache, jordan, false), "family", rohans); !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
-		t.Errorf("an admin with the pencil off edits another family: %v", err)
+	if err := model.mayEdit(requestAs(cache, asha), "family", rohans); !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
+		t.Errorf("a parent edits another family: %v", err)
 	}
-	if err := model.mayEdit(requestAs(cache, asha, true), "family", rohans); !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
-		t.Errorf("a parent with the cookie set edits another family: %v", err)
-	}
-	if !requestAs(cache, jordan, false).May(Administer) {
-		t.Error("an admin with the pencil off lost Admin Tools")
+	if !requestAs(cache, jordan).May(Administer) {
+		t.Error("an admin has no Admin Tools")
 	}
 }
 
-func TestSpoofedParentGetsNoSuperEdit(t *testing.T) {
+func TestSpoofedParentCannotEditAnyone(t *testing.T) {
 	cache := sampleCache(t)
 	key := []byte("spoof")
 	signin := auth.New("", "", key, auth.Login{}, func(string) bool { return true }, nil, nil)
@@ -100,21 +94,20 @@ func TestSpoofedParentGetsNoSuperEdit(t *testing.T) {
 		want bool
 	}{{"", true}, {asha, false}} {
 		r := httptest.NewRequest("GET", "/api/directory/model", nil)
-		r.AddCookie(&http.Cookie{Name: auth.HatCookie, Value: "1"})
 		if c.as != "" {
 			r.AddCookie(&http.Cookie{Name: "spoof", Value: auth.SpoofToken(key, jordan, c.as, time.Now().Add(time.Hour))})
 		}
 		w := httptest.NewRecorder()
 		signin.Fixed(jordan, serve.JSON(app.model)).ServeHTTP(w, r)
 		var view struct {
-			User      user `json:"user"`
-			SuperEdit bool `json:"superEdit"`
+			User       user `json:"user"`
+			EditAnyone bool `json:"editAnyone"`
 		}
 		if err := json.NewDecoder(w.Body).Decode(&view); err != nil {
 			t.Fatal(err)
 		}
-		if view.SuperEdit != c.want {
-			t.Errorf("viewing as %q (%s): super edit %v, want %v", c.as, view.User.Email, view.SuperEdit, c.want)
+		if view.EditAnyone != c.want {
+			t.Errorf("viewing as %q (%s): edit anyone %v, want %v", c.as, view.User.Email, view.EditAnyone, c.want)
 		}
 	}
 }

@@ -1,4 +1,4 @@
-import {me, isSystemAdmin} from '../state.js';
+import {me, isAdmin} from '../state.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 
 const sections = [
@@ -8,5 +8,5 @@ const sections = [
 ];
 
 export function adminPage() {
-  return buildAdminPage({appName: 'Helios Loop', allowed: isSystemAdmin(), email: me().email, sections});
+  return buildAdminPage({appName: 'Helios Loop', allowed: isAdmin(), email: me().email, sections});
 }

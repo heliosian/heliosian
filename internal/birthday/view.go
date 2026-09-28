@@ -1,21 +1,18 @@
 package birthday
 
 import (
-	"sort"
-	"strings"
 	"time"
 
-	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/who"
 )
 
 type Person struct {
-	Email      string `json:"email"`
-	Name       string `json:"name"`
-	PhotoURL   string `json:"photoUrl,omitempty"`
-	JobTitle   string `json:"jobTitle,omitempty"`
-	Department string `json:"department,omitempty"`
+	Email      string
+	Name       string
+	PhotoURL   string
+	JobTitle   string
+	Department string
 }
 
 func personView(p *who.Person) Person {
@@ -35,60 +32,25 @@ func (v viewer) person(email string) (Person, bool) {
 
 type StaffView struct {
 	Person
-	InDirectory      bool      `json:"inDirectory"`
-	Year             string    `json:"year"`
-	Birthday         string    `json:"birthday,omitempty"`
-	BirthdayThisYear string    `json:"birthdayThisYear,omitempty"`
-	NewsletterDate   string    `json:"newsletterDate,omitempty"`
-	RequestBy        string    `json:"requestBy,omitempty"`
-	DueBy            string    `json:"dueBy,omitempty"`
-	Override         string    `json:"override,omitempty"`
-	Level            string    `json:"level,omitempty"`
-	LevelNote        string    `json:"levelNote,omitempty"`
-	Stage            string    `json:"stage,omitempty"`
-	AssignedTo       string    `json:"assignedTo,omitempty"`
-	AssignedToName   string    `json:"assignedToName,omitempty"`
-	AssignedOn       string    `json:"assignedOn,omitempty"`
-	ContactedOn      string    `json:"contactedOn,omitempty"`
-	ContactedBy      string    `json:"contactedBy,omitempty"`
-	Donation         *Donation `json:"donation,omitempty"`
-	LastDonation     *Donation `json:"lastDonation,omitempty"`
-	Notes            []Note    `json:"notes"`
-}
-
-type YearView struct {
-	Current string `json:"current"`
-	Last    string `json:"last"`
-	Start   string `json:"start"`
-	End     string `json:"end"`
-}
-
-type User struct {
-	Email    string `json:"email"`
-	Name     string `json:"name"`
-	Initial  string `json:"initial"`
-	PhotoURL string `json:"photoUrl,omitempty"`
-	IsAdmin  bool   `json:"isAdmin"`
-}
-
-type TeamView struct {
-	Email string `json:"email"`
-	Name  string `json:"name"`
-	Role  string `json:"role"`
-}
-
-type View struct {
-	User            User             `json:"user"`
-	Year            YearView         `json:"year"`
-	Today           string           `json:"today"`
-	Settings        Settings         `json:"settings"`
-	Staff           []StaffView      `json:"staff"`
-	Skipped         []StaffView      `json:"skipped"`
-	Missing         []StaffView      `json:"missing"`
-	Charities       []Charity        `json:"charities"`
-	NewsletterDates []NewsletterDate `json:"newsletterDates"`
-	Team            []TeamView       `json:"team"`
-	Departments     []string         `json:"departments"`
+	InDirectory      bool
+	Year             string
+	Birthday         string
+	BirthdayThisYear string
+	NewsletterDate   string
+	RequestBy        string
+	DueBy            string
+	Override         string
+	Level            string
+	LevelNote        string
+	Stage            string
+	AssignedTo       string
+	AssignedToName   string
+	AssignedOn       string
+	ContactedOn      string
+	ContactedBy      string
+	Donation         *Donation
+	LastDonation     *Donation
+	Notes            []Note
 }
 
 func dateCell(t time.Time) string {
@@ -139,64 +101,4 @@ func (v viewer) staff(model *Model, b *Birthday, year Year, today time.Time) Sta
 		}
 	}
 	return sv
-}
-
-func Render(model *Model, directory func() *who.Model, as access.Actor, now time.Time) View {
-	email, admin := as.Email, as.May(Configure)
-	people := directory()
-	v := viewer{directory: people}
-	me, _ := v.person(email)
-	month, day, _ := ParseMonthDay(model.Settings.YearStart)
-	year := YearContaining(now, month, day)
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	view := View{
-		User:            User{Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: admin},
-		Year:            YearView{Current: year.Label, Last: ShiftYear(year.Label, -1), Start: dateCell(year.Start), End: dateCell(year.End.AddDate(0, 0, -1))},
-		Today:           dateCell(today),
-		Staff:           []StaffView{},
-		Skipped:         []StaffView{},
-		Missing:         []StaffView{},
-		Charities:       []Charity{},
-		NewsletterDates: []NewsletterDate{},
-		Team:            []TeamView{},
-		Departments:     people.Departments,
-	}
-	for _, m := range model.Team {
-		p, _ := v.person(m.Email)
-		view.Team = append(view.Team, TeamView{Email: m.Email, Name: p.Name, Role: m.Role})
-	}
-	if !model.Sees(as) {
-		return view
-	}
-	view.Settings, view.Charities, view.NewsletterDates = model.Settings, model.Charities, model.NewsletterDates
-	recorded := map[string]bool{}
-	for i := range model.Birthdays {
-		b := &model.Birthdays[i]
-		recorded[people.Resolve(b.Email)] = true
-		sv := v.staff(model, b, year, today)
-		if !sv.InDirectory {
-			continue
-		}
-		if sv.Level == LevelSkip {
-			view.Skipped = append(view.Skipped, sv)
-			continue
-		}
-		view.Staff = append(view.Staff, sv)
-	}
-	sort.SliceStable(view.Staff, func(i, j int) bool {
-		if view.Staff[i].BirthdayThisYear != view.Staff[j].BirthdayThisYear {
-			return view.Staff[i].BirthdayThisYear < view.Staff[j].BirthdayThisYear
-		}
-		return view.Staff[i].Name < view.Staff[j].Name
-	})
-	sort.SliceStable(view.Skipped, func(i, j int) bool { return view.Skipped[i].Name < view.Skipped[j].Name })
-	for i := range people.People {
-		p := &people.People[i]
-		if !p.IsStaff || recorded[p.Email] {
-			continue
-		}
-		view.Missing = append(view.Missing, StaffView{Person: personView(p), InDirectory: true, Year: year.Label, Notes: []Note{}})
-	}
-	sort.SliceStable(view.Missing, func(i, j int) bool { return view.Missing[i].Name < view.Missing[j].Name })
-	return view
 }

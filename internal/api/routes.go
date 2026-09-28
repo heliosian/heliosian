@@ -1,17 +1,23 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"heliosian/internal/access"
 	"heliosian/internal/serve"
+	"heliosian/internal/store"
 )
 
 type me struct {
-	Email      string          `json:"email"`
-	Allowances map[string]bool `json:"allowances"`
+	Email      string   `json:"email"`
+	Allowances []string `json:"allowances"`
 }
 
 type entry struct {
@@ -19,8 +25,20 @@ type entry struct {
 }
 
 type created struct {
-	ID string `json:"id"`
+	ID string `json:"id,omitempty"`
 }
+
+type step struct {
+	Method string          `json:"method"`
+	Path   string          `json:"path"`
+	Body   json.RawMessage `json:"body,omitempty"`
+}
+
+type acted struct {
+	Results []created `json:"results"`
+}
+
+const bodyLimit = 1 << 20
 
 func (reg *Registry[S]) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/me", serve.JSON(reg.me))
@@ -28,6 +46,7 @@ func (reg *Registry[S]) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/{type}", serve.JSON(reg.get))
 	mux.HandleFunc("GET /api/{type}/{id}", serve.JSON(reg.get))
 	mux.HandleFunc("POST /api/query", serve.JSON(reg.batch))
+	mux.HandleFunc("POST /api/act", serve.JSON(reg.acts))
 	mux.HandleFunc("POST /api/{type}", serve.JSON(reg.create))
 	mux.HandleFunc("POST /api/{type}/{id}/{action}", serve.JSON(reg.act))
 	mux.HandleFunc("DELETE /api/{type}/{id}", serve.JSON(reg.act))
@@ -36,9 +55,9 @@ func (reg *Registry[S]) Register(mux *http.ServeMux) {
 func (reg *Registry[S]) me(r *http.Request, _ serve.None) (me, error) {
 	w := reg.current.Load()
 	actor := reg.config.Actor(r, w.s)
-	out := me{Email: actor.Email, Allowances: map[string]bool{}}
+	out := me{Email: actor.Email, Allowances: []string{}}
 	for _, a := range reg.config.Held(actor.Email) {
-		out.Allowances[a.Name] = actor.May(a)
+		out.Allowances = append(out.Allowances, a.Name)
 	}
 	return out, nil
 }
@@ -80,42 +99,116 @@ func named(name string, err error) error {
 }
 
 func (reg *Registry[S]) create(r *http.Request, _ serve.None) (created, error) {
-	w := reg.current.Load()
-	t, err := reg.typeNamed(r.PathValue("type"))
+	body, err := readBody(r)
 	if err != nil {
 		return created{}, err
 	}
-	if t.Create == nil {
-		return created{}, access.Refuse(http.StatusMethodNotAllowed, "%s can't be created", t.Name)
-	}
-	key, err := t.Create(r, w.s, reg.query(r, w))
+	results, err := reg.write(r, []step{{Method: r.Method, Path: r.URL.Path, Body: body}})
 	if err != nil {
 		return created{}, err
 	}
-	return created{ID: key}, nil
+	return results[0], nil
 }
 
 func (reg *Registry[S]) act(r *http.Request, _ serve.None) (serve.None, error) {
-	w := reg.current.Load()
-	t, err := reg.typeNamed(r.PathValue("type"))
+	body, err := readBody(r)
 	if err != nil {
 		return serve.None{}, err
 	}
-	name := r.PathValue("action")
-	if r.Method == http.MethodDelete {
-		name = "delete"
+	_, err = reg.write(r, []step{{Method: r.Method, Path: r.URL.Path, Body: body}})
+	return serve.None{}, err
+}
+
+func (reg *Registry[S]) acts(r *http.Request, steps []step) (acted, error) {
+	if len(steps) == 0 {
+		return acted{}, access.Invalid("no writes")
 	}
+	results, err := reg.write(r, steps)
+	if err != nil {
+		return acted{}, err
+	}
+	return acted{Results: results}, nil
+}
+
+func readBody(r *http.Request) (json.RawMessage, error) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, bodyLimit+1))
+	if err != nil {
+		return nil, access.Invalid("bad request body: %v", err)
+	}
+	if len(raw) > bodyLimit {
+		return nil, access.Refuse(http.StatusRequestEntityTooLarge, "request body too large")
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, nil
+	}
+	if !json.Valid(raw) {
+		return nil, access.Invalid("bad request body")
+	}
+	return raw, nil
+}
+
+func (reg *Registry[S]) write(r *http.Request, steps []step) ([]created, error) {
+	w := reg.current.Load()
+	actor := reg.config.Actor(r, w.s)
+	out := []created{}
+	_, err := reg.config.Queue.Transact(r.Context(), actor, func(tx *store.Tx) error {
+		for i, st := range steps {
+			s := reg.config.Staged(tx)
+			wr := Write[S]{Request: r, Tx: tx, S: s, Query: Query{Actor: actor, Now: reg.config.Now()}, Body: st.Body, Taken: reg.takenIn(w, s)}
+			result, err := reg.step(w, wr, st)
+			if err != nil && len(steps) > 1 {
+				return named(fmt.Sprintf("write %d", i+1), err)
+			}
+			if err != nil {
+				return err
+			}
+			out = append(out, result)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (reg *Registry[S]) step(w *world[S], wr Write[S], st step) (created, error) {
+	rest, ok := strings.CutPrefix(st.Path, "/api/")
+	if !ok {
+		return created{}, access.Invalid("%s is not a resource path", st.Path)
+	}
+	parts := strings.Split(rest, "/")
+	t, err := reg.typeNamed(parts[0])
+	if err != nil {
+		return created{}, err
+	}
+	switch {
+	case st.Method == http.MethodPost && len(parts) == 1:
+		if t.Create == nil {
+			return created{}, access.Refuse(http.StatusMethodNotAllowed, "%s can't be created", t.Name)
+		}
+		key, err := t.Create(wr)
+		return created{ID: key}, err
+	case st.Method == http.MethodPost && len(parts) == 3:
+		return created{}, reg.run(w, t, wr, parts[1], parts[2])
+	case st.Method == http.MethodDelete && len(parts) == 2:
+		return created{}, reg.run(w, t, wr, parts[1], "delete")
+	}
+	return created{}, access.Invalid("%s %s is not a write", st.Method, st.Path)
+}
+
+func (reg *Registry[S]) run(w *world[S], t *Type[S], wr Write[S], segment, name string) error {
 	action, ok := t.Actions[name]
 	if !ok {
-		return serve.None{}, access.Missing("%s has no action %s", t.Name, name)
+		return access.Missing("%s has no action %s", t.Name, name)
 	}
-	q := reg.query(r, w)
-	key, ok := w.resolve(t, r.PathValue("id"))
+	key, ok := w.resolveIn(wr.S, t, segment)
 	if !ok {
-		return serve.None{}, access.Missing("no %s %s", t.Name, r.PathValue("id"))
+		return access.Missing("no %s %s", t.Name, segment)
 	}
-	if _, visible := t.Get(w.s, q, key); !visible {
-		return serve.None{}, access.Missing("no %s %s", t.Name, r.PathValue("id"))
+	if _, visible := t.Get(wr.S, wr.Query, key); !visible {
+		return access.Missing("no %s %s", t.Name, segment)
 	}
-	return serve.None{}, action.Do(r, w.s, q, key)
+	wr.ID = key
+	return action.Do(wr)
 }

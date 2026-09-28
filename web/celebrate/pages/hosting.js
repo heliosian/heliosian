@@ -1,4 +1,4 @@
-import {state, isAdmin, isSystemAdmin, canApprove, hostedParties, pendingParties, partyPath, whenLine, money, canHost} from '../state.js';
+import {state, isAdmin, canApprove, hostedParties, pendingParties, partyPath, whenLine, money, canHost} from '../state.js';
 import {el, link, button, imageThumb, svg} from '/elements.js';
 import {tabStrip} from '/tabs.js';
 import {hostingShown} from '../chrome.js';
@@ -58,7 +58,7 @@ export function hostingPage() {
   const bar = el('div', 'list-bar');
   page.append(bar, body);
   const items = [{key: 'mine', label: 'My Parties', count: hostedParties().length}];
-  if (isSystemAdmin()) {
+  if (isAdmin()) {
     items.push({key: 'approvals', label: 'Approval Needed', count: pendingParties().length});
   }
   if (isAdmin()) {

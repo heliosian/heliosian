@@ -91,6 +91,7 @@ var layouts = map[string][]tab{
 		{admins.Tab, admins.Columns},
 		{"Team", birthday.TeamColumns},
 		{"Reminders", birthday.ReminderColumns},
+		{"Invites", birthday.InviteColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Staff Birthday List (Shared)": {

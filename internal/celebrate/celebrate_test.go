@@ -49,7 +49,7 @@ func viewerOf(email string, admin bool) access.Actor {
 	if admin {
 		held = AdminAllowances
 	}
-	return sampleDirectory.ActorOf(email, held, true)
+	return sampleDirectory.ActorOf(email, held)
 }
 
 var bundled = testkit.Images(func(key string) bool { return strings.HasPrefix(key, "sample/") })
@@ -266,16 +266,13 @@ func TestRenderHidesWhatItShould(t *testing.T) {
 	if !found {
 		t.Error("a host cannot see or edit their own pending party")
 	}
-	if got := Render(cache.Model(), sampleDirectory, viewerOf(admin, true), testNow()); len(got.Parties) != 16 {
-		t.Errorf("admin view: %d parties", len(got.Parties))
+	adminView := Render(cache.Model(), sampleDirectory, viewerOf(admin, true), testNow())
+	if len(adminView.Parties) != 16 || !adminView.User.IsAdmin {
+		t.Errorf("admin view: %d parties, admin %v", len(adminView.Parties), adminView.User.IsAdmin)
 	}
-	hatOff := Render(cache.Model(), sampleDirectory, sampleDirectory.ActorOf(admin, AdminAllowances, false), testNow())
-	if len(hatOff.Parties) != 16 || !hatOff.User.IsAdmin {
-		t.Errorf("admin with the pencil off: %d parties, admin %v", len(hatOff.Parties), hatOff.User.IsAdmin)
-	}
-	for _, p := range hatOff.Parties {
-		if p.CanEdit && !p.Hosting {
-			t.Errorf("an admin with the pencil off can edit %s", p.Title)
+	for _, p := range adminView.Parties {
+		if !p.CanEdit {
+			t.Errorf("an admin cannot edit %s", p.Title)
 		}
 	}
 	if got := Render(cache.Model(), sampleDirectory, viewerOf(parent, false), testNow()); got.User.Name != "Jordan Whitfield" || got.User.PhotoURL != sampleDirectory.HeroPhoto(parent) || len(got.User.Children) != 2 {
@@ -1219,10 +1216,7 @@ func TestMoveAddress(t *testing.T) {
 			held = tk.ID
 		}
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": held, "email": school}); rec.Code != http.StatusForbidden {
-		t.Fatalf("an admin with the pencil off reassigned someone's ticket: %d %s", rec.Code, rec.Body)
-	}
-	if rec := testkit.CallUnderHat(t, mux, admin, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": held, "email": school}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": held, "email": school}); rec.Code != http.StatusNoContent {
 		t.Fatalf("set up the alum's ticket: %d %s", rec.Code, rec.Body)
 	}
 	body := map[string]any{"old": school, "to": home, "name": "Ella Whitfield"}
@@ -1297,8 +1291,8 @@ func TestProblemAddresses(t *testing.T) {
 			tickets = append(tickets, tk.ID)
 		}
 	}
-	testkit.CallUnderHat(t, mux, admin, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": tickets[0], "email": alum})
-	testkit.CallUnderHat(t, mux, admin, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": tickets[1], "email": outside, "name": "Percy Jackson"})
+	testkit.Call(t, mux, admin, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": tickets[0], "email": alum})
+	testkit.Call(t, mux, admin, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": tickets[1], "email": outside, "name": "Percy Jackson"})
 	if rec := testkit.Call(t, mux, parent, "GET", "/api/celebrate/addresses", nil); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent read the addresses: %d", rec.Code)
 	}

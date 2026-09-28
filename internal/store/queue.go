@@ -21,7 +21,7 @@ type Queue struct {
 	commits sync.Mutex
 	cancel  context.CancelFunc
 	loads   []Load
-	swapped func()
+	swapped []func()
 }
 
 func NewQueue() *Queue {
@@ -92,13 +92,13 @@ func (q *Queue) Register(load Load) {
 func (q *Queue) OnSwap(swapped func()) {
 	q.commits.Lock()
 	defer q.commits.Unlock()
-	q.swapped = swapped
+	q.swapped = append(q.swapped, swapped)
 	swapped()
 }
 
 func (q *Queue) afterSwap() {
-	if q.swapped != nil {
-		q.swapped()
+	for _, swapped := range q.swapped {
+		swapped()
 	}
 }
 

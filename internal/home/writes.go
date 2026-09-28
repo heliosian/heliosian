@@ -44,7 +44,7 @@ type visibilityEdit struct {
 	Rules      *[]filter.Rule `json:"rules"`
 }
 
-var Configure = access.Standing("home.configure")
+var Configure = access.Named("home.configure")
 
 var AdminAllowances = []access.Allowance{Configure}
 

@@ -122,6 +122,7 @@ type Model struct {
 	Grades            []Grade             `json:"grades"`
 	RoomParents       map[string][]string `json:"roomParents"`
 	Departments       []string            `json:"departments"`
+	departmentIDs     []string
 	byEmail           map[string]int
 	byID              map[string]int
 	familyKeysByEmail map[string][]string

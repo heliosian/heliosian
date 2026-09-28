@@ -9,7 +9,7 @@ import {superEditOn, setSuperEdit} from '/superedit.js';
 import {me} from '/data.js';
 
 let app = null;
-let allowances = {};
+let allowances = [];
 let onSearch = null;
 let carriedQuery = '';
 
@@ -137,14 +137,18 @@ export function renderAccount() {
 }
 
 function adminHere() {
-  return Object.hasOwn(allowances, currentApp() + '.admins');
+  return allowances.includes(currentApp() + '.admins');
+}
+
+function superAdmin() {
+  return allowances.includes('super-admins');
 }
 
 function renderAdmin() {
   for (const row of document.querySelectorAll('.user-menu-admin')) {
     row.hidden = !adminHere();
   }
-  renderSuperToggle({show: adminHere(), on: superEditOn(), onToggle: on => {
+  renderSuperToggle({show: superAdmin(), on: superEditOn(), onToggle: on => {
     setSuperEdit(on);
     app.onSuper();
   }});

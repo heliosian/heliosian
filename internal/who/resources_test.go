@@ -151,6 +151,22 @@ func related(r resourceReply, from, name string) []string {
 	return out
 }
 
+func TestDepartmentsKeepTheDirectorysOrder(t *testing.T) {
+	m := sampleModel(t)
+	_, out := resourceGet(t, m, "/api/departments")
+	var keys []string
+	if err := json.Unmarshal(out.Data, &keys); err != nil {
+		t.Fatal(err)
+	}
+	names := []string{}
+	for _, key := range keys {
+		names = append(names, out.Included["departments"][key]["name"].(string))
+	}
+	if !slices.Equal(names, m.Departments) {
+		t.Errorf("departments %v, want %v", names, m.Departments)
+	}
+}
+
 func TestClassroomsAndGradesResolveByTheirPagesSlug(t *testing.T) {
 	m := sampleModel(t)
 	room := m.Classrooms[0]

@@ -343,11 +343,12 @@ type photoRef struct {
 }
 
 const (
-	kindPerson    = "person"
-	kindFamily    = "family"
-	kindClassroom = "classroom"
-	kindGrade     = "grade"
-	kindCrew      = "crew"
+	kindPerson     = "person"
+	kindFamily     = "family"
+	kindClassroom  = "classroom"
+	kindGrade      = "grade"
+	kindCrew       = "crew"
+	kindDepartment = "department"
 )
 
 func familyID(idKey []byte, email string) string {
@@ -1661,6 +1662,9 @@ func (l *loader) deriveStructure() error {
 		l.model.RoomParents[bandLabel(band)] = emails
 	}
 	l.model.Departments = append(l.model.Departments, departmentOrder...)
+	for _, name := range departmentOrder {
+		l.model.departmentIDs = append(l.model.departmentIDs, id.Of(l.idKey, kindDepartment, name))
+	}
 	return nil
 }
 

@@ -114,7 +114,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load team data", "error", err)
 	}
-	birthdayCache, err := birthday.NewCache(cfg.Source, cfg.Writer, settings.SuperAdmins, queue)
+	birthdayCache, err := birthday.NewCache(cfg.Source, cfg.Writer, settings.SuperAdmins, queue, cfg.IDKey)
 	if err != nil {
 		logging.Fatal("load birthdays data", "error", err)
 	}
@@ -212,7 +212,7 @@ func NewCore(cfg Config) *Core {
 	calendarMux := http.NewServeMux()
 	var hooks when.Hooks
 	moveAddress := func(ctx context.Context, actor access.Actor, old, to, name string) error {
-		as := cache.Model().ActorOf(actor.Email, celebrateCache.Held(actor.Email), false)
+		as := cache.Model().ActorOf(actor.Email, celebrateCache.Held(actor.Email))
 		if _, err := celebrate.MoveAddress(ctx, celebrateCache, as, old, to, name); err != nil {
 			return err
 		}
@@ -266,16 +266,8 @@ func NewCore(cfg Config) *Core {
 		Style:     teamStyle,
 	})
 	birthdayMux := http.NewServeMux()
-	birthday.Register(birthdayMux, birthday.Deps{
-		Cache:     birthdayCache,
-		Directory: cache.Model,
-		Describer: cfg.Describer,
-		Mailer:    cfg.BirthdayMail,
-		Base:      cfg.BirthdayBase,
-		JoinHome: func(ctx context.Context, email string) error {
-			return home.Grant(ctx, homeCache, "birthday", email)
-		},
-		About: birthdayAbout,
+	birthdayResources := birthday.Resources(birthdayCache, func(ctx context.Context, email string) error {
+		return home.Grant(ctx, homeCache, "birthday", email)
 	})
 	celebrateMux := http.NewServeMux()
 	partyRSVPs := func(partyID string) *celebrate.PartyRSVPs {
@@ -351,7 +343,17 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load feedback model", "error", err)
 	}
-	registry := resources(caches{settings, cache, invites, teamCache, birthdayCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, feedbackCache}, queue)
+	registry := resources(caches{settings, cache, invites, teamCache, birthdayCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, feedbackCache}, queue, birthdayResources)
+	birthday.Register(birthdayMux, birthday.Deps{
+		Cache:     birthdayCache,
+		Queue:     queue,
+		Directory: cache.Model,
+		Describer: cfg.Describer,
+		Mailer:    cfg.BirthdayMail,
+		Base:      cfg.BirthdayBase,
+		About:     birthdayAbout,
+		Taken:     registry.Taken,
+	})
 	notifier := feedback.Notifier{Sender: cfg.Mail, Base: cfg.FeedbackBase, SuperAdmins: settings.SuperAdmins}
 	feedbackIntake := feedback.NewIntake(feedbackCache, cfg.Bucket, notifier.Notify)
 	optIn := who.OptInForm(func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn })

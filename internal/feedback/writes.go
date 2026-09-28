@@ -9,7 +9,7 @@ import (
 	"heliosian/internal/store"
 )
 
-var Triage = access.Standing("feedback")
+var Triage = access.Named("feedback")
 
 func requireSuperAdmin(actor access.Actor) error {
 	if !actor.May(Triage) {

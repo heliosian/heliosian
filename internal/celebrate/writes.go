@@ -16,11 +16,11 @@ import (
 )
 
 var (
-	SeeAll        = access.Standing("celebrate.see-all")
-	Curate        = access.Standing("celebrate.curate")
-	Configure     = access.Standing("celebrate.configure")
-	MoveAddresses = access.Standing("celebrate.move-addresses")
-	ActAsHost     = access.Acting("celebrate.act-as-host")
+	SeeAll        = access.Named("celebrate.see-all")
+	Curate        = access.Named("celebrate.curate")
+	Configure     = access.Named("celebrate.configure")
+	MoveAddresses = access.Named("celebrate.move-addresses")
+	ActAsHost     = access.Named("celebrate.act-as-host")
 )
 
 var AdminAllowances = []access.Allowance{SeeAll, Curate, Configure, MoveAddresses, ActAsHost}

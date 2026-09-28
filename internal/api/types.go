@@ -1,15 +1,37 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/store"
 )
 
 type Query struct {
 	Actor access.Actor
 	Now   time.Time
+}
+
+type Write[S any] struct {
+	Request *http.Request
+	Tx      *store.Tx
+	S       S
+	Query   Query
+	ID      string
+	Body    json.RawMessage
+	Taken   func(string) bool
+}
+
+func (w Write[S]) Decode(into any) error {
+	if len(w.Body) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(w.Body, into); err != nil {
+		return access.Invalid("bad request body: %v", err)
+	}
+	return nil
 }
 
 type Type[S any] struct {
@@ -21,7 +43,7 @@ type Type[S any] struct {
 	Relations map[string]Relation[S]
 	Filters   map[string]Filter[S]
 	Actions   map[string]Action[S]
-	Create    func(r *http.Request, s S, q Query) (string, error)
+	Create    func(w Write[S]) (string, error)
 }
 
 type Relation[S any] struct {
@@ -34,7 +56,11 @@ type Filter[S any] func(s S, q Query, value string) (func(id string) bool, error
 
 type Action[S any] struct {
 	Can func(s S, q Query, id string) bool
-	Do  func(r *http.Request, s S, q Query, id string) error
+	Do  func(w Write[S]) error
+}
+
+func lower[S, M any](w Write[S], of func(S) M) Write[M] {
+	return Write[M]{Request: w.Request, Tx: w.Tx, S: of(w.S), Query: w.Query, ID: w.ID, Body: w.Body, Taken: w.Taken}
 }
 
 func Lift[S, M any](t Type[M], of func(S) M) Type[S] {
@@ -59,11 +85,11 @@ func Lift[S, M any](t Type[M], of func(S) M) Type[S] {
 	for name, action := range t.Actions {
 		out.Actions[name] = Action[S]{
 			Can: func(s S, q Query, id string) bool { return action.Can(of(s), q, id) },
-			Do:  func(r *http.Request, s S, q Query, id string) error { return action.Do(r, of(s), q, id) },
+			Do:  func(w Write[S]) error { return action.Do(lower(w, of)) },
 		}
 	}
 	if t.Create != nil {
-		out.Create = func(r *http.Request, s S, q Query) (string, error) { return t.Create(r, of(s), q) }
+		out.Create = func(w Write[S]) (string, error) { return t.Create(lower(w, of)) }
 	}
 	return out
 }

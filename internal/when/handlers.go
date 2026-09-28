@@ -182,7 +182,7 @@ func (a app) model(r *http.Request, _ serve.None) (View, error) {
 }
 
 func (a app) as(email string) access.Actor {
-	return a.directory().ActorOf(email, a.cache.Held(email), false)
+	return a.directory().ActorOf(email, a.cache.Held(email))
 }
 
 func (a app) actor(r *http.Request) access.Actor {

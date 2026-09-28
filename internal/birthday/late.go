@@ -27,7 +27,7 @@ func (c *Cache) Late(directory func() *who.Model, email string) []Late {
 	model := c.Model()
 	admin := c.IsAdmin(email)
 	comms := slices.ContainsFunc(model.Team, func(t TeamMember) bool { return t.Email == email && t.Role == RoleComms })
-	if !model.Sees(directory().ActorOf(email, c.Held(email), false)) {
+	if !model.Sees(directory().ActorOf(email, c.Held(email))) {
 		return []Late{}
 	}
 	v := viewer{directory: directory()}

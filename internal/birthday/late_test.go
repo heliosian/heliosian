@@ -27,18 +27,15 @@ func TestLate(t *testing.T) {
 	if l := all["Ruth Amari outreach"]; l.Assignee != "Mina Park" {
 		t.Errorf("assigned outreach: %+v", l)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/birthday/used", map[string]any{"email": "dana.hawkins@heliosschool.org", "used": false}); rec.Code != http.StatusNoContent {
-		t.Fatalf("unused: %d %s", rec.Code, rec.Body)
-	}
+	dana, _ := staff(t, mux, admin, "dana.hawkins@heliosschool.org")
+	call(t, mux, admin, "POST", "/api/donations/"+dana["donation"].(string)+"/unuse", nil, http.StatusNoContent)
 	if l, ok := steps(admin)["Dana Hawkins newsletter"]; !ok || l.Due != "2026-08-21" {
 		t.Errorf("newsletter past its day: %+v", steps(admin))
 	}
 	if got := steps(parent); len(got) != 0 {
 		t.Errorf("volunteer with nothing late: %+v", got)
 	}
-	if rec := testkit.Call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": "miguel.santos@heliosschool.org"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("assign: %d %s", rec.Code, rec.Body)
-	}
+	call(t, mux, parent, "POST", "/api/birthdays/miguel.santos@heliosschool.org/assign", nil, http.StatusNoContent)
 	if got := steps(parent); len(got) != 1 || got["Miguel Santos outreach"].Due != "2026-09-03" {
 		t.Errorf("volunteer's own late outreach: %+v", got)
 	}
