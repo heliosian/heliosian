@@ -8,6 +8,7 @@ import {setTitle} from '/shell.js';
 import {load, setPath} from '/router.js';
 import {dayBar, dayRow, eventRow} from '/dayrows.js';
 import {rsvpPanel} from '/rsvps.js';
+import {answerIcon} from '../inviteparts.js';
 import {api} from '/api.js';
 import {dayColumn, openAddEvent} from '../day.js';
 import {emptyNote, roomDots, planCards} from '../events.js';
@@ -178,7 +179,17 @@ function fillEventPeek(node, date, e) {
     button('Maybe', 'clock', 'button button-small' + (word === 'maybe' ? '' : ' button-secondary'), () => say(word === 'maybe' ? '' : 'maybe')),
     button('No', 'close', 'button button-small' + (word === 'no' ? '' : ' button-secondary'), () => say(word === 'no' ? '' : 'no')),
   );
-  node.append(buttons);
+  if (word === 'yes' || word === 'maybe' || word === 'no') {
+    const row = el('div', 'day-peek-said');
+    const said = el('div', 'invite-said rsvp-compact-said is-' + word);
+    const mark = el('span', 'invite-said-mark');
+    mark.append(svg(answerIcon(word)));
+    said.append(mark, el('strong', '', word === 'yes' ? 'You’re going' : word === 'maybe' ? 'Maybe' : 'Not going'));
+    row.append(said, button('Change', null, 'link-button', () => row.replaceWith(buttons)));
+    node.append(row);
+  } else {
+    node.append(buttons);
+  }
   const hide = el('button', 'day-peek-hide', word === 'hidden' ? 'Show event' : 'Hide event');
   hide.type = 'button';
   hide.addEventListener('click', () => say(word === 'hidden' ? '' : 'hidden'));

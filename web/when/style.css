@@ -2040,6 +2040,12 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .day-peek-answer .button { flex: 1 1 0; justify-content: center; }
 
+.day-peek-said { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+
+.day-peek-said .rsvp-compact-said, .day-peek-said .link-button { margin: 0; }
+
+.day-peek-said .link-button { font-weight: 400; }
+
 .day-peek-hide { align-self: center; margin-top: -2px; padding: 2px 6px; border: 0; background: none; font: inherit; font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 
 .day-peek-hide:hover { color: var(--brand); }
