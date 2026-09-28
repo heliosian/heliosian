@@ -282,6 +282,7 @@ func (a app) invitesView(r *http.Request, _ serve.None) (InviteView, error) {
 		}
 		if !g.Invited {
 			if g.Answer != "" {
+				view.Counts.Invited++
 				view.Counts.Yes += b2i(g.Answer == AnswerYes)
 				view.Counts.Maybe += b2i(g.Answer == AnswerMaybe)
 				view.Counts.No += b2i(g.Answer == AnswerNo)

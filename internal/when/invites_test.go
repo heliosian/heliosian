@@ -293,7 +293,7 @@ func TestInvitationLifecycle(t *testing.T) {
 		t.Errorf("the event is not in the co-host's Upcoming as a yes")
 	}
 	v := inviteView(t, robinH, "meetup")
-	if v.Host || len(v.Mine) != 3 || v.Mine[0].Email != robin || !v.Mine[0].Mine || !v.Mine[1].Mine || !v.Mine[2].Mine || v.List != nil || v.Settings != nil || !v.Guests || len(v.Hosts) != 2 || v.Hosts[0].Name != "Jordan Whitfield" || v.Counts.Invited != 4 || v.Counts.Waiting != 4 {
+	if v.Host || len(v.Mine) != 3 || v.Mine[0].Email != robin || !v.Mine[0].Mine || !v.Mine[1].Mine || !v.Mine[2].Mine || v.List != nil || v.Settings != nil || !v.Guests || len(v.Hosts) != 2 || v.Hosts[0].Name != "Jordan Whitfield" || v.Counts.Invited != 6 || v.Counts.Waiting != 4 {
 		t.Errorf("robin's view = %+v", v)
 	}
 	v = inviteView(t, samH, "meetup")
@@ -353,7 +353,7 @@ func TestInvitationLifecycle(t *testing.T) {
 		t.Errorf("mia's own invite = %+v", m)
 	}
 	v = inviteView(t, jordan, "meetup")
-	if !v.Host || v.Settings == nil || v.Settings.Message != "Bring a snack to share!" || len(v.List) != 9 || v.Counts.Invited != 7 || v.Counts.Yes != 6 || v.Counts.Maybe != 1 || v.Counts.No != 1 || v.Counts.Waiting != 1 || v.Counts.Guests != 3 {
+	if !v.Host || v.Settings == nil || v.Settings.Message != "Bring a snack to share!" || len(v.List) != 9 || v.Counts.Invited != 9 || v.Counts.Yes != 6 || v.Counts.Maybe != 1 || v.Counts.No != 1 || v.Counts.Waiting != 1 || v.Counts.Guests != 3 {
 		t.Errorf("host's view: host %v settings %+v list %d counts %+v", v.Host, v.Settings, len(v.List), v.Counts)
 	}
 	if r := rowOf(v, sam); r == nil || r.Answer != AnswerYes || r.AnsweredBy != "Robin Whitfield" || !r.Invited || r.Sent == "" || r.Grade != "Grade 3" || r.Household != ella {
@@ -680,7 +680,7 @@ func TestInviteGroups(t *testing.T) {
 		t.Errorf("a member's row = %+v", abena)
 	}
 	v := inviteView(t, jordan, "meetup")
-	if len(v.Groups) != 1 || v.Groups[0].Count != 2 || v.Counts.Invited != 2 {
+	if len(v.Groups) != 1 || v.Groups[0].Count != 2 || v.Counts.Invited != 3 {
 		t.Errorf("view groups = %+v counts %+v", v.Groups, v.Counts)
 	}
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
