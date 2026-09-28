@@ -1,4 +1,4 @@
-import {state, isAdmin, isSystemAdmin, postedAndHosting, sourceWords, dayType, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
+import {state, me, isAdmin, isSystemAdmin, postedAndHosting, sourceWords, dayType, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {paragraphs} from '../dom.js';
 import {el, svg, button, toast, longToast, avatar, copyText} from '/elements.js';
@@ -8,6 +8,7 @@ import {whoLink} from '/appswitch.js';
 import {setTitle} from '/shell.js';
 import {load} from '/router.js';
 import {api} from '/api.js';
+import {openGuestForm} from '../guestpopups.js';
 import {audienceChips, blocks} from '../events.js';
 import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow, inviteCall} from '../invites.js';
 
@@ -118,6 +119,7 @@ function heroImageBar(e) {
 }
 
 let editorView = null;
+let keepAsk = null;
 
 export function eventPage(e) {
   editorView = null;
@@ -187,8 +189,9 @@ export function eventPage(e) {
   const ask = el('div', 'detail-ask');
   const mineCard = el('div', 'side-card rsvp-compact');
   mineCard.hidden = true;
+  const guest = {};
   if (!e.cancelled) {
-    ask.append(rsvpCard(e, mineCard));
+    ask.append(rsvpCard(e, mineCard, guest));
   }
   main.append(ask);
   cols.append(main);
@@ -209,11 +212,11 @@ export function eventPage(e) {
   }
   cols.append(side);
   page.append(cols);
-  fillInvites(e, ask, answered, {info: when, linkedLine: page.querySelector('.hero-linked-line span')});
+  fillInvites(e, ask, answered, {info: when, linkedLine: page.querySelector('.hero-linked-line span'), guest});
   return page;
 }
 
-async function fillInvites(e, ask, answered, {info, linkedLine}) {
+async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
   if (e.cancelled || (e.source !== 'sheet' && !e.link && !imported(e))) {
     return;
   }
@@ -230,6 +233,7 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
     return;
   }
   const refresh = async () => {
+    keepAsk = ask.querySelector('.rsvp-panel') ? e.id : null;
     await load();
   };
   if (view.host && e.link && new URLSearchParams(location.search).get('invite') && !view.settings) {
@@ -246,9 +250,16 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
       return;
     }
   }
+  const keep = keepAsk === e.id;
+  keepAsk = null;
   if (view.mine.length) {
     ask.closest('.event-page')?.querySelector('.rsvp-compact')?.remove();
-    ask.replaceChildren(familyAnswered(view) ? '' : familyBand(e, view, refresh));
+    const self = view.mine.find(r => r.key === me().email && !r.guestOf);
+    const done = self ? Boolean(self.answer) : familyAnswered(view);
+    ask.replaceChildren(done && !keep ? '' : familyBand(e, view, refresh));
+  } else if ((view.guests || view.host) && (e.sharing === 'Public' || e.sharing === 'Link') && !isParty(e) && guest.repaint) {
+    guest.add = () => openGuestForm(e, me().email, refresh);
+    guest.repaint();
   }
   editorView = view;
   if (view.host) {
@@ -319,9 +330,18 @@ function outLink(href, words) {
   return a;
 }
 
-function rsvpCard(e, slot) {
+function rsvpCard(e, slot, guest) {
   const band = el('div', 'rsvp-band');
   let changing = false;
+  const guestLink = links => {
+    if (!guest.add) {
+      return;
+    }
+    const b = el('button', 'rsvp-clear', 'Add a guest');
+    b.type = 'button';
+    b.addEventListener('click', guest.add);
+    links.append(b);
+  };
   const paint = () => {
     band.replaceChildren();
     slot.replaceChildren();
@@ -392,6 +412,7 @@ function rsvpCard(e, slot) {
           paint();
         });
         links.replaceChildren(change, links.lastChild);
+        guestLink(links);
         body.append(links);
       }
       row.append(icon, body);
@@ -423,12 +444,16 @@ function rsvpCard(e, slot) {
     if (note) {
       words.append(el('div', 'rsvp-note', note));
     }
+    if (!isParty(e)) {
+      guestLink(links);
+    }
     const side = el('div', 'rsvp-side');
     side.append(buttons, links);
     const row = el('div', 'rsvp-band-row');
     row.append(art, words, side);
     band.append(row);
   };
+  guest.repaint = paint;
   paint();
   return band;
 }

@@ -1184,6 +1184,86 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .pending-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
+.rsvp-panel { margin: 28px 0 8px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--accent-wash, #eef6f5); }
+
+.rsvp-panel-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+
+.rsvp-panel-icon { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; flex-shrink: 0; border-radius: 50%; background: var(--card); color: var(--brand); }
+
+.rsvp-panel-icon svg { width: 24px; height: 24px; }
+
+.rsvp-panel-words { flex: 1 1 180px; min-width: 0; }
+
+.rsvp-panel-title { font-family: Montserrat, Roboto, sans-serif; font-size: 20px; font-weight: 700; color: var(--brand); }
+
+.rsvp-panel-subtitle { font-family: Montserrat, Roboto, sans-serif; font-size: 18px; font-weight: 700; color: var(--brand); }
+
+.rsvp-panel-lead { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+
+.rsvp-choices { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.rsvp-choice { display: flex; align-items: center; gap: 12px; min-width: 150px; padding: 12px 18px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+
+.rsvp-choice:hover:not(:disabled) { filter: brightness(0.97); }
+
+.rsvp-choice:disabled { cursor: default; opacity: 0.6; }
+
+.rsvp-choice .invite-said-mark { width: 28px; height: 28px; }
+
+.rsvp-choice.is-yes .invite-said-mark { background: #2f9e6a; }
+
+.rsvp-choice.is-maybe .invite-said-mark { background: var(--amber); }
+
+.rsvp-choice-words { display: flex; flex-direction: column; line-height: 1.25; }
+
+.rsvp-choice-words strong { font-size: 16px; }
+
+.rsvp-choice-words small { font-size: 12.5px; color: var(--muted); }
+
+.rsvp-choice.is-on.is-yes { border-color: #2f9e6a; background: var(--yes-wash, #e3f3ea); color: var(--yes-text, #1d6b48); }
+
+.rsvp-choice.is-on.is-maybe { border-color: var(--amber); background: var(--maybe-wash, #fff8e8); color: var(--maybe-text, #7a5a00); }
+
+.rsvp-choice.is-on.is-no { border-color: var(--no-fill, #b3261e); background: var(--no-wash, #f7eeee); color: var(--no-text, #b3261e); }
+
+.rsvp-panel-family { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+
+.rsvp-members { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
+
+.rsvp-member-holder { position: relative; }
+
+.rsvp-member { display: flex; align-items: center; gap: 8px; height: 100%; min-width: 130px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+
+.rsvp-member-words { flex: 1; }
+
+.rsvp-member:hover:not(:disabled) { background: var(--input); }
+
+.rsvp-member:disabled { cursor: default; }
+
+.rsvp-member > svg { width: 16px; height: 16px; color: var(--muted); }
+
+.rsvp-member .rsvp-member-face { width: 30px; height: 30px; font-size: 13px; }
+
+.rsvp-member-words { display: flex; flex-direction: column; line-height: 1.2; font-size: 13.5px; }
+
+.rsvp-member-answer { font-size: 12px; font-weight: 600; color: var(--muted); }
+
+.rsvp-member-answer.is-yes { color: var(--yes-text, #1d6b48); }
+
+.rsvp-member-answer.is-maybe { color: var(--maybe-text, #7a5a00); }
+
+.rsvp-member-answer.is-no { color: var(--no-text, #b3261e); }
+
+.rsvp-member-holder .rsvp-member-menu { top: calc(100% + 6px); bottom: auto; left: 0; }
+
+.rsvp-member-add { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; border: 1.5px dashed var(--line); border-radius: 12px; background: var(--card); font: inherit; font-size: 13.5px; font-weight: 700; color: var(--brand); cursor: pointer; }
+
+.rsvp-member-add:hover { background: var(--input); }
+
+.rsvp-member-add svg { width: 14px; height: 14px; }
+
+.rsvp-panel-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+
 /* The ask under the event: a band in a green wash with a ticked calendar,
    the question large, and the buttons big at the right - Yes green, No
    white, the one that holds ringed. */
@@ -1815,6 +1895,8 @@ button.guests-count:hover { filter: brightness(0.96); }
 
 button.rsvp-row-said { cursor: pointer; }
 
+.rsvp-row-said > svg { width: 14px; height: 14px; color: var(--muted); }
+
 button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-offset: 3px; }
 
 .rsvp-row-said .invite-said-mark { width: 24px; height: 24px; }
@@ -2053,6 +2135,16 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 .hero-image-menu-item:hover { background: var(--input); }
 
 .hero-image-menu-item svg { width: 16px; height: 16px; color: var(--brand); }
+
+.hero-image-menu-item .invite-said { gap: 10px; color: var(--ink); }
+
+.hero-image-menu-item .invite-said-mark { width: 22px; height: 22px; }
+
+.hero-image-menu-item .invite-said-mark svg { width: 13px; height: 13px; color: #fff; }
+
+.hero-image-menu-item .invite-said.is-none .invite-said-mark { background: var(--glass-mid, var(--input)); }
+
+.hero-image-menu-item .invite-said.is-none .invite-said-mark svg { color: var(--muted); }
 
 /* The badge at the banner's foot for an event another app runs: the
    app's mark on a tile, what it is there, and a line - a link to its page. */

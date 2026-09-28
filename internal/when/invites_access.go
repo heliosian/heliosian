@@ -11,6 +11,10 @@ import (
 
 const notOnCalendar = "that event is not on the calendar"
 
+func (e *Event) openToAll() bool {
+	return e.Sharing == SharingPublic && e.Source != SourceCelebrate && !e.Cancelled
+}
+
 func (e *Event) keepsGuestList() bool {
 	return e.Source == SourceSheet || e.linked() || e.imported()
 }

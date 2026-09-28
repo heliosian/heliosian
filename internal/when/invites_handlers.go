@@ -153,6 +153,41 @@ func (a app) personOf(email, name string) (Person, *who.Person) {
 	return p, nil
 }
 
+func (a app) nameOn(e *Event, email string) string {
+	if p := a.directory().Person(email); p != nil && p.FullName != "" {
+		return p.FullName
+	}
+	if inv := a.cache.Model().InviteOf(e.ID, email); inv != nil && inv.Name != "" {
+		return inv.Name
+	}
+	return cells.DisplayName(email)
+}
+
+func (a app) householdKey(e *Event, email string) string {
+	members := a.householdOn(e, email)
+	slices.Sort(members)
+	return members[0]
+}
+
+func (a app) guestRow(viewer access.Actor, e *Event, email, name string, invited, host bool, ticket string) GuestRow {
+	model := a.cache.Model()
+	p, known := a.personOf(email, name)
+	g := GuestRow{Person: p, Key: email, Invited: invited, Outside: known == nil, Ticket: ticket, Mine: host || a.speaksFor(viewer, email, e), Household: a.householdKey(e, email)}
+	if known != nil {
+		g.Grades, g.Classrooms = a.facetsOf(known)
+	}
+	g.Warning, g.WarningWords = a.addressWarning(model, email, known != nil)
+	if ans, ok := model.Answered[email][e.ID]; ok && ans.Answer != AnswerHidden {
+		g.Answer = ans.Answer
+		g.AnsweredAt = ans.At
+		g.AnsweredVia = ans.Via
+		if ans.By != "" && ans.By != email {
+			g.AnsweredBy = a.nameOn(e, ans.By)
+		}
+	}
+	return g
+}
+
 func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
 	model := a.cache.Model()
 	tickets := map[string]string{}
@@ -163,43 +198,17 @@ func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
 			}
 		}
 	}
-	names := map[string]string{}
-	for _, inv := range model.Invites[e.ID] {
-		names[inv.Email] = inv.Name
-	}
 	nameOf := func(email string) string {
-		if p := a.directory().Person(email); p != nil && p.FullName != "" {
-			return p.FullName
-		}
-		if names[email] != "" {
-			return names[email]
-		}
-		return cells.DisplayName(email)
+		return a.nameOn(e, email)
 	}
 	householdOf := func(email string) string {
-		members := a.householdOn(e, email)
-		slices.Sort(members)
-		return members[0]
+		return a.householdKey(e, email)
 	}
 	out := []GuestRow{}
 	seen := map[string]bool{}
 	host := a.isHost(viewer, e)
 	row := func(email, name string, invited bool) GuestRow {
-		p, known := a.personOf(email, name)
-		g := GuestRow{Person: p, Key: email, Invited: invited, Outside: known == nil, Ticket: tickets[email], Mine: host || a.speaksFor(viewer, email, e), Household: householdOf(email)}
-		if known != nil {
-			g.Grades, g.Classrooms = a.facetsOf(known)
-		}
-		g.Warning, g.WarningWords = a.addressWarning(model, email, known != nil)
-		if ans, ok := model.Answered[email][e.ID]; ok && ans.Answer != AnswerHidden {
-			g.Answer = ans.Answer
-			g.AnsweredAt = ans.At
-			g.AnsweredVia = ans.Via
-			if ans.By != "" && ans.By != email {
-				g.AnsweredBy = nameOf(ans.By)
-			}
-		}
-		return g
+		return a.guestRow(viewer, e, email, name, invited, host, tickets[email])
 	}
 	for _, inv := range model.Invites[e.ID] {
 		g := row(inv.Email, inv.Name, true)
@@ -304,6 +313,25 @@ func (a app) invitesView(r *http.Request, _ serve.None) (InviteView, error) {
 		if g.Ticket == "ticket" || g.Ticket == "free" {
 			view.Counts.Tickets++
 			view.Counts.TicketsWaiting += b2i(g.Answer == "")
+		}
+	}
+	if e.openToAll() && len(actor.Household) > 0 {
+		family := []string{viewer}
+		adults, kids := a.directory().Household(viewer)
+		for _, p := range append(adults, kids...) {
+			if actor.Household[p.Email] {
+				family = append(family, p.Email)
+			}
+		}
+		for _, email := range family {
+			if slices.ContainsFunc(view.Mine, func(g GuestRow) bool { return g.Key == email }) {
+				continue
+			}
+			if i := slices.IndexFunc(rows, func(g GuestRow) bool { return g.Key == email }); i >= 0 {
+				view.Mine = append(view.Mine, rows[i])
+				continue
+			}
+			view.Mine = append(view.Mine, a.guestRow(actor, e, email, "", false, host, ""))
 		}
 	}
 	sort.SliceStable(view.Mine, func(i, j int) bool { return view.Mine[i].Email == viewer && view.Mine[j].Email != viewer })

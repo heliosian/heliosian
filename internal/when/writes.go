@@ -696,10 +696,14 @@ func (a app) bringGuestOps(actor access.Actor, body guestBody) ([]store.Op, brou
 		g.of = a.directory().Resolve(config.NormalizeEmail(body.Of))
 	}
 	if !a.isHost(actor, e) {
-		if inv == nil || !inv.Guests {
+		if inv != nil && !inv.Guests {
 			return nil, g, access.Forbidden("this event is not taking guests")
 		}
-		if !a.mayAnswerFor(actor, g.of, e) || model.InviteOf(e.ID, g.of) == nil {
+		if !a.mayAnswerFor(actor, g.of, e) {
+			return nil, g, access.Forbidden("a guest comes with you or someone in your household")
+		}
+		open := (e.Sharing == SharingPublic || e.Sharing == SharingLink) && e.Source != SourceCelebrate
+		if !open && model.InviteOf(e.ID, g.of) == nil {
 			return nil, g, access.Forbidden("a guest comes with someone on the list")
 		}
 	}

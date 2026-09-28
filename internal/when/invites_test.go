@@ -1367,6 +1367,66 @@ func TestGuestInvitesBeforeTheHosts(t *testing.T) {
 	}
 }
 
+func TestFamilyAnswersAnOpenEvent(t *testing.T) {
+	mux, cache, _ := invitesApp(t)
+	call(t, as(mia, mux), "POST", "/api/when/events", `{"title":"Parade","start":"2026-10-30 08:15","tags":["Jays"],"sharing":"Public","id":"parade"}`)
+	robinH := as(robin, mux)
+	v := inviteView(t, robinH, "parade")
+	keys := []string{}
+	for _, r := range v.Mine {
+		keys = append(keys, r.Key)
+	}
+	if len(keys) < 3 || keys[0] != robin || !slices.Contains(keys, sam) || !slices.Contains(keys, ella) || slices.ContainsFunc(v.Mine, func(r GuestRow) bool { return r.Invited || !r.Mine }) {
+		t.Errorf("robin's family on an open event = %v", keys)
+	}
+	if rec := call(t, robinH, "POST", "/api/when/invites/answer", `{"id":"parade","email":"`+sam+`","answer":"yes"}`); rec.Code != 204 {
+		t.Fatalf("robin answering for sam: %d %s", rec.Code, rec.Body)
+	}
+	if cache.Model().AnswerOf(sam, "parade") != AnswerYes {
+		t.Errorf("sam's answer = %q", cache.Model().AnswerOf(sam, "parade"))
+	}
+	after := inviteView(t, robinH, "parade")
+	if i := slices.IndexFunc(after.Mine, func(r GuestRow) bool { return r.Key == sam }); i < 0 || after.Mine[i].Answer != AnswerYes {
+		t.Errorf("robin's rows after = %+v", after.Mine)
+	}
+	call(t, as(mia, mux), "POST", "/api/when/events", `{"title":"Party","start":"2026-10-31 15:00","tags":[],"sharing":"Invite Only","id":"party"}`)
+	call(t, as(mia, mux), "POST", "/api/when/invites/people", `{"id":"party","people":[{"email":"`+robin+`"}]}`)
+	call(t, as(mia, mux), "POST", "/api/when/invites/send", `{"id":"party"}`)
+	if v := inviteView(t, robinH, "party"); len(v.Mine) != 1 || v.Mine[0].Key != robin {
+		t.Errorf("robin's family on an invite-only event = %+v", v.Mine)
+	}
+}
+
+func TestGuestsWithoutAnInvitation(t *testing.T) {
+	mux, cache, _ := invitesApp(t)
+	jordan, robinH := as(host, mux), as(robin, mux)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, robinH, "POST", "/api/when/rsvp", `{"id":"meetup","answer":"yes"}`)
+	if rec := call(t, robinH, "POST", "/api/when/invites/guest", `{"id":"meetup","name":"Pat"}`); rec.Code != 200 {
+		t.Fatalf("robin bringing a guest from the link: %d %s", rec.Code, rec.Body)
+	}
+	guests := slices.DeleteFunc(slices.Clone(cache.Model().Invites["meetup"]), func(inv Invite) bool { return inv.GuestOf != robin })
+	if len(guests) != 1 || guests[0].Name != "Pat" {
+		t.Errorf("robin's guests = %+v", guests)
+	}
+	if rec := call(t, robinH, "POST", "/api/when/invites/guest", `{"id":"meetup","name":"Lee","of":"`+mia+`"}`); rec.Code != 403 {
+		t.Errorf("robin bringing a guest for someone outside the household: %d", rec.Code)
+	}
+	call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"meetup","guests":false}`)
+	if rec := call(t, robinH, "POST", "/api/when/invites/guest", `{"id":"meetup","name":"Kim"}`); rec.Code != 403 {
+		t.Errorf("robin bringing a guest when the hosts said no: %d", rec.Code)
+	}
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Party","start":"2026-10-11 15:00","tags":[],"sharing":"Invite Only","id":"party"}`)
+	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"party","people":[{"email":"`+robin+`"}]}`)
+	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"party"}`)
+	if rec := call(t, robinH, "POST", "/api/when/invites/guest", `{"id":"party","name":"Lee","of":"`+sam+`"}`); rec.Code != 403 || !strings.Contains(rec.Body.String(), "on the list") {
+		t.Errorf("a guest for someone off an invite-only list: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, robinH, "POST", "/api/when/invites/guest", `{"id":"party","name":"Lee"}`); rec.Code != 200 {
+		t.Errorf("robin, on the list, bringing a guest: %d %s", rec.Code, rec.Body)
+	}
+}
+
 func TestPermissions(t *testing.T) {
 	mux, cache, kept := invitesApp(t)
 	jordan, robinH := as(host, mux), as(robin, mux)
