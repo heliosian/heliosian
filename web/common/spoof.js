@@ -224,9 +224,5 @@ async function setSpoof(email) {
     toast(err.message);
     return;
   }
-  if (email) {
-    location.href = '/';
-  } else {
-    location.reload();
-  }
+  location.reload();
 }
