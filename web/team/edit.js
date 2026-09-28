@@ -10,7 +10,7 @@ import {whenEditor} from './dom.js';
 import {el, svg, toast, button, imageThumb} from '/elements.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
-import {whoLink} from '/toolbar.js';
+import {whoLink} from '/appswitch.js';
 import {api} from '/api.js';
 import {openModal, closeModal} from '/modal.js';
 import {load, navigate, render} from '/router.js';

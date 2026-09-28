@@ -3,7 +3,7 @@ import {paragraphs} from '../dom.js';
 import {el, link, svg, button, avatar, imageThumb, copyText, toast} from '/elements.js';
 import {listPath} from '../chrome.js';
 import {setTitle} from '/shell.js';
-import {appOrigin} from '/toolbar.js';
+import {appOrigin} from '/appswitch.js';
 import {openBuy, openParty, openFreeTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setFlags, setPartyStatus, openContacts, savePartyFields, uploadImage, editable, editPencil, fieldEditor, whenInputs, emojiPicker, uploadAndSave, imageSearchOn, openImageSearch} from '../edit.js';
 import {text as textInput, textarea as textAreaInput} from '/form.js';
 import {statusBadges} from '../cards.js';

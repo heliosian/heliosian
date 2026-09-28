@@ -1,4 +1,9 @@
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
+import {initAppSwitch} from '/appswitch.js';
+import {initUserMenu, renderAvatars, renderProfileLink, renderSuperToggle} from '/usermenu.js';
+import {initAlerts, renderAlerts} from '/alerts.js';
+import {initSpoof} from '/spoof.js';
+import {noteError} from '/feedback.js';
+import {api} from '/api.js';
 import {el} from '/elements.js';
 import {superEditOn, setSuperEdit} from '/superedit.js';
 
@@ -49,6 +54,19 @@ function buildTopbar() {
   for (const row of app.menuRows || []) {
     admin.before(row);
   }
+}
+
+export function isEditableTarget(target) {
+  return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable;
+}
+
+export function onSlash(open) {
+  document.addEventListener('keydown', e => {
+    if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {
+      e.preventDefault();
+      open();
+    }
+  });
 }
 
 export function searchInput() {
@@ -219,10 +237,14 @@ export function initTopbar(config) {
     searchInput().addEventListener('input', () => search(searchInput().value));
     onSlash(() => searchInput().focus());
   }
+  initAlerts();
   initUserMenu();
   initSpoof();
   if (!app.alerts) {
-    fetch('/api/apps/alerts').then(res => res.ok ? res.json() : {broken: true}).catch(() => ({broken: true})).then(renderAlerts);
+    api('GET', '/api/apps/alerts').catch(err => {
+      noteError('/api/apps/alerts: ' + err.message);
+      return {broken: true};
+    }).then(renderAlerts);
   }
   document.addEventListener('click', e => {
     if (app.keepOpen && e.target.closest(app.keepOpen)) {

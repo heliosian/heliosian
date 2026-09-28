@@ -4,7 +4,7 @@ import {el, svg, toast} from '/elements.js';
 import {load} from '/router.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
-import {appOrigin} from '/toolbar.js';
+import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
 import {rulesEditor} from '/rules.js';
 import {tabStrip} from '/tabs.js';

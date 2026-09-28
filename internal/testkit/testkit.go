@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -53,6 +55,18 @@ func Call(t *testing.T, handler http.Handler, as, method, path string, body any)
 	rec := httptest.NewRecorder()
 	auth.Fixed(as, handler).ServeHTTP(rec, httptest.NewRequest(method, path, bytes.NewReader(raw)))
 	return rec
+}
+
+func Status(t *testing.T, err error) int {
+	t.Helper()
+	if err == nil {
+		return http.StatusOK
+	}
+	var refusal *access.Refusal
+	if !errors.As(err, &refusal) {
+		t.Fatalf("not a refusal: %v", err)
+	}
+	return refusal.Status
 }
 
 func Rows(t *testing.T, dir *data.Dir, queue *store.Queue, app, tab string) []store.Row {

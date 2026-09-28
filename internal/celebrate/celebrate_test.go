@@ -836,7 +836,9 @@ func TestFriendlyAddresses(t *testing.T) {
 		}
 	}
 	body := map[string]any{"id": "P003", "title": "K-Pop for a Cause!", "price": 50, "capacity": 20, "adults": true, "students": true, "ticketsOpen": true, "waitlist": true, "prettyId": "Fondue", "hostEmails": []string{"deepa.natarajan@heliosschool.org"}}
-	if rec := testkit.Call(t, mux, "deepa.natarajan@heliosschool.org", "POST", "/api/celebrate/party", body); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "is already the address of") {
+	rec := testkit.Call(t, mux, "deepa.natarajan@heliosschool.org", "POST", "/api/celebrate/party", body)
+	var conflict prettyConflict
+	if rec.Code != http.StatusConflict || json.Unmarshal(rec.Body.Bytes(), &conflict) != nil || conflict.ID != "P001" || !strings.Contains(conflict.Message, "is already the address of") {
 		t.Fatalf("took another party's address: %d %s", rec.Code, rec.Body)
 	}
 	body["prettyId"] = "k pop!"

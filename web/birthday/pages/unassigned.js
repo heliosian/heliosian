@@ -5,7 +5,7 @@ import {setTitle} from '/shell.js';
 import {emptyPanel} from '../cards.js';
 import {assignToMe} from '../edit.js';
 import {monthGrid, monthNav, showToggle} from './calendar.js';
-import {whoLink} from '/toolbar.js';
+import {whoLink} from '/appswitch.js';
 
 let month = null;
 let picked = '';

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 
 	"heliosian/internal/mail"
@@ -42,32 +41,19 @@ func (a app) cancelEvent(r *http.Request, body cancelBody) (any, error) {
 	}
 	note := strings.TrimSpace(body.Note)
 	model := a.cache.Model()
-	targets := []string{}
-	cc := map[string][]string{}
+	sent := []string{}
 	if body.Notify {
 		for _, inv := range model.Invites[e.ID] {
-			if inv.Sent == "" || isGuestKey(inv.Email) || slices.Contains(targets, inv.Email) {
-				continue
+			if inv.Sent != "" {
+				sent = append(sent, inv.Email)
 			}
-			with, reachable := a.ccFor(inv.Email)
-			if !reachable {
-				continue
-			}
-			cc[inv.Email] = with
-			targets = append(targets, inv.Email)
 		}
 	}
+	targets, cc := a.recipients(e, sent)
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return nil, err
 	}
-	hostName := actor.Email
-	if p := a.directory().Person(actor.Email); p != nil && p.FullName != "" {
-		hostName = p.FullName
-	}
-	replyTo := a.hostsOf(e)
-	if !slices.Contains(replyTo, actor.Email) {
-		replyTo = append([]string{actor.Email}, replyTo...)
-	}
+	hostName, replyTo := a.senderAndReplyTo(actor, e)
 	for _, to := range targets {
 		go a.sendCancellation(context.WithoutCancel(r.Context()), to, cc[to], replyTo, hostName, note, model.invitedEvent(e))
 	}

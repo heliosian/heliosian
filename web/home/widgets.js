@@ -1,5 +1,5 @@
 import {state, isAdmin} from './state.js';
-import {appOrigin} from '/toolbar.js';
+import {appOrigin} from '/appswitch.js';
 import {searchInput} from '/shell.js';
 import {api} from '/api.js';
 import {el, svg} from '/elements.js';

@@ -150,12 +150,7 @@ func (a app) organizer(id, email string) string {
 }
 
 func (a app) letterFor(e *Event, path string) mail.Letter {
-	day, hours := whenLines(e)
-	when := day
-	if hours != "" {
-		when += " · " + hours
-	}
-	return mail.Letter{Brand: brand, Base: a.mail.Base, Title: e.Title, When: when, Where: e.Location, Path: a.mail.Base + path}
+	return mail.Letter{Brand: brand, Base: a.mail.Base, Title: e.Title, When: when(e), Where: e.Location, Path: a.mail.Base + path}
 }
 
 func (e *Event) mailEvent(link string) mail.Event {

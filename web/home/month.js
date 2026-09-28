@@ -2,7 +2,7 @@ import {state} from './state.js';
 import {el, svg} from '/elements.js';
 import {rsvpButtons, calendarMark, calendarMenu, dropdown} from './cards.js';
 import {dayTypeClass} from '/daytype.js';
-import {appOrigin} from '/toolbar.js';
+import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
 
 let month = null;

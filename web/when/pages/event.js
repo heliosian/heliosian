@@ -4,7 +4,7 @@ import {paragraphs} from '../dom.js';
 import {el, svg, button, toast, longToast, avatar, copyText} from '/elements.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
-import {whoLink} from '/toolbar.js';
+import {whoLink} from '/appswitch.js';
 import {setTitle} from '/shell.js';
 import {load} from '/router.js';
 import {api} from '/api.js';

@@ -515,64 +515,46 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 		former: map[string]Former{},
 	}
 	model.admins = admins.Read(tables)
-	for _, row := range tables[celebrationsTab] {
+	if err := model.readCelebrations(tables[celebrationsTab], images); err != nil {
+		return nil, err
+	}
+	if err := model.readCategories(tables[categoriesTab]); err != nil {
+		return nil, err
+	}
+	if err := model.readParties(tables[partiesTab], images); err != nil {
+		return nil, err
+	}
+	model.readRedirects(tables[redirectsTab])
+	model.readInvoicing(tables[invoicingTab])
+	if err := model.readHosts(tables[hostsTab]); err != nil {
+		return nil, err
+	}
+	if err := model.readFormer(tables[formerTab]); err != nil {
+		return nil, err
+	}
+	if err := model.readTickets(tables[ticketsTab]); err != nil {
+		return nil, err
+	}
+	return model, nil
+}
+
+func (m *Model) readCelebrations(rows []store.Row, images blob.Checker) error {
+	for _, row := range rows {
 		code := strings.TrimSpace(row["Code"])
 		if code == "" {
-			model.Skipped["celebrations without a code"]++
+			m.Skipped["celebrations without a code"]++
 			continue
 		}
-		fail := func(err error) (*Model, error) {
-			return nil, fmt.Errorf("celebration %s: %w", code, err)
-		}
-		if !codeForm.MatchString(code) {
-			return fail(fmt.Errorf("code is not letters, digits and hyphens"))
-		}
-		if model.Celebration(code) != nil {
-			return fail(fmt.Errorf("is listed twice"))
-		}
-		if err := cells.Title("celebration", row["Title"], maxTitleLength); err != nil {
-			return fail(err)
-		}
-		if err := cells.Span(row["Start"], row["End"]); err != nil {
-			return fail(err)
-		}
-		if err := checkText("description", row["Description"]); err != nil {
-			return fail(err)
-		}
-		if link := strings.TrimSpace(row["Button URL"]); link != ButtonCalendar {
-			if err := cells.URL(link, true); err != nil {
-				return fail(err)
-			}
-		} else if strings.TrimSpace(row["Start"]) == "" {
-			return fail(fmt.Errorf("a calendar button needs a start date"))
-		}
-		if (strings.TrimSpace(row["Button URL"]) == "") != (strings.TrimSpace(row["Button Text"]) == "") {
-			return fail(fmt.Errorf("the button needs both its text and its link, or neither"))
-		}
-		current, err := cells.YesNo(row["Current"], false)
+		c, err := m.parseCelebration(row, code, images)
 		if err != nil {
-			return fail(fmt.Errorf("current %w", err))
+			return fmt.Errorf("celebration %s: %w", code, err)
 		}
-		banner, err := cells.YesNo(row["Banner"], false)
-		if err != nil {
-			return fail(fmt.Errorf("banner %w", err))
-		}
-		image := strings.TrimSpace(row["Image"])
-		url, err := cells.ImageURL(images, image)
-		if err != nil {
-			return fail(err)
-		}
-		c := &Celebration{
-			Code: code, Title: strings.TrimSpace(row["Title"]), Subtitle: strings.TrimSpace(row["Subtitle"]),
-			Start: row["Start"], End: row["End"], Location: strings.TrimSpace(row["Location"]), Address: strings.TrimSpace(row["Address"]),
-			Description: row["Description"], Image: image, ImageURL: url, ButtonText: strings.TrimSpace(row["Button Text"]), ButtonURL: strings.TrimSpace(row["Button URL"]), Current: current, Banner: banner,
-		}
-		model.Celebrations = append(model.Celebrations, c)
-		model.byCode[code] = c
+		m.Celebrations = append(m.Celebrations, c)
+		m.byCode[code] = c
 	}
-	slices.SortStableFunc(model.Celebrations, func(a, b *Celebration) int { return strings.Compare(b.Start, a.Start) })
+	slices.SortStableFunc(m.Celebrations, func(a, b *Celebration) int { return strings.Compare(b.Start, a.Start) })
 	current, banner := 0, 0
-	for _, c := range model.Celebrations {
+	for _, c := range m.Celebrations {
 		if c.Current {
 			current++
 		}
@@ -581,162 +563,232 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 		}
 	}
 	if current > 1 {
-		return nil, fmt.Errorf("%d celebrations are marked Current; only one may be", current)
+		return fmt.Errorf("%d celebrations are marked Current; only one may be", current)
 	}
 	if banner > 1 {
-		return nil, fmt.Errorf("%d celebrations are marked Banner; only one may be", banner)
+		return fmt.Errorf("%d celebrations are marked Banner; only one may be", banner)
 	}
+	return nil
+}
 
-	for _, row := range tables[categoriesTab] {
+func (m *Model) parseCelebration(row store.Row, code string, images blob.Checker) (*Celebration, error) {
+	if !codeForm.MatchString(code) {
+		return nil, fmt.Errorf("code is not letters, digits and hyphens")
+	}
+	if m.Celebration(code) != nil {
+		return nil, fmt.Errorf("is listed twice")
+	}
+	if err := cells.Title("celebration", row["Title"], maxTitleLength); err != nil {
+		return nil, err
+	}
+	if err := cells.Span(row["Start"], row["End"]); err != nil {
+		return nil, err
+	}
+	if err := checkText("description", row["Description"]); err != nil {
+		return nil, err
+	}
+	if link := strings.TrimSpace(row["Button URL"]); link != ButtonCalendar {
+		if err := cells.URL(link, true); err != nil {
+			return nil, err
+		}
+	} else if strings.TrimSpace(row["Start"]) == "" {
+		return nil, fmt.Errorf("a calendar button needs a start date")
+	}
+	if (strings.TrimSpace(row["Button URL"]) == "") != (strings.TrimSpace(row["Button Text"]) == "") {
+		return nil, fmt.Errorf("the button needs both its text and its link, or neither")
+	}
+	current, err := cells.YesNo(row["Current"], false)
+	if err != nil {
+		return nil, fmt.Errorf("current %w", err)
+	}
+	banner, err := cells.YesNo(row["Banner"], false)
+	if err != nil {
+		return nil, fmt.Errorf("banner %w", err)
+	}
+	image := strings.TrimSpace(row["Image"])
+	url, err := cells.ImageURL(images, image)
+	if err != nil {
+		return nil, err
+	}
+	return &Celebration{
+		Code: code, Title: strings.TrimSpace(row["Title"]), Subtitle: strings.TrimSpace(row["Subtitle"]),
+		Start: row["Start"], End: row["End"], Location: strings.TrimSpace(row["Location"]), Address: strings.TrimSpace(row["Address"]),
+		Description: row["Description"], Image: image, ImageURL: url, ButtonText: strings.TrimSpace(row["Button Text"]), ButtonURL: strings.TrimSpace(row["Button URL"]), Current: current, Banner: banner,
+	}, nil
+}
+
+func (m *Model) readCategories(rows []store.Row) error {
+	for _, row := range rows {
 		title := strings.TrimSpace(row["Title"])
 		if title == "" {
-			model.Skipped["categories without a title"]++
+			m.Skipped["categories without a title"]++
 			continue
 		}
-		if slices.Contains(model.Categories, title) {
-			return nil, fmt.Errorf("category %q is listed twice", title)
+		if slices.Contains(m.Categories, title) {
+			return fmt.Errorf("category %q is listed twice", title)
 		}
 		order := strings.TrimSpace(row[store.OrderColumn])
 		if err := store.CheckKey(order); err != nil {
-			return nil, fmt.Errorf("category %q: %w", title, err)
+			return fmt.Errorf("category %q: %w", title, err)
 		}
-		model.Categories = append(model.Categories, title)
-		model.categoryOrder[title] = order
+		m.Categories = append(m.Categories, title)
+		m.categoryOrder[title] = order
 	}
-	slices.SortStableFunc(model.Categories, func(a, b string) int {
-		return store.CompareKeys(model.categoryOrder[a], model.categoryOrder[b])
+	slices.SortStableFunc(m.Categories, func(a, b string) int {
+		return store.CompareKeys(m.categoryOrder[a], m.categoryOrder[b])
 	})
+	return nil
+}
 
-	for _, row := range tables[partiesTab] {
+func (m *Model) readParties(rows []store.Row, images blob.Checker) error {
+	for _, row := range rows {
 		id := strings.TrimSpace(row["Party ID"])
 		if id == "" {
-			model.Skipped["parties without an id"]++
+			m.Skipped["parties without an id"]++
 			continue
 		}
-		p, err := parseParty(row, model, images)
+		p, err := parseParty(row, m, images)
 		if err != nil {
-			return nil, fmt.Errorf("party %s (%s): %w", id, strings.TrimSpace(row["Title"]), err)
+			return fmt.Errorf("party %s (%s): %w", id, strings.TrimSpace(row["Title"]), err)
 		}
-		if model.Party(id) != nil {
-			return nil, fmt.Errorf("party id %s is used twice", id)
+		if m.Party(id) != nil {
+			return fmt.Errorf("party id %s is used twice", id)
 		}
 		if p.PrettyID != "" {
-			if other := model.ByPretty(p.PrettyID); other != nil {
-				return nil, fmt.Errorf("party %s (%s) and %s (%s) both have the friendly address %q", other.ID, other.Title, id, p.Title, p.PrettyID)
+			if other := m.ByPretty(p.PrettyID); other != nil {
+				return fmt.Errorf("party %s (%s) and %s (%s) both have the friendly address %q", other.ID, other.Title, id, p.Title, p.PrettyID)
 			}
-			model.pretty[p.PrettyID] = p
+			m.pretty[p.PrettyID] = p
 		}
-		model.Parties = append(model.Parties, p)
-		model.byParty[id] = p
+		m.Parties = append(m.Parties, p)
+		m.byParty[id] = p
 	}
+	return nil
+}
 
-	for _, row := range tables[redirectsTab] {
+func (m *Model) readRedirects(rows []store.Row) {
+	for _, row := range rows {
 		old, to := redirectPath(row["Old"]), redirectPath(row["New"])
 		if old == "" || to == "" {
-			model.Skipped["redirects without both ends"]++
+			m.Skipped["redirects without both ends"]++
 			continue
 		}
-		model.Redirects = append(model.Redirects, Redirect{Type: strings.TrimSpace(row["Type"]), Old: old, New: to, Date: row["Date"]})
+		m.Redirects = append(m.Redirects, Redirect{Type: strings.TrimSpace(row["Type"]), Old: old, New: to, Date: row["Date"]})
 	}
+}
 
-	for _, row := range tables[invoicingTab] {
+func (m *Model) readInvoicing(rows []store.Row) {
+	for _, row := range rows {
 		title, purchaser := strings.TrimSpace(row["Party Title"]), config.NormalizeEmail(row["Purchaser Email"])
 		if title == "" || purchaser == "" {
-			model.Skipped["invoicing rows naming no party or purchaser"]++
+			m.Skipped["invoicing rows naming no party or purchaser"]++
 			continue
 		}
 		quantity, _ := strconv.Atoi(strings.TrimSpace(row["Quantity"]))
 		cost, _ := ParsePrice(row["Cost"])
-		model.Invoicing = append(model.Invoicing, InvoiceLine{
+		m.Invoicing = append(m.Invoicing, InvoiceLine{
 			Date: strings.TrimSpace(row["Date"]), Party: title, Code: strings.TrimSpace(row["Event Code"]), Purchaser: purchaser,
 			Guest: strings.TrimSpace(row["Guest Name"]), Action: strings.TrimSpace(row["Action"]), Quantity: quantity, Cost: cost,
 			Invoice: strings.TrimSpace(row["Invoice"]), InvoiceTo: strings.TrimSpace(row["Invoice To"]),
 		})
 	}
+}
 
-	for _, row := range tables[hostsTab] {
-		p := model.Party(strings.TrimSpace(row["Party ID"]))
+func (m *Model) readHosts(rows []store.Row) error {
+	for _, row := range rows {
+		p := m.Party(strings.TrimSpace(row["Party ID"]))
 		if p == nil {
-			model.Skipped["hosts of no party"]++
+			m.Skipped["hosts of no party"]++
 			continue
 		}
 		email := strings.ToLower(strings.TrimSpace(row["Email"]))
 		if err := checkEmail(email); err != nil {
-			return nil, fmt.Errorf("host of %s: %w", p.Title, err)
+			return fmt.Errorf("host of %s: %w", p.Title, err)
 		}
 		if !slices.Contains(p.HostEmails, email) {
 			p.HostEmails = append(p.HostEmails, email)
 		}
 	}
+	return nil
+}
 
-	for _, row := range tables[formerTab] {
+func (m *Model) readFormer(rows []store.Row) error {
+	for _, row := range rows {
 		old, to := config.NormalizeEmail(row["Old"]), config.NormalizeEmail(row["New"])
 		if old == "" && to == "" {
 			continue
 		}
-		fail := func(err error) (*Model, error) {
-			return nil, fmt.Errorf("former address %s: %w", old, err)
+		f, err := m.parseFormer(row, old, to)
+		if err != nil {
+			return fmt.Errorf("former address %s: %w", old, err)
 		}
-		if err := checkEmail(old); err != nil {
-			return fail(err)
-		}
-		if err := checkEmail(to); err != nil {
-			return fail(fmt.Errorf("new %w", err))
-		}
-		if old == to {
-			return fail(fmt.Errorf("moves to itself"))
-		}
-		if _, dup := model.former[old]; dup {
-			return fail(fmt.Errorf("is listed twice"))
-		}
-		name := strings.TrimSpace(row["Name"])
-		if len(name) > maxNameLength {
-			return fail(fmt.Errorf("name is too long"))
-		}
-		model.former[old] = Former{New: to, Name: name, Changed: strings.TrimSpace(row["Changed"])}
+		m.former[old] = f
 	}
-	for old, f := range model.former {
-		if _, ok := model.former[f.New]; ok {
-			return nil, fmt.Errorf("former address %s moves to %s, which has itself moved: point it at where that went", old, f.New)
+	for old, f := range m.former {
+		if _, ok := m.former[f.New]; ok {
+			return fmt.Errorf("former address %s moves to %s, which has itself moved: point it at where that went", old, f.New)
 		}
 	}
+	return nil
+}
 
-	for _, row := range tables[ticketsTab] {
+func (m *Model) parseFormer(row store.Row, old, to string) (Former, error) {
+	if err := checkEmail(old); err != nil {
+		return Former{}, err
+	}
+	if err := checkEmail(to); err != nil {
+		return Former{}, fmt.Errorf("new %w", err)
+	}
+	if old == to {
+		return Former{}, fmt.Errorf("moves to itself")
+	}
+	if _, dup := m.former[old]; dup {
+		return Former{}, fmt.Errorf("is listed twice")
+	}
+	name := strings.TrimSpace(row["Name"])
+	if len(name) > maxNameLength {
+		return Former{}, fmt.Errorf("name is too long")
+	}
+	return Former{New: to, Name: name, Changed: strings.TrimSpace(row["Changed"])}, nil
+}
+
+func (m *Model) readTickets(rows []store.Row) error {
+	for _, row := range rows {
 		id := strings.TrimSpace(row["Ticket ID"])
 		if id == "" {
-			model.Skipped["tickets without an id"]++
+			m.Skipped["tickets without an id"]++
 			continue
 		}
-		p := model.Party(strings.TrimSpace(row["Party ID"]))
+		p := m.Party(strings.TrimSpace(row["Party ID"]))
 		if p == nil {
-			model.Skipped["tickets for no party"]++
+			m.Skipped["tickets for no party"]++
 			continue
 		}
 		t, err := parseTicket(row, id)
 		if err != nil {
-			return nil, fmt.Errorf("ticket %s on %s: %w", id, p.Title, err)
+			return fmt.Errorf("ticket %s on %s: %w", id, p.Title, err)
 		}
-		if f, ok := model.former[t.Email]; ok {
+		if f, ok := m.former[t.Email]; ok {
 			t.Email = f.New
 			if t.Name == "" {
 				t.Name = f.Name
 			}
 		}
-		t.Purchaser = model.CurrentAddress(t.Purchaser)
-		if _, dup := model.byTicket[id]; dup {
-			return nil, fmt.Errorf("ticket id %s is used twice", id)
+		t.Purchaser = m.CurrentAddress(t.Purchaser)
+		if _, dup := m.byTicket[id]; dup {
+			return fmt.Errorf("ticket id %s is used twice", id)
 		}
 		p.Tickets = append(p.Tickets, *t)
-		model.byTicket[id] = t
-		model.ticketParties[id] = p
+		m.byTicket[id] = t
+		m.ticketParties[id] = p
 	}
-	for _, p := range model.Parties {
+	for _, p := range m.Parties {
 		slices.SortStableFunc(p.Tickets, compareAdded)
 		for i := range p.Tickets {
-			model.byTicket[p.Tickets[i].ID] = &p.Tickets[i]
+			m.byTicket[p.Tickets[i].ID] = &p.Tickets[i]
 		}
 	}
-	return model, nil
+	return nil
 }
 
 func parseParty(row store.Row, model *Model, images blob.Checker) (*Party, error) {

@@ -1,6 +1,5 @@
-import {onSlash} from '/toolbar.js';
 import {api, signedIn} from '/api.js';
-import {initTopbar, renderAccount} from '/shell.js';
+import {initTopbar, renderAccount, onSlash} from '/shell.js';
 import {render, stable} from '/markdown.js';
 import {el, toast} from '/elements.js';
 

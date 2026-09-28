@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 	"unicode"
 
@@ -187,14 +186,6 @@ func withLinked(events []*Event, linked []Linked) []*Event {
 		}
 		out = append(out, e)
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if !out[i].start.Equal(out[j].start) {
-			return out[i].start.Before(out[j].start)
-		}
-		if out[i].Title != out[j].Title {
-			return out[i].Title < out[j].Title
-		}
-		return out[i].ID < out[j].ID
-	})
+	slices.SortStableFunc(out, byStart)
 	return out
 }

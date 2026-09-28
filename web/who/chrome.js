@@ -9,8 +9,7 @@ import {staleItems, familyInfoBanner, familyNavPeople, personTodoCount} from './
 import {searchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
 import {load} from '/router.js';
-import {onSlash, isEditableTarget} from '/toolbar.js';
-import {initShell, renderAccount, searchInput, syncViewportHeight} from '/shell.js';
+import {initShell, renderAccount, searchInput, syncViewportHeight, onSlash, isEditableTarget} from '/shell.js';
 import {setSuperEdit} from '/superedit.js';
 
 const primaryNavItems = [

@@ -357,166 +357,177 @@ export function invitesPage() {
     if (!systems.some(s => s.name === state.gvSystem)) {
       state.gvSystem = systems[0].name;
     }
-
-    function renderAll() {
-      settings.replaceChildren();
-      content.replaceChildren();
-      renderInviteSettings(systems, settings, renderAll, renderGrid);
-
-      const header = el('div', 'content-header content-header-solo');
-      const controls = el('div', 'controls');
-      controls.append(roleChips(renderGrid));
-      const search = el('div', 'search');
-      search.append(svg('search'));
-      const input = el('input');
-      input.placeholder = 'Search';
-      input.value = state.q;
-      input.addEventListener('input', () => {
-        state.q = input.value.trim().toLowerCase();
-        renderGrid();
-      });
-      search.append(input);
-      controls.append(
-        facetDropdown('Grade', null, gradeOptions(), state.filterGrades, renderGrid),
-        facetDropdown('Classroom', null, state.model.classrooms.map(c => c.name), state.filterClassrooms, renderGrid),
-      );
-      if (tagFacetOptions().length) {
-        controls.append(facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, renderAll));
-      }
-      const relationOptions = state.filterTags.size === 1 ? tagRelationOptionsFor([...state.filterTags][0]) : [];
-      if (relationOptions.length) {
-        const [activeTag] = state.filterTags;
-        controls.append(facetDropdown('Include', null, relationOptions, state.filterTagRelations, () => {
-          saveTagRelations(activeTag, state.filterTagRelations);
-          renderGrid();
-        }));
-      }
-      const download = el('a', 'filter-button email-download');
-      download.title = 'Download what the list currently shows';
-      download.append(svg('download'), el('span', '', 'CSV'));
-      controls.append(search, download);
-      header.append(controls);
-      content.append(header);
-
-      const grid = el('div');
-      content.append(grid);
-
-      function renderGrid() {
-        grid.replaceChildren();
-        grid.className = '';
-        const system = systems.find(s => s.name === state.gvSystem) || systems[0];
-        const entries = invitesEntries();
-        const rows = applyInviteTemplate(system, entries);
-
-        const header = system.columns.map(c => c.name);
-        const csvLines = rows.map(r => r.cells.map(csvField).join(','));
-        if (system.headerRow) {
-          csvLines.unshift(header.map(csvField).join(','));
-        }
-        download.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvLines.join('\n'));
-        download.download = slugify(system.name) + '.csv';
-
-        if (!rows.length) {
-          grid.append(el('div', 'empty', 'No matches.'));
-          return;
-        }
-
-        grid.className = 'email-holder';
-        const table = el('table', 'email-table');
-        const thead = el('thead');
-        const headRow = el('tr');
-        const leadTh = el('th', 'email-copy-cell');
-        const copyTable = el('button', 'email-copy-columns');
-        copyTable.title = 'Copy the whole table to the clipboard';
-        copyTable.append(svg('copy'));
-        copyTable.addEventListener('click', () => {
-          const lines = [header.join('\t')].concat(rows.map(r => r.cells.join('\t')));
-          navigator.clipboard.writeText(lines.join('\n'));
-          copyTable.classList.add('copied');
-          copyTable.replaceChildren(svg('check'));
-          setTimeout(() => {
-            copyTable.classList.remove('copied');
-            copyTable.replaceChildren(svg('copy'));
-          }, 1200);
-        });
-        leadTh.append(copyTable);
-        headRow.append(leadTh);
-        system.columns.forEach(column => {
-          const th = el('th');
-          if (isGreetingTemplate(column.template)) {
-            const headSelect = el('select', 'gv-select gv-th-select');
-            const formats = greetingFormatsFor(state.gvInviteBy, system.supportsGroups);
-            const meEmail = document.body.dataset.userEmail;
-            const mine = formats.filter(f => f.createdBy && f.createdBy === meEmail);
-            const appendOptions = (parent, list) => {
-              for (const f of list) {
-                const option = el('option', '', f.name);
-                option.value = f.name;
-                parent.append(option);
-              }
-            };
-            if (mine.length) {
-              const mineGroup = el('optgroup');
-              mineGroup.label = 'Yours';
-              appendOptions(mineGroup, mine);
-              headSelect.append(mineGroup);
-              const everyoneGroup = el('optgroup');
-              everyoneGroup.label = 'Everyone’s';
-              appendOptions(everyoneGroup, formats.filter(f => !mine.includes(f)));
-              headSelect.append(everyoneGroup);
-            } else {
-              appendOptions(headSelect, formats);
-            }
-            const divider = el('option', '', '──────────');
-            divider.disabled = true;
-            headSelect.append(divider);
-            const editOption = el('option', '', '(Edit Greetings)');
-            editOption.value = '__new__';
-            headSelect.append(editOption);
-            headSelect.value = state.gvGreeting;
-            headSelect.addEventListener('change', () => {
-              if (headSelect.value === '__new__') {
-                headSelect.value = state.gvGreeting;
-                openGreetingDialog(render);
-                return;
-              }
-              state.gvGreeting = headSelect.value;
-              renderAll();
-            });
-            th.append(headSelect);
-          } else {
-            th.append(el('span', '', column.name));
-          }
-          headRow.append(th);
-        });
-        thead.append(headRow);
-        table.append(thead);
-        const tbody = el('tbody');
-        rows.forEach((r, rowIndex) => {
-          const tr = el('tr');
-          const num = el('td', 'email-num');
-          num.append(el('span', '', String(rowIndex + 1)), copyGlyph(r.cells.join('\t')));
-          tr.append(num);
-          r.cells.forEach((value, i) => {
-            const td = el('td', i === 0 ? 'email-name' : '', i === 0 ? '' : value);
-            if (i === 0) {
-              const link = el('a', '', value);
-              link.href = r.entry.linkHref;
-              td.append(link);
-            }
-            tr.append(td);
-          });
-          tbody.append(tr);
-        });
-        table.append(tbody);
-        grid.append(table);
-      }
-      renderGrid();
-      input.focus();
-    }
-    renderAll();
+    renderInvites(systems, settings, content);
   });
   return page;
+}
+
+function renderInvites(systems, settings, content) {
+  settings.replaceChildren();
+  content.replaceChildren();
+  const view = {systems, grid: el('div'), download: el('a', 'filter-button email-download')};
+  const again = () => renderInvites(systems, settings, content);
+  const paint = () => renderInviteGrid(view, again);
+  renderInviteSettings(systems, settings, again, paint);
+  const {header, input} = invitesControls(view, again, paint);
+  content.append(header, view.grid);
+  paint();
+  input.focus();
+}
+
+function invitesControls(view, again, paint) {
+  const header = el('div', 'content-header content-header-solo');
+  const controls = el('div', 'controls');
+  controls.append(roleChips(paint));
+  const search = el('div', 'search');
+  search.append(svg('search'));
+  const input = el('input');
+  input.placeholder = 'Search';
+  input.value = state.q;
+  input.addEventListener('input', () => {
+    state.q = input.value.trim().toLowerCase();
+    paint();
+  });
+  search.append(input);
+  controls.append(
+    facetDropdown('Grade', null, gradeOptions(), state.filterGrades, paint),
+    facetDropdown('Classroom', null, state.model.classrooms.map(c => c.name), state.filterClassrooms, paint),
+  );
+  if (tagFacetOptions().length) {
+    controls.append(facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, again));
+  }
+  const relationOptions = state.filterTags.size === 1 ? tagRelationOptionsFor([...state.filterTags][0]) : [];
+  if (relationOptions.length) {
+    const [activeTag] = state.filterTags;
+    controls.append(facetDropdown('Include', null, relationOptions, state.filterTagRelations, () => {
+      saveTagRelations(activeTag, state.filterTagRelations);
+      paint();
+    }));
+  }
+  const {download} = view;
+  download.title = 'Download what the list currently shows';
+  download.append(svg('download'), el('span', '', 'CSV'));
+  controls.append(search, download);
+  header.append(controls);
+  return {header, input};
+}
+
+function renderInviteGrid(view, again) {
+  const {systems, grid, download} = view;
+  grid.replaceChildren();
+  grid.className = '';
+  const system = systems.find(s => s.name === state.gvSystem) || systems[0];
+  const rows = applyInviteTemplate(system, invitesEntries());
+  const header = system.columns.map(c => c.name);
+  const csvLines = rows.map(r => r.cells.map(csvField).join(','));
+  if (system.headerRow) {
+    csvLines.unshift(header.map(csvField).join(','));
+  }
+  download.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvLines.join('\n'));
+  download.download = slugify(system.name) + '.csv';
+  if (!rows.length) {
+    grid.append(el('div', 'empty', 'No matches.'));
+    return;
+  }
+  grid.className = 'email-holder';
+  const table = el('table', 'email-table');
+  table.append(inviteTableHead(system, header, rows, again), inviteTableBody(rows));
+  grid.append(table);
+}
+
+function inviteTableHead(system, header, rows, again) {
+  const thead = el('thead');
+  const headRow = el('tr');
+  const leadTh = el('th', 'email-copy-cell');
+  leadTh.append(copyTableButton(header, rows));
+  headRow.append(leadTh);
+  for (const column of system.columns) {
+    const th = el('th');
+    th.append(isGreetingTemplate(column.template) ? greetingHeadSelect(system, again) : el('span', '', column.name));
+    headRow.append(th);
+  }
+  thead.append(headRow);
+  return thead;
+}
+
+function copyTableButton(header, rows) {
+  const copyTable = el('button', 'email-copy-columns');
+  copyTable.title = 'Copy the whole table to the clipboard';
+  copyTable.append(svg('copy'));
+  copyTable.addEventListener('click', () => {
+    const lines = [header.join('\t')].concat(rows.map(r => r.cells.join('\t')));
+    navigator.clipboard.writeText(lines.join('\n'));
+    copyTable.classList.add('copied');
+    copyTable.replaceChildren(svg('check'));
+    setTimeout(() => {
+      copyTable.classList.remove('copied');
+      copyTable.replaceChildren(svg('copy'));
+    }, 1200);
+  });
+  return copyTable;
+}
+
+function appendGreetingOptions(parent, list) {
+  for (const f of list) {
+    const option = el('option', '', f.name);
+    option.value = f.name;
+    parent.append(option);
+  }
+}
+
+function greetingHeadSelect(system, again) {
+  const headSelect = el('select', 'gv-select gv-th-select');
+  const formats = greetingFormatsFor(state.gvInviteBy, system.supportsGroups);
+  const meEmail = document.body.dataset.userEmail;
+  const mine = formats.filter(f => f.createdBy && f.createdBy === meEmail);
+  if (mine.length) {
+    const mineGroup = el('optgroup');
+    mineGroup.label = 'Yours';
+    appendGreetingOptions(mineGroup, mine);
+    const everyoneGroup = el('optgroup');
+    everyoneGroup.label = 'Everyone’s';
+    appendGreetingOptions(everyoneGroup, formats.filter(f => !mine.includes(f)));
+    headSelect.append(mineGroup, everyoneGroup);
+  } else {
+    appendGreetingOptions(headSelect, formats);
+  }
+  const divider = el('option', '', '──────────');
+  divider.disabled = true;
+  const editOption = el('option', '', '(Edit Greetings)');
+  editOption.value = '__new__';
+  headSelect.append(divider, editOption);
+  headSelect.value = state.gvGreeting;
+  headSelect.addEventListener('change', () => {
+    if (headSelect.value === '__new__') {
+      headSelect.value = state.gvGreeting;
+      openGreetingDialog(render);
+      return;
+    }
+    state.gvGreeting = headSelect.value;
+    again();
+  });
+  return headSelect;
+}
+
+function inviteTableBody(rows) {
+  const tbody = el('tbody');
+  rows.forEach((r, rowIndex) => {
+    const tr = el('tr');
+    const num = el('td', 'email-num');
+    num.append(el('span', '', String(rowIndex + 1)), copyGlyph(r.cells.join('\t')));
+    tr.append(num);
+    r.cells.forEach((value, i) => {
+      const td = el('td', i === 0 ? 'email-name' : '', i === 0 ? '' : value);
+      if (i === 0) {
+        const link = el('a', '', value);
+        link.href = r.entry.linkHref;
+        td.append(link);
+      }
+      tr.append(td);
+    });
+    tbody.append(tr);
+  });
+  return tbody;
 }
 
 const serviceLogos = {
@@ -578,7 +589,6 @@ const GREETING_PREVIEW_FAMILY = {
 function openGreetingDialog(onSaved) {
   const overlay = el('div', 'greeting-dialog-overlay');
   const panel = el('div', 'greeting-dialog-panel');
-
   const close = openLayer(() => {
     overlay.remove();
     document.removeEventListener('keydown', onKey);
@@ -594,174 +604,190 @@ function openGreetingDialog(onSaved) {
     }
   });
   document.addEventListener('keydown', onKey);
+  const dialog = greetingDialogState(close, onSaved);
+  panel.append(greetingDialogHeader(close), greetingForm(dialog));
+  overlay.append(panel);
+  document.body.append(overlay);
+  dialog.formatInput.focus();
+  dialog.formatInput.select();
+}
 
+function greetingDialogState(close, onSaved) {
+  const formatInput = el('input');
+  formatInput.maxLength = 200;
+  formatInput.required = true;
+  const error = el('div', 'gv-new-greeting-error');
+  error.hidden = true;
+  const previewNote = el('div', 'gv-new-greeting-preview-note',
+    'No phrase matched, so this will show exactly as typed for every family - fine for a fixed line, not if you meant to personalize it.');
+  previewNote.hidden = true;
+  return {
+    close,
+    onSaved,
+    grouped: state.gvInviteBy === 'group',
+    original: '',
+    cards: [],
+    formatInput,
+    previewValue: el('span', 'gv-new-greeting-preview-value'),
+    previewNote,
+    editorSection: el('div', 'gv-greeting-editor'),
+    error,
+  };
+}
+
+function greetingDialogHeader(close) {
   const header = el('div', 'greeting-dialog-header');
   const headerIcon = el('div', 'greeting-dialog-icon');
   headerIcon.append(svg('sparkle'));
-  header.append(headerIcon);
   const headerText = el('div', 'greeting-dialog-header-text');
   headerText.append(
     el('div', 'greeting-dialog-title', 'Edit Greeting'),
     el('div', 'greeting-dialog-subtitle', 'Create a sample greeting for this family.'),
   );
-  header.append(headerText);
   const headerClose = el('button', 'greeting-dialog-close');
   headerClose.type = 'button';
   headerClose.setAttribute('aria-label', 'Close');
   headerClose.append(svg('close'));
   headerClose.addEventListener('click', close);
-  header.append(headerClose);
-  panel.append(header);
+  header.append(headerIcon, headerText, headerClose);
+  return header;
+}
 
+function greetingForm(dialog) {
+  const {formatInput, editorSection} = dialog;
   const form = el('form', 'gv-new-greeting-form');
-
-  const grouped = state.gvInviteBy === 'group';
-
-  let original = '';
-  let cards = [];
-
-  const formatLabel = el('label', 'gv-new-greeting-field');
-  formatLabel.append(el('span', '', 'Greeting'));
-  const formatInput = el('input');
-  formatInput.maxLength = 200;
-  formatInput.required = true;
-  formatLabel.append(formatInput);
-
-  const previewValue = el('span', 'gv-new-greeting-preview-value');
-  const preview = el('div', 'gv-new-greeting-preview');
-  preview.append(el('div', 'gv-new-greeting-preview-label', 'Preview'), previewValue);
-  const previewNote = el('div', 'gv-new-greeting-preview-note',
-    'No phrase matched, so this will show exactly as typed for every family - fine for a fixed line, not if you meant to personalize it.');
-  previewNote.hidden = true;
-  function updatePreview() {
-    const format = formatInput.value;
-    const rendered = grouped
-      ? buildGreeting(format, GREETING_PREVIEW_FAMILY)
-      : buildGreeting(format, {person: GREETING_PREVIEW_FAMILY.adults[0]});
-    previewValue.textContent = rendered || '(empty)';
-    previewNote.hidden = rendered !== format;
-  }
-  formatInput.addEventListener('input', updatePreview);
-
-  const editorSection = el('div', 'gv-greeting-editor');
-
-  function loadGreeting(g) {
-    original = g ? g.name : '';
-    formatInput.value = g ? g.format : defaultGreetingFormat();
-    cards.forEach(({card, greeting}) => card.classList.toggle('active', greeting === g));
-    editorSection.hidden = false;
-    updatePreview();
-    formatInput.focus();
-    formatInput.select();
-  }
-
+  formatInput.addEventListener('input', () => updateGreetingPreview(dialog));
   const meEmail = document.body.dataset.userEmail;
   const mine = inviteGreetings.filter(g => g.createdBy && g.createdBy === meEmail);
   if (mine.length) {
-    const listWrap = el('div', 'gv-greeting-list');
-    listWrap.append(el('div', 'gv-greeting-list-title', 'Your greetings'));
-    for (const g of mine) {
-      const card = el('div', 'gv-greeting-card');
-      card.append(el('span', 'gv-greeting-card-text', g.format));
-      const cardActions = el('div', 'gv-greeting-card-actions');
-      const editBtn = el('button', 'gv-greeting-card-btn');
-      editBtn.type = 'button';
-      editBtn.title = 'Edit';
-      editBtn.append(svg('edit'));
-      editBtn.addEventListener('click', () => loadGreeting(g));
-      const deleteBtn = el('button', 'gv-greeting-card-btn gv-greeting-card-btn-delete');
-      deleteBtn.type = 'button';
-      deleteBtn.title = 'Delete';
-      deleteBtn.append(svg('trash'));
-      deleteBtn.addEventListener('click', async () => {
-        if (!confirm(`Delete "${g.format}"? This can't be undone.`)) {
-          return;
-        }
-        error.hidden = true;
-        deleteBtn.disabled = true;
-        try {
-          // Go's ParseForm ignores a DELETE body, so the name rides in the query.
-          await api('DELETE', `/api/directory/greetings?${new URLSearchParams({name: g.name})}`);
-          inviteSystems = null;
-          close();
-          onSaved();
-        } catch (err) {
-          error.hidden = false;
-          error.textContent = 'Couldn’t delete that greeting - try again.';
-          deleteBtn.disabled = false;
-        }
-      });
-      cardActions.append(editBtn, deleteBtn);
-      card.append(cardActions);
-      cards.push({card, greeting: g});
-      listWrap.append(card);
-    }
-    const addButton = el('button', 'gv-greeting-add');
-    addButton.type = 'button';
-    const addIcon = el('span', 'gv-greeting-add-icon');
-    addIcon.append(svg('plus'));
-    addButton.append(addIcon, el('span', '', 'Add another greeting'));
-    addButton.addEventListener('click', () => loadGreeting(null));
-    listWrap.append(addButton);
-    form.append(listWrap);
+    form.append(greetingList(dialog, mine));
     editorSection.append(el('div', 'gv-greeting-divider'));
   }
-
   formatInput.value = defaultGreetingFormat();
-  editorSection.append(formatLabel);
-  editorSection.append(preview, previewNote);
-  updatePreview();
-
+  const formatLabel = el('label', 'gv-new-greeting-field');
+  formatLabel.append(el('span', '', 'Greeting'), formatInput);
+  const preview = el('div', 'gv-new-greeting-preview');
+  preview.append(el('div', 'gv-new-greeting-preview-label', 'Preview'), dialog.previewValue);
+  editorSection.append(formatLabel, preview, dialog.previewNote);
+  updateGreetingPreview(dialog);
   const hint = el('div', 'gv-new-greeting-hint',
     'Use the family’s actual names (e.g., Pat, Quinn, Ali, Bo) in your own words.');
-  editorSection.append(hint);
-
-  const error = el('div', 'gv-new-greeting-error');
-  error.hidden = true;
-  editorSection.append(error);
-
   const actions = el('div', 'gv-new-greeting-actions');
   const cancel = el('button', 'gv-new-greeting-cancel', 'Cancel');
   cancel.type = 'button';
-  cancel.addEventListener('click', close);
+  cancel.addEventListener('click', dialog.close);
   const save = el('button', 'filter-done gv-new-greeting-save', 'Save');
   save.type = 'submit';
   actions.append(cancel, save);
-  editorSection.append(actions);
+  editorSection.append(hint, dialog.error, actions);
   editorSection.hidden = mine.length > 0;
   form.append(editorSection);
-
-  form.addEventListener('submit', async e => {
+  form.addEventListener('submit', e => {
     e.preventDefault();
-    const format = formatInput.value.trim();
-    if (!format) {
-      return;
-    }
-    error.hidden = true;
-    save.disabled = true;
-    try {
-      const body = new FormData();
-      body.append('format', format);
-      body.append('original', original);
-      body.append('grouped', state.gvInviteBy === 'group' ? '1' : '0');
-      body.append('individual', state.gvInviteBy !== 'group' ? '1' : '0');
-      await api('POST', '/api/directory/greetings', body);
-      inviteSystems = null;
-      state.gvGreeting = format;
-      close();
-      onSaved();
-    } catch (err) {
-      error.hidden = false;
-      error.textContent = 'Couldn’t save that greeting - try again.';
-      save.disabled = false;
-    }
+    saveGreeting(dialog, save);
   });
+  return form;
+}
 
-  panel.append(form);
-  overlay.append(panel);
-  document.body.append(overlay);
-  formatInput.focus();
-  formatInput.select();
+function updateGreetingPreview(dialog) {
+  const format = dialog.formatInput.value;
+  const rendered = dialog.grouped
+    ? buildGreeting(format, GREETING_PREVIEW_FAMILY)
+    : buildGreeting(format, {person: GREETING_PREVIEW_FAMILY.adults[0]});
+  dialog.previewValue.textContent = rendered || '(empty)';
+  dialog.previewNote.hidden = rendered !== format;
+}
+
+function loadGreeting(dialog, g) {
+  dialog.original = g ? g.name : '';
+  dialog.formatInput.value = g ? g.format : defaultGreetingFormat();
+  dialog.cards.forEach(({card, greeting}) => card.classList.toggle('active', greeting === g));
+  dialog.editorSection.hidden = false;
+  updateGreetingPreview(dialog);
+  dialog.formatInput.focus();
+  dialog.formatInput.select();
+}
+
+function greetingList(dialog, mine) {
+  const listWrap = el('div', 'gv-greeting-list');
+  listWrap.append(el('div', 'gv-greeting-list-title', 'Your greetings'));
+  for (const g of mine) {
+    listWrap.append(greetingCard(dialog, g));
+  }
+  const addButton = el('button', 'gv-greeting-add');
+  addButton.type = 'button';
+  const addIcon = el('span', 'gv-greeting-add-icon');
+  addIcon.append(svg('plus'));
+  addButton.append(addIcon, el('span', '', 'Add another greeting'));
+  addButton.addEventListener('click', () => loadGreeting(dialog, null));
+  listWrap.append(addButton);
+  return listWrap;
+}
+
+function greetingCard(dialog, g) {
+  const card = el('div', 'gv-greeting-card');
+  card.append(el('span', 'gv-greeting-card-text', g.format));
+  const cardActions = el('div', 'gv-greeting-card-actions');
+  const editBtn = el('button', 'gv-greeting-card-btn');
+  editBtn.type = 'button';
+  editBtn.title = 'Edit';
+  editBtn.append(svg('edit'));
+  editBtn.addEventListener('click', () => loadGreeting(dialog, g));
+  const deleteBtn = el('button', 'gv-greeting-card-btn gv-greeting-card-btn-delete');
+  deleteBtn.type = 'button';
+  deleteBtn.title = 'Delete';
+  deleteBtn.append(svg('trash'));
+  deleteBtn.addEventListener('click', () => deleteGreeting(dialog, g, deleteBtn));
+  cardActions.append(editBtn, deleteBtn);
+  card.append(cardActions);
+  dialog.cards.push({card, greeting: g});
+  return card;
+}
+
+async function deleteGreeting(dialog, g, deleteBtn) {
+  const {error} = dialog;
+  if (!confirm(`Delete "${g.format}"? This can't be undone.`)) {
+    return;
+  }
+  error.hidden = true;
+  deleteBtn.disabled = true;
+  try {
+    // Go's ParseForm ignores a DELETE body, so the name rides in the query.
+    await api('DELETE', `/api/directory/greetings?${new URLSearchParams({name: g.name})}`);
+    inviteSystems = null;
+    dialog.close();
+    dialog.onSaved();
+  } catch (err) {
+    error.hidden = false;
+    error.textContent = 'Couldn’t delete that greeting - try again.';
+    deleteBtn.disabled = false;
+  }
+}
+
+async function saveGreeting(dialog, save) {
+  const {error} = dialog;
+  const format = dialog.formatInput.value.trim();
+  if (!format) {
+    return;
+  }
+  error.hidden = true;
+  save.disabled = true;
+  try {
+    const body = new FormData();
+    body.append('format', format);
+    body.append('original', dialog.original);
+    body.append('grouped', state.gvInviteBy === 'group' ? '1' : '0');
+    body.append('individual', state.gvInviteBy !== 'group' ? '1' : '0');
+    await api('POST', '/api/directory/greetings', body);
+    inviteSystems = null;
+    state.gvGreeting = format;
+    dialog.close();
+    dialog.onSaved();
+  } catch (err) {
+    error.hidden = false;
+    error.textContent = 'Couldn’t save that greeting - try again.';
+    save.disabled = false;
+  }
 }
 
 function gvSegment(row, label, infoText) {

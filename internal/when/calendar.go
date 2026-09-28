@@ -1,6 +1,7 @@
 package when
 
 import (
+	"cmp"
 	"encoding/base64"
 	"fmt"
 	"regexp"
@@ -1214,6 +1215,10 @@ func (b *builder) days(dayOverrides []store.Row) error {
 	return nil
 }
 
+func byStart(x, y *Event) int {
+	return cmp.Or(x.start.Compare(y.start), cmp.Compare(x.Title, y.Title), cmp.Compare(x.ID, y.ID))
+}
+
 func BuildModel(tables store.Tables, roster Roster) (*Model, error) {
 	dayTypes, err := parseDayTypes(tables[DayTypesTab])
 	if err != nil {
@@ -1300,15 +1305,7 @@ func BuildModel(tables store.Tables, roster Roster) (*Model, error) {
 	if err := b.applyOverrides(tables[OverridesTab]); err != nil {
 		return nil, err
 	}
-	sort.SliceStable(m.Events, func(i, j int) bool {
-		if !m.Events[i].start.Equal(m.Events[j].start) {
-			return m.Events[i].start.Before(m.Events[j].start)
-		}
-		if m.Events[i].Title != m.Events[j].Title {
-			return m.Events[i].Title < m.Events[j].Title
-		}
-		return m.Events[i].ID < m.Events[j].ID
-	})
+	slices.SortStableFunc(m.Events, byStart)
 	b.settle()
 	if err := b.years(tables[PDFTab]); err != nil {
 		return nil, err

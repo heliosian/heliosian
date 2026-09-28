@@ -1,4 +1,4 @@
-import {whoLink} from '/toolbar.js';
+import {whoLink} from '/appswitch.js';
 import {el, thumb} from '/elements.js';
 
 export function pageHead(title, actions) {

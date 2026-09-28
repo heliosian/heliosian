@@ -69,9 +69,9 @@ func (a app) extInvite(r *http.Request) (Invite, *Event, error) {
 	if !ok {
 		return Invite{}, nil, access.Missing("that invitation is not here")
 	}
-	e := a.eventFor(inv.Email, false, inv.EventID)
-	if e == nil {
-		return Invite{}, nil, access.Missing("that event is not on the calendar")
+	e, err := a.findEvent(access.Actor{Email: inv.Email}, inv.EventID)
+	if err != nil {
+		return Invite{}, nil, err
 	}
 	return inv, model.invitedEvent(e), nil
 }

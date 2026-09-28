@@ -122,7 +122,7 @@
    the directory wants updated for the new year, and the warning triangle for
    a privacy mismatch. Who? reckons them itself and hangs its own dropdown off
    the count; the other apps get the numbers from the server and link across
-   to Who? (renderAlerts in toolbar.js). */
+   to Who? (renderAlerts in alerts.js). */
 .topbar-alert {
   display: flex;
   align-items: center;
@@ -179,7 +179,7 @@
 /* Each badge sits in a wrap the card it drops down hangs off: the count's
    card is Who?'s new-year checklist there and a line across to it elsewhere,
    the triangle's says what the mismatch is. Both open on hover (alertMenu
-   in toolbar.js) as a pale yellow card with a gold bar. */
+   in alerts.js) as a pale yellow card with a gold bar. */
 /* The badges - RSVP's calendar, the approvals' hourglass, the late birthdays' cake, the directory's
    bell, and the privacy triangle, which has no count - as one family: a dark teal disc with the icon in white
    and the count on a dot at its top right, ringed in the bar's own colour -
@@ -316,7 +316,7 @@ a.alert-card:hover { background: color-mix(in srgb, var(--tone) 5%, var(--alert-
 .alert-list-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Super Admin Mode's switch, for the app's admins (renderSuperToggle in
-   toolbar.js): a pencil in the brand teal ahead of Spoof Mode's eye, white on
+   usermenu.js): a pencil in the brand teal ahead of Spoof Mode's eye, white on
    the red of the avatar's ring while the mode is on. */
 .super-toggle {
   display: flex;
@@ -371,7 +371,7 @@ body.is-spoofing .spoof-wrap.is-on .spoof-button:hover, body.is-spoofing .spoof-
 body.is-spoofing .spoof-stop { color: #c2185b; }
 
 /* Spoof Mode's switch, before the avatar, for super admins alone (initSpoof
-   in toolbar.js): an eye in the brand teal, and while viewing as someone a
+   in spoof.js): an eye in the brand teal, and while viewing as someone a
    red pill saying whom with a cross to stop. The menu under it is Stop, the
    recent five, and a search of the directory. */
 .spoof-wrap {
@@ -605,7 +605,7 @@ body.is-spoofing .spoof-stop { color: #c2185b; }
 /* The account menu under the avatar, the same in every app: the signed-in
    address on top, then the app's own rows - plain links and buttons, and
    switches for the modes. It opens while the mouse is over the avatar or
-   the menu (initUserMenu in toolbar.js). Each app positions its phone-bar
+   the menu (initUserMenu in usermenu.js). Each app positions its phone-bar
    copy itself. */
 .user-menu {
   position: absolute;
@@ -691,7 +691,7 @@ body.is-spoofing .spoof-stop { color: #c2185b; }
 
 /* The switch to the other apps: the Heliosian mark on its white tile with a
    chevron, a link home that opens a list of every app, with the one this is
-   marked, while the mouse is over it. Filled and wired by toolbar.js. */
+   marked, while the mouse is over it. Filled and wired by appswitch.js. */
 .app-switch {
   position: relative;
   display: flex;

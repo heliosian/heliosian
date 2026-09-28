@@ -1,4 +1,4 @@
-import {appOrigin} from '/toolbar.js';
+import {appOrigin} from '/appswitch.js';
 import {el} from '/elements.js';
 
 const appHosts = /^https?:\/\/(who|team|hca|celebrate|birthday|calendar|cal|when|loop|ask|home|www)\.heliosian\.com(\/.*)?$/;

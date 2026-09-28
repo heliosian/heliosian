@@ -142,7 +142,7 @@ func (a app) model(r *http.Request, _ serve.None) (View, error) {
 	directory := a.directory()
 	view := Render(a.cache.Model(), directory, a.settings(), access.Actor{Email: email, Admin: admin}, now(), a.linked(email))
 	for i, e := range view.Events {
-		hosted := (e.Source == SourceSheet || e.linked() || e.imported()) && a.isHost(access.Actor{Email: email}, e)
+		hosted := e.keepsGuestList() && a.isHost(access.Actor{Email: email}, e)
 		if !hosted && len(e.Hosts) == 0 {
 			continue
 		}

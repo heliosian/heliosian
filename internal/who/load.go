@@ -797,128 +797,163 @@ func (l *loader) applyOverrides() error {
 			return fmt.Errorf("overrides has duplicate email %s", email)
 		}
 		seen[email] = true
-		added, err := cells.YesNo(row["Added"], false)
-		if err != nil {
-			return fmt.Errorf("overrides row %s: added %w", email, err)
-		}
-		p, exists := l.people[email]
-		if added && exists {
-			return fmt.Errorf("overrides row %s is flagged added but the import covers this person", email)
-		}
-		if !added && !exists {
-			return fmt.Errorf("overrides row %s matches no imported person", email)
-		}
-		if added {
-			p = &Person{Email: email}
-			l.people[email] = p
-			l.order = append(l.order, email)
-		}
-		p.overrideRow = row
-		p.imported = map[string]string{
-			"Full Name": p.FullName, "Legal Name": p.LegalName, "Preferred Name": p.PreferredName,
-			"Grade": p.Grade, "Classroom": p.Classroom, "Crew": p.Crew,
-			"Phone": p.Phone, "Job Title": p.JobTitle, "Facts": p.Facts,
-			"Is Staff": cells.YesNoCell(p.IsStaff),
-		}
-
-		useless := func(column, why string) {
-			l.useless = append(l.useless, fmt.Sprintf("%s: %s %s", email, column, why))
-		}
-		apply := func(column string, field *string) {
-			switch cell := row[column]; cell {
-			case "":
-			case "-":
-				if *field == "" {
-					useless(column, "clears a value that is already empty")
-					return
-				}
-				*field = ""
-			default:
-				if *field == cell {
-					useless(column, fmt.Sprintf("repeats the value the record already has, %q", cell))
-					return
-				}
-				*field = cell
-			}
-		}
-		applyBool := func(column string, field *bool) error {
-			if strings.TrimSpace(row[column]) == "" {
-				return nil
-			}
-			value, err := cells.YesNo(row[column], false)
-			if err != nil {
-				return fmt.Errorf("overrides row %s: %s %w", email, strings.ToLower(column), err)
-			}
-			if *field == value {
-				useless(column, fmt.Sprintf("is already %s", cells.YesNoCell(value)))
-				return nil
-			}
-			*field = value
-			return nil
-		}
-		apply("Full Name", &p.FullName)
-		apply("Legal Name", &p.LegalName)
-		apply("Preferred Name", &p.PreferredName)
-		for column, field := range map[string]*bool{
-			"Is Student": &p.IsStudent, "Is Parent": &p.IsParent, "Is Staff": &p.IsStaff, "New to Helios": &p.IsNew,
-		} {
-			if err := applyBool(column, field); err != nil {
-				return err
-			}
-		}
-		apply("Pronouns", &p.Pronouns)
-		apply("Facts", &p.Facts)
-		if err := checkUpdated(email, "Facts Updated", row["Facts Updated"]); err != nil {
+		if err := l.applyOverride(email, row, bandSet); err != nil {
 			return err
-		}
-		apply("Facts Updated", &p.FactsUpdated)
-		if err := checkUpdated(email, "Photo Updated", row["Photo Updated"]); err != nil {
-			return err
-		}
-		apply("Photo Updated", &p.PhotoUpdated)
-		apply("Veracross Photo", &p.veracrossPhoto)
-		apply("Pronunciation", &p.pronunciation)
-		if cell := row["Grade"]; cell != "" && cell != "-" && !added && gradeBands[cell] == "" {
-			return fmt.Errorf("overrides row %s has unknown grade %q", email, cell)
-		}
-		apply("Grade", &p.Grade)
-		apply("Classroom", &p.Classroom)
-		apply("Crew", &p.Crew)
-		apply("Phone", &p.Phone)
-		apply("Job Title", &p.JobTitle)
-		apply("Department", &p.Department)
-		if cell := row["Grade Band"]; cell != "" && cell != "-" && !bandSet[cell] {
-			return fmt.Errorf("overrides row %s has unknown grade band %q", email, cell)
-		}
-		apply("Grade Band", &p.GradeBand)
-		if cell := row["Room Parent"]; cell != "" && cell != "-" {
-			if !bandSet[cell] {
-				return fmt.Errorf("overrides row %s has unknown room parent band %q", email, cell)
-			}
-			l.roomParents[cell] = append(l.roomParents[cell], email)
-		}
-
-		optedOut, err := cells.YesNo(row["Opted Out"], false)
-		if err != nil {
-			return fmt.Errorf("overrides row %s: opted out %w", email, err)
-		}
-		if optedOut {
-			l.optedOut[email] = true
-		}
-
-		if added {
-			if p.FullName == "" {
-				return fmt.Errorf("added row %s has no full name", email)
-			}
-			if !p.IsStudent && !p.IsParent && !p.IsStaff {
-				return fmt.Errorf("added row %s has no role", email)
-			}
 		}
 	}
 	if len(l.useless) > 0 {
 		return fmt.Errorf("%d useless override cells, delete them from the Overrides tab:\n  %s",
 			len(l.useless), strings.Join(l.useless, "\n  "))
 	}
+	return nil
+}
+
+func (l *loader) applyOverride(email string, row store.Row, bandSet map[string]bool) error {
+	added, err := cells.YesNo(row["Added"], false)
+	if err != nil {
+		return fmt.Errorf("overrides row %s: added %w", email, err)
+	}
+	p, err := l.overridden(email, added)
+	if err != nil {
+		return err
+	}
+	p.overrideRow = row
+	p.imported = importedCells(p)
+	o := override{l: l, email: email, row: row}
+	if err := o.fields(p, added, bandSet); err != nil {
+		return err
+	}
+	if cell := row["Room Parent"]; cell != "" && cell != "-" {
+		if !bandSet[cell] {
+			return fmt.Errorf("overrides row %s has unknown room parent band %q", email, cell)
+		}
+		l.roomParents[cell] = append(l.roomParents[cell], email)
+	}
+	optedOut, err := cells.YesNo(row["Opted Out"], false)
+	if err != nil {
+		return fmt.Errorf("overrides row %s: opted out %w", email, err)
+	}
+	if optedOut {
+		l.optedOut[email] = true
+	}
+	if !added {
+		return nil
+	}
+	if p.FullName == "" {
+		return fmt.Errorf("added row %s has no full name", email)
+	}
+	if !p.IsStudent && !p.IsParent && !p.IsStaff {
+		return fmt.Errorf("added row %s has no role", email)
+	}
+	return nil
+}
+
+func (l *loader) overridden(email string, added bool) (*Person, error) {
+	p, exists := l.people[email]
+	if added && exists {
+		return nil, fmt.Errorf("overrides row %s is flagged added but the import covers this person", email)
+	}
+	if !added && !exists {
+		return nil, fmt.Errorf("overrides row %s matches no imported person", email)
+	}
+	if !added {
+		return p, nil
+	}
+	p = &Person{Email: email}
+	l.people[email] = p
+	l.order = append(l.order, email)
+	return p, nil
+}
+
+func importedCells(p *Person) map[string]string {
+	return map[string]string{
+		"Full Name": p.FullName, "Legal Name": p.LegalName, "Preferred Name": p.PreferredName,
+		"Grade": p.Grade, "Classroom": p.Classroom, "Crew": p.Crew,
+		"Phone": p.Phone, "Job Title": p.JobTitle, "Facts": p.Facts,
+		"Is Staff": cells.YesNoCell(p.IsStaff),
+	}
+}
+
+type override struct {
+	l     *loader
+	email string
+	row   store.Row
+}
+
+func (o override) useless(column, why string) {
+	o.l.useless = append(o.l.useless, fmt.Sprintf("%s: %s %s", o.email, column, why))
+}
+
+func (o override) apply(column string, field *string) {
+	switch cell := o.row[column]; cell {
+	case "":
+	case "-":
+		if *field == "" {
+			o.useless(column, "clears a value that is already empty")
+			return
+		}
+		*field = ""
+	default:
+		if *field == cell {
+			o.useless(column, fmt.Sprintf("repeats the value the record already has, %q", cell))
+			return
+		}
+		*field = cell
+	}
+}
+
+func (o override) applyBool(column string, field *bool) error {
+	if strings.TrimSpace(o.row[column]) == "" {
+		return nil
+	}
+	value, err := cells.YesNo(o.row[column], false)
+	if err != nil {
+		return fmt.Errorf("overrides row %s: %s %w", o.email, strings.ToLower(column), err)
+	}
+	if *field == value {
+		o.useless(column, fmt.Sprintf("is already %s", cells.YesNoCell(value)))
+		return nil
+	}
+	*field = value
+	return nil
+}
+
+func (o override) fields(p *Person, added bool, bandSet map[string]bool) error {
+	o.apply("Full Name", &p.FullName)
+	o.apply("Legal Name", &p.LegalName)
+	o.apply("Preferred Name", &p.PreferredName)
+	for column, field := range map[string]*bool{
+		"Is Student": &p.IsStudent, "Is Parent": &p.IsParent, "Is Staff": &p.IsStaff, "New to Helios": &p.IsNew,
+	} {
+		if err := o.applyBool(column, field); err != nil {
+			return err
+		}
+	}
+	o.apply("Pronouns", &p.Pronouns)
+	o.apply("Facts", &p.Facts)
+	if err := checkUpdated(o.email, "Facts Updated", o.row["Facts Updated"]); err != nil {
+		return err
+	}
+	o.apply("Facts Updated", &p.FactsUpdated)
+	if err := checkUpdated(o.email, "Photo Updated", o.row["Photo Updated"]); err != nil {
+		return err
+	}
+	o.apply("Photo Updated", &p.PhotoUpdated)
+	o.apply("Veracross Photo", &p.veracrossPhoto)
+	o.apply("Pronunciation", &p.pronunciation)
+	if cell := o.row["Grade"]; cell != "" && cell != "-" && !added && gradeBands[cell] == "" {
+		return fmt.Errorf("overrides row %s has unknown grade %q", o.email, cell)
+	}
+	o.apply("Grade", &p.Grade)
+	o.apply("Classroom", &p.Classroom)
+	o.apply("Crew", &p.Crew)
+	o.apply("Phone", &p.Phone)
+	o.apply("Job Title", &p.JobTitle)
+	o.apply("Department", &p.Department)
+	if cell := o.row["Grade Band"]; cell != "" && cell != "-" && !bandSet[cell] {
+		return fmt.Errorf("overrides row %s has unknown grade band %q", o.email, cell)
+	}
+	o.apply("Grade Band", &p.GradeBand)
 	return nil
 }
 
@@ -1283,15 +1318,35 @@ func (l *loader) attachBlobs() error {
 	if l.blobs == nil {
 		return nil
 	}
+	uploaded, err := l.uploadedPhotos()
+	if err != nil {
+		return err
+	}
+	if err := l.prefetchMedia(uploaded); err != nil {
+		return err
+	}
+	for _, p := range l.people {
+		if err := l.attachPersonMedia(p, uploaded[p.Email]); err != nil {
+			return err
+		}
+	}
+	if err := l.attachFamilyMedia(); err != nil {
+		return err
+	}
+	l.inheritPronunciation()
+	return nil
+}
+
+func (l *loader) uploadedPhotos() (map[string][]photoRef, error) {
 	uploaded := map[string][]photoRef{}
 	for _, row := range l.photoRows {
 		email := strings.ToLower(row["Email"])
 		name := row["Photo Name"]
 		if email == "" || name == "" {
-			return fmt.Errorf("photos row %v is incomplete", row)
+			return nil, fmt.Errorf("photos row %v is incomplete", row)
 		}
 		if err := store.CheckKey(row[store.OrderColumn]); err != nil {
-			return fmt.Errorf("photos row %s %s: %w", email, name, err)
+			return nil, fmt.Errorf("photos row %s %s: %w", email, name, err)
 		}
 		if l.people[email] == nil {
 			continue
@@ -1301,63 +1356,77 @@ func (l *loader) attachBlobs() error {
 	for _, refs := range uploaded {
 		slices.SortStableFunc(refs, func(a, b photoRef) int { return store.CompareKeys(a.order, b.order) })
 	}
+	return uploaded, nil
+}
 
-	if err := l.prefetchMedia(uploaded); err != nil {
-		return err
-	}
-	for _, p := range l.people {
-		refs := uploaded[p.Email]
-		named := func(name string) bool {
-			if name == "" {
+func photoOrder(p *Person, refs []photoRef) []photoRef {
+	named := func(name string) bool {
+		if name == "" {
+			return true
+		}
+		for _, ref := range refs {
+			if ref.Name == name {
 				return true
 			}
-			for _, ref := range refs {
-				if ref.Name == name {
-					return true
-				}
-			}
-			return false
 		}
-		var ordered []photoRef
-		if !named(p.veracrossPhoto) {
-			ordered = append(ordered, photoRef{Name: p.veracrossPhoto})
-		}
-		if p.websitePhoto != p.veracrossPhoto && !named(p.websitePhoto) {
-			ordered = append(ordered, photoRef{Name: p.websitePhoto})
-		}
-		ordered = append(ordered, refs...)
-		for _, ref := range ordered {
-			source := "upload"
-			switch ref.Name {
-			case p.veracrossPhoto:
-				source = "veracross"
-			case p.websitePhoto:
-				source = "website"
-			}
-			url, err := l.blobURL("photos", ref.Name, p.Email)
-			if err != nil {
-				return err
-			}
-			photo := Photo{Name: ref.Name, Source: source, URL: url, OriginalURL: url, cropName: ref.CropName, order: ref.order, stored: ref.stored}
-			if ref.CropName != "" {
-				if cropURL, err := l.blobURL("photos", ref.CropName, p.Email); err != nil {
-					slog.Warn("resolve photo crop", "email", p.Email, "photo", ref.Name, "error", err)
-				} else {
-					photo.URL = cropURL
-				}
-			}
-			p.Photos = append(p.Photos, photo)
-		}
-		if len(p.Photos) > 0 {
-			p.PhotoURL = p.Photos[0].URL
-		}
-		url, err := l.blobURL("pronunciation", p.pronunciation, p.Email)
+		return false
+	}
+	var ordered []photoRef
+	if !named(p.veracrossPhoto) {
+		ordered = append(ordered, photoRef{Name: p.veracrossPhoto})
+	}
+	if p.websitePhoto != p.veracrossPhoto && !named(p.websitePhoto) {
+		ordered = append(ordered, photoRef{Name: p.websitePhoto})
+	}
+	return append(ordered, refs...)
+}
+
+func (l *loader) attachPersonMedia(p *Person, refs []photoRef) error {
+	for _, ref := range photoOrder(p, refs) {
+		photo, err := l.personPhoto(p, ref)
 		if err != nil {
 			return err
 		}
-		p.PronunciationURL = url
-		p.HasOwnPronunciation = url != ""
+		p.Photos = append(p.Photos, photo)
 	}
+	if len(p.Photos) > 0 {
+		p.PhotoURL = p.Photos[0].URL
+	}
+	url, err := l.blobURL("pronunciation", p.pronunciation, p.Email)
+	if err != nil {
+		return err
+	}
+	p.PronunciationURL = url
+	p.HasOwnPronunciation = url != ""
+	return nil
+}
+
+func (l *loader) personPhoto(p *Person, ref photoRef) (Photo, error) {
+	source := "upload"
+	switch ref.Name {
+	case p.veracrossPhoto:
+		source = "veracross"
+	case p.websitePhoto:
+		source = "website"
+	}
+	url, err := l.blobURL("photos", ref.Name, p.Email)
+	if err != nil {
+		return Photo{}, err
+	}
+	photo := Photo{Name: ref.Name, Source: source, URL: url, OriginalURL: url, cropName: ref.CropName, order: ref.order, stored: ref.stored}
+	if ref.CropName == "" {
+		return photo, nil
+	}
+	cropURL, err := l.blobURL("photos", ref.CropName, p.Email)
+	if err != nil {
+		slog.Warn("resolve photo crop", "email", p.Email, "photo", ref.Name, "error", err)
+		return photo, nil
+	}
+	photo.URL = cropURL
+	return photo, nil
+}
+
+func (l *loader) attachFamilyMedia() error {
 	for key, family := range l.model.Families {
 		photo, err := l.blobURL("photos", family.photo, family.email)
 		if err != nil {
@@ -1377,6 +1446,10 @@ func (l *loader) attachBlobs() error {
 		}
 		l.model.Families[key] = family
 	}
+	return nil
+}
+
+func (l *loader) inheritPronunciation() {
 	for _, p := range l.people {
 		if p.PronunciationURL != "" {
 			continue
@@ -1388,7 +1461,6 @@ func (l *loader) attachBlobs() error {
 			}
 		}
 	}
-	return nil
 }
 
 func (l *loader) prefetchMedia(uploaded map[string][]photoRef) error {

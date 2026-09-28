@@ -5,7 +5,7 @@ import {setTitle} from '/shell.js';
 import {load, render} from '/router.js';
 import {approvalButtons} from './approvals.js';
 import {dateCard, googleCalendarLink, parseWhen} from '/datecard.js';
-import {appOrigin} from '/toolbar.js';
+import {appOrigin} from '/appswitch.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
 import {openCropTool, openPhotoLightbox} from '/crop.js';
 import {api} from '/api.js';
@@ -163,9 +163,16 @@ function sideRow(icon, title, lines) {
 }
 
 function factsCard(node, editing, save) {
+  const rows = [whenRow(node, editing, save), chairsRow(node, editing, save)].filter(Boolean);
+  if (!rows.length) {
+    return null;
+  }
   const card = sideCard();
-  let any = false;
-  const start = parseWhen(node.start);
+  card.append(...rows);
+  return card;
+}
+
+function whenLines(node, start) {
   const when = [];
   if (node.timing) {
     when.push(node.timing);
@@ -179,120 +186,130 @@ function factsCard(node, editing, save) {
   if (when.length && node.whenFrom) {
     when.push(`Same as ${node.whenFrom.title}`);
   }
-  if ((when.length && !start) || editing) {
-    const row = sideRow('calendar', 'Date & Time', when.length ? when : ['Not scheduled']);
-    const body = row.querySelector('.side-row-body');
-    if (editing) {
-      const lines = el('div', 'side-when');
-      while (body.children.length > 1) {
-        lines.append(body.children[1]);
-      }
-      body.append(lines);
-      body.querySelector('.side-title').append(editable(lines, 'Edit when this happens',
-        () => {
-          const when = whenEditor(node.own.start, node.own.end, node.own.timing, parentOf(node));
-          when.wrap.focus = when.focus;
-          return {input: when.wrap, value: when.value, validate: when.validate};
-        },
-        value => save(value)));
-    }
-    card.append(row);
-    any = true;
+  return when;
+}
+
+function whenRow(node, editing, save) {
+  const start = parseWhen(node.start);
+  const when = whenLines(node, start);
+  if (!(when.length && !start) && !editing) {
+    return null;
   }
+  const row = sideRow('calendar', 'Date & Time', when.length ? when : ['Not scheduled']);
+  if (!editing) {
+    return row;
+  }
+  const body = row.querySelector('.side-row-body');
+  const lines = el('div', 'side-when');
+  while (body.children.length > 1) {
+    lines.append(body.children[1]);
+  }
+  body.append(lines);
+  body.querySelector('.side-title').append(editable(lines, 'Edit when this happens',
+    () => {
+      const when = whenEditor(node.own.start, node.own.end, node.own.timing, parentOf(node));
+      when.wrap.focus = when.focus;
+      return {input: when.wrap, value: when.value, validate: when.validate};
+    },
+    value => save(value)));
+  return row;
+}
+
+function chairsRow(node, editing, save) {
   const chairs = coChairs(node);
   const options = shownVolunteers(node, node.canEdit).filter(v => v.position === 'Open to Co-Chair');
-  if (chairs.length || node.coLeaderNeeded || options.length || editing) {
-    const row = el('div', 'side-row');
-    const mark = el('div', 'side-icon');
-    mark.append(svg('people'));
-    row.append(mark);
-    const body = el('div', 'side-row-body');
-    body.append(el('div', 'side-title', chairs.length === 1 ? 'Chair' : 'Co-Chairs'));
-    if (chairs.length) {
-      const list = el('div', 'side-chairs');
-      for (const v of chairs) {
-        list.append(personTile(node, v, editing, false));
-      }
-      body.append(list);
-    } else {
-      body.append(el('div', 'side-line', 'Nobody yet.'));
-    }
-    if (options.length) {
-      body.append(el('div', 'side-subtitle', 'Co-Chair Options'));
-      if (node.canEdit) {
-        for (const v of options) {
-          const card = el('div', 'side-option');
-          const who = el('button', 'side-option-who');
-          who.type = 'button';
-          who.title = `${v.name} and their sign-up`;
-          who.addEventListener('click', () => openPerson(v, node));
-          const text = el('div', 'side-option-text');
-          text.append(el('div', 'side-option-name', v.name), el('div', 'side-option-hint', 'Offered to co-chair'));
-          who.append(avatar(v), text);
-          card.append(who);
-          card.append(button('Make co-chair', 'check', 'button button-small side-approve', async () => {
-            if (!confirm(`Make ${v.name} a co-chair of ${node.title}? They will be able to edit the page and manage everyone who signs up.`)) {
-              return;
-            }
-            try {
-              await api('POST', '/api/team/volunteer', {id: node.id, email: v.email, position: 'Co-Chair', note: v.note || ''});
-              await load();
-              toast(`${v.name} is now a co-chair`);
-            } catch (err) {
-              toast(err.message);
-            }
-          }));
-          body.append(card);
-        }
-      } else {
-        const list = el('div', 'side-chairs');
-        for (const v of options) {
-          list.append(personTile(node, v, false, false, false, true));
-        }
-        body.append(list);
-      }
-    }
-    if (editing) {
-      const wants = el('label', 'side-switch');
-      const box = checkbox(node.coLeaderNeeded, on => save({coLeaderNeeded: on}));
-      wants.append(box, el('span', '', 'A co-chair is needed'));
-      body.append(wants);
-    } else if (node.coLeaderNeeded && node.canEdit) {
-      const ask = el('div', 'side-ask');
-      const wants = el('label', 'side-switch');
-      const box = checkbox(true, on => save({coLeaderNeeded: on}));
-      wants.append(box, el('span', '', 'Still looking for a co-chair?'));
-      const pencil = editPencil('Edit this page');
-      pencil.addEventListener('click', () => {
-        editingPath = node.id;
-        render();
-      });
-      ask.append(wants, pencil);
-      body.append(ask);
-    } else if (node.coLeaderNeeded) {
-      const mine = mySignUp(node);
-      if (mine && mine.position === 'Open to Co-Chair') {
-        body.append(el('div', 'side-line side-offered', 'You have offered to co-chair - thank you!'));
-      } else {
-        body.append(el('div', 'side-line side-need', 'A co-chair is needed - could that be you?'));
-      }
-      if (!mine || mine.position === 'Volunteer') {
-        body.append(button('Offer to Co-Chair', 'people', 'button button-small side-offer', async () => {
-          try {
-            await api('POST', '/api/team/volunteer', {id: node.id, position: 'Open to Co-Chair', note: mine ? mine.note : ''});
-            await load();
-            toast('Thank you - the organizers will be in touch.');
-          } catch (err) {
-            toast(err.message);
-          }
-        }));
-      }
-    }
-    row.append(body);
-    card.append(row);
-    any = true;
+  if (!chairs.length && !node.coLeaderNeeded && !options.length && !editing) {
+    return null;
   }
-  return any ? card : null;
+  const row = sideRow('people', chairs.length === 1 ? 'Chair' : 'Co-Chairs', chairs.length ? [] : ['Nobody yet.']);
+  const body = row.querySelector('.side-row-body');
+  if (chairs.length) {
+    const list = el('div', 'side-chairs');
+    for (const v of chairs) {
+      list.append(personTile(node, v, editing, false));
+    }
+    body.append(list);
+  }
+  if (options.length) {
+    body.append(el('div', 'side-subtitle', 'Co-Chair Options'), ...chairOptions(node, options));
+  }
+  body.append(...coChairAsk(node, editing, save));
+  return row;
+}
+
+function chairOptions(node, options) {
+  if (node.canEdit) {
+    return options.map(v => chairOffer(node, v));
+  }
+  const list = el('div', 'side-chairs');
+  for (const v of options) {
+    list.append(personTile(node, v, false, false, false, true));
+  }
+  return [list];
+}
+
+function chairOffer(node, v) {
+  const card = el('div', 'side-option');
+  const who = el('button', 'side-option-who');
+  who.type = 'button';
+  who.title = `${v.name} and their sign-up`;
+  who.addEventListener('click', () => openPerson(v, node));
+  const text = el('div', 'side-option-text');
+  text.append(el('div', 'side-option-name', v.name), el('div', 'side-option-hint', 'Offered to co-chair'));
+  who.append(avatar(v), text);
+  card.append(who);
+  card.append(button('Make co-chair', 'check', 'button button-small side-approve', async () => {
+    if (!confirm(`Make ${v.name} a co-chair of ${node.title}? They will be able to edit the page and manage everyone who signs up.`)) {
+      return;
+    }
+    try {
+      await api('POST', '/api/team/volunteer', {id: node.id, email: v.email, position: 'Co-Chair', note: v.note || ''});
+      await load();
+      toast(`${v.name} is now a co-chair`);
+    } catch (err) {
+      toast(err.message);
+    }
+  }));
+  return card;
+}
+
+function coChairAsk(node, editing, save) {
+  if (editing) {
+    const wants = el('label', 'side-switch');
+    wants.append(checkbox(node.coLeaderNeeded, on => save({coLeaderNeeded: on})), el('span', '', 'A co-chair is needed'));
+    return [wants];
+  }
+  if (!node.coLeaderNeeded) {
+    return [];
+  }
+  if (node.canEdit) {
+    const ask = el('div', 'side-ask');
+    const wants = el('label', 'side-switch');
+    wants.append(checkbox(true, on => save({coLeaderNeeded: on})), el('span', '', 'Still looking for a co-chair?'));
+    const pencil = editPencil('Edit this page');
+    pencil.addEventListener('click', () => {
+      editingPath = node.id;
+      render();
+    });
+    ask.append(wants, pencil);
+    return [ask];
+  }
+  const mine = mySignUp(node);
+  const nodes = [mine && mine.position === 'Open to Co-Chair'
+    ? el('div', 'side-line side-offered', 'You have offered to co-chair - thank you!')
+    : el('div', 'side-line side-need', 'A co-chair is needed - could that be you?')];
+  if (!mine || mine.position === 'Volunteer') {
+    nodes.push(button('Offer to Co-Chair', 'people', 'button button-small side-offer', async () => {
+      try {
+        await api('POST', '/api/team/volunteer', {id: node.id, position: 'Open to Co-Chair', note: mine ? mine.note : ''});
+        await load();
+        toast('Thank you - the organizers will be in touch.');
+      } catch (err) {
+        toast(err.message);
+      }
+    }));
+  }
+  return nodes;
 }
 
 function personTile(owner, v, editing, star, chair, option) {
@@ -549,135 +566,33 @@ function familyBox(node) {
 function volunteersBox(node, editing, save) {
   const people = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair');
   const chairs = coChairs(node);
-  const somethingBelow = node.children.some(c => c.status !== 'Hidden' && c.status !== 'Pending');
+  const revealed = listRevealed(node, editing);
+  const view = {
+    node,
+    editing,
+    people,
+    chairs,
+    revealed,
+    showPeople: node.directSignUp && revealed ? people : [],
+    somethingBelow: node.children.some(c => c.status !== 'Hidden' && c.status !== 'Pending'),
+    quiet: !node.directSignUp && !chairs.length && !editing,
+    listing: el('div', 'vol-listing'),
+    filter: null,
+  };
   const box = el('div', 'vol-box');
-  const head = el('div', 'vol-head');
-  const title = el('div', 'vol-title');
-  const quiet = !node.directSignUp && !chairs.length && !editing;
-  const count = chairs.length + people.length;
-  if (quiet) {
+  if (view.quiet) {
     box.classList.add('is-quiet');
-    if (somethingBelow) {
-      title.append(el('div', 'vol-quiet', 'Sign up for something below.'));
-    }
-  } else {
-    title.append(el('h2', 'section section-swoosh', count ? `Who's Involved (${count})` : "Who's Involved"));
-  }
-  if (editing) {
-    const setMax = button(node.spots ? `Max ${node.spots}` : 'Set Max', '', 'button button-secondary button-small vol-max', () => {
-      const answer = prompt('How many people can sign up here? Leave blank for no limit.', node.spots ? String(node.spots) : '');
-      if (answer === null) {
-        return;
-      }
-      const n = Math.max(0, Math.min(99, Number(answer.trim()) || 0));
-      save({spots: n});
-    });
-    setMax.title = 'Set the most people who can sign up here';
-    title.append(setMax);
-    const done = el('label', 'side-switch vol-complete');
-    done.append(checkbox(Boolean(node.volunteersComplete), on => save({volunteersComplete: on})), el('span', '', 'Volunteers complete'));
-    title.append(done);
   }
   const below = descendants(node);
-  const listing = el('div', 'vol-listing');
-  let filter = null;
   if (below.length) {
-    filter = treeFilter(node, below, () => paintListing());
-  }
-  head.append(title);
-  const actions = el('div', 'vol-actions');
-  if (filter) {
-    actions.append(filter.wrap);
+    view.filter = treeFilter(node, below, () => paintVolunteers(view));
   }
   const mine = mySignUp(node);
-  if (node.directSignUp) {
-    const me = mine
-      ? {label: 'Edit my sign-up', icon: 'edit', onClick: () => openSignUp(node, mine)}
-      : (canJoin(node) || node.canEdit ? {label: 'Join', icon: 'join', onClick: () => openSignUp(node, null)} : null);
-    const others = node.canEdit || (node.status === 'Open' && !isFull(node));
-    if (others) {
-      const split = el('div', 'split-button');
-      const label = el('button', 'split-label');
-      label.type = 'button';
-      label.textContent = 'Sign up';
-      label.addEventListener('click', () => (me ? me.onClick() : openSignUp(node, null, true)));
-      split.append(label);
-      if (me) {
-        split.append(button(mine ? 'Edit mine' : 'Me', me.icon, 'split-segment', me.onClick));
-      }
-      split.append(button('Someone else', 'plus', 'split-segment', () => openSignUp(node, null, true)));
-      actions.append(split);
-    } else if (me) {
-      actions.append(button(me.label, me.icon, 'button button-small', me.onClick));
-    }
-  }
-  if (node.runs) {
-    const list = el('a', 'button button-small' + (node.emailList ? ' button-secondary' : ''));
-    list.href = emailListPath(node);
-    list.append(svg('mail'), el('span', '', emailListWords(node)));
-    actions.append(list);
-  }
-  head.append(actions);
+  const head = el('div', 'vol-head');
+  head.append(volunteersTitle(view, save), volunteersActions(node, view.filter, mine));
   box.append(head);
-  const revealed = listRevealed(node, editing);
-  const showPeople = node.directSignUp && revealed ? people : [];
-  const paintListing = () => {
-    listing.replaceChildren();
-    const sources = filter ? filter.sources() : [node];
-    const own = sources.includes(node);
-    const others = sources.filter(n => n !== node);
-    if (own) {
-      if (chairs.length || showPeople.length) {
-        const grid = el('div', 'side-chairs vol-people');
-        for (const v of chairs) {
-          grid.append(personTile(node, v, editing, false, true));
-        }
-        const isOption = v => v.position === 'Open to Co-Chair';
-        for (const v of showPeople.filter(isOption)) {
-          grid.append(personTile(node, v, editing, false, false, true));
-        }
-        for (const v of showPeople.filter(v => !isOption(v))) {
-          grid.append(personTile(node, v, editing, false));
-        }
-        if (others.length) {
-          listing.append(el('div', 'side-group', filter.self));
-        }
-        listing.append(grid);
-      }
-      if (!node.directSignUp) {
-        if (!quiet && somethingBelow) {
-          listing.append(el('div', 'vol-note', 'Sign up for something below.'));
-        }
-        if (editing && people.length) {
-          const n = people.length;
-          listing.append(el('div', 'vol-note vol-held',
-            `${n} ${n === 1 ? 'person' : 'people'} signed up here before volunteers were turned off. Check Allow volunteers for this itself to show them again.`));
-        }
-      } else if (!revealed) {
-        listing.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
-      } else if (!people.length && !chairs.length) {
-        listing.append(el('div', 'vol-note', 'Nobody yet.'));
-      }
-    }
-    for (const src of others) {
-      listing.append(el('div', 'side-group', chainBelow(node, src)));
-      const theirs = shownVolunteers(src, editing);
-      if (!theirs.length) {
-        listing.append(el('div', 'vol-note', 'Nobody yet.'));
-        continue;
-      }
-      const grid = el('div', 'side-chairs vol-people');
-      for (const v of theirs) {
-        grid.append(personTile(src, v, editing, true));
-      }
-      listing.append(grid);
-    }
-    if (!sources.length) {
-      listing.append(el('div', 'vol-note', 'Nothing selected.'));
-    }
-  };
-  paintListing();
-  box.append(listing);
+  paintVolunteers(view);
+  box.append(view.listing);
   if (node.canEdit) {
     const roster = el('div', 'vol-roster');
     roster.append(button('Volunteer Info', 'list', 'button button-secondary button-small roster-open',
@@ -691,26 +606,161 @@ function volunteersBox(node, editing, save) {
     box.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
   }
   if (editing) {
-    const switches = el('div', 'vol-switches');
-    const add = (label, hint, checked, onChange) => {
-      const wrap = el('label', 'vol-switch');
-      wrap.append(checkbox(checked, onChange));
-      const text = el('span');
-      text.append(el('strong', '', label));
-      if (hint) {
-        text.append(el('small', '', hint));
-      }
-      wrap.append(text);
-      switches.append(wrap);
-    };
-    add('Allow volunteers for this itself', 'Unchecking this will allow volunteers for subcommittees, but not this itself.',
-      node.directSignUp, on => save({directSignUp: on}));
-    add('Keep Volunteers Secret', 'Only the organizers see who has signed up.', node.volunteersHidden, on => save({volunteersHidden: on}));
-    box.append(switches);
+    box.append(volunteerSwitches(node, save));
   } else if (node.spots) {
     box.append(el('div', 'vol-note', `${node.taken} of ${node.spots} spots taken.`));
   }
   return box;
+}
+
+function volunteersTitle(view, save) {
+  const {node} = view;
+  const title = el('div', 'vol-title');
+  const count = view.chairs.length + view.people.length;
+  if (!view.quiet) {
+    title.append(el('h2', 'section section-swoosh', count ? `Who's Involved (${count})` : "Who's Involved"));
+  } else if (view.somethingBelow) {
+    title.append(el('div', 'vol-quiet', 'Sign up for something below.'));
+  }
+  if (!view.editing) {
+    return title;
+  }
+  const setMax = button(node.spots ? `Max ${node.spots}` : 'Set Max', '', 'button button-secondary button-small vol-max', () => {
+    const answer = prompt('How many people can sign up here? Leave blank for no limit.', node.spots ? String(node.spots) : '');
+    if (answer === null) {
+      return;
+    }
+    const n = Math.max(0, Math.min(99, Number(answer.trim()) || 0));
+    save({spots: n});
+  });
+  setMax.title = 'Set the most people who can sign up here';
+  const done = el('label', 'side-switch vol-complete');
+  done.append(checkbox(Boolean(node.volunteersComplete), on => save({volunteersComplete: on})), el('span', '', 'Volunteers complete'));
+  title.append(setMax, done);
+  return title;
+}
+
+function volunteersActions(node, filter, mine) {
+  const actions = el('div', 'vol-actions');
+  if (filter) {
+    actions.append(filter.wrap);
+  }
+  if (node.directSignUp) {
+    const signUp = signUpButton(node, mine);
+    if (signUp) {
+      actions.append(signUp);
+    }
+  }
+  if (node.runs) {
+    const list = el('a', 'button button-small' + (node.emailList ? ' button-secondary' : ''));
+    list.href = emailListPath(node);
+    list.append(svg('mail'), el('span', '', emailListWords(node)));
+    actions.append(list);
+  }
+  return actions;
+}
+
+function signUpButton(node, mine) {
+  const self = mine
+    ? {label: 'Edit my sign-up', icon: 'edit', onClick: () => openSignUp(node, mine)}
+    : (canJoin(node) || node.canEdit ? {label: 'Join', icon: 'join', onClick: () => openSignUp(node, null)} : null);
+  const others = node.canEdit || (node.status === 'Open' && !isFull(node));
+  if (!others) {
+    return self ? button(self.label, self.icon, 'button button-small', self.onClick) : null;
+  }
+  const split = el('div', 'split-button');
+  const label = el('button', 'split-label');
+  label.type = 'button';
+  label.textContent = 'Sign up';
+  label.addEventListener('click', () => (self ? self.onClick() : openSignUp(node, null, true)));
+  split.append(label);
+  if (self) {
+    split.append(button(mine ? 'Edit mine' : 'Me', self.icon, 'split-segment', self.onClick));
+  }
+  split.append(button('Someone else', 'plus', 'split-segment', () => openSignUp(node, null, true)));
+  return split;
+}
+
+function paintVolunteers(view) {
+  const {node, listing, filter} = view;
+  listing.replaceChildren();
+  const sources = filter ? filter.sources() : [node];
+  const others = sources.filter(n => n !== node);
+  if (sources.includes(node)) {
+    ownVolunteers(view, others.length > 0);
+  }
+  for (const src of others) {
+    listing.append(el('div', 'side-group', chainBelow(node, src)));
+    const theirs = shownVolunteers(src, view.editing);
+    if (!theirs.length) {
+      listing.append(el('div', 'vol-note', 'Nobody yet.'));
+      continue;
+    }
+    const grid = el('div', 'side-chairs vol-people');
+    for (const v of theirs) {
+      grid.append(personTile(src, v, view.editing, true));
+    }
+    listing.append(grid);
+  }
+  if (!sources.length) {
+    listing.append(el('div', 'vol-note', 'Nothing selected.'));
+  }
+}
+
+function ownVolunteers(view, labelled) {
+  const {node, listing, editing, chairs, people, showPeople} = view;
+  if (chairs.length || showPeople.length) {
+    const grid = el('div', 'side-chairs vol-people');
+    for (const v of chairs) {
+      grid.append(personTile(node, v, editing, false, true));
+    }
+    const isOption = v => v.position === 'Open to Co-Chair';
+    for (const v of showPeople.filter(isOption)) {
+      grid.append(personTile(node, v, editing, false, false, true));
+    }
+    for (const v of showPeople.filter(v => !isOption(v))) {
+      grid.append(personTile(node, v, editing, false));
+    }
+    if (labelled) {
+      listing.append(el('div', 'side-group', view.filter.self));
+    }
+    listing.append(grid);
+  }
+  if (!node.directSignUp) {
+    if (!view.quiet && view.somethingBelow) {
+      listing.append(el('div', 'vol-note', 'Sign up for something below.'));
+    }
+    if (editing && people.length) {
+      const n = people.length;
+      listing.append(el('div', 'vol-note vol-held',
+        `${n} ${n === 1 ? 'person' : 'people'} signed up here before volunteers were turned off. Check Allow volunteers for this itself to show them again.`));
+    }
+    return;
+  }
+  if (!view.revealed) {
+    listing.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
+  } else if (!people.length && !chairs.length) {
+    listing.append(el('div', 'vol-note', 'Nobody yet.'));
+  }
+}
+
+function volunteerSwitches(node, save) {
+  const switches = el('div', 'vol-switches');
+  const add = (label, hint, checked, onChange) => {
+    const wrap = el('label', 'vol-switch');
+    wrap.append(checkbox(checked, onChange));
+    const text = el('span');
+    text.append(el('strong', '', label));
+    if (hint) {
+      text.append(el('small', '', hint));
+    }
+    wrap.append(text);
+    switches.append(wrap);
+  };
+  add('Allow volunteers for this itself', 'Unchecking this will allow volunteers for subcommittees, but not this itself.',
+    node.directSignUp, on => save({directSignUp: on}));
+  add('Keep Volunteers Secret', 'Only the organizers see who has signed up.', node.volunteersHidden, on => save({volunteersHidden: on}));
+  return switches;
 }
 
 function priorityCard(node, save) {
@@ -899,162 +949,177 @@ function shareButton(node) {
 
 function childrenSection(node, editing) {
   const root = rootOf(node);
-  const wrap = el('div');
-  const head = el('div', 'list-head');
-  head.append(el('h2', 'section section-swoosh', 'Opportunities & Needs'));
-  const actions = el('div', 'row-actions');
-  let query = '';
-  const list = el('div');
   const unlisted = r => r.status === 'Hidden' || r.status === 'Pending';
   const roles = node.children.filter(r => !unlisted(r) || (node.canEdit && (editing || state.showHidden || r.status === 'Pending')));
   if (!roles.length && (node.parent || !eventCategories(root).length)) {
-    if (!node.canEdit) {
-      return null;
-    }
-    const bar = el('div', 'add-row');
-    bar.append(button('Add Activity', 'plus', 'button button-secondary button-small', () => openActivity(null, {parent: node, category: ''})));
-    return bar;
+    return node.canEdit ? addActivityBar(node) : null;
   }
-  const groupHead = (cat, others) => {
-    const row = el('div', 'group-row');
-    row.append(el('div', 'group-title', cat ? cat.title : (others ? 'Uncategorized' : '')));
-    const open = () => openActivity(null, {parent: node, category: cat ? cat.id : ''});
-    let add = null;
-    const policy = cat || node;
-    if (node.canEdit) {
-      add = button('Add', 'plus', 'button button-secondary button-small', open);
-    } else if (node.status === 'Open' && canAdd(policy)) {
-      add = button(addLabel(policy), 'plus', 'button button-secondary button-small', open);
-    }
-    if (add) {
-      add.title = cat ? `Add to ${cat.title}` : 'Add without a category';
-      row.append(add);
-    }
-    return row;
-  };
-  let reordering = false;
-  const reorder = async (id, before, categoryId) => {
-    if (reordering) {
-      return;
-    }
-    reordering = true;
-    list.classList.add('is-reordering');
-    const ids = node.children.map(c => c.id).filter(x => x !== id);
-    let at = before ? ids.indexOf(before) : -1;
-    if (at < 0) {
-      at = ids.length;
-      for (let i = ids.length - 1; i >= 0; i--) {
-        const c = node.children.find(x => x.id === ids[i]);
-        if ((c.category || '') === categoryId) {
-          at = i + 1;
-          break;
-        }
-      }
-    }
-    ids.splice(at, 0, id);
-    try {
-      await api('POST', '/api/team/order', {parent: node.id, ids});
-      await load();
-    } catch (err) {
-      toast(err.message);
-    } finally {
-      reordering = false;
-      list.classList.remove('is-reordering');
-    }
-  };
-  const dropTarget = (panel, categoryId) => {
-    if (!editing) {
-      return panel;
-    }
-    panel.addEventListener('dragover', e => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      panel.classList.add('is-dragover');
-    });
-    panel.addEventListener('dragleave', () => panel.classList.remove('is-dragover'));
-    panel.addEventListener('drop', e => {
-      e.preventDefault();
-      panel.classList.remove('is-dragover');
-      const moved = roles.find(r => r.id === e.dataTransfer.getData('text/plain'));
-      if (!moved) {
-        return;
-      }
-      if ((moved.category || '') !== categoryId) {
-        saveActivityFields(moved, {category: categoryId});
-        return;
-      }
-      const over = e.target.closest('.row');
-      const before = over && over.dataset.id !== moved.id ? over.dataset.id : '';
-      if (before || !over) {
-        reorder(moved.id, before, categoryId);
-      }
-    });
-    return panel;
-  };
-  const render = () => {
-    list.replaceChildren();
-    const shown = roles.filter(r => matches(r, query));
-    const order = [...eventCategories(root).map(c => c.id), ''];
-    const present = new Set(shown.map(r => r.category || ''));
-    const others = node.parent ? [...present].some(Boolean) : eventCategories(root).length > 0;
-    for (const id of order) {
-      if (!present.has(id)) {
-        continue;
-      }
-      list.append(groupHead(id ? category(id) : null, others));
-      const panel = dropTarget(el('div', 'panel'), id);
-      const group = shown.filter(x => (x.category || '') === id);
-      group.forEach((r, i) => {
-        const moves = editing ? {
-          up: i > 0 ? () => reorder(r.id, group[i - 1].id, id) : null,
-          down: i < group.length - 1 ? () => reorder(r.id, group[i + 2] ? group[i + 2].id : '', id) : null,
-        } : null;
-        const row = childRow(r, editing, moves);
-        row.dataset.id = r.id;
-        if (editing) {
-          row.addEventListener('dragover', e => {
-            e.preventDefault();
-            row.classList.add('is-dropbefore');
-          });
-          row.addEventListener('dragleave', () => row.classList.remove('is-dropbefore'));
-          row.addEventListener('drop', () => row.classList.remove('is-dropbefore'));
-        }
-        panel.append(row);
-      });
-      list.append(panel);
-    }
-    if (!query && !node.parent) {
-      for (const c of eventCategories(root)) {
-        if (!present.has(c.id)) {
-          list.append(groupHead(c));
-          if (editing) {
-            const panel = dropTarget(el('div', 'panel is-drop-hint'), c.id);
-            panel.append(el('div', 'panel-empty', 'Drag something here'));
-            list.append(panel);
-          }
-        }
-      }
-    }
-    if (!shown.length) {
-      if (!eventCategories(root).length || node.parent) {
-        list.append(groupHead(null, false));
-      }
-      const panel = el('div', 'panel');
-      panel.append(el('div', 'panel-empty', query ? 'Nothing matches.' : 'Nothing here yet.'));
-      list.append(panel);
-    }
-  };
+  const section = {node, root, roles, editing, query: '', reordering: false, list: el('div')};
+  const head = el('div', 'list-head');
+  head.append(el('h2', 'section section-swoosh', 'Opportunities & Needs'));
+  const actions = el('div', 'row-actions');
   if (roles.length >= 10) {
     actions.append(searchBox('Search', q => {
-      query = q;
-      render();
+      section.query = q;
+      paintChildren(section);
     }, true));
   }
   head.append(actions);
+  const wrap = el('div');
   wrap.append(head);
-  render();
-  wrap.append(list);
+  paintChildren(section);
+  wrap.append(section.list);
   return wrap;
+}
+
+function addActivityBar(node) {
+  const bar = el('div', 'add-row');
+  bar.append(button('Add Activity', 'plus', 'button button-secondary button-small', () => openActivity(null, {parent: node, category: ''})));
+  return bar;
+}
+
+function groupHead(node, cat, others) {
+  const row = el('div', 'group-row');
+  row.append(el('div', 'group-title', cat ? cat.title : (others ? 'Uncategorized' : '')));
+  const open = () => openActivity(null, {parent: node, category: cat ? cat.id : ''});
+  let add = null;
+  const policy = cat || node;
+  if (node.canEdit) {
+    add = button('Add', 'plus', 'button button-secondary button-small', open);
+  } else if (node.status === 'Open' && canAdd(policy)) {
+    add = button(addLabel(policy), 'plus', 'button button-secondary button-small', open);
+  }
+  if (add) {
+    add.title = cat ? `Add to ${cat.title}` : 'Add without a category';
+    row.append(add);
+  }
+  return row;
+}
+
+async function reorderChildren(section, id, before, categoryId) {
+  const {node, list} = section;
+  if (section.reordering) {
+    return;
+  }
+  section.reordering = true;
+  list.classList.add('is-reordering');
+  const ids = node.children.map(c => c.id).filter(x => x !== id);
+  let at = before ? ids.indexOf(before) : -1;
+  if (at < 0) {
+    at = ids.length;
+    for (let i = ids.length - 1; i >= 0; i--) {
+      const c = node.children.find(x => x.id === ids[i]);
+      if ((c.category || '') === categoryId) {
+        at = i + 1;
+        break;
+      }
+    }
+  }
+  ids.splice(at, 0, id);
+  try {
+    await api('POST', '/api/team/order', {parent: node.id, ids});
+    await load();
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    section.reordering = false;
+    list.classList.remove('is-reordering');
+  }
+}
+
+function dropTarget(section, panel, categoryId) {
+  if (!section.editing) {
+    return panel;
+  }
+  panel.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    panel.classList.add('is-dragover');
+  });
+  panel.addEventListener('dragleave', () => panel.classList.remove('is-dragover'));
+  panel.addEventListener('drop', e => {
+    e.preventDefault();
+    panel.classList.remove('is-dragover');
+    const moved = section.roles.find(r => r.id === e.dataTransfer.getData('text/plain'));
+    if (!moved) {
+      return;
+    }
+    if ((moved.category || '') !== categoryId) {
+      saveActivityFields(moved, {category: categoryId});
+      return;
+    }
+    const over = e.target.closest('.row');
+    const before = over && over.dataset.id !== moved.id ? over.dataset.id : '';
+    if (before || !over) {
+      reorderChildren(section, moved.id, before, categoryId);
+    }
+  });
+  return panel;
+}
+
+function sectionRow(section, group, i, categoryId) {
+  const r = group[i];
+  const moves = section.editing ? {
+    up: i > 0 ? () => reorderChildren(section, r.id, group[i - 1].id, categoryId) : null,
+    down: i < group.length - 1 ? () => reorderChildren(section, r.id, group[i + 2] ? group[i + 2].id : '', categoryId) : null,
+  } : null;
+  const row = childRow(r, section.editing, moves);
+  row.dataset.id = r.id;
+  if (section.editing) {
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      row.classList.add('is-dropbefore');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('is-dropbefore'));
+    row.addEventListener('drop', () => row.classList.remove('is-dropbefore'));
+  }
+  return row;
+}
+
+function paintChildren(section) {
+  const {node, root, list, query} = section;
+  list.replaceChildren();
+  const shown = section.roles.filter(r => matches(r, query));
+  const order = [...eventCategories(root).map(c => c.id), ''];
+  const present = new Set(shown.map(r => r.category || ''));
+  const others = node.parent ? [...present].some(Boolean) : eventCategories(root).length > 0;
+  for (const id of order) {
+    if (!present.has(id)) {
+      continue;
+    }
+    list.append(groupHead(node, id ? category(id) : null, others));
+    const panel = dropTarget(section, el('div', 'panel'), id);
+    const group = shown.filter(x => (x.category || '') === id);
+    for (let i = 0; i < group.length; i++) {
+      panel.append(sectionRow(section, group, i, id));
+    }
+    list.append(panel);
+  }
+  if (!query && !node.parent) {
+    emptyCategories(section, present);
+  }
+  if (!shown.length) {
+    if (!eventCategories(root).length || node.parent) {
+      list.append(groupHead(node, null, false));
+    }
+    const panel = el('div', 'panel');
+    panel.append(el('div', 'panel-empty', query ? 'Nothing matches.' : 'Nothing here yet.'));
+    list.append(panel);
+  }
+}
+
+function emptyCategories(section, present) {
+  for (const c of eventCategories(section.root)) {
+    if (present.has(c.id)) {
+      continue;
+    }
+    section.list.append(groupHead(section.node, c));
+    if (section.editing) {
+      const panel = dropTarget(section, el('div', 'panel is-drop-hint'), c.id);
+      panel.append(el('div', 'panel-empty', 'Drag something here'));
+      section.list.append(panel);
+    }
+  }
 }
 
 function checkbox(checked, onChange) {

@@ -2,6 +2,7 @@ package celebrate
 
 import (
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -506,6 +507,16 @@ type partyBody struct {
 	ParentTicket bool     `json:"parentTicket"`
 }
 
+type prettyConflict struct {
+	Message string `json:"error"`
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+}
+
+func (c *prettyConflict) refusal() error {
+	return &access.Refusal{Status: http.StatusConflict, Message: c.Message, Body: c}
+}
+
 type savedParty struct {
 	id     string
 	title  string
@@ -585,7 +596,8 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 		return savedParty{}, access.Invalid("the friendly address can be only lower-case letters, digits and hyphens, at most %d", cells.MaxPrettyLength)
 	}
 	if other := m.ByPretty(pretty); pretty != "" && other != nil && other.ID != id {
-		return savedParty{}, access.Invalid("%q is already the address of %s", pretty, other.Title)
+		conflict := &prettyConflict{ID: other.ID, Title: other.Title, Message: fmt.Sprintf("%q is already the address of %s", pretty, other.Title)}
+		return savedParty{}, conflict.refusal()
 	}
 	row := store.Row{
 		"Celebration": celebration, "Title": strings.TrimSpace(body.Title), "Subtitle": strings.TrimSpace(body.Subtitle),

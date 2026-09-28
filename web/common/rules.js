@@ -1,4 +1,4 @@
-import {appOrigin} from '/toolbar.js';
+import {appOrigin} from '/appswitch.js';
 import {el, svg, button, iconButton} from '/elements.js';
 
 function plural(role) {

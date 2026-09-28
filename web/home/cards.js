@@ -2,7 +2,7 @@ import {state, isAdmin, tagLabelsOf} from './state.js';
 import {iconOf, categoryMark} from './dom.js';
 import {el, svg, toast} from '/elements.js';
 import {openLinkEditor, openCategoryEditor, openAppEditor, moveApp, moveLink} from './edit.js';
-import {appOrigin} from '/toolbar.js';
+import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
 
 function editPencil(link, category) {

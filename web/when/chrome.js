@@ -2,9 +2,9 @@ import {state, me, isSystemAdmin, applySuperEdit, today, bands, tagGroups, defau
 import {feedMark, emojiPicker} from './dom.js';
 import {el, svg, link, button, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
+import {field, text} from '/form.js';
 import {dayColumn} from './day.js';
-import {onSlash} from '/toolbar.js';
-import {initShell, appSymbol} from '/shell.js';
+import {initShell, appSymbol, onSlash} from '/shell.js';
 import {load, render, setPath} from '/router.js';
 import {api} from '/api.js';
 
@@ -54,13 +54,8 @@ function navLink(item) {
 
 export function editFeedPopup(f) {
   const form = el('form');
-  const nameField = el('label', 'field');
-  nameField.append(el('span', '', 'Name'));
-  const name = el('input');
-  name.type = 'text';
-  name.maxLength = 80;
-  name.value = f.name;
-  nameField.append(name);
+  const name = text(f.name, {maxLength: 80});
+  const nameField = field('Name', name);
   const emojiField = el('div', 'field');
   emojiField.append(el('span', '', 'Emoji'));
   const {node, input} = emojiPicker(f.emoji || '');
@@ -177,6 +172,8 @@ export function calendarMenu(onPick) {
 
 let editingNav = false;
 
+const lockedWords = 'You can\u2019t modify this calendar, but you can create a new one based off of it.';
+
 function fillNav(nav) {
   for (const item of primary) {
     if (item.href === '/mine') {
@@ -185,141 +182,153 @@ function fillNav(nav) {
     }
     const top = navLink(item);
     nav.append(top);
-    if (item.href !== '/') {
-      continue;
-    }
-    const feeds = state.model.feeds || [];
-    if (feeds.length) {
-      const pencil = el('button', 'nav-edit' + (editingNav ? ' is-on' : ''));
-      pencil.type = 'button';
-      pencil.title = editingNav ? 'Done editing' : 'Edit your saved calendars';
-      pencil.setAttribute('aria-label', pencil.title);
-      pencil.append(svg(editingNav ? 'check' : 'edit'));
-      pencil.addEventListener('click', e => {
-        e.preventDefault();
-        e.stopPropagation();
-        editingNav = !editingNav;
-        renderNav();
-      });
-      top.append(pencil);
-    }
-    let dragging = null;
-    if (editingNav && !nav.dataset.dropReady) {
-      nav.dataset.dropReady = '1';
-      nav.addEventListener('dragover', e => {
-        if (nav.querySelector('.is-dragging')) {
-          e.preventDefault();
-        }
-      });
-      nav.addEventListener('drop', e => e.preventDefault());
-    }
-    const chosen = defaultFeed();
-    const working = activeFeed();
-    const all = allCalendars();
-    for (const f of all) {
-      const row = el('div', 'nav-sub-row' + (editingNav ? ' is-draggable' : '') + (f.locked ? ' is-locked' : ''));
-      row.dataset.token = f.token;
-      if (editingNav) {
-        row.draggable = true;
-        row.addEventListener('dragstart', e => {
-          dragging = row;
-          row.classList.add('is-dragging');
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', f.token);
-        });
-        row.addEventListener('dragover', e => {
-          if (!dragging) {
-            return;
-          }
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-          if (dragging === row) {
-            return;
-          }
-          const box = row.getBoundingClientRect();
-          const after = e.clientY > box.top + box.height / 2;
-          row.parentNode.insertBefore(dragging, after ? row.nextSibling : row);
-        });
-        row.addEventListener('drop', e => e.preventDefault());
-        row.addEventListener('dragend', async () => {
-          row.classList.remove('is-dragging');
-          dragging = null;
-          const order = [...nav.querySelectorAll('.nav-sub-row')].map(r => r.dataset.token);
-          if (order.join() !== all.map(x => x.token).join()) {
-            await orderFeeds(order);
-          }
-        });
-      }
-      const a = el('a', 'nav-sub' + (active('/') && showsFeed(f) ? ' is-active' : active('/') && working && working.token === f.token ? ' is-working' : ''));
-      a.href = '/c/' + f.token;
-      a.append(feedMark(f), el('span', '', f.name));
-      a.title = f.locked ? 'The calendar\u2019s own view, for everyone' : 'Show the calendar as ' + f.name + ' sees it';
-      const marks = el('span', 'nav-sub-marks');
-      if (f.token === chosen.token) {
-        const star = el('span', 'nav-sub-star');
-        star.title = 'Your default calendar';
-        star.append(svg('pin'));
-        marks.append(star);
-      }
-      if (f.locked && !editingNav) {
-        const lock = el('span', 'nav-sub-locked');
-        lock.title = 'You can\u2019t modify this calendar, but you can create a new one based off of it.';
-        lock.append(svg('lock'));
-        marks.append(lock);
-      }
-      if (marks.childElementCount) {
-        a.append(marks);
-      }
-      a.addEventListener('click', e => {
-        e.preventDefault();
-        pickFeed(f);
-      });
-      if (editingNav) {
-        const grip = el('span', 'nav-sub-grip');
-        grip.title = 'Drag to reorder - the first is your default calendar';
-        grip.append(svg('grip'));
-        row.append(grip);
-      }
-      row.append(a);
-      if (editingNav) {
-        const edit = el('button', 'nav-sub-tool');
-        edit.type = 'button';
-        edit.title = 'Edit ' + f.name;
-        edit.setAttribute('aria-label', edit.title);
-        edit.append(svg('edit'));
-        edit.addEventListener('click', () => editFeedPopup(f));
-        row.append(edit);
-        if (f.locked) {
-          const lock = el('span', 'nav-sub-tool nav-sub-lock');
-          lock.title = 'You can\u2019t modify this calendar, but you can create a new one based off of it.';
-          lock.append(svg('lock'));
-          row.append(lock);
-          nav.append(row);
-          continue;
-        }
-        const remove = el('button', 'nav-sub-tool nav-sub-remove');
-        remove.type = 'button';
-        remove.title = 'Remove ' + f.name;
-        remove.setAttribute('aria-label', remove.title);
-        remove.append(svg('close'));
-        remove.addEventListener('click', async () => {
-          if (!confirm(`Remove ${f.name}? A calendar app subscribed to its feed stops updating.`)) {
-            return;
-          }
-          try {
-            await api('DELETE', '/api/when/feeds', {token: f.token});
-          } catch (err) {
-            toast(err.message);
-            return;
-          }
-          toast(`${f.name} removed`);
-          await load();
-        });
-        row.append(remove);
-      }
-      nav.append(row);
+    if (item.href === '/') {
+      calendarRows(nav, top);
     }
   }
+}
+
+function calendarRows(nav, top) {
+  if ((state.model.feeds || []).length) {
+    top.append(editPencil());
+  }
+  if (editingNav) {
+    acceptDrops(nav);
+  }
+  const rail = {nav, all: allCalendars(), chosen: defaultFeed(), working: activeFeed(), dragging: null};
+  for (const f of rail.all) {
+    nav.append(feedRow(f, rail));
+  }
+}
+
+function editPencil() {
+  const pencil = button('', editingNav ? 'check' : 'edit', 'nav-edit' + (editingNav ? ' is-on' : ''), () => {
+    editingNav = !editingNav;
+    renderNav();
+  });
+  pencil.title = editingNav ? 'Done editing' : 'Edit your saved calendars';
+  pencil.setAttribute('aria-label', pencil.title);
+  return pencil;
+}
+
+function acceptDrops(nav) {
+  if (nav.dataset.dropReady) {
+    return;
+  }
+  nav.dataset.dropReady = '1';
+  nav.addEventListener('dragover', e => {
+    if (nav.querySelector('.is-dragging')) {
+      e.preventDefault();
+    }
+  });
+  nav.addEventListener('drop', e => e.preventDefault());
+}
+
+function feedRow(f, rail) {
+  const row = el('div', 'nav-sub-row' + (editingNav ? ' is-draggable' : '') + (f.locked ? ' is-locked' : ''));
+  row.dataset.token = f.token;
+  if (!editingNav) {
+    row.append(feedLink(f, rail));
+    return row;
+  }
+  draggableRow(row, f, rail);
+  const grip = el('span', 'nav-sub-grip');
+  grip.title = 'Drag to reorder - the first is your default calendar';
+  grip.append(svg('grip'));
+  row.append(grip, feedLink(f, rail), feedTool('edit', 'nav-sub-tool', 'Edit ' + f.name, () => editFeedPopup(f)));
+  if (f.locked) {
+    const lock = el('span', 'nav-sub-tool nav-sub-lock');
+    lock.title = lockedWords;
+    lock.append(svg('lock'));
+    row.append(lock);
+    return row;
+  }
+  row.append(feedTool('close', 'nav-sub-tool nav-sub-remove', 'Remove ' + f.name, () => removeFeed(f)));
+  return row;
+}
+
+function draggableRow(row, f, rail) {
+  row.draggable = true;
+  row.addEventListener('dragstart', e => {
+    rail.dragging = row;
+    row.classList.add('is-dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', f.token);
+  });
+  row.addEventListener('dragover', e => {
+    if (!rail.dragging) {
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (rail.dragging === row) {
+      return;
+    }
+    const box = row.getBoundingClientRect();
+    const after = e.clientY > box.top + box.height / 2;
+    row.parentNode.insertBefore(rail.dragging, after ? row.nextSibling : row);
+  });
+  row.addEventListener('drop', e => e.preventDefault());
+  row.addEventListener('dragend', async () => {
+    row.classList.remove('is-dragging');
+    rail.dragging = null;
+    const order = [...rail.nav.querySelectorAll('.nav-sub-row')].map(r => r.dataset.token);
+    if (order.join() !== rail.all.map(x => x.token).join()) {
+      await orderFeeds(order);
+    }
+  });
+}
+
+function feedLink(f, rail) {
+  const a = el('a', 'nav-sub' + (active('/') && showsFeed(f) ? ' is-active' : active('/') && rail.working && rail.working.token === f.token ? ' is-working' : ''));
+  a.href = '/c/' + f.token;
+  a.append(feedMark(f), el('span', '', f.name));
+  a.title = f.locked ? 'The calendar\u2019s own view, for everyone' : 'Show the calendar as ' + f.name + ' sees it';
+  const marks = el('span', 'nav-sub-marks');
+  if (f.token === rail.chosen.token) {
+    const star = el('span', 'nav-sub-star');
+    star.title = 'Your default calendar';
+    star.append(svg('pin'));
+    marks.append(star);
+  }
+  if (f.locked && !editingNav) {
+    const lock = el('span', 'nav-sub-locked');
+    lock.title = lockedWords;
+    lock.append(svg('lock'));
+    marks.append(lock);
+  }
+  if (marks.childElementCount) {
+    a.append(marks);
+  }
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    pickFeed(f);
+  });
+  return a;
+}
+
+function feedTool(icon, className, title, onClick) {
+  const tool = el('button', className);
+  tool.type = 'button';
+  tool.title = title;
+  tool.setAttribute('aria-label', title);
+  tool.append(svg(icon));
+  tool.addEventListener('click', onClick);
+  return tool;
+}
+
+async function removeFeed(f) {
+  if (!confirm(`Remove ${f.name}? A calendar app subscribed to its feed stops updating.`)) {
+    return;
+  }
+  try {
+    await api('DELETE', '/api/when/feeds', {token: f.token});
+  } catch (err) {
+    toast(err.message);
+    return;
+  }
+  toast(`${f.name} removed`);
+  await load();
 }
 
 function refresh() {

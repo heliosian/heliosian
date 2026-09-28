@@ -1,4 +1,4 @@
-import {appOrigin} from '/toolbar.js';
+import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
 import {parseWhen} from '/datecard.js';
 import {superEditOn} from '/superedit.js';

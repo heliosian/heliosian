@@ -2,7 +2,7 @@ import {state, tags, tagManagers, shared, lists, byEmail} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {firstName} from './dom.js';
 import {el, svg} from '/elements.js';
-import {appOrigin} from '/toolbar.js';
+import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
 import {photoOrInitials, personPhotoUrl} from './people.js';
 import {clampFilterPanel} from '/rules.js';

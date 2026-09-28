@@ -1,6 +1,6 @@
 import {state, me, team, isAdmin, isSystemAdmin, settings, charity, longDate, dateCell, parseDate, year} from './state.js';
 import {el, button, toast} from '/elements.js';
-import {appOrigin} from '/toolbar.js';
+import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
 import {openModal} from '/modal.js';
 import {load, navigate} from '/router.js';

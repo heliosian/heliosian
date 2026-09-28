@@ -54,7 +54,7 @@ As in the other apps: in place, through modals and one-click switches, every cha
 
 ## Friendly addresses
 
-A party may carry a `Pretty ID`: `fondue` puts it at `celebrate.heliosian.com/p/fondue`, and every link to it and the Share button use that address. Lower-case letters, digits and hyphens, at most 40; one address for one party across every celebration - saving refuses one another party holds. Changing or removing one writes a row to `Redirects`, so the old address keeps working and the browser's address bar is corrected to the live one; the bare `/parties/{id}` always resolves too. Its hosts set it in the editor's Basics tab, an admin too with the hat on.
+A party may carry a `Pretty ID`: `fondue` puts it at `celebrate.heliosian.com/p/fondue`, and every link to it and the Share button use that address. Lower-case letters, digits and hyphens, at most 40; one address for one party across every celebration - saving refuses one another party holds, answering 409 with the holder's id and title in JSON (`prettyConflict` in `internal/celebrate/writes.go`), the shape HCA-Team's refusal takes. Changing or removing one writes a row to `Redirects`, so the old address keeps working and the browser's address bar is corrected to the live one; the bare `/parties/{id}` always resolves too. Its hosts set it in the editor's Basics tab, an admin too with the hat on.
 
 ## Sign-in and install
 

@@ -1,7 +1,7 @@
 import {state, me, isAdmin, household, billable, admits, audienceWords, ticketFor, money, currentCelebration, partyPath, party} from './state.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
-import {whoLink} from '/toolbar.js';
+import {whoLink} from '/appswitch.js';
 import {api} from '/api.js';
 import {el, svg, toast, button, avatar} from '/elements.js';
 import {tabbedFields} from '/tabs.js';

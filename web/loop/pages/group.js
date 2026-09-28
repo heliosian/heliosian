@@ -1,12 +1,13 @@
 import {state, me, isAdmin, options, groupPath} from '../state.js';
 import {personRow, pageHead} from '../dom.js';
 import {el, svg, button, iconButton, copyText, toast, thumb} from '/elements.js';
-import {whoLink} from '/toolbar.js';
+import {whoLink} from '/appswitch.js';
 import {setTitle} from '/shell.js';
 import {api} from '/api.js';
 import {load, navigate} from '/router.js';
 import {openLayer} from '/modal.js';
 import {createPersonPicker} from '/picker.js';
+import {field, text as textInput, textarea as textAreaInput, select as selectInput} from '/form.js';
 import {tabStrip, tabParam, tabHref} from '/tabs.js';
 import {rulesEditor} from '/rules.js';
 import {visibilityWords} from './groups.js';
@@ -37,25 +38,19 @@ const replyingNotes = {
 };
 
 function audienceField(label, notes, value, onChange) {
-  const field = el('label', 'field');
-  const select = el('select');
-  for (const [option, words] of Object.entries(postingWords)) {
-    const o = el('option', '', words);
-    o.value = option;
-    o.selected = option === value;
-    select.append(o);
-  }
+  const input = selectInput(Object.entries(postingWords).map(([option, words]) => ({value: option, label: words})), value);
   const note = el('small', '', notes[value]);
-  select.addEventListener('change', () => {
-    note.textContent = notes[select.value];
-    onChange(select.value);
+  input.addEventListener('change', () => {
+    note.textContent = notes[input.value];
+    onChange(input.value);
   });
-  field.append(el('span', '', label), select, note);
-  return field;
+  const wrap = field(label, input);
+  wrap.append(note);
+  return wrap;
 }
 
-function editor(g, isNew, closeModal, startTab) {
-  const draft = {
+function groupDraft(g, isNew) {
+  return {
     name: g.name, aliases: [...(g.aliases || [])], title: g.title, description: g.description || '',
     prefix: isNew ? true : g.prefix,
     visibility: isNew ? 'hidden' : g.visibility,
@@ -66,226 +61,256 @@ function editor(g, isNew, closeModal, startTab) {
     additions: (g.additions || []).map(a => ({email: a.email, name: a.name})),
     excluded: (g.excluded || []).map(e => ({email: e.email, note: e.note || '', when: e.when || ''})),
   };
+}
+
+function editor(g, isNew, closeModal, startTab) {
+  const draft = groupDraft(g, isNew);
   const firstRule = isNew && !draft.rules.length ? newRule('include') : null;
   if (firstRule) {
     draft.rules.push(firstRule);
   }
   const form = el('form', 'editor');
   form.addEventListener('submit', e => e.preventDefault());
+  const ed = {
+    g, isNew, closeModal, form, draft,
+    nameInput: null, nameTouched: false, addressNote: el('small'),
+    opened: firstRule, ruleRows: el('div', 'rules'), ruleCounts: new Map(),
+    preview: previewParts(g, isNew), previewTimer: null, previewing: false, previewAgain: false, lastPreview: null,
+  };
+  const overviewPanel = detailsPanel(ed);
+  const rulesPanel = el('div');
+  rulesPanel.append(rulesCard(ed), previewCard(ed));
+  form.append(tabbed([
+    {key: 'members', label: 'Members', panel: rulesPanel},
+    {key: 'details', label: 'Details', panel: overviewPanel},
+  ], !closeModal, startTab), editorActions(ed));
+  refreshPreview(ed);
+  return form;
+}
 
+function detailsPanel(ed) {
+  const {draft, isNew} = ed;
   const words = el('div', 'card');
   words.append(el('h2', '', isNew ? 'A new group' : 'The group'));
-  const titleField = el('label', 'field');
-  const title = el('input');
-  title.type = 'text';
-  title.required = true;
-  title.maxLength = 80;
-  title.value = draft.title;
-  title.placeholder = 'Soccer Team Families';
+  const title = groupTitleInput(ed);
+  if (!ed.closeModal) {
+    words.append(field('Group name', title));
+  }
+  const alias = aliasField(ed);
+  words.append(
+    addressField(ed, alias),
+    alias.field,
+    descriptionField(ed),
+    ...prefixFields(draft, title),
+    visibilityField(draft),
+    audienceField('Who can post', postingNotes, draft.posting, value => {
+      draft.posting = value;
+    }),
+    audienceField('Who can reply', replyingNotes, draft.replying, value => {
+      draft.replying = value;
+    }),
+  );
+  const panel = el('div');
+  panel.append(words);
+  if (isNew) {
+    panel.append(managersEditor(draft));
+  }
+  return panel;
+}
+
+function groupTitleInput(ed) {
+  const {draft, isNew} = ed;
+  const title = textInput(draft.title, {required: true, maxLength: 80, placeholder: 'Soccer Team Families'});
   title.addEventListener('input', () => {
     draft.title = title.value;
-    if (isNew && !nameTouched) {
-      name.value = slug(title.value);
-      draft.name = name.value;
-      updateAddress();
+    if (isNew && !ed.nameTouched) {
+      ed.nameInput.value = slug(title.value);
+      draft.name = ed.nameInput.value;
+      updateAddress(ed);
     }
   });
-  titleField.append(el('span', '', 'Group name'), title);
-  if (closeModal) {
-    title.className = 'modal-title-input';
-    title.setAttribute('aria-label', 'Group name');
-    const wanting = () => title.classList.toggle('is-wanted', isNew && !title.value.trim());
-    title.addEventListener('input', wanting);
-    wanting();
-    form.titleInput = title;
-  } else {
-    words.append(titleField);
+  if (!ed.closeModal) {
+    return title;
   }
-  const nameField = el('div', 'field');
-  const name = el('input');
-  name.type = 'text';
-  name.maxLength = 40;
-  name.value = draft.name;
-  name.placeholder = 'soccer-team';
-  name.disabled = !isNew;
-  let nameTouched = false;
-  const addressNote = el('small');
-  const updateAddress = () => {
-    addressNote.textContent = draft.name ? `${draft.name}@${state.model.domain}` : `The address is <name>@${state.model.domain}, and cannot change once made.`;
-  };
+  title.className = 'modal-title-input';
+  title.setAttribute('aria-label', 'Group name');
+  const wanting = () => title.classList.toggle('is-wanted', isNew && !title.value.trim());
+  title.addEventListener('input', wanting);
+  wanting();
+  ed.form.titleInput = title;
+  return title;
+}
+
+function updateAddress(ed) {
+  const {draft} = ed;
+  ed.addressNote.textContent = draft.name ? `${draft.name}@${state.model.domain}` : `The address is <name>@${state.model.domain}, and cannot change once made.`;
+}
+
+function addressField(ed, alias) {
+  const {draft} = ed;
+  const name = textInput(draft.name, {maxLength: 40, placeholder: 'soccer-team'});
+  name.disabled = !ed.isNew;
   name.addEventListener('input', () => {
-    nameTouched = true;
+    ed.nameTouched = true;
     draft.name = slug(name.value);
-    updateAddress();
+    updateAddress(ed);
   });
+  ed.nameInput = name;
   const nameHead = el('span', 'field-head');
-  const addAliasButton = button('Add alias', 'plus', 'button button-small button-secondary', () => {
-    aliasAdd.hidden = false;
-    aliasInput.focus();
-  });
-  nameHead.append(el('span', '', 'Address'), addAliasButton);
-  nameField.append(nameHead, name, addressNote);
-  updateAddress();
-  words.append(nameField);
-  const aliasField = el('div', 'field alias-field');
-  const aliasRows = el('div', 'alias-rows');
-  const renderAliases = () => {
-    aliasRows.replaceChildren();
-    aliasRows.hidden = !draft.aliases.length;
-    for (const alias of draft.aliases) {
-      const row = el('div', 'alias-row');
-      const remove = el('button', 'link-button danger', 'Remove');
-      remove.type = 'button';
-      remove.addEventListener('click', () => {
-        draft.aliases = draft.aliases.filter(x => x !== alias);
-        renderAliases();
-      });
-      row.append(el('span', 'alias-address', `${alias}@${state.model.domain}`), remove);
-      aliasRows.append(row);
-    }
-  };
-  const aliasInput = el('input');
-  aliasInput.type = 'text';
-  aliasInput.maxLength = 40;
-  aliasInput.placeholder = 'another-name';
-  const aliasStatus = el('span', 'save-status');
+  nameHead.append(el('span', '', 'Address'), button('Add alias', 'plus', 'button button-small button-secondary', () => {
+    alias.add.hidden = false;
+    alias.input.focus();
+  }));
+  const nameField = el('div', 'field');
+  nameField.append(nameHead, name, ed.addressNote);
+  updateAddress(ed);
+  return nameField;
+}
+
+function aliasField(ed) {
+  const {draft} = ed;
+  const rows = el('div', 'alias-rows');
+  const input = textInput('', {maxLength: 40, placeholder: 'another-name'});
+  const status = el('span', 'save-status');
+  const add = el('div', 'add-row alias-add');
+  add.hidden = true;
   const addAlias = () => {
-    const alias = slug(aliasInput.value);
-    aliasStatus.classList.remove('error');
-    aliasStatus.textContent = '';
+    const alias = slug(input.value);
+    status.classList.remove('error');
+    status.textContent = '';
     if (!alias) {
       return;
     }
     if (alias === draft.name || draft.aliases.includes(alias)) {
-      aliasStatus.classList.add('error');
-      aliasStatus.textContent = 'Already this group\'s.';
+      status.classList.add('error');
+      status.textContent = 'Already this group\'s.';
       return;
     }
     draft.aliases.push(alias);
-    aliasInput.value = '';
-    aliasAdd.hidden = true;
-    renderAliases();
+    input.value = '';
+    add.hidden = true;
+    renderAliases(draft, rows);
   };
-  aliasInput.addEventListener('keydown', e => {
+  input.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       e.preventDefault();
       addAlias();
+      return;
     }
-  });
-  aliasInput.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      aliasInput.value = '';
-      aliasAdd.hidden = true;
+      input.value = '';
+      add.hidden = true;
     }
   });
-  const aliasAdd = el('div', 'add-row alias-add');
-  aliasAdd.hidden = true;
-  const aliasClear = iconButton('close', 'Clear', 'alias-clear', () => {
-    aliasInput.value = '';
-    aliasStatus.textContent = '';
-    aliasAdd.hidden = true;
+  const clear = iconButton('close', 'Clear', 'alias-clear', () => {
+    input.value = '';
+    status.textContent = '';
+    add.hidden = true;
   });
-  const aliasBox = el('div', 'alias-box');
-  aliasBox.append(aliasInput, aliasClear);
-  aliasAdd.append(aliasBox, button('Add', 'plus', 'button button-secondary', addAlias), aliasStatus, el('small', '', `Another name for the same address, unused by every other group: <name>@${state.model.domain}.`));
-  aliasField.append(aliasRows, aliasAdd);
-  renderAliases();
-  words.append(aliasField);
-  const descField = el('div', 'field');
-  const desc = el('textarea');
-  desc.rows = 2;
+  const box = el('div', 'alias-box');
+  box.append(input, clear);
+  add.append(box, button('Add', 'plus', 'button button-secondary', addAlias), status, el('small', '', `Another name for the same address, unused by every other group: <name>@${state.model.domain}.`));
+  const wrap = el('div', 'field alias-field');
+  wrap.append(rows, add);
+  renderAliases(draft, rows);
+  return {field: wrap, add, input};
+}
+
+function renderAliases(draft, rows) {
+  rows.replaceChildren();
+  rows.hidden = !draft.aliases.length;
+  for (const alias of draft.aliases) {
+    const row = el('div', 'alias-row');
+    const remove = el('button', 'link-button danger', 'Remove');
+    remove.type = 'button';
+    remove.addEventListener('click', () => {
+      draft.aliases = draft.aliases.filter(x => x !== alias);
+      renderAliases(draft, rows);
+    });
+    row.append(el('span', 'alias-address', `${alias}@${state.model.domain}`), remove);
+    rows.append(row);
+  }
+}
+
+function descriptionField(ed) {
+  const {draft} = ed;
+  const desc = textAreaInput(draft.description, 2);
   desc.maxLength = 300;
-  desc.value = draft.description;
   desc.placeholder = 'What the group is for, a line or two.';
   desc.setAttribute('aria-label', 'Description');
   desc.addEventListener('input', () => {
     draft.description = desc.value;
   });
-  const descHead = el('span', 'field-head');
-  const descStatus = el('small', 'save-status');
-  const generate = button('Generate with AI', 'sparkle', 'button button-small button-secondary', async () => {
-    generate.disabled = true;
-    descStatus.classList.remove('error');
-    descStatus.textContent = 'Writing…';
-    try {
-      const rules = draft.rules.filter(ruleSaysSomething);
-      const {description} = await api('POST', '/api/loop/describe', {name: isNew ? '' : draft.name, title: draft.title, ruleWords: rules.map(r => (r.kind === 'exclude' ? 'Leaving out: ' : '') + ruleWords(r)), rules, additions: draft.additions, excluded: draft.excluded});
-      desc.value = description;
-      draft.description = description;
-      descStatus.textContent = '';
-      desc.focus();
-    } catch (err) {
-      descStatus.classList.add('error');
-      descStatus.textContent = err.message;
-    } finally {
-      generate.disabled = false;
-    }
-  });
-  descHead.append(el('span', '', 'Description'), generate);
-  descField.append(descHead, desc, descStatus);
-  words.append(descField);
-  const prefixField = el('label', 'field check');
+  const status = el('small', 'save-status');
+  const generate = button('Generate with AI', 'sparkle', 'button button-small button-secondary', () => describeGroup(ed, desc, status, generate));
+  const head = el('span', 'field-head');
+  head.append(el('span', '', 'Description'), generate);
+  const wrap = el('div', 'field');
+  wrap.append(head, desc, status);
+  return wrap;
+}
+
+async function describeGroup(ed, desc, status, generate) {
+  const {draft} = ed;
+  generate.disabled = true;
+  status.classList.remove('error');
+  status.textContent = 'Writing…';
+  try {
+    const rules = draft.rules.filter(ruleSaysSomething);
+    const {description} = await api('POST', '/api/loop/describe', {name: ed.isNew ? '' : draft.name, title: draft.title, ruleWords: rules.map(r => (r.kind === 'exclude' ? 'Leaving out: ' : '') + ruleWords(r)), rules, additions: draft.additions, excluded: draft.excluded});
+    desc.value = description;
+    draft.description = description;
+    status.textContent = '';
+    desc.focus();
+  } catch (err) {
+    status.classList.add('error');
+    status.textContent = err.message;
+  } finally {
+    generate.disabled = false;
+  }
+}
+
+function prefixFields(draft, title) {
+  const note = el('small');
+  const updateNote = () => {
+    note.textContent = draft.prefix ? `Every message goes out with “[${draft.title || 'Group name'}]” at the front of its subject.` : 'Subjects go out as written.';
+  };
   const prefix = el('input');
   prefix.type = 'checkbox';
   prefix.checked = draft.prefix;
   prefix.addEventListener('change', () => {
     draft.prefix = prefix.checked;
-    updatePrefixNote();
+    updateNote();
   });
-  const prefixNote = el('small');
-  const updatePrefixNote = () => {
-    prefixNote.textContent = draft.prefix ? `Every message goes out with “[${draft.title || 'Group name'}]” at the front of its subject.` : 'Subjects go out as written.';
-  };
-  title.addEventListener('input', updatePrefixNote);
-  updatePrefixNote();
-  prefixField.append(prefix, el('span', '', 'Put the group name in front of every subject'));
-  words.append(prefixField, prefixNote);
-  const visibilityField = el('label', 'field');
-  const visibility = el('select');
-  for (const [value, label] of Object.entries(visibilityWords)) {
-    const option = el('option', '', label);
-    option.value = value;
-    option.selected = value === draft.visibility;
-    visibility.append(option);
-  }
-  const visibilityNote = el('small');
-  const updateVisibilityNote = () => {
-    visibilityNote.textContent = visibilityNotes[draft.visibility];
-  };
-  visibility.addEventListener('change', () => {
-    draft.visibility = visibility.value;
-    updateVisibilityNote();
-  });
-  updateVisibilityNote();
-  visibilityField.append(el('span', '', 'Who sees the group'), visibility, visibilityNote);
-  words.append(visibilityField);
-  words.append(
-    audienceField('Who can post', postingNotes, draft.posting, value => { draft.posting = value; }),
-    audienceField('Who can reply', replyingNotes, draft.replying, value => { draft.replying = value; }),
-  );
-  const overviewPanel = el('div');
-  overviewPanel.append(words);
+  title.addEventListener('input', updateNote);
+  updateNote();
+  const wrap = el('label', 'field check');
+  wrap.append(prefix, el('span', '', 'Put the group name in front of every subject'));
+  return [wrap, note];
+}
 
-  const managers = el('div', 'card');
-  managers.append(el('h2', '', 'Managers'));
-  managers.append(el('div', 'hint', 'Managers can edit or delete the group.'));
-  const managerRows = el('div');
+function visibilityField(draft) {
+  const input = selectInput(Object.entries(visibilityWords).map(([value, label]) => ({value, label})), draft.visibility);
+  const note = el('small');
+  const updateNote = () => {
+    note.textContent = visibilityNotes[draft.visibility];
+  };
+  input.addEventListener('change', () => {
+    draft.visibility = input.value;
+    updateNote();
+  });
+  updateNote();
+  const wrap = field('Who sees the group', input);
+  wrap.append(note);
+  return wrap;
+}
+
+function managersEditor(draft) {
+  const card = el('div', 'card');
+  card.append(el('h2', '', 'Managers'), el('div', 'hint', 'Managers can edit or delete the group.'));
+  const rows = el('div');
   const mount = el('div');
   const picker = createPersonPicker(mount, {people: () => state.model.people.filter(p => !draft.managers.includes(p.email))});
-  const renderManagers = () => {
-    managerRows.replaceChildren();
-    for (const email of draft.managers) {
-      const person = state.model.people.find(p => p.email === email) || {email, name: email};
-      const remove = el('button', 'link-button danger', 'Remove');
-      remove.type = 'button';
-      remove.disabled = draft.managers.length === 1;
-      remove.addEventListener('click', () => {
-        draft.managers = draft.managers.filter(m => m !== email);
-        renderManagers();
-      });
-      managerRows.append(personRow(person, remove));
-    }
-  };
   const addManager = () => {
     const email = picker.value;
     if (!email || draft.managers.includes(email)) {
@@ -293,7 +318,7 @@ function editor(g, isNew, closeModal, startTab) {
     }
     draft.managers.push(email);
     picker.reset();
-    renderManagers();
+    renderManagerRows(draft, rows);
   };
   mount.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
@@ -303,233 +328,100 @@ function editor(g, isNew, closeModal, startTab) {
   });
   const addRow = el('div', 'add-row');
   addRow.append(mount, button('Add', null, 'button', addManager));
-  managers.append(managerRows, addRow);
-  renderManagers();
-  if (isNew) {
-    overviewPanel.append(managers);
-  }
+  card.append(rows, addRow);
+  renderManagerRows(draft, rows);
+  return card;
+}
 
-  const preview = el('div', 'card preview');
-  const previewHead = el('h2', '', 'Members');
-  const previewHeadRow = el('div', 'card-head');
-  previewHeadRow.append(previewHead);
-  const previewChanges = el('div', 'change-band');
-  previewChanges.hidden = true;
-  const previewList = el('div', 'compact-list');
-  const previewStatus = el('div', 'save-status');
-  const previewSearch = el('input', 'member-search');
-  previewSearch.type = 'search';
-  previewSearch.placeholder = 'Search the members…';
-  previewSearch.setAttribute('aria-label', 'Search the members');
-  const previewEmpty = el('div', 'rule-empty', 'Nobody matches that.');
-  previewEmpty.hidden = true;
-  preview.append(previewHeadRow, previewStatus, previewChanges, previewSearch, previewList, previewEmpty);
-  const summary = el('span', 'change-summary');
-  const current = isNew ? [] : g.members;
-  const currentEmails = new Set(current.map(m => m.email));
-
-  const pickMember = (row, m) => {
-    for (const other of document.querySelectorAll('.member-menu')) {
-      other.remove();
-    }
-    const menu = el('div', 'member-menu');
-    const exclude = el('button', 'member-menu-item');
-    exclude.type = 'button';
-    exclude.append(svg('user-minus'), el('span', '', `Exclude ${m.name} from this group`));
-    exclude.addEventListener('click', e => {
-      e.stopPropagation();
-      menu.remove();
-      if (!draft.rules.some(r => r.kind === 'exclude' && r.search === m.email && !r.roles.length && !r.grades.length && !r.classrooms.length && !r.tags.length)) {
-        draft.rules.push({...newRule('exclude'), search: m.email});
-        renderRules();
-      }
-      rulesChanged();
+function renderManagerRows(draft, rows) {
+  rows.replaceChildren();
+  for (const email of draft.managers) {
+    const person = state.model.people.find(p => p.email === email) || {email, name: email};
+    const remove = el('button', 'link-button danger', 'Remove');
+    remove.type = 'button';
+    remove.disabled = draft.managers.length === 1;
+    remove.addEventListener('click', () => {
+      draft.managers = draft.managers.filter(m => m !== email);
+      renderManagerRows(draft, rows);
     });
-    const who = el('a', 'member-menu-item');
-    who.href = whoLink(m.email);
-    who.target = '_blank';
-    who.rel = 'noopener';
-    who.append(svg('user'), el('span', '', 'Open in Helios Who?'));
-    menu.append(exclude, who);
-    row.append(menu);
-    const close = e => {
-      if (!menu.contains(e.target)) {
-        menu.remove();
-        document.removeEventListener('click', close, true);
-      }
-    };
-    setTimeout(() => document.addEventListener('click', close, true));
-  };
-
-  const renderChanges = (members, rules) => {
-    const memberEmails = new Set(members.map(m => m.email));
-    const joining = isNew ? [] : members.filter(m => !currentEmails.has(m.email));
-    const leaving = current.filter(m => !memberEmails.has(m.email));
-    previewChanges.replaceChildren();
-    previewChanges.hidden = isNew || (!joining.length && !leaving.length);
-    if (!isNew) {
-      summary.textContent = joining.length || leaving.length ? `${joining.length} ${joining.length === 1 ? 'joins' : 'join'} · ${leaving.length} ${leaving.length === 1 ? 'leaves' : 'leave'}` : 'Nobody joins or leaves';
-      if (joining.length) {
-        const line = el('div', 'change-line');
-        line.append(el('span', 'chip joins', `${joining.length} ${joining.length === 1 ? 'joins' : 'join'}`), el('span', '', joining.map(m => m.name).join(', ')));
-        previewChanges.append(line);
-      }
-      if (leaving.length) {
-        const line = el('div', 'change-line');
-        line.append(el('span', 'chip leaves', `${leaving.length} ${leaving.length === 1 ? 'leaves' : 'leave'}`), el('span', '', leaving.map(m => m.name).join(', ')));
-        previewChanges.append(line);
-      }
-    }
-    lastPreview = {members, rules, leaving};
-    drawPreviewList();
-  };
-  let lastPreview = null;
-  const drawPreviewList = () => {
-    if (!lastPreview) {
-      return;
-    }
-    const {members, rules, leaving} = lastPreview;
-    const q = previewSearch.value.trim().toLowerCase();
-    const wanted = m => !q || m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q) || (m.words || '').toLowerCase().includes(q);
-    previewList.replaceChildren();
-    let shown = 0;
-    for (const m of [...members.filter(m => m.outside), ...members.filter(m => !m.outside)].filter(wanted)) {
-      const chip = !isNew && !currentEmails.has(m.email) ? el('span', 'chip joins', 'Joins') : null;
-      const row = compactRow(m, reasonWords(m, rules), chip, m.outside ? () => {
-        draft.additions = draft.additions.filter(a => a.email !== m.email);
-        rulesChanged();
-      } : null, m.outside ? null : pickMember);
-      previewList.append(row);
-      shown++;
-    }
-    for (const m of leaving.filter(wanted)) {
-      const row = compactRow(m, 'No rule picks them out any more.', el('span', 'chip leaves', 'Leaves'));
-      row.classList.add('is-leaving');
-      previewList.append(row);
-      shown++;
-    }
-    previewSearch.hidden = !members.length && !leaving.length;
-    previewEmpty.hidden = shown > 0 || (!members.length && !leaving.length);
-  };
-  previewSearch.addEventListener('input', drawPreviewList);
-
-  let previewTimer;
-  let previewing = false;
-  let previewAgain = false;
-  const refreshPreview = async () => {
-    if (previewing) {
-      previewAgain = true;
-      return;
-    }
-    previewing = true;
-    previewStatus.classList.remove('error');
-    previewStatus.textContent = 'Working out the members…';
-    try {
-      const rules = draft.rules.filter(ruleSaysSomething);
-      const {members, ruleCounts: counts} = await api('POST', '/api/loop/preview', {name: isNew ? '' : draft.name, rules, additions: draft.additions, excluded: draft.excluded});
-      previewHead.textContent = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
-      renderChanges(members, rules);
-      showRuleCounts(rules, counts || []);
-      previewStatus.textContent = rules.length ? '' : 'Add a rule to pick people out.';
-    } catch (err) {
-      previewStatus.classList.add('error');
-      previewStatus.textContent = err.message;
-    }
-    previewing = false;
-    if (previewAgain) {
-      previewAgain = false;
-      refreshPreview();
-    }
-  };
-  const rulesChanged = () => {
-    clearTimeout(previewTimer);
-    previewTimer = setTimeout(refreshPreview, 250);
-  };
-
-  const rulesCard = el('div', 'card');
-  rulesCard.append(el('h2', '', 'Rules'));
-  rulesCard.append(el('div', 'hint', 'Someone is on the group if any include rule matches them and no exclude rule does; a rule matches only if every choice in it holds.'));
-  const rows = el('div', 'rules');
-  let opened = firstRule;
-  const ruleCounts = new Map();
-  const countChip = rule => {
-    const chip = el('span', 'rule-count');
-    const n = ruleCounts.get(rule);
-    chip.hidden = n === undefined;
-    if (n !== undefined) {
-      chip.textContent = rule.kind === 'include' ? `${n} match` : `${n} excluded`;
-    }
-    return chip;
-  };
-  const renderRules = () => {
-    rows.replaceChildren();
-    if (!draft.rules.length) {
-      rows.append(el('div', 'rule-empty', 'No rules yet: the group has nobody in it.'));
-    }
-    for (const kind of ['include', 'exclude']) {
-      for (const rule of draft.rules.filter(r => r.kind === kind)) {
-        rows.append(ruleRow(rule, rulesChanged, () => {
-          draft.rules = draft.rules.filter(r => r !== rule);
-          renderRules();
-          rulesChanged();
-        }, rule === opened, countChip));
-      }
-    }
-    opened = null;
-  };
-  const showRuleCounts = (rules, counts) => {
-    ruleCounts.clear();
-    rules.forEach((rule, i) => ruleCounts.set(rule, counts[i]));
-    for (const row of rows.children) {
-      if (row.refreshCount) {
-        row.refreshCount();
-      }
-    }
-  };
-  renderRules();
-  const addRules = el('div', 'add-row');
-  for (const kind of ['include', 'exclude']) {
-    addRules.append(button(kind === 'include' ? 'Add include rule' : 'Add exclude rule', kind === 'include' ? 'plus' : 'minus', 'button button-secondary', () => {
-      opened = newRule(kind);
-      draft.rules.push(opened);
-      renderRules();
-    }));
+    rows.append(personRow(person, remove));
   }
-  rulesCard.append(rows, addRules);
-  const rulesPanel = el('div');
-  rulesPanel.append(rulesCard);
+}
 
-  const additionName = el('input');
-  additionName.type = 'text';
-  additionName.maxLength = 80;
-  additionName.placeholder = 'Name';
-  const additionEmail = el('input');
-  additionEmail.type = 'email';
-  additionEmail.maxLength = 120;
-  additionEmail.placeholder = 'name@example.org';
-  const additionStatus = el('span', 'save-status');
-  const addAddition = () => {
-    const email = additionEmail.value.trim().toLowerCase();
-    const name = additionName.value.trim();
-    additionStatus.classList.remove('error');
-    additionStatus.textContent = '';
-    if (!email.includes('@')) {
-      additionStatus.classList.add('error');
-      additionStatus.textContent = 'An email address is needed.';
-      return;
-    }
-    if (draft.additions.some(a => a.email === email)) {
-      additionStatus.classList.add('error');
-      additionStatus.textContent = 'Already added.';
-      return;
-    }
-    draft.additions.push({email, name});
-    additionName.value = '';
-    additionEmail.value = '';
-    additionAdd.hidden = true;
-    rulesChanged();
+function previewParts(g, isNew) {
+  const current = isNew ? [] : g.members;
+  const changes = el('div', 'change-band');
+  changes.hidden = true;
+  const search = el('input', 'member-search');
+  search.type = 'search';
+  search.placeholder = 'Search the members…';
+  search.setAttribute('aria-label', 'Search the members');
+  const empty = el('div', 'rule-empty', 'Nobody matches that.');
+  empty.hidden = true;
+  return {
+    head: el('h2', '', 'Members'),
+    headRow: el('div', 'card-head'),
+    changes,
+    list: el('div', 'compact-list'),
+    status: el('div', 'save-status'),
+    search,
+    empty,
+    summary: el('span', 'change-summary'),
+    current,
+    currentEmails: new Set(current.map(m => m.email)),
   };
-  for (const input of [additionName, additionEmail]) {
+}
+
+function previewCard(ed) {
+  const p = ed.preview;
+  const person = personAdder(ed);
+  const addition = additionAdder(ed);
+  const headButtons = el('div', 'head-buttons');
+  headButtons.append(button('Add Helios', 'plus', 'button button-small button-secondary', () => {
+    addition.node.hidden = true;
+    person.node.hidden = false;
+    person.mount.querySelector('input').focus();
+  }), button('Add Non-Helios', 'plus', 'button button-small button-secondary', () => {
+    person.node.hidden = true;
+    addition.node.hidden = false;
+    addition.name.focus();
+  }));
+  p.headRow.append(p.head, headButtons);
+  p.search.addEventListener('input', () => drawPreviewList(ed));
+  const card = el('div', 'card preview');
+  card.append(p.headRow, person.node, addition.node, p.status, p.changes, p.search, p.list, p.empty);
+  return card;
+}
+
+function additionAdder(ed) {
+  const {draft} = ed;
+  const name = textInput('', {maxLength: 80, placeholder: 'Name'});
+  const email = textInput('', {type: 'email', maxLength: 120, placeholder: 'name@example.org'});
+  const status = el('span', 'save-status');
+  const node = el('div', 'add-row addition-add');
+  node.hidden = true;
+  const addAddition = () => {
+    const address = email.value.trim().toLowerCase();
+    const who = name.value.trim();
+    status.classList.remove('error');
+    status.textContent = '';
+    if (!address.includes('@')) {
+      status.classList.add('error');
+      status.textContent = 'An email address is needed.';
+      return;
+    }
+    if (draft.additions.some(a => a.email === address)) {
+      status.classList.add('error');
+      status.textContent = 'Already added.';
+      return;
+    }
+    draft.additions.push({email: address, name: who});
+    name.value = '';
+    email.value = '';
+    node.hidden = true;
+    rulesChanged(ed);
+  };
+  for (const input of [name, email]) {
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -537,137 +429,298 @@ function editor(g, isNew, closeModal, startTab) {
       }
     });
   }
-  const additionAdd = el('div', 'add-row addition-add');
-  additionAdd.hidden = true;
-  additionAdd.append(additionName, additionEmail, button('Add', 'plus', 'button button-secondary', addAddition), iconButton('close', 'Never mind', '', () => {
-    additionName.value = '';
-    additionEmail.value = '';
-    additionStatus.textContent = '';
-    additionAdd.hidden = true;
-  }), additionStatus, el('small', '', 'Someone the directory does not hold - a coach, a league office, a family friend - on the group whatever the rules say.'));
-  previewHeadRow.after(additionAdd);
+  node.append(name, email, button('Add', 'plus', 'button button-secondary', addAddition), iconButton('close', 'Never mind', '', () => {
+    name.value = '';
+    email.value = '';
+    status.textContent = '';
+    node.hidden = true;
+  }), status, el('small', '', 'Someone the directory does not hold - a coach, a league office, a family friend - on the group whatever the rules say.'));
+  return {node, name};
+}
 
-  const personMount = el('div');
-  const personPicker = createPersonPicker(personMount, {people: () => state.model.people});
-  const personStatus = el('span', 'save-status');
-  const personAdd = el('div', 'add-row addition-add');
-  personAdd.hidden = true;
+function personAdder(ed) {
+  const {draft} = ed;
+  const mount = el('div');
+  const picker = createPersonPicker(mount, {people: () => state.model.people});
+  const status = el('span', 'save-status');
+  const node = el('div', 'add-row addition-add');
+  node.hidden = true;
   const addPerson = () => {
-    const email = personPicker.value;
-    personStatus.classList.remove('error');
-    personStatus.textContent = '';
+    const email = picker.value;
+    status.classList.remove('error');
+    status.textContent = '';
     if (!email) {
-      personStatus.classList.add('error');
-      personStatus.textContent = 'Pick someone from the list.';
+      status.classList.add('error');
+      status.textContent = 'Pick someone from the list.';
       return;
     }
     if (!draft.rules.some(r => r.kind === 'include' && r.search === email && !r.roles.length && !r.grades.length && !r.classrooms.length && !r.tags.length)) {
       draft.rules.push({...newRule('include'), search: email});
-      renderRules();
+      renderRules(ed);
     }
-    personPicker.reset();
-    personAdd.hidden = true;
-    rulesChanged();
+    picker.reset();
+    node.hidden = true;
+    rulesChanged(ed);
   };
-  personMount.addEventListener('keydown', e => {
+  mount.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       e.preventDefault();
       addPerson();
     }
   });
-  personAdd.append(personMount, button('Add', 'plus', 'button button-secondary', addPerson), iconButton('close', 'Never mind', '', () => {
-    personPicker.reset();
-    personStatus.textContent = '';
-    personAdd.hidden = true;
-  }), personStatus, el('small', '', 'Someone from the directory, on the group by a rule of their own.'));
-  previewHeadRow.after(personAdd);
-  const headButtons = el('div', 'head-buttons');
-  headButtons.append(button('Add Helios', 'plus', 'button button-small button-secondary', () => {
-    additionAdd.hidden = true;
-    personAdd.hidden = false;
-    personMount.querySelector('input').focus();
-  }), button('Add Non-Helios', 'plus', 'button button-small button-secondary', () => {
-    personAdd.hidden = true;
-    additionAdd.hidden = false;
-    additionName.focus();
-  }));
-  previewHeadRow.append(headButtons);
+  node.append(mount, button('Add', 'plus', 'button button-secondary', addPerson), iconButton('close', 'Never mind', '', () => {
+    picker.reset();
+    status.textContent = '';
+    node.hidden = true;
+  }), status, el('small', '', 'Someone from the directory, on the group by a rule of their own.'));
+  return {node, mount};
+}
 
-  rulesPanel.append(preview);
-  const tabs = [
-    {key: 'members', label: 'Members', panel: rulesPanel},
-    {key: 'details', label: 'Details', panel: overviewPanel},
-  ];
-  form.append(tabbed(tabs, !closeModal, startTab));
+function pickMember(ed, row, m) {
+  const {draft} = ed;
+  for (const other of document.querySelectorAll('.member-menu')) {
+    other.remove();
+  }
+  const menu = el('div', 'member-menu');
+  const exclude = el('button', 'member-menu-item');
+  exclude.type = 'button';
+  exclude.append(svg('user-minus'), el('span', '', `Exclude ${m.name} from this group`));
+  exclude.addEventListener('click', e => {
+    e.stopPropagation();
+    menu.remove();
+    if (!draft.rules.some(r => r.kind === 'exclude' && r.search === m.email && !r.roles.length && !r.grades.length && !r.classrooms.length && !r.tags.length)) {
+      draft.rules.push({...newRule('exclude'), search: m.email});
+      renderRules(ed);
+    }
+    rulesChanged(ed);
+  });
+  const who = el('a', 'member-menu-item');
+  who.href = whoLink(m.email);
+  who.target = '_blank';
+  who.rel = 'noopener';
+  who.append(svg('user'), el('span', '', 'Open in Helios Who?'));
+  menu.append(exclude, who);
+  row.append(menu);
+  const close = e => {
+    if (!menu.contains(e.target)) {
+      menu.remove();
+      document.removeEventListener('click', close, true);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', close, true));
+}
 
+function renderChanges(ed, members, rules) {
+  const {isNew} = ed;
+  const {changes, summary, current, currentEmails} = ed.preview;
+  const memberEmails = new Set(members.map(m => m.email));
+  const joining = isNew ? [] : members.filter(m => !currentEmails.has(m.email));
+  const leaving = current.filter(m => !memberEmails.has(m.email));
+  changes.replaceChildren();
+  changes.hidden = isNew || (!joining.length && !leaving.length);
+  if (!isNew) {
+    summary.textContent = joining.length || leaving.length ? `${joining.length} ${joining.length === 1 ? 'joins' : 'join'} · ${leaving.length} ${leaving.length === 1 ? 'leaves' : 'leave'}` : 'Nobody joins or leaves';
+    if (joining.length) {
+      const line = el('div', 'change-line');
+      line.append(el('span', 'chip joins', `${joining.length} ${joining.length === 1 ? 'joins' : 'join'}`), el('span', '', joining.map(m => m.name).join(', ')));
+      changes.append(line);
+    }
+    if (leaving.length) {
+      const line = el('div', 'change-line');
+      line.append(el('span', 'chip leaves', `${leaving.length} ${leaving.length === 1 ? 'leaves' : 'leave'}`), el('span', '', leaving.map(m => m.name).join(', ')));
+      changes.append(line);
+    }
+  }
+  ed.lastPreview = {members, rules, leaving};
+  drawPreviewList(ed);
+}
+
+function drawPreviewList(ed) {
+  if (!ed.lastPreview) {
+    return;
+  }
+  const {draft, isNew} = ed;
+  const {search, list, empty, currentEmails} = ed.preview;
+  const {members, rules, leaving} = ed.lastPreview;
+  const q = search.value.trim().toLowerCase();
+  const wanted = m => !q || m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q) || (m.words || '').toLowerCase().includes(q);
+  list.replaceChildren();
+  let shown = 0;
+  for (const m of [...members.filter(m => m.outside), ...members.filter(m => !m.outside)].filter(wanted)) {
+    const chip = !isNew && !currentEmails.has(m.email) ? el('span', 'chip joins', 'Joins') : null;
+    const row = compactRow(m, reasonWords(m, rules), chip, m.outside ? () => {
+      draft.additions = draft.additions.filter(a => a.email !== m.email);
+      rulesChanged(ed);
+    } : null, m.outside ? null : (pickedRow, picked) => pickMember(ed, pickedRow, picked));
+    list.append(row);
+    shown++;
+  }
+  for (const m of leaving.filter(wanted)) {
+    const row = compactRow(m, 'No rule picks them out any more.', el('span', 'chip leaves', 'Leaves'));
+    row.classList.add('is-leaving');
+    list.append(row);
+    shown++;
+  }
+  search.hidden = !members.length && !leaving.length;
+  empty.hidden = shown > 0 || (!members.length && !leaving.length);
+}
+
+async function refreshPreview(ed) {
+  const {draft, isNew} = ed;
+  const {status, head} = ed.preview;
+  if (ed.previewing) {
+    ed.previewAgain = true;
+    return;
+  }
+  ed.previewing = true;
+  status.classList.remove('error');
+  status.textContent = 'Working out the members…';
+  try {
+    const rules = draft.rules.filter(ruleSaysSomething);
+    const {members, ruleCounts: counts} = await api('POST', '/api/loop/preview', {name: isNew ? '' : draft.name, rules, additions: draft.additions, excluded: draft.excluded});
+    head.textContent = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
+    renderChanges(ed, members, rules);
+    showRuleCounts(ed, rules, counts || []);
+    status.textContent = rules.length ? '' : 'Add a rule to pick people out.';
+  } catch (err) {
+    status.classList.add('error');
+    status.textContent = err.message;
+  }
+  ed.previewing = false;
+  if (ed.previewAgain) {
+    ed.previewAgain = false;
+    refreshPreview(ed);
+  }
+}
+
+function rulesChanged(ed) {
+  clearTimeout(ed.previewTimer);
+  ed.previewTimer = setTimeout(() => refreshPreview(ed), 250);
+}
+
+function rulesCard(ed) {
+  const card = el('div', 'card');
+  card.append(el('h2', '', 'Rules'));
+  card.append(el('div', 'hint', 'Someone is on the group if any include rule matches them and no exclude rule does; a rule matches only if every choice in it holds.'));
+  renderRules(ed);
+  const addRules = el('div', 'add-row');
+  for (const kind of ['include', 'exclude']) {
+    addRules.append(button(kind === 'include' ? 'Add include rule' : 'Add exclude rule', kind === 'include' ? 'plus' : 'minus', 'button button-secondary', () => {
+      ed.opened = newRule(kind);
+      ed.draft.rules.push(ed.opened);
+      renderRules(ed);
+    }));
+  }
+  card.append(ed.ruleRows, addRules);
+  return card;
+}
+
+function countChip(ed, rule) {
+  const chip = el('span', 'rule-count');
+  const n = ed.ruleCounts.get(rule);
+  chip.hidden = n === undefined;
+  if (n !== undefined) {
+    chip.textContent = rule.kind === 'include' ? `${n} match` : `${n} excluded`;
+  }
+  return chip;
+}
+
+function renderRules(ed) {
+  const {draft, ruleRows} = ed;
+  ruleRows.replaceChildren();
+  if (!draft.rules.length) {
+    ruleRows.append(el('div', 'rule-empty', 'No rules yet: the group has nobody in it.'));
+  }
+  for (const kind of ['include', 'exclude']) {
+    for (const rule of draft.rules.filter(r => r.kind === kind)) {
+      ruleRows.append(ruleRow(rule, () => rulesChanged(ed), () => {
+        draft.rules = draft.rules.filter(r => r !== rule);
+        renderRules(ed);
+        rulesChanged(ed);
+      }, rule === ed.opened, r => countChip(ed, r)));
+    }
+  }
+  ed.opened = null;
+}
+
+function showRuleCounts(ed, rules, counts) {
+  ed.ruleCounts.clear();
+  rules.forEach((rule, i) => ed.ruleCounts.set(rule, counts[i]));
+  for (const row of ed.ruleRows.children) {
+    if (row.refreshCount) {
+      row.refreshCount();
+    }
+  }
+}
+
+function editorActions(ed) {
+  const {g, isNew, closeModal} = ed;
   const actions = el('div', 'editor-actions');
   const status = el('span', 'save-status');
-  const save = button(isNew ? 'Make the group' : 'Save', 'check', 'button', async () => {
-    status.classList.remove('error');
-    status.textContent = 'Saving…';
-    save.disabled = true;
-    try {
-      const body = {original: isNew ? '' : draft.name, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visibility: draft.visibility, posting: draft.posting, replying: draft.replying, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
-      const saved = await api('POST', '/api/loop/group', body);
-      if (closeModal) {
-        closeModal();
-      }
-      await load();
-      toast(isNew ? 'Group made' : 'Saved');
-      if (!closeModal || isNew) {
-        navigate(withTab(groupPath(saved)));
-      }
-    } catch (err) {
-      status.classList.add('error');
-      status.textContent = err.message;
-      save.disabled = false;
-    }
-  });
+  const save = button(isNew ? 'Make the group' : 'Save', 'check', 'button', () => saveGroup(ed, save, status));
   actions.append(save);
-  let deleteButton = null;
-  if (!isNew) {
-    actions.append(button('Cancel', null, 'button button-secondary', () => {
-      if (closeModal) {
-        closeModal();
-      } else {
-        navigate(withTab(groupPath(g)));
-      }
-    }), summary);
-    const del = el('button', 'danger-button', 'Delete group');
-    del.type = 'button';
-    del.addEventListener('click', async () => {
-      if (!confirm(`Delete ${g.address}? Mail sent to it will bounce.`)) {
-        return;
-      }
-      try {
-        await api('DELETE', '/api/loop/group', {name: g.name});
-        if (closeModal) {
-          closeModal();
-        }
-        await load();
-        toast('Group deleted');
-        navigate('/');
-      } catch (err) {
-        status.classList.add('error');
-        status.textContent = err.message;
-      }
-    });
-    deleteButton = del;
-  } else {
+  if (isNew) {
     actions.append(button('Cancel', null, 'button button-secondary', () => {
       if (closeModal) {
         closeModal();
       }
       navigate('/');
-    }));
+    }), status);
+    return actions;
   }
-  actions.append(status);
-  if (deleteButton) {
-    actions.append(deleteButton);
+  const del = el('button', 'danger-button', 'Delete group');
+  del.type = 'button';
+  del.addEventListener('click', () => deleteGroup(ed, status));
+  actions.append(button('Cancel', null, 'button button-secondary', () => {
+    if (closeModal) {
+      closeModal();
+    } else {
+      navigate(withTab(groupPath(g)));
+    }
+  }), ed.preview.summary, status, del);
+  return actions;
+}
+
+async function saveGroup(ed, save, status) {
+  const {draft, isNew, closeModal} = ed;
+  status.classList.remove('error');
+  status.textContent = 'Saving…';
+  save.disabled = true;
+  try {
+    const body = {original: isNew ? '' : draft.name, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visibility: draft.visibility, posting: draft.posting, replying: draft.replying, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
+    const saved = await api('POST', '/api/loop/group', body);
+    if (closeModal) {
+      closeModal();
+    }
+    await load();
+    toast(isNew ? 'Group made' : 'Saved');
+    if (!closeModal || isNew) {
+      navigate(withTab(groupPath(saved)));
+    }
+  } catch (err) {
+    status.classList.add('error');
+    status.textContent = err.message;
+    save.disabled = false;
   }
-  form.append(actions);
-  refreshPreview();
-  return form;
+}
+
+async function deleteGroup(ed, status) {
+  const {g, closeModal} = ed;
+  if (!confirm(`Delete ${g.address}? Mail sent to it will bounce.`)) {
+    return;
+  }
+  try {
+    await api('DELETE', '/api/loop/group', {name: g.name});
+    if (closeModal) {
+      closeModal();
+    }
+    await load();
+    toast('Group deleted');
+    navigate('/');
+  } catch (err) {
+    status.classList.add('error');
+    status.textContent = err.message;
+  }
 }
 
 function editModal(g, startTab, isNew) {

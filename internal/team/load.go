@@ -559,86 +559,128 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 	model := &Model{Categories: []Category{}, Activities: []*Activity{}, Settings: settings, notify: notify,
 		byID: map[string]*Activity{}, categories: map[string]*Category{}, pretty: map[string]*Activity{}, Redirects: []Redirect{}}
 	model.admins = admins.Read(tables)
-	scoped := []*Category{}
-	for _, row := range tables[categoriesTab] {
-		id, title := strings.TrimSpace(row["Category ID"]), row["Title"]
-		if err := cells.Title("category", title, maxTitleLength); err != nil {
-			return nil, err
-		}
-		if err := checkID("category", title, id); err != nil {
-			return nil, err
-		}
-		if model.categories[id] != nil {
-			return nil, fmt.Errorf("categories share id %q", id)
-		}
-		image, err := cells.ImageURL(images, row["Image"])
-		if err != nil {
-			return nil, fmt.Errorf("category %q: %w", title, err)
-		}
-		adding, err := checkAdding(row["Allow Adding"])
-		if err != nil {
-			return nil, fmt.Errorf("category %q: %w", title, err)
-		}
-		onMain, err := cells.YesNo(row["Show On Main Page"], true)
-		if err != nil {
-			return nil, fmt.Errorf("category %q: show on main page %w", title, err)
-		}
-		order := strings.TrimSpace(row[store.OrderColumn])
-		if err := store.CheckKey(order); err != nil {
-			return nil, fmt.Errorf("category %q: %w", title, err)
-		}
-		c := &Category{
-			ID: id, EventID: strings.TrimSpace(row["Event ID"]), Title: title, Description: row["Description"],
-			Image: row["Image"], ImageURL: image, AllowAdding: adding, ShowOnMain: onMain || strings.TrimSpace(row["Event ID"]) != "", Order: order,
-		}
-		model.categories[id] = c
-		if c.EventID == "" {
-			c.Adding = c.AllowAdding
-			if c.Adding == "" {
-				c.Adding = AddingNo
-			}
-			model.Categories = append(model.Categories, *c)
-		} else {
-			scoped = append(scoped, c)
-		}
+	scoped, err := model.readCategories(tables[categoriesTab], images)
+	if err != nil {
+		return nil, err
 	}
-	slices.SortStableFunc(model.Categories, func(a, b Category) int { return store.CompareKeys(a.Order, b.Order) })
+	all, err := model.readActivities(tables[activitiesTab], images)
+	if err != nil {
+		return nil, err
+	}
+	model.claimPrettyIDs(all)
+	model.readRedirects(tables[redirectsTab])
+	for _, a := range model.Activities {
+		resolveAdding(a, AddingNo)
+	}
+	if err := model.attachScopedCategories(scoped); err != nil {
+		return nil, err
+	}
+	model.fileUncategorized(all)
+	if err := model.readVolunteers(tables[volunteersTab]); err != nil {
+		return nil, err
+	}
+	if err := model.readLinks(tables[linksTab], images); err != nil {
+		return nil, err
+	}
+	return model, nil
+}
 
+func (m *Model) readCategories(rows []store.Row, images blob.Checker) ([]*Category, error) {
+	scoped := []*Category{}
+	for _, row := range rows {
+		c, err := m.parseCategory(row, images)
+		if err != nil {
+			return nil, err
+		}
+		m.categories[c.ID] = c
+		if c.EventID != "" {
+			scoped = append(scoped, c)
+			continue
+		}
+		c.Adding = c.AllowAdding
+		if c.Adding == "" {
+			c.Adding = AddingNo
+		}
+		m.Categories = append(m.Categories, *c)
+	}
+	slices.SortStableFunc(m.Categories, func(a, b Category) int { return store.CompareKeys(a.Order, b.Order) })
+	return scoped, nil
+}
+
+func (m *Model) parseCategory(row store.Row, images blob.Checker) (*Category, error) {
+	id, title := strings.TrimSpace(row["Category ID"]), row["Title"]
+	if err := cells.Title("category", title, maxTitleLength); err != nil {
+		return nil, err
+	}
+	if err := checkID("category", title, id); err != nil {
+		return nil, err
+	}
+	if m.categories[id] != nil {
+		return nil, fmt.Errorf("categories share id %q", id)
+	}
+	image, err := cells.ImageURL(images, row["Image"])
+	if err != nil {
+		return nil, fmt.Errorf("category %q: %w", title, err)
+	}
+	adding, err := checkAdding(row["Allow Adding"])
+	if err != nil {
+		return nil, fmt.Errorf("category %q: %w", title, err)
+	}
+	onMain, err := cells.YesNo(row["Show On Main Page"], true)
+	if err != nil {
+		return nil, fmt.Errorf("category %q: show on main page %w", title, err)
+	}
+	order := strings.TrimSpace(row[store.OrderColumn])
+	if err := store.CheckKey(order); err != nil {
+		return nil, fmt.Errorf("category %q: %w", title, err)
+	}
+	return &Category{
+		ID: id, EventID: strings.TrimSpace(row["Event ID"]), Title: title, Description: row["Description"],
+		Image: row["Image"], ImageURL: image, AllowAdding: adding, ShowOnMain: onMain || strings.TrimSpace(row["Event ID"]) != "", Order: order,
+	}, nil
+}
+
+func (m *Model) readActivities(rows []store.Row, images blob.Checker) ([]*Activity, error) {
 	all := []*Activity{}
-	for _, row := range tables[activitiesTab] {
+	for _, row := range rows {
 		a, err := parseActivity(row, images)
 		if err != nil {
 			return nil, err
 		}
 		if a == nil {
-			model.Skipped.Deleted++
+			m.Skipped.Deleted++
 			continue
 		}
-		if other := model.byID[a.ID]; other != nil {
+		if other := m.byID[a.ID]; other != nil {
 			return nil, fmt.Errorf("activities %q and %q share event id %q", other.Title, a.Title, a.ID)
 		}
-		model.byID[a.ID] = a
+		m.byID[a.ID] = a
 		all = append(all, a)
 	}
-	all, model.Skipped.Orphans = dropOrphans(all, model.byID)
-	roots, err := attachChildren(all, model.byID)
+	all, m.Skipped.Orphans = dropOrphans(all, m.byID)
+	roots, err := attachChildren(all, m.byID)
 	if err != nil {
 		return nil, err
 	}
+	m.Activities = roots
+	return all, nil
+}
+
+func (m *Model) claimPrettyIDs(all []*Activity) {
 	for _, a := range all {
 		if a.PrettyID == "" || a.Parent != "" {
 			continue
 		}
-		if other := model.pretty[a.PrettyID]; other != nil {
+		if other := m.pretty[a.PrettyID]; other != nil {
 			if other.Year >= a.Year {
 				a.PrettyID = ""
-				model.Skipped.PrettyIDs++
+				m.Skipped.PrettyIDs++
 				continue
 			}
 			other.PrettyID = ""
-			model.Skipped.PrettyIDs++
+			m.Skipped.PrettyIDs++
 		}
-		model.pretty[a.PrettyID] = a
+		m.pretty[a.PrettyID] = a
 	}
 	for _, a := range all {
 		seen := map[string]bool{}
@@ -648,56 +690,62 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 			}
 			if seen[c.PrettyID] {
 				c.PrettyID = ""
-				model.Skipped.PrettyIDs++
+				m.Skipped.PrettyIDs++
 				continue
 			}
 			seen[c.PrettyID] = true
 		}
 	}
-	for _, row := range tables[redirectsTab] {
+}
+
+func (m *Model) readRedirects(rows []store.Row) {
+	for _, row := range rows {
 		from, to := redirectPath(row["Old"]), redirectTo(row["New"])
 		if from == "" || to == "" {
 			continue
 		}
-		model.Redirects = append(model.Redirects, Redirect{Type: strings.TrimSpace(row["Type"]), Old: from, New: to, Date: row["Date"], cell: row["Old"]})
+		m.Redirects = append(m.Redirects, Redirect{Type: strings.TrimSpace(row["Type"]), Old: from, New: to, Date: row["Date"], cell: row["Old"]})
 	}
-	model.Activities = roots
-	var resolveAdding func(a *Activity, inherited string)
-	resolveAdding = func(a *Activity, inherited string) {
-		a.Adding = a.AllowAdding
-		if a.Adding == "" {
-			a.Adding = inherited
-		}
-		for _, c := range a.Children {
-			resolveAdding(c, a.Adding)
-		}
+}
+
+func resolveAdding(a *Activity, inherited string) {
+	a.Adding = a.AllowAdding
+	if a.Adding == "" {
+		a.Adding = inherited
 	}
-	for _, a := range roots {
-		resolveAdding(a, AddingNo)
+	for _, c := range a.Children {
+		resolveAdding(c, a.Adding)
 	}
+}
+
+func (m *Model) attachScopedCategories(scoped []*Category) error {
 	for _, c := range scoped {
-		owner := model.byID[c.EventID]
+		owner := m.byID[c.EventID]
 		if owner == nil {
-			return nil, fmt.Errorf("category %q names unknown event id %q", c.Title, c.EventID)
+			return fmt.Errorf("category %q names unknown event id %q", c.Title, c.EventID)
 		}
 		c.Adding = c.AllowAdding
 		if c.Adding == "" {
 			c.Adding = owner.Adding
 		}
 		if owner.Parent != "" {
-			return nil, fmt.Errorf("category %q belongs to %q, which is not a root event", c.Title, owner.Title)
+			return fmt.Errorf("category %q belongs to %q, which is not a root event", c.Title, owner.Title)
 		}
 		owner.Categories = append(owner.Categories, *c)
 	}
-	for _, a := range roots {
+	for _, a := range m.Activities {
 		slices.SortStableFunc(a.Categories, func(x, y Category) int { return store.CompareKeys(x.Order, y.Order) })
 	}
+	return nil
+}
+
+func (m *Model) fileUncategorized(all []*Activity) {
 	fallback := false
 	for _, a := range all {
-		c := model.categories[a.Category]
+		c := m.categories[a.Category]
 		switch {
 		case c != nil && a.Parent == "" && c.EventID == "":
-		case c != nil && a.Parent != "" && c.EventID == model.Root(a).ID:
+		case c != nil && a.Parent != "" && c.EventID == m.Root(a).ID:
 		case a.Parent == "":
 			a.Category = UncategorizedID
 			fallback = true
@@ -705,37 +753,39 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 			a.Category = ""
 		}
 	}
-	if fallback && model.categories[UncategorizedID] == nil {
+	if fallback && m.categories[UncategorizedID] == nil {
 		c := uncategorized()
-		model.categories[c.ID] = c
-		model.Categories = append(model.Categories, *c)
+		m.categories[c.ID] = c
+		m.Categories = append(m.Categories, *c)
 	}
+}
 
+func (m *Model) readVolunteers(rows []store.Row) error {
 	seen := map[string]bool{}
-	for _, row := range tables[volunteersTab] {
+	for _, row := range rows {
 		id := strings.TrimSpace(row["Event ID"])
 		if id == "" {
-			model.Skipped.Volunteers++
+			m.Skipped.Volunteers++
 			continue
 		}
 		email := strings.ToLower(row["Email"])
 		if !emailForm.MatchString(email) {
-			return nil, fmt.Errorf("volunteer row %v has invalid email", row)
+			return fmt.Errorf("volunteer row %v has invalid email", row)
 		}
-		a := model.Activity(id)
+		a := m.Activity(id)
 		if a == nil {
-			model.Skipped.Volunteers++
+			m.Skipped.Volunteers++
 			continue
 		}
 		if !slices.Contains(Positions, row["Position"]) {
-			return nil, fmt.Errorf("volunteer %s on %q: position %q is not one of %s", email, a.Title, row["Position"], strings.Join(Positions, ", "))
+			return fmt.Errorf("volunteer %s on %q: position %q is not one of %s", email, a.Title, row["Position"], strings.Join(Positions, ", "))
 		}
 		if err := cells.Added(row["Added"]); err != nil {
-			return nil, fmt.Errorf("volunteer %s on %q: %w", email, a.Title, err)
+			return fmt.Errorf("volunteer %s on %q: %w", email, a.Title, err)
 		}
 		key := id + "\x00" + email
 		if seen[key] {
-			model.Skipped.Duplicates++
+			m.Skipped.Duplicates++
 			continue
 		}
 		seen[key] = true
@@ -744,33 +794,36 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 			AddedBy: strings.ToLower(row["Added By"]), Added: row["Added"],
 		})
 	}
+	return nil
+}
 
-	linkKeys := map[string]bool{}
-	for _, row := range tables[linksTab] {
+func (m *Model) readLinks(rows []store.Row, images blob.Checker) error {
+	keys := map[string]bool{}
+	for _, row := range rows {
 		id, title := strings.TrimSpace(row["Event ID"]), row["Title"]
 		if err := cells.Title("link", title, maxTitleLength); err != nil {
-			return nil, err
+			return err
 		}
-		a := model.Activity(id)
+		a := m.Activity(id)
 		if a == nil {
-			model.Skipped.Links++
+			m.Skipped.Links++
 			continue
 		}
 		if err := cells.URL(row["URL"], false); err != nil {
-			return nil, fmt.Errorf("link %q on %q: %w", title, a.Title, err)
+			return fmt.Errorf("link %q on %q: %w", title, a.Title, err)
 		}
 		image, err := cells.ImageURL(images, row["Image"])
 		if err != nil {
-			return nil, fmt.Errorf("link %q on %q: %w", title, a.Title, err)
+			return fmt.Errorf("link %q on %q: %w", title, a.Title, err)
 		}
 		key := id + "\x00" + title
-		if linkKeys[key] {
-			return nil, fmt.Errorf("duplicate link %q on %q (%s)", title, a.Title, id)
+		if keys[key] {
+			return fmt.Errorf("duplicate link %q on %q (%s)", title, a.Title, id)
 		}
-		linkKeys[key] = true
+		keys[key] = true
 		a.Links = append(a.Links, Link{Title: title, URL: row["URL"], Description: strings.TrimSpace(row["Description"]), Image: row["Image"], ImageURL: image})
 	}
-	return model, nil
+	return nil
 }
 
 func parseActivity(row map[string]string, images blob.Checker) (*Activity, error) {
