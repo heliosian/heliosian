@@ -2,7 +2,7 @@ import {load, render} from '/router.js';
 import {api} from '/api.js';
 import {colors} from '../state.js';
 import {withFrom, slugify, thumbUrl, firstName, copyButton, pronouncePill, contactRow, aboutMeText, paletteColor} from '../dom.js';
-import {el, svg, iconButton, iconLink} from '/elements.js';
+import {el, svg, iconLink, editToggle} from '/elements.js';
 import {familiesOf} from '../families.js';
 import {personByKey, baseRole, gradeChain, photoOrInitials, formatPronouns} from '../people.js';
 import {photoNeedsUpdate, factsNeedUpdate, staleItems, todoChecklist, monthYear} from '../stale.js';
@@ -62,11 +62,18 @@ export function personPage(email) {
     history.replaceState(null, '', location.pathname + (query ? '?' + query : ''));
     personEdit = email;
   }
-  const origin = fromCrumbs() || [['People', '/people']];
-  const crumbsRow = breadcrumbs([...origin, [p.fullName, null]], p.email);
-
   const editable = canEditPerson(p.email);
   const editing = editable && personEdit === p.email;
+  let toggle = null;
+  if (editable) {
+    toggle = editToggle(editing, () => {
+      personEdit = editing ? null : p.email;
+      render();
+    });
+  }
+  const origin = fromCrumbs() || [['People', '/people']];
+  const crumbsRow = breadcrumbs([...origin, [p.fullName, null]], p.email, toggle);
+
   const nagPhoto = editable && photoNeedsUpdate(p);
   const showPhotoEdit = editable && (p.photos || []).length === 0;
   const showFactsEdit = editing || (editable && factsNeedUpdate(p));
@@ -167,19 +174,6 @@ export function personPage(email) {
   }
   if (editable) {
     const topActions = el('div', 'detail-top-actions');
-    const toggle = editing
-      ? el('button', 'media-button edit-toggle', 'Done')
-      : iconButton('edit', 'Edit info', '', () => {
-        personEdit = p.email;
-        render();
-      });
-    if (editing) {
-      toggle.addEventListener('click', () => {
-        personEdit = null;
-        render();
-      });
-    }
-    topActions.append(toggle);
     topActions.append(copyButton(personSummaryText(p, family), 'Copy all info'));
     topRight.append(topActions);
   }

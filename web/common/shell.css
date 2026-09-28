@@ -45,6 +45,8 @@
 
 .button svg { width: 18px; height: 18px; flex-shrink: 0; }
 
+.button-small { padding: 6px 12px; font-size: 13px; }
+
 .button-secondary { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
 
 .button-secondary:hover { background: var(--input); border-color: var(--line); }

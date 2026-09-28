@@ -444,9 +444,6 @@ main {
 
 .panel-empty a { color: var(--brand); font-weight: 600; }
 
-/* Buttons. */
-.button-small { padding: 6px 12px; font-size: 13px; }
-
 .link-button { display: inline-flex; align-items: center; gap: 4px; }
 
 .link-button svg { width: 14px; height: 14px; }
@@ -1383,12 +1380,6 @@ body.is-admin main { background-image: none; }
   gap: 10px;
 }
 
-/* Inline editing on the party page, as HCA-Team's event page has it: the
-   hero pencil turns edit mode on, and each section grows a pencil that
-   swaps it for a small editor with Save and Cancel. */
-.hero-action.is-editing { background: var(--brand-fill); border-color: transparent; color: #fff; }
-
-.hero-action.is-editing:hover { background: var(--brand-fill-dark); }
 
 .hero-image-bar {
   position: absolute;

@@ -1,6 +1,6 @@
 import {state, isAdmin, canApprove, isKid, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {paragraphs} from '../dom.js';
-import {el, link, svg, button, avatar, imageThumb, copyText, toast} from '/elements.js';
+import {el, link, svg, button, editToggle, avatar, imageThumb, copyText, toast} from '/elements.js';
 import {listPath} from '../chrome.js';
 import {setTitle} from '/shell.js';
 import {appOrigin} from '/appswitch.js';
@@ -34,14 +34,6 @@ function heroTools(p, editing) {
     b.setAttribute('aria-label', label);
     return b;
   };
-  if (p.canEdit) {
-    const toggle = tool(editing ? 'check' : 'edit', editing ? 'Done editing' : 'Edit party', () => {
-      editingId = editing ? null : p.id;
-      render();
-    });
-    toggle.classList.toggle('is-editing', editing);
-    tools.append(toggle);
-  }
   tools.append(tool('share', 'Share this party', async () => {
     const url = location.origin + partyPath(p);
     if (navigator.share) {
@@ -632,6 +624,12 @@ export function partyPage(p) {
   const back = link(listPath(state.tab, state.category), 'detail-back');
   back.append(svg('chevron-left'), el('span', '', 'Back to Parties'));
   top.append(back);
+  if (p.canEdit) {
+    top.append(editToggle(editing, () => {
+      editingId = editing ? null : p.id;
+      render();
+    }));
+  }
   page.append(top, hero(p, editing, save));
 
   const cols = el('div', 'detail-cols');

@@ -692,8 +692,6 @@ main {
 
 .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
 
-.button-small { padding: 6px 12px; font-size: 13px; }
-
 .link-button.danger { color: var(--danger-ink, var(--alert)); }
 
 .link-button.move-under { font-size: 13.5px; padding: 0; }
@@ -989,7 +987,7 @@ main {
   margin-bottom: 14px;
 }
 
-.detail-back, .detail-jump-link {
+.detail-back {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -999,15 +997,9 @@ main {
   font-weight: 600;
 }
 
-.detail-back:hover, .detail-jump-link:hover { text-decoration: underline; }
+.detail-back:hover { text-decoration: underline; }
 
-.detail-back svg, .detail-jump-link svg { width: 16px; height: 16px; }
-
-.detail-jump { display: flex; align-items: center; gap: 18px; }
-
-.detail-jump-link.is-off { color: var(--muted); opacity: 0.5; }
-
-.detail-jump-link.is-off:hover { text-decoration: none; }
+.detail-back svg { width: 16px; height: 16px; }
 
 .detail-hero { position: relative; margin-bottom: 20px; }
 
@@ -1897,10 +1889,6 @@ button.side-chair:hover { background: var(--input); }
 .hero-action:hover { background: var(--disc-hover, var(--input)); }
 
 .hero-action svg { width: 17px; height: 17px; }
-
-.hero-action.is-editing { background: var(--brand-fill); border-color: transparent; color: #fff; }
-
-.hero-action.is-editing:hover { background: var(--brand-fill-dark); }
 
 /* The status control, under the pencil while editing: a white pill with a
    native select inside, matching the date stamp opposite. */

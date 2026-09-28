@@ -1,6 +1,6 @@
 import {state, byEmail, colors} from '../state.js';
 import {thumbUrl, firstName, copyButton, pronouncePill, contactRow, withFrom, slugify} from '../dom.js';
-import {el, svg, iconButton, iconLink} from '/elements.js';
+import {el, svg, iconButton, iconLink, editToggle} from '/elements.js';
 import {myFamilyKey, familyLink, canEditFamily} from '../families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl, roleWithPronouns, gradeChain} from '../people.js';
 import {familyPhotoNeedsUpdate, staleItems, todoChecklist} from '../stale.js';
@@ -149,7 +149,14 @@ export function familyPage(key) {
       crumbs = [['Map', back], [shortName, null], ['Family', null]];
     }
   }
-  page.append(breadcrumbs(crumbs));
+  let toggle = null;
+  if (editable) {
+    toggle = editToggle(editing, () => {
+      familyEdit = editing ? null : key;
+      render();
+    });
+  }
+  page.append(breadcrumbs(crumbs, null, toggle));
 
   if (key === myFamilyKey()) {
     const items = staleItems();
@@ -225,23 +232,6 @@ export function familyPage(key) {
     chipRow.append(staffChip);
   }
   topRow.append(chipRow);
-  if (editable) {
-    const topActions = el('div', 'detail-top-actions');
-    const toggle = editing
-      ? el('button', 'media-button edit-toggle', 'Done')
-      : iconButton('edit', 'Edit info', '', () => {
-        familyEdit = key;
-        render();
-      });
-    if (editing) {
-      toggle.addEventListener('click', () => {
-        familyEdit = null;
-        render();
-      });
-    }
-    topActions.append(toggle);
-    topRow.append(topActions);
-  }
   right.append(topRow);
   const nameHeader = el('h1', 'detail-name');
   nameHeader.append(el('span', '', family.name));

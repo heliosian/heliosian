@@ -1,6 +1,6 @@
-import {state, me, family, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel} from '../state.js';
+import {state, me, family, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, isFull, matches, activityPath, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel} from '../state.js';
 import {badge, searchBox, whenEditor} from '../dom.js';
-import {el, link, svg, imageThumb, avatar, button, copyText, toast} from '/elements.js';
+import {el, link, svg, imageThumb, avatar, button, editToggle, copyText, toast} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {load, render} from '/router.js';
 import {approvalButtons} from './approvals.js';
@@ -114,34 +114,6 @@ function heroImageBar(node, save) {
     bar.append(remove);
   }
   return bar;
-}
-
-function prevNext(node) {
-  const parent = parentOf(node);
-  const siblings = parent
-    ? parent.children.filter(c => c.status !== 'Hidden' && c.status !== 'Pending')
-    : sortByStart(listedIn(node.year));
-  const i = siblings.findIndex(a => a.title === node.title);
-  const nav = el('div', 'detail-jump');
-  const make = (target, label, icon, cls) => {
-    if (!target) {
-      const dead = el('span', 'detail-jump-link is-off');
-      dead.append(icon === 'back' ? svg('chevron-left') : el('span', '', label));
-      dead.append(icon === 'back' ? el('span', '', label) : svg('chevron-right'));
-      return dead;
-    }
-    const a = link(activityPath(target), 'detail-jump-link');
-    a.title = target.title;
-    if (icon === 'back') {
-      a.append(svg('chevron-left'), el('span', '', label));
-    } else {
-      a.append(el('span', '', label), svg('chevron-right'));
-    }
-    return a;
-  };
-  nav.append(make(i > 0 ? siblings[i - 1] : null, 'Previous', 'back'));
-  nav.append(make(i >= 0 && i < siblings.length - 1 ? siblings[i + 1] : null, 'Next', 'next'));
-  return nav;
 }
 
 function sideCard(className) {
@@ -1163,7 +1135,13 @@ export function activityPage(node) {
   const top = el('div', 'detail-top');
   const back = link(parent ? activityPath(parent) : '/', 'detail-back');
   back.append(svg('chevron-left'), el('span', '', parent ? `Back to ${parent.title}` : 'Back to Opportunities'));
-  top.append(back, prevNext(node));
+  top.append(back);
+  if (node.canEdit) {
+    top.append(editToggle(editing, () => {
+      editingPath = editing ? null : node.id;
+      render();
+    }));
+  }
   page.append(top);
 
   if (editing) {
@@ -1177,16 +1155,6 @@ export function activityPage(node) {
     hero.append(stamp);
   }
   const heroActions = el('div', 'hero-actions');
-  if (node.canEdit) {
-    const toggle = heroButton(editing ? 'join' : 'edit', editing ? 'Done editing' : 'Edit this page', () => {
-      editingPath = editing ? null : node.id;
-      render();
-    });
-    if (editing) {
-      toggle.classList.add('is-editing');
-    }
-    heroActions.append(toggle);
-  }
   heroActions.append(shareButton(node));
   if (node.imageUrl) {
     heroActions.append(heroButton('expand', 'View full size', () => openPhotoLightbox(node.imageUrl)));

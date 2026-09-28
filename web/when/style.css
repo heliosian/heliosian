@@ -998,9 +998,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .panel-empty { padding: 14px; color: var(--muted); font-size: 13.5px; }
 
-/* Buttons. */
-.button-small { padding: 6px 12px; font-size: 13px; }
-
 .link-button { display: inline-flex; align-items: center; gap: 4px; margin-top: 10px; }
 
 .link-button svg { width: 14px; height: 14px; }

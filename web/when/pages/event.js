@@ -1,7 +1,7 @@
 import {state, me, isAdmin, postedAndHosting, sourceWords, dayType, dayTypeName, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {paragraphs} from '../dom.js';
-import {el, svg, button, toast, longToast, avatar, copyText} from '/elements.js';
+import {el, svg, button, editToggle, toast, longToast, avatar, copyText} from '/elements.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
 import {whoLink} from '/appswitch.js';
@@ -134,12 +134,14 @@ export function eventPage(e) {
   back.append(svg('chevron-left'), el('span', '', monthLabel(monthOf(eventDates(e)[0]))));
   top.append(back);
   if ((imported(e) && isAdmin()) || (e.source === 'sheet' && (isAdmin() || postedAndHosting(e)))) {
-    tools.append(button('Edit', 'edit', 'button button-secondary button-small detail-edit', async () => {
+    const edit = editToggle(false, async () => {
       const {openEditor} = await import('../invites.js');
       openEditor(e, editorView, async () => {
         await load();
       });
-    }));
+    });
+    edit.classList.add('detail-edit');
+    tools.append(edit);
   }
   top.append(tools);
   page.append(top, hero(e));
@@ -265,7 +267,9 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
   if (view.host) {
     const tools = ask.closest('.event-page')?.querySelector('.detail-tools');
     if (tools && !tools.querySelector('.detail-edit')) {
-      tools.append(button('Edit', 'edit', 'button button-secondary button-small detail-edit', () => openEditor(e, view, refresh)));
+      const edit = editToggle(false, () => openEditor(e, view, refresh));
+      edit.classList.add('detail-edit');
+      tools.append(edit);
     }
     const heroWrap = ask.closest('.event-page')?.querySelector('.detail-hero');
     if ((e.source === 'sheet' || imported(e)) && heroWrap && !heroWrap.querySelector('.hero-image-bar')) {
