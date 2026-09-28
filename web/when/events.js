@@ -1,4 +1,4 @@
-import {eventPath, timeColumn, whenLine, timeRange, audienceWords, categoryTags, eventColors, plan, specials, isSchoolDay, dayLabel, today, selectedClassrooms, classroomNames, linkURL} from './state.js';
+import {eventPath, timeColumn, whenLine, timeRange, clock, audienceWords, categoryTags, eventColors, plan, specials, isSchoolDay, dayLabel, today, selectedClassrooms, classroomNames, linkURL} from './state.js';
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg} from '/elements.js';
 
@@ -117,8 +117,7 @@ export function planCards(date, groups = plan(date)) {
   const all = selectedClassrooms();
   if (!groups.length) {
     const card = el('div', 'plan-card plan-card-none');
-    card.append(el('div', 'plan-type', isWeekend(date) ? 'Weekend' : 'No school day'));
-    card.append(el('div', 'plan-note', isWeekend(date) ? 'Nothing on the school calendar.' : 'Outside the school year, or the year calendar has not been read yet.'));
+    card.append(el('div', 'plan-type', 'No School'));
     wrap.append(card);
     return wrap;
   }
@@ -132,17 +131,56 @@ export function planCards(date, groups = plan(date)) {
     card.append(head);
     if (g.type.blocks.length) {
       card.append(blocks(g.type));
-    } else {
-      card.append(el('div', 'plan-note', 'No dropoff, school, pickup, or aftercare.'));
     }
     wrap.append(card);
   }
   return wrap;
 }
 
-function isWeekend(date) {
-  const day = new Date(date + 'T00:00:00').getDay();
-  return day === 0 || day === 6;
+const openFolds = new Set();
+
+export function planFolds(date, groups = plan(date)) {
+  const wrap = el('div', 'plan-cards');
+  const all = selectedClassrooms();
+  if (!groups.length) {
+    groups = [{name: 'No School', type: {blocks: []}, classrooms: all}];
+  }
+  for (const g of groups) {
+    const school = g.type.blocks.find(b => b.name === 'School');
+    const words = [school ? clock(school.end).trimStart() : ''];
+    if (g.classrooms.length !== all.length || all.length !== classroomNames().length) {
+      words.push(g.classrooms.join(', '));
+    }
+    const summary = el(g.type.blocks.length ? 'summary' : 'div', 'plan-fold-head');
+    summary.append(svg(g.name === 'Regular' ? 'school' : 'bell'));
+    const text = el('span', 'plan-fold-text');
+    text.append(el('span', 'plan-fold-title', g.name));
+    if (words.some(Boolean)) {
+      text.append(el('span', 'plan-fold-time', words.filter(Boolean).join(' · ')));
+    }
+    summary.append(text);
+    if (!g.type.blocks.length) {
+      const card = el('div', 'plan-fold ' + dayTypeClass(g.name));
+      card.append(summary);
+      wrap.append(card);
+      continue;
+    }
+    const chevron = svg('chevron-right');
+    chevron.classList.add('plan-fold-chevron');
+    summary.append(chevron);
+    const card = el('details', 'plan-fold ' + dayTypeClass(g.name));
+    card.open = openFolds.has(g.name);
+    card.addEventListener('toggle', () => {
+      if (card.open) {
+        openFolds.add(g.name);
+      } else {
+        openFolds.delete(g.name);
+      }
+    });
+    card.append(summary, blocks(g.type));
+    wrap.append(card);
+  }
+  return wrap;
 }
 
 export function specialRow(item) {

@@ -181,8 +181,6 @@ export function eventPage(e) {
     card.append(head);
     if (type.blocks.length) {
       card.append(blocks(type));
-    } else {
-      card.append(el('div', 'plan-note', 'No dropoff, school, pickup, or aftercare.'));
     }
     main.append(el('h2', 'section-title', 'The day for ' + (e.classrooms.length ? e.classrooms.join(', ') : 'everyone')));
     main.append(card);

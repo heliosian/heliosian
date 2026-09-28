@@ -38,6 +38,11 @@ html[data-theme="dark"] {
   --notice-disc-ink: #f1b940;
   --notice-text: #d9d2c0;
   --off-day-wash: #0f2427;
+  --weekend-wash: #1c1b29;
+  --closed-wash: #2c2641;
+  --early-out-wash: #3a1a2a;
+  --closed-mark: #b9a6ec;
+  --early-out-mark: #f28dbb;
   --today-wash: #2a2a12;
   --on-day-wash: #0f3a3c;
   --on-today-wash: var(--on-day-wash);

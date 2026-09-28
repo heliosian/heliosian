@@ -4,7 +4,7 @@ import {el, link, svg, button} from '/elements.js';
 import {popup} from '/modal.js';
 import {load, navigate} from '/router.js';
 import {eventForm} from './eventform.js';
-import {planCards} from './events.js';
+import {planFolds} from './events.js';
 import {attachRowPeek} from './peek.js';
 
 const railPaging = {month: '', date: ''};
@@ -125,7 +125,7 @@ export function dayColumn(date, paging) {
   col.append(month, card);
   const paint = () => {
     month.replaceChildren(miniMonth(date, paging));
-    plan.replaceChildren(planCards(date));
+    plan.replaceChildren(planFolds(date));
     events.replaceChildren(timeline(date));
   };
   paint();

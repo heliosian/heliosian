@@ -9,6 +9,11 @@
   --other: #4c6a70;
   --other-wash: #e9f0f1;
   --off-day-wash: #f7f9f9;
+  --weekend-wash: #f3f1f7;
+  --closed-wash: #e4ddf0;
+  --closed: #6b5a92;
+  --early-out: #c73e7c;
+  --early-out-wash: #fce8f1;
   --today-wash: #fffaf0;
   --on-day-wash: #eef6f5;
 }
@@ -81,13 +86,13 @@ button { font: inherit; }
 
 .sidebar .timeline-row.is-hidden { opacity: 0.55; }
 
-.sidebar .day-card .plan-card.dt-regular { background: var(--card-wash, rgba(255, 255, 255, 0.08)); border-color: var(--wash-line, rgba(255, 255, 255, 0.14)); }
+.sidebar .day-card .plan-fold.dt-regular { background: var(--card-wash, rgba(255, 255, 255, 0.08)); }
 
-.sidebar .day-card .plan-card.dt-regular .plan-type, .sidebar .day-card .plan-card.dt-regular .plan-rooms { color: #fff; }
+.sidebar .day-card .plan-fold.dt-regular .plan-fold-title, .sidebar .day-card .plan-fold.dt-regular .plan-fold-time, .sidebar .day-card .plan-fold.dt-regular .plan-fold-chevron, .sidebar .day-card .plan-fold.dt-regular .plan-fold-head > svg:first-child { color: #fff; }
 
-.sidebar .day-card .plan-card.dt-regular .block { background: rgba(255, 255, 255, 0.1); }
+.sidebar .day-card .plan-fold.dt-regular .block { background: rgba(255, 255, 255, 0.1); }
 
-.sidebar .day-card .plan-card.dt-regular .block-name, .sidebar .day-card .plan-card.dt-regular .block-hours { color: #fff; }
+.sidebar .day-card .plan-fold.dt-regular .block-name, .sidebar .day-card .plan-fold.dt-regular .block-hours { color: #fff; }
 
 .sidebar .day-note, .sidebar .day-card .panel { background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.8); }
 
@@ -370,13 +375,39 @@ button { font: inherit; }
 
 .day-card-plan:not(:empty) { margin-top: 14px; }
 
-.day-card .plan-card { padding: 8px 12px 10px; }
+.plan-fold { --fold-ink: var(--other); position: relative; overflow: hidden; border-radius: 0 12px 12px 0; background: var(--card-wash, var(--other-wash)); }
 
-.day-card .plan-type { font-size: 15px; }
+.plan-fold::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--fold-ink); }
 
-.day-card .plan-card { position: relative; border-left-width: 5px; }
+.plan-fold.dt-regular { --fold-ink: var(--accent); background: var(--card); }
 
-.day-card .plan-card.dt-regular { background: var(--card); border-color: var(--line); border-left-color: var(--accent); }
+.plan-fold.dt-early { --fold-ink: var(--early-out-mark, var(--early-out)); background: var(--early-out-wash); }
+
+.plan-fold.dt-no-school { --fold-ink: var(--closed-mark, var(--closed)); background: var(--closed-wash); }
+
+.plan-fold.dt-no-aftercare { --fold-ink: var(--no-aftercare); background: var(--card-wash, var(--no-aftercare-wash)); }
+
+.plan-fold-head { display: flex; align-items: center; gap: 10px; padding: 5px 12px 5px 16px; list-style: none; }
+
+summary.plan-fold-head { cursor: pointer; }
+
+.plan-fold-head::-webkit-details-marker { display: none; }
+
+.plan-fold-head > svg:first-child { width: 20px; height: 20px; flex-shrink: 0; color: var(--fold-ink); }
+
+.plan-fold:not(.dt-regular) .plan-fold-head > svg:first-child { fill: currentColor; }
+
+.plan-fold-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+
+.plan-fold-title { font-family: Montserrat, Roboto, sans-serif; font-size: 15px; font-weight: 700; color: var(--lift-ink, var(--brand)); }
+
+.plan-fold-time { font-size: 13px; color: var(--muted); }
+
+.plan-fold-chevron { width: 18px; height: 18px; margin-left: auto; flex-shrink: 0; color: var(--lift-ink, var(--brand)); transition: transform 0.15s; }
+
+.plan-fold[open] .plan-fold-chevron { transform: rotate(90deg); }
+
+.plan-fold .blocks { padding: 2px 12px 10px 16px; }
 
 /* In the rail's width the blocks go one to a line, the icon, then the
    name with the hours under it. */
@@ -384,7 +415,7 @@ button { font: inherit; }
 
 .day-card .block { background: var(--wash, var(--page)); padding: 6px 12px 6px 8px; border-radius: 12px; }
 
-.day-card .plan-card:not(.dt-regular) .block { background: var(--wash-glass, rgba(255, 255, 255, 0.7)); }
+.day-card .plan-fold:not(.dt-regular) .block { background: var(--wash-glass, rgba(255, 255, 255, 0.7)); }
 
 .day-card .block-body { flex-direction: column; align-items: flex-start; }
 
@@ -691,9 +722,9 @@ button { font: inherit; }
 
 /* While there are words, what they find wears amber wherever it is drawn,
    and the month's other pills step back so the matches stand out. */
-.month-pip.is-match, .month-mark.is-match { box-shadow: 0 0 0 2px var(--amber); background: color-mix(in srgb, var(--amber) 22%, #fff); color: var(--early); }
+.month-pip.is-match { box-shadow: 0 0 0 2px var(--amber); background: color-mix(in srgb, var(--amber) 22%, #fff); color: var(--early); }
 
-body.is-searching .month-pip:not(.is-match), body.is-searching .month-mark:not(.is-match) { opacity: 0.4; }
+body.is-searching .month-pip:not(.is-match), body.is-searching .month-alert:not(.is-match) { opacity: 0.4; }
 
 .timeline-row.is-match .timeline-title, .wg-row.is-match .wg-title { background: var(--match-wash, color-mix(in srgb, var(--amber) 28%, #fff)); box-shadow: 0 0 0 3px var(--match-wash, color-mix(in srgb, var(--amber) 28%, #fff)); border-radius: 3px; }
 
@@ -848,13 +879,15 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .plan-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--accent); }
 
-.plan-card.dt-no-school { background: var(--card-wash, var(--no-school-wash)); }
+.plan-card.dt-no-school, .plan-card-none { background: var(--closed-wash); border: 0; }
 
-.plan-card.dt-no-school::before { background: var(--no-school); }
+.plan-card.dt-no-school::before, .plan-card-none::before { background: var(--closed); }
 
-.plan-card.dt-early { background: var(--card-wash, var(--early-wash)); }
+.plan-card.dt-no-school .plan-type, .plan-card-none .plan-type { color: var(--closed-mark, var(--closed)); }
 
-.plan-card.dt-early::before { background: var(--early); }
+.plan-card.dt-early { background: var(--early-out-wash); }
+
+.plan-card.dt-early::before { background: var(--early-out); }
 
 .plan-card.dt-no-aftercare { background: var(--card-wash, var(--no-aftercare-wash)); }
 
@@ -864,9 +897,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .plan-card.dt-other::before { background: var(--other); }
 
-.plan-card-none::before { background: var(--line); }
-
 .plan-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+
+.plan-card > .plan-head:last-child { margin-bottom: 0; }
 
 .plan-type { font-family: Montserrat, Roboto, sans-serif; font-size: 18px; font-weight: 700; color: var(--lift-ink, var(--brand)); }
 
@@ -1075,34 +1108,41 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .month-cell:hover { border-color: var(--accent); }
 
-.month-cell.is-outside { opacity: 0.45; }
-
 .month-cell.is-off { background: var(--off-day-wash); }
 
-.month-cell.is-today { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); background: var(--today-wash); }
+.month-cell.is-weekend { background: var(--weekend-wash); }
 
-/* The day open in the rail wears a teal ring - over the amber when it is
-   today, the number staying amber to say so. */
+.month-cell.is-today { background: var(--today-wash); }
+
 .month-cell.is-on { border-color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); background: var(--on-day-wash); }
 
 .month-cell.is-on.is-today { background: var(--on-today-wash, var(--today-wash)); }
 
 .month-cell { cursor: pointer; }
 
-.month-cell-num { align-self: flex-end; font-size: 13.5px; font-weight: 700; color: var(--brand); margin-bottom: 2px; text-decoration: none; }
+.month-cell.has-closed { background: var(--weekend-wash); }
+
+.month-cell.has-early { background: var(--early-out-wash); }
+
+.month-cell.is-closed { background: var(--closed-wash); }
+
+.month-cell-head { display: flex; align-items: center; gap: 4px; margin-bottom: 2px; }
+
+.month-cell-num { margin-left: auto; font-size: 13.5px; font-weight: 700; color: var(--brand); text-decoration: none; }
+
+.month-alert { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+.month-alert.is-early { color: #fff; background: var(--early-out); }
+
+.month-alert.is-closed { color: #fff; background: var(--closed); }
+
+.month-alert svg { width: 11px; height: 11px; flex-shrink: 0; }
+
+.month-alert.is-match { box-shadow: 0 0 0 2px var(--amber); }
 
 .month-cell.is-on .month-cell-num { background: var(--accent); color: #fff; border-radius: 999px; padding: 1px 8px; }
 
 .month-cell.is-today .month-cell-num { background: var(--amber); color: #fff; border-radius: 999px; padding: 1px 8px; }
-
-/* A day type is a pill in its wash with a bar down its left. */
-.month-mark { padding: 3px 7px 3px 8px; border-left: 3px solid currentColor; border-radius: 6px; font-size: 11.5px; font-weight: 700; color: var(--mark-ink, var(--ink)); background: var(--other-wash); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.month-mark.dt-no-school { --mark-ink: var(--no-school-mark); background: var(--no-school-wash); }
-
-.month-mark.dt-early { --mark-ink: var(--early-mark); background: var(--early-wash); }
-
-.month-mark.dt-no-aftercare { --mark-ink: var(--no-aftercare-mark); background: var(--no-aftercare-wash); }
 
 /* An event is a pill in a wash of its color - its title, then its hours. */
 .month-pip { display: flex; flex-direction: column; gap: 1px; padding: 3px 7px 4px; border-radius: 6px; font-size: 11.5px; background: color-mix(in srgb, var(--c) 14%, #fff); color: color-mix(in srgb, var(--c) 55%, #0d0d0d); overflow: hidden; text-decoration: none; }
@@ -2003,6 +2043,12 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .day-peek .block-icon svg { width: 14px; height: 14px; }
 
+:is(.plan-card, .plan-fold).dt-early .block.block-school { background: color-mix(in srgb, var(--early-out) 16%, var(--card)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--early-out) 35%, transparent); }
+
+:is(.plan-card, .plan-fold).dt-early .block-school .block-icon { background: var(--early-out); color: #fff; }
+
+:is(.plan-card, .plan-fold).dt-early .block-school .block-hours { color: var(--early-out-mark, var(--early-out)); }
+
 .day-peek .block-body { flex-direction: column; align-items: flex-start; }
 
 .day-peek .block-hours { font-size: 12.5px; }
@@ -2737,7 +2783,7 @@ body.is-admin #page > :not(.home) { max-width: none; margin: 0; }
   .month-grid { gap: 2px; }
   .month-cell { min-height: 58px; padding: 3px; border-radius: 6px; }
   .month-pip, .month-more { display: none; }
-  .month-mark { font-size: 9px; padding: 1px 3px; }
+  .month-alert { font-size: 9px; }
   .blocks { grid-template-columns: repeat(2, 1fr); }
   .pager-label { font-size: 17px; }
 }

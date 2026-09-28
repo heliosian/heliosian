@@ -1,4 +1,4 @@
-import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, eventTint, timeLine, startTime, eventPath, isMatch, isHidden, isGray, myEvents, linkedApp} from '../state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, plan, dayType, clock, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, eventTint, timeLine, startTime, eventPath, isMatch, isHidden, isGray, myEvents, linkedApp} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {feedMark} from '../dom.js';
 import {el, link, svg, button, toast, longToast, copyText} from '/elements.js';
@@ -83,9 +83,38 @@ function upcomingPanel(date) {
   return {node: panel, paint};
 }
 
-function dayCell(date, month) {
-  const cell = el('div', 'month-cell' + (monthOf(date) === month ? '' : ' is-outside') + (date === today() ? ' is-today' : '') + (date === state.day ? ' is-on' : '') + (isSchoolDay(date) ? '' : ' is-off'));
-  cell.append(link('/day/' + date, 'month-cell-num', String(parseDate(date).getDate())));
+function schoolEnd(type) {
+  const school = type && type.blocks.find(b => b.name === 'School');
+  return school ? school.end : '';
+}
+
+function dayCell(date) {
+  const cell = el('div', 'month-cell' + (date === today() ? ' is-today' : '') + (date === state.day ? ' is-on' : '') + (isSchoolDay(date) ? '' : ' is-off'));
+  const head = el('div', 'month-cell-head');
+  const standard = schoolEnd(dayType('Regular'));
+  const groups = plan(date);
+  const all = selectedClassrooms();
+  const alert = (kind, words, match) => {
+    const chip = el('span', 'chip month-alert is-' + kind + (match ? ' is-match' : ''));
+    chip.append(svg('bell'), words);
+    head.append(chip);
+    cell.classList.add('has-' + kind);
+  };
+  for (const end of [...new Set(groups.map(g => schoolEnd(g.type)).filter(end => end && end !== standard))]) {
+    alert('early', clock(end).trimStart(), state.query && groups.some(g => schoolEnd(g.type) === end && dayTypeMatches(g.name, state.query)));
+  }
+  for (const g of groups.filter(g => !schoolEnd(g.type))) {
+    alert('closed', g.classrooms.length === all.length ? g.name : `${g.name} (${g.classrooms.length})`, state.query && dayTypeMatches(g.name, state.query));
+  }
+  if (groups.length && groups.every(g => !schoolEnd(g.type))) {
+    cell.classList.add('is-closed');
+  }
+  if (parseDate(date).getDay() % 6 === 0) {
+    cell.classList.add('is-weekend');
+  }
+  const day = parseDate(date);
+  head.append(link('/day/' + date, 'month-cell-num', day.getDate() === 1 ? day.toLocaleDateString('en-US', {month: 'short', day: 'numeric'}) : String(day.getDate())));
+  cell.append(head);
   cell.addEventListener('click', e => {
     if (e.target.closest('a') || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) {
       return;
@@ -93,14 +122,8 @@ function dayCell(date, month) {
     hidePeek();
     setPath('/day/' + date);
   });
-  const groups = specials(date);
-  const all = selectedClassrooms();
-  for (const g of groups) {
-    const mark = el('div', 'month-mark ' + dayTypeClass(g.name) + (state.query && dayTypeMatches(g.name, state.query) ? ' is-match' : ''), g.classrooms.length === all.length ? g.name : `${g.name} (${g.classrooms.length})`);
-    cell.append(mark);
-  }
   const events = eventsOn(date);
-  const room = Math.max(1, 3 - groups.length);
+  const room = 3;
   const pips = el('div', 'month-pips');
   for (const e of events) {
     const pip = link(eventPath(e), 'month-pip' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.sharing !== 'Public' ? ' is-invite' : ''));
@@ -355,7 +378,7 @@ function monthGrid() {
     const last = formatDate(new Date(parseDate(first).getFullYear(), parseDate(first).getMonth() + 1, 0));
     let d = weekStart(first);
     while (d <= last || parseDate(d).getDay() !== 0) {
-      grid.append(dayCell(d, month));
+      grid.append(dayCell(d));
       d = addDays(d, 1);
     }
     wrap.append(grid);
