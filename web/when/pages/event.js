@@ -254,7 +254,11 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
   if (view.host) {
     const tools = ask.closest('.event-page')?.querySelector('.detail-tools');
     if (tools && !tools.querySelector('.detail-edit')) {
-      tools.append(button('Edit', 'edit', 'button button-secondary button-small detail-edit', () => openEditor(e, view, refresh, {tab: 'invitation'})));
+      tools.append(button('Edit', 'edit', 'button button-secondary button-small detail-edit', () => openEditor(e, view, refresh)));
+    }
+    const heroWrap = ask.closest('.event-page')?.querySelector('.detail-hero');
+    if ((e.source === 'sheet' || imported(e)) && heroWrap && !heroWrap.querySelector('.hero-image-bar')) {
+      heroWrap.append(heroImageBar(e));
     }
   }
   const invited = (view.host ? view.list : view.coming || []).some(r => r.invited);

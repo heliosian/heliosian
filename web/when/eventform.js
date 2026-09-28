@@ -10,14 +10,15 @@ function randomID() {
   return [...raw].map(b => alphabet[b % alphabet.length]).join('');
 }
 
-export function eventForm({from = null, shift = 0, edit = null, override = false, onDone}) {
+export function eventForm({from = null, shift = 0, edit = null, override = false, more = [], onDone}) {
   const admin = isAdmin();
   if (edit) {
     from = edit;
     shift = 0;
   }
+  const wrap = el('div', 'event-form-wrap');
   const form = el('form', 'admin-form');
-  form.append(el('p', 'hint', override ? 'This event comes from the school\u2019s calendar. What you change here is kept over the school\u2019s version through every sync; anything put back the way the school has it follows the school again.' : edit ? 'Change what you need to; the event keeps its place on the calendar.' : 'Shared under your name. You will see who answers it.'));
+  const hint = el('p', 'hint', override ? 'This event comes from the school\u2019s calendar. What you change here is kept over the school\u2019s version through every sync; anything put back the way the school has it follows the school again.' : edit ? 'Change what you need to; the event keeps its place on the calendar.' : 'Shared under your name. You will see who answers it.');
   const tabs = el('div', 'tabs');
   const eventPanel = el('div');
   const tagPanel = el('div');
@@ -31,16 +32,23 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     b.addEventListener('click', () => showPanel(panel));
     return b;
   };
-  const eventTab = tabButton('Event', eventPanel);
+  const eventTab = tabButton(more.length ? 'Details' : 'Event', eventPanel);
   const tagTab = tabButton('Who', tagPanel);
+  const extra = more.map(m => ({panel: m.panel, tab: tabButton(m.label, m.panel)}));
   showPanel = panel => {
     eventTab.classList.toggle('is-active', panel === eventPanel);
     tagTab.classList.toggle('is-active', panel === tagPanel);
     eventPanel.hidden = panel !== eventPanel;
     tagPanel.hidden = panel !== tagPanel;
+    for (const x of extra) {
+      x.tab.classList.toggle('is-active', panel === x.panel);
+      x.panel.hidden = panel !== x.panel;
+    }
+    form.hidden = hint.hidden = panel !== eventPanel && panel !== tagPanel;
   };
-  tabs.append(eventTab, tagTab);
-  form.append(tabs, eventPanel, tagPanel);
+  tabs.append(eventTab, tagTab, ...extra.map(x => x.tab));
+  form.append(eventPanel, tagPanel);
+  wrap.append(hint, tabs, form, ...extra.map(x => x.panel));
   showPanel(eventPanel);
   const field = (label, input, note) => {
     const wrap = el('label', 'field');
@@ -185,7 +193,9 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     const addressField = el('div', 'field');
     addressField.append(el('span', '', 'Web address'), row, el('small', '', 'A friendly address for sharing - letters, digits and dashes. Blank for none; the event\u2019s old link keeps working either way.'));
     eventPanel.append(addressField);
-    eventPanel.append(field('Note', note, 'Shown to the admins on the event\u2019s page, beside what was corrected.'));
+    if (admin) {
+      eventPanel.append(field('Note', note, 'Shown to the admins on the event\u2019s page, beside what was corrected.'));
+    }
   }
 
   const picture = {name: from ? from.title : '', image: from && from.source === 'sheet' && from.image ? from.image.replace(/^\//, '') : '', imageUrl: from && from.source === 'sheet' ? from.image || '' : ''};
@@ -264,7 +274,7 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
   const paintWho = () => {
     const invite = sharing !== 'Public';
     tagTab.hidden = invite;
-    tabs.hidden = invite;
+    tabs.hidden = invite && !extra.length;
     nextRow.hidden = invite;
     sourceField.hidden = invite || override;
     if (invite) {
@@ -317,8 +327,10 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       body.id = slug.value.trim();
     }
     if (override) {
-      body.note = note.value.trim();
       body.address = address.value.trim();
+      if (admin) {
+        body.note = note.value.trim();
+      }
     }
     let made;
     try {
@@ -331,18 +343,18 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       submit.disabled = false;
     }
     status.textContent = '';
+    const changed = edit ? [['title', edit.title], ['start', edit.start], ['end', edit.end || edit.start], ['location', edit.location || '']].filter(([key, was]) => (body[key] || (key === 'end' ? body.start : '')) !== was).map(([key]) => key) : [];
     if (override) {
       toast('Saved over the school\u2019s version');
       const now = address.value.trim();
       if (now !== (edit.address || '')) {
         history.replaceState(null, '', eventPath(now ? {address: now} : {id: edit.id}));
       }
-      await onDone([edit.id], []);
+      await onDone([edit.id], changed);
       return;
     }
     if (edit) {
       toast('Saved');
-      const changed = [['title', edit.title], ['start', edit.start], ['end', edit.end || edit.start], ['location', edit.location || '']].filter(([key, was]) => (body[key] || (key === 'end' ? body.start : '')) !== was).map(([key]) => key);
       await onDone([edit.id], changed);
       return;
     }
@@ -350,6 +362,6 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     longToast(pending ? 'Shared - an admin will approve it onto the calendar. It is on yours now, and its link works right away.' : 'Added - invite people from the event\u2019s page, or send them its link.');
     await onDone(ids);
   });
-  return form;
+  return wrap;
 }
 

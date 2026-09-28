@@ -310,14 +310,21 @@ func (a app) tagOps(actor access.Actor, tags []tagBody) ([]store.Op, int, error)
 	return ops, added, nil
 }
 
-func (a app) overrideOps(actor access.Actor, body overrideBody) ([]store.Op, string, bool, error) {
-	if err := adminOnly(actor); err != nil {
-		return nil, "", false, err
+func (a app) mayCorrect(actor access.Actor, e *Event) error {
+	if !actor.May(Curate) && !a.isHost(actor, e) {
+		return access.Forbidden("only a host of an event, or an admin, can change it")
 	}
+	return nil
+}
+
+func (a app) overrideOps(actor access.Actor, body overrideBody) ([]store.Op, string, bool, error) {
 	model := a.cache.Model()
 	e := model.Event(strings.TrimSpace(body.ID))
 	if e == nil || !e.imported() {
 		return nil, "", false, access.Missing("only an event the school's calendars bring is corrected here")
+	}
+	if err := a.mayCorrect(actor, e); err != nil {
+		return nil, "", false, err
 	}
 	id := e.ID
 	school := model.imports[id]
@@ -366,7 +373,13 @@ func (a app) overrideOps(actor access.Actor, body overrideBody) ([]store.Op, str
 	}
 	list("Tags", body.Tags, school.Tags)
 	list("Keywords", body.Keywords, school.Keywords)
-	row["Note"] = strings.TrimSpace(body.Note)
+	row["Note"] = ""
+	if p := model.Provenance[id]; p != nil {
+		row["Note"] = p.Note
+	}
+	if body.Note != nil && actor.May(Curate) {
+		row["Note"] = strings.TrimSpace(*body.Note)
+	}
 	row["Address"] = strings.ToLower(strings.TrimSpace(body.Address))
 	if row["Address"] != "" && !eventIDForm.MatchString(row["Address"]) {
 		return nil, "", false, access.Invalid("an address is letters, digits and dashes, 3 to 40 of them")
@@ -382,12 +395,12 @@ func (a app) overrideOps(actor access.Actor, body overrideBody) ([]store.Op, str
 }
 
 func (a app) overrideImageOps(actor access.Actor, id, image string) ([]store.Op, *Event, string, error) {
-	if err := adminOnly(actor); err != nil {
-		return nil, nil, "", err
-	}
 	e := a.cache.Model().Event(strings.TrimSpace(id))
 	if e == nil || !e.imported() {
 		return nil, nil, "", access.Missing("only an event the school's calendars bring takes its picture here")
+	}
+	if err := a.mayCorrect(actor, e); err != nil {
+		return nil, nil, "", err
 	}
 	image = strings.Trim(strings.TrimSpace(image), "/")
 	return []store.Op{store.Upsert(OverridesTab, store.Row{"Event ID": e.ID}, store.Row{"Image": image})}, e, image, nil
@@ -416,6 +429,9 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 	}
 	if body.PublicList != nil {
 		row["Public Guest List"] = cells.YesNoCell(*body.PublicList)
+	}
+	if body.Guests != nil {
+		row["Guests"] = cells.YesNoCell(*body.Guests)
 	}
 	if body.NotifyMe != nil {
 		notify := []string{}

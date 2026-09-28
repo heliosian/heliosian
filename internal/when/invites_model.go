@@ -33,7 +33,7 @@ type Invitation struct {
 	Notify      []string `json:"-"`
 	SteppedDown string   `json:"-"`
 	HideHosts   bool     `json:"hideHosts"`
-	PublicList  bool     `json:"publicList"`
+	PublicList  *bool    `json:"-"`
 	Title       string   `json:"title,omitempty"`
 	Start       string   `json:"start,omitempty"`
 	End         string   `json:"end,omitempty"`
@@ -90,12 +90,20 @@ func (b *builder) invitations(settings, rows []store.Row) {
 		if err != nil {
 			b.refuse("invitation for %s: hide hosts %v", id, err)
 		}
-		publicList, err := cells.YesNo(row["Public Guest List"], false)
+		var publicList *bool
+		if strings.TrimSpace(row["Public Guest List"]) != "" {
+			open, err := cells.YesNo(row["Public Guest List"], false)
+			if err != nil {
+				b.refuse("invitation for %s: public guest list %v", id, err)
+			}
+			publicList = &open
+		}
+		guests, err := cells.YesNo(row["Guests"], true)
 		if err != nil {
-			b.refuse("invitation for %s: public guest list %v", id, err)
+			b.refuse("invitation for %s: guests %v", id, err)
 		}
 		inv := &Invitation{
-			EventID: id, Hosts: []string{}, Audience: strings.ToLower(strings.TrimSpace(row["Audience"])), Guests: true, Message: strings.TrimSpace(row["Message"]),
+			EventID: id, Hosts: []string{}, Audience: strings.ToLower(strings.TrimSpace(row["Audience"])), Guests: guests, Message: strings.TrimSpace(row["Message"]),
 			CreatedBy: config.NormalizeEmail(row["Created By"]), Created: strings.TrimSpace(row["Created"]), Sent: strings.TrimSpace(row["Sent"]),
 			Title: strings.TrimSpace(row["Title"]), Start: strings.TrimSpace(row["Start"]), End: strings.TrimSpace(row["End"]),
 			Location: strings.TrimSpace(row["Location"]), Description: strings.TrimSpace(row["Description"]),

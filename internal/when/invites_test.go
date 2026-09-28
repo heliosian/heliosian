@@ -1344,6 +1344,39 @@ func TestGuestsInvite(t *testing.T) {
 	}
 }
 
+func TestPermissions(t *testing.T) {
+	mux, cache, kept := invitesApp(t)
+	jordan, robinH := as(host, mux), as(robin, mux)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
+	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
+	waitFor(kept, 1)
+	if v := inviteView(t, robinH, "meetup"); !v.MayInvite || !v.Guests || v.ListPrivate || v.Coming == nil {
+		t.Errorf("robin's view to start: invite %v guests %v private %v coming %v", v.MayInvite, v.Guests, v.ListPrivate, v.Coming)
+	}
+	if rec := call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"meetup","guests":false,"publicList":false}`); rec.Code != 204 {
+		t.Fatalf("closing: %d %s", rec.Code, rec.Body)
+	}
+	if inv := cache.Model().Invitations["meetup"]; inv.Guests || inv.PublicList == nil || *inv.PublicList {
+		t.Errorf("the settings after closing = %+v", inv)
+	}
+	if v := inviteView(t, robinH, "meetup"); v.MayInvite || v.Guests || !v.ListPrivate || v.Coming != nil {
+		t.Errorf("robin's view closed: invite %v guests %v private %v coming %v", v.MayInvite, v.Guests, v.ListPrivate, v.Coming)
+	}
+	if rec := call(t, robinH, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+mia+`"}]}`); rec.Code != 403 {
+		t.Errorf("robin inviting when closed: %d", rec.Code)
+	}
+	if rec := call(t, robinH, "POST", "/api/when/invites/guest", `{"id":"meetup","name":"Pat"}`); rec.Code != 403 {
+		t.Errorf("robin bringing a guest when closed: %d", rec.Code)
+	}
+	if rec := call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+mia+`"}]}`); rec.Code != 200 {
+		t.Errorf("the host inviting when closed: %d %s", rec.Code, rec.Body)
+	}
+	if v := inviteView(t, jordan, "meetup"); !v.Host || v.List == nil {
+		t.Errorf("the host's view closed: %+v", v)
+	}
+}
+
 func TestTeamStart(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	teamA := SourceTeam + "/e1"

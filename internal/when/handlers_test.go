@@ -837,6 +837,26 @@ func TestOverrideFromThePage(t *testing.T) {
 	if rec := call(t, admin, "PUT", "/api/when/overrides", `{"id":"a2@sample","title":"x","start":"not a date"}`); rec.Code != 400 {
 		t.Errorf("a bad date: %d", rec.Code)
 	}
+	if rec := call(t, admin, "PUT", "/api/when/overrides", body(e.Title, e.Start, e.End, e.Location, "The admins'")); rec.Code != 204 {
+		t.Fatalf("an admin's note: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, admin, "PUT", "/api/when/invites/settings", `{"id":"a2@sample","hosts":["jordan.whitfield@heliosschool.org"]}`); rec.Code != 204 {
+		t.Fatalf("a co-host: %d %s", rec.Code, rec.Body)
+	}
+	cohost := as("jordan.whitfield@heliosschool.org", handler)
+	if rec := call(t, cohost, "PUT", "/api/when/overrides", body("Family Night", e.Start, e.End, e.Location, "Mine")); rec.Code != 204 {
+		t.Fatalf("a co-host's edit: %d %s", rec.Code, rec.Body)
+	}
+	if r := row(); r["Title"] != "Family Night" || r["Note"] != "The admins'" || cache.Model().Event("a2@sample").Title != "Family Night" {
+		t.Errorf("after the co-host's edit: %v", r)
+	}
+	if rec := call(t, cohost, "PUT", "/api/when/overrides/image", `{"id":"a2@sample","image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Event("a2@sample").Image != "/category-images/night.jpg" {
+		t.Errorf("a co-host's picture: %d", rec.Code)
+	}
+	raw, _ := json.Marshal(map[string]any{"id": "a2@sample", "title": "Family Night", "start": e.Start, "end": e.End, "location": e.Location, "description": e.Description, "tags": tags, "keywords": e.Keywords})
+	if rec := call(t, admin, "PUT", "/api/when/overrides", string(raw)); rec.Code != 204 || row()["Note"] != "The admins'" {
+		t.Errorf("an edit sending no note: %d %v", rec.Code, row())
+	}
 }
 
 func TestMyHeliosianFeed(t *testing.T) {

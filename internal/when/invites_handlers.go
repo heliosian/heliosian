@@ -250,7 +250,8 @@ func (a app) invitesView(r *http.Request, _ serve.None) (InviteView, error) {
 	if e.Source == SourceSheet && !e.PosterLeft {
 		poster = a.directory().Resolve(config.NormalizeEmail(e.AddedBy))
 	}
-	view := InviteView{Host: host, Poster: poster, MayInvite: host || e.Sharing == SharingPublic || model.Invited(a.directory(), viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
+	guests := model.othersInvite(e.ID)
+	view := InviteView{Host: host, Poster: poster, MayInvite: host || guests && (e.Sharing == SharingPublic || model.Invited(a.directory(), viewer, e.ID)), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: guests, Hosts: []Person{}, Mine: []GuestRow{}}
 	view.MoveEverywhere = host && view.Party && a.celebrate.IsAdmin(viewer)
 	if inv != nil && inv.Flyer != "" {
 		view.Flyer = flyerPath(e.ID)
@@ -267,7 +268,7 @@ func (a app) invitesView(r *http.Request, _ serve.None) (InviteView, error) {
 		view.Hosts = append(view.Hosts, p)
 	}
 	if inv != nil {
-		view.Guests, view.Sent = inv.Guests, inv.Sent
+		view.Sent = inv.Sent
 		if host {
 			view.Settings = inv
 			view.NotifyMe = slices.Contains(inv.Notify, viewer)
@@ -306,7 +307,7 @@ func (a app) invitesView(r *http.Request, _ serve.None) (InviteView, error) {
 	}
 	sort.SliceStable(view.Mine, func(i, j int) bool { return view.Mine[i].Email == viewer && view.Mine[j].Email != viewer })
 	view.Coming = []GuestRow{}
-	view.ListPrivate = e.imported() && !(inv != nil && inv.PublicList)
+	view.ListPrivate = model.listPrivate(e)
 	for _, g := range rows {
 		if view.ListPrivate && !host {
 			break
@@ -416,6 +417,7 @@ type settingsBody struct {
 	NotifyMe    *bool    `json:"notifyMe"`
 	HideHosts   *bool    `json:"hideHosts"`
 	PublicList  *bool    `json:"publicList"`
+	Guests      *bool    `json:"guests"`
 }
 
 func (a app) inviteSettings(r *http.Request, body settingsBody) (serve.None, error) {

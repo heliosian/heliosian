@@ -16,15 +16,12 @@ type overrideBody struct {
 	Description string   `json:"description"`
 	Tags        []string `json:"tags"`
 	Keywords    []string `json:"keywords"`
-	Note        string   `json:"note"`
+	Note        *string  `json:"note"`
 	Address     string   `json:"address"`
 }
 
 func (a app) setOverride(r *http.Request, body overrideBody) (serve.None, error) {
 	actor := a.actor(r)
-	if err := adminOnly(actor); err != nil {
-		return serve.None{}, err
-	}
 	ops, id, empty, err := a.overrideOps(actor, body)
 	if err != nil {
 		return serve.None{}, err
@@ -43,9 +40,6 @@ type overrideImageBody struct {
 
 func (a app) setOverrideImage(r *http.Request, body overrideImageBody) (serve.None, error) {
 	actor := a.actor(r)
-	if err := adminOnly(actor); err != nil {
-		return serve.None{}, err
-	}
 	ops, e, image, err := a.overrideImageOps(actor, body.ID, body.Image)
 	if err != nil {
 		return serve.None{}, err

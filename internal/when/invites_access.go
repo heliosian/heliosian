@@ -78,16 +78,35 @@ func (a app) guestListEvent(actor access.Actor, id string) (*Event, error) {
 	return e, nil
 }
 
+func (m *Model) othersInvite(id string) bool {
+	inv := m.Invitations[id]
+	return inv == nil || inv.Guests
+}
+
+func (m *Model) listPrivate(e *Event) bool {
+	if inv := m.Invitations[e.ID]; inv != nil && inv.PublicList != nil {
+		return !*inv.PublicList
+	}
+	return e.imported()
+}
+
 func (a app) inviterEvent(actor access.Actor, id string) (*Event, bool, error) {
 	e, err := a.guestListEvent(actor, id)
 	if err != nil {
 		return nil, false, err
 	}
 	host := a.isHost(actor, e)
-	if !host && e.Sharing != SharingPublic && !a.cache.Model().Invited(a.directory(), actor.Email, e.ID) {
+	if host {
+		return e, true, nil
+	}
+	model := a.cache.Model()
+	if !model.othersInvite(e.ID) {
+		return nil, false, access.Forbidden("only the hosts invite people to this event")
+	}
+	if e.Sharing != SharingPublic && !model.Invited(a.directory(), actor.Email, e.ID) {
 		return nil, false, access.Forbidden("only a host, or someone invited, may invite others")
 	}
-	return e, host, nil
+	return e, false, nil
 }
 
 func (a app) hostedEvent(actor access.Actor, id string) (*Event, error) {

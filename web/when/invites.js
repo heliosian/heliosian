@@ -3,6 +3,7 @@ import {el, svg, button, toast, longToast, copyText} from '/elements.js';
 import {popup} from '/modal.js';
 import {whoLink} from '/appswitch.js';
 import {api} from '/api.js';
+import {checkbox} from '/form.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
 import {uploadImage} from './imagecontrol.js';
@@ -76,7 +77,7 @@ export function familyBand(e, view, refresh) {
   box.append(list);
   const foot = el('div', 'invite-foot');
   const of = view.mine.find(r => r.key === me().email && !r.guestOf) ? me().email : (view.mine.find(r => r.mine && !r.guestOf) || {}).key;
-  if (of) {
+  if (of && (view.guests || view.host)) {
     foot.append(button('Add a guest', 'plus', 'link-button', () => openGuestForm(e, of, refresh)));
   }
   const hide = el('button', 'rsvp-clear', 'Hide event');
@@ -149,7 +150,7 @@ export function rsvpRow(e, view, refresh) {
   }
   const foot = el('div', 'invite-foot');
   const of = view.mine.find(r => r.key === me().email && !r.guestOf) ? me().email : (view.mine.find(r => r.mine && !r.guestOf) || {}).key;
-  if (of) {
+  if (of && (view.guests || view.host)) {
     foot.append(button('Add a guest', 'plus', 'link-button', () => openGuestForm(e, of, refresh)));
   }
   const hide = el('button', 'rsvp-clear', 'Hide event');
@@ -992,27 +993,57 @@ export function settingsForm(e, view, refresh, shut, part = 'invitation') {
   return form;
 }
 
+function permissionsForm(e, view, refresh, shut) {
+  const form = el('form', 'admin-form');
+  const invite = checkbox('Allow others to invite guests', view.guests, 'Anyone invited may invite more people and bring guests of their own. Off, only the hosts add to the list.');
+  const list = checkbox('Allow everyone to see the guest list', !view.listPrivate, 'Everyone who can open the event sees who said yes or maybe, and who has not answered. Only the hosts see who said no.');
+  const actions = el('div', 'modal-actions');
+  const status = el('span', 'save-status');
+  const submit = el('button', 'button');
+  submit.type = 'submit';
+  submit.append(svg('check'), el('span', '', 'Save'));
+  actions.append(submit, status);
+  form.append(invite.wrap, list.wrap, actions);
+  form.addEventListener('submit', async ev => {
+    ev.preventDefault();
+    submit.disabled = true;
+    try {
+      await api('PUT', '/api/when/invites/settings', {id: e.id, guests: invite.input.checked, publicList: list.input.checked});
+      toast('Saved');
+      shut();
+      await refresh();
+    } catch (err) {
+      status.textContent = err.message;
+      status.classList.add('error');
+      submit.disabled = false;
+    }
+  });
+  return form;
+}
+
 export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
   const {eventForm} = await import('./eventform.js');
-  const own = e.source === 'sheet' && (postedAndHosting(e) || isAdmin());
-  const imported = (e.source === 'google' || e.source === 'pdf') && isAdmin();
+  const host = Boolean(view && view.host);
+  const own = e.source === 'sheet' && (postedAndHosting(e) || isAdmin() || host);
+  const imported = (e.source === 'google' || e.source === 'pdf') && (isAdmin() || host);
   let shut = null;
   const box = el('div', 'editor');
   const panels = {};
   if (own || imported) {
-    panels.event = eventForm({edit: e, override: imported, onDone: async (ids, changed) => {
+    const more = host ? [{label: 'Message', panel: settingsForm(e, view, refresh, () => shut(), 'email')}, {label: 'Permissions', panel: permissionsForm(e, view, refresh, () => shut())}] : [];
+    panels.event = eventForm({edit: e, override: imported, more, onDone: async (ids, changed) => {
       shut();
       await refresh();
       if (changed && changed.length) {
         offerUpdate(e, changed);
       }
     }});
-  }
-  if (view && view.host) {
+  } else if (host) {
     if (view.linked) {
       panels.invitation = settingsForm(e, view, refresh, () => shut(), 'invitation');
     }
     panels.email = settingsForm(e, view, refresh, () => shut(), 'email');
+    panels.permissions = permissionsForm(e, view, refresh, () => shut());
   }
   const keys = Object.keys(panels);
   if (keys.length > 1) {
@@ -1026,7 +1057,7 @@ export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
         b.classList.toggle('is-active', b.dataset.key === active);
       }
     };
-    for (const [key, label] of [['event', 'Event'], ['invitation', 'Invitation'], ['email', 'Email Invitation']]) {
+    for (const [key, label] of [['event', 'Event'], ['invitation', 'Invitation'], ['email', 'Email Invitation'], ['permissions', 'Permissions']]) {
       if (!panels[key]) {
         continue;
       }
