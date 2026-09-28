@@ -31,6 +31,25 @@ func YesNo(cell string, blank bool) (bool, error) {
 	return false, fmt.Errorf("%q is not Yes, No, or blank", cell)
 }
 
+func YesNoBlank(cell string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(cell)) {
+	case "yes":
+		return "Yes", nil
+	case "no":
+		return "No", nil
+	case "":
+		return "", nil
+	}
+	return "", fmt.Errorf("%q is not Yes, No, or blank", cell)
+}
+
+func OrDefault(cell string, inherited bool) bool {
+	if cell == "" {
+		return inherited
+	}
+	return cell == "Yes"
+}
+
 func YesNoCell(b bool) string {
 	if b {
 		return "Yes"

@@ -2,7 +2,7 @@ import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, ca
 import {parseWhen} from '/datecard.js';
 import {badge} from './dom.js';
 import {el, link, svg, imageThumb, button} from '/elements.js';
-import {openSignUp, openActivity} from './edit.js';
+import {openSignUp} from './edit.js';
 import {navigate} from '/router.js';
 
 function statusBadges(node) {
@@ -138,8 +138,8 @@ function joinButton(node) {
   return button('Join', 'join', 'button button-small', () => openSignUp(node, null));
 }
 
-export function childRow(node, editing, moves) {
-  const row = link(activityPath(node), 'row is-link' + (node.status === 'Hidden' || node.status === 'Pending' ? ' is-muted' : ''));
+export function childRow(node, editing) {
+  const row = link(activityPath(node), 'row is-link' + (node.status === 'Hidden' || node.status === 'Pending' || node.categoryHidden ? ' is-muted' : ''));
   row.append(imageThumb(node.imageUrl || rootOf(node).imageUrl, node.title));
   const body = el('div', 'row-body');
   body.append(labelLine(node));
@@ -186,21 +186,6 @@ export function childRow(node, editing, moves) {
       row.classList.add('is-dragging');
     });
     row.addEventListener('dragend', () => row.classList.remove('is-dragging'));
-    if (moves) {
-      const nudge = el('div', 'row-nudge');
-      for (const [dir, fn] of [['up', moves.up], ['down', moves.down]]) {
-        const b = button('', dir, 'edit-icon', fn || (() => {}));
-        b.title = `Move ${dir}`;
-        b.setAttribute('aria-label', `Move ${node.title} ${dir}`);
-        b.disabled = !fn;
-        nudge.append(b);
-      }
-      actions.append(nudge);
-    }
-    const pencil = button('', 'edit', 'edit-icon', () => openActivity(node));
-    pencil.title = `Edit ${node.title}`;
-    pencil.setAttribute('aria-label', pencil.title);
-    actions.append(pencil);
   }
   const chevron = svg('chevron-right');
   chevron.classList.add('chevron');

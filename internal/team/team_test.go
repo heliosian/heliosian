@@ -530,7 +530,7 @@ func TestReorderChildren(t *testing.T) {
 
 func TestSuggestApproveRenameDelete(t *testing.T) {
 	cache, mux := newServer(t)
-	suggestion := map[string]any{"year": "2026 - 2027", "title": "Kite Day", "category": "tcg0000000006", "status": StatusOpen, "description": "Fly kites", "signUp": PositionOpen, "directSignUp": true}
+	suggestion := map[string]any{"year": "2026 - 2027", "title": "Kite Day", "category": "tcg0000000006", "status": StatusOpen, "description": "Fly kites", "signUp": PositionOpen, "directSignUp": "Yes"}
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/activity", suggestion); rec.Code != http.StatusOK {
 		t.Fatalf("suggest: %d %s", rec.Code, rec.Body)
 	}
@@ -538,7 +538,7 @@ func TestSuggestApproveRenameDelete(t *testing.T) {
 	if kite == nil || kite.Status != StatusPending || kite.AddedBy != parent || len(kite.Volunteers) != 1 || kite.Volunteers[0].Position != PositionOpen {
 		t.Fatalf("suggestion landed as %+v", kite)
 	}
-	edit := map[string]any{"id": kite.ID, "year": "2026 - 2027", "title": "Kite Festival", "category": "tcg0000000002", "status": StatusOpen, "directSignUp": true}
+	edit := map[string]any{"id": kite.ID, "year": "2026 - 2027", "title": "Kite Festival", "category": "tcg0000000002", "status": StatusOpen, "directSignUp": "Yes"}
 	if rec := testkit.Call(t, mux, parent, "POST", "/api/team/activity", edit); rec.Code != http.StatusForbidden {
 		t.Fatalf("a non-chair edited an activity: %d", rec.Code)
 	}
@@ -569,7 +569,7 @@ func TestSuggestApproveRenameDelete(t *testing.T) {
 func TestYearMoveCarriesTheTreeAndDeleteTakesTheLinks(t *testing.T) {
 	cache, mux := newServer(t)
 	spring := cache.Model().Activity("act0000000002")
-	edit := map[string]any{"id": "act0000000002", "year": "2027 - 2028", "title": spring.Title, "category": spring.Category, "status": spring.Status, "directSignUp": true, "prettyId": spring.PrettyID}
+	edit := map[string]any{"id": "act0000000002", "year": "2027 - 2028", "title": spring.Title, "category": spring.Category, "status": spring.Status, "directSignUp": "Yes", "prettyId": spring.PrettyID}
 	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("move year: %d %s", rec.Code, rec.Body)
 	}
@@ -596,7 +596,7 @@ func TestYearMoveCarriesTheTreeAndDeleteTakesTheLinks(t *testing.T) {
 	if moved != 3 || len(years) != 4 || years["Event ID=act0000000023 2026 - 2027"] != 1 {
 		t.Fatalf("sheet moved %d children, logged %v", moved, years)
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", map[string]any{"year": "2026 - 2027", "title": "Bake Sale", "category": "tcg0000000002", "status": StatusOpen, "directSignUp": true}); rec.Code != http.StatusOK {
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", map[string]any{"year": "2026 - 2027", "title": "Bake Sale", "category": "tcg0000000002", "status": StatusOpen, "directSignUp": "Yes"}); rec.Code != http.StatusOK {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
 	sale := byTitle(cache.Model(), "2026 - 2027", "Bake Sale")
@@ -629,7 +629,7 @@ func TestRenameKeepsTheTree(t *testing.T) {
 	cache, mux := newServer(t)
 	edit := map[string]any{
 		"id": "act0000000020", "year": "2026 - 2027", "title": "India Booth", "parent": "act0000000001",
-		"category": "tcg0000000008", "status": StatusOpen, "coLeaderNeeded": true, "directSignUp": true,
+		"category": "tcg0000000008", "status": StatusOpen, "coLeaderNeeded": true, "directSignUp": "Yes",
 	}
 	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
@@ -652,7 +652,7 @@ func TestCoChairApproves(t *testing.T) {
 	save := func(who, id, parentID, category, status string) int {
 		act := cache.Model().Activity(id)
 		return testkit.Call(t, mux, who, "POST", "/api/team/activity", map[string]any{
-			"id": id, "year": act.Year, "title": act.Title, "parent": parentID, "category": category, "status": status, "directSignUp": act.DirectSignUp,
+			"id": id, "year": act.Year, "title": act.Title, "parent": parentID, "category": category, "status": status, "directSignUp": act.DirectSignUpOwn,
 		}).Code
 	}
 	status := func(id string) string { return cache.Model().Activity(id).Status }
@@ -679,7 +679,7 @@ func TestCoChairMovesOnlyUnderTheirOwn(t *testing.T) {
 	move := func(who, id, parentID string) int {
 		act := cache.Model().Activity(id)
 		return testkit.Call(t, mux, who, "POST", "/api/team/activity", map[string]any{
-			"id": id, "year": act.Year, "title": act.Title, "parent": parentID, "category": "", "status": act.Status, "directSignUp": act.DirectSignUp,
+			"id": id, "year": act.Year, "title": act.Title, "parent": parentID, "category": "", "status": act.Status, "directSignUp": act.DirectSignUpOwn,
 		}).Code
 	}
 	if code := move(india, "act0000000020", "act0000000002"); code != http.StatusForbidden {
@@ -748,7 +748,7 @@ func TestEventCategories(t *testing.T) {
 	}
 	propose := func(who, category string) int {
 		return testkit.Call(t, mux, who, "POST", "/api/team/activity", map[string]any{
-			"year": "2026 - 2027", "title": "Sweden", "parent": "act0000000001", "category": category, "status": StatusOpen, "directSignUp": true,
+			"year": "2026 - 2027", "title": "Sweden", "parent": "act0000000001", "category": category, "status": StatusOpen, "directSignUp": "Yes",
 		}).Code
 	}
 	if code := propose(parent, "tcg0000000008"); code != http.StatusOK {
@@ -758,7 +758,7 @@ func TestEventCategories(t *testing.T) {
 		t.Fatalf("a booth added under a Yes category should be open: %+v", sweden)
 	}
 	if code := testkit.Call(t, mux, parent, "POST", "/api/team/activity", map[string]any{
-		"year": "2026 - 2027", "title": "Loose Booth", "parent": "act0000000001", "category": "", "status": StatusOpen, "directSignUp": true,
+		"year": "2026 - 2027", "title": "Loose Booth", "parent": "act0000000001", "category": "", "status": StatusOpen, "directSignUp": "Yes",
 	}).Code; code != http.StatusOK {
 		t.Fatalf("an uncategorised proposal under an Approval Needed event was refused: %d", code)
 	}
@@ -889,6 +889,108 @@ func TestBrokenSheetRefusesToLoad(t *testing.T) {
 	}
 }
 
+func TestVolunteerSettingsInherit(t *testing.T) {
+	newServer(t)
+	next := tables(t)
+	set := func(tab, key, id, column, value string) {
+		for _, row := range next[tab] {
+			if row[key] == id {
+				row[column] = value
+				return
+			}
+		}
+		t.Fatalf("no %s row %s", tab, id)
+	}
+	for _, id := range []string{"act0000000001", "act0000000016", "act0000000019", "act0000000020"} {
+		set(activitiesTab, "Event ID", id, "Direct Sign-Up", "")
+		set(activitiesTab, "Event ID", id, "Volunteers Hidden", "")
+	}
+	set(activitiesTab, "Event ID", "act0000000001", "Direct Sign-Up", "No")
+	set(activitiesTab, "Event ID", "act0000000001", "Volunteers Hidden", "Yes")
+	set(categoriesTab, "Category ID", "tcg0000000007", "Direct Sign-Up", "Yes")
+	set(categoriesTab, "Category ID", "tcg0000000008", "Hidden", "Yes")
+	set(activitiesTab, "Event ID", "act0000000020", "Direct Sign-Up", "Yes")
+	next[activitiesTab] = append(next[activitiesTab], store.Row{"Event ID": "E920", "Title": "Chai Stand", "Parent": "act0000000020", "Status": StatusOpen})
+	m, err := BuildModel(context.Background(), next, bundled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		id             string
+		direct, hidden bool
+	}{
+		{"act0000000001", false, true},
+		{"act0000000016", true, true},
+		{"act0000000019", false, true},
+		{"act0000000020", true, true},
+		{"E920", true, true},
+	}
+	for _, c := range cases {
+		a := m.Activity(c.id)
+		if a.DirectSignUp != c.direct || a.VolunteersHidden != c.hidden {
+			t.Errorf("%s %q: allow volunteers %v, hidden %v; want %v, %v", c.id, a.Title, a.DirectSignUp, a.VolunteersHidden, c.direct, c.hidden)
+		}
+	}
+	if c := m.Category("tcg0000000008"); c.DirectSignUp || !c.VolunteersHidden || !c.Hidden {
+		t.Errorf("booths category resolved %+v", c)
+	}
+	norway := m.Activity("act0000000019")
+	if m.VisibleTo(norway, access.Actor{}) || m.VisibleTo(m.Activity("E920"), access.Actor{}) {
+		t.Errorf("an activity in a hidden category is visible to a stranger")
+	}
+	if !m.VisibleTo(norway, viewerOf(admin, true)) {
+		t.Errorf("an activity in a hidden category is hidden from an admin")
+	}
+	if !m.VisibleTo(m.Activity("act0000000016"), access.Actor{}) {
+		t.Errorf("an activity in a shown category is hidden")
+	}
+}
+
+func TestChairSetsAllowAddingOnTheirEvent(t *testing.T) {
+	cache, _ := newServer(t)
+	patch := func(policy string) activityPatch {
+		return activityPatch{"id": json.RawMessage(`"act0000000001"`), "allowAdding": json.RawMessage(`"` + policy + `"`)}
+	}
+	s, err := cache.Model().saveActivity(viewerOf(chair, false), patch(AddingApproval))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.Commit(context.Background(), viewerOf(chair, false), s.ops...); err != nil {
+		t.Fatal(err)
+	}
+	if got := cache.Model().Activity("act0000000001").AllowAdding; got != AddingApproval {
+		t.Fatalf("the event's chair set allow adding to %q, want %q", got, AddingApproval)
+	}
+	if _, err := cache.Model().saveActivity(viewerOf(parent, false), patch(AddingYes)); testkit.Status(t, err) != http.StatusForbidden {
+		t.Fatalf("a parent changed allow adding: %v", err)
+	}
+}
+
+func TestCategorySettings(t *testing.T) {
+	cache, _ := newServer(t)
+	m := cache.Model()
+	body := categoryFlagsBody{ID: "tcg0000000008", Flags: map[string]string{"directSignUp": "No", "hidden": "", "allowAdding": AddingApproval}}
+	if _, _, err := m.saveCategoryFlags(viewerOf(parent, false), body); testkit.Status(t, err) != http.StatusForbidden {
+		t.Fatalf("a parent changed a category's settings: %v", err)
+	}
+	if _, _, err := m.saveCategoryFlags(viewerOf(admin, true), categoryFlagsBody{ID: "tcg0000000001", Flags: body.Flags}); testkit.Status(t, err) != http.StatusBadRequest {
+		t.Fatalf("a page heading took volunteer settings: %v", err)
+	}
+	if _, _, err := m.saveCategoryFlags(viewerOf(admin, true), categoryFlagsBody{ID: "tcg0000000008", Flags: map[string]string{"directSignUp": "Maybe"}}); testkit.Status(t, err) != http.StatusBadRequest {
+		t.Fatalf("a bad value was taken: %v", err)
+	}
+	op, _, err := m.saveCategoryFlags(viewerOf(chair, false), body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.Commit(context.Background(), viewerOf(chair, false), op); err != nil {
+		t.Fatal(err)
+	}
+	if c := cache.Model().Category("tcg0000000008"); c.DirectSignUpOwn != "No" || c.DirectSignUp || c.Adding != AddingApproval {
+		t.Fatalf("after saving: %+v", c)
+	}
+}
+
 func TestHandWrittenRows(t *testing.T) {
 	cache, _ := newServer(t)
 	next := tables(t)
@@ -985,7 +1087,7 @@ func TestPrettyIDs(t *testing.T) {
 		act := cache.Model().Activity(id)
 		return testkit.Call(t, mux, admin, "POST", "/api/team/activity", map[string]any{
 			"id": id, "year": act.Year, "title": act.Title, "category": act.Category, "status": act.Status,
-			"directSignUp": true, "prettyId": pretty, "takeOver": takeOver,
+			"directSignUp": "Yes", "prettyId": pretty, "takeOver": takeOver,
 		})
 	}
 	if rec := edit("act0000000002", "Bad Address!", false); rec.Code != http.StatusBadRequest {
@@ -1049,7 +1151,7 @@ func TestPrettyIDs(t *testing.T) {
 	child := func(node *Activity, pretty string) *httptest.ResponseRecorder {
 		return testkit.Call(t, mux, admin, "POST", "/api/team/activity", map[string]any{
 			"id": node.ID, "year": node.Year, "title": node.Title, "parent": node.Parent, "category": node.Category, "status": node.Status,
-			"directSignUp": true, "prettyId": pretty,
+			"directSignUp": "Yes", "prettyId": pretty,
 		})
 	}
 	if rec := child(norway, "norway"); rec.Code != http.StatusOK {

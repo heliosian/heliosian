@@ -221,8 +221,8 @@ func bodyOf(a *Activity) activityBody {
 	return activityBody{
 		ID: a.ID, Year: a.Year, Title: a.Title, Parent: a.Parent, Category: a.Category, Status: a.Status,
 		Description: a.Description, Image: a.Image, Flyer: a.Flyer, Highlight: a.Highlight, Timing: a.Timing, Start: a.Start, End: a.End,
-		Location: a.Location, Spots: a.Spots, CoLeaderNeeded: a.CoLeaderNeeded, VolunteersHidden: a.VolunteersHidden, VolunteersComplete: a.VolunteersComplete,
-		DirectSignUp: a.DirectSignUp, Priority: a.Priority, PrettyID: a.PrettyID, AllowAdding: a.AllowAdding,
+		Location: a.Location, Spots: a.Spots, CoLeaderNeeded: a.CoLeaderNeeded, VolunteersHidden: a.VolunteersHiddenOwn, VolunteersComplete: a.VolunteersComplete,
+		DirectSignUp: a.DirectSignUpOwn, Priority: a.Priority, PrettyID: a.PrettyID, AllowAdding: a.AllowAdding,
 	}
 }
 
@@ -265,8 +265,10 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 		case status == current.Status:
 		case current.Status == StatusPending && !approver:
 			status = StatusPending
-		case status != StatusOpen && status != StatusDone:
-			return activitySave{}, access.Invalid("a co-chair may only mark this open or done")
+		case current.Status == StatusPending && status == StatusHidden:
+			return activitySave{}, access.Invalid("only an admin can turn a suggestion down")
+		case status != StatusOpen && status != StatusDone && status != StatusHidden:
+			return activitySave{}, access.Invalid("a co-chair may only mark this open, done or hidden")
 		}
 		year = current.Year
 	}
@@ -354,7 +356,15 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 	if err != nil {
 		return activitySave{}, access.Invalid("%s", err.Error())
 	}
-	if !editor {
+	direct, err := cells.YesNoBlank(body.DirectSignUp)
+	if err != nil {
+		return activitySave{}, access.Invalid("allow volunteers %s", err.Error())
+	}
+	volunteersHidden, err := cells.YesNoBlank(body.VolunteersHidden)
+	if err != nil {
+		return activitySave{}, access.Invalid("show volunteers %s", err.Error())
+	}
+	if !editor && (current == nil || !m.Edits(current, actor)) {
 		allowAdding = ""
 		if current != nil {
 			allowAdding = current.AllowAdding
@@ -392,9 +402,9 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 		"Description": strings.TrimSpace(body.Description), "Image": strings.TrimSpace(body.Image), "Flyer Image": strings.TrimSpace(body.Flyer),
 		"Timing": strings.TrimSpace(body.Timing), "Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End),
 		"Location": strings.TrimSpace(body.Location), "Spots": spotsCell(body.Spots),
-		"Co-Leader Needed": cells.YesNoCell(body.CoLeaderNeeded), "Volunteers Hidden": cells.YesNoCell(body.VolunteersHidden),
+		"Co-Leader Needed": cells.YesNoCell(body.CoLeaderNeeded), "Volunteers Hidden": volunteersHidden,
 		CompleteColumn:   cells.YesNoCell(body.VolunteersComplete),
-		"Direct Sign-Up": cells.YesNoCell(body.DirectSignUp), "Pretty ID": pretty, "Allow Adding": allowAdding,
+		"Direct Sign-Up": direct, "Pretty ID": pretty, "Allow Adding": allowAdding,
 	}
 	priority := body.Priority
 	if !actor.May(Curate) {
@@ -639,6 +649,46 @@ func (m *Model) saveCategory(actor access.Actor, body categoryBody) (categorySav
 	return save, nil
 }
 
+type categoryFlagsBody struct {
+	ID    string            `json:"id"`
+	Flags map[string]string `json:"flags"`
+}
+
+var categoryFlagColumns = map[string]string{"directSignUp": "Direct Sign-Up", "volunteersHidden": "Volunteers Hidden", "hidden": "Hidden", "allowAdding": "Allow Adding"}
+
+func (m *Model) saveCategoryFlags(actor access.Actor, body categoryFlagsBody) (store.Op, *Category, error) {
+	c := m.Category(strings.TrimSpace(body.ID))
+	if c == nil {
+		return store.Op{}, nil, access.Missing("no category with id %q", body.ID)
+	}
+	if c.EventID == "" {
+		return store.Op{}, nil, access.Invalid("only an event's own categories have volunteer settings")
+	}
+	if err := m.editsCategories(actor, c.EventID); err != nil {
+		return store.Op{}, nil, err
+	}
+	if len(body.Flags) == 0 {
+		return store.Op{}, nil, access.Invalid("nothing to change")
+	}
+	row := store.Row{}
+	for flag, value := range body.Flags {
+		column, ok := categoryFlagColumns[flag]
+		if !ok {
+			return store.Op{}, nil, access.Invalid("%q is not a category setting", flag)
+		}
+		check := cells.YesNoBlank
+		if flag == "allowAdding" {
+			check = checkAdding
+		}
+		cell, err := check(value)
+		if err != nil {
+			return store.Op{}, nil, access.Invalid("%s %s", flag, err.Error())
+		}
+		row[column] = cell
+	}
+	return store.Update(categoriesTab, store.Row{"Category ID": c.ID}, row), c, nil
+}
+
 func (m *Model) reorderCategories(actor access.Actor, eventID string, order []string) ([]store.Op, error) {
 	if err := m.editsCategories(actor, eventID); err != nil {
 		return nil, err
@@ -715,6 +765,7 @@ func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, 
 		ops = append(ops, store.Insert(categoriesTab, store.Row{
 			"Category ID": fresh[c.ID], "Event ID": fresh[act.ID], "Title": c.Title, "Description": c.Description,
 			"Image": c.Image, "Allow Adding": c.AllowAdding, store.OrderColumn: c.Order,
+			"Direct Sign-Up": c.DirectSignUpOwn, "Volunteers Hidden": c.VolunteersHiddenOwn, "Hidden": c.HiddenOwn,
 		}))
 	}
 	remap := func(id string) string {
@@ -731,8 +782,8 @@ func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, 
 			"Event ID": fresh[c.ID], "Year": year, "Title": c.Title, "Parent": parent, "Category": remap(c.Category),
 			"Status": c.Status, "Description": c.Description, "Image": c.Image, "Flyer Image": c.Flyer, "Timing": c.Timing,
 			"Location": c.Location, "Spots": spotsCell(c.Spots),
-			"Co-Leader Needed": cells.YesNoCell(c.CoLeaderNeeded), "Volunteers Hidden": cells.YesNoCell(c.VolunteersHidden),
-			"Direct Sign-Up": cells.YesNoCell(c.DirectSignUp), "Allow Adding": c.AllowAdding, "Added By": actor.Email, "Added": today(),
+			"Co-Leader Needed": cells.YesNoCell(c.CoLeaderNeeded), "Volunteers Hidden": c.VolunteersHiddenOwn,
+			"Direct Sign-Up": c.DirectSignUpOwn, "Allow Adding": c.AllowAdding, "Added By": actor.Email, "Added": today(),
 			store.OrderColumn: c.Order, CompleteColumn: cells.YesNoCell(false),
 		}
 		for k, v := range highlightCells(c.Highlight) {

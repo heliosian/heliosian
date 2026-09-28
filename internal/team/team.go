@@ -69,6 +69,7 @@ func Register(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("DELETE /api/team/link", serve.JSON(a.deleteLink))
 	mux.HandleFunc("POST /api/team/category", serve.JSON(a.saveCategory))
 	mux.HandleFunc("DELETE /api/team/category", serve.JSON(a.deleteCategory))
+	mux.HandleFunc("POST /api/team/category/settings", serve.JSON(a.saveCategoryFlags))
 	mux.HandleFunc("POST /api/team/categories/order", serve.JSON(a.reorderCategories))
 	mux.HandleFunc("POST /api/team/copy", serve.JSON(a.copyActivity))
 	mux.HandleFunc("POST /api/team/settings", serve.JSON(a.saveSettings))
@@ -176,9 +177,9 @@ type activityBody struct {
 	Location           string     `json:"location"`
 	Spots              int        `json:"spots"`
 	CoLeaderNeeded     bool       `json:"coLeaderNeeded"`
-	VolunteersHidden   bool       `json:"volunteersHidden"`
+	VolunteersHidden   string     `json:"volunteersHidden"`
 	VolunteersComplete bool       `json:"volunteersComplete"`
-	DirectSignUp       bool       `json:"directSignUp"`
+	DirectSignUp       string     `json:"directSignUp"`
 	Priority           bool       `json:"priority"`
 	SignUp             string     `json:"signUp"`
 	PrettyID           string     `json:"prettyId"`
@@ -294,6 +295,19 @@ func (a app) saveCategory(r *http.Request, body categoryBody) (serve.None, error
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:saved category", "actor", actor.Email, "action", s.action, "category", s.title, "id", s.id, "event", s.eventID)
+	return serve.None{}, nil
+}
+
+func (a app) saveCategoryFlags(r *http.Request, body categoryFlagsBody) (serve.None, error) {
+	actor := a.actor(r)
+	op, c, err := a.cache.Model().saveCategoryFlags(actor, body)
+	if err != nil {
+		return serve.None{}, err
+	}
+	if err := a.cache.Commit(r.Context(), actor, op); err != nil {
+		return serve.None{}, err
+	}
+	slog.InfoContext(r.Context(), "team:saved category settings", "actor", actor.Email, "category", c.Title, "id", c.ID, "flags", body.Flags)
 	return serve.None{}, nil
 }
 

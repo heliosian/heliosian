@@ -4,15 +4,12 @@ import {el, link, svg, button, editToggle, avatar, imageThumb, copyText, toast} 
 import {listPath} from '../chrome.js';
 import {setTitle} from '/shell.js';
 import {appOrigin} from '/appswitch.js';
-import {openBuy, openParty, openFreeTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setFlags, setPartyStatus, openContacts, savePartyFields, uploadImage, editable, editPencil, fieldEditor, whenInputs, emojiPicker, uploadAndSave, imageSearchOn, openImageSearch} from '../edit.js';
-import {text as textInput, textarea as textAreaInput} from '/form.js';
+import {openBuy, openParty, openFreeTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setFlags, setPartyStatus, openContacts, savePartyFields, uploadImage, imageSearchOn, openImageSearch} from '../edit.js';
 import {statusBadges} from '../cards.js';
-import {openPhotoLightbox, openCropTool} from '/crop.js';
+import {openPhotoLightbox} from '/crop.js';
+import {heroImageBar} from '/heroimage.js';
 import {dateCard, parseWhen} from '/datecard.js';
-import {addressSuggest} from '/address.js';
 import {render} from '/router.js';
-
-let editingId = null;
 
 const phone = window.matchMedia('(max-width: 900px)');
 phone.addEventListener('change', render);
@@ -26,7 +23,7 @@ function heroStamp(p) {
   return dateCard({start: p.start, end: p.end, location: p.location || '', add: partyCalendarLink(p)});
 }
 
-function heroTools(p, editing) {
+function heroTools(p) {
   const tools = el('div', 'hero-actions');
   const tool = (icon, label, onClick) => {
     const b = button('', icon, 'hero-action', onClick);
@@ -48,101 +45,18 @@ function heroTools(p, editing) {
   return tools;
 }
 
-function heroImageBar(p, save) {
-  const bar = el('div', 'hero-image-bar');
-  const file = el('input');
-  file.type = 'file';
-  file.accept = 'image/*';
-  file.hidden = true;
-  file.addEventListener('change', async () => {
-    if (!file.files.length) {
-      return;
-    }
-    bar.replaceChildren(el('span', 'hero-image-status', 'Uploading…'));
-    await uploadAndSave(save, file.files[0]);
-  });
-  const label = p.image ? 'Replace image' : 'Add an image';
-  if (imageSearchOn()) {
-    const holder = el('div', 'hero-image-menu-holder');
-    const toggle = el('button', 'hero-image-action');
-    toggle.type = 'button';
-    toggle.setAttribute('aria-haspopup', 'menu');
-    toggle.append(svg('image'), el('span', '', label), svg('chevron-down'));
-    const menu = el('div', 'hero-image-menu');
-    menu.hidden = true;
-    const item = (icon, words, onClick) => {
-      const b = el('button', 'hero-image-menu-item');
-      b.type = 'button';
-      b.append(svg(icon), el('span', '', words));
-      b.addEventListener('click', () => {
-        menu.hidden = true;
-        onClick();
-      });
-      menu.append(b);
-    };
-    item('up', 'Upload image', () => file.click());
-    item('search', 'Find an image', () => openImageSearch(p.title, picked => save({image: picked.name})));
-    toggle.addEventListener('click', e => {
-      e.stopPropagation();
-      menu.hidden = !menu.hidden;
-    });
-    document.addEventListener('click', () => {
-      menu.hidden = true;
-    }, {once: true, capture: true});
-    holder.append(toggle, menu, file);
-    bar.append(holder);
-  } else {
-    const choose = el('label', 'hero-image-action');
-    choose.append(svg('image'), el('span', '', label), file);
-    bar.append(choose);
-  }
-  if (p.image) {
-    const crop = el('button', 'hero-image-action');
-    crop.type = 'button';
-    crop.append(svg('expand'), el('span', '', 'Crop'));
-    crop.addEventListener('click', () => openCropTool(p.imageUrl, false, async blob => {
-      await uploadAndSave(save, new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
-      return true;
-    }));
-    bar.append(crop);
-    const remove = el('button', 'hero-image-action');
-    remove.type = 'button';
-    remove.append(svg('trash'), el('span', '', 'Remove'));
-    remove.addEventListener('click', () => save({image: ''}));
-    bar.append(remove);
-  }
-  return bar;
-}
-
-function hero(p, editing, save) {
+function hero(p, save) {
   const wrap = el('div', 'detail-hero');
   const image = imageThumb(p.imageUrl, p.title, 'detail-hero-image');
   if (p.imageUrl) {
     image.classList.add('is-openable');
     image.addEventListener('click', () => openPhotoLightbox(p.imageUrl));
   }
-  wrap.append(image, heroTools(p, editing), heroStamp(p));
-  if (editing) {
-    wrap.append(heroImageBar(p, save));
+  wrap.append(image, heroTools(p), heroStamp(p));
+  if (p.canEdit) {
+    wrap.append(heroImageBar({image: p.image, imageUrl: p.imageUrl, query: p.title, tools: {uploadImage, imageSearchOn, openImageSearch}, save: image => save({image})}));
   }
   return wrap;
-}
-
-function withPencil(node, pencil) {
-  const row = el('div', 'edit-row');
-  row.append(node, pencil);
-  return row;
-}
-
-function emptyPrompt(label, make, submit) {
-  const b = el('button', 'edit-empty');
-  b.type = 'button';
-  b.append(svg('plus'), el('span', '', label));
-  b.addEventListener('click', () => {
-    const built = make();
-    fieldEditor(b, null, {input: built.input, hint: built.hint, value: built.value, validate: built.validate, submit});
-  });
-  return b;
 }
 
 function ticketWords(p, mine) {
@@ -313,37 +227,16 @@ function waitlistSection(p) {
   return section;
 }
 
-function callout(p, editing, save) {
-  const make = () => noteInputs(p);
+function callout(p) {
   if (!p.needToKnow) {
-    return editing ? emptyPrompt('Add a need-to-know line', make, save) : null;
+    return null;
   }
   const card = el('div', 'highlight-card');
   card.append(el('div', 'highlight-icon', p.noteEmoji || '📣'));
   const body = el('div', 'highlight-body');
   body.append(el('div', 'highlight-headline', p.noteTitle || 'Good to know'), el('p', 'highlight-text', p.needToKnow));
   card.append(body);
-  if (editing) {
-    return withPencil(card, editable(card, 'Edit the need-to-know line', make, save));
-  }
   return card;
-}
-
-function noteInputs(p) {
-  const emojiPick = emojiPicker(p.noteEmoji);
-  const emoji = emojiPick.input;
-  const title = textInput(p.noteTitle || '', {maxLength: 60, placeholder: 'Good to know'});
-  title.setAttribute('aria-label', 'Title');
-  const text = textAreaInput(p.needToKnow || '', 3);
-  const head = el('div', 'note-head-inputs');
-  head.append(emojiPick.wrap, title);
-  const wrap = el('div', 'note-inputs');
-  wrap.append(head, text);
-  return {
-    input: wrap,
-    value: () => ({noteEmoji: emoji.value.trim(), noteTitle: title.value.trim(), needToKnow: text.value}),
-    hint: p.needToKnow ? 'Clear the words to take the callout off. Leave the emoji or title blank for the megaphone and "Good to know".' : 'Leave the emoji or title blank for the megaphone and "Good to know".',
-  };
 }
 
 function switchRow(label, hint, on, onChange) {
@@ -434,25 +327,13 @@ function sideRow(icon, title, ...lines) {
   return row;
 }
 
-function factsCard(p, editing, save) {
+function factsCard(p) {
   const card = sideCard('facts-card');
   const when = whenParts(p);
-  const pencilFor = (row, label, make) => {
-    if (!editing) {
-      return row;
-    }
-    const body = row.querySelector('.side-row-body');
-    const pencil = editable(body, label, make, save);
-    row.append(pencil);
-    return row;
-  };
-  if (editing || !when.longDay) {
-    card.append(pencilFor(sideRow('calendar', 'Date & Time', when.longDay || 'Date to come', when.time || ''), 'Edit the date and time', () => {
-      const w = whenInputs(p.start, p.end);
-      return {input: w.input, value: w.value, validate: w.validate};
-    }));
+  if (!when.longDay) {
+    card.append(sideRow('calendar', 'Date & Time', 'Date to come', when.time || ''));
   }
-  if (p.address || (p.location && editing)) {
+  if (p.address) {
     let mapLink = null;
     let note = null;
     if (p.address) {
@@ -463,29 +344,7 @@ function factsCard(p, editing, save) {
       mapLink.append(svg('open'), el('span', '', p.address));
       note = el('div', 'side-note', 'Address shown to signed-in Helios members only');
     }
-    card.append(pencilFor(sideRow('map', 'Where', p.location || '', mapLink, note), 'Edit where', () => {
-      const place = textInput(p.location || '', {placeholder: "The Parks' House in Los Altos", maxLength: 120});
-      const address = addressSuggest(textInput(p.address || '', {placeholder: '1420 Alder Court, Los Altos, CA 94024', maxLength: 200}));
-      const stack = el('div', 'field-editor-stack');
-      const l1 = el('label');
-      l1.append('In words, for everyone', place);
-      const l2 = el('label');
-      l2.append('Street address, for signed-in members', address);
-      stack.append(l1, l2);
-      return {input: stack, value: () => ({location: place.value, address: address.value})};
-    }));
-  } else if (editing) {
-    card.append(pencilFor(sideRow('map', 'Where', 'Not set yet'), 'Edit where', () => {
-      const place = textInput('', {placeholder: "The Parks' House in Los Altos", maxLength: 120});
-      const address = addressSuggest(textInput('', {placeholder: '1420 Alder Court, Los Altos, CA 94024', maxLength: 200}));
-      const stack = el('div', 'field-editor-stack');
-      const l1 = el('label');
-      l1.append('In words, for everyone', place);
-      const l2 = el('label');
-      l2.append('Street address, for signed-in members', address);
-      stack.append(l1, l2);
-      return {input: stack, value: () => ({location: place.value, address: address.value})};
-    }));
+    card.append(sideRow('map', 'Where', p.location || '', mapLink, note));
   }
   const ticketLines = [priceLine(p)];
   if (p.capacity) {
@@ -496,19 +355,7 @@ function factsCard(p, editing, save) {
   if (p.minimum && p.canEdit) {
     ticketLines.push(`Goes ahead with at least ${p.minimum} tickets sold`);
   }
-  card.append(pencilFor(sideRow('ticket', 'Tickets', ...ticketLines), 'Edit the price and tickets', () => {
-    const price = textInput(p.price, {type: 'number', min: 0, step: '0.01'});
-    const unit = textInput(p.unit || '', {placeholder: 'person, adult, child', maxLength: 40});
-    const capacity = textInput(p.capacity || '', {type: 'number', min: 1, step: 1, placeholder: 'No limit'});
-    const minimum = textInput(p.minimum || '', {type: 'number', min: 1, step: 1, placeholder: 'None'});
-    const stack = el('div', 'field-editor-stack');
-    for (const [words, input] of [['Price, in dollars', price], ['One ticket covers ("per …")', unit], ['Tickets available', capacity], ['Minimum to go ahead', minimum]]) {
-      const l = el('label');
-      l.append(words, input);
-      stack.append(l);
-    }
-    return {input: stack, value: () => ({price: Number(price.value || 0), unit: unit.value, capacity: Number(capacity.value || 0), minimum: Number(minimum.value || 0)})};
-  }));
+  card.append(sideRow('ticket', 'Tickets', ...ticketLines));
   if (p.hostPeople.length || p.hosts) {
     const hostsRow = sideRow('people', p.hostPeople.length === 1 ? 'Host' : 'Hosts', p.hosts || '');
     const faces = el('div', 'side-chairs');
@@ -523,18 +370,13 @@ function factsCard(p, editing, save) {
     if (faces.children.length) {
       hostsRow.querySelector('.side-row-body').append(faces);
     }
-    if (editing) {
-      const pencil = editPencil('Edit the hosts');
-      pencil.addEventListener('click', () => openParty(p));
-      hostsRow.append(pencil);
-    }
     card.append(hostsRow);
   }
   return card;
 }
 
-function flyerCard(p, editing) {
-  if (!p.flyerUrl && !editing) {
+function flyerCard(p) {
+  if (!p.flyerUrl && !p.canEdit) {
     return null;
   }
   const card = sideCard('flyer-card');
@@ -552,7 +394,7 @@ function flyerCard(p, editing) {
   } else {
     card.append(el('div', 'side-line', 'No flyer yet - upload the party’s poster and it shows here.'));
   }
-  if (editing) {
+  if (p.canEdit) {
     const bar = el('div', 'flyer-actions');
     const file = el('input');
     file.type = 'file';
@@ -617,20 +459,16 @@ function helpCard(p) {
 
 export function partyPage(p) {
   setTitle(p.title);
-  const editing = Boolean(p.canEdit && editingId === p.id);
   const save = changes => savePartyFields(p, changes);
-  const page = el('div', 'party-page' + (editing ? ' is-editing' : ''));
+  const page = el('div', 'party-page');
   const top = el('div', 'detail-top');
   const back = link(listPath(state.tab, state.category), 'detail-back');
   back.append(svg('chevron-left'), el('span', '', 'Back to Parties'));
   top.append(back);
   if (p.canEdit) {
-    top.append(editToggle(editing, () => {
-      editingId = editing ? null : p.id;
-      render();
-    }));
+    top.append(editToggle(false, () => openParty(p)));
   }
-  page.append(top, hero(p, editing, save));
+  page.append(top, hero(p, save));
 
   const cols = el('div', 'detail-cols');
   const main = el('div', 'detail-main');
@@ -640,18 +478,8 @@ export function partyPage(p) {
   if (p.hosting) {
     marks.append(el('span', 'audience-chip hosting-chip', 'Hosting'));
   }
-  const audienceMake = () => {
-    const input = textInput(p.audience || '', {placeholder: 'Adults, Families, Kids & Adults, Grades 3-6', maxLength: 60});
-    return {input, value: () => ({audience: input.value}), hint: 'The words on the card: who the party is for.'};
-  };
   if (p.audience) {
-    const chip = el('span', 'audience-chip', p.audience);
-    marks.append(chip);
-    if (editing) {
-      marks.append(editable(chip, 'Edit who it is for', audienceMake, save));
-    }
-  } else if (editing) {
-    marks.append(emptyPrompt('Say who it is for', audienceMake, save));
+    marks.append(el('span', 'audience-chip', p.audience));
   }
   if (p.availability !== 'available') {
     marks.append(el('span', 'avail avail-' + p.availability, availabilityLabel(p)));
@@ -660,51 +488,21 @@ export function partyPage(p) {
     marks.append(b);
   }
   main.append(marks);
-  const title = el('h1', 'detail-title', p.title);
-  if (editing) {
-    main.append(withPencil(title, editable(title, 'Edit the title', () => {
-      const input = textInput(p.title, {maxLength: 120});
-      return {input, value: () => ({title: input.value}), validate: v => (v.title.trim() ? '' : 'A party needs a title.')};
-    }, save)));
-  } else {
-    main.append(title);
-  }
-  const subtitleMake = () => {
-    const input = textInput(p.subtitle || '', {maxLength: 120, placeholder: 'Sweet & Savory Fondue, plus Build-Your-Own Fort'});
-    return {input, value: () => ({subtitle: input.value})};
-  };
+  main.append(el('h1', 'detail-title', p.title));
   if (p.subtitle) {
-    const subtitle = el('p', 'detail-subtitle', p.subtitle);
-    main.append(editing ? withPencil(subtitle, editable(subtitle, 'Edit the subtitle', subtitleMake, save)) : subtitle);
-  } else if (editing) {
-    main.append(emptyPrompt('Add a subtitle', subtitleMake, save));
+    main.append(el('p', 'detail-subtitle', p.subtitle));
   }
   if (phone.matches) {
-    const facts = factsCard(p, editing, save);
+    const facts = factsCard(p);
     facts.classList.add('facts-inline');
     main.append(facts);
   }
-  const descriptionMake = () => {
-    const input = textAreaInput(p.description || '', 8);
-    return {input, value: () => ({description: input.value})};
-  };
   if (p.description) {
-    const prose = paragraphs(p.description, 'prose detail-text');
-    main.append(editing ? withPencil(prose, editable(prose, 'Edit the description', descriptionMake, save)) : prose);
-  } else if (editing) {
-    main.append(emptyPrompt('Add a description', descriptionMake, save));
+    main.append(paragraphs(p.description, 'prose detail-text'));
   } else if (p.summary) {
     main.append(el('p', 'detail-text', p.summary));
   }
-  if (editing) {
-    const summaryMake = () => {
-      const input = textAreaInput(p.summary || '', 2);
-      return {input, value: () => ({summary: input.value}), hint: 'One or two sentences for the party card.'};
-    };
-    const summary = el('p', 'detail-summary', p.summary ? `Card summary: ${p.summary}` : '');
-    main.append(p.summary ? withPencil(summary, editable(summary, 'Edit the card summary', summaryMake, save)) : emptyPrompt('Add a card summary', summaryMake, save));
-  }
-  const note = callout(p, editing, save);
+  const note = callout(p);
   if (note) {
     main.append(note);
   }
@@ -724,7 +522,7 @@ export function partyPage(p) {
     main.append(approvalBand(p));
   }
 
-  for (const card of [inviteCard(p), phone.matches ? null : factsCard(p, editing, save), flyerCard(p, editing), helpCard(p)]) {
+  for (const card of [inviteCard(p), phone.matches ? null : factsCard(p), flyerCard(p), helpCard(p)]) {
     if (card) {
       side.append(card);
     }

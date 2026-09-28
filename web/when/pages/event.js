@@ -4,6 +4,7 @@ import {paragraphs} from '../dom.js';
 import {el, svg, button, editToggle, toast, longToast, avatar, copyText} from '/elements.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
+import {heroImageBar} from '/heroimage.js';
 import {whoLink} from '/appswitch.js';
 import {setTitle} from '/shell.js';
 import {load} from '/router.js';
@@ -29,7 +30,7 @@ function hero(e) {
     wrap.append(linkedBadge(e));
   }
   if ((e.source === 'sheet' && (isAdmin() || postedAndHosting(e))) || (imported(e) && isAdmin())) {
-    wrap.append(heroImageBar(e));
+    wrap.append(imageBar(e));
   }
   return wrap;
 }
@@ -43,8 +44,7 @@ function sheetTags(e) {
   return e.tags.filter(t => !builtIn.has(t));
 }
 
-function heroImageBar(e) {
-  const bar = el('div', 'hero-image-bar');
+function imageBar(e) {
   const save = async image => {
     const override = imported(e);
     const body = override ? {id: e.id, image} : {
@@ -60,63 +60,7 @@ function heroImageBar(e) {
     toast(image ? 'Picture saved' : 'Picture removed');
     await load();
   };
-  const file = el('input');
-  file.type = 'file';
-  file.accept = 'image/*';
-  file.hidden = true;
-  file.addEventListener('change', async () => {
-    if (!file.files.length) {
-      return;
-    }
-    bar.replaceChildren(el('span', 'hero-image-status', 'Uploading\u2026'));
-    try {
-      const made = await uploadImage(file.files[0]);
-      await save(made.name);
-    } catch (err) {
-      toast(err.message);
-    }
-  });
-  const holder = el('div', 'hero-image-menu-holder');
-  const toggle = el('button', 'hero-image-action');
-  toggle.type = 'button';
-  toggle.setAttribute('aria-haspopup', 'menu');
-  toggle.append(svg('image'), el('span', '', e.image ? 'Replace image' : 'Add an image'), svg('chevron-down'));
-  const menu = el('div', 'hero-image-menu');
-  menu.hidden = true;
-  const item = (icon, words, onClick) => {
-    const b = el('button', 'hero-image-menu-item');
-    b.type = 'button';
-    b.append(svg(icon), el('span', '', words));
-    b.addEventListener('click', () => {
-      menu.hidden = true;
-      onClick();
-    });
-    menu.append(b);
-  };
-  item('image', 'Upload image', () => file.click());
-  if (imageSearchOn()) {
-    item('search', 'Find an image', () => openImageSearch(e.title, picked => save(picked.name)));
-  }
-  toggle.addEventListener('click', ev => {
-    ev.stopPropagation();
-    menu.hidden = !menu.hidden;
-    if (!menu.hidden) {
-      document.addEventListener('click', () => {
-        menu.hidden = true;
-      }, {once: true});
-    }
-  });
-  menu.addEventListener('click', ev => ev.stopPropagation());
-  holder.append(toggle, menu, file);
-  bar.append(holder);
-  if (e.image) {
-    const remove = el('button', 'hero-image-action');
-    remove.type = 'button';
-    remove.append(svg('trash'), el('span', '', 'Remove'));
-    remove.addEventListener('click', () => save(''));
-    bar.append(remove);
-  }
-  return bar;
+  return heroImageBar({image: e.image, imageUrl: eventImage(e), query: e.title, tools: {uploadImage, imageSearchOn, openImageSearch}, save});
 }
 
 let editorView = null;
@@ -273,7 +217,7 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
     }
     const heroWrap = ask.closest('.event-page')?.querySelector('.detail-hero');
     if ((e.source === 'sheet' || imported(e)) && heroWrap && !heroWrap.querySelector('.hero-image-bar')) {
-      heroWrap.append(heroImageBar(e));
+      heroWrap.append(imageBar(e));
     }
   }
   const listed = view.host && Boolean(view.settings || view.list.some(r => r.invited));

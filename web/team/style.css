@@ -987,6 +987,8 @@ main {
   margin-bottom: 14px;
 }
 
+.detail-tools { display: flex; align-items: center; gap: 8px; }
+
 .detail-back {
   display: inline-flex;
   align-items: center;
@@ -1057,21 +1059,6 @@ main {
 .detail-main { min-width: 0; }
 
 .detail-marks { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-
-/* The edit-mode breadcrumb: year › parent › category, each with its pencil. */
-.detail-crumb { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; margin: -4px 0 12px; font-size: 14px; font-weight: 600; color: var(--brand); }
-
-.crumb-item { padding: 3px 0; }
-
-.crumb-item.is-empty { color: var(--muted); font-style: italic; }
-
-.crumb-link { color: inherit; text-decoration: none; }
-
-.crumb-link:hover { text-decoration: underline; }
-
-.crumb-sep { color: var(--muted); font-weight: 400; padding: 0 2px; }
-
-.detail-crumb .field-editor { flex-basis: 100%; }
 
 .group-row {
   display: flex;
@@ -1600,7 +1587,110 @@ button.side-chair:hover { background: var(--input); }
 
 .vol-actions .side-filter { align-self: center; }
 
-.vol-roster { margin-top: 14px; }
+.vol-roster { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+
+.vol-settings-lead { margin: -6px 0 16px; font-size: 14.5px; color: var(--muted); }
+
+.vol-settings { overflow-x: auto; display: flex; flex-direction: column; gap: 6px; }
+
+.vol-settings-row { display: grid; grid-template-columns: 36px minmax(220px, 1fr) 220px repeat(2, 160px); align-items: center; gap: 10px; min-width: 820px; padding: 8px 12px; }
+
+.vol-settings-head { padding: 12px; border-radius: 12px; background: var(--input); font-size: 13px; font-weight: 600; color: var(--muted); }
+
+.vol-settings-head-name { padding-left: 30px; }
+
+.vol-settings-help { display: inline-flex; align-items: center; gap: 6px; }
+
+.vol-settings-mark { display: inline-flex; cursor: help; }
+
+.vol-settings-mark svg { width: 16px; height: 16px; }
+
+.vol-settings-row.is-block { border-radius: 12px; background: color-mix(in srgb, var(--brand) 4%, var(--card)); }
+
+.vol-settings-row.is-child { border-bottom: 1px solid var(--line); }
+
+.vol-settings-name { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 15px; }
+
+.vol-settings-row.is-block .vol-settings-name { font-weight: 700; color: var(--ink); }
+
+.vol-settings-row.is-child .vol-settings-name, .vol-settings-row.is-nested .vol-settings-name { align-self: stretch; margin-left: calc(30px + var(--depth, 0) * 40px); padding-left: 8px; border-left: 2px dashed color-mix(in srgb, var(--muted) 55%, transparent); }
+
+.vol-settings-title { min-width: 0; }
+
+.vol-settings-count { flex-shrink: 0; padding: 2px 8px; border-radius: 999px; background: var(--input); font-size: 12px; font-weight: 600; color: var(--muted); }
+
+.vol-settings-row.is-hidden .vol-settings-title { font-style: italic; }
+
+.vol-settings-group .sub { font-size: 12.5px; font-weight: 400; color: var(--muted); }
+
+.vol-settings-name .edit-icon { flex-shrink: 0; color: var(--muted); }
+
+.vol-fold { flex-shrink: 0; width: 24px; height: 24px; color: var(--ink); }
+
+.vol-settings-cell { display: flex; }
+
+.vol-settings-cell select { width: 100%; padding: 9px 12px; border: 0; border-radius: 10px; background: var(--input); font: inherit; font-size: 14px; color: var(--ink); cursor: pointer; }
+
+.vol-settings-cell select[data-value="yes"] { background: color-mix(in srgb, #2e9d57 14%, var(--card)); }
+
+.vol-settings-cell select[data-value="no"] { background: color-mix(in srgb, #d64545 14%, var(--card)); }
+
+.vol-settings-cell select[data-value="approval"] { background: color-mix(in srgb, #e0a100 16%, var(--card)); }
+.vol-settings-cell select:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.vol-settings-volunteering { align-items: center; gap: 6px; }
+
+.vol-settings-volunteering select { flex: 1; min-width: 0; }
+
+.vol-limit { flex-shrink: 0; padding: 7px 10px; border: 1px dashed color-mix(in srgb, var(--brand) 45%, transparent); border-radius: 10px; background: var(--card); font: inherit; font-size: 13px; font-weight: 600; color: var(--brand); white-space: nowrap; cursor: text; }
+
+.vol-limit:hover:not(:disabled) { border-style: solid; }
+
+.vol-limit:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.vol-limit-input { flex-shrink: 0; width: 64px; padding: 7px 8px; border: 1px solid var(--brand); border-radius: 10px; font: inherit; font-size: 13px; background: var(--card); }
+
+.vol-settings-row.is-draggable { cursor: grab; }
+
+.vol-settings-row.is-dragging { opacity: 0.4; }
+
+.vol-settings-row.is-drop-onto { border-radius: 12px; background: color-mix(in srgb, var(--brand) 12%, var(--card)); box-shadow: inset 0 0 0 2px var(--brand); }
+
+.vol-settings-row.is-drop-before { box-shadow: 0 -3px 0 var(--brand); }
+
+.vol-settings-row.is-drop-after { box-shadow: 0 3px 0 var(--brand); }
+
+.vol-grip { position: absolute; left: -20px; top: 50%; transform: translateY(-50%); display: inline-flex; color: color-mix(in srgb, var(--ink) 70%, transparent); opacity: 0; transition: opacity 0.15s; }
+
+.vol-settings-row:hover .vol-grip { opacity: 1; }
+
+.vol-grip svg { width: 16px; height: 16px; stroke-width: 3.5; }
+
+.vol-eye { color: var(--muted); }
+
+.vol-eye.is-open { color: var(--brand); }
+
+.vol-eye:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.vol-settings-add { display: flex; align-items: center; gap: 8px; }
+
+.vol-settings-add.is-inline { padding: 8px 12px 8px calc(88px + var(--depth, 1) * 40px); border-bottom: 1px solid var(--line); }
+
+.vol-settings-ok { padding-left: 10px; padding-right: 10px; }
+
+.vol-settings-rename { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+
+.vol-settings-rename input { width: 220px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 14px; font-weight: 400; background: var(--card); }
+
+.vol-add-menu { position: fixed; z-index: var(--z-sheet); min-width: 180px; padding: 6px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
+
+.vol-add-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 14px; border: 0; background: none; font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }
+
+.vol-add-menu-item:hover { background: var(--input); }
+
+.vol-add-menu-item svg { width: 16px; height: 16px; color: var(--brand); }
+
+.vol-settings-add input { flex: 1; max-width: 320px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; font: inherit; font-size: 14px; background: var(--card); }
 
 /* One control for the two ways to sign someone up: a label, then segments. */
 .split-button { display: inline-flex; align-items: stretch; border: 1px solid var(--brand-fill); border-radius: 8px; overflow: hidden; background: var(--brand-fill); }
@@ -1622,8 +1712,6 @@ button.side-chair:hover { background: var(--input); }
 
 .vol-listing .side-group { margin: 14px 0 6px; }
 
-.vol-title .vol-max { margin-top: 2px; }
-
 .vol-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .vol-people { margin-top: 14px; }
@@ -1631,16 +1719,6 @@ button.side-chair:hover { background: var(--input); }
 .vol-note { margin-top: 12px; font-size: 14px; color: var(--muted); }
 
 .vol-full { font-weight: 600; }
-
-.vol-switches { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
-
-.vol-switch { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
-
-.vol-switch input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--brand); flex-shrink: 0; }
-
-.vol-switch strong { display: block; font-size: 14px; color: var(--brand); }
-
-.vol-switch small { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 
 .vol-spots strong { display: block; font-size: 14px; color: var(--brand); padding-top: 6px; }
 
@@ -1709,10 +1787,6 @@ button.side-chair:hover { background: var(--input); }
 
 .setting-row.is-stacked textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; resize: vertical; }
 
-.setting-stack .field-unit input[type=number] { width: 96px; text-align: left; }
-
-.field-toggle.is-compact { margin: 0; }
-
 .form-tab-body > .field-toggle { padding: 14px 0; margin: 0; border-bottom: 1px solid var(--line); }
 
 .form-tab-body > .field-toggle:last-child { border-bottom: 0; }
@@ -1727,12 +1801,6 @@ button.side-chair:hover { background: var(--input); }
 .status-select::before { content: ''; position: absolute; left: 12px; top: 50%; width: 10px; height: 10px; border-radius: 50%; transform: translateY(-50%); background: #2fb344; pointer-events: none; }
 
 .status-select select, .field .status-select select { padding-left: 32px; }
-
-.status-select[data-status=Pending]::before { background: #e0a616; }
-
-.status-select[data-status=Done]::before { background: #98a0a6; }
-
-.status-select[data-status=Hidden]::before { background: var(--alert); }
 
 /* Policy selects: green yes, yellow approval, red no, grey inherit. */
 .policy-select::before { background: #98a0a6; }
@@ -1750,93 +1818,18 @@ button.side-chair:hover { background: var(--input); }
 .roster-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 
 .roster-count { font-size: 13.5px; color: var(--muted); }
+.roster-buttons { display: flex; align-items: center; gap: 8px; }
 
-.roster-buttons { display: flex; gap: 8px; }
+.roster-buttons .side-filter-toggle { gap: 8px; padding: 9px 14px; border: 0; border-radius: 8px; background: var(--card-wash, var(--input)); color: var(--lift-ink, #444); font-size: 14px; font-weight: 400; }
 
-/* Each heading carries a glyph that copies its column; it shows on hover, the
-   way Helios Who?'s table copies do, and turns into a check once copied. */
-.roster th { position: relative; padding-right: 28px; }
+.roster-buttons .side-filter-toggle span { max-width: none; }
 
-.copy-glyph {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: inline-flex;
-  padding: 2px;
-  border: 0;
-  border-radius: 4px;
-  background: none;
-  color: #98a0a6;
-  cursor: pointer;
-  opacity: 0;
-}
+.roster-buttons .side-filter-toggle svg { width: 16px; height: 16px; color: currentColor; }
 
-.copy-glyph svg { width: 14px; height: 14px; }
-
-.roster th:hover > .copy-glyph, .copy-glyph.copied { opacity: 1; }
-
-.copy-glyph:hover, .copy-glyph.copied { color: var(--brand); }
-
-.roster-scroll { overflow: auto; max-height: calc(100vh - 220px); border: 1px solid var(--line); border-radius: 10px; }
-
-.roster { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-
-.roster th {
-  position: sticky;
-  top: 0;
-  text-align: left;
-  padding: 10px 12px;
-  background: var(--input);
-  color: var(--brand);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.roster td { padding: 8px 12px; border-top: 1px solid var(--line); vertical-align: middle; }
-
-/* A heading is a button that sorts by its column; its chevron shows only once
-   that column leads the order, pointing up for ascending, down for descending. */
-.roster-sort {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  cursor: pointer;
-}
-
-.roster-sort:hover { text-decoration: underline; }
-
-.roster-sort svg { width: 12px; height: 12px; visibility: hidden; transform: rotate(-90deg); }
-
-.roster th[aria-sort] .roster-sort svg { visibility: visible; }
-
-.roster th[aria-sort="descending"] .roster-sort svg { transform: rotate(90deg); }
-
-.roster-date { white-space: nowrap; }
-
-.roster-who { display: flex; align-items: center; gap: 10px; font-weight: 600; white-space: nowrap; }
-
-.roster-who .people-face { width: 30px; height: 30px; font-size: 13px; }
-
-.roster-where { color: var(--muted); }
-
-.roster-mail { white-space: nowrap; }
-
-.roster-link { display: block; color: var(--brand); text-decoration: none; }
+.roster-link { color: var(--brand); text-decoration: none; }
 
 .roster-link:hover { text-decoration: underline; }
 
-.roster-none { color: var(--muted); font-style: italic; }
 
 /* auto-fit, not auto-fill: a lone resource fills the width instead of leaving an empty column beside it. */
 .resources-main .side-links { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
@@ -1890,105 +1883,6 @@ button.side-chair:hover { background: var(--input); }
 
 .hero-action svg { width: 17px; height: 17px; }
 
-/* The status control, under the pencil while editing: a white pill with a
-   native select inside, matching the date stamp opposite. */
-.hero-status {
-  position: absolute;
-  top: 66px;
-  left: 18px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px 6px 12px;
-  border-radius: 999px;
-  background: var(--disc, #fff);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.hero-status select {
-  border: 0;
-  background: var(--input);
-  border-radius: 999px;
-  padding: 4px 10px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--brand);
-  cursor: pointer;
-}
-
-.hero-image-bar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 0 0 14px 14px;
-  background: linear-gradient(180deg, rgba(0, 40, 45, 0), rgba(0, 40, 45, 0.82));
-}
-
-.hero-image-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 12px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--disc, rgba(255, 255, 255, 0.92));
-  color: var(--brand);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.hero-image-action:hover { background: var(--disc-hover, #fff); }
-
-/* The image menu on the hero: two ways to bring a picture in. */
-.hero-image-menu-holder { position: relative; display: inline-block; }
-
-.hero-image-menu {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 8px);
-  min-width: 190px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  padding: 6px 0;
-  z-index: 5;
-}
-
-.hero-image-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 14px;
-  border: 0;
-  background: none;
-  font: inherit;
-  font-size: 14px;
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-}
-
-.hero-image-menu-item:hover { background: var(--input); }
-
-.hero-image-menu-item svg { width: 16px; height: 16px; color: var(--brand); }
-
 /* The picture picker. */
 .image-search-bar { display: flex; gap: 8px; }
 
@@ -2010,36 +1904,7 @@ button.side-chair:hover { background: var(--input); }
 
 .image-drop-buttons { display: flex; gap: 8px; margin-top: 6px; }
 
-.hero-image-action svg { width: 15px; height: 15px; }
-
-.hero-image-status { color: #fff; font-size: 13px; font-weight: 600; }
-
 .edit-icon svg { width: 15px; height: 15px; }
-
-.field-editor { margin: 4px 0 12px; }
-
-.field-editor input, .field-editor textarea, .field-editor select {
-  width: 100%;
-  padding: 9px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font: inherit;
-  font-size: 14px;
-  background: var(--card);
-}
-
-.field-editor input:focus, .field-editor textarea:focus, .field-editor select:focus {
-  outline: none;
-  border-color: var(--brand);
-}
-
-.field-editor-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-
-.field-note { display: block; margin-top: 6px; color: var(--muted); font-size: 12.5px; }
-
-.field-status { font-size: 12.5px; color: var(--muted); }
-
-.field-status.error { color: var(--alert); font-weight: 600; }
 
 /* Stacked, not label-beside-input: the rail is 320px and a date picker next to
    a time picker does not fit beside a label there. */
@@ -2134,9 +1999,6 @@ button.side-chair:hover { background: var(--input); }
 
 .detail-heading + .detail-blurb { margin-top: 12px; }
 
-.detail-text.is-empty { color: var(--muted); font-style: italic; }
-
-.side-title .edit-icon { width: 22px; height: 22px; margin-left: 4px; }
 
 .side-title .edit-icon svg { width: 13px; height: 13px; }
 
@@ -2411,12 +2273,6 @@ h2.section .link-button { font-size: 14px; }
 
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
 
-/* A number with its unit beside it: two digits' worth of box, no more. */
-.field-unit { display: flex; align-items: center; gap: 10px; }
-
-.field .field-unit input[type=number] { width: 84px; text-align: center; }
-
-.field-unit-label { font-size: 14px; color: var(--muted); }
 
 .image-row { display: flex; align-items: center; gap: 12px; }
 
@@ -2725,10 +2581,6 @@ h2.section .link-button { font-size: 14px; }
 
 .highlight-editor .field { margin-top: 12px; }
 
-.highlight-add { margin: 14px 0 6px; }
-
-.field-editor .highlight-inputs .field + .field { margin-top: 12px; }
-
 .highlight-editor > .button { margin-top: 6px; }
 
 .emoji-row { display: flex; align-items: flex-start; gap: 12px; }
@@ -2841,14 +2693,7 @@ h2.section .link-button { font-size: 14px; }
   box-shadow: 0 0 0 2px #fff;
 }
 
-/* Reordering while editing: nudge arrows on each row, and a line where a
-   dragged row will land. */
-.row-nudge { display: flex; gap: 2px; }
-
-.row-nudge .edit-icon:disabled { opacity: 0.3; cursor: default; }
-
-.is-reordering .row-nudge { opacity: 0.4; pointer-events: none; }
-
+/* Reordering: a line where a dragged row will land. */
 .row.is-dropbefore { box-shadow: 0 -3px 0 0 var(--accent); }
 
 /* The admin's notification switches, stacked like the settings rows. */

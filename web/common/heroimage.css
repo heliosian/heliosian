@@ -1,0 +1,19 @@
+.hero-image-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-radius: 0 0 14px 14px; background: linear-gradient(180deg, rgba(10, 50, 54, 0), rgba(10, 50, 54, 0.82)); }
+
+.hero-image-action { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 0; border-radius: 999px; background: var(--disc, rgba(255, 255, 255, 0.92)); color: var(--brand); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+.hero-image-action:hover { background: var(--disc-hover, #fff); }
+
+.hero-image-action svg { width: 15px; height: 15px; }
+
+.hero-image-status { color: #fff; font-size: 13px; font-weight: 600; }
+
+.hero-image-menu-holder { position: relative; display: inline-block; }
+
+.hero-image-menu { position: absolute; right: 0; bottom: calc(100% + 8px); min-width: 190px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); padding: 6px 0; z-index: 5; }
+
+.hero-image-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 14px; border: 0; background: none; font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }
+
+.hero-image-menu-item:hover { background: var(--input); }
+
+.hero-image-menu-item svg { width: 16px; height: 16px; color: var(--brand); }

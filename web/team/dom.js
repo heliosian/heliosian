@@ -1,4 +1,4 @@
-import {shiftedEnd, whenLabel} from './state.js';
+import {shiftedEnd, whenLabel, parentOf} from './state.js';
 import {parseWhen} from '/datecard.js';
 import {whenPickers} from '/form.js';
 import {el, svg} from '/elements.js';
@@ -34,6 +34,87 @@ export function selectPill(icon, options, value, onPick) {
   select.addEventListener('change', () => onPick(select.value));
   wrap.append(select, svg('chevron-down'));
   return wrap;
+}
+
+export function treeFilter(node, below, onChange, start) {
+  const chosen = new Set(start || [node.id]);
+  const self = `${node.title} (itself)`;
+  const filter = el('div', 'side-filter');
+  const opener = el('button', 'side-filter-toggle');
+  opener.type = 'button';
+  const summary = el('span', '', self);
+  opener.append(summary, svg('chevron-down'));
+  const menu = el('div', 'side-filter-menu');
+  menu.hidden = true;
+  const depthOf = n => {
+    let d = 0;
+    for (let p = parentOf(n); p && p !== node; p = parentOf(p)) {
+      d++;
+    }
+    return d;
+  };
+  const boxes = [];
+  const sources = () => [node, ...below].filter(n => chosen.has(n.id));
+  const paint = () => {
+    const count = chosen.size;
+    summary.textContent = count === 1 && chosen.has(node.id) ? self : (count ? `${count} selected` : 'None');
+  };
+  const refresh = () => {
+    paint();
+    onChange(sources());
+  };
+  const option = (n, label) => {
+    const item = el('label', 'side-filter-item');
+    item.style.paddingLeft = `${10 + (n === node ? 0 : (depthOf(n) + 1) * 14)}px`;
+    const box = el('input');
+    box.type = 'checkbox';
+    box.checked = chosen.has(n.id);
+    box.addEventListener('change', () => {
+      if (box.checked) {
+        chosen.add(n.id);
+      } else {
+        chosen.delete(n.id);
+      }
+      refresh();
+    });
+    boxes.push({box, id: n.id});
+    item.append(box, el('span', '', label));
+    return item;
+  };
+  const bulk = el('div', 'side-filter-bulk');
+  const setAll = on => {
+    chosen.clear();
+    for (const {box, id} of boxes) {
+      box.checked = on;
+      if (on) {
+        chosen.add(id);
+      }
+    }
+    refresh();
+  };
+  const all = el('button', 'link-button', 'Select All');
+  all.type = 'button';
+  all.addEventListener('click', () => setAll(true));
+  const none = el('button', 'link-button', 'Clear All');
+  none.type = 'button';
+  none.addEventListener('click', () => setAll(false));
+  bulk.append(all, none);
+  menu.append(bulk);
+  menu.append(option(node, self));
+  for (const n of below) {
+    menu.append(option(n, n.title));
+  }
+  paint();
+  opener.addEventListener('click', e => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+  });
+  menu.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', () => {
+    menu.hidden = true;
+  });
+  filter.append(opener, menu);
+  return {wrap: filter, sources, self};
 }
 
 export function toggle(label, checked, onChange) {

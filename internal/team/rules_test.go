@@ -30,7 +30,7 @@ func TestSaveActivityRules(t *testing.T) {
 	const india = "deepa.natarajan@heliosschool.org"
 	existing := func(id string) activityBody {
 		act := m.Activity(id)
-		return activityBody{ID: id, Year: act.Year, Title: act.Title, Parent: act.Parent, Category: act.Category, Status: act.Status, DirectSignUp: act.DirectSignUp, PrettyID: act.PrettyID}
+		return activityBody{ID: id, Year: act.Year, Title: act.Title, Parent: act.Parent, Category: act.Category, Status: act.Status, DirectSignUp: act.DirectSignUpOwn, PrettyID: act.PrettyID}
 	}
 	with := func(b activityBody, change func(*activityBody)) activityBody {
 		change(&b)
@@ -52,7 +52,8 @@ func TestSaveActivityRules(t *testing.T) {
 		{"a parent cannot edit", viewerOf(parent, false), existing("act0000000002"), http.StatusForbidden, "", 0},
 		{"an admin edits", viewerOf(admin, true), existing("act0000000002"), http.StatusOK, m.Activity("act0000000002").Status, 1},
 		{"no such activity", viewerOf(admin, true), activityBody{ID: "nope"}, http.StatusNotFound, "", 0},
-		{"a co-chair cannot hide", viewerOf(chair, false), with(existing("act0000000022"), func(b *activityBody) { b.Status = StatusHidden }), http.StatusBadRequest, "", 0},
+		{"a co-chair hides their own", viewerOf(chair, false), with(existing("act0000000020"), func(b *activityBody) { b.Status = StatusHidden }), http.StatusOK, StatusHidden, 1},
+		{"a co-chair cannot hide what waits for approval", viewerOf(chair, false), with(existing("act0000000022"), func(b *activityBody) { b.Status = StatusHidden }), http.StatusBadRequest, "", 0},
 		{"a co-chair may leave it pending", viewerOf(chair, false), with(existing("act0000000022"), func(b *activityBody) { b.Status = StatusPending }), http.StatusOK, StatusPending, 1},
 		{"the event's co-chair approves", viewerOf(chair, false), with(existing("act0000000022"), func(b *activityBody) { b.Status = StatusOpen }), http.StatusOK, StatusOpen, 1},
 		{"a co-chair moves only under their own", viewerOf(india, false), with(existing("act0000000020"), func(b *activityBody) { b.Parent = "act0000000002" }), http.StatusForbidden, "", 0},
@@ -80,7 +81,7 @@ func TestSaveActivityPrettyConflicts(t *testing.T) {
 	cache, _ := newServer(t)
 	m := cache.Model()
 	act := m.Activity("act0000000002")
-	body := activityBody{ID: "act0000000002", Year: act.Year, Title: act.Title, Category: act.Category, Status: act.Status, DirectSignUp: true, PrettyID: "international-night"}
+	body := activityBody{ID: "act0000000002", Year: act.Year, Title: act.Title, Category: act.Category, Status: act.Status, DirectSignUp: "Yes", PrettyID: "international-night"}
 	_, err := m.saveActivity(viewerOf(admin, true), whole(t, body))
 	var refusal *access.Refusal
 	if !errors.As(err, &refusal) || refusal.Status != http.StatusConflict {
@@ -115,7 +116,7 @@ func TestSaveActivityPriority(t *testing.T) {
 	cache, _ := newServer(t)
 	m := cache.Model()
 	act := m.Activity("act0000000022")
-	body := activityBody{ID: act.ID, Year: act.Year, Title: act.Title, Parent: act.Parent, Category: act.Category, Status: act.Status, DirectSignUp: act.DirectSignUp}
+	body := activityBody{ID: act.ID, Year: act.Year, Title: act.Title, Parent: act.Parent, Category: act.Category, Status: act.Status, DirectSignUp: act.DirectSignUpOwn}
 	save := func(who string, isAdmin, priority, complete bool) bool {
 		t.Helper()
 		b := body

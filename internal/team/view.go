@@ -118,6 +118,13 @@ func visibleStatus(status, addedBy, email string, editor bool) bool {
 	return true
 }
 
+func (a *Activity) shownStatus() string {
+	if a.CategoryHidden && a.Status != StatusPending {
+		return StatusHidden
+	}
+	return a.Status
+}
+
 func (m *Model) Edits(a *Activity, v access.Actor) bool {
 	return v.May(ActAsCochair) || m.Runs(a, v.Email)
 }
@@ -128,7 +135,7 @@ func (m *Model) Sees(a *Activity, v access.Actor) bool {
 
 func (m *Model) VisibleTo(a *Activity, v access.Actor) bool {
 	for node := a; node != nil; node = m.Activity(node.Parent) {
-		if !visibleStatus(node.Status, node.AddedBy, v.Email, m.Sees(node, v)) {
+		if !visibleStatus(node.shownStatus(), node.AddedBy, v.Email, m.Sees(node, v)) {
 			return false
 		}
 		if node.Parent == "" {
@@ -161,7 +168,7 @@ func (m *Model) activityFor(a *Activity, v access.Actor) *Activity {
 	}
 	c.Children = []*Activity{}
 	for _, child := range a.Children {
-		if visibleStatus(child.Status, child.AddedBy, v.Email, m.Sees(child, v)) {
+		if visibleStatus(child.shownStatus(), child.AddedBy, v.Email, m.Sees(child, v)) {
 			c.Children = append(c.Children, m.activityFor(child, v))
 		}
 	}

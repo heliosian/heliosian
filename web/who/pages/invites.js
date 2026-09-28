@@ -1,5 +1,6 @@
 import {state, byEmail} from '../state.js';
-import {firstName, lastName, hue, slugify, csvField, copyGlyph} from '../dom.js';
+import {firstName, lastName, hue, slugify, csvField} from '../dom.js';
+import {copyGlyph, copyAllButton} from '/datagrid.js';
 import {el, svg} from '/elements.js';
 import {familyOf, familyLink, familySearchText} from '../families.js';
 import {personLink} from '../people.js';
@@ -433,8 +434,8 @@ function renderInviteGrid(view, again) {
     grid.append(el('div', 'empty', 'No matches.'));
     return;
   }
-  grid.className = 'email-holder';
-  const table = el('table', 'email-table');
+  grid.className = 'data-grid-wrap';
+  const table = el('table', 'data-grid');
   table.append(inviteTableHead(system, header, rows, again), inviteTableBody(rows));
   grid.append(table);
 }
@@ -442,8 +443,8 @@ function renderInviteGrid(view, again) {
 function inviteTableHead(system, header, rows, again) {
   const thead = el('thead');
   const headRow = el('tr');
-  const leadTh = el('th', 'email-copy-cell');
-  leadTh.append(copyTableButton(header, rows));
+  const leadTh = el('th', 'data-grid-copy-cell');
+  leadTh.append(copyAllButton('Copy the whole table to the clipboard', () => [header.join('\t')].concat(rows.map(r => r.cells.join('\t'))).join('\n')));
   headRow.append(leadTh);
   for (const column of system.columns) {
     const th = el('th');
@@ -452,23 +453,6 @@ function inviteTableHead(system, header, rows, again) {
   }
   thead.append(headRow);
   return thead;
-}
-
-function copyTableButton(header, rows) {
-  const copyTable = el('button', 'email-copy-columns');
-  copyTable.title = 'Copy the whole table to the clipboard';
-  copyTable.append(svg('copy'));
-  copyTable.addEventListener('click', () => {
-    const lines = [header.join('\t')].concat(rows.map(r => r.cells.join('\t')));
-    navigator.clipboard.writeText(lines.join('\n'));
-    copyTable.classList.add('copied');
-    copyTable.replaceChildren(svg('check'));
-    setTimeout(() => {
-      copyTable.classList.remove('copied');
-      copyTable.replaceChildren(svg('copy'));
-    }, 1200);
-  });
-  return copyTable;
 }
 
 function appendGreetingOptions(parent, list) {
@@ -517,11 +501,11 @@ function inviteTableBody(rows) {
   const tbody = el('tbody');
   rows.forEach((r, rowIndex) => {
     const tr = el('tr');
-    const num = el('td', 'email-num');
+    const num = el('td', 'data-grid-num');
     num.append(el('span', '', String(rowIndex + 1)), copyGlyph(r.cells.join('\t')));
     tr.append(num);
     r.cells.forEach((value, i) => {
-      const td = el('td', i === 0 ? 'email-name' : '', i === 0 ? '' : value);
+      const td = el('td', i === 0 ? 'data-grid-name' : '', i === 0 ? '' : value);
       if (i === 0) {
         const link = el('a', '', value);
         link.href = r.entry.linkHref;

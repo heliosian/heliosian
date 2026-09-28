@@ -131,22 +131,6 @@ export function copyButton(text, label = 'Copy') {
   return btn;
 }
 
-export function copyGlyph(text) {
-  const btn = el('button', 'copy-glyph');
-  btn.title = 'Copy';
-  btn.append(svg('copy'));
-  btn.addEventListener('click', () => {
-    navigator.clipboard.writeText(text);
-    btn.classList.add('copied');
-    btn.replaceChildren(svg('check'));
-    setTimeout(() => {
-      btn.classList.remove('copied');
-      btn.replaceChildren(svg('copy'));
-    }, 1200);
-  });
-  return btn;
-}
-
 export function contactRow(value, buttons) {
   const row = el('div', 'contact-row');
   row.append(value);

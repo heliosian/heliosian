@@ -1,6 +1,8 @@
 import {state, me, isAdmin, longDate, years, allYears, activityPath, activity, parentOf, canAdd, ADDING, category as categoryOf, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED, isFamily} from './state.js';
 
-import {whenEditor} from './dom.js';
+import {whenEditor, treeFilter} from './dom.js';
+import {dataGrid} from '/datagrid.js';
+import {familyDropdown} from '/rules.js';
 import {el, svg, toast, button, imageThumb} from '/elements.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
@@ -12,7 +14,7 @@ import {load, navigate, render} from '/router.js';
 import {field, text, textarea, select, checkbox, segmented} from '/form.js';
 import {tabbedFields} from '/tabs.js';
 
-export const {uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/team', {state});
+export const {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/team', {state});
 
 export async function saveActivity(body) {
   const before = body.id && activity(body.id) ? activityPath(activity(body.id)) : null;
@@ -339,7 +341,7 @@ export async function removeVolunteer(node, volunteer) {
   }
 }
 
-export function highlightInputs(current) {
+function highlightInputs(current) {
   const wrap = el('div', 'highlight-inputs');
   const headline = text(current ? current.headline : '', {maxLength: 80, placeholder: 'Performances'});
   const body = textarea(current ? current.body : '', 4);
@@ -467,60 +469,9 @@ export function openActivity(act, options) {
   const own = root ? eventCategories(root).filter(c => editor || canAdd(c)) : [];
   const eventCategory = select([{label: 'None', value: ''}, ...own.map(c => ({label: c.title, value: c.id}))],
     act ? act.category : (opts.category || ''));
-  const status = select(['Pending', 'Open', 'Done', 'Hidden'], act ? act.status : 'Open');
-  const policyDot = (sel, blank) => {
-    const wrap = el('div', 'status-select policy-select');
-    const paint = () => {
-      wrap.dataset.policy = sel.value || blank;
-    };
-    sel.addEventListener('change', paint);
-    paint();
-    wrap.append(sel);
-    return wrap;
-  };
-  const dotted = sel => {
-    const wrap = el('div', 'status-select');
-    wrap.dataset.status = sel.value;
-    sel.addEventListener('change', () => {
-      wrap.dataset.status = sel.value;
-    });
-    wrap.append(sel);
-    return wrap;
-  };
   const description = textarea(act ? act.description : '', 6);
   const when = whenFields(act, act ? parentOf(act) : opts.parent || null);
   const timing = text(act ? act.own.timing : '', {placeholder: 'All Year, Late February, A few times per year'});
-  const spots = text(act && act.spots ? String(act.spots) : '', {type: 'number'});
-  spots.min = '1';
-  spots.max = '99';
-  const unlimited = checkbox('Unlimited spots', !(act && act.spots), 'Allow unlimited volunteers to sign up.');
-  const spotsRow = el('div', 'field-unit');
-  spotsRow.append(spots, el('span', 'field-unit-label', 'people'));
-  const spotsField = settingRow('Volunteer spots', 'How many volunteers can sign up for this activity?', el('div', 'setting-stack'));
-  spotsField.querySelector('.setting-stack').append(spotsRow, unlimited.wrap);
-  unlimited.wrap.classList.add('is-compact');
-  const paintSpots = () => {
-    spotsRow.hidden = unlimited.input.checked;
-    if (!unlimited.input.checked && !spots.value) {
-      spots.value = act && act.spots ? String(act.spots) : '10';
-    }
-  };
-  unlimited.input.addEventListener('change', () => {
-    paintSpots();
-    if (!unlimited.input.checked) {
-      spots.focus();
-    }
-  });
-  paintSpots();
-  const coLeader = checkbox('Co-chair needed', act ? act.coLeaderNeeded : true,
-    'This lets people offer to be a co-chair; you still confirm them as co-chairs.');
-  const hidden = checkbox('Keep volunteers secret',
-    act ? act.volunteersHidden : Boolean(opts.parent && opts.parent.volunteersHidden),
-    'E.g., hide room parent applications, which are secret.');
-  const complete = checkbox('Volunteers complete', act ? Boolean(act.volunteersComplete) : false,
-    'Say the volunteers are all set, whatever the count; this shows a Volunteers Complete badge and stops sign-ups.');
-  const direct = checkbox(under ? 'Allow volunteers for this itself' : 'Allow volunteers for the event itself', act ? act.directSignUp : true,
-    under ? 'Unchecking this will allow volunteers for subcommittees, but not this itself.' : 'Unchecking this will allow volunteers for subcommittees, but not the event itself.');
   const signMe = select([
     {label: 'Choose one…', value: ''},
     {label: 'Volunteer', value: 'Volunteer'},
@@ -529,19 +480,7 @@ export function openActivity(act, options) {
   ], '');
   signMe.required = true;
   const signMeRow = act ? null : settingRow('Sign me up as', 'Whether you are on this yourself.', signMe);
-  const inheritLabel = under ? 'Same as the parent' : 'No, unless a category says otherwise';
-  const allowAdding = select([
-    {label: inheritLabel, value: ''},
-    {label: 'Yes - people can add, and it goes live', value: ADDING.yes},
-    {label: 'Approval needed - people can add, an admin approves', value: ADDING.approval},
-    ...(under ? [{label: 'No - only organizers add here', value: ADDING.no}] : []),
-  ], act ? act.allowAddingOwn || '' : '');
-  const allowAddingRow = settingRow('Allow adding subactivities',
-    'Can users add subactivities? Note that this is a default and can be overwritten by the settings of a category.',
-    policyDot(allowAdding, under ? 'inherit' : ADDING.no));
-  const image = imagePicker(act ? act.image : '', act ? act.imageUrl : '', {query: () => title.value.trim()});
   const suggestImage = imagePicker('', '', {dropzone: true, query: () => title.value.trim()});
-  const flyer = imagePicker(act ? act.flyer : '', act ? act.flyerUrl : '', {plain: true});
   const pretty = text(act ? act.prettyId || '' : '', {placeholder: 'applause', maxLength: 40});
   const addressBase = () => `${location.origin}${under ? activityPath(root) + '/' : '/v/'}`;
   const addressLine = el('div', 'address-line');
@@ -584,19 +523,6 @@ export function openActivity(act, options) {
     slot.append(moveLink);
     fields.push(slot, underField);
   }
-  let statusSelect = null;
-  if (admin && act) {
-    statusSelect = status;
-  } else if (act && act.status === 'Pending') {
-    if (currentParent && currentParent.canEdit) {
-      statusSelect = select(['Pending', 'Open', 'Done'], 'Pending');
-    }
-  } else if (act && act.status === 'Hidden') {
-    statusSelect = select(['Hidden', 'Open', 'Done'], 'Hidden');
-  } else if (act) {
-    statusSelect = select(['Open', 'Done'], act.status === 'Done' ? 'Done' : 'Open');
-  }
-  const statusRow = statusSelect ? settingRow('Status', 'Control whether this activity is open for sign-ups.', dotted(statusSelect)) : null;
   fields.push(field('Description', description));
   const highlight = highlightFields(act ? act.highlight : null);
   let body;
@@ -622,10 +548,7 @@ export function openActivity(act, options) {
     body = [tabbedFields([
       {label: 'Basics', icon: svg('doc'), fields: basics},
       {label: 'When', icon: svg('calendar'), fields: [...(yearField ? [yearField] : []), when.wrap]},
-      {label: 'Sign-ups', icon: svg('people'), fields: [...(statusRow ? [statusRow] : []), spotsField, complete.wrap, allowAddingRow, coLeader.wrap, hidden.wrap, direct.wrap]},
-      {label: 'Image & Address', icon: svg('image'), fields: [
-        settingCard('Top Banner Image', 'The wide picture across the top of the page and on the card (optional).', image.wrap.querySelector('.image-row')),
-        settingCard('Flyer', 'The event\'s poster, shown beside the details and used for the social share image when there is one (optional).', flyer.wrap.querySelector('.image-row')),
+      {label: 'Address', icon: svg('link'), fields: [
         settingCard('Friendly address', under
           ? 'A short address for this activity, under its event. Letters, digits and hyphens; unique among the things beside it.'
           : 'A short address for this event. Letters, digits and hyphens; one address per event, across every year.',
@@ -663,13 +586,13 @@ export function openActivity(act, options) {
         id: act ? act.id : '',
         year: year.value, title: title.value, parent: parentSelect.value,
         category: parentSelect.value ? eventCategory.value : category.value,
-        status: statusSelect ? statusSelect.value : '',
-        description: description.value, image: suggesting && under ? suggestImage.value() : image.value(), flyer: flyer.value(), timing: scheduled.timing,
+        status: act ? act.status : '',
+        description: description.value, image: suggesting && under ? suggestImage.value() : (act ? act.image || '' : ''), flyer: act ? act.flyer || '' : '', timing: scheduled.timing,
         highlight: highlight.value(),
-        start: scheduled.start, end: scheduled.end, location: act ? act.location || '' : '', spots: unlimited.input.checked ? 0 : Number(spots.value) || 0,
-        coLeaderNeeded: coLeader.input.checked, volunteersHidden: hidden.input.checked, volunteersComplete: complete.input.checked, directSignUp: direct.input.checked,
+        start: scheduled.start, end: scheduled.end, location: act ? act.location || '' : '', spots: act ? act.spots || 0 : 0,
+        coLeaderNeeded: act ? Boolean(act.coLeaderNeeded) : true, volunteersComplete: Boolean(act && act.volunteersComplete),
         priority: Boolean(act && act.priority),
-        signUp: act ? '' : signMe.value, prettyId: pretty.value.trim().toLowerCase(), allowAdding: allowAdding.value,
+        signUp: act ? '' : signMe.value, prettyId: pretty.value.trim().toLowerCase(), allowAdding: act ? act.allowAddingOwn || '' : '',
       };
       const saved = await saveActivity(body);
       const made = act ? null : activity(saved);
@@ -702,143 +625,620 @@ export function openLink(node, item) {
   });
 }
 
-export function openVolunteerGrid(root, nodes, pathOf) {
-  const rows = [];
+const foldedSettings = new Set();
+
+export function openVolunteerSettings(node, replace) {
+  const again = () => openVolunteerSettings(activity(node.id), true);
+  const root = rootOf(node);
+  const cats = eventCategories(root);
+  const list = el('div', 'vol-settings');
+  const head = el('div', 'vol-settings-row vol-settings-head');
+  const helped = (label, help) => {
+    const cell = el('span', 'vol-settings-help');
+    const mark = el('span', 'vol-settings-mark');
+    mark.title = help;
+    mark.append(svg('help'));
+    cell.append(el('span', '', label), mark);
+    return cell;
+  };
+  head.append(
+    el('span', '', ''),
+    el('span', 'vol-settings-head-name', 'Activity'),
+    helped('Allow volunteers', 'Allow volunteers for this activity'),
+    helped('Show volunteers', 'Show volunteers to everyone. Hidden shows it only to chairs.'),
+    helped('Allow new activities', 'Allow new groups/subactivities/roles under this item'),
+  );
+  list.append(head);
+  const folded = key => foldedSettings.has(key);
+  const tally = things => {
+    const n = things.reduce((sum, c) => sum + 1 + descendants(c).length, 0);
+    return el('span', 'vol-settings-count', `${n} ${n === 1 ? 'item' : 'items'}`);
+  };
+  const fold = (key, has) => {
+    if (!has) {
+      return el('span', 'vol-fold');
+    }
+    const b = button('', folded(key) ? 'chevron-right' : 'chevron-down', 'icon-button vol-fold', () => {
+      if (folded(key)) {
+        foldedSettings.delete(key);
+      } else {
+        foldedSettings.add(key);
+      }
+      again();
+    });
+    b.setAttribute('aria-label', folded(key) ? 'Show what is under it' : 'Hide what is under it');
+    return b;
+  };
+  const yesNo = on => (on ? 'Yes' : 'No');
+  const flip = v => ({Yes: 'No', No: 'Yes'})[v] || '';
+  const visibility = () => [{label: 'Default', value: ''}, {label: 'Visible', value: 'Yes'}, {label: 'Hidden', value: 'No'}];
+  const addingChoices = () => [{label: 'Default', value: ''}, {label: 'Allowed', value: ADDING.yes}, {label: 'Approval needed', value: ADDING.approval}, {label: 'Prohibited', value: ADDING.no}];
+  const choice = (options, value, disabledWhy, save, resolved) => {
+    const input = select(options, value);
+    input.disabled = Boolean(disabledWhy);
+    input.title = disabledWhy || '';
+    const tint = () => {
+      input.dataset.value = ({Yes: 'yes', unlimited: 'yes', limited: 'approval', No: 'no', [ADDING.approval]: 'approval'})[input.value || resolved];
+    };
+    tint();
+    let was = value;
+    input.addEventListener('change', async () => {
+      tint();
+      try {
+        await save(input.value);
+        was = input.value;
+        again();
+      } catch (err) {
+        toast(err.message);
+        input.value = was;
+        tint();
+      }
+    });
+    const cell = el('span', 'vol-settings-cell');
+    cell.append(input);
+    return cell;
+  };
+  const limitChip = (n, locked, save) => {
+    const chip = el('button', 'vol-limit', `${n.spots} ${n.spots === 1 ? 'spot' : 'spots'}`);
+    chip.type = 'button';
+    chip.title = locked || 'Click to change the limit';
+    chip.disabled = Boolean(locked);
+    chip.addEventListener('click', () => {
+      const input = text(String(n.spots), {type: 'number', min: 1, max: 99, step: 1});
+      input.className = 'vol-limit-input';
+      let done = false;
+      const finish = async keep => {
+        if (done) {
+          return;
+        }
+        done = true;
+        const spots = Math.max(1, Math.min(99, Math.round(Number(input.value)) || 0));
+        if (!keep || spots === n.spots) {
+          input.replaceWith(chip);
+          return;
+        }
+        try {
+          await save({spots});
+          again();
+        } catch (err) {
+          toast(err.message);
+          input.replaceWith(chip);
+        }
+      };
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          finish(true);
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(false);
+        }
+      });
+      input.addEventListener('blur', () => finish(true));
+      chip.replaceWith(input);
+      input.focus();
+      input.select();
+    });
+    return chip;
+  };
+  const volunteering = (n, own, top, locked, save, resolved) => {
+    const options = own([{label: 'Default', value: ''}, {label: 'Unlimited', value: 'unlimited'}, {label: 'Limited', value: 'limited'}, {label: 'No More', value: 'No'}]);
+    const allowed = n.directSignUpOwn || (top ? yesNo(n.directSignUp) : '');
+    const value = allowed === 'Yes' ? (n.spots > 0 ? 'limited' : 'unlimited') : allowed;
+    const changes = {'': {directSignUp: ''}, unlimited: {directSignUp: 'Yes', spots: 0}, limited: {directSignUp: 'Yes', spots: n.spots || 5}, No: {directSignUp: 'No'}};
+    const cell = choice(options, value, locked, v => save(changes[v]), resolved);
+    cell.classList.add('vol-settings-volunteering');
+    if (value === 'limited') {
+      cell.append(limitChip(n, locked, save));
+    }
+    return cell;
+  };
+  const inherited = n => {
+    if (!n.parent) {
+      return null;
+    }
+    return (n.parent === root.id && cats.find(c => c.id === n.category)) || activity(n.parent);
+  };
+  const saveCategory = async (cat, flags) => {
+    await api('POST', '/api/team/category/settings', {id: cat.id, flags});
+    await load();
+  };
+  const closedAbove = n => {
+    for (let a = n; a.parent; a = activity(a.parent)) {
+      const cat = a.parent === root.id && cats.find(c => c.id === a.category);
+      if (cat && cat.hidden) {
+        return cat.title;
+      }
+      const up = activity(a.parent);
+      if (up.status === 'Hidden') {
+        return up.title;
+      }
+    }
+    return '';
+  };
+  const eye = (open, closedBy, disabledWhy, save) => {
+    const shown = open && !closedBy;
+    const b = button('', shown ? 'eye' : 'eye-off', 'icon-button vol-eye' + (shown ? ' is-open' : '') + (closedBy ? ' is-inherited' : ''), async () => {
+      b.disabled = true;
+      try {
+        await save(!open);
+        again();
+      } catch (err) {
+        toast(err.message);
+        b.disabled = false;
+      }
+    });
+    const why = closedBy ? `because ${closedBy} is hidden` : disabledWhy;
+    b.disabled = Boolean(why);
+    b.title = (shown ? 'Visible' : 'Hidden') + (why ? ` - ${why}` : '');
+    b.setAttribute('aria-label', b.title);
+    const cell = el('span', 'vol-settings-cell');
+    cell.append(b);
+    return cell;
+  };
+  const adder = (placeholder, create) => {
+    const box = el('div', 'vol-settings-add');
+    const input = text('', {maxLength: 120, placeholder});
+    const close = () => box.remove();
+    const submit = async () => {
+      const title = input.value.trim();
+      if (!title) {
+        input.focus();
+        return;
+      }
+      input.disabled = true;
+      try {
+        await create(title);
+        again();
+      } catch (err) {
+        toast(err.message);
+        input.disabled = false;
+      }
+    };
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        close();
+      }
+    });
+    const ok = button('', 'check', 'button button-small vol-settings-ok', submit);
+    ok.title = 'Add';
+    ok.setAttribute('aria-label', 'Add');
+    const cancel = button('', 'close', 'button button-secondary button-small vol-settings-ok', close);
+    cancel.title = 'Cancel';
+    cancel.setAttribute('aria-label', 'Cancel');
+    box.append(input, ok, cancel);
+    return box;
+  };
+  const menu = (anchor, items) => {
+    const box = el('div', 'vol-add-menu');
+    for (const [icon, words, onClick] of items) {
+      const b = el('button', 'vol-add-menu-item');
+      b.type = 'button';
+      b.append(svg(icon), el('span', '', words));
+      b.addEventListener('click', () => {
+        box.remove();
+        onClick();
+      });
+      box.append(b);
+    }
+    const at = anchor.getBoundingClientRect();
+    box.style.top = `${at.bottom + 4}px`;
+    box.style.left = `${at.left}px`;
+    document.body.append(box);
+    setTimeout(() => document.addEventListener('click', () => box.remove(), {once: true}));
+  };
+  const addCategoryAfter = after => {
+    if (after.nextElementSibling && after.nextElementSibling.classList.contains('vol-settings-add')) {
+      after.nextElementSibling.querySelector('input').focus();
+      return;
+    }
+    const box = adder('New category name', title => api('POST', '/api/team/category', {eventId: node.id, title, allowAdding: ''}).then(load));
+    box.classList.add('is-inline');
+    box.style.setProperty('--depth', 1);
+    after.after(box);
+    box.querySelector('input').focus();
+  };
+  const rename = (title, current, save) => {
+    const row = title.closest('.vol-settings-row');
+    const dragging = row.draggable;
+    row.draggable = false;
+    const box = el('span', 'vol-settings-rename');
+    const input = text(current, {maxLength: 120});
+    const close = () => {
+      box.remove();
+      title.hidden = false;
+      row.draggable = dragging;
+    };
+    const submit = async () => {
+      const next = input.value.trim();
+      if (!next || next === current) {
+        close();
+        return;
+      }
+      input.disabled = true;
+      try {
+        await save(next);
+        again();
+      } catch (err) {
+        toast(err.message);
+        input.disabled = false;
+      }
+    };
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        close();
+      }
+    });
+    const ok = button('', 'check', 'button button-small vol-settings-ok', submit);
+    ok.title = 'Save';
+    ok.setAttribute('aria-label', 'Save');
+    const cancel = button('', 'close', 'button button-secondary button-small vol-settings-ok', close);
+    cancel.title = 'Cancel';
+    cancel.setAttribute('aria-label', 'Cancel');
+    box.append(input, ok, cancel);
+    title.hidden = true;
+    title.after(box);
+    input.focus();
+    input.select();
+  };
+  const addUnder = (after, parent, category, depth) => {
+    if (after.nextElementSibling && after.nextElementSibling.classList.contains('vol-settings-add')) {
+      after.nextElementSibling.querySelector('input').focus();
+      return;
+    }
+    const box = adder('New activity name', title => saveActivity({year: parent.year, title, parent: parent.id, category, coLeaderNeeded: true}));
+    box.classList.add('is-inline');
+    box.style.setProperty('--depth', depth);
+    after.after(box);
+    box.querySelector('input').focus();
+  };
+  let dragging = null;
+  const zoneClasses = ['is-drop-onto', 'is-drop-before', 'is-drop-after'];
+  const dropTarget = (r, item, accepts, drop, between) => {
+    const zoneOf = e => {
+      if (!between) {
+        return 'onto';
+      }
+      const box = r.getBoundingClientRect();
+      const y = (e.clientY - box.top) / box.height;
+      if (y < 0.25) {
+        return 'before';
+      }
+      return y > 0.75 ? 'after' : 'onto';
+    };
+    const clear = () => r.classList.remove(...zoneClasses);
+    r.addEventListener('dragover', e => {
+      if (dragging && dragging !== item && accepts(dragging)) {
+        e.preventDefault();
+        clear();
+        r.classList.add('is-drop-' + zoneOf(e));
+      }
+    });
+    r.addEventListener('dragleave', clear);
+    r.addEventListener('drop', async e => {
+      clear();
+      if (!dragging || dragging === item || !accepts(dragging)) {
+        return;
+      }
+      e.preventDefault();
+      const moved = dragging;
+      dragging = null;
+      try {
+        await drop(moved, zoneOf(e));
+        again();
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  };
+  const draggable = (r, name, item) => {
+    r.draggable = true;
+    r.classList.add('is-draggable');
+    const grip = el('span', 'vol-grip');
+    grip.append(svg('grip'));
+    name.prepend(grip);
+    r.addEventListener('dragstart', e => {
+      dragging = item;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', item.id);
+      r.classList.add('is-dragging');
+    });
+    r.addEventListener('dragend', () => {
+      dragging = null;
+      r.classList.remove('is-dragging');
+    });
+  };
+  const within = (n, ancestor) => {
+    for (let a = n; a; a = a.parent ? activity(a.parent) : null) {
+      if (a.id === ancestor.id) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const place = async (moved, parent, category) => {
+    const changes = {};
+    if (moved.node.parent !== parent.id) {
+      changes.parent = parent.id;
+    }
+    if ((moved.node.category || '') !== category) {
+      changes.category = category;
+    }
+    if (Object.keys(changes).length) {
+      await saveActivity({id: moved.node.id, ...changes});
+    }
+  };
+  const nest = (moved, target) => place(moved, target, '');
+  const slot = async (moved, target, after) => {
+    const parent = activity(target.parent);
+    await place(moved, parent, parent.id === root.id ? target.category || '' : '');
+    const ids = activity(parent.id).children.map(c => c.id).filter(id => id !== moved.node.id);
+    ids.splice(ids.indexOf(target.id) + (after ? 1 : 0), 0, moved.node.id);
+    await api('POST', '/api/team/order', {parent: parent.id, ids});
+    await load();
+  };
+  const row = (n, depth, below, parent) => {
+    const r = el('div', 'vol-settings-row' + (depth ? ' is-child' : ' is-block'));
+    const name = el('span', 'vol-settings-name');
+    name.style.setProperty('--depth', Math.max(depth - 1, 0));
+    const key = 'a:' + n.id;
+    const title = el('span', 'vol-settings-title', n.title);
+    name.append(fold(key, below ? n.children.length > 0 : n.children.length > 0 || cats.length > 0), title);
+    if (folded(key) && n.children.length) {
+      name.append(tally(n.children));
+    }
+    if (n.canEdit) {
+      const pencil = editPencil(`Rename ${n.title}`);
+      pencil.addEventListener('click', () => rename(title, n.title, next => saveActivity({id: n.id, title: next})));
+      const categories = !n.parent && n.id === node.id;
+      const plus = button('', 'plus', 'edit-icon', () => {
+        if (!categories) {
+          addUnder(r, n, '', depth + 1);
+          return;
+        }
+        menu(plus, [
+          ['plus', 'Add activity', () => addUnder(r, n, '', depth + 1)],
+          ['list', 'Add category', () => addCategoryAfter(r)],
+        ]);
+      });
+      plus.title = categories ? `Add an activity or a category to ${n.title}` : `Add an activity under ${n.title}`;
+      plus.setAttribute('aria-label', plus.title);
+      name.append(pencil, plus);
+    }
+    const item = {id: n.id, kind: 'activity', node: n, parent};
+    if (parent && parent.canEdit) {
+      draggable(r, name, item);
+    }
+    if (n.canEdit) {
+      dropTarget(r, item, d => d.kind === 'activity' && !within(n, d.node),
+        (moved, zone) => (zone === 'onto' ? nest(moved, n) : slot(moved, n, zone === 'after')), Boolean(n.parent));
+    }
+    const locked = n.canEdit ? '' : 'You can’t edit this one';
+    let hiding = locked;
+    if (!hiding && n.status === 'Pending') {
+      hiding = 'Waiting for approval';
+    }
+    const above = n.parent ? activity(n.parent) : null;
+    const source = inherited(n);
+    const top = !n.parent;
+    const own = options => (top ? options.filter(o => o.value) : options);
+    const save = changes => saveActivity({id: n.id, ...changes});
+    r.classList.toggle('is-hidden', n.status === 'Hidden' || Boolean(closedAbove(n)));
+    r.append(
+      eye(n.status !== 'Hidden', closedAbove(n), hiding, open => save({status: open ? 'Open' : 'Hidden'})),
+      name,
+      volunteering(n, own, top, locked, save, yesNo(source ? source.directSignUp : true)),
+      choice(own(visibility()), flip(n.volunteersHiddenOwn) || (top ? yesNo(!n.volunteersHidden) : ''), locked, v => save({volunteersHidden: flip(v)}),
+        yesNo(source ? !source.volunteersHidden : true)),
+      choice(own(addingChoices()), n.allowAddingOwn || (top ? n.allowAdding || ADDING.no : ''), locked, v => save({allowAdding: v}),
+        above ? above.allowAdding || ADDING.no : ADDING.no),
+    );
+    list.append(r);
+    if (!below || folded(key)) {
+      return;
+    }
+    for (const c of n.children) {
+      row(c, depth + 1, true, n);
+    }
+  };
+  row(node, 0, false, null);
+  const managing = !node.parent;
+  const open = !folded('a:' + node.id);
+  cats.forEach((cat, i) => {
+    const group = node.children.filter(c => (c.category || '') === cat.id);
+    if (!open || (!group.length && !managing)) {
+      return;
+    }
+    const heading = el('div', 'vol-settings-row vol-settings-group is-block is-nested');
+    const name = el('span', 'vol-settings-name');
+    name.append(fold('c:' + cat.id, group.length > 0));
+    const words = el('div', 'vol-settings-title');
+    words.append(el('div', '', cat.title));
+    if (managing && cat.description) {
+      words.append(el('div', 'sub', cat.description));
+    }
+    name.append(words);
+    if (folded('c:' + cat.id) && group.length) {
+      name.append(tally(group));
+    }
+    if (managing) {
+      const pencil = editPencil(`Rename ${cat.title}`);
+      pencil.addEventListener('click', () => rename(words, cat.title, async next => {
+        await api('POST', '/api/team/category', {id: cat.id, title: next, description: cat.description || '', image: cat.image || '', allowAdding: cat.allowAddingOwn || ''});
+        await load();
+      }));
+      name.append(pencil);
+    }
+    if (node.canEdit) {
+      const plus = button('', 'plus', 'edit-icon', () => addUnder(heading, node, cat.id, 2));
+      plus.title = `Add an activity to ${cat.title}`;
+      plus.setAttribute('aria-label', plus.title);
+      name.append(plus);
+    }
+    if (managing && root.canEdit) {
+      const item = {id: cat.id, kind: 'category', index: i};
+      draggable(heading, name, item);
+      dropTarget(heading, item, d => d.kind === 'category' || d.kind === 'activity', async moved => {
+        if (moved.kind === 'activity') {
+          await place(moved, node, cat.id);
+          return;
+        }
+        await moveCategory(node.id, cats, moved.index, moved.index < i ? i - 1 : i, null);
+      }, false);
+    }
+    const locked = root.canEdit ? '' : 'Only the event’s organizers can change this';
+    heading.classList.toggle('is-hidden', Boolean(cat.hidden) || root.status === 'Hidden');
+    heading.append(
+      eye(!cat.hidden, root.status === 'Hidden' ? root.title : '', locked, open => saveCategory(cat, {hidden: open ? '' : 'Yes'})),
+      name,
+      choice([{label: 'Default', value: ''}, {label: 'Unlimited', value: 'Yes'}, {label: 'No More', value: 'No'}], cat.directSignUpOwn || '', locked, v => saveCategory(cat, {directSignUp: v}), yesNo(root.directSignUp)),
+      choice(visibility(), flip(cat.volunteersHiddenOwn), locked, v => saveCategory(cat, {volunteersHidden: flip(v)}), yesNo(!root.volunteersHidden)),
+      choice(addingChoices(), cat.allowAddingOwn || '', locked, v => saveCategory(cat, {allowAdding: v}), root.allowAdding || ADDING.no),
+    );
+    list.append(heading);
+    if (folded('c:' + cat.id)) {
+      return;
+    }
+    for (const c of group) {
+      row(c, 2, true, node);
+    }
+  });
+  const loose = node.children.filter(c => !cats.some(cat => cat.id === (c.category || '')));
+  if (open && loose.length) {
+    const hidden = cats.length && folded('c:');
+    if (cats.length) {
+      const heading = el('div', 'vol-settings-row vol-settings-group is-block is-nested');
+      const name = el('span', 'vol-settings-name');
+      name.append(fold('c:', true), el('span', 'vol-settings-title', 'Uncategorized'));
+      if (hidden) {
+        name.append(tally(loose));
+      }
+      heading.append(el('span'), name, el('span'), el('span'), el('span'));
+      list.append(heading);
+    }
+    if (!hidden) {
+      for (const c of loose) {
+        row(c, cats.length ? 2 : 1, true, node);
+      }
+    }
+  }
+  openModal(`${node.title}: Volunteer settings`, [el('p', 'vol-settings-lead', 'Configure sign up and visibility settings for activities and categories. Activities and categories can override its parent’s settings, or default to them.'), list], {wide: true, replace});
+}
+
+export async function openVolunteerGrid(root, nodes, pathOf) {
+  const dir = await directory();
+  const byEmail = new Map(dir.data.map(dir.get).map(p => [p.email, p]));
+  const signUps = [];
   for (const node of nodes) {
     for (const v of node.volunteers) {
-      rows.push({node, v, parents: []});
+      signUps.push({node, v});
     }
   }
-  const columns = [
-    {label: 'Volunteer', get: r => r.v.name || r.v.email},
-    {label: 'Where', get: r => pathOf(r.node)},
-    {label: 'As', get: r => r.v.position},
-    {label: 'Sign Up Date', get: r => r.v.added || '', show: r => (r.v.added ? longDate(r.v.added) : '')},
-    {label: 'Email', get: r => r.v.email},
-    {label: "Parents' email", get: r => r.parents.join(', ')},
-  ];
-  const copied = (btn, icon, label) => {
-    btn.classList.add('copied');
-    btn.replaceChildren(svg('check'));
-    setTimeout(() => {
-      btn.classList.remove('copied');
-      btn.replaceChildren(svg(icon));
-      if (label) {
-        btn.append(el('span', '', label));
-      }
-    }, 1200);
-  };
-  const copyGlyph = (title, text) => {
-    const btn = el('button', 'copy-glyph');
-    btn.type = 'button';
-    btn.title = title;
-    btn.append(svg('copy'));
-    btn.addEventListener('click', () => {
-      navigator.clipboard.writeText(text()).then(() => copied(btn, 'copy'), () => toast('Could not copy'));
-    });
-    return btn;
-  };
-  const table = el('table', 'roster');
-  const head = el('tr');
-  let sortedBy = null;
-  let ascending = true;
-  const sortBy = (c, th) => {
-    ascending = sortedBy === c ? !ascending : true;
-    sortedBy = c;
-    rows.sort((a, b) => {
-      const x = c.get(a);
-      const y = c.get(b);
-      if (!x || !y) {
-        return x ? -1 : y ? 1 : 0;
-      }
-      const order = x.localeCompare(y, undefined, {numeric: true, sensitivity: 'base'});
-      return ascending ? order : -order;
-    });
-    for (const cell of head.children) {
-      cell.removeAttribute('aria-sort');
+  const firstName = v => (v.name || v.email).split(' ')[0];
+  const follows = {Parents: ['parents', 'Parent'], Children: ['children', 'Child'], Siblings: ['siblings', 'Sibling']};
+  const relativesOf = r => {
+    const info = byEmail.get(r.v.email);
+    if (!info) {
+      return [];
     }
-    th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
-    body.append(...rows.map(r => r.tr));
-  };
-  for (const c of columns) {
-    const th = el('th');
-    const sort = el('button', 'roster-sort');
-    sort.type = 'button';
-    sort.title = `Sort by ${c.label}`;
-    sort.append(el('span', '', c.label), svg('chevron-right'));
-    sort.addEventListener('click', () => sortBy(c, th));
-    th.append(sort, copyGlyph(`Copy the ${c.label} column`, () => rows.map(c.get).filter(Boolean).join('\n')));
-    head.append(th);
-  }
-  const thead = el('thead');
-  thead.append(head);
-  table.append(thead);
-  const body = el('tbody');
-  const addresses = new Set();
-  const parentCells = [];
-  for (const row of rows) {
-    const {node, v} = row;
-    const tr = el('tr');
-    const who = el('td', 'roster-who');
-    const face = el('div', 'avatar people-face');
-    if (v.photoUrl) {
-      const img = el('img');
-      img.src = v.photoUrl;
-      img.alt = '';
-      face.append(img);
-    } else {
-      face.textContent = (v.name || v.email).slice(0, 1).toUpperCase();
-    }
-    who.append(face, el('span', '', v.name));
-    tr.append(who);
-    tr.append(el('td', 'roster-where', pathOf(node)));
-    tr.append(el('td', '', v.position));
-    tr.append(el('td', 'roster-date', columns.find(c => c.label === 'Sign Up Date').show(row)));
-    const mail = el('td', 'roster-mail');
-    mail.append(mailto(v.email));
-    tr.append(mail);
-    addresses.add(v.email);
-    const parents = el('td', 'roster-mail');
-    parentCells.push({cell: parents, row});
-    tr.append(parents);
-    row.tr = tr;
-    body.append(tr);
-  }
-  table.append(body);
-  listed().then(all => {
-    const byEmail = new Map(all.map(p => [p.email, p]));
-    for (const {cell, row} of parentCells) {
-      const info = byEmail.get(row.v.email);
-      if (!info || !info.isStudent) {
+    const out = [];
+    for (const [relation, [path, as]] of Object.entries(follows)) {
+      if (!relations.has(relation)) {
         continue;
       }
-      row.parents = info.parentContactEmails || [];
-      for (const e of row.parents) {
-        cell.append(mailto(e));
-        addresses.add(e);
-      }
-      if (!row.parents.length) {
-        cell.append(el('span', 'roster-none', 'none listed'));
+      for (const p of dir.follow(info, path).filter(p => p && p.email)) {
+        out.push({node: r.node, v: {email: p.email, name: p.fullName, position: `${as} of ${firstName(r.v)}`}});
       }
     }
-  });
-  const scroll = el('div', 'roster-scroll');
-  scroll.append(rows.length ? table : el('div', 'panel-empty', 'Nobody has signed up yet.'));
+    return out;
+  };
+  const relations = new Set();
+  let ids = new Set(nodes.map(n => n.id));
+  const titleOf = r => {
+    const info = byEmail.get(r.v.email);
+    if (!info) {
+      return '';
+    }
+    if (info.isStudent) {
+      return info.grade || 'Student';
+    }
+    return [info.isParent ? 'Parent' : '', info.isStaff ? 'Staff' : ''].filter(Boolean).join(', ');
+  };
+  const columns = [
+    {label: 'Volunteer', get: r => r.v.name || r.v.email},
+    {label: 'Title', get: titleOf},
+    {label: 'Where', get: r => pathOf(r.node)},
+    {label: 'As', get: r => r.v.position},
+    {label: 'Sign Up Date', get: r => (r.v.added ? longDate(r.v.added) : ''), sort: r => r.v.added || ''},
+    {label: 'Email', get: r => r.v.email, show: r => mailto(r.v.email)},
+  ];
+  const holder = el('div');
+  const count = el('span', 'roster-count');
+  const paint = () => {
+    const seen = new Set(signUps.map(r => r.v.email));
+    const rows = [...signUps];
+    for (const r of signUps) {
+      for (const k of relativesOf(r)) {
+        if (!seen.has(k.v.email)) {
+          seen.add(k.v.email);
+          rows.push(k);
+        }
+      }
+    }
+    const grid = dataGrid({columns, rows});
+    grid.show(r => ids.has(r.node.id));
+    holder.replaceChildren(rows.length ? grid.wrap : el('div', 'panel-empty', 'Nobody has signed up yet.'));
+    const n = grid.shown().length;
+    count.textContent = `${n} ${n === 1 ? 'person' : 'people'}`;
+  };
   const tools = el('div', 'roster-tools');
-  tools.append(el('span', 'roster-count', `${rows.length} sign-up${rows.length === 1 ? '' : 's'}`));
+  tools.append(count);
   const buttons = el('div', 'roster-buttons');
-  const copyTable = button('Copy table', 'copy', 'button button-secondary button-small', () => {
-    const text = [columns.map(c => c.label).join('\t'), ...rows.map(r => columns.map(c => c.get(r)).join('\t'))].join('\n');
-    navigator.clipboard.writeText(text).then(() => copied(copyTable, 'copy', 'Copy table'), () => toast('Could not copy'));
-  });
-  copyTable.title = 'Copy every column, ready to paste into a spreadsheet';
-  const copyEmails = button('Copy emails', 'copy', 'button button-secondary button-small', () => {
-    navigator.clipboard.writeText([...addresses].join(', ')).then(() => copied(copyEmails, 'copy', 'Copy emails'), () => toast('Could not copy'));
-  });
-  copyEmails.title = "Every volunteer's address, and their parents' for students, comma-separated";
-  buttons.append(copyTable, copyEmails);
+  buttons.append(familyDropdown(['Parents', 'Children', 'Siblings'], relations, paint));
+  if (nodes.length > 1) {
+    const filter = treeFilter(root, nodes.slice(1), sources => {
+      ids = new Set(sources.map(n => n.id));
+      paint();
+    }, nodes.map(n => n.id));
+    buttons.append(filter.wrap);
+  }
   tools.append(buttons);
-  openModal(`${root.title}: Volunteers`, [tools, scroll], {wide: true});
+  paint();
+  openModal(`${root.title}: Volunteers`, [tools, holder], {wide: true});
 }
 
 function mailto(email) {
@@ -853,72 +1253,6 @@ export function editPencil(label) {
   pencil.title = label;
   pencil.setAttribute('aria-label', label);
   pencil.append(svg('edit'));
-  return pencil;
-}
-
-export function fieldEditor(anchor, pencil, opts) {
-  const box = el('div', 'field-editor');
-  box.append(opts.input);
-  if (opts.hint) {
-    box.append(el('small', 'field-note', opts.hint));
-  }
-  const actions = el('div', 'field-editor-actions');
-  const save = el('button', 'button button-small', 'Save');
-  save.type = 'button';
-  const cancel = el('button', 'button button-secondary button-small', 'Cancel');
-  cancel.type = 'button';
-  const status = el('span', 'field-status');
-  actions.append(save, cancel, status);
-  box.append(actions);
-  const close = () => {
-    box.remove();
-    anchor.hidden = false;
-    pencil.hidden = false;
-  };
-  cancel.addEventListener('click', close);
-  save.addEventListener('click', async () => {
-    const value = opts.value();
-    const problem = opts.validate ? opts.validate(value) : '';
-    if (problem) {
-      status.classList.add('error');
-      status.textContent = problem;
-      return;
-    }
-    status.classList.remove('error');
-    save.disabled = true;
-    status.textContent = 'Saving…';
-    await opts.submit(value);
-    save.disabled = false;
-    status.textContent = '';
-  });
-  box.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      close();
-    }
-    if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
-      e.preventDefault();
-      save.click();
-    }
-  });
-  anchor.hidden = true;
-  pencil.hidden = true;
-  anchor.after(box);
-  opts.input.focus();
-}
-
-export function editable(anchor, label, make, submit) {
-  const pencil = editPencil(label);
-  pencil.addEventListener('click', () => {
-    const built = make();
-    fieldEditor(anchor, pencil, {
-      input: built.input,
-      hint: built.hint,
-      value: built.value,
-      validate: built.validate,
-      submit,
-    });
-  });
   return pencil;
 }
 
@@ -946,7 +1280,10 @@ export function openCategory(category, eventId, after) {
   titleField.classList.add('is-required');
   const addingField = field('Allow adding', addingWrap, 'Control whether people can add activities to this category.');
   addingField.classList.add('is-required');
-  const fields = [titleField, field('Description', description), image.wrap, addingField];
+  const fields = [titleField, field('Description', description), image.wrap];
+  if (!eventId) {
+    fields.push(addingField);
+  }
   const onMain = eventId ? null : checkbox('Show on the main page (it stays in the toolbar either way)', category ? category.showOnMain : true);
   if (onMain) {
     fields.push(onMain.wrap);
@@ -972,24 +1309,26 @@ function addingWords(category) {
   return own ? word : (category.eventId ? `${word} (same as the event)` : word);
 }
 
+async function moveCategory(eventId, list, from, to, after) {
+  const ids = list.map(c => c.id);
+  const [moved] = ids.splice(from, 1);
+  ids.splice(to, 0, moved);
+  try {
+    await api('POST', '/api/team/categories/order', {eventId, ids});
+    await load();
+    if (after) {
+      after();
+    }
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
 export function categoryList(root, after) {
   const wrap = el('div', 'category-list');
   const eventId = root ? root.id : '';
   const list = root ? eventCategories(root) : state.model.categories.filter(c => !c.builtIn);
-  const move = async (from, to) => {
-    const ids = list.map(c => c.id);
-    const [moved] = ids.splice(from, 1);
-    ids.splice(to, 0, moved);
-    try {
-      await api('POST', '/api/team/categories/order', {eventId, ids});
-      await load();
-      if (after) {
-        after();
-      }
-    } catch (err) {
-      toast(err.message);
-    }
-  };
+  const move = (from, to) => moveCategory(eventId, list, from, to, after);
   list.forEach((category, i) => {
     const row = el('div', 'admin-row');
     if (category.imageUrl) {
@@ -1018,14 +1357,6 @@ export function categoryList(root, after) {
   add.append(button('Add Category', 'plus', 'button', () => openCategory(null, eventId, after)));
   wrap.append(add);
   return wrap;
-}
-
-export function openCategoryManager(root) {
-  const again = () => openCategoryManager(root);
-  openModal(`${root.title}: Categories`, [
-    el('div', 'hint', 'The things under this event are grouped by these, in this order. Each one says whether people may add to it.'),
-    categoryList(root, again),
-  ], {replace: true});
 }
 
 export function openSettings() {

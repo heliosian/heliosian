@@ -101,8 +101,8 @@ export function privacyPage() {
   intro.append(list);
   content.append(intro);
 
-  const holder = el('div', 'email-holder');
-  const table = el('table', 'email-table privacy-table');
+  const holder = el('div', 'data-grid-wrap');
+  const table = el('table', 'data-grid privacy-table');
   const thead = el('thead');
   const headRow = el('tr');
   for (const label of ['', 'Veracross', 'Helios Who', 'Shown Here']) {

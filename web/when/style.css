@@ -1242,7 +1242,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .rsvp-member-answer.is-no { color: var(--no-text, #b3261e); }
 
-.rsvp-member-holder .rsvp-member-menu { top: calc(100% + 6px); bottom: auto; left: 0; }
+.rsvp-member-holder .rsvp-member-menu { top: calc(100% + 6px); bottom: auto; left: 0; right: auto; }
 
 .rsvp-panel-foot { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin-top: 10px; }
 
@@ -2068,27 +2068,6 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .detail-hero > img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-/* The strip across the banner's foot that changes its picture. */
-.hero-image-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 0 0 16px 16px; background: linear-gradient(180deg, rgba(10, 50, 54, 0), rgba(10, 50, 54, 0.82)); }
-
-.hero-image-action { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 0; border-radius: 999px; background: var(--disc, rgba(255, 255, 255, 0.92)); color: var(--brand-text, var(--brand-fill)); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
-
-.hero-image-action:hover { background: var(--disc-hover, #fff); }
-
-.hero-image-action svg { width: 15px; height: 15px; }
-
-.hero-image-status { color: #fff; font-size: 13px; font-weight: 600; }
-
-.hero-image-menu-holder { position: relative; display: inline-block; }
-
-.hero-image-menu { position: absolute; left: 0; bottom: calc(100% + 8px); min-width: 190px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); padding: 6px 0; z-index: 5; }
-
-.hero-image-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 14px; border: 0; background: none; font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }
-
-.hero-image-menu-item:hover { background: var(--input); }
-
-.hero-image-menu-item svg { width: 16px; height: 16px; color: var(--brand); }
-
 .hero-image-menu-item .invite-said { gap: 10px; color: var(--ink); }
 
 .hero-image-menu-item .invite-said-mark { width: 22px; height: 22px; }
@@ -2116,8 +2095,6 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 .hero-linked-line svg { width: 18px; height: 18px; flex-shrink: 0; color: #1f8a7e; }
 
 .hero-linked-line span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.detail-hero .hero-image-bar { justify-content: flex-end; }
 
 @media (max-width: 640px) {
   /* The card is too wide to sit on a phone's banner: the picture keeps

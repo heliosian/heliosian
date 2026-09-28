@@ -1,5 +1,6 @@
 import {state, byEmail, lists, tags} from '../state.js';
-import {csvField, copyGlyph} from '../dom.js';
+import {csvField} from '../dom.js';
+import {dataGrid} from '/datagrid.js';
 import {el, svg} from '/elements.js';
 import {familiesOf, familyOf, familySearchText} from '../families.js';
 import {personCard, personLink, guestCard, guestPerson} from '../people.js';
@@ -240,87 +241,18 @@ export function listPage() {
   content.append(grid);
   page.append(content);
 
-  const selectedColumns = new Set(emailColumns.map((c, i) => i));
-  let currentRows = [];
-  const copyColumns = el('button', 'email-copy-columns');
-  copyColumns.title = 'Copy the checked columns to the clipboard';
-  copyColumns.append(svg('copy'));
-  copyColumns.addEventListener('click', () => {
-    const cols = emailColumns.filter((c, i) => selectedColumns.has(i));
-    if (!cols.length || !currentRows.length) {
-      return;
-    }
-    const text = [cols.map(c => c.label).join('\t')]
-      .concat(currentRows.map(r => cols.map(c => c.get(r)).join('\t')))
-      .join('\n');
-    navigator.clipboard.writeText(text);
-    copyColumns.classList.add('copied');
-    copyColumns.replaceChildren(svg('check'));
-    setTimeout(() => {
-      copyColumns.classList.remove('copied');
-      copyColumns.replaceChildren(svg('copy'));
-    }, 1200);
-  });
-
   function renderEmailsTable(container, rows) {
-    container.className = 'email-holder';
-    const table = el('table', 'email-table');
-    const thead = el('thead');
-    const headRow = el('tr');
-    const leadTh = el('th', 'email-copy-cell');
-    leadTh.append(copyColumns);
-    headRow.append(leadTh);
-    emailColumns.forEach((c, i) => {
-      const th = el('th');
-      const pick = el('label', 'column-pick');
-      const checkbox = el('input');
-      checkbox.type = 'checkbox';
-      checkbox.checked = selectedColumns.has(i);
-      checkbox.addEventListener('change', () => {
-        if (checkbox.checked) {
-          selectedColumns.add(i);
-        } else {
-          selectedColumns.delete(i);
-        }
-      });
-      pick.append(el('span', '', c.label), checkbox);
-      th.append(pick, copyGlyph(rows.map(c.get).filter(Boolean).join('\n')));
-      headRow.append(th);
-    });
-    headRow.append(el('th'));
-    thead.append(headRow);
-    table.append(thead);
-    const tbody = el('tbody');
-    rows.forEach((r, i) => {
-      const tr = el('tr');
-      const num = el('td', 'email-num');
-      num.append(el('span', '', String(i + 1)), copyGlyph(emailColumns.map(c => c.get(r)).join('\t')));
-      tr.append(num);
-      const nameCell = el('td', 'email-name');
-      const nameLink = el('a', '', r.p.fullName);
-      nameLink.href = personLink(r.p);
-      nameCell.append(nameLink, copyGlyph(r.p.fullName));
-      tr.append(nameCell);
-      for (const c of emailColumns.slice(1)) {
-        const td = el('td', '', c.get(r));
-        if (c.get(r)) {
-          td.append(copyGlyph(c.get(r)));
-        }
-        tr.append(td);
+    const columns = emailColumns.map((c, i) => (i === 0 ? {...c, show: r => {
+      const link = el('a', '', r.p.fullName);
+      link.href = personLink(r.p);
+      return link;
+    }} : c));
+    const trailing = r => (r.p.guest ? el('span') : tagControl(r.p.email, 'tag-wrap', 'row-tag', () => {
+      if (state.filterTags.size) {
+        renderGrid();
       }
-      const tagCell = el('td', 'email-tag');
-      if (!r.p.guest) {
-        tagCell.append(tagControl(r.p.email, 'tag-wrap', 'row-tag', () => {
-          if (state.filterTags.size) {
-            renderGrid();
-          }
-        }));
-      }
-      tr.append(tagCell);
-      tbody.append(tr);
-    });
-    table.append(tbody);
-    container.append(table);
+    }));
+    container.append(dataGrid({columns, rows, trailing}).wrap);
   }
 
   function renderGrid() {
@@ -329,7 +261,6 @@ export function listPage() {
     const rows = emailEntries()
       .filter(r => (r.p.fullName.toLowerCase().includes(state.q) || r.p.email.toLowerCase().includes(state.q)) && matchesFilters(r.p))
       .concat(selectedGuests().map(g => ({p: guestPerson(g), role: 'Guest', grade: '', classroom: ''})));
-    currentRows = rows;
     const csv = [emailColumns.map(c => c.label).join(',')]
       .concat(rows.map(r => emailColumns.map(c => csvField(c.get(r))).join(',')))
       .join('\n');

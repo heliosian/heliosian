@@ -1,5 +1,5 @@
-import {state, me, family, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, isFull, matches, activityPath, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel} from '../state.js';
-import {badge, searchBox, whenEditor} from '../dom.js';
+import {state, me, family, isAdmin, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, isFull, matches, activityPath, shownVolunteers, listHidden, listRevealed, canAdd, addLabel} from '../state.js';
+import {badge, searchBox, treeFilter} from '../dom.js';
 import {el, link, svg, imageThumb, avatar, button, editToggle, copyText, toast} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {load, render} from '/router.js';
@@ -7,13 +7,10 @@ import {approvalButtons} from './approvals.js';
 import {dateCard, googleCalendarLink, parseWhen} from '/datecard.js';
 import {appOrigin} from '/appswitch.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
-import {openCropTool, openPhotoLightbox} from '/crop.js';
+import {openPhotoLightbox} from '/crop.js';
+import {heroImageBar} from '/heroimage.js';
 import {api} from '/api.js';
-import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, uploadAndSave, openCategoryManager, openVolunteerGrid, editPencil} from '../edit.js';
-import {text as textInput, textarea as textAreaInput, select as selectInput} from '/form.js';
-
-
-let editingPath = null;
+import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, uploadAndSave, uploadImage, openVolunteerSettings, openVolunteerGrid, editPencil} from '../edit.js';
 
 const phone = window.matchMedia('(max-width: 900px)');
 phone.addEventListener('change', render);
@@ -50,72 +47,6 @@ function heroStamp(act) {
   return dateCard({start: act.start, end: act.end, location: act.location || '', add: googleCalendarLink({title: act.title, start: act.start, end: act.end, location: act.location || '', details})});
 }
 
-function heroImageBar(node, save) {
-  const bar = el('div', 'hero-image-bar');
-  const file = el('input');
-  file.type = 'file';
-  file.accept = 'image/*';
-  file.hidden = true;
-  file.addEventListener('change', async () => {
-    if (!file.files.length) {
-      return;
-    }
-    bar.replaceChildren(el('span', 'hero-image-status', 'Uploading…'));
-    await uploadAndSave(save, file.files[0]);
-  });
-  const label = node.image ? 'Replace image' : 'Add an image';
-  if (imageSearchOn()) {
-    const holder = el('div', 'hero-image-menu-holder');
-    const toggle = el('button', 'hero-image-action');
-    toggle.type = 'button';
-    toggle.setAttribute('aria-haspopup', 'menu');
-    toggle.append(svg('image'), el('span', '', label), svg('chevron-down'));
-    const menu = el('div', 'hero-image-menu');
-    menu.hidden = true;
-    const item = (icon, text, onClick) => {
-      const b = el('button', 'hero-image-menu-item');
-      b.type = 'button';
-      b.append(svg(icon), el('span', '', text));
-      b.addEventListener('click', () => {
-        menu.hidden = true;
-        onClick();
-      });
-      menu.append(b);
-    };
-    item('up', 'Upload image', () => file.click());
-    item('search', 'Find an image', () => openImageSearch(node.title, picked => save({image: picked.name})));
-    toggle.addEventListener('click', e => {
-      e.stopPropagation();
-      menu.hidden = !menu.hidden;
-    });
-    document.addEventListener('click', () => {
-      menu.hidden = true;
-    }, {once: true, capture: true});
-    holder.append(toggle, menu, file);
-    bar.append(holder);
-  } else {
-    const choose = el('label', 'hero-image-action');
-    choose.append(svg('image'), el('span', '', label), file);
-    bar.append(choose);
-  }
-  if (node.image) {
-    const crop = el('button', 'hero-image-action');
-    crop.type = 'button';
-    crop.append(svg('crop'), el('span', '', 'Crop'));
-    crop.addEventListener('click', () => openCropTool(node.imageUrl, false, async blob => {
-      await uploadAndSave(save, new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
-      return true;
-    }));
-    bar.append(crop);
-    const remove = el('button', 'hero-image-action');
-    remove.type = 'button';
-    remove.append(svg('trash'), el('span', '', 'Remove'));
-    remove.addEventListener('click', () => save({image: ''}));
-    bar.append(remove);
-  }
-  return bar;
-}
-
 function sideCard(className) {
   return el('div', 'side-card ' + (className || ''));
 }
@@ -134,8 +65,8 @@ function sideRow(icon, title, lines) {
   return row;
 }
 
-function factsCard(node, editing, save) {
-  const rows = [whenRow(node, editing, save), chairsRow(node, editing, save)].filter(Boolean);
+function factsCard(node, save) {
+  const rows = [whenRow(node), chairsRow(node, save)].filter(Boolean);
   if (!rows.length) {
     return null;
   }
@@ -161,36 +92,19 @@ function whenLines(node, start) {
   return when;
 }
 
-function whenRow(node, editing, save) {
+function whenRow(node) {
   const start = parseWhen(node.start);
   const when = whenLines(node, start);
-  if (!(when.length && !start) && !editing) {
+  if (!(when.length && !start)) {
     return null;
   }
-  const row = sideRow('calendar', 'Date & Time', when.length ? when : ['Not scheduled']);
-  if (!editing) {
-    return row;
-  }
-  const body = row.querySelector('.side-row-body');
-  const lines = el('div', 'side-when');
-  while (body.children.length > 1) {
-    lines.append(body.children[1]);
-  }
-  body.append(lines);
-  body.querySelector('.side-title').append(editable(lines, 'Edit when this happens',
-    () => {
-      const when = whenEditor(node.own.start, node.own.end, node.own.timing, parentOf(node));
-      when.wrap.focus = when.focus;
-      return {input: when.wrap, value: when.value, validate: when.validate};
-    },
-    value => save(value)));
-  return row;
+  return sideRow('calendar', 'Date & Time', when);
 }
 
-function chairsRow(node, editing, save) {
+function chairsRow(node, save) {
   const chairs = coChairs(node);
   const options = shownVolunteers(node, node.canEdit).filter(v => v.position === 'Open to Co-Chair');
-  if (!chairs.length && !node.coLeaderNeeded && !options.length && !editing) {
+  if (!chairs.length && !node.coLeaderNeeded && !options.length && !node.canEdit) {
     return null;
   }
   const row = sideRow('people', chairs.length === 1 ? 'Chair' : 'Co-Chairs', chairs.length ? [] : ['Nobody yet.']);
@@ -198,14 +112,14 @@ function chairsRow(node, editing, save) {
   if (chairs.length) {
     const list = el('div', 'side-chairs');
     for (const v of chairs) {
-      list.append(personTile(node, v, editing, false));
+      list.append(personTile(node, v, false));
     }
     body.append(list);
   }
   if (options.length) {
     body.append(el('div', 'side-subtitle', 'Co-Chair Options'), ...chairOptions(node, options));
   }
-  body.append(...coChairAsk(node, editing, save));
+  body.append(...coChairAsk(node, save));
   return row;
 }
 
@@ -215,7 +129,7 @@ function chairOptions(node, options) {
   }
   const list = el('div', 'side-chairs');
   for (const v of options) {
-    list.append(personTile(node, v, false, false, false, true));
+    list.append(personTile(node, v, false, false, true));
   }
   return [list];
 }
@@ -245,26 +159,18 @@ function chairOffer(node, v) {
   return card;
 }
 
-function coChairAsk(node, editing, save) {
-  if (editing) {
-    const wants = el('label', 'side-switch');
-    wants.append(checkbox(node.coLeaderNeeded, on => save({coLeaderNeeded: on})), el('span', '', 'A co-chair is needed'));
-    return [wants];
-  }
-  if (!node.coLeaderNeeded) {
-    return [];
-  }
+function coChairAsk(node, save) {
   if (node.canEdit) {
     const ask = el('div', 'side-ask');
     const wants = el('label', 'side-switch');
-    wants.append(checkbox(true, on => save({coLeaderNeeded: on})), el('span', '', 'Still looking for a co-chair?'));
+    wants.append(checkbox(Boolean(node.coLeaderNeeded), on => save({coLeaderNeeded: on})), el('span', '', 'Still looking for a co-chair?'));
     const pencil = editPencil('Edit this page');
-    pencil.addEventListener('click', () => {
-      editingPath = node.id;
-      render();
-    });
+    pencil.addEventListener('click', () => openActivity(node));
     ask.append(wants, pencil);
     return [ask];
+  }
+  if (!node.coLeaderNeeded) {
+    return [];
   }
   const mine = mySignUp(node);
   const nodes = [mine && mine.position === 'Open to Co-Chair'
@@ -284,8 +190,8 @@ function coChairAsk(node, editing, save) {
   return nodes;
 }
 
-function personTile(owner, v, editing, star, chair, option) {
-  const tile = el('button', 'side-chair' + (editing ? ' is-editable' : '') + (chair ? ' is-chair' : '') + (option ? ' is-option' : ''));
+function personTile(owner, v, star, chair, option) {
+  const tile = el('button', 'side-chair' + (owner.canEdit ? ' is-editable' : '') + (chair ? ' is-chair' : '') + (option ? ' is-option' : ''));
   tile.type = 'button';
   tile.title = owner.canEdit ? `${v.name} and their sign-up` : `About ${v.name}`;
   tile.addEventListener('click', () => openPerson(v, owner));
@@ -353,154 +259,6 @@ function chainBelow(root, node) {
   return titles.join(' › ');
 }
 
-function editCrumb(node, parent, root, save) {
-  const crumb = el('div', 'detail-crumb');
-  const yearItem = el('span', 'crumb-item', node.year);
-  crumb.append(yearItem);
-  if (isAdmin() && !parent) {
-    crumb.append(editable(yearItem, 'Change the school year',
-      () => {
-        const options = allYears();
-        for (const y of [years().current, years().next]) {
-          if (!options.includes(y)) {
-            options.unshift(y);
-          }
-        }
-        const input = selectInput(options, node.year);
-        return {input, hint: 'Everything under it moves with it.', value: () => input.value};
-      },
-      value => save({year: value})));
-  }
-  if (parent) {
-    crumb.append(el('span', 'crumb-sep', '›'));
-    crumb.append(link(activityPath(parent), 'crumb-item crumb-link', parent.title));
-  }
-  crumb.append(el('span', 'crumb-sep', '›'));
-  const current = category(node.category);
-  const catItem = el('span', 'crumb-item' + (current ? '' : ' is-empty'), current ? current.title : 'No category');
-  crumb.append(catItem);
-  crumb.append(editable(catItem, 'Change category',
-    () => {
-      const REPARENT = '\u0000reparent';
-      const choices = parent
-        ? [{label: 'No category', value: ''}, ...eventCategories(root).map(c => ({label: c.title, value: c.id}))]
-        : headingChoices();
-      if (!parent) {
-        choices.push({label: 'Change Parent Event…', value: REPARENT});
-      }
-      const wrap = el('div', 'field-when');
-      const pick = selectInput(choices, node.category || '');
-      wrap.append(pick);
-      const mine = new Set([node.id, ...descendants(node).map(d => d.id)]);
-      const candidates = [];
-      for (const top of state.model.activities.filter(a => a.year === node.year)) {
-        for (const n of [top, ...descendants(top)]) {
-          if (mine.has(n.id)) {
-            continue;
-          }
-          const titles = [];
-          for (let x = n; x; x = parentOf(x)) {
-            titles.unshift(x.title);
-          }
-          candidates.push({label: titles.join(' › '), value: n.id});
-        }
-      }
-      const target = selectInput(candidates, candidates[0] ? candidates[0].value : '');
-      const targetLabel = el('span', 'field-when-label', 'Put this under');
-      targetLabel.hidden = target.hidden = true;
-      wrap.append(targetLabel, target);
-      pick.addEventListener('change', () => {
-        targetLabel.hidden = target.hidden = pick.value !== REPARENT;
-      });
-      wrap.focus = () => pick.focus();
-      return {
-        input: wrap,
-        hint: parent ? '' : 'Or make this part of another event; it drops its category and lists under that event instead.',
-        value: () => (pick.value === REPARENT ? {parent: target.value, category: ''} : {category: pick.value}),
-        validate: v => (v.parent === '' && pick.value === REPARENT ? 'Pick the event to put this under.' : ''),
-      };
-    },
-    value => save(value)));
-  return crumb;
-}
-
-function treeFilter(node, below, onChange) {
-  const chosen = new Set([node.id]);
-  const self = `${node.title} (itself)`;
-  const filter = el('div', 'side-filter');
-  const toggle = el('button', 'side-filter-toggle');
-  toggle.type = 'button';
-  const summary = el('span', '', self);
-  toggle.append(summary, svg('chevron-down'));
-  const menu = el('div', 'side-filter-menu');
-  menu.hidden = true;
-  const depthOf = n => {
-    let d = 0;
-    for (let p = parentOf(n); p && p !== node; p = parentOf(p)) {
-      d++;
-    }
-    return d;
-  };
-  const boxes = [];
-  const sources = () => [node, ...below].filter(n => chosen.has(n.id));
-  const refresh = () => {
-    const count = chosen.size;
-    summary.textContent = count === 1 && chosen.has(node.id) ? self : (count ? `${count} selected` : 'None');
-    onChange(sources());
-  };
-  const option = (n, label) => {
-    const item = el('label', 'side-filter-item');
-    item.style.paddingLeft = `${10 + (n === node ? 0 : (depthOf(n) + 1) * 14)}px`;
-    const box = el('input');
-    box.type = 'checkbox';
-    box.checked = chosen.has(n.id);
-    box.addEventListener('change', () => {
-      if (box.checked) {
-        chosen.add(n.id);
-      } else {
-        chosen.delete(n.id);
-      }
-      refresh();
-    });
-    boxes.push({box, id: n.id});
-    item.append(box, el('span', '', label));
-    return item;
-  };
-  const bulk = el('div', 'side-filter-bulk');
-  const setAll = on => {
-    chosen.clear();
-    for (const {box, id} of boxes) {
-      box.checked = on;
-      if (on) {
-        chosen.add(id);
-      }
-    }
-    refresh();
-  };
-  const all = el('button', 'link-button', 'Select All');
-  all.type = 'button';
-  all.addEventListener('click', () => setAll(true));
-  const none = el('button', 'link-button', 'Clear All');
-  none.type = 'button';
-  none.addEventListener('click', () => setAll(false));
-  bulk.append(all, none);
-  menu.append(bulk);
-  menu.append(option(node, self));
-  for (const n of below) {
-    menu.append(option(n, n.title));
-  }
-  toggle.addEventListener('click', e => {
-    e.stopPropagation();
-    menu.hidden = !menu.hidden;
-  });
-  menu.addEventListener('click', e => e.stopPropagation());
-  document.addEventListener('click', () => {
-    menu.hidden = true;
-  });
-  filter.append(toggle, menu);
-  return {wrap: filter, sources, self};
-}
-
 function familyBox(node) {
   const mine = [me().email, ...family().map(c => c.email)];
   const rows = [];
@@ -535,7 +293,8 @@ function familyBox(node) {
   return box;
 }
 
-function volunteersBox(node, editing, save) {
+function volunteersBox(node) {
+  const editing = Boolean(node.canEdit);
   const people = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair');
   const chairs = coChairs(node);
   const revealed = listRevealed(node, editing);
@@ -547,7 +306,7 @@ function volunteersBox(node, editing, save) {
     revealed,
     showPeople: node.directSignUp && revealed ? people : [],
     somethingBelow: node.children.some(c => c.status !== 'Hidden' && c.status !== 'Pending'),
-    quiet: !node.directSignUp && !chairs.length && !editing,
+    quiet: !node.directSignUp && !chairs.length,
     listing: el('div', 'vol-listing'),
     filter: null,
   };
@@ -561,7 +320,7 @@ function volunteersBox(node, editing, save) {
   }
   const mine = mySignUp(node);
   const head = el('div', 'vol-head');
-  head.append(volunteersTitle(view, save), volunteersActions(node, view.filter, mine));
+  head.append(volunteersTitle(view), volunteersActions(node, view.filter, mine));
   box.append(head);
   paintVolunteers(view);
   box.append(view.listing);
@@ -577,16 +336,13 @@ function volunteersBox(node, editing, save) {
   if (listHidden(node) && revealed) {
     box.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
   }
-  if (editing) {
-    box.append(volunteerSwitches(node, save));
-  } else if (node.spots) {
+  if (node.spots) {
     box.append(el('div', 'vol-note', `${node.taken} of ${node.spots} spots taken.`));
   }
   return box;
 }
 
-function volunteersTitle(view, save) {
-  const {node} = view;
+function volunteersTitle(view) {
   const title = el('div', 'vol-title');
   const count = view.chairs.length + view.people.length;
   if (!view.quiet) {
@@ -594,21 +350,6 @@ function volunteersTitle(view, save) {
   } else if (view.somethingBelow) {
     title.append(el('div', 'vol-quiet', 'Sign up for something below.'));
   }
-  if (!view.editing) {
-    return title;
-  }
-  const setMax = button(node.spots ? `Max ${node.spots}` : 'Set Max', '', 'button button-secondary button-small vol-max', () => {
-    const answer = prompt('How many people can sign up here? Leave blank for no limit.', node.spots ? String(node.spots) : '');
-    if (answer === null) {
-      return;
-    }
-    const n = Math.max(0, Math.min(99, Number(answer.trim()) || 0));
-    save({spots: n});
-  });
-  setMax.title = 'Set the most people who can sign up here';
-  const done = el('label', 'side-switch vol-complete');
-  done.append(checkbox(Boolean(node.volunteersComplete), on => save({volunteersComplete: on})), el('span', '', 'Volunteers complete'));
-  title.append(setMax, done);
   return title;
 }
 
@@ -622,12 +363,6 @@ function volunteersActions(node, filter, mine) {
     if (signUp) {
       actions.append(signUp);
     }
-  }
-  if (node.runs) {
-    const list = el('a', 'button button-small' + (node.emailList ? ' button-secondary' : ''));
-    list.href = emailListPath(node);
-    list.append(svg('mail'), el('span', '', emailListWords(node)));
-    actions.append(list);
   }
   return actions;
 }
@@ -670,7 +405,7 @@ function paintVolunteers(view) {
     }
     const grid = el('div', 'side-chairs vol-people');
     for (const v of theirs) {
-      grid.append(personTile(src, v, view.editing, true));
+      grid.append(personTile(src, v, true));
     }
     listing.append(grid);
   }
@@ -684,14 +419,14 @@ function ownVolunteers(view, labelled) {
   if (chairs.length || showPeople.length) {
     const grid = el('div', 'side-chairs vol-people');
     for (const v of chairs) {
-      grid.append(personTile(node, v, editing, false, true));
+      grid.append(personTile(node, v, false, true));
     }
     const isOption = v => v.position === 'Open to Co-Chair';
     for (const v of showPeople.filter(isOption)) {
-      grid.append(personTile(node, v, editing, false, false, true));
+      grid.append(personTile(node, v, false, false, true));
     }
     for (const v of showPeople.filter(v => !isOption(v))) {
-      grid.append(personTile(node, v, editing, false));
+      grid.append(personTile(node, v, false));
     }
     if (labelled) {
       listing.append(el('div', 'side-group', view.filter.self));
@@ -716,25 +451,6 @@ function ownVolunteers(view, labelled) {
   }
 }
 
-function volunteerSwitches(node, save) {
-  const switches = el('div', 'vol-switches');
-  const add = (label, hint, checked, onChange) => {
-    const wrap = el('label', 'vol-switch');
-    wrap.append(checkbox(checked, onChange));
-    const text = el('span');
-    text.append(el('strong', '', label));
-    if (hint) {
-      text.append(el('small', '', hint));
-    }
-    wrap.append(text);
-    switches.append(wrap);
-  };
-  add('Allow volunteers for this itself', 'Unchecking this will allow volunteers for subcommittees, but not this itself.',
-    node.directSignUp, on => save({directSignUp: on}));
-  add('Keep Volunteers Secret', 'Only the organizers see who has signed up.', node.volunteersHidden, on => save({volunteersHidden: on}));
-  return switches;
-}
-
 function priorityCard(node, save) {
   if (!isAdmin() || isFull(node)) {
     return null;
@@ -746,7 +462,8 @@ function priorityCard(node, save) {
   return card;
 }
 
-function resourcesCard(node, editing) {
+function resourcesCard(node) {
+  const editing = Boolean(node.canEdit);
   if (!node.links.length && !editing) {
     return null;
   }
@@ -809,8 +526,8 @@ function highlightCard(node) {
   return card;
 }
 
-function flyerCard(node, editing, save) {
-  if (!node.flyerUrl && !editing) {
+function flyerCard(node, save) {
+  if (!node.flyerUrl && !node.canEdit) {
     return null;
   }
   const card = sideCard('flyer-card');
@@ -830,7 +547,7 @@ function flyerCard(node, editing, save) {
   } else {
     card.append(el('div', 'side-line', 'No flyer yet.'));
   }
-  if (editing) {
+  if (node.canEdit) {
     const bar = el('div', 'flyer-actions');
     const file = el('input');
     file.type = 'file';
@@ -919,10 +636,11 @@ function shareButton(node) {
   });
 }
 
-function childrenSection(node, editing) {
+function childrenSection(node) {
+  const editing = Boolean(node.canEdit);
   const root = rootOf(node);
-  const unlisted = r => r.status === 'Hidden' || r.status === 'Pending';
-  const roles = node.children.filter(r => !unlisted(r) || (node.canEdit && (editing || state.showHidden || r.status === 'Pending')));
+  const unlisted = r => r.status === 'Hidden' || r.status === 'Pending' || Boolean(r.categoryHidden);
+  const roles = node.children.filter(r => !unlisted(r) || editing);
   if (!roles.length && (node.parent || !eventCategories(root).length)) {
     return node.canEdit ? addActivityBar(node) : null;
   }
@@ -936,6 +654,9 @@ function childrenSection(node, editing) {
       paintChildren(section);
     }, true));
   }
+  if (node.canEdit) {
+    actions.append(settingsButton(node));
+  }
   head.append(actions);
   const wrap = el('div');
   wrap.append(head);
@@ -944,9 +665,13 @@ function childrenSection(node, editing) {
   return wrap;
 }
 
+function settingsButton(node) {
+  return button('Volunteer settings', 'gear', 'button button-secondary button-small', () => openVolunteerSettings(node));
+}
+
 function addActivityBar(node) {
   const bar = el('div', 'add-row');
-  bar.append(button('Add Activity', 'plus', 'button button-secondary button-small', () => openActivity(null, {parent: node, category: ''})));
+  bar.append(button('Add Activity', 'plus', 'button button-secondary button-small', () => openActivity(null, {parent: node, category: ''})), settingsButton(node));
   return bar;
 }
 
@@ -1029,13 +754,8 @@ function dropTarget(section, panel, categoryId) {
   return panel;
 }
 
-function sectionRow(section, group, i, categoryId) {
-  const r = group[i];
-  const moves = section.editing ? {
-    up: i > 0 ? () => reorderChildren(section, r.id, group[i - 1].id, categoryId) : null,
-    down: i < group.length - 1 ? () => reorderChildren(section, r.id, group[i + 2] ? group[i + 2].id : '', categoryId) : null,
-  } : null;
-  const row = childRow(r, section.editing, moves);
+function sectionRow(section, r) {
+  const row = childRow(r, section.editing);
   row.dataset.id = r.id;
   if (section.editing) {
     row.addEventListener('dragover', e => {
@@ -1061,9 +781,8 @@ function paintChildren(section) {
     }
     list.append(groupHead(node, id ? category(id) : null, others));
     const panel = dropTarget(section, el('div', 'panel'), id);
-    const group = shown.filter(x => (x.category || '') === id);
-    for (let i = 0; i < group.length; i++) {
-      panel.append(sectionRow(section, group, i, id));
+    for (const r of shown.filter(x => (x.category || '') === id)) {
+      panel.append(sectionRow(section, r));
     }
     list.append(panel);
   }
@@ -1102,25 +821,10 @@ function checkbox(checked, onChange) {
   return input;
 }
 
-function statusSelect(current, options, onChange) {
-  const input = el('select');
-  for (const status of options) {
-    const option = el('option', '', status);
-    option.value = status;
-    option.selected = status === current;
-    input.append(option);
-  }
-  input.addEventListener('change', () => onChange(input.value));
-  return input;
-}
-
 function editorBand(node) {
   const band = el('div', 'editor-band');
-  band.append(button('Edit', 'edit', 'button button-secondary button-small', () => openActivity(node)));
-  if (node.addedBy) {
-    const when = node.added ? ` on ${longDate(node.added)}` : '';
-    band.append(el('div', 'footnote', `Proposed by ${node.addedBy}${when}`));
-  }
+  const when = node.added ? ` on ${longDate(node.added)}` : '';
+  band.append(el('div', 'footnote', `Proposed by ${node.addedBy}${when}`));
   return band;
 }
 
@@ -1129,7 +833,6 @@ export function activityPage(node) {
   const parent = parentOf(node);
   const save = changes => saveActivityFields(node, changes);
   setTitle(node.title);
-  const editing = node.canEdit && editingPath === node.id;
   const page = el('div', 'detail');
 
   const top = el('div', 'detail-top');
@@ -1137,16 +840,11 @@ export function activityPage(node) {
   back.append(svg('chevron-left'), el('span', '', parent ? `Back to ${parent.title}` : 'Back to Opportunities'));
   top.append(back);
   if (node.canEdit) {
-    top.append(editToggle(editing, () => {
-      editingPath = editing ? null : node.id;
-      render();
-    }));
+    const tools = el('div', 'detail-tools');
+    tools.append(settingsButton(node), editToggle(false, () => openActivity(node)));
+    top.append(tools);
   }
   page.append(top);
-
-  if (editing) {
-    page.append(editCrumb(node, parent, root, save));
-  }
 
   const hero = el('div', 'detail-hero');
   hero.append(imageThumb(node.imageUrl || root.imageUrl, node.title, 'detail-hero-image ' + categoryClass(root.category)));
@@ -1160,108 +858,56 @@ export function activityPage(node) {
     heroActions.append(heroButton('expand', 'View full size', () => openPhotoLightbox(node.imageUrl)));
   }
   hero.append(heroActions);
-  if (editing) {
-    let statuses = node.status === 'Hidden' ? ['Hidden', 'Open', 'Done'] : ['Open', 'Done'];
-    if (isAdmin()) {
-      statuses = ['Pending', 'Open', 'Done', 'Hidden'];
-    } else if (node.status === 'Pending') {
-      statuses = parent && parent.canEdit ? ['Pending', 'Open', 'Done'] : [];
-    }
-    if (statuses.length) {
-      const status = el('label', 'hero-status');
-      status.append(el('span', '', 'Status'), statusSelect(node.status, statuses, value => save({status: value})));
-      hero.append(status);
-    }
-    hero.append(heroImageBar(node, save));
+  if (node.canEdit) {
+    hero.append(heroImageBar({image: node.image, imageUrl: node.imageUrl, query: node.title, tools: {uploadImage, imageSearchOn, openImageSearch}, save: image => save({image})}));
   }
   page.append(hero);
 
   const cols = el('div', 'detail-cols');
   const main = el('div', 'detail-main');
   const marks = el('div', 'detail-marks');
-  if (!editing) {
-    if (parent) {
-      marks.append(link(activityPath(parent), 'card-chip is-inline is-link ' + categoryClass(root.category), parent.title));
-    } else if (category(node.category)) {
-      marks.append(el('span', 'card-chip is-inline ' + categoryClass(node.category), category(node.category).title));
-    }
+  if (parent) {
+    marks.append(link(activityPath(parent), 'card-chip is-inline is-link ' + categoryClass(root.category), parent.title));
+  } else if (category(node.category)) {
+    marks.append(el('span', 'card-chip is-inline ' + categoryClass(node.category), category(node.category).title));
   }
   if (node.coLeaderNeeded) {
     marks.append(el('span', 'need', 'Co-chair needed!'));
   }
   if (node.status !== 'Open') {
     marks.append(badge(node.status === 'Pending' ? 'Needs approval' : node.status, node.status.toLowerCase()));
-    if (node.status === 'Pending' && isAdmin() && !editing) {
+    if (node.status === 'Pending' && isAdmin()) {
       marks.append(...approvalButtons(node));
     }
   } else if (isFull(node)) {
     marks.append(completeBadge());
   }
-  if (editing && !parent) {
-    marks.append(button('Edit Categories', 'list', 'button button-secondary button-small', () => openCategoryManager(node)));
-  }
   if (marks.children.length) {
     main.append(marks);
   }
   const heading = el('div', 'detail-heading');
-  const title = el('h1', 'detail-title', node.title);
-  heading.append(title);
-  if (editing) {
-    heading.append(editable(title, 'Edit the title',
-      () => {
-        const input = textInput(node.title, {maxLength: 120});
-        return {input, value: () => input.value.trim()};
-      },
-      value => save({title: value})));
-  }
+  heading.append(el('h1', 'detail-title', node.title));
   main.append(heading);
   const blurb = el('div', 'detail-blurb');
   if (node.description) {
     for (const para of node.description.split(/\n\s*\n/).filter(t => t.trim())) {
       blurb.append(el('p', 'detail-text', para.trim()));
     }
-  } else if (editing) {
-    blurb.append(el('p', 'detail-text is-empty', 'No description yet.'));
   }
   if (blurb.children.length) {
     main.append(blurb);
-    if (editing) {
-      main.append(editable(blurb, 'Edit the description',
-        () => {
-          const input = textAreaInput(node.description || '', 7);
-          return {input, hint: 'Leave a blank line between paragraphs.', value: () => input.value};
-        },
-        value => save({description: value})));
-    }
   }
 
   const highlight = highlightCard(node);
-  const highlightHint = 'Clear the headline and body to take the highlight off.';
   if (highlight) {
     main.append(highlight);
-    if (editing) {
-      main.append(editable(highlight, 'Edit the highlight',
-        () => {
-          const inputs = highlightInputs(node.highlight);
-          return {input: inputs.wrap, hint: highlightHint, value: inputs.value};
-        },
-        value => save({highlight: value})));
-    }
-  } else if (editing) {
-    const add = button('Add Highlight Section', 'plus', 'button button-secondary button-small', () => {
-      const inputs = highlightInputs(null);
-      fieldEditor(slot, add, {input: inputs.wrap, hint: highlightHint, value: inputs.value, submit: value => save({highlight: value})});
-    });
-    const slot = el('div', 'highlight-add');
-    slot.append(add);
-    main.append(slot);
   }
-  const resources = resourcesCard(node, editing);
+  const resources = resourcesCard(node);
   if (resources) {
     resources.classList.add('resources-main');
     main.append(resources);
   }
-  const facts = factsCard(node, editing, save);
+  const facts = factsCard(node, save);
   if (facts && phone.matches) {
     facts.classList.add('facts-inline');
     main.append(facts);
@@ -1272,9 +918,9 @@ export function activityPage(node) {
   if (familyRoles) {
     main.append(familyRoles);
   }
-  main.append(volunteersBox(node, editing, save));
+  main.append(volunteersBox(node));
   if (!parent || under.length || node.canEdit) {
-    const things = childrenSection(node, editing);
+    const things = childrenSection(node);
     if (things) {
       main.append(things);
     }
@@ -1282,12 +928,12 @@ export function activityPage(node) {
   if (!parent && under.length) {
     main.append(el('div', 'footnote', 'To leave a committee, open it and use Edit my sign-up.'));
   }
-  if (node.canEdit) {
+  if (node.canEdit && node.addedBy) {
     main.append(editorBand(node));
   }
 
   const side = el('aside', 'detail-side');
-  for (const card of [emailListCard(node), phone.matches ? null : facts, flyerCard(node, editing, save), helpCard(node), priorityCard(node, save)]) {
+  for (const card of [emailListCard(node), phone.matches ? null : facts, flyerCard(node, save), helpCard(node), priorityCard(node, save)]) {
     if (card) {
       side.append(card);
     }

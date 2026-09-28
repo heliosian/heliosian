@@ -377,7 +377,7 @@ export function pendingItems() {
 }
 
 export function isUnlisted(node) {
-  return node.status === 'Hidden' || node.status === 'Pending';
+  return node.status === 'Hidden' || node.status === 'Pending' || Boolean(node.categoryHidden);
 }
 
 export function revealed(node) {

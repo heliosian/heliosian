@@ -48,7 +48,7 @@ func TestPriorityIsAnAdmins(t *testing.T) {
 	cache, mux := newServer(t)
 	edit := map[string]any{
 		"id": "act0000000020", "year": "2026 - 2027", "title": "India", "parent": "act0000000001",
-		"category": "tcg0000000008", "status": StatusOpen, "coLeaderNeeded": true, "directSignUp": true, "priority": true,
+		"category": "tcg0000000008", "status": StatusOpen, "coLeaderNeeded": true, "directSignUp": "Yes", "priority": true,
 	}
 	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("co-chair save: %d %s", rec.Code, rec.Body)

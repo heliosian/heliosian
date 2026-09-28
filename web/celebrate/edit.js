@@ -10,8 +10,10 @@ import {imageTools} from '/images.js';
 import {openModal, closeModal, popup} from '/modal.js';
 import {load, navigate} from '/router.js';
 import {field, text, textarea, select, checkbox, segmented, whenPickers} from '/form.js';
+import {dataGrid} from '/datagrid.js';
+import {familyDropdown} from '/rules.js';
 
-export const {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/celebrate', {state});
+export const {uploadImage, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/celebrate', {state});
 
 function peoplePicker(options) {
   return createPersonPicker(el('div'), {people: listed, address: true, ...options});
@@ -345,7 +347,7 @@ export function openWaitlist(p) {
 
 const calloutEmoji = ['📣', '⚠️', 'ℹ️', '⭐', '🎉', '🎈', '🎁', '🍫', '🍕', '🍷', '🍸', '🧁', '🎂', '🎶', '🎮', '🏊', '🌧️', '☀️', '👟', '🧥', '🚗', '🅿️', '🐶', '🧒', '👨‍👩‍👧', '🔥', '💡', '❤️', '✅', '🕒'];
 
-export function emojiPicker(value) {
+function emojiPicker(value) {
   const input = text(value || '', {maxLength: 16, placeholder: '📣'});
   input.className = 'note-emoji-input';
   input.setAttribute('aria-label', 'Emoji');
@@ -758,8 +760,6 @@ export function openParty(p) {
   const callout = el('div', 'callout-field');
   callout.append(createCallout, calloutBox);
   const audience = text(p ? p.audience : '', {maxLength: 60, placeholder: 'Adults, Families, Kids & Adults, Grades 3-6'});
-  const image = imagePicker(p ? p.image : '', p ? p.imageUrl : '', {dropzone: true, query: () => title.value, hint: 'The wide banner across the page and the card.'});
-  const flyer = imagePicker(p ? p.flyer : '', p ? p.flyerUrl : '', {dropzone: true, label: 'Flyer', plain: true, hint: 'The party\u2019s poster, shown whole beside the page. Optional.'});
   const pretty = text(p ? p.prettyId : '', {maxLength: 40, placeholder: 'fondue'});
   const prettyHint = el('small', '', '');
   const paintPretty = () => {
@@ -774,7 +774,6 @@ export function openParty(p) {
     field('Title', title, '', true), field('Subtitle', subtitle), field('Summary', summary, 'Shown on the party card.'),
     field('Description', description), callout, prettyField,
   ];
-  const design = [image.wrap, flyer.wrap];
 
   const start = whenPickers('Starts', p ? p.start : '', null, 'No start time');
   const end = whenPickers('Ends', p ? p.end : '', null, 'No end time');
@@ -817,7 +816,6 @@ export function openParty(p) {
 
   const panels = [
     {label: 'Basics', icon: svg('party'), fields: basics},
-    {label: 'Design', icon: svg('image'), fields: design},
     {label: 'When & where', icon: svg('calendar'), fields: when},
     {label: 'Tickets', icon: svg('ticket'), fields: tickets},
     {label: 'Hosts', icon: svg('people'), fields: hosts},
@@ -845,7 +843,7 @@ export function openParty(p) {
       noteEmoji: noteEmoji.value.trim(), noteTitle: noteTitle.value.trim(),
       hosts: hostsText.value, hostEmails: hostEmails.value(), category: category ? category.value : (p ? p.category || '' : ''), audience: audience.value, unit: unit.value,
       price: Number(price.value || 0), capacity: Number(capacity.value || 0), minimum: Number(minimum.value || 0),
-      start: start.value(), end: end.value(), location: place.value, address: address.value, image: image.value(), flyer: flyer.value(), prettyId: pretty.value, status: status ? status.value : '',
+      start: start.value(), end: end.value(), location: place.value, address: address.value, image: p ? p.image || '' : '', flyer: p ? p.flyer || '' : '', prettyId: pretty.value, status: status ? status.value : '',
       ticketsOpen: ticketsOpen.input.checked, waitlist: waitlist.input.checked, adults: adults.input.checked,
       students: students.input.checked, dropOff: dropOff.input.checked, parentTicket: parentTicket.input.checked,
     }),
@@ -904,195 +902,76 @@ export async function setPartyStatus(p, status) {
   }
 }
 
-async function contactFor(a) {
-  const {dir, info} = await personInfo(a.email);
-  const out = {description: a.line || '', email: a.email || '', parents: []};
-  const children = info ? dir.follow(info, 'children').filter(Boolean) : [];
-  if (info && info.isStudent) {
-    out.parents = info.parentContactEmails || [];
-  } else if (children.length && !a.line) {
-    out.description = children.map(c => c.grade ? `${c.fullName.split(' ')[0]} (${c.grade})` : c.fullName).join(', ');
-  }
-  return out;
-}
-
 export async function openContacts(p) {
-  const all = [...p.attendees, ...p.waitlisted];
-  const rows = await Promise.all(all.map(async a => ({a, contact: await contactFor(a)})));
-  const statusOf = a => (a.status === 'Waitlist' ? `Waitlist (${a.quantity || 1})` : a.status);
-  const columns = [
-    {name: 'Name', value: ({a}) => a.name},
-    {name: 'Description', value: ({contact}) => contact.description},
-    {name: 'Email', value: ({contact}) => contact.email, mail: true},
-    {name: 'Parents', value: ({contact}) => contact.parents.join(', '), mail: true},
-    {name: 'Purchaser', value: ({a}) => a.purchaserName || '', cell: ({a}) => purchaserCell(a)},
-    {name: 'Purchaser Email', value: ({a}) => a.purchaser || '', mail: true, hidden: true},
-    {name: 'Status', value: ({a}) => statusOf(a)},
-    {name: 'RSVP', value: ({a}) => ({yes: 'Yes', maybe: 'Maybe', no: 'No', none: 'No RSVP yet'})[a.rsvp] || '', hidden: !p.invited},
-    {name: 'Note', value: ({a}) => a.note || ''},
-  ];
+  const dir = await directory();
+  const byEmail = new Map(dir.data.map(dir.get).map(q => [q.email, q]));
+  const signUps = [...p.attendees, ...p.waitlisted].map(a => ({a, relation: ''}));
+  const relations = new Set();
+  const firstName = a => (a.name || a.email).split(' ')[0];
+  const follows = {Parents: ['parents', 'Parent'], Children: ['children', 'Child'], Siblings: ['siblings', 'Sibling']};
+  const relativesOf = r => {
+    const info = byEmail.get(r.a.email);
+    if (!info) {
+      return [];
+    }
+    const out = [];
+    for (const [relation, [path, as]] of Object.entries(follows)) {
+      if (!relations.has(relation)) {
+        continue;
+      }
+      for (const q of dir.follow(info, path).filter(q => q && q.email)) {
+        out.push({a: {email: q.email, name: q.fullName}, relation: `${as} of ${firstName(r.a)}`});
+      }
+    }
+    return out;
+  };
+  const titleOf = r => {
+    const info = byEmail.get(r.a.email);
+    if (!info) {
+      return r.relation ? '' : 'Guest';
+    }
+    if (info.isStudent) {
+      return info.grade || 'Student';
+    }
+    return [info.isParent ? 'Parent' : '', info.isStaff ? 'Staff' : ''].filter(Boolean).join(', ');
+  };
   const mailLink = e => {
     const link = el('a', 'contact-email', e);
     link.href = `mailto:${e}`;
     return link;
   };
-  const mailLinks = list => {
-    const cell = el('td', 'contact-mail');
-    list.forEach((e, i) => {
-      if (i) {
-        cell.append(',', el('br'));
-      }
-      cell.append(mailLink(e));
-    });
-    if (!list.length) {
-      cell.append(el('div', 'contact-line', '—'));
-    }
-    return cell;
-  };
-  const purchaserCell = a => {
-    const cell = el('td');
-    if (a.purchaser) {
-      cell.append(el('div', 'contact-name', a.purchaserName || a.purchaser));
-      if (a.purchaserName) {
-        cell.append(el('div', 'contact-line', a.purchaser));
-      }
-    }
-    return cell;
-  };
-  const copy = (words, done) => navigator.clipboard.writeText(words).then(() => toast(done), () => toast('Could not copy'));
-  const columnWords = c => {
-    const values = rows.map(r => c.value(r)).filter(Boolean);
-    if (c.mail) {
-      return [...new Set(values.flatMap(v => v.split(/,\s*/)))].join(', ');
-    }
-    return values.join('\n');
-  };
-  const table = el('table', 'contact-table');
-  const head = el('tr');
-  for (const c of columns.filter(c => !c.hidden)) {
-    const th = el('th');
-    const b = el('button', 'contact-copy');
-    b.type = 'button';
-    b.title = `Copy the ${c.name.toLowerCase()} column`;
-    b.append(el('span', '', c.name), svg('copy'));
-    b.addEventListener('click', () => copy(columnWords(c), `${c.name} copied`));
-    th.append(b);
-    head.append(th);
-  }
-  table.append(head);
-  for (const r of rows) {
-    const row = el('tr');
-    for (const c of columns.filter(c => !c.hidden)) {
-      if (c.cell) {
-        row.append(c.cell(r));
-      } else if (c.mail) {
-        row.append(mailLinks(c.value(r).split(/,\s*/).filter(Boolean)));
-      } else {
-        row.append(el('td', c.name === 'Name' ? 'contact-name' : '', c.value(r)));
+  const statusOf = a => (a.status === 'Waitlist' ? `Waitlist (${a.quantity || 1})` : a.status || '');
+  const columns = [
+    {label: 'Name', get: r => r.a.name || r.a.email || ''},
+    {label: 'Title', get: titleOf},
+    {label: 'Description', get: r => r.relation || r.a.line || ''},
+    {label: 'Email', get: r => r.a.email || '', show: r => (r.a.email ? mailLink(r.a.email) : '')},
+    {label: 'Status', get: r => statusOf(r.a)},
+    ...(p.invited ? [{label: 'RSVP', get: r => ({yes: 'Yes', maybe: 'Maybe', no: 'No', none: 'No RSVP yet'})[r.a.rsvp] || ''}] : []),
+    {label: 'Purchaser', get: r => r.a.purchaserName || r.a.purchaser || ''},
+    {label: 'Purchaser Email', get: r => r.a.purchaser || '', show: r => (r.a.purchaser ? mailLink(r.a.purchaser) : '')},
+    {label: 'Note', get: r => r.a.note || ''},
+  ];
+  const holder = el('div');
+  const count = el('span', 'contact-count');
+  const paint = () => {
+    const seen = new Set(signUps.map(r => r.a.email).filter(Boolean));
+    const rows = [...signUps];
+    for (const r of signUps) {
+      for (const k of relativesOf(r)) {
+        if (!seen.has(k.a.email)) {
+          seen.add(k.a.email);
+          rows.push(k);
+        }
       }
     }
-    table.append(row);
-  }
-  const copyTable = button('Copy table', 'copy', 'button button-secondary', () => {
-    const lines = [columns.map(c => c.name).join('\t')];
-    for (const r of rows) {
-      lines.push(columns.map(c => String(c.value(r)).replace(/\s+/g, ' ')).join('\t'));
-    }
-    copy(lines.join('\n'), 'Table copied');
-  });
-  const actions = el('div', 'contact-actions');
-  actions.append(copyTable, el('span', 'contact-hint', 'Click a column heading to copy that column.'));
-  const wrap = el('div', 'contact-wrap');
-  wrap.append(table);
-  openModal(`Who's coming to ${p.title}`, [actions, wrap], {wide: 'table'});
-}
-
-export function editPencil(label) {
-  const pencil = el('button', 'edit-icon');
-  pencil.type = 'button';
-  pencil.title = label;
-  pencil.setAttribute('aria-label', label);
-  pencil.append(svg('edit'));
-  return pencil;
-}
-
-export function fieldEditor(anchor, pencil, opts) {
-  const box = el('div', 'field-editor');
-  box.append(opts.input);
-  if (opts.hint) {
-    box.append(el('small', 'field-note', opts.hint));
-  }
-  const actions = el('div', 'field-editor-actions');
-  const save = el('button', 'button button-small', 'Save');
-  save.type = 'button';
-  const cancel = el('button', 'button button-secondary button-small', 'Cancel');
-  cancel.type = 'button';
-  const status = el('span', 'field-status');
-  actions.append(save, cancel, status);
-  box.append(actions);
-  const close = () => {
-    box.remove();
-    anchor.hidden = false;
-    if (pencil) {
-      pencil.hidden = false;
-    }
+    holder.replaceChildren(rows.length ? dataGrid({columns, rows}).wrap : el('div', 'panel-empty', 'Nobody is coming yet.'));
+    count.textContent = `${rows.length} ${rows.length === 1 ? 'person' : 'people'}`;
   };
-  cancel.addEventListener('click', close);
-  save.addEventListener('click', async () => {
-    const value = opts.value();
-    const problem = opts.validate ? opts.validate(value) : '';
-    if (problem) {
-      status.classList.add('error');
-      status.textContent = problem;
-      return;
-    }
-    status.classList.remove('error');
-    save.disabled = true;
-    status.textContent = 'Saving…';
-    await opts.submit(value);
-    save.disabled = false;
-    status.textContent = '';
-  });
-  box.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      close();
-    }
-    if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
-      e.preventDefault();
-      save.click();
-    }
-  });
-  anchor.hidden = true;
-  if (pencil) {
-    pencil.hidden = true;
-  }
-  anchor.after(box);
-  const first = opts.input.matches('input, textarea, select') ? opts.input : opts.input.querySelector('input, textarea, select');
-  if (first) {
-    first.focus();
-  }
-}
-
-export function editable(anchor, label, make, submit) {
-  const pencil = editPencil(label);
-  pencil.addEventListener('click', () => {
-    const built = make();
-    fieldEditor(anchor, pencil, {input: built.input, hint: built.hint, value: built.value, validate: built.validate, submit});
-  });
-  return pencil;
-}
-
-export function whenInputs(startValue, endValue) {
-  const start = whenPickers('Starts', startValue, null, 'No start time');
-  const end = whenPickers('Ends', endValue, null, 'No end time');
-  const wrap = el('div', 'field-when');
-  wrap.append(start.wrap, end.wrap);
-  return {
-    input: wrap,
-    value: () => ({start: start.value(), end: end.value()}),
-    validate: v => (v.end && !v.start ? 'Give it a start as well as an end.' : (v.start && v.end && v.end < v.start ? 'The end has to come after the start.' : '')),
-  };
+  const tools = el('div', 'contact-tools');
+  tools.append(count, familyDropdown(['Parents', 'Children', 'Siblings'], relations, paint));
+  paint();
+  openModal(`Who's coming to ${p.title}`, [tools, holder], {wide: 'table'});
 }
 
 export function openCelebration(c) {
