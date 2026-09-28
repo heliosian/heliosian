@@ -65,7 +65,7 @@ export function listIcon(key) {
 const listSources = {
   party: {app: 'celebrate', name: 'Celebrate', path: '/parties/', thing: 'party'},
   activity: {app: 'team', name: 'HCA-Team', path: '/activities/', thing: 'activity'},
-  group: {app: 'loop', name: 'Helios Loop', path: '/groups/', thing: 'group'},
+  group: {app: 'loop', name: 'Helios Loop', path: '/groups/', thing: 'email list'},
 };
 
 export function listSource(key) {

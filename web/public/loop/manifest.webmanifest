@@ -1,7 +1,7 @@
 {
   "name": "Helios Loop",
   "short_name": "Loop",
-  "description": "Email groups drawn from the Helios directory",
+  "description": "Email lists drawn from the Helios directory",
   "display": "standalone",
   "id": "/",
   "scope": "/",

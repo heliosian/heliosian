@@ -160,7 +160,7 @@ function placeSpinner(row, node) {
 function renderEmpty() {
   const empty = el('div', 'empty');
   empty.append(el('h1', 'page-title', 'Ask'));
-  empty.append(el('p', 'page-lead', 'Anything about the school, your family, the calendar, the directory, volunteering, the parties or the email groups. The answer comes from the community’s own apps and links you to them.'));
+  empty.append(el('p', 'page-lead', 'Anything about the school, your family, the calendar, the directory, volunteering, the parties or the email lists. The answer comes from the community’s own apps and links you to them.'));
   const starters = el('div', 'starters');
   for (const q of state.model.starters) {
     const b = el('button', 'starter', q);

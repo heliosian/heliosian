@@ -290,7 +290,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	}
 	g := m.cache.Model().Group(j.group)
 	if g == nil {
-		return fail("group", fmt.Errorf("the group is gone"))
+		return fail("group", fmt.Errorf("the email list is gone"))
 	}
 	if !m.mail.ready() {
 		return fail("mail", fmt.Errorf("mail is not set up"))
@@ -325,7 +325,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 		if err := m.bounce(ctx, *g, lines, audience, verb); err != nil {
 			log.Error("loop:bounce failed", "to", sender, "error", err)
 		}
-		m.mark(j, stateDropped, map[string]string{"Detail": "only the group's " + audience + " may " + verb})
+		m.mark(j, stateDropped, map[string]string{"Detail": "only the email list's " + audience + " may " + verb})
 		return stateDropped
 	}
 	id := messageID(lines)
@@ -366,7 +366,7 @@ var posters = map[string]string{PostingMembers: "the people on it and its manage
 func (m *mailer) bounce(ctx context.Context, g Group, lines []mail.HeaderLine, audience, verb string) error {
 	to := mail.AddressOf(mail.Header(lines, "from"))
 	subject := decodeHeader(mail.Header(lines, "subject"))
-	text := fmt.Sprintf("Your message to %s, “%s”, was not sent to the group: only %s can %s to it.", g.Address(), subject, posters[audience], verb)
+	text := fmt.Sprintf("Your message to %s, “%s”, was not sent to the email list: only %s can %s to it.", g.Address(), subject, posters[audience], verb)
 	headers := map[string]string{"Auto-Submitted": "auto-replied", loopHeader: g.Name}
 	if id := mail.Header(lines, "message-id"); id != "" {
 		headers["In-Reply-To"] = id

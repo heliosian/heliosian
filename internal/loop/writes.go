@@ -92,13 +92,13 @@ func (m *Model) SaveGroup(actor access.Actor, sources Sources, original string, 
 	} else {
 		current := m.Group(original)
 		if current == nil {
-			return nil, Group{}, "", access.Missing("no such group")
+			return nil, Group{}, "", access.Missing("no such email list")
 		}
 		if !current.Edits(actor) {
-			return nil, Group{}, "", access.Forbidden("you do not manage this group")
+			return nil, Group{}, "", access.Forbidden("you do not manage this email list")
 		}
 		if g.Name != original {
-			return nil, Group{}, "", access.Invalid("a group's name is its address and cannot change; make a new group")
+			return nil, Group{}, "", access.Invalid("an email list's name is its address and cannot change; make a new email list")
 		}
 		g.CreatedBy, g.Created = current.CreatedBy, current.Created
 		was = *current
@@ -120,10 +120,10 @@ func (m *Model) DeleteGroup(actor access.Actor, name string) ([]store.Op, string
 	name = strings.ToLower(strings.TrimSpace(name))
 	current := m.Group(name)
 	if current == nil {
-		return nil, "", access.Missing("no such group")
+		return nil, "", access.Missing("no such email list")
 	}
 	if !current.Edits(actor) {
-		return nil, "", access.Forbidden("you do not manage this group")
+		return nil, "", access.Forbidden("you do not manage this email list")
 	}
 	return []store.Op{store.Delete(groupsTab, store.Row{"Name": name})}, name, nil
 }
@@ -131,7 +131,7 @@ func (m *Model) DeleteGroup(actor access.Actor, name string) ([]store.Op, string
 func (m *Model) visibleGroup(actor access.Actor, s Sources, name string) (*Group, error) {
 	g := m.Group(strings.ToLower(strings.TrimSpace(name)))
 	if g == nil || !g.VisibleTo(actor, s) {
-		return nil, access.Missing("no such group")
+		return nil, access.Missing("no such email list")
 	}
 	return g, nil
 }
@@ -142,7 +142,7 @@ func (m *Model) SetSubscription(actor access.Actor, s Sources, name string, subs
 		return nil, nil, err
 	}
 	if !OnList(*g, s, actor.Email) {
-		return nil, nil, access.Forbidden("you are not on this group")
+		return nil, nil, access.Forbidden("you are not on this email list")
 	}
 	if subscribed {
 		return g.Resubscribe(actor), g, nil

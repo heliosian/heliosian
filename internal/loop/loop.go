@@ -191,7 +191,7 @@ func (m *Model) Resolve(local string) *Group {
 
 func CheckName(name string) error {
 	if !nameForm.MatchString(name) || strings.Contains(name, "..") {
-		return fmt.Errorf("a group's name is two to forty lowercase letters, digits, dots and hyphens, starting and ending with a letter or digit, with no two dots together")
+		return fmt.Errorf("an email list's name is two to forty lowercase letters, digits, dots and hyphens, starting and ending with a letter or digit, with no two dots together")
 	}
 	if slices.Contains(reservedNames, name) {
 		return fmt.Errorf("%s is reserved", name)
@@ -220,74 +220,74 @@ func CheckGroup(g Group) error {
 		return err
 	}
 	if len(g.Aliases) > maxAliases {
-		return fmt.Errorf("group %s has too many aliases", g.Name)
+		return fmt.Errorf("email list %s has too many aliases", g.Name)
 	}
 	for _, alias := range g.Aliases {
 		if err := CheckName(alias); err != nil {
-			return fmt.Errorf("group %s, alias %q: %w", g.Name, alias, err)
+			return fmt.Errorf("email list %s, alias %q: %w", g.Name, alias, err)
 		}
 		if alias == g.Name {
-			return fmt.Errorf("group %s: an alias cannot be the group's own name", g.Name)
+			return fmt.Errorf("email list %s: an alias cannot be the email list's own name", g.Name)
 		}
 	}
 	if strings.TrimSpace(g.Title) == "" || len(g.Title) > maxTitleLength {
-		return fmt.Errorf("group %s needs a short title", g.Name)
+		return fmt.Errorf("email list %s needs a short title", g.Name)
 	}
 	if len(g.Description) > maxDescriptionLength {
-		return fmt.Errorf("group %s: the description is too long", g.Name)
+		return fmt.Errorf("email list %s: the description is too long", g.Name)
 	}
 	if !slices.Contains(Visibilities, g.Visibility) {
-		return fmt.Errorf("group %s: visibility %q is not one of %s", g.Name, g.Visibility, cells.JoinList(Visibilities))
+		return fmt.Errorf("email list %s: visibility %q is not one of %s", g.Name, g.Visibility, cells.JoinList(Visibilities))
 	}
 	if !slices.Contains(Postings, g.Posting) {
-		return fmt.Errorf("group %s: posting %q is not one of %s", g.Name, g.Posting, cells.JoinList(Postings))
+		return fmt.Errorf("email list %s: posting %q is not one of %s", g.Name, g.Posting, cells.JoinList(Postings))
 	}
 	if !slices.Contains(Postings, g.Replying) {
-		return fmt.Errorf("group %s: replying %q is not one of %s", g.Name, g.Replying, cells.JoinList(Postings))
+		return fmt.Errorf("email list %s: replying %q is not one of %s", g.Name, g.Replying, cells.JoinList(Postings))
 	}
 	if len(g.Managers) == 0 {
-		return fmt.Errorf("group %s needs at least one manager", g.Name)
+		return fmt.Errorf("email list %s needs at least one manager", g.Name)
 	}
 	for _, m := range g.Managers {
 		if !emailForm.MatchString(m) {
-			return fmt.Errorf("group %s: manager %q is not an email address", g.Name, m)
+			return fmt.Errorf("email list %s: manager %q is not an email address", g.Name, m)
 		}
 	}
 	if len(g.Rules) > maxRules {
-		return fmt.Errorf("group %s has too many rules", g.Name)
+		return fmt.Errorf("email list %s has too many rules", g.Name)
 	}
 	includes := 0
 	for i, r := range g.Rules {
 		if err := CheckRule(r); err != nil {
-			return fmt.Errorf("group %s, rule %d: %w", g.Name, i+1, err)
+			return fmt.Errorf("email list %s, rule %d: %w", g.Name, i+1, err)
 		}
 		if r.Kind == KindInclude {
 			includes++
 		}
 	}
 	if includes == 0 {
-		return fmt.Errorf("group %s needs at least one include rule", g.Name)
+		return fmt.Errorf("email list %s needs at least one include rule", g.Name)
 	}
 	if len(g.Additions) > maxAdditions {
-		return fmt.Errorf("group %s has too many people added by hand", g.Name)
+		return fmt.Errorf("email list %s has too many people added by hand", g.Name)
 	}
 	for _, a := range g.Additions {
 		if !emailForm.MatchString(a.Email) {
-			return fmt.Errorf("group %s: %q is not an email address", g.Name, a.Email)
+			return fmt.Errorf("email list %s: %q is not an email address", g.Name, a.Email)
 		}
 		if len(a.Name) > maxNameLength {
-			return fmt.Errorf("group %s: the name for %s is too long", g.Name, a.Email)
+			return fmt.Errorf("email list %s: the name for %s is too long", g.Name, a.Email)
 		}
 	}
 	if len(g.Excluded) > maxExcluded {
-		return fmt.Errorf("group %s has too many excluded addresses", g.Name)
+		return fmt.Errorf("email list %s has too many excluded addresses", g.Name)
 	}
 	for _, e := range g.Excluded {
 		if !emailForm.MatchString(e.Email) {
-			return fmt.Errorf("group %s: excluded %q is not an email address", g.Name, e.Email)
+			return fmt.Errorf("email list %s: excluded %q is not an email address", g.Name, e.Email)
 		}
 		if len(e.Note) > maxNoteLength {
-			return fmt.Errorf("group %s: the note for %s is too long", g.Name, e.Email)
+			return fmt.Errorf("email list %s: the note for %s is too long", g.Name, e.Email)
 		}
 	}
 	return nil

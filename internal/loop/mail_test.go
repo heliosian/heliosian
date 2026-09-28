@@ -141,7 +141,7 @@ func newHarness(t *testing.T) *harness {
 		Settings:  func() *config.Settings { return &config.Settings{} },
 		Mail:      h.mailbox,
 		Describer: describe.New("test", claude.NewLimiter()),
-		About:     About(func() string { return "Helios Loop" }, func() string { return "Email groups drawn from the directory" }),
+		About:     About(func() string { return "Helios Loop" }, func() string { return "Email lists drawn from the directory" }),
 	})
 	return h
 }
@@ -421,7 +421,7 @@ func TestAPostFromSomeoneTheGroupDoesNotLetPostIsDropped(t *testing.T) {
 	h := newHarness(t)
 	h.inbound(notify(post, "middle-school-parents@loop.heliosian.com"))
 	h.waitFor("the drop", func() bool { return h.messageState(id(post), "middle-school-parents") == stateDropped })
-	if detail := h.messageRow(id(post), "middle-school-parents")["Detail"]; detail != "only the group's managers may post" {
+	if detail := h.messageRow(id(post), "middle-school-parents")["Detail"]; detail != "only the email list's managers may post" {
 		t.Fatalf("detail %q", detail)
 	}
 	if len(h.documents.filed()) != 0 {
@@ -493,9 +493,9 @@ func TestRepliesToTheGroupsOwnMailAnswerToWhoCanReply(t *testing.T) {
 	deliver(testMessage("dana.hawkins@heliosschool.org", "p1@heliosschool.org", ""), stateSent, "")
 	deliver(testMessage(member, "p2@heliosschool.org", "<p1@heliosschool.org>"), stateSent, "")
 	deliver(testMessage(member, "p3@heliosschool.org", "<p2@heliosschool.org>"), stateSent, "")
-	deliver(testMessage(member, "p4@heliosschool.org", ""), stateDropped, "only the group's managers may post")
-	deliver(testMessage(member, "p5@heliosschool.org", "<CAF1x7qNw3pR@mail.gmail.com>"), stateDropped, "only the group's managers may post")
-	deliver(testMessage("alice@gmail.com", "p6@gmail.com", "<other@x.org> <p1@heliosschool.org>"), stateDropped, "only the group's members may reply")
+	deliver(testMessage(member, "p4@heliosschool.org", ""), stateDropped, "only the email list's managers may post")
+	deliver(testMessage(member, "p5@heliosschool.org", "<CAF1x7qNw3pR@mail.gmail.com>"), stateDropped, "only the email list's managers may post")
+	deliver(testMessage("alice@gmail.com", "p6@gmail.com", "<other@x.org> <p1@heliosschool.org>"), stateDropped, "only the email list's members may reply")
 	sends := h.sender.Raws()
 	last := sends[len(sends)-1]
 	if last.To[0] != "alice@gmail.com" || !strings.Contains(string(last.Message), "only the people on it and its managers can reply to it") {

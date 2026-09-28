@@ -143,10 +143,10 @@ func (a app) messages(r *http.Request, _ serve.None) (map[string]any, error) {
 	actor := a.actor(r)
 	g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("name"))))
 	if g == nil {
-		return nil, access.Missing("no such group")
+		return nil, access.Missing("no such email list")
 	}
 	if !g.Sees(actor) {
-		return nil, access.Forbidden("you do not manage this group")
+		return nil, access.Forbidden("you do not manage this email list")
 	}
 	return map[string]any{"messages": a.history(g.Name)}, nil
 }

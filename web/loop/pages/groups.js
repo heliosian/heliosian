@@ -54,7 +54,7 @@ function suggestionCard(s) {
   head.append(icon, words);
   card.append(head);
   const meta = el('div', 'group-meta');
-  meta.append(button('Make this group', 'plus', 'button button-small', () => navigate('/new?from=' + encodeURIComponent(s.key))));
+  meta.append(button('Make this email list', 'plus', 'button button-small', () => navigate('/new?from=' + encodeURIComponent(s.key))));
   meta.append(el('span', '', 'Managed by ' + s.managers.map(m => m.name).join(', ')));
   card.append(meta);
   return card;
@@ -69,20 +69,20 @@ function cards(list, groups) {
 }
 
 export function groupsPage() {
-  setTitle('My Groups');
+  setTitle('My Email Lists');
   const page = el('div', 'list-page');
-  page.append(pageHead(isAdmin() ? 'Every Group' : 'My Groups', [button('New group', 'plus', 'button', () => navigate('/new'))]));
-  page.append(el('p', 'page-lead', 'Each group is an email address at ' + state.model.domain + ' whose members follow from its rules, drawn from the directory as it changes.'));
+  page.append(pageHead(isAdmin() ? 'Every Email List' : 'My Email Lists', [button('New email list', 'plus', 'button', () => navigate('/new'))]));
+  page.append(el('p', 'page-lead', 'Each email list is an address at ' + state.model.domain + ' whose members follow from its rules, drawn from the directory as it changes.'));
   const list = el('div', 'group-list');
   const empty = el('div', 'panel-empty');
   const suggested = el('div');
-  suggested.append(el('h2', 'section-title', 'Suggested groups'));
-  suggested.append(el('p', 'page-lead', 'A party you host, an activity you co-chair or a tag of yours in Helios Who? with no group yet. Make one and it starts with the right rule and managers; change anything before you save.'));
+  suggested.append(el('h2', 'section-title', 'Suggested email lists'));
+  suggested.append(el('p', 'page-lead', 'A party you host, an activity you co-chair or a tag of yours in Helios Who? with no email list yet. Make one and it starts with the right rule and managers; change anything before you save.'));
   const suggestedList = el('div', 'group-list');
   suggested.append(suggestedList);
   const others = el('div');
-  others.append(el('h2', 'section-title', 'Other groups'));
-  others.append(el('p', 'page-lead', 'Groups their managers have opened to everyone in Loop, and groups you are on whose managers have opened them to their members. Open one to see who is on it; if you are, you can take yourself off it there, or put yourself back.'));
+  others.append(el('h2', 'section-title', 'Other email lists'));
+  others.append(el('p', 'page-lead', 'Email lists their managers have opened to everyone in Loop, and email lists you are on whose managers have opened them to their members. Open one to see who is on it; if you are, you can take yourself off it there, or put yourself back.'));
   const othersList = el('div', 'group-list');
   others.append(othersList);
   const render = query => {
@@ -93,7 +93,7 @@ export function groupsPage() {
     const suggestions = state.model.suggestions.filter(s => !query || s.name.toLowerCase().includes(query));
     const theirs = state.model.groups.filter(g => !managed(g) && !g.archived && matches(g, query));
     if (!mine.length) {
-      empty.textContent = query ? 'No group of yours matches that.' : 'You manage no groups yet. Make one, and its address is yours to hand out.';
+      empty.textContent = query ? 'No email list of yours matches that.' : 'You manage no email lists yet. Make one, and its address is yours to hand out.';
       list.append(empty);
     }
     cards(list, mine);

@@ -339,7 +339,7 @@ func (a app) draftMembers(r *http.Request, body draftBody) ([]Member, []int, err
 	var existing []Rule
 	if g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name))); g != nil {
 		if !g.Edits(actor) {
-			return nil, nil, access.Forbidden("you do not manage this group")
+			return nil, nil, access.Forbidden("you do not manage this email list")
 		}
 		existing, draft.Managers = g.Rules, g.Managers
 	}

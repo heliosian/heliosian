@@ -27,8 +27,8 @@ type groupCard struct {
 
 var myGroups = tool{
 	name:        "my_groups",
-	description: "The email groups on Helios Loop the viewer can see, each with its members: the ones they manage, the ones open to everyone, and the ones they are on whose managers opened them to their members. Each is an address whose members follow from rules over the directory.",
-	words:       "Looking at the email groups",
+	description: "The email lists on Helios Loop the viewer can see, each with its members: the ones they manage, the ones open to everyone, and the ones they are on whose managers opened them to their members. Each is an address whose members follow from rules over the directory.",
+	words:       "Looking at the email lists",
 	properties: map[string]any{
 		"query": str("Words to find in a title, address or description."),
 	},
@@ -67,7 +67,7 @@ var myGroups = tool{
 
 var myLists = tool{
 	name:        "my_lists",
-	description: "The viewer's own lists in Helios Who?: their tags, each with the people on it, and their Magic Tags - the lists their roles give them: the parties they host, the things they co-chair, the room parent lists, the groups they manage - each with its people.",
+	description: "The viewer's own lists in Helios Who?: their tags, each with the people on it, and their Magic Tags - the lists their roles give them: the parties they host, the things they co-chair, the room parent lists, the email lists they manage - each with its people.",
 	words:       "Reading your lists",
 	run: func(v *viewer, input json.RawMessage) (any, error) {
 		tags := []map[string]any{}

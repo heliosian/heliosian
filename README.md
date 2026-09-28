@@ -97,7 +97,7 @@ Helios When, in `docs/when/`:
 
 Helios Loop, in `docs/loop/`:
 
-- [loop.md](docs/loop/loop.md) — the email groups app spec: groups, rules, managers, and how mail to a group reaches its members
+- [loop.md](docs/loop/loop.md) — the email lists app spec: email lists, rules, managers, and how mail to an email list reaches its members
 - [data.md](docs/loop/data.md) — the Groups sheet, the membership evaluator, and the mail pipeline through Mailgun
 
 Helios Ask, in `docs/ask/`:

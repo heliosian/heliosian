@@ -83,7 +83,7 @@ func (a app) unsubscribeGroup(w http.ResponseWriter, r *http.Request) (*Group, s
 	}
 	g := a.cache.Model().Group(name)
 	if g == nil {
-		http.Error(w, "this group is gone", http.StatusNotFound)
+		http.Error(w, "this email list is gone", http.StatusNotFound)
 		return nil, "", false
 	}
 	return g, email, true
@@ -101,7 +101,7 @@ func (a app) unsubscribePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if g.HasExcluded(email) {
-		writePage(w, g.Title, "Already unsubscribed", fmt.Sprintf(`<p>%s gets no mail from %s.</p><p class="address">A manager of the group can put you back on it.</p>`, html.EscapeString(email), html.EscapeString(g.Title)))
+		writePage(w, g.Title, "Already unsubscribed", fmt.Sprintf(`<p>%s gets no mail from %s.</p><p class="address">A manager of the email list can put you back on it.</p>`, html.EscapeString(email), html.EscapeString(g.Title)))
 		return
 	}
 	body := fmt.Sprintf(`<p>Stop getting mail from <strong>%s</strong> at %s?</p><p class="address">%s</p><form method="post"><button type="submit">Unsubscribe</button></form>`,
@@ -129,7 +129,7 @@ func (a app) unsubscribeAddress(ctx context.Context, g Group, email, how string)
 	return a.commitSubscription(ctx, actor, g, how, g.Unsubscribe(actor, how))
 }
 
-const loopPage = "the group's page in Loop"
+const loopPage = "the email list's page in Loop"
 
 func (a app) unsubscribe(w http.ResponseWriter, r *http.Request) {
 	g, email, ok := a.unsubscribeGroup(w, r)
@@ -153,7 +153,7 @@ func (a app) unsubscribe(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	writePage(w, g.Title, "Unsubscribed", fmt.Sprintf(`<p>%s gets no more mail from %s.</p><p class="address">A manager of the group can put you back on it.</p>`, html.EscapeString(email), html.EscapeString(g.Title)))
+	writePage(w, g.Title, "Unsubscribed", fmt.Sprintf(`<p>%s gets no more mail from %s.</p><p class="address">A manager of the email list can put you back on it.</p>`, html.EscapeString(email), html.EscapeString(g.Title)))
 }
 
 func (a app) unsubscribeByMail(ctx context.Context, subject, sender string) {

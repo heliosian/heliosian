@@ -4,8 +4,8 @@ import {initShell, appSymbol} from '/shell.js';
 import {load} from '/router.js';
 
 const items = [
-  {href: '/', icon: 'app', label: 'My Groups'},
-  {href: '/new', icon: 'plus', label: 'New Group'},
+  {href: '/', icon: 'app', label: 'My Email Lists'},
+  {href: '/new', icon: 'plus', label: 'New Email List'},
 ];
 
 function openGroup() {
@@ -103,6 +103,6 @@ export function initChrome() {
     onSuper: load,
     fillNav,
     fillTabbar,
-    search: {placeholder: 'Search groups…'},
+    search: {placeholder: 'Search email lists…'},
   });
 }

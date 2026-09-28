@@ -309,7 +309,7 @@ function setMobileListsMenu(open) {
   mobileListsOverlay.hidden = !open;
 }
 
-const magicTagsTip = 'Automagically created based on events, volunteering and the groups you manage';
+const magicTagsTip = 'Automagically created based on events, volunteering and the email lists you manage';
 
 function hintIcon(text) {
   const tip = el('span', 'magic-tags-info');

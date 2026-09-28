@@ -125,7 +125,7 @@ func documentLines(v *viewer, docs []*artifacts.Document) string {
 			b.WriteString(", " + url)
 		}
 		if group := v.groupOf(d); group != "" {
-			b.WriteString(", mail to the group " + group)
+			b.WriteString(", mail to the email list " + group)
 		}
 		b.WriteString(")\n")
 	}
@@ -311,7 +311,7 @@ func listKind(kind string) string {
 	case who.ListRoom:
 		return "room parent list"
 	case who.ListGroup:
-		return "manages the Loop group"
+		return "manages the Loop email list"
 	}
 	return kind
 }

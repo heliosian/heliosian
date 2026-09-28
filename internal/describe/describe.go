@@ -107,9 +107,9 @@ type GroupFacts struct {
 	Classrooms map[string]int
 }
 
-const groupSystem = `You write the one- or two-sentence description of an email group for a school community's group directory, from the group's title, the rules that choose its members, and a tally of who the rules pick out today.
+const groupSystem = `You write the one- or two-sentence description of an email list for a school community's directory of email lists, from the email list's title, the rules that choose its members, and a tally of who the rules pick out today.
 
-Say plainly who the group reaches and what it is for, as a parent glancing at the list would want to know, in the register of these:
+Say plainly who the email list reaches and what it is for, as a parent glancing at the list would want to know, in the register of these:
 
 - Parents of every student in Grade 5 through Grade 8.
 - The kindergarten class and their families.
