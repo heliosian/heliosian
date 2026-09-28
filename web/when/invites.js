@@ -282,7 +282,7 @@ export function comingCard(e, view, refresh) {
 }
 
 export function inviteCall(e, view, refresh) {
-  if (!view.mayInvite || view.host) {
+  if (!view.mayInvite) {
     return null;
   }
   const card = el('div', 'guests-start');
@@ -589,12 +589,12 @@ function guestsHead(e, view, refresh) {
   headWords.append(el('div', 'guests-subtitle', !view.sent
     ? (view.list.length ? 'Add everyone, then send invites.' : 'Nobody on the list yet.')
     : unsent ? `${unsent} added since the invites went out, not sent yet.` : 'Invites are out.'));
-  const tools = el('div', 'guests-tools');
-  tools.append(button('Add people', 'plus', 'button button-small', () => openPicker(e, view, refresh)));
+  head.append(headMark, headWords);
   if (view.sent) {
+    const tools = el('div', 'guests-tools');
     tools.append(sendMenu(e, view, refresh));
+    head.append(tools);
   }
-  head.append(headMark, headWords, tools);
   return head;
 }
 

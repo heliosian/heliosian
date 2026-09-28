@@ -261,7 +261,8 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
       heroWrap.append(heroImageBar(e));
     }
   }
-  const call = inviteCall(e, view, refresh);
+  const listed = view.host && Boolean(view.settings || view.list.some(r => r.invited));
+  const call = !view.host || listed ? inviteCall(e, view, refresh) : null;
   if (call) {
     ask.append(call);
   }
@@ -270,7 +271,7 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
     ask.append(comingCard(e, view, refresh));
   }
   if (view.host) {
-    if (view.settings || view.list.some(r => r.invited)) {
+    if (listed) {
       answered.replaceChildren(guestListSection(e, view, refresh));
     } else {
       ask.append(inviteHostCall(e, view, refresh));
