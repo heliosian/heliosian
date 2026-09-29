@@ -128,6 +128,7 @@ var layouts = map[string][]tab{
 		{when.InvitesTab, when.InviteColumns},
 		{when.InviteGroupsTab, when.InviteGroupColumns},
 		{when.BouncesTab, when.BounceColumns},
+		{when.MessagesTab, when.MessageColumns},
 		{id.AliasesTab, id.AliasColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
