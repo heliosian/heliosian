@@ -82,11 +82,14 @@ export function dataGrid({columns, rows, trailing}) {
   columns.forEach((c, i) => {
     const th = el('th');
     const pick = el('span', 'column-pick');
-    const sort = el('button', 'data-grid-sort');
-    sort.type = 'button';
-    sort.title = `Sort by ${c.label}`;
-    sort.append(el('span', '', c.label), svg('chevron-down'));
-    sort.addEventListener('click', () => sortBy(c, th));
+    let top = c.head;
+    if (!top) {
+      top = el('button', 'data-grid-sort');
+      top.type = 'button';
+      top.title = `Sort by ${c.label}`;
+      top.append(el('span', '', c.label), svg('chevron-down'));
+      top.addEventListener('click', () => sortBy(c, th));
+    }
     const box = el('input');
     box.type = 'checkbox';
     box.checked = true;
@@ -98,7 +101,7 @@ export function dataGrid({columns, rows, trailing}) {
         picked.delete(i);
       }
     });
-    pick.append(sort, box);
+    pick.append(top, box);
     th.append(pick, copyGlyph(() => shown().map(c.get).filter(Boolean).join('\n')));
     headRow.append(th);
   });
@@ -117,7 +120,7 @@ export function dataGrid({columns, rows, trailing}) {
       const td = el('td', i === 0 ? 'data-grid-name' : '');
       td.append(c.show ? c.show(e.r) : c.get(e.r));
       if (c.get(e.r)) {
-        td.append(copyGlyph(c.get(e.r)));
+        td.append(copyGlyph(() => c.get(e.r)));
       }
       e.tr.append(td);
     });

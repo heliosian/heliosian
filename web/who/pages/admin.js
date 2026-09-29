@@ -4,6 +4,7 @@ import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 import {createPersonPicker} from '/picker.js';
 import {popup} from '/modal.js';
 import {api} from '/api.js';
+import {dataGrid} from '/datagrid.js';
 
 let data = null;
 const painters = [];
@@ -346,27 +347,6 @@ const parentOverrides = () => overridesPanel({
   ],
 });
 
-function table(heads) {
-  const wrap = el('div', 'data-table-wrap');
-  const t = el('table', 'data-table');
-  const head = el('tr');
-  for (const h of heads) {
-    head.append(el('th', '', h));
-  }
-  const thead = el('thead');
-  thead.append(head);
-  const body = el('tbody');
-  t.append(thead, body);
-  wrap.append(t);
-  return {wrap, body, empty: text => {
-    const row = el('tr');
-    const cell = el('td', 'data-table-empty', text);
-    cell.colSpan = heads.length;
-    row.append(cell);
-    body.append(row);
-  }};
-}
-
 function personForm(hint, person, label, submit, remove) {
   const box = el('div');
   const email = el('input');
@@ -447,24 +427,22 @@ function addedPanel() {
   const node = el('div', 'card');
   const head = el('div', 'card-header-row');
   head.append(el('h2', '', 'People not in Veracross'), actionButton('+ Add Person', 'button button-secondary button-small', openAddPerson));
-  const rows = table(['Full name', 'Email', 'Student', 'Parent', 'Staff', '']);
-  node.append(head, el('div', 'hint', 'Click Edit on a row to change it.'), rows.wrap);
+  const holder = el('div');
+  node.append(head, el('div', 'hint', 'Click Edit on a row to change it.'), holder);
+  const columns = [
+    {label: 'Full name', get: p => p.fullName},
+    {label: 'Email', get: p => p.email},
+    {label: 'Student', get: p => p.isStudent ? '✓' : ''},
+    {label: 'Parent', get: p => p.isParent ? '✓' : ''},
+    {label: 'Staff', get: p => p.isStaff ? '✓' : ''},
+  ];
   painters.push(() => {
-    rows.body.replaceChildren();
     const added = data.people.filter(p => p.isAdded);
     if (!added.length) {
-      rows.empty('Nobody yet.');
+      holder.replaceChildren(el('div', 'empty', 'Nobody yet.'));
+      return;
     }
-    for (const p of added) {
-      const row = el('tr');
-      for (const text of [p.fullName, p.email, p.isStudent ? '✓' : '', p.isParent ? '✓' : '', p.isStaff ? '✓' : '']) {
-        row.append(el('td', '', text));
-      }
-      const action = el('td');
-      action.append(actionButton('Edit', 'button button-secondary button-small', () => openEditPerson(p)));
-      row.append(action);
-      rows.body.append(row);
-    }
+    holder.replaceChildren(dataGrid({columns, rows: added, trailing: p => actionButton('Edit', 'button button-secondary button-small', () => openEditPerson(p))}).wrap);
   });
   return node;
 }
@@ -496,31 +474,28 @@ function hiddenPanel() {
   bar.append(mount, go, status);
   hide.append(bar);
   const hidden = card('Currently hidden');
-  const rows = table(['Email', '']);
-  hidden.append(rows.wrap);
+  const holder = el('div');
+  hidden.append(holder);
+  const unhideButton = email => {
+    const unhide = actionButton('Unhide', 'button button-secondary button-small', async () => {
+      unhide.disabled = true;
+      try {
+        await api('POST','/api/admin/unhide-person', {email});
+      } catch (err) {
+        alert(err.message);
+        unhide.disabled = false;
+        return;
+      }
+      await refresh();
+    });
+    return unhide;
+  };
   painters.push(() => {
-    rows.body.replaceChildren();
     if (!data.hiddenEmails.length) {
-      rows.empty('Nobody hidden.');
+      holder.replaceChildren(el('div', 'empty', 'Nobody hidden.'));
+      return;
     }
-    for (const email of data.hiddenEmails) {
-      const row = el('tr');
-      const action = el('td');
-      const unhide = actionButton('Unhide', 'button button-secondary button-small', async () => {
-        unhide.disabled = true;
-        try {
-          await api('POST','/api/admin/unhide-person', {email});
-        } catch (err) {
-          alert(err.message);
-          unhide.disabled = false;
-          return;
-        }
-        await refresh();
-      });
-      action.append(unhide);
-      row.append(el('td', '', email), action);
-      rows.body.append(row);
-    }
+    holder.replaceChildren(dataGrid({columns: [{label: 'Email', get: email => email}], rows: data.hiddenEmails, trailing: unhideButton}).wrap);
   });
   wrap.append(hide, hidden);
   return wrap;

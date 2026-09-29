@@ -2,6 +2,7 @@ import {el, svg, button, longToast, copyText} from '/elements.js';
 import {popup} from '/modal.js';
 import {act} from '/data.js';
 import {chipToggle, filterControl} from '/rules.js';
+import {dataGrid} from '/datagrid.js';
 import {answerWords, answerIcon, answerButtons, face, ticketWords, stamp} from './inviteparts.js';
 
 export function listFilters(all, view, onChange, {answer = '', opened = '', rsvp = true} = {}) {
@@ -75,11 +76,11 @@ export function openTable(e, view, refresh, {answer = '', opened = ''} = {}) {
   const box = el('div');
   const rows = el('div', 'guest-table-wrap');
   const count = el('div', 'picker-note');
+  const empty = el('div', 'picker-note', 'Nobody matches.');
   let shownNow = view.list;
   const shown = () => shownNow;
-  const columns = ['Name', 'Email', 'Grade', 'RSVP', ...(view.party ? ['Ticket'] : []), ...(view.sent ? ['Opened'] : [])];
   const saidCell = r => {
-    const cell = el('td', 'guest-table-said');
+    const cell = el('span', 'guest-table-said');
     const paintCell = () => {
       cell.replaceChildren();
       cell.className = 'guest-table-said is-' + (r.answer || 'none');
@@ -102,47 +103,41 @@ export function openTable(e, view, refresh, {answer = '', opened = ''} = {}) {
     paintCell();
     return cell;
   };
+  const nameCell = r => {
+    const name = el('div', 'guest-table-name');
+    name.append(el('div', '', r.name || r.email || ''));
+    if (r.line) {
+      name.append(el('div', 'invite-line', r.line));
+    }
+    return name;
+  };
+  const columns = [
+    {label: 'Name', get: r => r.name || r.email || '', show: nameCell},
+    {label: 'Email', get: r => r.email || ''},
+    {label: 'Grade', get: r => (r.grades || []).join(', ')},
+    {label: 'RSVP', get: r => r.answer ? answerWords[r.answer] : 'No response', show: saidCell},
+  ];
+  if (view.party) {
+    columns.push({label: 'Ticket', get: r => r.ticket ? ticketWords(r.ticket) : ''});
+  }
+  if (view.sent) {
+    columns.push({label: 'Opened', get: r => stamp(r.opened), sort: r => r.opened || '', show: r => el('span', 'guest-table-opened', r.opened ? stamp(r.opened) : r.sent ? '—' : '')});
+  }
+  const grid = dataGrid({columns, rows: view.list});
+  rows.append(grid.wrap);
   const paint = () => {
-    rows.replaceChildren();
     const list = shown();
+    const kept = new Set(list);
+    grid.show(r => kept.has(r));
     count.textContent = list.length === view.list.length ? `${list.length} on the list` : `${list.length} of ${view.list.length} on the list`;
-    if (!list.length) {
-      rows.append(el('div', 'picker-note', 'Nobody matches.'));
-      return;
-    }
-    const table = el('table', 'guest-table');
-    const thead = el('thead');
-    const head = el('tr');
-    for (const h of columns) {
-      head.append(el('th', '', h));
-    }
-    thead.append(head);
-    table.append(thead);
-    const body = el('tbody');
-    for (const r of list) {
-      const tr = el('tr');
-      const name = el('td', 'guest-table-name');
-      name.append(el('div', '', r.name || r.email || ''));
-      if (r.line) {
-        name.append(el('div', 'invite-line', r.line));
-      }
-      tr.append(name, el('td', 'guest-table-email', r.email || ''), el('td', '', (r.grades || []).join(', ')), saidCell(r));
-      if (view.party) {
-        tr.append(el('td', '', r.ticket ? ticketWords(r.ticket) : ''));
-      }
-      if (view.sent) {
-        tr.append(el('td', 'guest-table-opened', r.opened ? stamp(r.opened) : r.sent ? '—' : ''));
-      }
-      body.append(tr);
-    }
-    table.append(body);
-    rows.append(table);
+    empty.hidden = list.length > 0;
+    rows.hidden = !list.length;
   };
   const bar = listFilters(view.list, view, list => {
     shownNow = list;
     paint();
   }, {answer, opened});
-  box.append(bar, count, rows);
+  box.append(bar, count, empty, rows);
   paint();
   const actions = el('div', 'modal-actions guest-table-actions');
   actions.append(button('Copy table', 'copy', 'link-button', () => {

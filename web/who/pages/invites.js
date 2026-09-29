@@ -1,6 +1,6 @@
 import {state, byEmail} from '../state.js';
 import {firstName, lastName, hue, slugify, csvField} from '../dom.js';
-import {copyGlyph, copyAllButton} from '/datagrid.js';
+import {dataGrid} from '/datagrid.js';
 import {el, svg} from '/elements.js';
 import {familyOf, familyLink, familySearchText} from '../families.js';
 import {personLink} from '../people.js';
@@ -420,7 +420,6 @@ function invitesControls(view, again, paint) {
 function renderInviteGrid(view, again) {
   const {systems, grid, download} = view;
   grid.replaceChildren();
-  grid.className = '';
   const system = systems.find(s => s.id === state.gvSystem) || systems[0];
   const rows = applyInviteTemplate(system, invitesEntries());
   const header = system.columns.map(c => c.name);
@@ -434,25 +433,19 @@ function renderInviteGrid(view, again) {
     grid.append(el('div', 'empty', 'No matches.'));
     return;
   }
-  grid.className = 'data-grid-wrap';
-  const table = el('table', 'data-grid');
-  table.append(inviteTableHead(system, header, rows, again), inviteTableBody(rows));
-  grid.append(table);
+  const columns = system.columns.map((column, i) => ({
+    label: column.name,
+    get: r => r.cells[i],
+    show: i === 0 ? inviteLink : undefined,
+    head: isGreetingTemplate(column.template) ? greetingHeadSelect(system, again) : undefined,
+  }));
+  grid.append(dataGrid({columns, rows}).wrap);
 }
 
-function inviteTableHead(system, header, rows, again) {
-  const thead = el('thead');
-  const headRow = el('tr');
-  const leadTh = el('th', 'data-grid-copy-cell');
-  leadTh.append(copyAllButton('Copy the whole table to the clipboard', () => [header.join('\t')].concat(rows.map(r => r.cells.join('\t'))).join('\n')));
-  headRow.append(leadTh);
-  for (const column of system.columns) {
-    const th = el('th');
-    th.append(isGreetingTemplate(column.template) ? greetingHeadSelect(system, again) : el('span', '', column.name));
-    headRow.append(th);
-  }
-  thead.append(headRow);
-  return thead;
+function inviteLink(r) {
+  const link = el('a', '', r.cells[0]);
+  link.href = r.entry.linkHref;
+  return link;
 }
 
 function appendGreetingOptions(parent, list) {
@@ -495,27 +488,6 @@ function greetingHeadSelect(system, again) {
     again();
   });
   return headSelect;
-}
-
-function inviteTableBody(rows) {
-  const tbody = el('tbody');
-  rows.forEach((r, rowIndex) => {
-    const tr = el('tr');
-    const num = el('td', 'data-grid-num');
-    num.append(el('span', '', String(rowIndex + 1)), copyGlyph(r.cells.join('\t')));
-    tr.append(num);
-    r.cells.forEach((value, i) => {
-      const td = el('td', i === 0 ? 'data-grid-name' : '', i === 0 ? '' : value);
-      if (i === 0) {
-        const link = el('a', '', value);
-        link.href = r.entry.linkHref;
-        td.append(link);
-      }
-      tr.append(td);
-    });
-    tbody.append(tr);
-  });
-  return tbody;
 }
 
 const serviceLogos = {
