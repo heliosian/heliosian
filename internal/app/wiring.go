@@ -139,7 +139,8 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load loop data", "error", err)
 	}
 	sources := audience(cache, teamCache, celebrateCache)
-	lists := smartLists{cache, teamCache, celebrateCache, loopCache, sources}
+	loopSources := loopAudience(cache, teamCache, celebrateCache)
+	lists := smartLists{cache, teamCache, celebrateCache, loopCache, loopSources}
 	homeCache, err := home.NewCache(cfg.Source, cfg.Writer, homeImages, settings.SuperAdmins, sources, queue)
 	if err != nil {
 		logging.Fatal("load apps data", "error", err)
@@ -295,7 +296,7 @@ func NewCore(cfg Config) *Core {
 	loop.Register(loopMux, loop.Deps{
 		Cache:     loopCache,
 		Media:     cfg.Store,
-		Sources:   sources,
+		Sources:   loopSources,
 		Mail:      loopMail,
 		Describer: cfg.Describer,
 		About:     loopAbout,
@@ -314,7 +315,7 @@ func NewCore(cfg Config) *Core {
 		Team:        teamCache.Model,
 		Celebrate:   celebrateCache.Model,
 		Loop:        loopCache.Model,
-		LoopSources: sources,
+		LoopSources: loopSources,
 		Links:       homeCache.CategoriesFor,
 		Artifacts:   artifactsCache.Model,
 		Embedder:    cfg.Embedder,

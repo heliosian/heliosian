@@ -204,6 +204,7 @@ type suggestionResource struct {
 	Key  string `json:"key"`
 	Name string `json:"name"`
 	Kind string `json:"kind"`
+	Mine bool   `json:"mine"`
 }
 
 type settingsResource struct {
@@ -620,22 +621,40 @@ func copies() api.Type[World] {
 type suggestion struct {
 	id, key, name, kind string
 	managers            []string
+	mine                bool
 }
 
 func (w World) suggestions(viewer string) []suggestion {
 	out := []suggestion{}
 	for _, t := range SuggestedTags(w.Directory.Tags(viewer), w.Model.Groups) {
 		key := model.TagKey(t.ID)
-		out = append(out, suggestion{id: w.Model.suggestionID(key), key: key, name: t.Name, kind: SuggestionTag, managers: []string{viewer}})
+		out = append(out, suggestion{id: w.Model.suggestionID(key), key: key, name: t.Name, kind: SuggestionTag, managers: []string{viewer}, mine: true})
 	}
-	for _, l := range Suggested(w.lists(viewer, w.now), w.Model.Groups) {
+	lists := w.lists(viewer, w.now)
+	byKey := map[string]model.MagicTag{}
+	for _, l := range lists {
+		byKey[l.Key] = l
+	}
+	hosted := func(l model.MagicTag) bool {
+		for {
+			if slices.Contains(l.Hosts, viewer) {
+				return true
+			}
+			parent, ok := byKey[l.Parent]
+			if !ok {
+				return false
+			}
+			l = parent
+		}
+	}
+	for _, l := range Suggested(lists, w.Model.Groups) {
 		managers := []string{viewer}
 		for _, h := range l.Hosts {
 			if h != viewer && w.Directory.Person(h) != nil {
 				managers = append(managers, h)
 			}
 		}
-		out = append(out, suggestion{id: w.Model.suggestionID(l.Key), key: l.Key, name: l.Name, kind: l.Kind, managers: managers})
+		out = append(out, suggestion{id: w.Model.suggestionID(l.Key), key: l.Key, name: l.Name, kind: l.Kind, managers: managers, mine: hosted(l)})
 	}
 	return out
 }
@@ -672,7 +691,7 @@ func suggestions() api.Type[World] {
 			if !ok {
 				return nil, false
 			}
-			return suggestionResource{Key: s.key, Name: s.name, Kind: s.kind}, true
+			return suggestionResource{Key: s.key, Name: s.name, Kind: s.kind, Mine: s.mine}, true
 		},
 		List: func(w World, q api.Query) []string {
 			out := []string{}

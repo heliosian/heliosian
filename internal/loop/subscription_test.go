@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -12,6 +13,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
@@ -334,6 +336,24 @@ func TestTheSettingsNameTheDomainAndTheViewer(t *testing.T) {
 	}
 	if again := h.get("ruth.amari@heliosschool.org", "/api/loop-settings/"+keys[0]); again.id(t) != keys[0] {
 		t.Fatal("the settings are not one resource")
+	}
+}
+
+func TestASuggestionIsMineWhenIHostItOrWhatItSitsUnder(t *testing.T) {
+	h := newHarness(t)
+	const viewer, other = "jordan.whitfield@heliosschool.org", "ruth.amari@heliosschool.org"
+	lists := []model.MagicTag{
+		{Key: "activity:run", Kind: model.MagicTagActivity, Hosts: []string{viewer}},
+		{Key: "activity:under", Kind: model.MagicTagActivity, Parent: "activity:run", Hosts: []string{other}},
+		{Key: "activity:theirs", Kind: model.MagicTagActivity, Hosts: []string{other}},
+	}
+	w := NewWorld(h.cache.Model(), h.sources().Directory, nil, func(string, time.Time) []model.MagicTag { return lists }, func() []string { return nil })
+	mine := map[string]bool{}
+	for _, s := range w.suggestions(viewer) {
+		mine[s.key] = s.mine
+	}
+	if want := map[string]bool{"tag:dtg0000000001": true, "activity:run": true, "activity:under": true, "activity:theirs": false}; !maps.Equal(mine, want) {
+		t.Fatalf("mine = %v, want %v", mine, want)
 	}
 }
 

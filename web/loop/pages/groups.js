@@ -95,7 +95,7 @@ export function groupsPage() {
     list.replaceChildren();
     suggestedList.replaceChildren();
     const mine = state.model.groups.filter(g => (g.mine || g.member) && !g.archived && matches(g, query));
-    const suggestions = state.model.suggestions.filter(s => !query || s.name.toLowerCase().includes(query));
+    const suggestions = state.model.suggestions.filter(s => s.mine && (!query || s.name.toLowerCase().includes(query)));
     if (!mine.length) {
       empty.textContent = query ? 'No email list of yours matches that.' : 'You are on no email lists and manage none yet. Make one, and its address is yours to hand out.';
       list.append(empty);

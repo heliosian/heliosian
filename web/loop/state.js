@@ -61,7 +61,7 @@ export async function loadModel() {
       relations: s.relations,
     },
     groups: read.result.lists.map(id => groupView(read, read.get(id))),
-    suggestions: read.result.suggestions.map(id => read.get(id)).map(sg => ({key: sg.key, name: sg.name, kind: sg.kind, managers: read.follow(sg, 'managers').map(personView)})),
+    suggestions: read.result.suggestions.map(id => read.get(id)).map(sg => ({key: sg.key, name: sg.name, kind: sg.kind, mine: sg.mine, managers: read.follow(sg, 'managers').map(personView)})),
   };
   state.people = dir.result.map(dir.get);
   byName.clear();

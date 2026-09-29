@@ -63,10 +63,17 @@ func (m *Model) Linked(family model.Household) []model.Linked {
 }
 
 func (m *Model) Lists(directory *model.Directory, email string, now time.Time) []model.MagicTag {
-	out := []model.MagicTag{}
-	chairs := func(a *Activity) bool {
+	return m.lists(directory, now, func(a *Activity) bool {
 		return slices.ContainsFunc(a.CoChairs(), func(c string) bool { return directory.Resolve(c) == email })
-	}
+	})
+}
+
+func (m *Model) AllLists(directory *model.Directory, now time.Time) []model.MagicTag {
+	return m.lists(directory, now, func(*Activity) bool { return true })
+}
+
+func (m *Model) lists(directory *model.Directory, now time.Time, chairs func(*Activity) bool) []model.MagicTag {
+	out := []model.MagicTag{}
 	year := SchoolYear(now)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	over := func(a *Activity) bool {

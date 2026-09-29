@@ -60,7 +60,7 @@ func (c caches) snapshot(tx *store.Tx) *Snapshot {
 		Birthday:  birthday.NewWorld(c.birthday.In(tx), directory),
 		Celebrate: parties,
 		When:      c.whenHooks.World(c.when.In(tx), directory, settings, c.idKey, eventSources(directory, parties, activities)),
-		Loop:      loop.NewWorld(c.loop.In(tx), directory, settings.GradeColors, magicTags(directory, parties, activities), magicTagKeys(parties, activities)),
+		Loop:      loop.NewWorld(c.loop.In(tx), directory, settings.GradeColors, loopMagicTags(directory, parties, activities, c.team.IsAdmin), magicTagKeys(parties, activities)),
 		Home:      c.home.In(tx),
 		Artifacts: c.artifacts.In(tx),
 		Feedback:  c.feedback.In(tx),

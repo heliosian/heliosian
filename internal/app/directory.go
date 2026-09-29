@@ -7,6 +7,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/home"
+	"heliosian/internal/loop"
 	"heliosian/internal/mail"
 	"heliosian/internal/model"
 	"heliosian/internal/team"
@@ -16,6 +17,17 @@ func magicTags(directory *model.Directory, parties *celebrate.Model, activities 
 	return func(owner string, now time.Time) []model.MagicTag {
 		lists := append(directory.RoomParentTags(owner), parties.Lists(directory, owner, now)...)
 		return append(lists, activities.Lists(directory, owner, now)...)
+	}
+}
+
+func loopMagicTags(directory *model.Directory, parties *celebrate.Model, activities *team.Model, isAdmin func(string) bool) func(owner string, now time.Time) []model.MagicTag {
+	shared := magicTags(directory, parties, activities)
+	return func(owner string, now time.Time) []model.MagicTag {
+		if !isAdmin(owner) {
+			return shared(owner, now)
+		}
+		lists := append(directory.RoomParentTags(owner), parties.Lists(directory, owner, now)...)
+		return append(lists, activities.AllLists(directory, now)...)
 	}
 }
 
@@ -37,6 +49,16 @@ func audience(cache *model.DirectoryCache, teamCache *team.Cache, celebrateCache
 		directory := cache.Model()
 		lists := magicTags(directory, celebrateCache.Model(), teamCache.Model())
 		return model.AudienceSources{Directory: directory, MagicTags: func(owner string) []model.MagicTag {
+			return lists(owner, time.Now().In(model.Location))
+		}}
+	}
+}
+
+func loopAudience(cache *model.DirectoryCache, teamCache *team.Cache, celebrateCache *celebrate.Cache) func() loop.Sources {
+	return func() loop.Sources {
+		directory := cache.Model()
+		lists := loopMagicTags(directory, celebrateCache.Model(), teamCache.Model(), teamCache.IsAdmin)
+		return loop.Sources{Directory: directory, MagicTags: func(owner string) []model.MagicTag {
 			return lists(owner, time.Now().In(model.Location))
 		}}
 	}

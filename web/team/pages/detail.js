@@ -538,7 +538,7 @@ function emailListWords(node) {
 }
 
 function emailListCard(node) {
-  if (!node.runs) {
+  if (!node.runs && !isAdmin()) {
     return null;
   }
   const card = sideCard('side-card-invite');
