@@ -1,4 +1,4 @@
-package team
+package model
 
 import (
 	"maps"
@@ -7,10 +7,9 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/model"
 )
 
-func (m *Model) imageOf(a *Activity) string {
+func (m *Activities) imageOf(a *Activity) string {
 	if a.ImageURL != "" {
 		return a.ImageURL
 	}
@@ -20,8 +19,8 @@ func (m *Model) imageOf(a *Activity) string {
 	return ""
 }
 
-func (m *Model) Linked(family model.Household) []model.Linked {
-	out := []model.Linked{}
+func (m *Activities) Linked(family Household) []Linked {
+	out := []Linked{}
 	for _, raw := range m.Activities {
 		if !m.VisibleTo(raw, access.Actor{}) || raw.Start == "" {
 			continue
@@ -34,8 +33,8 @@ func (m *Model) Linked(family model.Household) []model.Linked {
 		case a.VolunteersComplete || (a.Spots > 0 && a.Taken >= a.Spots):
 			availability = "full"
 		}
-		var signed model.Circle
-		people := []model.Standing{}
+		var signed Circle
+		people := []Standing{}
 		for _, item := range append([]*Activity{a}, a.Descendants()...) {
 			for _, v := range item.Volunteers {
 				if !family.Has(v.Email) {
@@ -46,15 +45,15 @@ func (m *Model) Linked(family model.Household) []model.Linked {
 				if item != a {
 					note = item.Title
 				}
-				people = append(people, model.Standing{Name: family.Name(v.Email, ""), Note: note, Mine: family.Me(v.Email)})
+				people = append(people, Standing{Name: family.Name(v.Email, ""), Note: note, Mine: family.Me(v.Email)})
 			}
 		}
 		mine, names := "", []string(nil)
 		if signed.Any() {
-			mine, names = model.MineGoing, signed.Who()
+			mine, names = MineGoing, signed.Who()
 		}
-		out = append(out, model.Linked{
-			Source: model.SourceTeam, ID: a.ID, EventID: raw.CalendarEventID, Title: a.Title, Description: a.Description, Location: a.Location,
+		out = append(out, Linked{
+			Source: SourceTeam, ID: a.ID, EventID: raw.CalendarEventID, Title: a.Title, Description: a.Description, Location: a.Location,
 			Start: a.Start, End: a.End, Path: m.PathOf(a), Availability: availability, Mine: mine, Who: names, People: people, Image: m.imageOf(a),
 			Hosts: a.CoChairs(),
 		})
@@ -62,19 +61,19 @@ func (m *Model) Linked(family model.Household) []model.Linked {
 	return out
 }
 
-func (m *Model) Lists(directory *model.Directory, email string, now time.Time) []model.MagicTag {
-	return m.lists(directory, now, func(a *Activity) bool {
+func (m *Activities) MagicTags(directory *Directory, email string, now time.Time) []MagicTag {
+	return m.magicTags(directory, now, func(a *Activity) bool {
 		return slices.ContainsFunc(a.CoChairs(), func(c string) bool { return directory.Resolve(c) == email })
 	})
 }
 
-func (m *Model) AllLists(directory *model.Directory, now time.Time) []model.MagicTag {
-	return m.lists(directory, now, func(*Activity) bool { return true })
+func (m *Activities) AllMagicTags(directory *Directory, now time.Time) []MagicTag {
+	return m.magicTags(directory, now, func(*Activity) bool { return true })
 }
 
-func (m *Model) lists(directory *model.Directory, now time.Time, chairs func(*Activity) bool) []model.MagicTag {
-	out := []model.MagicTag{}
-	year := SchoolYear(now)
+func (m *Activities) magicTags(directory *Directory, now time.Time, chairs func(*Activity) bool) []MagicTag {
+	out := []MagicTag{}
+	year := ActivityYear(now)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	over := func(a *Activity) bool {
 		if a.Status == StatusDone {
@@ -95,8 +94,8 @@ func (m *Model) lists(directory *model.Directory, now time.Time, chairs func(*Ac
 		archived = archived || over(a)
 		key := ""
 		if parent != "" || chairs(a) {
-			key = model.MagicTagActivity + ":" + a.ID
-			list := model.MagicTag{Key: key, Name: a.Title, Kind: model.MagicTagActivity, Parent: parent, Guests: []model.Guest{}, Hosts: directory.ResolveAll(a.CoChairs()), Archived: archived}
+			key = MagicTagActivity + ":" + a.ID
+			list := MagicTag{Key: key, Name: a.Title, Kind: MagicTagActivity, Parent: parent, Guests: []Guest{}, Hosts: directory.ResolveAll(a.CoChairs()), Archived: archived}
 			if a != root {
 				list.Name = root.Title + ": " + a.Title
 			}
@@ -126,8 +125,8 @@ func (m *Model) lists(directory *model.Directory, now time.Time, chairs func(*Ac
 	return out
 }
 
-func (c *Cache) Pending(email string) []model.Approval {
-	out := []model.Approval{}
+func (c *ActivitiesCache) Pending(email string) []Approval {
+	out := []Approval{}
 	if !c.IsAdmin(email) {
 		return out
 	}
@@ -136,7 +135,7 @@ func (c *Cache) Pending(email string) []model.Approval {
 	walk = func(list []*Activity) {
 		for _, a := range list {
 			if a.Status == StatusPending {
-				out = append(out, model.Approval{App: "team", Title: a.Title, Start: a.Start, Path: m.PathOf(a)})
+				out = append(out, Approval{App: "team", Title: a.Title, Start: a.Start, Path: m.PathOf(a)})
 			}
 			walk(a.Children)
 		}

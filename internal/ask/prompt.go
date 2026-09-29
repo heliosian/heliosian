@@ -12,7 +12,6 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/loop"
 	"heliosian/internal/model"
-	"heliosian/internal/team"
 )
 
 //go:embed prompt.md
@@ -79,7 +78,7 @@ func (v *viewer) exampleLinks() []string {
 		}
 	}
 	for _, a := range v.team.Activities {
-		if a.Year == team.SchoolYear(v.now) && v.team.VisibleTo(a, v.teamAs) {
+		if a.Year == model.ActivityYear(v.now) && v.team.VisibleTo(a, v.teamAs) {
 			out = append(out, teamBase+v.team.PathOf(a))
 			break
 		}

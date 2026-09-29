@@ -1,4 +1,4 @@
-package celebrate
+package model
 
 import (
 	"net/http"
@@ -6,11 +6,10 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/model"
 	"heliosian/internal/sharecard"
 )
 
-func CardStyle(name, tagline func() string) *sharecard.Style {
+func PartiesCardStyle(name, tagline func() string) *sharecard.Style {
 	return &sharecard.Style{
 		Palette: sharecard.Standard, Name: name, Tagline: tagline,
 		Mark:   "web/public/celebrate/brand/logo-mark.png",
@@ -18,20 +17,20 @@ func CardStyle(name, tagline func() string) *sharecard.Style {
 	}
 }
 
-func previewable(p *Party) bool {
+func partyPreviewable(p *Party) bool {
 	return p != nil && p.VisibleTo(access.Actor{})
 }
 
-func whenLines(p *Party) (string, string) {
-	start, err := time.ParseInLocation(DateTimeFormat, p.Start, model.Location)
+func partyWhenLines(p *Party) (string, string) {
+	start, err := time.ParseInLocation(DateTimeFormat, p.Start, Location)
 	if err != nil {
-		if day, err := time.ParseInLocation(DateFormat, p.Start, model.Location); err == nil {
+		if day, err := time.ParseInLocation(DateFormat, p.Start, Location); err == nil {
 			return day.Format("Monday, January 2"), ""
 		}
 		return "", ""
 	}
 	day := start.Format("Monday, January 2")
-	end, err := time.ParseInLocation(DateTimeFormat, p.End, model.Location)
+	end, err := time.ParseInLocation(DateTimeFormat, p.End, Location)
 	if err != nil {
 		return day, start.Format("3:04 PM")
 	}
@@ -39,14 +38,14 @@ func whenLines(p *Party) (string, string) {
 }
 
 func whenLine(p *Party) string {
-	day, hours := whenLines(p)
+	day, hours := partyWhenLines(p)
 	if hours != "" {
 		return day + " · " + hours
 	}
 	return day
 }
 
-func upcoming(m *Model) []*Party {
+func upcoming(m *Parties) []*Party {
 	at := now()
 	out := []*Party{}
 	for _, p := range m.SortedParties("") {
@@ -60,11 +59,11 @@ func upcoming(m *Model) []*Party {
 const upcomingCount = 3
 
 func shortDay(p *Party) string {
-	day, _ := whenLines(p)
+	day, _ := partyWhenLines(p)
 	return day
 }
 
-func blurb(p *Party) string {
+func partyBlurb(p *Party) string {
 	text := strings.Join(strings.Fields(p.Summary), " ")
 	if text == "" {
 		text = strings.Join(strings.Fields(p.Description), " ")
@@ -79,17 +78,17 @@ func blurb(p *Party) string {
 	return text
 }
 
-func PreviewHead(cache *Cache, style *sharecard.Style) func(r *http.Request) string {
+func PartiesPreviewHead(cache *PartiesCache, style *sharecard.Style) func(r *http.Request) string {
 	return func(r *http.Request) string {
-		model := cache.Model()
+		m := cache.Model()
 		origin := "https://" + r.Host
 		first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]
 		var p *Party
 		if first == "p" || first == "parties" {
-			p = model.Resolve(r.URL.Path)
+			p = m.Resolve(r.URL.Path)
 		}
-		if !previewable(p) {
-			return upcomingHead(style, model, origin)
+		if !partyPreviewable(p) {
+			return partiesUpcomingHead(style, m, origin)
 		}
 		parts := []string{}
 		if line := whenLine(p); line != "" {
@@ -98,18 +97,18 @@ func PreviewHead(cache *Cache, style *sharecard.Style) func(r *http.Request) str
 		if p.Location != "" {
 			parts = append(parts, p.Location)
 		}
-		if b := blurb(p); b != "" {
+		if b := partyBlurb(p); b != "" {
 			parts = append(parts, b)
 		}
 		desc := strings.Join(parts, " — ")
 		if desc == "" {
 			desc = "A fun(d)raiser party for the Helios community."
 		}
-		return style.PreviewTags(p.Title, desc, origin+model.PathOf(p), origin+"/open/share/"+p.ID+".png")
+		return style.PreviewTags(p.Title, desc, origin+m.PathOf(p), origin+"/open/share/"+p.ID+".png")
 	}
 }
 
-func upcomingHead(style *sharecard.Style, m *Model, origin string) string {
+func partiesUpcomingHead(style *sharecard.Style, m *Parties, origin string) string {
 	parties := upcoming(m)
 	desc := "Fun(d)raiser parties for the Helios community. New parties are on the way."
 	if len(parties) > 0 {
@@ -132,7 +131,7 @@ func upcomingHead(style *sharecard.Style, m *Model, origin string) string {
 	return style.PreviewTags("Upcoming Parties", desc, origin+"/", origin+"/open/share/upcoming.png")
 }
 
-func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
+func (a partiesApp) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	parties := upcoming(a.cache.Model())
 	card := sharecard.Card{
 		Title:   "New parties are on the way",
@@ -141,7 +140,7 @@ func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	parts := []string{}
 	if len(parties) > 0 {
 		next := parties[0]
-		day, hours := whenLines(next)
+		day, hours := partyWhenLines(next)
 		card.Kicker, card.Title, card.Subtitle = "Next party", next.Title, next.Subtitle
 		card.Lines = []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: next.Location}}
 		parts = append(parts, next.Title, next.Subtitle, day, hours, next.Location)
@@ -153,10 +152,10 @@ func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	a.style.Serve(w, r, card, parts...)
 }
 
-func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
+func (a partiesApp) shareCard(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(r.PathValue("id"), ".png")
 	p := a.cache.Model().Party(id)
-	if !previewable(p) {
+	if !partyPreviewable(p) {
 		http.NotFound(w, r)
 		return
 	}
@@ -164,7 +163,7 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	if picture == "" {
 		picture, whole = p.Image, false
 	}
-	day, hours := whenLines(p)
+	day, hours := partyWhenLines(p)
 	card := sharecard.Card{
 		Title: p.Title, Subtitle: p.Subtitle, Picture: a.images.Read(picture), Whole: whole,
 		Lines: []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: p.Location}},

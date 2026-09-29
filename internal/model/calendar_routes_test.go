@@ -1,7 +1,6 @@
 package model
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
@@ -67,44 +65,106 @@ func sampleCalendarCache(t *testing.T) *CalendarCache {
 
 func testApp(t *testing.T) (http.Handler, *CalendarCache) {
 	t.Helper()
+	handler, cache, _ := testAppHooks(t)
+	return handler, cache
+}
+
+func testAppHooks(t *testing.T) (http.Handler, *CalendarCache, CalendarHooks) {
+	t.Helper()
 	cache := sampleCalendarCache(t)
 	d := calendarDirectory(t, "sampledata")
+	parties, activities := linkedCaches(t, nil, nil)
 	mux := http.NewServeMux()
 	hooks := RegisterCalendar(mux, CalendarDeps{
-		Cache:     cache,
-		Images:    memoryImages(),
-		Directory: func() *Directory { return d },
-		Settings:  func() *Config { return &Config{} },
-		Lists:     func(string) []PickerList { return nil },
-		Linked:    noLinked,
-		SourceID:  noSource,
-		Celebrate: noCelebrate(),
-		Sources:   newSampleSources(t).sources,
-		Mail:      CalendarMail{Sender: keptMail().Mailgun},
-		Style:     testStyle,
-		Queue:     queue,
+		Cache:      cache,
+		Images:     memoryImages(),
+		Directory:  func() *Directory { return d },
+		Settings:   func() *Config { return &Config{} },
+		Parties:    parties,
+		Activities: activities,
+		Lists:      func(string) []PickerList { return nil },
+		Sources:    newSampleSources(t).sources,
+		Mail:       CalendarMail{Sender: keptMail().Mailgun},
+		Style:      testStyle,
+		Queue:      queue,
 	})
-	return served(mux, cache, hooks, func() *Directory { return d }, noLinked), cache
-}
-
-func noLinked(string) []Linked {
-	return nil
-}
-
-func noSource(string, string) string {
-	return ""
+	return served(mux, cache, hooks, func() *Directory { return d }, parties, activities), cache, hooks
 }
 
 func memoryImages() blob.Images {
 	return blob.NewImages(blob.New(blob.NewMemoryBucket()), "when", "celebrate", "team")
 }
 
-func noCelebrate() PartyHooks {
-	return PartyHooks{
-		Party:       func(string) *PartyPeople { return nil },
-		IsAdmin:     func(string) bool { return false },
-		MoveAddress: func(context.Context, access.Actor, string, string, string) error { return nil },
+var (
+	celebrateLinkedTabs = []string{partiesTab, hostsTab, ticketsTab, AdminsTab.Name, id.AliasesTab}
+	teamLinkedTabs      = []string{activitiesTab, volunteersTab, id.AliasesTab}
+)
+
+func linkedCaches(t *testing.T, celebrate, team store.Tables) (*PartiesCache, *ActivitiesCache) {
+	t.Helper()
+	for _, tab := range celebrateLinkedTabs {
+		replaceRows(t, partiesAppName, tab, celebrate[tab])
 	}
+	for _, tab := range teamLinkedTabs {
+		replaceRows(t, activitiesAppName, tab, team[tab])
+	}
+	_, categories, err := sheet.Table(activitiesAppName, activityCategoriesTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replaceRows(t, activitiesAppName, activityCategoriesTab, slices.DeleteFunc(categories, func(row store.Row) bool { return row["Event ID"] != "" }))
+	parties, err := NewPartiesCache(sheet, sheet, testkit.All, func() []string { return nil }, queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	activities, err := NewActivitiesCache(sheet, sheet, testkit.All, func() []string { return nil }, queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return parties, activities
+}
+
+func replaceRows(t *testing.T, app, tab string, rows []store.Row) {
+	t.Helper()
+	_, old, err := sheet.Table(app, tab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(old) > 0 {
+		if err := sheet.Delete(app, tab, map[string]string{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(rows) == 0 {
+		return
+	}
+	if err := sheet.Insert(app, tab, rows); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func calendarOver(t *testing.T, parties *PartiesCache, activities *ActivitiesCache, directory func() *Directory) CalendarHooks {
+	t.Helper()
+	cache, err := NewCalendarCache(sheet, sheet, func() Roster { return roster }, nil, func() []string { return nil }, queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources := func() AudienceSources {
+		return AudienceSources{Directory: directory(), MagicTags: func(string) []MagicTag { return nil }}
+	}
+	return RegisterCalendar(http.NewServeMux(), CalendarDeps{
+		Cache:      cache,
+		Images:     memoryImages(),
+		Directory:  directory,
+		Settings:   noSettings,
+		Parties:    parties,
+		Activities: activities,
+		Lists:      func(string) []PickerList { return nil },
+		Sources:    sources,
+		Mail:       CalendarMail{Sender: mailtest.Discard()},
+		Style:      testStyle,
+		Queue:      queue,
+	})
 }
 
 var testStyle = CalendarCardStyle(func() string { return "Helios When" }, func() string { return "The school year, day by day" })
@@ -211,8 +271,8 @@ func TestCalendarRead(t *testing.T) {
 }
 
 func TestSharePreview(t *testing.T) {
-	handler, cache := testApp(t)
-	testkit.Previews(t, CalendarPreviewHead(cache, func(string) []Linked { return nil }, noSource, testStyle), testkit.Preview{
+	handler, _, hooks := testAppHooks(t)
+	testkit.Previews(t, hooks.PreviewHead(), testkit.Preview{
 		URL:  "https://when.heliosiandev.com:8080/e/gev0000000007",
 		Want: []string{`property="og:title" content="International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`, `content="https://when.heliosiandev.com:8080/open/share/gev0000000007.png"`},
 	}, testkit.Preview{
@@ -223,7 +283,7 @@ func TestSharePreview(t *testing.T) {
 }
 
 func TestOldIDsReachTheirEvents(t *testing.T) {
-	handler, cache := testApp(t)
+	handler, _, hooks := testAppHooks(t)
 	jordan := as("jordan.whitfield@heliosschool.org", handler)
 	for old, want := range map[string]string{"7QK2M4XN": "evt0000000001", "3pl9w2zc": "evt0000000002", "8RV4T6PK": "evt0000000003"} {
 		rec := eventOf(t, jordan, old)
@@ -244,7 +304,7 @@ func TestOldIDsReachTheirEvents(t *testing.T) {
 		}
 	}
 	testkit.Cards(t, handler, []string{"/open/share/3PL9W2ZC.png", "/open/share/evt0000000002.png"}, "/open/share/3PL9W2ZD.png")
-	testkit.Previews(t, CalendarPreviewHead(cache, func(string) []Linked { return nil }, noSource, testStyle), testkit.Preview{
+	testkit.Previews(t, hooks.PreviewHead(), testkit.Preview{
 		URL:  "https://when.heliosiandev.com:8080/e/3PL9W2ZC",
 		Want: []string{`property="og:title" content="HCA Meeting"`, `content="https://when.heliosiandev.com:8080/open/share/evt0000000002.png"`},
 	})
@@ -394,22 +454,22 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	cache := sampleCalendarCache(t)
 	d := calendarDirectory(t, "sampledata")
 	kept := keptMail()
+	parties, activities := linkedCaches(t, nil, nil)
 	mux := http.NewServeMux()
 	hooks := RegisterCalendar(mux, CalendarDeps{
-		Cache:     cache,
-		Images:    memoryImages(),
-		Directory: func() *Directory { return d },
-		Settings:  func() *Config { return &Config{} },
-		Lists:     func(string) []PickerList { return nil },
-		Linked:    noLinked,
-		SourceID:  noSource,
-		Celebrate: noCelebrate(),
-		Sources:   newSampleSources(t).sources,
-		Mail:      CalendarMail{Sender: kept.Mailgun, Base: "https://when.heliosian.com"},
-		Style:     testStyle,
-		Queue:     queue,
+		Cache:      cache,
+		Images:     memoryImages(),
+		Directory:  func() *Directory { return d },
+		Settings:   func() *Config { return &Config{} },
+		Parties:    parties,
+		Activities: activities,
+		Lists:      func(string) []PickerList { return nil },
+		Sources:    newSampleSources(t).sources,
+		Mail:       CalendarMail{Sender: kept.Mailgun, Base: "https://when.heliosian.com"},
+		Style:      testStyle,
+		Queue:      queue,
 	})
-	served(mux, cache, hooks, func() *Directory { return d }, noLinked)
+	served(mux, cache, hooks, func() *Directory { return d }, parties, activities)
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {
@@ -460,7 +520,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 }
 
 func TestAdminAddsAndCorrects(t *testing.T) {
-	handler, cache := testApp(t)
+	handler, cache, hooks := testAppHooks(t)
 	admin := as("dana.hawkins@heliosschool.org", handler)
 	rec := call(t, admin, "POST", "/api/events", `{"title":"Chess Club","start":"2026-10-01 15:30","end":"2026-10-01 16:30","tags":[`+quoted(t, "Jays, Clubs")+`],"sharing":"Public","repeatWeeks":4,"repeatTimes":2}`)
 	if rec.Code != 200 {
@@ -608,7 +668,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec := call(t, handler, "GET", "/open/share/sams-party.png", ""); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
 		t.Errorf("a link event's card: %d", rec.Code)
 	}
-	if head := CalendarPreviewHead(cache, func(string) []Linked { return nil }, noSource, testStyle)(httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/open/share/"+party.ID+".png") {
+	if head := hooks.PreviewHead()(httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/open/share/"+party.ID+".png") {
 		t.Errorf("a link event's preview:\n%s", head)
 	}
 	if rec := call(t, parent, "POST", "/api/events", `{"address":"sams-party","title":"Again","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {

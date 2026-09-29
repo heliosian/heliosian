@@ -1,12 +1,10 @@
 package model
 
 import (
-	"context"
 	"log/slog"
 	"slices"
 	"strings"
 
-	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
@@ -61,12 +59,6 @@ type Invite struct {
 type PartyPeople struct {
 	Hosts     []string
 	Attendees []Attendee
-}
-
-type PartyHooks struct {
-	Party       func(id string) *PartyPeople
-	IsAdmin     func(email string) bool
-	MoveAddress func(ctx context.Context, actor access.Actor, old, to, name string) error
 }
 
 type Attendee struct {
@@ -250,9 +242,16 @@ func flyerPath(id string) string {
 	return "/open/flyer/" + id
 }
 
-func (c *CalendarCache) LinkedRSVPs(linked []Linked, source, id string) (sent bool, answers map[string]string, ok bool) {
-	model := c.Model()
-	for _, e := range withLinked(model.Events, linked) {
+type LinkedRSVPs struct {
+	Sent    bool
+	Answers map[string]string
+}
+
+type RSVPLookup func(id string) *LinkedRSVPs
+
+func (a calendarApp) linkedRSVPs(id string) *LinkedRSVPs {
+	model := a.model()
+	for _, e := range withLinked(model.Events, a.linked("")) {
 		if e.linked() && e.LinkedID == id {
 			id = e.ID
 			break
@@ -260,15 +259,15 @@ func (c *CalendarCache) LinkedRSVPs(linked []Linked, source, id string) (sent bo
 	}
 	inv := model.Invitations[id]
 	if inv == nil {
-		return false, nil, false
+		return nil
 	}
-	answers = map[string]string{}
+	out := &LinkedRSVPs{Sent: inv.Sent != "", Answers: map[string]string{}}
 	for _, row := range model.Invites[id] {
 		answer := model.AnswerOf(row.Email, id)
 		if answer == "" || answer == AnswerHidden {
 			answer = "none"
 		}
-		answers[row.Email] = answer
+		out.Answers[row.Email] = answer
 	}
-	return inv.Sent != "", answers, true
+	return out
 }

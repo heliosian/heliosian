@@ -1,4 +1,4 @@
-package team
+package model
 
 import (
 	"fmt"
@@ -10,11 +10,10 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/id"
-	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
-func (m *Model) find(id string) (*Activity, error) {
+func (m *Activities) find(id string) (*Activity, error) {
 	act := m.Activity(strings.TrimSpace(id))
 	if act == nil {
 		return nil, access.Missing("no activity with id %q", id)
@@ -23,20 +22,13 @@ func (m *Model) find(id string) (*Activity, error) {
 }
 
 var (
-	SeeAll       = access.Named("team.see-all")
-	Curate       = access.Named("team.curate")
-	Configure    = access.Named("team.configure")
-	ActAsCochair = access.Named("team.act-as-cochair")
+	SeeAllActivities    = access.Named("team.see-all")
+	CurateActivities    = access.Named("team.curate")
+	ConfigureActivities = access.Named("team.configure")
+	ActAsCochair        = access.Named("team.act-as-cochair")
 )
 
-var AdminAllowances = []access.Allowance{SeeAll, Curate, Configure, ActAsCochair}
-
-func require(actor access.Actor, allowance access.Allowance) error {
-	if !actor.May(allowance) {
-		return access.Forbidden("admin access required")
-	}
-	return nil
-}
+var ActivitiesAdminAllowances = []access.Allowance{SeeAllActivities, CurateActivities, ConfigureActivities, ActAsCochair}
 
 type volunteerBody struct {
 	ID       string `json:"id"`
@@ -57,7 +49,7 @@ type signUp struct {
 	existed  bool
 }
 
-func (m *Model) saveVolunteer(actor access.Actor, directory *model.Directory, body volunteerBody) (signUp, error) {
+func (m *Activities) saveVolunteer(actor access.Actor, directory *Directory, body volunteerBody) (signUp, error) {
 	act, err := m.find(body.ID)
 	if err != nil {
 		return signUp{}, err
@@ -135,7 +127,7 @@ func (m *Model) saveVolunteer(actor access.Actor, directory *model.Directory, bo
 	if !existing {
 		action = "add"
 		cells["Added By"] = actor.Email
-		cells["Added"] = today()
+		cells["Added"] = todayLocal()
 	}
 	if from != nil {
 		action = "move"
@@ -144,7 +136,7 @@ func (m *Model) saveVolunteer(actor access.Actor, directory *model.Directory, bo
 	return signUp{ops: ops, act: act, email: email, position: body.Position, note: note, was: was, action: action, existed: existing || from != nil}, nil
 }
 
-func (m *Model) removeVolunteer(actor access.Actor, id, email string) (*Activity, string, []store.Op, error) {
+func (m *Activities) removeVolunteer(actor access.Actor, id, email string) (*Activity, string, []store.Op, error) {
 	act, err := m.find(id)
 	if err != nil {
 		return nil, "", nil, err
@@ -156,7 +148,7 @@ func (m *Model) removeVolunteer(actor access.Actor, id, email string) (*Activity
 	return act, email, []store.Op{store.Delete(volunteersTab, store.Row{"Event ID": act.ID, "Email": email})}, nil
 }
 
-type prettyConflict struct {
+type activityPrettyConflict struct {
 	Message string `json:"error"`
 	ID      string `json:"id"`
 	Title   string `json:"title"`
@@ -165,17 +157,17 @@ type prettyConflict struct {
 	Renamed string `json:"renamed,omitempty"`
 }
 
-func (c *prettyConflict) refusal() error {
+func (c *activityPrettyConflict) refusal() error {
 	return &access.Refusal{Status: http.StatusConflict, Message: c.Message, Body: c}
 }
 
-func renamedPretty(model *Model, pretty, year string) string {
+func renamedPretty(acts *Activities, pretty, year string) string {
 	base := pretty
-	if m := yearForm.FindStringSubmatch(year); m != nil {
+	if m := activityYearForm.FindStringSubmatch(year); m != nil {
 		base = pretty + "-" + m[1]
 	}
 	for i, candidate := 2, base; ; i++ {
-		if model.ByPretty(candidate) == nil && len(candidate) <= cells.MaxPrettyLength {
+		if acts.ByPretty(candidate) == nil && len(candidate) <= cells.MaxPrettyLength {
 			return candidate
 		}
 		candidate = fmt.Sprintf("%s-%d", base, i)
@@ -226,7 +218,7 @@ func bodyOf(a *Activity) activityBody {
 	}
 }
 
-func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activitySave, error) {
+func (m *Activities) saveActivity(actor access.Actor, patch activityPatch) (activitySave, error) {
 	body := activityBody{}
 	if err := patch.into(&body); err != nil {
 		return activitySave{}, access.Invalid("bad request body")
@@ -241,7 +233,7 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 		}
 		current = act
 		if !m.Edits(act, actor) {
-			if !actor.May(Curate) {
+			if !actor.May(CurateActivities) {
 				return activitySave{}, access.Forbidden("only a co-chair or admin can edit this")
 			}
 			approving = true
@@ -255,11 +247,11 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 	year := strings.TrimSpace(body.Year)
 	status := body.Status
 	switch {
-	case adding && !actor.May(Curate):
+	case adding && !actor.May(CurateActivities):
 		status = StatusOpen
 	case adding && status == "":
 		status = StatusOpen
-	case !adding && !actor.May(Curate):
+	case !adding && !actor.May(CurateActivities):
 		approver := current.Parent != "" && m.Runs(m.Activity(current.Parent), actor.Email)
 		switch {
 		case status == current.Status:
@@ -290,14 +282,14 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 			}
 		}
 	}
-	if current != nil && !actor.May(Curate) && parent != current.Parent && (parent == "" || !m.Runs(m.Activity(parent), actor.Email)) {
+	if current != nil && !actor.May(CurateActivities) && parent != current.Parent && (parent == "" || !m.Runs(m.Activity(parent), actor.Email)) {
 		return activitySave{}, access.Forbidden("only an admin can move this there")
 	}
 	category := strings.TrimSpace(body.Category)
 	if category == UncategorizedID {
 		category = ""
 	}
-	editor := actor.May(Curate)
+	editor := actor.May(CurateActivities)
 	if parent != "" {
 		editor = actor.May(ActAsCochair) || m.Runs(m.Activity(parent), actor.Email)
 	}
@@ -376,14 +368,14 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 	if pretty != "" && parent != "" {
 		for _, sibling := range m.Activity(parent).Children {
 			if sibling.ID != key && sibling.PrettyID == pretty {
-				conflict := &prettyConflict{ID: sibling.ID, Title: sibling.Title, Year: sibling.Year,
+				conflict := &activityPrettyConflict{ID: sibling.ID, Title: sibling.Title, Year: sibling.Year,
 					Message: fmt.Sprintf("%q is already the address of %q under the same parent", pretty, sibling.Title)}
 				return activitySave{}, conflict.refusal()
 			}
 		}
 	}
 	if other := m.ByPretty(pretty); pretty != "" && parent == "" && other != nil && other.ID != key {
-		conflict := &prettyConflict{ID: other.ID, Title: other.Title, Year: other.Year, Prior: other.Year < year}
+		conflict := &activityPrettyConflict{ID: other.ID, Title: other.Title, Year: other.Year, Prior: other.Year < year}
 		if conflict.Prior {
 			conflict.Renamed = renamedPretty(m, pretty, other.Year)
 		}
@@ -408,7 +400,7 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 		"Direct Sign-Up": direct, "Pretty ID": pretty, "Allow Adding": allowAdding,
 	}
 	priority := body.Priority
-	if !actor.May(Curate) {
+	if !actor.May(CurateActivities) {
 		priority = current != nil && current.Priority
 	}
 	if body.VolunteersComplete {
@@ -423,11 +415,11 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 	if adding {
 		action = "add"
 		row["Added By"] = actor.Email
-		row["Added"] = today()
+		row["Added"] = todayLocal()
 		row[CalendarEventColumn] = mint()
 		ops = append(ops, store.Insert(activitiesTab, row))
 		if joining != "" {
-			ops = append(ops, store.Insert(volunteersTab, store.Row{"Event ID": key, "Email": actor.Email, "Position": joining, "Added By": actor.Email, "Added": today()}))
+			ops = append(ops, store.Insert(volunteersTab, store.Row{"Event ID": key, "Email": actor.Email, "Position": joining, "Added By": actor.Email, "Added": todayLocal()}))
 		}
 	} else {
 		if current.Parent != parent {
@@ -452,8 +444,8 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 	return activitySave{ops: ops, id: key, title: title, year: year, status: status, action: action, adding: adding}, nil
 }
 
-func (m *Model) deleteActivity(actor access.Actor, id string) (*Activity, []store.Op, error) {
-	if err := require(actor, Curate); err != nil {
+func (m *Activities) deleteActivity(actor access.Actor, id string) (*Activity, []store.Op, error) {
+	if err := require(actor, CurateActivities); err != nil {
 		return nil, nil, err
 	}
 	act, err := m.find(id)
@@ -478,7 +470,7 @@ type linkBody struct {
 	Image       string `json:"image"`
 }
 
-func (m *Model) findLink(key string) (*Activity, string, error) {
+func (m *Activities) findLink(key string) (*Activity, string, error) {
 	key = strings.ToLower(strings.TrimSpace(key))
 	act := m.links[key]
 	if act == nil {
@@ -487,7 +479,7 @@ func (m *Model) findLink(key string) (*Activity, string, error) {
 	return act, key, nil
 }
 
-func (m *Model) saveLink(actor access.Actor, body linkBody) (*Activity, string, []store.Op, error) {
+func (m *Activities) saveLink(actor access.Actor, body linkBody) (*Activity, string, []store.Op, error) {
 	adding := strings.TrimSpace(body.Link) == ""
 	var act *Activity
 	var key string
@@ -516,7 +508,7 @@ func (m *Model) saveLink(actor access.Actor, body linkBody) (*Activity, string, 
 	return act, "edit", []store.Op{store.Update(linksTab, store.Row{"Link ID": key}, cells)}, nil
 }
 
-func (m *Model) deleteLink(actor access.Actor, link string) (*Activity, []store.Op, error) {
+func (m *Activities) deleteLink(actor access.Actor, link string) (*Activity, []store.Op, error) {
 	act, key, err := m.findLink(link)
 	if err != nil {
 		return nil, nil, err
@@ -538,7 +530,7 @@ func orderOps(tab, keyColumn string, ids, current []string) []store.Op {
 	return ops
 }
 
-func (m *Model) orderChildren(actor access.Actor, parentID string, order []string) (*Activity, []store.Op, error) {
+func (m *Activities) orderChildren(actor access.Actor, parentID string, order []string) (*Activity, []store.Op, error) {
 	parent, err := m.find(parentID)
 	if err != nil {
 		return nil, nil, err
@@ -565,9 +557,9 @@ func (m *Model) orderChildren(actor access.Actor, parentID string, order []strin
 	return parent, orderOps(activitiesTab, "Event ID", ids, current), nil
 }
 
-func (m *Model) editsCategories(actor access.Actor, eventID string) error {
+func (m *Activities) editsCategories(actor access.Actor, eventID string) error {
 	if eventID == "" {
-		if actor.May(Configure) {
+		if actor.May(ConfigureActivities) {
 			return nil
 		}
 		return access.Forbidden("only an admin can change the page's categories")
@@ -600,7 +592,7 @@ type categorySave struct {
 	action  string
 }
 
-func (m *Model) saveCategory(actor access.Actor, body categoryBody) (categorySave, error) {
+func (m *Activities) saveCategory(actor access.Actor, body categoryBody) (categorySave, error) {
 	title := strings.TrimSpace(body.Title)
 	eventID := strings.TrimSpace(body.EventID)
 	adding := body.ID == ""
@@ -643,9 +635,9 @@ func (m *Model) saveCategory(actor access.Actor, body categoryBody) (categorySav
 	if eventID == "" {
 		row["Show On Main Page"] = cells.YesNoCell(body.ShowOnMain == nil || *body.ShowOnMain)
 	}
-	save := categorySave{op: store.Insert(categoriesTab, row), id: key, eventID: eventID, title: title, action: "add"}
+	save := categorySave{op: store.Insert(activityCategoriesTab, row), id: key, eventID: eventID, title: title, action: "add"}
 	if !adding {
-		save.op = store.Update(categoriesTab, store.Row{"Category ID": key}, row)
+		save.op = store.Update(activityCategoriesTab, store.Row{"Category ID": key}, row)
 		save.action = "edit"
 	}
 	return save, nil
@@ -658,7 +650,7 @@ type categoryFlagsBody struct {
 
 var categoryFlagColumns = map[string]string{"directSignUp": "Direct Sign-Up", "volunteersHidden": "Volunteers Hidden", "hidden": "Hidden", "allowAdding": "Allow Adding"}
 
-func (m *Model) saveCategoryFlags(actor access.Actor, body categoryFlagsBody) (store.Op, *Category, error) {
+func (m *Activities) saveCategoryFlags(actor access.Actor, body categoryFlagsBody) (store.Op, *ActivityCategory, error) {
 	c := m.Category(strings.TrimSpace(body.ID))
 	if c == nil {
 		return store.Op{}, nil, access.Missing("no category with id %q", body.ID)
@@ -688,10 +680,10 @@ func (m *Model) saveCategoryFlags(actor access.Actor, body categoryFlagsBody) (s
 		}
 		row[column] = cell
 	}
-	return store.Update(categoriesTab, store.Row{"Category ID": c.ID}, row), c, nil
+	return store.Update(activityCategoriesTab, store.Row{"Category ID": c.ID}, row), c, nil
 }
 
-func (m *Model) reorderCategories(actor access.Actor, eventID string, order []string) ([]store.Op, error) {
+func (m *Activities) reorderCategories(actor access.Actor, eventID string, order []string) ([]store.Op, error) {
 	if err := m.editsCategories(actor, eventID); err != nil {
 		return nil, err
 	}
@@ -703,7 +695,7 @@ func (m *Model) reorderCategories(actor access.Actor, eventID string, order []st
 		}
 		list = event.Categories
 	}
-	inScope := map[string]Category{}
+	inScope := map[string]ActivityCategory{}
 	for _, c := range list {
 		if !c.BuiltIn {
 			inScope[c.ID] = c
@@ -721,10 +713,10 @@ func (m *Model) reorderCategories(actor access.Actor, eventID string, order []st
 		delete(inScope, c.ID)
 		ids, current = append(ids, c.ID), append(current, c.Order)
 	}
-	return orderOps(categoriesTab, "Category ID", ids, current), nil
+	return orderOps(activityCategoriesTab, "Category ID", ids, current), nil
 }
 
-func (c *Cache) deleteCategory(actor access.Actor, id string) (*Category, []store.Op, error) {
+func (c *ActivitiesCache) deleteCategory(actor access.Actor, id string) (*ActivityCategory, []store.Op, error) {
 	m := c.Model()
 	cat := m.Category(strings.TrimSpace(id))
 	if cat == nil {
@@ -739,11 +731,11 @@ func (c *Cache) deleteCategory(actor access.Actor, id string) (*Category, []stor
 	if c.Count(activitiesTab, store.Row{"Category": cat.ID}) > 0 {
 		return nil, nil, access.Invalid("move or delete its activities first")
 	}
-	return cat, []store.Op{store.Delete(categoriesTab, store.Row{"Category ID": cat.ID})}, nil
+	return cat, []store.Op{store.Delete(activityCategoriesTab, store.Row{"Category ID": cat.ID})}, nil
 }
 
-func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, string, []store.Op, error) {
-	if err := require(actor, Curate); err != nil {
+func (m *Activities) copyActivity(actor access.Actor, id string) (*Activity, string, string, []store.Op, error) {
+	if err := require(actor, CurateActivities); err != nil {
 		return nil, "", "", nil, err
 	}
 	act, err := m.find(id)
@@ -753,7 +745,7 @@ func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, 
 	if act.Parent != "" {
 		return nil, "", "", nil, access.Invalid("copy the whole activity it sits under instead")
 	}
-	year := ShiftYear(act.Year, 1)
+	year := ShiftActivityYear(act.Year, 1)
 	for _, other := range m.Activities {
 		if other.Year == year && other.Title == act.Title {
 			return nil, "", "", nil, access.Invalid("%q already exists in %s", act.Title, year)
@@ -764,7 +756,7 @@ func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, 
 	ops := []store.Op{}
 	for _, c := range act.Categories {
 		fresh[c.ID] = mint()
-		ops = append(ops, store.Insert(categoriesTab, store.Row{
+		ops = append(ops, store.Insert(activityCategoriesTab, store.Row{
 			"Category ID": fresh[c.ID], "Event ID": fresh[act.ID], "Title": c.Title, "Description": c.Description,
 			"Image": c.Image, "Allow Adding": c.AllowAdding, store.OrderColumn: c.Order,
 			"Direct Sign-Up": c.DirectSignUpOwn, "Volunteers Hidden": c.VolunteersHiddenOwn, "Hidden": c.HiddenOwn,
@@ -785,7 +777,7 @@ func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, 
 			"Status": c.Status, "Description": c.Description, "Image": c.Image, "Flyer Image": c.Flyer, "Timing": c.Timing,
 			"Location": c.Location, "Spots": spotsCell(c.Spots),
 			"Co-Leader Needed": cells.YesNoCell(c.CoLeaderNeeded), "Volunteers Hidden": c.VolunteersHiddenOwn,
-			"Direct Sign-Up": c.DirectSignUpOwn, "Allow Adding": c.AllowAdding, "Added By": actor.Email, "Added": today(),
+			"Direct Sign-Up": c.DirectSignUpOwn, "Allow Adding": c.AllowAdding, "Added By": actor.Email, "Added": todayLocal(),
 			store.OrderColumn: c.Order, CompleteColumn: cells.YesNoCell(false),
 		}
 		for k, v := range highlightCells(c.Highlight) {
@@ -816,20 +808,20 @@ func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, 
 	return act, fresh[act.ID], year, ops, nil
 }
 
-func saveSettings(actor access.Actor, expenseFormURL, intro string) ([]store.Op, error) {
-	if err := require(actor, Configure); err != nil {
+func activitySettingsOps(actor access.Actor, expenseFormURL, intro string) ([]store.Op, error) {
+	if err := require(actor, ConfigureActivities); err != nil {
 		return nil, err
 	}
 	values := map[string]string{ExpenseFormKey: strings.TrimSpace(expenseFormURL), IntroKey: strings.TrimSpace(intro)}
 	ops := []store.Op{}
-	for _, key := range settingKeys {
-		ops = append(ops, store.Upsert(settingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))
+	for _, key := range activitySettingKeys {
+		ops = append(ops, store.Upsert(activitySettingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))
 	}
 	return ops, nil
 }
 
-func saveNotify(actor access.Actor, wanted []string) (string, []store.Op, error) {
-	if err := require(actor, Configure); err != nil {
+func activityNotifyOps(actor access.Actor, wanted []string) (string, []store.Op, error) {
+	if err := require(actor, ConfigureActivities); err != nil {
 		return "", nil, err
 	}
 	kinds := []string{}
@@ -851,11 +843,11 @@ type redirectSave struct {
 	action string
 }
 
-func (m *Model) saveRedirect(actor access.Actor, original, oldCell, newCell string) (redirectSave, error) {
-	if err := require(actor, Configure); err != nil {
+func (m *Activities) saveRedirect(actor access.Actor, original, oldCell, newCell string) (redirectSave, error) {
+	if err := require(actor, ConfigureActivities); err != nil {
 		return redirectSave{}, err
 	}
-	old, to := redirectPath(oldCell), redirectTo(newCell)
+	old, to := activityRedirectPath(oldCell), redirectTo(newCell)
 	if old == "" {
 		return redirectSave{}, access.Invalid("say which address to redirect")
 	}
@@ -872,9 +864,9 @@ func (m *Model) saveRedirect(actor access.Actor, original, oldCell, newCell stri
 	if strings.EqualFold(old, to) {
 		return redirectSave{}, access.Invalid("an address cannot redirect to itself")
 	}
-	var replacing *Redirect
+	var replacing *ActivityRedirect
 	kind := RedirectAdmin
-	if from := redirectPath(original); from != "" {
+	if from := activityRedirectPath(original); from != "" {
 		replacing = m.redirect(from)
 		if replacing == nil {
 			return redirectSave{}, access.Missing("no redirect from %s", from)
@@ -885,23 +877,23 @@ func (m *Model) saveRedirect(actor access.Actor, original, oldCell, newCell stri
 	} else if m.redirect(old) != nil {
 		return redirectSave{}, access.Refuse(http.StatusConflict, "%s is already redirected; edit that one", old)
 	}
-	if !isURL(to) && m.withRedirect(Redirect{Type: kind, Old: old, New: to}, replacing).Destination(old) == "" {
+	if !isURL(to) && m.withRedirect(ActivityRedirect{Type: kind, Old: old, New: to}, replacing).Destination(old) == "" {
 		return redirectSave{}, access.Invalid("%s leads back to %s", to, old)
 	}
-	cells := store.Row{"Type": kind, "Old": old, "New": to, "Date": today()}
+	cells := store.Row{"Type": kind, "Old": old, "New": to, "Date": todayLocal()}
 	if replacing != nil {
-		return redirectSave{op: store.Update(redirectsTab, store.Row{"Old": replacing.cell}, cells), old: old, to: to, action: "edit"}, nil
+		return redirectSave{op: store.Update(activityRedirectsTab, store.Row{"Old": replacing.cell}, cells), old: old, to: to, action: "edit"}, nil
 	}
-	return redirectSave{op: store.Insert(redirectsTab, cells), old: old, to: to, action: "add"}, nil
+	return redirectSave{op: store.Insert(activityRedirectsTab, cells), old: old, to: to, action: "add"}, nil
 }
 
-func (m *Model) deleteRedirect(actor access.Actor, old string) (*Redirect, []store.Op, error) {
-	if err := require(actor, Configure); err != nil {
+func (m *Activities) deleteRedirect(actor access.Actor, old string) (*ActivityRedirect, []store.Op, error) {
+	if err := require(actor, ConfigureActivities); err != nil {
 		return nil, nil, err
 	}
-	redirect := m.redirect(redirectPath(old))
+	redirect := m.redirect(activityRedirectPath(old))
 	if redirect == nil {
 		return nil, nil, access.Missing("no redirect from %s", old)
 	}
-	return redirect, []store.Op{store.Delete(redirectsTab, store.Row{"Old": redirect.cell})}, nil
+	return redirect, []store.Op{store.Delete(activityRedirectsTab, store.Row{"Old": redirect.cell})}, nil
 }

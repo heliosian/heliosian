@@ -85,7 +85,7 @@ func (a calendarApp) ticketHolders(g InviteGroup, members []string) []string {
 	if len(g.Rule.Tags) != 1 || !strings.HasPrefix(g.Rule.Tags[0], "party:") {
 		return members
 	}
-	p := a.parties(strings.TrimPrefix(g.Rule.Tags[0], "party:"))
+	p := a.parties().PartyPeople(strings.TrimPrefix(g.Rule.Tags[0], "party:"))
 	if p == nil {
 		return members
 	}
@@ -117,7 +117,7 @@ func (a calendarApp) ticketGuests(g InviteGroup) map[string]string {
 	if len(g.Rule.Tags) != 1 || !strings.HasPrefix(g.Rule.Tags[0], "party:") {
 		return out
 	}
-	p := a.parties(strings.TrimPrefix(g.Rule.Tags[0], "party:"))
+	p := a.parties().PartyPeople(strings.TrimPrefix(g.Rule.Tags[0], "party:"))
 	if p == nil {
 		return out
 	}

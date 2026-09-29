@@ -150,20 +150,20 @@ func TestRepliesRecordAnswers(t *testing.T) {
 func replyApp(t *testing.T, cache *CalendarCache, m CalendarMail) *http.ServeMux {
 	t.Helper()
 	d := calendarDirectory(t, "sampledata")
+	parties, activities := linkedCaches(t, nil, nil)
 	mux := http.NewServeMux()
 	RegisterCalendar(mux, CalendarDeps{
-		Cache:     cache,
-		Images:    memoryImages(),
-		Directory: func() *Directory { return d },
-		Settings:  func() *Config { return &Config{} },
-		Lists:     func(string) []PickerList { return nil },
-		Linked:    func(string) []Linked { return nil },
-		SourceID:  noSource,
-		Celebrate: noCelebrate(),
-		Sources:   newSampleSources(t).sources,
-		Mail:      m,
-		Style:     testStyle,
-		Queue:     queue,
+		Cache:      cache,
+		Images:     memoryImages(),
+		Directory:  func() *Directory { return d },
+		Settings:   func() *Config { return &Config{} },
+		Parties:    parties,
+		Activities: activities,
+		Lists:      func(string) []PickerList { return nil },
+		Sources:    newSampleSources(t).sources,
+		Mail:       m,
+		Style:      testStyle,
+		Queue:      queue,
 	})
 	return mux
 }

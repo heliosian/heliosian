@@ -8,7 +8,6 @@ import (
 
 	"heliosian/internal/artifacts"
 	"heliosian/internal/birthday"
-	"heliosian/internal/celebrate"
 	"heliosian/internal/data"
 	"heliosian/internal/env"
 	"heliosian/internal/feedback"
@@ -18,7 +17,6 @@ import (
 	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/store"
-	"heliosian/internal/team"
 )
 
 type tab struct {
@@ -65,14 +63,14 @@ var layouts = map[string][]tab{
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Events": {
-		{"Categories", team.CategoryColumns},
-		{"Activities", team.ActivityColumns},
-		{"Volunteers", team.VolunteerColumns},
-		{"Links", team.LinkColumns},
-		{"Settings", team.SettingColumns},
-		{"Notifications", team.NotificationColumns},
+		{"Categories", model.ActivityCategoryColumns},
+		{"Activities", model.ActivityColumns},
+		{"Volunteers", model.VolunteerColumns},
+		{"Links", model.LinkColumns},
+		{"Settings", model.KeyValueColumns},
+		{"Notifications", model.NotificationColumns},
 		{model.AdminsTab.Name, model.AdminsTab.Columns},
-		{"Redirects", team.RedirectColumns},
+		{"Redirects", model.RedirectColumns},
 		{id.AliasesTab, id.AliasColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
@@ -95,16 +93,16 @@ var layouts = map[string][]tab{
 		{"Newsletter", birthday.SharedNewsletterColumns},
 	},
 	"Celebrate": {
-		{"Celebrations", celebrate.CelebrationColumns},
-		{"Categories", celebrate.CategoryColumns},
-		{"Parties", celebrate.PartyColumns},
-		{"Hosts", celebrate.HostColumns},
-		{"Tickets", celebrate.TicketColumns},
-		{"Settings", celebrate.SettingColumns},
+		{"Celebrations", model.CelebrationColumns},
+		{"Categories", model.PartyCategoryColumns},
+		{"Parties", model.PartyColumns},
+		{"Hosts", model.HostColumns},
+		{"Tickets", model.TicketColumns},
+		{"Settings", model.KeyValueColumns},
 		{model.AdminsTab.Name, model.AdminsTab.Columns},
-		{"Redirects", celebrate.RedirectColumns},
-		{"INVOICING", celebrate.InvoicingColumns},
-		{"Former Addresses", celebrate.FormerColumns},
+		{"Redirects", model.RedirectColumns},
+		{"INVOICING", model.InvoicingColumns},
+		{"Former Addresses", model.FormerColumns},
 		{id.AliasesTab, id.AliasColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},

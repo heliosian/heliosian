@@ -14,10 +14,8 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
-	"heliosian/internal/celebrate"
 	"heliosian/internal/loop"
 	"heliosian/internal/model"
-	"heliosian/internal/team"
 )
 
 const (
@@ -80,8 +78,8 @@ type viewer struct {
 	me        *model.Person
 	directory *model.Directory
 	calendar  *model.Calendar
-	team      *team.Model
-	celebrate *celebrate.Model
+	team      *model.Activities
+	celebrate *model.Parties
 	loop      *loop.Model
 	artifacts *artifacts.Model
 	embedder  *artifacts.Vertex

@@ -1,4 +1,4 @@
-package team
+package model
 
 import (
 	"encoding/json"
@@ -12,45 +12,44 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
-	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 )
 
-const shell = "web/team/index.html"
+const activitiesShell = "web/team/index.html"
 
-var pages = []string{
+var activitiesPages = []string{
 	"/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/activities/{path...}", "/v/{path...}",
 }
 
-type app struct {
-	cache     *Cache
+type activitiesApp struct {
+	cache     *ActivitiesCache
 	images    blob.Images
-	directory func() *model.Directory
-	settings  func() *model.Config
+	directory func() *Directory
+	settings  func() *Config
+	calendar  calendarApp
 	search    imagesearch.Search
 	mailer    *mail.Mailgun
-	rsvps     RSVPLookup
 	lists     EmailListLookup
 	style     *sharecard.Style
 }
 
-type Deps struct {
-	Cache     *Cache
+type ActivitiesDeps struct {
+	Cache     *ActivitiesCache
 	Images    blob.Images
-	Directory func() *model.Directory
-	Settings  func() *model.Config
+	Directory func() *Directory
+	Settings  func() *Config
+	Calendar  CalendarHooks
 	Search    imagesearch.Search
 	Mailer    *mail.Mailgun
-	RSVPs     RSVPLookup
 	Lists     EmailListLookup
 	Style     *sharecard.Style
 }
 
-func Register(mux *http.ServeMux, d Deps) {
+func RegisterActivities(mux *http.ServeMux, d ActivitiesDeps) {
 	d.Search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
-	a := app{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, search: d.Search, mailer: d.Mailer, rsvps: d.RSVPs, lists: d.Lists, style: d.Style}
-	for _, page := range pages {
+	a := activitiesApp{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, calendar: d.Calendar.app, search: d.Search, mailer: d.Mailer, lists: d.Lists, style: d.Style}
+	for _, page := range activitiesPages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("GET /api/team/model", serve.JSON(a.model))
@@ -71,21 +70,21 @@ func Register(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("POST /api/team/copy", serve.JSON(a.copyActivity))
 	mux.HandleFunc("POST /api/team/settings", serve.JSON(a.saveSettings))
 	mux.HandleFunc("POST /api/team/notify", serve.JSON(a.saveNotify))
-	model.RegisterAdmins(mux, a.cache.AdminList, a.actor, a.adminState)
+	RegisterAdmins(mux, a.cache.AdminList, a.actor, a.adminState)
 	mux.HandleFunc("POST /api/team/redirect", serve.JSON(a.saveRedirect))
 	mux.HandleFunc("DELETE /api/team/redirect", serve.JSON(a.deleteRedirect))
 }
 
-func Redirected(cache *Cache, next http.Handler) http.Handler {
+func ActivitiesRedirected(cache *ActivitiesCache, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			next.ServeHTTP(w, r)
 			return
 		}
-		model := cache.Model()
-		to, status := model.Aliased(r.URL.Path), http.StatusMovedPermanently
+		m := cache.Model()
+		to, status := m.Aliased(r.URL.Path), http.StatusMovedPermanently
 		if to == "" {
-			to, status = model.Destination(r.URL.Path), http.StatusFound
+			to, status = m.Destination(r.URL.Path), http.StatusFound
 		}
 		if to == "" {
 			next.ServeHTTP(w, r)
@@ -101,21 +100,17 @@ func Redirected(cache *Cache, next http.Handler) http.Handler {
 	})
 }
 
-func (a app) page(w http.ResponseWriter, r *http.Request) {
-	serve.File(w, r, shell)
+func (a activitiesApp) page(w http.ResponseWriter, r *http.Request) {
+	serve.File(w, r, activitiesShell)
 }
 
-func (a app) actor(r *http.Request) access.Actor {
+func (a activitiesApp) actor(r *http.Request) access.Actor {
 	return a.directory().Actor(r, a.cache.Held)
 }
 
-func today() string {
-	return time.Now().In(model.Location).Format(DateFormat)
-}
-
-func (a app) model(r *http.Request, _ serve.None) (View, error) {
+func (a activitiesApp) model(r *http.Request, _ serve.None) (ActivitiesView, error) {
 	actor := a.actor(r)
-	view := RenderWith(a.cache.Model(), a.directory(), a.settings(), a.rsvps, a.lists, actor, time.Now().In(model.Location))
+	view := RenderActivities(a.cache.Model(), a.directory(), a.settings(), a.calendar.linkedRSVPs, a.lists, actor, time.Now().In(Location))
 	view.ImageSearch = a.search.On()
 	return view, nil
 }
@@ -124,7 +119,7 @@ type activityRef struct {
 	ID string `json:"id"`
 }
 
-func (a app) saveVolunteer(r *http.Request, body volunteerBody) (serve.None, error) {
+func (a activitiesApp) saveVolunteer(r *http.Request, body volunteerBody) (serve.None, error) {
 	actor := a.actor(r)
 	s, err := a.cache.Model().saveVolunteer(actor, a.directory(), body)
 	if err != nil {
@@ -143,7 +138,7 @@ type removeVolunteerBody struct {
 	Email string `json:"email"`
 }
 
-func (a app) removeVolunteer(r *http.Request, body removeVolunteerBody) (serve.None, error) {
+func (a activitiesApp) removeVolunteer(r *http.Request, body removeVolunteerBody) (serve.None, error) {
 	actor := a.actor(r)
 	act, email, ops, err := a.cache.Model().removeVolunteer(actor, body.ID, body.Email)
 	if err != nil {
@@ -205,7 +200,7 @@ func (p activityPatch) fields() []string {
 	return out
 }
 
-func (a app) saveActivity(r *http.Request, patch activityPatch) (activityRef, error) {
+func (a activitiesApp) saveActivity(r *http.Request, patch activityPatch) (activityRef, error) {
 	actor := a.actor(r)
 	s, err := a.cache.Model().saveActivity(actor, patch)
 	if err != nil {
@@ -221,7 +216,7 @@ func (a app) saveActivity(r *http.Request, patch activityPatch) (activityRef, er
 	return activityRef{ID: s.id}, nil
 }
 
-func (a app) deleteActivity(r *http.Request, body activityRef) (serve.None, error) {
+func (a activitiesApp) deleteActivity(r *http.Request, body activityRef) (serve.None, error) {
 	actor := a.actor(r)
 	act, ops, err := a.cache.Model().deleteActivity(actor, body.ID)
 	if err != nil {
@@ -234,7 +229,7 @@ func (a app) deleteActivity(r *http.Request, body activityRef) (serve.None, erro
 	return serve.None{}, nil
 }
 
-func (a app) saveLink(r *http.Request, body linkBody) (serve.None, error) {
+func (a activitiesApp) saveLink(r *http.Request, body linkBody) (serve.None, error) {
 	actor := a.actor(r)
 	act, action, ops, err := a.cache.Model().saveLink(actor, body)
 	if err != nil {
@@ -252,7 +247,7 @@ type orderBody struct {
 	IDs    []string `json:"ids"`
 }
 
-func (a app) orderChildren(r *http.Request, body orderBody) (serve.None, error) {
+func (a activitiesApp) orderChildren(r *http.Request, body orderBody) (serve.None, error) {
 	actor := a.actor(r)
 	parent, ops, err := a.cache.Model().orderChildren(actor, body.Parent, body.IDs)
 	if err != nil {
@@ -269,7 +264,7 @@ type linkRef struct {
 	Link string `json:"link"`
 }
 
-func (a app) deleteLink(r *http.Request, body linkRef) (serve.None, error) {
+func (a activitiesApp) deleteLink(r *http.Request, body linkRef) (serve.None, error) {
 	actor := a.actor(r)
 	act, ops, err := a.cache.Model().deleteLink(actor, body.Link)
 	if err != nil {
@@ -282,7 +277,7 @@ func (a app) deleteLink(r *http.Request, body linkRef) (serve.None, error) {
 	return serve.None{}, nil
 }
 
-func (a app) saveCategory(r *http.Request, body categoryBody) (serve.None, error) {
+func (a activitiesApp) saveCategory(r *http.Request, body categoryBody) (serve.None, error) {
 	actor := a.actor(r)
 	s, err := a.cache.Model().saveCategory(actor, body)
 	if err != nil {
@@ -295,7 +290,7 @@ func (a app) saveCategory(r *http.Request, body categoryBody) (serve.None, error
 	return serve.None{}, nil
 }
 
-func (a app) saveCategoryFlags(r *http.Request, body categoryFlagsBody) (serve.None, error) {
+func (a activitiesApp) saveCategoryFlags(r *http.Request, body categoryFlagsBody) (serve.None, error) {
 	actor := a.actor(r)
 	op, c, err := a.cache.Model().saveCategoryFlags(actor, body)
 	if err != nil {
@@ -313,7 +308,7 @@ type categoryOrderBody struct {
 	IDs     []string `json:"ids"`
 }
 
-func (a app) reorderCategories(r *http.Request, body categoryOrderBody) (serve.None, error) {
+func (a activitiesApp) reorderCategories(r *http.Request, body categoryOrderBody) (serve.None, error) {
 	actor := a.actor(r)
 	eventID := strings.TrimSpace(body.EventID)
 	ops, err := a.cache.Model().reorderCategories(actor, eventID, body.IDs)
@@ -327,7 +322,7 @@ func (a app) reorderCategories(r *http.Request, body categoryOrderBody) (serve.N
 	return serve.None{}, nil
 }
 
-func (a app) deleteCategory(r *http.Request, body activityRef) (serve.None, error) {
+func (a activitiesApp) deleteCategory(r *http.Request, body activityRef) (serve.None, error) {
 	actor := a.actor(r)
 	cat, ops, err := a.cache.deleteCategory(actor, body.ID)
 	if err != nil {
@@ -340,7 +335,7 @@ func (a app) deleteCategory(r *http.Request, body activityRef) (serve.None, erro
 	return serve.None{}, nil
 }
 
-func (a app) copyActivity(r *http.Request, body activityRef) (serve.None, error) {
+func (a activitiesApp) copyActivity(r *http.Request, body activityRef) (serve.None, error) {
 	actor := a.actor(r)
 	act, id, year, ops, err := a.cache.Model().copyActivity(actor, body.ID)
 	if err != nil {
@@ -353,14 +348,14 @@ func (a app) copyActivity(r *http.Request, body activityRef) (serve.None, error)
 	return serve.None{}, nil
 }
 
-type settingsBody struct {
+type activitySettingsBody struct {
 	ExpenseFormURL string `json:"expenseFormUrl"`
 	Intro          string `json:"intro"`
 }
 
-func (a app) saveSettings(r *http.Request, body settingsBody) (serve.None, error) {
+func (a activitiesApp) saveSettings(r *http.Request, body activitySettingsBody) (serve.None, error) {
 	actor := a.actor(r)
-	ops, err := saveSettings(actor, body.ExpenseFormURL, body.Intro)
+	ops, err := activitySettingsOps(actor, body.ExpenseFormURL, body.Intro)
 	if err != nil {
 		return serve.None{}, err
 	}
@@ -375,9 +370,9 @@ type notifyBody struct {
 	Kinds []string `json:"kinds"`
 }
 
-func (a app) saveNotify(r *http.Request, body notifyBody) (serve.None, error) {
+func (a activitiesApp) saveNotify(r *http.Request, body notifyBody) (serve.None, error) {
 	actor := a.actor(r)
-	value, ops, err := saveNotify(actor, body.Kinds)
+	value, ops, err := activityNotifyOps(actor, body.Kinds)
 	if err != nil {
 		return serve.None{}, err
 	}
@@ -388,7 +383,7 @@ func (a app) saveNotify(r *http.Request, body notifyBody) (serve.None, error) {
 	return serve.None{}, nil
 }
 
-func (a app) adminState(_ *http.Request, actor access.Actor) map[string]any {
+func (a activitiesApp) adminState(_ *http.Request, actor access.Actor) map[string]any {
 	prefs := a.cache.Model().notifyPrefs(actor.Email)
 	notify := []string{}
 	for _, k := range NotifyKinds {
@@ -405,7 +400,7 @@ type redirectBody struct {
 	New      string `json:"new"`
 }
 
-func (a app) saveRedirect(r *http.Request, body redirectBody) (serve.None, error) {
+func (a activitiesApp) saveRedirect(r *http.Request, body redirectBody) (serve.None, error) {
 	actor := a.actor(r)
 	s, err := a.cache.Model().saveRedirect(actor, body.Original, body.Old, body.New)
 	if err != nil {
@@ -422,7 +417,7 @@ type redirectRef struct {
 	Old string `json:"old"`
 }
 
-func (a app) deleteRedirect(r *http.Request, body redirectRef) (serve.None, error) {
+func (a activitiesApp) deleteRedirect(r *http.Request, body redirectRef) (serve.None, error) {
 	actor := a.actor(r)
 	redirect, ops, err := a.cache.Model().deleteRedirect(actor, body.Old)
 	if err != nil {

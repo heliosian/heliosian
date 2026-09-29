@@ -14,14 +14,12 @@ import (
 	gcal "google.golang.org/api/calendar/v3"
 	"google.golang.org/api/option"
 
-	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/ask"
 	"heliosian/internal/auth"
 	"heliosian/internal/birthday"
 	"heliosian/internal/blob"
 	"heliosian/internal/calendarimport"
-	"heliosian/internal/celebrate"
 	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
@@ -38,7 +36,6 @@ import (
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
-	"heliosian/internal/team"
 	"heliosian/internal/who"
 )
 
@@ -109,7 +106,7 @@ func NewCore(cfg Config) *Core {
 	teamImages := blob.NewImages(cfg.Store, "team")
 	celebrateImages := blob.NewImages(cfg.Store, "celebrate")
 	whenImages := blob.NewImages(cfg.Store, "when", "celebrate", "team")
-	teamCache, err := team.NewCache(cfg.Source, cfg.Writer, teamImages, settings.SuperAdmins, queue)
+	teamCache, err := model.NewActivitiesCache(cfg.Source, cfg.Writer, teamImages, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load team data", "error", err)
 	}
@@ -117,7 +114,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load birthdays data", "error", err)
 	}
-	celebrateCache, err := celebrate.NewCache(cfg.Source, cfg.Writer, celebrateImages, settings.SuperAdmins, queue)
+	celebrateCache, err := model.NewPartiesCache(cfg.Source, cfg.Writer, celebrateImages, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load celebrate data", "error", err)
 	}
@@ -175,8 +172,8 @@ func NewCore(cfg Config) *Core {
 	birthdayAbout := birthday.About(appName("birthday"), taglineOf("birthday"))
 	loopAbout := loop.About(appName("loop"), taglineOf("loop"))
 	homeStyle := home.CardStyle(appName("home"), taglineOf("home"))
-	teamStyle := team.CardStyle(appName("team"), taglineOf("team"))
-	celebrateStyle := celebrate.CardStyle(appName("celebrate"), taglineOf("celebrate"))
+	teamStyle := model.ActivitiesCardStyle(appName("team"), taglineOf("team"))
+	celebrateStyle := model.PartiesCardStyle(appName("celebrate"), taglineOf("celebrate"))
 	calendarStyle := model.CalendarCardStyle(appName("when"), taglineOf("when"))
 	artifactsCache, err := artifacts.NewCache(cfg.Source, cfg.Writer, cfg.Bucket, cfg.Embedder, queue)
 	if err != nil {
@@ -190,48 +187,23 @@ func NewCore(cfg Config) *Core {
 	blob.Register(mux, cfg.Store, "pronunciation")
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	linked := func(email string) []model.Linked {
-		family := cache.Model().HouseholdOf(email)
-		return append(celebrateCache.Model().Linked(family, time.Now().In(model.Location)), teamCache.Model().Linked(family)...)
-	}
-	sourceID := func(source, key string) string {
-		switch source {
-		case model.SourceCelebrate:
-			if p := celebrateCache.Model().Party(key); p != nil {
-				return p.ID
-			}
-		case model.SourceTeam:
-			if a := teamCache.Model().Activity(key); a != nil {
-				return a.ID
-			}
-		}
-		return ""
+		return model.LinkedEvents(cache.Model(), celebrateCache.Model(), teamCache.Model(), email, time.Now().In(model.Location))
 	}
 	frontEvents := upcomingEvents{calendarCache, cache.Model, linked}
 	calendarMux := http.NewServeMux()
-	var hooks model.CalendarHooks
-	moveAddress := func(ctx context.Context, actor access.Actor, old, to, name string) error {
-		as := cache.Model().ActorOf(actor.Email, celebrateCache.Held(actor.Email))
-		if _, err := celebrate.MoveAddress(ctx, celebrateCache, as, old, to, name); err != nil {
-			return err
-		}
-		hooks.MoveAddress(ctx, actor, old, to, name)
-		return nil
-	}
-	partyCalendar := model.PartyHooks{Party: func(id string) *model.PartyPeople { return celebrateCache.Model().PartyPeople(id) }, IsAdmin: celebrateCache.IsAdmin, MoveAddress: moveAddress}
-	hooks = model.RegisterCalendar(calendarMux, model.CalendarDeps{
-		Cache:     calendarCache,
-		Images:    whenImages,
-		Directory: cache.Model,
-		Settings:  settings.Config,
-		Lists:     calendarLists(cache, lists.Lists),
-		Linked:    linked,
-		SourceID:  sourceID,
-		Celebrate: partyCalendar,
-		Sources:   sources,
-		Search:    cfg.ImageSearch,
-		Mail:      cfg.CalendarMail,
-		Style:     calendarStyle,
-		Queue:     queue,
+	hooks := model.RegisterCalendar(calendarMux, model.CalendarDeps{
+		Cache:      calendarCache,
+		Images:     whenImages,
+		Directory:  cache.Model,
+		Settings:   settings.Config,
+		Parties:    celebrateCache,
+		Activities: teamCache,
+		Lists:      calendarLists(cache, lists.Lists),
+		Sources:    sources,
+		Search:     cfg.ImageSearch,
+		Mail:       cfg.CalendarMail,
+		Style:      calendarStyle,
+		Queue:      queue,
 	})
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, home.Deps{
@@ -245,22 +217,15 @@ func NewCore(cfg Config) *Core {
 		Style:       homeStyle,
 	})
 	teamMux := http.NewServeMux()
-	eventRSVPs := func(id string) *team.EventRSVPs {
-		sent, answers, ok := calendarCache.LinkedRSVPs(linked(""), model.SourceTeam, id)
-		if !ok {
-			return nil
-		}
-		return &team.EventRSVPs{Sent: sent, Answers: answers}
-	}
 	activityEmailList := func(id string) string { return loopCache.Model().Tagged(model.MagicTagActivity + ":" + id) }
-	team.Register(teamMux, team.Deps{
+	model.RegisterActivities(teamMux, model.ActivitiesDeps{
 		Cache:     teamCache,
 		Images:    teamImages,
 		Directory: cache.Model,
 		Settings:  settings.Config,
+		Calendar:  hooks,
 		Search:    cfg.ImageSearch,
 		Mailer:    cfg.Mail,
-		RSVPs:     eventRSVPs,
 		Lists:     activityEmailList,
 		Style:     teamStyle,
 	})
@@ -269,24 +234,14 @@ func NewCore(cfg Config) *Core {
 		return home.Grant(ctx, homeCache, "birthday", email)
 	})
 	celebrateMux := http.NewServeMux()
-	partyRSVPs := func(partyID string) *celebrate.PartyRSVPs {
-		sent, answers, ok := calendarCache.LinkedRSVPs(nil, model.SourceCelebrate, partyID)
-		if !ok {
-			return nil
-		}
-		return &celebrate.PartyRSVPs{Sent: sent, Answers: answers}
-	}
-	celebrate.Register(celebrateMux, celebrate.Deps{
+	model.RegisterParties(celebrateMux, model.PartiesDeps{
 		Cache:     celebrateCache,
 		Images:    celebrateImages,
 		Directory: cache.Model,
+		Calendar:  hooks,
 		Search:    cfg.ImageSearch,
 		Mailer:    cfg.CelebrateMail,
-		RSVPs:     partyRSVPs,
-		Moved: func(ctx context.Context, actor access.Actor, old, to, name string) {
-			hooks.MoveAddress(ctx, actor, old, to, name)
-		},
-		Style: celebrateStyle,
+		Style:     celebrateStyle,
 	})
 	askMux := http.NewServeMux()
 	loopMail := cfg.Loop
@@ -325,12 +280,12 @@ func NewCore(cfg Config) *Core {
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: home.PreviewHead(homeCache, homeStyle)},
-		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: team.PreviewHead(teamCache, teamStyle), Wrap: func(next http.Handler) http.Handler {
-			return team.Redirected(teamCache, next)
+		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: model.ActivitiesPreviewHead(teamCache, teamStyle), Wrap: func(next http.Handler) http.Handler {
+			return model.ActivitiesRedirected(teamCache, next)
 		}},
 		{Key: "birthday", Title: "Helios Staff Birthdays", Mux: birthdayMux, Preview: birthdayAbout.PreviewHead},
-		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: celebrate.PreviewHead(celebrateCache, celebrateStyle)},
-		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: model.CalendarPreviewHead(calendarCache, linked, sourceID, calendarStyle)},
+		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: model.PartiesPreviewHead(celebrateCache, celebrateStyle)},
+		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: hooks.PreviewHead()},
 		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
 		{Key: "ask", Title: "Helios Ask", Mux: askMux},
 	}

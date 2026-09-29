@@ -5,17 +5,15 @@ import (
 	"sort"
 
 	"heliosian/internal/auth"
-	"heliosian/internal/celebrate"
 	"heliosian/internal/model"
 	"heliosian/internal/serve"
-	"heliosian/internal/team"
 )
 
 type approvalsView struct {
 	Waiting []model.Approval `json:"waiting"`
 }
 
-func approvals(directory *model.DirectoryCache, teamCache *team.Cache, celebrateCache *celebrate.Cache, calendarCache *model.CalendarCache) http.HandlerFunc {
+func approvals(directory *model.DirectoryCache, teamCache *model.ActivitiesCache, celebrateCache *model.PartiesCache, calendarCache *model.CalendarCache) http.HandlerFunc {
 	return serve.JSON(func(r *http.Request, _ serve.None) (approvalsView, error) {
 		email := directory.Model().Resolve(auth.Email(r))
 		out := append(append(teamCache.Pending(email), celebrateCache.Pending(email)...), calendarCache.Pending(email)...)

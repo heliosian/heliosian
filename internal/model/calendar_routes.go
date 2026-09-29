@@ -26,42 +26,45 @@ var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/mine", "/mine/{list}
 var eventPages = []string{"/e/{id...}", "/events/{id...}"}
 
 type calendarApp struct {
-	cache     *CalendarCache
-	pinned    *Calendar
-	images    blob.Images
-	directory func() *Directory
-	settings  func() *Config
-	lists     func(email string) []PickerList
-	linked    func(email string) []Linked
-	sourceID  func(source, key string) string
-	parties   func(id string) *PartyPeople
-	celebrate PartyHooks
-	sources   func() AudienceSources
-	search    imagesearch.Search
-	queue     *store.Queue
-	mail      CalendarMail
-	style     *sharecard.Style
+	cache        *CalendarCache
+	pinned       *Calendar
+	images       blob.Images
+	directory    func() *Directory
+	settings     func() *Config
+	partiesCache *PartiesCache
+	parties      func() *Parties
+	activities   func() *Activities
+	clock        func() time.Time
+	lists        func(email string) []PickerList
+	sources      func() AudienceSources
+	search       imagesearch.Search
+	queue        *store.Queue
+	mail         CalendarMail
+	style        *sharecard.Style
 }
 
 type CalendarDeps struct {
-	Cache     *CalendarCache
-	Images    blob.Images
-	Directory func() *Directory
-	Settings  func() *Config
-	Lists     func(email string) []PickerList
-	Linked    func(email string) []Linked
-	SourceID  func(source, key string) string
-	Celebrate PartyHooks
-	Sources   func() AudienceSources
-	Search    imagesearch.Search
-	Mail      CalendarMail
-	Style     *sharecard.Style
-	Queue     *store.Queue
+	Cache      *CalendarCache
+	Images     blob.Images
+	Directory  func() *Directory
+	Settings   func() *Config
+	Parties    *PartiesCache
+	Activities *ActivitiesCache
+	Lists      func(email string) []PickerList
+	Sources    func() AudienceSources
+	Search     imagesearch.Search
+	Mail       CalendarMail
+	Style      *sharecard.Style
+	Queue      *store.Queue
 }
 
 func newCalendarApp(d CalendarDeps) calendarApp {
 	d.Search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
-	return calendarApp{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, lists: d.Lists, linked: d.Linked, sourceID: d.SourceID, parties: d.Celebrate.Party, celebrate: d.Celebrate, sources: d.Sources, search: d.Search, queue: d.Queue, mail: d.Mail, style: d.Style}
+	return calendarApp{
+		cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings,
+		partiesCache: d.Parties, parties: d.Parties.Model, activities: d.Activities.Model, clock: now,
+		lists: d.Lists, sources: d.Sources, search: d.Search, queue: d.Queue, mail: d.Mail, style: d.Style,
+	}
 }
 
 func RegisterCalendar(mux *http.ServeMux, d CalendarDeps) CalendarHooks {
@@ -100,7 +103,7 @@ func RegisterCalendar(mux *http.ServeMux, d CalendarDeps) CalendarHooks {
 		actor := a.as(mail.Normalize(email))
 		return a.recordBy(ctx, actor, actor.Email, id, answer, ViaPage, true, false)
 	}
-	return CalendarHooks{Answer: answer, MakeDefault: a.makeDefault, RSVPs: serve.JSON(a.rsvps), MoveAddress: a.moveAddress, cache: d.Cache, app: a}
+	return CalendarHooks{Answer: answer, MakeDefault: a.makeDefault, RSVPs: serve.JSON(a.rsvps), cache: d.Cache, app: a}
 }
 
 func (a calendarApp) page(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +160,6 @@ type CalendarHooks struct {
 	Answer      Answerer
 	MakeDefault func(ctx context.Context, email, token string) error
 	RSVPs       http.HandlerFunc
-	MoveAddress func(ctx context.Context, actor access.Actor, old, to, name string)
 	cache       *CalendarCache
 	app         calendarApp
 }
@@ -327,4 +329,31 @@ func (a calendarApp) feed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", "helios-calendar.ics"))
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(ICS(model, a.directory(), f, a.linked(f.Email), "https://"+r.Host, now()))
+}
+
+func (a calendarApp) linked(email string) []Linked {
+	return LinkedEvents(a.directory(), a.parties(), a.activities(), email, a.clock())
+}
+
+func (a calendarApp) sourceID(source, key string) string {
+	switch source {
+	case SourceCelebrate:
+		if p := a.parties().Party(key); p != nil {
+			return p.ID
+		}
+	case SourceTeam:
+		if act := a.activities().Activity(key); act != nil {
+			return act.ID
+		}
+	}
+	return ""
+}
+
+func (a calendarApp) moveEverywhere(ctx context.Context, actor access.Actor, old, to, name string) error {
+	as := a.directory().ActorOf(actor.Email, a.partiesCache.Held(actor.Email))
+	if err := a.partiesCache.moveAddress(ctx, as, old, to, name); err != nil {
+		return err
+	}
+	a.moveAddress(ctx, actor, old, to, name)
+	return nil
 }

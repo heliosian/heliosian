@@ -1,4 +1,4 @@
-package team
+package model
 
 import (
 	"slices"
@@ -9,7 +9,7 @@ import (
 	"heliosian/internal/access"
 )
 
-type WidgetItem struct {
+type ActivityWidgetItem struct {
 	Title    string `json:"title"`
 	Under    string `json:"under,omitempty"`
 	Start    string `json:"start,omitempty"`
@@ -20,18 +20,18 @@ type WidgetItem struct {
 	Image    string `json:"image,omitempty"`
 }
 
-type Widget struct {
-	Mine     []WidgetItem `json:"mine"`
-	Open     []WidgetItem `json:"open"`
-	Priority []WidgetItem `json:"priority"`
+type ActivityWidget struct {
+	Mine     []ActivityWidgetItem `json:"mine"`
+	Open     []ActivityWidgetItem `json:"open"`
+	Priority []ActivityWidgetItem `json:"priority"`
 }
 
 const widgetOpen = 12
 
-func (c *Cache) Widget(email string, at time.Time) Widget {
+func (c *ActivitiesCache) Widget(email string, at time.Time) ActivityWidget {
 	m := c.Model()
-	year, today := SchoolYear(at), at.Format(DateFormat)
-	out := Widget{Mine: []WidgetItem{}, Open: []WidgetItem{}, Priority: []WidgetItem{}}
+	year, today := ActivityYear(at), at.Format(DateFormat)
+	out := ActivityWidget{Mine: []ActivityWidgetItem{}, Open: []ActivityWidgetItem{}, Priority: []ActivityWidgetItem{}}
 	on := func(a *Activity) (Volunteer, bool) {
 		i := slices.IndexFunc(a.Volunteers, func(v Volunteer) bool { return strings.EqualFold(v.Email, email) })
 		if i < 0 {
@@ -79,7 +79,7 @@ func (c *Cache) Widget(email string, at time.Time) Widget {
 	return out
 }
 
-func byDay(x, y WidgetItem) int {
+func byDay(x, y ActivityWidgetItem) int {
 	if (x.Start == "") != (y.Start == "") {
 		if x.Start == "" {
 			return 1
@@ -89,7 +89,7 @@ func byDay(x, y WidgetItem) int {
 	return strings.Compare(x.Start, y.Start)
 }
 
-func (m *Model) wanted(a *Activity, year, today string) bool {
+func (m *Activities) wanted(a *Activity, year, today string) bool {
 	if a.Year != year || a.Status != StatusOpen || !m.VisibleTo(a, access.Actor{}) || a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots) {
 		return false
 	}
@@ -97,13 +97,13 @@ func (m *Model) wanted(a *Activity, year, today string) bool {
 	return last == "" || last >= today
 }
 
-func (m *Model) widgetItem(a *Activity) WidgetItem {
+func (m *Activities) widgetItem(a *Activity) ActivityWidgetItem {
 	dated := timed(m, a)
 	image := ""
 	for n := a; n != nil && image == ""; n = m.byID[n.Parent] {
 		image = n.ImageURL
 	}
-	return WidgetItem{Title: a.Title, Under: lineage(m, a), Start: dayOf(dated.Start), Timing: dated.Timing, Path: m.PathOf(a), Image: image}
+	return ActivityWidgetItem{Title: a.Title, Under: lineage(m, a), Start: dayOf(dated.Start), Timing: dated.Timing, Path: m.PathOf(a), Image: image}
 }
 
 func dayOf(cell string) string {
@@ -117,7 +117,7 @@ func lastDay(a *Activity) string {
 	return dayOf(a.Start)
 }
 
-func (m *Model) openNote(a *Activity) string {
+func (m *Activities) openNote(a *Activity) string {
 	label, needed := "", 0
 	if a.CoLeaderNeeded {
 		label = "Co-chair"

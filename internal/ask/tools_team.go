@@ -8,7 +8,6 @@ import (
 
 	"heliosian/internal/cells"
 	"heliosian/internal/model"
-	"heliosian/internal/team"
 )
 
 type activityCard struct {
@@ -36,7 +35,7 @@ type activityCard struct {
 	Link        string   `json:"link"`
 }
 
-func (v *viewer) activityCard(raw *team.Activity) activityCard {
+func (v *viewer) activityCard(raw *model.Activity) activityCard {
 	a := v.team.ActivityFor(raw, v.teamAs)
 	sees := v.team.Sees(a, v.teamAs)
 	start, end, from := v.dates(a)
@@ -55,7 +54,7 @@ func (v *viewer) activityCard(raw *team.Activity) activityCard {
 	}
 	for _, vol := range a.Volunteers {
 		name := v.name(vol.Email)
-		if vol.Position == team.PositionCoChair {
+		if vol.Position == model.PositionCoChair {
 			c.CoChairs = append(c.CoChairs, name)
 		} else {
 			words := name
@@ -75,7 +74,7 @@ func (v *viewer) activityCard(raw *team.Activity) activityCard {
 	return c
 }
 
-func (v *viewer) dates(a *team.Activity) (start, end, from string) {
+func (v *viewer) dates(a *model.Activity) (start, end, from string) {
 	for node := a; node != nil; node = v.team.Activity(node.Parent) {
 		if node.Start != "" || node.End != "" {
 			if node != a {
@@ -90,8 +89,8 @@ func (v *viewer) dates(a *team.Activity) (start, end, from string) {
 	return "", "", ""
 }
 
-func (v *viewer) over(a *team.Activity) bool {
-	if a.Status == team.StatusDone {
+func (v *viewer) over(a *model.Activity) bool {
+	if a.Status == model.StatusDone {
 		return true
 	}
 	start, end, _ := v.dates(a)
@@ -131,13 +130,13 @@ var volunteerOpportunities = tool{
 		}
 		year := strings.TrimSpace(in.Year)
 		if year == "" {
-			year = team.SchoolYear(v.now)
+			year = model.ActivityYear(v.now)
 		}
 		limit := limitOf(in.Limit, 40, 80)
 		out := []activityCard{}
 		total := 0
-		var walk func(a *team.Activity)
-		walk = func(a *team.Activity) {
+		var walk func(a *model.Activity)
+		walk = func(a *model.Activity) {
 			if !v.team.VisibleTo(a, v.teamAs) {
 				return
 			}

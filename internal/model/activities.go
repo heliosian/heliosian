@@ -1,4 +1,4 @@
-package team
+package model
 
 import (
 	"context"
@@ -14,36 +14,25 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/id"
 	"heliosian/internal/mail"
-	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
 const (
-	appName          = "events"
-	categoriesTab    = "Categories"
-	activitiesTab    = "Activities"
-	volunteersTab    = "Volunteers"
-	linksTab         = "Links"
-	settingsTab      = "Settings"
-	notificationsTab = "Notifications"
-	redirectsTab     = "Redirects"
+	activitiesAppName     = "events"
+	activityCategoriesTab = "Categories"
+	activitiesTab         = "Activities"
+	volunteersTab         = "Volunteers"
+	linksTab              = "Links"
+	activitySettingsTab   = "Settings"
+	notificationsTab      = "Notifications"
+	activityRedirectsTab  = "Redirects"
 )
 
-const (
-	DateFormat     = "2006-01-02"
-	DateTimeFormat = "2006-01-02 15:04"
-	maxTitleLength = 120
-	maxTextLength  = 6000
-)
+const maxActivityTitleLength = 120
 
-const (
-	StatusPending = "Pending"
-	StatusOpen    = "Open"
-	StatusDone    = "Done"
-	StatusHidden  = "Hidden"
-)
+const StatusDone = "Done"
 
-var Statuses = []string{StatusPending, StatusOpen, StatusDone, StatusHidden}
+var ActivityStatuses = []string{StatusPending, StatusOpen, StatusDone, StatusHidden}
 
 const (
 	PositionVolunteer = "Volunteer"
@@ -58,27 +47,23 @@ const (
 	IntroKey       = "Intro"
 )
 
-var settingKeys = []string{ExpenseFormKey, IntroKey}
+var activitySettingKeys = []string{ExpenseFormKey, IntroKey}
 
 const CompleteColumn = "Volunteers Complete"
 
 const PriorityColumn = "Priority"
 
 var (
-	CategoryColumns     = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page", "Direct Sign-Up", "Volunteers Hidden", "Hidden", store.OrderColumn}
-	ActivityColumns     = []string{"Event ID", CalendarEventColumn, "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Flyer Image", "Highlight Headline", "Highlight Body", "Highlight Icon", "Added By", "Added", store.OrderColumn, CompleteColumn, PriorityColumn}
-	VolunteerColumns    = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
-	LinkColumns         = []string{"Link ID", "Event ID", "Title", "URL", "Image", "Description"}
-	SettingColumns      = []string{"Key", "Value"}
-	NotificationColumns = []string{"Email", "Kinds"}
-	RedirectColumns     = []string{"Type", "Old", "New", "Date"}
+	ActivityCategoryColumns = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page", "Direct Sign-Up", "Volunteers Hidden", "Hidden", store.OrderColumn}
+	ActivityColumns         = []string{"Event ID", CalendarEventColumn, "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Flyer Image", "Highlight Headline", "Highlight Body", "Highlight Icon", "Added By", "Added", store.OrderColumn, CompleteColumn, PriorityColumn}
+	VolunteerColumns        = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
+	LinkColumns             = []string{"Link ID", "Event ID", "Title", "URL", "Image", "Description"}
+	NotificationColumns     = []string{"Email", "Kinds"}
 )
 
-var yearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
+var activityYearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
 
-var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
-
-type Link struct {
+type ActivityLink struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
 	URL         string `json:"url"`
@@ -117,46 +102,46 @@ type Volunteer struct {
 const CalendarEventColumn = "Calendar Event ID"
 
 type Activity struct {
-	ID                  string      `json:"id"`
-	CalendarEventID     string      `json:"-"`
-	Year                string      `json:"year"`
-	Title               string      `json:"title"`
-	Parent              string      `json:"parent,omitempty"`
-	Category            string      `json:"category,omitempty"`
-	Status              string      `json:"status"`
-	Description         string      `json:"description,omitempty"`
-	Image               string      `json:"image,omitempty"`
-	ImageURL            string      `json:"imageUrl,omitempty"`
-	Flyer               string      `json:"flyer,omitempty"`
-	FlyerURL            string      `json:"flyerUrl,omitempty"`
-	Highlight           *Highlight  `json:"highlight,omitempty"`
-	Order               string      `json:"-"`
-	Timing              string      `json:"timing,omitempty"`
-	Start               string      `json:"start,omitempty"`
-	End                 string      `json:"end,omitempty"`
-	Location            string      `json:"location,omitempty"`
-	Spots               int         `json:"spots,omitempty"`
-	CoLeaderNeeded      bool        `json:"coLeaderNeeded"`
-	VolunteersComplete  bool        `json:"volunteersComplete"`
-	VolunteersHiddenOwn string      `json:"volunteersHiddenOwn,omitempty"`
-	VolunteersHidden    bool        `json:"volunteersHidden"`
-	DirectSignUpOwn     string      `json:"directSignUpOwn,omitempty"`
-	DirectSignUp        bool        `json:"directSignUp"`
-	CategoryHidden      bool        `json:"categoryHidden,omitempty"`
-	Priority            bool        `json:"priority"`
-	PrettyID            string      `json:"prettyId,omitempty"`
-	AllowAdding         string      `json:"allowAddingOwn,omitempty"`
-	Adding              string      `json:"allowAdding"`
-	AddedBy             string      `json:"addedBy,omitempty"`
-	Added               string      `json:"added,omitempty"`
-	Children            []*Activity `json:"children"`
-	Links               []Link      `json:"links"`
-	Volunteers          []Volunteer `json:"volunteers"`
-	Categories          []Category  `json:"categories,omitempty"`
-	Taken               int         `json:"-"`
+	ID                  string             `json:"id"`
+	CalendarEventID     string             `json:"-"`
+	Year                string             `json:"year"`
+	Title               string             `json:"title"`
+	Parent              string             `json:"parent,omitempty"`
+	Category            string             `json:"category,omitempty"`
+	Status              string             `json:"status"`
+	Description         string             `json:"description,omitempty"`
+	Image               string             `json:"image,omitempty"`
+	ImageURL            string             `json:"imageUrl,omitempty"`
+	Flyer               string             `json:"flyer,omitempty"`
+	FlyerURL            string             `json:"flyerUrl,omitempty"`
+	Highlight           *Highlight         `json:"highlight,omitempty"`
+	Order               string             `json:"-"`
+	Timing              string             `json:"timing,omitempty"`
+	Start               string             `json:"start,omitempty"`
+	End                 string             `json:"end,omitempty"`
+	Location            string             `json:"location,omitempty"`
+	Spots               int                `json:"spots,omitempty"`
+	CoLeaderNeeded      bool               `json:"coLeaderNeeded"`
+	VolunteersComplete  bool               `json:"volunteersComplete"`
+	VolunteersHiddenOwn string             `json:"volunteersHiddenOwn,omitempty"`
+	VolunteersHidden    bool               `json:"volunteersHidden"`
+	DirectSignUpOwn     string             `json:"directSignUpOwn,omitempty"`
+	DirectSignUp        bool               `json:"directSignUp"`
+	CategoryHidden      bool               `json:"categoryHidden,omitempty"`
+	Priority            bool               `json:"priority"`
+	PrettyID            string             `json:"prettyId,omitempty"`
+	AllowAdding         string             `json:"allowAddingOwn,omitempty"`
+	Adding              string             `json:"allowAdding"`
+	AddedBy             string             `json:"addedBy,omitempty"`
+	Added               string             `json:"added,omitempty"`
+	Children            []*Activity        `json:"children"`
+	Links               []ActivityLink     `json:"links"`
+	Volunteers          []Volunteer        `json:"volunteers"`
+	Categories          []ActivityCategory `json:"categories,omitempty"`
+	Taken               int                `json:"-"`
 }
 
-type Category struct {
+type ActivityCategory struct {
 	ID          string `json:"id"`
 	EventID     string `json:"eventId,omitempty"`
 	Title       string `json:"title"`
@@ -195,17 +180,17 @@ func checkAdding(cell string) (string, error) {
 
 const UncategorizedID = "uncategorized"
 
-func uncategorized() *Category {
-	return &Category{ID: UncategorizedID, Title: "Uncategorized",
+func uncategorized() *ActivityCategory {
+	return &ActivityCategory{ID: UncategorizedID, Title: "Uncategorized",
 		Description: "Things that have not been sorted into a category yet", Adding: AddingNo, ShowOnMain: true, BuiltIn: true}
 }
 
-type Settings struct {
+type ActivitiesSettings struct {
 	ExpenseFormURL string `json:"expenseFormUrl"`
 	Intro          string `json:"intro"`
 }
 
-type Redirect struct {
+type ActivityRedirect struct {
 	Type string `json:"type"`
 	Old  string `json:"old"`
 	New  string `json:"new"`
@@ -218,7 +203,7 @@ const (
 	RedirectAdmin    = "Admin"
 )
 
-func redirectPath(cell string) string {
+func activityRedirectPath(cell string) string {
 	path := strings.TrimSpace(cell)
 	if path == "" {
 		return ""
@@ -247,22 +232,22 @@ func redirectTo(cell string) string {
 	if isURL(to) {
 		return to
 	}
-	return redirectPath(to)
+	return activityRedirectPath(to)
 }
 
 func isURL(s string) bool {
 	return strings.HasPrefix(strings.ToLower(s), "http://") || strings.HasPrefix(strings.ToLower(s), "https://")
 }
 
-type Model struct {
-	Categories []Category  `json:"categories"`
-	Activities []*Activity `json:"activities"`
-	Settings   Settings    `json:"settings"`
-	Redirects  []Redirect  `json:"redirects"`
-	Skipped    Skipped     `json:"-"`
+type Activities struct {
+	Categories []ActivityCategory `json:"categories"`
+	Activities []*Activity        `json:"activities"`
+	Settings   ActivitiesSettings `json:"settings"`
+	Redirects  []ActivityRedirect `json:"redirects"`
+	Skipped    Skipped            `json:"-"`
 	byID       map[string]*Activity
 	byEvent    map[string]*Activity
-	categories map[string]*Category
+	categories map[string]*ActivityCategory
 	links      map[string]*Activity
 	aliases    id.Aliases
 	pretty     map[string]*Activity
@@ -270,11 +255,11 @@ type Model struct {
 	notify     map[string]map[string]bool
 }
 
-func (m *Model) ByPretty(pretty string) *Activity {
+func (m *Activities) ByPretty(pretty string) *Activity {
 	return m.pretty[cells.NormalizePretty(pretty)]
 }
 
-func (m *Model) PathOf(a *Activity) string {
+func (m *Activities) PathOf(a *Activity) string {
 	return activityPath(a.ID, a.Parent, a.PrettyID, func(parent string) string {
 		return m.PathOf(m.byID[parent])
 	})
@@ -294,12 +279,12 @@ func activityPath(id, parent, pretty string, parentPath func(string) string) str
 	return parentPath(parent) + "/" + seg
 }
 
-func (m *Model) walk(path string) *Activity {
+func (m *Activities) walk(path string) *Activity {
 	node, _ := m.trace(path)
 	return node
 }
 
-func (m *Model) trace(path string) (*Activity, bool) {
+func (m *Activities) trace(path string) (*Activity, bool) {
 	segs := strings.Split(strings.Trim(path, "/"), "/")
 	if len(segs) < 2 {
 		return nil, false
@@ -340,16 +325,16 @@ func (m *Model) trace(path string) (*Activity, bool) {
 	return node, aliased && node != nil
 }
 
-func (m *Model) Aliased(path string) string {
-	start := redirectPath(path)
+func (m *Activities) Aliased(path string) string {
+	start := activityRedirectPath(path)
 	if a, aliased := m.trace(start); aliased && m.PathOf(a) != start {
 		return m.PathOf(a)
 	}
 	return ""
 }
 
-func (m *Model) Resolve(path string) *Activity {
-	at := redirectPath(path)
+func (m *Activities) Resolve(path string) *Activity {
+	at := activityRedirectPath(path)
 	for hops := 0; hops < 20 && at != "" && !isURL(at); hops++ {
 		if a := m.walk(at); a != nil {
 			return a
@@ -359,7 +344,7 @@ func (m *Model) Resolve(path string) *Activity {
 	return nil
 }
 
-func (m *Model) moved(at string) string {
+func (m *Activities) moved(at string) string {
 	moved, matched := "", ""
 	for _, r := range m.Redirects {
 		if strings.EqualFold(r.Old, at) {
@@ -371,8 +356,8 @@ func (m *Model) moved(at string) string {
 	return moved
 }
 
-func (m *Model) Destination(path string) string {
-	start := redirectPath(path)
+func (m *Activities) Destination(path string) string {
+	start := activityRedirectPath(path)
 	if start == "" || m.walk(start) != nil {
 		return ""
 	}
@@ -404,7 +389,7 @@ func onSite(path string) bool {
 	return strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "//") && !strings.HasPrefix(path, "/\\")
 }
 
-func (m *Model) redirect(old string) *Redirect {
+func (m *Activities) redirect(old string) *ActivityRedirect {
 	if old == "" {
 		return nil
 	}
@@ -416,9 +401,9 @@ func (m *Model) redirect(old string) *Redirect {
 	return nil
 }
 
-func (m *Model) withRedirect(r Redirect, replacing *Redirect) *Model {
+func (m *Activities) withRedirect(r ActivityRedirect, replacing *ActivityRedirect) *Activities {
 	next := *m
-	next.Redirects = []Redirect{}
+	next.Redirects = []ActivityRedirect{}
 	for _, existing := range m.Redirects {
 		if replacing == nil || existing.cell != replacing.cell {
 			next.Redirects = append(next.Redirects, existing)
@@ -428,7 +413,7 @@ func (m *Model) withRedirect(r Redirect, replacing *Redirect) *Model {
 	return &next
 }
 
-func (m *Model) notifyPrefs(email string) map[string]bool {
+func (m *Activities) notifyPrefs(email string) map[string]bool {
 	return m.notify[strings.ToLower(strings.TrimSpace(email))]
 }
 
@@ -441,21 +426,21 @@ type Skipped struct {
 	PrettyIDs  int
 }
 
-func (m *Model) Activity(key string) *Activity {
+func (m *Activities) Activity(key string) *Activity {
 	return m.byID[m.aliases.Resolve(key)]
 }
 
-func (m *Model) Category(key string) *Category {
+func (m *Activities) Category(key string) *ActivityCategory {
 	return m.categories[m.aliases.Resolve(key)]
 }
 
-func (m *Model) taken(key string) bool {
+func (m *Activities) taken(key string) bool {
 	_, alias := m.aliases[key]
 	_, link := m.links[key]
 	return alias || link || m.byID[key] != nil || m.byEvent[key] != nil || m.categories[key] != nil
 }
 
-func (m *Model) minter() func() string {
+func (m *Activities) minter() func() string {
 	minted := map[string]bool{}
 	return func() string {
 		s := id.New(func(key string) bool { return minted[key] || m.taken(key) })
@@ -464,7 +449,7 @@ func (m *Model) minter() func() string {
 	}
 }
 
-func (m *Model) Root(a *Activity) *Activity {
+func (m *Activities) Root(a *Activity) *Activity {
 	for a.Parent != "" {
 		a = m.byID[a.Parent]
 	}
@@ -503,7 +488,7 @@ func (a *Activity) volunteer(email string) *Volunteer {
 	return nil
 }
 
-func (m *Model) Runs(a *Activity, email string) bool {
+func (m *Activities) Runs(a *Activity, email string) bool {
 	for node := a; node != nil; {
 		if node.IsCoChair(email) {
 			return true
@@ -532,14 +517,14 @@ func parseSpots(cell string) (int, error) {
 }
 
 func checkStatus(cell string) error {
-	if !slices.Contains(Statuses, cell) {
-		return fmt.Errorf("status %q is not one of %s", cell, strings.Join(Statuses, ", "))
+	if !slices.Contains(ActivityStatuses, cell) {
+		return fmt.Errorf("status %q is not one of %s", cell, strings.Join(ActivityStatuses, ", "))
 	}
 	return nil
 }
 
-func CheckYear(year string) error {
-	m := yearForm.FindStringSubmatch(year)
+func CheckActivityYear(year string) error {
+	m := activityYearForm.FindStringSubmatch(year)
 	if m == nil {
 		return fmt.Errorf("year %q is not like 2026 - 2027", year)
 	}
@@ -551,7 +536,7 @@ func CheckYear(year string) error {
 	return nil
 }
 
-func SchoolYear(t time.Time) string {
+func ActivityYear(t time.Time) string {
 	start := t.Year()
 	if t.Month() < time.July {
 		start--
@@ -559,8 +544,8 @@ func SchoolYear(t time.Time) string {
 	return fmt.Sprintf("%d - %d", start, start+1)
 }
 
-func ShiftYear(year string, n int) string {
-	m := yearForm.FindStringSubmatch(year)
+func ShiftActivityYear(year string, n int) string {
+	m := activityYearForm.FindStringSubmatch(year)
 	from, _ := strconv.Atoi(m[1])
 	return fmt.Sprintf("%d - %d", from+n, from+n+1)
 }
@@ -572,15 +557,15 @@ func checkID(kind, title, id string) error {
 	return nil
 }
 
-func parseSettings(rows []store.Row) (Settings, error) {
-	values, err := store.ParseSettings(rows, settingKeys, nil)
+func parseActivitySettings(rows []store.Row) (ActivitiesSettings, error) {
+	values, err := store.ParseSettings(rows, activitySettingKeys, nil)
 	if err != nil {
-		return Settings{}, err
+		return ActivitiesSettings{}, err
 	}
 	if !strings.HasPrefix(values[ExpenseFormKey], "https://") {
-		return Settings{}, fmt.Errorf("setting %q must be a full https:// url", ExpenseFormKey)
+		return ActivitiesSettings{}, fmt.Errorf("setting %q must be a full https:// url", ExpenseFormKey)
 	}
-	return Settings{ExpenseFormURL: values[ExpenseFormKey], Intro: values[IntroKey]}, nil
+	return ActivitiesSettings{ExpenseFormURL: values[ExpenseFormKey], Intro: values[IntroKey]}, nil
 }
 
 func parseNotifications(rows []store.Row) (map[string]map[string]bool, error) {
@@ -603,8 +588,8 @@ func parseNotifications(rows []store.Row) (map[string]map[string]bool, error) {
 	return notify, nil
 }
 
-func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (*Model, error) {
-	settings, err := parseSettings(tables[settingsTab])
+func BuildActivities(ctx context.Context, tables store.Tables, images blob.Checker) (*Activities, error) {
+	settings, err := parseActivitySettings(tables[activitySettingsTab])
 	if err != nil {
 		return nil, err
 	}
@@ -612,17 +597,17 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 	if err != nil {
 		return nil, err
 	}
-	if err := images.Prefetch(ctx, cells.ImageNames([]string{"Image", "Flyer Image"}, tables[categoriesTab], tables[activitiesTab], tables[linksTab])); err != nil {
+	if err := images.Prefetch(ctx, cells.ImageNames([]string{"Image", "Flyer Image"}, tables[activityCategoriesTab], tables[activitiesTab], tables[linksTab])); err != nil {
 		return nil, err
 	}
 	aliases, err := id.ParseAliases(tables[id.AliasesTab])
 	if err != nil {
 		return nil, err
 	}
-	m := &Model{Categories: []Category{}, Activities: []*Activity{}, Settings: settings, notify: notify, aliases: aliases,
-		byID: map[string]*Activity{}, byEvent: map[string]*Activity{}, categories: map[string]*Category{}, links: map[string]*Activity{}, pretty: map[string]*Activity{}, Redirects: []Redirect{}}
-	m.admins = model.ReadAdmins(tables)
-	scoped, err := m.readCategories(tables[categoriesTab], images)
+	m := &Activities{Categories: []ActivityCategory{}, Activities: []*Activity{}, Settings: settings, notify: notify, aliases: aliases,
+		byID: map[string]*Activity{}, byEvent: map[string]*Activity{}, categories: map[string]*ActivityCategory{}, links: map[string]*Activity{}, pretty: map[string]*Activity{}, Redirects: []ActivityRedirect{}}
+	m.admins = ReadAdmins(tables)
+	scoped, err := m.readCategories(tables[activityCategoriesTab], images)
 	if err != nil {
 		return nil, err
 	}
@@ -631,7 +616,7 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 		return nil, err
 	}
 	m.claimPrettyIDs(all)
-	m.readRedirects(tables[redirectsTab])
+	m.readRedirects(tables[activityRedirectsTab])
 	for _, a := range m.Activities {
 		resolveAdding(a, AddingNo)
 	}
@@ -649,8 +634,8 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 	return m, nil
 }
 
-func (m *Model) readCategories(rows []store.Row, images blob.Checker) ([]*Category, error) {
-	scoped := []*Category{}
+func (m *Activities) readCategories(rows []store.Row, images blob.Checker) ([]*ActivityCategory, error) {
+	scoped := []*ActivityCategory{}
 	for _, row := range rows {
 		c, err := m.parseCategory(row, images)
 		if err != nil {
@@ -667,13 +652,13 @@ func (m *Model) readCategories(rows []store.Row, images blob.Checker) ([]*Catego
 		}
 		m.Categories = append(m.Categories, *c)
 	}
-	slices.SortStableFunc(m.Categories, func(a, b Category) int { return store.CompareKeys(a.Order, b.Order) })
+	slices.SortStableFunc(m.Categories, func(a, b ActivityCategory) int { return store.CompareKeys(a.Order, b.Order) })
 	return scoped, nil
 }
 
-func (m *Model) parseCategory(row store.Row, images blob.Checker) (*Category, error) {
+func (m *Activities) parseCategory(row store.Row, images blob.Checker) (*ActivityCategory, error) {
 	id, title := strings.TrimSpace(row["Category ID"]), row["Title"]
-	if err := cells.Title("category", title, maxTitleLength); err != nil {
+	if err := cells.Title("category", title, maxActivityTitleLength); err != nil {
 		return nil, err
 	}
 	if err := checkID("category", title, id); err != nil {
@@ -710,14 +695,14 @@ func (m *Model) parseCategory(row store.Row, images blob.Checker) (*Category, er
 	if err := store.CheckKey(order); err != nil {
 		return nil, fmt.Errorf("category %q: %w", title, err)
 	}
-	return &Category{
+	return &ActivityCategory{
 		ID: id, EventID: strings.TrimSpace(row["Event ID"]), Title: title, Description: row["Description"],
 		Image: row["Image"], ImageURL: image, AllowAdding: adding, ShowOnMain: onMain || strings.TrimSpace(row["Event ID"]) != "", Order: order,
 		DirectSignUpOwn: direct, VolunteersHiddenOwn: volunteersHidden, HiddenOwn: hidden, Hidden: hidden == "Yes",
 	}, nil
 }
 
-func (m *Model) readActivities(rows []store.Row, images blob.Checker) ([]*Activity, error) {
+func (m *Activities) readActivities(rows []store.Row, images blob.Checker) ([]*Activity, error) {
 	all := []*Activity{}
 	for _, row := range rows {
 		a, err := parseActivity(row, images)
@@ -747,7 +732,7 @@ func (m *Model) readActivities(rows []store.Row, images blob.Checker) ([]*Activi
 	return all, nil
 }
 
-func (m *Model) claimPrettyIDs(all []*Activity) {
+func (m *Activities) claimPrettyIDs(all []*Activity) {
 	for _, a := range all {
 		if a.PrettyID == "" || a.Parent != "" {
 			continue
@@ -779,13 +764,13 @@ func (m *Model) claimPrettyIDs(all []*Activity) {
 	}
 }
 
-func (m *Model) readRedirects(rows []store.Row) {
+func (m *Activities) readRedirects(rows []store.Row) {
 	for _, row := range rows {
-		from, to := redirectPath(row["Old"]), redirectTo(row["New"])
+		from, to := activityRedirectPath(row["Old"]), redirectTo(row["New"])
 		if from == "" || to == "" {
 			continue
 		}
-		m.Redirects = append(m.Redirects, Redirect{Type: strings.TrimSpace(row["Type"]), Old: from, New: to, Date: row["Date"], cell: row["Old"]})
+		m.Redirects = append(m.Redirects, ActivityRedirect{Type: strings.TrimSpace(row["Type"]), Old: from, New: to, Date: row["Date"], cell: row["Old"]})
 	}
 }
 
@@ -799,7 +784,7 @@ func resolveAdding(a *Activity, inherited string) {
 	}
 }
 
-func (m *Model) resolveVolunteering() {
+func (m *Activities) resolveVolunteering() {
 	for _, root := range m.Activities {
 		root.DirectSignUp = cells.OrDefault(root.DirectSignUpOwn, true)
 		root.VolunteersHidden = cells.OrDefault(root.VolunteersHiddenOwn, false)
@@ -827,7 +812,7 @@ func resolveVolunteering(a *Activity, direct, hidden bool) {
 	}
 }
 
-func (m *Model) attachScopedCategories(scoped []*Category) error {
+func (m *Activities) attachScopedCategories(scoped []*ActivityCategory) error {
 	for _, c := range scoped {
 		owner := m.byID[c.EventID]
 		if owner == nil {
@@ -843,12 +828,12 @@ func (m *Model) attachScopedCategories(scoped []*Category) error {
 		owner.Categories = append(owner.Categories, *c)
 	}
 	for _, a := range m.Activities {
-		slices.SortStableFunc(a.Categories, func(x, y Category) int { return store.CompareKeys(x.Order, y.Order) })
+		slices.SortStableFunc(a.Categories, func(x, y ActivityCategory) int { return store.CompareKeys(x.Order, y.Order) })
 	}
 	return nil
 }
 
-func (m *Model) fileUncategorized(all []*Activity) {
+func (m *Activities) fileUncategorized(all []*Activity) {
 	fallback := false
 	for _, a := range all {
 		c := m.categories[a.Category]
@@ -869,7 +854,7 @@ func (m *Model) fileUncategorized(all []*Activity) {
 	}
 }
 
-func (m *Model) readVolunteers(rows []store.Row) error {
+func (m *Activities) readVolunteers(rows []store.Row) error {
 	seen := map[string]bool{}
 	for _, row := range rows {
 		id := strings.TrimSpace(row["Event ID"])
@@ -906,10 +891,10 @@ func (m *Model) readVolunteers(rows []store.Row) error {
 	return nil
 }
 
-func (m *Model) readLinks(rows []store.Row, images blob.Checker) error {
+func (m *Activities) readLinks(rows []store.Row, images blob.Checker) error {
 	for _, row := range rows {
 		title := row["Title"]
-		if err := cells.Title("link", title, maxTitleLength); err != nil {
+		if err := cells.Title("link", title, maxActivityTitleLength); err != nil {
 			return err
 		}
 		key, ok := id.Parse(row["Link ID"])
@@ -932,14 +917,14 @@ func (m *Model) readLinks(rows []store.Row, images blob.Checker) error {
 		if err != nil {
 			return fmt.Errorf("link %q on %q: %w", title, a.Title, err)
 		}
-		a.Links = append(a.Links, Link{ID: key, Title: title, URL: row["URL"], Description: strings.TrimSpace(row["Description"]), Image: row["Image"], ImageURL: image})
+		a.Links = append(a.Links, ActivityLink{ID: key, Title: title, URL: row["URL"], Description: strings.TrimSpace(row["Description"]), Image: row["Image"], ImageURL: image})
 	}
 	return nil
 }
 
 func parseActivity(row map[string]string, images blob.Checker) (*Activity, error) {
 	title, year := row["Title"], row["Year"]
-	if err := cells.Title("activity", title, maxTitleLength); err != nil {
+	if err := cells.Title("activity", title, maxActivityTitleLength); err != nil {
 		return nil, err
 	}
 	fail := func(err error) (*Activity, error) {
@@ -949,7 +934,7 @@ func parseActivity(row map[string]string, images blob.Checker) (*Activity, error
 		return nil, nil
 	}
 	if year != "" || strings.TrimSpace(row["Parent"]) == "" {
-		if err := CheckYear(year); err != nil {
+		if err := CheckActivityYear(year); err != nil {
 			return fail(err)
 		}
 	}
@@ -1021,7 +1006,7 @@ func parseActivity(row map[string]string, images blob.Checker) (*Activity, error
 		Timing: row["Timing"], Start: row["Start"], End: row["End"], Location: row["Location"], Spots: spots,
 		CoLeaderNeeded: coLeader, VolunteersComplete: complete, VolunteersHiddenOwn: hidden, DirectSignUpOwn: direct, Priority: priority, PrettyID: pretty, AllowAdding: allowAdding,
 		AddedBy: strings.ToLower(row["Added By"]), Added: row["Added"],
-		Children: []*Activity{}, Links: []Link{}, Volunteers: []Volunteer{},
+		Children: []*Activity{}, Links: []ActivityLink{}, Volunteers: []Volunteer{},
 	}, nil
 }
 

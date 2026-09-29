@@ -9,22 +9,20 @@ import (
 	"heliosian/internal/api"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/birthday"
-	"heliosian/internal/celebrate"
 	"heliosian/internal/feedback"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
 	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/team"
 )
 
 type Snapshot struct {
 	Config    *model.Config
 	Who       *model.Directory
 	Invites   *model.InviteTemplates
-	Team      *team.Model
+	Team      *model.Activities
 	Birthday  birthday.World
-	Celebrate *celebrate.Model
+	Celebrate *model.Parties
 	When      model.CalendarWorld
 	Loop      loop.World
 	Home      *home.Model
@@ -36,9 +34,9 @@ type caches struct {
 	settings  *model.ConfigCache
 	who       *model.DirectoryCache
 	invites   *model.InviteTemplatesCache
-	team      *team.Cache
+	team      *model.ActivitiesCache
 	birthday  *birthday.Cache
-	celebrate *celebrate.Cache
+	celebrate *model.PartiesCache
 	when      *model.CalendarCache
 	loop      *loop.Cache
 	home      *home.Cache
@@ -59,8 +57,10 @@ func (c caches) snapshot(tx *store.Tx) *Snapshot {
 		Team:      activities,
 		Birthday:  birthday.NewWorld(c.birthday.In(tx), directory),
 		Celebrate: parties,
-		When:      c.whenHooks.World(c.when.In(tx), directory, settings, c.idKey, eventSources(directory, parties, activities)),
-		Loop:      loop.NewWorld(c.loop.In(tx), directory, settings.GradeColors, loopMagicTags(directory, parties, activities, c.team.IsAdmin), magicTagKeys(parties, activities)),
+		When:      c.whenHooks.World(c.when.In(tx), directory, settings, parties, activities, c.idKey),
+		Loop: loop.NewWorld(c.loop.In(tx), directory, settings.GradeColors, loopMagicTags(directory, parties, activities, c.team.IsAdmin), func() []string {
+			return model.MagicTagKeys(parties, activities)
+		}),
 		Home:      c.home.In(tx),
 		Artifacts: c.artifacts.In(tx),
 		Feedback:  c.feedback.In(tx),
@@ -72,13 +72,6 @@ func (s *Snapshot) at(q api.Query) *Snapshot {
 	scoped.Loop = s.Loop.At(q.Now)
 	scoped.When = s.When.At(q.Now)
 	return &scoped
-}
-
-func eventSources(directory *model.Directory, parties *celebrate.Model, activities *team.Model) func(email string, now time.Time) []model.Linked {
-	return func(email string, now time.Time) []model.Linked {
-		family := directory.HouseholdOf(email)
-		return append(parties.Linked(family, now), activities.Linked(family)...)
-	}
 }
 
 func (c caches) held(email string) []access.Allowance {

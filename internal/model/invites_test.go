@@ -36,15 +36,38 @@ func directoryOf() *Directory { return testDirectories.Model() }
 func noSettings() *Config { return &Config{} }
 
 func testLists(string) []PickerList {
-	return []PickerList{{Key: carpoolKey, Name: "Carpool", Kind: "tag", People: []string{mia, robin}}, {Key: "activity:e1", Name: "Book Fair", Kind: "activity", People: []string{mia, robin, ella}}}
+	return []PickerList{{Key: carpoolKey, Name: "Carpool", Kind: "tag", People: []string{mia, robin}}, {Key: "activity:" + bookFair, Name: "Book Fair", Kind: "activity", People: []string{mia, robin, ella}}}
 }
 
+const bookFair = "act0000000101"
+
 var (
-	testAttendees      []Attendee
-	testCelebrateAdmin string
-	testMoves          [][4]string
-	testHooks          CalendarHooks
+	testParties    *PartiesCache
+	testActivities *ActivitiesCache
+	testHooks      CalendarHooks
 )
+
+func fondueTicket(key, email, name, status, price, added string) store.Row {
+	return store.Row{"Ticket ID": key, "Party ID": partyA, "Email": email, "Name": name, "Purchaser": host, "Status": status, "Price": price, "Added": added}
+}
+
+func invitesLinked(t *testing.T) (*PartiesCache, *ActivitiesCache) {
+	t.Helper()
+	return linkedCaches(t, store.Tables{
+		partiesTab: {{"Party ID": partyA, "Celebration": "cbn0000002026", "Title": "Fondue Night", "Price": "30", "Start": "2026-11-14 18:00", "End": "2026-11-14 21:00", "Status": StatusOpen}},
+		hostsTab:   {{"Party ID": partyA, "Email": mia}},
+		ticketsTab: {
+			fondueTicket("tkt0000000901", robin, "Robin Whitfield", TicketSold, "30", "2026-09-01 10:00"),
+			fondueTicket("tkt0000000902", sam, "Sam Whitfield", TicketSold, "30", "2026-09-01 10:01"),
+			fondueTicket("tkt0000000903", "", "A cousin", TicketWaitlist, "", "2026-09-01 10:02"),
+		},
+		id.AliasesTab: {{"Alias": "P001", "ID": partyA}},
+	}, store.Tables{
+		activitiesTab: {{"Event ID": bookFair, CalendarEventColumn: "tev0000000101", "Year": "2026 - 2027", "Title": "Book Fair", "Category": "tcg0000000002", "Status": StatusOpen, "Start": "2026-11-20 08:00", "End": "2026-11-20 15:00"}},
+		volunteersTab: {{"Event ID": bookFair, "Email": mia, "Position": PositionCoChair}},
+		id.AliasesTab: {{"Alias": "E001", "ID": bookFair}},
+	})
+}
 
 func calendarInvitesApp(t *testing.T) (http.Handler, *CalendarCache, *mailtest.Recorder) {
 	h, c, k, _ := invitesAppWith(t)
@@ -57,44 +80,23 @@ func invitesAppWith(t *testing.T) (http.Handler, *CalendarCache, *mailtest.Recor
 	sources := newSampleSources(t)
 	testDirectories = sources.directory
 	kept := keptMail()
-	parties := func(id string) *PartyPeople {
-		if id != partyA {
-			return nil
-		}
-		return &PartyPeople{Hosts: []string{mia}, Attendees: append([]Attendee{{Email: robin, Name: "Robin Whitfield", Status: "ticket"}, {Email: sam, Name: "Sam Whitfield", Status: "ticket"}, {Name: "A cousin", Status: "waitlist"}}, testAttendees...)}
-	}
-	testAttendees, testCelebrateAdmin, testMoves = nil, "", nil
-	celebrate := PartyHooks{
-		Party:   parties,
-		IsAdmin: func(email string) bool { return email != "" && email == testCelebrateAdmin },
-		MoveAddress: func(_ context.Context, actor access.Actor, old, to, name string) error {
-			testMoves = append(testMoves, [4]string{actor.Email, old, to, name})
-			return nil
-		},
-	}
-	linked := func(email string) []Linked {
-		return []Linked{
-			{Source: SourceCelebrate, ID: partyA, EventID: partyA, Title: "Fondue Night", Start: "2026-11-14 18:00", End: "2026-11-14 21:00", Path: "/parties/" + partyA, Availability: "available", Hosts: []string{mia}},
-			{Source: SourceTeam, ID: "e1", EventID: "tev0000000101", Title: "Book Fair", Start: "2026-11-20 08:00", End: "2026-11-20 15:00", Path: "/activities/e1", Availability: "open", Hosts: []string{mia}},
-		}
-	}
+	testParties, testActivities = invitesLinked(t)
 	mux := http.NewServeMux()
 	testDeps = CalendarDeps{
-		Cache:     cache,
-		Images:    memoryImages(),
-		Directory: directoryOf,
-		Settings:  noSettings,
-		Lists:     testLists,
-		Linked:    linked,
-		SourceID:  linkedSourceID,
-		Celebrate: celebrate,
-		Sources:   sources.sources,
-		Mail:      CalendarMail{Sender: kept.Mailgun, Base: "https://when.heliosian.com", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey},
-		Style:     testStyle,
-		Queue:     queue,
+		Cache:      cache,
+		Images:     memoryImages(),
+		Directory:  directoryOf,
+		Settings:   noSettings,
+		Parties:    testParties,
+		Activities: testActivities,
+		Lists:      testLists,
+		Sources:    sources.sources,
+		Mail:       CalendarMail{Sender: kept.Mailgun, Base: "https://when.heliosian.com", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey},
+		Style:      testStyle,
+		Queue:      queue,
 	}
 	testHooks = RegisterCalendar(mux, testDeps)
-	return served(mux, cache, testHooks, directoryOf, linked), cache, kept, sources
+	return served(mux, cache, testHooks, directoryOf, testParties, testActivities), cache, kept, sources
 }
 
 var testDeps CalendarDeps
@@ -102,12 +104,6 @@ var testDeps CalendarDeps
 func fillNow(t *testing.T) {
 	t.Helper()
 	newCalendarApp(testDeps).fillGroups(context.Background())
-}
-
-var linkedSources = map[string]string{SourceCelebrate + "/" + partyA: partyA, SourceCelebrate + "/P001": partyA, SourceTeam + "/e1": "e1", SourceTeam + "/E001": "e1"}
-
-func linkedSourceID(source, key string) string {
-	return linkedSources[source+"/"+key]
 }
 
 func idOf(t *testing.T, cache *CalendarCache, address string) string {
@@ -907,17 +903,17 @@ func TestPartyStart(t *testing.T) {
 	if rec.Code != 204 || len(cache.Model().Groups[partyA]) != 1 || cache.Model().Groups[partyA][0].ID != made {
 		t.Errorf("a second start: %d %s, groups %+v", rec.Code, rec.Body, cache.Model().Groups[partyA])
 	}
-	if sent, _, ok := cache.LinkedRSVPs(nil, SourceCelebrate, partyA); !ok || sent {
-		t.Errorf("rsvps before sending: ok %v sent %v", ok, sent)
+	if r := testHooks.app.linkedRSVPs(partyA); r == nil || r.Sent {
+		t.Errorf("rsvps before sending: %+v", r)
 	}
 	act(t, miaH, partyA, "invite", `{"people":[{"email":"`+robin+`"},{"email":"`+sam+`"}]}`)
 	act(t, miaH, partyA, "send", `{}`)
 	act(t, miaH, partyA, "answer-for", `{"email":"`+robin+`","answer":"maybe"}`)
-	sent, answers, ok := cache.LinkedRSVPs(nil, SourceCelebrate, partyA)
-	if !ok || !sent || answers[robin] != AnswerMaybe || answers[sam] != "none" || answers[mia] != "" {
-		t.Errorf("rsvps = ok %v sent %v %v", ok, sent, answers)
+	r := testHooks.app.linkedRSVPs(partyA)
+	if r == nil || !r.Sent || r.Answers[robin] != AnswerMaybe || r.Answers[sam] != "none" || r.Answers[mia] != "" {
+		t.Errorf("rsvps = %+v", r)
 	}
-	if _, _, ok := cache.LinkedRSVPs(nil, SourceCelebrate, "nope"); ok {
+	if r := testHooks.app.linkedRSVPs("nope"); r != nil {
 		t.Errorf("a party with no list has rsvps")
 	}
 }
@@ -1616,7 +1612,6 @@ func TestPermissions(t *testing.T) {
 func TestTeamStart(t *testing.T) {
 	mux, cache, _ := calendarInvitesApp(t)
 	teamA := "tev0000000101"
-	bookFair := []Linked{{Source: SourceTeam, ID: "e1", EventID: teamA, Title: "Book Fair", Start: "2026-11-20 08:00", End: "2026-11-20 15:00", Path: "/activities/e1"}}
 	miaH := as(mia, mux)
 	if rec := act(t, as(robin, mux), teamA, "start", ""); rec.Code != 403 {
 		t.Errorf("a volunteer starting: %d", rec.Code)
@@ -1626,14 +1621,14 @@ func TestTeamStart(t *testing.T) {
 		t.Fatalf("start: %d %s", rec.Code, rec.Body)
 	}
 	g := cache.Model().GroupOf(teamA, cache.Model().Groups[teamA][0].ID)
-	if g == nil || !g.Auto || strings.Join(g.Rule.Tags, ",") != "activity:e1" || cache.Model().Invitations[teamA] == nil {
+	if g == nil || !g.Auto || strings.Join(g.Rule.Tags, ",") != "activity:"+bookFair || cache.Model().Invitations[teamA] == nil {
 		t.Errorf("team group = %+v", g)
 	}
 	if cache.Model().AnswerOf(mia, teamA) != AnswerYes {
 		t.Errorf("the chair's answer = %q", cache.Model().AnswerOf(mia, teamA))
 	}
-	if sent, _, ok := cache.LinkedRSVPs(bookFair, SourceTeam, "e1"); !ok || sent {
-		t.Errorf("rsvps before sending: ok %v sent %v", ok, sent)
+	if r := testHooks.app.linkedRSVPs(bookFair); r == nil || r.Sent {
+		t.Errorf("rsvps before sending: %+v", r)
 	}
 	v := inviteView(t, miaH, teamA)
 	if !v.Host || !v.Linked || v.Party || v.Original == nil || len(v.Hosts) != 1 || v.Hosts[0].Email != mia {
@@ -1978,7 +1973,13 @@ func TestTicketGuestsAndMovedAddresses(t *testing.T) {
 		home   = "ella.w@gmail.com"
 		cousin = "kit@example.org"
 	)
-	testAttendees = []Attendee{{Email: alum, Status: "ticket"}, {Email: cousin, Name: "Kit Whitfield", Status: "free"}, {Email: "hopeful@example.org", Name: "Hopeful", Status: "waitlist"}}
+	if err := testParties.Commit(context.Background(), access.System("test"),
+		store.Insert(ticketsTab, fondueTicket("tkt0000000904", alum, "", TicketSold, "30", "2026-09-01 10:03")),
+		store.Insert(ticketsTab, fondueTicket("tkt0000000905", cousin, "Kit Whitfield", TicketSold, "0", "2026-09-01 10:04")),
+		store.Insert(ticketsTab, fondueTicket("tkt0000000906", "hopeful@example.org", "Hopeful", TicketWaitlist, "", "2026-09-01 10:05")),
+	); err != nil {
+		t.Fatal(err)
+	}
 	sources.list("party:"+partyA, mia, robin, sam)
 	miaH := as(mia, mux)
 	if rec := act(t, miaH, partyA, "start", ""); rec.Code != 204 {
@@ -2010,23 +2011,35 @@ func TestTicketGuestsAndMovedAddresses(t *testing.T) {
 	if rec := act(t, miaH, partyA, "change-email", body); rec.Code != 403 {
 		t.Errorf("moved everywhere without being Celebrate's admin: %d", rec.Code)
 	}
-	testCelebrateAdmin = mia
+	if err := testParties.Commit(context.Background(), access.System("test"), store.Insert(AdminsTab.Name, store.Row{"Email": mia})); err != nil {
+		t.Fatal(err)
+	}
 	if v := inviteView(t, miaH, partyA); !v.MoveEverywhere {
 		t.Errorf("Celebrate's admin is not offered the move")
 	}
+	token := cache.Model().InviteOf(partyA, alum).Token
 	if rec := act(t, miaH, partyA, "change-email", body); rec.Code != 204 {
 		t.Fatalf("move everywhere: %d %s", rec.Code, rec.Body)
 	}
-	if len(testMoves) != 1 || testMoves[0] != [4]string{mia, alum, home, "Ella Graduated"} {
-		t.Fatalf("Celebrate was asked %v", testMoves)
+	if got := testParties.Model().MovedAddresses(); len(got) != 1 || got[0].Old != alum || got[0].New != home || got[0].Name != "Ella Graduated" {
+		t.Fatalf("Celebrate's moved addresses: %+v", got)
+	}
+	if people := testParties.Model().PartyPeople(partyA); !slices.ContainsFunc(people.Attendees, func(a Attendee) bool { return a.Email == home }) || slices.ContainsFunc(people.Attendees, func(a Attendee) bool { return a.Email == alum }) {
+		t.Fatalf("Celebrate's tickets after the move: %+v", people.Attendees)
+	}
+	movers := []string{}
+	for _, row := range testkit.ChangeLog(t, sheet, queue, partiesAppName) {
+		if row["Tab"] == formerTab {
+			movers = append(movers, row["Actor"])
+		}
+	}
+	if len(movers) == 0 || slices.ContainsFunc(movers, func(who string) bool { return who != mia }) {
+		t.Fatalf("Celebrate's move was made by %v, not the admin", movers)
 	}
 
-	token := cache.Model().InviteOf(partyA, alum).Token
-	testAttendees[0].Email = home
-	testHooks.MoveAddress(context.Background(), access.Actor{Email: mia}, alum, home, "Ella Whitfield")
 	model = cache.Model()
 	moved := model.InviteOf(partyA, home)
-	if moved == nil || model.InviteOf(partyA, alum) != nil || moved.Token != token || moved.Name != "Ella Whitfield" {
+	if moved == nil || model.InviteOf(partyA, alum) != nil || moved.Token != token || moved.Name != "Ella Graduated" {
 		t.Fatalf("after the move: %+v, old %+v", moved, model.InviteOf(partyA, alum))
 	}
 	if model.AnswerOf(home, partyA) != AnswerMaybe {

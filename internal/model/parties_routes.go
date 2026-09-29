@@ -1,4 +1,4 @@
-package celebrate
+package model
 
 import (
 	"encoding/csv"
@@ -8,52 +8,49 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
+	"heliosian/internal/cells"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
-	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 )
 
 const (
-	shell                 = "web/celebrate/index.html"
+	partiesShell          = "web/celebrate/index.html"
 	maxTicketsPerPurchase = 20
 )
 
-var pages = []string{
+var partiesPages = []string{
 	"/{$}", "/p/{pretty}", "/celebrations/{code}", "/my", "/my/{email}", "/hosting", "/admin",
 }
 
-type app struct {
-	cache     *Cache
+type partiesApp struct {
+	cache     *PartiesCache
 	images    blob.Images
-	directory func() *model.Directory
+	directory func() *Directory
+	calendar  calendarApp
 	search    imagesearch.Search
 	mailer    *mail.Mailgun
-	rsvps     RSVPLookup
-	moved     AddressMoved
 	style     *sharecard.Style
 }
 
-type Deps struct {
-	Cache     *Cache
+type PartiesDeps struct {
+	Cache     *PartiesCache
 	Images    blob.Images
-	Directory func() *model.Directory
+	Directory func() *Directory
+	Calendar  CalendarHooks
 	Search    imagesearch.Search
 	Mailer    *mail.Mailgun
-	RSVPs     RSVPLookup
-	Moved     AddressMoved
 	Style     *sharecard.Style
 }
 
-func Register(mux *http.ServeMux, d Deps) {
+func RegisterParties(mux *http.ServeMux, d PartiesDeps) {
 	d.Search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
-	a := app{cache: d.Cache, images: d.Images, directory: d.Directory, search: d.Search, mailer: d.Mailer, rsvps: d.RSVPs, moved: d.Moved, style: d.Style}
-	for _, page := range pages {
+	a := partiesApp{cache: d.Cache, images: d.Images, directory: d.Directory, calendar: d.Calendar.app, search: d.Search, mailer: d.Mailer, style: d.Style}
+	for _, page := range partiesPages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("GET /parties/{id}", a.partyPage)
@@ -80,53 +77,45 @@ func Register(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("POST /api/celebrate/categories/order", serve.JSON(a.reorderCategories))
 	mux.HandleFunc("POST /api/celebrate/settings", serve.JSON(a.saveSettings))
 	mux.HandleFunc("GET /api/celebrate/invoices.csv", a.invoicesCSV)
-	model.RegisterAdmins(mux, a.cache.AdminList, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
+	RegisterAdmins(mux, a.cache.AdminList, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
 }
 
-func (a app) page(w http.ResponseWriter, r *http.Request) {
-	serve.File(w, r, shell)
+func (a partiesApp) page(w http.ResponseWriter, r *http.Request) {
+	serve.File(w, r, partiesShell)
 }
 
-func (a app) partyPage(w http.ResponseWriter, r *http.Request) {
+func (a partiesApp) partyPage(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("id")
 	if p := a.cache.Model().Party(key); p != nil && p.ID != key {
 		http.Redirect(w, r, "/parties/"+url.PathEscape(p.ID), http.StatusMovedPermanently)
 		return
 	}
-	serve.File(w, r, shell)
+	serve.File(w, r, partiesShell)
 }
 
-func (a app) actor(r *http.Request) access.Actor {
+func (a partiesApp) actor(r *http.Request) access.Actor {
 	return a.directory().Actor(r, a.cache.Held)
-}
-
-var now = func() time.Time {
-	return time.Now().In(model.Location)
-}
-
-func today() string {
-	return now().Format(DateFormat)
 }
 
 func stamp() string {
 	return now().Format(DateTimeFormat)
 }
 
-func (a app) model(r *http.Request, _ serve.None) (View, error) {
+func (a partiesApp) model(r *http.Request, _ serve.None) (PartiesView, error) {
 	actor := a.actor(r)
-	view := RenderWith(a.cache.Model(), a.directory(), a.rsvps, actor, now())
+	view := RenderParties(a.cache.Model(), a.directory(), a.calendar.linkedRSVPs, actor, now())
 	view.ImageSearch = a.search.On()
 	return view, nil
 }
 
-func nameOf(directory *model.Directory, email string) string {
+func nameOf(directory *Directory, email string) string {
 	if p := directory.Person(directory.Resolve(email)); p != nil {
 		return p.FullName
 	}
-	return DisplayName(email)
+	return cells.DisplayName(email)
 }
 
-func ticketName(directory *model.Directory, t map[string]string) string {
+func ticketName(directory *Directory, t map[string]string) string {
 	if t["Email"] != "" {
 		if p := directory.Person(directory.Resolve(t["Email"])); p != nil && p.FullName != "" {
 			return p.FullName
@@ -135,7 +124,7 @@ func ticketName(directory *model.Directory, t map[string]string) string {
 	if t["Name"] != "" {
 		return t["Name"]
 	}
-	return DisplayName(t["Email"])
+	return cells.DisplayName(t["Email"])
 }
 
 func audienceWords(p *Party) string {
@@ -149,7 +138,7 @@ func audienceWords(p *Party) string {
 	return strings.Join(words, " and ")
 }
 
-func (a app) buyTickets(r *http.Request, body ticketOrder) (map[string]int, error) {
+func (a partiesApp) buyTickets(r *http.Request, body ticketOrder) (map[string]int, error) {
 	actor := a.actor(r)
 	got, err := a.cache.Model().takeTickets(actor, a.directory(), body)
 	if err != nil {
@@ -180,7 +169,7 @@ func plural(n int, word string) string {
 	return word + "s"
 }
 
-func (a app) joinWaitlist(r *http.Request, body waitlistOrder) (map[string]int, error) {
+func (a partiesApp) joinWaitlist(r *http.Request, body waitlistOrder) (map[string]int, error) {
 	actor := a.actor(r)
 	got, err := a.cache.Model().joinWaitlist(actor, a.directory(), body)
 	if err != nil {
@@ -198,7 +187,7 @@ func (a app) joinWaitlist(r *http.Request, body waitlistOrder) (map[string]int, 
 	return map[string]int{"sold": 0, "waitlisted": body.Quantity}, nil
 }
 
-func (a app) offerTickets(r *http.Request, body offer) (serve.None, error) {
+func (a partiesApp) offerTickets(r *http.Request, body offer) (serve.None, error) {
 	actor := a.actor(r)
 	got, err := a.cache.Model().offerTickets(actor, a.directory(), body)
 	if err != nil {
@@ -223,7 +212,7 @@ type ticketRef struct {
 	TicketID string `json:"ticketId"`
 }
 
-func (a app) removeTicket(r *http.Request, body ticketRef) (serve.None, error) {
+func (a partiesApp) removeTicket(r *http.Request, body ticketRef) (serve.None, error) {
 	actor := a.actor(r)
 	t, p, ops, err := a.cache.Model().removeTicket(actor, body.TicketID)
 	if err != nil {
@@ -237,7 +226,7 @@ func (a app) removeTicket(r *http.Request, body ticketRef) (serve.None, error) {
 	return serve.None{}, nil
 }
 
-func (a app) editTicket(r *http.Request, body ticketEdit) (serve.None, error) {
+func (a partiesApp) editTicket(r *http.Request, body ticketEdit) (serve.None, error) {
 	actor := a.actor(r)
 	t, p, ops, details, err := a.cache.Model().editTicket(actor, body)
 	if err != nil {
@@ -251,7 +240,7 @@ func (a app) editTicket(r *http.Request, body ticketEdit) (serve.None, error) {
 	return serve.None{}, nil
 }
 
-func (a app) reassignTicket(r *http.Request, body reassignment) (serve.None, error) {
+func (a partiesApp) reassignTicket(r *http.Request, body reassignment) (serve.None, error) {
 	actor := a.actor(r)
 	t, p, ops, who, err := a.cache.Model().reassignTicket(actor, a.directory(), body)
 	if err != nil {
@@ -265,7 +254,7 @@ func (a app) reassignTicket(r *http.Request, body reassignment) (serve.None, err
 	return serve.None{}, nil
 }
 
-func (a app) saveParty(r *http.Request, body partyBody) (map[string]string, error) {
+func (a partiesApp) saveParty(r *http.Request, body partyBody) (map[string]string, error) {
 	actor := a.actor(r)
 	saved, err := a.cache.Model().saveParty(actor, body)
 	if err != nil {
@@ -283,7 +272,7 @@ type partyRef struct {
 	ID string `json:"id"`
 }
 
-func (a app) deleteParty(r *http.Request, body partyRef) (serve.None, error) {
+func (a partiesApp) deleteParty(r *http.Request, body partyRef) (serve.None, error) {
 	actor := a.actor(r)
 	p, ops, err := a.cache.Model().deleteParty(actor, body.ID)
 	if err != nil {
@@ -296,7 +285,7 @@ func (a app) deleteParty(r *http.Request, body partyRef) (serve.None, error) {
 	return serve.None{}, nil
 }
 
-func (a app) setFlags(r *http.Request, body partyFlags) (serve.None, error) {
+func (a partiesApp) setFlags(r *http.Request, body partyFlags) (serve.None, error) {
 	actor := a.actor(r)
 	p, ops, err := a.cache.Model().setFlags(actor, body)
 	if err != nil {
@@ -314,7 +303,7 @@ type statusChange struct {
 	Status string `json:"status"`
 }
 
-func (a app) setStatus(r *http.Request, body statusChange) (serve.None, error) {
+func (a partiesApp) setStatus(r *http.Request, body statusChange) (serve.None, error) {
 	actor := a.actor(r)
 	p, ops, err := a.cache.Model().setStatus(actor, body.ID, body.Status)
 	if err != nil {
@@ -327,7 +316,7 @@ func (a app) setStatus(r *http.Request, body statusChange) (serve.None, error) {
 	return serve.None{}, nil
 }
 
-func (a app) saveCelebration(r *http.Request, body celebrationForm) (serve.None, error) {
+func (a partiesApp) saveCelebration(r *http.Request, body celebrationForm) (serve.None, error) {
 	actor := a.actor(r)
 	ops, adding, err := a.cache.Model().saveCelebration(actor, body)
 	if err != nil {
@@ -345,7 +334,7 @@ type celebrationRef struct {
 	ID string `json:"id"`
 }
 
-func (a app) deleteCelebration(r *http.Request, body celebrationRef) (serve.None, error) {
+func (a partiesApp) deleteCelebration(r *http.Request, body celebrationRef) (serve.None, error) {
 	actor := a.actor(r)
 	c, ops, err := a.cache.deleteCelebration(actor, body.ID)
 	if err != nil {
@@ -363,7 +352,7 @@ type categoryForm struct {
 	Title string `json:"title"`
 }
 
-func (a app) saveCategory(r *http.Request, body categoryForm) (serve.None, error) {
+func (a partiesApp) saveCategory(r *http.Request, body categoryForm) (serve.None, error) {
 	actor := a.actor(r)
 	ops, adding, err := a.cache.Model().saveCategory(actor, body.ID, body.Title)
 	if err != nil {
@@ -381,7 +370,7 @@ type categoryRef struct {
 	ID string `json:"id"`
 }
 
-func (a app) deleteCategory(r *http.Request, body categoryRef) (serve.None, error) {
+func (a partiesApp) deleteCategory(r *http.Request, body categoryRef) (serve.None, error) {
 	actor := a.actor(r)
 	c, ops, err := a.cache.deleteCategory(actor, body.ID)
 	if err != nil {
@@ -398,7 +387,7 @@ type categoryIDs struct {
 	IDs []string `json:"ids"`
 }
 
-func (a app) reorderCategories(r *http.Request, body categoryIDs) (serve.None, error) {
+func (a partiesApp) reorderCategories(r *http.Request, body categoryIDs) (serve.None, error) {
 	actor := a.actor(r)
 	ops, err := a.cache.Model().reorderCategories(actor, body.IDs)
 	if err != nil {
@@ -411,7 +400,7 @@ func (a app) reorderCategories(r *http.Request, body categoryIDs) (serve.None, e
 	return serve.None{}, nil
 }
 
-func (a app) saveSettings(r *http.Request, body Settings) (serve.None, error) {
+func (a partiesApp) saveSettings(r *http.Request, body PartiesSettings) (serve.None, error) {
 	actor := a.actor(r)
 	ops, err := a.cache.Model().saveSettings(actor, body)
 	if err != nil {
@@ -424,16 +413,16 @@ func (a app) saveSettings(r *http.Request, body Settings) (serve.None, error) {
 	return serve.None{}, nil
 }
 
-func (a app) invoicesCSV(w http.ResponseWriter, r *http.Request) {
-	if err := require(a.actor(r), SeeAll); err != nil {
+func (a partiesApp) invoicesCSV(w http.ResponseWriter, r *http.Request) {
+	if err := require(a.actor(r), SeeAllParties); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	model := a.cache.Model()
+	m := a.cache.Model()
 	key := r.URL.Query().Get("celebration")
 	code := ""
 	if key != "" {
-		c := model.CelebrationByID(key)
+		c := m.CelebrationByID(key)
 		if c == nil {
 			http.Error(w, "no such celebration", http.StatusNotFound)
 			return
@@ -444,7 +433,7 @@ func (a app) invoicesCSV(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"invoicing-%s.csv\"", code))
 	out := csv.NewWriter(w)
 	out.Write(invoiceCSVColumns)
-	for _, l := range model.Invoicing {
+	for _, l := range m.Invoicing {
 		if key != "" && l.Celebration != key {
 			continue
 		}

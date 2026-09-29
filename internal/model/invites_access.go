@@ -44,7 +44,7 @@ func (a calendarApp) party(e *Event) *PartyPeople {
 	if e == nil || e.Source != SourceCelebrate {
 		return nil
 	}
-	return a.parties(e.linkedID())
+	return a.parties().PartyPeople(e.linkedID())
 }
 
 func isAdult(p *Person) bool {

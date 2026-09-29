@@ -16,10 +16,9 @@ import (
 	"heliosian/internal/testkit"
 )
 
-func served(mux *http.ServeMux, cache *CalendarCache, hooks CalendarHooks, directory func() *Directory, linked func(string) []Linked) *http.ServeMux {
-	sources := func(email string, _ time.Time) []Linked { return linked(email) }
+func served(mux *http.ServeMux, cache *CalendarCache, hooks CalendarHooks, directory func() *Directory, parties *PartiesCache, activities *ActivitiesCache) *http.ServeMux {
 	world := func(tx *store.Tx) CalendarWorld {
-		return hooks.World(cache.In(tx), directory(), noSettings(), sampleKey, sources)
+		return hooks.World(cache.In(tx), directory(), noSettings(), parties.Model(), activities.Model(), sampleKey)
 	}
 	reg := api.New(api.Config[CalendarWorld]{
 		Actor:  func(r *http.Request, w CalendarWorld) access.Actor { return w.Directory.Actor(r, cache.Held) },

@@ -1,4 +1,4 @@
-package celebrate
+package model
 
 import (
 	"context"
@@ -9,13 +9,12 @@ import (
 	"time"
 
 	"heliosian/internal/mail"
-	"heliosian/internal/model"
 )
 
-var brand = mail.Brand{Name: "Helios Celebrate", Color: "#0f4e54", Tagline: "the fun(d)raiser parties site"}
+var partiesBrand = mail.Brand{Name: "Helios Celebrate", Color: "#0f4e54", Tagline: "the fun(d)raiser parties site"}
 
 func partyEvent(p *Party, page string) (mail.Event, bool) {
-	start, until, allDay, ok := mail.Span(p.Start, p.End, model.Location)
+	start, until, allDay, ok := mail.Span(p.Start, p.End, Location)
 	if !ok {
 		return mail.Event{}, false
 	}
@@ -30,13 +29,13 @@ func partyEvent(p *Party, page string) (mail.Event, bool) {
 	return mail.Event{Start: start, End: until, AllDay: allDay, Summary: p.Title, Description: details + page, Location: where, URL: page}, true
 }
 
-func (a app) event(directory *model.Directory, p *Party, purchaser, page string, to []string) (mail.Event, bool) {
+func (a partiesApp) event(directory *Directory, p *Party, purchaser, page string, to []string) (mail.Event, bool) {
 	e, ok := partyEvent(p, page)
 	if !ok {
 		return e, false
 	}
 	e.UID = fmt.Sprintf("celebrate-%s-%s@heliosian.com", p.ID, purchaser)
-	e.Organizer = mail.Person{Name: brand.Name, Email: a.mailer.From()}
+	e.Organizer = mail.Person{Name: partiesBrand.Name, Email: a.mailer.From()}
 	for _, email := range to {
 		e.Attendees = append(e.Attendees, mail.Person{Name: attendeeName(directory, p, email), Email: email})
 	}
@@ -51,7 +50,7 @@ func calendarLink(p *Party, page string) string {
 	return e.GoogleLink()
 }
 
-func attendeeName(directory *model.Directory, p *Party, email string) string {
+func attendeeName(directory *Directory, p *Party, email string) string {
 	for _, t := range p.Tickets {
 		if t.Email == email {
 			return ticketName(directory, map[string]string{"Email": t.Email, "Name": t.Name})
@@ -60,23 +59,23 @@ func attendeeName(directory *model.Directory, p *Party, email string) string {
 	return nameOf(directory, email)
 }
 
-func (a app) letterFor(base string, p *Party) mail.Letter {
-	model := a.cache.Model()
-	l := mail.Letter{Brand: brand, Base: base, Title: p.Title, Subtitle: p.Subtitle, When: whenLine(p), Where: p.Location, Path: base + model.PathOf(p)}
+func (a partiesApp) letterFor(base string, p *Party) mail.Letter {
+	m := a.cache.Model()
+	l := mail.Letter{Brand: partiesBrand, Base: base, Title: p.Title, Subtitle: p.Subtitle, When: whenLine(p), Where: p.Location, Path: base + m.PathOf(p)}
 	if p.Address != "" {
 		if l.Where != "" {
 			l.Where += " · "
 		}
 		l.Where += p.Address
 	}
-	if previewable(p) {
+	if partyPreviewable(p) {
 		l.Picture = base + "/open/share/" + p.ID + ".png"
 	}
 	return l
 }
 
-func (a app) sendGoing(ctx context.Context, directory *model.Directory, subject string, to []string, cc []string, l mail.Letter, p *Party, purchaser string) {
-	replyTo := without(p.HostEmails, purchaser)
+func (a partiesApp) sendGoing(ctx context.Context, directory *Directory, subject string, to []string, cc []string, l mail.Letter, p *Party, purchaser string) {
+	replyTo := except(p.HostEmails, purchaser)
 	note := l.Message(subject, to, cc, replyTo)
 	mail.Post(ctx, a.mailer, note)
 	e, ok := a.event(directory, p, purchaser, l.Path, note.To)
@@ -89,11 +88,11 @@ func (a app) sendGoing(ctx context.Context, directory *model.Directory, subject 
 	il.Button = "See the party"
 	il.Calendar = l.Calendar
 	invite := il.Message("Calendar invite: "+p.Title, note.To, nil, replyTo)
-	invite.Attachments = []mail.Attachment{mail.Calendar{Product: brand.Name, Method: mail.MethodRequest, Stamp: time.Now(), Events: []mail.Event{e}}.Attachment()}
+	invite.Attachments = []mail.Attachment{mail.Calendar{Product: partiesBrand.Name, Method: mail.MethodRequest, Stamp: time.Now(), Events: []mail.Event{e}}.Attachment()}
 	mail.Post(ctx, a.mailer, invite)
 }
 
-func without(list []string, drop string) []string {
+func except(list []string, drop string) []string {
 	out := []string{}
 	for _, e := range list {
 		if e != drop {
@@ -103,7 +102,7 @@ func without(list []string, drop string) []string {
 	return out
 }
 
-func firstName(directory *model.Directory, email string) string {
+func firstNameIn(directory *Directory, email string) string {
 	words := strings.Fields(nameOf(directory, email))
 	if len(words) == 0 {
 		return ""
@@ -111,14 +110,14 @@ func firstName(directory *model.Directory, email string) string {
 	return words[0]
 }
 
-func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []map[string]string, actor string) {
+func (a partiesApp) mailTickets(r *http.Request, p *Party, purchaser string, taken []map[string]string, actor string) {
 	if len(taken) == 0 {
 		return
 	}
 	base := mail.Base(r)
-	model := a.cache.Model()
+	m := a.cache.Model()
 	directory := a.directory()
-	if now := model.Party(p.ID); now != nil {
+	if now := m.Party(p.ID); now != nil {
 		p = now
 	}
 	l := a.letterFor(base, p)
@@ -158,7 +157,7 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 		if words := strings.Fields(holder); len(words) > 0 {
 			hi = "Hi " + words[0]
 		}
-	} else if first := firstName(directory, purchaser); first != "" {
+	} else if first := firstNameIn(directory, purchaser); first != "" {
 		hi = "Hi " + first
 	}
 	by := ""
@@ -220,7 +219,7 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 	if len(sold) > 0 {
 		l.Calendar = calendarLink(p, l.Path)
 		if !free {
-			l.Footnote = model.Settings.TicketNote
+			l.Footnote = m.Settings.TicketNote
 		}
 	}
 	cc := []string{}
@@ -228,15 +227,15 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 		cc = append(cc, actor)
 	}
 	if len(sold) > 0 {
-		a.sendGoing(r.Context(), directory, subject, to, append(cc, without(p.HostEmails, purchaser)...), l, p, purchaser)
+		a.sendGoing(r.Context(), directory, subject, to, append(cc, except(p.HostEmails, purchaser)...), l, p, purchaser)
 		return
 	}
-	mail.Post(r.Context(), a.mailer, l.Message(subject, to, cc, without(p.HostEmails, purchaser)))
+	mail.Post(r.Context(), a.mailer, l.Message(subject, to, cc, except(p.HostEmails, purchaser)))
 	a.mailWaitlistHosts(r, directory, p, purchaser, waiting, taken[0]["Note"], actor)
 }
 
-func (a app) mailWaitlistHosts(r *http.Request, directory *model.Directory, p *Party, purchaser string, waiting int, note, actor string) {
-	hosts := without(p.HostEmails, purchaser)
+func (a partiesApp) mailWaitlistHosts(r *http.Request, directory *Directory, p *Party, purchaser string, waiting int, note, actor string) {
+	hosts := except(p.HostEmails, purchaser)
 	if len(hosts) == 0 {
 		return
 	}
@@ -256,7 +255,7 @@ func (a app) mailWaitlistHosts(r *http.Request, directory *model.Directory, p *P
 	mail.Post(r.Context(), a.mailer, l.Message(fmt.Sprintf("Waitlist for %s: %s wants %d %s", p.Title, who, waiting, plural(waiting, "ticket")), hosts, nil, []string{purchaser}))
 }
 
-func (a app) mailOffered(r *http.Request, p *Party, purchaser string, tickets []map[string]string, actor string) {
+func (a partiesApp) mailOffered(r *http.Request, p *Party, purchaser string, tickets []map[string]string, actor string) {
 	if len(tickets) == 0 {
 		return
 	}
@@ -267,7 +266,7 @@ func (a app) mailOffered(r *http.Request, p *Party, purchaser string, tickets []
 	}
 	l := a.letterFor(base, p)
 	hi := "Hi"
-	if first := firstName(directory, purchaser); first != "" {
+	if first := firstNameIn(directory, purchaser); first != "" {
 		hi = "Hi " + first
 	}
 	n := len(tickets)
@@ -287,10 +286,10 @@ func (a app) mailOffered(r *http.Request, p *Party, purchaser string, tickets []
 	l.Button = "See the party"
 	l.Calendar = calendarLink(p, l.Path)
 	l.Footnote = "A ticket marked \"to be named\" is a guest's: open the party and use Reassign beside it to say who is coming. " + a.cache.Model().Settings.TicketNote
-	a.sendGoing(r.Context(), directory, fmt.Sprintf("You're in: %d %s to %s", n, plural(n, "ticket"), p.Title), []string{purchaser}, without(p.HostEmails, purchaser), l, p, purchaser)
+	a.sendGoing(r.Context(), directory, fmt.Sprintf("You're in: %d %s to %s", n, plural(n, "ticket"), p.Title), []string{purchaser}, except(p.HostEmails, purchaser), l, p, purchaser)
 }
 
-func hostNames(directory *model.Directory, p *Party) string {
+func hostNames(directory *Directory, p *Party) string {
 	if p.Hosts != "" {
 		return p.Hosts
 	}

@@ -1,4 +1,4 @@
-package team
+package model
 
 import (
 	"sort"
@@ -7,7 +7,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/model"
 )
 
 type Child struct {
@@ -16,11 +15,11 @@ type Child struct {
 	Grade string `json:"grade,omitempty"`
 }
 
-func household(model *model.Directory, p *model.Person) (adults, kids []Child) {
+func activityHousehold(directory *Directory, p *Person) (adults, kids []Child) {
 	if p == nil || !p.IsParent {
 		return nil, nil
 	}
-	grown, young := model.Household(p.Email)
+	grown, young := directory.Household(p.Email)
 	for _, a := range grown {
 		adults = append(adults, Child{Email: a.Email, Name: a.FullName})
 	}
@@ -30,24 +29,24 @@ func household(model *model.Directory, p *model.Person) (adults, kids []Child) {
 	return adults, kids
 }
 
-func parentsOf(model *model.Directory, email string) []string {
-	p := model.Person(email)
+func parentsOf(directory *Directory, email string) []string {
+	p := directory.Person(email)
 	if p == nil || !p.IsStudent {
 		return nil
 	}
 	return p.ParentContactEmails
 }
 
-func (d viewer) person(email string) (string, string) {
+func (d activityViewer) person(email string) (string, string) {
 	if p := d.directory.Person(d.directory.Resolve(strings.ToLower(email))); p != nil {
 		return p.FullName, d.directory.HeroPhoto(p.Email)
 	}
 	return cells.DisplayName(email), ""
 }
 
-type viewer struct {
+type activityViewer struct {
 	access.Actor
-	directory *model.Directory
+	directory *Directory
 }
 
 type Years struct {
@@ -70,13 +69,6 @@ type ActivityView struct {
 
 type EmailListLookup func(id string) string
 
-type EventRSVPs struct {
-	Sent    bool
-	Answers map[string]string
-}
-
-type RSVPLookup func(id string) *EventRSVPs
-
 type PersonView struct {
 	Email      string `json:"email"`
 	Name       string `json:"name"`
@@ -85,19 +77,19 @@ type PersonView struct {
 	CoChairing int    `json:"coChairing"`
 }
 
-type View struct {
-	User        User              `json:"user"`
-	Years       Years             `json:"years"`
-	Settings    Settings          `json:"settings"`
-	Categories  []Category        `json:"categories"`
-	Activities  []ActivityView    `json:"activities"`
-	People      []PersonView      `json:"people,omitempty"`
-	Redirects   []Redirect        `json:"redirects"`
-	ImageSearch bool              `json:"imageSearch"`
-	GradeColors map[string]string `json:"gradeColors,omitempty"`
+type ActivitiesView struct {
+	User        ActivitiesUser     `json:"user"`
+	Years       Years              `json:"years"`
+	Settings    ActivitiesSettings `json:"settings"`
+	Categories  []ActivityCategory `json:"categories"`
+	Activities  []ActivityView     `json:"activities"`
+	People      []PersonView       `json:"people,omitempty"`
+	Redirects   []ActivityRedirect `json:"redirects"`
+	ImageSearch bool               `json:"imageSearch"`
+	GradeColors map[string]string  `json:"gradeColors,omitempty"`
 }
 
-type User struct {
+type ActivitiesUser struct {
 	Email    string  `json:"email"`
 	Name     string  `json:"name"`
 	Initial  string  `json:"initial"`
@@ -124,15 +116,15 @@ func (a *Activity) shownStatus() string {
 	return a.Status
 }
 
-func (m *Model) Edits(a *Activity, v access.Actor) bool {
+func (m *Activities) Edits(a *Activity, v access.Actor) bool {
 	return v.May(ActAsCochair) || m.Runs(a, v.Email)
 }
 
-func (m *Model) Sees(a *Activity, v access.Actor) bool {
-	return v.May(SeeAll) || m.Runs(a, v.Email)
+func (m *Activities) Sees(a *Activity, v access.Actor) bool {
+	return v.May(SeeAllActivities) || m.Runs(a, v.Email)
 }
 
-func (m *Model) VisibleTo(a *Activity, v access.Actor) bool {
+func (m *Activities) VisibleTo(a *Activity, v access.Actor) bool {
 	for node := a; node != nil; node = m.Activity(node.Parent) {
 		if !visibleStatus(node.shownStatus(), node.AddedBy, v.Email, m.Sees(node, v)) {
 			return false
@@ -144,14 +136,14 @@ func (m *Model) VisibleTo(a *Activity, v access.Actor) bool {
 	return false
 }
 
-func (m *Model) ActivityFor(a *Activity, v access.Actor) *Activity {
+func (m *Activities) ActivityFor(a *Activity, v access.Actor) *Activity {
 	if !m.VisibleTo(a, v) {
 		return nil
 	}
 	return m.activityFor(a, v)
 }
 
-func (m *Model) activityFor(a *Activity, v access.Actor) *Activity {
+func (m *Activities) activityFor(a *Activity, v access.Actor) *Activity {
 	sees := m.Sees(a, v)
 	c := *a
 	c.Taken = len(a.Volunteers)
@@ -174,7 +166,7 @@ func (m *Model) activityFor(a *Activity, v access.Actor) *Activity {
 	return &c
 }
 
-func (v viewer) volunteers(list []Volunteer) []Volunteer {
+func (v activityViewer) volunteers(list []Volunteer) []Volunteer {
 	out := []Volunteer{}
 	for _, vol := range list {
 		vol.Name, vol.PhotoURL = v.person(vol.Email)
@@ -192,52 +184,48 @@ func (v viewer) volunteers(list []Volunteer) []Volunteer {
 	return out
 }
 
-func (v viewer) activity(model *Model, a *Activity, runs bool, lists EmailListLookup) ActivityView {
+func (v activityViewer) activity(m *Activities, a *Activity, runs bool, lists EmailListLookup) ActivityView {
 	chairs := runs || a.IsCoChair(v.Email)
 	view := ActivityView{
 		Activity:   a,
 		Children:   []*ActivityView{},
 		Volunteers: v.volunteers(a.Volunteers),
 		Taken:      a.Taken,
-		CanEdit:    model.Edits(a, v.Actor),
+		CanEdit:    m.Edits(a, v.Actor),
 		Runs:       chairs,
 	}
 	for _, c := range a.Children {
-		child := v.activity(model, c, chairs, lists)
+		child := v.activity(m, c, chairs, lists)
 		view.Children = append(view.Children, &child)
 	}
-	if (chairs || v.May(SeeAll)) && lists != nil {
+	if chairs || v.May(SeeAllActivities) {
 		view.EmailList = lists(a.ID)
 	}
 	return view
 }
 
-func Render(model *Model, directory *model.Directory, settings *model.Config, as access.Actor, now time.Time) View {
-	return RenderWith(model, directory, settings, nil, nil, as, now)
-}
-
-func RenderWith(model *Model, directory *model.Directory, settings *model.Config, rsvps RSVPLookup, lists EmailListLookup, as access.Actor, now time.Time) View {
-	v := viewer{Actor: as, directory: directory}
-	email, admin := as.Email, as.May(SeeAll)
+func RenderActivities(m *Activities, directory *Directory, settings *Config, rsvps RSVPLookup, lists EmailListLookup, as access.Actor, now time.Time) ActivitiesView {
+	v := activityViewer{Actor: as, directory: directory}
+	email, admin := as.Email, as.May(SeeAllActivities)
 	name, photo := v.person(email)
-	spouses, children := household(directory, directory.Person(email))
-	current := SchoolYear(now)
-	view := View{
-		User:        User{Email: email, Name: name, Initial: strings.ToUpper(name[:1]), PhotoURL: photo, IsAdmin: admin, Spouses: spouses, Children: children},
-		Years:       Years{Current: current, Last: ShiftYear(current, -1), Next: ShiftYear(current, 1)},
-		Settings:    model.Settings,
-		Categories:  model.Categories,
+	spouses, children := activityHousehold(directory, directory.Person(email))
+	current := ActivityYear(now)
+	view := ActivitiesView{
+		User:        ActivitiesUser{Email: email, Name: name, Initial: strings.ToUpper(name[:1]), PhotoURL: photo, IsAdmin: admin, Spouses: spouses, Children: children},
+		Years:       Years{Current: current, Last: ShiftActivityYear(current, -1), Next: ShiftActivityYear(current, 1)},
+		Settings:    m.Settings,
+		Categories:  m.Categories,
 		Activities:  []ActivityView{},
-		Redirects:   model.Redirects,
+		Redirects:   m.Redirects,
 		GradeColors: settings.GradeColors,
 	}
-	for _, raw := range model.Activities {
-		a := model.ActivityFor(raw, as)
+	for _, raw := range m.Activities {
+		a := m.ActivityFor(raw, as)
 		if a == nil {
 			continue
 		}
-		av := v.activity(model, a, false, lists)
-		if model.Sees(raw, as) && rsvps != nil {
+		av := v.activity(m, a, false, lists)
+		if m.Sees(raw, as) {
 			if r := rsvps(a.ID); r != nil {
 				av.Started, av.Invited = true, r.Sent
 				if r.Sent {
@@ -250,12 +238,12 @@ func RenderWith(model *Model, directory *model.Directory, settings *model.Config
 		view.Activities = append(view.Activities, av)
 	}
 	if admin {
-		view.People = v.people(model)
+		view.People = v.people(m)
 	}
 	return view
 }
 
-func (v viewer) people(model *Model) []PersonView {
+func (v activityViewer) people(m *Activities) []PersonView {
 	byEmail := map[string]*PersonView{}
 	count := func(list []Volunteer) {
 		for _, vol := range list {
@@ -271,7 +259,7 @@ func (v viewer) people(model *Model) []PersonView {
 			}
 		}
 	}
-	for _, a := range model.Activities {
+	for _, a := range m.Activities {
 		count(a.Volunteers)
 		for _, c := range a.Descendants() {
 			count(c.Volunteers)

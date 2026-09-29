@@ -1,4 +1,4 @@
-package celebrate
+package model
 
 import (
 	"fmt"
@@ -11,28 +11,20 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/id"
 	"heliosian/internal/mail"
-	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
 var (
-	SeeAll        = access.Named("celebrate.see-all")
-	Curate        = access.Named("celebrate.curate")
-	Configure     = access.Named("celebrate.configure")
-	MoveAddresses = access.Named("celebrate.move-addresses")
-	ActAsHost     = access.Named("celebrate.act-as-host")
+	SeeAllParties    = access.Named("celebrate.see-all")
+	CurateParties    = access.Named("celebrate.curate")
+	ConfigureParties = access.Named("celebrate.configure")
+	MoveAddresses    = access.Named("celebrate.move-addresses")
+	ActAsPartyHost   = access.Named("celebrate.act-as-host")
 )
 
-var AdminAllowances = []access.Allowance{SeeAll, Curate, Configure, MoveAddresses, ActAsHost}
+var PartiesAdminAllowances = []access.Allowance{SeeAllParties, CurateParties, ConfigureParties, MoveAddresses, ActAsPartyHost}
 
-func require(actor access.Actor, allowance access.Allowance) error {
-	if !actor.May(allowance) {
-		return access.Forbidden("admin access required")
-	}
-	return nil
-}
-
-func isKid(directory *model.Directory, email string) bool {
+func isKid(directory *Directory, email string) bool {
 	person := directory.Person(email)
 	return person != nil && person.IsStudent && !person.IsParent && !person.IsStaff
 }
@@ -41,7 +33,7 @@ func owns(t *Ticket, actor access.Actor) bool {
 	return actor.Mine(t.Purchaser) || actor.Mine(t.Email)
 }
 
-func (m *Model) findParty(id string) (*Party, error) {
+func (m *Parties) findParty(id string) (*Party, error) {
 	p := m.Party(strings.TrimSpace(id))
 	if p == nil {
 		return nil, access.Missing("no party with id %q", id)
@@ -49,7 +41,7 @@ func (m *Model) findParty(id string) (*Party, error) {
 	return p, nil
 }
 
-func (m *Model) findTicket(id string) (*Ticket, *Party, error) {
+func (m *Parties) findTicket(id string) (*Ticket, *Party, error) {
 	t, p := m.TicketByID(strings.TrimSpace(id))
 	if t == nil {
 		return nil, nil, access.Missing("no such ticket")
@@ -57,7 +49,7 @@ func (m *Model) findTicket(id string) (*Ticket, *Party, error) {
 	return t, p, nil
 }
 
-func current(m *Model, directory *model.Directory, email string) string {
+func current(m *Parties, directory *Directory, email string) string {
 	return m.CurrentAddress(directory.Resolve(email))
 }
 
@@ -72,18 +64,18 @@ func countCell(n int) string {
 	return strconv.Itoa(n)
 }
 
-func invoiceRow(directory *model.Directory, p *Party, cells store.Row) store.Row {
+func invoiceRow(directory *Directory, p *Party, cells store.Row) store.Row {
 	price, _ := ParsePrice(cells["Price"])
 	if cells["Status"] != TicketSold || price <= 0 {
 		return nil
 	}
 	return store.Row{
-		"Date": today(), "Party ID": p.ID, "Celebration": p.Celebration, "Purchaser Email": cells["Purchaser"],
+		"Date": todayLocal(), "Party ID": p.ID, "Celebration": p.Celebration, "Purchaser Email": cells["Purchaser"],
 		"Guest Name": ticketName(directory, cells), "Action": "ADD", "Quantity": "1", "Cost": PriceCell(price),
 	}
 }
 
-func ticketOps(directory *model.Directory, p *Party, added []store.Row) []store.Op {
+func ticketOps(directory *Directory, p *Party, added []store.Row) []store.Op {
 	ops := []store.Op{}
 	for _, cells := range added {
 		ops = append(ops, store.Insert(ticketsTab, cells))
@@ -122,7 +114,7 @@ type taken struct {
 	waitlisted int
 }
 
-func (m *Model) takeTickets(actor access.Actor, directory *model.Directory, order ticketOrder) (taken, error) {
+func (m *Parties) takeTickets(actor access.Actor, directory *Directory, order ticketOrder) (taken, error) {
 	p, err := m.findParty(order.PartyID)
 	if err != nil {
 		return taken{}, err
@@ -180,7 +172,7 @@ func (m *Model) takeTickets(actor access.Actor, directory *model.Directory, orde
 		if email == "" && name == "" {
 			return taken{}, access.Invalid("each ticket needs a person or a guest's name")
 		}
-		if len(name) > maxNameLength {
+		if len(name) > maxGuestNameLength {
 			return taken{}, access.Invalid("a guest's name is too long")
 		}
 		if email == "" {
@@ -273,7 +265,7 @@ type joined struct {
 	changed   bool
 }
 
-func (m *Model) joinWaitlist(actor access.Actor, directory *model.Directory, order waitlistOrder) (joined, error) {
+func (m *Parties) joinWaitlist(actor access.Actor, directory *Directory, order waitlistOrder) (joined, error) {
 	p, err := m.findParty(order.PartyID)
 	if err != nil {
 		return joined{}, err
@@ -323,7 +315,7 @@ type offered struct {
 	left    int
 }
 
-func (m *Model) offerTickets(actor access.Actor, directory *model.Directory, o offer) (offered, error) {
+func (m *Parties) offerTickets(actor access.Actor, directory *Directory, o offer) (offered, error) {
 	t, p, err := m.findTicket(o.TicketID)
 	if err != nil {
 		return offered{}, err
@@ -371,7 +363,7 @@ func (m *Model) offerTickets(actor access.Actor, directory *model.Directory, o o
 	return offered{party: p, ticket: t, added: added, ops: ops, offered: n, left: left}, nil
 }
 
-func (m *Model) removeTicket(actor access.Actor, id string) (*Ticket, *Party, []store.Op, error) {
+func (m *Parties) removeTicket(actor access.Actor, id string) (*Ticket, *Party, []store.Op, error) {
 	t, p, err := m.findTicket(id)
 	if err != nil {
 		return nil, nil, nil, err
@@ -395,7 +387,7 @@ type ticketEdit struct {
 	Note     *string `json:"note"`
 }
 
-func (m *Model) editTicket(actor access.Actor, edit ticketEdit) (*Ticket, *Party, []store.Op, []string, error) {
+func (m *Parties) editTicket(actor access.Actor, edit ticketEdit) (*Ticket, *Party, []store.Op, []string, error) {
 	t, p, err := m.findTicket(edit.TicketID)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -438,7 +430,7 @@ type reassignment struct {
 	Name     string `json:"name"`
 }
 
-func (m *Model) reassignTicket(actor access.Actor, directory *model.Directory, re reassignment) (*Ticket, *Party, []store.Op, string, error) {
+func (m *Parties) reassignTicket(actor access.Actor, directory *Directory, re reassignment) (*Ticket, *Party, []store.Op, string, error) {
 	t, p, err := m.findTicket(re.TicketID)
 	if err != nil {
 		return nil, nil, nil, "", err
@@ -457,7 +449,7 @@ func (m *Model) reassignTicket(actor access.Actor, directory *model.Directory, r
 	if email == "" && name == "" {
 		return nil, nil, nil, "", access.Invalid("pick someone, or name a guest")
 	}
-	if len(name) > maxNameLength {
+	if len(name) > maxGuestNameLength {
 		return nil, nil, nil, "", access.Invalid("the name is too long")
 	}
 	if email != "" {
@@ -519,13 +511,13 @@ type partyBody struct {
 	ParentTicket bool     `json:"parentTicket"`
 }
 
-type prettyConflict struct {
+type partyPrettyConflict struct {
 	Message string `json:"error"`
 	ID      string `json:"id"`
 	Title   string `json:"title"`
 }
 
-func (c *prettyConflict) refusal() error {
+func (c *partyPrettyConflict) refusal() error {
 	return &access.Refusal{Status: http.StatusConflict, Message: c.Message, Body: c}
 }
 
@@ -537,7 +529,7 @@ type savedParty struct {
 	ops    []store.Op
 }
 
-func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error) {
+func (m *Parties) saveParty(actor access.Actor, body partyBody) (savedParty, error) {
 	adding := strings.TrimSpace(body.ID) == ""
 	var was *Party
 	if !adding {
@@ -554,7 +546,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 	status := strings.TrimSpace(body.Status)
 	category := strings.TrimSpace(body.Category)
 	switch {
-	case adding && actor.May(Curate):
+	case adding && actor.May(CurateParties):
 		if status == "" {
 			status = StatusOpen
 		}
@@ -566,15 +558,15 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 		if c := m.Current(); c != nil {
 			celebration = c.ID
 		}
-	case actor.May(Curate):
+	case actor.May(CurateParties):
 		if status == "" {
 			status = was.Status
 		}
 	default:
 		status, celebration, category = was.Status, was.Celebration, was.Category
 	}
-	if !slices.Contains(Statuses, status) {
-		return savedParty{}, access.Invalid("status must be one of %s", strings.Join(Statuses, ", "))
+	if !slices.Contains(PartyStatuses, status) {
+		return savedParty{}, access.Invalid("status must be one of %s", strings.Join(PartyStatuses, ", "))
 	}
 	if celebration == "" {
 		if c := m.Current(); c != nil {
@@ -591,7 +583,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 		return savedParty{}, access.Invalid("let adults, students, or both hold a ticket")
 	}
 	hosts := mail.NormalizeAll(body.HostEmails)
-	if adding && !actor.May(Curate) && !slices.Contains(hosts, actor.Email) {
+	if adding && !actor.May(CurateParties) && !slices.Contains(hosts, actor.Email) {
 		hosts = append(hosts, actor.Email)
 	}
 	for _, h := range hosts {
@@ -599,7 +591,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 			return savedParty{}, access.Invalid("%s", err)
 		}
 	}
-	if !adding && !actor.May(Curate) && !slices.Contains(hosts, actor.Email) {
+	if !adding && !actor.May(CurateParties) && !slices.Contains(hosts, actor.Email) {
 		return savedParty{}, access.Invalid("you can't remove yourself as a host; ask another host or an admin")
 	}
 	var partyID string
@@ -613,7 +605,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 		return savedParty{}, access.Invalid("the friendly address can be only lower-case letters, digits and hyphens, at most %d", cells.MaxPrettyLength)
 	}
 	if other := m.ByPretty(pretty); pretty != "" && other != nil && other.ID != partyID {
-		conflict := &prettyConflict{ID: other.ID, Title: other.Title, Message: fmt.Sprintf("%q is already the address of %s", pretty, other.Title)}
+		conflict := &partyPrettyConflict{ID: other.ID, Title: other.Title, Message: fmt.Sprintf("%q is already the address of %s", pretty, other.Title)}
 		return savedParty{}, conflict.refusal()
 	}
 	row := store.Row{
@@ -632,7 +624,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 	if adding {
 		row["Party ID"] = partyID
 		row["Added By"] = actor.Email
-		row["Added"] = today()
+		row["Added"] = todayLocal()
 		ops = append(ops, store.Insert(partiesTab, row))
 	} else {
 		before = was.HostEmails
@@ -651,8 +643,8 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 	return savedParty{id: partyID, title: row["Title"], status: status, adding: adding, ops: ops}, nil
 }
 
-func (m *Model) deleteParty(actor access.Actor, id string) (*Party, []store.Op, error) {
-	if err := require(actor, Curate); err != nil {
+func (m *Parties) deleteParty(actor access.Actor, id string) (*Party, []store.Op, error) {
+	if err := require(actor, CurateParties); err != nil {
 		return nil, nil, err
 	}
 	p, err := m.findParty(id)
@@ -675,7 +667,7 @@ type partyFlags struct {
 	ParentTicket bool   `json:"parentTicket"`
 }
 
-func (m *Model) setFlags(actor access.Actor, flags partyFlags) (*Party, []store.Op, error) {
+func (m *Parties) setFlags(actor access.Actor, flags partyFlags) (*Party, []store.Op, error) {
 	p, err := m.findParty(flags.ID)
 	if err != nil {
 		return nil, nil, err
@@ -694,16 +686,16 @@ func (m *Model) setFlags(actor access.Actor, flags partyFlags) (*Party, []store.
 	return p, []store.Op{store.Update(partiesTab, store.Row{"Party ID": p.ID}, row)}, nil
 }
 
-func (m *Model) setStatus(actor access.Actor, id, status string) (*Party, []store.Op, error) {
-	if err := require(actor, Curate); err != nil {
+func (m *Parties) setStatus(actor access.Actor, id, status string) (*Party, []store.Op, error) {
+	if err := require(actor, CurateParties); err != nil {
 		return nil, nil, err
 	}
 	p, err := m.findParty(id)
 	if err != nil {
 		return nil, nil, err
 	}
-	if !slices.Contains(Statuses, status) {
-		return nil, nil, access.Invalid("status must be one of %s", strings.Join(Statuses, ", "))
+	if !slices.Contains(PartyStatuses, status) {
+		return nil, nil, access.Invalid("status must be one of %s", strings.Join(PartyStatuses, ", "))
 	}
 	return p, []store.Op{store.Update(partiesTab, store.Row{"Party ID": p.ID}, store.Row{"Status": status})}, nil
 }
@@ -725,8 +717,8 @@ type celebrationForm struct {
 	Banner      bool   `json:"banner"`
 }
 
-func (m *Model) saveCelebration(actor access.Actor, form celebrationForm) ([]store.Op, bool, error) {
-	if err := require(actor, Configure); err != nil {
+func (m *Parties) saveCelebration(actor access.Actor, form celebrationForm) ([]store.Op, bool, error) {
+	if err := require(actor, ConfigureParties); err != nil {
 		return nil, false, err
 	}
 	code := strings.TrimSpace(form.Code)
@@ -772,8 +764,8 @@ func (m *Model) saveCelebration(actor access.Actor, form celebrationForm) ([]sto
 	return ops, adding, nil
 }
 
-func (c *Cache) deleteCelebration(actor access.Actor, key string) (*Celebration, []store.Op, error) {
-	if err := require(actor, Configure); err != nil {
+func (c *PartiesCache) deleteCelebration(actor access.Actor, key string) (*Celebration, []store.Op, error) {
+	if err := require(actor, ConfigureParties); err != nil {
 		return nil, nil, err
 	}
 	celebration := c.Model().CelebrationByID(strings.TrimSpace(key))
@@ -786,12 +778,12 @@ func (c *Cache) deleteCelebration(actor access.Actor, key string) (*Celebration,
 	return celebration, []store.Op{store.Delete(celebrationsTab, store.Row{"Celebration ID": celebration.ID})}, nil
 }
 
-func (m *Model) saveCategory(actor access.Actor, key, title string) ([]store.Op, bool, error) {
-	if err := require(actor, Configure); err != nil {
+func (m *Parties) saveCategory(actor access.Actor, key, title string) ([]store.Op, bool, error) {
+	if err := require(actor, ConfigureParties); err != nil {
 		return nil, false, err
 	}
 	title = strings.TrimSpace(title)
-	if err := cells.Title("category", title, maxTitleLength); err != nil {
+	if err := cells.Title("category", title, maxPartyTitleLength); err != nil {
 		return nil, false, access.Invalid("%s", err)
 	}
 	key = strings.TrimSpace(key)
@@ -803,13 +795,13 @@ func (m *Model) saveCategory(actor access.Actor, key, title string) ([]store.Op,
 		return nil, false, access.Invalid("%q is already a category", title)
 	}
 	if adding {
-		return []store.Op{store.Insert(categoriesTab, store.Row{"Category ID": id.New(m.taken), "Title": title})}, true, nil
+		return []store.Op{store.Insert(partyCategoriesTab, store.Row{"Category ID": id.New(m.taken), "Title": title})}, true, nil
 	}
-	return []store.Op{store.Update(categoriesTab, store.Row{"Category ID": key}, store.Row{"Title": title})}, false, nil
+	return []store.Op{store.Update(partyCategoriesTab, store.Row{"Category ID": key}, store.Row{"Title": title})}, false, nil
 }
 
-func (c *Cache) deleteCategory(actor access.Actor, key string) (*Category, []store.Op, error) {
-	if err := require(actor, Configure); err != nil {
+func (c *PartiesCache) deleteCategory(actor access.Actor, key string) (*PartyCategory, []store.Op, error) {
+	if err := require(actor, ConfigureParties); err != nil {
 		return nil, nil, err
 	}
 	category := c.Model().Category(strings.TrimSpace(key))
@@ -819,11 +811,11 @@ func (c *Cache) deleteCategory(actor access.Actor, key string) (*Category, []sto
 	if c.Count(partiesTab, store.Row{"Category": category.ID}) > 0 {
 		return nil, nil, access.Invalid("parties are filed under this category; move them first")
 	}
-	return category, []store.Op{store.Delete(categoriesTab, store.Row{"Category ID": category.ID})}, nil
+	return category, []store.Op{store.Delete(partyCategoriesTab, store.Row{"Category ID": category.ID})}, nil
 }
 
-func (m *Model) reorderCategories(actor access.Actor, order []string) ([]store.Op, error) {
-	if err := require(actor, Configure); err != nil {
+func (m *Parties) reorderCategories(actor access.Actor, order []string) ([]store.Op, error) {
+	if err := require(actor, ConfigureParties); err != nil {
 		return nil, err
 	}
 	if len(order) != len(m.Categories) {
@@ -840,25 +832,25 @@ func (m *Model) reorderCategories(actor access.Actor, order []string) ([]store.O
 	ops := []store.Op{}
 	for i, key := range named {
 		if placed[i] != keys[i] {
-			ops = append(ops, store.Update(categoriesTab, store.Row{"Category ID": key}, store.Row{store.OrderColumn: placed[i]}))
+			ops = append(ops, store.Update(partyCategoriesTab, store.Row{"Category ID": key}, store.Row{store.OrderColumn: placed[i]}))
 		}
 	}
 	return ops, nil
 }
 
-func (m *Model) saveSettings(actor access.Actor, s Settings) ([]store.Op, error) {
-	if err := require(actor, Configure); err != nil {
+func (m *Parties) saveSettings(actor access.Actor, s PartiesSettings) ([]store.Op, error) {
+	if err := require(actor, ConfigureParties); err != nil {
 		return nil, err
 	}
 	values := map[string]string{PartiesIntroKey: strings.TrimSpace(s.PartiesIntro), TicketNoteKey: strings.TrimSpace(s.TicketNote), HostingOpenKey: cells.YesNoCell(s.HostingOpen)}
 	ops := []store.Op{}
-	for _, key := range settingKeys {
-		ops = append(ops, store.Upsert(settingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))
+	for _, key := range partySettingKeys {
+		ops = append(ops, store.Upsert(partySettingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))
 	}
 	return ops, nil
 }
 
-func (m *Model) moveUnlisted(actor access.Actor, directory *model.Directory, old, to, name string) ([]store.Op, int, error) {
+func (m *Parties) moveUnlisted(actor access.Actor, directory *Directory, old, to, name string) ([]store.Op, int, error) {
 	if err := require(actor, MoveAddresses); err != nil {
 		return nil, 0, err
 	}
@@ -868,7 +860,7 @@ func (m *Model) moveUnlisted(actor access.Actor, directory *model.Directory, old
 	return m.moveAddress(actor, old, to, name)
 }
 
-func (m *Model) moveAddress(actor access.Actor, old, to, name string) ([]store.Op, int, error) {
+func (m *Parties) moveAddress(actor access.Actor, old, to, name string) ([]store.Op, int, error) {
 	if err := require(actor, MoveAddresses); err != nil {
 		return nil, 0, err
 	}
@@ -882,7 +874,7 @@ func (m *Model) moveAddress(actor access.Actor, old, to, name string) ([]store.O
 	if old == to {
 		return nil, 0, access.Invalid("that is the address it has already")
 	}
-	if len(name) > maxNameLength {
+	if len(name) > maxGuestNameLength {
 		return nil, 0, access.Invalid("the name is too long")
 	}
 	if f, ok := m.former[old]; ok {
@@ -894,7 +886,7 @@ func (m *Model) moveAddress(actor access.Actor, old, to, name string) ([]store.O
 	}
 	ops = append(ops,
 		store.Update(formerTab, store.Row{"New": old}, store.Row{"New": to}),
-		store.Insert(formerTab, store.Row{"Old": old, "New": to, "Name": name, "Changed": today()}),
+		store.Insert(formerTab, store.Row{"Old": old, "New": to, "Name": name, "Changed": todayLocal()}),
 		store.Update(hostsTab, store.Row{"Email": old}, store.Row{"Email": to}),
 	)
 	moved := 0

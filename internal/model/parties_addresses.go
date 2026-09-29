@@ -1,4 +1,4 @@
-package celebrate
+package model
 
 import (
 	"context"
@@ -11,22 +11,17 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/cells"
 	"heliosian/internal/mail"
-	"heliosian/internal/model"
 	"heliosian/internal/serve"
 )
 
-type AddressMoved func(ctx context.Context, actor access.Actor, old, to, name string)
-
-func MoveAddress(ctx context.Context, cache *Cache, actor access.Actor, old, to, name string) (int, error) {
-	ops, moved, err := cache.Model().moveAddress(actor, old, to, name)
+func (c *PartiesCache) moveAddress(ctx context.Context, actor access.Actor, old, to, name string) error {
+	ops, _, err := c.Model().moveAddress(actor, old, to, name)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	if err := cache.Commit(ctx, actor, ops...); err != nil {
-		return 0, err
-	}
-	return moved, nil
+	return c.Commit(ctx, actor, ops...)
 }
 
 type addressMove struct {
@@ -35,7 +30,7 @@ type addressMove struct {
 	Name string `json:"name"`
 }
 
-func (a app) moveAddress(r *http.Request, body addressMove) (serve.None, error) {
+func (a partiesApp) moveAddress(r *http.Request, body addressMove) (serve.None, error) {
 	actor := a.actor(r)
 	ops, moved, err := a.cache.Model().moveUnlisted(actor, a.directory(), body.Old, body.To, body.Name)
 	if err != nil {
@@ -45,9 +40,7 @@ func (a app) moveAddress(r *http.Request, body addressMove) (serve.None, error) 
 		return serve.None{}, err
 	}
 	old, to := mail.Normalize(body.Old), mail.Normalize(body.To)
-	if a.moved != nil {
-		a.moved(r.Context(), actor, old, to, strings.TrimSpace(body.Name))
-	}
+	a.calendar.moveAddress(r.Context(), actor, old, to, strings.TrimSpace(body.Name))
 	slog.InfoContext(r.Context(), "celebrate: address moved", "actor", actor.Email, "from", old, "to", to, "tickets", moved)
 	return serve.None{}, nil
 }
@@ -74,11 +67,11 @@ type Moved struct {
 	Changed string `json:"changed,omitempty"`
 }
 
-func Problems(model *Model, directory *model.Directory, now time.Time) []Problem {
+func Problems(m *Parties, directory *Directory, now time.Time) []Problem {
 	byEmail := map[string]*Problem{}
 	order := []string{}
 	note := func(email, name string, p *Party, role string) {
-		email = model.CurrentAddress(directory.Resolve(mail.Normalize(email)))
+		email = m.CurrentAddress(directory.Resolve(mail.Normalize(email)))
 		if email == "" || !strings.HasSuffix(email, "@"+auth.Domain) {
 			return
 		}
@@ -95,13 +88,13 @@ func Problems(model *Model, directory *model.Directory, now time.Time) []Problem
 			pr.Name = name
 		}
 		past := p.Past(now)
-		use := AddressUse{PartyID: p.ID, Party: p.Title, Path: model.PathOf(p), Past: past, Role: role}
+		use := AddressUse{PartyID: p.ID, Party: p.Title, Path: m.PathOf(p), Past: past, Role: role}
 		if !slices.Contains(pr.Uses, use) {
 			pr.Uses = append(pr.Uses, use)
 		}
 		pr.Upcoming = pr.Upcoming || !past
 	}
-	for _, p := range model.Parties {
+	for _, p := range m.Parties {
 		for _, h := range p.HostEmails {
 			note(h, "", p, "Host")
 		}
@@ -122,7 +115,7 @@ func Problems(model *Model, directory *model.Directory, now time.Time) []Problem
 	for _, email := range order {
 		pr := byEmail[email]
 		if pr.Name == "" {
-			pr.Name = DisplayName(email)
+			pr.Name = cells.DisplayName(email)
 		}
 		out = append(out, *pr)
 	}
@@ -135,7 +128,7 @@ func Problems(model *Model, directory *model.Directory, now time.Time) []Problem
 	return out
 }
 
-func (m *Model) MovedAddresses() []Moved {
+func (m *Parties) MovedAddresses() []Moved {
 	out := []Moved{}
 	for old, f := range m.former {
 		out = append(out, Moved{Old: old, New: f.New, Name: f.Name, Changed: f.Changed})
@@ -154,10 +147,10 @@ type addressesView struct {
 	Moved    []Moved   `json:"moved"`
 }
 
-func (a app) addresses(r *http.Request, _ serve.None) (addressesView, error) {
+func (a partiesApp) addresses(r *http.Request, _ serve.None) (addressesView, error) {
 	if err := require(a.actor(r), MoveAddresses); err != nil {
 		return addressesView{}, err
 	}
-	model := a.cache.Model()
-	return addressesView{Problems(model, a.directory(), now()), model.MovedAddresses()}, nil
+	m := a.cache.Model()
+	return addressesView{Problems(m, a.directory(), now()), m.MovedAddresses()}, nil
 }

@@ -1181,7 +1181,7 @@ func (a calendarApp) changeAddressOps(actor access.Actor, id, email, to string, 
 	}
 	c.name = inv.Name
 	if everywhere {
-		if e.Source != SourceCelebrate || !a.celebrate.IsAdmin(actor.Email) {
+		if e.Source != SourceCelebrate || !a.partiesCache.IsAdmin(actor.Email) {
 			return nil, c, access.Forbidden("only Celebrate's admins move an address on every party")
 		}
 		c.everywhere = true
@@ -1196,7 +1196,7 @@ func (a calendarApp) moveAddressOps(actor access.Actor, old, to, name string) ([
 	ops := []store.Op{}
 	resend := []string{}
 	for key := range model.Invites {
-		if a.parties(key) == nil {
+		if a.parties().PartyPeople(key) == nil {
 			continue
 		}
 		row := model.InviteOf(key, old)

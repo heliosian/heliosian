@@ -250,7 +250,7 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 	}
 	guests := model.othersInvite(e.ID)
 	view := InviteView{Host: host, Poster: poster, MayInvite: host || guests && (e.Sharing == SharingPublic || model.Invited(a.directory(), viewer, e.ID)), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: guests, Hosts: []CalendarPerson{}, Mine: []GuestRow{}}
-	view.MoveEverywhere = host && view.Party && a.celebrate.IsAdmin(viewer)
+	view.MoveEverywhere = host && view.Party && a.partiesCache.IsAdmin(viewer)
 	if inv != nil && inv.Flyer != "" {
 		view.Flyer = flyerPath(e.ID)
 	}

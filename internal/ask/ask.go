@@ -22,13 +22,11 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
-	"heliosian/internal/celebrate"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
 	"heliosian/internal/model"
 	"heliosian/internal/ratelimit"
 	"heliosian/internal/serve"
-	"heliosian/internal/team"
 )
 
 const (
@@ -48,8 +46,8 @@ type Sources struct {
 	Settings    func() *model.Config
 	Calendar    func() *model.Calendar
 	Linked      func(email string) []model.Linked
-	Team        func() *team.Model
-	Celebrate   func() *celebrate.Model
+	Team        func() *model.Activities
+	Celebrate   func() *model.Parties
 	Loop        func() *loop.Model
 	LoopSources func() loop.Sources
 	Links       func(v access.Actor) []home.Category

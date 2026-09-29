@@ -1,4 +1,4 @@
-package team
+package model
 
 import (
 	"fmt"
@@ -10,11 +10,10 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/model"
 	"heliosian/internal/sharecard"
 )
 
-func CardStyle(name, tagline func() string) *sharecard.Style {
+func ActivitiesCardStyle(name, tagline func() string) *sharecard.Style {
 	return &sharecard.Style{
 		Palette: sharecard.Palette{
 			Page: color.RGBA{0xee, 0xf6, 0xea, 0xff}, Brand: color.RGBA{0x0c, 0x4c, 0x54, 0xff}, Accent: color.RGBA{0x00, 0x74, 0x6f, 0xff},
@@ -25,11 +24,11 @@ func CardStyle(name, tagline func() string) *sharecard.Style {
 	}
 }
 
-func previewable(m *Model, a *Activity) bool {
+func activityPreviewable(m *Activities, a *Activity) bool {
 	return a != nil && (a.Status == StatusOpen || a.Status == StatusDone) && m.VisibleTo(a, access.Actor{})
 }
 
-func timed(m *Model, a *Activity) *Activity {
+func timed(m *Activities, a *Activity) *Activity {
 	for n := a; n != nil; n = m.byID[n.Parent] {
 		if n.Start != "" || n.Timing != "" {
 			return n
@@ -38,7 +37,7 @@ func timed(m *Model, a *Activity) *Activity {
 	return a
 }
 
-func lineage(m *Model, a *Activity) string {
+func lineage(m *Activities, a *Activity) string {
 	names := []string{}
 	for n := m.byID[a.Parent]; n != nil; n = m.byID[n.Parent] {
 		names = append([]string{n.Title}, names...)
@@ -47,14 +46,14 @@ func lineage(m *Model, a *Activity) string {
 }
 
 func whenText(a *Activity) string {
-	day, hours := whenLines(a)
+	day, hours := activityWhenLines(a)
 	if hours != "" {
 		return day + " · " + hours
 	}
 	return day
 }
 
-func blurb(a *Activity) string {
+func activityBlurb(a *Activity) string {
 	text := strings.Join(strings.Fields(a.Description), " ")
 	if len(text) > 200 {
 		cut := strings.LastIndex(text[:200], " ")
@@ -66,7 +65,7 @@ func blurb(a *Activity) string {
 	return text
 }
 
-func PreviewHead(cache *Cache, style *sharecard.Style) func(r *http.Request) string {
+func ActivitiesPreviewHead(cache *ActivitiesCache, style *sharecard.Style) func(r *http.Request) string {
 	return func(r *http.Request) string {
 		m := cache.Model()
 		origin := "https://" + r.Host
@@ -75,10 +74,10 @@ func PreviewHead(cache *Cache, style *sharecard.Style) func(r *http.Request) str
 		if first == "v" || first == "activities" {
 			a = m.Resolve(r.URL.Path)
 		}
-		if !previewable(m, a) {
-			return upcomingHead(style, m, origin, time.Now().In(model.Location))
+		if !activityPreviewable(m, a) {
+			return activitiesUpcomingHead(style, m, origin, time.Now().In(Location))
 		}
-		desc := blurb(a)
+		desc := activityBlurb(a)
 		if line := whenText(timed(m, a)); line != "" {
 			if desc != "" {
 				desc = line + " — " + desc
@@ -97,8 +96,8 @@ func PreviewHead(cache *Cache, style *sharecard.Style) func(r *http.Request) str
 	}
 }
 
-func needs(m *Model, at time.Time) []*Activity {
-	year, today := SchoolYear(at), at.Format(DateFormat)
+func needs(m *Activities, at time.Time) []*Activity {
+	year, today := ActivityYear(at), at.Format(DateFormat)
 	dated, undated := []*Activity{}, []*Activity{}
 	for _, a := range m.Activities {
 		if a.Year != year || a.Status != StatusOpen || !m.VisibleTo(a, access.Actor{}) || a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots) {
@@ -118,7 +117,7 @@ const needsCount = 4
 
 func needNote(a *Activity) string {
 	parts := []string{}
-	if day, _ := whenLines(a); day != "" {
+	if day, _ := activityWhenLines(a); day != "" {
 		parts = append(parts, day)
 	}
 	if a.Spots > 0 {
@@ -139,7 +138,7 @@ const (
 	upcomingEmpty = "Nothing needs hands just now - check back soon."
 )
 
-func upcomingHead(style *sharecard.Style, m *Model, origin string, at time.Time) string {
+func activitiesUpcomingHead(style *sharecard.Style, m *Activities, origin string, at time.Time) string {
 	desc := style.Tagline() + ". " + upcomingLead
 	if list := needs(m, at); len(list) > 0 {
 		names := []string{}
@@ -155,9 +154,9 @@ func upcomingHead(style *sharecard.Style, m *Model, origin string, at time.Time)
 	return style.PreviewTags(style.Name(), desc, origin+"/", origin+"/open/share/upcoming.png")
 }
 
-func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
+func (a activitiesApp) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	listing := &sharecard.Listing{Heading: "Volunteers needed", Empty: upcomingEmpty}
-	for _, act := range needs(a.cache.Model(), time.Now().In(model.Location)) {
+	for _, act := range needs(a.cache.Model(), time.Now().In(Location)) {
 		if len(listing.Items) == needsCount {
 			break
 		}
@@ -167,23 +166,23 @@ func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	a.style.Serve(w, r, card, listing.Words()...)
 }
 
-func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
+func (a activitiesApp) shareCard(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(r.PathValue("id"), ".png")
-	model := a.cache.Model()
-	act := model.Activity(id)
-	if !previewable(model, act) {
+	m := a.cache.Model()
+	act := m.Activity(id)
+	if !activityPreviewable(m, act) {
 		http.NotFound(w, r)
 		return
 	}
 	picture, isFlyer := "", false
-	for n := act; picture == "" && n != nil; n = model.byID[n.Parent] {
+	for n := act; picture == "" && n != nil; n = m.byID[n.Parent] {
 		picture, isFlyer = n.Flyer, true
 		if picture == "" {
 			picture, isFlyer = n.Image, false
 		}
 	}
-	under := lineage(model, act)
-	day, hours := whenLines(timed(model, act))
+	under := lineage(m, act)
+	day, hours := activityWhenLines(timed(m, act))
 	card := sharecard.Card{
 		Kicker: under, Title: act.Title, Picture: a.images.Read(picture), Whole: isFlyer,
 		Lines: []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}},
@@ -191,22 +190,22 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	a.style.Serve(w, r, card, act.Title, under, day, hours, picture)
 }
 
-func whenLines(a *Activity) (string, string) {
+func activityWhenLines(a *Activity) (string, string) {
 	if a.Timing != "" {
 		return a.Timing, ""
 	}
 	if days, hours := spanLines(a); days != "" {
 		return days, hours
 	}
-	start, err := time.ParseInLocation(DateTimeFormat, a.Start, model.Location)
+	start, err := time.ParseInLocation(DateTimeFormat, a.Start, Location)
 	if err != nil {
-		if day, err := time.ParseInLocation(DateFormat, a.Start, model.Location); err == nil {
+		if day, err := time.ParseInLocation(DateFormat, a.Start, Location); err == nil {
 			return day.Format("Monday, January 2"), ""
 		}
 		return "", ""
 	}
 	day := start.Format("Monday, January 2")
-	end, err := time.ParseInLocation(DateTimeFormat, a.End, model.Location)
+	end, err := time.ParseInLocation(DateTimeFormat, a.End, Location)
 	if err != nil {
 		return day, start.Format("3:04 PM")
 	}

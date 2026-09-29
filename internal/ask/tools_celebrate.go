@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"heliosian/internal/celebrate"
 	"heliosian/internal/model"
 )
 
@@ -37,14 +36,14 @@ type partyCard struct {
 	Link         string   `json:"link"`
 }
 
-func (v *viewer) partyCategory(p *celebrate.Party) string {
+func (v *viewer) partyCategory(p *model.Party) string {
 	if c := v.celebrate.Category(p.Category); c != nil {
 		return c.Title
 	}
 	return ""
 }
 
-func (v *viewer) partyCard(raw *celebrate.Party) partyCard {
+func (v *viewer) partyCard(raw *model.Party) partyCard {
 	p := raw.For(v.partyAs, v.directory)
 	c := partyCard{
 		Title: p.Title, Subtitle: p.Subtitle, Summary: p.Summary, NeedToKnow: clip(p.NeedToKnow, 400), Category: v.partyCategory(p), Start: p.Start, End: p.End, When: v.timing(p.Start, p.End), Past: p.Past(v.now), Location: p.Location, Address: p.Address,
@@ -63,7 +62,7 @@ func (v *viewer) partyCard(raw *celebrate.Party) partyCard {
 			holder = v.name(t.Email)
 		}
 		words := holder
-		if t.Status == celebrate.TicketWaitlist {
+		if t.Status == model.TicketWaitlist {
 			words = fmt.Sprintf("%s (waitlist, %d)", holder, t.Quantity)
 		}
 		if v.partyAs.Mine(t.Purchaser) || v.partyAs.Mine(t.Email) {

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"heliosian/internal/model"
-	"heliosian/internal/team"
 )
 
 func TestClassroomChipsWearTheirColor(t *testing.T) {
@@ -107,7 +106,7 @@ func TestLinkCardsKeepEachAppsVisibility(t *testing.T) {
 			}
 		}
 		for _, root := range v.team.Activities {
-			for _, a := range append([]*team.Activity{root}, root.Descendants()...) {
+			for _, a := range append([]*model.Activity{root}, root.Descendants()...) {
 				_, ok := v.linkCard(teamBase + v.team.PathOf(a))
 				if ok != v.team.VisibleTo(a, v.teamAs) {
 					t.Errorf("%s: activity %q (%s) card %v", email, a.Title, a.Status, ok)

@@ -28,7 +28,6 @@ type CalendarWorld struct {
 	Directory *Directory
 	app       calendarApp
 	idKey     []byte
-	sources   func(email string, now time.Time) []Linked
 	now       time.Time
 	request   *calendarRequest
 }
@@ -51,16 +50,18 @@ func (w CalendarWorld) responses(q api.Query) map[string]*Responses {
 	return w.request.responses
 }
 
-func (a calendarApp) world(m *Calendar, d *Directory, settings *Config, idKey []byte, sources func(email string, now time.Time) []Linked) CalendarWorld {
+func (a calendarApp) world(m *Calendar, d *Directory, settings *Config, parties *Parties, activities *Activities, idKey []byte) CalendarWorld {
 	a.pinned = m
 	a.directory = func() *Directory { return d }
 	a.settings = func() *Config { return settings }
-	return CalendarWorld{Model: m, Directory: d, app: a, idKey: idKey, sources: sources}
+	a.parties = func() *Parties { return parties }
+	a.activities = func() *Activities { return activities }
+	return CalendarWorld{Model: m, Directory: d, app: a, idKey: idKey}
 }
 
 func (w CalendarWorld) At(now time.Time) CalendarWorld {
 	w.now, w.request = now, &calendarRequest{}
-	w.app.linked = func(email string) []Linked { return w.sources(email, now) }
+	w.app.clock = func() time.Time { return now }
 	return w
 }
 
@@ -189,15 +190,16 @@ type feedResource struct {
 
 type calendarResources struct {
 	cache *CalendarCache
+	app   calendarApp
 }
 
 func (h CalendarHooks) Resources() []api.Type[CalendarWorld] {
-	r := calendarResources{cache: h.cache}
+	r := calendarResources{cache: h.cache, app: h.app}
 	return []api.Type[CalendarWorld]{r.events(), r.guestLists(), r.inviteGroups(), r.feeds(), r.settings()}
 }
 
-func (h CalendarHooks) World(m *Calendar, d *Directory, settings *Config, idKey []byte, sources func(email string, now time.Time) []Linked) CalendarWorld {
-	return h.app.world(m, d, settings, idKey, sources)
+func (h CalendarHooks) World(m *Calendar, d *Directory, settings *Config, parties *Parties, activities *Activities, idKey []byte) CalendarWorld {
+	return h.app.world(m, d, settings, parties, activities, idKey)
 }
 
 func (r calendarResources) stage(wr api.Write[CalendarWorld], ops []store.Op, err error) error {
@@ -525,7 +527,7 @@ func (r calendarResources) events() api.Type[CalendarWorld] {
 					return err
 				}
 				if c.everywhere {
-					actor, ctx, move := wr.Query.Actor, wr.Request.Context(), a(wr.S).celebrate.MoveAddress
+					actor, ctx, move := wr.Query.Actor, wr.Request.Context(), r.app.moveEverywhere
 					wr.Tx.After(func() {
 						if err := move(ctx, actor, c.from, c.to, c.name); err != nil {
 							slog.ErrorContext(ctx, "calendar: move address everywhere", "from", c.from, "to", c.to, "error", err)

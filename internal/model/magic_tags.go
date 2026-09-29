@@ -4,6 +4,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"time"
 )
 
 type MagicTag struct {
@@ -32,6 +33,27 @@ const (
 	MagicTagRoom     = "room"
 	MagicTagGroup    = "group"
 )
+
+func MagicTagsOf(directory *Directory, parties *Parties, activities *Activities, owner string, now time.Time) []MagicTag {
+	tags := append(directory.RoomParentTags(owner), parties.MagicTags(directory, owner, now)...)
+	return append(tags, activities.MagicTags(directory, owner, now)...)
+}
+
+func EveryActivityMagicTagsOf(directory *Directory, parties *Parties, activities *Activities, owner string, now time.Time) []MagicTag {
+	tags := append(directory.RoomParentTags(owner), parties.MagicTags(directory, owner, now)...)
+	return append(tags, activities.AllMagicTags(directory, now)...)
+}
+
+func MagicTagKeys(parties *Parties, activities *Activities) []string {
+	out := []string{}
+	for _, p := range parties.Parties {
+		out = append(out, MagicTagParty+":"+p.ID)
+	}
+	for _, a := range activities.Activities {
+		out = append(out, MagicTagActivity+":"+a.ID)
+	}
+	return out
+}
 
 func (m *Directory) RoomParentsOf(band string) []string {
 	return m.RoomParents[bandLabel(band)]

@@ -5,12 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"heliosian/internal/celebrate"
 	"heliosian/internal/data"
 	"heliosian/internal/loop"
 	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/team"
 	"heliosian/internal/testkit"
 )
 
@@ -24,17 +22,19 @@ func TestATeamAdminMakesAnEmailListFromAnyActivity(t *testing.T) {
 	}
 	none := func() []string { return nil }
 	images := testkit.Images(func(string) bool { return true })
-	activities, err := team.NewCache(dir, dir, images, func() []string { return []string{admin} }, queue)
+	activities, err := model.NewActivitiesCache(dir, dir, images, func() []string { return []string{admin} }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	parties, err := celebrate.NewCache(dir, dir, images, none, queue)
+	parties, err := model.NewPartiesCache(dir, dir, images, none, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
 	tags := loopMagicTags(directory, parties.Model(), activities.Model(), activities.IsAdmin)
-	shared := magicTags(directory, parties.Model(), activities.Model())
+	shared := func(owner string, now time.Time) []model.MagicTag {
+		return model.MagicTagsOf(directory, parties.Model(), activities.Model(), owner, now)
+	}
 	var theirs model.MagicTag
 	for _, l := range tags(admin, now) {
 		if l.Kind == model.MagicTagActivity && l.Parent == "" && !slices.Contains(l.Hosts, admin) && len(l.People) > len(l.Hosts) {

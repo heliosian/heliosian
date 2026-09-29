@@ -81,9 +81,9 @@ func cutEventPath(path string) (string, bool) {
 	return strings.CutPrefix(path, "/events/")
 }
 
-func CalendarPreviewHead(cache *CalendarCache, linked func(email string) []Linked, sourceID func(source, key string) string, style *sharecard.Style) func(r *http.Request) string {
+func (h CalendarHooks) PreviewHead() func(r *http.Request) string {
+	a := h.app
 	return func(r *http.Request) string {
-		a := calendarApp{cache: cache, linked: linked, sourceID: sourceID, style: style}
 		origin := "https://" + r.Host
 		if id, ok := cutEventPath(r.URL.Path); ok {
 			if e := a.event(id); e != nil {

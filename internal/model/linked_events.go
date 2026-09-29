@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 	"unicode"
 
 	"heliosian/internal/mail"
@@ -58,6 +59,11 @@ func tagRole(key string) string {
 		return "schedule"
 	}
 	return builtinTags[key]
+}
+
+func LinkedEvents(directory *Directory, parties *Parties, activities *Activities, email string, at time.Time) []Linked {
+	family := directory.HouseholdOf(email)
+	return append(parties.Linked(family, at), activities.Linked(family)...)
 }
 
 var tagBySource = map[string]string{SourceCelebrate: TagCelebrate, SourceTeam: TagHCA}

@@ -1,17 +1,16 @@
-package team
+package model
 
 import (
 	"net/http"
 	"testing"
 	"time"
 
-	"heliosian/internal/model"
 	"heliosian/internal/testkit"
 )
 
 func TestWidget(t *testing.T) {
-	cache, _ := newServer(t)
-	at := time.Date(2026, 9, 25, 12, 0, 0, 0, model.Location)
+	cache, _ := activitiesServer(t)
+	at := time.Date(2026, 9, 25, 12, 0, 0, 0, Location)
 	w := cache.Widget("jordan.whitfield@heliosschool.org", at)
 	if len(w.Mine) != 3 {
 		t.Fatalf("mine: %+v", w.Mine)
@@ -30,13 +29,13 @@ func TestWidget(t *testing.T) {
 			t.Errorf("open lists what they are on: %+v", o)
 		}
 	}
-	later := cache.Widget("jordan.whitfield@heliosschool.org", time.Date(2026, 11, 7, 12, 0, 0, 0, model.Location))
+	later := cache.Widget("jordan.whitfield@heliosschool.org", time.Date(2026, 11, 7, 12, 0, 0, 0, Location))
 	for _, m := range later.Mine {
 		if m.Title == "Tech Setup" {
 			t.Errorf("passed sign-up still listed: %+v", later.Mine)
 		}
 	}
-	if none := cache.Widget(parent, at); len(none.Mine) != 0 || len(none.Open) == 0 {
+	if none := cache.Widget(activitiesParent, at); len(none.Mine) != 0 || len(none.Open) == 0 {
 		t.Errorf("on nothing: %+v", none)
 	}
 	if p := w.Priority; len(p) != 2 || p[0].Title != "Spring Celebration" || p[1].Title != "Helios Cares" || p[0].Note == "" {
@@ -45,7 +44,7 @@ func TestWidget(t *testing.T) {
 }
 
 func TestPriorityIsAnAdmins(t *testing.T) {
-	cache, mux := newServer(t)
+	cache, mux := activitiesServer(t)
 	edit := map[string]any{
 		"id": "act0000000020", "year": "2026 - 2027", "title": "India", "parent": "act0000000001",
 		"category": "tcg0000000008", "status": StatusOpen, "coLeaderNeeded": true, "directSignUp": "Yes", "priority": true,
@@ -56,7 +55,7 @@ func TestPriorityIsAnAdmins(t *testing.T) {
 	if cache.Model().Activity("act0000000020").Priority {
 		t.Fatal("a co-chair marked a priority")
 	}
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
+	if rec := testkit.Call(t, mux, jordan, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("admin save: %d %s", rec.Code, rec.Body)
 	}
 	if !cache.Model().Activity("act0000000020").Priority {
@@ -77,7 +76,7 @@ func TestPriorityIsAnAdmins(t *testing.T) {
 		t.Fatal("a complete thing kept its priority")
 	}
 	edit["priority"] = true
-	if rec := testkit.Call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
+	if rec := testkit.Call(t, mux, jordan, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("admin save: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Model().Activity("act0000000020").Priority {

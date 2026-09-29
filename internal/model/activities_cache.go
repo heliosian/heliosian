@@ -1,4 +1,4 @@
-package team
+package model
 
 import (
 	"context"
@@ -10,42 +10,41 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/data"
 	"heliosian/internal/id"
-	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
-type Cache struct {
-	*store.Store[*Model]
-	model.AdminList
+type ActivitiesCache struct {
+	*store.Store[*Activities]
+	AdminList
 }
 
-func spec(images blob.Checker) store.Spec[*Model] {
-	return store.Spec[*Model]{
-		App: appName,
+func activitiesSpec(images blob.Checker) store.Spec[*Activities] {
+	return store.Spec[*Activities]{
+		App: activitiesAppName,
 		Tabs: []store.Tab{
-			{Name: categoriesTab, Columns: CategoryColumns, Key: []string{"Category ID"}},
+			{Name: activityCategoriesTab, Columns: ActivityCategoryColumns, Key: []string{"Category ID"}},
 			{Name: activitiesTab, Columns: ActivityColumns, Key: []string{"Event ID"}, Cascade: carryActivity},
 			{Name: volunteersTab, Columns: VolunteerColumns, Key: []string{"Event ID", "Email"}},
 			{Name: linksTab, Columns: LinkColumns, Key: []string{"Link ID"}},
-			{Name: settingsTab, Columns: SettingColumns, Key: []string{"Key"}},
+			{Name: activitySettingsTab, Columns: KeyValueColumns, Key: []string{"Key"}},
 			{Name: notificationsTab, Columns: NotificationColumns, Key: []string{"Email"}},
-			model.AdminsTab,
-			{Name: redirectsTab, Columns: RedirectColumns, Key: []string{"Old"}},
+			AdminsTab,
+			{Name: activityRedirectsTab, Columns: RedirectColumns, Key: []string{"Old"}},
 			{Name: id.AliasesTab, Columns: id.AliasColumns, Key: []string{id.AliasColumn}},
 		},
-		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {
-			return BuildModel(ctx, tables, images)
+		Build: func(ctx context.Context, tables store.Tables) (*Activities, error) {
+			return BuildActivities(ctx, tables, images)
 		},
-		Loaded: func(model *Model, took time.Duration) {
+		Loaded: func(m *Activities, took time.Duration) {
 			children, volunteers := 0, 0
-			for _, a := range model.Activities {
+			for _, a := range m.Activities {
 				children += len(a.Descendants())
 				for _, n := range append([]*Activity{a}, a.Descendants()...) {
 					volunteers += len(n.Volunteers)
 				}
 			}
-			slog.Info("loaded events model", "categories", len(model.Categories), "roots", len(model.Activities),
-				"children", children, "volunteers", volunteers, "skipped", model.Skipped, "took", took.Round(time.Millisecond))
+			slog.Info("loaded events model", "categories", len(m.Categories), "roots", len(m.Activities),
+				"children", children, "volunteers", volunteers, "skipped", m.Skipped, "took", took.Round(time.Millisecond))
 		},
 	}
 }
@@ -66,7 +65,7 @@ func carryActivity(tables store.Tables, before, after store.Row) []store.Op {
 	if was == now || heldBy(rows, was, after) {
 		return ops
 	}
-	return append(ops, store.Insert(redirectsTab, store.Row{"Type": RedirectActivity, "Old": was, "New": now, "Date": today()}))
+	return append(ops, store.Insert(activityRedirectsTab, store.Row{"Type": RedirectActivity, "Old": was, "New": now, "Date": todayLocal()}))
 }
 
 func rowPath(rows []store.Row, row store.Row) string {
@@ -94,10 +93,10 @@ func heldBy(rows []store.Row, path string, self store.Row) bool {
 	return false
 }
 
-func NewCache(source data.Source, writer data.Writer, images blob.Checker, superAdmins func() []string, queue *store.Queue) (*Cache, error) {
-	s, err := store.New(spec(images), source, writer, queue)
+func NewActivitiesCache(source data.Source, writer data.Writer, images blob.Checker, superAdmins func() []string, queue *store.Queue) (*ActivitiesCache, error) {
+	s, err := store.New(activitiesSpec(images), source, writer, queue)
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, AdminList: model.NewAdminList("team", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
+	return &ActivitiesCache{Store: s, AdminList: NewAdminList("team", ActivitiesAdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
 }

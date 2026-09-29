@@ -9,7 +9,6 @@ import (
 
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
-	"heliosian/internal/celebrate"
 	"heliosian/internal/data"
 	"heliosian/internal/devcache"
 	"heliosian/internal/env"
@@ -19,7 +18,6 @@ import (
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
-	"heliosian/internal/team"
 )
 
 func main() {
@@ -144,13 +142,13 @@ func main() {
 	}
 	fmt.Printf("apps admins: %d\n", len(appsCache.Admins()))
 
-	eventsCache, err := team.NewCache(source, nil, blob.NewImages(media, "team"), func() []string { return nil }, store.NewQueue())
+	eventsCache, err := model.NewActivitiesCache(source, nil, blob.NewImages(media, "team"), func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load events model: %v", err)
 	}
 	portal := eventsCache.Model()
 	fmt.Println("events:")
-	byYear := map[string][]*team.Activity{}
+	byYear := map[string][]*model.Activity{}
 	years := []string{}
 	for _, a := range portal.Activities {
 		if _, seen := byYear[a.Year]; !seen {
@@ -172,7 +170,7 @@ func main() {
 	}
 	fmt.Printf("events admins: %d\n", len(eventsCache.Admins()))
 
-	celebrateCache, err := celebrate.NewCache(source, nil, blob.NewImages(media, "celebrate"), func() []string { return nil }, store.NewQueue())
+	celebrateCache, err := model.NewPartiesCache(source, nil, blob.NewImages(media, "celebrate"), func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load celebrate model: %v", err)
 	}
@@ -184,7 +182,7 @@ func main() {
 		for _, p := range parties {
 			hosts += len(p.HostEmails)
 			for _, t := range p.Tickets {
-				if t.Status == celebrate.TicketWaitlist {
+				if t.Status == model.TicketWaitlist {
 					waiting++
 				} else {
 					sold++
@@ -250,8 +248,8 @@ func main() {
 	sources := loop.Sources{
 		Directory: directory,
 		MagicTags: func(owner string) []model.MagicTag {
-			lists := append(directory.RoomParentTags(owner), site.Lists(directory, owner, now)...)
-			return append(lists, portal.Lists(directory, owner, now)...)
+			lists := append(directory.RoomParentTags(owner), site.MagicTags(directory, owner, now)...)
+			return append(lists, portal.MagicTags(directory, owner, now)...)
 		},
 	}
 	fmt.Println("groups:")

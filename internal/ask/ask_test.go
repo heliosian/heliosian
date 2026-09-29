@@ -22,7 +22,6 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
-	"heliosian/internal/celebrate"
 	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/home"
@@ -30,7 +29,6 @@ import (
 	"heliosian/internal/loop"
 	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/team"
 	"heliosian/internal/testkit"
 	"heliosian/internal/testkit/sample"
 )
@@ -48,12 +46,12 @@ func sampleSources(t *testing.T) Sources {
 	}
 	queue := store.NewQueue()
 	calendarModel := sample.Calendar(t, dir, queue, directory).Model()
-	teamCache, err := team.NewCache(dir, dir, testkit.All, func() []string { return nil }, queue)
+	teamCache, err := model.NewActivitiesCache(dir, dir, testkit.All, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	teamModel := teamCache.Model()
-	celebrateCache, err := celebrate.NewCache(dir, dir, testkit.All, func() []string { return nil }, queue)
+	celebrateCache, err := model.NewPartiesCache(dir, dir, testkit.All, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,8 +96,8 @@ func sampleSources(t *testing.T) Sources {
 		Settings:  func() *model.Config { return &model.Config{} },
 		Calendar:  func() *model.Calendar { return calendarModel },
 		Linked:    func(string) []model.Linked { return nil },
-		Team:      func() *team.Model { return teamModel },
-		Celebrate: func() *celebrate.Model { return celebrateModel },
+		Team:      func() *model.Activities { return teamModel },
+		Celebrate: func() *model.Parties { return celebrateModel },
 		Loop:      func() *loop.Model { return loopModel },
 		LoopSources: func() loop.Sources {
 			return loop.Sources{Directory: directory, MagicTags: lists}
@@ -107,7 +105,7 @@ func sampleSources(t *testing.T) Sources {
 		Links:     homeCache.CategoriesFor,
 		Artifacts: func() *artifacts.Model { return documents },
 		Embedder:  embedder,
-		Admins:    Admins{Team: heldBy(team.AdminAllowances), Celebrate: heldBy(celebrate.AdminAllowances), Loop: heldBy(loop.AdminAllowances), Calendar: heldBy(model.CalendarAdminAllowances), Home: heldBy(home.AdminAllowances)},
+		Admins:    Admins{Team: heldBy(model.ActivitiesAdminAllowances), Celebrate: heldBy(model.PartiesAdminAllowances), Loop: heldBy(loop.AdminAllowances), Calendar: heldBy(model.CalendarAdminAllowances), Home: heldBy(home.AdminAllowances)},
 		Now:       func() time.Time { return sampleNow },
 	}
 }
@@ -389,9 +387,9 @@ func TestVolunteerOpportunitiesNameTheHouseholdsSignUps(t *testing.T) {
 func TestPrivateVolunteerListAsTeamShowsIt(t *testing.T) {
 	const student, stranger = "sam.whitfield@heliosschool.org", "elena.torres@heliosschool.org"
 	sources := sampleSources(t)
-	var room *team.Activity
+	var room *model.Activity
 	for _, root := range sources.Team().Activities {
-		for _, a := range append([]*team.Activity{root}, root.Descendants()...) {
+		for _, a := range append([]*model.Activity{root}, root.Descendants()...) {
 			if a.Title == "Room Parents" {
 				room = a
 			}
@@ -400,7 +398,7 @@ func TestPrivateVolunteerListAsTeamShowsIt(t *testing.T) {
 	if room == nil || !room.VolunteersHidden {
 		t.Fatalf("no private Room Parents list in the sample: %+v", room)
 	}
-	room.Volunteers = append(room.Volunteers, team.Volunteer{Email: jordan, Position: team.PositionOpen}, team.Volunteer{Email: stranger, Position: team.PositionOpen})
+	room.Volunteers = append(room.Volunteers, model.Volunteer{Email: jordan, Position: model.PositionOpen}, model.Volunteer{Email: stranger, Position: model.PositionOpen})
 	chairs := len(room.CoChairs())
 	for _, c := range []struct {
 		email      string
@@ -433,7 +431,7 @@ func TestAdminSeesTeamsHiddenThings(t *testing.T) {
 	sources := sampleSources(t)
 	hidden := 0
 	for _, root := range sources.Team().Activities {
-		if root.Status != team.StatusHidden && root.Status != team.StatusPending {
+		if root.Status != model.StatusHidden && root.Status != model.StatusPending {
 			continue
 		}
 		hidden++

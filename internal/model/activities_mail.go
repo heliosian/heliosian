@@ -1,4 +1,4 @@
-package team
+package model
 
 import (
 	"fmt"
@@ -9,28 +9,27 @@ import (
 
 	"heliosian/internal/cells"
 	"heliosian/internal/mail"
-	"heliosian/internal/model"
 )
 
 var NotifyKinds = []string{"events", "activities", "signups", "offers"}
 
-var brand = mail.Brand{Name: "HCA-Team", Color: "#1f4d53", Tagline: "the HCA volunteer portal"}
+var activitiesBrand = mail.Brand{Name: "HCA-Team", Color: "#1f4d53", Tagline: "the HCA volunteer portal"}
 
-func (a app) adminsWanting(kind string, except ...string) []string {
-	model := a.cache.Model()
+func (a activitiesApp) adminsWanting(kind string, except ...string) []string {
+	m := a.cache.Model()
 	out := []string{}
 	for _, admin := range a.cache.Admins() {
 		if slices.Contains(except, admin) {
 			continue
 		}
-		if model.notifyPrefs(admin)[kind] {
+		if m.notifyPrefs(admin)[kind] {
 			out = append(out, admin)
 		}
 	}
 	return out
 }
 
-func chairsAround(m *Model, act *Activity) []string {
+func chairsAround(m *Activities, act *Activity) []string {
 	out := []string{}
 	for n := act; n != nil; n = m.byID[n.Parent] {
 		for _, email := range n.CoChairs() {
@@ -42,7 +41,7 @@ func chairsAround(m *Model, act *Activity) []string {
 	return out
 }
 
-func (a app) chairRows(m *Model, act *Activity) [][2]string {
+func (a activitiesApp) chairRows(m *Activities, act *Activity) [][2]string {
 	rows := [][2]string{}
 	for n := act; n != nil; n = m.byID[n.Parent] {
 		names := []string{}
@@ -63,21 +62,21 @@ func (a app) chairRows(m *Model, act *Activity) [][2]string {
 	return rows
 }
 
-func (a app) letterFor(base string, act *Activity) mail.Letter {
-	model := a.cache.Model()
+func (a activitiesApp) letterFor(base string, act *Activity) mail.Letter {
+	m := a.cache.Model()
 	l := mail.Letter{
-		Brand: brand,
+		Brand: activitiesBrand,
 		Base:  base,
 		Title: act.Title,
-		When:  whenText(timed(model, act)),
+		When:  whenText(timed(m, act)),
 		Where: act.Location,
-		Path:  base + model.PathOf(act),
+		Path:  base + m.PathOf(act),
 	}
-	if under := lineage(model, act); under != "" {
+	if under := lineage(m, act); under != "" {
 		l.Subtitle = "Part of " + under
 	}
-	for n := act; n != nil; n = model.byID[n.Parent] {
-		if previewable(model, n) {
+	for n := act; n != nil; n = m.byID[n.Parent] {
+		if activityPreviewable(m, n) {
 			l.Picture = base + "/open/share/" + n.ID + ".png"
 			break
 		}
@@ -85,7 +84,7 @@ func (a app) letterFor(base string, act *Activity) mail.Letter {
 	return l
 }
 
-func (a app) event(m *Model, act *Activity, email, page string, to []string) (mail.Event, bool) {
+func (a activitiesApp) event(m *Activities, act *Activity, email, page string, to []string) (mail.Event, bool) {
 	dated := act
 	for dated != nil && dated.Start == "" {
 		dated = m.byID[dated.Parent]
@@ -93,7 +92,7 @@ func (a app) event(m *Model, act *Activity, email, page string, to []string) (ma
 	if dated == nil {
 		return mail.Event{}, false
 	}
-	start, until, allDay, ok := mail.Span(dated.Start, dated.End, model.Location)
+	start, until, allDay, ok := mail.Span(dated.Start, dated.End, Location)
 	if !ok {
 		return mail.Event{}, false
 	}
@@ -110,7 +109,7 @@ func (a app) event(m *Model, act *Activity, email, page string, to []string) (ma
 		Description: page,
 		Location:    act.Location,
 		URL:         page,
-		Organizer:   mail.Person{Name: brand.Name, Email: a.mailer.From()},
+		Organizer:   mail.Person{Name: activitiesBrand.Name, Email: a.mailer.From()},
 	}
 	for _, t := range to {
 		e.Attendees = append(e.Attendees, mail.Person{Name: a.nameOf(t), Email: t})
@@ -118,11 +117,11 @@ func (a app) event(m *Model, act *Activity, email, page string, to []string) (ma
 	return e, true
 }
 
-func (a app) invite(e mail.Event, method string) mail.Attachment {
-	return mail.Calendar{Product: brand.Name, Method: method, Stamp: time.Now(), Events: []mail.Event{e}}.Attachment()
+func (a activitiesApp) invite(e mail.Event, method string) mail.Attachment {
+	return mail.Calendar{Product: activitiesBrand.Name, Method: method, Stamp: time.Now(), Events: []mail.Event{e}}.Attachment()
 }
 
-func (a app) mailRemoved(r *http.Request, act *Activity, email, actor string) {
+func (a activitiesApp) mailRemoved(r *http.Request, act *Activity, email, actor string) {
 	m := a.cache.Model()
 	l := a.letterFor(mail.Base(r), act)
 	l.Heading = "You're no longer signed up"
@@ -131,7 +130,7 @@ func (a app) mailRemoved(r *http.Request, act *Activity, email, actor string) {
 		l.Intro = fmt.Sprintf("%s removed your sign-up for %s, so it comes off your calendar. If that's a surprise, the chairs can put you back - just reply.", a.nameOf(actor), act.Title)
 	}
 	l.Button = "See the details"
-	msg := l.Message("Removed: "+act.Title, append([]string{email}, parentsOf(a.directory(), email)...), nil, without(chairsAround(m, act), email))
+	msg := l.Message("Removed: "+act.Title, append([]string{email}, parentsOf(a.directory(), email)...), nil, except(chairsAround(m, act), email))
 	e, ok := a.event(m, act, email, l.Path, msg.To)
 	if !ok {
 		return
@@ -140,7 +139,7 @@ func (a app) mailRemoved(r *http.Request, act *Activity, email, actor string) {
 	mail.Post(r.Context(), a.mailer, msg)
 }
 
-func (a app) nameOf(email string) string {
+func (a activitiesApp) nameOf(email string) string {
 	p := a.directory().Person(email)
 	if p == nil || p.FullName == "" {
 		return cells.DisplayName(email)
@@ -148,14 +147,14 @@ func (a app) nameOf(email string) string {
 	return p.FullName
 }
 
-func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, actor string, existed bool, was string) {
+func (a activitiesApp) mailSignUp(r *http.Request, act *Activity, email, position, note, actor string, existed bool, was string) {
 	base := mail.Base(r)
 	ctx := r.Context()
-	model := a.cache.Model()
-	if now := model.Activity(act.ID); now != nil {
+	m := a.cache.Model()
+	if now := m.Activity(act.ID); now != nil {
 		act = now
 	}
-	chairs := chairsAround(model, act)
+	chairs := chairsAround(m, act)
 	l := a.letterFor(base, act)
 	name := a.nameOf(email)
 	first := strings.Fields(name)
@@ -164,8 +163,8 @@ func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, a
 		hi = "Hi " + first[0]
 	}
 	root := act
-	for root.Parent != "" && model.byID[root.Parent] != nil {
-		root = model.byID[root.Parent]
+	for root.Parent != "" && m.byID[root.Parent] != nil {
+		root = m.byID[root.Parent]
 	}
 	switch {
 	case position == PositionCoChair && was != PositionCoChair:
@@ -182,7 +181,7 @@ func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, a
 		}
 		l.Button = "Open " + act.Title
 		l.Footnote = "The other co-chairs are copied on this note."
-		mail.Post(ctx, a.mailer, l.Message(fmt.Sprintf("You're a co-chair of %s", act.Title), []string{email}, without(chairs, email), without(chairs, email)))
+		mail.Post(ctx, a.mailer, l.Message(fmt.Sprintf("You're a co-chair of %s", act.Title), []string{email}, except(chairs, email), except(chairs, email)))
 	case !existed:
 		by := ""
 		if actor != email {
@@ -202,13 +201,13 @@ func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, a
 			}
 			l.Rows = append(l.Rows, [2]string{label, note})
 		}
-		l.Rows = append(l.Rows, a.chairRows(model, act)...)
+		l.Rows = append(l.Rows, a.chairRows(m, act)...)
 		l.Button = "See the details"
 		l.Footnote = "Need to change or cancel? Open the page and use Edit my sign-up."
 		subject := fmt.Sprintf("Thanks for volunteering for %s", act.Title)
 		to := append([]string{email}, parentsOf(a.directory(), email)...)
-		replyTo := without(chairs, email)
-		e, dated := a.event(model, act, email, l.Path, nil)
+		replyTo := except(chairs, email)
+		e, dated := a.event(m, act, email, l.Path, nil)
 		if dated {
 			l.Calendar = e.GoogleLink()
 		}
@@ -265,7 +264,7 @@ func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, a
 	}
 }
 
-func (a app) mailNewActivity(r *http.Request, act *Activity, actor string) {
+func (a activitiesApp) mailNewActivity(r *http.Request, act *Activity, actor string) {
 	kind, what := "events", "A new event was added"
 	if act.Parent != "" {
 		kind, what = "activities", "Something new was added under "+lineage(a.cache.Model(), act)
@@ -283,14 +282,4 @@ func (a app) mailNewActivity(r *http.Request, act *Activity, actor string) {
 	}
 	l.Button = "Open " + act.Title
 	mail.Post(r.Context(), a.mailer, l.Message(fmt.Sprintf("New: %s", act.Title), admins, nil, nil))
-}
-
-func without(list []string, drop string) []string {
-	out := []string{}
-	for _, e := range list {
-		if e != drop {
-			out = append(out, e)
-		}
-	}
-	return out
 }
