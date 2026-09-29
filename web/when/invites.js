@@ -7,11 +7,12 @@ import {checkbox} from '/form.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
 import {uploadImage} from './imagecontrol.js';
-import {answerWords, answerIcon, answerFor, firstName, answerButtons, face, ticketWords, stamp, answeredWords, pickerPeople, ruleOptions, setRuleOptions, groupWords} from './inviteparts.js';
+import {answerWords, answerIcon, answerFor, firstName, answerButtons, ticketWords, stamp, answeredWords, pickerPeople, ruleOptions, setRuleOptions, groupWords} from './inviteparts.js';
 import {openGuestForm, openGuestCard, warningChip, openPending, sendInvites, deleteInvitation, openCancel} from './guestpopups.js';
 import {listFilters, openTable, openMessage} from './guesttable.js';
 import {openPicker} from './addpeople.js';
 import {personTile, personCard, peopleRow, andList} from '/people.js';
+import {personRow} from '/personrow.js';
 import {openPersonCard} from '/personcard.js';
 
 export async function startParty(e) {
@@ -70,12 +71,15 @@ function answerItems(e, r, refresh, clear) {
 }
 
 function memberChip(e, r, refresh) {
-  const chip = el('button', 'rsvp-member');
-  chip.type = 'button';
+  const chip = personRow(r, {
+    button: true,
+    className: 'rsvp-member',
+    name: firstName(r),
+    lines: [el('div', 'rsvp-member-answer is-' + (r.answer || 'none'), r.answer ? answerWords[r.answer] : r.guestOf ? 'Guest' : 'No response')],
+    after: [svg('chevron-down')],
+    gradeColors: state.model.gradeColors,
+  });
   chip.disabled = !r.mine;
-  const words = el('span', 'rsvp-member-words');
-  words.append(el('strong', '', firstName(r)), el('span', 'rsvp-member-answer is-' + (r.answer || 'none'), r.answer ? answerWords[r.answer] : r.guestOf ? 'Guest' : 'No response'));
-  chip.append(face(r, 'invite-face rsvp-member-face'), words, svg('chevron-down'));
   const items = answerItems(e, r, refresh, r.answer ? 'Clear answer' : '');
   if (r.guestOf) {
     items.push({icon: 'trash', words: 'Remove guest', run: async () => {
@@ -812,23 +816,19 @@ function guestGroupFoot(e, g, members, refresh) {
 }
 
 function guestRow(e, view, r, refresh) {
-  const row = el('div', 'guests-row' + (r.guestOf ? ' is-guest' : '') + (r.invited ? '' : ' is-link'));
-  row.append(face(r));
-  const who = el('div', 'invite-who');
-  who.append(el('div', 'invite-name', r.name || r.email));
   const bits = [r.guestOf ? `Guest of ${r.guestOfName}` : r.line, r.email && r.outside ? r.email : ''].filter(Boolean);
-  if (bits.length) {
-    who.append(el('div', 'invite-line', bits.join(' \u00b7 ')));
-  }
-  who.append(guestMarks(e, view, r, refresh));
-  row.append(who);
   const side = el('div', 'guests-side');
   side.append(answerButtons(r, e, () => refresh()));
   if (r.answer) {
     side.append(el('div', 'guests-by', answeredWords(r)));
   }
-  row.append(side, guestActions(e, r, refresh));
-  return row;
+  return personRow(r, {
+    className: 'guests-row' + (r.guestOf ? ' is-guest' : '') + (r.invited ? '' : ' is-link'),
+    open: true,
+    lines: [bits.join(' \u00b7 '), guestMarks(e, view, r, refresh)],
+    after: [side, guestActions(e, r, refresh)],
+    gradeColors: state.model.gradeColors,
+  });
 }
 
 function guestMarks(e, view, r, refresh) {
@@ -895,28 +895,25 @@ function guestActions(e, r, refresh) {
 }
 
 function guestPlainRow(e, view, r, refresh) {
-  const row = el('button', 'guests-plain' + (r.guestOf ? ' is-guest' : ''));
-  row.type = 'button';
-  row.append(face(r));
-  const who = el('div', 'invite-who');
-  who.append(el('div', 'invite-name', r.name || r.email));
   const bits = [r.guestOf ? `Guest of ${r.guestOfName}` : r.line, r.invited && !r.sent ? 'Not sent' : r.opened ? 'Opened' : ''].filter(Boolean);
-  if (bits.length) {
-    who.append(el('div', 'invite-line', bits.join(' \u00b7 ')));
-  }
-  row.append(who);
+  const after = [];
   if (r.warning) {
     const warn = el('span', 'guests-plain-warn');
     warn.title = r.warningWords;
     warn.append(svg('info'));
-    row.append(warn);
+    after.push(warn);
   }
   const said = el('span', 'invite-said-mark guests-plain-mark is-' + (r.answer || 'none'));
   said.title = r.answer ? answerWords[r.answer] : 'No response';
   said.append(svg(answerIcon(r.answer)));
-  row.append(said);
-  row.addEventListener('click', () => openGuestCard(e, r, view, refresh));
-  return row;
+  after.push(said);
+  return personRow(r, {
+    className: 'guests-plain' + (r.guestOf ? ' is-guest' : ''),
+    onClick: () => openGuestCard(e, r, view, refresh),
+    lines: [bits.join(' \u00b7 ')],
+    after,
+    gradeColors: state.model.gradeColors,
+  });
 }
 
 function guestTableButton(e, view, refresh) {

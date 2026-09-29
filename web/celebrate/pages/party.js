@@ -1,6 +1,6 @@
 import {state, isAdmin, canApprove, isKid, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {paragraphs} from '../dom.js';
-import {el, link, svg, button, avatar, imageThumb, copyText, toast} from '/elements.js';
+import {el, link, svg, button, imageThumb, copyText, toast} from '/elements.js';
 import {listPath} from '../chrome.js';
 import {setTitle} from '/shell.js';
 import {appOrigin} from '/appswitch.js';
@@ -11,6 +11,7 @@ import {heroImageBar} from '/heroimage.js';
 import {dateCard, parseWhen} from '/datecard.js';
 import {render} from '/router.js';
 import {personTile, personCard, peopleRow, andList} from '/people.js';
+import {personRow} from '/personrow.js';
 
 const phone = window.matchMedia('(max-width: 900px)');
 phone.addEventListener('change', render);
@@ -85,16 +86,12 @@ function ticketBand(p) {
   const band = el('div', 'ticket-band avail-band-' + p.availability);
   band.append(el('h2', 'ticket-words', ticketWords(p, mine)));
   for (const a of mine.filter(a => a.status !== 'Ticket')) {
-    const row = el('div', 'ticket-mine');
-    row.append(avatar(a, 'my-ticket-face'));
-    const words = el('span', 'my-ticket-words');
     const n = a.quantity || 1;
-    words.append(el('span', 'my-ticket-name', a.name), el('span', 'my-ticket-line', `Waiting for ${n} ${n === 1 ? 'ticket' : 'tickets'}`));
-    if (a.note) {
-      words.append(el('span', 'ticket-mine-note', `\u201c${a.note}\u201d`));
-    }
-    row.append(words);
-    band.append(row);
+    band.append(personRow(a, {
+      className: 'ticket-mine',
+      open: true,
+      lines: [`Waiting for ${n} ${n === 1 ? 'ticket' : 'tickets'}`, a.note ? el('div', 'ticket-mine-note', `\u201c${a.note}\u201d`) : null],
+    }));
   }
   const actions = el('div', 'ticket-actions');
   const selling = p.availability === 'available' || p.availability === 'waitlist';
@@ -125,15 +122,12 @@ function myTicketsSection(p) {
   section.append(swooshHeading('My Tickets'));
   const list = el('div', 'my-ticket-list');
   for (const a of mine) {
-    const row = el('div', 'my-ticket');
-    row.append(avatar(a, 'my-ticket-face'));
-    const words = el('span', 'my-ticket-words');
-    words.append(el('span', 'my-ticket-name', a.name), el('span', 'my-ticket-line', a.price ? `Ticket · ${money(a.price)}` : 'Free ticket'));
-    row.append(words);
-    if (p.availability !== 'past' && (!isKid() || p.canEdit)) {
-      row.append(button('Reassign', 'people', 'link-button', () => openReassign(p, a)));
-    }
-    list.append(row);
+    list.append(personRow(a, {
+      className: 'my-ticket',
+      open: true,
+      lines: [a.price ? `Ticket · ${money(a.price)}` : 'Free ticket'],
+      after: p.availability !== 'past' && (!isKid() || p.canEdit) ? [button('Reassign', 'people', 'link-button', () => openReassign(p, a))] : [],
+    }));
   }
   section.append(list);
   return section;
@@ -190,23 +184,21 @@ function waitlistSection(p) {
   section.append(el('h3', 'section-title', `Waitlist (${p.waitlisted.length})`));
   const list = el('div', 'wait-list');
   p.waitlisted.forEach((a, i) => {
-    const row = el('div', 'wait-row');
-    row.append(el('span', 'wait-num', String(i + 1)), avatar(a, 'wait-face'));
-    const words = el('span', 'wait-words');
-    words.append(el('span', 'wait-name', a.name));
     const n = a.quantity || 1;
-    words.append(el('span', 'wait-line', `${n} ${n === 1 ? 'ticket' : 'tickets'}${a.line ? ` · ${a.line}` : ''}`));
-    row.append(words);
-    if (a.mine) {
-      row.append(el('span', 'wait-mine', 'Your family'));
-    }
+    const after = a.mine ? [el('span', 'wait-mine', 'Your family')] : [];
     if (p.canEdit) {
-      row.append(button(`Offer ${n === 1 ? 'a ticket' : n + ' tickets'}`, 'ticket', 'button button-secondary button-small', () => offerTickets(p, a)));
-      row.append(button('', 'edit', 'edit-icon', () => openTicket(p, a)));
+      after.push(button(`Offer ${n === 1 ? 'a ticket' : n + ' tickets'}`, 'ticket', 'button button-secondary button-small', () => offerTickets(p, a)));
+      after.push(button('', 'edit', 'edit-icon', () => openTicket(p, a)));
     } else if (a.mine && !isKid()) {
-      row.append(button('Leave waitlist', 'close', 'link-button', () => removeTicket(p, a)));
+      after.push(button('Leave waitlist', 'close', 'link-button', () => removeTicket(p, a)));
     }
-    list.append(row);
+    list.append(personRow(a, {
+      className: 'wait-row',
+      open: true,
+      before: [el('span', 'wait-num', String(i + 1))],
+      lines: [`${n} ${n === 1 ? 'ticket' : 'tickets'}${a.line ? ` · ${a.line}` : ''}`],
+      after,
+    }));
   });
   section.append(list);
   return section;

@@ -5,7 +5,9 @@ import {load} from '/router.js';
 import {openPersonCard} from '/personcard.js';
 import {act} from '/data.js';
 import {createPersonPicker} from '/picker.js';
-import {answerWords, firstName, answerButtons, face, ticketWords, ticketDetail, answeredWords, pickerPeople} from './inviteparts.js';
+import {answerWords, firstName, answerButtons, ticketWords, ticketDetail, answeredWords, pickerPeople} from './inviteparts.js';
+import {state} from './state.js';
+import {personRow} from '/personrow.js';
 
 function guestForm(e, of, onDone) {
   const form = el('form', 'admin-form guest-form');
@@ -243,21 +245,13 @@ export function openPending(e, view, refresh) {
     }
   };
   for (const r of unsent) {
-    const row = el('div', 'picker-person pending-row');
-    row.append(face(r));
-    const who = el('div', 'invite-who');
-    who.append(el('div', 'invite-name', r.name || r.email));
-    const line = [r.guestOf ? `Guest of ${r.guestOfName}` : r.line, r.email].filter(Boolean).join(' · ');
-    if (line) {
-      who.append(el('div', 'invite-line', line));
-    }
+    let marks = null;
     if (r.warning) {
-      const marks = el('div', 'guests-marks');
+      marks = el('div', 'guests-marks');
       marks.append(warningChip(e, view, r, () => {
         shut();
         refresh();
       }));
-      who.append(marks);
     }
     const tools = el('div', 'pending-tools');
     tools.append(button('Send now', 'calendar', 'button button-small', () => sendTo([r.key])));
@@ -275,8 +269,12 @@ export function openPending(e, view, refresh) {
         toast(err.message);
       }
     }));
-    row.append(who, tools);
-    list.append(row);
+    list.append(personRow(r, {
+      className: 'picker-person pending-row',
+      lines: [[r.guestOf ? `Guest of ${r.guestOfName}` : r.line, r.email].filter(Boolean).join(' · '), marks],
+      after: [tools],
+      gradeColors: state.model.gradeColors,
+    }));
   }
   box.append(list);
   const actions = el('div', 'modal-actions');

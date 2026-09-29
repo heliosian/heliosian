@@ -1,6 +1,6 @@
 import {state, me, options, groupPath, person, personView, memberView} from '../state.js';
-import {personRow, pageHead} from '../dom.js';
-import {el, svg, button, iconButton, copyText, toast, thumb} from '/elements.js';
+import {pageHead} from '../dom.js';
+import {el, svg, button, iconButton, copyText, toast} from '/elements.js';
 import {whoLink} from '/appswitch.js';
 import {setTitle} from '/shell.js';
 import {api} from '/api.js';
@@ -13,6 +13,7 @@ import {tabStrip, tabParam, tabHref} from '/tabs.js';
 import {rulesEditor} from '/rules.js';
 import {visibilityWords} from './groups.js';
 import {personCard} from '/people.js';
+import {personRow} from '/personrow.js';
 import {openPersonCard} from '/personcard.js';
 
 const {ruleRow, newRule, ruleSaysSomething, personWords, ruleWords} = rulesEditor({
@@ -348,7 +349,12 @@ function renderManagerRows(draft, rows) {
       draft.managers = draft.managers.filter(m => m !== email);
       renderManagerRows(draft, rows);
     });
-    rows.append(personRow(shown, remove));
+    rows.append(personRow(shown, {
+      className: 'manager-edit-row',
+      open: true,
+      lines: [[shown.words, shown.email].filter(Boolean).join(' · ')],
+      after: [remove],
+    }));
   }
 }
 
@@ -972,7 +978,24 @@ export function groupPage(g) {
 }
 
 function compactRow(m, why, chip, onRemove, onPick) {
-  const row = el(m.outside || onPick ? 'div' : 'a', 'compact-row' + (m.outside ? ' is-outside' : '') + (onPick ? ' is-pickable' : ''));
+  const line = el('div', 'person-row-line');
+  if (m.outside) {
+    line.append(el('span', 'chip outside', 'Non-Helios'), ' ');
+  }
+  line.append([m.outside ? '' : m.words, m.email].filter(Boolean).join(' · '));
+  const tail = el('span', 'compact-tail');
+  if (chip) {
+    tail.append(chip);
+  }
+  if (onRemove) {
+    tail.append(iconButton('close', `Remove ${m.name}`, 'compact-remove', onRemove));
+  }
+  const row = personRow(m, {
+    className: 'compact-row' + (m.outside ? ' is-outside' : '') + (onPick ? ' is-pickable' : ''),
+    lines: [line],
+    after: [el('span', 'compact-why', why), tail],
+    gradeColors: state.model.gradeColors,
+  });
   if (onPick) {
     row.tabIndex = 0;
     row.setAttribute('role', 'button');
@@ -984,29 +1007,7 @@ function compactRow(m, why, chip, onRemove, onPick) {
         onPick(row, m, e);
       }
     });
-  } else if (!m.outside) {
-    row.href = whoLink(m.email);
-    row.title = `${m.name} in Helios Who?`;
   }
-  row.append(thumb(m, 'tiny'));
-  row.append(el('span', 'compact-name', m.name));
-  row.append(el('span', 'compact-email', m.email));
-  const words = el('span', 'compact-words');
-  if (m.outside) {
-    words.append(el('span', 'chip outside', 'Non-Helios'));
-  } else {
-    words.textContent = m.words || '';
-  }
-  row.append(words);
-  row.append(el('span', 'compact-why', why));
-  const tail = el('span', 'compact-tail');
-  if (chip) {
-    tail.append(chip);
-  }
-  if (onRemove) {
-    tail.append(iconButton('close', `Remove ${m.name}`, 'compact-remove', onRemove));
-  }
-  row.append(tail);
   return row;
 }
 
@@ -1182,21 +1183,19 @@ function messageView(read, m) {
 
 function messageRow(m) {
   const row = el('div', 'message-row');
-  const head = el('div', 'message-head');
   const known = person(m.from.email);
-  head.append(thumb(known ? {name: known.fullName, email: known.email, photoUrl: known.heroPhotoUrl} : m.from, 'small'));
-  const body = el('div', 'person-body');
-  body.append(el('div', 'message-subject', m.subject || '(no subject)'));
-  body.append(el('div', 'person-words', [m.from.name, stamp(m.received)].filter(Boolean).join(' · ')));
-  head.append(body);
   const toggle = el('button', 'delivery-toggle');
   toggle.type = 'button';
   for (const [key, n] of [['delivered', m.delivered], ['failed', m.failed], ['pending', m.pending]]) {
     toggle.append(el('span', `delivery-count is-${key}${n ? '' : ' is-zero'}`, `${n} ${key}`));
   }
   toggle.append(svg('chevron-down'));
-  head.append(toggle);
-  row.append(head);
+  row.append(personRow(known ? {name: known.fullName, email: known.email, photoUrl: known.heroPhotoUrl} : m.from, {
+    name: m.subject || '(no subject)',
+    open: Boolean(known),
+    lines: [[m.from.name, stamp(m.received)].filter(Boolean).join(' · ')],
+    after: [toggle],
+  }));
   const details = el('div', 'delivery-list');
   details.hidden = true;
   for (const c of m.copies) {
@@ -1216,7 +1215,11 @@ function messageRow(m) {
 function copyRow(c) {
   const known = person(c.email);
   const words = [stateWords[c.state], stamp(c.when)].filter(Boolean).join(' · ');
-  const row = personRow({email: c.email, name: c.name || c.email, photoUrl: known ? known.heroPhotoUrl : '', words, outside: !known}, el('span'));
+  const row = personRow({email: c.email, name: c.name || c.email, photoUrl: known ? known.heroPhotoUrl : ''}, {
+    className: 'copy-row',
+    open: Boolean(known),
+    lines: [[words, c.email].filter(Boolean).join(' · ')],
+  });
   const attempts = c.attempts.filter(a => a.event !== 'sent');
   if (!attempts.some(a => a.event !== 'delivered')) {
     return row;
@@ -1230,6 +1233,6 @@ function copyRow(c) {
     }
     list.append(line);
   }
-  row.querySelector('.person-body').append(list);
+  row.querySelector('.person-row-words').append(list);
   return row;
 }

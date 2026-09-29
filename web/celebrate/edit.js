@@ -4,7 +4,8 @@ import {createPersonPicker} from '/picker.js';
 import {directory, listed} from '/directory.js';
 import {openPersonCard} from '/personcard.js';
 import {api} from '/api.js';
-import {el, svg, toast, button, avatar} from '/elements.js';
+import {el, svg, toast, button} from '/elements.js';
+import {personRow} from '/personrow.js';
 import {tabbedFields} from '/tabs.js';
 import {imageTools} from '/images.js';
 import {openModal, closeModal, popup} from '/modal.js';
@@ -24,15 +25,11 @@ export function openPerson(v) {
 }
 
 function personChip(person, on, disabledWhy) {
-  const chip = el('button', 'person-chip' + (on ? ' is-on' : ''));
-  chip.type = 'button';
-  chip.append(avatar(person, 'person-chip-face'));
-  const words = el('span', 'person-chip-text');
-  words.append(el('span', 'person-chip-name', person.name));
-  if (person.grade || person.title) {
-    words.append(el('span', 'person-chip-line', person.grade || person.title));
-  }
-  chip.append(words);
+  const chip = personRow({name: person.name, email: person.email, photoUrl: person.photoUrl}, {
+    button: true,
+    className: 'person-chip' + (on ? ' is-on' : ''),
+    lines: [person.grade || person.title],
+  });
   if (disabledWhy) {
     chip.disabled = true;
     chip.title = disabledWhy;

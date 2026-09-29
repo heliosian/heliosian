@@ -342,26 +342,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .manager-remove svg { width: 14px; height: 14px; }
 .manager-remove:disabled { opacity: 0.35; cursor: default; }
 
-.person-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.manager-edit-row, .copy-row { padding: 8px 0; border-top: 1px solid var(--line); }
 
-.person-row:first-of-type { border-top: 0; }
-
-.person-body { flex: 1; min-width: 0; }
-
-.person-name { font-weight: 600; text-decoration: none; }
-
-.person-name:hover { text-decoration: underline; }
-
-/* A whole row that is the link: the same words, lit on hover. */
-a.person-row-link { color: inherit; text-decoration: none; border-radius: 8px; }
-
-a.person-row-link:hover { background: var(--input); }
-
-a.person-row-link:hover .person-name { text-decoration: underline; }
-
-.person-words { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.person-note { font-size: 12.5px; color: var(--accent); margin-top: 2px; }
+.manager-edit-row:first-of-type, .copy-row:first-of-type { border-top: 0; }
 
 /* The editor's preview says what a save does: who joins and who leaves,
    above the list, and marks each in it. */
@@ -375,23 +358,18 @@ a.person-row-link:hover .person-name { text-decoration: underline; }
 
 .chip.leaves { background: #fde8d7; color: #a4551a; }
 
-.person-row.is-leaving { opacity: 0.6; }
-/* The editor's member list: a compact row each, the face small. */
 .compact-list { display: flex; flex-direction: column; }
 /* Each row is its own grid, so the columns take no width from what a
    row holds - or the rows would drift out of line with one another. */
-.compact-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.6fr) 84px; align-items: center; gap: 10px; padding: 6px; border-top: 1px solid var(--line); font-size: 13px; color: inherit; text-decoration: none; }
+.compact-row { display: grid; grid-template-columns: 36px minmax(0, 1.4fr) minmax(0, 1fr) 84px; align-items: center; gap: 10px; padding: 6px; border-top: 1px solid var(--line); font-size: 13px; }
 .compact-row:first-child { border-top: 0; }
-a.compact-row:hover { background: var(--input); }
 .compact-row.is-leaving { opacity: 0.55; }
-/* Someone from outside the directory: an amber row with a Non-Helios chip. */
 .compact-row.is-outside { background: var(--amber-band, #fff7e6); border-radius: 8px; border-top-color: transparent; }
 .compact-row.is-outside + .compact-row { border-top-color: transparent; }
 .chip.outside { background: #ffe1a8; color: #7a4b00; }
 .compact-row.is-pickable { position: relative; cursor: pointer; }
 .compact-row.is-pickable:hover { background: var(--input); }
-/* The menu a click on a member opens, by the row. */
-.member-menu { position: absolute; z-index: 25; left: 44px; top: calc(100% - 4px); min-width: 260px; padding: 6px 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); cursor: default; }
+.member-menu { position: absolute; z-index: 25; left: 52px; top: calc(100% - 4px); min-width: 260px; padding: 6px 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); cursor: default; }
 .member-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 14px; border: 0; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); text-align: left; text-decoration: none; cursor: pointer; }
 .member-menu-item:hover { background: var(--input); }
 .member-menu-item svg { width: 18px; height: 18px; color: var(--muted); }
@@ -403,16 +381,11 @@ a.compact-row:hover { background: var(--input); }
 .addition-add { flex-wrap: wrap; margin: 0 0 12px; }
 .addition-add[hidden] { display: none; }
 .addition-add small { flex-basis: 100%; font-size: 12px; color: var(--muted); }
-.thumb.tiny { width: 28px; height: 28px; font-size: 12px; }
-.compact-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.compact-email, .compact-words, .compact-why { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.compact-why { color: var(--brand); }
+.compact-why { color: var(--brand); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 700px) {
-  .compact-row { grid-template-columns: 28px 1fr auto; }
-  .compact-email, .compact-words, .compact-why { display: none; }
+  .compact-row { grid-template-columns: 36px 1fr auto; }
+  .compact-why { display: none; }
 }
-
-.person-row.is-leaving .person-note { color: var(--muted); }
 
 .group-tabs .tab-strip { margin: 0 0 18px; }
 
@@ -423,10 +396,6 @@ a.compact-row:hover { background: var(--input); }
 .message-row { padding: 10px 0; border-top: 1px solid var(--line); }
 
 .message-row:first-child { border-top: 0; }
-
-.message-head { display: flex; align-items: center; gap: 12px; }
-
-.message-subject { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .delivery-toggle { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px 4px 12px; background: var(--card); font-size: 12px; font-weight: 600; cursor: pointer; }
 

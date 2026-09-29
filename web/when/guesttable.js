@@ -3,7 +3,9 @@ import {popup} from '/modal.js';
 import {act} from '/data.js';
 import {chipToggle, filterControl} from '/rules.js';
 import {dataGrid} from '/datagrid.js';
-import {answerWords, answerIcon, answerButtons, face, ticketWords, stamp} from './inviteparts.js';
+import {answerWords, answerIcon, answerButtons, ticketWords, stamp} from './inviteparts.js';
+import {state} from './state.js';
+import {personRow} from '/personrow.js';
 
 export function listFilters(all, view, onChange, {answer = '', opened = '', rsvp = true} = {}) {
   const bar = el('div', 'guest-table-bar');
@@ -296,22 +298,20 @@ function openPick(e, view, picked, onDone) {
       rows.append(el('div', 'picker-note', 'Nobody matches.'));
     }
     for (const r of shown) {
-      const row = el('button', 'picker-person' + (picked.has(r.key) ? ' is-picked' : ''));
-      row.type = 'button';
       const check = el('span', 'picker-check');
       check.append(svg('check'));
-      row.append(check, face(r));
-      const who = el('div', 'invite-who');
-      who.append(el('div', 'invite-name', r.name || r.email));
-      if (r.line) {
-        who.append(el('div', 'invite-line', r.line));
-      }
-      row.append(who);
       const said = el('span', 'invite-said pick-said is-' + (r.answer || 'none'));
       const mark = el('span', 'invite-said-mark');
       mark.append(svg(answerIcon(r.answer)));
       said.append(mark, el('strong', '', r.answer ? answerWords[r.answer] : 'No response'));
-      row.append(said);
+      const row = personRow(r, {
+        button: true,
+        className: 'picker-person' + (picked.has(r.key) ? ' is-picked' : ''),
+        before: [check],
+        lines: [r.line],
+        after: [said],
+        gradeColors: state.model.gradeColors,
+      });
       row.addEventListener('click', () => {
         if (picked.has(r.key)) {
           picked.delete(r.key);

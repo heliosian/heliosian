@@ -1,18 +1,5 @@
 import {el} from '/elements.js';
-
-function face(person) {
-  const node = el('span', 'person-picker-face');
-  if (person.heroPhotoUrl) {
-    const img = el('img');
-    img.src = person.heroPhotoUrl;
-    img.alt = '';
-    img.loading = 'lazy';
-    node.append(img);
-    return node;
-  }
-  node.textContent = (person.fullName || person.email || '?').slice(0, 1).toUpperCase();
-  return node;
-}
+import {personRow} from '/personrow.js';
 
 export function createPersonPicker(mountEl, {people, placeholder = 'Search by name or email…', allow, onPick, address = false}) {
   mountEl.classList.add('person-picker');
@@ -50,10 +37,12 @@ export function createPersonPicker(mountEl, {people, placeholder = 'Search by na
   }
 
   function row(person) {
-    const option = el('div', 'person-picker-option');
-    const words = el('span', 'person-picker-words');
-    words.append(el('span', 'person-picker-name', person.fullName || person.email), el('span', 'person-picker-line', person.words || person.email));
-    option.append(face(person), words);
+    const option = personRow({name: person.fullName || person.email, email: person.email, photoUrl: person.heroPhotoUrl}, {
+      button: true,
+      className: 'person-picker-option',
+      lines: [person.words || person.email],
+    });
+    option.tabIndex = -1;
     // mousedown, not click, so it lands before the input's blur closes the list.
     option.addEventListener('mousedown', e => {
       e.preventDefault();

@@ -1,9 +1,8 @@
-import {state, me, answer} from './state.js';
-import {el, svg, avatar, toast} from '/elements.js';
+import {me, answer} from './state.js';
+import {el, svg, toast} from '/elements.js';
 import {act} from '/data.js';
 import {listed} from '/directory.js';
 import {rulesEditor} from '/rules.js';
-import {gradeBadge} from '/people.js';
 
 export const answerWords = {yes: 'Yes', maybe: 'Maybe', no: 'No'};
 
@@ -48,14 +47,6 @@ export function answerButtons(row, e, onChange, {small = true} = {}) {
   };
   paint();
   return wrap;
-}
-
-export function face(p, className) {
-  const node = avatar(p, className || 'invite-face');
-  if (p.grade) {
-    node.append(gradeBadge(p.grade, state.model.gradeColors));
-  }
-  return node;
 }
 
 export function ticketWords(ticket) {

@@ -1,6 +1,6 @@
 import {state, me, family, isAdmin, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, isFull, matches, activityPath, shownVolunteers, listHidden, listRevealed, canAdd, addLabel} from '../state.js';
 import {badge, searchBox, treeFilter} from '../dom.js';
-import {el, link, svg, imageThumb, avatar, button, copyText, toast} from '/elements.js';
+import {el, link, svg, imageThumb, button, copyText, toast} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {load, render} from '/router.js';
 import {approvalButtons} from './approvals.js';
@@ -10,6 +10,7 @@ import {childRow, categoryClass, completeBadge} from '../cards.js';
 import {openPhotoLightbox} from '/crop.js';
 import {heroImageBar} from '/heroimage.js';
 import {personTile, peopleRow, offerTile, andList} from '/people.js';
+import {personRow} from '/personrow.js';
 import {api} from '/api.js';
 import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, uploadAndSave, uploadImage, openVolunteerSettings, openVolunteerGrid, editPencil} from '../edit.js';
 
@@ -235,15 +236,15 @@ function familyBox(node) {
   box.append(el('h2', 'section section-swoosh', "My Family's Roles"));
   const list = el('div', 'fam-list');
   for (const {n, v} of rows) {
-    const row = el('div', 'fam-row');
-    row.append(avatar(v));
-    const text = el('div', 'fam-text');
     const where = n === node ? n.title : chainBelow(node, n);
     const role = v.position === 'Co-Chair' ? 'Co-chair of ' : (v.position === 'Open to Co-Chair' ? 'Open to co-chairing ' : '');
-    text.append(el('div', 'fam-name', v.name), el('div', 'fam-where', role + where));
-    row.append(text);
-    row.append(button('Edit', 'edit', 'link-button fam-edit', () => openSignUp(n, v)));
-    list.append(row);
+    list.append(personRow(v, {
+      className: 'fam-row',
+      open: true,
+      lines: [role + where],
+      after: [button('Edit', 'edit', 'link-button fam-edit', () => openSignUp(n, v))],
+      gradeColors: state.model.gradeColors,
+    }));
   }
   box.append(list);
   return box;

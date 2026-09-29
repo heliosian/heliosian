@@ -1,4 +1,5 @@
-import {el, svg, avatar} from '/elements.js';
+import {el, svg} from '/elements.js';
+import {face, target} from '/personrow.js';
 
 const rsvpWords = {yes: 'RSVP: Yes', maybe: 'RSVP: Maybe', no: 'RSVP: No', none: 'No RSVP yet'};
 
@@ -6,42 +7,12 @@ const roleWords = {chair: 'Chair', option: 'Chair opt'};
 
 const noteIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5" fill="currentColor"/><path class="note-ink" d="M5 5.5A2.5 2.5 0 0 1 7.5 3h9A2.5 2.5 0 0 1 19 5.5V7.5H5z"/><rect class="note-ink" x="8" y="10.5" width="8" height="1.6" rx="0.8"/><rect class="note-ink" x="8" y="14" width="8" height="1.6" rx="0.8"/><rect class="note-ink" x="8" y="17.5" width="5" height="1.6" rx="0.8"/></svg>';
 
-export function gradeBadge(grade, colors) {
-  const badge = el('span', 'grade-badge', /^kindergarten$/i.test(grade) ? 'K' : grade.replace(/^grade\s*/i, ''));
-  badge.title = grade;
-  const color = (colors || {})[grade];
-  if (color) {
-    badge.style.background = `color-mix(in srgb, ${color} 65%, black)`;
-  }
-  return badge;
-}
-
 export function roleTag(role) {
   return el('span', 'person-role is-' + role, roleWords[role]);
 }
 
-function face(person, className, colors) {
-  const node = avatar(person, className);
-  if (person.grade) {
-    node.append(gradeBadge(person.grade, colors));
-  }
-  return node;
-}
-
 function rsvpLine(rsvp) {
   return el('div', 'person-rsvp is-' + rsvp, rsvpWords[rsvp]);
-}
-
-function target(className, opts) {
-  const node = el(opts.href ? 'a' : opts.onClick ? 'button' : 'div', className);
-  if (opts.href) {
-    node.href = opts.href;
-  }
-  if (opts.onClick) {
-    node.type = 'button';
-    node.addEventListener('click', opts.onClick);
-  }
-  return node;
 }
 
 export function personTile(person, opts = {}) {

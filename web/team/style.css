@@ -1365,17 +1365,9 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .fam-list { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
 
-.fam-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
+.fam-row { padding: 10px 16px; }
 
 .fam-row + .fam-row { border-top: 1px solid var(--line); }
-
-.fam-row .avatar { width: 36px; height: 36px; font-size: 14px; flex-shrink: 0; }
-
-.fam-text { flex: 1; min-width: 0; }
-
-.fam-name { font-size: 14px; font-weight: 700; color: var(--ink); }
-
-.fam-where { font-size: 13px; color: var(--muted); margin-top: 1px; }
 
 .fam-edit { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; white-space: nowrap; padding: 6px 8px; }
 

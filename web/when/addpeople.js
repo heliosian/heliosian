@@ -5,7 +5,9 @@ import {api} from '/api.js';
 import {query, act, create} from '/data.js';
 import {directory, contactLine} from '/directory.js';
 import {chipToggle, familyDropdown} from '/rules.js';
-import {firstName, face, ruleOptions, setRuleOptions, rules} from './inviteparts.js';
+import {firstName, ruleOptions, setRuleOptions, rules} from './inviteparts.js';
+import {state} from './state.js';
+import {personRow} from '/personrow.js';
 
 export async function openPicker(e, view, refresh) {
   let dir = null;
@@ -163,24 +165,18 @@ function paintPersonList(pick) {
 
 function personChoice(pick, p) {
   const on = pick.onList.has(p.email);
-  const row = el('button', 'picker-person' + (on ? ' is-on' : pick.picked.has(p.email) ? ' is-picked' : ''));
-  row.type = 'button';
-  row.disabled = on;
   const mark = el('span', 'picker-check');
   mark.append(svg('check'));
-  row.append(mark, face({name: p.fullName, email: p.email, photoUrl: p.heroPhotoUrl && p.heroPhotoUrl + '?thumb=1', grade: p.grade}));
-  const who = el('div', 'invite-who');
-  who.append(el('div', 'invite-name', p.fullName || p.email));
   const along = relativesOf(pick, p).map(r => firstName({name: r.fullName, email: r.email}));
   const line = [on ? 'On the list' : contactLine(pick.dir, p), along.length ? 'with ' + along.join(', ') : ''].filter(Boolean).join(' · ');
-  if (line) {
-    const words = el('div', 'invite-line', line);
-    if (along.length) {
-      words.classList.add('has-family');
-    }
-    who.append(words);
-  }
-  row.append(who);
+  const row = personRow({name: p.fullName || p.email, email: p.email, photoUrl: p.heroPhotoUrl && p.heroPhotoUrl + '?thumb=1', grade: p.grade}, {
+    button: true,
+    className: 'picker-person' + (on ? ' is-on' : pick.picked.has(p.email) ? ' is-picked' : ''),
+    before: [mark],
+    lines: [line ? el('div', 'person-row-line' + (along.length ? ' has-family' : ''), line) : null],
+    gradeColors: state.model.gradeColors,
+  });
+  row.disabled = on;
   row.addEventListener('click', () => {
     if (pick.picked.has(p.email)) {
       pick.picked.delete(p.email);
@@ -310,9 +306,6 @@ function outsideMembers(members) {
 function paintOutsideMembers(list, members) {
   list.replaceChildren();
   for (const m of members) {
-    const row = el('div', 'outside-member');
-    const initials = el('span', 'avatar outside-member-face', m.name.split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase());
-    row.append(initials, el('span', 'outside-member-name', m.name), el('span', 'outside-member-email', m.email || 'No address - answered for by the family'));
     const remove = el('button', 'guests-action is-remove');
     remove.type = 'button';
     remove.title = 'Remove';
@@ -321,8 +314,11 @@ function paintOutsideMembers(list, members) {
       members.splice(members.indexOf(m), 1);
       paintOutsideMembers(list, members);
     });
-    row.append(remove);
-    list.append(row);
+    list.append(personRow({name: m.name, email: m.email}, {
+      className: 'outside-member',
+      lines: [m.email || 'No address - answered for by the family'],
+      after: [remove],
+    }));
   }
 }
 
