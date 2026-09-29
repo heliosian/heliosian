@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -32,7 +33,12 @@ type fake struct {
 	groups  map[string]group
 	aliases map[string]string
 	renamed []string
+	names   []string
 	scoped  []time.Time
+}
+
+type rename struct {
+	Name string `json:"name"`
 }
 
 const (
@@ -116,18 +122,18 @@ func registry(w *fake) *Registry[*fake] {
 			},
 		},
 		Actions: map[string]Action[*fake]{
-			"rename": {
-				Can: func(s *fake, q Query, key string) bool {
-					return s.groups[key].Owner == q.Actor.Email || q.Actor.May(edit)
-				},
-				Do: func(w Write[*fake]) error {
-					if w.S.groups[w.ID].Owner != w.Query.Actor.Email && !w.Query.Actor.May(edit) {
-						return access.Forbidden("not yours")
-					}
-					w.Tx.After(func() { w.S.renamed = append(w.S.renamed, w.ID) })
-					return nil
-				},
-			},
+			"rename": Do(func(s *fake, q Query, key string) bool {
+				return s.groups[key].Owner == q.Actor.Email || q.Actor.May(edit)
+			}, func(w Write[*fake], in rename) error {
+				if w.S.groups[w.ID].Owner != w.Query.Actor.Email && !w.Query.Actor.May(edit) {
+					return access.Forbidden("not yours")
+				}
+				w.Tx.After(func() {
+					w.S.renamed = append(w.S.renamed, w.ID)
+					w.S.names = append(w.S.names, in.Name)
+				})
+				return nil
+			}),
 		},
 	})
 	reg.Publish(w)
@@ -334,7 +340,21 @@ func TestAnActionNeedsBothItsRuleAndItsRoute(t *testing.T) {
 		}
 	}()
 	reg := New(Config[*fake]{})
-	reg.Add(Type[*fake]{Name: "groups", Shape: group{}, Actions: map[string]Action[*fake]{"rename": {Do: func(Write[*fake]) error { return nil }}}})
+	reg.Add(Type[*fake]{Name: "groups", Shape: group{}, Actions: map[string]Action[*fake]{"rename": Do(nil, func(Write[*fake], serve.None) error { return nil })}})
+}
+
+func TestAnActionGetsItsBodyTyped(t *testing.T) {
+	w := sample()
+	reg := registry(w)
+	if code, _ := call(t, reg, "POST", "/api/groups/"+chess+"/rename", admin, rename{Name: "Chess Club"}); code != http.StatusNoContent {
+		t.Errorf("rename: status %d", code)
+	}
+	if code, _ := call(t, reg, "POST", "/api/groups/"+chess+"/rename", admin, map[string]int{"name": 7}); code != http.StatusBadRequest {
+		t.Errorf("a body of the wrong shape: status %d, want 400", code)
+	}
+	if !slices.Equal(w.names, []string{"Chess Club"}) {
+		t.Errorf("names %v", w.names)
+	}
 }
 
 func TestATypeNeedsItsShape(t *testing.T) {
@@ -381,6 +401,25 @@ func TestTheSpecDescribesEveryType(t *testing.T) {
 	}
 	if _, ok := spec.Paths["/api/groups"]["post"]; ok {
 		t.Error("groups can't be created but the spec says so")
+	}
+	raw, err := json.Marshal(spec.Paths["/api/groups/{id}/rename"]["post"].(map[string]any)["requestBody"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Content struct {
+			JSON struct {
+				Schema struct {
+					Properties map[string]map[string]any `json:"properties"`
+				} `json:"schema"`
+			} `json:"application/json"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	if got := body.Content.JSON.Schema.Properties["name"]["type"]; got != "string" {
+		t.Errorf("rename body %s, want a string name", raw)
 	}
 	groups := spec.Components.Schemas["groups"].Properties
 	for _, field := range []string{"id", "name", "me", "can", "members", "lead"} {

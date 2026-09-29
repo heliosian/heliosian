@@ -205,8 +205,12 @@ func noContent() schema {
 	return schema{"204": schema{"description": "Done."}}
 }
 
-func anyBody() schema {
-	return schema{"required": false, "content": schema{"application/json": schema{"schema": schema{"type": "object"}}}}
+func withBody(operation schema, input reflect.Type) schema {
+	if input == reflect.TypeFor[serve.None]() {
+		return operation
+	}
+	operation["requestBody"] = schema{"required": false, "content": schema{"application/json": schema{"schema": shapeOf(input)}}}
+	return operation
 }
 
 func param(in, name, description string) schema {
@@ -260,11 +264,11 @@ func (reg *Registry[S]) spec() schema {
 			"tags": tag, "summary": "List " + name, "parameters": list,
 			"responses": schema{"200": answer("The collection.", wrapped(schema{"type": "array", "items": schema{"type": "string"}}, reached))},
 		}}
-		if t.Create != nil {
-			collection["post"] = schema{
-				"tags": tag, "summary": "Create one of " + name, "requestBody": anyBody(),
+		if t.Create.do != nil {
+			collection["post"] = withBody(schema{
+				"tags": tag, "summary": "Create one of " + name,
 				"responses": schema{"200": answer("The new ID.", schema{"type": "object", "properties": schema{"id": schema{"type": "string"}}})},
-			}
+			}, t.Create.input)
 		}
 		paths["/api/"+name] = collection
 
@@ -277,9 +281,9 @@ func (reg *Registry[S]) spec() schema {
 				one["delete"] = schema{"tags": tag, "summary": "Delete one of " + name, "parameters": []schema{id}, "responses": noContent()}
 				continue
 			}
-			paths["/api/"+name+"/{id}/"+action] = schema{"post": schema{
-				"tags": tag, "summary": action, "parameters": []schema{id}, "requestBody": anyBody(), "responses": noContent(),
-			}}
+			paths["/api/"+name+"/{id}/"+action] = schema{"post": withBody(schema{
+				"tags": tag, "summary": action, "parameters": []schema{id}, "responses": noContent(),
+			}, t.Actions[action].input)}
 		}
 		paths["/api/"+name+"/{id}"] = one
 	}

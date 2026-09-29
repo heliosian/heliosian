@@ -11,6 +11,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/api"
 	"heliosian/internal/id"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -263,7 +264,6 @@ func can(err error) bool {
 
 func (r resources) birthdays() api.Type[World] {
 	email := func(w World, key string) string { return w.emails[key] }
-	body := func(wr api.Write[World], into any) error { return wr.Decode(into) }
 	return api.Type[World]{
 		Name:  "birthdays",
 		Shape: birthdayResource{},
@@ -303,17 +303,13 @@ func (r resources) birthdays() api.Type[World] {
 			}
 			return out
 		},
-		Create: func(wr api.Write[World]) (string, error) {
-			var in struct {
-				Email    string `json:"email"`
-				Birthday string `json:"birthday"`
-				Override string `json:"override"`
-				Level    string `json:"level"`
-				Note     string `json:"note"`
-			}
-			if err := body(wr, &in); err != nil {
-				return "", err
-			}
+		Create: api.Make(func(wr api.Write[World], in struct {
+			Email    string `json:"email"`
+			Birthday string `json:"birthday"`
+			Override string `json:"override"`
+			Level    string `json:"level"`
+			Note     string `json:"note"`
+		}) (string, error) {
 			p := wr.S.person(strings.ToLower(strings.TrimSpace(in.Email)))
 			if p == nil {
 				return "", access.Invalid("%s is not in the directory", in.Email)
@@ -324,7 +320,7 @@ func (r resources) birthdays() api.Type[World] {
 			}
 			logAfter(wr, "birthday: added birthday", "email", p.Email, "birthday", in.Birthday, "level", in.Level)
 			return wr.S.Model.birthdayID(p.Email), r.stage(wr, ops, err)
-		},
+		}),
 		Relations: map[string]api.Relation[World]{
 			"person": {Type: "people", List: func(w World, _ api.Query, key string) []string { return w.personID(email(w, key)) }},
 			"assignee": {Type: "people", List: func(w World, q api.Query, key string) []string {
@@ -357,128 +353,81 @@ func (r resources) birthdays() api.Type[World] {
 			}},
 		},
 		Actions: map[string]api.Action[World]{
-			"assign": {
-				Can: func(w World, q api.Query, key string) bool { return can(w.Model.teamStaff(q.Actor, email(w, key))) },
-				Do: func(wr api.Write[World]) error {
-					var in struct {
-						To string `json:"to"`
-					}
-					if err := body(wr, &in); err != nil {
-						return err
-					}
-					ops, to, err := wr.S.Model.assign(wr.Query.Actor, email(wr.S, wr.ID), in.To, r.cache.IsAdmin, wr.Query.Now)
-					logAfter(wr, "birthday: assigned", "email", email(wr.S, wr.ID), "to", to)
-					return r.stage(wr, ops, err)
-				},
-			},
-			"unassign": {
-				Can: func(w World, q api.Query, key string) bool {
-					return can(w.Model.canUnassign(q.Actor, email(w, key), q.Now))
-				},
-				Do: func(wr api.Write[World]) error {
-					ops, err := wr.S.Model.unassign(wr.Query.Actor, email(wr.S, wr.ID), wr.Query.Now)
-					logAfter(wr, "birthday: unassigned", "email", email(wr.S, wr.ID))
-					return r.stage(wr, ops, err)
-				},
-			},
+			"assign": api.Do(func(w World, q api.Query, key string) bool { return can(w.Model.teamStaff(q.Actor, email(w, key))) }, func(wr api.Write[World], in struct {
+				To string `json:"to"`
+			}) error {
+				ops, to, err := wr.S.Model.assign(wr.Query.Actor, email(wr.S, wr.ID), in.To, r.cache.IsAdmin, wr.Query.Now)
+				logAfter(wr, "birthday: assigned", "email", email(wr.S, wr.ID), "to", to)
+				return r.stage(wr, ops, err)
+			}),
+			"unassign": api.Do(func(w World, q api.Query, key string) bool {
+				return can(w.Model.canUnassign(q.Actor, email(w, key), q.Now))
+			}, func(wr api.Write[World], _ serve.None) error {
+				ops, err := wr.S.Model.unassign(wr.Query.Actor, email(wr.S, wr.ID), wr.Query.Now)
+				logAfter(wr, "birthday: unassigned", "email", email(wr.S, wr.ID))
+				return r.stage(wr, ops, err)
+			}),
 			"contact":   r.outreachAction(true),
 			"uncontact": r.outreachAction(false),
-			"donate": {
-				Can: func(w World, q api.Query, key string) bool { return can(w.Model.teamStaff(q.Actor, email(w, key))) },
-				Do: func(wr api.Write[World]) error {
-					var in struct {
-						Charity string `json:"charity"`
-						Note    string `json:"note"`
-					}
-					if err := body(wr, &in); err != nil {
-						return err
-					}
-					ops, charity, err := wr.S.Model.saveDonation(wr.Query.Actor, email(wr.S, wr.ID), in.Charity, in.Note, wr.Query.Now)
-					if err == nil {
-						logAfter(wr, "birthday: saved donation", "email", email(wr.S, wr.ID), "charity", charity.Name)
-					}
-					return r.stage(wr, ops, err)
-				},
-			},
-			"set": {
-				Can: func(w World, q api.Query, _ string) bool { return can(w.Model.requireTeam(q.Actor)) },
-				Do: func(wr api.Write[World]) error {
-					var in struct {
-						Birthday string `json:"birthday"`
-						Override string `json:"override"`
-					}
-					if err := body(wr, &in); err != nil {
-						return err
-					}
-					ops, err := wr.S.Model.saveBirthday(wr.Query.Actor, email(wr.S, wr.ID), in.Birthday, in.Override)
-					logAfter(wr, "birthday: saved birthday", "email", email(wr.S, wr.ID), "birthday", in.Birthday, "override", in.Override)
-					return r.stage(wr, ops, err)
-				},
-			},
-			"delete": {
-				Can: func(w World, q api.Query, key string) bool {
-					return can(w.Model.canDeleteBirthday(q.Actor, email(w, key)))
-				},
-				Do: func(wr api.Write[World]) error {
-					ops, err := wr.S.Model.deleteBirthday(wr.Query.Actor, email(wr.S, wr.ID))
-					logAfter(wr, "birthday: removed birthday", "email", email(wr.S, wr.ID))
-					return r.stage(wr, ops, err)
-				},
-			},
-			"participation": {
-				Can: func(w World, q api.Query, _ string) bool { return can(w.Model.requireTeam(q.Actor)) },
-				Do: func(wr api.Write[World]) error {
-					var in struct {
-						Level string `json:"level"`
-						Note  string `json:"note"`
-					}
-					if err := body(wr, &in); err != nil {
-						return err
-					}
-					ops, err := wr.S.Model.saveParticipation(wr.Query.Actor, email(wr.S, wr.ID), in.Level, in.Note)
-					logAfter(wr, "birthday: saved participation", "email", email(wr.S, wr.ID), "level", in.Level)
-					return r.stage(wr, ops, err)
-				},
-			},
-			"clear-participation": {
-				Can: func(w World, q api.Query, key string) bool {
-					return can(w.Model.canClearParticipation(q.Actor, email(w, key)))
-				},
-				Do: func(wr api.Write[World]) error {
-					ops, err := wr.S.Model.deleteParticipation(wr.Query.Actor, email(wr.S, wr.ID))
-					logAfter(wr, "birthday: removed participation", "email", email(wr.S, wr.ID))
-					return r.stage(wr, ops, err)
-				},
-			},
-			"note": {
-				Can: func(w World, q api.Query, key string) bool { return can(w.Model.canAddNote(q.Actor, email(w, key))) },
-				Do: func(wr api.Write[World]) error {
-					var in struct {
-						Note string `json:"note"`
-					}
-					if err := body(wr, &in); err != nil {
-						return err
-					}
-					ops, err := wr.S.Model.addNote(wr.Query.Actor, email(wr.S, wr.ID), in.Note, wr.Query.Now)
-					logAfter(wr, "birthday: added note", "email", email(wr.S, wr.ID))
-					return r.stage(wr, ops, err)
-				},
-			},
+			"donate": api.Do(func(w World, q api.Query, key string) bool { return can(w.Model.teamStaff(q.Actor, email(w, key))) }, func(wr api.Write[World], in struct {
+				Charity string `json:"charity"`
+				Note    string `json:"note"`
+			}) error {
+				ops, charity, err := wr.S.Model.saveDonation(wr.Query.Actor, email(wr.S, wr.ID), in.Charity, in.Note, wr.Query.Now)
+				if err == nil {
+					logAfter(wr, "birthday: saved donation", "email", email(wr.S, wr.ID), "charity", charity.Name)
+				}
+				return r.stage(wr, ops, err)
+			}),
+			"set": api.Do(func(w World, q api.Query, _ string) bool { return can(w.Model.requireTeam(q.Actor)) }, func(wr api.Write[World], in struct {
+				Birthday string `json:"birthday"`
+				Override string `json:"override"`
+			}) error {
+				ops, err := wr.S.Model.saveBirthday(wr.Query.Actor, email(wr.S, wr.ID), in.Birthday, in.Override)
+				logAfter(wr, "birthday: saved birthday", "email", email(wr.S, wr.ID), "birthday", in.Birthday, "override", in.Override)
+				return r.stage(wr, ops, err)
+			}),
+			"delete": api.Do(func(w World, q api.Query, key string) bool {
+				return can(w.Model.canDeleteBirthday(q.Actor, email(w, key)))
+			}, func(wr api.Write[World], _ serve.None) error {
+				ops, err := wr.S.Model.deleteBirthday(wr.Query.Actor, email(wr.S, wr.ID))
+				logAfter(wr, "birthday: removed birthday", "email", email(wr.S, wr.ID))
+				return r.stage(wr, ops, err)
+			}),
+			"participation": api.Do(func(w World, q api.Query, _ string) bool { return can(w.Model.requireTeam(q.Actor)) }, func(wr api.Write[World], in struct {
+				Level string `json:"level"`
+				Note  string `json:"note"`
+			}) error {
+				ops, err := wr.S.Model.saveParticipation(wr.Query.Actor, email(wr.S, wr.ID), in.Level, in.Note)
+				logAfter(wr, "birthday: saved participation", "email", email(wr.S, wr.ID), "level", in.Level)
+				return r.stage(wr, ops, err)
+			}),
+			"clear-participation": api.Do(func(w World, q api.Query, key string) bool {
+				return can(w.Model.canClearParticipation(q.Actor, email(w, key)))
+			}, func(wr api.Write[World], _ serve.None) error {
+				ops, err := wr.S.Model.deleteParticipation(wr.Query.Actor, email(wr.S, wr.ID))
+				logAfter(wr, "birthday: removed participation", "email", email(wr.S, wr.ID))
+				return r.stage(wr, ops, err)
+			}),
+			"note": api.Do(func(w World, q api.Query, key string) bool { return can(w.Model.canAddNote(q.Actor, email(w, key))) }, func(wr api.Write[World], in struct {
+				Note string `json:"note"`
+			}) error {
+				ops, err := wr.S.Model.addNote(wr.Query.Actor, email(wr.S, wr.ID), in.Note, wr.Query.Now)
+				logAfter(wr, "birthday: added note", "email", email(wr.S, wr.ID))
+				return r.stage(wr, ops, err)
+			}),
 		},
 	}
 }
 
 func (r resources) outreachAction(contacted bool) api.Action[World] {
-	return api.Action[World]{
-		Can: func(w World, q api.Query, key string) bool {
-			return can(w.Model.canOutreach(q.Actor, w.emails[key], contacted, q.Now))
-		},
-		Do: func(wr api.Write[World]) error {
-			ops, err := wr.S.Model.outreach(wr.Query.Actor, wr.S.emails[wr.ID], contacted, wr.Query.Now)
-			logAfter(wr, "birthday: outreach", "email", wr.S.emails[wr.ID], "contacted", contacted)
-			return r.stage(wr, ops, err)
-		},
-	}
+	return api.Do(func(w World, q api.Query, key string) bool {
+		return can(w.Model.canOutreach(q.Actor, w.emails[key], contacted, q.Now))
+	}, func(wr api.Write[World], _ serve.None) error {
+		ops, err := wr.S.Model.outreach(wr.Query.Actor, wr.S.emails[wr.ID], contacted, wr.Query.Now)
+		logAfter(wr, "birthday: outreach", "email", wr.S.emails[wr.ID], "contacted", contacted)
+		return r.stage(wr, ops, err)
+	})
 }
 
 func (w World) donationIn(email, year string) []string {
@@ -498,18 +447,15 @@ func (m *Model) donationByID(key string) (Donation, bool) {
 
 func (r resources) donations() api.Type[World] {
 	used := func(on bool) api.Action[World] {
-		return api.Action[World]{
-			Can: func(w World, q api.Query, key string) bool {
-				d, _ := w.Model.donationByID(key)
-				return can(w.Model.canMarkUsed(q.Actor, d, on))
-			},
-			Do: func(wr api.Write[World]) error {
-				d, _ := wr.S.Model.donationByID(wr.ID)
-				ops, err := wr.S.Model.markUsed(wr.Query.Actor, d, on, wr.Query.Now)
-				logAfter(wr, "birthday: marked donation", "used", on, "email", d.Email, "year", d.Year)
-				return r.stage(wr, ops, err)
-			},
-		}
+		return api.Do(func(w World, q api.Query, key string) bool {
+			d, _ := w.Model.donationByID(key)
+			return can(w.Model.canMarkUsed(q.Actor, d, on))
+		}, func(wr api.Write[World], _ serve.None) error {
+			d, _ := wr.S.Model.donationByID(wr.ID)
+			ops, err := wr.S.Model.markUsed(wr.Query.Actor, d, on, wr.Query.Now)
+			logAfter(wr, "birthday: marked donation", "used", on, "email", d.Email, "year", d.Year)
+			return r.stage(wr, ops, err)
+		})
 	}
 	return api.Type[World]{
 		Name:  "donations",
@@ -542,18 +488,15 @@ func (r resources) donations() api.Type[World] {
 		Actions: map[string]api.Action[World]{
 			"use":   used(true),
 			"unuse": used(false),
-			"delete": {
-				Can: func(w World, q api.Query, key string) bool {
-					d, _ := w.Model.donationByID(key)
-					return can(w.Model.canChangeDonation(q.Actor, d))
-				},
-				Do: func(wr api.Write[World]) error {
-					d, _ := wr.S.Model.donationByID(wr.ID)
-					ops, err := wr.S.Model.deleteDonation(wr.Query.Actor, d)
-					logAfter(wr, "birthday: removed donation", "email", d.Email, "year", d.Year)
-					return r.stage(wr, ops, err)
-				},
-			},
+			"delete": api.Do(func(w World, q api.Query, key string) bool {
+				d, _ := w.Model.donationByID(key)
+				return can(w.Model.canChangeDonation(q.Actor, d))
+			}, func(wr api.Write[World], _ serve.None) error {
+				d, _ := wr.S.Model.donationByID(wr.ID)
+				ops, err := wr.S.Model.deleteDonation(wr.Query.Actor, d)
+				logAfter(wr, "birthday: removed donation", "email", d.Email, "year", d.Year)
+				return r.stage(wr, ops, err)
+			}),
 		},
 	}
 }
@@ -595,18 +538,15 @@ func (r resources) notes() api.Type[World] {
 			}},
 		},
 		Actions: map[string]api.Action[World]{
-			"delete": {
-				Can: func(w World, q api.Query, key string) bool {
-					n, _ := w.Model.noteByID(key)
-					return can(w.Model.canDeleteNote(q.Actor, n))
-				},
-				Do: func(wr api.Write[World]) error {
-					n, _ := wr.S.Model.noteByID(wr.ID)
-					ops, err := wr.S.Model.deleteNote(wr.Query.Actor, n)
-					logAfter(wr, "birthday: removed note", "email", n.Email)
-					return r.stage(wr, ops, err)
-				},
-			},
+			"delete": api.Do(func(w World, q api.Query, key string) bool {
+				n, _ := w.Model.noteByID(key)
+				return can(w.Model.canDeleteNote(q.Actor, n))
+			}, func(wr api.Write[World], _ serve.None) error {
+				n, _ := wr.S.Model.noteByID(wr.ID)
+				ops, err := wr.S.Model.deleteNote(wr.Query.Actor, n)
+				logAfter(wr, "birthday: removed note", "email", n.Email)
+				return r.stage(wr, ops, err)
+			}),
 		},
 	}
 }
@@ -640,53 +580,36 @@ func (r resources) charities() api.Type[World] {
 			}
 			return out
 		},
-		Create: func(wr api.Write[World]) (string, error) {
-			var in charityEdit
-			if err := wr.Decode(&in); err != nil {
-				return "", err
-			}
+		Create: api.Make(func(wr api.Write[World], in charityEdit) (string, error) {
 			key := id.New(wr.Taken)
 			ops, err := wr.S.Model.addCharity(wr.Query.Actor, in, key, wr.Query.Now)
 			logAfter(wr, "birthday: added charity", "id", key, "charity", in.Name)
 			return key, r.stage(wr, ops, err)
-		},
+		}),
 		Actions: map[string]api.Action[World]{
-			"edit": {
-				Can: func(w World, q api.Query, _ string) bool { return can(w.Model.requireTeam(q.Actor)) },
-				Do: func(wr api.Write[World]) error {
-					var in charityEdit
-					if err := wr.Decode(&in); err != nil {
-						return err
-					}
-					ops, err := wr.S.Model.editCharity(wr.Query.Actor, wr.S.Model.Charity(wr.ID), in)
-					logAfter(wr, "birthday: edited charity", "id", wr.ID, "charity", in.Name)
-					return r.stage(wr, ops, err)
-				},
-			},
-			"allow": {
-				Can: func(_ World, q api.Query, _ string) bool { return can(requireAdmin(q.Actor)) },
-				Do: func(wr api.Write[World]) error {
-					var in charityAllowance
-					if err := wr.Decode(&in); err != nil {
-						return err
-					}
-					ops, err := allowCharity(wr.Query.Actor, wr.S.Model.Charity(wr.ID), in)
-					logAfter(wr, "birthday: allowed charity", "id", wr.ID, "allowed", in.Allowed)
-					return r.stage(wr, ops, err)
-				},
-			},
-			"delete": {
-				Can: func(w World, q api.Query, key string) bool {
-					return can(w.Model.canDeleteCharity(q.Actor, w.Model.Charity(key)))
-				},
-				Do: func(wr api.Write[World]) error {
-					ops, err := wr.S.Model.deleteCharity(wr.Query.Actor, wr.S.Model.Charity(wr.ID))
-					logAfter(wr, "birthday: removed charity", "id", wr.ID)
-					return r.stage(wr, ops, err)
-				},
-			},
+			"edit": api.Do(func(w World, q api.Query, _ string) bool { return can(w.Model.requireTeam(q.Actor)) }, func(wr api.Write[World], in charityEdit) error {
+				ops, err := wr.S.Model.editCharity(wr.Query.Actor, wr.S.Model.Charity(wr.ID), in)
+				logAfter(wr, "birthday: edited charity", "id", wr.ID, "charity", in.Name)
+				return r.stage(wr, ops, err)
+			}),
+			"allow": api.Do(func(_ World, q api.Query, _ string) bool { return can(requireAdmin(q.Actor)) }, func(wr api.Write[World], in charityAllowance) error {
+				ops, err := allowCharity(wr.Query.Actor, wr.S.Model.Charity(wr.ID), in)
+				logAfter(wr, "birthday: allowed charity", "id", wr.ID, "allowed", in.Allowed)
+				return r.stage(wr, ops, err)
+			}),
+			"delete": api.Do(func(w World, q api.Query, key string) bool {
+				return can(w.Model.canDeleteCharity(q.Actor, w.Model.Charity(key)))
+			}, func(wr api.Write[World], _ serve.None) error {
+				ops, err := wr.S.Model.deleteCharity(wr.Query.Actor, wr.S.Model.Charity(wr.ID))
+				logAfter(wr, "birthday: removed charity", "id", wr.ID)
+				return r.stage(wr, ops, err)
+			}),
 		},
 	}
+}
+
+type newsletterDateBody struct {
+	Date string `json:"date"`
 }
 
 func (r resources) newsletterDates() api.Type[World] {
@@ -718,58 +641,37 @@ func (r resources) newsletterDates() api.Type[World] {
 			}
 			return out
 		},
-		Create: func(wr api.Write[World]) (string, error) {
-			var in struct {
-				Date string `json:"date"`
-			}
-			if err := wr.Decode(&in); err != nil {
-				return "", err
-			}
+		Create: api.Make(func(wr api.Write[World], in newsletterDateBody) (string, error) {
 			key := id.New(wr.Taken)
 			ops, date, err := wr.S.Model.addNewsletterDate(wr.Query.Actor, in.Date, key)
 			logAfter(wr, "birthday: added newsletter date", "id", key, "date", date)
 			return key, r.stage(wr, ops, err)
-		},
+		}),
 		Actions: map[string]api.Action[World]{
-			"move": {
-				Can: func(_ World, q api.Query, _ string) bool { return can(requireAdmin(q.Actor)) },
-				Do: func(wr api.Write[World]) error {
-					var in struct {
-						Date string `json:"date"`
-					}
-					if err := wr.Decode(&in); err != nil {
-						return err
-					}
-					n := wr.S.Model.NewsletterDate(wr.ID)
-					logAfter(wr, "birthday: moved newsletter date", "id", n.ID, "from", n.Date, "to", in.Date)
-					ops, err := wr.S.Model.moveNewsletterDate(wr.Query.Actor, n, in.Date)
-					return r.stage(wr, ops, err)
-				},
-			},
-			"delete": {
-				Can: func(_ World, q api.Query, _ string) bool { return can(requireAdmin(q.Actor)) },
-				Do: func(wr api.Write[World]) error {
-					n := wr.S.Model.NewsletterDate(wr.ID)
-					logAfter(wr, "birthday: removed newsletter date", "id", n.ID, "date", n.Date)
-					ops, err := deleteNewsletterDate(wr.Query.Actor, n)
-					return r.stage(wr, ops, err)
-				},
-			},
-			"share": {
-				Can: func(w World, q api.Query, key string) bool {
-					return can(w.Model.requireTeam(q.Actor)) && len(w.toExport(w.Model.NewsletterDate(key).Date, q.Now)) > 0
-				},
-				Do: func(wr api.Write[World]) error {
-					n := wr.S.Model.NewsletterDate(wr.ID)
-					items := wr.S.toExport(n.Date, wr.Query.Now)
-					rows, marks, err := wr.S.Model.shareIssue(wr.Query.Actor, items, wr.Query.Now)
-					if err != nil {
-						return err
-					}
-					logAfter(wr, "birthday: copied to the shared sheet", "issue", n.Date, "copied", len(rows))
-					return r.cache.stageExport(wr.Tx, rows, marks)
-				},
-			},
+			"move": api.Do(func(_ World, q api.Query, _ string) bool { return can(requireAdmin(q.Actor)) }, func(wr api.Write[World], in newsletterDateBody) error {
+				n := wr.S.Model.NewsletterDate(wr.ID)
+				logAfter(wr, "birthday: moved newsletter date", "id", n.ID, "from", n.Date, "to", in.Date)
+				ops, err := wr.S.Model.moveNewsletterDate(wr.Query.Actor, n, in.Date)
+				return r.stage(wr, ops, err)
+			}),
+			"delete": api.Do(func(_ World, q api.Query, _ string) bool { return can(requireAdmin(q.Actor)) }, func(wr api.Write[World], _ serve.None) error {
+				n := wr.S.Model.NewsletterDate(wr.ID)
+				logAfter(wr, "birthday: removed newsletter date", "id", n.ID, "date", n.Date)
+				ops, err := deleteNewsletterDate(wr.Query.Actor, n)
+				return r.stage(wr, ops, err)
+			}),
+			"share": api.Do(func(w World, q api.Query, key string) bool {
+				return can(w.Model.requireTeam(q.Actor)) && len(w.toExport(w.Model.NewsletterDate(key).Date, q.Now)) > 0
+			}, func(wr api.Write[World], _ serve.None) error {
+				n := wr.S.Model.NewsletterDate(wr.ID)
+				items := wr.S.toExport(n.Date, wr.Query.Now)
+				rows, marks, err := wr.S.Model.shareIssue(wr.Query.Actor, items, wr.Query.Now)
+				if err != nil {
+					return err
+				}
+				logAfter(wr, "birthday: copied to the shared sheet", "issue", n.Date, "copied", len(rows))
+				return r.cache.stageExport(wr.Tx, rows, marks)
+			}),
 		},
 	}
 }
@@ -814,11 +716,7 @@ func (r resources) team() api.Type[World] {
 				return w.personID(t.Email)
 			}},
 		},
-		Create: func(wr api.Write[World]) (string, error) {
-			var in TeamMember
-			if err := wr.Decode(&in); err != nil {
-				return "", err
-			}
+		Create: api.Make(func(wr api.Write[World], in TeamMember) (string, error) {
 			ops, member, err := wr.S.Model.addTeamMember(wr.Query.Actor, in.Email, in.Role)
 			if err != nil {
 				return "", err
@@ -833,17 +731,14 @@ func (r resources) team() api.Type[World] {
 				})
 			}
 			return wr.S.Model.teamID(member), r.stage(wr, ops, nil)
-		},
+		}),
 		Actions: map[string]api.Action[World]{
-			"delete": {
-				Can: func(_ World, q api.Query, _ string) bool { return can(requireAdmin(q.Actor)) },
-				Do: func(wr api.Write[World]) error {
-					t, _ := wr.S.Model.teamByID(wr.ID)
-					ops, err := removeTeamMember(wr.Query.Actor, t)
-					logAfter(wr, "birthday: removed team member", "email", t.Email, "role", t.Role)
-					return r.stage(wr, ops, err)
-				},
-			},
+			"delete": api.Do(func(_ World, q api.Query, _ string) bool { return can(requireAdmin(q.Actor)) }, func(wr api.Write[World], _ serve.None) error {
+				t, _ := wr.S.Model.teamByID(wr.ID)
+				ops, err := removeTeamMember(wr.Query.Actor, t)
+				logAfter(wr, "birthday: removed team member", "email", t.Email, "role", t.Role)
+				return r.stage(wr, ops, err)
+			}),
 		},
 	}
 }
@@ -886,18 +781,11 @@ func (r resources) settings() api.Type[World] {
 			"viewer": {Type: "people", List: func(w World, q api.Query, _ string) []string { return w.personID(q.Actor.Email) }},
 		},
 		Actions: map[string]api.Action[World]{
-			"edit": {
-				Can: func(_ World, q api.Query, _ string) bool { return can(requireAdmin(q.Actor)) },
-				Do: func(wr api.Write[World]) error {
-					var in Settings
-					if err := wr.Decode(&in); err != nil {
-						return err
-					}
-					ops, err := saveSettings(wr.Query.Actor, in)
-					logAfter(wr, "birthday: changed the settings")
-					return r.stage(wr, ops, err)
-				},
-			},
+			"edit": api.Do(func(_ World, q api.Query, _ string) bool { return can(requireAdmin(q.Actor)) }, func(wr api.Write[World], in Settings) error {
+				ops, err := saveSettings(wr.Query.Actor, in)
+				logAfter(wr, "birthday: changed the settings")
+				return r.stage(wr, ops, err)
+			}),
 		},
 	}
 }
@@ -932,13 +820,9 @@ func (r resources) invites() api.Type[World] {
 			}
 			return out
 		},
-		Create: func(wr api.Write[World]) (string, error) {
-			var in struct {
-				Birthday string `json:"birthday"`
-			}
-			if err := wr.Decode(&in); err != nil {
-				return "", err
-			}
+		Create: api.Make(func(wr api.Write[World], in struct {
+			Birthday string `json:"birthday"`
+		}) (string, error) {
 			address, ok := wr.S.emails[in.Birthday]
 			if !ok {
 				return "", access.Missing("no birthday %s", in.Birthday)
@@ -947,6 +831,6 @@ func (r resources) invites() api.Type[World] {
 			ops, err := wr.S.Model.requestInvite(wr.Query.Actor, address, key, wr.Query.Now)
 			logAfter(wr, "birthday: invite requested", "id", key, "email", address)
 			return key, r.stage(wr, ops, err)
-		},
+		}),
 	}
 }

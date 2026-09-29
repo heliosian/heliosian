@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"time"
 
 	"heliosian/internal/access"
@@ -24,11 +25,11 @@ type Write[S any] struct {
 	Taken   func(string) bool
 }
 
-func (w Write[S]) Decode(into any) error {
-	if len(w.Body) == 0 {
+func decode(body json.RawMessage, into any) error {
+	if len(body) == 0 {
 		return nil
 	}
-	if err := json.Unmarshal(w.Body, into); err != nil {
+	if err := json.Unmarshal(body, into); err != nil {
 		return access.Invalid("bad request body: %v", err)
 	}
 	return nil
@@ -44,7 +45,7 @@ type Type[S any] struct {
 	Relations map[string]Relation[S]
 	Filters   map[string]Filter[S]
 	Actions   map[string]Action[S]
-	Create    func(w Write[S]) (string, error)
+	Create    Maker[S]
 }
 
 type Relation[S any] struct {
@@ -56,8 +57,38 @@ type Relation[S any] struct {
 type Filter[S any] func(s S, q Query, value string) (func(id string) bool, error)
 
 type Action[S any] struct {
-	Can func(s S, q Query, id string) bool
-	Do  func(w Write[S]) error
+	Can   func(s S, q Query, id string) bool
+	do    func(w Write[S]) error
+	input reflect.Type
+}
+
+func Do[S, In any](can func(s S, q Query, id string) bool, do func(w Write[S], in In) error) Action[S] {
+	return DoFrom(can, func(Write[S]) In { var in In; return in }, do)
+}
+
+func DoFrom[S, In any](can func(s S, q Query, id string) bool, seed func(w Write[S]) In, do func(w Write[S], in In) error) Action[S] {
+	return Action[S]{Can: can, input: reflect.TypeFor[In](), do: func(w Write[S]) error {
+		in := seed(w)
+		if err := decode(w.Body, &in); err != nil {
+			return err
+		}
+		return do(w, in)
+	}}
+}
+
+type Maker[S any] struct {
+	do    func(w Write[S]) (string, error)
+	input reflect.Type
+}
+
+func Make[S, In any](do func(w Write[S], in In) (string, error)) Maker[S] {
+	return Maker[S]{input: reflect.TypeFor[In](), do: func(w Write[S]) (string, error) {
+		var in In
+		if err := decode(w.Body, &in); err != nil {
+			return "", err
+		}
+		return do(w, in)
+	}}
 }
 
 func lower[S, M any](w Write[S], of func(S) M) Write[M] {
@@ -86,12 +117,16 @@ func Lift[S, M any](t Type[M], of func(S) M) Type[S] {
 	}
 	for name, action := range t.Actions {
 		out.Actions[name] = Action[S]{
-			Can: func(s S, q Query, id string) bool { return action.Can(of(s), q, id) },
-			Do:  func(w Write[S]) error { return action.Do(lower(w, of)) },
+			Can:   func(s S, q Query, id string) bool { return action.Can(of(s), q, id) },
+			do:    func(w Write[S]) error { return action.do(lower(w, of)) },
+			input: action.input,
 		}
 	}
-	if t.Create != nil {
-		out.Create = func(w Write[S]) (string, error) { return t.Create(lower(w, of)) }
+	if t.Create.do != nil {
+		out.Create = Maker[S]{
+			do:    func(w Write[S]) (string, error) { return t.Create.do(lower(w, of)) },
+			input: t.Create.input,
+		}
 	}
 	return out
 }

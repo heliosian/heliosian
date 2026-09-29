@@ -12,6 +12,7 @@ import (
 	"heliosian/internal/api"
 	"heliosian/internal/config"
 	"heliosian/internal/id"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -221,11 +222,6 @@ func logAfter(wr api.Write[World], msg string, args ...any) {
 	wr.Tx.After(func() { slog.InfoContext(ctx, msg, append([]any{"actor", actor}, args...)...) })
 }
 
-func decode[T any](wr api.Write[World], into T) (T, error) {
-	err := wr.Decode(&into)
-	return into, err
-}
-
 func sent(raw json.RawMessage) map[string]bool {
 	out := map[string]bool{}
 	fields := map[string]json.RawMessage{}
@@ -239,20 +235,23 @@ func sent(raw json.RawMessage) map[string]bool {
 
 type check func(w World, q api.Query, e *Event) bool
 
-func (r resources) action(can check, do func(wr api.Write[World], e *Event) error) api.Action[World] {
-	return api.Action[World]{
-		Can: func(w World, q api.Query, key string) bool {
-			e := w.event(q, key)
-			return e != nil && can(w, q, e)
-		},
-		Do: func(wr api.Write[World]) error {
-			e := wr.S.event(wr.Query, wr.ID)
-			if e == nil || !can(wr.S, wr.Query, e) {
-				return access.Forbidden("that is not yours to do on this event")
-			}
-			return do(wr, e)
-		},
-	}
+func action[In any](can check, do func(wr api.Write[World], e *Event, in In) error) api.Action[World] {
+	return seeded(can, func(*Event) In { var in In; return in }, do)
+}
+
+func seeded[In any](can check, seed func(e *Event) In, do func(wr api.Write[World], e *Event, in In) error) api.Action[World] {
+	return api.DoFrom(func(w World, q api.Query, key string) bool {
+		e := w.event(q, key)
+		return e != nil && can(w, q, e)
+	}, func(wr api.Write[World]) In {
+		return seed(wr.S.event(wr.Query, wr.ID))
+	}, func(wr api.Write[World], in In) error {
+		e := wr.S.event(wr.Query, wr.ID)
+		if e == nil || !can(wr.S, wr.Query, e) {
+			return access.Forbidden("that is not yours to do on this event")
+		}
+		return do(wr, e, in)
+	})
 }
 
 func hosts(w World, q api.Query, e *Event) bool {
@@ -363,11 +362,7 @@ func (r resources) events() api.Type[World] {
 				return []string{w.guestListID(e.ID)}
 			}},
 		},
-		Create: func(wr api.Write[World]) (string, error) {
-			body, err := decode(wr, eventBody{})
-			if err != nil {
-				return "", err
-			}
+		Create: api.Make(func(wr api.Write[World], body eventBody) (string, error) {
 			ops, ids, pending, err := a(wr.S).newEvents(wr.Query.Actor, body)
 			if err := r.stage(wr, ops, err); err != nil {
 				return "", err
@@ -381,13 +376,9 @@ func (r resources) events() api.Type[World] {
 			}
 			logAfter(wr, "calendar: events added", "title", strings.TrimSpace(body.Title), "count", len(ids), "pending", pending)
 			return ids[0], nil
-		},
+		}),
 		Actions: map[string]api.Action[World]{
-			"edit": r.action(func(w World, q api.Query, e *Event) bool { return posted(e) && w.app.isHost(q.Actor, e) }, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, editable(e))
-				if err != nil {
-					return err
-				}
+			"edit": seeded(func(w World, q api.Query, e *Event) bool { return posted(e) && w.app.isHost(q.Actor, e) }, editable, func(wr api.Write[World], e *Event, body eventBody) error {
 				_, _, row, err := a(wr.S).changeEvent(wr.Query.Actor, body)
 				if err != nil {
 					return err
@@ -405,54 +396,38 @@ func (r resources) events() api.Type[World] {
 				logAfter(wr, "calendar: event changed", "event", e.ID, "title", body.Title)
 				return r.stage(wr, []store.Op{eventCellsOp(e.ID, cells)}, nil)
 			}),
-			"correct": r.action(func(w World, q api.Query, e *Event) bool {
+			"correct": seeded(func(w World, q api.Query, e *Event) bool {
 				return e.imported() && (q.Actor.May(Curate) || w.app.isHost(q.Actor, e))
-			}, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, correctable(e))
-				if err != nil {
-					return err
-				}
+			}, correctable, func(wr api.Write[World], e *Event, body overrideBody) error {
 				ops, key, empty, err := a(wr.S).overrideOps(wr.Query.Actor, body)
 				logAfter(wr, "calendar: override set", "event", key, "cleared", empty)
 				return r.stage(wr, ops, err)
 			}),
-			"image": r.action(func(w World, q api.Query, e *Event) bool {
+			"image": action(func(w World, q api.Query, e *Event) bool {
 				return e.imported() && (q.Actor.May(Curate) || w.app.isHost(q.Actor, e))
-			}, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, overrideImageBody{})
-				if err != nil {
-					return err
-				}
+			}, func(wr api.Write[World], e *Event, body overrideImageBody) error {
 				ops, _, image, err := a(wr.S).overrideImageOps(wr.Query.Actor, e.ID, body.Image)
 				logAfter(wr, "calendar: override image", "event", e.ID, "image", image)
 				return r.stage(wr, ops, err)
 			}),
-			"keywords": r.action(curates, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, keywordsBody{})
-				if err != nil {
-					return err
-				}
+			"keywords": action(curates, func(wr api.Write[World], e *Event, body keywordsBody) error {
 				ops, _, cell, err := a(wr.S).keywordOps(wr.Query.Actor, e.ID, body.Keywords)
 				logAfter(wr, "calendar: keywords set", "event", e.ID, "keywords", cell)
 				return r.stage(wr, ops, err)
 			}),
-			"approve": r.action(func(w World, q api.Query, e *Event) bool { return q.Actor.May(Curate) && posted(e) }, func(wr api.Write[World], e *Event) error {
+			"approve": action(func(w World, q api.Query, e *Event) bool { return q.Actor.May(Curate) && posted(e) }, func(wr api.Write[World], e *Event, _ serve.None) error {
 				ops, _, err := a(wr.S).statusOps(wr.Query.Actor, e.ID, StatusApproved)
 				logAfter(wr, "calendar: event approved", "event", e.ID, "title", e.Title, "by", e.AddedBy)
 				return r.stage(wr, ops, err)
 			}),
-			"decline": r.action(func(w World, q api.Query, e *Event) bool {
+			"decline": action(func(w World, q api.Query, e *Event) bool {
 				return q.Actor.May(Curate) && posted(e) && e.Sharing == SharingPublic
-			}, func(wr api.Write[World], e *Event) error {
+			}, func(wr api.Write[World], e *Event, _ serve.None) error {
 				ops, _, err := a(wr.S).statusOps(wr.Query.Actor, e.ID, StatusDeclined)
 				logAfter(wr, "calendar: event declined", "event", e.ID, "title", e.Title, "by", e.AddedBy)
 				return r.stage(wr, ops, err)
 			}),
-			"move": r.action(func(w World, q api.Query, e *Event) bool { return q.Actor.May(Curate) && posted(e) }, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, moveBody{})
-				if err != nil {
-					return err
-				}
+			"move": action(func(w World, q api.Query, e *Event) bool { return q.Actor.May(Curate) && posted(e) }, func(wr api.Write[World], e *Event, body moveBody) error {
 				start, end := strings.TrimSpace(body.Start), strings.TrimSpace(body.End)
 				if end == "" {
 					end = start
@@ -461,29 +436,17 @@ func (r resources) events() api.Type[World] {
 				logAfter(wr, "calendar: event moved", "event", e.ID, "start", start, "end", end)
 				return r.stage(wr, ops, err)
 			}),
-			"cancel": r.action(func(w World, q api.Query, e *Event) bool { return posted(e) && hosts(w, q, e) && !e.Cancelled }, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, cancelBody{})
-				if err != nil {
-					return err
-				}
+			"cancel": action(func(w World, q api.Query, e *Event) bool { return posted(e) && hosts(w, q, e) && !e.Cancelled }, func(wr api.Write[World], e *Event, body cancelBody) error {
 				ops, err := a(wr.S).cancelWith(wr.Query.Actor, e, body)
 				logAfter(wr, "calendar: event cancelled", "event", e.ID, "title", e.Title)
 				return r.stage(wr, ops, err)
 			}),
-			"answer": r.action(func(World, api.Query, *Event) bool { return true }, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, rsvpBody{})
-				if err != nil {
-					return err
-				}
+			"answer": action(func(World, api.Query, *Event) bool { return true }, func(wr api.Write[World], e *Event, body rsvpBody) error {
 				ops, _, err := a(wr.S).answerOps(wr.Query.Actor, wr.Query.Actor.Email, e.ID, body.Answer, ViaPage, true)
 				logAfter(wr, "calendar: answered", "event", e.ID, "answer", body.Answer)
 				return r.stage(wr, ops, err)
 			}),
-			"answer-for": r.action(func(World, api.Query, *Event) bool { return true }, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, answerForBody{})
-				if err != nil {
-					return err
-				}
+			"answer-for": action(func(World, api.Query, *Event) bool { return true }, func(wr api.Write[World], e *Event, body answerForBody) error {
 				_, subject, err := a(wr.S).answerSubject(wr.Query.Actor, e.ID, body.Email, body.Answer)
 				if err != nil {
 					return err
@@ -492,11 +455,7 @@ func (r resources) events() api.Type[World] {
 				logAfter(wr, "calendar: answered for", "subject", subject, "event", e.ID, "answer", body.Answer)
 				return r.stage(wr, ops, err)
 			}),
-			"invite": r.action(func(w World, q api.Query, e *Event) bool { return w.inviter(q, e) }, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, inviteesBody{})
-				if err != nil {
-					return err
-				}
+			"invite": action(func(w World, q api.Query, e *Event) bool { return w.inviter(q, e) }, func(wr api.Write[World], e *Event, body inviteesBody) error {
 				ops, _, emails, host, err := a(wr.S).inviteOps(wr.Query.Actor, e.ID, body.People)
 				if err := r.stage(wr, ops, err); err != nil {
 					return err
@@ -507,22 +466,14 @@ func (r resources) events() api.Type[World] {
 				}
 				return r.stage(wr, r.staged(wr).app.requestOps(wr.Query.Actor, e, emails, wr.Query.Actor.Email, ""), nil)
 			}),
-			"uninvite": r.action(func(w World, q api.Query, e *Event) bool {
+			"uninvite": action(func(w World, q api.Query, e *Event) bool {
 				return e.keepsGuestList() && (w.app.isHost(q.Actor, e) || slices.ContainsFunc(w.Model.Invites[e.ID], func(inv Invite) bool { return inv.GuestOf != "" && w.app.mayAnswerFor(q.Actor, inv.GuestOf, e) }))
-			}, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, personBody{})
-				if err != nil {
-					return err
-				}
+			}, func(wr api.Write[World], e *Event, body personBody) error {
 				ops, _, email, fromGroup, err := a(wr.S).uninviteOps(wr.Query.Actor, e.ID, body.Email)
 				logAfter(wr, "calendar: guest removed", "event", e.ID, "email", email, "from group", fromGroup)
 				return r.stage(wr, ops, err)
 			}),
-			"bring-guest": r.action(func(w World, q api.Query, e *Event) bool { return w.bringer(q, e) }, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, guestBody{})
-				if err != nil {
-					return err
-				}
+			"bring-guest": action(func(w World, q api.Query, e *Event) bool { return w.bringer(q, e) }, func(wr api.Write[World], e *Event, body guestBody) error {
 				body.ID = e.ID
 				ops, g, err := a(wr.S).bringGuestOps(wr.Query.Actor, body)
 				if err := r.stage(wr, ops, err); err != nil {
@@ -534,30 +485,18 @@ func (r resources) events() api.Type[World] {
 				}
 				return r.stage(wr, r.staged(wr).app.requestOps(wr.Query.Actor, e, []string{g.key}, wr.Query.Actor.Email, ""), nil)
 			}),
-			"settings": r.action(hosts, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, settingsBody{})
-				if err != nil {
-					return err
-				}
+			"settings": action(hosts, func(wr api.Write[World], e *Event, body settingsBody) error {
 				body.ID = e.ID
 				ops, _, _, err := a(wr.S).settingsOps(wr.Query.Actor, body)
 				logAfter(wr, "calendar: guest list settings", "event", e.ID)
 				return r.stage(wr, ops, err)
 			}),
-			"step-down": r.action(hosts, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, personBody{})
-				if err != nil {
-					return err
-				}
+			"step-down": action(hosts, func(wr api.Write[World], e *Event, body personBody) error {
 				ops, _, who, poster, err := a(wr.S).stepDownOps(wr.Query.Actor, e.ID, body.Email)
 				logAfter(wr, "calendar: host stepped down", "who", who, "event", e.ID, "poster", poster)
 				return r.stage(wr, ops, err)
 			}),
-			"send": r.action(hosts, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, sendBody{})
-				if err != nil {
-					return err
-				}
+			"send": action(hosts, func(wr api.Write[World], e *Event, body sendBody) error {
 				emails, kind, err := a(wr.S).sendChoice(e, body)
 				if err != nil {
 					return err
@@ -565,11 +504,7 @@ func (r resources) events() api.Type[World] {
 				logAfter(wr, "calendar: invites sent", "event", e.ID, "invites", len(emails), "kind", kind)
 				return r.stage(wr, a(wr.S).requestOps(wr.Query.Actor, e, emails, wr.Query.Actor.Email, kind), nil)
 			}),
-			"skip": r.action(hosts, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, skipBody{})
-				if err != nil {
-					return err
-				}
+			"skip": action(hosts, func(wr api.Write[World], e *Event, body skipBody) error {
 				emails := a(wr.S).skippable(e, body.Emails)
 				if len(emails) == 0 {
 					return access.Invalid("nobody pending to skip")
@@ -577,11 +512,7 @@ func (r resources) events() api.Type[World] {
 				logAfter(wr, "calendar: invites skipped", "event", e.ID, "skipped", len(emails))
 				return r.stage(wr, a(wr.S).skipOps(wr.Query.Actor, e, emails), nil)
 			}),
-			"message": r.action(hosts, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, messageBody{})
-				if err != nil {
-					return err
-				}
+			"message": action(hosts, func(wr api.Write[World], e *Event, body messageBody) error {
 				op, targets, err := a(wr.S).messageWith(wr.Query.Actor, e, body)
 				if err != nil {
 					return err
@@ -589,11 +520,7 @@ func (r resources) events() api.Type[World] {
 				logAfter(wr, "calendar: message sent", "event", e.ID, "to", targets)
 				return r.stage(wr, []store.Op{op}, nil)
 			}),
-			"change-email": r.action(hosts, func(wr api.Write[World], e *Event) error {
-				body, err := decode(wr, addressBody{})
-				if err != nil {
-					return err
-				}
+			"change-email": action(hosts, func(wr api.Write[World], e *Event, body addressBody) error {
 				ops, c, err := a(wr.S).changeAddressOps(wr.Query.Actor, e.ID, body.Email, body.To, body.Everywhere)
 				if err != nil {
 					return err
@@ -610,15 +537,15 @@ func (r resources) events() api.Type[World] {
 				logAfter(wr, "calendar: invite address changed", "event", e.ID, "from", c.from, "to", c.to)
 				return r.stage(wr, ops, nil)
 			}),
-			"delete-invitation": r.action(func(w World, q api.Query, e *Event) bool {
+			"delete-invitation": action(func(w World, q api.Query, e *Event) bool {
 				inv := w.Model.Invitations[e.ID]
 				return hosts(w, q, e) && !(posted(e) && inv != nil && inv.Sent != "")
-			}, func(wr api.Write[World], e *Event) error {
+			}, func(wr api.Write[World], e *Event, _ serve.None) error {
 				ops, _, own, err := a(wr.S).deleteInvitationOps(wr.Query.Actor, e.ID)
 				logAfter(wr, "calendar: invitation deleted", "event", e.ID, "title", e.Title, "event too", own)
 				return r.stage(wr, ops, err)
 			}),
-			"start": r.action(func(w World, q api.Query, e *Event) bool { return hosts(w, q, e) && e.linked() }, func(wr api.Write[World], e *Event) error {
+			"start": action(func(w World, q api.Query, e *Event) bool { return hosts(w, q, e) && e.linked() }, func(wr api.Write[World], e *Event, _ serve.None) error {
 				ops, _, g, err := a(wr.S).startPartyOps(wr.Query.Actor, e.ID)
 				if err != nil || len(ops) == 0 {
 					return err
@@ -694,19 +621,16 @@ func (r resources) guestLists() api.Type[World] {
 			}},
 		},
 		Actions: map[string]api.Action[World]{
-			"opened": {
-				Can: func(w World, q api.Query, key string) bool {
-					e := find(w, q, key)
-					return e != nil && len(w.app.openedOps(q.Actor, e)) > 0
-				},
-				Do: func(wr api.Write[World]) error {
-					e := find(wr.S, wr.Query, wr.ID)
-					if e == nil {
-						return access.Missing("no such guest list")
-					}
-					return r.stage(wr, wr.S.app.openedOps(wr.Query.Actor, e), nil)
-				},
-			},
+			"opened": api.Do(func(w World, q api.Query, key string) bool {
+				e := find(w, q, key)
+				return e != nil && len(w.app.openedOps(q.Actor, e)) > 0
+			}, func(wr api.Write[World], _ serve.None) error {
+				e := find(wr.S, wr.Query, wr.ID)
+				if e == nil {
+					return access.Missing("no such guest list")
+				}
+				return r.stage(wr, wr.S.app.openedOps(wr.Query.Actor, e), nil)
+			}),
 		},
 	}
 }
@@ -731,6 +655,7 @@ func (r resources) inviteGroups() api.Type[World] {
 		}
 		return nil, nil
 	}
+	owns := func(w World, q api.Query, key string) bool { _, g := find(w, q, key); return g != nil }
 	return api.Type[World]{
 		Name:  "invite-groups",
 		Shape: groupResource{},
@@ -768,11 +693,7 @@ func (r resources) inviteGroups() api.Type[World] {
 			}
 			return out
 		},
-		Create: func(wr api.Write[World]) (string, error) {
-			body, err := decode(wr, addGroupBody{})
-			if err != nil {
-				return "", err
-			}
+		Create: api.Make(func(wr api.Write[World], body addGroupBody) (string, error) {
 			ops, e, g, err := wr.S.app.addGroupOps(wr.Query.Actor, body.ID, body.Rule, body.Auto)
 			if err != nil {
 				return "", err
@@ -780,30 +701,23 @@ func (r resources) inviteGroups() api.Type[World] {
 			filled, emails := wr.S.app.fillOps(wr.Query.Actor, e, g)
 			logAfter(wr, "calendar: group added", "event", e.ID, "group", g.ID, "added", len(emails))
 			return g.ID, r.stage(wr, append(ops, filled...), nil)
-		},
+		}),
 		Actions: map[string]api.Action[World]{
-			"edit": {
-				Can: func(w World, q api.Query, key string) bool { _, g := find(w, q, key); return g != nil },
-				Do: func(wr api.Write[World]) error {
-					e, g := find(wr.S, wr.Query, wr.ID)
-					body, err := decode(wr, setGroupBody{Auto: g.Auto})
-					if err != nil {
-						return err
-					}
-					ops, _, _, err := wr.S.app.setGroupOps(wr.Query.Actor, e.ID, g.ID, body.Auto)
-					logAfter(wr, "calendar: group changed", "event", e.ID, "group", g.ID, "auto", body.Auto)
-					return r.stage(wr, ops, err)
-				},
-			},
-			"delete": {
-				Can: func(w World, q api.Query, key string) bool { _, g := find(w, q, key); return g != nil },
-				Do: func(wr api.Write[World]) error {
-					e, g := find(wr.S, wr.Query, wr.ID)
-					ops, _, _, err := wr.S.app.removeGroupOps(wr.Query.Actor, e.ID, g.ID)
-					logAfter(wr, "calendar: group removed", "event", e.ID, "group", g.ID, "dropped", len(ops)-1)
-					return r.stage(wr, ops, err)
-				},
-			},
+			"edit": api.DoFrom(owns, func(wr api.Write[World]) setGroupBody {
+				_, g := find(wr.S, wr.Query, wr.ID)
+				return setGroupBody{Auto: g.Auto}
+			}, func(wr api.Write[World], body setGroupBody) error {
+				e, g := find(wr.S, wr.Query, wr.ID)
+				ops, _, _, err := wr.S.app.setGroupOps(wr.Query.Actor, e.ID, g.ID, body.Auto)
+				logAfter(wr, "calendar: group changed", "event", e.ID, "group", g.ID, "auto", body.Auto)
+				return r.stage(wr, ops, err)
+			}),
+			"delete": api.Do(owns, func(wr api.Write[World], _ serve.None) error {
+				e, g := find(wr.S, wr.Query, wr.ID)
+				ops, _, _, err := wr.S.app.removeGroupOps(wr.Query.Actor, e.ID, g.ID)
+				logAfter(wr, "calendar: group removed", "event", e.ID, "group", g.ID, "dropped", len(ops)-1)
+				return r.stage(wr, ops, err)
+			}),
 		},
 	}
 }
@@ -859,48 +773,34 @@ func (r resources) feeds() api.Type[World] {
 			}
 			return out
 		},
-		Create: func(wr api.Write[World]) (string, error) {
-			body, err := decode(wr, feedBody{})
-			if err != nil {
-				return "", err
-			}
+		Create: api.Make(func(wr api.Write[World], body feedBody) (string, error) {
 			ops, cells := wr.S.app.newFeed(wr.Query.Actor, body)
 			logAfter(wr, "calendar: feed added", "name", cells["Name"], "classrooms", cells["Classrooms"], "tags", cells["Tags"])
 			return wr.S.feedID(wr.Query.Actor.Email, cells["Token"]), r.stage(wr, ops, nil)
-		},
+		}),
 		Actions: map[string]api.Action[World]{
-			"edit": {
-				Can: func(w World, q api.Query, key string) bool { _, ok := w.feedOf(q, key); return ok },
-				Do: func(wr api.Write[World]) error {
-					f, _ := wr.S.feedOf(wr.Query, wr.ID)
-					body, err := decode(wr, feedBody{Name: f.Name, Emoji: f.Emoji, Classrooms: f.Classrooms, Tags: f.Tags})
-					if err != nil {
-						return err
-					}
-					body.Token = f.Token
-					ops, _, err := wr.S.app.changeFeed(wr.Query.Actor, body)
-					logAfter(wr, "calendar: feed changed", "name", body.Name)
-					return r.stage(wr, ops, err)
-				},
-			},
-			"delete": {
-				Can: owned,
-				Do: func(wr api.Write[World]) error {
-					f, _ := wr.S.feedOf(wr.Query, wr.ID)
-					ops, name, err := wr.S.app.dropFeed(wr.Query.Actor, f.Token)
-					logAfter(wr, "calendar: feed removed", "name", name)
-					return r.stage(wr, ops, err)
-				},
-			},
+			"edit": api.DoFrom(func(w World, q api.Query, key string) bool { _, ok := w.feedOf(q, key); return ok }, func(wr api.Write[World]) feedBody {
+				f, _ := wr.S.feedOf(wr.Query, wr.ID)
+				return feedBody{Name: f.Name, Emoji: f.Emoji, Classrooms: f.Classrooms, Tags: f.Tags}
+			}, func(wr api.Write[World], body feedBody) error {
+				f, _ := wr.S.feedOf(wr.Query, wr.ID)
+				body.Token = f.Token
+				ops, _, err := wr.S.app.changeFeed(wr.Query.Actor, body)
+				logAfter(wr, "calendar: feed changed", "name", body.Name)
+				return r.stage(wr, ops, err)
+			}),
+			"delete": api.Do(owned, func(wr api.Write[World], _ serve.None) error {
+				f, _ := wr.S.feedOf(wr.Query, wr.ID)
+				ops, name, err := wr.S.app.dropFeed(wr.Query.Actor, f.Token)
+				logAfter(wr, "calendar: feed removed", "name", name)
+				return r.stage(wr, ops, err)
+			}),
 		},
 	}
 }
 
 func (r resources) settings() api.Type[World] {
 	always := func(World, api.Query, string) bool { return true }
-	settingsAction := func(can func(World, api.Query, string) bool, do func(wr api.Write[World]) error) api.Action[World] {
-		return api.Action[World]{Can: can, Do: do}
-	}
 	return api.Type[World]{
 		Name:  "when-settings",
 		Shape: settingsResource{},
@@ -936,47 +836,31 @@ func (r resources) settings() api.Type[World] {
 			}},
 		},
 		Actions: map[string]api.Action[World]{
-			"save-view": settingsAction(always, func(wr api.Write[World]) error {
-				body, err := decode(wr, viewBody{})
-				if err != nil {
-					return err
-				}
+			"save-view": api.Do(always, func(wr api.Write[World], body viewBody) error {
 				ops, cells := saveViewOps(wr.Query.Actor, body.Classrooms, body.Tags)
 				logAfter(wr, "calendar: view saved", "classrooms", cells["Classrooms"], "tags", cells["Categories"])
 				return r.stage(wr, ops, nil)
 			}),
-			"forget-view": settingsAction(func(w World, q api.Query, _ string) bool { return len(w.app.forgetViewOps(q.Actor)) > 0 }, func(wr api.Write[World]) error {
+			"forget-view": api.Do(func(w World, q api.Query, _ string) bool { return len(w.app.forgetViewOps(q.Actor)) > 0 }, func(wr api.Write[World], _ serve.None) error {
 				logAfter(wr, "calendar: view forgotten")
 				return r.stage(wr, wr.S.app.forgetViewOps(wr.Query.Actor), nil)
 			}),
-			"order-feeds": settingsAction(always, func(wr api.Write[World]) error {
-				body, err := decode(wr, tokensBody{})
-				if err != nil {
-					return err
-				}
+			"order-feeds": api.Do(always, func(wr api.Write[World], body tokensBody) error {
 				ops, err := wr.S.app.orderOps(wr.Query.Actor, body.Tokens)
 				logAfter(wr, "calendar: feeds ordered", "order", strings.Join(body.Tokens, ","))
 				return r.stage(wr, ops, err)
 			}),
-			"default": settingsAction(always, func(wr api.Write[World]) error {
-				body, err := decode(wr, tokenBody{})
-				if err != nil {
-					return err
-				}
+			"default": api.Do(always, func(wr api.Write[World], body tokenBody) error {
 				ops, tokens, err := wr.S.app.defaultOps(wr.Query.Actor, strings.TrimSpace(body.Token))
 				logAfter(wr, "calendar: default calendar set", "order", strings.Join(tokens, ","))
 				return r.stage(wr, ops, err)
 			}),
-			"feed-token": settingsAction(always, func(wr api.Write[World]) error {
+			"feed-token": api.Do(always, func(wr api.Write[World], _ serve.None) error {
 				ops, _ := wr.S.app.feedTokenOps(wr.Query.Actor)
 				logAfter(wr, "calendar: my heliosian feed made")
 				return r.stage(wr, ops, nil)
 			}),
-			"tags": settingsAction(func(_ World, q api.Query, _ string) bool { return q.Actor.May(Curate) }, func(wr api.Write[World]) error {
-				body, err := decode(wr, tagsBody{})
-				if err != nil {
-					return err
-				}
+			"tags": api.Do(func(_ World, q api.Query, _ string) bool { return q.Actor.May(Curate) }, func(wr api.Write[World], body tagsBody) error {
 				ops, added, err := wr.S.app.tagOps(wr.Query.Actor, body.Tags)
 				logAfter(wr, "calendar: categories saved", "added", added)
 				return r.stage(wr, ops, err)

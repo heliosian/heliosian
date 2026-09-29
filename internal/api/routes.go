@@ -187,10 +187,10 @@ func (reg *Registry[S]) step(w *world[S], wr Write[S], st step) (created, error)
 	}
 	switch {
 	case st.Method == http.MethodPost && len(parts) == 1:
-		if t.Create == nil {
+		if t.Create.do == nil {
 			return created{}, access.Refuse(http.StatusMethodNotAllowed, "%s can't be created", t.Name)
 		}
-		key, err := t.Create(wr)
+		key, err := t.Create.do(wr)
 		return created{ID: key}, err
 	case st.Method == http.MethodPost && len(parts) == 3:
 		return created{}, reg.run(w, t, wr, parts[1], parts[2])
@@ -213,5 +213,5 @@ func (reg *Registry[S]) run(w *world[S], t *Type[S], wr Write[S], segment, name 
 		return access.Missing("no %s %s", t.Name, segment)
 	}
 	wr.ID = key
-	return action.Do(wr)
+	return action.do(wr)
 }

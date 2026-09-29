@@ -13,6 +13,7 @@ import (
 	"heliosian/internal/filter"
 	"heliosian/internal/id"
 	"heliosian/internal/mail"
+	"heliosian/internal/serve"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -285,32 +286,26 @@ func (r resources) emailLists() api.Type[World] {
 			g := w.Model.Group(key)
 			return g.subscription(q.Actor, w.onList(*g, q.Actor.Email), subscribed)
 		}
-		return api.Action[World]{
-			Can: func(w World, q api.Query, key string) bool { _, err := check(w, q, key); return can(err) },
-			Do: func(wr api.Write[World]) error {
-				ops, err := check(wr.S, wr.Query, wr.ID)
-				if !subscribed {
-					logAfter(wr, "loop:unsubscribed", "group", wr.S.Model.Group(wr.ID).Name, "how", loopPage)
-				} else {
-					logAfter(wr, "loop:resubscribed", "group", wr.S.Model.Group(wr.ID).Name)
-				}
-				return r.stage(wr, ops, err)
-			},
-		}
+		return api.Do(func(w World, q api.Query, key string) bool { _, err := check(w, q, key); return can(err) }, func(wr api.Write[World], _ serve.None) error {
+			ops, err := check(wr.S, wr.Query, wr.ID)
+			if !subscribed {
+				logAfter(wr, "loop:unsubscribed", "group", wr.S.Model.Group(wr.ID).Name, "how", loopPage)
+			} else {
+				logAfter(wr, "loop:resubscribed", "group", wr.S.Model.Group(wr.ID).Name)
+			}
+			return r.stage(wr, ops, err)
+		})
 	}
 	archive := func(archived bool) api.Action[World] {
-		return api.Action[World]{
-			Can: func(w World, q api.Query, key string) bool {
-				_, err := w.Model.archiving(q.Actor, w.Model.Group(key), archived)
-				return can(err)
-			},
-			Do: func(wr api.Write[World]) error {
-				g := wr.S.Model.Group(wr.ID)
-				ops, err := wr.S.Model.archiving(wr.Query.Actor, g, archived)
-				logAfter(wr, "loop:archived", "id", g.ID, "group", g.Name, "archived", archived)
-				return r.stage(wr, ops, err)
-			},
-		}
+		return api.Do(func(w World, q api.Query, key string) bool {
+			_, err := w.Model.archiving(q.Actor, w.Model.Group(key), archived)
+			return can(err)
+		}, func(wr api.Write[World], _ serve.None) error {
+			g := wr.S.Model.Group(wr.ID)
+			ops, err := wr.S.Model.archiving(wr.Query.Actor, g, archived)
+			logAfter(wr, "loop:archived", "id", g.ID, "group", g.Name, "archived", archived)
+			return r.stage(wr, ops, err)
+		})
 	}
 	return api.Type[World]{
 		Name:  "email-lists",
@@ -361,11 +356,7 @@ func (r resources) emailLists() api.Type[World] {
 			}
 			return out
 		},
-		Create: func(wr api.Write[World]) (string, error) {
-			var in Group
-			if err := wr.Decode(&in); err != nil {
-				return "", err
-			}
+		Create: api.Make(func(wr api.Write[World], in Group) (string, error) {
 			in.ID = ""
 			ops, g, _, err := wr.S.Model.SaveGroup(wr.Query.Actor, wr.S.Sources(), in, wr.Taken)
 			if err != nil {
@@ -373,7 +364,7 @@ func (r resources) emailLists() api.Type[World] {
 			}
 			logAfter(wr, "loop:saved group", "action", "add", "id", g.ID, "group", g.Name, "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions))
 			return g.ID, r.stage(wr, ops, nil)
-		},
+		}),
 		Relations: map[string]api.Relation[World]{
 			"managers": {Type: "people", Many: true, List: func(w World, _ api.Query, key string) []string {
 				out := []string{}
@@ -399,39 +390,29 @@ func (r resources) emailLists() api.Type[World] {
 			}},
 		},
 		Actions: map[string]api.Action[World]{
-			"edit": {
-				Can: edits,
-				Do: func(wr api.Write[World]) error {
-					var patch groupPatch
-					if err := wr.Decode(&patch); err != nil {
-						return err
+			"edit": api.Do(edits, func(wr api.Write[World], patch groupPatch) error {
+				current := wr.S.Model.Group(wr.ID)
+				ops, g, _, err := wr.S.Model.SaveGroup(wr.Query.Actor, wr.S.Sources(), patch.over(*current), wr.Taken)
+				if err != nil {
+					return err
+				}
+				logAfter(wr, "loop:saved group", "action", "edit", "id", g.ID, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility, "posting", g.Posting, "replying", g.Replying)
+				return r.stage(wr, ops, nil)
+			}),
+			"delete": api.Do(edits, func(wr api.Write[World], _ serve.None) error {
+				ops, g, err := wr.S.Model.DeleteGroup(wr.Query.Actor, wr.ID)
+				if err != nil {
+					return err
+				}
+				actor, ctx, name := wr.Query.Actor, wr.Request.Context(), g.Name
+				wr.Tx.After(func() {
+					if err := r.documents.Remove(ctx, actor, name); err != nil {
+						slog.ErrorContext(ctx, "loop:filed mail not removed", "group", name, "error", err)
 					}
-					current := wr.S.Model.Group(wr.ID)
-					ops, g, _, err := wr.S.Model.SaveGroup(wr.Query.Actor, wr.S.Sources(), patch.over(*current), wr.Taken)
-					if err != nil {
-						return err
-					}
-					logAfter(wr, "loop:saved group", "action", "edit", "id", g.ID, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility, "posting", g.Posting, "replying", g.Replying)
-					return r.stage(wr, ops, nil)
-				},
-			},
-			"delete": {
-				Can: edits,
-				Do: func(wr api.Write[World]) error {
-					ops, g, err := wr.S.Model.DeleteGroup(wr.Query.Actor, wr.ID)
-					if err != nil {
-						return err
-					}
-					actor, ctx, name := wr.Query.Actor, wr.Request.Context(), g.Name
-					wr.Tx.After(func() {
-						if err := r.documents.Remove(ctx, actor, name); err != nil {
-							slog.ErrorContext(ctx, "loop:filed mail not removed", "group", name, "error", err)
-						}
-					})
-					logAfter(wr, "loop:deleted group", "id", g.ID, "group", g.Name)
-					return r.stage(wr, ops, nil)
-				},
-			},
+				})
+				logAfter(wr, "loop:deleted group", "id", g.ID, "group", g.Name)
+				return r.stage(wr, ops, nil)
+			}),
 			"unsubscribe": subscription(false),
 			"resubscribe": subscription(true),
 			"archive":     archive(true),

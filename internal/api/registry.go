@@ -43,7 +43,7 @@ func (reg *Registry[S]) Add(t Type[S]) {
 		panic(fmt.Sprintf("api: type %q registered twice", t.Name))
 	}
 	for name, action := range t.Actions {
-		if action.Can == nil || action.Do == nil {
+		if action.Can == nil || action.do == nil {
 			panic(fmt.Sprintf("api: %s action %q needs both a can rule and a route", t.Name, name))
 		}
 	}
