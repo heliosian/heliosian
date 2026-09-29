@@ -5,15 +5,15 @@ import (
 	"log/slog"
 	"time"
 
-	"heliosian/internal/admins"
 	"heliosian/internal/data"
 	"heliosian/internal/id"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
 type Cache struct {
 	*store.Store[*Model]
-	admins.List
+	model.AdminList
 }
 
 var groupTabs = []string{managersTab, rulesTab, additionsTab, excludedTab, archivedTab, messagesTab, deliveriesTab}
@@ -30,7 +30,7 @@ func spec(idKey []byte) store.Spec[*Model] {
 			{Name: id.AliasesTab, Columns: id.AliasColumns, Key: []string{id.AliasColumn}},
 			{Name: messagesTab, Columns: MessageColumns, Key: []string{"ID", "Group"}},
 			{Name: deliveriesTab, Columns: DeliveryColumns, Key: []string{"Timestamp", "Group", "Email", "Event"}, AppendOnly: true},
-			admins.Spec,
+			model.AdminsTab,
 			{Name: archivedTab, Columns: ArchivedColumns, Key: []string{"Group", "Email"}},
 		},
 		Build: func(_ context.Context, tables store.Tables) (*Model, error) {
@@ -62,5 +62,5 @@ func NewCache(source data.Source, writer data.Writer, superAdmins func() []strin
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, List: admins.New("loop", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
+	return &Cache{Store: s, AdminList: model.NewAdminList("loop", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
 }

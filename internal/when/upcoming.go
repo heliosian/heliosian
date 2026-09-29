@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/config"
-	"heliosian/internal/who"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 )
 
 type Card struct {
@@ -139,24 +139,24 @@ func (m *Model) InView(e *Event, answer string, classrooms, tags []string) bool 
 	return going || e.Invited || admits(m, e, classrooms, tags)
 }
 
-func (m *Model) ViewOf(directory *who.Model, email string) (classrooms, tags []string) {
+func (m *Model) ViewOf(directory *model.Directory, email string) (classrooms, tags []string) {
 	if chosen := m.DefaultCalendar(email); chosen != nil {
 		return m.feedView(chosen)
 	}
 	return m.myHeliosianView(directory, email)
 }
 
-func (m *Model) viewUnder(directory *who.Model, email, token string) (classrooms, tags []string) {
+func (m *Model) viewUnder(directory *model.Directory, email, token string) (classrooms, tags []string) {
 	if token == MyHeliosianToken {
 		return m.myHeliosianView(directory, email)
 	}
-	if f := m.Feed(token); f != nil && token != "" && config.NormalizeEmail(f.Email) == config.NormalizeEmail(email) {
+	if f := m.Feed(token); f != nil && token != "" && mail.Normalize(f.Email) == mail.Normalize(email) {
 		return m.feedView(f)
 	}
 	return m.ViewOf(directory, email)
 }
 
-func (m *Model) myHeliosianView(directory *who.Model, email string) (classrooms, tags []string) {
+func (m *Model) myHeliosianView(directory *model.Directory, email string) (classrooms, tags []string) {
 	classrooms = classroomsOf(m, directory.Person(email), students(directory, email))
 	if len(classrooms) == 0 {
 		classrooms = m.Roster.Names()
@@ -167,7 +167,7 @@ func (m *Model) myHeliosianView(directory *who.Model, email string) (classrooms,
 			tags = append(tags, t.ID)
 		}
 	}
-	if saved, ok := m.Settings[config.NormalizeEmail(email)]; ok && (len(saved.Classrooms) > 0 || len(saved.Tags) > 0) {
+	if saved, ok := m.Settings[mail.Normalize(email)]; ok && (len(saved.Classrooms) > 0 || len(saved.Tags) > 0) {
 		if len(saved.Classrooms) > 0 {
 			classrooms = saved.Classrooms
 		}
@@ -192,7 +192,7 @@ func (m *Model) feedView(f *Feed) (classrooms, tags []string) {
 func (m *Model) MyCalendars(email string) []Feed {
 	out := []Feed{}
 	for _, f := range m.Feeds {
-		if config.NormalizeEmail(f.Email) == config.NormalizeEmail(email) {
+		if mail.Normalize(f.Email) == mail.Normalize(email) {
 			out = append(out, f)
 		}
 	}
@@ -209,7 +209,7 @@ func (m *Model) DefaultCalendar(email string) *Feed {
 	return m.Feed(mine[0].Token)
 }
 
-func (m *Model) PartiesFor(directory *who.Model, email string, linked []Linked, now time.Time) []Card {
+func (m *Model) PartiesFor(directory *model.Directory, email string, linked []Linked, now time.Time) []Card {
 	today := now.Format(DateFormat)
 	out := []Card{}
 	for _, e := range m.eventsFor(directory, email, linked) {
@@ -221,7 +221,7 @@ func (m *Model) PartiesFor(directory *who.Model, email string, linked []Linked, 
 	return out
 }
 
-func (m *Model) card(directory *who.Model, email string, e *Event) Card {
+func (m *Model) card(directory *model.Directory, email string, e *Event) Card {
 	u := Card{
 		ID: e.ID, Title: e.Title, Path: EventPath(e), Start: e.start.Format(DateFormat), When: when(e),
 		StartAt: e.Start, EndAt: e.End, Dates: e.Dates, Location: e.Location, Description: blurb(e),
@@ -238,7 +238,7 @@ func (m *Model) card(directory *who.Model, email string, e *Event) Card {
 	return u
 }
 
-func (m *Model) UpcomingUnder(directory *who.Model, email string, linked []Linked, now time.Time, limit int, token string) []Card {
+func (m *Model) UpcomingUnder(directory *model.Directory, email string, linked []Linked, now time.Time, limit int, token string) []Card {
 	classrooms, tags := m.viewUnder(directory, email, token)
 	today := now.Format(DateFormat)
 	out := []Card{}

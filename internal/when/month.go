@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/who"
+	"heliosian/internal/model"
 )
 
 const MonthFormat = "2006-01"
@@ -25,7 +25,7 @@ type Kind struct {
 	Words string `json:"words"`
 }
 
-func (m *Model) MonthUnder(directory *who.Model, email string, linked []Linked, now time.Time, month, token string) Month {
+func (m *Model) MonthUnder(directory *model.Directory, email string, linked []Linked, now time.Time, month, token string) Month {
 	first, err := time.ParseInLocation(MonthFormat, month, Location)
 	if err != nil {
 		first = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, Location)

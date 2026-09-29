@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
-	"heliosian/internal/who"
+	"heliosian/internal/model"
 )
 
 type Family struct {
@@ -14,7 +14,7 @@ type Family struct {
 	full  map[string]string
 }
 
-func FamilyOf(model *who.Model, email string) Family {
+func FamilyOf(model *model.Directory, email string) Family {
 	f := Family{
 		Actor: access.Actor{Email: email, Household: model.Family(email)},
 		first: map[string]string{email: ""},

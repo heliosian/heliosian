@@ -16,12 +16,11 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"heliosian/internal/admins"
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
-	"heliosian/internal/filter"
 	"heliosian/internal/id"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
@@ -49,7 +48,7 @@ const (
 var (
 	categoryColumns   = []string{"Category ID", "Title", "Emoji", "Style", "Max", store.OrderColumn}
 	linkColumns       = []string{"Link ID", "Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added", store.OrderColumn}
-	AudienceColumns   = append([]string{"Thing"}, filter.RuleColumns...)
+	AudienceColumns   = append([]string{"Thing"}, model.RuleColumns...)
 	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline", "Name", store.OrderColumn}
 	widgetColumns     = []string{"Widget", store.OrderColumn}
 	CategoryColumns   = categoryColumns
@@ -119,7 +118,7 @@ type Visibility struct {
 	Emails  []string
 	Tagline string
 	Name    string
-	Rules   []filter.Rule
+	Rules   []model.Rule
 	Order   string
 }
 
@@ -133,39 +132,39 @@ func appKnown(key string) bool {
 }
 
 type Link struct {
-	ID          string        `json:"id"`
-	Title       string        `json:"title"`
-	Description string        `json:"description,omitempty"`
-	URL         string        `json:"url"`
-	Image       string        `json:"image,omitempty"`
-	ImageURL    string        `json:"imageUrl,omitempty"`
-	Category    string        `json:"category"`
-	Visible     bool          `json:"visible"`
-	AddedBy     string        `json:"addedBy,omitempty"`
-	Added       string        `json:"added,omitempty"`
-	Rules       []filter.Rule `json:"rules"`
-	ForMe       *bool         `json:"forMe,omitempty"`
+	ID          string       `json:"id"`
+	Title       string       `json:"title"`
+	Description string       `json:"description,omitempty"`
+	URL         string       `json:"url"`
+	Image       string       `json:"image,omitempty"`
+	ImageURL    string       `json:"imageUrl,omitempty"`
+	Category    string       `json:"category"`
+	Visible     bool         `json:"visible"`
+	AddedBy     string       `json:"addedBy,omitempty"`
+	Added       string       `json:"added,omitempty"`
+	Rules       []model.Rule `json:"rules"`
+	ForMe       *bool        `json:"forMe,omitempty"`
 	order       string
 }
 
 type Category struct {
-	ID      string        `json:"id"`
-	Title   string        `json:"title"`
-	Emoji   string        `json:"emoji,omitempty"`
-	Style   string        `json:"style"`
-	Max     int           `json:"max,omitempty"`
-	Links   []Link        `json:"links"`
-	Virtual bool          `json:"virtual,omitempty"`
-	Rules   []filter.Rule `json:"rules"`
-	ForMe   *bool         `json:"forMe,omitempty"`
+	ID      string       `json:"id"`
+	Title   string       `json:"title"`
+	Emoji   string       `json:"emoji,omitempty"`
+	Style   string       `json:"style"`
+	Max     int          `json:"max,omitempty"`
+	Links   []Link       `json:"links"`
+	Virtual bool         `json:"virtual,omitempty"`
+	Rules   []model.Rule `json:"rules"`
+	ForMe   *bool        `json:"forMe,omitempty"`
 	order   string
 }
 
 type Model struct {
-	Categories  []Category               `json:"categories"`
-	Visibility  map[string]Visibility    `json:"-"`
-	WidgetRules map[string][]filter.Rule `json:"-"`
-	WidgetOrder []string                 `json:"-"`
+	Categories  []Category              `json:"categories"`
+	Visibility  map[string]Visibility   `json:"-"`
+	WidgetRules map[string][]model.Rule `json:"-"`
+	WidgetOrder []string                `json:"-"`
 	widgetKeys  map[string]string
 	admins      []string
 }
@@ -207,14 +206,14 @@ func buildWidgetOrder(model *Model, rows []store.Row) error {
 	return nil
 }
 
-func rulesFor(rows []store.Row, key string) ([]filter.Rule, error) {
-	out := []filter.Rule{}
+func rulesFor(rows []store.Row, key string) ([]model.Rule, error) {
+	out := []model.Rule{}
 	for _, row := range rows {
 		if strings.TrimSpace(row["Thing"]) != key {
 			continue
 		}
-		r := filter.Clean(filter.RuleFromRow(row))
-		if err := filter.Check(r); err != nil {
+		r := model.RuleFromRow(row).Clean()
+		if err := r.Check(); err != nil {
 			return nil, fmt.Errorf("%s rule for %s: %w", audienceTab, key, err)
 		}
 		out = append(out, r)
@@ -265,18 +264,18 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 		return nil, err
 	}
 	audience := tables[audienceTab]
-	model := &Model{Categories: []Category{}, WidgetRules: map[string][]filter.Rule{}}
+	m := &Model{Categories: []Category{}, WidgetRules: map[string][]model.Rule{}}
 	for _, key := range Widgets {
 		rules, err := rulesFor(audience, thingWidget+key)
 		if err != nil {
 			return nil, err
 		}
-		model.WidgetRules[key] = rules
+		m.WidgetRules[key] = rules
 	}
-	if err := buildWidgetOrder(model, tables[widgetsTab]); err != nil {
+	if err := buildWidgetOrder(m, tables[widgetsTab]); err != nil {
 		return nil, err
 	}
-	model.admins = admins.Read(tables)
+	m.admins = model.ReadAdmins(tables)
 	index := map[string]int{}
 	ids := map[string]bool{}
 	events, apps := false, false
@@ -325,14 +324,14 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 		if err != nil {
 			return nil, err
 		}
-		index[key] = len(model.Categories)
-		model.Categories = append(model.Categories, Category{ID: key, Title: title, Emoji: emoji, Style: style, Max: max, Links: []Link{}, Rules: rules, order: order})
+		index[key] = len(m.Categories)
+		m.Categories = append(m.Categories, Category{ID: key, Title: title, Emoji: emoji, Style: style, Max: max, Links: []Link{}, Rules: rules, order: order})
 	}
 	if !events {
 		if ids[EventsID] {
 			return nil, fmt.Errorf("category id %s is the events section's; give its row the %s style or another id", EventsID, StyleEvents)
 		}
-		model.Categories = append([]Category{{ID: EventsID, Title: EventsTitle, Emoji: EventsEmoji, Style: StyleEvents, Links: []Link{}, Virtual: true}}, model.Categories...)
+		m.Categories = append([]Category{{ID: EventsID, Title: EventsTitle, Emoji: EventsEmoji, Style: StyleEvents, Links: []Link{}, Virtual: true}}, m.Categories...)
 		for key := range index {
 			index[key]++
 		}
@@ -364,11 +363,11 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 		if !ok {
 			return nil, fmt.Errorf("link %q names unknown category %q", title, row["Category"])
 		}
-		if model.Categories[at].Style == StyleEvents {
-			return nil, fmt.Errorf("link %q sits under %q, which holds HCA-Team's events rather than links", title, model.Categories[at].Title)
+		if m.Categories[at].Style == StyleEvents {
+			return nil, fmt.Errorf("link %q sits under %q, which holds HCA-Team's events rather than links", title, m.Categories[at].Title)
 		}
-		if model.Categories[at].Style == StyleApps {
-			return nil, fmt.Errorf("link %q sits under %q, which holds the community apps rather than links", title, model.Categories[at].Title)
+		if m.Categories[at].Style == StyleApps {
+			return nil, fmt.Errorf("link %q sits under %q, which holds the community apps rather than links", title, m.Categories[at].Title)
 		}
 		visible, err := cells.YesNo(row["Visible"], false)
 		if err != nil {
@@ -385,19 +384,19 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 		if err != nil {
 			return nil, err
 		}
-		model.Categories[at].Links = append(model.Categories[at].Links, Link{
+		m.Categories[at].Links = append(m.Categories[at].Links, Link{
 			ID: key, Title: title, Description: row["Description"], URL: row["URL"],
 			Image: row["Image"], ImageURL: image, Category: category,
 			Visible: visible, AddedBy: row["Added By"], Added: row["Added"],
 			Rules: rules, order: order,
 		})
 	}
-	for i := range model.Categories {
-		slices.SortStableFunc(model.Categories[i].Links, func(a, b Link) int { return compareOrder(a.order, b.order, a.Title, b.Title) })
+	for i := range m.Categories {
+		slices.SortStableFunc(m.Categories[i].Links, func(a, b Link) int { return compareOrder(a.order, b.order, a.Title, b.Title) })
 	}
-	stored := model.Categories
+	stored := m.Categories
 	if !events {
-		stored = model.Categories[1:]
+		stored = m.Categories[1:]
 	}
 	slices.SortStableFunc(stored, func(a, b Category) int { return compareOrder(a.order, b.order, a.Title, b.Title) })
 	visibility, err := buildVisibility(tables[visibilityTab])
@@ -412,8 +411,8 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 		v.Rules = rules
 		visibility[key] = v
 	}
-	model.Visibility = visibility
-	return model, nil
+	m.Visibility = visibility
+	return m, nil
 }
 
 func buildVisibility(rows []store.Row) (map[string]Visibility, error) {
@@ -449,7 +448,7 @@ func buildVisibility(rows []store.Row) (map[string]Visibility, error) {
 }
 
 func splitEmails(cell string) []string {
-	return config.NormalizeEmails(strings.FieldsFunc(cell, func(r rune) bool {
+	return mail.NormalizeAll(strings.FieldsFunc(cell, func(r rune) bool {
 		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == ' '
 	}))
 }

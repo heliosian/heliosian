@@ -11,14 +11,13 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
 	"heliosian/internal/blob"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 const (
@@ -33,7 +32,7 @@ var pages = []string{
 type app struct {
 	cache     *Cache
 	images    blob.Images
-	directory func() *who.Model
+	directory func() *model.Directory
 	search    imagesearch.Search
 	mailer    *mail.Mailgun
 	rsvps     RSVPLookup
@@ -44,7 +43,7 @@ type app struct {
 type Deps struct {
 	Cache     *Cache
 	Images    blob.Images
-	Directory func() *who.Model
+	Directory func() *model.Directory
 	Search    imagesearch.Search
 	Mailer    *mail.Mailgun
 	RSVPs     RSVPLookup
@@ -82,7 +81,7 @@ func Register(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("POST /api/celebrate/categories/order", serve.JSON(a.reorderCategories))
 	mux.HandleFunc("POST /api/celebrate/settings", serve.JSON(a.saveSettings))
 	mux.HandleFunc("GET /api/celebrate/invoices.csv", a.invoicesCSV)
-	admins.Register(mux, a.cache.List, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
+	model.RegisterAdmins(mux, a.cache.AdminList, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -121,14 +120,14 @@ func (a app) model(r *http.Request, _ serve.None) (View, error) {
 	return view, nil
 }
 
-func nameOf(directory *who.Model, email string) string {
+func nameOf(directory *model.Directory, email string) string {
 	if p := directory.Person(directory.Resolve(email)); p != nil {
 		return p.FullName
 	}
 	return DisplayName(email)
 }
 
-func ticketName(directory *who.Model, t map[string]string) string {
+func ticketName(directory *model.Directory, t map[string]string) string {
 	if t["Email"] != "" {
 		if p := directory.Person(directory.Resolve(t["Email"])); p != nil && p.FullName != "" {
 			return p.FullName

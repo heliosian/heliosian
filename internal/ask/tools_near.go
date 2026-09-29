@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"heliosian/internal/who"
+	"heliosian/internal/model"
 )
 
 var streetAddress = regexp.MustCompile(`^\s*\d`)
@@ -34,7 +34,7 @@ func cityOf(address string) string {
 	return strings.TrimSpace(parts[len(parts)-1])
 }
 
-func milesBetween(a, b who.Family) float64 {
+func milesBetween(a, b model.Family) float64 {
 	const earth = 3958.8
 	lat1, lat2 := a.Lat*math.Pi/180, b.Lat*math.Pi/180
 	dLat, dLng := lat2-lat1, (b.Lng-a.Lng)*math.Pi/180
@@ -42,8 +42,8 @@ func milesBetween(a, b who.Family) float64 {
 	return 2 * earth * math.Asin(math.Sqrt(h))
 }
 
-func (v *viewer) nearbyCard(key string, family who.Family) nearbyCard {
-	c := nearbyCard{Name: family.Name, City: cityOf(family.Address), Adults: []string{}, Students: []string{}, Link: whoBase + who.FamilyPath(key)}
+func (v *viewer) nearbyCard(key string, family model.Family) nearbyCard {
+	c := nearbyCard{Name: family.Name, City: cityOf(family.Address), Adults: []string{}, Students: []string{}, Link: whoBase + model.FamilyPath(key)}
 	adults, kids := v.directory.Members(key)
 	for _, p := range adults {
 		c.Adults = append(c.Adults, p.FullName)
@@ -54,7 +54,7 @@ func (v *viewer) nearbyCard(key string, family who.Family) nearbyCard {
 	return c
 }
 
-func (v *viewer) familyMatches(family who.Family, classroom, grade string) bool {
+func (v *viewer) familyMatches(family model.Family, classroom, grade string) bool {
 	if classroom == "" && grade == "" {
 		return true
 	}
@@ -94,7 +94,7 @@ var nearbyFamilies = tool{
 		if len(keys) == 0 {
 			return nil, fmt.Errorf("no family in the directory matches that")
 		}
-		from, fromKey, city := who.Family{}, "", ""
+		from, fromKey, city := model.Family{}, "", ""
 		for _, key := range keys {
 			family := v.directory.Families[key]
 			if family.Address == "" {

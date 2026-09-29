@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"heliosian/internal/cells"
-	"heliosian/internal/who"
+	"heliosian/internal/model"
 )
 
 type Person struct {
@@ -15,12 +15,12 @@ type Person struct {
 	Department string
 }
 
-func personView(p *who.Person) Person {
+func personView(p *model.Person) Person {
 	return Person{Email: p.Email, Name: p.FullName, PhotoURL: p.PhotoURL, JobTitle: p.JobTitle, Department: p.Department}
 }
 
 type viewer struct {
-	directory *who.Model
+	directory *model.Directory
 }
 
 func (v viewer) person(email string) (Person, bool) {

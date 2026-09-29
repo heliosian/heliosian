@@ -2,21 +2,20 @@ package app
 
 import (
 	"slices"
-	"strings"
 	"time"
 
 	"heliosian/internal/auth"
 	"heliosian/internal/celebrate"
-	"heliosian/internal/filter"
 	"heliosian/internal/home"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
-func magicTags(directory *who.Model, parties *celebrate.Model, activities *team.Model) func(owner string, now time.Time) []who.List {
-	return func(owner string, now time.Time) []who.List {
-		lists := append(directory.RoomParentLists(owner), parties.Lists(directory, owner, now)...)
+func magicTags(directory *model.Directory, parties *celebrate.Model, activities *team.Model) func(owner string, now time.Time) []model.MagicTag {
+	return func(owner string, now time.Time) []model.MagicTag {
+		lists := append(directory.RoomParentTags(owner), parties.Lists(directory, owner, now)...)
 		return append(lists, activities.Lists(directory, owner, now)...)
 	}
 }
@@ -25,29 +24,29 @@ func magicTagKeys(parties *celebrate.Model, activities *team.Model) func() []str
 	return func() []string {
 		out := []string{}
 		for _, p := range parties.Parties {
-			out = append(out, who.ListParty+":"+p.ID)
+			out = append(out, model.MagicTagParty+":"+p.ID)
 		}
 		for _, a := range activities.Activities {
-			out = append(out, who.ListActivity+":"+a.ID)
+			out = append(out, model.MagicTagActivity+":"+a.ID)
 		}
 		return out
 	}
 }
 
-func audience(cache *who.Cache, teamCache *team.Cache, celebrateCache *celebrate.Cache) func() filter.Sources {
-	return func() filter.Sources {
-		model := cache.Model()
-		lists := magicTags(model, celebrateCache.Model(), teamCache.Model())
-		return filter.Sources{Directory: model, Tags: model.Tags, Shared: model.SharedTags, Lists: func(owner string) []who.List {
+func audience(cache *model.DirectoryCache, teamCache *team.Cache, celebrateCache *celebrate.Cache) func() model.AudienceSources {
+	return func() model.AudienceSources {
+		directory := cache.Model()
+		lists := magicTags(directory, celebrateCache.Model(), teamCache.Model())
+		return model.AudienceSources{Directory: directory, Tags: directory.Tags, Shared: directory.SharedTags, MagicTags: func(owner string) []model.MagicTag {
 			return lists(owner, time.Now().In(when.Location))
 		}}
 	}
 }
 
-func spoofPerson(cache *who.Cache) func(email string) (auth.Person, bool) {
+func spoofPerson(cache *model.DirectoryCache) func(email string) (auth.Person, bool) {
 	return func(email string) (auth.Person, bool) {
-		model := cache.Model()
-		p := model.Person(model.Resolve(strings.ToLower(strings.TrimSpace(email))))
+		directory := cache.Model()
+		p := directory.Person(directory.Resolve(mail.Normalize(email)))
 		if p == nil {
 			return auth.Person{}, false
 		}
@@ -55,15 +54,15 @@ func spoofPerson(cache *who.Cache) func(email string) (auth.Person, bool) {
 	}
 }
 
-func calendarLists(cache *who.Cache, lists func(email string) []who.List) func(email string) []when.List {
+func calendarLists(cache *model.DirectoryCache, lists func(email string) []model.MagicTag) func(email string) []when.List {
 	return func(email string) []when.List {
 		out := []when.List{}
-		model := cache.Model()
-		for _, t := range model.Tags(email) {
-			out = append(out, when.List{Key: filter.TagKey(t.ID), Name: t.Name, Kind: "tag", People: t.People})
+		directory := cache.Model()
+		for _, t := range directory.Tags(email) {
+			out = append(out, when.List{Key: model.TagKey(t.ID), Name: t.Name, Kind: "tag", People: t.People})
 		}
-		for _, t := range model.SharedTags(email) {
-			out = append(out, when.List{Key: filter.TagKey(t.ID), Name: t.Name + " (" + t.OwnerName + "'s)", Kind: "tag", People: t.People})
+		for _, t := range directory.SharedTags(email) {
+			out = append(out, when.List{Key: model.TagKey(t.ID), Name: t.Name + " (" + t.OwnerName + "'s)", Kind: "tag", People: t.People})
 		}
 		for _, list := range lists(email) {
 			if list.Archived {
@@ -77,19 +76,19 @@ func calendarLists(cache *who.Cache, lists func(email string) []who.List) func(e
 
 type upcomingEvents struct {
 	cache     *when.Cache
-	directory func() *who.Model
+	directory func() *model.Directory
 	linked    func(email string) []when.Linked
 }
 
 func (u upcomingEvents) list(email, token string) home.Upcoming {
-	model := u.cache.Model()
-	out := home.Upcoming{Events: model.UpcomingUnder(u.directory(), email, u.linked(email), time.Now().In(when.Location), 6, token)}
-	out.Calendars, out.Default, out.Calendar = savedCalendars(model, email, token)
+	calendar := u.cache.Model()
+	out := home.Upcoming{Events: calendar.UpcomingUnder(u.directory(), email, u.linked(email), time.Now().In(when.Location), 6, token)}
+	out.Calendars, out.Default, out.Calendar = savedCalendars(calendar, email, token)
 	return out
 }
 
-func savedCalendars(model *when.Model, email, token string) (list []home.SavedCalendar, def, current string) {
-	for _, f := range model.MyCalendars(email) {
+func savedCalendars(calendar *when.Model, email, token string) (list []home.SavedCalendar, def, current string) {
+	for _, f := range calendar.MyCalendars(email) {
 		list = append(list, home.SavedCalendar{Token: f.Token, Name: f.Name, Emoji: f.Emoji, Locked: f.Locked})
 	}
 	def = list[0].Token
@@ -101,8 +100,8 @@ func savedCalendars(model *when.Model, email, token string) (list []home.SavedCa
 }
 
 func (u upcomingEvents) month(email, month, token string) home.Month {
-	model := u.cache.Model()
-	m := model.MonthUnder(u.directory(), email, u.linked(email), time.Now().In(when.Location), month, token)
-	_, _, current := savedCalendars(model, email, token)
+	calendar := u.cache.Model()
+	m := calendar.MonthUnder(u.directory(), email, u.linked(email), time.Now().In(when.Location), month, token)
+	_, _, current := savedCalendars(calendar, email, token)
 	return home.Month{Month: m.Month, Today: m.Today, Days: m.Days, Events: m.Events, Calendar: current}
 }

@@ -5,16 +5,16 @@ import (
 	"time"
 
 	"heliosian/internal/auth"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 type celebrateView struct {
 	Parties []when.Card `json:"parties"`
 }
 
-func celebrateWidget(directory *who.Cache, calendarCache *when.Cache, linked func(email string) []when.Linked) http.HandlerFunc {
+func celebrateWidget(directory *model.DirectoryCache, calendarCache *when.Cache, linked func(email string) []when.Linked) http.HandlerFunc {
 	return serve.JSON(func(r *http.Request, _ serve.None) (celebrateView, error) {
 		people := directory.Model()
 		email := people.Resolve(auth.Email(r))

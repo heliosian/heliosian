@@ -13,13 +13,12 @@ import (
 	"unicode/utf8"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
 	"heliosian/internal/id"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/who"
 )
 
 const (
@@ -367,7 +366,7 @@ func (p *Party) VisibleTo(v access.Actor) bool {
 	return p.Status == StatusOpen || p.Sees(v)
 }
 
-func (p *Party) For(v access.Actor, directory *who.Model) *Party {
+func (p *Party) For(v access.Actor, directory *model.Directory) *Party {
 	if !p.VisibleTo(v) {
 		return nil
 	}
@@ -565,36 +564,36 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 	if err != nil {
 		return nil, err
 	}
-	model := &Model{
+	m := &Model{
 		Celebrations: []*Celebration{}, Categories: []Category{}, Parties: []*Party{}, Settings: settings, aliases: aliases,
 		Skipped: map[string]int{}, categoryOrder: map[string]string{}, byCode: map[string]*Celebration{}, byCelebration: map[string]*Celebration{}, byParty: map[string]*Party{},
 		byTicket: map[string]*Ticket{}, ticketParties: map[string]*Party{}, pretty: map[string]*Party{}, Redirects: []Redirect{}, Invoicing: []InvoiceLine{},
 		former: map[string]Former{},
 	}
-	model.admins = admins.Read(tables)
-	if err := model.readCelebrations(tables[celebrationsTab], images); err != nil {
+	m.admins = model.ReadAdmins(tables)
+	if err := m.readCelebrations(tables[celebrationsTab], images); err != nil {
 		return nil, err
 	}
-	if err := model.readCategories(tables[categoriesTab]); err != nil {
+	if err := m.readCategories(tables[categoriesTab]); err != nil {
 		return nil, err
 	}
-	if err := model.readParties(tables[partiesTab], images); err != nil {
+	if err := m.readParties(tables[partiesTab], images); err != nil {
 		return nil, err
 	}
-	model.readRedirects(tables[redirectsTab])
-	if err := model.readInvoicing(tables[invoicingTab]); err != nil {
+	m.readRedirects(tables[redirectsTab])
+	if err := m.readInvoicing(tables[invoicingTab]); err != nil {
 		return nil, err
 	}
-	if err := model.readHosts(tables[hostsTab]); err != nil {
+	if err := m.readHosts(tables[hostsTab]); err != nil {
 		return nil, err
 	}
-	if err := model.readFormer(tables[formerTab]); err != nil {
+	if err := m.readFormer(tables[formerTab]); err != nil {
 		return nil, err
 	}
-	if err := model.readTickets(tables[ticketsTab]); err != nil {
+	if err := m.readTickets(tables[ticketsTab]); err != nil {
 		return nil, err
 	}
-	return model, nil
+	return m, nil
 }
 
 func (m *Model) readCelebrations(rows []store.Row, images blob.Checker) error {
@@ -756,7 +755,7 @@ func (m *Model) readRedirects(rows []store.Row) {
 
 func (m *Model) readInvoicing(rows []store.Row) error {
 	for _, row := range rows {
-		partyID, item, purchaser := strings.TrimSpace(row["Party ID"]), strings.TrimSpace(row["Party Title"]), config.NormalizeEmail(row["Purchaser Email"])
+		partyID, item, purchaser := strings.TrimSpace(row["Party ID"]), strings.TrimSpace(row["Party Title"]), mail.Normalize(row["Purchaser Email"])
 		if (partyID == "" && item == "") || purchaser == "" {
 			m.Skipped["invoicing rows naming no party or purchaser"]++
 			continue
@@ -807,7 +806,7 @@ func (m *Model) readHosts(rows []store.Row) error {
 
 func (m *Model) readFormer(rows []store.Row) error {
 	for _, row := range rows {
-		old, to := config.NormalizeEmail(row["Old"]), config.NormalizeEmail(row["New"])
+		old, to := mail.Normalize(row["Old"]), mail.Normalize(row["New"])
 		if old == "" && to == "" {
 			continue
 		}

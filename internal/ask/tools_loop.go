@@ -7,7 +7,7 @@ import (
 
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
-	"heliosian/internal/who"
+	"heliosian/internal/model"
 )
 
 type groupCard struct {
@@ -71,7 +71,7 @@ var myLists = tool{
 	run: func(v *viewer, input json.RawMessage) (any, error) {
 		tags := []map[string]any{}
 		for _, t := range v.sources.Tags(v.email) {
-			tags = append(tags, map[string]any{"id": t.ID, "name": t.Name, "people": v.names(t.People), "link": whoBase + who.TagPath(t.ID)})
+			tags = append(tags, map[string]any{"id": t.ID, "name": t.Name, "people": v.names(t.People), "link": whoBase + model.TagPath(t.ID)})
 		}
 		lists := []map[string]any{}
 		for _, l := range v.sources.Lists(v.email) {
@@ -79,7 +79,7 @@ var myLists = tool{
 			for _, g := range l.Guests {
 				guests = append(guests, g.Name)
 			}
-			lists = append(lists, map[string]any{"name": l.Name, "kind": listKind(l.Kind), "people": v.names(l.People), "guests": guests, "link": whoBase + who.ListPath(l.Key)})
+			lists = append(lists, map[string]any{"name": l.Name, "kind": listKind(l.Kind), "people": v.names(l.People), "guests": guests, "link": whoBase + model.ListPath(l.Key)})
 		}
 		return map[string]any{"tags": tags, "magicTags": lists}, nil
 	},

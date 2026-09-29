@@ -3,16 +3,16 @@ package loop
 import (
 	"slices"
 
-	"heliosian/internal/who"
+	"heliosian/internal/model"
 )
 
-func (m *Model) Lists(sources Sources, email string) []who.List {
-	out := []who.List{}
+func (m *Model) Lists(sources Sources, email string) []model.MagicTag {
+	out := []model.MagicTag{}
 	for _, g := range m.Groups {
 		if !g.Manages(email) {
 			continue
 		}
-		people, guests := []string{}, []who.Guest{}
+		people, guests := []string{}, []model.Guest{}
 		for _, member := range Members(g, sources) {
 			switch {
 			case member == email:
@@ -23,10 +23,10 @@ func (m *Model) Lists(sources Sources, email string) []who.List {
 				if added := g.Addition(member); added != nil && added.Name != "" {
 					name = added.Name
 				}
-				guests = append(guests, who.Guest{ID: g.ID + ":" + member, Name: name, Email: member})
+				guests = append(guests, model.Guest{ID: g.ID + ":" + member, Name: name, Email: member})
 			}
 		}
-		out = append(out, who.List{Key: who.ListGroup + ":" + g.ID, Slug: g.Name, Name: g.Title, Kind: who.ListGroup, People: people, Guests: guests, Archived: m.Archived(g.ID, email)})
+		out = append(out, model.MagicTag{Key: model.MagicTagGroup + ":" + g.ID, Slug: g.Name, Name: g.Title, Kind: model.MagicTagGroup, People: people, Guests: guests, Archived: m.Archived(g.ID, email)})
 	}
 	return out
 }

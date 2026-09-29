@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/admins"
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
 	"heliosian/internal/id"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
@@ -586,7 +586,7 @@ func parseSettings(rows []store.Row) (Settings, error) {
 func parseNotifications(rows []store.Row) (map[string]map[string]bool, error) {
 	notify := map[string]map[string]bool{}
 	for _, row := range rows {
-		email := config.NormalizeEmail(row["Email"])
+		email := mail.Normalize(row["Email"])
 		if email == "" {
 			return nil, fmt.Errorf("%s row %v has no email", notificationsTab, row)
 		}
@@ -619,34 +619,34 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 	if err != nil {
 		return nil, err
 	}
-	model := &Model{Categories: []Category{}, Activities: []*Activity{}, Settings: settings, notify: notify, aliases: aliases,
+	m := &Model{Categories: []Category{}, Activities: []*Activity{}, Settings: settings, notify: notify, aliases: aliases,
 		byID: map[string]*Activity{}, byEvent: map[string]*Activity{}, categories: map[string]*Category{}, links: map[string]*Activity{}, pretty: map[string]*Activity{}, Redirects: []Redirect{}}
-	model.admins = admins.Read(tables)
-	scoped, err := model.readCategories(tables[categoriesTab], images)
+	m.admins = model.ReadAdmins(tables)
+	scoped, err := m.readCategories(tables[categoriesTab], images)
 	if err != nil {
 		return nil, err
 	}
-	all, err := model.readActivities(tables[activitiesTab], images)
+	all, err := m.readActivities(tables[activitiesTab], images)
 	if err != nil {
 		return nil, err
 	}
-	model.claimPrettyIDs(all)
-	model.readRedirects(tables[redirectsTab])
-	for _, a := range model.Activities {
+	m.claimPrettyIDs(all)
+	m.readRedirects(tables[redirectsTab])
+	for _, a := range m.Activities {
 		resolveAdding(a, AddingNo)
 	}
-	if err := model.attachScopedCategories(scoped); err != nil {
+	if err := m.attachScopedCategories(scoped); err != nil {
 		return nil, err
 	}
-	model.fileUncategorized(all)
-	model.resolveVolunteering()
-	if err := model.readVolunteers(tables[volunteersTab]); err != nil {
+	m.fileUncategorized(all)
+	m.resolveVolunteering()
+	if err := m.readVolunteers(tables[volunteersTab]); err != nil {
 		return nil, err
 	}
-	if err := model.readLinks(tables[linksTab], images); err != nil {
+	if err := m.readLinks(tables[linksTab], images); err != nil {
 		return nil, err
 	}
-	return model, nil
+	return m, nil
 }
 
 func (m *Model) readCategories(rows []store.Row, images blob.Checker) ([]*Category, error) {

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"heliosian/internal/who"
+	"heliosian/internal/model"
 )
 
 const (
@@ -22,7 +22,7 @@ type Late struct {
 	Path     string `json:"path"`
 }
 
-func (c *Cache) Late(directory func() *who.Model, email string) []Late {
+func (c *Cache) Late(directory func() *model.Directory, email string) []Late {
 	email = strings.ToLower(strings.TrimSpace(email))
 	model := c.Model()
 	admin := c.IsAdmin(email)

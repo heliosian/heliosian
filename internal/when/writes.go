@@ -9,9 +9,9 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
-	"heliosian/internal/filter"
 	"heliosian/internal/id"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
@@ -69,7 +69,7 @@ func (a app) orderOps(actor access.Actor, tokens []string) ([]store.Op, error) {
 	}
 	mine := map[string]string{}
 	for _, f := range a.model().Feeds {
-		if config.NormalizeEmail(f.Email) == actor.Email {
+		if mail.Normalize(f.Email) == actor.Email {
 			mine[f.Token] = f.order
 		}
 	}
@@ -515,7 +515,7 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 	if body.Hosts != nil {
 		hosts := []string{}
 		for _, h := range body.Hosts {
-			h = a.directory().Resolve(config.NormalizeEmail(h))
+			h = a.directory().Resolve(mail.Normalize(h))
 			if a.directory().Person(h) == nil {
 				return nil, nil, nil, access.Invalid("%s is not in the directory", h)
 			}
@@ -560,18 +560,18 @@ func (a app) stepDownOps(actor access.Actor, id, email string) ([]store.Op, *Eve
 		return nil, nil, "", false, err
 	}
 	who := actor.Email
-	if email := a.directory().Resolve(config.NormalizeEmail(email)); email != "" {
+	if email := a.directory().Resolve(mail.Normalize(email)); email != "" {
 		who = email
 	}
 	inv := a.model().Invitations[e.ID]
 	cohost := inv != nil && slices.Contains(inv.Hosts, who)
-	poster := e.Source == SourceSheet && !e.PosterLeft && a.directory().Resolve(config.NormalizeEmail(e.AddedBy)) == who
+	poster := e.Source == SourceSheet && !e.PosterLeft && a.directory().Resolve(mail.Normalize(e.AddedBy)) == who
 	if !cohost && !poster {
 		return nil, nil, "", false, access.Invalid("that person hosts this event on the app that runs it, or not at all - step down there")
 	}
 	row := store.Row{}
 	if poster {
-		row["Stepped Down"] = config.NormalizeEmail(e.AddedBy)
+		row["Stepped Down"] = mail.Normalize(e.AddedBy)
 	}
 	if inv != nil {
 		if cohost {
@@ -602,8 +602,8 @@ func (a app) inviteOps(actor access.Actor, key string, people []invitee) ([]stor
 	mint := model.Minter()
 	for _, p := range people {
 		name := strings.TrimSpace(p.Name)
-		household := config.NormalizeEmail(p.Household)
-		email := a.directory().Resolve(config.NormalizeEmail(p.Email))
+		household := mail.Normalize(p.Household)
+		email := a.directory().Resolve(mail.Normalize(p.Email))
 		token := ""
 		switch {
 		case email == "" && household != "" && name != "":
@@ -640,7 +640,7 @@ func (a app) uninviteOps(actor access.Actor, id, email string) ([]store.Op, *Eve
 	if err != nil {
 		return nil, nil, "", false, err
 	}
-	email = config.NormalizeEmail(email)
+	email = mail.Normalize(email)
 	inv := a.model().InviteOf(e.ID, email)
 	if inv == nil {
 		return nil, nil, "", false, access.Missing("they are not on the list")
@@ -676,7 +676,7 @@ func (a app) guestOps(actor access.Actor, g broughtGuest, name, email string) ([
 	if name == "" || len(name) > maxTitleLength {
 		return nil, g, access.Invalid("a guest needs a name")
 	}
-	email = config.NormalizeEmail(email)
+	email = mail.Normalize(email)
 	stamp := now().Format(DateTimeFormat)
 	row := store.Row{"Event ID": e.ID, "Name": name, "Guest Of": g.of, "Via": ViaGuest, "Added By": actor.Email, "Added": stamp}
 	if email != "" {
@@ -723,7 +723,7 @@ func (a app) bringGuestOps(actor access.Actor, body guestBody) ([]store.Op, brou
 		g.invite = *body.Invite
 	}
 	if body.Of != "" {
-		g.of = a.directory().Resolve(config.NormalizeEmail(body.Of))
+		g.of = a.directory().Resolve(mail.Normalize(body.Of))
 	}
 	if !a.isHost(actor, e) {
 		if inv != nil && !inv.Guests {
@@ -748,7 +748,7 @@ func (a app) extGuestOps(actor access.Actor, e *Event, name, email string) ([]st
 }
 
 func (a app) extRemoveGuestOps(actor access.Actor, e *Event, key string) ([]store.Op, string, error) {
-	key = config.NormalizeEmail(key)
+	key = mail.Normalize(key)
 	guest := a.model().InviteOf(e.ID, key)
 	if guest == nil || guest.GuestOf != actor.Email {
 		return nil, "", access.Missing("that is not a guest of yours")
@@ -757,7 +757,7 @@ func (a app) extRemoveGuestOps(actor access.Actor, e *Event, key string) ([]stor
 }
 
 func (a app) answerOps(actor access.Actor, email, id, answer, via string, invite bool) ([]store.Op, *Event, error) {
-	email = config.NormalizeEmail(email)
+	email = mail.Normalize(email)
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	if answer != "" && !isAnswer(answer) {
 		return nil, nil, access.Invalid("an answer is yes, no, maybe, or hidden")
@@ -786,7 +786,7 @@ func (a app) answerSubject(actor access.Actor, id, email, answer string) (*Event
 	if err != nil {
 		return nil, "", err
 	}
-	subject := config.NormalizeEmail(email)
+	subject := mail.Normalize(email)
 	if !isGuestKey(subject) {
 		subject = a.directory().Resolve(subject)
 	}
@@ -803,7 +803,7 @@ func (a app) extSubject(actor access.Actor, e *Event, key, answer string) (strin
 	if strings.ToLower(strings.TrimSpace(answer)) == AnswerHidden {
 		return "", access.Invalid("an answer is yes, no, maybe, or blank")
 	}
-	key = config.NormalizeEmail(key)
+	key = mail.Normalize(key)
 	if key == "" || key == actor.Email {
 		return actor.Email, nil
 	}
@@ -881,7 +881,7 @@ func (a app) sendChoice(e *Event, body sendBody) ([]string, string, error) {
 func (a app) skippable(e *Event, emails []string) []string {
 	out := []string{}
 	for _, email := range emails {
-		email = config.NormalizeEmail(email)
+		email = mail.Normalize(email)
 		if inv := a.model().InviteOf(e.ID, email); inv != nil && inv.Sent == "" {
 			out = append(out, email)
 		}
@@ -1012,13 +1012,13 @@ func (a app) openedOps(actor access.Actor, e *Event) []store.Op {
 	return []store.Op{store.Update(InvitesTab, store.Row{"Event ID": e.ID, "Email": actor.Email}, store.Row{"Opened": now().Format(DateTimeFormat)})}
 }
 
-func (a app) checkRule(actor access.Actor, r filter.Rule, e *Event) (filter.Rule, error) {
-	r = filter.Clean(r)
-	r.Kind = filter.KindInclude
-	if err := filter.Check(r); err != nil {
+func (a app) checkRule(actor access.Actor, r model.Rule, e *Event) (model.Rule, error) {
+	r = r.Clean()
+	r.Kind = model.RuleInclude
+	if err := r.Check(); err != nil {
 		return r, err
 	}
-	options := filter.OptionsFor(a.sources(), actor.Email)
+	options := a.sources().Options(actor.Email)
 	for _, g := range r.Grades {
 		if !slices.Contains(options.Grades, g) {
 			return r, fmt.Errorf("the directory has no grade %s", g)
@@ -1029,7 +1029,7 @@ func (a app) checkRule(actor access.Actor, r filter.Rule, e *Event) (filter.Rule
 			return r, fmt.Errorf("the directory has no classroom %s", c)
 		}
 	}
-	if err := filter.Writable(a.sources(), actor.Email, a.hostsOf(e), nil, []filter.Rule{r}); err != nil {
+	if err := a.sources().Writable(actor.Email, a.hostsOf(e), nil, []model.Rule{r}); err != nil {
 		return r, err
 	}
 	return r, nil
@@ -1037,11 +1037,11 @@ func (a app) checkRule(actor access.Actor, r filter.Rule, e *Event) (filter.Rule
 
 func (a app) newGroupOps(actor access.Actor, e *Event, g InviteGroup) []store.Op {
 	row := store.Row{"Event ID": e.ID, "Group ID": g.ID, "Auto": cells.YesNoCell(g.Auto), "Added By": g.AddedBy, "Added": g.Added}
-	maps.Copy(row, filter.RuleCells(g.Rule))
+	maps.Copy(row, g.Rule.Cells())
 	return append(a.invitationOps(actor, e.ID, nil), store.Insert(InviteGroupsTab, row))
 }
 
-func (a app) addGroupOps(actor access.Actor, id string, rule filter.Rule, auto *bool) ([]store.Op, *Event, InviteGroup, error) {
+func (a app) addGroupOps(actor access.Actor, id string, rule model.Rule, auto *bool) ([]store.Op, *Event, InviteGroup, error) {
 	e, err := a.hostedEvent(actor, id)
 	if err != nil {
 		return nil, nil, InviteGroup{}, err
@@ -1105,7 +1105,7 @@ func (a app) startPartyOps(actor access.Actor, id string) ([]store.Op, *Event, I
 			return nil, e, g, nil
 		}
 	}
-	g := InviteGroup{ID: a.model().Minter()(), Rule: filter.Rule{Kind: filter.KindInclude, Tags: []string{key}}, Auto: true, AddedBy: actor.Email, Added: now().Format(DateTimeFormat)}
+	g := InviteGroup{ID: a.model().Minter()(), Rule: model.Rule{Kind: model.RuleInclude, Tags: []string{key}}, Auto: true, AddedBy: actor.Email, Added: now().Format(DateTimeFormat)}
 	return append(a.newGroupOps(actor, e, g), a.hostYesOps(actor, e, a.hostsOf(e))...), e, g, nil
 }
 
@@ -1163,7 +1163,7 @@ func (a app) changeAddressOps(actor access.Actor, id, email, to string, everywhe
 		return nil, addressChange{}, err
 	}
 	model := a.model()
-	c := addressChange{event: e, from: config.NormalizeEmail(email), to: config.NormalizeEmail(to)}
+	c := addressChange{event: e, from: mail.Normalize(email), to: mail.Normalize(to)}
 	inv := model.InviteOf(e.ID, c.from)
 	switch {
 	case inv == nil:

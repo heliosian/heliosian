@@ -5,8 +5,8 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/birthday"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
-	"heliosian/internal/who"
 )
 
 type lateView struct {
@@ -14,7 +14,7 @@ type lateView struct {
 	Admin bool            `json:"admin"`
 }
 
-func lateBirthdays(directory *who.Cache, birthdayCache *birthday.Cache) http.HandlerFunc {
+func lateBirthdays(directory *model.DirectoryCache, birthdayCache *birthday.Cache) http.HandlerFunc {
 	return serve.JSON(func(r *http.Request, _ serve.None) (lateView, error) {
 		email := directory.Model().Resolve(auth.Email(r))
 		return lateView{birthdayCache.Late(directory.Model, email), birthdayCache.IsAdmin(email)}, nil

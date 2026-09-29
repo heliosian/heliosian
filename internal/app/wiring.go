@@ -23,7 +23,6 @@ import (
 	"heliosian/internal/calendarimport"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/claude"
-	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
 	"heliosian/internal/env"
@@ -35,6 +34,7 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
@@ -85,7 +85,7 @@ type appSpec struct {
 type Core struct {
 	CalendarCache *when.Cache
 	LoopCache     *loop.Cache
-	Cache         *who.Cache
+	Cache         *model.DirectoryCache
 	Documents     *artifacts.Filer
 	Queue         *store.Queue
 	Spoof         *auth.Spoof
@@ -102,7 +102,7 @@ func NewCore(cfg Config) *Core {
 	queue.Register(cfg.Store.Load)
 	cfg.ImageSearch.Stock = imagesearch.NewStock(cfg.Bucket, cfg.Store)
 	cfg.ImageSearch.Limits = imagesearch.NewLimits()
-	settings, err := config.NewCache(cfg.Source, cfg.Writer, queue)
+	settings, err := model.NewConfigCache(cfg.Source, cfg.Writer, queue)
 	if err != nil {
 		logging.Fatal("load config", "error", err)
 	}
@@ -122,12 +122,12 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load celebrate data", "error", err)
 	}
-	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Store, static.Files{Root: "web/who"}, queue, cfg.IDKey, settings.SuperAdmins)
+	cache, err := model.NewDirectoryCache(cfg.Source, cfg.Writer, cfg.Store, static.Files{Root: "web/who"}, queue, cfg.IDKey, settings.SuperAdmins)
 	if err != nil {
 		logging.Fatal("load directory data", "error", err)
 	}
 	go cache.Locate(cfg.Geocoder)
-	invites, err := who.NewInvites(cfg.Source, cfg.Writer, queue)
+	invites, err := model.NewInviteTemplatesCache(cfg.Source, cfg.Writer, queue)
 	if err != nil {
 		logging.Fatal("load invites data", "error", err)
 	}
@@ -184,11 +184,9 @@ func NewCore(cfg Config) *Core {
 	}
 	go keypoints.Run(artifactsCache, cfg.KeyPoints, cache)
 	mux := http.NewServeMux()
-	config.Register(mux, settings, cache.Actor, cache.Held)
-	who.Register(mux, cache, cfg.BrowserKey, lists, whoAbout)
-	who.RegisterTags(mux, cache)
-	who.RegisterAdmin(mux, cache, cfg.Store)
-	who.RegisterInvites(mux, cache, invites)
+	model.RegisterConfig(mux, settings, cache, cache.Held)
+	who.Register(mux, cache, whoAbout)
+	model.RegisterDirectory(mux, model.DirectoryRoutes{Cache: cache, Invites: invites, Media: cfg.Store, MapsKey: cfg.BrowserKey, MagicTags: lists.Lists})
 	blob.Register(mux, cfg.Store, "pronunciation")
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	linked := func(email string) []when.Linked {
@@ -224,7 +222,7 @@ func NewCore(cfg Config) *Core {
 		Cache:     calendarCache,
 		Images:    whenImages,
 		Directory: cache.Model,
-		Settings:  settings.Settings,
+		Settings:  settings.Config,
 		Lists:     calendarLists(cache, lists.Lists),
 		Linked:    linked,
 		SourceID:  sourceID,
@@ -254,12 +252,12 @@ func NewCore(cfg Config) *Core {
 		}
 		return &team.EventRSVPs{Sent: sent, Answers: answers}
 	}
-	activityEmailList := func(id string) string { return loopCache.Model().Tagged(who.ListActivity + ":" + id) }
+	activityEmailList := func(id string) string { return loopCache.Model().Tagged(model.MagicTagActivity + ":" + id) }
 	team.Register(teamMux, team.Deps{
 		Cache:     teamCache,
 		Images:    teamImages,
 		Directory: cache.Model,
-		Settings:  settings.Settings,
+		Settings:  settings.Config,
 		Search:    cfg.ImageSearch,
 		Mailer:    cfg.Mail,
 		RSVPs:     eventRSVPs,
@@ -305,13 +303,13 @@ func NewCore(cfg Config) *Core {
 	})
 	ask.Register(askMux, ask.Sources{
 		Directory: cache.Model,
-		Tags: func(owner string) []who.Tag {
+		Tags: func(owner string) []model.Tag {
 			return cache.Model().Tags(owner)
 		},
-		Lists: func(email string) []who.List {
-			return append(cache.Model().RoomParentLists(email), lists.Lists(email)...)
+		Lists: func(email string) []model.MagicTag {
+			return append(cache.Model().RoomParentTags(email), lists.Lists(email)...)
 		},
-		Settings:    settings.Settings,
+		Settings:    settings.Config,
 		Calendar:    calendarCache.Model,
 		Linked:      linked,
 		Team:        teamCache.Model,
@@ -356,7 +354,7 @@ func NewCore(cfg Config) *Core {
 	})
 	notifier := feedback.Notifier{Sender: cfg.Mail, Base: cfg.FeedbackBase, SuperAdmins: settings.SuperAdmins}
 	feedbackIntake := feedback.NewIntake(feedbackCache, cfg.Bucket, notifier.Notify)
-	optIn := who.OptInForm(func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn })
+	optIn := who.OptInForm(func() string { return settings.Config().PrivacyLinks.HeliosWhoOptIn })
 	suggestions := geocode.NewSuggestions(cfg.Geocoder)
 	for _, a := range apps {
 		home.RegisterSwitch(a.Mux, homeCache)
@@ -388,7 +386,7 @@ func NewCore(cfg Config) *Core {
 	return &Core{
 		CalendarCache: calendarCache, LoopCache: loopCache, Cache: cache, Documents: documents, Queue: queue,
 		Spoof:  &auth.Spoof{Allowed: settings.IsSuperAdmin, Person: spoofPerson(cache)},
-		Member: func(email string) bool { return who.Member(cache, email) }, Sessions: settings, apps: apps,
+		Member: cache.Member, Sessions: settings, apps: apps,
 	}
 }
 
@@ -465,7 +463,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		ArtifactsMail: artifactsMail(bucket),
 	})
 	muxes := core.Muxes()
-	who.RegisterUpload(muxes["who"], core.Cache, store)
+	model.RegisterDirectoryUpload(muxes["who"], core.Cache, store)
 	client := env.Required("GOOGLE_CLIENT_ID")
 	auths := map[string]*auth.Auth{}
 	for _, a := range core.apps {

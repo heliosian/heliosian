@@ -9,39 +9,39 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
-	"heliosian/internal/filter"
 	"heliosian/internal/id"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
 type linkEdit struct {
-	ID          string        `json:"id"`
-	Title       string        `json:"title"`
-	Description string        `json:"description"`
-	URL         string        `json:"url"`
-	Image       string        `json:"image"`
-	Category    string        `json:"category"`
-	Visible     bool          `json:"visible"`
-	Rules       []filter.Rule `json:"rules"`
+	ID          string       `json:"id"`
+	Title       string       `json:"title"`
+	Description string       `json:"description"`
+	URL         string       `json:"url"`
+	Image       string       `json:"image"`
+	Category    string       `json:"category"`
+	Visible     bool         `json:"visible"`
+	Rules       []model.Rule `json:"rules"`
 }
 
 type categoryEdit struct {
-	ID    string        `json:"id"`
-	Title string        `json:"title"`
-	Emoji string        `json:"emoji"`
-	Style string        `json:"style"`
-	Max   string        `json:"max"`
-	Rules []filter.Rule `json:"rules"`
+	ID    string       `json:"id"`
+	Title string       `json:"title"`
+	Emoji string       `json:"emoji"`
+	Style string       `json:"style"`
+	Max   string       `json:"max"`
+	Rules []model.Rule `json:"rules"`
 }
 
 type visibilityEdit struct {
-	App        string         `json:"app"`
-	Visibility string         `json:"visibility"`
-	Emails     []string       `json:"emails"`
-	Tagline    string         `json:"tagline"`
-	Name       string         `json:"name"`
-	Rules      *[]filter.Rule `json:"rules"`
+	App        string        `json:"app"`
+	Visibility string        `json:"visibility"`
+	Emails     []string      `json:"emails"`
+	Tagline    string        `json:"tagline"`
+	Name       string        `json:"name"`
+	Rules      *[]model.Rule `json:"rules"`
 }
 
 var Configure = access.Named("home.configure")
@@ -73,15 +73,15 @@ func (c *Cache) grant(actor access.Actor, appKey string) ([]store.Op, error) {
 	if slices.Contains(v.Emails, actor.Email) {
 		return nil, nil
 	}
-	return []store.Op{store.Upsert(visibilityTab, store.Row{"App": app.Key}, store.Row{"Visibility": v.Mode, "Emails": joinEmails(config.NormalizeEmails(append(v.Emails, actor.Email)))})}, nil
+	return []store.Op{store.Upsert(visibilityTab, store.Row{"App": app.Key}, store.Row{"Visibility": v.Mode, "Emails": joinEmails(mail.NormalizeAll(append(v.Emails, actor.Email)))})}, nil
 }
 
-func (c *Cache) checkRules(existing, rules []filter.Rule, actor string) ([]filter.Rule, error) {
-	options := filter.OptionsFor(c.sources(), actor)
-	out := []filter.Rule{}
+func (c *Cache) checkRules(existing, rules []model.Rule, actor string) ([]model.Rule, error) {
+	options := c.sources().Options(actor)
+	out := []model.Rule{}
 	for _, r := range rules {
-		r = filter.Clean(r)
-		if err := filter.Check(r); err != nil {
+		r = r.Clean()
+		if err := r.Check(); err != nil {
 			return nil, access.Invalid("%s", err)
 		}
 		for _, g := range r.Grades {
@@ -96,26 +96,26 @@ func (c *Cache) checkRules(existing, rules []filter.Rule, actor string) ([]filte
 		}
 		out = append(out, r)
 	}
-	if err := filter.Writable(c.sources(), actor, c.Admins(), existing, out); err != nil {
+	if err := c.sources().Writable(actor, c.Admins(), existing, out); err != nil {
 		return nil, access.Invalid("%s", err)
 	}
 	return out, nil
 }
 
-func audience(key string, was, rules []filter.Rule) []store.Op {
-	if slices.EqualFunc(was, rules, func(x, y filter.Rule) bool { return maps.Equal(filter.RuleCells(x), filter.RuleCells(y)) }) {
+func audience(key string, was, rules []model.Rule) []store.Op {
+	if slices.EqualFunc(was, rules, func(x, y model.Rule) bool { return maps.Equal(x.Cells(), y.Cells()) }) {
 		return nil
 	}
 	ops := []store.Op{store.Delete(audienceTab, store.Row{"Thing": key})}
 	for _, r := range rules {
-		cells := filter.RuleCells(r)
+		cells := r.Cells()
 		cells["Thing"] = key
 		ops = append(ops, store.Insert(audienceTab, cells))
 	}
 	return ops
 }
 
-func (c *Cache) saveWidgetAudience(actor access.Actor, widget string, rules []filter.Rule) ([]store.Op, error) {
+func (c *Cache) saveWidgetAudience(actor access.Actor, widget string, rules []model.Rule) ([]store.Op, error) {
 	if err := requireAdmin(actor); err != nil {
 		return nil, err
 	}
@@ -242,11 +242,11 @@ func (c *Cache) saveLink(actor access.Actor, in linkEdit) (string, string, []sto
 	if title == "" || len(title) > maxTitleLength || len(in.Description) > maxDescLength {
 		return "", "", nil, access.Invalid("title is required and fields must be short")
 	}
-	model := c.Model()
+	m := c.Model()
 	var existing *Link
-	var was []filter.Rule
+	var was []model.Rule
 	if strings.TrimSpace(in.ID) != "" {
-		if existing = model.link(in.ID); existing == nil {
+		if existing = m.link(in.ID); existing == nil {
 			return "", "", nil, access.Missing("no such link")
 		}
 		was = existing.Rules
@@ -255,7 +255,7 @@ func (c *Cache) saveLink(actor access.Actor, in linkEdit) (string, string, []sto
 	if err != nil {
 		return "", "", nil, err
 	}
-	category := model.category(in.Category)
+	category := m.category(in.Category)
 	if category == nil {
 		return "", "", nil, access.Invalid("no such category")
 	}
@@ -264,7 +264,7 @@ func (c *Cache) saveLink(actor access.Actor, in linkEdit) (string, string, []sto
 		"Image": strings.TrimSpace(in.Image), "Category": category.ID, "Visible": cells.YesNoCell(in.Visible),
 	}
 	if existing == nil {
-		key := id.New(model.taken)
+		key := id.New(m.taken)
 		row["Link ID"] = key
 		row["Added By"] = actor.Email
 		row["Added"] = time.Now().Format(addedFormat)
@@ -295,11 +295,11 @@ func (c *Cache) saveCategory(actor access.Actor, in categoryEdit) (string, strin
 	if title == "" || len(title) > maxTitleLength {
 		return "", "", nil, access.Invalid("title is required and must be short")
 	}
-	model := c.Model()
+	m := c.Model()
 	var existing *Category
-	var was []filter.Rule
+	var was []model.Rule
 	if strings.TrimSpace(in.ID) != "" {
-		if existing = model.category(in.ID); existing == nil {
+		if existing = m.category(in.ID); existing == nil {
 			return "", "", nil, access.Missing("no such category")
 		}
 		was = existing.Rules
@@ -323,7 +323,7 @@ func (c *Cache) saveCategory(actor access.Actor, in categoryEdit) (string, strin
 		return "", "", nil, access.Invalid("the events section is the one the page already has")
 	}
 	if style == StyleApps {
-		if other := model.styled(StyleApps); other != nil && (existing == nil || other.ID != existing.ID) {
+		if other := m.styled(StyleApps); other != nil && (existing == nil || other.ID != existing.ID) {
 			return "", "", nil, access.Invalid("%q is already the community apps section", other.Title)
 		}
 		if existing != nil && existing.Style != StyleApps && len(existing.Links) > 0 {
@@ -335,7 +335,7 @@ func (c *Cache) saveCategory(actor access.Actor, in categoryEdit) (string, strin
 	}
 	cells := store.Row{"Title": title, "Emoji": emoji, "Style": style, "Max": strings.TrimSpace(in.Max)}
 	if existing == nil {
-		key := id.New(model.taken)
+		key := id.New(m.taken)
 		cells["Category ID"] = key
 		return "add", key, append([]store.Op{store.Insert(categoriesTab, cells)}, audience(thingCategory+key, nil, rules)...), nil
 	}
@@ -345,10 +345,10 @@ func (c *Cache) saveCategory(actor access.Actor, in categoryEdit) (string, strin
 	}
 	cells["Category ID"] = existing.ID
 	order := []string{}
-	for _, cat := range model.Categories {
+	for _, cat := range m.Categories {
 		order = append(order, cat.ID)
 	}
-	ops, err := categoryOrder(model, order, cells)
+	ops, err := categoryOrder(m, order, cells)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -445,7 +445,7 @@ func (c *Cache) setVisibility(actor access.Actor, in visibilityEdit) (string, Vi
 		}
 		rules = checked
 	}
-	v := Visibility{Mode: in.Visibility, Emails: config.NormalizeEmails(in.Emails), Tagline: tagline, Name: name, Order: was.Order, Rules: rules}
+	v := Visibility{Mode: in.Visibility, Emails: mail.NormalizeAll(in.Emails), Tagline: tagline, Name: name, Order: was.Order, Rules: rules}
 	ops := append([]store.Op{store.Upsert(visibilityTab, store.Row{"App": key}, v.cells())}, audience(thingApp+key, was.Rules, rules)...)
 	return key, v, ops, nil
 }

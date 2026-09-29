@@ -9,33 +9,32 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/data"
-	"heliosian/internal/filter"
 	"heliosian/internal/loop"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
-	"heliosian/internal/who"
 )
 
 const jordan = "jordan.whitfield@heliosschool.org"
 
-func sample(t *testing.T) (loop.Sources, *who.Model) {
+func sample(t *testing.T) (loop.Sources, *model.Directory) {
 	t.Helper()
-	model, err := who.LoadModel(&data.Dir{Root: "../../sampledata"}, nil, testkit.Files("../../web/who"), []byte("test"))
+	directory, err := model.LoadDirectory(&data.Dir{Root: "../../sampledata"}, nil, testkit.Files("../../web/who"), []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return loop.Sources{
-		Directory: model,
-		Tags:      model.Tags,
-		Lists: func(owner string) []who.List {
-			lists := model.RoomParentLists(owner)
+		Directory: directory,
+		Tags:      directory.Tags,
+		MagicTags: func(owner string) []model.MagicTag {
+			lists := directory.RoomParentTags(owner)
 			if owner == jordan {
-				lists = append(lists, who.List{Key: "party:p1", Name: "Pizza Night", Kind: who.ListParty, People: []string{"abena.osei@heliosschool.org", "colin.quinn@heliosschool.org"}})
+				lists = append(lists, model.MagicTag{Key: "party:p1", Name: "Pizza Night", Kind: model.MagicTagParty, People: []string{"abena.osei@heliosschool.org", "colin.quinn@heliosschool.org"}})
 			}
 			return lists
 		},
-		Shared: model.SharedTags,
-	}, model
+		Shared: directory.SharedTags,
+	}, directory
 }
 
 const (
@@ -45,19 +44,19 @@ const (
 	soccerGroup  = "grp0000000001"
 )
 
-func tagged(model *who.Model, key string) []string {
-	tag, _ := model.Tag(key)
+func tagged(directory *model.Directory, key string) []string {
+	tag, _ := directory.Tag(key)
 	return tag.People
 }
 
-func sourcesOf(model *who.Model) loop.Sources {
-	return loop.Sources{Directory: model, Tags: model.Tags, Shared: model.SharedTags, Lists: model.RoomParentLists}
+func sourcesOf(directory *model.Directory) loop.Sources {
+	return loop.Sources{Directory: directory, Tags: directory.Tags, Shared: directory.SharedTags, MagicTags: directory.RoomParentTags}
 }
 
 func TestRenamingATagKeepsTheGroupsThatNameIt(t *testing.T) {
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	directory, err := who.NewCache(dir, dir, nil, testkit.None, queue, []byte("test"), func() []string { return nil })
+	directory, err := model.NewDirectoryCache(dir, dir, nil, testkit.None, queue, []byte("test"), func() []string { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +65,7 @@ func TestRenamingATagKeepsTheGroupsThatNameIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	g := *groups.Model().Group(soccerGroup)
-	if !slices.Contains(g.Rules[0].Tags, filter.TagKey(soccerTeamID)) {
+	if !slices.Contains(g.Rules[0].Tags, model.TagKey(soccerTeamID)) {
 		t.Fatalf("the sample group's rules do not name the soccer team: %+v", g.Rules)
 	}
 	before := loop.Members(g, sourcesOf(directory.Model()))
@@ -74,7 +73,7 @@ func TestRenamingATagKeepsTheGroupsThatNameIt(t *testing.T) {
 		t.Fatalf("the group's members %v do not reach past the tag to its parents", before)
 	}
 	mux := http.NewServeMux()
-	who.RegisterTags(mux, directory)
+	model.RegisterDirectory(mux, model.DirectoryRoutes{Cache: directory})
 	if rec := testkit.Form(t, mux, jordan, "/api/directory/tag-rename", url.Values{"tag": {soccerTeamID}, "name": {"Football"}}); rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
@@ -88,10 +87,10 @@ func TestRenamingATagKeepsTheGroupsThatNameIt(t *testing.T) {
 }
 
 func TestSharedTagsReadForTheManagers(t *testing.T) {
-	s, model := sample(t)
-	key := filter.TagKey(bookClubID)
+	s, directory := sample(t)
+	key := model.TagKey(bookClubID)
 	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{key} }))
-	want := tagged(model, bookClubID)
+	want := tagged(directory, bookClubID)
 	if len(want) == 0 || !slices.Equal(got, want) {
 		t.Fatalf("book club: got %v, want %v", got, want)
 	}
@@ -242,13 +241,13 @@ func TestExcludeRulesSubtract(t *testing.T) {
 }
 
 func TestTagsReadTheOwnersOwn(t *testing.T) {
-	s, model := sample(t)
-	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{filter.TagKey(carpoolID)} }))
-	want := tagged(model, carpoolID)
+	s, directory := sample(t)
+	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{model.TagKey(carpoolID)} }))
+	want := tagged(directory, carpoolID)
 	if len(want) == 0 || !slices.Equal(got, want) {
 		t.Fatalf("carpool: got %v, want %v", got, want)
 	}
-	other := membersOf(t, s, []string{"colin.quinn@heliosschool.org"}, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{filter.TagKey(carpoolID)} }))
+	other := membersOf(t, s, []string{"colin.quinn@heliosschool.org"}, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{model.TagKey(carpoolID)} }))
 	if len(other) != 0 {
 		t.Fatalf("a manager the tag is not theirs found %v", other)
 	}
@@ -399,9 +398,9 @@ func TestWhoMayPost(t *testing.T) {
 
 func TestSuggestedGroupRuleIsTheListPlusStudentsParents(t *testing.T) {
 	s, _ := sample(t)
-	lists := s.Lists
-	s.Lists = func(owner string) []who.List {
-		return append(lists(owner), who.List{Key: "party:p2", Name: "Movie Night", Kind: who.ListParty, People: []string{"abena.osei@heliosschool.org", "harper.quinn@heliosschool.org"}})
+	lists := s.MagicTags
+	s.MagicTags = func(owner string) []model.MagicTag {
+		return append(lists(owner), model.MagicTag{Key: "party:p2", Name: "Movie Night", Kind: model.MagicTagParty, People: []string{"abena.osei@heliosschool.org", "harper.quinn@heliosschool.org"}})
 	}
 	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{"party:p2"}; r.Family = []string{"Parents"} }))
 	want := []string{"abena.osei@heliosschool.org", "colin.quinn@heliosschool.org", "dana.hawkins@heliosschool.org", "harper.quinn@heliosschool.org"}

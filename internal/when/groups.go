@@ -7,8 +7,8 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
-	"heliosian/internal/filter"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
@@ -20,14 +20,14 @@ const ViaInvited = "invited"
 const sweepActor = "invite sweep"
 
 type InviteGroup struct {
-	ID      string      `json:"id"`
-	Rule    filter.Rule `json:"rule"`
-	Auto    bool        `json:"auto"`
-	AddedBy string      `json:"addedBy"`
-	Added   string      `json:"added"`
-	Sent    string      `json:"sent"`
-	Removed []string    `json:"removed,omitempty"`
-	Count   int         `json:"count"`
+	ID      string     `json:"id"`
+	Rule    model.Rule `json:"rule"`
+	Auto    bool       `json:"auto"`
+	AddedBy string     `json:"addedBy"`
+	Added   string     `json:"added"`
+	Sent    string     `json:"sent"`
+	Removed []string   `json:"removed,omitempty"`
+	Count   int        `json:"count"`
 }
 
 func (b *builder) groups(rows []store.Row) {
@@ -36,9 +36,9 @@ func (b *builder) groups(rows []store.Row) {
 		if id == "" || gid == "" {
 			continue
 		}
-		rule := filter.Clean(filter.RuleFromRow(row))
+		rule := model.RuleFromRow(row).Clean()
 		if rule.Kind == "" {
-			rule.Kind = filter.KindInclude
+			rule.Kind = model.RuleInclude
 		}
 		auto, err := cells.YesNo(row["Auto"], true)
 		if err != nil {
@@ -46,7 +46,7 @@ func (b *builder) groups(rows []store.Row) {
 		}
 		b.model.Groups[id] = append(b.model.Groups[id], InviteGroup{
 			ID: gid, Rule: rule, Auto: auto,
-			AddedBy: config.NormalizeEmail(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]),
+			AddedBy: mail.Normalize(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]),
 			Removed: splitEmails(row["Removed"]),
 		})
 	}
@@ -55,7 +55,7 @@ func (b *builder) groups(rows []store.Row) {
 func splitEmails(cell string) []string {
 	out := []string{}
 	for _, part := range strings.Split(cell, ",") {
-		if email := config.NormalizeEmail(part); email != "" && !slices.Contains(out, email) {
+		if email := mail.Normalize(part); email != "" && !slices.Contains(out, email) {
 			out = append(out, email)
 		}
 	}
@@ -74,8 +74,8 @@ func (m *Model) GroupOf(id, gid string) *InviteGroup {
 
 func (a app) members(e *Event, g InviteGroup) []string {
 	out := []string{}
-	for _, m := range filter.Members(filter.List{Rules: []filter.Rule{g.Rule}, Editors: a.hostsOf(e)}, a.sources()) {
-		if m = a.directory().Resolve(config.NormalizeEmail(m)); m != "" && !slices.Contains(out, m) {
+	for _, m := range (model.Audience{Rules: []model.Rule{g.Rule}, Editors: a.hostsOf(e)}).Members(a.sources()) {
+		if m = a.directory().Resolve(mail.Normalize(m)); m != "" && !slices.Contains(out, m) {
 			out = append(out, m)
 		}
 	}
@@ -92,11 +92,11 @@ func (a app) ticketHolders(g InviteGroup, members []string) []string {
 	}
 	keep := map[string]bool{}
 	for _, host := range p.Hosts {
-		keep[a.directory().Resolve(config.NormalizeEmail(host))] = true
+		keep[a.directory().Resolve(mail.Normalize(host))] = true
 	}
 	for _, t := range p.Attendees {
 		if t.Email != "" {
-			keep[a.directory().Resolve(config.NormalizeEmail(t.Email))] = true
+			keep[a.directory().Resolve(mail.Normalize(t.Email))] = true
 		}
 	}
 	out := []string{}
@@ -123,7 +123,7 @@ func (a app) ticketGuests(g InviteGroup) map[string]string {
 		return out
 	}
 	for _, t := range p.Attendees {
-		email := a.directory().Resolve(config.NormalizeEmail(t.Email))
+		email := a.directory().Resolve(mail.Normalize(t.Email))
 		if email == "" || t.Status == "waitlist" || !emailForm.MatchString(email) {
 			continue
 		}
@@ -137,13 +137,13 @@ func (a app) ticketGuests(g InviteGroup) map[string]string {
 	return out
 }
 
-func (a app) groupOptions(r *http.Request, _ serve.None) (filter.Options, error) {
-	return filter.OptionsFor(a.sources(), a.actor(r).Email), nil
+func (a app) groupOptions(r *http.Request, _ serve.None) (model.AudienceOptions, error) {
+	return a.sources().Options(a.actor(r).Email), nil
 }
 
 type ruleBody struct {
-	ID   string      `json:"id"`
-	Rule filter.Rule `json:"rule"`
+	ID   string     `json:"id"`
+	Rule model.Rule `json:"rule"`
 }
 
 type groupPreviewView struct {
@@ -175,9 +175,9 @@ func (a app) groupPreview(r *http.Request, body ruleBody) (groupPreviewView, err
 }
 
 type addGroupBody struct {
-	ID   string      `json:"id"`
-	Rule filter.Rule `json:"rule"`
-	Auto *bool       `json:"auto"`
+	ID   string     `json:"id"`
+	Rule model.Rule `json:"rule"`
+	Auto *bool      `json:"auto"`
 }
 
 type setGroupBody struct {

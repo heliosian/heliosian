@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	model     = "claude-opus-5-5"
-	maxTokens = 16000
-	maxRounds = 8
-	refused   = "I can't help with that one here."
+	claudeModel = "claude-opus-5-5"
+	maxTokens   = 16000
+	maxRounds   = 8
+	refused     = "I can't help with that one here."
 )
 
 type Emitter func(kind string, data any)
@@ -68,7 +68,7 @@ func (c *Claude) Respond(ctx context.Context, req Request, emit Emitter) (Reply,
 	text := &strings.Builder{}
 	for round := 0; round < maxRounds; round++ {
 		params := anthropic.BetaMessageNewParams{
-			Model:        model,
+			Model:        claudeModel,
 			MaxTokens:    maxTokens,
 			Betas:        []anthropic.AnthropicBeta{anthropic.AnthropicBetaServerSideFallback2026_07_01},
 			Fallbacks:    anthropic.BetaFallbacksParamUnion{OfDefault: constant.ValueOf[constant.Default]()},

@@ -10,8 +10,8 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/id"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/who"
 )
 
 func (m *Model) find(id string) (*Activity, error) {
@@ -57,7 +57,7 @@ type signUp struct {
 	existed  bool
 }
 
-func (m *Model) saveVolunteer(actor access.Actor, directory *who.Model, body volunteerBody) (signUp, error) {
+func (m *Model) saveVolunteer(actor access.Actor, directory *model.Directory, body volunteerBody) (signUp, error) {
 	act, err := m.find(body.ID)
 	if err != nil {
 		return signUp{}, err

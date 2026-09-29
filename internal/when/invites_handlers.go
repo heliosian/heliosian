@@ -13,9 +13,9 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/who"
 )
 
 type GuestRow struct {
@@ -43,8 +43,8 @@ type GuestRow struct {
 	Classrooms   []string `json:"classrooms,omitempty"`
 }
 
-func (a app) facetsOf(p *who.Person) (grades, classrooms []string) {
-	add := func(k *who.Person) {
+func (a app) facetsOf(p *model.Person) (grades, classrooms []string) {
+	add := func(k *model.Person) {
 		if k.Grade != "" && !slices.Contains(grades, k.Grade) {
 			grades = append(grades, k.Grade)
 		}
@@ -137,7 +137,7 @@ type InviteView struct {
 	Counts         Counts        `json:"counts"`
 }
 
-func (a app) personOf(email, name string) (Person, *who.Person) {
+func (a app) personOf(email, name string) (Person, *model.Person) {
 	directory := a.directory()
 	if known := directory.Person(email); known != nil {
 		return personView(directory, known), known
@@ -193,7 +193,7 @@ func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
 	if p := a.party(e); p != nil {
 		for _, t := range p.Attendees {
 			if t.Email != "" {
-				tickets[config.NormalizeEmail(t.Email)] = t.Status
+				tickets[mail.Normalize(t.Email)] = t.Status
 			}
 		}
 	}
@@ -247,7 +247,7 @@ func (a app) inviteView(actor access.Actor, e *Event) InviteView {
 	inv := model.Invitations[e.ID]
 	poster := ""
 	if e.Source == SourceSheet && !e.PosterLeft {
-		poster = a.directory().Resolve(config.NormalizeEmail(e.AddedBy))
+		poster = a.directory().Resolve(mail.Normalize(e.AddedBy))
 	}
 	guests := model.othersInvite(e.ID)
 	view := InviteView{Host: host, Poster: poster, MayInvite: host || guests && (e.Sharing == SharingPublic || model.Invited(a.directory(), viewer, e.ID)), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: guests, Hosts: []Person{}, Mine: []GuestRow{}}

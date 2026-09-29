@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-
-	"heliosian/internal/config"
 )
 
 type Brand struct {
@@ -121,8 +119,8 @@ func (l Letter) Render() (string, string) {
 }
 
 func (l Letter) Message(subject string, to, cc, replyTo []string) Message {
-	m := Message{To: config.NormalizeEmails(to), ReplyTo: config.NormalizeEmails(replyTo), Subject: subject}
-	m.CC = slices.DeleteFunc(config.NormalizeEmails(cc), func(e string) bool { return slices.Contains(m.To, e) })
+	m := Message{To: NormalizeAll(to), ReplyTo: NormalizeAll(replyTo), Subject: subject}
+	m.CC = slices.DeleteFunc(NormalizeAll(cc), func(e string) bool { return slices.Contains(m.To, e) })
 	m.HTML, m.Text = l.Render()
 	return m
 }

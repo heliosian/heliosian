@@ -1,0 +1,93 @@
+package model
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"slices"
+	"sort"
+
+	"heliosian/internal/access"
+	"heliosian/internal/mail"
+	"heliosian/internal/serve"
+	"heliosian/internal/store"
+)
+
+const adminsTabName = "Admins"
+
+var AdminsTab = store.Tab{Name: adminsTabName, Columns: []string{"Email"}, Key: []string{"Email"}}
+
+func ManageAdmins(app string) access.Allowance {
+	return access.Named(app + ".admins")
+}
+
+func ReadAdmins(tables store.Tables) []string {
+	emails := []string{}
+	for _, row := range tables[adminsTabName] {
+		emails = append(emails, row["Email"])
+	}
+	return mail.NormalizeAll(emails)
+}
+
+type AdminList struct {
+	app         string
+	allowances  []access.Allowance
+	superAdmins func() []string
+	listed      func() []string
+	commit      func(ctx context.Context, actor access.Actor, ops ...store.Op) error
+}
+
+func NewAdminList(app string, allowances []access.Allowance, superAdmins, listed func() []string, commit func(ctx context.Context, actor access.Actor, ops ...store.Op) error) AdminList {
+	return AdminList{app: app, allowances: append(slices.Clone(allowances), ManageAdmins(app)), superAdmins: superAdmins, listed: listed, commit: commit}
+}
+
+func (l AdminList) IsSuperAdmin(email string) bool {
+	return slices.Contains(l.superAdmins(), mail.Normalize(email))
+}
+
+func (l AdminList) IsAdmin(email string) bool {
+	return l.IsSuperAdmin(email) || slices.Contains(l.listed(), mail.Normalize(email))
+}
+
+func (l AdminList) Held(email string) []access.Allowance {
+	if !l.IsAdmin(email) {
+		return nil
+	}
+	return l.allowances
+}
+
+func (l AdminList) Admins() []string {
+	out := mail.NormalizeAll(append(slices.Clone(l.listed()), l.superAdmins()...))
+	sort.Strings(out)
+	return out
+}
+
+type adminsEdit struct {
+	Admins []string `json:"admins"`
+}
+
+func RegisterAdmins(mux *http.ServeMux, l AdminList, actor func(r *http.Request) access.Actor, state func(r *http.Request, actor access.Actor) map[string]any) {
+	mux.HandleFunc("GET /api/admin/state", serve.JSON(func(r *http.Request, _ serve.None) (map[string]any, error) {
+		v := actor(r)
+		if !v.May(ManageAdmins(l.app)) {
+			return nil, access.Forbidden("admin access required")
+		}
+		view := state(r, v)
+		view["email"] = v.Email
+		view["admins"] = l.Admins()
+		view["isSuperAdmin"] = l.IsSuperAdmin(v.Email)
+		return view, nil
+	}))
+	mux.HandleFunc("POST /api/admin/admins", serve.JSON(func(r *http.Request, body adminsEdit) (serve.None, error) {
+		v := actor(r)
+		ops, admins, err := l.set(v, body.Admins)
+		if err != nil {
+			return serve.None{}, err
+		}
+		if err := l.commit(r.Context(), v, ops...); err != nil {
+			return serve.None{}, err
+		}
+		slog.InfoContext(r.Context(), l.app+":set the admin list", "actor", v.Email, "admins", admins)
+		return serve.None{}, nil
+	}))
+}

@@ -17,11 +17,11 @@ import (
 	"heliosian/internal/describe"
 	"heliosian/internal/id"
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 	"heliosian/internal/testkit/mailtest"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 var sent *mailtest.Recorder
@@ -49,9 +49,9 @@ const (
 	unknownID     = "zzz9999999999"
 )
 
-var people *who.Model
+var people *model.Directory
 
-func directory() *who.Model { return people }
+func directory() *model.Directory { return people }
 
 func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	t.Helper()
@@ -60,11 +60,11 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	dir := &data.Dir{Root: "sampledata"}
 	sheet = dir
 	queue = store.NewQueue()
-	model, err := who.LoadModel(dir, nil, testkit.None, []byte("test"))
+	d, err := model.LoadDirectory(dir, nil, testkit.None, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	people = model
+	people = d
 	cache, err := NewCache(dir, dir, func() []string { return []string{admin} }, queue, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
@@ -81,8 +81,8 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		Staged: world,
 		Scope:  func(w World, _ api.Query) World { return w },
 	})
-	for _, rt := range who.Resources() {
-		reg.Add(api.Lift(rt, func(w World) *who.Model { return w.Directory }))
+	for _, rt := range model.DirectoryResources() {
+		reg.Add(api.Lift(rt, func(w World) *model.Directory { return w.Directory }))
 	}
 	for _, rt := range Resources(cache, func(_ context.Context, email string) error {
 		joined = append(joined, email)

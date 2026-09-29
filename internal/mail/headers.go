@@ -59,6 +59,24 @@ func AddressOf(from string) string {
 	return strings.Trim(strings.TrimSpace(from), "<>")
 }
 
+func Normalize(address string) string {
+	return strings.ToLower(strings.TrimSpace(address))
+}
+
+func NormalizeAll(addresses []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, a := range addresses {
+		a = Normalize(a)
+		if a == "" || !strings.Contains(a, "@") || seen[a] {
+			continue
+		}
+		seen[a] = true
+		out = append(out, a)
+	}
+	return out
+}
+
 func Authenticated(lines []HeaderLine) string {
 	results, ok := mailgunResults(lines)
 	if !ok {

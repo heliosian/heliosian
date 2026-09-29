@@ -6,14 +6,12 @@ import (
 	"net/http"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
 	"heliosian/internal/blob"
 	"heliosian/internal/claude"
 	"heliosian/internal/describe"
-	"heliosian/internal/filter"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
-	"heliosian/internal/who"
 )
 
 const shell = "web/loop/index.html"
@@ -46,7 +44,7 @@ func Register(mux *http.ServeMux, d Deps) {
 	}
 	mux.HandleFunc("POST /api/loop/preview", serve.JSON(a.preview))
 	mux.HandleFunc("POST /api/loop/describe", serve.JSON(a.describe))
-	admins.Register(mux, a.cache.List, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
+	model.RegisterAdmins(mux, a.cache.AdminList, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
 	mux.HandleFunc("POST /hooks/mail/mime", a.inbound)
 	mux.HandleFunc("POST /hooks/events", a.events)
 	mux.Handle("GET /open/share/about.png", d.About)
@@ -63,7 +61,7 @@ func (a app) actor(r *http.Request) access.Actor {
 	return a.sources().Directory.Actor(r, a.cache.Held)
 }
 
-func Suggested(lists []who.List, groups []Group) []who.List {
+func Suggested(lists []model.MagicTag, groups []Group) []model.MagicTag {
 	named := map[string]bool{}
 	for _, g := range groups {
 		for _, r := range g.Rules {
@@ -72,16 +70,16 @@ func Suggested(lists []who.List, groups []Group) []who.List {
 			}
 		}
 	}
-	out := []who.List{}
+	out := []model.MagicTag{}
 	for _, l := range lists {
-		if (l.Kind == who.ListParty || l.Kind == who.ListActivity) && !named[l.Key] {
+		if (l.Kind == model.MagicTagParty || l.Kind == model.MagicTagActivity) && !named[l.Key] {
 			out = append(out, l)
 		}
 	}
 	return out
 }
 
-func SuggestedTags(tags []who.Tag, groups []Group) []who.Tag {
+func SuggestedTags(tags []model.Tag, groups []Group) []model.Tag {
 	named := map[string]bool{}
 	for _, g := range groups {
 		for _, r := range g.Rules {
@@ -90,9 +88,9 @@ func SuggestedTags(tags []who.Tag, groups []Group) []who.Tag {
 			}
 		}
 	}
-	out := []who.Tag{}
+	out := []model.Tag{}
 	for _, t := range tags {
-		if !named[filter.TagKey(t.ID)] && len(t.People) > 0 {
+		if !named[model.TagKey(t.ID)] && len(t.People) > 0 {
 			out = append(out, t)
 		}
 	}
@@ -130,7 +128,7 @@ func (a app) draftMembers(r *http.Request, body draftBody) ([]previewMember, []i
 		existing, draft.Managers = g.Rules, g.Managers
 	}
 	sources := a.sources()
-	if err := filter.Writable(sources, email, draft.Managers, existing, draft.Rules); err != nil {
+	if err := sources.Writable(email, draft.Managers, existing, draft.Rules); err != nil {
 		return nil, nil, access.Invalid("%v", err)
 	}
 	for i, rule := range draft.Rules {
@@ -143,7 +141,7 @@ func (a app) draftMembers(r *http.Request, body draftBody) ([]previewMember, []i
 	}
 	reasons := Reasons(draft, sources)
 	inside, outside := []previewMember{}, []previewMember{}
-	for _, address := range filter.SortedKeys(func() map[string]bool {
+	for _, address := range model.SortedKeys(func() map[string]bool {
 		emails := map[string]bool{}
 		for address := range reasons {
 			emails[address] = true

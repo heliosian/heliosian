@@ -16,14 +16,13 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/id"
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 	"heliosian/internal/testkit/mailtest"
-	"heliosian/internal/who"
 )
 
 var testNow = time.Date(2026, 9, 17, 12, 0, 0, 0, Location)
@@ -75,8 +74,8 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 	hooks := Register(mux, Deps{
 		Cache:     cache,
 		Images:    memoryImages(),
-		Directory: func() *who.Model { return d },
-		Settings:  func() *config.Settings { return &config.Settings{} },
+		Directory: func() *model.Directory { return d },
+		Settings:  func() *model.Config { return &model.Config{} },
 		Lists:     func(string) []List { return nil },
 		Linked:    noLinked,
 		SourceID:  noSource,
@@ -86,7 +85,7 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 		Style:     testStyle,
 		Queue:     queue,
 	})
-	return served(mux, cache, hooks, func() *who.Model { return d }, noLinked), cache
+	return served(mux, cache, hooks, func() *model.Directory { return d }, noLinked), cache
 }
 
 func noLinked(string) []Linked {
@@ -400,8 +399,8 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	hooks := Register(mux, Deps{
 		Cache:     cache,
 		Images:    memoryImages(),
-		Directory: func() *who.Model { return d },
-		Settings:  func() *config.Settings { return &config.Settings{} },
+		Directory: func() *model.Directory { return d },
+		Settings:  func() *model.Config { return &model.Config{} },
 		Lists:     func(string) []List { return nil },
 		Linked:    noLinked,
 		SourceID:  noSource,
@@ -411,7 +410,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 		Style:     testStyle,
 		Queue:     queue,
 	})
-	served(mux, cache, hooks, func() *who.Model { return d }, noLinked)
+	served(mux, cache, hooks, func() *model.Directory { return d }, noLinked)
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {

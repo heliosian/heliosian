@@ -9,11 +9,10 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
-	"heliosian/internal/filter"
 	"heliosian/internal/imagesearch"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/when"
@@ -21,7 +20,7 @@ import (
 
 type app struct {
 	cache       *Cache
-	sources     func() filter.Sources
+	sources     func() model.AudienceSources
 	upcoming    func(email, token string) Upcoming
 	makeDefault func(ctx context.Context, email, token string) error
 	month       func(email, month, token string) Month
@@ -88,7 +87,7 @@ func Register(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("POST /api/apps/widgets/audience", serve.JSON(a.saveWidgetAudience))
 	mux.HandleFunc("POST /api/apps/widgets/order", serve.JSON(a.setWidgetOrder))
 	a.search.Register(mux, "/api/apps", d.Images.Folder(), a.requireAdminFunc)
-	admins.Register(mux, a.cache.List, a.actor, a.adminState)
+	model.RegisterAdmins(mux, a.cache.AdminList, a.actor, a.adminState)
 	mux.HandleFunc("POST /api/admin/visibility", serve.JSON(a.setVisibility))
 	mux.HandleFunc("POST /api/admin/visibility/order", serve.JSON(a.setAppOrder))
 	a.discoverApps()
@@ -207,17 +206,17 @@ func (a app) setDefault(r *http.Request, body defaultBody) (serve.None, error) {
 }
 
 type modelView struct {
-	Categories       []Category            `json:"categories"`
-	User             user                  `json:"user"`
-	ImageSearch      bool                  `json:"imageSearch"`
-	Upcoming         []when.Card           `json:"upcoming"`
-	UpcomingCalendar *Upcoming             `json:"upcomingCalendar,omitempty"`
-	Calendar         Month                 `json:"calendar"`
-	Apps             []appView             `json:"apps"`
-	Options          *filter.Options       `json:"options,omitempty"`
-	TagLabels        map[string]string     `json:"tagLabels,omitempty"`
-	Widgets          map[string]widgetView `json:"widgets"`
-	WidgetOrder      []string              `json:"widgetOrder"`
+	Categories       []Category             `json:"categories"`
+	User             user                   `json:"user"`
+	ImageSearch      bool                   `json:"imageSearch"`
+	Upcoming         []when.Card            `json:"upcoming"`
+	UpcomingCalendar *Upcoming              `json:"upcomingCalendar,omitempty"`
+	Calendar         Month                  `json:"calendar"`
+	Apps             []appView              `json:"apps"`
+	Options          *model.AudienceOptions `json:"options,omitempty"`
+	TagLabels        map[string]string      `json:"tagLabels,omitempty"`
+	Widgets          map[string]widgetView  `json:"widgets"`
+	WidgetOrder      []string               `json:"widgetOrder"`
 }
 
 func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
@@ -226,7 +225,7 @@ func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
 	admin := actor.May(Configure)
 	hidden := hiddenHosts(r.Host, a.cache.HiddenApps(email))
 	full := a.cache.Model()
-	forMe := func(rules []filter.Rule) bool {
+	forMe := func(rules []model.Rule) bool {
 		return len(rules) == 0 || a.cache.includes(rules, email)
 	}
 	categories := a.cache.CategoriesFor(actor)
@@ -251,7 +250,7 @@ func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
 		view.Widgets[key] = v
 	}
 	if admin {
-		options := filter.OptionsFor(a.sources(), actor.Email)
+		options := a.sources().Options(actor.Email)
 		view.Options = &options
 		view.TagLabels = a.tagLabels(categories, view.Apps, actor.Email)
 	}
@@ -267,7 +266,7 @@ func (a app) tagLabels(categories []Category, apps []appView, viewer string) map
 	sources := a.sources()
 	admins := a.cache.Admins()
 	out := map[string]string{}
-	add := func(rules []filter.Rule) {
+	add := func(rules []model.Rule) {
 		for _, r := range rules {
 			for i, label := range sources.TagLabels(r, admins, viewer) {
 				out[r.Tags[i]] = label
@@ -317,7 +316,7 @@ func linksInto(hosts map[string]bool, link string) bool {
 	return hosts[strings.ToLower(u.Host)]
 }
 
-func rulesOf(model *Model, key string) []filter.Rule {
+func rulesOf(model *Model, key string) []model.Rule {
 	for _, c := range model.Categories {
 		if thingCategory+c.ID == key {
 			return c.Rules
@@ -335,13 +334,13 @@ func rulesOf(model *Model, key string) []filter.Rule {
 }
 
 type widgetView struct {
-	ForMe bool          `json:"forMe"`
-	Rules []filter.Rule `json:"rules,omitempty"`
+	ForMe bool         `json:"forMe"`
+	Rules []model.Rule `json:"rules,omitempty"`
 }
 
 type widgetAudienceBody struct {
-	Widget string        `json:"widget"`
-	Rules  []filter.Rule `json:"rules"`
+	Widget string       `json:"widget"`
+	Rules  []model.Rule `json:"rules"`
 }
 
 func (a app) saveWidgetAudience(r *http.Request, body widgetAudienceBody) (serve.None, error) {
@@ -374,17 +373,17 @@ func (a app) setWidgetOrder(r *http.Request, body widgetOrderBody) (serve.None, 
 	return serve.None{}, nil
 }
 
-func (a app) audienceOptions(r *http.Request, _ serve.None) (filter.Options, error) {
+func (a app) audienceOptions(r *http.Request, _ serve.None) (model.AudienceOptions, error) {
 	actor := a.actor(r)
 	if err := requireAdmin(actor); err != nil {
-		return filter.Options{}, err
+		return model.AudienceOptions{}, err
 	}
-	return filter.OptionsFor(a.sources(), actor.Email), nil
+	return a.sources().Options(actor.Email), nil
 }
 
 type previewBody struct {
-	Thing string        `json:"thing"`
-	Rules []filter.Rule `json:"rules"`
+	Thing string       `json:"thing"`
+	Rules []model.Rule `json:"rules"`
 }
 
 type previewView struct {
@@ -403,14 +402,14 @@ func (a app) audiencePreview(r *http.Request, body previewBody) (previewView, er
 		return previewView{}, err
 	}
 	sources := a.sources()
-	list := filter.List{Rules: rules, Editors: a.cache.Admins()}
-	members := filter.Members(list, sources)
+	list := model.Audience{Rules: rules, Editors: a.cache.Admins()}
+	members := list.Members(sources)
 	names := []string{}
 	for _, m := range members {
 		names = append(names, sources.Directory.DisplayName(m))
 	}
 	slices.Sort(names)
-	return previewView{Count: len(members), Names: names[:min(len(names), 12)], RuleCounts: filter.RuleCounts(list, sources)}, nil
+	return previewView{Count: len(members), Names: names[:min(len(names), 12)], RuleCounts: list.RuleCounts(sources)}, nil
 }
 
 func (a app) saveLink(r *http.Request, body linkEdit) (serve.None, error) {

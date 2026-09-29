@@ -10,25 +10,24 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
-	"heliosian/internal/who"
 )
 
 var sampleKey = []byte("sample")
 
 var roster = Roster{Classrooms: []Classroom{
-	{ID: who.ClassroomID(sampleKey, "Hummingbirds"), Name: "Hummingbirds", Band: "Hummingbirds", Grades: []string{"Kindergarten"}},
-	{ID: who.ClassroomID(sampleKey, "Hawks"), Name: "Hawks", Band: "Halcons", Grades: []string{"Grade 1"}},
-	{ID: who.ClassroomID(sampleKey, "Falcons"), Name: "Falcons", Band: "Halcons", Grades: []string{"Grade 2"}},
-	{ID: who.ClassroomID(sampleKey, "Jays"), Name: "Jays", Band: "Jayvens", Grades: []string{"Grade 3"}},
-	{ID: who.ClassroomID(sampleKey, "Ravens"), Name: "Ravens", Band: "Jayvens", Grades: []string{"Grade 4"}},
-	{ID: who.ClassroomID(sampleKey, "Condors"), Name: "Condors", Band: "Cospreys", Grades: []string{"Grade 5"}, Crews: []string{"Big Sur", "Pinnacles"}},
-	{ID: who.ClassroomID(sampleKey, "Ospreys"), Name: "Ospreys", Band: "Cospreys", Grades: []string{"Grade 6"}, Crews: []string{"River", "Sea"}},
-	{ID: who.ClassroomID(sampleKey, "Egrets"), Name: "Egrets", Band: "Hegrets", Grades: []string{"Grade 7"}, Crews: []string{"Great", "Snowy"}},
-	{ID: who.ClassroomID(sampleKey, "Herons"), Name: "Herons", Band: "Hegrets", Grades: []string{"Grade 8"}, Crews: []string{"Great Blue", "Green"}},
+	{ID: model.ClassroomID(sampleKey, "Hummingbirds"), Name: "Hummingbirds", Band: "Hummingbirds", Grades: []string{"Kindergarten"}},
+	{ID: model.ClassroomID(sampleKey, "Hawks"), Name: "Hawks", Band: "Halcons", Grades: []string{"Grade 1"}},
+	{ID: model.ClassroomID(sampleKey, "Falcons"), Name: "Falcons", Band: "Halcons", Grades: []string{"Grade 2"}},
+	{ID: model.ClassroomID(sampleKey, "Jays"), Name: "Jays", Band: "Jayvens", Grades: []string{"Grade 3"}},
+	{ID: model.ClassroomID(sampleKey, "Ravens"), Name: "Ravens", Band: "Jayvens", Grades: []string{"Grade 4"}},
+	{ID: model.ClassroomID(sampleKey, "Condors"), Name: "Condors", Band: "Cospreys", Grades: []string{"Grade 5"}, Crews: []string{"Big Sur", "Pinnacles"}},
+	{ID: model.ClassroomID(sampleKey, "Ospreys"), Name: "Ospreys", Band: "Cospreys", Grades: []string{"Grade 6"}, Crews: []string{"River", "Sea"}},
+	{ID: model.ClassroomID(sampleKey, "Egrets"), Name: "Egrets", Band: "Hegrets", Grades: []string{"Grade 7"}, Crews: []string{"Great", "Snowy"}},
+	{ID: model.ClassroomID(sampleKey, "Herons"), Name: "Herons", Band: "Hegrets", Grades: []string{"Grade 8"}, Crews: []string{"Great Blue", "Green"}},
 }}
 
 func sampleIDs(t *testing.T) map[string]string {
@@ -526,19 +525,19 @@ func TestICS(t *testing.T) {
 	}
 }
 
-func sampleDirectory(t *testing.T, root string) *who.Model {
+func sampleDirectory(t *testing.T, root string) *model.Directory {
 	t.Helper()
-	model, err := who.LoadModel(&data.Dir{Root: root}, nil, testkit.None, sampleKey)
+	directory, err := model.LoadDirectory(&data.Dir{Root: root}, nil, testkit.None, sampleKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return model
+	return directory
 }
 
 func TestRender(t *testing.T) {
 	m := load(t)
 	d := sampleDirectory(t, "../../sampledata")
-	settings := &config.Settings{ClassroomColors: map[string]string{"Jays": "#fec502", "Ravens": "#fec502"}}
+	settings := &model.Config{ClassroomColors: map[string]string{"Jays": "#fec502", "Ravens": "#fec502"}}
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-08 08:00", Location)
 	v := Render(m, d, settings, access.Actor{Email: "jordan.whitfield@heliosschool.org"}, at, nil)
 	if strings.Join(v.User.Classrooms, ",") != "Jays,Ospreys" || len(v.User.Students) != 2 || v.User.Initial != "J" {
@@ -572,7 +571,7 @@ func TestRenderLinked(t *testing.T) {
 		{Source: SourceTeam, ID: "act0000000001", EventID: "tev0000000001", Title: "HCA International Night 2026", Description: "Booths wanted.", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open", Mine: MineGoing},
 		{Source: SourceTeam, ID: "act0000000005", EventID: "tev0000000005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/act0000000005", Availability: "done"},
 	}
-	v := Render(m, d, &config.Settings{}, access.Actor{Email: "nobody@x.org"}, at, linked)
+	v := Render(m, d, &model.Config{}, access.Actor{Email: "nobody@x.org"}, at, linked)
 	if len(v.Events) != 23 {
 		t.Fatalf("events = %d", len(v.Events))
 	}

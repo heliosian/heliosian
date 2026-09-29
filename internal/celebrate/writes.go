@@ -9,10 +9,10 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
 	"heliosian/internal/id"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/who"
 )
 
 var (
@@ -32,7 +32,7 @@ func require(actor access.Actor, allowance access.Allowance) error {
 	return nil
 }
 
-func isKid(directory *who.Model, email string) bool {
+func isKid(directory *model.Directory, email string) bool {
 	person := directory.Person(email)
 	return person != nil && person.IsStudent && !person.IsParent && !person.IsStaff
 }
@@ -57,7 +57,7 @@ func (m *Model) findTicket(id string) (*Ticket, *Party, error) {
 	return t, p, nil
 }
 
-func current(m *Model, directory *who.Model, email string) string {
+func current(m *Model, directory *model.Directory, email string) string {
 	return m.CurrentAddress(directory.Resolve(email))
 }
 
@@ -72,7 +72,7 @@ func countCell(n int) string {
 	return strconv.Itoa(n)
 }
 
-func invoiceRow(directory *who.Model, p *Party, cells store.Row) store.Row {
+func invoiceRow(directory *model.Directory, p *Party, cells store.Row) store.Row {
 	price, _ := ParsePrice(cells["Price"])
 	if cells["Status"] != TicketSold || price <= 0 {
 		return nil
@@ -83,7 +83,7 @@ func invoiceRow(directory *who.Model, p *Party, cells store.Row) store.Row {
 	}
 }
 
-func ticketOps(directory *who.Model, p *Party, added []store.Row) []store.Op {
+func ticketOps(directory *model.Directory, p *Party, added []store.Row) []store.Op {
 	ops := []store.Op{}
 	for _, cells := range added {
 		ops = append(ops, store.Insert(ticketsTab, cells))
@@ -122,7 +122,7 @@ type taken struct {
 	waitlisted int
 }
 
-func (m *Model) takeTickets(actor access.Actor, directory *who.Model, order ticketOrder) (taken, error) {
+func (m *Model) takeTickets(actor access.Actor, directory *model.Directory, order ticketOrder) (taken, error) {
 	p, err := m.findParty(order.PartyID)
 	if err != nil {
 		return taken{}, err
@@ -155,7 +155,7 @@ func (m *Model) takeTickets(actor access.Actor, directory *who.Model, order tick
 			return taken{}, access.Invalid("this party is full; join the waitlist instead")
 		}
 	}
-	purchaser := config.NormalizeEmail(order.Purchaser)
+	purchaser := mail.Normalize(order.Purchaser)
 	if purchaser == "" {
 		purchaser = actor.Email
 	}
@@ -176,7 +176,7 @@ func (m *Model) takeTickets(actor access.Actor, directory *who.Model, order tick
 	rows := []row{}
 	seen := map[string]bool{}
 	for _, att := range order.Attendees {
-		email, name := config.NormalizeEmail(att.Email), strings.TrimSpace(att.Name)
+		email, name := mail.Normalize(att.Email), strings.TrimSpace(att.Name)
 		if email == "" && name == "" {
 			return taken{}, access.Invalid("each ticket needs a person or a guest's name")
 		}
@@ -273,7 +273,7 @@ type joined struct {
 	changed   bool
 }
 
-func (m *Model) joinWaitlist(actor access.Actor, directory *who.Model, order waitlistOrder) (joined, error) {
+func (m *Model) joinWaitlist(actor access.Actor, directory *model.Directory, order waitlistOrder) (joined, error) {
 	p, err := m.findParty(order.PartyID)
 	if err != nil {
 		return joined{}, err
@@ -287,7 +287,7 @@ func (m *Model) joinWaitlist(actor access.Actor, directory *who.Model, order wai
 	if err := checkText("note", order.Note); err != nil {
 		return joined{}, access.Invalid("%s", err)
 	}
-	purchaser := config.NormalizeEmail(order.Purchaser)
+	purchaser := mail.Normalize(order.Purchaser)
 	if purchaser == "" {
 		purchaser = actor.Email
 	}
@@ -323,7 +323,7 @@ type offered struct {
 	left    int
 }
 
-func (m *Model) offerTickets(actor access.Actor, directory *who.Model, o offer) (offered, error) {
+func (m *Model) offerTickets(actor access.Actor, directory *model.Directory, o offer) (offered, error) {
 	t, p, err := m.findTicket(o.TicketID)
 	if err != nil {
 		return offered{}, err
@@ -438,7 +438,7 @@ type reassignment struct {
 	Name     string `json:"name"`
 }
 
-func (m *Model) reassignTicket(actor access.Actor, directory *who.Model, re reassignment) (*Ticket, *Party, []store.Op, string, error) {
+func (m *Model) reassignTicket(actor access.Actor, directory *model.Directory, re reassignment) (*Ticket, *Party, []store.Op, string, error) {
 	t, p, err := m.findTicket(re.TicketID)
 	if err != nil {
 		return nil, nil, nil, "", err
@@ -453,7 +453,7 @@ func (m *Model) reassignTicket(actor access.Actor, directory *who.Model, re reas
 	if !editor && p.Past(now()) {
 		return nil, nil, nil, "", access.Invalid("this party has already happened")
 	}
-	email, name := config.NormalizeEmail(re.Email), strings.TrimSpace(re.Name)
+	email, name := mail.Normalize(re.Email), strings.TrimSpace(re.Name)
 	if email == "" && name == "" {
 		return nil, nil, nil, "", access.Invalid("pick someone, or name a guest")
 	}
@@ -587,7 +587,7 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 	if !body.Adults && !body.Students {
 		return savedParty{}, access.Invalid("let adults, students, or both hold a ticket")
 	}
-	hosts := config.NormalizeEmails(body.HostEmails)
+	hosts := mail.NormalizeAll(body.HostEmails)
 	if adding && !actor.May(Curate) && !slices.Contains(hosts, actor.Email) {
 		hosts = append(hosts, actor.Email)
 	}
@@ -855,11 +855,11 @@ func (m *Model) saveSettings(actor access.Actor, s Settings) ([]store.Op, error)
 	return ops, nil
 }
 
-func (m *Model) moveUnlisted(actor access.Actor, directory *who.Model, old, to, name string) ([]store.Op, int, error) {
+func (m *Model) moveUnlisted(actor access.Actor, directory *model.Directory, old, to, name string) ([]store.Op, int, error) {
 	if err := require(actor, MoveAddresses); err != nil {
 		return nil, 0, err
 	}
-	if directory.Member(directory.Resolve(config.NormalizeEmail(old))) {
+	if directory.Member(directory.Resolve(mail.Normalize(old))) {
 		return nil, 0, access.Invalid("their address is the directory's to change")
 	}
 	return m.moveAddress(actor, old, to, name)
@@ -869,7 +869,7 @@ func (m *Model) moveAddress(actor access.Actor, old, to, name string) ([]store.O
 	if err := require(actor, MoveAddresses); err != nil {
 		return nil, 0, err
 	}
-	old, to, name = config.NormalizeEmail(old), config.NormalizeEmail(to), strings.TrimSpace(name)
+	old, to, name = mail.Normalize(old), mail.Normalize(to), strings.TrimSpace(name)
 	if err := checkEmail(old); err != nil {
 		return nil, 0, access.Invalid("%s", err)
 	}

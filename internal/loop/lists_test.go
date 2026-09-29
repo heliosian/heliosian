@@ -7,16 +7,15 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/data"
-	"heliosian/internal/filter"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
-	"heliosian/internal/who"
 )
 
 func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
-	directory, err := who.LoadModel(dir, nil, testkit.None, []byte("test"))
+	directory, err := model.LoadDirectory(dir, nil, testkit.None, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,12 +26,12 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	sources := Sources{
 		Directory: directory,
 		Tags:      directory.Tags,
-		Lists:     directory.RoomParentLists,
+		MagicTags: directory.RoomParentTags,
 		Shared:    directory.SharedTags,
 	}
 	jordan := "jordan.whitfield@heliosschool.org"
 	lists := groups.Model().Lists(sources, jordan)
-	i := slices.IndexFunc(lists, func(l who.List) bool { return l.Key == "group:"+soccerID })
+	i := slices.IndexFunc(lists, func(l model.MagicTag) bool { return l.Key == "group:"+soccerID })
 	if i < 0 {
 		t.Fatalf("no soccer team list: %+v", lists)
 	}
@@ -44,7 +43,7 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	if slices.Contains(list.People, coach) || slices.Contains(list.People, jordan) {
 		t.Fatalf("people: %v", list.People)
 	}
-	want := []who.Guest{
+	want := []model.Guest{
 		{ID: soccerID + ":" + coach, Name: "Coach Rivera", Email: coach},
 		{ID: soccerID + ":office@coastsidesoccer.example.org", Name: "Coastside League Office", Email: "office@coastsidesoccer.example.org"},
 	}
@@ -63,19 +62,19 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 		t.Fatal(err)
 	}
 	lists = groups.Model().Lists(sources, jordan)
-	i = slices.IndexFunc(lists, func(l who.List) bool { return l.Key == "group:"+soccerID })
+	i = slices.IndexFunc(lists, func(l model.MagicTag) bool { return l.Key == "group:"+soccerID })
 	if i < 0 || !lists[i].Archived {
 		t.Fatalf("the archived group's list is missing or unmarked: %+v", lists)
 	}
 }
 
 func TestTaggedFindsTheGroupThatCarriesATag(t *testing.T) {
-	model := &Model{Groups: []Group{{Name: "soccer", Rules: []filter.Rule{{Kind: filter.KindInclude, Tags: []string{"room:jays"}}}}}}
-	if got := model.Tagged("activity:act0000000023"); got != "" {
+	m := &Model{Groups: []Group{{Name: "soccer", Rules: []model.Rule{{Kind: model.RuleInclude, Tags: []string{"room:jays"}}}}}}
+	if got := m.Tagged("activity:act0000000023"); got != "" {
 		t.Errorf("decor has a list already: %q", got)
 	}
-	model.Groups = append(model.Groups, Group{Name: "decor", Rules: []filter.Rule{{Kind: filter.KindInclude, Tags: []string{"activity:act0000000023"}}}})
-	if got := model.Tagged("activity:act0000000023"); got != "decor" {
+	m.Groups = append(m.Groups, Group{Name: "decor", Rules: []model.Rule{{Kind: model.RuleInclude, Tags: []string{"activity:act0000000023"}}}})
+	if got := m.Tagged("activity:act0000000023"); got != "decor" {
 		t.Errorf("decor's list: %q", got)
 	}
 }

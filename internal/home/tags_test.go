@@ -8,10 +8,9 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/data"
-	"heliosian/internal/filter"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
-	"heliosian/internal/who"
 )
 
 func TestRenamingATagKeepsTheAudiencesThatNameIt(t *testing.T) {
@@ -21,20 +20,20 @@ func TestRenamingATagKeepsTheAudiencesThatNameIt(t *testing.T) {
 	)
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	directory, err := who.NewCache(dir, dir, nil, testkit.None, queue, []byte("test"), func() []string { return nil })
+	directory, err := model.NewDirectoryCache(dir, dir, nil, testkit.None, queue, []byte("test"), func() []string { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	sources := func() filter.Sources {
-		model := directory.Model()
-		return filter.Sources{Directory: model, Tags: model.Tags, Shared: model.SharedTags}
+	sources := func() model.AudienceSources {
+		d := directory.Model()
+		return model.AudienceSources{Directory: d, Tags: d.Tags, Shared: d.SharedTags}
 	}
 	c, err := NewCache(dir, dir, testkit.All, func() []string { return nil }, sources, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	key := filter.TagKey(soccerTeamID)
-	rules := []filter.Rule{{Kind: filter.KindInclude, Tags: []string{key}}}
+	key := model.TagKey(soccerTeamID)
+	rules := []model.Rule{{Kind: model.RuleInclude, Tags: []string{key}}}
 	if err := c.Commit(context.Background(), access.System("test"), audience(thingLink+jaysChatID, c.Model().link(jaysChatID).Rules, rules)...); err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +42,7 @@ func TestRenamingATagKeepsTheAudiencesThatNameIt(t *testing.T) {
 		t.Fatalf("the audience naming the tag leaves out %s or reads %q", asha, a.tagLabels(c.Model().Categories, nil, admin)[key])
 	}
 	mux := http.NewServeMux()
-	who.RegisterTags(mux, directory)
+	model.RegisterDirectory(mux, model.DirectoryRoutes{Cache: directory})
 	if rec := testkit.Form(t, mux, admin, "/api/directory/tag-rename", url.Values{"tag": {soccerTeamID}, "name": {"Football"}}); rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}

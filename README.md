@@ -21,8 +21,8 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/data` — tabular data sources: sample CSVs and Google Sheets
 - `internal/spreadsheets` — which Google Sheets the server and the periodic sync read, the environment variable holding each one's ID, and its title in Drive
 - `internal/static` — reads the bundled files under `web/` that the models check image names against
-- `internal/config` — the Config sheet: super admins and the platform settings, served at `/api/config`
-- `internal/who` — the directory app: model load, handlers, admin tools, self-service edits
+- `internal/model` — the shared data layer: the Config sheet (super admins and the platform settings, served at `/api/config`), every app's admin list, the audience rules every filter reads, and the directory's model load, handlers, admin tools and self-service edits
+- `internal/who` — the directory app's page host: its page routes, the opt-in form and its share card
 - `internal/home` — the link portal: model load, handlers, admin edits
 - `internal/team` — HCA-Team, the volunteer portal: the Events sheet's model, handlers, sign-ups, and admin edits
 - `internal/birthday` — the birthday team: the Birthdays sheet's model, the derived dates and stages, handlers, and admin edits

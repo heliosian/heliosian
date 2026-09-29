@@ -7,8 +7,8 @@ import (
 	"strings"
 	"unicode"
 
-	"heliosian/internal/config"
-	"heliosian/internal/who"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 )
 
 type Linked struct {
@@ -143,8 +143,8 @@ func folded(school, hca *Event) *Event {
 	return &c
 }
 
-func (m *Model) eventsFor(directory *who.Model, email string, linked []Linked) []*Event {
-	email = config.NormalizeEmail(email)
+func (m *Model) eventsFor(directory *model.Directory, email string, linked []Linked) []*Event {
+	email = mail.Normalize(email)
 	answers := m.Answers[email]
 	mine := m.mine(directory, email)
 	events := m.Events

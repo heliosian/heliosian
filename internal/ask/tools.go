@@ -16,9 +16,9 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/loop"
+	"heliosian/internal/model"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 const (
@@ -78,8 +78,8 @@ func label(name string) string {
 
 type viewer struct {
 	email     string
-	me        *who.Person
-	directory *who.Model
+	me        *model.Person
+	directory *model.Directory
 	calendar  *when.Model
 	team      *team.Model
 	celebrate *celebrate.Model
@@ -162,7 +162,7 @@ func (v *viewer) names(emails []string) []string {
 }
 
 func whoLink(email string) string {
-	return whoBase + who.PersonPath(email)
+	return whoBase + model.PersonPath(email)
 }
 
 var appBases = map[string]string{"when": whenBase, "team": teamBase, "celebrate": celebrateBase}
@@ -224,7 +224,7 @@ func limitOf(n, fallback, ceiling int) int {
 	return min(n, ceiling)
 }
 
-func rolesOf(p *who.Person) string {
+func rolesOf(p *model.Person) string {
 	roles := []string{}
 	if p.IsStudent {
 		roles = append(roles, "student")

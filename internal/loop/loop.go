@@ -7,11 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	"heliosian/internal/admins"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
-	"heliosian/internal/filter"
 	"heliosian/internal/id"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
@@ -59,15 +58,15 @@ const (
 var (
 	GroupColumns    = []string{idColumn, "Name", "Title", "Description", "Created By", "Created", prefixColumn, visibleColumn, postingColumn, replyingColumn}
 	ManagerColumns  = []string{"Group", "Email"}
-	RuleColumns     = append([]string{"Group"}, filter.RuleColumns...)
+	RuleColumns     = append([]string{"Group"}, model.RuleColumns...)
 	AdditionColumns = []string{"Group", "Email", "Name"}
 	ExcludedColumns = []string{"Group", "Email", "Note", "Timestamp"}
 	MessageColumns  = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail", "Message ID"}
 	DeliveryColumns = []string{"Timestamp", "Group", "Email", "Event", "Message", "Detail"}
 	ArchivedColumns = []string{"Group", "Email"}
 
-	Roles     = filter.Roles
-	Relations = filter.Relations
+	Roles     = model.AudienceRoles
+	Relations = model.AudienceRelations
 
 	Visibilities = []string{VisibilityHidden, VisibilityMembers, VisibilityEveryone}
 
@@ -220,7 +219,7 @@ func CheckRule(r Rule) error {
 	if r.Kind != KindInclude && r.Kind != KindExclude {
 		return fmt.Errorf("kind %q is not %s or %s", r.Kind, KindInclude, KindExclude)
 	}
-	if err := filter.CheckFacets(r); err != nil {
+	if err := r.CheckFacets(); err != nil {
 		return err
 	}
 	if len(r.Search) > maxSearchLength {
@@ -335,15 +334,15 @@ func Normalize(g Group) Group {
 	if g.Replying == "" {
 		g.Replying = PostingEveryone
 	}
-	g.Managers = config.NormalizeEmails(g.Managers)
+	g.Managers = mail.NormalizeAll(g.Managers)
 	rules := []Rule{}
 	for _, r := range g.Rules {
-		rules = append(rules, filter.Clean(r))
+		rules = append(rules, r.Clean())
 	}
 	g.Rules = rules
 	additions := []Addition{}
 	for _, a := range g.Additions {
-		a.Email = config.NormalizeEmail(a.Email)
+		a.Email = mail.Normalize(a.Email)
 		a.Name = strings.Join(strings.Fields(a.Name), " ")
 		if a.Email != "" && !slices.ContainsFunc(additions, func(b Addition) bool { return b.Email == a.Email }) {
 			additions = append(additions, a)
@@ -352,7 +351,7 @@ func Normalize(g Group) Group {
 	g.Additions = additions
 	excluded := []Excluded{}
 	for _, e := range g.Excluded {
-		e.Email = config.NormalizeEmail(e.Email)
+		e.Email = mail.Normalize(e.Email)
 		e.Note = strings.Join(strings.Fields(e.Note), " ")
 		e.When = strings.TrimSpace(e.When)
 		if e.Email != "" && !slices.ContainsFunc(excluded, func(v Excluded) bool { return v.Email == e.Email }) {
@@ -376,7 +375,7 @@ func compareWhen(x, y Excluded) int {
 }
 
 func ruleCells(groupID string, r Rule) store.Row {
-	cells := filter.RuleCells(r)
+	cells := r.Cells()
 	cells["Group"] = groupID
 	return cells
 }
@@ -393,18 +392,18 @@ func groupCells(g Group) store.Row {
 }
 
 func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
-	model := &Model{Groups: []Group{}, Messages: []Message{}, Deliveries: []Delivery{}, idKey: idKey, byID: map[string]int{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
-	model.admins = admins.Read(tables)
+	m := &Model{Groups: []Group{}, Messages: []Message{}, Deliveries: []Delivery{}, idKey: idKey, byID: map[string]int{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
+	m.admins = model.ReadAdmins(tables)
 	for _, row := range tables[groupsTab] {
 		groupID, ok := id.Parse(row[idColumn])
 		if !ok {
 			return nil, fmt.Errorf("%s row %q has no valid %s: %q", groupsTab, row["Name"], idColumn, row[idColumn])
 		}
 		g := Normalize(Group{ID: groupID, Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff, Visibility: row[visibleColumn], Posting: row[postingColumn], Replying: row[replyingColumn]})
-		if _, dup := model.byID[g.ID]; dup {
+		if _, dup := m.byID[g.ID]; dup {
 			return nil, fmt.Errorf("%s has two rows with %s %q", groupsTab, idColumn, g.ID)
 		}
-		if _, dup := model.byName[g.Name]; dup {
+		if _, dup := m.byName[g.Name]; dup {
 			return nil, fmt.Errorf("%s has two rows named %q", groupsTab, g.Name)
 		}
 		g.Aliases = []string{}
@@ -412,12 +411,12 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		g.Rules = []Rule{}
 		g.Additions = []Addition{}
 		g.Excluded = []Excluded{}
-		model.byID[g.ID] = len(model.Groups)
-		model.byName[g.Name] = len(model.Groups)
-		model.Groups = append(model.Groups, g)
+		m.byID[g.ID] = len(m.Groups)
+		m.byName[g.Name] = len(m.Groups)
+		m.Groups = append(m.Groups, g)
 	}
 	owner := func(tab, groupID string) (*Group, error) {
-		g := model.Group(groupID)
+		g := m.Group(groupID)
 		if g == nil {
 			return nil, fmt.Errorf("%s names %q, which %s does not have", tab, groupID, groupsTab)
 		}
@@ -440,7 +439,7 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		if err != nil {
 			return nil, err
 		}
-		email := config.NormalizeEmail(row["Email"])
+		email := mail.Normalize(row["Email"])
 		if !slices.Contains(g.Managers, email) {
 			g.Managers = append(g.Managers, email)
 		}
@@ -450,7 +449,7 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		if err != nil {
 			return nil, err
 		}
-		g.Rules = append(g.Rules, filter.RuleFromRow(row))
+		g.Rules = append(g.Rules, model.RuleFromRow(row))
 	}
 	for _, row := range tables[additionsTab] {
 		g, err := owner(additionsTab, row["Group"])
@@ -471,45 +470,45 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		if err != nil {
 			return nil, err
 		}
-		if model.archived[g.ID] == nil {
-			model.archived[g.ID] = map[string]bool{}
+		if m.archived[g.ID] == nil {
+			m.archived[g.ID] = map[string]bool{}
 		}
-		model.archived[g.ID][config.NormalizeEmail(row["Email"])] = true
+		m.archived[g.ID][mail.Normalize(row["Email"])] = true
 	}
 	for _, row := range tables[messagesTab] {
-		model.Messages = append(model.Messages, Message{
+		m.Messages = append(m.Messages, Message{
 			ID: row["ID"], Group: strings.ToLower(strings.TrimSpace(row["Group"])), Received: row["Received"], From: row["From"], Subject: row["Subject"],
 			State: row["State"], Recipients: row["Recipients"], Object: row["Object"], Detail: row["Detail"], MessageID: row["Message ID"],
 		})
 	}
 	for _, row := range tables[deliveriesTab] {
-		model.Deliveries = append(model.Deliveries, Delivery{
-			Timestamp: row["Timestamp"], Group: strings.ToLower(strings.TrimSpace(row["Group"])), Email: config.NormalizeEmail(row["Email"]),
+		m.Deliveries = append(m.Deliveries, Delivery{
+			Timestamp: row["Timestamp"], Group: strings.ToLower(strings.TrimSpace(row["Group"])), Email: mail.Normalize(row["Email"]),
 			Event: row["Event"], Message: row["Message"], Detail: row["Detail"],
 		})
 	}
-	for i, g := range model.Groups {
+	for i, g := range m.Groups {
 		g = Normalize(g)
 		if err := CheckGroup(g); err != nil {
 			return nil, err
 		}
 		slices.SortStableFunc(g.Excluded, compareWhen)
-		model.Groups[i] = g
+		m.Groups[i] = g
 	}
-	sort.SliceStable(model.Groups, func(i, j int) bool { return model.Groups[i].Name < model.Groups[j].Name })
-	model.byID = map[string]int{}
-	model.byName = map[string]int{}
-	model.byAddress = map[string]int{}
-	for i, g := range model.Groups {
-		model.byID[g.ID] = i
-		model.byName[g.Name] = i
+	sort.SliceStable(m.Groups, func(i, j int) bool { return m.Groups[i].Name < m.Groups[j].Name })
+	m.byID = map[string]int{}
+	m.byName = map[string]int{}
+	m.byAddress = map[string]int{}
+	for i, g := range m.Groups {
+		m.byID[g.ID] = i
+		m.byName[g.Name] = i
 		for _, local := range g.Names() {
-			if j, taken := model.byAddress[local]; taken {
-				return nil, fmt.Errorf("%s@%s reaches both %s and %s", local, Domain, model.Groups[j].Name, g.Name)
+			if j, taken := m.byAddress[local]; taken {
+				return nil, fmt.Errorf("%s@%s reaches both %s and %s", local, Domain, m.Groups[j].Name, g.Name)
 			}
-			model.byAddress[local] = i
+			m.byAddress[local] = i
 		}
 	}
-	model.indexHistory()
-	return model, nil
+	m.indexHistory()
+	return m, nil
 }

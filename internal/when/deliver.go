@@ -9,7 +9,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
+	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
 
@@ -60,7 +60,7 @@ func (b *builder) messages(rows []store.Row) error {
 		}
 		b.model.Messages = append(b.model.Messages, Message{
 			ID: key, EventID: strings.TrimSpace(row["Event ID"]), Kind: kind, Subject: strings.TrimSpace(row["Subject"]), Text: strings.TrimSpace(row["Text"]),
-			Recipients: splitEmails(row["Recipients"]), Attach: attach, SentBy: config.NormalizeEmail(row["Sent By"]), Created: strings.TrimSpace(row["Created"]),
+			Recipients: splitEmails(row["Recipients"]), Attach: attach, SentBy: mail.Normalize(row["Sent By"]), Created: strings.TrimSpace(row["Created"]),
 			SentTo: splitEmails(row["Sent To"]),
 		})
 		b.model.eventIDs[key] = true

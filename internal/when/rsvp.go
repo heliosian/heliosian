@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
-	"heliosian/internal/config"
 	"heliosian/internal/mail"
 )
 
@@ -16,7 +15,7 @@ type Answerer func(ctx context.Context, email, id, answer string) error
 var errNotRecorded = errors.New("the answer was not recorded")
 
 func (a app) recordBy(ctx context.Context, actor access.Actor, email, id, answer, via string, invite, wait bool) error {
-	email = config.NormalizeEmail(email)
+	email = mail.Normalize(email)
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	ops, _, err := a.answerOps(actor, email, id, answer, via, invite)
 	if err != nil {
@@ -108,7 +107,7 @@ func (a app) canonical(key string) string {
 }
 
 func (a app) sees(actor access.Actor, e *Event) bool {
-	if actor.May(SeeAll) || config.NormalizeEmail(e.AddedBy) == actor.Email || a.isHost(actor, e) {
+	if actor.May(SeeAll) || mail.Normalize(e.AddedBy) == actor.Email || a.isHost(actor, e) {
 		return true
 	}
 	if e.Sharing == SharingInvited {

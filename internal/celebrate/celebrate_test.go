@@ -14,15 +14,14 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/id"
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 	"heliosian/internal/testkit/mailtest"
-	"heliosian/internal/who"
 )
 
 const (
@@ -40,9 +39,9 @@ func testNow() time.Time {
 	return t
 }
 
-var sampleDirectory *who.Model
+var sampleDirectory *model.Directory
 
-func directory() *who.Model { return sampleDirectory }
+func directory() *model.Directory { return sampleDirectory }
 
 func viewerOf(email string, admin bool) access.Actor {
 	var held []access.Allowance
@@ -66,7 +65,7 @@ func serveWith(t *testing.T, mailer *mail.Mailgun) (*Cache, *http.ServeMux) {
 	sheet = &data.Dir{Root: "sampledata"}
 	queue = store.NewQueue()
 	var err error
-	if sampleDirectory, err = who.LoadModel(sheet, nil, testkit.None, []byte("test")); err != nil {
+	if sampleDirectory, err = model.LoadDirectory(sheet, nil, testkit.None, []byte("test")); err != nil {
 		t.Fatal(err)
 	}
 	cache, err := NewCache(sheet, sheet, bundled, func() []string { return nil }, queue)
@@ -93,7 +92,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 
 func tables(t *testing.T) store.Tables {
 	t.Helper()
-	return testkit.Tables(t, sheet, queue, appName, celebrationsTab, categoriesTab, partiesTab, hostsTab, ticketsTab, settingsTab, admins.Tab, redirectsTab, invoicingTab, id.AliasesTab)
+	return testkit.Tables(t, sheet, queue, appName, celebrationsTab, categoriesTab, partiesTab, hostsTab, ticketsTab, settingsTab, model.AdminsTab.Name, redirectsTab, invoicingTab, id.AliasesTab)
 }
 
 func categoryTitles(m *Model) []string {

@@ -12,12 +12,12 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/api"
 	"heliosian/internal/id"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
-	"heliosian/internal/who"
 )
 
-func served(mux *http.ServeMux, cache *Cache, hooks Hooks, directory func() *who.Model, linked func(string) []Linked) *http.ServeMux {
+func served(mux *http.ServeMux, cache *Cache, hooks Hooks, directory func() *model.Directory, linked func(string) []Linked) *http.ServeMux {
 	sources := func(email string, _ time.Time) []Linked { return linked(email) }
 	world := func(tx *store.Tx) World {
 		return hooks.World(cache.In(tx), directory(), noSettings(), sampleKey, sources)
@@ -30,8 +30,8 @@ func served(mux *http.ServeMux, cache *Cache, hooks Hooks, directory func() *who
 		Staged: world,
 		Scope:  func(w World, q api.Query) World { return w.At(q.Now) },
 	})
-	for _, rt := range who.Resources() {
-		reg.Add(api.Lift(rt, func(w World) *who.Model { return w.Directory }))
+	for _, rt := range model.DirectoryResources() {
+		reg.Add(api.Lift(rt, func(w World) *model.Directory { return w.Directory }))
 	}
 	for _, rt := range hooks.Resources() {
 		reg.Add(rt)

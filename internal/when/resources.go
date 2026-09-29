@@ -10,11 +10,11 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/api"
-	"heliosian/internal/config"
 	"heliosian/internal/id"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
-	"heliosian/internal/who"
 )
 
 const (
@@ -26,7 +26,7 @@ const (
 
 type World struct {
 	Model     *Model
-	Directory *who.Model
+	Directory *model.Directory
 	app       app
 	idKey     []byte
 	sources   func(email string, now time.Time) []Linked
@@ -52,10 +52,10 @@ func (w World) responses(q api.Query) map[string]*Responses {
 	return w.request.responses
 }
 
-func (a app) world(m *Model, d *who.Model, settings *config.Settings, idKey []byte, sources func(email string, now time.Time) []Linked) World {
+func (a app) world(m *Model, d *model.Directory, settings *model.Config, idKey []byte, sources func(email string, now time.Time) []Linked) World {
 	a.pinned = m
-	a.directory = func() *who.Model { return d }
-	a.settings = func() *config.Settings { return settings }
+	a.directory = func() *model.Directory { return d }
+	a.settings = func() *model.Config { return settings }
 	return World{Model: m, Directory: d, app: a, idKey: idKey, sources: sources}
 }
 
@@ -98,7 +98,7 @@ func (w World) decorated(q api.Query, e *Event) *Event {
 	c.Hosted = w.Model.hostedBy(w.Directory, q.Actor.Email, e)
 	c.HostNames = nil
 	for _, h := range e.Hosts {
-		if p := w.Directory.Person(w.Directory.Resolve(config.NormalizeEmail(h))); p != nil && p.FullName != "" {
+		if p := w.Directory.Person(w.Directory.Resolve(mail.Normalize(h))); p != nil && p.FullName != "" {
 			c.HostNames = append(c.HostNames, p.FullName)
 		}
 	}
@@ -116,7 +116,7 @@ func (w World) event(q api.Query, key string) *Event {
 }
 
 func (w World) seesResponses(q api.Query, e *Event) bool {
-	return q.Actor.May(SeeAll) || (e.AddedBy != "" && !e.PosterLeft && config.NormalizeEmail(e.AddedBy) == config.NormalizeEmail(q.Actor.Email))
+	return q.Actor.May(SeeAll) || (e.AddedBy != "" && !e.PosterLeft && mail.Normalize(e.AddedBy) == mail.Normalize(q.Actor.Email))
 }
 
 func (w World) index() {
@@ -197,7 +197,7 @@ func (h Hooks) Resources() []api.Type[World] {
 	return []api.Type[World]{r.events(), r.guestLists(), r.inviteGroups(), r.feeds(), r.settings()}
 }
 
-func (h Hooks) World(m *Model, d *who.Model, settings *config.Settings, idKey []byte, sources func(email string, now time.Time) []Linked) World {
+func (h Hooks) World(m *Model, d *model.Directory, settings *model.Config, idKey []byte, sources func(email string, now time.Time) []Linked) World {
 	return h.app.world(m, d, settings, idKey, sources)
 }
 

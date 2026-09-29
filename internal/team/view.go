@@ -7,8 +7,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
-	"heliosian/internal/who"
+	"heliosian/internal/model"
 )
 
 type Child struct {
@@ -17,7 +16,7 @@ type Child struct {
 	Grade string `json:"grade,omitempty"`
 }
 
-func household(model *who.Model, p *who.Person) (adults, kids []Child) {
+func household(model *model.Directory, p *model.Person) (adults, kids []Child) {
 	if p == nil || !p.IsParent {
 		return nil, nil
 	}
@@ -31,7 +30,7 @@ func household(model *who.Model, p *who.Person) (adults, kids []Child) {
 	return adults, kids
 }
 
-func parentsOf(model *who.Model, email string) []string {
+func parentsOf(model *model.Directory, email string) []string {
 	p := model.Person(email)
 	if p == nil || !p.IsStudent {
 		return nil
@@ -48,7 +47,7 @@ func (d viewer) person(email string) (string, string) {
 
 type viewer struct {
 	access.Actor
-	directory *who.Model
+	directory *model.Directory
 }
 
 type Years struct {
@@ -213,11 +212,11 @@ func (v viewer) activity(model *Model, a *Activity, runs bool, lists EmailListLo
 	return view
 }
 
-func Render(model *Model, directory *who.Model, settings *config.Settings, as access.Actor, now time.Time) View {
+func Render(model *Model, directory *model.Directory, settings *model.Config, as access.Actor, now time.Time) View {
 	return RenderWith(model, directory, settings, nil, nil, as, now)
 }
 
-func RenderWith(model *Model, directory *who.Model, settings *config.Settings, rsvps RSVPLookup, lists EmailListLookup, as access.Actor, now time.Time) View {
+func RenderWith(model *Model, directory *model.Directory, settings *model.Config, rsvps RSVPLookup, lists EmailListLookup, as access.Actor, now time.Time) View {
 	v := viewer{Actor: as, directory: directory}
 	email, admin := as.Email, as.May(SeeAll)
 	name, photo := v.person(email)

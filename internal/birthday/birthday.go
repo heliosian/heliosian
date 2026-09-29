@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
 	"heliosian/internal/cells"
 	"heliosian/internal/id"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
@@ -386,16 +386,16 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 	if err != nil {
 		return nil, err
 	}
-	model := &Model{
+	m := &Model{
 		Birthdays: []Birthday{}, Assignments: map[string]Assignment{},
 		Outreach: map[string]Outreach{}, Donations: map[string]Donation{}, Notes: []Note{}, Charities: []Charity{},
 		NewsletterDates: []NewsletterDate{}, Team: []TeamMember{}, Reminders: map[string]bool{}, Invites: []Invite{}, Settings: settings,
 		idKey: idKey, byEmail: map[string]*Birthday{}, byCharity: map[string]*Charity{}, byNewsletter: map[string]*NewsletterDate{},
 		donationIDs: map[string]string{}, noteIDs: map[string]int{}, teamIDs: map[string]int{}, inviteIDs: map[string]int{},
 	}
-	model.admins = admins.Read(tables)
+	m.admins = model.ReadAdmins(tables)
 	for _, row := range tables[remindersTab] {
-		model.Reminders[reminderKey(row["Email"], row["Year"], row["Kind"])] = true
+		m.Reminders[reminderKey(row["Email"], row["Year"], row["Kind"])] = true
 	}
 	seenRoles := map[string]bool{}
 	for _, row := range tables[teamTab] {
@@ -410,7 +410,7 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 			continue
 		}
 		seenRoles[email+"\x00"+role] = true
-		model.Team = append(model.Team, TeamMember{Email: email, Role: role})
+		m.Team = append(m.Team, TeamMember{Email: email, Role: role})
 	}
 	for _, row := range tables[charitiesTab] {
 		name := row["Name"]
@@ -420,14 +420,14 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		fail := func(err error) (*Model, error) {
 			return nil, fmt.Errorf("charity %q: %w", name, err)
 		}
-		if model.charityNamed(name) != nil {
+		if m.charityNamed(name) != nil {
 			return fail(fmt.Errorf("is listed twice"))
 		}
 		key, ok := id.Parse(row["Charity ID"])
 		if !ok {
 			return fail(fmt.Errorf("charity id %q is not an id", row["Charity ID"]))
 		}
-		if slices.ContainsFunc(model.Charities, func(c Charity) bool { return c.ID == key }) {
+		if slices.ContainsFunc(m.Charities, func(c Charity) bool { return c.ID == key }) {
 			return fail(fmt.Errorf("charity id %s is used twice", key))
 		}
 		if err := cells.URL(row["Donation Link"], false); err != nil {
@@ -443,15 +443,15 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		if err := checkDate("added on", row["Added On"]); err != nil {
 			return fail(err)
 		}
-		model.Charities = append(model.Charities, Charity{
+		m.Charities = append(m.Charities, Charity{
 			ID: key, Name: name, DonationLink: row["Donation Link"], About: row["About"], EIN: row["EIN"],
 			Allowed: allowed, WhyNotAllowed: row["Why Not Allowed"], AddedOn: row["Added On"],
 		})
 	}
-	for i := range model.Charities {
-		model.byCharity[model.Charities[i].ID] = &model.Charities[i]
+	for i := range m.Charities {
+		m.byCharity[m.Charities[i].ID] = &m.Charities[i]
 	}
-	if c := model.Charity(settings.DefaultCharity); c == nil || !c.Allowed {
+	if c := m.Charity(settings.DefaultCharity); c == nil || !c.Allowed {
 		return nil, fmt.Errorf("setting %q names %q, which is not an allowed charity's id", DefaultCharityKey, settings.DefaultCharity)
 	}
 
@@ -460,21 +460,21 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		if _, err := ParseDate(date); err != nil {
 			return nil, fmt.Errorf("newsletter date %w", err)
 		}
-		if model.newsletterOn(date) != nil {
+		if m.newsletterOn(date) != nil {
 			return nil, fmt.Errorf("newsletter date %q is listed twice", date)
 		}
 		key, ok := id.Parse(row["Newsletter Date ID"])
 		if !ok {
 			return nil, fmt.Errorf("newsletter date %s: newsletter date id %q is not an id", date, row["Newsletter Date ID"])
 		}
-		if slices.ContainsFunc(model.NewsletterDates, func(n NewsletterDate) bool { return n.ID == key }) || model.Charity(key) != nil {
+		if slices.ContainsFunc(m.NewsletterDates, func(n NewsletterDate) bool { return n.ID == key }) || m.Charity(key) != nil {
 			return nil, fmt.Errorf("newsletter date id %s is used twice", key)
 		}
-		model.NewsletterDates = append(model.NewsletterDates, NewsletterDate{ID: key, Date: date})
+		m.NewsletterDates = append(m.NewsletterDates, NewsletterDate{ID: key, Date: date})
 	}
-	sort.Slice(model.NewsletterDates, func(i, j int) bool { return model.NewsletterDates[i].Date < model.NewsletterDates[j].Date })
-	for i := range model.NewsletterDates {
-		model.byNewsletter[model.NewsletterDates[i].ID] = &model.NewsletterDates[i]
+	sort.Slice(m.NewsletterDates, func(i, j int) bool { return m.NewsletterDates[i].Date < m.NewsletterDates[j].Date })
+	for i := range m.NewsletterDates {
+		m.byNewsletter[m.NewsletterDates[i].ID] = &m.NewsletterDates[i]
 	}
 
 	for _, row := range tables[birthdaysTab] {
@@ -485,7 +485,7 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		fail := func(err error) (*Model, error) {
 			return nil, fmt.Errorf("birthday of %s: %w", email, err)
 		}
-		if model.Birthday(email) != nil {
+		if m.Birthday(email) != nil {
 			return fail(fmt.Errorf("is listed twice"))
 		}
 		level := row["Participation"]
@@ -498,16 +498,16 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		if err := checkMonthDay("birthday", row["Birthday"]); err != nil {
 			return fail(err)
 		}
-		if o := row["Newsletter Override"]; o != "" && model.NewsletterDate(o) == nil {
+		if o := row["Newsletter Override"]; o != "" && m.NewsletterDate(o) == nil {
 			return fail(fmt.Errorf("newsletter override %q is not a newsletter date's id", o))
 		}
 		if len(row["Note"]) > maxTextLength {
 			return fail(fmt.Errorf("note is too long"))
 		}
-		model.Birthdays = append(model.Birthdays, Birthday{Email: email, Birthday: row["Birthday"], Override: row["Newsletter Override"], Level: level, Note: row["Note"]})
+		m.Birthdays = append(m.Birthdays, Birthday{Email: email, Birthday: row["Birthday"], Override: row["Newsletter Override"], Level: level, Note: row["Note"]})
 	}
-	for i := range model.Birthdays {
-		model.byEmail[model.Birthdays[i].Email] = &model.Birthdays[i]
+	for i := range m.Birthdays {
+		m.byEmail[m.Birthdays[i].Email] = &m.Birthdays[i]
 	}
 
 	for _, row := range tables[assignmentsTab] {
@@ -515,7 +515,7 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		fail := func(err error) (*Model, error) {
 			return nil, fmt.Errorf("assignment of %s in %s: %w", email, year, err)
 		}
-		if model.Birthday(email) == nil || model.Birthday(email).Birthday == "" {
+		if m.Birthday(email) == nil || m.Birthday(email).Birthday == "" {
 			return fail(fmt.Errorf("names someone with no birthday"))
 		}
 		if err := CheckYear(year); err != nil {
@@ -527,10 +527,10 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		if err := checkDate("assigned on", row["Assigned On"]); err != nil {
 			return fail(err)
 		}
-		if _, dup := model.Assignments[yearKey(email, year)]; dup {
+		if _, dup := m.Assignments[yearKey(email, year)]; dup {
 			return fail(fmt.Errorf("is listed twice"))
 		}
-		model.Assignments[yearKey(email, year)] = Assignment{Email: email, Year: year, AssignedTo: row["Assigned To"], AssignedOn: row["Assigned On"]}
+		m.Assignments[yearKey(email, year)] = Assignment{Email: email, Year: year, AssignedTo: row["Assigned To"], AssignedOn: row["Assigned On"]}
 	}
 
 	for _, row := range tables[outreachTab] {
@@ -538,7 +538,7 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		fail := func(err error) (*Model, error) {
 			return nil, fmt.Errorf("outreach to %s in %s: %w", email, year, err)
 		}
-		if model.Birthday(email) == nil || model.Birthday(email).Birthday == "" {
+		if m.Birthday(email) == nil || m.Birthday(email).Birthday == "" {
 			return fail(fmt.Errorf("names someone with no birthday"))
 		}
 		if err := CheckYear(year); err != nil {
@@ -550,10 +550,10 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		if err := checkEmail(row["Contacted By"]); err != nil {
 			return fail(fmt.Errorf("contacted by %w", err))
 		}
-		if _, dup := model.Outreach[yearKey(email, year)]; dup {
+		if _, dup := m.Outreach[yearKey(email, year)]; dup {
 			return fail(fmt.Errorf("is listed twice"))
 		}
-		model.Outreach[yearKey(email, year)] = Outreach{Email: email, Year: year, ContactedOn: row["Contacted On"], ContactedBy: row["Contacted By"]}
+		m.Outreach[yearKey(email, year)] = Outreach{Email: email, Year: year, ContactedOn: row["Contacted On"], ContactedBy: row["Contacted By"]}
 	}
 
 	for _, row := range tables[donationsTab] {
@@ -561,13 +561,13 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		fail := func(err error) (*Model, error) {
 			return nil, fmt.Errorf("donation of %s in %s: %w", email, year, err)
 		}
-		if model.Birthday(email) == nil || model.Birthday(email).Birthday == "" {
+		if m.Birthday(email) == nil || m.Birthday(email).Birthday == "" {
 			return fail(fmt.Errorf("names someone with no birthday"))
 		}
 		if err := CheckYear(year); err != nil {
 			return fail(err)
 		}
-		if model.Charity(row["Charity"]) == nil {
+		if m.Charity(row["Charity"]) == nil {
 			return fail(fmt.Errorf("names unknown charity id %q", row["Charity"]))
 		}
 		if len(row["Note"]) > maxTextLength {
@@ -592,10 +592,10 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 				return fail(fmt.Errorf("used by %w", err))
 			}
 		}
-		if _, dup := model.Donations[yearKey(email, year)]; dup {
+		if _, dup := m.Donations[yearKey(email, year)]; dup {
 			return fail(fmt.Errorf("is listed twice"))
 		}
-		model.Donations[yearKey(email, year)] = Donation{
+		m.Donations[yearKey(email, year)] = Donation{
 			Email: email, Year: year, Charity: row["Charity"], Note: row["Note"],
 			RecordedOn: row["Recorded On"], RecordedBy: row["Recorded By"], UsedOn: row["Used On"], UsedBy: row["Used By"],
 		}
@@ -603,7 +603,7 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 
 	for _, row := range tables[notesTab] {
 		email := row["Email"]
-		if model.Birthday(email) == nil {
+		if m.Birthday(email) == nil {
 			return nil, fmt.Errorf("note on %s names someone with no birthday", email)
 		}
 		if row["Note"] == "" || len(row["Note"]) > maxTextLength {
@@ -615,7 +615,7 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		if _, err := ParseDate(row["Added"]); err != nil {
 			return nil, fmt.Errorf("note on %s: added %w", email, err)
 		}
-		model.Notes = append(model.Notes, Note{Email: email, Note: row["Note"], AddedBy: row["Added By"], Added: row["Added"]})
+		m.Notes = append(m.Notes, Note{Email: email, Note: row["Note"], AddedBy: row["Added By"], Added: row["Added"]})
 	}
 
 	for _, row := range tables[invitesTab] {
@@ -627,10 +627,10 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 		if !ok {
 			return fail(fmt.Errorf("invite id %q is not an id", row["Invite ID"]))
 		}
-		if _, dup := model.inviteIDs[key]; dup {
+		if _, dup := m.inviteIDs[key]; dup {
 			return fail(fmt.Errorf("invite id %s is used twice", key))
 		}
-		if model.Birthday(email) == nil || model.Birthday(email).Birthday == "" {
+		if m.Birthday(email) == nil || m.Birthday(email).Birthday == "" {
 			return fail(fmt.Errorf("names someone with no birthday"))
 		}
 		if err := CheckYear(year); err != nil {
@@ -659,14 +659,14 @@ func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
 				return fail(fmt.Errorf("sent on %w", err))
 			}
 		}
-		model.inviteIDs[key] = len(model.Invites)
-		model.Invites = append(model.Invites, Invite{
+		m.inviteIDs[key] = len(m.Invites)
+		m.Invites = append(m.Invites, Invite{
 			ID: key, Email: email, Year: year, RequestedOn: row["Requested On"], RequestedBy: row["Requested By"],
 			SentTo: row["Sent To"], AskDay: row["Ask Day"], SentOn: row["Sent On"],
 		})
 	}
-	model.index()
-	return model, nil
+	m.index()
+	return m, nil
 }
 
 func (m *Model) invitesFor(email, year string) []Invite {

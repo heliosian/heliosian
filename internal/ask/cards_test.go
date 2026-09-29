@@ -5,23 +5,22 @@ import (
 	"testing"
 	"time"
 
-	"heliosian/internal/config"
+	"heliosian/internal/model"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 func TestClassroomChipsWearTheirColor(t *testing.T) {
 	sources := sampleSources(t)
-	sources.Settings = func() *config.Settings {
-		return &config.Settings{ClassroomColors: map[string]string{"Jays": "#1f6fb2"}}
+	sources.Settings = func() *model.Config {
+		return &model.Config{ClassroomColors: map[string]string{"Jays": "#1f6fb2"}}
 	}
 	v := app{sources: sources}.viewer(jordan)
-	jays, _ := v.linkCard(whoBase + who.ClassroomPath("Jays"))
+	jays, _ := v.linkCard(whoBase + model.ClassroomPath("Jays"))
 	if jays.Color != "#1f6fb2" || jays.Image == "" {
 		t.Errorf("Jays: %+v", jays)
 	}
-	if hawks, _ := v.linkCard(whoBase + who.ClassroomPath("Hawks")); hawks.Color != "" {
+	if hawks, _ := v.linkCard(whoBase + model.ClassroomPath("Hawks")); hawks.Color != "" {
 		t.Errorf("Hawks has no color set, but its chip has %q", hawks.Color)
 	}
 }
@@ -63,15 +62,15 @@ func TestLinkCardsKeepEachAppsVisibility(t *testing.T) {
 			t.Errorf("%s: a card for someone the directory does not list", email)
 		}
 		for key, family := range v.directory.Families {
-			if card, ok := v.linkCard(whoBase + who.FamilyPath(key)); !ok || card.Kind != "family" || card.Name != family.Name || card.Image != family.PhotoURL {
+			if card, ok := v.linkCard(whoBase + model.FamilyPath(key)); !ok || card.Kind != "family" || card.Name != family.Name || card.Image != family.PhotoURL {
 				t.Errorf("%s: family %s card %+v %v", email, key, card, ok)
 			}
 		}
-		if _, ok := v.linkCard(whoBase + who.FamilyPath("no-such-family")); ok {
+		if _, ok := v.linkCard(whoBase + model.FamilyPath("no-such-family")); ok {
 			t.Errorf("%s: a card for a family the directory does not list", email)
 		}
 		for _, c := range v.directory.Classrooms {
-			if card, ok := v.linkCard(whoBase + who.ClassroomPath(c.Name)); !ok || card.Kind != "classroom" || card.Name != c.Name {
+			if card, ok := v.linkCard(whoBase + model.ClassroomPath(c.Name)); !ok || card.Kind != "classroom" || card.Name != c.Name {
 				t.Errorf("%s: classroom %s card %+v %v", email, c.Name, card, ok)
 			}
 		}

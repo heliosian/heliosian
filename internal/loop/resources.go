@@ -10,12 +10,11 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/api"
-	"heliosian/internal/filter"
 	"heliosian/internal/id"
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
-	"heliosian/internal/who"
 )
 
 const (
@@ -27,9 +26,9 @@ const (
 
 type World struct {
 	Model       *Model
-	Directory   *who.Model
+	Directory   *model.Directory
 	GradeColors map[string]string
-	lists       func(owner string, now time.Time) []who.List
+	lists       func(owner string, now time.Time) []model.MagicTag
 	keys        func() []string
 	now         time.Time
 	request     *request
@@ -51,7 +50,7 @@ type memberKey struct {
 	group, email string
 }
 
-func NewWorld(m *Model, d *who.Model, gradeColors map[string]string, lists func(owner string, now time.Time) []who.List, keys func() []string) World {
+func NewWorld(m *Model, d *model.Directory, gradeColors map[string]string, lists func(owner string, now time.Time) []model.MagicTag, keys func() []string) World {
 	return World{Model: m, Directory: d, GradeColors: gradeColors, lists: lists, keys: keys}
 }
 
@@ -62,7 +61,7 @@ func (w World) At(now time.Time) World {
 
 func (w World) Sources() Sources {
 	d := w.Directory
-	return Sources{Directory: d, Tags: d.Tags, Shared: d.SharedTags, Lists: func(owner string) []who.List { return w.lists(owner, w.now) }}
+	return Sources{Directory: d, Tags: d.Tags, Shared: d.SharedTags, MagicTags: func(owner string) []model.MagicTag { return w.lists(owner, w.now) }}
 }
 
 func (w World) placement() placement {
@@ -72,7 +71,7 @@ func (w World) placement() placement {
 		for _, g := range w.Model.Groups {
 			l := list(g)
 			l.Excluded = nil
-			placed := filter.Reasons(l, s)
+			placed := l.Reasons(s)
 			p.byGroup[g.ID] = placed
 			for email := range placed {
 				if !g.HasExcluded(email) {
@@ -208,11 +207,11 @@ type suggestionResource struct {
 }
 
 type settingsResource struct {
-	Domain      string              `json:"domain"`
-	GradeColors map[string]string   `json:"gradeColors,omitempty"`
-	MagicTags   []filter.ListOption `json:"magicTags"`
-	Roles       []string            `json:"roles"`
-	Relations   []string            `json:"relations"`
+	Domain      string                 `json:"domain"`
+	GradeColors map[string]string      `json:"gradeColors,omitempty"`
+	MagicTags   []model.MagicTagOption `json:"magicTags"`
+	Roles       []string               `json:"roles"`
+	Relations   []string               `json:"relations"`
 }
 
 type resources struct {
@@ -496,7 +495,7 @@ func (w World) sentMessage(key string, q api.Query) *Sent {
 	return s
 }
 
-func (w World) sender(from string) (string, *who.Person) {
+func (w World) sender(from string) (string, *model.Person) {
 	email := strings.ToLower(mail.AddressOf(from))
 	return email, w.Directory.Person(w.Directory.Resolve(email))
 }
@@ -626,7 +625,7 @@ type suggestion struct {
 func (w World) suggestions(viewer string) []suggestion {
 	out := []suggestion{}
 	for _, t := range SuggestedTags(w.Directory.Tags(viewer), w.Model.Groups) {
-		key := filter.TagKey(t.ID)
+		key := model.TagKey(t.ID)
 		out = append(out, suggestion{id: w.Model.suggestionID(key), key: key, name: t.Name, kind: SuggestionTag, managers: []string{viewer}})
 	}
 	for _, l := range Suggested(w.lists(viewer, w.now), w.Model.Groups) {
@@ -654,7 +653,7 @@ func (w World) suggestionKnown(key string) bool {
 	w.request.keysOnce.Do(func() {
 		w.request.suggestions = map[string]bool{}
 		for _, tag := range w.Directory.TagIDs() {
-			w.request.suggestions[w.Model.suggestionID(filter.TagKey(tag))] = true
+			w.request.suggestions[w.Model.suggestionID(model.TagKey(tag))] = true
 		}
 		for _, k := range w.keys() {
 			w.request.suggestions[w.Model.suggestionID(k)] = true
@@ -707,7 +706,7 @@ func settings() api.Type[World] {
 			if key != w.Model.settingsID() {
 				return nil, false
 			}
-			options := filter.OptionsFor(w.Sources(), q.Actor.Email)
+			options := w.Sources().Options(q.Actor.Email)
 			return settingsResource{Domain: Domain, GradeColors: w.GradeColors, MagicTags: options.Lists, Roles: options.Roles, Relations: options.Relations}, true
 		},
 		List: func(w World, _ api.Query) []string { return []string{w.Model.settingsID()} },

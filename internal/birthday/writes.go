@@ -9,7 +9,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
+	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
 
@@ -86,7 +86,7 @@ func (m *Model) assign(actor access.Actor, email, rawTo string, isAdmin func(str
 	if err := m.teamStaff(actor, email); err != nil {
 		return nil, "", err
 	}
-	to := config.NormalizeEmail(rawTo)
+	to := mail.Normalize(rawTo)
 	if to == "" {
 		to = actor.Email
 	}
@@ -449,7 +449,7 @@ func saveSettings(actor access.Actor, s Settings) ([]store.Op, error) {
 }
 
 func (m *Model) addTeamMember(actor access.Actor, rawEmail, rawRole string) ([]store.Op, TeamMember, error) {
-	member := TeamMember{Email: config.NormalizeEmail(rawEmail), Role: strings.TrimSpace(rawRole)}
+	member := TeamMember{Email: mail.Normalize(rawEmail), Role: strings.TrimSpace(rawRole)}
 	if member.Email == "" {
 		member.Email = actor.Email
 	}

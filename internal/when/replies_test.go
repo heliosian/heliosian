@@ -8,9 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"heliosian/internal/config"
 	"heliosian/internal/mail"
-	"heliosian/internal/who"
+	"heliosian/internal/model"
 )
 
 const (
@@ -156,8 +155,8 @@ func replyApp(t *testing.T, cache *Cache, m Mail) *http.ServeMux {
 	Register(mux, Deps{
 		Cache:     cache,
 		Images:    memoryImages(),
-		Directory: func() *who.Model { return d },
-		Settings:  func() *config.Settings { return &config.Settings{} },
+		Directory: func() *model.Directory { return d },
+		Settings:  func() *model.Config { return &model.Config{} },
 		Lists:     func(string) []List { return nil },
 		Linked:    func(string) []Linked { return nil },
 		SourceID:  noSource,

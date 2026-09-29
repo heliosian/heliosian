@@ -13,7 +13,7 @@ What matters to this audit is that the apps are built to one shape, in `internal
 - **Parallel files.** Compare the same file across every app (every `cache.go`, `share.go`, `mail.go`, `load.go`, and on the client every `dom.js`, `chrome.js`, `state.js`, `app.js`, `edit.js`, `pages/admin.js`, `style.css` and `index.html`). Note what is byte-identical, what is identical apart from names or wording, and what one app has that the rest lack.
 - **Small helpers each package writes for itself.** Request-body decoding, JSON responses, the "who is asking" lookup, admin checks, the save helper, the site's base URL, the school time zone, ID generators, email cleaning, yes/no cells, URL and date checks, display names.
 - **Whole features written once per app.** The admin list and its handlers, Settings-tab parsing, share cards, mail letters and their templates, `.ics` files, image upload and image search, the people picker, tabs, modals and forms, the Admin Tools shell, the router.
-- **Shared helpers that exist and go unused.** `sharecard.Serve` and `ETag`, `mail.ICSEscape`, `config.NormalizeEmails`, `web/common/tabs.js`, `web/common/picker.js`, `api` in `web/common/api.js`. A package that re-implements one of these is a finding even when its copy is correct.
+- **Shared helpers that exist and go unused.** `sharecard.Serve` and `ETag`, `mail.ICSEscape`, `mail.Normalize` and `NormalizeAll`, `web/common/tabs.js`, `web/common/picker.js`, `api` in `web/common/api.js`. A package that re-implements one of these is a finding even when its copy is correct.
 - **Helpers copied into `tools/` and `cmd/`** from `internal/app`: required environment variables and keys, bundled-file stubs, sheet lists, column schemas.
 - **Test helpers copied between `_test.go` files.** Sample servers, recorders, image-checker stubs, time helpers.
 
@@ -31,7 +31,7 @@ What matters to this audit is that the apps are built to one shape, in `internal
   - Interfaces with one implementation.
   - Adapters that translate one model into a per-app copy of itself.
   - A type alias with no purpose.
-  - Two routes to the same data, such as some apps going through a `Directory` interface while others read `who.Model` directly.
+  - Two routes to the same data, such as some apps going through a `Directory` interface while others read `model.Directory` directly.
 - **Too few layers.**
   - Business rules inside HTTP handlers, where only a request can test them.
   - Sheet-row manipulation scattered through callers.

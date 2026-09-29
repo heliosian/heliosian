@@ -9,11 +9,11 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/env"
 	"heliosian/internal/logging"
+	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 func main() {
@@ -30,7 +30,7 @@ func main() {
 	if err != nil {
 		logging.Fatal("periodicsync: sheet source", "error", err)
 	}
-	directory, err := who.LoadModel(source, nil, static.Files{Root: "web/who"}, []byte(env.Required("ID_KEY")))
+	directory, err := model.LoadDirectory(source, nil, static.Files{Root: "web/who"}, []byte(env.Required("ID_KEY")))
 	if err != nil {
 		logging.Fatal("periodicsync: load directory model", "error", err)
 	}

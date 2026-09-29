@@ -7,9 +7,9 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/keypoints"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 const schoolDays = int(keypoints.Window / (24 * time.Hour))
@@ -18,7 +18,7 @@ type schoolView struct {
 	Emails []artifacts.SchoolEmail `json:"emails"`
 }
 
-func schoolWidget(directory *who.Cache, artifactsCache *artifacts.Cache) http.HandlerFunc {
+func schoolWidget(directory *model.DirectoryCache, artifactsCache *artifacts.Cache) http.HandlerFunc {
 	return serve.JSON(func(r *http.Request, _ serve.None) (schoolView, error) {
 		people := directory.Model()
 		email := people.Resolve(auth.Email(r))

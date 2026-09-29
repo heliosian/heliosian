@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
-	"heliosian/internal/config"
-	"heliosian/internal/who"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 )
 
 const notOnCalendar = "that event is not on the calendar"
@@ -19,7 +19,7 @@ func (e *Event) openToAll() bool {
 	return e.Sharing == SharingPublic && e.Source != SourceCelebrate && !e.Cancelled
 }
 
-func (e *Event) asks(p *who.Person) bool {
+func (e *Event) asks(p *model.Person) bool {
 	if slices.Contains(e.Tags, TagStaff) {
 		return p.IsStaff
 	}
@@ -48,14 +48,14 @@ func (a app) party(e *Event) *PartyPeople {
 	return a.parties(e.linkedID())
 }
 
-func isAdult(p *who.Person) bool {
+func isAdult(p *model.Person) bool {
 	return !p.IsStudent || p.IsParent || p.IsStaff
 }
 
-func (m *Model) hostsOf(directory *who.Model, e *Event) []string {
+func (m *Model) hostsOf(directory *model.Directory, e *Event) []string {
 	out := []string{}
 	add := func(email string) {
-		if email = directory.Resolve(config.NormalizeEmail(email)); email != "" && !slices.Contains(out, email) {
+		if email = directory.Resolve(mail.Normalize(email)); email != "" && !slices.Contains(out, email) {
 			out = append(out, email)
 		}
 	}
@@ -73,8 +73,8 @@ func (m *Model) hostsOf(directory *who.Model, e *Event) []string {
 	return out
 }
 
-func (m *Model) hostedBy(directory *who.Model, email string, e *Event) bool {
-	return e.keepsGuestList() && slices.Contains(m.hostsOf(directory, e), config.NormalizeEmail(email))
+func (m *Model) hostedBy(directory *model.Directory, email string, e *Event) bool {
+	return e.keepsGuestList() && slices.Contains(m.hostsOf(directory, e), mail.Normalize(email))
 }
 
 func (a app) hostsOf(e *Event) []string {

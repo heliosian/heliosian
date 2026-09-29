@@ -8,15 +8,13 @@ import (
 	"testing"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
 	"heliosian/internal/data"
-	"heliosian/internal/filter"
 	"heliosian/internal/id"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/who"
 )
 
-var tabNames = []string{groupsTab, managersTab, rulesTab, additionsTab, excludedTab, id.AliasesTab, messagesTab, deliveriesTab, admins.Tab, archivedTab}
+var tabNames = []string{groupsTab, managersTab, rulesTab, additionsTab, excludedTab, id.AliasesTab, messagesTab, deliveriesTab, model.AdminsTab.Name, archivedTab}
 
 const (
 	soccerID  = "grp0000000001"
@@ -247,18 +245,18 @@ func TestSavingAGroupWritesOnlyWhatChanged(t *testing.T) {
 
 func TestSavingANewGroupMintsItsID(t *testing.T) {
 	cache, _ := sampleCache(t)
-	model := cache.Model()
+	m := cache.Model()
 	actor := access.Actor{Email: "m@x.org"}
-	sources := Sources{Directory: &who.Model{}}
-	taken := func(key string) bool { return model.Group(key) != nil }
-	ops, g, action, err := model.SaveGroup(actor, sources, Group{Name: "chess.club", Title: "Chess Club", Rules: []Rule{{Kind: KindInclude, Roles: []string{"Staff"}}}}, taken)
+	sources := Sources{Directory: &model.Directory{}}
+	taken := func(key string) bool { return m.Group(key) != nil }
+	ops, g, action, err := m.SaveGroup(actor, sources, Group{Name: "chess.club", Title: "Chess Club", Rules: []Rule{{Kind: KindInclude, Roles: []string{"Staff"}}}}, taken)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if parsed, ok := id.Parse(g.ID); !ok || parsed != g.ID || taken(g.ID) || action != "add" {
 		t.Fatalf("minted %q, action %s", g.ID, action)
 	}
-	if _, _, _, err := model.SaveGroup(actor, sources, Group{ID: g.ID, Name: "chess.club", Title: "Chess Club", Managers: []string{actor.Email}, Rules: g.Rules}, taken); err == nil {
+	if _, _, _, err := m.SaveGroup(actor, sources, Group{ID: g.ID, Name: "chess.club", Title: "Chess Club", Managers: []string{actor.Email}, Rules: g.Rules}, taken); err == nil {
 		t.Fatal("an edit to a group the sheet does not have was taken")
 	}
 	if err := cache.CommitAndWait(context.Background(), actor, ops...); err != nil {
@@ -267,9 +265,9 @@ func TestSavingANewGroupMintsItsID(t *testing.T) {
 	if saved := cache.Model().Named("chess.club"); saved == nil || saved.ID != g.ID || cache.Model().Group(g.ID) != saved {
 		t.Fatalf("the saved group is %+v", saved)
 	}
-	current := *model.Group(soccerID)
+	current := *m.Group(soccerID)
 	current.Name = "soccer-team-2"
-	if _, _, _, err := model.SaveGroup(access.Actor{Email: current.Managers[0]}, sources, current, taken); err == nil {
+	if _, _, _, err := m.SaveGroup(access.Actor{Email: current.Managers[0]}, sources, current, taken); err == nil {
 		t.Fatal("a group was renamed")
 	}
 }
@@ -322,13 +320,13 @@ func TestAliasesReachTheirGroupAndStayUnique(t *testing.T) {
 
 func TestSuggestedIsEveryPartyAndActivityNoRuleNames(t *testing.T) {
 	groups := []Group{{Rules: []Rule{{Tags: []string{"party:p1"}}, {Tags: []string{"gardeners", "activity:e2"}}}}}
-	lists := []who.List{
-		{Key: "party:p1", Kind: who.ListParty},
-		{Key: "party:p2", Kind: who.ListParty},
-		{Key: "activity:e1", Kind: who.ListActivity},
-		{Key: "activity:e2", Kind: who.ListActivity},
-		{Key: "room:K", Kind: who.ListRoom},
-		{Key: "group:tech", Kind: who.ListGroup},
+	lists := []model.MagicTag{
+		{Key: "party:p1", Kind: model.MagicTagParty},
+		{Key: "party:p2", Kind: model.MagicTagParty},
+		{Key: "activity:e1", Kind: model.MagicTagActivity},
+		{Key: "activity:e2", Kind: model.MagicTagActivity},
+		{Key: "room:K", Kind: model.MagicTagRoom},
+		{Key: "group:tech", Kind: model.MagicTagGroup},
 	}
 	keys := []string{}
 	for _, l := range Suggested(lists, groups) {
@@ -390,8 +388,8 @@ func TestArchivedIsOnePersonsAndFollowsTheGroup(t *testing.T) {
 }
 
 func TestSuggestedTagsAreTheOwnersOwnNoRuleNames(t *testing.T) {
-	groups := []Group{{Rules: []Rule{{Tags: []string{filter.TagKey("dtg0000000001")}}, {Tags: []string{filter.TagKey("dtg0000000009")}}}}}
-	tags := []who.Tag{
+	groups := []Group{{Rules: []Rule{{Tags: []string{model.TagKey("dtg0000000001")}}, {Tags: []string{model.TagKey("dtg0000000009")}}}}}
+	tags := []model.Tag{
 		{ID: "dtg0000000003", Name: "Book Club", People: []string{"c@x"}},
 		{ID: "dtg0000000001", Name: "Carpool", People: []string{"a@x"}},
 		{ID: "dtg0000000004", Name: "Empty", People: []string{}},

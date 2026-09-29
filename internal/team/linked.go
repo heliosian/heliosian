@@ -6,10 +6,9 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
 	"heliosian/internal/cells"
+	"heliosian/internal/model"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 func (m *Model) imageOf(a *Activity) string {
@@ -64,8 +63,8 @@ func (m *Model) Linked(family when.Family) []when.Linked {
 	return out
 }
 
-func (m *Model) Lists(directory *who.Model, email string, now time.Time) []who.List {
-	out := []who.List{}
+func (m *Model) Lists(directory *model.Directory, email string, now time.Time) []model.MagicTag {
+	out := []model.MagicTag{}
 	chairs := func(a *Activity) bool {
 		return slices.ContainsFunc(a.CoChairs(), func(c string) bool { return directory.Resolve(c) == email })
 	}
@@ -92,8 +91,8 @@ func (m *Model) Lists(directory *who.Model, email string, now time.Time) []who.L
 		}
 		key := ""
 		if parent != "" || chairs(a) {
-			key = who.ListActivity + ":" + a.ID
-			list := who.List{Key: key, Name: a.Title, Kind: who.ListActivity, Parent: parent, Guests: []who.Guest{}, Hosts: directory.ResolveAll(a.CoChairs())}
+			key = model.MagicTagActivity + ":" + a.ID
+			list := model.MagicTag{Key: key, Name: a.Title, Kind: model.MagicTagActivity, Parent: parent, Guests: []model.Guest{}, Hosts: directory.ResolveAll(a.CoChairs())}
 			if a != root {
 				list.Name = root.Title + ": " + a.Title
 			}
@@ -125,8 +124,8 @@ func (m *Model) Lists(directory *who.Model, email string, now time.Time) []who.L
 	return out
 }
 
-func (c *Cache) Pending(email string) []admins.Approval {
-	out := []admins.Approval{}
+func (c *Cache) Pending(email string) []model.Approval {
+	out := []model.Approval{}
 	if !c.IsAdmin(email) {
 		return out
 	}
@@ -135,7 +134,7 @@ func (c *Cache) Pending(email string) []admins.Approval {
 	walk = func(list []*Activity) {
 		for _, a := range list {
 			if a.Status == StatusPending {
-				out = append(out, admins.Approval{App: "team", Title: a.Title, Start: a.Start, Path: m.PathOf(a)})
+				out = append(out, model.Approval{App: "team", Title: a.Title, Start: a.Start, Path: m.PathOf(a)})
 			}
 			walk(a.Children)
 		}

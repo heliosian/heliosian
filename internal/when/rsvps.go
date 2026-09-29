@@ -6,7 +6,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
-	"heliosian/internal/config"
+	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 )
 
@@ -18,7 +18,7 @@ type RSVP struct {
 }
 
 func (a app) waiting(email string) []RSVP {
-	email = config.NormalizeEmail(email)
+	email = mail.Normalize(email)
 	model := a.model()
 	answers := model.Answers[email]
 	today := now().Format(DateFormat)

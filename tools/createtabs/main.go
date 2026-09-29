@@ -6,22 +6,20 @@ import (
 	"log"
 	"slices"
 
-	"heliosian/internal/admins"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/birthday"
 	"heliosian/internal/celebrate"
-	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/env"
 	"heliosian/internal/feedback"
 	"heliosian/internal/home"
 	"heliosian/internal/id"
 	"heliosian/internal/loop"
+	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 type tab struct {
@@ -51,17 +49,17 @@ var layouts = map[string][]tab{
 		{id.AliasesTab, id.AliasColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
-	"Directory": withChangeLog(who.Tabs),
+	"Directory": withChangeLog(model.DirectoryTabs),
 	"Invite List Builder": {
-		{"Services", who.ServiceColumns},
-		{"Templates", who.TemplateColumns},
-		{"Greetings", who.GreetingColumns},
+		{"Services", model.ServiceColumns},
+		{"Templates", model.TemplateColumns},
+		{"Greetings", model.GreetingColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Apps": {
 		{"Categories", home.CategoryColumns},
 		{"Links", home.LinkColumns},
-		{admins.Tab, admins.Columns},
+		{model.AdminsTab.Name, model.AdminsTab.Columns},
 		{"Visibility", home.VisibilityColumns},
 		{"Audience", home.AudienceColumns},
 		{"Widgets", home.WidgetColumns},
@@ -74,7 +72,7 @@ var layouts = map[string][]tab{
 		{"Links", team.LinkColumns},
 		{"Settings", team.SettingColumns},
 		{"Notifications", team.NotificationColumns},
-		{admins.Tab, admins.Columns},
+		{model.AdminsTab.Name, model.AdminsTab.Columns},
 		{"Redirects", team.RedirectColumns},
 		{id.AliasesTab, id.AliasColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
@@ -88,7 +86,7 @@ var layouts = map[string][]tab{
 		{"Charities", birthday.CharityColumns},
 		{"Newsletter Dates", birthday.NewsletterDateColumns},
 		{"Settings", birthday.SettingColumns},
-		{admins.Tab, admins.Columns},
+		{model.AdminsTab.Name, model.AdminsTab.Columns},
 		{"Team", birthday.TeamColumns},
 		{"Reminders", birthday.ReminderColumns},
 		{"Invites", birthday.InviteColumns},
@@ -104,7 +102,7 @@ var layouts = map[string][]tab{
 		{"Hosts", celebrate.HostColumns},
 		{"Tickets", celebrate.TicketColumns},
 		{"Settings", celebrate.SettingColumns},
-		{admins.Tab, admins.Columns},
+		{model.AdminsTab.Name, model.AdminsTab.Columns},
 		{"Redirects", celebrate.RedirectColumns},
 		{"INVOICING", celebrate.InvoicingColumns},
 		{"Former Addresses", celebrate.FormerColumns},
@@ -120,7 +118,7 @@ var layouts = map[string][]tab{
 		{when.DayTypesTab, when.DayTypeColumns},
 		{when.DayOverridesTab, when.DayOverrideColumns},
 		{when.TagsTab, when.TagColumns},
-		{admins.Tab, admins.Columns},
+		{model.AdminsTab.Name, model.AdminsTab.Columns},
 		{when.FeedsTab, when.FeedColumns},
 		{when.SettingsTab, when.SettingColumns},
 		{when.RSVPsTab, when.RSVPColumns},
@@ -132,7 +130,7 @@ var layouts = map[string][]tab{
 		{id.AliasesTab, id.AliasColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
-	"Config": withChangeLog(config.Tabs),
+	"Config": withChangeLog(model.ConfigTabs),
 	"Groups": {
 		{"Groups", loop.GroupColumns},
 		{"Managers", loop.ManagerColumns},
@@ -142,7 +140,7 @@ var layouts = map[string][]tab{
 		{id.AliasesTab, id.AliasColumns},
 		{"Messages", loop.MessageColumns},
 		{"Deliveries", loop.DeliveryColumns},
-		{admins.Tab, admins.Columns},
+		{model.AdminsTab.Name, model.AdminsTab.Columns},
 		{"Archived", loop.ArchivedColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},

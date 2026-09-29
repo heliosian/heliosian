@@ -20,15 +20,15 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 	"heliosian/internal/testkit/mailtest"
-	"heliosian/internal/who"
 )
 
-func sampleSources(model *who.Model) func() Sources {
+func sampleSources(directory *model.Directory) func() Sources {
 	return func() Sources {
-		return Sources{Directory: model, Tags: model.Tags, Lists: model.RoomParentLists, Shared: model.SharedTags}
+		return Sources{Directory: directory, Tags: directory.Tags, MagicTags: directory.RoomParentTags, Shared: directory.SharedTags}
 	}
 }
 
@@ -124,7 +124,7 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 	deliveryBatch = 20 * time.Millisecond
 	dir := &data.Dir{Root: "../../sampledata"}
-	model, err := who.LoadModel(dir, nil, testkit.Files("../../web/who"), []byte("test"))
+	directory, err := model.LoadDirectory(dir, nil, testkit.Files("../../web/who"), []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,10 +133,10 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, sources: sampleSources(model), sender: mailtest.NewRecorder(mailtest.From), archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
+	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, sources: sampleSources(directory), sender: mailtest.NewRecorder(mailtest.From), archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
 	h.mailbox = Mail{Sender: h.sender.Mailgun, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
 	world := func(tx *store.Tx) World {
-		return NewWorld(cache.In(tx), model, nil, func(owner string, _ time.Time) []who.List { return model.RoomParentLists(owner) }, func() []string { return nil })
+		return NewWorld(cache.In(tx), directory, nil, func(owner string, _ time.Time) []model.MagicTag { return directory.RoomParentTags(owner) }, func() []string { return nil })
 	}
 	reg := api.New(api.Config[World]{
 		Actor:  func(r *http.Request, w World) access.Actor { return w.Directory.Actor(r, cache.Held) },
@@ -146,8 +146,8 @@ func newHarness(t *testing.T) *harness {
 		Staged: world,
 		Scope:  func(w World, q api.Query) World { return w.At(q.Now) },
 	})
-	for _, rt := range who.Resources() {
-		reg.Add(api.Lift(rt, func(w World) *who.Model { return w.Directory }))
+	for _, rt := range model.DirectoryResources() {
+		reg.Add(api.Lift(rt, func(w World) *model.Directory { return w.Directory }))
 	}
 	for _, rt := range Resources(cache, h.documents) {
 		reg.Add(rt)

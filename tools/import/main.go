@@ -22,9 +22,9 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/env"
+	"heliosian/internal/model"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
-	"heliosian/internal/who"
 )
 
 const (
@@ -128,20 +128,20 @@ func websiteRows(out string) ([]map[string]string, error) {
 	for _, row := range rows {
 		bio, err := flattenBio(row["bio_html"])
 		if err != nil {
-			return nil, fmt.Errorf("flatten the bio of %s: %w", row[who.WebsiteName], err)
+			return nil, fmt.Errorf("flatten the bio of %s: %w", row[model.WebsiteName], err)
 		}
 		if bio != "" {
 			bios++
 		}
-		next := map[string]string{who.WebsiteBio: bio}
-		for _, column := range who.WebsiteColumns {
-			if column != who.WebsiteBio {
+		next := map[string]string{model.WebsiteBio: bio}
+		for _, column := range model.WebsiteColumns {
+			if column != model.WebsiteBio {
 				next[column] = row[column]
 			}
 		}
 		flattened = append(flattened, next)
 	}
-	log.Printf("%s: %d staff, %d with a bio", who.WebsiteTable, len(flattened), bios)
+	log.Printf("%s: %d staff, %d with a bio", model.WebsiteTable, len(flattened), bios)
 	return flattened, nil
 }
 
@@ -160,28 +160,28 @@ func caughtUp(override, published string) bool {
 }
 
 func clearCaughtUpOverrides(out string, source *data.Sheet, bios []map[string]string) ([]store.Op, error) {
-	_, aliasRows, err := source.Table(directory, who.AliasesTable)
+	_, aliasRows, err := source.Table(directory, model.EmailAliasesTab)
 	if err != nil {
 		return nil, err
 	}
-	aliases, err := who.ParseAliases(aliasRows)
+	aliases, err := model.ParseEmailAliases(aliasRows)
 	if err != nil {
 		return nil, err
 	}
-	bios, _ = aliases.Rewrite(bios, who.WebsiteEmailColumn)
+	bios, _ = aliases.Rewrite(bios, model.WebsiteEmailColumn)
 	_, staffRows, err := readCSV(filepath.Join(out, "All Faculty & Staff Directory.csv"))
 	if err != nil {
 		return nil, err
 	}
 	staffRows, _ = aliases.Rewrite(staffRows, "person_email")
-	staffByName := who.StaffByName(staffRows)
+	staffByName := model.StaffByName(staffRows)
 	_, nameRows, err := source.Table(directory, namesTab)
 	if err != nil {
 		return nil, err
 	}
 	nameToEmail := map[string]string{}
 	for _, row := range nameRows {
-		nameToEmail[who.NormName(row["Name"])] = strings.ToLower(row["Email"])
+		nameToEmail[model.NormName(row["Name"])] = strings.ToLower(row["Email"])
 	}
 	_, overrideRows, err := source.Table(directory, "Overrides")
 	if err != nil {
@@ -193,13 +193,13 @@ func clearCaughtUpOverrides(out string, source *data.Sheet, bios []map[string]st
 	}
 
 	columns := []struct{ override, published string }{
-		{"Facts", who.WebsiteBio},
-		{"Job Title", who.WebsiteTitle},
+		{"Facts", model.WebsiteBio},
+		{"Job Title", model.WebsiteTitle},
 	}
 	ops := []store.Op{}
 	cleared, kept := 0, 0
 	for _, bio := range bios {
-		email, err := who.WebsiteEmail(bio, nameToEmail, staffByName)
+		email, err := model.WebsiteEmail(bio, nameToEmail, staffByName)
 		if err != nil {
 			return nil, err
 		}
@@ -227,7 +227,7 @@ func clearCaughtUpOverrides(out string, source *data.Sheet, bios []map[string]st
 			continue
 		}
 		log.Printf("  clearing %v for %s, which the staff page has caught up with", slices.Sorted(maps.Keys(cells)), email)
-		clearing, err := who.ClearCaughtUp(system, email, cells)
+		clearing, err := model.ClearCaughtUp(system, email, cells)
 		if err != nil {
 			return nil, err
 		}
@@ -293,7 +293,7 @@ func pruneNameToEmail(out string, source *data.Sheet, exported []map[string]stri
 		}
 		for _, row := range rows {
 			if row[s.email] != "" {
-				hasEmail[who.NormName(row[s.name])] = true
+				hasEmail[model.NormName(row[s.name])] = true
 			}
 		}
 	}
@@ -305,12 +305,12 @@ func pruneNameToEmail(out string, source *data.Sheet, exported []map[string]stri
 	dropped := map[string]bool{}
 	for _, row := range slices.Concat(rows, exported) {
 		name := strings.TrimSpace(row["Name"])
-		if row["Email"] == "" || !hasEmail[who.NormName(name)] || dropped[who.NormName(name)] {
+		if row["Email"] == "" || !hasEmail[model.NormName(name)] || dropped[model.NormName(name)] {
 			continue
 		}
-		dropped[who.NormName(name)] = true
+		dropped[model.NormName(name)] = true
 		log.Printf("  dropping %s, veracross now has an address for them", name)
-		drop, err := who.ImportDelete(system, namesTab, name)
+		drop, err := model.ImportDelete(system, namesTab, name)
 		if err != nil {
 			return nil, err
 		}
@@ -377,7 +377,7 @@ func (s tabSync) ops(source *data.Sheet) ([]store.Op, error) {
 		}
 		if !ok {
 			log.Printf("  added %s", key)
-			insert, err := who.ImportInsert(system, s.tab, cells)
+			insert, err := model.ImportInsert(system, s.tab, cells)
 			if err != nil {
 				return nil, err
 			}
@@ -386,7 +386,7 @@ func (s tabSync) ops(source *data.Sheet) ([]store.Op, error) {
 			continue
 		}
 		if len(cells) > 0 {
-			update, err := who.ImportUpdate(system, s.tab, key, cells)
+			update, err := model.ImportUpdate(system, s.tab, key, cells)
 			if err != nil {
 				return nil, err
 			}
@@ -404,7 +404,7 @@ func (s tabSync) ops(source *data.Sheet) ([]store.Op, error) {
 			continue
 		}
 		log.Printf("  removed %s", key)
-		remove, err := who.ImportDelete(system, s.tab, key)
+		remove, err := model.ImportDelete(system, s.tab, key)
 		if err != nil {
 			return nil, err
 		}
@@ -453,7 +453,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("sheet source: %v", err)
 	}
-	book, err := who.NewBook(source, source, store.NewQueue())
+	book, err := model.NewDirectoryBook(source, source, store.NewQueue())
 	if err != nil {
 		log.Fatalf("directory tabs: %v", err)
 	}
@@ -470,9 +470,9 @@ func main() {
 		log.Fatalf("upload photos: %v", err)
 	}
 
-	ops, err := tabSync{tab: who.WebsiteTable, header: who.WebsiteColumns, rows: bios, keyCol: who.WebsiteID, mirror: true}.ops(source)
+	ops, err := tabSync{tab: model.WebsiteTable, header: model.WebsiteColumns, rows: bios, keyCol: model.WebsiteID, mirror: true}.ops(source)
 	if err != nil {
-		log.Fatalf("plan %s: %v", who.WebsiteTable, err)
+		log.Fatalf("plan %s: %v", model.WebsiteTable, err)
 	}
 	exportedNames := []map[string]string{}
 	for _, s := range sources {
@@ -504,7 +504,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("plan the import: %v", err)
 	}
-	model, err := who.BuildModel(context.Background(), plan.Tables, nil, static.Files{Root: "web/who"}, []byte(actor))
+	m, err := model.BuildDirectory(context.Background(), plan.Tables, nil, static.Files{Root: "web/who"}, []byte(actor))
 	if err != nil {
 		log.Fatalf("the directory does not load with the import: %v", err)
 	}
@@ -514,7 +514,7 @@ func main() {
 	}
 	<-book.Write(plan)
 	students, parents, staff := 0, 0, 0
-	for _, p := range model.People {
+	for _, p := range m.People {
 		if p.IsStudent {
 			students++
 		}
@@ -526,5 +526,5 @@ func main() {
 		}
 	}
 	log.Printf("loaded %d people (students %d, parents %d, staff %d), %d families",
-		len(model.People), students, parents, staff, len(model.Families))
+		len(m.People), students, parents, staff, len(m.Families))
 }

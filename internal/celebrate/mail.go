@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 var brand = mail.Brand{Name: "Helios Celebrate", Color: "#0f4e54", Tagline: "the fun(d)raiser parties site"}
@@ -31,7 +31,7 @@ func partyEvent(p *Party, page string) (mail.Event, bool) {
 	return mail.Event{Start: start, End: until, AllDay: allDay, Summary: p.Title, Description: details + page, Location: where, URL: page}, true
 }
 
-func (a app) event(directory *who.Model, p *Party, purchaser, page string, to []string) (mail.Event, bool) {
+func (a app) event(directory *model.Directory, p *Party, purchaser, page string, to []string) (mail.Event, bool) {
 	e, ok := partyEvent(p, page)
 	if !ok {
 		return e, false
@@ -52,7 +52,7 @@ func calendarLink(p *Party, page string) string {
 	return e.GoogleLink()
 }
 
-func attendeeName(directory *who.Model, p *Party, email string) string {
+func attendeeName(directory *model.Directory, p *Party, email string) string {
 	for _, t := range p.Tickets {
 		if t.Email == email {
 			return ticketName(directory, map[string]string{"Email": t.Email, "Name": t.Name})
@@ -76,7 +76,7 @@ func (a app) letterFor(base string, p *Party) mail.Letter {
 	return l
 }
 
-func (a app) sendGoing(ctx context.Context, directory *who.Model, subject string, to []string, cc []string, l mail.Letter, p *Party, purchaser string) {
+func (a app) sendGoing(ctx context.Context, directory *model.Directory, subject string, to []string, cc []string, l mail.Letter, p *Party, purchaser string) {
 	replyTo := without(p.HostEmails, purchaser)
 	note := l.Message(subject, to, cc, replyTo)
 	mail.Post(ctx, a.mailer, note)
@@ -104,7 +104,7 @@ func without(list []string, drop string) []string {
 	return out
 }
 
-func firstName(directory *who.Model, email string) string {
+func firstName(directory *model.Directory, email string) string {
 	words := strings.Fields(nameOf(directory, email))
 	if len(words) == 0 {
 		return ""
@@ -236,7 +236,7 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 	a.mailWaitlistHosts(r, directory, p, purchaser, waiting, taken[0]["Note"], actor)
 }
 
-func (a app) mailWaitlistHosts(r *http.Request, directory *who.Model, p *Party, purchaser string, waiting int, note, actor string) {
+func (a app) mailWaitlistHosts(r *http.Request, directory *model.Directory, p *Party, purchaser string, waiting int, note, actor string) {
 	hosts := without(p.HostEmails, purchaser)
 	if len(hosts) == 0 {
 		return
@@ -291,7 +291,7 @@ func (a app) mailOffered(r *http.Request, p *Party, purchaser string, tickets []
 	a.sendGoing(r.Context(), directory, fmt.Sprintf("You're in: %d %s to %s", n, plural(n, "ticket"), p.Title), []string{purchaser}, without(p.HostEmails, purchaser), l, p, purchaser)
 }
 
-func hostNames(directory *who.Model, p *Party) string {
+func hostNames(directory *model.Directory, p *Party) string {
 	if p.Hosts != "" {
 		return p.Hosts
 	}

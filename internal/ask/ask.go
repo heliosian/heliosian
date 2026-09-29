@@ -23,14 +23,13 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/celebrate"
-	"heliosian/internal/config"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
+	"heliosian/internal/model"
 	"heliosian/internal/ratelimit"
 	"heliosian/internal/serve"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 const (
@@ -44,10 +43,10 @@ const (
 )
 
 type Sources struct {
-	Directory   func() *who.Model
-	Tags        func(owner string) []who.Tag
-	Lists       func(email string) []who.List
-	Settings    func() *config.Settings
+	Directory   func() *model.Directory
+	Tags        func(owner string) []model.Tag
+	Lists       func(email string) []model.MagicTag
+	Settings    func() *model.Config
 	Calendar    func() *when.Model
 	Linked      func(email string) []when.Linked
 	Team        func() *team.Model

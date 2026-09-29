@@ -6,17 +6,17 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/admins"
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/data"
 	"heliosian/internal/id"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
 type Cache struct {
 	*store.Store[*Model]
-	admins.List
+	model.AdminList
 }
 
 func spec(images blob.Checker) store.Spec[*Model] {
@@ -29,7 +29,7 @@ func spec(images blob.Checker) store.Spec[*Model] {
 			{Name: linksTab, Columns: LinkColumns, Key: []string{"Link ID"}},
 			{Name: settingsTab, Columns: SettingColumns, Key: []string{"Key"}},
 			{Name: notificationsTab, Columns: NotificationColumns, Key: []string{"Email"}},
-			admins.Spec,
+			model.AdminsTab,
 			{Name: redirectsTab, Columns: RedirectColumns, Key: []string{"Old"}},
 			{Name: id.AliasesTab, Columns: id.AliasColumns, Key: []string{id.AliasColumn}},
 		},
@@ -99,5 +99,5 @@ func NewCache(source data.Source, writer data.Writer, images blob.Checker, super
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, List: admins.New("team", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
+	return &Cache{Store: s, AdminList: model.NewAdminList("team", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
 }

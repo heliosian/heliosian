@@ -10,20 +10,19 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/birthday"
 	"heliosian/internal/celebrate"
-	"heliosian/internal/config"
 	"heliosian/internal/feedback"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 type Snapshot struct {
-	Config    *config.Settings
-	Who       *who.Model
-	Invites   *who.InviteModel
+	Config    *model.Config
+	Who       *model.Directory
+	Invites   *model.InviteTemplates
 	Team      *team.Model
 	Birthday  birthday.World
 	Celebrate *celebrate.Model
@@ -35,9 +34,9 @@ type Snapshot struct {
 }
 
 type caches struct {
-	settings  *config.Cache
-	who       *who.Cache
-	invites   *who.Invites
+	settings  *model.ConfigCache
+	who       *model.DirectoryCache
+	invites   *model.InviteTemplatesCache
 	team      *team.Cache
 	birthday  *birthday.Cache
 	celebrate *celebrate.Cache
@@ -76,7 +75,7 @@ func (s *Snapshot) at(q api.Query) *Snapshot {
 	return &scoped
 }
 
-func eventSources(directory *who.Model, parties *celebrate.Model, activities *team.Model) func(email string, now time.Time) []when.Linked {
+func eventSources(directory *model.Directory, parties *celebrate.Model, activities *team.Model) func(email string, now time.Time) []when.Linked {
 	return func(email string, now time.Time) []when.Linked {
 		family := when.FamilyOf(directory, email)
 		return append(parties.Linked(family, now), activities.Linked(family)...)
@@ -103,8 +102,8 @@ func resources(c caches, queue *store.Queue, birthdays []api.Type[birthday.World
 		Staged: c.snapshot,
 		Scope:  (*Snapshot).at,
 	})
-	for _, t := range who.Resources() {
-		reg.Add(api.Lift(t, func(s *Snapshot) *who.Model { return s.Who }))
+	for _, t := range model.DirectoryResources() {
+		reg.Add(api.Lift(t, func(s *Snapshot) *model.Directory { return s.Who }))
 	}
 	for _, t := range birthdays {
 		reg.Add(api.Lift(t, func(s *Snapshot) birthday.World { return s.Birthday }))

@@ -8,17 +8,16 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
-	"heliosian/internal/filter"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
 type Cache struct {
 	*store.Store[*Model]
-	admins.List
-	sources func() filter.Sources
+	model.AdminList
+	sources func() model.AudienceSources
 }
 
 func spec(images blob.Checker) store.Spec[*Model] {
@@ -27,7 +26,7 @@ func spec(images blob.Checker) store.Spec[*Model] {
 		Tabs: []store.Tab{
 			{Name: categoriesTab, Columns: categoryColumns, Key: []string{"Category ID"}, Cascade: dropCategoryAudience},
 			{Name: linksTab, Columns: linkColumns, Key: []string{"Link ID"}, Cascade: dropLinkAudience},
-			admins.Spec,
+			model.AdminsTab,
 			{Name: visibilityTab, Columns: visibilityColumns, Key: []string{"App"}},
 			{Name: audienceTab, Columns: AudienceColumns, Key: AudienceColumns},
 			{Name: widgetsTab, Columns: widgetColumns, Key: []string{"Widget"}},
@@ -60,20 +59,20 @@ func dropCategoryAudience(_ store.Tables, before, after store.Row) []store.Op {
 	return dropAudience(thingCategory+before["Category ID"], before, after)
 }
 
-func NewCache(source data.Source, writer data.Writer, images blob.Checker, superAdmins func() []string, sources func() filter.Sources, queue *store.Queue) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, images blob.Checker, superAdmins func() []string, sources func() model.AudienceSources, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec(images), source, writer, queue)
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, List: admins.New("home", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit), sources: sources}, nil
+	return &Cache{Store: s, AdminList: model.NewAdminList("home", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit), sources: sources}, nil
 }
 
-func (c *Cache) includes(rules []filter.Rule, email string) bool {
-	return len(rules) > 0 && filter.OnList(filter.List{Rules: rules, Editors: c.Admins()}, c.sources(), email)
+func (c *Cache) includes(rules []model.Rule, email string) bool {
+	return len(rules) > 0 && model.Audience{Rules: rules, Editors: c.Admins()}.Includes(c.sources(), email)
 }
 
 func (c *Cache) CategoriesFor(v access.Actor) []Category {
-	forMe := func(rules []filter.Rule) bool {
+	forMe := func(rules []model.Rule) bool {
 		return len(rules) == 0 || c.includes(rules, v.Email)
 	}
 	admin := v.May(Configure)
@@ -84,7 +83,7 @@ func (c *Cache) CategoriesFor(v access.Actor) []Category {
 		if !sectionMine && !admin {
 			continue
 		}
-		shown := Category{ID: category.ID, Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual, Rules: []filter.Rule{}}
+		shown := Category{ID: category.ID, Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual, Rules: []model.Rule{}}
 		if admin {
 			shown.Rules = category.Rules
 		}
@@ -102,7 +101,7 @@ func (c *Cache) CategoriesFor(v access.Actor) []Category {
 				link.ForMe = &no
 			}
 			if !admin {
-				link.Rules = []filter.Rule{}
+				link.Rules = []model.Rule{}
 			}
 			shown.Links = append(shown.Links, link)
 		}
@@ -113,9 +112,9 @@ func (c *Cache) CategoriesFor(v access.Actor) []Category {
 
 type AppVisibility struct {
 	App
-	Visibility string        `json:"visibility"`
-	Emails     []string      `json:"emails"`
-	Rules      []filter.Rule `json:"rules"`
+	Visibility string       `json:"visibility"`
+	Emails     []string     `json:"emails"`
+	Rules      []model.Rule `json:"rules"`
 }
 
 func visibilityOf(model *Model, app App) Visibility {

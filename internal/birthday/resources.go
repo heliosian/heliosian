@@ -11,24 +11,24 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/api"
 	"heliosian/internal/id"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
-	"heliosian/internal/who"
 )
 
 const host = "birthday"
 
 type World struct {
 	Model     *Model
-	Directory *who.Model
+	Directory *model.Directory
 	emails    map[string]string
 	keys      map[string]string
 	order     []string
 }
 
-func NewWorld(m *Model, d *who.Model) World {
+func NewWorld(m *Model, d *model.Directory) World {
 	w := World{Model: m, Directory: d, emails: map[string]string{}, keys: map[string]string{}}
-	add := func(p *who.Person, email string) {
+	add := func(p *model.Person, email string) {
 		key := m.birthdayID(p.Email)
 		if _, ok := w.emails[key]; ok {
 			return
@@ -57,7 +57,7 @@ func (w World) name(key string) string {
 	return w.person(w.emails[key]).FullName
 }
 
-func (w World) person(email string) *who.Person {
+func (w World) person(email string) *model.Person {
 	return w.Directory.Person(w.Directory.Resolve(email))
 }
 

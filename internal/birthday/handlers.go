@@ -8,15 +8,14 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
 	"heliosian/internal/claude"
 	"heliosian/internal/describe"
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 const shell = "web/birthday/index.html"
@@ -28,7 +27,7 @@ var pages = []string{
 type app struct {
 	cache     *Cache
 	queue     *store.Queue
-	directory func() *who.Model
+	directory func() *model.Directory
 	describer *describe.Describer
 	mailer    *mail.Mailgun
 	base      string
@@ -43,7 +42,7 @@ type charityLookup struct {
 type Deps struct {
 	Cache     *Cache
 	Queue     *store.Queue
-	Directory func() *who.Model
+	Directory func() *model.Directory
 	Describer *describe.Describer
 	Mailer    *mail.Mailgun
 	Base      string
@@ -68,7 +67,7 @@ func Register(mux *http.ServeMux, d Deps) {
 	}
 	mux.Handle("GET /open/share/about.png", d.About)
 	mux.HandleFunc("POST /api/birthday/charity/describe", serve.JSON(a.describeCharity))
-	admins.Register(mux, a.cache.List, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
+	model.RegisterAdmins(mux, a.cache.AdminList, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {

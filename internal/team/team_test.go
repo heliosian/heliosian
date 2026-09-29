@@ -12,15 +12,13 @@ import (
 	"testing"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
 	"heliosian/internal/blob"
-	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 	"heliosian/internal/testkit/mailtest"
-	"heliosian/internal/who"
 )
 
 const (
@@ -35,8 +33,8 @@ const (
 var (
 	sheet     *data.Dir
 	queue     *store.Queue
-	directory *who.Model
-	settings  = &config.Settings{}
+	directory *model.Directory
+	settings  = &model.Config{}
 )
 
 func viewerOf(email string, admin bool) access.Actor {
@@ -55,7 +53,7 @@ func serveWith(t *testing.T, mailer *mail.Mailgun) (*Cache, *http.ServeMux) {
 	sheet = &data.Dir{Root: "sampledata"}
 	queue = store.NewQueue()
 	var err error
-	if directory, err = who.LoadModel(sheet, nil, testkit.None, []byte("test")); err != nil {
+	if directory, err = model.LoadDirectory(sheet, nil, testkit.None, []byte("test")); err != nil {
 		t.Fatal(err)
 	}
 	cache, err := NewCache(sheet, sheet, bundled, func() []string { return []string{admin} }, queue)
@@ -66,8 +64,8 @@ func serveWith(t *testing.T, mailer *mail.Mailgun) (*Cache, *http.ServeMux) {
 	Register(mux, Deps{
 		Cache:     cache,
 		Images:    blob.NewImages(blob.New(blob.NewMemoryBucket()), "team"),
-		Directory: func() *who.Model { return directory },
-		Settings:  func() *config.Settings { return settings },
+		Directory: func() *model.Directory { return directory },
+		Settings:  func() *model.Config { return settings },
 		Mailer:    mailer,
 		Style:     testStyle,
 	})
@@ -83,7 +81,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 
 func tables(t *testing.T) store.Tables {
 	t.Helper()
-	return testkit.Tables(t, sheet, queue, appName, categoriesTab, activitiesTab, volunteersTab, linksTab, settingsTab, admins.Tab, redirectsTab)
+	return testkit.Tables(t, sheet, queue, appName, categoriesTab, activitiesTab, volunteersTab, linksTab, settingsTab, model.AdminsTab.Name, redirectsTab)
 }
 
 func changeLog(t *testing.T) []store.Row {

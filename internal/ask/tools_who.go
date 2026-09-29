@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	"heliosian/internal/model"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 type card struct {
@@ -28,7 +28,7 @@ type card struct {
 	Link        string   `json:"link"`
 }
 
-func (v *viewer) card(p *who.Person) card {
+func (v *viewer) card(p *model.Person) card {
 	c := card{Name: p.FullName, Roles: rolesOf(p), Pronouns: p.Pronouns, Grade: p.Grade, Classroom: p.Classroom, Crew: p.Crew, JobTitle: p.JobTitle, Department: p.Department, Phone: p.Phone, NewToHelios: p.IsNew, Link: whoLink(p.Email)}
 	if !p.EmailMasked {
 		c.Email = p.Email
@@ -59,7 +59,7 @@ type familyCard struct {
 
 func (v *viewer) familyCard(key string) familyCard {
 	family := v.directory.Families[key]
-	f := familyCard{Name: family.Name, Address: family.Address, Phone: family.Phone, Adults: []card{}, Kids: []card{}, Caption: family.PhotoCaption, Link: whoBase + who.FamilyPath(key)}
+	f := familyCard{Name: family.Name, Address: family.Address, Phone: family.Phone, Adults: []card{}, Kids: []card{}, Caption: family.PhotoCaption, Link: whoBase + model.FamilyPath(key)}
 	adults, kids := v.directory.Members(key)
 	for _, p := range adults {
 		f.Adults = append(f.Adults, v.card(p))
@@ -90,13 +90,13 @@ func (v *viewer) familyKeys(email, name string) []string {
 	return keys
 }
 
-func (v *viewer) findByEmailOrName(email, name string) []*who.Person {
+func (v *viewer) findByEmailOrName(email, name string) []*model.Person {
 	if email = strings.ToLower(strings.TrimSpace(email)); email != "" {
 		if p := v.directory.Person(v.directory.Resolve(email)); p != nil {
-			return []*who.Person{p}
+			return []*model.Person{p}
 		}
 	}
-	out := []*who.Person{}
+	out := []*model.Person{}
 	if name = strings.TrimSpace(name); name == "" {
 		return out
 	}
@@ -156,7 +156,7 @@ var findPeople = tool{
 	},
 }
 
-func (v *viewer) matches(p *who.Person, query, role, grade, classroom, department string) bool {
+func (v *viewer) matches(p *model.Person, query, role, grade, classroom, department string) bool {
 	if query != "" && !contains(p.FullName, query) && !contains(p.Email, query) && !contains(p.JobTitle, query) && !contains(p.PreferredName, query) {
 		return false
 	}
@@ -186,8 +186,8 @@ func (v *viewer) matches(p *who.Person, query, role, grade, classroom, departmen
 	return true
 }
 
-func (v *viewer) facets(p *who.Person, classroom bool) []string {
-	pick := func(q *who.Person) string {
+func (v *viewer) facets(p *model.Person, classroom bool) []string {
+	pick := func(q *model.Person) string {
 		if classroom {
 			return q.Classroom
 		}
@@ -287,7 +287,7 @@ var getClassroom = tool{
 		if want == "" {
 			out := []map[string]any{}
 			for _, c := range v.calendar.Roster.Classrooms {
-				out = append(out, map[string]any{"name": c.Name, "band": c.Band, "grades": c.Grades, "teachers": v.classroomTeachers(c.Name), "students": v.count(c.Name), "link": whoBase + who.ClassroomPath(c.Name)})
+				out = append(out, map[string]any{"name": c.Name, "band": c.Band, "grades": c.Grades, "teachers": v.classroomTeachers(c.Name), "students": v.count(c.Name), "link": whoBase + model.ClassroomPath(c.Name)})
 			}
 			return map[string]any{"classrooms": out}, nil
 		}
@@ -325,7 +325,7 @@ var getClassroom = tool{
 		slices.Sort(roomParents)
 		return map[string]any{
 			"name": c.Name, "band": c.Band, "grades": c.Grades, "teachers": v.classroomTeachers(c.Name), "crews": crews, "students": others,
-			"roomParents": roomParents, "link": whoBase + who.ClassroomPath(c.Name),
+			"roomParents": roomParents, "link": whoBase + model.ClassroomPath(c.Name),
 		}, nil
 	},
 }

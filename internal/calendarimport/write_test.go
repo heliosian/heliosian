@@ -6,17 +6,17 @@ import (
 	"testing"
 
 	"heliosian/internal/data"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 	"heliosian/internal/testkit/sample"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 func sampleCache(t *testing.T) (*data.Dir, *when.Cache) {
 	t.Helper()
 	sheet := &data.Dir{Root: "../../sampledata"}
-	directory, err := who.LoadModel(sheet, nil, testkit.None, []byte("sample"))
+	directory, err := model.LoadDirectory(sheet, nil, testkit.None, []byte("sample"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
 		rows = append(rows, row)
 	}
 	rows = append(rows, map[string]string{"Key": "a13@sample", "Event ID": "gev0000000013", "Start": "2027-04-01", "End": "2027-04-01", "Title": "Spring Picnic", "Updated": "2026-09-01 09:00", "Sequence": "0"})
-	jays, community := who.ClassroomID([]byte("sample"), "Jays"), "tag0000000105"
+	jays, community := model.ClassroomID([]byte("sample"), "Jays"), "tag0000000105"
 	enriched := append(slices.Clone(enrichment), map[string]string{"Event ID": "gev0000000013", "Tags": jays + ", " + community, "Input Hash": "h", "Model": modelName, "Enriched": "2026-09-01"})
 	sync := []tabSync{
 		{when.GoogleTab, when.GoogleColumns, rows, google, "Key", true},

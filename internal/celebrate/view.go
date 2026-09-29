@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/who"
+	"heliosian/internal/model"
 )
 
 type Person struct {
@@ -30,8 +30,8 @@ type Person struct {
 	Children     []Person `json:"children,omitempty"`
 }
 
-func personOf(directory *who.Model, p *who.Person) Person {
-	flat := func(p *who.Person) Person {
+func personOf(directory *model.Directory, p *model.Person) Person {
+	flat := func(p *model.Person) Person {
 		return Person{
 			Email: p.Email, Name: p.FullName, PhotoURL: directory.HeroPhoto(p.Email), IsStudent: p.IsStudent, IsParent: p.IsParent,
 			IsStaff: p.IsStaff, Grade: p.Grade, JobTitle: p.JobTitle, Title: p.Words(),
@@ -62,7 +62,7 @@ func DisplayName(email string) string {
 
 type viewer struct {
 	access.Actor
-	directory *who.Model
+	directory *model.Directory
 	rsvps     RSVPLookup
 }
 
@@ -80,7 +80,7 @@ const (
 	KindGuest   = "Guest"
 )
 
-func kindOf(p *who.Person) string {
+func kindOf(p *model.Person) string {
 	switch {
 	case p == nil:
 		return KindGuest
@@ -94,7 +94,7 @@ func kindOf(p *who.Person) string {
 	return KindGuest
 }
 
-func (p *Party) Admits(person *who.Person) bool {
+func (p *Party) Admits(person *model.Person) bool {
 	if person == nil {
 		return true
 	}
@@ -172,7 +172,7 @@ type View struct {
 	ImageSearch  bool           `json:"imageSearch"`
 }
 
-func (v viewer) line(t Ticket, person *who.Person, purchaserName string) string {
+func (v viewer) line(t Ticket, person *model.Person, purchaserName string) string {
 	switch kindOf(person) {
 	case KindStudent:
 		return person.Grade
@@ -200,7 +200,7 @@ func (v viewer) line(t Ticket, person *who.Person, purchaserName string) string 
 }
 
 func (v viewer) attendee(t Ticket, sees bool) Attendee {
-	var person *who.Person
+	var person *model.Person
 	name := t.Name
 	if t.Email != "" {
 		person = v.directory.Person(v.directory.Resolve(t.Email))
@@ -255,11 +255,11 @@ func (v viewer) party(raw *Party, now time.Time) PartyView {
 	return pv
 }
 
-func Render(model *Model, directory *who.Model, as access.Actor, now time.Time) View {
+func Render(model *Model, directory *model.Directory, as access.Actor, now time.Time) View {
 	return RenderWith(model, directory, nil, as, now)
 }
 
-func RenderWith(model *Model, directory *who.Model, rsvps RSVPLookup, as access.Actor, now time.Time) View {
+func RenderWith(model *Model, directory *model.Directory, rsvps RSVPLookup, as access.Actor, now time.Time) View {
 	v := viewer{Actor: as, directory: directory, rsvps: rsvps}
 	email, admin := as.Email, as.May(SeeAll)
 	me := v.person(email)
@@ -301,7 +301,7 @@ func RenderWith(model *Model, directory *who.Model, rsvps RSVPLookup, as access.
 	return view
 }
 
-func Billable(directory *who.Model, viewer string) []string {
+func Billable(directory *model.Directory, viewer string) []string {
 	out := []string{}
 	if me := directory.Person(viewer); me == nil || !me.IsStudent {
 		out = append(out, viewer)

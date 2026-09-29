@@ -11,9 +11,9 @@ import (
 
 	"heliosian/internal/artifacts"
 	"heliosian/internal/loop"
+	"heliosian/internal/model"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 //go:embed prompt.md
@@ -64,11 +64,11 @@ func linkExamples(v *viewer) string {
 func (v *viewer) exampleLinks() []string {
 	out := []string{}
 	if family, ok := v.directory.FamilyOf(v.email); ok {
-		out = append(out, whoBase+who.FamilyPath(family.Key))
+		out = append(out, whoBase+model.FamilyPath(family.Key))
 		if _, kids := v.directory.Members(family.Key); len(kids) > 0 {
 			out = append(out, whoLink(kids[0].Email))
 			if kids[0].Classroom != "" {
-				out = append(out, whoBase+who.ClassroomPath(kids[0].Classroom))
+				out = append(out, whoBase+model.ClassroomPath(kids[0].Classroom))
 			}
 		}
 	}
@@ -158,7 +158,7 @@ func lingo(v *viewer) string {
 	}
 	b.WriteString("\nClassrooms (its link; band; the grades of its students; its teachers; its crews):\n")
 	for _, c := range v.calendar.Roster.Classrooms {
-		line := fmt.Sprintf("- %s (%s; %s; %s", c.Name, whoBase+who.ClassroomPath(c.Name), c.Band, strings.Join(c.Grades, ", "))
+		line := fmt.Sprintf("- %s (%s; %s; %s", c.Name, whoBase+model.ClassroomPath(c.Name), c.Band, strings.Join(c.Grades, ", "))
 		if teachers := v.classroomTeachers(c.Name); len(teachers) > 0 {
 			line += "; teachers " + strings.Join(teachers, ", ")
 		}
@@ -259,14 +259,14 @@ func viewerBlock(v *viewer) string {
 	if len(tags) > 0 {
 		names := []string{}
 		for _, t := range tags {
-			names = append(names, fmt.Sprintf("%s (%d, %s)", t.Name, len(t.People), whoBase+who.TagPath(t.ID)))
+			names = append(names, fmt.Sprintf("%s (%d, %s)", t.Name, len(t.People), whoBase+model.TagPath(t.ID)))
 		}
 		fmt.Fprintf(b, "\nTheir own tags in Helios Who?: %s.\n", strings.Join(names, ", "))
 	}
 	return b.String()
 }
 
-func roleWords(p *who.Person) string {
+func roleWords(p *model.Person) string {
 	roles := []string{}
 	if p.IsStaff {
 		roles = append(roles, "a staff member")
@@ -283,7 +283,7 @@ func roleWords(p *who.Person) string {
 	return strings.Join(roles, " and ")
 }
 
-func placeWords(v *viewer, p *who.Person) string {
+func placeWords(v *viewer, p *model.Person) string {
 	parts := []string{}
 	if p.Grade != "" {
 		parts = append(parts, p.Grade)
@@ -305,13 +305,13 @@ func placeWords(v *viewer, p *who.Person) string {
 
 func listKind(kind string) string {
 	switch kind {
-	case who.ListParty:
+	case model.MagicTagParty:
 		return "hosts the party"
-	case who.ListActivity:
+	case model.MagicTagActivity:
 		return "co-chairs"
-	case who.ListRoom:
+	case model.MagicTagRoom:
 		return "room parent list"
-	case who.ListGroup:
+	case model.MagicTagGroup:
 		return "manages the Loop email list"
 	}
 	return kind
@@ -321,7 +321,7 @@ func (v *viewer) starters() []string {
 	out := []string{"What's happening at school this week?", "When is the next day off?"}
 	if v.me != nil {
 		_, kids := v.directory.Household(v.me.Email)
-		if i := slices.IndexFunc(kids, func(k *who.Person) bool { return k.Classroom != "" }); i >= 0 {
+		if i := slices.IndexFunc(kids, func(k *model.Person) bool { return k.Classroom != "" }); i >= 0 {
 			out = append(out, fmt.Sprintf("Who teaches %s in %s?", when.FirstWord(kids[i].FullName), kids[i].Classroom))
 		}
 	}

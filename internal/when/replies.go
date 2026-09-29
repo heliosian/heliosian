@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
-	"heliosian/internal/config"
 	"heliosian/internal/mail"
 )
 
@@ -82,9 +81,9 @@ func (a app) replies(w http.ResponseWriter, r *http.Request) {
 }
 
 func addressed(replyTo string, recipients []string) (string, bool) {
-	want := config.NormalizeEmail(mail.AddressOf(replyTo))
+	want := mail.Normalize(mail.AddressOf(replyTo))
 	for _, r := range recipients {
-		local, domain, _ := strings.Cut(config.NormalizeEmail(mail.AddressOf(r)), "@")
+		local, domain, _ := strings.Cut(mail.Normalize(mail.AddressOf(r)), "@")
 		base, tag, _ := strings.Cut(local, "+")
 		if base+"@"+domain == want {
 			return tag, true
@@ -95,7 +94,7 @@ func addressed(replyTo string, recipients []string) (string, bool) {
 
 func (a app) replyToken(id, email string) string {
 	mac := hmac.New(sha256.New, a.mail.Key)
-	mac.Write([]byte(id + "|" + config.NormalizeEmail(email)))
+	mac.Write([]byte(id + "|" + mail.Normalize(email)))
 	return hex.EncodeToString(mac.Sum(nil)[:16])
 }
 
@@ -111,13 +110,13 @@ func (a app) takeReply(ctx context.Context, reply Reply, from, tag string) error
 	default:
 		return fmt.Errorf("standing %q changes nothing", reply.Standing)
 	}
-	email := config.NormalizeEmail(reply.Email)
+	email := mail.Normalize(reply.Email)
 	uid := idOfUID(reply.UID)
 	id := a.canonical(uid)
 	if a.directory().Person(email) == nil && a.model().InviteOf(id, email) == nil {
 		return fmt.Errorf("attendee is not in the directory")
 	}
-	if sender := config.NormalizeEmail(mail.AddressOf(from)); sender != email {
+	if sender := mail.Normalize(mail.AddressOf(from)); sender != email {
 		return fmt.Errorf("sent by %s, not the attendee", sender)
 	}
 	if !hmac.Equal([]byte(tag), []byte(a.replyToken(uid, email))) {

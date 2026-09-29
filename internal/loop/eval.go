@@ -4,22 +4,22 @@ import (
 	"slices"
 
 	"heliosian/internal/access"
-	"heliosian/internal/filter"
+	"heliosian/internal/model"
 )
 
 type (
-	Rule    = filter.Rule
-	Sources = filter.Sources
-	Reason  = filter.Reason
+	Rule    = model.Rule
+	Sources = model.AudienceSources
+	Reason  = model.Reason
 )
 
 const (
-	KindInclude = filter.KindInclude
-	KindExclude = filter.KindExclude
+	KindInclude = model.RuleInclude
+	KindExclude = model.RuleExclude
 )
 
-func list(g Group) filter.List {
-	l := filter.List{Rules: g.Rules, Editors: g.Managers}
+func list(g Group) model.Audience {
+	l := model.Audience{Rules: g.Rules, Editors: g.Managers}
 	for _, a := range g.Additions {
 		l.Additions = append(l.Additions, a.Email)
 	}
@@ -30,15 +30,15 @@ func list(g Group) filter.List {
 }
 
 func Reasons(g Group, s Sources) map[string][]Reason {
-	return filter.Reasons(list(g), s)
+	return list(g).Reasons(s)
 }
 
 func RuleCounts(g Group, s Sources) []int {
-	return filter.RuleCounts(list(g), s)
+	return list(g).RuleCounts(s)
 }
 
 func Members(g Group, s Sources) []string {
-	return filter.Members(list(g), s)
+	return list(g).Members(s)
 }
 
 var (
@@ -102,6 +102,6 @@ func (g Group) PostableBy(email string, reply bool, s Sources) bool {
 func OnList(g Group, s Sources, email string) bool {
 	l := list(g)
 	l.Excluded = nil
-	_, ok := filter.Reasons(l, s)[email]
+	_, ok := l.Reasons(s)[email]
 	return ok
 }

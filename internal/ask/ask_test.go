@@ -24,18 +24,16 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/claude"
-	"heliosian/internal/config"
 	"heliosian/internal/data"
-	"heliosian/internal/filter"
 	"heliosian/internal/home"
 	"heliosian/internal/intercept"
 	"heliosian/internal/loop"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
 	"heliosian/internal/testkit"
 	"heliosian/internal/testkit/sample"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 const jordan = "jordan.whitfield@heliosschool.org"
@@ -45,7 +43,7 @@ var sampleNow = time.Date(2026, 9, 12, 9, 0, 0, 0, when.Location)
 func sampleSources(t *testing.T) Sources {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	directory, err := who.LoadModel(dir, testkit.All, testkit.All, []byte("sample"))
+	directory, err := model.LoadDirectory(dir, testkit.All, testkit.All, []byte("sample"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +64,7 @@ func sampleSources(t *testing.T) Sources {
 		t.Fatal(err)
 	}
 	loopModel := loopCache.Model()
-	homeCache, err := home.NewCache(dir, dir, testkit.All, func() []string { return nil }, func() filter.Sources { return filter.Sources{Directory: directory} }, queue)
+	homeCache, err := home.NewCache(dir, dir, testkit.All, func() []string { return nil }, func() model.AudienceSources { return model.AudienceSources{Directory: directory} }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,19 +91,19 @@ func sampleSources(t *testing.T) Sources {
 	}
 	documents := artifactsCache.Model()
 	tags := directory.Tags
-	lists := directory.RoomParentLists
+	lists := directory.RoomParentTags
 	return Sources{
-		Directory: func() *who.Model { return directory },
+		Directory: func() *model.Directory { return directory },
 		Tags:      tags,
 		Lists:     lists,
-		Settings:  func() *config.Settings { return &config.Settings{} },
+		Settings:  func() *model.Config { return &model.Config{} },
 		Calendar:  func() *when.Model { return calendarModel },
 		Linked:    func(string) []when.Linked { return nil },
 		Team:      func() *team.Model { return teamModel },
 		Celebrate: func() *celebrate.Model { return celebrateModel },
 		Loop:      func() *loop.Model { return loopModel },
 		LoopSources: func() loop.Sources {
-			return loop.Sources{Directory: directory, Tags: tags, Lists: lists, Shared: directory.SharedTags}
+			return loop.Sources{Directory: directory, Tags: tags, MagicTags: lists, Shared: directory.SharedTags}
 		},
 		Links:     homeCache.CategoriesFor,
 		Artifacts: func() *artifacts.Model { return documents },

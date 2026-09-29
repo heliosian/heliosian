@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/config"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
@@ -27,7 +26,7 @@ const (
 
 func (b *builder) bounces(rows []store.Row) {
 	for _, row := range rows {
-		email := config.NormalizeEmail(row["Email"])
+		email := mail.Normalize(row["Email"])
 		if email == "" {
 			continue
 		}
@@ -76,7 +75,7 @@ func (a app) deliveryEvents(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	email := config.NormalizeEmail(mail.AddressOf(d.Recipient))
+	email := mail.Normalize(mail.AddressOf(d.Recipient))
 	if email == "" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -106,7 +105,7 @@ type addressBody struct {
 }
 
 func (a app) moveAddress(ctx context.Context, actor access.Actor, old, to, name string) {
-	old, to = config.NormalizeEmail(old), config.NormalizeEmail(to)
+	old, to = mail.Normalize(old), mail.Normalize(to)
 	ops, resend := a.moveAddressOps(actor, old, to, name)
 	if len(ops) == 0 {
 		return

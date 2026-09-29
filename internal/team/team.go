@@ -9,15 +9,13 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
 	"heliosian/internal/blob"
-	"heliosian/internal/config"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 const shell = "web/team/index.html"
@@ -29,8 +27,8 @@ var pages = []string{
 type app struct {
 	cache     *Cache
 	images    blob.Images
-	directory func() *who.Model
-	settings  func() *config.Settings
+	directory func() *model.Directory
+	settings  func() *model.Config
 	search    imagesearch.Search
 	mailer    *mail.Mailgun
 	rsvps     RSVPLookup
@@ -41,8 +39,8 @@ type app struct {
 type Deps struct {
 	Cache     *Cache
 	Images    blob.Images
-	Directory func() *who.Model
-	Settings  func() *config.Settings
+	Directory func() *model.Directory
+	Settings  func() *model.Config
 	Search    imagesearch.Search
 	Mailer    *mail.Mailgun
 	RSVPs     RSVPLookup
@@ -74,7 +72,7 @@ func Register(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("POST /api/team/copy", serve.JSON(a.copyActivity))
 	mux.HandleFunc("POST /api/team/settings", serve.JSON(a.saveSettings))
 	mux.HandleFunc("POST /api/team/notify", serve.JSON(a.saveNotify))
-	admins.Register(mux, a.cache.List, a.actor, a.adminState)
+	model.RegisterAdmins(mux, a.cache.AdminList, a.actor, a.adminState)
 	mux.HandleFunc("POST /api/team/redirect", serve.JSON(a.saveRedirect))
 	mux.HandleFunc("DELETE /api/team/redirect", serve.JSON(a.deleteRedirect))
 }

@@ -1,6 +1,6 @@
 # Config sheet
 
-The `Config` spreadsheet in the community shared drive holds the platform settings every app shares: who the super admins are, and the handful of values an admin can change without a deploy. `CONFIG_SHEET` names it, and `tools/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Config`. The tabs, keys, and validation rules are in `internal/config`; this file carries only what reading that code cannot tell you.
+The `Config` spreadsheet in the community shared drive holds the platform settings every app shares: who the super admins are, and the handful of values an admin can change without a deploy. `CONFIG_SHEET` names it, and `tools/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Config`. The tabs, keys, and validation rules are in `internal/model/config.go`; this file carries only what reading that code cannot tell you.
 
 ## Tabs
 
@@ -13,7 +13,7 @@ The `Config` spreadsheet in the community shared drive holds the platform settin
 
 ## Where it is read
 
-`internal/config` holds the sheet as a store (`docs/storage.md`), re-read every five minutes like every other sheet, and serves it at `/api/config` to every signed-in user. No app holds config on its server side: the directory's client fetches `/api/config` beside its model and looks colors up by grade and classroom name; the servers consult the config cache only for the super admin list, which gates admin tools in every app and is never serialized to anyone but a super admin (`/api/config/super-admins`), and for the sign-out times, which every app's sign-in (`auth.Sessions`, the cache itself) checks on every request and which are serialized to nobody.
+`model.ConfigCache` holds the sheet as a store (`docs/storage.md`), re-read every five minutes like every other sheet, and `model.RegisterConfig` (`internal/model/config_routes.go`) serves it at `/api/config` to every signed-in user. No app holds config on its server side: the directory's client fetches `/api/config` beside its model and looks colors up by grade and classroom name; the servers consult the config cache only for the super admin list, which gates admin tools in every app and is never serialized to anyone but a super admin (`/api/config/super-admins`), and for the sign-out times, which every app's sign-in (`auth.Sessions`, the cache itself) checks on every request and which are serialized to nobody.
 
 ## Editing
 

@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"heliosian/internal/who"
+	"heliosian/internal/model"
 )
 
 var allFamilies = []string{"parentsandstaff", "parentsonly", "parentsandstudents", "community", "parents", "newstudentfamilies", "new.parents"}
@@ -20,7 +20,7 @@ type SchoolEmail struct {
 	Points   []string `json:"points"`
 }
 
-func (m *Model) SchoolMail(people *who.Model, email, since string) []SchoolEmail {
+func (m *Model) SchoolMail(people *model.Directory, email, since string) []SchoolEmail {
 	seats, grades := seatsOf(people, email), people.GradeNames()
 	out := []SchoolEmail{}
 	for _, d := range m.Documents {
@@ -43,10 +43,10 @@ type seat struct {
 	room, grade string
 }
 
-func seatsOf(m *who.Model, email string) []seat {
+func seatsOf(m *model.Directory, email string) []seat {
 	out := []seat{}
 	add := func(room, grade string) {
-		if s := (seat{who.ClassroomSlug(room), grade}); s.room != "" && !slices.Contains(out, s) {
+		if s := (seat{model.ClassroomSlug(room), grade}); s.room != "" && !slices.Contains(out, s) {
 			out = append(out, s)
 		}
 	}
@@ -78,7 +78,7 @@ func forClassrooms(d *Document, seats []seat, audience string, grades []string) 
 			if slices.Contains(grades, n) {
 				toGrades = append(toGrades, n)
 			} else {
-				rooms = append(rooms, who.ClassroomSlug(n))
+				rooms = append(rooms, model.ClassroomSlug(n))
 			}
 		}
 		for _, s := range seats {

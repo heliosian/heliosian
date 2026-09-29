@@ -6,16 +6,15 @@ import (
 	"testing"
 
 	"heliosian/internal/data"
-	"heliosian/internal/filter"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
-	"heliosian/internal/who"
 )
 
 func TestRenamingATagKeepsTheInviteGroupsThatNameIt(t *testing.T) {
 	mux, cache, _, sources := invitesAppWith(t)
 	dir := &data.Dir{Root: "sampledata"}
-	directory, err := who.NewCache(dir, dir, nil, testkit.None, store.NewQueue(), sampleKey, func() []string { return nil })
+	directory, err := model.NewDirectoryCache(dir, dir, nil, testkit.None, store.NewQueue(), sampleKey, func() []string { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +22,7 @@ func TestRenamingATagKeepsTheInviteGroupsThatNameIt(t *testing.T) {
 	jordan := as(host, mux)
 	call(t, jordan, "POST", "/api/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
 	meetup := idOf(t, cache, "meetup")
-	key := filter.TagKey(carpoolID)
+	key := model.TagKey(carpoolID)
 	rec := call(t, jordan, "POST", "/api/invite-groups", `{"id":"meetup","rule":{"tags":["`+key+`"]}}`)
 	made := struct{ Group string }{created(t, rec)}
 	if rec.Code != 200 || len(cache.Model().Invites[meetup]) != 2 {
@@ -31,7 +30,7 @@ func TestRenamingATagKeepsTheInviteGroupsThatNameIt(t *testing.T) {
 	}
 
 	tags := http.NewServeMux()
-	who.RegisterTags(tags, directory)
+	model.RegisterDirectory(tags, model.DirectoryRoutes{Cache: directory})
 	if rec := testkit.Form(t, tags, host, "/api/directory/tag-rename", url.Values{"tag": {carpoolID}, "name": {"Rideshare"}}); rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}

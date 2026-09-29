@@ -12,13 +12,11 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/config"
-	"heliosian/internal/filter"
 	"heliosian/internal/id"
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit/mailtest"
-	"heliosian/internal/who"
 )
 
 const (
@@ -36,14 +34,14 @@ const (
 	bookClubID = "dtg0000000003"
 )
 
-var testDirectory *who.Model
+var testDirectory *model.Directory
 
-func directoryOf() *who.Model { return testDirectory }
+func directoryOf() *model.Directory { return testDirectory }
 
-func noSettings() *config.Settings { return &config.Settings{} }
+func noSettings() *model.Config { return &model.Config{} }
 
 func testLists(string) []List {
-	return []List{{Key: filter.TagKey(carpoolID), Name: "Carpool", Kind: "tag", People: []string{mia, robin}}, {Key: "activity:e1", Name: "Book Fair", Kind: "activity", People: []string{mia, robin, ella}}}
+	return []List{{Key: model.TagKey(carpoolID), Name: "Carpool", Kind: "tag", People: []string{mia, robin}}, {Key: "activity:e1", Name: "Book Fair", Kind: "activity", People: []string{mia, robin, ella}}}
 }
 
 var (
@@ -130,7 +128,7 @@ func idOf(t *testing.T, cache *Cache, address string) string {
 }
 
 type sampleSources struct {
-	model  *who.Model
+	model  *model.Directory
 	mu     sync.Mutex
 	extra  map[string][]string
 	tagged map[string][]string
@@ -148,10 +146,10 @@ func (s *sampleSources) list(key string, people ...string) {
 	s.extra = map[string][]string{key: people}
 }
 
-func (s *sampleSources) sources() filter.Sources {
-	return filter.Sources{
+func (s *sampleSources) sources() model.AudienceSources {
+	return model.AudienceSources{
 		Directory: s.model,
-		Tags: func(owner string) []who.Tag {
+		Tags: func(owner string) []model.Tag {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			tags := s.model.Tags(owner)
@@ -160,12 +158,12 @@ func (s *sampleSources) sources() filter.Sources {
 			}
 			return tags
 		},
-		Lists: func(string) []who.List {
+		MagicTags: func(string) []model.MagicTag {
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			out := []who.List{}
+			out := []model.MagicTag{}
 			for key, people := range s.extra {
-				out = append(out, who.List{Key: key, Name: key, People: people})
+				out = append(out, model.MagicTag{Key: key, Name: key, People: people})
 			}
 			return out
 		},
@@ -491,7 +489,7 @@ func TestPartyInvitation(t *testing.T) {
 	mux, cache, kept := invitesApp(t)
 	miaH := as(mia, mux)
 	robinH := as(robin, mux)
-	if rec := call(t, robinH, "POST", "/api/invite-groups", `{"id":"`+partyA+`","rule":{"tags":["`+filter.TagKey(carpoolID)+`"]}}`); rec.Code != 403 {
+	if rec := call(t, robinH, "POST", "/api/invite-groups", `{"id":"`+partyA+`","rule":{"tags":["`+model.TagKey(carpoolID)+`"]}}`); rec.Code != 403 {
 		t.Errorf("a ticket holder adding a group: %d", rec.Code)
 	}
 	if picker := pickerOf(t, miaH, partyA); len(picker.Attendees) != 3 || picker.Attendees[0].Email != robin || picker.Attendees[2].Status != "waitlist" {
@@ -698,10 +696,10 @@ func TestInviteGroups(t *testing.T) {
 	call(t, jordan, "POST", "/api/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
 	meetup := idOf(t, cache, "meetup")
 	rec := call(t, jordan, "GET", "/api/when/invites/options", "")
-	var options filter.Options
+	var options model.AudienceOptions
 	json.Unmarshal(rec.Body.Bytes(), &options)
-	carpool := filter.TagKey(carpoolID)
-	if rec.Code != 200 || !slices.Contains(options.Classrooms, "Jays") || !slices.ContainsFunc(options.Tags, func(t filter.TagOption) bool { return t.Key == carpool && t.Name == "Carpool" }) {
+	carpool := model.TagKey(carpoolID)
+	if rec.Code != 200 || !slices.Contains(options.Classrooms, "Jays") || !slices.ContainsFunc(options.Tags, func(t model.TagOption) bool { return t.Key == carpool && t.Name == "Carpool" }) {
 		t.Fatalf("options: %d %+v", rec.Code, options)
 	}
 	rec = call(t, jordan, "POST", "/api/when/invites/preview", `{"id":"meetup","rule":{"tags":["`+carpool+`"]}}`)
@@ -713,8 +711,8 @@ func TestInviteGroups(t *testing.T) {
 	if rec.Code != 200 || preview.Count != 2 || len(preview.Names) != 2 {
 		t.Errorf("preview: %d %+v", rec.Code, preview)
 	}
-	theirs := call(t, jordan, "POST", "/api/when/invites/preview", `{"id":"meetup","rule":{"tags":["`+filter.TagKey(bookClubID)+`"]}}`)
-	gone := call(t, jordan, "POST", "/api/when/invites/preview", `{"id":"meetup","rule":{"tags":["`+filter.TagKey("dtg0000000099")+`"]}}`)
+	theirs := call(t, jordan, "POST", "/api/when/invites/preview", `{"id":"meetup","rule":{"tags":["`+model.TagKey(bookClubID)+`"]}}`)
+	gone := call(t, jordan, "POST", "/api/when/invites/preview", `{"id":"meetup","rule":{"tags":["`+model.TagKey("dtg0000000099")+`"]}}`)
 	if theirs.Code != 400 || gone.Code != 400 || theirs.Body.String() != gone.Body.String() {
 		t.Errorf("someone else's tag: %d %s; a tag that does not exist: %d %s", theirs.Code, theirs.Body, gone.Code, gone.Body)
 	}
@@ -1361,7 +1359,7 @@ func TestRemovedStayRemoved(t *testing.T) {
 	jordan := as(host, mux)
 	call(t, jordan, "POST", "/api/events", `{"title":"Moms","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"moms"}`)
 	moms := idOf(t, cache, "moms")
-	rec := call(t, jordan, "POST", "/api/invite-groups", `{"id":"moms","rule":{"tags":["`+filter.TagKey(carpoolID)+`"]},"auto":false}`)
+	rec := call(t, jordan, "POST", "/api/invite-groups", `{"id":"moms","rule":{"tags":["`+model.TagKey(carpoolID)+`"]},"auto":false}`)
 	made := created(t, rec)
 	if rec.Code != 200 || viaGroup(cache, moms, made) != 2 {
 		t.Fatalf("group: %d %s", rec.Code, rec.Body)
@@ -1459,7 +1457,7 @@ func TestGuestsInvite(t *testing.T) {
 	if r := rowOf(inviteView(t, jordan, meetup), mia); r == nil || r.InvitedBy != "Robin Whitfield" {
 		t.Errorf("the host's row for mia: %+v", r)
 	}
-	if rec := call(t, as(robin, mux), "POST", "/api/invite-groups", `{"id":"meetup","rule":{"tags":["`+filter.TagKey(carpoolID)+`"]}}`); rec.Code != 403 {
+	if rec := call(t, as(robin, mux), "POST", "/api/invite-groups", `{"id":"meetup","rule":{"tags":["`+model.TagKey(carpoolID)+`"]}}`); rec.Code != 403 {
 		t.Errorf("a guest adding a group: %d", rec.Code)
 	}
 }

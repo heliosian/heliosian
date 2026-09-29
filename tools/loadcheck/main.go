@@ -10,18 +10,17 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
 	"heliosian/internal/celebrate"
-	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/devcache"
 	"heliosian/internal/env"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
+	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 func main() {
@@ -43,12 +42,12 @@ func main() {
 		log.Fatalf("blob store: %v", err)
 	}
 	media := blob.New(objects)
-	model, err := who.LoadModel(source, media, static.Files{Root: "web/who"}, []byte(env.Required("ID_KEY")))
+	directory, err := model.LoadDirectory(source, media, static.Files{Root: "web/who"}, []byte(env.Required("ID_KEY")))
 	if err != nil {
 		log.Fatalf("load directory model: %v", err)
 	}
 	students, parents, staff, isNew := 0, 0, 0, 0
-	for _, p := range model.People {
+	for _, p := range directory.People {
 		if p.IsStudent {
 			students++
 		}
@@ -63,10 +62,10 @@ func main() {
 		}
 	}
 	fmt.Printf("people: %d (students %d, parents %d, staff %d, new %d)\n",
-		len(model.People), students, parents, staff, isNew)
-	byStatus := map[who.OptStatus]int{}
+		len(directory.People), students, parents, staff, isNew)
+	byStatus := map[model.OptStatus]int{}
 	addressMasked, phoneMasked := 0, 0
-	for _, p := range model.People {
+	for _, p := range directory.People {
 		byStatus[p.OptStatus]++
 		if p.AddressMasked {
 			addressMasked++
@@ -76,10 +75,10 @@ func main() {
 		}
 	}
 	fmt.Printf("preferences: opt in %d, opt out %d, default %d (address masked %d, phone masked %d)\n",
-		byStatus[who.OptIn], byStatus[who.OptOut], byStatus[who.OptDefault],
+		byStatus[model.OptIn], byStatus[model.OptOut], byStatus[model.OptDefault],
 		addressMasked, phoneMasked)
 	familyAddressMasked, familyPhoneMasked := 0, 0
-	for _, f := range model.Families {
+	for _, f := range directory.Families {
 		if f.AddressMasked {
 			familyAddressMasked++
 		}
@@ -88,9 +87,9 @@ func main() {
 		}
 	}
 	fmt.Printf("families: %d (address masked %d, phone masked %d)\n",
-		len(model.Families), familyAddressMasked, familyPhoneMasked)
+		len(directory.Families), familyAddressMasked, familyPhoneMasked)
 	twoHousehold := map[string]int{}
-	for _, f := range model.Families {
+	for _, f := range directory.Families {
 		for _, kid := range f.KidEmails {
 			twoHousehold[kid]++
 		}
@@ -101,30 +100,30 @@ func main() {
 		}
 	}
 	fmt.Println("classrooms:")
-	for _, c := range model.Classrooms {
+	for _, c := range directory.Classrooms {
 		fmt.Printf("  %s (image %v, crews %v)\n", c.Name, c.ImageURL != "", c.HasCrews)
 	}
 	fmt.Println("crews:")
-	for _, c := range model.Crews {
+	for _, c := range directory.Crews {
 		fmt.Printf("  %s | %s | %s | teachers %v\n", c.Classroom, c.Name, c.GradeBand, c.Teachers)
 	}
 	bands := []string{}
-	for band := range model.RoomParents {
+	for band := range directory.RoomParents {
 		bands = append(bands, band)
 	}
 	sort.Strings(bands)
 	fmt.Println("room parents:")
 	for _, band := range bands {
-		fmt.Printf("  %s: %d\n", band, len(model.RoomParents[band]))
+		fmt.Printf("  %s: %d\n", band, len(directory.RoomParents[band]))
 	}
-	fmt.Println("departments:", model.Departments)
-	invites, err := who.NewInvites(source, nil, store.NewQueue())
+	fmt.Println("departments:", directory.Departments)
+	invites, err := model.NewInviteTemplatesCache(source, nil, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load invites: %v", err)
 	}
 	fmt.Printf("invites: %d systems, %d greetings\n", len(invites.Model().Systems), len(invites.Model().Greetings))
 	fmt.Println("grades:")
-	for _, g := range model.Grades {
+	for _, g := range directory.Grades {
 		fmt.Printf("  %s -> %s (%s -> %s)\n", g.Name, g.NextName, g.Band, g.NextBand)
 	}
 
@@ -200,15 +199,15 @@ func main() {
 	}
 	fmt.Printf("celebrate admins: %d\n", len(celebrateCache.Admins()))
 
-	configCache, err := config.NewCache(source, nil, store.NewQueue())
+	configCache, err := model.NewConfigCache(source, nil, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
-	settings := configCache.Settings()
+	settings := configCache.Config()
 	fmt.Printf("config: %d super admins, stale years %+v, staff color %s, %d grade colors, %d classroom colors\n",
 		len(settings.SuperAdmins), settings.StaleYears, settings.StaffColor, len(settings.GradeColors), len(settings.ClassroomColors))
 
-	calendarCache, err := when.NewCache(source, nil, func() when.Roster { return when.RosterOf(model) }, nil, func() []string { return nil }, store.NewQueue())
+	calendarCache, err := when.NewCache(source, nil, func() when.Roster { return when.RosterOf(directory) }, nil, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load calendar model: %v", err)
 	}
@@ -250,13 +249,13 @@ func main() {
 	groupModel := groupCache.Model()
 	now := time.Now().In(when.Location)
 	sources := loop.Sources{
-		Directory: model,
-		Tags:      model.Tags,
-		Lists: func(owner string) []who.List {
-			lists := append(model.RoomParentLists(owner), site.Lists(model, owner, now)...)
-			return append(lists, portal.Lists(model, owner, now)...)
+		Directory: directory,
+		Tags:      directory.Tags,
+		MagicTags: func(owner string) []model.MagicTag {
+			lists := append(directory.RoomParentTags(owner), site.Lists(directory, owner, now)...)
+			return append(lists, portal.Lists(directory, owner, now)...)
 		},
-		Shared: model.SharedTags,
+		Shared: directory.SharedTags,
 	}
 	fmt.Println("groups:")
 	for _, g := range groupModel.Groups {

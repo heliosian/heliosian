@@ -7,9 +7,8 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
+	"heliosian/internal/model"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 func (m *Model) Linked(family when.Family, now time.Time) []when.Linked {
@@ -74,13 +73,13 @@ func (m *Model) PartyPeople(id string) *when.PartyPeople {
 	return out
 }
 
-func (m *Model) Lists(directory *who.Model, email string, now time.Time) []who.List {
-	out := []who.List{}
+func (m *Model) Lists(directory *model.Directory, email string, now time.Time) []model.MagicTag {
+	out := []model.MagicTag{}
 	for _, p := range m.Parties {
 		if p.Past(now) || !slices.ContainsFunc(p.HostEmails, func(h string) bool { return directory.Resolve(h) == email }) {
 			continue
 		}
-		list := who.List{Key: who.ListParty + ":" + p.ID, Name: p.Title, Kind: who.ListParty, Guests: []who.Guest{}, Hosts: directory.ResolveAll(p.HostEmails)}
+		list := model.MagicTag{Key: model.MagicTagParty + ":" + p.ID, Name: p.Title, Kind: model.MagicTagParty, Guests: []model.Guest{}, Hosts: directory.ResolveAll(p.HostEmails)}
 		people := map[string]bool{}
 		for _, t := range p.Tickets {
 			if t.Status != TicketSold {
@@ -90,7 +89,7 @@ func (m *Model) Lists(directory *who.Model, email string, now time.Time) []who.L
 			buyer := directory.Resolve(t.Purchaser)
 			known := directory.Person(buyer) != nil
 			if t.Email == "" || directory.Person(holder) == nil {
-				guest := who.Guest{ID: t.ID, Name: t.Name, Email: t.Email}
+				guest := model.Guest{ID: t.ID, Name: t.Name, Email: t.Email}
 				if guest.Name == "" {
 					guest.Name = DisplayName(t.Email)
 				}
@@ -116,21 +115,21 @@ func (m *Model) Lists(directory *who.Model, email string, now time.Time) []who.L
 			}
 		}
 		list.People = slices.Sorted(maps.Keys(people))
-		slices.SortFunc(list.Guests, func(a, b who.Guest) int { return strings.Compare(a.Name, b.Name) })
+		slices.SortFunc(list.Guests, func(a, b model.Guest) int { return strings.Compare(a.Name, b.Name) })
 		out = append(out, list)
 	}
 	return out
 }
 
-func (c *Cache) Pending(email string) []admins.Approval {
-	out := []admins.Approval{}
+func (c *Cache) Pending(email string) []model.Approval {
+	out := []model.Approval{}
 	if !c.IsAdmin(email) {
 		return out
 	}
 	m := c.Model()
 	for _, p := range m.Parties {
 		if p.Status == StatusPending {
-			out = append(out, admins.Approval{App: "celebrate", Title: p.Title, Start: p.Start, Path: m.PathOf(p)})
+			out = append(out, model.Approval{App: "celebrate", Title: p.Title, Start: p.Start, Path: m.PathOf(p)})
 		}
 	}
 	return out

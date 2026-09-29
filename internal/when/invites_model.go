@@ -8,9 +8,9 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/who"
 )
 
 const (
@@ -107,11 +107,11 @@ func (b *builder) invitations(settings, rows []store.Row) {
 		}
 		inv := &Invitation{
 			EventID: id, Hosts: []string{}, Audience: strings.ToLower(strings.TrimSpace(row["Audience"])), Guests: guests, Message: strings.TrimSpace(row["Message"]),
-			CreatedBy: config.NormalizeEmail(row["Created By"]), Created: strings.TrimSpace(row["Created"]), Sent: strings.TrimSpace(row["Sent"]),
+			CreatedBy: mail.Normalize(row["Created By"]), Created: strings.TrimSpace(row["Created"]), Sent: strings.TrimSpace(row["Sent"]),
 			Title: strings.TrimSpace(row["Title"]), Start: strings.TrimSpace(row["Start"]), End: strings.TrimSpace(row["End"]),
 			Location: strings.TrimSpace(row["Location"]), Description: strings.TrimSpace(row["Description"]),
 			Flyer: strings.Trim(strings.TrimSpace(row["Flyer"]), "/"), Notify: splitEmails(row["Notify"]),
-			SteppedDown: config.NormalizeEmail(row["Stepped Down"]),
+			SteppedDown: mail.Normalize(row["Stepped Down"]),
 			HideHosts:   hideHosts,
 			PublicList:  publicList,
 			HostsToTell: cells.SplitList(strings.ToLower(row["Hosts To Tell"])),
@@ -123,7 +123,7 @@ func (b *builder) invitations(settings, rows []store.Row) {
 			}
 		}
 		for _, h := range cells.SplitList(row["Hosts"]) {
-			inv.Hosts = append(inv.Hosts, config.NormalizeEmail(h))
+			inv.Hosts = append(inv.Hosts, mail.Normalize(h))
 		}
 		if inv.Audience != AudienceAdults && inv.Audience != AudienceStudents {
 			inv.Audience = AudienceBoth
@@ -131,7 +131,7 @@ func (b *builder) invitations(settings, rows []store.Row) {
 		b.model.Invitations[id] = inv
 	}
 	for _, row := range rows {
-		id, email := strings.TrimSpace(row["Event ID"]), config.NormalizeEmail(row["Email"])
+		id, email := strings.TrimSpace(row["Event ID"]), mail.Normalize(row["Email"])
 		if id == "" || email == "" {
 			continue
 		}
@@ -139,10 +139,10 @@ func (b *builder) invitations(settings, rows []store.Row) {
 			continue
 		}
 		inv := Invite{
-			EventID: id, Email: email, Name: strings.TrimSpace(row["Name"]), GuestOf: config.NormalizeEmail(row["Guest Of"]), Via: strings.TrimSpace(row["Via"]),
-			AddedBy: config.NormalizeEmail(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]), Token: strings.TrimSpace(row["Token"]),
-			Household: config.NormalizeEmail(row["Household"]), Opened: strings.TrimSpace(row["Opened"]),
-			Requested: strings.TrimSpace(row["Requested"]), RequestedBy: config.NormalizeEmail(row["Requested By"]),
+			EventID: id, Email: email, Name: strings.TrimSpace(row["Name"]), GuestOf: mail.Normalize(row["Guest Of"]), Via: strings.TrimSpace(row["Via"]),
+			AddedBy: mail.Normalize(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]), Token: strings.TrimSpace(row["Token"]),
+			Household: mail.Normalize(row["Household"]), Opened: strings.TrimSpace(row["Opened"]),
+			Requested: strings.TrimSpace(row["Requested"]), RequestedBy: mail.Normalize(row["Requested By"]),
 		}
 		b.model.Invites[id] = append(b.model.Invites[id], inv)
 		if inv.Token != "" {
@@ -162,25 +162,25 @@ func (b *builder) invitations(settings, rows []store.Row) {
 	}
 }
 
-func (m *Model) mine(directory *who.Model, email string) []string {
-	email = config.NormalizeEmail(email)
+func (m *Model) mine(directory *model.Directory, email string) []string {
+	email = mail.Normalize(email)
 	out := []string{email}
 	adults, kids := directory.Household(email)
 	for _, member := range append(adults, kids...) {
-		if slices.ContainsFunc(directory.Parents(member.Email), func(p *who.Person) bool { return p.Email == email }) {
+		if slices.ContainsFunc(directory.Parents(member.Email), func(p *model.Person) bool { return p.Email == email }) {
 			out = append(out, member.Email)
 		}
 	}
 	return out
 }
 
-func (m *Model) Listed(directory *who.Model, email, id string) bool {
+func (m *Model) Listed(directory *model.Directory, email, id string) bool {
 	return slices.ContainsFunc(m.mine(directory, email), func(who string) bool { return m.listed[who][id] })
 }
 
 func (m *Model) InviteOf(id, email string) *Invite {
 	for i := range m.Invites[id] {
-		if m.Invites[id][i].Email == config.NormalizeEmail(email) {
+		if m.Invites[id][i].Email == mail.Normalize(email) {
 			return &m.Invites[id][i]
 		}
 	}
@@ -192,7 +192,7 @@ func (m *Model) InviteByToken(token string) (Invite, bool) {
 	return inv, ok
 }
 
-func (m *Model) Invited(directory *who.Model, email, id string) bool {
+func (m *Model) Invited(directory *model.Directory, email, id string) bool {
 	return m.invitedAny(m.mine(directory, email), id)
 }
 

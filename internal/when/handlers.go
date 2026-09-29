@@ -11,14 +11,13 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
-	"heliosian/internal/config"
-	"heliosian/internal/filter"
 	"heliosian/internal/id"
 	"heliosian/internal/imagesearch"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
-	"heliosian/internal/who"
 )
 
 const shell = "web/when/index.html"
@@ -31,14 +30,14 @@ type app struct {
 	cache     *Cache
 	pinned    *Model
 	images    blob.Images
-	directory func() *who.Model
-	settings  func() *config.Settings
+	directory func() *model.Directory
+	settings  func() *model.Config
 	lists     func(email string) []List
 	linked    func(email string) []Linked
 	sourceID  func(source, key string) string
 	parties   func(id string) *PartyPeople
 	celebrate Celebrate
-	sources   func() filter.Sources
+	sources   func() model.AudienceSources
 	search    imagesearch.Search
 	queue     *store.Queue
 	mail      Mail
@@ -48,13 +47,13 @@ type app struct {
 type Deps struct {
 	Cache     *Cache
 	Images    blob.Images
-	Directory func() *who.Model
-	Settings  func() *config.Settings
+	Directory func() *model.Directory
+	Settings  func() *model.Config
 	Lists     func(email string) []List
 	Linked    func(email string) []Linked
 	SourceID  func(source, key string) string
 	Celebrate Celebrate
-	Sources   func() filter.Sources
+	Sources   func() model.AudienceSources
 	Search    imagesearch.Search
 	Mail      Mail
 	Style     *sharecard.Style
@@ -99,7 +98,7 @@ func Register(mux *http.ServeMux, d Deps) Hooks {
 	mux.HandleFunc("POST /hooks/replies/mime", a.replies)
 	mux.HandleFunc("POST /hooks/events", a.deliveryEvents)
 	answer := func(ctx context.Context, email, id, answer string) error {
-		actor := a.as(config.NormalizeEmail(email))
+		actor := a.as(mail.Normalize(email))
 		return a.recordBy(ctx, actor, actor.Email, id, answer, ViaPage, true, false)
 	}
 	return Hooks{Answer: answer, MakeDefault: a.makeDefault, RSVPs: serve.JSON(a.rsvps), MoveAddress: a.moveAddress, cache: d.Cache, app: a}
@@ -165,7 +164,7 @@ type Hooks struct {
 }
 
 func (a app) makeDefault(ctx context.Context, email, token string) error {
-	actor := a.as(config.NormalizeEmail(email))
+	actor := a.as(mail.Normalize(email))
 	ops, tokens, err := a.defaultOps(actor, token)
 	if err != nil {
 		return err

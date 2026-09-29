@@ -27,8 +27,8 @@ func TestRowsAreBuiltBesideTheirRules(t *testing.T) {
 				return err
 			}
 			checked++
-			if rowOp.Match(raw) && name != "writes.go" && name != "cache.go" {
-				t.Errorf("%s builds rows; they belong in its package's writes.go, or cache.go for a cascade", path)
+			if rowOp.Match(raw) && !strings.HasSuffix(name, "writes.go") && !strings.HasSuffix(name, "cache.go") {
+				t.Errorf("%s builds rows; they belong in a writes.go or <thing>_writes.go, or a cache.go or <thing>_cache.go for a cascade", path)
 			}
 			return nil
 		})

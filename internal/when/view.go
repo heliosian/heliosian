@@ -8,8 +8,8 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
-	"heliosian/internal/who"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 )
 
 type Person struct {
@@ -24,7 +24,7 @@ type Person struct {
 	Line      string `json:"line,omitempty"`
 }
 
-func personView(directory *who.Model, p *who.Person) Person {
+func personView(directory *model.Directory, p *model.Person) Person {
 	return Person{
 		Email: p.Email, Name: p.FullName, PhotoURL: thumb(directory.HeroPhoto(p.Email)),
 		IsStudent: p.IsStudent, IsParent: p.IsParent, IsStaff: p.IsStaff,
@@ -38,7 +38,7 @@ type Responses struct {
 	No    []Person `json:"no,omitempty"`
 }
 
-func contactLine(directory *who.Model, p *who.Person) string {
+func contactLine(directory *model.Directory, p *model.Person) string {
 	if p.IsStudent {
 		parts := []string{}
 		if p.Grade != "" {
@@ -107,20 +107,20 @@ type View struct {
 	Feeds       []Feed                       `json:"feeds"`
 }
 
-func students(directory *who.Model, email string) []*who.Person {
-	out := []*who.Person{}
+func students(directory *model.Directory, email string) []*model.Person {
+	out := []*model.Person{}
 	if me := directory.Person(email); me != nil && me.IsStudent {
 		out = append(out, me)
 	}
 	for _, kid := range directory.Children(email) {
-		if !slices.ContainsFunc(out, func(p *who.Person) bool { return p.Email == kid.Email }) {
+		if !slices.ContainsFunc(out, func(p *model.Person) bool { return p.Email == kid.Email }) {
 			out = append(out, kid)
 		}
 	}
 	return out
 }
 
-func classroomsOf(model *Model, me *who.Person, kids []*who.Person) []string {
+func classroomsOf(model *Model, me *model.Person, kids []*model.Person) []string {
 	wanted := map[string]bool{}
 	for _, kid := range kids {
 		wanted[kid.Classroom] = true
@@ -137,24 +137,24 @@ func classroomsOf(model *Model, me *who.Person, kids []*who.Person) []string {
 	return out
 }
 
-func (m *Model) EventsFor(v access.Actor, directory *who.Model, linked []Linked) []*Event {
+func (m *Model) EventsFor(v access.Actor, directory *model.Directory, linked []Linked) []*Event {
 	events := m.eventsFor(directory, v.Email, linked)
 	carried := map[string]bool{}
 	for _, e := range events {
 		carried[e.ID] = true
 	}
 	for _, e := range m.Pending {
-		if !e.Cancelled && (v.May(SeeAll) || config.NormalizeEmail(e.AddedBy) == config.NormalizeEmail(v.Email)) && !carried[e.ID] {
+		if !e.Cancelled && (v.May(SeeAll) || mail.Normalize(e.AddedBy) == mail.Normalize(v.Email)) && !carried[e.ID] {
 			events = append(events, m.withInvitation(e))
 		}
 	}
 	return events
 }
 
-func (m *Model) ResponsesFor(v access.Actor, directory *who.Model) map[string]*Responses {
+func (m *Model) ResponsesFor(v access.Actor, directory *model.Directory) map[string]*Responses {
 	mine := map[string]bool{}
 	for _, e := range append(append([]*Event{}, m.Events...), m.Pending...) {
-		if e.AddedBy != "" && !e.PosterLeft && config.NormalizeEmail(e.AddedBy) == config.NormalizeEmail(v.Email) {
+		if e.AddedBy != "" && !e.PosterLeft && mail.Normalize(e.AddedBy) == mail.Normalize(v.Email) {
 			mine[e.ID] = true
 		}
 	}
@@ -197,7 +197,7 @@ func (m *Model) ResponsesFor(v access.Actor, directory *who.Model) map[string]*R
 	return responses
 }
 
-func Render(model *Model, directory *who.Model, settings *config.Settings, as access.Actor, now time.Time, linked []Linked) View {
+func Render(model *Model, directory *model.Directory, settings *model.Config, as access.Actor, now time.Time, linked []Linked) View {
 	email, admin := as.Email, as.May(SeeAll)
 	me := directory.Person(email)
 	kids := students(directory, email)
@@ -212,11 +212,11 @@ func Render(model *Model, directory *who.Model, settings *config.Settings, as ac
 	for _, kid := range kids {
 		user.Students = append(user.Students, personView(directory, kid))
 	}
-	if saved, ok := model.Settings[config.NormalizeEmail(email)]; ok && (len(saved.Classrooms) > 0 || len(saved.Tags) > 0) {
+	if saved, ok := model.Settings[mail.Normalize(email)]; ok && (len(saved.Classrooms) > 0 || len(saved.Tags) > 0) {
 		user.Saved = &saved
 	}
 	user.Home = model.MyHeliosian(email)
-	user.Answers = model.Answers[config.NormalizeEmail(email)]
+	user.Answers = model.Answers[mail.Normalize(email)]
 	feeds := []Feed{}
 	for _, f := range model.Feeds {
 		if f.Email == email {

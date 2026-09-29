@@ -7,17 +7,17 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/admins"
 	"heliosian/internal/blob"
-	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/id"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
 type Cache struct {
 	*store.Store[*Model]
-	admins.List
+	model.AdminList
 }
 
 var guestListTabs = []string{InvitesTab, InviteGroupsTab, RSVPsTab}
@@ -34,7 +34,7 @@ func spec(roster func() Roster, images blob.Checker) store.Spec[*Model] {
 			{Name: DayTypesTab, Columns: DayTypeColumns, Key: []string{"Day Type ID"}},
 			{Name: DayOverridesTab, Columns: DayOverrideColumns, Key: []string{"Date", "Classrooms"}},
 			{Name: TagsTab, Columns: TagColumns, Key: []string{"Tag ID"}},
-			admins.Spec,
+			model.AdminsTab,
 			{Name: FeedsTab, Columns: FeedColumns, Key: []string{"Token"}},
 			{Name: SettingsTab, Columns: SettingColumns, Key: []string{"Email"}},
 			{Name: RSVPsTab, Columns: RSVPColumns, Key: []string{"Event ID", "Email"}},
@@ -90,7 +90,7 @@ func carryInvite(_ store.Tables, before, after store.Row) []store.Op {
 	if after == nil {
 		return []store.Op{store.Delete(RSVPsTab, was)}
 	}
-	if config.NormalizeEmail(after["Email"]) == config.NormalizeEmail(before["Email"]) {
+	if mail.Normalize(after["Email"]) == mail.Normalize(before["Email"]) {
 		return nil
 	}
 	return []store.Op{store.Update(RSVPsTab, was, store.Row{"Email": after["Email"]})}
@@ -101,17 +101,17 @@ func NewCache(source data.Source, writer data.Writer, roster func() Roster, imag
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, List: admins.New("when", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
+	return &Cache{Store: s, AdminList: model.NewAdminList("when", AdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
 }
 
-func (c *Cache) Pending(email string) []admins.Approval {
-	out := []admins.Approval{}
+func (c *Cache) Pending(email string) []model.Approval {
+	out := []model.Approval{}
 	if !c.IsAdmin(email) {
 		return out
 	}
 	for _, e := range c.Model().Pending {
 		if e.Pending && !e.Declined && !e.Cancelled {
-			out = append(out, admins.Approval{App: "when", Title: e.Title, Start: e.Start, Path: EventPath(e)})
+			out = append(out, model.Approval{App: "when", Title: e.Title, Start: e.Start, Path: EventPath(e)})
 		}
 	}
 	return out

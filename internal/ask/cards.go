@@ -3,7 +3,7 @@ package ask
 import (
 	"strings"
 
-	"heliosian/internal/who"
+	"heliosian/internal/model"
 )
 
 type linkCard struct {
@@ -25,12 +25,12 @@ func (v *viewer) linkCard(address string) (linkCard, bool) {
 			}
 		}
 		for key, family := range v.directory.Families {
-			if whoBase+who.FamilyPath(key) == address {
+			if whoBase+model.FamilyPath(key) == address {
 				return linkCard{URL: address, Kind: "family", Name: family.Name, Image: family.PhotoURL}, true
 			}
 		}
 		for _, c := range v.directory.Classrooms {
-			if whoBase+who.ClassroomPath(c.Name) == address {
+			if whoBase+model.ClassroomPath(c.Name) == address {
 				card := linkCard{URL: address, Kind: "classroom", Name: c.Name, Color: v.sources.Settings().ClassroomColors[c.Name]}
 				if c.ImageURL != "" {
 					card.Image = whoBase + c.ImageURL

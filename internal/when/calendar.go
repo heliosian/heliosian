@@ -12,14 +12,12 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/admins"
 	"heliosian/internal/cells"
-	"heliosian/internal/config"
-	"heliosian/internal/filter"
 	"heliosian/internal/id"
 	"heliosian/internal/logging"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/who"
 )
 
 const (
@@ -79,7 +77,7 @@ var (
 	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer", "Notify", "Stepped Down", "Hide Hosts", "Public Guest List", "Hosts To Tell"}
 	InviteColumns      = []string{"Event ID", "Email", "Name", "Guest Of", "Via", "Added By", "Added", "Sent", "Token", "Household", "Opened", "Requested", "Requested By"}
 	MessageColumns     = []string{"Message ID", "Event ID", "Kind", "Subject", "Text", "Recipients", "Attach", "Sent By", "Created", "Sent To"}
-	InviteGroupColumns = append([]string{"Event ID", "Group ID", "Auto", "Added By", "Added", "Sent", "Removed"}, filter.RuleColumns...)
+	InviteGroupColumns = append([]string{"Event ID", "Group ID", "Auto", "Added By", "Added", "Sent", "Removed"}, model.RuleColumns...)
 	BounceColumns      = []string{"Email", "When", "Reason"}
 )
 
@@ -149,7 +147,7 @@ func (r Roster) IDOf(name string) string {
 	return ""
 }
 
-func RosterOf(m *who.Model) Roster {
+func RosterOf(m *model.Directory) Roster {
 	bandOf := map[string]string{}
 	order := map[string]int{}
 	for i, g := range m.Grades {
@@ -369,8 +367,8 @@ func (m *Model) myHeliosianFeed(token string) string {
 }
 
 func (m *Model) MyHeliosian(email string) Feed {
-	setting := m.Settings[config.NormalizeEmail(email)]
-	f := Feed{Token: MyHeliosianToken, Email: config.NormalizeEmail(email), Name: MyHeliosianName, Emoji: MyHeliosianEmoji, Classrooms: []string{}, Tags: []string{}, Locked: true, Position: setting.HomePosition}
+	setting := m.Settings[mail.Normalize(email)]
+	f := Feed{Token: MyHeliosianToken, Email: mail.Normalize(email), Name: MyHeliosianName, Emoji: MyHeliosianEmoji, Classrooms: []string{}, Tags: []string{}, Locked: true, Position: setting.HomePosition}
 	if setting.HomeName != "" {
 		f.Name = setting.HomeName
 	}
@@ -545,7 +543,7 @@ func (m *Model) unusedFeedName(email, name string) string {
 	}
 	taken := map[string]bool{}
 	for _, f := range m.Feeds {
-		if config.NormalizeEmail(f.Email) == config.NormalizeEmail(email) {
+		if mail.Normalize(f.Email) == mail.Normalize(email) {
 			taken[strings.ToLower(f.Name)] = true
 		}
 	}
@@ -1007,7 +1005,7 @@ func (b *builder) checkFeed(f Feed) error {
 
 func (b *builder) settings(rows []store.Row) {
 	for _, row := range rows {
-		email := config.NormalizeEmail(row["Email"])
+		email := mail.Normalize(row["Email"])
 		if email == "" {
 			continue
 		}
@@ -1052,7 +1050,7 @@ func isAnswer(word string) bool {
 
 func (b *builder) answers(rows []store.Row) {
 	for _, row := range rows {
-		email, id, answer := config.NormalizeEmail(row["Email"]), strings.TrimSpace(row["Event ID"]), strings.ToLower(strings.TrimSpace(row["Answer"]))
+		email, id, answer := mail.Normalize(row["Email"]), strings.TrimSpace(row["Event ID"]), strings.ToLower(strings.TrimSpace(row["Answer"]))
 		if email == "" || id == "" || !isAnswer(answer) {
 			continue
 		}
@@ -1061,12 +1059,12 @@ func (b *builder) answers(rows []store.Row) {
 			b.model.Answered[email] = map[string]Answered{}
 		}
 		b.model.Answers[email][id] = answer
-		b.model.Answered[email][id] = Answered{Answer: answer, By: config.NormalizeEmail(row["Answered By"]), At: strings.TrimSpace(row["Answered"]), Via: strings.ToLower(strings.TrimSpace(row["Via"])), inviteMail: strings.TrimSpace(row["Invite Mail"]), hostsTold: strings.TrimSpace(row["Hosts Told"])}
+		b.model.Answered[email][id] = Answered{Answer: answer, By: mail.Normalize(row["Answered By"]), At: strings.TrimSpace(row["Answered"]), Via: strings.ToLower(strings.TrimSpace(row["Via"])), inviteMail: strings.TrimSpace(row["Invite Mail"]), hostsTold: strings.TrimSpace(row["Hosts Told"])}
 	}
 }
 
 func (m *Model) AnswerOf(email, id string) string {
-	return m.Answers[config.NormalizeEmail(email)][id]
+	return m.Answers[mail.Normalize(email)][id]
 }
 
 func (b *builder) feeds(rows []store.Row) error {
@@ -1364,7 +1362,7 @@ func BuildModel(tables store.Tables, roster Roster) (*Model, error) {
 	for _, t := range tags {
 		m.tags[t.ID] = true
 	}
-	m.admins = admins.Read(tables)
+	m.admins = model.ReadAdmins(tables)
 	b := &builder{model: m}
 	for _, row := range tables[GoogleTab] {
 		e, err := b.imported(SourceGoogle, row)
@@ -1447,7 +1445,7 @@ func BuildModel(tables store.Tables, roster Roster) (*Model, error) {
 	b.answers(tables[RSVPsTab])
 	b.invitations(tables[InvitationsTab], tables[InvitesTab])
 	for _, e := range m.Events {
-		if inv := m.Invitations[e.ID]; inv != nil && e.AddedBy != "" && inv.SteppedDown == config.NormalizeEmail(e.AddedBy) {
+		if inv := m.Invitations[e.ID]; inv != nil && e.AddedBy != "" && inv.SteppedDown == mail.Normalize(e.AddedBy) {
 			e.PosterLeft = true
 		}
 	}

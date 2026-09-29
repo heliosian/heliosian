@@ -10,15 +10,13 @@ import (
 	"testing"
 
 	"heliosian/internal/access"
-	"heliosian/internal/admins"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
-	"heliosian/internal/filter"
 	"heliosian/internal/id"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
-	"heliosian/internal/who"
 )
 
 const (
@@ -32,13 +30,13 @@ const (
 	jaysChatID     = "hyp0000000009"
 )
 
-func sampleSources(t *testing.T) func() filter.Sources {
+func sampleSources(t *testing.T) func() model.AudienceSources {
 	t.Helper()
-	model, err := who.LoadModel(&data.Dir{Root: "../../sampledata"}, nil, testkit.None, []byte("test"))
+	directory, err := model.LoadDirectory(&data.Dir{Root: "../../sampledata"}, nil, testkit.None, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return func() filter.Sources { return filter.Sources{Directory: model} }
+	return func() model.AudienceSources { return model.AudienceSources{Directory: directory} }
 }
 
 func call(t *testing.T, handler http.HandlerFunc, body any) *httptest.ResponseRecorder {
@@ -69,7 +67,7 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 			links[l.Title] = l
 		}
 	}
-	if got := links["Hawks and Falcons Chat"].Rules; len(got) != 1 || got[0].Kind != filter.KindInclude || got[0].Roles[0] != "Parent" || len(got[0].Classrooms) != 2 {
+	if got := links["Hawks and Falcons Chat"].Rules; len(got) != 1 || got[0].Kind != model.RuleInclude || got[0].Roles[0] != "Parent" || len(got[0].Classrooms) != 2 {
 		t.Fatalf("the chat's rules = %+v", got)
 	}
 	const (
@@ -77,7 +75,7 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 		sam    = "sam.whitfield@heliosschool.org"
 		ruth   = "ruth.amari@heliosschool.org"
 	)
-	sees := func(rules []filter.Rule, email string) bool {
+	sees := func(rules []model.Rule, email string) bool {
 		return len(rules) == 0 || c.includes(rules, email)
 	}
 	for _, tc := range []struct {
@@ -108,10 +106,10 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 	if hidden := c.HiddenApps(sam); !slices.Contains(hidden, "celebrate") {
 		t.Errorf("a student sees the celebration: %v", hidden)
 	}
-	if err := c.Commit(context.Background(), access.System("test"), audience(thingLink+directoryID, nil, []filter.Rule{{Kind: filter.KindExclude, Roles: []string{"Student"}}})...); err != nil {
+	if err := c.Commit(context.Background(), access.System("test"), audience(thingLink+directoryID, nil, []model.Rule{{Kind: model.RuleExclude, Roles: []string{"Student"}}})...); err != nil {
 		t.Fatal(err)
 	}
-	if got := c.Model().link(directoryID).Rules; len(got) != 1 || got[0].Kind != filter.KindExclude {
+	if got := c.Model().link(directoryID).Rules; len(got) != 1 || got[0].Kind != model.RuleExclude {
 		t.Errorf("the Directory's rules after a save = %+v", got)
 	}
 	for _, bad := range []store.Row{
@@ -195,7 +193,7 @@ func TestDeletingALinkDropsItsAudience(t *testing.T) {
 func TestAddingMintsAnID(t *testing.T) {
 	c, dir := sampleCache(t)
 	a := app{cache: c, sources: c.sources}
-	parents := []filter.Rule{{Kind: filter.KindInclude, Roles: []string{"Parent"}}}
+	parents := []model.Rule{{Kind: model.RuleInclude, Roles: []string{"Parent"}}}
 	if rec := call(t, serve.JSON(a.saveCategory), map[string]any{"title": "Clubs", "style": StyleTiles, "rules": parents}); rec.Code != http.StatusNoContent {
 		t.Fatalf("add a category: %d %s", rec.Code, rec.Body)
 	}
@@ -430,7 +428,7 @@ func TestOnlyAdminsGetTheRules(t *testing.T) {
 func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 	c, dir := sampleCache(t)
 	const alias, admin = "facilities@heliosschool.org", "hank.morrow@heliosschool.org"
-	if err := c.Commit(context.Background(), access.System("test"), store.Insert(admins.Tab, store.Row{"Email": admin})); err != nil {
+	if err := c.Commit(context.Background(), access.System("test"), store.Insert(model.AdminsTab.Name, store.Row{"Email": admin})); err != nil {
 		t.Fatal(err)
 	}
 	setVisibility(t, c, "celebrate", Visibility{Mode: VisibleToList, Emails: []string{admin}})
@@ -513,7 +511,7 @@ func TestWidgetAudience(t *testing.T) {
 		upcoming: func(string, string) Upcoming { return Upcoming{} },
 		month:    func(string, string, string) Month { return Month{} },
 	}
-	parentsOnly := []filter.Rule{{Kind: filter.KindInclude, Roles: []string{"Parent"}}}
+	parentsOnly := []model.Rule{{Kind: model.RuleInclude, Roles: []string{"Parent"}}}
 	if rec := call(t, serve.JSON(a.saveWidgetAudience), map[string]any{"widget": "team", "rules": parentsOnly}); rec.Code != http.StatusNoContent {
 		t.Fatalf("save: %d %s", rec.Code, rec.Body)
 	}

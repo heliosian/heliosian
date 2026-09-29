@@ -6,13 +6,12 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/filter"
 	"heliosian/internal/id"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/who"
 )
 
-func checkAdditions(directory *who.Model, additions []Addition) error {
+func checkAdditions(directory *model.Directory, additions []Addition) error {
 	for _, added := range additions {
 		if p := directory.Person(directory.Resolve(added.Email)); p != nil {
 			return access.Invalid("%s is in the directory as %s; add them with a rule", added.Email, p.FullName)
@@ -22,7 +21,7 @@ func checkAdditions(directory *who.Model, additions []Addition) error {
 }
 
 func sameRule(x, y Rule) bool {
-	return maps.Equal(filter.RuleCells(x), filter.RuleCells(y))
+	return maps.Equal(x.Cells(), y.Cells())
 }
 
 func groupOps(was Group, g Group, adding bool) []store.Op {
@@ -104,7 +103,7 @@ func (m *Model) SaveGroup(actor access.Actor, sources Sources, g Group, taken fu
 		was = *current
 		action = "edit"
 	}
-	if err := filter.Writable(sources, actor.Email, g.Managers, was.Rules, g.Rules); err != nil {
+	if err := sources.Writable(actor.Email, g.Managers, was.Rules, g.Rules); err != nil {
 		return nil, Group{}, "", access.Invalid("%v", err)
 	}
 	if err := CheckGroup(g); err != nil {

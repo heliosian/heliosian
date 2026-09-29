@@ -11,9 +11,9 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
-	"heliosian/internal/config"
+	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
-	"heliosian/internal/who"
 )
 
 type AddressMoved func(ctx context.Context, actor access.Actor, old, to, name string)
@@ -44,7 +44,7 @@ func (a app) moveAddress(r *http.Request, body addressMove) (serve.None, error) 
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
-	old, to := config.NormalizeEmail(body.Old), config.NormalizeEmail(body.To)
+	old, to := mail.Normalize(body.Old), mail.Normalize(body.To)
 	if a.moved != nil {
 		a.moved(r.Context(), actor, old, to, strings.TrimSpace(body.Name))
 	}
@@ -74,11 +74,11 @@ type Moved struct {
 	Changed string `json:"changed,omitempty"`
 }
 
-func Problems(model *Model, directory *who.Model, now time.Time) []Problem {
+func Problems(model *Model, directory *model.Directory, now time.Time) []Problem {
 	byEmail := map[string]*Problem{}
 	order := []string{}
 	note := func(email, name string, p *Party, role string) {
-		email = model.CurrentAddress(directory.Resolve(config.NormalizeEmail(email)))
+		email = model.CurrentAddress(directory.Resolve(mail.Normalize(email)))
 		if email == "" || !strings.HasSuffix(email, "@"+auth.Domain) {
 			return
 		}

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/model"
 	"heliosian/internal/when"
-	"heliosian/internal/who"
 )
 
 func linkedFor(cache *Cache, email string) []when.Linked {
@@ -80,7 +80,7 @@ func TestLinkedPartiesMine(t *testing.T) {
 func TestPartyListsCarryTheirHosts(t *testing.T) {
 	cache, _ := newServer(t)
 	lists := cache.Model().Lists(sampleDirectory, parent, time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC))
-	i := slices.IndexFunc(lists, func(l who.List) bool { return l.Key == "party:pty0000000001" })
+	i := slices.IndexFunc(lists, func(l model.MagicTag) bool { return l.Key == "party:pty0000000001" })
 	if i < 0 {
 		t.Fatalf("no Fondue & Fort Night list: %+v", lists)
 	}
