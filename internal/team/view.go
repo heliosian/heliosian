@@ -206,7 +206,7 @@ func (v viewer) activity(model *Model, a *Activity, runs bool, lists EmailListLo
 		child := v.activity(model, c, chairs, lists)
 		view.Children = append(view.Children, &child)
 	}
-	if chairs && lists != nil {
+	if (chairs || v.May(SeeAll)) && lists != nil {
 		view.EmailList = lists(a.ID)
 	}
 	return view
