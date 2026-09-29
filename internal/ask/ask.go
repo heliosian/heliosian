@@ -23,7 +23,6 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/home"
-	"heliosian/internal/loop"
 	"heliosian/internal/model"
 	"heliosian/internal/ratelimit"
 	"heliosian/internal/serve"
@@ -48,8 +47,8 @@ type Sources struct {
 	Linked      func(email string) []model.Linked
 	Team        func() *model.Activities
 	Celebrate   func() *model.Parties
-	Loop        func() *loop.Model
-	LoopSources func() loop.Sources
+	Loop        func() *model.EmailLists
+	LoopSources func() model.AudienceSources
 	Links       func(v access.Actor) []home.Category
 	Artifacts   func() *artifacts.Model
 	Embedder    *artifacts.Vertex

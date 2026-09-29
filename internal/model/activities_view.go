@@ -67,8 +67,6 @@ type ActivityView struct {
 	EmailList  string          `json:"emailList,omitempty"`
 }
 
-type EmailListLookup func(id string) string
-
 type PersonView struct {
 	Email      string `json:"email"`
 	Name       string `json:"name"`
@@ -184,7 +182,7 @@ func (v activityViewer) volunteers(list []Volunteer) []Volunteer {
 	return out
 }
 
-func (v activityViewer) activity(m *Activities, a *Activity, runs bool, lists EmailListLookup) ActivityView {
+func (v activityViewer) activity(m *Activities, a *Activity, runs bool, lists *EmailLists) ActivityView {
 	chairs := runs || a.IsCoChair(v.Email)
 	view := ActivityView{
 		Activity:   a,
@@ -199,12 +197,12 @@ func (v activityViewer) activity(m *Activities, a *Activity, runs bool, lists Em
 		view.Children = append(view.Children, &child)
 	}
 	if chairs || v.May(SeeAllActivities) {
-		view.EmailList = lists(a.ID)
+		view.EmailList = lists.Tagged(MagicTagActivity + ":" + a.ID)
 	}
 	return view
 }
 
-func RenderActivities(m *Activities, directory *Directory, settings *Config, rsvps RSVPLookup, lists EmailListLookup, as access.Actor, now time.Time) ActivitiesView {
+func RenderActivities(m *Activities, directory *Directory, settings *Config, rsvps RSVPLookup, lists *EmailLists, as access.Actor, now time.Time) ActivitiesView {
 	v := activityViewer{Actor: as, directory: directory}
 	email, admin := as.Email, as.May(SeeAllActivities)
 	name, photo := v.person(email)
@@ -212,7 +210,7 @@ func RenderActivities(m *Activities, directory *Directory, settings *Config, rsv
 	current := ActivityYear(now)
 	view := ActivitiesView{
 		User:        ActivitiesUser{Email: email, Name: name, Initial: strings.ToUpper(name[:1]), PhotoURL: photo, IsAdmin: admin, Spouses: spouses, Children: children},
-		Years:       Years{Current: current, Last: ShiftActivityYear(current, -1), Next: ShiftActivityYear(current, 1)},
+		Years:       Years{Current: current, Last: ShiftYearSpan(current, -1), Next: ShiftYearSpan(current, 1)},
 		Settings:    m.Settings,
 		Categories:  m.Categories,
 		Activities:  []ActivityView{},

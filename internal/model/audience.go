@@ -115,11 +115,7 @@ func (r *reader) sharedWith(email string) []Tag {
 
 func (r *reader) magicTagsOf(email string) []MagicTag {
 	if _, ok := r.magicTags[email]; !ok {
-		if r.s.MagicTags != nil {
-			r.magicTags[email] = r.s.MagicTags(email)
-		} else {
-			r.magicTags[email] = nil
-		}
+		r.magicTags[email] = r.s.MagicTags(email)
 	}
 	return r.magicTags[email]
 }
@@ -434,13 +430,11 @@ func (s AudienceSources) Options(viewer string) AudienceOptions {
 		tags = append(tags, TagOption{Key: TagKey(t.ID), Name: t.Name + " (" + t.OwnerName + "'s)"})
 	}
 	lists := []MagicTagOption{}
-	if s.MagicTags != nil {
-		for _, l := range s.MagicTags(viewer) {
-			if l.Archived {
-				continue
-			}
-			lists = append(lists, MagicTagOption{Key: l.Key, Name: l.Name, Kind: l.Kind, Parent: l.Parent})
+	for _, l := range s.MagicTags(viewer) {
+		if l.Archived {
+			continue
 		}
+		lists = append(lists, MagicTagOption{Key: l.Key, Name: l.Name, Kind: l.Kind, Parent: l.Parent})
 	}
 	slices.SortFunc(lists, func(x, y MagicTagOption) int { return strings.Compare(x.Name, y.Name) })
 	return AudienceOptions{Classrooms: classrooms, Grades: grades, Tags: tags, Lists: lists, Roles: AudienceRoles, Relations: AudienceRelations}

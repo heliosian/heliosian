@@ -61,7 +61,7 @@ var (
 	NotificationColumns     = []string{"Email", "Kinds"}
 )
 
-var activityYearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
+var yearSpanForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
 
 type ActivityLink struct {
 	ID          string `json:"id"`
@@ -523,8 +523,8 @@ func checkStatus(cell string) error {
 	return nil
 }
 
-func CheckActivityYear(year string) error {
-	m := activityYearForm.FindStringSubmatch(year)
+func CheckYearSpan(year string) error {
+	m := yearSpanForm.FindStringSubmatch(year)
 	if m == nil {
 		return fmt.Errorf("year %q is not like 2026 - 2027", year)
 	}
@@ -544,8 +544,8 @@ func ActivityYear(t time.Time) string {
 	return fmt.Sprintf("%d - %d", start, start+1)
 }
 
-func ShiftActivityYear(year string, n int) string {
-	m := activityYearForm.FindStringSubmatch(year)
+func ShiftYearSpan(year string, n int) string {
+	m := yearSpanForm.FindStringSubmatch(year)
 	from, _ := strconv.Atoi(m[1])
 	return fmt.Sprintf("%d - %d", from+n, from+n+1)
 }
@@ -934,7 +934,7 @@ func parseActivity(row map[string]string, images blob.Checker) (*Activity, error
 		return nil, nil
 	}
 	if year != "" || strings.TrimSpace(row["Parent"]) == "" {
-		if err := CheckActivityYear(year); err != nil {
+		if err := CheckYearSpan(year); err != nil {
 			return fail(err)
 		}
 	}

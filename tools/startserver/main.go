@@ -30,7 +30,6 @@ import (
 	"heliosian/internal/intercept"
 	"heliosian/internal/keypoints"
 	"heliosian/internal/logging"
-	"heliosian/internal/loop"
 	"heliosian/internal/mail"
 	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
@@ -106,7 +105,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 		BirthdayMail:  mail.NewMailgun("sample", "Helios Staff Birthdays <birthday@example.org>"),
 		BirthdayBase:  "https://birthday.heliosiandev.com:" + app.Port(),
 		FeedbackBase:  "https://home.heliosiandev.com:" + app.Port(),
-		Loop:          loop.Mail{Sender: mail.NewMailgun("sample", ""), Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir}},
+		Loop:          model.ListMail{Sender: mail.NewMailgun("sample", ""), Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port(), Archive: model.DirArchive{Dir: mailDir}},
 		Asker:         ask.NewClaude("sample"),
 		Embedder:      embedder,
 		ArtifactsMail: artifacts.Inbox{Bucket: bucket},

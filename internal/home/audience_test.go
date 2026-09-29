@@ -36,7 +36,9 @@ func sampleSources(t *testing.T) func() model.AudienceSources {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return func() model.AudienceSources { return model.AudienceSources{Directory: directory} }
+	return func() model.AudienceSources {
+		return model.AudienceSources{Directory: directory, MagicTags: func(string) []model.MagicTag { return nil }}
+	}
 }
 
 func call(t *testing.T, handler http.HandlerFunc, body any) *httptest.ResponseRecorder {

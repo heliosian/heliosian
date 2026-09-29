@@ -10,7 +10,6 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 
 	"heliosian/internal/artifacts"
-	"heliosian/internal/loop"
 	"heliosian/internal/model"
 )
 
@@ -195,7 +194,7 @@ func lingo(v *viewer) string {
 		}
 		b.WriteString(".\n")
 	}
-	fmt.Fprintf(b, "\nHelios Loop's addresses end in @%s.\n", loop.Domain)
+	fmt.Fprintf(b, "\nHelios Loop's addresses end in @%s.\n", model.ListDomain)
 	return b.String()
 }
 

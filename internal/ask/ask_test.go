@@ -26,7 +26,6 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/home"
 	"heliosian/internal/intercept"
-	"heliosian/internal/loop"
 	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
@@ -56,12 +55,14 @@ func sampleSources(t *testing.T) Sources {
 		t.Fatal(err)
 	}
 	celebrateModel := celebrateCache.Model()
-	loopCache, err := loop.NewCache(dir, dir, func() []string { return nil }, queue, []byte("test"))
+	loopCache, err := model.NewEmailListsCache(dir, dir, func() []string { return nil }, queue, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	loopModel := loopCache.Model()
-	homeCache, err := home.NewCache(dir, dir, testkit.All, func() []string { return nil }, func() model.AudienceSources { return model.AudienceSources{Directory: directory} }, queue)
+	homeCache, err := home.NewCache(dir, dir, testkit.All, func() []string { return nil }, func() model.AudienceSources {
+		return model.AudienceSources{Directory: directory, MagicTags: func(string) []model.MagicTag { return nil }}
+	}, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,14 +99,14 @@ func sampleSources(t *testing.T) Sources {
 		Linked:    func(string) []model.Linked { return nil },
 		Team:      func() *model.Activities { return teamModel },
 		Celebrate: func() *model.Parties { return celebrateModel },
-		Loop:      func() *loop.Model { return loopModel },
-		LoopSources: func() loop.Sources {
-			return loop.Sources{Directory: directory, MagicTags: lists}
+		Loop:      func() *model.EmailLists { return loopModel },
+		LoopSources: func() model.AudienceSources {
+			return model.AudienceSources{Directory: directory, MagicTags: lists}
 		},
 		Links:     homeCache.CategoriesFor,
 		Artifacts: func() *artifacts.Model { return documents },
 		Embedder:  embedder,
-		Admins:    Admins{Team: heldBy(model.ActivitiesAdminAllowances), Celebrate: heldBy(model.PartiesAdminAllowances), Loop: heldBy(loop.AdminAllowances), Calendar: heldBy(model.CalendarAdminAllowances), Home: heldBy(home.AdminAllowances)},
+		Admins:    Admins{Team: heldBy(model.ActivitiesAdminAllowances), Celebrate: heldBy(model.PartiesAdminAllowances), Loop: heldBy(model.EmailListsAdminAllowances), Calendar: heldBy(model.CalendarAdminAllowances), Home: heldBy(home.AdminAllowances)},
 		Now:       func() time.Time { return sampleNow },
 	}
 }

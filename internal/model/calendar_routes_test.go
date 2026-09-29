@@ -74,6 +74,7 @@ func testAppHooks(t *testing.T) (http.Handler, *CalendarCache, CalendarHooks) {
 	cache := sampleCalendarCache(t)
 	d := calendarDirectory(t, "sampledata")
 	parties, activities := linkedCaches(t, nil, nil)
+	lists := linkedEmailLists(t, nil)
 	mux := http.NewServeMux()
 	hooks := RegisterCalendar(mux, CalendarDeps{
 		Cache:      cache,
@@ -82,13 +83,12 @@ func testAppHooks(t *testing.T) (http.Handler, *CalendarCache, CalendarHooks) {
 		Settings:   func() *Config { return &Config{} },
 		Parties:    parties,
 		Activities: activities,
-		Lists:      func(string) []PickerList { return nil },
-		Sources:    newSampleSources(t).sources,
+		EmailLists: lists,
 		Mail:       CalendarMail{Sender: keptMail().Mailgun},
 		Style:      testStyle,
 		Queue:      queue,
 	})
-	return served(mux, cache, hooks, func() *Directory { return d }, parties, activities), cache, hooks
+	return served(mux, cache, hooks, func() *Directory { return d }, parties, activities, lists), cache, hooks
 }
 
 func memoryImages() blob.Images {
@@ -124,6 +124,18 @@ func linkedCaches(t *testing.T, celebrate, team store.Tables) (*PartiesCache, *A
 	return parties, activities
 }
 
+func linkedEmailLists(t *testing.T, groups store.Tables) *EmailListsCache {
+	t.Helper()
+	for _, tab := range append([]string{groupsTab, id.AliasesTab}, groupTabs...) {
+		replaceRows(t, emailListsAppName, tab, groups[tab])
+	}
+	lists, err := NewEmailListsCache(sheet, sheet, func() []string { return nil }, queue, sampleKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return lists
+}
+
 func replaceRows(t *testing.T, app, tab string, rows []store.Row) {
 	t.Helper()
 	_, old, err := sheet.Table(app, tab)
@@ -143,14 +155,11 @@ func replaceRows(t *testing.T, app, tab string, rows []store.Row) {
 	}
 }
 
-func calendarOver(t *testing.T, parties *PartiesCache, activities *ActivitiesCache, directory func() *Directory) CalendarHooks {
+func calendarOver(t *testing.T, parties *PartiesCache, activities *ActivitiesCache, lists *EmailListsCache, directory func() *Directory) CalendarHooks {
 	t.Helper()
 	cache, err := NewCalendarCache(sheet, sheet, func() Roster { return roster }, nil, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
-	}
-	sources := func() AudienceSources {
-		return AudienceSources{Directory: directory(), MagicTags: func(string) []MagicTag { return nil }}
 	}
 	return RegisterCalendar(http.NewServeMux(), CalendarDeps{
 		Cache:      cache,
@@ -159,8 +168,7 @@ func calendarOver(t *testing.T, parties *PartiesCache, activities *ActivitiesCac
 		Settings:   noSettings,
 		Parties:    parties,
 		Activities: activities,
-		Lists:      func(string) []PickerList { return nil },
-		Sources:    sources,
+		EmailLists: lists,
 		Mail:       CalendarMail{Sender: mailtest.Discard()},
 		Style:      testStyle,
 		Queue:      queue,
@@ -455,6 +463,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	d := calendarDirectory(t, "sampledata")
 	kept := keptMail()
 	parties, activities := linkedCaches(t, nil, nil)
+	lists := linkedEmailLists(t, nil)
 	mux := http.NewServeMux()
 	hooks := RegisterCalendar(mux, CalendarDeps{
 		Cache:      cache,
@@ -463,13 +472,12 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 		Settings:   func() *Config { return &Config{} },
 		Parties:    parties,
 		Activities: activities,
-		Lists:      func(string) []PickerList { return nil },
-		Sources:    newSampleSources(t).sources,
+		EmailLists: lists,
 		Mail:       CalendarMail{Sender: kept.Mailgun, Base: "https://when.heliosian.com"},
 		Style:      testStyle,
 		Queue:      queue,
 	})
-	served(mux, cache, hooks, func() *Directory { return d }, parties, activities)
+	served(mux, cache, hooks, func() *Directory { return d }, parties, activities, lists)
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {

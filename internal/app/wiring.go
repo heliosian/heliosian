@@ -17,7 +17,6 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/ask"
 	"heliosian/internal/auth"
-	"heliosian/internal/birthday"
 	"heliosian/internal/blob"
 	"heliosian/internal/calendarimport"
 	"heliosian/internal/claude"
@@ -30,7 +29,6 @@ import (
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/keypoints"
 	"heliosian/internal/logging"
-	"heliosian/internal/loop"
 	"heliosian/internal/mail"
 	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
@@ -63,7 +61,7 @@ type Config struct {
 	FeedbackFiler feedback.IssueFiler
 	FeedbackBase  string
 	Describer     *describe.Describer
-	Loop          loop.Mail
+	Loop          model.ListMail
 	Asker         *ask.Claude
 	Embedder      *artifacts.Vertex
 	ArtifactsMail artifacts.Inbox
@@ -80,7 +78,7 @@ type appSpec struct {
 
 type Core struct {
 	CalendarCache *model.CalendarCache
-	LoopCache     *loop.Cache
+	LoopCache     *model.EmailListsCache
 	Cache         *model.DirectoryCache
 	Documents     *artifacts.Filer
 	Queue         *store.Queue
@@ -110,7 +108,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load team data", "error", err)
 	}
-	birthdayCache, err := birthday.NewCache(cfg.Source, cfg.Writer, settings.SuperAdmins, queue, cfg.IDKey)
+	birthdayCache, err := model.NewBirthdaysCache(cfg.Source, cfg.Writer, settings.SuperAdmins, queue, cfg.IDKey)
 	if err != nil {
 		logging.Fatal("load birthdays data", "error", err)
 	}
@@ -131,13 +129,13 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load calendar data", "error", err)
 	}
-	loopCache, err := loop.NewCache(cfg.Source, cfg.Writer, settings.SuperAdmins, queue, cfg.IDKey)
+	loopCache, err := model.NewEmailListsCache(cfg.Source, cfg.Writer, settings.SuperAdmins, queue, cfg.IDKey)
 	if err != nil {
 		logging.Fatal("load loop data", "error", err)
 	}
 	sources := audience(cache, teamCache, celebrateCache)
 	loopSources := loopAudience(cache, teamCache, celebrateCache)
-	lists := smartLists{cache, teamCache, celebrateCache, loopCache, loopSources}
+	lists := smartLists{cache, teamCache, celebrateCache, loopCache}
 	homeCache, err := home.NewCache(cfg.Source, cfg.Writer, homeImages, settings.SuperAdmins, sources, queue)
 	if err != nil {
 		logging.Fatal("load apps data", "error", err)
@@ -169,8 +167,8 @@ func NewCore(cfg Config) *Core {
 		}
 	}
 	whoAbout := who.About(appName("who"), taglineOf("who"))
-	birthdayAbout := birthday.About(appName("birthday"), taglineOf("birthday"))
-	loopAbout := loop.About(appName("loop"), taglineOf("loop"))
+	birthdayAbout := model.BirthdaysAbout(appName("birthday"), taglineOf("birthday"))
+	loopAbout := model.EmailListsAbout(appName("loop"), taglineOf("loop"))
 	homeStyle := home.CardStyle(appName("home"), taglineOf("home"))
 	teamStyle := model.ActivitiesCardStyle(appName("team"), taglineOf("team"))
 	celebrateStyle := model.PartiesCardStyle(appName("celebrate"), taglineOf("celebrate"))
@@ -183,7 +181,7 @@ func NewCore(cfg Config) *Core {
 	mux := http.NewServeMux()
 	model.RegisterConfig(mux, settings, cache, cache.Held)
 	who.Register(mux, cache, whoAbout)
-	model.RegisterDirectory(mux, model.DirectoryRoutes{Cache: cache, Invites: invites, Media: cfg.Store, MapsKey: cfg.BrowserKey, MagicTags: lists.Lists})
+	model.RegisterDirectory(mux, model.DirectoryRoutes{Cache: cache, Invites: invites, Media: cfg.Store, MapsKey: cfg.BrowserKey, Parties: celebrateCache, Activities: teamCache, EmailLists: loopCache})
 	blob.Register(mux, cfg.Store, "pronunciation")
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	linked := func(email string) []model.Linked {
@@ -198,8 +196,7 @@ func NewCore(cfg Config) *Core {
 		Settings:   settings.Config,
 		Parties:    celebrateCache,
 		Activities: teamCache,
-		Lists:      calendarLists(cache, lists.Lists),
-		Sources:    sources,
+		EmailLists: loopCache,
 		Search:     cfg.ImageSearch,
 		Mail:       cfg.CalendarMail,
 		Style:      calendarStyle,
@@ -217,20 +214,19 @@ func NewCore(cfg Config) *Core {
 		Style:       homeStyle,
 	})
 	teamMux := http.NewServeMux()
-	activityEmailList := func(id string) string { return loopCache.Model().Tagged(model.MagicTagActivity + ":" + id) }
 	model.RegisterActivities(teamMux, model.ActivitiesDeps{
-		Cache:     teamCache,
-		Images:    teamImages,
-		Directory: cache.Model,
-		Settings:  settings.Config,
-		Calendar:  hooks,
-		Search:    cfg.ImageSearch,
-		Mailer:    cfg.Mail,
-		Lists:     activityEmailList,
-		Style:     teamStyle,
+		Cache:      teamCache,
+		Images:     teamImages,
+		Directory:  cache.Model,
+		Settings:   settings.Config,
+		Calendar:   hooks,
+		Search:     cfg.ImageSearch,
+		Mailer:     cfg.Mail,
+		EmailLists: loopCache,
+		Style:      teamStyle,
 	})
 	birthdayMux := http.NewServeMux()
-	birthdayResources := birthday.Resources(birthdayCache, func(ctx context.Context, email string) error {
+	birthdayResources := model.BirthdayResources(birthdayCache, func(ctx context.Context, email string) error {
 		return home.Grant(ctx, homeCache, "birthday", email)
 	})
 	celebrateMux := http.NewServeMux()
@@ -248,13 +244,15 @@ func NewCore(cfg Config) *Core {
 	documents := artifacts.Register(askMux, artifactsCache, cfg.Embedder, queue, cfg.ArtifactsMail)
 	loopMail.Documents = documents
 	loopMux := http.NewServeMux()
-	loop.Register(loopMux, loop.Deps{
-		Cache:     loopCache,
-		Media:     cfg.Store,
-		Sources:   loopSources,
-		Mail:      loopMail,
-		Describer: cfg.Describer,
-		About:     loopAbout,
+	model.RegisterEmailLists(loopMux, model.EmailListsDeps{
+		Cache:      loopCache,
+		Directory:  cache.Model,
+		Parties:    celebrateCache,
+		Activities: teamCache,
+		Media:      cfg.Store,
+		Mail:       loopMail,
+		Describer:  cfg.Describer,
+		About:      loopAbout,
 	})
 	ask.Register(askMux, ask.Sources{
 		Directory: cache.Model,
@@ -296,8 +294,8 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load feedback model", "error", err)
 	}
-	registry := resources(caches{settings, cache, invites, teamCache, birthdayCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, feedbackCache, hooks, cfg.IDKey}, queue, birthdayResources, loop.Resources(loopCache, loopMail.Documents))
-	birthday.Register(birthdayMux, birthday.Deps{
+	registry := resources(caches{settings, cache, invites, teamCache, birthdayCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, feedbackCache, hooks, cfg.IDKey}, queue, birthdayResources, model.EmailListResources(loopCache, loopMail.Documents))
+	model.RegisterBirthdays(birthdayMux, model.BirthdaysDeps{
 		Cache:     birthdayCache,
 		Queue:     queue,
 		Directory: cache.Model,

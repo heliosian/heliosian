@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"heliosian/internal/data"
-	"heliosian/internal/loop"
 	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
@@ -31,12 +30,12 @@ func TestATeamAdminMakesAnEmailListFromAnyActivity(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
-	tags := loopMagicTags(directory, parties.Model(), activities.Model(), activities.IsAdmin)
+	sources := model.EmailListAudience(directory, parties.Model(), activities.Model(), activities, now)
 	shared := func(owner string, now time.Time) []model.MagicTag {
 		return model.MagicTagsOf(directory, parties.Model(), activities.Model(), owner, now)
 	}
 	var theirs model.MagicTag
-	for _, l := range tags(admin, now) {
+	for _, l := range sources.MagicTags(admin) {
 		if l.Kind == model.MagicTagActivity && l.Parent == "" && !slices.Contains(l.Hosts, admin) && len(l.People) > len(l.Hosts) {
 			theirs = l
 			break
@@ -48,10 +47,9 @@ func TestATeamAdminMakesAnEmailListFromAnyActivity(t *testing.T) {
 	if slices.ContainsFunc(shared(admin, now), func(l model.MagicTag) bool { return l.Key == theirs.Key }) {
 		t.Fatalf("outside Loop the admin reads %s, which they do not co-chair", theirs.Key)
 	}
-	if slices.ContainsFunc(tags(parent, now), func(l model.MagicTag) bool { return l.Key == theirs.Key }) {
+	if slices.ContainsFunc(sources.MagicTags(parent), func(l model.MagicTag) bool { return l.Key == theirs.Key }) {
 		t.Fatalf("a parent who is no admin reads %s", theirs.Key)
 	}
-	sources := loop.Sources{Directory: directory, MagicTags: func(owner string) []model.MagicTag { return tags(owner, now) }}
 	rules := []model.Rule{{Kind: model.RuleInclude, Tags: []string{theirs.Key}}}
 	managers := append([]string{admin}, theirs.Hosts...)
 	if err := sources.Writable(admin, managers, nil, rules); err != nil {
@@ -60,7 +58,7 @@ func TestATeamAdminMakesAnEmailListFromAnyActivity(t *testing.T) {
 	if err := sources.Writable(parent, []string{parent}, nil, rules); err == nil {
 		t.Fatalf("a parent saved %s", theirs.Key)
 	}
-	members := loop.Reasons(loop.Group{Managers: theirs.Hosts, Rules: rules}, sources)
+	members := model.EmailList{Managers: theirs.Hosts, Rules: rules}.Reasons(sources)
 	for _, p := range theirs.People {
 		if _, ok := members[p]; !ok {
 			t.Errorf("%s is off the list its co-chairs manage", p)

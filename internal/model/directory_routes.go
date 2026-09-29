@@ -10,11 +10,13 @@ import (
 )
 
 type DirectoryRoutes struct {
-	Cache     *DirectoryCache
-	Invites   *InviteTemplatesCache
-	Media     *blob.Store
-	MapsKey   string
-	MagicTags func(email string) []MagicTag
+	Cache      *DirectoryCache
+	Invites    *InviteTemplatesCache
+	Media      *blob.Store
+	MapsKey    string
+	Parties    *PartiesCache
+	Activities *ActivitiesCache
+	EmailLists *EmailListsCache
 }
 
 func RegisterDirectory(mux *http.ServeMux, d DirectoryRoutes) {
@@ -58,7 +60,7 @@ func (d DirectoryRoutes) model(r *http.Request, _ serve.None) (directoryView, er
 		MapsKey:    d.MapsKey,
 		Tags:       directory.Tags(effective),
 		SharedTags: directory.SharedTags(effective),
-		Lists:      append(directory.RoomParentTags(effective), d.MagicTags(effective)...),
+		Lists:      append(directory.RoomParentTags(effective), ManagedMagicTags(directory, d.Parties.Model(), d.Activities.Model(), d.EmailLists.Model(), d.Activities, effective, now())...),
 		EditAnyone: v.May(EditAnyone),
 	}, nil
 }

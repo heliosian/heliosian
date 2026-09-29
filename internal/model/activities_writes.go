@@ -163,7 +163,7 @@ func (c *activityPrettyConflict) refusal() error {
 
 func renamedPretty(acts *Activities, pretty, year string) string {
 	base := pretty
-	if m := activityYearForm.FindStringSubmatch(year); m != nil {
+	if m := yearSpanForm.FindStringSubmatch(year); m != nil {
 		base = pretty + "-" + m[1]
 	}
 	for i, candidate := 2, base; ; i++ {
@@ -745,7 +745,7 @@ func (m *Activities) copyActivity(actor access.Actor, id string) (*Activity, str
 	if act.Parent != "" {
 		return nil, "", "", nil, access.Invalid("copy the whole activity it sits under instead")
 	}
-	year := ShiftActivityYear(act.Year, 1)
+	year := ShiftYearSpan(act.Year, 1)
 	for _, other := range m.Activities {
 		if other.Year == year && other.Title == act.Title {
 			return nil, "", "", nil, access.Invalid("%q already exists in %s", act.Title, year)

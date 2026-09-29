@@ -50,12 +50,13 @@ func (w CalendarWorld) responses(q api.Query) map[string]*Responses {
 	return w.request.responses
 }
 
-func (a calendarApp) world(m *Calendar, d *Directory, settings *Config, parties *Parties, activities *Activities, idKey []byte) CalendarWorld {
+func (a calendarApp) world(m *Calendar, d *Directory, settings *Config, parties *Parties, activities *Activities, lists *EmailLists, idKey []byte) CalendarWorld {
 	a.pinned = m
 	a.directory = func() *Directory { return d }
 	a.settings = func() *Config { return settings }
 	a.parties = func() *Parties { return parties }
 	a.activities = func() *Activities { return activities }
+	a.emailLists = func() *EmailLists { return lists }
 	return CalendarWorld{Model: m, Directory: d, app: a, idKey: idKey}
 }
 
@@ -198,8 +199,8 @@ func (h CalendarHooks) Resources() []api.Type[CalendarWorld] {
 	return []api.Type[CalendarWorld]{r.events(), r.guestLists(), r.inviteGroups(), r.feeds(), r.settings()}
 }
 
-func (h CalendarHooks) World(m *Calendar, d *Directory, settings *Config, parties *Parties, activities *Activities, idKey []byte) CalendarWorld {
-	return h.app.world(m, d, settings, parties, activities, idKey)
+func (h CalendarHooks) World(m *Calendar, d *Directory, settings *Config, parties *Parties, activities *Activities, lists *EmailLists, idKey []byte) CalendarWorld {
+	return h.app.world(m, d, settings, parties, activities, lists, idKey)
 }
 
 func (r calendarResources) stage(wr api.Write[CalendarWorld], ops []store.Op, err error) error {
@@ -813,10 +814,7 @@ func (r calendarResources) settings() api.Type[CalendarWorld] {
 			v := RenderCalendar(w.Model, w.Directory, w.app.settings(), q.Actor, w.now, nil)
 			out := settingsResource{
 				User: v.User, ImageSearch: w.app.search.On(), Today: v.Today, Classrooms: v.Classrooms, Colors: v.Colors, Tags: v.Tags, DayTypes: v.DayTypes,
-				Years: v.Years, Days: v.Days, GradeColors: v.GradeColors, Names: v.Names, Lists: []PickerList{},
-			}
-			if lists := w.app.lists(q.Actor.Email); lists != nil {
-				out.Lists = lists
+				Years: v.Years, Days: v.Days, GradeColors: v.GradeColors, Names: v.Names, Lists: w.app.lists(q.Actor.Email),
 			}
 			return out, true
 		},

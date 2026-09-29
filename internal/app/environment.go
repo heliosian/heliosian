@@ -9,7 +9,6 @@ import (
 	"heliosian/internal/feedback"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/logging"
-	"heliosian/internal/loop"
 	"heliosian/internal/mail"
 	"heliosian/internal/model"
 )
@@ -49,12 +48,12 @@ func newMailer(from string) *mail.Mailgun {
 	return mail.NewMailgun(mailgunKey(), from)
 }
 
-func loopMail(sessionKey string) loop.Mail {
+func loopMail(sessionKey string) model.ListMail {
 	archive, err := blob.Open(blob.MailBucket)
 	if err != nil {
 		logging.Fatal("mail archive", "error", err)
 	}
-	return loop.Mail{Sender: mail.NewMailgun(mailgunKey(), ""), SigningKey: mailgunSigningKey(), Key: []byte(sessionKey), Base: "https://loop.heliosian.com", Archive: archive}
+	return model.ListMail{Sender: mail.NewMailgun(mailgunKey(), ""), SigningKey: mailgunSigningKey(), Key: []byte(sessionKey), Base: "https://loop.heliosian.com", Archive: archive}
 }
 
 func artifactsMail(bucket *blob.Bucket) artifacts.Inbox {

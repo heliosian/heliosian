@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -35,11 +34,15 @@ func directoryOf() *Directory { return testDirectories.Model() }
 
 func noSettings() *Config { return &Config{} }
 
-func testLists(string) []PickerList {
-	return []PickerList{{Key: carpoolKey, Name: "Carpool", Kind: "tag", People: []string{mia, robin}}, {Key: "activity:" + bookFair, Name: "Book Fair", Kind: "activity", People: []string{mia, robin, ella}}}
-}
-
 const bookFair = "act0000000101"
+
+func listKeys(lists []PickerList) []string {
+	out := []string{}
+	for _, l := range lists {
+		out = append(out, l.Key)
+	}
+	return out
+}
 
 var (
 	testParties    *PartiesCache
@@ -81,6 +84,7 @@ func invitesAppWith(t *testing.T) (http.Handler, *CalendarCache, *mailtest.Recor
 	testDirectories = sources.directory
 	kept := keptMail()
 	testParties, testActivities = invitesLinked(t)
+	lists := linkedEmailLists(t, nil)
 	mux := http.NewServeMux()
 	testDeps = CalendarDeps{
 		Cache:      cache,
@@ -89,14 +93,13 @@ func invitesAppWith(t *testing.T) (http.Handler, *CalendarCache, *mailtest.Recor
 		Settings:   noSettings,
 		Parties:    testParties,
 		Activities: testActivities,
-		Lists:      testLists,
-		Sources:    sources.sources,
+		EmailLists: lists,
 		Mail:       CalendarMail{Sender: kept.Mailgun, Base: "https://when.heliosian.com", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey},
 		Style:      testStyle,
 		Queue:      queue,
 	}
 	testHooks = RegisterCalendar(mux, testDeps)
-	return served(mux, cache, testHooks, directoryOf, testParties, testActivities), cache, kept, sources
+	return served(mux, cache, testHooks, directoryOf, testParties, testActivities, lists), cache, kept, sources
 }
 
 var testDeps CalendarDeps
@@ -120,8 +123,6 @@ func idOf(t *testing.T, cache *CalendarCache, address string) string {
 
 type sampleSources struct {
 	directory *DirectoryCache
-	mu        sync.Mutex
-	extra     map[string][]string
 }
 
 func (s *sampleSources) tag(t *testing.T, key string, people ...string) {
@@ -154,27 +155,6 @@ func (s *sampleSources) newTag(t *testing.T, owner, name, person string) string 
 		t.Fatalf("tag %s: %v", name, err)
 	}
 	return key
-}
-
-func (s *sampleSources) list(key string, people ...string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.extra = map[string][]string{key: people}
-}
-
-func (s *sampleSources) sources() AudienceSources {
-	return AudienceSources{
-		Directory: s.directory.Model(),
-		MagicTags: func(string) []MagicTag {
-			s.mu.Lock()
-			defer s.mu.Unlock()
-			out := []MagicTag{}
-			for key, people := range s.extra {
-				out = append(out, MagicTag{Key: key, Name: key, People: people})
-			}
-			return out
-		},
-	}
 }
 
 func newSampleSources(t *testing.T) *sampleSources {
@@ -270,8 +250,11 @@ func TestInvitationLifecycle(t *testing.T) {
 		t.Errorf("someone else's picker: %+v", p)
 	}
 	picker, settings := pickerOf(t, jordan, "meetup"), settingsOf(t, jordan)
-	if len(settings.Lists) != 2 || len(settings.Classrooms) != 9 || len(picker.OnList) != 0 {
-		t.Errorf("picker: lists %d classrooms %d on list %d", len(settings.Lists), len(settings.Classrooms), len(picker.OnList))
+	if got := listKeys(settings.Lists); !slices.Equal(got, []string{carpoolKey, TagKey(soccerTeam), TagKey(bookClub)}) || len(settings.Classrooms) != 9 || len(picker.OnList) != 0 {
+		t.Errorf("picker: lists %v classrooms %d on list %d", got, len(settings.Classrooms), len(picker.OnList))
+	}
+	if got := listKeys(settingsOf(t, miaH).Lists); !slices.Equal(got, []string{"party:" + partyA, "activity:" + bookFair}) {
+		t.Errorf("the party host and Book Fair chair's lists: %v", got)
 	}
 	rec = act(t, jordan, "meetup", "invite", `{"people":[{"email":"`+robin+`","via":"family"},{"email":"`+sam+`","via":"family"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"},{"email":"`+robin+`"},{"email":"not-an-address"}]}`)
 	if rec.Code != 400 {
@@ -910,7 +893,7 @@ func TestPartyStart(t *testing.T) {
 	act(t, miaH, partyA, "send", `{}`)
 	act(t, miaH, partyA, "answer-for", `{"email":"`+robin+`","answer":"maybe"}`)
 	r := testHooks.app.linkedRSVPs(partyA)
-	if r == nil || !r.Sent || r.Answers[robin] != AnswerMaybe || r.Answers[sam] != "none" || r.Answers[mia] != "" {
+	if r == nil || !r.Sent || r.Answers[robin] != AnswerMaybe || r.Answers[sam] != "none" || r.Answers[ella] != "" {
 		t.Errorf("rsvps = %+v", r)
 	}
 	if r := testHooks.app.linkedRSVPs("nope"); r != nil {
@@ -1045,8 +1028,7 @@ func TestStudentMessagesCcParentsWithoutCalendarFiles(t *testing.T) {
 }
 
 func TestPartyListIsTheHolders(t *testing.T) {
-	mux, cache, kept, sources := invitesAppWith(t)
-	sources.list("party:"+partyA, mia, robin, sam, host)
+	mux, cache, kept := calendarInvitesApp(t)
 	miaH := as(mia, mux)
 	rec := act(t, miaH, partyA, "start", "")
 	if rec.Code != 204 || len(cache.Model().Groups[partyA]) != 1 || viaGroup(cache, partyA, cache.Model().Groups[partyA][0].ID) != 3 {
@@ -1967,7 +1949,7 @@ func TestToolbarRSVPs(t *testing.T) {
 }
 
 func TestTicketGuestsAndMovedAddresses(t *testing.T) {
-	mux, cache, kept, sources := invitesAppWith(t)
+	mux, cache, kept := calendarInvitesApp(t)
 	const (
 		alum   = "ella.graduated@heliosschool.org"
 		home   = "ella.w@gmail.com"
@@ -1980,7 +1962,6 @@ func TestTicketGuestsAndMovedAddresses(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	sources.list("party:"+partyA, mia, robin, sam)
 	miaH := as(mia, mux)
 	if rec := act(t, miaH, partyA, "start", ""); rec.Code != 204 {
 		t.Fatalf("start: %d %s", rec.Code, rec.Body)

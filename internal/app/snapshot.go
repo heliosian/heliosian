@@ -8,10 +8,8 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/api"
 	"heliosian/internal/artifacts"
-	"heliosian/internal/birthday"
 	"heliosian/internal/feedback"
 	"heliosian/internal/home"
-	"heliosian/internal/loop"
 	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
@@ -21,10 +19,10 @@ type Snapshot struct {
 	Who       *model.Directory
 	Invites   *model.InviteTemplates
 	Team      *model.Activities
-	Birthday  birthday.World
+	Birthday  model.BirthdaysWorld
 	Celebrate *model.Parties
 	When      model.CalendarWorld
-	Loop      loop.World
+	Loop      model.EmailListsWorld
 	Home      *home.Model
 	Artifacts *artifacts.Model
 	Feedback  *feedback.Model
@@ -35,10 +33,10 @@ type caches struct {
 	who       *model.DirectoryCache
 	invites   *model.InviteTemplatesCache
 	team      *model.ActivitiesCache
-	birthday  *birthday.Cache
+	birthday  *model.BirthdaysCache
 	celebrate *model.PartiesCache
 	when      *model.CalendarCache
-	loop      *loop.Cache
+	loop      *model.EmailListsCache
 	home      *home.Cache
 	artifacts *artifacts.Cache
 	feedback  *feedback.Cache
@@ -49,18 +47,16 @@ type caches struct {
 func (c caches) snapshot(tx *store.Tx) *Snapshot {
 	directory := c.who.In(tx)
 	settings := c.settings.In(tx)
-	parties, activities := c.celebrate.In(tx), c.team.In(tx)
+	parties, activities, lists := c.celebrate.In(tx), c.team.In(tx), c.loop.In(tx)
 	return &Snapshot{
 		Config:    settings,
 		Who:       directory,
 		Invites:   c.invites.In(tx),
 		Team:      activities,
-		Birthday:  birthday.NewWorld(c.birthday.In(tx), directory),
+		Birthday:  model.NewBirthdaysWorld(c.birthday.In(tx), directory),
 		Celebrate: parties,
-		When:      c.whenHooks.World(c.when.In(tx), directory, settings, parties, activities, c.idKey),
-		Loop: loop.NewWorld(c.loop.In(tx), directory, settings.GradeColors, loopMagicTags(directory, parties, activities, c.team.IsAdmin), func() []string {
-			return model.MagicTagKeys(parties, activities)
-		}),
+		When:      c.whenHooks.World(c.when.In(tx), directory, settings, parties, activities, lists, c.idKey),
+		Loop:      model.NewEmailListsWorld(lists, directory, settings.GradeColors, parties, activities, c.team),
 		Home:      c.home.In(tx),
 		Artifacts: c.artifacts.In(tx),
 		Feedback:  c.feedback.In(tx),
@@ -85,7 +81,7 @@ func (c caches) held(email string) []access.Allowance {
 	return out
 }
 
-func resources(c caches, queue *store.Queue, birthdays []api.Type[birthday.World], lists []api.Type[loop.World]) *api.Registry[*Snapshot] {
+func resources(c caches, queue *store.Queue, birthdays []api.Type[model.BirthdaysWorld], lists []api.Type[model.EmailListsWorld]) *api.Registry[*Snapshot] {
 	reg := api.New(api.Config[*Snapshot]{
 		Actor:  func(r *http.Request, s *Snapshot) access.Actor { return s.Who.Actor(r, c.held) },
 		Held:   c.held,
@@ -98,10 +94,10 @@ func resources(c caches, queue *store.Queue, birthdays []api.Type[birthday.World
 		reg.Add(api.Lift(t, func(s *Snapshot) *model.Directory { return s.Who }))
 	}
 	for _, t := range birthdays {
-		reg.Add(api.Lift(t, func(s *Snapshot) birthday.World { return s.Birthday }))
+		reg.Add(api.Lift(t, func(s *Snapshot) model.BirthdaysWorld { return s.Birthday }))
 	}
 	for _, t := range lists {
-		reg.Add(api.Lift(t, func(s *Snapshot) loop.World { return s.Loop }))
+		reg.Add(api.Lift(t, func(s *Snapshot) model.EmailListsWorld { return s.Loop }))
 	}
 	for _, t := range c.whenHooks.Resources() {
 		reg.Add(api.Lift(t, func(s *Snapshot) model.CalendarWorld { return s.When }))

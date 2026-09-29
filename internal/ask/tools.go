@@ -14,7 +14,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
-	"heliosian/internal/loop"
 	"heliosian/internal/model"
 )
 
@@ -80,7 +79,7 @@ type viewer struct {
 	calendar  *model.Calendar
 	team      *model.Activities
 	celebrate *model.Parties
-	loop      *loop.Model
+	loop      *model.EmailLists
 	artifacts *artifacts.Model
 	embedder  *artifacts.Vertex
 	sources   Sources

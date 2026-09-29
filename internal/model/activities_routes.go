@@ -30,25 +30,25 @@ type activitiesApp struct {
 	calendar  calendarApp
 	search    imagesearch.Search
 	mailer    *mail.Mailgun
-	lists     EmailListLookup
+	lists     *EmailListsCache
 	style     *sharecard.Style
 }
 
 type ActivitiesDeps struct {
-	Cache     *ActivitiesCache
-	Images    blob.Images
-	Directory func() *Directory
-	Settings  func() *Config
-	Calendar  CalendarHooks
-	Search    imagesearch.Search
-	Mailer    *mail.Mailgun
-	Lists     EmailListLookup
-	Style     *sharecard.Style
+	Cache      *ActivitiesCache
+	Images     blob.Images
+	Directory  func() *Directory
+	Settings   func() *Config
+	Calendar   CalendarHooks
+	Search     imagesearch.Search
+	Mailer     *mail.Mailgun
+	EmailLists *EmailListsCache
+	Style      *sharecard.Style
 }
 
 func RegisterActivities(mux *http.ServeMux, d ActivitiesDeps) {
 	d.Search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
-	a := activitiesApp{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, calendar: d.Calendar.app, search: d.Search, mailer: d.Mailer, lists: d.Lists, style: d.Style}
+	a := activitiesApp{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, calendar: d.Calendar.app, search: d.Search, mailer: d.Mailer, lists: d.EmailLists, style: d.Style}
 	for _, page := range activitiesPages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -110,7 +110,7 @@ func (a activitiesApp) actor(r *http.Request) access.Actor {
 
 func (a activitiesApp) model(r *http.Request, _ serve.None) (ActivitiesView, error) {
 	actor := a.actor(r)
-	view := RenderActivities(a.cache.Model(), a.directory(), a.settings(), a.calendar.linkedRSVPs, a.lists, actor, time.Now().In(Location))
+	view := RenderActivities(a.cache.Model(), a.directory(), a.settings(), a.calendar.linkedRSVPs, a.lists.Model(), actor, time.Now().In(Location))
 	view.ImageSearch = a.search.On()
 	return view, nil
 }

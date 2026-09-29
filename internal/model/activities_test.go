@@ -60,22 +60,19 @@ func activitiesServeWith(t *testing.T, mailer *mail.Mailgun) (*ActivitiesCache, 
 	if err != nil {
 		t.Fatal(err)
 	}
+	lists := linkedEmailLists(t, nil)
 	mux := http.NewServeMux()
 	RegisterActivities(mux, ActivitiesDeps{
-		Cache:     cache,
-		Images:    blob.NewImages(blob.New(blob.NewMemoryBucket()), "team"),
-		Directory: func() *Directory { return directory },
-		Settings:  func() *Config { return settings },
-		Calendar:  calendarOver(t, parties, cache, func() *Directory { return directory }),
-		Mailer:    mailer,
-		Lists:     noEmailList,
-		Style:     activitiesTestStyle,
+		Cache:      cache,
+		Images:     blob.NewImages(blob.New(blob.NewMemoryBucket()), "team"),
+		Directory:  func() *Directory { return directory },
+		Settings:   func() *Config { return settings },
+		Calendar:   calendarOver(t, parties, cache, lists, func() *Directory { return directory }),
+		Mailer:     mailer,
+		EmailLists: lists,
+		Style:      activitiesTestStyle,
 	})
 	return cache, mux
-}
-
-func noEmailList(string) string {
-	return ""
 }
 
 var activitiesTestStyle = ActivitiesCardStyle(func() string { return "HCA-Team" }, func() string { return "HCA Volunteer Portal" })
@@ -182,7 +179,7 @@ func TestVisibleToIsWhatRenderShows(t *testing.T) {
 			}
 		}
 		as := activityViewerOf(c.email, c.admin)
-		for _, a := range RenderActivities(m, directory, settings, noRSVPs, noEmailList, as, now()).Activities {
+		for _, a := range RenderActivities(m, directory, settings, noRSVPs, &EmailLists{}, as, now()).Activities {
 			shown[a.ID] = true
 			walk(a.Children)
 		}
@@ -203,7 +200,7 @@ func TestVisibleToIsWhatRenderShows(t *testing.T) {
 
 func TestActivitiesRenderHidesWhatItShould(t *testing.T) {
 	cache, _ := activitiesServer(t)
-	view := RenderActivities(cache.Model(), directory, settings, noRSVPs, noEmailList, activityViewerOf(activitiesParent, false), now())
+	view := RenderActivities(cache.Model(), directory, settings, noRSVPs, &EmailLists{}, activityViewerOf(activitiesParent, false), now())
 	for _, a := range view.Activities {
 		if a.Status == StatusHidden || a.Status == StatusPending {
 			t.Errorf("%s reached a parent as %s", a.Title, a.Status)
@@ -222,7 +219,7 @@ func TestActivitiesRenderHidesWhatItShould(t *testing.T) {
 	if view.User.Name != "Robin Whitfield" || len(view.User.Spouses) != 1 || view.User.Spouses[0].Email != jordan || len(view.User.Children) != 2 || view.User.Children[0] != (Child{Email: student, Name: "Sam Whitfield", Grade: "Grade 3"}) || view.People != nil {
 		t.Errorf("user %+v, people %v", view.User, view.People)
 	}
-	suggester := RenderActivities(cache.Model(), directory, settings, noRSVPs, noEmailList, activityViewerOf("elena.torres@heliosschool.org", false), now())
+	suggester := RenderActivities(cache.Model(), directory, settings, noRSVPs, &EmailLists{}, activityViewerOf("elena.torres@heliosschool.org", false), now())
 	found := false
 	for _, a := range suggester.Activities {
 		if a.Title == "Family Escape Room Night" {
@@ -232,7 +229,7 @@ func TestActivitiesRenderHidesWhatItShould(t *testing.T) {
 	if !found {
 		t.Error("a suggester cannot see their own pending suggestion")
 	}
-	if got := RenderActivities(cache.Model(), directory, settings, noRSVPs, noEmailList, activityViewerOf("someone.new@heliosschool.org", false), now()).User.Name; got != "Someone New" {
+	if got := RenderActivities(cache.Model(), directory, settings, noRSVPs, &EmailLists{}, activityViewerOf("someone.new@heliosschool.org", false), now()).User.Name; got != "Someone New" {
 		t.Errorf("display name %q", got)
 	}
 }
@@ -731,10 +728,10 @@ func TestYears(t *testing.T) {
 	if got := ActivityYear(testkit.MustTime("2027-03-01")); got != "2026 - 2027" {
 		t.Errorf("march: %s", got)
 	}
-	if got := ShiftActivityYear("2026 - 2027", -1); got != "2025 - 2026" {
+	if got := ShiftYearSpan("2026 - 2027", -1); got != "2025 - 2026" {
 		t.Errorf("shift: %s", got)
 	}
-	if err := CheckActivityYear("2026 - 2028"); err == nil {
+	if err := CheckYearSpan("2026 - 2028"); err == nil {
 		t.Error("a two-year span passed")
 	}
 }

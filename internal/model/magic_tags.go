@@ -44,6 +44,43 @@ func EveryActivityMagicTagsOf(directory *Directory, parties *Parties, activities
 	return append(tags, activities.AllMagicTags(directory, now)...)
 }
 
+func DirectoryAudience(directory *Directory, parties *Parties, activities *Activities, now time.Time) AudienceSources {
+	return AudienceSources{Directory: directory, MagicTags: func(owner string) []MagicTag {
+		return MagicTagsOf(directory, parties, activities, owner, now)
+	}}
+}
+
+func EmailListAudience(directory *Directory, parties *Parties, activities *Activities, activityAdmins *ActivitiesCache, now time.Time) AudienceSources {
+	return AudienceSources{Directory: directory, MagicTags: func(owner string) []MagicTag {
+		if activityAdmins.IsAdmin(owner) {
+			return EveryActivityMagicTagsOf(directory, parties, activities, owner, now)
+		}
+		return MagicTagsOf(directory, parties, activities, owner, now)
+	}}
+}
+
+func ManagedMagicTags(directory *Directory, parties *Parties, activities *Activities, lists *EmailLists, activityAdmins *ActivitiesCache, email string, now time.Time) []MagicTag {
+	tags := append(parties.MagicTags(directory, email, now), activities.MagicTags(directory, email, now)...)
+	return append(tags, lists.MagicTags(EmailListAudience(directory, parties, activities, activityAdmins, now), email)...)
+}
+
+func PickerLists(directory *Directory, managed []MagicTag, email string) []PickerList {
+	out := []PickerList{}
+	for _, t := range directory.Tags(email) {
+		out = append(out, PickerList{Key: TagKey(t.ID), Name: t.Name, Kind: "tag", People: t.People})
+	}
+	for _, t := range directory.SharedTags(email) {
+		out = append(out, PickerList{Key: TagKey(t.ID), Name: t.Name + " (" + t.OwnerName + "'s)", Kind: "tag", People: t.People})
+	}
+	for _, list := range managed {
+		if list.Archived {
+			continue
+		}
+		out = append(out, PickerList{Key: list.Key, Name: list.Name, Kind: list.Kind, People: list.People})
+	}
+	return out
+}
+
 func MagicTagKeys(parties *Parties, activities *Activities) []string {
 	out := []string{}
 	for _, p := range parties.Parties {

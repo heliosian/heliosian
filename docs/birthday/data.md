@@ -1,10 +1,10 @@
 # Data model
 
-The tabs, columns, and validation rules are in `internal/birthday`; this file carries only what reading that code cannot tell you.
+The tabs, columns, and validation rules are in `internal/model`'s `birthdays*.go`; this file carries only what reading that code cannot tell you.
 
 The app's data lives in one Google Sheet, `Birthdays`, in the community shared drive, reached through drive membership like the other sheets. `BIRTHDAY_SHEET` names it, and `tools/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Birthdays`.
 
-The weekly export (`birthday.md`) writes to a second spreadsheet, the association's `Staff Birthday List (Shared)`, which `BIRTHDAY_SHARED_SHEET` names: its Newsletter tab takes one row per birthday copied (`birthday.SharedNewsletterColumns`, laid out by `tools/createtabs`). The app holds it as a store of its own (`sharedSpec` in `internal/birthday/cache.go`) on the one write queue, read at startup and in every refresh, its tab append-only; a store whose every tab is append-only writes no Change Log rows and so needs no Change Log tab (`docs/storage.md`), and this spreadsheet has none. Its Birthdays tab is the association's own and untouched. The spreadsheet is not in the shared drive; it is shared with `directory@` as an editor, and `tools/devenv` finds it by its title. Sample mode writes the rows into memory over `sampledata/birthdayshared/`.
+The weekly export (`birthday.md`) writes to a second spreadsheet, the association's `Staff Birthday List (Shared)`, which `BIRTHDAY_SHARED_SHEET` names: its Newsletter tab takes one row per birthday copied (`model.SharedNewsletterColumns`, laid out by `tools/createtabs`). The app holds it as a store of its own (`sharedSpec` in `internal/model/birthdays_cache.go`) on the one write queue, read at startup and in every refresh, its tab append-only; a store whose every tab is append-only writes no Change Log rows and so needs no Change Log tab (`docs/storage.md`), and this spreadsheet has none. Its Birthdays tab is the association's own and untouched. The spreadsheet is not in the shared drive; it is shared with `directory@` as an editor, and `tools/devenv` finds it by its title. Sample mode writes the rows into memory over `sampledata/birthdayshared/`.
 
 ## Tabs
 

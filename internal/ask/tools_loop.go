@@ -6,7 +6,6 @@ import (
 	"slices"
 
 	"heliosian/internal/home"
-	"heliosian/internal/loop"
 	"heliosian/internal/model"
 )
 
@@ -46,7 +45,7 @@ var myGroups = tool{
 			if in.Query != "" && !contains(g.Title, in.Query) && !contains(g.Name, in.Query) && !contains(g.Description, in.Query) {
 				continue
 			}
-			members := loop.Members(raw, sources)
+			members := raw.Members(sources)
 			c := groupCard{
 				Title: g.Title, Address: g.Address(), Aliases: g.Aliases, Description: g.Description, Visibility: g.Visibility, Managers: v.names(g.Managers),
 				Manage: g.Manages(v.email), OnIt: slices.Contains(members, v.email), Members: len(members), Link: loopBase + g.Path(),

@@ -26,7 +26,7 @@ func TestRenamingATagKeepsTheAudiencesThatNameIt(t *testing.T) {
 	}
 	sources := func() model.AudienceSources {
 		d := directory.Model()
-		return model.AudienceSources{Directory: d}
+		return model.AudienceSources{Directory: d, MagicTags: func(string) []model.MagicTag { return nil }}
 	}
 	c, err := NewCache(dir, dir, testkit.All, func() []string { return nil }, sources, queue)
 	if err != nil {

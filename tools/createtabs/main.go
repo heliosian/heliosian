@@ -7,13 +7,11 @@ import (
 	"slices"
 
 	"heliosian/internal/artifacts"
-	"heliosian/internal/birthday"
 	"heliosian/internal/data"
 	"heliosian/internal/env"
 	"heliosian/internal/feedback"
 	"heliosian/internal/home"
 	"heliosian/internal/id"
-	"heliosian/internal/loop"
 	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/store"
@@ -75,22 +73,22 @@ var layouts = map[string][]tab{
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Birthdays": {
-		{"Birthdays", birthday.BirthdayColumns},
-		{"Assignments", birthday.AssignmentColumns},
-		{"Outreach", birthday.OutreachColumns},
-		{"Donations", birthday.DonationColumns},
-		{"Notes", birthday.NoteColumns},
-		{"Charities", birthday.CharityColumns},
-		{"Newsletter Dates", birthday.NewsletterDateColumns},
-		{"Settings", birthday.SettingColumns},
+		{"Birthdays", model.BirthdayColumns},
+		{"Assignments", model.AssignmentColumns},
+		{"Outreach", model.OutreachColumns},
+		{"Donations", model.DonationColumns},
+		{"Notes", model.NoteColumns},
+		{"Charities", model.CharityColumns},
+		{"Newsletter Dates", model.NewsletterDateColumns},
+		{"Settings", model.KeyValueColumns},
 		{model.AdminsTab.Name, model.AdminsTab.Columns},
-		{"Team", birthday.TeamColumns},
-		{"Reminders", birthday.ReminderColumns},
-		{"Invites", birthday.InviteColumns},
+		{"Team", model.TeamColumns},
+		{"Reminders", model.ReminderColumns},
+		{"Invites", model.BirthdayInviteColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Staff Birthday List (Shared)": {
-		{"Newsletter", birthday.SharedNewsletterColumns},
+		{"Newsletter", model.SharedNewsletterColumns},
 	},
 	"Celebrate": {
 		{"Celebrations", model.CelebrationColumns},
@@ -129,16 +127,16 @@ var layouts = map[string][]tab{
 	},
 	"Config": withChangeLog(model.ConfigTabs),
 	"Groups": {
-		{"Groups", loop.GroupColumns},
-		{"Managers", loop.ManagerColumns},
-		{"Rules", loop.RuleColumns},
-		{"Additions", loop.AdditionColumns},
-		{"Excluded", loop.ExcludedColumns},
+		{"Groups", model.GroupColumns},
+		{"Managers", model.ManagerColumns},
+		{"Rules", model.ListRuleColumns},
+		{"Additions", model.AdditionColumns},
+		{"Excluded", model.ExcludedColumns},
 		{id.AliasesTab, id.AliasColumns},
-		{"Messages", loop.MessageColumns},
-		{"Deliveries", loop.DeliveryColumns},
+		{"Messages", model.ListMessageColumns},
+		{"Deliveries", model.DeliveryColumns},
 		{model.AdminsTab.Name, model.AdminsTab.Columns},
-		{"Archived", loop.ArchivedColumns},
+		{"Archived", model.ArchivedColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 }

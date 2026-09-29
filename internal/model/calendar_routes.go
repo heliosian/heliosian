@@ -26,21 +26,21 @@ var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/mine", "/mine/{list}
 var eventPages = []string{"/e/{id...}", "/events/{id...}"}
 
 type calendarApp struct {
-	cache        *CalendarCache
-	pinned       *Calendar
-	images       blob.Images
-	directory    func() *Directory
-	settings     func() *Config
-	partiesCache *PartiesCache
-	parties      func() *Parties
-	activities   func() *Activities
-	clock        func() time.Time
-	lists        func(email string) []PickerList
-	sources      func() AudienceSources
-	search       imagesearch.Search
-	queue        *store.Queue
-	mail         CalendarMail
-	style        *sharecard.Style
+	cache           *CalendarCache
+	pinned          *Calendar
+	images          blob.Images
+	directory       func() *Directory
+	settings        func() *Config
+	partiesCache    *PartiesCache
+	activitiesCache *ActivitiesCache
+	parties         func() *Parties
+	activities      func() *Activities
+	emailLists      func() *EmailLists
+	clock           func() time.Time
+	search          imagesearch.Search
+	queue           *store.Queue
+	mail            CalendarMail
+	style           *sharecard.Style
 }
 
 type CalendarDeps struct {
@@ -50,8 +50,7 @@ type CalendarDeps struct {
 	Settings   func() *Config
 	Parties    *PartiesCache
 	Activities *ActivitiesCache
-	Lists      func(email string) []PickerList
-	Sources    func() AudienceSources
+	EmailLists *EmailListsCache
 	Search     imagesearch.Search
 	Mail       CalendarMail
 	Style      *sharecard.Style
@@ -62,9 +61,18 @@ func newCalendarApp(d CalendarDeps) calendarApp {
 	d.Search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
 	return calendarApp{
 		cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings,
-		partiesCache: d.Parties, parties: d.Parties.Model, activities: d.Activities.Model, clock: now,
-		lists: d.Lists, sources: d.Sources, search: d.Search, queue: d.Queue, mail: d.Mail, style: d.Style,
+		partiesCache: d.Parties, activitiesCache: d.Activities, parties: d.Parties.Model, activities: d.Activities.Model, emailLists: d.EmailLists.Model, clock: now,
+		search: d.Search, queue: d.Queue, mail: d.Mail, style: d.Style,
 	}
+}
+
+func (a calendarApp) sources() AudienceSources {
+	return DirectoryAudience(a.directory(), a.parties(), a.activities(), a.clock())
+}
+
+func (a calendarApp) lists(email string) []PickerList {
+	d := a.directory()
+	return PickerLists(d, ManagedMagicTags(d, a.parties(), a.activities(), a.emailLists(), a.activitiesCache, email, a.clock()), email)
 }
 
 func RegisterCalendar(mux *http.ServeMux, d CalendarDeps) CalendarHooks {

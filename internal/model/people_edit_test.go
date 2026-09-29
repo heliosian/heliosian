@@ -11,6 +11,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/serve"
+	"heliosian/internal/testkit"
 )
 
 func TestAParentEditsTheirHouseholdAndKidButNotTheOtherParents(t *testing.T) {
@@ -72,14 +73,28 @@ func TestEditingAnotherFamilyNeedsAnAdmin(t *testing.T) {
 }
 
 func TestSpoofedParentCannotEditAnyone(t *testing.T) {
-	cache := sampleCache(t)
+	s := newServer(t)
+	cache := s.cache
+	none := func() []string { return nil }
+	parties, err := NewPartiesCache(s.dir, s.dir, testkit.All, none, s.queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	activities, err := NewActivitiesCache(s.dir, s.dir, testkit.All, none, s.queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lists, err := NewEmailListsCache(s.dir, s.dir, none, s.queue, testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	key := []byte("spoof")
 	signin := auth.New("", "", key, auth.Login{}, func(string) bool { return true }, nil, nil)
 	signin.Spoof = &auth.Spoof{
 		Allowed: func(email string) bool { return email == jordan },
 		Person:  func(email string) (auth.Person, bool) { return auth.Person{Email: email}, true },
 	}
-	routes := DirectoryRoutes{Cache: cache, MagicTags: func(string) []MagicTag { return nil }}
+	routes := DirectoryRoutes{Cache: cache, Parties: parties, Activities: activities, EmailLists: lists}
 	for _, c := range []struct {
 		as   string
 		want bool

@@ -66,7 +66,7 @@ func partiesServeWith(t *testing.T, mailer *mail.Mailgun) (*PartiesCache, *http.
 	if err != nil {
 		t.Fatal(err)
 	}
-	partiesCalendar = calendarOver(t, cache, partiesActivities(t), partiesDirectory)
+	partiesCalendar = calendarOver(t, cache, partiesActivities(t), linkedEmailLists(t, nil), partiesDirectory)
 	mux := http.NewServeMux()
 	RegisterParties(mux, PartiesDeps{
 		Cache:     cache,

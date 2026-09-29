@@ -13,7 +13,6 @@ import (
 	"heliosian/internal/devcache"
 	"heliosian/internal/env"
 	"heliosian/internal/home"
-	"heliosian/internal/loop"
 	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
@@ -239,22 +238,15 @@ func main() {
 	}
 	fmt.Printf("calendar admins: %d\n", len(calendarCache.Admins()))
 
-	groupCache, err := loop.NewCache(source, nil, func() []string { return nil }, store.NewQueue(), []byte(env.Required("ID_KEY")))
+	groupCache, err := model.NewEmailListsCache(source, nil, func() []string { return nil }, store.NewQueue(), []byte(env.Required("ID_KEY")))
 	if err != nil {
 		log.Fatalf("load groups model: %v", err)
 	}
 	groupModel := groupCache.Model()
-	now := time.Now().In(model.Location)
-	sources := loop.Sources{
-		Directory: directory,
-		MagicTags: func(owner string) []model.MagicTag {
-			lists := append(directory.RoomParentTags(owner), site.MagicTags(directory, owner, now)...)
-			return append(lists, portal.MagicTags(directory, owner, now)...)
-		},
-	}
+	sources := model.EmailListAudience(directory, site, portal, eventsCache, time.Now().In(model.Location))
 	fmt.Println("groups:")
 	for _, g := range groupModel.Groups {
-		fmt.Printf("  %s %q: aliases %v, %d managers, %d rules, %d members, %d excluded, prefix %v, visibility %s, posting %s, replying %s\n", g.Address(), g.Title, g.Aliases, len(g.Managers), len(g.Rules), len(loop.Members(g, sources)), len(g.Excluded), g.Prefix, g.Visibility, g.Posting, g.Replying)
+		fmt.Printf("  %s %q: aliases %v, %d managers, %d rules, %d members, %d excluded, prefix %v, visibility %s, posting %s, replying %s\n", g.Address(), g.Title, g.Aliases, len(g.Managers), len(g.Rules), len(g.Members(sources)), len(g.Excluded), g.Prefix, g.Visibility, g.Posting, g.Replying)
 	}
 	fmt.Printf("groups admins: %d\n", len(groupCache.Admins()))
 
