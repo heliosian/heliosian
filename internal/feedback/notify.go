@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"heliosian/internal/mail"
-	"heliosian/internal/when"
+	"heliosian/internal/model"
 )
 
 const notifyTimeout = 30 * time.Second
@@ -69,9 +69,9 @@ func (n Notifier) message(to []string, r Report) mail.Message {
 	fmt.Fprintf(&b, "<p>%s reported from %s by %s.</p>", html.EscapeString(what), html.EscapeString(r.AppName), html.EscapeString(r.Email))
 	fmt.Fprintf(&b, "<p><strong>%s</strong></p>", html.EscapeString(r.Summary))
 	fmt.Fprintf(&b, "<p>%s</p>", strings.ReplaceAll(html.EscapeString(details), "\n", "<br>"))
-	fmt.Fprintf(&b, "<p>They were on %s at %s.</p>", html.EscapeString(r.Page), html.EscapeString(r.At.In(when.Location).Format("2006-01-02 15:04 MST")))
+	fmt.Fprintf(&b, "<p>They were on %s at %s.</p>", html.EscapeString(r.Page), html.EscapeString(r.At.In(model.Location).Format("2006-01-02 15:04 MST")))
 	fmt.Fprintf(&t, "%s reported from %s by %s.\n\n%s\n\n%s\n\nThey were on %s at %s.\n\n",
-		what, r.AppName, r.Email, r.Summary, details, r.Page, r.At.In(when.Location).Format("2006-01-02 15:04 MST"))
+		what, r.AppName, r.Email, r.Summary, details, r.Page, r.At.In(model.Location).Format("2006-01-02 15:04 MST"))
 	b.WriteString("<p>")
 	for _, f := range facts {
 		if f[1] == "" {

@@ -7,7 +7,6 @@ import (
 
 	"heliosian/internal/model"
 	"heliosian/internal/team"
-	"heliosian/internal/when"
 )
 
 func TestClassroomChipsWearTheirColor(t *testing.T) {
@@ -27,7 +26,7 @@ func TestClassroomChipsWearTheirColor(t *testing.T) {
 
 func TestLinkExamplesShowWhatTheChipsShow(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 18, 9, 0, 0, 0, when.Location)
+	v.now = time.Date(2026, 9, 18, 9, 0, 0, 0, model.Location)
 	out := linkExamples(v)
 	t.Log(out)
 	kinds := map[string]bool{}
@@ -84,7 +83,7 @@ func TestLinkCardsKeepEachAppsVisibility(t *testing.T) {
 				t.Errorf("%s: event %q card %+v %v", email, e.Title, card, ok)
 			}
 		}
-		for _, e := range append(append([]*when.Event{}, v.calendar.Events...), v.calendar.Pending...) {
+		for _, e := range append(append([]*model.Event{}, v.calendar.Events...), v.calendar.Pending...) {
 			if _, ok := v.linkCard(eventLink(e)); !seen[e.ID] && strings.HasPrefix(eventLink(e), whenBase) && ok {
 				t.Errorf("%s: a card for %q, which the calendar does not show them", email, e.Title)
 			}

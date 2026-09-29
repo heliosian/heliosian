@@ -16,7 +16,6 @@ import (
 	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
-	"heliosian/internal/when"
 )
 
 type Snapshot struct {
@@ -26,7 +25,7 @@ type Snapshot struct {
 	Team      *team.Model
 	Birthday  birthday.World
 	Celebrate *celebrate.Model
-	When      when.World
+	When      model.CalendarWorld
 	Loop      loop.World
 	Home      *home.Model
 	Artifacts *artifacts.Model
@@ -40,12 +39,12 @@ type caches struct {
 	team      *team.Cache
 	birthday  *birthday.Cache
 	celebrate *celebrate.Cache
-	when      *when.Cache
+	when      *model.CalendarCache
 	loop      *loop.Cache
 	home      *home.Cache
 	artifacts *artifacts.Cache
 	feedback  *feedback.Cache
-	whenHooks when.Hooks
+	whenHooks model.CalendarHooks
 	idKey     []byte
 }
 
@@ -75,9 +74,9 @@ func (s *Snapshot) at(q api.Query) *Snapshot {
 	return &scoped
 }
 
-func eventSources(directory *model.Directory, parties *celebrate.Model, activities *team.Model) func(email string, now time.Time) []when.Linked {
-	return func(email string, now time.Time) []when.Linked {
-		family := when.FamilyOf(directory, email)
+func eventSources(directory *model.Directory, parties *celebrate.Model, activities *team.Model) func(email string, now time.Time) []model.Linked {
+	return func(email string, now time.Time) []model.Linked {
+		family := directory.HouseholdOf(email)
 		return append(parties.Linked(family, now), activities.Linked(family)...)
 	}
 }
@@ -97,7 +96,7 @@ func resources(c caches, queue *store.Queue, birthdays []api.Type[birthday.World
 	reg := api.New(api.Config[*Snapshot]{
 		Actor:  func(r *http.Request, s *Snapshot) access.Actor { return s.Who.Actor(r, c.held) },
 		Held:   c.held,
-		Now:    func() time.Time { return time.Now().In(when.Location) },
+		Now:    func() time.Time { return time.Now().In(model.Location) },
 		Queue:  queue,
 		Staged: c.snapshot,
 		Scope:  (*Snapshot).at,
@@ -112,7 +111,7 @@ func resources(c caches, queue *store.Queue, birthdays []api.Type[birthday.World
 		reg.Add(api.Lift(t, func(s *Snapshot) loop.World { return s.Loop }))
 	}
 	for _, t := range c.whenHooks.Resources() {
-		reg.Add(api.Lift(t, func(s *Snapshot) when.World { return s.When }))
+		reg.Add(api.Lift(t, func(s *Snapshot) model.CalendarWorld { return s.When }))
 	}
 	queue.OnSwap(func() { reg.Publish(c.snapshot(nil)) })
 	return reg

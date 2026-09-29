@@ -10,8 +10,8 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
+	"heliosian/internal/model"
 	"heliosian/internal/sharecard"
-	"heliosian/internal/when"
 )
 
 func CardStyle(name, tagline func() string) *sharecard.Style {
@@ -68,18 +68,18 @@ func blurb(a *Activity) string {
 
 func PreviewHead(cache *Cache, style *sharecard.Style) func(r *http.Request) string {
 	return func(r *http.Request) string {
-		model := cache.Model()
+		m := cache.Model()
 		origin := "https://" + r.Host
 		first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]
 		var a *Activity
 		if first == "v" || first == "activities" {
-			a = model.Resolve(r.URL.Path)
+			a = m.Resolve(r.URL.Path)
 		}
-		if !previewable(model, a) {
-			return upcomingHead(style, model, origin, time.Now().In(when.Location))
+		if !previewable(m, a) {
+			return upcomingHead(style, m, origin, time.Now().In(model.Location))
 		}
 		desc := blurb(a)
-		if line := whenText(timed(model, a)); line != "" {
+		if line := whenText(timed(m, a)); line != "" {
 			if desc != "" {
 				desc = line + " — " + desc
 			} else {
@@ -90,10 +90,10 @@ func PreviewHead(cache *Cache, style *sharecard.Style) func(r *http.Request) str
 			desc = "Sign up to help on HCA-Team, the HCA Volunteer Portal."
 		}
 		title := a.Title
-		if under := lineage(model, a); under != "" {
+		if under := lineage(m, a); under != "" {
 			title = a.Title + " · " + under
 		}
-		return style.PreviewTags(title, desc, origin+model.PathOf(a), origin+"/open/share/"+a.ID+".png")
+		return style.PreviewTags(title, desc, origin+m.PathOf(a), origin+"/open/share/"+a.ID+".png")
 	}
 }
 
@@ -157,7 +157,7 @@ func upcomingHead(style *sharecard.Style, m *Model, origin string, at time.Time)
 
 func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	listing := &sharecard.Listing{Heading: "Volunteers needed", Empty: upcomingEmpty}
-	for _, act := range needs(a.cache.Model(), time.Now().In(when.Location)) {
+	for _, act := range needs(a.cache.Model(), time.Now().In(model.Location)) {
 		if len(listing.Items) == needsCount {
 			break
 		}
@@ -198,15 +198,15 @@ func whenLines(a *Activity) (string, string) {
 	if days, hours := spanLines(a); days != "" {
 		return days, hours
 	}
-	start, err := time.ParseInLocation(DateTimeFormat, a.Start, when.Location)
+	start, err := time.ParseInLocation(DateTimeFormat, a.Start, model.Location)
 	if err != nil {
-		if day, err := time.ParseInLocation(DateFormat, a.Start, when.Location); err == nil {
+		if day, err := time.ParseInLocation(DateFormat, a.Start, model.Location); err == nil {
 			return day.Format("Monday, January 2"), ""
 		}
 		return "", ""
 	}
 	day := start.Format("Monday, January 2")
-	end, err := time.ParseInLocation(DateTimeFormat, a.End, when.Location)
+	end, err := time.ParseInLocation(DateTimeFormat, a.End, model.Location)
 	if err != nil {
 		return day, start.Format("3:04 PM")
 	}

@@ -13,7 +13,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 
 	"heliosian/internal/cells"
-	"heliosian/internal/when"
+	"heliosian/internal/model"
 )
 
 const batchSize = 10
@@ -40,7 +40,7 @@ func digest(parts ...string) string {
 	return fmt.Sprintf("%x", sum)[:16]
 }
 
-func enrich(ctx context.Context, client anthropic.Client, inputs []enrichInput, roster when.Roster, dayTypes []string, tags []when.Tag) ([]enrichOutput, error) {
+func enrich(ctx context.Context, client anthropic.Client, inputs []enrichInput, roster model.Roster, dayTypes []string, tags []model.CalendarTag) ([]enrichOutput, error) {
 	names := []string{}
 	for _, t := range tags {
 		names = append(names, t.Name)
@@ -141,12 +141,12 @@ func plan(existing map[string]map[string]string, rows []map[string]string, vocab
 func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []map[string]string {
 	vocabulary := digest(classifierSystem(r.roster, r.tags), strings.Join(r.roster.Names(), ","), strings.Join(r.dayTypes, ","))
 	existing := map[string]map[string]string{}
-	for _, row := range r.tables[when.EnrichmentTab] {
+	for _, row := range r.tables[model.EnrichmentTab] {
 		existing[row["Event ID"]] = row
 	}
 	enrichment, pending, hashes := plan(existing, rows, vocabulary)
 	slog.InfoContext(ctx, "calendar import: enrichment", "current", len(enrichment), "to classify", len(pending))
-	today := time.Now().In(when.Location).Format(when.DateFormat)
+	today := time.Now().In(model.Location).Format(model.DateFormat)
 	batches := [][]enrichInput{}
 	for start := 0; start < len(pending); start += batchSize {
 		batches = append(batches, pending[start:min(start+batchSize, len(pending))])

@@ -33,12 +33,11 @@ import (
 	"heliosian/internal/team"
 	"heliosian/internal/testkit"
 	"heliosian/internal/testkit/sample"
-	"heliosian/internal/when"
 )
 
 const jordan = "jordan.whitfield@heliosschool.org"
 
-var sampleNow = time.Date(2026, 9, 12, 9, 0, 0, 0, when.Location)
+var sampleNow = time.Date(2026, 9, 12, 9, 0, 0, 0, model.Location)
 
 func sampleSources(t *testing.T) Sources {
 	t.Helper()
@@ -97,18 +96,18 @@ func sampleSources(t *testing.T) Sources {
 		Tags:      tags,
 		Lists:     lists,
 		Settings:  func() *model.Config { return &model.Config{} },
-		Calendar:  func() *when.Model { return calendarModel },
-		Linked:    func(string) []when.Linked { return nil },
+		Calendar:  func() *model.Calendar { return calendarModel },
+		Linked:    func(string) []model.Linked { return nil },
 		Team:      func() *team.Model { return teamModel },
 		Celebrate: func() *celebrate.Model { return celebrateModel },
 		Loop:      func() *loop.Model { return loopModel },
 		LoopSources: func() loop.Sources {
-			return loop.Sources{Directory: directory, Tags: tags, MagicTags: lists, Shared: directory.SharedTags}
+			return loop.Sources{Directory: directory, MagicTags: lists}
 		},
 		Links:     homeCache.CategoriesFor,
 		Artifacts: func() *artifacts.Model { return documents },
 		Embedder:  embedder,
-		Admins:    Admins{Team: heldBy(team.AdminAllowances), Celebrate: heldBy(celebrate.AdminAllowances), Loop: heldBy(loop.AdminAllowances), Calendar: heldBy(when.AdminAllowances), Home: heldBy(home.AdminAllowances)},
+		Admins:    Admins{Team: heldBy(team.AdminAllowances), Celebrate: heldBy(celebrate.AdminAllowances), Loop: heldBy(loop.AdminAllowances), Calendar: heldBy(model.CalendarAdminAllowances), Home: heldBy(home.AdminAllowances)},
 		Now:       func() time.Time { return sampleNow },
 	}
 }
@@ -162,7 +161,7 @@ func TestLingoReadsTheModels(t *testing.T) {
 
 func TestRecentBlockListsTheNewestDocuments(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, when.Location)
+	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, model.Location)
 	block := recentBlock(v, recentDocuments(v))
 	for _, want := range []string{"## Recent documents", "- Friday, September 11, 2026, past (6 days ago): Helios Weekly Newsletter 2026 Sep 11 (key ", "Helios Weekly Newsletter 2026 September 4"} {
 		if !strings.Contains(block, want) {
@@ -174,7 +173,7 @@ func TestRecentBlockListsTheNewestDocuments(t *testing.T) {
 			t.Errorf("recent block reaches back to %q:\n%s", unwanted, block)
 		}
 	}
-	v.now = time.Date(2027, 1, 4, 9, 0, 0, 0, when.Location)
+	v.now = time.Date(2027, 1, 4, 9, 0, 0, 0, model.Location)
 	if block := recentBlock(v, recentDocuments(v)); !strings.Contains(block, "No documents have come in") {
 		t.Fatalf("a quiet fortnight: %s", block)
 	}
@@ -287,7 +286,7 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 	if known := anyStrings(first["known"]); len(known) == 0 || slices.Contains(known, "late-reminder") {
 		t.Fatalf("the first turn knew %v", known)
 	}
-	arrived := &artifacts.Document{Key: "late-reminder", Title: "Picture Day moves to Friday", Date: sampleNow.Format(when.DateFormat), Kind: artifacts.KindList}
+	arrived := &artifacts.Document{Key: "late-reminder", Title: "Picture Day moves to Friday", Date: sampleNow.Format(model.DateFormat), Kind: artifacts.KindList}
 	current = &artifacts.Model{Documents: append([]*artifacts.Document{arrived}, documents.Documents...)}
 	second := chat.keep(t, post(t, handler, chat.body(t, "And now?")))
 	if !slices.Contains(anyStrings(second["known"]), "late-reminder") {
@@ -379,7 +378,7 @@ func TestCalendarEventsSearchesTheYear(t *testing.T) {
 
 func TestVolunteerOpportunitiesNameTheHouseholdsSignUps(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 1, 9, 0, 0, 0, when.Location)
+	v.now = time.Date(2026, 9, 1, 9, 0, 0, 0, model.Location)
 	result := call(t, v, "get_activity", `{"path":"/v/international-night"}`)
 	thing := result["thing"].(map[string]any)
 	if !strings.Contains(strings.Join(anyStrings(thing["household"]), ","), "you: Co-Chair") {
@@ -469,7 +468,7 @@ func TestPartiesListWhoHoldsTickets(t *testing.T) {
 
 func TestRolesTakeTheirEventsDay(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 10, 1, 9, 0, 0, 0, when.Location)
+	v.now = time.Date(2026, 10, 1, 9, 0, 0, 0, model.Location)
 	result := call(t, v, "get_activity", `{"path":"/v/international-night"}`)
 	thing := result["thing"].(map[string]any)
 	if thing["past"] != true {
@@ -500,7 +499,7 @@ func TestRolesTakeTheirEventsDay(t *testing.T) {
 
 func TestPartiesSayWhereTheyStandAgainstToday(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 18, 9, 0, 0, 0, when.Location)
+	v.now = time.Date(2026, 9, 18, 9, 0, 0, 0, model.Location)
 	result := call(t, v, "parties", `{}`)
 	for _, p := range result["parties"].([]any) {
 		party := p.(map[string]any)
@@ -552,7 +551,7 @@ func TestMyListsAreTheViewersOwn(t *testing.T) {
 
 func TestSearchDocumentsFindsTheIssueAndReadsIt(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, when.Location)
+	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, model.Location)
 	result := call(t, v, "search_documents", `{"query":"international night booths"}`)
 	if result["documents"].(float64) != 9 || result["newest"] != "2026-09-25" || result["oldest"] != "2026-08-30" {
 		t.Fatalf("documents: %v", result)
@@ -584,7 +583,7 @@ func TestSearchDocumentsFindsTheIssueAndReadsIt(t *testing.T) {
 
 func TestSearchDocumentsLinksAPage(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, when.Location)
+	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, model.Location)
 	result := call(t, v, "search_documents", `{"query":"what to bring for family camping tents"}`)
 	first := result["passages"].([]any)[0].(map[string]any)
 	const url = "https://www.heliosschool.org/student-life/family-camping"
@@ -604,7 +603,7 @@ func TestSearchDocumentsLinksAPage(t *testing.T) {
 
 func TestSearchDocumentsNarrows(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, when.Location)
+	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, model.Location)
 	result := call(t, v, "search_documents", `{"query":"labor day","until":"2026-09-04"}`)
 	if result["searched"].(float64) != 3 {
 		t.Fatalf("until: %v", result["searched"])

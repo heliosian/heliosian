@@ -15,29 +15,29 @@ import (
 
 	"heliosian/internal/cells"
 	"heliosian/internal/data"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/when"
 )
 
-var legendDayTypes = []string{when.NoSchoolDayType, when.EarlyDismissalDayType}
+var legendDayTypes = []string{model.NoSchoolDayType, model.EarlyDismissalDayType}
 
 type Options struct {
 	Source       data.Source
-	Cache        *when.Cache
+	Cache        *model.CalendarCache
 	Calendar     *gcal.Service
-	Roster       func() when.Roster
+	Roster       func() model.Roster
 	AnthropicKey string
 	DryRun       bool
 }
 
 type run struct {
 	opts       Options
-	roster     when.Roster
+	roster     model.Roster
 	client     anthropic.Client
 	tables     store.Tables
 	dayTypes   []string
 	dayTypeIDs map[string]string
-	tags       []when.Tag
+	tags       []model.CalendarTag
 	failures   []string
 }
 
@@ -47,7 +47,7 @@ func begin(ctx context.Context, opts Options) (*run, error) {
 	}
 	roster := opts.Roster()
 	slog.InfoContext(ctx, "calendar import: roster", "classrooms", len(roster.Classrooms))
-	names := []string{when.GoogleTab, when.PDFTab, when.EnrichmentTab, when.DayTypesTab, when.TagsTab}
+	names := []string{model.GoogleTab, model.PDFTab, model.EnrichmentTab, model.DayTypesTab, model.TagsTab}
 	tabs, err := opts.Source.Tabs(context.Background(), "calendar", names, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read calendar tables: %w", err)
@@ -64,26 +64,26 @@ func begin(ctx context.Context, opts Options) (*run, error) {
 	return r, nil
 }
 
-func vocabulary(roster when.Roster, tables store.Tables) (*run, error) {
+func vocabulary(roster model.Roster, tables store.Tables) (*run, error) {
 	dayTypes := []string{}
 	dayTypeIDs := map[string]string{}
-	for _, row := range tables[when.DayTypesTab] {
+	for _, row := range tables[model.DayTypesTab] {
 		dayTypes = append(dayTypes, row["Day Type"])
 		dayTypeIDs[row["Day Type"]] = row["Day Type ID"]
 	}
-	tags := []when.Tag{}
-	for _, row := range tables[when.TagsTab] {
-		if when.BuiltInTag(row["Tag ID"]) {
+	tags := []model.CalendarTag{}
+	for _, row := range tables[model.TagsTab] {
+		if model.BuiltInTag(row["Tag ID"]) {
 			continue
 		}
-		tags = append(tags, when.Tag{ID: row["Tag ID"], Name: row["Tag"], Description: row["Description"]})
+		tags = append(tags, model.CalendarTag{ID: row["Tag ID"], Name: row["Tag"], Description: row["Description"]})
 	}
 	if len(tags) == 0 {
-		return nil, fmt.Errorf("%s needs rows before the import can run", when.TagsTab)
+		return nil, fmt.Errorf("%s needs rows before the import can run", model.TagsTab)
 	}
-	for _, key := range append([]string{when.RegularDayType}, legendDayTypes...) {
+	for _, key := range append([]string{model.RegularDayType}, legendDayTypes...) {
 		if !slices.Contains(slices.Collect(maps.Values(dayTypeIDs)), key) {
-			return nil, fmt.Errorf("%s needs a row with the id %s before the import can run", when.DayTypesTab, key)
+			return nil, fmt.Errorf("%s needs a row with the id %s before the import can run", model.DayTypesTab, key)
 		}
 	}
 	return &run{roster: roster, tables: tables, dayTypes: dayTypes, dayTypeIDs: dayTypeIDs, tags: tags}, nil
@@ -93,7 +93,7 @@ func (r *run) tagCell(names []string) (string, error) {
 	out := []string{}
 	for _, name := range names {
 		key := r.roster.IDOf(name)
-		if i := slices.IndexFunc(r.tags, func(t when.Tag) bool { return t.Name == name }); key == "" && i >= 0 {
+		if i := slices.IndexFunc(r.tags, func(t model.CalendarTag) bool { return t.Name == name }); key == "" && i >= 0 {
 			key = r.tags[i].ID
 		}
 		if key == "" {
@@ -117,28 +117,28 @@ func RunGoogle(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
-	from, to := window(time.Now().In(when.Location))
+	from, to := window(time.Now().In(model.Location))
 	google, err := feedRows(ctx, opts.Calendar, from, to)
 	if err != nil {
 		return fmt.Errorf("read the school calendar: %w", err)
 	}
-	slog.InfoContext(ctx, "calendar import: feed read", "events", len(google), "from", from.Format(when.DateFormat))
+	slog.InfoContext(ctx, "calendar import: feed read", "events", len(google), "from", from.Format(model.DateFormat))
 	inWindow := func(row map[string]string) bool {
-		start, err := time.ParseInLocation(when.DateFormat, row["Start"][:min(len(row["Start"]), len(when.DateFormat))], when.Location)
+		start, err := time.ParseInLocation(model.DateFormat, row["Start"][:min(len(row["Start"]), len(model.DateFormat))], model.Location)
 		return err == nil && !start.Before(from) && start.Before(to)
 	}
 	rows := slices.Clone(google)
-	for _, row := range r.tables[when.GoogleTab] {
+	for _, row := range r.tables[model.GoogleTab] {
 		if !inWindow(row) {
 			rows = append(rows, row)
 		}
 	}
-	r.identify(rows, r.tables[when.GoogleTab])
+	r.identify(rows, r.tables[model.GoogleTab])
 	enrichment := r.enrich(ctx, google, false)
 	slog.InfoContext(ctx, "calendar import: rows", "feed", len(rows), "enriched", len(enrichment))
 	return r.write(ctx, []tabSync{
-		{when.GoogleTab, when.GoogleColumns, rows, r.tables[when.GoogleTab], "Key", true},
-		{when.EnrichmentTab, when.EnrichmentColumns, enrichment, r.tables[when.EnrichmentTab], "Event ID", false},
+		{model.GoogleTab, model.GoogleColumns, rows, r.tables[model.GoogleTab], "Key", true},
+		{model.EnrichmentTab, model.EnrichmentColumns, enrichment, r.tables[model.EnrichmentTab], "Event ID", false},
 	})
 }
 
@@ -160,24 +160,24 @@ func RunPDF(ctx context.Context, opts Options) error {
 		return fmt.Errorf("fetch the year calendar pdf: %w", err)
 	}
 	pdfHash := digest(string(pdf), legendSystem, entriesSystem(r.roster), monthSystem(""))[:12]
-	rows := r.tables[when.PDFTab]
+	rows := r.tables[model.PDFTab]
 	known := false
-	for _, row := range r.tables[when.PDFTab] {
+	for _, row := range r.tables[model.PDFTab] {
 		if row["PDF"] == pdfHash {
 			known = true
 		}
 	}
 	if known {
-		slog.InfoContext(ctx, "calendar import: pdf unchanged", "url", pdfURL, "hash", pdfHash, "kept", len(r.tables[when.PDFTab]))
+		slog.InfoContext(ctx, "calendar import: pdf unchanged", "url", pdfURL, "hash", pdfHash, "kept", len(r.tables[model.PDFTab]))
 	} else {
 		slog.InfoContext(ctx, "calendar import: pdf is new, reading it", "url", pdfURL, "hash", pdfHash)
 		fresh, year, err := r.readPDF(ctx, pdf, pdfHash)
 		if err != nil {
-			slog.ErrorContext(ctx, "calendar import: read the year calendar pdf, keeping the rows already there", "kept", len(r.tables[when.PDFTab]), "error", err)
+			slog.ErrorContext(ctx, "calendar import: read the year calendar pdf, keeping the rows already there", "kept", len(r.tables[model.PDFTab]), "error", err)
 			r.failures = append(r.failures, "the year calendar pdf")
 		} else {
 			rows = []map[string]string{}
-			for _, row := range r.tables[when.PDFTab] {
+			for _, row := range r.tables[model.PDFTab] {
 				if row["Year"] != year {
 					rows = append(rows, row)
 				}
@@ -186,12 +186,12 @@ func RunPDF(ctx context.Context, opts Options) error {
 			slog.InfoContext(ctx, "calendar import: pdf entries", "entries", len(fresh), "year", year)
 		}
 	}
-	r.identify(rows, r.tables[when.PDFTab])
+	r.identify(rows, r.tables[model.PDFTab])
 	enrichment := r.enrich(ctx, rows, true)
 	slog.InfoContext(ctx, "calendar import: rows", "pdf", len(rows), "enriched", len(enrichment))
 	return r.write(ctx, []tabSync{
-		{when.PDFTab, when.PDFColumns, rows, r.tables[when.PDFTab], "Key", true},
-		{when.EnrichmentTab, when.EnrichmentColumns, enrichment, r.tables[when.EnrichmentTab], "Event ID", false},
+		{model.PDFTab, model.PDFColumns, rows, r.tables[model.PDFTab], "Key", true},
+		{model.EnrichmentTab, model.EnrichmentColumns, enrichment, r.tables[model.EnrichmentTab], "Event ID", false},
 	})
 }
 

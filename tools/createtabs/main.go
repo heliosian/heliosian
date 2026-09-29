@@ -19,7 +19,6 @@ import (
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
-	"heliosian/internal/when"
 )
 
 type tab struct {
@@ -110,23 +109,23 @@ var layouts = map[string][]tab{
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Calendar": {
-		{when.GoogleTab, when.GoogleColumns},
-		{when.PDFTab, when.PDFColumns},
-		{when.EventsTab, when.EventColumns},
-		{when.EnrichmentTab, when.EnrichmentColumns},
-		{when.OverridesTab, when.OverrideColumns},
-		{when.DayTypesTab, when.DayTypeColumns},
-		{when.DayOverridesTab, when.DayOverrideColumns},
-		{when.TagsTab, when.TagColumns},
+		{model.GoogleTab, model.GoogleColumns},
+		{model.PDFTab, model.PDFColumns},
+		{model.EventsTab, model.EventColumns},
+		{model.EnrichmentTab, model.EnrichmentColumns},
+		{model.OverridesTab, model.OverrideColumns},
+		{model.DayTypesTab, model.DayTypeColumns},
+		{model.DayOverridesTab, model.DayOverrideColumns},
+		{model.TagsTab, model.TagColumns},
 		{model.AdminsTab.Name, model.AdminsTab.Columns},
-		{when.FeedsTab, when.FeedColumns},
-		{when.SettingsTab, when.SettingColumns},
-		{when.RSVPsTab, when.RSVPColumns},
-		{when.InvitationsTab, when.InvitationColumns},
-		{when.InvitesTab, when.InviteColumns},
-		{when.InviteGroupsTab, when.InviteGroupColumns},
-		{when.BouncesTab, when.BounceColumns},
-		{when.MessagesTab, when.MessageColumns},
+		{model.FeedsTab, model.FeedColumns},
+		{model.SettingsTab, model.SettingColumns},
+		{model.RSVPsTab, model.RSVPColumns},
+		{model.InvitationsTab, model.InvitationColumns},
+		{model.InvitesTab, model.InviteColumns},
+		{model.InviteGroupsTab, model.InviteGroupColumns},
+		{model.BouncesTab, model.BounceColumns},
+		{model.MessagesTab, model.MessageColumns},
 		{id.AliasesTab, id.AliasColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},

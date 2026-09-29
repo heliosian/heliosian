@@ -15,7 +15,6 @@ import (
 	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
-	"heliosian/internal/when"
 )
 
 const shell = "web/team/index.html"
@@ -111,12 +110,12 @@ func (a app) actor(r *http.Request) access.Actor {
 }
 
 func today() string {
-	return time.Now().In(when.Location).Format(DateFormat)
+	return time.Now().In(model.Location).Format(DateFormat)
 }
 
 func (a app) model(r *http.Request, _ serve.None) (View, error) {
 	actor := a.actor(r)
-	view := RenderWith(a.cache.Model(), a.directory(), a.settings(), a.rsvps, a.lists, actor, time.Now().In(when.Location))
+	view := RenderWith(a.cache.Model(), a.directory(), a.settings(), a.rsvps, a.lists, actor, time.Now().In(model.Location))
 	view.ImageSearch = a.search.On()
 	return view, nil
 }

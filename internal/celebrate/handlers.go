@@ -17,7 +17,6 @@ import (
 	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
-	"heliosian/internal/when"
 )
 
 const (
@@ -102,7 +101,7 @@ func (a app) actor(r *http.Request) access.Actor {
 }
 
 var now = func() time.Time {
-	return time.Now().In(when.Location)
+	return time.Now().In(model.Location)
 }
 
 func today() string {

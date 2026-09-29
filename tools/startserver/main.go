@@ -32,9 +32,9 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/store"
-	"heliosian/internal/when"
 )
 
 const (
@@ -102,7 +102,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 		Describer:     describe.New("sample", claude.NewLimiter()),
 		Mail:          mail.NewMailgun("sample", "HCA-Team <hca@example.org>"),
 		CelebrateMail: mail.NewMailgun("sample", "Helios Celebrate <celebrate@example.org>"),
-		CalendarMail:  when.Mail{Sender: mail.NewMailgun("sample", "Helios When <when@example.org>"), ReplyTo: "Helios When <rsvp@reply.example.org>", Key: []byte("sample")},
+		CalendarMail:  model.CalendarMail{Sender: mail.NewMailgun("sample", "Helios When <when@example.org>"), ReplyTo: "Helios When <rsvp@reply.example.org>", Key: []byte("sample")},
 		BirthdayMail:  mail.NewMailgun("sample", "Helios Staff Birthdays <birthday@example.org>"),
 		BirthdayBase:  "https://birthday.heliosiandev.com:" + app.Port(),
 		FeedbackBase:  "https://home.heliosiandev.com:" + app.Port(),

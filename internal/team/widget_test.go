@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/model"
 	"heliosian/internal/testkit"
-	"heliosian/internal/when"
 )
 
 func TestWidget(t *testing.T) {
 	cache, _ := newServer(t)
-	at := time.Date(2026, 9, 25, 12, 0, 0, 0, when.Location)
+	at := time.Date(2026, 9, 25, 12, 0, 0, 0, model.Location)
 	w := cache.Widget("jordan.whitfield@heliosschool.org", at)
 	if len(w.Mine) != 3 {
 		t.Fatalf("mine: %+v", w.Mine)
@@ -30,7 +30,7 @@ func TestWidget(t *testing.T) {
 			t.Errorf("open lists what they are on: %+v", o)
 		}
 	}
-	later := cache.Widget("jordan.whitfield@heliosschool.org", time.Date(2026, 11, 7, 12, 0, 0, 0, when.Location))
+	later := cache.Widget("jordan.whitfield@heliosschool.org", time.Date(2026, 11, 7, 12, 0, 0, 0, model.Location))
 	for _, m := range later.Mine {
 		if m.Title == "Tech Setup" {
 			t.Errorf("passed sign-up still listed: %+v", later.Mine)

@@ -11,7 +11,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 
 	"heliosian/internal/claude"
-	"heliosian/internal/when"
+	"heliosian/internal/model"
 )
 
 const (
@@ -65,7 +65,7 @@ func enumOf(values []string) map[string]any {
 	return map[string]any{"type": "string", "enum": values}
 }
 
-func glossary(roster when.Roster) string {
+func glossary(roster model.Roster) string {
 	b := &strings.Builder{}
 	b.WriteString("Helios School is a K-8 school. Students belong to a homeroom classroom named for a bird. Two classrooms make a grade band whose name is a portmanteau of the two classroom names. Lower School is Kindergarten through Grade 4 and Middle School is Grade 5 through Grade 8.\n\nBands and their classrooms:\n")
 	bands := []string{}
@@ -118,7 +118,7 @@ func monthSystem(described string) string {
 Report the month named in the grid's title. Then go through the grid row by row; each row is one week. For every day number printed, report its cell's background: "` + unfilled + `" for a white cell; the legend wording whose color the fill matches when it is one of the legend's colors; "` + otherFill + `" for a fill in a color the legend does not name, such as orange or yellow. Some cells have a thick colored border drawn around them; a border is a box on top of the cell, not its fill, so report the color inside the border: a cell that is outlined, bolded, or circled but white inside is "` + unfilled + `", and a cell with a legend color inside an orange or black border is that legend color.`
 }
 
-func entriesSystem(roster when.Roster) string {
+func entriesSystem(roster model.Roster) string {
 	return glossary(roster) + `
 You are reading the school's one-page year calendar PDF: twelve month grids, a legend, and an Important Dates list. Read the Important Dates list into entries.
 
@@ -129,7 +129,7 @@ You are reading the school's one-page year calendar PDF: twelve month grids, a l
 - year is the school year in the title, written as YYYY-YYYY. Dates are YYYY-MM-DD; the year of each date follows from which side of the winter break the month is on.`
 }
 
-func classifierSystem(roster when.Roster, tags []when.Tag) string {
+func classifierSystem(roster model.Roster, tags []model.CalendarTag) string {
 	described := &strings.Builder{}
 	for _, t := range tags {
 		fmt.Fprintf(described, "- %s: %s\n", t.Name, t.Description)

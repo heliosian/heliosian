@@ -7,11 +7,10 @@ import (
 	"time"
 
 	"heliosian/internal/model"
-	"heliosian/internal/when"
 )
 
-func linkedFor(cache *Cache, email string) []when.Linked {
-	return cache.Model().Linked(when.FamilyOf(sampleDirectory, email), testNow())
+func linkedFor(cache *Cache, email string) []model.Linked {
+	return cache.Model().Linked(sampleDirectory.HouseholdOf(email), testNow())
 }
 
 func TestLinkedParties(t *testing.T) {
@@ -46,7 +45,7 @@ func TestLinkedParties(t *testing.T) {
 
 func TestLinkedPartiesMine(t *testing.T) {
 	cache, _ := newServer(t)
-	byID := map[string]when.Linked{}
+	byID := map[string]model.Linked{}
 	others := 0
 	for _, l := range linkedFor(cache, parent) {
 		byID[l.ID] = l
@@ -57,8 +56,8 @@ func TestLinkedPartiesMine(t *testing.T) {
 		}
 	}
 	want := map[string]string{
-		"pty0000000001": when.MineGoing, "pty0000000002": when.MineGoing, "pty0000000003": when.MineGoing, "pty0000000005": when.MineGoing, "pty0000000012": when.MineGoing,
-		"pty0000000006": when.MineWaitlisted, "pty0000000007": when.MineWaitlisted, "pty0000000004": "",
+		"pty0000000001": model.MineGoing, "pty0000000002": model.MineGoing, "pty0000000003": model.MineGoing, "pty0000000005": model.MineGoing, "pty0000000012": model.MineGoing,
+		"pty0000000006": model.MineWaitlisted, "pty0000000007": model.MineWaitlisted, "pty0000000004": "",
 	}
 	for id, mine := range want {
 		if l, ok := byID[id]; !ok || l.Mine != mine {

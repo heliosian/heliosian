@@ -15,7 +15,6 @@ import (
 	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
-	"heliosian/internal/when"
 )
 
 type app struct {
@@ -30,10 +29,10 @@ type app struct {
 }
 
 type Upcoming struct {
-	Events    []when.Card     `json:"events"`
-	Calendar  string          `json:"calendar,omitempty"`
-	Default   string          `json:"default,omitempty"`
-	Calendars []SavedCalendar `json:"calendars,omitempty"`
+	Events    []model.EventCard `json:"events"`
+	Calendar  string            `json:"calendar,omitempty"`
+	Default   string            `json:"default,omitempty"`
+	Calendars []SavedCalendar   `json:"calendars,omitempty"`
 }
 
 type SavedCalendar struct {
@@ -44,11 +43,11 @@ type SavedCalendar struct {
 }
 
 type Month struct {
-	Month    string              `json:"month"`
-	Today    string              `json:"today"`
-	Days     map[string]when.Day `json:"days"`
-	Events   []when.Card         `json:"events"`
-	Calendar string              `json:"calendar,omitempty"`
+	Month    string                       `json:"month"`
+	Today    string                       `json:"today"`
+	Days     map[string]model.CalendarDay `json:"days"`
+	Events   []model.EventCard            `json:"events"`
+	Calendar string                       `json:"calendar,omitempty"`
 }
 
 type Deps struct {
@@ -209,7 +208,7 @@ type modelView struct {
 	Categories       []Category             `json:"categories"`
 	User             user                   `json:"user"`
 	ImageSearch      bool                   `json:"imageSearch"`
-	Upcoming         []when.Card            `json:"upcoming"`
+	Upcoming         []model.EventCard      `json:"upcoming"`
 	UpcomingCalendar *Upcoming              `json:"upcomingCalendar,omitempty"`
 	Calendar         Month                  `json:"calendar"`
 	Apps             []appView              `json:"apps"`

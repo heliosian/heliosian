@@ -6,12 +6,11 @@ import (
 	"time"
 
 	"heliosian/internal/model"
-	"heliosian/internal/when"
 )
 
-func linkedFor(cache *Cache, email string) map[string]when.Linked {
-	byID := map[string]when.Linked{}
-	for _, l := range cache.Model().Linked(when.FamilyOf(directory, email)) {
+func linkedFor(cache *Cache, email string) map[string]model.Linked {
+	byID := map[string]model.Linked{}
+	for _, l := range cache.Model().Linked(directory.HouseholdOf(email)) {
 		byID[l.ID] = l
 	}
 	return byID
@@ -45,7 +44,7 @@ func TestLinkedActivities(t *testing.T) {
 func TestLinkedActivitiesMine(t *testing.T) {
 	cache, _ := newServer(t)
 	byID := linkedFor(cache, admin)
-	for id, mine := range map[string]string{"act0000000001": when.MineGoing, "act0000000002": ""} {
+	for id, mine := range map[string]string{"act0000000001": model.MineGoing, "act0000000002": ""} {
 		if l, ok := byID[id]; !ok || l.Mine != mine {
 			t.Errorf("%s: listed %v, mine %q, want %q", id, ok, l.Mine, mine)
 		}

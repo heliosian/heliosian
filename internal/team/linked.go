@@ -8,7 +8,6 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/model"
-	"heliosian/internal/when"
 )
 
 func (m *Model) imageOf(a *Activity) string {
@@ -21,8 +20,8 @@ func (m *Model) imageOf(a *Activity) string {
 	return ""
 }
 
-func (m *Model) Linked(family when.Family) []when.Linked {
-	out := []when.Linked{}
+func (m *Model) Linked(family model.Household) []model.Linked {
+	out := []model.Linked{}
 	for _, raw := range m.Activities {
 		if !m.VisibleTo(raw, access.Actor{}) || raw.Start == "" {
 			continue
@@ -35,8 +34,8 @@ func (m *Model) Linked(family when.Family) []when.Linked {
 		case a.VolunteersComplete || (a.Spots > 0 && a.Taken >= a.Spots):
 			availability = "full"
 		}
-		var signed when.Circle
-		people := []when.Standing{}
+		var signed model.Circle
+		people := []model.Standing{}
 		for _, item := range append([]*Activity{a}, a.Descendants()...) {
 			for _, v := range item.Volunteers {
 				if !family.Has(v.Email) {
@@ -47,15 +46,15 @@ func (m *Model) Linked(family when.Family) []when.Linked {
 				if item != a {
 					note = item.Title
 				}
-				people = append(people, when.Standing{Name: family.Name(v.Email, ""), Note: note, Mine: family.Me(v.Email)})
+				people = append(people, model.Standing{Name: family.Name(v.Email, ""), Note: note, Mine: family.Me(v.Email)})
 			}
 		}
 		mine, names := "", []string(nil)
 		if signed.Any() {
-			mine, names = when.MineGoing, signed.Who()
+			mine, names = model.MineGoing, signed.Who()
 		}
-		out = append(out, when.Linked{
-			Source: when.SourceTeam, ID: a.ID, EventID: raw.CalendarEventID, Title: a.Title, Description: a.Description, Location: a.Location,
+		out = append(out, model.Linked{
+			Source: model.SourceTeam, ID: a.ID, EventID: raw.CalendarEventID, Title: a.Title, Description: a.Description, Location: a.Location,
 			Start: a.Start, End: a.End, Path: m.PathOf(a), Availability: availability, Mine: mine, Who: names, People: people, Image: m.imageOf(a),
 			Hosts: a.CoChairs(),
 		})

@@ -21,7 +21,6 @@ import (
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 	"heliosian/internal/testkit/mailtest"
-	"heliosian/internal/when"
 )
 
 var sent *mailtest.Recorder
@@ -932,10 +931,10 @@ func TestShareIssue(t *testing.T) {
 	if at := nextExport(testkit.MustTime("2026-09-09")); at.Format("2006-01-02 15:04 Mon") != "2026-09-10 23:59 Thu" {
 		t.Fatalf("next export = %v", at)
 	}
-	if at := nextExport(time.Date(2026, 9, 10, 23, 59, 30, 0, when.Location)); at.Format(DateFormat) != "2026-09-17" {
+	if at := nextExport(time.Date(2026, 9, 10, 23, 59, 30, 0, model.Location)); at.Format(DateFormat) != "2026-09-17" {
 		t.Fatalf("the export after one just run = %v", at)
 	}
-	if issue := weekIssue(cache.Model(), time.Date(2026, 9, 10, 23, 59, 0, 0, when.Location)); issue != "2026-09-11" {
+	if issue := weekIssue(cache.Model(), time.Date(2026, 9, 10, 23, 59, 0, 0, model.Location)); issue != "2026-09-11" {
 		t.Fatalf("the week's issue = %q", issue)
 	}
 	call(t, mux, admin, "POST", "/api/newsletter-dates/"+unknownID+"/share", nil, http.StatusNotFound)

@@ -17,8 +17,8 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
 	"heliosian/internal/mail"
+	"heliosian/internal/model"
 	"heliosian/internal/ratelimit"
-	"heliosian/internal/when"
 )
 
 const (
@@ -272,7 +272,7 @@ func Strip(r Report) (title, body, issueType string, labels []string) {
 	row("Screen", r.Screen)
 	row("Language", r.Language)
 	row("Time zone", r.Timezone)
-	row("Reported", r.At.In(when.Location).Format("2006-01-02 15:04 MST"))
+	row("Reported", r.At.In(model.Location).Format("2006-01-02 15:04 MST"))
 	if len(r.Errors) > 0 {
 		fmt.Fprintf(&b, "\n<details>\n<summary>Recent errors (%d)</summary>\n\n```\n%s\n```\n\n</details>\n", len(r.Errors), Redact(strings.Join(r.Errors, "\n")))
 	}

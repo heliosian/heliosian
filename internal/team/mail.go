@@ -9,7 +9,7 @@ import (
 
 	"heliosian/internal/cells"
 	"heliosian/internal/mail"
-	"heliosian/internal/when"
+	"heliosian/internal/model"
 )
 
 var NotifyKinds = []string{"events", "activities", "signups", "offers"}
@@ -93,7 +93,7 @@ func (a app) event(m *Model, act *Activity, email, page string, to []string) (ma
 	if dated == nil {
 		return mail.Event{}, false
 	}
-	start, until, allDay, ok := mail.Span(dated.Start, dated.End, when.Location)
+	start, until, allDay, ok := mail.Span(dated.Start, dated.End, model.Location)
 	if !ok {
 		return mail.Event{}, false
 	}

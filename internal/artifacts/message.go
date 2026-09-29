@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/when"
+	"heliosian/internal/model"
 )
 
 type Message struct {
@@ -94,7 +94,7 @@ var ErrNoWords = errors.New("the message has no words")
 
 var ErrNotBroadcast = errors.New("the message is not one the community was sent")
 
-func (m Message) Build(links *Resolver, model string) (*Document, error) {
+func (m Message) Build(links *Resolver, embeddingModel string) (*Document, error) {
 	channel, kind, ok := m.Broadcast()
 	if !ok {
 		return nil, fmt.Errorf("%s: %w", m.MessageID, ErrNotBroadcast)
@@ -118,12 +118,12 @@ func (m Message) Build(links *Resolver, model string) (*Document, error) {
 	return finish(&Document{
 		Key:      m.Key(),
 		Title:    title,
-		Time:     day.In(when.Location).Format("15:04"),
+		Time:     day.In(model.Location).Format("15:04"),
 		Author:   strings.TrimSpace(m.From),
 		Kind:     kind,
 		Channel:  channel,
 		Source:   "mail:" + m.MessageID,
-		Model:    model,
+		Model:    embeddingModel,
 		Markdown: trim(markdown),
 	}, day)
 }
@@ -132,7 +132,7 @@ func finish(doc *Document, day time.Time) (*Document, error) {
 	if doc.Markdown = strings.TrimSpace(doc.Markdown); doc.Markdown == "" {
 		return nil, fmt.Errorf("%s: %w", doc.Source, ErrNoWords)
 	}
-	doc.Date = day.In(when.Location).Format(when.DateFormat)
+	doc.Date = day.In(model.Location).Format(model.DateFormat)
 	doc.Chunks = Chunks(doc.Markdown)
 	return doc, nil
 }

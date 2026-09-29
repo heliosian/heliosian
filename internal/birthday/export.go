@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/when"
 )
 
 const (
@@ -26,18 +26,18 @@ const (
 )
 
 func nextExport(t time.Time) time.Time {
-	t = t.In(when.Location)
-	at := time.Date(t.Year(), t.Month(), t.Day(), exportHour, exportMinute, 0, 0, when.Location)
+	t = t.In(model.Location)
+	at := time.Date(t.Year(), t.Month(), t.Day(), exportHour, exportMinute, 0, 0, model.Location)
 	for at.Weekday() != exportDay || !at.After(t) {
-		at = time.Date(at.Year(), at.Month(), at.Day()+1, exportHour, exportMinute, 0, 0, when.Location)
+		at = time.Date(at.Year(), at.Month(), at.Day()+1, exportHour, exportMinute, 0, 0, model.Location)
 	}
 	return at
 }
 
-func weekIssue(model *Model, t time.Time) string {
-	from := t.In(when.Location).Format(DateFormat)
-	to := t.In(when.Location).AddDate(0, 0, 7).Format(DateFormat)
-	for _, n := range model.NewsletterDates {
+func weekIssue(m *Model, t time.Time) string {
+	from := t.In(model.Location).Format(DateFormat)
+	to := t.In(model.Location).AddDate(0, 0, 7).Format(DateFormat)
+	for _, n := range m.NewsletterDates {
 		if n.Date > from && n.Date <= to {
 			return n.Date
 		}

@@ -39,7 +39,6 @@ import (
 	"heliosian/internal/static"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
-	"heliosian/internal/when"
 	"heliosian/internal/who"
 )
 
@@ -61,7 +60,7 @@ type Config struct {
 	ImageSearch   imagesearch.Search
 	Mail          *mail.Mailgun
 	CelebrateMail *mail.Mailgun
-	CalendarMail  when.Mail
+	CalendarMail  model.CalendarMail
 	BirthdayMail  *mail.Mailgun
 	BirthdayBase  string
 	FeedbackFiler feedback.IssueFiler
@@ -83,7 +82,7 @@ type appSpec struct {
 }
 
 type Core struct {
-	CalendarCache *when.Cache
+	CalendarCache *model.CalendarCache
 	LoopCache     *loop.Cache
 	Cache         *model.DirectoryCache
 	Documents     *artifacts.Filer
@@ -131,7 +130,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load invites data", "error", err)
 	}
-	calendarCache, err := when.NewCache(cfg.Source, cfg.Writer, func() when.Roster { return when.RosterOf(cache.Model()) }, whenImages, settings.SuperAdmins, queue)
+	calendarCache, err := model.NewCalendarCache(cfg.Source, cfg.Writer, func() model.Roster { return cache.Model().Roster() }, whenImages, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load calendar data", "error", err)
 	}
@@ -177,7 +176,7 @@ func NewCore(cfg Config) *Core {
 	homeStyle := home.CardStyle(appName("home"), taglineOf("home"))
 	teamStyle := team.CardStyle(appName("team"), taglineOf("team"))
 	celebrateStyle := celebrate.CardStyle(appName("celebrate"), taglineOf("celebrate"))
-	calendarStyle := when.CardStyle(appName("when"), taglineOf("when"))
+	calendarStyle := model.CalendarCardStyle(appName("when"), taglineOf("when"))
 	artifactsCache, err := artifacts.NewCache(cfg.Source, cfg.Writer, cfg.Bucket, cfg.Embedder, queue)
 	if err != nil {
 		logging.Fatal("load artifacts data", "error", err)
@@ -189,17 +188,17 @@ func NewCore(cfg Config) *Core {
 	model.RegisterDirectory(mux, model.DirectoryRoutes{Cache: cache, Invites: invites, Media: cfg.Store, MapsKey: cfg.BrowserKey, MagicTags: lists.Lists})
 	blob.Register(mux, cfg.Store, "pronunciation")
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
-	linked := func(email string) []when.Linked {
-		family := when.FamilyOf(cache.Model(), email)
-		return append(celebrateCache.Model().Linked(family, time.Now().In(when.Location)), teamCache.Model().Linked(family)...)
+	linked := func(email string) []model.Linked {
+		family := cache.Model().HouseholdOf(email)
+		return append(celebrateCache.Model().Linked(family, time.Now().In(model.Location)), teamCache.Model().Linked(family)...)
 	}
 	sourceID := func(source, key string) string {
 		switch source {
-		case when.SourceCelebrate:
+		case model.SourceCelebrate:
 			if p := celebrateCache.Model().Party(key); p != nil {
 				return p.ID
 			}
-		case when.SourceTeam:
+		case model.SourceTeam:
 			if a := teamCache.Model().Activity(key); a != nil {
 				return a.ID
 			}
@@ -208,7 +207,7 @@ func NewCore(cfg Config) *Core {
 	}
 	frontEvents := upcomingEvents{calendarCache, cache.Model, linked}
 	calendarMux := http.NewServeMux()
-	var hooks when.Hooks
+	var hooks model.CalendarHooks
 	moveAddress := func(ctx context.Context, actor access.Actor, old, to, name string) error {
 		as := cache.Model().ActorOf(actor.Email, celebrateCache.Held(actor.Email))
 		if _, err := celebrate.MoveAddress(ctx, celebrateCache, as, old, to, name); err != nil {
@@ -217,8 +216,8 @@ func NewCore(cfg Config) *Core {
 		hooks.MoveAddress(ctx, actor, old, to, name)
 		return nil
 	}
-	partyCalendar := when.Celebrate{Party: func(id string) *when.PartyPeople { return celebrateCache.Model().PartyPeople(id) }, IsAdmin: celebrateCache.IsAdmin, MoveAddress: moveAddress}
-	hooks = when.Register(calendarMux, when.Deps{
+	partyCalendar := model.PartyHooks{Party: func(id string) *model.PartyPeople { return celebrateCache.Model().PartyPeople(id) }, IsAdmin: celebrateCache.IsAdmin, MoveAddress: moveAddress}
+	hooks = model.RegisterCalendar(calendarMux, model.CalendarDeps{
 		Cache:     calendarCache,
 		Images:    whenImages,
 		Directory: cache.Model,
@@ -246,7 +245,7 @@ func NewCore(cfg Config) *Core {
 	})
 	teamMux := http.NewServeMux()
 	eventRSVPs := func(id string) *team.EventRSVPs {
-		sent, answers, ok := calendarCache.LinkedRSVPs(linked(""), when.SourceTeam, id)
+		sent, answers, ok := calendarCache.LinkedRSVPs(linked(""), model.SourceTeam, id)
 		if !ok {
 			return nil
 		}
@@ -270,7 +269,7 @@ func NewCore(cfg Config) *Core {
 	})
 	celebrateMux := http.NewServeMux()
 	partyRSVPs := func(partyID string) *celebrate.PartyRSVPs {
-		sent, answers, ok := calendarCache.LinkedRSVPs(nil, when.SourceCelebrate, partyID)
+		sent, answers, ok := calendarCache.LinkedRSVPs(nil, model.SourceCelebrate, partyID)
 		if !ok {
 			return nil
 		}
@@ -330,7 +329,7 @@ func NewCore(cfg Config) *Core {
 		}},
 		{Key: "birthday", Title: "Helios Staff Birthdays", Mux: birthdayMux, Preview: birthdayAbout.PreviewHead},
 		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: celebrate.PreviewHead(celebrateCache, celebrateStyle)},
-		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: when.PreviewHead(calendarCache, linked, sourceID, calendarStyle)},
+		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: model.CalendarPreviewHead(calendarCache, linked, sourceID, calendarStyle)},
 		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
 		{Key: "ask", Title: "Helios Ask", Mux: askMux},
 	}
@@ -494,7 +493,7 @@ func calendarWatcher(sheet *data.Sheet, core *Core, sessionKey, anthropicKey str
 	mac.Write([]byte("calendar watch"))
 	opts := calendarimport.Options{
 		Source: sheet, Cache: core.CalendarCache, Calendar: cal,
-		Roster:       func() when.Roster { return when.RosterOf(core.Cache.Model()) },
+		Roster:       func() model.Roster { return core.Cache.Model().Roster() },
 		AnthropicKey: anthropicKey,
 	}
 	return calendarimport.NewWatcher(opts, hex.EncodeToString(mac.Sum(nil)))

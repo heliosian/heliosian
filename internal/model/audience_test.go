@@ -24,14 +24,12 @@ func audienceSample(t *testing.T) (AudienceSources, *Directory) {
 	}
 	return AudienceSources{
 		Directory: d,
-		Tags:      d.Tags,
 		MagicTags: func(owner string) []MagicTag {
 			if owner != jordan {
 				return nil
 			}
 			return []MagicTag{{Key: "party:p1", Name: "Pizza Night", Kind: MagicTagParty, People: []string{abena, colin}}}
 		},
-		Shared: d.SharedTags,
 	}, d
 }
 

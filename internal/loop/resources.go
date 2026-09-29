@@ -61,7 +61,7 @@ func (w World) At(now time.Time) World {
 
 func (w World) Sources() Sources {
 	d := w.Directory
-	return Sources{Directory: d, Tags: d.Tags, Shared: d.SharedTags, MagicTags: func(owner string) []model.MagicTag { return w.lists(owner, w.now) }}
+	return Sources{Directory: d, MagicTags: func(owner string) []model.MagicTag { return w.lists(owner, w.now) }}
 }
 
 func (w World) placement() placement {

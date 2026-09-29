@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/when"
+	"heliosian/internal/model"
 )
 
 type eventCard struct {
@@ -30,7 +30,7 @@ type eventCard struct {
 	Household    []string `json:"household,omitempty"`
 }
 
-func (v *viewer) eventCard(e *when.Event) eventCard {
+func (v *viewer) eventCard(e *model.Event) eventCard {
 	c := eventCard{
 		ID: e.ID, Title: e.Title, Start: e.Start, AllDay: e.AllDay, Location: e.Location, Description: clip(e.Description, 400),
 		Tags: v.calendar.TagNames(e.Tags), Classrooms: e.Classrooms, DayType: v.calendar.DayTypeName(e.DayType), Availability: e.Availability, MyAnswer: v.calendar.AnswerOf(v.email, e.ID),
@@ -60,8 +60,8 @@ func (v *viewer) eventCard(e *when.Event) eventCard {
 	return c
 }
 
-func eventLink(e *when.Event) string {
-	app, path := when.Page(e)
+func eventLink(e *model.Event) string {
+	app, path := model.EventPage(e)
 	return appBases[app] + path
 }
 
@@ -85,7 +85,7 @@ var calendarEvents = tool{
 		if err != nil {
 			return nil, err
 		}
-		today := time.Date(v.now.Year(), v.now.Month(), v.now.Day(), 0, 0, 0, 0, when.Location)
+		today := time.Date(v.now.Year(), v.now.Month(), v.now.Day(), 0, 0, 0, 0, model.Location)
 		from, to := today, today.AddDate(0, 0, 14)
 		if in.From != "" {
 			if from, err = date(in.From); err != nil {
@@ -125,7 +125,7 @@ var calendarEvents = tool{
 				out = append(out, v.eventCard(e))
 			}
 		}
-		return map[string]any{"today": today.Format(when.DateFormat), "from": from.Format(when.DateFormat), "to": to.Format(when.DateFormat), "events": out, "matched": total, "shown": len(out)}, nil
+		return map[string]any{"today": today.Format(model.DateFormat), "from": from.Format(model.DateFormat), "to": to.Format(model.DateFormat), "events": out, "matched": total, "shown": len(out)}, nil
 	},
 }
 
@@ -142,7 +142,7 @@ var dayPlan = tool{
 		if err != nil {
 			return nil, err
 		}
-		day := time.Date(v.now.Year(), v.now.Month(), v.now.Day(), 0, 0, 0, 0, when.Location)
+		day := time.Date(v.now.Year(), v.now.Month(), v.now.Day(), 0, 0, 0, 0, model.Location)
 		if in.Date != "" {
 			if day, err = date(in.Date); err != nil {
 				return nil, err
@@ -161,7 +161,7 @@ var dayPlan = tool{
 		} else {
 			classrooms, _ = v.calendar.ViewOf(v.directory, v.email)
 		}
-		key := day.Format(when.DateFormat)
+		key := day.Format(model.DateFormat)
 		plans := []map[string]any{}
 		for _, c := range classrooms {
 			dt, ok := v.calendar.Plan(key, c)
@@ -177,7 +177,7 @@ var dayPlan = tool{
 				setting = append(setting, v.eventCard(e))
 			}
 		}
-		year := when.SchoolYear(day)
+		year := model.SchoolYear(day)
 		var span any
 		for _, y := range v.calendar.Years {
 			if y.Label == year {

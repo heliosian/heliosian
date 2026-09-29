@@ -10,13 +10,12 @@ import (
 
 	"heliosian/internal/mail"
 	"heliosian/internal/model"
-	"heliosian/internal/when"
 )
 
 var brand = mail.Brand{Name: "Helios Celebrate", Color: "#0f4e54", Tagline: "the fun(d)raiser parties site"}
 
 func partyEvent(p *Party, page string) (mail.Event, bool) {
-	start, until, allDay, ok := mail.Span(p.Start, p.End, when.Location)
+	start, until, allDay, ok := mail.Span(p.Start, p.End, model.Location)
 	if !ok {
 		return mail.Event{}, false
 	}

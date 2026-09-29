@@ -9,7 +9,7 @@ import (
 	gcal "google.golang.org/api/calendar/v3"
 	"google.golang.org/api/googleapi"
 
-	"heliosian/internal/when"
+	"heliosian/internal/model"
 )
 
 func window(now time.Time) (time.Time, time.Time) {
@@ -17,7 +17,7 @@ func window(now time.Time) (time.Time, time.Time) {
 	if now.Month() < time.July {
 		start--
 	}
-	from := time.Date(start, time.July, 1, 0, 0, 0, 0, when.Location)
+	from := time.Date(start, time.July, 1, 0, 0, 0, 0, model.Location)
 	return from, from.AddDate(3, 0, 0)
 }
 
@@ -25,7 +25,7 @@ const feedFields = googleapi.Field("nextPageToken,items(iCalUID,recurringEventId
 
 func feedRows(ctx context.Context, svc *gcal.Service, from, to time.Time) ([]map[string]string, error) {
 	rows := []map[string]string{}
-	call := svc.Events.List(when.SchoolCalendarID).Context(ctx).
+	call := svc.Events.List(model.SchoolCalendarID).Context(ctx).
 		SingleEvents(true).OrderBy("startTime").MaxResults(2500).
 		TimeMin(from.Format(time.RFC3339)).TimeMax(to.Format(time.RFC3339)).
 		Fields(feedFields)
@@ -56,11 +56,11 @@ func eventTime(t *gcal.EventDateTime) (time.Time, bool, error) {
 		return time.Time{}, false, fmt.Errorf("event with no time")
 	}
 	if t.Date != "" {
-		day, err := time.ParseInLocation(when.DateFormat, t.Date, when.Location)
+		day, err := time.ParseInLocation(model.DateFormat, t.Date, model.Location)
 		return day, true, err
 	}
 	at, err := time.Parse(time.RFC3339, t.DateTime)
-	return at.In(when.Location), false, err
+	return at.In(model.Location), false, err
 }
 
 func instanceKey(uid string, t time.Time, allDay bool) string {
@@ -100,7 +100,7 @@ func feedRow(e *gcal.Event) (map[string]string, time.Time, error) {
 		"Title":       collapse(e.Summary),
 		"Location":    collapse(e.Location),
 		"Description": description,
-		"Updated":     updated.In(when.Location).Format(when.DateTimeFormat),
+		"Updated":     updated.In(model.Location).Format(model.DateTimeFormat),
 		"Sequence":    strconv.FormatInt(e.Sequence, 10),
 	}
 	if allDay {
@@ -108,9 +108,9 @@ func feedRow(e *gcal.Event) (map[string]string, time.Time, error) {
 		if end.Before(start) {
 			end = start
 		}
-		row["Start"], row["End"] = start.Format(when.DateFormat), end.Format(when.DateFormat)
+		row["Start"], row["End"] = start.Format(model.DateFormat), end.Format(model.DateFormat)
 	} else {
-		row["Start"], row["End"] = start.Format(when.DateTimeFormat), end.Format(when.DateTimeFormat)
+		row["Start"], row["End"] = start.Format(model.DateTimeFormat), end.Format(model.DateTimeFormat)
 	}
 	if row["Title"] == "" {
 		row["Title"] = "(untitled)"

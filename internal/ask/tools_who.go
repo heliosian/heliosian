@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"heliosian/internal/model"
-	"heliosian/internal/when"
 )
 
 type card struct {
@@ -291,7 +290,7 @@ var getClassroom = tool{
 			}
 			return map[string]any{"classrooms": out}, nil
 		}
-		i := slices.IndexFunc(v.calendar.Roster.Classrooms, func(c when.Classroom) bool { return contains(c.Name, want) })
+		i := slices.IndexFunc(v.calendar.Roster.Classrooms, func(c model.RosterClassroom) bool { return contains(c.Name, want) })
 		if i < 0 {
 			return nil, fmt.Errorf("there is no classroom called %q", want)
 		}

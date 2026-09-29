@@ -13,7 +13,6 @@ import (
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
-	"heliosian/internal/when"
 )
 
 func main() {
@@ -34,8 +33,8 @@ func main() {
 	if err != nil {
 		logging.Fatal("periodicsync: load directory model", "error", err)
 	}
-	roster := func() when.Roster { return when.RosterOf(directory) }
-	cache, err := when.NewCache(source, source, roster, nil, func() []string { return nil }, store.NewQueue())
+	roster := func() model.Roster { return directory.Roster() }
+	cache, err := model.NewCalendarCache(source, source, roster, nil, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		logging.Fatal("periodicsync: load calendar model", "error", err)
 	}

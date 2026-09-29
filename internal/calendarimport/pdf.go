@@ -13,7 +13,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 
-	"heliosian/internal/when"
+	"heliosian/internal/model"
 )
 
 type pdfEntry struct {
@@ -204,7 +204,7 @@ func extractMonth(ctx context.Context, client anthropic.Client, document anthrop
 			continue
 		}
 		days = append(days, shadedDay{
-			Date:    time.Date(month.Year(), month.Month(), day, 0, 0, 0, 0, when.Location).Format(when.DateFormat),
+			Date:    time.Date(month.Year(), month.Month(), day, 0, 0, 0, 0, model.Location).Format(model.DateFormat),
 			Legend:  fill[chosen],
 			DayType: chosen,
 		})
@@ -213,7 +213,7 @@ func extractMonth(ctx context.Context, client anthropic.Client, document anthrop
 	return days, nil
 }
 
-func extractEntries(ctx context.Context, client anthropic.Client, pdf []byte, roster when.Roster, dayTypes []string) (pdfExtraction, error) {
+func extractEntries(ctx context.Context, client anthropic.Client, pdf []byte, roster model.Roster, dayTypes []string) (pdfExtraction, error) {
 	system := entriesSystem(roster)
 	schema := map[string]any{
 		"type": "object", "additionalProperties": false, "required": []string{"year", "entries"},
@@ -230,7 +230,7 @@ func extractEntries(ctx context.Context, client anthropic.Client, pdf []byte, ro
 						"end":        map[string]any{"type": "string", "description": "YYYY-MM-DD, the same as start for a single day"},
 						"dayType":    enumOf(append([]string{noDayType}, dayTypes...)),
 						"classrooms": map[string]any{"type": "array", "minItems": 1, "items": enumOf(roster.Names())},
-						"marker":     enumOf([]string{noMarker, when.MarkerFirstDay, when.MarkerLastDay}),
+						"marker":     enumOf([]string{noMarker, model.MarkerFirstDay, model.MarkerLastDay}),
 					},
 				},
 			},
@@ -255,7 +255,7 @@ func extractEntries(ctx context.Context, client anthropic.Client, pdf []byte, ro
 	return out, err
 }
 
-func extractPDF(ctx context.Context, client anthropic.Client, pdf []byte, roster when.Roster, dayTypes []string) (pdfExtraction, error) {
+func extractPDF(ctx context.Context, client anthropic.Client, pdf []byte, roster model.Roster, dayTypes []string) (pdfExtraction, error) {
 	rendered, err := renderPage(pdf)
 	if err != nil {
 		return pdfExtraction{}, fmt.Errorf("render the calendar page: %w", err)
@@ -286,7 +286,7 @@ func extractPDF(ctx context.Context, client anthropic.Client, pdf []byte, roster
 	}
 	startYear, _ := strconv.Atoi(match[1])
 	months, errs := fanOut(12, func(i int) ([]shadedDay, error) {
-		month := time.Date(startYear, time.July+time.Month(i), 1, 0, 0, 0, 0, when.Location)
+		month := time.Date(startYear, time.July+time.Month(i), 1, 0, 0, 0, 0, model.Location)
 		return extractMonth(ctx, client, crops[i], month, legend)
 	})
 	for i := range 12 {
@@ -341,14 +341,14 @@ func (r *run) pdfRows(ctx context.Context, extraction pdfExtraction, hash string
 				return nil, fmt.Errorf("entry %q names %q, which is not a classroom", e.Title, c)
 			}
 		}
-		start, err := time.ParseInLocation(when.DateFormat, e.Start, when.Location)
+		start, err := time.ParseInLocation(model.DateFormat, e.Start, model.Location)
 		if err != nil {
 			return nil, fmt.Errorf("entry %q: start %q is not a date", e.Title, e.Start)
 		}
-		if _, err := time.ParseInLocation(when.DateFormat, e.End, when.Location); err != nil {
+		if _, err := time.ParseInLocation(model.DateFormat, e.End, model.Location); err != nil {
 			return nil, fmt.Errorf("entry %q: end %q is not a date", e.Title, e.End)
 		}
-		if got := when.SchoolYear(start); got != extraction.Year {
+		if got := model.SchoolYear(start); got != extraction.Year {
 			return nil, fmt.Errorf("entry %q on %s falls in %s, not %s", e.Title, e.Start, got, extraction.Year)
 		}
 		key := "pdf/" + extraction.Year + "/" + e.Start + "/" + slug(e.Title)
@@ -373,9 +373,9 @@ func (r *run) pdfRows(ctx context.Context, extraction pdfExtraction, hash string
 			row["Marker"] = e.Marker
 		}
 		switch e.Marker {
-		case when.MarkerFirstDay:
+		case model.MarkerFirstDay:
 			firstDays++
-		case when.MarkerLastDay:
+		case model.MarkerLastDay:
 			lastDays++
 		}
 		rows = append(rows, row)

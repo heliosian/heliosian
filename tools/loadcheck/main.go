@@ -20,7 +20,6 @@ import (
 	"heliosian/internal/static"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
-	"heliosian/internal/when"
 )
 
 func main() {
@@ -207,7 +206,7 @@ func main() {
 	fmt.Printf("config: %d super admins, stale years %+v, staff color %s, %d grade colors, %d classroom colors\n",
 		len(settings.SuperAdmins), settings.StaleYears, settings.StaffColor, len(settings.GradeColors), len(settings.ClassroomColors))
 
-	calendarCache, err := when.NewCache(source, nil, func() when.Roster { return when.RosterOf(directory) }, nil, func() []string { return nil }, store.NewQueue())
+	calendarCache, err := model.NewCalendarCache(source, nil, func() model.Roster { return directory.Roster() }, nil, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load calendar model: %v", err)
 	}
@@ -220,7 +219,7 @@ func main() {
 		}
 	}
 	fmt.Printf("calendar: %d events (google %d, pdf %d, sheet %d), %d hidden, %d duplicates folded\n",
-		len(plan.Events), bySource[when.SourceGoogle], bySource[when.SourcePDF], bySource[when.SourceSheet], plan.Hidden, plan.Duplicates)
+		len(plan.Events), bySource[model.SourceGoogle], bySource[model.SourcePDF], bySource[model.SourceSheet], plan.Hidden, plan.Duplicates)
 	for _, t := range plan.Tags {
 		fmt.Printf("  %s: %d\n", t.Name, byTag[t.ID])
 	}
@@ -247,15 +246,13 @@ func main() {
 		log.Fatalf("load groups model: %v", err)
 	}
 	groupModel := groupCache.Model()
-	now := time.Now().In(when.Location)
+	now := time.Now().In(model.Location)
 	sources := loop.Sources{
 		Directory: directory,
-		Tags:      directory.Tags,
 		MagicTags: func(owner string) []model.MagicTag {
 			lists := append(directory.RoomParentTags(owner), site.Lists(directory, owner, now)...)
 			return append(lists, portal.Lists(directory, owner, now)...)
 		},
-		Shared: directory.SharedTags,
 	}
 	fmt.Println("groups:")
 	for _, g := range groupModel.Groups {

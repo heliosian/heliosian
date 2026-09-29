@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/model"
 	"heliosian/internal/sharecard"
-	"heliosian/internal/when"
 )
 
 func CardStyle(name, tagline func() string) *sharecard.Style {
@@ -23,15 +23,15 @@ func previewable(p *Party) bool {
 }
 
 func whenLines(p *Party) (string, string) {
-	start, err := time.ParseInLocation(DateTimeFormat, p.Start, when.Location)
+	start, err := time.ParseInLocation(DateTimeFormat, p.Start, model.Location)
 	if err != nil {
-		if day, err := time.ParseInLocation(DateFormat, p.Start, when.Location); err == nil {
+		if day, err := time.ParseInLocation(DateFormat, p.Start, model.Location); err == nil {
 			return day.Format("Monday, January 2"), ""
 		}
 		return "", ""
 	}
 	day := start.Format("Monday, January 2")
-	end, err := time.ParseInLocation(DateTimeFormat, p.End, when.Location)
+	end, err := time.ParseInLocation(DateTimeFormat, p.End, model.Location)
 	if err != nil {
 		return day, start.Format("3:04 PM")
 	}

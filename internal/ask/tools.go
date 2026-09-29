@@ -18,7 +18,6 @@ import (
 	"heliosian/internal/loop"
 	"heliosian/internal/model"
 	"heliosian/internal/team"
-	"heliosian/internal/when"
 )
 
 const (
@@ -80,7 +79,7 @@ type viewer struct {
 	email     string
 	me        *model.Person
 	directory *model.Directory
-	calendar  *when.Model
+	calendar  *model.Calendar
 	team      *team.Model
 	celebrate *celebrate.Model
 	loop      *loop.Model
@@ -101,7 +100,7 @@ func (a app) viewer(email string) *viewer {
 	v := &viewer{
 		email: email, directory: a.sources.Directory(), calendar: a.sources.Calendar(), team: a.sources.Team(), celebrate: a.sources.Celebrate(), loop: a.sources.Loop(),
 		artifacts: a.sources.Artifacts(), embedder: a.sources.Embedder,
-		sources: a.sources, now: a.sources.Now().In(when.Location), access: &groupAccess{}, ctx: context.Background(),
+		sources: a.sources, now: a.sources.Now().In(model.Location), access: &groupAccess{}, ctx: context.Background(),
 	}
 	v.me = v.directory.Person(email)
 	as := func(held func(string) []access.Allowance) access.Actor {
@@ -240,14 +239,14 @@ func rolesOf(p *model.Person) string {
 
 func (v *viewer) daysAway(cell string) (int, bool) {
 	cell = strings.TrimSpace(cell)
-	if len(cell) < len(when.DateFormat) {
+	if len(cell) < len(model.DateFormat) {
 		return 0, false
 	}
-	day, err := time.ParseInLocation(when.DateFormat, cell[:len(when.DateFormat)], when.Location)
+	day, err := time.ParseInLocation(model.DateFormat, cell[:len(model.DateFormat)], model.Location)
 	if err != nil {
 		return 0, false
 	}
-	today := time.Date(v.now.Year(), v.now.Month(), v.now.Day(), 0, 0, 0, 0, when.Location)
+	today := time.Date(v.now.Year(), v.now.Month(), v.now.Day(), 0, 0, 0, 0, model.Location)
 	return int(day.Sub(today).Hours() / 24), true
 }
 
@@ -273,7 +272,7 @@ func (v *viewer) timing(start, end string) string {
 }
 
 func date(cell string) (time.Time, error) {
-	t, err := time.ParseInLocation(when.DateFormat, strings.TrimSpace(cell), when.Location)
+	t, err := time.ParseInLocation(model.DateFormat, strings.TrimSpace(cell), model.Location)
 	if err != nil {
 		return t, fmt.Errorf("%q is not a date like 2026-09-24", cell)
 	}

@@ -29,7 +29,6 @@ import (
 	"heliosian/internal/ratelimit"
 	"heliosian/internal/serve"
 	"heliosian/internal/team"
-	"heliosian/internal/when"
 )
 
 const (
@@ -47,8 +46,8 @@ type Sources struct {
 	Tags        func(owner string) []model.Tag
 	Lists       func(email string) []model.MagicTag
 	Settings    func() *model.Config
-	Calendar    func() *when.Model
-	Linked      func(email string) []when.Linked
+	Calendar    func() *model.Calendar
+	Linked      func(email string) []model.Linked
 	Team        func() *team.Model
 	Celebrate   func() *celebrate.Model
 	Loop        func() *loop.Model

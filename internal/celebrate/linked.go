@@ -8,17 +8,16 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/model"
-	"heliosian/internal/when"
 )
 
-func (m *Model) Linked(family when.Family, now time.Time) []when.Linked {
-	out := []when.Linked{}
+func (m *Model) Linked(family model.Household, now time.Time) []model.Linked {
+	out := []model.Linked{}
 	for _, p := range m.SortedParties("") {
 		if !p.VisibleTo(access.Actor{}) || p.Start == "" {
 			continue
 		}
-		var going, waiting when.Circle
-		people := []when.Standing{}
+		var going, waiting model.Circle
+		people := []model.Standing{}
 		for _, t := range p.Tickets {
 			if !family.Has(t.Purchaser) && !family.Has(t.Email) {
 				continue
@@ -31,23 +30,23 @@ func (m *Model) Linked(family when.Family, now time.Time) []when.Linked {
 			case TicketSold:
 				going.Add(family, holder, t.Name)
 				if family.Has(t.Email) {
-					people = append(people, when.Standing{Name: family.Name(t.Email, t.Name), Mine: family.Me(t.Email)})
+					people = append(people, model.Standing{Name: family.Name(t.Email, t.Name), Mine: family.Me(t.Email)})
 				} else {
-					people = append(people, when.Standing{Name: family.Name("", t.Name), Note: "guest"})
+					people = append(people, model.Standing{Name: family.Name("", t.Name), Note: "guest"})
 				}
 			case TicketWaitlist:
 				waiting.Add(family, holder, t.Name)
-				people = append(people, when.Standing{Name: family.Name(holder, t.Name), Note: "waitlisted"})
+				people = append(people, model.Standing{Name: family.Name(holder, t.Name), Note: "waitlisted"})
 			}
 		}
 		mine, names := "", []string(nil)
 		if going.Any() {
-			mine, names = when.MineGoing, going.Who()
+			mine, names = model.MineGoing, going.Who()
 		} else if waiting.Any() {
-			mine, names = when.MineWaitlisted, waiting.Who()
+			mine, names = model.MineWaitlisted, waiting.Who()
 		}
-		out = append(out, when.Linked{
-			Source: when.SourceCelebrate, ID: p.ID, EventID: p.ID, Title: p.Title, Summary: p.Summary, Description: p.Description, Location: p.Location,
+		out = append(out, model.Linked{
+			Source: model.SourceCelebrate, ID: p.ID, EventID: p.ID, Title: p.Title, Summary: p.Summary, Description: p.Description, Location: p.Location,
 			Start: p.Start, End: p.End, Path: m.PathOf(p), Availability: p.Availability(now), Mine: mine, Who: names, People: people, Image: p.ImageURL,
 			Hosts: append([]string{}, p.HostEmails...),
 		})
@@ -55,12 +54,12 @@ func (m *Model) Linked(family when.Family, now time.Time) []when.Linked {
 	return out
 }
 
-func (m *Model) PartyPeople(id string) *when.PartyPeople {
+func (m *Model) PartyPeople(id string) *model.PartyPeople {
 	party := m.Party(id)
 	if party == nil {
 		return nil
 	}
-	out := &when.PartyPeople{Hosts: append([]string{}, party.HostEmails...), Attendees: []when.Attendee{}}
+	out := &model.PartyPeople{Hosts: append([]string{}, party.HostEmails...), Attendees: []model.Attendee{}}
 	for _, t := range party.Tickets {
 		status := "ticket"
 		if t.Status == TicketWaitlist {
@@ -68,7 +67,7 @@ func (m *Model) PartyPeople(id string) *when.PartyPeople {
 		} else if t.Price <= 0 {
 			status = "free"
 		}
-		out.Attendees = append(out.Attendees, when.Attendee{Email: strings.ToLower(strings.TrimSpace(t.Email)), Name: t.Name, Status: status})
+		out.Attendees = append(out.Attendees, model.Attendee{Email: strings.ToLower(strings.TrimSpace(t.Email)), Name: t.Name, Status: status})
 	}
 	return out
 }

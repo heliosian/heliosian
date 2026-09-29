@@ -11,7 +11,7 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
-	"heliosian/internal/when"
+	"heliosian/internal/model"
 )
 
 const (
@@ -33,8 +33,8 @@ func githubApp() feedback.IssueFiler {
 	return app
 }
 
-func calendarMail(sessionKey string) when.Mail {
-	return when.Mail{Sender: newMailer(calendarMailFrom), ReplyTo: calendarReplyTo, Base: calendarBase, SigningKey: mailgunSigningKey(), Key: []byte(sessionKey)}
+func calendarMail(sessionKey string) model.CalendarMail {
+	return model.CalendarMail{Sender: newMailer(calendarMailFrom), ReplyTo: calendarReplyTo, Base: calendarBase, SigningKey: mailgunSigningKey(), Key: []byte(sessionKey)}
 }
 
 func mailgunKey() string {

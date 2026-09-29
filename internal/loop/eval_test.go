@@ -25,7 +25,6 @@ func sample(t *testing.T) (loop.Sources, *model.Directory) {
 	}
 	return loop.Sources{
 		Directory: directory,
-		Tags:      directory.Tags,
 		MagicTags: func(owner string) []model.MagicTag {
 			lists := directory.RoomParentTags(owner)
 			if owner == jordan {
@@ -33,7 +32,6 @@ func sample(t *testing.T) (loop.Sources, *model.Directory) {
 			}
 			return lists
 		},
-		Shared: directory.SharedTags,
 	}, directory
 }
 
@@ -50,7 +48,7 @@ func tagged(directory *model.Directory, key string) []string {
 }
 
 func sourcesOf(directory *model.Directory) loop.Sources {
-	return loop.Sources{Directory: directory, Tags: directory.Tags, Shared: directory.SharedTags, MagicTags: directory.RoomParentTags}
+	return loop.Sources{Directory: directory, MagicTags: directory.RoomParentTags}
 }
 
 func TestRenamingATagKeepsTheGroupsThatNameIt(t *testing.T) {

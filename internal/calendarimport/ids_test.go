@@ -5,15 +5,15 @@ import (
 	"testing"
 
 	"heliosian/internal/cells"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
-	"heliosian/internal/when"
 )
 
-func sampleRun(t *testing.T) (*run, *when.Model) {
+func sampleRun(t *testing.T) (*run, *model.Calendar) {
 	t.Helper()
 	sheet, cache := sampleCache(t)
 	tables := store.Tables{}
-	for _, tab := range []string{when.DayTypesTab, when.TagsTab} {
+	for _, tab := range []string{model.DayTypesTab, model.TagsTab} {
 		tables[tab] = rowsOf(t, sheet, tab)
 	}
 	r, err := vocabulary(cache.Model().Roster, tables)
@@ -25,11 +25,11 @@ func sampleRun(t *testing.T) (*run, *when.Model) {
 
 func TestVocabularyLeavesOutTheBuiltIns(t *testing.T) {
 	r, _ := sampleRun(t)
-	if len(r.tags) != 15 || r.tags[0].Name != "Schedule" || r.tags[0].ID != when.TagSchedule {
+	if len(r.tags) != 15 || r.tags[0].Name != "Schedule" || r.tags[0].ID != model.TagSchedule {
 		t.Errorf("vocabulary = %+v", r.tags)
 	}
 	for _, tag := range r.tags {
-		if when.BuiltInTag(tag.ID) {
+		if model.BuiltInTag(tag.ID) {
 			t.Errorf("a built-in tag is in the vocabulary: %+v", tag)
 		}
 	}
@@ -49,7 +49,7 @@ func TestImportWritesIDsForClaudesNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := cells.JoinList([]string{jays, ravens, "tag0000000107", "tag0000000007"}); row["Tags"] != want || row["Day Type"] != when.EarlyDismissalDayType || row["Keywords"] != "beach" {
+	if want := cells.JoinList([]string{jays, ravens, "tag0000000107", "tag0000000007"}); row["Tags"] != want || row["Day Type"] != model.EarlyDismissalDayType || row["Keywords"] != "beach" {
 		t.Errorf("enrichment row = %v, want tags %s", row, want)
 	}
 	if strings.Join(m.TagNames(cells.SplitList(row["Tags"])), ",") != "Jays,Ravens,Trip,Parents" {
@@ -65,8 +65,8 @@ func TestImportWritesIDsForClaudesNames(t *testing.T) {
 	extraction := pdfExtraction{
 		Year: "2026-2027",
 		Entries: []pdfEntry{
-			{Title: "First Day of School", Start: "2026-08-18", End: "2026-08-18", DayType: noDayType, Classrooms: m.Roster.Names(), Marker: when.MarkerFirstDay},
-			{Title: "Last Day (K only)", Start: "2027-06-04", End: "2027-06-04", DayType: "Early Dismissal", Classrooms: []string{"Hummingbirds"}, Marker: when.MarkerLastDay},
+			{Title: "First Day of School", Start: "2026-08-18", End: "2026-08-18", DayType: noDayType, Classrooms: m.Roster.Names(), Marker: model.MarkerFirstDay},
+			{Title: "Last Day (K only)", Start: "2027-06-04", End: "2027-06-04", DayType: "Early Dismissal", Classrooms: []string{"Hummingbirds"}, Marker: model.MarkerLastDay},
 		},
 		Shaded: []shadedDay{{Date: "2026-09-07", Legend: "Holiday", DayType: "No School"}},
 	}
@@ -81,10 +81,10 @@ func TestImportWritesIDsForClaudesNames(t *testing.T) {
 	if len(rows) != 3 || rows[0]["Tags"] != cells.JoinList(everyone) || rows[0]["Day Type"] != "" {
 		t.Errorf("first day row = %v", rows)
 	}
-	if rows[1]["Tags"] != hummingbirds || rows[1]["Day Type"] != when.EarlyDismissalDayType {
+	if rows[1]["Tags"] != hummingbirds || rows[1]["Day Type"] != model.EarlyDismissalDayType {
 		t.Errorf("last day row = %v", rows[1])
 	}
-	if rows[2]["Tags"] != cells.JoinList(everyone) || rows[2]["Day Type"] != when.NoSchoolDayType || rows[2]["Title"] != "Holiday" {
+	if rows[2]["Tags"] != cells.JoinList(everyone) || rows[2]["Day Type"] != model.NoSchoolDayType || rows[2]["Title"] != "Holiday" {
 		t.Errorf("shaded day row = %v", rows[2])
 	}
 }

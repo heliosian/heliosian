@@ -14,10 +14,10 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 
-	"heliosian/internal/when"
+	"heliosian/internal/model"
 )
 
-const pageURL = when.SchoolCalendarPage
+const pageURL = model.SchoolCalendarPage
 
 var retryWaits = []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute}
 

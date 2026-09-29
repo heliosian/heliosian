@@ -10,8 +10,8 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
+	"heliosian/internal/model"
 	"heliosian/internal/serve"
-	"heliosian/internal/when"
 )
 
 const (
@@ -86,7 +86,7 @@ type draft struct {
 func summaryOf(r Report) summary {
 	return summary{
 		ID:        r.ID,
-		Received:  r.At.In(when.Location).Format("2006-01-02 15:04"),
+		Received:  r.At.In(model.Location).Format("2006-01-02 15:04"),
 		App:       r.App,
 		AppName:   r.AppName,
 		Kind:      r.Kind,

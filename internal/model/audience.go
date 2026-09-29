@@ -85,9 +85,7 @@ func (r Rule) CheckFacets() error {
 
 type AudienceSources struct {
 	Directory *Directory
-	Tags      func(owner string) []Tag
 	MagicTags func(owner string) []MagicTag
-	Shared    func(email string) []Tag
 }
 
 type reader struct {
@@ -103,22 +101,14 @@ func (s AudienceSources) reader() *reader {
 
 func (r *reader) tagsOf(owner string) []Tag {
 	if _, ok := r.tags[owner]; !ok {
-		if r.s.Tags != nil {
-			r.tags[owner] = r.s.Tags(owner)
-		} else {
-			r.tags[owner] = nil
-		}
+		r.tags[owner] = r.s.Directory.Tags(owner)
 	}
 	return r.tags[owner]
 }
 
 func (r *reader) sharedWith(email string) []Tag {
 	if _, ok := r.shared[email]; !ok {
-		if r.s.Shared != nil {
-			r.shared[email] = r.s.Shared(email)
-		} else {
-			r.shared[email] = nil
-		}
+		r.shared[email] = r.s.Directory.SharedTags(email)
 	}
 	return r.shared[email]
 }
@@ -437,15 +427,11 @@ func (s AudienceSources) Options(viewer string) AudienceOptions {
 		}
 	}
 	tags := []TagOption{}
-	if s.Tags != nil {
-		for _, t := range s.Tags(viewer) {
-			tags = append(tags, TagOption{Key: TagKey(t.ID), Name: t.Name})
-		}
+	for _, t := range d.Tags(viewer) {
+		tags = append(tags, TagOption{Key: TagKey(t.ID), Name: t.Name})
 	}
-	if s.Shared != nil {
-		for _, t := range s.Shared(viewer) {
-			tags = append(tags, TagOption{Key: TagKey(t.ID), Name: t.Name + " (" + t.OwnerName + "'s)"})
-		}
+	for _, t := range d.SharedTags(viewer) {
+		tags = append(tags, TagOption{Key: TagKey(t.ID), Name: t.Name + " (" + t.OwnerName + "'s)"})
 	}
 	lists := []MagicTagOption{}
 	if s.MagicTags != nil {

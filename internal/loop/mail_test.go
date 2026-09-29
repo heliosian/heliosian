@@ -28,7 +28,7 @@ import (
 
 func sampleSources(directory *model.Directory) func() Sources {
 	return func() Sources {
-		return Sources{Directory: directory, Tags: directory.Tags, MagicTags: directory.RoomParentTags, Shared: directory.SharedTags}
+		return Sources{Directory: directory, MagicTags: directory.RoomParentTags}
 	}
 }
 

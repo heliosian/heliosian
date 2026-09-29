@@ -21,13 +21,12 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/data` — tabular data sources: sample CSVs and Google Sheets
 - `internal/spreadsheets` — which Google Sheets the server and the periodic sync read, the environment variable holding each one's ID, and its title in Drive
 - `internal/static` — reads the bundled files under `web/` that the models check image names against
-- `internal/model` — the shared data layer: the Config sheet (super admins and the platform settings, served at `/api/config`), every app's admin list, the audience rules every filter reads, and the directory's model load, handlers, admin tools and self-service edits
+- `internal/model` — the shared data layer: the Config sheet (super admins and the platform settings, served at `/api/config`), every app's admin list, the audience rules every filter reads, the directory's model load, handlers, admin tools and self-service edits, and Helios When: the Calendar sheet's model, audience resolution, the day plan, handlers, guest lists and invitations, and personal feeds
 - `internal/who` — the directory app's page host: its page routes, the opt-in form and its share card
 - `internal/home` — the link portal: model load, handlers, admin edits
 - `internal/team` — HCA-Team, the volunteer portal: the Events sheet's model, handlers, sign-ups, and admin edits
 - `internal/birthday` — the birthday team: the Birthdays sheet's model, the derived dates and stages, handlers, and admin edits
 - `internal/celebrate` — Helios Celebrate: the Celebrate sheet's model, parties, tickets and the waitlist, handlers, and admin edits
-- `internal/when` — Helios When: the Calendar sheet's model, audience resolution, the day plan, handlers, guest lists and invitations, and personal feeds
 - `internal/calendarimport` — the calendar import: the school's Google Calendar into the Calendar sheet as it changes, from the serving binary, and its year calendar PDF from the periodic sync, classified by Claude
 - `internal/loop` — Helios Loop: the Groups sheet's model, the rule evaluator, the mail received and forwarded, handlers, and admin edits
 - `internal/ask` — Helios Ask: the chat with Claude over every app's data - the prompt, the conversation, the streaming turn and the read-only tools

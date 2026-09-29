@@ -25,9 +25,7 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	}
 	sources := Sources{
 		Directory: directory,
-		Tags:      directory.Tags,
 		MagicTags: directory.RoomParentTags,
-		Shared:    directory.SharedTags,
 	}
 	jordan := "jordan.whitfield@heliosschool.org"
 	lists := groups.Model().Lists(sources, jordan)

@@ -13,7 +13,6 @@ import (
 	"heliosian/internal/loop"
 	"heliosian/internal/model"
 	"heliosian/internal/team"
-	"heliosian/internal/when"
 )
 
 //go:embed prompt.md
@@ -27,7 +26,7 @@ func systemBlocks(v *viewer, recent []*artifacts.Document, l *links) []anthropic
 }
 
 func recentDocuments(v *viewer) []*artifacts.Document {
-	since := v.now.AddDate(0, 0, -recentDays).Format(when.DateFormat)
+	since := v.now.AddDate(0, 0, -recentDays).Format(model.DateFormat)
 	out := []*artifacts.Document{}
 	for _, d := range v.documents().Documents {
 		if len(out) >= recentLimit || d.Date < since {
@@ -72,9 +71,9 @@ func (v *viewer) exampleLinks() []string {
 			}
 		}
 	}
-	today := time.Date(v.now.Year(), v.now.Month(), v.now.Day(), 0, 0, 0, 0, when.Location)
+	today := time.Date(v.now.Year(), v.now.Month(), v.now.Day(), 0, 0, 0, 0, model.Location)
 	for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.sources.Linked(v.email)) {
-		if app, _ := when.Page(e); app == "when" && !e.StartTime().Before(today) {
+		if app, _ := model.EventPage(e); app == "when" && !e.StartTime().Before(today) {
 			out = append(out, eventLink(e))
 			break
 		}
@@ -117,7 +116,7 @@ func documentLines(v *viewer, docs []*artifacts.Document) string {
 	b := &strings.Builder{}
 	for _, d := range docs {
 		date := d.Date
-		if day, err := time.ParseInLocation(when.DateFormat, d.Date, when.Location); err == nil {
+		if day, err := time.ParseInLocation(model.DateFormat, d.Date, model.Location); err == nil {
 			date = day.Format("Monday, January 2, 2006")
 		}
 		fmt.Fprintf(b, "- %s, %s: %s (key %s", date, v.timing(d.Date, ""), d.Title, d.Key)
@@ -170,7 +169,7 @@ func lingo(v *viewer) string {
 	b.WriteString("\nStaff departments: " + strings.Join(v.directory.Departments, "; ") + "\n")
 	b.WriteString("\nCalendar categories (what each files):\n")
 	for _, t := range v.calendar.Tags {
-		if t.BuiltIn && t.ID != when.TagCelebrate && t.ID != when.TagHCA {
+		if t.BuiltIn && t.ID != model.TagCelebrate && t.ID != model.TagHCA {
 			continue
 		}
 		fmt.Fprintf(b, "- %s: %s\n", t.Name, t.Description)
@@ -203,7 +202,7 @@ func lingo(v *viewer) string {
 
 func viewerBlock(v *viewer) string {
 	b := &strings.Builder{}
-	fmt.Fprintf(b, "## Who is asking\n\nToday is %s. The school year is %s.\n\n", v.now.Format("Monday, January 2, 2006"), when.SchoolYear(v.now))
+	fmt.Fprintf(b, "## Who is asking\n\nToday is %s. The school year is %s.\n\n", v.now.Format("Monday, January 2, 2006"), model.SchoolYear(v.now))
 	p := v.me
 	if p == nil {
 		fmt.Fprintf(b, "The person signed in is %s, whom the directory does not list. Answer about the school and its apps; nothing about a family is known.\n", v.email)
@@ -322,7 +321,7 @@ func (v *viewer) starters() []string {
 	if v.me != nil {
 		_, kids := v.directory.Household(v.me.Email)
 		if i := slices.IndexFunc(kids, func(k *model.Person) bool { return k.Classroom != "" }); i >= 0 {
-			out = append(out, fmt.Sprintf("Who teaches %s in %s?", when.FirstWord(kids[i].FullName), kids[i].Classroom))
+			out = append(out, fmt.Sprintf("Who teaches %s in %s?", model.FirstWord(kids[i].FullName), kids[i].Classroom))
 		}
 	}
 	return append(out, "What can I volunteer for?", "Which parties still have tickets?")
