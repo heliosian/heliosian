@@ -66,7 +66,7 @@ const PriorityColumn = "Priority"
 
 var (
 	CategoryColumns     = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page", "Direct Sign-Up", "Volunteers Hidden", "Hidden", store.OrderColumn}
-	ActivityColumns     = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Flyer Image", "Highlight Headline", "Highlight Body", "Highlight Icon", "Added By", "Added", store.OrderColumn, CompleteColumn, PriorityColumn}
+	ActivityColumns     = []string{"Event ID", CalendarEventColumn, "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Flyer Image", "Highlight Headline", "Highlight Body", "Highlight Icon", "Added By", "Added", store.OrderColumn, CompleteColumn, PriorityColumn}
 	VolunteerColumns    = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
 	LinkColumns         = []string{"Link ID", "Event ID", "Title", "URL", "Image", "Description"}
 	SettingColumns      = []string{"Key", "Value"}
@@ -114,8 +114,11 @@ type Volunteer struct {
 	Grade       string `json:"grade,omitempty"`
 }
 
+const CalendarEventColumn = "Calendar Event ID"
+
 type Activity struct {
 	ID                  string      `json:"id"`
+	CalendarEventID     string      `json:"-"`
 	Year                string      `json:"year"`
 	Title               string      `json:"title"`
 	Parent              string      `json:"parent,omitempty"`
@@ -258,6 +261,7 @@ type Model struct {
 	Redirects  []Redirect  `json:"redirects"`
 	Skipped    Skipped     `json:"-"`
 	byID       map[string]*Activity
+	byEvent    map[string]*Activity
 	categories map[string]*Category
 	links      map[string]*Activity
 	aliases    id.Aliases
@@ -448,7 +452,7 @@ func (m *Model) Category(key string) *Category {
 func (m *Model) taken(key string) bool {
 	_, alias := m.aliases[key]
 	_, link := m.links[key]
-	return alias || link || m.byID[key] != nil || m.categories[key] != nil
+	return alias || link || m.byID[key] != nil || m.byEvent[key] != nil || m.categories[key] != nil
 }
 
 func (m *Model) minter() func() string {
@@ -616,7 +620,7 @@ func BuildModel(ctx context.Context, tables store.Tables, images blob.Checker) (
 		return nil, err
 	}
 	model := &Model{Categories: []Category{}, Activities: []*Activity{}, Settings: settings, notify: notify, aliases: aliases,
-		byID: map[string]*Activity{}, categories: map[string]*Category{}, links: map[string]*Activity{}, pretty: map[string]*Activity{}, Redirects: []Redirect{}}
+		byID: map[string]*Activity{}, byEvent: map[string]*Activity{}, categories: map[string]*Category{}, links: map[string]*Activity{}, pretty: map[string]*Activity{}, Redirects: []Redirect{}}
 	model.admins = admins.Read(tables)
 	scoped, err := model.readCategories(tables[categoriesTab], images)
 	if err != nil {
@@ -727,7 +731,11 @@ func (m *Model) readActivities(rows []store.Row, images blob.Checker) ([]*Activi
 		if other := m.byID[a.ID]; other != nil {
 			return nil, fmt.Errorf("activities %q and %q share event id %q", other.Title, a.Title, a.ID)
 		}
+		if other := m.byEvent[a.CalendarEventID]; other != nil {
+			return nil, fmt.Errorf("activities %q and %q share calendar event id %q", other.Title, a.Title, a.CalendarEventID)
+		}
 		m.byID[a.ID] = a
+		m.byEvent[a.CalendarEventID] = a
 		all = append(all, a)
 	}
 	all, m.Skipped.Orphans = dropOrphans(all, m.byID)
@@ -945,6 +953,10 @@ func parseActivity(row map[string]string, images blob.Checker) (*Activity, error
 			return fail(err)
 		}
 	}
+	calendarEvent, ok := id.Parse(row[CalendarEventColumn])
+	if !ok {
+		return fail(fmt.Errorf("calendar event id %q is not an id", row[CalendarEventColumn]))
+	}
 	if err := checkStatus(row["Status"]); err != nil {
 		return fail(err)
 	}
@@ -1002,7 +1014,7 @@ func parseActivity(row map[string]string, images blob.Checker) (*Activity, error
 		return fail(err)
 	}
 	return &Activity{
-		ID: strings.TrimSpace(row["Event ID"]), Year: year, Title: title, Parent: strings.TrimSpace(row["Parent"]),
+		ID: strings.TrimSpace(row["Event ID"]), CalendarEventID: calendarEvent, Year: year, Title: title, Parent: strings.TrimSpace(row["Parent"]),
 		Category: strings.TrimSpace(row["Category"]), Status: row["Status"],
 		Description: row["Description"], Image: row["Image"], ImageURL: image, Flyer: row["Flyer Image"], FlyerURL: flyer, Highlight: highlightOf(row),
 		Order:  order,

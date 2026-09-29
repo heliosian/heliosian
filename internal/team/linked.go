@@ -56,7 +56,7 @@ func (m *Model) Linked(family when.Family) []when.Linked {
 			mine, names = when.MineGoing, signed.Who()
 		}
 		out = append(out, when.Linked{
-			Source: when.SourceTeam, ID: a.ID, Title: a.Title, Description: a.Description, Location: a.Location,
+			Source: when.SourceTeam, ID: a.ID, EventID: raw.CalendarEventID, Title: a.Title, Description: a.Description, Location: a.Location,
 			Start: a.Start, End: a.End, Path: m.PathOf(a), Availability: availability, Mine: mine, Who: names, People: people, Image: m.imageOf(a),
 			Hosts: a.CoChairs(),
 		})

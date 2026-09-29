@@ -248,14 +248,12 @@ func flyerPath(id string) string {
 
 func (c *Cache) LinkedRSVPs(linked []Linked, source, id string) (sent bool, answers map[string]string, ok bool) {
 	model := c.Model()
-	key := source + "/" + id
 	for _, e := range withLinked(model.Events, linked) {
-		if e.Link != "" && e.LinkedID == id && e.Source != SourceCelebrate {
-			key = e.ID
+		if e.linked() && e.LinkedID == id {
+			id = e.ID
 			break
 		}
 	}
-	id = key
 	inv := model.Invitations[id]
 	if inv == nil {
 		return false, nil, false

@@ -14,6 +14,7 @@ import (
 type Linked struct {
 	Source       string
 	ID           string
+	EventID      string
 	Title        string
 	Summary      string
 	Description  string
@@ -71,7 +72,7 @@ func linkedEvent(l Linked) *Event {
 		return nil
 	}
 	e := &Event{
-		ID: l.Source + "/" + l.ID, Source: l.Source, Title: l.Title, Location: l.Location,
+		ID: l.EventID, LinkedID: l.ID, Source: l.Source, Title: l.Title, Location: l.Location,
 		Description: strings.TrimSpace(l.Summary + "\n\n" + l.Description),
 		Start:       l.Start, End: l.End, AllDay: allDay, Tags: []string{tagBySource[l.Source]}, Classrooms: []string{},
 		Link: l.Path, Availability: l.Availability, Mine: l.Mine, MineWho: l.Who, MinePeople: l.People, Image: l.Image, Hosts: l.Hosts, Sharing: SharingPublic, start: start, end: end,
@@ -128,7 +129,7 @@ func folded(school, hca *Event) *Event {
 		c.Tags = append(c.Tags, t)
 	}
 	c.Link, c.Availability, c.Mine, c.MineWho, c.MinePeople, c.Hosts = hca.Link, hca.Availability, hca.Mine, hca.MineWho, hca.MinePeople, hca.Hosts
-	c.LinkedID = strings.TrimPrefix(hca.ID, SourceTeam+"/")
+	c.LinkedID = hca.LinkedID
 	if c.Image == "" {
 		c.Image = hca.Image
 	}
@@ -179,10 +180,7 @@ func (e *Event) linked() bool {
 }
 
 func (e *Event) linkedID() string {
-	if e.LinkedID != "" {
-		return e.LinkedID
-	}
-	return strings.TrimPrefix(strings.TrimPrefix(e.ID, SourceCelebrate+"/"), SourceTeam+"/")
+	return e.LinkedID
 }
 
 func withLinked(events []*Event, linked []Linked) []*Event {

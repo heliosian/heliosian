@@ -133,6 +133,7 @@ func RunGoogle(ctx context.Context, opts Options) error {
 			rows = append(rows, row)
 		}
 	}
+	r.identify(rows, r.tables[when.GoogleTab])
 	enrichment := r.enrich(ctx, google, false)
 	slog.InfoContext(ctx, "calendar import: rows", "feed", len(rows), "enriched", len(enrichment))
 	return r.write(ctx, []tabSync{
@@ -185,12 +186,30 @@ func RunPDF(ctx context.Context, opts Options) error {
 			slog.InfoContext(ctx, "calendar import: pdf entries", "entries", len(fresh), "year", year)
 		}
 	}
+	r.identify(rows, r.tables[when.PDFTab])
 	enrichment := r.enrich(ctx, rows, true)
 	slog.InfoContext(ctx, "calendar import: rows", "pdf", len(rows), "enriched", len(enrichment))
 	return r.write(ctx, []tabSync{
 		{when.PDFTab, when.PDFColumns, rows, r.tables[when.PDFTab], "Key", true},
 		{when.EnrichmentTab, when.EnrichmentColumns, enrichment, r.tables[when.EnrichmentTab], "Event ID", false},
 	})
+}
+
+func (r *run) identify(rows, before []map[string]string) {
+	known := map[string]string{}
+	for _, row := range before {
+		known[row["Key"]] = row["Event ID"]
+	}
+	mint := r.opts.Cache.Model().Minter()
+	for _, row := range rows {
+		switch {
+		case row["Event ID"] != "":
+		case known[row["Key"]] != "":
+			row["Event ID"] = known[row["Key"]]
+		default:
+			row["Event ID"] = mint()
+		}
+	}
 }
 
 type tabSync struct {

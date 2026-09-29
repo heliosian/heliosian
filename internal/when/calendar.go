@@ -64,8 +64,8 @@ const (
 )
 
 var (
-	GoogleColumns      = []string{"Key", "Start", "End", "Title", "Location", "Description", "Updated", "Sequence"}
-	PDFColumns         = []string{"Key", "Year", "Start", "End", "Title", "Day Type", "Tags", "Marker", "PDF"}
+	GoogleColumns      = []string{"Key", "Event ID", "Start", "End", "Title", "Location", "Description", "Updated", "Sequence"}
+	PDFColumns         = []string{"Key", "Event ID", "Year", "Start", "End", "Title", "Day Type", "Tags", "Marker", "PDF"}
 	EventColumns       = []string{"Event ID", "Start", "End", "Title", "Location", "Description", "Tags", "Day Type", "Keywords", "Added By", "Added", "Source", "Sharing", "Status", "Image"}
 	EnrichmentColumns  = []string{"Event ID", "Tags", "Day Type", "Keywords", "Input Hash", "Model", "Enriched"}
 	OverrideColumns    = []string{"Event ID", "Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden", "Note", "Address", "Image"}
@@ -230,6 +230,7 @@ type Event struct {
 	Invited      bool       `json:"invited,omitempty"`
 	Hosted       bool       `json:"hosted,omitempty"`
 	Hidden       bool       `json:"-"`
+	googleUID    string
 	duplicate    bool
 	start, end   time.Time
 }
@@ -462,7 +463,7 @@ func (m *Model) taken(key string) bool {
 	return false
 }
 
-func (m *Model) minter() func() string {
+func (m *Model) Minter() func() string {
 	minted := map[string]bool{}
 	return func() string {
 		s := id.New(func(key string) bool { return minted[key] || m.taken(key) })
@@ -766,6 +767,22 @@ func (b *builder) event(source, id string, row store.Row) (*Event, error) {
 	}
 	e.Keywords = cells.SplitList(row["Keywords"])
 	return e, nil
+}
+
+func (b *builder) imported(source string, row store.Row) (*Event, error) {
+	key := strings.ToLower(strings.TrimSpace(row["Key"]))
+	if key == "" {
+		return nil, fmt.Errorf("%s row has no key", source)
+	}
+	eventID, ok := id.Parse(row["Event ID"])
+	if !ok {
+		return nil, fmt.Errorf("%s row %q: event id %q is not an id", source, key, row["Event ID"])
+	}
+	if _, dup := b.model.aliases[key]; dup {
+		return nil, fmt.Errorf("%s row %q is listed twice", source, key)
+	}
+	b.model.aliases[key] = eventID
+	return b.event(source, eventID, row)
 }
 
 func union(a, b []string) []string {
@@ -1152,7 +1169,7 @@ func (b *builder) years(pdfRows []store.Row) error {
 	type marks struct{ first, last []string }
 	byYear := map[string]*marks{}
 	for _, row := range pdfRows {
-		e := b.model.byID[row["Key"]]
+		e := b.model.byID[row["Event ID"]]
 		if e == nil || e.Hidden || e.Marker == "" {
 			continue
 		}
@@ -1342,18 +1359,19 @@ func BuildModel(tables store.Tables, roster Roster) (*Model, error) {
 	m.admins = admins.Read(tables)
 	b := &builder{model: m}
 	for _, row := range tables[GoogleTab] {
-		e, err := b.event(SourceGoogle, row["Key"], row)
+		e, err := b.imported(SourceGoogle, row)
 		if err != nil {
 			return nil, err
 		}
 		e.Updated = row["Updated"]
 		e.SourceURL = GoogleEventURL(row["Key"])
+		e.googleUID = strings.TrimSpace(row["Key"])
 		if err := b.add(e); err != nil {
 			return nil, err
 		}
 	}
 	for _, row := range tables[PDFTab] {
-		e, err := b.event(SourcePDF, row["Key"], row)
+		e, err := b.imported(SourcePDF, row)
 		if err != nil {
 			return nil, err
 		}

@@ -118,10 +118,12 @@ func (a app) canonical(key string) string {
 		return a.cache.Model().aliases.Resolve(key)
 	}
 	found := a.sourceID(source, rest)
-	if found == "" {
-		return key
+	for _, e := range withLinked(a.cache.Model().Events, a.linked("")) {
+		if found != "" && e.linkedID() == found {
+			return e.ID
+		}
 	}
-	return source + "/" + found
+	return key
 }
 
 func (a app) sees(actor access.Actor, e *Event) bool {
@@ -175,7 +177,7 @@ func (a app) letterFor(e *Event, path string) mail.Letter {
 }
 
 func (e *Event) mailEvent(link string) mail.Event {
-	m := mail.Event{UID: uidOf(e.ID), Start: e.start, End: e.end, AllDay: e.AllDay, Summary: e.Title, Description: strings.TrimSpace(e.Description + "\n\n" + link), Location: e.Location, URL: link}
+	m := mail.Event{UID: uidOf(e.uidKey()), Start: e.start, End: e.end, AllDay: e.AllDay, Summary: e.Title, Description: strings.TrimSpace(e.Description + "\n\n" + link), Location: e.Location, URL: link}
 	if e.AllDay {
 		m.End = e.end.AddDate(0, 0, 1)
 	}
@@ -187,7 +189,7 @@ func (a app) invite(e *Event, to, link, method string) mail.Attachment {
 	if method == mail.MethodCancel {
 		m.Summary = "Cancelled: " + e.Title
 	}
-	m.Organizer = mail.Person{Name: brand.Name, Email: a.organizer(e.ID, to)}
+	m.Organizer = mail.Person{Name: brand.Name, Email: a.organizer(e.uidKey(), to)}
 	m.Attendees = []mail.Person{{Name: to, Email: to}}
 	m.RSVP = method == mail.MethodRequest
 	return mail.Calendar{Product: brand.Name, Method: method, Stamp: now(), Events: []mail.Event{m}}.Attachment()

@@ -1,22 +1,22 @@
 Event ID,Tags,Day Type,Keywords,Input Hash,Model,Enriched
-a1@sample,"wdzczzbdfw1nc, tag0000000006",dty0000000003,"half day, kinder, short day",5c1d2e3f4a5b6c7d,claude-fable-5-1,2026-08-02
-a2@sample,"wdzczzbdfw1nc, 8rge2zbn7g8a3, 58gc3fhnjh9tx, m9n15k6h7xvhr, zekspjczsfxtb, tag0000000104, tag0000000007",,"BTSN, back to school",5c1d2e3f4a5b6c7e,claude-fable-5-1,2026-08-02
-a3@sample,"mxjkppjssbzwb, a4htr4w6v8e1r, ajettyjb3c15k, scm0ztfmz4ark, tag0000000104, tag0000000007",,"BTSN, back to school",5c1d2e3f4a5b6c7f,claude-fable-5-1,2026-08-02
-a4@sample,"wdzczzbdfw1nc, 8rge2zbn7g8a3, 58gc3fhnjh9tx, m9n15k6h7xvhr, zekspjczsfxtb, mxjkppjssbzwb, a4htr4w6v8e1r, ajettyjb3c15k, scm0ztfmz4ark, tag0000000006",dty0000000002,holiday,5c1d2e3f4a5b6c80,claude-fable-5-1,2026-08-02
-a5@sample,"m9n15k6h7xvhr, zekspjczsfxtb, tag0000000107",,"camp, overnight",5c1d2e3f4a5b6c81,claude-fable-5-1,2026-08-16
-a6@sample,"wdzczzbdfw1nc, tag0000000105, tag0000000007",,"coffee, kindergarten",5c1d2e3f4a5b6c82,claude-fable-5-1,2026-08-16
-a7@sample,"wdzczzbdfw1nc, 8rge2zbn7g8a3, 58gc3fhnjh9tx, m9n15k6h7xvhr, zekspjczsfxtb, mxjkppjssbzwb, a4htr4w6v8e1r, ajettyjb3c15k, scm0ztfmz4ark, tag0000000105",,"culture, food, booths",5c1d2e3f4a5b6c83,claude-fable-5-1,2026-08-16
-a8@sample,"8rge2zbn7g8a3, 58gc3fhnjh9tx, tag0000000105, tag0000000007",,coffee,5c1d2e3f4a5b6c84,claude-fable-5-1,2026-08-16
-a9@sample,"wdzczzbdfw1nc, 8rge2zbn7g8a3, 58gc3fhnjh9tx, m9n15k6h7xvhr, zekspjczsfxtb, mxjkppjssbzwb, a4htr4w6v8e1r, ajettyjb3c15k, scm0ztfmz4ark, tag0000000006, tag0000000113",dty0000000101,,5c1d2e3f4a5b6c85,claude-fable-5-1,2026-11-02
-a10@sample,"wdzczzbdfw1nc, 8rge2zbn7g8a3, 58gc3fhnjh9tx, m9n15k6h7xvhr, zekspjczsfxtb, mxjkppjssbzwb, a4htr4w6v8e1r, ajettyjb3c15k, scm0ztfmz4ark, tag0000000006",dty0000000002,"winter break, holiday",5c1d2e3f4a5b6c86,claude-fable-5-1,2026-11-02
-a11@sample,"mxjkppjssbzwb, a4htr4w6v8e1r, tag0000000105, tag0000000007",,coffee,5c1d2e3f4a5b6c87,claude-fable-5-1,2026-08-16
-a12@sample,"wdzczzbdfw1nc, 8rge2zbn7g8a3, 58gc3fhnjh9tx, m9n15k6h7xvhr, zekspjczsfxtb, mxjkppjssbzwb, a4htr4w6v8e1r, ajettyjb3c15k, scm0ztfmz4ark, tag0000000105",,"gala, auction, fundraiser",5c1d2e3f4a5b6c88,claude-fable-5-1,2026-08-16
-pdf/2026-2027/2026-08-18/first-day-of-school,tag0000000006,,"first day, welcome",5c1d2e3f4a5b6c89,claude-fable-5-1,2026-08-02
-pdf/2026-2027/2026-08-18/12-30p-dismissals-k-only,tag0000000006,,"half day, kindergarten",5c1d2e3f4a5b6c8a,claude-fable-5-1,2026-08-02
-pdf/2026-2027/2026-08-21/professional-development-half-day,tag0000000006,,"PD, half day",5c1d2e3f4a5b6c8b,claude-fable-5-1,2026-08-02
-pdf/2026-2027/2026-09-07/labor-day,tag0000000006,,holiday,5c1d2e3f4a5b6c8c,claude-fable-5-1,2026-08-02
-pdf/2026-2027/2026-09-29/returning-grade-ilp-conference-half-days,"tag0000000101, tag0000000006",,"ILP, half day",5c1d2e3f4a5b6c8d,claude-fable-5-1,2026-08-02
-pdf/2026-2027/2026-11-15/second-tuition-installment-due,"tag0000000114, tag0000000007",,"tuition, payment",5c1d2e3f4a5b6c8e,claude-fable-5-1,2026-08-02
-pdf/2026-2027/2026-11-23/thanksgiving-break,tag0000000006,,"holiday, break",5c1d2e3f4a5b6c8f,claude-fable-5-1,2026-08-02
-pdf/2026-2027/2026-12-21/winter-break,tag0000000006,,"holiday, break",5c1d2e3f4a5b6c90,claude-fable-5-1,2026-08-02
-pdf/2026-2027/2027-06-04/last-day-of-school-graduation,"tag0000000006, tag0000000103",,"graduation, last day",5c1d2e3f4a5b6c91,claude-fable-5-1,2026-08-02
+gev0000000001,"wdzczzbdfw1nc, tag0000000006",dty0000000003,"half day, kinder, short day",5c1d2e3f4a5b6c7d,claude-fable-5-1,2026-08-02
+gev0000000002,"wdzczzbdfw1nc, 8rge2zbn7g8a3, 58gc3fhnjh9tx, m9n15k6h7xvhr, zekspjczsfxtb, tag0000000104, tag0000000007",,"BTSN, back to school",5c1d2e3f4a5b6c7e,claude-fable-5-1,2026-08-02
+gev0000000003,"mxjkppjssbzwb, a4htr4w6v8e1r, ajettyjb3c15k, scm0ztfmz4ark, tag0000000104, tag0000000007",,"BTSN, back to school",5c1d2e3f4a5b6c7f,claude-fable-5-1,2026-08-02
+gev0000000004,"wdzczzbdfw1nc, 8rge2zbn7g8a3, 58gc3fhnjh9tx, m9n15k6h7xvhr, zekspjczsfxtb, mxjkppjssbzwb, a4htr4w6v8e1r, ajettyjb3c15k, scm0ztfmz4ark, tag0000000006",dty0000000002,holiday,5c1d2e3f4a5b6c80,claude-fable-5-1,2026-08-02
+gev0000000005,"m9n15k6h7xvhr, zekspjczsfxtb, tag0000000107",,"camp, overnight",5c1d2e3f4a5b6c81,claude-fable-5-1,2026-08-16
+gev0000000006,"wdzczzbdfw1nc, tag0000000105, tag0000000007",,"coffee, kindergarten",5c1d2e3f4a5b6c82,claude-fable-5-1,2026-08-16
+gev0000000007,"wdzczzbdfw1nc, 8rge2zbn7g8a3, 58gc3fhnjh9tx, m9n15k6h7xvhr, zekspjczsfxtb, mxjkppjssbzwb, a4htr4w6v8e1r, ajettyjb3c15k, scm0ztfmz4ark, tag0000000105",,"culture, food, booths",5c1d2e3f4a5b6c83,claude-fable-5-1,2026-08-16
+gev0000000008,"8rge2zbn7g8a3, 58gc3fhnjh9tx, tag0000000105, tag0000000007",,coffee,5c1d2e3f4a5b6c84,claude-fable-5-1,2026-08-16
+gev0000000009,"wdzczzbdfw1nc, 8rge2zbn7g8a3, 58gc3fhnjh9tx, m9n15k6h7xvhr, zekspjczsfxtb, mxjkppjssbzwb, a4htr4w6v8e1r, ajettyjb3c15k, scm0ztfmz4ark, tag0000000006, tag0000000113",dty0000000101,,5c1d2e3f4a5b6c85,claude-fable-5-1,2026-11-02
+gev0000000010,"wdzczzbdfw1nc, 8rge2zbn7g8a3, 58gc3fhnjh9tx, m9n15k6h7xvhr, zekspjczsfxtb, mxjkppjssbzwb, a4htr4w6v8e1r, ajettyjb3c15k, scm0ztfmz4ark, tag0000000006",dty0000000002,"winter break, holiday",5c1d2e3f4a5b6c86,claude-fable-5-1,2026-11-02
+gev0000000011,"mxjkppjssbzwb, a4htr4w6v8e1r, tag0000000105, tag0000000007",,coffee,5c1d2e3f4a5b6c87,claude-fable-5-1,2026-08-16
+gev0000000012,"wdzczzbdfw1nc, 8rge2zbn7g8a3, 58gc3fhnjh9tx, m9n15k6h7xvhr, zekspjczsfxtb, mxjkppjssbzwb, a4htr4w6v8e1r, ajettyjb3c15k, scm0ztfmz4ark, tag0000000105",,"gala, auction, fundraiser",5c1d2e3f4a5b6c88,claude-fable-5-1,2026-08-16
+pev0000000001,tag0000000006,,"first day, welcome",5c1d2e3f4a5b6c89,claude-fable-5-1,2026-08-02
+pev0000000002,tag0000000006,,"half day, kindergarten",5c1d2e3f4a5b6c8a,claude-fable-5-1,2026-08-02
+pev0000000003,tag0000000006,,"PD, half day",5c1d2e3f4a5b6c8b,claude-fable-5-1,2026-08-02
+pev0000000004,tag0000000006,,holiday,5c1d2e3f4a5b6c8c,claude-fable-5-1,2026-08-02
+pev0000000005,"tag0000000101, tag0000000006",,"ILP, half day",5c1d2e3f4a5b6c8d,claude-fable-5-1,2026-08-02
+pev0000000006,"tag0000000114, tag0000000007",,"tuition, payment",5c1d2e3f4a5b6c8e,claude-fable-5-1,2026-08-02
+pev0000000007,tag0000000006,,"holiday, break",5c1d2e3f4a5b6c8f,claude-fable-5-1,2026-08-02
+pev0000000008,tag0000000006,,"holiday, break",5c1d2e3f4a5b6c90,claude-fable-5-1,2026-08-02
+pev0000000009,"tag0000000006, tag0000000103",,"graduation, last day",5c1d2e3f4a5b6c91,claude-fable-5-1,2026-08-02

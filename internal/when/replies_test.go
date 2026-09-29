@@ -121,30 +121,30 @@ func TestRepliesRecordAnswers(t *testing.T) {
 	if code := post("yes", false); code != 406 {
 		t.Errorf("unsigned call: %d", code)
 	}
-	if code := post("yes", true); code != 200 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
-		t.Errorf("accepted: %d, answer %q", code, cache.Model().AnswerOf(me, "a7@sample"))
+	if code := post("yes", true); code != 200 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerYes {
+		t.Errorf("accepted: %d, answer %q", code, cache.Model().AnswerOf(me, "gev0000000007"))
 	}
-	if code := post("no", true); code != 200 || cache.Model().AnswerOf(me, "a7@sample") != AnswerNo {
-		t.Errorf("declined: %d, answer %q", code, cache.Model().AnswerOf(me, "a7@sample"))
+	if code := post("no", true); code != 200 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerNo {
+		t.Errorf("declined: %d, answer %q", code, cache.Model().AnswerOf(me, "gev0000000007"))
 	}
-	if code := post("stranger", true); code != 200 || cache.Model().AnswerOf("x@example.org", "a7@sample") != "" {
+	if code := post("stranger", true); code != 200 || cache.Model().AnswerOf("x@example.org", "gev0000000007") != "" {
 		t.Errorf("a stranger's reply was taken")
 	}
 	post("yes", true)
-	if code := post("forged", true); code != 200 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
+	if code := post("forged", true); code != 200 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerYes {
 		t.Errorf("a reply from another sender was taken")
 	}
-	if code := post("spoofed", true); code != 200 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
+	if code := post("spoofed", true); code != 200 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerYes {
 		t.Errorf("a reply Mailgun did not authenticate was taken")
 	}
 	for _, other := range []string{"rsvp@reply.heliosian.com", "rsvp+@reply.heliosian.com", replyAddress("a8@sample", me), replyAddress("a7@sample", "x@example.org")} {
 		to = other
-		if code := post("no", true); code != 200 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
+		if code := post("no", true); code != 200 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerYes {
 			t.Errorf("a reply to %s was taken", other)
 		}
 	}
 	to = "someone-else@reply.heliosian.com"
-	if code := post("no", true); code != 200 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
+	if code := post("no", true); code != 200 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerYes {
 		t.Errorf("mail for another address was taken as a reply")
 	}
 }

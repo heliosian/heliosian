@@ -193,7 +193,7 @@ func (a app) newEvents(actor access.Actor, body eventBody) ([]store.Op, []string
 	stamp := now().Format(DateFormat)
 	ids := []string{}
 	ops := []store.Op{}
-	mint := model.minter()
+	mint := model.Minter()
 	for i := 0; i <= body.RepeatTimes; i++ {
 		key := mint()
 		ids = append(ids, key)
@@ -275,7 +275,7 @@ func (a app) tagOps(actor access.Actor, tags []tagBody) ([]store.Op, int, error)
 			current[t.ID] = t
 		}
 	}
-	mint := model.minter()
+	mint := model.Minter()
 	keys, names, orders, rows := []string{}, []string{}, []string{}, []store.Row{}
 	for _, t := range tags {
 		key, name, description, group, image := strings.TrimSpace(t.ID), strings.TrimSpace(t.Name), strings.TrimSpace(t.Description), strings.TrimSpace(t.Group), strings.TrimSpace(t.Image)
@@ -585,7 +585,7 @@ func (a app) inviteOps(actor access.Actor, key string, people []invitee) ([]stor
 	stamp := now().Format(DateTimeFormat)
 	ops := a.invitationOps(actor, e.ID, nil)
 	emails := []string{}
-	mint := model.minter()
+	mint := model.Minter()
 	for _, p := range people {
 		name := strings.TrimSpace(p.Name)
 		household := config.NormalizeEmail(p.Household)
@@ -679,7 +679,7 @@ func (a app) guestOps(actor access.Actor, g broughtGuest, name, email string) ([
 			row["Token"] = id.Token()
 		}
 	} else {
-		email = guestPrefix + model.minter()()
+		email = guestPrefix + model.Minter()()
 		row["Sent"] = stamp
 	}
 	row["Email"] = email
@@ -861,7 +861,7 @@ func (a app) addGroupOps(actor access.Actor, id string, rule filter.Rule, auto *
 	if len(a.cache.Model().Groups[e.ID]) >= 20 {
 		return nil, nil, InviteGroup{}, access.Invalid("a guest list holds twenty groups at most")
 	}
-	g := InviteGroup{ID: a.cache.Model().minter()(), Rule: rule, Auto: auto == nil || *auto, AddedBy: actor.Email, Added: now().Format(DateTimeFormat)}
+	g := InviteGroup{ID: a.cache.Model().Minter()(), Rule: rule, Auto: auto == nil || *auto, AddedBy: actor.Email, Added: now().Format(DateTimeFormat)}
 	return a.newGroupOps(actor, e, g), e, g, nil
 }
 
@@ -913,7 +913,7 @@ func (a app) startPartyOps(actor access.Actor, id string) ([]store.Op, *Event, I
 			return nil, e, g, nil
 		}
 	}
-	g := InviteGroup{ID: a.cache.Model().minter()(), Rule: filter.Rule{Kind: filter.KindInclude, Tags: []string{key}}, Auto: true, AddedBy: actor.Email, Added: now().Format(DateTimeFormat)}
+	g := InviteGroup{ID: a.cache.Model().Minter()(), Rule: filter.Rule{Kind: filter.KindInclude, Tags: []string{key}}, Auto: true, AddedBy: actor.Email, Added: now().Format(DateTimeFormat)}
 	return append(a.newGroupOps(actor, e, g), a.hostYesOps(actor, e, a.hostsOf(e))...), e, g, nil
 }
 
@@ -1010,7 +1010,7 @@ func (a app) moveAddressOps(actor access.Actor, old, to, name string) ([]store.O
 	ops := []store.Op{}
 	resend := []string{}
 	for key := range model.Invites {
-		if !strings.HasPrefix(key, SourceCelebrate+"/") {
+		if a.parties(key) == nil {
 			continue
 		}
 		row := model.InviteOf(key, old)

@@ -332,9 +332,10 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 			return activitySave{}, access.Invalid("new things cannot be added here")
 		}
 	}
+	mint := m.minter()
 	var key string
 	if adding {
-		key = id.New(m.taken)
+		key = mint()
 	} else {
 		key = current.ID
 	}
@@ -423,6 +424,7 @@ func (m *Model) saveActivity(actor access.Actor, patch activityPatch) (activityS
 		action = "add"
 		row["Added By"] = actor.Email
 		row["Added"] = today()
+		row[CalendarEventColumn] = mint()
 		ops = append(ops, store.Insert(activitiesTab, row))
 		if joining != "" {
 			ops = append(ops, store.Insert(volunteersTab, store.Row{"Event ID": key, "Email": actor.Email, "Position": joining, "Added By": actor.Email, "Added": today()}))
@@ -779,7 +781,7 @@ func (m *Model) copyActivity(actor access.Actor, id string) (*Activity, string, 
 	}
 	rowFor := func(c *Activity, parent string) store.Row {
 		row := store.Row{
-			"Event ID": fresh[c.ID], "Year": year, "Title": c.Title, "Parent": parent, "Category": remap(c.Category),
+			"Event ID": fresh[c.ID], CalendarEventColumn: mint(), "Year": year, "Title": c.Title, "Parent": parent, "Category": remap(c.Category),
 			"Status": c.Status, "Description": c.Description, "Image": c.Image, "Flyer Image": c.Flyer, "Timing": c.Timing,
 			"Location": c.Location, "Spots": spotsCell(c.Spots),
 			"Co-Leader Needed": cells.YesNoCell(c.CoLeaderNeeded), "Volunteers Hidden": c.VolunteersHiddenOwn,

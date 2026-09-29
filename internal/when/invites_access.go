@@ -45,7 +45,7 @@ func (a app) party(e *Event) *PartyPeople {
 	if e == nil || e.Source != SourceCelebrate {
 		return nil
 	}
-	return a.parties(strings.TrimPrefix(e.ID, SourceCelebrate+"/"))
+	return a.parties(e.linkedID())
 }
 
 func isAdult(p *who.Person) bool {

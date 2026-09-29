@@ -48,7 +48,7 @@ func (m *Model) Linked(family when.Family, now time.Time) []when.Linked {
 			mine, names = when.MineWaitlisted, waiting.Who()
 		}
 		out = append(out, when.Linked{
-			Source: when.SourceCelebrate, ID: p.ID, Title: p.Title, Summary: p.Summary, Description: p.Description, Location: p.Location,
+			Source: when.SourceCelebrate, ID: p.ID, EventID: p.ID, Title: p.Title, Summary: p.Summary, Description: p.Description, Location: p.Location,
 			Start: p.Start, End: p.End, Path: m.PathOf(p), Availability: p.Availability(now), Mine: mine, Who: names, People: people, Image: p.ImageURL,
 			Hosts: append([]string{}, p.HostEmails...),
 		})

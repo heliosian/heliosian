@@ -137,7 +137,7 @@ func (a app) send(ctx context.Context, actor access.Actor, host string, e *Event
 }
 
 func (a app) replyTo(e *Event, to string) []string {
-	return append(append([]string{}, a.hostsOf(e)...), a.organizer(e.ID, to))
+	return append(append([]string{}, a.hostsOf(e)...), a.organizer(e.uidKey(), to))
 }
 
 func FirstWord(name string) string {

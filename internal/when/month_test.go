@@ -12,8 +12,8 @@ func TestMonth(t *testing.T) {
 	d := sampleDirectory(t, "../../sampledata")
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-13 08:00", Location)
 	linked := []Linked{
-		{Source: SourceCelebrate, ID: "pty0000000001", Title: "Fondue & Fort Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available"},
-		{Source: SourceTeam, ID: "act0000000005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/act0000000005", Availability: "done"},
+		{Source: SourceCelebrate, ID: "pty0000000001", EventID: "pty0000000001", Title: "Fondue & Fort Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available"},
+		{Source: SourceTeam, ID: "act0000000005", EventID: "tev0000000005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/act0000000005", Availability: "done"},
 	}
 	got := m.MonthUnder(d, sam, linked, at, "2026-09", "")
 	if got.Month != "2026-09" || got.Today != "2026-09-13" {

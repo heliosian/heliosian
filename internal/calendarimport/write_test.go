@@ -32,6 +32,19 @@ func rowsOf(t *testing.T, sheet *data.Dir, tab string) []map[string]string {
 	return rows
 }
 
+func TestIdentifyKeepsAKnownKeysEventIDAndMintsForANewOne(t *testing.T) {
+	sheet, cache := sampleCache(t)
+	google := rowsOf(t, sheet, when.GoogleTab)
+	rows := []map[string]string{{"Key": "a7@sample", "Title": "International Night"}, {"Key": "a13@sample", "Title": "Spring Picnic"}}
+	(&run{opts: Options{Cache: cache}}).identify(rows, google)
+	if rows[0]["Event ID"] != "gev0000000007" {
+		t.Errorf("a known key's event id is %q", rows[0]["Event ID"])
+	}
+	if fresh := rows[1]["Event ID"]; fresh == "" || cache.Model().Event(fresh) != nil || fresh == rows[0]["Event ID"] {
+		t.Errorf("a new key's event id is %q", fresh)
+	}
+}
+
 func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
 	sheet, cache := sampleCache(t)
 	google, enrichment := rowsOf(t, sheet, when.GoogleTab), rowsOf(t, sheet, when.EnrichmentTab)
@@ -46,9 +59,9 @@ func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
 		}
 		rows = append(rows, row)
 	}
-	rows = append(rows, map[string]string{"Key": "a13@sample", "Start": "2027-04-01", "End": "2027-04-01", "Title": "Spring Picnic", "Updated": "2026-09-01 09:00", "Sequence": "0"})
+	rows = append(rows, map[string]string{"Key": "a13@sample", "Event ID": "gev0000000013", "Start": "2027-04-01", "End": "2027-04-01", "Title": "Spring Picnic", "Updated": "2026-09-01 09:00", "Sequence": "0"})
 	jays, community := who.ClassroomID([]byte("sample"), "Jays"), "tag0000000105"
-	enriched := append(slices.Clone(enrichment), map[string]string{"Event ID": "a13@sample", "Tags": jays + ", " + community, "Input Hash": "h", "Model": modelName, "Enriched": "2026-09-01"})
+	enriched := append(slices.Clone(enrichment), map[string]string{"Event ID": "gev0000000013", "Tags": jays + ", " + community, "Input Hash": "h", "Model": modelName, "Enriched": "2026-09-01"})
 	sync := []tabSync{
 		{when.GoogleTab, when.GoogleColumns, rows, google, "Key", true},
 		{when.EnrichmentTab, when.EnrichmentColumns, enriched, enrichment, "Event ID", false},
@@ -83,7 +96,7 @@ func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
 		"calendarimport|set|Google Import|Key=a6@sample|Title|Hummingbird CAFE",
 		"calendarimport|insert|Google Import|Key=a13@sample||",
 		"calendarimport|delete|Google Import|Key=a12@sample|Title|Spring Celebration",
-		"calendarimport|insert|Enrichment|Event ID=a13@sample||",
+		"calendarimport|insert|Enrichment|Event ID=gev0000000013||",
 	} {
 		if !slices.Contains(log, want) {
 			t.Errorf("the change log lacks %s: %v", want, log)

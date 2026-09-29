@@ -126,7 +126,7 @@ func plan(existing map[string]map[string]string, rows []map[string]string, vocab
 	pending := []enrichInput{}
 	hashes := map[string]string{}
 	for _, row := range rows {
-		id := row["Key"]
+		id := row["Event ID"]
 		hash := digest(row["Title"], row["Description"], row["Start"], row["End"], row["Location"], vocabulary)
 		if have, ok := existing[id]; ok && have["Input Hash"] == hash {
 			kept = append(kept, have)

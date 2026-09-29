@@ -826,10 +826,10 @@ func TestUncategorizedFallback(t *testing.T) {
 	}
 	next := tables(t)
 	next[activitiesTab] = append(next[activitiesTab],
-		store.Row{"Event ID": "E900", "Year": "2026 - 2027", "Title": "Blank", "Status": StatusOpen},
-		store.Row{"Event ID": "E901", "Year": "2026 - 2027", "Title": "Unknown", "Category": "nope", "Status": StatusOpen},
-		store.Row{"Event ID": "E902", "Year": "2026 - 2027", "Title": "Borrowed", "Category": "tcg0000000007", "Status": StatusOpen},
-		store.Row{"Event ID": "E903", "Year": "2026 - 2027", "Title": "Child", "Parent": "act0000000001", "Category": "tcg0000000009", "Status": StatusOpen},
+		store.Row{"Event ID": "E900", CalendarEventColumn: "tev0000000900", "Year": "2026 - 2027", "Title": "Blank", "Status": StatusOpen},
+		store.Row{"Event ID": "E901", CalendarEventColumn: "tev0000000901", "Year": "2026 - 2027", "Title": "Unknown", "Category": "nope", "Status": StatusOpen},
+		store.Row{"Event ID": "E902", CalendarEventColumn: "tev0000000902", "Year": "2026 - 2027", "Title": "Borrowed", "Category": "tcg0000000007", "Status": StatusOpen},
+		store.Row{"Event ID": "E903", CalendarEventColumn: "tev0000000903", "Year": "2026 - 2027", "Title": "Child", "Parent": "act0000000001", "Category": "tcg0000000009", "Status": StatusOpen},
 	)
 	m, err := BuildModel(context.Background(), next, bundled)
 	if err != nil {
@@ -910,7 +910,7 @@ func TestVolunteerSettingsInherit(t *testing.T) {
 	set(categoriesTab, "Category ID", "tcg0000000007", "Direct Sign-Up", "Yes")
 	set(categoriesTab, "Category ID", "tcg0000000008", "Hidden", "Yes")
 	set(activitiesTab, "Event ID", "act0000000020", "Direct Sign-Up", "Yes")
-	next[activitiesTab] = append(next[activitiesTab], store.Row{"Event ID": "E920", "Title": "Chai Stand", "Parent": "act0000000020", "Status": StatusOpen})
+	next[activitiesTab] = append(next[activitiesTab], store.Row{"Event ID": "E920", CalendarEventColumn: "tev0000000920", "Title": "Chai Stand", "Parent": "act0000000020", "Status": StatusOpen})
 	m, err := BuildModel(context.Background(), next, bundled)
 	if err != nil {
 		t.Fatal(err)
@@ -995,7 +995,7 @@ func TestHandWrittenRows(t *testing.T) {
 	cache, _ := newServer(t)
 	next := tables(t)
 	next[activitiesTab] = append(next[activitiesTab],
-		store.Row{"Event ID": "E900", "Title": "Bare Child", "Parent": "act0000000020", "Status": StatusOpen},
+		store.Row{"Event ID": "E900", CalendarEventColumn: "tev0000000900", "Title": "Bare Child", "Parent": "act0000000020", "Status": StatusOpen},
 		store.Row{"Event ID": "", "Title": "Gone", "Year": "nonsense", "Status": "Active", "Parent": "nope"},
 	)
 	next[volunteersTab] = append(next[volunteersTab], store.Row{"Event ID": "", "Email": "not an email", "Position": "Boss"})
@@ -1012,8 +1012,8 @@ func TestHandWrittenRows(t *testing.T) {
 		t.Fatalf("a row without an id was loaded")
 	}
 	next[activitiesTab] = append(next[activitiesTab],
-		store.Row{"Event ID": "E910", "Title": "Orphan", "Parent": "gone-id", "Status": StatusOpen},
-		store.Row{"Event ID": "E911", "Title": "Orphan's Child", "Parent": "E910", "Status": StatusOpen},
+		store.Row{"Event ID": "E910", CalendarEventColumn: "tev0000000910", "Title": "Orphan", "Parent": "gone-id", "Status": StatusOpen},
+		store.Row{"Event ID": "E911", CalendarEventColumn: "tev0000000911", "Title": "Orphan's Child", "Parent": "E910", "Status": StatusOpen},
 	)
 	next[volunteersTab] = append(next[volunteersTab],
 		store.Row{"Event ID": "gone-id", "Email": parent, "Position": PositionVolunteer},
@@ -1034,7 +1034,7 @@ func TestHandWrittenRows(t *testing.T) {
 	if n := len(m.Activity("act0000000001").Volunteers); n != len(cache.Model().Activity("act0000000001").Volunteers) {
 		t.Fatalf("the duplicate sign-up was added: %d volunteers", n)
 	}
-	next[activitiesTab] = append(next[activitiesTab], store.Row{"Event ID": "E901", "Title": "Lost", "Year": "2025 - 2026", "Parent": "act0000000020", "Status": StatusOpen})
+	next[activitiesTab] = append(next[activitiesTab], store.Row{"Event ID": "E901", CalendarEventColumn: "tev0000000901", "Title": "Lost", "Year": "2025 - 2026", "Parent": "act0000000020", "Status": StatusOpen})
 	if _, err := BuildModel(context.Background(), next, bundled); err == nil || !strings.Contains(err.Error(), "has its parent") {
 		t.Fatalf("a child in another year loaded: %v", err)
 	}
@@ -1042,6 +1042,16 @@ func TestHandWrittenRows(t *testing.T) {
 	next[activitiesTab][20][store.OrderColumn] = "10"
 	if _, err := BuildModel(context.Background(), next, bundled); err == nil || !strings.Contains(err.Error(), "ends in 0") {
 		t.Fatalf("an order ending in 0 loaded: %v", err)
+	}
+	next = tables(t)
+	next[activitiesTab][1][CalendarEventColumn] = next[activitiesTab][0][CalendarEventColumn]
+	if _, err := BuildModel(context.Background(), next, bundled); err == nil || !strings.Contains(err.Error(), "share calendar event id") {
+		t.Fatalf("two activities with one calendar event id loaded: %v", err)
+	}
+	next = tables(t)
+	next[activitiesTab][1][CalendarEventColumn] = ""
+	if _, err := BuildModel(context.Background(), next, bundled); err == nil || !strings.Contains(err.Error(), "calendar event id") {
+		t.Fatalf("an activity with no calendar event id loaded: %v", err)
 	}
 }
 

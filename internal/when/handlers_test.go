@@ -130,7 +130,7 @@ func TestFeedRoute(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/calendar") {
 		t.Fatalf("feed: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	if body := rec.Body.String(); !strings.Contains(body, "X-WR-CALNAME:Whitfield school days") || !strings.Contains(body, "URL:https://calendar.heliosiandev.com:8080/e/a5@sample") {
+	if body := rec.Body.String(); !strings.Contains(body, "X-WR-CALNAME:Whitfield school days") || !strings.Contains(body, "URL:https://calendar.heliosiandev.com:8080/e/gev0000000005") {
 		t.Errorf("feed body: %s", body)
 	}
 	if rec := call(t, mux, http.MethodGet, "/open/feed/nosuchtoken.ics", ""); rec.Code != http.StatusNotFound {
@@ -217,13 +217,13 @@ func TestModelRoute(t *testing.T) {
 func TestSharePreview(t *testing.T) {
 	handler, cache := testApp(t)
 	testkit.Previews(t, PreviewHead(cache, func(string) []Linked { return nil }, noSource, testStyle), testkit.Preview{
-		URL:  "https://when.heliosiandev.com:8080/e/a7@sample",
-		Want: []string{`property="og:title" content="International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`, `content="https://when.heliosiandev.com:8080/open/share/a7@sample.png"`},
+		URL:  "https://when.heliosiandev.com:8080/e/gev0000000007",
+		Want: []string{`property="og:title" content="International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`, `content="https://when.heliosiandev.com:8080/open/share/gev0000000007.png"`},
 	}, testkit.Preview{
 		URL:  "https://when.heliosiandev.com:8080/mine",
 		Want: []string{`og:title" content="Helios When"`, "One calendar", "/open/share/upcoming.png"},
 	})
-	testkit.Cards(t, handler, []string{"/open/share/a7@sample.png", "/open/share/upcoming.png"}, "/open/share/nope.png")
+	testkit.Cards(t, handler, []string{"/open/share/gev0000000007.png", "/open/share/upcoming.png"}, "/open/share/nope.png")
 }
 
 func TestOldIDsReachTheirEvents(t *testing.T) {
@@ -242,7 +242,7 @@ func TestOldIDsReachTheirEvents(t *testing.T) {
 			t.Errorf("%s: %d to %q, want a 301 to %s", path, rec.Code, rec.Header().Get("Location"), want)
 		}
 	}
-	for _, path := range []string{"/e/evt0000000001", "/events/evt0000000002", "/e/a7@sample", "/e/no-such-event"} {
+	for _, path := range []string{"/e/evt0000000001", "/events/evt0000000002", "/e/gev0000000007", "/e/no-such-event"} {
 		if rec := call(t, handler, "GET", path, ""); rec.Code != 200 {
 			t.Errorf("%s: %d, want the page", path, rec.Code)
 		}
@@ -293,9 +293,9 @@ func TestProvenanceForAdmins(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&view); err != nil {
 		t.Fatal(err)
 	}
-	p := view.Provenance["a5@sample"]
+	p := view.Provenance["gev0000000005"]
 	if p == nil || p.Model == "" || len(p.Corrected) == 0 || p.Note != "Say which classrooms" {
-		t.Errorf("admin provenance for a5@sample = %+v", p)
+		t.Errorf("admin provenance for gev0000000005 = %+v", p)
 	}
 }
 
@@ -526,7 +526,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec.Code != 204 || cache.Model().Event(made.IDs[0]).Start != "2026-10-02 16:00" {
 		t.Errorf("move: %d %s", rec.Code, cache.Model().Event(made.IDs[0]).Start)
 	}
-	if rec := call(t, admin, "POST", "/api/when/events/when", `{"id":"a7@sample","start":"2026-10-02 16:00"}`); rec.Code != 400 {
+	if rec := call(t, admin, "POST", "/api/when/events/when", `{"id":"gev0000000007","start":"2026-10-02 16:00"}`); rec.Code != 400 {
 		t.Errorf("an imported event moved from the list: %d", rec.Code)
 	}
 	parent := as("jordan.whitfield@heliosschool.org", handler)
@@ -691,10 +691,10 @@ func TestFeedTags(t *testing.T) {
 
 func TestFeedCarriesLinked(t *testing.T) {
 	handler, cache := testApp(t)
-	linked := []Linked{{Source: SourceCelebrate, ID: "pty0000000009", Title: "Fondue Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing}}
+	linked := []Linked{{Source: SourceCelebrate, ID: "pty0000000009", EventID: "pty0000000009", Title: "Fondue Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing}}
 	f := &Feed{Token: "t", Email: "jordan.whitfield@heliosschool.org", Name: "Mine", Tags: []string{TagGoing}}
 	out := string(ICS(cache.Model(), sampleDirectory(t, "sampledata"), f, linked, "https://when.heliosiandev.com:8080", now()))
-	if !strings.Contains(out, "SUMMARY:Fondue Night") || !strings.Contains(out, "URL:https://when.heliosiandev.com:8080/e/celebrate/pty0000000009") {
+	if !strings.Contains(out, "SUMMARY:Fondue Night") || !strings.Contains(out, "URL:https://when.heliosiandev.com:8080/e/pty0000000009") {
 		t.Errorf("feed lacks the party:\n%s", out)
 	}
 	if strings.Contains(out, "SUMMARY:Halloween Parade") {
@@ -707,24 +707,24 @@ func TestAnswers(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
 	viewer := as(me, handler)
-	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"perhaps"}`); rec.Code != 400 {
+	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"perhaps"}`); rec.Code != 400 {
 		t.Errorf("nonsense answer: %d", rec.Code)
 	}
-	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"maybe"}`); rec.Code != 204 || cache.Model().AnswerOf(me, "a7@sample") != AnswerMaybe {
+	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"maybe"}`); rec.Code != 204 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerMaybe {
 		t.Errorf("maybe: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"hidden"}`); rec.Code != 204 {
+	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"hidden"}`); rec.Code != 204 {
 		t.Fatalf("hide: %d %s", rec.Code, rec.Body)
 	}
 	var view View
 	rec := call(t, viewer, "GET", "/api/when/model", "")
 	json.NewDecoder(rec.Body).Decode(&view)
-	if view.User.Answers["a7@sample"] != AnswerHidden {
+	if view.User.Answers["gev0000000007"] != AnswerHidden {
 		t.Errorf("answers = %v", view.User.Answers)
 	}
 	dir := sampleDirectory(t, "sampledata")
 	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, "") {
-		if u.ID == "a7@sample" {
+		if u.ID == "gev0000000007" {
 			t.Errorf("a hidden event is in Upcoming")
 		}
 	}
@@ -732,24 +732,24 @@ func TestAnswers(t *testing.T) {
 	if strings.Contains(string(ICS(cache.Model(), dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a hidden event is in the owner's feed")
 	}
-	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"no"}`); rec.Code != 204 {
+	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"no"}`); rec.Code != 204 {
 		t.Fatalf("no: %d %s", rec.Code, rec.Body)
 	}
 	if strings.Contains(string(ICS(cache.Model(), dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("an event the owner said no to is in their feed")
 	}
-	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":""}`); rec.Code != 204 {
+	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":""}`); rec.Code != 204 {
 		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
 	}
 	if !strings.Contains(string(ICS(cache.Model(), dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a cleared answer left the event out of the feed")
 	}
-	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"yes"}`); rec.Code != 204 {
+	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"yes"}`); rec.Code != 204 {
 		t.Fatalf("yes: %d %s", rec.Code, rec.Body)
 	}
 	found := false
 	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, "") {
-		if u.ID == "a7@sample" {
+		if u.ID == "gev0000000007" {
 			found = u.Answer == AnswerYes
 		}
 	}
@@ -759,16 +759,16 @@ func TestAnswers(t *testing.T) {
 	var mine View
 	rec = call(t, viewer, "GET", "/api/when/model", "")
 	json.NewDecoder(rec.Body).Decode(&mine)
-	if i := slices.IndexFunc(mine.Events, func(e *Event) bool { return e.ID == "a7@sample" }); i < 0 || !slices.Contains(mine.Events[i].Tags, TagGoing) {
+	if i := slices.IndexFunc(mine.Events, func(e *Event) bool { return e.ID == "gev0000000007" }); i < 0 || !slices.Contains(mine.Events[i].Tags, TagGoing) {
 		t.Errorf("a yes is not under Going in the viewer's events")
 	}
 	var other View
 	rec = call(t, as("dana.hawkins@heliosschool.org", handler), "GET", "/api/when/model", "")
 	json.NewDecoder(rec.Body).Decode(&other)
-	if i := slices.IndexFunc(other.Events, func(e *Event) bool { return e.ID == "a7@sample" }); i < 0 || slices.Contains(other.Events[i].Tags, TagGoing) {
+	if i := slices.IndexFunc(other.Events, func(e *Event) bool { return e.ID == "gev0000000007" }); i < 0 || slices.Contains(other.Events[i].Tags, TagGoing) {
 		t.Errorf("one viewer's yes is under Going for another")
 	}
-	if slices.Contains(cache.Model().Event("a7@sample").Tags, TagGoing) {
+	if slices.Contains(cache.Model().Event("gev0000000007").Tags, TagGoing) {
 		t.Errorf("a yes changed the model's own event")
 	}
 	going := &Feed{Token: "g", Email: me, Name: "Going", Tags: []string{TagGoing}}
@@ -776,20 +776,20 @@ func TestAnswers(t *testing.T) {
 		t.Errorf("a yes is not in the owner's Going feed")
 	}
 	sender := app{mail: Mail{ReplyTo: "Helios When <when@reply.heliosian.com>", Key: []byte("key")}}
-	if got := string(sender.invite(cache.Model().Event("a7@sample"), me, "https://when.heliosian.com/e/a7@sample", mail.MethodRequest).Content); !strings.Contains(got, "METHOD:REQUEST") || !strings.Contains(got, "ORGANIZER;CN=Helios When:mailto:when+") || !strings.Contains(got, "ATTENDEE;CN="+me) {
+	if got := string(sender.invite(cache.Model().Event("gev0000000007"), me, "https://when.heliosian.com/e/gev0000000007", mail.MethodRequest).Content); !strings.Contains(got, "METHOD:REQUEST") || !strings.Contains(got, "ORGANIZER;CN=Helios When:mailto:when+") || !strings.Contains(got, "ATTENDEE;CN="+me) {
 		t.Errorf("invite:\n%s", got)
 	}
 }
 
 func TestResponsesForAdmins(t *testing.T) {
 	handler, _ := testApp(t)
-	call(t, as("jordan.whitfield@heliosschool.org", handler), "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"yes"}`)
-	call(t, as("dana.hawkins@heliosschool.org", handler), "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"no"}`)
-	call(t, as("robin.whitfield@heliosschool.org", handler), "POST", "/api/when/rsvp", `{"id":"a7@sample","answer":"hidden"}`)
+	call(t, as("jordan.whitfield@heliosschool.org", handler), "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"yes"}`)
+	call(t, as("dana.hawkins@heliosschool.org", handler), "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"no"}`)
+	call(t, as("robin.whitfield@heliosschool.org", handler), "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"hidden"}`)
 	var view View
 	rec := call(t, as("dana.hawkins@heliosschool.org", handler), "GET", "/api/when/model", "")
 	json.NewDecoder(rec.Body).Decode(&view)
-	r := view.Responses["a7@sample"]
+	r := view.Responses["gev0000000007"]
 	if r == nil || len(r.Yes) != 1 || r.Yes[0].Name != "Jordan Whitfield" || r.Yes[0].Line != "Parent to Sam (Grade 3), Ella (Grade 6)" || len(r.No) != 1 {
 		t.Errorf("responses = %+v", r)
 	}
@@ -804,15 +804,15 @@ func TestResponsesForAdmins(t *testing.T) {
 func TestOverrideFromThePage(t *testing.T) {
 	handler, cache := testApp(t)
 	admin := as("dana.hawkins@heliosschool.org", handler)
-	e := cache.Model().Event("a2@sample")
+	e := cache.Model().Event("gev0000000002")
 	tags := slices.DeleteFunc(slices.Clone(e.Tags), BuiltInTag)
 	body := func(title, start, end, location, note string) string {
-		raw, _ := json.Marshal(map[string]any{"id": "a2@sample", "title": title, "start": start, "end": end, "location": location, "description": e.Description, "tags": tags, "keywords": e.Keywords, "note": note})
+		raw, _ := json.Marshal(map[string]any{"id": "gev0000000002", "title": title, "start": start, "end": end, "location": location, "description": e.Description, "tags": tags, "keywords": e.Keywords, "note": note})
 		return string(raw)
 	}
 	row := func() map[string]string {
 		for _, r := range sheetTables(t)[OverridesTab] {
-			if r["Event ID"] == "a2@sample" {
+			if r["Event ID"] == "gev0000000002" {
 				return r
 			}
 		}
@@ -824,8 +824,8 @@ func TestOverrideFromThePage(t *testing.T) {
 	if r := row(); r == nil || r["Title"] != "Back to School Night" || r["Start"] != "" || r["Location"] != "" || r["Tags"] != "" || r["Keywords"] != "" || r["Note"] != "Shorter" {
 		t.Errorf("row after the title: %v", r)
 	}
-	if got := cache.Model().Event("a2@sample"); got.Title != "Back to School Night" || strings.Join(cache.Model().Provenance["a2@sample"].Corrected, ",") != "Title" {
-		t.Errorf("event after: %q corrected %v", got.Title, cache.Model().Provenance["a2@sample"].Corrected)
+	if got := cache.Model().Event("gev0000000002"); got.Title != "Back to School Night" || strings.Join(cache.Model().Provenance["gev0000000002"].Corrected, ",") != "Title" {
+		t.Errorf("event after: %q corrected %v", got.Title, cache.Model().Provenance["gev0000000002"].Corrected)
 	}
 	if rec := call(t, admin, "PUT", "/api/when/overrides", body("LS Back to School Night", "2026-08-27 18:30", "2026-08-27 20:00", "", "")); rec.Code != 204 {
 		t.Fatalf("second override: %d %s", rec.Code, rec.Body)
@@ -833,7 +833,7 @@ func TestOverrideFromThePage(t *testing.T) {
 	if r := row(); r["Title"] != "" || r["Start"] != "2026-08-27 18:30" || r["End"] != "2026-08-27 20:00" || r["Location"] != Clear || r["Note"] != "" {
 		t.Errorf("row after moving and clearing: %v", r)
 	}
-	if got := cache.Model().Event("a2@sample"); got.Location != "" || got.Start != "2026-08-27 18:30" {
+	if got := cache.Model().Event("gev0000000002"); got.Location != "" || got.Start != "2026-08-27 18:30" {
 		t.Errorf("event after moving: %+v", got)
 	}
 	if rec := call(t, admin, "PUT", "/api/when/overrides", body("LS Back to School Night", e.Start, e.End, e.Location, "")); rec.Code != 204 || row() != nil {
@@ -844,77 +844,77 @@ func TestOverrideFromThePage(t *testing.T) {
 		raw, _ := json.Marshal(map[string]any{"id": id, "title": ev.Title, "start": ev.Start, "end": ev.End, "location": ev.Location, "description": ev.Description, "tags": slices.DeleteFunc(slices.Clone(ev.Tags), BuiltInTag), "keywords": ev.Keywords, "address": address})
 		return string(raw)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", addressed("a2@sample", "Back-To-School")); rec.Code != 204 {
+	if rec := call(t, admin, "PUT", "/api/when/overrides", addressed("gev0000000002", "Back-To-School")); rec.Code != 204 {
 		t.Fatalf("an address: %d %s", rec.Code, rec.Body)
 	}
-	if got := cache.Model().Event("back-to-school"); got == nil || got.ID != "a2@sample" || EventPath(got) != "/e/back-to-school" || row()["Address"] != "back-to-school" || row()["Title"] != "" {
+	if got := cache.Model().Event("back-to-school"); got == nil || got.ID != "gev0000000002" || EventPath(got) != "/e/back-to-school" || row()["Address"] != "back-to-school" || row()["Title"] != "" {
 		t.Errorf("by its address: %+v, row %v", got, row())
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", addressed("a5@sample", "back-to-school")); rec.Code != 400 || !strings.Contains(rec.Body.String(), "already another event's") {
+	if rec := call(t, admin, "PUT", "/api/when/overrides", addressed("gev0000000005", "back-to-school")); rec.Code != 400 || !strings.Contains(rec.Body.String(), "already another event's") {
 		t.Errorf("a taken address: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", addressed("a5@sample", "camping trip!")); rec.Code != 400 {
+	if rec := call(t, admin, "PUT", "/api/when/overrides", addressed("gev0000000005", "camping trip!")); rec.Code != 400 {
 		t.Errorf("a bad address: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", addressed("a2@sample", "")); rec.Code != 204 || row() != nil || cache.Model().Event("back-to-school") != nil {
+	if rec := call(t, admin, "PUT", "/api/when/overrides", addressed("gev0000000002", "")); rec.Code != 204 || row() != nil || cache.Model().Event("back-to-school") != nil {
 		t.Errorf("the address taken away: %d, row %v", rec.Code, row())
 	}
 	var v InviteView
-	json.NewDecoder(call(t, admin, "GET", "/api/when/invites?id=a2@sample", "").Body).Decode(&v)
+	json.NewDecoder(call(t, admin, "GET", "/api/when/invites?id=gev0000000002", "").Body).Decode(&v)
 	if !v.Host || len(v.Hosts) != 0 {
 		t.Errorf("the admin's view: host %v hosts %v", v.Host, v.Hosts)
 	}
 	v = InviteView{}
-	json.NewDecoder(call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/when/invites?id=a2@sample", "").Body).Decode(&v)
+	json.NewDecoder(call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/when/invites?id=gev0000000002", "").Body).Decode(&v)
 	if v.Host {
 		t.Errorf("a parent's view: host %v", v.Host)
 	}
 	if !v.ListPrivate || v.Coming != nil {
 		t.Errorf("a parent's view of a closed list: private %v coming %v", v.ListPrivate, v.Coming)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/invites/settings", `{"id":"a2@sample","publicList":true}`); rec.Code != 204 {
+	if rec := call(t, admin, "PUT", "/api/when/invites/settings", `{"id":"gev0000000002","publicList":true}`); rec.Code != 204 {
 		t.Fatalf("opening the list: %d %s", rec.Code, rec.Body)
 	}
 	v = InviteView{}
-	json.NewDecoder(call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/when/invites?id=a2@sample", "").Body).Decode(&v)
+	json.NewDecoder(call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/when/invites?id=gev0000000002", "").Body).Decode(&v)
 	if v.ListPrivate || v.Coming == nil {
 		t.Errorf("a parent's view of an open list: private %v coming %v", v.ListPrivate, v.Coming)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides/image", `{"id":"a2@sample","image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Event("a2@sample").Image != "/category-images/night.jpg" || row()["Image"] != "category-images/night.jpg" {
+	if rec := call(t, admin, "PUT", "/api/when/overrides/image", `{"id":"gev0000000002","image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Event("gev0000000002").Image != "/category-images/night.jpg" || row()["Image"] != "category-images/night.jpg" {
 		t.Errorf("a picture: %d %+v", rec.Code, row())
 	}
-	if rec := call(t, admin, "PUT", "/api/when/invites/settings", `{"id":"a2@sample","flyer":"sample/community.jpg"}`); rec.Code != 204 || cache.Model().Invitations["a2@sample"] == nil || cache.Model().Invitations["a2@sample"].Flyer != "sample/community.jpg" || len(cache.Model().Invitations["a2@sample"].Hosts) != 0 {
+	if rec := call(t, admin, "PUT", "/api/when/invites/settings", `{"id":"gev0000000002","flyer":"sample/community.jpg"}`); rec.Code != 204 || cache.Model().Invitations["gev0000000002"] == nil || cache.Model().Invitations["gev0000000002"].Flyer != "sample/community.jpg" || len(cache.Model().Invitations["gev0000000002"].Hosts) != 0 {
 		t.Errorf("a flyer: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides/image", `{"id":"a2@sample","image":""}`); rec.Code != 204 || cache.Model().Event("a2@sample").Image != "" {
+	if rec := call(t, admin, "PUT", "/api/when/overrides/image", `{"id":"gev0000000002","image":""}`); rec.Code != 204 || cache.Model().Event("gev0000000002").Image != "" {
 		t.Errorf("the picture taken away: %d", rec.Code)
 	}
-	if rec := call(t, as("jordan.whitfield@heliosschool.org", handler), "PUT", "/api/when/overrides/image", `{"id":"a2@sample","image":"x.jpg"}`); rec.Code != 403 {
+	if rec := call(t, as("jordan.whitfield@heliosschool.org", handler), "PUT", "/api/when/overrides/image", `{"id":"gev0000000002","image":"x.jpg"}`); rec.Code != 403 {
 		t.Errorf("a parent's picture: %d", rec.Code)
 	}
 	if rec := call(t, as("jordan.whitfield@heliosschool.org", handler), "PUT", "/api/when/overrides", body("x", e.Start, e.End, "", "")); rec.Code != 403 {
 		t.Errorf("a parent: %d", rec.Code)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", `{"id":"a2@sample","title":"x","start":"not a date"}`); rec.Code != 400 {
+	if rec := call(t, admin, "PUT", "/api/when/overrides", `{"id":"gev0000000002","title":"x","start":"not a date"}`); rec.Code != 400 {
 		t.Errorf("a bad date: %d", rec.Code)
 	}
 	if rec := call(t, admin, "PUT", "/api/when/overrides", body(e.Title, e.Start, e.End, e.Location, "The admins'")); rec.Code != 204 {
 		t.Fatalf("an admin's note: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/invites/settings", `{"id":"a2@sample","hosts":["jordan.whitfield@heliosschool.org"]}`); rec.Code != 204 {
+	if rec := call(t, admin, "PUT", "/api/when/invites/settings", `{"id":"gev0000000002","hosts":["jordan.whitfield@heliosschool.org"]}`); rec.Code != 204 {
 		t.Fatalf("a co-host: %d %s", rec.Code, rec.Body)
 	}
 	cohost := as("jordan.whitfield@heliosschool.org", handler)
 	if rec := call(t, cohost, "PUT", "/api/when/overrides", body("Family Night", e.Start, e.End, e.Location, "Mine")); rec.Code != 204 {
 		t.Fatalf("a co-host's edit: %d %s", rec.Code, rec.Body)
 	}
-	if r := row(); r["Title"] != "Family Night" || r["Note"] != "The admins'" || cache.Model().Event("a2@sample").Title != "Family Night" {
+	if r := row(); r["Title"] != "Family Night" || r["Note"] != "The admins'" || cache.Model().Event("gev0000000002").Title != "Family Night" {
 		t.Errorf("after the co-host's edit: %v", r)
 	}
-	if rec := call(t, cohost, "PUT", "/api/when/overrides/image", `{"id":"a2@sample","image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Event("a2@sample").Image != "/category-images/night.jpg" {
+	if rec := call(t, cohost, "PUT", "/api/when/overrides/image", `{"id":"gev0000000002","image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Event("gev0000000002").Image != "/category-images/night.jpg" {
 		t.Errorf("a co-host's picture: %d", rec.Code)
 	}
-	raw, _ := json.Marshal(map[string]any{"id": "a2@sample", "title": "Family Night", "start": e.Start, "end": e.End, "location": e.Location, "description": e.Description, "tags": tags, "keywords": e.Keywords})
+	raw, _ := json.Marshal(map[string]any{"id": "gev0000000002", "title": "Family Night", "start": e.Start, "end": e.End, "location": e.Location, "description": e.Description, "tags": tags, "keywords": e.Keywords})
 	if rec := call(t, admin, "PUT", "/api/when/overrides", string(raw)); rec.Code != 204 || row()["Note"] != "The admins'" {
 		t.Errorf("an edit sending no note: %d %v", rec.Code, row())
 	}

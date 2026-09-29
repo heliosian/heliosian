@@ -28,7 +28,7 @@ const (
 	ella   = "ella.whitfield@heliosschool.org"
 	mia    = "mia.torres@heliosschool.org"
 	coach  = "coach@example.org"
-	partyA = "celebrate/p1"
+	partyA = "p1"
 )
 
 const (
@@ -81,8 +81,8 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *mailtest.Recorder, *sa
 	}
 	linked := func(email string) []Linked {
 		return []Linked{
-			{Source: SourceCelebrate, ID: "p1", Title: "Fondue Night", Start: "2026-11-14 18:00", End: "2026-11-14 21:00", Path: "/parties/p1", Availability: "available", Hosts: []string{mia}},
-			{Source: SourceTeam, ID: "e1", Title: "Book Fair", Start: "2026-11-20 08:00", End: "2026-11-20 15:00", Path: "/activities/e1", Availability: "open", Hosts: []string{mia}},
+			{Source: SourceCelebrate, ID: "p1", EventID: "p1", Title: "Fondue Night", Start: "2026-11-14 18:00", End: "2026-11-14 21:00", Path: "/parties/p1", Availability: "available", Hosts: []string{mia}},
+			{Source: SourceTeam, ID: "e1", EventID: "tev0000000101", Title: "Book Fair", Start: "2026-11-20 08:00", End: "2026-11-20 15:00", Path: "/activities/e1", Availability: "open", Hosts: []string{mia}},
 		}
 	}
 	mux := http.NewServeMux()
@@ -465,7 +465,7 @@ func TestPartyInvitation(t *testing.T) {
 		t.Fatalf("party send: %d %s", rec.Code, rec.Body)
 	}
 	sent := waitFor(kept, 3)
-	if r := mailTo(kept, robin); len(sent) != 3 || len(r) != 1 || !strings.Contains(r[0].Subject, "[Fondue Night] You're invited!") || !strings.Contains(string(r[0].Attachments[0].Content), "UID:celebrate/p1@when.heliosian.com") || len(mailTo(kept, sam)) != 1 {
+	if r := mailTo(kept, robin); len(sent) != 3 || len(r) != 1 || !strings.Contains(r[0].Subject, "[Fondue Night] You're invited!") || !strings.Contains(string(r[0].Attachments[0].Content), "UID:p1@when.heliosian.com") || len(mailTo(kept, sam)) != 1 {
 		t.Errorf("party invite = %+v", sent)
 	}
 	call(t, robinH, "POST", "/api/when/invites/answer", `{"id":"`+partyA+`","email":"`+sam+`","answer":"yes"}`)
@@ -894,7 +894,7 @@ func TestPartyStart(t *testing.T) {
 func TestLinkedEventsBySourcesOldIDs(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	robinH, miaH := as(robin, mux), as(mia, mux)
-	for old, want := range map[string]string{"celebrate/P001": partyA, "team/E001": "team/e1", partyA: partyA} {
+	for old, want := range map[string]string{"celebrate/P001": partyA, "team/E001": "tev0000000101", partyA: partyA} {
 		rec := call(t, robinH, "GET", "/api/when/event?id="+old, "")
 		var e Event
 		json.Unmarshal(rec.Body.Bytes(), &e)
@@ -905,7 +905,7 @@ func TestLinkedEventsBySourcesOldIDs(t *testing.T) {
 	if rec := call(t, robinH, "GET", "/api/when/event?id=celebrate/P999", ""); rec.Code != 404 {
 		t.Errorf("an unknown party: %d", rec.Code)
 	}
-	for path, want := range map[string]string{"/e/celebrate/P001": "/e/" + partyA, "/e/team/E001": "/e/team/e1"} {
+	for path, want := range map[string]string{"/e/celebrate/P001": "/e/" + partyA, "/e/team/E001": "/e/tev0000000101"} {
 		if rec := call(t, mux, "GET", path, ""); rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != want {
 			t.Errorf("%s: %d to %q, want a 301 to %s", path, rec.Code, rec.Header().Get("Location"), want)
 		}
@@ -969,7 +969,7 @@ func TestStudentInviteCcsParents(t *testing.T) {
 	if len(m) != 1 || strings.Join(m[0].CC, ",") != host+","+robin || len(m[0].Attachments) != 0 || strings.Contains(m[0].Text, "invite attached") || strings.Contains(m[0].HTML, "invite attached") {
 		t.Fatalf("sam's mail = %+v", m)
 	}
-	if !strings.Contains(m[0].HTML, "Mia Torres sent Sam an invitation for") || !strings.Contains(m[0].HTML, `<a href="https://when.heliosian.com/e/celebrate/p1" style="color:#1b2a2c;font-weight:700">RSVP for Sam and Ella here</a>`) || !strings.Contains(m[0].Text, "Mia Torres sent Sam an invitation for") || !strings.Contains(m[0].Text, "RSVP for Sam and Ella here") {
+	if !strings.Contains(m[0].HTML, "Mia Torres sent Sam an invitation for") || !strings.Contains(m[0].HTML, `<a href="https://when.heliosian.com/e/p1" style="color:#1b2a2c;font-weight:700">RSVP for Sam and Ella here</a>`) || !strings.Contains(m[0].Text, "Mia Torres sent Sam an invitation for") || !strings.Contains(m[0].Text, "RSVP for Sam and Ella here") {
 		t.Errorf("sam's words:\n%s", m[0].Text)
 	}
 	if e := mailTo(kept, ella); len(e) != 1 || strings.Join(e[0].CC, ",") != host+","+robin || !strings.Contains(e[0].HTML, "sent Ella an invitation for") {
@@ -1576,7 +1576,8 @@ func TestPermissions(t *testing.T) {
 
 func TestTeamStart(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
-	teamA := SourceTeam + "/e1"
+	teamA := "tev0000000101"
+	bookFair := []Linked{{Source: SourceTeam, ID: "e1", EventID: teamA, Title: "Book Fair", Start: "2026-11-20 08:00", End: "2026-11-20 15:00", Path: "/activities/e1"}}
 	miaH := as(mia, mux)
 	if rec := call(t, as(robin, mux), "POST", "/api/when/invites/start", `{"id":"`+teamA+`"}`); rec.Code != 403 {
 		t.Errorf("a volunteer starting: %d", rec.Code)
@@ -1597,7 +1598,7 @@ func TestTeamStart(t *testing.T) {
 	if cache.Model().AnswerOf(mia, teamA) != AnswerYes {
 		t.Errorf("the chair's answer = %q", cache.Model().AnswerOf(mia, teamA))
 	}
-	if sent, _, ok := cache.LinkedRSVPs(nil, SourceTeam, "e1"); !ok || sent {
+	if sent, _, ok := cache.LinkedRSVPs(bookFair, SourceTeam, "e1"); !ok || sent {
 		t.Errorf("rsvps before sending: ok %v sent %v", ok, sent)
 	}
 	v := inviteView(t, miaH, teamA)

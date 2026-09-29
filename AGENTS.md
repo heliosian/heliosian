@@ -10,6 +10,7 @@ How code is written in this repository, for coding agents and the people driving
 - Converting from A to B means switching to B and deleting A: no interface with two implementations, no adapter, no translation layer keeping both alive.
 - Production code never exists only for tests. No test wrappers, no interfaces or indirection added just so a test can swap in a fake, no test hooks, seams, exported-for-test helpers, or test-only parameters and branches. Tests exercise the real code as it ships. Anything only tests need lives in a `_test.go` file, or, when several packages' tests share it, in `internal/testkit`, which only `_test.go` files import.
 - A client request that takes 750ms is far too slow. Move slow work off the request path (queue it, write it back later) rather than making the person wait.
+- Nothing waits for the five-minute refresh or any other timer. The refresh exists only to pick up people's edits to the sheets; work that follows from a change runs when the change commits (a swap hook, `Tx.After`), never on a ticker or after a grace period.
 - Prefer an early return to a nested if/else when the if branch exits.
 - Always use braces on the body of `if`, `else`, `for`, even for a single statement.
 - Only reformat lines you touch, gofmt aside.
