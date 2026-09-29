@@ -1,16 +1,14 @@
-import {state, parties, matches, celebration, whenParts, currentCelebration, celebrationCalendarLink} from '../state.js';
+import {state, parties, celebration, whenParts, currentCelebration, celebrationCalendarLink} from '../state.js';
 import {selectPill} from '../dom.js';
 import {el, svg} from '/elements.js';
 import {tabStrip} from '/tabs.js';
-import {inTab, listTabs, listPath, listTab, listCategory} from '../chrome.js';
+import {inTab, listTabs, listPath, listTab, listCategory, searchParties} from '../chrome.js';
 import {setTitle, setSearch, renderChrome} from '/shell.js';
 import {render} from '/router.js';
 import {partyCard} from '../cards.js';
 
-let query = '';
-
 function shown(id) {
-  return parties(id).filter(p => inTab(p, state.tab) && matches(p, query) && (!state.category || p.category === state.category));
+  return parties(id).filter(p => inTab(p, state.tab) && (!state.category || p.category === state.category));
 }
 
 export function celebrationBand(c) {
@@ -55,7 +53,7 @@ function grid(id) {
       upcoming: 'No parties coming up yet.',
       past: 'No party has happened yet.',
     };
-    panel.append(el('div', 'panel-empty', query || state.category ? 'Nothing matches.' : words[state.tab]));
+    panel.append(el('div', 'panel-empty', state.category ? 'Nothing matches.' : words[state.tab]));
     wrap.append(panel);
     return wrap;
   }
@@ -95,7 +93,6 @@ export function partiesPage(id) {
   if (options.length > 1) {
     head.append(selectPill('calendar', options, state.celebration, picked => {
       state.celebration = picked;
-      query = '';
       history.replaceState(null, '', picked === state.model.current ? '/' : `/celebrations/${encodeURIComponent(celebration(picked).code)}`);
       render();
     }));
@@ -138,9 +135,6 @@ export function partiesPage(id) {
   paintTabs();
   paint();
   page.append(bar, list);
-  setSearch('Search parties by title, host, or keyword…', q => {
-    query = q;
-    paint();
-  });
+  setSearch('Search parties by title, host, or keyword…', searchParties);
   return page;
 }

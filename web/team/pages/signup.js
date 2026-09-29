@@ -1,5 +1,5 @@
 import {state, isAdmin, years, allYears, sortByStart, selectedYear, listedIn, canAdd, addLabel, categoryPath, categoryFromAddress, PRIORITY, isPriority, descendants} from '../state.js';
-import {showResults} from '../chrome.js';
+import {searchOpportunities} from '../chrome.js';
 import {toggle, selectPill} from '../dom.js';
 import {el, imageThumb, button, svg} from '/elements.js';
 import {setTitle, setSearch, renderChrome} from '/shell.js';
@@ -136,7 +136,7 @@ function yearContent(year, thisYear) {
   paintChips();
   paint();
   content.append(chips, top, head, list);
-  setSearch('Search opportunities by title, event, or keyword…', showResults);
+  setSearch('Search opportunities by title, event, or keyword…', searchOpportunities);
   return content;
 }
 

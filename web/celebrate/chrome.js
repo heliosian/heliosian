@@ -1,6 +1,8 @@
-import {state, me, isAdmin, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown, celebration, category} from './state.js';
+import {state, me, isAdmin, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown, celebration, category, matches, partyPath} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
+import {initResults, showResults, closeResults, resultDay} from '/searchmenu.js';
+import {parseWhen} from '/datecard.js';
 import {navigate, setPath} from '/router.js';
 import {openParty} from './edit.js';
 
@@ -166,6 +168,69 @@ function fillTabbar(bar) {
   }
 }
 
+function found(celebrationId, query) {
+  const hits = [];
+  for (const p of sortByStart(parties(celebrationId))) {
+    if (matches(p, query)) {
+      hits.push({p});
+    }
+    const seen = new Set();
+    const people = [
+      ...p.hostPeople.map(person => ({person, role: 'Host'})),
+      ...p.attendees.map(person => ({person, role: 'Guest'})),
+      ...p.waitlisted.map(person => ({person, role: 'Waitlist'})),
+    ];
+    for (const {person, role} of people) {
+      const key = role + '|' + person.name;
+      if (seen.has(key) || !(person.name || '').toLowerCase().includes(query)) {
+        continue;
+      }
+      seen.add(key);
+      hits.push({p, person, role});
+    }
+  }
+  return hits;
+}
+
+function resultItem({p, person, role}) {
+  const filed = category(p.category);
+  const where = person ? `${role} · ${p.title}` : filed ? filed.title : '';
+  return {
+    href: partyPath(p),
+    image: person ? person.photoUrl : p.imageUrl,
+    day: resultDay(p.start),
+    title: person ? person.name : p.title,
+    line: [where, p.availability === 'past' ? 'Past' : ''].filter(Boolean).join(' · '),
+  };
+}
+
+function startTime(x) {
+  const when = parseWhen(x.start);
+  return when ? when.date.getTime() : 0;
+}
+
+function sortByStart(list) {
+  return [...list].sort((a, b) => startTime(a) - startTime(b));
+}
+
+function earlierCelebration() {
+  const current = celebration(state.celebration);
+  const before = state.model.celebrations.filter(c => current && startTime(c) < startTime(current));
+  return before.sort((a, b) => startTime(b) - startTime(a))[0] || null;
+}
+
+export function searchParties(query) {
+  if (!query) {
+    closeResults();
+    return;
+  }
+  const hits = found(state.celebration, query);
+  const current = [...hits.filter(hit => hit.p.availability !== 'past'), ...hits.filter(hit => hit.p.availability === 'past')];
+  const earlier = earlierCelebration();
+  const older = earlier ? found(earlier.id, query) : [];
+  showResults(current.map(resultItem), earlier ? earlier.title : '', older.map(resultItem));
+}
+
 export function initChrome() {
   initShell({
     name: 'Helios Celebrate',
@@ -174,7 +239,9 @@ export function initChrome() {
     fillTabbar,
     search: {
       placeholder: 'Search parties…',
+      results: true,
       carry: () => setPath(listPath(state.tab, state.category)),
     },
   });
+  initResults();
 }
