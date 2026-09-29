@@ -904,7 +904,7 @@ export async function setPartyStatus(p, status) {
 
 export async function openContacts(p) {
   const dir = await directory();
-  const byEmail = new Map(dir.data.map(dir.get).map(q => [q.email, q]));
+  const byEmail = new Map(dir.result.map(dir.get).map(q => [q.email, q]));
   const signUps = [...p.attendees, ...p.waitlisted].map(a => ({a, relation: ''}));
   const relations = new Set();
   const firstName = a => (a.name || a.email).split(' ')[0];

@@ -1161,7 +1161,7 @@ export function openVolunteerSettings(node, replace) {
 
 export async function openVolunteerGrid(root, nodes, pathOf) {
   const dir = await directory();
-  const byEmail = new Map(dir.data.map(dir.get).map(p => [p.email, p]));
+  const byEmail = new Map(dir.result.map(dir.get).map(p => [p.email, p]));
   const signUps = [];
   for (const node of nodes) {
     for (const v of node.volunteers) {
