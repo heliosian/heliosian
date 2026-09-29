@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
+	"heliosian/internal/store"
 )
 
 const (
@@ -28,28 +30,26 @@ var partiesPages = []string{
 }
 
 type partiesApp struct {
-	cache     *PartiesCache
-	images    blob.Images
-	directory func() *Directory
-	calendar  calendarApp
-	search    imagesearch.Search
-	mailer    *mail.Mailgun
-	style     *sharecard.Style
+	store    *Store
+	images   blob.Images
+	calendar calendarApp
+	search   imagesearch.Search
+	mailer   *mail.Mailgun
+	style    *sharecard.Style
 }
 
 type PartiesDeps struct {
-	Cache     *PartiesCache
-	Images    blob.Images
-	Directory func() *Directory
-	Calendar  CalendarHooks
-	Search    imagesearch.Search
-	Mailer    *mail.Mailgun
-	Style     *sharecard.Style
+	Store    *Store
+	Images   blob.Images
+	Calendar CalendarHooks
+	Search   imagesearch.Search
+	Mailer   *mail.Mailgun
+	Style    *sharecard.Style
 }
 
 func RegisterParties(mux *http.ServeMux, d PartiesDeps) {
 	d.Search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
-	a := partiesApp{cache: d.Cache, images: d.Images, directory: d.Directory, calendar: d.Calendar.app, search: d.Search, mailer: d.Mailer, style: d.Style}
+	a := partiesApp{store: d.Store, images: d.Images, calendar: d.Calendar.app, search: d.Search, mailer: d.Mailer, style: d.Style}
 	for _, page := range partiesPages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -77,7 +77,19 @@ func RegisterParties(mux *http.ServeMux, d PartiesDeps) {
 	mux.HandleFunc("POST /api/celebrate/categories/order", serve.JSON(a.reorderCategories))
 	mux.HandleFunc("POST /api/celebrate/settings", serve.JSON(a.saveSettings))
 	mux.HandleFunc("GET /api/celebrate/invoices.csv", a.invoicesCSV)
-	RegisterAdmins(mux, a.cache.AdminList, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
+	RegisterAdmins(mux, a.store, "celebrate", noAdminState)
+}
+
+func (a partiesApp) parties() *Parties {
+	return a.store.Model().Parties
+}
+
+func (a partiesApp) directory() *Directory {
+	return a.store.Model().Directory
+}
+
+func (a partiesApp) commit(ctx context.Context, actor access.Actor, ops ...store.Op) error {
+	return a.store.Commit(ctx, actor, partiesAppName, ops...)
 }
 
 func (a partiesApp) page(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +98,7 @@ func (a partiesApp) page(w http.ResponseWriter, r *http.Request) {
 
 func (a partiesApp) partyPage(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("id")
-	if p := a.cache.Model().Party(key); p != nil && p.ID != key {
+	if p := a.parties().Party(key); p != nil && p.ID != key {
 		http.Redirect(w, r, "/parties/"+url.PathEscape(p.ID), http.StatusMovedPermanently)
 		return
 	}
@@ -94,7 +106,7 @@ func (a partiesApp) partyPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a partiesApp) actor(r *http.Request) access.Actor {
-	return a.directory().Actor(r, a.cache.Held)
+	return a.store.Model().actor(r, "celebrate")
 }
 
 func stamp() string {
@@ -102,8 +114,9 @@ func stamp() string {
 }
 
 func (a partiesApp) model(r *http.Request, _ serve.None) (PartiesView, error) {
-	actor := a.actor(r)
-	view := RenderParties(a.cache.Model(), a.directory(), a.calendar.linkedRSVPs, actor, now())
+	m := a.store.Model()
+	actor := m.actor(r, "celebrate")
+	view := RenderParties(m.Parties, m.Directory, a.calendar.at(m).linkedRSVPs, actor, now())
 	view.ImageSearch = a.search.On()
 	return view, nil
 }
@@ -140,11 +153,11 @@ func audienceWords(p *Party) string {
 
 func (a partiesApp) buyTickets(r *http.Request, body ticketOrder) (map[string]int, error) {
 	actor := a.actor(r)
-	got, err := a.cache.Model().takeTickets(actor, a.directory(), body)
+	got, err := a.parties().takeTickets(actor, a.directory(), body)
 	if err != nil {
 		return nil, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, got.ops...); err != nil {
+	if err := a.commit(r.Context(), actor, got.ops...); err != nil {
 		return nil, err
 	}
 	slog.InfoContext(r.Context(), "celebrate: tickets taken", "actor", actor.Email, "party", got.party.Title, "purchaser", got.purchaser, "sold", got.sold, "waitlisted", got.waitlisted)
@@ -171,11 +184,11 @@ func plural(n int, word string) string {
 
 func (a partiesApp) joinWaitlist(r *http.Request, body waitlistOrder) (map[string]int, error) {
 	actor := a.actor(r)
-	got, err := a.cache.Model().joinWaitlist(actor, a.directory(), body)
+	got, err := a.parties().joinWaitlist(actor, a.directory(), body)
 	if err != nil {
 		return nil, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, got.ops...); err != nil {
+	if err := a.commit(r.Context(), actor, got.ops...); err != nil {
 		return nil, err
 	}
 	event := "celebrate: joined waitlist"
@@ -189,11 +202,11 @@ func (a partiesApp) joinWaitlist(r *http.Request, body waitlistOrder) (map[strin
 
 func (a partiesApp) offerTickets(r *http.Request, body offer) (serve.None, error) {
 	actor := a.actor(r)
-	got, err := a.cache.Model().offerTickets(actor, a.directory(), body)
+	got, err := a.parties().offerTickets(actor, a.directory(), body)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, got.ops...); err != nil {
+	if err := a.commit(r.Context(), actor, got.ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "celebrate: offered tickets", "actor", actor.Email, "party", got.party.Title, "purchaser", got.ticket.Purchaser, "offered", got.offered, "left", got.left)
@@ -214,12 +227,12 @@ type ticketRef struct {
 
 func (a partiesApp) removeTicket(r *http.Request, body ticketRef) (serve.None, error) {
 	actor := a.actor(r)
-	t, p, ops, err := a.cache.Model().removeTicket(actor, body.TicketID)
+	t, p, ops, err := a.parties().removeTicket(actor, body.TicketID)
 	if err != nil {
 		return serve.None{}, err
 	}
 	who, status := ticketHolder(t), t.Status
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "celebrate: ticket removed", "actor", actor.Email, "party", p.Title, "who", who, "was", status)
@@ -228,12 +241,12 @@ func (a partiesApp) removeTicket(r *http.Request, body ticketRef) (serve.None, e
 
 func (a partiesApp) editTicket(r *http.Request, body ticketEdit) (serve.None, error) {
 	actor := a.actor(r)
-	t, p, ops, details, err := a.cache.Model().editTicket(actor, body)
+	t, p, ops, details, err := a.parties().editTicket(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
 	who := ticketHolder(t)
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "celebrate: ticket edited", "actor", actor.Email, "party", p.Title, "who", who, "details", details)
@@ -242,12 +255,12 @@ func (a partiesApp) editTicket(r *http.Request, body ticketEdit) (serve.None, er
 
 func (a partiesApp) reassignTicket(r *http.Request, body reassignment) (serve.None, error) {
 	actor := a.actor(r)
-	t, p, ops, who, err := a.cache.Model().reassignTicket(actor, a.directory(), body)
+	t, p, ops, who, err := a.parties().reassignTicket(actor, a.directory(), body)
 	if err != nil {
 		return serve.None{}, err
 	}
 	was := ticketHolder(t)
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "celebrate: ticket reassigned", "actor", actor.Email, "party", p.Title, "from", was, "to", who)
@@ -256,11 +269,11 @@ func (a partiesApp) reassignTicket(r *http.Request, body reassignment) (serve.No
 
 func (a partiesApp) saveParty(r *http.Request, body partyBody) (map[string]string, error) {
 	actor := a.actor(r)
-	saved, err := a.cache.Model().saveParty(actor, body)
+	saved, err := a.parties().saveParty(actor, body)
 	if err != nil {
 		return nil, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, saved.ops...); err != nil {
+	if err := a.commit(r.Context(), actor, saved.ops...); err != nil {
 		return nil, err
 	}
 	action := map[bool]string{true: "add", false: "edit"}[saved.adding]
@@ -274,11 +287,11 @@ type partyRef struct {
 
 func (a partiesApp) deleteParty(r *http.Request, body partyRef) (serve.None, error) {
 	actor := a.actor(r)
-	p, ops, err := a.cache.Model().deleteParty(actor, body.ID)
+	p, ops, err := a.parties().deleteParty(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "celebrate: removed party", "actor", actor.Email, "party", p.Title)
@@ -287,11 +300,11 @@ func (a partiesApp) deleteParty(r *http.Request, body partyRef) (serve.None, err
 
 func (a partiesApp) setFlags(r *http.Request, body partyFlags) (serve.None, error) {
 	actor := a.actor(r)
-	p, ops, err := a.cache.Model().setFlags(actor, body)
+	p, ops, err := a.parties().setFlags(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "celebrate: set party flags", "actor", actor.Email, "party", p.Title, "tickets", ticketsCell(body.TicketsOpen))
@@ -305,11 +318,11 @@ type statusChange struct {
 
 func (a partiesApp) setStatus(r *http.Request, body statusChange) (serve.None, error) {
 	actor := a.actor(r)
-	p, ops, err := a.cache.Model().setStatus(actor, body.ID, body.Status)
+	p, ops, err := a.parties().setStatus(actor, body.ID, body.Status)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "celebrate: set party status", "actor", actor.Email, "party", p.Title, "status", body.Status)
@@ -318,11 +331,11 @@ func (a partiesApp) setStatus(r *http.Request, body statusChange) (serve.None, e
 
 func (a partiesApp) saveCelebration(r *http.Request, body celebrationForm) (serve.None, error) {
 	actor := a.actor(r)
-	ops, adding, err := a.cache.Model().saveCelebration(actor, body)
+	ops, adding, err := a.parties().saveCelebration(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	action := map[bool]string{true: "add", false: "edit"}[adding]
@@ -336,11 +349,11 @@ type celebrationRef struct {
 
 func (a partiesApp) deleteCelebration(r *http.Request, body celebrationRef) (serve.None, error) {
 	actor := a.actor(r)
-	c, ops, err := a.cache.deleteCelebration(actor, body.ID)
+	c, ops, err := a.store.deleteCelebration(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "celebrate: removed celebration", "actor", actor.Email, "code", c.Code)
@@ -354,11 +367,11 @@ type categoryForm struct {
 
 func (a partiesApp) saveCategory(r *http.Request, body categoryForm) (serve.None, error) {
 	actor := a.actor(r)
-	ops, adding, err := a.cache.Model().saveCategory(actor, body.ID, body.Title)
+	ops, adding, err := a.parties().saveCategory(actor, body.ID, body.Title)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	action := map[bool]string{true: "add", false: "edit"}[adding]
@@ -372,11 +385,11 @@ type categoryRef struct {
 
 func (a partiesApp) deleteCategory(r *http.Request, body categoryRef) (serve.None, error) {
 	actor := a.actor(r)
-	c, ops, err := a.cache.deleteCategory(actor, body.ID)
+	c, ops, err := a.store.deletePartyCategory(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "celebrate: removed category", "actor", actor.Email, "category", c.Title)
@@ -389,11 +402,11 @@ type categoryIDs struct {
 
 func (a partiesApp) reorderCategories(r *http.Request, body categoryIDs) (serve.None, error) {
 	actor := a.actor(r)
-	ops, err := a.cache.Model().reorderCategories(actor, body.IDs)
+	ops, err := a.parties().reorderCategories(actor, body.IDs)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "celebrate: reordered categories", "actor", actor.Email, "changed", len(ops))
@@ -402,11 +415,11 @@ func (a partiesApp) reorderCategories(r *http.Request, body categoryIDs) (serve.
 
 func (a partiesApp) saveSettings(r *http.Request, body PartiesSettings) (serve.None, error) {
 	actor := a.actor(r)
-	ops, err := a.cache.Model().saveSettings(actor, body)
+	ops, err := a.parties().saveSettings(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "celebrate: changed the settings", "actor", actor.Email)
@@ -418,7 +431,7 @@ func (a partiesApp) invoicesCSV(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, err)
 		return
 	}
-	m := a.cache.Model()
+	m := a.parties()
 	key := r.URL.Query().Get("celebration")
 	code := ""
 	if key != "" {

@@ -83,7 +83,6 @@ func mapDomains() {
 
 func main() {
 	ids, _ := lookup.Find(context.Background())
-	jobEnvVars := sheetEnvVars(spreadsheets.Of(spreadsheets.SyncSources), ids)
 	envVars := sheetEnvVars(spreadsheets.All, ids)
 	log.Printf("deploying %s to %s in %s", image, service, region)
 	gcloud("run", "deploy", service,
@@ -110,7 +109,7 @@ func main() {
 		"--task-timeout", "30m",
 		"--max-retries", "0",
 		"--args=--i-have-user-permission-to-spend-money",
-		"--set-env-vars", jobEnvVars,
+		"--set-env-vars", envVars,
 		"--set-secrets", secretRefs(secretsNamed(jobSecrets)),
 		"--quiet")
 }

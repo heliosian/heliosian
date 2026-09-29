@@ -250,7 +250,7 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 	}
 	guests := model.othersInvite(e.ID)
 	view := InviteView{Host: host, Poster: poster, MayInvite: host || guests && (e.Sharing == SharingPublic || model.Invited(a.directory(), viewer, e.ID)), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: guests, Hosts: []CalendarPerson{}, Mine: []GuestRow{}}
-	view.MoveEverywhere = host && view.Party && a.partiesCache.IsAdmin(viewer)
+	view.MoveEverywhere = host && view.Party && a.all().AdminList("celebrate").IsAdmin(viewer)
 	if inv != nil && inv.Flyer != "" {
 		view.Flyer = flyerPath(e.ID)
 	}
@@ -417,7 +417,7 @@ func (a calendarApp) bringGuest(ctx context.Context, actor access.Actor, ops []s
 	if g.invite && !isGuestKey(g.key) {
 		ops = append(ops, a.requestOps(actor, g.event, []string{g.key}, actor.Email, "")...)
 	}
-	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
+	if err := a.commit(ctx, actor, ops...); err != nil {
 		return err
 	}
 	slog.InfoContext(ctx, "calendar: guest brought", "actor", actor.Email, "event", g.event.ID, "of", g.of, "guest", g.key, "answer", g.answer, "invite", g.invite)
@@ -442,7 +442,7 @@ func (a calendarApp) noteOpened(ctx context.Context, actor access.Actor, e *Even
 	if len(ops) == 0 {
 		return
 	}
-	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
+	if err := a.commit(ctx, actor, ops...); err != nil {
 		slog.ErrorContext(ctx, "calendar: note opened", "event", e.ID, "error", err)
 	}
 }

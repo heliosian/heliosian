@@ -11,15 +11,14 @@ import (
 
 func TestGroupMailReadsForMembersOfGroupsTheySee(t *testing.T) {
 	sources := sampleSources(t)
-	docs := &model.Documents{Documents: []*model.Document{
+	m := sources.Store.Model()
+	*m.Documents = model.Documents{Documents: []*model.Document{
 		{Key: "humming", Title: "Snack rota", Kind: model.DocumentKindGroup, Channel: "hummingbird-families", Date: "2026-09-10", Markdown: "Snacks."},
 		{Key: "list", Title: "Picnic", Kind: model.DocumentKindList, Channel: "parents", Date: "2026-09-10", Markdown: "Picnic."},
 		{Key: "middle", Title: "Dance", Kind: model.DocumentKindGroup, Channel: "middle-school-parents", Date: "2026-09-10", Markdown: "Dance."},
 		{Key: "soccer", Title: "Saturday", Kind: model.DocumentKindGroup, Channel: "soccer-team", Date: "2026-09-10", Markdown: "Game."},
 	}}
-	sources.Documents = func() *model.Documents { return docs }
-	groups := sources.Loop()
-	members := func(name string) []string { return groups.Named(name).Members(sources.LoopSources()) }
+	members := func(name string) []string { return m.EmailLists.Named(name).Members(m.EmailListAudience(sampleNow)) }
 	pick := func(from []string, not ...[]string) string {
 		for _, email := range from {
 			if email == jordan || email == "dana.hawkins@heliosschool.org" || email == "ruth.amari@heliosschool.org" {

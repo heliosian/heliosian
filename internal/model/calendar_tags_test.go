@@ -16,12 +16,12 @@ func TestRenamingATagKeepsTheInviteGroupsThatNameIt(t *testing.T) {
 	key := carpoolKey
 	rec := call(t, jordan, "POST", "/api/invite-groups", `{"id":"meetup","rule":{"tags":["`+key+`"]}}`)
 	made := struct{ Group string }{created(t, rec)}
-	if rec.Code != 200 || len(cache.Model().Invites[meetup]) != 2 {
+	if rec.Code != 200 || len(cache.Model().Calendar.Invites[meetup]) != 2 {
 		t.Fatalf("group: %d %s", rec.Code, rec.Body)
 	}
 
 	tags := http.NewServeMux()
-	RegisterDirectory(tags, DirectoryRoutes{Cache: sources.directory})
+	RegisterDirectory(tags, DirectoryRoutes{Store: sources.directory})
 	if rec := testkit.Form(t, tags, host, "/api/directory/tag-rename", url.Values{"tag": {carpool}, "name": {"Rideshare"}}); rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
@@ -29,7 +29,7 @@ func TestRenamingATagKeepsTheInviteGroupsThatNameIt(t *testing.T) {
 		t.Fatalf("tag mia: %d %s", rec.Code, rec.Body)
 	}
 
-	if g := cache.Model().GroupOf(meetup, made.Group); g == nil || len(g.Rule.Tags) != 1 || g.Rule.Tags[0] != key {
+	if g := cache.Model().Calendar.GroupOf(meetup, made.Group); g == nil || len(g.Rule.Tags) != 1 || g.Rule.Tags[0] != key {
 		t.Fatalf("the group's rule after the rename: %+v", g)
 	}
 	fillNow(t)

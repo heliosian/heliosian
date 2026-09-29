@@ -24,6 +24,6 @@ func TestPortalPreview(t *testing.T) {
 		t.Errorf("tier of the local host = %q", got)
 	}
 
-	a := homeApp{cache: c, style: style}
+	a := homeApp{store: c, style: style}
 	testkit.Cards(t, http.HandlerFunc(a.shareApps), []string{"https://heliosian.com/open/share/apps.png"})
 }

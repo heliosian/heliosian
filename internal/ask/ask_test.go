@@ -29,52 +29,55 @@ import (
 	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
-	"heliosian/internal/testkit/sample"
 )
 
 const jordan = "jordan.whitfield@heliosschool.org"
 
 var sampleNow = time.Date(2026, 9, 12, 9, 0, 0, 0, model.Location)
 
-func sampleSources(t *testing.T) Sources {
+func sampleDir(t *testing.T) *data.Dir {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
+	if err := dir.Update(model.ConfigApp, "Super Admins", map[string]string{"Email": jordan}, map[string]string{"Email": "someone.else@heliosschool.org"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []struct{ sheet, tab, email string }{
+		{"apps", "Admins", jordan},
+		{"events", "Admins", "dana.hawkins@heliosschool.org"},
+		{"celebrate", "Admins", "dana.hawkins@heliosschool.org"},
+		{model.CalendarApp, "Admins", "dana.hawkins@heliosschool.org"},
+	} {
+		if err := dir.Delete(row.sheet, row.tab, map[string]string{"Email": row.email}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, sheet := range []string{"apps", "events", "celebrate", "groups", model.CalendarApp} {
+		if err := dir.Insert(sheet, "Admins", []map[string]string{{"Email": sampleAdmin}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func sampleSources(t *testing.T) Sources {
+	t.Helper()
+	return sourcesFrom(t, sampleDir(t))
+}
+
+func sourcesFrom(t *testing.T, dir *data.Dir) Sources {
+	t.Helper()
 	queue := store.NewQueue()
-	directoryCache, err := model.NewDirectoryCache(dir, dir, testkit.All, testkit.All, queue, []byte("sample"), func() []string { return nil })
-	if err != nil {
-		t.Fatal(err)
-	}
-	directory := directoryCache.Model()
-	calendarModel := sample.Calendar(t, dir, queue, directory).Model()
-	teamCache, err := model.NewActivitiesCache(dir, dir, testkit.All, func() []string { return nil }, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	teamModel := teamCache.Model()
-	celebrateCache, err := model.NewPartiesCache(dir, dir, testkit.All, func() []string { return nil }, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	celebrateModel := celebrateCache.Model()
-	loopCache, err := model.NewEmailListsCache(dir, dir, func() []string { return nil }, queue, []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	loopModel := loopCache.Model()
-	homeCache, err := model.NewHomeCache(dir, dir, testkit.All, func() []string { return nil }, directoryCache, celebrateCache, teamCache, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
 	bucket := blob.NewMemoryBucket()
 	embedder, err := artifacts.NewVertex()
 	if err != nil {
 		t.Fatal(err)
 	}
-	documentsCache, err := model.NewDocumentsCache(dir, dir, bucket, embedder, queue)
+	deps := model.Deps{IDKey: []byte("sample"), Photos: testkit.All, Static: testkit.All, Parties: testkit.All, Activities: testkit.All, Home: testkit.All, Objects: bucket, Embedder: embedder}
+	s, err := model.NewStore(dir, dir, queue, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
-	filer := model.RegisterDocuments(http.NewServeMux(), documentsCache, embedder, queue, artifacts.Inbox{Bucket: bucket})
+	filer := model.RegisterDocuments(http.NewServeMux(), s, embedder, queue, artifacts.Inbox{Bucket: bucket})
 	saved, err := filepath.Glob("../../sampledata/artifacts/*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -84,40 +87,10 @@ func sampleSources(t *testing.T) Sources {
 			t.Fatal(err)
 		}
 	}
-	documents := documentsCache.Model()
-	tags := directory.Tags
-	lists := directory.RoomParentTags
-	return Sources{
-		Directory: func() *model.Directory { return directory },
-		Tags:      tags,
-		Lists:     lists,
-		Settings:  func() *model.Config { return &model.Config{} },
-		Calendar:  func() *model.Calendar { return calendarModel },
-		Linked:    func(string) []model.Linked { return nil },
-		Team:      func() *model.Activities { return teamModel },
-		Celebrate: func() *model.Parties { return celebrateModel },
-		Loop:      func() *model.EmailLists { return loopModel },
-		LoopSources: func() model.AudienceSources {
-			return model.AudienceSources{Directory: directory, MagicTags: lists}
-		},
-		Links:     homeCache.CategoriesFor,
-		Documents: func() *model.Documents { return documents },
-		Embedder:  embedder,
-		Admins:    Admins{Team: heldBy(model.ActivitiesAdminAllowances), Celebrate: heldBy(model.PartiesAdminAllowances), Loop: heldBy(model.EmailListsAdminAllowances), Calendar: heldBy(model.CalendarAdminAllowances), Home: heldBy(model.HomeAdminAllowances)},
-		Now:       func() time.Time { return sampleNow },
-	}
+	return Sources{Store: s, Embedder: embedder, Now: func() time.Time { return sampleNow }}
 }
 
 const sampleAdmin = "grace.kim@heliosschool.org"
-
-func heldBy(allowances []access.Allowance) func(string) []access.Allowance {
-	return func(email string) []access.Allowance {
-		if email != sampleAdmin {
-			return nil
-		}
-		return allowances
-	}
-}
 
 func sampleViewer(t *testing.T, email string) *viewer {
 	t.Helper()
@@ -287,9 +260,8 @@ func done(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
 func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 	t.Parallel()
 	sources := sampleSources(t)
-	documents := sources.Documents()
-	current := documents
-	sources.Documents = func() *model.Documents { return current }
+	current := sources.Store.Model().Documents
+	documents := *current
 	mux := http.NewServeMux()
 	Register(mux, sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"))
 	handler := auth.Fixed(jordan, mux)
@@ -299,7 +271,7 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 		t.Fatalf("the first turn knew %v", known)
 	}
 	arrived := &model.Document{Key: "late-reminder", Title: "Picture Day moves to Friday", Date: sampleNow.Format(model.DateFormat), Kind: model.DocumentKindList}
-	current = &model.Documents{Documents: append([]*model.Document{arrived}, documents.Documents...)}
+	*current = model.Documents{Documents: append([]*model.Document{arrived}, documents.Documents...)}
 	second := chat.keep(t, post(t, handler, chat.body(t, "And now?")))
 	if !slices.Contains(anyStrings(second["known"]), "late-reminder") {
 		t.Fatalf("the arrival was not kept as known: %v", second["known"])
@@ -402,7 +374,7 @@ func TestPrivateVolunteerListAsTeamShowsIt(t *testing.T) {
 	const student, stranger = "sam.whitfield@heliosschool.org", "elena.torres@heliosschool.org"
 	sources := sampleSources(t)
 	var room *model.Activity
-	for _, root := range sources.Team().Activities {
+	for _, root := range sources.Store.Model().Activities.Activities {
 		for _, a := range append([]*model.Activity{root}, root.Descendants()...) {
 			if a.Title == "Room Parents" {
 				room = a
@@ -444,7 +416,7 @@ func TestPrivateVolunteerListAsTeamShowsIt(t *testing.T) {
 func TestAdminSeesTeamsHiddenThings(t *testing.T) {
 	sources := sampleSources(t)
 	hidden := 0
-	for _, root := range sources.Team().Activities {
+	for _, root := range sources.Store.Model().Activities.Activities {
 		if root.Status != model.StatusHidden && root.Status != model.StatusPending {
 			continue
 		}

@@ -16,9 +16,9 @@ var NotifyKinds = []string{"events", "activities", "signups", "offers"}
 var activitiesBrand = mail.Brand{Name: "HCA-Team", Color: "#1f4d53", Tagline: "the HCA volunteer portal"}
 
 func (a activitiesApp) adminsWanting(kind string, except ...string) []string {
-	m := a.cache.Model()
+	m := a.activities()
 	out := []string{}
-	for _, admin := range a.cache.Admins() {
+	for _, admin := range a.store.Model().AdminList("team").Admins() {
 		if slices.Contains(except, admin) {
 			continue
 		}
@@ -63,7 +63,7 @@ func (a activitiesApp) chairRows(m *Activities, act *Activity) [][2]string {
 }
 
 func (a activitiesApp) letterFor(base string, act *Activity) mail.Letter {
-	m := a.cache.Model()
+	m := a.activities()
 	l := mail.Letter{
 		Brand: activitiesBrand,
 		Base:  base,
@@ -122,7 +122,7 @@ func (a activitiesApp) invite(e mail.Event, method string) mail.Attachment {
 }
 
 func (a activitiesApp) mailRemoved(r *http.Request, act *Activity, email, actor string) {
-	m := a.cache.Model()
+	m := a.activities()
 	l := a.letterFor(mail.Base(r), act)
 	l.Heading = "You're no longer signed up"
 	l.Intro = fmt.Sprintf("You removed your sign-up for %s, so it comes off your calendar.", act.Title)
@@ -150,7 +150,7 @@ func (a activitiesApp) nameOf(email string) string {
 func (a activitiesApp) mailSignUp(r *http.Request, act *Activity, email, position, note, actor string, existed bool, was string) {
 	base := mail.Base(r)
 	ctx := r.Context()
-	m := a.cache.Model()
+	m := a.activities()
 	if now := m.Activity(act.ID); now != nil {
 		act = now
 	}
@@ -267,7 +267,7 @@ func (a activitiesApp) mailSignUp(r *http.Request, act *Activity, email, positio
 func (a activitiesApp) mailNewActivity(r *http.Request, act *Activity, actor string) {
 	kind, what := "events", "A new event was added"
 	if act.Parent != "" {
-		kind, what = "activities", "Something new was added under "+lineage(a.cache.Model(), act)
+		kind, what = "activities", "Something new was added under "+lineage(a.activities(), act)
 	}
 	admins := a.adminsWanting(kind, actor)
 	if len(admins) == 0 {

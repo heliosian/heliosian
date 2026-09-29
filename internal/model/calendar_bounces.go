@@ -88,7 +88,7 @@ func (a calendarApp) deliveryEvents(w http.ResponseWriter, r *http.Request) {
 		reason = d.Reason
 	}
 	actor := access.System(deliveryActor)
-	if err := a.cache.CommitAndWait(r.Context(), actor, bounceOps(actor, email, reason)...); err != nil {
+	if err := a.store.CommitAndWait(r.Context(), actor, CalendarApp, bounceOps(actor, email, reason)...); err != nil {
 		slog.ErrorContext(r.Context(), "calendar: note bounce", "email", email, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -123,7 +123,7 @@ func (a calendarApp) moveAddress(ctx context.Context, actor access.Actor, old, t
 		ops = append(ops, resendOp(e, to, host))
 		resent++
 	}
-	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
+	if err := a.commit(ctx, actor, ops...); err != nil {
 		slog.ErrorContext(ctx, "calendar: move address", "from", old, "to", to, "error", err)
 		return
 	}

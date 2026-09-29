@@ -13,12 +13,7 @@ import (
 )
 
 func TestInviteTemplatesComeInOrder(t *testing.T) {
-	dir := &data.Dir{Root: "../../sampledata"}
-	invites, err := NewInviteTemplatesCache(dir, dir, store.NewQueue())
-	if err != nil {
-		t.Fatal(err)
-	}
-	systems := invites.Model().Systems
+	systems := sampleInvites(t).Model().Invites.Systems
 	names := []string{}
 	for _, s := range systems {
 		names = append(names, s.Name)
@@ -99,19 +94,21 @@ func TestGreetingsNeedIDsAndTheBuiltIns(t *testing.T) {
 }
 
 func TestRenamingAServiceKeepsItsTemplates(t *testing.T) {
-	dir := &data.Dir{Root: "../../sampledata"}
-	invites, err := NewInviteTemplatesCache(dir, dir, store.NewQueue())
-	if err != nil {
-		t.Fatal(err)
-	}
+	invites := sampleInvites(t)
 	actor := access.Actor{Email: jordan}
-	if err := invites.Commit(context.Background(), actor, store.Update(servicesTab, store.Row{"Service ID": "svc0000000001"}, store.Row{"Display Name": "Greenvelope Plus"})); err != nil {
+	if err := invites.Commit(context.Background(), actor, invitesApp, store.Update(servicesTab, store.Row{"Service ID": "svc0000000001"}, store.Row{"Display Name": "Greenvelope Plus"})); err != nil {
 		t.Fatal(err)
 	}
-	renamed := invites.Model().Systems[0]
+	renamed := invites.Model().Invites.Systems[0]
 	if renamed.ID != "svc0000000001" || renamed.Name != "Greenvelope Plus" || len(renamed.Columns) != 10 {
 		t.Fatalf("renamed service %+v", renamed)
 	}
+}
+
+func sampleInvites(t *testing.T) *Store {
+	t.Helper()
+	dir := &data.Dir{Root: "../../sampledata"}
+	return sampleStore(t, dir, store.NewQueue(), sampleDeps(sampleKey))
 }
 
 func withCell(row store.Row, column, value string) store.Row {

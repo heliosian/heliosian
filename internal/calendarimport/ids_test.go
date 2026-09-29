@@ -11,16 +11,17 @@ import (
 
 func sampleRun(t *testing.T) (*run, *model.Calendar) {
 	t.Helper()
-	sheet, cache := sampleCache(t)
+	sheet, s := sampleStore(t)
 	tables := store.Tables{}
 	for _, tab := range []string{model.DayTypesTab, model.TagsTab} {
 		tables[tab] = rowsOf(t, sheet, tab)
 	}
-	r, err := vocabulary(cache.Model().Roster, tables)
+	calendar := s.Model().Calendar
+	r, err := vocabulary(calendar.Roster, tables)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return r, cache.Model()
+	return r, calendar
 }
 
 func TestVocabularyLeavesOutTheBuiltIns(t *testing.T) {

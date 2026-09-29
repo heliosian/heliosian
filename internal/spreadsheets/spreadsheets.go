@@ -1,11 +1,6 @@
 package spreadsheets
 
-import (
-	"slices"
-
-	"heliosian/internal/env"
-	"heliosian/internal/logging"
-)
+import "heliosian/internal/env"
 
 type Spreadsheet struct {
 	Source string
@@ -27,20 +22,6 @@ var All = []Spreadsheet{
 	{"groups", "GROUPS_SHEET", "Groups"},
 	{"artifacts", "ARTIFACTS_SHEET", "Artifacts"},
 	{"feedback", "FEEDBACK_SHEET", "Feedback"},
-}
-
-var SyncSources = []string{"calendar", "directory", "preferences", "config"}
-
-func Of(sources []string) []Spreadsheet {
-	out := []Spreadsheet{}
-	for _, source := range sources {
-		i := slices.IndexFunc(All, func(s Spreadsheet) bool { return s.Source == source })
-		if i < 0 {
-			logging.Fatal("unknown spreadsheet source", "source", source)
-		}
-		out = append(out, All[i])
-	}
-	return out
 }
 
 func IDs(sheets []Spreadsheet) map[string]string {

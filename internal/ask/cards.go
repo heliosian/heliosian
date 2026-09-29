@@ -31,7 +31,7 @@ func (v *viewer) linkCard(address string) (linkCard, bool) {
 		}
 		for _, c := range v.directory.Classrooms {
 			if whoBase+model.ClassroomPath(c.Name) == address {
-				card := linkCard{URL: address, Kind: "classroom", Name: c.Name, Color: v.sources.Settings().ClassroomColors[c.Name]}
+				card := linkCard{URL: address, Kind: "classroom", Name: c.Name, Color: v.all.Config.ClassroomColors[c.Name]}
 				if c.ImageURL != "" {
 					card.Image = whoBase + c.ImageURL
 				}
@@ -39,14 +39,14 @@ func (v *viewer) linkCard(address string) (linkCard, bool) {
 			}
 		}
 	case strings.HasPrefix(address, whenBase+"/"):
-		for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.sources.Linked(v.email)) {
+		for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.linked()) {
 			if eventLink(e) != address {
 				continue
 			}
 			return linkCard{URL: address, Kind: "event", Name: e.Title, Badge: e.StartTime().Format("Mon Jan 2")}, true
 		}
 	case strings.HasPrefix(address, loopBase+"/"):
-		sources := v.sources.LoopSources()
+		sources := v.audience()
 		for _, g := range v.loop.Groups {
 			if loopBase+g.Path() == address && g.VisibleTo(v.loopAs, sources) {
 				return linkCard{URL: address, Kind: "group", Name: g.Title}, true

@@ -19,7 +19,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 
-	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/model"
@@ -38,25 +37,9 @@ const (
 )
 
 type Sources struct {
-	Directory   func() *model.Directory
-	Tags        func(owner string) []model.Tag
-	Lists       func(email string) []model.MagicTag
-	Settings    func() *model.Config
-	Calendar    func() *model.Calendar
-	Linked      func(email string) []model.Linked
-	Team        func() *model.Activities
-	Celebrate   func() *model.Parties
-	Loop        func() *model.EmailLists
-	LoopSources func() model.AudienceSources
-	Links       func(v access.Actor) []model.HomeCategory
-	Documents   func() *model.Documents
-	Embedder    *artifacts.Vertex
-	Admins      Admins
-	Now         func() time.Time
-}
-
-type Admins struct {
-	Team, Celebrate, Loop, Calendar, Home func(email string) []access.Allowance
+	Store    *model.Store
+	Embedder *artifacts.Vertex
+	Now      func() time.Time
 }
 
 type app struct {
@@ -79,7 +62,7 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) who(r *http.Request) string {
-	return a.sources.Directory().Resolve(strings.ToLower(auth.Email(r)))
+	return a.sources.Store.Model().Directory.Resolve(strings.ToLower(auth.Email(r)))
 }
 
 type user struct {

@@ -69,7 +69,6 @@ func (m *Directory) Alerts(email string, years StaleYears, now time.Time) Alerts
 	return alerts
 }
 
-func (c *DirectoryCache) Alerts(email string, years StaleYears) Alerts {
-	model := c.Model()
-	return model.Alerts(model.Resolve(email), years, time.Now())
+func (m *Model) Alerts(email string) Alerts {
+	return m.Directory.Alerts(m.Directory.Resolve(email), m.Config.StaleYears, time.Now())
 }

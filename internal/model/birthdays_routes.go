@@ -22,9 +22,8 @@ var birthdaysPages = []string{
 }
 
 type birthdaysApp struct {
-	cache     *BirthdaysCache
+	store     *Store
 	queue     *store.Queue
-	directory func() *Directory
 	describer *describe.Describer
 	mailer    *mail.Mailgun
 	base      string
@@ -37,9 +36,8 @@ type charityLookup struct {
 }
 
 type BirthdaysDeps struct {
-	Cache     *BirthdaysCache
+	Store     *Store
 	Queue     *store.Queue
-	Directory func() *Directory
 	Describer *describe.Describer
 	Mailer    *mail.Mailgun
 	Base      string
@@ -48,7 +46,7 @@ type BirthdaysDeps struct {
 }
 
 func RegisterBirthdays(mux *http.ServeMux, d BirthdaysDeps) {
-	a := birthdaysApp{cache: d.Cache, queue: d.Queue, directory: d.Directory, describer: d.Describer, mailer: d.Mailer, base: d.Base, taken: d.Taken}
+	a := birthdaysApp{store: d.Store, queue: d.Queue, describer: d.Describer, mailer: d.Mailer, base: d.Base, taken: d.Taken}
 	kick := make(chan struct{}, 1)
 	d.Queue.OnSwap(func() {
 		select {
@@ -64,20 +62,17 @@ func RegisterBirthdays(mux *http.ServeMux, d BirthdaysDeps) {
 	}
 	mux.Handle("GET /open/share/about.png", d.About)
 	mux.HandleFunc("POST /api/birthday/charity/describe", serve.JSON(a.describeCharity))
-	RegisterAdmins(mux, a.cache.AdminList, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
+	RegisterAdmins(mux, a.store, "birthday", noAdminState)
 }
 
 func (a birthdaysApp) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, birthdaysShell)
 }
 
-func (a birthdaysApp) actor(r *http.Request) access.Actor {
-	return a.directory().Actor(r, a.cache.Held)
-}
-
 func (a birthdaysApp) describeCharity(r *http.Request, body charityLookup) (describe.Info, error) {
-	actor := a.actor(r)
-	if err := a.cache.Model().requireTeam(actor); err != nil {
+	m := a.store.Model()
+	actor := m.actor(r, "birthday")
+	if err := m.Birthdays.requireTeam(actor); err != nil {
 		return describe.Info{}, err
 	}
 	name, link := strings.TrimSpace(body.Name), strings.TrimSpace(body.DonationLink)

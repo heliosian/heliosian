@@ -11,7 +11,7 @@ import (
 func TestWidget(t *testing.T) {
 	cache, _ := activitiesServer(t)
 	at := time.Date(2026, 9, 25, 12, 0, 0, 0, Location)
-	w := cache.Widget("jordan.whitfield@heliosschool.org", at)
+	w := cache.Model().Activities.Widget("jordan.whitfield@heliosschool.org", at)
 	if len(w.Mine) != 3 {
 		t.Fatalf("mine: %+v", w.Mine)
 	}
@@ -29,13 +29,13 @@ func TestWidget(t *testing.T) {
 			t.Errorf("open lists what they are on: %+v", o)
 		}
 	}
-	later := cache.Widget("jordan.whitfield@heliosschool.org", time.Date(2026, 11, 7, 12, 0, 0, 0, Location))
+	later := cache.Model().Activities.Widget("jordan.whitfield@heliosschool.org", time.Date(2026, 11, 7, 12, 0, 0, 0, Location))
 	for _, m := range later.Mine {
 		if m.Title == "Tech Setup" {
 			t.Errorf("passed sign-up still listed: %+v", later.Mine)
 		}
 	}
-	if none := cache.Widget(activitiesParent, at); len(none.Mine) != 0 || len(none.Open) == 0 {
+	if none := cache.Model().Activities.Widget(activitiesParent, at); len(none.Mine) != 0 || len(none.Open) == 0 {
 		t.Errorf("on nothing: %+v", none)
 	}
 	if p := w.Priority; len(p) != 2 || p[0].Title != "Spring Celebration" || p[1].Title != "Helios Cares" || p[0].Note == "" {
@@ -52,34 +52,34 @@ func TestPriorityIsAnAdmins(t *testing.T) {
 	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("co-chair save: %d %s", rec.Code, rec.Body)
 	}
-	if cache.Model().Activity("act0000000020").Priority {
+	if cache.Model().Activities.Activity("act0000000020").Priority {
 		t.Fatal("a co-chair marked a priority")
 	}
 	if rec := testkit.Call(t, mux, jordan, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("admin save: %d %s", rec.Code, rec.Body)
 	}
-	if !cache.Model().Activity("act0000000020").Priority {
+	if !cache.Model().Activities.Activity("act0000000020").Priority {
 		t.Fatal("an admin's mark did not stick")
 	}
 	edit["priority"] = false
 	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("co-chair save: %d %s", rec.Code, rec.Body)
 	}
-	if !cache.Model().Activity("act0000000020").Priority {
+	if !cache.Model().Activities.Activity("act0000000020").Priority {
 		t.Fatal("a co-chair cleared an admin's mark")
 	}
 	edit["volunteersComplete"] = true
 	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("complete: %d %s", rec.Code, rec.Body)
 	}
-	if cache.Model().Activity("act0000000020").Priority {
+	if cache.Model().Activities.Activity("act0000000020").Priority {
 		t.Fatal("a complete thing kept its priority")
 	}
 	edit["priority"] = true
 	if rec := testkit.Call(t, mux, jordan, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
 		t.Fatalf("admin save: %d %s", rec.Code, rec.Body)
 	}
-	if cache.Model().Activity("act0000000020").Priority {
+	if cache.Model().Activities.Activity("act0000000020").Priority {
 		t.Fatal("an admin marked a complete thing")
 	}
 }

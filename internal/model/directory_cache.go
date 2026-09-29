@@ -3,25 +3,17 @@ package model
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/data"
 	"heliosian/internal/geocode"
 	"heliosian/internal/store"
 )
-
-type DirectoryCache struct {
-	*store.Store[*Directory]
-	AdminList
-	unlocated chan struct{}
-}
 
 var DirectoryTabs = []store.Tab{
 	{Name: EmailAliasesTab, Columns: EmailAliasColumns, Key: []string{EmailAliasColumn}},
@@ -48,21 +40,6 @@ func directoryTabs() []store.Tab {
 
 func NewDirectoryBook(source data.Source, writer data.Writer, queue *store.Queue) (*store.Book, error) {
 	return store.NewBook(DirectoryApp, directoryTabs(), source, writer, queue)
-}
-
-func directorySpec(blobs, static blob.Checker, idKey []byte, loaded func()) store.Spec[*Directory] {
-	return store.Spec[*Directory]{
-		App:  DirectoryApp,
-		Tabs: directoryTabs(),
-		Build: func(ctx context.Context, tables store.Tables) (*Directory, error) {
-			return BuildDirectory(ctx, tables, blobs, static, idKey)
-		},
-		Loaded: func(model *Directory, took time.Duration) {
-			slog.Info("loaded directory model", "people", len(model.People), "families", len(model.Families),
-				"classrooms", len(model.Classrooms), "crews", len(model.Crews), "unlocated", len(model.unlocated), "took", took.Round(time.Millisecond))
-			loaded()
-		},
-	}
 }
 
 func carryPerson(_ store.Tables, before, after store.Row) []store.Op {
@@ -114,57 +91,30 @@ func dropEmptyTag(tables store.Tables, before, after store.Row) []store.Op {
 	return []store.Op{store.Delete(tagListTable, named)}
 }
 
-func OpenDirectory(source data.Source, writer data.Writer, blobs, static blob.Checker, idKey []byte, queue *store.Queue) (*store.Store[*Directory], error) {
-	return store.New(directorySpec(blobs, static, idKey, func() {}), source, writer, queue)
-}
-
-func LoadDirectory(source data.Source, blobs, static blob.Checker, idKey []byte) (*Directory, error) {
-	s, err := OpenDirectory(source, nil, blobs, static, idKey, store.NewQueue())
-	if err != nil {
-		return nil, err
+func (s *Store) locate() {
+	directory := s.Model().Directory
+	if directory == s.located {
+		return
 	}
-	return s.Model(), nil
-}
-
-func NewDirectoryCache(source data.Source, writer data.Writer, blobs, static blob.Checker, queue *store.Queue, idKey []byte, superAdmins func() []string) (*DirectoryCache, error) {
-	c := &DirectoryCache{unlocated: make(chan struct{}, 1)}
-	s, err := store.New(directorySpec(blobs, static, idKey, c.locate), source, writer, queue)
-	if err != nil {
-		return nil, err
-	}
-	c.Store = s
-	c.AdminList = NewAdminList("who", WhoAdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)
-	return c, nil
-}
-
-func (c *DirectoryCache) Actor(r *http.Request, held func(email string) []access.Allowance) access.Actor {
-	return c.Model().Actor(r, held)
-}
-
-func (c *DirectoryCache) commit(ctx context.Context, actor access.Actor, ops ...store.Op) error {
-	if err := c.Commit(ctx, actor, ops...); err != nil {
-		return err
-	}
-	c.locate()
-	return nil
-}
-
-func (c *DirectoryCache) locate() {
+	s.located = directory
 	select {
-	case c.unlocated <- struct{}{}:
+	case s.unlocated <- struct{}{}:
 	default:
 	}
 }
 
-func (c *DirectoryCache) Locate(geocoder *geocode.Client) {
-	for range c.unlocated {
-		c.geocode(geocoder)
+func (s *Store) Locate(geocoder *geocode.Client) {
+	for range s.unlocated {
+		s.geocode(geocoder)
 	}
 }
 
-func (c *DirectoryCache) geocode(geocoder *geocode.Client) {
-	model := c.Model()
-	missing := model.unlocated
+func (s *Store) geocode(geocoder *geocode.Client) {
+	directory := s.Model().Directory
+	if directory == nil {
+		return
+	}
+	missing := directory.unlocated
 	if len(missing) == 0 {
 		return
 	}
@@ -193,8 +143,8 @@ func (c *DirectoryCache) geocode(geocoder *geocode.Client) {
 	close(jobs)
 	wg.Wait()
 	actor := access.System("geocoder")
-	ops := model.locate(actor, found)
-	if err := c.Commit(context.Background(), actor, ops...); err != nil {
+	ops := directory.locate(actor, found)
+	if err := s.Commit(context.Background(), actor, DirectoryApp, ops...); err != nil {
 		slog.Error("record geocoded addresses", "error", err)
 	}
 	slog.Info("geocoded family addresses", "looked up", len(missing), "found", len(ops), "took", time.Since(start).Round(time.Millisecond))

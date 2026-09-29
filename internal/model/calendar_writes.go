@@ -176,7 +176,7 @@ func (a calendarApp) newEvents(actor access.Actor, body eventBody) ([]store.Op, 
 		if !validAddress(address) {
 			return nil, nil, false, access.Invalid("a web address is 3 to 40 letters, digits and dashes")
 		}
-		if model.Event(address) != nil || a.cache.Count(OverridesTab, store.Row{"Address": address}) > 0 {
+		if model.Event(address) != nil || a.store.Count(CalendarApp, OverridesTab, store.Row{"Address": address}) > 0 {
 			return nil, nil, false, access.Invalid("that web address is taken")
 		}
 	}
@@ -1181,7 +1181,7 @@ func (a calendarApp) changeAddressOps(actor access.Actor, id, email, to string, 
 	}
 	c.name = inv.Name
 	if everywhere {
-		if e.Source != SourceCelebrate || !a.partiesCache.IsAdmin(actor.Email) {
+		if e.Source != SourceCelebrate || !a.all().AdminList("celebrate").IsAdmin(actor.Email) {
 			return nil, c, access.Forbidden("only Celebrate's admins move an address on every party")
 		}
 		c.everywhere = true

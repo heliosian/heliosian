@@ -15,10 +15,7 @@ import (
 
 func sample(t *testing.T) (AudienceSources, *Directory) {
 	t.Helper()
-	directory, err := LoadDirectory(&data.Dir{Root: "../../sampledata"}, nil, testkit.Files("../../web/who"), []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	directory := loadDirectory(t, &data.Dir{Root: "../../sampledata"}, nil, testkit.Files("../../web/who"), sampleKey)
 	return AudienceSources{
 		Directory: directory,
 		MagicTags: func(owner string) []MagicTag {
@@ -49,29 +46,21 @@ func sourcesOf(directory *Directory) AudienceSources {
 
 func TestRenamingATagKeepsTheGroupsThatNameIt(t *testing.T) {
 	dir := &data.Dir{Root: "../../sampledata"}
-	queue := store.NewQueue()
-	directory, err := NewDirectoryCache(dir, dir, nil, testkit.None, queue, []byte("test"), func() []string { return nil })
-	if err != nil {
-		t.Fatal(err)
-	}
-	groups, err := NewEmailListsCache(dir, dir, func() []string { return nil }, queue, []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	g := *groups.Model().Group(soccerGroup)
+	s := sampleStore(t, dir, store.NewQueue(), sampleDeps(sampleKey))
+	g := *s.Model().EmailLists.Group(soccerGroup)
 	if !slices.Contains(g.Rules[0].Tags, TagKey(soccerTeamID)) {
 		t.Fatalf("the sample group's rules do not name the soccer team: %+v", g.Rules)
 	}
-	before := g.Members(sourcesOf(directory.Model()))
-	if len(before) <= len(tagged(directory.Model(), soccerTeamID)) {
+	before := g.Members(sourcesOf(s.Model().Directory))
+	if len(before) <= len(tagged(s.Model().Directory, soccerTeamID)) {
 		t.Fatalf("the group's members %v do not reach past the tag to its parents", before)
 	}
 	mux := http.NewServeMux()
-	RegisterDirectory(mux, DirectoryRoutes{Cache: directory})
+	RegisterDirectory(mux, DirectoryRoutes{Store: s})
 	if rec := testkit.Form(t, mux, jordan, "/api/directory/tag-rename", url.Values{"tag": {soccerTeamID}, "name": {"Football"}}); rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
-	renamed := sourcesOf(directory.Model())
+	renamed := sourcesOf(s.Model().Directory)
 	if after := g.Members(renamed); !slices.Equal(after, before) {
 		t.Fatalf("the renamed tag's group: %v, before the rename %v", after, before)
 	}
@@ -280,11 +269,7 @@ func TestAdditionsJoinTheMembersOnce(t *testing.T) {
 func TestSampleGroupsLoadAndHaveMembers(t *testing.T) {
 	s, _ := sample(t)
 	dir := &data.Dir{Root: "../../sampledata"}
-	cache, err := NewEmailListsCache(dir, dir, func() []string { return nil }, store.NewQueue(), []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	m := cache.Model()
+	m := sampleStore(t, dir, store.NewQueue(), sampleDeps(sampleKey)).Model().EmailLists
 	if len(m.Groups) != 3 {
 		t.Fatalf("%d groups loaded", len(m.Groups))
 	}

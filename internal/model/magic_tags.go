@@ -34,34 +34,35 @@ const (
 	MagicTagGroup    = "group"
 )
 
-func MagicTagsOf(directory *Directory, parties *Parties, activities *Activities, owner string, now time.Time) []MagicTag {
-	tags := append(directory.RoomParentTags(owner), parties.MagicTags(directory, owner, now)...)
-	return append(tags, activities.MagicTags(directory, owner, now)...)
+func (m *Model) MagicTagsOf(owner string, now time.Time) []MagicTag {
+	tags := append(m.Directory.RoomParentTags(owner), m.Parties.MagicTags(m.Directory, owner, now)...)
+	return append(tags, m.Activities.MagicTags(m.Directory, owner, now)...)
 }
 
-func EveryActivityMagicTagsOf(directory *Directory, parties *Parties, activities *Activities, owner string, now time.Time) []MagicTag {
-	tags := append(directory.RoomParentTags(owner), parties.MagicTags(directory, owner, now)...)
-	return append(tags, activities.AllMagicTags(directory, now)...)
+func (m *Model) EveryActivityMagicTagsOf(owner string, now time.Time) []MagicTag {
+	tags := append(m.Directory.RoomParentTags(owner), m.Parties.MagicTags(m.Directory, owner, now)...)
+	return append(tags, m.Activities.AllMagicTags(m.Directory, now)...)
 }
 
-func DirectoryAudience(directory *Directory, parties *Parties, activities *Activities, now time.Time) AudienceSources {
-	return AudienceSources{Directory: directory, MagicTags: func(owner string) []MagicTag {
-		return MagicTagsOf(directory, parties, activities, owner, now)
+func (m *Model) DirectoryAudience(now time.Time) AudienceSources {
+	return AudienceSources{Directory: m.Directory, MagicTags: func(owner string) []MagicTag {
+		return m.MagicTagsOf(owner, now)
 	}}
 }
 
-func EmailListAudience(directory *Directory, parties *Parties, activities *Activities, activityAdmins *ActivitiesCache, now time.Time) AudienceSources {
-	return AudienceSources{Directory: directory, MagicTags: func(owner string) []MagicTag {
+func (m *Model) EmailListAudience(now time.Time) AudienceSources {
+	activityAdmins := m.AdminList("team")
+	return AudienceSources{Directory: m.Directory, MagicTags: func(owner string) []MagicTag {
 		if activityAdmins.IsAdmin(owner) {
-			return EveryActivityMagicTagsOf(directory, parties, activities, owner, now)
+			return m.EveryActivityMagicTagsOf(owner, now)
 		}
-		return MagicTagsOf(directory, parties, activities, owner, now)
+		return m.MagicTagsOf(owner, now)
 	}}
 }
 
-func ManagedMagicTags(directory *Directory, parties *Parties, activities *Activities, lists *EmailLists, activityAdmins *ActivitiesCache, email string, now time.Time) []MagicTag {
-	tags := append(parties.MagicTags(directory, email, now), activities.MagicTags(directory, email, now)...)
-	return append(tags, lists.MagicTags(EmailListAudience(directory, parties, activities, activityAdmins, now), email)...)
+func (m *Model) ManagedMagicTags(email string, now time.Time) []MagicTag {
+	tags := append(m.Parties.MagicTags(m.Directory, email, now), m.Activities.MagicTags(m.Directory, email, now)...)
+	return append(tags, m.EmailLists.MagicTags(m.EmailListAudience(now), email)...)
 }
 
 func PickerLists(directory *Directory, managed []MagicTag, email string) []PickerList {
@@ -81,12 +82,12 @@ func PickerLists(directory *Directory, managed []MagicTag, email string) []Picke
 	return out
 }
 
-func MagicTagKeys(parties *Parties, activities *Activities) []string {
+func (m *Model) MagicTagKeys() []string {
 	out := []string{}
-	for _, p := range parties.Parties {
+	for _, p := range m.Parties.Parties {
 		out = append(out, MagicTagParty+":"+p.ID)
 	}
-	for _, a := range activities.Activities {
+	for _, a := range m.Activities.Activities {
 		out = append(out, MagicTagActivity+":"+a.ID)
 	}
 	return out

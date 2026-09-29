@@ -26,53 +26,81 @@ var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/mine", "/mine/{list}
 var eventPages = []string{"/e/{id...}", "/events/{id...}"}
 
 type calendarApp struct {
-	cache           *CalendarCache
-	pinned          *Calendar
-	images          blob.Images
-	directory       func() *Directory
-	settings        func() *Config
-	partiesCache    *PartiesCache
-	activitiesCache *ActivitiesCache
-	parties         func() *Parties
-	activities      func() *Activities
-	emailLists      func() *EmailLists
-	clock           func() time.Time
-	search          imagesearch.Search
-	queue           *store.Queue
-	mail            CalendarMail
-	style           *sharecard.Style
+	store  *Store
+	pinned *Model
+	images blob.Images
+	search imagesearch.Search
+	queue  *store.Queue
+	mail   CalendarMail
+	style  *sharecard.Style
+	idKey  []byte
 }
 
 type CalendarDeps struct {
-	Cache      *CalendarCache
-	Images     blob.Images
-	Directory  func() *Directory
-	Settings   func() *Config
-	Parties    *PartiesCache
-	Activities *ActivitiesCache
-	EmailLists *EmailListsCache
-	Search     imagesearch.Search
-	Mail       CalendarMail
-	Style      *sharecard.Style
-	Queue      *store.Queue
+	Store  *Store
+	Images blob.Images
+	Search imagesearch.Search
+	Mail   CalendarMail
+	Style  *sharecard.Style
+	Queue  *store.Queue
+	IDKey  []byte
 }
 
 func newCalendarApp(d CalendarDeps) calendarApp {
 	d.Search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
-	return calendarApp{
-		cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings,
-		partiesCache: d.Parties, activitiesCache: d.Activities, parties: d.Parties.Model, activities: d.Activities.Model, emailLists: d.EmailLists.Model, clock: now,
-		search: d.Search, queue: d.Queue, mail: d.Mail, style: d.Style,
+	return calendarApp{store: d.Store, images: d.Images, search: d.Search, queue: d.Queue, mail: d.Mail, style: d.Style, idKey: d.IDKey}
+}
+
+func (a calendarApp) at(m *Model) calendarApp {
+	a.pinned = m
+	return a
+}
+
+func (a calendarApp) all() *Model {
+	if a.pinned != nil {
+		return a.pinned
 	}
+	return a.store.Model()
+}
+
+func (a calendarApp) model() *Calendar {
+	return a.all().Calendar
+}
+
+func (a calendarApp) directory() *Directory {
+	return a.all().Directory
+}
+
+func (a calendarApp) settings() *Config {
+	return a.all().Config
+}
+
+func (a calendarApp) parties() *Parties {
+	return a.all().Parties
+}
+
+func (a calendarApp) activities() *Activities {
+	return a.all().Activities
+}
+
+func (a calendarApp) clock() time.Time {
+	if a.pinned != nil && a.pinned.scope != nil {
+		return a.pinned.scope.now
+	}
+	return now()
+}
+
+func (a calendarApp) commit(ctx context.Context, actor access.Actor, ops ...store.Op) error {
+	return a.store.Commit(ctx, actor, CalendarApp, ops...)
 }
 
 func (a calendarApp) sources() AudienceSources {
-	return DirectoryAudience(a.directory(), a.parties(), a.activities(), a.clock())
+	return a.all().DirectoryAudience(a.clock())
 }
 
 func (a calendarApp) lists(email string) []PickerList {
-	d := a.directory()
-	return PickerLists(d, ManagedMagicTags(d, a.parties(), a.activities(), a.emailLists(), a.activitiesCache, email, a.clock()), email)
+	m := a.all()
+	return PickerLists(m.Directory, m.ManagedMagicTags(email, a.clock()), email)
 }
 
 func RegisterCalendar(mux *http.ServeMux, d CalendarDeps) CalendarHooks {
@@ -111,7 +139,7 @@ func RegisterCalendar(mux *http.ServeMux, d CalendarDeps) CalendarHooks {
 		actor := a.as(mail.Normalize(email))
 		return a.recordBy(ctx, actor, actor.Email, id, answer, ViaPage, true, false)
 	}
-	return CalendarHooks{Answer: answer, MakeDefault: a.makeDefault, RSVPs: serve.JSON(a.rsvps), cache: d.Cache, app: a}
+	return CalendarHooks{Answer: answer, MakeDefault: a.makeDefault, RSVPs: serve.JSON(a.rsvps), app: a}
 }
 
 func (a calendarApp) page(w http.ResponseWriter, r *http.Request) {
@@ -141,19 +169,12 @@ var now = func() time.Time {
 	return time.Now().In(Location)
 }
 
-func (a calendarApp) model() *Calendar {
-	if a.pinned != nil {
-		return a.pinned
-	}
-	return a.cache.Model()
-}
-
 func (a calendarApp) as(email string) access.Actor {
-	return a.directory().ActorOf(email, a.cache.Held(email))
+	return a.all().actorOf(email, "when")
 }
 
 func (a calendarApp) actor(r *http.Request) access.Actor {
-	return a.directory().Actor(r, a.cache.Held)
+	return a.all().actor(r, "when")
 }
 
 type feedBody struct {
@@ -168,7 +189,6 @@ type CalendarHooks struct {
 	Answer      Answerer
 	MakeDefault func(ctx context.Context, email, token string) error
 	RSVPs       http.HandlerFunc
-	cache       *CalendarCache
 	app         calendarApp
 }
 
@@ -190,7 +210,7 @@ type tokenBody struct {
 }
 
 func (a calendarApp) saveOrder(ctx context.Context, actor access.Actor, tokens []string, ops []store.Op) error {
-	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
+	if err := a.commit(ctx, actor, ops...); err != nil {
 		return err
 	}
 	slog.InfoContext(ctx, "calendar: feeds ordered", "actor", actor.Email, "order", strings.Join(tokens, ","))
@@ -255,7 +275,7 @@ type eventBody struct {
 }
 
 func (a calendarApp) tellAdmins(ctx context.Context, by string, e *Event) error {
-	admins := a.cache.Admins()
+	admins := a.all().AdminList("when").Admins()
 	if len(admins) == 0 {
 		return nil
 	}
@@ -340,7 +360,7 @@ func (a calendarApp) feed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a calendarApp) linked(email string) []Linked {
-	return LinkedEvents(a.directory(), a.parties(), a.activities(), email, a.clock())
+	return a.all().LinkedEvents(email, a.clock())
 }
 
 func (a calendarApp) sourceID(source, key string) string {
@@ -358,8 +378,8 @@ func (a calendarApp) sourceID(source, key string) string {
 }
 
 func (a calendarApp) moveEverywhere(ctx context.Context, actor access.Actor, old, to, name string) error {
-	as := a.directory().ActorOf(actor.Email, a.partiesCache.Held(actor.Email))
-	if err := a.partiesCache.moveAddress(ctx, as, old, to, name); err != nil {
+	as := a.all().actorOf(actor.Email, "celebrate")
+	if err := a.store.movePartyAddress(ctx, as, old, to, name); err != nil {
 		return err
 	}
 	a.moveAddress(ctx, actor, old, to, name)

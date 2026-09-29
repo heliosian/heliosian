@@ -125,12 +125,8 @@ func (m *Activities) magicTags(directory *Directory, now time.Time, chairs func(
 	return out
 }
 
-func (c *ActivitiesCache) Pending(email string) []Approval {
+func (m *Activities) pending() []Approval {
 	out := []Approval{}
-	if !c.IsAdmin(email) {
-		return out
-	}
-	m := c.Model()
 	var walk func([]*Activity)
 	walk = func(list []*Activity) {
 		for _, a := range list {

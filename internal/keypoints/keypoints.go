@@ -54,12 +54,6 @@ type Reading struct {
 	Grades     []string
 }
 
-type School interface {
-	Classrooms() []string
-	Grades() []string
-	Teaches(author string) []string
-}
-
 type Claude struct {
 	client anthropic.Client
 }
@@ -138,13 +132,15 @@ func Missing(m *model.Documents, now time.Time) []*model.Document {
 	return append(unread, stale...)
 }
 
-func Pass(ctx context.Context, cache *model.DocumentsCache, s *Claude, school School, now time.Time) int {
+func Pass(ctx context.Context, store *model.Store, s *Claude, now time.Time) int {
 	written := 0
-	for _, d := range Missing(cache.Model(), now) {
+	m := store.Model()
+	school := m.Directory
+	for _, d := range Missing(m.Documents, now) {
 		if written == perRun {
 			break
 		}
-		reading, err := s.Read(ctx, Email{Title: d.Title, Date: d.Date, Author: d.Author, Markdown: d.Markdown, Classrooms: school.Classrooms(), Grades: school.Grades(), Teaches: school.Teaches(d.Author)})
+		reading, err := s.Read(ctx, Email{Title: d.Title, Date: d.Date, Author: d.Author, Markdown: d.Markdown, Classrooms: school.ClassroomNames(), Grades: school.GradeNames(), Teaches: school.Teaches(d.Author)})
 		if err != nil {
 			slog.ErrorContext(ctx, "keypoints: read an email", "error", err, "key", d.Key, "title", d.Title)
 			return written
@@ -153,7 +149,7 @@ func Pass(ctx context.Context, cache *model.DocumentsCache, s *Claude, school Sc
 		if named := append(slices.Clone(reading.Classrooms), reading.Grades...); len(named) > 0 {
 			audience = strings.Join(named, ", ")
 		}
-		if err := cache.SetPoints(ctx, access.System("keypoints"), d.Key, reading.Points, audience, now.Format("2006-01-02")); err != nil {
+		if err := store.SetPoints(ctx, access.System("keypoints"), d.Key, reading.Points, audience, now.Format("2006-01-02")); err != nil {
 			slog.ErrorContext(ctx, "keypoints: write the points", "error", err, "key", d.Key)
 			return written
 		}
@@ -162,10 +158,10 @@ func Pass(ctx context.Context, cache *model.DocumentsCache, s *Claude, school Sc
 	return written
 }
 
-func Run(cache *model.DocumentsCache, s *Claude, school School) {
+func Run(store *model.Store, s *Claude) {
 	time.Sleep(time.Minute)
 	for {
-		if n := Pass(context.Background(), cache, s, school, time.Now()); n > 0 {
+		if n := Pass(context.Background(), store, s, time.Now()); n > 0 {
 			slog.Info("keypoints: wrote points", "emails", n)
 		}
 		time.Sleep(every)

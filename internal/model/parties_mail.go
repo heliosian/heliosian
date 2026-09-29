@@ -60,7 +60,7 @@ func attendeeName(directory *Directory, p *Party, email string) string {
 }
 
 func (a partiesApp) letterFor(base string, p *Party) mail.Letter {
-	m := a.cache.Model()
+	m := a.parties()
 	l := mail.Letter{Brand: partiesBrand, Base: base, Title: p.Title, Subtitle: p.Subtitle, When: whenLine(p), Where: p.Location, Path: base + m.PathOf(p)}
 	if p.Address != "" {
 		if l.Where != "" {
@@ -115,7 +115,7 @@ func (a partiesApp) mailTickets(r *http.Request, p *Party, purchaser string, tak
 		return
 	}
 	base := mail.Base(r)
-	m := a.cache.Model()
+	m := a.parties()
 	directory := a.directory()
 	if now := m.Party(p.ID); now != nil {
 		p = now
@@ -261,7 +261,7 @@ func (a partiesApp) mailOffered(r *http.Request, p *Party, purchaser string, tic
 	}
 	base := mail.Base(r)
 	directory := a.directory()
-	if now := a.cache.Model().Party(p.ID); now != nil {
+	if now := a.parties().Party(p.ID); now != nil {
 		p = now
 	}
 	l := a.letterFor(base, p)
@@ -285,7 +285,7 @@ func (a partiesApp) mailOffered(r *http.Request, p *Party, purchaser string, tic
 	}
 	l.Button = "See the party"
 	l.Calendar = calendarLink(p, l.Path)
-	l.Footnote = "A ticket marked \"to be named\" is a guest's: open the party and use Reassign beside it to say who is coming. " + a.cache.Model().Settings.TicketNote
+	l.Footnote = "A ticket marked \"to be named\" is a guest's: open the party and use Reassign beside it to say who is coming. " + a.parties().Settings.TicketNote
 	a.sendGoing(r.Context(), directory, fmt.Sprintf("You're in: %d %s to %s", n, plural(n, "ticket"), p.Title), []string{purchaser}, except(p.HostEmails, purchaser), l, p, purchaser)
 }
 

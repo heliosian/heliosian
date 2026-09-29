@@ -21,7 +21,7 @@ var legacy = map[string]string{
 }
 
 type app struct {
-	cache *model.DirectoryCache
+	store *model.Store
 }
 
 func OptInForm(optIn func() string) http.Handler {
@@ -30,8 +30,8 @@ func OptInForm(optIn func() string) http.Handler {
 	})
 }
 
-func Register(mux *http.ServeMux, cache *model.DirectoryCache, about *sharecard.About) {
-	a := app{cache: cache}
+func Register(mux *http.ServeMux, s *model.Store, about *sharecard.About) {
+	a := app{store: s}
 	mux.Handle("GET /open/share/about.png", about)
 	for _, section := range sections {
 		mux.HandleFunc("GET /"+section, a.page)
@@ -45,8 +45,9 @@ func Register(mux *http.ServeMux, cache *model.DirectoryCache, about *sharecard.
 }
 
 func (a app) myFamily(w http.ResponseWriter, r *http.Request) {
-	email := a.cache.Actor(r, a.cache.Held).Email
-	if family, ok := a.cache.Model().FamilyOf(email); ok {
+	m := a.store.Model()
+	email := m.Directory.Actor(r, m.AdminList("who").Held).Email
+	if family, ok := m.Directory.FamilyOf(email); ok {
 		http.Redirect(w, r, model.FamilyPath(family.Key), http.StatusFound)
 		return
 	}

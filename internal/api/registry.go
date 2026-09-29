@@ -53,20 +53,6 @@ func (reg *Registry[S]) Add(t Type[S]) {
 	reg.types[t.Name] = &t
 }
 
-func (reg *Registry[S]) Relate(typeName, name string, rel Relation[S]) {
-	t, ok := reg.types[typeName]
-	if !ok {
-		panic(fmt.Sprintf("api: relation %q on unregistered type %q", name, typeName))
-	}
-	if t.Relations == nil {
-		t.Relations = map[string]Relation[S]{}
-	}
-	if _, ok := t.Relations[name]; ok {
-		panic(fmt.Sprintf("api: %s relation %q declared twice", typeName, name))
-	}
-	t.Relations[name] = rel
-}
-
 func (reg *Registry[S]) Publish(s S) {
 	w := &world[S]{s: s, aliases: map[string]map[string]string{}}
 	for name, t := range reg.types {

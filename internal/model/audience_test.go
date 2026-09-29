@@ -18,10 +18,7 @@ var (
 
 func audienceSample(t *testing.T) (AudienceSources, *Directory) {
 	t.Helper()
-	d, err := LoadDirectory(&data.Dir{Root: "../../sampledata"}, nil, testkit.Files("../../web/who"), testKey)
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := loadDirectory(t, &data.Dir{Root: "../../sampledata"}, nil, testkit.Files("../../web/who"), sampleKey)
 	return AudienceSources{
 		Directory: d,
 		MagicTags: func(owner string) []MagicTag {

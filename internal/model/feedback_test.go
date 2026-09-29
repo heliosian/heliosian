@@ -153,21 +153,11 @@ func pngBytes(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-func feedbackPeople(t *testing.T, dir *data.Dir, queue *store.Queue) (*DirectoryCache, *ConfigCache) {
+func intakeServer(t *testing.T, s *Store, bucket *blob.Bucket, told chan Report) func(report string, shot []byte) *httptest.ResponseRecorder {
 	t.Helper()
-	settings, err := NewConfigCache(dir, dir, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return sampleDirectory(t, dir, queue), settings
-}
-
-func intakeServer(t *testing.T, dir *data.Dir, queue *store.Queue, cache *FeedbackCache, bucket *blob.Bucket, told chan Report) func(report string, shot []byte) *httptest.ResponseRecorder {
-	t.Helper()
-	directory, settings := feedbackPeople(t, dir, queue)
 	mux := http.NewServeMux()
-	RegisterFeedback(mux, "calendar", func() string { return "Helios When" }, directory, settings,
-		NewFeedbackIntake(cache, bucket, func(r Report, _ []mail.Attachment) { told <- r }))
+	RegisterFeedback(mux, "calendar", func() string { return "Helios When" },
+		NewFeedbackIntake(s, bucket, func(r Report, _ []mail.Attachment) { told <- r }))
 	h := auth.Fixed("Jordan.Whitfield@heliosschool.org", mux)
 	return func(report string, shot []byte) *httptest.ResponseRecorder {
 		body, contentType := reportForm(t, report, shot)
@@ -183,7 +173,7 @@ func intakeServer(t *testing.T, dir *data.Dir, queue *store.Queue, cache *Feedba
 func TestHandler(t *testing.T) {
 	dir, queue, cache := testFeedbackCache(t)
 	told := make(chan Report, 4)
-	send := intakeServer(t, dir, queue, cache, blob.NewMemoryBucket(), told)
+	send := intakeServer(t, cache, blob.NewMemoryBucket(), told)
 	post := func(report string) *httptest.ResponseRecorder {
 		return send(report, nil)
 	}
@@ -206,7 +196,7 @@ func TestHandler(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("nobody was told")
 	}
-	if saved, ok := cache.Report(got.ID); !ok || saved.Summary != got.Summary {
+	if saved, ok := cache.Model().Feedback.Report(got.ID); !ok || saved.Summary != got.Summary {
 		t.Fatalf("announced %+v, which is not in memory", got)
 	}
 	queue.Flush()
@@ -233,10 +223,10 @@ func TestHandler(t *testing.T) {
 }
 
 func TestHandlerStoresAScreenshot(t *testing.T) {
-	dir, queue, cache := testFeedbackCache(t)
+	_, _, cache := testFeedbackCache(t)
 	told := make(chan Report, 4)
 	bucket := blob.NewMemoryBucket()
-	post := intakeServer(t, dir, queue, cache, bucket, told)
+	post := intakeServer(t, cache, bucket, told)
 	if rec := post(`{"kind":"bug","summary":"Blank grid"}`, []byte("not a picture")); rec.Code != http.StatusBadRequest {
 		t.Errorf("a text file as a screenshot: %d %s", rec.Code, rec.Body.String())
 	}
@@ -257,14 +247,14 @@ func TestHandlerStoresAScreenshot(t *testing.T) {
 	if err != nil || mimeType != "image/png" || !bytes.Equal(stored, shot) {
 		t.Errorf("stored %d bytes as %q: %v", len(stored), mimeType, err)
 	}
-	if saved, _ := cache.Report(got.ID); saved.Screenshot != got.Screenshot {
+	if saved, _ := cache.Model().Feedback.Report(got.ID); saved.Screenshot != got.Screenshot {
 		t.Errorf("the report in memory names %q", saved.Screenshot)
 	}
 }
 
 func TestHandlerRefusesAnOversizedScreenshot(t *testing.T) {
-	dir, queue, cache := testFeedbackCache(t)
-	post := intakeServer(t, dir, queue, cache, blob.NewMemoryBucket(), make(chan Report, 1))
+	_, _, cache := testFeedbackCache(t)
+	post := intakeServer(t, cache, blob.NewMemoryBucket(), make(chan Report, 1))
 	big := append(pngBytes(t), make([]byte, screenshotLimit+1<<20)...)
 	if rec := post(`{"kind":"bug","summary":"Blank grid"}`, big); rec.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("oversized screenshot: %d %s", rec.Code, rec.Body.String())
@@ -290,19 +280,16 @@ func TestThrottle(t *testing.T) {
 	}
 }
 
-func testFeedbackCache(t *testing.T) (*data.Dir, *store.Queue, *FeedbackCache) {
+func testFeedbackCache(t *testing.T) (*data.Dir, *store.Queue, *Store) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	cache, err := NewFeedbackCache(dir, dir, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return dir, queue, cache
+	return dir, queue, sampleDirectory(t, dir, queue)
 }
 
 func TestCacheReadsNewestFirst(t *testing.T) {
-	_, _, cache := testFeedbackCache(t)
+	_, _, s := testFeedbackCache(t)
+	cache := s.Model().Feedback
 	reports := cache.Reports()
 	if len(reports) != 4 {
 		t.Fatalf("read %d reports", len(reports))
@@ -328,23 +315,23 @@ func TestCacheReadsNewestFirst(t *testing.T) {
 
 func TestCacheSavesAndHandles(t *testing.T) {
 	dir, queue, cache := testFeedbackCache(t)
-	directory, settings := feedbackPeople(t, dir, queue)
 	actorOf := func(email string) access.Actor {
-		return directory.Model().ActorOf(email, settings.SuperHeld(email))
+		m := cache.Model()
+		return m.Directory.ActorOf(email, m.SuperHeld(email))
 	}
 	superAdmin, member := actorOf(jordan), actorOf(feedbackMember)
 	if !superAdmin.May(Triage) || member.May(Triage) {
 		t.Fatalf("triage held by the super admin %v, by a member %v", superAdmin.May(Triage), member.May(Triage))
 	}
 	ctx := context.Background()
-	saved, err := cache.save(ctx, member, sampleReport())
+	saved, err := cache.saveReport(ctx, member, sampleReport())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if saved.ID == "abc123" || saved.ID == "" || saved.Status != ReportStatusNew || saved.SuperAdmin {
 		t.Errorf("saved = %+v", saved)
 	}
-	if got, ok := cache.Report(saved.ID); !ok || got.Summary != saved.Summary {
+	if got, ok := cache.Model().Feedback.Report(saved.ID); !ok || got.Summary != saved.Summary {
 		t.Errorf("not readable back: %+v %v", got, ok)
 	}
 	now := time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC)
@@ -353,24 +340,24 @@ func TestCacheSavesAndHandles(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := cache.Commit(ctx, superAdmin, ops...); err != nil {
+		if err := cache.Commit(ctx, superAdmin, feedbackAppName, ops...); err != nil {
 			t.Fatal(err)
 		}
 	}
-	commit(cache.Model().filed(superAdmin, saved.ID, "https://github.com/x/y/issues/3", now))
-	got, _ := cache.Report(saved.ID)
+	commit(cache.Model().Feedback.filed(superAdmin, saved.ID, "https://github.com/x/y/issues/3", now))
+	got, _ := cache.Model().Feedback.Report(saved.ID)
 	if got.Status != ReportStatusFiled || got.Issue != "https://github.com/x/y/issues/3" || got.HandledBy != jordan {
 		t.Errorf("filed = %+v", got)
 	}
-	commit(cache.Model().dismissed(superAdmin, "fbk0000000001", now))
-	if got, _ := cache.Report("fbk0000000001"); got.Status != ReportStatusDismissed {
+	commit(cache.Model().Feedback.dismissed(superAdmin, "fbk0000000001", now))
+	if got, _ := cache.Model().Feedback.Report("fbk0000000001"); got.Status != ReportStatusDismissed {
 		t.Errorf("dismissed = %+v", got)
 	}
 	var refusal *access.Refusal
-	if _, err := cache.Model().filed(superAdmin, "nope", "x", now); !errors.As(err, &refusal) || refusal.Status != http.StatusNotFound {
+	if _, err := cache.Model().Feedback.filed(superAdmin, "nope", "x", now); !errors.As(err, &refusal) || refusal.Status != http.StatusNotFound {
 		t.Errorf("filing a report that does not exist: %v", err)
 	}
-	if _, err := cache.Model().dismissed(member, saved.ID, now); !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
+	if _, err := cache.Model().Feedback.dismissed(member, saved.ID, now); !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
 		t.Errorf("a member dismissing a report: %v", err)
 	}
 	queue.Flush()
@@ -391,34 +378,33 @@ func TestCacheSavesAndHandles(t *testing.T) {
 
 const feedbackMember = "robin.whitfield@heliosschool.org"
 
-func feedbackAdminServer(t *testing.T, dir *data.Dir, queue *store.Queue, cache *FeedbackCache, bucket *blob.Bucket, filer *feedback.GitHubApp) *http.ServeMux {
+func feedbackAdminServer(t *testing.T, s *Store, bucket *blob.Bucket, filer *feedback.GitHubApp) *http.ServeMux {
 	t.Helper()
-	directory, settings := feedbackPeople(t, dir, queue)
 	mux := http.NewServeMux()
-	RegisterFeedbackAdmin(mux, cache, bucket, filer, directory, settings)
+	RegisterFeedbackAdmin(mux, s, bucket, filer)
 	return mux
 }
 
-func testFeedbackAdmin(t *testing.T, filer *feedback.GitHubApp, who string) (*FeedbackCache, http.Handler) {
+func testFeedbackAdmin(t *testing.T, filer *feedback.GitHubApp, who string) (*Store, http.Handler) {
 	t.Helper()
-	dir, queue, cache := testFeedbackCache(t)
-	return cache, auth.Fixed(who, feedbackAdminServer(t, dir, queue, cache, blob.NewMemoryBucket(), filer))
+	_, _, cache := testFeedbackCache(t)
+	return cache, auth.Fixed(who, feedbackAdminServer(t, cache, blob.NewMemoryBucket(), filer))
 }
 
 func TestAdminShowsTheScreenshot(t *testing.T) {
-	dir, queue, cache := testFeedbackCache(t)
+	_, _, cache := testFeedbackCache(t)
 	bucket := blob.NewMemoryBucket()
 	shot := pngBytes(t)
 	r := sampleReport()
 	r.Screenshot = screenshotFolder + "/" + blob.Name(shot, "png")
-	saved, err := cache.save(context.Background(), access.Actor{Email: feedbackMember}, r)
+	saved, err := cache.saveReport(context.Background(), access.Actor{Email: feedbackMember}, r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := bucket.Put(context.Background(), saved.Screenshot, "image/png", shot); err != nil {
 		t.Fatal(err)
 	}
-	mux := feedbackAdminServer(t, dir, queue, cache, bucket, nil)
+	mux := feedbackAdminServer(t, cache, bucket, nil)
 	get := func(who, path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		auth.Fixed(who, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
@@ -545,7 +531,7 @@ func TestAdminFilesAndDismisses(t *testing.T) {
 	if filed.Title != "Blank grid" || filed.Type != "Bug" || strings.Join(filed.Labels, ",") != "app:calendar" {
 		t.Errorf("filed %q as %q with %v", filed.Title, filed.Type, filed.Labels)
 	}
-	got, _ := cache.Report("fbk0000000001")
+	got, _ := cache.Model().Feedback.Report("fbk0000000001")
 	if got.Status != ReportStatusFiled || got.Issue != "https://github.com/heliosian/heliosian/issues/77" || got.HandledBy != jordan {
 		t.Errorf("report after filing = %+v", got)
 	}
@@ -555,7 +541,7 @@ func TestAdminFilesAndDismisses(t *testing.T) {
 	if rec := post("/api/admin/feedback/fbk0000000002/dismiss", ""); rec.Code != http.StatusNoContent {
 		t.Errorf("dismiss: %d %s", rec.Code, rec.Body.String())
 	}
-	if got, _ := cache.Report("fbk0000000002"); got.Status != ReportStatusDismissed {
+	if got, _ := cache.Model().Feedback.Report("fbk0000000002"); got.Status != ReportStatusDismissed {
 		t.Errorf("dismissed = %+v", got)
 	}
 	if rec := post("/api/admin/feedback/nope/dismiss", ""); rec.Code != http.StatusNotFound {

@@ -5,58 +5,34 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
-	"time"
 
 	"heliosian/internal/blob"
-	"heliosian/internal/data"
 	"heliosian/internal/id"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
 
-type CalendarCache struct {
-	*store.Store[*Calendar]
-	AdminList
-}
-
 var guestListTabs = []string{InvitesTab, InviteGroupsTab, RSVPsTab}
 
-func spec(roster func() Roster, images blob.Checker) store.Spec[*Calendar] {
-	return store.Spec[*Calendar]{
-		App: CalendarApp,
-		Tabs: []store.Tab{
-			{Name: GoogleTab, Columns: GoogleColumns, Key: []string{"Key"}},
-			{Name: PDFTab, Columns: PDFColumns, Key: []string{"Key"}},
-			{Name: EventsTab, Columns: EventColumns, Key: []string{"Event ID"}, Cascade: carryEvent},
-			{Name: EnrichmentTab, Columns: EnrichmentColumns, Key: []string{"Event ID"}},
-			{Name: OverridesTab, Columns: OverrideColumns, Key: []string{"Event ID"}},
-			{Name: DayTypesTab, Columns: DayTypeColumns, Key: []string{"Day Type ID"}},
-			{Name: DayOverridesTab, Columns: DayOverrideColumns, Key: []string{"Date", "Classrooms"}},
-			{Name: TagsTab, Columns: TagColumns, Key: []string{"Tag ID"}},
-			AdminsTab,
-			{Name: FeedsTab, Columns: FeedColumns, Key: []string{"Token"}},
-			{Name: SettingsTab, Columns: SettingColumns, Key: []string{"Email"}},
-			{Name: RSVPsTab, Columns: RSVPColumns, Key: []string{"Event ID", "Email"}},
-			{Name: InvitationsTab, Columns: InvitationColumns, Key: []string{"Event ID"}, Cascade: carryInvitation},
-			{Name: InvitesTab, Columns: InviteColumns, Key: []string{"Event ID", "Email"}, Cascade: carryInvite},
-			{Name: InviteGroupsTab, Columns: InviteGroupColumns, Key: []string{"Event ID", "Group ID"}},
-			{Name: BouncesTab, Columns: BounceColumns, Key: []string{"Email", "When"}, AppendOnly: true},
-			{Name: MessagesTab, Columns: MessageColumns, Key: []string{"Message ID"}},
-			{Name: id.AliasesTab, Columns: id.AliasColumns, Key: []string{id.AliasColumn}},
-		},
-		Build: func(ctx context.Context, tables store.Tables) (*Calendar, error) {
-			model, err := BuildCalendar(tables, roster())
-			if err != nil {
-				return nil, err
-			}
-			resolveImages(ctx, images, model)
-			return model, nil
-		},
-		Loaded: func(model *Calendar, took time.Duration) {
-			slog.Info("loaded calendar model", "events", len(model.Events), "hidden", model.Hidden, "days", len(model.Days),
-				"feeds", len(model.Feeds), "skipped", model.Skipped, "took", took.Round(time.Millisecond))
-		},
-	}
+var calendarTabs = []store.Tab{
+	{Name: GoogleTab, Columns: GoogleColumns, Key: []string{"Key"}},
+	{Name: PDFTab, Columns: PDFColumns, Key: []string{"Key"}},
+	{Name: EventsTab, Columns: EventColumns, Key: []string{"Event ID"}, Cascade: carryEvent},
+	{Name: EnrichmentTab, Columns: EnrichmentColumns, Key: []string{"Event ID"}},
+	{Name: OverridesTab, Columns: OverrideColumns, Key: []string{"Event ID"}},
+	{Name: DayTypesTab, Columns: DayTypeColumns, Key: []string{"Day Type ID"}},
+	{Name: DayOverridesTab, Columns: DayOverrideColumns, Key: []string{"Date", "Classrooms"}},
+	{Name: TagsTab, Columns: TagColumns, Key: []string{"Tag ID"}},
+	AdminsTab,
+	{Name: FeedsTab, Columns: FeedColumns, Key: []string{"Token"}},
+	{Name: SettingsTab, Columns: SettingColumns, Key: []string{"Email"}},
+	{Name: RSVPsTab, Columns: RSVPColumns, Key: []string{"Event ID", "Email"}},
+	{Name: InvitationsTab, Columns: InvitationColumns, Key: []string{"Event ID"}, Cascade: carryInvitation},
+	{Name: InvitesTab, Columns: InviteColumns, Key: []string{"Event ID", "Email"}, Cascade: carryInvite},
+	{Name: InviteGroupsTab, Columns: InviteGroupColumns, Key: []string{"Event ID", "Group ID"}},
+	{Name: BouncesTab, Columns: BounceColumns, Key: []string{"Email", "When"}, AppendOnly: true},
+	{Name: MessagesTab, Columns: MessageColumns, Key: []string{"Message ID"}},
+	{Name: id.AliasesTab, Columns: id.AliasColumns, Key: []string{id.AliasColumn}},
 }
 
 func carryEvent(_ store.Tables, before, after store.Row) []store.Op {
@@ -95,20 +71,9 @@ func carryInvite(_ store.Tables, before, after store.Row) []store.Op {
 	return []store.Op{store.Update(RSVPsTab, was, store.Row{"Email": after["Email"]})}
 }
 
-func NewCalendarCache(source data.Source, writer data.Writer, roster func() Roster, images blob.Checker, superAdmins func() []string, queue *store.Queue) (*CalendarCache, error) {
-	s, err := store.New(spec(roster, images), source, writer, queue)
-	if err != nil {
-		return nil, err
-	}
-	return &CalendarCache{Store: s, AdminList: NewAdminList("when", CalendarAdminAllowances, superAdmins, func() []string { return s.Model().admins }, s.Commit)}, nil
-}
-
-func (c *CalendarCache) Pending(email string) []Approval {
+func (m *Calendar) pending() []Approval {
 	out := []Approval{}
-	if !c.IsAdmin(email) {
-		return out
-	}
-	for _, e := range c.Model().Pending {
+	for _, e := range m.Pending {
 		if e.Pending && !e.Declined && !e.Cancelled {
 			out = append(out, Approval{App: "when", Title: e.Title, Start: e.Start, Path: EventPath(e)})
 		}

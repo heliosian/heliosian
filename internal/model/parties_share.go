@@ -78,9 +78,9 @@ func partyBlurb(p *Party) string {
 	return text
 }
 
-func PartiesPreviewHead(cache *PartiesCache, style *sharecard.Style) func(r *http.Request) string {
+func PartiesPreviewHead(s *Store, style *sharecard.Style) func(r *http.Request) string {
 	return func(r *http.Request) string {
-		m := cache.Model()
+		m := s.Model().Parties
 		origin := "https://" + r.Host
 		first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]
 		var p *Party
@@ -132,7 +132,7 @@ func partiesUpcomingHead(style *sharecard.Style, m *Parties, origin string) stri
 }
 
 func (a partiesApp) shareUpcoming(w http.ResponseWriter, r *http.Request) {
-	parties := upcoming(a.cache.Model())
+	parties := upcoming(a.parties())
 	card := sharecard.Card{
 		Title:   "New parties are on the way",
 		Listing: &sharecard.Listing{Heading: "Upcoming Parties", Empty: "Nothing is on sale just now - check back soon."},
@@ -154,7 +154,7 @@ func (a partiesApp) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 
 func (a partiesApp) shareCard(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(r.PathValue("id"), ".png")
-	p := a.cache.Model().Party(id)
+	p := a.parties().Party(id)
 	if !partyPreviewable(p) {
 		http.NotFound(w, r)
 		return

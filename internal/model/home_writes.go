@@ -54,8 +54,8 @@ func requireHomeAdmin(actor access.Actor) error {
 	return nil
 }
 
-func (c *HomeCache) discover(actor access.Actor) ([]store.Op, []App) {
-	found := c.MissingVisibility()
+func (m *Home) discover() ([]store.Op, []App) {
+	found := m.MissingVisibility()
 	ops := []store.Op{}
 	for _, app := range found {
 		ops = append(ops, store.Insert(homeVisibilityTab, store.Row{"App": app.Key, "Visibility": VisibleToList, "Tagline": app.Tagline, "Name": app.Name}))
@@ -63,20 +63,21 @@ func (c *HomeCache) discover(actor access.Actor) ([]store.Op, []App) {
 	return ops, found
 }
 
-func (c *HomeCache) grant(actor access.Actor, appKey string) ([]store.Op, error) {
+func (m *Home) grant(actor access.Actor, appKey string) ([]store.Op, error) {
 	app, ok := appByKey(appKey)
 	if !ok {
 		return nil, fmt.Errorf("no app %q", appKey)
 	}
-	v := appVisibilityOf(c.Model(), app)
+	v := appVisibilityOf(m, app)
 	if slices.Contains(v.Emails, actor.Email) {
 		return nil, nil
 	}
 	return []store.Op{store.Upsert(homeVisibilityTab, store.Row{"App": app.Key}, store.Row{"Visibility": v.Mode, "Emails": joinVisibilityEmails(mail.NormalizeAll(append(v.Emails, actor.Email)))})}, nil
 }
 
-func (c *HomeCache) checkRules(existing, rules []Rule, actor string) ([]Rule, error) {
-	options := c.sources().Options(actor)
+func (m *Model) checkHomeRules(existing, rules []Rule, actor string) ([]Rule, error) {
+	sources := m.DirectoryAudience(now())
+	options := sources.Options(actor)
 	out := []Rule{}
 	for _, r := range rules {
 		r = r.Clean()
@@ -95,7 +96,7 @@ func (c *HomeCache) checkRules(existing, rules []Rule, actor string) ([]Rule, er
 		}
 		out = append(out, r)
 	}
-	if err := c.sources().Writable(actor, c.Admins(), existing, out); err != nil {
+	if err := sources.Writable(actor, m.AdminList("home").Admins(), existing, out); err != nil {
 		return nil, access.Invalid("%s", err)
 	}
 	return out, nil
@@ -114,7 +115,7 @@ func audienceOps(key string, was, rules []Rule) []store.Op {
 	return ops
 }
 
-func (c *HomeCache) saveWidgetAudience(actor access.Actor, widget string, rules []Rule) ([]store.Op, error) {
+func (m *Model) saveHomeWidgetAudience(actor access.Actor, widget string, rules []Rule) ([]store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
 		return nil, err
 	}
@@ -122,15 +123,15 @@ func (c *HomeCache) saveWidgetAudience(actor access.Actor, widget string, rules 
 		return nil, access.Missing("no such widget")
 	}
 	key := thingWidget + widget
-	was := rulesOf(c.Model(), key)
-	checked, err := c.checkRules(was, rules, actor.Email)
+	was := rulesOf(m.Home, key)
+	checked, err := m.checkHomeRules(was, rules, actor.Email)
 	if err != nil {
 		return nil, err
 	}
 	return audienceOps(key, was, checked), nil
 }
 
-func (c *HomeCache) setWidgetOrder(actor access.Actor, widgets []string) ([]store.Op, error) {
+func (m *Home) setWidgetOrder(actor access.Actor, widgets []string) ([]store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
 		return nil, err
 	}
@@ -140,7 +141,6 @@ func (c *HomeCache) setWidgetOrder(actor access.Actor, widgets []string) ([]stor
 	if !slices.Equal(got, want) {
 		return nil, access.Invalid("the order must list every widget once: %s", strings.Join(HomeWidgets, ", "))
 	}
-	m := c.Model()
 	current := []string{}
 	for _, name := range widgets {
 		current = append(current, m.widgetKeys[name])
@@ -233,7 +233,7 @@ func categoryOrder(m *Home, order []string, events store.Row) ([]store.Op, error
 	return ops, nil
 }
 
-func (c *HomeCache) saveLink(actor access.Actor, in linkEdit) (string, string, []store.Op, error) {
+func (all *Model) saveHomeLink(actor access.Actor, in linkEdit) (string, string, []store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
 		return "", "", nil, err
 	}
@@ -241,7 +241,7 @@ func (c *HomeCache) saveLink(actor access.Actor, in linkEdit) (string, string, [
 	if title == "" || len(title) > maxHomeTitleLength || len(in.Description) > maxHomeDescLength {
 		return "", "", nil, access.Invalid("title is required and fields must be short")
 	}
-	m := c.Model()
+	m := all.Home
 	var existing *HomeLink
 	var was []Rule
 	if strings.TrimSpace(in.ID) != "" {
@@ -250,7 +250,7 @@ func (c *HomeCache) saveLink(actor access.Actor, in linkEdit) (string, string, [
 		}
 		was = existing.Rules
 	}
-	rules, err := c.checkRules(was, in.Rules, actor.Email)
+	rules, err := all.checkHomeRules(was, in.Rules, actor.Email)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -275,18 +275,18 @@ func (c *HomeCache) saveLink(actor access.Actor, in linkEdit) (string, string, [
 	return "edit", existing.ID, append([]store.Op{store.Update(homeLinksTab, store.Row{"Link ID": existing.ID}, row)}, audienceOps(thingLink+existing.ID, was, rules)...), nil
 }
 
-func (c *HomeCache) deleteLink(actor access.Actor, key string) ([]store.Op, error) {
+func (m *Home) deleteLink(actor access.Actor, key string) ([]store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
 		return nil, err
 	}
-	link := c.Model().link(key)
+	link := m.link(key)
 	if link == nil {
 		return nil, access.Missing("no such link")
 	}
 	return []store.Op{store.Delete(homeLinksTab, store.Row{"Link ID": link.ID})}, nil
 }
 
-func (c *HomeCache) saveCategory(actor access.Actor, in categoryEdit) (string, string, []store.Op, error) {
+func (all *Model) saveHomeCategory(actor access.Actor, in categoryEdit) (string, string, []store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
 		return "", "", nil, err
 	}
@@ -294,7 +294,7 @@ func (c *HomeCache) saveCategory(actor access.Actor, in categoryEdit) (string, s
 	if title == "" || len(title) > maxHomeTitleLength {
 		return "", "", nil, access.Invalid("title is required and must be short")
 	}
-	m := c.Model()
+	m := all.Home
 	var existing *HomeCategory
 	var was []Rule
 	if strings.TrimSpace(in.ID) != "" {
@@ -303,7 +303,7 @@ func (c *HomeCache) saveCategory(actor access.Actor, in categoryEdit) (string, s
 		}
 		was = existing.Rules
 	}
-	rules, err := c.checkRules(was, in.Rules, actor.Email)
+	rules, err := all.checkHomeRules(was, in.Rules, actor.Email)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -354,21 +354,20 @@ func (c *HomeCache) saveCategory(actor access.Actor, in categoryEdit) (string, s
 	return "edit", existing.ID, append(ops, changed...), nil
 }
 
-func (c *HomeCache) reorderCategories(actor access.Actor, order []string) ([]store.Op, error) {
+func (m *Home) reorderCategories(actor access.Actor, order []string) ([]store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
 		return nil, err
 	}
-	return categoryOrder(c.Model(), order, store.Row{"Category ID": EventsCategoryID, "Title": EventsCategoryTitle, "Emoji": EventsCategoryEmoji, "Style": StyleEvents})
+	return categoryOrder(m, order, store.Row{"Category ID": EventsCategoryID, "Title": EventsCategoryTitle, "Emoji": EventsCategoryEmoji, "Style": StyleEvents})
 }
 
-func (c *HomeCache) moveLink(actor access.Actor, key string, by int) ([]store.Op, error) {
+func (m *Home) moveLink(actor access.Actor, key string, by int) ([]store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
 		return nil, err
 	}
 	if by == 0 {
 		return nil, access.Invalid("by must not be 0")
 	}
-	m := c.Model()
 	link := m.link(key)
 	if link == nil {
 		return nil, access.Invalid("unknown link %s", key)
@@ -398,11 +397,11 @@ func (c *HomeCache) moveLink(actor access.Actor, key string, by int) ([]store.Op
 	return ops, nil
 }
 
-func (c *HomeCache) deleteCategory(actor access.Actor, key string) ([]store.Op, error) {
+func (m *Home) deleteCategory(actor access.Actor, key string) ([]store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
 		return nil, err
 	}
-	cat := c.Model().category(key)
+	cat := m.category(key)
 	if cat == nil {
 		return nil, access.Missing("no such category")
 	}
@@ -415,7 +414,7 @@ func (c *HomeCache) deleteCategory(actor access.Actor, key string) ([]store.Op, 
 	return []store.Op{store.Delete(homeCategoriesTab, store.Row{"Category ID": cat.ID})}, nil
 }
 
-func (c *HomeCache) setVisibility(actor access.Actor, in visibilityEdit) (string, AppVisibilityRow, []store.Op, error) {
+func (m *Model) setHomeVisibility(actor access.Actor, in visibilityEdit) (string, AppVisibilityRow, []store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
 		return "", AppVisibilityRow{}, nil, err
 	}
@@ -435,10 +434,10 @@ func (c *HomeCache) setVisibility(actor access.Actor, in visibilityEdit) (string
 		return "", AppVisibilityRow{}, nil, access.Invalid("a short name is required")
 	}
 	app, _ := appByKey(key)
-	was := appVisibilityOf(c.Model(), app)
+	was := appVisibilityOf(m.Home, app)
 	rules := was.Rules
 	if in.Rules != nil {
-		checked, err := c.checkRules(was.Rules, *in.Rules, actor.Email)
+		checked, err := m.checkHomeRules(was.Rules, *in.Rules, actor.Email)
 		if err != nil {
 			return "", AppVisibilityRow{}, nil, err
 		}
@@ -449,7 +448,7 @@ func (c *HomeCache) setVisibility(actor access.Actor, in visibilityEdit) (string
 	return key, v, ops, nil
 }
 
-func (c *HomeCache) setAppOrder(actor access.Actor, order []string) ([]store.Op, error) {
+func (m *Home) setAppOrder(actor access.Actor, order []string) ([]store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
 		return nil, err
 	}
@@ -463,7 +462,6 @@ func (c *HomeCache) setAppOrder(actor access.Actor, order []string) ([]store.Op,
 	if !slices.Equal(keys, want) {
 		return nil, access.Invalid("the order must list every app once: %s", strings.Join(appKeys(), ", "))
 	}
-	m := c.Model()
 	apps := []App{}
 	current := []string{}
 	for _, key := range order {

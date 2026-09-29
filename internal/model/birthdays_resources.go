@@ -1,7 +1,6 @@
 package model
 
 import (
-	"context"
 	"log/slog"
 	"net/url"
 	"slices"
@@ -12,59 +11,41 @@ import (
 	"heliosian/internal/api"
 	"heliosian/internal/id"
 	"heliosian/internal/serve"
-	"heliosian/internal/store"
 )
 
 const birthdaysHost = "birthday"
 
-type BirthdaysWorld struct {
-	Model     *Birthdays
-	Directory *Directory
-	emails    map[string]string
-	keys      map[string]string
-	order     []string
-}
-
-func NewBirthdaysWorld(m *Birthdays, d *Directory) BirthdaysWorld {
-	w := BirthdaysWorld{Model: m, Directory: d, emails: map[string]string{}, keys: map[string]string{}}
+func (b *Birthdays) index(d *Directory) {
+	b.staffEmails, b.staffKeys = map[string]string{}, map[string]string{}
 	add := func(p *Person, email string) {
-		key := m.birthdayID(p.Email)
-		if _, ok := w.emails[key]; ok {
+		key := b.birthdayID(p.Email)
+		if _, ok := b.staffEmails[key]; ok {
 			return
 		}
-		w.emails[key], w.keys[email] = email, key
-		w.order = append(w.order, key)
+		b.staffEmails[key], b.staffKeys[email] = email, key
+		b.staffOrder = append(b.staffOrder, key)
 	}
-	for _, b := range m.Birthdays {
-		if p := d.Person(d.Resolve(b.Email)); p != nil {
-			add(p, b.Email)
+	for _, bd := range b.Birthdays {
+		if p := d.Person(d.Resolve(bd.Email)); p != nil {
+			add(p, bd.Email)
 		}
 	}
 	for i := range d.People {
 		p := &d.People[i]
-		if _, ok := w.emails[m.birthdayID(p.Email)]; p.IsStaff && !ok {
+		if _, ok := b.staffEmails[b.birthdayID(p.Email)]; p.IsStaff && !ok {
 			add(p, p.Email)
 		}
 	}
-	slices.SortStableFunc(w.order, func(a, b string) int {
-		return strings.Compare(strings.ToLower(w.name(a)), strings.ToLower(w.name(b)))
-	})
-	return w
-}
-
-func (w BirthdaysWorld) name(key string) string {
-	return w.person(w.emails[key]).FullName
-}
-
-func (w BirthdaysWorld) person(email string) *Person {
-	return w.Directory.Person(w.Directory.Resolve(email))
-}
-
-func (w BirthdaysWorld) personID(email string) []string {
-	if p := w.person(email); p != nil && p.ID != "" {
-		return []string{p.ID}
+	name := func(key string) string {
+		return d.Person(d.Resolve(b.staffEmails[key])).FullName
 	}
-	return nil
+	slices.SortStableFunc(b.staffOrder, func(x, y string) int {
+		return strings.Compare(strings.ToLower(name(x)), strings.ToLower(name(y)))
+	})
+}
+
+func (m *Model) birthdayPerson(email string) *Person {
+	return m.Directory.Person(m.Directory.Resolve(email))
 }
 
 func (m *Birthdays) yearOf(now time.Time) BirthdayYear {
@@ -84,20 +65,20 @@ func birthdayDayOf(now time.Time) string {
 	return now.Format(DateFormat)
 }
 
-func (w BirthdaysWorld) staffOf(email string, now time.Time) StaffView {
-	b := w.Model.Birthday(email)
+func (m *Model) staffOf(email string, now time.Time) StaffView {
+	b := m.Birthdays.Birthday(email)
 	if b == nil {
 		b = &Birthday{Email: email}
 	}
-	return birthdayViewer{directory: w.Directory}.staff(w.Model, b, w.Model.yearOf(now), midnight(now))
+	return birthdayViewer{directory: m.Directory}.staff(m.Birthdays, b, m.Birthdays.yearOf(now), midnight(now))
 }
 
-func (w BirthdaysWorld) staff(key string, now time.Time) (StaffView, bool) {
-	email, ok := w.emails[key]
+func (m *Model) birthdayStaff(key string, now time.Time) (StaffView, bool) {
+	email, ok := m.Birthdays.staffEmails[key]
 	if !ok {
 		return StaffView{}, false
 	}
-	return w.staffOf(email, now), true
+	return m.staffOf(email, now), true
 }
 
 type urgency struct {
@@ -231,213 +212,195 @@ func NewsletterPath(date string) string {
 }
 
 type birthdayResources struct {
-	cache    *BirthdaysCache
-	joinHome func(ctx context.Context, email string) error
+	store *Store
 }
 
-func BirthdayResources(c *BirthdaysCache, joinHome func(ctx context.Context, email string) error) []api.Type[BirthdaysWorld] {
-	r := birthdayResources{cache: c, joinHome: joinHome}
-	return []api.Type[BirthdaysWorld]{r.birthdays(), r.donations(), r.notes(), r.charities(), r.newsletterDates(), r.team(), r.settings(), r.invites()}
+func BirthdayResources(s *Store) []api.Type[*Model] {
+	r := birthdayResources{store: s}
+	return []api.Type[*Model]{r.birthdays(), r.donations(), r.notes(), r.charities(), r.newsletterDates(), r.team(), r.settings(), r.invites()}
 }
 
-func (r birthdayResources) stage(wr api.Write[BirthdaysWorld], ops []store.Op, err error) error {
-	if err != nil {
-		return err
-	}
-	return r.cache.Stage(wr.Tx, ops...)
+func birthdaySees(m *Model, q api.Query) bool {
+	return m.Birthdays.Sees(q.Actor)
 }
 
-func birthdayLogAfter(wr api.Write[BirthdaysWorld], msg string, args ...any) {
-	actor := wr.Query.Actor.Email
-	ctx := wr.Request.Context()
-	wr.Tx.After(func() { slog.InfoContext(ctx, msg, append([]any{"actor", actor}, args...)...) })
-}
-
-func sees(w BirthdaysWorld, q api.Query) bool {
-	return w.Model.Sees(q.Actor)
-}
-
-func birthdayCan(err error) bool {
-	return err == nil
-}
-
-func (r birthdayResources) birthdays() api.Type[BirthdaysWorld] {
-	email := func(w BirthdaysWorld, key string) string { return w.emails[key] }
-	return api.Type[BirthdaysWorld]{
+func (r birthdayResources) birthdays() api.Type[*Model] {
+	email := func(m *Model, key string) string { return m.Birthdays.staffEmails[key] }
+	return api.Type[*Model]{
 		Name:  "birthdays",
 		Shape: birthdayResource{},
-		Has:   func(w BirthdaysWorld, key string) bool { _, ok := w.emails[key]; return ok },
-		Get: func(w BirthdaysWorld, q api.Query, key string) (any, bool) {
-			sv, ok := w.staff(key, q.Now)
-			if !ok || !sees(w, q) {
+		Has:   func(m *Model, key string) bool { _, ok := m.Birthdays.staffEmails[key]; return ok },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			sv, ok := m.birthdayStaff(key, q.Now)
+			if !ok || !birthdaySees(m, q) {
 				return nil, false
 			}
 			out := birthdayResource{
-				Email: sv.Email, Missing: w.Model.Birthday(sv.Email) == nil, Year: sv.Year, Birthday: sv.Birthday,
+				Email: sv.Email, Missing: m.Birthdays.Birthday(sv.Email) == nil, Year: sv.Year, Birthday: sv.Birthday,
 				BirthdayThisYear: sv.BirthdayThisYear, NewsletterDate: sv.NewsletterDate, RequestBy: sv.RequestBy, DueBy: sv.DueBy,
 				Override: sv.Override, Level: sv.Level, LevelNote: sv.LevelNote, Stage: sv.Stage, Urgency: urgencyOf(sv, birthdayDayOf(q.Now)),
 				Assigned: sv.AssignedTo != "", AssignedOn: sv.AssignedOn, ContactedOn: sv.ContactedOn, ContactedBy: sv.ContactedBy,
 				Path: staffPath(sv.Email), App: birthdaysHost, Me: mine{Mine: sv.AssignedTo != "" && sv.AssignedTo == q.Actor.Email},
 			}
-			if sv.AssignedTo != "" && w.personID(sv.AssignedTo) == nil {
+			if sv.AssignedTo != "" && m.personID(sv.AssignedTo) == nil {
 				out.AssignedTo = sv.AssignedTo
 			}
 			return out, true
 		},
-		List: func(w BirthdaysWorld, q api.Query) []string {
-			if !sees(w, q) {
+		List: func(m *Model, q api.Query) []string {
+			if !birthdaySees(m, q) {
 				return []string{}
 			}
-			return slices.Clone(w.order)
+			return slices.Clone(m.Birthdays.staffOrder)
 		},
-		Aliases: func(w BirthdaysWorld) map[string]string {
+		Aliases: func(m *Model) map[string]string {
 			out := map[string]string{}
-			for alias, p := range w.Directory.PersonAliases() {
-				if key := w.Model.birthdayID(p.Email); w.emails[key] != "" {
+			for alias, p := range m.Directory.PersonAliases() {
+				if key := m.Birthdays.birthdayID(p.Email); m.Birthdays.staffEmails[key] != "" {
 					out[alias] = key
 				}
 			}
-			for address, key := range w.keys {
+			for address, key := range m.Birthdays.staffKeys {
 				out[address] = key
 			}
 			return out
 		},
-		Create: api.Make(func(wr api.Write[BirthdaysWorld], in struct {
+		Create: api.Make(func(wr api.Write[*Model], in struct {
 			Email    string `json:"email"`
 			Birthday string `json:"birthday"`
 			Override string `json:"override"`
 			Level    string `json:"level"`
 			Note     string `json:"note"`
 		}) (string, error) {
-			p := wr.S.person(strings.ToLower(strings.TrimSpace(in.Email)))
+			p := wr.S.birthdayPerson(strings.ToLower(strings.TrimSpace(in.Email)))
 			if p == nil {
 				return "", access.Invalid("%s is not in the directory", in.Email)
 			}
-			ops, err := wr.S.Model.saveBirthday(wr.Query.Actor, p.Email, in.Birthday, in.Override)
+			ops, err := wr.S.Birthdays.saveBirthday(wr.Query.Actor, p.Email, in.Birthday, in.Override)
 			if in.Level != "" {
-				ops, err = wr.S.Model.saveParticipation(wr.Query.Actor, p.Email, in.Level, in.Note)
+				ops, err = wr.S.Birthdays.saveParticipation(wr.Query.Actor, p.Email, in.Level, in.Note)
 			}
-			birthdayLogAfter(wr, "birthday: added birthday", "email", p.Email, "birthday", in.Birthday, "level", in.Level)
-			return wr.S.Model.birthdayID(p.Email), r.stage(wr, ops, err)
+			logAfter(wr, "birthday: added birthday", "email", p.Email, "birthday", in.Birthday, "level", in.Level)
+			return wr.S.Birthdays.birthdayID(p.Email), r.store.stage(wr, birthdaysAppName, ops, err)
 		}),
-		Relations: map[string]api.Relation[BirthdaysWorld]{
-			"person": {Type: "people", List: func(w BirthdaysWorld, _ api.Query, key string) []string { return w.personID(email(w, key)) }},
-			"assignee": {Type: "people", List: func(w BirthdaysWorld, q api.Query, key string) []string {
-				if a, ok := w.Model.Assignment(email(w, key), w.Model.year(q.Now)); ok {
-					return w.personID(a.AssignedTo)
+		Relations: map[string]api.Relation[*Model]{
+			"person": {Type: "people", List: func(m *Model, _ api.Query, key string) []string { return m.personID(email(m, key)) }},
+			"assignee": {Type: "people", List: func(m *Model, q api.Query, key string) []string {
+				if a, ok := m.Birthdays.Assignment(email(m, key), m.Birthdays.year(q.Now)); ok {
+					return m.personID(a.AssignedTo)
 				}
 				return nil
 			}},
-			"donation": {Type: "donations", List: func(w BirthdaysWorld, q api.Query, key string) []string {
-				return w.donationIn(email(w, key), w.Model.year(q.Now))
+			"donation": {Type: "donations", List: func(m *Model, q api.Query, key string) []string {
+				return m.Birthdays.donationIn(email(m, key), m.Birthdays.year(q.Now))
 			}},
-			"last-donation": {Type: "donations", List: func(w BirthdaysWorld, q api.Query, key string) []string {
-				return w.donationIn(email(w, key), ShiftYearSpan(w.Model.year(q.Now), -1))
+			"last-donation": {Type: "donations", List: func(m *Model, q api.Query, key string) []string {
+				return m.Birthdays.donationIn(email(m, key), ShiftYearSpan(m.Birthdays.year(q.Now), -1))
 			}},
-			"notes": {Type: "birthday-notes", Many: true, List: func(w BirthdaysWorld, _ api.Query, key string) []string {
+			"notes": {Type: "birthday-notes", Many: true, List: func(m *Model, _ api.Query, key string) []string {
 				out := []string{}
-				for _, n := range w.Model.Notes {
-					if n.Email == email(w, key) {
-						out = append(out, w.Model.noteID(n))
+				for _, n := range m.Birthdays.Notes {
+					if n.Email == email(m, key) {
+						out = append(out, m.Birthdays.noteID(n))
 					}
 				}
 				return out
 			}},
-			"invites": {Type: "birthday-invites", Many: true, List: func(w BirthdaysWorld, q api.Query, key string) []string {
+			"invites": {Type: "birthday-invites", Many: true, List: func(m *Model, q api.Query, key string) []string {
 				out := []string{}
-				for _, inv := range w.Model.invitesFor(email(w, key), w.Model.year(q.Now)) {
+				for _, inv := range m.Birthdays.invitesFor(email(m, key), m.Birthdays.year(q.Now)) {
 					out = append(out, inv.ID)
 				}
 				return out
 			}},
 		},
-		Actions: map[string]api.Action[BirthdaysWorld]{
-			"assign": api.Do(func(w BirthdaysWorld, q api.Query, key string) bool {
-				return birthdayCan(w.Model.teamStaff(q.Actor, email(w, key)))
-			}, func(wr api.Write[BirthdaysWorld], in struct {
+		Actions: map[string]api.Action[*Model]{
+			"assign": api.Do(func(m *Model, q api.Query, key string) bool {
+				return permitted(m.Birthdays.teamStaff(q.Actor, email(m, key)))
+			}, func(wr api.Write[*Model], in struct {
 				To string `json:"to"`
 			}) error {
-				ops, to, err := wr.S.Model.assign(wr.Query.Actor, email(wr.S, wr.ID), in.To, r.cache.IsAdmin, wr.Query.Now)
-				birthdayLogAfter(wr, "birthday: assigned", "email", email(wr.S, wr.ID), "to", to)
-				return r.stage(wr, ops, err)
+				ops, to, err := wr.S.Birthdays.assign(wr.Query.Actor, email(wr.S, wr.ID), in.To, wr.S.AdminList("birthday").IsAdmin, wr.Query.Now)
+				logAfter(wr, "birthday: assigned", "email", email(wr.S, wr.ID), "to", to)
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
-			"unassign": api.Do(func(w BirthdaysWorld, q api.Query, key string) bool {
-				return birthdayCan(w.Model.canUnassign(q.Actor, email(w, key), q.Now))
-			}, func(wr api.Write[BirthdaysWorld], _ serve.None) error {
-				ops, err := wr.S.Model.unassign(wr.Query.Actor, email(wr.S, wr.ID), wr.Query.Now)
-				birthdayLogAfter(wr, "birthday: unassigned", "email", email(wr.S, wr.ID))
-				return r.stage(wr, ops, err)
+			"unassign": api.Do(func(m *Model, q api.Query, key string) bool {
+				return permitted(m.Birthdays.canUnassign(q.Actor, email(m, key), q.Now))
+			}, func(wr api.Write[*Model], _ serve.None) error {
+				ops, err := wr.S.Birthdays.unassign(wr.Query.Actor, email(wr.S, wr.ID), wr.Query.Now)
+				logAfter(wr, "birthday: unassigned", "email", email(wr.S, wr.ID))
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
 			"contact":   r.outreachAction(true),
 			"uncontact": r.outreachAction(false),
-			"donate": api.Do(func(w BirthdaysWorld, q api.Query, key string) bool {
-				return birthdayCan(w.Model.teamStaff(q.Actor, email(w, key)))
-			}, func(wr api.Write[BirthdaysWorld], in struct {
+			"donate": api.Do(func(m *Model, q api.Query, key string) bool {
+				return permitted(m.Birthdays.teamStaff(q.Actor, email(m, key)))
+			}, func(wr api.Write[*Model], in struct {
 				Charity string `json:"charity"`
 				Note    string `json:"note"`
 			}) error {
-				ops, charity, err := wr.S.Model.saveDonation(wr.Query.Actor, email(wr.S, wr.ID), in.Charity, in.Note, wr.Query.Now)
+				ops, charity, err := wr.S.Birthdays.saveDonation(wr.Query.Actor, email(wr.S, wr.ID), in.Charity, in.Note, wr.Query.Now)
 				if err == nil {
-					birthdayLogAfter(wr, "birthday: saved donation", "email", email(wr.S, wr.ID), "charity", charity.Name)
+					logAfter(wr, "birthday: saved donation", "email", email(wr.S, wr.ID), "charity", charity.Name)
 				}
-				return r.stage(wr, ops, err)
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
-			"set": api.Do(func(w BirthdaysWorld, q api.Query, _ string) bool { return birthdayCan(w.Model.requireTeam(q.Actor)) }, func(wr api.Write[BirthdaysWorld], in struct {
+			"set": api.Do(func(m *Model, q api.Query, _ string) bool { return permitted(m.Birthdays.requireTeam(q.Actor)) }, func(wr api.Write[*Model], in struct {
 				Birthday string `json:"birthday"`
 				Override string `json:"override"`
 			}) error {
-				ops, err := wr.S.Model.saveBirthday(wr.Query.Actor, email(wr.S, wr.ID), in.Birthday, in.Override)
-				birthdayLogAfter(wr, "birthday: saved birthday", "email", email(wr.S, wr.ID), "birthday", in.Birthday, "override", in.Override)
-				return r.stage(wr, ops, err)
+				ops, err := wr.S.Birthdays.saveBirthday(wr.Query.Actor, email(wr.S, wr.ID), in.Birthday, in.Override)
+				logAfter(wr, "birthday: saved birthday", "email", email(wr.S, wr.ID), "birthday", in.Birthday, "override", in.Override)
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
-			"delete": api.Do(func(w BirthdaysWorld, q api.Query, key string) bool {
-				return birthdayCan(w.Model.canDeleteBirthday(q.Actor, email(w, key)))
-			}, func(wr api.Write[BirthdaysWorld], _ serve.None) error {
-				ops, err := wr.S.Model.deleteBirthday(wr.Query.Actor, email(wr.S, wr.ID))
-				birthdayLogAfter(wr, "birthday: removed birthday", "email", email(wr.S, wr.ID))
-				return r.stage(wr, ops, err)
+			"delete": api.Do(func(m *Model, q api.Query, key string) bool {
+				return permitted(m.Birthdays.canDeleteBirthday(q.Actor, email(m, key)))
+			}, func(wr api.Write[*Model], _ serve.None) error {
+				ops, err := wr.S.Birthdays.deleteBirthday(wr.Query.Actor, email(wr.S, wr.ID))
+				logAfter(wr, "birthday: removed birthday", "email", email(wr.S, wr.ID))
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
-			"participation": api.Do(func(w BirthdaysWorld, q api.Query, _ string) bool { return birthdayCan(w.Model.requireTeam(q.Actor)) }, func(wr api.Write[BirthdaysWorld], in struct {
+			"participation": api.Do(func(m *Model, q api.Query, _ string) bool { return permitted(m.Birthdays.requireTeam(q.Actor)) }, func(wr api.Write[*Model], in struct {
 				Level string `json:"level"`
 				Note  string `json:"note"`
 			}) error {
-				ops, err := wr.S.Model.saveParticipation(wr.Query.Actor, email(wr.S, wr.ID), in.Level, in.Note)
-				birthdayLogAfter(wr, "birthday: saved participation", "email", email(wr.S, wr.ID), "level", in.Level)
-				return r.stage(wr, ops, err)
+				ops, err := wr.S.Birthdays.saveParticipation(wr.Query.Actor, email(wr.S, wr.ID), in.Level, in.Note)
+				logAfter(wr, "birthday: saved participation", "email", email(wr.S, wr.ID), "level", in.Level)
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
-			"clear-participation": api.Do(func(w BirthdaysWorld, q api.Query, key string) bool {
-				return birthdayCan(w.Model.canClearParticipation(q.Actor, email(w, key)))
-			}, func(wr api.Write[BirthdaysWorld], _ serve.None) error {
-				ops, err := wr.S.Model.deleteParticipation(wr.Query.Actor, email(wr.S, wr.ID))
-				birthdayLogAfter(wr, "birthday: removed participation", "email", email(wr.S, wr.ID))
-				return r.stage(wr, ops, err)
+			"clear-participation": api.Do(func(m *Model, q api.Query, key string) bool {
+				return permitted(m.Birthdays.canClearParticipation(q.Actor, email(m, key)))
+			}, func(wr api.Write[*Model], _ serve.None) error {
+				ops, err := wr.S.Birthdays.deleteParticipation(wr.Query.Actor, email(wr.S, wr.ID))
+				logAfter(wr, "birthday: removed participation", "email", email(wr.S, wr.ID))
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
-			"note": api.Do(func(w BirthdaysWorld, q api.Query, key string) bool {
-				return birthdayCan(w.Model.canAddNote(q.Actor, email(w, key)))
-			}, func(wr api.Write[BirthdaysWorld], in struct {
+			"note": api.Do(func(m *Model, q api.Query, key string) bool {
+				return permitted(m.Birthdays.canAddNote(q.Actor, email(m, key)))
+			}, func(wr api.Write[*Model], in struct {
 				Note string `json:"note"`
 			}) error {
-				ops, err := wr.S.Model.addNote(wr.Query.Actor, email(wr.S, wr.ID), in.Note, wr.Query.Now)
-				birthdayLogAfter(wr, "birthday: added note", "email", email(wr.S, wr.ID))
-				return r.stage(wr, ops, err)
+				ops, err := wr.S.Birthdays.addNote(wr.Query.Actor, email(wr.S, wr.ID), in.Note, wr.Query.Now)
+				logAfter(wr, "birthday: added note", "email", email(wr.S, wr.ID))
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
 		},
 	}
 }
 
-func (r birthdayResources) outreachAction(contacted bool) api.Action[BirthdaysWorld] {
-	return api.Do(func(w BirthdaysWorld, q api.Query, key string) bool {
-		return birthdayCan(w.Model.canOutreach(q.Actor, w.emails[key], contacted, q.Now))
-	}, func(wr api.Write[BirthdaysWorld], _ serve.None) error {
-		ops, err := wr.S.Model.outreach(wr.Query.Actor, wr.S.emails[wr.ID], contacted, wr.Query.Now)
-		birthdayLogAfter(wr, "birthday: outreach", "email", wr.S.emails[wr.ID], "contacted", contacted)
-		return r.stage(wr, ops, err)
+func (r birthdayResources) outreachAction(contacted bool) api.Action[*Model] {
+	return api.Do(func(m *Model, q api.Query, key string) bool {
+		return permitted(m.Birthdays.canOutreach(q.Actor, m.Birthdays.staffEmails[key], contacted, q.Now))
+	}, func(wr api.Write[*Model], _ serve.None) error {
+		ops, err := wr.S.Birthdays.outreach(wr.Query.Actor, wr.S.Birthdays.staffEmails[wr.ID], contacted, wr.Query.Now)
+		logAfter(wr, "birthday: outreach", "email", wr.S.Birthdays.staffEmails[wr.ID], "contacted", contacted)
+		return r.store.stage(wr, birthdaysAppName, ops, err)
 	})
 }
 
-func (w BirthdaysWorld) donationIn(email, year string) []string {
-	if _, ok := w.Model.Donation(email, year); ok {
-		return []string{w.Model.donationID(email, year)}
+func (m *Birthdays) donationIn(email, year string) []string {
+	if _, ok := m.Donation(email, year); ok {
+		return []string{m.donationID(email, year)}
 	}
 	return nil
 }
@@ -450,57 +413,57 @@ func (m *Birthdays) donationByID(key string) (Donation, bool) {
 	return m.Donations[k], true
 }
 
-func (r birthdayResources) donations() api.Type[BirthdaysWorld] {
-	used := func(on bool) api.Action[BirthdaysWorld] {
-		return api.Do(func(w BirthdaysWorld, q api.Query, key string) bool {
-			d, _ := w.Model.donationByID(key)
-			return birthdayCan(w.Model.canMarkUsed(q.Actor, d, on))
-		}, func(wr api.Write[BirthdaysWorld], _ serve.None) error {
-			d, _ := wr.S.Model.donationByID(wr.ID)
-			ops, err := wr.S.Model.markUsed(wr.Query.Actor, d, on, wr.Query.Now)
-			birthdayLogAfter(wr, "birthday: marked donation", "used", on, "email", d.Email, "year", d.Year)
-			return r.stage(wr, ops, err)
+func (r birthdayResources) donations() api.Type[*Model] {
+	used := func(on bool) api.Action[*Model] {
+		return api.Do(func(m *Model, q api.Query, key string) bool {
+			d, _ := m.Birthdays.donationByID(key)
+			return permitted(m.Birthdays.canMarkUsed(q.Actor, d, on))
+		}, func(wr api.Write[*Model], _ serve.None) error {
+			d, _ := wr.S.Birthdays.donationByID(wr.ID)
+			ops, err := wr.S.Birthdays.markUsed(wr.Query.Actor, d, on, wr.Query.Now)
+			logAfter(wr, "birthday: marked donation", "used", on, "email", d.Email, "year", d.Year)
+			return r.store.stage(wr, birthdaysAppName, ops, err)
 		})
 	}
-	return api.Type[BirthdaysWorld]{
+	return api.Type[*Model]{
 		Name:  "donations",
 		Shape: donationResource{},
-		Has:   func(w BirthdaysWorld, key string) bool { _, ok := w.Model.donationByID(key); return ok },
-		Get: func(w BirthdaysWorld, q api.Query, key string) (any, bool) {
-			d, ok := w.Model.donationByID(key)
-			if !ok || !sees(w, q) {
+		Has:   func(m *Model, key string) bool { _, ok := m.Birthdays.donationByID(key); return ok },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			d, ok := m.Birthdays.donationByID(key)
+			if !ok || !birthdaySees(m, q) {
 				return nil, false
 			}
 			return donationResource{Year: d.Year, Charity: d.Charity, Note: d.Note, RecordedOn: d.RecordedOn, RecordedBy: d.RecordedBy, UsedOn: d.UsedOn, UsedBy: d.UsedBy}, true
 		},
-		List: func(w BirthdaysWorld, q api.Query) []string {
-			if !sees(w, q) {
+		List: func(m *Model, q api.Query) []string {
+			if !birthdaySees(m, q) {
 				return []string{}
 			}
 			out := []string{}
-			for key := range w.Model.donationIDs {
+			for key := range m.Birthdays.donationIDs {
 				out = append(out, key)
 			}
 			slices.Sort(out)
 			return out
 		},
-		Relations: map[string]api.Relation[BirthdaysWorld]{
-			"charity": {Type: "charities", List: func(w BirthdaysWorld, _ api.Query, key string) []string {
-				d, _ := w.Model.donationByID(key)
+		Relations: map[string]api.Relation[*Model]{
+			"charity": {Type: "charities", List: func(m *Model, _ api.Query, key string) []string {
+				d, _ := m.Birthdays.donationByID(key)
 				return []string{d.Charity}
 			}},
 		},
-		Actions: map[string]api.Action[BirthdaysWorld]{
+		Actions: map[string]api.Action[*Model]{
 			"use":   used(true),
 			"unuse": used(false),
-			"delete": api.Do(func(w BirthdaysWorld, q api.Query, key string) bool {
-				d, _ := w.Model.donationByID(key)
-				return birthdayCan(w.Model.canChangeDonation(q.Actor, d))
-			}, func(wr api.Write[BirthdaysWorld], _ serve.None) error {
-				d, _ := wr.S.Model.donationByID(wr.ID)
-				ops, err := wr.S.Model.deleteDonation(wr.Query.Actor, d)
-				birthdayLogAfter(wr, "birthday: removed donation", "email", d.Email, "year", d.Year)
-				return r.stage(wr, ops, err)
+			"delete": api.Do(func(m *Model, q api.Query, key string) bool {
+				d, _ := m.Birthdays.donationByID(key)
+				return permitted(m.Birthdays.canChangeDonation(q.Actor, d))
+			}, func(wr api.Write[*Model], _ serve.None) error {
+				d, _ := wr.S.Birthdays.donationByID(wr.ID)
+				ops, err := wr.S.Birthdays.deleteDonation(wr.Query.Actor, d)
+				logAfter(wr, "birthday: removed donation", "email", d.Email, "year", d.Year)
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
 		},
 	}
@@ -514,100 +477,100 @@ func (m *Birthdays) noteByID(key string) (BirthdayNote, bool) {
 	return m.Notes[i], true
 }
 
-func (r birthdayResources) notes() api.Type[BirthdaysWorld] {
-	return api.Type[BirthdaysWorld]{
+func (r birthdayResources) notes() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "birthday-notes",
 		Shape: noteResource{},
-		Has:   func(w BirthdaysWorld, key string) bool { _, ok := w.Model.noteByID(key); return ok },
-		Get: func(w BirthdaysWorld, q api.Query, key string) (any, bool) {
-			n, ok := w.Model.noteByID(key)
-			if !ok || !sees(w, q) {
+		Has:   func(m *Model, key string) bool { _, ok := m.Birthdays.noteByID(key); return ok },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			n, ok := m.Birthdays.noteByID(key)
+			if !ok || !birthdaySees(m, q) {
 				return nil, false
 			}
 			return noteResource{Note: n.Note, AddedBy: n.AddedBy, Added: n.Added}, true
 		},
-		List: func(w BirthdaysWorld, q api.Query) []string {
-			if !sees(w, q) {
+		List: func(m *Model, q api.Query) []string {
+			if !birthdaySees(m, q) {
 				return []string{}
 			}
 			out := []string{}
-			for _, n := range w.Model.Notes {
-				out = append(out, w.Model.noteID(n))
+			for _, n := range m.Birthdays.Notes {
+				out = append(out, m.Birthdays.noteID(n))
 			}
 			return out
 		},
-		Relations: map[string]api.Relation[BirthdaysWorld]{
-			"author": {Type: "people", List: func(w BirthdaysWorld, _ api.Query, key string) []string {
-				n, _ := w.Model.noteByID(key)
-				return w.personID(n.AddedBy)
+		Relations: map[string]api.Relation[*Model]{
+			"author": {Type: "people", List: func(m *Model, _ api.Query, key string) []string {
+				n, _ := m.Birthdays.noteByID(key)
+				return m.personID(n.AddedBy)
 			}},
 		},
-		Actions: map[string]api.Action[BirthdaysWorld]{
-			"delete": api.Do(func(w BirthdaysWorld, q api.Query, key string) bool {
-				n, _ := w.Model.noteByID(key)
-				return birthdayCan(w.Model.canDeleteNote(q.Actor, n))
-			}, func(wr api.Write[BirthdaysWorld], _ serve.None) error {
-				n, _ := wr.S.Model.noteByID(wr.ID)
-				ops, err := wr.S.Model.deleteNote(wr.Query.Actor, n)
-				birthdayLogAfter(wr, "birthday: removed note", "email", n.Email)
-				return r.stage(wr, ops, err)
+		Actions: map[string]api.Action[*Model]{
+			"delete": api.Do(func(m *Model, q api.Query, key string) bool {
+				n, _ := m.Birthdays.noteByID(key)
+				return permitted(m.Birthdays.canDeleteNote(q.Actor, n))
+			}, func(wr api.Write[*Model], _ serve.None) error {
+				n, _ := wr.S.Birthdays.noteByID(wr.ID)
+				ops, err := wr.S.Birthdays.deleteNote(wr.Query.Actor, n)
+				logAfter(wr, "birthday: removed note", "email", n.Email)
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
 		},
 	}
 }
 
-func (r birthdayResources) charities() api.Type[BirthdaysWorld] {
-	return api.Type[BirthdaysWorld]{
+func (r birthdayResources) charities() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "charities",
 		Shape: charityResource{},
-		Has:   func(w BirthdaysWorld, key string) bool { return w.Model.Charity(key) != nil },
-		Get: func(w BirthdaysWorld, q api.Query, key string) (any, bool) {
-			c := w.Model.Charity(key)
-			if c == nil || !sees(w, q) {
+		Has:   func(m *Model, key string) bool { return m.Birthdays.Charity(key) != nil },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			c := m.Birthdays.Charity(key)
+			if c == nil || !birthdaySees(m, q) {
 				return nil, false
 			}
 			return charityResource{Charity: *c, Path: CharityPath(c.Name), App: birthdaysHost}, true
 		},
-		List: func(w BirthdaysWorld, q api.Query) []string {
-			if !sees(w, q) {
+		List: func(m *Model, q api.Query) []string {
+			if !birthdaySees(m, q) {
 				return []string{}
 			}
 			out := []string{}
-			for _, c := range w.Model.Charities {
+			for _, c := range m.Birthdays.Charities {
 				out = append(out, c.ID)
 			}
 			return out
 		},
-		Aliases: func(w BirthdaysWorld) map[string]string {
+		Aliases: func(m *Model) map[string]string {
 			out := map[string]string{}
-			for _, c := range w.Model.Charities {
+			for _, c := range m.Birthdays.Charities {
 				out[c.Name] = c.ID
 			}
 			return out
 		},
-		Create: api.Make(func(wr api.Write[BirthdaysWorld], in charityEdit) (string, error) {
+		Create: api.Make(func(wr api.Write[*Model], in charityEdit) (string, error) {
 			key := id.New(wr.Taken)
-			ops, err := wr.S.Model.addCharity(wr.Query.Actor, in, key, wr.Query.Now)
-			birthdayLogAfter(wr, "birthday: added charity", "id", key, "charity", in.Name)
-			return key, r.stage(wr, ops, err)
+			ops, err := wr.S.Birthdays.addCharity(wr.Query.Actor, in, key, wr.Query.Now)
+			logAfter(wr, "birthday: added charity", "id", key, "charity", in.Name)
+			return key, r.store.stage(wr, birthdaysAppName, ops, err)
 		}),
-		Actions: map[string]api.Action[BirthdaysWorld]{
-			"edit": api.Do(func(w BirthdaysWorld, q api.Query, _ string) bool { return birthdayCan(w.Model.requireTeam(q.Actor)) }, func(wr api.Write[BirthdaysWorld], in charityEdit) error {
-				ops, err := wr.S.Model.editCharity(wr.Query.Actor, wr.S.Model.Charity(wr.ID), in)
-				birthdayLogAfter(wr, "birthday: edited charity", "id", wr.ID, "charity", in.Name)
-				return r.stage(wr, ops, err)
+		Actions: map[string]api.Action[*Model]{
+			"edit": api.Do(func(m *Model, q api.Query, _ string) bool { return permitted(m.Birthdays.requireTeam(q.Actor)) }, func(wr api.Write[*Model], in charityEdit) error {
+				ops, err := wr.S.Birthdays.editCharity(wr.Query.Actor, wr.S.Birthdays.Charity(wr.ID), in)
+				logAfter(wr, "birthday: edited charity", "id", wr.ID, "charity", in.Name)
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
-			"allow": api.Do(func(_ BirthdaysWorld, q api.Query, _ string) bool { return birthdayCan(requireAdmin(q.Actor)) }, func(wr api.Write[BirthdaysWorld], in charityAllowance) error {
-				ops, err := allowCharity(wr.Query.Actor, wr.S.Model.Charity(wr.ID), in)
-				birthdayLogAfter(wr, "birthday: allowed charity", "id", wr.ID, "allowed", in.Allowed)
-				return r.stage(wr, ops, err)
+			"allow": api.Do(func(_ *Model, q api.Query, _ string) bool { return permitted(requireAdmin(q.Actor)) }, func(wr api.Write[*Model], in charityAllowance) error {
+				ops, err := allowCharity(wr.Query.Actor, wr.S.Birthdays.Charity(wr.ID), in)
+				logAfter(wr, "birthday: allowed charity", "id", wr.ID, "allowed", in.Allowed)
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
-			"delete": api.Do(func(w BirthdaysWorld, q api.Query, key string) bool {
-				return birthdayCan(w.Model.canDeleteCharity(q.Actor, w.Model.Charity(key)))
-			}, func(wr api.Write[BirthdaysWorld], _ serve.None) error {
-				ops, err := wr.S.Model.deleteCharity(wr.Query.Actor, wr.S.Model.Charity(wr.ID))
-				birthdayLogAfter(wr, "birthday: removed charity", "id", wr.ID)
-				return r.stage(wr, ops, err)
+			"delete": api.Do(func(m *Model, q api.Query, key string) bool {
+				return permitted(m.Birthdays.canDeleteCharity(q.Actor, m.Birthdays.Charity(key)))
+			}, func(wr api.Write[*Model], _ serve.None) error {
+				ops, err := wr.S.Birthdays.deleteCharity(wr.Query.Actor, wr.S.Birthdays.Charity(wr.ID))
+				logAfter(wr, "birthday: removed charity", "id", wr.ID)
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
 		},
 	}
@@ -617,65 +580,65 @@ type newsletterDateBody struct {
 	Date string `json:"date"`
 }
 
-func (r birthdayResources) newsletterDates() api.Type[BirthdaysWorld] {
-	return api.Type[BirthdaysWorld]{
+func (r birthdayResources) newsletterDates() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "newsletter-dates",
 		Shape: newsletterDateResource{},
-		Has:   func(w BirthdaysWorld, key string) bool { return w.Model.NewsletterDate(key) != nil },
-		Get: func(w BirthdaysWorld, q api.Query, key string) (any, bool) {
-			n := w.Model.NewsletterDate(key)
-			if n == nil || !sees(w, q) {
+		Has:   func(m *Model, key string) bool { return m.Birthdays.NewsletterDate(key) != nil },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			n := m.Birthdays.NewsletterDate(key)
+			if n == nil || !birthdaySees(m, q) {
 				return nil, false
 			}
 			return newsletterDateResource{Date: n.Date, Path: NewsletterPath(n.Date), App: birthdaysHost}, true
 		},
-		List: func(w BirthdaysWorld, q api.Query) []string {
-			if !sees(w, q) {
+		List: func(m *Model, q api.Query) []string {
+			if !birthdaySees(m, q) {
 				return []string{}
 			}
 			out := []string{}
-			for _, n := range w.Model.NewsletterDates {
+			for _, n := range m.Birthdays.NewsletterDates {
 				out = append(out, n.ID)
 			}
 			return out
 		},
-		Aliases: func(w BirthdaysWorld) map[string]string {
+		Aliases: func(m *Model) map[string]string {
 			out := map[string]string{}
-			for _, n := range w.Model.NewsletterDates {
+			for _, n := range m.Birthdays.NewsletterDates {
 				out[n.Date] = n.ID
 			}
 			return out
 		},
-		Create: api.Make(func(wr api.Write[BirthdaysWorld], in newsletterDateBody) (string, error) {
+		Create: api.Make(func(wr api.Write[*Model], in newsletterDateBody) (string, error) {
 			key := id.New(wr.Taken)
-			ops, date, err := wr.S.Model.addNewsletterDate(wr.Query.Actor, in.Date, key)
-			birthdayLogAfter(wr, "birthday: added newsletter date", "id", key, "date", date)
-			return key, r.stage(wr, ops, err)
+			ops, date, err := wr.S.Birthdays.addNewsletterDate(wr.Query.Actor, in.Date, key)
+			logAfter(wr, "birthday: added newsletter date", "id", key, "date", date)
+			return key, r.store.stage(wr, birthdaysAppName, ops, err)
 		}),
-		Actions: map[string]api.Action[BirthdaysWorld]{
-			"move": api.Do(func(_ BirthdaysWorld, q api.Query, _ string) bool { return birthdayCan(requireAdmin(q.Actor)) }, func(wr api.Write[BirthdaysWorld], in newsletterDateBody) error {
-				n := wr.S.Model.NewsletterDate(wr.ID)
-				birthdayLogAfter(wr, "birthday: moved newsletter date", "id", n.ID, "from", n.Date, "to", in.Date)
-				ops, err := wr.S.Model.moveNewsletterDate(wr.Query.Actor, n, in.Date)
-				return r.stage(wr, ops, err)
+		Actions: map[string]api.Action[*Model]{
+			"move": api.Do(func(_ *Model, q api.Query, _ string) bool { return permitted(requireAdmin(q.Actor)) }, func(wr api.Write[*Model], in newsletterDateBody) error {
+				n := wr.S.Birthdays.NewsletterDate(wr.ID)
+				logAfter(wr, "birthday: moved newsletter date", "id", n.ID, "from", n.Date, "to", in.Date)
+				ops, err := wr.S.Birthdays.moveNewsletterDate(wr.Query.Actor, n, in.Date)
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
-			"delete": api.Do(func(_ BirthdaysWorld, q api.Query, _ string) bool { return birthdayCan(requireAdmin(q.Actor)) }, func(wr api.Write[BirthdaysWorld], _ serve.None) error {
-				n := wr.S.Model.NewsletterDate(wr.ID)
-				birthdayLogAfter(wr, "birthday: removed newsletter date", "id", n.ID, "date", n.Date)
+			"delete": api.Do(func(_ *Model, q api.Query, _ string) bool { return permitted(requireAdmin(q.Actor)) }, func(wr api.Write[*Model], _ serve.None) error {
+				n := wr.S.Birthdays.NewsletterDate(wr.ID)
+				logAfter(wr, "birthday: removed newsletter date", "id", n.ID, "date", n.Date)
 				ops, err := deleteNewsletterDate(wr.Query.Actor, n)
-				return r.stage(wr, ops, err)
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
-			"share": api.Do(func(w BirthdaysWorld, q api.Query, key string) bool {
-				return birthdayCan(w.Model.requireTeam(q.Actor)) && len(w.toExport(w.Model.NewsletterDate(key).Date, q.Now)) > 0
-			}, func(wr api.Write[BirthdaysWorld], _ serve.None) error {
-				n := wr.S.Model.NewsletterDate(wr.ID)
+			"share": api.Do(func(m *Model, q api.Query, key string) bool {
+				return permitted(m.Birthdays.requireTeam(q.Actor)) && len(m.toExport(m.Birthdays.NewsletterDate(key).Date, q.Now)) > 0
+			}, func(wr api.Write[*Model], _ serve.None) error {
+				n := wr.S.Birthdays.NewsletterDate(wr.ID)
 				items := wr.S.toExport(n.Date, wr.Query.Now)
-				rows, marks, err := wr.S.Model.shareIssue(wr.Query.Actor, items, wr.Query.Now)
+				rows, marks, err := wr.S.Birthdays.shareIssue(wr.Query.Actor, items, wr.Query.Now)
 				if err != nil {
 					return err
 				}
-				birthdayLogAfter(wr, "birthday: copied to the shared sheet", "issue", n.Date, "copied", len(rows))
-				return r.cache.stageExport(wr.Tx, rows, marks)
+				logAfter(wr, "birthday: copied to the shared sheet", "issue", n.Date, "copied", len(rows))
+				return r.store.stageExport(wr.Tx, rows, marks)
 			}),
 		},
 	}
@@ -689,60 +652,60 @@ func (m *Birthdays) teamByID(key string) (TeamMember, bool) {
 	return m.Team[i], true
 }
 
-func (r birthdayResources) team() api.Type[BirthdaysWorld] {
-	return api.Type[BirthdaysWorld]{
+func (r birthdayResources) team() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "birthday-team",
 		Shape: teamResource{},
-		Has:   func(w BirthdaysWorld, key string) bool { _, ok := w.Model.teamByID(key); return ok },
-		Get: func(w BirthdaysWorld, q api.Query, key string) (any, bool) {
-			t, ok := w.Model.teamByID(key)
-			if !ok || !sees(w, q) {
+		Has:   func(m *Model, key string) bool { _, ok := m.Birthdays.teamByID(key); return ok },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			t, ok := m.Birthdays.teamByID(key)
+			if !ok || !birthdaySees(m, q) {
 				return nil, false
 			}
 			out := teamResource{Role: t.Role, Me: mine{Mine: t.Email == q.Actor.Email}}
-			if w.personID(t.Email) == nil {
+			if m.personID(t.Email) == nil {
 				out.Email = t.Email
 			}
 			return out, true
 		},
-		List: func(w BirthdaysWorld, q api.Query) []string {
-			if !sees(w, q) {
+		List: func(m *Model, q api.Query) []string {
+			if !birthdaySees(m, q) {
 				return []string{}
 			}
 			out := []string{}
-			for _, t := range w.Model.Team {
-				out = append(out, w.Model.teamID(t))
+			for _, t := range m.Birthdays.Team {
+				out = append(out, m.Birthdays.teamID(t))
 			}
 			return out
 		},
-		Relations: map[string]api.Relation[BirthdaysWorld]{
-			"person": {Type: "people", List: func(w BirthdaysWorld, _ api.Query, key string) []string {
-				t, _ := w.Model.teamByID(key)
-				return w.personID(t.Email)
+		Relations: map[string]api.Relation[*Model]{
+			"person": {Type: "people", List: func(m *Model, _ api.Query, key string) []string {
+				t, _ := m.Birthdays.teamByID(key)
+				return m.personID(t.Email)
 			}},
 		},
-		Create: api.Make(func(wr api.Write[BirthdaysWorld], in TeamMember) (string, error) {
-			ops, member, err := wr.S.Model.addTeamMember(wr.Query.Actor, in.Email, in.Role)
+		Create: api.Make(func(wr api.Write[*Model], in TeamMember) (string, error) {
+			ops, member, err := wr.S.Birthdays.addTeamMember(wr.Query.Actor, in.Email, in.Role)
 			if err != nil {
 				return "", err
 			}
-			birthdayLogAfter(wr, "birthday: added team member", "email", member.Email, "role", member.Role)
+			logAfter(wr, "birthday: added team member", "email", member.Email, "role", member.Role)
 			if member.Email == wr.Query.Actor.Email {
 				ctx := wr.Request.Context()
 				wr.Tx.After(func() {
-					if err := r.joinHome(ctx, member.Email); err != nil {
+					if err := r.store.GrantApp(ctx, "birthday", member.Email); err != nil {
 						slog.ErrorContext(ctx, "birthday: put a joiner on the app's list", "error", err, "email", member.Email)
 					}
 				})
 			}
-			return wr.S.Model.teamID(member), r.stage(wr, ops, nil)
+			return wr.S.Birthdays.teamID(member), r.store.stage(wr, birthdaysAppName, ops, nil)
 		}),
-		Actions: map[string]api.Action[BirthdaysWorld]{
-			"delete": api.Do(func(_ BirthdaysWorld, q api.Query, _ string) bool { return birthdayCan(requireAdmin(q.Actor)) }, func(wr api.Write[BirthdaysWorld], _ serve.None) error {
-				t, _ := wr.S.Model.teamByID(wr.ID)
+		Actions: map[string]api.Action[*Model]{
+			"delete": api.Do(func(_ *Model, q api.Query, _ string) bool { return permitted(requireAdmin(q.Actor)) }, func(wr api.Write[*Model], _ serve.None) error {
+				t, _ := wr.S.Birthdays.teamByID(wr.ID)
 				ops, err := removeTeamMember(wr.Query.Actor, t)
-				birthdayLogAfter(wr, "birthday: removed team member", "email", t.Email, "role", t.Role)
-				return r.stage(wr, ops, err)
+				logAfter(wr, "birthday: removed team member", "email", t.Email, "role", t.Role)
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
 		},
 	}
@@ -761,35 +724,35 @@ func (m *Birthdays) standing(actor access.Actor) birthdayStanding {
 	return out
 }
 
-func (r birthdayResources) settings() api.Type[BirthdaysWorld] {
-	return api.Type[BirthdaysWorld]{
+func (r birthdayResources) settings() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "birthday-settings",
 		Shape: birthdaySettingsResource{},
-		Has:   func(w BirthdaysWorld, key string) bool { return key == w.Model.settingsID() },
-		Get: func(w BirthdaysWorld, q api.Query, key string) (any, bool) {
-			if key != w.Model.settingsID() {
+		Has:   func(m *Model, key string) bool { return key == m.Birthdays.settingsID() },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			if key != m.Birthdays.settingsID() {
 				return nil, false
 			}
-			year := w.Model.yearOf(q.Now)
+			year := m.Birthdays.yearOf(q.Now)
 			out := birthdaySettingsResource{
 				Year: yearResource{Current: year.Label, Last: ShiftYearSpan(year.Label, -1), Start: dateCell(year.Start), End: dateCell(year.End.AddDate(0, 0, -1))},
-				Me:   w.Model.standing(q.Actor),
+				Me:   m.Birthdays.standing(q.Actor),
 			}
-			if sees(w, q) {
-				s := w.Model.Settings
+			if birthdaySees(m, q) {
+				s := m.Birthdays.Settings
 				out.Settings = &s
 			}
 			return out, true
 		},
-		List: func(w BirthdaysWorld, _ api.Query) []string { return []string{w.Model.settingsID()} },
-		Relations: map[string]api.Relation[BirthdaysWorld]{
-			"viewer": {Type: "people", List: func(w BirthdaysWorld, q api.Query, _ string) []string { return w.personID(q.Actor.Email) }},
+		List: func(m *Model, _ api.Query) []string { return []string{m.Birthdays.settingsID()} },
+		Relations: map[string]api.Relation[*Model]{
+			"viewer": {Type: "people", List: func(m *Model, q api.Query, _ string) []string { return m.personID(q.Actor.Email) }},
 		},
-		Actions: map[string]api.Action[BirthdaysWorld]{
-			"edit": api.Do(func(_ BirthdaysWorld, q api.Query, _ string) bool { return birthdayCan(requireAdmin(q.Actor)) }, func(wr api.Write[BirthdaysWorld], in BirthdaysSettings) error {
+		Actions: map[string]api.Action[*Model]{
+			"edit": api.Do(func(_ *Model, q api.Query, _ string) bool { return permitted(requireAdmin(q.Actor)) }, func(wr api.Write[*Model], in BirthdaysSettings) error {
 				ops, err := birthdaySettingsOps(wr.Query.Actor, in)
-				birthdayLogAfter(wr, "birthday: changed the settings")
-				return r.stage(wr, ops, err)
+				logAfter(wr, "birthday: changed the settings")
+				return r.store.stage(wr, birthdaysAppName, ops, err)
 			}),
 		},
 	}
@@ -803,39 +766,39 @@ func (m *Birthdays) inviteByID(key string) (BirthdayInvite, bool) {
 	return m.Invites[i], true
 }
 
-func (r birthdayResources) invites() api.Type[BirthdaysWorld] {
-	return api.Type[BirthdaysWorld]{
+func (r birthdayResources) invites() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "birthday-invites",
 		Shape: inviteResource{},
-		Has:   func(w BirthdaysWorld, key string) bool { _, ok := w.Model.inviteByID(key); return ok },
-		Get: func(w BirthdaysWorld, q api.Query, key string) (any, bool) {
-			inv, ok := w.Model.inviteByID(key)
-			if !ok || !sees(w, q) {
+		Has:   func(m *Model, key string) bool { _, ok := m.Birthdays.inviteByID(key); return ok },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			inv, ok := m.Birthdays.inviteByID(key)
+			if !ok || !birthdaySees(m, q) {
 				return nil, false
 			}
 			return inviteResource{Year: inv.Year, RequestedOn: inv.RequestedOn, RequestedBy: inv.RequestedBy, SentTo: inv.SentTo, AskDay: inv.AskDay, SentOn: inv.SentOn}, true
 		},
-		List: func(w BirthdaysWorld, q api.Query) []string {
-			if !sees(w, q) {
+		List: func(m *Model, q api.Query) []string {
+			if !birthdaySees(m, q) {
 				return []string{}
 			}
 			out := []string{}
-			for _, inv := range w.Model.Invites {
+			for _, inv := range m.Birthdays.Invites {
 				out = append(out, inv.ID)
 			}
 			return out
 		},
-		Create: api.Make(func(wr api.Write[BirthdaysWorld], in struct {
+		Create: api.Make(func(wr api.Write[*Model], in struct {
 			Birthday string `json:"birthday"`
 		}) (string, error) {
-			address, ok := wr.S.emails[in.Birthday]
+			address, ok := wr.S.Birthdays.staffEmails[in.Birthday]
 			if !ok {
 				return "", access.Missing("no birthday %s", in.Birthday)
 			}
 			key := id.New(wr.Taken)
-			ops, err := wr.S.Model.requestInvite(wr.Query.Actor, address, key, wr.Query.Now)
-			birthdayLogAfter(wr, "birthday: invite requested", "id", key, "email", address)
-			return key, r.stage(wr, ops, err)
+			ops, err := wr.S.Birthdays.requestInvite(wr.Query.Actor, address, key, wr.Query.Now)
+			logAfter(wr, "birthday: invite requested", "id", key, "email", address)
+			return key, r.store.stage(wr, birthdaysAppName, ops, err)
 		}),
 	}
 }

@@ -14,7 +14,7 @@ type groupAccess struct {
 func (v *viewer) readableGroups() map[string]bool {
 	v.access.once.Do(func() {
 		v.access.names = map[string]bool{}
-		sources := v.sources.LoopSources()
+		sources := v.audience()
 		for _, g := range v.loop.Groups {
 			if g.MailReadableBy(v.email, sources) {
 				v.access.names[g.Name] = true

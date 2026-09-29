@@ -120,12 +120,8 @@ func (m *Parties) MagicTags(directory *Directory, email string, now time.Time) [
 	return out
 }
 
-func (c *PartiesCache) Pending(email string) []Approval {
+func (m *Parties) pending() []Approval {
 	out := []Approval{}
-	if !c.IsAdmin(email) {
-		return out
-	}
-	m := c.Model()
 	for _, p := range m.Parties {
 		if p.Status == StatusPending {
 			out = append(out, Approval{App: "celebrate", Title: p.Title, Start: p.Start, Path: m.PathOf(p)})

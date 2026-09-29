@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"maps"
 	"slices"
 	"sort"
@@ -18,12 +17,11 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
-	"heliosian/internal/data"
 	"heliosian/internal/store"
 )
 
 const (
-	documentsAppName         = "artifacts"
+	DocumentsApp             = "artifacts"
 	documentsTab             = "Documents"
 	DocumentsFolder          = "artifacts"
 	lexicalWeight            = 0.15
@@ -408,29 +406,7 @@ func quotes(words string, taken []string) bool {
 	return false
 }
 
-type DocumentsCache struct {
-	*store.Store[*Documents]
-	documents *documentObjects
-}
-
-func NewDocumentsCache(source data.Source, writer data.Writer, objects *blob.Bucket, embedder *artifacts.Vertex, queue *store.Queue) (*DocumentsCache, error) {
-	d := &documentObjects{objects: objects, embedder: embedder, held: map[string]*Document{}}
-	s, err := store.New(store.Spec[*Documents]{
-		App:   documentsAppName,
-		Tabs:  []store.Tab{{Name: documentsTab, Columns: DocumentColumns, Key: []string{"Key"}}},
-		Build: d.build,
-		Loaded: func(m *Documents, took time.Duration) {
-			d.keep(m)
-			oldest, newest := m.Span()
-			slog.Info("loaded artifacts model", "documents", len(m.Documents), "fetched", m.Fetched, "chunks", m.Chunks(),
-				"channels", len(m.Channels()), "oldest", oldest, "newest", newest, "took", took.Round(time.Millisecond))
-		},
-	}, source, writer, queue)
-	if err != nil {
-		return nil, err
-	}
-	return &DocumentsCache{Store: s, documents: d}, nil
-}
+var documentsTabs = []store.Tab{{Name: documentsTab, Columns: DocumentColumns, Key: []string{"Key"}}}
 
 func splitPoints(cell string) []string {
 	out := []string{}
@@ -442,8 +418,8 @@ func splitPoints(cell string) []string {
 	return out
 }
 
-func (c *DocumentsCache) SetPoints(ctx context.Context, actor access.Actor, key string, points []string, audience, judged string) error {
-	return c.Commit(ctx, actor, c.Model().setPoints(actor, key, points, audience, judged)...)
+func (s *Store) SetPoints(ctx context.Context, actor access.Actor, key string, points []string, audience, judged string) error {
+	return s.Commit(ctx, actor, DocumentsApp, s.Model().Documents.setPoints(actor, key, points, audience, judged)...)
 }
 
 func AudienceClassrooms(audience string) []string {
@@ -469,10 +445,10 @@ func (d *Document) School() bool {
 	return false
 }
 
-func (c *DocumentsCache) Hold(doc *Document) error {
+func (s *Store) Hold(doc *Document) error {
 	if err := doc.normalize(); err != nil {
 		return err
 	}
-	c.documents.hold(doc)
+	s.documents.hold(doc)
 	return nil
 }

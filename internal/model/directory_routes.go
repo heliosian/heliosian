@@ -5,30 +5,20 @@ import (
 	"strings"
 
 	"heliosian/internal/blob"
-	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 )
 
 type DirectoryRoutes struct {
-	Cache      *DirectoryCache
-	Invites    *InviteTemplatesCache
-	Media      *blob.Store
-	MapsKey    string
-	Parties    *PartiesCache
-	Activities *ActivitiesCache
-	EmailLists *EmailListsCache
+	Store   *Store
+	Media   *blob.Store
+	MapsKey string
 }
 
 func RegisterDirectory(mux *http.ServeMux, d DirectoryRoutes) {
 	mux.HandleFunc("GET /api/directory/model", serve.JSON(d.model))
-	registerTags(mux, d.Cache)
-	registerPeopleAdmin(mux, d.Cache, d.Media)
-	registerInviteTemplates(mux, d.Cache, d.Invites)
-}
-
-func (c *DirectoryCache) Member(email string) bool {
-	model := c.Model()
-	return model.Member(model.Resolve(mail.Normalize(email)))
+	registerTags(mux, d.Store)
+	registerPeopleAdmin(mux, d.Store, d.Media)
+	registerInviteTemplates(mux, d.Store)
 }
 
 type user struct {
@@ -50,9 +40,10 @@ type directoryView struct {
 }
 
 func (d DirectoryRoutes) model(r *http.Request, _ serve.None) (directoryView, error) {
-	v := requestActor(d.Cache, r)
+	m := d.Store.Model()
+	v := m.actor(r, "who")
 	effective := v.Email
-	directory := d.Cache.Model()
+	directory := m.Directory
 	name := directory.DisplayName(effective)
 	return directoryView{
 		Directory:  directory,
@@ -60,7 +51,7 @@ func (d DirectoryRoutes) model(r *http.Request, _ serve.None) (directoryView, er
 		MapsKey:    d.MapsKey,
 		Tags:       directory.Tags(effective),
 		SharedTags: directory.SharedTags(effective),
-		Lists:      append(directory.RoomParentTags(effective), ManagedMagicTags(directory, d.Parties.Model(), d.Activities.Model(), d.EmailLists.Model(), d.Activities, effective, now())...),
+		Lists:      append(directory.RoomParentTags(effective), m.ManagedMagicTags(effective, now())...),
 		EditAnyone: v.May(EditAnyone),
 	}, nil
 }

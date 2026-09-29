@@ -1,17 +1,14 @@
 package model
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	"heliosian/internal/cells"
-	"heliosian/internal/data"
 	"heliosian/internal/id"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
@@ -207,37 +204,18 @@ func buildSystems(tables store.Tables, ids map[string]bool) ([]InviteTemplate, e
 	return systems, nil
 }
 
-type InviteTemplatesCache struct {
-	*store.Store[*InviteTemplates]
+var invitesTabs = []store.Tab{
+	{Name: servicesTab, Columns: ServiceColumns, Key: []string{"Service ID"}},
+	{Name: templatesTab, Columns: TemplateColumns, Key: []string{"Service", store.OrderColumn}},
+	{Name: greetingsTab, Columns: GreetingColumns, Key: []string{"Greeting ID"}},
 }
 
-func NewInviteTemplatesCache(source data.Source, writer data.Writer, queue *store.Queue) (*InviteTemplatesCache, error) {
-	s, err := store.New(store.Spec[*InviteTemplates]{
-		App: invitesApp,
-		Tabs: []store.Tab{
-			{Name: servicesTab, Columns: ServiceColumns, Key: []string{"Service ID"}},
-			{Name: templatesTab, Columns: TemplateColumns, Key: []string{"Service", store.OrderColumn}},
-			{Name: greetingsTab, Columns: GreetingColumns, Key: []string{"Greeting ID"}},
-		},
-		Build: func(_ context.Context, tables store.Tables) (*InviteTemplates, error) {
-			return buildInvites(tables)
-		},
-		Loaded: func(model *InviteTemplates, took time.Duration) {
-			slog.Info("loaded invites", "systems", len(model.Systems), "greetings", len(model.Greetings), "took", took.Round(time.Millisecond))
-		},
-	}, source, writer, queue)
-	if err != nil {
-		return nil, err
-	}
-	return &InviteTemplatesCache{Store: s}, nil
-}
-
-func (i *InviteTemplatesCache) greeting(raw string) (GreetingTemplate, bool) {
+func (m *InviteTemplates) greeting(raw string) (GreetingTemplate, bool) {
 	key, ok := id.Parse(raw)
 	if !ok {
 		return GreetingTemplate{}, false
 	}
-	for _, g := range i.Model().Greetings {
+	for _, g := range m.Greetings {
 		if g.ID == key {
 			return g, true
 		}
@@ -255,10 +233,10 @@ type savedGreeting struct {
 	ID string `json:"id"`
 }
 
-func registerInviteTemplates(mux *http.ServeMux, cache *DirectoryCache, invites *InviteTemplatesCache) {
+func registerInviteTemplates(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /api/directory/invite-templates", serve.JSON(func(r *http.Request, _ serve.None) (inviteTemplatesView, error) {
-		model := invites.Model()
-		return inviteTemplatesView{Systems: model.Systems, Greetings: visibleGreetings(model.Greetings, requestActor(cache, r).Email), Builtins: builtinGreetings}, nil
+		m := s.Model()
+		return inviteTemplatesView{Systems: m.Invites.Systems, Greetings: visibleGreetings(m.Invites.Greetings, m.actor(r, "who").Email), Builtins: builtinGreetings}, nil
 	}))
 
 	mux.HandleFunc("POST /api/directory/greetings", func(w http.ResponseWriter, r *http.Request) {
@@ -268,13 +246,14 @@ func registerInviteTemplates(mux *http.ServeMux, cache *DirectoryCache, invites 
 			return
 		}
 		format := strings.TrimSpace(r.FormValue("format"))
-		actor := requestActor(cache, r)
-		key, ops, err := invites.saveGreeting(actor, format, strings.TrimSpace(r.FormValue("id")), r.FormValue("grouped") == "1", r.FormValue("individual") == "1")
+		m := s.Model()
+		actor := m.actor(r, "who")
+		key, ops, err := m.Invites.saveGreeting(actor, format, strings.TrimSpace(r.FormValue("id")), r.FormValue("grouped") == "1", r.FormValue("individual") == "1")
 		if err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		if err := invites.Commit(r.Context(), actor, ops...); err != nil {
+		if err := s.Commit(r.Context(), actor, invitesApp, ops...); err != nil {
 			serve.Error(w, r, err)
 			return
 		}
@@ -289,13 +268,14 @@ func registerInviteTemplates(mux *http.ServeMux, cache *DirectoryCache, invites 
 			return
 		}
 		key := strings.TrimSpace(r.FormValue("id"))
-		actor := requestActor(cache, r)
-		ops, err := invites.deleteGreeting(actor, key)
+		m := s.Model()
+		actor := m.actor(r, "who")
+		ops, err := m.Invites.deleteGreeting(actor, key)
 		if err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		if err := invites.Commit(r.Context(), actor, ops...); err != nil {
+		if err := s.Commit(r.Context(), actor, invitesApp, ops...); err != nil {
 			serve.Error(w, r, err)
 			return
 		}

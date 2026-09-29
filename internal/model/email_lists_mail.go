@@ -86,8 +86,7 @@ var deliveryBatch = 5 * time.Second
 var mailerActor = access.System("loop mailer")
 
 type mailer struct {
-	cache    *EmailListsCache
-	sources  func() AudienceSources
+	store    *Store
 	mail     ListMail
 	mu       sync.Mutex
 	busy     map[string]bool
@@ -97,10 +96,18 @@ type mailer struct {
 	flushing bool
 }
 
-func newMailer(cache *EmailListsCache, sources func() AudienceSources, mailbox ListMail) *mailer {
-	m := &mailer{cache: cache, sources: sources, mail: mailbox, busy: map[string]bool{}, done: map[string]bool{}, work: make(chan job, 256)}
+func newMailer(s *Store, mailbox ListMail) *mailer {
+	m := &mailer{store: s, mail: mailbox, busy: map[string]bool{}, done: map[string]bool{}, work: make(chan job, 256)}
 	go m.run()
 	return m
+}
+
+func (m *mailer) lists() *EmailLists {
+	return m.store.Model().EmailLists
+}
+
+func (m *mailer) commit(ctx context.Context, ops []store.Op) error {
+	return m.store.Commit(ctx, mailerActor, emailListsAppName, ops...)
 }
 
 func (m *mailer) run() {
@@ -121,7 +128,7 @@ func (m *mailer) take(j job) bool {
 	if m.busy[j.key()] || m.done[j.key()] {
 		return false
 	}
-	for _, msg := range m.cache.Model().Messages {
+	for _, msg := range m.lists().Messages {
 		if msg.ID == j.id && msg.Group == j.group && (msg.State == stateSent || msg.State == stateDropped) {
 			return false
 		}
@@ -137,7 +144,7 @@ func (m *mailer) release(j job) {
 }
 
 func (m *mailer) recover() {
-	for _, msg := range m.cache.Model().Messages {
+	for _, msg := range m.lists().Messages {
 		if msg.State == stateReceived {
 			j := job{id: msg.ID, group: msg.Group, object: msg.Object}
 			if m.take(j) {
@@ -149,7 +156,7 @@ func (m *mailer) recover() {
 }
 
 func (m *mailer) mark(j job, state string, cells store.Row) {
-	if err := m.cache.Commit(context.Background(), mailerActor, markMessage(mailerActor, j.id, j.group, state, cells)...); err != nil {
+	if err := m.commit(context.Background(), markMessage(mailerActor, j.id, j.group, state, cells)); err != nil {
 		slog.Error("loop:mail record", "message", j.id, "group", j.group, "error", err)
 	}
 }
@@ -173,7 +180,7 @@ func localsIn(addresses []string) []string {
 }
 
 func (m *mailer) groupsIn(addresses []string) []*EmailList {
-	lists := m.cache.Model()
+	lists := m.lists()
 	out := []*EmailList{}
 	for _, local := range localsIn(addresses) {
 		g := lists.Resolve(local)
@@ -203,7 +210,7 @@ func (m *mailer) received(ctx context.Context, raw []byte, from, subject string,
 			return fmt.Errorf("archive %s for %s: %w", id, g.Name, err)
 		}
 		cells := store.Row{"Received": time.Now().Format(time.RFC3339), "From": from, "Subject": subject, "State": stateReceived, "Recipients": "", "Object": j.object, "Detail": "", "Message ID": messageID}
-		if err := m.cache.CommitAndWait(ctx, mailerActor, recordMessage(mailerActor, id, g.ID, cells)...); err != nil {
+		if err := m.store.CommitAndWait(ctx, mailerActor, emailListsAppName, recordMessage(mailerActor, id, g.ID, cells)...); err != nil {
 			m.release(j)
 			return fmt.Errorf("record %s for %s: %w", id, g.Name, err)
 		}
@@ -230,14 +237,14 @@ func (m *mailer) flush() {
 	m.pending = nil
 	m.flushing = false
 	m.mu.Unlock()
-	if err := m.cache.Commit(context.Background(), mailerActor, recordDeliveries(mailerActor, rows)...); err != nil {
+	if err := m.commit(context.Background(), recordDeliveries(mailerActor, rows)); err != nil {
 		slog.Error("loop:delivery record", "rows", len(rows), "error", err)
 	}
 }
 
 func (m *mailer) repliesTo(groupID string, lines []mail.HeaderLine) bool {
 	sent := map[string]bool{}
-	for _, msg := range m.cache.Model().Messages {
+	for _, msg := range m.lists().Messages {
 		if msg.State == stateSent && msg.Group == groupID && msg.MessageID != "" {
 			sent[messageKey(msg.MessageID)] = true
 		}
@@ -255,7 +262,7 @@ func (m *mailer) sentAs(groupID, messageID string) bool {
 	if key == "" {
 		return false
 	}
-	for _, msg := range m.cache.Model().Messages {
+	for _, msg := range m.lists().Messages {
 		if msg.Group == groupID && messageKey(msg.MessageID) == key {
 			return true
 		}
@@ -283,7 +290,8 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 		m.mark(j, stateFailed, map[string]string{"Detail": what + ": " + err.Error()})
 		return stateFailed
 	}
-	g := m.cache.Model().Group(j.group)
+	model := m.store.Model()
+	g := model.EmailLists.Group(j.group)
 	if g == nil {
 		return fail("group", fmt.Errorf("the email list is gone"))
 	}
@@ -308,7 +316,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 		m.mark(j, stateDropped, map[string]string{"Detail": reason})
 		return stateDropped
 	}
-	sources := m.sources()
+	sources := model.EmailListAudience(now())
 	sender := sources.Directory.Resolve(strings.ToLower(mail.AddressOf(mail.Header(lines, "from"))))
 	reply := m.repliesTo(g.ID, lines)
 	if !g.PostableBy(sender, reply, sources) {

@@ -198,6 +198,9 @@ type Birthdays struct {
 	noteIDs         map[string]int
 	teamIDs         map[string]int
 	inviteIDs       map[string]int
+	staffEmails     map[string]string
+	staffKeys       map[string]string
+	staffOrder      []string
 }
 
 func reminderKey(email, year, kind string) string {
@@ -648,7 +651,7 @@ func BuildBirthdays(tables store.Tables, idKey []byte) (*Birthdays, error) {
 			SentTo: row["Sent To"], AskDay: row["Ask Day"], SentOn: row["Sent On"],
 		})
 	}
-	m.index()
+	m.indexIDs()
 	return m, nil
 }
 
@@ -662,7 +665,7 @@ func (m *Birthdays) invitesFor(email, year string) []BirthdayInvite {
 	return out
 }
 
-func (m *Birthdays) index() {
+func (m *Birthdays) indexIDs() {
 	for key, d := range m.Donations {
 		m.donationIDs[m.donationID(d.Email, d.Year)] = key
 	}

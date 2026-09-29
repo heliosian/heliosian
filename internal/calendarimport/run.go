@@ -23,9 +23,8 @@ var legendDayTypes = []string{model.NoSchoolDayType, model.EarlyDismissalDayType
 
 type Options struct {
 	Source       data.Source
-	Cache        *model.CalendarCache
+	Store        *model.Store
 	Calendar     *gcal.Service
-	Roster       func() model.Roster
 	AnthropicKey string
 	DryRun       bool
 }
@@ -45,7 +44,7 @@ func begin(ctx context.Context, opts Options) (*run, error) {
 	if opts.DryRun {
 		slog.InfoContext(ctx, "calendar import: dry run, nothing will be written to the sheet")
 	}
-	roster := opts.Roster()
+	roster := opts.Store.Model().Directory.Roster()
 	slog.InfoContext(ctx, "calendar import: roster", "classrooms", len(roster.Classrooms))
 	names := []string{model.GoogleTab, model.PDFTab, model.EnrichmentTab, model.DayTypesTab, model.TagsTab}
 	tabs, err := opts.Source.Tabs(context.Background(), "calendar", names, nil)
@@ -200,7 +199,7 @@ func (r *run) identify(rows, before []map[string]string) {
 	for _, row := range before {
 		known[row["Key"]] = row["Event ID"]
 	}
-	mint := r.opts.Cache.Model().Minter()
+	mint := r.opts.Store.Model().Calendar.Minter()
 	for _, row := range rows {
 		switch {
 		case row["Event ID"] != "":
@@ -230,7 +229,7 @@ func (r *run) write(ctx context.Context, tabs []tabSync) error {
 	}
 	if r.opts.DryRun {
 		slog.InfoContext(ctx, "calendar import: dry run, row changes not committed", "changes", len(ops))
-	} else if err := r.opts.Cache.CommitAndWait(context.Background(), importer, ops...); err != nil {
+	} else if err := r.opts.Store.CommitAndWait(context.Background(), importer, model.CalendarApp, ops...); err != nil {
 		return fmt.Errorf("commit the import: %w", err)
 	}
 	if len(r.failures) > 0 {

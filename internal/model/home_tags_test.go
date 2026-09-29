@@ -19,41 +19,33 @@ func TestRenamingATagKeepsTheAudiencesThatNameIt(t *testing.T) {
 	)
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	none := func() []string { return nil }
-	directory, err := NewDirectoryCache(dir, dir, nil, testkit.None, queue, []byte("test"), none)
-	if err != nil {
-		t.Fatal(err)
-	}
-	parties, err := NewPartiesCache(dir, dir, testkit.All, none, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	activities, err := NewActivitiesCache(dir, dir, testkit.All, none, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c, err := NewHomeCache(dir, dir, testkit.All, none, directory, parties, activities, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
+	outsideSuperAdmin(t, dir)
+	c := sampleStore(t, dir, queue, sampleDeps(sampleKey))
 	key := TagKey(soccerTeamID)
 	rules := []Rule{{Kind: RuleInclude, Tags: []string{key}}}
-	if err := c.Commit(context.Background(), access.System("test"), audienceOps(thingLink+jaysChatID, c.Model().link(jaysChatID).Rules, rules)...); err != nil {
+	if err := c.Commit(context.Background(), access.System("test"), homeAppName, audienceOps(thingLink+jaysChatID, c.Model().Home.link(jaysChatID).Rules, rules)...); err != nil {
 		t.Fatal(err)
 	}
-	a := homeApp{cache: c}
-	if !c.includes(c.Model().link(jaysChatID).Rules, asha) || a.tagLabels(c.Model().Categories, nil, homeAdmin)[key] != "Soccer Team" {
-		t.Fatalf("the audience naming the tag leaves out %s or reads %q", asha, a.tagLabels(c.Model().Categories, nil, homeAdmin)[key])
+	tagLabels := func() map[string]string {
+		m := c.Model()
+		return homeTagLabels(m, m.Home.Categories, nil, homeAdmin)
+	}
+	includes := func() bool {
+		m := c.Model()
+		return m.homeIncludes(m.Home.link(jaysChatID).Rules, asha)
+	}
+	if !includes() || tagLabels()[key] != "Soccer Team" {
+		t.Fatalf("the audience naming the tag leaves out %s or reads %q", asha, tagLabels()[key])
 	}
 	mux := http.NewServeMux()
-	RegisterDirectory(mux, DirectoryRoutes{Cache: directory})
+	RegisterDirectory(mux, DirectoryRoutes{Store: c})
 	if rec := testkit.Form(t, mux, homeAdmin, "/api/directory/tag-rename", url.Values{"tag": {soccerTeamID}, "name": {"Football"}}); rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
-	if !c.includes(c.Model().link(jaysChatID).Rules, asha) {
+	if !includes() {
 		t.Fatalf("the renamed tag's audience leaves out %s", asha)
 	}
-	if got := a.tagLabels(c.Model().Categories, nil, homeAdmin)[key]; got != "Football" {
+	if got := tagLabels()[key]; got != "Football" {
 		t.Fatalf("the audience reads %q after the rename", got)
 	}
 }

@@ -29,16 +29,16 @@ type reminder struct {
 	to   string
 }
 
-func (a birthdaysApp) dueReminders(m *Birthdays, today time.Time) []reminder {
+func (a birthdaysApp) dueReminders(m *Model, today time.Time) []reminder {
 	out := []reminder{}
 	day := today.Format(DateFormat)
-	w := NewBirthdaysWorld(m, a.directory())
-	for i := range m.Birthdays {
-		sv := w.staffOf(m.Birthdays[i].Email, today)
+	b := m.Birthdays
+	for i := range b.Birthdays {
+		sv := m.staffOf(b.Birthdays[i].Email, today)
 		if sv.AssignedTo == "" || sv.RequestBy == "" || sv.Stage == StageComplete {
 			continue
 		}
-		sent := func(kind string) bool { return m.Reminders[reminderKey(sv.Email, sv.Year, kind)] }
+		sent := func(kind string) bool { return b.Reminders[reminderKey(sv.Email, sv.Year, kind)] }
 		contacted := sv.ContactedOn != ""
 		ask, _ := ParseDate(sv.RequestBy)
 		late := ask.AddDate(0, 0, lateAfterDays).Format(DateFormat)
@@ -68,12 +68,13 @@ func (a birthdaysApp) remindLoop() {
 }
 
 func (a birthdaysApp) sendDueReminders(ctx context.Context, today time.Time) int {
-	b := a.cache.Model()
-	due := a.dueReminders(b, today)
+	m := a.store.Model()
+	b := m.Birthdays
+	due := a.dueReminders(m, today)
 	n := 0
 	for _, rem := range due {
-		m := a.reminderMessage(b, rem)
-		if err := a.mailer.Send(ctx, m); err != nil {
+		msg := a.reminderMessage(m, rem)
+		if err := a.mailer.Send(ctx, msg); err != nil {
 			slog.ErrorContext(ctx, "birthday: send reminder", "error", err, "kind", rem.kind, "email", rem.sv.Email, "to", rem.to)
 			continue
 		}
@@ -97,15 +98,16 @@ func (a birthdaysApp) recordReminder(ctx context.Context, sv StaffView, kind, to
 		slog.ErrorContext(ctx, "birthday: record reminder", "error", err)
 		return
 	}
-	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
+	if err := a.store.Commit(ctx, actor, birthdaysAppName, ops...); err != nil {
 		slog.ErrorContext(ctx, "birthday: record reminder", "error", err)
 	}
 }
 
-func (a birthdaysApp) reminderMessage(m *Birthdays, rem reminder) mail.Message {
+func (a birthdaysApp) reminderMessage(m *Model, rem reminder) mail.Message {
+	b := m.Birthdays
 	sv := rem.sv
 	link := a.base + staffPath(sv.Email)
-	assignee, _ := birthdayViewer{directory: a.directory()}.person(rem.to)
+	assignee, _ := birthdayViewer{directory: m.Directory}.person(rem.to)
 	var text, htm strings.Builder
 	p := func(t string) {
 		text.WriteString(t + "\n\n")
@@ -122,7 +124,7 @@ func (a birthdaysApp) reminderMessage(m *Birthdays, rem reminder) mail.Message {
 		} else {
 			p(fmt.Sprintf("%s was due to be asked about their birthday charity on %s, and their outreach is not marked done. If you have asked, mark it done on their page; if not, here is the email, ready to send.", sv.Name, mediumDate(sv.RequestBy)))
 		}
-		l := letter(m, sv, assignee.Name)
+		l := letter(b, sv, assignee.Name)
 		button("Send the email", mailto(l))
 		fmt.Fprintf(&text, "To: %s\nCC: %s\nSubject: %s\n\n%s\n\n", l.To, l.CC, l.Subject, l.Body)
 		fmt.Fprintf(&htm, "<table style=\"font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;border-collapse:collapse;color:#33474c\"><tr><td style=\"padding:2px 12px 2px 0;color:#647071\">To</td><td>%s</td></tr><tr><td style=\"padding:2px 12px 2px 0;color:#647071\">CC</td><td>%s</td></tr><tr><td style=\"padding:2px 12px 2px 0;color:#647071\">Subject</td><td>%s</td></tr></table>", html.EscapeString(l.To), html.EscapeString(l.CC), html.EscapeString(l.Subject))
@@ -131,7 +133,7 @@ func (a birthdaysApp) reminderMessage(m *Birthdays, rem reminder) mail.Message {
 		button("Mark outreach done", link)
 	case remindDonation:
 		p(fmt.Sprintf("The %s newsletter is two days out and %s's charity is not recorded yet.", mediumDate(sv.NewsletterDate), sv.Name))
-		p("If they answered, record what they chose on their page. There is no need to ask again - whether to reply is their choice, and if they do not, the donation goes to " + m.charityName(m.Settings.DefaultCharity) + ".")
+		p("If they answered, record what they chose on their page. There is no need to ask again - whether to reply is their choice, and if they do not, the donation goes to " + b.charityName(b.Settings.DefaultCharity) + ".")
 		button("Record their charity", link)
 	}
 	subject := "Re: " + threadSubject(sv)

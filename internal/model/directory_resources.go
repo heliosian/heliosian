@@ -83,8 +83,8 @@ type tagResource struct {
 	Me        tagMe  `json:"me"`
 }
 
-func DirectoryResources() []api.Type[*Directory] {
-	return []api.Type[*Directory]{peopleType(), familiesType(), classroomsType(), gradesType(), crewsType(), departmentsType(), tagsType()}
+func DirectoryResources() []api.Type[*Model] {
+	return []api.Type[*Model]{peopleType(), familiesType(), classroomsType(), gradesType(), crewsType(), departmentsType(), tagsType()}
 }
 
 func (m *Directory) tagFor(key string, viewer string) (Tag, bool) {
@@ -105,36 +105,37 @@ func (m *Directory) emailIDs(emails []string) []string {
 	return ids(out)
 }
 
-func tagRelation(target string, many bool, list func(t Tag) []string) api.Relation[*Directory] {
-	return api.Relation[*Directory]{Type: target, Many: many, List: func(m *Directory, q api.Query, key string) []string {
-		t, ok := m.tagFor(key, q.Actor.Email)
+func tagRelation(target string, many bool, list func(t Tag) []string) api.Relation[*Model] {
+	return api.Relation[*Model]{Type: target, Many: many, List: func(m *Model, q api.Query, key string) []string {
+		t, ok := m.Directory.tagFor(key, q.Actor.Email)
 		if !ok {
 			return nil
 		}
-		return m.emailIDs(list(t))
+		return m.Directory.emailIDs(list(t))
 	}}
 }
 
-func tagsType() api.Type[*Directory] {
-	return api.Type[*Directory]{
+func tagsType() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "tags",
 		Shape: tagResource{},
-		Has:   func(m *Directory, key string) bool { return m.tagByKey(key) != nil },
-		Get: func(m *Directory, q api.Query, key string) (any, bool) {
-			t, ok := m.tagFor(key, q.Actor.Email)
+		Has:   func(m *Model, key string) bool { return m.Directory.tagByKey(key) != nil },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			t, ok := m.Directory.tagFor(key, q.Actor.Email)
 			if !ok {
 				return nil, false
 			}
 			return tagResource{Name: t.Name, OwnerName: t.OwnerName, Me: tagMe{Mine: t.Owner == q.Actor.Email}}, true
 		},
-		List: func(m *Directory, q api.Query) []string {
+		List: func(m *Model, q api.Query) []string {
+			d := m.Directory
 			out := []string{}
-			for _, t := range append(m.Tags(q.Actor.Email), m.SharedTags(q.Actor.Email)...) {
+			for _, t := range append(d.Tags(q.Actor.Email), d.SharedTags(q.Actor.Email)...) {
 				out = append(out, t.ID)
 			}
 			return out
 		},
-		Relations: map[string]api.Relation[*Directory]{
+		Relations: map[string]api.Relation[*Model]{
 			"owner":    tagRelation("people", false, func(t Tag) []string { return []string{t.Owner} }),
 			"people":   tagRelation("people", true, func(t Tag) []string { return t.People }),
 			"managers": tagRelation("people", true, func(t Tag) []string { return t.Managers }),
@@ -142,19 +143,19 @@ func tagsType() api.Type[*Directory] {
 	}
 }
 
-func departmentsType() api.Type[*Directory] {
-	return api.Type[*Directory]{
+func departmentsType() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "departments",
 		Shape: departmentResource{},
-		Has:   func(m *Directory, key string) bool { return slices.Contains(m.departmentIDs, key) },
-		Get: func(m *Directory, _ api.Query, key string) (any, bool) {
-			i := slices.Index(m.departmentIDs, key)
+		Has:   func(m *Model, key string) bool { return slices.Contains(m.Directory.departmentIDs, key) },
+		Get: func(m *Model, _ api.Query, key string) (any, bool) {
+			i := slices.Index(m.Directory.departmentIDs, key)
 			if i < 0 {
 				return nil, false
 			}
-			return departmentResource{Name: m.Departments[i]}, true
+			return departmentResource{Name: m.Directory.Departments[i]}, true
 		},
-		List: func(m *Directory, _ api.Query) []string { return slices.Clone(m.departmentIDs) },
+		List: func(m *Model, _ api.Query) []string { return slices.Clone(m.Directory.departmentIDs) },
 	}
 }
 
@@ -218,43 +219,45 @@ func (m *Directory) PersonAliases() map[string]*Person {
 	return out
 }
 
-func personRelation(list func(m *Directory, p *Person) []string) api.Relation[*Directory] {
-	return api.Relation[*Directory]{Type: "people", Many: true, List: func(m *Directory, _ api.Query, key string) []string {
-		p := m.personByID(key)
+func personRelation(list func(d *Directory, p *Person) []string) api.Relation[*Model] {
+	return api.Relation[*Model]{Type: "people", Many: true, List: func(m *Model, _ api.Query, key string) []string {
+		p := m.Directory.personByID(key)
 		if p == nil {
 			return nil
 		}
-		return list(m, p)
+		return list(m.Directory, p)
 	}}
 }
 
-func personTo(target string, list func(m *Directory, p *Person) []string) api.Relation[*Directory] {
+func personTo(target string, list func(d *Directory, p *Person) []string) api.Relation[*Model] {
 	rel := personRelation(list)
 	rel.Type, rel.Many = target, false
 	return rel
 }
 
-func peopleType() api.Type[*Directory] {
-	return api.Type[*Directory]{
+func peopleType() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "people",
 		Shape: personResource{},
-		Has:   func(m *Directory, key string) bool { return m.personByID(key) != nil },
-		Get: func(m *Directory, _ api.Query, key string) (any, bool) {
-			p := m.personByID(key)
+		Has:   func(m *Model, key string) bool { return m.Directory.personByID(key) != nil },
+		Get: func(m *Model, _ api.Query, key string) (any, bool) {
+			d := m.Directory
+			p := d.personByID(key)
 			if p == nil {
 				return nil, false
 			}
-			out := personResource{Person: p, HeroPhotoURL: m.HeroPhoto(p.Email), Words: p.Words(), Slug: Slug(p.Email), Path: PersonPath(p.Email), App: whoHost}
+			out := personResource{Person: p, HeroPhotoURL: d.HeroPhoto(p.Email), Words: p.Words(), Slug: Slug(p.Email), Path: PersonPath(p.Email), App: whoHost}
 			if !p.EmailMasked {
 				out.Email = p.Email
 			}
 			return out, true
 		},
-		List: func(m *Directory, _ api.Query) []string {
+		List: func(m *Model, _ api.Query) []string {
+			d := m.Directory
 			out := []*Person{}
-			for i := range m.People {
-				if m.People[i].ID != "" {
-					out = append(out, &m.People[i])
+			for i := range d.People {
+				if d.People[i].ID != "" {
+					out = append(out, &d.People[i])
 				}
 			}
 			slices.SortStableFunc(out, func(a, b *Person) int {
@@ -262,59 +265,59 @@ func peopleType() api.Type[*Directory] {
 			})
 			return ids(out)
 		},
-		Aliases: func(m *Directory) map[string]string {
+		Aliases: func(m *Model) map[string]string {
 			out := map[string]string{}
-			for alias, p := range m.PersonAliases() {
+			for alias, p := range m.Directory.PersonAliases() {
 				out[alias] = p.ID
 			}
 			return out
 		},
-		Relations: map[string]api.Relation[*Directory]{
-			"families": {Type: "families", Many: true, List: func(m *Directory, _ api.Query, key string) []string {
-				p := m.personByID(key)
+		Relations: map[string]api.Relation[*Model]{
+			"families": {Type: "families", Many: true, List: func(m *Model, _ api.Query, key string) []string {
+				p := m.Directory.personByID(key)
 				if p == nil {
 					return nil
 				}
-				return slices.Clone(m.FamilyKeysOf(p.Email))
+				return slices.Clone(m.Directory.FamilyKeysOf(p.Email))
 			}},
-			"parents":  personRelation(func(m *Directory, p *Person) []string { return ids(m.Parents(p.Email)) }),
-			"children": personRelation(func(m *Directory, p *Person) []string { return ids(m.Children(p.Email)) }),
-			"partners": personRelation(func(m *Directory, p *Person) []string {
+			"parents":  personRelation(func(d *Directory, p *Person) []string { return ids(d.Parents(p.Email)) }),
+			"children": personRelation(func(d *Directory, p *Person) []string { return ids(d.Children(p.Email)) }),
+			"partners": personRelation(func(d *Directory, p *Person) []string {
 				if !p.IsParent {
 					return nil
 				}
-				adults, _ := m.Household(p.Email)
+				adults, _ := d.Household(p.Email)
 				return ids(adults)
 			}),
-			"siblings": personRelation(func(m *Directory, p *Person) []string {
+			"siblings": personRelation(func(d *Directory, p *Person) []string {
 				if !p.IsStudent {
 					return nil
 				}
-				_, kids := m.Household(p.Email)
+				_, kids := d.Household(p.Email)
 				return ids(kids)
 			}),
-			"household": personRelation(func(m *Directory, p *Person) []string {
-				adults, kids := m.Household(p.Email)
+			"household": personRelation(func(d *Directory, p *Person) []string {
+				adults, kids := d.Household(p.Email)
 				return ids(append(adults, kids...))
 			}),
-			"classroom": personTo("classrooms", func(m *Directory, p *Person) []string {
-				for _, c := range m.Classrooms {
+			"classroom": personTo("classrooms", func(d *Directory, p *Person) []string {
+				for _, c := range d.Classrooms {
 					if c.Name == p.Classroom {
 						return []string{c.ID}
 					}
 				}
 				return nil
 			}),
-			"grade": personTo("grades", func(m *Directory, p *Person) []string {
-				for _, g := range m.Grades {
+			"grade": personTo("grades", func(d *Directory, p *Person) []string {
+				for _, g := range d.Grades {
 					if g.Name == p.Grade {
 						return []string{g.ID}
 					}
 				}
 				return nil
 			}),
-			"crew": personTo("crews", func(m *Directory, p *Person) []string {
-				for _, c := range m.Crews {
+			"crew": personTo("crews", func(d *Directory, p *Person) []string {
+				for _, c := range d.Crews {
 					if p.Classroom != "" && c.Classroom == p.Classroom && c.Name == p.Crew {
 						return []string{c.ID}
 					}
@@ -322,13 +325,14 @@ func peopleType() api.Type[*Directory] {
 				return nil
 			}),
 		},
-		Filters: map[string]api.Filter[*Directory]{
-			"listed": func(m *Directory, _ api.Query, value string) (func(string) bool, error) {
+		Filters: map[string]api.Filter[*Model]{
+			"listed": func(m *Model, _ api.Query, value string) (func(string) bool, error) {
 				if err := noValue("listed", value); err != nil {
 					return nil, err
 				}
+				d := m.Directory
 				return func(key string) bool {
-					p := m.personByID(key)
+					p := d.personByID(key)
 					return p != nil && !p.EmailMasked
 				}, nil
 			},
@@ -336,9 +340,9 @@ func peopleType() api.Type[*Directory] {
 	}
 }
 
-func familyMembers(adults bool) api.Relation[*Directory] {
-	return api.Relation[*Directory]{Type: "people", Many: true, List: func(m *Directory, _ api.Query, key string) []string {
-		grown, kids := m.Members(key)
+func familyMembers(adults bool) api.Relation[*Model] {
+	return api.Relation[*Model]{Type: "people", Many: true, List: func(m *Model, _ api.Query, key string) []string {
+		grown, kids := m.Directory.Members(key)
 		if adults {
 			return ids(grown)
 		}
@@ -346,13 +350,13 @@ func familyMembers(adults bool) api.Relation[*Directory] {
 	}}
 }
 
-func familiesType() api.Type[*Directory] {
-	return api.Type[*Directory]{
+func familiesType() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "families",
 		Shape: familyResource{},
-		Has:   func(m *Directory, key string) bool { _, ok := m.Families[key]; return ok },
-		Get: func(m *Directory, _ api.Query, key string) (any, bool) {
-			f, ok := m.Families[key]
+		Has:   func(m *Model, key string) bool { _, ok := m.Directory.Families[key]; return ok },
+		Get: func(m *Model, _ api.Query, key string) (any, bool) {
+			f, ok := m.Directory.Families[key]
 			if !ok {
 				return nil, false
 			}
@@ -363,20 +367,21 @@ func familiesType() api.Type[*Directory] {
 				Path: FamilyPath(key), App: whoHost,
 			}, true
 		},
-		List: func(m *Directory, _ api.Query) []string {
+		List: func(m *Model, _ api.Query) []string {
+			d := m.Directory
 			out := []string{}
-			for key := range m.Families {
+			for key := range d.Families {
 				out = append(out, key)
 			}
 			slices.SortFunc(out, func(a, b string) int {
-				if c := strings.Compare(m.Families[a].Name, m.Families[b].Name); c != 0 {
+				if c := strings.Compare(d.Families[a].Name, d.Families[b].Name); c != 0 {
 					return c
 				}
 				return strings.Compare(a, b)
 			})
 			return out
 		},
-		Relations: map[string]api.Relation[*Directory]{
+		Relations: map[string]api.Relation[*Model]{
 			"adults": familyMembers(true),
 			"kids":   familyMembers(false),
 		},
@@ -410,47 +415,47 @@ func (m *Directory) crewByID(key string) *Crew {
 	return nil
 }
 
-func classroomsType() api.Type[*Directory] {
-	return api.Type[*Directory]{
+func classroomsType() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "classrooms",
 		Shape: classroomResource{},
-		Has:   func(m *Directory, key string) bool { return m.classroomByID(key) != nil },
-		Get: func(m *Directory, _ api.Query, key string) (any, bool) {
-			c := m.classroomByID(key)
+		Has:   func(m *Model, key string) bool { return m.Directory.classroomByID(key) != nil },
+		Get: func(m *Model, _ api.Query, key string) (any, bool) {
+			c := m.Directory.classroomByID(key)
 			if c == nil {
 				return nil, false
 			}
 			return classroomResource{Name: c.Name, ImageURL: c.ImageURL, HasCrews: c.HasCrews, Slug: ClassroomSlug(c.Name), Path: ClassroomPath(c.Name), App: whoHost}, true
 		},
-		List: func(m *Directory, _ api.Query) []string {
+		List: func(m *Model, _ api.Query) []string {
 			out := []string{}
-			for _, c := range m.Classrooms {
+			for _, c := range m.Directory.Classrooms {
 				out = append(out, c.ID)
 			}
 			return out
 		},
-		Aliases: func(m *Directory) map[string]string {
+		Aliases: func(m *Model) map[string]string {
 			out := map[string]string{}
-			for _, c := range m.Classrooms {
+			for _, c := range m.Directory.Classrooms {
 				out[ClassroomSlug(c.Name)] = c.ID
 			}
 			return out
 		},
-		Relations: map[string]api.Relation[*Directory]{
-			"students": {Type: "people", Many: true, List: func(m *Directory, _ api.Query, key string) []string {
-				c := m.classroomByID(key)
+		Relations: map[string]api.Relation[*Model]{
+			"students": {Type: "people", Many: true, List: func(m *Model, _ api.Query, key string) []string {
+				c := m.Directory.classroomByID(key)
 				if c == nil {
 					return nil
 				}
-				return m.peopleWhere(func(p *Person) bool { return p.IsStudent && p.Classroom == c.Name })
+				return m.Directory.peopleWhere(func(p *Person) bool { return p.IsStudent && p.Classroom == c.Name })
 			}},
-			"crews": {Type: "crews", Many: true, List: func(m *Directory, _ api.Query, key string) []string {
-				c := m.classroomByID(key)
+			"crews": {Type: "crews", Many: true, List: func(m *Model, _ api.Query, key string) []string {
+				c := m.Directory.classroomByID(key)
 				if c == nil {
 					return nil
 				}
 				out := []string{}
-				for _, crew := range m.Crews {
+				for _, crew := range m.Directory.Crews {
 					if crew.Classroom == c.Name {
 						out = append(out, crew.ID)
 					}
@@ -461,54 +466,55 @@ func classroomsType() api.Type[*Directory] {
 	}
 }
 
-func gradesType() api.Type[*Directory] {
-	return api.Type[*Directory]{
+func gradesType() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "grades",
 		Shape: gradeResource{},
-		Has:   func(m *Directory, key string) bool { return m.gradeByID(key) != nil },
-		Get: func(m *Directory, _ api.Query, key string) (any, bool) {
-			g := m.gradeByID(key)
+		Has:   func(m *Model, key string) bool { return m.Directory.gradeByID(key) != nil },
+		Get: func(m *Model, _ api.Query, key string) (any, bool) {
+			g := m.Directory.gradeByID(key)
 			if g == nil {
 				return nil, false
 			}
 			return gradeResource{Name: g.Name, NextName: g.NextName, Band: g.Band, NextBand: g.NextBand, ImageURL: g.ImageURL, Slug: ClassroomSlug(g.Name), Path: GradePath(g.Name), App: whoHost}, true
 		},
-		List: func(m *Directory, _ api.Query) []string {
+		List: func(m *Model, _ api.Query) []string {
 			out := []string{}
-			for _, g := range m.Grades {
+			for _, g := range m.Directory.Grades {
 				out = append(out, g.ID)
 			}
 			return out
 		},
-		Aliases: func(m *Directory) map[string]string {
+		Aliases: func(m *Model) map[string]string {
 			out := map[string]string{}
-			for _, g := range m.Grades {
+			for _, g := range m.Directory.Grades {
 				out[ClassroomSlug(g.Name)] = g.ID
 			}
 			return out
 		},
-		Relations: map[string]api.Relation[*Directory]{
-			"students": {Type: "people", Many: true, List: func(m *Directory, _ api.Query, key string) []string {
-				g := m.gradeByID(key)
+		Relations: map[string]api.Relation[*Model]{
+			"students": {Type: "people", Many: true, List: func(m *Model, _ api.Query, key string) []string {
+				g := m.Directory.gradeByID(key)
 				if g == nil {
 					return nil
 				}
-				return m.peopleWhere(func(p *Person) bool { return p.IsStudent && p.Grade == g.Name })
+				return m.Directory.peopleWhere(func(p *Person) bool { return p.IsStudent && p.Grade == g.Name })
 			}},
 		},
-		Filters: map[string]api.Filter[*Directory]{
-			"enrolled": func(m *Directory, _ api.Query, value string) (func(string) bool, error) {
+		Filters: map[string]api.Filter[*Model]{
+			"enrolled": func(m *Model, _ api.Query, value string) (func(string) bool, error) {
 				if err := noValue("enrolled", value); err != nil {
 					return nil, err
 				}
+				d := m.Directory
 				enrolled := map[string]bool{}
-				for _, p := range m.People {
+				for _, p := range d.People {
 					if p.IsStudent && p.Grade != "" {
 						enrolled[p.Grade] = true
 					}
 				}
 				return func(key string) bool {
-					g := m.gradeByID(key)
+					g := d.gradeByID(key)
 					return g != nil && enrolled[g.Name]
 				}, nil
 			},
@@ -516,46 +522,46 @@ func gradesType() api.Type[*Directory] {
 	}
 }
 
-func crewsType() api.Type[*Directory] {
-	return api.Type[*Directory]{
+func crewsType() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "crews",
 		Shape: crewResource{},
-		Has:   func(m *Directory, key string) bool { return m.crewByID(key) != nil },
-		Get: func(m *Directory, _ api.Query, key string) (any, bool) {
-			c := m.crewByID(key)
+		Has:   func(m *Model, key string) bool { return m.Directory.crewByID(key) != nil },
+		Get: func(m *Model, _ api.Query, key string) (any, bool) {
+			c := m.Directory.crewByID(key)
 			if c == nil {
 				return nil, false
 			}
 			return crewResource{Name: c.Name, GradeBand: c.GradeBand, Path: ClassroomPath(c.Classroom), App: whoHost}, true
 		},
-		List: func(m *Directory, _ api.Query) []string {
+		List: func(m *Model, _ api.Query) []string {
 			out := []string{}
-			for _, c := range m.Crews {
+			for _, c := range m.Directory.Crews {
 				out = append(out, c.ID)
 			}
 			return out
 		},
-		Relations: map[string]api.Relation[*Directory]{
-			"classroom": {Type: "classrooms", List: func(m *Directory, _ api.Query, key string) []string {
-				c := m.crewByID(key)
+		Relations: map[string]api.Relation[*Model]{
+			"classroom": {Type: "classrooms", List: func(m *Model, _ api.Query, key string) []string {
+				c := m.Directory.crewByID(key)
 				if c == nil {
 					return nil
 				}
-				for _, room := range m.Classrooms {
+				for _, room := range m.Directory.Classrooms {
 					if room.Name == c.Classroom {
 						return []string{room.ID}
 					}
 				}
 				return nil
 			}},
-			"teachers": {Type: "people", Many: true, List: func(m *Directory, _ api.Query, key string) []string {
-				c := m.crewByID(key)
+			"teachers": {Type: "people", Many: true, List: func(m *Model, _ api.Query, key string) []string {
+				c := m.Directory.crewByID(key)
 				if c == nil {
 					return nil
 				}
 				out := []*Person{}
 				for _, email := range c.Teachers {
-					if p := m.Person(email); p != nil {
+					if p := m.Directory.Person(email); p != nil {
 						out = append(out, p)
 					}
 				}

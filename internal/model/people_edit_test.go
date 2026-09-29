@@ -11,12 +11,11 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/serve"
-	"heliosian/internal/testkit"
 )
 
 func TestAParentEditsTheirHouseholdAndKidButNotTheOtherParents(t *testing.T) {
 	m := sampleModel(t)
-	ashas, rohans := familyID(testKey, asha), familyID(testKey, rohan)
+	ashas, rohans := familyID(sampleKey, asha), familyID(sampleKey, rohan)
 	for _, c := range []struct {
 		me, target, key string
 		want            bool
@@ -44,22 +43,17 @@ func TestAParentEditsTheirHouseholdAndKidButNotTheOtherParents(t *testing.T) {
 	}
 }
 
-func sampleCache(t *testing.T) *DirectoryCache {
-	t.Helper()
-	return newServer(t).cache
-}
-
-func requestAs(cache *DirectoryCache, email string) access.Actor {
+func requestAs(s *Store, email string) access.Actor {
 	var got access.Actor
 	r := httptest.NewRequest("POST", "/", nil)
-	auth.Fixed(email, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = requestActor(cache, r) })).ServeHTTP(httptest.NewRecorder(), r)
+	auth.Fixed(email, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = requestActor(s, r) })).ServeHTTP(httptest.NewRecorder(), r)
 	return got
 }
 
 func TestEditingAnotherFamilyNeedsAnAdmin(t *testing.T) {
-	cache := sampleCache(t)
-	model := cache.Model()
-	rohans := familyID(testKey, rohan)
+	cache := newServer(t).store
+	model := cache.Model().Directory
+	rohans := familyID(sampleKey, rohan)
 	if err := model.mayEdit(requestAs(cache, jordan), "family", rohans); err != nil {
 		t.Errorf("an admin cannot edit another family: %v", err)
 	}
@@ -74,27 +68,13 @@ func TestEditingAnotherFamilyNeedsAnAdmin(t *testing.T) {
 
 func TestSpoofedParentCannotEditAnyone(t *testing.T) {
 	s := newServer(t)
-	cache := s.cache
-	none := func() []string { return nil }
-	parties, err := NewPartiesCache(s.dir, s.dir, testkit.All, none, s.queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	activities, err := NewActivitiesCache(s.dir, s.dir, testkit.All, none, s.queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	lists, err := NewEmailListsCache(s.dir, s.dir, none, s.queue, testKey)
-	if err != nil {
-		t.Fatal(err)
-	}
 	key := []byte("spoof")
 	signin := auth.New("", "", key, auth.Login{}, func(string) bool { return true }, nil, nil)
 	signin.Spoof = &auth.Spoof{
 		Allowed: func(email string) bool { return email == jordan },
 		Person:  func(email string) (auth.Person, bool) { return auth.Person{Email: email}, true },
 	}
-	routes := DirectoryRoutes{Cache: cache, Parties: parties, Activities: activities, EmailLists: lists}
+	routes := DirectoryRoutes{Store: s.store}
 	for _, c := range []struct {
 		as   string
 		want bool

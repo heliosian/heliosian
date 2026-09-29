@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -17,6 +18,7 @@ import (
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
+	"heliosian/internal/store"
 )
 
 const activitiesShell = "web/team/index.html"
@@ -26,34 +28,28 @@ var activitiesPages = []string{
 }
 
 type activitiesApp struct {
-	cache     *ActivitiesCache
+	store     *Store
 	images    blob.Images
-	directory func() *Directory
-	settings  func() *Config
 	calendar  calendarApp
 	search    imagesearch.Search
 	mailer    *mail.Mailgun
-	lists     *EmailListsCache
 	style     *sharecard.Style
 	describer *describe.Describer
 }
 
 type ActivitiesDeps struct {
-	Cache      *ActivitiesCache
-	Images     blob.Images
-	Directory  func() *Directory
-	Settings   func() *Config
-	Calendar   CalendarHooks
-	Search     imagesearch.Search
-	Mailer     *mail.Mailgun
-	EmailLists *EmailListsCache
-	Style      *sharecard.Style
-	Describer  *describe.Describer
+	Store     *Store
+	Images    blob.Images
+	Calendar  CalendarHooks
+	Search    imagesearch.Search
+	Mailer    *mail.Mailgun
+	Style     *sharecard.Style
+	Describer *describe.Describer
 }
 
 func RegisterActivities(mux *http.ServeMux, d ActivitiesDeps) {
 	d.Search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
-	a := activitiesApp{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, calendar: d.Calendar.app, search: d.Search, mailer: d.Mailer, lists: d.EmailLists, style: d.Style, describer: d.Describer}
+	a := activitiesApp{store: d.Store, images: d.Images, calendar: d.Calendar.app, search: d.Search, mailer: d.Mailer, style: d.Style, describer: d.Describer}
 	for _, page := range activitiesPages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -76,18 +72,30 @@ func RegisterActivities(mux *http.ServeMux, d ActivitiesDeps) {
 	mux.HandleFunc("POST /api/team/describe", serve.JSON(a.describe))
 	mux.HandleFunc("POST /api/team/settings", serve.JSON(a.saveSettings))
 	mux.HandleFunc("POST /api/team/notify", serve.JSON(a.saveNotify))
-	RegisterAdmins(mux, a.cache.AdminList, a.actor, a.adminState)
+	RegisterAdmins(mux, a.store, "team", a.adminState)
 	mux.HandleFunc("POST /api/team/redirect", serve.JSON(a.saveRedirect))
 	mux.HandleFunc("DELETE /api/team/redirect", serve.JSON(a.deleteRedirect))
 }
 
-func ActivitiesRedirected(cache *ActivitiesCache, next http.Handler) http.Handler {
+func (a activitiesApp) activities() *Activities {
+	return a.store.Model().Activities
+}
+
+func (a activitiesApp) directory() *Directory {
+	return a.store.Model().Directory
+}
+
+func (a activitiesApp) commit(ctx context.Context, actor access.Actor, ops ...store.Op) error {
+	return a.store.Commit(ctx, actor, activitiesAppName, ops...)
+}
+
+func ActivitiesRedirected(s *Store, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			next.ServeHTTP(w, r)
 			return
 		}
-		m := cache.Model()
+		m := s.Model().Activities
 		to, status := m.Aliased(r.URL.Path), http.StatusMovedPermanently
 		if to == "" {
 			to, status = m.Destination(r.URL.Path), http.StatusFound
@@ -111,12 +119,13 @@ func (a activitiesApp) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a activitiesApp) actor(r *http.Request) access.Actor {
-	return a.directory().Actor(r, a.cache.Held)
+	return a.store.Model().actor(r, "team")
 }
 
 func (a activitiesApp) model(r *http.Request, _ serve.None) (ActivitiesView, error) {
-	actor := a.actor(r)
-	view := RenderActivities(a.cache.Model(), a.directory(), a.settings(), a.calendar.linkedRSVPs, a.lists.Model(), actor, time.Now().In(Location))
+	m := a.store.Model()
+	actor := m.actor(r, "team")
+	view := RenderActivities(m.Activities, m.Directory, m.Config, a.calendar.at(m).linkedRSVPs, m.EmailLists, actor, time.Now().In(Location))
 	view.ImageSearch = a.search.On()
 	return view, nil
 }
@@ -153,11 +162,11 @@ func (a activitiesApp) describe(r *http.Request, body describeActivityBody) (map
 
 func (a activitiesApp) saveVolunteer(r *http.Request, body volunteerBody) (serve.None, error) {
 	actor := a.actor(r)
-	s, err := a.cache.Model().saveVolunteer(actor, a.directory(), body)
+	s, err := a.activities().saveVolunteer(actor, a.directory(), body)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, s.ops...); err != nil {
+	if err := a.commit(r.Context(), actor, s.ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:saved volunteer", "actor", actor.Email, "action", s.action, "email", s.email, "activity", s.act.Title, "year", s.act.Year)
@@ -172,11 +181,11 @@ type removeVolunteerBody struct {
 
 func (a activitiesApp) removeVolunteer(r *http.Request, body removeVolunteerBody) (serve.None, error) {
 	actor := a.actor(r)
-	act, email, ops, err := a.cache.Model().removeVolunteer(actor, body.ID, body.Email)
+	act, email, ops, err := a.activities().removeVolunteer(actor, body.ID, body.Email)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:removed volunteer", "actor", actor.Email, "email", email, "activity", act.Title, "year", act.Year)
@@ -234,27 +243,27 @@ func (p activityPatch) fields() []string {
 
 func (a activitiesApp) saveActivity(r *http.Request, patch activityPatch) (activityRef, error) {
 	actor := a.actor(r)
-	s, err := a.cache.Model().saveActivity(actor, patch)
+	s, err := a.activities().saveActivity(actor, patch)
 	if err != nil {
 		return activityRef{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, s.ops...); err != nil {
+	if err := a.commit(r.Context(), actor, s.ops...); err != nil {
 		return activityRef{}, err
 	}
 	slog.InfoContext(r.Context(), "team:saved activity", "actor", actor.Email, "action", s.action, "activity", s.title, "id", s.id, "year", s.year, "status", s.status)
 	if s.adding {
-		a.mailNewActivity(r, a.cache.Model().Activity(s.id), actor.Email)
+		a.mailNewActivity(r, a.activities().Activity(s.id), actor.Email)
 	}
 	return activityRef{ID: s.id}, nil
 }
 
 func (a activitiesApp) deleteActivity(r *http.Request, body activityRef) (serve.None, error) {
 	actor := a.actor(r)
-	act, ops, err := a.cache.Model().deleteActivity(actor, body.ID)
+	act, ops, err := a.activities().deleteActivity(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:deleted activity", "actor", actor.Email, "activity", act.Title, "year", act.Year)
@@ -263,11 +272,11 @@ func (a activitiesApp) deleteActivity(r *http.Request, body activityRef) (serve.
 
 func (a activitiesApp) saveLink(r *http.Request, body linkBody) (serve.None, error) {
 	actor := a.actor(r)
-	act, action, ops, err := a.cache.Model().saveLink(actor, body)
+	act, action, ops, err := a.activities().saveLink(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:saved link", "actor", actor.Email, "action", action, "link", strings.TrimSpace(body.Title), "activity", act.Title, "year", act.Year)
@@ -281,11 +290,11 @@ type orderBody struct {
 
 func (a activitiesApp) orderChildren(r *http.Request, body orderBody) (serve.None, error) {
 	actor := a.actor(r)
-	parent, ops, err := a.cache.Model().orderChildren(actor, body.Parent, body.IDs)
+	parent, ops, err := a.activities().orderChildren(actor, body.Parent, body.IDs)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:reordered", "actor", actor.Email, "parent", parent.Title, "year", parent.Year, "changed", len(ops))
@@ -298,11 +307,11 @@ type linkRef struct {
 
 func (a activitiesApp) deleteLink(r *http.Request, body linkRef) (serve.None, error) {
 	actor := a.actor(r)
-	act, ops, err := a.cache.Model().deleteLink(actor, body.Link)
+	act, ops, err := a.activities().deleteLink(actor, body.Link)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:deleted link", "actor", actor.Email, "link", body.Link, "activity", act.Title, "year", act.Year)
@@ -311,11 +320,11 @@ func (a activitiesApp) deleteLink(r *http.Request, body linkRef) (serve.None, er
 
 func (a activitiesApp) saveCategory(r *http.Request, body categoryBody) (serve.None, error) {
 	actor := a.actor(r)
-	s, err := a.cache.Model().saveCategory(actor, body)
+	s, err := a.activities().saveCategory(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, s.op); err != nil {
+	if err := a.commit(r.Context(), actor, s.op); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:saved category", "actor", actor.Email, "action", s.action, "category", s.title, "id", s.id, "event", s.eventID)
@@ -324,11 +333,11 @@ func (a activitiesApp) saveCategory(r *http.Request, body categoryBody) (serve.N
 
 func (a activitiesApp) saveCategoryFlags(r *http.Request, body categoryFlagsBody) (serve.None, error) {
 	actor := a.actor(r)
-	op, c, err := a.cache.Model().saveCategoryFlags(actor, body)
+	op, c, err := a.activities().saveCategoryFlags(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, op); err != nil {
+	if err := a.commit(r.Context(), actor, op); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:saved category settings", "actor", actor.Email, "category", c.Title, "id", c.ID, "flags", body.Flags)
@@ -343,11 +352,11 @@ type categoryOrderBody struct {
 func (a activitiesApp) reorderCategories(r *http.Request, body categoryOrderBody) (serve.None, error) {
 	actor := a.actor(r)
 	eventID := strings.TrimSpace(body.EventID)
-	ops, err := a.cache.Model().reorderCategories(actor, eventID, body.IDs)
+	ops, err := a.activities().reorderCategories(actor, eventID, body.IDs)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:reordered categories", "actor", actor.Email, "event", eventID, "count", len(body.IDs))
@@ -356,11 +365,11 @@ func (a activitiesApp) reorderCategories(r *http.Request, body categoryOrderBody
 
 func (a activitiesApp) deleteCategory(r *http.Request, body activityRef) (serve.None, error) {
 	actor := a.actor(r)
-	cat, ops, err := a.cache.deleteCategory(actor, body.ID)
+	cat, ops, err := a.store.deleteActivityCategory(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:deleted category", "actor", actor.Email, "category", cat.Title, "id", cat.ID)
@@ -369,11 +378,11 @@ func (a activitiesApp) deleteCategory(r *http.Request, body activityRef) (serve.
 
 func (a activitiesApp) copyActivity(r *http.Request, body activityRef) (serve.None, error) {
 	actor := a.actor(r)
-	act, id, year, ops, err := a.cache.Model().copyActivity(actor, body.ID)
+	act, id, year, ops, err := a.activities().copyActivity(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:copied activity", "actor", actor.Email, "activity", act.Title, "from", act.Year, "to", year, "id", id)
@@ -391,7 +400,7 @@ func (a activitiesApp) saveSettings(r *http.Request, body activitySettingsBody) 
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:changed the settings", "actor", actor.Email)
@@ -408,15 +417,15 @@ func (a activitiesApp) saveNotify(r *http.Request, body notifyBody) (serve.None,
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:set notifications", "actor", actor.Email, "kinds", value)
 	return serve.None{}, nil
 }
 
-func (a activitiesApp) adminState(_ *http.Request, actor access.Actor) map[string]any {
-	prefs := a.cache.Model().notifyPrefs(actor.Email)
+func (a activitiesApp) adminState(m *Model, _ *http.Request, actor access.Actor) map[string]any {
+	prefs := m.Activities.notifyPrefs(actor.Email)
 	notify := []string{}
 	for _, k := range NotifyKinds {
 		if prefs[k] {
@@ -434,11 +443,11 @@ type redirectBody struct {
 
 func (a activitiesApp) saveRedirect(r *http.Request, body redirectBody) (serve.None, error) {
 	actor := a.actor(r)
-	s, err := a.cache.Model().saveRedirect(actor, body.Original, body.Old, body.New)
+	s, err := a.activities().saveRedirect(actor, body.Original, body.Old, body.New)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, s.op); err != nil {
+	if err := a.commit(r.Context(), actor, s.op); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:saved redirect", "actor", actor.Email, "action", s.action, "old", s.old, "new", s.to)
@@ -451,11 +460,11 @@ type redirectRef struct {
 
 func (a activitiesApp) deleteRedirect(r *http.Request, body redirectRef) (serve.None, error) {
 	actor := a.actor(r)
-	redirect, ops, err := a.cache.Model().deleteRedirect(actor, body.Old)
+	redirect, ops, err := a.activities().deleteRedirect(actor, body.Old)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "team:deleted redirect", "actor", actor.Email, "old", redirect.Old)

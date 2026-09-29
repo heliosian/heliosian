@@ -15,11 +15,12 @@ type Tx struct {
 
 type stage struct {
 	owner  any
-	tables Tables
+	tables map[string]Tables
 	model  any
-	plan   Plan
+	plans  map[string]Plan
+	order  []string
 	swap   func()
-	write  func(Plan) <-chan struct{}
+	write  func() <-chan struct{}
 }
 
 func (tx *Tx) Actor() access.Actor {
@@ -67,48 +68,7 @@ func (q *Queue) transact(ctx context.Context, actor access.Actor, run func(tx *T
 	q.afterSwap()
 	var done <-chan struct{}
 	for _, st := range tx.staged {
-		done = st.write(st.plan)
+		done = st.write()
 	}
 	return done, tx.after, nil
-}
-
-func (s *Store[M]) Stage(tx *Tx, ops ...Op) error {
-	st := tx.stageOf(s)
-	tables := Tables(nil)
-	if st != nil {
-		tables = st.tables
-	} else {
-		s.mu.RLock()
-		tables = s.tables
-		s.mu.RUnlock()
-	}
-	plan, err := s.book.Plan(tx.ctx, tables, tx.actor.Email, ops)
-	if err != nil || plan.Empty() {
-		return err
-	}
-	model, err := s.spec.Build(tx.ctx, plan.Tables)
-	if err != nil {
-		return access.Invalid("%v", err)
-	}
-	if st == nil {
-		st = &stage{owner: s, write: s.book.Write}
-		tx.staged = append(tx.staged, st)
-	}
-	st.tables, st.model = plan.Tables, model
-	st.plan = Plan{Tables: plan.Tables, writes: append(st.plan.writes, plan.writes...), log: append(st.plan.log, plan.log...)}
-	st.swap = func() {
-		s.mu.Lock()
-		s.tables, s.model = plan.Tables, model
-		s.mu.Unlock()
-	}
-	return nil
-}
-
-func (s *Store[M]) In(tx *Tx) M {
-	if tx != nil {
-		if st := tx.stageOf(s); st != nil {
-			return st.model.(M)
-		}
-	}
-	return s.Model()
 }

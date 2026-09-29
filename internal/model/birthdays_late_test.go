@@ -9,10 +9,10 @@ import (
 )
 
 func TestLate(t *testing.T) {
-	cache, mux := birthdaysServer(t)
+	st, mux := birthdaysServer(t)
 	steps := func(email string) map[string]Late {
 		out := map[string]Late{}
-		for _, l := range cache.Late(birthdayDirectory, email) {
+		for _, l := range st.Model().Late(email) {
 			out[l.Name+" "+l.Step] = l
 		}
 		return out

@@ -107,7 +107,7 @@ var calendarEvents = tool{
 		limit := limitOf(in.Limit, 40, 80)
 		out := []eventCard{}
 		total := 0
-		for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.sources.Linked(v.email)) {
+		for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.linked()) {
 			if e.EndTime().Before(from) || e.StartTime().After(to.AddDate(0, 0, 1).Add(-time.Second)) {
 				continue
 			}

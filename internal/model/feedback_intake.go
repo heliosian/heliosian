@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/access"
 	"heliosian/internal/blob"
 	"heliosian/internal/mail"
 	"heliosian/internal/ratelimit"
@@ -58,14 +57,14 @@ type Report struct {
 }
 
 type FeedbackIntake struct {
-	cache  *FeedbackCache
+	store  *Store
 	bucket *blob.Bucket
 	notify func(Report, []mail.Attachment)
 	recent *ratelimit.Limiter
 }
 
-func NewFeedbackIntake(cache *FeedbackCache, bucket *blob.Bucket, notify func(Report, []mail.Attachment)) *FeedbackIntake {
-	return &FeedbackIntake{cache: cache, bucket: bucket, notify: notify, recent: ratelimit.New(feedbackPerWindow, feedbackWindow)}
+func NewFeedbackIntake(s *Store, bucket *blob.Bucket, notify func(Report, []mail.Attachment)) *FeedbackIntake {
+	return &FeedbackIntake{store: s, bucket: bucket, notify: notify, recent: ratelimit.New(feedbackPerWindow, feedbackWindow)}
 }
 
 type screenshot struct {
@@ -75,15 +74,13 @@ type screenshot struct {
 }
 
 type feedbackRoutes struct {
-	app       string
-	name      func() string
-	directory *DirectoryCache
-	settings  *ConfigCache
-	intake    *FeedbackIntake
+	app    string
+	name   func() string
+	intake *FeedbackIntake
 }
 
-func RegisterFeedback(mux *http.ServeMux, app string, name func() string, directory *DirectoryCache, settings *ConfigCache, intake *FeedbackIntake) {
-	a := feedbackRoutes{app: app, name: name, directory: directory, settings: settings, intake: intake}
+func RegisterFeedback(mux *http.ServeMux, app string, name func() string, intake *FeedbackIntake) {
+	a := feedbackRoutes{app: app, name: name, intake: intake}
 	mux.HandleFunc("POST /api/feedback", a.file)
 }
 
@@ -98,10 +95,6 @@ type feedbackSubmission struct {
 	Language string   `json:"language"`
 	Timezone string   `json:"timezone"`
 	Errors   []string `json:"errors"`
-}
-
-func feedbackActor(r *http.Request, directory *DirectoryCache, settings *ConfigCache) access.Actor {
-	return directory.Actor(r, settings.SuperHeld)
 }
 
 func (a feedbackRoutes) file(w http.ResponseWriter, r *http.Request) {
@@ -133,13 +126,13 @@ func (a feedbackRoutes) file(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "that's longer than a report can be", http.StatusBadRequest)
 		return
 	}
-	actor := feedbackActor(r, a.directory, a.settings)
+	actor := superActor(a.intake.store.Model(), r)
 	now := time.Now()
 	if !a.intake.recent.Allow(actor.Email, now) {
 		http.Error(w, "that's a lot of reports in a few minutes; please wait a little and try again", http.StatusTooManyRequests)
 		return
 	}
-	saved, err := a.intake.cache.save(r.Context(), actor, Report{
+	saved, err := a.intake.store.saveReport(r.Context(), actor, Report{
 		App:        a.app,
 		AppName:    a.name(),
 		Kind:       in.Kind,

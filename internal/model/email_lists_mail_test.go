@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/api"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
 	"heliosian/internal/claude"
@@ -74,7 +73,7 @@ type harness struct {
 	t         *testing.T
 	mux       *http.ServeMux
 	dir       *data.Dir
-	cache     *EmailListsCache
+	store     *Store
 	sources   func() AudienceSources
 	sender    *mailtest.Recorder
 	archive   *fakeArchive
@@ -83,9 +82,13 @@ type harness struct {
 	queue     *store.Queue
 }
 
+func (h *harness) lists() *EmailLists {
+	return h.store.Model().EmailLists
+}
+
 func (h *harness) filed() []string {
 	out := []string{}
-	for _, d := range h.documents.cache.Model().Documents {
+	for _, d := range h.store.Model().Documents.Documents {
 		if d.Kind == DocumentKindGroup {
 			out = append(out, d.Channel)
 		}
@@ -95,57 +98,35 @@ func (h *harness) filed() []string {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	return loopHarness(t, nil)
+}
+
+func loopHarness(t *testing.T, team store.Tables) *harness {
+	t.Helper()
 	deliveryBatch = 20 * time.Millisecond
 	dir := &data.Dir{Root: "../../sampledata"}
-	directory, err := LoadDirectory(dir, nil, testkit.Files("../../web/who"), []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	sheet, queue = dir, store.NewQueue()
-	parties, activities := linkedCaches(t, nil, nil)
-	cache, err := NewEmailListsCache(dir, dir, func() []string { return nil }, queue, []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	sources := func() AudienceSources {
-		return EmailListAudience(directory, parties.Model(), activities.Model(), activities, now())
-	}
+	outsideSuperAdmin(t, dir)
+	linkRows(t, nil, team)
 	objects := blob.NewMemoryBucket()
 	embedder := vertex(t)
-	documents, err := NewDocumentsCache(dir, dir, objects, embedder, queue)
-	if err != nil {
-		t.Fatal(err)
+	deps := sampleDeps(sampleKey)
+	deps.Static = testkit.Files("../../web/who")
+	deps.Objects = objects
+	deps.Embedder = embedder
+	s := sampleStore(t, dir, queue, deps)
+	sources := func() AudienceSources {
+		return s.Model().EmailListAudience(now())
 	}
-	filer := RegisterDocuments(http.NewServeMux(), documents, embedder, queue, artifacts.Inbox{SigningKey: "key", Bucket: objects})
-	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, sources: sources, sender: mailtest.NewRecorder(mailtest.From), archive: &fakeArchive{objects: map[string][]byte{}}, documents: filer, queue: queue}
+	filer := RegisterDocuments(http.NewServeMux(), s, embedder, queue, artifacts.Inbox{SigningKey: "key", Bucket: objects})
+	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, store: s, sources: sources, sender: mailtest.NewRecorder(mailtest.From), archive: &fakeArchive{objects: map[string][]byte{}}, documents: filer, queue: queue}
 	h.mailbox = ListMail{Sender: h.sender.Mailgun, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
-	world := func(tx *store.Tx) EmailListsWorld {
-		return NewEmailListsWorld(cache.In(tx), directory, nil, parties.Model(), activities.Model(), activities)
-	}
-	reg := api.New(api.Config[EmailListsWorld]{
-		Actor:  func(r *http.Request, w EmailListsWorld) access.Actor { return w.Directory.Actor(r, cache.Held) },
-		Held:   cache.Held,
-		Now:    time.Now,
-		Queue:  queue,
-		Staged: world,
-		Scope:  func(w EmailListsWorld, q api.Query) EmailListsWorld { return w.At(q.Now) },
-	})
-	for _, rt := range DirectoryResources() {
-		reg.Add(api.Lift(rt, func(w EmailListsWorld) *Directory { return w.Directory }))
-	}
-	for _, rt := range EmailListResources(cache, h.documents) {
-		reg.Add(rt)
-	}
-	queue.OnSwap(func() { reg.Publish(world(nil)) })
-	reg.Register(h.mux)
+	typedRegistry(s, queue, DirectoryResources(), EmailListResources(s, h.documents)).Register(h.mux)
 	RegisterEmailLists(h.mux, EmailListsDeps{
-		Cache:      cache,
-		Directory:  func() *Directory { return directory },
-		Parties:    parties,
-		Activities: activities,
-		Mail:       h.mailbox,
-		Describer:  describe.New("test", claude.NewLimiter()),
-		About:      EmailListsAbout(func() string { return "Helios Loop" }, func() string { return "Email lists drawn from the directory" }),
+		Store:     s,
+		Mail:      h.mailbox,
+		Describer: describe.New("test", claude.NewLimiter()),
+		About:     EmailListsAbout(func() string { return "Helios Loop" }, func() string { return "Email lists drawn from the directory" }),
 	})
 	return h
 }
@@ -234,7 +215,7 @@ func (h *harness) messageState(messageID, groupID string) string {
 }
 
 func (h *harness) members(name string) []string {
-	return h.cache.Model().Named(name).Members(h.sources())
+	return h.lists().Named(name).Members(h.sources())
 }
 
 var unsubscribeLink = regexp.MustCompile(`List-Unsubscribe: <mailto:unsubscribe@loop\.heliosian\.com\?subject=([^>]+)>, <https://loop\.test/open/unsubscribe/([^>]+)>`)
@@ -252,7 +233,7 @@ func TestAPostIsForwardedToEveryMemberOnce(t *testing.T) {
 	}
 	h.waitFor("the forward", func() bool { return h.messageState(rawID(post), soccerID) == stateSent })
 	h.waitFor("the filing for ask", func() bool { return len(h.filed()) == 1 })
-	if filed := h.filed(); filed[0] != "soccer-team" || h.documents.cache.Model().Documents[0].Key != DocumentKey("soccer-team/abc@gmail.com") {
+	if filed := h.filed(); filed[0] != "soccer-team" || h.store.Model().Documents.Documents[0].Key != DocumentKey("soccer-team/abc@gmail.com") {
 		t.Fatalf("filed under %v", filed)
 	}
 	sends := h.sender.Raws()
@@ -333,7 +314,7 @@ func TestOneClickUnsubscribeTakesThemOffTheGroup(t *testing.T) {
 	if rec.Code != http.StatusOK || rec.Body.Len() != 0 {
 		t.Fatalf("one-click answered %d: %s", rec.Code, rec.Body)
 	}
-	g := h.cache.Model().Group(soccerID)
+	g := h.lists().Group(soccerID)
 	if !g.HasExcluded(first.To[0]) || g.Excluded[0].Note != "Unsubscribed by one-click" {
 		t.Fatalf("not excluded: %+v", g.Excluded)
 	}
@@ -378,7 +359,7 @@ func TestATokenSignedWithTheGroupsNameUnsubscribesFromTheGroup(t *testing.T) {
 	if rec := h.post("/open/unsubscribe/"+token(h.mailbox.Key, "soccer-team", email), "", formHeader); rec.Code != http.StatusOK {
 		t.Fatalf("a token signed with the name answered %d: %s", rec.Code, rec.Body)
 	}
-	if !h.cache.Model().Group(soccerID).HasExcluded(email) {
+	if !h.lists().Group(soccerID).HasExcluded(email) {
 		t.Fatal("the name's token did not exclude them")
 	}
 	h.waitFor("the row under the group's ID", func() bool {
@@ -408,7 +389,7 @@ func TestUnsubscribeByMailTakesThemOffTheGroup(t *testing.T) {
 	if rec := h.inbound(fields); rec.Code != http.StatusOK {
 		t.Fatalf("inbound answered %d: %s", rec.Code, rec.Body)
 	}
-	g := h.cache.Model().Group(soccerID)
+	g := h.lists().Group(soccerID)
 	if !g.HasExcluded(first.To[0]) || g.Excluded[0].Note != "Unsubscribed by mail from "+first.To[0] {
 		t.Fatalf("the mail did not exclude them: %+v", g.Excluded)
 	}
@@ -519,7 +500,7 @@ func testMessage(from, id, references string) string {
 
 func TestRepliesToTheGroupsOwnMailAnswerToWhoCanReply(t *testing.T) {
 	h := newHarness(t)
-	g := h.cache.Model().Group(middleID)
+	g := h.lists().Group(middleID)
 	member := ""
 	for _, email := range h.members(g.Name) {
 		if !g.Manages(email) {
@@ -578,10 +559,10 @@ func TestARestartResumesAMessageFromItsArchivedCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	cells := store.Row{"Received": time.Now().Format(time.RFC3339), "From": "Alice Smith <alice@gmail.com>", "Subject": "Re: Saturday's game", "State": stateReceived, "Object": object, "Message ID": "abc@gmail.com"}
-	if err := h.cache.CommitAndWait(context.Background(), access.System("test"), store.Upsert(messagesTab, store.Row{"ID": rawID(post), "Group": soccerID}, cells)); err != nil {
+	if err := h.store.CommitAndWait(context.Background(), access.System("test"), emailListsAppName, store.Upsert(messagesTab, store.Row{"ID": rawID(post), "Group": soccerID}, cells)); err != nil {
 		t.Fatal(err)
 	}
-	newMailer(h.cache, h.sources, h.mailbox).recover()
+	newMailer(h.store, h.mailbox).recover()
 	h.waitFor("the resumed forward", func() bool { return h.messageState(rawID(post), soccerID) == stateSent })
 	if len(h.sender.Raws()) != len(h.members("soccer-team")) || h.archive.count() != 1 {
 		t.Fatalf("%d sends, %d objects", len(h.sender.Raws()), h.archive.count())
@@ -777,7 +758,7 @@ func TestDeletingAGroupTakesItsMailRecordWithIt(t *testing.T) {
 	if h.archive.count() != 1 {
 		t.Fatalf("the archive holds %d objects; it is written, never emptied", h.archive.count())
 	}
-	if m := h.cache.Model(); len(m.Messages) != 0 || len(m.Deliveries) != 0 {
+	if m := h.lists(); len(m.Messages) != 0 || len(m.Deliveries) != 0 {
 		t.Fatalf("memory keeps %d messages and %d deliveries", len(m.Messages), len(m.Deliveries))
 	}
 	deleted := map[string]int{}
@@ -823,7 +804,7 @@ func TestRoutesRefuseTheUnsignedAndTheUnconfigured(t *testing.T) {
 	if rec := h.post("/hooks/events", strings.Replace(body, `"signature":"`, `"signature":"ff`, 1), jsonHeader); rec.Code != http.StatusNotAcceptable {
 		t.Fatalf("a badly signed event answered %d", rec.Code)
 	}
-	bare := emailListsApp{cache: h.cache, mail: ListMail{}}
+	bare := emailListsApp{store: h.store, mail: ListMail{}}
 	rec := httptest.NewRecorder()
 	bare.inbound(rec, httptest.NewRequest(http.MethodPost, "/hooks/mail/mime", strings.NewReader("{}")))
 	if rec.Code != http.StatusNotFound {

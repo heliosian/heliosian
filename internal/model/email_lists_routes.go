@@ -18,36 +18,30 @@ const emailListsShell = "web/loop/index.html"
 var emailListsPages = []string{"/{$}", "/new", "/groups/{name}", "/admin"}
 
 type emailListsApp struct {
-	cache      *EmailListsCache
-	directory  func() *Directory
-	parties    *PartiesCache
-	activities *ActivitiesCache
-	media      *blob.Store
-	mail       ListMail
-	mailer     *mailer
-	describer  *describe.Describer
+	store     *Store
+	media     *blob.Store
+	mail      ListMail
+	mailer    *mailer
+	describer *describe.Describer
 }
 
 type EmailListsDeps struct {
-	Cache      *EmailListsCache
-	Directory  func() *Directory
-	Parties    *PartiesCache
-	Activities *ActivitiesCache
-	Media      *blob.Store
-	Mail       ListMail
-	Describer  *describe.Describer
-	About      *sharecard.About
+	Store     *Store
+	Media     *blob.Store
+	Mail      ListMail
+	Describer *describe.Describer
+	About     *sharecard.About
 }
 
 func RegisterEmailLists(mux *http.ServeMux, d EmailListsDeps) {
-	a := emailListsApp{cache: d.Cache, directory: d.Directory, parties: d.Parties, activities: d.Activities, media: d.Media, mail: d.Mail, describer: d.Describer}
-	a.mailer = newMailer(d.Cache, a.sources, d.Mail)
+	a := emailListsApp{store: d.Store, media: d.Media, mail: d.Mail, describer: d.Describer}
+	a.mailer = newMailer(d.Store, d.Mail)
 	for _, page := range emailListsPages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("POST /api/loop/preview", serve.JSON(a.preview))
 	mux.HandleFunc("POST /api/loop/describe", serve.JSON(a.describe))
-	RegisterAdmins(mux, a.cache.AdminList, a.actor, func(*http.Request, access.Actor) map[string]any { return map[string]any{} })
+	RegisterAdmins(mux, a.store, "loop", noAdminState)
 	mux.HandleFunc("POST /hooks/mail/mime", a.inbound)
 	mux.HandleFunc("POST /hooks/events", a.events)
 	mux.Handle("GET /open/share/about.png", d.About)
@@ -61,11 +55,7 @@ func (a emailListsApp) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a emailListsApp) actor(r *http.Request) access.Actor {
-	return a.directory().Actor(r, a.cache.Held)
-}
-
-func (a emailListsApp) sources() AudienceSources {
-	return EmailListAudience(a.directory(), a.parties.Model(), a.activities.Model(), a.activities, now())
+	return a.store.Model().actor(r, "loop")
 }
 
 func Suggested(lists []MagicTag, groups []EmailList) []MagicTag {
@@ -124,17 +114,18 @@ type previewMember struct {
 }
 
 func (a emailListsApp) draftMembers(r *http.Request, body draftBody) ([]previewMember, []int, error) {
-	actor := a.actor(r)
+	m := a.store.Model()
+	actor := m.actor(r, "loop")
 	email := actor.Email
 	draft := NormalizeList(EmailList{Name: "preview", Title: "preview", Managers: []string{email}, Rules: body.Rules, Additions: body.Additions, Excluded: body.Excluded})
 	var existing []Rule
-	if g := a.cache.Model().Group(body.ID); g != nil {
+	if g := m.EmailLists.Group(body.ID); g != nil {
 		if !g.Edits(actor) {
 			return nil, nil, access.Forbidden("you do not manage this email list")
 		}
 		existing, draft.Managers = g.Rules, g.Managers
 	}
-	sources := a.sources()
+	sources := m.EmailListAudience(now())
 	if err := sources.Writable(email, draft.Managers, existing, draft.Rules); err != nil {
 		return nil, nil, access.Invalid("%v", err)
 	}
@@ -183,7 +174,7 @@ func (a emailListsApp) describe(r *http.Request, body draftBody) (map[string]str
 		return nil, err
 	}
 	facts := describe.GroupFacts{Title: body.Title, Rules: body.RuleWords, Members: len(members), Roles: map[string]int{}, Grades: map[string]int{}, Classrooms: map[string]int{}}
-	d := a.sources().Directory
+	d := a.store.Model().Directory
 	for _, m := range members {
 		p := d.Person(m.Email)
 		if p == nil {

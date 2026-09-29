@@ -34,7 +34,7 @@ var myGroups = tool{
 		if err != nil {
 			return nil, err
 		}
-		sources := v.sources.LoopSources()
+		sources := v.audience()
 		out := []groupCard{}
 		for _, raw := range v.loop.Groups {
 			g := raw.For(v.loopAs, sources)
@@ -68,11 +68,11 @@ var myLists = tool{
 	words:       "Reading your lists",
 	run: func(v *viewer, input json.RawMessage) (any, error) {
 		tags := []map[string]any{}
-		for _, t := range v.sources.Tags(v.email) {
+		for _, t := range v.directory.Tags(v.email) {
 			tags = append(tags, map[string]any{"id": t.ID, "name": t.Name, "people": v.names(t.People), "link": whoBase + model.TagPath(t.ID)})
 		}
 		lists := []map[string]any{}
-		for _, l := range v.sources.Lists(v.email) {
+		for _, l := range v.lists(v.email) {
 			if l.Archived {
 				continue
 			}
@@ -99,7 +99,7 @@ var communityLinks = tool{
 			return nil, err
 		}
 		sections := []map[string]any{}
-		for _, category := range v.sources.Links(v.homeAs) {
+		for _, category := range v.all.HomeCategoriesFor(v.homeAs) {
 			if category.Style == model.StyleEvents || category.Style == model.StyleApps {
 				continue
 			}

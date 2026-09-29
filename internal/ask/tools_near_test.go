@@ -12,7 +12,7 @@ import (
 func TestNearbyFamiliesReadWhatTheMapShows(t *testing.T) {
 	geocoder := geocode.New("test")
 	sources := sampleSources(t)
-	directory := sources.Directory()
+	directory := sources.Store.Model().Directory
 	masked := ""
 	for key, family := range directory.Families {
 		if family.Address == "" {

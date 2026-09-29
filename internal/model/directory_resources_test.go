@@ -24,16 +24,16 @@ func resourceGet(t *testing.T, m *Directory, path string) (int, resourceReply) {
 
 func resourceGetAs(t *testing.T, m *Directory, as, path string) (int, resourceReply) {
 	t.Helper()
-	reg := api.New(api.Config[*Directory]{
-		Actor: func(*http.Request, *Directory) access.Actor { return access.Actor{Email: as} },
+	reg := api.New(api.Config[*Model]{
+		Actor: func(*http.Request, *Model) access.Actor { return access.Actor{Email: as} },
 		Held:  func(string) []access.Allowance { return nil },
 		Now:   time.Now,
-		Scope: func(m *Directory, _ api.Query) *Directory { return m },
+		Scope: (*Model).at,
 	})
 	for _, rt := range DirectoryResources() {
 		reg.Add(rt)
 	}
-	reg.Publish(m)
+	reg.Publish(&Model{Directory: m})
 	mux := http.NewServeMux()
 	reg.Register(mux)
 	rec := httptest.NewRecorder()
@@ -78,7 +78,7 @@ func TestPeopleResolveByAddressAliasAndLocalPart(t *testing.T) {
 func TestASharedLocalPartIsNobodysAlias(t *testing.T) {
 	m := sampleModel(t)
 	m.People = append(m.People, Person{ID: "z000000000001", Email: "hank.morrow@elsewhere.org", FullName: "Other Hank"})
-	aliases := peopleType().Aliases(m)
+	aliases := peopleType().Aliases(&Model{Directory: m})
 	if _, ok := aliases["hank.morrow"]; ok {
 		t.Error("a local part two people share resolves to one of them")
 	}

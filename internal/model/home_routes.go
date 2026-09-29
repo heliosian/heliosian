@@ -15,16 +15,16 @@ import (
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
+	"heliosian/internal/store"
 )
 
 const homeShell = "web/home/index.html"
 
 type homeApp struct {
-	cache     *HomeCache
-	hooks     CalendarHooks
-	documents *DocumentsCache
-	search    imagesearch.Search
-	style     *sharecard.Style
+	store  *Store
+	hooks  CalendarHooks
+	search imagesearch.Search
+	style  *sharecard.Style
 }
 
 type HomeUpcoming struct {
@@ -50,17 +50,16 @@ type HomeMonth struct {
 }
 
 type HomeDeps struct {
-	Cache     *HomeCache
-	Images    blob.Images
-	Calendar  CalendarHooks
-	Documents *DocumentsCache
-	Search    imagesearch.Search
-	Style     *sharecard.Style
+	Store    *Store
+	Images   blob.Images
+	Calendar CalendarHooks
+	Search   imagesearch.Search
+	Style    *sharecard.Style
 }
 
 func RegisterHome(mux *http.ServeMux, d HomeDeps) {
 	d.Search.UserAgent = "Heliosian image search (+https://heliosian.com)"
-	a := homeApp{cache: d.Cache, hooks: d.Calendar, documents: d.Documents, search: d.Search, style: d.Style}
+	a := homeApp{store: d.Store, hooks: d.Calendar, search: d.Search, style: d.Style}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /admin", a.page)
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +85,7 @@ func RegisterHome(mux *http.ServeMux, d HomeDeps) {
 	mux.HandleFunc("GET /api/apps/celebrate", serve.JSON(a.celebrateWidget))
 	mux.HandleFunc("GET /api/apps/school", serve.JSON(a.schoolWidget))
 	a.search.Register(mux, "/api/apps", d.Images.Folder(), a.requireAdminFunc)
-	RegisterAdmins(mux, a.cache.AdminList, a.actor, a.adminState)
+	RegisterAdmins(mux, a.store, "home", a.adminState)
 	mux.HandleFunc("POST /api/admin/visibility", serve.JSON(a.setVisibility))
 	mux.HandleFunc("POST /api/admin/visibility/order", serve.JSON(a.setAppOrder))
 	a.discoverApps()
@@ -94,18 +93,19 @@ func RegisterHome(mux *http.ServeMux, d HomeDeps) {
 
 func (a homeApp) discoverApps() {
 	actor := access.System("app discovery")
-	ops, found := a.cache.discover(actor)
+	ops, found := a.store.Model().Home.discover()
 	for _, app := range found {
 		slog.Info("home:found a new app, listed for nobody yet", "app", app.Key)
 	}
-	if err := a.cache.Commit(context.Background(), actor, ops...); err != nil {
+	if err := a.store.Commit(context.Background(), actor, homeAppName, ops...); err != nil {
 		slog.Error("home:discover apps", "error", err)
 	}
 }
 
-func RegisterAppSwitch(mux *http.ServeMux, cache *HomeCache) {
+func RegisterAppSwitch(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /api/apps/switch", serve.JSON(func(r *http.Request, _ serve.None) (switchView, error) {
-		return switchView{Apps: append([]App{homeAppWithMark()}, cache.AppList()...), Hidden: cache.HiddenApps(auth.Email(r))}, nil
+		m := s.Model()
+		return switchView{Apps: append([]App{homeAppWithMark()}, m.Home.AppList()...), Hidden: m.HiddenApps(auth.Email(r))}, nil
 	}))
 }
 
@@ -126,16 +126,16 @@ type appView struct {
 	Visibility *AppVisibility `json:"visibility,omitempty"`
 }
 
-func (a homeApp) appViews(email string, admin bool) []appView {
-	hidden := a.cache.HiddenApps(email)
+func appViews(m *Model, email string, admin bool) []appView {
+	hidden := m.HiddenApps(email)
 	out := []appView{}
 	rows := map[string]AppVisibility{}
 	if admin {
-		for _, v := range a.cache.AppVisibilities() {
+		for _, v := range m.Home.AppVisibilities() {
 			rows[v.Key] = v
 		}
 	}
-	for _, app := range a.cache.AppList() {
+	for _, app := range m.Home.AppList() {
 		mine := !slices.Contains(hidden, app.Key)
 		if !mine && !admin {
 			continue
@@ -158,18 +158,13 @@ func (a homeApp) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, homeShell)
 }
 
-func (a homeApp) sources() AudienceSources {
-	return a.cache.sources()
-}
-
 func (a homeApp) actor(r *http.Request) access.Actor {
-	return a.cache.directory.Model().Actor(r, a.cache.Held)
+	return a.store.Model().actor(r, "home")
 }
 
-func (a homeApp) upcoming(email, token string) HomeUpcoming {
-	calendar := a.hooks.cache.Model()
-	out := HomeUpcoming{Events: calendar.UpcomingUnder(a.cache.directory.Model(), email, a.cache.linked(email), now(), 6, token)}
-	out.Calendars, out.Default, out.Calendar = savedCalendars(calendar, email, token)
+func homeUpcoming(m *Model, email, token string) HomeUpcoming {
+	out := HomeUpcoming{Events: m.Calendar.UpcomingUnder(m.Directory, email, m.LinkedEvents(email, now()), now(), 6, token)}
+	out.Calendars, out.Default, out.Calendar = savedCalendars(m.Calendar, email, token)
 	return out
 }
 
@@ -185,16 +180,15 @@ func savedCalendars(calendar *Calendar, email, token string) (list []SavedCalend
 	return list, def, current
 }
 
-func (a homeApp) month(email, month, token string) HomeMonth {
-	calendar := a.hooks.cache.Model()
-	m := calendar.MonthUnder(a.cache.directory.Model(), email, a.cache.linked(email), now(), month, token)
-	_, _, current := savedCalendars(calendar, email, token)
-	return HomeMonth{Month: m.Month, Today: m.Today, Days: m.Days, Events: m.Events, Calendar: current}
+func homeMonth(m *Model, email, month, token string) HomeMonth {
+	shown := m.Calendar.MonthUnder(m.Directory, email, m.LinkedEvents(email, now()), now(), month, token)
+	_, _, current := savedCalendars(m.Calendar, email, token)
+	return HomeMonth{Month: shown.Month, Today: shown.Today, Days: shown.Days, Events: shown.Events, Calendar: current}
 }
 
 func (a homeApp) teamWidget(r *http.Request, _ serve.None) (ActivityWidget, error) {
-	email := a.cache.directory.Model().Resolve(auth.Email(r))
-	return a.cache.activities.Widget(email, now()), nil
+	m := a.store.Model()
+	return m.Activities.Widget(m.Directory.Resolve(auth.Email(r)), now()), nil
 }
 
 type celebrateWidgetView struct {
@@ -202,9 +196,9 @@ type celebrateWidgetView struct {
 }
 
 func (a homeApp) celebrateWidget(r *http.Request, _ serve.None) (celebrateWidgetView, error) {
-	people := a.cache.directory.Model()
-	email := people.Resolve(auth.Email(r))
-	return celebrateWidgetView{a.hooks.cache.Model().PartiesFor(people, email, a.cache.linked(email), now())}, nil
+	m := a.store.Model()
+	email := m.Directory.Resolve(auth.Email(r))
+	return celebrateWidgetView{m.Calendar.PartiesFor(m.Directory, email, m.LinkedEvents(email, now()), now())}, nil
 }
 
 type schoolWidgetView struct {
@@ -212,10 +206,10 @@ type schoolWidgetView struct {
 }
 
 func (a homeApp) schoolWidget(r *http.Request, _ serve.None) (schoolWidgetView, error) {
-	people := a.cache.directory.Model()
-	email := people.Resolve(auth.Email(r))
+	m := a.store.Model()
+	email := m.Directory.Resolve(auth.Email(r))
 	since := now().AddDate(0, 0, -int(SchoolMailWindow/(24*time.Hour))).Format(DateFormat)
-	return schoolWidgetView{a.documents.Model().SchoolMail(people, email, since)}, nil
+	return schoolWidgetView{m.Documents.SchoolMail(m.Directory, email, since)}, nil
 }
 
 func (a homeApp) requireAdminFunc(next http.HandlerFunc) http.HandlerFunc {
@@ -236,7 +230,8 @@ type homeUser struct {
 }
 
 func (a homeApp) calendar(r *http.Request, _ serve.None) (HomeMonth, error) {
-	return a.month(a.actor(r).Email, r.URL.Query().Get("month"), r.URL.Query().Get("calendar")), nil
+	m := a.store.Model()
+	return homeMonth(m, m.actor(r, "home").Email, r.URL.Query().Get("month"), r.URL.Query().Get("calendar")), nil
 }
 
 type homeRSVPBody struct {
@@ -249,7 +244,8 @@ func (a homeApp) rsvp(r *http.Request, body homeRSVPBody) (serve.None, error) {
 }
 
 func (a homeApp) upcomingUnder(r *http.Request, _ serve.None) (HomeUpcoming, error) {
-	return a.upcoming(a.actor(r).Email, r.URL.Query().Get("calendar")), nil
+	m := a.store.Model()
+	return homeUpcoming(m, m.actor(r, "home").Email, r.URL.Query().Get("calendar")), nil
 }
 
 type defaultBody struct {
@@ -275,29 +271,29 @@ type homeView struct {
 }
 
 func (a homeApp) view(r *http.Request, _ serve.None) (homeView, error) {
-	actor := a.actor(r)
+	m := a.store.Model()
+	actor := m.actor(r, "home")
 	email := actor.Email
 	admin := actor.May(ConfigureHome)
-	hidden := hiddenHosts(r.Host, a.cache.HiddenApps(email))
-	full := a.cache.Model()
+	hidden := hiddenHosts(r.Host, m.HiddenApps(email))
 	forMe := func(rules []Rule) bool {
-		return len(rules) == 0 || a.cache.includes(rules, email)
+		return len(rules) == 0 || m.homeIncludes(rules, email)
 	}
-	categories := a.cache.CategoriesFor(actor)
+	categories := m.HomeCategoriesFor(actor)
 	for i := range categories {
 		categories[i].Links = slices.DeleteFunc(categories[i].Links, func(l HomeLink) bool { return linksInto(hidden, l.URL) })
 	}
 	view := homeView{
 		Categories:  categories,
-		User:        homeUser{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.sources().Directory.HeroPhoto(email), IsAdmin: admin},
+		User:        homeUser{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: m.Directory.HeroPhoto(email), IsAdmin: admin},
 		ImageSearch: a.search.On(),
-		Calendar:    a.month(email, "", ""),
-		Apps:        a.appViews(email, admin),
+		Calendar:    homeMonth(m, email, "", ""),
+		Apps:        appViews(m, email, admin),
 		Widgets:     map[string]widgetView{},
-		WidgetOrder: full.WidgetOrder,
+		WidgetOrder: m.Home.WidgetOrder,
 	}
 	for _, key := range HomeWidgets {
-		rules := full.WidgetRules[key]
+		rules := m.Home.WidgetRules[key]
 		v := widgetView{ForMe: forMe(rules)}
 		if admin {
 			v.Rules = rules
@@ -305,11 +301,11 @@ func (a homeApp) view(r *http.Request, _ serve.None) (homeView, error) {
 		view.Widgets[key] = v
 	}
 	if admin {
-		options := a.sources().Options(actor.Email)
+		options := m.DirectoryAudience(now()).Options(actor.Email)
 		view.Options = &options
-		view.TagLabels = a.tagLabels(categories, view.Apps, actor.Email)
+		view.TagLabels = homeTagLabels(m, categories, view.Apps, actor.Email)
 	}
-	ahead := a.upcoming(email, "")
+	ahead := homeUpcoming(m, email, "")
 	view.Upcoming = ahead.Events
 	if ahead.Calendar != "" {
 		view.UpcomingCalendar = &HomeUpcoming{Calendar: ahead.Calendar, Default: ahead.Default, Calendars: ahead.Calendars}
@@ -317,9 +313,9 @@ func (a homeApp) view(r *http.Request, _ serve.None) (homeView, error) {
 	return view, nil
 }
 
-func (a homeApp) tagLabels(categories []HomeCategory, apps []appView, viewer string) map[string]string {
-	sources := a.sources()
-	admins := a.cache.Admins()
+func homeTagLabels(m *Model, categories []HomeCategory, apps []appView, viewer string) map[string]string {
+	sources := m.DirectoryAudience(now())
+	admins := m.AdminList("home").Admins()
 	out := map[string]string{}
 	add := func(rules []Rule) {
 		for _, r := range rules {
@@ -339,7 +335,7 @@ func (a homeApp) tagLabels(categories []HomeCategory, apps []appView, viewer str
 			add(app.Visibility.Rules)
 		}
 	}
-	for _, rules := range a.cache.Model().WidgetRules {
+	for _, rules := range m.Home.WidgetRules {
 		add(rules)
 	}
 	return out
@@ -398,13 +394,18 @@ type widgetAudienceBody struct {
 	Rules  []Rule `json:"rules"`
 }
 
+func (a homeApp) commit(r *http.Request, actor access.Actor, ops []store.Op) error {
+	return a.store.Commit(r.Context(), actor, homeAppName, ops...)
+}
+
 func (a homeApp) saveWidgetAudience(r *http.Request, body widgetAudienceBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, err := a.cache.saveWidgetAudience(actor, body.Widget, body.Rules)
+	m := a.store.Model()
+	actor := m.actor(r, "home")
+	ops, err := m.saveHomeWidgetAudience(actor, body.Widget, body.Rules)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r, actor, ops); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home: set a widget's audience", "actor", actor.Email, "widget", body.Widget, "rules", len(body.Rules))
@@ -416,12 +417,13 @@ type widgetOrderBody struct {
 }
 
 func (a homeApp) setWidgetOrder(r *http.Request, body widgetOrderBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, err := a.cache.setWidgetOrder(actor, body.Widgets)
+	m := a.store.Model()
+	actor := m.actor(r, "home")
+	ops, err := m.Home.setWidgetOrder(actor, body.Widgets)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r, actor, ops); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home: set the widgets' order", "actor", actor.Email, "widgets", body.Widgets)
@@ -429,11 +431,12 @@ func (a homeApp) setWidgetOrder(r *http.Request, body widgetOrderBody) (serve.No
 }
 
 func (a homeApp) audienceOptions(r *http.Request, _ serve.None) (AudienceOptions, error) {
-	actor := a.actor(r)
+	m := a.store.Model()
+	actor := m.actor(r, "home")
 	if err := requireHomeAdmin(actor); err != nil {
 		return AudienceOptions{}, err
 	}
-	return a.sources().Options(actor.Email), nil
+	return m.DirectoryAudience(now()).Options(actor.Email), nil
 }
 
 type previewBody struct {
@@ -448,32 +451,34 @@ type previewView struct {
 }
 
 func (a homeApp) audiencePreview(r *http.Request, body previewBody) (previewView, error) {
-	actor := a.actor(r)
+	m := a.store.Model()
+	actor := m.actor(r, "home")
 	if err := requireHomeAdmin(actor); err != nil {
 		return previewView{}, err
 	}
-	rules, err := a.cache.checkRules(rulesOf(a.cache.Model(), body.Thing), body.Rules, actor.Email)
+	rules, err := m.checkHomeRules(rulesOf(m.Home, body.Thing), body.Rules, actor.Email)
 	if err != nil {
 		return previewView{}, err
 	}
-	sources := a.sources()
-	list := Audience{Rules: rules, Editors: a.cache.Admins()}
+	sources := m.DirectoryAudience(now())
+	list := Audience{Rules: rules, Editors: m.AdminList("home").Admins()}
 	members := list.Members(sources)
 	names := []string{}
-	for _, m := range members {
-		names = append(names, sources.Directory.DisplayName(m))
+	for _, member := range members {
+		names = append(names, sources.Directory.DisplayName(member))
 	}
 	slices.Sort(names)
 	return previewView{Count: len(members), Names: names[:min(len(names), 12)], RuleCounts: list.RuleCounts(sources)}, nil
 }
 
 func (a homeApp) saveLink(r *http.Request, body linkEdit) (serve.None, error) {
-	actor := a.actor(r)
-	action, key, ops, err := a.cache.saveLink(actor, body)
+	m := a.store.Model()
+	actor := m.actor(r, "home")
+	action, key, ops, err := m.saveHomeLink(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r, actor, ops); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:saved link", "action", action, "id", key, "title", body.Title)
@@ -485,12 +490,13 @@ type idBody struct {
 }
 
 func (a homeApp) deleteLink(r *http.Request, body idBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, err := a.cache.deleteLink(actor, body.ID)
+	m := a.store.Model()
+	actor := m.actor(r, "home")
+	ops, err := m.Home.deleteLink(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r, actor, ops); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:deleted link", "id", body.ID)
@@ -498,12 +504,13 @@ func (a homeApp) deleteLink(r *http.Request, body idBody) (serve.None, error) {
 }
 
 func (a homeApp) saveCategory(r *http.Request, body categoryEdit) (serve.None, error) {
-	actor := a.actor(r)
-	action, key, ops, err := a.cache.saveCategory(actor, body)
+	m := a.store.Model()
+	actor := m.actor(r, "home")
+	action, key, ops, err := m.saveHomeCategory(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r, actor, ops); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:saved category", "action", action, "id", key, "title", body.Title)
@@ -515,12 +522,13 @@ type idsBody struct {
 }
 
 func (a homeApp) reorderCategories(r *http.Request, body idsBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, err := a.cache.reorderCategories(actor, body.IDs)
+	m := a.store.Model()
+	actor := m.actor(r, "home")
+	ops, err := m.Home.reorderCategories(actor, body.IDs)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r, actor, ops); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:reordered categories", "count", len(body.IDs))
@@ -533,15 +541,16 @@ type moveLinkBody struct {
 }
 
 func (a homeApp) moveLink(r *http.Request, body moveLinkBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, err := a.cache.moveLink(actor, body.ID, body.By)
+	m := a.store.Model()
+	actor := m.actor(r, "home")
+	ops, err := m.Home.moveLink(actor, body.ID, body.By)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if len(ops) == 0 {
 		return serve.None{}, nil
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r, actor, ops); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:moved link", "id", body.ID, "by", body.By)
@@ -549,29 +558,31 @@ func (a homeApp) moveLink(r *http.Request, body moveLinkBody) (serve.None, error
 }
 
 func (a homeApp) deleteCategory(r *http.Request, body idBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, err := a.cache.deleteCategory(actor, body.ID)
+	m := a.store.Model()
+	actor := m.actor(r, "home")
+	ops, err := m.Home.deleteCategory(actor, body.ID)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r, actor, ops); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:deleted category", "id", body.ID)
 	return serve.None{}, nil
 }
 
-func (a homeApp) adminState(*http.Request, access.Actor) map[string]any {
-	return map[string]any{"apps": a.cache.AppVisibilities()}
+func (a homeApp) adminState(m *Model, _ *http.Request, _ access.Actor) map[string]any {
+	return map[string]any{"apps": m.Home.AppVisibilities()}
 }
 
 func (a homeApp) setVisibility(r *http.Request, body visibilityEdit) (serve.None, error) {
-	actor := a.actor(r)
-	key, v, ops, err := a.cache.setVisibility(actor, body)
+	m := a.store.Model()
+	actor := m.actor(r, "home")
+	key, v, ops, err := m.setHomeVisibility(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r, actor, ops); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:set an app's visibility", "app", key, "visibility", v.Mode, "emails", len(v.Emails), "name", v.Name, "tagline", v.Tagline)
@@ -583,12 +594,13 @@ type appsBody struct {
 }
 
 func (a homeApp) setAppOrder(r *http.Request, body appsBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, err := a.cache.setAppOrder(actor, body.Apps)
+	m := a.store.Model()
+	actor := m.actor(r, "home")
+	ops, err := m.Home.setAppOrder(actor, body.Apps)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r, actor, ops); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "home:set the apps' order", "apps", body.Apps)

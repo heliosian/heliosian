@@ -82,7 +82,7 @@ type viewer struct {
 	loop      *model.EmailLists
 	library   *model.Documents
 	embedder  *artifacts.Vertex
-	sources   Sources
+	all       *model.Model
 	now       time.Time
 	teamAs    access.Actor
 	partyAs   access.Actor
@@ -94,17 +94,30 @@ type viewer struct {
 }
 
 func (a app) viewer(email string) *viewer {
+	m := a.sources.Store.Model()
 	v := &viewer{
-		email: email, directory: a.sources.Directory(), calendar: a.sources.Calendar(), team: a.sources.Team(), celebrate: a.sources.Celebrate(), loop: a.sources.Loop(),
-		library: a.sources.Documents(), embedder: a.sources.Embedder,
-		sources: a.sources, now: a.sources.Now().In(model.Location), access: &groupAccess{}, ctx: context.Background(),
+		email: email, directory: m.Directory, calendar: m.Calendar, team: m.Activities, celebrate: m.Parties, loop: m.EmailLists,
+		library: m.Documents, embedder: a.sources.Embedder,
+		all: m, now: a.sources.Now().In(model.Location), access: &groupAccess{}, ctx: context.Background(),
 	}
 	v.me = v.directory.Person(email)
-	as := func(held func(string) []access.Allowance) access.Actor {
-		return v.directory.ActorOf(email, held(email))
+	as := func(app string) access.Actor {
+		return v.directory.ActorOf(email, m.AdminList(app).Held(email))
 	}
-	v.teamAs, v.partyAs, v.loopAs, v.whenAs, v.homeAs = as(a.sources.Admins.Team), as(a.sources.Admins.Celebrate), as(a.sources.Admins.Loop), as(a.sources.Admins.Calendar), as(a.sources.Admins.Home)
+	v.teamAs, v.partyAs, v.loopAs, v.whenAs, v.homeAs = as("team"), as("celebrate"), as("loop"), as("when"), as("home")
 	return v
+}
+
+func (v *viewer) linked() []model.Linked {
+	return v.all.LinkedEvents(v.email, v.now)
+}
+
+func (v *viewer) audience() model.AudienceSources {
+	return v.all.EmailListAudience(v.now)
+}
+
+func (v *viewer) lists(email string) []model.MagicTag {
+	return append(v.directory.RoomParentTags(email), v.all.ManagedMagicTags(email, v.now)...)
 }
 
 func (v *viewer) run(ctx context.Context, name string, input json.RawMessage) (string, error) {

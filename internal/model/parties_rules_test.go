@@ -18,7 +18,7 @@ type attendee = struct {
 
 func TestTakeTicketsDirectly(t *testing.T) {
 	cache, _ := partiesServer(t)
-	m := cache.Model()
+	m := cache.Model().Parties
 	order := func(party, purchaser string, free, raise bool, people ...attendee) ticketOrder {
 		return ticketOrder{PartyID: party, Purchaser: purchaser, Free: free, RaiseCapacity: raise, Attendees: people}
 	}
@@ -81,7 +81,7 @@ func TestTakeTicketsDirectly(t *testing.T) {
 
 func TestSavePartyDirectly(t *testing.T) {
 	cache, _ := partiesServer(t)
-	m := cache.Model()
+	m := cache.Model().Parties
 	fresh := partyBody{Title: "Board Game Night", Adults: true, Status: StatusOpen, Category: "pcg0000000001", Celebration: "cbn0000002025"}
 	edit := partyBody{ID: "pty0000000002", Title: "Dink & Clink", Price: m.Party("pty0000000002").Price, Adults: true, Status: StatusHidden, HostEmails: []string{elena, "marco.torres@heliosschool.org"}}
 	with := func(b partyBody, change func(*partyBody)) partyBody {
@@ -123,17 +123,17 @@ func TestSavePartyDirectly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cache.Commit(context.Background(), partyViewerOf(elena, false), saved.ops...); err != nil {
+	if err := cache.Commit(context.Background(), partyViewerOf(elena, false), partiesAppName, saved.ops...); err != nil {
 		t.Fatal(err)
 	}
-	p := cache.Model().Party(saved.id)
+	p := cache.Model().Parties.Party(saved.id)
 	if p == nil || p.Status != StatusPending || p.Category != "" || p.Celebration != "cbn0000002026" || !p.Hosted(elena) || p.AddedBy != elena {
 		t.Fatalf("a parent's party landed as %+v", p)
 	}
 	if _, ok := id.Parse(p.ID); !ok || p.ID != saved.id {
 		t.Fatalf("a parent's party landed as %+v", p)
 	}
-	closed := *cache.Model()
+	closed := *cache.Model().Parties
 	closed.Settings.HostingOpen = false
 	if _, err := closed.saveParty(partyViewerOf(elena, false), fresh); testkit.Status(t, err) != http.StatusForbidden {
 		t.Fatalf("a parent posted while hosting is closed: %v", err)
@@ -145,8 +145,8 @@ func TestSavePartyDirectly(t *testing.T) {
 
 func TestSavePartyAddressConflict(t *testing.T) {
 	cache, _ := partiesServer(t)
-	body := partyBody{ID: "pty0000000003", Title: "K-Pop for a Cause!", Price: cache.Model().Party("pty0000000003").Price, Adults: true, Students: true, PrettyID: "Fondue", HostEmails: []string{"deepa.natarajan@heliosschool.org"}}
-	_, err := cache.Model().saveParty(partyViewerOf("deepa.natarajan@heliosschool.org", false), body)
+	body := partyBody{ID: "pty0000000003", Title: "K-Pop for a Cause!", Price: cache.Model().Parties.Party("pty0000000003").Price, Adults: true, Students: true, PrettyID: "Fondue", HostEmails: []string{"deepa.natarajan@heliosschool.org"}}
+	_, err := cache.Model().Parties.saveParty(partyViewerOf("deepa.natarajan@heliosschool.org", false), body)
 	var refusal *access.Refusal
 	if !errors.As(err, &refusal) || refusal.Status != http.StatusConflict {
 		t.Fatalf("took another party's address: %v", err)

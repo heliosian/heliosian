@@ -10,22 +10,22 @@ import (
 	"testing"
 	"time"
 
-	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 )
 
-func sampleConfig(t *testing.T) (*data.Dir, *store.Queue, *ConfigCache) {
+func sampleConfig(t *testing.T, whoAdmins ...string) (*data.Dir, *store.Queue, *Store) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	queue := store.NewQueue()
-	cache, err := NewConfigCache(dir, dir, queue)
-	if err != nil {
-		t.Fatalf("load sample config: %v", err)
+	for _, email := range whoAdmins {
+		if err := dir.Insert(DirectoryApp, adminsTabName, []map[string]string{{"Email": email}}); err != nil {
+			t.Fatal(err)
+		}
 	}
-	return dir, queue, cache
+	queue := store.NewQueue()
+	return dir, queue, sampleDirectory(t, dir, queue)
 }
 
 func configTables(t *testing.T) store.Tables {
@@ -124,20 +124,11 @@ func TestSignOutIsRecordedOncePerAddress(t *testing.T) {
 	}
 }
 
-func configures(admin string) func(string) []access.Allowance {
-	return func(email string) []access.Allowance {
-		if email != admin {
-			return nil
-		}
-		return []access.Allowance{Configure}
-	}
-}
-
 func TestAdminEditsAreCommits(t *testing.T) {
 	dir, queue, cache := sampleConfig(t)
 	const jordan = "jordan.whitfield@heliosschool.org"
 	mux := http.NewServeMux()
-	RegisterConfig(mux, cache, sampleDirectory(t, dir, queue), configures(jordan))
+	RegisterConfig(mux, cache)
 	post := func(path, body string, want int) {
 		t.Helper()
 		rec := httptest.NewRecorder()
@@ -149,7 +140,7 @@ func TestAdminEditsAreCommits(t *testing.T) {
 	post("/api/config/stale-years", `{"photo":1,"facts":0.6,"familyPhoto":1.5}`, http.StatusNoContent)
 	post("/api/config/color", `{"kind":"grade","name":"Kindergarten","color":"#000000"}`, http.StatusNoContent)
 	post("/api/config/super-admins", `{"superAdmins":["`+jordan+`","asha.chandra@heliosschool.org"]}`, http.StatusNoContent)
-	s := cache.Config()
+	s := cache.Model().Config
 	if s.StaleYears.Photo != 1 || s.GradeColors["Kindergarten"] != "#000000" || !cache.IsSuperAdmin("asha.chandra@heliosschool.org") {
 		t.Fatalf("settings after the edits: %+v", s)
 	}
@@ -169,10 +160,10 @@ func TestAdminEditsAreCommits(t *testing.T) {
 }
 
 func TestEditsNeedTheirAdmin(t *testing.T) {
-	dir, queue, cache := sampleConfig(t)
 	const asha = "asha.chandra@heliosschool.org"
+	_, _, cache := sampleConfig(t, asha)
 	mux := http.NewServeMux()
-	RegisterConfig(mux, cache, sampleDirectory(t, dir, queue), configures(asha))
+	RegisterConfig(mux, cache)
 	for path, body := range map[string]string{
 		"/api/config/color":        `{"kind":"staff","color":"#000000"}`,
 		"/api/config/super-admins": `{"superAdmins":["` + asha + `"]}`,

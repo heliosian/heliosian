@@ -20,26 +20,27 @@ type Late struct {
 	Path     string `json:"path"`
 }
 
-func (c *BirthdaysCache) Late(directory func() *Directory, email string) []Late {
+func (m *Model) Late(email string) []Late {
 	email = strings.ToLower(strings.TrimSpace(email))
-	m := c.Model()
-	admin := c.IsAdmin(email)
-	comms := slices.ContainsFunc(m.Team, func(t TeamMember) bool { return t.Email == email && t.Role == RoleComms })
-	if !m.Sees(directory().ActorOf(email, c.Held(email))) {
+	bs := m.Birthdays
+	admins := m.AdminList("birthday")
+	admin := admins.IsAdmin(email)
+	comms := slices.ContainsFunc(bs.Team, func(t TeamMember) bool { return t.Email == email && t.Role == RoleComms })
+	if !bs.Sees(m.Directory.ActorOf(email, admins.Held(email))) {
 		return []Late{}
 	}
-	v := birthdayViewer{directory: directory()}
-	month, day, _ := ParseMonthDay(m.Settings.YearStart)
+	v := birthdayViewer{directory: m.Directory}
+	month, day, _ := ParseMonthDay(bs.Settings.YearStart)
 	at := now()
 	year := BirthdayYearContaining(at, month, day)
 	today := at.Format(DateFormat)
 	out := []Late{}
-	for i := range m.Birthdays {
-		b := &m.Birthdays[i]
-		if !m.InPipeline(b.Email) {
+	for i := range bs.Birthdays {
+		b := &bs.Birthdays[i]
+		if !bs.InPipeline(b.Email) {
 			continue
 		}
-		sv := v.staff(m, b, year, at)
+		sv := v.staff(bs, b, year, at)
 		if !sv.InDirectory {
 			continue
 		}

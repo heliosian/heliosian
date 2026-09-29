@@ -10,10 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"heliosian/internal/access"
-	"heliosian/internal/api"
 	"heliosian/internal/claude"
-	"heliosian/internal/data"
 	"heliosian/internal/describe"
 	"heliosian/internal/id"
 	"heliosian/internal/mail"
@@ -23,8 +20,6 @@ import (
 )
 
 var birthdaysSent *mailtest.Recorder
-
-var birthdaysJoined []string
 
 const parent = "robin.whitfield@heliosschool.org"
 
@@ -39,62 +34,37 @@ const (
 	unknownID     = "zzz9999999999"
 )
 
-var people *Directory
-
-func birthdayDirectory() *Directory { return people }
-
-func birthdaysServer(t *testing.T) (*BirthdaysCache, *http.ServeMux) {
+func birthdaysSheet(t *testing.T) {
 	t.Helper()
-	t.Chdir("../..")
+	sampleSheet(t)
 	was := now
 	t.Cleanup(func() { now = was })
 	now = func() time.Time { return testkit.MustTime("2026-09-09") }
-	dir := &data.Dir{Root: "sampledata"}
-	sheet = dir
-	queue = store.NewQueue()
-	d, err := LoadDirectory(dir, nil, testkit.None, []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	people = d
-	cache, err := NewBirthdaysCache(dir, dir, func() []string { return []string{jordan} }, queue, []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
+}
+
+func birthdaysOver(t *testing.T) (*Store, *http.ServeMux) {
+	t.Helper()
+	s := sampleStore(t, sheet, queue, sampleDeps(sampleKey))
 	mux := http.NewServeMux()
 	birthdaysSent = mailtest.NewRecorder("Helios Staff Birthdays <birthday@example.org>")
-	birthdaysJoined = nil
-	world := func(tx *store.Tx) BirthdaysWorld { return NewBirthdaysWorld(cache.In(tx), people) }
-	reg := api.New(api.Config[BirthdaysWorld]{
-		Actor:  func(r *http.Request, w BirthdaysWorld) access.Actor { return w.Directory.Actor(r, cache.Held) },
-		Held:   cache.Held,
-		Now:    func() time.Time { return now() },
-		Queue:  queue,
-		Staged: world,
-		Scope:  func(w BirthdaysWorld, _ api.Query) BirthdaysWorld { return w },
-	})
-	for _, rt := range DirectoryResources() {
-		reg.Add(api.Lift(rt, func(w BirthdaysWorld) *Directory { return w.Directory }))
-	}
-	for _, rt := range BirthdayResources(cache, func(_ context.Context, email string) error {
-		birthdaysJoined = append(birthdaysJoined, email)
-		return nil
-	}) {
-		reg.Add(rt)
-	}
-	queue.OnSwap(func() { reg.Publish(world(nil)) })
+	reg := typedRegistry(s, queue, DirectoryResources(), BirthdayResources(s))
 	reg.Register(mux)
 	RegisterBirthdays(mux, BirthdaysDeps{
-		Cache:     cache,
+		Store:     s,
 		Queue:     queue,
-		Directory: birthdayDirectory,
 		Describer: describe.New("test", claude.NewLimiter()),
 		Mailer:    birthdaysSent.Mailgun,
 		Base:      "https://birthday.example.org",
 		About:     BirthdaysAbout(func() string { return "Helios Birthday Team" }, func() string { return "Staff birthday donations" }),
 		Taken:     reg.Taken,
 	})
-	return cache, mux
+	return s, mux
+}
+
+func birthdaysServer(t *testing.T) (*Store, *http.ServeMux) {
+	t.Helper()
+	birthdaysSheet(t)
+	return birthdaysOver(t)
 }
 
 type birthdaysReply struct {
@@ -189,8 +159,8 @@ type birthdaysWrite struct {
 }
 
 func TestSampleLoads(t *testing.T) {
-	cache, _ := birthdaysServer(t)
-	m := cache.Model()
+	s, _ := birthdaysServer(t)
+	m := s.Model().Birthdays
 	if len(m.Birthdays) != 18 || len(m.Charities) != 7 || len(m.NewsletterDates) != 57 || len(m.Invites) != 3 {
 		t.Fatalf("got %d birthdays, %d charities, %d newsletter dates, %d invites", len(m.Birthdays), len(m.Charities), len(m.NewsletterDates), len(m.Invites))
 	}
@@ -271,7 +241,7 @@ func TestBirthdaysYears(t *testing.T) {
 }
 
 func TestBirthdayResources(t *testing.T) {
-	_, mux := birthdaysServer(t)
+	st, mux := birthdaysServer(t)
 	settings := get(t, mux, parent, "/api/birthday-settings")
 	s := settings.Resources["birthday-settings"][settings.ids(t)[0]]
 	year := s["year"].(map[string]any)
@@ -354,13 +324,13 @@ func TestBirthdayResources(t *testing.T) {
 		t.Errorf("an admin's can on a missing birthday: %+v", can)
 	}
 	departments := get(t, mux, parent, "/api/departments")
-	if names := departments.ids(t); len(names) == 0 || departments.Resources["departments"][names[0]]["name"] != people.Departments[0] {
+	if names := departments.ids(t); len(names) == 0 || departments.Resources["departments"][names[0]]["name"] != st.Model().Directory.Departments[0] {
 		t.Errorf("departments: %+v", departments)
 	}
 }
 
 func TestPipeline(t *testing.T) {
-	cache, mux := birthdaysServer(t)
+	st, mux := birthdaysServer(t)
 	const miguelPath = "/api/birthdays/Miguel.Santos@heliosschool.org/"
 	birthdaysCall(t, mux, parent, "POST", miguelPath+"assign", nil, http.StatusNoContent)
 	sv, out := staff(t, mux, parent, "miguel.santos@heliosschool.org")
@@ -432,7 +402,7 @@ func TestPipeline(t *testing.T) {
 		t.Fatalf("a skipped birthday: %+v", sv)
 	}
 	birthdaysCall(t, mux, parent, "POST", miguelPath+"clear-participation", nil, http.StatusNoContent)
-	if b := cache.Model().Birthday("miguel.santos@heliosschool.org"); b == nil || b.Level != "" || b.Birthday != "09-14" {
+	if b := st.Model().Birthdays.Birthday("miguel.santos@heliosschool.org"); b == nil || b.Level != "" || b.Birthday != "09-14" {
 		t.Fatalf("after unskipping: %+v", b)
 	}
 	const noaPath = "/api/birthdays/noa.adler@heliosschool.org/"
@@ -442,7 +412,7 @@ func TestPipeline(t *testing.T) {
 		t.Fatalf("skipping someone with no birthday: %+v", noa)
 	}
 	birthdaysCall(t, mux, parent, "POST", noaPath+"clear-participation", nil, http.StatusNoContent)
-	if noa, _ := staff(t, mux, parent, "noa.adler@heliosschool.org"); cache.Model().Birthday("noa.adler@heliosschool.org") != nil || noa["missing"] != true {
+	if noa, _ := staff(t, mux, parent, "noa.adler@heliosschool.org"); st.Model().Birthdays.Birthday("noa.adler@heliosschool.org") != nil || noa["missing"] != true {
 		t.Fatal("a preference-only row survived clearing the preference")
 	}
 	birthdaysCall(t, mux, parent, "POST", miguelPath+"note", map[string]any{"note": "Out until Monday"}, http.StatusNoContent)
@@ -481,10 +451,10 @@ func TestBirthdays(t *testing.T) {
 }
 
 func TestCharities(t *testing.T) {
-	cache, mux := birthdaysServer(t)
+	st, mux := birthdaysServer(t)
 	rec := birthdaysCall(t, mux, parent, "POST", "/api/charities", map[string]any{"name": "Oceana", "donationLink": "https://oceana.org/", "about": "Oceans", "allowed": false, "whyNotAllowed": "ignored"}, http.StatusOK)
 	key := birthdaysCreated(t, rec)
-	oceana := cache.Model().Charity(key)
+	oceana := st.Model().Birthdays.Charity(key)
 	if oceana == nil || oceana.Name != "Oceana" || !oceana.Allowed || oceana.WhyNotAllowed != "" || oceana.AddedOn != "2026-09-09" {
 		t.Fatalf("a non-admin's addition: %+v", oceana)
 	}
@@ -497,15 +467,15 @@ func TestCharities(t *testing.T) {
 	prohibit := map[string]any{"allowed": false, "whyNotAllowed": "Politics"}
 	birthdaysCall(t, mux, parent, "POST", "/api/charities/"+key+"/allow", prohibit, http.StatusForbidden)
 	birthdaysCall(t, mux, jordan, "POST", "/api/charities/"+key+"/allow", prohibit, http.StatusNoContent)
-	if c := cache.Model().Charity(key); c.Allowed || c.WhyNotAllowed != "Politics" {
+	if c := st.Model().Birthdays.Charity(key); c.Allowed || c.WhyNotAllowed != "Politics" {
 		t.Fatalf("after prohibiting: %+v", c)
 	}
 	birthdaysCall(t, mux, parent, "POST", "/api/charities/"+key+"/edit", map[string]any{"name": "Oceana", "donationLink": "https://oceana.org/", "about": "The oceans"}, http.StatusNoContent)
-	if c := cache.Model().Charity(key); c.Allowed || c.About != "The oceans" {
+	if c := st.Model().Birthdays.Charity(key); c.Allowed || c.About != "The oceans" {
 		t.Fatalf("an edit touched whether it is allowed: %+v", c)
 	}
 	birthdaysCall(t, mux, jordan, "POST", "/api/charities/"+rocketDog+"/edit", map[string]any{"name": "Rocket Dog Rescue, Inc.", "donationLink": "https://www.rocketdogrescue.org/"}, http.StatusNoContent)
-	if d, _ := cache.Model().Donation("dana.hawkins@heliosschool.org", "2026 - 2027"); d.Charity != rocketDog || cache.Model().charityName(d.Charity) != "Rocket Dog Rescue, Inc." {
+	if d, _ := st.Model().Birthdays.Donation("dana.hawkins@heliosschool.org", "2026 - 2027"); d.Charity != rocketDog || st.Model().Birthdays.charityName(d.Charity) != "Rocket Dog Rescue, Inc." {
 		t.Fatalf("the donation lost its charity in the rename: %+v", d)
 	}
 	birthdaysCall(t, mux, jordan, "POST", "/api/charities/"+birthfund+"/edit", map[string]any{"name": "Oceana", "donationLink": "https://x.org/"}, http.StatusBadRequest)
@@ -514,7 +484,7 @@ func TestCharities(t *testing.T) {
 	birthdaysCall(t, mux, jordan, "DELETE", "/api/charities/"+birthfund, nil, http.StatusBadRequest)
 	birthdaysCall(t, mux, parent, "DELETE", "/api/charities/"+key, nil, http.StatusForbidden)
 	birthdaysCall(t, mux, jordan, "DELETE", "/api/charities/"+key, nil, http.StatusNoContent)
-	if cache.Model().charityNamed("Oceana") != nil {
+	if st.Model().Birthdays.charityNamed("Oceana") != nil {
 		t.Fatal("the charity survived removal")
 	}
 	settings := "/api/birthday-settings/" + settingsID(t, mux) + "/edit"
@@ -525,7 +495,7 @@ func TestCharities(t *testing.T) {
 }
 
 func TestTeam(t *testing.T) {
-	cache, mux := birthdaysServer(t)
+	st, mux := birthdaysServer(t)
 	birthdaysCall(t, mux, parent, "POST", "/api/birthday-team", map[string]any{"email": "someone.new@gmail.com", "role": RoleVolunteer}, http.StatusForbidden)
 	birthdaysCall(t, mux, parent, "POST", "/api/birthday-team", map[string]any{"role": RoleComms}, http.StatusForbidden)
 	birthdaysCall(t, mux, jordan, "POST", "/api/birthday-team", map[string]any{"email": parent, "role": "Boss"}, http.StatusBadRequest)
@@ -539,7 +509,7 @@ func TestTeam(t *testing.T) {
 	}
 	roles := func(email string) []string {
 		out := []string{}
-		for _, m := range cache.Model().Team {
+		for _, m := range st.Model().Birthdays.Team {
 			if m.Email == email {
 				out = append(out, m.Role)
 			}
@@ -609,11 +579,11 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 }
 
 func TestReminders(t *testing.T) {
-	cache, _ := birthdaysServer(t)
-	app := birthdaysApp{cache: cache, queue: queue, directory: birthdayDirectory, mailer: birthdaysSent.Mailgun, base: "https://birthday.example.org"}
+	st, _ := birthdaysServer(t)
+	app := birthdaysApp{store: st, queue: queue, mailer: birthdaysSent.Mailgun, base: "https://birthday.example.org"}
 	kinds := func(day string) []string {
 		out := []string{}
-		for _, r := range app.dueReminders(cache.Model(), testkit.MustTime(day)) {
+		for _, r := range app.dueReminders(st.Model(), testkit.MustTime(day)) {
 			out = append(out, r.sv.Name+":"+r.kind)
 		}
 		return out
@@ -662,25 +632,25 @@ func TestReminders(t *testing.T) {
 	if got := kinds("2026-09-10"); len(got) != 0 {
 		t.Fatalf("the next day, due again: %v", got)
 	}
-	if n := cache.Count(remindersTab, nil); n != 4 {
+	if n := st.Count(birthdaysAppName, remindersTab, nil); n != 4 {
 		t.Fatalf("reminder rows: %d", n)
 	}
 }
 
 func TestCharityRenameKeepsDonationsAndTheDefault(t *testing.T) {
-	cache, mux := birthdaysServer(t)
+	st, mux := birthdaysServer(t)
 	const old, name = "Second Harvest of Silicon Valley", "Second Harvest"
-	donations := cache.Count(donationsTab, store.Row{"Charity": secondHarvest})
-	if donations == 0 || cache.Model().Settings.DefaultCharity != secondHarvest {
+	donations := st.Count(birthdaysAppName, donationsTab, store.Row{"Charity": secondHarvest})
+	if donations == 0 || st.Model().Birthdays.Settings.DefaultCharity != secondHarvest {
 		t.Fatal("the sample has no donation or default naming the charity")
 	}
-	c := cache.Model().Charity(secondHarvest)
+	c := st.Model().Birthdays.Charity(secondHarvest)
 	birthdaysCall(t, mux, jordan, "POST", "/api/charities/"+secondHarvest+"/edit", map[string]any{"name": name, "donationLink": c.DonationLink, "about": c.About, "ein": c.EIN}, http.StatusNoContent)
-	m := cache.Model()
+	m := st.Model().Birthdays
 	if m.Charity(secondHarvest).Name != name || m.charityNamed(old) != nil {
 		t.Fatalf("after the rename: %+v", m.Charity(secondHarvest))
 	}
-	if cache.Count(donationsTab, store.Row{"Charity": secondHarvest}) != donations || m.Settings.DefaultCharity != secondHarvest {
+	if st.Count(birthdaysAppName, donationsTab, store.Row{"Charity": secondHarvest}) != donations || m.Settings.DefaultCharity != secondHarvest {
 		t.Fatal("the donations or the default lost the charity in the rename")
 	}
 	settings := get(t, mux, parent, "/api/birthday-settings")
@@ -698,7 +668,7 @@ func TestCharityRenameKeepsDonationsAndTheDefault(t *testing.T) {
 }
 
 func TestARunOfNewsletterDatesIsOneBatch(t *testing.T) {
-	cache, mux := birthdaysServer(t)
+	st, mux := birthdaysServer(t)
 	run := []birthdaysWrite{}
 	for day := testkit.MustTime("2027-08-19"); !day.After(testkit.MustTime("2027-09-30")); day = day.AddDate(0, 0, 7) {
 		run = append(run, birthdaysWrite{Method: "POST", Path: "/api/newsletter-dates", Body: map[string]string{"date": day.Format(DateFormat)}})
@@ -706,7 +676,7 @@ func TestARunOfNewsletterDatesIsOneBatch(t *testing.T) {
 	birthdaysCall(t, mux, parent, "POST", "/api/act", run, http.StatusForbidden)
 	clash := append(slices.Clone(run), birthdaysWrite{Method: "POST", Path: "/api/newsletter-dates", Body: map[string]string{"date": "2027-06-04"}})
 	birthdaysCall(t, mux, jordan, "POST", "/api/act", clash, http.StatusBadRequest)
-	if len(cache.Model().NewsletterDates) != 57 {
+	if len(st.Model().Birthdays.NewsletterDates) != 57 {
 		t.Fatal("a refused run added dates")
 	}
 	rec := birthdaysCall(t, mux, jordan, "POST", "/api/act", run, http.StatusOK)
@@ -718,7 +688,7 @@ func TestARunOfNewsletterDatesIsOneBatch(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || len(out.Results) != 7 {
 		t.Fatalf("results %s: %v", rec.Body, err)
 	}
-	m := cache.Model()
+	m := st.Model().Birthdays
 	minted := map[string]bool{}
 	for _, r := range out.Results {
 		if n := m.NewsletterDate(r.ID); n == nil || minted[r.ID] {
@@ -777,7 +747,7 @@ func TestResendingIsAddingAnInvite(t *testing.T) {
 }
 
 func TestClearingTheFutureNewsletterDates(t *testing.T) {
-	cache, mux := birthdaysServer(t)
+	st, mux := birthdaysServer(t)
 	dates := get(t, mux, jordan, "/api/newsletter-dates")
 	clear := []birthdaysWrite{}
 	for _, key := range dates.ids(t) {
@@ -787,30 +757,37 @@ func TestClearingTheFutureNewsletterDates(t *testing.T) {
 	}
 	birthdaysCall(t, mux, parent, "POST", "/api/act", clear, http.StatusForbidden)
 	birthdaysCall(t, mux, jordan, "POST", "/api/act", clear, http.StatusOK)
-	left := cache.Model().NewsletterDates
+	left := st.Model().Birthdays.NewsletterDates
 	if len(left) != 57-len(clear) || len(left) == 0 || left[len(left)-1].Date >= "2026-09-09" {
 		t.Fatalf("after clearing: %v", left)
 	}
-	if kate := cache.Model().Birthday("kate.doyle@heliosschool.org"); kate.Override != "" {
+	if kate := st.Model().Birthdays.Birthday("kate.doyle@heliosschool.org"); kate.Override != "" {
 		t.Fatalf("an override outlived its cleared date: %+v", kate)
 	}
 }
 
 func TestJoinTeam(t *testing.T) {
-	cache, mux := birthdaysServer(t)
+	birthdaysSheet(t)
+	if err := sheet.Update(homeAppName, homeVisibilityTab, map[string]string{"App": "birthday"}, map[string]string{"Emails": ""}); err != nil {
+		t.Fatal(err)
+	}
+	st, mux := birthdaysOver(t)
+	joined := func() []string {
+		return slices.Sorted(slices.Values(st.Model().Home.Visibility["birthday"].Emails))
+	}
 	birthdaysCall(t, mux, parent, "POST", "/api/birthday-team", nil, http.StatusOK)
 	n := 0
-	for _, m := range cache.Model().Team {
+	for _, m := range st.Model().Birthdays.Team {
 		if m.Email == parent && m.Role == RoleVolunteer {
 			n++
 		}
 	}
-	if n != 1 || len(birthdaysJoined) != 1 || birthdaysJoined[0] != parent {
-		t.Fatalf("after robin joined: %d rows, home %v", n, birthdaysJoined)
+	if n != 1 || !slices.Equal(joined(), []string{parent}) {
+		t.Fatalf("after robin joined: %d rows, home %v", n, joined())
 	}
 	birthdaysCall(t, mux, jordan, "POST", "/api/birthday-team", nil, http.StatusOK)
-	if !slices.Contains(cache.Model().Team, TeamMember{Email: jordan, Role: RoleVolunteer}) || len(birthdaysJoined) != 2 {
-		t.Fatalf("after jordan joined: %v, home %v", cache.Model().Team, birthdaysJoined)
+	if !slices.Contains(st.Model().Birthdays.Team, TeamMember{Email: jordan, Role: RoleVolunteer}) || !slices.Equal(joined(), []string{jordan, parent}) {
+		t.Fatalf("after jordan joined: %v, home %v", st.Model().Birthdays.Team, joined())
 	}
 }
 
@@ -842,12 +819,12 @@ func TestStrangerSeesOnlyTheJoinQuestion(t *testing.T) {
 }
 
 func TestNewsletterDates(t *testing.T) {
-	cache, mux := birthdaysServer(t)
+	st, mux := birthdaysServer(t)
 	birthdaysCall(t, mux, parent, "POST", "/api/newsletter-dates", map[string]any{"date": "2027-06-11"}, http.StatusForbidden)
 	birthdaysCall(t, mux, parent, "POST", "/api/newsletter-dates/nwd0000000057/move", map[string]any{"date": "2027-06-05"}, http.StatusForbidden)
 	birthdaysCall(t, mux, jordan, "POST", "/api/newsletter-dates", map[string]any{"date": "2027-06-04"}, http.StatusBadRequest)
 	key := birthdaysCreated(t, birthdaysCall(t, mux, jordan, "POST", "/api/newsletter-dates", map[string]any{"date": "2027-06-11"}, http.StatusOK))
-	if added := cache.Model().newsletterOn("2027-06-11"); added == nil || added.ID != key {
+	if added := st.Model().Birthdays.newsletterOn("2027-06-11"); added == nil || added.ID != key {
 		t.Fatalf("the added date: %+v", added)
 	}
 	if got := get(t, mux, parent, "/api/newsletter-dates/2027-06-11").id(t); got != key {
@@ -863,7 +840,7 @@ func TestNewsletterDates(t *testing.T) {
 		t.Fatalf("the summer newsletter did not follow the move: %+v", tom)
 	}
 	birthdaysCall(t, mux, jordan, "DELETE", "/api/newsletter-dates/"+key, nil, http.StatusNoContent)
-	if len(cache.Model().NewsletterDates) != 57 {
+	if len(st.Model().Birthdays.NewsletterDates) != 57 {
 		t.Fatal("the date survived removal")
 	}
 	birthdaysCall(t, mux, jordan, "DELETE", "/api/newsletter-dates/"+key, nil, http.StatusNotFound)
@@ -898,9 +875,9 @@ func TestPinningABirthday(t *testing.T) {
 }
 
 func TestDeletingANewsletterDateClearsItsPins(t *testing.T) {
-	cache, mux := birthdaysServer(t)
+	st, mux := birthdaysServer(t)
 	birthdaysCall(t, mux, jordan, "DELETE", "/api/newsletter-dates/"+issueOct23, nil, http.StatusNoContent)
-	m := cache.Model()
+	m := st.Model().Birthdays
 	if m.NewsletterDate(issueOct23) != nil || m.newsletterOn("2026-10-23") != nil {
 		t.Fatal("the date survived removal")
 	}
@@ -920,14 +897,14 @@ func TestDeletingANewsletterDateClearsItsPins(t *testing.T) {
 }
 
 func TestShareIssue(t *testing.T) {
-	cache, mux := birthdaysServer(t)
+	st, mux := birthdaysServer(t)
 	if at := nextExport(testkit.MustTime("2026-09-09")); at.Format("2006-01-02 15:04 Mon") != "2026-09-10 23:59 Thu" {
 		t.Fatalf("next export = %v", at)
 	}
 	if at := nextExport(time.Date(2026, 9, 10, 23, 59, 30, 0, Location)); at.Format(DateFormat) != "2026-09-17" {
 		t.Fatalf("the export after one just run = %v", at)
 	}
-	if issue := weekIssue(cache.Model(), time.Date(2026, 9, 10, 23, 59, 0, 0, Location)); issue != "2026-09-11" {
+	if issue := weekIssue(st.Model().Birthdays, time.Date(2026, 9, 10, 23, 59, 0, 0, Location)); issue != "2026-09-11" {
 		t.Fatalf("the week's issue = %q", issue)
 	}
 	birthdaysCall(t, mux, jordan, "POST", "/api/newsletter-dates/"+unknownID+"/share", nil, http.StatusNotFound)
@@ -935,7 +912,7 @@ func TestShareIssue(t *testing.T) {
 	if issue.Resources["newsletter-dates"][issueSep11]["can"].(map[string]any)["share"] != true {
 		t.Fatalf("an issue with birthdays to copy: %+v", issue)
 	}
-	a := birthdaysApp{cache: cache, queue: queue, directory: birthdayDirectory}
+	a := birthdaysApp{store: st, queue: queue}
 	n, err := a.weeklyExport(context.Background(), "2026-09-11")
 	if err != nil {
 		t.Fatal(err)
@@ -949,7 +926,7 @@ func TestShareIssue(t *testing.T) {
 	if n != len(rows) || n == 0 {
 		t.Fatalf("copied %d, rows %d", n, len(rows))
 	}
-	b := cache.Model()
+	b := st.Model().Birthdays
 	for _, row := range rows {
 		email := row["Staff Email"]
 		d, ok := b.Donation(email, "2026 - 2027")
@@ -978,7 +955,7 @@ func TestShareIssue(t *testing.T) {
 	if i < 0 || rows[i]["Preference"] != LevelNoNewsletter || rows[i]["Charity Name"] != "Wikipedia" || rows[i]["Note"] != "Free knowledge for everyone." || rows[i]["Charity Selected On"] != "2026-09-03" || rows[i]["Contacted On"] != "2026-09-02" {
 		t.Errorf("Omar's row: %v", rows)
 	}
-	if d, _ := cache.Model().Donation("omar.farouk@heliosschool.org", "2026 - 2027"); d.UsedOn == "" || d.UsedBy != parent || d.Charity != wikipedia || d.RecordedBy != jordan {
+	if d, _ := st.Model().Birthdays.Donation("omar.farouk@heliosschool.org", "2026 - 2027"); d.UsedOn == "" || d.UsedBy != parent || d.Charity != wikipedia || d.RecordedBy != jordan {
 		t.Errorf("Omar's donation after: %+v", d)
 	}
 }

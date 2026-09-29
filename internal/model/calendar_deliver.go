@@ -91,7 +91,7 @@ func (a calendarApp) stamp(ctx context.Context, what string, ops []store.Op) {
 	if len(ops) == 0 {
 		return
 	}
-	if err := a.cache.Commit(ctx, access.System(mailActor), ops...); err != nil {
+	if err := a.commit(ctx, access.System(mailActor), ops...); err != nil {
 		slog.ErrorContext(ctx, "calendar: record mail", "what", what, "error", err)
 	}
 }
@@ -105,7 +105,7 @@ func (a calendarApp) fillGroups(ctx context.Context) {
 				continue
 			}
 			adder := groups[0].AddedBy
-			e := a.sweptEvent(a.directory().ActorOf(adder, a.cache.Held(adder)), id)
+			e := a.sweptEvent(a.as(adder), id)
 			if e == nil || e.end.Before(now()) {
 				continue
 			}
@@ -117,7 +117,7 @@ func (a calendarApp) fillGroups(ctx context.Context) {
 				ops = append(ops, filled...)
 			}
 		}
-		return a.cache.Stage(tx, ops...)
+		return a.store.Stage(tx, CalendarApp, ops...)
 	})
 	if err != nil {
 		slog.ErrorContext(ctx, "calendar: fill groups", "error", err)

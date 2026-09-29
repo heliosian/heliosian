@@ -96,7 +96,7 @@ func postReply(mux http.Handler, to, from, raw string, signed bool) int {
 }
 
 func TestRepliesRecordAnswers(t *testing.T) {
-	cache := sampleCalendarCache(t)
+	cache := calendarStore(t, nil, nil, nil)
 	me := "jordan.whitfield@heliosschool.org"
 	const school, elsewhere = "dmarc=pass header.from=heliosschool.org", "dmarc=pass header.from=example.org"
 	replies := map[string]string{
@@ -107,7 +107,7 @@ func TestRepliesRecordAnswers(t *testing.T) {
 		"spoofed":  replyMail(me, me, "a7@sample", "DECLINED", "dkim=pass header.d=example.org; spf=pass smtp.mailfrom=x@example.org; dmarc=fail header.from=heliosschool.org"),
 	}
 	m := CalendarMail{Sender: keptMail().Mailgun, SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}
-	mux := replyApp(t, cache, m)
+	mux := replyApp(cache, m)
 	own := replyAddress("a7@sample", me)
 	if own != "Helios When <rsvp+"+(calendarApp{mail: m}).replyToken("a7@sample", me)+"@reply.heliosian.com>" {
 		t.Fatalf("organizer = %q", own)
@@ -119,66 +119,52 @@ func TestRepliesRecordAnswers(t *testing.T) {
 	if code := post("yes", false); code != 406 {
 		t.Errorf("unsigned call: %d", code)
 	}
-	if code := post("yes", true); code != 200 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerYes {
-		t.Errorf("accepted: %d, answer %q", code, cache.Model().AnswerOf(me, "gev0000000007"))
+	if code := post("yes", true); code != 200 || cache.Model().Calendar.AnswerOf(me, "gev0000000007") != AnswerYes {
+		t.Errorf("accepted: %d, answer %q", code, cache.Model().Calendar.AnswerOf(me, "gev0000000007"))
 	}
-	if code := post("no", true); code != 200 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerNo {
-		t.Errorf("declined: %d, answer %q", code, cache.Model().AnswerOf(me, "gev0000000007"))
+	if code := post("no", true); code != 200 || cache.Model().Calendar.AnswerOf(me, "gev0000000007") != AnswerNo {
+		t.Errorf("declined: %d, answer %q", code, cache.Model().Calendar.AnswerOf(me, "gev0000000007"))
 	}
-	if code := post("stranger", true); code != 200 || cache.Model().AnswerOf("x@example.org", "gev0000000007") != "" {
+	if code := post("stranger", true); code != 200 || cache.Model().Calendar.AnswerOf("x@example.org", "gev0000000007") != "" {
 		t.Errorf("a stranger's reply was taken")
 	}
 	post("yes", true)
-	if code := post("forged", true); code != 200 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerYes {
+	if code := post("forged", true); code != 200 || cache.Model().Calendar.AnswerOf(me, "gev0000000007") != AnswerYes {
 		t.Errorf("a reply from another sender was taken")
 	}
-	if code := post("spoofed", true); code != 200 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerYes {
+	if code := post("spoofed", true); code != 200 || cache.Model().Calendar.AnswerOf(me, "gev0000000007") != AnswerYes {
 		t.Errorf("a reply Mailgun did not authenticate was taken")
 	}
 	for _, other := range []string{"rsvp@reply.heliosian.com", "rsvp+@reply.heliosian.com", replyAddress("a8@sample", me), replyAddress("a7@sample", "x@example.org")} {
 		to = other
-		if code := post("no", true); code != 200 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerYes {
+		if code := post("no", true); code != 200 || cache.Model().Calendar.AnswerOf(me, "gev0000000007") != AnswerYes {
 			t.Errorf("a reply to %s was taken", other)
 		}
 	}
 	to = "someone-else@reply.heliosian.com"
-	if code := post("no", true); code != 200 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerYes {
+	if code := post("no", true); code != 200 || cache.Model().Calendar.AnswerOf(me, "gev0000000007") != AnswerYes {
 		t.Errorf("mail for another address was taken as a reply")
 	}
 }
 
-func replyApp(t *testing.T, cache *CalendarCache, m CalendarMail) *http.ServeMux {
-	t.Helper()
-	d := calendarDirectory(t, "sampledata")
-	parties, activities := linkedCaches(t, nil, nil)
+func replyApp(cache *Store, m CalendarMail) *http.ServeMux {
 	mux := http.NewServeMux()
-	RegisterCalendar(mux, CalendarDeps{
-		Cache:      cache,
-		Images:     memoryImages(),
-		Directory:  func() *Directory { return d },
-		Settings:   func() *Config { return &Config{} },
-		Parties:    parties,
-		Activities: activities,
-		EmailLists: linkedEmailLists(t, nil),
-		Mail:       m,
-		Style:      testStyle,
-		Queue:      queue,
-	})
+	RegisterCalendar(mux, calendarDeps(cache, m))
 	return mux
 }
 
 func TestReplyToAnInviteSentUnderAnOldID(t *testing.T) {
-	cache := sampleCalendarCache(t)
-	mux := replyApp(t, cache, CalendarMail{Sender: keptMail().Mailgun, SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey})
+	cache := calendarStore(t, nil, nil, nil)
+	mux := replyApp(cache, CalendarMail{Sender: keptMail().Mailgun, SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey})
 	const old, meeting, dev = "3PL9W2ZC", "evt0000000002", "dev.raman@example.org"
-	if cache.Model().AnswerOf(dev, meeting) != AnswerNo {
-		t.Fatalf("the sample answer = %q", cache.Model().AnswerOf(dev, meeting))
+	if cache.Model().Calendar.AnswerOf(dev, meeting) != AnswerNo {
+		t.Fatalf("the sample answer = %q", cache.Model().Calendar.AnswerOf(dev, meeting))
 	}
 	reply := replyMail(dev, dev, old+"@when.heliosian.com", "ACCEPTED", "dmarc=pass header.from=example.org")
-	if code := postReply(mux, replyAddress(meeting, dev), dev, reply, true); code != 200 || cache.Model().AnswerOf(dev, meeting) != AnswerNo {
-		t.Errorf("a reply signed for the new ID but naming the old one was taken: %d %q", code, cache.Model().AnswerOf(dev, meeting))
+	if code := postReply(mux, replyAddress(meeting, dev), dev, reply, true); code != 200 || cache.Model().Calendar.AnswerOf(dev, meeting) != AnswerNo {
+		t.Errorf("a reply signed for the new ID but naming the old one was taken: %d %q", code, cache.Model().Calendar.AnswerOf(dev, meeting))
 	}
-	if code := postReply(mux, replyAddress(old, dev), dev, reply, true); code != 200 || cache.Model().AnswerOf(dev, meeting) != AnswerYes || cache.Model().Answered[dev][meeting].Via != ViaCalendar {
-		t.Errorf("a reply to an invite sent under the old ID: %d %+v", code, cache.Model().Answered[dev][meeting])
+	if code := postReply(mux, replyAddress(old, dev), dev, reply, true); code != 200 || cache.Model().Calendar.AnswerOf(dev, meeting) != AnswerYes || cache.Model().Calendar.Answered[dev][meeting].Via != ViaCalendar {
+		t.Errorf("a reply to an invite sent under the old ID: %d %+v", code, cache.Model().Calendar.Answered[dev][meeting])
 	}
 }

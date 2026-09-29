@@ -50,7 +50,7 @@ func (a birthdaysApp) exportLoop() {
 		at := nextExport(time.Now())
 		time.Sleep(time.Until(at))
 		ctx := context.Background()
-		issue := weekIssue(a.cache.Model(), at)
+		issue := weekIssue(a.store.Model().Birthdays, at)
 		if issue == "" {
 			slog.InfoContext(ctx, "birthday: no issue this week to copy to the shared sheet")
 			continue
@@ -70,26 +70,26 @@ type exported struct {
 	donation    map[string]string
 }
 
-func (w BirthdaysWorld) toExport(issue string, now time.Time) []exported {
+func (m *Model) toExport(issue string, now time.Time) []exported {
 	out := []exported{}
-	m := w.Model
+	b := m.Birthdays
 	day := birthdayDayOf(now)
-	for i := range m.Birthdays {
-		sv := w.staffOf(m.Birthdays[i].Email, now)
+	for i := range b.Birthdays {
+		sv := m.staffOf(b.Birthdays[i].Email, now)
 		if !sv.InDirectory || sv.Level == LevelSkip || sv.NewsletterDate != issue {
 			continue
 		}
 		if sv.Donation != nil && sv.Donation.UsedOn != "" {
 			continue
 		}
-		key, note, selected := m.Settings.DefaultCharity, "", ""
+		key, note, selected := b.Settings.DefaultCharity, "", ""
 		donation := map[string]string{}
 		if sv.Donation != nil {
 			key, note, selected = sv.Donation.Charity, sv.Donation.Note, sv.Donation.RecordedOn
 		} else {
 			donation["Charity"], donation["Note"], donation["Recorded On"], donation["Recorded By"] = key, "", day, ""
 		}
-		c := m.Charity(key)
+		c := b.Charity(key)
 		name, link, about := c.Name, c.DonationLink, c.About
 		out = append(out, exported{
 			email: sv.Email, year: sv.Year, donation: donation,
@@ -103,11 +103,11 @@ func (w BirthdaysWorld) toExport(issue string, now time.Time) []exported {
 	return out
 }
 
-func (c *BirthdaysCache) stageExport(tx *store.Tx, rows, marks []store.Op) error {
-	if err := c.shared.Stage(tx, rows...); err != nil {
+func (s *Store) stageExport(tx *store.Tx, rows, marks []store.Op) error {
+	if err := s.Stage(tx, sharedSheet, rows...); err != nil {
 		return fmt.Errorf("copy to the shared sheet: %w", err)
 	}
-	if err := c.Stage(tx, marks...); err != nil {
+	if err := s.Stage(tx, birthdaysAppName, marks...); err != nil {
 		return fmt.Errorf("mark the copied birthdays done: %w", err)
 	}
 	return nil
@@ -116,14 +116,14 @@ func (c *BirthdaysCache) stageExport(tx *store.Tx, rows, marks []store.Op) error
 func (a birthdaysApp) weeklyExport(ctx context.Context, issue string) (int, error) {
 	actor := access.System(exportActor)
 	at := now()
-	rows, marks, err := weeklyExport(actor, a.world().toExport(issue, at), at)
+	rows, marks, err := weeklyExport(actor, a.store.Model().toExport(issue, at), at)
 	if err != nil {
 		return 0, err
 	}
 	if len(rows) == 0 {
 		return 0, nil
 	}
-	if _, err := a.queue.Transact(ctx, actor, func(tx *store.Tx) error { return a.cache.stageExport(tx, rows, marks) }); err != nil {
+	if _, err := a.queue.Transact(ctx, actor, func(tx *store.Tx) error { return a.store.stageExport(tx, rows, marks) }); err != nil {
 		return 0, err
 	}
 	return len(rows), nil

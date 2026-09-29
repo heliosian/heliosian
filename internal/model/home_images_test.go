@@ -14,24 +14,22 @@ import (
 	"heliosian/internal/imagesearch"
 )
 
-func homeMux(t *testing.T, c *HomeCache, s homeSheet) *http.ServeMux {
-	t.Helper()
+func homeMux(c *Store, s homeSheet) *http.ServeMux {
 	bucket := blob.NewMemoryBucket()
 	images := blob.New(bucket)
 	mux := http.NewServeMux()
 	RegisterHome(mux, HomeDeps{
-		Cache:     c,
-		Images:    blob.NewImages(images, "home"),
-		Calendar:  homeCalendar(t, c, s),
-		Documents: homeDocuments(t, s),
-		Search:    imagesearch.Search{Stock: imagesearch.NewStock(bucket, images), Limits: imagesearch.NewLimits()},
+		Store:    c,
+		Images:   blob.NewImages(images, "home"),
+		Calendar: homeCalendar(c, s),
+		Search:   imagesearch.Search{Stock: imagesearch.NewStock(bucket, images), Limits: imagesearch.NewLimits()},
 	})
 	return mux
 }
 
 func TestWidgetsAnswerAParent(t *testing.T) {
 	c, s := sampleHomeCache(t)
-	mux := homeMux(t, c, s)
+	mux := homeMux(c, s)
 	for _, path := range []string{"/api/apps/team", "/api/apps/celebrate", "/api/apps/school"} {
 		rec := httptest.NewRecorder()
 		auth.Fixed(jordan, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
@@ -44,10 +42,11 @@ func TestWidgetsAnswerAParent(t *testing.T) {
 func TestOnlyAdminsAddImages(t *testing.T) {
 	c, s := sampleHomeCache(t)
 	const member = "robin.whitfield@heliosschool.org"
-	if !c.IsAdmin(homeAdmin) || c.IsAdmin(member) {
-		t.Fatalf("sample admins: %s %v, %s %v", homeAdmin, c.IsAdmin(homeAdmin), member, c.IsAdmin(member))
+	admins := c.Model().AdminList("home")
+	if !admins.IsAdmin(homeAdmin) || admins.IsAdmin(member) {
+		t.Fatalf("sample admins: %s %v, %s %v", homeAdmin, admins.IsAdmin(homeAdmin), member, admins.IsAdmin(member))
 	}
-	mux := homeMux(t, c, s)
+	mux := homeMux(c, s)
 
 	var pic bytes.Buffer
 	if err := png.Encode(&pic, image.NewGray(image.Rect(0, 0, 8, 8))); err != nil {

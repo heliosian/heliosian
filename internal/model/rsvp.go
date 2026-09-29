@@ -21,11 +21,11 @@ func (a calendarApp) recordBy(ctx context.Context, actor access.Actor, email, id
 	if err != nil {
 		return err
 	}
-	commit := a.cache.Commit
+	commit := a.store.Commit
 	if wait {
-		commit = a.cache.CommitAndWait
+		commit = a.store.CommitAndWait
 	}
-	if err := commit(ctx, actor, ops...); err != nil {
+	if err := commit(ctx, actor, CalendarApp, ops...); err != nil {
 		return fmt.Errorf("%w: %w", errNotRecorded, err)
 	}
 	return nil

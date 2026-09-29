@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-func activitiesLinkedFor(cache *ActivitiesCache, email string) map[string]Linked {
+func activitiesLinkedFor(cache *Store, email string) map[string]Linked {
 	byID := map[string]Linked{}
-	for _, l := range cache.Model().Linked(directory.HouseholdOf(email)) {
+	for _, l := range cache.Model().Activities.Linked(directory.HouseholdOf(email)) {
 		byID[l.ID] = l
 	}
 	return byID
@@ -58,7 +58,7 @@ func TestLinkedActivitiesMine(t *testing.T) {
 
 func TestActivityListsCarryTheirHosts(t *testing.T) {
 	cache, _ := activitiesServer(t)
-	lists := cache.Model().MagicTags(directory, jordan, time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC))
+	lists := cache.Model().Activities.MagicTags(directory, jordan, time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC))
 	i := slices.IndexFunc(lists, func(l MagicTag) bool { return l.Key == "activity:act0000000001" })
 	if i < 0 {
 		t.Fatalf("no International Night list: %+v", lists)
@@ -76,7 +76,7 @@ func TestActivityListsCarryTheirHosts(t *testing.T) {
 func TestPastActivityListsStayArchived(t *testing.T) {
 	cache, _ := activitiesServer(t)
 	night := func(now time.Time) MagicTag {
-		lists := cache.Model().MagicTags(directory, jordan, now)
+		lists := cache.Model().Activities.MagicTags(directory, jordan, now)
 		i := slices.IndexFunc(lists, func(l MagicTag) bool { return l.Key == "activity:act0000000001" })
 		if i < 0 {
 			t.Fatalf("no International Night list at %s: %+v", now, lists)
@@ -98,7 +98,7 @@ func TestPastActivityListsStayArchived(t *testing.T) {
 func TestCommitteesAreListsToo(t *testing.T) {
 	cache, _ := activitiesServer(t)
 	mina := directory.Resolve(chair)
-	lists := cache.Model().MagicTags(directory, mina, time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC))
+	lists := cache.Model().Activities.MagicTags(directory, mina, time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC))
 	names := map[string]string{}
 	for _, l := range lists {
 		names[l.Key] = l.Name

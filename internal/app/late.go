@@ -13,9 +13,10 @@ type lateView struct {
 	Admin bool         `json:"admin"`
 }
 
-func lateBirthdays(directory *model.DirectoryCache, birthdayCache *model.BirthdaysCache) http.HandlerFunc {
+func lateBirthdays(s *model.Store) http.HandlerFunc {
 	return serve.JSON(func(r *http.Request, _ serve.None) (lateView, error) {
-		email := directory.Model().Resolve(auth.Email(r))
-		return lateView{birthdayCache.Late(directory.Model, email), birthdayCache.IsAdmin(email)}, nil
+		m := s.Model()
+		email := m.Directory.Resolve(auth.Email(r))
+		return lateView{m.Late(email), m.AdminList("birthday").IsAdmin(email)}, nil
 	})
 }

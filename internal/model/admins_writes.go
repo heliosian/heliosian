@@ -18,7 +18,7 @@ func (l AdminList) set(actor access.Actor, requested []string) ([]store.Op, []st
 			admins = append(admins, e)
 		}
 	}
-	listed := l.listed()
+	listed := l.listed
 	ops := []store.Op{}
 	for _, e := range listed {
 		if !slices.Contains(admins, e) {

@@ -81,7 +81,7 @@ Each rule is one sweep. Findings name the files and give a count per file; they 
 These areas are close enough to structure to belong to this audit. Each is its own pass with its own evidence:
 
 - **Request-path latency.** Handlers that call a sheet, a bucket, Claude or mail before answering. A request the person waits 750ms on is a finding (`AGENTS.md`), and the fix moves the work off the request path.
-- **Startup and memory.** What every store loads at boot, what is held twice (in the model and in a cache), and what is rebuilt on every refresh when only one tab changed.
+- **Startup and memory.** What every part of the store loads at boot, what is held twice (in the model and in a cache), and what is rebuilt on every refresh when only one tab changed.
 - **Unused surface.** Routes no page or tool calls, response fields no page reads, exported functions with no caller outside tests, CSS selectors no page renders, icons no page draws, and anything in `go.mod` the code no longer uses.
 - **Tests that line up with the rules.**
   - Rules that can only be tested through HTTP.

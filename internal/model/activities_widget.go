@@ -28,8 +28,7 @@ type ActivityWidget struct {
 
 const widgetOpen = 12
 
-func (c *ActivitiesCache) Widget(email string, at time.Time) ActivityWidget {
-	m := c.Model()
+func (m *Activities) Widget(email string, at time.Time) ActivityWidget {
 	year, today := ActivityYear(at), at.Format(DateFormat)
 	out := ActivityWidget{Mine: []ActivityWidgetItem{}, Open: []ActivityWidgetItem{}, Priority: []ActivityWidgetItem{}}
 	on := func(a *Activity) (Volunteer, bool) {

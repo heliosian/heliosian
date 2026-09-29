@@ -28,13 +28,13 @@ var documentsMailActor = access.System("ask mail")
 
 type DocumentFiler struct {
 	artifacts.Inbox
-	cache    *DocumentsCache
+	store    *Store
 	embedder *artifacts.Vertex
 	holder   *store.Queue
 }
 
-func RegisterDocuments(mux *http.ServeMux, cache *DocumentsCache, embedder *artifacts.Vertex, holder *store.Queue, mailbox artifacts.Inbox) *DocumentFiler {
-	in := &DocumentFiler{Inbox: mailbox, cache: cache, embedder: embedder, holder: holder}
+func RegisterDocuments(mux *http.ServeMux, s *Store, embedder *artifacts.Vertex, holder *store.Queue, mailbox artifacts.Inbox) *DocumentFiler {
+	in := &DocumentFiler{Inbox: mailbox, store: s, embedder: embedder, holder: holder}
 	mux.HandleFunc("POST /hooks/mail/mime", in.hook)
 	return in
 }
@@ -97,7 +97,7 @@ func (in *DocumentFiler) Post(ctx context.Context, actor access.Actor, group str
 }
 
 func (in *DocumentFiler) Remove(ctx context.Context, actor access.Actor, group string) error {
-	if err := in.cache.Commit(ctx, actor, in.cache.Model().removeGroup(actor, group)...); err != nil {
+	if err := in.store.Commit(ctx, actor, DocumentsApp, in.store.Model().Documents.removeGroup(actor, group)...); err != nil {
 		return err
 	}
 	slog.Info("artifacts: a group's mail removed", "group", group)
@@ -147,10 +147,10 @@ func (in *DocumentFiler) record(ctx context.Context, actor access.Actor, doc *Do
 	if err := in.Bucket.Put(ctx, doc.Object(), "application/json", body); err != nil {
 		return err
 	}
-	if err := in.cache.Hold(doc); err != nil {
+	if err := in.store.Hold(doc); err != nil {
 		return err
 	}
-	if err := in.cache.CommitAndWait(ctx, actor, in.cache.Model().Record(actor, doc)...); err != nil {
+	if err := in.store.CommitAndWait(ctx, actor, DocumentsApp, in.store.Model().Documents.Record(actor, doc)...); err != nil {
 		return fmt.Errorf("record: %w", err)
 	}
 	slog.Info("artifacts: filed", "key", doc.Key, "subject", doc.Title, "date", doc.Date, "channel", doc.Channel, "chunks", len(doc.Chunks))
@@ -165,7 +165,7 @@ func newsletterIssue(doc *Document) string {
 }
 
 func (in *DocumentFiler) known(doc *Document) bool {
-	for _, d := range in.cache.Model().Documents {
+	for _, d := range in.store.Model().Documents.Documents {
 		if d.Key == doc.Key || (newsletterIssue(doc) != "" && newsletterIssue(d) == newsletterIssue(doc)) {
 			return true
 		}

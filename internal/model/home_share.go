@@ -24,8 +24,7 @@ const (
 	homeShareLead  = "Sign in with your school Google account."
 )
 
-func (c *HomeCache) sharedApps() []App {
-	m := c.Model()
+func (m *Home) sharedApps() []App {
 	out := []App{}
 	for _, app := range orderedApps(m) {
 		v := appVisibilityOf(m, app)
@@ -55,12 +54,12 @@ func hostOf(app App, tier string) string {
 	return Qualify(app.Hosts[0], tier)
 }
 
-func HomePreviewHead(cache *HomeCache, style *sharecard.Style) func(r *http.Request) string {
+func HomePreviewHead(s *Store, style *sharecard.Style) func(r *http.Request) string {
 	return func(r *http.Request) string {
 		origin := "https://" + r.Host
 		tier := tierOf(r.Host)
 		names := []string{}
-		for _, app := range cache.sharedApps() {
+		for _, app := range s.Model().Home.sharedApps() {
 			names = append(names, app.Name+" ("+strings.TrimSuffix(app.Tagline, ".")+", "+hostOf(app, tier)+")")
 		}
 		desc := style.Tagline() + ". " + homeShareLead
@@ -90,7 +89,7 @@ func appMark(key string) image.Image {
 func (a homeApp) shareApps(w http.ResponseWriter, r *http.Request) {
 	parts := []string{}
 	listing := &sharecard.Listing{Empty: "The apps are on their way - check back soon."}
-	for _, app := range a.cache.sharedApps() {
+	for _, app := range a.store.Model().Home.sharedApps() {
 		listing.Items = append(listing.Items, sharecard.Item{Title: app.Name, Note: app.Tagline, Icon: appMark(app.Key)})
 		parts = append(parts, app.Key, app.Name, app.Tagline)
 	}

@@ -11,9 +11,12 @@ import (
 	"heliosian/internal/store"
 )
 
+func testAdminList(listed ...string) AdminList {
+	return AdminList{app: "test", allowances: []access.Allowance{ManageAdmins("test")}, listed: listed, superAdmins: []string{"boss@x.org"}}
+}
+
 func TestSavingAdminsKeepsOnlyAddressesThatAreNotSuperAdmins(t *testing.T) {
-	listed := []string{}
-	l := NewAdminList("test", nil, func() []string { return []string{"boss@x.org"} }, func() []string { return listed }, nil)
+	l := testAdminList()
 	admin := access.Actor{Email: "boss@x.org", Allowances: access.Grant(l.Held("boss@x.org"))}
 	requested := []string{"jsmith", " New.Admin@X.org ", "BOSS@x.org"}
 	ops, admins, err := l.set(admin, requested)
@@ -23,7 +26,7 @@ func TestSavingAdminsKeepsOnlyAddressesThatAreNotSuperAdmins(t *testing.T) {
 	if !slices.Equal(admins, []string{"new.admin@x.org"}) || len(ops) != 1 {
 		t.Fatalf("admins %v, ops %v", admins, ops)
 	}
-	listed = admins
+	l = testAdminList(admins...)
 	if again, _, err := l.set(admin, requested); err != nil || len(again) != 0 {
 		t.Fatalf("saving the same list again wrote %v (%v)", again, err)
 	}
@@ -37,7 +40,7 @@ func TestSavingAdminsKeepsOnlyAddressesThatAreNotSuperAdmins(t *testing.T) {
 }
 
 func TestSuperAdminsAreAdminsWhateverTheCase(t *testing.T) {
-	l := NewAdminList("test", nil, func() []string { return []string{"boss@x.org"} }, func() []string { return []string{"helper@x.org"} }, nil)
+	l := testAdminList("helper@x.org")
 	if !l.IsSuperAdmin(" Boss@X.org ") || l.IsSuperAdmin("helper@x.org") {
 		t.Fatal("super admin check")
 	}

@@ -7,35 +7,13 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
-	"heliosian/internal/access"
-	"heliosian/internal/api"
 	"heliosian/internal/id"
-	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 )
 
-func served(mux *http.ServeMux, cache *CalendarCache, hooks CalendarHooks, directory func() *Directory, parties *PartiesCache, activities *ActivitiesCache, lists *EmailListsCache) *http.ServeMux {
-	world := func(tx *store.Tx) CalendarWorld {
-		return hooks.World(cache.In(tx), directory(), noSettings(), parties.Model(), activities.Model(), lists.Model(), sampleKey)
-	}
-	reg := api.New(api.Config[CalendarWorld]{
-		Actor:  func(r *http.Request, w CalendarWorld) access.Actor { return w.Directory.Actor(r, cache.Held) },
-		Held:   cache.Held,
-		Now:    func() time.Time { return now() },
-		Queue:  queue,
-		Staged: world,
-		Scope:  func(w CalendarWorld, q api.Query) CalendarWorld { return w.At(q.Now) },
-	})
-	for _, rt := range DirectoryResources() {
-		reg.Add(api.Lift(rt, func(w CalendarWorld) *Directory { return w.Directory }))
-	}
-	for _, rt := range hooks.Resources() {
-		reg.Add(rt)
-	}
-	queue.OnSwap(func() { reg.Publish(world(nil)) })
-	reg.Register(mux)
+func served(mux *http.ServeMux, s *Store, hooks CalendarHooks) *http.ServeMux {
+	typedRegistry(s, queue, DirectoryResources(), hooks.Resources()).Register(mux)
 	return mux
 }
 
@@ -240,8 +218,8 @@ func TestEventsAsResources(t *testing.T) {
 	}
 
 	made := write(t, h, host, "POST", "/api/events", map[string]any{"title": "Meetup", "start": "2026-10-10 15:00", "tags": []string{}, "sharing": "Link", "address": "meetup"})
-	if cache.Model().Event(made) == nil || cache.Model().AnswerOf(host, made) != AnswerYes {
-		t.Fatalf("the new event %s: %+v, host's answer %q", made, cache.Model().Event(made), cache.Model().AnswerOf(host, made))
+	if cache.Model().Calendar.Event(made) == nil || cache.Model().Calendar.AnswerOf(host, made) != AnswerYes {
+		t.Fatalf("the new event %s: %+v, host's answer %q", made, cache.Model().Calendar.Event(made), cache.Model().Calendar.AnswerOf(host, made))
 	}
 	if rec := testkit.Call(t, h, robin, "POST", "/api/events/"+made+"/send", map[string]any{}); rec.Code != http.StatusNotFound && rec.Code != http.StatusForbidden {
 		t.Errorf("a stranger sending another's invites: %d %s", rec.Code, rec.Body)
@@ -250,20 +228,20 @@ func TestEventsAsResources(t *testing.T) {
 		{"method": "POST", "path": "/api/events/" + made + "/invite", "body": map[string]any{"people": []map[string]string{{"email": robin}}}},
 		{"method": "POST", "path": "/api/events/" + made + "/send", "body": map[string]any{}},
 	})
-	if inv := cache.Model().InviteOf(made, robin); inv == nil || inv.Requested == "" {
+	if inv := cache.Model().Calendar.InviteOf(made, robin); inv == nil || inv.Requested == "" {
 		t.Fatalf("robin after the batch: %+v", inv)
 	}
 	eventually(t, "robin is sent the invitation", func() bool { return len(mailTo(kept, robin)) == 1 })
 
 	write(t, h, robin, "POST", "/api/events/"+made+"/answer", map[string]string{"answer": "yes"})
-	if cache.Model().AnswerOf(robin, made) != AnswerYes {
-		t.Errorf("robin's answer = %q", cache.Model().AnswerOf(robin, made))
+	if cache.Model().Calendar.AnswerOf(robin, made) != AnswerYes {
+		t.Errorf("robin's answer = %q", cache.Model().Calendar.AnswerOf(robin, made))
 	}
 
 	before := len(changeLog(t))
 	write(t, h, host, "POST", "/api/events/"+made+"/edit", map[string]string{"title": "Meetup!"})
 	after := changeLog(t)[before:]
-	if cache.Model().Event(made).Title != "Meetup!" || len(after) != 1 || !strings.Contains(after[0], "|Title|Meetup") {
+	if cache.Model().Calendar.Event(made).Title != "Meetup!" || len(after) != 1 || !strings.Contains(after[0], "|Title|Meetup") {
 		t.Errorf("a title edit wrote %v", after)
 	}
 
@@ -282,7 +260,7 @@ func TestEventsAsResources(t *testing.T) {
 		t.Errorf("someone else's feed: %d", rec.Code)
 	}
 	write(t, h, host, "DELETE", "/api/calendar-feeds/"+feed, nil)
-	if len(cache.Model().MyCalendars(host)) != 2 {
-		t.Errorf("calendars after deleting: %+v", cache.Model().MyCalendars(host))
+	if len(cache.Model().Calendar.MyCalendars(host)) != 2 {
+		t.Errorf("calendars after deleting: %+v", cache.Model().Calendar.MyCalendars(host))
 	}
 }

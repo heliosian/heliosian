@@ -61,9 +61,9 @@ func tagRole(key string) string {
 	return builtinTags[key]
 }
 
-func LinkedEvents(directory *Directory, parties *Parties, activities *Activities, email string, at time.Time) []Linked {
-	family := directory.HouseholdOf(email)
-	return append(parties.Linked(family, at), activities.Linked(family)...)
+func (m *Model) LinkedEvents(email string, at time.Time) []Linked {
+	family := m.Directory.HouseholdOf(email)
+	return append(m.Parties.Linked(family, at), m.Activities.Linked(family)...)
 }
 
 var tagBySource = map[string]string{SourceCelebrate: TagCelebrate, SourceTeam: TagHCA}

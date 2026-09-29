@@ -24,89 +24,53 @@ func (s homeSheet) rows(t *testing.T, tab string) []store.Row {
 	return testkit.Rows(t, s.dir, s.queue, homeAppName, tab)
 }
 
-func sampleHomeCache(t *testing.T) (*HomeCache, homeSheet) {
+func sampleHomeCache(t *testing.T) (*Store, homeSheet) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	none := func() []string { return nil }
-	directory, err := NewDirectoryCache(dir, dir, nil, testkit.None, queue, testKey, none)
-	if err != nil {
-		t.Fatal(err)
-	}
-	parties, err := NewPartiesCache(dir, dir, testkit.All, none, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	activities, err := NewActivitiesCache(dir, dir, testkit.All, none, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c, err := NewHomeCache(dir, dir, testkit.All, none, directory, parties, activities, queue)
-	if err != nil {
-		t.Fatalf("load sample apps sheet: %v", err)
-	}
-	return c, homeSheet{dir: dir, queue: queue}
+	outsideSuperAdmin(t, dir)
+	deps := sampleDeps(sampleKey)
+	deps.Objects = blob.NewMemoryBucket()
+	deps.Embedder = vertex(t)
+	return sampleStore(t, dir, queue, deps), homeSheet{dir: dir, queue: queue}
 }
 
-func homeCalendar(t *testing.T, c *HomeCache, s homeSheet) CalendarHooks {
-	t.Helper()
-	none := func() []string { return nil }
-	cache, err := NewCalendarCache(s.dir, s.dir, func() Roster { return roster }, nil, none, s.queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	lists, err := NewEmailListsCache(s.dir, s.dir, none, s.queue, sampleKey)
-	if err != nil {
-		t.Fatal(err)
-	}
+func homeCalendar(s *Store, sheet homeSheet) CalendarHooks {
 	return RegisterCalendar(http.NewServeMux(), CalendarDeps{
-		Cache:      cache,
-		Images:     memoryImages(),
-		Directory:  c.directory.Model,
-		Settings:   noSettings,
-		Parties:    c.parties,
-		Activities: c.activities,
-		EmailLists: lists,
-		Mail:       CalendarMail{Sender: mailtest.Discard()},
-		Style:      testStyle,
-		Queue:      s.queue,
+		Store:  s,
+		Images: memoryImages(),
+		Mail:   CalendarMail{Sender: mailtest.Discard()},
+		Style:  testStyle,
+		Queue:  sheet.queue,
+		IDKey:  sampleKey,
 	})
 }
 
-func homeDocuments(t *testing.T, s homeSheet) *DocumentsCache {
+func setAppVisibility(t *testing.T, c *Store, app string, v AppVisibilityRow) {
 	t.Helper()
-	documents, err := NewDocumentsCache(s.dir, s.dir, blob.NewMemoryBucket(), vertex(t), s.queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return documents
-}
-
-func setAppVisibility(t *testing.T, c *HomeCache, app string, v AppVisibilityRow) {
-	t.Helper()
-	if err := c.Commit(context.Background(), access.System("test"), store.Upsert(homeVisibilityTab, store.Row{"App": app}, v.cells())); err != nil {
+	if err := c.Commit(context.Background(), access.System("test"), homeAppName, store.Upsert(homeVisibilityTab, store.Row{"App": app}, v.cells())); err != nil {
 		t.Fatalf("set %s: %v", app, err)
 	}
 }
 
 func TestVisibilityNarrowsAnApp(t *testing.T) {
 	c, _ := sampleHomeCache(t)
-	if err := c.Commit(context.Background(), access.System("test"), store.Delete(homeVisibilityTab, store.Row{"App": "birthday"})); err != nil {
+	if err := c.Commit(context.Background(), access.System("test"), homeAppName, store.Delete(homeVisibilityTab, store.Row{"App": "birthday"})); err != nil {
 		t.Fatalf("drop birthday's row: %v", err)
 	}
-	if got := c.HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
+	if got := c.Model().HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
 		t.Errorf("hidden from the sample parent = %v, want just the app with no row", got)
 	}
-	if got := c.HiddenApps(" Mia.Torres@heliosschool.org "); len(got) != 1 || got[0] != "birthday" {
+	if got := c.Model().HiddenApps(" Mia.Torres@heliosschool.org "); len(got) != 1 || got[0] != "birthday" {
 		t.Errorf("hidden from mia = %v, want just the app with no row, her address normalized", got)
 	}
-	if got := c.HiddenApps("sam.whitfield@heliosschool.org"); len(got) != 2 || got[0] != "celebrate" || got[1] != "birthday" {
+	if got := c.Model().HiddenApps("sam.whitfield@heliosschool.org"); len(got) != 2 || got[0] != "celebrate" || got[1] != "birthday" {
 		t.Errorf("hidden from sam = %v, want [celebrate birthday]", got)
 	}
-	if got := c.MissingVisibility(); len(got) != 1 || got[0].Key != "birthday" {
+	if got := c.Model().Home.MissingVisibility(); len(got) != 1 || got[0].Key != "birthday" {
 		t.Errorf("apps without a row = %v, want the birthday team's", got)
 	}
-	apps := c.AppVisibilities()
+	apps := c.Model().Home.AppVisibilities()
 	if len(apps) != len(Apps) || apps[0].Visibility != VisibleToEveryone || len(apps[0].Emails) != 0 {
 		t.Errorf("app visibilities = %+v, want every app, the first everyone's with nobody listed", apps)
 	}
@@ -117,25 +81,25 @@ func TestVisibilityNarrowsAnApp(t *testing.T) {
 		t.Errorf("birthday = %+v, want the new-app default, a list with nobody", apps[3])
 	}
 
-	list := c.AppList()
+	list := c.Model().Home.AppList()
 	if list[0].Tagline != "A visual directory" || list[1].Tagline != "HCA Volunteer Portal" {
 		t.Errorf("taglines = %q %q, want the registry's for who and the sheet's for team", list[0].Tagline, list[1].Tagline)
 	}
 	setAppVisibility(t, c, "who", AppVisibilityRow{Mode: VisibleToEveryone, Tagline: "Find anyone"})
-	if got := c.AppList()[0].Tagline; got != "Find anyone" {
+	if got := c.Model().Home.AppList()[0].Tagline; got != "Find anyone" {
 		t.Errorf("who's tagline after an edit = %q", got)
 	}
 
 	setAppVisibility(t, c, "celebrate", AppVisibilityRow{Mode: VisibleToEveryone, Emails: []string{"mia.torres@heliosschool.org"}})
-	if got := c.HiddenApps("sam.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
+	if got := c.Model().HiddenApps("sam.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
 		t.Errorf("hidden from sam with the celebration everyone's = %v, want just birthday", got)
 	}
-	if got := c.AppVisibilities()[2].Emails; len(got) != 1 {
+	if got := c.Model().Home.AppVisibilities()[2].Emails; len(got) != 1 {
 		t.Errorf("the celebration's list = %v, want kept while everyone's", got)
 	}
 
 	setAppVisibility(t, c, "who", AppVisibilityRow{Mode: VisibleToList})
-	if got := c.HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 2 || got[0] != "who" {
+	if got := c.Model().HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 2 || got[0] != "who" {
 		t.Errorf("hidden from the sample parent with who's list empty = %v, want [who birthday]", got)
 	}
 }
@@ -143,13 +107,13 @@ func TestVisibilityNarrowsAnApp(t *testing.T) {
 func TestGrantAddsToAnAppsList(t *testing.T) {
 	c, dir := sampleHomeCache(t)
 	const email = "sam.whitfield@heliosschool.org"
-	if err := GrantApp(context.Background(), c, "celebrate", " Sam.Whitfield@heliosschool.org "); err != nil {
+	if err := c.GrantApp(context.Background(), "celebrate", " Sam.Whitfield@heliosschool.org "); err != nil {
 		t.Fatal(err)
 	}
-	if got := c.HiddenApps(email); len(got) != 1 || got[0] != "birthday" {
+	if got := c.Model().HiddenApps(email); len(got) != 1 || got[0] != "birthday" {
 		t.Errorf("hidden from sam after the grant = %v, want just birthday", got)
 	}
-	if err := GrantApp(context.Background(), c, "celebrate", email); err != nil {
+	if err := c.GrantApp(context.Background(), "celebrate", email); err != nil {
 		t.Fatal(err)
 	}
 	log := dir.rows(t, store.ChangeLogTab)

@@ -16,13 +16,13 @@ import (
 )
 
 type admin struct {
-	cache *DirectoryCache
+	store *Store
 	media *blob.Store
 }
 
-func registerPeopleAdmin(mux *http.ServeMux, cache *DirectoryCache, media *blob.Store) {
-	a := admin{cache: cache, media: media}
-	RegisterAdmins(mux, cache.AdminList, func(r *http.Request) access.Actor { return requestActor(cache, r) }, a.state)
+func registerPeopleAdmin(mux *http.ServeMux, s *Store, media *blob.Store) {
+	a := admin{store: s, media: media}
+	RegisterAdmins(mux, s, "who", a.state)
 	mux.HandleFunc("POST /api/admin/images", a.setImage)
 	mux.HandleFunc("POST /api/admin/person-fields", serve.JSON(a.setPersonFields))
 	mux.HandleFunc("POST /api/admin/student-fields", serve.JSON(a.setStudentFields))
@@ -34,8 +34,8 @@ func registerPeopleAdmin(mux *http.ServeMux, cache *DirectoryCache, media *blob.
 	mux.HandleFunc("POST /api/admin/unhide-person", serve.JSON(a.unhidePerson))
 }
 
-func requestActor(cache *DirectoryCache, r *http.Request) access.Actor {
-	return cache.Actor(r, cache.Held)
+func requestActor(s *Store, r *http.Request) access.Actor {
+	return s.Model().actor(r, "who")
 }
 
 type imageInfo struct {
@@ -110,8 +110,8 @@ type crewOption struct {
 	Name      string `json:"name"`
 }
 
-func (a admin) state(*http.Request, access.Actor) map[string]any {
-	model := a.cache.Model()
+func (a admin) state(m *Model, _ *http.Request, _ access.Actor) map[string]any {
+	model := m.Directory
 	classrooms := []imageInfo{}
 	for _, c := range model.Classrooms {
 		classrooms = append(classrooms, imageInfo{Name: c.Name, ImageURL: c.ImageURL})
@@ -202,15 +202,15 @@ type personFields struct {
 }
 
 func (a admin) setPersonFields(r *http.Request, body personFields) (serve.None, error) {
-	actor := requestActor(a.cache, r)
-	target, cells, ops, err := a.cache.Model().setPersonFields(actor, body)
+	actor := requestActor(a.store, r)
+	target, cells, ops, err := a.store.Model().Directory.setPersonFields(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if len(ops) == 0 {
 		return serve.None{}, nil
 	}
-	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:edited person fields", "actor", actor.Email, "target", target, "cells", cells)
@@ -303,15 +303,15 @@ type studentFields struct {
 }
 
 func (a admin) setStudentFields(r *http.Request, body studentFields) (serve.None, error) {
-	actor := requestActor(a.cache, r)
-	target, cells, ops, err := a.cache.Model().setStudentFields(actor, body)
+	actor := requestActor(a.store, r)
+	target, cells, ops, err := a.store.Model().Directory.setStudentFields(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if len(ops) == 0 {
 		return serve.None{}, nil
 	}
-	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:edited student fields", "actor", actor.Email, "target", target, "cells", cells)
@@ -329,15 +329,15 @@ type parentFields struct {
 }
 
 func (a admin) setParentFields(r *http.Request, body parentFields) (serve.None, error) {
-	actor := requestActor(a.cache, r)
-	target, cells, familyCells, ops, err := a.cache.Model().setParentFields(actor, body)
+	actor := requestActor(a.store, r)
+	target, cells, familyCells, ops, err := a.store.Model().Directory.setParentFields(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if len(ops) == 0 {
 		return serve.None{}, nil
 	}
-	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:edited parent fields", "actor", actor.Email, "target", target, "cells", cells, "familyCells", familyCells)
@@ -354,15 +354,15 @@ type addedFields struct {
 }
 
 func (a admin) setAddedFields(r *http.Request, body addedFields) (serve.None, error) {
-	actor := requestActor(a.cache, r)
-	target, cells, ops, err := a.cache.Model().setAddedFields(actor, body)
+	actor := requestActor(a.store, r)
+	target, cells, ops, err := a.store.Model().Directory.setAddedFields(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
 	if len(ops) == 0 {
 		return serve.None{}, nil
 	}
-	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:edited added-person fields", "actor", actor.Email, "target", target, "cells", cells)
@@ -378,12 +378,12 @@ type newPerson struct {
 }
 
 func (a admin) addPerson(r *http.Request, body newPerson) (serve.None, error) {
-	actor := requestActor(a.cache, r)
-	email, fullName, ops, err := a.cache.Model().addPerson(actor, body)
+	actor := requestActor(a.store, r)
+	email, fullName, ops, err := a.store.Model().Directory.addPerson(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:added a new person", "actor", actor.Email, "email", email, "name", fullName)
@@ -395,12 +395,12 @@ type personEmail struct {
 }
 
 func (a admin) deletePerson(r *http.Request, body personEmail) (serve.None, error) {
-	actor := requestActor(a.cache, r)
-	target, ops, err := a.cache.Model().deletePerson(actor, body.Email)
+	actor := requestActor(a.store, r)
+	target, ops, err := a.store.Model().Directory.deletePerson(actor, body.Email)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:deleted added person", "actor", actor.Email, "target", target)
@@ -408,12 +408,12 @@ func (a admin) deletePerson(r *http.Request, body personEmail) (serve.None, erro
 }
 
 func (a admin) hidePerson(r *http.Request, body personEmail) (serve.None, error) {
-	actor := requestActor(a.cache, r)
-	target, ops, err := a.cache.Model().hidePerson(actor, body.Email)
+	actor := requestActor(a.store, r)
+	target, ops, err := a.store.Model().Directory.hidePerson(actor, body.Email)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:hid person from the directory", "actor", actor.Email, "target", target)
@@ -421,12 +421,12 @@ func (a admin) hidePerson(r *http.Request, body personEmail) (serve.None, error)
 }
 
 func (a admin) unhidePerson(r *http.Request, body personEmail) (serve.None, error) {
-	actor := requestActor(a.cache, r)
-	target, ops, err := a.cache.Model().unhidePerson(actor, body.Email)
+	actor := requestActor(a.store, r)
+	target, ops, err := a.store.Model().Directory.unhidePerson(actor, body.Email)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "who:unhid person from the directory", "actor", actor.Email, "target", target)
@@ -459,8 +459,8 @@ func (a admin) setImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	image := blob.Name(content, ext)
-	actor := requestActor(a.cache, r)
-	ops, err := a.cache.Model().setImage(actor, kind, name, image)
+	actor := requestActor(a.store, r)
+	ops, err := a.store.Model().Directory.setImage(actor, kind, name, image)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
@@ -469,7 +469,7 @@ func (a admin) setImage(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := a.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}

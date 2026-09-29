@@ -1,7 +1,6 @@
 package model
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -31,22 +30,18 @@ func ReadAdmins(tables store.Tables) []string {
 
 type AdminList struct {
 	app         string
+	sheet       string
 	allowances  []access.Allowance
-	superAdmins func() []string
-	listed      func() []string
-	commit      func(ctx context.Context, actor access.Actor, ops ...store.Op) error
-}
-
-func NewAdminList(app string, allowances []access.Allowance, superAdmins, listed func() []string, commit func(ctx context.Context, actor access.Actor, ops ...store.Op) error) AdminList {
-	return AdminList{app: app, allowances: append(slices.Clone(allowances), ManageAdmins(app)), superAdmins: superAdmins, listed: listed, commit: commit}
+	listed      []string
+	superAdmins []string
 }
 
 func (l AdminList) IsSuperAdmin(email string) bool {
-	return slices.Contains(l.superAdmins(), mail.Normalize(email))
+	return slices.Contains(l.superAdmins, mail.Normalize(email))
 }
 
 func (l AdminList) IsAdmin(email string) bool {
-	return l.IsSuperAdmin(email) || slices.Contains(l.listed(), mail.Normalize(email))
+	return l.IsSuperAdmin(email) || slices.Contains(l.listed, mail.Normalize(email))
 }
 
 func (l AdminList) Held(email string) []access.Allowance {
@@ -57,7 +52,7 @@ func (l AdminList) Held(email string) []access.Allowance {
 }
 
 func (l AdminList) Admins() []string {
-	out := mail.NormalizeAll(append(slices.Clone(l.listed()), l.superAdmins()...))
+	out := mail.NormalizeAll(append(slices.Clone(l.listed), l.superAdmins...))
 	sort.Strings(out)
 	return out
 }
@@ -66,28 +61,36 @@ type adminsEdit struct {
 	Admins []string `json:"admins"`
 }
 
-func RegisterAdmins(mux *http.ServeMux, l AdminList, actor func(r *http.Request) access.Actor, state func(r *http.Request, actor access.Actor) map[string]any) {
+func RegisterAdmins(mux *http.ServeMux, s *Store, app string, state func(m *Model, r *http.Request, actor access.Actor) map[string]any) {
 	mux.HandleFunc("GET /api/admin/state", serve.JSON(func(r *http.Request, _ serve.None) (map[string]any, error) {
-		v := actor(r)
+		m := s.Model()
+		l := m.AdminList(app)
+		v := m.actor(r, app)
 		if !v.May(ManageAdmins(l.app)) {
 			return nil, access.Forbidden("admin access required")
 		}
-		view := state(r, v)
+		view := state(m, r, v)
 		view["email"] = v.Email
 		view["admins"] = l.Admins()
 		view["isSuperAdmin"] = l.IsSuperAdmin(v.Email)
 		return view, nil
 	}))
 	mux.HandleFunc("POST /api/admin/admins", serve.JSON(func(r *http.Request, body adminsEdit) (serve.None, error) {
-		v := actor(r)
+		m := s.Model()
+		l := m.AdminList(app)
+		v := m.actor(r, app)
 		ops, admins, err := l.set(v, body.Admins)
 		if err != nil {
 			return serve.None{}, err
 		}
-		if err := l.commit(r.Context(), v, ops...); err != nil {
+		if err := s.Commit(r.Context(), v, l.sheet, ops...); err != nil {
 			return serve.None{}, err
 		}
 		slog.InfoContext(r.Context(), l.app+":set the admin list", "actor", v.Email, "admins", admins)
 		return serve.None{}, nil
 	}))
+}
+
+func noAdminState(*Model, *http.Request, access.Actor) map[string]any {
+	return map[string]any{}
 }

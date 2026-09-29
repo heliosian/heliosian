@@ -13,7 +13,7 @@ The `Config` spreadsheet in the community shared drive holds the platform settin
 
 ## Where it is read
 
-`model.ConfigCache` holds the sheet as a store (`docs/storage.md`), re-read every five minutes like every other sheet, and `model.RegisterConfig` (`internal/model/config_routes.go`) serves it at `/api/config` to every signed-in user. No app holds config on its server side: the directory's client fetches `/api/config` beside its model and looks colors up by grade and classroom name; the servers consult the config cache only for the super admin list, which gates admin tools in every app and is never serialized to anyone but a super admin (`/api/config/super-admins`), and for the sign-out times, which every app's sign-in (`auth.Sessions`, the cache itself) checks on every request and which are serialized to nobody.
+The sheet is the config part of the one store (`docs/storage.md`), `Model.Config`, re-read every five minutes like every other sheet, and `model.RegisterConfig` (`internal/model/config_routes.go`) serves it at `/api/config` to every signed-in user. No app holds config on its server side: the directory's client fetches `/api/config` beside its model and looks colors up by grade and classroom name; the servers consult the config part only for the super admin list (`Model.Config.SuperAdmins`, `Model.IsSuperAdmin`), which gates admin tools in every app and is never serialized to anyone but a super admin (`/api/config/super-admins`), and for the sign-out times, which every app's sign-in (`auth.Sessions`, which is `model.Store` itself: `SignedOut` and `SignOut`) checks on every request and which are serialized to nobody.
 
 ## Editing
 

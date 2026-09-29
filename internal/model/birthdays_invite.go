@@ -24,10 +24,6 @@ func staffPath(email string) string {
 	return "/staff/" + email
 }
 
-func (a birthdaysApp) world() BirthdaysWorld {
-	return NewBirthdaysWorld(a.cache.Model(), a.directory())
-}
-
 func (a birthdaysApp) inviteLoop(kick <-chan struct{}) {
 	for range kick {
 		a.sendInvites(context.Background())
@@ -52,14 +48,14 @@ func (m *Birthdays) lastSent(email, year string) (BirthdayInvite, bool) {
 	return BirthdayInvite{}, false
 }
 
-func StaleInvites(w BirthdaysWorld, at time.Time) []StaffView {
+func StaleInvites(m *Model, at time.Time) []StaffView {
 	out := []StaffView{}
-	for i := range w.Model.Birthdays {
-		sv := w.staffOf(w.Model.Birthdays[i].Email, at)
+	for i := range m.Birthdays.Birthdays {
+		sv := m.staffOf(m.Birthdays.Birthdays[i].Email, at)
 		if !sendable(sv) {
 			continue
 		}
-		if invites := w.Model.invitesFor(sv.Email, sv.Year); len(invites) > 0 && invites[len(invites)-1].covers(sv) {
+		if invites := m.Birthdays.invitesFor(sv.Email, sv.Year); len(invites) > 0 && invites[len(invites)-1].covers(sv) {
 			continue
 		}
 		out = append(out, sv)
@@ -70,10 +66,10 @@ func StaleInvites(w BirthdaysWorld, at time.Time) []StaffView {
 func (a birthdaysApp) sendInvites(ctx context.Context) {
 	at := now()
 	actor := access.System(invitesActor)
-	w := a.world()
+	m := a.store.Model()
 	ops := []store.Op{}
 	minted := map[string]bool{}
-	for _, sv := range StaleInvites(w, at) {
+	for _, sv := range StaleInvites(m, at) {
 		key := id.New(func(k string) bool { return minted[k] || a.taken(k) })
 		minted[key] = true
 		queued, err := queueInvite(actor, sv, key, at)
@@ -84,32 +80,32 @@ func (a birthdaysApp) sendInvites(ctx context.Context) {
 		ops = append(ops, queued...)
 	}
 	if len(ops) > 0 {
-		if err := a.cache.Commit(ctx, actor, ops...); err != nil {
+		if err := a.store.Commit(ctx, actor, birthdaysAppName, ops...); err != nil {
 			slog.ErrorContext(ctx, "birthday: queue invites", "error", err)
 			return
 		}
-		w = a.world()
+		m = a.store.Model()
 	}
-	for _, inv := range w.Model.Invites {
+	for _, inv := range m.Birthdays.Invites {
 		if inv.SentOn != "" {
 			continue
 		}
-		sv := w.staffOf(inv.Email, at)
+		sv := m.staffOf(inv.Email, at)
 		if !sendable(sv) || sv.Year != inv.Year {
 			continue
 		}
 		movedFrom := ""
-		if last, ok := w.Model.lastSent(inv.Email, inv.Year); ok && last.SentTo == sv.AssignedTo && last.AskDay != sv.RequestBy {
+		if last, ok := m.Birthdays.lastSent(inv.Email, inv.Year); ok && last.SentTo == sv.AssignedTo && last.AskDay != sv.RequestBy {
 			movedFrom = last.AskDay
 		}
-		if err := a.mailer.Send(ctx, assignmentMessage(w.Model, a.base, a.mailer.From(), sv, sv.AssignedTo, movedFrom)); err != nil {
+		if err := a.mailer.Send(ctx, assignmentMessage(m.Birthdays, a.base, a.mailer.From(), sv, sv.AssignedTo, movedFrom)); err != nil {
 			slog.ErrorContext(ctx, "birthday: mail invite", "error", err, "to", sv.AssignedTo, "email", sv.Email)
 			continue
 		}
 		slog.InfoContext(ctx, "birthday: sent invite", "id", inv.ID, "email", sv.Email, "to", sv.AssignedTo, "ask", sv.RequestBy, "moved from", movedFrom)
 		recorded, err := recordInvite(actor, inv, sv, at)
 		if err == nil {
-			err = a.cache.Commit(ctx, actor, recorded...)
+			err = a.store.Commit(ctx, actor, birthdaysAppName, recorded...)
 		}
 		if err != nil {
 			slog.ErrorContext(ctx, "birthday: record invite", "error", err, "email", sv.Email)

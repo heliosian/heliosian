@@ -26,7 +26,7 @@ func main() {
 	if *dir != "" {
 		source = &data.Dir{Root: *dir}
 	} else {
-		live, err := data.NewSheet(spreadsheets.IDs(spreadsheets.Of([]string{"directory", "preferences", "invites", "apps", "events", "celebrate", "calendar", "config", "groups", "artifacts"})))
+		live, err := data.NewSheet(spreadsheets.IDs(spreadsheets.All))
 		if err != nil {
 			log.Fatalf("sheet source: %v", err)
 		}
@@ -37,11 +37,20 @@ func main() {
 		log.Fatalf("blob store: %v", err)
 	}
 	media := blob.New(objects)
-	directoryCache, err := model.NewDirectoryCache(source, nil, media, static.Files{Root: "web/who"}, store.NewQueue(), []byte(env.Required("ID_KEY")), func() []string { return nil })
+	embedder, err := artifacts.NewVertex()
 	if err != nil {
-		log.Fatalf("load directory model: %v", err)
+		log.Fatalf("embedder: %v", err)
 	}
-	directory := directoryCache.Model()
+	models, err := model.NewStore(source, nil, store.NewQueue(), model.Deps{
+		IDKey: []byte(env.Required("ID_KEY")), Photos: media, Static: static.Files{Root: "web/who"},
+		Parties: blob.NewImages(media, "celebrate"), Activities: blob.NewImages(media, "team"), Home: blob.NewImages(media, "home"),
+		Objects: objects, Embedder: embedder,
+	})
+	if err != nil {
+		log.Fatalf("load the models: %v", err)
+	}
+	m := models.Model()
+	directory := m.Directory
 	students, parents, staff, isNew := 0, 0, 0, 0
 	for _, p := range directory.People {
 		if p.IsStudent {
@@ -113,30 +122,13 @@ func main() {
 		fmt.Printf("  %s: %d\n", band, len(directory.RoomParents[band]))
 	}
 	fmt.Println("departments:", directory.Departments)
-	invites, err := model.NewInviteTemplatesCache(source, nil, store.NewQueue())
-	if err != nil {
-		log.Fatalf("load invites: %v", err)
-	}
-	fmt.Printf("invites: %d systems, %d greetings\n", len(invites.Model().Systems), len(invites.Model().Greetings))
+	fmt.Printf("invites: %d systems, %d greetings\n", len(m.Invites.Systems), len(m.Invites.Greetings))
 	fmt.Println("grades:")
 	for _, g := range directory.Grades {
 		fmt.Printf("  %s -> %s (%s -> %s)\n", g.Name, g.NextName, g.Band, g.NextBand)
 	}
 
-	eventsCache, err := model.NewActivitiesCache(source, nil, blob.NewImages(media, "team"), func() []string { return nil }, store.NewQueue())
-	if err != nil {
-		log.Fatalf("load events model: %v", err)
-	}
-	celebrateCache, err := model.NewPartiesCache(source, nil, blob.NewImages(media, "celebrate"), func() []string { return nil }, store.NewQueue())
-	if err != nil {
-		log.Fatalf("load celebrate model: %v", err)
-	}
-
-	appsCache, err := model.NewHomeCache(source, nil, blob.NewImages(media, "home"), func() []string { return nil }, directoryCache, celebrateCache, eventsCache, store.NewQueue())
-	if err != nil {
-		log.Fatalf("load apps model: %v", err)
-	}
-	apps := appsCache.Model()
+	apps := m.Home
 	fmt.Println("apps:")
 	for _, c := range apps.Categories {
 		fmt.Printf("  %s %s: %d links\n", c.Title, c.Emoji, len(c.Links))
@@ -148,9 +140,9 @@ func main() {
 			fmt.Printf("    %s -> %s (%s, image %v)\n", l.Title, l.URL, visible, l.ImageURL != "")
 		}
 	}
-	fmt.Printf("apps admins: %d\n", len(appsCache.Admins()))
+	fmt.Printf("apps admins: %d\n", len(m.AdminList("home").Admins()))
 
-	portal := eventsCache.Model()
+	portal := m.Activities
 	fmt.Println("events:")
 	byYear := map[string][]*model.Activity{}
 	years := []string{}
@@ -172,9 +164,9 @@ func main() {
 				a.Title, a.Category, a.Status, len(a.Descendants()), len(a.Links), volunteers, a.ImageURL != "")
 		}
 	}
-	fmt.Printf("events admins: %d\n", len(eventsCache.Admins()))
+	fmt.Printf("events admins: %d\n", len(m.AdminList("team").Admins()))
 
-	site := celebrateCache.Model()
+	site := m.Parties
 	fmt.Println("celebrate:")
 	for _, c := range site.Celebrations {
 		sold, waiting, hosts := 0, 0, 0
@@ -194,21 +186,13 @@ func main() {
 	for reason, n := range site.Skipped {
 		fmt.Printf("  skipped %d: %s\n", n, reason)
 	}
-	fmt.Printf("celebrate admins: %d\n", len(celebrateCache.Admins()))
+	fmt.Printf("celebrate admins: %d\n", len(m.AdminList("celebrate").Admins()))
 
-	configCache, err := model.NewConfigCache(source, nil, store.NewQueue())
-	if err != nil {
-		log.Fatalf("load config: %v", err)
-	}
-	settings := configCache.Config()
+	settings := m.Config
 	fmt.Printf("config: %d super admins, stale years %+v, staff color %s, %d grade colors, %d classroom colors\n",
 		len(settings.SuperAdmins), settings.StaleYears, settings.StaffColor, len(settings.GradeColors), len(settings.ClassroomColors))
 
-	calendarCache, err := model.NewCalendarCache(source, nil, func() model.Roster { return directory.Roster() }, nil, func() []string { return nil }, store.NewQueue())
-	if err != nil {
-		log.Fatalf("load calendar model: %v", err)
-	}
-	plan := calendarCache.Model()
+	plan := m.Calendar
 	bySource, byTag := map[string]int{}, map[string]int{}
 	for _, e := range plan.Events {
 		bySource[e.Source]++
@@ -237,29 +221,17 @@ func main() {
 	for _, d := range plan.DayTypes {
 		fmt.Printf("    %s: %d classroom-days\n", d.Name, byType[d.ID])
 	}
-	fmt.Printf("calendar admins: %d\n", len(calendarCache.Admins()))
+	fmt.Printf("calendar admins: %d\n", len(m.AdminList("when").Admins()))
 
-	groupCache, err := model.NewEmailListsCache(source, nil, func() []string { return nil }, store.NewQueue(), []byte(env.Required("ID_KEY")))
-	if err != nil {
-		log.Fatalf("load groups model: %v", err)
-	}
-	groupModel := groupCache.Model()
-	sources := model.EmailListAudience(directory, site, portal, eventsCache, time.Now().In(model.Location))
+	groupModel := m.EmailLists
+	sources := m.EmailListAudience(time.Now().In(model.Location))
 	fmt.Println("groups:")
 	for _, g := range groupModel.Groups {
 		fmt.Printf("  %s %q: aliases %v, %d managers, %d rules, %d members, %d excluded, prefix %v, visibility %s, posting %s, replying %s\n", g.Address(), g.Title, g.Aliases, len(g.Managers), len(g.Rules), len(g.Members(sources)), len(g.Excluded), g.Prefix, g.Visibility, g.Posting, g.Replying)
 	}
-	fmt.Printf("groups admins: %d\n", len(groupCache.Admins()))
+	fmt.Printf("groups admins: %d\n", len(m.AdminList("loop").Admins()))
 
-	embedder, err := artifacts.NewVertex()
-	if err != nil {
-		log.Fatalf("embedder: %v", err)
-	}
-	documentsCache, err := model.NewDocumentsCache(source, nil, objects, embedder, store.NewQueue())
-	if err != nil {
-		log.Fatalf("load artifacts: %v", err)
-	}
-	documents := documentsCache.Model().Documents
+	documents := m.Documents.Documents
 	fmt.Printf("artifacts: %d documents\n", len(documents))
 	for _, doc := range documents {
 		fmt.Printf("  %s %q by %s (%s, %d chunks)\n", doc.Date, doc.Title, doc.Author, doc.Kind, len(doc.Chunks))

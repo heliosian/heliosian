@@ -8,25 +8,18 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
-	"heliosian/internal/testkit"
 )
 
 func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
-	directory, err := LoadDirectory(dir, nil, testkit.None, []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	groups, err := NewEmailListsCache(dir, dir, func() []string { return nil }, store.NewQueue(), []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	groups := sampleStore(t, dir, store.NewQueue(), sampleDeps(sampleKey))
+	directory := groups.Model().Directory
 	sources := AudienceSources{
 		Directory: directory,
 		MagicTags: directory.RoomParentTags,
 	}
-	lists := groups.Model().MagicTags(sources, jordan)
+	lists := groups.Model().EmailLists.MagicTags(sources, jordan)
 	i := slices.IndexFunc(lists, func(l MagicTag) bool { return l.Key == "group:"+soccerID })
 	if i < 0 {
 		t.Fatalf("no soccer team list: %+v", lists)
@@ -54,10 +47,10 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	if list.Archived {
 		t.Fatal("a group nobody archived came marked archived")
 	}
-	if err := groups.Commit(context.Background(), access.Actor{Email: jordan}, store.Upsert("Archived", store.Row{"Group": soccerID, "Email": jordan}, store.Row{})); err != nil {
+	if err := groups.Commit(context.Background(), access.Actor{Email: jordan}, emailListsAppName, store.Upsert("Archived", store.Row{"Group": soccerID, "Email": jordan}, store.Row{})); err != nil {
 		t.Fatal(err)
 	}
-	lists = groups.Model().MagicTags(sources, jordan)
+	lists = groups.Model().EmailLists.MagicTags(sources, jordan)
 	i = slices.IndexFunc(lists, func(l MagicTag) bool { return l.Key == "group:"+soccerID })
 	if i < 0 || !lists[i].Archived {
 		t.Fatalf("the archived group's list is missing or unmarked: %+v", lists)

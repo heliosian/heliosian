@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-func partiesLinkedFor(cache *PartiesCache, email string) []Linked {
-	return cache.Model().Linked(partiesSampleDirectory.HouseholdOf(email), partiesTestNow())
+func partiesLinkedFor(cache *Store, email string) []Linked {
+	return cache.Model().Parties.Linked(partiesSampleDirectory.HouseholdOf(email), partiesTestNow())
 }
 
 func TestLinkedParties(t *testing.T) {
@@ -76,7 +76,7 @@ func TestLinkedPartiesMine(t *testing.T) {
 
 func TestPartyListsCarryTheirHosts(t *testing.T) {
 	cache, _ := partiesServer(t)
-	lists := cache.Model().MagicTags(partiesSampleDirectory, jordan, time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC))
+	lists := cache.Model().Parties.MagicTags(partiesSampleDirectory, jordan, time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC))
 	i := slices.IndexFunc(lists, func(l MagicTag) bool { return l.Key == "party:pty0000000001" })
 	if i < 0 {
 		t.Fatalf("no Fondue & Fort Night list: %+v", lists)
@@ -92,7 +92,7 @@ func TestPartyListsCarryTheirHosts(t *testing.T) {
 func TestPastPartyListsStayArchived(t *testing.T) {
 	cache, _ := partiesServer(t)
 	party := func(now time.Time) MagicTag {
-		lists := cache.Model().MagicTags(partiesSampleDirectory, jordan, now)
+		lists := cache.Model().Parties.MagicTags(partiesSampleDirectory, jordan, now)
 		i := slices.IndexFunc(lists, func(l MagicTag) bool { return l.Key == "party:pty0000000001" })
 		if i < 0 {
 			t.Fatalf("no Fondue & Fort Night list at %s: %+v", now, lists)

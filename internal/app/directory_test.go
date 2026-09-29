@@ -15,25 +15,15 @@ func TestATeamAdminMakesAnEmailListFromAnyActivity(t *testing.T) {
 	const admin, parent = "jordan.whitfield@heliosschool.org", "robin.whitfield@heliosschool.org"
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	directory, err := model.LoadDirectory(dir, nil, testkit.None, []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	none := func() []string { return nil }
 	images := testkit.Images(func(string) bool { return true })
-	activities, err := model.NewActivitiesCache(dir, dir, images, func() []string { return []string{admin} }, queue)
+	s, err := model.NewStore(dir, dir, queue, model.Deps{IDKey: []byte("sample"), Static: testkit.None, Activities: images, Parties: images, Home: images})
 	if err != nil {
 		t.Fatal(err)
 	}
-	parties, err := model.NewPartiesCache(dir, dir, images, none, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := s.Model()
 	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
-	sources := model.EmailListAudience(directory, parties.Model(), activities.Model(), activities, now)
-	shared := func(owner string, now time.Time) []model.MagicTag {
-		return model.MagicTagsOf(directory, parties.Model(), activities.Model(), owner, now)
-	}
+	sources := m.EmailListAudience(now)
+	shared := m.MagicTagsOf
 	var theirs model.MagicTag
 	for _, l := range sources.MagicTags(admin) {
 		if l.Kind == model.MagicTagActivity && l.Parent == "" && !slices.Contains(l.Hosts, admin) && len(l.People) > len(l.Hosts) {

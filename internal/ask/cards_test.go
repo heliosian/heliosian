@@ -9,11 +9,14 @@ import (
 )
 
 func TestClassroomChipsWearTheirColor(t *testing.T) {
-	sources := sampleSources(t)
-	sources.Settings = func() *model.Config {
-		return &model.Config{ClassroomColors: map[string]string{"Jays": "#1f6fb2"}}
+	dir := sampleDir(t)
+	if err := dir.Update(model.ConfigApp, "Classroom Colors", map[string]string{"Classroom": "Jays"}, map[string]string{"Color": "#1f6fb2"}); err != nil {
+		t.Fatal(err)
 	}
-	v := app{sources: sources}.viewer(jordan)
+	if err := dir.Delete(model.ConfigApp, "Classroom Colors", map[string]string{"Classroom": "Hawks"}); err != nil {
+		t.Fatal(err)
+	}
+	v := app{sources: sourcesFrom(t, dir)}.viewer(jordan)
 	jays, _ := v.linkCard(whoBase + model.ClassroomPath("Jays"))
 	if jays.Color != "#1f6fb2" || jays.Image == "" {
 		t.Errorf("Jays: %+v", jays)
@@ -73,7 +76,7 @@ func TestLinkCardsKeepEachAppsVisibility(t *testing.T) {
 			}
 		}
 		seen := map[string]bool{}
-		for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.sources.Linked(email)) {
+		for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.linked()) {
 			seen[e.ID] = true
 			if !strings.HasPrefix(eventLink(e), whenBase) {
 				continue
@@ -89,7 +92,7 @@ func TestLinkCardsKeepEachAppsVisibility(t *testing.T) {
 		}
 		for _, g := range v.loop.Groups {
 			_, ok := v.linkCard(loopBase + g.Path())
-			if ok != g.VisibleTo(v.loopAs, v.sources.LoopSources()) {
+			if ok != g.VisibleTo(v.loopAs, v.audience()) {
 				t.Errorf("%s: group %s card %v", email, g.Name, ok)
 			}
 		}

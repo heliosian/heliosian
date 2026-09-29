@@ -174,15 +174,15 @@ func (m *Directory) ownTagNamed(owner, name string) *tagRecord {
 }
 
 type tagger struct {
-	cache *DirectoryCache
+	store *Store
 }
 
 type savedTag struct {
 	ID string `json:"id"`
 }
 
-func registerTags(mux *http.ServeMux, cache *DirectoryCache) {
-	t := tagger{cache: cache}
+func registerTags(mux *http.ServeMux, s *Store) {
+	t := tagger{store: s}
 	mux.HandleFunc("POST /api/directory/tag", t.set)
 	mux.HandleFunc("POST /api/directory/tag-delete", t.drop)
 	mux.HandleFunc("POST /api/directory/tag-rename", t.rename)
@@ -199,13 +199,13 @@ func (t tagger) rename(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	key := strings.TrimSpace(r.FormValue("tag"))
 	to := strings.TrimSpace(r.FormValue("name"))
-	actor := requestActor(t.cache, r)
-	ops, from, err := t.cache.Model().renameTag(actor, key, to)
+	actor := requestActor(t.store, r)
+	ops, from, err := t.store.Model().Directory.renameTag(actor, key, to)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := t.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
@@ -217,13 +217,13 @@ func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	key := strings.TrimSpace(r.FormValue("tag"))
 	to := strings.TrimSpace(r.FormValue("name"))
-	actor := requestActor(t.cache, r)
-	ops, made, people, err := t.cache.Model().copyTag(actor, key, to)
+	actor := requestActor(t.store, r)
+	ops, made, people, err := t.store.Model().Directory.copyTag(actor, key, to)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := t.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
@@ -236,13 +236,13 @@ func (t tagger) share(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimSpace(r.FormValue("tag"))
 	manager := formEmail(r, "manager")
 	on := r.FormValue("on") == "1"
-	actor := requestActor(t.cache, r)
-	ops, err := t.cache.Model().shareTag(actor, key, manager, on)
+	actor := requestActor(t.store, r)
+	ops, err := t.store.Model().Directory.shareTag(actor, key, manager, on)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := t.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
@@ -253,13 +253,13 @@ func (t tagger) share(w http.ResponseWriter, r *http.Request) {
 func (t tagger) leave(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	key := strings.TrimSpace(r.FormValue("tag"))
-	actor := requestActor(t.cache, r)
-	ops, err := t.cache.Model().leaveTag(actor, key)
+	actor := requestActor(t.store, r)
+	ops, err := t.store.Model().Directory.leaveTag(actor, key)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := t.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
@@ -270,13 +270,13 @@ func (t tagger) leave(w http.ResponseWriter, r *http.Request) {
 func (t tagger) drop(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	key := strings.TrimSpace(r.FormValue("tag"))
-	actor := requestActor(t.cache, r)
-	ops, people, err := t.cache.Model().dropTag(actor, key)
+	actor := requestActor(t.store, r)
+	ops, people, err := t.store.Model().Directory.dropTag(actor, key)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := t.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
@@ -288,13 +288,13 @@ func (t tagger) set(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	person := formEmail(r, "person")
 	on := r.FormValue("on") == "1"
-	actor := requestActor(t.cache, r)
-	ops, key, err := t.cache.Model().setTag(actor, strings.TrimSpace(r.FormValue("tag")), strings.TrimSpace(r.FormValue("name")), person, on)
+	actor := requestActor(t.store, r)
+	ops, key, err := t.store.Model().Directory.setTag(actor, strings.TrimSpace(r.FormValue("tag")), strings.TrimSpace(r.FormValue("name")), person, on)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := t.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := t.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}

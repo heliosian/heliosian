@@ -51,44 +51,38 @@ func sheetTables(t *testing.T) store.Tables {
 	return readTables(t, sheet)
 }
 
-func sampleCalendarCache(t *testing.T) *CalendarCache {
+func sampleSheet(t *testing.T) {
 	t.Helper()
 	t.Chdir("../..")
 	sheet = &data.Dir{Root: "sampledata"}
 	queue = store.NewQueue()
-	cache, err := NewCalendarCache(sheet, sheet, func() Roster { return roster }, nil, func() []string { return nil }, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return cache
 }
 
-func testApp(t *testing.T) (http.Handler, *CalendarCache) {
+func calendarStore(t *testing.T, celebrate, team, groups store.Tables) *Store {
+	t.Helper()
+	sampleSheet(t)
+	outsideSuperAdmin(t, sheet)
+	linkRows(t, celebrate, team)
+	listRows(t, groups)
+	return sampleStore(t, sheet, queue, sampleDeps(sampleKey))
+}
+
+func calendarDeps(s *Store, m CalendarMail) CalendarDeps {
+	return CalendarDeps{Store: s, Images: memoryImages(), Mail: m, Style: testStyle, Queue: queue, IDKey: sampleKey}
+}
+
+func testApp(t *testing.T) (http.Handler, *Store) {
 	t.Helper()
 	handler, cache, _ := testAppHooks(t)
 	return handler, cache
 }
 
-func testAppHooks(t *testing.T) (http.Handler, *CalendarCache, CalendarHooks) {
+func testAppHooks(t *testing.T) (http.Handler, *Store, CalendarHooks) {
 	t.Helper()
-	cache := sampleCalendarCache(t)
-	d := calendarDirectory(t, "sampledata")
-	parties, activities := linkedCaches(t, nil, nil)
-	lists := linkedEmailLists(t, nil)
+	cache := calendarStore(t, nil, nil, nil)
 	mux := http.NewServeMux()
-	hooks := RegisterCalendar(mux, CalendarDeps{
-		Cache:      cache,
-		Images:     memoryImages(),
-		Directory:  func() *Directory { return d },
-		Settings:   func() *Config { return &Config{} },
-		Parties:    parties,
-		Activities: activities,
-		EmailLists: lists,
-		Mail:       CalendarMail{Sender: keptMail().Mailgun},
-		Style:      testStyle,
-		Queue:      queue,
-	})
-	return served(mux, cache, hooks, func() *Directory { return d }, parties, activities, lists), cache, hooks
+	hooks := RegisterCalendar(mux, calendarDeps(cache, CalendarMail{Sender: keptMail().Mailgun}))
+	return served(mux, cache, hooks), cache, hooks
 }
 
 func memoryImages() blob.Images {
@@ -100,7 +94,7 @@ var (
 	teamLinkedTabs      = []string{activitiesTab, volunteersTab, id.AliasesTab}
 )
 
-func linkedCaches(t *testing.T, celebrate, team store.Tables) (*PartiesCache, *ActivitiesCache) {
+func linkRows(t *testing.T, celebrate, team store.Tables) {
 	t.Helper()
 	for _, tab := range celebrateLinkedTabs {
 		replaceRows(t, partiesAppName, tab, celebrate[tab])
@@ -113,27 +107,13 @@ func linkedCaches(t *testing.T, celebrate, team store.Tables) (*PartiesCache, *A
 		t.Fatal(err)
 	}
 	replaceRows(t, activitiesAppName, activityCategoriesTab, slices.DeleteFunc(categories, func(row store.Row) bool { return row["Event ID"] != "" }))
-	parties, err := NewPartiesCache(sheet, sheet, testkit.All, func() []string { return nil }, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	activities, err := NewActivitiesCache(sheet, sheet, testkit.All, func() []string { return nil }, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return parties, activities
 }
 
-func linkedEmailLists(t *testing.T, groups store.Tables) *EmailListsCache {
+func listRows(t *testing.T, groups store.Tables) {
 	t.Helper()
 	for _, tab := range append([]string{groupsTab, id.AliasesTab}, groupTabs...) {
 		replaceRows(t, emailListsAppName, tab, groups[tab])
 	}
-	lists, err := NewEmailListsCache(sheet, sheet, func() []string { return nil }, queue, sampleKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return lists
 }
 
 func replaceRows(t *testing.T, app, tab string, rows []store.Row) {
@@ -155,24 +135,8 @@ func replaceRows(t *testing.T, app, tab string, rows []store.Row) {
 	}
 }
 
-func calendarOver(t *testing.T, parties *PartiesCache, activities *ActivitiesCache, lists *EmailListsCache, directory func() *Directory) CalendarHooks {
-	t.Helper()
-	cache, err := NewCalendarCache(sheet, sheet, func() Roster { return roster }, nil, func() []string { return nil }, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return RegisterCalendar(http.NewServeMux(), CalendarDeps{
-		Cache:      cache,
-		Images:     memoryImages(),
-		Directory:  directory,
-		Settings:   noSettings,
-		Parties:    parties,
-		Activities: activities,
-		EmailLists: lists,
-		Mail:       CalendarMail{Sender: mailtest.Discard()},
-		Style:      testStyle,
-		Queue:      queue,
-	})
+func calendarOver(s *Store) CalendarHooks {
+	return RegisterCalendar(http.NewServeMux(), calendarDeps(s, CalendarMail{Sender: mailtest.Discard()}))
 }
 
 var testStyle = CalendarCardStyle(func() string { return "Helios When" }, func() string { return "The school year, day by day" })
@@ -223,15 +187,15 @@ func TestFeedLifecycle(t *testing.T) {
 	if len(made.Token) != 24 || made.URL != "/open/feed/"+made.Token+".ics" || key != feedKey("jordan.whitfield@heliosschool.org", made.Token) {
 		t.Fatalf("add answered %s, the feed %+v", rec.Body.String(), made)
 	}
-	if len(cache.Model().Feeds) != 2 || cache.Model().Feed(made.Token).Email != "jordan.whitfield@heliosschool.org" {
-		t.Fatalf("feeds after add: %+v", cache.Model().Feeds)
+	if len(cache.Model().Calendar.Feeds) != 2 || cache.Model().Calendar.Feed(made.Token).Email != "jordan.whitfield@heliosschool.org" {
+		t.Fatalf("feeds after add: %+v", cache.Model().Calendar.Feeds)
 	}
 	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "SUMMARY:Jays and Ravens Camping") || strings.Contains(rec.Body.String(), "Labor Day") {
 		t.Errorf("new feed: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = call(t, owner, http.MethodPost, "/api/calendar-feeds", `{"name":"just TRIPS","classrooms":["Jays"],`+trip+`}`)
 	twin := created(t, rec)
-	if twinFeed := feedOf(t, owner, twin); rec.Code != http.StatusOK || cache.Model().Feed(twinFeed.Token).Name != "just TRIPS 2" {
+	if twinFeed := feedOf(t, owner, twin); rec.Code != http.StatusOK || cache.Model().Calendar.Feed(twinFeed.Token).Name != "just TRIPS 2" {
 		t.Errorf("twin name: %d %+v", rec.Code, twinFeed)
 	}
 	call(t, owner, http.MethodDelete, "/api/calendar-feeds/"+twin, "")
@@ -250,7 +214,7 @@ func TestFeedLifecycle(t *testing.T) {
 	if rec := call(t, owner, http.MethodPost, "/api/calendar-feeds/"+key+"/edit", `{"name":"Jays days","emoji":" 🚌 ","classrooms":["Jays"],"tags":[`+quoted(t, "Trip, Schedule")+`]}`); rec.Code != http.StatusNoContent {
 		t.Errorf("owner's change: %d %s", rec.Code, rec.Body.String())
 	}
-	if f := cache.Model().Feed(made.Token); f == nil || f.Name != "Jays days" || f.Emoji != "🚌" || cells.JoinList(f.Tags) != calendarIDs(t, "Trip, Schedule") || f.Email != "jordan.whitfield@heliosschool.org" {
+	if f := cache.Model().Calendar.Feed(made.Token); f == nil || f.Name != "Jays days" || f.Emoji != "🚌" || cells.JoinList(f.Tags) != calendarIDs(t, "Trip, Schedule") || f.Email != "jordan.whitfield@heliosschool.org" {
 		t.Errorf("feed after change: %+v", f)
 	}
 	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "X-WR-CALNAME:Jays days") || !strings.Contains(rec.Body.String(), "Labor Day") {
@@ -262,8 +226,8 @@ func TestFeedLifecycle(t *testing.T) {
 	if rec := call(t, owner, http.MethodDelete, "/api/calendar-feeds/"+key, ""); rec.Code != http.StatusNoContent {
 		t.Errorf("owner's removal: %d %s", rec.Code, rec.Body.String())
 	}
-	if len(cache.Model().Feeds) != 1 || cache.Model().Feed(made.Token) != nil {
-		t.Errorf("feeds after removal: %+v", cache.Model().Feeds)
+	if len(cache.Model().Calendar.Feeds) != 1 || cache.Model().Calendar.Feed(made.Token) != nil {
+		t.Errorf("feeds after removal: %+v", cache.Model().Calendar.Feeds)
 	}
 	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("removed feed still serves: %d", rec.Code)
@@ -367,7 +331,7 @@ func TestSavedView(t *testing.T) {
 	if view.User.Saved == nil || strings.Join(view.User.Saved.Classrooms, ",") != "Hawks" || cells.JoinList(view.User.Saved.Tags) != calendarIDs(t, "Community, HCA") {
 		t.Errorf("saved view = %+v", view.User.Saved)
 	}
-	for _, u := range cache.Model().UpcomingUnder(calendarDirectory(t, "sampledata"), me, nil, now(), 0, "") {
+	for _, u := range cache.Model().Calendar.UpcomingUnder(calendarDirectory(t, "sampledata"), me, nil, now(), 0, "") {
 		if !strings.Contains(u.Title, "Hawks") && !strings.Contains(u.Title, "CAFE") && u.Title != "International Night" && u.Title != "Halloween Parade" && u.Title != "HCA Meeting" && u.Title != "All School Movie Night" && u.Title != "Cocoa & Cookies" && u.Title != "Talent Show" && u.Title != "Back to School Social" && u.Title != "Spring Celebration" && u.Title != "Fall Potluck at the Torres'" && u.Title != "Jays & Ravens Beach Picnic" {
 			t.Errorf("upcoming under the saved view lists %q", u.Title)
 		}
@@ -388,7 +352,7 @@ func TestDefaultCalendar(t *testing.T) {
 	viewer := as(me, handler)
 	dir := calendarDirectory(t, "sampledata")
 	found := false
-	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, "") {
+	for _, u := range cache.Model().Calendar.UpcomingUnder(dir, me, nil, now(), 0, "") {
 		found = found || u.Title == "International Night"
 	}
 	if !found {
@@ -400,26 +364,26 @@ func TestDefaultCalendar(t *testing.T) {
 	if rec := call(t, viewer, "POST", settingsPath("default"), `{"token":"sample7feedtoken4jordan2whitfield"}`); rec.Code != 204 {
 		t.Fatalf("default: %d %s", rec.Code, rec.Body)
 	}
-	if chosen := cache.Model().DefaultCalendar(me); chosen == nil || chosen.Token != "sample7feedtoken4jordan2whitfield" {
+	if chosen := cache.Model().Calendar.DefaultCalendar(me); chosen == nil || chosen.Token != "sample7feedtoken4jordan2whitfield" {
 		t.Errorf("default calendar = %+v", chosen)
 	}
-	if mine := cache.Model().MyCalendars(me); len(mine) != 2 || mine[0].Token != "sample7feedtoken4jordan2whitfield" || !mine[1].Locked {
+	if mine := cache.Model().Calendar.MyCalendars(me); len(mine) != 2 || mine[0].Token != "sample7feedtoken4jordan2whitfield" || !mine[1].Locked {
 		t.Errorf("rail = %+v", mine)
 	}
-	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, "") {
+	for _, u := range cache.Model().Calendar.UpcomingUnder(dir, me, nil, now(), 0, "") {
 		if u.Title == "International Night" {
 			t.Errorf("under the saved calendar, upcoming lists %q", u.Title)
 		}
 	}
 	found = false
-	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, MyHeliosianToken) {
+	for _, u := range cache.Model().Calendar.UpcomingUnder(dir, me, nil, now(), 0, MyHeliosianToken) {
 		found = found || u.Title == "International Night"
 	}
 	if !found {
 		t.Errorf("under My Heliosian by token, upcoming leaves out International Night")
 	}
 	inMonth := func(token string) bool {
-		for _, u := range cache.Model().MonthUnder(dir, me, nil, now(), "2026-09", token).Events {
+		for _, u := range cache.Model().Calendar.MonthUnder(dir, me, nil, now(), "2026-09", token).Events {
 			if u.Title == "International Night" {
 				return true
 			}
@@ -429,13 +393,13 @@ func TestDefaultCalendar(t *testing.T) {
 	if inMonth("") || !inMonth(MyHeliosianToken) {
 		t.Errorf("month under default %v, under My Heliosian %v; want false, true", inMonth(""), inMonth(MyHeliosianToken))
 	}
-	if rec := call(t, viewer, "POST", settingsPath("default"), `{"token":"`+MyHeliosianToken+`"}`); rec.Code != 204 || cache.Model().DefaultCalendar(me) != nil {
-		t.Errorf("back to My Heliosian: %d, default %+v", rec.Code, cache.Model().DefaultCalendar(me))
+	if rec := call(t, viewer, "POST", settingsPath("default"), `{"token":"`+MyHeliosianToken+`"}`); rec.Code != 204 || cache.Model().Calendar.DefaultCalendar(me) != nil {
+		t.Errorf("back to My Heliosian: %d, default %+v", rec.Code, cache.Model().Calendar.DefaultCalendar(me))
 	}
 	if rec := call(t, viewer, "POST", "/api/calendar-feeds/"+feedKey(me, MyHeliosianToken)+"/edit", `{"name":"Home base","emoji":"🏠","classrooms":["Jays"],"tags":[`+quoted(t, "Trip")+`]}`); rec.Code != 204 {
 		t.Errorf("rename My Heliosian: %d %s", rec.Code, rec.Body)
 	}
-	if home := cache.Model().MyHeliosian(me); home.Name != "Home base" || home.Emoji != "🏠" || !home.Locked || len(home.Classrooms) != 0 {
+	if home := cache.Model().Calendar.MyHeliosian(me); home.Name != "Home base" || home.Emoji != "🏠" || !home.Locked || len(home.Classrooms) != 0 {
 		t.Errorf("My Heliosian = %+v", home)
 	}
 	made := feedOf(t, viewer, created(t, call(t, viewer, "POST", "/api/calendar-feeds", `{"name":"Everything","classrooms":[],"tags":[]}`)))
@@ -445,11 +409,11 @@ func TestDefaultCalendar(t *testing.T) {
 	if rec := call(t, viewer, "POST", settingsPath("order-feeds"), `{"tokens":["`+made.Token+`","`+MyHeliosianToken+`","sample7feedtoken4jordan2whitfield"]}`); rec.Code != 204 {
 		t.Fatalf("order: %d %s", rec.Code, rec.Body)
 	}
-	mine := cache.Model().MyCalendars(me)
+	mine := cache.Model().Calendar.MyCalendars(me)
 	if len(mine) != 3 || mine[0].Token != made.Token || mine[1].Token != MyHeliosianToken || mine[1].Name != "Home base" {
 		t.Errorf("after ordering: %+v", mine)
 	}
-	if chosen := cache.Model().DefaultCalendar(me); chosen == nil || chosen.Token != made.Token {
+	if chosen := cache.Model().Calendar.DefaultCalendar(me); chosen == nil || chosen.Token != made.Token {
 		t.Errorf("the first is not the default: %+v", chosen)
 	}
 }
@@ -459,25 +423,11 @@ func keptMail() *mailtest.Recorder {
 }
 
 func TestAdminsToldOfSharedEvents(t *testing.T) {
-	cache := sampleCalendarCache(t)
-	d := calendarDirectory(t, "sampledata")
+	cache := calendarStore(t, nil, nil, nil)
 	kept := keptMail()
-	parties, activities := linkedCaches(t, nil, nil)
-	lists := linkedEmailLists(t, nil)
 	mux := http.NewServeMux()
-	hooks := RegisterCalendar(mux, CalendarDeps{
-		Cache:      cache,
-		Images:     memoryImages(),
-		Directory:  func() *Directory { return d },
-		Settings:   func() *Config { return &Config{} },
-		Parties:    parties,
-		Activities: activities,
-		EmailLists: lists,
-		Mail:       CalendarMail{Sender: kept.Mailgun, Base: "https://when.heliosian.com"},
-		Style:      testStyle,
-		Queue:      queue,
-	})
-	served(mux, cache, hooks, func() *Directory { return d }, parties, activities, lists)
+	hooks := RegisterCalendar(mux, calendarDeps(cache, CalendarMail{Sender: kept.Mailgun, Base: "https://when.heliosian.com"}))
+	served(mux, cache, hooks)
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {
@@ -515,7 +465,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 		t.Fatalf("switch to public: %d %s", rec.Code, rec.Body)
 	}
 	sent = wait(4)
-	if e := cache.Model().Event(party.ID); e == nil || !e.Pending || len(sent) != 4 || !strings.HasPrefix(sent[3].Subject, "Event to approve: Sam") {
+	if e := cache.Model().Calendar.Event(party.ID); e == nil || !e.Pending || len(sent) != 4 || !strings.HasPrefix(sent[3].Subject, "Event to approve: Sam") {
 		t.Errorf("after the switch: event %+v, mail %d", e, len(sent))
 	}
 	other := as("robin.whitfield@heliosschool.org", mux)
@@ -535,7 +485,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
 	var made struct{ IDs []string }
-	for _, e := range cache.Model().Pending {
+	for _, e := range cache.Model().Calendar.Pending {
 		if e.Title == "Chess Club" {
 			made.IDs = append(made.IDs, e.ID)
 		}
@@ -555,7 +505,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	}
 	starts := []string{}
 	for _, id := range made.IDs {
-		e := cache.Model().Event(id)
+		e := cache.Model().Calendar.Event(id)
 		if e == nil || e.Source != SourceSheet || e.AddedBy != "dana.hawkins@heliosschool.org" {
 			t.Fatalf("event %s = %+v", id, e)
 		}
@@ -568,15 +518,15 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 		t.Errorf("bad date accepted: %d", rec.Code)
 	}
 	rec = act(t, admin, made.IDs[0], "keywords", `{"keywords":["chess","board games"]}`)
-	if rec.Code != 204 || strings.Join(cache.Model().Event(made.IDs[0]).Keywords, ",") != "chess,board games" {
-		t.Errorf("keywords: %d %v", rec.Code, cache.Model().Event(made.IDs[0]).Keywords)
+	if rec.Code != 204 || strings.Join(cache.Model().Calendar.Event(made.IDs[0]).Keywords, ",") != "chess,board games" {
+		t.Errorf("keywords: %d %v", rec.Code, cache.Model().Calendar.Event(made.IDs[0]).Keywords)
 	}
-	if p := cache.Model().Provenance[made.IDs[0]]; p == nil || strings.Join(p.Corrected, ",") != "Keywords" {
+	if p := cache.Model().Calendar.Provenance[made.IDs[0]]; p == nil || strings.Join(p.Corrected, ",") != "Keywords" {
 		t.Errorf("provenance = %+v", p)
 	}
 	rec = act(t, admin, made.IDs[0], "move", `{"start":"2026-10-02 16:00","end":"2026-10-02 17:00"}`)
-	if rec.Code != 204 || cache.Model().Event(made.IDs[0]).Start != "2026-10-02 16:00" {
-		t.Errorf("move: %d %s", rec.Code, cache.Model().Event(made.IDs[0]).Start)
+	if rec.Code != 204 || cache.Model().Calendar.Event(made.IDs[0]).Start != "2026-10-02 16:00" {
+		t.Errorf("move: %d %s", rec.Code, cache.Model().Calendar.Event(made.IDs[0]).Start)
 	}
 	if rec := act(t, admin, "gev0000000007", "move", `{"start":"2026-10-02 16:00"}`); rec.Code != 403 {
 		t.Errorf("an imported event moved from the list: %d", rec.Code)
@@ -587,20 +537,20 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	}
 	rec = call(t, parent, "POST", "/api/events", `{"title":"Bake sale","start":"2026-10-01 15:00","end":"2026-10-01 17:00","tags":[`+quoted(t, "Jays, Community")+`],"sharing":"Public","repeatWeeks":1,"repeatTimes":3}`)
 	shared := created(t, rec)
-	if rec.Code != 200 || slices.ContainsFunc(cache.Model().Pending, func(e *Event) bool { return e.Title == "Bake sale" && e.ID != shared }) {
+	if rec.Code != 200 || slices.ContainsFunc(cache.Model().Calendar.Pending, func(e *Event) bool { return e.Title == "Bake sale" && e.ID != shared }) {
 		t.Fatalf("parent shared an event: %d %s", rec.Code, rec.Body)
 	}
-	if e := cache.Model().Event(shared); e == nil || !e.Pending || !slices.Contains(cache.Model().Pending, e) {
+	if e := cache.Model().Calendar.Event(shared); e == nil || !e.Pending || !slices.Contains(cache.Model().Calendar.Pending, e) {
 		t.Errorf("shared event = %+v", e)
 	}
-	if cache.Model().AnswerOf("jordan.whitfield@heliosschool.org", shared) != AnswerYes {
+	if cache.Model().Calendar.AnswerOf("jordan.whitfield@heliosschool.org", shared) != AnswerYes {
 		t.Errorf("the host is not going to their own event")
 	}
 	hostView := calendarOf(t, parent)
 	if n := len(slices.DeleteFunc(slices.Clone(hostView.Events), func(e *Event) bool { return e.ID != shared })); n != 1 {
 		t.Errorf("the host's view carries their event %d times", n)
 	}
-	for _, e := range cache.Model().Events {
+	for _, e := range cache.Model().Calendar.Events {
 		if e.ID == shared {
 			t.Errorf("a pending event is on the calendar")
 		}
@@ -618,13 +568,13 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec := act(t, admin, shared, "approve", ""); rec.Code != 204 {
 		t.Fatalf("approve: %d %s", rec.Code, rec.Body)
 	}
-	if e := cache.Model().Event(shared); e == nil || e.Pending || e.Status != StatusApproved || !slices.Contains(cache.Model().Events, e) {
+	if e := cache.Model().Calendar.Event(shared); e == nil || e.Pending || e.Status != StatusApproved || !slices.Contains(cache.Model().Calendar.Events, e) {
 		t.Errorf("approved event = %+v", e)
 	}
 	if rec := act(t, parent, shared, "edit", `{"title":"Bake sale!","start":"2026-10-01 15:30","end":"2026-10-01 17:30","location":"Gym","image":"/category-images/cake.jpg"}`); rec.Code != 204 {
 		t.Errorf("owner's edit: %d %s", rec.Code, rec.Body)
 	}
-	if e := cache.Model().Event(shared); e == nil || e.Title != "Bake sale!" || e.Location != "Gym" || e.Image != "/category-images/cake.jpg" || e.Start != "2026-10-01 15:30" || e.Pending {
+	if e := cache.Model().Calendar.Event(shared); e == nil || e.Title != "Bake sale!" || e.Location != "Gym" || e.Image != "/category-images/cake.jpg" || e.Start != "2026-10-01 15:30" || e.Pending {
 		t.Errorf("edited event = %+v", e)
 	}
 	if rec := act(t, other, shared, "edit", `{"title":"Mine now"}`); rec.Code != 403 {
@@ -635,7 +585,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatalf("link: %d %s", rec.Code, rec.Body)
 	}
-	if e := cache.Model().Event(shared); e == nil || e.Pending || e.Sharing != SharingLink || e.Status != "" {
+	if e := cache.Model().Calendar.Event(shared); e == nil || e.Pending || e.Sharing != SharingLink || e.Status != "" {
 		t.Errorf("link event = %+v", e)
 	}
 	if sees(other) {
@@ -652,7 +602,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 		t.Errorf("a yes did not put the link event under Going on the other's calendar")
 	}
 	found := false
-	for _, u := range cache.Model().UpcomingUnder(calendarDirectory(t, "sampledata"), "robin.whitfield@heliosschool.org", nil, now(), 0, "") {
+	for _, u := range cache.Model().Calendar.UpcomingUnder(calendarDirectory(t, "sampledata"), "robin.whitfield@heliosschool.org", nil, now(), 0, "") {
 		found = found || u.ID == shared
 	}
 	if !found {
@@ -666,7 +616,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	}
 	rec = call(t, parent, "POST", "/api/events", `{"address":"Sams-Party","title":"Sam\u2019s party","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Link"}`)
 	shared = created(t, rec)
-	party := cache.Model().Event("sams-party")
+	party := cache.Model().Calendar.Event("sams-party")
 	if rec.Code != 200 || party == nil || party.ID != shared || party.Address != "sams-party" || EventPath(party) != "/e/sams-party" {
 		t.Fatalf("chosen address: %d %s, event %+v", rec.Code, rec.Body, party)
 	}
@@ -695,7 +645,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec := act(t, admin, shared, "decline", ""); rec.Code != 204 {
 		t.Errorf("decline: %d %s", rec.Code, rec.Body)
 	}
-	if e := cache.Model().Event(shared); e == nil || !e.Declined || e.Status != StatusDeclined || slices.Contains(cache.Model().Events, e) {
+	if e := cache.Model().Calendar.Event(shared); e == nil || !e.Declined || e.Status != StatusDeclined || slices.Contains(cache.Model().Calendar.Events, e) {
 		t.Errorf("declined event = %+v", e)
 	}
 	if !sees(parent) || sees(other) {
@@ -707,10 +657,10 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec := act(t, other, shared, "answer", `{"answer":"yes"}`); rec.Code != 204 || !sees(other) {
 		t.Errorf("yes to a declined event: %d, on the calendar %v", rec.Code, sees(other))
 	}
-	if rec := act(t, admin, "sams-party", "decline", ""); rec.Code != 403 || cache.Model().Event("sams-party").Declined {
+	if rec := act(t, admin, "sams-party", "decline", ""); rec.Code != 403 || cache.Model().Calendar.Event("sams-party").Declined {
 		t.Errorf("declined a link event: %d", rec.Code)
 	}
-	if rec := act(t, admin, shared, "approve", ""); rec.Code != 204 || cache.Model().Event(shared).Status != StatusApproved {
+	if rec := act(t, admin, shared, "approve", ""); rec.Code != 204 || cache.Model().Calendar.Event(shared).Status != StatusApproved {
 		t.Errorf("approve after decline: %d", rec.Code)
 	}
 }
@@ -733,7 +683,7 @@ func TestFeedCarriesLinked(t *testing.T) {
 	handler, cache := testApp(t)
 	linked := []Linked{{Source: SourceCelebrate, ID: "pty0000000009", EventID: "pty0000000009", Title: "Fondue Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing}}
 	f := &Feed{Token: "t", Email: "jordan.whitfield@heliosschool.org", Name: "Mine", Tags: []string{TagGoing}}
-	out := string(ICS(cache.Model(), calendarDirectory(t, "sampledata"), f, linked, "https://when.heliosiandev.com:8080", now()))
+	out := string(ICS(cache.Model().Calendar, calendarDirectory(t, "sampledata"), f, linked, "https://when.heliosiandev.com:8080", now()))
 	if !strings.Contains(out, "SUMMARY:Fondue Night") || !strings.Contains(out, "URL:https://when.heliosiandev.com:8080/e/pty0000000009") {
 		t.Errorf("feed lacks the party:\n%s", out)
 	}
@@ -750,7 +700,7 @@ func TestAnswers(t *testing.T) {
 	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"perhaps"}`); rec.Code != 400 {
 		t.Errorf("nonsense answer: %d", rec.Code)
 	}
-	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"maybe"}`); rec.Code != 204 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerMaybe {
+	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"maybe"}`); rec.Code != 204 || cache.Model().Calendar.AnswerOf(me, "gev0000000007") != AnswerMaybe {
 		t.Errorf("maybe: %d %s", rec.Code, rec.Body)
 	}
 	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"hidden"}`); rec.Code != 204 {
@@ -761,32 +711,32 @@ func TestAnswers(t *testing.T) {
 		t.Errorf("answers = %v", view.User.Answers)
 	}
 	dir := calendarDirectory(t, "sampledata")
-	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, "") {
+	for _, u := range cache.Model().Calendar.UpcomingUnder(dir, me, nil, now(), 0, "") {
 		if u.ID == "gev0000000007" {
 			t.Errorf("a hidden event is in Upcoming")
 		}
 	}
 	f := &Feed{Token: "t", Email: me, Name: "Mine"}
-	if strings.Contains(string(ICS(cache.Model(), dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
+	if strings.Contains(string(ICS(cache.Model().Calendar, dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a hidden event is in the owner's feed")
 	}
 	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"no"}`); rec.Code != 204 {
 		t.Fatalf("no: %d %s", rec.Code, rec.Body)
 	}
-	if strings.Contains(string(ICS(cache.Model(), dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
+	if strings.Contains(string(ICS(cache.Model().Calendar, dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("an event the owner said no to is in their feed")
 	}
 	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":""}`); rec.Code != 204 {
 		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
 	}
-	if !strings.Contains(string(ICS(cache.Model(), dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
+	if !strings.Contains(string(ICS(cache.Model().Calendar, dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a cleared answer left the event out of the feed")
 	}
 	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"yes"}`); rec.Code != 204 {
 		t.Fatalf("yes: %d %s", rec.Code, rec.Body)
 	}
 	found := false
-	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, "") {
+	for _, u := range cache.Model().Calendar.UpcomingUnder(dir, me, nil, now(), 0, "") {
 		if u.ID == "gev0000000007" {
 			found = u.Answer == AnswerYes
 		}
@@ -802,15 +752,15 @@ func TestAnswers(t *testing.T) {
 	if i := slices.IndexFunc(other.Events, func(e *Event) bool { return e.ID == "gev0000000007" }); i < 0 || slices.Contains(other.Events[i].Tags, TagGoing) {
 		t.Errorf("one viewer's yes is under Going for another")
 	}
-	if slices.Contains(cache.Model().Event("gev0000000007").Tags, TagGoing) {
+	if slices.Contains(cache.Model().Calendar.Event("gev0000000007").Tags, TagGoing) {
 		t.Errorf("a yes changed the model's own event")
 	}
 	going := &Feed{Token: "g", Email: me, Name: "Going", Tags: []string{TagGoing}}
-	if !strings.Contains(string(ICS(cache.Model(), dir, going, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
+	if !strings.Contains(string(ICS(cache.Model().Calendar, dir, going, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a yes is not in the owner's Going feed")
 	}
 	sender := calendarApp{mail: CalendarMail{ReplyTo: "Helios When <when@reply.heliosian.com>", Key: []byte("key")}}
-	if got := string(sender.invite(cache.Model().Event("gev0000000007"), me, "https://when.heliosian.com/e/gev0000000007", mail.MethodRequest).Content); !strings.Contains(got, "METHOD:REQUEST") || !strings.Contains(got, "ORGANIZER;CN=Helios When:mailto:when+") || !strings.Contains(got, "ATTENDEE;CN="+me) {
+	if got := string(sender.invite(cache.Model().Calendar.Event("gev0000000007"), me, "https://when.heliosian.com/e/gev0000000007", mail.MethodRequest).Content); !strings.Contains(got, "METHOD:REQUEST") || !strings.Contains(got, "ORGANIZER;CN=Helios When:mailto:when+") || !strings.Contains(got, "ATTENDEE;CN="+me) {
 		t.Errorf("invite:\n%s", got)
 	}
 }
@@ -834,7 +784,7 @@ func TestResponsesForAdmins(t *testing.T) {
 func TestOverrideFromThePage(t *testing.T) {
 	handler, cache := testApp(t)
 	admin := as("dana.hawkins@heliosschool.org", handler)
-	e := cache.Model().Event("gev0000000002")
+	e := cache.Model().Calendar.Event("gev0000000002")
 	tags := slices.DeleteFunc(slices.Clone(e.Tags), BuiltInTag)
 	body := func(title, start, end, location, note string) string {
 		raw, _ := json.Marshal(map[string]any{"title": title, "start": start, "end": end, "location": location, "description": e.Description, "tags": tags, "keywords": e.Keywords, "note": note})
@@ -857,8 +807,8 @@ func TestOverrideFromThePage(t *testing.T) {
 	if r := row(); r == nil || r["Title"] != "Back to School Night" || r["Start"] != "" || r["Location"] != "" || r["Tags"] != "" || r["Keywords"] != "" || r["Note"] != "Shorter" {
 		t.Errorf("row after the title: %v", r)
 	}
-	if got := cache.Model().Event("gev0000000002"); got.Title != "Back to School Night" || strings.Join(cache.Model().Provenance["gev0000000002"].Corrected, ",") != "Title" {
-		t.Errorf("event after: %q corrected %v", got.Title, cache.Model().Provenance["gev0000000002"].Corrected)
+	if got := cache.Model().Calendar.Event("gev0000000002"); got.Title != "Back to School Night" || strings.Join(cache.Model().Calendar.Provenance["gev0000000002"].Corrected, ",") != "Title" {
+		t.Errorf("event after: %q corrected %v", got.Title, cache.Model().Calendar.Provenance["gev0000000002"].Corrected)
 	}
 	if rec := correct(admin, "gev0000000002", body("LS Back to School Night", "2026-08-27 18:30", "2026-08-27 20:00", "", "")); rec.Code != 204 {
 		t.Fatalf("second override: %d %s", rec.Code, rec.Body)
@@ -866,7 +816,7 @@ func TestOverrideFromThePage(t *testing.T) {
 	if r := row(); r["Title"] != "" || r["Start"] != "2026-08-27 18:30" || r["End"] != "2026-08-27 20:00" || r["Location"] != Clear || r["Note"] != "" {
 		t.Errorf("row after moving and clearing: %v", r)
 	}
-	if got := cache.Model().Event("gev0000000002"); got.Location != "" || got.Start != "2026-08-27 18:30" {
+	if got := cache.Model().Calendar.Event("gev0000000002"); got.Location != "" || got.Start != "2026-08-27 18:30" {
 		t.Errorf("event after moving: %+v", got)
 	}
 	if rec := correct(admin, "gev0000000002", body("LS Back to School Night", e.Start, e.End, e.Location, "")); rec.Code != 204 || row() != nil {
@@ -878,7 +828,7 @@ func TestOverrideFromThePage(t *testing.T) {
 	if rec := addressed("gev0000000002", "Back-To-School"); rec.Code != 204 {
 		t.Fatalf("an address: %d %s", rec.Code, rec.Body)
 	}
-	if got := cache.Model().Event("back-to-school"); got == nil || got.ID != "gev0000000002" || EventPath(got) != "/e/back-to-school" || row()["Address"] != "back-to-school" || row()["Title"] != "" {
+	if got := cache.Model().Calendar.Event("back-to-school"); got == nil || got.ID != "gev0000000002" || EventPath(got) != "/e/back-to-school" || row()["Address"] != "back-to-school" || row()["Title"] != "" {
 		t.Errorf("by its address: %+v, row %v", got, row())
 	}
 	if rec := addressed("gev0000000005", "back-to-school"); rec.Code != 400 || !strings.Contains(rec.Body.String(), "already another event's") {
@@ -887,7 +837,7 @@ func TestOverrideFromThePage(t *testing.T) {
 	if rec := addressed("gev0000000005", "camping trip!"); rec.Code != 400 {
 		t.Errorf("a bad address: %d %s", rec.Code, rec.Body)
 	}
-	if rec := addressed("back-to-school", ""); rec.Code != 204 || row() != nil || cache.Model().Event("back-to-school") != nil {
+	if rec := addressed("back-to-school", ""); rec.Code != 204 || row() != nil || cache.Model().Calendar.Event("back-to-school") != nil {
 		t.Errorf("the address taken away: %d, row %v", rec.Code, row())
 	}
 	v := inviteView(t, admin, "gev0000000002")
@@ -908,13 +858,13 @@ func TestOverrideFromThePage(t *testing.T) {
 	if v.ListPrivate || v.Coming == nil {
 		t.Errorf("a parent's view of an open list: private %v coming %v", v.ListPrivate, v.Coming)
 	}
-	if rec := act(t, admin, "gev0000000002", "image", `{"image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Event("gev0000000002").Image != "/category-images/night.jpg" || row()["Image"] != "category-images/night.jpg" {
+	if rec := act(t, admin, "gev0000000002", "image", `{"image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Calendar.Event("gev0000000002").Image != "/category-images/night.jpg" || row()["Image"] != "category-images/night.jpg" {
 		t.Errorf("a picture: %d %+v", rec.Code, row())
 	}
-	if rec := act(t, admin, "gev0000000002", "settings", `{"flyer":"sample/community.jpg"}`); rec.Code != 204 || cache.Model().Invitations["gev0000000002"] == nil || cache.Model().Invitations["gev0000000002"].Flyer != "sample/community.jpg" || len(cache.Model().Invitations["gev0000000002"].Hosts) != 0 {
+	if rec := act(t, admin, "gev0000000002", "settings", `{"flyer":"sample/community.jpg"}`); rec.Code != 204 || cache.Model().Calendar.Invitations["gev0000000002"] == nil || cache.Model().Calendar.Invitations["gev0000000002"].Flyer != "sample/community.jpg" || len(cache.Model().Calendar.Invitations["gev0000000002"].Hosts) != 0 {
 		t.Errorf("a flyer: %d %s", rec.Code, rec.Body)
 	}
-	if rec := act(t, admin, "gev0000000002", "image", `{"image":""}`); rec.Code != 204 || cache.Model().Event("gev0000000002").Image != "" {
+	if rec := act(t, admin, "gev0000000002", "image", `{"image":""}`); rec.Code != 204 || cache.Model().Calendar.Event("gev0000000002").Image != "" {
 		t.Errorf("the picture taken away: %d", rec.Code)
 	}
 	if rec := act(t, as("jordan.whitfield@heliosschool.org", handler), "gev0000000002", "image", `{"image":"x.jpg"}`); rec.Code != 403 {
@@ -936,10 +886,10 @@ func TestOverrideFromThePage(t *testing.T) {
 	if rec := correct(cohost, "gev0000000002", body("Family Night", e.Start, e.End, e.Location, "Mine")); rec.Code != 204 {
 		t.Fatalf("a co-host's edit: %d %s", rec.Code, rec.Body)
 	}
-	if r := row(); r["Title"] != "Family Night" || r["Note"] != "The admins'" || cache.Model().Event("gev0000000002").Title != "Family Night" {
+	if r := row(); r["Title"] != "Family Night" || r["Note"] != "The admins'" || cache.Model().Calendar.Event("gev0000000002").Title != "Family Night" {
 		t.Errorf("after the co-host's edit: %v", r)
 	}
-	if rec := act(t, cohost, "gev0000000002", "image", `{"image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Event("gev0000000002").Image != "/category-images/night.jpg" {
+	if rec := act(t, cohost, "gev0000000002", "image", `{"image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Calendar.Event("gev0000000002").Image != "/category-images/night.jpg" {
 		t.Errorf("a co-host's picture: %d", rec.Code)
 	}
 	raw, _ := json.Marshal(map[string]any{"title": "Family Night", "start": e.Start, "end": e.End, "location": e.Location, "description": e.Description, "tags": tags, "keywords": e.Keywords})
@@ -953,7 +903,7 @@ func TestMyHeliosianFeed(t *testing.T) {
 	parent := as("jordan.whitfield@heliosschool.org", handler)
 	token := func() string {
 		rec := call(t, parent, "POST", settingsPath("feed-token"), "")
-		made := cache.Model().Settings["jordan.whitfield@heliosschool.org"].FeedToken
+		made := cache.Model().Calendar.Settings["jordan.whitfield@heliosschool.org"].FeedToken
 		if rec.Code != 204 || made == "" {
 			t.Fatalf("my heliosian token: %d %s", rec.Code, rec.Body)
 		}
@@ -963,7 +913,7 @@ func TestMyHeliosianFeed(t *testing.T) {
 	if again := token(); again != first {
 		t.Errorf("a second ask minted another: %q then %q", first, again)
 	}
-	if cache.Model().Settings["jordan.whitfield@heliosschool.org"].FeedToken != first {
+	if cache.Model().Calendar.Settings["jordan.whitfield@heliosschool.org"].FeedToken != first {
 		t.Errorf("the token is not kept")
 	}
 	rec := call(t, parent, "GET", "/open/feed/"+first+".ics", "")

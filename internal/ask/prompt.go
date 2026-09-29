@@ -69,7 +69,7 @@ func (v *viewer) exampleLinks() []string {
 		}
 	}
 	today := time.Date(v.now.Year(), v.now.Month(), v.now.Day(), 0, 0, 0, 0, model.Location)
-	for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.sources.Linked(v.email)) {
+	for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.linked()) {
 		if app, _ := model.EventPage(e); app == "when" && !e.StartTime().Before(today) {
 			out = append(out, eventLink(e))
 			break
@@ -87,7 +87,7 @@ func (v *viewer) exampleLinks() []string {
 			break
 		}
 	}
-	sources := v.sources.LoopSources()
+	sources := v.audience()
 	for _, g := range v.loop.Groups {
 		if g.VisibleTo(v.loopAs, sources) {
 			out = append(out, loopBase+g.Path())
@@ -244,14 +244,14 @@ func viewerBlock(v *viewer) string {
 	if len(bands) > 0 {
 		fmt.Fprintf(b, "\nRoom parent for: %s.\n", strings.Join(bands, ", "))
 	}
-	lists := slices.DeleteFunc(v.sources.Lists(p.Email), func(l model.MagicTag) bool { return l.Archived })
+	lists := slices.DeleteFunc(v.lists(p.Email), func(l model.MagicTag) bool { return l.Archived })
 	if len(lists) > 0 {
 		b.WriteString("\nRoles in the apps (each is a Magic Tag in Helios Who?):\n")
 		for _, l := range lists {
 			fmt.Fprintf(b, "- %s: %s (%d people)\n", listKind(l.Kind), l.Name, len(l.People))
 		}
 	}
-	tags := v.sources.Tags(p.Email)
+	tags := v.directory.Tags(p.Email)
 	if len(tags) > 0 {
 		names := []string{}
 		for _, t := range tags {

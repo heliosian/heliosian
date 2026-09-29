@@ -81,7 +81,7 @@ func (a emailListsApp) unsubscribeGroup(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "this link is not one Helios Loop made", http.StatusNotFound)
 		return nil, "", false
 	}
-	g := a.cache.Model().Named(name)
+	g := a.store.Model().EmailLists.Named(name)
 	if g == nil {
 		http.Error(w, "this email list is gone", http.StatusNotFound)
 		return nil, "", false
@@ -113,7 +113,7 @@ func (a emailListsApp) commitSubscription(ctx context.Context, actor access.Acto
 	if len(ops) == 0 {
 		return nil
 	}
-	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
+	if err := a.store.Commit(ctx, actor, emailListsAppName, ops...); err != nil {
 		return err
 	}
 	if how == "" {
@@ -168,7 +168,7 @@ func (a emailListsApp) unsubscribeByMail(ctx context.Context, subject, sender st
 		slog.WarnContext(ctx, "loop:unsubscribe mail with no token", "sender", sender, "subject", subject)
 		return
 	}
-	g := a.cache.Model().Named(name)
+	g := a.store.Model().EmailLists.Named(name)
 	if g == nil {
 		slog.WarnContext(ctx, "loop:unsubscribe mail for no group", "group", name, "email", email)
 		return

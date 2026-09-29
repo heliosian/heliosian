@@ -26,7 +26,7 @@ func whole(t *testing.T, b activityBody) activityPatch {
 
 func TestSaveActivityRules(t *testing.T) {
 	cache, _ := activitiesServer(t)
-	m := cache.Model()
+	m := cache.Model().Activities
 	const india = "deepa.natarajan@heliosschool.org"
 	existing := func(id string) activityBody {
 		act := m.Activity(id)
@@ -79,7 +79,7 @@ func TestSaveActivityRules(t *testing.T) {
 
 func TestSaveActivityPrettyConflicts(t *testing.T) {
 	cache, _ := activitiesServer(t)
-	m := cache.Model()
+	m := cache.Model().Activities
 	act := m.Activity("act0000000002")
 	body := activityBody{ID: "act0000000002", Year: act.Year, Title: act.Title, Category: act.Category, Status: act.Status, DirectSignUp: "Yes", PrettyID: "international-night"}
 	_, err := m.saveActivity(activityViewerOf(jordan, true), whole(t, body))
@@ -104,31 +104,31 @@ func TestSaveActivityPrettyConflicts(t *testing.T) {
 	if err != nil || len(s.ops) != 2 {
 		t.Fatalf("take-over: %v, %d ops", err, len(s.ops))
 	}
-	if err := cache.Commit(context.Background(), activityViewerOf(jordan, true), s.ops...); err != nil {
+	if err := cache.Commit(context.Background(), activityViewerOf(jordan, true), activitiesAppName, s.ops...); err != nil {
 		t.Fatal(err)
 	}
-	if m = cache.Model(); m.Activity("act0000000002").PrettyID != "international-night-2025" || m.Activity(last.ID).PrettyID != "international-night-2025-2025" {
+	if m = cache.Model().Activities; m.Activity("act0000000002").PrettyID != "international-night-2025" || m.Activity(last.ID).PrettyID != "international-night-2025-2025" {
 		t.Fatalf("after take-over: %q %q", m.Activity("act0000000002").PrettyID, m.Activity(last.ID).PrettyID)
 	}
 }
 
 func TestSaveActivityPriority(t *testing.T) {
 	cache, _ := activitiesServer(t)
-	m := cache.Model()
+	m := cache.Model().Activities
 	act := m.Activity("act0000000022")
 	body := activityBody{ID: act.ID, Year: act.Year, Title: act.Title, Parent: act.Parent, Category: act.Category, Status: act.Status, DirectSignUp: act.DirectSignUpOwn}
 	save := func(who string, isAdmin, priority, complete bool) bool {
 		t.Helper()
 		b := body
 		b.Priority, b.VolunteersComplete = priority, complete
-		s, err := cache.Model().saveActivity(activityViewerOf(who, isAdmin), whole(t, b))
+		s, err := cache.Model().Activities.saveActivity(activityViewerOf(who, isAdmin), whole(t, b))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := cache.Commit(context.Background(), activityViewerOf(who, isAdmin), s.ops...); err != nil {
+		if err := cache.Commit(context.Background(), activityViewerOf(who, isAdmin), activitiesAppName, s.ops...); err != nil {
 			t.Fatal(err)
 		}
-		return cache.Model().Activity(act.ID).Priority
+		return cache.Model().Activities.Activity(act.ID).Priority
 	}
 	if act.Priority {
 		t.Fatal("the sample activity starts with a priority")

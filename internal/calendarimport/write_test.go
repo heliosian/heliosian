@@ -9,17 +9,16 @@ import (
 	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
-	"heliosian/internal/testkit/sample"
 )
 
-func sampleCache(t *testing.T) (*data.Dir, *model.CalendarCache) {
+func sampleStore(t *testing.T) (*data.Dir, *model.Store) {
 	t.Helper()
 	sheet := &data.Dir{Root: "../../sampledata"}
-	directory, err := model.LoadDirectory(sheet, nil, testkit.None, []byte("sample"))
+	s, err := model.NewStore(sheet, sheet, store.NewQueue(), model.Deps{IDKey: []byte("sample"), Static: testkit.None, Parties: testkit.All, Activities: testkit.All, Home: testkit.All})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return sheet, sample.Calendar(t, sheet, store.NewQueue(), directory)
+	return sheet, s
 }
 
 func rowsOf(t *testing.T, sheet *data.Dir, tab string) []map[string]string {
@@ -32,20 +31,20 @@ func rowsOf(t *testing.T, sheet *data.Dir, tab string) []map[string]string {
 }
 
 func TestIdentifyKeepsAKnownKeysEventIDAndMintsForANewOne(t *testing.T) {
-	sheet, cache := sampleCache(t)
+	sheet, s := sampleStore(t)
 	google := rowsOf(t, sheet, model.GoogleTab)
 	rows := []map[string]string{{"Key": "a7@sample", "Title": "International Night"}, {"Key": "a13@sample", "Title": "Spring Picnic"}}
-	(&run{opts: Options{Cache: cache}}).identify(rows, google)
+	(&run{opts: Options{Store: s}}).identify(rows, google)
 	if rows[0]["Event ID"] != "gev0000000007" {
 		t.Errorf("a known key's event id is %q", rows[0]["Event ID"])
 	}
-	if fresh := rows[1]["Event ID"]; fresh == "" || cache.Model().Event(fresh) != nil || fresh == rows[0]["Event ID"] {
+	if fresh := rows[1]["Event ID"]; fresh == "" || s.Model().Calendar.Event(fresh) != nil || fresh == rows[0]["Event ID"] {
 		t.Errorf("a new key's event id is %q", fresh)
 	}
 }
 
 func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
-	sheet, cache := sampleCache(t)
+	sheet, s := sampleStore(t)
 	google, enrichment := rowsOf(t, sheet, model.GoogleTab), rowsOf(t, sheet, model.EnrichmentTab)
 	rows := []map[string]string{}
 	for _, row := range google {
@@ -65,18 +64,18 @@ func TestWriteCommitsOnlyWhatChanged(t *testing.T) {
 		{model.GoogleTab, model.GoogleColumns, rows, google, "Key", true},
 		{model.EnrichmentTab, model.EnrichmentColumns, enriched, enrichment, "Event ID", false},
 	}
-	dry := &run{opts: Options{Cache: cache, DryRun: true}}
+	dry := &run{opts: Options{Store: s, DryRun: true}}
 	if err := dry.write(t.Context(), sync); err != nil {
 		t.Fatal(err)
 	}
-	if cache.Model().Event("a13@sample") != nil || len(rowsOf(t, sheet, store.ChangeLogTab)) != 0 {
+	if s.Model().Calendar.Event("a13@sample") != nil || len(rowsOf(t, sheet, store.ChangeLogTab)) != 0 {
 		t.Fatal("a dry run committed")
 	}
-	r := &run{opts: Options{Cache: cache}}
+	r := &run{opts: Options{Store: s}}
 	if err := r.write(t.Context(), sync); err != nil {
 		t.Fatal(err)
 	}
-	m := cache.Model()
+	m := s.Model().Calendar
 	if m.Event("a6@sample").Title != "Hummingbird Coffee" || m.Event("a13@sample") == nil || !slices.Contains(m.Event("a13@sample").Tags, community) || m.TagName(community) != "Community" {
 		t.Errorf("model after the import: a6 %+v, a13 %+v", m.Event("a6@sample"), m.Event("a13@sample"))
 	}

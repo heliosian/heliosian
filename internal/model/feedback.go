@@ -2,13 +2,11 @@ package model
 
 import (
 	"context"
-	"log/slog"
 	"slices"
 	"strings"
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/data"
 	"heliosian/internal/id"
 	"heliosian/internal/store"
 )
@@ -122,30 +120,13 @@ func buildFeedback(_ context.Context, tables store.Tables) (*Feedback, error) {
 	return m, nil
 }
 
-type FeedbackCache struct {
-	*store.Store[*Feedback]
+var feedbackTabs = []store.Tab{
+	{Name: reportsTab, Columns: ReportColumns, Key: []string{"ID"}},
+	{Name: id.AliasesTab, Columns: id.AliasColumns, Key: []string{id.AliasColumn}},
 }
 
-func NewFeedbackCache(source data.Source, writer data.Writer, queue *store.Queue) (*FeedbackCache, error) {
-	s, err := store.New(store.Spec[*Feedback]{
-		App: feedbackAppName,
-		Tabs: []store.Tab{
-			{Name: reportsTab, Columns: ReportColumns, Key: []string{"ID"}},
-			{Name: id.AliasesTab, Columns: id.AliasColumns, Key: []string{id.AliasColumn}},
-		},
-		Build: buildFeedback,
-		Loaded: func(m *Feedback, took time.Duration) {
-			slog.Info("loaded feedback model", "reports", len(m.reports), "took", took.Round(time.Millisecond))
-		},
-	}, source, writer, queue)
-	if err != nil {
-		return nil, err
-	}
-	return &FeedbackCache{Store: s}, nil
-}
-
-func (c *FeedbackCache) Reports() []Report {
-	return c.Model().reports
+func (m *Feedback) Reports() []Report {
+	return m.reports
 }
 
 func (m *Feedback) report(key string) (Report, bool) {
@@ -163,13 +144,13 @@ func (m *Feedback) taken(key string) bool {
 	return ok || m.aliases[key] != ""
 }
 
-func (c *FeedbackCache) Report(id string) (Report, bool) {
-	return c.Model().report(id)
+func (m *Feedback) Report(id string) (Report, bool) {
+	return m.report(id)
 }
 
-func (c *FeedbackCache) save(ctx context.Context, actor access.Actor, r Report) (Report, error) {
-	saved, ops := c.Model().submit(actor, r)
-	if err := c.Commit(ctx, actor, ops...); err != nil {
+func (s *Store) saveReport(ctx context.Context, actor access.Actor, r Report) (Report, error) {
+	saved, ops := s.Model().Feedback.submit(actor, r)
+	if err := s.Commit(ctx, actor, feedbackAppName, ops...); err != nil {
 		return Report{}, err
 	}
 	return saved, nil

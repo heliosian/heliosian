@@ -20,15 +20,13 @@ const (
 )
 
 type feedbackAdmin struct {
-	cache     *FeedbackCache
-	bucket    *blob.Bucket
-	filer     *feedback.GitHubApp
-	directory *DirectoryCache
-	settings  *ConfigCache
+	store  *Store
+	bucket *blob.Bucket
+	filer  *feedback.GitHubApp
 }
 
-func RegisterFeedbackAdmin(mux *http.ServeMux, cache *FeedbackCache, bucket *blob.Bucket, filer *feedback.GitHubApp, directory *DirectoryCache, settings *ConfigCache) {
-	a := feedbackAdmin{cache: cache, bucket: bucket, filer: filer, directory: directory, settings: settings}
+func RegisterFeedbackAdmin(mux *http.ServeMux, s *Store, bucket *blob.Bucket, filer *feedback.GitHubApp) {
+	a := feedbackAdmin{store: s, bucket: bucket, filer: filer}
 	mux.HandleFunc("GET /api/admin/feedback", serve.JSON(a.list))
 	mux.HandleFunc("GET /api/admin/feedback/{id}", serve.JSON(a.one))
 	mux.HandleFunc("GET /api/admin/feedback/{id}/screenshot", a.screenshot)
@@ -94,21 +92,23 @@ func reportSummaryOf(r Report) reportSummary {
 }
 
 func (a feedbackAdmin) list(r *http.Request, _ serve.None) (reportListView, error) {
-	if err := requireSuperAdmin(feedbackActor(r, a.directory, a.settings)); err != nil {
+	m := a.store.Model()
+	if err := requireSuperAdmin(superActor(m, r)); err != nil {
 		return reportListView{}, err
 	}
 	out := []reportSummary{}
-	for _, report := range a.cache.Reports() {
+	for _, report := range m.Feedback.Reports() {
 		out = append(out, reportSummaryOf(report))
 	}
 	return reportListView{Reports: out, CanFile: a.filer != nil, Repo: feedback.Repo}, nil
 }
 
 func (a feedbackAdmin) one(r *http.Request, _ serve.None) (reportDetail, error) {
-	if err := requireSuperAdmin(feedbackActor(r, a.directory, a.settings)); err != nil {
+	m := a.store.Model()
+	if err := requireSuperAdmin(superActor(m, r)); err != nil {
 		return reportDetail{}, err
 	}
-	report, ok := a.cache.Report(r.PathValue("id"))
+	report, ok := m.Feedback.Report(r.PathValue("id"))
 	if !ok {
 		return reportDetail{}, access.Missing("no such report")
 	}
@@ -132,11 +132,12 @@ func (a feedbackAdmin) one(r *http.Request, _ serve.None) (reportDetail, error) 
 }
 
 func (a feedbackAdmin) screenshot(w http.ResponseWriter, r *http.Request) {
-	if err := requireSuperAdmin(feedbackActor(r, a.directory, a.settings)); err != nil {
+	m := a.store.Model()
+	if err := requireSuperAdmin(superActor(m, r)); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	report, ok := a.cache.Report(r.PathValue("id"))
+	report, ok := m.Feedback.Report(r.PathValue("id"))
 	if !ok || report.Screenshot == "" {
 		http.NotFound(w, r)
 		return
@@ -156,8 +157,9 @@ func (a feedbackAdmin) screenshot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a feedbackAdmin) file(r *http.Request, in issueDraft) (map[string]string, error) {
-	actor := feedbackActor(r, a.directory, a.settings)
-	report, err := a.cache.Model().filing(actor, r.PathValue("id"))
+	m := a.store.Model()
+	actor := superActor(m, r)
+	report, err := m.Feedback.filing(actor, r.PathValue("id"))
 	if err != nil {
 		return nil, err
 	}
@@ -194,20 +196,21 @@ func (a feedbackAdmin) file(r *http.Request, in issueDraft) (map[string]string, 
 }
 
 func (a feedbackAdmin) markFiled(ctx context.Context, actor access.Actor, id, issue string) error {
-	ops, err := a.cache.Model().filed(actor, id, issue, time.Now())
+	ops, err := a.store.Model().Feedback.filed(actor, id, issue, time.Now())
 	if err != nil {
 		return err
 	}
-	return a.cache.Commit(ctx, actor, ops...)
+	return a.store.Commit(ctx, actor, feedbackAppName, ops...)
 }
 
 func (a feedbackAdmin) dismiss(r *http.Request, _ serve.None) (serve.None, error) {
-	actor := feedbackActor(r, a.directory, a.settings)
-	ops, err := a.cache.Model().dismissed(actor, r.PathValue("id"), time.Now())
+	m := a.store.Model()
+	actor := superActor(m, r)
+	ops, err := m.Feedback.dismissed(actor, r.PathValue("id"), time.Now())
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, feedbackAppName, ops...); err != nil {
 		return serve.None{}, err
 	}
 	return serve.None{}, nil

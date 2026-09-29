@@ -62,7 +62,7 @@ func calendarIDs(t *testing.T, names string) string {
 func readTables(t *testing.T, dir *data.Dir) store.Tables {
 	t.Helper()
 	out := store.Tables{}
-	for _, tab := range spec(nil, nil).Tabs {
+	for _, tab := range calendarTabs {
 		_, rows, err := dir.Table(CalendarApp, tab.Name)
 		if err != nil {
 			t.Fatal(err)
@@ -526,11 +526,7 @@ func TestICS(t *testing.T) {
 
 func calendarDirectory(t *testing.T, root string) *Directory {
 	t.Helper()
-	directory, err := LoadDirectory(&data.Dir{Root: root}, nil, testkit.None, sampleKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return directory
+	return loadDirectory(t, &data.Dir{Root: root}, nil, testkit.None, sampleKey)
 }
 
 func TestRender(t *testing.T) {

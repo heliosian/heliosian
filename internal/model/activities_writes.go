@@ -716,8 +716,8 @@ func (m *Activities) reorderCategories(actor access.Actor, eventID string, order
 	return orderOps(activityCategoriesTab, "Category ID", ids, current), nil
 }
 
-func (c *ActivitiesCache) deleteCategory(actor access.Actor, id string) (*ActivityCategory, []store.Op, error) {
-	m := c.Model()
+func (s *Store) deleteActivityCategory(actor access.Actor, id string) (*ActivityCategory, []store.Op, error) {
+	m := s.Model().Activities
 	cat := m.Category(strings.TrimSpace(id))
 	if cat == nil {
 		return nil, nil, access.Missing("no such category")
@@ -728,7 +728,7 @@ func (c *ActivitiesCache) deleteCategory(actor access.Actor, id string) (*Activi
 	if err := m.editsCategories(actor, cat.EventID); err != nil {
 		return nil, nil, err
 	}
-	if c.Count(activitiesTab, store.Row{"Category": cat.ID}) > 0 {
+	if s.Count(activitiesAppName, activitiesTab, store.Row{"Category": cat.ID}) > 0 {
 		return nil, nil, access.Invalid("move or delete its activities first")
 	}
 	return cat, []store.Op{store.Delete(activityCategoriesTab, store.Row{"Category ID": cat.ID})}, nil

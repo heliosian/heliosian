@@ -14,6 +14,8 @@ import (
 	"heliosian/internal/devcache"
 	"heliosian/internal/env"
 	"heliosian/internal/model"
+	"heliosian/internal/spreadsheets"
+	"heliosian/internal/static"
 	"heliosian/internal/store"
 )
 
@@ -22,9 +24,8 @@ func main() {
 		log.Fatal("give the question to search for")
 	}
 	query := strings.Join(os.Args[1:], " ")
-	sheetID := env.Required("ARTIFACTS_SHEET")
 	devcache.Install()
-	source, err := data.NewSheet(map[string]string{"artifacts": sheetID})
+	source, err := data.NewSheet(spreadsheets.IDs(spreadsheets.All))
 	if err != nil {
 		log.Fatalf("sheet source: %v", err)
 	}
@@ -37,11 +38,11 @@ func main() {
 		log.Fatalf("%v", err)
 	}
 	start := time.Now()
-	cache, err := model.NewDocumentsCache(source, nil, reader, embedder, store.NewQueue())
+	models, err := model.NewStore(source, nil, store.NewQueue(), model.Deps{IDKey: []byte(env.Required("ID_KEY")), Static: static.Files{Root: "web/who"}, Objects: reader, Embedder: embedder})
 	if err != nil {
 		log.Fatalf("load: %v", err)
 	}
-	docs := cache.Model()
+	docs := models.Model().Documents
 	oldest, newest := docs.Span()
 	fmt.Printf("%d documents, %d chunks, %s to %s, loaded in %s\n",
 		len(docs.Documents), docs.Chunks(), oldest, newest, time.Since(start).Round(time.Millisecond))

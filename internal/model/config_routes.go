@@ -9,9 +9,7 @@ import (
 )
 
 type configRoutes struct {
-	cache     *ConfigCache
-	directory *DirectoryCache
-	held      func(email string) []access.Allowance
+	store *Store
 }
 
 type colorBody struct {
@@ -28,8 +26,8 @@ type signOutBody struct {
 	Email string `json:"email"`
 }
 
-func RegisterConfig(mux *http.ServeMux, cache *ConfigCache, directory *DirectoryCache, held func(email string) []access.Allowance) {
-	a := configRoutes{cache: cache, directory: directory, held: held}
+func RegisterConfig(mux *http.ServeMux, s *Store) {
+	a := configRoutes{store: s}
 	mux.HandleFunc("GET /api/config", serve.JSON(a.settings))
 	mux.HandleFunc("GET /api/config/super-admins", serve.JSON(a.superAdmins))
 	mux.HandleFunc("POST /api/config/stale-years", serve.JSON(a.setStaleYears))
@@ -39,32 +37,30 @@ func RegisterConfig(mux *http.ServeMux, cache *ConfigCache, directory *Directory
 	mux.HandleFunc("POST /api/config/sign-out", serve.JSON(a.signOut))
 }
 
-func (a configRoutes) settingsActor(r *http.Request) access.Actor {
-	return a.directory.Actor(r, a.held)
-}
-
-func (a configRoutes) superActor(r *http.Request) access.Actor {
-	return a.directory.Actor(r, a.cache.SuperHeld)
+func superActor(m *Model, r *http.Request) access.Actor {
+	return m.Directory.Actor(r, m.SuperHeld)
 }
 
 func (a configRoutes) settings(r *http.Request, _ serve.None) (*Config, error) {
-	return a.cache.Config(), nil
+	return a.store.Model().Config, nil
 }
 
 func (a configRoutes) superAdmins(r *http.Request, _ serve.None) (map[string][]string, error) {
-	if err := require(a.superActor(r), ManageSuperAdmins); err != nil {
+	m := a.store.Model()
+	if err := require(superActor(m, r), ManageSuperAdmins); err != nil {
 		return nil, err
 	}
-	return map[string][]string{"superAdmins": a.cache.SuperAdmins()}, nil
+	return map[string][]string{"superAdmins": m.Config.SuperAdmins}, nil
 }
 
 func (a configRoutes) setStaleYears(r *http.Request, years StaleYears) (serve.None, error) {
-	actor := a.settingsActor(r)
-	ops, err := a.cache.Config().setStaleYears(actor, years)
+	m := a.store.Model()
+	actor := m.actor(r, "who")
+	ops, err := m.Config.setStaleYears(actor, years)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, ConfigApp, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "config: set stale-years thresholds", "photo", years.Photo, "facts", years.Facts, "familyPhoto", years.FamilyPhoto)
@@ -72,12 +68,13 @@ func (a configRoutes) setStaleYears(r *http.Request, years StaleYears) (serve.No
 }
 
 func (a configRoutes) setPrivacyLinks(r *http.Request, body PrivacyLinks) (serve.None, error) {
-	actor := a.settingsActor(r)
-	links, ops, err := a.cache.Config().setPrivacyLinks(actor, body)
+	m := a.store.Model()
+	actor := m.actor(r, "who")
+	links, ops, err := m.Config.setPrivacyLinks(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, ConfigApp, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "config: set privacy links", "veracrossPreferences", links.VeracrossPreferences, "heliosWhoOptIn", links.HeliosWhoOptIn)
@@ -85,12 +82,13 @@ func (a configRoutes) setPrivacyLinks(r *http.Request, body PrivacyLinks) (serve
 }
 
 func (a configRoutes) setColor(r *http.Request, body colorBody) (serve.None, error) {
-	actor := a.settingsActor(r)
-	name, ops, err := a.cache.Config().setColor(actor, body.Kind, body.Name, body.Color)
+	m := a.store.Model()
+	actor := m.actor(r, "who")
+	name, ops, err := m.Config.setColor(actor, body.Kind, body.Name, body.Color)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, ConfigApp, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "config: set color", "kind", body.Kind, "name", name, "color", body.Color)
@@ -98,12 +96,13 @@ func (a configRoutes) setColor(r *http.Request, body colorBody) (serve.None, err
 }
 
 func (a configRoutes) setSuperAdmins(r *http.Request, body superAdminsBody) (serve.None, error) {
-	actor := a.superActor(r)
-	admins, ops, err := a.cache.Config().setSuperAdmins(actor, body.SuperAdmins)
+	m := a.store.Model()
+	actor := superActor(m, r)
+	admins, ops, err := m.Config.setSuperAdmins(actor, body.SuperAdmins)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, ConfigApp, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "config: set the super admin list", "admins", admins)
@@ -111,12 +110,13 @@ func (a configRoutes) setSuperAdmins(r *http.Request, body superAdminsBody) (ser
 }
 
 func (a configRoutes) signOut(r *http.Request, body signOutBody) (serve.None, error) {
-	actor := a.superActor(r)
-	email, ops, err := a.cache.Config().signOut(actor, body.Email)
+	m := a.store.Model()
+	actor := superActor(m, r)
+	email, ops, err := m.Config.signOut(actor, body.Email)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.store.Commit(r.Context(), actor, ConfigApp, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "config: signed out every session", "email", email, "by", actor.Email)

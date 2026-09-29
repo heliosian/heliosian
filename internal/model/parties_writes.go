@@ -764,15 +764,15 @@ func (m *Parties) saveCelebration(actor access.Actor, form celebrationForm) ([]s
 	return ops, adding, nil
 }
 
-func (c *PartiesCache) deleteCelebration(actor access.Actor, key string) (*Celebration, []store.Op, error) {
+func (s *Store) deleteCelebration(actor access.Actor, key string) (*Celebration, []store.Op, error) {
 	if err := require(actor, ConfigureParties); err != nil {
 		return nil, nil, err
 	}
-	celebration := c.Model().CelebrationByID(strings.TrimSpace(key))
+	celebration := s.Model().Parties.CelebrationByID(strings.TrimSpace(key))
 	if celebration == nil {
 		return nil, nil, access.Missing("no such celebration")
 	}
-	if c.Count(partiesTab, store.Row{"Celebration": celebration.ID}) > 0 {
+	if s.Count(partiesAppName, partiesTab, store.Row{"Celebration": celebration.ID}) > 0 {
 		return nil, nil, access.Invalid("parties belong to this celebration; move or remove them first")
 	}
 	return celebration, []store.Op{store.Delete(celebrationsTab, store.Row{"Celebration ID": celebration.ID})}, nil
@@ -800,15 +800,15 @@ func (m *Parties) saveCategory(actor access.Actor, key, title string) ([]store.O
 	return []store.Op{store.Update(partyCategoriesTab, store.Row{"Category ID": key}, store.Row{"Title": title})}, false, nil
 }
 
-func (c *PartiesCache) deleteCategory(actor access.Actor, key string) (*PartyCategory, []store.Op, error) {
+func (s *Store) deletePartyCategory(actor access.Actor, key string) (*PartyCategory, []store.Op, error) {
 	if err := require(actor, ConfigureParties); err != nil {
 		return nil, nil, err
 	}
-	category := c.Model().Category(strings.TrimSpace(key))
+	category := s.Model().Parties.Category(strings.TrimSpace(key))
 	if category == nil {
 		return nil, nil, access.Missing("no such category")
 	}
-	if c.Count(partiesTab, store.Row{"Category": category.ID}) > 0 {
+	if s.Count(partiesAppName, partiesTab, store.Row{"Category": category.ID}) > 0 {
 		return nil, nil, access.Invalid("parties are filed under this category; move them first")
 	}
 	return category, []store.Op{store.Delete(partyCategoriesTab, store.Row{"Category ID": category.ID})}, nil

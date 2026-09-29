@@ -34,14 +34,10 @@ func emailListsTables(t *testing.T) store.Tables {
 	return out
 }
 
-func emailListsSampleCache(t *testing.T) (*EmailListsCache, *data.Dir) {
+func emailListsSampleCache(t *testing.T) (*Store, *data.Dir) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	cache, err := NewEmailListsCache(dir, dir, func() []string { return nil }, store.NewQueue(), []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return cache, dir
+	return sampleStore(t, dir, store.NewQueue(), sampleDeps(sampleKey)), dir
 }
 
 func logRows(t *testing.T, dir *data.Dir, tab string) int {
@@ -190,15 +186,15 @@ func TestChecksRefuseBadGroups(t *testing.T) {
 func TestSavingAGroupWritesOnlyWhatChanged(t *testing.T) {
 	cache, dir := emailListsSampleCache(t)
 	ctx := context.Background()
-	additions := cache.Count(additionsTab, nil)
+	additions := cache.Count(emailListsAppName, additionsTab, nil)
 	chess := id.New(func(string) bool { return false })
 	g := NormalizeList(EmailList{ID: chess, Name: "chess.club", Aliases: []string{"Chess"}, Title: " Chess Club ", Visibility: " Members ", Managers: []string{"M@X.org", "m@x.org"}, Rules: []Rule{{Kind: "Include", Search: "  Kim ", Tags: []string{" tag:DTG0000000009 "}}},
 		Additions: []Addition{{Email: " Coach@Club.org ", Name: "  The  Coach "}, {Email: "coach@club.org", Name: "Again"}}})
 	manager := access.Actor{Email: "m@x.org"}
-	if err := cache.CommitAndWait(ctx, manager, groupOps(EmailList{}, g, true)...); err != nil {
+	if err := cache.CommitAndWait(ctx, manager, emailListsAppName, groupOps(EmailList{}, g, true)...); err != nil {
 		t.Fatal(err)
 	}
-	m := cache.Model()
+	m := cache.Model().EmailLists
 	got := m.Group(chess)
 	if len(m.Groups) != 4 || got.Name != "chess.club" || got.Title != "Chess Club" || got.Visibility != VisibilityMembers || len(got.Managers) != 1 || got.Rules[0].Kind != RuleInclude || got.Rules[0].Search != "kim" || got.Rules[0].Tags[0] != "tag:dtg0000000009" {
 		t.Fatalf("%+v", got)
@@ -206,11 +202,11 @@ func TestSavingAGroupWritesOnlyWhatChanged(t *testing.T) {
 	if len(got.Additions) != 1 || got.Additions[0] != (Addition{Email: "coach@club.org", Name: "The Coach"}) {
 		t.Fatalf("additions: %+v", got.Additions)
 	}
-	if m.Resolve("chess") != got || cache.Count(id.AliasesTab, store.Row{id.AliasColumn: "chess", id.IDColumn: chess}) != 1 {
+	if m.Resolve("chess") != got || cache.Count(emailListsAppName, id.AliasesTab, store.Row{id.AliasColumn: "chess", id.IDColumn: chess}) != 1 {
 		t.Fatal("the alias was not written against the group's ID")
 	}
 	for _, tab := range []string{managersTab, rulesTab, additionsTab} {
-		if cache.Count(tab, store.Row{"Group": chess}) != 1 || cache.Count(tab, store.Row{"Group": "chess.club"}) != 0 {
+		if cache.Count(emailListsAppName, tab, store.Row{"Group": chess}) != 1 || cache.Count(emailListsAppName, tab, store.Row{"Group": "chess.club"}) != 0 {
 			t.Fatalf("%s does not name the group by its ID", tab)
 		}
 	}
@@ -218,33 +214,33 @@ func TestSavingAGroupWritesOnlyWhatChanged(t *testing.T) {
 	next.Rules = append(slices.Clone(got.Rules), Rule{Kind: RuleExclude, Roles: []string{"Staff"}})
 	next.Additions = nil
 	next.Visibility = ""
-	if err := cache.CommitAndWait(ctx, manager, groupOps(*got, next, false)...); err != nil {
+	if err := cache.CommitAndWait(ctx, manager, emailListsAppName, groupOps(*got, next, false)...); err != nil {
 		t.Fatal(err)
 	}
-	m = cache.Model()
+	m = cache.Model().EmailLists
 	if len(m.Group(chess).Rules) != 2 || len(m.Groups) != 4 || len(m.Group(chess).Additions) != 0 || m.Group(chess).Visibility != VisibilityHidden {
 		t.Fatalf("second save: %+v", m.Group(chess))
 	}
-	if cache.Count(additionsTab, nil) != additions || cache.Count(managersTab, store.Row{"Group": chess}) != 1 {
+	if cache.Count(emailListsAppName, additionsTab, nil) != additions || cache.Count(emailListsAppName, managersTab, store.Row{"Group": chess}) != 1 {
 		t.Fatal("the additions or managers rows were not kept to the group")
 	}
 	if logRows(t, dir, managersTab) != 1 {
 		t.Fatalf("an unchanged manager was written again: %d log rows", logRows(t, dir, managersTab))
 	}
-	if err := cache.Commit(ctx, manager, store.Delete(groupsTab, store.Row{idColumn: chess})); err != nil {
+	if err := cache.Commit(ctx, manager, emailListsAppName, store.Delete(groupsTab, store.Row{idColumn: chess})); err != nil {
 		t.Fatal(err)
 	}
-	if m = cache.Model(); m.Group(chess) != nil || m.Resolve("chess") != nil || len(m.Groups) != 3 {
+	if m = cache.Model().EmailLists; m.Group(chess) != nil || m.Resolve("chess") != nil || len(m.Groups) != 3 {
 		t.Fatal("the group was not removed")
 	}
-	if cache.Count(managersTab, store.Row{"Group": chess}) != 0 || cache.Count(rulesTab, store.Row{"Group": chess}) != 0 || cache.Count(id.AliasesTab, store.Row{id.IDColumn: chess}) != 0 {
+	if cache.Count(emailListsAppName, managersTab, store.Row{"Group": chess}) != 0 || cache.Count(emailListsAppName, rulesTab, store.Row{"Group": chess}) != 0 || cache.Count(emailListsAppName, id.AliasesTab, store.Row{id.IDColumn: chess}) != 0 {
 		t.Fatal("the group's rows outlived it")
 	}
 }
 
 func TestSavingANewGroupMintsItsID(t *testing.T) {
 	cache, _ := emailListsSampleCache(t)
-	m := cache.Model()
+	m := cache.Model().EmailLists
 	actor := access.Actor{Email: "m@x.org"}
 	sources := AudienceSources{Directory: &Directory{}, MagicTags: func(string) []MagicTag { return nil }}
 	taken := func(key string) bool { return m.Group(key) != nil }
@@ -258,10 +254,10 @@ func TestSavingANewGroupMintsItsID(t *testing.T) {
 	if _, _, _, err := m.SaveGroup(actor, sources, EmailList{ID: g.ID, Name: "chess.club", Title: "Chess Club", Managers: []string{actor.Email}, Rules: g.Rules}, taken); err == nil {
 		t.Fatal("an edit to a group the sheet does not have was taken")
 	}
-	if err := cache.CommitAndWait(context.Background(), actor, ops...); err != nil {
+	if err := cache.CommitAndWait(context.Background(), actor, emailListsAppName, ops...); err != nil {
 		t.Fatal(err)
 	}
-	if saved := cache.Model().Named("chess.club"); saved == nil || saved.ID != g.ID || cache.Model().Group(g.ID) != saved {
+	if saved := cache.Model().EmailLists.Named("chess.club"); saved == nil || saved.ID != g.ID || cache.Model().EmailLists.Group(g.ID) != saved {
 		t.Fatalf("the saved group is %+v", saved)
 	}
 	current := *m.Group(soccerID)
@@ -350,30 +346,30 @@ func TestArchivedIsOnePersonsAndFollowsTheGroup(t *testing.T) {
 	match := store.Row{"Group": soccerID, "Email": jordan}
 	as := access.Actor{Email: jordan}
 	for range 2 {
-		if err := cache.Commit(ctx, as, store.Upsert(archivedTab, match, store.Row{})); err != nil {
+		if err := cache.Commit(ctx, as, emailListsAppName, store.Upsert(archivedTab, match, store.Row{})); err != nil {
 			t.Fatal(err)
 		}
 	}
-	m := cache.Model()
-	if !m.Archived(soccerID, jordan) || cache.Count(archivedTab, nil) != 1 {
-		t.Fatalf("archiving twice left %d rows", cache.Count(archivedTab, nil))
+	m := cache.Model().EmailLists
+	if !m.Archived(soccerID, jordan) || cache.Count(emailListsAppName, archivedTab, nil) != 1 {
+		t.Fatalf("archiving twice left %d rows", cache.Count(emailListsAppName, archivedTab, nil))
 	}
 	if m.Archived(soccerID, "abena.osei@heliosschool.org") || m.Archived(hummingID, jordan) {
 		t.Fatal("an archive reached another person or another group")
 	}
-	if err := cache.Commit(ctx, as, store.Delete(archivedTab, match)); err != nil {
+	if err := cache.Commit(ctx, as, emailListsAppName, store.Delete(archivedTab, match)); err != nil {
 		t.Fatal(err)
 	}
-	if cache.Count(archivedTab, nil) != 0 || cache.Model().Archived(soccerID, jordan) {
+	if cache.Count(emailListsAppName, archivedTab, nil) != 0 || cache.Model().EmailLists.Archived(soccerID, jordan) {
 		t.Fatal("unarchiving left the row")
 	}
-	if err := cache.Commit(ctx, as, store.Upsert(archivedTab, match, store.Row{})); err != nil {
+	if err := cache.Commit(ctx, as, emailListsAppName, store.Upsert(archivedTab, match, store.Row{})); err != nil {
 		t.Fatal(err)
 	}
-	if err := cache.Commit(ctx, as, store.Delete(groupsTab, store.Row{idColumn: soccerID})); err != nil {
+	if err := cache.Commit(ctx, as, emailListsAppName, store.Delete(groupsTab, store.Row{idColumn: soccerID})); err != nil {
 		t.Fatal(err)
 	}
-	if cache.Count(archivedTab, nil) != 0 {
+	if cache.Count(emailListsAppName, archivedTab, nil) != 0 {
 		t.Fatal("deleting the group kept its archived row")
 	}
 	for _, group := range []string{"nowhere", "soccer-team"} {

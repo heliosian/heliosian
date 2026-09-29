@@ -17,11 +17,7 @@ import (
 
 func sampleModel(t *testing.T) *Directory {
 	t.Helper()
-	model, err := LoadDirectory(&data.Dir{Root: "../../sampledata"}, testkit.None, testkit.None, testKey)
-	if err != nil {
-		t.Fatalf("load sample model: %v", err)
-	}
-	return model
+	return loadDirectory(t, &data.Dir{Root: "../../sampledata"}, testkit.None, testkit.None, sampleKey)
 }
 
 func TestHouseholdIsEveryoneInThePersonsFamiliesButThem(t *testing.T) {
@@ -225,7 +221,7 @@ func TestFamilyThatNeverSubmittedIsAbsent(t *testing.T) {
 			t.Errorf("%s reached the directory with no consent form submission", p.Email)
 		}
 	}
-	if _, ok := m.Families[familyID(testKey, "april.baxter@heliosschool.org")]; ok {
+	if _, ok := m.Families[familyID(sampleKey, "april.baxter@heliosschool.org")]; ok {
 		t.Error("a family with no submission still has a family record")
 	}
 }
@@ -269,7 +265,7 @@ func TestOneHouseholdsAnswerCoversTheOther(t *testing.T) {
 func TestLatestAnswerInAFamilySpeaksForEveryHousehold(t *testing.T) {
 	m := sampleModel(t)
 	for _, key := range []string{"asha.chandra@heliosschool.org", "rohan.chandra@heliosschool.org"} {
-		family := m.Families[familyID(testKey, key)]
+		family := m.Families[familyID(sampleKey, key)]
 		if !family.AddressMasked || family.Address != "" || family.PhoneMasked {
 			t.Errorf("family %s = %+v, want the later answer's grants, phone only, on both households", key, family)
 		}
@@ -378,7 +374,7 @@ func TestAliasMatchingNothingIsFatal(t *testing.T) {
 func TestFamilyFieldsComeFromTheFamiliesTab(t *testing.T) {
 	m := sampleModel(t)
 	keys := m.FamilyKeysOf("marco.torres@heliosschool.org")
-	if len(keys) != 1 || keys[0] != familyID(testKey, "elena.torres@heliosschool.org") {
+	if len(keys) != 1 || keys[0] != familyID(sampleKey, "elena.torres@heliosschool.org") {
 		t.Fatalf("family keys = %v, want the masked alphabetically first adult email", keys)
 	}
 	family := m.Families[keys[0]]
@@ -436,7 +432,7 @@ func TestFamilyNameFoldsSurnamesIntoAHyphenatedOne(t *testing.T) {
 func TestTwoHouseholdKidBelongsToBothFamilies(t *testing.T) {
 	m := sampleModel(t)
 	keys := m.FamilyKeysOf("dev.chandra@heliosschool.org")
-	want := []string{familyID(testKey, "asha.chandra@heliosschool.org"), familyID(testKey, "rohan.chandra@heliosschool.org")}
+	want := []string{familyID(sampleKey, "asha.chandra@heliosschool.org"), familyID(sampleKey, "rohan.chandra@heliosschool.org")}
 	if len(keys) != 2 || keys[0] != want[0] || keys[1] != want[1] {
 		t.Fatalf("family keys = %v, want both households in key email order %v", keys, want)
 	}

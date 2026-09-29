@@ -378,15 +378,3 @@ func (m *Directory) Teaches(author string) []string {
 	}
 	return out
 }
-
-func (c *DirectoryCache) Classrooms() []string {
-	return c.Model().ClassroomNames()
-}
-
-func (c *DirectoryCache) Grades() []string {
-	return c.Model().GradeNames()
-}
-
-func (c *DirectoryCache) Teaches(author string) []string {
-	return c.Model().Teaches(author)
-}

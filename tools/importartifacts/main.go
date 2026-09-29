@@ -19,6 +19,8 @@ import (
 	"heliosian/internal/devcache"
 	"heliosian/internal/env"
 	"heliosian/internal/model"
+	"heliosian/internal/spreadsheets"
+	"heliosian/internal/static"
 	"heliosian/internal/store"
 )
 
@@ -43,7 +45,7 @@ func main() {
 	}
 	sort.Strings(files)
 	devcache.Install()
-	source, err := data.NewSheet(map[string]string{"artifacts": env.Required("ARTIFACTS_SHEET")})
+	source, err := data.NewSheet(spreadsheets.IDs(spreadsheets.All))
 	if err != nil {
 		log.Fatalf("sheet source: %v", err)
 	}
@@ -55,13 +57,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-	cache, err := model.NewDocumentsCache(source, source, bucket, embedder, store.NewQueue())
+	models, err := model.NewStore(source, source, store.NewQueue(), model.Deps{IDKey: []byte(env.Required("ID_KEY")), Static: static.Files{Root: "web/who"}, Objects: bucket, Embedder: embedder})
 	if err != nil {
 		log.Fatalf("load the documents on file: %v", err)
 	}
 	objects := map[string]string{}
 	issues := map[string]string{}
-	for _, doc := range cache.Model().Documents {
+	for _, doc := range models.Model().Documents.Documents {
 		objects[doc.Key] = doc.Object()
 		if doc.Kind == model.DocumentKindNewsletter {
 			issues[doc.Title+"|"+doc.Date] = doc.Key
@@ -94,7 +96,7 @@ func main() {
 			empty++
 			key := saved.Key()
 			if object, known := objects[key]; known {
-				drops = append(drops, cache.Model().Drop(actor, key)...)
+				drops = append(drops, models.Model().Documents.Drop(actor, key)...)
 				dropped = append(dropped, object)
 				delete(objects, key)
 			}
@@ -162,7 +164,7 @@ func main() {
 
 	ctx := context.Background()
 	if len(drops) > 0 {
-		if err := cache.CommitAndWait(ctx, actor, drops...); err != nil {
+		if err := models.CommitAndWait(ctx, actor, model.DocumentsApp, drops...); err != nil {
 			log.Fatalf("drop the documents with no words: %v", err)
 		}
 		for _, object := range dropped {
@@ -175,10 +177,10 @@ func main() {
 	for start := 0; start < len(pending); start += batch {
 		end := min(start+batch, len(pending))
 		group := pending[start:end]
-		if err := embedAndStore(ctx, cache, embedder, bucket, group); err != nil {
+		if err := embedAndStore(ctx, models, embedder, bucket, group); err != nil {
 			log.Fatalf("%v", err)
 		}
-		if err := record(ctx, cache, bucket, group); err != nil {
+		if err := record(ctx, models, bucket, group); err != nil {
 			log.Fatalf("%v", err)
 		}
 		imported += len(group)
@@ -198,8 +200,8 @@ type work struct {
 	replacing string
 }
 
-func record(ctx context.Context, cache *model.DocumentsCache, bucket *blob.Bucket, group []work) error {
-	docs := cache.Model()
+func record(ctx context.Context, models *model.Store, bucket *blob.Bucket, group []work) error {
+	docs := models.Model().Documents
 	ops := []store.Op{}
 	for _, item := range group {
 		if item.replacing == "" {
@@ -208,7 +210,7 @@ func record(ctx context.Context, cache *model.DocumentsCache, bucket *blob.Bucke
 		}
 		ops = append(ops, docs.Replace(actor, item.doc)...)
 	}
-	if err := cache.CommitAndWait(ctx, actor, ops...); err != nil {
+	if err := models.CommitAndWait(ctx, actor, model.DocumentsApp, ops...); err != nil {
 		return fmt.Errorf("record the documents: %w", err)
 	}
 	for _, item := range group {
@@ -222,7 +224,7 @@ func record(ctx context.Context, cache *model.DocumentsCache, bucket *blob.Bucke
 	return nil
 }
 
-func embedAndStore(ctx context.Context, cache *model.DocumentsCache, embedder *artifacts.Vertex, bucket *blob.Bucket, group []work) error {
+func embedAndStore(ctx context.Context, models *model.Store, embedder *artifacts.Vertex, bucket *blob.Bucket, group []work) error {
 	var mu sync.Mutex
 	var first error
 	var wg sync.WaitGroup
@@ -233,7 +235,7 @@ func embedAndStore(ctx context.Context, cache *model.DocumentsCache, embedder *a
 		go func() {
 			defer wg.Done()
 			defer func() { <-slots }()
-			err := put(ctx, cache, embedder, bucket, item.doc)
+			err := put(ctx, models, embedder, bucket, item.doc)
 			if err == nil {
 				return
 			}
@@ -248,7 +250,7 @@ func embedAndStore(ctx context.Context, cache *model.DocumentsCache, embedder *a
 	return first
 }
 
-func put(ctx context.Context, cache *model.DocumentsCache, embedder *artifacts.Vertex, bucket *blob.Bucket, doc *model.Document) error {
+func put(ctx context.Context, models *model.Store, embedder *artifacts.Vertex, bucket *blob.Bucket, doc *model.Document) error {
 	if err := doc.Embed(ctx, embedder); err != nil {
 		return err
 	}
@@ -259,7 +261,7 @@ func put(ctx context.Context, cache *model.DocumentsCache, embedder *artifacts.V
 	if err := bucket.Put(ctx, doc.Object(), "application/json", body); err != nil {
 		return err
 	}
-	return cache.Hold(doc)
+	return models.Hold(doc)
 }
 
 func report(what string, counts map[string]int) {

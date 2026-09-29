@@ -16,12 +16,12 @@ import (
 	"heliosian/internal/serve"
 )
 
-func (c *PartiesCache) moveAddress(ctx context.Context, actor access.Actor, old, to, name string) error {
-	ops, _, err := c.Model().moveAddress(actor, old, to, name)
+func (s *Store) movePartyAddress(ctx context.Context, actor access.Actor, old, to, name string) error {
+	ops, _, err := s.Model().Parties.moveAddress(actor, old, to, name)
 	if err != nil {
 		return err
 	}
-	return c.Commit(ctx, actor, ops...)
+	return s.Commit(ctx, actor, partiesAppName, ops...)
 }
 
 type addressMove struct {
@@ -32,11 +32,11 @@ type addressMove struct {
 
 func (a partiesApp) moveAddress(r *http.Request, body addressMove) (serve.None, error) {
 	actor := a.actor(r)
-	ops, moved, err := a.cache.Model().moveUnlisted(actor, a.directory(), body.Old, body.To, body.Name)
+	ops, moved, err := a.parties().moveUnlisted(actor, a.directory(), body.Old, body.To, body.Name)
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	old, to := mail.Normalize(body.Old), mail.Normalize(body.To)
@@ -151,6 +151,6 @@ func (a partiesApp) addresses(r *http.Request, _ serve.None) (addressesView, err
 	if err := require(a.actor(r), MoveAddresses); err != nil {
 		return addressesView{}, err
 	}
-	m := a.cache.Model()
+	m := a.parties()
 	return addressesView{Problems(m, a.directory(), now()), m.MovedAddresses()}, nil
 }

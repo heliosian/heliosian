@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/api"
 	"heliosian/internal/auth"
 	"heliosian/internal/store"
 )
@@ -109,7 +110,7 @@ func (h *harness) excludedRows(groupID, email string) int {
 
 func (h *harness) plainMember(name string) string {
 	h.t.Helper()
-	g := h.cache.Model().Named(name)
+	g := h.lists().Named(name)
 	for _, m := range h.members(name) {
 		if !g.Manages(m) {
 			return m
@@ -135,7 +136,7 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 	}
 
 	h.want(member, http.MethodPost, "/api/email-lists/"+middleID+"/unsubscribe", "", http.StatusNoContent)
-	g := h.cache.Model().Group(middleID)
+	g := h.lists().Group(middleID)
 	if !g.HasExcluded(member) || g.Excluded[0].Note != "Unsubscribed by "+loopPage {
 		t.Fatalf("not excluded: %+v", g.Excluded)
 	}
@@ -148,7 +149,7 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 	h.waitFor("the excluded row", func() bool { return h.excludedRows(middleID, member) == 1 })
 
 	h.want(member, http.MethodPost, "/api/email-lists/"+middleID+"/resubscribe", "", http.StatusNoContent)
-	if h.cache.Model().Group(middleID).HasExcluded(member) || !slices.Contains(h.members(name), member) {
+	if h.lists().Group(middleID).HasExcluded(member) || !slices.Contains(h.members(name), member) {
 		t.Fatal("not back on the group")
 	}
 	h.waitFor("the row to go", func() bool { return h.excludedRows(middleID, member) == 0 })
@@ -158,7 +159,7 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 	h.want(member, http.MethodDelete, "/api/email-lists/"+middleID, "", http.StatusForbidden)
 	h.want(member, http.MethodPost, "/api/email-lists/"+soccerID+"/unsubscribe", "", http.StatusNotFound)
 	h.want("mia.torres@heliosschool.org", http.MethodPost, "/api/email-lists/"+middleID+"/unsubscribe", "", http.StatusForbidden)
-	if h.cache.Model().Group(middleID).HasExcluded("mia.torres@heliosschool.org") {
+	if h.lists().Group(middleID).HasExcluded("mia.torres@heliosschool.org") {
 		t.Fatal("someone not on the list was excluded")
 	}
 }
@@ -166,7 +167,7 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 func TestTheExcludedListAndTheReasonsGoToManagersAlone(t *testing.T) {
 	h := newHarness(t)
 	const name = "middle-school-parents"
-	g := h.cache.Model().Named(name)
+	g := h.lists().Named(name)
 	member := h.plainMember(name)
 	h.want(member, http.MethodPost, "/api/email-lists/"+g.ID+"/unsubscribe", "", http.StatusNoContent)
 	list := h.list(member, g.ID)
@@ -198,17 +199,17 @@ func TestTheExcludedListAndTheReasonsGoToManagersAlone(t *testing.T) {
 
 func TestAnEditSavesOnlyTheFieldsItSends(t *testing.T) {
 	h := newHarness(t)
-	g := *h.cache.Model().Group(soccerID)
+	g := *h.lists().Group(soccerID)
 	manager := g.Managers[0]
 	h.want(manager, http.MethodPost, "/api/email-lists/"+soccerID+"/edit", `{"title":"Soccer Families","visibility":"members"}`, http.StatusNoContent)
-	after := h.cache.Model().Group(soccerID)
+	after := h.lists().Group(soccerID)
 	if after.Title != "Soccer Families" || after.Visibility != VisibilityMembers || after.Description != g.Description || !slices.EqualFunc(after.Rules, g.Rules, sameRule) || len(after.Additions) != len(g.Additions) || !slices.Equal(after.Managers, g.Managers) {
 		t.Fatalf("the edit left %+v from %+v", after, g)
 	}
 	h.want(manager, http.MethodPost, "/api/email-lists/"+soccerID+"/edit", `{"name":"soccer-two"}`, http.StatusBadRequest)
 	h.want(manager, http.MethodPost, "/api/email-lists/"+soccerID+"/edit", `{"managers":[]}`, http.StatusBadRequest)
 	h.want(manager, http.MethodPost, "/api/email-lists/"+soccerID+"/edit", `{"managers":["`+manager+`","ruth.amari@heliosschool.org"]}`, http.StatusNoContent)
-	if managers := h.cache.Model().Group(soccerID).Managers; !slices.Equal(managers, []string{manager, "ruth.amari@heliosschool.org"}) {
+	if managers := h.lists().Group(soccerID).Managers; !slices.Equal(managers, []string{manager, "ruth.amari@heliosschool.org"}) {
 		t.Fatalf("managers %v", managers)
 	}
 	if list := h.list("ruth.amari@heliosschool.org", soccerID); me(list)["managing"] != true || allowed(list)["edit"] != true {
@@ -229,7 +230,7 @@ func TestTheChangeLogNamesWhoIsReallySignedIn(t *testing.T) {
 	h := newHarness(t)
 	const name = "middle-school-parents"
 	const admin = "admin@heliosschool.org"
-	g := h.cache.Model().Named(name)
+	g := h.lists().Named(name)
 	member := h.plainMember(name)
 	key := []byte("key")
 	a := auth.New("heliosian.com", "client", key, auth.Login{}, func(string) bool { return true }, nil, nil)
@@ -267,7 +268,7 @@ func (h *harness) groupNames(email string) []string {
 func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
 	h := newHarness(t)
 	const name = "middle-school-parents"
-	g := *h.cache.Model().Named(name)
+	g := *h.lists().Named(name)
 	member := h.plainMember(name)
 	const outsider = "mia.torres@heliosschool.org"
 	if slices.Contains(h.members(name), outsider) {
@@ -275,7 +276,7 @@ func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
 	}
 	visible := func(to string) {
 		t.Helper()
-		if err := h.cache.Commit(context.Background(), access.System("test"), store.Update(groupsTab, store.Row{idColumn: g.ID}, store.Row{visibleColumn: to})); err != nil {
+		if err := h.store.Commit(context.Background(), access.System("test"), emailListsAppName, store.Update(groupsTab, store.Row{idColumn: g.ID}, store.Row{visibleColumn: to})); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -299,7 +300,7 @@ func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
 
 func TestAManagerSeesTheirHiddenGroupAndArchivesIt(t *testing.T) {
 	h := newHarness(t)
-	manager := h.cache.Model().Group(soccerID).Managers[0]
+	manager := h.lists().Group(soccerID).Managers[0]
 	if !slices.Contains(h.groupNames(manager), "soccer-team") {
 		t.Fatalf("the manager's own hidden group is missing from %v", h.groupNames(manager))
 	}
@@ -313,7 +314,7 @@ func TestAManagerSeesTheirHiddenGroupAndArchivesIt(t *testing.T) {
 		t.Fatalf("after archiving %+v", list)
 	}
 	h.want(manager, http.MethodPost, "/api/email-lists/"+soccerID+"/unarchive", "", http.StatusNoContent)
-	if h.cache.Model().Archived(soccerID, manager) {
+	if h.lists().Archived(soccerID, manager) {
 		t.Fatal("still archived")
 	}
 }
@@ -339,12 +340,11 @@ func TestTheSettingsNameTheDomainAndTheViewer(t *testing.T) {
 }
 
 func TestASuggestionIsMineWhenIHostItOrWhatItSitsUnder(t *testing.T) {
-	h := newHarness(t)
 	const viewer, other = "jordan.whitfield@heliosschool.org", "ruth.amari@heliosschool.org"
 	activity := func(id, event, title, parent string) store.Row {
 		return store.Row{"Event ID": id, CalendarEventColumn: event, "Year": ActivityYear(now()), "Title": title, "Parent": parent, "Category": "tcg0000000002", "Status": StatusOpen}
 	}
-	parties, activities := linkedCaches(t, nil, store.Tables{
+	h := loopHarness(t, store.Tables{
 		activitiesTab: {activity("run", "tev0000000201", "Run", ""), activity("under", "tev0000000202", "Under", "run"), activity("theirs", "tev0000000203", "Theirs", "")},
 		volunteersTab: {
 			{"Event ID": "run", "Email": viewer, "Position": PositionCoChair},
@@ -352,12 +352,12 @@ func TestASuggestionIsMineWhenIHostItOrWhatItSitsUnder(t *testing.T) {
 			{"Event ID": "theirs", "Email": other, "Position": PositionCoChair},
 		},
 	})
-	if err := activities.Commit(context.Background(), access.System("test"), store.Insert(AdminsTab.Name, store.Row{"Email": viewer})); err != nil {
+	if err := h.store.Commit(context.Background(), access.System("test"), activitiesAppName, store.Insert(AdminsTab.Name, store.Row{"Email": viewer})); err != nil {
 		t.Fatal(err)
 	}
-	w := NewEmailListsWorld(h.cache.Model(), h.sources().Directory, nil, parties.Model(), activities.Model(), activities).At(now())
+	w := h.store.Model().at(api.Query{Now: now()})
 	mine := map[string]bool{}
-	for _, s := range w.suggestions(viewer) {
+	for _, s := range w.listSuggestions(viewer) {
 		mine[s.key] = s.mine
 	}
 	if want := map[string]bool{"tag:dtg0000000001": true, "activity:run": true, "activity:under": true, "activity:theirs": false}; !maps.Equal(mine, want) {

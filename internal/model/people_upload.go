@@ -26,12 +26,12 @@ var audioExtensions = map[string]string{
 }
 
 type uploader struct {
-	cache *DirectoryCache
-	store *blob.Store
+	store *Store
+	media *blob.Store
 }
 
-func RegisterDirectoryUpload(mux *http.ServeMux, cache *DirectoryCache, store *blob.Store) {
-	u := uploader{cache: cache, store: store}
+func RegisterDirectoryUpload(mux *http.ServeMux, s *Store, media *blob.Store) {
+	u := uploader{store: s, media: media}
 	mux.HandleFunc("POST /api/directory/upload", u.upload)
 	mux.HandleFunc("POST /api/directory/facts", u.facts)
 	mux.HandleFunc("POST /api/directory/edit", u.edit)
@@ -63,13 +63,13 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
 	field := r.FormValue("field")
 	value := strings.TrimSpace(r.FormValue("value"))
-	actor := requestActor(u.cache, r)
-	ops, err := u.cache.Model().editField(actor, field, key, value)
+	actor := requestActor(u.store, r)
+	ops, err := u.store.Model().Directory.editField(actor, field, key, value)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := u.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := u.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
@@ -81,13 +81,13 @@ func (u uploader) facts(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
 	facts := strings.TrimSpace(r.FormValue("facts"))
-	actor := requestActor(u.cache, r)
-	ops, err := u.cache.Model().setFacts(actor, key, facts)
+	actor := requestActor(u.store, r)
+	ops, err := u.store.Model().Directory.setFacts(actor, key, facts)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := u.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := u.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
@@ -127,17 +127,17 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 		folder = "pronunciation"
 	}
 	name := blob.Name(content, ext)
-	actor := requestActor(u.cache, r)
-	ops, err := u.cache.Model().upload(actor, target, kind, key, name)
+	actor := requestActor(u.store, r)
+	ops, err := u.store.Model().Directory.upload(actor, target, kind, key, name)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := u.store.Put(folder, name, mimeType, content); err != nil {
+	if err := u.media.Put(folder, name, mimeType, content); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := u.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := u.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
@@ -154,13 +154,13 @@ func (u uploader) reorderPhotos(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
 	names := splitNonEmpty(r.FormValue("order"), ",")
-	actor := requestActor(u.cache, r)
-	ops, err := u.cache.Model().reorderPhotos(actor, key, names)
+	actor := requestActor(u.store, r)
+	ops, err := u.store.Model().Directory.reorderPhotos(actor, key, names)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := u.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := u.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
@@ -197,17 +197,17 @@ func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cropName := blob.Name(content, ext)
-	actor := requestActor(u.cache, r)
-	ops, err := u.cache.Model().cropPhoto(actor, target, key, name, cropName)
+	actor := requestActor(u.store, r)
+	ops, err := u.store.Model().Directory.cropPhoto(actor, target, key, name, cropName)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := u.store.Put("photos", cropName, mimeType, content); err != nil {
+	if err := u.media.Put("photos", cropName, mimeType, content); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if err := u.cache.commit(r.Context(), actor, ops...); err != nil {
+	if err := u.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
 		serve.Error(w, r, err)
 		return
 	}

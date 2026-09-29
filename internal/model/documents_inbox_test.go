@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -159,24 +158,19 @@ func TestVouchTakesTheForwardingMailboxsSealedResults(t *testing.T) {
 
 func testInbox(t *testing.T) (*DocumentFiler, *blob.Bucket, *data.Dir, *store.Queue) {
 	t.Helper()
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, documentsAppName), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for tab, columns := range map[string][]string{documentsTab: DocumentColumns, store.ChangeLogTab: store.ChangeLogColumns} {
-		if err := os.WriteFile(filepath.Join(root, documentsAppName, tab+".csv"), []byte(strings.Join(columns, ",")+"\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
 	objects := blob.NewMemoryBucket()
-	sheet := &data.Dir{Root: root}
+	sheet := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
 	embedder := vertex(t)
-	cache, err := NewDocumentsCache(sheet, sheet, objects, embedder, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &DocumentFiler{Inbox: artifacts.Inbox{SigningKey: "key", Bucket: objects}, cache: cache, embedder: embedder, holder: queue}, objects, sheet, queue
+	s := sampleStore(t, sheet, queue, inboxDeps(objects, embedder))
+	return &DocumentFiler{Inbox: artifacts.Inbox{SigningKey: "key", Bucket: objects}, store: s, embedder: embedder, holder: queue}, objects, sheet, queue
+}
+
+func inboxDeps(objects *blob.Bucket, embedder *artifacts.Vertex) Deps {
+	deps := sampleDeps(sampleKey)
+	deps.Objects = objects
+	deps.Embedder = embedder
+	return deps
 }
 
 func sampleDocuments(t *testing.T) *Documents {
@@ -191,7 +185,7 @@ func sampleDocuments(t *testing.T) *Documents {
 			t.Fatal(err)
 		}
 	}
-	return in.cache.Model()
+	return in.store.Model().Documents
 }
 
 func TestAFreshStoreReadsWhatWasFiled(t *testing.T) {
@@ -200,14 +194,11 @@ func TestAFreshStoreReadsWhatWasFiled(t *testing.T) {
 		t.Fatal(err)
 	}
 	queue.Flush()
-	again, err := NewDocumentsCache(sheet, sheet, objects, in.embedder, queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m := again.Model(); len(m.Documents) != 1 || m.Fetched != 1 || m.Documents[0].Title != "Helios Weekly Newsletter 2026 Sep 11" {
+	again := sampleStore(t, sheet, queue, inboxDeps(objects, in.embedder))
+	if m := again.Model().Documents; len(m.Documents) != 1 || m.Fetched != 1 || m.Documents[0].Title != "Helios Weekly Newsletter 2026 Sep 11" {
 		t.Fatalf("a fresh load read %+v", m)
 	}
-	_, log, err := sheet.Table(documentsAppName, store.ChangeLogTab)
+	_, log, err := sheet.Table(DocumentsApp, store.ChangeLogTab)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +226,7 @@ func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 		}
 	}
 	queue.Flush()
-	_, rows, err := sheet.Table(documentsAppName, documentsTab)
+	_, rows, err := sheet.Table(DocumentsApp, documentsTab)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +236,7 @@ func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 	if held, err := objects.Exists(context.Background(), rows[0]["Object"]); err != nil || !held {
 		t.Fatalf("no object named %s: %v", rows[0]["Object"], err)
 	}
-	m := in.cache.Model()
+	m := in.store.Model().Documents
 	if len(m.Documents) != 1 || m.Documents[0].Key != rows[0]["Key"] {
 		t.Fatalf("the model holds %d documents, not the one imported", len(m.Documents))
 	}
@@ -266,7 +257,7 @@ func TestGroupMailIsFiledUnderEachGroupOnce(t *testing.T) {
 		}
 	}
 	queue.Flush()
-	_, rows, err := sheet.Table(documentsAppName, documentsTab)
+	_, rows, err := sheet.Table(DocumentsApp, documentsTab)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,8 +269,8 @@ func TestGroupMailIsFiledUnderEachGroupOnce(t *testing.T) {
 			t.Errorf("row %d: %+v", i, rows[i])
 		}
 	}
-	if len(in.cache.Model().Documents) != 2 {
-		t.Fatalf("the model holds %d documents, not the two filed", len(in.cache.Model().Documents))
+	if len(in.store.Model().Documents.Documents) != 2 {
+		t.Fatalf("the model holds %d documents, not the two filed", len(in.store.Model().Documents.Documents))
 	}
 }
 
@@ -291,7 +282,7 @@ func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testi
 		}
 	}
 	queue.Flush()
-	_, filed, err := sheet.Table(documentsAppName, documentsTab)
+	_, filed, err := sheet.Table(DocumentsApp, documentsTab)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +293,7 @@ func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testi
 		t.Fatal(err)
 	}
 	queue.Flush()
-	_, rows, err := sheet.Table(documentsAppName, documentsTab)
+	_, rows, err := sheet.Table(DocumentsApp, documentsTab)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,14 +305,14 @@ func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testi
 			t.Fatalf("the object %s went with its row: %v", row["Object"], err)
 		}
 	}
-	if m := in.cache.Model(); len(m.Documents) != 1 || m.Documents[0].Channel != "chess-club" {
+	if m := in.store.Model().Documents; len(m.Documents) != 1 || m.Documents[0].Channel != "chess-club" {
 		t.Fatalf("the model holds %+v", m.Documents)
 	}
 	if err := in.Remove(context.Background(), access.System("owner@example.org"), "soccer-team"); err != nil {
 		t.Fatalf("removing a group with no mail: %v", err)
 	}
 	queue.Flush()
-	_, log, err := sheet.Table(documentsAppName, store.ChangeLogTab)
+	_, log, err := sheet.Table(DocumentsApp, store.ChangeLogTab)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,10 +327,10 @@ func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testi
 	}
 	queue.Refresh()
 	queue.Flush()
-	in.cache.documents.mu.Lock()
-	defer in.cache.documents.mu.Unlock()
-	if len(in.cache.documents.held) != 1 || in.cache.documents.held[rows[0]["Object"]] == nil {
-		t.Errorf("the document cache after a refresh holds %d, not just the one the sheet names", len(in.cache.documents.held))
+	in.store.documents.mu.Lock()
+	defer in.store.documents.mu.Unlock()
+	if len(in.store.documents.held) != 1 || in.store.documents.held[rows[0]["Object"]] == nil {
+		t.Errorf("the document cache after a refresh holds %d, not just the one the sheet names", len(in.store.documents.held))
 	}
 }
 
@@ -349,11 +340,11 @@ func TestInboxRefusesAnUnsignedCall(t *testing.T) {
 		t.Fatalf("status %d", code)
 	}
 	queue.Flush()
-	_, rows, err := sheet.Table(documentsAppName, documentsTab)
+	_, rows, err := sheet.Table(DocumentsApp, documentsTab)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 0 || len(in.cache.Model().Documents) != 0 {
+	if len(rows) != 0 || len(in.store.Model().Documents.Documents) != 0 {
 		t.Fatalf("an unsigned call was filed: %+v", rows)
 	}
 }

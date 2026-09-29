@@ -50,7 +50,7 @@ func (g *countingGeocoder) count() int {
 type server struct {
 	dir   *data.Dir
 	queue *store.Queue
-	cache *DirectoryCache
+	store *Store
 	mux   *http.ServeMux
 }
 
@@ -58,13 +58,17 @@ func newServer(t *testing.T) server {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	cache := sampleDirectory(t, dir, queue)
+	s := sampleDirectory(t, dir, queue)
 	media := blob.New(blob.NewMemoryBucket())
 	mux := http.NewServeMux()
-	registerTags(mux, cache)
-	registerPeopleAdmin(mux, cache, media)
-	RegisterDirectoryUpload(mux, cache, media)
-	return server{dir: dir, queue: queue, cache: cache, mux: mux}
+	registerTags(mux, s)
+	registerPeopleAdmin(mux, s, media)
+	RegisterDirectoryUpload(mux, s, media)
+	return server{dir: dir, queue: queue, store: s, mux: mux}
+}
+
+func (s server) directory() *Directory {
+	return s.store.Model().Directory
 }
 
 func (s server) post(t *testing.T, as, path, contentType string, body []byte) {
@@ -154,7 +158,7 @@ func TestTagChangesReachMemoryTheSheetAndTheLog(t *testing.T) {
 		t.Fatalf("minted tag id %q", kicks)
 	}
 	s.form(t, jordan, "/api/directory/tag-share", url.Values{"tag": {kicks}, "manager": {abena}, "on": {"1"}})
-	if shared := s.cache.Model().SharedTags(abena); len(shared) != 1 || shared[0].ID != kicks || shared[0].Name != "Kicks" || len(shared[0].People) != 3 {
+	if shared := s.directory().SharedTags(abena); len(shared) != 1 || shared[0].ID != kicks || shared[0].Name != "Kicks" || len(shared[0].People) != 3 {
 		t.Fatalf("shared tags of %s: %+v", abena, shared)
 	}
 	s.form(t, abena, "/api/directory/tag-leave", url.Values{"tag": {kicks}})
@@ -162,7 +166,7 @@ func TestTagChangesReachMemoryTheSheetAndTheLog(t *testing.T) {
 	s.form(t, jordan, "/api/directory/tag-delete", url.Values{"tag": {kicks}})
 	s.post(t, jordan, "/api/admin/admins", "application/json", []byte(`{"admins":["`+abena+`"]}`))
 
-	tags := s.cache.Model().Tags(jordan)
+	tags := s.directory().Tags(jordan)
 	names := []string{}
 	for _, tag := range tags {
 		names = append(names, fmt.Sprintf("%s %s %d", tag.ID, tag.Name, len(tag.People)))
@@ -181,7 +185,7 @@ func TestTagChangesReachMemoryTheSheetAndTheLog(t *testing.T) {
 	if s.count(t, managersTable, store.Row{tagID: soccerTeam, managerEmail: asha}) != 1 {
 		t.Fatalf("managers in the sheet: %v", s.rows(t, managersTable))
 	}
-	if !s.cache.IsAdmin(abena) || s.count(t, adminsTabName, store.Row{"Email": abena}) != 1 {
+	if !s.store.Model().AdminList("who").IsAdmin(abena) || s.count(t, adminsTabName, store.Row{"Email": abena}) != 1 {
 		t.Fatal("the admin list did not take")
 	}
 	logged(t, s.changeLog(t),
@@ -226,7 +230,7 @@ func TestTagsAreKeptByTheirOwnersAndManagers(t *testing.T) {
 		t.Fatalf("a manager tagging answered %q", got)
 	}
 	copied := s.saveTag(t, jordan, "/api/directory/tag-copy", url.Values{"tag": {bookClub}, "name": {"Book Club"}})
-	if tag, ok := s.cache.Model().Tag(copied); !ok || tag.Owner != jordan || tag.Name != "Book Club" || len(tag.People) != 3 {
+	if tag, ok := s.directory().Tag(copied); !ok || tag.Owner != jordan || tag.Name != "Book Club" || len(tag.People) != 3 {
 		t.Fatalf("a manager's copy of the owner's tag: %+v", tag)
 	}
 }
@@ -240,7 +244,7 @@ func TestANewTagNameMintsATagAndAnOldOneReusesIt(t *testing.T) {
 	if again := s.saveTag(t, jordan, "/api/directory/tag", url.Values{"name": {"chess"}, "person": {abena}, "on": {"1"}}); again != made {
 		t.Fatalf("a second tagging by name made %q, want %q", again, made)
 	}
-	if tag, ok := tagNamed(s.cache.Model().Tags(jordan), "Chess"); !ok || tag.ID != made || !slices.Equal(tag.People, []string{abena, noa}) {
+	if tag, ok := tagNamed(s.directory().Tags(jordan), "Chess"); !ok || tag.ID != made || !slices.Equal(tag.People, []string{abena, noa}) {
 		t.Fatalf("the new tag: %+v", tag)
 	}
 	if s.count(t, tagListTable, store.Row{tagID: made, tagOwner: jordan, tagName: "Chess"}) != 1 || s.count(t, tagsTable, store.Row{tagID: made}) != 2 {
@@ -253,10 +257,10 @@ func TestRemovingATagsLastMemberRemovesTheTag(t *testing.T) {
 	for _, person := range []string{"daniel.park@heliosschool.org", "elena.torres@heliosschool.org", "anders.lindqvist@heliosschool.org"} {
 		s.saveTag(t, abena, "/api/directory/tag", url.Values{"tag": {bookClub}, "person": {person}, "on": {"0"}})
 	}
-	if _, ok := s.cache.Model().Tag(bookClub); ok {
+	if _, ok := s.directory().Tag(bookClub); ok {
 		t.Fatal("the emptied tag is still in memory")
 	}
-	if shared := s.cache.Model().SharedTags(jordan); len(shared) != 0 {
+	if shared := s.directory().SharedTags(jordan); len(shared) != 0 {
 		t.Fatalf("the emptied tag is still shared: %+v", shared)
 	}
 	for _, tab := range []string{tagListTable, tagsTable, managersTable} {
@@ -296,7 +300,7 @@ func TestTagRowsMustHangTogether(t *testing.T) {
 
 func seedAddedPerson(t *testing.T, s server) {
 	t.Helper()
-	err := s.cache.Commit(context.Background(), access.System("test"),
+	err := s.store.Commit(context.Background(), access.System("test"), DirectoryApp,
 		store.Insert(tagListTable, store.Row{tagID: band, tagOwner: jordan, tagName: "Band"}),
 		store.Insert(tagsTable, store.Row{tagID: band, tagPerson: noa}),
 		store.Insert(tagListTable, store.Row{tagID: choir, tagOwner: noa, tagName: "Choir"}),
@@ -315,13 +319,13 @@ func TestRenamingAnAddedPersonCarriesTheirRows(t *testing.T) {
 	seedAddedPerson(t, s)
 	const renamed = "noa.a@heliosschool.org"
 	s.post(t, jordan, "/api/admin/added-fields", "application/json", []byte(`{"email":"`+noa+`","newEmail":"`+renamed+`","fullName":"Noa Adler","isStaff":true}`))
-	if s.cache.Model().Person(noa) != nil || s.cache.Model().Person(renamed) == nil {
+	if s.directory().Person(noa) != nil || s.directory().Person(renamed) == nil {
 		t.Fatal("the rename did not reach memory")
 	}
-	bandTag, _ := s.cache.Model().Tag(band)
-	choirTag, _ := s.cache.Model().Tag(choir)
-	carpoolTag, _ := s.cache.Model().Tag(carpool)
-	if !slices.Equal(bandTag.People, []string{renamed}) || choirTag.Owner != renamed || !slices.Contains(carpoolTag.Managers, renamed) || len(s.cache.Model().Person(renamed).Photos) != 1 {
+	bandTag, _ := s.directory().Tag(band)
+	choirTag, _ := s.directory().Tag(choir)
+	carpoolTag, _ := s.directory().Tag(carpool)
+	if !slices.Equal(bandTag.People, []string{renamed}) || choirTag.Owner != renamed || !slices.Contains(carpoolTag.Managers, renamed) || len(s.directory().Person(renamed).Photos) != 1 {
 		t.Fatalf("the rename stranded tags or photos in memory: %+v %+v %+v", bandTag, choirTag, carpoolTag)
 	}
 	for _, tab := range []string{tagListTable, tagsTable, managersTable, photosTab} {
@@ -346,7 +350,7 @@ func TestDeletingAnAddedPersonTakesTheirRows(t *testing.T) {
 	s := newServer(t)
 	seedAddedPerson(t, s)
 	s.post(t, jordan, "/api/admin/delete-person", "application/json", []byte(`{"email":"`+noa+`"}`))
-	if s.cache.Model().Person(noa) != nil {
+	if s.directory().Person(noa) != nil {
 		t.Fatal("the person is still in memory")
 	}
 	for _, tab := range []string{overridesTab, tagListTable, tagsTable, managersTable, photosTab} {
@@ -365,7 +369,7 @@ func TestDeletingAnAddedPersonTakesTheirRows(t *testing.T) {
 			}
 		}
 	}
-	if _, ok := s.cache.Model().Tag(carpool); !ok {
+	if _, ok := s.directory().Tag(carpool); !ok {
 		t.Error("a tag the deleted person only managed went with them")
 	}
 	logged(t, s.changeLog(t), jordan+"|delete|Photos|Email="+noa+"; Photo Name=noa.jpg|Photo Name|noa.jpg")
@@ -373,7 +377,7 @@ func TestDeletingAnAddedPersonTakesTheirRows(t *testing.T) {
 
 func TestDeletingAnImportedPersonsOverridesKeepsTheirRows(t *testing.T) {
 	s := newServer(t)
-	if err := s.cache.Commit(context.Background(), access.System("test"), store.Delete(overridesTab, store.Row{"Email": jordan})); err != nil {
+	if err := s.store.Commit(context.Background(), access.System("test"), DirectoryApp, store.Delete(overridesTab, store.Row{"Email": jordan})); err != nil {
 		t.Fatal(err)
 	}
 	if s.count(t, tagListTable, store.Row{tagOwner: jordan}) == 0 {
@@ -385,12 +389,12 @@ func TestPhotoOrderIsSortKeys(t *testing.T) {
 	s := newServer(t)
 	const elena = "elena.torres@heliosschool.org"
 	after := []photoRef{{Name: "a.jpg"}, {Name: "b.jpg"}, {Name: "c.jpg"}}
-	if err := s.cache.Commit(context.Background(), access.Actor{Email: elena}, photoOps(elena, nil, after)...); err != nil {
+	if err := s.store.Commit(context.Background(), access.Actor{Email: elena}, DirectoryApp, photoOps(elena, nil, after)...); err != nil {
 		t.Fatal(err)
 	}
 	names := func() []string {
 		out := []string{}
-		for _, p := range s.cache.Model().Person(elena).Photos {
+		for _, p := range s.directory().Person(elena).Photos {
 			out = append(out, p.Name)
 		}
 		return out
@@ -417,22 +421,22 @@ func TestPhotoOrderIsSortKeys(t *testing.T) {
 
 func TestGeocoderRecordsWhatItFinds(t *testing.T) {
 	s := newServer(t)
-	unlocated := len(s.cache.Model().unlocated)
+	unlocated := len(s.directory().unlocated)
 	if unlocated == 0 {
 		t.Fatal("the sample has no addresses to locate")
 	}
-	if len(s.cache.unlocated) != 1 {
+	if len(s.store.unlocated) != 1 {
 		t.Fatal("the load did not wake the geocoder")
 	}
 	counted := &countingGeocoder{answer: intercept.Geocode()}
 	intercept.Install(intercept.GeocodeHost, counted)
 	geocoder := geocode.New("test")
-	s.cache.geocode(geocoder)
-	if counted.count() != unlocated || len(s.rows(t, geocodeTable)) != unlocated || len(s.cache.Model().unlocated) != 0 {
-		t.Fatalf("%d lookups, %d rows, %d still unlocated, of %d", counted.count(), len(s.rows(t, geocodeTable)), len(s.cache.Model().unlocated), unlocated)
+	s.store.geocode(geocoder)
+	if counted.count() != unlocated || len(s.rows(t, geocodeTable)) != unlocated || len(s.directory().unlocated) != 0 {
+		t.Fatalf("%d lookups, %d rows, %d still unlocated, of %d", counted.count(), len(s.rows(t, geocodeTable)), len(s.directory().unlocated), unlocated)
 	}
 	located := 0
-	for _, family := range s.cache.Model().Families {
+	for _, family := range s.directory().Families {
 		if family.Address != "" && family.Lat != 0 {
 			located++
 		}
@@ -440,7 +444,7 @@ func TestGeocoderRecordsWhatItFinds(t *testing.T) {
 	if located == 0 {
 		t.Fatal("no family has coordinates")
 	}
-	s.cache.geocode(geocoder)
+	s.store.geocode(geocoder)
 	if counted.count() != unlocated {
 		t.Fatalf("a second pass looked up %d more", counted.count()-unlocated)
 	}
@@ -469,7 +473,7 @@ func TestClassroomImageIsACommit(t *testing.T) {
 	s := newServer(t)
 	s.post(t, jordan, "/api/admin/images", form.FormDataContentType(), body.Bytes())
 	name := fmt.Sprintf("%x.png", sha256.Sum256(picture.Bytes()))
-	for _, c := range s.cache.Model().Classrooms {
+	for _, c := range s.directory().Classrooms {
 		if c.Name == "Condors" && c.ImageURL != "/photos/"+name {
 			t.Fatalf("classroom image %q, want the uploaded object", c.ImageURL)
 		}
@@ -481,13 +485,9 @@ func TestClassroomImageIsACommit(t *testing.T) {
 }
 
 func TestGreetingsAreTheirCreatorsToChange(t *testing.T) {
-	dir := &data.Dir{Root: "../../sampledata"}
 	s := newServer(t)
-	invites, err := NewInviteTemplatesCache(dir, dir, s.queue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	registerInviteTemplates(s.mux, s.cache, invites)
+	dir := s.dir
+	registerInviteTemplates(s.mux, s.store)
 	key := s.saveGreeting(t, asha, url.Values{"format": {"Dear Enders"}, "grouped": {"1"}})
 	if parsed, ok := id.Parse(key); !ok || parsed != key {
 		t.Fatalf("minted greeting id %q", key)
@@ -511,7 +511,7 @@ func TestGreetingsAreTheirCreatorsToChange(t *testing.T) {
 			t.Fatalf("%s %s %s: %d", c.as, c.method, c.body, rec.Code)
 		}
 	}
-	if g, ok := invites.greeting(key); !ok || g.Name != "Hello Enders" || g.Format != "Hello Enders" {
+	if g, ok := s.store.Model().Invites.greeting(key); !ok || g.Name != "Hello Enders" || g.Format != "Hello Enders" {
 		t.Fatalf("the edit did not take: %+v", g)
 	}
 	req := httptest.NewRequest(http.MethodDelete, "/api/directory/greetings?"+url.Values{"id": {key}}.Encode(), nil)
@@ -520,7 +520,7 @@ func TestGreetingsAreTheirCreatorsToChange(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
 	}
-	if _, ok := invites.greeting(key); ok {
+	if _, ok := s.store.Model().Invites.greeting(key); ok {
 		t.Fatal("the delete did not take")
 	}
 	s.queue.Flush()

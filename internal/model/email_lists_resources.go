@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
-	"sync"
-	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/api"
@@ -23,24 +21,6 @@ const (
 	listKindSettings = "loop-settings"
 )
 
-type EmailListsWorld struct {
-	Model          *EmailLists
-	Directory      *Directory
-	GradeColors    map[string]string
-	parties        *Parties
-	activities     *Activities
-	activityAdmins *ActivitiesCache
-	now            time.Time
-	request        *emailListRequest
-}
-
-type emailListRequest struct {
-	placedOnce  sync.Once
-	placed      placement
-	keysOnce    sync.Once
-	suggestions map[string]bool
-}
-
 type placement struct {
 	byGroup map[string]map[string][]Reason
 	members map[string]memberKey
@@ -50,37 +30,28 @@ type memberKey struct {
 	group, email string
 }
 
-func NewEmailListsWorld(m *EmailLists, d *Directory, gradeColors map[string]string, parties *Parties, activities *Activities, activityAdmins *ActivitiesCache) EmailListsWorld {
-	return EmailListsWorld{Model: m, Directory: d, GradeColors: gradeColors, parties: parties, activities: activities, activityAdmins: activityAdmins}
+func (m *Model) listSources() AudienceSources {
+	return m.EmailListAudience(m.scope.now)
 }
 
-func (w EmailListsWorld) At(now time.Time) EmailListsWorld {
-	w.now, w.request = now, &emailListRequest{}
-	return w
-}
-
-func (w EmailListsWorld) Sources() AudienceSources {
-	return EmailListAudience(w.Directory, w.parties, w.activities, w.activityAdmins, w.now)
-}
-
-func (w EmailListsWorld) placement() placement {
-	w.request.placedOnce.Do(func() {
+func (m *Model) listPlacement() placement {
+	m.scope.placedOnce.Do(func() {
 		p := placement{byGroup: map[string]map[string][]Reason{}, members: map[string]memberKey{}}
-		s := w.Sources()
-		for _, g := range w.Model.Groups {
+		s := m.listSources()
+		for _, g := range m.EmailLists.Groups {
 			l := g.audience()
 			l.Excluded = nil
 			placed := l.Reasons(s)
 			p.byGroup[g.ID] = placed
 			for email := range placed {
 				if !g.HasExcluded(email) {
-					p.members[w.Model.memberID(g.ID, email)] = memberKey{group: g.ID, email: email}
+					p.members[m.EmailLists.memberID(g.ID, email)] = memberKey{group: g.ID, email: email}
 				}
 			}
 		}
-		w.request.placed = p
+		m.scope.placed = p
 	})
-	return w.request.placed
+	return m.scope.placed
 }
 
 func (m *EmailLists) memberID(groupID, email string) string {
@@ -95,21 +66,21 @@ func (m *EmailLists) settingsID() string {
 	return id.Of(m.idKey, listKindSettings, "")
 }
 
-func (w EmailListsWorld) onList(g EmailList, email string) bool {
-	_, ok := w.placement().byGroup[g.ID][email]
+func (m *Model) onEmailList(g EmailList, email string) bool {
+	_, ok := m.listPlacement().byGroup[g.ID][email]
 	return ok
 }
 
-func (w EmailListsWorld) visible(g EmailList, v access.Actor) bool {
-	return g.visibleWith(v, func() bool { return w.onList(g, v.Email) })
+func (m *Model) listVisible(g EmailList, v access.Actor) bool {
+	return g.visibleWith(v, func() bool { return m.onEmailList(g, v.Email) })
 }
 
-func (w EmailListsWorld) members(g EmailList) []string {
+func (m *Model) listMembers(g EmailList) []string {
 	inside, outside := []string{}, []string{}
-	for email := range w.placement().byGroup[g.ID] {
+	for email := range m.listPlacement().byGroup[g.ID] {
 		switch {
 		case g.HasExcluded(email):
-		case w.Directory.Person(email) != nil:
+		case m.Directory.Person(email) != nil:
 			inside = append(inside, email)
 		default:
 			outside = append(outside, email)
@@ -120,16 +91,9 @@ func (w EmailListsWorld) members(g EmailList) []string {
 	return append(inside, outside...)
 }
 
-func (w EmailListsWorld) personID(email string) []string {
-	if p := w.Directory.Person(w.Directory.Resolve(email)); p != nil && p.ID != "" {
-		return []string{p.ID}
-	}
-	return nil
-}
-
-func (w EmailListsWorld) shown(key string, q api.Query) *EmailList {
-	g := w.Model.Group(key)
-	if g == nil || !w.visible(*g, q.Actor) {
+func (m *Model) shownList(key string, q api.Query) *EmailList {
+	g := m.EmailLists.Group(key)
+	if g == nil || !m.listVisible(*g, q.Actor) {
 		return nil
 	}
 	return g
@@ -215,30 +179,13 @@ type emailListSettingsResource struct {
 }
 
 type emailListResources struct {
-	cache     *EmailListsCache
+	store     *Store
 	documents *DocumentFiler
 }
 
-func EmailListResources(c *EmailListsCache, documents *DocumentFiler) []api.Type[EmailListsWorld] {
-	r := emailListResources{cache: c, documents: documents}
-	return []api.Type[EmailListsWorld]{r.emailLists(), members(), messages(), copies(), suggestions(), emailListSettings()}
-}
-
-func (r emailListResources) stage(wr api.Write[EmailListsWorld], ops []store.Op, err error) error {
-	if err != nil {
-		return err
-	}
-	return r.cache.Stage(wr.Tx, ops...)
-}
-
-func listLogAfter(wr api.Write[EmailListsWorld], msg string, args ...any) {
-	actor := wr.Query.Actor.Email
-	ctx := wr.Request.Context()
-	wr.Tx.After(func() { slog.InfoContext(ctx, msg, append([]any{"actor", actor}, args...)...) })
-}
-
-func listCan(err error) bool {
-	return err == nil
+func EmailListResources(s *Store, documents *DocumentFiler) []api.Type[*Model] {
+	r := emailListResources{store: s, documents: documents}
+	return []api.Type[*Model]{r.emailLists(), members(), messages(), copies(), suggestions(), emailListSettings()}
 }
 
 type groupPatch struct {
@@ -278,40 +225,40 @@ func (p groupPatch) over(g EmailList) EmailList {
 	return g
 }
 
-func (r emailListResources) emailLists() api.Type[EmailListsWorld] {
-	edits := func(w EmailListsWorld, q api.Query, key string) bool { return w.Model.Group(key).Edits(q.Actor) }
-	subscription := func(subscribed bool) api.Action[EmailListsWorld] {
-		check := func(w EmailListsWorld, q api.Query, key string) ([]store.Op, error) {
-			g := w.Model.Group(key)
-			return g.subscription(q.Actor, w.onList(*g, q.Actor.Email), subscribed)
+func (r emailListResources) emailLists() api.Type[*Model] {
+	edits := func(m *Model, q api.Query, key string) bool { return m.EmailLists.Group(key).Edits(q.Actor) }
+	subscription := func(subscribed bool) api.Action[*Model] {
+		check := func(m *Model, q api.Query, key string) ([]store.Op, error) {
+			g := m.EmailLists.Group(key)
+			return g.subscription(q.Actor, m.onEmailList(*g, q.Actor.Email), subscribed)
 		}
-		return api.Do(func(w EmailListsWorld, q api.Query, key string) bool { _, err := check(w, q, key); return listCan(err) }, func(wr api.Write[EmailListsWorld], _ serve.None) error {
+		return api.Do(func(m *Model, q api.Query, key string) bool { _, err := check(m, q, key); return permitted(err) }, func(wr api.Write[*Model], _ serve.None) error {
 			ops, err := check(wr.S, wr.Query, wr.ID)
 			if !subscribed {
-				listLogAfter(wr, "loop:unsubscribed", "group", wr.S.Model.Group(wr.ID).Name, "how", loopPage)
+				logAfter(wr, "loop:unsubscribed", "group", wr.S.EmailLists.Group(wr.ID).Name, "how", loopPage)
 			} else {
-				listLogAfter(wr, "loop:resubscribed", "group", wr.S.Model.Group(wr.ID).Name)
+				logAfter(wr, "loop:resubscribed", "group", wr.S.EmailLists.Group(wr.ID).Name)
 			}
-			return r.stage(wr, ops, err)
+			return r.store.stage(wr, emailListsAppName, ops, err)
 		})
 	}
-	archive := func(archived bool) api.Action[EmailListsWorld] {
-		return api.Do(func(w EmailListsWorld, q api.Query, key string) bool {
-			_, err := w.Model.archiving(q.Actor, w.Model.Group(key), archived)
-			return listCan(err)
-		}, func(wr api.Write[EmailListsWorld], _ serve.None) error {
-			g := wr.S.Model.Group(wr.ID)
-			ops, err := wr.S.Model.archiving(wr.Query.Actor, g, archived)
-			listLogAfter(wr, "loop:archived", "id", g.ID, "group", g.Name, "archived", archived)
-			return r.stage(wr, ops, err)
+	archive := func(archived bool) api.Action[*Model] {
+		return api.Do(func(m *Model, q api.Query, key string) bool {
+			_, err := m.EmailLists.archiving(q.Actor, m.EmailLists.Group(key), archived)
+			return permitted(err)
+		}, func(wr api.Write[*Model], _ serve.None) error {
+			g := wr.S.EmailLists.Group(wr.ID)
+			ops, err := wr.S.EmailLists.archiving(wr.Query.Actor, g, archived)
+			logAfter(wr, "loop:archived", "id", g.ID, "group", g.Name, "archived", archived)
+			return r.store.stage(wr, emailListsAppName, ops, err)
 		})
 	}
-	return api.Type[EmailListsWorld]{
+	return api.Type[*Model]{
 		Name:  "email-lists",
 		Shape: listResource{},
-		Has:   func(w EmailListsWorld, key string) bool { return w.Model.Group(key) != nil },
-		Get: func(w EmailListsWorld, q api.Query, key string) (any, bool) {
-			g := w.shown(key, q)
+		Has:   func(m *Model, key string) bool { return m.EmailLists.Group(key) != nil },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			g := m.shownList(key, q)
 			if g == nil {
 				return nil, false
 			}
@@ -319,17 +266,17 @@ func (r emailListResources) emailLists() api.Type[EmailListsWorld] {
 			out := listResource{
 				Name: g.Name, Address: g.Address(), Aliases: g.Aliases, Title: g.Title, Description: g.Description, Prefix: g.Prefix,
 				Visibility: g.Visibility, Posting: g.Posting, Replying: g.Replying, Created: g.Created,
-				MemberCount: len(w.members(*g)), Slug: g.Name, Path: g.Path(), App: emailListsHost,
-				Me: listMe{Managing: g.Manages(viewer), Member: w.onList(*g, viewer), Unsubscribed: g.HasExcluded(viewer), Archived: w.Model.Archived(g.ID, viewer)},
+				MemberCount: len(m.listMembers(*g)), Slug: g.Name, Path: g.Path(), App: emailListsHost,
+				Me: listMe{Managing: g.Manages(viewer), Member: m.onEmailList(*g, viewer), Unsubscribed: g.HasExcluded(viewer), Archived: m.EmailLists.Archived(g.ID, viewer)},
 			}
-			for _, m := range g.Managers {
-				if w.personID(m) == nil {
-					out.ManagersOutside = append(out.ManagersOutside, m)
+			for _, manager := range g.Managers {
+				if m.personID(manager) == nil {
+					out.ManagersOutside = append(out.ManagersOutside, manager)
 				}
 			}
 			if g.Sees(q.Actor) {
-				view := &ManagerView{Rules: []RuleView{}, Additions: g.Additions, Excluded: g.Excluded, Sent: len(w.Model.sent[g.ID])}
-				s := w.Sources()
+				view := &ManagerView{Rules: []RuleView{}, Additions: g.Additions, Excluded: g.Excluded, Sent: len(m.EmailLists.sent[g.ID])}
+				s := m.listSources()
 				for _, rule := range g.Rules {
 					view.Rules = append(view.Rules, RuleView{Rule: rule, TagLabels: s.TagLabels(rule, g.Managers, viewer)})
 				}
@@ -337,69 +284,69 @@ func (r emailListResources) emailLists() api.Type[EmailListsWorld] {
 			}
 			return out, true
 		},
-		List: func(w EmailListsWorld, q api.Query) []string {
+		List: func(m *Model, q api.Query) []string {
 			out := []string{}
-			for _, g := range w.Model.Groups {
-				if w.visible(g, q.Actor) {
+			for _, g := range m.EmailLists.Groups {
+				if m.listVisible(g, q.Actor) {
 					out = append(out, g.ID)
 				}
 			}
 			return out
 		},
-		Aliases: func(w EmailListsWorld) map[string]string {
+		Aliases: func(m *Model) map[string]string {
 			out := map[string]string{}
-			for _, g := range w.Model.Groups {
+			for _, g := range m.EmailLists.Groups {
 				for _, local := range g.Names() {
 					out[local] = g.ID
 				}
 			}
 			return out
 		},
-		Create: api.Make(func(wr api.Write[EmailListsWorld], in EmailList) (string, error) {
+		Create: api.Make(func(wr api.Write[*Model], in EmailList) (string, error) {
 			in.ID = ""
-			ops, g, _, err := wr.S.Model.SaveGroup(wr.Query.Actor, wr.S.Sources(), in, wr.Taken)
+			ops, g, _, err := wr.S.EmailLists.SaveGroup(wr.Query.Actor, wr.S.listSources(), in, wr.Taken)
 			if err != nil {
 				return "", err
 			}
-			listLogAfter(wr, "loop:saved group", "action", "add", "id", g.ID, "group", g.Name, "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions))
-			return g.ID, r.stage(wr, ops, nil)
+			logAfter(wr, "loop:saved group", "action", "add", "id", g.ID, "group", g.Name, "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions))
+			return g.ID, r.store.stage(wr, emailListsAppName, ops, nil)
 		}),
-		Relations: map[string]api.Relation[EmailListsWorld]{
-			"managers": {Type: "people", Many: true, List: func(w EmailListsWorld, _ api.Query, key string) []string {
+		Relations: map[string]api.Relation[*Model]{
+			"managers": {Type: "people", Many: true, List: func(m *Model, _ api.Query, key string) []string {
 				out := []string{}
-				for _, m := range w.Model.Group(key).Managers {
-					out = append(out, w.personID(m)...)
+				for _, manager := range m.EmailLists.Group(key).Managers {
+					out = append(out, m.personID(manager)...)
 				}
 				return out
 			}},
-			"members": {Type: "email-list-members", Many: true, List: func(w EmailListsWorld, _ api.Query, key string) []string {
-				g := w.Model.Group(key)
+			"members": {Type: "email-list-members", Many: true, List: func(m *Model, _ api.Query, key string) []string {
+				g := m.EmailLists.Group(key)
 				out := []string{}
-				for _, email := range w.members(*g) {
-					out = append(out, w.Model.memberID(g.ID, email))
+				for _, email := range m.listMembers(*g) {
+					out = append(out, m.EmailLists.memberID(g.ID, email))
 				}
 				return out
 			}},
-			"messages": {Type: "email-list-messages", Many: true, List: func(w EmailListsWorld, _ api.Query, key string) []string {
+			"messages": {Type: "email-list-messages", Many: true, List: func(m *Model, _ api.Query, key string) []string {
 				out := []string{}
-				for _, s := range w.Model.sent[key] {
+				for _, s := range m.EmailLists.sent[key] {
 					out = append(out, s.ID)
 				}
 				return out
 			}},
 		},
-		Actions: map[string]api.Action[EmailListsWorld]{
-			"edit": api.Do(edits, func(wr api.Write[EmailListsWorld], patch groupPatch) error {
-				current := wr.S.Model.Group(wr.ID)
-				ops, g, _, err := wr.S.Model.SaveGroup(wr.Query.Actor, wr.S.Sources(), patch.over(*current), wr.Taken)
+		Actions: map[string]api.Action[*Model]{
+			"edit": api.Do(edits, func(wr api.Write[*Model], patch groupPatch) error {
+				current := wr.S.EmailLists.Group(wr.ID)
+				ops, g, _, err := wr.S.EmailLists.SaveGroup(wr.Query.Actor, wr.S.listSources(), patch.over(*current), wr.Taken)
 				if err != nil {
 					return err
 				}
-				listLogAfter(wr, "loop:saved group", "action", "edit", "id", g.ID, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility, "posting", g.Posting, "replying", g.Replying)
-				return r.stage(wr, ops, nil)
+				logAfter(wr, "loop:saved group", "action", "edit", "id", g.ID, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility, "posting", g.Posting, "replying", g.Replying)
+				return r.store.stage(wr, emailListsAppName, ops, nil)
 			}),
-			"delete": api.Do(edits, func(wr api.Write[EmailListsWorld], _ serve.None) error {
-				ops, g, err := wr.S.Model.DeleteGroup(wr.Query.Actor, wr.ID)
+			"delete": api.Do(edits, func(wr api.Write[*Model], _ serve.None) error {
+				ops, g, err := wr.S.EmailLists.DeleteGroup(wr.Query.Actor, wr.ID)
 				if err != nil {
 					return err
 				}
@@ -409,8 +356,8 @@ func (r emailListResources) emailLists() api.Type[EmailListsWorld] {
 						slog.ErrorContext(ctx, "loop:filed mail not removed", "group", name, "error", err)
 					}
 				})
-				listLogAfter(wr, "loop:deleted group", "id", g.ID, "group", g.Name)
-				return r.stage(wr, ops, nil)
+				logAfter(wr, "loop:deleted group", "id", g.ID, "group", g.Name)
+				return r.store.stage(wr, emailListsAppName, ops, nil)
 			}),
 			"unsubscribe": subscription(false),
 			"resubscribe": subscription(true),
@@ -420,61 +367,61 @@ func (r emailListResources) emailLists() api.Type[EmailListsWorld] {
 	}
 }
 
-func members() api.Type[EmailListsWorld] {
-	find := func(w EmailListsWorld, q api.Query, key string) (*EmailList, string, bool) {
-		mk, ok := w.placement().members[key]
+func members() api.Type[*Model] {
+	find := func(m *Model, q api.Query, key string) (*EmailList, string, bool) {
+		mk, ok := m.listPlacement().members[key]
 		if !ok {
 			return nil, "", false
 		}
-		g := w.shown(mk.group, q)
+		g := m.shownList(mk.group, q)
 		return g, mk.email, g != nil
 	}
-	return api.Type[EmailListsWorld]{
+	return api.Type[*Model]{
 		Name:  "email-list-members",
 		Shape: memberResource{},
-		Has: func(w EmailListsWorld, key string) bool {
-			_, ok := w.placement().members[key]
+		Has: func(m *Model, key string) bool {
+			_, ok := m.listPlacement().members[key]
 			return ok
 		},
-		Get: func(w EmailListsWorld, q api.Query, key string) (any, bool) {
-			g, email, ok := find(w, q, key)
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			g, email, ok := find(m, q, key)
 			if !ok {
 				return nil, false
 			}
 			out := memberResource{}
-			if w.Directory.Person(email) == nil {
+			if m.Directory.Person(email) == nil {
 				out.Email, out.Name, out.Outside = email, email, true
 				if added := g.Addition(email); added != nil && added.Name != "" {
 					out.Name = added.Name
 				}
 			}
 			if g.Sees(q.Actor) {
-				out.Reasons = w.placement().byGroup[g.ID][email]
+				out.Reasons = m.listPlacement().byGroup[g.ID][email]
 			}
 			return out, true
 		},
-		List: func(w EmailListsWorld, q api.Query) []string {
+		List: func(m *Model, q api.Query) []string {
 			out := []string{}
-			for _, g := range w.Model.Groups {
-				if !w.visible(g, q.Actor) {
+			for _, g := range m.EmailLists.Groups {
+				if !m.listVisible(g, q.Actor) {
 					continue
 				}
-				for _, email := range w.members(g) {
-					out = append(out, w.Model.memberID(g.ID, email))
+				for _, email := range m.listMembers(g) {
+					out = append(out, m.EmailLists.memberID(g.ID, email))
 				}
 			}
 			return out
 		},
-		Relations: map[string]api.Relation[EmailListsWorld]{
-			"person": {Type: "people", List: func(w EmailListsWorld, q api.Query, key string) []string {
-				_, email, ok := find(w, q, key)
-				if !ok || w.Directory.Person(email) == nil {
+		Relations: map[string]api.Relation[*Model]{
+			"person": {Type: "people", List: func(m *Model, q api.Query, key string) []string {
+				_, email, ok := find(m, q, key)
+				if !ok || m.Directory.Person(email) == nil {
 					return nil
 				}
-				return w.personID(email)
+				return m.personID(email)
 			}},
-			"email-list": {Type: "email-lists", List: func(w EmailListsWorld, q api.Query, key string) []string {
-				g, _, ok := find(w, q, key)
+			"email-list": {Type: "email-lists", List: func(m *Model, q api.Query, key string) []string {
+				g, _, ok := find(m, q, key)
 				if !ok {
 					return nil
 				}
@@ -484,76 +431,76 @@ func members() api.Type[EmailListsWorld] {
 	}
 }
 
-func (w EmailListsWorld) sentMessage(key string, q api.Query) *Sent {
-	s := w.Model.sentByID[key]
+func (m *Model) listSentMessage(key string, q api.Query) *Sent {
+	s := m.EmailLists.sentByID[key]
 	if s == nil {
 		return nil
 	}
-	if g := w.Model.Group(s.Message.Group); g == nil || !g.Sees(q.Actor) {
+	if g := m.EmailLists.Group(s.Message.Group); g == nil || !g.Sees(q.Actor) {
 		return nil
 	}
 	return s
 }
 
-func (w EmailListsWorld) sender(from string) (string, *Person) {
+func (m *Model) listSender(from string) (string, *Person) {
 	email := strings.ToLower(mail.AddressOf(from))
-	return email, w.Directory.Person(w.Directory.Resolve(email))
+	return email, m.Directory.Person(m.Directory.Resolve(email))
 }
 
-func (w EmailListsWorld) name(email string) string {
-	if p := w.Directory.Person(email); p != nil {
+func (m *Model) listPersonName(email string) string {
+	if p := m.Directory.Person(email); p != nil {
 		return p.FullName
 	}
 	return email
 }
 
-func messages() api.Type[EmailListsWorld] {
-	return api.Type[EmailListsWorld]{
+func messages() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "email-list-messages",
 		Shape: messageResource{},
-		Has:   func(w EmailListsWorld, key string) bool { return w.Model.sentByID[key] != nil },
-		Get: func(w EmailListsWorld, q api.Query, key string) (any, bool) {
-			s := w.sentMessage(key, q)
+		Has:   func(m *Model, key string) bool { return m.EmailLists.sentByID[key] != nil },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			s := m.listSentMessage(key, q)
 			if s == nil {
 				return nil, false
 			}
 			out := messageResource{Received: s.Message.Received, Subject: s.Message.Subject, Recipients: s.Recipients, Delivered: s.Delivered, Failed: s.Failed, Pending: s.Pending}
-			if email, p := w.sender(s.Message.From); p == nil {
+			if email, p := m.listSender(s.Message.From); p == nil {
 				out.FromEmail, out.FromName = email, senderName(s.Message.From)
 			}
 			return out, true
 		},
-		List: func(w EmailListsWorld, q api.Query) []string {
+		List: func(m *Model, q api.Query) []string {
 			out := []string{}
-			for _, g := range w.Model.Groups {
+			for _, g := range m.EmailLists.Groups {
 				if !g.Sees(q.Actor) {
 					continue
 				}
-				for _, s := range w.Model.sent[g.ID] {
+				for _, s := range m.EmailLists.sent[g.ID] {
 					out = append(out, s.ID)
 				}
 			}
 			return out
 		},
-		Relations: map[string]api.Relation[EmailListsWorld]{
-			"sender": {Type: "people", List: func(w EmailListsWorld, q api.Query, key string) []string {
-				s := w.sentMessage(key, q)
+		Relations: map[string]api.Relation[*Model]{
+			"sender": {Type: "people", List: func(m *Model, q api.Query, key string) []string {
+				s := m.listSentMessage(key, q)
 				if s == nil {
 					return nil
 				}
-				if _, p := w.sender(s.Message.From); p != nil && p.ID != "" {
+				if _, p := m.listSender(s.Message.From); p != nil && p.ID != "" {
 					return []string{p.ID}
 				}
 				return nil
 			}},
-			"copies": {Type: "email-list-copies", Many: true, List: func(w EmailListsWorld, q api.Query, key string) []string {
-				s := w.sentMessage(key, q)
+			"copies": {Type: "email-list-copies", Many: true, List: func(m *Model, q api.Query, key string) []string {
+				s := m.listSentMessage(key, q)
 				if s == nil {
 					return nil
 				}
 				copies := slices.Clone(s.Copies)
 				slices.SortStableFunc(copies, func(x, y *Copy) int {
-					return cmp.Or(cmp.Compare(copyOrder[x.State], copyOrder[y.State]), cmp.Compare(strings.ToLower(w.name(x.Email)), strings.ToLower(w.name(y.Email))))
+					return cmp.Or(cmp.Compare(copyOrder[x.State], copyOrder[y.State]), cmp.Compare(strings.ToLower(m.listPersonName(x.Email)), strings.ToLower(m.listPersonName(y.Email))))
 				})
 				out := []string{}
 				for _, c := range copies {
@@ -565,39 +512,39 @@ func messages() api.Type[EmailListsWorld] {
 	}
 }
 
-func copies() api.Type[EmailListsWorld] {
-	find := func(w EmailListsWorld, q api.Query, key string) *Copy {
-		c := w.Model.copyByID[key]
+func copies() api.Type[*Model] {
+	find := func(m *Model, q api.Query, key string) *Copy {
+		c := m.EmailLists.copyByID[key]
 		if c == nil {
 			return nil
 		}
-		if g := w.Model.Group(c.Group); g == nil || !g.Sees(q.Actor) {
+		if g := m.EmailLists.Group(c.Group); g == nil || !g.Sees(q.Actor) {
 			return nil
 		}
 		return c
 	}
-	return api.Type[EmailListsWorld]{
+	return api.Type[*Model]{
 		Name:  "email-list-copies",
 		Shape: copyResource{},
-		Has:   func(w EmailListsWorld, key string) bool { return w.Model.copyByID[key] != nil },
-		Get: func(w EmailListsWorld, q api.Query, key string) (any, bool) {
-			c := find(w, q, key)
+		Has:   func(m *Model, key string) bool { return m.EmailLists.copyByID[key] != nil },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			c := find(m, q, key)
 			if c == nil {
 				return nil, false
 			}
 			out := copyResource{State: c.State, When: c.When, Attempts: c.Attempts}
-			if w.Directory.Person(c.Email) == nil {
+			if m.Directory.Person(c.Email) == nil {
 				out.Email = c.Email
 			}
 			return out, true
 		},
-		List: func(w EmailListsWorld, q api.Query) []string {
+		List: func(m *Model, q api.Query) []string {
 			out := []string{}
-			for _, g := range w.Model.Groups {
+			for _, g := range m.EmailLists.Groups {
 				if !g.Sees(q.Actor) {
 					continue
 				}
-				for _, s := range w.Model.sent[g.ID] {
+				for _, s := range m.EmailLists.sent[g.ID] {
 					for _, c := range s.Copies {
 						out = append(out, c.ID)
 					}
@@ -605,13 +552,13 @@ func copies() api.Type[EmailListsWorld] {
 			}
 			return out
 		},
-		Relations: map[string]api.Relation[EmailListsWorld]{
-			"person": {Type: "people", List: func(w EmailListsWorld, q api.Query, key string) []string {
-				c := find(w, q, key)
-				if c == nil || w.Directory.Person(c.Email) == nil {
+		Relations: map[string]api.Relation[*Model]{
+			"person": {Type: "people", List: func(m *Model, q api.Query, key string) []string {
+				c := find(m, q, key)
+				if c == nil || m.Directory.Person(c.Email) == nil {
 					return nil
 				}
-				return w.personID(c.Email)
+				return m.personID(c.Email)
 			}},
 		},
 	}
@@ -623,13 +570,13 @@ type suggestion struct {
 	mine                bool
 }
 
-func (w EmailListsWorld) suggestions(viewer string) []suggestion {
+func (m *Model) listSuggestions(viewer string) []suggestion {
 	out := []suggestion{}
-	for _, t := range SuggestedTags(w.Directory.Tags(viewer), w.Model.Groups) {
+	for _, t := range SuggestedTags(m.Directory.Tags(viewer), m.EmailLists.Groups) {
 		key := TagKey(t.ID)
-		out = append(out, suggestion{id: w.Model.suggestionID(key), key: key, name: t.Name, kind: SuggestionTag, managers: []string{viewer}, mine: true})
+		out = append(out, suggestion{id: m.EmailLists.suggestionID(key), key: key, name: t.Name, kind: SuggestionTag, managers: []string{viewer}, mine: true})
 	}
-	lists := w.Sources().MagicTags(viewer)
+	lists := m.listSources().MagicTags(viewer)
 	byKey := map[string]MagicTag{}
 	for _, l := range lists {
 		byKey[l.Key] = l
@@ -646,20 +593,20 @@ func (w EmailListsWorld) suggestions(viewer string) []suggestion {
 			l = parent
 		}
 	}
-	for _, l := range Suggested(lists, w.Model.Groups) {
+	for _, l := range Suggested(lists, m.EmailLists.Groups) {
 		managers := []string{viewer}
 		for _, h := range l.Hosts {
-			if h != viewer && w.Directory.Person(h) != nil {
+			if h != viewer && m.Directory.Person(h) != nil {
 				managers = append(managers, h)
 			}
 		}
-		out = append(out, suggestion{id: w.Model.suggestionID(l.Key), key: l.Key, name: l.Name, kind: l.Kind, managers: managers, mine: hosted(l)})
+		out = append(out, suggestion{id: m.EmailLists.suggestionID(l.Key), key: l.Key, name: l.Name, kind: l.Kind, managers: managers, mine: hosted(l)})
 	}
 	return out
 }
 
-func (w EmailListsWorld) suggestionFor(key string, q api.Query) (suggestion, bool) {
-	for _, s := range w.suggestions(q.Actor.Email) {
+func (m *Model) listSuggestionFor(key string, q api.Query) (suggestion, bool) {
+	for _, s := range m.listSuggestions(q.Actor.Email) {
 		if s.id == key {
 			return s, true
 		}
@@ -667,47 +614,47 @@ func (w EmailListsWorld) suggestionFor(key string, q api.Query) (suggestion, boo
 	return suggestion{}, false
 }
 
-func (w EmailListsWorld) suggestionKnown(key string) bool {
-	w.request.keysOnce.Do(func() {
-		w.request.suggestions = map[string]bool{}
-		for _, tag := range w.Directory.TagIDs() {
-			w.request.suggestions[w.Model.suggestionID(TagKey(tag))] = true
+func (m *Model) listSuggestionKnown(key string) bool {
+	m.scope.keysOnce.Do(func() {
+		m.scope.suggestions = map[string]bool{}
+		for _, tag := range m.Directory.TagIDs() {
+			m.scope.suggestions[m.EmailLists.suggestionID(TagKey(tag))] = true
 		}
-		for _, k := range MagicTagKeys(w.parties, w.activities) {
-			w.request.suggestions[w.Model.suggestionID(k)] = true
+		for _, k := range m.MagicTagKeys() {
+			m.scope.suggestions[m.EmailLists.suggestionID(k)] = true
 		}
 	})
-	return w.request.suggestions[key]
+	return m.scope.suggestions[key]
 }
 
-func suggestions() api.Type[EmailListsWorld] {
-	return api.Type[EmailListsWorld]{
+func suggestions() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "email-list-suggestions",
 		Shape: suggestionResource{},
-		Has:   func(w EmailListsWorld, key string) bool { return w.suggestionKnown(key) },
-		Get: func(w EmailListsWorld, q api.Query, key string) (any, bool) {
-			s, ok := w.suggestionFor(key, q)
+		Has:   func(m *Model, key string) bool { return m.listSuggestionKnown(key) },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			s, ok := m.listSuggestionFor(key, q)
 			if !ok {
 				return nil, false
 			}
 			return suggestionResource{Key: s.key, Name: s.name, Kind: s.kind, Mine: s.mine}, true
 		},
-		List: func(w EmailListsWorld, q api.Query) []string {
+		List: func(m *Model, q api.Query) []string {
 			out := []string{}
-			for _, s := range w.suggestions(q.Actor.Email) {
+			for _, s := range m.listSuggestions(q.Actor.Email) {
 				out = append(out, s.id)
 			}
 			return out
 		},
-		Relations: map[string]api.Relation[EmailListsWorld]{
-			"managers": {Type: "people", Many: true, List: func(w EmailListsWorld, q api.Query, key string) []string {
-				s, ok := w.suggestionFor(key, q)
+		Relations: map[string]api.Relation[*Model]{
+			"managers": {Type: "people", Many: true, List: func(m *Model, q api.Query, key string) []string {
+				s, ok := m.listSuggestionFor(key, q)
 				if !ok {
 					return nil
 				}
 				out := []string{}
-				for _, m := range s.managers {
-					out = append(out, w.personID(m)...)
+				for _, manager := range s.managers {
+					out = append(out, m.personID(manager)...)
 				}
 				return out
 			}},
@@ -715,21 +662,21 @@ func suggestions() api.Type[EmailListsWorld] {
 	}
 }
 
-func emailListSettings() api.Type[EmailListsWorld] {
-	return api.Type[EmailListsWorld]{
+func emailListSettings() api.Type[*Model] {
+	return api.Type[*Model]{
 		Name:  "loop-settings",
 		Shape: emailListSettingsResource{},
-		Has:   func(w EmailListsWorld, key string) bool { return key == w.Model.settingsID() },
-		Get: func(w EmailListsWorld, q api.Query, key string) (any, bool) {
-			if key != w.Model.settingsID() {
+		Has:   func(m *Model, key string) bool { return key == m.EmailLists.settingsID() },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			if key != m.EmailLists.settingsID() {
 				return nil, false
 			}
-			options := w.Sources().Options(q.Actor.Email)
-			return emailListSettingsResource{Domain: ListDomain, GradeColors: w.GradeColors, MagicTags: options.Lists, Roles: options.Roles, Relations: options.Relations}, true
+			options := m.listSources().Options(q.Actor.Email)
+			return emailListSettingsResource{Domain: ListDomain, GradeColors: m.Config.GradeColors, MagicTags: options.Lists, Roles: options.Roles, Relations: options.Relations}, true
 		},
-		List: func(w EmailListsWorld, _ api.Query) []string { return []string{w.Model.settingsID()} },
-		Relations: map[string]api.Relation[EmailListsWorld]{
-			"viewer": {Type: "people", List: func(w EmailListsWorld, q api.Query, _ string) []string { return w.personID(q.Actor.Email) }},
+		List: func(m *Model, _ api.Query) []string { return []string{m.EmailLists.settingsID()} },
+		Relations: map[string]api.Relation[*Model]{
+			"viewer": {Type: "people", List: func(m *Model, q api.Query, _ string) []string { return m.personID(q.Actor.Email) }},
 		},
 	}
 }

@@ -174,7 +174,7 @@ func (a calendarApp) extRemoveGuest(r *http.Request, body keyBody) (serve.None, 
 	if err != nil {
 		return serve.None{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	if err := a.commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: guest removed from outside", "actor", actor.Email, "event", e.ID, "guest", key)

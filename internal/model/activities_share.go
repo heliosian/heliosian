@@ -65,9 +65,9 @@ func activityBlurb(a *Activity) string {
 	return text
 }
 
-func ActivitiesPreviewHead(cache *ActivitiesCache, style *sharecard.Style) func(r *http.Request) string {
+func ActivitiesPreviewHead(s *Store, style *sharecard.Style) func(r *http.Request) string {
 	return func(r *http.Request) string {
-		m := cache.Model()
+		m := s.Model().Activities
 		origin := "https://" + r.Host
 		first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]
 		var a *Activity
@@ -156,7 +156,7 @@ func activitiesUpcomingHead(style *sharecard.Style, m *Activities, origin string
 
 func (a activitiesApp) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	listing := &sharecard.Listing{Heading: "Volunteers needed", Empty: upcomingEmpty}
-	for _, act := range needs(a.cache.Model(), time.Now().In(Location)) {
+	for _, act := range needs(a.activities(), time.Now().In(Location)) {
 		if len(listing.Items) == needsCount {
 			break
 		}
@@ -168,7 +168,7 @@ func (a activitiesApp) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 
 func (a activitiesApp) shareCard(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(r.PathValue("id"), ".png")
-	m := a.cache.Model()
+	m := a.activities()
 	act := m.Activity(id)
 	if !activityPreviewable(m, act) {
 		http.NotFound(w, r)

@@ -5,6 +5,8 @@ import (
 	"flag"
 	"log/slog"
 
+	"heliosian/internal/artifacts"
+	"heliosian/internal/blob"
 	"heliosian/internal/calendarimport"
 	"heliosian/internal/data"
 	"heliosian/internal/env"
@@ -25,20 +27,24 @@ func main() {
 	}
 	key := env.Required("ANTHROPIC_API_KEY")
 	ctx := context.Background()
-	source, err := data.NewSheet(spreadsheets.IDs(spreadsheets.Of(spreadsheets.SyncSources)))
+	source, err := data.NewSheet(spreadsheets.IDs(spreadsheets.All))
 	if err != nil {
 		logging.Fatal("periodicsync: sheet source", "error", err)
 	}
-	directory, err := model.LoadDirectory(source, nil, static.Files{Root: "web/who"}, []byte(env.Required("ID_KEY")))
+	bucket, err := blob.Open(blob.MediaBucket)
 	if err != nil {
-		logging.Fatal("periodicsync: load directory model", "error", err)
+		logging.Fatal("periodicsync: media bucket", "error", err)
 	}
-	roster := func() model.Roster { return directory.Roster() }
-	cache, err := model.NewCalendarCache(source, source, roster, nil, func() []string { return nil }, store.NewQueue())
+	embedder, err := artifacts.NewVertex()
 	if err != nil {
-		logging.Fatal("periodicsync: load calendar model", "error", err)
+		logging.Fatal("periodicsync: vertex embedder", "error", err)
 	}
-	opts := calendarimport.Options{Source: source, Cache: cache, Roster: roster, AnthropicKey: key, DryRun: *dryRun}
+	deps := model.Deps{IDKey: []byte(env.Required("ID_KEY")), Static: static.Files{Root: "web/who"}, Objects: bucket, Embedder: embedder}
+	models, err := model.NewStore(source, source, store.NewQueue(), deps)
+	if err != nil {
+		logging.Fatal("periodicsync: load the models", "error", err)
+	}
+	opts := calendarimport.Options{Source: source, Store: models, AnthropicKey: key, DryRun: *dryRun}
 	if err := calendarimport.RunPDF(ctx, opts); err != nil {
 		logging.Fatal("periodicsync: year calendar pdf", "error", err)
 	}
