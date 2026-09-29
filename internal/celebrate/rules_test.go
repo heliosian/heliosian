@@ -84,7 +84,7 @@ func TestSavePartyDirectly(t *testing.T) {
 	cache, _ := newServer(t)
 	m := cache.Model()
 	fresh := partyBody{Title: "Board Game Night", Adults: true, Status: StatusOpen, Category: "pcg0000000001", Celebration: "cbn0000002025"}
-	edit := partyBody{ID: "pty0000000002", Title: "Dink & Clink", Adults: true, Status: StatusHidden, HostEmails: []string{other, "marco.torres@heliosschool.org"}}
+	edit := partyBody{ID: "pty0000000002", Title: "Dink & Clink", Price: m.Party("pty0000000002").Price, Adults: true, Status: StatusHidden, HostEmails: []string{other, "marco.torres@heliosschool.org"}}
 	with := func(b partyBody, change func(*partyBody)) partyBody {
 		change(&b)
 		return b
@@ -146,7 +146,7 @@ func TestSavePartyDirectly(t *testing.T) {
 
 func TestSavePartyAddressConflict(t *testing.T) {
 	cache, _ := newServer(t)
-	body := partyBody{ID: "pty0000000003", Title: "K-Pop for a Cause!", Adults: true, Students: true, PrettyID: "Fondue", HostEmails: []string{"deepa.natarajan@heliosschool.org"}}
+	body := partyBody{ID: "pty0000000003", Title: "K-Pop for a Cause!", Price: cache.Model().Party("pty0000000003").Price, Adults: true, Students: true, PrettyID: "Fondue", HostEmails: []string{"deepa.natarajan@heliosschool.org"}}
 	_, err := cache.Model().saveParty(viewerOf("deepa.natarajan@heliosschool.org", false), body)
 	var refusal *access.Refusal
 	if !errors.As(err, &refusal) || refusal.Status != http.StatusConflict {
