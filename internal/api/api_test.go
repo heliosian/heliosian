@@ -78,8 +78,9 @@ func registry(w *fake) *Registry[*fake] {
 		Staged: func(*store.Tx) *fake { return w },
 	})
 	reg.Add(Type[*fake]{
-		Name: "people",
-		Has:  func(s *fake, key string) bool { _, ok := s.people[key]; return ok },
+		Name:  "people",
+		Shape: person{},
+		Has:   func(s *fake, key string) bool { _, ok := s.people[key]; return ok },
 		Get: func(s *fake, _ Query, key string) (any, bool) {
 			p, ok := s.people[key]
 			return p, ok && !p.Hidden
@@ -88,6 +89,7 @@ func registry(w *fake) *Registry[*fake] {
 	})
 	reg.Add(Type[*fake]{
 		Name:    "groups",
+		Shape:   group{},
 		Has:     func(s *fake, key string) bool { _, ok := s.groups[key]; return ok },
 		Aliases: func(s *fake) map[string]string { return s.aliases },
 		Get: func(s *fake, q Query, key string) (any, bool) {
@@ -137,9 +139,9 @@ func sortedKeys[V any](m map[string]V) []string {
 }
 
 type reply struct {
-	Now      string                               `json:"now"`
-	Data     json.RawMessage                      `json:"data"`
-	Included map[string]map[string]map[string]any `json:"included"`
+	Now       string                               `json:"now"`
+	Result    json.RawMessage                      `json:"result"`
+	Resources map[string]map[string]map[string]any `json:"resources"`
 }
 
 func call(t *testing.T, reg *Registry[*fake], method, path, as string, body any) (int, reply) {
@@ -169,7 +171,7 @@ func ids(t *testing.T, raw json.RawMessage) []string {
 	t.Helper()
 	var out []string
 	if err := json.Unmarshal(raw, &out); err != nil {
-		t.Fatalf("data %s: %v", raw, err)
+		t.Fatalf("result %s: %v", raw, err)
 	}
 	return out
 }
@@ -179,33 +181,33 @@ func TestIncludesNameEachResourceOnceAndNeverReachHiddenOnes(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("status %d", code)
 	}
-	if got := ids(t, out.Data); !slices.Equal(got, []string{chess, choir}) {
-		t.Errorf("data %v", got)
+	if got := ids(t, out.Result); !slices.Equal(got, []string{chess, choir}) {
+		t.Errorf("result %v", got)
 	}
 	if out.Now != "2026-09-27 14:05" {
 		t.Errorf("now %q", out.Now)
 	}
-	if got := sortedKeys(out.Included["people"]); !slices.Equal(got, []string{ann, bob}) {
+	if got := sortedKeys(out.Resources["people"]); !slices.Equal(got, []string{ann, bob}) {
 		t.Errorf("people %v, want Ann and Bob once each and not the hidden Cat", got)
 	}
-	members := out.Included["groups"][chess]["members"].([]any)
+	members := out.Resources["groups"][chess]["members"].([]any)
 	if len(members) != 2 {
 		t.Errorf("chess members %v", members)
 	}
-	if lead := out.Included["groups"][chess]["lead"]; lead != ann {
+	if lead := out.Resources["groups"][chess]["lead"]; lead != ann {
 		t.Errorf("lead %v", lead)
 	}
-	if out.Included["people"][ann]["id"] != ann {
-		t.Errorf("person has no id: %v", out.Included["people"][ann])
+	if out.Resources["people"][ann]["id"] != ann {
+		t.Errorf("person has no id: %v", out.Resources["people"][ann])
 	}
 }
 
 func TestRelationsAreAbsentUnlessIncluded(t *testing.T) {
 	_, out := call(t, registry(sample()), "GET", "/api/groups/"+chess, "", nil)
-	if _, ok := out.Included["groups"][chess]["members"]; ok {
+	if _, ok := out.Resources["groups"][chess]["members"]; ok {
 		t.Error("members present without include")
 	}
-	if len(out.Included["people"]) != 0 {
+	if len(out.Resources["people"]) != 0 {
 		t.Error("people included without include")
 	}
 }
@@ -219,8 +221,8 @@ func TestPathsResolveByIDThenAliasOfThatType(t *testing.T) {
 			continue
 		}
 		var got string
-		if err := json.Unmarshal(out.Data, &got); err != nil || got != chess {
-			t.Errorf("%s: data %s", path, out.Data)
+		if err := json.Unmarshal(out.Result, &got); err != nil || got != chess {
+			t.Errorf("%s: result %s", path, out.Result)
 		}
 	}
 	for _, path := range []string{"/api/people/chess-club", "/api/r/chess-club", "/api/r/" + old, "/api/people/" + cat, "/api/nothing/" + ann} {
@@ -233,15 +235,15 @@ func TestPathsResolveByIDThenAliasOfThatType(t *testing.T) {
 func TestFiltersAreDeclaredOrRefused(t *testing.T) {
 	reg := registry(sample())
 	_, out := call(t, reg, "GET", "/api/groups?member="+ann, "", nil)
-	if got := ids(t, out.Data); !slices.Equal(got, []string{chess}) {
+	if got := ids(t, out.Result); !slices.Equal(got, []string{chess}) {
 		t.Errorf("member filter %v", got)
 	}
 	_, out = call(t, reg, "GET", "/api/groups?can=rename", "bob@example.org", nil)
-	if got := ids(t, out.Data); !slices.Equal(got, []string{choir}) {
+	if got := ids(t, out.Result); !slices.Equal(got, []string{choir}) {
 		t.Errorf("can filter %v", got)
 	}
 	_, out = call(t, reg, "GET", "/api/groups?mine", "ann@example.org", nil)
-	if got := ids(t, out.Data); !slices.Equal(got, []string{chess}) {
+	if got := ids(t, out.Result); !slices.Equal(got, []string{chess}) {
 		t.Errorf("mine filter %v", got)
 	}
 	for _, path := range []string{"/api/groups?colour=red", "/api/groups?can=explode", "/api/groups?member=nobody", "/api/groups?include=owners", "/api/groups?include=members..x"} {
@@ -254,14 +256,14 @@ func TestFiltersAreDeclaredOrRefused(t *testing.T) {
 func TestCanIsTheActionsOwnRule(t *testing.T) {
 	reg := registry(sample())
 	_, out := call(t, reg, "GET", "/api/groups/"+chess, "bob@example.org", nil)
-	if can := out.Included["groups"][chess]["can"].(map[string]any); can["rename"] != false {
+	if can := out.Resources["groups"][chess]["can"].(map[string]any); can["rename"] != false {
 		t.Errorf("bob can %v", can)
 	}
 	_, out = call(t, reg, "GET", "/api/groups/"+chess, admin, nil)
-	if can := out.Included["groups"][chess]["can"].(map[string]any); can["rename"] != true {
+	if can := out.Resources["groups"][chess]["can"].(map[string]any); can["rename"] != true {
 		t.Errorf("admin can %v", can)
 	}
-	if _, ok := out.Included["people"]; ok {
+	if _, ok := out.Resources["people"]; ok {
 		t.Error("people included")
 	}
 }
@@ -274,18 +276,18 @@ func TestBatchAnswersFromOneSnapshot(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("status %d", code)
 	}
-	var data map[string]json.RawMessage
-	if err := json.Unmarshal(out.Data, &data); err != nil {
+	var result map[string]json.RawMessage
+	if err := json.Unmarshal(out.Result, &result); err != nil {
 		t.Fatal(err)
 	}
-	if got := ids(t, data["groups"]); !slices.Equal(got, []string{chess, choir}) {
+	if got := ids(t, result["groups"]); !slices.Equal(got, []string{chess, choir}) {
 		t.Errorf("groups %v", got)
 	}
-	if string(data["bob"]) != `"`+bob+`"` {
-		t.Errorf("bob %s", data["bob"])
+	if string(result["bob"]) != `"`+bob+`"` {
+		t.Errorf("bob %s", result["bob"])
 	}
-	if len(out.Included["people"]) != 2 {
-		t.Errorf("people %v", out.Included["people"])
+	if len(out.Resources["people"]) != 2 {
+		t.Errorf("people %v", out.Resources["people"])
 	}
 	code, _ = call(t, registry(sample()), "POST", "/api/query", "", map[string]entry{"x": {Path: "/api/groups?colour=red"}})
 	if code != http.StatusBadRequest {
@@ -323,7 +325,99 @@ func TestAnActionNeedsBothItsRuleAndItsRoute(t *testing.T) {
 		}
 	}()
 	reg := New(Config[*fake]{})
-	reg.Add(Type[*fake]{Name: "groups", Actions: map[string]Action[*fake]{"rename": {Do: func(Write[*fake]) error { return nil }}}})
+	reg.Add(Type[*fake]{Name: "groups", Shape: group{}, Actions: map[string]Action[*fake]{"rename": {Do: func(Write[*fake]) error { return nil }}}})
+}
+
+func TestATypeNeedsItsShape(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("a type without a shape registered")
+		}
+	}()
+	New(Config[*fake]{}).Add(Type[*fake]{Name: "groups"})
+}
+
+func TestAResourceMustMatchItsShape(t *testing.T) {
+	w := sample()
+	reg := registry(w)
+	reg.types["people"].Shape = group{}
+	if code, _ := call(t, reg, "GET", "/api/people/"+ann, "", nil); code != http.StatusInternalServerError {
+		t.Errorf("status %d, want 500", code)
+	}
+}
+
+func TestTheSpecDescribesEveryType(t *testing.T) {
+	mux := http.NewServeMux()
+	registry(sample()).Register(mux)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/openapi.json", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var spec struct {
+		Paths      map[string]map[string]any `json:"paths"`
+		Components struct {
+			Schemas map[string]struct {
+				Properties map[string]map[string]any `json:"properties"`
+			} `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &spec); err != nil {
+		t.Fatal(err)
+	}
+	for path, method := range map[string]string{"/api/people": "get", "/api/groups/{id}": "get", "/api/groups/{id}/rename": "post", "/api/query": "post", "/api/act": "post", "/api/me": "get"} {
+		if _, ok := spec.Paths[path][method]; !ok {
+			t.Errorf("no %s %s", method, path)
+		}
+	}
+	if _, ok := spec.Paths["/api/groups"]["post"]; ok {
+		t.Error("groups can't be created but the spec says so")
+	}
+	groups := spec.Components.Schemas["groups"].Properties
+	for _, field := range []string{"id", "name", "me", "can", "members", "lead"} {
+		if _, ok := groups[field]; !ok {
+			t.Errorf("groups has no %s: %v", field, groups)
+		}
+	}
+	if _, ok := groups["Members"]; ok {
+		t.Error("a field tagged - is in the spec")
+	}
+	if got := groups["members"]["type"]; got != "array" {
+		t.Errorf("members type %v", got)
+	}
+	reachedFrom := func(path string) []string {
+		var reply struct {
+			Properties struct {
+				Resources struct {
+					Properties map[string]any `json:"properties"`
+				} `json:"resources"`
+			} `json:"properties"`
+		}
+		raw, err := json.Marshal(spec.Paths[path]["get"].(map[string]any)["responses"].(map[string]any)["200"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(raw, &reply); err != nil {
+			t.Fatal(err)
+		}
+		return sortedKeys(reply.Properties.Resources.Properties)
+	}
+	for _, p := range spec.Paths["/api/groups"]["get"].(map[string]any)["parameters"].([]any) {
+		p := p.(map[string]any)
+		if p["name"] != "mine" {
+			continue
+		}
+		s := p["schema"].(map[string]any)
+		if s["type"] != "boolean" || !slices.Equal(s["enum"].([]any), []any{true}) {
+			t.Errorf("mine schema %v, want a boolean that is only true", s)
+		}
+	}
+	if got := reachedFrom("/api/people"); !slices.Equal(got, []string{"people"}) {
+		t.Errorf("people reach %v", got)
+	}
+	if got := reachedFrom("/api/groups/{id}"); !slices.Equal(got, []string{"groups", "people"}) {
+		t.Errorf("groups reach %v", got)
+	}
 }
 
 func TestWritesBatchAllOrNothing(t *testing.T) {

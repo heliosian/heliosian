@@ -3,7 +3,9 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
+	"reflect"
 	"strings"
 
 	"heliosian/internal/access"
@@ -13,26 +15,26 @@ import (
 type object map[string]json.RawMessage
 
 type envelope struct {
-	Now      string                       `json:"now"`
-	Data     any                          `json:"data"`
-	Included map[string]map[string]object `json:"included"`
+	Now       string                       `json:"now"`
+	Result    any                          `json:"result"`
+	Resources map[string]map[string]object `json:"resources"`
 }
 
 type tree map[string]tree
 
 type reader[S any] struct {
-	reg      *Registry[S]
-	w        *world[S]
-	q        Query
-	included map[string]map[string]object
+	reg       *Registry[S]
+	w         *world[S]
+	q         Query
+	resources map[string]map[string]object
 }
 
 func (reg *Registry[S]) reader(w *world[S], q Query) *reader[S] {
-	return &reader[S]{reg: reg, w: w, q: q, included: map[string]map[string]object{}}
+	return &reader[S]{reg: reg, w: w, q: q, resources: map[string]map[string]object{}}
 }
 
-func (rd *reader[S]) envelope(data any) envelope {
-	return envelope{Now: rd.q.Now.Format(nowLayout), Data: data, Included: rd.included}
+func (rd *reader[S]) envelope(result any) envelope {
+	return envelope{Now: rd.q.Now.Format(nowLayout), Result: result, Resources: rd.resources}
 }
 
 func (rd *reader[S]) read(target *url.URL) (any, error) {
@@ -209,12 +211,15 @@ func (rd *reader[S]) mine(t *Type[S], key string) (bool, error) {
 }
 
 func (rd *reader[S]) object(t *Type[S], key string) (object, bool, error) {
-	if obj, ok := rd.included[t.Name][key]; ok {
+	if obj, ok := rd.resources[t.Name][key]; ok {
 		return obj, true, nil
 	}
 	v, ok := t.Get(rd.w.s, rd.q, key)
 	if !ok {
 		return nil, false, nil
+	}
+	if reflect.TypeOf(v) != reflect.TypeOf(t.Shape) {
+		return nil, false, fmt.Errorf("api: %s answered a %T, not its shape %T", t.Name, v, t.Shape)
 	}
 	raw, err := json.Marshal(v)
 	if err != nil {
@@ -232,10 +237,10 @@ func (rd *reader[S]) object(t *Type[S], key string) (object, bool, error) {
 		}
 		obj["can"] = must(can)
 	}
-	if rd.included[t.Name] == nil {
-		rd.included[t.Name] = map[string]object{}
+	if rd.resources[t.Name] == nil {
+		rd.resources[t.Name] = map[string]object{}
 	}
-	rd.included[t.Name][key] = obj
+	rd.resources[t.Name][key] = obj
 	return obj, true, nil
 }
 

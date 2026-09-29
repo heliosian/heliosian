@@ -13,8 +13,8 @@ import (
 )
 
 type resourceReply struct {
-	Data     json.RawMessage                      `json:"data"`
-	Included map[string]map[string]map[string]any `json:"included"`
+	Result    json.RawMessage                      `json:"result"`
+	Resources map[string]map[string]map[string]any `json:"resources"`
 }
 
 func resourceGet(t *testing.T, m *Model, path string) (int, resourceReply) {
@@ -48,8 +48,8 @@ func resourceID(t *testing.T, m *Model, path string) string {
 		t.Fatalf("%s: status %d", path, code)
 	}
 	var got string
-	if err := json.Unmarshal(out.Data, &got); err != nil {
-		t.Fatalf("%s: data %s", path, out.Data)
+	if err := json.Unmarshal(out.Result, &got); err != nil {
+		t.Fatalf("%s: result %s", path, out.Result)
 	}
 	return got
 }
@@ -63,7 +63,7 @@ func TestPeopleResolveByAddressAliasAndLocalPart(t *testing.T) {
 		}
 	}
 	_, out := resourceGet(t, m, "/api/people/"+hank)
-	person := out.Included["people"][hank]
+	person := out.Resources["people"][hank]
 	if person["email"] != "hank.morrow@heliosschool.org" || person["slug"] != "hank.morrow" || person["path"] != "/people/hank.morrow" || person["app"] != "who" {
 		t.Errorf("hank = %v", person)
 	}
@@ -88,7 +88,7 @@ func TestListedPeopleAreTheDirectorysListed(t *testing.T) {
 		t.Fatalf("status %d", code)
 	}
 	var got []string
-	if err := json.Unmarshal(out.Data, &got); err != nil {
+	if err := json.Unmarshal(out.Result, &got); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{}
@@ -121,11 +121,11 @@ func TestHouseholdRelationsFollowTheFamilies(t *testing.T) {
 	if got := related(out, jordan, "parents"); len(got) != 0 {
 		t.Errorf("a parent has parents %v", got)
 	}
-	families := out.Included["people"][jordan]["families"].([]any)
+	families := out.Resources["people"][jordan]["families"].([]any)
 	if len(families) != 1 {
 		t.Fatalf("families %v", families)
 	}
-	kids := out.Included["families"][families[0].(string)]["kids"].([]any)
+	kids := out.Resources["families"][families[0].(string)]["kids"].([]any)
 	if len(kids) != 2 {
 		t.Errorf("family kids %v", kids)
 	}
@@ -143,7 +143,7 @@ func TestHouseholdRelationsFollowTheFamilies(t *testing.T) {
 
 func related(r resourceReply, from, name string) []string {
 	out := []string{}
-	list, _ := r.Included["people"][from][name].([]any)
+	list, _ := r.Resources["people"][from][name].([]any)
 	for _, v := range list {
 		out = append(out, v.(string))
 	}
@@ -155,12 +155,12 @@ func TestDepartmentsKeepTheDirectorysOrder(t *testing.T) {
 	m := sampleModel(t)
 	_, out := resourceGet(t, m, "/api/departments")
 	var keys []string
-	if err := json.Unmarshal(out.Data, &keys); err != nil {
+	if err := json.Unmarshal(out.Result, &keys); err != nil {
 		t.Fatal(err)
 	}
 	names := []string{}
 	for _, key := range keys {
-		names = append(names, out.Included["departments"][key]["name"].(string))
+		names = append(names, out.Resources["departments"][key]["name"].(string))
 	}
 	if !slices.Equal(names, m.Departments) {
 		t.Errorf("departments %v, want %v", names, m.Departments)
@@ -178,16 +178,16 @@ func TestClassroomsAndGradesResolveByTheirPagesSlug(t *testing.T) {
 		t.Errorf("grade slug resolved to %s", got)
 	}
 	_, out := resourceGet(t, m, "/api/classrooms/"+room.ID+"?include=students,crews.teachers")
-	students := out.Included["classrooms"][room.ID]["students"].([]any)
+	students := out.Resources["classrooms"][room.ID]["students"].([]any)
 	if len(students) == 0 {
 		t.Error("a classroom with no students")
 	}
 	for _, s := range students {
-		if out.Included["people"][s.(string)]["classroom"] != room.Name {
-			t.Errorf("%v is not in %s", out.Included["people"][s.(string)], room.Name)
+		if out.Resources["people"][s.(string)]["classroom"] != room.Name {
+			t.Errorf("%v is not in %s", out.Resources["people"][s.(string)], room.Name)
 		}
 	}
-	if len(out.Included["crews"]) == 0 {
+	if len(out.Resources["crews"]) == 0 {
 		t.Error("a classroom with no crews")
 	}
 }

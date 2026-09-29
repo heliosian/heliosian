@@ -64,7 +64,7 @@ function settingRow(label, hint, control) {
 
 export async function openPerson(v, node) {
   const dir = await directory();
-  const info = dir.data.map(dir.get).find(p => p.email === v.email) || null;
+  const info = dir.result.map(dir.get).find(p => p.email === v.email) || null;
   const head = personHead(v, info);
   const contact = personContact(dir, v, info);
   if (!node || !(node.canEdit || isFamily(v.email)) || !v.position) {

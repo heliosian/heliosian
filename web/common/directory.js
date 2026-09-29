@@ -12,7 +12,7 @@ export function directory() {
 
 export async function listed() {
   const dir = await directory();
-  return dir.data.map(dir.get);
+  return dir.result.map(dir.get);
 }
 
 export async function personByEmail(email) {

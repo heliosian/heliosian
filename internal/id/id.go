@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-const alphabet = "0123456789abcdefghjkmnpqrstvwxyz"
+const Alphabet = "0123456789abcdefghjkmnpqrstvwxyz"
 
 const (
 	Length      = 13
@@ -39,7 +39,7 @@ func Parse(s string) (string, bool) {
 		return "", false
 	}
 	for _, r := range s {
-		if !strings.ContainsRune(alphabet, r) {
+		if !strings.ContainsRune(Alphabet, r) {
 			return "", false
 		}
 	}
@@ -59,7 +59,7 @@ func encode(raw []byte, n int) string {
 	for i := range out {
 		bit := i * 5
 		v := int(raw[bit/8])<<8 | int(at(raw, bit/8+1))
-		out[i] = alphabet[(v>>(11-bit%8))&31]
+		out[i] = Alphabet[(v>>(11-bit%8))&31]
 	}
 	return string(out)
 }

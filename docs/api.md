@@ -10,6 +10,7 @@ One data-centric API, served identically on every app's host, that pages compose
 
 A package declares its types against its own model in its `resources.go`, as `api.Type[*Model]`, and `internal/app` lifts each onto the snapshot with `api.Lift`. A type has:
 
+- `Shape` - a zero value of the struct `Get` answers, required at registration. A `Get` answering any other type fails the read, so the spec below always matches what is served.
 - `Has` - whether an ID is one of its rows, whoever is asking.
 - `Get` - the row as the viewer may see it, after the owner's redaction rule, or false when they may not see it at all. Its JSON is the resource's fields; the envelope adds `id`, `can` and any included relations.
 - `List` - the IDs of the collection the viewer may see.
@@ -24,12 +25,14 @@ A package declares its types against its own model in its `resources.go`, as `ap
 - `GET /api/{type}/{id-or-alias}` - a path segment resolves as an ID of that type, then as an alias of it. IDs parse case-insensitively.
 - `GET /api/{type}?{filters}` - a collection. Besides the type's own filters, `can=<action>` keeps what the viewer may do that to, and `mine` keeps what the resource's `me.mine` says is theirs.
 - `GET /api/r/{id}` - any resource by ID, whatever its type; IDs are unique across every type. Aliases don't resolve here.
-- `POST /api/query` with `{"name": {"path": "/api/..."}}` - several reads from one snapshot, one `included`.
+- `POST /api/query` with `{"name": {"path": "/api/..."}}` - several reads from one snapshot, one set of `resources`.
 - `include=a,b.c` on any read - dotted relation paths. An include only reaches what a direct fetch would.
 
-Every read answers `{"now", "data", "included"}`: `now` is the server's clock in the school's zone, `data` the ID or IDs asked for (by entry name in a batch), `included` every resource reached, keyed by type then ID, each once.
+Every read answers `{"now", "result", "resources"}`: `now` is the server's clock in the school's zone, `result` the ID or IDs the read answers with, in the type's order (by read name in a batch), and `resources` every resource reached, the result's and those its includes brought in, keyed by type then ID, each once.
 
 `GET /api/me` answers the viewer's address, `email`, and every allowance they hold, `allowances`, a plain list of names.
+
+`GET /api/openapi.json` is an OpenAPI 3.1 description of every registered type, built from the registry on each request: each type's fields from its `Shape`, its relations, filters, actions and create. `/api/docs` on any host is Swagger UI over it, open to anyone signed in, and its Try it out runs as them. It is `web/common/swagger/`: the vendored `swagger-ui-dist` bundle and stylesheet, since the security policy allows no scripts from elsewhere. The bundle is patched: where an example draws one key of an object keyed by data, it names the key the value schema's `x-additionalPropertiesName` as it stands (`<id>` in `resources`) rather than with a counter appended, in both sample generators (`ae[_>1?o+s:o]=u`); a new copy of the bundle needs the patch again.
 
 ## Writes
 
@@ -39,7 +42,7 @@ Every read answers `{"now", "data", "included"}`: `now` is the server's clock in
 
 ## Client
 
-`web/common/data.js`: `query(path)` and `batch({name: path})` each answer a result of their own, holding that read's `data` and `now` and `get(id)`, `all(type)` and `follow(resource, relation)` over that read's `included` only. There is no page-wide store: a page keeps its read's result and replaces it when it reads again, and a picker keeps its own, so no read ever disturbs another. `act`, `create` and `remove` write, and `actAll` sends a batch to `/api/act`, after which the page reads again; `me()` is `/api/me`.
+`web/common/data.js`: `query(path)` and `batch({name: path})` each answer a result of their own, holding that read's `result` and `now` and `get(id)`, `all(type)` and `follow(resource, relation)` over that read's `resources` only. There is no page-wide store: a page keeps its read's result and replaces it when it reads again, and a picker keeps its own, so no read ever disturbs another. `act`, `create` and `remove` write, and `actAll` sends a batch to `/api/act`, after which the page reads again; `me()` is `/api/me`.
 
 `web/common/directory.js` is the directory every picker and Spoof Mode read: `directory()` reads `/api/people?listed` with each person's `partners`, `children`, `parents` and `siblings` once per page, `listed()` is those people, and `contactLine` is the line under a name (a student's grade and classroom, a parent's children, anyone else's `words`).
 

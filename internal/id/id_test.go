@@ -85,7 +85,7 @@ func TestTokenUsesAlphabet(t *testing.T) {
 		t.Fatalf("Token() = %q", tok)
 	}
 	for _, r := range tok {
-		if !strings.ContainsRune(alphabet, r) {
+		if !strings.ContainsRune(Alphabet, r) {
 			t.Fatalf("Token() = %q holds %q", tok, r)
 		}
 	}

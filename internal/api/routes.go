@@ -42,6 +42,8 @@ const bodyLimit = 1 << 20
 
 func (reg *Registry[S]) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/me", serve.JSON(reg.me))
+	mux.HandleFunc("GET /api/openapi.json", serve.JSON(reg.openapi))
+	mux.HandleFunc("GET /api/docs", docs)
 	mux.HandleFunc("GET /api/r/{id}", serve.JSON(reg.get))
 	mux.HandleFunc("GET /api/{type}", serve.JSON(reg.get))
 	mux.HandleFunc("GET /api/{type}/{id}", serve.JSON(reg.get))
@@ -65,17 +67,17 @@ func (reg *Registry[S]) me(r *http.Request, _ serve.None) (me, error) {
 func (reg *Registry[S]) get(r *http.Request, _ serve.None) (envelope, error) {
 	w := reg.current.Load()
 	rd := reg.reader(w, reg.query(r, w))
-	data, err := rd.read(r.URL)
+	result, err := rd.read(r.URL)
 	if err != nil {
 		return envelope{}, err
 	}
-	return rd.envelope(data), nil
+	return rd.envelope(result), nil
 }
 
 func (reg *Registry[S]) batch(r *http.Request, entries map[string]entry) (envelope, error) {
 	w := reg.current.Load()
 	rd := reg.reader(w, reg.query(r, w))
-	data := map[string]any{}
+	result := map[string]any{}
 	for name, e := range entries {
 		target, err := url.Parse(e.Path)
 		if err != nil {
@@ -85,9 +87,9 @@ func (reg *Registry[S]) batch(r *http.Request, entries map[string]entry) (envelo
 		if err != nil {
 			return envelope{}, named(name, err)
 		}
-		data[name] = out
+		result[name] = out
 	}
-	return rd.envelope(data), nil
+	return rd.envelope(result), nil
 }
 
 func named(name string, err error) error {

@@ -46,6 +46,9 @@ func (reg *Registry[S]) Add(t Type[S]) {
 			panic(fmt.Sprintf("api: %s action %q needs both a can rule and a route", t.Name, name))
 		}
 	}
+	if t.Shape == nil {
+		panic(fmt.Sprintf("api: %s needs a shape", t.Name))
+	}
 	reg.types[t.Name] = &t
 }
 

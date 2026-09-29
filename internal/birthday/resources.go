@@ -265,8 +265,9 @@ func (r resources) birthdays() api.Type[World] {
 	email := func(w World, key string) string { return w.emails[key] }
 	body := func(wr api.Write[World], into any) error { return wr.Decode(into) }
 	return api.Type[World]{
-		Name: "birthdays",
-		Has:  func(w World, key string) bool { _, ok := w.emails[key]; return ok },
+		Name:  "birthdays",
+		Shape: birthdayResource{},
+		Has:   func(w World, key string) bool { _, ok := w.emails[key]; return ok },
 		Get: func(w World, q api.Query, key string) (any, bool) {
 			sv, ok := w.staff(key, q.Now)
 			if !ok || !sees(w, q) {
@@ -511,8 +512,9 @@ func (r resources) donations() api.Type[World] {
 		}
 	}
 	return api.Type[World]{
-		Name: "donations",
-		Has:  func(w World, key string) bool { _, ok := w.Model.donationByID(key); return ok },
+		Name:  "donations",
+		Shape: donationResource{},
+		Has:   func(w World, key string) bool { _, ok := w.Model.donationByID(key); return ok },
 		Get: func(w World, q api.Query, key string) (any, bool) {
 			d, ok := w.Model.donationByID(key)
 			if !ok || !sees(w, q) {
@@ -566,8 +568,9 @@ func (m *Model) noteByID(key string) (Note, bool) {
 
 func (r resources) notes() api.Type[World] {
 	return api.Type[World]{
-		Name: "birthday-notes",
-		Has:  func(w World, key string) bool { _, ok := w.Model.noteByID(key); return ok },
+		Name:  "birthday-notes",
+		Shape: noteResource{},
+		Has:   func(w World, key string) bool { _, ok := w.Model.noteByID(key); return ok },
 		Get: func(w World, q api.Query, key string) (any, bool) {
 			n, ok := w.Model.noteByID(key)
 			if !ok || !sees(w, q) {
@@ -610,8 +613,9 @@ func (r resources) notes() api.Type[World] {
 
 func (r resources) charities() api.Type[World] {
 	return api.Type[World]{
-		Name: "charities",
-		Has:  func(w World, key string) bool { return w.Model.Charity(key) != nil },
+		Name:  "charities",
+		Shape: charityResource{},
+		Has:   func(w World, key string) bool { return w.Model.Charity(key) != nil },
 		Get: func(w World, q api.Query, key string) (any, bool) {
 			c := w.Model.Charity(key)
 			if c == nil || !sees(w, q) {
@@ -687,8 +691,9 @@ func (r resources) charities() api.Type[World] {
 
 func (r resources) newsletterDates() api.Type[World] {
 	return api.Type[World]{
-		Name: "newsletter-dates",
-		Has:  func(w World, key string) bool { return w.Model.NewsletterDate(key) != nil },
+		Name:  "newsletter-dates",
+		Shape: newsletterDateResource{},
+		Has:   func(w World, key string) bool { return w.Model.NewsletterDate(key) != nil },
 		Get: func(w World, q api.Query, key string) (any, bool) {
 			n := w.Model.NewsletterDate(key)
 			if n == nil || !sees(w, q) {
@@ -779,8 +784,9 @@ func (m *Model) teamByID(key string) (TeamMember, bool) {
 
 func (r resources) team() api.Type[World] {
 	return api.Type[World]{
-		Name: "birthday-team",
-		Has:  func(w World, key string) bool { _, ok := w.Model.teamByID(key); return ok },
+		Name:  "birthday-team",
+		Shape: teamResource{},
+		Has:   func(w World, key string) bool { _, ok := w.Model.teamByID(key); return ok },
 		Get: func(w World, q api.Query, key string) (any, bool) {
 			t, ok := w.Model.teamByID(key)
 			if !ok || !sees(w, q) {
@@ -857,8 +863,9 @@ func (m *Model) standing(actor access.Actor) standing {
 
 func (r resources) settings() api.Type[World] {
 	return api.Type[World]{
-		Name: "birthday-settings",
-		Has:  func(w World, key string) bool { return key == w.Model.settingsID() },
+		Name:  "birthday-settings",
+		Shape: settingsResource{},
+		Has:   func(w World, key string) bool { return key == w.Model.settingsID() },
 		Get: func(w World, q api.Query, key string) (any, bool) {
 			if key != w.Model.settingsID() {
 				return nil, false
@@ -905,8 +912,9 @@ func (m *Model) inviteByID(key string) (Invite, bool) {
 
 func (r resources) invites() api.Type[World] {
 	return api.Type[World]{
-		Name: "birthday-invites",
-		Has:  func(w World, key string) bool { _, ok := w.Model.inviteByID(key); return ok },
+		Name:  "birthday-invites",
+		Shape: inviteResource{},
+		Has:   func(w World, key string) bool { _, ok := w.Model.inviteByID(key); return ok },
 		Get: func(w World, q api.Query, key string) (any, bool) {
 			inv, ok := w.Model.inviteByID(key)
 			if !ok || !sees(w, q) {

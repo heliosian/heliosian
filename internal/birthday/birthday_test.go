@@ -105,8 +105,8 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 }
 
 type reply struct {
-	Data     json.RawMessage                      `json:"data"`
-	Included map[string]map[string]map[string]any `json:"included"`
+	Result    json.RawMessage                      `json:"result"`
+	Resources map[string]map[string]map[string]any `json:"resources"`
 }
 
 func get(t *testing.T, mux http.Handler, as, path string) reply {
@@ -125,8 +125,8 @@ func get(t *testing.T, mux http.Handler, as, path string) reply {
 func (r reply) ids(t *testing.T) []string {
 	t.Helper()
 	out := []string{}
-	if err := json.Unmarshal(r.Data, &out); err != nil {
-		t.Fatalf("data %s: %v", r.Data, err)
+	if err := json.Unmarshal(r.Result, &out); err != nil {
+		t.Fatalf("result %s: %v", r.Result, err)
 	}
 	return out
 }
@@ -134,15 +134,15 @@ func (r reply) ids(t *testing.T) []string {
 func (r reply) id(t *testing.T) string {
 	t.Helper()
 	var out string
-	if err := json.Unmarshal(r.Data, &out); err != nil {
-		t.Fatalf("data %s: %v", r.Data, err)
+	if err := json.Unmarshal(r.Result, &out); err != nil {
+		t.Fatalf("result %s: %v", r.Result, err)
 	}
 	return out
 }
 
 func (r reply) follow(from map[string]any, relation, typ string) map[string]any {
 	key, _ := from[relation].(string)
-	return r.Included[typ][key]
+	return r.Resources[typ][key]
 }
 
 const staffIncludes = "?include=person,assignee,donation,last-donation,notes,invites"
@@ -150,7 +150,7 @@ const staffIncludes = "?include=person,assignee,donation,last-donation,notes,inv
 func staff(t *testing.T, mux http.Handler, as, email string) (map[string]any, reply) {
 	t.Helper()
 	out := get(t, mux, as, "/api/birthdays/"+email+staffIncludes)
-	return out.Included["birthdays"][out.id(t)], out
+	return out.Resources["birthdays"][out.id(t)], out
 }
 
 func everyone(t *testing.T, mux http.Handler, as string) map[string]map[string]any {
@@ -158,7 +158,7 @@ func everyone(t *testing.T, mux http.Handler, as string) map[string]map[string]a
 	out := get(t, mux, as, "/api/birthdays")
 	byEmail := map[string]map[string]any{}
 	for _, key := range out.ids(t) {
-		b := out.Included["birthdays"][key]
+		b := out.Resources["birthdays"][key]
 		byEmail[b["email"].(string)] = b
 	}
 	return byEmail
@@ -280,7 +280,7 @@ func TestYears(t *testing.T) {
 func TestBirthdayResources(t *testing.T) {
 	_, mux := newServer(t)
 	settings := get(t, mux, parent, "/api/birthday-settings")
-	s := settings.Included["birthday-settings"][settings.ids(t)[0]]
+	s := settings.Resources["birthday-settings"][settings.ids(t)[0]]
 	year := s["year"].(map[string]any)
 	if year["current"] != "2026 - 2027" || year["last"] != "2025 - 2026" || year["start"] != "2026-08-14" || year["end"] != "2027-08-13" {
 		t.Fatalf("year: %+v", year)
@@ -361,7 +361,7 @@ func TestBirthdayResources(t *testing.T) {
 		t.Errorf("an admin's can on a missing birthday: %+v", can)
 	}
 	departments := get(t, mux, parent, "/api/departments")
-	if names := departments.ids(t); len(names) == 0 || departments.Included["departments"][names[0]]["name"] != people.Departments[0] {
+	if names := departments.ids(t); len(names) == 0 || departments.Resources["departments"][names[0]]["name"] != people.Departments[0] {
 		t.Errorf("departments: %+v", departments)
 	}
 }
@@ -390,8 +390,8 @@ func TestPipeline(t *testing.T) {
 	}
 	queue.Flush()
 	sv, out = staff(t, mux, parent, "miguel.santos@heliosschool.org")
-	if invites := sv["invites"].([]any); len(invites) != 1 || out.Included["birthday-invites"][invites[0].(string)]["sentTo"] != parent {
-		t.Fatalf("the sent invite was not recorded: %+v %+v", sv, out.Included["birthday-invites"])
+	if invites := sv["invites"].([]any); len(invites) != 1 || out.Resources["birthday-invites"][invites[0].(string)]["sentTo"] != parent {
+		t.Fatalf("the sent invite was not recorded: %+v %+v", sv, out.Resources["birthday-invites"])
 	}
 	call(t, mux, parent, "POST", miguelPath+"contact", nil, http.StatusNoContent)
 	if sv, _ = staff(t, mux, parent, "miguel.santos@heliosschool.org"); sv["stage"] != StageResponse || sv["contactedBy"] != parent || sv["can"].(map[string]any)["contact"] != false {
@@ -565,7 +565,7 @@ func TestTeam(t *testing.T) {
 	out := get(t, mux, parent, "/api/birthday-team?include=person")
 	byEmail := map[string]map[string]any{}
 	for _, key := range out.ids(t) {
-		m := out.Included["birthday-team"][key]
+		m := out.Resources["birthday-team"][key]
 		if person := out.follow(m, "person", "people"); person != nil {
 			if m["email"] != nil {
 				t.Errorf("a directory member carries an address too: %+v", m)
@@ -582,7 +582,7 @@ func TestTeam(t *testing.T) {
 		t.Fatalf("robin's own row: %+v", m)
 	}
 	settings := get(t, mux, parent, "/api/birthday-settings")
-	if me := settings.Included["birthday-settings"][settings.ids(t)[0]]["me"].(map[string]any); me["comms"] != true || me["volunteer"] != false || me["commsOnly"] != true {
+	if me := settings.Resources["birthday-settings"][settings.ids(t)[0]]["me"].(map[string]any); me["comms"] != true || me["volunteer"] != false || me["commsOnly"] != true {
 		t.Fatalf("robin's standing: %+v", me)
 	}
 }
@@ -691,7 +691,7 @@ func TestCharityRenameKeepsDonationsAndTheDefault(t *testing.T) {
 		t.Fatal("the donations or the default lost the charity in the rename")
 	}
 	settings := get(t, mux, parent, "/api/birthday-settings")
-	if s := settings.Included["birthday-settings"][settings.ids(t)[0]]["settings"].(map[string]any); s["defaultCharity"] != secondHarvest {
+	if s := settings.Resources["birthday-settings"][settings.ids(t)[0]]["settings"].(map[string]any); s["defaultCharity"] != secondHarvest {
 		t.Fatalf("the settings' default: %v", s)
 	}
 	queue.Flush()
@@ -773,13 +773,13 @@ func TestResendingIsAddingAnInvite(t *testing.T) {
 	if got := invites.ids(t); len(got) != 6 {
 		t.Fatalf("invites after resending: %v", got)
 	}
-	for key, inv := range invites.Included["birthday-invites"] {
+	for key, inv := range invites.Resources["birthday-invites"] {
 		if inv["sentOn"] == nil {
 			t.Errorf("invite %s was not sent: %+v", key, inv)
 		}
 	}
-	if _, out := staff(t, mux, admin, "bill.ryder@heliosschool.org"); len(out.Included["birthday-invites"]) != 2 {
-		t.Errorf("bill's invites: %+v", out.Included["birthday-invites"])
+	if _, out := staff(t, mux, admin, "bill.ryder@heliosschool.org"); len(out.Resources["birthday-invites"]) != 2 {
+		t.Errorf("bill's invites: %+v", out.Resources["birthday-invites"])
 	}
 }
 
@@ -788,7 +788,7 @@ func TestClearingTheFutureNewsletterDates(t *testing.T) {
 	dates := get(t, mux, admin, "/api/newsletter-dates")
 	clear := []write{}
 	for _, key := range dates.ids(t) {
-		if dates.Included["newsletter-dates"][key]["date"].(string) >= "2026-09-09" {
+		if dates.Resources["newsletter-dates"][key]["date"].(string) >= "2026-09-09" {
 			clear = append(clear, write{Method: "DELETE", Path: "/api/newsletter-dates/" + key})
 		}
 	}
@@ -825,7 +825,7 @@ func TestStrangerSeesOnlyTheJoinQuestion(t *testing.T) {
 	_, mux := newServer(t)
 	stranger := "sam.whitfield@heliosschool.org"
 	settings := get(t, mux, stranger, "/api/birthday-settings")
-	s := settings.Included["birthday-settings"][settings.ids(t)[0]]
+	s := settings.Resources["birthday-settings"][settings.ids(t)[0]]
 	if s["me"].(map[string]any)["team"] != false || s["settings"] != nil {
 		t.Fatalf("a stranger's settings: %+v", s)
 	}
@@ -939,7 +939,7 @@ func TestShareIssue(t *testing.T) {
 	}
 	call(t, mux, admin, "POST", "/api/newsletter-dates/"+unknownID+"/share", nil, http.StatusNotFound)
 	issue := get(t, mux, parent, "/api/newsletter-dates/"+issueSep11)
-	if issue.Included["newsletter-dates"][issueSep11]["can"].(map[string]any)["share"] != true {
+	if issue.Resources["newsletter-dates"][issueSep11]["can"].(map[string]any)["share"] != true {
 		t.Fatalf("an issue with birthdays to copy: %+v", issue)
 	}
 	a := app{cache: cache, queue: queue, directory: directory}
@@ -972,7 +972,7 @@ func TestShareIssue(t *testing.T) {
 		t.Fatalf("a second run copied %d: %v", n, err)
 	}
 	issue = get(t, mux, parent, "/api/newsletter-dates/"+issueSep11)
-	if issue.Included["newsletter-dates"][issueSep11]["can"].(map[string]any)["share"] != false {
+	if issue.Resources["newsletter-dates"][issueSep11]["can"].(map[string]any)["share"] != false {
 		t.Fatalf("an issue already copied: %+v", issue)
 	}
 	omar, _ := staff(t, mux, admin, "omar.farouk@heliosschool.org")

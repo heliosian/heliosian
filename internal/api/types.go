@@ -36,6 +36,7 @@ func (w Write[S]) Decode(into any) error {
 
 type Type[S any] struct {
 	Name      string
+	Shape     any
 	Has       func(s S, id string) bool
 	Get       func(s S, q Query, id string) (any, bool)
 	List      func(s S, q Query) []string
@@ -66,6 +67,7 @@ func lower[S, M any](w Write[S], of func(S) M) Write[M] {
 func Lift[S, M any](t Type[M], of func(S) M) Type[S] {
 	out := Type[S]{
 		Name:      t.Name,
+		Shape:     t.Shape,
 		Has:       func(s S, id string) bool { return t.Has(of(s), id) },
 		Get:       func(s S, q Query, id string) (any, bool) { return t.Get(of(s), q, id) },
 		List:      func(s S, q Query) []string { return t.List(of(s), q) },

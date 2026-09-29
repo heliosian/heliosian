@@ -79,8 +79,9 @@ func Resources() []api.Type[*Model] {
 
 func departmentsType() api.Type[*Model] {
 	return api.Type[*Model]{
-		Name: "departments",
-		Has:  func(m *Model, key string) bool { return slices.Contains(m.departmentIDs, key) },
+		Name:  "departments",
+		Shape: departmentResource{},
+		Has:   func(m *Model, key string) bool { return slices.Contains(m.departmentIDs, key) },
 		Get: func(m *Model, _ api.Query, key string) (any, bool) {
 			i := slices.Index(m.departmentIDs, key)
 			if i < 0 {
@@ -170,8 +171,9 @@ func personTo(target string, list func(m *Model, p *Person) []string) api.Relati
 
 func peopleType() api.Type[*Model] {
 	return api.Type[*Model]{
-		Name: "people",
-		Has:  func(m *Model, key string) bool { return m.personByID(key) != nil },
+		Name:  "people",
+		Shape: personResource{},
+		Has:   func(m *Model, key string) bool { return m.personByID(key) != nil },
 		Get: func(m *Model, _ api.Query, key string) (any, bool) {
 			p := m.personByID(key)
 			if p == nil {
@@ -281,8 +283,9 @@ func familyMembers(adults bool) api.Relation[*Model] {
 
 func familiesType() api.Type[*Model] {
 	return api.Type[*Model]{
-		Name: "families",
-		Has:  func(m *Model, key string) bool { _, ok := m.Families[key]; return ok },
+		Name:  "families",
+		Shape: familyResource{},
+		Has:   func(m *Model, key string) bool { _, ok := m.Families[key]; return ok },
 		Get: func(m *Model, _ api.Query, key string) (any, bool) {
 			f, ok := m.Families[key]
 			if !ok {
@@ -344,8 +347,9 @@ func (m *Model) crewByID(key string) *Crew {
 
 func classroomsType() api.Type[*Model] {
 	return api.Type[*Model]{
-		Name: "classrooms",
-		Has:  func(m *Model, key string) bool { return m.classroomByID(key) != nil },
+		Name:  "classrooms",
+		Shape: classroomResource{},
+		Has:   func(m *Model, key string) bool { return m.classroomByID(key) != nil },
 		Get: func(m *Model, _ api.Query, key string) (any, bool) {
 			c := m.classroomByID(key)
 			if c == nil {
@@ -394,8 +398,9 @@ func classroomsType() api.Type[*Model] {
 
 func gradesType() api.Type[*Model] {
 	return api.Type[*Model]{
-		Name: "grades",
-		Has:  func(m *Model, key string) bool { return m.gradeByID(key) != nil },
+		Name:  "grades",
+		Shape: gradeResource{},
+		Has:   func(m *Model, key string) bool { return m.gradeByID(key) != nil },
 		Get: func(m *Model, _ api.Query, key string) (any, bool) {
 			g := m.gradeByID(key)
 			if g == nil {
@@ -431,8 +436,9 @@ func gradesType() api.Type[*Model] {
 
 func crewsType() api.Type[*Model] {
 	return api.Type[*Model]{
-		Name: "crews",
-		Has:  func(m *Model, key string) bool { return m.crewByID(key) != nil },
+		Name:  "crews",
+		Shape: crewResource{},
+		Has:   func(m *Model, key string) bool { return m.crewByID(key) != nil },
 		Get: func(m *Model, _ api.Query, key string) (any, bool) {
 			c := m.crewByID(key)
 			if c == nil {

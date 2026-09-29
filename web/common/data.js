@@ -1,14 +1,14 @@
 import {api} from '/api.js';
 
 function result(reply) {
-  const byType = reply.included;
+  const byType = reply.resources;
   const byId = {};
   for (const resources of Object.values(byType)) {
     Object.assign(byId, resources);
   }
   const get = id => byId[id];
   return {
-    data: reply.data,
+    result: reply.result,
     now: reply.now,
     get,
     all: type => Object.values(byType[type] || {}),

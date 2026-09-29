@@ -37,10 +37,10 @@ export async function loadModel() {
     team: '/api/birthday-team?include=person',
     departments: '/api/departments',
   }), whoAmI()]);
-  const s = read.get(read.data.settings[0]);
+  const s = read.get(read.result.settings[0]);
   const person = read.follow(s, 'viewer') || {};
   const name = person.fullName || viewer.email;
-  const everyone = read.data.birthdays.map(id => staffView(read, read.get(id)));
+  const everyone = read.result.birthdays.map(id => staffView(read, read.get(id)));
   const staff = everyone.filter(sv => !sv.missing && sv.level !== 'Skip');
   staff.sort((a, b) => (a.birthdayThisYear || '').localeCompare(b.birthdayThisYear || '') || byName(a, b));
   state.model = {
@@ -54,10 +54,10 @@ export async function loadModel() {
     staff,
     skipped: everyone.filter(sv => sv.level === 'Skip').sort(byName),
     missing: everyone.filter(sv => sv.missing && sv.level !== 'Skip').sort(byName),
-    charities: read.data.charities.map(read.get),
-    newsletterDates: read.data.newsletterDates.map(read.get),
-    team: read.data.team.map(id => teamMember(read, read.get(id))),
-    departments: read.data.departments.map(id => read.get(id).name),
+    charities: read.result.charities.map(read.get),
+    newsletterDates: read.result.newsletterDates.map(read.get),
+    team: read.result.team.map(id => teamMember(read, read.get(id))),
+    departments: read.result.departments.map(id => read.get(id).name),
   };
   byHandle.clear();
   for (const sv of everyone) {

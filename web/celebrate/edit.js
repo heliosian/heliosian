@@ -21,7 +21,7 @@ function peoplePicker(options) {
 
 async function personInfo(email) {
   const dir = await directory();
-  return {dir, info: dir.data.map(dir.get).find(p => p.email === email) || null};
+  return {dir, info: dir.result.map(dir.get).find(p => p.email === email) || null};
 }
 
 export async function openPerson(v) {

@@ -66,7 +66,7 @@ const roleTests = {student: p => p.isStudent, parent: p => p.isParent, staff: p 
 function personPanel(e, dir, onList, done) {
   const pick = {
     dir,
-    people: dir.data.map(dir.get),
+    people: dir.result.map(dir.get),
     onList,
     picked: new Map(),
     family: new Set(),
