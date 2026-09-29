@@ -1,4 +1,4 @@
-import {state, me, managed, groupPath} from './state.js';
+import {state, me, groupPath} from './state.js';
 import {el, svg, link} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 
@@ -12,11 +12,15 @@ function openGroup() {
   return state.model ? state.model.groups.find(g => path === decodeURIComponent(groupPath(g))) : null;
 }
 
+function yours(g) {
+  return g.mine || g.member;
+}
+
 function active(href) {
   const path = location.pathname;
   if (href === '/') {
     const g = openGroup();
-    return path === '/' || (path.startsWith('/groups/') && !(g && g.archived));
+    return path === '/' || (path.startsWith('/groups/') && !(g && (g.archived || !yours(g))));
   }
   return path === href;
 }
@@ -49,43 +53,46 @@ function fillNav(nav) {
       continue;
     }
     nav.append(navLink(item));
-    const mine = state.model ? state.model.groups.filter(managed) : [];
-    const current = mine.filter(g => !g.archived);
-    const archived = mine.filter(g => g.archived);
-    if (item.href === '/' && current.length) {
+    const groups = state.model ? state.model.groups : [];
+    const current = groups.filter(g => yours(g) && !g.archived);
+    if (current.length) {
       nav.append(groupRows(current));
     }
-    if (item.href === '/' && archived.length) {
-      const g = openGroup();
-      const here = Boolean(g && g.archived);
-      const open = here || archivedOpen();
-      const heading = el('button', 'nav-heading-toggle' + (open ? ' open' : '') + (here ? ' is-active' : ''));
-      heading.type = 'button';
-      heading.setAttribute('aria-expanded', String(open));
-      const chevron = el('span', 'nav-chevron');
-      chevron.append(svg('chevron-down'));
-      heading.append(svg('archive'), el('span', 'nav-heading-title', 'Archived'), el('span', 'nav-sub-count', String(archived.length)), chevron);
-      heading.addEventListener('click', () => {
-        setArchivedOpen(!open);
-        nav.replaceChildren();
-        fillNav(nav);
-      });
-      nav.append(heading);
-      if (open) {
-        nav.append(groupRows(archived));
-      }
-    }
+    section(nav, 'loop.otherOpen', 'mail', 'Other Email Lists', groups.filter(g => !yours(g) && !g.archived));
+    section(nav, 'loop.archivedOpen', 'archive', 'Archived', groups.filter(g => g.archived));
   }
 }
 
-const archivedKey = 'loop.archivedOpen';
-
-function archivedOpen() {
-  return localStorage.getItem(archivedKey) === '1';
+function section(nav, key, icon, title, groups) {
+  if (!groups.length) {
+    return;
+  }
+  const g = openGroup();
+  const here = Boolean(g && groups.includes(g));
+  const open = here || sectionOpen(key);
+  const heading = el('button', 'nav-heading-toggle' + (open ? ' open' : '') + (here ? ' is-active' : ''));
+  heading.type = 'button';
+  heading.setAttribute('aria-expanded', String(open));
+  const chevron = el('span', 'nav-chevron');
+  chevron.append(svg('chevron-down'));
+  heading.append(svg(icon), el('span', 'nav-heading-title', title), el('span', 'nav-sub-count', String(groups.length)), chevron);
+  heading.addEventListener('click', () => {
+    setSectionOpen(key, !open);
+    nav.replaceChildren();
+    fillNav(nav);
+  });
+  nav.append(heading);
+  if (open) {
+    nav.append(groupRows(groups));
+  }
 }
 
-function setArchivedOpen(open) {
-  localStorage.setItem(archivedKey, open ? '1' : '0');
+function sectionOpen(key) {
+  return localStorage.getItem(key) === '1';
+}
+
+function setSectionOpen(key, open) {
+  localStorage.setItem(key, open ? '1' : '0');
 }
 
 function fillTabbar(bar) {
