@@ -90,6 +90,8 @@ button { font: inherit; }
 
 .nav-sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.nav-sub-manage { flex-shrink: 0; width: 14px; height: 14px; stroke: var(--lime); }
+
 .nav-sub-count { flex-shrink: 0; min-width: 20px; padding: 0 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); font-size: 11px; font-weight: 700; line-height: 17px; text-align: center; }
 
 .app-nav a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 14px; border-radius: 10px; color: #fff; text-decoration: none; font-size: 15px; font-weight: 600; line-height: 1.25; }
@@ -258,6 +260,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .card-slot:hover::before { transform: rotate(3deg); }
 
 .group-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -270,6 +273,12 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 }
 
 .group-card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(47, 79, 122, 0.1); }
+
+.group-card:has(.group-manage) .group-card-head { padding-right: 28px; }
+
+.group-manage { position: absolute; top: 14px; right: 14px; display: flex; }
+
+.group-manage svg { width: 22px; height: 22px; fill: var(--gold-1); stroke: var(--gold-1); }
 
 .group-card-head { display: flex; align-items: flex-start; gap: 14px; }
 

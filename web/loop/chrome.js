@@ -36,6 +36,12 @@ function groupRows(groups) {
   for (const g of groups) {
     const row = link(groupPath(g), 'nav-sub-item' + (decodeURIComponent(location.pathname) === decodeURIComponent(groupPath(g)) ? ' is-on' : ''));
     row.append(el('span', 'nav-sub-name', g.title || g.name));
+    if (g.mine) {
+      const icon = svg('star');
+      icon.classList.add('nav-sub-manage');
+      icon.setAttribute('aria-label', 'You manage it');
+      row.append(icon);
+    }
     if (g.members) {
       row.append(el('span', 'nav-sub-count', String(g.members.length)));
     }
@@ -58,7 +64,7 @@ function fillNav(nav) {
     if (current.length) {
       nav.append(groupRows(current));
     }
-    section(nav, 'loop.otherOpen', 'mail', 'Other Email Lists', groups.filter(g => !yours(g) && !g.archived));
+    section(nav, 'loop.otherOpen', 'mail', 'Other Email Lists', groups.filter(g => !yours(g) && !g.archived && g.visibility === 'everyone'));
     section(nav, 'loop.archivedOpen', 'archive', 'Archived', groups.filter(g => g.archived));
   }
 }

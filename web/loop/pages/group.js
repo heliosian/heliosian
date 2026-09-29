@@ -967,8 +967,8 @@ export function groupPage(g) {
   const managersPanel = el('div');
   managersPanel.append(managersCard(g, canEdit));
   const tabs = [
-    {key: 'members', label: 'Members', count: g.members.length, panel: members},
-    {key: 'managers', label: 'Managers', count: g.managers.length, panel: managersPanel},
+    {key: 'members', label: 'Members', icon: svg('check'), count: g.members.length, panel: members},
+    {key: 'managers', label: 'Managers', icon: svg('star'), count: g.managers.length, panel: managersPanel},
   ];
   if (canEdit) {
     tabs.push(historyTab(g));

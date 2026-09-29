@@ -1,4 +1,4 @@
-import {state, isAdmin, managed, matches, groupPath} from '../state.js';
+import {state, managed, matches, groupPath} from '../state.js';
 import {pageHead} from '../dom.js';
 import {el, svg, link, button, iconButton, copyText} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
@@ -25,6 +25,17 @@ function groupCard(g) {
   const meta = el('div', 'group-meta');
   const count = g.members.length;
   meta.append(el('span', 'chip', `${count} ${count === 1 ? 'member' : 'members'}`));
+  if (g.member) {
+    const subscribed = el('span', 'manager-state is-subscribed');
+    subscribed.append(svg('check'), el('span', '', 'Subscribed'));
+    meta.append(subscribed);
+  }
+  if (g.mine) {
+    const star = el('span', 'group-manage');
+    star.title = 'You manage this email list';
+    star.append(svg('star'));
+    card.append(star);
+  }
   if (managed(g) && g.visibility !== 'hidden') {
     meta.append(el('span', 'chip', visibilityWords[g.visibility]));
   }
@@ -71,7 +82,7 @@ function cards(list, groups) {
 export function groupsPage() {
   setTitle('My Email Lists');
   const page = el('div', 'list-page');
-  page.append(pageHead(isAdmin() ? 'Every Email List' : 'My Email Lists', [button('New email list', 'plus', 'button', () => navigate('/new'))]));
+  page.append(pageHead('My Email Lists', [button('New email list', 'plus', 'button', () => navigate('/new'))]));
   page.append(el('p', 'page-lead', 'Each email list is an address at ' + state.model.domain + ' whose members follow from its rules, drawn from the directory as it changes.'));
   const list = el('div', 'group-list');
   const empty = el('div', 'panel-empty');
@@ -80,20 +91,13 @@ export function groupsPage() {
   suggested.append(el('p', 'page-lead', 'A party you host, an activity you co-chair or a tag of yours in Helios Who? with no email list yet. Make one and it starts with the right rule and managers; change anything before you save.'));
   const suggestedList = el('div', 'group-list');
   suggested.append(suggestedList);
-  const others = el('div');
-  others.append(el('h2', 'section-title', 'Other email lists'));
-  others.append(el('p', 'page-lead', 'Email lists their managers have opened to everyone in Loop, and email lists you are on whose managers have opened them to their members. Open one to see who is on it; if you are, you can take yourself off it there, or put yourself back.'));
-  const othersList = el('div', 'group-list');
-  others.append(othersList);
   const render = query => {
     list.replaceChildren();
     suggestedList.replaceChildren();
-    othersList.replaceChildren();
-    const mine = state.model.groups.filter(g => managed(g) && !g.archived && matches(g, query));
+    const mine = state.model.groups.filter(g => (g.mine || g.member) && !g.archived && matches(g, query));
     const suggestions = state.model.suggestions.filter(s => !query || s.name.toLowerCase().includes(query));
-    const theirs = state.model.groups.filter(g => !managed(g) && !g.archived && matches(g, query));
     if (!mine.length) {
-      empty.textContent = query ? 'No email list of yours matches that.' : 'You manage no email lists yet. Make one, and its address is yours to hand out.';
+      empty.textContent = query ? 'No email list of yours matches that.' : 'You are on no email lists and manage none yet. Make one, and its address is yours to hand out.';
       list.append(empty);
     }
     cards(list, mine);
@@ -103,11 +107,9 @@ export function groupsPage() {
       slot.append(suggestionCard(s));
       suggestedList.append(slot);
     }
-    others.hidden = !theirs.length;
-    cards(othersList, theirs);
   };
   render('');
   setSearch('', render);
-  page.append(list, suggested, others);
+  page.append(list, suggested);
   return page;
 }
