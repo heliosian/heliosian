@@ -1,4 +1,4 @@
-import {state, me, isAdmin, postedAndHosting, sourceWords, dayType, dayTypeName, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
+import {state, me, allows, sourceWords, dayType, dayTypeName, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {paragraphs} from '../dom.js';
 import {el, svg, button, editToggle, toast, longToast, avatar, copyText} from '/elements.js';
@@ -8,7 +8,7 @@ import {heroImageBar} from '/heroimage.js';
 import {whoLink} from '/appswitch.js';
 import {setTitle} from '/shell.js';
 import {load} from '/router.js';
-import {api} from '/api.js';
+import {act} from '/data.js';
 import {openGuestForm} from '../guestpopups.js';
 import {answerIcon} from '../inviteparts.js';
 import {audienceChips, blocks} from '../events.js';
@@ -29,7 +29,7 @@ function hero(e) {
   if (e.link) {
     wrap.append(linkedBadge(e));
   }
-  if ((e.source === 'sheet' && (isAdmin() || postedAndHosting(e))) || (imported(e) && isAdmin())) {
+  if (e.can.edit || e.can.image) {
     wrap.append(imageBar(e));
   }
   return wrap;
@@ -39,20 +39,10 @@ function imported(e) {
   return e.source === 'google' || e.source === 'pdf';
 }
 
-function sheetTags(e) {
-  const builtIn = new Set(state.model.tags.filter(t => t.builtIn).map(t => t.id));
-  return e.tags.filter(t => !builtIn.has(t));
-}
-
 function imageBar(e) {
   const save = async image => {
-    const override = imported(e);
-    const body = override ? {id: e.id, image} : {
-      id: e.id, title: e.title, start: e.start, end: e.end, location: e.location || '', description: e.description || '',
-      tags: sheetTags(e), keywords: e.keywords || [], source: e.sourceUrl || e.sourceNote || '', image, sharing: e.sharing,
-    };
     try {
-      await api('PUT', override ? '/api/when/overrides/image' : '/api/when/events', body);
+      await act('events', e.id, imported(e) ? 'image' : 'edit', {image});
     } catch (err) {
       toast(err.message);
       return;
@@ -77,7 +67,7 @@ export function eventPage(e) {
   back.setAttribute('data-link', '');
   back.append(svg('chevron-left'), el('span', '', monthLabel(monthOf(eventDates(e)[0]))));
   top.append(back);
-  if ((imported(e) && isAdmin()) || (e.source === 'sheet' && (isAdmin() || postedAndHosting(e)))) {
+  if (e.can.edit || e.can.correct) {
     const edit = editToggle(false, async () => {
       const {openEditor} = await import('../invites.js');
       openEditor(e, editorView, async () => {
@@ -147,12 +137,12 @@ export function eventPage(e) {
   side.append(when);
   side.append(mineCard);
   const answered = el('div', 'detail-answered');
-  if (!e.cancelled && (isAdmin() || postedAndHosting(e))) {
+  if (!e.cancelled && e.responses) {
     answered.append(rsvpsCard(e));
   }
   side.append(answered);
   const linked = e.source === 'celebrate' || e.source === 'team';
-  const source = !linked || isAdmin() ? sourceCard(e, linked) : null;
+  const source = !linked || allows('when.see-all') ? sourceCard(e, linked) : null;
   if (source) {
     side.append(source);
   }
@@ -409,7 +399,7 @@ function rsvpCard(e, slot, guest) {
 function inviteBand(e) {
   const band = el('div', 'pending-band is-invite');
   const words = el('div', 'pending-words');
-  const mine = postedAndHosting(e);
+  const mine = e.hosted;
   if (e.sharing === 'Invite Only') {
     words.append(el('div', 'pending-title', 'Invite only'), el('div', 'pending-lead', mine ? 'Only the people you invite can open this event, and their answers put it on their calendars.' : 'You were invited. Your answer below puts it on your calendar.'));
   } else {
@@ -425,19 +415,19 @@ function pendingBand(e) {
   const band = el('div', 'pending-band' + (e.declined ? ' is-declined' : ''));
   const words = el('div', 'pending-words');
   const who = state.model.names && state.model.names[e.addedBy] ? state.model.names[e.addedBy] : e.addedBy;
-  const mine = e.addedBy === state.model.user.email;
-  const decides = isAdmin() && !mine;
+  const mine = e.addedBy === me().email;
+  const decides = e.can.approve && !mine;
   if (e.declined) {
     words.append(el('div', 'pending-title', 'Declined'), el('div', 'pending-lead', mine ? 'An admin declined this event, so it is not on the calendar. You can still edit it; an admin can approve it later.' : decides ? `Shared by ${who} and declined. Approve it to put it on the calendar after all.` : `Shared by ${who}. An admin declined it, so it is not on the calendar.`));
   } else {
     words.append(el('div', 'pending-title', 'Waiting for approval'), el('div', 'pending-lead', mine ? 'You shared this event. An admin will approve it onto the calendar; until then it is shared by link, so anyone you send the link to can open it.' : decides ? `Shared by ${who}. Approve it onto the calendar, or decline it.` : `Shared by ${who}. It goes on the calendar once an admin approves it.`));
   }
   band.append(svg(e.declined ? 'close' : 'clock'), words);
-  if (isAdmin()) {
+  if (e.can.approve) {
     const actions = el('div', 'pending-actions');
-    const decide = async (path, done) => {
+    const decide = async (action, done) => {
       try {
-        await api('POST', '/api/when/events/' + path, {id: e.id});
+        await act('events', e.id, action);
       } catch (err) {
         toast(err.message);
         return;
@@ -446,7 +436,7 @@ function pendingBand(e) {
       await load();
     };
     actions.append(button('Approve', 'check', 'button button-small', () => decide('approve', 'On the calendar')));
-    if (!e.declined) {
+    if (e.can.decline && !e.declined) {
       actions.append(button('Decline', 'close', 'button button-secondary button-small', () => {
         if (confirm(`Decline ${e.title}? It comes off the calendar; you can approve it later.`)) {
           decide('decline', 'Declined');
@@ -460,7 +450,7 @@ function pendingBand(e) {
 
 function rsvpsCard(e) {
   const card = el('div', 'side-card rsvps-card');
-  const r = (state.model.responses || {})[e.id] || {};
+  const r = e.responses;
   card.append(el('div', 'side-title', 'RSVPs'));
   const yes = r.yes || [];
   const no = r.no || [];
@@ -519,7 +509,7 @@ function keywordsEditor(e) {
       const save = button('Save', 'check', 'button button-small', async () => {
         const keywords = input.value.split(',').map(w => w.trim()).filter(Boolean);
         try {
-          await api('POST', '/api/when/keywords', {id: e.id, keywords});
+          await act('events', e.id, 'keywords', {keywords});
         } catch (err) {
           toast(err.message);
           return;
@@ -598,8 +588,8 @@ function sourceCard(e, adminOnly = false) {
   if (!adminOnly && e.link && e.source !== 'celebrate' && e.source !== 'team') {
     body.append(el('div', 'side-line', 'Also listed on HCA-Team, which runs it.'), outLink(linkURL(e), 'Open on HCA-Team'));
   }
-  if (isAdmin()) {
-    const p = (state.model.provenance || {})[e.id] || {};
+  if (allows('when.see-all')) {
+    const p = e.provenance || {};
     const admin = el('div', 'side-admin' + (adminOnly ? ' is-alone' : ''));
     admin.append(el('div', 'side-admin-title', 'For admins'));
     if (p.enriched) {
@@ -608,7 +598,7 @@ function sourceCard(e, adminOnly = false) {
     if (p.corrected && p.corrected.length) {
       admin.append(el('div', 'side-line', `Corrected in Overrides: ${p.corrected.join(', ').toLowerCase()}.${p.note ? ' Note: \u201c' + p.note + '\u201d' : ''}`));
     }
-    if (!e.link || e.source === 'google' || e.source === 'pdf' || e.source === 'sheet') {
+    if (e.can.keywords && (!e.link || e.source === 'google' || e.source === 'pdf' || e.source === 'sheet')) {
       admin.append(keywordsEditor(e));
     }
     if (adminOnly && admin.childElementCount === 1) {

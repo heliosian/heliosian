@@ -1,4 +1,4 @@
-import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagIds, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
+import {state, me, settingsId, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagIds, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
 import {feedMark, emojiPicker} from './dom.js';
 import {el, svg, link, button, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
@@ -6,7 +6,7 @@ import {field, text} from '/form.js';
 import {dayColumn} from './day.js';
 import {initShell, appSymbol, onSlash} from '/shell.js';
 import {load, render, setPath} from '/router.js';
-import {api} from '/api.js';
+import {act, remove as removeResource} from '/data.js';
 
 const primary = [
   {href: '/', icon: 'app', label: 'Calendar'},
@@ -72,7 +72,7 @@ export function editFeedPopup(f) {
       return;
     }
     try {
-      await api('DELETE', '/api/when/feeds', {token: f.token});
+      await removeResource('calendar-feeds', f.id);
     } catch (err) {
       toast(err.message);
       return;
@@ -102,9 +102,9 @@ export function editFeedPopup(f) {
     submit.disabled = true;
     status.classList.remove('error');
     status.textContent = 'Saving\u2026';
-    const body = {token: f.token, name: name.value.trim(), emoji: input.value.trim(), classrooms: f.classrooms, tags: f.tags};
+    const body = {name: name.value.trim(), emoji: input.value.trim(), classrooms: f.classrooms, tags: f.tags};
     try {
-      await api('PUT', '/api/when/feeds', body);
+      await act('calendar-feeds', f.id, 'edit', body);
     } catch (err) {
       status.textContent = err.message;
       status.classList.add('error');
@@ -121,7 +121,7 @@ export function editFeedPopup(f) {
 
 export async function makeDefaultFeed(f) {
   try {
-    await api('POST', '/api/when/default', {token: f.token});
+    await act('when-settings', settingsId(), 'default', {token: f.token});
   } catch (err) {
     toast(err.message);
     return;
@@ -132,7 +132,7 @@ export async function makeDefaultFeed(f) {
 
 async function orderFeeds(tokens) {
   try {
-    await api('PUT', '/api/when/feeds/order', {tokens});
+    await act('when-settings', settingsId(), 'order-feeds', {tokens});
   } catch (err) {
     toast(err.message);
     return false;
@@ -322,7 +322,7 @@ async function removeFeed(f) {
     return;
   }
   try {
-    await api('DELETE', '/api/when/feeds', {token: f.token});
+    await removeResource('calendar-feeds', f.id);
   } catch (err) {
     toast(err.message);
     return;
@@ -529,7 +529,7 @@ export function fillFilters(wrap, opts = {}) {
   } else if (working && working.locked && savedView()) {
     foot.append(button('Forget my saved view', null, 'button button-secondary button-small', async () => {
       try {
-        await api('DELETE', '/api/when/settings');
+        await act('when-settings', settingsId(), 'forget-view');
       } catch (err) {
         toast(err.message);
         return;

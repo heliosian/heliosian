@@ -157,7 +157,7 @@ func (a app) nameOn(e *Event, email string) string {
 	if p := a.directory().Person(email); p != nil && p.FullName != "" {
 		return p.FullName
 	}
-	if inv := a.cache.Model().InviteOf(e.ID, email); inv != nil && inv.Name != "" {
+	if inv := a.model().InviteOf(e.ID, email); inv != nil && inv.Name != "" {
 		return inv.Name
 	}
 	return cells.DisplayName(email)
@@ -170,7 +170,7 @@ func (a app) householdKey(e *Event, email string) string {
 }
 
 func (a app) guestRow(viewer access.Actor, e *Event, email, name string, invited, host bool, ticket string) GuestRow {
-	model := a.cache.Model()
+	model := a.model()
 	p, known := a.personOf(email, name)
 	g := GuestRow{Person: p, Key: email, Invited: invited, Outside: known == nil, Ticket: ticket, Mine: host || a.speaksFor(viewer, email, e), Household: a.householdKey(e, email)}
 	if known != nil {
@@ -189,7 +189,7 @@ func (a app) guestRow(viewer access.Actor, e *Event, email, name string, invited
 }
 
 func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
-	model := a.cache.Model()
+	model := a.model()
 	tickets := map[string]string{}
 	if p := a.party(e); p != nil {
 		for _, t := range p.Attendees {
@@ -243,14 +243,18 @@ func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
 
 func (a app) invitesView(r *http.Request, _ serve.None) (InviteView, error) {
 	actor := a.actor(r)
-	viewer := actor.Email
 	e, err := a.findEvent(actor, r.URL.Query().Get("id"))
 	if err != nil {
 		return InviteView{}, err
 	}
-	host := a.isHost(actor, e)
 	a.noteOpened(r.Context(), actor, e)
-	model := a.cache.Model()
+	return a.inviteView(actor, e), nil
+}
+
+func (a app) inviteView(actor access.Actor, e *Event) InviteView {
+	viewer := actor.Email
+	host := a.isHost(actor, e)
+	model := a.model()
 	inv := model.Invitations[e.ID]
 	poster := ""
 	if e.Source == SourceSheet && !e.PosterLeft {
@@ -364,7 +368,7 @@ func (a app) invitesView(r *http.Request, _ serve.None) (InviteView, error) {
 			view.Groups = append(view.Groups, g)
 		}
 	}
-	return view, nil
+	return view
 }
 
 func b2i(b bool) int {
@@ -390,7 +394,7 @@ func (a app) invitePeople(r *http.Request, _ serve.None) (PickerView, error) {
 			return PickerView{}, err
 		}
 	}
-	model := a.cache.Model()
+	model := a.model()
 	view := PickerView{Classrooms: model.Roster.Classrooms, Lists: []List{}, OnList: []string{}}
 	if lists := a.lists(actor.Email); lists != nil {
 		view.Lists = lists
@@ -568,7 +572,7 @@ func (a app) sendInvites(r *http.Request, body sendBody) (map[string]int, error)
 	if err != nil {
 		return nil, err
 	}
-	model := a.cache.Model()
+	model := a.model()
 	emails := []string{}
 	reminder := false
 	if len(body.Emails) > 0 {
@@ -640,7 +644,7 @@ func (a app) skipInvites(r *http.Request, body skipBody) (map[string]int, error)
 	if err != nil {
 		return nil, err
 	}
-	model := a.cache.Model()
+	model := a.model()
 	emails := []string{}
 	for _, email := range body.Emails {
 		email = config.NormalizeEmail(email)
@@ -693,7 +697,7 @@ func (a app) messageInvites(r *http.Request, body messageBody) (map[string]int, 
 	if len(wanted) == 0 && len(body.Emails) == 0 {
 		return nil, access.Invalid("pick who to send to")
 	}
-	model := a.cache.Model()
+	model := a.model()
 	standing := func(email string) string {
 		if answer := model.AnswerOf(email, e.ID); answer != "" && answer != AnswerHidden {
 			return answer
@@ -734,11 +738,11 @@ func (a app) banner(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	a.serveImage(w, r, a.cache.Model().pictureOf(e))
+	a.serveImage(w, r, a.model().pictureOf(e))
 }
 
 func (a app) flyer(w http.ResponseWriter, r *http.Request) {
-	inv := a.cache.Model().Invitations[a.canonical(strings.TrimSpace(r.PathValue("id")))]
+	inv := a.model().Invitations[a.canonical(strings.TrimSpace(r.PathValue("id")))]
 	if inv == nil || inv.Flyer == "" {
 		http.NotFound(w, r)
 		return

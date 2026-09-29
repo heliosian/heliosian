@@ -343,7 +343,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load feedback model", "error", err)
 	}
-	registry := resources(caches{settings, cache, invites, teamCache, birthdayCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, feedbackCache}, queue, birthdayResources, loop.Resources(loopCache, loopMail.Documents))
+	registry := resources(caches{settings, cache, invites, teamCache, birthdayCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, feedbackCache, hooks, cfg.IDKey}, queue, birthdayResources, loop.Resources(loopCache, loopMail.Documents))
 	birthday.Register(birthdayMux, birthday.Deps{
 		Cache:     birthdayCache,
 		Queue:     queue,

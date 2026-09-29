@@ -1,8 +1,9 @@
-import {me, isAdmin, postedAndHosting, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
+import {me, allows, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
 import {el, svg, button, toast, longToast, copyText} from '/elements.js';
 import {popup} from '/modal.js';
 import {whoLink} from '/appswitch.js';
 import {api} from '/api.js';
+import {query, act, remove as removeResource} from '/data.js';
 import {checkbox} from '/form.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
@@ -12,12 +13,21 @@ import {openGuestForm, openGuestCard, warningChip, openPending, sendInvites, del
 import {listFilters, openTable, openMessage} from './guesttable.js';
 import {openPicker} from './addpeople.js';
 
-export function startParty(e) {
-  return api('POST', '/api/when/invites/start', {id: e.id});
+export async function startParty(e) {
+  await act('events', e.id, 'start');
+  const read = await query('/api/events/' + encodeURIComponent(e.id) + '?include=guest-list.invite-groups');
+  const key = (isParty(e) ? 'party:' : 'activity:') + e.linkedId;
+  const group = read.all('invite-groups').find(g => g.rule.tags.includes(key));
+  return {added: group.count};
 }
 
-export function fetchInvites(e) {
-  return api('GET', '/api/when/invites?id=' + encodeURIComponent(e.id));
+export async function fetchInvites(e) {
+  const read = await query('/api/events/' + encodeURIComponent(e.id) + '?include=guest-list');
+  const view = read.follow(read.get(read.result), 'guest-list');
+  if (view.can.opened) {
+    act('guest-lists', view.id, 'opened').catch(err => toast(err.message));
+  }
+  return view;
 }
 
 function bigChoices(e, r, refresh) {
@@ -69,7 +79,7 @@ function memberChip(e, r, refresh) {
   if (r.guestOf) {
     items.push({icon: 'trash', words: 'Remove guest', run: async () => {
       try {
-        await api('DELETE', '/api/when/invites/people', {id: e.id, email: r.key});
+        await act('events', e.id, 'uninvite', {email: r.key});
         toast(`${r.name} removed`);
         refresh();
       } catch (err) {
@@ -165,7 +175,7 @@ export function rsvpRow(e, view, refresh) {
         remove.append(svg('close'));
         remove.addEventListener('click', async () => {
           try {
-            await api('DELETE', '/api/when/invites/people', {id: e.id, email: r.key});
+            await act('events', e.id, 'uninvite', {email: r.key});
             toast(`${r.name} removed`);
             refresh();
           } catch (err) {
@@ -208,7 +218,7 @@ export function comingCard(e, view, refresh) {
       const pending = el('div', 'rsvps-pending');
       pending.append(el('div', 'rsvps-pending-title', `Pending \u00b7 ${unsent.length} not sent yet`));
       const row = el('div', 'rsvps-pending-row');
-      row.append(button('Send invitation now', 'calendar', 'button button-small', () => sendInvites(e, 'new', `Send the invitation to ${unsent.length} ${unsent.length === 1 ? 'person' : 'people'} who have not had it yet? Each gets an email with the calendar invite; a student's goes to them and their parents.`, refresh)));
+      row.append(button('Send invitation now', 'calendar', 'button button-small', () => sendInvites(e, 'new', unsent.length, `Send the invitation to ${unsent.length} ${unsent.length === 1 ? 'person' : 'people'} who have not had it yet? Each gets an email with the calendar invite; a student's goes to them and their parents.`, refresh)));
       row.append(button('More info', 'info', 'link-button', () => openPending(e, view, refresh)));
       if (!view.sent) {
         row.append(button(view.linked ? 'Delete invite' : 'Delete event', 'trash', 'link-button rsvps-pending-delete', () => deleteInvitation(e, view)));
@@ -225,7 +235,7 @@ export function comingCard(e, view, refresh) {
     const open = !view.listPrivate;
     head.append(button(open ? 'Keep to hosts' : 'Show to everyone', open ? 'eye-off' : 'eye', 'link-button', async () => {
       try {
-        await api('PUT', '/api/when/invites/settings', {id: e.id, publicList: !open});
+        await act('events', e.id, 'settings', {publicList: !open});
         toast(open ? 'Only the hosts see who is coming now.' : 'Everyone who opens the event sees who is coming now.');
         refresh();
       } catch (err) {
@@ -297,7 +307,7 @@ export function comingCard(e, view, refresh) {
     box.checked = Boolean(view.notifyMe);
     box.addEventListener('change', async () => {
       try {
-        await api('PUT', '/api/when/invites/settings', {id: e.id, notifyMe: box.checked});
+        await act('events', e.id, 'settings', {notifyMe: box.checked});
         toast(box.checked ? 'You\u2019ll get an email as answers come in' : 'No more emails about answers');
       } catch (err) {
         toast(err.message);
@@ -348,15 +358,15 @@ export function hostsRow(e, view, refresh) {
     tile.title = [h.name, h.line].filter(Boolean).join(' \u00b7 ');
     tile.append(face(h, 'contact-photo'), el('span', 'contact-name', h.name || h.email));
     const own = h.email === self;
-    const poster = !own && isAdmin() && h.email === view.poster;
-    if (view.host && (own ? cohosts.has(self) || postedAndHosting(e) : cohosts.has(h.email) || poster)) {
+    const poster = !own && allows('when.act-as-host') && h.email === view.poster;
+    if (view.host && (own ? cohosts.has(self) || view.poster === self : cohosts.has(h.email) || poster)) {
       const x = el('button', 'hosts-card-remove');
       x.type = 'button';
       x.title = own ? 'Step down as host' : poster ? `Step ${h.name} down as host` : `Take ${h.name} off as a co-host`;
       x.textContent = '\u00d7';
       x.addEventListener('click', async ev => {
         ev.preventDefault();
-        const lose = postedAndHosting(e) ? 'edit it or run its guest list' : 'run its guest list';
+        const lose = view.poster === self ? 'edit it or run its guest list' : 'run its guest list';
         const alone = !view.hosts.some(o => o.email !== self);
         const others = view.hosts.filter(o => o.email !== h.email).length;
         const ask = own
@@ -369,13 +379,13 @@ export function hostsRow(e, view, refresh) {
         }
         try {
           if (own) {
-            await api('POST', '/api/when/invites/step-down', {id: e.id});
+            await act('events', e.id, 'step-down', {});
             toast('You no longer host this event.');
           } else if (poster) {
-            await api('POST', '/api/when/invites/step-down', {id: e.id, email: h.email});
+            await act('events', e.id, 'step-down', {email: h.email});
             toast(`${h.name} no longer hosts this event.`);
           } else {
-            await api('PUT', '/api/when/invites/settings', {id: e.id, hosts: [...cohosts].filter(x => x !== h.email)});
+            await act('events', e.id, 'settings', {hosts: [...cohosts].filter(x => x !== h.email)});
           }
           refresh();
         } catch (err) {
@@ -393,7 +403,7 @@ export function hostsRow(e, view, refresh) {
     const hidden = Boolean(view.hostsHidden);
     tools.append(button(hidden ? 'Show hosts' : 'Hide hosts', hidden ? 'eye' : 'eye-off', 'link-button', async () => {
       try {
-        await api('PUT', '/api/when/invites/settings', {id: e.id, hideHosts: !hidden});
+        await act('events', e.id, 'settings', {hideHosts: !hidden});
         toast(hidden ? 'Everyone who opens the event sees its hosts again.' : 'Only the hosts see who hosts this event now.');
         refresh();
       } catch (err) {
@@ -430,7 +440,7 @@ function openAddHost(e, view, refresh) {
     }
     submit.disabled = true;
     try {
-      await api('PUT', '/api/when/invites/settings', {id: e.id, hosts: [...((view.settings || {}).hosts || []), email]});
+      await act('events', e.id, 'settings', {hosts: [...((view.settings || {}).hosts || []), email]});
       toast('Co-host added');
       shut();
       refresh();
@@ -507,7 +517,7 @@ export function flyerCard(e, view, refresh) {
   if (view.host) {
     const save = async image => {
       try {
-        await api('PUT', '/api/when/invites/settings', {id: e.id, flyer: image});
+        await act('events', e.id, 'settings', {flyer: image});
         toast(image ? 'Flyer saved' : 'Flyer removed');
         refresh();
       } catch (err) {
@@ -555,7 +565,7 @@ export function addFlyerLink(e, view, refresh) {
     }
     try {
       const made = await uploadImage(file.files[0]);
-      await api('PUT', '/api/when/invites/settings', {id: e.id, flyer: made.name});
+      await act('events', e.id, 'settings', {flyer: made.name});
       toast('Flyer saved');
       refresh();
     } catch (err) {
@@ -737,7 +747,7 @@ function guestsTable(e, view, refresh) {
 function guestGroupBlock(e, view, g, refresh) {
   const members = view.list.filter(r => r.via === 'group:' + g.id);
   const block = el('div', 'guests-household guests-group-block' + (openGroups.has(g.id) ? ' is-open' : ''));
-  block.append(guestGroupHead(e, g, members.length, () => {
+  block.append(guestGroupHead(e, g, members, () => {
     if (openGroups.has(g.id)) {
       openGroups.delete(g.id);
     } else {
@@ -753,13 +763,13 @@ function guestGroupBlock(e, view, g, refresh) {
   return block;
 }
 
-function guestGroupHead(e, g, count, onToggle, refresh) {
+function guestGroupHead(e, g, members, onToggle, refresh) {
   const row = el('div', 'guests-group');
   const mark = el('div', 'guests-group-mark');
   mark.append(svg('groups'));
   row.append(mark);
   const who = el('div', 'invite-who');
-  const line = `${count} on the list from this group` + (g.auto ? (g.sent ? ' \u00b7 auto-invited' : ' \u00b7 auto-invite starts after you send') : '');
+  const line = `${members.length} on the list from this group` + (g.auto ? (g.sent ? ' \u00b7 auto-invited' : ' \u00b7 auto-invite starts after you send') : '');
   who.append(el('div', 'invite-name', groupWords(g)), el('div', 'invite-line', line));
   who.addEventListener('click', onToggle);
   row.append(who);
@@ -768,11 +778,11 @@ function guestGroupHead(e, g, count, onToggle, refresh) {
   toggle.title = 'Show or hide the people in this group';
   toggle.append(svg('chevron-down'));
   toggle.addEventListener('click', onToggle);
-  row.append(toggle, guestGroupFoot(e, g, refresh));
+  row.append(toggle, guestGroupFoot(e, g, members, refresh));
   return row;
 }
 
-function guestGroupFoot(e, g, refresh) {
+function guestGroupFoot(e, g, members, refresh) {
   const foot = el('div', 'guests-group-foot');
   const auto = el('label', 'guests-group-auto');
   const box = el('input');
@@ -780,7 +790,7 @@ function guestGroupFoot(e, g, refresh) {
   box.checked = g.auto;
   box.addEventListener('change', async () => {
     try {
-      await api('PUT', '/api/when/invites/group', {id: e.id, group: g.id, auto: box.checked});
+      await act('invite-groups', g.id, 'edit', {auto: box.checked});
       toast(box.checked ? (g.sent ? 'Auto-invite on: newcomers are sent their invitation' : 'Auto-invite on: newcomers are sent theirs once you have sent this group its invites') : 'Auto-invite off: newcomers wait in Pending for you to send');
       if (box.checked) {
         refresh();
@@ -802,9 +812,10 @@ function guestGroupFoot(e, g, refresh) {
     if (!confirm('Remove this group? Anyone already sent an invitation will stay, but pending guests will be removed.')) {
       return;
     }
+    const dropped = members.filter(r => !r.sent).length;
     try {
-      const made = await api('DELETE', '/api/when/invites/group', {id: e.id, group: g.id});
-      toast(made.dropped ? `Group removed, and ${made.dropped} with it` : 'Group removed');
+      await removeResource('invite-groups', g.id);
+      toast(dropped ? `Group removed, and ${dropped} with it` : 'Group removed');
       refresh();
     } catch (err) {
       toast(err.message);
@@ -887,7 +898,7 @@ function guestActions(e, r, refresh) {
         return;
       }
       try {
-        await api('DELETE', '/api/when/invites/people', {id: e.id, email: r.key});
+        await act('events', e.id, 'uninvite', {email: r.key});
         refresh();
       } catch (err) {
         toast(err.message);
@@ -1024,7 +1035,7 @@ export function settingsForm(e, view, refresh, shut, part = 'invitation') {
     submit.disabled = true;
     try {
       const own = details ? details() : {};
-      await api('PUT', '/api/when/invites/settings', {id: e.id, ...(invitation ? {} : {message: message.value}), ...own});
+      await act('events', e.id, 'settings', {...(invitation ? {} : {message: message.value}), ...own});
       toast('Saved');
       shut();
       await refresh();
@@ -1059,7 +1070,7 @@ function permissionsForm(e, view, refresh, shut) {
     ev.preventDefault();
     submit.disabled = true;
     try {
-      await api('PUT', '/api/when/invites/settings', {id: e.id, guests: invite.input.checked, publicList: list.input.checked});
+      await act('events', e.id, 'settings', {guests: invite.input.checked, publicList: list.input.checked});
       toast('Saved');
       shut();
       await refresh();
@@ -1075,8 +1086,8 @@ function permissionsForm(e, view, refresh, shut) {
 export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
   const {eventForm} = await import('./eventform.js');
   const host = Boolean(view && view.host);
-  const own = e.source === 'sheet' && (postedAndHosting(e) || isAdmin() || host);
-  const imported = (e.source === 'google' || e.source === 'pdf') && (isAdmin() || host);
+  const own = e.can.edit;
+  const imported = e.can.correct;
   let shut = null;
   const box = el('div', 'editor');
   const panels = {};
@@ -1169,8 +1180,8 @@ export async function offerUpdate(e, changed) {
   let shut = null;
   actions.append(button(`Send the update to ${people.length}`, 'mail', 'button', async () => {
     try {
-      const made = await api('POST', '/api/when/invites/send', {id: e.id, to: 'sent', update: true});
-      longToast(made.messages === 1 ? 'The update is on its way' : `${made.messages} updates are on their way`);
+      await act('events', e.id, 'send', {to: 'sent', update: true});
+      longToast(people.length === 1 ? 'The update is on its way' : `${people.length} updates are on their way`);
       shut();
     } catch (err) {
       toast(err.message);

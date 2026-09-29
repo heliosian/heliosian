@@ -61,7 +61,7 @@ func (m *Model) category(e *Event) string {
 }
 
 func (a app) events() []*Event {
-	return withLinked(a.cache.Model().Events, a.linked(""))
+	return withLinked(a.model().Events, a.linked(""))
 }
 
 func (a app) event(key string) *Event {
@@ -71,7 +71,7 @@ func (a app) event(key string) *Event {
 			return e
 		}
 	}
-	return a.cache.Model().Event(key)
+	return a.model().Event(key)
 }
 
 func cutEventPath(path string) (string, bool) {
@@ -150,14 +150,14 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	e = a.cache.Model().invitedEvent(e)
-	picture := a.cache.Model().pictureOf(e)
+	e = a.model().invitedEvent(e)
+	picture := a.model().pictureOf(e)
 	whole := false
-	if inv := a.cache.Model().Invitations[e.ID]; inv != nil && inv.Flyer != "" {
+	if inv := a.model().Invitations[e.ID]; inv != nil && inv.Flyer != "" {
 		picture, whole = inv.Flyer, true
 	}
 	day, hours := whenLines(e)
-	kicker := a.cache.Model().category(e)
+	kicker := a.model().category(e)
 	button := shareButton(e)
 	card := sharecard.Card{
 		Kicker: kicker, Title: e.Title, Picture: a.images.Read(picture), Whole: whole,

@@ -29,6 +29,7 @@ var eventPages = []string{"/e/{id...}", "/events/{id...}"}
 
 type app struct {
 	cache     *Cache
+	pinned    *Model
 	images    blob.Images
 	directory func() *who.Model
 	settings  func() *config.Settings
@@ -81,7 +82,7 @@ func Register(mux *http.ServeMux, d Deps) Hooks {
 	for _, page := range eventPages {
 		mux.HandleFunc("GET "+page, a.eventPage)
 	}
-	mux.HandleFunc("GET /api/when/model", serve.JSON(a.model))
+	mux.HandleFunc("GET /api/when/model", serve.JSON(a.modelView))
 	mux.HandleFunc("GET /api/apps/rsvp", serve.JSON(a.rsvps))
 	mux.HandleFunc("POST /api/when/feeds", serve.JSON(a.addFeed))
 	mux.HandleFunc("PUT /api/when/feeds", serve.JSON(a.editFeed))
@@ -139,7 +140,7 @@ func Register(mux *http.ServeMux, d Deps) Hooks {
 		actor := a.as(config.NormalizeEmail(email))
 		return a.recordBy(ctx, actor, actor.Email, id, answer, ViaPage, true, false)
 	}
-	return Hooks{Answer: answer, MakeDefault: a.makeDefault, RSVPs: serve.JSON(a.rsvps), MoveAddress: a.moveAddress}
+	return Hooks{Answer: answer, MakeDefault: a.makeDefault, RSVPs: serve.JSON(a.rsvps), MoveAddress: a.moveAddress, cache: d.Cache, app: a}
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -169,11 +170,11 @@ var now = func() time.Time {
 	return time.Now().In(Location)
 }
 
-func (a app) model(r *http.Request, _ serve.None) (View, error) {
+func (a app) modelView(r *http.Request, _ serve.None) (View, error) {
 	actor := a.actor(r)
 	email := actor.Email
 	directory := a.directory()
-	model := a.cache.Model()
+	model := a.model()
 	view := Render(model, directory, a.settings(), actor, now(), a.linked(email))
 	for i, e := range view.Events {
 		hosted := model.hostedBy(directory, email, e)
@@ -191,6 +192,13 @@ func (a app) model(r *http.Request, _ serve.None) (View, error) {
 	}
 	view.ImageSearch = a.search.On()
 	return view, nil
+}
+
+func (a app) model() *Model {
+	if a.pinned != nil {
+		return a.pinned
+	}
+	return a.cache.Model()
 }
 
 func (a app) as(email string) access.Actor {
@@ -243,6 +251,8 @@ type Hooks struct {
 	MakeDefault func(ctx context.Context, email, token string) error
 	RSVPs       http.HandlerFunc
 	MoveAddress func(ctx context.Context, actor access.Actor, old, to, name string)
+	cache       *Cache
+	app         app
 }
 
 func (a app) makeDefault(ctx context.Context, email, token string) error {
@@ -566,7 +576,7 @@ func (a app) setTags(r *http.Request, body tagsBody) (serve.None, error) {
 
 func (a app) feed(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSuffix(r.PathValue("file"), ".ics")
-	model := a.cache.Model()
+	model := a.model()
 	f := model.Feed(token)
 	if email := model.myHeliosianFeed(token); f == nil && email != "" {
 		home := model.MyHeliosian(email)

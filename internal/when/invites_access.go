@@ -78,7 +78,7 @@ func (m *Model) hostedBy(directory *who.Model, email string, e *Event) bool {
 }
 
 func (a app) hostsOf(e *Event) []string {
-	return a.cache.Model().hostsOf(a.directory(), e)
+	return a.model().hostsOf(a.directory(), e)
 }
 
 func (a app) isHost(actor access.Actor, e *Event) bool {
@@ -117,7 +117,7 @@ func (a app) inviterEvent(actor access.Actor, id string) (*Event, bool, error) {
 	if host {
 		return e, true, nil
 	}
-	model := a.cache.Model()
+	model := a.model()
 	if !model.othersInvite(e.ID) {
 		return nil, false, access.Forbidden("only the hosts invite people to this event")
 	}
@@ -151,7 +151,7 @@ func (a app) householdOn(e *Event, email string) []string {
 	if a.directory().Person(email) != nil {
 		return a.household(email)
 	}
-	model := a.cache.Model()
+	model := a.model()
 	inv := model.InviteOf(e.ID, email)
 	if inv == nil || inv.Household == "" {
 		return []string{email}
@@ -173,6 +173,6 @@ func (a app) speaksFor(actor access.Actor, subject string, e *Event) bool {
 	if actor.Mine(subject) {
 		return true
 	}
-	inv := a.cache.Model().InviteOf(e.ID, subject)
+	inv := a.model().InviteOf(e.ID, subject)
 	return inv != nil && inv.GuestOf != "" && actor.Mine(inv.GuestOf)
 }

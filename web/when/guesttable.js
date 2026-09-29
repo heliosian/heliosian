@@ -1,6 +1,6 @@
 import {el, svg, button, longToast, copyText} from '/elements.js';
 import {popup} from '/modal.js';
-import {api} from '/api.js';
+import {act} from '/data.js';
 import {chipToggle, filterControl} from '/rules.js';
 import {answerWords, answerIcon, answerButtons, face, ticketWords, stamp} from './inviteparts.js';
 
@@ -253,8 +253,9 @@ export function openMessage(e, view, refresh, preset = {}) {
     }
     send.disabled = true;
     try {
-      const made = await api('POST', '/api/when/invites/message', {id: e.id, subject: subject.value.trim(), message: message.value.trim(), to: [...to], emails: [...picked], attach: Boolean(preset.attach)});
-      longToast(made.messages === 1 ? 'Sent to one person' : `Sent to ${made.messages} people`);
+      await act('events', e.id, 'message', {subject: subject.value.trim(), message: message.value.trim(), to: [...to], emails: [...picked], attach: Boolean(preset.attach)});
+      const reached = view.list.filter(r => r.invited && r.email && (to.has(r.answer && r.answer !== 'hidden' ? r.answer : 'none') || picked.has(r.key))).length;
+      longToast(reached === 1 ? 'Sent to one person' : `Sent to ${reached} people`);
       shut();
       refresh();
     } catch (err) {

@@ -48,8 +48,8 @@ func (a app) extPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	head := ""
-	if inv, ok := a.cache.Model().InviteByToken(r.PathValue("token")); ok {
-		if e := a.cache.Model().invitedEvent(a.eventFor(access.Actor{Email: inv.Email}, inv.EventID)); e != nil {
+	if inv, ok := a.model().InviteByToken(r.PathValue("token")); ok {
+		if e := a.model().invitedEvent(a.eventFor(access.Actor{Email: inv.Email}, inv.EventID)); e != nil {
 			origin := "https://" + r.Host
 			parts := []string{when(e)}
 			if e.Location != "" {
@@ -64,7 +64,7 @@ func (a app) extPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) extInvite(r *http.Request) (Invite, *Event, error) {
-	model := a.cache.Model()
+	model := a.model()
 	inv, ok := model.InviteByToken(r.PathValue("token"))
 	if !ok {
 		return Invite{}, nil, access.Missing("that invitation is not here")
@@ -82,7 +82,7 @@ func (a app) extView(r *http.Request, _ serve.None) (ExtView, error) {
 		return ExtView{}, err
 	}
 	a.noteOpened(r.Context(), access.Actor{Email: inv.Email}, e)
-	model := a.cache.Model()
+	model := a.model()
 	day, hours := whenLines(e)
 	view := ExtView{Title: e.Title, Day: day, Hours: hours, Location: e.Location, Description: e.Description, Hosts: []string{}, Name: inv.Name, Answer: model.AnswerOf(inv.Email, e.ID), Guests: true, Brought: []ExtGuest{}, Family: []ExtGuest{}, Past: e.end.Before(now()), Banner: "/open/banner/" + e.ID}
 	for _, member := range a.householdOn(e, inv.Email)[1:] {

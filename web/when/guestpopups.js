@@ -3,7 +3,7 @@ import {popup} from '/modal.js';
 import {field, text as textInput} from '/form.js';
 import {load} from '/router.js';
 import {whoLink} from '/appswitch.js';
-import {api} from '/api.js';
+import {act} from '/data.js';
 import {createPersonPicker} from '/picker.js';
 import {answerWords, firstName, answerButtons, face, ticketWords, ticketDetail, answeredWords, pickerPeople} from './inviteparts.js';
 
@@ -61,7 +61,7 @@ function guestForm(e, of, onDone) {
   form.append(actions);
   form.addEventListener('submit', async ev => {
     ev.preventDefault();
-    const body = {id: e.id, of, answer: yes.checked ? 'yes' : '', invite: invite.checked};
+    const body = {of, answer: yes.checked ? 'yes' : '', invite: invite.checked};
     if (active === 'helios') {
       if (!picker.value) {
         status.textContent = 'Pick someone from the directory first.';
@@ -86,7 +86,7 @@ function guestForm(e, of, onDone) {
     }
     submit.disabled = true;
     try {
-      await api('POST', '/api/when/invites/guest', body);
+      await act('events', e.id, 'bring-guest', body);
       toast(`${body.name} added`);
       onDone();
     } catch (err) {
@@ -154,8 +154,8 @@ export function openGuestCard(e, p, view, refresh) {
   if (view.host && p.invited && p.email) {
     links.append(button(p.sent ? 'Resend invitation' : 'Send invitation', 'calendar', 'link-button', async () => {
       try {
-        const made = await api('POST', '/api/when/invites/send', {id: e.id, emails: [p.key]});
-        longToast(made.messages === 1 ? 'The invitation is on its way' : `${made.messages} emails are on their way`);
+        await act('events', e.id, 'send', {emails: [p.key]});
+        longToast('The invitation is on its way');
         shut();
         refresh();
       } catch (err) {
@@ -169,7 +169,7 @@ export function openGuestCard(e, p, view, refresh) {
         return;
       }
       try {
-        await api('DELETE', '/api/when/invites/people', {id: e.id, email: p.key});
+        await act('events', e.id, 'uninvite', {email: p.key});
         shut();
         refresh();
       } catch (err) {
@@ -230,7 +230,7 @@ function openEmailEdit(e, view, r, refresh) {
     submit.disabled = true;
     try {
       const all = Boolean(everywhere && everywhere.checked);
-      await api('POST', '/api/when/invites/email', {id: e.id, email: r.key, to: input.value.trim(), everywhere: all});
+      await act('events', e.id, 'change-email', {email: r.key, to: input.value.trim(), everywhere: all});
       toast(all ? 'Address changed on every party' : 'Address changed');
       shut();
       refresh();
@@ -252,8 +252,8 @@ export function openPending(e, view, refresh) {
   let shut = null;
   const sendTo = async (emails, words) => {
     try {
-      const made = await api('POST', '/api/when/invites/send', {id: e.id, emails});
-      longToast(made.messages === 1 ? 'One invite is on its way' : `${made.messages} invites are on their way`);
+      await act('events', e.id, 'send', {emails});
+      longToast(emails.length === 1 ? 'One invite is on its way' : `${emails.length} invites are on their way`);
       shut();
       refresh();
     } catch (err) {
@@ -285,7 +285,7 @@ export function openPending(e, view, refresh) {
         return;
       }
       try {
-        await api('POST', '/api/when/invites/skip', {id: e.id, emails: [r.key]});
+        await act('events', e.id, 'skip', {emails: [r.key]});
         toast(`${name} moved to No reply yet - no email sent`);
         shut();
         refresh();
@@ -303,13 +303,13 @@ export function openPending(e, view, refresh) {
   shut = popup(`Pending · ${unsent.length} not sent yet`, box).shut;
 }
 
-export async function sendInvites(e, to, words, refresh) {
+export async function sendInvites(e, to, count, words, refresh) {
   if (!confirm(words)) {
     return;
   }
   try {
-    const made = await api('POST', '/api/when/invites/send', {id: e.id, to});
-    longToast(made.messages === 1 ? 'One invite is on its way' : `${made.messages} invites are on their way`);
+    await act('events', e.id, 'send', {to});
+    longToast(count === 1 ? 'One invite is on its way' : `${count} invites are on their way`);
     refresh();
   } catch (err) {
     toast(err.message);
@@ -325,10 +325,11 @@ export async function deleteInvitation(e, view) {
   if (!confirm(words)) {
     return;
   }
+  const own = e.source === 'sheet';
   try {
-    const made = await api('POST', '/api/when/invites/delete', {id: e.id});
-    toast(made.event ? 'Event deleted' : 'Invitation deleted');
-    if (made.event) {
+    await act('events', e.id, 'delete-invitation');
+    toast(own ? 'Event deleted' : 'Invitation deleted');
+    if (own) {
       location.href = '/';
     } else {
       await load();
@@ -352,8 +353,8 @@ export function openCancel(e, view, refresh) {
   let shut = null;
   const cancel = async notify => {
     try {
-      const made = await api('POST', '/api/when/events/cancel', {id: e.id, notify, note: note.value});
-      longToast(notify ? `Cancelled - ${made.told} ${made.told === 1 ? 'person' : 'people'} told` : 'Cancelled');
+      await act('events', e.id, 'cancel', {notify, note: note.value});
+      longToast(notify ? `Cancelled - ${sent} ${sent === 1 ? 'person' : 'people'} told` : 'Cancelled');
       shut();
       refresh();
     } catch (err) {

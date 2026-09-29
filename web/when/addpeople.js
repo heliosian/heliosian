@@ -2,23 +2,22 @@ import {el, svg, button, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
 import {text as textInput} from '/form.js';
 import {api} from '/api.js';
+import {query, act, create} from '/data.js';
 import {directory, contactLine} from '/directory.js';
 import {chipToggle, familyDropdown} from '/rules.js';
-import {firstName, face, fetchPickerData, ruleOptions, setRuleOptions, rules} from './inviteparts.js';
+import {firstName, face, ruleOptions, setRuleOptions, rules} from './inviteparts.js';
 
 export async function openPicker(e, view, refresh) {
-  let data = null;
   let dir = null;
   try {
-    const [found, people, options] = await Promise.all([fetchPickerData(e), directory(), view.host ? api('GET', '/api/when/invites/options') : ruleOptions]);
-    data = found;
+    const [people, options] = await Promise.all([directory(), view.host ? api('GET', '/api/when/invites/options') : ruleOptions]);
     dir = people;
     setRuleOptions(options);
   } catch (err) {
     toast(err.message);
     return;
   }
-  const onList = new Set(data.onList || []);
+  const onList = new Set(view.onList);
   const box = el('div', 'picker');
   const tabs = el('div', 'tabs');
   const panel = el('div', 'picker-panel');
@@ -46,13 +45,13 @@ export async function openPicker(e, view, refresh) {
     panel.replaceChildren();
     switch (active) {
       case 'person':
-        panel.append(personPanel(e, dir, onList, done));
+        panel.append(personPanel(e, view.host, dir, onList, done));
         break;
       case 'group':
         panel.append(groupPanel(e, done));
         break;
       case 'outside':
-        panel.append(outsidePanel(e, onList, done));
+        panel.append(outsidePanel(e, view.host, onList, done));
         break;
     }
   };
@@ -63,7 +62,7 @@ export async function openPicker(e, view, refresh) {
 
 const roleTests = {student: p => p.isStudent, parent: p => p.isParent, staff: p => p.isStaff};
 
-function personPanel(e, dir, onList, done) {
+function personPanel(e, host, dir, onList, done) {
   const pick = {
     dir,
     people: dir.result.map(dir.get),
@@ -80,7 +79,7 @@ function personPanel(e, dir, onList, done) {
   pick.search.addEventListener('input', () => paintPersonList(pick));
   pick.add.type = 'button';
   const status = el('span', 'save-status');
-  pick.add.addEventListener('click', () => addPicked(e, pick, status, done));
+  pick.add.addEventListener('click', () => addPicked(e, host, pick, status, done));
   const foot = el('div', 'modal-actions');
   foot.append(pick.add, status);
   const wrap = el('div');
@@ -194,11 +193,12 @@ function personChoice(pick, p) {
   return row;
 }
 
-async function addPicked(e, pick, status, done) {
+async function addPicked(e, host, pick, status, done) {
   pick.add.disabled = true;
+  const people = [...everyonePicked(pick).values()];
   try {
-    const made = await api('POST', '/api/when/invites/people', {id: e.id, people: [...everyonePicked(pick).values()]});
-    done(made.sent ? `${made.added} invited - the invitation is on its way.` : `${made.added} added to the list.`);
+    await act('events', e.id, 'invite', {people});
+    done(host ? `${people.length} added to the list.` : `${people.length} invited - the invitation is on its way.`);
   } catch (err) {
     status.textContent = err.message;
     status.classList.add('error');
@@ -245,8 +245,10 @@ function groupPanel(e, done) {
     }
     add.disabled = true;
     try {
-      const made = await api('POST', '/api/when/invites/group', {id: e.id, rule, auto: box.checked});
-      done(`Group added, with ${made.added} ${made.added === 1 ? 'person' : 'people'} on the list now.`);
+      const made = await create('invite-groups', {id: e.id, rule, auto: box.checked});
+      const read = await query('/api/invite-groups/' + encodeURIComponent(made.id));
+      const added = read.get(read.result).count;
+      done(`Group added, with ${added} ${added === 1 ? 'person' : 'people'} on the list now.`);
     } catch (err) {
       status.textContent = err.message;
       status.classList.add('error');
@@ -260,7 +262,7 @@ function groupPanel(e, done) {
 
 const emailForm = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-function outsidePanel(e, onList, done) {
+function outsidePanel(e, host, onList, done) {
   const wrap = el('div');
   wrap.append(el('div', 'picker-note', 'Someone outside Helios - a coach, a grandparent, a friend - and their family. They get the email and the calendar invite with a page of their own to answer from, no sign-in needed, that shows the event and nothing of who else is coming.'));
   const families = el('div', 'outside-families');
@@ -272,7 +274,7 @@ function outsidePanel(e, onList, done) {
   }));
   const status = el('span', 'save-status');
   const foot = el('div', 'modal-actions');
-  const add = button('Add to the list', 'plus', 'button', () => addOutside(e, onList, families, status, add, done));
+  const add = button('Add to the list', 'plus', 'button', () => addOutside(e, host, onList, families, status, add, done));
   foot.append(add, status);
   wrap.append(foot);
   setTimeout(() => families.firstChild.focus(), 0);
@@ -358,7 +360,7 @@ function outsideMemberAdder(members, list) {
   return {node, name};
 }
 
-async function addOutside(e, onList, families, status, add, done) {
+async function addOutside(e, host, onList, families, status, add, done) {
   const people = [];
   for (const card of families.children) {
     const head = card.head();
@@ -388,8 +390,9 @@ async function addOutside(e, onList, families, status, add, done) {
   }
   add.disabled = true;
   try {
-    const made = await api('POST', '/api/when/invites/people', {id: e.id, people});
-    done(made.sent ? (made.added === 1 ? `${people[0].name} invited - the invitation is on its way.` : `${made.added} people invited - the invitations are on their way.`) : made.added === 1 ? `${people[0].name} added to the list.` : `${made.added} people added to the list.`);
+    await act('events', e.id, 'invite', {people});
+    const added = people.length;
+    done(host ? (added === 1 ? `${people[0].name} added to the list.` : `${added} people added to the list.`) : added === 1 ? `${people[0].name} invited - the invitation is on its way.` : `${added} people invited - the invitations are on their way.`);
   } catch (err) {
     status.textContent = err.message;
     status.classList.add('error');

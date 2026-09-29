@@ -36,7 +36,7 @@ func (a app) recordBy(ctx context.Context, actor access.Actor, email, id, answer
 }
 
 func (a app) sendAnswerNote(ctx context.Context, to, actor, email, answer string, e *Event) error {
-	model := a.cache.Model()
+	model := a.model()
 	name := email
 	if p := a.directory().Person(email); p != nil && p.FullName != "" {
 		name = p.FullName
@@ -82,7 +82,7 @@ func (a app) anyEvent(email, id string) *Event {
 }
 
 func (a app) lookup(email, key string, sees func(*Event) bool) *Event {
-	model := a.cache.Model()
+	model := a.model()
 	key = a.canonical(key)
 	for _, e := range withLinked(model.Events, a.linked(email)) {
 		if e.ID == key || (e.Address != "" && e.Address == key) {
@@ -99,10 +99,10 @@ func (a app) lookup(email, key string, sees func(*Event) bool) *Event {
 func (a app) canonical(key string) string {
 	source, rest, ok := strings.Cut(key, "/")
 	if !ok || (source != SourceCelebrate && source != SourceTeam) {
-		return a.cache.Model().aliases.Resolve(key)
+		return a.model().aliases.Resolve(key)
 	}
 	found := a.sourceID(source, rest)
-	for _, e := range withLinked(a.cache.Model().Events, a.linked("")) {
+	for _, e := range withLinked(a.model().Events, a.linked("")) {
 		if found != "" && e.linkedID() == found {
 			return e.ID
 		}
@@ -115,7 +115,7 @@ func (a app) sees(actor access.Actor, e *Event) bool {
 		return true
 	}
 	if e.Sharing == SharingInvited {
-		return a.cache.Model().Listed(a.directory(), actor.Email, e.ID)
+		return a.model().Listed(a.directory(), actor.Email, e.ID)
 	}
 	return true
 }

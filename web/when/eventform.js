@@ -1,10 +1,10 @@
-import {state, isAdmin, tagGroups, bands, classroomNames, categoryTags, eventDates, eventPath, addDays, parseDate} from './state.js';
+import {state, allows, tagGroups, bands, classroomNames, categoryTags, eventDates, eventPath, addDays, parseDate} from './state.js';
 import {addressSuggest} from '/address.js';
-import {api} from '/api.js';
+import {act, create} from '/data.js';
 import {el, svg, toast, longToast} from '/elements.js';
 
 export function eventForm({from = null, shift = 0, edit = null, override = false, more = [], onDone}) {
-  const admin = isAdmin();
+  const admin = allows('when.curate');
   if (edit) {
     from = edit;
     shift = 0;
@@ -293,34 +293,39 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
   submit.append(svg(edit ? 'check' : 'plus'), el('span', '', edit ? 'Save changes' : from ? 'Add the copy' : admin ? 'Add the event' : 'Share the event'));
   actions.append(submit, status);
   paintWho();
-  form.addEventListener('submit', async e => {
-    e.preventDefault();
+  const bodyOf = () => {
     const invite = sharing !== 'Public';
-    if (!invite && !rooms.size && !override) {
-      status.textContent = 'Pick at least one classroom.';
-      status.classList.add('error');
-      return;
-    }
     const when = (date, time) => (date ? date + (time ? ' ' + time : '') : '');
-    const body = {
+    return {
       title: title.value.trim(), start: when(startDate.value, startTime.value), end: when(endDate.value || startDate.value, endTime.value || startTime.value),
       location: place.value.trim(), description: description.value.trim(), source: invite ? '' : source.value.trim(), image: picture.image, sharing,
       tags: invite ? [] : [...state.model.classrooms.filter(c => rooms.has(c.name)).map(c => c.id), ...cats], keywords: keywords.value.split(',').map(w => w.trim()).filter(Boolean),
     };
+  };
+  const before = edit ? bodyOf() : null;
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (sharing === 'Public' && !rooms.size && !override) {
+      status.textContent = 'Pick at least one classroom.';
+      status.classList.add('error');
+      return;
+    }
+    const body = bodyOf();
     submit.disabled = true;
     status.classList.remove('error');
     status.textContent = edit ? 'Saving…' : 'Adding…';
-    if (edit) {
-      body.id = edit.id;
-    } else if (slug && slug.value.trim()) {
-      body.address = slug.value.trim();
-    }
-    if (override) {
-      body.address = address.value.trim();
-    }
     let made;
     try {
-      made = await api(edit ? 'PUT' : 'POST', override ? '/api/when/overrides' : '/api/when/events', body);
+      if (override) {
+        await act('events', edit.id, 'correct', {...body, address: address.value.trim()});
+      } else if (edit) {
+        const changes = Object.fromEntries(Object.entries(body).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(before[key])));
+        if (Object.keys(changes).length) {
+          await act('events', edit.id, 'edit', changes);
+        }
+      } else {
+        made = await create('events', slug.value.trim() ? {...body, address: slug.value.trim()} : body);
+      }
     } catch (err) {
       status.textContent = err.message;
       status.classList.add('error');
@@ -344,9 +349,8 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       await onDone([edit.id], changed);
       return;
     }
-    const {ids, pending} = made;
-    longToast(pending ? 'Shared - an admin will approve it onto the calendar. It is on yours now, and its link works right away.' : 'Added - invite people from the event\u2019s page, or send them its link.');
-    await onDone(ids);
+    longToast(body.sharing === 'Public' ? 'Shared - an admin will approve it onto the calendar. It is on yours now, and its link works right away.' : 'Added - invite people from the event\u2019s page, or send them its link.');
+    await onDone([made.id]);
   });
   return wrap;
 }

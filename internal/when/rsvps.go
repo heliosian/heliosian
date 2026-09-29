@@ -19,7 +19,7 @@ type RSVP struct {
 
 func (a app) waiting(email string) []RSVP {
 	email = config.NormalizeEmail(email)
-	model := a.cache.Model()
+	model := a.model()
 	answers := model.Answers[email]
 	today := now().Format(DateFormat)
 	events := []*Event{}

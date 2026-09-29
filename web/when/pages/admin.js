@@ -1,7 +1,7 @@
-import {state, me, tagGroups, classroomNames, categoryTags, tagName, event, eventPath, dayLabel} from '../state.js';
+import {state, me, allows, settingsId, tagGroups, classroomNames, categoryTags, tagName, event, eventPath, dayLabel} from '../state.js';
 import {el, link, svg, button, toast} from '/elements.js';
 import {popup} from '/modal.js';
-import {api} from '/api.js';
+import {act} from '/data.js';
 import {adminPage as buildAdminPage} from '/admin.js';
 import {eventForm} from '../eventform.js';
 import {imageControl} from '../imagecontrol.js';
@@ -312,7 +312,7 @@ function categoriesTool() {
     status.classList.remove('error');
     status.textContent = 'Saving…';
     try {
-      await api('POST', '/api/when/tags', {tags});
+      await act('when-settings', settingsId(), 'tags', {tags});
     } catch (err) {
       status.textContent = err.message;
       status.classList.add('error');
@@ -414,9 +414,9 @@ function eventsTool() {
     }
     return true;
   };
-  const decide = async (e, path, done) => {
+  const decide = async (e, action, done) => {
     try {
-      await api('POST', '/api/when/events/' + path, {id: e.id});
+      await act('events', e.id, action);
     } catch (err) {
       toast(err.message);
       return;
@@ -477,7 +477,7 @@ function eventsTool() {
       const end = whenPicker(e.end);
       const save = button('Save', 'check', 'button button-small admin-event-save', async () => {
         try {
-          await api('POST', '/api/when/events/when', {id: e.id, start: start.value(), end: end.value()});
+          await act('events', e.id, 'move', {start: start.value(), end: end.value()});
         } catch (err) {
           toast(err.message);
           return;
@@ -523,5 +523,5 @@ const sections = [
 ];
 
 export function adminPage() {
-  return buildAdminPage({appName: 'Helios When', allowed: me().isAdmin, email: me().email, sections});
+  return buildAdminPage({appName: 'Helios When', allowed: allows('when.curate'), email: me().email, sections});
 }

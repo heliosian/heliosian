@@ -100,7 +100,7 @@ func (a app) fillGroups(ctx context.Context) {
 	actor := access.System(sweepActor)
 	_, err := a.queue.Transact(ctx, actor, func(tx *store.Tx) error {
 		ops := []store.Op{}
-		for id, groups := range a.cache.Model().Groups {
+		for id, groups := range a.model().Groups {
 			if len(groups) == 0 {
 				continue
 			}
@@ -125,7 +125,7 @@ func (a app) fillGroups(ctx context.Context) {
 }
 
 func (a app) mailInvitations(ctx context.Context) {
-	model := a.cache.Model()
+	model := a.model()
 	for id, rows := range model.Invites {
 		byHost := map[string][]string{}
 		hosts := []string{}
@@ -157,7 +157,7 @@ func (a app) mailInvitations(ctx context.Context) {
 }
 
 func (a app) sendInvitations(ctx context.Context, host string, e *Event, emails []string, kind string) []string {
-	model := a.cache.Model()
+	model := a.model()
 	e = model.invitedEvent(e)
 	inv := model.Invitations[e.ID]
 	order, cc := a.recipients(e, emails)
@@ -188,7 +188,7 @@ func (a app) sendInvitations(ctx context.Context, host string, e *Event, emails 
 }
 
 func (a app) namesFor(e *Event, to string) []string {
-	model := a.cache.Model()
+	model := a.model()
 	household := a.householdOn(e, to)
 	names := []string{}
 	for _, row := range model.Invites[e.ID] {
@@ -212,7 +212,7 @@ func (a app) namesFor(e *Event, to string) []string {
 }
 
 func (a app) mailMessages(ctx context.Context) {
-	model := a.cache.Model()
+	model := a.model()
 	for _, m := range model.Messages {
 		pending := m.pending()
 		if len(pending) == 0 {
@@ -258,7 +258,7 @@ func (a app) deliverMessage(ctx context.Context, m Message, e *Event, pending []
 		var err error
 		switch m.Kind {
 		case KindCancelled:
-			err = a.sendCancellation(ctx, to, cc[to], replyTo, hostName, m.Text, a.cache.Model().invitedEvent(e))
+			err = a.sendCancellation(ctx, to, cc[to], replyTo, hostName, m.Text, a.model().invitedEvent(e))
 		default:
 			err = a.sendMessage(ctx, to, cc[to], replyTo, hostName, m.Subject, m.Text, e, m.Attach)
 		}
@@ -273,7 +273,7 @@ func (a app) deliverMessage(ctx context.Context, m Message, e *Event, pending []
 }
 
 func (a app) mailAnswers(ctx context.Context) {
-	model := a.cache.Model()
+	model := a.model()
 	for email, answers := range model.Answered {
 		for id, ans := range answers {
 			if ans.inviteMail != owed && ans.hostsTold != owed {
@@ -323,7 +323,7 @@ func hostToTell(entry string) (host, by string) {
 }
 
 func (a app) mailCohosts(ctx context.Context) {
-	model := a.cache.Model()
+	model := a.model()
 	for id, inv := range model.Invitations {
 		if len(inv.HostsToTell) == 0 {
 			continue
@@ -347,7 +347,7 @@ func (a app) mailCohosts(ctx context.Context) {
 }
 
 func (a app) mailAdmins(ctx context.Context) {
-	model := a.cache.Model()
+	model := a.model()
 	for _, e := range slices.Concat(model.Events, model.Pending) {
 		by, ok := owedBy(e.adminsTold)
 		if e.Source != SourceSheet || !ok {

@@ -1,8 +1,7 @@
-import {applyModel, event, eventPath, fetchEvent, today, parseDate, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
+import {loadModel, event, eventPath, fetchEvent, today, parseDate, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
 import {el} from '/elements.js';
 import {initChrome, clearSearch} from './chrome.js';
 import {showPage} from '/shell.js';
-import {api} from '/api.js';
 import {startApp, render, notFound} from '/router.js';
 import {homePage} from './pages/home.js';
 import {eventPage} from './pages/event.js';
@@ -57,7 +56,7 @@ const routes = {
 
 initChrome();
 startApp({
-  model: async () => applyModel(await api('GET', '/api/when/model')),
+  model: loadModel,
   routes,
   missing: 'is not on the calendar.',
   prepare: clearSearch,

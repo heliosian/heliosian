@@ -5,14 +5,14 @@ import {el, link, svg, button, toast, longToast, copyText} from '/elements.js';
 import {popup} from '/modal.js';
 import {setSearch, fillFilters, renderRailDay, editFeedPopup, makeDefaultFeed, calendarMenu} from '../chrome.js';
 import {setTitle} from '/shell.js';
-import {load, setPath} from '/router.js';
+import {load, render, setPath} from '/router.js';
 import {dayBar, dayChip, dayRow, eventRow} from '/dayrows.js';
 import {rsvpPanel} from '/rsvps.js';
 import {attachPeek, attachRowPeek, hidePeek} from '../peek.js';
-import {api} from '/api.js';
+import {query, act, create} from '/data.js';
 import {dayColumn, openAddEvent} from '../day.js';
 import {emptyNote} from '../events.js';
-import {answerOf, selectedTags, classroomNames, tagIds, defaultFeedName, showsFeed, activeFeed, setActiveFeed, defaultFeed, feedURL, webcalURL} from '../state.js';
+import {answerOf, selectedTags, classroomNames, tagIds, defaultFeedName, showsFeed, activeFeed, setActiveFeed, defaultFeed, feedURL, webcalURL, loadModel, settingsId} from '../state.js';
 
 let lastDate = '';
 
@@ -201,7 +201,7 @@ function saveCalendar() {
     };
     let made;
     try {
-      made = await api('POST', '/api/when/feeds', body);
+      made = await create('calendar-feeds', body);
     } catch (err) {
       status.textContent = err.message;
       status.classList.add('error');
@@ -210,19 +210,22 @@ function saveCalendar() {
       submit.disabled = false;
     }
     shut();
-    setActiveFeed(made.token);
     longToast(`Saved. ${body.name} is under Calendar in the rail.`);
-    await load();
+    await loadModel();
+    setActiveFeed(state.model.feeds.find(f => f.id === made.id).token);
+    render();
   });
   name.focus();
   name.select();
 }
 
-async function feedToken(f) {
-  if (!f.locked) {
-    return f.token;
+async function feedPath(f) {
+  if (f.url) {
+    return f.url;
   }
-  return (await api('POST', '/api/when/feeds/my-heliosian', {})).token;
+  await act('when-settings', settingsId(), 'feed-token');
+  const read = await query('/api/calendar-feeds/' + encodeURIComponent(f.id));
+  return read.get(read.result).url;
 }
 
 const brandMarks = {
@@ -256,18 +259,18 @@ function subscribeMenu(f) {
     b.append(el('span', '', words));
     b.addEventListener('click', async () => {
       try {
-        onClick(await feedToken(f));
+        onClick(await feedPath(f));
       } catch (err) {
         toast(err.message);
       }
     });
     menu.append(b);
   };
-  item('google', 'Add to Google Calendar', token => window.open('https://calendar.google.com/calendar/render?cid=' + encodeURIComponent(webcalURL(token)), '_blank', 'noopener'));
-  item('apple', 'Add to Apple Calendar', token => {
-    location.href = webcalURL(token);
+  item('google', 'Add to Google Calendar', path => window.open('https://calendar.google.com/calendar/render?cid=' + encodeURIComponent(webcalURL(path)), '_blank', 'noopener'));
+  item('apple', 'Add to Apple Calendar', path => {
+    location.href = webcalURL(path);
   });
-  item('link', 'Copy calendar feed URL', token => copyText(feedURL(token), 'Feed address copied'));
+  item('link', 'Copy calendar feed URL', path => copyText(feedURL(path), 'Feed address copied'));
   const note = el('div', 'subscribe-note');
   note.append(svg('info'), el('span', '', 'Use the feed address with Outlook and other calendar apps.'));
   menu.append(note);
@@ -327,12 +330,12 @@ async function saveOnto(f) {
     return;
   }
   const body = {
-    token: f.token, name: f.name, emoji: f.emoji || '',
+    name: f.name, emoji: f.emoji || '',
     classrooms: rooms.length === classroomNames().length ? [] : classroomNames().filter(c => rooms.includes(c)),
     tags: tags.length === tagIds().length ? [] : tagIds().filter(t => tags.includes(t)),
   };
   try {
-    await api('PUT', '/api/when/feeds', body);
+    await act('calendar-feeds', f.id, 'edit', body);
   } catch (err) {
     toast(err.message);
     return;

@@ -1,6 +1,6 @@
 import {state, me, answer} from './state.js';
 import {el, svg, avatar, toast} from '/elements.js';
-import {api} from '/api.js';
+import {act} from '/data.js';
 import {listed} from '/directory.js';
 import {rulesEditor} from '/rules.js';
 
@@ -19,7 +19,7 @@ export async function answerFor(e, row, next) {
     await answer(e, next);
     return;
   }
-  await api('POST', '/api/when/invites/answer', {id: e.id, email: row.key, answer: next});
+  await act('events', e.id, 'answer-for', {email: row.key, answer: next});
 }
 
 export function answerButtons(row, e, onChange, {small = true} = {}) {
@@ -98,10 +98,6 @@ export function answeredWords(r) {
     bits.push(moment(r.answeredAt));
   }
   return bits.join(' · ');
-}
-
-export function fetchPickerData(e) {
-  return api('GET', '/api/when/invites/people?id=' + encodeURIComponent(e.id));
 }
 
 export function pickerPeople(keep) {

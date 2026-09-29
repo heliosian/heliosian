@@ -27,7 +27,7 @@ type Snapshot struct {
 	Team      *team.Model
 	Birthday  birthday.World
 	Celebrate *celebrate.Model
-	When      *when.Model
+	When      when.World
 	Loop      loop.World
 	Home      *home.Model
 	Artifacts *artifacts.Model
@@ -46,6 +46,8 @@ type caches struct {
 	home      *home.Cache
 	artifacts *artifacts.Cache
 	feedback  *feedback.Cache
+	whenHooks when.Hooks
+	idKey     []byte
 }
 
 func (c caches) snapshot(tx *store.Tx) *Snapshot {
@@ -59,7 +61,7 @@ func (c caches) snapshot(tx *store.Tx) *Snapshot {
 		Team:      activities,
 		Birthday:  birthday.NewWorld(c.birthday.In(tx), directory),
 		Celebrate: parties,
-		When:      c.when.In(tx),
+		When:      c.whenHooks.World(c.when.In(tx), directory, settings, c.idKey, eventSources(directory, parties, activities)),
 		Loop:      loop.NewWorld(c.loop.In(tx), directory, settings.GradeColors, magicTags(directory, parties, activities), magicTagKeys(parties, activities)),
 		Home:      c.home.In(tx),
 		Artifacts: c.artifacts.In(tx),
@@ -70,7 +72,15 @@ func (c caches) snapshot(tx *store.Tx) *Snapshot {
 func (s *Snapshot) at(q api.Query) *Snapshot {
 	scoped := *s
 	scoped.Loop = s.Loop.At(q.Now)
+	scoped.When = s.When.At(q.Now)
 	return &scoped
+}
+
+func eventSources(directory *who.Model, parties *celebrate.Model, activities *team.Model) func(email string, now time.Time) []when.Linked {
+	return func(email string, now time.Time) []when.Linked {
+		family := when.FamilyOf(directory, email)
+		return append(parties.Linked(family, now), activities.Linked(family)...)
+	}
 }
 
 func (c caches) held(email string) []access.Allowance {
@@ -101,6 +111,9 @@ func resources(c caches, queue *store.Queue, birthdays []api.Type[birthday.World
 	}
 	for _, t := range lists {
 		reg.Add(api.Lift(t, func(s *Snapshot) loop.World { return s.Loop }))
+	}
+	for _, t := range c.whenHooks.Resources() {
+		reg.Add(api.Lift(t, func(s *Snapshot) when.World { return s.When }))
 	}
 	queue.OnSwap(func() { reg.Publish(c.snapshot(nil)) })
 	return reg

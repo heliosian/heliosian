@@ -1,12 +1,12 @@
 import {appOrigin} from '/appswitch.js';
-import {api} from '/api.js';
+import {batch, query, act, me as whoAmI} from '/data.js';
 import {parseWhen} from '/datecard.js';
 
 const remembered = readFilters();
 export const state = {model: null, filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active, appliedCalendar: ''};
 
-export function isAdmin() {
-  return Boolean(state.model && state.model.user.isAdmin);
+export function allows(name) {
+  return Boolean(state.model && state.model.allowances.includes(name));
 }
 
 export function setActiveFeed(token) {
@@ -26,7 +26,33 @@ function saveFilters() {
 const byId = new Map();
 const byDate = new Map();
 
-export function applyModel(model) {
+export async function loadModel() {
+  const [read, viewer] = await Promise.all([batch({
+    settings: '/api/when-settings?include=feeds',
+    events: '/api/events',
+  }), whoAmI()]);
+  const s = read.get(read.result.settings[0]);
+  const feeds = read.follow(s, 'feeds');
+  applyModel({
+    user: {...s.user, home: feeds.find(f => f.token === MY_HELIOSIAN)},
+    allowances: viewer.allowances,
+    settingsId: s.id,
+    imageSearch: s.imageSearch,
+    today: s.today,
+    classrooms: s.classrooms,
+    colors: s.colors,
+    tags: s.tags,
+    dayTypes: s.dayTypes,
+    years: s.years,
+    days: s.days,
+    events: read.result.events.map(read.get),
+    gradeColors: s.gradeColors,
+    names: s.names,
+    feeds: feeds.filter(f => f.token !== MY_HELIOSIAN),
+  });
+}
+
+function applyModel(model) {
   state.model = model;
   byId.clear();
   byDate.clear();
@@ -56,8 +82,8 @@ export function me() {
   return state.model.user;
 }
 
-export function postedAndHosting(e) {
-  return e.source === 'sheet' && e.addedBy === state.model.user.email && !e.posterLeft;
+export function settingsId() {
+  return state.model.settingsId;
 }
 
 export function event(id) {
@@ -73,7 +99,8 @@ export function event(id) {
 
 export async function fetchEvent(id) {
   try {
-    const e = await api('GET', '/api/when/event?id=' + encodeURIComponent(id));
+    const read = await query('/api/events/' + encodeURIComponent(id));
+    const e = read.get(read.result);
     byId.set(e.id, e);
     if (e.address) {
       byId.set(e.address, e);
@@ -101,19 +128,19 @@ export function unusedFeedName(name) {
   }
 }
 
-export function feedURL(token) {
-  return `${location.origin}/open/feed/${token}.ics`;
+export function feedURL(path) {
+  return location.origin + path;
 }
 
-export function webcalURL(token) {
-  return `webcal://${location.host}/open/feed/${token}.ics`;
+export function webcalURL(path) {
+  return `webcal://${location.host}${path}`;
 }
 
 export const MY_HELIOSIAN = 'my-heliosian';
 
 export function myHeliosian() {
-  const home = me().home || {};
-  return {token: MY_HELIOSIAN, name: home.name || 'My Heliosian', emoji: home.emoji || '', locked: true, position: home.position || 0, classrooms: [], tags: []};
+  const home = me().home;
+  return {id: home.id, url: home.url || '', token: MY_HELIOSIAN, name: home.name || 'My Heliosian', emoji: home.emoji || '', locked: true, position: home.position || 0, classrooms: [], tags: []};
 }
 
 export function allCalendars() {
@@ -641,7 +668,7 @@ export function linkURL(e) {
 }
 
 export function answerOf(e) {
-  return (me().answers || {})[e.id] || '';
+  return e.me.answer || '';
 }
 
 export function isHidden(e) {
@@ -654,14 +681,8 @@ export function isGray(e) {
 }
 
 export async function answer(e, word) {
-  await api('POST', '/api/when/rsvp', {id: e.id, answer: word});
-  const answers = {...(me().answers || {})};
-  if (word) {
-    answers[e.id] = word;
-  } else {
-    delete answers[e.id];
-  }
-  me().answers = answers;
+  await act('events', e.id, 'answer', {answer: word});
+  e.me = {...e.me, answer: word};
   const going = word === 'yes' || e.mine === 'going';
   const tag = roleTag('going');
   if (going && !e.tags.includes(tag)) {

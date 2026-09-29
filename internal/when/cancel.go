@@ -39,7 +39,7 @@ func (a app) cancelEvent(r *http.Request, body cancelBody) (any, error) {
 	if len(ops) == 0 {
 		return serve.None{}, nil
 	}
-	model := a.cache.Model()
+	model := a.model()
 	sent := []string{}
 	if body.Notify {
 		for _, inv := range model.Invites[e.ID] {

@@ -28,7 +28,7 @@ func feedCells(body feedBody) store.Row {
 func (a app) newFeed(actor access.Actor, body feedBody) ([]store.Op, store.Row) {
 	cells := feedCells(body)
 	cells["Token"], cells["Email"], cells["Created"] = id.Token(), actor.Email, now().Format(DateTimeFormat)
-	cells["Name"] = a.cache.Model().unusedFeedName(actor.Email, strings.TrimSpace(body.Name))
+	cells["Name"] = a.model().unusedFeedName(actor.Email, strings.TrimSpace(body.Name))
 	return []store.Op{store.Insert(FeedsTab, cells)}, cells
 }
 
@@ -39,7 +39,7 @@ func (a app) changeFeed(actor access.Actor, body feedBody) ([]store.Op, store.Ro
 	if strings.TrimSpace(body.Token) == MyHeliosianToken {
 		return []store.Op{homeOp(actor.Email, store.Row{"Home Name": strings.TrimSpace(body.Name), "Home Emoji": feedEmoji(body.Emoji)})}, nil, nil
 	}
-	f := a.cache.Model().Feed(strings.TrimSpace(body.Token))
+	f := a.model().Feed(strings.TrimSpace(body.Token))
 	if f == nil {
 		return nil, nil, access.Missing("no such feed")
 	}
@@ -51,7 +51,7 @@ func (a app) changeFeed(actor access.Actor, body feedBody) ([]store.Op, store.Ro
 }
 
 func (a app) dropFeed(actor access.Actor, token string) ([]store.Op, string, error) {
-	f := a.cache.Model().Feed(strings.TrimSpace(token))
+	f := a.model().Feed(strings.TrimSpace(token))
 	if f == nil {
 		return nil, "", access.Missing("no such feed")
 	}
@@ -68,7 +68,7 @@ func (a app) orderOps(actor access.Actor, tokens []string) ([]store.Op, error) {
 		tokens = slices.Delete(slices.Clone(tokens), at, at+1)
 	}
 	mine := map[string]string{}
-	for _, f := range a.cache.Model().Feeds {
+	for _, f := range a.model().Feeds {
 		if config.NormalizeEmail(f.Email) == actor.Email {
 			mine[f.Token] = f.order
 		}
@@ -96,7 +96,7 @@ func (a app) orderOps(actor access.Actor, tokens []string) ([]store.Op, error) {
 func (a app) defaultOps(actor access.Actor, token string) ([]store.Op, []string, error) {
 	tokens := []string{token}
 	found := false
-	for _, f := range a.cache.Model().MyCalendars(actor.Email) {
+	for _, f := range a.model().MyCalendars(actor.Email) {
 		if f.Token == token {
 			found = true
 			continue
@@ -111,7 +111,7 @@ func (a app) defaultOps(actor access.Actor, token string) ([]store.Op, []string,
 }
 
 func (a app) feedTokenOps(actor access.Actor) ([]store.Op, string) {
-	if token := a.cache.Model().Settings[actor.Email].FeedToken; token != "" {
+	if token := a.model().Settings[actor.Email].FeedToken; token != "" {
 		return nil, token
 	}
 	token := id.Token()
@@ -126,7 +126,7 @@ func saveViewOps(actor access.Actor, classrooms, tags []string) ([]store.Op, sto
 }
 
 func (a app) forgetViewOps(actor access.Actor) []store.Op {
-	if _, ok := a.cache.Model().Settings[actor.Email]; !ok {
+	if _, ok := a.model().Settings[actor.Email]; !ok {
 		return nil
 	}
 	return []store.Op{store.Update(SettingsTab, store.Row{"Email": actor.Email}, store.Row{"Classrooms": "", "Categories": "", "Saved": ""})}
@@ -152,7 +152,7 @@ func (a app) keywordOps(actor access.Actor, id string, keywords []string) ([]sto
 	if err := adminOnly(actor); err != nil {
 		return nil, nil, "", err
 	}
-	e := a.cache.Model().Event(id)
+	e := a.model().Event(id)
 	if e == nil {
 		return nil, nil, "", access.Missing("that event is not in the sheet")
 	}
@@ -171,7 +171,7 @@ func (a app) newEvents(actor access.Actor, body eventBody) ([]store.Op, []string
 	if body.RepeatTimes < 0 || body.RepeatTimes > 52 || body.RepeatWeeks < 1 && body.RepeatTimes > 0 {
 		return nil, nil, false, access.Invalid("repeat up to 52 more times, some whole number of weeks apart")
 	}
-	model := a.cache.Model()
+	model := a.model()
 	address := strings.ToLower(strings.TrimSpace(body.Address))
 	if address != "" {
 		if !validAddress(address) {
@@ -217,7 +217,7 @@ func (a app) changeEvent(actor access.Actor, body eventBody) ([]store.Op, *Event
 	if !slices.Contains(sharingWords, body.Sharing) {
 		return nil, nil, nil, access.Invalid("sharing is %s", strings.Join(sharingWords, ", "))
 	}
-	e := a.cache.Model().Event(strings.TrimSpace(body.ID))
+	e := a.model().Event(strings.TrimSpace(body.ID))
 	if e == nil || e.Source != SourceSheet {
 		return nil, nil, nil, access.Missing("that event is not one added by hand")
 	}
@@ -245,7 +245,7 @@ func (a app) statusOps(actor access.Actor, id, status string) ([]store.Op, *Even
 	if err := adminOnly(actor); err != nil {
 		return nil, nil, err
 	}
-	e := a.cache.Model().Event(strings.TrimSpace(id))
+	e := a.model().Event(strings.TrimSpace(id))
 	if e == nil || e.Source != SourceSheet {
 		return nil, nil, access.Missing("that event is not one added by hand")
 	}
@@ -259,7 +259,7 @@ func (a app) moveOps(actor access.Actor, id, start, end string) ([]store.Op, *Ev
 	if err := adminOnly(actor); err != nil {
 		return nil, nil, err
 	}
-	e := a.cache.Model().Event(id)
+	e := a.model().Event(id)
 	if e == nil || e.Source != SourceSheet {
 		return nil, nil, access.Invalid("only an event of the Events tab moves from here")
 	}
@@ -270,7 +270,7 @@ func (a app) tagOps(actor access.Actor, tags []tagBody) ([]store.Op, int, error)
 	if !actor.May(Curate) {
 		return nil, 0, access.Forbidden("only a calendar admin can change the categories")
 	}
-	model := a.cache.Model()
+	model := a.model()
 	current := map[string]Tag{}
 	taken := map[string]bool{}
 	for _, t := range model.Tags {
@@ -341,7 +341,7 @@ func (a app) mayCorrect(actor access.Actor, e *Event) error {
 }
 
 func (a app) overrideOps(actor access.Actor, body overrideBody) ([]store.Op, string, bool, error) {
-	model := a.cache.Model()
+	model := a.model()
 	e := model.Event(strings.TrimSpace(body.ID))
 	if e == nil || !e.imported() {
 		return nil, "", false, access.Missing("only an event the school's calendars bring is corrected here")
@@ -414,7 +414,7 @@ func (a app) overrideOps(actor access.Actor, body overrideBody) ([]store.Op, str
 }
 
 func (a app) overrideImageOps(actor access.Actor, id, image string) ([]store.Op, *Event, string, error) {
-	e := a.cache.Model().Event(strings.TrimSpace(id))
+	e := a.model().Event(strings.TrimSpace(id))
 	if e == nil || !e.imported() {
 		return nil, nil, "", access.Missing("only an event the school's calendars bring takes its picture here")
 	}
@@ -426,7 +426,7 @@ func (a app) overrideImageOps(actor access.Actor, id, image string) ([]store.Op,
 }
 
 func (a app) invitationOps(actor access.Actor, id string, cells store.Row) []store.Op {
-	if a.cache.Model().Invitations[id] != nil {
+	if a.model().Invitations[id] != nil {
 		if len(cells) == 0 {
 			return nil
 		}
@@ -454,7 +454,7 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 	}
 	if body.NotifyMe != nil {
 		notify := []string{}
-		if inv := a.cache.Model().Invitations[e.ID]; inv != nil {
+		if inv := a.model().Invitations[e.ID]; inv != nil {
 			notify = append(notify, inv.Notify...)
 		}
 		notify = slices.DeleteFunc(notify, func(h string) bool { return h == actor.Email })
@@ -529,7 +529,7 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 		row["Hosts"] = cells.JoinList(hosts)
 		if len(newHosts) > 0 {
 			tell := []string{}
-			if inv := a.cache.Model().Invitations[e.ID]; inv != nil {
+			if inv := a.model().Invitations[e.ID]; inv != nil {
 				tell = append(tell, inv.HostsToTell...)
 			}
 			for _, h := range newHosts {
@@ -542,7 +542,7 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 }
 
 func (a app) hostYesOps(actor access.Actor, e *Event, hosts []string) []store.Op {
-	model := a.cache.Model()
+	model := a.model()
 	stamp := now().Format(DateTimeFormat)
 	ops := []store.Op{}
 	for _, h := range hosts {
@@ -563,7 +563,7 @@ func (a app) stepDownOps(actor access.Actor, id, email string) ([]store.Op, *Eve
 	if email := a.directory().Resolve(config.NormalizeEmail(email)); email != "" {
 		who = email
 	}
-	inv := a.cache.Model().Invitations[e.ID]
+	inv := a.model().Invitations[e.ID]
 	cohost := inv != nil && slices.Contains(inv.Hosts, who)
 	poster := e.Source == SourceSheet && !e.PosterLeft && a.directory().Resolve(config.NormalizeEmail(e.AddedBy)) == who
 	if !cohost && !poster {
@@ -595,7 +595,7 @@ func (a app) inviteOps(actor access.Actor, key string, people []invitee) ([]stor
 	if len(people) == 0 || len(people) > 500 {
 		return nil, nil, nil, false, access.Invalid("add between one and five hundred people at a time")
 	}
-	model := a.cache.Model()
+	model := a.model()
 	stamp := now().Format(DateTimeFormat)
 	ops := a.invitationOps(actor, e.ID, nil)
 	emails := []string{}
@@ -641,7 +641,7 @@ func (a app) uninviteOps(actor access.Actor, id, email string) ([]store.Op, *Eve
 		return nil, nil, "", false, err
 	}
 	email = config.NormalizeEmail(email)
-	inv := a.cache.Model().InviteOf(e.ID, email)
+	inv := a.model().InviteOf(e.ID, email)
 	if inv == nil {
 		return nil, nil, "", false, access.Missing("they are not on the list")
 	}
@@ -653,7 +653,7 @@ func (a app) uninviteOps(actor access.Actor, id, email string) ([]store.Op, *Eve
 	if !ok {
 		return ops, e, email, false, nil
 	}
-	group := a.cache.Model().GroupOf(e.ID, gid)
+	group := a.model().GroupOf(e.ID, gid)
 	if group == nil {
 		return ops, e, email, false, nil
 	}
@@ -670,7 +670,7 @@ type broughtGuest struct {
 }
 
 func (a app) guestOps(actor access.Actor, g broughtGuest, name, email string) ([]store.Op, broughtGuest, error) {
-	model := a.cache.Model()
+	model := a.model()
 	e := g.event
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > maxTitleLength {
@@ -710,7 +710,7 @@ func (a app) bringGuestOps(actor access.Actor, body guestBody) ([]store.Op, brou
 	if err != nil {
 		return nil, broughtGuest{}, err
 	}
-	model := a.cache.Model()
+	model := a.model()
 	inv := model.Invitations[e.ID]
 	g := broughtGuest{event: e, of: actor.Email, answer: AnswerYes, invite: true}
 	if body.Answer != nil {
@@ -741,7 +741,7 @@ func (a app) bringGuestOps(actor access.Actor, body guestBody) ([]store.Op, brou
 
 func (a app) extGuestOps(actor access.Actor, e *Event, name, email string) ([]store.Op, broughtGuest, error) {
 	g := broughtGuest{event: e, of: actor.Email, answer: AnswerYes, invite: true}
-	if settings := a.cache.Model().Invitations[e.ID]; settings == nil || !settings.Guests {
+	if settings := a.model().Invitations[e.ID]; settings == nil || !settings.Guests {
 		return nil, g, access.Forbidden("this event is not taking guests")
 	}
 	return a.guestOps(actor, g, name, email)
@@ -749,7 +749,7 @@ func (a app) extGuestOps(actor access.Actor, e *Event, name, email string) ([]st
 
 func (a app) extRemoveGuestOps(actor access.Actor, e *Event, key string) ([]store.Op, string, error) {
 	key = config.NormalizeEmail(key)
-	guest := a.cache.Model().InviteOf(e.ID, key)
+	guest := a.model().InviteOf(e.ID, key)
 	if guest == nil || guest.GuestOf != actor.Email {
 		return nil, "", access.Missing("that is not a guest of yours")
 	}
@@ -770,7 +770,7 @@ func (a app) answerOps(actor access.Actor, email, id, answer, via string, invite
 	if answer == "" {
 		return []store.Op{store.Delete(RSVPsTab, key)}, e, nil
 	}
-	model := a.cache.Model()
+	model := a.model()
 	row := store.Row{"Answer": answer, "Answered": now().Format(DateTimeFormat), "Answered By": actor.Email, "Via": via, "Hosts Told": ""}
 	if inv := model.Invitations[e.ID]; inv != nil && answer != AnswerHidden && slices.ContainsFunc(inv.Notify, func(h string) bool { return h != actor.Email }) {
 		row["Hosts Told"] = owed
@@ -813,6 +813,123 @@ func (a app) extSubject(actor access.Actor, e *Event, key, answer string) (strin
 	return key, nil
 }
 
+func (a app) cancelWith(actor access.Actor, e *Event, body cancelBody) ([]store.Op, error) {
+	ops, e, err := a.cancelOps(actor, e.ID, body.Note)
+	if err != nil || len(ops) == 0 {
+		return ops, err
+	}
+	sent := []string{}
+	if body.Notify {
+		for _, inv := range a.model().Invites[e.ID] {
+			if inv.Sent != "" {
+				sent = append(sent, inv.Email)
+			}
+		}
+	}
+	if len(sent) > 0 {
+		ops = append(ops, a.messageOp(e, KindCancelled, "", strings.TrimSpace(body.Note), sent, false, actor.Email))
+	}
+	return ops, nil
+}
+
+func (a app) sendChoice(e *Event, body sendBody) ([]string, string, error) {
+	model := a.model()
+	emails := []string{}
+	reminder := false
+	if len(body.Emails) > 0 {
+		body.To = "these"
+	}
+	for _, inv := range model.Invites[e.ID] {
+		switch body.To {
+		case "sent":
+			if inv.Sent != "" && model.AnswerOf(inv.Email, e.ID) != AnswerNo {
+				emails = append(emails, inv.Email)
+			}
+		case "these":
+			if slices.Contains(body.Emails, inv.Email) {
+				emails = append(emails, inv.Email)
+				reminder = reminder || inv.Sent != ""
+			}
+		case "new", "":
+			if inv.Sent == "" && inv.Requested == "" {
+				emails = append(emails, inv.Email)
+			}
+		case "unanswered":
+			if model.AnswerOf(inv.Email, e.ID) == "" {
+				emails = append(emails, inv.Email)
+				reminder = reminder || inv.Sent != ""
+			}
+		case "all":
+			emails = append(emails, inv.Email)
+			reminder = reminder || inv.Sent != ""
+		default:
+			return nil, "", access.Invalid("send to new, unanswered, sent, or all")
+		}
+	}
+	if len(emails) == 0 {
+		return nil, "", access.Invalid("nobody to send to")
+	}
+	switch {
+	case body.Update:
+		return emails, inviteUpdate, nil
+	case reminder:
+		return emails, inviteReminder, nil
+	}
+	return emails, "", nil
+}
+
+func (a app) skippable(e *Event, emails []string) []string {
+	out := []string{}
+	for _, email := range emails {
+		email = config.NormalizeEmail(email)
+		if inv := a.model().InviteOf(e.ID, email); inv != nil && inv.Sent == "" {
+			out = append(out, email)
+		}
+	}
+	return out
+}
+
+func (a app) messageWith(actor access.Actor, e *Event, body messageBody) (store.Op, int, error) {
+	message := strings.TrimSpace(body.Message)
+	if message == "" || len(message) > maxTextLength {
+		return store.Op{}, 0, access.Invalid("a message needs some words")
+	}
+	subject := strings.Join(strings.Fields(body.Subject), " ")
+	if subject == "" || len(subject) > maxTitleLength {
+		return store.Op{}, 0, access.Invalid("a message needs a subject")
+	}
+	wanted := map[string]bool{}
+	for _, t := range body.To {
+		switch t {
+		case AnswerYes, AnswerMaybe, AnswerNo, "none":
+			wanted[t] = true
+		default:
+			return store.Op{}, 0, access.Invalid("send to yes, maybe, no, or none")
+		}
+	}
+	if len(wanted) == 0 && len(body.Emails) == 0 {
+		return store.Op{}, 0, access.Invalid("pick who to send to")
+	}
+	model := a.model()
+	standing := func(email string) string {
+		if answer := model.AnswerOf(email, e.ID); answer != "" && answer != AnswerHidden {
+			return answer
+		}
+		return "none"
+	}
+	chosen := []string{}
+	for _, inv := range model.Invites[e.ID] {
+		if wanted[standing(inv.Email)] || slices.Contains(body.Emails, inv.Email) {
+			chosen = append(chosen, inv.Email)
+		}
+	}
+	targets := a.reachable(e, chosen)
+	if targets == 0 {
+		return store.Op{}, 0, access.Invalid("nobody on the list stands where you chose")
+	}
+	return a.messageOp(e, KindMessage, subject, message, chosen, body.Attach, actor.Email), targets, nil
+}
+
 func (a app) requestOps(actor access.Actor, e *Event, emails []string, host, kind string) []store.Op {
 	stamp := now().Format(DateTimeFormat)
 	ops := []store.Op{}
@@ -828,13 +945,13 @@ func (a app) requestOps(actor access.Actor, e *Event, emails []string, host, kin
 
 func (a app) messageOp(e *Event, kind, subject, text string, recipients []string, attach bool, by string) store.Op {
 	return store.Insert(MessagesTab, store.Row{
-		"Message ID": a.cache.Model().Minter()(), "Event ID": e.ID, "Kind": kind, "Subject": subject, "Text": text, "Recipients": strings.Join(recipients, ", "),
+		"Message ID": a.model().Minter()(), "Event ID": e.ID, "Kind": kind, "Subject": subject, "Text": text, "Recipients": strings.Join(recipients, ", "),
 		"Attach": cells.YesNoCell(attach), "Sent By": by, "Created": now().Format(DateTimeFormat),
 	})
 }
 
 func (a app) sentOps(actor access.Actor, e *Event, emails []string, stamp string) []store.Op {
-	model := a.cache.Model()
+	model := a.model()
 	ops := []store.Op{}
 	if inv := model.Invitations[e.ID]; inv == nil || inv.Sent == "" {
 		ops = append(ops, store.Update(InvitationsTab, store.Row{"Event ID": e.ID}, store.Row{"Sent": stamp}))
@@ -857,6 +974,10 @@ func (a app) skipOps(actor access.Actor, e *Event, emails []string) []store.Op {
 		ops = append(ops, inviteSentOp(e.ID, email, stamp))
 	}
 	return append(ops, a.sentOps(actor, e, emails, stamp)...)
+}
+
+func eventCellsOp(id string, cells store.Row) store.Op {
+	return store.Update(EventsTab, store.Row{"Event ID": id}, cells)
 }
 
 func resendOp(e *Event, to, host string) store.Op {
@@ -884,7 +1005,7 @@ func adminsToldOp(id string) store.Op {
 }
 
 func (a app) openedOps(actor access.Actor, e *Event) []store.Op {
-	inv := a.cache.Model().InviteOf(e.ID, actor.Email)
+	inv := a.model().InviteOf(e.ID, actor.Email)
 	if inv == nil || inv.Opened != "" || (inv.Sent == "" && inv.Requested == "") {
 		return nil
 	}
@@ -929,10 +1050,10 @@ func (a app) addGroupOps(actor access.Actor, id string, rule filter.Rule, auto *
 	if err != nil {
 		return nil, nil, InviteGroup{}, access.Invalid("%v", err)
 	}
-	if len(a.cache.Model().Groups[e.ID]) >= 20 {
+	if len(a.model().Groups[e.ID]) >= 20 {
 		return nil, nil, InviteGroup{}, access.Invalid("a guest list holds twenty groups at most")
 	}
-	g := InviteGroup{ID: a.cache.Model().Minter()(), Rule: rule, Auto: auto == nil || *auto, AddedBy: actor.Email, Added: now().Format(DateTimeFormat)}
+	g := InviteGroup{ID: a.model().Minter()(), Rule: rule, Auto: auto == nil || *auto, AddedBy: actor.Email, Added: now().Format(DateTimeFormat)}
 	return a.newGroupOps(actor, e, g), e, g, nil
 }
 
@@ -941,7 +1062,7 @@ func (a app) setGroupOps(actor access.Actor, id, gid string, auto bool) ([]store
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	g := a.cache.Model().GroupOf(e.ID, gid)
+	g := a.model().GroupOf(e.ID, gid)
 	if g == nil {
 		return nil, nil, nil, access.Missing("that group is not on the list")
 	}
@@ -953,7 +1074,7 @@ func (a app) removeGroupOps(actor access.Actor, id, gid string) ([]store.Op, *Ev
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	model := a.cache.Model()
+	model := a.model()
 	g := model.GroupOf(e.ID, gid)
 	if g == nil {
 		return nil, nil, nil, access.Missing("that group is not on the list")
@@ -979,17 +1100,17 @@ func (a app) startPartyOps(actor access.Actor, id string) ([]store.Op, *Event, I
 	if e.Source != SourceCelebrate {
 		key = "activity:" + e.linkedID()
 	}
-	for _, g := range a.cache.Model().Groups[e.ID] {
+	for _, g := range a.model().Groups[e.ID] {
 		if slices.Contains(g.Rule.Tags, key) {
 			return nil, e, g, nil
 		}
 	}
-	g := InviteGroup{ID: a.cache.Model().Minter()(), Rule: filter.Rule{Kind: filter.KindInclude, Tags: []string{key}}, Auto: true, AddedBy: actor.Email, Added: now().Format(DateTimeFormat)}
+	g := InviteGroup{ID: a.model().Minter()(), Rule: filter.Rule{Kind: filter.KindInclude, Tags: []string{key}}, Auto: true, AddedBy: actor.Email, Added: now().Format(DateTimeFormat)}
 	return append(a.newGroupOps(actor, e, g), a.hostYesOps(actor, e, a.hostsOf(e))...), e, g, nil
 }
 
 func (a app) fillOps(actor access.Actor, e *Event, g InviteGroup) ([]store.Op, []string) {
-	model := a.cache.Model()
+	model := a.model()
 	stamp := now().Format(DateTimeFormat)
 	ops := []store.Op{}
 	emails := []string{}
@@ -1041,7 +1162,7 @@ func (a app) changeAddressOps(actor access.Actor, id, email, to string, everywhe
 	if err != nil {
 		return nil, addressChange{}, err
 	}
-	model := a.cache.Model()
+	model := a.model()
 	c := addressChange{event: e, from: config.NormalizeEmail(email), to: config.NormalizeEmail(to)}
 	inv := model.InviteOf(e.ID, c.from)
 	switch {
@@ -1071,7 +1192,7 @@ func (a app) changeAddressOps(actor access.Actor, id, email, to string, everywhe
 }
 
 func (a app) moveAddressOps(actor access.Actor, old, to, name string) ([]store.Op, []string) {
-	model := a.cache.Model()
+	model := a.model()
 	person := a.directory().Person(to)
 	ops := []store.Op{}
 	resend := []string{}
@@ -1120,7 +1241,7 @@ func (a app) deleteInvitationOps(actor access.Actor, id string) ([]store.Op, *Ev
 	if err != nil {
 		return nil, nil, false, err
 	}
-	inv := a.cache.Model().Invitations[e.ID]
+	inv := a.model().Invitations[e.ID]
 	own := e.Source == SourceSheet
 	if own && inv != nil && inv.Sent != "" {
 		return nil, nil, false, access.Invalid("the invites are out: cancel the event instead")

@@ -34,7 +34,7 @@ func (a app) senderAndReplyTo(actor access.Actor, e *Event) (string, []string) {
 }
 
 func (a app) recipients(e *Event, emails []string) ([]string, map[string][]string) {
-	model := a.cache.Model()
+	model := a.model()
 	order := []string{}
 	cc := map[string][]string{}
 	for _, email := range emails {
@@ -73,7 +73,7 @@ func (a app) ccFor(email string) ([]string, bool) {
 }
 
 func (a app) sendCohostNote(ctx context.Context, to, actor string, e *Event) error {
-	e = a.cache.Model().invitedEvent(e)
+	e = a.model().invitedEvent(e)
 	l := a.letterFor(e, EventPath(e))
 	l.Heading = "You're a co-host"
 	l.Intro = fmt.Sprintf("%s made you a co-host of %s. As a co-host you can build and send the guest list, read every answer, message the guests, and replies to the invitation reach you.", a.fullName(actor), e.Title)
@@ -115,7 +115,7 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 	invited := strings.Join(names, ", ")
 	rsvpFor := "RSVP for " + joinNames(names) + " here"
 	picture := origin + "/open/share/" + e.ID + ".png"
-	if inv := a.cache.Model().Invitations[e.ID]; inv != nil && inv.Flyer != "" {
+	if inv := a.model().Invitations[e.ID]; inv != nil && inv.Flyer != "" {
 		picture = origin + flyerPath(e.ID)
 	}
 	whom := FirstWord(cells.DisplayName(to))
@@ -221,7 +221,7 @@ func answerWord(answer string) string {
 }
 
 func (a app) sendMessage(ctx context.Context, to string, cc, replyTo []string, hostName, subject, message string, e *Event, attach bool) error {
-	model := a.cache.Model()
+	model := a.model()
 	e = model.invitedEvent(e)
 	path := EventPath(e)
 	if row := model.InviteOf(e.ID, to); row != nil && row.Token != "" {
