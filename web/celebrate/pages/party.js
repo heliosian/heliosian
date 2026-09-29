@@ -10,6 +10,7 @@ import {openPhotoLightbox} from '/crop.js';
 import {heroImageBar} from '/heroimage.js';
 import {dateCard, parseWhen} from '/datecard.js';
 import {render} from '/router.js';
+import {personTile, personCard, peopleRow, andList} from '/people.js';
 
 const phone = window.matchMedia('(max-width: 900px)');
 phone.addEventListener('change', render);
@@ -142,31 +143,15 @@ function swooshHeading(text) {
   return el('h2', 'section-swoosh', text);
 }
 
-function attendeeTile(p, a) {
-  const tile = el('button', 'attendee' + (p.canEdit ? ' is-editable' : ''));
-  tile.type = 'button';
-  if (p.canEdit) {
-    tile.title = `Open ${a.name}'s ticket`;
-    tile.addEventListener('click', () => openTicket(p, a));
-  } else {
-    tile.title = a.name;
-    tile.addEventListener('click', () => openPerson(a));
-  }
-  tile.append(avatar(a, 'attendee-face'));
-  tile.append(el('div', 'attendee-name', a.name));
-  if (a.line) {
-    tile.append(el('div', 'attendee-line', a.line));
-  }
-  if (a.mine) {
-    tile.append(el('div', 'attendee-mine', 'Your family'));
-  }
-  if (a.rsvp && p.canEdit) {
-    tile.append(el('div', 'attendee-rsvp is-' + a.rsvp, rsvpWords[a.rsvp] || a.rsvp));
-  }
-  return tile;
+function attendeeCard(p, a) {
+  return personCard(a, {
+    onClick: p.canEdit ? () => openTicket(p, a) : () => openPerson(a),
+    title: p.canEdit ? `Open ${a.name}'s ticket` : a.name,
+    line: a.line,
+    mine: a.mine,
+    rsvp: p.canEdit ? a.rsvp : '',
+  });
 }
-
-const rsvpWords = {yes: 'RSVP: Yes', maybe: 'RSVP: Maybe', no: 'RSVP: No', none: 'No RSVP yet'};
 
 function attendeesSection(p) {
   const section = el('section', 'attendees');
@@ -189,9 +174,9 @@ function attendeesSection(p) {
     section.append(el('p', 'section-note', 'Nobody yet - be the first!'));
     return section;
   }
-  const grid = el('div', 'attendee-grid');
+  const grid = el('div', 'person-cards');
   for (const a of p.attendees) {
-    grid.append(attendeeTile(p, a));
+    grid.append(attendeeCard(p, a));
   }
   section.append(grid);
   return section;
@@ -357,20 +342,11 @@ function factsCard(p) {
   }
   card.append(sideRow('ticket', 'Tickets', ...ticketLines));
   if (p.hostPeople.length || p.hosts) {
-    const hostsRow = sideRow('people', p.hostPeople.length === 1 ? 'Host' : 'Hosts', p.hosts || '');
-    const faces = el('div', 'side-chairs');
-    for (const h of p.hostPeople) {
-      const tile = el('button', 'side-chair');
-      tile.type = 'button';
-      tile.title = h.name;
-      tile.append(avatar(h, ''), el('div', 'side-chair-name', h.name));
-      tile.addEventListener('click', () => openPerson(h));
-      faces.append(tile);
-    }
-    if (faces.children.length) {
-      hostsRow.querySelector('.side-row-body').append(faces);
-    }
-    card.append(hostsRow);
+    card.append(peopleRow({
+      title: p.hostPeople.length === 1 ? 'Host' : 'Hosts',
+      line: p.hosts || andList(p.hostPeople.map(h => h.name)),
+      tiles: p.hostPeople.map(h => personTile(h, {onClick: () => openPerson(h)})),
+    }));
   }
   return card;
 }

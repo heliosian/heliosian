@@ -1,7 +1,8 @@
 import {loadModel, group} from './state.js';
 import {initChrome} from './chrome.js';
 import {showPage, clearSearch} from '/shell.js';
-import {startApp, notFound} from '/router.js';
+import {startApp, load, notFound} from '/router.js';
+import {initModal} from '/modal.js';
 import {groupsPage} from './pages/groups.js';
 import {groupPage, newGroupModal} from './pages/group.js';
 import {adminPage} from './pages/admin.js';
@@ -20,6 +21,7 @@ const routes = {
 };
 
 initChrome();
+initModal(load);
 startApp({
   model: loadModel,
   routes,

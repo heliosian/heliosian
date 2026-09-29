@@ -4,6 +4,7 @@ import {badge} from './dom.js';
 import {el, link, svg, imageThumb, button} from '/elements.js';
 import {openSignUp} from './edit.js';
 import {navigate} from '/router.js';
+import {roleTag} from '/people.js';
 
 function statusBadges(node) {
   const out = [];
@@ -293,9 +294,9 @@ function activityCardBody(act, opts) {
       item.append(svg('join'), el('span', 'card-under-title', node.title));
       const mine = signUpOf(node, opts.email || me().email);
       if (mine && mine.position === 'Co-Chair') {
-        item.append(el('span', 'side-chair-role', 'Chair'));
+        item.append(roleTag('chair'));
       } else if (mine && mine.position === 'Open to Co-Chair') {
-        item.append(el('span', 'side-chair-role is-option', 'Chair opt'));
+        item.append(roleTag('option'));
       }
       const when = node.whenFrom || node === act ? {} : whenParts(node);
       const own = [when.words, when.day, when.time].filter(Boolean).join(' · ');

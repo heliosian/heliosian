@@ -1,7 +1,6 @@
-import {me, allows, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
+import {state, me, allows, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
 import {el, svg, button, toast, longToast, copyText} from '/elements.js';
 import {popup} from '/modal.js';
-import {whoLink} from '/appswitch.js';
 import {api} from '/api.js';
 import {query, act, remove as removeResource} from '/data.js';
 import {checkbox} from '/form.js';
@@ -12,6 +11,8 @@ import {answerWords, answerIcon, answerFor, firstName, answerButtons, face, tick
 import {openGuestForm, openGuestCard, warningChip, openPending, sendInvites, deleteInvitation, openCancel} from './guestpopups.js';
 import {listFilters, openTable, openMessage} from './guesttable.js';
 import {openPicker} from './addpeople.js';
+import {personTile, personCard, peopleRow, andList} from '/people.js';
+import {openPersonCard} from '/personcard.js';
 
 export async function startParty(e) {
   await act('events', e.id, 'start');
@@ -267,28 +268,21 @@ export function comingCard(e, view, refresh) {
         continue;
       }
       grid.append(el('div', 'rsvps-head ' + cls, label));
-      const list = el('div', 'attendee-grid');
+      const list = el('div', 'person-cards');
       for (const p of people) {
-        const tile = el('button', 'attendee');
-        tile.type = 'button';
-        tile.title = p.name || p.email;
-        const photo = face(p, 'attendee-face');
+        let mark = null;
         if (view.party && view.host && p.invited) {
-          const mark = el('span', 'ticket-mark is-' + (p.ticket || 'none'));
+          mark = el('span', 'ticket-mark is-' + (p.ticket || 'none'));
           mark.title = ticketWords(p.ticket);
           mark.append(svg(p.ticket === 'ticket' ? 'ticket' : p.ticket === 'free' ? 'gift' : p.ticket === 'waitlist' ? 'clock' : 'close'));
-          photo.append(mark);
         }
-        tile.append(photo, el('div', 'attendee-name', p.name || p.email));
-        const line = p.guestOf ? `Guest of ${p.guestOfName}` : p.line;
-        if (line) {
-          tile.append(el('div', 'attendee-line', line));
-        }
-        if (view.mine.some(m => m.key === p.key)) {
-          tile.append(el('div', 'attendee-mine', 'Your family'));
-        }
-        tile.addEventListener('click', () => openGuestCard(e, p, view, refresh));
-        list.append(tile);
+        list.append(personCard(p, {
+          onClick: () => openGuestCard(e, p, view, refresh),
+          line: p.guestOf ? `Guest of ${p.guestOfName}` : p.line,
+          mine: view.mine.some(m => m.key === p.key),
+          corner: mark,
+          gradeColors: state.model.gradeColors,
+        }));
       }
       grid.append(list);
     }
@@ -334,29 +328,16 @@ export function inviteCall(e, view, refresh) {
 }
 
 export function hostsRow(e, view, refresh) {
-  const row = el('div', 'side-row hosts-row');
-  const icon = el('div', 'side-icon');
-  icon.append(svg('people'));
-  const card = el('div', 'side-row-body');
-  card.append(el('div', 'side-title', 'Hosts'));
-  const names = view.hosts.map(h => h.name || h.email).filter(Boolean);
-  if (names.length) {
-    card.append(el('div', 'side-line', names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]));
-  }
-  if (view.hostsHidden) {
-    card.append(el('div', 'side-line hosts-hidden-note', 'Hidden - only the hosts see this.'));
-  }
   const s = view.settings || {};
   const cohosts = new Set(s.hosts || []);
   const self = me().email;
-  const list = el('div', 'rsvps-grid');
+  const tiles = [];
   for (const h of view.hosts) {
-    const tile = el(h.email ? 'a' : 'div', 'contact-card');
-    if (h.email) {
-      tile.href = whoLink(h.email);
-    }
-    tile.title = [h.name, h.line].filter(Boolean).join(' \u00b7 ');
-    tile.append(face(h, 'contact-photo'), el('span', 'contact-name', h.name || h.email));
+    const tile = personTile(h, {
+      onClick: () => openPersonCard(h),
+      title: [h.name, h.line].filter(Boolean).join(' \u00b7 '),
+      gradeColors: state.model.gradeColors,
+    });
     const own = h.email === self;
     const poster = !own && allows('when.act-as-host') && h.email === view.poster;
     if (view.host && (own ? cohosts.has(self) || view.poster === self : cohosts.has(h.email) || poster)) {
@@ -365,7 +346,7 @@ export function hostsRow(e, view, refresh) {
       x.title = own ? 'Step down as host' : poster ? `Step ${h.name} down as host` : `Take ${h.name} off as a co-host`;
       x.textContent = '\u00d7';
       x.addEventListener('click', async ev => {
-        ev.preventDefault();
+        ev.stopPropagation();
         const lose = view.poster === self ? 'edit it or run its guest list' : 'run its guest list';
         const alone = !view.hosts.some(o => o.email !== self);
         const others = view.hosts.filter(o => o.email !== h.email).length;
@@ -394,9 +375,9 @@ export function hostsRow(e, view, refresh) {
       });
       tile.append(x);
     }
-    list.append(tile);
+    tiles.push(tile);
   }
-  card.append(list);
+  const after = [];
   if (view.host) {
     const tools = el('div', 'hosts-tools');
     tools.append(button('Add co-host', 'plus', 'link-button', () => openAddHost(e, view, refresh)));
@@ -410,10 +391,15 @@ export function hostsRow(e, view, refresh) {
         toast(err.message);
       }
     }));
-    card.append(tools);
+    after.push(tools);
   }
-  row.append(icon, card);
-  return row;
+  return peopleRow({
+    title: 'Hosts',
+    line: andList(view.hosts.map(h => h.name || h.email).filter(Boolean)),
+    notes: view.hostsHidden ? [el('div', 'side-line hosts-hidden-note', 'Hidden - only the hosts see this.')] : [],
+    tiles,
+    after,
+  });
 }
 
 function openAddHost(e, view, refresh) {

@@ -741,18 +741,6 @@ main {
 
 .side-note { margin-top: 4px; font-size: 11.5px; color: var(--muted); font-style: italic; }
 
-.side-chairs { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
-
-.side-chair { width: 62px; display: flex; flex-direction: column; align-items: center; text-align: center; border: 0; background: none; padding: 0 0 2px; font: inherit; color: inherit; cursor: pointer; border-radius: 8px; }
-
-.side-chair:hover { background: var(--input); }
-
-.side-chair .avatar { width: 48px; height: 48px; margin: 0 auto 4px; font-size: 18px; border-radius: 11px; }
-
-.side-chair .avatar img { border-radius: 11px; }
-
-.side-chair-name { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.25; }
-
 .flyer-head { margin-bottom: 10px; }
 
 .flyer-open { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 10px; overflow: hidden; }
@@ -807,45 +795,7 @@ main {
 
 .section-note { color: var(--muted); }
 
-/* The Tickets Sold grid: square faces with the name and a line under each. */
-.attendee-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
-
-.attendee {
-  display: flex;
-  flex-direction: column;
-  padding: 10px 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--card);
-  text-align: left;
-  font: inherit;
-  color: inherit;
-}
-
-.attendee { cursor: pointer; }
-
-.attendee:hover { border-color: var(--accent); }
-
-.attendee-face { width: 100%; height: auto; aspect-ratio: 1; border-radius: 10px; font-size: 32px; margin-bottom: 8px; }
-
-.attendee-face img { border-radius: 10px; }
-
-.attendee-name { font-weight: 700; font-size: 13.5px; line-height: 1.25; }
-
-.attendee-line { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.3; }
-
 .section-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-
-/* The hosts' read of a face's RSVP on Helios When. */
-.attendee-rsvp { margin-top: 5px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-
-.attendee-rsvp.is-yes { color: #2f9e6a; }
-
-.attendee-rsvp.is-maybe { color: #b8860b; }
-
-.attendee-rsvp.is-no { color: var(--alert); }
-
-.attendee-mine { margin-top: 5px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
 
 .wait-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
 
@@ -1032,68 +982,6 @@ main {
 .buy-note { font-size: 12.5px; color: var(--muted); margin: 10px 0 0; }
 
 /* A person's window, as HCA-Team opens one from a volunteer's face. */
-.modal.modal-person { max-width: 640px; }
-
-.modal-person .modal-header { margin-bottom: 0; justify-content: flex-end; }
-
-.modal-person .modal-header h2:empty { display: none; }
-
-.who-head { display: flex; align-items: center; gap: 22px; margin: 4px 0 22px; }
-
-.avatar.who-face { width: 112px; height: 112px; font-size: 40px; flex-shrink: 0; border-radius: 22px; }
-
-.who-face img { border-radius: 22px; }
-
-.who-names { min-width: 0; }
-
-.who-name { font-size: 26px; font-weight: 700; color: var(--brand); line-height: 1.15; }
-
-.who-sub { font-size: 15px; color: var(--muted); margin-top: 4px; }
-
-.who-actions { margin-left: auto; display: flex; gap: 12px; flex-shrink: 0; }
-
-.who-action { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font: inherit; color: var(--muted); text-decoration: none; cursor: pointer; }
-
-.icon-round { width: 48px; height: 48px; border-radius: 50%; background: var(--wash, #eaf3f3); color: var(--brand); display: inline-flex; align-items: center; justify-content: center; }
-
-.who-action:hover .icon-round { background: var(--glass-strong, #dfe9e9); }
-
-.icon-round svg { width: 21px; height: 21px; }
-
-.who-action-label { font-size: 12.5px; }
-
-.who-rows { display: flex; flex-direction: column; }
-
-.who-group { display: flex; flex-direction: column; gap: 14px; padding: 16px 0; border-top: 1px solid var(--line); }
-
-.who-row { display: grid; grid-template-columns: 22px 96px 1fr; gap: 14px; align-items: center; font-size: 15px; }
-
-.who-row > svg { width: 20px; height: 20px; color: var(--muted); }
-
-.who-label { color: var(--muted); font-weight: 600; font-size: 14px; }
-
-.who-value { min-width: 0; word-break: break-all; }
-
-.who-card-link { display: block; color: var(--accent); text-decoration: none; word-break: break-all; }
-
-.who-card-link:hover { text-decoration: underline; }
-
-.who-card-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-
-.who-card-chip { border: 0; background: var(--wash, #eaf3f3); border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px; color: var(--brand); cursor: pointer; }
-
-.who-card-chip:hover { background: var(--glass-strong, #dfe9e9); }
-
-.who-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 16px; background: var(--hollow, #f0f5f5); border-radius: 12px; }
-
-.who-foot .button svg { width: 17px; height: 17px; }
-
-.modal-person .form-tab-body { min-height: 0; }
-
-.form-tab-body > .who-rows > .who-group:first-child { border-top: 0; padding-top: 6px; }
-
-.form-tab-body > .who-foot { margin-top: 12px; }
-
 /* The Ticket tab of a host's window. */
 .ticket-facts { display: flex; flex-direction: column; gap: 4px; font-size: 14px; margin-bottom: 6px; }
 
@@ -1406,14 +1294,6 @@ body.is-admin main { background-image: none; }
   .hero-stamp { top: 10px; right: 10px; min-width: 88px; padding: 9px 12px; }
   .hero-actions { top: 10px; left: 10px; }
   .host-switches { grid-template-columns: 1fr; }
-  .who-head { flex-wrap: wrap; gap: 14px; }
-  .avatar.who-face { width: 84px; height: 84px; font-size: 30px; border-radius: 18px; }
-  .who-face img { border-radius: 18px; }
-  .who-names { flex: 1; min-width: 0; }
-  .who-name { font-size: 22px; overflow-wrap: anywhere; }
-  .who-actions { margin-left: 0; width: 100%; justify-content: flex-start; gap: 18px; }
-  .who-row { grid-template-columns: 22px 72px 1fr; gap: 10px; font-size: 14px; }
-  .who-foot { flex-wrap: wrap; }
   .gala-band { flex-direction: column; align-items: flex-start; justify-content: center; gap: 14px; min-height: 130px; padding: 16px 18px; }
 
   .gala-words { max-width: 100%; }

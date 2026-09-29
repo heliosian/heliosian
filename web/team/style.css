@@ -674,7 +674,7 @@ main {
 
 .card-under-item svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
 
-.card-under-item .side-chair-role { margin-top: 0; }
+.card-under-item .person-role { margin-top: 0; }
 
 .card-under-item .card-under-edit { margin-left: auto; width: 26px; height: 26px; }
 
@@ -1130,15 +1130,6 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .side-card-invite .side-line { color: var(--soft-ink, #4d4a2e); }
 
-/* Whoever runs the event reads a volunteer's RSVP on Helios When. */
-.side-chair-rsvp { margin-top: 3px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-
-.side-chair-rsvp.is-yes { color: #2f9e6a; }
-
-.side-chair-rsvp.is-maybe { color: #b8860b; }
-
-.side-chair-rsvp.is-no { color: var(--alert, #c2452f); }
-
 .side-row { display: flex; gap: 12px; }
 
 .side-row + .side-row { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
@@ -1176,14 +1167,6 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
   text-align: center;
 }
 
-.side-chairs { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
-
-/* Tiles in a row stretch to one height and stack face, name, role from the
-   top, so the roles line up across tiles whether a name wraps or not. */
-.side-chair { width: 62px; display: flex; flex-direction: column; align-items: center; text-align: center; border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
-
-.side-chair .side-chair-name { flex: 1; }
-
 /* The flyer in the rail: the poster at the rail's width, clickable to see it whole. */
 .flyer-card { padding: 16px; }
 
@@ -1195,80 +1178,11 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .flyer-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
-/* The person window that opens from a chip. */
-.modal.modal-person { max-width: 640px; }
-
-.modal-person .modal-header { margin-bottom: 0; justify-content: flex-end; }
-
-.modal-person .modal-header h2:empty { display: none; }
-
-.modal-person .form-tab-body > .field:has(> select) { max-width: none; }
-
-.modal-person .form-tab-body { min-height: 0; }
-
-.who-head { display: flex; align-items: center; gap: 22px; margin: 4px 0 22px; }
-
-.avatar.who-face { width: 112px; height: 112px; font-size: 40px; flex-shrink: 0; border-radius: 22px; }
-
-.who-face img { border-radius: 22px; }
-
-.who-names { min-width: 0; }
-
-.who-name { font-size: 26px; font-weight: 700; color: var(--brand); line-height: 1.15; }
-
-.who-sub { font-size: 15px; color: var(--muted); margin-top: 4px; }
-
-.who-actions { margin-left: auto; display: flex; gap: 12px; flex-shrink: 0; }
-
-.who-action { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font: inherit; color: var(--muted); text-decoration: none; cursor: pointer; }
-
-.who-action .icon-round { width: 48px; height: 48px; background: var(--wash, #eaf3f3); }
-
-.who-action:hover .icon-round { background: var(--glass-strong, #dfe9e9); }
-
-.who-action .icon-round svg { width: 21px; height: 21px; }
-
-.who-action-label { font-size: 12.5px; }
-
-/* Contact rows: icon, label, value, in groups with a hairline between. */
-.who-rows { display: flex; flex-direction: column; }
-
-.who-group { display: flex; flex-direction: column; gap: 14px; padding: 16px 0; border-top: 1px solid var(--line); }
-
-/* Under the tab bar, whose own line already separates, the first group needs none. */
-.form-tab-body > .who-rows > .who-group:first-child { border-top: 0; padding-top: 6px; }
-
-.who-row { display: grid; grid-template-columns: 22px 96px 1fr; gap: 14px; align-items: center; font-size: 15px; }
-
-.who-row > svg { width: 20px; height: 20px; color: var(--muted); }
-
-.who-label { color: var(--muted); font-weight: 600; font-size: 14px; }
-
-.who-value { min-width: 0; word-break: break-all; }
-
-.who-card-link { display: block; color: var(--accent); text-decoration: none; word-break: break-all; }
-
-.who-card-link:hover { text-decoration: underline; }
-
 .icon-round { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--input); color: var(--brand); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none; }
 
 .icon-round:hover { background: var(--glass-strong, #dfe9e9); }
 
 .icon-round svg { width: 17px; height: 17px; }
-
-/* The band at the foot: profile link left, Done right. */
-.who-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 16px; background: var(--hollow, #f0f5f5); border-radius: 12px; }
-
-.who-foot .button svg { width: 17px; height: 17px; }
-
-.form-tab-body > .who-foot { margin-top: 12px; }
-
-/* Household chips open that person's own window. */
-.who-card-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-
-.who-card-chip { border: 0; background: var(--wash, #eaf3f3); border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px; color: var(--brand); cursor: pointer; }
-
-.who-card-chip:hover { background: var(--glass-strong, #dfe9e9); }
 
 /* The co-chair appointment on a sign-up: icon, words, one button. */
 .appoint-card { display: flex; align-items: center; gap: 16px; padding: 16px 18px; background: var(--wash, #eef5f4); border-radius: 12px; margin: 6px 0 18px; }
@@ -1283,98 +1197,8 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .field > span > small { font-weight: 400; color: var(--muted); }
 
-/* .avatar carries no size of its own - without this it collapses to its text
-   and any photo inside, sized 100%/100%, squashes with it. */
-/* Square-cornered, like every face in the portal. */
-.side-chair .avatar {
-  width: 48px;
-  height: 48px;
-  margin: 0 auto 4px;
-  font-size: 18px;
-  border-radius: 11px;
-}
-
-.side-chair-name { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.25; }
-
 .side-need { color: #a95f1b; font-weight: 600; margin-top: 8px; }
 
-/* An editable person tile is a button that looks like the tile, with a pencil
-   badge on the avatar so it reads as something to click. */
-button.side-chair {
-  border: 0;
-  background: none;
-  padding: 0;
-  font: inherit;
-  cursor: pointer;
-  position: relative;
-  border-radius: 8px;
-}
-
-button.side-chair:hover { background: var(--input); }
-
-.side-chair.is-editable .avatar::after {
-  content: '';
-  position: absolute;
-  right: 4px;
-  bottom: 0;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--brand-fill) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'/%3E%3C/svg%3E") center / 9px no-repeat;
-  box-shadow: 0 0 0 2px #fff;
-}
-
-.side-chair .avatar { position: relative; overflow: visible; }
-
-/* A chair's tile: a brand ring around the face and a small role line under the
-   name, so the organizers stand out among the volunteers. */
-.side-chair.is-chair .avatar { box-shadow: 0 0 0 3px var(--yellow); }
-
-/* Someone open to co-chairing, as the organizers see them: an accent ring
-   and a tag in the accent colour, apart from the chairs' yellow. */
-.side-chair.is-option .avatar { box-shadow: 0 0 0 3px var(--accent); }
-
-.side-chair-role.is-option { background: var(--accent); color: #fff; }
-
-/* An offer to co-chair, as whoever runs it sees it: a tinted card with the
-   face and name over the button that takes them up on it. */
-.side-option {
-  margin-top: 10px;
-  padding: 10px 12px 12px;
-  border-radius: 12px;
-  background: #eaf4f3;
-  border: 1px solid #d3e7e5;
-}
-
-.side-option-who {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.side-option-who .avatar { width: 40px; height: 40px; font-size: 16px; border-radius: 10px; flex-shrink: 0; box-shadow: 0 0 0 2px var(--accent); }
-
-.side-option-who .avatar img { border-radius: 10px; }
-
-.side-option-text { min-width: 0; }
-
-.side-option-name { font-size: 13.5px; font-weight: 700; color: var(--ink); }
-
-.side-option-hint { font-size: 12px; color: var(--accent); font-weight: 600; margin-top: 1px; }
-
-.side-option .side-approve { margin: 8px 0 0 50px; padding: 4px 10px; gap: 5px; font-size: 12px; background: var(--accent); }
-
-.side-option .side-approve svg { width: 13px; height: 13px; }
-
-.side-option .side-approve:hover { background: var(--brand-fill); }
 
 /* The question whoever runs it is asked in place of the ask for a co-chair,
    with the way into editing at its right. */
@@ -1393,22 +1217,6 @@ button.side-chair:hover { background: var(--input); }
 .side-ask .edit-icon { flex-shrink: 0; }
 
 .side-subtitle { margin-top: 14px; font-size: 12.5px; font-weight: 700; color: var(--brand); text-transform: uppercase; letter-spacing: 0.04em; }
-
-.side-chair-role {
-  display: inline-block;
-  white-space: nowrap;
-  margin-top: 3px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--yellow);
-  color: var(--brand-deep);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.side-chair .avatar img { border-radius: 11px; }
 
 .side-group {
   font-size: 11.5px;
@@ -2405,16 +2213,6 @@ h2.section .link-button { font-size: 14px; }
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  /* The person window on a phone: the face and name on one row, the
-     contact buttons on their own row under them, so nothing overlaps. */
-  .who-head { flex-wrap: wrap; gap: 14px; }
-  .avatar.who-face { width: 84px; height: 84px; font-size: 30px; border-radius: 18px; }
-  .who-face img { border-radius: 18px; }
-  .who-names { flex: 1; min-width: 0; }
-  .who-name { font-size: 22px; overflow-wrap: anywhere; }
-  .who-actions { margin-left: 0; width: 100%; justify-content: flex-start; gap: 18px; }
-  .who-row { grid-template-columns: 22px 72px 1fr; gap: 10px; font-size: 14px; }
-  .who-foot { flex-wrap: wrap; }
   .tabbar {
     display: flex;
     position: fixed;
@@ -2606,96 +2404,13 @@ h2.section .link-button { font-size: 14px; }
 
 .side-offered { color: var(--brand); font-weight: 600; margin-top: 6px; }
 
-/* Faces in the Volunteers list are square-cornered tiles, larger, with a
-   student's grade badged on one corner and their note on the other. */
 .vol-people { gap: 18px 16px; }
 
-.vol-people .side-chair { width: 84px; }
+.vol-people .person-tile { width: 84px; }
 
-.vol-people .side-chair .avatar { width: 72px; height: 72px; border-radius: 14px; font-size: 26px; }
+.vol-people .person-tile .person-tile-face { width: 72px; height: 72px; border-radius: 14px; font-size: 26px; }
 
-.vol-people .side-chair .avatar img { border-radius: 14px; }
-
-.vol-people .side-chair-name { font-size: 12.5px; }
-
-/* A note came with the sign-up: a speech bubble on the top-right corner,
-   the words themselves on hover. */
-.note-badge {
-  position: absolute;
-  right: -6px;
-  top: -6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 0 0 2px #fff;
-}
-
-.note-badge svg { width: 14px; height: 14px; display: block; }
-
-.note-badge .note-ink { fill: var(--accent); }
-
-/* Resting on a face tells the sign-up's story in a dark tip beneath it,
-   over whatever is beside the tile. */
-.side-chair { position: relative; }
-
-.tile-tip {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 5;
-  width: max-content;
-  max-width: 240px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  background: var(--brand-deep);
-  color: #fff;
-  font-size: 12.5px;
-  font-weight: 500;
-  line-height: 1.35;
-  text-align: left;
-  white-space: normal;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.12s;
-  pointer-events: none;
-}
-
-.tile-tip::before {
-  content: '';
-  position: absolute;
-  bottom: 100%;
-  left: 26px;
-  border: 5px solid transparent;
-  border-top: 0;
-  border-bottom-color: var(--brand-deep);
-}
-
-.tile-tip-note { margin-top: 3px; color: #d8ecea; font-style: italic; }
-
-.side-chair:hover .tile-tip, .side-chair:focus-visible .tile-tip { opacity: 1; visibility: visible; }
-
-.grade-badge {
-  position: absolute;
-  left: -6px;
-  top: -6px;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: var(--brand-fill);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 20px;
-  text-align: center;
-  box-shadow: 0 0 0 2px #fff;
-}
+.vol-people .person-tile-name { font-size: 12.5px; }
 
 /* Reordering: a line where a dragged row will land. */
 .row.is-dropbefore { box-shadow: 0 -3px 0 0 var(--accent); }

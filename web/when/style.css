@@ -1643,28 +1643,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .coming-section .guest-table-bar .rule-search { flex: 1 1 160px; max-width: 260px; }
 
-/* The faces as Celebrate lays out its Who's Coming. */
-.attendee-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+.person-card-face .ticket-mark { right: -6px; bottom: -6px; width: 26px; height: 26px; }
 
-.attendee { display: flex; flex-direction: column; padding: 10px 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); text-align: left; font: inherit; color: inherit; cursor: pointer; }
-
-.attendee:hover { border-color: var(--accent); }
-
-.attendee-face { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 1; border-radius: 10px; background: var(--input); color: var(--brand); font-size: 32px; font-weight: 700; margin-bottom: 8px; }
-
-.attendee-face img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 10px; }
-
-.attendee-face .grade-badge { left: -6px; top: -6px; }
-
-.attendee-face .ticket-mark { right: -6px; bottom: -6px; width: 26px; height: 26px; }
-
-.attendee-face .ticket-mark svg { width: 15px; height: 15px; }
-
-.attendee-name { font-weight: 700; font-size: 13.5px; line-height: 1.25; }
-
-.attendee-line { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.3; }
-
-.attendee-mine { margin-top: 5px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+.person-card-face .ticket-mark svg { width: 15px; height: 15px; }
 
 .coming-section .rsvps-pending { margin: 0 0 14px; }
 
@@ -1818,17 +1799,12 @@ button.guests-count:hover { filter: brightness(0.96); }
 
 .picker-email input { box-sizing: border-box; width: 100%; padding: 9px 12px; border: 1px solid var(--field-line, var(--line)); border-radius: 8px; font: inherit; background: var(--field); }
 
-/* The co-hosts in the settings: chips, and the shared person picker
-   (picker.js) with Add co-host beside it. */
-.hosts-row .rsvps-grid { margin-top: 10px; }
-
-.hosts-row .contact-card { position: relative; }
 
 .hosts-card-remove { position: absolute; top: -4px; right: 0; width: 20px; height: 20px; border: 0; border-radius: 50%; background: var(--input); color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; }
 
 .hosts-card-remove:hover { background: var(--alert); color: #fff; }
 
-.hosts-row .link-button { margin-top: 8px; padding-left: 0; }
+.hosts-tools .link-button { margin-top: 8px; padding-left: 0; }
 
 .rsvp-row-line { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 
@@ -2146,15 +2122,9 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .rsvps-pending .button { align-self: flex-start; }
 
-/* One person on the list, in a popup: the head, their answer for a host,
-   and the ways on. */
-.guest-card-head { display: flex; align-items: center; gap: 14px; }
-
-.guest-card-face { width: 64px; height: 64px; font-size: 24px; margin: 0; }
-
-.guest-card-name { font-family: Montserrat, Roboto, sans-serif; font-size: 18px; font-weight: 700; color: var(--brand); }
-
 .guest-card-ask { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+
+.guest-card-ask:first-child { margin-top: 6px; padding-top: 0; border-top: 0; }
 
 .guest-card-ask .rsvps-head { margin: 0 0 8px; }
 
@@ -2162,13 +2132,9 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .guest-card-ask .rsvp-mini-choice { padding: 9px 16px; font-size: 14px; }
 
-.guest-card-open { margin-top: 4px; padding-left: 0; font-size: 13.5px; }
-
 .guest-card-links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
 
 .guest-card-links .link-button { margin-top: 0; padding-left: 0; }
-
-.contact-card { border: 0; background: none; padding: 0; font: inherit; cursor: pointer; }
 
 .rsvps-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
@@ -2302,20 +2268,6 @@ button.send-tile { font: inherit; text-align: left; }
 
 .rsvps-head { margin: 10px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 
-.rsvps-grid { display: flex; flex-wrap: wrap; gap: 12px 10px; }
-
-.contact-card { width: 64px; display: flex; flex-direction: column; align-items: center; text-align: center; text-decoration: none; color: inherit; }
-
-/* Square-cornered, as every face on HCA-Team is; a student's grade sits
-   in a bubble at the top-left corner. */
-.contact-photo { position: relative; display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 12px; background: var(--input); color: var(--brand); font-size: 18px; font-weight: 700; margin-bottom: 4px; }
-
-.contact-photo img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 12px; }
-
-.contact-card:hover .contact-photo { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent); }
-
-.contact-name { font-size: 12px; color: var(--muted); line-height: 1.25; }
-
 /* A host's mark on a party guest's face: their ticket standing. */
 .ticket-mark { position: absolute; right: -6px; bottom: -6px; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--brand); color: #fff; box-shadow: 0 0 0 2px var(--card); }
 
@@ -2329,6 +2281,8 @@ button.send-tile { font: inherit; text-align: left; }
 
 .guest-card-ticket { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 10px 14px; border-radius: 12px; background: var(--accent-wash, #eef6f5); color: var(--ticket-text, var(--brand)); font-size: 14px; }
 
+.guest-card-ticket:first-child { margin-top: 6px; }
+
 .guest-card-ticket > svg { width: 22px; height: 22px; flex-shrink: 0; }
 
 .guest-card-ticket .invite-line { white-space: normal; margin-top: 2px; }
@@ -2338,8 +2292,6 @@ button.send-tile { font: inherit; text-align: left; }
 .guest-card-ticket.is-waitlist { background: var(--maybe-wash, #fff8e8); color: var(--maybe-text, #7a5a00); }
 
 .guest-card-ticket.is-none { background: var(--glass, #f1f1f1); color: var(--muted); }
-
-.grade-badge { position: absolute; left: -6px; top: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--brand-fill); color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; box-shadow: 0 0 0 2px var(--card); }
 
 /* The admins' part of the source card, set off under a rule. */
 .side-admin { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--wash-line, #c5dad7); }

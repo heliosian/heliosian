@@ -9,6 +9,7 @@ import {appOrigin} from '/appswitch.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
 import {openPhotoLightbox} from '/crop.js';
 import {heroImageBar} from '/heroimage.js';
+import {personTile, peopleRow, offerTile, andList} from '/people.js';
 import {api} from '/api.js';
 import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, uploadAndSave, uploadImage, openVolunteerSettings, openVolunteerGrid, editPencil} from '../edit.js';
 
@@ -107,44 +108,26 @@ function chairsRow(node, save) {
   if (!chairs.length && !node.coLeaderNeeded && !options.length && !node.canEdit) {
     return null;
   }
-  const row = sideRow('people', chairs.length === 1 ? 'Chair' : 'Co-Chairs', chairs.length ? [] : ['Nobody yet.']);
-  const body = row.querySelector('.side-row-body');
-  if (chairs.length) {
-    const list = el('div', 'side-chairs');
-    for (const v of chairs) {
-      list.append(personTile(node, v, false));
-    }
-    body.append(list);
-  }
+  const after = [];
   if (options.length) {
-    body.append(el('div', 'side-subtitle', 'Co-Chair Options'), ...chairOptions(node, options));
+    const list = el('div', 'person-tiles');
+    for (const v of options) {
+      const tile = volunteerTile(node, v, false, false, true);
+      list.append(node.canEdit ? offerTile(tile, makeChairButton(node, v)) : tile);
+    }
+    after.push(el('div', 'side-subtitle', 'Co-Chair Options'), list);
   }
-  body.append(...coChairAsk(node, save));
-  return row;
+  after.push(...coChairAsk(node, save));
+  return peopleRow({
+    title: chairs.length === 1 ? 'Chair' : 'Co-Chairs',
+    line: chairs.length ? andList(chairs.map(v => v.name)) : 'Nobody yet.',
+    tiles: chairs.map(v => volunteerTile(node, v, false)),
+    after,
+  });
 }
 
-function chairOptions(node, options) {
-  if (node.canEdit) {
-    return options.map(v => chairOffer(node, v));
-  }
-  const list = el('div', 'side-chairs');
-  for (const v of options) {
-    list.append(personTile(node, v, false, false, true));
-  }
-  return [list];
-}
-
-function chairOffer(node, v) {
-  const card = el('div', 'side-option');
-  const who = el('button', 'side-option-who');
-  who.type = 'button';
-  who.title = `${v.name} and their sign-up`;
-  who.addEventListener('click', () => openPerson(v, node));
-  const text = el('div', 'side-option-text');
-  text.append(el('div', 'side-option-name', v.name), el('div', 'side-option-hint', 'Offered to co-chair'));
-  who.append(avatar(v), text);
-  card.append(who);
-  card.append(button('Make co-chair', 'check', 'button button-small side-approve', async () => {
+function makeChairButton(node, v) {
+  return button('Make co-chair', 'check', 'button button-small', async () => {
     if (!confirm(`Make ${v.name} a co-chair of ${node.title}? They will be able to edit the page and manage everyone who signs up.`)) {
       return;
     }
@@ -155,8 +138,7 @@ function chairOffer(node, v) {
     } catch (err) {
       toast(err.message);
     }
-  }));
-  return card;
+  });
 }
 
 function coChairAsk(node, save) {
@@ -190,52 +172,26 @@ function coChairAsk(node, save) {
   return nodes;
 }
 
-function personTile(owner, v, star, chair, option) {
-  const tile = el('button', 'side-chair' + (owner.canEdit ? ' is-editable' : '') + (chair ? ' is-chair' : '') + (option ? ' is-option' : ''));
-  tile.type = 'button';
-  tile.title = owner.canEdit ? `${v.name} and their sign-up` : `About ${v.name}`;
-  tile.addEventListener('click', () => openPerson(v, owner));
-  const face = avatar(v);
-  if (v.grade) {
-    const grade = el('span', 'grade-badge', /^kindergarten$/i.test(v.grade) ? 'K' : v.grade.replace(/^grade\s*/i, ''));
-    grade.title = v.grade;
-    const color = (state.model.gradeColors || {})[v.grade];
-    if (color) {
-      grade.style.background = `color-mix(in srgb, ${color} 65%, black)`;
-    }
-    face.append(grade);
-  }
-  if (v.note) {
-    const bubble = el('span', 'note-badge');
-    bubble.setAttribute('aria-label', 'Left a note');
-    bubble.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5" fill="currentColor"/><path class="note-ink" d="M5 5.5A2.5 2.5 0 0 1 7.5 3h9A2.5 2.5 0 0 1 19 5.5V7.5H5z"/><rect class="note-ink" x="8" y="10.5" width="8" height="1.6" rx="0.8"/><rect class="note-ink" x="8" y="14" width="8" height="1.6" rx="0.8"/><rect class="note-ink" x="8" y="17.5" width="5" height="1.6" rx="0.8"/></svg>';
-    face.append(bubble);
-  }
-  tile.append(face, el('div', 'side-chair-name', v.name + (star && v.position === 'Co-Chair' ? '*' : '')));
-  if (chair) {
-    tile.append(el('div', 'side-chair-role', 'Chair'));
-  } else if (option) {
-    tile.append(el('div', 'side-chair-role is-option', 'Chair opt'));
-  }
-  if (v.rsvp && owner.canEdit) {
-    const words = {yes: 'RSVP: Yes', maybe: 'RSVP: Maybe', no: 'RSVP: No', none: 'No RSVP yet'};
-    tile.append(el('div', 'side-chair-rsvp is-' + v.rsvp, words[v.rsvp] || ''));
-  }
-  const tip = el('div', 'tile-tip');
-  tip.setAttribute('role', 'tooltip');
+function signedUpWords(owner, v) {
   const by = owner.canEdit ? v.addedByName : '';
   if (v.added) {
-    tip.append(el('div', '', by ? `Signed up by ${by} on ${longDate(v.added)}` : `Signed up ${longDate(v.added)}`));
-  } else if (by) {
-    tip.append(el('div', '', `Signed up by ${by}`));
+    return by ? `Signed up by ${by} on ${longDate(v.added)}` : `Signed up ${longDate(v.added)}`;
   }
-  if (v.note) {
-    tip.append(el('div', 'tile-tip-note', `“${v.note}”`));
-  }
-  if (tip.childElementCount) {
-    tile.append(tip);
-  }
-  return tile;
+  return by ? `Signed up by ${by}` : '';
+}
+
+function volunteerTile(owner, v, star, chair, option) {
+  return personTile(v, {
+    onClick: () => openPerson(v, owner),
+    title: owner.canEdit ? `${v.name} and their sign-up` : `About ${v.name}`,
+    name: v.name + (star && v.position === 'Co-Chair' ? '*' : ''),
+    editable: owner.canEdit,
+    role: chair ? 'chair' : option ? 'option' : '',
+    rsvp: owner.canEdit ? v.rsvp : '',
+    note: v.note,
+    tip: signedUpWords(owner, v),
+    gradeColors: state.model.gradeColors,
+  });
 }
 
 function whereIs(root, node) {
@@ -403,9 +359,9 @@ function paintVolunteers(view) {
       listing.append(el('div', 'vol-note', 'Nobody yet.'));
       continue;
     }
-    const grid = el('div', 'side-chairs vol-people');
+    const grid = el('div', 'person-tiles vol-people');
     for (const v of theirs) {
-      grid.append(personTile(src, v, true));
+      grid.append(volunteerTile(src, v, true));
     }
     listing.append(grid);
   }
@@ -417,16 +373,16 @@ function paintVolunteers(view) {
 function ownVolunteers(view, labelled) {
   const {node, listing, editing, chairs, people, showPeople} = view;
   if (chairs.length || showPeople.length) {
-    const grid = el('div', 'side-chairs vol-people');
+    const grid = el('div', 'person-tiles vol-people');
     for (const v of chairs) {
-      grid.append(personTile(node, v, false, true));
+      grid.append(volunteerTile(node, v, false, true));
     }
     const isOption = v => v.position === 'Open to Co-Chair';
     for (const v of showPeople.filter(isOption)) {
-      grid.append(personTile(node, v, false, false, true));
+      grid.append(volunteerTile(node, v, false, false, true));
     }
     for (const v of showPeople.filter(v => !isOption(v))) {
-      grid.append(personTile(node, v, false));
+      grid.append(volunteerTile(node, v, false));
     }
     if (labelled) {
       listing.append(el('div', 'side-group', view.filter.self));

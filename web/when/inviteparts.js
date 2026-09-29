@@ -3,6 +3,7 @@ import {el, svg, avatar, toast} from '/elements.js';
 import {act} from '/data.js';
 import {listed} from '/directory.js';
 import {rulesEditor} from '/rules.js';
+import {gradeBadge} from '/people.js';
 
 export const answerWords = {yes: 'Yes', maybe: 'Maybe', no: 'No'};
 
@@ -52,13 +53,7 @@ export function answerButtons(row, e, onChange, {small = true} = {}) {
 export function face(p, className) {
   const node = avatar(p, className || 'invite-face');
   if (p.grade) {
-    const badge = el('span', 'grade-badge', /^kindergarten$/i.test(p.grade) ? 'K' : p.grade.replace(/^grade\s*/i, ''));
-    badge.title = p.grade;
-    const color = (state.model.gradeColors || {})[p.grade];
-    if (color) {
-      badge.style.background = `color-mix(in srgb, ${color} 65%, black)`;
-    }
-    node.append(badge);
+    node.append(gradeBadge(p.grade, state.model.gradeColors));
   }
   return node;
 }

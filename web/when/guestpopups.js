@@ -1,8 +1,8 @@
 import {el, svg, button, toast, longToast} from '/elements.js';
-import {popup} from '/modal.js';
+import {popup, closeModal} from '/modal.js';
 import {field, text as textInput} from '/form.js';
 import {load} from '/router.js';
-import {whoLink} from '/appswitch.js';
+import {openPersonCard} from '/personcard.js';
 import {act} from '/data.js';
 import {createPersonPicker} from '/picker.js';
 import {answerWords, firstName, answerButtons, face, ticketWords, ticketDetail, answeredWords, pickerPeople} from './inviteparts.js';
@@ -109,68 +109,50 @@ export function openGuestForm(e, of, onDone) {
 }
 
 export function openGuestCard(e, p, view, refresh) {
-  const card = el('div', 'guest-card');
-  const head = el('div', 'guest-card-head');
-  head.append(face(p, 'contact-photo guest-card-face'));
-  const who = el('div', 'invite-who');
-  who.append(el('div', 'guest-card-name', p.name || p.email));
-  const line = p.guestOf ? `Guest of ${p.guestOfName}` : p.line;
-  if (line) {
-    who.append(el('div', 'invite-line', line));
+  const person = {...p, line: p.guestOf ? `Guest of ${p.guestOfName}` : p.line};
+  if (!view.host) {
+    return openPersonCard(person);
   }
-  if (p.email && view.host) {
-    who.append(el('div', 'invite-line', p.email));
-  }
-  if (p.email && !p.outside) {
-    const open = el('a', 'link-button guest-card-open');
-    open.href = whoLink(p.email);
-    open.append(svg('open'), el('span', '', 'Open in Helios Who?'));
-    who.append(open);
-  }
-  head.append(who);
-  card.append(head);
-  let shut = null;
-  if (view.party && view.host && p.invited) {
+  const fields = [];
+  if (view.party && p.invited) {
     const standing = el('div', 'guest-card-ticket is-' + (p.ticket || 'none'));
     standing.append(svg(p.ticket === 'ticket' ? 'ticket' : p.ticket === 'free' ? 'gift' : p.ticket === 'waitlist' ? 'clock' : 'close'));
     const words = el('div');
     words.append(el('strong', '', ticketWords(p.ticket)), el('div', 'invite-line', ticketDetail(p.ticket)));
     standing.append(words);
-    card.append(standing);
+    fields.push(standing);
   }
-  if (view.host) {
-    const ask = el('div', 'guest-card-ask');
-    ask.append(el('div', 'rsvps-head', 'Their answer'));
-    ask.append(answerButtons(p, e, () => {
-      toast(p.answer ? `${firstName(p)}: ${answerWords[p.answer]}` : `${firstName(p)}’s answer cleared`);
-      refresh();
-    }, {small: false}));
-    if (p.answer) {
-      ask.append(el('div', 'guests-by', answeredWords(p)));
-    }
-    card.append(ask);
+  const ask = el('div', 'guest-card-ask');
+  ask.append(el('div', 'rsvps-head', 'Their answer'));
+  ask.append(answerButtons(p, e, () => {
+    toast(p.answer ? `${firstName(p)}: ${answerWords[p.answer]}` : `${firstName(p)}’s answer cleared`);
+    refresh();
+  }, {small: false}));
+  if (p.answer) {
+    ask.append(el('div', 'guests-by', answeredWords(p)));
   }
+  fields.push(ask);
   const links = el('div', 'guest-card-links');
-  if (view.host && p.invited && p.email) {
+  if (p.invited && p.email) {
     links.append(button(p.sent ? 'Resend invitation' : 'Send invitation', 'calendar', 'link-button', async () => {
       try {
         await act('events', e.id, 'send', {emails: [p.key]});
         longToast('The invitation is on its way');
-        shut();
+        closeModal();
         refresh();
       } catch (err) {
         toast(err.message);
       }
     }));
   }
-  if (view.host && p.invited) {
+  if (p.invited) {
     links.append(button('Take off the list', 'trash', 'link-button danger', async () => {
       if (!confirm(`Take ${p.name || p.email} off the list? Their answer goes with them${p.via && p.via.startsWith('group:') ? ', and the group will not add them back' : ''}.`)) {
         return;
       }
       try {
         await act('events', e.id, 'uninvite', {email: p.key});
-        shut();
+        closeModal();
         refresh();
       } catch (err) {
         toast(err.message);
@@ -178,9 +160,9 @@ export function openGuestCard(e, p, view, refresh) {
     }));
   }
   if (links.childElementCount) {
-    card.append(links);
+    fields.push(links);
   }
-  shut = popup(p.name || p.email, card).shut;
+  return openPersonCard(person, [{label: 'Answer', icon: svg('calendar'), fields}]);
 }
 
 export function warningChip(e, view, r, refresh) {

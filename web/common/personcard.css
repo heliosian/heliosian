@@ -1,0 +1,73 @@
+.modal.modal-person { max-width: 640px; }
+
+.modal-person .modal-header { margin-bottom: 0; justify-content: flex-end; }
+
+.modal-person .modal-header h2:empty { display: none; }
+
+.modal-person .form-tab-body { min-height: 0; }
+
+.modal-person .form-tab-body > .field:has(> select) { max-width: none; }
+
+.who-head { display: flex; align-items: center; gap: 22px; margin: 4px 0 22px; }
+
+.avatar.who-face { position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; width: 112px; height: 112px; flex-shrink: 0; border-radius: 22px; background: var(--input); color: var(--brand); font-size: 40px; font-weight: 700; }
+
+.avatar.who-face img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit; }
+
+.who-names { min-width: 0; }
+
+.who-name { font-size: 26px; font-weight: 700; color: var(--brand); line-height: 1.15; }
+
+.who-sub { font-size: 15px; color: var(--muted); margin-top: 4px; }
+
+.who-actions { margin-left: auto; display: flex; gap: 12px; flex-shrink: 0; }
+
+.who-action { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font: inherit; color: var(--muted); text-decoration: none; cursor: pointer; }
+
+.who-action .icon-round { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 50%; background: var(--wash, #eaf3f3); color: var(--brand); }
+
+.who-action:hover .icon-round { background: var(--glass-strong, #dfe9e9); }
+
+.who-action .icon-round svg { width: 21px; height: 21px; }
+
+.who-action-label { font-size: 12.5px; }
+
+.who-rows { display: flex; flex-direction: column; }
+
+.who-group { display: flex; flex-direction: column; gap: 14px; padding: 16px 0; border-top: 1px solid var(--line); }
+
+.form-tab-body > .who-rows > .who-group:first-child { border-top: 0; padding-top: 6px; }
+
+.who-row { display: grid; grid-template-columns: 22px 96px 1fr; gap: 14px; align-items: center; font-size: 15px; }
+
+.who-row > svg { width: 20px; height: 20px; color: var(--muted); }
+
+.who-label { color: var(--muted); font-weight: 600; font-size: 14px; }
+
+.who-value { min-width: 0; word-break: break-all; }
+
+.who-card-link { display: block; color: var(--accent); text-decoration: none; word-break: break-all; }
+
+.who-card-link:hover { text-decoration: underline; }
+
+.who-card-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.who-card-chip { border: 0; background: var(--wash, #eaf3f3); border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px; color: var(--brand); cursor: pointer; }
+
+.who-card-chip:hover { background: var(--glass-strong, #dfe9e9); }
+
+.who-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 16px; background: var(--hollow, #f0f5f5); border-radius: 12px; }
+
+.who-foot .button svg { width: 17px; height: 17px; }
+
+.form-tab-body > .who-foot { margin-top: 12px; }
+
+@media (max-width: 900px) {
+  .who-head { flex-wrap: wrap; gap: 14px; }
+  .avatar.who-face { width: 84px; height: 84px; font-size: 30px; border-radius: 18px; }
+  .who-names { flex: 1; min-width: 0; }
+  .who-name { font-size: 22px; overflow-wrap: anywhere; }
+  .who-actions { margin-left: 0; width: 100%; justify-content: flex-start; gap: 18px; }
+  .who-row { grid-template-columns: 22px 72px 1fr; gap: 10px; font-size: 14px; }
+  .who-foot { flex-wrap: wrap; }
+}

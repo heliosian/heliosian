@@ -12,6 +12,8 @@ import {field, text as textInput, textarea as textAreaInput, select as selectInp
 import {tabStrip, tabParam, tabHref} from '/tabs.js';
 import {rulesEditor} from '/rules.js';
 import {visibilityWords} from './groups.js';
+import {personCard} from '/people.js';
+import {openPersonCard} from '/personcard.js';
 
 const {ruleRow, newRule, ruleSaysSomething, personWords, ruleWords} = rulesEditor({
   options,
@@ -909,7 +911,7 @@ export function groupPage(g) {
   page.append(overview);
 
   const members = el('div');
-  const grid = el('div', 'attendee-grid');
+  const grid = el('div', 'person-cards');
   const search = el('input', 'member-search');
   search.type = 'search';
   search.placeholder = 'Search the members…';
@@ -1037,9 +1039,10 @@ function managersCard(g, canEdit) {
   };
   const row = el('div', 'manager-row');
   for (const m of g.managers) {
-    const tile = el('a', 'manager-tile');
-    tile.href = whoLink(m.email);
-    tile.title = `${m.name} in Helios Who?`;
+    const tile = el('button', 'manager-tile');
+    tile.type = 'button';
+    tile.title = m.name;
+    tile.addEventListener('click', () => openPersonCard(m));
     const face = el('div', 'avatar manager-face');
     if (m.photoUrl) {
       const img = el('img');
@@ -1090,36 +1093,12 @@ function managersCard(g, canEdit) {
 }
 
 function memberCard(m, rules, title) {
-  const tile = el(m.outside ? 'div' : 'a', 'attendee');
-  if (!m.outside) {
-    tile.href = whoLink(m.email);
-  }
-  tile.title = title || reasonWords(m, rules);
-  const face = el('div', 'avatar attendee-face');
-  if (m.photoUrl) {
-    const img = el('img');
-    img.src = m.photoUrl;
-    img.alt = '';
-    img.loading = 'lazy';
-    face.append(img);
-  } else {
-    face.textContent = (m.name || m.email || '?').slice(0, 1).toUpperCase();
-  }
-  if (m.grade) {
-    const grade = el('span', 'grade-badge', /^kindergarten$/i.test(m.grade) ? 'K' : m.grade.replace(/^grade\s*/i, ''));
-    grade.title = m.grade;
-    const color = (state.model.gradeColors || {})[m.grade];
-    if (color) {
-      grade.style.background = `color-mix(in srgb, ${color} 65%, black)`;
-    }
-    face.append(grade);
-  }
-  tile.append(face, el('div', 'attendee-name', m.name));
-  const line = m.outside ? 'Guest' : m.context;
-  if (line) {
-    tile.append(el('div', 'attendee-line', line));
-  }
-  return tile;
+  return personCard(m, {
+    onClick: () => openPersonCard(m),
+    title: title || reasonWords(m, rules),
+    line: m.outside ? 'Guest' : m.context,
+    gradeColors: state.model.gradeColors,
+  });
 }
 
 function tabbed(tabs, sync = true, initial) {

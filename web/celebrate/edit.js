@@ -2,7 +2,7 @@ import {state, me, isAdmin, household, billable, admits, audienceWords, ticketFo
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
 import {directory, listed} from '/directory.js';
-import {whoLink} from '/appswitch.js';
+import {openPersonCard} from '/personcard.js';
 import {api} from '/api.js';
 import {el, svg, toast, button, avatar} from '/elements.js';
 import {tabbedFields} from '/tabs.js';
@@ -19,140 +19,8 @@ function peoplePicker(options) {
   return createPersonPicker(el('div'), {people: listed, address: true, ...options});
 }
 
-async function personInfo(email) {
-  const dir = await directory();
-  return {dir, info: dir.result.map(dir.get).find(p => p.email === email) || null};
-}
-
-export async function openPerson(v) {
-  const {dir, info} = await personInfo(v.email);
-  const done = el('button', 'button button-secondary', 'Done');
-  done.type = 'button';
-  done.addEventListener('click', closeModal);
-  openModal('', [personHead(v, info), personContact(dir, v, info), personFoot(v, info, done)], {actions: false, wide: 'person'});
-}
-
-function personHead(v, info) {
-  const head = el('div', 'who-head');
-  const face = avatar({name: (info && info.fullName) || v.name, email: v.email, photoUrl: (info && info.heroPhotoUrl) || v.photoUrl}, 'who-face');
-  const names = el('div', 'who-names');
-  names.append(el('div', 'who-name', (info && info.fullName) || v.name || v.email));
-  if (info && info.pronouns) {
-    names.append(el('div', 'who-sub', info.pronouns));
-  }
-  if (info) {
-    const place = info.isStudent
-      ? [info.grade, info.classroom].filter(Boolean).join(' · ')
-      : [info.jobTitle, info.department].filter(Boolean).join(' · ') || info.words;
-    if (place) {
-      names.append(el('div', 'who-sub', place));
-    }
-  } else if (!v.email) {
-    names.append(el('div', 'who-sub', 'Guest'));
-  }
-  const actions = el('div', 'who-actions');
-  const action = (icon, label, href, onClick) => {
-    const a = el(href ? 'a' : 'button', 'who-action');
-    if (href) {
-      a.href = href;
-    } else {
-      a.type = 'button';
-      a.addEventListener('click', onClick);
-    }
-    a.title = label;
-    const round = el('span', 'icon-round');
-    round.append(svg(icon));
-    a.append(round, el('span', 'who-action-label', label));
-    actions.append(a);
-  };
-  if (v.email) {
-    action('mail', 'Email', `mailto:${v.email}`);
-  }
-  const phone = info && info.phone ? info.phone : '';
-  const digits = phone.replace(/[^+\d]/g, '');
-  if (digits) {
-    action('chat', 'Message', `sms:${digits}`);
-    action('phone', 'Call', `tel:${digits}`);
-  }
-  if (v.email) {
-    action('copy', 'Copy info', null, () => {
-      const lines = [(info && info.fullName) || v.name || '', v.email, phone].filter(Boolean);
-      navigator.clipboard.writeText(lines.join('\n')).then(() => toast('Contact info copied'), () => toast('Could not copy'));
-    });
-  }
-  head.append(face, names, actions);
-  return head;
-}
-
-function personContact(dir, v, info) {
-  const card = el('div', 'who-rows');
-  let group = null;
-  const row = (icon, label, value) => {
-    if (!group) {
-      group = el('div', 'who-group');
-      card.append(group);
-    }
-    const r = el('div', 'who-row');
-    r.append(svg(icon), el('span', 'who-label', label), typeof value === 'string' ? el('span', 'who-value', value) : value);
-    group.append(r);
-  };
-  if (v.email) {
-    row('mail', 'Email', v.email);
-  }
-  if (info && info.phone) {
-    row('phone', 'Phone', info.phone);
-  }
-  const chips = list => {
-    const wrap = el('div', 'who-card-chips');
-    for (const p of list) {
-      const chip = el('button', 'who-card-chip', p.grade ? `${p.fullName} (${p.grade})` : p.fullName);
-      chip.type = 'button';
-      chip.addEventListener('click', () => openPerson({email: p.email, name: p.fullName, photoUrl: p.heroPhotoUrl}));
-      wrap.append(chip);
-    }
-    return wrap;
-  };
-  const partners = info ? dir.follow(info, 'partners').filter(Boolean) : [];
-  const children = info ? dir.follow(info, 'children').filter(Boolean) : [];
-  const household = info && (partners.length || children.length || (info.isStudent && info.parentContactEmails && info.parentContactEmails.length));
-  if (household) {
-    group = null;
-  }
-  if (partners.length) {
-    row('people', partners.length === 1 ? 'Partner' : 'Partners', chips(partners));
-  }
-  if (children.length) {
-    row('person', children.length === 1 ? 'Child' : 'Children', chips(children));
-  }
-  if (info && info.isStudent && info.parentContactEmails && info.parentContactEmails.length) {
-    const parents = el('div');
-    for (const e of info.parentContactEmails) {
-      const a = el('a', 'who-card-link', e);
-      a.href = `mailto:${e}`;
-      parents.append(a);
-    }
-    row('people', 'Parents', parents);
-  }
-  if (!card.children.length) {
-    row('person', 'About', 'A guest, not in the directory.');
-  }
-  return card;
-}
-
-function personFoot(v, info, done) {
-  const foot = el('div', 'who-foot');
-  if (info) {
-    const profile = el('a', 'button', '');
-    profile.append(svg('open'), el('span', '', 'Open Helios Who? Profile'));
-    profile.href = whoLink(v.email);
-    profile.target = '_blank';
-    profile.rel = 'noopener';
-    foot.append(profile);
-  }
-  if (done) {
-    foot.append(done);
-  }
-  return foot.children.length ? foot : el('div');
+export function openPerson(v) {
+  return openPersonCard(v);
 }
 
 function personChip(person, on, disabledWhy) {
@@ -608,14 +476,9 @@ export function openFreeTicket(p) {
   }, {title: 'Add a free ticket', lead: 'A ticket at no charge - for a helper, a performer, a family you\u2019d like to treat. Nothing is billed.', extra});
 }
 
-export async function openTicket(p, a) {
-  const {dir, info} = await personInfo(a.email);
+export function openTicket(p, a) {
   const form = ticketForm(p, a);
-  const tabs = tabbedFields([
-    {label: 'Contact', icon: svg('people'), fields: [personContact(dir, a, info), personFoot(a, info, null)]},
-    {label: 'Ticket', icon: svg('ticket'), fields: form.fields},
-  ]);
-  openModal('', [personHead(a, info), tabs], {...form, wide: 'person'});
+  return openPersonCard(a, [{label: 'Ticket', icon: svg('ticket'), fields: form.fields}], form);
 }
 
 function ticketForm(p, a) {

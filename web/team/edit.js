@@ -7,7 +7,7 @@ import {el, svg, toast, button, imageThumb} from '/elements.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
 import {directory, listed} from '/directory.js';
-import {whoLink} from '/appswitch.js';
+import {openPersonCard} from '/personcard.js';
 import {api} from '/api.js';
 import {openModal, closeModal} from '/modal.js';
 import {load, navigate, render} from '/router.js';
@@ -62,148 +62,12 @@ function settingRow(label, hint, control) {
   return row;
 }
 
-export async function openPerson(v, node) {
-  const dir = await directory();
-  const info = dir.result.map(dir.get).find(p => p.email === v.email) || null;
-  const head = personHead(v, info);
-  const contact = personContact(dir, v, info);
+export function openPerson(v, node) {
   if (!node || !(node.canEdit || isFamily(v.email)) || !v.position) {
-    const done = el('button', 'button button-secondary', 'Done');
-    done.type = 'button';
-    done.addEventListener('click', closeModal);
-    openModal('', [head, contact, personFoot(v, info, done)], {actions: false, wide: 'person'});
-    return;
+    return openPersonCard(v);
   }
   const form = signUpForm(node, v);
-  const tabs = tabbedFields([
-    {label: 'Sign up', icon: svg('edit'), fields: form.fields},
-    {label: 'Contact', icon: svg('people'), fields: [contact, personFoot(v, info)]},
-  ]);
-  openModal('', [head, tabs], {...form, wide: 'person', replace: true});
-}
-
-function personHead(v, info) {
-  const head = el('div', 'who-head');
-  const face = el('div', 'avatar who-face');
-  const photo = (info && info.heroPhotoUrl) || v.photoUrl;
-  if (photo) {
-    const img = el('img');
-    img.src = photo;
-    img.alt = '';
-    face.append(img);
-  } else {
-    face.textContent = (v.name || v.email).slice(0, 1).toUpperCase();
-  }
-  const names = el('div', 'who-names');
-  names.append(el('div', 'who-name', (info && info.fullName) || v.name || v.email));
-  if (info && info.pronouns) {
-    names.append(el('div', 'who-sub', info.pronouns));
-  }
-  if (info) {
-    const place = info.isStudent
-      ? [info.grade, info.classroom].filter(Boolean).join(' · ')
-      : [info.jobTitle, info.department].filter(Boolean).join(' · ') || info.words;
-    if (place) {
-      names.append(el('div', 'who-sub', place));
-    }
-  }
-  const actions = el('div', 'who-actions');
-  const action = (icon, label, href, onClick) => {
-    const a = el(href ? 'a' : 'button', 'who-action');
-    if (href) {
-      a.href = href;
-    } else {
-      a.type = 'button';
-      a.addEventListener('click', onClick);
-    }
-    a.title = label;
-    const round = el('span', 'icon-round');
-    round.append(svg(icon));
-    a.append(round, el('span', 'who-action-label', label));
-    actions.append(a);
-  };
-  action('mail', 'Email', `mailto:${v.email}`);
-  const phone = info && info.phone ? info.phone : '';
-  const digits = phone.replace(/[^+\d]/g, '');
-  if (digits) {
-    action('chat', 'Message', `sms:${digits}`);
-    action('phone', 'Call', `tel:${digits}`);
-  }
-  action('copy', 'Copy info', null, () => {
-    const lines = [(info && info.fullName) || v.name || '', v.email, phone].filter(Boolean);
-    navigator.clipboard.writeText(lines.join('\n')).then(() => toast('Contact info copied'), () => toast('Could not copy'));
-  });
-  head.append(face, names, actions);
-  return head;
-}
-
-function personContact(dir, v, info) {
-  const card = el('div', 'who-rows');
-  let group = null;
-  const row = (icon, label, value) => {
-    if (!group) {
-      group = el('div', 'who-group');
-      card.append(group);
-    }
-    const r = el('div', 'who-row');
-    r.append(svg(icon), el('span', 'who-label', label), typeof value === 'string' ? el('span', 'who-value', value) : value);
-    group.append(r);
-  };
-  const divide = () => {
-    group = null;
-  };
-  row('mail', 'Email', v.email);
-  if (info && info.phone) {
-    row('phone', 'Phone', info.phone);
-  }
-  const chips = list => {
-    const wrap = el('div', 'who-card-chips');
-    for (const p of list) {
-      const chip = el('button', 'who-card-chip', p.grade ? `${p.fullName} (${p.grade})` : p.fullName);
-      chip.type = 'button';
-      chip.addEventListener('click', () => openPerson({email: p.email, name: p.fullName}));
-      wrap.append(chip);
-    }
-    return wrap;
-  };
-  const partners = info ? dir.follow(info, 'partners').filter(Boolean) : [];
-  const children = info ? dir.follow(info, 'children').filter(Boolean) : [];
-  const household = info && (partners.length || children.length || (info.isStudent && info.parentContactEmails && info.parentContactEmails.length));
-  if (household) {
-    divide();
-  }
-  if (partners.length) {
-    row('people', partners.length === 1 ? 'Partner' : 'Partners', chips(partners));
-  }
-  if (children.length) {
-    row('person', children.length === 1 ? 'Child' : 'Children', chips(children));
-  }
-  if (info && info.isStudent && info.parentContactEmails && info.parentContactEmails.length) {
-    const parents = el('div');
-    for (const e of info.parentContactEmails) {
-      const a = el('a', 'who-card-link', e);
-      a.href = `mailto:${e}`;
-      parents.append(a);
-    }
-    row('people', 'Parents', parents);
-  }
-  return card;
-}
-
-function personFoot(v, info, done) {
-  const foot = el('div', 'who-foot');
-  if (info) {
-    const profile = el('a', 'button', '');
-    profile.append(svg('open'), el('span', '', 'Open Helios Who? Profile'));
-    profile.href = whoLink(v.email);
-    profile.target = '_blank';
-    profile.rel = 'noopener';
-    foot.append(profile);
-  }
-  if (done) {
-    foot.append(done);
-  }
-  return foot.children.length ? foot : el('div');
+  return openPersonCard(v, [{label: 'Sign up', icon: svg('edit'), fields: form.fields}], {...form, replace: true});
 }
 
 export function openSignUp(node, existing, someoneElse) {

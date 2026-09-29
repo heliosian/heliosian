@@ -2,7 +2,8 @@ import {loadModel, event, eventPath, fetchEvent, today, parseDate, state, eventD
 import {el} from '/elements.js';
 import {initChrome, clearSearch} from './chrome.js';
 import {showPage} from '/shell.js';
-import {startApp, render, notFound} from '/router.js';
+import {startApp, render, load, notFound} from '/router.js';
+import {initModal} from '/modal.js';
 import {homePage} from './pages/home.js';
 import {eventPage} from './pages/event.js';
 import {adminPage} from './pages/admin.js';
@@ -55,6 +56,7 @@ const routes = {
 };
 
 initChrome();
+initModal(load);
 startApp({
   model: loadModel,
   routes,

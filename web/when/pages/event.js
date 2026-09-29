@@ -1,16 +1,17 @@
 import {state, me, allows, sourceWords, dayType, dayTypeName, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {paragraphs} from '../dom.js';
-import {el, svg, button, editToggle, toast, longToast, avatar, copyText} from '/elements.js';
+import {el, svg, button, editToggle, toast, longToast, copyText} from '/elements.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
 import {heroImageBar} from '/heroimage.js';
-import {whoLink} from '/appswitch.js';
+import {openPersonCard} from '/personcard.js';
 import {setTitle} from '/shell.js';
 import {load} from '/router.js';
 import {act} from '/data.js';
 import {openGuestForm} from '../guestpopups.js';
 import {answerIcon} from '../inviteparts.js';
+import {personTile} from '/people.js';
 import {audienceChips, blocks} from '../events.js';
 import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow, inviteCall} from '../invites.js';
 
@@ -464,23 +465,13 @@ function rsvpsCard(e) {
       continue;
     }
     card.append(el('div', 'rsvps-head', `${label} · ${people.length}`));
-    const list = el('div', 'rsvps-grid');
+    const list = el('div', 'person-tiles');
     for (const p of people) {
-      const tile = el('a', 'contact-card');
-      tile.href = whoLink(p.email);
-      tile.title = [p.name, p.line].filter(Boolean).join(' · ');
-      const face = avatar(p, 'contact-photo');
-      if (p.grade) {
-        const badge = el('span', 'grade-badge', /^kindergarten$/i.test(p.grade) ? 'K' : p.grade.replace(/^grade\s*/i, ''));
-        badge.title = p.grade;
-        const color = (state.model.gradeColors || {})[p.grade];
-        if (color) {
-          badge.style.background = `color-mix(in srgb, ${color} 65%, black)`;
-        }
-        face.append(badge);
-      }
-      tile.append(face, el('span', 'contact-name', p.name || p.email));
-      list.append(tile);
+      list.append(personTile(p, {
+        onClick: () => openPersonCard(p),
+        title: [p.name, p.line].filter(Boolean).join(' · '),
+        gradeColors: state.model.gradeColors,
+      }));
     }
     card.append(list);
   }
