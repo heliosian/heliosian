@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -24,7 +25,6 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/claude"
 	"heliosian/internal/data"
-	"heliosian/internal/home"
 	"heliosian/internal/intercept"
 	"heliosian/internal/model"
 	"heliosian/internal/store"
@@ -39,11 +39,12 @@ var sampleNow = time.Date(2026, 9, 12, 9, 0, 0, 0, model.Location)
 func sampleSources(t *testing.T) Sources {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	directory, err := model.LoadDirectory(dir, testkit.All, testkit.All, []byte("sample"))
+	queue := store.NewQueue()
+	directoryCache, err := model.NewDirectoryCache(dir, dir, testkit.All, testkit.All, queue, []byte("sample"), func() []string { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue := store.NewQueue()
+	directory := directoryCache.Model()
 	calendarModel := sample.Calendar(t, dir, queue, directory).Model()
 	teamCache, err := model.NewActivitiesCache(dir, dir, testkit.All, func() []string { return nil }, queue)
 	if err != nil {
@@ -60,24 +61,20 @@ func sampleSources(t *testing.T) Sources {
 		t.Fatal(err)
 	}
 	loopModel := loopCache.Model()
-	homeCache, err := home.NewCache(dir, dir, testkit.All, func() []string { return nil }, func() model.AudienceSources {
-		return model.AudienceSources{Directory: directory, MagicTags: func(string) []model.MagicTag { return nil }}
-	}, queue)
+	homeCache, err := model.NewHomeCache(dir, dir, testkit.All, func() []string { return nil }, directoryCache, celebrateCache, teamCache, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	bucket := blob.NewMemoryBucket()
-	intercept.GoogleLogin(t.TempDir())
-	intercept.Install(intercept.VertexHost, intercept.Vertex())
 	embedder, err := artifacts.NewVertex()
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifactsCache, err := artifacts.NewCache(dir, dir, bucket, embedder, queue)
+	documentsCache, err := model.NewDocumentsCache(dir, dir, bucket, embedder, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	filer := artifacts.Register(http.NewServeMux(), artifactsCache, embedder, queue, artifacts.Inbox{Bucket: bucket})
+	filer := model.RegisterDocuments(http.NewServeMux(), documentsCache, embedder, queue, artifacts.Inbox{Bucket: bucket})
 	saved, err := filepath.Glob("../../sampledata/artifacts/*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +84,7 @@ func sampleSources(t *testing.T) Sources {
 			t.Fatal(err)
 		}
 	}
-	documents := artifactsCache.Model()
+	documents := documentsCache.Model()
 	tags := directory.Tags
 	lists := directory.RoomParentTags
 	return Sources{
@@ -104,9 +101,9 @@ func sampleSources(t *testing.T) Sources {
 			return model.AudienceSources{Directory: directory, MagicTags: lists}
 		},
 		Links:     homeCache.CategoriesFor,
-		Artifacts: func() *artifacts.Model { return documents },
+		Documents: func() *model.Documents { return documents },
 		Embedder:  embedder,
-		Admins:    Admins{Team: heldBy(model.ActivitiesAdminAllowances), Celebrate: heldBy(model.PartiesAdminAllowances), Loop: heldBy(model.EmailListsAdminAllowances), Calendar: heldBy(model.CalendarAdminAllowances), Home: heldBy(home.AdminAllowances)},
+		Admins:    Admins{Team: heldBy(model.ActivitiesAdminAllowances), Celebrate: heldBy(model.PartiesAdminAllowances), Loop: heldBy(model.EmailListsAdminAllowances), Calendar: heldBy(model.CalendarAdminAllowances), Home: heldBy(model.HomeAdminAllowances)},
 		Now:       func() time.Time { return sampleNow },
 	}
 }
@@ -193,35 +190,51 @@ type sentRequest struct {
 	Messages []sentMessage `json:"messages"`
 }
 
-func interceptClaude(t *testing.T) func() []sentRequest {
-	t.Helper()
-	mu := sync.Mutex{}
-	turns := []sentRequest{}
+var claudeTurns = struct {
+	mu    sync.Mutex
+	byKey map[string][]sentRequest
+}{byKey: map[string][]sentRequest{}}
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "ask")
+	if err != nil {
+		panic(err)
+	}
+	intercept.GoogleLogin(dir)
+	intercept.Install(intercept.VertexHost, intercept.Vertex())
+	intercept.Install(intercept.GeocodeHost, intercept.Geocode())
 	answer := intercept.Claude()
 	intercept.Install(intercept.ClaudeHost, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			t.Error(err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		var req sentRequest
 		if err := json.Unmarshal(body, &req); err != nil {
-			t.Error(err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		if last := req.Messages[len(req.Messages)-1]; last.Content[0].Type != "tool_result" {
-			mu.Lock()
-			turns = append(turns, req)
-			mu.Unlock()
+			key := r.Header.Get("X-Api-Key")
+			claudeTurns.mu.Lock()
+			claudeTurns.byKey[key] = append(claudeTurns.byKey[key], req)
+			claudeTurns.mu.Unlock()
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		answer.ServeHTTP(w, r)
 	}))
-	return func() []sentRequest {
-		mu.Lock()
-		defer mu.Unlock()
-		return slices.Clone(turns)
+	code := m.Run()
+	if err := os.RemoveAll(dir); err != nil {
+		panic(err)
 	}
+	os.Exit(code)
+}
+
+func sentTo(t *testing.T) []sentRequest {
+	claudeTurns.mu.Lock()
+	defer claudeTurns.mu.Unlock()
+	return slices.Clone(claudeTurns.byKey[t.Name()])
 }
 
 func systemMessages(messages []sentMessage) []string {
@@ -272,27 +285,27 @@ func done(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
 }
 
 func TestChatTellsOfANewDocumentOnce(t *testing.T) {
+	t.Parallel()
 	sources := sampleSources(t)
-	documents := sources.Artifacts()
+	documents := sources.Documents()
 	current := documents
-	sources.Artifacts = func() *artifacts.Model { return current }
-	sent := interceptClaude(t)
+	sources.Documents = func() *model.Documents { return current }
 	mux := http.NewServeMux()
-	Register(mux, sources, NewClaude("test"), claude.NewLimiter(), []byte("test"))
+	Register(mux, sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"))
 	handler := auth.Fixed(jordan, mux)
 	chat := &transcript{}
 	first := chat.keep(t, post(t, handler, chat.body(t, "Anything new?")))
 	if known := anyStrings(first["known"]); len(known) == 0 || slices.Contains(known, "late-reminder") {
 		t.Fatalf("the first turn knew %v", known)
 	}
-	arrived := &artifacts.Document{Key: "late-reminder", Title: "Picture Day moves to Friday", Date: sampleNow.Format(model.DateFormat), Kind: artifacts.KindList}
-	current = &artifacts.Model{Documents: append([]*artifacts.Document{arrived}, documents.Documents...)}
+	arrived := &model.Document{Key: "late-reminder", Title: "Picture Day moves to Friday", Date: sampleNow.Format(model.DateFormat), Kind: model.DocumentKindList}
+	current = &model.Documents{Documents: append([]*model.Document{arrived}, documents.Documents...)}
 	second := chat.keep(t, post(t, handler, chat.body(t, "And now?")))
 	if !slices.Contains(anyStrings(second["known"]), "late-reminder") {
 		t.Fatalf("the arrival was not kept as known: %v", second["known"])
 	}
 	chat.keep(t, post(t, handler, chat.body(t, "Still?")))
-	requests := sent()
+	requests := sentTo(t)
 	if len(requests) != 3 {
 		t.Fatalf("%d requests", len(requests))
 	}
@@ -659,7 +672,7 @@ func anyStrings(list any) []string {
 func serveApp(t *testing.T) http.Handler {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), NewClaude("test"), claude.NewLimiter(), []byte("test"))
+	Register(mux, sampleSources(t), NewClaude(t.Name()), claude.NewLimiter(), []byte("test"))
 	return auth.Fixed(jordan, mux)
 }
 
@@ -705,7 +718,7 @@ func post(t *testing.T, handler http.Handler, body string) *httptest.ResponseRec
 }
 
 func TestChatStreamsAndKeepsTheConversation(t *testing.T) {
-	sentTurns := interceptClaude(t)
+	t.Parallel()
 	handler := serveApp(t)
 	chat := &transcript{}
 	rec := post(t, handler, chat.body(t, "What kind of day is today?"))
@@ -726,7 +739,7 @@ func TestChatStreamsAndKeepsTheConversation(t *testing.T) {
 		t.Fatalf("the browser was handed %d messages and %d known documents", len(chat.context), len(chat.known))
 	}
 	second := chat.keep(t, post(t, handler, chat.body(t, "And tomorrow?")))
-	requests := sentTurns()
+	requests := sentTo(t)
 	if second["turns"] != 2.0 || len(requests) != 2 {
 		t.Fatalf("second turn: %v after %d requests", second, len(requests))
 	}
@@ -740,7 +753,7 @@ func TestChatStreamsAndKeepsTheConversation(t *testing.T) {
 }
 
 func TestChatReadsTheBrowsersContextWithKeys(t *testing.T) {
-	sentTurns := interceptClaude(t)
+	t.Parallel()
 	handler := serveApp(t)
 	chat := &transcript{}
 	if err := json.Unmarshal([]byte(`[{"role":"user","content":[{"type":"text","text":"Is `+samURL+` here?"}]},{"role":"assistant","content":[{"type":"text","text":"Yes, [Sam](`+samURL+`)."}]},{"role":"user","content":[{"type":"text","text":"Two"}]},{"role":"assistant","content":[{"type":"text","text":"B"}]}]`), &chat.context); err != nil {
@@ -750,7 +763,7 @@ func TestChatReadsTheBrowsersContextWithKeys(t *testing.T) {
 	if d["turns"] != 3.0 {
 		t.Fatalf("turns %v", d["turns"])
 	}
-	sent := sentTurns()[0].Messages
+	sent := sentTo(t)[0].Messages
 	if got := sent[1].Content[0].Text; got != "Yes, [Sam]("+keyOf(samURL)+")." {
 		t.Fatalf("the model read %q", got)
 	}
@@ -784,7 +797,7 @@ func (s stopping) Write(b []byte) (int, error) {
 }
 
 func TestChatLeavesAStoppedAnswerToTheBrowser(t *testing.T) {
-	interceptClaude(t)
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	handler := serveApp(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/ask/chat", strings.NewReader(`{"message":"What kind of day is today?"}`)).WithContext(ctx)
@@ -806,7 +819,7 @@ func (w wrapped) WriteHeader(status int)      { w.inner.WriteHeader(status) }
 func (w wrapped) Unwrap() http.ResponseWriter { return w.inner }
 
 func TestChatStreamsThroughAWrappedWriter(t *testing.T) {
-	interceptClaude(t)
+	t.Parallel()
 	handler := serveApp(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/ask/chat", strings.NewReader(`{"message":"Hello"}`))
 	rec := httptest.NewRecorder()

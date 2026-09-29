@@ -4,23 +4,23 @@ import (
 	"testing"
 	"time"
 
-	"heliosian/internal/artifacts"
+	"heliosian/internal/model"
 )
 
 func TestMissing(t *testing.T) {
 	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
-	m := &artifacts.Model{
-		Documents: []*artifacts.Document{
-			{Key: "a", Date: "2026-09-25", Kind: artifacts.KindNewsletter},
-			{Key: "b", Date: "2026-09-24", Kind: artifacts.KindList, Channel: "jays.parents"},
-			{Key: "c", Date: "2026-09-24", Kind: artifacts.KindList, Channel: "chat"},
-			{Key: "d", Date: "2026-09-01", Kind: artifacts.KindNewsletter},
-			{Key: "e", Date: "2026-09-23", Kind: artifacts.KindNewsletter},
-			{Key: "f", Date: "2026-09-25", Kind: artifacts.KindNewsletter},
-			{Key: "g", Date: "2026-09-22", Kind: artifacts.KindNewsletter},
+	m := &model.Documents{
+		Documents: []*model.Document{
+			{Key: "a", Date: "2026-09-25", Kind: model.DocumentKindNewsletter},
+			{Key: "b", Date: "2026-09-24", Kind: model.DocumentKindList, Channel: "jays.parents"},
+			{Key: "c", Date: "2026-09-24", Kind: model.DocumentKindList, Channel: "chat"},
+			{Key: "d", Date: "2026-09-01", Kind: model.DocumentKindNewsletter},
+			{Key: "e", Date: "2026-09-23", Kind: model.DocumentKindNewsletter},
+			{Key: "f", Date: "2026-09-25", Kind: model.DocumentKindNewsletter},
+			{Key: "g", Date: "2026-09-22", Kind: model.DocumentKindNewsletter},
 		},
 		Points:   map[string][]string{"e": {"done"}, "f": {"old"}, "g": {"old"}},
-		Audience: map[string]string{"e": artifacts.Everyone, "f": "Condors", "g": artifacts.Everyone},
+		Audience: map[string]string{"e": model.DocumentForEveryone, "f": "Condors", "g": model.DocumentForEveryone},
 		Judged:   map[string]string{"e": Revision, "g": "2026-09-20"},
 	}
 	got := []string{}

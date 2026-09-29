@@ -6,11 +6,8 @@ import (
 	"log"
 	"slices"
 
-	"heliosian/internal/artifacts"
 	"heliosian/internal/data"
 	"heliosian/internal/env"
-	"heliosian/internal/feedback"
-	"heliosian/internal/home"
 	"heliosian/internal/id"
 	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
@@ -31,16 +28,16 @@ func withChangeLog(tabs []store.Tab) []tab {
 }
 
 var seeds = map[string]map[string]map[string]string{
-	"Apps": {"Categories": {"Category ID": home.EventsID, "Title": home.EventsTitle, "Emoji": home.EventsEmoji, "Style": home.StyleEvents}},
+	"Apps": {"Categories": {"Category ID": model.EventsCategoryID, "Title": model.EventsCategoryTitle, "Emoji": model.EventsCategoryEmoji, "Style": model.StyleEvents}},
 }
 
 var layouts = map[string][]tab{
 	"Artifacts": {
-		{"Documents", artifacts.DocumentColumns},
+		{"Documents", model.DocumentColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Feedback": {
-		{"Reports", feedback.ReportColumns},
+		{"Reports", model.ReportColumns},
 		{id.AliasesTab, id.AliasColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
@@ -52,12 +49,12 @@ var layouts = map[string][]tab{
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Apps": {
-		{"Categories", home.CategoryColumns},
-		{"Links", home.LinkColumns},
+		{"Categories", model.HomeCategoryColumns},
+		{"Links", model.HomeLinkColumns},
 		{model.AdminsTab.Name, model.AdminsTab.Columns},
-		{"Visibility", home.VisibilityColumns},
-		{"Audience", home.AudienceColumns},
-		{"Widgets", home.WidgetColumns},
+		{"Visibility", model.HomeVisibilityColumns},
+		{"Audience", model.HomeAudienceColumns},
+		{"Widgets", model.HomeWidgetColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Events": {

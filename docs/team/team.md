@@ -1,6 +1,6 @@
 # Volunteer portal
 
-HCA-Team, the HCA Volunteer Portal, is where the Helios Community Association asks for help and where families answer: every event, committee, and idea the association runs each school year, the roles under each, and who signed up. It serves at the first of its `Hosts` in `internal/home/load.go`; the others there send their root to it, answer an old address below, and 404 anything else (`route` in `internal/app/server.go`). The sheet is `Events`, named for what it holds; the code is `internal/model/activities*.go` and the API is `/api/team/`.
+HCA-Team, the HCA Volunteer Portal, is where the Helios Community Association asks for help and where families answer: every event, committee, and idea the association runs each school year, the roles under each, and who signed up. It serves at the first of its `Hosts` in `internal/model/home.go`; the others there send their root to it, answer an old address below, and 404 anything else (`route` in `internal/app/server.go`). The sheet is `Events`, named for what it holds; the code is `internal/model/activities*.go` and the API is `/api/team/`.
 
 ## Entities
 

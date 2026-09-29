@@ -3,7 +3,7 @@ package ask
 import (
 	"sync"
 
-	"heliosian/internal/artifacts"
+	"heliosian/internal/model"
 )
 
 type groupAccess struct {
@@ -24,19 +24,19 @@ func (v *viewer) readableGroups() map[string]bool {
 	return v.access.names
 }
 
-func (v *viewer) canRead(d *artifacts.Document) bool {
-	if d.Kind != artifacts.KindGroup {
+func (v *viewer) canRead(d *model.Document) bool {
+	if d.Kind != model.DocumentKindGroup {
 		return true
 	}
 	return v.readableGroups()[d.Channel]
 }
 
-func (v *viewer) documents() *artifacts.Model {
-	return v.artifacts.Where(v.canRead)
+func (v *viewer) documents() *model.Documents {
+	return v.library.Where(v.canRead)
 }
 
-func (v *viewer) groupOf(d *artifacts.Document) string {
-	if d.Kind != artifacts.KindGroup {
+func (v *viewer) groupOf(d *model.Document) string {
+	if d.Kind != model.DocumentKindGroup {
 		return ""
 	}
 	g := v.loop.Named(d.Channel)

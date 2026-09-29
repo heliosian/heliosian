@@ -6,18 +6,18 @@ import (
 	"slices"
 	"testing"
 
-	"heliosian/internal/artifacts"
+	"heliosian/internal/model"
 )
 
 func TestGroupMailReadsForMembersOfGroupsTheySee(t *testing.T) {
 	sources := sampleSources(t)
-	docs := &artifacts.Model{Documents: []*artifacts.Document{
-		{Key: "humming", Title: "Snack rota", Kind: artifacts.KindGroup, Channel: "hummingbird-families", Date: "2026-09-10", Markdown: "Snacks."},
-		{Key: "list", Title: "Picnic", Kind: artifacts.KindList, Channel: "parents", Date: "2026-09-10", Markdown: "Picnic."},
-		{Key: "middle", Title: "Dance", Kind: artifacts.KindGroup, Channel: "middle-school-parents", Date: "2026-09-10", Markdown: "Dance."},
-		{Key: "soccer", Title: "Saturday", Kind: artifacts.KindGroup, Channel: "soccer-team", Date: "2026-09-10", Markdown: "Game."},
+	docs := &model.Documents{Documents: []*model.Document{
+		{Key: "humming", Title: "Snack rota", Kind: model.DocumentKindGroup, Channel: "hummingbird-families", Date: "2026-09-10", Markdown: "Snacks."},
+		{Key: "list", Title: "Picnic", Kind: model.DocumentKindList, Channel: "parents", Date: "2026-09-10", Markdown: "Picnic."},
+		{Key: "middle", Title: "Dance", Kind: model.DocumentKindGroup, Channel: "middle-school-parents", Date: "2026-09-10", Markdown: "Dance."},
+		{Key: "soccer", Title: "Saturday", Kind: model.DocumentKindGroup, Channel: "soccer-team", Date: "2026-09-10", Markdown: "Game."},
 	}}
-	sources.Artifacts = func() *artifacts.Model { return docs }
+	sources.Documents = func() *model.Documents { return docs }
 	groups := sources.Loop()
 	members := func(name string) []string { return groups.Named(name).Members(sources.LoopSources()) }
 	pick := func(from []string, not ...[]string) string {

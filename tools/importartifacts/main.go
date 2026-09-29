@@ -18,6 +18,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/devcache"
 	"heliosian/internal/env"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
@@ -54,7 +55,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-	cache, err := artifacts.NewCache(source, source, bucket, embedder, store.NewQueue())
+	cache, err := model.NewDocumentsCache(source, source, bucket, embedder, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load the documents on file: %v", err)
 	}
@@ -62,12 +63,12 @@ func main() {
 	issues := map[string]string{}
 	for _, doc := range cache.Model().Documents {
 		objects[doc.Key] = doc.Object()
-		if doc.Kind == artifacts.KindNewsletter {
+		if doc.Kind == model.DocumentKindNewsletter {
 			issues[doc.Title+"|"+doc.Date] = doc.Key
 		}
 	}
 	log.Printf("%d documents on file, %d files to consider", len(objects), len(files))
-	resolver := &artifacts.Resolver{}
+	resolver := &model.LinkResolver{}
 
 	pending := []work{}
 	drops := []store.Op{}
@@ -78,18 +79,18 @@ func main() {
 			log.Printf("stopping at the %d asked for", *limit)
 			break
 		}
-		saved, err := artifacts.ReadSaved(file)
+		saved, err := model.ReadSaved(file)
 		if err != nil {
 			log.Printf("%v", err)
 			failed++
 			continue
 		}
 		doc, err := saved.Build(resolver, embedder.Model())
-		if errors.Is(err, artifacts.ErrNotBroadcast) || errors.Is(err, artifacts.ErrExcluded) {
+		if errors.Is(err, model.ErrNotBroadcast) || errors.Is(err, model.ErrExcluded) {
 			withheld++
 			continue
 		}
-		if errors.Is(err, artifacts.ErrNoWords) {
+		if errors.Is(err, model.ErrNoWords) {
 			empty++
 			key := saved.Key()
 			if object, known := objects[key]; known {
@@ -111,13 +112,13 @@ func main() {
 				continue
 			}
 			item.replacing = object
-		} else if other, dup := issues[doc.Title+"|"+doc.Date]; dup && doc.Kind == artifacts.KindNewsletter {
+		} else if other, dup := issues[doc.Title+"|"+doc.Date]; dup && doc.Kind == model.DocumentKindNewsletter {
 			log.Printf("%s: %q on %s is already on file as %s; skipped", filepath.Base(file), doc.Title, doc.Date, other)
 			skipped++
 			continue
 		}
 		objects[doc.Key] = doc.Object()
-		if doc.Kind == artifacts.KindNewsletter {
+		if doc.Kind == model.DocumentKindNewsletter {
 			issues[doc.Title+"|"+doc.Date] = doc.Key
 		}
 		characters += len(doc.Markdown)
@@ -144,7 +145,7 @@ func main() {
 			doc := pending[0].doc
 			fmt.Printf("%q on %s by %s [%s/%s], %d chunks\n\n%s\n", doc.Title, doc.Date, doc.Author, doc.Kind, doc.Channel, len(doc.Chunks), doc.Markdown)
 		}
-		widest := []*artifacts.Document{}
+		widest := []*model.Document{}
 		for _, item := range pending {
 			widest = append(widest, item.doc)
 		}
@@ -193,19 +194,19 @@ func main() {
 }
 
 type work struct {
-	doc       *artifacts.Document
+	doc       *model.Document
 	replacing string
 }
 
-func record(ctx context.Context, cache *artifacts.Cache, bucket *blob.Bucket, group []work) error {
-	model := cache.Model()
+func record(ctx context.Context, cache *model.DocumentsCache, bucket *blob.Bucket, group []work) error {
+	docs := cache.Model()
 	ops := []store.Op{}
 	for _, item := range group {
 		if item.replacing == "" {
-			ops = append(ops, model.Record(actor, item.doc)...)
+			ops = append(ops, docs.Record(actor, item.doc)...)
 			continue
 		}
-		ops = append(ops, model.Replace(actor, item.doc)...)
+		ops = append(ops, docs.Replace(actor, item.doc)...)
 	}
 	if err := cache.CommitAndWait(ctx, actor, ops...); err != nil {
 		return fmt.Errorf("record the documents: %w", err)
@@ -221,7 +222,7 @@ func record(ctx context.Context, cache *artifacts.Cache, bucket *blob.Bucket, gr
 	return nil
 }
 
-func embedAndStore(ctx context.Context, cache *artifacts.Cache, embedder *artifacts.Vertex, bucket *blob.Bucket, group []work) error {
+func embedAndStore(ctx context.Context, cache *model.DocumentsCache, embedder *artifacts.Vertex, bucket *blob.Bucket, group []work) error {
 	var mu sync.Mutex
 	var first error
 	var wg sync.WaitGroup
@@ -247,7 +248,7 @@ func embedAndStore(ctx context.Context, cache *artifacts.Cache, embedder *artifa
 	return first
 }
 
-func put(ctx context.Context, cache *artifacts.Cache, embedder *artifacts.Vertex, bucket *blob.Bucket, doc *artifacts.Document) error {
+func put(ctx context.Context, cache *model.DocumentsCache, embedder *artifacts.Vertex, bucket *blob.Bucket, doc *model.Document) error {
 	if err := doc.Embed(ctx, embedder); err != nil {
 		return err
 	}

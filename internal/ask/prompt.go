@@ -9,28 +9,27 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 
-	"heliosian/internal/artifacts"
 	"heliosian/internal/model"
 )
 
 //go:embed prompt.md
 var school string
 
-func systemBlocks(v *viewer, recent []*artifacts.Document, l *links) []anthropic.BetaTextBlockParam {
+func systemBlocks(v *viewer, recent []*model.Document, l *links) []anthropic.BetaTextBlockParam {
 	return []anthropic.BetaTextBlockParam{
 		{Text: l.shorten(school + "\n\n" + lingo(v)), CacheControl: anthropic.NewBetaCacheControlEphemeralParam()},
 		{Text: l.shorten(viewerBlock(v) + "\n" + recentBlock(v, recent) + "\n" + linkExamples(v)), CacheControl: anthropic.NewBetaCacheControlEphemeralParam()},
 	}
 }
 
-func recentDocuments(v *viewer) []*artifacts.Document {
+func recentDocuments(v *viewer) []*model.Document {
 	since := v.now.AddDate(0, 0, -recentDays).Format(model.DateFormat)
-	out := []*artifacts.Document{}
+	out := []*model.Document{}
 	for _, d := range v.documents().Documents {
 		if len(out) >= recentLimit || d.Date < since {
 			break
 		}
-		if d.Kind == artifacts.KindPortal {
+		if d.Kind == model.DocumentKindPortal {
 			continue
 		}
 		out = append(out, d)
@@ -98,19 +97,19 @@ func (v *viewer) exampleLinks() []string {
 	return out
 }
 
-func recentBlock(v *viewer, recent []*artifacts.Document) string {
+func recentBlock(v *viewer, recent []*model.Document) string {
 	if len(recent) == 0 {
 		return fmt.Sprintf("## Recent documents\n\nNo documents have come in over the last %d days.\n", recentDays)
 	}
 	return fmt.Sprintf("## Recent documents\n\nThe newest documents of the last %d days, newest first, each with its key for read_document:\n", recentDays) + documentLines(v, recent)
 }
 
-func arrivals(v *viewer, fresh []*artifacts.Document) string {
+func arrivals(v *viewer, fresh []*model.Document) string {
 	return "New documents have come in since this conversation began, newest first, each with its key for read_document:\n" + documentLines(v, fresh) +
 		"\nA new document can change what the calendar or the other apps say; read one that bears on what is being asked."
 }
 
-func documentLines(v *viewer, docs []*artifacts.Document) string {
+func documentLines(v *viewer, docs []*model.Document) string {
 	b := &strings.Builder{}
 	for _, d := range docs {
 		date := d.Date

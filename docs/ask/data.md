@@ -1,6 +1,6 @@
 # How Helios Ask answers
 
-Helios Ask has no sheet. It reads every other app's model through `ask.Sources`, which `internal/app` builds from the same caches it hands the apps (`internal/app/ask.go`), reads the community's documents through `internal/artifacts` (`artifacts.md`), and talks to Claude through the Anthropic API. This file carries what reading `internal/ask` cannot tell you.
+Helios Ask has no sheet. It reads every other app's model through `ask.Sources`, which `internal/app` builds from the same caches it hands the apps (`internal/app/wiring.go`), reads the community's documents through `model.Documents` (`artifacts.md`), and talks to Claude through the Anthropic API. This file carries what reading `internal/ask` cannot tell you.
 
 ## The call
 

@@ -12,15 +12,13 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 
 	"heliosian/internal/access"
-	"heliosian/internal/artifacts"
 	"heliosian/internal/claude"
+	"heliosian/internal/model"
 )
 
-const model = "claude-sonnet-5"
+const claudeModel = "claude-sonnet-5"
 
 const maxEmail = 24 << 10
-
-const Window = 14 * 24 * time.Hour
 
 const Revision = "2026-09-26"
 
@@ -89,7 +87,7 @@ func (c *Claude) Read(ctx context.Context, e Email) (Reading, error) {
 		Grades     []string `json:"grades"`
 	}
 	if _, err := claude.JSON(ctx, c.client, anthropic.MessageNewParams{
-		Model:        model,
+		Model:        claudeModel,
 		MaxTokens:    2000,
 		System:       []anthropic.TextBlockParam{{Text: system, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt))},
@@ -124,11 +122,11 @@ func clean(points []string) []string {
 	return out
 }
 
-func Missing(m *artifacts.Model, now time.Time) []*artifacts.Document {
-	since := now.Add(-Window).Format("2006-01-02")
-	unread, stale := []*artifacts.Document{}, []*artifacts.Document{}
+func Missing(m *model.Documents, now time.Time) []*model.Document {
+	since := now.Add(-model.SchoolMailWindow).Format("2006-01-02")
+	unread, stale := []*model.Document{}, []*model.Document{}
 	for _, d := range m.Documents {
-		if d.Date < since || !artifacts.School(d) {
+		if d.Date < since || !d.School() {
 			continue
 		}
 		if m.Audience[d.Key] == "" {
@@ -140,7 +138,7 @@ func Missing(m *artifacts.Model, now time.Time) []*artifacts.Document {
 	return append(unread, stale...)
 }
 
-func Pass(ctx context.Context, cache *artifacts.Cache, s *Claude, school School, now time.Time) int {
+func Pass(ctx context.Context, cache *model.DocumentsCache, s *Claude, school School, now time.Time) int {
 	written := 0
 	for _, d := range Missing(cache.Model(), now) {
 		if written == perRun {
@@ -151,7 +149,7 @@ func Pass(ctx context.Context, cache *artifacts.Cache, s *Claude, school School,
 			slog.ErrorContext(ctx, "keypoints: read an email", "error", err, "key", d.Key, "title", d.Title)
 			return written
 		}
-		audience := artifacts.Everyone
+		audience := model.DocumentForEveryone
 		if named := append(slices.Clone(reading.Classrooms), reading.Grades...); len(named) > 0 {
 			audience = strings.Join(named, ", ")
 		}
@@ -164,7 +162,7 @@ func Pass(ctx context.Context, cache *artifacts.Cache, s *Claude, school School,
 	return written
 }
 
-func Run(cache *artifacts.Cache, s *Claude, school School) {
+func Run(cache *model.DocumentsCache, s *Claude, school School) {
 	time.Sleep(time.Minute)
 	for {
 		if n := Pass(context.Background(), cache, s, school, time.Now()); n > 0 {

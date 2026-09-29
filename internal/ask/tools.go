@@ -80,7 +80,7 @@ type viewer struct {
 	team      *model.Activities
 	celebrate *model.Parties
 	loop      *model.EmailLists
-	artifacts *artifacts.Model
+	library   *model.Documents
 	embedder  *artifacts.Vertex
 	sources   Sources
 	now       time.Time
@@ -96,7 +96,7 @@ type viewer struct {
 func (a app) viewer(email string) *viewer {
 	v := &viewer{
 		email: email, directory: a.sources.Directory(), calendar: a.sources.Calendar(), team: a.sources.Team(), celebrate: a.sources.Celebrate(), loop: a.sources.Loop(),
-		artifacts: a.sources.Artifacts(), embedder: a.sources.Embedder,
+		library: a.sources.Documents(), embedder: a.sources.Embedder,
 		sources: a.sources, now: a.sources.Now().In(model.Location), access: &groupAccess{}, ctx: context.Background(),
 	}
 	v.me = v.directory.Person(email)

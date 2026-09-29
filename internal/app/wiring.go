@@ -25,7 +25,6 @@ import (
 	"heliosian/internal/env"
 	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
-	"heliosian/internal/home"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/keypoints"
 	"heliosian/internal/logging"
@@ -58,7 +57,7 @@ type Config struct {
 	CalendarMail  model.CalendarMail
 	BirthdayMail  *mail.Mailgun
 	BirthdayBase  string
-	FeedbackFiler feedback.IssueFiler
+	FeedbackFiler *feedback.GitHubApp
 	FeedbackBase  string
 	Describer     *describe.Describer
 	Loop          model.ListMail
@@ -80,7 +79,7 @@ type Core struct {
 	CalendarCache *model.CalendarCache
 	LoopCache     *model.EmailListsCache
 	Cache         *model.DirectoryCache
-	Documents     *artifacts.Filer
+	Documents     *model.DocumentFiler
 	Queue         *store.Queue
 	Spoof         *auth.Spoof
 	Member        func(email string) bool
@@ -133,17 +132,16 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load loop data", "error", err)
 	}
-	sources := audience(cache, teamCache, celebrateCache)
 	loopSources := loopAudience(cache, teamCache, celebrateCache)
 	lists := smartLists{cache, teamCache, celebrateCache, loopCache}
-	homeCache, err := home.NewCache(cfg.Source, cfg.Writer, homeImages, settings.SuperAdmins, sources, queue)
+	homeCache, err := model.NewHomeCache(cfg.Source, cfg.Writer, homeImages, settings.SuperAdmins, cache, celebrateCache, teamCache, queue)
 	if err != nil {
 		logging.Fatal("load apps data", "error", err)
 	}
 	taglineOf := func(key string) func() string {
 		return func() string {
 			if key == "home" {
-				return home.Home.Tagline
+				return model.HomeApp.Tagline
 			}
 			for _, a := range homeCache.AppList() {
 				if a.Key == key {
@@ -156,7 +154,7 @@ func NewCore(cfg Config) *Core {
 	appName := func(key string) func() string {
 		return func() string {
 			if key == "home" {
-				return home.Home.Name
+				return model.HomeApp.Name
 			}
 			for _, a := range homeCache.AppList() {
 				if a.Key == key {
@@ -169,15 +167,15 @@ func NewCore(cfg Config) *Core {
 	whoAbout := who.About(appName("who"), taglineOf("who"))
 	birthdayAbout := model.BirthdaysAbout(appName("birthday"), taglineOf("birthday"))
 	loopAbout := model.EmailListsAbout(appName("loop"), taglineOf("loop"))
-	homeStyle := home.CardStyle(appName("home"), taglineOf("home"))
+	homeStyle := model.HomeCardStyle(appName("home"), taglineOf("home"))
 	teamStyle := model.ActivitiesCardStyle(appName("team"), taglineOf("team"))
 	celebrateStyle := model.PartiesCardStyle(appName("celebrate"), taglineOf("celebrate"))
 	calendarStyle := model.CalendarCardStyle(appName("when"), taglineOf("when"))
-	artifactsCache, err := artifacts.NewCache(cfg.Source, cfg.Writer, cfg.Bucket, cfg.Embedder, queue)
+	documentsCache, err := model.NewDocumentsCache(cfg.Source, cfg.Writer, cfg.Bucket, cfg.Embedder, queue)
 	if err != nil {
 		logging.Fatal("load artifacts data", "error", err)
 	}
-	go keypoints.Run(artifactsCache, cfg.KeyPoints, cache)
+	go keypoints.Run(documentsCache, cfg.KeyPoints, cache)
 	mux := http.NewServeMux()
 	model.RegisterConfig(mux, settings, cache, cache.Held)
 	who.Register(mux, cache, whoAbout)
@@ -187,7 +185,6 @@ func NewCore(cfg Config) *Core {
 	linked := func(email string) []model.Linked {
 		return model.LinkedEvents(cache.Model(), celebrateCache.Model(), teamCache.Model(), email, time.Now().In(model.Location))
 	}
-	frontEvents := upcomingEvents{calendarCache, cache.Model, linked}
 	calendarMux := http.NewServeMux()
 	hooks := model.RegisterCalendar(calendarMux, model.CalendarDeps{
 		Cache:      calendarCache,
@@ -203,15 +200,13 @@ func NewCore(cfg Config) *Core {
 		Queue:      queue,
 	})
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, home.Deps{
-		Cache:       homeCache,
-		Images:      homeImages,
-		Upcoming:    frontEvents.list,
-		Month:       frontEvents.month,
-		Search:      cfg.ImageSearch,
-		Answer:      hooks.Answer,
-		MakeDefault: hooks.MakeDefault,
-		Style:       homeStyle,
+	model.RegisterHome(homeMux, model.HomeDeps{
+		Cache:     homeCache,
+		Images:    homeImages,
+		Calendar:  hooks,
+		Documents: documentsCache,
+		Search:    cfg.ImageSearch,
+		Style:     homeStyle,
 	})
 	teamMux := http.NewServeMux()
 	model.RegisterActivities(teamMux, model.ActivitiesDeps{
@@ -228,7 +223,7 @@ func NewCore(cfg Config) *Core {
 	})
 	birthdayMux := http.NewServeMux()
 	birthdayResources := model.BirthdayResources(birthdayCache, func(ctx context.Context, email string) error {
-		return home.Grant(ctx, homeCache, "birthday", email)
+		return model.GrantApp(ctx, homeCache, "birthday", email)
 	})
 	celebrateMux := http.NewServeMux()
 	model.RegisterParties(celebrateMux, model.PartiesDeps{
@@ -242,7 +237,7 @@ func NewCore(cfg Config) *Core {
 	})
 	askMux := http.NewServeMux()
 	loopMail := cfg.Loop
-	documents := artifacts.Register(askMux, artifactsCache, cfg.Embedder, queue, cfg.ArtifactsMail)
+	documents := model.RegisterDocuments(askMux, documentsCache, cfg.Embedder, queue, cfg.ArtifactsMail)
 	loopMail.Documents = documents
 	loopMux := http.NewServeMux()
 	model.RegisterEmailLists(loopMux, model.EmailListsDeps{
@@ -271,14 +266,14 @@ func NewCore(cfg Config) *Core {
 		Loop:        loopCache.Model,
 		LoopSources: loopSources,
 		Links:       homeCache.CategoriesFor,
-		Artifacts:   artifactsCache.Model,
+		Documents:   documentsCache.Model,
 		Embedder:    cfg.Embedder,
 		Admins:      ask.Admins{Team: teamCache.Held, Celebrate: celebrateCache.Held, Loop: loopCache.Held, Calendar: calendarCache.Held, Home: homeCache.Held},
 		Now:         time.Now,
 	}, cfg.Asker, spend, cfg.ChatKey)
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
-		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: home.PreviewHead(homeCache, homeStyle)},
+		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: model.HomePreviewHead(homeCache, homeStyle)},
 		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: model.ActivitiesPreviewHead(teamCache, teamStyle), Wrap: func(next http.Handler) http.Handler {
 			return model.ActivitiesRedirected(teamCache, next)
 		}},
@@ -291,11 +286,11 @@ func NewCore(cfg Config) *Core {
 	waitingApprovals := approvals(cache, teamCache, celebrateCache, calendarCache)
 	behind := lateBirthdays(cache, birthdayCache)
 	alerts := staleAlerts(cache, settings)
-	feedbackCache, err := feedback.NewCache(cfg.Source, cfg.Writer, queue)
+	feedbackCache, err := model.NewFeedbackCache(cfg.Source, cfg.Writer, queue)
 	if err != nil {
 		logging.Fatal("load feedback model", "error", err)
 	}
-	registry := resources(caches{settings, cache, invites, teamCache, birthdayCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, feedbackCache, hooks, cfg.IDKey}, queue, birthdayResources, model.EmailListResources(loopCache, loopMail.Documents))
+	registry := resources(caches{settings, cache, invites, teamCache, birthdayCache, celebrateCache, calendarCache, loopCache, homeCache, documentsCache, feedbackCache, hooks, cfg.IDKey}, queue, birthdayResources, model.EmailListResources(loopCache, loopMail.Documents))
 	model.RegisterBirthdays(birthdayMux, model.BirthdaysDeps{
 		Cache:     birthdayCache,
 		Queue:     queue,
@@ -306,12 +301,12 @@ func NewCore(cfg Config) *Core {
 		About:     birthdayAbout,
 		Taken:     registry.Taken,
 	})
-	notifier := feedback.Notifier{Sender: cfg.Mail, Base: cfg.FeedbackBase, SuperAdmins: settings.SuperAdmins}
-	feedbackIntake := feedback.NewIntake(feedbackCache, cfg.Bucket, notifier.Notify)
+	notifier := model.FeedbackNotifier{Sender: cfg.Mail, Base: cfg.FeedbackBase, SuperAdmins: settings.SuperAdmins}
+	feedbackIntake := model.NewFeedbackIntake(feedbackCache, cfg.Bucket, notifier.Notify)
 	optIn := who.OptInForm(func() string { return settings.Config().PrivacyLinks.HeliosWhoOptIn })
 	suggestions := geocode.NewSuggestions(cfg.Geocoder)
 	for _, a := range apps {
-		home.RegisterSwitch(a.Mux, homeCache)
+		model.RegisterAppSwitch(a.Mux, homeCache)
 		registry.Register(a.Mux)
 		if a.Key != "when" {
 			a.Mux.HandleFunc("GET /api/apps/rsvp", hooks.RSVPs)
@@ -320,7 +315,7 @@ func NewCore(cfg Config) *Core {
 		a.Mux.HandleFunc("GET /api/apps/late", behind)
 		a.Mux.HandleFunc("GET /api/apps/alerts", alerts)
 		a.Mux.Handle("GET "+OptInPath, optIn)
-		feedback.Register(a.Mux, a.Key, appName(a.Key), cache.Actor, settings.IsSuperAdmin, feedbackIntake)
+		model.RegisterFeedback(a.Mux, a.Key, appName(a.Key), cache, settings, feedbackIntake)
 		suggestions.Register(a.Mux)
 		folders := []string{"photos"}
 		if folder, ok := blob.ImageFolder(a.Key); ok {
@@ -328,10 +323,7 @@ func NewCore(cfg Config) *Core {
 		}
 		blob.Register(a.Mux, cfg.Store, folders...)
 	}
-	homeMux.HandleFunc("GET /api/apps/team", teamWidget(cache, teamCache))
-	homeMux.HandleFunc("GET /api/apps/celebrate", celebrateWidget(cache, calendarCache, linked))
-	homeMux.HandleFunc("GET /api/apps/school", schoolWidget(cache, artifactsCache))
-	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.Bucket, cfg.FeedbackFiler, cache.Actor, settings.IsSuperAdmin)
+	model.RegisterFeedbackAdmin(homeMux, feedbackCache, cfg.Bucket, cfg.FeedbackFiler, cache, settings)
 	go queue.Tick()
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")

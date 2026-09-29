@@ -12,7 +12,6 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/devcache"
 	"heliosian/internal/env"
-	"heliosian/internal/home"
 	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
@@ -38,10 +37,11 @@ func main() {
 		log.Fatalf("blob store: %v", err)
 	}
 	media := blob.New(objects)
-	directory, err := model.LoadDirectory(source, media, static.Files{Root: "web/who"}, []byte(env.Required("ID_KEY")))
+	directoryCache, err := model.NewDirectoryCache(source, nil, media, static.Files{Root: "web/who"}, store.NewQueue(), []byte(env.Required("ID_KEY")), func() []string { return nil })
 	if err != nil {
 		log.Fatalf("load directory model: %v", err)
 	}
+	directory := directoryCache.Model()
 	students, parents, staff, isNew := 0, 0, 0, 0
 	for _, p := range directory.People {
 		if p.IsStudent {
@@ -123,7 +123,16 @@ func main() {
 		fmt.Printf("  %s -> %s (%s -> %s)\n", g.Name, g.NextName, g.Band, g.NextBand)
 	}
 
-	appsCache, err := home.NewCache(source, nil, blob.NewImages(media, "home"), func() []string { return nil }, nil, store.NewQueue())
+	eventsCache, err := model.NewActivitiesCache(source, nil, blob.NewImages(media, "team"), func() []string { return nil }, store.NewQueue())
+	if err != nil {
+		log.Fatalf("load events model: %v", err)
+	}
+	celebrateCache, err := model.NewPartiesCache(source, nil, blob.NewImages(media, "celebrate"), func() []string { return nil }, store.NewQueue())
+	if err != nil {
+		log.Fatalf("load celebrate model: %v", err)
+	}
+
+	appsCache, err := model.NewHomeCache(source, nil, blob.NewImages(media, "home"), func() []string { return nil }, directoryCache, celebrateCache, eventsCache, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load apps model: %v", err)
 	}
@@ -141,10 +150,6 @@ func main() {
 	}
 	fmt.Printf("apps admins: %d\n", len(appsCache.Admins()))
 
-	eventsCache, err := model.NewActivitiesCache(source, nil, blob.NewImages(media, "team"), func() []string { return nil }, store.NewQueue())
-	if err != nil {
-		log.Fatalf("load events model: %v", err)
-	}
 	portal := eventsCache.Model()
 	fmt.Println("events:")
 	byYear := map[string][]*model.Activity{}
@@ -169,10 +174,6 @@ func main() {
 	}
 	fmt.Printf("events admins: %d\n", len(eventsCache.Admins()))
 
-	celebrateCache, err := model.NewPartiesCache(source, nil, blob.NewImages(media, "celebrate"), func() []string { return nil }, store.NewQueue())
-	if err != nil {
-		log.Fatalf("load celebrate model: %v", err)
-	}
 	site := celebrateCache.Model()
 	fmt.Println("celebrate:")
 	for _, c := range site.Celebrations {
@@ -254,11 +255,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("embedder: %v", err)
 	}
-	artifactsCache, err := artifacts.NewCache(source, nil, objects, embedder, store.NewQueue())
+	documentsCache, err := model.NewDocumentsCache(source, nil, objects, embedder, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load artifacts: %v", err)
 	}
-	documents := artifactsCache.Model().Documents
+	documents := documentsCache.Model().Documents
 	fmt.Printf("artifacts: %d documents\n", len(documents))
 	for _, doc := range documents {
 		fmt.Printf("  %s %q by %s (%s, %d chunks)\n", doc.Date, doc.Title, doc.Author, doc.Kind, len(doc.Chunks))

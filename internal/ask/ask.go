@@ -22,7 +22,6 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
-	"heliosian/internal/home"
 	"heliosian/internal/model"
 	"heliosian/internal/ratelimit"
 	"heliosian/internal/serve"
@@ -49,8 +48,8 @@ type Sources struct {
 	Celebrate   func() *model.Parties
 	Loop        func() *model.EmailLists
 	LoopSources func() model.AudienceSources
-	Links       func(v access.Actor) []home.Category
-	Artifacts   func() *artifacts.Model
+	Links       func(v access.Actor) []model.HomeCategory
+	Documents   func() *model.Documents
 	Embedder    *artifacts.Vertex
 	Admins      Admins
 	Now         func() time.Time
@@ -156,14 +155,14 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 			known[d.Key] = true
 		}
 	}
-	fresh := []*artifacts.Document{}
+	fresh := []*model.Document{}
 	for _, d := range recent {
 		if !known[d.Key] {
 			fresh = append(fresh, d)
 			known[d.Key] = true
 		}
 	}
-	listed := []*artifacts.Document{}
+	listed := []*model.Document{}
 	for _, d := range v.documents().Documents {
 		if known[d.Key] && !slices.Contains(fresh, d) {
 			listed = append(listed, d)

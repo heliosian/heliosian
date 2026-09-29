@@ -16,6 +16,8 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/api"
+	"heliosian/internal/artifacts"
+	"heliosian/internal/blob"
 	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
@@ -66,38 +68,6 @@ func (f *fakeArchive) count() int {
 	return len(f.objects)
 }
 
-type fakeDocuments struct {
-	mu      sync.Mutex
-	groups  []string
-	dropped []string
-}
-
-func (f *fakeDocuments) Post(_ context.Context, _ access.Actor, group string, raw []byte) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.groups = append(f.groups, group)
-	return nil
-}
-
-func (f *fakeDocuments) Remove(_ context.Context, _ access.Actor, group string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.dropped = append(f.dropped, group)
-	return nil
-}
-
-func (f *fakeDocuments) filed() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Clone(f.groups)
-}
-
-func (f *fakeDocuments) removed() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Clone(f.dropped)
-}
-
 const signingKey = "mailgun-signing-key"
 
 type harness struct {
@@ -108,9 +78,19 @@ type harness struct {
 	sources   func() AudienceSources
 	sender    *mailtest.Recorder
 	archive   *fakeArchive
-	documents *fakeDocuments
+	documents *DocumentFiler
 	mailbox   ListMail
 	queue     *store.Queue
+}
+
+func (h *harness) filed() []string {
+	out := []string{}
+	for _, d := range h.documents.cache.Model().Documents {
+		if d.Kind == DocumentKindGroup {
+			out = append(out, d.Channel)
+		}
+	}
+	return out
 }
 
 func newHarness(t *testing.T) *harness {
@@ -130,7 +110,14 @@ func newHarness(t *testing.T) *harness {
 	sources := func() AudienceSources {
 		return EmailListAudience(directory, parties.Model(), activities.Model(), activities, now())
 	}
-	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, sources: sources, sender: mailtest.NewRecorder(mailtest.From), archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
+	objects := blob.NewMemoryBucket()
+	embedder := vertex(t)
+	documents, err := NewDocumentsCache(dir, dir, objects, embedder, queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filer := RegisterDocuments(http.NewServeMux(), documents, embedder, queue, artifacts.Inbox{SigningKey: "key", Bucket: objects})
+	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, sources: sources, sender: mailtest.NewRecorder(mailtest.From), archive: &fakeArchive{objects: map[string][]byte{}}, documents: filer, queue: queue}
 	h.mailbox = ListMail{Sender: h.sender.Mailgun, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
 	world := func(tx *store.Tx) EmailListsWorld {
 		return NewEmailListsWorld(cache.In(tx), directory, nil, parties.Model(), activities.Model(), activities)
@@ -264,8 +251,8 @@ func TestAPostIsForwardedToEveryMemberOnce(t *testing.T) {
 		t.Fatalf("the archive holds %d objects after the ack", h.archive.count())
 	}
 	h.waitFor("the forward", func() bool { return h.messageState(rawID(post), soccerID) == stateSent })
-	h.waitFor("the filing for ask", func() bool { return len(h.documents.filed()) == 1 })
-	if filed := h.documents.filed(); filed[0] != "soccer-team" {
+	h.waitFor("the filing for ask", func() bool { return len(h.filed()) == 1 })
+	if filed := h.filed(); filed[0] != "soccer-team" || h.documents.cache.Model().Documents[0].Key != DocumentKey("soccer-team/abc@gmail.com") {
 		t.Fatalf("filed under %v", filed)
 	}
 	sends := h.sender.Raws()
@@ -459,7 +446,8 @@ func TestAnAliasReachesItsGroup(t *testing.T) {
 			t.Fatalf("archived under %s", name)
 		}
 	}
-	if filed := h.documents.filed(); len(filed) != 1 || filed[0] != "hummingbird-families" {
+	h.waitFor("the filing for ask", func() bool { return len(h.filed()) == 1 })
+	if filed := h.filed(); len(filed) != 1 || filed[0] != "hummingbird-families" {
 		t.Fatalf("filed under %v", filed)
 	}
 }
@@ -469,7 +457,7 @@ func TestALoopedPostIsDropped(t *testing.T) {
 	looped := "From: a@x.org\r\nTo: soccer-team@loop.heliosian.com\r\nX-Helios-Loop: pta\r\n\r\nhi\r\n"
 	h.inbound(notify(looped, "soccer-team@loop.heliosian.com"))
 	h.waitFor("the drop", func() bool { return h.messageState(rawID(looped), soccerID) == stateDropped })
-	if len(h.sender.Raws()) != 0 || len(h.documents.filed()) != 0 {
+	if len(h.sender.Raws()) != 0 || len(h.filed()) != 0 {
 		t.Fatal("a looped post went out")
 	}
 	if h.archive.count() != 1 {
@@ -484,7 +472,7 @@ func TestAPostFromSomeoneTheGroupDoesNotLetPostIsDropped(t *testing.T) {
 	if detail := h.messageRow(rawID(post), middleID)["Detail"]; detail != "only the email list's managers may post" {
 		t.Fatalf("detail %q", detail)
 	}
-	if len(h.documents.filed()) != 0 {
+	if len(h.filed()) != 0 {
 		t.Fatal("a refused post went out")
 	}
 	sends := h.sender.Raws()
@@ -514,7 +502,7 @@ func TestAnUnauthenticatedPostIsDroppedWithoutABounce(t *testing.T) {
 	if detail := h.messageRow(rawID(forged), middleID)["Detail"]; detail != "the sender's address passed neither SPF nor DKIM" {
 		t.Fatalf("detail %q", detail)
 	}
-	if len(h.sender.Raws()) != 0 || len(h.documents.filed()) != 0 {
+	if len(h.sender.Raws()) != 0 || len(h.filed()) != 0 {
 		t.Fatal("an unauthenticated post went out or was answered")
 	}
 }
@@ -776,6 +764,7 @@ func TestDeletingAGroupTakesItsMailRecordWithIt(t *testing.T) {
 	h.inbound(notify(post, "soccer-team@loop.heliosian.com"))
 	h.waitFor("the forward", func() bool { return h.messageState(rawID(post), soccerID) == stateSent })
 	h.waitFor("a sent row per copy", func() bool { return len(h.deliveryRows("abc@gmail.com", eventSent)) == len(h.members("soccer-team")) })
+	h.waitFor("the filing for ask", func() bool { return slices.Equal(h.filed(), []string{"soccer-team"}) })
 	if h.archive.count() != 1 || h.groupRows(messagesTab, soccerID) != 2 || h.groupRows(deliveriesTab, soccerID) < 2 {
 		t.Fatalf("before: %d archived, %d messages, %d deliveries", h.archive.count(), h.groupRows(messagesTab, soccerID), h.groupRows(deliveriesTab, soccerID))
 	}
@@ -783,11 +772,8 @@ func TestDeletingAGroupTakesItsMailRecordWithIt(t *testing.T) {
 		t.Fatalf("delete answered %d: %s", rec.Code, rec.Body)
 	}
 	h.waitFor("the record to go", func() bool {
-		return h.groupRows(messagesTab, soccerID) == 0 && h.groupRows(deliveriesTab, soccerID) == 0 && len(h.documents.removed()) == 1
+		return h.groupRows(messagesTab, soccerID) == 0 && h.groupRows(deliveriesTab, soccerID) == 0 && len(h.filed()) == 0
 	})
-	if removed := h.documents.removed(); removed[0] != "soccer-team" {
-		t.Fatalf("documents removed for %v", removed)
-	}
 	if h.archive.count() != 1 {
 		t.Fatalf("the archive holds %d objects; it is written, never emptied", h.archive.count())
 	}

@@ -16,7 +16,7 @@ var (
 	SignOutAnyone     = access.Named("sign-out-anyone")
 )
 
-var SuperAllowances = []access.Allowance{ManageSuperAdmins, SignOutAnyone}
+var SuperAllowances = []access.Allowance{ManageSuperAdmins, SignOutAnyone, Triage}
 
 func require(actor access.Actor, allowance access.Allowance) error {
 	if !actor.May(allowance) {

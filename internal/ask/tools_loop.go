@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"slices"
 
-	"heliosian/internal/home"
 	"heliosian/internal/model"
 )
 
@@ -101,7 +100,7 @@ var communityLinks = tool{
 		}
 		sections := []map[string]any{}
 		for _, category := range v.sources.Links(v.homeAs) {
-			if category.Style == home.StyleEvents || category.Style == home.StyleApps {
+			if category.Style == model.StyleEvents || category.Style == model.StyleApps {
 				continue
 			}
 			links := []map[string]any{}

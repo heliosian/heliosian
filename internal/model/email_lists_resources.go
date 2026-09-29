@@ -216,10 +216,10 @@ type emailListSettingsResource struct {
 
 type emailListResources struct {
 	cache     *EmailListsCache
-	documents Documents
+	documents *DocumentFiler
 }
 
-func EmailListResources(c *EmailListsCache, documents Documents) []api.Type[EmailListsWorld] {
+func EmailListResources(c *EmailListsCache, documents *DocumentFiler) []api.Type[EmailListsWorld] {
 	r := emailListResources{cache: c, documents: documents}
 	return []api.Type[EmailListsWorld]{r.emailLists(), members(), messages(), copies(), suggestions(), emailListSettings()}
 }

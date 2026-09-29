@@ -28,18 +28,13 @@ type Archive interface {
 	Get(ctx context.Context, name string) ([]byte, string, error)
 }
 
-type Documents interface {
-	Post(ctx context.Context, actor access.Actor, group string, raw []byte) error
-	Remove(ctx context.Context, actor access.Actor, group string) error
-}
-
 type ListMail struct {
 	Sender     *mail.Mailgun
 	SigningKey string
 	Key        []byte
 	Base       string
 	Archive    Archive
-	Documents  Documents
+	Documents  *DocumentFiler
 }
 
 func (m ListMail) ready() bool {

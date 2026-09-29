@@ -10,7 +10,7 @@ What matters to this audit is that the apps are built to one shape, in `internal
 
 ### Duplication across apps
 
-- **Parallel files.** Compare the same file across every app (every `cache.go`, `share.go`, `mail.go`, `load.go`, and on the client every `dom.js`, `chrome.js`, `state.js`, `app.js`, `edit.js`, `pages/admin.js`, `style.css` and `index.html`). Note what is byte-identical, what is identical apart from names or wording, and what one app has that the rest lack.
+- **Parallel files.** Compare the same kind of file across every domain (in `internal/model` every `<domain>_cache.go`, `<domain>_share.go`, `<domain>_mail.go`, `<domain>_routes.go`, and on the client every `dom.js`, `chrome.js`, `state.js`, `app.js`, `edit.js`, `pages/admin.js`, `style.css` and `index.html`). Note what is byte-identical, what is identical apart from names or wording, and what one app has that the rest lack.
 - **Small helpers each package writes for itself.** Request-body decoding, JSON responses, the "who is asking" lookup, admin checks, the save helper, the site's base URL, the school time zone, ID generators, email cleaning, yes/no cells, URL and date checks, display names.
 - **Whole features written once per app.** The admin list and its handlers, Settings-tab parsing, share cards, mail letters and their templates, `.ics` files, image upload and image search, the people picker, tabs, modals and forms, the Admin Tools shell, the router.
 - **Shared helpers that exist and go unused.** `sharecard.Serve` and `ETag`, `mail.ICSEscape`, `mail.Normalize` and `NormalizeAll`, `web/common/tabs.js`, `web/common/picker.js`, `api` in `web/common/api.js`. A package that re-implements one of these is a finding even when its copy is correct.

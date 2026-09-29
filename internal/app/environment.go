@@ -24,7 +24,7 @@ const (
 	celebrateMailFrom = "Helios Celebrate <celebrate@reply.heliosian.com>"
 )
 
-func githubApp() feedback.IssueFiler {
+func githubApp() *feedback.GitHubApp {
 	app, err := feedback.NewGitHubApp(env.Required("GITHUB_APP_ID"), env.Required("GITHUB_APP_KEY"))
 	if err != nil {
 		logging.Fatal("read the github app key", "error", err)

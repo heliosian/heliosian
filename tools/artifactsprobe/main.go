@@ -13,6 +13,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/devcache"
 	"heliosian/internal/env"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
 
@@ -36,19 +37,19 @@ func main() {
 		log.Fatalf("%v", err)
 	}
 	start := time.Now()
-	cache, err := artifacts.NewCache(source, nil, reader, embedder, store.NewQueue())
+	cache, err := model.NewDocumentsCache(source, nil, reader, embedder, store.NewQueue())
 	if err != nil {
 		log.Fatalf("load: %v", err)
 	}
-	model := cache.Model()
-	oldest, newest := model.Span()
+	docs := cache.Model()
+	oldest, newest := docs.Span()
 	fmt.Printf("%d documents, %d chunks, %s to %s, loaded in %s\n",
-		len(model.Documents), model.Chunks(), oldest, newest, time.Since(start).Round(time.Millisecond))
+		len(docs.Documents), docs.Chunks(), oldest, newest, time.Since(start).Round(time.Millisecond))
 	vectors, err := embedder.Embed(context.Background(), []string{query}, true)
 	if err != nil {
 		log.Fatalf("embed: %v", err)
 	}
-	for _, hit := range model.Search(vectors[0], query, 6) {
+	for _, hit := range docs.Search(vectors[0], query, 6) {
 		d, c := hit.Document, hit.Document.Chunks[hit.Index]
 		section := c.Section
 		if section != "" {

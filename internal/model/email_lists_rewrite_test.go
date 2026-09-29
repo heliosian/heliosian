@@ -7,7 +7,7 @@ import (
 	"heliosian/internal/mail"
 )
 
-const post = "Received: from mx.example.org by inbound.resend.com\r\n" +
+const post = "Received: from mx.example.org by inbound.resend.com; Mon, 21 Sep 2026 16:00:00 +0000\r\n" +
 	"Authentication-Results: mxa.mailgun.org;\r\n dkim=pass header.d=gmail.com header.s=20230601 header.b=abc;\r\n" +
 	" spf=pass (domain gmail.com designates 1.2.3.4 as permitted sender) smtp.mailfrom=\"alice@gmail.com\";\r\n" +
 	" dmarc=pass (dkim=pass domain=gmail.com; spf=pass domain=gmail.com) header.from=gmail.com\r\n" +
@@ -50,7 +50,7 @@ func TestRewriteKeepsTheThreadAndTheBody(t *testing.T) {
 		"Precedence: list\r\n",
 		"X-Helios-Loop: soccer-team\r\n",
 		"List-Unsubscribe: <https://loop.heliosian.com/open/unsubscribe/x>\r\n",
-		"Received: from mx.example.org by inbound.resend.com\r\n",
+		"Received: from mx.example.org by inbound.resend.com; Mon, 21 Sep 2026 16:00:00 +0000\r\n",
 		"\r\n\r\nSee you at 9.\r\n",
 	} {
 		if !strings.Contains(out, want) {

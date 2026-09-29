@@ -3,15 +3,10 @@ package artifacts
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
-	"strings"
-	"unicode"
 
 	"google.golang.org/api/option"
 	transport "google.golang.org/api/transport/http"
@@ -24,36 +19,6 @@ const (
 	vertexBatch   = 25
 	vertexDims    = 768
 )
-
-type Vector []float32
-
-func (v Vector) MarshalJSON() ([]byte, error) {
-	raw := make([]byte, 4*len(v))
-	for i, x := range v {
-		binary.LittleEndian.PutUint32(raw[4*i:], math.Float32bits(x))
-	}
-	return json.Marshal(base64.StdEncoding.EncodeToString(raw))
-}
-
-func (v *Vector) UnmarshalJSON(data []byte) error {
-	var encoded string
-	if err := json.Unmarshal(data, &encoded); err != nil {
-		return err
-	}
-	raw, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return err
-	}
-	if len(raw)%4 != 0 {
-		return fmt.Errorf("a vector of %d bytes is not float32", len(raw))
-	}
-	out := make(Vector, len(raw)/4)
-	for i := range out {
-		out[i] = math.Float32frombits(binary.LittleEndian.Uint32(raw[4*i:]))
-	}
-	*v = out
-	return nil
-}
 
 type Vertex struct {
 	client *http.Client
@@ -71,8 +36,8 @@ func (Vertex) Model() string {
 	return fmt.Sprintf("%s@%d", vertexBase, vertexDims)
 }
 
-func (v *Vertex) Embed(ctx context.Context, texts []string, query bool) ([]Vector, error) {
-	out := []Vector{}
+func (v *Vertex) Embed(ctx context.Context, texts []string, query bool) ([][]float32, error) {
+	out := [][]float32{}
 	for start := 0; start < len(texts); start += vertexBatch {
 		end := min(start+vertexBatch, len(texts))
 		vectors, err := v.predict(ctx, texts[start:end], query)
@@ -84,7 +49,7 @@ func (v *Vertex) Embed(ctx context.Context, texts []string, query bool) ([]Vecto
 	return out, nil
 }
 
-func (v *Vertex) predict(ctx context.Context, texts []string, query bool) ([]Vector, error) {
+func (v *Vertex) predict(ctx context.Context, texts []string, query bool) ([][]float32, error) {
 	task := "RETRIEVAL_DOCUMENT"
 	if query {
 		task = "RETRIEVAL_QUERY"
@@ -128,7 +93,7 @@ func (v *Vertex) predict(ctx context.Context, texts []string, query bool) ([]Vec
 	if len(parsed.Predictions) != len(texts) {
 		return nil, fmt.Errorf("embed: %d texts sent, %d vectors returned", len(texts), len(parsed.Predictions))
 	}
-	out := []Vector{}
+	out := [][]float32{}
 	for i, p := range parsed.Predictions {
 		if len(p.Embeddings.Values) != vertexDims {
 			return nil, fmt.Errorf("embed: vector %d has %d dimensions, not %d", i, len(p.Embeddings.Values), vertexDims)
@@ -136,36 +101,4 @@ func (v *Vertex) predict(ctx context.Context, texts []string, query bool) ([]Vec
 		out = append(out, p.Embeddings.Values)
 	}
 	return out, nil
-}
-
-func tokens(text string) []string {
-	out := []string{}
-	for _, field := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
-		if len(field) >= 2 {
-			out = append(out, field)
-		}
-	}
-	return out
-}
-
-func Normalize(vector []float32) {
-	sum := 0.0
-	for _, x := range vector {
-		sum += float64(x) * float64(x)
-	}
-	if sum == 0 {
-		return
-	}
-	scale := float32(1 / math.Sqrt(sum))
-	for i := range vector {
-		vector[i] *= scale
-	}
-}
-
-func dot(a, b []float32) float64 {
-	sum := 0.0
-	for i := range a {
-		sum += float64(a[i]) * float64(b[i])
-	}
-	return sum
 }

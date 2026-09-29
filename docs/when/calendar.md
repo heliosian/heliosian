@@ -1,6 +1,6 @@
 # Helios When
 
-Helios When is the school year as one family sees it: what kind of day today is for their students' classrooms, what is coming up, and the whole year to browse, with the school's two published sources merged, classified, and corrected in one sheet. It lives at the first of its `Hosts` in `internal/home/load.go`; the others there only send their root to it and answer 404 for anything else (`route` in `internal/app/server.go`). The sheet is `Calendar` (`data.md`), the code is in `internal/model` (`calendar.go` and the files beside it), and it is served by the resource API (`docs/api.md`, Helios When), with its preview, options and image routes under `/api/when/`.
+Helios When is the school year as one family sees it: what kind of day today is for their students' classrooms, what is coming up, and the whole year to browse, with the school's two published sources merged, classified, and corrected in one sheet. It lives at the first of its `Hosts` in `internal/model/home.go`; the others there only send their root to it and answer 404 for anything else (`route` in `internal/app/server.go`). The sheet is `Calendar` (`data.md`), the code is in `internal/model` (`calendar.go` and the files beside it), and it is served by the resource API (`docs/api.md`, Helios When), with its preview, options and image routes under `/api/when/`.
 
 ## What a viewer sees
 

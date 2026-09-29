@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/artifacts"
+	"heliosian/internal/model"
 )
 
 const (
@@ -23,11 +23,11 @@ const (
 
 func main() {
 	client := &http.Client{Timeout: 30 * time.Second}
-	site, err := url.Parse(artifacts.Site)
+	site, err := url.Parse(model.SchoolSite)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-	body, err := fetch(client, artifacts.Site+"/fs/pages/sitemap")
+	body, err := fetch(client, model.SchoolSite+"/fs/pages/sitemap")
 	if err != nil {
 		log.Fatalf("sitemap: %v", err)
 	}
@@ -47,7 +47,7 @@ func main() {
 	fetched := false
 	for _, entry := range sitemap.URLs {
 		loc := strings.TrimSpace(entry.Loc)
-		if artifacts.Excluded(loc) {
+		if model.ExcludedPage(loc) {
 			log.Printf("%s: excluded; skipped", loc)
 			excluded++
 			continue
@@ -81,12 +81,12 @@ func main() {
 			continue
 		}
 		final.RawQuery, final.Fragment = "", ""
-		if artifacts.Excluded(final.String()) {
+		if model.ExcludedPage(final.String()) {
 			log.Printf("%s: becomes %s, which is excluded; skipped", loc, final)
 			excluded++
 			continue
 		}
-		encoded, err := json.MarshalIndent(artifacts.Page{
+		encoded, err := json.MarshalIndent(model.SavedPage{
 			URL:     final.String(),
 			Fetched: time.Now().UTC().Format(time.RFC3339),
 			HTML:    string(page),

@@ -7,9 +7,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/api"
-	"heliosian/internal/artifacts"
-	"heliosian/internal/feedback"
-	"heliosian/internal/home"
 	"heliosian/internal/model"
 	"heliosian/internal/store"
 )
@@ -23,9 +20,9 @@ type Snapshot struct {
 	Celebrate *model.Parties
 	When      model.CalendarWorld
 	Loop      model.EmailListsWorld
-	Home      *home.Model
-	Artifacts *artifacts.Model
-	Feedback  *feedback.Model
+	Home      *model.Home
+	Documents *model.Documents
+	Feedback  *model.Feedback
 }
 
 type caches struct {
@@ -37,9 +34,9 @@ type caches struct {
 	celebrate *model.PartiesCache
 	when      *model.CalendarCache
 	loop      *model.EmailListsCache
-	home      *home.Cache
-	artifacts *artifacts.Cache
-	feedback  *feedback.Cache
+	home      *model.HomeCache
+	documents *model.DocumentsCache
+	feedback  *model.FeedbackCache
 	whenHooks model.CalendarHooks
 	idKey     []byte
 }
@@ -58,7 +55,7 @@ func (c caches) snapshot(tx *store.Tx) *Snapshot {
 		When:      c.whenHooks.World(c.when.In(tx), directory, settings, parties, activities, lists, c.idKey),
 		Loop:      model.NewEmailListsWorld(lists, directory, settings.GradeColors, parties, activities, c.team),
 		Home:      c.home.In(tx),
-		Artifacts: c.artifacts.In(tx),
+		Documents: c.documents.In(tx),
 		Feedback:  c.feedback.In(tx),
 	}
 }
@@ -71,14 +68,10 @@ func (s *Snapshot) at(q api.Query) *Snapshot {
 }
 
 func (c caches) held(email string) []access.Allowance {
-	out := slices.Concat(
+	return slices.Concat(
 		c.who.Held(email), c.team.Held(email), c.birthday.Held(email), c.celebrate.Held(email),
 		c.when.Held(email), c.loop.Held(email), c.home.Held(email), c.settings.SuperHeld(email),
 	)
-	if c.settings.IsSuperAdmin(email) {
-		out = append(out, feedback.Triage)
-	}
-	return out
 }
 
 func resources(c caches, queue *store.Queue, birthdays []api.Type[model.BirthdaysWorld], lists []api.Type[model.EmailListsWorld]) *api.Registry[*Snapshot] {
