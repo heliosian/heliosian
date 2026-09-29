@@ -168,6 +168,65 @@ func (d *Describer) Group(ctx context.Context, actor string, facts GroupFacts) (
 	return strings.TrimSpace(out.Description), nil
 }
 
+type ActivityFacts struct {
+	Title    string
+	Parent   string
+	Category string
+	When     string
+	Notes    string
+}
+
+const activitySystem = `You write the description of a volunteer activity or school event on a school parent community's volunteer portal. It sits on the activity's page, under "What people should know before they sign up", where parents decide whether to take part. You are given the activity's title, the event it is part of, its category, when it happens, and the organizer's current description, which is often rough notes.
+
+Rewrite the notes into a clear, warm description of a few short sentences, as a parent volunteer would write it for other parents: what this is, and what the people who sign up would do. Keep every fact, request and caveat in the notes - a call for someone to lead it, a thing to bring, a cost, a deadline - and fix their spelling and capitalization. Add nothing the notes and details don't support: no invented times, places, numbers, tasks or history. Don't restate the title or the date unless the notes say more about them. When the notes are empty, write one or two sentences from the title and details alone.
+
+Plain text in paragraphs; no headings, no markdown, no bullet points, no superlatives or marketing language. Return the description alone.`
+
+var activitySchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"description": map[string]any{"type": "string", "description": "the description"},
+	},
+	"required":             []string{"description"},
+	"additionalProperties": false,
+}
+
+func (d *Describer) Activity(ctx context.Context, actor string, facts ActivityFacts) (string, error) {
+	if !d.limit.Allow(actor, time.Now()) {
+		return "", claude.ErrTooMany
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	prompt := &strings.Builder{}
+	line := func(label, value string) {
+		if value = strings.TrimSpace(value); value != "" {
+			fmt.Fprintf(prompt, "%s: %s\n", label, value)
+		}
+	}
+	line("Title", facts.Title)
+	line("Part of", facts.Parent)
+	line("Category", facts.Category)
+	line("When", facts.When)
+	fmt.Fprintf(prompt, "Current description:\n%s\n", strings.TrimSpace(facts.Notes))
+	if prompt.Len() > maxPrompt {
+		return "", ErrTooLong
+	}
+	var out struct {
+		Description string `json:"description"`
+	}
+	if _, err := claude.JSON(ctx, d.client, anthropic.MessageNewParams{
+		Model:        model,
+		MaxTokens:    4000,
+		System:       []anthropic.TextBlockParam{{Text: activitySystem, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
+		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt.String()))},
+		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffortLow, Format: anthropic.JSONOutputFormatParam{Schema: activitySchema}},
+	}, &out); err != nil {
+		return "", err
+	}
+	slog.InfoContext(ctx, "described activity", "title", facts.Title)
+	return strings.TrimSpace(out.Description), nil
+}
+
 func tallyWords(counts map[string]int) string {
 	keys := []string{}
 	for k := range counts {

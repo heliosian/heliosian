@@ -224,6 +224,7 @@ func NewCore(cfg Config) *Core {
 		Mailer:     cfg.Mail,
 		EmailLists: loopCache,
 		Style:      teamStyle,
+		Describer:  cfg.Describer,
 	})
 	birthdayMux := http.NewServeMux()
 	birthdayResources := model.BirthdayResources(birthdayCache, func(ctx context.Context, email string) error {

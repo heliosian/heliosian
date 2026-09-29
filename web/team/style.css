@@ -1595,6 +1595,12 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .setting-row.is-stacked textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; resize: vertical; }
 
+.describe-line { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+
+.describe-status { font-size: 13px; color: var(--muted); }
+
+.describe-status.error { color: var(--alert); }
+
 .form-tab-body > .field-toggle { padding: 14px 0; margin: 0; border-bottom: 1px solid var(--line); }
 
 .form-tab-body > .field-toggle:last-child { border-bottom: 0; }

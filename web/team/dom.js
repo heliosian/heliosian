@@ -1,4 +1,4 @@
-import {shiftedEnd, whenLabel, parentOf} from './state.js';
+import {shiftedEnd, defaultEnd, whenLabel, parentOf} from './state.js';
 import {parseWhen} from '/datecard.js';
 import {whenPickers} from '/form.js';
 import {el, svg} from '/elements.js';
@@ -170,11 +170,17 @@ export function whenEditor(start, end, timing, parent, layout) {
   }
   wrap.append(own);
   let last = start || '';
+  let filled = '';
   const shiftEnd = () => {
     const now = from.value();
-    const moved = shiftedEnd(last, now, to.value(), to.hasTime());
+    const current = to.value();
+    const fresh = !current || current === filled;
+    const moved = fresh ? defaultEnd(now) : shiftedEnd(last, now, current, to.hasTime());
     if (moved) {
       to.set(moved);
+    }
+    if (fresh) {
+      filled = moved;
     }
     if (parseWhen(now)) {
       last = now;

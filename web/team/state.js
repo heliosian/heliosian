@@ -271,6 +271,17 @@ export function shiftedEnd(was, now, end, withTime) {
   return formatWhen(new Date(current.date.getTime() + (to.date - from.date)), withTime);
 }
 
+export function defaultEnd(start) {
+  const s = parseWhen(start);
+  if (!s) {
+    return '';
+  }
+  if (!s.hasTime) {
+    return formatWhen(s.date, false);
+  }
+  return formatWhen(new Date(s.date.getTime() + 2 * 60 * 60 * 1000), true);
+}
+
 export function longDate(s) {
   const when = parseWhen(s);
   return when ? longFormat.format(when.date) : s;

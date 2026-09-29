@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -10,6 +11,8 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
+	"heliosian/internal/claude"
+	"heliosian/internal/describe"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
@@ -32,6 +35,7 @@ type activitiesApp struct {
 	mailer    *mail.Mailgun
 	lists     *EmailListsCache
 	style     *sharecard.Style
+	describer *describe.Describer
 }
 
 type ActivitiesDeps struct {
@@ -44,11 +48,12 @@ type ActivitiesDeps struct {
 	Mailer     *mail.Mailgun
 	EmailLists *EmailListsCache
 	Style      *sharecard.Style
+	Describer  *describe.Describer
 }
 
 func RegisterActivities(mux *http.ServeMux, d ActivitiesDeps) {
 	d.Search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
-	a := activitiesApp{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, calendar: d.Calendar.app, search: d.Search, mailer: d.Mailer, lists: d.EmailLists, style: d.Style}
+	a := activitiesApp{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, calendar: d.Calendar.app, search: d.Search, mailer: d.Mailer, lists: d.EmailLists, style: d.Style, describer: d.Describer}
 	for _, page := range activitiesPages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -68,6 +73,7 @@ func RegisterActivities(mux *http.ServeMux, d ActivitiesDeps) {
 	mux.HandleFunc("POST /api/team/category/settings", serve.JSON(a.saveCategoryFlags))
 	mux.HandleFunc("POST /api/team/categories/order", serve.JSON(a.reorderCategories))
 	mux.HandleFunc("POST /api/team/copy", serve.JSON(a.copyActivity))
+	mux.HandleFunc("POST /api/team/describe", serve.JSON(a.describe))
 	mux.HandleFunc("POST /api/team/settings", serve.JSON(a.saveSettings))
 	mux.HandleFunc("POST /api/team/notify", serve.JSON(a.saveNotify))
 	RegisterAdmins(mux, a.cache.AdminList, a.actor, a.adminState)
@@ -117,6 +123,32 @@ func (a activitiesApp) model(r *http.Request, _ serve.None) (ActivitiesView, err
 
 type activityRef struct {
 	ID string `json:"id"`
+}
+
+type describeActivityBody struct {
+	Title    string `json:"title"`
+	Parent   string `json:"parent"`
+	Category string `json:"category"`
+	When     string `json:"when"`
+	Notes    string `json:"notes"`
+}
+
+func (a activitiesApp) describe(r *http.Request, body describeActivityBody) (map[string]string, error) {
+	email := a.actor(r).Email
+	facts := describe.ActivityFacts{Title: body.Title, Parent: body.Parent, Category: body.Category, When: body.When, Notes: body.Notes}
+	description, err := a.describer.Activity(r.Context(), email, facts)
+	if errors.Is(err, claude.ErrTooMany) {
+		return nil, access.Refuse(http.StatusTooManyRequests, "%v", err)
+	}
+	if errors.Is(err, describe.ErrTooLong) {
+		return nil, access.Invalid("%v", err)
+	}
+	if err != nil {
+		slog.ErrorContext(r.Context(), "team:describe", "actor", email, "title", body.Title, "error", err)
+		return nil, access.Refuse(http.StatusBadGateway, "could not write a description right now")
+	}
+	slog.InfoContext(r.Context(), "team:described", "actor", email, "title", body.Title)
+	return map[string]string{"description": description}, nil
 }
 
 func (a activitiesApp) saveVolunteer(r *http.Request, body volunteerBody) (serve.None, error) {

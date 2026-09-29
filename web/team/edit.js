@@ -1,4 +1,4 @@
-import {state, me, isAdmin, longDate, years, allYears, activityPath, activity, parentOf, canAdd, ADDING, category as categoryOf, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED, isFamily} from './state.js';
+import {state, me, isAdmin, longDate, whenLabel, years, allYears, activityPath, activity, parentOf, canAdd, ADDING, category as categoryOf, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED, isFamily} from './state.js';
 
 import {whenEditor, treeFilter} from './dom.js';
 import {dataGrid} from '/datagrid.js';
@@ -406,7 +406,36 @@ export function openActivity(act, options) {
       }
       basics.push(settingRow('Category', 'Where this is listed on the Opportunities page.', where));
     }
-    const about = settingRow('Description', 'What people should know before they sign up.', description);
+    const describeStatus = el('small', 'describe-status');
+    const generate = button('Generate with AI', 'sparkle', 'button button-small button-secondary', async () => {
+      generate.disabled = true;
+      describeStatus.classList.remove('error');
+      describeStatus.textContent = 'Writing…';
+      try {
+        const parent = parentSelect.value ? activity(parentSelect.value) : null;
+        const heading = parentSelect.value ? eventCategory : category;
+        const {description: written} = await api('POST', '/api/team/describe', {
+          title: title.value,
+          parent: parent ? parent.title : '',
+          category: heading.value && heading.selectedOptions[0] ? heading.selectedOptions[0].textContent : '',
+          when: whenLabel(when.value()),
+          notes: description.value,
+        });
+        description.value = written;
+        describeStatus.textContent = '';
+        description.focus();
+      } catch (err) {
+        describeStatus.classList.add('error');
+        describeStatus.textContent = err.message;
+      } finally {
+        generate.disabled = false;
+      }
+    });
+    const describeLine = el('div', 'describe-line');
+    describeLine.append(generate, describeStatus);
+    const describeBox = el('div');
+    describeBox.append(description, describeLine);
+    const about = settingRow('Description', 'What people should know before they sign up.', describeBox);
     about.classList.add('is-stacked');
     basics.push(about, highlight.wrap);
     body = [tabbedFields([
