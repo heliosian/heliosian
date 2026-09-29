@@ -1343,6 +1343,10 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .side-button { width: 100%; justify-content: center; margin-top: 12px; }
 
+.side-buttons { display: flex; gap: 8px; margin-top: 12px; }
+
+.side-buttons .side-button { flex: 1; margin-top: 0; }
+
 /* Resources in the main column: the same card, laid out wide - links in a grid
    and the add button back to its natural size. */
 /* In the main column the Resources card sheds its box: the resources

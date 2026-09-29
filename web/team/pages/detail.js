@@ -533,10 +533,6 @@ function emailListPath(node) {
   return appOrigin('loop') + '/new?from=' + encodeURIComponent('activity:' + node.id);
 }
 
-function emailListWords(node) {
-  return node.emailList ? `${node.title} Email List` : `Create ${node.title} Email List`;
-}
-
 function emailListCard(node) {
   if (!node.runs && !isAdmin()) {
     return null;
@@ -549,8 +545,15 @@ function emailListCard(node) {
   card.append(el('div', 'side-title', title), el('div', 'side-line', words));
   const a = el('a', 'button button-small side-button');
   a.href = emailListPath(node);
-  a.append(svg('mail'), el('span', '', emailListWords(node)));
-  card.append(a);
+  if (!node.emailList) {
+    a.append(svg('mail'), el('span', '', `Create ${node.title} Email List`));
+    card.append(a);
+    return card;
+  }
+  a.append(svg('mail'), el('span', '', 'See List'));
+  const row = el('div', 'side-buttons');
+  row.append(button('Copy List', 'copy', 'button button-small side-button', () => copyText(address, 'Address copied')), a);
+  card.append(row);
   return card;
 }
 
