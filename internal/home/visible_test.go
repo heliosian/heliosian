@@ -41,6 +41,9 @@ func setVisibility(t *testing.T, c *Cache, app string, v Visibility) {
 
 func TestVisibilityNarrowsAnApp(t *testing.T) {
 	c, _ := sampleCache(t)
+	if err := c.Commit(context.Background(), access.System("test"), store.Delete(visibilityTab, store.Row{"App": "birthday"})); err != nil {
+		t.Fatalf("drop birthday's row: %v", err)
+	}
 	if got := c.HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
 		t.Errorf("hidden from the sample parent = %v, want just the app with no row", got)
 	}
