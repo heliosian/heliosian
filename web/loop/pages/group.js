@@ -1,4 +1,4 @@
-import {state, me, options, groupPath, person, personView, memberView} from '../state.js';
+import {state, me, options, groupPath, person, personView, memberView, loadModel} from '../state.js';
 import {pageHead} from '../dom.js';
 import {el, svg, button, iconButton, copyText, toast} from '/elements.js';
 import {whoLink} from '/appswitch.js';
@@ -721,9 +721,15 @@ async function saveGroup(ed, save, status) {
     if (closeModal) {
       closeModal();
     }
+    if (isNew) {
+      await loadModel();
+      toast('Email list made');
+      navigate(groupPath(draft));
+      return;
+    }
     await load();
-    toast(isNew ? 'Email list made' : 'Saved');
-    if (!closeModal || isNew) {
+    toast('Saved');
+    if (!closeModal) {
       navigate(withTab(groupPath(draft)));
     }
   } catch (err) {
