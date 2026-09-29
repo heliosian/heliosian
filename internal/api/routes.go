@@ -44,6 +44,7 @@ func (reg *Registry[S]) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/me", serve.JSON(reg.me))
 	mux.HandleFunc("GET /api/openapi.json", serve.JSON(reg.openapi))
 	mux.HandleFunc("GET /api/docs", docs)
+	mux.HandleFunc("GET /api/erd", erd)
 	mux.HandleFunc("GET /api/r/{id}", serve.JSON(reg.get))
 	mux.HandleFunc("GET /api/{type}", serve.JSON(reg.get))
 	mux.HandleFunc("GET /api/{type}/{id}", serve.JSON(reg.get))

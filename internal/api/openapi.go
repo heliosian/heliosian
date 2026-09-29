@@ -13,7 +13,10 @@ import (
 	"heliosian/internal/serve"
 )
 
-const docsPage = "web/common/swagger/index.html"
+const (
+	docsPage = "web/common/swagger/index.html"
+	erdPage  = "web/common/erd/index.html"
+)
 
 type schema = map[string]any
 
@@ -136,10 +139,10 @@ func (t *Type[S]) schema() schema {
 		rel := t.Relations[name]
 		description := rel.Type + " IDs; present only when included."
 		if rel.Many {
-			properties[name] = schema{"type": "array", "items": schema{"type": "string"}, "description": description}
+			properties[name] = schema{"type": "array", "items": schema{"type": "string"}, "description": description, "x-relation": rel.Type}
 			continue
 		}
-		properties[name] = schema{"type": []string{"string", "null"}, "description": rel.Type + " ID; present only when included."}
+		properties[name] = schema{"type": []string{"string", "null"}, "description": rel.Type + " ID; present only when included.", "x-relation": rel.Type}
 	}
 	return out
 }
@@ -326,4 +329,8 @@ func (reg *Registry[S]) openapi(*http.Request, serve.None) (schema, error) {
 
 func docs(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, docsPage)
+}
+
+func erd(w http.ResponseWriter, r *http.Request) {
+	serve.File(w, r, erdPage)
 }
