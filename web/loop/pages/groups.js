@@ -82,7 +82,7 @@ function cards(list, groups) {
 export function groupsPage() {
   setTitle('My Email Lists');
   const page = el('div', 'list-page');
-  page.append(pageHead('My Email Lists', [button('New email list', 'plus', 'button', () => navigate('/new'))]));
+  page.append(pageHead('My Email Lists', [button('New Email List', 'plus', 'button', () => navigate('/new'))]));
   page.append(el('p', 'page-lead', 'Each email list is an address at ' + state.model.domain + ' whose members follow from its rules, drawn from the directory as it changes.'));
   const list = el('div', 'group-list');
   const empty = el('div', 'panel-empty');

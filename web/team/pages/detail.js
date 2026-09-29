@@ -408,15 +408,15 @@ function ownVolunteers(view, labelled) {
   }
 }
 
-function priorityCard(node, save) {
+function priorityButton(node, save) {
   if (!isAdmin() || isFull(node)) {
     return null;
   }
-  const card = sideCard('priority-card');
   const on = Boolean(node.priority);
-  card.append(button(on ? 'Remove High Priority' : 'Mark High Priority', 'star', 'button button-small ' + (on ? 'button-secondary' : '') + ' priority-button', () => save({priority: !on})));
-  card.append(el('div', 'side-line', on ? 'Listed under High Priority here and on Heliosian\u2019s front page.' : 'Lists it under High Priority here and on Heliosian\u2019s front page.'));
-  return card;
+  const b = el('label', 'button button-small button-secondary priority-check');
+  b.append(checkbox(on, checked => save({priority: checked})), el('span', '', 'High Priority'));
+  b.title = on ? 'Listed under High Priority here and on Heliosian\u2019s front page.' : 'Lists it under High Priority here and on Heliosian\u2019s front page.';
+  return b;
 }
 
 function resourcesCard(node) {
@@ -546,7 +546,7 @@ function emailListCard(node) {
   const a = el('a', 'button button-small side-button');
   a.href = emailListPath(node);
   if (!node.emailList) {
-    a.append(svg('mail'), el('span', '', `Create ${node.title} Email List`));
+    a.append(svg('mail'), el('span', '', 'Create Email List'));
     card.append(a);
     return card;
   }
@@ -623,7 +623,7 @@ function childrenSection(node) {
 }
 
 function settingsButton(node) {
-  return button('Volunteer settings', 'gear', 'button button-secondary button-small', () => openVolunteerSettings(node));
+  return button('Volunteer Settings', 'gear', 'button button-secondary button-small', () => openVolunteerSettings(node));
 }
 
 function addActivityBar(node) {
@@ -802,9 +802,15 @@ export function activityPage(node) {
   const back = link(parent ? activityPath(parent) : '/', 'detail-back');
   back.append(svg('chevron-left'), el('span', '', parent ? `Back to ${parent.title}` : 'Back to Opportunities'));
   top.append(back);
+  const tools = el('div', 'detail-tools');
+  const priority = priorityButton(node, save);
+  if (priority) {
+    tools.append(priority);
+  }
   if (node.canEdit) {
-    const tools = el('div', 'detail-tools');
     tools.append(settingsButton(node), button('Edit Activity', 'edit', 'button button-small button-secondary', () => openActivity(node)));
+  }
+  if (tools.children.length) {
     top.append(tools);
   }
   page.append(top);
@@ -896,7 +902,7 @@ export function activityPage(node) {
   }
 
   const side = el('aside', 'detail-side');
-  for (const card of [emailListCard(node), phone.matches ? null : facts, flyerCard(node, save), helpCard(node), priorityCard(node, save)]) {
+  for (const card of [emailListCard(node), phone.matches ? null : facts, flyerCard(node, save), helpCard(node)]) {
     if (card) {
       side.append(card);
     }

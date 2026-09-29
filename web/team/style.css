@@ -370,12 +370,8 @@ main {
 .chip.cat-4 { background: var(--cat-deep-teal); }
 .chip.cat-5 { background: var(--cat-gold); }
 .chip.cat-none { background: #5f6f6e; }
-/* The admin's Mark High Priority, at the foot of an activity's sidebar: a
-   small button outlined in the priority red, quiet until it is wanted. */
-.priority-card { display: flex; flex-direction: column; gap: 8px; }
-.priority-card .priority-button { align-self: flex-start; }
-.priority-card .priority-button:not(.button-secondary) { background: transparent; border-color: var(--priority-line, rgba(194, 37, 63, 0.4)); color: var(--priority-ink, #c2253f); }
-.priority-card .priority-button:not(.button-secondary):hover { background: rgba(194, 37, 63, 0.08); border-color: #c2253f; }
+.button.priority-check { cursor: pointer; color: var(--priority-ink, #c2253f); }
+.priority-check input { margin: 0; accent-color: var(--priority-ink, #c2253f); }
 /* High Priority leads the row, a deep red behind a star. */
 .chip.chip-priority { gap: 5px; background: #c2253f; }
 .chip.chip-priority::before { content: '\2605'; font-size: 12px; }
