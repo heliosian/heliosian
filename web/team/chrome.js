@@ -1,6 +1,7 @@
-import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
-import {el, svg, link, button} from '/elements.js';
-import {initShell, appSymbol} from '/shell.js';
+import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, family, myRows, isPrevious, revealed, runsAnything, parentOf, shownVolunteers, activitiesIn, allYears, sortByStart, matches} from './state.js';
+import {parseWhen} from '/datecard.js';
+import {el, svg, link, button, imageThumb} from '/elements.js';
+import {initShell, appSymbol, searchInput} from '/shell.js';
 import {navigate, render, setPath} from '/router.js';
 import {openActivity} from './edit.js';
 
@@ -226,6 +227,135 @@ function renderHiddenRow() {
   hiddenBox.checked = state.showHidden;
 }
 
+let resultRows = [];
+let activeRow = -1;
+const dayFormat = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});
+
+function resultsNode() {
+  return document.querySelector('#search-results');
+}
+
+function closeResults() {
+  const node = resultsNode();
+  node.hidden = true;
+  node.replaceChildren();
+  resultRows = [];
+  activeRow = -1;
+}
+
+function startOf(node) {
+  return node.start || rootOf(node).start;
+}
+
+function past(node) {
+  return isPrevious(node) || isPrevious(rootOf(node));
+}
+
+function found(year, query) {
+  const out = [];
+  const walk = list => {
+    for (const node of list.filter(revealed)) {
+      if (matches(node, query)) {
+        out.push({start: startOf(node), node});
+      }
+      for (const person of shownVolunteers(node)) {
+        if ((person.name || '').toLowerCase().includes(query)) {
+          out.push({start: startOf(node), node, person});
+        }
+      }
+      walk(node.children || []);
+    }
+  };
+  walk(activitiesIn(year));
+  return sortByStart(out);
+}
+
+function resultRow({node: act, person}) {
+  const row = link(activityPath(act), 'search-row');
+  const when = parseWhen(startOf(act));
+  row.append(person ? imageThumb(person.photoUrl, person.name, 'search-row-pic') : imageThumb(act.imageUrl || rootOf(act).imageUrl, act.title, 'search-row-pic'));
+  row.append(el('span', 'search-row-day', when ? dayFormat.format(when.date) : 'All Year'));
+  const body = el('span', 'search-row-body');
+  body.append(el('span', 'search-row-title', person ? person.name : act.title));
+  const parent = parentOf(act);
+  const c = state.model.categories.find(c => c.id === act.category);
+  const where = person ? `${person.position || 'Volunteer'} · ${act.title}` : parent ? parent.title : c ? c.title : '';
+  const line = [where, past(act) ? 'Past' : ''].filter(Boolean).join(' · ');
+  if (line) {
+    body.append(el('span', 'search-row-line', line));
+  }
+  row.append(body);
+  row.addEventListener('mousedown', e => e.preventDefault());
+  row.addEventListener('click', closeResults);
+  row.addEventListener('mouseenter', () => setActive(resultRows.indexOf(row)));
+  resultRows.push(row);
+  return row;
+}
+
+export function showResults(query) {
+  const node = resultsNode();
+  closeResults();
+  if (!query) {
+    return;
+  }
+  const year = selectedYear();
+  const options = allYears();
+  const earlier = options[options.indexOf(year) + 1] || '';
+  const hits = found(year, query);
+  const current = [...hits.filter(hit => !past(hit.node)), ...hits.filter(hit => past(hit.node))];
+  const older = earlier ? found(earlier, query) : [];
+  if (!current.length && !older.length) {
+    node.append(el('div', 'search-empty', 'Nothing matches.'));
+    node.hidden = false;
+    return;
+  }
+  for (const hit of current) {
+    node.append(resultRow(hit));
+  }
+  if (older.length) {
+    const divider = el('div', 'search-divider');
+    divider.append(el('span', '', earlier));
+    node.append(divider);
+  }
+  for (const hit of older) {
+    const row = resultRow(hit);
+    row.classList.add('is-earlier');
+    node.append(row);
+  }
+  node.hidden = false;
+}
+
+function setActive(index) {
+  activeRow = index;
+  resultRows.forEach((row, i) => row.classList.toggle('is-active', i === index));
+  if (index >= 0) {
+    resultRows[index].scrollIntoView({block: 'nearest'});
+  }
+}
+
+function onSearchKey(e) {
+  if (resultsNode().hidden) {
+    return;
+  }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!resultRows.length) {
+      return;
+    }
+    const step = e.key === 'ArrowDown' ? 1 : -1;
+    setActive((activeRow + step + resultRows.length) % resultRows.length);
+  } else if (e.key === 'Enter') {
+    if (activeRow >= 0) {
+      e.preventDefault();
+      resultRows[activeRow].click();
+    }
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeResults();
+    searchInput().blur();
+  }
+}
+
 export function initChrome() {
   initShell({
     name: 'HCA-Team',
@@ -234,9 +364,12 @@ export function initChrome() {
     fillTabbar,
     search: {
       placeholder: 'Search opportunities…',
+      results: true,
       carry: () => setPath(yearPath()),
     },
     menuRows: [hiddenRow],
     afterRender: renderHiddenRow,
   });
+  searchInput().addEventListener('keydown', onSearchKey);
+  searchInput().addEventListener('blur', closeResults);
 }

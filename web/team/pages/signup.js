@@ -1,4 +1,5 @@
-import {state, isAdmin, years, allYears, sortByStart, matches, selectedYear, listedIn, canAdd, addLabel, categoryPath, categoryFromAddress, PRIORITY, isPriority, descendants} from '../state.js';
+import {state, isAdmin, years, allYears, sortByStart, selectedYear, listedIn, canAdd, addLabel, categoryPath, categoryFromAddress, PRIORITY, isPriority, descendants} from '../state.js';
+import {showResults} from '../chrome.js';
 import {toggle, selectPill} from '../dom.js';
 import {el, imageThumb, button, svg} from '/elements.js';
 import {setTitle, setSearch, renderChrome} from '/shell.js';
@@ -6,11 +7,9 @@ import {render} from '/router.js';
 import {activityCard, categoryClass, priorityRow, wanted} from '../cards.js';
 import {openActivity} from '../edit.js';
 
-let query = '';
-
 function shownIn(year) {
   return sortByStart(listedIn(year)).filter(a =>
-    matches(a, query) && (!state.category || (state.category === PRIORITY ? isPriority(a) : a.category === state.category)));
+    !state.category || (state.category === PRIORITY ? isPriority(a) : a.category === state.category));
 }
 
 function yearGrid(year) {
@@ -21,7 +20,7 @@ function yearGrid(year) {
   });
   if (!items.length) {
     const panel = el('div', 'panel');
-    panel.append(el('div', 'panel-empty', query || state.category ? 'Nothing matches.' : 'Nothing to sign up for yet.'));
+    panel.append(el('div', 'panel-empty', state.category ? 'Nothing matches.' : 'Nothing to sign up for yet.'));
     root.append(panel);
     return root;
   }
@@ -65,7 +64,7 @@ function priorityItems(year) {
 }
 
 function priorityPanel(year) {
-  const items = priorityItems(year).filter(n => matches(n, query));
+  const items = priorityItems(year);
   if (!items.length) {
     return null;
   }
@@ -137,10 +136,7 @@ function yearContent(year, thisYear) {
   paintChips();
   paint();
   content.append(chips, top, head, list);
-  setSearch('Search opportunities by title, event, or keyword…', q => {
-    query = q;
-    paint();
-  });
+  setSearch('Search opportunities by title, event, or keyword…', showResults);
   return content;
 }
 
@@ -166,7 +162,6 @@ export function signUpPage(yearParam) {
   };
   head.append(selectPill('calendar', options.map(y => ({key: y, label: y})), year, picked => {
     state.year = picked;
-    query = '';
     history.replaceState(null, '', picked === years().current ? '/' : `/years/${encodeURIComponent(picked)}`);
     render();
   }));
