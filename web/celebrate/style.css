@@ -542,6 +542,8 @@ main {
 /* The party page, laid out as HCA-Team lays out an event. */
 .detail-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 
+.detail-tools { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
 .detail-back { display: inline-flex; align-items: center; gap: 6px; color: var(--brand); text-decoration: none; font-weight: 600; font-size: 14px; }
 
 .detail-back:hover { text-decoration: underline; }
@@ -789,6 +791,8 @@ main {
 
 .section-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
+.attendees-foot { margin-top: 12px; }
+
 .wait-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
 
 .wait-row { padding: 10px 14px; border-top: 1px solid var(--line); }
@@ -799,21 +803,11 @@ main {
 
 .wait-mine { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
 
-/* The host's band: an amber ground like the old site's, the switches in two
-   columns, the actions under. */
 .host-band { margin-top: 28px; padding: 18px 20px 20px; border-radius: 14px; background: var(--amber-band, #fbf1d9); border: 1px solid var(--amber-line, #f0dfae); }
 
 .host-band-head { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--amber-text, #7a5a10); margin-bottom: 12px; }
 
 .host-band-head svg { width: 18px; height: 18px; }
-
-.host-switches { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 28px; }
-
-.host-switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid color-mix(in srgb, var(--amber-text, #7a5a10) 14%, transparent); }
-
-.host-switch-label { font-weight: 600; font-size: 14.5px; }
-
-.host-switch-hint { font-size: 12.5px; color: var(--amber-text, #7a5a10); }
 
 .host-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 
@@ -879,6 +873,8 @@ main {
 
 .field-toggle > span { margin: 0; }
 
+.field-toggle[hidden] { display: none; }
+
 .field-toggle > span > small { display: block; margin-top: 2px; font-weight: 400; color: var(--muted); }
 
 .field-unit { display: flex; align-items: center; gap: 10px; }
@@ -888,6 +884,62 @@ main {
 .field-unit-label { font-size: 14px; color: var(--muted); }
 
 .field-group-label { font-size: 13px; font-weight: 700; color: var(--brand); margin: 18px 0 2px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+.tix-price { display: flex; align-items: center; gap: 18px; margin: 4px 0 16px; padding: 14px 16px; border-radius: 12px; background: var(--accent-wash, #eef6f5); }
+
+.tix-price > .field { flex: 1.4; margin: 0; }
+
+.tix-money { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 8px; background: var(--field); overflow: hidden; }
+
+.tix-money-sign { display: flex; align-items: center; padding: 0 12px; border-right: 1px solid var(--line); color: var(--muted); font-size: 16px; }
+
+.field .tix-money input[type=number] { flex: 1; width: auto; min-width: 0; border: 0; border-radius: 0; background: none; outline: none; }
+
+.tix-money:has(input:disabled) { background: var(--input); color: var(--muted); }
+
+.tix-money:focus-within, .tix-icon-input:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+
+.tix-price-summary { flex: 1; padding: 12px 16px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+
+.tix-price-line { font-size: 17px; font-weight: 700; color: var(--brand); }
+
+.tix-price-note { margin-top: 2px; font-size: 13px; color: var(--muted); }
+
+.tix-icon-input { display: flex; align-items: center; gap: 10px; padding-left: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); }
+
+.tix-icon-input > svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--muted); }
+
+.field .tix-icon-input input[type=text] { flex: 1; width: auto; min-width: 0; padding-left: 0; border: 0; background: none; outline: none; }
+
+.tix-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+
+.tix-counts > .field + .field { padding-left: 24px; border-left: 1px solid var(--line); }
+
+.field > span.tix-label { display: flex; align-items: center; gap: 8px; }
+
+.tix-label > svg { width: 18px; height: 18px; color: var(--brand); }
+
+.tix-sale { margin: 6px 0 14px; padding: 2px 16px; border-radius: 12px; background: var(--accent-wash, #eef6f5); }
+
+.field.tix-row { align-items: center; margin: 0; padding: 12px 0; }
+
+.field.tix-row + .field.tix-row { border-top: 1px solid var(--line); }
+
+.tix-row > svg { width: 22px; height: 22px; flex-shrink: 0; color: var(--brand); }
+
+.tix-row > span:last-child { flex: 1; order: 1; }
+
+.tix-row > .switch { order: 2; }
+
+.tix-who { padding: 4px 16px 8px; border-radius: 12px; background: var(--amber-band, #fdf8ea); }
+
+.tix-who .field-group-label { margin-top: 12px; }
+
+.tix-stay { margin: 4px 0 6px; padding: 12px 0 0 12px; border-top: 1px solid color-mix(in srgb, var(--amber-text, #7a5a10) 18%, transparent); }
+
+.tix-stay-title { font-size: 14px; font-weight: 700; color: var(--brand); }
+
+.tix-stay .field { margin: 10px 0; }
 
 .field-when { display: flex; flex-wrap: wrap; gap: 14px 24px; }
 
@@ -1058,6 +1110,9 @@ body.is-admin main { background-image: none; }
 
 @media (max-width: 600px) {
   .email-fix-row { flex-direction: column; align-items: stretch; }
+  .tix-price { flex-direction: column; align-items: stretch; }
+  .tix-counts { grid-template-columns: 1fr; }
+  .tix-counts > .field + .field { padding-left: 0; border-left: 0; }
 }
 
 .admin-tag { padding: 2px 9px; border-radius: 999px; background: var(--input); color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -1270,7 +1325,6 @@ body.is-admin main { background-image: none; }
   .detail-hero .thumb.detail-hero-image { height: 190px; }
   .hero-stamp { top: 10px; right: 10px; min-width: 88px; padding: 9px 12px; }
   .hero-actions { top: 10px; left: 10px; }
-  .host-switches { grid-template-columns: 1fr; }
   .gala-band { flex-direction: column; align-items: flex-start; justify-content: center; gap: 14px; min-height: 130px; padding: 16px 18px; }
 
   .gala-words { max-width: 100%; }

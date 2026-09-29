@@ -704,6 +704,40 @@ func TestPostAndEditParty(t *testing.T) {
 	}
 }
 
+func TestPriceIsFixedOnceBought(t *testing.T) {
+	cache, mux := newServer(t)
+	body := map[string]any{
+		"title": "Pie Night", "price": 40, "capacity": 12, "start": "2026-11-21 18:00", "end": "2026-11-21 21:00",
+		"adults": true, "ticketsOpen": true, "status": StatusOpen,
+	}
+	rec := testkit.Call(t, mux, admin, "POST", "/api/celebrate/party", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post a party: %d %s", rec.Code, rec.Body)
+	}
+	var made map[string]string
+	json.Unmarshal(rec.Body.Bytes(), &made)
+	body["id"] = made["id"]
+	body["price"] = 45
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/celebrate/party", body); rec.Code != http.StatusOK {
+		t.Fatalf("the price could not change before a sale: %d %s", rec.Code, rec.Body)
+	}
+	if rec := testkit.Call(t, mux, parent, "POST", "/api/celebrate/tickets", map[string]any{"partyId": made["id"], "attendees": []map[string]string{{"email": parent}}}); rec.Code != http.StatusOK {
+		t.Fatalf("buy: %d %s", rec.Code, rec.Body)
+	}
+	body["price"] = 50
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/celebrate/party", body); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "price") {
+		t.Fatalf("the price changed after a sale: %d %s", rec.Code, rec.Body)
+	}
+	body["price"] = 45
+	body["title"] = "Pie Night!"
+	if rec := testkit.Call(t, mux, admin, "POST", "/api/celebrate/party", body); rec.Code != http.StatusOK {
+		t.Fatalf("an edit that keeps the price was refused: %d %s", rec.Code, rec.Body)
+	}
+	if p := cache.Model().Party(made["id"]); p.Price != 45 || p.Title != "Pie Night!" {
+		t.Fatalf("after the edits: %+v", p)
+	}
+}
+
 func TestDeletingAPartyTakesItsHosts(t *testing.T) {
 	cache, mux := newServer(t)
 	body := map[string]any{"title": "Trivia Night", "price": 20, "adults": true, "ticketsOpen": true, "hostEmails": []string{other, teacher}}

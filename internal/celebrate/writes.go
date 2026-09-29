@@ -584,6 +584,9 @@ func (m *Model) saveParty(actor access.Actor, body partyBody) (savedParty, error
 	if body.Price < 0 || body.Capacity < 0 || body.Minimum < 0 {
 		return savedParty{}, access.Invalid("price, capacity, and minimum can't be negative")
 	}
+	if !adding && body.Price != was.Price && was.Raised() > 0 {
+		return savedParty{}, access.Invalid("the price can't change once tickets have been bought")
+	}
 	if !body.Adults && !body.Students {
 		return savedParty{}, access.Invalid("let adults, students, or both hold a ticket")
 	}

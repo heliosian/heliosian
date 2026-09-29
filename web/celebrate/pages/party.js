@@ -1,10 +1,10 @@
-import {state, isAdmin, canApprove, isKid, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
+import {state, canApprove, isKid, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {paragraphs} from '../dom.js';
 import {el, link, svg, button, imageThumb, copyText, toast} from '/elements.js';
 import {listPath} from '../chrome.js';
 import {setTitle} from '/shell.js';
 import {appOrigin} from '/appswitch.js';
-import {openBuy, openParty, openFreeTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setFlags, setPartyStatus, openContacts, savePartyFields, uploadImage, imageSearchOn, openImageSearch} from '../edit.js';
+import {openBuy, openParty, openTickets, openFreeTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setPartyStatus, openContacts, savePartyFields, uploadImage, imageSearchOn, openImageSearch} from '../edit.js';
 import {statusBadges} from '../cards.js';
 import {openPhotoLightbox} from '/crop.js';
 import {heroImageBar} from '/heroimage.js';
@@ -164,15 +164,20 @@ function attendeesSection(p) {
     head.append(tools);
   }
   section.append(head);
-  if (!n) {
+  if (n) {
+    const grid = el('div', 'person-cards');
+    for (const a of p.attendees) {
+      grid.append(attendeeCard(p, a));
+    }
+    section.append(grid);
+  } else {
     section.append(el('p', 'section-note', 'Nobody yet - be the first!'));
-    return section;
   }
-  const grid = el('div', 'person-cards');
-  for (const a of p.attendees) {
-    grid.append(attendeeCard(p, a));
+  if (p.canEdit && p.availability !== 'past') {
+    const foot = el('div', 'attendees-foot');
+    foot.append(button('Add Free Ticket', 'ticket', 'button button-secondary button-small', () => openFreeTicket(p)));
+    section.append(foot);
   }
-  section.append(grid);
   return section;
 }
 
@@ -214,53 +219,6 @@ function callout(p) {
   body.append(el('div', 'highlight-headline', p.noteTitle || 'Good to know'), el('p', 'highlight-text', p.needToKnow));
   card.append(body);
   return card;
-}
-
-function switchRow(label, hint, on, onChange) {
-  const row = el('div', 'host-switch');
-  const words = el('div', 'host-switch-words');
-  words.append(el('div', 'host-switch-label', label), el('div', 'host-switch-hint', hint));
-  const knob = el('label', 'switch');
-  const input = el('input');
-  input.type = 'checkbox';
-  input.checked = on;
-  input.addEventListener('change', () => onChange(input.checked));
-  knob.append(input, el('span'));
-  row.append(words, knob);
-  return row;
-}
-
-function hostBand(p) {
-  const band = el('div', 'host-band');
-  const head = el('div', 'host-band-head');
-  head.append(svg('star'), el('span', '', p.hosting ? "You're hosting this party" : 'Admin'));
-  band.append(head);
-  const rows = el('div', 'host-switches');
-  rows.append(
-    switchRow('Tickets on sale', 'Off, the party is listed but sells nothing', p.ticketsOpen, on => setFlags(p, {ticketsOpen: on})),
-    switchRow('Waitlist when full', 'Off, a full party shows Sold Out', p.waitlist, on => setFlags(p, {waitlist: on})),
-    switchRow('Adults', 'Can parents and staff hold a ticket?', p.adults, on => setFlags(p, {adults: on})),
-    switchRow('Students', 'Can students hold a ticket?', p.students, on => setFlags(p, {students: on})),
-    switchRow('Drop-off', 'Can kids come without a parent?', p.dropOff, on => setFlags(p, {dropOff: on})),
-    switchRow('Parent ticket required', 'If a parent stays, do they need a ticket?', p.parentTicket, on => setFlags(p, {parentTicket: on})),
-  );
-  band.append(rows);
-  const actions = el('div', 'host-actions');
-  actions.append(button('Edit all fields', 'edit', 'button button-secondary', () => openParty(p)));
-  if (p.availability !== 'past') {
-    actions.append(button('Add Free Ticket', 'ticket', 'button button-secondary', () => openFreeTicket(p)));
-  }
-  if (canApprove(p)) {
-    approvalButtons(actions, p);
-  } else if (isAdmin()) {
-    if (p.status !== 'Hidden') {
-      actions.append(button('Hide', 'eye', 'button button-secondary', () => setPartyStatus(p, 'Hidden')));
-    } else {
-      actions.append(button('Unhide', 'eye', 'button button-secondary', () => setPartyStatus(p, 'Open')));
-    }
-  }
-  band.append(actions);
-  return band;
 }
 
 function approvalButtons(actions, p) {
@@ -434,7 +392,12 @@ export function partyPage(p) {
   back.append(svg('chevron-left'), el('span', '', 'Back to Parties'));
   top.append(back);
   if (p.canEdit) {
-    top.append(button('Edit Event', 'edit', 'button button-small button-secondary', () => openParty(p)));
+    const tools = el('div', 'detail-tools');
+    tools.append(
+      button('Edit Tickets', 'ticket', 'button button-small button-secondary', () => openTickets(p)),
+      button('Edit Event', 'edit', 'button button-small button-secondary', () => openParty(p)),
+    );
+    top.append(tools);
   }
   page.append(top, hero(p, save));
 
@@ -484,9 +447,7 @@ export function partyPage(p) {
   if (wait) {
     main.append(wait);
   }
-  if (p.canEdit) {
-    main.append(hostBand(p));
-  } else if (canApprove(p)) {
+  if (canApprove(p)) {
     main.append(approvalBand(p));
   }
 

@@ -632,6 +632,7 @@ export function openParty(p) {
   prettyField.append(prettyHint);
   const basics = [
     field('Title', title, '', true), field('Subtitle', subtitle), field('Summary', summary, 'Shown on the party card.'),
+    field('Audience', audience, 'The words on the card: who the party is for.'),
     field('Description', description), callout, prettyField,
   ];
 
@@ -649,22 +650,7 @@ export function openParty(p) {
     field('Street address', address, 'Shown only to signed-in Helios members, with a map link.'),
   ];
 
-  const price = text(p ? p.price : '', {type: 'number', min: 0, step: '0.01', required: true, placeholder: '65'});
-  const unit = text(p ? p.unit : '', {maxLength: 40, placeholder: 'person, adult, child, family'});
-  const capacity = text(p && p.capacity ? p.capacity : '', {type: 'number', min: 1, step: 1, placeholder: 'Leave blank for no limit'});
-  const minimum = text(p && p.minimum ? p.minimum : '', {type: 'number', min: 1, step: 1, placeholder: 'Leave blank for none'});
-  const ticketsOpen = checkbox('Tickets on sale', p ? p.ticketsOpen : true, 'Off, the party is listed but sells nothing.');
-  const waitlist = checkbox('Take a waitlist when full', p ? p.waitlist : true, 'Off, a full party shows Sold Out.');
-  const adults = checkbox('Adults', p ? p.adults : true, 'Parents and staff can hold a ticket.');
-  const students = checkbox('Students', p ? p.students : false, 'Students can hold a ticket.');
-  const dropOff = checkbox('Drop-off is okay', p ? p.dropOff : false, 'Kids can come without a parent.');
-  const parentTicket = checkbox('A parent who stays needs a ticket', p ? p.parentTicket : false, '');
-  const tickets = [
-    field('Price', price, '', true), field('One ticket covers', unit, '"$65 per person": the word after "per".'),
-    field('Tickets available', capacity), field('Minimum to hold the party', minimum, 'The party goes ahead only with at least this many tickets sold.'),
-    ticketsOpen.wrap, waitlist.wrap, el('div', 'field-group-label', 'Who can come'), adults.wrap, students.wrap, dropOff.wrap, parentTicket.wrap,
-    field('Audience', audience, 'The words on the card: who the party is for.'),
-  ];
+  const tickets = adding ? ticketFields(null) : null;
 
   const hostsText = text(p ? p.hosts : '', {maxLength: 120, placeholder: 'McDowell and Park/Gulliver Families'});
   const initialHosts = p ? p.hostPeople : [{email: user.email, name: user.name, photoUrl: user.photoUrl}];
@@ -677,7 +663,7 @@ export function openParty(p) {
   const panels = [
     {label: 'Basics', icon: svg('party'), fields: basics},
     {label: 'When & where', icon: svg('calendar'), fields: when},
-    {label: 'Tickets', icon: svg('ticket'), fields: tickets},
+    ...(tickets ? [{label: 'Tickets', icon: svg('ticket'), fields: tickets.fields}] : []),
     {label: 'Hosts', icon: svg('people'), fields: hosts},
   ];
   let status = null;
@@ -701,11 +687,9 @@ export function openParty(p) {
       id: p ? p.id : '', celebration: celebrationPick ? celebrationPick.value : '',
       title: title.value, subtitle: subtitle.value, summary: summary.value, description: description.value, needToKnow: needToKnow.value,
       noteEmoji: noteEmoji.value.trim(), noteTitle: noteTitle.value.trim(),
-      hosts: hostsText.value, hostEmails: hostEmails.value(), category: category ? category.value : (p ? p.category || '' : ''), audience: audience.value, unit: unit.value,
-      price: Number(price.value || 0), capacity: Number(capacity.value || 0), minimum: Number(minimum.value || 0),
+      hosts: hostsText.value, hostEmails: hostEmails.value(), category: category ? category.value : (p ? p.category || '' : ''), audience: audience.value,
       start: start.value(), end: end.value(), location: place.value, address: address.value, image: p ? p.image || '' : '', flyer: p ? p.flyer || '' : '', prettyId: pretty.value, status: status ? status.value : '',
-      ticketsOpen: ticketsOpen.input.checked, waitlist: waitlist.input.checked, adults: adults.input.checked,
-      students: students.input.checked, dropOff: dropOff.input.checked, parentTicket: parentTicket.input.checked,
+      ...(tickets ? tickets.values() : ticketValues(p)),
     }),
     afterSave: result => {
       if (result && result.id && party(result.id)) {
@@ -721,34 +705,122 @@ export function openParty(p) {
   });
 }
 
-export async function savePartyFields(p, changes) {
-  const body = {
+function ticketFields(p) {
+  const price = text(p ? p.price : '', {type: 'number', min: 0, step: '0.01', required: true, placeholder: '65'});
+  const unit = text(p ? p.unit : '', {maxLength: 40, placeholder: 'person, adult, child, family'});
+  const capacity = text(p && p.capacity ? p.capacity : '', {type: 'number', min: 1, step: 1, placeholder: 'Leave blank for no limit'});
+  const minimum = text(p && p.minimum ? p.minimum : '', {type: 'number', min: 1, step: 1, placeholder: 'Leave blank for none'});
+  const ticketsOpen = checkbox('Tickets on sale', p ? p.ticketsOpen : true, 'When off, the party is listed but doesn’t sell tickets.');
+  const waitlist = checkbox('Take a waitlist when full', p ? p.waitlist : true, 'When on, a full party shows Sold Out and allows a waitlist.');
+  const adults = checkbox('Adults', p ? p.adults : true, 'Parents and staff can hold a ticket.');
+  const students = checkbox('Students', p ? p.students : false, 'Students can hold a ticket.');
+  const dropOff = checkbox('Drop-off is okay', p ? p.dropOff : false, 'Kids can come without a parent.');
+  const parentTicket = checkbox('A parent who stays needs a ticket', p ? p.parentTicket : false, 'If a parent attends with their child, they need a ticket too.');
+
+  const priceInput = el('div', 'tix-money');
+  priceInput.append(el('span', 'tix-money-sign', '$'), price);
+  const summary = el('div', 'tix-price-summary');
+  const paintSummary = () => {
+    const cost = Number(price.value || 0);
+    summary.replaceChildren(
+      el('div', 'tix-price-line', cost ? `${money(cost)} per ${unit.value.trim() || 'ticket'}` : 'Free'),
+      el('div', 'tix-price-note', cost ? `Each ticket costs ${money(cost)}.` : 'Nothing is billed.'),
+    );
+  };
+  price.addEventListener('input', paintSummary);
+  unit.addEventListener('input', paintSummary);
+  paintSummary();
+  const priceBox = el('div', 'tix-price');
+  const bought = Boolean(p && p.raised > 0);
+  price.disabled = bought;
+  priceBox.append(field('Price per ticket', priceInput, bought ? 'Fixed now that tickets have been bought.' : '', true), summary);
+
+  unit.setAttribute('list', 'tix-units');
+  const units = el('datalist');
+  units.id = 'tix-units';
+  for (const word of ['Adult', 'Child', 'Person', 'Family']) {
+    const option = el('option');
+    option.value = word;
+    units.append(option);
+  }
+  const unitBox = el('div', 'tix-icon-input');
+  unitBox.append(svg('person'), unit, units);
+
+  const iconLabel = (icon, words) => {
+    const label = el('span', 'tix-label');
+    label.append(svg(icon), el('span', '', words));
+    return label;
+  };
+  const counts = el('div', 'tix-counts');
+  counts.append(
+    field(iconLabel('ticket', 'Tickets available'), capacity, 'Total number of tickets you can sell.'),
+    field(iconLabel('people', 'Minimum to hold the party'), minimum, 'The party goes ahead only with at least this many tickets sold.'),
+  );
+
+  const saleRow = (icon, box) => {
+    box.wrap.classList.add('tix-row');
+    box.wrap.prepend(svg(icon));
+    return box.wrap;
+  };
+  const sale = el('div', 'tix-sale');
+  sale.append(saleRow('tag', ticketsOpen), saleRow('people', waitlist));
+
+  const stay = el('div', 'tix-stay');
+  stay.append(el('div', 'tix-stay-title', 'Drop-off or parents stay?'), dropOff.wrap, parentTicket.wrap);
+  const paintStay = () => {
+    stay.hidden = !students.input.checked;
+    parentTicket.wrap.hidden = !adults.input.checked;
+  };
+  students.input.addEventListener('change', paintStay);
+  adults.input.addEventListener('change', paintStay);
+  paintStay();
+  const who = el('div', 'tix-who');
+  who.append(el('div', 'field-group-label', 'Who can come'), adults.wrap, students.wrap, stay);
+
+  return {
+    fields: [
+      priceBox,
+      field('One ticket covers', unitBox, 'e.g. Adult, Child, or a description like “Family (up to 4)”.'),
+      counts, sale, who,
+    ],
+    values: () => ({
+      unit: unit.value, price: Number(price.value || 0), capacity: Number(capacity.value || 0), minimum: Number(minimum.value || 0),
+      ticketsOpen: ticketsOpen.input.checked, waitlist: waitlist.input.checked, adults: adults.input.checked,
+      students: students.input.checked, dropOff: dropOff.input.checked, parentTicket: parentTicket.input.checked,
+    }),
+  };
+}
+
+function ticketValues(p) {
+  return {
+    unit: p.unit || '', price: p.price, capacity: p.capacity || 0, minimum: p.minimum || 0, ticketsOpen: p.ticketsOpen,
+    waitlist: p.waitlist, adults: p.adults, students: p.students, dropOff: p.dropOff, parentTicket: p.parentTicket,
+  };
+}
+
+function partyBody(p) {
+  return {
     id: p.id, celebration: p.celebration, title: p.title, subtitle: p.subtitle || '', summary: p.summary || '', description: p.description || '',
     needToKnow: p.needToKnow || '', noteEmoji: p.noteEmoji || '', noteTitle: p.noteTitle || '', hosts: p.hosts || '', hostEmails: p.hostEmails, category: p.category || '', audience: p.audience || '',
-    unit: p.unit || '', price: p.price, capacity: p.capacity || 0, minimum: p.minimum || 0, start: p.start || '', end: p.end || '',
-    location: p.location || '', address: p.address || '', image: p.image || '', flyer: p.flyer || '', prettyId: p.prettyId || '', status: isAdmin() ? p.status : '', ticketsOpen: p.ticketsOpen,
-    waitlist: p.waitlist, adults: p.adults, students: p.students, dropOff: p.dropOff, parentTicket: p.parentTicket,
-    ...changes,
+    start: p.start || '', end: p.end || '', location: p.location || '', address: p.address || '', image: p.image || '', flyer: p.flyer || '', prettyId: p.prettyId || '',
+    status: isAdmin() ? p.status : '', ...ticketValues(p),
   };
+}
+
+export function openTickets(p) {
+  const tickets = ticketFields(p);
+  openModal(`Edit tickets for ${p.title}`, tickets.fields, {
+    submit: () => api('POST', '/api/celebrate/party', {...partyBody(p), ...tickets.values()}),
+  });
+}
+
+export async function savePartyFields(p, changes) {
+  const body = {...partyBody(p), ...changes};
   try {
     await api('POST', '/api/celebrate/party', body);
     await load();
   } catch (err) {
     toast(err.message);
-  }
-}
-
-export async function setFlags(p, changes) {
-  const body = {
-    id: p.id, ticketsOpen: p.ticketsOpen, waitlist: p.waitlist, adults: p.adults, students: p.students,
-    dropOff: p.dropOff, parentTicket: p.parentTicket, ...changes,
-  };
-  try {
-    await api('POST', '/api/celebrate/party/flags', body);
-    await load();
-  } catch (err) {
-    toast(err.message);
-    await load();
   }
 }
 
