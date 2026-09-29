@@ -72,13 +72,13 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 	cache := sampleCache(t)
 	d := sampleDirectory(t, "sampledata")
 	mux := http.NewServeMux()
-	Register(mux, Deps{
+	hooks := Register(mux, Deps{
 		Cache:     cache,
 		Images:    memoryImages(),
 		Directory: func() *who.Model { return d },
 		Settings:  func() *config.Settings { return &config.Settings{} },
 		Lists:     func(string) []List { return nil },
-		Linked:    func(string) []Linked { return nil },
+		Linked:    noLinked,
 		SourceID:  noSource,
 		Celebrate: noCelebrate(),
 		Sources:   newSampleSources(t).sources,
@@ -86,7 +86,11 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 		Style:     testStyle,
 		Queue:     queue,
 	})
-	return mux, cache
+	return served(mux, cache, hooks, func() *who.Model { return d }, noLinked), cache
+}
+
+func noLinked(string) []Linked {
+	return nil
 }
 
 func noSource(string, string) string {
@@ -144,13 +148,14 @@ func TestFeedLifecycle(t *testing.T) {
 	owner := as("jordan.whitfield@heliosschool.org", mux)
 	other := as("mia.torres@heliosschool.org", mux)
 	trip := `"tags":[` + quoted(t, "Trip") + `]`
-	rec := call(t, owner, http.MethodPost, "/api/when/feeds", `{"name":"Just trips","classrooms":["Jays"],`+trip+`}`)
+	rec := call(t, owner, http.MethodPost, "/api/calendar-feeds", `{"name":"Just trips","classrooms":["Jays"],`+trip+`}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body.String())
 	}
-	var made struct{ Token, URL string }
-	if err := json.Unmarshal(rec.Body.Bytes(), &made); err != nil || len(made.Token) != 24 || made.URL != "https://calendar.heliosiandev.com:8080/open/feed/"+made.Token+".ics" {
-		t.Fatalf("add answered %s", rec.Body.String())
+	key := created(t, rec)
+	made := feedOf(t, owner, key)
+	if len(made.Token) != 24 || made.URL != "/open/feed/"+made.Token+".ics" || key != feedKey("jordan.whitfield@heliosschool.org", made.Token) {
+		t.Fatalf("add answered %s, the feed %+v", rec.Body.String(), made)
 	}
 	if len(cache.Model().Feeds) != 2 || cache.Model().Feed(made.Token).Email != "jordan.whitfield@heliosschool.org" {
 		t.Fatalf("feeds after add: %+v", cache.Model().Feeds)
@@ -158,26 +163,25 @@ func TestFeedLifecycle(t *testing.T) {
 	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "SUMMARY:Jays and Ravens Camping") || strings.Contains(rec.Body.String(), "Labor Day") {
 		t.Errorf("new feed: %d %s", rec.Code, rec.Body.String())
 	}
-	rec = call(t, owner, http.MethodPost, "/api/when/feeds", `{"name":"just TRIPS","classrooms":["Jays"],`+trip+`}`)
-	var twin struct{ Token string }
-	json.Unmarshal(rec.Body.Bytes(), &twin)
-	if rec.Code != http.StatusOK || cache.Model().Feed(twin.Token).Name != "just TRIPS 2" {
-		t.Errorf("twin name: %d %+v", rec.Code, cache.Model().Feed(twin.Token))
+	rec = call(t, owner, http.MethodPost, "/api/calendar-feeds", `{"name":"just TRIPS","classrooms":["Jays"],`+trip+`}`)
+	twin := created(t, rec)
+	if twinFeed := feedOf(t, owner, twin); rec.Code != http.StatusOK || cache.Model().Feed(twinFeed.Token).Name != "just TRIPS 2" {
+		t.Errorf("twin name: %d %+v", rec.Code, twinFeed)
 	}
-	call(t, owner, http.MethodDelete, "/api/when/feeds", `{"token":"`+twin.Token+`"}`)
-	if rec := call(t, owner, http.MethodPost, "/api/when/feeds", `{"name":"Bad","classrooms":["Penguins"]}`); rec.Code != http.StatusBadRequest {
+	call(t, owner, http.MethodDelete, "/api/calendar-feeds/"+twin, "")
+	if rec := call(t, owner, http.MethodPost, "/api/calendar-feeds", `{"name":"Bad","classrooms":["Penguins"]}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("unknown classroom: %d", rec.Code)
 	}
-	if rec := call(t, owner, http.MethodPost, "/api/when/feeds", `{"name":""}`); rec.Code != http.StatusBadRequest {
+	if rec := call(t, owner, http.MethodPost, "/api/calendar-feeds", `{"name":""}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("no name: %d", rec.Code)
 	}
-	if rec := call(t, other, http.MethodPut, "/api/when/feeds", `{"token":"`+made.Token+`","name":"Theirs","classrooms":["Jays"],`+trip+`}`); rec.Code != http.StatusForbidden {
+	if rec := call(t, other, http.MethodPost, "/api/calendar-feeds/"+key+"/edit", `{"name":"Theirs","classrooms":["Jays"],`+trip+`}`); rec.Code != http.StatusNotFound {
 		t.Errorf("someone else's change: %d", rec.Code)
 	}
-	if rec := call(t, owner, http.MethodPut, "/api/when/feeds", `{"token":"`+made.Token+`","name":"","classrooms":["Jays"],`+trip+`}`); rec.Code != http.StatusBadRequest {
+	if rec := call(t, owner, http.MethodPost, "/api/calendar-feeds/"+key+"/edit", `{"name":"","classrooms":["Jays"],`+trip+`}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("change to no name: %d", rec.Code)
 	}
-	if rec := call(t, owner, http.MethodPut, "/api/when/feeds", `{"token":"`+made.Token+`","name":"Jays days","emoji":" 🚌 ","classrooms":["Jays"],"tags":[`+quoted(t, "Trip, Schedule")+`]}`); rec.Code != http.StatusNoContent {
+	if rec := call(t, owner, http.MethodPost, "/api/calendar-feeds/"+key+"/edit", `{"name":"Jays days","emoji":" 🚌 ","classrooms":["Jays"],"tags":[`+quoted(t, "Trip, Schedule")+`]}`); rec.Code != http.StatusNoContent {
 		t.Errorf("owner's change: %d %s", rec.Code, rec.Body.String())
 	}
 	if f := cache.Model().Feed(made.Token); f == nil || f.Name != "Jays days" || f.Emoji != "🚌" || cells.JoinList(f.Tags) != ids(t, "Trip, Schedule") || f.Email != "jordan.whitfield@heliosschool.org" {
@@ -186,10 +190,10 @@ func TestFeedLifecycle(t *testing.T) {
 	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "X-WR-CALNAME:Jays days") || !strings.Contains(rec.Body.String(), "Labor Day") {
 		t.Errorf("changed feed: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := call(t, other, http.MethodDelete, "/api/when/feeds", `{"token":"`+made.Token+`"}`); rec.Code != http.StatusForbidden {
+	if rec := call(t, other, http.MethodDelete, "/api/calendar-feeds/"+key, ""); rec.Code != http.StatusNotFound {
 		t.Errorf("someone else's removal: %d", rec.Code)
 	}
-	if rec := call(t, owner, http.MethodDelete, "/api/when/feeds", `{"token":"`+made.Token+`"}`); rec.Code != http.StatusNoContent {
+	if rec := call(t, owner, http.MethodDelete, "/api/calendar-feeds/"+key, ""); rec.Code != http.StatusNoContent {
 		t.Errorf("owner's removal: %d %s", rec.Code, rec.Body.String())
 	}
 	if len(cache.Model().Feeds) != 1 || cache.Model().Feed(made.Token) != nil {
@@ -200,17 +204,10 @@ func TestFeedLifecycle(t *testing.T) {
 	}
 }
 
-func TestModelRoute(t *testing.T) {
+func TestCalendarRead(t *testing.T) {
 	mux, _ := testApp(t)
-	rec := call(t, as("jordan.whitfield@heliosschool.org", mux), http.MethodGet, "/api/when/model", "")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("model: %d", rec.Code)
-	}
-	var view View
-	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
-		t.Fatal(err)
-	}
-	if view.User.Email != "jordan.whitfield@heliosschool.org" || len(view.Feeds) != 1 || len(view.Events) != 22 || len(view.Classrooms) != 9 {
+	view := calendarOf(t, as("jordan.whitfield@heliosschool.org", mux))
+	if view.User.Email != "jordan.whitfield@heliosschool.org" || len(view.Feeds) != 2 || !slices.ContainsFunc(view.Feeds, func(f Feed) bool { return f.Locked }) || len(view.Events) != 22 || len(view.Classrooms) != 9 {
 		t.Errorf("view = user %s, %d feeds, %d events, %d classrooms", view.User.Email, len(view.Feeds), len(view.Events), len(view.Classrooms))
 	}
 }
@@ -231,11 +228,11 @@ func TestOldIDsReachTheirEvents(t *testing.T) {
 	handler, cache := testApp(t)
 	jordan := as("jordan.whitfield@heliosschool.org", handler)
 	for old, want := range map[string]string{"7QK2M4XN": "evt0000000001", "3pl9w2zc": "evt0000000002", "8RV4T6PK": "evt0000000003"} {
-		rec := call(t, jordan, "GET", "/api/when/event?id="+old, "")
-		var e Event
-		json.Unmarshal(rec.Body.Bytes(), &e)
-		if rec.Code != 200 || e.ID != want {
-			t.Errorf("the event by its old ID %s: %d %s", old, rec.Code, e.ID)
+		rec := eventOf(t, jordan, old)
+		var got struct{ Result string }
+		json.Unmarshal(rec.Body.Bytes(), &got)
+		if rec.Code != 200 || got.Result != want {
+			t.Errorf("the event by its old ID %s: %d %s", old, rec.Code, got.Result)
 		}
 	}
 	for path, want := range map[string]string{"/e/7QK2M4XN": "/e/evt0000000001", "/events/3PL9W2ZC": "/e/evt0000000002", "/e/8rv4t6pk?from=mail": "/e/evt0000000003?from=mail"} {
@@ -253,7 +250,7 @@ func TestOldIDsReachTheirEvents(t *testing.T) {
 		URL:  "https://when.heliosiandev.com:8080/e/3PL9W2ZC",
 		Want: []string{`property="og:title" content="HCA Meeting"`, `content="https://when.heliosiandev.com:8080/open/share/evt0000000002.png"`},
 	})
-	if rec := call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"3PL9W2ZC","flyer":"sample/community.jpg"}`); rec.Code != 204 {
+	if rec := act(t, jordan, "3PL9W2ZC", "settings", `{"flyer":"sample/community.jpg"}`); rec.Code != 204 {
 		t.Fatalf("a flyer by the old ID: %d %s", rec.Code, rec.Body)
 	}
 	for _, row := range sheetTables(t)[InvitationsTab] {
@@ -273,11 +270,7 @@ func TestOldIDsReachTheirEvents(t *testing.T) {
 
 func TestProvenanceForAdmins(t *testing.T) {
 	handler, _ := testApp(t)
-	var view View
-	rec := call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/when/model", "")
-	if err := json.NewDecoder(rec.Body).Decode(&view); err != nil {
-		t.Fatal(err)
-	}
+	view := calendarOf(t, as("jordan.whitfield@heliosschool.org", handler))
 	if view.Provenance != nil {
 		t.Errorf("a parent sees provenance: %v", view.Provenance)
 	}
@@ -290,10 +283,7 @@ func TestProvenanceForAdmins(t *testing.T) {
 	if hand == nil || hand.AddedBy != "dana.hawkins@heliosschool.org" || hand.Added == "" {
 		t.Errorf("hand-added event = %+v", hand)
 	}
-	rec = call(t, as("dana.hawkins@heliosschool.org", handler), "GET", "/api/when/model", "")
-	if err := json.NewDecoder(rec.Body).Decode(&view); err != nil {
-		t.Fatal(err)
-	}
+	view = calendarOf(t, as("dana.hawkins@heliosschool.org", handler))
 	p := view.Provenance["gev0000000005"]
 	if p == nil || p.Model == "" || len(p.Corrected) == 0 || p.Note != "Say which classrooms" {
 		t.Errorf("admin provenance for gev0000000005 = %+v", p)
@@ -303,13 +293,11 @@ func TestProvenanceForAdmins(t *testing.T) {
 func TestSavedView(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
-	rec := call(t, as(me, handler), "POST", "/api/when/settings", `{"classrooms":["Hawks"],"tags":[`+quoted(t, "Community, HCA")+`,"Nonsense"]}`)
+	rec := call(t, as(me, handler), "POST", settingsPath("save-view"), `{"classrooms":["Hawks"],"tags":[`+quoted(t, "Community, HCA")+`,"Nonsense"]}`)
 	if rec.Code != 204 {
 		t.Fatalf("save: %d %s", rec.Code, rec.Body)
 	}
-	var view View
-	rec = call(t, as(me, handler), "GET", "/api/when/model", "")
-	json.NewDecoder(rec.Body).Decode(&view)
+	view := calendarOf(t, as(me, handler))
 	if view.User.Saved == nil || strings.Join(view.User.Saved.Classrooms, ",") != "Hawks" || cells.JoinList(view.User.Saved.Tags) != ids(t, "Community, HCA") {
 		t.Errorf("saved view = %+v", view.User.Saved)
 	}
@@ -318,13 +306,11 @@ func TestSavedView(t *testing.T) {
 			t.Errorf("upcoming under the saved view lists %q", u.Title)
 		}
 	}
-	rec = call(t, as(me, handler), "DELETE", "/api/when/settings", "")
+	rec = call(t, as(me, handler), "POST", settingsPath("forget-view"), "")
 	if rec.Code != 204 {
 		t.Fatalf("forget: %d %s", rec.Code, rec.Body)
 	}
-	var again View
-	rec = call(t, as(me, handler), "GET", "/api/when/model", "")
-	json.NewDecoder(rec.Body).Decode(&again)
+	again := calendarOf(t, as(me, handler))
 	if again.User.Saved != nil {
 		t.Errorf("saved view survives forgetting: %+v", again.User.Saved)
 	}
@@ -342,10 +328,10 @@ func TestDefaultCalendar(t *testing.T) {
 	if !found {
 		t.Errorf("under My Heliosian, upcoming leaves out International Night")
 	}
-	if rec := call(t, viewer, "POST", "/api/when/default", `{"token":"nonsense"}`); rec.Code != 400 {
+	if rec := call(t, viewer, "POST", settingsPath("default"), `{"token":"nonsense"}`); rec.Code != 400 {
 		t.Errorf("a stranger's token: %d", rec.Code)
 	}
-	if rec := call(t, viewer, "POST", "/api/when/default", `{"token":"sample7feedtoken4jordan2whitfield"}`); rec.Code != 204 {
+	if rec := call(t, viewer, "POST", settingsPath("default"), `{"token":"sample7feedtoken4jordan2whitfield"}`); rec.Code != 204 {
 		t.Fatalf("default: %d %s", rec.Code, rec.Body)
 	}
 	if chosen := cache.Model().DefaultCalendar(me); chosen == nil || chosen.Token != "sample7feedtoken4jordan2whitfield" {
@@ -377,22 +363,20 @@ func TestDefaultCalendar(t *testing.T) {
 	if inMonth("") || !inMonth(MyHeliosianToken) {
 		t.Errorf("month under default %v, under My Heliosian %v; want false, true", inMonth(""), inMonth(MyHeliosianToken))
 	}
-	if rec := call(t, viewer, "POST", "/api/when/default", `{"token":"`+MyHeliosianToken+`"}`); rec.Code != 204 || cache.Model().DefaultCalendar(me) != nil {
+	if rec := call(t, viewer, "POST", settingsPath("default"), `{"token":"`+MyHeliosianToken+`"}`); rec.Code != 204 || cache.Model().DefaultCalendar(me) != nil {
 		t.Errorf("back to My Heliosian: %d, default %+v", rec.Code, cache.Model().DefaultCalendar(me))
 	}
-	if rec := call(t, viewer, "PUT", "/api/when/feeds", `{"token":"`+MyHeliosianToken+`","name":"Home base","emoji":"🏠","classrooms":["Jays"],"tags":[`+quoted(t, "Trip")+`]}`); rec.Code != 204 {
+	if rec := call(t, viewer, "POST", "/api/calendar-feeds/"+feedKey(me, MyHeliosianToken)+"/edit", `{"name":"Home base","emoji":"🏠","classrooms":["Jays"],"tags":[`+quoted(t, "Trip")+`]}`); rec.Code != 204 {
 		t.Errorf("rename My Heliosian: %d %s", rec.Code, rec.Body)
 	}
 	if home := cache.Model().MyHeliosian(me); home.Name != "Home base" || home.Emoji != "🏠" || !home.Locked || len(home.Classrooms) != 0 {
 		t.Errorf("My Heliosian = %+v", home)
 	}
-	rec := call(t, viewer, "POST", "/api/when/feeds", `{"name":"Everything","classrooms":[],"tags":[]}`)
-	var made struct{ Token string }
-	json.Unmarshal(rec.Body.Bytes(), &made)
-	if rec := call(t, viewer, "PUT", "/api/when/feeds/order", `{"tokens":["`+made.Token+`"]}`); rec.Code != 400 {
+	made := feedOf(t, viewer, created(t, call(t, viewer, "POST", "/api/calendar-feeds", `{"name":"Everything","classrooms":[],"tags":[]}`)))
+	if rec := call(t, viewer, "POST", settingsPath("order-feeds"), `{"tokens":["`+made.Token+`"]}`); rec.Code != 400 {
 		t.Errorf("a short order: %d", rec.Code)
 	}
-	if rec := call(t, viewer, "PUT", "/api/when/feeds/order", `{"tokens":["`+made.Token+`","`+MyHeliosianToken+`","sample7feedtoken4jordan2whitfield"]}`); rec.Code != 204 {
+	if rec := call(t, viewer, "POST", settingsPath("order-feeds"), `{"tokens":["`+made.Token+`","`+MyHeliosianToken+`","sample7feedtoken4jordan2whitfield"]}`); rec.Code != 204 {
 		t.Fatalf("order: %d %s", rec.Code, rec.Body)
 	}
 	mine := cache.Model().MyCalendars(me)
@@ -413,13 +397,13 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	d := sampleDirectory(t, "sampledata")
 	kept := keptMail()
 	mux := http.NewServeMux()
-	Register(mux, Deps{
+	hooks := Register(mux, Deps{
 		Cache:     cache,
 		Images:    memoryImages(),
 		Directory: func() *who.Model { return d },
 		Settings:  func() *config.Settings { return &config.Settings{} },
 		Lists:     func(string) []List { return nil },
-		Linked:    func(string) []Linked { return nil },
+		Linked:    noLinked,
 		SourceID:  noSource,
 		Celebrate: noCelebrate(),
 		Sources:   newSampleSources(t).sources,
@@ -427,6 +411,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 		Style:     testStyle,
 		Queue:     queue,
 	})
+	served(mux, cache, hooks, func() *who.Model { return d }, noLinked)
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {
@@ -435,24 +420,22 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 		}
 		return kept.Messages()
 	}
-	call(t, parent, "POST", "/api/when/events", `{"title":"Bake sale","start":"2026-10-01 15:00","tags":[`+quoted(t, "Jays, Community")+`],"sharing":"Public"}`)
+	call(t, parent, "POST", "/api/events", `{"title":"Bake sale","start":"2026-10-01 15:00","tags":[`+quoted(t, "Jays, Community")+`],"sharing":"Public"}`)
 	sent := wait(1)
 	if len(sent) != 1 || !strings.HasPrefix(sent[0].Subject, "Event to approve: Bake sale") || !slices.Contains(sent[0].To, "dana.hawkins@heliosschool.org") || !strings.Contains(sent[0].Text, "Jordan") || !strings.Contains(sent[0].HTML, "Review the event") {
 		t.Errorf("public event mail = %+v", sent)
 	}
-	call(t, parent, "POST", "/api/when/events", `{"title":"Sam\u2019s party","start":"2026-10-03 14:00","tags":[`+quoted(t, "Jays")+`],"sharing":"Link"}`)
+	call(t, parent, "POST", "/api/events", `{"title":"Sam\u2019s party","start":"2026-10-03 14:00","tags":[`+quoted(t, "Jays")+`],"sharing":"Link"}`)
 	sent = wait(2)
 	if len(sent) != 2 || !strings.HasPrefix(sent[1].Subject, "Link event added: Sam") || !strings.Contains(sent[1].HTML, "See the event") || strings.Contains(sent[1].Text, "waiting for approval") {
 		t.Errorf("link event mail = %+v", sent)
 	}
-	call(t, admin, "POST", "/api/when/events", `{"title":"Admin's own","start":"2026-10-05","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`)
+	call(t, admin, "POST", "/api/events", `{"title":"Admin's own","start":"2026-10-05","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`)
 	sent = wait(3)
 	if len(sent) != 3 || !strings.HasPrefix(sent[2].Subject, "Event to approve: Admin's own") {
 		t.Errorf("an admin's own public event waits and is mailed about too: %+v", sent)
 	}
-	var v View
-	rec := call(t, parent, "GET", "/api/when/model", "")
-	json.NewDecoder(rec.Body).Decode(&v)
+	v := calendarOf(t, parent)
 	var party *Event
 	for _, e := range v.Events {
 		if strings.HasPrefix(e.Title, "Sam") {
@@ -462,7 +445,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	if party == nil {
 		t.Fatal("the party is not in the host's view")
 	}
-	if rec := call(t, parent, "PUT", "/api/when/events", `{"id":"`+party.ID+`","title":"`+party.Title+`","start":"2026-10-03 14:00","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 204 {
+	if rec := act(t, parent, party.ID, "edit", `{"sharing":"Public"}`); rec.Code != 204 {
 		t.Fatalf("switch to public: %d %s", rec.Code, rec.Body)
 	}
 	sent = wait(4)
@@ -470,10 +453,10 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 		t.Errorf("after the switch: event %+v, mail %d", e, len(sent))
 	}
 	other := as("robin.whitfield@heliosschool.org", mux)
-	if rec := call(t, other, "GET", "/api/when/event?id="+party.ID, ""); rec.Code != 200 {
+	if rec := eventOf(t, other, party.ID); rec.Code != 200 {
 		t.Errorf("the link of an event waiting for approval: %d", rec.Code)
 	}
-	if rec := call(t, other, "POST", "/api/when/rsvp", `{"id":"`+party.ID+`","answer":"yes"}`); rec.Code != 204 {
+	if rec := act(t, other, party.ID, "answer", `{"answer":"yes"}`); rec.Code != 204 {
 		t.Errorf("a yes by link while waiting: %d %s", rec.Code, rec.Body)
 	}
 }
@@ -481,22 +464,23 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 func TestAdminAddsAndCorrects(t *testing.T) {
 	handler, cache := testApp(t)
 	admin := as("dana.hawkins@heliosschool.org", handler)
-	rec := call(t, admin, "POST", "/api/when/events", `{"title":"Chess Club","start":"2026-10-01 15:30","end":"2026-10-01 16:30","tags":[`+quoted(t, "Jays, Clubs")+`],"sharing":"Public","repeatWeeks":4,"repeatTimes":2}`)
+	rec := call(t, admin, "POST", "/api/events", `{"title":"Chess Club","start":"2026-10-01 15:30","end":"2026-10-01 16:30","tags":[`+quoted(t, "Jays, Clubs")+`],"sharing":"Public","repeatWeeks":4,"repeatTimes":2}`)
 	if rec.Code != 200 {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
 	var made struct{ IDs []string }
-	json.NewDecoder(rec.Body).Decode(&made)
-	for _, id := range made.IDs {
-		if e := cache.Model().Event(id); e == nil || !e.Pending {
-			t.Errorf("an admin's event went straight on: %+v", e)
-		}
-		if rec := call(t, admin, "POST", "/api/when/events/approve", `{"id":"`+id+`"}`); rec.Code != 204 {
-			t.Fatalf("approve %s: %d", id, rec.Code)
+	for _, e := range cache.Model().Pending {
+		if e.Title == "Chess Club" {
+			made.IDs = append(made.IDs, e.ID)
 		}
 	}
-	if len(made.IDs) != 3 {
-		t.Fatalf("ids = %v", made.IDs)
+	if len(made.IDs) != 3 || made.IDs[0] != created(t, rec) {
+		t.Fatalf("ids = %v, the first answered %s", made.IDs, rec.Body)
+	}
+	for _, id := range made.IDs {
+		if rec := act(t, admin, id, "approve", ""); rec.Code != 204 {
+			t.Fatalf("approve %s: %d", id, rec.Code)
+		}
 	}
 	for _, key := range made.IDs {
 		if parsed, ok := id.Parse(key); !ok || parsed != key {
@@ -514,121 +498,110 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if strings.Join(starts, " ") != "2026-10-01 15:30 2026-10-29 15:30 2026-11-26 15:30" {
 		t.Errorf("starts = %v", starts)
 	}
-	if rec := call(t, admin, "POST", "/api/when/events", `{"title":"Bad","start":"not a date","tags":[`+quoted(t, "Clubs")+`],"sharing":"Public"}`); rec.Code != 400 {
+	if rec := call(t, admin, "POST", "/api/events", `{"title":"Bad","start":"not a date","tags":[`+quoted(t, "Clubs")+`],"sharing":"Public"}`); rec.Code != 400 {
 		t.Errorf("bad date accepted: %d", rec.Code)
 	}
-	rec = call(t, admin, "POST", "/api/when/keywords", `{"id":"`+made.IDs[0]+`","keywords":["chess","board games"]}`)
+	rec = act(t, admin, made.IDs[0], "keywords", `{"keywords":["chess","board games"]}`)
 	if rec.Code != 204 || strings.Join(cache.Model().Event(made.IDs[0]).Keywords, ",") != "chess,board games" {
 		t.Errorf("keywords: %d %v", rec.Code, cache.Model().Event(made.IDs[0]).Keywords)
 	}
 	if p := cache.Model().Provenance[made.IDs[0]]; p == nil || strings.Join(p.Corrected, ",") != "Keywords" {
 		t.Errorf("provenance = %+v", p)
 	}
-	rec = call(t, admin, "POST", "/api/when/events/when", `{"id":"`+made.IDs[0]+`","start":"2026-10-02 16:00","end":"2026-10-02 17:00"}`)
+	rec = act(t, admin, made.IDs[0], "move", `{"start":"2026-10-02 16:00","end":"2026-10-02 17:00"}`)
 	if rec.Code != 204 || cache.Model().Event(made.IDs[0]).Start != "2026-10-02 16:00" {
 		t.Errorf("move: %d %s", rec.Code, cache.Model().Event(made.IDs[0]).Start)
 	}
-	if rec := call(t, admin, "POST", "/api/when/events/when", `{"id":"gev0000000007","start":"2026-10-02 16:00"}`); rec.Code != 400 {
+	if rec := act(t, admin, "gev0000000007", "move", `{"start":"2026-10-02 16:00"}`); rec.Code != 403 {
 		t.Errorf("an imported event moved from the list: %d", rec.Code)
 	}
 	parent := as("jordan.whitfield@heliosschool.org", handler)
-	if rec := call(t, parent, "POST", "/api/when/keywords", `{"id":"`+made.IDs[0]+`","keywords":["x"]}`); rec.Code != 403 {
+	if rec := act(t, parent, made.IDs[0], "keywords", `{"keywords":["x"]}`); rec.Code != 403 {
 		t.Errorf("parent set keywords: %d", rec.Code)
 	}
-	rec = call(t, parent, "POST", "/api/when/events", `{"title":"Bake sale","start":"2026-10-01 15:00","end":"2026-10-01 17:00","tags":[`+quoted(t, "Jays, Community")+`],"sharing":"Public","repeatWeeks":1,"repeatTimes":3}`)
-	var shared struct {
-		IDs     []string `json:"ids"`
-		Pending bool     `json:"pending"`
-	}
-	json.Unmarshal(rec.Body.Bytes(), &shared)
-	if rec.Code != 200 || !shared.Pending || len(shared.IDs) != 1 {
+	rec = call(t, parent, "POST", "/api/events", `{"title":"Bake sale","start":"2026-10-01 15:00","end":"2026-10-01 17:00","tags":[`+quoted(t, "Jays, Community")+`],"sharing":"Public","repeatWeeks":1,"repeatTimes":3}`)
+	shared := created(t, rec)
+	if rec.Code != 200 || slices.ContainsFunc(cache.Model().Pending, func(e *Event) bool { return e.Title == "Bake sale" && e.ID != shared }) {
 		t.Fatalf("parent shared an event: %d %s", rec.Code, rec.Body)
 	}
-	if e := cache.Model().Event(shared.IDs[0]); e == nil || !e.Pending || !slices.Contains(cache.Model().Pending, e) {
+	if e := cache.Model().Event(shared); e == nil || !e.Pending || !slices.Contains(cache.Model().Pending, e) {
 		t.Errorf("shared event = %+v", e)
 	}
-	if cache.Model().AnswerOf("jordan.whitfield@heliosschool.org", shared.IDs[0]) != AnswerYes {
+	if cache.Model().AnswerOf("jordan.whitfield@heliosschool.org", shared) != AnswerYes {
 		t.Errorf("the host is not going to their own event")
 	}
-	var hostView View
-	rec = call(t, parent, "GET", "/api/when/model", "")
-	json.NewDecoder(rec.Body).Decode(&hostView)
-	if n := len(slices.DeleteFunc(slices.Clone(hostView.Events), func(e *Event) bool { return e.ID != shared.IDs[0] })); n != 1 {
+	hostView := calendarOf(t, parent)
+	if n := len(slices.DeleteFunc(slices.Clone(hostView.Events), func(e *Event) bool { return e.ID != shared })); n != 1 {
 		t.Errorf("the host's view carries their event %d times", n)
 	}
 	for _, e := range cache.Model().Events {
-		if e.ID == shared.IDs[0] {
+		if e.ID == shared {
 			t.Errorf("a pending event is on the calendar")
 		}
 	}
 	sees := func(who http.Handler) bool {
-		var v View
-		rec := call(t, who, "GET", "/api/when/model", "")
-		json.NewDecoder(rec.Body).Decode(&v)
-		return slices.ContainsFunc(v.Events, func(e *Event) bool { return e.ID == shared.IDs[0] && (e.Pending || e.Declined) })
+		return slices.ContainsFunc(calendarOf(t, who).Events, func(e *Event) bool { return e.ID == shared && (e.Pending || e.Declined) })
 	}
 	other := as("robin.whitfield@heliosschool.org", handler)
 	if !sees(parent) || !sees(admin) || sees(other) {
 		t.Errorf("pending event seen by parent %v, admin %v, another %v", sees(parent), sees(admin), sees(other))
 	}
-	if rec := call(t, parent, "POST", "/api/when/events/approve", `{"id":"`+shared.IDs[0]+`"}`); rec.Code != 403 {
+	if rec := act(t, parent, shared, "approve", ""); rec.Code != 403 {
 		t.Errorf("parent approved: %d", rec.Code)
 	}
-	if rec := call(t, admin, "POST", "/api/when/events/approve", `{"id":"`+shared.IDs[0]+`"}`); rec.Code != 204 {
+	if rec := act(t, admin, shared, "approve", ""); rec.Code != 204 {
 		t.Fatalf("approve: %d %s", rec.Code, rec.Body)
 	}
-	if e := cache.Model().Event(shared.IDs[0]); e == nil || e.Pending || e.Status != StatusApproved || !slices.Contains(cache.Model().Events, e) {
+	if e := cache.Model().Event(shared); e == nil || e.Pending || e.Status != StatusApproved || !slices.Contains(cache.Model().Events, e) {
 		t.Errorf("approved event = %+v", e)
 	}
-	if rec := call(t, parent, "PUT", "/api/when/events", `{"id":"`+shared.IDs[0]+`","title":"Bake sale!","start":"2026-10-01 15:30","end":"2026-10-01 17:30","location":"Gym","tags":[`+quoted(t, "Jays, Community")+`],"image":"/category-images/cake.jpg","sharing":"Public"}`); rec.Code != 204 {
+	if rec := act(t, parent, shared, "edit", `{"title":"Bake sale!","start":"2026-10-01 15:30","end":"2026-10-01 17:30","location":"Gym","image":"/category-images/cake.jpg"}`); rec.Code != 204 {
 		t.Errorf("owner's edit: %d %s", rec.Code, rec.Body)
 	}
-	if e := cache.Model().Event(shared.IDs[0]); e == nil || e.Title != "Bake sale!" || e.Location != "Gym" || e.Image != "/category-images/cake.jpg" || e.Start != "2026-10-01 15:30" || e.Pending {
+	if e := cache.Model().Event(shared); e == nil || e.Title != "Bake sale!" || e.Location != "Gym" || e.Image != "/category-images/cake.jpg" || e.Start != "2026-10-01 15:30" || e.Pending {
 		t.Errorf("edited event = %+v", e)
 	}
-	if rec := call(t, other, "PUT", "/api/when/events", `{"id":"`+shared.IDs[0]+`","title":"Mine now","start":"2026-10-01","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 403 {
+	if rec := act(t, other, shared, "edit", `{"title":"Mine now"}`); rec.Code != 403 {
 		t.Errorf("another parent's edit: %d", rec.Code)
 	}
-	rec = call(t, parent, "POST", "/api/when/events", `{"title":"Sam\u2019s birthday","start":"2026-10-03 14:00","end":"2026-10-03 16:00","tags":[`+quoted(t, "Jays, Community")+`],"sharing":"Link"}`)
-	json.Unmarshal(rec.Body.Bytes(), &shared)
-	if rec.Code != 200 || shared.Pending {
+	rec = call(t, parent, "POST", "/api/events", `{"title":"Sam\u2019s birthday","start":"2026-10-03 14:00","end":"2026-10-03 16:00","tags":[`+quoted(t, "Jays, Community")+`],"sharing":"Link"}`)
+	shared = created(t, rec)
+	if rec.Code != 200 {
 		t.Fatalf("link: %d %s", rec.Code, rec.Body)
 	}
-	if e := cache.Model().Event(shared.IDs[0]); e == nil || e.Sharing != SharingLink || e.Status != "" {
+	if e := cache.Model().Event(shared); e == nil || e.Pending || e.Sharing != SharingLink || e.Status != "" {
 		t.Errorf("link event = %+v", e)
 	}
 	if sees(other) {
 		t.Errorf("a link event is on another's calendar before they answer")
 	}
-	if rec := call(t, other, "GET", "/api/when/event?id="+shared.IDs[0], ""); rec.Code != 200 {
+	if rec := eventOf(t, other, shared); rec.Code != 200 {
 		t.Errorf("a link event by its link: %d", rec.Code)
 	}
-	if rec := call(t, other, "POST", "/api/when/rsvp", `{"id":"`+shared.IDs[0]+`","answer":"yes"}`); rec.Code != 204 {
+	if rec := act(t, other, shared, "answer", `{"answer":"yes"}`); rec.Code != 204 {
 		t.Fatalf("yes to a link event: %d %s", rec.Code, rec.Body)
 	}
-	var otherView View
-	rec = call(t, other, "GET", "/api/when/model", "")
-	json.NewDecoder(rec.Body).Decode(&otherView)
-	if i := slices.IndexFunc(otherView.Events, func(e *Event) bool { return e.ID == shared.IDs[0] }); i < 0 || !slices.Contains(otherView.Events[i].Tags, TagGoing) {
+	otherView := calendarOf(t, other)
+	if i := slices.IndexFunc(otherView.Events, func(e *Event) bool { return e.ID == shared }); i < 0 || !slices.Contains(otherView.Events[i].Tags, TagGoing) {
 		t.Errorf("a yes did not put the link event under Going on the other's calendar")
 	}
 	found := false
 	for _, u := range cache.Model().UpcomingUnder(sampleDirectory(t, "sampledata"), "robin.whitfield@heliosschool.org", nil, now(), 0, "") {
-		found = found || u.ID == shared.IDs[0]
+		found = found || u.ID == shared
 	}
 	if !found {
 		t.Errorf("a yes did not put the link event in the other's Upcoming")
 	}
-	if rec := call(t, parent, "POST", "/api/when/events", `{"title":"Unsaid","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`]}`); rec.Code != 400 {
+	if rec := call(t, parent, "POST", "/api/events", `{"title":"Unsaid","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`]}`); rec.Code != 400 {
 		t.Errorf("no sharing: %d", rec.Code)
 	}
-	if rec := call(t, parent, "POST", "/api/when/events", `{"title":"Unsaid","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Private"}`); rec.Code != 400 {
+	if rec := call(t, parent, "POST", "/api/events", `{"title":"Unsaid","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Private"}`); rec.Code != 400 {
 		t.Errorf("an old sharing word: %d", rec.Code)
 	}
-	rec = call(t, parent, "POST", "/api/when/events", `{"id":"sams-party","address":"Sams-Party","title":"Sam\u2019s party","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Link"}`)
-	json.Unmarshal(rec.Body.Bytes(), &shared)
+	rec = call(t, parent, "POST", "/api/events", `{"address":"Sams-Party","title":"Sam\u2019s party","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Link"}`)
+	shared = created(t, rec)
 	party := cache.Model().Event("sams-party")
-	if rec.Code != 200 || party == nil || party.ID != shared.IDs[0] || party.Address != "sams-party" || EventPath(party) != "/e/sams-party" {
+	if rec.Code != 200 || party == nil || party.ID != shared || party.Address != "sams-party" || EventPath(party) != "/e/sams-party" {
 		t.Fatalf("chosen address: %d %s, event %+v", rec.Code, rec.Body, party)
 	}
 	if _, ok := id.Parse(party.ID); !ok {
@@ -640,39 +613,38 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if head := PreviewHead(cache, func(string) []Linked { return nil }, noSource, testStyle)(httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/open/share/"+party.ID+".png") {
 		t.Errorf("a link event's preview:\n%s", head)
 	}
-	if rec := call(t, parent, "POST", "/api/when/events", `{"address":"sams-party","title":"Again","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {
+	if rec := call(t, parent, "POST", "/api/events", `{"address":"sams-party","title":"Again","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {
 		t.Errorf("a taken address: %d", rec.Code)
 	}
-	if rec := call(t, parent, "POST", "/api/when/events", `{"address":"`+party.ID+`","title":"Again","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {
+	if rec := call(t, parent, "POST", "/api/events", `{"address":"`+party.ID+`","title":"Again","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {
 		t.Errorf("an address that is another event's ID: %d", rec.Code)
 	}
-	if rec := call(t, parent, "POST", "/api/when/events", `{"address":"a/b","title":"Odd","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {
+	if rec := call(t, parent, "POST", "/api/events", `{"address":"a/b","title":"Odd","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {
 		t.Errorf("an ill-formed address: %d", rec.Code)
 	}
-	if rec := call(t, parent, "POST", "/api/when/events", `{"address":"evt9999999999","title":"Odd","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {
+	if rec := call(t, parent, "POST", "/api/events", `{"address":"evt9999999999","title":"Odd","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {
 		t.Errorf("an address that reads as an ID: %d", rec.Code)
 	}
-	rec = call(t, parent, "POST", "/api/when/events", `{"title":"Not this","start":"2026-10-02","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`)
-	json.Unmarshal(rec.Body.Bytes(), &shared)
-	if rec := call(t, admin, "POST", "/api/when/events/decline", `{"id":"`+shared.IDs[0]+`"}`); rec.Code != 204 {
+	shared = created(t, call(t, parent, "POST", "/api/events", `{"title":"Not this","start":"2026-10-02","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`))
+	if rec := act(t, admin, shared, "decline", ""); rec.Code != 204 {
 		t.Errorf("decline: %d %s", rec.Code, rec.Body)
 	}
-	if e := cache.Model().Event(shared.IDs[0]); e == nil || !e.Declined || e.Status != StatusDeclined || slices.Contains(cache.Model().Events, e) {
+	if e := cache.Model().Event(shared); e == nil || !e.Declined || e.Status != StatusDeclined || slices.Contains(cache.Model().Events, e) {
 		t.Errorf("declined event = %+v", e)
 	}
 	if !sees(parent) || sees(other) {
 		t.Errorf("declined event seen by parent %v, another %v", sees(parent), sees(other))
 	}
-	if rec := call(t, other, "GET", "/api/when/event?id="+shared.IDs[0], ""); rec.Code != 200 {
+	if rec := eventOf(t, other, shared); rec.Code != 200 {
 		t.Errorf("a declined event by its link: %d", rec.Code)
 	}
-	if rec := call(t, other, "POST", "/api/when/rsvp", `{"id":"`+shared.IDs[0]+`","answer":"yes"}`); rec.Code != 204 || !sees(other) {
+	if rec := act(t, other, shared, "answer", `{"answer":"yes"}`); rec.Code != 204 || !sees(other) {
 		t.Errorf("yes to a declined event: %d, on the calendar %v", rec.Code, sees(other))
 	}
-	if rec := call(t, admin, "POST", "/api/when/events/decline", `{"id":"sams-party"}`); rec.Code != 400 || cache.Model().Event("sams-party").Declined {
+	if rec := act(t, admin, "sams-party", "decline", ""); rec.Code != 403 || cache.Model().Event("sams-party").Declined {
 		t.Errorf("declined a link event: %d", rec.Code)
 	}
-	if rec := call(t, admin, "POST", "/api/when/events/approve", `{"id":"`+shared.IDs[0]+`"}`); rec.Code != 204 || cache.Model().Event(shared.IDs[0]).Status != StatusApproved {
+	if rec := act(t, admin, shared, "approve", ""); rec.Code != 204 || cache.Model().Event(shared).Status != StatusApproved {
 		t.Errorf("approve after decline: %d", rec.Code)
 	}
 }
@@ -680,13 +652,13 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 func TestFeedTags(t *testing.T) {
 	handler, _ := testApp(t)
 	me := as("jordan.whitfield@heliosschool.org", handler)
-	if rec := call(t, me, "POST", "/api/when/feeds", `{"name":"Odds and ends","classrooms":["Jays"],"tags":[`+quoted(t, "Misc, Trip")+`]}`); rec.Code != 200 {
+	if rec := call(t, me, "POST", "/api/calendar-feeds", `{"name":"Odds and ends","classrooms":["Jays"],"tags":[`+quoted(t, "Misc, Trip")+`]}`); rec.Code != 200 {
 		t.Errorf("feed with Misc: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, me, "POST", "/api/when/feeds", `{"name":"Parties","classrooms":["Jays"],"tags":[`+quoted(t, "Celebrate, Going")+`]}`); rec.Code != 200 {
+	if rec := call(t, me, "POST", "/api/calendar-feeds", `{"name":"Parties","classrooms":["Jays"],"tags":[`+quoted(t, "Celebrate, Going")+`]}`); rec.Code != 200 {
 		t.Errorf("feed with Celebrate and Going: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, me, "POST", "/api/when/feeds", `{"name":"Nope","classrooms":["Jays"],"tags":["Nonsense"]}`); rec.Code != 400 {
+	if rec := call(t, me, "POST", "/api/calendar-feeds", `{"name":"Nope","classrooms":["Jays"],"tags":["Nonsense"]}`); rec.Code != 400 {
 		t.Errorf("feed with a made-up tag: %d", rec.Code)
 	}
 }
@@ -709,18 +681,16 @@ func TestAnswers(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
 	viewer := as(me, handler)
-	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"perhaps"}`); rec.Code != 400 {
+	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"perhaps"}`); rec.Code != 400 {
 		t.Errorf("nonsense answer: %d", rec.Code)
 	}
-	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"maybe"}`); rec.Code != 204 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerMaybe {
+	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"maybe"}`); rec.Code != 204 || cache.Model().AnswerOf(me, "gev0000000007") != AnswerMaybe {
 		t.Errorf("maybe: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"hidden"}`); rec.Code != 204 {
+	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"hidden"}`); rec.Code != 204 {
 		t.Fatalf("hide: %d %s", rec.Code, rec.Body)
 	}
-	var view View
-	rec := call(t, viewer, "GET", "/api/when/model", "")
-	json.NewDecoder(rec.Body).Decode(&view)
+	view := calendarOf(t, viewer)
 	if view.User.Answers["gev0000000007"] != AnswerHidden {
 		t.Errorf("answers = %v", view.User.Answers)
 	}
@@ -734,19 +704,19 @@ func TestAnswers(t *testing.T) {
 	if strings.Contains(string(ICS(cache.Model(), dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a hidden event is in the owner's feed")
 	}
-	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"no"}`); rec.Code != 204 {
+	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"no"}`); rec.Code != 204 {
 		t.Fatalf("no: %d %s", rec.Code, rec.Body)
 	}
 	if strings.Contains(string(ICS(cache.Model(), dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("an event the owner said no to is in their feed")
 	}
-	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":""}`); rec.Code != 204 {
+	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":""}`); rec.Code != 204 {
 		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
 	}
 	if !strings.Contains(string(ICS(cache.Model(), dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a cleared answer left the event out of the feed")
 	}
-	if rec := call(t, viewer, "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"yes"}`); rec.Code != 204 {
+	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"yes"}`); rec.Code != 204 {
 		t.Fatalf("yes: %d %s", rec.Code, rec.Body)
 	}
 	found := false
@@ -758,15 +728,11 @@ func TestAnswers(t *testing.T) {
 	if !found {
 		t.Errorf("a yes is not on the Upcoming card")
 	}
-	var mine View
-	rec = call(t, viewer, "GET", "/api/when/model", "")
-	json.NewDecoder(rec.Body).Decode(&mine)
+	mine := calendarOf(t, viewer)
 	if i := slices.IndexFunc(mine.Events, func(e *Event) bool { return e.ID == "gev0000000007" }); i < 0 || !slices.Contains(mine.Events[i].Tags, TagGoing) {
 		t.Errorf("a yes is not under Going in the viewer's events")
 	}
-	var other View
-	rec = call(t, as("dana.hawkins@heliosschool.org", handler), "GET", "/api/when/model", "")
-	json.NewDecoder(rec.Body).Decode(&other)
+	other := calendarOf(t, as("dana.hawkins@heliosschool.org", handler))
 	if i := slices.IndexFunc(other.Events, func(e *Event) bool { return e.ID == "gev0000000007" }); i < 0 || slices.Contains(other.Events[i].Tags, TagGoing) {
 		t.Errorf("one viewer's yes is under Going for another")
 	}
@@ -785,19 +751,15 @@ func TestAnswers(t *testing.T) {
 
 func TestResponsesForAdmins(t *testing.T) {
 	handler, _ := testApp(t)
-	call(t, as("jordan.whitfield@heliosschool.org", handler), "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"yes"}`)
-	call(t, as("dana.hawkins@heliosschool.org", handler), "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"no"}`)
-	call(t, as("robin.whitfield@heliosschool.org", handler), "POST", "/api/when/rsvp", `{"id":"gev0000000007","answer":"hidden"}`)
-	var view View
-	rec := call(t, as("dana.hawkins@heliosschool.org", handler), "GET", "/api/when/model", "")
-	json.NewDecoder(rec.Body).Decode(&view)
+	act(t, as("jordan.whitfield@heliosschool.org", handler), "gev0000000007", "answer", `{"answer":"yes"}`)
+	act(t, as("dana.hawkins@heliosschool.org", handler), "gev0000000007", "answer", `{"answer":"no"}`)
+	act(t, as("robin.whitfield@heliosschool.org", handler), "gev0000000007", "answer", `{"answer":"hidden"}`)
+	view := calendarOf(t, as("dana.hawkins@heliosschool.org", handler))
 	r := view.Responses["gev0000000007"]
 	if r == nil || len(r.Yes) != 1 || r.Yes[0].Name != "Jordan Whitfield" || r.Yes[0].Line != "Parent to Sam (Grade 3), Ella (Grade 6)" || len(r.No) != 1 {
 		t.Errorf("responses = %+v", r)
 	}
-	rec = call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/when/model", "")
-	var parent View
-	json.NewDecoder(rec.Body).Decode(&parent)
+	parent := calendarOf(t, as("jordan.whitfield@heliosschool.org", handler))
 	if parent.Responses != nil {
 		t.Errorf("a parent sees responses: %v", parent.Responses)
 	}
@@ -809,7 +771,7 @@ func TestOverrideFromThePage(t *testing.T) {
 	e := cache.Model().Event("gev0000000002")
 	tags := slices.DeleteFunc(slices.Clone(e.Tags), BuiltInTag)
 	body := func(title, start, end, location, note string) string {
-		raw, _ := json.Marshal(map[string]any{"id": "gev0000000002", "title": title, "start": start, "end": end, "location": location, "description": e.Description, "tags": tags, "keywords": e.Keywords, "note": note})
+		raw, _ := json.Marshal(map[string]any{"title": title, "start": start, "end": end, "location": location, "description": e.Description, "tags": tags, "keywords": e.Keywords, "note": note})
 		return string(raw)
 	}
 	row := func() map[string]string {
@@ -820,7 +782,10 @@ func TestOverrideFromThePage(t *testing.T) {
 		}
 		return nil
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", body("Back to School Night", e.Start, e.End, e.Location, "Shorter")); rec.Code != 204 {
+	correct := func(who http.Handler, key, body string) *httptest.ResponseRecorder {
+		return act(t, who, key, "correct", body)
+	}
+	if rec := correct(admin, "gev0000000002", body("Back to School Night", e.Start, e.End, e.Location, "Shorter")); rec.Code != 204 {
 		t.Fatalf("override: %d %s", rec.Code, rec.Body)
 	}
 	if r := row(); r == nil || r["Title"] != "Back to School Night" || r["Start"] != "" || r["Location"] != "" || r["Tags"] != "" || r["Keywords"] != "" || r["Note"] != "Shorter" {
@@ -829,7 +794,7 @@ func TestOverrideFromThePage(t *testing.T) {
 	if got := cache.Model().Event("gev0000000002"); got.Title != "Back to School Night" || strings.Join(cache.Model().Provenance["gev0000000002"].Corrected, ",") != "Title" {
 		t.Errorf("event after: %q corrected %v", got.Title, cache.Model().Provenance["gev0000000002"].Corrected)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", body("LS Back to School Night", "2026-08-27 18:30", "2026-08-27 20:00", "", "")); rec.Code != 204 {
+	if rec := correct(admin, "gev0000000002", body("LS Back to School Night", "2026-08-27 18:30", "2026-08-27 20:00", "", "")); rec.Code != 204 {
 		t.Fatalf("second override: %d %s", rec.Code, rec.Body)
 	}
 	if r := row(); r["Title"] != "" || r["Start"] != "2026-08-27 18:30" || r["End"] != "2026-08-27 20:00" || r["Location"] != Clear || r["Note"] != "" {
@@ -838,86 +803,81 @@ func TestOverrideFromThePage(t *testing.T) {
 	if got := cache.Model().Event("gev0000000002"); got.Location != "" || got.Start != "2026-08-27 18:30" {
 		t.Errorf("event after moving: %+v", got)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", body("LS Back to School Night", e.Start, e.End, e.Location, "")); rec.Code != 204 || row() != nil {
+	if rec := correct(admin, "gev0000000002", body("LS Back to School Night", e.Start, e.End, e.Location, "")); rec.Code != 204 || row() != nil {
 		t.Errorf("everything put back: %d, row %v", rec.Code, row())
 	}
-	addressed := func(id, address string) string {
-		ev := cache.Model().Event(id)
-		raw, _ := json.Marshal(map[string]any{"id": id, "title": ev.Title, "start": ev.Start, "end": ev.End, "location": ev.Location, "description": ev.Description, "tags": slices.DeleteFunc(slices.Clone(ev.Tags), BuiltInTag), "keywords": ev.Keywords, "address": address})
-		return string(raw)
+	addressed := func(key, address string) *httptest.ResponseRecorder {
+		return correct(admin, key, `{"address":"`+address+`"}`)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", addressed("gev0000000002", "Back-To-School")); rec.Code != 204 {
+	if rec := addressed("gev0000000002", "Back-To-School"); rec.Code != 204 {
 		t.Fatalf("an address: %d %s", rec.Code, rec.Body)
 	}
 	if got := cache.Model().Event("back-to-school"); got == nil || got.ID != "gev0000000002" || EventPath(got) != "/e/back-to-school" || row()["Address"] != "back-to-school" || row()["Title"] != "" {
 		t.Errorf("by its address: %+v, row %v", got, row())
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", addressed("gev0000000005", "back-to-school")); rec.Code != 400 || !strings.Contains(rec.Body.String(), "already another event's") {
+	if rec := addressed("gev0000000005", "back-to-school"); rec.Code != 400 || !strings.Contains(rec.Body.String(), "already another event's") {
 		t.Errorf("a taken address: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", addressed("gev0000000005", "camping trip!")); rec.Code != 400 {
+	if rec := addressed("gev0000000005", "camping trip!"); rec.Code != 400 {
 		t.Errorf("a bad address: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", addressed("gev0000000002", "")); rec.Code != 204 || row() != nil || cache.Model().Event("back-to-school") != nil {
+	if rec := addressed("back-to-school", ""); rec.Code != 204 || row() != nil || cache.Model().Event("back-to-school") != nil {
 		t.Errorf("the address taken away: %d, row %v", rec.Code, row())
 	}
-	var v InviteView
-	json.NewDecoder(call(t, admin, "GET", "/api/when/invites?id=gev0000000002", "").Body).Decode(&v)
+	v := inviteView(t, admin, "gev0000000002")
 	if !v.Host || len(v.Hosts) != 0 {
 		t.Errorf("the admin's view: host %v hosts %v", v.Host, v.Hosts)
 	}
-	v = InviteView{}
-	json.NewDecoder(call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/when/invites?id=gev0000000002", "").Body).Decode(&v)
+	v = inviteView(t, as("jordan.whitfield@heliosschool.org", handler), "gev0000000002")
 	if v.Host {
 		t.Errorf("a parent's view: host %v", v.Host)
 	}
 	if !v.ListPrivate || v.Coming != nil {
 		t.Errorf("a parent's view of a closed list: private %v coming %v", v.ListPrivate, v.Coming)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/invites/settings", `{"id":"gev0000000002","publicList":true}`); rec.Code != 204 {
+	if rec := act(t, admin, "gev0000000002", "settings", `{"publicList":true}`); rec.Code != 204 {
 		t.Fatalf("opening the list: %d %s", rec.Code, rec.Body)
 	}
-	v = InviteView{}
-	json.NewDecoder(call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/when/invites?id=gev0000000002", "").Body).Decode(&v)
+	v = inviteView(t, as("jordan.whitfield@heliosschool.org", handler), "gev0000000002")
 	if v.ListPrivate || v.Coming == nil {
 		t.Errorf("a parent's view of an open list: private %v coming %v", v.ListPrivate, v.Coming)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides/image", `{"id":"gev0000000002","image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Event("gev0000000002").Image != "/category-images/night.jpg" || row()["Image"] != "category-images/night.jpg" {
+	if rec := act(t, admin, "gev0000000002", "image", `{"image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Event("gev0000000002").Image != "/category-images/night.jpg" || row()["Image"] != "category-images/night.jpg" {
 		t.Errorf("a picture: %d %+v", rec.Code, row())
 	}
-	if rec := call(t, admin, "PUT", "/api/when/invites/settings", `{"id":"gev0000000002","flyer":"sample/community.jpg"}`); rec.Code != 204 || cache.Model().Invitations["gev0000000002"] == nil || cache.Model().Invitations["gev0000000002"].Flyer != "sample/community.jpg" || len(cache.Model().Invitations["gev0000000002"].Hosts) != 0 {
+	if rec := act(t, admin, "gev0000000002", "settings", `{"flyer":"sample/community.jpg"}`); rec.Code != 204 || cache.Model().Invitations["gev0000000002"] == nil || cache.Model().Invitations["gev0000000002"].Flyer != "sample/community.jpg" || len(cache.Model().Invitations["gev0000000002"].Hosts) != 0 {
 		t.Errorf("a flyer: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides/image", `{"id":"gev0000000002","image":""}`); rec.Code != 204 || cache.Model().Event("gev0000000002").Image != "" {
+	if rec := act(t, admin, "gev0000000002", "image", `{"image":""}`); rec.Code != 204 || cache.Model().Event("gev0000000002").Image != "" {
 		t.Errorf("the picture taken away: %d", rec.Code)
 	}
-	if rec := call(t, as("jordan.whitfield@heliosschool.org", handler), "PUT", "/api/when/overrides/image", `{"id":"gev0000000002","image":"x.jpg"}`); rec.Code != 403 {
+	if rec := act(t, as("jordan.whitfield@heliosschool.org", handler), "gev0000000002", "image", `{"image":"x.jpg"}`); rec.Code != 403 {
 		t.Errorf("a parent's picture: %d", rec.Code)
 	}
-	if rec := call(t, as("jordan.whitfield@heliosschool.org", handler), "PUT", "/api/when/overrides", body("x", e.Start, e.End, "", "")); rec.Code != 403 {
+	if rec := correct(as("jordan.whitfield@heliosschool.org", handler), "gev0000000002", body("x", e.Start, e.End, "", "")); rec.Code != 403 {
 		t.Errorf("a parent: %d", rec.Code)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", `{"id":"gev0000000002","title":"x","start":"not a date"}`); rec.Code != 400 {
+	if rec := correct(admin, "gev0000000002", `{"title":"x","start":"not a date"}`); rec.Code != 400 {
 		t.Errorf("a bad date: %d", rec.Code)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/overrides", body(e.Title, e.Start, e.End, e.Location, "The admins'")); rec.Code != 204 {
+	if rec := correct(admin, "gev0000000002", body(e.Title, e.Start, e.End, e.Location, "The admins'")); rec.Code != 204 {
 		t.Fatalf("an admin's note: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, admin, "PUT", "/api/when/invites/settings", `{"id":"gev0000000002","hosts":["jordan.whitfield@heliosschool.org"]}`); rec.Code != 204 {
+	if rec := act(t, admin, "gev0000000002", "settings", `{"hosts":["jordan.whitfield@heliosschool.org"]}`); rec.Code != 204 {
 		t.Fatalf("a co-host: %d %s", rec.Code, rec.Body)
 	}
 	cohost := as("jordan.whitfield@heliosschool.org", handler)
-	if rec := call(t, cohost, "PUT", "/api/when/overrides", body("Family Night", e.Start, e.End, e.Location, "Mine")); rec.Code != 204 {
+	if rec := correct(cohost, "gev0000000002", body("Family Night", e.Start, e.End, e.Location, "Mine")); rec.Code != 204 {
 		t.Fatalf("a co-host's edit: %d %s", rec.Code, rec.Body)
 	}
 	if r := row(); r["Title"] != "Family Night" || r["Note"] != "The admins'" || cache.Model().Event("gev0000000002").Title != "Family Night" {
 		t.Errorf("after the co-host's edit: %v", r)
 	}
-	if rec := call(t, cohost, "PUT", "/api/when/overrides/image", `{"id":"gev0000000002","image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Event("gev0000000002").Image != "/category-images/night.jpg" {
+	if rec := act(t, cohost, "gev0000000002", "image", `{"image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Event("gev0000000002").Image != "/category-images/night.jpg" {
 		t.Errorf("a co-host's picture: %d", rec.Code)
 	}
-	raw, _ := json.Marshal(map[string]any{"id": "gev0000000002", "title": "Family Night", "start": e.Start, "end": e.End, "location": e.Location, "description": e.Description, "tags": tags, "keywords": e.Keywords})
-	if rec := call(t, admin, "PUT", "/api/when/overrides", string(raw)); rec.Code != 204 || row()["Note"] != "The admins'" {
+	raw, _ := json.Marshal(map[string]any{"title": "Family Night", "start": e.Start, "end": e.End, "location": e.Location, "description": e.Description, "tags": tags, "keywords": e.Keywords})
+	if rec := correct(admin, "gev0000000002", string(raw)); rec.Code != 204 || row()["Note"] != "The admins'" {
 		t.Errorf("an edit sending no note: %d %v", rec.Code, row())
 	}
 }
@@ -926,15 +886,12 @@ func TestMyHeliosianFeed(t *testing.T) {
 	handler, cache := testApp(t)
 	parent := as("jordan.whitfield@heliosschool.org", handler)
 	token := func() string {
-		rec := call(t, parent, "POST", "/api/when/feeds/my-heliosian", `{}`)
-		var body struct {
-			Token string `json:"token"`
-		}
-		json.NewDecoder(rec.Body).Decode(&body)
-		if rec.Code != 200 || body.Token == "" {
+		rec := call(t, parent, "POST", settingsPath("feed-token"), "")
+		made := cache.Model().Settings["jordan.whitfield@heliosschool.org"].FeedToken
+		if rec.Code != 204 || made == "" {
 			t.Fatalf("my heliosian token: %d %s", rec.Code, rec.Body)
 		}
-		return body.Token
+		return made
 	}
 	first := token()
 	if again := token(); again != first {

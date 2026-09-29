@@ -14,7 +14,6 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/cells"
 	"heliosian/internal/config"
-	"heliosian/internal/serve"
 	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
@@ -241,16 +240,6 @@ func (a app) rows(viewer access.Actor, e *Event) []GuestRow {
 	return append(out, linked...)
 }
 
-func (a app) invitesView(r *http.Request, _ serve.None) (InviteView, error) {
-	actor := a.actor(r)
-	e, err := a.findEvent(actor, r.URL.Query().Get("id"))
-	if err != nil {
-		return InviteView{}, err
-	}
-	a.noteOpened(r.Context(), actor, e)
-	return a.inviteView(actor, e), nil
-}
-
 func (a app) inviteView(actor access.Actor, e *Event) InviteView {
 	viewer := actor.Email
 	host := a.isHost(actor, e)
@@ -378,38 +367,6 @@ func b2i(b bool) int {
 	return 0
 }
 
-type PickerView struct {
-	Classrooms []Classroom `json:"classrooms"`
-	Lists      []List      `json:"lists"`
-	Attendees  []Attendee  `json:"attendees,omitempty"`
-	OnList     []string    `json:"onList"`
-}
-
-func (a app) invitePeople(r *http.Request, _ serve.None) (PickerView, error) {
-	var e *Event
-	actor := a.actor(r)
-	if id := strings.TrimSpace(r.URL.Query().Get("id")); id != "" {
-		var err error
-		if e, _, err = a.inviterEvent(actor, id); err != nil {
-			return PickerView{}, err
-		}
-	}
-	model := a.model()
-	view := PickerView{Classrooms: model.Roster.Classrooms, Lists: []List{}, OnList: []string{}}
-	if lists := a.lists(actor.Email); lists != nil {
-		view.Lists = lists
-	}
-	if e != nil {
-		if p := a.party(e); p != nil {
-			view.Attendees = p.Attendees
-		}
-		for _, inv := range model.Invites[e.ID] {
-			view.OnList = append(view.OnList, inv.Email)
-		}
-	}
-	return view, nil
-}
-
 type settingsBody struct {
 	ID          string   `json:"id"`
 	Audience    string   `json:"audience"`
@@ -427,35 +384,9 @@ type settingsBody struct {
 	Guests      *bool    `json:"guests"`
 }
 
-func (a app) inviteSettings(r *http.Request, body settingsBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, e, _, err := a.settingsOps(actor, body)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "calendar: guest list settings", "actor", actor.Email, "event", e.ID)
-	return serve.None{}, nil
-}
-
 type personBody struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
-}
-
-func (a app) stepDown(r *http.Request, body personBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, e, who, poster, err := a.stepDownOps(actor, body.ID, body.Email)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "calendar: host stepped down", "actor", actor.Email, "who", who, "event", e.ID, "poster", poster)
-	return serve.None{}, nil
 }
 
 type invitee struct {
@@ -470,39 +401,6 @@ type inviteesBody struct {
 	People []invitee `json:"people"`
 }
 
-func (a app) addInvites(r *http.Request, body inviteesBody) (map[string]int, error) {
-	actor := a.actor(r)
-	ops, e, emails, host, err := a.inviteOps(actor, body.ID, body.People)
-	if err != nil {
-		return nil, err
-	}
-	if !host {
-		ops = append(ops, a.requestOps(actor, e, emails, actor.Email, "")...)
-	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		return nil, err
-	}
-	sent := 0
-	if !host {
-		sent = a.reachable(e, emails)
-	}
-	slog.InfoContext(r.Context(), "calendar: guests added", "actor", actor.Email, "event", e.ID, "count", len(emails), "host", host, "sent", sent)
-	return map[string]int{"added": len(emails), "sent": sent}, nil
-}
-
-func (a app) removeInvite(r *http.Request, body personBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, e, email, fromGroup, err := a.uninviteOps(actor, body.ID, body.Email)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "calendar: guest removed", "actor", actor.Email, "event", e.ID, "email", email, "from group", fromGroup)
-	return serve.None{}, nil
-}
-
 type guestBody struct {
 	ID     string  `json:"id"`
 	Name   string  `json:"name"`
@@ -514,18 +412,6 @@ type guestBody struct {
 
 type guestKey struct {
 	Email string `json:"email"`
-}
-
-func (a app) addGuest(r *http.Request, body guestBody) (guestKey, error) {
-	actor := a.actor(r)
-	ops, g, err := a.bringGuestOps(actor, body)
-	if err != nil {
-		return guestKey{}, err
-	}
-	if err := a.bringGuest(r.Context(), actor, ops, g); err != nil {
-		return guestKey{}, err
-	}
-	return guestKey{Email: g.key}, nil
 }
 
 func (a app) bringGuest(ctx context.Context, actor access.Actor, ops []store.Op, g broughtGuest) error {
@@ -545,82 +431,11 @@ type answerForBody struct {
 	Answer string `json:"answer"`
 }
 
-func (a app) answerFor(r *http.Request, body answerForBody) (serve.None, error) {
-	actor := a.actor(r)
-	e, subject, err := a.answerSubject(actor, body.ID, body.Email, body.Answer)
-	if err != nil {
-		return serve.None{}, err
-	}
-	answer := strings.ToLower(strings.TrimSpace(body.Answer))
-	if err := a.recordBy(r.Context(), actor, subject, e.ID, answer, ViaPage, subject == actor.Email, false); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "calendar: answered for", "actor", actor.Email, "subject", subject, "event", e.ID, "answer", answer)
-	return serve.None{}, nil
-}
-
 type sendBody struct {
 	ID     string   `json:"id"`
 	To     string   `json:"to"`
 	Emails []string `json:"emails"`
 	Update bool     `json:"update"`
-}
-
-func (a app) sendInvites(r *http.Request, body sendBody) (map[string]int, error) {
-	actor := a.actor(r)
-	e, err := a.hostedEvent(actor, body.ID)
-	if err != nil {
-		return nil, err
-	}
-	model := a.model()
-	emails := []string{}
-	reminder := false
-	if len(body.Emails) > 0 {
-		body.To = "these"
-	}
-	for _, inv := range model.Invites[e.ID] {
-		switch body.To {
-		case "sent":
-			if inv.Sent != "" && model.AnswerOf(inv.Email, e.ID) != AnswerNo {
-				emails = append(emails, inv.Email)
-			}
-		case "these":
-			if slices.Contains(body.Emails, inv.Email) {
-				emails = append(emails, inv.Email)
-				reminder = reminder || inv.Sent != ""
-			}
-		case "new", "":
-			if inv.Sent == "" {
-				emails = append(emails, inv.Email)
-			}
-		case "unanswered":
-			if model.AnswerOf(inv.Email, e.ID) == "" {
-				emails = append(emails, inv.Email)
-				reminder = reminder || inv.Sent != ""
-			}
-		case "all":
-			emails = append(emails, inv.Email)
-			reminder = reminder || inv.Sent != ""
-		default:
-			return nil, access.Invalid("send to new, unanswered, sent, or all")
-		}
-	}
-	if len(emails) == 0 {
-		return nil, access.Invalid("nobody to send to")
-	}
-	kind := ""
-	switch {
-	case body.Update:
-		kind = inviteUpdate
-	case reminder:
-		kind = inviteReminder
-	}
-	sent := a.reachable(e, emails)
-	if err := a.cache.Commit(r.Context(), actor, a.requestOps(actor, e, emails, actor.Email, kind)...); err != nil {
-		return nil, err
-	}
-	slog.InfoContext(r.Context(), "calendar: invites sent", "actor", actor.Email, "event", e.ID, "invites", len(emails), "messages", sent)
-	return map[string]int{"invites": len(emails), "messages": sent}, nil
 }
 
 func (a app) noteOpened(ctx context.Context, actor access.Actor, e *Event) {
@@ -638,30 +453,6 @@ type skipBody struct {
 	Emails []string `json:"emails"`
 }
 
-func (a app) skipInvites(r *http.Request, body skipBody) (map[string]int, error) {
-	actor := a.actor(r)
-	e, err := a.hostedEvent(actor, body.ID)
-	if err != nil {
-		return nil, err
-	}
-	model := a.model()
-	emails := []string{}
-	for _, email := range body.Emails {
-		email = config.NormalizeEmail(email)
-		if inv := model.InviteOf(e.ID, email); inv != nil && inv.Sent == "" {
-			emails = append(emails, email)
-		}
-	}
-	if len(emails) == 0 {
-		return nil, access.Invalid("nobody pending to skip")
-	}
-	if err := a.cache.Commit(r.Context(), actor, a.skipOps(actor, e, emails)...); err != nil {
-		return nil, err
-	}
-	slog.InfoContext(r.Context(), "calendar: invites skipped", "actor", actor.Email, "event", e.ID, "skipped", len(emails))
-	return map[string]int{"skipped": len(emails)}, nil
-}
-
 type messageBody struct {
 	ID      string   `json:"id"`
 	Subject string   `json:"subject"`
@@ -669,56 +460,6 @@ type messageBody struct {
 	To      []string `json:"to"`
 	Emails  []string `json:"emails"`
 	Attach  bool     `json:"attach"`
-}
-
-func (a app) messageInvites(r *http.Request, body messageBody) (map[string]int, error) {
-	actor := a.actor(r)
-	e, err := a.hostedEvent(actor, body.ID)
-	if err != nil {
-		return nil, err
-	}
-	message := strings.TrimSpace(body.Message)
-	if message == "" || len(message) > maxTextLength {
-		return nil, access.Invalid("a message needs some words")
-	}
-	subject := strings.Join(strings.Fields(body.Subject), " ")
-	if subject == "" || len(subject) > maxTitleLength {
-		return nil, access.Invalid("a message needs a subject")
-	}
-	wanted := map[string]bool{}
-	for _, t := range body.To {
-		switch t {
-		case AnswerYes, AnswerMaybe, AnswerNo, "none":
-			wanted[t] = true
-		default:
-			return nil, access.Invalid("send to yes, maybe, no, or none")
-		}
-	}
-	if len(wanted) == 0 && len(body.Emails) == 0 {
-		return nil, access.Invalid("pick who to send to")
-	}
-	model := a.model()
-	standing := func(email string) string {
-		if answer := model.AnswerOf(email, e.ID); answer != "" && answer != AnswerHidden {
-			return answer
-		}
-		return "none"
-	}
-	chosen := []string{}
-	for _, inv := range model.Invites[e.ID] {
-		if wanted[standing(inv.Email)] || slices.Contains(body.Emails, inv.Email) {
-			chosen = append(chosen, inv.Email)
-		}
-	}
-	targets := a.reachable(e, chosen)
-	if targets == 0 {
-		return nil, access.Invalid("nobody on the list stands where you chose")
-	}
-	if err := a.cache.Commit(r.Context(), actor, a.messageOp(e, KindMessage, subject, message, chosen, body.Attach, actor.Email)); err != nil {
-		return nil, err
-	}
-	slog.InfoContext(r.Context(), "calendar: message sent", "actor", actor.Email, "event", e.ID, "to", targets)
-	return map[string]int{"messages": targets}, nil
 }
 
 func (a app) serveImage(w http.ResponseWriter, r *http.Request, name string) {

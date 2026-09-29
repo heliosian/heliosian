@@ -1,7 +1,6 @@
 package when
 
 import (
-	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -181,77 +180,8 @@ type addGroupBody struct {
 	Auto *bool       `json:"auto"`
 }
 
-type groupAdded struct {
-	Group string `json:"group"`
-	Added int    `json:"added"`
-}
-
-func (a app) addGroup(r *http.Request, body addGroupBody) (groupAdded, error) {
-	actor := a.actor(r)
-	ops, e, g, err := a.addGroupOps(actor, body.ID, body.Rule, body.Auto)
-	if err != nil {
-		return groupAdded{}, err
-	}
-	filled, emails := a.fillOps(actor, e, g)
-	if err := a.cache.Commit(r.Context(), actor, append(ops, filled...)...); err != nil {
-		return groupAdded{}, err
-	}
-	added := len(emails)
-	slog.InfoContext(r.Context(), "calendar: group added", "actor", actor.Email, "event", e.ID, "group", g.ID, "added", added)
-	return groupAdded{Group: g.ID, Added: added}, nil
-}
-
 type setGroupBody struct {
 	ID    string `json:"id"`
 	Group string `json:"group"`
 	Auto  bool   `json:"auto"`
-}
-
-func (a app) setGroup(r *http.Request, body setGroupBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, e, g, err := a.setGroupOps(actor, body.ID, body.Group, body.Auto)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "calendar: group changed", "actor", actor.Email, "event", e.ID, "group", g.ID, "auto", body.Auto)
-	return serve.None{}, nil
-}
-
-type groupBody struct {
-	ID    string `json:"id"`
-	Group string `json:"group"`
-}
-
-func (a app) removeGroup(r *http.Request, body groupBody) (map[string]int, error) {
-	actor := a.actor(r)
-	ops, e, g, err := a.removeGroupOps(actor, body.ID, body.Group)
-	if err != nil {
-		return nil, err
-	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		return nil, err
-	}
-	slog.InfoContext(r.Context(), "calendar: group removed", "actor", actor.Email, "event", e.ID, "group", g.ID, "dropped", len(ops)-1)
-	return map[string]int{"dropped": len(ops) - 1}, nil
-}
-
-func (a app) startParty(r *http.Request, body idBody) (groupAdded, error) {
-	actor := a.actor(r)
-	ops, e, g, err := a.startPartyOps(actor, body.ID)
-	if err != nil {
-		return groupAdded{}, err
-	}
-	if len(ops) == 0 {
-		return groupAdded{Group: g.ID}, nil
-	}
-	filled, emails := a.fillOps(actor, e, g)
-	if err := a.cache.Commit(r.Context(), actor, append(ops, filled...)...); err != nil {
-		return groupAdded{}, err
-	}
-	added := len(emails)
-	slog.InfoContext(r.Context(), "calendar: party list started", "actor", actor.Email, "event", e.ID, "group", g.ID, "added", added)
-	return groupAdded{Group: g.ID, Added: added}, nil
 }

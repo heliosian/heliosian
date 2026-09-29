@@ -1,7 +1,6 @@
 package when
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/url"
 	"testing"
@@ -22,16 +21,12 @@ func TestRenamingATagKeepsTheInviteGroupsThatNameIt(t *testing.T) {
 	}
 	sources.model, testDirectory = directory.Model(), directory.Model()
 	jordan := as(host, mux)
-	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	call(t, jordan, "POST", "/api/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
 	meetup := idOf(t, cache, "meetup")
 	key := filter.TagKey(carpoolID)
-	rec := call(t, jordan, "POST", "/api/when/invites/group", `{"id":"meetup","rule":{"tags":["`+key+`"]}}`)
-	var made struct {
-		Group string
-		Added int
-	}
-	json.Unmarshal(rec.Body.Bytes(), &made)
-	if rec.Code != 200 || made.Added != 2 {
+	rec := call(t, jordan, "POST", "/api/invite-groups", `{"id":"meetup","rule":{"tags":["`+key+`"]}}`)
+	made := struct{ Group string }{created(t, rec)}
+	if rec.Code != 200 || len(cache.Model().Invites[meetup]) != 2 {
 		t.Fatalf("group: %d %s", rec.Code, rec.Body)
 	}
 

@@ -3,6 +3,7 @@ package when
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -10,18 +11,16 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/api"
+	"heliosian/internal/id"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
-	"heliosian/internal/testkit/mailtest"
 	"heliosian/internal/who"
 )
 
-func apiApp(t *testing.T) (http.Handler, *Cache, *mailtest.Recorder) {
-	t.Helper()
-	mux, cache, kept, _ := invitesAppWith(t)
-	sources := func(email string, _ time.Time) []Linked { return testDeps.Linked(email) }
+func served(mux *http.ServeMux, cache *Cache, hooks Hooks, directory func() *who.Model, linked func(string) []Linked) *http.ServeMux {
+	sources := func(email string, _ time.Time) []Linked { return linked(email) }
 	world := func(tx *store.Tx) World {
-		return testHooks.World(cache.In(tx), testDirectory, noSettings(), sampleKey, sources)
+		return hooks.World(cache.In(tx), directory(), noSettings(), sampleKey, sources)
 	}
 	reg := api.New(api.Config[World]{
 		Actor:  func(r *http.Request, w World) access.Actor { return w.Directory.Actor(r, cache.Held) },
@@ -34,14 +33,144 @@ func apiApp(t *testing.T) (http.Handler, *Cache, *mailtest.Recorder) {
 	for _, rt := range who.Resources() {
 		reg.Add(api.Lift(rt, func(w World) *who.Model { return w.Directory }))
 	}
-	for _, rt := range testHooks.Resources() {
+	for _, rt := range hooks.Resources() {
 		reg.Add(rt)
 	}
 	queue.OnSwap(func() { reg.Publish(world(nil)) })
-	api := http.NewServeMux()
-	reg.Register(api)
-	api.Handle("/", mux)
-	return api, cache, kept
+	reg.Register(mux)
+	return mux
+}
+
+func feedKey(email, token string) string {
+	return id.Of(sampleKey, kindCalendarFeed, email+"\x00"+token)
+}
+
+func settingsKey() string {
+	return id.Of(sampleKey, kindSettings, "")
+}
+
+func decoded[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
+	t.Helper()
+	var out T
+	if rec.Code != http.StatusOK {
+		t.Fatalf("read: %d %s", rec.Code, rec.Body)
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+type envelope struct {
+	Result    json.RawMessage                       `json:"result"`
+	Resources map[string]map[string]json.RawMessage `json:"resources"`
+}
+
+func calendarOf(t *testing.T, h http.Handler) View {
+	t.Helper()
+	out := decoded[envelope](t, call(t, h, "POST", "/api/query", `{"events":{"path":"/api/events"},"settings":{"path":"/api/when-settings?include=feeds"}}`))
+	var result map[string]json.RawMessage
+	json.Unmarshal(out.Result, &result)
+	ids, settingsIDs := []string{}, []string{}
+	json.Unmarshal(result["events"], &ids)
+	json.Unmarshal(result["settings"], &settingsIDs)
+	var s settingsResource
+	json.Unmarshal(out.Resources["when-settings"][settingsIDs[0]], &s)
+	v := View{User: s.User, Today: s.Today, Classrooms: s.Classrooms, Tags: s.Tags, DayTypes: s.DayTypes, Events: []*Event{}, Feeds: []Feed{}}
+	for _, key := range ids {
+		var e eventResource
+		json.Unmarshal(out.Resources["events"][key], &e)
+		v.Events = append(v.Events, e.Event)
+		if e.Provenance != nil {
+			if v.Provenance == nil {
+				v.Provenance = map[string]*Provenance{}
+			}
+			v.Provenance[key] = e.Provenance
+		}
+		if e.Responses != nil && (len(e.Responses.Yes)+len(e.Responses.Maybe)+len(e.Responses.No) > 0) {
+			if v.Responses == nil {
+				v.Responses = map[string]*Responses{}
+			}
+			v.Responses[key] = e.Responses
+		}
+	}
+	var feeds struct {
+		Feeds []string `json:"feeds"`
+	}
+	json.Unmarshal(out.Resources["when-settings"][settingsIDs[0]], &feeds)
+	for _, key := range feeds.Feeds {
+		var f feedResource
+		json.Unmarshal(out.Resources["calendar-feeds"][key], &f)
+		v.Feeds = append(v.Feeds, f.Feed)
+	}
+	return v
+}
+
+func feedOf(t *testing.T, h http.Handler, key string) feedResource {
+	t.Helper()
+	out := decoded[envelope](t, call(t, h, "GET", "/api/calendar-feeds/"+key, ""))
+	var f feedResource
+	json.Unmarshal(out.Resources["calendar-feeds"][key], &f)
+	return f
+}
+
+func settingsPath(action string) string {
+	return "/api/when-settings/" + settingsKey() + "/" + action
+}
+
+func eventOf(t *testing.T, h http.Handler, key string) *httptest.ResponseRecorder {
+	t.Helper()
+	return call(t, h, "GET", "/api/events/"+key, "")
+}
+
+func inviteView(t *testing.T, h http.Handler, key string) InviteView {
+	t.Helper()
+	return pickerOf(t, h, key).InviteView
+}
+
+func pickerOf(t *testing.T, h http.Handler, key string) guestListResource {
+	t.Helper()
+	out := decoded[envelope](t, call(t, h, "GET", "/api/events/"+key+"?include=guest-list", ""))
+	var e struct {
+		GuestList string `json:"guest-list"`
+	}
+	for _, raw := range out.Resources["events"] {
+		json.Unmarshal(raw, &e)
+	}
+	var v guestListResource
+	if err := json.Unmarshal(out.Resources["guest-lists"][e.GuestList], &v); err != nil {
+		t.Fatalf("no guest list on %s: %s", key, out.Resources["events"])
+	}
+	return v
+}
+
+func settingsOf(t *testing.T, h http.Handler) settingsResource {
+	t.Helper()
+	out := decoded[envelope](t, call(t, h, "GET", "/api/when-settings/"+settingsKey(), ""))
+	var s settingsResource
+	if err := json.Unmarshal(out.Resources["when-settings"][settingsKey()], &s); err != nil {
+		t.Fatalf("no settings: %v", err)
+	}
+	return s
+}
+
+func opened(t *testing.T, h http.Handler, eventID string) *httptest.ResponseRecorder {
+	t.Helper()
+	return call(t, h, "POST", "/api/guest-lists/"+id.Of(sampleKey, kindGuestList, eventID)+"/opened", "")
+}
+
+func act(t *testing.T, h http.Handler, key, action, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return call(t, h, "POST", "/api/events/"+key+"/"+action, body)
+}
+
+func created(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var made struct {
+		ID string `json:"id"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &made)
+	return made.ID
 }
 
 type reply struct {
@@ -90,7 +219,7 @@ func write(t *testing.T, h http.Handler, as, method, path string, body any) stri
 }
 
 func TestEventsAsResources(t *testing.T) {
-	h, cache, kept := apiApp(t)
+	h, cache, kept := invitesApp(t)
 	const meeting = "evt0000000002"
 	list := read(t, h, host, "/api/events")
 	ids := []string{}

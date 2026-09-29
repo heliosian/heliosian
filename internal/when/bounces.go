@@ -12,7 +12,6 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/config"
 	"heliosian/internal/mail"
-	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -104,25 +103,6 @@ type addressBody struct {
 	Email      string `json:"email"`
 	To         string `json:"to"`
 	Everywhere bool   `json:"everywhere"`
-}
-
-func (a app) changeInviteEmail(r *http.Request, body addressBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, c, err := a.changeAddressOps(actor, body.ID, body.Email, body.To, body.Everywhere)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if c.everywhere {
-		return serve.None{}, a.celebrate.MoveAddress(r.Context(), actor, c.from, c.to, c.name)
-	}
-	if len(ops) == 0 {
-		return serve.None{}, nil
-	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "calendar: invite address changed", "actor", actor.Email, "event", c.event.ID, "from", c.from, "to", c.to)
-	return serve.None{}, nil
 }
 
 func (a app) moveAddress(ctx context.Context, actor access.Actor, old, to, name string) {
