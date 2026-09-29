@@ -1,7 +1,7 @@
 import {state, me, allows, sourceWords, dayType, dayTypeName, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {paragraphs} from '../dom.js';
-import {el, svg, button, editToggle, toast, longToast, copyText} from '/elements.js';
+import {el, svg, button, toast, longToast, copyText} from '/elements.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
 import {heroImageBar} from '/heroimage.js';
@@ -69,7 +69,7 @@ export function eventPage(e) {
   back.append(svg('chevron-left'), el('span', '', monthLabel(monthOf(eventDates(e)[0]))));
   top.append(back);
   if (e.can.edit || e.can.correct) {
-    const edit = editToggle(false, async () => {
+    const edit = button('Edit Event', 'edit', 'button button-small button-secondary', async () => {
       const {openEditor} = await import('../invites.js');
       openEditor(e, editorView, async () => {
         await load();
@@ -202,7 +202,7 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
   if (view.host) {
     const tools = ask.closest('.event-page')?.querySelector('.detail-tools');
     if (tools && !tools.querySelector('.detail-edit')) {
-      const edit = editToggle(false, () => openEditor(e, view, refresh));
+      const edit = button('Edit Event', 'edit', 'button button-small button-secondary', () => openEditor(e, view, refresh));
       edit.classList.add('detail-edit');
       tools.append(edit);
     }

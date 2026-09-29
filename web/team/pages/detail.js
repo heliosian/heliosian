@@ -1,6 +1,6 @@
 import {state, me, family, isAdmin, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, isFull, matches, activityPath, shownVolunteers, listHidden, listRevealed, canAdd, addLabel} from '../state.js';
 import {badge, searchBox, treeFilter} from '../dom.js';
-import {el, link, svg, imageThumb, avatar, button, editToggle, copyText, toast} from '/elements.js';
+import {el, link, svg, imageThumb, avatar, button, copyText, toast} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {load, render} from '/router.js';
 import {approvalButtons} from './approvals.js';
@@ -800,7 +800,7 @@ export function activityPage(node) {
   top.append(back);
   if (node.canEdit) {
     const tools = el('div', 'detail-tools');
-    tools.append(settingsButton(node), editToggle(false, () => openActivity(node)));
+    tools.append(settingsButton(node), button('Edit Activity', 'edit', 'button button-small button-secondary', () => openActivity(node)));
     top.append(tools);
   }
   page.append(top);

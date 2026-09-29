@@ -151,7 +151,7 @@ export function familyPage(key) {
   }
   let toggle = null;
   if (editable) {
-    toggle = editToggle(editing, () => {
+    toggle = editToggle('Edit Family', editing, () => {
       familyEdit = editing ? null : key;
       render();
     });

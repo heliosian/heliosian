@@ -66,7 +66,7 @@ export function personPage(email) {
   const editing = editable && personEdit === p.email;
   let toggle = null;
   if (editable) {
-    toggle = editToggle(editing, () => {
+    toggle = editToggle('Edit Person', editing, () => {
       personEdit = editing ? null : p.email;
       render();
     });

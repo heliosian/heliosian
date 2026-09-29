@@ -1,6 +1,6 @@
 import {state, isAdmin, canApprove, isKid, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {paragraphs} from '../dom.js';
-import {el, link, svg, button, editToggle, avatar, imageThumb, copyText, toast} from '/elements.js';
+import {el, link, svg, button, avatar, imageThumb, copyText, toast} from '/elements.js';
 import {listPath} from '../chrome.js';
 import {setTitle} from '/shell.js';
 import {appOrigin} from '/appswitch.js';
@@ -442,7 +442,7 @@ export function partyPage(p) {
   back.append(svg('chevron-left'), el('span', '', 'Back to Parties'));
   top.append(back);
   if (p.canEdit) {
-    top.append(editToggle(false, () => openParty(p)));
+    top.append(button('Edit Event', 'edit', 'button button-small button-secondary', () => openParty(p)));
   }
   page.append(top, hero(p, save));
 

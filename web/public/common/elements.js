@@ -166,8 +166,8 @@ export function button(label, icon, className, onClick) {
   return node;
 }
 
-export function editToggle(editing, onClick) {
-  return button(editing ? 'Done' : 'Edit', editing ? 'check' : 'edit', 'button button-small' + (editing ? '' : ' button-secondary'), onClick);
+export function editToggle(label, editing, onClick) {
+  return button(editing ? 'Done' : label, editing ? 'check' : 'edit', 'button button-small' + (editing ? '' : ' button-secondary'), onClick);
 }
 
 export function iconButton(icon, label, className, onClick) {
