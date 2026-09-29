@@ -19,10 +19,16 @@ type resourceReply struct {
 
 func resourceGet(t *testing.T, m *Model, path string) (int, resourceReply) {
 	t.Helper()
+	return resourceGetAs(t, m, "ruth.amari@heliosschool.org", path)
+}
+
+func resourceGetAs(t *testing.T, m *Model, as, path string) (int, resourceReply) {
+	t.Helper()
 	reg := api.New(api.Config[*Model]{
-		Actor: func(*http.Request, *Model) access.Actor { return access.Actor{Email: "ruth.amari@heliosschool.org"} },
+		Actor: func(*http.Request, *Model) access.Actor { return access.Actor{Email: as} },
 		Held:  func(string) []access.Allowance { return nil },
 		Now:   time.Now,
+		Scope: func(m *Model, _ api.Query) *Model { return m },
 	})
 	for _, rt := range Resources() {
 		reg.Add(rt)
@@ -189,5 +195,65 @@ func TestClassroomsAndGradesResolveByTheirPagesSlug(t *testing.T) {
 	}
 	if len(out.Resources["crews"]) == 0 {
 		t.Error("a classroom with no crews")
+	}
+}
+
+func TestEnrolledGradesAreTheOnesWithStudents(t *testing.T) {
+	m := sampleModel(t)
+	empty := m.Grades[0]
+	for i := range m.People {
+		if m.People[i].Grade == empty.Name {
+			m.People[i].Grade = ""
+		}
+	}
+	_, out := resourceGet(t, m, "/api/grades?enrolled")
+	var got []string
+	if err := json.Unmarshal(out.Result, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(m.Grades)-1 || slices.Contains(got, empty.ID) {
+		t.Fatalf("enrolled %v of %d, with %s emptied", got, len(m.Grades), empty.Name)
+	}
+	for _, key := range got {
+		name := out.Resources["grades"][key]["name"]
+		if !slices.ContainsFunc(m.People, func(p Person) bool { return p.IsStudent && p.Grade == name }) {
+			t.Errorf("%s has no student", name)
+		}
+	}
+}
+
+func TestATagIsItsOwnersAndItsManagersAlone(t *testing.T) {
+	m := sampleModel(t)
+	const (
+		carpool  = "dtg0000000001"
+		soccer   = "dtg0000000002"
+		bookClub = "dtg0000000003"
+	)
+	for as, want := range map[string][]string{
+		"jordan.whitfield@heliosschool.org": {carpool, soccer, bookClub},
+		"asha.chandra@heliosschool.org":     {soccer},
+		"ruth.amari@heliosschool.org":       {},
+	} {
+		_, out := resourceGetAs(t, m, as, "/api/tags?include=people,owner")
+		got := []string{}
+		if err := json.Unmarshal(out.Result, &got); err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%s lists %v, want %v", as, got, want)
+		}
+		for _, key := range got {
+			tag := out.Resources["tags"][key]
+			mine := tag["me"].(map[string]any)["mine"]
+			if owner := out.Resources["people"][tag["owner"].(string)]["email"]; (owner == as) != mine {
+				t.Errorf("%s: tag %v owned by %v reads mine %v", as, tag["name"], owner, mine)
+			}
+			if len(tag["people"].([]any)) == 0 {
+				t.Errorf("%s: tag %v holds nobody", as, tag["name"])
+			}
+		}
+	}
+	if code, _ := resourceGetAs(t, m, "ruth.amari@heliosschool.org", "/api/tags/"+carpool); code != http.StatusNotFound {
+		t.Errorf("a stranger fetching a tag got %d", code)
 	}
 }

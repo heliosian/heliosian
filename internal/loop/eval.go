@@ -57,10 +57,14 @@ func (g Group) Sees(v access.Actor) bool {
 }
 
 func (g Group) VisibleTo(v access.Actor, s Sources) bool {
+	return g.visibleWith(v, func() bool { return OnList(g, s, v.Email) })
+}
+
+func (g Group) visibleWith(v access.Actor, onList func() bool) bool {
 	if g.Sees(v) || g.Visibility == VisibilityEveryone {
 		return true
 	}
-	return g.Visibility == VisibilityMembers && OnList(g, s, v.Email)
+	return g.Visibility == VisibilityMembers && onList()
 }
 
 func (g Group) For(v access.Actor, s Sources) *Group {

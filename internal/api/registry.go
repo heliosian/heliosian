@@ -20,6 +20,7 @@ type Config[S any] struct {
 	Now    func() time.Time
 	Queue  *store.Queue
 	Staged func(tx *store.Tx) S
+	Scope  func(s S, q Query) S
 }
 
 type Registry[S any] struct {
@@ -83,7 +84,7 @@ func (reg *Registry[S]) Publish(s S) {
 
 func (reg *Registry[S]) Taken(candidate string) bool {
 	w := reg.current.Load()
-	return reg.takenIn(w, w.s)(candidate)
+	return reg.takenIn(w, reg.config.Scope(w.s, Query{Now: reg.config.Now()}))(candidate)
 }
 
 func (reg *Registry[S]) takenIn(w *world[S], s S) func(string) bool {
@@ -100,10 +101,6 @@ func (reg *Registry[S]) takenIn(w *world[S], s S) func(string) bool {
 	}
 }
 
-func (w *world[S]) resolve(t *Type[S], segment string) (string, bool) {
-	return w.resolveIn(w.s, t, segment)
-}
-
 func (w *world[S]) resolveIn(s S, t *Type[S], segment string) (string, bool) {
 	if parsed, ok := id.Parse(segment); ok && t.Has(s, parsed) {
 		return parsed, true
@@ -112,9 +109,9 @@ func (w *world[S]) resolveIn(s S, t *Type[S], segment string) (string, bool) {
 	return target, ok
 }
 
-func (reg *Registry[S]) owner(w *world[S], candidate string) (*Type[S], bool) {
+func (reg *Registry[S]) owner(s S, candidate string) (*Type[S], bool) {
 	for _, t := range reg.types {
-		if t.Has(w.s, candidate) {
+		if t.Has(s, candidate) {
 			return t, true
 		}
 	}

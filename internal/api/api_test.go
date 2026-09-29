@@ -32,6 +32,7 @@ type fake struct {
 	groups  map[string]group
 	aliases map[string]string
 	renamed []string
+	scoped  []time.Time
 }
 
 const (
@@ -76,6 +77,10 @@ func registry(w *fake) *Registry[*fake] {
 		Now:    func() time.Time { return time.Date(2026, 9, 27, 14, 5, 0, 0, time.UTC) },
 		Queue:  store.NewQueue(),
 		Staged: func(*store.Tx) *fake { return w },
+		Scope: func(s *fake, q Query) *fake {
+			s.scoped = append(s.scoped, q.Now)
+			return s
+		},
 	})
 	reg.Add(Type[*fake]{
 		Name:  "people",
@@ -269,7 +274,8 @@ func TestCanIsTheActionsOwnRule(t *testing.T) {
 }
 
 func TestBatchAnswersFromOneSnapshot(t *testing.T) {
-	code, out := call(t, registry(sample()), "POST", "/api/query", "", map[string]entry{
+	w := sample()
+	code, out := call(t, registry(w), "POST", "/api/query", "", map[string]entry{
 		"groups": {Path: "/api/groups?include=members"},
 		"bob":    {Path: "/api/people/" + bob},
 	})
@@ -288,6 +294,9 @@ func TestBatchAnswersFromOneSnapshot(t *testing.T) {
 	}
 	if len(out.Resources["people"]) != 2 {
 		t.Errorf("people %v", out.Resources["people"])
+	}
+	if len(w.scoped) != 1 || !w.scoped[0].Equal(time.Date(2026, 9, 27, 14, 5, 0, 0, time.UTC)) {
+		t.Errorf("the batch was scoped %v, want once at its own time", w.scoped)
 	}
 	code, _ = call(t, registry(sample()), "POST", "/api/query", "", map[string]entry{"x": {Path: "/api/groups?colour=red"}})
 	if code != http.StatusBadRequest {

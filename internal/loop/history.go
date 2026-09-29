@@ -2,15 +2,12 @@ package loop
 
 import (
 	"cmp"
-	"net/http"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"heliosian/internal/access"
-	"heliosian/internal/mail"
-	"heliosian/internal/serve"
+	"heliosian/internal/id"
 )
 
 const (
@@ -23,6 +20,9 @@ const (
 	copyDelivered = "delivered"
 	copyFailed    = "failed"
 	copyPending   = "pending"
+
+	kindMessage = "email-list-message"
+	kindCopy    = "email-list-copy"
 )
 
 type Attempt struct {
@@ -32,35 +32,26 @@ type Attempt struct {
 }
 
 type Copy struct {
-	Email    string    `json:"email"`
-	Name     string    `json:"name"`
-	State    string    `json:"state"`
-	When     string    `json:"when,omitempty"`
-	Attempts []Attempt `json:"attempts"`
+	ID       string
+	Group    string
+	Email    string
+	State    string
+	When     string
+	Attempts []Attempt
 }
 
-type SentMessage struct {
-	Received   string `json:"received"`
-	From       Person `json:"from"`
-	Subject    string `json:"subject"`
-	Recipients int    `json:"recipients"`
-	Delivered  int    `json:"delivered"`
-	Failed     int    `json:"failed"`
-	Pending    int    `json:"pending"`
-	Copies     []Copy `json:"copies"`
+type Sent struct {
+	ID         string
+	Message    Message
+	Recipients int
+	Delivered  int
+	Failed     int
+	Pending    int
+	Copies     []*Copy
 }
 
 func messageKey(id string) string {
 	return strings.Trim(strings.TrimSpace(id), "<>")
-}
-
-func (a app) sender(from string) Person {
-	email := strings.ToLower(mail.AddressOf(from))
-	directory := a.sources().Directory
-	if p, ok := lookup(directory, directory.Resolve(email)); ok {
-		return p
-	}
-	return Person{Email: email, Name: senderName(from)}
 }
 
 func eventTime(when string) time.Time {
@@ -68,9 +59,9 @@ func eventTime(when string) time.Time {
 	return t
 }
 
-func copyOf(email, name string, attempts []Attempt) Copy {
+func copyOf(email string, attempts []Attempt) Copy {
 	slices.SortStableFunc(attempts, func(x, y Attempt) int { return eventTime(x.When).Compare(eventTime(y.When)) })
-	c := Copy{Email: email, Name: name, State: copyPending, Attempts: attempts}
+	c := Copy{Email: email, State: copyPending, Attempts: attempts}
 	for _, at := range attempts {
 		switch at.Event {
 		case eventDelivered:
@@ -85,68 +76,49 @@ func copyOf(email, name string, attempts []Attempt) Copy {
 
 var copyOrder = map[string]int{copyFailed: 0, copyPending: 1, copyDelivered: 2}
 
-func (a app) history(groupID string) []SentMessage {
-	model := a.cache.Model()
-	attempts := map[string]map[string][]Attempt{}
-	for _, d := range model.Deliveries {
+func (m *Model) indexHistory() {
+	m.sent, m.sentByID, m.copyByID = map[string][]*Sent{}, map[string]*Sent{}, map[string]*Copy{}
+	attempts := map[string]map[string]map[string][]Attempt{}
+	for _, d := range m.Deliveries {
 		key := messageKey(d.Message)
-		if key == "" || d.Group != groupID {
+		if key == "" {
 			continue
 		}
-		if attempts[key] == nil {
-			attempts[key] = map[string][]Attempt{}
+		if attempts[d.Group] == nil {
+			attempts[d.Group] = map[string]map[string][]Attempt{}
 		}
-		attempts[key][d.Email] = append(attempts[key][d.Email], Attempt{When: d.Timestamp, Event: d.Event, Detail: d.Detail})
-	}
-	messages := []Message{}
-	for _, m := range model.Messages {
-		if m.State == stateSent && m.Group == groupID {
-			messages = append(messages, m)
+		if attempts[d.Group][key] == nil {
+			attempts[d.Group][key] = map[string][]Attempt{}
 		}
+		attempts[d.Group][key][d.Email] = append(attempts[d.Group][key][d.Email], Attempt{When: d.Timestamp, Event: d.Event, Detail: d.Detail})
 	}
-	slices.SortStableFunc(messages, func(x, y Message) int { return eventTime(y.Received).Compare(eventTime(x.Received)) })
-	out := []SentMessage{}
-	for _, m := range messages {
-		recipients, _ := strconv.Atoi(m.Recipients)
-		sent := SentMessage{Received: m.Received, From: a.sender(m.From), Subject: m.Subject, Recipients: recipients, Copies: []Copy{}}
-		for email, list := range attempts[messageKey(m.MessageID)] {
-			c := copyOf(email, a.person(email).Name, slices.Clone(list))
+	for _, msg := range m.Messages {
+		if msg.State != stateSent || m.Group(msg.Group) == nil {
+			continue
+		}
+		s := &Sent{ID: id.Of(m.idKey, kindMessage, msg.Group+"\x00"+msg.ID), Message: msg, Copies: []*Copy{}}
+		s.Recipients, _ = strconv.Atoi(msg.Recipients)
+		for email, list := range attempts[msg.Group][messageKey(msg.MessageID)] {
+			c := copyOf(email, slices.Clone(list))
+			c.ID, c.Group = id.Of(m.idKey, kindCopy, s.ID+"\x00"+email), msg.Group
 			switch c.State {
 			case copyDelivered:
-				sent.Delivered++
+				s.Delivered++
 			case copyFailed:
-				sent.Failed++
+				s.Failed++
 			default:
-				sent.Pending++
+				s.Pending++
 			}
-			sent.Copies = append(sent.Copies, c)
+			s.Copies = append(s.Copies, &c)
+			m.copyByID[c.ID] = &c
 		}
-		slices.SortFunc(sent.Copies, func(x, y Copy) int {
-			return cmp.Or(cmp.Compare(copyOrder[x.State], copyOrder[y.State]), cmp.Compare(strings.ToLower(x.Name), strings.ToLower(y.Name)), cmp.Compare(x.Email, y.Email))
+		slices.SortFunc(s.Copies, func(x, y *Copy) int {
+			return cmp.Or(cmp.Compare(copyOrder[x.State], copyOrder[y.State]), cmp.Compare(x.Email, y.Email))
 		})
-		out = append(out, sent)
+		m.sent[msg.Group] = append(m.sent[msg.Group], s)
+		m.sentByID[s.ID] = s
 	}
-	return out
-}
-
-func (a app) sentCount(groupID string) int {
-	n := 0
-	for _, m := range a.cache.Model().Messages {
-		if m.State == stateSent && m.Group == groupID {
-			n++
-		}
+	for _, list := range m.sent {
+		slices.SortStableFunc(list, func(x, y *Sent) int { return eventTime(y.Message.Received).Compare(eventTime(x.Message.Received)) })
 	}
-	return n
-}
-
-func (a app) messages(r *http.Request, _ serve.None) (map[string]any, error) {
-	actor := a.actor(r)
-	g := a.cache.Model().Group(r.URL.Query().Get("id"))
-	if g == nil {
-		return nil, access.Missing("no such email list")
-	}
-	if !g.Sees(actor) {
-		return nil, access.Forbidden("you do not manage this email list")
-	}
-	return map[string]any{"messages": a.history(g.ID)}, nil
 }

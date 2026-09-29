@@ -20,7 +20,7 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	groups, err := NewCache(dir, dir, func() []string { return nil }, store.NewQueue())
+	groups, err := NewCache(dir, dir, func() []string { return nil }, store.NewQueue(), []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}

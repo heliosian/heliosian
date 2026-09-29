@@ -151,12 +151,12 @@ func readBody(r *http.Request) (json.RawMessage, error) {
 
 func (reg *Registry[S]) write(r *http.Request, steps []step) ([]created, error) {
 	w := reg.current.Load()
-	actor := reg.config.Actor(r, w.s)
+	q := reg.query(r, w)
 	out := []created{}
-	_, err := reg.config.Queue.Transact(r.Context(), actor, func(tx *store.Tx) error {
+	_, err := reg.config.Queue.Transact(r.Context(), q.Actor, func(tx *store.Tx) error {
 		for i, st := range steps {
-			s := reg.config.Staged(tx)
-			wr := Write[S]{Request: r, Tx: tx, S: s, Query: Query{Actor: actor, Now: reg.config.Now()}, Body: st.Body, Taken: reg.takenIn(w, s)}
+			s := reg.config.Scope(reg.config.Staged(tx), q)
+			wr := Write[S]{Request: r, Tx: tx, S: s, Query: q, Body: st.Body, Taken: reg.takenIn(w, s)}
 			result, err := reg.step(w, wr, st)
 			if err != nil && len(steps) > 1 {
 				return named(fmt.Sprintf("write %d", i+1), err)

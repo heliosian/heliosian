@@ -25,12 +25,13 @@ type tree map[string]tree
 type reader[S any] struct {
 	reg       *Registry[S]
 	w         *world[S]
+	s         S
 	q         Query
 	resources map[string]map[string]object
 }
 
 func (reg *Registry[S]) reader(w *world[S], q Query) *reader[S] {
-	return &reader[S]{reg: reg, w: w, q: q, resources: map[string]map[string]object{}}
+	return &reader[S]{reg: reg, w: w, s: reg.config.Scope(w.s, q), q: q, resources: map[string]map[string]object{}}
 }
 
 func (rd *reader[S]) envelope(result any) envelope {
@@ -54,7 +55,7 @@ func (rd *reader[S]) read(target *url.URL) (any, error) {
 		if !ok {
 			return nil, access.Missing("nothing has the ID %s", parts[1])
 		}
-		t, ok := rd.reg.owner(rd.w, parsed)
+		t, ok := rd.reg.owner(rd.s, parsed)
 		if !ok {
 			return nil, access.Missing("nothing has the ID %s", parts[1])
 		}
@@ -70,7 +71,7 @@ func (rd *reader[S]) read(target *url.URL) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		resolved, ok := rd.w.resolve(t, parts[1])
+		resolved, ok := rd.w.resolveIn(rd.s, t, parts[1])
 		if !ok {
 			return nil, access.Missing("no %s %s", t.Name, parts[1])
 		}
@@ -138,7 +139,7 @@ func (rd *reader[S]) collection(t *Type[S], params url.Values, includes tree) (a
 		}
 	}
 	out := []string{}
-	for _, key := range t.List(rd.w.s, rd.q) {
+	for _, key := range t.List(rd.s, rd.q) {
 		kept, err := rd.passes(keep, key)
 		if err != nil {
 			return nil, err
@@ -178,7 +179,7 @@ func (rd *reader[S]) filter(t *Type[S], name, value string) (func(string) (bool,
 		if !ok {
 			return nil, access.Invalid("%s has no action %s", t.Name, value)
 		}
-		return func(key string) (bool, error) { return action.Can(rd.w.s, rd.q, key), nil }, nil
+		return func(key string) (bool, error) { return action.Can(rd.s, rd.q, key), nil }, nil
 	case "mine":
 		if value != "" && value != "true" {
 			return nil, access.Invalid("mine takes no value")
@@ -189,7 +190,7 @@ func (rd *reader[S]) filter(t *Type[S], name, value string) (func(string) (bool,
 	if !ok {
 		return nil, access.Invalid("%s has no filter %s", t.Name, name)
 	}
-	pred, err := filter(rd.w.s, rd.q, value)
+	pred, err := filter(rd.s, rd.q, value)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +215,7 @@ func (rd *reader[S]) object(t *Type[S], key string) (object, bool, error) {
 	if obj, ok := rd.resources[t.Name][key]; ok {
 		return obj, true, nil
 	}
-	v, ok := t.Get(rd.w.s, rd.q, key)
+	v, ok := t.Get(rd.s, rd.q, key)
 	if !ok {
 		return nil, false, nil
 	}
@@ -233,7 +234,7 @@ func (rd *reader[S]) object(t *Type[S], key string) (object, bool, error) {
 	if len(t.Actions) > 0 {
 		can := map[string]bool{}
 		for name, action := range t.Actions {
-			can[name] = action.Can(rd.w.s, rd.q, key)
+			can[name] = action.Can(rd.s, rd.q, key)
 		}
 		obj["can"] = must(can)
 	}
@@ -255,7 +256,7 @@ func (rd *reader[S]) expand(t *Type[S], key string, obj object, includes tree) e
 			return errors.New("api: " + t.Name + "." + name + " names unregistered type " + rel.Type)
 		}
 		keys := []string{}
-		for _, related := range rel.List(rd.w.s, rd.q, key) {
+		for _, related := range rel.List(rd.s, rd.q, key) {
 			relatedObj, ok, err := rd.object(target, related)
 			if err != nil {
 				return err

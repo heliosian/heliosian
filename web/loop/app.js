@@ -1,8 +1,6 @@
-import {applyModel, group} from './state.js';
+import {loadModel, group} from './state.js';
 import {initChrome} from './chrome.js';
 import {showPage, clearSearch} from '/shell.js';
-import {api} from '/api.js';
-import {listed} from '/directory.js';
 import {startApp, notFound} from '/router.js';
 import {groupsPage} from './pages/groups.js';
 import {groupPage, newGroupModal} from './pages/group.js';
@@ -23,10 +21,7 @@ const routes = {
 
 initChrome();
 startApp({
-  model: async () => {
-    const [model, people] = await Promise.all([api('GET', '/api/loop/model'), listed()]);
-    applyModel(model, people);
-  },
+  model: loadModel,
   routes,
   missing: 'is not in the app.',
   prepare: clearSearch,

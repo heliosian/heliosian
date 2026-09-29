@@ -61,7 +61,7 @@ func sampleSources(t *testing.T) Sources {
 		t.Fatal(err)
 	}
 	celebrateModel := celebrateCache.Model()
-	loopCache, err := loop.NewCache(dir, dir, func() []string { return nil }, queue)
+	loopCache, err := loop.NewCache(dir, dir, func() []string { return nil }, queue, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -73,7 +73,7 @@ func groupOps(was Group, g Group, adding bool) []store.Op {
 	return ops
 }
 
-func (m *Model) SaveGroup(actor access.Actor, sources Sources, g Group) ([]store.Op, Group, string, error) {
+func (m *Model) SaveGroup(actor access.Actor, sources Sources, g Group, taken func(string) bool) ([]store.Op, Group, string, error) {
 	g = Normalize(g)
 	for _, local := range g.Names() {
 		if other := m.Resolve(local); other != nil && other.ID != g.ID {
@@ -83,7 +83,7 @@ func (m *Model) SaveGroup(actor access.Actor, sources Sources, g Group) ([]store
 	var was Group
 	action := "add"
 	if g.ID == "" {
-		g.ID = id.New(m.taken)
+		g.ID = id.New(taken)
 		if !g.Manages(actor.Email) {
 			g.Managers = append([]string{actor.Email}, g.Managers...)
 		}
@@ -127,26 +127,17 @@ func (m *Model) DeleteGroup(actor access.Actor, groupID string) ([]store.Op, *Gr
 	return []store.Op{store.Delete(groupsTab, store.Row{idColumn: current.ID})}, current, nil
 }
 
-func (m *Model) visibleGroup(actor access.Actor, s Sources, groupID string) (*Group, error) {
-	g := m.Group(groupID)
-	if g == nil || !g.VisibleTo(actor, s) {
-		return nil, access.Missing("no such email list")
+func (g Group) subscription(actor access.Actor, onList, subscribed bool) ([]store.Op, error) {
+	if !onList {
+		return nil, access.Forbidden("you are not on this email list")
 	}
-	return g, nil
-}
-
-func (m *Model) SetSubscription(actor access.Actor, s Sources, groupID string, subscribed bool) ([]store.Op, *Group, error) {
-	g, err := m.visibleGroup(actor, s, groupID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if !OnList(*g, s, actor.Email) {
-		return nil, nil, access.Forbidden("you are not on this email list")
+	if subscribed == !g.HasExcluded(actor.Email) {
+		return nil, access.Invalid("you are already %s", map[bool]string{true: "subscribed", false: "unsubscribed"}[subscribed])
 	}
 	if subscribed {
-		return g.Resubscribe(actor), g, nil
+		return g.Resubscribe(actor), nil
 	}
-	return g.Unsubscribe(actor, loopPage), g, nil
+	return g.Unsubscribe(actor, loopPage), nil
 }
 
 func (g Group) Unsubscribe(actor access.Actor, how string) []store.Op {
@@ -164,16 +155,15 @@ func (g Group) Resubscribe(actor access.Actor) []store.Op {
 	return []store.Op{store.Delete(excludedTab, store.Row{"Group": g.ID, "Email": actor.Email})}
 }
 
-func (m *Model) SetArchived(actor access.Actor, s Sources, groupID string, archived bool) ([]store.Op, *Group, error) {
-	g, err := m.visibleGroup(actor, s, groupID)
-	if err != nil {
-		return nil, nil, err
+func (m *Model) archiving(actor access.Actor, g *Group, archived bool) ([]store.Op, error) {
+	if m.Archived(g.ID, actor.Email) == archived {
+		return nil, access.Invalid("you have already %s this email list", map[bool]string{true: "archived", false: "unarchived"}[archived])
 	}
 	match := store.Row{"Group": g.ID, "Email": actor.Email}
 	if archived {
-		return []store.Op{store.Upsert(archivedTab, match, store.Row{})}, g, nil
+		return []store.Op{store.Upsert(archivedTab, match, store.Row{})}, nil
 	}
-	return []store.Op{store.Delete(archivedTab, match)}, g, nil
+	return []store.Op{store.Delete(archivedTab, match)}, nil
 }
 
 func recordMessage(actor access.Actor, messageID, groupID string, cells store.Row) []store.Op {

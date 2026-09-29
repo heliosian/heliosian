@@ -73,8 +73,73 @@ type departmentResource struct {
 	Name string `json:"name"`
 }
 
+type tagMe struct {
+	Mine bool `json:"mine"`
+}
+
+type tagResource struct {
+	Name      string `json:"name"`
+	OwnerName string `json:"ownerName"`
+	Me        tagMe  `json:"me"`
+}
+
 func Resources() []api.Type[*Model] {
-	return []api.Type[*Model]{peopleType(), familiesType(), classroomsType(), gradesType(), crewsType(), departmentsType()}
+	return []api.Type[*Model]{peopleType(), familiesType(), classroomsType(), gradesType(), crewsType(), departmentsType(), tagsType()}
+}
+
+func (m *Model) tagFor(key string, viewer string) (Tag, bool) {
+	t, ok := m.Tag(key)
+	if !ok || (t.Owner != viewer && !slices.Contains(t.Managers, viewer)) {
+		return Tag{}, false
+	}
+	return t, true
+}
+
+func (m *Model) emailIDs(emails []string) []string {
+	out := []*Person{}
+	for _, email := range emails {
+		if p := m.Person(email); p != nil {
+			out = append(out, p)
+		}
+	}
+	return ids(out)
+}
+
+func tagRelation(target string, many bool, list func(t Tag) []string) api.Relation[*Model] {
+	return api.Relation[*Model]{Type: target, Many: many, List: func(m *Model, q api.Query, key string) []string {
+		t, ok := m.tagFor(key, q.Actor.Email)
+		if !ok {
+			return nil
+		}
+		return m.emailIDs(list(t))
+	}}
+}
+
+func tagsType() api.Type[*Model] {
+	return api.Type[*Model]{
+		Name:  "tags",
+		Shape: tagResource{},
+		Has:   func(m *Model, key string) bool { return m.tagByKey(key) != nil },
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			t, ok := m.tagFor(key, q.Actor.Email)
+			if !ok {
+				return nil, false
+			}
+			return tagResource{Name: t.Name, OwnerName: t.OwnerName, Me: tagMe{Mine: t.Owner == q.Actor.Email}}, true
+		},
+		List: func(m *Model, q api.Query) []string {
+			out := []string{}
+			for _, t := range append(m.Tags(q.Actor.Email), m.SharedTags(q.Actor.Email)...) {
+				out = append(out, t.ID)
+			}
+			return out
+		},
+		Relations: map[string]api.Relation[*Model]{
+			"owner":    tagRelation("people", false, func(t Tag) []string { return []string{t.Owner} }),
+			"people":   tagRelation("people", true, func(t Tag) []string { return t.People }),
+			"managers": tagRelation("people", true, func(t Tag) []string { return t.Managers }),
+		},
+	}
 }
 
 func departmentsType() api.Type[*Model] {
@@ -430,6 +495,23 @@ func gradesType() api.Type[*Model] {
 				}
 				return m.peopleWhere(func(p *Person) bool { return p.IsStudent && p.Grade == g.Name })
 			}},
+		},
+		Filters: map[string]api.Filter[*Model]{
+			"enrolled": func(m *Model, _ api.Query, value string) (func(string) bool, error) {
+				if err := noValue("enrolled", value); err != nil {
+					return nil, err
+				}
+				enrolled := map[string]bool{}
+				for _, p := range m.People {
+					if p.IsStudent && p.Grade != "" {
+						enrolled[p.Grade] = true
+					}
+				}
+				return func(key string) bool {
+					g := m.gradeByID(key)
+					return g != nil && enrolled[g.Name]
+				}, nil
+			},
 		},
 	}
 }

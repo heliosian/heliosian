@@ -18,7 +18,7 @@ type Cache struct {
 
 var groupTabs = []string{managersTab, rulesTab, additionsTab, excludedTab, archivedTab, messagesTab, deliveriesTab}
 
-func spec() store.Spec[*Model] {
+func spec(idKey []byte) store.Spec[*Model] {
 	return store.Spec[*Model]{
 		App: appName,
 		Tabs: []store.Tab{
@@ -34,7 +34,7 @@ func spec() store.Spec[*Model] {
 			{Name: archivedTab, Columns: ArchivedColumns, Key: []string{"Group", "Email"}},
 		},
 		Build: func(_ context.Context, tables store.Tables) (*Model, error) {
-			return BuildModel(tables)
+			return BuildModel(tables, idKey)
 		},
 		Loaded: func(model *Model, took time.Duration) {
 			rules := 0
@@ -57,8 +57,8 @@ func carryGroup(_ store.Tables, before, after store.Row) []store.Op {
 	return ops
 }
 
-func NewCache(source data.Source, writer data.Writer, superAdmins func() []string, queue *store.Queue) (*Cache, error) {
-	s, err := store.New(spec(), source, writer, queue)
+func NewCache(source data.Source, writer data.Writer, superAdmins func() []string, queue *store.Queue, idKey []byte) (*Cache, error) {
+	s, err := store.New(spec(idKey), source, writer, queue)
 	if err != nil {
 		return nil, err
 	}

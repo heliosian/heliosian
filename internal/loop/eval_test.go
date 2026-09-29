@@ -61,7 +61,7 @@ func TestRenamingATagKeepsTheGroupsThatNameIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	groups, err := loop.NewCache(dir, dir, func() []string { return nil }, queue)
+	groups, err := loop.NewCache(dir, dir, func() []string { return nil }, queue, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +287,7 @@ func TestAdditionsJoinTheMembersOnce(t *testing.T) {
 func TestSampleGroupsLoadAndHaveMembers(t *testing.T) {
 	s, _ := sample(t)
 	dir := &data.Dir{Root: "../../sampledata"}
-	cache, err := loop.NewCache(dir, dir, func() []string { return nil }, store.NewQueue())
+	cache, err := loop.NewCache(dir, dir, func() []string { return nil }, store.NewQueue(), []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}

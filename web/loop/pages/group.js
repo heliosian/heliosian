@@ -1,9 +1,10 @@
-import {state, me, isAdmin, options, groupPath, person} from '../state.js';
+import {state, me, options, groupPath, person, personView, memberView} from '../state.js';
 import {personRow, pageHead} from '../dom.js';
 import {el, svg, button, iconButton, copyText, toast, thumb} from '/elements.js';
 import {whoLink} from '/appswitch.js';
 import {setTitle} from '/shell.js';
 import {api} from '/api.js';
+import {query, act, create, remove} from '/data.js';
 import {load, navigate} from '/router.js';
 import {openLayer} from '/modal.js';
 import {createPersonPicker} from '/picker.js';
@@ -72,7 +73,7 @@ function editor(g, isNew, closeModal, startTab) {
   const form = el('form', 'editor');
   form.addEventListener('submit', e => e.preventDefault());
   const ed = {
-    g, isNew, closeModal, form, draft,
+    g, isNew, closeModal, form, draft, original: JSON.parse(JSON.stringify(draft)),
     nameInput: null, nameTouched: false, addressNote: el('small'),
     opened: firstRule, ruleRows: el('div', 'rules'), ruleCounts: new Map(),
     preview: previewParts(g, isNew), previewTimer: null, previewing: false, previewAgain: false, lastPreview: null,
@@ -578,7 +579,9 @@ async function refreshPreview(ed) {
   status.textContent = 'Working out the members…';
   try {
     const rules = draft.rules.filter(ruleSaysSomething);
-    const {members, ruleCounts: counts} = await api('POST', '/api/loop/preview', {id: draft.id, rules, additions: draft.additions, excluded: draft.excluded});
+    const preview = await api('POST', '/api/loop/preview', {id: draft.id, rules, additions: draft.additions, excluded: draft.excluded});
+    const members = preview.members.map(m => memberView(m, m.person ? state.dir.get(m.person) : null));
+    const counts = preview.ruleCounts;
     head.textContent = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
     renderChanges(ed, members, rules);
     showRuleCounts(ed, rules, counts || []);
@@ -682,21 +685,38 @@ function editorActions(ed) {
   return actions;
 }
 
+const editable = ['aliases', 'title', 'description', 'prefix', 'visibility', 'posting', 'replying', 'rules', 'additions', 'excluded'];
+
+function changed(ed) {
+  const {draft, original} = ed;
+  const now = {...draft, rules: draft.rules.filter(ruleSaysSomething)};
+  const out = {};
+  for (const key of editable) {
+    if (JSON.stringify(now[key]) !== JSON.stringify(original[key])) {
+      out[key] = now[key];
+    }
+  }
+  return out;
+}
+
 async function saveGroup(ed, save, status) {
-  const {draft, isNew, closeModal} = ed;
+  const {g, draft, isNew, closeModal} = ed;
   status.classList.remove('error');
   status.textContent = 'Saving…';
   save.disabled = true;
   try {
-    const body = {id: draft.id, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visibility: draft.visibility, posting: draft.posting, replying: draft.replying, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
-    const saved = await api('POST', '/api/loop/group', body);
+    if (isNew) {
+      await create('email-lists', {name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visibility: draft.visibility, posting: draft.posting, replying: draft.replying, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded});
+    } else {
+      await act('email-lists', g.id, 'edit', changed(ed));
+    }
     if (closeModal) {
       closeModal();
     }
     await load();
     toast(isNew ? 'Email list made' : 'Saved');
     if (!closeModal || isNew) {
-      navigate(withTab(groupPath(saved)));
+      navigate(withTab(groupPath(draft)));
     }
   } catch (err) {
     status.classList.add('error');
@@ -711,7 +731,7 @@ async function deleteGroup(ed, status) {
     return;
   }
   try {
-    await api('DELETE', '/api/loop/group', {id: g.id});
+    await remove('email-lists', g.id);
     if (closeModal) {
       closeModal();
     }
@@ -802,7 +822,7 @@ export function groupPage(g) {
   setTitle(g.title);
   const page = el('div', 'group-page');
   const editing = new URLSearchParams(location.search).get('edit') === '1';
-  const canEdit = g.mine || isAdmin();
+  const canEdit = g.can.edit;
   if (editing && canEdit) {
     page.append(pageHead(g.title));
     page.append(editor(g, false));
@@ -812,11 +832,11 @@ export function groupPage(g) {
   if (canEdit) {
     actions.push(button('Edit', 'edit', 'button', () => editModal(g)));
   }
-  if (g.member) {
-    const toggle = button(g.unsubscribed ? 'Resubscribe' : 'Unsubscribe', null, 'button button-secondary', async () => {
+  if (g.can.unsubscribe || g.can.resubscribe) {
+    const toggle = button(g.can.resubscribe ? 'Resubscribe' : 'Unsubscribe', null, 'button button-secondary', async () => {
       toggle.disabled = true;
       try {
-        await api('POST', '/api/loop/subscription', {id: g.id, subscribed: g.unsubscribed});
+        await act('email-lists', g.id, g.can.resubscribe ? 'resubscribe' : 'unsubscribe');
         await load();
         toast(g.unsubscribed ? 'Resubscribed' : 'Unsubscribed');
       } catch (err) {
@@ -829,7 +849,7 @@ export function groupPage(g) {
   const archive = button(g.archived ? 'Unarchive' : 'Archive', 'archive', 'button button-secondary', async () => {
     archive.disabled = true;
     try {
-      await api('POST', '/api/loop/archive', {id: g.id, archived: !g.archived});
+      await act('email-lists', g.id, g.archived ? 'unarchive' : 'archive');
       await load();
       toast(g.archived ? 'Back among your email lists' : 'Archived');
     } catch (err) {
@@ -1007,7 +1027,7 @@ function managersCard(g, canEdit) {
     status.classList.remove('error');
     status.textContent = 'Saving…';
     try {
-      await api('POST', '/api/loop/group', {id: g.id, name: g.name, aliases: g.aliases, title: g.title, description: g.description, prefix: g.prefix, visibility: g.visibility, posting: g.posting, replying: g.replying, managers, rules: g.rules, additions: g.additions, excluded: g.excluded});
+      await act('email-lists', g.id, 'edit', {managers});
       await load();
       toast('Managers saved');
     } catch (err) {
@@ -1153,7 +1173,8 @@ function historyTab(g) {
   const load = async () => {
     loaded = true;
     try {
-      const {messages} = await api('GET', '/api/loop/messages?id=' + encodeURIComponent(g.id));
+      const read = await query(`/api/email-lists/${encodeURIComponent(g.id)}?include=messages.copies.person,messages.sender`);
+      const messages = read.follow(read.get(read.result), 'messages').map(m => messageView(read, m));
       status.textContent = messages.length ? '' : 'Nothing has been sent to the email list yet.';
       for (const m of messages) {
         list.append(messageRow(m));
@@ -1169,6 +1190,15 @@ function historyTab(g) {
       load();
     }
   }};
+}
+
+function messageView(read, m) {
+  const sender = read.follow(m, 'sender');
+  const copies = read.follow(m, 'copies').map(c => {
+    const p = read.follow(c, 'person');
+    return {...c, email: p ? p.email : c.email, name: p ? p.fullName : c.email};
+  });
+  return {...m, from: sender ? personView(sender) : {email: m.fromEmail, name: m.fromName}, copies};
 }
 
 function messageRow(m) {

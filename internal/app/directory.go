@@ -14,13 +14,32 @@ import (
 	"heliosian/internal/who"
 )
 
+func magicTags(directory *who.Model, parties *celebrate.Model, activities *team.Model) func(owner string, now time.Time) []who.List {
+	return func(owner string, now time.Time) []who.List {
+		lists := append(directory.RoomParentLists(owner), parties.Lists(directory, owner, now)...)
+		return append(lists, activities.Lists(directory, owner, now)...)
+	}
+}
+
+func magicTagKeys(parties *celebrate.Model, activities *team.Model) func() []string {
+	return func() []string {
+		out := []string{}
+		for _, p := range parties.Parties {
+			out = append(out, who.ListParty+":"+p.ID)
+		}
+		for _, a := range activities.Activities {
+			out = append(out, who.ListActivity+":"+a.ID)
+		}
+		return out
+	}
+}
+
 func audience(cache *who.Cache, teamCache *team.Cache, celebrateCache *celebrate.Cache) func() filter.Sources {
 	return func() filter.Sources {
 		model := cache.Model()
+		lists := magicTags(model, celebrateCache.Model(), teamCache.Model())
 		return filter.Sources{Directory: model, Tags: model.Tags, Shared: model.SharedTags, Lists: func(owner string) []who.List {
-			now := time.Now().In(when.Location)
-			lists := append(model.RoomParentLists(owner), celebrateCache.Model().Lists(model, owner, now)...)
-			return append(lists, teamCache.Model().Lists(model, owner, now)...)
+			return lists(owner, time.Now().In(when.Location))
 		}}
 	}
 }

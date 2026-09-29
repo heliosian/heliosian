@@ -40,7 +40,7 @@ func sampleTables(t *testing.T) store.Tables {
 func sampleCache(t *testing.T) (*Cache, *data.Dir) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	cache, err := NewCache(dir, dir, func() []string { return nil }, store.NewQueue())
+	cache, err := NewCache(dir, dir, func() []string { return nil }, store.NewQueue(), []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func logRows(t *testing.T, dir *data.Dir, tab string) int {
 }
 
 func TestSampleSheetLoads(t *testing.T) {
-	model, err := BuildModel(sampleTables(t))
+	model, err := BuildModel(sampleTables(t), []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestLoadRefusesAnAdditionOnNoGroup(t *testing.T) {
 	for _, group := range []string{"nobody", "soccer-team"} {
 		tables := sampleTables(t)
 		tables[additionsTab] = append(tables[additionsTab], store.Row{"Group": group, "Email": "a@x.org"})
-		if _, err := BuildModel(tables); err == nil {
+		if _, err := BuildModel(tables, []byte("test")); err == nil {
 			t.Fatalf("accepted an addition naming %s", group)
 		}
 	}
@@ -106,7 +106,7 @@ func TestLoadRefusesAGroupWithoutAGoodID(t *testing.T) {
 	for _, bad := range []string{"", "soccer-team", "grp000000000i", middleID} {
 		tables := sampleTables(t)
 		tables[groupsTab][0][idColumn] = bad
-		if _, err := BuildModel(tables); err == nil || !strings.Contains(err.Error(), idColumn) {
+		if _, err := BuildModel(tables, []byte("test")); err == nil || !strings.Contains(err.Error(), idColumn) {
 			t.Errorf("Group ID %q: %v", bad, err)
 		}
 	}
@@ -128,7 +128,7 @@ func TestNamesTakeDots(t *testing.T) {
 func TestLoadRefusesAVisibilityItDoesNotKnow(t *testing.T) {
 	tables := sampleTables(t)
 	tables[groupsTab][0][visibleColumn] = "on"
-	if _, err := BuildModel(tables); err == nil {
+	if _, err := BuildModel(tables, []byte("test")); err == nil {
 		t.Fatal("accepted a Visible cell reading on")
 	}
 }
@@ -136,12 +136,12 @@ func TestLoadRefusesAVisibilityItDoesNotKnow(t *testing.T) {
 func TestLoadRefusesAPostingItDoesNotKnow(t *testing.T) {
 	tables := sampleTables(t)
 	tables[groupsTab][0][postingColumn] = "staff"
-	if _, err := BuildModel(tables); err == nil {
+	if _, err := BuildModel(tables, []byte("test")); err == nil {
 		t.Fatal("accepted a Posting cell reading staff")
 	}
 	tables = sampleTables(t)
 	tables[groupsTab][0][replyingColumn] = "staff"
-	if _, err := BuildModel(tables); err == nil {
+	if _, err := BuildModel(tables, []byte("test")); err == nil {
 		t.Fatal("accepted a Replying cell reading staff")
 	}
 }
@@ -250,14 +250,15 @@ func TestSavingANewGroupMintsItsID(t *testing.T) {
 	model := cache.Model()
 	actor := access.Actor{Email: "m@x.org"}
 	sources := Sources{Directory: &who.Model{}}
-	ops, g, action, err := model.SaveGroup(actor, sources, Group{Name: "chess.club", Title: "Chess Club", Rules: []Rule{{Kind: KindInclude, Roles: []string{"Staff"}}}})
+	taken := func(key string) bool { return model.Group(key) != nil }
+	ops, g, action, err := model.SaveGroup(actor, sources, Group{Name: "chess.club", Title: "Chess Club", Rules: []Rule{{Kind: KindInclude, Roles: []string{"Staff"}}}}, taken)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parsed, ok := id.Parse(g.ID); !ok || parsed != g.ID || model.taken(g.ID) || action != "add" {
+	if parsed, ok := id.Parse(g.ID); !ok || parsed != g.ID || taken(g.ID) || action != "add" {
 		t.Fatalf("minted %q, action %s", g.ID, action)
 	}
-	if _, _, _, err := model.SaveGroup(actor, sources, Group{ID: g.ID, Name: "chess.club", Title: "Chess Club", Managers: []string{actor.Email}, Rules: g.Rules}); err == nil {
+	if _, _, _, err := model.SaveGroup(actor, sources, Group{ID: g.ID, Name: "chess.club", Title: "Chess Club", Managers: []string{actor.Email}, Rules: g.Rules}, taken); err == nil {
 		t.Fatal("an edit to a group the sheet does not have was taken")
 	}
 	if err := cache.CommitAndWait(context.Background(), actor, ops...); err != nil {
@@ -268,13 +269,13 @@ func TestSavingANewGroupMintsItsID(t *testing.T) {
 	}
 	current := *model.Group(soccerID)
 	current.Name = "soccer-team-2"
-	if _, _, _, err := model.SaveGroup(access.Actor{Email: current.Managers[0]}, sources, current); err == nil {
+	if _, _, _, err := model.SaveGroup(access.Actor{Email: current.Managers[0]}, sources, current, taken); err == nil {
 		t.Fatal("a group was renamed")
 	}
 }
 
 func TestAliasesReachTheirGroupAndStayUnique(t *testing.T) {
-	model, err := BuildModel(sampleTables(t))
+	model, err := BuildModel(sampleTables(t), []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,13 +298,13 @@ func TestAliasesReachTheirGroupAndStayUnique(t *testing.T) {
 	} {
 		tables := sampleTables(t)
 		tables[id.AliasesTab] = append(tables[id.AliasesTab], bad)
-		if _, err := BuildModel(tables); err == nil {
+		if _, err := BuildModel(tables, []byte("test")); err == nil {
 			t.Errorf("accepted alias %v", bad)
 		}
 	}
 	tables := sampleTables(t)
 	tables[id.AliasesTab] = append(tables[id.AliasesTab], map[string]string{"Alias": " Soccer ", "ID": strings.ToUpper(soccerID)})
-	model, err = BuildModel(tables)
+	model, err = BuildModel(tables, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +315,7 @@ func TestAliasesReachTheirGroupAndStayUnique(t *testing.T) {
 	tables[groupsTab] = append(tables[groupsTab], store.Row{idColumn: "grp0000000009", "Name": "hummingbirds-families", "Title": "Clash"})
 	tables[managersTab] = append(tables[managersTab], store.Row{"Group": "grp0000000009", "Email": "m@x.org"})
 	tables[rulesTab] = append(tables[rulesTab], store.Row{"Group": "grp0000000009", "Kind": "include", "Roles": "Staff"})
-	if _, err := BuildModel(tables); err == nil {
+	if _, err := BuildModel(tables, []byte("test")); err == nil {
 		t.Error("accepted a group named for another group's alias")
 	}
 }
@@ -341,7 +342,7 @@ func TestSuggestedIsEveryPartyAndActivityNoRuleNames(t *testing.T) {
 func TestLoadRefusesAGroupWithoutManagers(t *testing.T) {
 	tables := sampleTables(t)
 	tables[groupsTab] = append(tables[groupsTab], store.Row{idColumn: "grp0000000009", "Name": "lonely", "Title": "Lonely"})
-	if _, err := BuildModel(tables); err == nil || !strings.Contains(err.Error(), "manager") {
+	if _, err := BuildModel(tables, []byte("test")); err == nil || !strings.Contains(err.Error(), "manager") {
 		t.Fatalf("a group with no managers: %v", err)
 	}
 }
@@ -382,7 +383,7 @@ func TestArchivedIsOnePersonsAndFollowsTheGroup(t *testing.T) {
 	for _, group := range []string{"nowhere", "soccer-team"} {
 		stray := sampleTables(t)
 		stray[archivedTab] = append(stray[archivedTab], store.Row{"Group": group, "Email": jordan})
-		if _, err := BuildModel(stray); err == nil {
+		if _, err := BuildModel(stray, []byte("test")); err == nil {
 			t.Fatalf("accepted an archived row naming %s", group)
 		}
 	}

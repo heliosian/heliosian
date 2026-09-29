@@ -243,7 +243,7 @@ func main() {
 	}
 	fmt.Printf("calendar admins: %d\n", len(calendarCache.Admins()))
 
-	groupCache, err := loop.NewCache(source, nil, func() []string { return nil }, store.NewQueue())
+	groupCache, err := loop.NewCache(source, nil, func() []string { return nil }, store.NewQueue(), []byte(env.Required("ID_KEY")))
 	if err != nil {
 		log.Fatalf("load groups model: %v", err)
 	}

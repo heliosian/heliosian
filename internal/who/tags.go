@@ -91,6 +91,15 @@ func (m *Model) taken(key string) bool {
 	return ok
 }
 
+func (m *Model) TagIDs() []string {
+	out := []string{}
+	for key := range m.tags {
+		out = append(out, key)
+	}
+	slices.Sort(out)
+	return out
+}
+
 func (m *Model) tagByKey(raw string) *tagRecord {
 	key, ok := id.Parse(raw)
 	if !ok {

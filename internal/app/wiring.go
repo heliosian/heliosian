@@ -135,7 +135,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load calendar data", "error", err)
 	}
-	loopCache, err := loop.NewCache(cfg.Source, cfg.Writer, settings.SuperAdmins, queue)
+	loopCache, err := loop.NewCache(cfg.Source, cfg.Writer, settings.SuperAdmins, queue, cfg.IDKey)
 	if err != nil {
 		logging.Fatal("load loop data", "error", err)
 	}
@@ -298,7 +298,6 @@ func NewCore(cfg Config) *Core {
 		Cache:     loopCache,
 		Media:     cfg.Store,
 		Sources:   sources,
-		Settings:  settings.Settings,
 		Mail:      loopMail,
 		Describer: cfg.Describer,
 		About:     loopAbout,
@@ -343,7 +342,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load feedback model", "error", err)
 	}
-	registry := resources(caches{settings, cache, invites, teamCache, birthdayCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, feedbackCache}, queue, birthdayResources)
+	registry := resources(caches{settings, cache, invites, teamCache, birthdayCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, feedbackCache}, queue, birthdayResources, loop.Resources(loopCache, loopMail.Documents))
 	birthday.Register(birthdayMux, birthday.Deps{
 		Cache:     birthdayCache,
 		Queue:     queue,

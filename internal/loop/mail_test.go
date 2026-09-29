@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/api"
 	"heliosian/internal/claude"
-	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
 	"heliosian/internal/mail"
@@ -129,16 +129,34 @@ func newHarness(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 	queue := store.NewQueue()
-	cache, err := NewCache(dir, dir, func() []string { return nil }, queue)
+	cache, err := NewCache(dir, dir, func() []string { return nil }, queue, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, sources: sampleSources(model), sender: mailtest.NewRecorder(mailtest.From), archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
 	h.mailbox = Mail{Sender: h.sender.Mailgun, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
+	world := func(tx *store.Tx) World {
+		return NewWorld(cache.In(tx), model, nil, func(owner string, _ time.Time) []who.List { return model.RoomParentLists(owner) }, func() []string { return nil })
+	}
+	reg := api.New(api.Config[World]{
+		Actor:  func(r *http.Request, w World) access.Actor { return w.Directory.Actor(r, cache.Held) },
+		Held:   cache.Held,
+		Now:    time.Now,
+		Queue:  queue,
+		Staged: world,
+		Scope:  func(w World, q api.Query) World { return w.At(q.Now) },
+	})
+	for _, rt := range who.Resources() {
+		reg.Add(api.Lift(rt, func(w World) *who.Model { return w.Directory }))
+	}
+	for _, rt := range Resources(cache, h.documents) {
+		reg.Add(rt)
+	}
+	queue.OnSwap(func() { reg.Publish(world(nil)) })
+	reg.Register(h.mux)
 	Register(h.mux, Deps{
 		Cache:     cache,
 		Sources:   h.sources,
-		Settings:  func() *config.Settings { return &config.Settings{} },
 		Mail:      h.mailbox,
 		Describer: describe.New("test", claude.NewLimiter()),
 		About:     About(func() string { return "Helios Loop" }, func() string { return "Email lists drawn from the directory" }),
@@ -692,50 +710,55 @@ func TestHistoryListsSentMessagesWithEachCopy(t *testing.T) {
 	h.waitFor("the event rows", func() bool {
 		return len(h.deliveryRows("abc@gmail.com", eventBounced))+len(h.deliveryRows("abc@gmail.com", eventDelayed))+len(h.deliveryRows("abc@gmail.com", eventDelivered)) == 4
 	})
-	rec := h.as("jordan.whitfield@heliosschool.org", http.MethodGet, "/api/loop/messages?id="+soccerID, "")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("messages answered %d: %s", rec.Code, rec.Body)
+	const manager = "jordan.whitfield@heliosschool.org"
+	out := h.get(manager, "/api/email-lists/soccer-team?include=messages.copies.person,messages.sender")
+	if out.id(t) != soccerID {
+		t.Fatalf("the name reached %s", out.id(t))
 	}
-	var body struct {
-		Messages []SentMessage `json:"messages"`
+	list := out.Resources["email-lists"][soccerID]
+	sent := strings2(list["messages"])
+	if len(sent) != 2 || list["sent"] != float64(2) {
+		t.Fatalf("messages %v, sent %v", sent, list["sent"])
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if len(body.Messages) != 2 {
-		t.Fatalf("messages %+v", body.Messages)
-	}
-	m := body.Messages[0]
-	if m.Subject != "Re: Saturday's game" || m.From.Email != "alice@gmail.com" || m.Recipients != len(members) || len(m.Copies) != len(members) || m.Delivered != 1 || m.Failed != 1 || m.Pending != len(members)-2 {
+	m := out.Resources["email-list-messages"][sent[0]]
+	copyIDs := strings2(m["copies"])
+	if m["subject"] != "Re: Saturday's game" || m["fromEmail"] != "alice@gmail.com" || m["sender"] != nil || m["recipients"] != float64(len(members)) || len(copyIDs) != len(members) || m["delivered"] != float64(1) || m["failed"] != float64(1) || m["pending"] != float64(len(members)-2) {
 		t.Fatalf("newest message %+v", m)
 	}
-	copies := map[string]Copy{}
-	for _, c := range m.Copies {
-		copies[c.Email] = c
+	copies := map[string]map[string]any{}
+	for _, key := range copyIDs {
+		c := out.Resources["email-list-copies"][key]
+		copies[out.email(c)] = c
 	}
-	if c := copies[members[0]]; c.State != copyFailed || c.When == "" || m.Copies[0].Email != members[0] {
-		t.Fatalf("the bounced copy %+v, first %+v", c, m.Copies[0])
+	attempts := func(c map[string]any) []map[string]any {
+		out := []map[string]any{}
+		for _, a := range c["attempts"].([]any) {
+			out = append(out, a.(map[string]any))
+		}
+		return out
 	}
-	if c := copies[members[1]]; c.State != copyPending || c.When != "" || len(c.Attempts) != 2 || c.Attempts[1].Detail != "4.3.0 Temporary System Problem" {
+	if c := copies[members[0]]; c["state"] != copyFailed || c["when"] == nil || out.email(out.Resources["email-list-copies"][copyIDs[0]]) != members[0] {
+		t.Fatalf("the bounced copy %+v, first %s", c, copyIDs[0])
+	}
+	if c := copies[members[1]]; c["state"] != copyPending || c["when"] != nil || len(attempts(c)) != 2 || attempts(c)[1]["detail"] != "4.3.0 Temporary System Problem" {
 		t.Fatalf("the delayed copy %+v", c)
 	}
-	if c := copies[members[2]]; c.State != copyDelivered || c.When == "" || len(c.Attempts) != 3 {
+	if c := copies[members[2]]; c["state"] != copyDelivered || c["when"] == nil || len(attempts(c)) != 3 {
 		t.Fatalf("the copy delivered after a delay %+v", c)
 	}
-	if c := copies[members[3]]; c.State != copyPending || len(c.Attempts) != 1 || c.Attempts[0].Event != eventSent {
+	if c := copies[members[3]]; c["state"] != copyPending || len(attempts(c)) != 1 || attempts(c)[0]["event"] != eventSent {
 		t.Fatalf("a copy not yet heard of %+v", c)
 	}
-	if sample := body.Messages[1]; sample.From.Name != "Jordan Whitfield" || sample.Delivered != 3 || sample.Failed != 1 || sample.Pending != 1 || len(sample.Copies) != 5 {
+	sample := out.Resources["email-list-messages"][sent[1]]
+	sender := out.Resources["people"][sample["sender"].(string)]
+	if sender["fullName"] != "Jordan Whitfield" || sample["delivered"] != float64(3) || sample["failed"] != float64(1) || sample["pending"] != float64(1) || len(strings2(sample["copies"])) != 5 {
 		t.Fatalf("sample message %+v", sample)
 	}
-	if (app{cache: h.cache}).sentCount(soccerID) != 2 {
-		t.Fatal("the sent count is not the history's length")
-	}
-	if rec := h.as("ruth.amari@heliosschool.org", http.MethodGet, "/api/loop/messages?id="+soccerID, ""); rec.Code != http.StatusForbidden {
+	if rec := testkit.Call(t, h.mux, "ruth.amari@heliosschool.org", http.MethodGet, "/api/email-list-messages/"+sent[0], nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("a non-manager got %d", rec.Code)
 	}
-	if rec := h.as("jordan.whitfield@heliosschool.org", http.MethodGet, "/api/loop/messages?id=soccer-team", ""); rec.Code != http.StatusNotFound {
-		t.Fatalf("a group named rather than identified answered %d", rec.Code)
+	if theirs := h.get("ruth.amari@heliosschool.org", "/api/email-list-messages").ids(t); len(theirs) != 0 {
+		t.Fatalf("a non-manager lists %v", theirs)
 	}
 }
 
@@ -757,7 +780,7 @@ func TestDeletingAGroupTakesItsMailRecordWithIt(t *testing.T) {
 	if h.archive.count() != 1 || h.groupRows(messagesTab, soccerID) != 2 || h.groupRows(deliveriesTab, soccerID) < 2 {
 		t.Fatalf("before: %d archived, %d messages, %d deliveries", h.archive.count(), h.groupRows(messagesTab, soccerID), h.groupRows(deliveriesTab, soccerID))
 	}
-	if rec := h.as("jordan.whitfield@heliosschool.org", http.MethodDelete, "/api/loop/group", `{"id":"`+soccerID+`"}`); rec.Code != http.StatusNoContent {
+	if rec := h.as("jordan.whitfield@heliosschool.org", http.MethodDelete, "/api/email-lists/"+soccerID, ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete answered %d: %s", rec.Code, rec.Body)
 	}
 	h.waitFor("the record to go", func() bool {
@@ -785,29 +808,22 @@ func TestDeletingAGroupTakesItsMailRecordWithIt(t *testing.T) {
 	if deleted[messagesTab] == 0 || deleted[managersTab] == 0 || deleted[deliveriesTab] != 0 {
 		t.Fatalf("the delete logged %v; the deliveries are append-only and unlogged", deleted)
 	}
-	rec := h.as("ruth.amari@heliosschool.org", http.MethodPost, "/api/loop/group", `{"name":"soccer-team","title":"Soccer again","managers":["ruth.amari@heliosschool.org"],"rules":[{"kind":"include","roles":["Staff"]}]}`)
+	rec := h.as("ruth.amari@heliosschool.org", http.MethodPost, "/api/email-lists", `{"name":"soccer-team","title":"Soccer again","managers":["ruth.amari@heliosschool.org"],"rules":[{"kind":"include","roles":["Staff"]}]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("taking the name answered %d: %s", rec.Code, rec.Body)
 	}
-	var made groupView
+	var made struct {
+		ID string `json:"id"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &made); err != nil {
 		t.Fatal(err)
 	}
-	if made.ID == soccerID || made.Name != "soccer-team" {
-		t.Fatalf("the new group is %q %q", made.ID, made.Name)
+	out := h.get("ruth.amari@heliosschool.org", "/api/email-lists/soccer-team?include=messages")
+	if made.ID == soccerID || out.id(t) != made.ID {
+		t.Fatalf("the new group is %q, the name reaches %q", made.ID, out.id(t))
 	}
-	rec = h.as("ruth.amari@heliosschool.org", http.MethodGet, "/api/loop/messages?id="+made.ID, "")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("messages answered %d: %s", rec.Code, rec.Body)
-	}
-	var body struct {
-		Messages []SentMessage `json:"messages"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if len(body.Messages) != 0 {
-		t.Fatalf("the new group reads the old one's mail: %+v", body.Messages)
+	if sent := strings2(out.Resources["email-lists"][made.ID]["messages"]); len(sent) != 0 {
+		t.Fatalf("the new group reads the old one's mail: %v", sent)
 	}
 }
 

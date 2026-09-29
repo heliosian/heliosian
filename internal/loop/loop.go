@@ -165,10 +165,14 @@ type Model struct {
 	Messages   []Message
 	Deliveries []Delivery
 	admins     []string
+	idKey      []byte
 	byID       map[string]int
 	byName     map[string]int
 	byAddress  map[string]int
 	archived   map[string]map[string]bool
+	sent       map[string][]*Sent
+	sentByID   map[string]*Sent
+	copyByID   map[string]*Copy
 }
 
 func (m *Model) Archived(groupID, email string) bool {
@@ -189,12 +193,6 @@ func (m *Model) Named(name string) *Group {
 		return nil
 	}
 	return &m.Groups[i]
-}
-
-func (m *Model) taken(key string) bool {
-	_, group := m.byID[key]
-	_, address := m.byAddress[key]
-	return group || address
 }
 
 func (m *Model) Resolve(local string) *Group {
@@ -394,8 +392,8 @@ func groupCells(g Group) store.Row {
 	return store.Row{idColumn: g.ID, "Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: g.Visibility, postingColumn: g.Posting, replyingColumn: g.Replying}
 }
 
-func BuildModel(tables store.Tables) (*Model, error) {
-	model := &Model{Groups: []Group{}, Messages: []Message{}, Deliveries: []Delivery{}, byID: map[string]int{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
+func BuildModel(tables store.Tables, idKey []byte) (*Model, error) {
+	model := &Model{Groups: []Group{}, Messages: []Message{}, Deliveries: []Delivery{}, idKey: idKey, byID: map[string]int{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
 	model.admins = admins.Read(tables)
 	for _, row := range tables[groupsTab] {
 		groupID, ok := id.Parse(row[idColumn])
@@ -512,5 +510,6 @@ func BuildModel(tables store.Tables) (*Model, error) {
 			model.byAddress[local] = i
 		}
 	}
+	model.indexHistory()
 	return model, nil
 }

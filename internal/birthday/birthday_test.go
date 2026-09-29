@@ -79,6 +79,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		Now:    func() time.Time { return now() },
 		Queue:  queue,
 		Staged: world,
+		Scope:  func(w World, _ api.Query) World { return w },
 	})
 	for _, rt := range who.Resources() {
 		reg.Add(api.Lift(rt, func(w World) *who.Model { return w.Directory }))
