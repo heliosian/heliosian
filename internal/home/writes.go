@@ -366,8 +366,8 @@ func (c *Cache) moveLink(actor access.Actor, key string, by int) ([]store.Op, er
 	if err := requireAdmin(actor); err != nil {
 		return nil, err
 	}
-	if by != 1 && by != -1 {
-		return nil, access.Invalid("by must be 1 or -1")
+	if by == 0 {
+		return nil, access.Invalid("by must not be 0")
 	}
 	model := c.Model()
 	link := model.link(key)
@@ -386,8 +386,9 @@ func (c *Cache) moveLink(actor access.Actor, key string, by int) ([]store.Op, er
 	if to < 0 || to >= len(keys) {
 		return nil, nil
 	}
-	keys[at], keys[to] = keys[to], keys[at]
-	current[at], current[to] = current[to], current[at]
+	movedKey, movedOrder := keys[at], current[at]
+	keys = slices.Insert(slices.Delete(keys, at, at+1), to, movedKey)
+	current = slices.Insert(slices.Delete(current, at, at+1), to, movedOrder)
 	placed := store.Order(current)
 	ops := []store.Op{}
 	for i, k := range keys {

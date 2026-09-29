@@ -3,8 +3,7 @@ import {appOrigin} from '/appswitch.js';
 import {searchInput} from '/shell.js';
 import {api} from '/api.js';
 import {el, svg} from '/elements.js';
-import {calendarMark, calendarMenu, dropdown, audienceWords} from './cards.js';
-import {openWidgetAudience, moveWidget} from './edit.js';
+import {calendarMark, calendarMenu, dropdown, shownTo} from './cards.js';
 import {dayBar, dayChip, dayRow, eventRow, standing} from '/dayrows.js';
 import {rsvpPanel} from '/rsvps.js';
 
@@ -633,35 +632,24 @@ const widgetMakers = {when: whenWidget, team: teamWidget, celebrate: celebrateWi
 
 const widgetNames = {when: 'Upcoming', team: 'Team', celebrate: 'Celebrate', school: 'Inbox'};
 
+const widgetApps = {when: 'when', team: 'team', celebrate: 'celebrate', school: 'ask'};
+
+export function widgetRows() {
+  return widgetOrder().map(key => {
+    const v = (state.model.widgets || {})[key] || {forMe: true, rules: []};
+    const icon = widgetTitle(widgetApps[key], '').querySelector('img');
+    const meta = [shownTo(v.rules), v.forMe === false ? 'Hidden from you' : ''].filter(Boolean).join(' · ');
+    return {key, name: widgetNames[key], mark: icon, meta};
+  });
+}
+
+
 function adminTools(card, key) {
   const head = card.querySelector('.widget-head');
   const v = (state.model.widgets || {})[key] || {forMe: true, rules: []};
   if (v.forMe === false) {
     head.querySelector('.widget-title').append(el('span', 'hidden-badge', 'Hidden'));
   }
-  if ((v.rules || []).length) {
-    head.querySelector('.widget-title').append(el('span', 'hidden-badge audience-badge', audienceWords(v.rules)));
-  }
-  const edit = el('button', 'category-edit widget-edit');
-  edit.type = 'button';
-  edit.title = 'Who sees this widget';
-  edit.setAttribute('aria-label', `Who sees ${widgetNames[key]}`);
-  edit.append(svg('edit'));
-  edit.addEventListener('click', () => openWidgetAudience(key, widgetNames[key]));
-  head.insertBefore(edit, head.children[1] || null);
-  const order = widgetOrder();
-  const at = order.indexOf(key);
-  const moves = el('span', 'widget-moves');
-  for (const [by, glyph, words] of [[-1, '\u2039', 'Move earlier'], [1, '\u203a', 'Move later']]) {
-    const b = el('button', 'category-edit widget-move', glyph);
-    b.type = 'button';
-    b.title = words;
-    b.setAttribute('aria-label', `${words}: ${widgetNames[key]}`);
-    b.disabled = by < 0 ? at <= 0 : at >= order.length - 1;
-    b.addEventListener('click', () => moveWidget(key, by));
-    moves.append(b);
-  }
-  head.insertBefore(moves, edit.nextSibling);
 }
 
 function widgetOrder() {
@@ -711,10 +699,10 @@ export function renderWidgets(query = '', fitted = false) {
   const root = document.querySelector('#widgets');
   root.replaceChildren();
   root.hidden = Boolean(query.trim());
+  const admin = isAdmin();
   if (root.hidden) {
     return;
   }
-  const admin = isAdmin();
   for (const key of widgetOrder()) {
     const make = widgetMakers[key];
     const forMe = ((state.model.widgets || {})[key] || {}).forMe !== false;

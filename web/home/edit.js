@@ -1,4 +1,4 @@
-import {state, isAdmin, linkCategories, tagLabelsOf} from './state.js';
+import {state, linkCategories, tagLabelsOf} from './state.js';
 import {categoryIcons, iconOf, categoryMark} from './dom.js';
 import {el, svg, toast} from '/elements.js';
 import {load} from '/router.js';
@@ -9,6 +9,8 @@ import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
 import {rulesEditor} from '/rules.js';
 import {tabStrip} from '/tabs.js';
+import {widgetRows} from './widgets.js';
+import {shownTo} from './cards.js';
 
 const linkModal = document.querySelector('#link-modal');
 const linkForm = document.querySelector('#link-form');
@@ -17,7 +19,6 @@ const appModal = document.querySelector('#app-modal');
 const widgetModal = document.querySelector('#widget-modal');
 const appForm = document.querySelector('#app-form');
 const categoryForm = document.querySelector('#category-form');
-const categoriesModal = document.querySelector('#categories-modal');
 const {imagePicker} = imageTools('/api/apps', {state});
 
 let editingLink = null;
@@ -251,7 +252,7 @@ export async function moveApp(key, by) {
   if (i < 0 || j < 0 || j >= keys.length) {
     return;
   }
-  [keys[i], keys[j]] = [keys[j], keys[i]];
+  keys.splice(j, 0, ...keys.splice(i, 1));
   try {
     await api('POST', '/api/admin/visibility/order', {apps: keys});
     await load();
@@ -267,7 +268,7 @@ export async function moveWidget(key, by) {
   if (i < 0 || j < 0 || j >= keys.length) {
     return;
   }
-  [keys[i], keys[j]] = [keys[j], keys[i]];
+  keys.splice(j, 0, ...keys.splice(i, 1));
   try {
     await api('POST', '/api/apps/widgets/order', {widgets: keys});
     await load();
@@ -375,10 +376,211 @@ async function saveApp(e) {
   }
 }
 
-export function refreshCategoryManager() {
-  if (!categoriesModal.hidden) {
-    renderCategoryList();
+const itemsModal = document.querySelector('#items-modal');
+
+export function refreshPanels() {
+  if (!itemsModal.hidden) {
+    renderItemList();
   }
+}
+
+function rowButton(label, content, onClick) {
+  const b = el('button', 'row-button');
+  b.type = 'button';
+  b.setAttribute('aria-label', label);
+  b.title = label;
+  b.append(content);
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+let dragging = null;
+
+function sortable(row, group, at, go) {
+  row.draggable = true;
+  row.classList.add('is-draggable');
+  const grip = el('span', 'row-grip');
+  grip.append(svg('grip'));
+  row.prepend(grip);
+  row.addEventListener('dragstart', e => {
+    e.stopPropagation();
+    dragging = {group, at, go};
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', group);
+    row.classList.add('is-dragging');
+  });
+  row.addEventListener('dragend', () => {
+    dragging = null;
+    row.classList.remove('is-dragging');
+  });
+  const accepts = () => dragging && dragging.group === group && dragging.at !== at;
+  const zone = e => {
+    const box = row.getBoundingClientRect();
+    return e.clientY - box.top < box.height / 2 ? 'before' : 'after';
+  };
+  const clear = () => row.classList.remove('is-drop-before', 'is-drop-after');
+  row.addEventListener('dragover', e => {
+    if (!accepts()) {
+      return;
+    }
+    e.preventDefault();
+    clear();
+    row.classList.add('is-drop-' + zone(e));
+  });
+  row.addEventListener('dragleave', clear);
+  row.addEventListener('drop', e => {
+    clear();
+    if (!accepts()) {
+      return;
+    }
+    e.preventDefault();
+    const {at: from, go: move} = dragging;
+    dragging = null;
+    let to = zone(e) === 'before' ? at : at + 1;
+    if (to > from) {
+      to -= 1;
+    }
+    if (to !== from) {
+      move(to - from);
+    }
+  });
+}
+
+function itemRow(mark, title, meta, moves, edit, remove) {
+  const row = el('div', 'category-row');
+  const image = el('div', 'category-row-image');
+  image.append(mark);
+  const body = el('div', 'category-row-body');
+  body.append(el('div', 'category-row-title', title));
+  if (meta) {
+    body.append(el('div', 'category-row-meta', meta));
+  }
+  const actions = el('div', 'category-row-actions');
+  actions.append(rowButton(`Edit ${title}`, svg('edit'), edit));
+  if (remove) {
+    const x = rowButton(`Delete ${title}`, '×', remove);
+    x.classList.add('is-danger');
+    actions.append(x);
+  }
+  row.append(image, body, actions);
+  sortable(row, moves.group, moves.at, moves.go);
+  return row;
+}
+
+function categoryItems(category) {
+  const group = el('div', 'item-children');
+  const apps = category.style === 'apps';
+  const items = apps ? state.model.apps || [] : category.links;
+  items.forEach((item, at) => {
+    const moves = {at, group: category.id};
+    if (apps) {
+      const img = el('img');
+      img.src = `/brand/apps/${item.key}.png` + (item.mark ? `?v=${item.mark}` : '');
+      img.alt = '';
+      moves.go = by => moveApp(item.key, by);
+      const v = item.visibility || {visibility: 'list', rules: [], emails: []};
+      let who = 'Shown to everyone';
+      if (v.visibility === 'list') {
+        who = (v.rules || []).length || (v.emails || []).length ? shownTo(v.rules, v.emails || []) : 'Shown to nobody';
+      }
+      group.append(itemRow(img, item.name, who, moves, () => openAppEditor(item), null));
+      return;
+    }
+    let mark = categoryMark(iconOf(category));
+    if (item.imageUrl) {
+      mark = el('img');
+      mark.src = item.imageUrl;
+      mark.alt = '';
+    }
+    moves.go = by => moveLink(item.id, by);
+    const meta = [item.visible === false ? 'Hidden' : '', shownTo(item.rules), item.url.replace(/^https?:\/\//, '')].filter(Boolean).join(' · ');
+    group.append(itemRow(mark, item.title, meta, moves, () => openLinkEditor(item), () => removeLink(item)));
+  });
+  if (!items.length) {
+    group.append(el('div', 'category-empty', apps ? 'No apps to show.' : 'No links yet.'));
+  }
+  if (!apps) {
+    const add = el('button', 'button button-secondary button-small item-add');
+    add.type = 'button';
+    add.append(svg('plus'), el('span', '', 'Add Link'));
+    add.addEventListener('click', () => openLinkEditor(null, category.id));
+    group.append(add);
+  }
+  return group;
+}
+
+const expanded = new Set();
+
+function collapsible(section, heading, id, title) {
+  const toggle = rowButton(`Show or hide what is in ${title}`, svg('chevron-right'), () => {
+    if (expanded.has(id)) {
+      expanded.delete(id);
+    } else {
+      expanded.add(id);
+    }
+    paint();
+  });
+  toggle.classList.add('item-toggle');
+  const paint = () => {
+    section.classList.toggle('is-collapsed', !expanded.has(id));
+    toggle.setAttribute('aria-expanded', String(expanded.has(id)));
+  };
+  paint();
+  heading.insertBefore(toggle, heading.querySelector('.category-row-image') || heading.querySelector('.category-row-body'));
+}
+
+function widgetSection() {
+  const section = el('div', 'item-section');
+  const heading = el('div', 'category-row item-heading');
+  const body = el('div', 'category-row-body');
+  body.append(el('div', 'category-row-title', 'Widgets'));
+  heading.append(body);
+  const group = el('div', 'item-children');
+  const rows = widgetRows();
+  rows.forEach((w, at) => {
+    const moves = {at, group: 'widgets', go: by => moveWidget(w.key, by)};
+    group.append(itemRow(w.mark, w.name, w.meta, moves, () => openWidgetAudience(w.key, w.name), null));
+  });
+  section.append(heading, group);
+  collapsible(section, heading, 'widgets', 'Widgets');
+  return section;
+}
+
+function renderItemList() {
+  const list = document.querySelector('#item-list');
+  list.replaceChildren(widgetSection());
+  const categories = linkCategories();
+  if (!categories.length) {
+    list.append(el('div', 'category-empty', 'No categories yet.'));
+    return;
+  }
+  categories.forEach((category, at) => {
+    const section = el('div', 'item-section');
+    const heading = categoryRow(category, at);
+    section.append(heading, categoryItems(category));
+    collapsible(section, heading, category.id, category.title);
+    list.append(section);
+  });
+}
+
+async function removeLink(link) {
+  if (!confirm(`Delete “${link.title}”?`)) {
+    return;
+  }
+  setStatus('#items-status', 'Deleting…');
+  try {
+    await api('DELETE', '/api/apps/link', {id: link.id});
+    setStatus('#items-status', '');
+    await load();
+  } catch (err) {
+    setStatus('#items-status', err.message, true);
+  }
+}
+
+export function openEditPanel() {
+  setStatus('#items-status', '');
+  renderItemList();
+  itemsModal.hidden = false;
 }
 
 async function moveCategory(id, by) {
@@ -391,13 +593,13 @@ async function moveCategory(id, by) {
   }
   ids.splice(to, 0, ...ids.splice(at, 1));
   ids.push(...hidden);
-  setStatus('#categories-status', 'Saving…');
+  setStatus('#items-status', 'Saving…');
   try {
     await api('POST', '/api/apps/categories/order', {ids});
-    setStatus('#categories-status', '');
+    setStatus('#items-status', '');
     await load();
   } catch (err) {
-    setStatus('#categories-status', err.message, true);
+    setStatus('#items-status', err.message, true);
   }
 }
 
@@ -405,17 +607,17 @@ async function removeCategory(category) {
   if (!confirm(`Delete the category \u201C${category.title}\u201D?`)) {
     return;
   }
-  setStatus('#categories-status', 'Deleting\u2026');
+  setStatus('#items-status', 'Deleting\u2026');
   try {
     await api('DELETE', '/api/apps/category', {id: category.id});
-    setStatus('#categories-status', '');
+    setStatus('#items-status', '');
     await load();
   } catch (err) {
-    setStatus('#categories-status', err.message, true);
+    setStatus('#items-status', err.message, true);
   }
 }
 
-function categoryRow(category, at, total) {
+function categoryRow(category, at) {
   const row = el('div', 'category-row');
   const mark = el('div', 'category-row-image');
   mark.append(categoryMark(iconOf(category)));
@@ -428,26 +630,14 @@ function categoryRow(category, at, total) {
     body.append(el('div', 'category-row-meta', `Upcoming events from Helios When \u00b7 ${n} ahead${limit}`));
   } else if (category.style === 'apps') {
     const n = (state.model.apps || []).length;
-    body.append(el('div', 'category-row-meta', `The community apps \u00b7 ${n} you see${limit}`));
+    body.append(el('div', 'category-row-meta', `The community apps \u00b7 ${n} you see${limit} \u00b7 ${shownTo(category.rules)}`));
   } else {
     const style = category.style === 'cards' ? 'Feature cards' : 'Compact tiles';
-    body.append(el('div', 'category-row-meta', `${style} \u00b7 ${category.links.length} link${category.links.length === 1 ? '' : 's'}${limit}`));
+    body.append(el('div', 'category-row-meta', `${style} \u00b7 ${category.links.length} link${category.links.length === 1 ? '' : 's'}${limit} \u00b7 ${shownTo(category.rules)}`));
   }
   row.append(body);
 
   const actions = el('div', 'category-row-actions');
-  const up = el('button', 'row-button');
-  up.type = 'button';
-  up.setAttribute('aria-label', `Move ${category.title} up`);
-  up.textContent = '\u2191';
-  up.disabled = at === 0;
-  up.addEventListener('click', () => moveCategory(category.id, -1));
-  const down = el('button', 'row-button');
-  down.type = 'button';
-  down.setAttribute('aria-label', `Move ${category.title} down`);
-  down.textContent = '\u2193';
-  down.disabled = at === total - 1;
-  down.addEventListener('click', () => moveCategory(category.id, 1));
   const edit = el('button', 'row-button');
   edit.type = 'button';
   edit.setAttribute('aria-label', `Edit ${category.title}`);
@@ -460,29 +650,10 @@ function categoryRow(category, at, total) {
   remove.disabled = category.style === 'events';
   remove.title = category.style === 'events' ? 'The events section can be renamed or moved, not deleted' : '';
   remove.addEventListener('click', () => removeCategory(category));
-  actions.append(up, down, edit, remove);
+  actions.append(edit, remove);
   row.append(actions);
+  sortable(row, 'categories', at, by => moveCategory(category.id, by));
   return row;
-}
-
-function renderCategoryList() {
-  const list = document.querySelector('#category-list');
-  const categories = state.model.categories.filter(c => c.style !== 'events');
-  list.replaceChildren();
-  if (!categories.length) {
-    list.append(el('div', 'category-empty', 'No categories yet.'));
-    return;
-  }
-  categories.forEach((category, at) => list.append(categoryRow(category, at, categories.length)));
-}
-
-export function openCategoryManager() {
-  if (!isAdmin()) {
-    return;
-  }
-  setStatus('#categories-status', '');
-  renderCategoryList();
-  categoriesModal.hidden = false;
 }
 
 async function saveLink(e) {
@@ -560,8 +731,7 @@ function syncAppsNote() {
 
 export function initEditing() {
   document.querySelector('#category-style').addEventListener('change', syncAppsNote);
-  document.querySelector('#add-category').addEventListener('click', () => openCategoryEditor(null));
-  document.querySelector('#edit-categories').addEventListener('click', openCategoryManager);
+  document.querySelector('#add-section').addEventListener('click', () => openCategoryEditor(null));
   linkForm.addEventListener('submit', saveLink);
   categoryForm.addEventListener('submit', saveCategory);
   appForm.addEventListener('submit', saveApp);
@@ -581,7 +751,7 @@ export function initEditing() {
     });
   }
   document.querySelector('#widget-form').addEventListener('submit', saveWidgetAudience);
-  for (const overlay of [linkModal, categoryModal, appModal, categoriesModal, widgetModal]) {
+  for (const overlay of [linkModal, categoryModal, appModal, widgetModal, itemsModal]) {
     overlay.addEventListener('click', e => {
       if (e.target === overlay) {
         overlay.hidden = true;
@@ -592,10 +762,10 @@ export function initEditing() {
     if (e.key !== 'Escape') {
       return;
     }
-    if (!linkModal.hidden || !categoryModal.hidden) {
+    if (!linkModal.hidden || !categoryModal.hidden || !appModal.hidden || !widgetModal.hidden) {
       closeModals();
       return;
     }
-    categoriesModal.hidden = true;
+    itemsModal.hidden = true;
   });
 }

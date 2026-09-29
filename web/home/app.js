@@ -3,20 +3,20 @@ import {el} from '/elements.js';
 import {renderCategories, renderNav} from './cards.js';
 import {renderMonth} from './month.js';
 import {renderWidgets} from './widgets.js';
-import {initEditing, refreshCategoryManager} from './edit.js';
+import {initEditing, refreshPanels, openEditPanel} from './edit.js';
 import {initTopbar, renderAccount, searchInput, onSlash} from '/shell.js';
 import {api} from '/api.js';
 import {startApp} from '/router.js';
 import {adminPage} from './adminpage.js';
 
-const editCategories = el('button', 'user-menu-super', 'Edit Categories');
-editCategories.type = 'button';
-editCategories.id = 'edit-categories';
-editCategories.hidden = true;
+const editPage = el('button', 'user-menu-super', 'Edit Page');
+editPage.type = 'button';
+editPage.hidden = true;
+editPage.addEventListener('click', openEditPanel);
 
 function renderChrome() {
   renderAccount();
-  editCategories.hidden = !isAdmin();
+  editPage.hidden = !isAdmin();
 }
 
 const main = document.querySelector('#main');
@@ -25,7 +25,7 @@ const view = [...main.children];
 function paintHome() {
   renderNav();
   renderCategories(searchInput().value);
-  refreshCategoryManager();
+  refreshPanels();
   renderMonth();
   renderWidgets(searchInput().value);
 }
@@ -80,7 +80,7 @@ function initChrome() {
     name: 'Heliosian',
     me: () => state.model.user,
     search: {placeholder: 'Search apps, links, or events…', own: true},
-    menuRows: [editCategories],
+    menuRows: [editPage],
   });
   initDrawer();
 }

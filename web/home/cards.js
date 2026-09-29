@@ -1,43 +1,8 @@
 import {state, isAdmin, tagLabelsOf} from './state.js';
 import {iconOf, categoryMark} from './dom.js';
 import {el, svg, toast} from '/elements.js';
-import {openLinkEditor, openCategoryEditor, openAppEditor, moveApp, moveLink} from './edit.js';
 import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
-
-function editPencil(link, category) {
-  if (!isAdmin()) {
-    return null;
-  }
-  const tools = el('div', 'app-tools');
-  const siblings = category ? category.links.filter(listed) : [];
-  const at = siblings.indexOf(link);
-  for (const [by, glyph, words] of [[-1, '\u2039', 'Move earlier'], [1, '\u203a', 'Move later']]) {
-    const b = el('button', 'link-edit app-move', glyph);
-    b.type = 'button';
-    b.title = words;
-    b.setAttribute('aria-label', `${words}: ${link.title}`);
-    b.disabled = by < 0 ? at <= 0 : at < 0 || at >= siblings.length - 1;
-    b.addEventListener('click', e => {
-      e.stopPropagation();
-      e.preventDefault();
-      moveLink(link.id, by);
-    });
-    tools.append(b);
-  }
-  const pencil = el('button', 'link-edit');
-  pencil.type = 'button';
-  pencil.title = 'Edit link';
-  pencil.setAttribute('aria-label', `Edit ${link.title}`);
-  pencil.append(svg('edit'));
-  pencil.addEventListener('click', e => {
-    e.stopPropagation();
-    e.preventDefault();
-    openLinkEditor(link);
-  });
-  tools.append(pencil);
-  return tools;
-}
 
 function categoryGlyph(category, className) {
   const wrap = el('span', className);
@@ -83,10 +48,6 @@ function featureCard(link, category) {
   go.append(el('span', '', 'Open App'), svg('arrow'));
   card.append(go);
   slot.append(card);
-  const pencil = editPencil(link, category);
-  if (pencil) {
-    slot.append(pencil);
-  }
   return slot;
 }
 
@@ -110,28 +71,6 @@ function tile(link, category) {
   }
   open.append(body);
   card.append(open);
-  const pencil = editPencil(link, category);
-  if (pencil) {
-    card.append(pencil);
-  }
-  return card;
-}
-
-function singular(title) {
-  const t = title.trim();
-  return /^[A-Z][a-z]+s$/.test(t) ? t.slice(0, -1) : 'Link';
-}
-
-function addCard(category, cards) {
-  const card = el('button', cards ? 'chip add-card' : 'tile add-card');
-  card.type = 'button';
-  const disc = el('div', 'add-card-disc');
-  disc.append(svg('plus'));
-  const body = el('div', 'add-card-body');
-  body.append(el('div', 'add-card-title', `Add ${singular(category.title)}`));
-  body.append(el('div', 'add-card-sub', `Link something under ${category.title}`));
-  card.append(disc, body);
-  card.addEventListener('click', () => openLinkEditor(null, category.id));
   return card;
 }
 
@@ -162,9 +101,6 @@ function panel(category, links, needle) {
   const {shown, hidden} = limited(category, links, needle);
   for (const link of shown) {
     grid.append(cards ? featureCard(link, category) : tile(link, category));
-  }
-  if (isAdmin()) {
-    grid.append(addCard(category, cards));
   }
   wrap.append(grid);
   if (hidden) {
@@ -204,13 +140,21 @@ export function audienceWords(rules) {
   return words.length > 40 ? `${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}` : words;
 }
 
+export function shownTo(rules, emails = []) {
+  const who = [];
+  if ((rules || []).length) {
+    who.push(audienceWords(rules));
+  }
+  if (emails.length) {
+    who.push(emails.length === 1 ? '1 person' : `${emails.length} people`);
+  }
+  return who.length ? `Shown to ${who.join(' · ')}` : 'Shown to everyone';
+}
+
 function badges(link) {
   const out = [];
   if (link.visible === false) {
     out.push(el('span', 'hidden-badge', 'Hidden'));
-  }
-  if ((link.rules || []).length && isAdmin()) {
-    out.push(el('span', 'hidden-badge audience-badge', audienceWords(link.rules)));
   }
   return out;
 }
@@ -237,16 +181,6 @@ export function renderCategories(query = '') {
     const title = el('h2', 'category-title', category.title);
     title.append(...badges(category));
     head.append(title);
-    if (isAdmin()) {
-      const edit = el('button', 'category-edit');
-      edit.type = 'button';
-      edit.title = 'Edit category';
-      edit.setAttribute('aria-label', `Edit the ${category.title} category`);
-      edit.append(svg('edit'));
-      edit.addEventListener('click', () => openCategoryEditor(category));
-      const more = head.querySelector('.category-more');
-      head.insertBefore(edit, more);
-    }
     section.append(head);
     section.append(apps ? appsPanel(category, needle) : panel(category, links, needle));
     root.append(section);
@@ -387,22 +321,6 @@ function appsMatching(needle) {
   return (state.model.apps || []).filter(a => sectionListed(a) && (!needle || `${a.name} ${a.tagline}`.toLowerCase().includes(needle)));
 }
 
-function appBadge(app) {
-  const v = app.visibility;
-  if (!isAdmin() || !v || v.visibility !== 'list') {
-    return null;
-  }
-  const who = [];
-  if ((v.rules || []).length) {
-    who.push(audienceWords(v.rules));
-  }
-  const named = (v.emails || []).length;
-  if (named) {
-    who.push(named === 1 ? '1 person' : named + ' people');
-  }
-  return el('span', 'hidden-badge audience-badge', who.length ? who.join(' · ') : 'Nobody');
-}
-
 function appCard(app) {
   const slot = el('div', 'chip-slot');
   const card = el('a', 'chip');
@@ -413,47 +331,12 @@ function appCard(app) {
   icon.alt = '';
   disc.append(icon);
   card.append(disc);
-  const title = el('div', 'chip-title', app.name);
-  const badge = appBadge(app);
-  if (badge) {
-    title.append(badge);
-  }
-  card.append(title);
+  card.append(el('div', 'chip-title', app.name));
   card.append(el('div', 'chip-description', app.tagline));
   const go = el('span', 'button chip-open');
   go.append(el('span', '', 'Open App'), svg('arrow'));
   card.append(go);
   slot.append(card);
-  if (isAdmin() && app.visibility) {
-    const tools = el('div', 'app-tools');
-    const keys = (state.model.apps || []).map(a => a.key);
-    const at = keys.indexOf(app.key);
-    for (const [by, glyph, words] of [[-1, '\u2039', 'Move earlier'], [1, '\u203a', 'Move later']]) {
-      const b = el('button', 'link-edit app-move', glyph);
-      b.type = 'button';
-      b.title = words;
-      b.setAttribute('aria-label', `${words}: ${app.name}`);
-      b.disabled = by < 0 ? at <= 0 : at >= keys.length - 1;
-      b.addEventListener('click', e => {
-        e.stopPropagation();
-        e.preventDefault();
-        moveApp(app.key, by);
-      });
-      tools.append(b);
-    }
-    const pencil = el('button', 'link-edit');
-    pencil.type = 'button';
-    pencil.title = 'Edit app';
-    pencil.setAttribute('aria-label', `Edit ${app.name}`);
-    pencil.append(svg('edit'));
-    pencil.addEventListener('click', e => {
-      e.stopPropagation();
-      e.preventDefault();
-      openAppEditor(app);
-    });
-    tools.append(pencil);
-    slot.append(tools);
-  }
   return slot;
 }
 

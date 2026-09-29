@@ -254,6 +254,21 @@ func TestMoveLinkTradesPlacesWithinItsCategory(t *testing.T) {
 	}
 }
 
+func TestMoveLinkJumpsSeveralPlaces(t *testing.T) {
+	c, _ := sampleCache(t)
+	a := app{cache: c, sources: c.sources}
+	if rec := call(t, serve.JSON(a.moveLink), map[string]any{"id": parentPortalID, "by": -2}); rec.Code != http.StatusNoContent {
+		t.Fatalf("move: %d %s", rec.Code, rec.Body)
+	}
+	var school []string
+	for _, l := range c.Model().category(schoolID).Links {
+		school = append(school, l.Title)
+	}
+	if want := []string{"Parent Portal", "Directory", "Calendar", "Staff Room"}; !slices.Equal(school, want) {
+		t.Fatalf("school = %v, want %v", school, want)
+	}
+}
+
 func TestARowWithNoOrderSortsLast(t *testing.T) {
 	c, dir := sampleCache(t)
 	a := app{cache: c, sources: c.sources}

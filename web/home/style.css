@@ -580,17 +580,6 @@ main {
 
 .wg-type-count { margin-left: auto; padding-left: 16px; color: var(--muted); font-weight: 500; }
 
-/* An admin's arrows at a widget's heading move it in the page's order. */
-.widget-moves { display: inline-flex; align-items: center; }
-
-.widget-move { font-size: 20px; line-height: 1; padding: 0 4px 3px; }
-
-.widget-move:disabled { opacity: 0.35; cursor: default; }
-
-/* The admin's pencil at a widget's heading, and its badges beside the
-   title. */
-.widget-head .widget-edit { align-self: center; }
-
 .widget-title .hidden-badge { font-family: Roboto, sans-serif; font-size: 12px; }
 
 /* More, under a widget's first few rows: a quiet button across the card. */
@@ -722,17 +711,6 @@ main {
 .category.is-compact .category-title::after { display: none; }
 
 .category.is-compact .category-head { margin-bottom: 12px; }
-
-.category-edit {
-  border: 0;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 2px;
-  display: inline-flex;
-}
-
-.category-edit svg { width: 16px; height: 16px; }
 
 /* The saved calendar Upcoming Events is read under: a quiet dropdown
    beside the heading, and Make default beside that for one that is not. */
@@ -975,18 +953,6 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .chip-slot:has(> .chip)::before { border-radius: 18px; }
 
-.chip-slot .link-edit { position: absolute; top: 12px; right: 12px; z-index: 2; }
-
-/* An app's tools for an admin: the two arrows and the pencil, in the card's
-   corner. */
-.chip-slot .app-tools { position: absolute; top: 12px; right: 12px; z-index: 2; display: flex; gap: 4px; }
-
-.chip-slot .app-tools .link-edit { position: static; }
-
-.app-move { font-size: 20px; line-height: 1; padding-bottom: 3px; }
-
-.app-move:disabled { opacity: 0.35; cursor: default; }
-
 .chip {
   position: relative;
   display: flex;
@@ -1111,8 +1077,6 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .tile-body { flex: 1; min-width: 0; padding-right: 6px; }
 
-.tile:has(.link-edit) .tile-body { padding-right: 30px; }
-
 .tile-title {
   font-size: 15px;
   font-weight: 700;
@@ -1135,56 +1099,6 @@ a.event-people:hover .event-person { text-decoration: underline; }
 }
 
 .tile.is-hidden { opacity: 0.55; }
-
-.tile .link-edit { position: absolute; top: 6px; right: 6px; z-index: 2; }
-
-.tile .app-tools { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 3px; }
-
-.tile .app-tools .link-edit { position: static; width: 26px; height: 26px; }
-
-.tile .app-tools .app-move { font-size: 17px; }
-
-/* The admin's dashed add card, at the end of every category. */
-.add-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 120px;
-  padding: 18px;
-  border: 1.5px dashed var(--dash-line, #c9d3d4);
-  border-radius: 16px;
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  text-align: center;
-  cursor: pointer;
-}
-
-.add-card.chip { min-height: 200px; border-radius: 20px; }
-
-/* Among tiles, the add card is one more tile's worth. */
-.add-card.tile { min-height: 72px; min-width: 220px; padding: 10px 16px; gap: 4px; }
-
-.add-card:hover { border-color: var(--brand); color: var(--brand); background: var(--glass-faint, rgba(36, 77, 83, 0.03)); }
-
-.add-card-disc {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--wash, #e3f0ef);
-  color: var(--brand);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.add-card-disc svg { width: 20px; height: 20px; }
-
-.add-card-title { font-size: 15px; font-weight: 600; color: var(--ink); }
-
-.add-card-sub { font-size: 12px; }
 
 /* The link editor's tabs, the strip in the window's flow. */
 .form-tabs .tab-strip { position: static; padding-top: 0; margin: -4px 0 16px; }
@@ -1222,9 +1136,6 @@ a.event-people:hover .event-person { text-decoration: underline; }
   text-transform: uppercase;
 }
 
-/* Who a link or a section is kept to, after its title, for an admin. */
-.hidden-badge.audience-badge { background: var(--accent); margin-left: 6px; text-transform: none; letter-spacing: 0; }
-
 /* The app editor: the mark and address at the top, which are the code's;
    the mode chips; the people named on its list. */
 .app-modal-brand { display: flex; align-items: center; gap: 10px; margin: -4px 0 14px; font-size: 13px; color: var(--muted); }
@@ -1253,23 +1164,6 @@ a.event-people:hover .event-person { text-decoration: underline; }
   text-align: center;
   margin-top: 28px;
 }
-
-.link-edit {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  border: var(--disc-border, 0);
-  background: var(--disc, rgba(255, 255, 255, 0.85));
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--brand);
-}
-
-.link-edit:hover { background: var(--disc-hover, #fff); }
-
-.link-edit svg { width: 15px; height: 15px; }
 
 /* The foot: the lakeside scene repeating along the bottom edge, faded,
    after the last section - main grows to fill, so on a short page it
@@ -1616,13 +1510,48 @@ a.event-people:hover .event-person { text-decoration: underline; }
   color: var(--muted);
 }
 
-#category-list {
+
+#item-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 52vh;
+  gap: 16px;
+  max-height: 64vh;
   overflow-y: auto;
 }
+
+.item-section, .item-children { display: flex; flex-direction: column; gap: 8px; }
+
+.item-section > .category-row { background: #f3f8f7; }
+
+.item-heading { min-height: 62px; }
+
+.item-children { margin-left: 28px; }
+
+.item-add { align-self: flex-start; margin-left: 22px; }
+
+.item-section.is-collapsed .item-children { display: none; }
+
+.item-toggle { flex-shrink: 0; margin-right: -6px; }
+
+.item-toggle svg { width: 16px; height: 16px; transform: rotate(90deg); transition: transform 0.15s; }
+
+.item-section.is-collapsed .item-toggle svg { transform: none; }
+
+#item-list .category-row { position: relative; margin-left: 22px; }
+
+.category-row.is-draggable { cursor: grab; }
+
+.category-row.is-dragging { opacity: 0.4; }
+
+.category-row.is-drop-before { box-shadow: 0 -3px 0 var(--brand-fill); }
+
+.category-row.is-drop-after { box-shadow: 0 3px 0 var(--brand-fill); }
+
+.row-grip { position: absolute; left: -22px; top: 50%; transform: translateY(-50%); display: inline-flex; color: var(--muted); opacity: 0; transition: opacity 0.15s; }
+
+.category-row:hover .row-grip { opacity: 1; }
+
+.row-grip svg { width: 16px; height: 16px; stroke-width: 3.5; }
 
 .category-row {
   display: flex;
@@ -1645,6 +1574,8 @@ a.event-people:hover .event-person { text-decoration: underline; }
   line-height: 1;
   background: #e3f0ef;
 }
+
+.category-row-image img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 
 .category-row-image.is-blank {
   font-size: 16px;
@@ -1749,8 +1680,6 @@ a.event-people:hover .event-person { text-decoration: underline; }
   .chip-disc { width: 60px; height: 60px; }
   .chip-image { width: 38px; height: 38px; }
   .chip-title { font-size: 15px; }
-
-  .add-card.chip { min-height: 120px; }
 
   .tile-image { width: 48px; height: 48px; }
 

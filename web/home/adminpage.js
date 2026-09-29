@@ -1,41 +1,10 @@
 import {state} from './state.js';
-import {iconOf, categoryMark} from './dom.js';
 import {el} from '/elements.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 import {api} from '/api.js';
 import {render} from '/router.js';
 
 const feedback = {rows: [], filter: 'New', canFile: false, repo: '', open: new URLSearchParams(location.search).get('report') || ''};
-
-function categoriesCard() {
-  const card = el('div', 'card');
-  card.append(el('h2', '', 'Categories'), el('div', 'hint', 'The sections of the front page, in this order, with their emoji and what each holds. Rename, re-mark, reorder and add them from the front page, through Edit Categories in the account menu.'));
-  const model = state.model;
-  for (const category of model.categories) {
-    const row = el('div', 'admin-row');
-    const emoji = el('div', 'category-row-image');
-    emoji.append(categoryMark(iconOf(category)));
-    let meta = '';
-    if (category.style === 'events') {
-      meta = `Upcoming events from HCA-Team · ${(model.upcoming || []).length} ahead`;
-    } else if (category.style === 'apps') {
-      meta = `The community apps · ${(model.apps || []).length} you see`;
-    } else {
-      const n = category.links.length;
-      meta = `${category.style === 'cards' ? 'Feature cards' : 'Compact tiles'} · ${n} link${n === 1 ? '' : 's'}`;
-    }
-    const body = el('div', 'grow');
-    body.append(el('div', 'category-row-title', category.title), el('div', 'category-row-meta', meta));
-    row.append(emoji, body);
-    card.append(row);
-  }
-  const edit = el('a', 'button', 'Edit on the front page');
-  edit.href = '/';
-  const actions = el('div', 'card-actions');
-  actions.append(edit);
-  card.append(actions);
-  return card;
-}
 
 function describe(report) {
   const parts = [report.appName || report.app, report.received].filter(Boolean);
@@ -236,7 +205,6 @@ async function fillAdminPage(slot) {
     control.push({key: 'feedback', label: 'Feedback', count: feedback.rows.filter(r => r.status === 'New').length, card: feedbackCard});
   }
   slot.replaceWith(buildAdminPage({appName: 'Heliosian', allowed: true, email: state.model.user.email, sections: [
-    {title: 'Display', tabs: [{key: 'categories', label: 'Categories', card: categoriesCard}]},
     {title: 'Editing & Control', tabs: control},
   ]}));
 }
