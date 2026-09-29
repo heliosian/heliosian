@@ -90,3 +90,23 @@ func TestPartyListsCarryTheirHosts(t *testing.T) {
 		t.Fatalf("Fondue & Fort Night's list leaves off its host: %v", lists[i].People)
 	}
 }
+
+func TestPastPartyListsStayArchived(t *testing.T) {
+	cache, _ := newServer(t)
+	party := func(now time.Time) model.MagicTag {
+		lists := cache.Model().Lists(sampleDirectory, parent, now)
+		i := slices.IndexFunc(lists, func(l model.MagicTag) bool { return l.Key == "party:pty0000000001" })
+		if i < 0 {
+			t.Fatalf("no Fondue & Fort Night list at %s: %+v", now, lists)
+		}
+		return lists[i]
+	}
+	before := party(time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC))
+	if before.Archived {
+		t.Fatalf("archived before it happens: %+v", before)
+	}
+	after := party(time.Date(2028, 9, 1, 12, 0, 0, 0, time.UTC))
+	if !after.Archived || !slices.Equal(after.People, before.People) || len(after.Guests) != len(before.Guests) {
+		t.Errorf("after: archived %v, people %v guests %d, want %v guests %d", after.Archived, after.People, len(after.Guests), before.People, len(before.Guests))
+	}
+}

@@ -75,10 +75,10 @@ func (m *Model) PartyPeople(id string) *model.PartyPeople {
 func (m *Model) Lists(directory *model.Directory, email string, now time.Time) []model.MagicTag {
 	out := []model.MagicTag{}
 	for _, p := range m.Parties {
-		if p.Past(now) || !slices.ContainsFunc(p.HostEmails, func(h string) bool { return directory.Resolve(h) == email }) {
+		if !slices.ContainsFunc(p.HostEmails, func(h string) bool { return directory.Resolve(h) == email }) {
 			continue
 		}
-		list := model.MagicTag{Key: model.MagicTagParty + ":" + p.ID, Name: p.Title, Kind: model.MagicTagParty, Guests: []model.Guest{}, Hosts: directory.ResolveAll(p.HostEmails)}
+		list := model.MagicTag{Key: model.MagicTagParty + ":" + p.ID, Name: p.Title, Kind: model.MagicTagParty, Guests: []model.Guest{}, Hosts: directory.ResolveAll(p.HostEmails), Archived: p.Past(now)}
 		people := map[string]bool{}
 		for _, t := range p.Tickets {
 			if t.Status != TicketSold {

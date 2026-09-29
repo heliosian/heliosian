@@ -247,7 +247,7 @@ func viewerBlock(v *viewer) string {
 	if len(bands) > 0 {
 		fmt.Fprintf(b, "\nRoom parent for: %s.\n", strings.Join(bands, ", "))
 	}
-	lists := v.sources.Lists(p.Email)
+	lists := slices.DeleteFunc(v.sources.Lists(p.Email), func(l model.MagicTag) bool { return l.Archived })
 	if len(lists) > 0 {
 		b.WriteString("\nRoles in the apps (each is a Magic Tag in Helios Who?):\n")
 		for _, l := range lists {

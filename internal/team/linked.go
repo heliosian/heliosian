@@ -90,15 +90,13 @@ func (m *Model) lists(directory *model.Directory, now time.Time, chairs func(*Ac
 		last, _ := cells.When(cell)
 		return last.Before(today)
 	}
-	var walk func(a, root *Activity, parent string)
-	walk = func(a, root *Activity, parent string) {
-		if over(a) {
-			return
-		}
+	var walk func(a, root *Activity, parent string, archived bool)
+	walk = func(a, root *Activity, parent string, archived bool) {
+		archived = archived || over(a)
 		key := ""
 		if parent != "" || chairs(a) {
 			key = model.MagicTagActivity + ":" + a.ID
-			list := model.MagicTag{Key: key, Name: a.Title, Kind: model.MagicTagActivity, Parent: parent, Guests: []model.Guest{}, Hosts: directory.ResolveAll(a.CoChairs())}
+			list := model.MagicTag{Key: key, Name: a.Title, Kind: model.MagicTagActivity, Parent: parent, Guests: []model.Guest{}, Hosts: directory.ResolveAll(a.CoChairs()), Archived: archived}
 			if a != root {
 				list.Name = root.Title + ": " + a.Title
 			}
@@ -119,13 +117,11 @@ func (m *Model) lists(directory *model.Directory, now time.Time, chairs func(*Ac
 			out = append(out, list)
 		}
 		for _, c := range a.Children {
-			walk(c, root, key)
+			walk(c, root, key, archived)
 		}
 	}
 	for _, a := range m.Activities {
-		if a.Year == year {
-			walk(a, a, "")
-		}
+		walk(a, a, "", a.Year != year)
 	}
 	return out
 }

@@ -72,7 +72,7 @@ func Suggested(lists []model.MagicTag, groups []Group) []model.MagicTag {
 	}
 	out := []model.MagicTag{}
 	for _, l := range lists {
-		if (l.Kind == model.MagicTagParty || l.Kind == model.MagicTagActivity) && !named[l.Key] {
+		if (l.Kind == model.MagicTagParty || l.Kind == model.MagicTagActivity) && !l.Archived && !named[l.Key] {
 			out = append(out, l)
 		}
 	}

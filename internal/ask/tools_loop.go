@@ -75,6 +75,9 @@ var myLists = tool{
 		}
 		lists := []map[string]any{}
 		for _, l := range v.sources.Lists(v.email) {
+			if l.Archived {
+				continue
+			}
 			guests := []string{}
 			for _, g := range l.Guests {
 				guests = append(guests, g.Name)

@@ -436,6 +436,9 @@ func (s AudienceSources) Options(viewer string) AudienceOptions {
 	lists := []MagicTagOption{}
 	if s.MagicTags != nil {
 		for _, l := range s.MagicTags(viewer) {
+			if l.Archived {
+				continue
+			}
 			lists = append(lists, MagicTagOption{Key: l.Key, Name: l.Name, Kind: l.Kind, Parent: l.Parent})
 		}
 	}

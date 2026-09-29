@@ -75,6 +75,28 @@ func TestActivityListsCarryTheirHosts(t *testing.T) {
 	}
 }
 
+func TestPastActivityListsStayArchived(t *testing.T) {
+	cache, _ := newServer(t)
+	night := func(now time.Time) model.MagicTag {
+		lists := cache.Model().Lists(directory, admin, now)
+		i := slices.IndexFunc(lists, func(l model.MagicTag) bool { return l.Key == "activity:act0000000001" })
+		if i < 0 {
+			t.Fatalf("no International Night list at %s: %+v", now, lists)
+		}
+		return lists[i]
+	}
+	before := night(time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC))
+	if before.Archived {
+		t.Fatalf("archived before it happens: %+v", before)
+	}
+	for _, now := range []time.Time{time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC), time.Date(2027, 9, 1, 12, 0, 0, 0, time.UTC)} {
+		after := night(now)
+		if !after.Archived || !slices.Equal(after.People, before.People) {
+			t.Errorf("at %s: archived %v, people %v, want %v", now, after.Archived, after.People, before.People)
+		}
+	}
+}
+
 func TestCommitteesAreListsToo(t *testing.T) {
 	cache, _ := newServer(t)
 	mina := directory.Resolve(chair)
