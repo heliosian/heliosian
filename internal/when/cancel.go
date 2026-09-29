@@ -39,7 +39,6 @@ func (a app) cancelEvent(r *http.Request, body cancelBody) (any, error) {
 	if len(ops) == 0 {
 		return serve.None{}, nil
 	}
-	note := strings.TrimSpace(body.Note)
 	model := a.cache.Model()
 	sent := []string{}
 	if body.Notify {
@@ -49,19 +48,18 @@ func (a app) cancelEvent(r *http.Request, body cancelBody) (any, error) {
 			}
 		}
 	}
-	targets, cc := a.recipients(e, sent)
+	if len(sent) > 0 {
+		ops = append(ops, a.messageOp(e, KindCancelled, "", strings.TrimSpace(body.Note), sent, false, actor.Email))
+	}
+	told := a.reachable(e, sent)
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return nil, err
 	}
-	hostName, replyTo := a.senderAndReplyTo(actor, e)
-	for _, to := range targets {
-		go a.sendCancellation(context.WithoutCancel(r.Context()), to, cc[to], replyTo, hostName, note, model.invitedEvent(e))
-	}
-	slog.InfoContext(r.Context(), "calendar: event cancelled", "actor", actor.Email, "event", e.ID, "title", e.Title, "told", len(targets))
-	return map[string]int{"told": len(targets)}, nil
+	slog.InfoContext(r.Context(), "calendar: event cancelled", "actor", actor.Email, "event", e.ID, "title", e.Title, "told", told)
+	return map[string]int{"told": told}, nil
 }
 
-func (a app) sendCancellation(ctx context.Context, to string, cc, replyTo []string, hostName, note string, e *Event) {
+func (a app) sendCancellation(ctx context.Context, to string, cc, replyTo []string, hostName, note string, e *Event) error {
 	day, hours := whenLines(e)
 	when := day
 	if hours != "" {
@@ -81,9 +79,5 @@ func (a app) sendCancellation(ctx context.Context, to string, cc, replyTo []stri
 	if len(cc) == 0 {
 		msg.Attachments = []mail.Attachment{a.invite(e, to, l.Path, mail.MethodCancel)}
 	}
-	if err := a.mail.Sender.Send(ctx, msg); err != nil {
-		slog.ErrorContext(ctx, "calendar: send cancellation", "to", to, "event", e.ID, "error", err)
-		return
-	}
-	slog.InfoContext(ctx, "calendar: cancellation sent", "to", to, "event", e.ID)
+	return a.mail.Sender.Send(ctx, msg)
 }

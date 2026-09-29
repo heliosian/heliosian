@@ -233,6 +233,7 @@ func NewCore(cfg Config) *Core {
 		Search:    cfg.ImageSearch,
 		Mail:      cfg.CalendarMail,
 		Style:     calendarStyle,
+		Queue:     queue,
 	})
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, home.Deps{

@@ -38,8 +38,8 @@ type app struct {
 	parties   func(id string) *PartyPeople
 	celebrate Celebrate
 	sources   func() filter.Sources
-	clock     *matchClock
 	search    imagesearch.Search
+	queue     *store.Queue
 	mail      Mail
 	style     *sharecard.Style
 }
@@ -57,12 +57,24 @@ type Deps struct {
 	Search    imagesearch.Search
 	Mail      Mail
 	Style     *sharecard.Style
+	Queue     *store.Queue
+}
+
+func newApp(d Deps) app {
+	d.Search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
+	return app{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, lists: d.Lists, linked: d.Linked, sourceID: d.SourceID, parties: d.Celebrate.Party, celebrate: d.Celebrate, sources: d.Sources, search: d.Search, queue: d.Queue, mail: d.Mail, style: d.Style}
 }
 
 func Register(mux *http.ServeMux, d Deps) Hooks {
-	d.Search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
-	a := app{cache: d.Cache, images: d.Images, directory: d.Directory, settings: d.Settings, lists: d.Lists, linked: d.Linked, sourceID: d.SourceID, parties: d.Celebrate.Party, celebrate: d.Celebrate, sources: d.Sources, clock: &matchClock{}, search: d.Search, mail: d.Mail, style: d.Style}
-	go a.sweepLoop()
+	a := newApp(d)
+	kick := make(chan struct{}, 1)
+	d.Queue.OnSwap(func() {
+		select {
+		case kick <- struct{}{}:
+		default:
+		}
+	})
+	go a.deliverLoop(kick)
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -373,9 +385,6 @@ func (a app) addEvents(r *http.Request, body eventBody) (map[string]any, error) 
 			slog.WarnContext(r.Context(), "calendar: host's yes", "event", id, "error", err)
 		}
 	}
-	if e := a.cache.Model().Event(ids[0]); e != nil {
-		go a.tellAdmins(context.WithoutCancel(r.Context()), actor.Email, e)
-	}
 	return map[string]any{"ids": ids, "pending": pending}, nil
 }
 
@@ -393,10 +402,10 @@ func (a app) oneEvent(r *http.Request, _ serve.None) (oneEventView, error) {
 	return oneEventView{e, actor.May(SeeAll) && a.eventFor(access.Actor{Email: actor.Email}, e.ID) == nil}, nil
 }
 
-func (a app) tellAdmins(ctx context.Context, by string, e *Event) {
+func (a app) tellAdmins(ctx context.Context, by string, e *Event) error {
 	admins := a.cache.Admins()
 	if len(admins) == 0 {
-		return
+		return nil
 	}
 	who := by
 	if p := a.directory().Person(by); p != nil && p.FullName != "" {
@@ -428,10 +437,10 @@ func (a app) tellAdmins(ctx context.Context, by string, e *Event) {
 	}
 	l.Footnote = closing
 	if err := a.mail.Sender.Send(ctx, l.Message(subject+e.Title+" · "+day, admins, nil, nil)); err != nil {
-		slog.ErrorContext(ctx, "calendar: tell admins", "event", e.ID, "error", err)
-		return
+		return err
 	}
 	slog.InfoContext(ctx, "calendar: admins told", "event", e.ID, "to", len(admins))
+	return nil
 }
 
 func (a app) editEvent(r *http.Request, body eventBody) (serve.None, error) {
@@ -444,11 +453,6 @@ func (a app) editEvent(r *http.Request, body eventBody) (serve.None, error) {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: event changed", "actor", actor.Email, "event", e.ID, "title", cells["Title"])
-	if cells["Status"] == StatusPending {
-		if changed := a.cache.Model().Event(e.ID); changed != nil {
-			go a.tellAdmins(context.WithoutCancel(r.Context()), actor.Email, changed)
-		}
-	}
 	return serve.None{}, nil
 }
 

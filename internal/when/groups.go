@@ -1,13 +1,10 @@
 package when
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
-	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
@@ -21,46 +18,7 @@ const ViaGroup = "group:"
 
 const ViaInvited = "invited"
 
-const (
-	sweepEvery = 5 * time.Minute
-	grace      = 5 * time.Minute
-	sweepActor = "invite sweep"
-)
-
-type matchClock struct {
-	mu    sync.Mutex
-	first map[string]time.Time
-}
-
-func (c *matchClock) key(event, group, email string) string {
-	return event + "\x00" + group + "\x00" + email
-}
-
-func (c *matchClock) ripe(event, group, email string, at time.Time) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.first == nil {
-		c.first = map[string]time.Time{}
-	}
-	k := c.key(event, group, email)
-	seen, ok := c.first[k]
-	if !ok {
-		c.first[k] = at
-		return false
-	}
-	return !at.Before(seen.Add(grace))
-}
-
-func (c *matchClock) keep(event, group string, matching []string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	prefix := c.key(event, group, "")
-	for k := range c.first {
-		if strings.HasPrefix(k, prefix) && !slices.Contains(matching, strings.TrimPrefix(k, prefix)) {
-			delete(c.first, k)
-		}
-	}
-}
+const sweepActor = "invite sweep"
 
 type InviteGroup struct {
 	ID      string      `json:"id"`
@@ -234,10 +192,11 @@ func (a app) addGroup(r *http.Request, body addGroupBody) (groupAdded, error) {
 	if err != nil {
 		return groupAdded{}, err
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	filled, emails := a.fillOps(actor, e, g)
+	if err := a.cache.Commit(r.Context(), actor, append(ops, filled...)...); err != nil {
 		return groupAdded{}, err
 	}
-	added := a.fill(r.Context(), actor, e, g, false)
+	added := len(emails)
 	slog.InfoContext(r.Context(), "calendar: group added", "actor", actor.Email, "event", e.ID, "group", g.ID, "added", added)
 	return groupAdded{Group: g.ID, Added: added}, nil
 }
@@ -256,9 +215,6 @@ func (a app) setGroup(r *http.Request, body setGroupBody) (serve.None, error) {
 	}
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return serve.None{}, err
-	}
-	if body.Auto {
-		a.fill(r.Context(), actor, e, *a.cache.Model().GroupOf(e.ID, g.ID), false)
 	}
 	slog.InfoContext(r.Context(), "calendar: group changed", "actor", actor.Email, "event", e.ID, "group", g.ID, "auto", body.Auto)
 	return serve.None{}, nil
@@ -282,47 +238,6 @@ func (a app) removeGroup(r *http.Request, body groupBody) (map[string]int, error
 	return map[string]int{"dropped": len(ops) - 1}, nil
 }
 
-func (a app) fill(ctx context.Context, actor access.Actor, e *Event, g InviteGroup, wait bool) int {
-	ops, emails := a.fillOps(actor, e, g, wait)
-	if len(ops) == 0 {
-		return 0
-	}
-	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
-		slog.ErrorContext(ctx, "calendar: fill group", "event", e.ID, "group", g.ID, "error", err)
-		return 0
-	}
-	if g.Auto && g.Sent != "" {
-		a.send(ctx, actor, g.AddedBy, e, emails, "")
-	}
-	return len(ops)
-}
-
-func (a app) sweepEvent(ctx context.Context, e *Event) {
-	if e == nil || e.end.Before(now()) {
-		return
-	}
-	for _, g := range a.cache.Model().Groups[e.ID] {
-		if n := a.fill(ctx, access.System(sweepActor), e, g, true); n > 0 {
-			slog.InfoContext(ctx, "calendar: group filled", "event", e.ID, "group", g.ID, "added", n)
-		}
-	}
-}
-
-func (a app) sweep(ctx context.Context) {
-	for id, groups := range a.cache.Model().Groups {
-		if len(groups) > 0 {
-			adder := groups[0].AddedBy
-			a.sweepEvent(ctx, a.sweptEvent(a.directory().ActorOf(adder, a.cache.Held(adder)), id))
-		}
-	}
-}
-
-func (a app) sweepLoop() {
-	for range time.Tick(sweepEvery) {
-		a.sweep(context.Background())
-	}
-}
-
 func (a app) startParty(r *http.Request, body idBody) (groupAdded, error) {
 	actor := a.actor(r)
 	ops, e, g, err := a.startPartyOps(actor, body.ID)
@@ -332,10 +247,11 @@ func (a app) startParty(r *http.Request, body idBody) (groupAdded, error) {
 	if len(ops) == 0 {
 		return groupAdded{Group: g.ID}, nil
 	}
-	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+	filled, emails := a.fillOps(actor, e, g)
+	if err := a.cache.Commit(r.Context(), actor, append(ops, filled...)...); err != nil {
 		return groupAdded{}, err
 	}
-	added := a.fill(r.Context(), actor, e, g, false)
+	added := len(emails)
 	slog.InfoContext(r.Context(), "calendar: party list started", "actor", actor.Email, "event", e.ID, "group", g.ID, "added", added)
 	return groupAdded{Group: g.ID, Added: added}, nil
 }

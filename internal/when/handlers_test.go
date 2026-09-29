@@ -84,6 +84,7 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 		Sources:   newSampleSources(t).sources,
 		Mail:      Mail{Sender: keptMail().Mailgun},
 		Style:     testStyle,
+		Queue:     queue,
 	})
 	return mux, cache
 }
@@ -424,6 +425,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 		Sources:   newSampleSources(t).sources,
 		Mail:      Mail{Sender: kept.Mailgun, Base: "https://when.heliosian.com"},
 		Style:     testStyle,
+		Queue:     queue,
 	})
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)

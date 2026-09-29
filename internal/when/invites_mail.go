@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"html"
-	"log/slog"
 	"net/url"
 	"slices"
 	"strings"
@@ -73,66 +72,17 @@ func (a app) ccFor(email string) ([]string, bool) {
 	return cc, true
 }
 
-func (a app) sendCohostNote(ctx context.Context, to, actor string, e *Event) {
+func (a app) sendCohostNote(ctx context.Context, to, actor string, e *Event) error {
 	e = a.cache.Model().invitedEvent(e)
 	l := a.letterFor(e, EventPath(e))
 	l.Heading = "You're a co-host"
 	l.Intro = fmt.Sprintf("%s made you a co-host of %s. As a co-host you can build and send the guest list, read every answer, message the guests, and replies to the invitation reach you.", a.fullName(actor), e.Title)
 	l.Button = "Open the event"
-	if err := a.mail.Sender.Send(ctx, l.Message("["+e.Title+"] You're a co-host", []string{to}, nil, []string{actor})); err != nil {
-		slog.ErrorContext(ctx, "calendar: send co-host note", "to", to, "event", e.ID, "error", err)
-		return
-	}
-	slog.InfoContext(ctx, "calendar: co-host told", "to", to, "event", e.ID)
+	return a.mail.Sender.Send(ctx, l.Message("["+e.Title+"] You're a co-host", []string{to}, nil, []string{actor}))
 }
 
-func (a app) markSent(ctx context.Context, actor access.Actor, e *Event, emails []string) {
-	if err := a.cache.Commit(ctx, actor, a.sentOps(actor, e, emails)...); err != nil {
-		slog.ErrorContext(ctx, "calendar: mark invites sent", "event", e.ID, "error", err)
-	}
-}
-
-func (a app) send(ctx context.Context, actor access.Actor, host string, e *Event, emails []string, kind string) int {
-	model := a.cache.Model()
-	e = model.invitedEvent(e)
-	inv := model.Invitations[e.ID]
-	order, cc := a.recipients(e, emails)
-	recipients := map[string][]string{}
-	for _, t := range order {
-		household := a.householdOn(e, t)
-		names := []string{}
-		for _, row := range model.Invites[e.ID] {
-			if row.Email != t && !slices.Contains(household, row.Email) {
-				continue
-			}
-			name := row.Name
-			if p := a.directory().Person(row.Email); p != nil && p.FullName != "" {
-				name = p.FullName
-			}
-			if row.Email == t {
-				names = append([]string{FirstWord(name)}, names...)
-			} else {
-				names = append(names, FirstWord(name))
-			}
-		}
-		if len(names) == 0 {
-			names = []string{FirstWord(cells.DisplayName(t))}
-		}
-		recipients[t] = names
-	}
-	a.markSent(ctx, actor, e, emails)
-	hostName := a.fullName(host)
-	message := ""
-	if inv != nil {
-		message = inv.Message
-	}
-	for _, to := range order {
-		link := a.mail.Base + EventPath(e)
-		if row := model.InviteOf(e.ID, to); row != nil && row.Token != "" {
-			link = a.mail.Base + extPath(row.Token)
-		}
-		go a.sendInvitation(context.WithoutCancel(ctx), to, cc[to], recipients[to], hostName, message, e, link, a.replyTo(e, to), kind)
-	}
+func (a app) reachable(e *Event, emails []string) int {
+	order, _ := a.recipients(e, emails)
 	return len(order)
 }
 
@@ -147,7 +97,7 @@ func FirstWord(name string) string {
 	return name
 }
 
-func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, host, message string, e *Event, link string, replyTo []string, kind string) {
+func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, host, message string, e *Event, link string, replyTo []string, kind string) error {
 	origin := a.mail.Base
 	outside := strings.Contains(link, "/ext/")
 	day, hours := whenLines(e)
@@ -255,11 +205,7 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 	if len(cc) == 0 {
 		msg.Attachments = []mail.Attachment{a.invite(e, to, link, mail.MethodRequest)}
 	}
-	if err := a.mail.Sender.Send(ctx, msg); err != nil {
-		slog.ErrorContext(ctx, "calendar: send invitation", "to", to, "event", e.ID, "error", err)
-		return
-	}
-	slog.InfoContext(ctx, "calendar: invitation sent", "to", to, "event", e.ID, "kind", kind)
+	return a.mail.Sender.Send(ctx, msg)
 }
 
 func answerWord(answer string) string {
@@ -274,7 +220,7 @@ func answerWord(answer string) string {
 	return "No response yet"
 }
 
-func (a app) sendMessage(ctx context.Context, to string, cc, replyTo []string, hostName, subject, message string, e *Event, attach bool) {
+func (a app) sendMessage(ctx context.Context, to string, cc, replyTo []string, hostName, subject, message string, e *Event, attach bool) error {
 	model := a.cache.Model()
 	e = model.invitedEvent(e)
 	path := EventPath(e)
@@ -324,9 +270,5 @@ func (a app) sendMessage(ctx context.Context, to string, cc, replyTo []string, h
 	if attach && len(cc) == 0 {
 		msg.Attachments = []mail.Attachment{a.invite(e, to, l.Path, mail.MethodRequest)}
 	}
-	if err := a.mail.Sender.Send(ctx, msg); err != nil {
-		slog.ErrorContext(ctx, "calendar: send message", "to", to, "event", e.ID, "error", err)
-		return
-	}
-	slog.InfoContext(ctx, "calendar: message sent", "to", to, "event", e.ID)
+	return a.mail.Sender.Send(ctx, msg)
 }

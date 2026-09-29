@@ -34,6 +34,7 @@ type Invitation struct {
 	SteppedDown string   `json:"-"`
 	HideHosts   bool     `json:"hideHosts"`
 	PublicList  *bool    `json:"-"`
+	HostsToTell []string `json:"-"`
 	Title       string   `json:"title,omitempty"`
 	Start       string   `json:"start,omitempty"`
 	End         string   `json:"end,omitempty"`
@@ -43,17 +44,19 @@ type Invitation struct {
 }
 
 type Invite struct {
-	EventID   string `json:"-"`
-	Email     string `json:"email"`
-	Name      string `json:"name"`
-	GuestOf   string `json:"guestOf,omitempty"`
-	Via       string `json:"via,omitempty"`
-	AddedBy   string `json:"addedBy"`
-	Added     string `json:"added"`
-	Sent      string `json:"sent,omitempty"`
-	Token     string `json:"-"`
-	Household string `json:"household,omitempty"`
-	Opened    string `json:"opened,omitempty"`
+	EventID     string `json:"-"`
+	Email       string `json:"email"`
+	Name        string `json:"name"`
+	GuestOf     string `json:"guestOf,omitempty"`
+	Via         string `json:"via,omitempty"`
+	AddedBy     string `json:"addedBy"`
+	Added       string `json:"added"`
+	Sent        string `json:"sent,omitempty"`
+	Token       string `json:"-"`
+	Household   string `json:"household,omitempty"`
+	Opened      string `json:"opened,omitempty"`
+	Requested   string `json:"-"`
+	RequestedBy string `json:"-"`
 }
 
 type PartyPeople struct {
@@ -111,6 +114,7 @@ func (b *builder) invitations(settings, rows []store.Row) {
 			SteppedDown: config.NormalizeEmail(row["Stepped Down"]),
 			HideHosts:   hideHosts,
 			PublicList:  publicList,
+			HostsToTell: cells.SplitList(strings.ToLower(row["Hosts To Tell"])),
 		}
 		if inv.Start != "" {
 			if _, _, _, err := parseWhen(inv.Start, inv.End); err != nil {
@@ -138,6 +142,7 @@ func (b *builder) invitations(settings, rows []store.Row) {
 			EventID: id, Email: email, Name: strings.TrimSpace(row["Name"]), GuestOf: config.NormalizeEmail(row["Guest Of"]), Via: strings.TrimSpace(row["Via"]),
 			AddedBy: config.NormalizeEmail(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]), Token: strings.TrimSpace(row["Token"]),
 			Household: config.NormalizeEmail(row["Household"]), Opened: strings.TrimSpace(row["Opened"]),
+			Requested: strings.TrimSpace(row["Requested"]), RequestedBy: config.NormalizeEmail(row["Requested By"]),
 		}
 		b.model.Invites[id] = append(b.model.Invites[id], inv)
 		if inv.Token != "" {
@@ -147,7 +152,7 @@ func (b *builder) invitations(settings, rows []store.Row) {
 			b.model.listed[email] = map[string]bool{}
 		}
 		b.model.listed[email][id] = true
-		if inv.Sent == "" {
+		if inv.Sent == "" && inv.Requested == "" {
 			continue
 		}
 		if b.model.invited[email] == nil {

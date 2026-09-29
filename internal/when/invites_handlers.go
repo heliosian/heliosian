@@ -250,9 +250,6 @@ func (a app) invitesView(r *http.Request, _ serve.None) (InviteView, error) {
 	}
 	host := a.isHost(actor, e)
 	a.noteOpened(r.Context(), actor, e)
-	if host {
-		a.sweepEvent(r.Context(), e)
-	}
 	model := a.cache.Model()
 	inv := model.Invitations[e.ID]
 	poster := ""
@@ -428,7 +425,7 @@ type settingsBody struct {
 
 func (a app) inviteSettings(r *http.Request, body settingsBody) (serve.None, error) {
 	actor := a.actor(r)
-	ops, e, newHosts, err := a.settingsOps(actor, body)
+	ops, e, _, err := a.settingsOps(actor, body)
 	if err != nil {
 		return serve.None{}, err
 	}
@@ -436,9 +433,6 @@ func (a app) inviteSettings(r *http.Request, body settingsBody) (serve.None, err
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: guest list settings", "actor", actor.Email, "event", e.ID)
-	for _, h := range newHosts {
-		go a.sendCohostNote(context.WithoutCancel(r.Context()), h, actor.Email, e)
-	}
 	return serve.None{}, nil
 }
 
@@ -478,12 +472,15 @@ func (a app) addInvites(r *http.Request, body inviteesBody) (map[string]int, err
 	if err != nil {
 		return nil, err
 	}
+	if !host {
+		ops = append(ops, a.requestOps(actor, e, emails, actor.Email, "")...)
+	}
 	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		return nil, err
 	}
 	sent := 0
 	if !host {
-		sent = a.send(r.Context(), actor, actor.Email, e, emails, "")
+		sent = a.reachable(e, emails)
 	}
 	slog.InfoContext(r.Context(), "calendar: guests added", "actor", actor.Email, "event", e.ID, "count", len(emails), "host", host, "sent", sent)
 	return map[string]int{"added": len(emails), "sent": sent}, nil
@@ -528,13 +525,13 @@ func (a app) addGuest(r *http.Request, body guestBody) (guestKey, error) {
 }
 
 func (a app) bringGuest(ctx context.Context, actor access.Actor, ops []store.Op, g broughtGuest) error {
+	if g.invite && !isGuestKey(g.key) {
+		ops = append(ops, a.requestOps(actor, g.event, []string{g.key}, actor.Email, "")...)
+	}
 	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
 		return err
 	}
 	slog.InfoContext(ctx, "calendar: guest brought", "actor", actor.Email, "event", g.event.ID, "of", g.of, "guest", g.key, "answer", g.answer, "invite", g.invite)
-	if g.invite && !isGuestKey(g.key) {
-		a.send(ctx, actor, actor.Email, g.event, []string{g.key}, "")
-	}
 	return nil
 }
 
@@ -614,7 +611,10 @@ func (a app) sendInvites(r *http.Request, body sendBody) (map[string]int, error)
 	case reminder:
 		kind = inviteReminder
 	}
-	sent := a.send(r.Context(), actor, actor.Email, e, emails, kind)
+	sent := a.reachable(e, emails)
+	if err := a.cache.Commit(r.Context(), actor, a.requestOps(actor, e, emails, actor.Email, kind)...); err != nil {
+		return nil, err
+	}
 	slog.InfoContext(r.Context(), "calendar: invites sent", "actor", actor.Email, "event", e.ID, "invites", len(emails), "messages", sent)
 	return map[string]int{"invites": len(emails), "messages": sent}, nil
 }
@@ -651,7 +651,9 @@ func (a app) skipInvites(r *http.Request, body skipBody) (map[string]int, error)
 	if len(emails) == 0 {
 		return nil, access.Invalid("nobody pending to skip")
 	}
-	a.markSent(r.Context(), actor, e, emails)
+	if err := a.cache.Commit(r.Context(), actor, a.skipOps(actor, e, emails)...); err != nil {
+		return nil, err
+	}
 	slog.InfoContext(r.Context(), "calendar: invites skipped", "actor", actor.Email, "event", e.ID, "skipped", len(emails))
 	return map[string]int{"skipped": len(emails)}, nil
 }
@@ -704,16 +706,15 @@ func (a app) messageInvites(r *http.Request, body messageBody) (map[string]int, 
 			chosen = append(chosen, inv.Email)
 		}
 	}
-	targets, cc := a.recipients(e, chosen)
-	if len(targets) == 0 {
+	targets := a.reachable(e, chosen)
+	if targets == 0 {
 		return nil, access.Invalid("nobody on the list stands where you chose")
 	}
-	hostName, replyTo := a.senderAndReplyTo(actor, e)
-	for _, to := range targets {
-		go a.sendMessage(context.WithoutCancel(r.Context()), to, cc[to], replyTo, hostName, subject, message, e, body.Attach)
+	if err := a.cache.Commit(r.Context(), actor, a.messageOp(e, KindMessage, subject, message, chosen, body.Attach, actor.Email)); err != nil {
+		return nil, err
 	}
-	slog.InfoContext(r.Context(), "calendar: message sent", "actor", actor.Email, "event", e.ID, "to", len(targets))
-	return map[string]int{"messages": len(targets)}, nil
+	slog.InfoContext(r.Context(), "calendar: message sent", "actor", actor.Email, "event", e.ID, "to", targets)
+	return map[string]int{"messages": targets}, nil
 }
 
 func (a app) serveImage(w http.ResponseWriter, r *http.Request, name string) {

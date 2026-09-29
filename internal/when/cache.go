@@ -42,6 +42,7 @@ func spec(roster func() Roster, images blob.Checker) store.Spec[*Model] {
 			{Name: InvitesTab, Columns: InviteColumns, Key: []string{"Event ID", "Email"}, Cascade: carryInvite},
 			{Name: InviteGroupsTab, Columns: InviteGroupColumns, Key: []string{"Event ID", "Group ID"}},
 			{Name: BouncesTab, Columns: BounceColumns, Key: []string{"Email", "When"}, AppendOnly: true},
+			{Name: MessagesTab, Columns: MessageColumns, Key: []string{"Message ID"}},
 			{Name: id.AliasesTab, Columns: id.AliasColumns, Key: []string{id.AliasColumn}},
 		},
 		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {

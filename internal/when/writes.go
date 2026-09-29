@@ -2,7 +2,6 @@ package when
 
 import (
 	"fmt"
-	"log/slog"
 	"maps"
 	"slices"
 	"strconv"
@@ -197,8 +196,12 @@ func (a app) newEvents(actor access.Actor, body eventBody) ([]store.Op, []string
 	for i := 0; i <= body.RepeatTimes; i++ {
 		key := mint()
 		ids = append(ids, key)
+		told := ""
+		if i == 0 {
+			told = owed + ":" + actor.Email
+		}
 		ops = append(ops, store.Insert(EventsTab, store.Row{
-			"Event ID": key, "Start": shiftWhen(strings.TrimSpace(body.Start), i*body.RepeatWeeks), "End": shiftWhen(strings.TrimSpace(body.End), i*body.RepeatWeeks),
+			"Admins Told": told, "Event ID": key, "Start": shiftWhen(strings.TrimSpace(body.Start), i*body.RepeatWeeks), "End": shiftWhen(strings.TrimSpace(body.End), i*body.RepeatWeeks),
 			"Title": strings.TrimSpace(body.Title), "Location": strings.TrimSpace(body.Location), "Description": strings.TrimSpace(body.Description),
 			"Tags": cells.JoinList(cells.SplitList(cells.JoinList(body.Tags))), "Day Type": strings.TrimSpace(body.DayType), "Keywords": cells.JoinList(cells.SplitList(cells.JoinList(body.Keywords))),
 			"Added By": actor.Email, "Added": stamp, "Source": strings.TrimSpace(body.Source), "Sharing": body.Sharing, "Status": status, "Image": strings.Trim(strings.TrimSpace(body.Image), "/"),
@@ -232,6 +235,7 @@ func (a app) changeEvent(actor access.Actor, body eventBody) ([]store.Op, *Event
 		row["Status"] = ""
 		if body.Sharing == SharingPublic {
 			row["Status"] = StatusPending
+			row["Admins Told"] = owed + ":" + actor.Email
 		}
 	}
 	return []store.Op{store.Update(EventsTab, store.Row{"Event ID": e.ID}, row)}, e, row, nil
@@ -523,6 +527,16 @@ func (a app) settingsOps(actor access.Actor, body settingsBody) ([]store.Op, *Ev
 			}
 		}
 		row["Hosts"] = cells.JoinList(hosts)
+		if len(newHosts) > 0 {
+			tell := []string{}
+			if inv := a.cache.Model().Invitations[e.ID]; inv != nil {
+				tell = append(tell, inv.HostsToTell...)
+			}
+			for _, h := range newHosts {
+				tell = append(tell, h+":"+actor.Email)
+			}
+			row["Hosts To Tell"] = strings.Join(tell, ", ")
+		}
 	}
 	return append(a.invitationOps(actor, e.ID, row), a.hostYesOps(actor, e, newHosts)...), e, newHosts, nil
 }
@@ -742,7 +756,7 @@ func (a app) extRemoveGuestOps(actor access.Actor, e *Event, key string) ([]stor
 	return []store.Op{store.Delete(InvitesTab, store.Row{"Event ID": e.ID, "Email": key})}, key, nil
 }
 
-func (a app) answerOps(actor access.Actor, email, id, answer, via string) ([]store.Op, *Event, error) {
+func (a app) answerOps(actor access.Actor, email, id, answer, via string, invite bool) ([]store.Op, *Event, error) {
 	email = config.NormalizeEmail(email)
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	if answer != "" && !isAnswer(answer) {
@@ -756,7 +770,15 @@ func (a app) answerOps(actor access.Actor, email, id, answer, via string) ([]sto
 	if answer == "" {
 		return []store.Op{store.Delete(RSVPsTab, key)}, e, nil
 	}
-	return []store.Op{store.Upsert(RSVPsTab, key, store.Row{"Answer": answer, "Answered": now().Format(DateTimeFormat), "Answered By": actor.Email, "Via": via})}, e, nil
+	model := a.cache.Model()
+	row := store.Row{"Answer": answer, "Answered": now().Format(DateTimeFormat), "Answered By": actor.Email, "Via": via, "Hosts Told": ""}
+	if inv := model.Invitations[e.ID]; inv != nil && answer != AnswerHidden && slices.ContainsFunc(inv.Notify, func(h string) bool { return h != actor.Email }) {
+		row["Hosts Told"] = owed
+	}
+	if sent := model.InviteOf(e.ID, email); invite && answer == AnswerYes && !isGuestKey(email) && (sent == nil || sent.Sent == "") {
+		row["Invite Mail"] = owed
+	}
+	return []store.Op{store.Upsert(RSVPsTab, key, row)}, e, nil
 }
 
 func (a app) answerSubject(actor access.Actor, id, email, answer string) (*Event, string, error) {
@@ -791,19 +813,35 @@ func (a app) extSubject(actor access.Actor, e *Event, key, answer string) (strin
 	return key, nil
 }
 
-func (a app) sentOps(actor access.Actor, e *Event, emails []string) []store.Op {
-	model := a.cache.Model()
+func (a app) requestOps(actor access.Actor, e *Event, emails []string, host, kind string) []store.Op {
 	stamp := now().Format(DateTimeFormat)
 	ops := []store.Op{}
-	for _, email := range emails {
-		ops = append(ops, store.Update(InvitesTab, store.Row{"Event ID": e.ID, "Email": email}, store.Row{"Sent": stamp}))
+	if kind == "" {
+		for _, email := range emails {
+			ops = append(ops, store.Update(InvitesTab, store.Row{"Event ID": e.ID, "Email": email}, store.Row{"Requested": stamp, "Requested By": host}))
+		}
+	} else {
+		ops = append(ops, a.messageOp(e, kind, "", "", emails, false, host))
 	}
-	if inv := model.Invitations[e.ID]; inv != nil && inv.Sent == "" {
+	return append(ops, a.sentOps(actor, e, emails, stamp)...)
+}
+
+func (a app) messageOp(e *Event, kind, subject, text string, recipients []string, attach bool, by string) store.Op {
+	return store.Insert(MessagesTab, store.Row{
+		"Message ID": a.cache.Model().Minter()(), "Event ID": e.ID, "Kind": kind, "Subject": subject, "Text": text, "Recipients": strings.Join(recipients, ", "),
+		"Attach": cells.YesNoCell(attach), "Sent By": by, "Created": now().Format(DateTimeFormat),
+	})
+}
+
+func (a app) sentOps(actor access.Actor, e *Event, emails []string, stamp string) []store.Op {
+	model := a.cache.Model()
+	ops := []store.Op{}
+	if inv := model.Invitations[e.ID]; inv == nil || inv.Sent == "" {
 		ops = append(ops, store.Update(InvitationsTab, store.Row{"Event ID": e.ID}, store.Row{"Sent": stamp}))
 	}
 	for _, g := range model.Groups[e.ID] {
 		unsent := slices.ContainsFunc(model.Invites[e.ID], func(inv Invite) bool {
-			return inv.Via == ViaGroup+g.ID && inv.Sent == "" && !slices.Contains(emails, inv.Email)
+			return inv.Via == ViaGroup+g.ID && inv.Sent == "" && inv.Requested == "" && !slices.Contains(emails, inv.Email)
 		})
 		if g.Sent == "" && !unsent {
 			ops = append(ops, store.Update(InviteGroupsTab, store.Row{"Event ID": e.ID, "Group ID": g.ID}, store.Row{"Sent": stamp}))
@@ -812,9 +850,42 @@ func (a app) sentOps(actor access.Actor, e *Event, emails []string) []store.Op {
 	return ops
 }
 
+func (a app) skipOps(actor access.Actor, e *Event, emails []string) []store.Op {
+	stamp := now().Format(DateTimeFormat)
+	ops := []store.Op{}
+	for _, email := range emails {
+		ops = append(ops, inviteSentOp(e.ID, email, stamp))
+	}
+	return append(ops, a.sentOps(actor, e, emails, stamp)...)
+}
+
+func resendOp(e *Event, to, host string) store.Op {
+	return store.Update(InvitesTab, store.Row{"Event ID": e.ID, "Email": to}, store.Row{"Sent": "", "Requested": now().Format(DateTimeFormat), "Requested By": host})
+}
+
+func inviteSentOp(id, email, stamp string) store.Op {
+	return store.Update(InvitesTab, store.Row{"Event ID": id, "Email": email}, store.Row{"Sent": stamp})
+}
+
+func messageSentOp(m Message, sent []string) store.Op {
+	return store.Update(MessagesTab, store.Row{"Message ID": m.ID}, store.Row{"Sent To": strings.Join(sent, ", ")})
+}
+
+func answerToldOp(id, email string, told store.Row) store.Op {
+	return store.Update(RSVPsTab, store.Row{"Event ID": id, "Email": email}, told)
+}
+
+func hostsToTellOp(id string, left []string) store.Op {
+	return store.Update(InvitationsTab, store.Row{"Event ID": id}, store.Row{"Hosts To Tell": strings.Join(left, ", ")})
+}
+
+func adminsToldOp(id string) store.Op {
+	return store.Update(EventsTab, store.Row{"Event ID": id}, store.Row{"Admins Told": now().Format(DateTimeFormat)})
+}
+
 func (a app) openedOps(actor access.Actor, e *Event) []store.Op {
 	inv := a.cache.Model().InviteOf(e.ID, actor.Email)
-	if inv == nil || inv.Opened != "" || inv.Sent == "" {
+	if inv == nil || inv.Opened != "" || (inv.Sent == "" && inv.Requested == "") {
 		return nil
 	}
 	return []store.Op{store.Update(InvitesTab, store.Row{"Event ID": e.ID, "Email": actor.Email}, store.Row{"Opened": now().Format(DateTimeFormat)})}
@@ -917,23 +988,14 @@ func (a app) startPartyOps(actor access.Actor, id string) ([]store.Op, *Event, I
 	return append(a.newGroupOps(actor, e, g), a.hostYesOps(actor, e, a.hostsOf(e))...), e, g, nil
 }
 
-func (a app) fillOps(actor access.Actor, e *Event, g InviteGroup, wait bool) ([]store.Op, []string) {
+func (a app) fillOps(actor access.Actor, e *Event, g InviteGroup) ([]store.Op, []string) {
 	model := a.cache.Model()
-	at := now()
-	stamp := at.Format(DateTimeFormat)
+	stamp := now().Format(DateTimeFormat)
 	ops := []store.Op{}
 	emails := []string{}
-	matching := a.members(e, g)
 	guests := a.ticketGuests(g)
-	if wait {
-		a.clock.keep(e.ID, g.ID, matching)
-	}
-	for _, email := range matching {
+	for _, email := range a.members(e, g) {
 		if model.InviteOf(e.ID, email) != nil || slices.Contains(g.Removed, email) {
-			continue
-		}
-		if wait && !a.clock.ripe(e.ID, g.ID, email, at) {
-			slog.Debug("calendar: group match waits the grace", "event", e.ID, "group", g.ID, "email", email)
 			continue
 		}
 		name, token := email, ""
@@ -945,7 +1007,11 @@ func (a app) fillOps(actor access.Actor, e *Event, g InviteGroup, wait bool) ([]
 				name = cells.DisplayName(email)
 			}
 		}
-		ops = append(ops, store.Insert(InvitesTab, store.Row{"Event ID": e.ID, "Email": email, "Name": name, "Via": ViaGroup + g.ID, "Added By": g.AddedBy, "Added": stamp, "Token": token}))
+		row := store.Row{"Event ID": e.ID, "Email": email, "Name": name, "Via": ViaGroup + g.ID, "Added By": g.AddedBy, "Added": stamp, "Token": token}
+		if g.Auto && g.Sent != "" {
+			row["Requested"], row["Requested By"] = stamp, g.AddedBy
+		}
+		ops = append(ops, store.Insert(InvitesTab, row))
 		emails = append(emails, email)
 	}
 	return ops, emails

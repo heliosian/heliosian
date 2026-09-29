@@ -1,5 +1,5 @@
-Event ID,Hosts,Audience,Guests,Message,Created By,Created,Sent,Title,Start,End,Location,Description,Flyer,Notify,Stepped Down,Hide Hosts,Public Guest List
-evt0000000002,jordan.whitfield@heliosschool.org,,,"Come hear what the association has planned for the year, and bring anyone who might want to help.",dana.hawkins@heliosschool.org,2026-09-01 16:20,2026-09-05 09:12,,,,,,,,,,
-evt0000000003,elena.torres@heliosschool.org,,,"We'd love to have you over to kick off the fall!",elena.torres@heliosschool.org,2026-09-18 10:00,2026-09-18 10:05,,,,,,,,,,
-evt0000000004,deepa.natarajan@heliosschool.org,,,Let us know if you can make it so we bring enough food.,deepa.natarajan@heliosschool.org,2026-09-19 09:00,2026-09-19 09:10,,,,,,,,,,
-gev0000000008,jordan.whitfield@heliosschool.org,,,Come see what the Hawks and Falcons have been working on.,dana.hawkins@heliosschool.org,2026-09-20 10:00,,,,,,,,,,,
+Event ID,Hosts,Audience,Guests,Message,Created By,Created,Sent,Title,Start,End,Location,Description,Flyer,Notify,Stepped Down,Hide Hosts,Public Guest List,Hosts To Tell
+evt0000000002,jordan.whitfield@heliosschool.org,,,"Come hear what the association has planned for the year, and bring anyone who might want to help.",dana.hawkins@heliosschool.org,2026-09-01 16:20,2026-09-05 09:12,,,,,,,,,,,
+evt0000000003,elena.torres@heliosschool.org,,,"We'd love to have you over to kick off the fall!",elena.torres@heliosschool.org,2026-09-18 10:00,2026-09-18 10:05,,,,,,,,,,,
+evt0000000004,deepa.natarajan@heliosschool.org,,,Let us know if you can make it so we bring enough food.,deepa.natarajan@heliosschool.org,2026-09-19 09:00,2026-09-19 09:10,,,,,,,,,,,
+gev0000000008,jordan.whitfield@heliosschool.org,,,Come see what the Hawks and Falcons have been working on.,dana.hawkins@heliosschool.org,2026-09-20 10:00,,,,,,,,,,,,

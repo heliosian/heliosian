@@ -165,6 +165,7 @@ func replyApp(t *testing.T, cache *Cache, m Mail) *http.ServeMux {
 		Sources:   newSampleSources(t).sources,
 		Mail:      m,
 		Style:     testStyle,
+		Queue:     queue,
 	})
 	return mux
 }

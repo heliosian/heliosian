@@ -21,12 +21,9 @@ var errNotRecorded = errors.New("the answer was not recorded")
 func (a app) recordBy(ctx context.Context, actor access.Actor, email, id, answer, via string, invite, wait bool) error {
 	email = config.NormalizeEmail(email)
 	answer = strings.ToLower(strings.TrimSpace(answer))
-	ops, e, err := a.answerOps(actor, email, id, answer, via)
+	ops, _, err := a.answerOps(actor, email, id, answer, via, invite)
 	if err != nil {
 		return err
-	}
-	if inv := a.cache.Model().InviteOf(e.ID, email); inv != nil && inv.Sent != "" {
-		invite = false
 	}
 	commit := a.cache.Commit
 	if wait {
@@ -35,21 +32,10 @@ func (a app) recordBy(ctx context.Context, actor access.Actor, email, id, answer
 	if err := commit(ctx, actor, ops...); err != nil {
 		return fmt.Errorf("%w: %w", errNotRecorded, err)
 	}
-	model := a.cache.Model()
-	if invite && answer == AnswerYes && !isGuestKey(email) {
-		go a.sendInvite(context.WithoutCancel(ctx), email, e)
-	}
-	if inv := model.Invitations[e.ID]; inv != nil && answer != "" && answer != AnswerHidden {
-		for _, h := range inv.Notify {
-			if h != actor.Email {
-				go a.sendAnswerNote(context.WithoutCancel(ctx), h, actor.Email, email, answer, model.invitedEvent(e))
-			}
-		}
-	}
 	return nil
 }
 
-func (a app) sendAnswerNote(ctx context.Context, to, actor, email, answer string, e *Event) {
+func (a app) sendAnswerNote(ctx context.Context, to, actor, email, answer string, e *Event) error {
 	model := a.cache.Model()
 	name := email
 	if p := a.directory().Person(email); p != nil && p.FullName != "" {
@@ -84,9 +70,7 @@ func (a app) sendAnswerNote(ctx context.Context, to, actor, email, answer string
 	l.Rows = [][2]string{{"So far", fmt.Sprintf("%d yes, %d maybe, %d no, %d still to answer", yes, maybe, no, waiting)}}
 	l.Button = "See the guest list"
 	l.Footnote = "You asked to hear as answers come in; turn it off under Who's coming on the event's page."
-	if err := a.mail.Sender.Send(ctx, l.Message("["+e.Title+"] "+name+" said "+answerWord(answer), []string{to}, nil, nil)); err != nil {
-		slog.ErrorContext(ctx, "calendar: send answer note", "to", to, "event", e.ID, "error", err)
-	}
+	return a.mail.Sender.Send(ctx, l.Message("["+e.Title+"] "+name+" said "+answerWord(answer), []string{to}, nil, nil))
 }
 
 func (a app) eventFor(actor access.Actor, id string) *Event {
@@ -150,7 +134,7 @@ func (a app) rsvp(r *http.Request, body rsvpBody) (serve.None, error) {
 	return serve.None{}, nil
 }
 
-func (a app) sendInvite(ctx context.Context, email string, e *Event) {
+func (a app) sendInvite(ctx context.Context, email string, e *Event) error {
 	day, _ := whenLines(e)
 	l := a.letterFor(e, EventPath(e))
 	l.Heading = "You said yes"
@@ -159,11 +143,7 @@ func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 	l.Footnote = "The invite attached puts it on your calendar."
 	msg := l.Message("Invitation: "+e.Title+" · "+day, []string{email}, nil, a.replyTo(e, email))
 	msg.Attachments = []mail.Attachment{a.invite(e, email, l.Path, mail.MethodRequest)}
-	if err := a.mail.Sender.Send(ctx, msg); err != nil {
-		slog.ErrorContext(ctx, "calendar: send invite", "to", email, "event", e.ID, "error", err)
-		return
-	}
-	slog.InfoContext(ctx, "calendar: invite sent", "to", email, "event", e.ID)
+	return a.mail.Sender.Send(ctx, msg)
 }
 
 func (a app) organizer(id, email string) string {

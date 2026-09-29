@@ -39,6 +39,7 @@ const (
 	InvitesTab      = "Invites"
 	InviteGroupsTab = "Invite Groups"
 	BouncesTab      = "Bounces"
+	MessagesTab     = "Messages"
 )
 
 const (
@@ -66,7 +67,7 @@ const (
 var (
 	GoogleColumns      = []string{"Key", "Event ID", "Start", "End", "Title", "Location", "Description", "Updated", "Sequence"}
 	PDFColumns         = []string{"Key", "Event ID", "Year", "Start", "End", "Title", "Day Type", "Tags", "Marker", "PDF"}
-	EventColumns       = []string{"Event ID", "Start", "End", "Title", "Location", "Description", "Tags", "Day Type", "Keywords", "Added By", "Added", "Source", "Sharing", "Status", "Image"}
+	EventColumns       = []string{"Event ID", "Start", "End", "Title", "Location", "Description", "Tags", "Day Type", "Keywords", "Added By", "Added", "Source", "Sharing", "Status", "Image", "Admins Told"}
 	EnrichmentColumns  = []string{"Event ID", "Tags", "Day Type", "Keywords", "Input Hash", "Model", "Enriched"}
 	OverrideColumns    = []string{"Event ID", "Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden", "Note", "Address", "Image"}
 	DayTypeColumns     = []string{"Day Type ID", "Day Type", "Dropoff Start", "Dropoff End", "School Start", "School End", "Pickup Start", "Pickup End", "Aftercare Start", "Aftercare End"}
@@ -74,9 +75,10 @@ var (
 	TagColumns         = []string{"Tag ID", "Tag", "Description", "Group", "Default", "Image", store.OrderColumn}
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji", store.OrderColumn}
 	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position", "Feed Token"}
-	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered", "Answered By", "Via"}
-	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer", "Notify", "Stepped Down", "Hide Hosts", "Public Guest List"}
-	InviteColumns      = []string{"Event ID", "Email", "Name", "Guest Of", "Via", "Added By", "Added", "Sent", "Token", "Household", "Opened"}
+	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered", "Answered By", "Via", "Invite Mail", "Hosts Told"}
+	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer", "Notify", "Stepped Down", "Hide Hosts", "Public Guest List", "Hosts To Tell"}
+	InviteColumns      = []string{"Event ID", "Email", "Name", "Guest Of", "Via", "Added By", "Added", "Sent", "Token", "Household", "Opened", "Requested", "Requested By"}
+	MessageColumns     = []string{"Message ID", "Event ID", "Kind", "Subject", "Text", "Recipients", "Attach", "Sent By", "Created", "Sent To"}
 	InviteGroupColumns = append([]string{"Event ID", "Group ID", "Auto", "Added By", "Added", "Sent", "Removed"}, filter.RuleColumns...)
 	BounceColumns      = []string{"Email", "When", "Reason"}
 )
@@ -230,6 +232,7 @@ type Event struct {
 	Invited      bool       `json:"invited,omitempty"`
 	Hosted       bool       `json:"hosted,omitempty"`
 	Hidden       bool       `json:"-"`
+	adminsTold   string
 	googleUID    string
 	duplicate    bool
 	start, end   time.Time
@@ -418,6 +421,7 @@ type Model struct {
 	Invites     map[string][]Invite
 	Groups      map[string][]InviteGroup
 	Bounced     map[string]Bounce
+	Messages    []Message
 	invited     map[string]map[string]bool
 	listed      map[string]map[string]bool
 	byInvite    map[string]Invite
@@ -1027,11 +1031,15 @@ func (b *builder) settings(rows []store.Row) {
 }
 
 type Answered struct {
-	Answer string `json:"answer"`
-	By     string `json:"by,omitempty"`
-	At     string `json:"at,omitempty"`
-	Via    string `json:"via,omitempty"`
+	Answer     string `json:"answer"`
+	By         string `json:"by,omitempty"`
+	At         string `json:"at,omitempty"`
+	Via        string `json:"via,omitempty"`
+	inviteMail string
+	hostsTold  string
 }
+
+const owed = "owed"
 
 const (
 	ViaPage     = "page"
@@ -1053,7 +1061,7 @@ func (b *builder) answers(rows []store.Row) {
 			b.model.Answered[email] = map[string]Answered{}
 		}
 		b.model.Answers[email][id] = answer
-		b.model.Answered[email][id] = Answered{Answer: answer, By: config.NormalizeEmail(row["Answered By"]), At: strings.TrimSpace(row["Answered"]), Via: strings.ToLower(strings.TrimSpace(row["Via"]))}
+		b.model.Answered[email][id] = Answered{Answer: answer, By: config.NormalizeEmail(row["Answered By"]), At: strings.TrimSpace(row["Answered"]), Via: strings.ToLower(strings.TrimSpace(row["Via"])), inviteMail: strings.TrimSpace(row["Invite Mail"]), hostsTold: strings.TrimSpace(row["Hosts Told"])}
 	}
 }
 
@@ -1392,7 +1400,7 @@ func BuildModel(tables store.Tables, roster Roster) (*Model, error) {
 		if err != nil {
 			return nil, err
 		}
-		e.AddedBy, e.Added = strings.TrimSpace(row["Added By"]), strings.TrimSpace(row["Added"])
+		e.AddedBy, e.Added, e.adminsTold = strings.TrimSpace(row["Added By"]), strings.TrimSpace(row["Added"]), strings.TrimSpace(row["Admins Told"])
 		e.Status = strings.TrimSpace(row["Status"])
 		e.Pending = strings.EqualFold(e.Status, StatusPending)
 		e.Declined = strings.EqualFold(e.Status, StatusDeclined)
@@ -1445,6 +1453,9 @@ func BuildModel(tables store.Tables, roster Roster) (*Model, error) {
 	}
 	b.groups(tables[InviteGroupsTab])
 	b.bounces(tables[BouncesTab])
+	if err := b.messages(tables[MessagesTab]); err != nil {
+		return nil, err
+	}
 	if err := b.feeds(tables[FeedsTab]); err != nil {
 		return nil, err
 	}

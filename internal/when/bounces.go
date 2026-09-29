@@ -131,10 +131,7 @@ func (a app) moveAddress(ctx context.Context, actor access.Actor, old, to, name 
 	if len(ops) == 0 {
 		return
 	}
-	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
-		slog.ErrorContext(ctx, "calendar: move address", "from", old, "to", to, "error", err)
-		return
-	}
+	resent := 0
 	for _, id := range resend {
 		e := a.anyEvent(actor.Email, id)
 		if e == nil || e.end.Before(now()) {
@@ -144,7 +141,12 @@ func (a app) moveAddress(ctx context.Context, actor access.Actor, old, to, name 
 		if hosts := a.hostsOf(e); len(hosts) > 0 {
 			host = hosts[0]
 		}
-		a.send(ctx, actor, host, e, []string{to}, "")
+		ops = append(ops, resendOp(e, to, host))
+		resent++
 	}
-	slog.InfoContext(ctx, "calendar: address moved", "actor", actor.Email, "from", old, "to", to, "resent", len(resend))
+	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
+		slog.ErrorContext(ctx, "calendar: move address", "from", old, "to", to, "error", err)
+		return
+	}
+	slog.InfoContext(ctx, "calendar: address moved", "actor", actor.Email, "from", old, "to", to, "resent", resent)
 }

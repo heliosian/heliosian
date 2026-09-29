@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -86,7 +87,7 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *mailtest.Recorder, *sa
 		}
 	}
 	mux := http.NewServeMux()
-	testHooks = Register(mux, Deps{
+	testDeps = Deps{
 		Cache:     cache,
 		Images:    memoryImages(),
 		Directory: directoryOf,
@@ -98,8 +99,17 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *mailtest.Recorder, *sa
 		Sources:   sources.sources,
 		Mail:      Mail{Sender: kept.Mailgun, Base: "https://when.heliosian.com", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey},
 		Style:     testStyle,
-	})
+		Queue:     queue,
+	}
+	testHooks = Register(mux, testDeps)
 	return mux, cache, kept, sources
+}
+
+var testDeps Deps
+
+func fillNow(t *testing.T) {
+	t.Helper()
+	newApp(testDeps).fillGroups(context.Background())
 }
 
 var linkedSources = map[string]string{SourceCelebrate + "/p1": "p1", SourceCelebrate + "/P001": "p1", SourceTeam + "/e1": "e1", SourceTeam + "/E001": "e1"}
@@ -122,14 +132,29 @@ func idOf(t *testing.T, cache *Cache, address string) string {
 
 type sampleSources struct {
 	model  *who.Model
+	mu     sync.Mutex
 	extra  map[string][]string
 	tagged map[string][]string
+}
+
+func (s *sampleSources) tag(key string, people ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tagged[key] = append(s.tagged[key], people...)
+}
+
+func (s *sampleSources) list(key string, people ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.extra = map[string][]string{key: people}
 }
 
 func (s *sampleSources) sources() filter.Sources {
 	return filter.Sources{
 		Directory: s.model,
 		Tags: func(owner string) []who.Tag {
+			s.mu.Lock()
+			defer s.mu.Unlock()
 			tags := s.model.Tags(owner)
 			for i, tag := range tags {
 				tags[i].People = append(slices.Clone(tag.People), s.tagged[tag.ID]...)
@@ -137,6 +162,8 @@ func (s *sampleSources) sources() filter.Sources {
 			return tags
 		},
 		Lists: func(string) []who.List {
+			s.mu.Lock()
+			defer s.mu.Unlock()
 			out := []who.List{}
 			for key, people := range s.extra {
 				out = append(out, who.List{Key: key, Name: key, People: people})
@@ -149,6 +176,17 @@ func (s *sampleSources) sources() filter.Sources {
 func newSampleSources(t *testing.T) *sampleSources {
 	t.Helper()
 	return &sampleSources{model: sampleDirectory(t, "sampledata"), tagged: map[string][]string{}}
+}
+
+func eventually(t *testing.T, what string, done func() bool) {
+	t.Helper()
+	for range 500 {
+		if done() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("never happened: %s", what)
 }
 
 func waitFor(kept *mailtest.Recorder, n int) []mail.Message {
@@ -440,9 +478,10 @@ func TestInvitationLifecycle(t *testing.T) {
 	if rec := call(t, robinH, "POST", "/api/when/invites/guest", `{"id":"meetup","name":"X","answer":"no"}`); rec.Code != 400 {
 		t.Errorf("a guest put down as no: %d", rec.Code)
 	}
-	if rec := call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup","emails":["vi@example.org"]}`); rec.Code != 200 || rec.Body.String() != "{\"invites\":1,\"messages\":1}\n" || cache.Model().InviteOf(meetup, "vi@example.org").Sent == "" {
+	if rec := call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup","emails":["vi@example.org"]}`); rec.Code != 200 || rec.Body.String() != "{\"invites\":1,\"messages\":1}\n" || cache.Model().InviteOf(meetup, "vi@example.org").Requested == "" {
 		t.Errorf("send to one: %d %s", rec.Code, rec.Body)
 	}
+	eventually(t, "vi's invitation goes and is stamped sent", func() bool { return cache.Model().InviteOf(meetup, "vi@example.org").Sent != "" })
 }
 
 func TestPartyInvitation(t *testing.T) {
@@ -708,29 +747,16 @@ func TestInviteGroups(t *testing.T) {
 	}
 	call(t, jordan, "POST", "/api/when/invites/send", `{"id":"meetup"}`)
 	waitFor(kept, 3)
-	sources.tagged[carpoolID] = []string{mia}
-	if v := inviteView(t, jordan, meetup); rowOf(v, mia) != nil {
-		t.Errorf("a newcomer came on inside the grace")
-	}
-	start := now()
-	now = func() time.Time { return start.Add(grace - time.Minute) }
-	if v := inviteView(t, jordan, meetup); rowOf(v, mia) != nil {
-		t.Errorf("a newcomer came on a minute short of the grace")
-	}
-	delete(sources.tagged, carpoolID)
-	inviteView(t, jordan, meetup)
-	sources.tagged[carpoolID] = []string{mia}
-	now = func() time.Time { return start.Add(grace + time.Minute) }
-	if v := inviteView(t, jordan, meetup); rowOf(v, mia) != nil {
-		t.Errorf("a newcomer came on with the clock restarted")
-	}
-	now = func() time.Time { return start.Add(2*grace + 2*time.Minute) }
-	v = inviteView(t, jordan, meetup)
-	if r := rowOf(v, mia); r == nil || r.Via != ViaGroup+g.ID || r.Sent == "" || v.Groups[0].Count != 3 {
-		t.Errorf("mia after the grace = %+v, groups %+v", r, v.Groups)
+	sources.tag(carpoolID, mia)
+	queue.Refresh()
+	eventually(t, "a newcomer to an auto group comes on and is sent", func() bool {
+		r := cache.Model().InviteOf(meetup, mia)
+		return r != nil && r.Via == ViaGroup+g.ID && r.Sent != ""
+	})
+	if v := inviteView(t, jordan, meetup); v.Groups[0].Count != 3 {
+		t.Errorf("groups after mia = %+v", v.Groups)
 	}
 	waitFor(kept, 4)
-	now = pinnedClock
 	if m := mailTo(kept, mia); len(m) != 1 || !strings.Contains(m[0].Subject, "You're invited!") {
 		t.Errorf("mia's auto invite = %+v", m)
 	}
@@ -768,16 +794,12 @@ func TestInviteGroups(t *testing.T) {
 	if rec := call(t, jordan, "PUT", "/api/when/invites/group", `{"id":"meetup","group":"`+g.ID+`","auto":false}`); rec.Code != 204 {
 		t.Errorf("auto off: %d %s", rec.Code, rec.Body)
 	}
-	sources.tagged[carpoolID] = append(sources.tagged[carpoolID], robin)
-	start = now()
-	if v := inviteView(t, jordan, meetup); rowOf(v, robin) != nil {
-		t.Errorf("a newcomer came on inside the grace with auto off")
-	}
-	now = func() time.Time { return start.Add(grace + time.Minute) }
-	if r := rowOf(inviteView(t, jordan, meetup), robin); r == nil || r.Sent != "" || r.Via != ViaGroup+g.ID {
-		t.Errorf("a newcomer with auto off = %+v", r)
-	}
-	now = pinnedClock
+	sources.tag(carpoolID, robin)
+	queue.Refresh()
+	eventually(t, "a newcomer to a group with auto off comes on unsent", func() bool {
+		r := cache.Model().InviteOf(meetup, robin)
+		return r != nil && r.Via == ViaGroup+g.ID && r.Sent == "" && r.Requested == ""
+	})
 	if m := mailTo(kept, robin); slices.ContainsFunc(m, func(m mail.Message) bool { return strings.Contains(m.HTML, "Invited: Robin") }) {
 		t.Errorf("a newcomer was sent with auto off: %+v", m)
 	}
@@ -1017,7 +1039,7 @@ func TestStudentMessagesCcParentsWithoutCalendarFiles(t *testing.T) {
 
 func TestPartyListIsTheHolders(t *testing.T) {
 	mux, cache, kept, sources := invitesAppWith(t)
-	sources.extra = map[string][]string{"party:p1": {mia, robin, sam, host}}
+	sources.list("party:p1", mia, robin, sam, host)
 	miaH := as(mia, mux)
 	rec := call(t, miaH, "POST", "/api/when/invites/start", `{"id":"`+partyA+`"}`)
 	var made struct{ Added int }
@@ -1353,15 +1375,13 @@ func TestRemovedStayRemoved(t *testing.T) {
 	if g := cache.Model().GroupOf(moms, made.Group); !slices.Contains(g.Removed, dropped) {
 		t.Errorf("the group does not remember the removal: %+v", g)
 	}
-	start := now()
-	now = func() time.Time { return start.Add(2*grace + time.Minute) }
-	inviteView(t, jordan, "moms")
-	inviteView(t, jordan, "moms")
-	now = pinnedClock
+	fillNow(t)
+	fillNow(t)
 	if cache.Model().InviteOf(moms, dropped) != nil {
 		t.Errorf("the group put %s back", dropped)
 	}
 	call(t, jordan, "PUT", "/api/when/invites/group", `{"id":"moms","group":"`+made.Group+`","auto":true}`)
+	fillNow(t)
 	if cache.Model().InviteOf(moms, dropped) != nil {
 		t.Errorf("auto-invite put %s back", dropped)
 	}
@@ -1428,7 +1448,7 @@ func TestGuestsInvite(t *testing.T) {
 		t.Fatalf("robin inviting mia: %d %s", rec.Code, rec.Body)
 	}
 	inv := cache.Model().InviteOf(meetup, mia)
-	if inv == nil || inv.Via != ViaInvited || inv.AddedBy != robin || inv.Sent == "" {
+	if inv == nil || inv.Via != ViaInvited || inv.AddedBy != robin || inv.Requested == "" || inv.RequestedBy != robin {
 		t.Errorf("mia's row = %+v", inv)
 	}
 	waitFor(kept, 3)
@@ -1455,9 +1475,13 @@ func TestGuestInvitesBeforeTheHosts(t *testing.T) {
 	if rec.Code != 200 || rec.Body.String() != "{\"added\":1,\"sent\":1}\n" {
 		t.Fatalf("robin inviting mia: %d %s", rec.Code, rec.Body)
 	}
-	if inv := cache.Model().InviteOf(parade, mia); inv == nil || inv.Via != ViaInvited || inv.Sent == "" {
+	if inv := cache.Model().InviteOf(parade, mia); inv == nil || inv.Via != ViaInvited || inv.Requested == "" {
 		t.Errorf("mia's row = %+v", inv)
 	}
+	eventually(t, "mia's invitation goes and is stamped sent", func() bool {
+		inv := cache.Model().InviteOf(parade, mia)
+		return inv != nil && inv.Sent != ""
+	})
 	if inv := cache.Model().Invitations[parade]; inv == nil || inv.Sent == "" {
 		t.Errorf("the invitation after robin's send = %+v", inv)
 	}
@@ -1637,6 +1661,43 @@ func TestNotifyHost(t *testing.T) {
 	call(t, as(robin, mux), "POST", "/api/when/rsvp", `{"id":"meetup","answer":"no"}`)
 	if len(mailTo(kept, host)) != before {
 		t.Errorf("notes after: %d, before %d", len(mailTo(kept, host)), before)
+	}
+}
+
+func TestMailLeavesItsRecord(t *testing.T) {
+	mux, cache, kept := invitesApp(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
+	row := func(tab, key, value string) store.Row {
+		for _, r := range sheetTables(t)[tab] {
+			if r[key] == value {
+				return r
+			}
+		}
+		return nil
+	}
+	eventually(t, "the admins are told of the new event and it is recorded", func() bool {
+		told := row(EventsTab, "Event ID", meetup)["Admins Told"]
+		return told != "" && !strings.HasPrefix(told, owed)
+	})
+	call(t, jordan, "PUT", "/api/when/invites/settings", `{"id":"meetup","hosts":["`+mia+`"],"notifyMe":true}`)
+	eventually(t, "the new co-host is told and nobody is left to tell", func() bool {
+		return len(mailTo(kept, mia)) == 1 && row(InvitationsTab, "Event ID", meetup)["Hosts To Tell"] == ""
+	})
+	call(t, jordan, "POST", "/api/when/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
+	call(t, jordan, "POST", "/api/when/invites/message", `{"id":"meetup","subject":"Bring snacks","message":"Anything nut-free.","to":["none"]}`)
+	eventually(t, "the message reaches everyone it was for and says so", func() bool {
+		messages := cache.Model().Messages
+		return len(messages) == 1 && slices.Equal(messages[0].SentTo, []string{robin}) && len(messages[0].pending()) == 0
+	})
+	call(t, as(robin, mux), "POST", "/api/when/rsvp", `{"id":"meetup","answer":"yes"}`)
+	eventually(t, "the hosts who asked are told of the answer and it is recorded", func() bool {
+		ans := cache.Model().Answered[robin][meetup]
+		return ans.hostsTold != "" && ans.hostsTold != owed && ans.inviteMail != owed
+	})
+	if notes := mailTo(kept, host); len(notes) == 0 || notes[len(notes)-1].Subject != "[Meetup] Robin Whitfield said Yes" {
+		t.Errorf("the host's note: %+v", notes)
 	}
 }
 
@@ -1908,7 +1969,7 @@ func TestTicketGuestsAndMovedAddresses(t *testing.T) {
 		cousin = "kit@example.org"
 	)
 	testAttendees = []Attendee{{Email: alum, Status: "ticket"}, {Email: cousin, Name: "Kit Whitfield", Status: "free"}, {Email: "hopeful@example.org", Name: "Hopeful", Status: "waitlist"}}
-	sources.extra = map[string][]string{"party:p1": {mia, robin, sam}}
+	sources.list("party:p1", mia, robin, sam)
 	miaH := as(mia, mux)
 	if rec := call(t, miaH, "POST", "/api/when/invites/start", `{"id":"`+partyA+`"}`); rec.Code != 200 {
 		t.Fatalf("start: %d %s", rec.Code, rec.Body)
@@ -1965,8 +2026,10 @@ func TestTicketGuestsAndMovedAddresses(t *testing.T) {
 	if len(mailTo(kept, home)) != 1 {
 		t.Errorf("the invitation was not sent again to the new address: %d", len(mailTo(kept, home)))
 	}
-	if n := testHooksFill(t, cache, mux); n != 0 {
-		t.Errorf("the sweep added %d after the move", n)
+	before := len(cache.Model().Invites[partyA])
+	fillNow(t)
+	if n := len(cache.Model().Invites[partyA]) - before; n != 0 {
+		t.Errorf("the fill added %d after the move", n)
 	}
 }
 
@@ -2032,7 +2095,7 @@ func TestCohostsRunTheEvent(t *testing.T) {
 }
 
 func TestSweepActsOnlyForAHost(t *testing.T) {
-	mux, cache, _, sources := invitesAppWith(t)
+	mux, cache, _ := invitesApp(t)
 	jordan := as(host, mux)
 	call(t, jordan, "POST", "/api/when/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
 	meetup := idOf(t, cache, "meetup")
@@ -2040,7 +2103,7 @@ func TestSweepActsOnlyForAHost(t *testing.T) {
 	if rec := call(t, jordan, "POST", "/api/when/invites/group", `{"id":"meetup","rule":{"roles":["Student"],"classrooms":["Jays"]},"auto":false}`); rec.Code != 200 {
 		t.Fatalf("group: %d %s", rec.Code, rec.Body)
 	}
-	a := app{cache: cache, directory: directoryOf, settings: noSettings, lists: testLists, linked: func(string) []Linked { return nil }, sourceID: noSource, sources: sources.sources, clock: &matchClock{}}
+	a := newApp(testDeps)
 	gone := cache.Model().Invites[meetup][0].Email
 	drop := func() {
 		t.Helper()
@@ -2048,17 +2111,10 @@ func TestSweepActsOnlyForAHost(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	sweepTwice := func() {
-		start := now()
-		a.sweep(context.Background())
-		now = func() time.Time { return start.Add(grace + time.Minute) }
-		a.sweep(context.Background())
-		now = pinnedClock
-	}
 	drop()
-	sweepTwice()
+	fillNow(t)
 	if cache.Model().InviteOf(meetup, gone) == nil {
-		t.Fatalf("the sweep did not fill the group while its maker hosts")
+		t.Fatalf("the fill did not fill the group while its maker hosts")
 	}
 	if a.sweptEvent(a.as(host), meetup) == nil {
 		t.Errorf("the group's maker does not count as its host")
@@ -2068,21 +2124,13 @@ func TestSweepActsOnlyForAHost(t *testing.T) {
 	if a.sweptEvent(a.as(host), meetup) != nil {
 		t.Errorf("the group's maker counts as a host after stepping down")
 	}
-	sweepTwice()
+	fillNow(t)
 	if cache.Model().InviteOf(meetup, gone) != nil {
-		t.Errorf("the sweep filled the group for someone who no longer hosts")
+		t.Errorf("the fill filled the group for someone who no longer hosts")
 	}
-	now = func() time.Time { return testNow.Add(grace + time.Minute) }
-	a.sweepEvent(context.Background(), a.eventFor(access.Actor{Email: mia}, meetup))
-	now = pinnedClock
-	if cache.Model().InviteOf(meetup, gone) == nil {
-		t.Errorf("the group no longer matches, so the sweep proved nothing")
+	e := a.eventFor(access.Actor{Email: mia}, meetup)
+	filled, _ := a.fillOps(access.System(sweepActor), e, cache.Model().Groups[meetup][0])
+	if len(filled) == 0 {
+		t.Errorf("the group no longer matches, so the fill proved nothing")
 	}
-}
-
-func testHooksFill(t *testing.T, cache *Cache, mux http.Handler) int {
-	t.Helper()
-	before := len(cache.Model().Invites[partyA])
-	inviteView(t, as(mia, mux), partyA)
-	return len(cache.Model().Invites[partyA]) - before
 }

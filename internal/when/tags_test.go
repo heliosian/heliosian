@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
-	"time"
 
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
@@ -49,10 +48,7 @@ func TestRenamingATagKeepsTheInviteGroupsThatNameIt(t *testing.T) {
 	if g := cache.Model().GroupOf(meetup, made.Group); g == nil || len(g.Rule.Tags) != 1 || g.Rule.Tags[0] != key {
 		t.Fatalf("the group's rule after the rename: %+v", g)
 	}
-	start := now()
-	defer func() { now = pinnedClock }()
-	inviteView(t, jordan, meetup)
-	now = func() time.Time { return start.Add(grace + time.Minute) }
+	fillNow(t)
 	if r := rowOf(inviteView(t, jordan, meetup), mia); r == nil || r.Via != ViaGroup+made.Group {
 		t.Fatalf("someone tagged on the renamed tag did not come on through the group: %+v", r)
 	}
