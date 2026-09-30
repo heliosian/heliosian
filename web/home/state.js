@@ -51,7 +51,7 @@ export function eventCard(e) {
     dates: e.dates, image: '/open/banner/' + encodeURIComponent(e.id), imageApp: 'when',
     link: linked ? e.path : '', linkApp: linked ? e.app : '',
     call: linked ? e.call || '' : '', mine: linked ? e.mine || '' : '', availability: linked ? e.availability || '' : '', people: linked ? e.minePeople || [] : [],
-    answer: e.me.answer || '', invited: Boolean(e.invited), hosted: Boolean(e.hosted), cancelled: Boolean(e.cancelled),
+    answer: e.me.answer || '', going: e.going || '', invited: Boolean(e.invited), hosted: Boolean(e.hosted), cancelled: Boolean(e.cancelled),
   };
 }
 

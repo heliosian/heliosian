@@ -63,6 +63,7 @@ func (a calendarApp) decorated(q api.Query, e *Event) *Event {
 	c := *e
 	d := a.directory()
 	c.Hosted = a.model().hostedBy(d, q.Actor.Email, e)
+	a.model().goingFor(d, q.Actor.Email, &c)
 	c.HostNames = nil
 	for _, h := range e.Hosts {
 		if p := d.Person(d.Resolve(mail.Normalize(h))); p != nil && p.FullName != "" {

@@ -20,13 +20,24 @@ export function eventPath(e) {
 }
 
 export function standing(event) {
-  const pill = el('span', 'wg-standing');
-  if (event.mine && event.call) {
-    pill.append(svg('check'), el('span', '', event.call));
-    return pill;
+  return held(event) || answered(event, false);
+}
+
+function held(event) {
+  if (!event.mine || !event.call) {
+    return null;
   }
-  if (event.answer === 'yes') {
-    pill.append(svg('check'), el('span', '', 'Going'));
+  const pill = el('span', 'wg-standing');
+  pill.classList.toggle('is-going', event.mine === 'going');
+  pill.append(svg('check'), el('span', '', event.call));
+  return pill;
+}
+
+function answered(event, alongside) {
+  const pill = el('span', 'wg-standing');
+  if (event.going || event.answer === 'yes') {
+    pill.classList.add('is-going');
+    pill.append(svg('check'), el('span', '', event.going || (alongside ? 'You are going' : 'Going')));
     return pill;
   }
   if (event.answer === 'maybe') {
@@ -58,7 +69,10 @@ export function eventRow(event, {base, time, className}) {
     star.setAttribute('aria-label', 'You host this');
     title.prepend(star);
   }
-  return dayRow(className, {title, chips: [standing(event) || action(event, base)], time}, () => title.click());
+  const ticket = held(event);
+  const answer = answered(event, event.mine === 'going');
+  const chips = ticket || answer ? [answer, ticket] : [action(event, base)];
+  return dayRow(className, {title, chips, time}, () => title.click());
 }
 
 export function dayChip(name, words) {

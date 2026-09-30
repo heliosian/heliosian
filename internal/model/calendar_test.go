@@ -674,7 +674,7 @@ func TestUpcoming(t *testing.T) {
 	if party == nil || party["id"] != "pty0000000001" || party["path"] != "/p/fondue" || party["link"] != "/p/fondue" || party["app"] != "celebrate" || party["mine"] != MineGoing || party["availability"] != "available" || party["image"] == nil || party["start"] != "2026-09-19 17:00" {
 		t.Errorf("party = %+v", party)
 	}
-	if call, _ := party["call"].(string); call != "You have a ticket" {
+	if call, _ := party["call"].(string); call != "You, Robin, Sam and Ella have tickets" {
 		t.Errorf("the family's call on the party = %q", call)
 	}
 	night := eventTitled(got, "International Night")

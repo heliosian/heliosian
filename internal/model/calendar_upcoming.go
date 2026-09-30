@@ -25,6 +25,9 @@ func standing(e *Event) {
 
 func mineWords(e *Event) string {
 	names := joinNames(e.MineWho)
+	if names == "You" {
+		names = ""
+	}
 	switch e.Mine {
 	case MineWaitlisted:
 		if names != "" {
@@ -170,4 +173,36 @@ func (m *Calendar) DefaultCalendar(email string) *Feed {
 		return nil
 	}
 	return m.Feed(mine[0].Token)
+}
+
+func (m *Calendar) goingFor(directory *Directory, email string, c *Event) {
+	family := m.familyGoing(directory, email, c.ID)
+	going := family
+	if m.AnswerOf(email, c.ID) == AnswerYes {
+		going = append([]string{"You"}, family...)
+	}
+	if len(family) > 0 {
+		c.Going = joinNames(going) + " " + isAre(going) + " going"
+	}
+	rest := slices.DeleteFunc(slices.Clone(c.MineWho), func(who string) bool { return slices.Contains(going, who) })
+	if c.Mine != MineGoing || len(rest) == len(c.MineWho) {
+		return
+	}
+	c.MineWho = rest
+	c.Call = ""
+	if len(rest) > 0 {
+		c.Call = mineWords(c)
+	}
+}
+
+func (m *Calendar) familyGoing(directory *Directory, email, id string) []string {
+	family := directory.Family(email)
+	adults, kids := directory.Household(email)
+	names := []string{}
+	for _, p := range append(adults, kids...) {
+		if family[p.Email] && m.AnswerOf(p.Email, id) == AnswerYes {
+			names = append(names, firstNameOf(p.FullName, p.Email))
+		}
+	}
+	return names
 }

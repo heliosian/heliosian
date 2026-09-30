@@ -88,7 +88,7 @@ func (c Circle) Any() bool {
 
 func (c Circle) Who() []string {
 	if c.mine {
-		return nil
+		return append([]string{"You"}, c.names...)
 	}
 	return c.names
 }

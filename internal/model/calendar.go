@@ -216,6 +216,7 @@ type Event struct {
 	MinePeople   []Standing `json:"minePeople,omitempty"`
 	MineWords    string     `json:"mineWords,omitempty"`
 	Call         string     `json:"call,omitempty"`
+	Going        string     `json:"going,omitempty"`
 	Image        string     `json:"image,omitempty"`
 	Sharing      string     `json:"sharing,omitempty"`
 	Status       string     `json:"status,omitempty"`
