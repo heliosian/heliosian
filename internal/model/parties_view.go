@@ -122,7 +122,6 @@ type PartyView struct {
 	HostPeople   []PartyPerson   `json:"hostPeople"`
 	Attendees    []PartyAttendee `json:"attendees"`
 	Waitlisted   []PartyAttendee `json:"waitlisted"`
-	CanEdit      bool            `json:"canEdit"`
 	Hosting      bool            `json:"hosting,omitempty"`
 	Started      bool            `json:"started,omitempty"`
 	Invited      bool            `json:"invited,omitempty"`
@@ -133,27 +132,11 @@ type PartiesUser struct {
 	Name      string        `json:"name"`
 	Initial   string        `json:"initial"`
 	PhotoURL  string        `json:"photoUrl,omitempty"`
-	IsAdmin   bool          `json:"isAdmin"`
 	IsStudent bool          `json:"isStudent,omitempty"`
 	IsParent  bool          `json:"isParent,omitempty"`
 	IsStaff   bool          `json:"isStaff,omitempty"`
 	Adults    []PartyPerson `json:"adults"`
 	Children  []PartyPerson `json:"children"`
-}
-
-type PartiesView struct {
-	User         PartiesUser     `json:"user"`
-	Today        string          `json:"today"`
-	Now          string          `json:"now"`
-	Settings     PartiesSettings `json:"settings"`
-	Celebrations []*Celebration  `json:"celebrations"`
-	Current      string          `json:"current,omitempty"`
-	Banner       string          `json:"banner,omitempty"`
-	Categories   []PartyCategory `json:"categories"`
-	Parties      []PartyView     `json:"parties"`
-	Redirects    []PartyRedirect `json:"redirects"`
-	Invoicing    []InvoiceLine   `json:"invoicing,omitempty"`
-	ImageSearch  bool            `json:"imageSearch"`
 }
 
 func (v partyViewer) line(t Ticket, person *Person, purchaserName string) string {
@@ -213,7 +196,7 @@ func (v partyViewer) party(raw *Party, now time.Time) PartyView {
 	sees := p.Sees(v.Actor)
 	pv := PartyView{
 		Party: p, Availability: p.Availability(now), Sold: p.Sold(), Waiting: p.Waiting(), Raised: raw.Raised(), Remaining: p.Remaining(),
-		HostPeople: []PartyPerson{}, Attendees: []PartyAttendee{}, Waitlisted: []PartyAttendee{}, CanEdit: p.Edits(v.Actor), Hosting: hosting,
+		HostPeople: []PartyPerson{}, Attendees: []PartyAttendee{}, Waitlisted: []PartyAttendee{}, Hosting: hosting,
 	}
 	for _, email := range p.HostEmails {
 		pv.HostPeople = append(pv.HostPeople, v.person(email))
@@ -239,46 +222,20 @@ func (v partyViewer) party(raw *Party, now time.Time) PartyView {
 	return pv
 }
 
-func RenderParties(m *Parties, directory *Directory, rsvps RSVPLookup, as access.Actor, now time.Time) PartiesView {
-	v := partyViewer{Actor: as, directory: directory, rsvps: rsvps}
-	email, admin := as.Email, as.May(SeeAllParties)
-	me := v.person(email)
-	view := PartiesView{
-		User: PartiesUser{
-			Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: admin,
-			IsStudent: me.IsStudent, IsParent: me.IsParent, IsStaff: me.IsStaff, Adults: []PartyPerson{}, Children: []PartyPerson{},
-		},
-		Today:        now.Format(DateFormat),
-		Now:          now.Format(DateTimeFormat),
-		Settings:     m.Settings,
-		Celebrations: m.Celebrations,
-		Categories:   m.Categories,
-		Parties:      []PartyView{},
-		Redirects:    m.Redirects,
+func partiesUserOf(directory *Directory, email string) PartiesUser {
+	me := partyViewer{directory: directory}.person(email)
+	user := PartiesUser{
+		Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL,
+		IsStudent: me.IsStudent, IsParent: me.IsParent, IsStaff: me.IsStaff, Adults: []PartyPerson{}, Children: []PartyPerson{},
 	}
 	adults, kids := directory.Household(email)
 	for _, a := range adults {
-		view.User.Adults = append(view.User.Adults, partyPersonOf(directory, a))
+		user.Adults = append(user.Adults, partyPersonOf(directory, a))
 	}
 	for _, k := range kids {
-		view.User.Children = append(view.User.Children, partyPersonOf(directory, k))
+		user.Children = append(user.Children, partyPersonOf(directory, k))
 	}
-	if c := m.Current(); c != nil {
-		view.Current = c.ID
-	}
-	if c := m.Banner(); c != nil {
-		view.Banner = c.ID
-	}
-	if admin {
-		view.Invoicing = m.Invoicing
-	}
-	for _, p := range m.SortedParties("") {
-		if !p.VisibleTo(as) {
-			continue
-		}
-		view.Parties = append(view.Parties, v.party(p, now))
-	}
-	return view
+	return user
 }
 
 func Billable(directory *Directory, viewer string) []string {

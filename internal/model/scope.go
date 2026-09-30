@@ -23,6 +23,9 @@ type scope struct {
 	feeds      map[string]string
 	answerOnce sync.Once
 	responses  map[string]*Responses
+
+	partiesOnce sync.Once
+	partyKeys   map[string]*Party
 }
 
 func (m *Model) at(q api.Query) *Model {

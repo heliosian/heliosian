@@ -1,4 +1,4 @@
-import {state, canApprove, isKid, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
+import {state, canApprove, mayTake, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {paragraphs} from '../dom.js';
 import {el, link, svg, button, imageThumb, copyText, toast} from '/elements.js';
 import {listPath} from '../chrome.js';
@@ -55,7 +55,7 @@ function hero(p, save) {
     image.addEventListener('click', () => openPhotoLightbox(p.imageUrl));
   }
   wrap.append(image, heroTools(p), heroStamp(p));
-  if (p.canEdit) {
+  if (p.can.edit) {
     wrap.append(heroImageBar({image: p.image, imageUrl: p.imageUrl, query: p.title, tools: {uploadImage, imageSearchOn, openImageSearch}, save: image => save({image})}));
   }
   return wrap;
@@ -96,11 +96,11 @@ function ticketBand(p) {
   const actions = el('div', 'ticket-actions');
   const selling = p.availability === 'available' || p.availability === 'waitlist';
   const waiting = p.availability === 'waitlist' && mine.some(a => a.status !== 'Ticket');
-  if (isKid() && !p.canEdit) {
+  if (!mayTake(p)) {
     if (selling && !mine.length) {
       actions.append(el('span', 'ticket-kid-note', 'Ask a parent to sign in to get tickets.'));
     }
-  } else if (selling || p.canEdit) {
+  } else if (selling || p.can.edit) {
     const label = !selling ? 'Add Attendee'
       : p.availability !== 'waitlist' ? 'Get Tickets'
       : waiting ? 'Update Waitlist Request' : 'Join the Waitlist';
@@ -126,7 +126,7 @@ function myTicketsSection(p) {
       className: 'my-ticket',
       open: true,
       lines: [a.price ? `Ticket · ${money(a.price)}` : 'Free ticket'],
-      after: p.availability !== 'past' && (!isKid() || p.canEdit) ? [button('Reassign', 'people', 'link-button', () => openReassign(p, a))] : [],
+      after: p.availability !== 'past' && a.can.reassign ? [button('Reassign', 'people', 'link-button', () => openReassign(p, a))] : [],
     }));
   }
   section.append(list);
@@ -139,11 +139,11 @@ function swooshHeading(text) {
 
 function attendeeCard(p, a) {
   return personCard(a, {
-    onClick: p.canEdit ? () => openTicket(p, a) : () => openPerson(a),
-    title: p.canEdit ? `Open ${a.name}'s ticket` : a.name,
+    onClick: p.can.edit ? () => openTicket(p, a) : () => openPerson(a),
+    title: p.can.edit ? `Open ${a.name}'s ticket` : a.name,
     line: a.line,
     mine: a.mine,
-    rsvp: p.canEdit ? a.rsvp : '',
+    rsvp: p.can.edit ? a.rsvp : '',
   });
 }
 
@@ -152,7 +152,7 @@ function attendeesSection(p) {
   const head = el('div', 'section-head');
   const n = p.attendees.length;
   head.append(swooshHeading(`Who's Coming (${n})`));
-  if (p.canEdit) {
+  if (p.can.edit) {
     const tools = el('div', 'section-tools');
     tools.append(button('Attendee contact info', 'mail', 'button button-secondary button-small', () => openContacts(p)));
     if (p.availability !== 'past') {
@@ -173,7 +173,7 @@ function attendeesSection(p) {
   } else {
     section.append(el('p', 'section-note', 'Nobody yet - be the first!'));
   }
-  if (p.canEdit && p.availability !== 'past') {
+  if (p.can.edit && p.availability !== 'past') {
     const foot = el('div', 'attendees-foot');
     foot.append(button('Add Free Ticket', 'ticket', 'button button-secondary button-small', () => openFreeTicket(p)));
     section.append(foot);
@@ -191,10 +191,10 @@ function waitlistSection(p) {
   p.waitlisted.forEach((a, i) => {
     const n = a.quantity || 1;
     const after = a.mine ? [el('span', 'wait-mine', 'Your family')] : [];
-    if (p.canEdit) {
+    if (p.can.edit) {
       after.push(button(`Offer ${n === 1 ? 'a ticket' : n + ' tickets'}`, 'ticket', 'button button-secondary button-small', () => offerTickets(p, a)));
       after.push(button('', 'edit', 'edit-icon', () => openTicket(p, a)));
-    } else if (a.mine && !isKid()) {
+    } else if (a.mine && a.can.delete) {
       after.push(button('Leave waitlist', 'close', 'link-button', () => removeTicket(p, a)));
     }
     list.append(personRow(a, {
@@ -287,7 +287,7 @@ function factsCard(p) {
   } else {
     ticketLines.push(`${p.sold} sold · no limit`);
   }
-  if (p.minimum && p.canEdit) {
+  if (p.minimum && p.can.edit) {
     ticketLines.push(`Goes ahead with at least ${p.minimum} tickets sold`);
   }
   card.append(sideRow('ticket', 'Tickets', ...ticketLines));
@@ -302,7 +302,7 @@ function factsCard(p) {
 }
 
 function flyerCard(p) {
-  if (!p.flyerUrl && !p.canEdit) {
+  if (!p.flyerUrl && !p.can.edit) {
     return null;
   }
   const card = sideCard('flyer-card');
@@ -320,7 +320,7 @@ function flyerCard(p) {
   } else {
     card.append(el('div', 'side-line', 'No flyer yet - upload the party’s poster and it shows here.'));
   }
-  if (p.canEdit) {
+  if (p.can.edit) {
     const bar = el('div', 'flyer-actions');
     const file = el('input');
     file.type = 'file';
@@ -349,11 +349,11 @@ function flyerCard(p) {
 }
 
 function invitePath(p) {
-  return appOrigin('when') + '/e/celebrate/' + encodeURIComponent(p.id) + (p.started ? '' : '?invite=1');
+  return appOrigin('when') + '/e/celebrate/' + encodeURIComponent(p.partyId) + (p.started ? '' : '?invite=1');
 }
 
 function inviteCard(p) {
-  if (!p.canEdit || p.availability === 'past') {
+  if (!p.can.edit || p.availability === 'past') {
     return null;
   }
   const card = sideCard('side-card-invite');
@@ -391,7 +391,7 @@ export function partyPage(p) {
   const back = link(listPath(state.tab, state.category), 'detail-back');
   back.append(svg('chevron-left'), el('span', '', 'Back to Parties'));
   top.append(back);
-  if (p.canEdit) {
+  if (p.can.edit) {
     const tools = el('div', 'detail-tools');
     tools.append(
       button('Edit Tickets', 'ticket', 'button button-small button-secondary', () => openTickets(p)),

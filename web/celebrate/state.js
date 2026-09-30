@@ -1,4 +1,5 @@
 import {googleCalendarLink, parseWhen} from '/datecard.js';
+import {batch, query, me as whoAmI} from '/data.js';
 
 export const state = {model: null, celebration: '', tab: 'available', hostingTab: 'mine', category: '', showPast: true};
 
@@ -8,7 +9,38 @@ export function familyShown(p) {
 
 const byId = new Map();
 
-export function applyModel(model) {
+function partyView(read, p) {
+  const withCan = a => ({...a, can: read.get(a.ticketId).can});
+  return {...p, attendees: p.attendees.map(withCan), waitlisted: p.waitlisted.map(withCan)};
+}
+
+export async function loadModel() {
+  const [read, viewer] = await Promise.all([batch({
+    settings: '/api/celebrate-settings',
+    parties: '/api/parties?include=tickets',
+    celebrations: '/api/celebrations',
+    categories: '/api/party-categories',
+  }), whoAmI()]);
+  const s = read.get(read.result.settings[0]);
+  applyModel({
+    user: s.user,
+    allowances: viewer.allowances,
+    settingsId: s.id,
+    can: s.can,
+    today: s.today,
+    settings: s.settings,
+    current: s.current || '',
+    banner: s.banner || '',
+    invoicing: s.invoicing || [],
+    imageSearch: s.imageSearch,
+    billable: s.billable,
+    celebrations: read.result.celebrations.map(read.get),
+    categories: read.result.categories.map(read.get),
+    parties: read.result.parties.map(id => partyView(read, read.get(id))),
+  });
+}
+
+function applyModel(model) {
   state.model = model;
   byId.clear();
   for (const p of model.parties) {
@@ -23,8 +55,16 @@ export function me() {
   return state.model.user;
 }
 
-export function isAdmin() {
-  return state.model.user.isAdmin;
+export function allows(name) {
+  return state.model.allowances.includes(name);
+}
+
+export function anyAllowance() {
+  return state.model.allowances.some(a => a.startsWith('celebrate.'));
+}
+
+export function settingsId() {
+  return state.model.settingsId;
 }
 
 export function settings() {
@@ -56,43 +96,21 @@ export function parties(id) {
 }
 
 export function partyPath(p) {
-  return p.prettyId ? `/p/${encodeURIComponent(p.prettyId)}` : `/parties/${encodeURIComponent(p.id)}`;
+  return p.path;
 }
 
-function walkPath(path) {
-  const segs = path.split('/').filter(Boolean).map(decodeURIComponent);
-  if (segs.length !== 2) {
+export function partyAt(segment) {
+  const want = segment.toLowerCase();
+  return state.model.parties.find(p => p.partyId === segment || p.prettyId === want) || null;
+}
+
+export async function fetchParty(segment) {
+  try {
+    const read = await query('/api/parties/' + encodeURIComponent(segment));
+    return read.get(read.result);
+  } catch (err) {
     return null;
   }
-  if (segs[0] === 'p') {
-    const want = segs[1].toLowerCase();
-    return state.model.parties.find(p => p.prettyId === want) || null;
-  }
-  if (segs[0] === 'parties') {
-    return party(segs[1]);
-  }
-  return null;
-}
-
-export function resolvePath(path) {
-  let at = path.replace(/\/+$/, '');
-  if (!at.startsWith('/')) {
-    at = '/p/' + at;
-  }
-  for (let hops = 0; hops < 20 && at; hops++) {
-    const p = walkPath(at);
-    if (p) {
-      return p;
-    }
-    let moved = '';
-    for (const r of state.model.redirects || []) {
-      if (r.old.toLowerCase() === at.toLowerCase()) {
-        moved = r.new;
-      }
-    }
-    at = moved;
-  }
-  return null;
 }
 
 export function household() {
@@ -116,14 +134,15 @@ export function myPath(person) {
 
 export function billable() {
   const user = me();
-  const out = [];
-  if (!user.isStudent) {
-    out.push({email: user.email, name: user.name, photoUrl: user.photoUrl});
-  }
-  return out.concat(user.adults);
+  const people = [{email: user.email, name: user.name, photoUrl: user.photoUrl}, ...user.adults];
+  return state.model.billable.map(email => people.find(p => p.email === email));
 }
 
 export function admits(p, person) {
+  return p.admits.includes(person.email);
+}
+
+export function inAudience(p, person) {
   return ((person.isParent || person.isStaff) && p.adults) || (person.isStudent && p.students);
 }
 
@@ -146,13 +165,12 @@ export function ticketFor(p, email) {
   return [...p.attendees, ...p.waitlisted].find(a => a.email === email) || null;
 }
 
-export function isKid() {
-  const user = me();
-  return Boolean(user.isStudent && !user.isParent && !user.isStaff) && !isAdmin();
+export function mayTake(p) {
+  return p.availability === 'waitlist' ? p.can['join-waitlist'] : p.can.buy;
 }
 
 export function canHost() {
-  return Boolean(state.model.settings && state.model.settings.hostingOpen) || isAdmin();
+  return state.model.can.host;
 }
 
 export function isHosting(p) {
@@ -164,7 +182,7 @@ export function pendingParties() {
 }
 
 export function canApprove(p) {
-  return isAdmin() && p.status === 'Pending';
+  return p.can.status && p.status === 'Pending';
 }
 
 export function hostedParties() {

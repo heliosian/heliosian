@@ -1,4 +1,4 @@
-import {state, isAdmin, canApprove, hostedParties, pendingParties, partyPath, whenLine, money, canHost} from '../state.js';
+import {state, allows, canApprove, hostedParties, pendingParties, partyPath, whenLine, money, canHost} from '../state.js';
 import {el, link, button, imageThumb, svg} from '/elements.js';
 import {tabStrip} from '/tabs.js';
 import {hostingShown} from '../chrome.js';
@@ -32,7 +32,7 @@ function hostRow(p) {
   if (canApprove(p)) {
     actions.append(button('Approve', 'check', 'button button-small', () => setPartyStatus(p, 'Open')));
   }
-  if (p.canEdit) {
+  if (p.can.edit) {
     actions.append(button('', 'edit', 'edit-icon', () => openParty(p)));
   }
   const chevron = svg('chevron-right');
@@ -58,10 +58,10 @@ export function hostingPage() {
   const bar = el('div', 'list-bar');
   page.append(bar, body);
   const items = [{key: 'mine', label: 'My Parties', count: hostedParties().length}];
-  if (isAdmin()) {
+  if (allows('celebrate.curate')) {
     items.push({key: 'approvals', label: 'Approval Needed', count: pendingParties().length});
   }
-  if (isAdmin()) {
+  if (allows('celebrate.see-all')) {
     items.push({key: 'all', label: 'All Parties', count: state.model.parties.length});
   }
   state.hostingTab = hostingShown();

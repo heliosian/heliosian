@@ -529,7 +529,26 @@ type savedParty struct {
 	ops    []store.Op
 }
 
-func (m *Parties) saveParty(actor access.Actor, body partyBody) (savedParty, error) {
+var partyColumns = map[string][]string{
+	"celebration": {"Celebration"}, "title": {"Title"}, "subtitle": {"Subtitle"}, "summary": {"Summary"}, "description": {"Description"},
+	"needToKnow": {"Need To Know"}, "noteEmoji": {"Note Emoji"}, "noteTitle": {"Note Title"}, "hosts": {"Hosts"}, "category": {"Category"},
+	"audience": {"Audience"}, "unit": {"Ticket Unit"}, "price": {"Price"}, "capacity": {"Capacity"}, "minimum": {"Minimum"},
+	"start": {"Start"}, "end": {"End"}, "location": {"Location"}, "address": {"Address"}, "image": {"Image"}, "flyer": {"Flyer Image"},
+	"prettyId": {"Pretty ID"}, "status": {"Status"}, "ticketsOpen": {"Tickets"}, "waitlist": {"Waitlist"}, "adults": {"Adults"},
+	"students": {"Students"}, "dropOff": {"Drop-Off"}, "parentTicket": {"Parent Ticket Required"},
+}
+
+func partyBodyOf(p *Party) partyBody {
+	return partyBody{
+		ID: p.ID, Celebration: p.Celebration, Title: p.Title, Subtitle: p.Subtitle, Summary: p.Summary, Description: p.Description,
+		NeedToKnow: p.NeedToKnow, NoteEmoji: p.NoteEmoji, NoteTitle: p.NoteTitle, Hosts: p.Hosts, HostEmails: slices.Clone(p.HostEmails),
+		Category: p.Category, Audience: p.Audience, Unit: p.Unit, Price: p.Price, Capacity: p.Capacity, Minimum: p.Minimum,
+		Start: p.Start, End: p.End, Location: p.Location, Address: p.Address, Image: p.Image, Flyer: p.Flyer, PrettyID: p.PrettyID,
+		Status: p.Status, TicketsOpen: p.TicketsOpen, Waitlist: p.Waitlist, Adults: p.Adults, Students: p.Students, DropOff: p.DropOff, ParentTicket: p.ParentTicket,
+	}
+}
+
+func (m *Parties) saveParty(actor access.Actor, body partyBody, sent map[string]bool) (savedParty, error) {
 	adding := strings.TrimSpace(body.ID) == ""
 	var was *Party
 	if !adding {
@@ -563,6 +582,9 @@ func (m *Parties) saveParty(actor access.Actor, body partyBody) (savedParty, err
 			status = was.Status
 		}
 	default:
+		if (sent["status"] && status != was.Status) || (sent["celebration"] && celebration != was.Celebration) || (sent["category"] && category != was.Category) {
+			return savedParty{}, access.Forbidden("only an admin can change a party's status, celebration or category")
+		}
 		status, celebration, category = was.Status, was.Celebration, was.Category
 	}
 	if !slices.Contains(PartyStatuses, status) {
@@ -628,7 +650,20 @@ func (m *Parties) saveParty(actor access.Actor, body partyBody) (savedParty, err
 		ops = append(ops, store.Insert(partiesTab, row))
 	} else {
 		before = was.HostEmails
-		ops = append(ops, store.Update(partiesTab, store.Row{"Party ID": partyID}, row))
+		for field, columns := range partyColumns {
+			if sent[field] {
+				continue
+			}
+			for _, column := range columns {
+				delete(row, column)
+			}
+		}
+		if len(row) > 0 {
+			ops = append(ops, store.Update(partiesTab, store.Row{"Party ID": partyID}, row))
+		}
+		if !sent["hostEmails"] {
+			hosts = before
+		}
 	}
 	for _, h := range before {
 		if !slices.Contains(hosts, h) {
@@ -640,7 +675,7 @@ func (m *Parties) saveParty(actor access.Actor, body partyBody) (savedParty, err
 			ops = append(ops, store.Insert(hostsTab, store.Row{"Party ID": partyID, "Email": h}))
 		}
 	}
-	return savedParty{id: partyID, title: row["Title"], status: status, adding: adding, ops: ops}, nil
+	return savedParty{id: partyID, title: strings.TrimSpace(body.Title), status: status, adding: adding, ops: ops}, nil
 }
 
 func (m *Parties) deleteParty(actor access.Actor, id string) (*Party, []store.Op, error) {
@@ -655,35 +690,6 @@ func (m *Parties) deleteParty(actor access.Actor, id string) (*Party, []store.Op
 		return nil, nil, access.Invalid("remove its tickets and waitlist first, or hide it instead")
 	}
 	return p, []store.Op{store.Delete(partiesTab, store.Row{"Party ID": p.ID})}, nil
-}
-
-type partyFlags struct {
-	ID           string `json:"id"`
-	TicketsOpen  bool   `json:"ticketsOpen"`
-	Waitlist     bool   `json:"waitlist"`
-	Adults       bool   `json:"adults"`
-	Students     bool   `json:"students"`
-	DropOff      bool   `json:"dropOff"`
-	ParentTicket bool   `json:"parentTicket"`
-}
-
-func (m *Parties) setFlags(actor access.Actor, flags partyFlags) (*Party, []store.Op, error) {
-	p, err := m.findParty(flags.ID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if !p.Edits(actor) {
-		return nil, nil, access.Forbidden("only a host or admin can change this")
-	}
-	if !flags.Adults && !flags.Students {
-		return nil, nil, access.Invalid("let adults, students, or both hold a ticket")
-	}
-	row := store.Row{
-		"Tickets": ticketsCell(flags.TicketsOpen), "Waitlist": cells.YesNoCell(flags.Waitlist),
-		"Adults": cells.YesNoCell(flags.Adults), "Students": cells.YesNoCell(flags.Students),
-		"Drop-Off": cells.YesNoCell(flags.DropOff), "Parent Ticket Required": cells.YesNoCell(flags.ParentTicket),
-	}
-	return p, []store.Op{store.Update(partiesTab, store.Row{"Party ID": p.ID}, row)}, nil
 }
 
 func (m *Parties) setStatus(actor access.Actor, id, status string) (*Party, []store.Op, error) {
@@ -717,21 +723,21 @@ type celebrationForm struct {
 	Banner      bool   `json:"banner"`
 }
 
-func (m *Parties) saveCelebration(actor access.Actor, form celebrationForm) ([]store.Op, bool, error) {
+func (m *Parties) saveCelebration(actor access.Actor, form celebrationForm) ([]store.Op, string, error) {
 	if err := require(actor, ConfigureParties); err != nil {
-		return nil, false, err
+		return nil, "", err
 	}
 	code := strings.TrimSpace(form.Code)
 	key := strings.TrimSpace(form.ID)
 	adding := key == ""
 	if !adding && m.CelebrationByID(key) == nil {
-		return nil, false, access.Missing("no such celebration")
+		return nil, "", access.Missing("no such celebration")
 	}
 	if adding {
 		key = id.New(m.taken)
 	}
 	if other := m.Celebration(code); other != nil && other.ID != key {
-		return nil, false, access.Invalid("%q is already a celebration", code)
+		return nil, "", access.Invalid("%q is already a celebration", code)
 	}
 	row := store.Row{
 		"Code": code, "Title": strings.TrimSpace(form.Title), "Subtitle": strings.TrimSpace(form.Subtitle),
@@ -761,7 +767,7 @@ func (m *Parties) saveCelebration(actor access.Actor, form celebrationForm) ([]s
 	} else {
 		ops = append(ops, store.Update(celebrationsTab, store.Row{"Celebration ID": key}, row))
 	}
-	return ops, adding, nil
+	return ops, key, nil
 }
 
 func (s *Store) deleteCelebration(actor access.Actor, key string) (*Celebration, []store.Op, error) {
@@ -778,26 +784,27 @@ func (s *Store) deleteCelebration(actor access.Actor, key string) (*Celebration,
 	return celebration, []store.Op{store.Delete(celebrationsTab, store.Row{"Celebration ID": celebration.ID})}, nil
 }
 
-func (m *Parties) saveCategory(actor access.Actor, key, title string) ([]store.Op, bool, error) {
+func (m *Parties) saveCategory(actor access.Actor, key, title string) ([]store.Op, string, error) {
 	if err := require(actor, ConfigureParties); err != nil {
-		return nil, false, err
+		return nil, "", err
 	}
 	title = strings.TrimSpace(title)
 	if err := cells.Title("category", title, maxPartyTitleLength); err != nil {
-		return nil, false, access.Invalid("%s", err)
+		return nil, "", access.Invalid("%s", err)
 	}
 	key = strings.TrimSpace(key)
 	adding := key == ""
 	if !adding && m.Category(key) == nil {
-		return nil, false, access.Missing("no such category")
+		return nil, "", access.Missing("no such category")
 	}
 	if other := m.categoryTitled(title); other != nil && (adding || other.ID != key) {
-		return nil, false, access.Invalid("%q is already a category", title)
+		return nil, "", access.Invalid("%q is already a category", title)
 	}
 	if adding {
-		return []store.Op{store.Insert(partyCategoriesTab, store.Row{"Category ID": id.New(m.taken), "Title": title})}, true, nil
+		key = id.New(m.taken)
+		return []store.Op{store.Insert(partyCategoriesTab, store.Row{"Category ID": key, "Title": title})}, key, nil
 	}
-	return []store.Op{store.Update(partyCategoriesTab, store.Row{"Category ID": key}, store.Row{"Title": title})}, false, nil
+	return []store.Op{store.Update(partyCategoriesTab, store.Row{"Category ID": key}, store.Row{"Title": title})}, key, nil
 }
 
 func (s *Store) deletePartyCategory(actor access.Actor, key string) (*PartyCategory, []store.Op, error) {

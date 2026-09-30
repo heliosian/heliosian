@@ -1,4 +1,4 @@
-import {partyPath, availabilityLabel, myTickets, isKid} from './state.js';
+import {partyPath, availabilityLabel, myTickets} from './state.js';
 import {parseWhen} from '/datecard.js';
 import {badge} from './dom.js';
 import {el, link, svg, imageThumb, button} from '/elements.js';
@@ -48,13 +48,10 @@ function dateStamp(p) {
 }
 
 function footButton(p, mine) {
-  if (isKid()) {
-    return link(partyPath(p), 'button button-secondary button-small', 'Learn More');
-  }
-  if (p.availability === 'available') {
+  if (p.availability === 'available' && p.can.buy) {
     return button('Get Tickets', null, 'button button-small', () => openBuy(p));
   }
-  if (p.availability === 'waitlist' && !mine.length) {
+  if (p.availability === 'waitlist' && !mine.length && p.can['join-waitlist']) {
     return button('Join Waitlist', null, 'button button-small', () => openBuy(p));
   }
   return link(partyPath(p), 'button button-secondary button-small', 'Learn More');

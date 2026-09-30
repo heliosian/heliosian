@@ -257,6 +257,11 @@ func (a calendarApp) linkedRSVPs(id string) *LinkedRSVPs {
 			break
 		}
 	}
+	return a.eventRSVPs(id)
+}
+
+func (a calendarApp) eventRSVPs(id string) *LinkedRSVPs {
+	model := a.model()
 	inv := model.Invitations[id]
 	if inv == nil {
 		return nil

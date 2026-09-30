@@ -2,8 +2,6 @@ package model
 
 import (
 	"context"
-	"log/slog"
-	"net/http"
 	"slices"
 	"sort"
 	"strings"
@@ -13,7 +11,6 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/cells"
 	"heliosian/internal/mail"
-	"heliosian/internal/serve"
 )
 
 func (s *Store) movePartyAddress(ctx context.Context, actor access.Actor, old, to, name string) error {
@@ -28,21 +25,6 @@ type addressMove struct {
 	Old  string `json:"old"`
 	To   string `json:"to"`
 	Name string `json:"name"`
-}
-
-func (a partiesApp) moveAddress(r *http.Request, body addressMove) (serve.None, error) {
-	actor := a.actor(r)
-	ops, moved, err := a.parties().moveUnlisted(actor, a.directory(), body.Old, body.To, body.Name)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	old, to := mail.Normalize(body.Old), mail.Normalize(body.To)
-	a.calendar.moveAddress(r.Context(), actor, old, to, strings.TrimSpace(body.Name))
-	slog.InfoContext(r.Context(), "celebrate: address moved", "actor", actor.Email, "from", old, "to", to, "tickets", moved)
-	return serve.None{}, nil
 }
 
 type AddressUse struct {
@@ -140,17 +122,4 @@ func (m *Parties) MovedAddresses() []Moved {
 		return out[i].Old < out[j].Old
 	})
 	return out
-}
-
-type addressesView struct {
-	Problems []Problem `json:"problems"`
-	Moved    []Moved   `json:"moved"`
-}
-
-func (a partiesApp) addresses(r *http.Request, _ serve.None) (addressesView, error) {
-	if err := require(a.actor(r), MoveAddresses); err != nil {
-		return addressesView{}, err
-	}
-	m := a.parties()
-	return addressesView{Problems(m, a.directory(), now()), m.MovedAddresses()}, nil
 }

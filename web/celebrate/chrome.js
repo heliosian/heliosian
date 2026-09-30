@@ -1,4 +1,4 @@
-import {state, me, isAdmin, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown, celebration, category, matches, partyPath} from './state.js';
+import {state, me, anyAllowance, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown, celebration, category, matches, partyPath} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {initResults, showResults, closeResults, resultDay} from '/searchmenu.js';
@@ -14,7 +14,7 @@ const primary = [
 ];
 
 function navItems() {
-  return primary.filter(item => !item.admin || isAdmin());
+  return primary.filter(item => !item.admin || anyAllowance());
 }
 
 function active(href) {

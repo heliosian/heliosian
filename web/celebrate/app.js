@@ -1,21 +1,37 @@
-import {applyModel, celebrationByCode, familyMember, resolvePath, partyPath} from './state.js';
+import {loadModel, celebrationByCode, familyMember, partyAt, fetchParty} from './state.js';
 import {initChrome} from './chrome.js';
 import {showPage, clearSearch} from '/shell.js';
-import {api} from '/api.js';
+import {el} from '/elements.js';
 import {initModal} from '/modal.js';
-import {startApp, load, notFound} from '/router.js';
+import {startApp, load, render, notFound} from '/router.js';
 import {partiesPage} from './pages/parties.js';
 import {partyPage} from './pages/party.js';
 import {myPage} from './pages/my.js';
 import {hostingPage} from './pages/hosting.js';
 import {adminPage} from './pages/admin.js';
 
+const fetched = new Set();
+
 function party(parts) {
-  const p = resolvePath(location.pathname);
-  if (p && partyPath(p) !== location.pathname) {
-    history.replaceState(null, '', partyPath(p));
+  const segment = parts.length === 2 ? parts[1] : '';
+  const p = segment ? partyAt(segment) : null;
+  if (!p) {
+    if (segment && !fetched.has(segment)) {
+      fetched.add(segment);
+      fetchParty(segment).then(found => {
+        if (found) {
+          history.replaceState(null, '', found.path);
+          render();
+        }
+      });
+      return el('div', 'list-page', 'Looking…');
+    }
+    return notFound(parts[0] === 'p' ? 'That address' : 'That party');
   }
-  return p ? partyPage(p) : notFound(parts[0] === 'p' ? 'That address' : 'That party');
+  if (p.path !== location.pathname) {
+    history.replaceState(null, '', p.path);
+  }
+  return partyPage(p);
 }
 
 const routes = {
@@ -40,7 +56,7 @@ const routes = {
 initChrome();
 initModal(load);
 startApp({
-  model: async () => applyModel(await api('GET', '/api/celebrate/model')),
+  model: loadModel,
   routes,
   missing: 'is not on the site, or is not something you can see.',
   prepare: clearSearch,

@@ -83,7 +83,12 @@ func TestSavePartyDirectly(t *testing.T) {
 	cache, _ := partiesServer(t)
 	m := cache.Model().Parties
 	fresh := partyBody{Title: "Board Game Night", Adults: true, Status: StatusOpen, Category: "pcg0000000001", Celebration: "cbn0000002025"}
-	edit := partyBody{ID: "pty0000000002", Title: "Dink & Clink", Price: m.Party("pty0000000002").Price, Adults: true, Status: StatusHidden, HostEmails: []string{elena, "marco.torres@heliosschool.org"}}
+	dink := m.Party("pty0000000002")
+	edit := partyBody{ID: dink.ID, Title: "Dink & Clink", Price: dink.Price, Adults: true, Status: StatusOpen, Celebration: dink.Celebration, Category: dink.Category, HostEmails: []string{elena, "marco.torres@heliosschool.org"}}
+	whole := map[string]bool{"hostEmails": true}
+	for field := range partyColumns {
+		whole[field] = true
+	}
 	with := func(b partyBody, change func(*partyBody)) partyBody {
 		change(&b)
 		return b
@@ -103,14 +108,15 @@ func TestSavePartyDirectly(t *testing.T) {
 		{"a negative price", partyViewerOf(elena, false), with(fresh, func(b *partyBody) { b.Price = -1 }), http.StatusBadRequest, "", 0},
 		{"an unknown status", partyViewerOf(partiesAdmin, true), with(fresh, func(b *partyBody) { b.Status = "Maybe" }), http.StatusBadRequest, "", 0},
 		{"a stranger cannot edit", partyViewerOf(teacher, false), edit, http.StatusForbidden, "", 0},
-		{"a host keeps the status", partyViewerOf(elena, false), edit, http.StatusOK, StatusOpen, 1},
+		{"a host saves", partyViewerOf(elena, false), edit, http.StatusOK, StatusOpen, 1},
+		{"a host cannot change the status", partyViewerOf(elena, false), with(edit, func(b *partyBody) { b.Status = StatusHidden }), http.StatusForbidden, "", 0},
 		{"a host cannot leave", partyViewerOf(elena, false), with(edit, func(b *partyBody) { b.HostEmails = []string{"marco.torres@heliosschool.org"} }), http.StatusBadRequest, "", 0},
 		{"a host adds a host", partyViewerOf(elena, false), with(edit, func(b *partyBody) { b.HostEmails = append(b.HostEmails, teacher) }), http.StatusOK, StatusOpen, 2},
-		{"an admin drops a host", partyViewerOf(partiesAdmin, true), with(edit, func(b *partyBody) { b.HostEmails = []string{elena} }), http.StatusOK, StatusHidden, 2},
+		{"an admin drops a host", partyViewerOf(partiesAdmin, true), with(edit, func(b *partyBody) { b.HostEmails, b.Status = []string{elena}, StatusHidden }), http.StatusOK, StatusHidden, 2},
 		{"a malformed address", partyViewerOf(elena, false), with(edit, func(b *partyBody) { b.PrettyID = "k pop!" }), http.StatusBadRequest, "", 0},
 	}
 	for _, c := range cases {
-		saved, err := m.saveParty(c.actor, c.body)
+		saved, err := m.saveParty(c.actor, c.body, whole)
 		if status := testkit.Status(t, err); status != c.status {
 			t.Errorf("%s: status %d, want %d (%v)", c.name, status, c.status, err)
 			continue
@@ -119,7 +125,7 @@ func TestSavePartyDirectly(t *testing.T) {
 			t.Errorf("%s: saved as %q with %d ops, want %q with %d", c.name, saved.status, len(saved.ops), c.want, c.ops)
 		}
 	}
-	saved, err := m.saveParty(partyViewerOf(elena, false), fresh)
+	saved, err := m.saveParty(partyViewerOf(elena, false), fresh, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,10 +141,10 @@ func TestSavePartyDirectly(t *testing.T) {
 	}
 	closed := *cache.Model().Parties
 	closed.Settings.HostingOpen = false
-	if _, err := closed.saveParty(partyViewerOf(elena, false), fresh); testkit.Status(t, err) != http.StatusForbidden {
+	if _, err := closed.saveParty(partyViewerOf(elena, false), fresh, nil); testkit.Status(t, err) != http.StatusForbidden {
 		t.Fatalf("a parent posted while hosting is closed: %v", err)
 	}
-	if _, err := closed.saveParty(partyViewerOf(partiesAdmin, true), fresh); err != nil {
+	if _, err := closed.saveParty(partyViewerOf(partiesAdmin, true), fresh, nil); err != nil {
 		t.Fatalf("an admin could not post while hosting is closed: %v", err)
 	}
 }
@@ -146,7 +152,7 @@ func TestSavePartyDirectly(t *testing.T) {
 func TestSavePartyAddressConflict(t *testing.T) {
 	cache, _ := partiesServer(t)
 	body := partyBody{ID: "pty0000000003", Title: "K-Pop for a Cause!", Price: cache.Model().Parties.Party("pty0000000003").Price, Adults: true, Students: true, PrettyID: "Fondue", HostEmails: []string{"deepa.natarajan@heliosschool.org"}}
-	_, err := cache.Model().Parties.saveParty(partyViewerOf("deepa.natarajan@heliosschool.org", false), body)
+	_, err := cache.Model().Parties.saveParty(partyViewerOf("deepa.natarajan@heliosschool.org", false), body, map[string]bool{"prettyId": true})
 	var refusal *access.Refusal
 	if !errors.As(err, &refusal) || refusal.Status != http.StatusConflict {
 		t.Fatalf("took another party's address: %v", err)

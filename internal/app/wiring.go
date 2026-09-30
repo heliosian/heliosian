@@ -174,7 +174,7 @@ func NewCore(cfg Config) *Core {
 	})
 	birthdayMux := http.NewServeMux()
 	celebrateMux := http.NewServeMux()
-	model.RegisterParties(celebrateMux, model.PartiesDeps{
+	parties := model.RegisterParties(celebrateMux, model.PartiesDeps{
 		Store:    models,
 		Images:   celebrateImages,
 		Calendar: hooks,
@@ -210,7 +210,7 @@ func NewCore(cfg Config) *Core {
 	waitingApprovals := approvals(models)
 	behind := lateBirthdays(models)
 	alerts := staleAlerts(models)
-	registry := model.NewRegistry(models, queue, hooks, documents)
+	registry := model.NewRegistry(models, queue, hooks, parties, documents)
 	model.RegisterBirthdays(birthdayMux, model.BirthdaysDeps{
 		Store:     models,
 		Queue:     queue,

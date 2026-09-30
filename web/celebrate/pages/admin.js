@@ -1,8 +1,8 @@
-import {state, isAdmin, me, money, whenLine, celebration} from '../state.js';
+import {state, anyAllowance, settingsId, me, money, whenLine, celebration} from '../state.js';
 import {el, button, svg} from '/elements.js';
 import {openCelebration, openCategory, openSettings, openMoveAddress} from '../edit.js';
 import {load} from '/router.js';
-import {api} from '/api.js';
+import {query, act} from '/data.js';
 import {celebrationBand} from './parties.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 
@@ -24,11 +24,7 @@ function bannerCard() {
   pick.addEventListener('change', async () => {
     const chosen = celebration(pick.value);
     try {
-      await api('POST', '/api/celebrate/celebration', {
-        id: chosen.id, code: chosen.code, title: chosen.title, subtitle: chosen.subtitle || '', start: chosen.start || '', end: chosen.end || '',
-        location: chosen.location || '', address: chosen.address || '', description: chosen.description || '', image: chosen.image || '',
-        buttonText: chosen.buttonText || '', buttonUrl: chosen.buttonUrl || '', current: chosen.current, banner: true,
-      });
+      await act('celebrations', chosen.id, 'edit', {banner: true});
       await load();
     } catch (err) {
       alert(err.message);
@@ -87,7 +83,7 @@ function categoriesCard() {
         const order = cats.map(c => c.id);
         order.splice(to, 0, order.splice(from, 1)[0]);
         try {
-          await api('POST', '/api/celebrate/categories/order', {ids: order});
+          await act('celebrate-settings', settingsId(), 'order-categories', {ids: order});
           await load();
           paint();
         } catch (err) {
@@ -294,7 +290,8 @@ function addressesCard() {
   };
   const load = async () => {
     try {
-      data = await api('GET', '/api/celebrate/addresses');
+      const read = await query('/api/celebrate-addresses');
+      data = read.get(read.result[0]);
       paint();
     } catch (err) {
       list.replaceChildren(el('div', 'hint error', err.message));
@@ -323,5 +320,5 @@ const sections = [
 ];
 
 export function adminPage() {
-  return buildAdminPage({appName: 'Helios Celebrate', allowed: isAdmin(), email: me().email, sections});
+  return buildAdminPage({appName: 'Helios Celebrate', allowed: anyAllowance(), email: me().email, sections});
 }
