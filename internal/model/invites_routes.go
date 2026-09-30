@@ -36,6 +36,8 @@ type GuestRow struct {
 	Outside      bool     `json:"outside,omitempty"`
 	Mine         bool     `json:"mine,omitempty"`
 	Household    string   `json:"household,omitempty"`
+	FamilyName   string   `json:"familyName,omitempty"`
+	FamilyPhoto  string   `json:"familyPhoto,omitempty"`
 	Link         string   `json:"link,omitempty"`
 	Warning      string   `json:"warning,omitempty"`
 	WarningWords string   `json:"warningWords,omitempty"`
@@ -175,6 +177,9 @@ func (a calendarApp) guestRow(viewer access.Actor, e *Event, email, name string,
 	g := GuestRow{CalendarPerson: p, Key: email, Invited: invited, Outside: known == nil, Ticket: ticket, Mine: host || a.speaksFor(viewer, email, e), Household: a.householdKey(e, email)}
 	if known != nil {
 		g.Grades, g.Classrooms = a.facetsOf(known)
+	}
+	if family, ok := a.directory().FamilyOf(email); ok {
+		g.FamilyName, g.FamilyPhoto = family.Name, thumb(family.PhotoURL)
 	}
 	g.Warning, g.WarningWords = a.addressWarning(model, email, known != nil)
 	if ans, ok := model.Answered[email][e.ID]; ok && ans.Answer != AnswerHidden {

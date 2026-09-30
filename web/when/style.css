@@ -1492,13 +1492,17 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .coming-section .guest-table-bar { margin: 4px 0 8px; }
 
-.coming-section .guest-table-bar .rule-search { flex: 1 1 160px; max-width: 260px; }
+.coming-section .rsvps-card-head .rule-search { flex: 0 1 260px; }
 
 .person-card-face .ticket-mark { right: -6px; bottom: -6px; width: 26px; height: 26px; }
 
 .person-card-face .ticket-mark svg { width: 15px; height: 15px; }
 
 .coming-section .rsvps-pending { margin: 0 0 14px; }
+
+.family-member-face .ticket-mark { right: -6px; bottom: -6px; width: 20px; height: 20px; }
+
+.family-member-face .ticket-mark svg { width: 12px; height: 12px; }
 
 .guests-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 

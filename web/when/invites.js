@@ -13,6 +13,7 @@ import {listFilters, openTable, openMessage} from './guesttable.js';
 import {openPicker, guestAdders} from './addpeople.js';
 import {personTile, personCard, peopleRow, andList} from '/people.js';
 import {personRow} from '/personrow.js';
+import {familiesOf, familySwitch, familySaid, familyRow} from '/families.js';
 import {countList} from '/countlist.js';
 import {openPersonCard} from '/personcard.js';
 import {memberAdders, membersCard} from '/members.js';
@@ -236,54 +237,88 @@ export function comingCard(e, view, refresh) {
     card.append(el('div', 'side-line coming-privacy', view.listPrivate ? 'Only the hosts see this list.' : 'Everyone who opens the event sees this list.'));
   }
   const grid = el('div', 'coming-grid');
+  let byFamily = true;
+  let current = rows;
+  const unsent = r => view.host && r.invited && !r.sent && r.email && !r.answer;
+  const groups = [
+    {key: 'yes', label: 'Yes', cls: 'is-yes', has: r => r.answer === 'yes'},
+    {key: 'maybe', label: 'Maybe', cls: 'is-maybe', has: r => r.answer === 'maybe'},
+    ...(view.host ? [{key: 'no', label: 'No', cls: 'is-no', has: r => r.answer === 'no'}] : []),
+    {key: 'waiting', label: 'No response', cls: 'is-waiting', has: r => r.invited && !r.answer && !unsent(r)},
+    ...(view.host ? [{key: 'pending', label: 'Pending (Unsent)', cls: 'is-pending', has: unsent}] : []),
+  ];
+  const familyRank = ['yes', 'maybe', 'waiting', 'pending', 'no'];
+  const familyGroup = family => familyRank.map(key => groups.find(g => g.key === key)).find(g => g && family.some(g.has));
+  const cardOf = p => personCard(p, {
+    onClick: () => openGuestCard(e, p, view, refresh),
+    line: p.guestOf ? `Guest of ${p.guestOfName}` : p.line,
+    mine: view.mine.some(m => m.key === p.key),
+    corner: ticketMark(view, p),
+    gradeColors: state.model.gradeColors,
+  });
   const paint = shown => {
+    current = shown;
     grid.replaceChildren();
-    const groups = [
-      ['Yes', shown.filter(r => r.answer === 'yes'), 'is-yes'],
-      ['Maybe', shown.filter(r => r.answer === 'maybe'), 'is-maybe'],
-    ];
-    if (view.host) {
-      groups.push(['No', shown.filter(r => r.answer === 'no'), 'is-no']);
-    }
-    const unsent = r => view.host && r.invited && !r.sent && r.email && !r.answer;
-    groups.push(['No response', shown.filter(r => r.invited && !r.answer && !unsent(r)), 'is-waiting']);
-    if (view.host) {
-      groups.push(['Pending (Unsent)', shown.filter(unsent), 'is-pending']);
-    }
-    if (!groups.some(([, people]) => people.length)) {
+    const families = byFamily ? familiesOf(shown) : [];
+    const filled = groups.map(g => ({...g, items: byFamily ? families.filter(f => familyGroup(f) === g) : shown.filter(g.has)}));
+    if (!filled.some(g => g.items.length)) {
       grid.append(el('div', 'side-line', rows.length ? 'Nobody matches.' : 'Nobody has answered yet.'));
       return;
     }
-    for (const [label, people, cls] of groups) {
-      if (!people.length) {
+    for (const g of filled) {
+      if (!g.items.length) {
         continue;
       }
-      grid.append(el('div', 'rsvps-head ' + cls, label));
-      const list = el('div', 'person-cards');
-      for (const p of people) {
-        let mark = null;
-        if (view.party && view.host && p.invited) {
-          mark = el('span', 'ticket-mark is-' + (p.ticket || 'none'));
-          mark.title = ticketWords(p.ticket);
-          mark.append(svg(p.ticket === 'ticket' ? 'ticket' : p.ticket === 'free' ? 'gift' : p.ticket === 'waitlist' ? 'clock' : 'close'));
-        }
-        list.append(personCard(p, {
-          onClick: () => openGuestCard(e, p, view, refresh),
-          line: p.guestOf ? `Guest of ${p.guestOfName}` : p.line,
-          mine: view.mine.some(m => m.key === p.key),
-          corner: mark,
-          gradeColors: state.model.gradeColors,
-        }));
+      grid.append(el('div', 'rsvps-head ' + g.cls, g.label));
+      if (!byFamily) {
+        const list = el('div', 'person-cards');
+        list.append(...g.items.map(cardOf));
+        grid.append(list);
+        continue;
       }
+      const list = el('div', 'family-rows');
+      list.append(...g.items.map(family => guestFamilyRow(e, view, family, refresh)));
       grid.append(list);
     }
   };
   if (rows.length > 1) {
-    card.append(listFilters(rows, view, paint, {rsvp: false}));
+    const by = familySwitch(byFamily, family => {
+      byFamily = family;
+      paint(current);
+    });
+    const bar = listFilters(rows, view, paint, {rsvp: false});
+    head.append(bar.querySelector('.rule-search'));
+    bar.prepend(by);
+    card.append(bar);
   }
   paint(rows);
   card.append(grid);
   return card;
+}
+
+function ticketMark(view, p) {
+  if (!(view.party && view.host && p.invited)) {
+    return null;
+  }
+  const mark = el('span', 'ticket-mark is-' + (p.ticket || 'none'));
+  mark.title = ticketWords(p.ticket);
+  mark.append(svg(p.ticket === 'ticket' ? 'ticket' : p.ticket === 'free' ? 'gift' : p.ticket === 'waitlist' ? 'clock' : 'close'));
+  return mark;
+}
+
+function guestFamilyRow(e, view, family, refresh) {
+  return familyRow(family, family.map(r => {
+    const said = familySaid(r.answer, r.mine);
+    return {
+      person: r,
+      kind: r.guestOf ? 'guest' : r.isStudent ? 'kid' : r.isParent ? 'parent' : '',
+      name: r.key === me().email ? 'You' : firstName(r),
+      role: r.guestOf ? 'Guest' : r.isStudent ? r.grade || 'Student' : r.isParent ? 'Parent' : r.isStaff ? 'Staff' : '',
+      onClick: () => openGuestCard(e, r, view, refresh),
+      corner: ticketMark(view, r),
+      after: r.mine ? dropMenu(said, answerItems(e, r, refresh, 'Clear'), true) : said,
+    };
+  }), state.model.gradeColors);
 }
 
 export function inviteCall(e, view, refresh) {
@@ -773,7 +808,7 @@ function sendMenu(e, view, refresh) {
 
 function guestCounts(e, view, refresh) {
   const c = view.counts;
-  const listOf = keep => () => householdsOf(view.list).flat().filter(keep).map(r => guestPlainRow(e, view, r, refresh));
+  const listOf = keep => () => familiesOf(view.list).flat().filter(keep).map(r => guestPlainRow(e, view, r, refresh));
   const unsent = r => r.invited && !r.sent && r.email && !r.answer;
   const sent = r => !unsent(r);
   const waiting = r => !r.answer && sent(r);
@@ -796,7 +831,7 @@ function guestCounts(e, view, refresh) {
 
 function ticketHoldersItem(e, view, refresh) {
   const holders = view.ticketHolders;
-  return {icon: 'ticket', label: 'Ticket holders', count: holders.length, tone: 'ticket', expand: () => householdsOf(holders).flat().map(r => guestPlainRow(e, view, r, refresh))};
+  return {icon: 'ticket', label: 'Ticket holders', count: holders.length, tone: 'ticket', expand: () => familiesOf(holders).flat().map(r => guestPlainRow(e, view, r, refresh))};
 }
 
 export function ticketHoldersSection(e, view, refresh) {
@@ -812,18 +847,6 @@ export function ticketHoldersSection(e, view, refresh) {
   head.append(mark, words);
   section.append(head, countList([ticketHoldersItem(e, view, refresh)]));
   return section;
-}
-
-function householdsOf(rows) {
-  const households = new Map();
-  for (const r of rows) {
-    const key = r.household || r.key;
-    if (!households.has(key)) {
-      households.set(key, []);
-    }
-    households.get(key).push(r);
-  }
-  return [...households.values()].sort((a, b) => (a[0].name || '').localeCompare(b[0].name || ''));
 }
 
 function guestPlainRow(e, view, r, refresh) {

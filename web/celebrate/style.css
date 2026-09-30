@@ -793,6 +793,8 @@ main {
 
 .attendees-foot { margin-top: 12px; }
 
+.attendees-bar { margin: -4px 0 12px; }
+
 .wait-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
 
 .wait-row { padding: 10px 14px; border-top: 1px solid var(--line); }

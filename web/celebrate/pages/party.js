@@ -12,6 +12,7 @@ import {dateCard, parseWhen} from '/datecard.js';
 import {render} from '/router.js';
 import {personTile, personCard, peopleRow, andList} from '/people.js';
 import {personRow} from '/personrow.js';
+import {familiesOf, familySwitch, familySaid, familyRow} from '/families.js';
 
 const phone = window.matchMedia('(max-width: 900px)');
 phone.addEventListener('change', render);
@@ -147,6 +148,19 @@ function attendeeCard(p, a) {
   });
 }
 
+const attendeeKinds = {Parent: 'parent', Student: 'kid', Guest: 'guest'};
+
+function attendeeFamilyRow(p, family) {
+  return familyRow(family, family.map(a => ({
+    person: a,
+    kind: attendeeKinds[a.kind] || '',
+    name: a.name.split(' ')[0],
+    role: a.kind === 'Student' ? a.grade || 'Student' : a.kind,
+    onClick: p.can.edit ? () => openTicket(p, a) : () => openPerson(a),
+    after: p.can.edit && p.invited ? familySaid(a.rsvp) : null,
+  })));
+}
+
 function attendeesSection(p) {
   const section = el('section', 'attendees');
   const head = el('div', 'section-head');
@@ -165,11 +179,29 @@ function attendeesSection(p) {
   }
   section.append(head);
   if (n) {
-    const grid = el('div', 'person-cards');
-    for (const a of p.attendees) {
-      grid.append(attendeeCard(p, a));
+    const list = el('div');
+    let byFamily = true;
+    const paint = () => {
+      if (!byFamily) {
+        const grid = el('div', 'person-cards');
+        grid.append(...p.attendees.map(a => attendeeCard(p, a)));
+        list.replaceChildren(grid);
+        return;
+      }
+      const rows = el('div', 'family-rows');
+      rows.append(...familiesOf(p.attendees).map(family => attendeeFamilyRow(p, family)));
+      list.replaceChildren(rows);
+    };
+    if (n > 1) {
+      const bar = el('div', 'attendees-bar');
+      bar.append(familySwitch(byFamily, family => {
+        byFamily = family;
+        paint();
+      }));
+      section.append(bar);
     }
-    section.append(grid);
+    paint();
+    section.append(list);
   } else {
     section.append(el('p', 'section-note', 'Nobody yet - be the first!'));
   }

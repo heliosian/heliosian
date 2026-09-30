@@ -1,0 +1,57 @@
+.family-switch { display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); }
+
+.family-switch-choice { padding: 4px 12px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
+
+.family-switch-choice.is-on { background: var(--brand-fill); color: #fff; }
+
+.family-rows { display: flex; flex-direction: column; gap: 8px; }
+
+.family-row { display: flex; align-items: center; gap: 12px 28px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+
+.family-row-head { display: flex; align-items: center; gap: 14px; flex: 0 1 230px; min-width: 0; }
+
+.avatar.family-row-photo { position: relative; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; width: 72px; height: 72px; border-radius: 10px; background: var(--input); color: var(--brand); font-size: 22px; font-weight: 700; }
+
+.family-row-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+.family-row-grades { position: absolute; right: 4px; bottom: 4px; display: flex; gap: 3px; }
+
+.family-row-grades .grade-badge { position: static; }
+
+.family-row-words { min-width: 0; }
+
+.family-row-name { font-size: 16px; font-weight: 700; line-height: 1.25; }
+
+.family-row-line { font-size: 13.5px; line-height: 1.35; color: var(--muted); }
+
+.family-row-members { display: grid; grid-template-columns: repeat(auto-fill, 140px); align-items: center; gap: 12px 22px; flex: 1 1 140px; }
+
+.family-row-members.has-said { grid-template-columns: repeat(auto-fill, 290px); flex-basis: 290px; }
+
+.family-member { display: grid; grid-template-columns: 140px auto; justify-content: start; align-items: center; gap: 10px; }
+
+.family-member-who { display: flex; align-items: center; gap: 10px; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; }
+
+button.family-member-who { cursor: pointer; }
+
+.family-member-words { min-width: 0; overflow-wrap: anywhere; }
+
+.avatar.family-member-face { position: relative; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: visible; width: 44px; height: 44px; border-radius: 10px; background: var(--input); color: var(--brand); font-size: 17px; font-weight: 700; }
+
+.family-member-face img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+
+.family-member-name { font-size: 13.5px; font-weight: 700; line-height: 1.25; }
+
+.family-member-line { font-size: 12px; line-height: 1.3; color: var(--muted); }
+
+.family-said { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 0; border-radius: 999px; background: var(--input); color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; white-space: nowrap; }
+
+button.family-said { cursor: pointer; }
+
+.family-said svg { width: 14px; height: 14px; }
+
+.family-said.is-yes { background: var(--yes-wash, #e3f3ea); color: var(--yes-text, #1d6b48); }
+
+.family-said.is-maybe { background: var(--maybe-wash, #fff8e8); color: var(--maybe-text, #7a5a00); }
+
+.family-said.is-no { background: var(--no-wash, #f7eeee); color: var(--no-text, #b3261e); }

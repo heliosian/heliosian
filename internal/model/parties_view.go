@@ -1,6 +1,7 @@
 package model
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"sort"
@@ -110,6 +111,9 @@ type PartyAttendee struct {
 	Note          string  `json:"note,omitempty"`
 	AddedBy       string  `json:"addedBy,omitempty"`
 	RSVP          string  `json:"rsvp,omitempty"`
+	Household     string  `json:"household"`
+	FamilyName    string  `json:"familyName,omitempty"`
+	FamilyPhoto   string  `json:"familyPhoto,omitempty"`
 }
 
 type PartyView struct {
@@ -182,6 +186,13 @@ func (v partyViewer) attendee(t Ticket, sees bool) PartyAttendee {
 	}
 	if person != nil {
 		a.Name, a.PhotoURL, a.Grade = person.FullName, v.directory.HeroPhoto(person.Email), person.Grade
+	}
+	a.Household = cmp.Or(t.Purchaser, t.Email, t.ID)
+	for _, email := range []string{t.Purchaser, t.Email} {
+		if family, ok := v.directory.FamilyOf(email); ok && email != "" {
+			a.Household, a.FamilyName, a.FamilyPhoto = family.Key, family.Name, thumb(family.PhotoURL)
+			break
+		}
 	}
 	a.Mine = v.Mine(t.Purchaser) || v.Mine(t.Email)
 	if sees || a.Mine {
