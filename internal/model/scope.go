@@ -31,6 +31,12 @@ type scope struct {
 	volunteerKeys  map[string]volunteerKey
 	linkedOnce     sync.Once
 	activityEvents map[string]string
+
+	magicKeysOnce sync.Once
+	magicKeys     map[string]bool
+	heldOnce      sync.Once
+	heldOrder     []string
+	held          map[string]MagicTag
 }
 
 func (m *Model) at(q api.Query) *Model {

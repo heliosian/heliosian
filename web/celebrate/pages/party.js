@@ -349,7 +349,7 @@ function flyerCard(p) {
 }
 
 function invitePath(p) {
-  return appOrigin('when') + '/e/celebrate/' + encodeURIComponent(p.partyId) + (p.started ? '' : '?invite=1');
+  return appOrigin('when') + '/e/' + encodeURIComponent(p.partyId) + (p.started ? '' : '?invite=1');
 }
 
 function inviteCard(p) {

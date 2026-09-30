@@ -224,7 +224,7 @@ func main() {
 	fmt.Printf("calendar admins: %d\n", len(m.AdminList("when").Admins()))
 
 	groupModel := m.EmailLists
-	sources := m.EmailListAudience(time.Now().In(model.Location))
+	sources := m.Audience(time.Now().In(model.Location))
 	fmt.Println("groups:")
 	for _, g := range groupModel.Groups {
 		fmt.Printf("  %s %q: aliases %v, %d managers, %d rules, %d members, %d excluded, prefix %v, visibility %s, posting %s, replying %s\n", g.Address(), g.Title, g.Aliases, len(g.Managers), len(g.Rules), len(g.Members(sources)), len(g.Excluded), g.Prefix, g.Visibility, g.Posting, g.Replying)

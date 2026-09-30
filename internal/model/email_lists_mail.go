@@ -316,7 +316,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 		m.mark(j, stateDropped, map[string]string{"Detail": reason})
 		return stateDropped
 	}
-	sources := model.EmailListAudience(now())
+	sources := model.Audience(now())
 	sender := sources.Directory.Resolve(strings.ToLower(mail.AddressOf(mail.Header(lines, "from"))))
 	reply := m.repliesTo(g.ID, lines)
 	if !g.PostableBy(sender, reply, sources) {

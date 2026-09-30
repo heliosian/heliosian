@@ -460,10 +460,8 @@ func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 	}
 	var month HomeMonth
 	get(serve.JSON(a.calendar), &month)
-	var ahead HomeUpcoming
-	get(serve.JSON(a.upcomingUnder), &ahead)
-	if month.Calendar != token || ahead.Default != token || ahead.Calendar != token {
-		t.Errorf("the alias's month under %q and upcoming %+v are not the admin's calendars", month.Calendar, ahead)
+	if month.Calendar != token {
+		t.Errorf("the alias's month under %q is not the admin's calendar", month.Calendar)
 	}
 	var view struct {
 		User             homeUser      `json:"user"`
@@ -474,7 +472,7 @@ func TestAnAdminsAliasIsTheAdmin(t *testing.T) {
 	if !view.User.IsAdmin || view.User.Email != admin {
 		t.Errorf("the alias's model is not the admin's: %+v", view.User)
 	}
-	if view.Calendar.Calendar != token || view.UpcomingCalendar == nil || view.UpcomingCalendar.Default != token {
+	if view.Calendar.Calendar != token || view.UpcomingCalendar == nil || view.UpcomingCalendar.Default != token || view.UpcomingCalendar.Calendar != token {
 		t.Errorf("the alias's model does not read the admin's calendars: month under %q, upcoming %+v", view.Calendar.Calendar, view.UpcomingCalendar)
 	}
 	raw, err := json.Marshal(map[string]any{"id": parentPortalID, "by": 1})

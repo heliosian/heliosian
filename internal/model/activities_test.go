@@ -566,6 +566,33 @@ func TestSignUpAndRemove(t *testing.T) {
 	}
 }
 
+func TestATeamAdminHoldsEveryActivitysMagicTag(t *testing.T) {
+	cache, _ := activitiesServer(t)
+	m := cache.Model()
+	if !m.AdminList("team").IsAdmin(jordan) || m.AdminList("team").IsAdmin(chair) {
+		t.Fatalf("the sample's Team admins changed")
+	}
+	held := func(email string) map[string]bool {
+		out := map[string]bool{}
+		for _, tag := range m.MagicTagsOf(email, now()) {
+			out[tag.Key] = true
+		}
+		return out
+	}
+	admin, cochair := held(jordan), held(chair)
+	for key := range m.Activities.byID {
+		if !admin[MagicTagActivity+":"+key] {
+			t.Errorf("the Team admin does not hold activity:%s", key)
+		}
+	}
+	for key := range cochair {
+		kind, rest, _ := strings.Cut(key, ":")
+		if kind == MagicTagActivity && !m.Activities.Runs(m.Activities.byID[rest], chair) {
+			t.Errorf("a co-chair holds %s, which they do not run", key)
+		}
+	}
+}
+
 func TestOfferToCoChairWithoutDirectSignUp(t *testing.T) {
 	cache, mux := activitiesServer(t)
 	const crew = "act0000000017"

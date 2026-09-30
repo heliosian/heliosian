@@ -105,6 +105,9 @@ func (m *EmailLists) SaveGroup(actor access.Actor, sources AudienceSources, g Em
 	if err := sources.Writable(actor.Email, g.Managers, was.Rules, g.Rules); err != nil {
 		return nil, EmailList{}, "", access.Invalid("%v", err)
 	}
+	if m.namesItself(g) {
+		return nil, EmailList{}, "", access.Invalid("these rules would have email lists name each other in a circle")
+	}
 	if err := CheckList(g); err != nil {
 		return nil, EmailList{}, "", access.Invalid("%v", err)
 	}

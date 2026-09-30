@@ -242,7 +242,7 @@ func TestSavingANewGroupMintsItsID(t *testing.T) {
 	cache, _ := emailListsSampleCache(t)
 	m := cache.Model().EmailLists
 	actor := access.Actor{Email: "m@x.org"}
-	sources := AudienceSources{Directory: &Directory{}, MagicTags: func(string) []MagicTag { return nil }}
+	sources := AudienceSources{Directory: &Directory{}, MagicTags: func(string) []MagicTag { return nil }, EmailLists: m}
 	taken := func(key string) bool { return m.Group(key) != nil }
 	ops, g, action, err := m.SaveGroup(actor, sources, EmailList{Name: "chess.club", Title: "Chess Club", Rules: []Rule{{Kind: RuleInclude, Roles: []string{"Staff"}}}}, taken)
 	if err != nil {

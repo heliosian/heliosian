@@ -22,7 +22,7 @@ func TestATeamAdminMakesAnEmailListFromAnyActivity(t *testing.T) {
 	}
 	m := s.Model()
 	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
-	sources := m.EmailListAudience(now)
+	sources := m.Audience(now)
 	shared := m.MagicTagsOf
 	var theirs model.MagicTag
 	for _, l := range sources.MagicTags(admin) {
@@ -34,8 +34,8 @@ func TestATeamAdminMakesAnEmailListFromAnyActivity(t *testing.T) {
 	if theirs.Key == "" {
 		t.Fatal("the admin reads no activity they do not co-chair")
 	}
-	if slices.ContainsFunc(shared(admin, now), func(l model.MagicTag) bool { return l.Key == theirs.Key }) {
-		t.Fatalf("outside Loop the admin reads %s, which they do not co-chair", theirs.Key)
+	if !slices.ContainsFunc(shared(admin, now), func(l model.MagicTag) bool { return l.Key == theirs.Key }) {
+		t.Fatalf("outside Loop the admin does not hold %s, as a Team admin holds every activity's", theirs.Key)
 	}
 	if slices.ContainsFunc(sources.MagicTags(parent), func(l model.MagicTag) bool { return l.Key == theirs.Key }) {
 		t.Fatalf("a parent who is no admin reads %s", theirs.Key)

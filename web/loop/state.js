@@ -42,6 +42,7 @@ export async function loadModel() {
     classrooms: '/api/classrooms',
     grades: '/api/grades?enrolled',
     tags: '/api/tags',
+    magicTags: '/api/magic-tags?include=parent',
   }), whoAmI(), directory()]);
   state.dir = dir;
   const s = read.get(read.result.settings[0]);
@@ -56,7 +57,9 @@ export async function loadModel() {
       classrooms: read.result.classrooms.map(id => read.get(id).name),
       grades: read.result.grades.map(id => read.get(id).name),
       tags: read.result.tags.map(id => read.get(id)).map(t => ({key: `tag:${t.id}`, name: t.me.mine ? t.name : `${t.name} (${t.ownerName}'s)`})),
-      lists: s.magicTags,
+      lists: read.result.magicTags.map(read.get).filter(t => !t.archived)
+        .map(t => ({key: t.key, name: t.name, kind: t.kind, parent: (t.parent && read.get(t.parent) || {}).key || ''}))
+        .sort((a, b) => a.name.localeCompare(b.name)),
       roles: s.roles,
       relations: s.relations,
     },

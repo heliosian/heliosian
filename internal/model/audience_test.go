@@ -27,6 +27,7 @@ func audienceSample(t *testing.T) (AudienceSources, *Directory) {
 			}
 			return []MagicTag{{Key: "party:p1", Name: "Pizza Night", Kind: MagicTagParty, People: []string{abena, colin}}}
 		},
+		EmailLists: &EmailLists{},
 	}, d
 }
 

@@ -68,7 +68,6 @@ func RegisterHome(mux *http.ServeMux, d HomeDeps) {
 	mux.HandleFunc("GET /open/share/apps.png", a.shareApps)
 	mux.HandleFunc("GET /api/apps/model", serve.JSON(a.view))
 	mux.HandleFunc("GET /api/apps/calendar", serve.JSON(a.calendar))
-	mux.HandleFunc("GET /api/apps/upcoming", serve.JSON(a.upcomingUnder))
 	mux.HandleFunc("POST /api/apps/calendar/default", serve.JSON(a.setDefault))
 	mux.HandleFunc("POST /api/apps/link", serve.JSON(a.saveLink))
 	mux.HandleFunc("GET /api/apps/audience/options", serve.JSON(a.audienceOptions))
@@ -243,11 +242,6 @@ func (a homeApp) rsvp(r *http.Request, body homeRSVPBody) (serve.None, error) {
 	return serve.None{}, a.hooks.Answer(r.Context(), a.actor(r).Email, body.ID, body.Answer)
 }
 
-func (a homeApp) upcomingUnder(r *http.Request, _ serve.None) (HomeUpcoming, error) {
-	m := a.store.Model()
-	return homeUpcoming(m, m.actor(r, "home").Email, r.URL.Query().Get("calendar")), nil
-}
-
 type defaultBody struct {
 	Token string `json:"token"`
 }
@@ -301,7 +295,7 @@ func (a homeApp) view(r *http.Request, _ serve.None) (homeView, error) {
 		view.Widgets[key] = v
 	}
 	if admin {
-		options := m.DirectoryAudience(now()).Options(actor.Email)
+		options := m.Audience(now()).Options(actor.Email)
 		view.Options = &options
 		view.TagLabels = homeTagLabels(m, categories, view.Apps, actor.Email)
 	}
@@ -314,7 +308,7 @@ func (a homeApp) view(r *http.Request, _ serve.None) (homeView, error) {
 }
 
 func homeTagLabels(m *Model, categories []HomeCategory, apps []appView, viewer string) map[string]string {
-	sources := m.DirectoryAudience(now())
+	sources := m.Audience(now())
 	admins := m.AdminList("home").Admins()
 	out := map[string]string{}
 	add := func(rules []Rule) {
@@ -436,7 +430,7 @@ func (a homeApp) audienceOptions(r *http.Request, _ serve.None) (AudienceOptions
 	if err := requireHomeAdmin(actor); err != nil {
 		return AudienceOptions{}, err
 	}
-	return m.DirectoryAudience(now()).Options(actor.Email), nil
+	return m.Audience(now()).Options(actor.Email), nil
 }
 
 type previewBody struct {
@@ -460,7 +454,7 @@ func (a homeApp) audiencePreview(r *http.Request, body previewBody) (previewView
 	if err != nil {
 		return previewView{}, err
 	}
-	sources := m.DirectoryAudience(now())
+	sources := m.Audience(now())
 	list := Audience{Rules: rules, Editors: m.AdminList("home").Admins()}
 	members := list.Members(sources)
 	names := []string{}

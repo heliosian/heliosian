@@ -76,7 +76,7 @@ func (m *Home) grant(actor access.Actor, appKey string) ([]store.Op, error) {
 }
 
 func (m *Model) checkHomeRules(existing, rules []Rule, actor string) ([]Rule, error) {
-	sources := m.DirectoryAudience(now())
+	sources := m.Audience(now())
 	options := sources.Options(actor)
 	out := []Rule{}
 	for _, r := range rules {

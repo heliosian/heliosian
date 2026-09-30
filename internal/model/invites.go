@@ -67,13 +67,6 @@ type Attendee struct {
 	Status string `json:"status"`
 }
 
-type PickerList struct {
-	Key    string   `json:"key"`
-	Name   string   `json:"name"`
-	Kind   string   `json:"kind"`
-	People []string `json:"people"`
-}
-
 func (b *builder) invitations(settings, rows []store.Row) {
 	for _, row := range settings {
 		id := strings.TrimSpace(row["Event ID"])
@@ -242,20 +235,18 @@ func flyerPath(id string) string {
 	return "/open/flyer/" + id
 }
 
-type LinkedRSVPs struct {
+type GuestAnswers struct {
 	Sent    bool
 	Answers map[string]string
 }
 
-type RSVPLookup func(id string) *LinkedRSVPs
-
-func (a calendarApp) eventRSVPs(id string) *LinkedRSVPs {
+func (a calendarApp) guestAnswers(id string) *GuestAnswers {
 	model := a.model()
 	inv := model.Invitations[id]
 	if inv == nil {
 		return nil
 	}
-	out := &LinkedRSVPs{Sent: inv.Sent != "", Answers: map[string]string{}}
+	out := &GuestAnswers{Sent: inv.Sent != "", Answers: map[string]string{}}
 	for _, row := range model.Invites[id] {
 		answer := model.AnswerOf(row.Email, id)
 		if answer == "" || answer == AnswerHidden {

@@ -479,27 +479,38 @@ export function openActivity(act, options) {
     fields.push(signMeRow);
     body = fields;
   }
+  const scheduledNow = () => (suggesting ? {start: '', end: '', timing: timing.value} : when.value());
+  const formBody = scheduled => ({
+    id: act ? act.id : '',
+    year: year.value, title: title.value, parent: parentSelect.value,
+    category: parentSelect.value ? eventCategory.value : category.value,
+    status: act ? act.status : '',
+    description: description.value, image: suggesting && under ? suggestImage.value() : (act ? act.image || '' : ''), flyer: act ? act.flyer || '' : '', timing: scheduled.timing,
+    highlight: highlight.value(),
+    start: scheduled.start, end: scheduled.end, location: act ? act.location || '' : '', spots: act ? act.spots || 0 : 0,
+    coLeaderNeeded: act ? Boolean(act.coLeaderNeeded) : true, volunteersComplete: Boolean(act && act.volunteersComplete),
+    priority: Boolean(act && act.priority),
+    signUp: act ? '' : signMe.value, prettyId: pretty.value.trim().toLowerCase(), allowAdding: act ? act.allowAddingOwn || '' : '',
+  });
+  const opened = act ? formBody(scheduledNow()) : null;
   openModal(act ? 'Edit Activity' : (suggesting ? (under ? 'Add New Activity' : 'Suggest an Idea') : (opts.parent ? `Add under ${opts.parent.title}` : 'Add Activity')), body, {
     saveLabel: suggesting ? (under ? 'Add' : 'Suggest') : (act ? 'Save changes' : 'Add'),
     deleteLabel: 'Delete activity',
     wide: !suggesting,
     submit: async () => {
-      const scheduled = suggesting ? {start: '', end: '', timing: timing.value} : when.value();
+      const scheduled = scheduledNow();
       if (!suggesting && when.validate(scheduled)) {
         throw new Error(when.validate(scheduled));
       }
-      const body = {
-        id: act ? act.id : '',
-        year: year.value, title: title.value, parent: parentSelect.value,
-        category: parentSelect.value ? eventCategory.value : category.value,
-        status: act ? act.status : '',
-        description: description.value, image: suggesting && under ? suggestImage.value() : (act ? act.image || '' : ''), flyer: act ? act.flyer || '' : '', timing: scheduled.timing,
-        highlight: highlight.value(),
-        start: scheduled.start, end: scheduled.end, location: act ? act.location || '' : '', spots: act ? act.spots || 0 : 0,
-        coLeaderNeeded: act ? Boolean(act.coLeaderNeeded) : true, volunteersComplete: Boolean(act && act.volunteersComplete),
-        priority: Boolean(act && act.priority),
-        signUp: act ? '' : signMe.value, prettyId: pretty.value.trim().toLowerCase(), allowAdding: act ? act.allowAddingOwn || '' : '',
-      };
+      const body = formBody(scheduled);
+      if (act) {
+        const changed = Object.keys(body).filter(key => JSON.stringify(body[key]) !== JSON.stringify(opened[key]));
+        if (!changed.length) {
+          return;
+        }
+        await saveActivity(Object.fromEntries([['id', act.id], ...changed.map(key => [key, body[key]])]));
+        return;
+      }
       const saved = await saveActivity(body);
       const made = act ? null : activity(saved);
       if (made) {

@@ -4,6 +4,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -34,61 +35,53 @@ const (
 	MagicTagGroup    = "group"
 )
 
-func (m *Model) MagicTagsOf(owner string, now time.Time) []MagicTag {
-	tags := append(m.Directory.RoomParentTags(owner), m.Parties.MagicTags(m.Directory, owner, now)...)
-	return append(tags, m.Activities.MagicTags(m.Directory, owner, now)...)
-}
-
-func (m *Model) EveryActivityMagicTagsOf(owner string, now time.Time) []MagicTag {
-	tags := append(m.Directory.RoomParentTags(owner), m.Parties.MagicTags(m.Directory, owner, now)...)
-	return append(tags, m.Activities.AllMagicTags(m.Directory, now)...)
-}
-
-func (m *Model) DirectoryAudience(now time.Time) AudienceSources {
-	return AudienceSources{Directory: m.Directory, MagicTags: func(owner string) []MagicTag {
-		return m.MagicTagsOf(owner, now)
-	}}
-}
-
-func (m *Model) EmailListAudience(now time.Time) AudienceSources {
-	activityAdmins := m.AdminList("team")
-	return AudienceSources{Directory: m.Directory, MagicTags: func(owner string) []MagicTag {
-		if activityAdmins.IsAdmin(owner) {
-			return m.EveryActivityMagicTagsOf(owner, now)
-		}
-		return m.MagicTagsOf(owner, now)
-	}}
-}
-
-func (m *Model) ManagedMagicTags(email string, now time.Time) []MagicTag {
-	tags := append(m.Parties.MagicTags(m.Directory, email, now), m.Activities.MagicTags(m.Directory, email, now)...)
-	return append(tags, m.EmailLists.MagicTags(m.EmailListAudience(now), email)...)
-}
-
-func PickerLists(directory *Directory, managed []MagicTag, email string) []PickerList {
-	out := []PickerList{}
-	for _, t := range directory.Tags(email) {
-		out = append(out, PickerList{Key: TagKey(t.ID), Name: t.Name, Kind: "tag", People: t.People})
+func (m *Model) heldMagicTags(holder string, now time.Time) []MagicTag {
+	tags := append(m.Directory.RoomParentTags(holder), m.Parties.MagicTags(m.Directory, holder, now)...)
+	if m.AdminList("team").IsAdmin(holder) {
+		return append(tags, m.Activities.AllMagicTags(m.Directory, now)...)
 	}
-	for _, t := range directory.SharedTags(email) {
-		out = append(out, PickerList{Key: TagKey(t.ID), Name: t.Name + " (" + t.OwnerName + "'s)", Kind: "tag", People: t.People})
-	}
-	for _, list := range managed {
-		if list.Archived {
-			continue
-		}
-		out = append(out, PickerList{Key: list.Key, Name: list.Name, Kind: list.Kind, People: list.People})
-	}
-	return out
+	return append(tags, m.Activities.MagicTags(m.Directory, holder, now)...)
 }
 
-func (m *Model) MagicTagKeys() []string {
+func (m *Model) Audience(now time.Time) AudienceSources {
+	return AudienceSources{Directory: m.Directory, MagicTags: func(holder string) []MagicTag {
+		return m.heldMagicTags(holder, now)
+	}, EmailLists: m.EmailLists}
+}
+
+func (m *Model) MagicTagsOf(holder string, now time.Time) []MagicTag {
+	return append(m.heldMagicTags(holder, now), m.EmailLists.MagicTags(m.Audience(now), holder)...)
+}
+
+func (m *Model) magicTagExists(key string) bool {
+	kind, rest, _ := strings.Cut(key, ":")
+	switch kind {
+	case MagicTagParty:
+		return m.Parties.byParty[rest] != nil
+	case MagicTagActivity:
+		return m.Activities.byID[rest] != nil
+	case MagicTagRoom:
+		_, ok := m.Directory.RoomParents[rest]
+		return ok
+	case MagicTagGroup:
+		return m.EmailLists.Group(rest) != nil
+	}
+	return false
+}
+
+func (m *Model) magicTagKeys() []string {
 	out := []string{}
 	for _, p := range m.Parties.Parties {
 		out = append(out, MagicTagParty+":"+p.ID)
 	}
-	for _, a := range m.Activities.Activities {
-		out = append(out, MagicTagActivity+":"+a.ID)
+	for key := range m.Activities.byID {
+		out = append(out, MagicTagActivity+":"+key)
+	}
+	for band := range m.Directory.RoomParents {
+		out = append(out, MagicTagRoom+":"+band)
+	}
+	for _, g := range m.EmailLists.Groups {
+		out = append(out, MagicTagGroup+":"+g.ID)
 	}
 	return out
 }
@@ -114,7 +107,7 @@ func (m *Directory) RoomParentTags(email string) []MagicTag {
 				}
 			}
 		}
-		out = append(out, MagicTag{Key: MagicTagRoom + ":" + label, Name: label + " Parents", Kind: MagicTagRoom, People: slices.Sorted(maps.Keys(people)), Guests: []Guest{}})
+		out = append(out, MagicTag{Key: MagicTagRoom + ":" + label, Name: label + " Parents", Kind: MagicTagRoom, People: slices.Sorted(maps.Keys(people)), Guests: []Guest{}, Hosts: slices.Clone(parents)})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out

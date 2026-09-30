@@ -34,7 +34,7 @@ func dropCategoryAudience(_ store.Tables, before, after store.Row) []store.Op {
 }
 
 func (m *Model) homeIncludes(rules []Rule, email string) bool {
-	return len(rules) > 0 && Audience{Rules: rules, Editors: m.AdminList("home").Admins()}.Includes(m.DirectoryAudience(now()), email)
+	return len(rules) > 0 && Audience{Rules: rules, Editors: m.AdminList("home").Admins()}.Includes(m.Audience(now()), email)
 }
 
 func (m *Model) HomeCategoriesFor(v access.Actor) []HomeCategory {

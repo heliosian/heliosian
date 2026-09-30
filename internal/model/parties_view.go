@@ -54,7 +54,7 @@ func partyPersonOf(directory *Directory, p *Person) PartyPerson {
 type partyViewer struct {
 	access.Actor
 	directory *Directory
-	rsvps     RSVPLookup
+	rsvps     func(eventID string) *GuestAnswers
 }
 
 func (v partyViewer) person(email string) PartyPerson {
@@ -201,7 +201,7 @@ func (v partyViewer) party(raw *Party, now time.Time) PartyView {
 	for _, email := range p.HostEmails {
 		pv.HostPeople = append(pv.HostPeople, v.person(email))
 	}
-	var rsvps *LinkedRSVPs
+	var rsvps *GuestAnswers
 	if sees {
 		rsvps = v.rsvps(p.ID)
 		pv.Started = rsvps != nil

@@ -11,7 +11,7 @@ import {openPhotoLightbox} from '/crop.js';
 import {heroImageBar} from '/heroimage.js';
 import {personTile, peopleRow, offerTile, andList} from '/people.js';
 import {personRow} from '/personrow.js';
-import {act} from '/data.js';
+import {act, query} from '/data.js';
 import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, uploadAndSave, uploadImage, openVolunteerSettings, openVolunteerGrid, editPencil} from '../edit.js';
 
 const phone = window.matchMedia('(max-width: 900px)');
@@ -526,11 +526,30 @@ function flyerCard(node, save) {
   return card;
 }
 
-function emailListPath(node) {
-  if (node.emailList) {
-    return appOrigin('loop') + '/groups/' + encodeURIComponent(node.emailList);
+function emailListPath(node, list) {
+  if (list) {
+    return appOrigin('loop') + '/groups/' + encodeURIComponent(list);
   }
   return appOrigin('loop') + '/new?from=' + encodeURIComponent('activity:' + node.id);
+}
+
+function fillEmailListCard(card, node, list) {
+  const address = list ? `${list}@loop.heliosian.com` : '';
+  const [title, words] = list
+    ? [`${node.title} Email List`, `${address} reaches everyone signed up for ${node.title}, and its co-chairs, as people join and leave.`]
+    : [`Email everyone in ${node.title}`, `Make an email list on Helios Loop of everyone signed up for ${node.title}, and its co-chairs. It keeps up as people join and leave.`];
+  card.append(el('div', 'side-title', title), el('div', 'side-line', words));
+  const a = el('a', 'button button-small side-button');
+  a.href = emailListPath(node, list);
+  if (!list) {
+    a.append(svg('mail'), el('span', '', 'Create Email List'));
+    card.append(a);
+    return;
+  }
+  a.append(svg('mail'), el('span', '', 'See List'));
+  const row = el('div', 'side-buttons');
+  row.append(button('Copy List', 'copy', 'button button-small side-button', () => copyText(address, 'Address copied')), a);
+  card.append(row);
 }
 
 function emailListCard(node) {
@@ -538,22 +557,10 @@ function emailListCard(node) {
     return null;
   }
   const card = sideCard('side-card-invite');
-  const address = node.emailList ? `${node.emailList}@loop.heliosian.com` : '';
-  const [title, words] = node.emailList
-    ? [`${node.title} Email List`, `${address} reaches everyone signed up for ${node.title}, and its co-chairs, as people join and leave.`]
-    : [`Email everyone in ${node.title}`, `Make an email list on Helios Loop of everyone signed up for ${node.title}, and its co-chairs. It keeps up as people join and leave.`];
-  card.append(el('div', 'side-title', title), el('div', 'side-line', words));
-  const a = el('a', 'button button-small side-button');
-  a.href = emailListPath(node);
-  if (!node.emailList) {
-    a.append(svg('mail'), el('span', '', 'Create Email List'));
-    card.append(a);
-    return card;
-  }
-  a.append(svg('mail'), el('span', '', 'See List'));
-  const row = el('div', 'side-buttons');
-  row.append(button('Copy List', 'copy', 'button button-small side-button', () => copyText(address, 'Address copied')), a);
-  card.append(row);
+  query(`/api/magic-tags/activity:${node.id}?include=email-lists`).then(read => {
+    const lists = read.follow(read.get(read.result), 'email-lists');
+    fillEmailListCard(card, node, lists.length ? lists[0].name : '');
+  });
   return card;
 }
 

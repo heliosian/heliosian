@@ -25,6 +25,7 @@ func sample(t *testing.T) (AudienceSources, *Directory) {
 			}
 			return lists
 		},
+		EmailLists: &EmailLists{},
 	}, directory
 }
 
@@ -41,7 +42,7 @@ func tagged(directory *Directory, key string) []string {
 }
 
 func sourcesOf(directory *Directory) AudienceSources {
-	return AudienceSources{Directory: directory, MagicTags: directory.RoomParentTags}
+	return AudienceSources{Directory: directory, MagicTags: directory.RoomParentTags, EmailLists: &EmailLists{}}
 }
 
 func TestRenamingATagKeepsTheGroupsThatNameIt(t *testing.T) {

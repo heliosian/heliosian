@@ -142,7 +142,6 @@ type settingsResource struct {
 	Days        map[string]map[string]string `json:"days"`
 	GradeColors map[string]string            `json:"gradeColors,omitempty"`
 	Names       map[string]string            `json:"names,omitempty"`
-	Lists       []PickerList                 `json:"lists"`
 }
 
 type guestListResource struct {
@@ -789,7 +788,7 @@ func (r calendarResources) settings() api.Type[*Model] {
 			v := RenderCalendar(a.model(), a.directory(), a.settings(), q.Actor, a.clock(), nil)
 			out := settingsResource{
 				User: v.User, ImageSearch: a.search.On(), Today: v.Today, Classrooms: v.Classrooms, Colors: v.Colors, Tags: v.Tags, DayTypes: v.DayTypes,
-				Years: v.Years, Days: v.Days, GradeColors: v.GradeColors, Names: v.Names, Lists: a.lists(q.Actor.Email),
+				Years: v.Years, Days: v.Days, GradeColors: v.GradeColors, Names: v.Names,
 			}
 			return out, true
 		},

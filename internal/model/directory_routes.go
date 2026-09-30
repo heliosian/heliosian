@@ -51,7 +51,7 @@ func (d DirectoryRoutes) model(r *http.Request, _ serve.None) (directoryView, er
 		MapsKey:    d.MapsKey,
 		Tags:       directory.Tags(effective),
 		SharedTags: directory.SharedTags(effective),
-		Lists:      append(directory.RoomParentTags(effective), m.ManagedMagicTags(effective, now())...),
+		Lists:      m.MagicTagsOf(effective, now()),
 		EditAnyone: v.May(EditAnyone),
 	}, nil
 }

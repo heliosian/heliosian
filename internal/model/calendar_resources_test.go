@@ -13,7 +13,7 @@ import (
 )
 
 func served(mux *http.ServeMux, s *Store, hooks CalendarHooks) *http.ServeMux {
-	typedRegistry(s, queue, DirectoryResources(), hooks.Resources()).Register(mux)
+	typedRegistry(s, queue, DirectoryResources(), hooks.Resources(), MagicTagResources()).Register(mux)
 	return mux
 }
 

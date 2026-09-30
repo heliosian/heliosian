@@ -34,12 +34,36 @@ func directoryOf() *Directory { return testStore.Model().Directory }
 
 const bookFair = "act0000000101"
 
-func listKeys(lists []PickerList) []string {
-	out := []string{}
-	for _, l := range lists {
-		out = append(out, l.Key)
+func magicKeysOf(t *testing.T, h http.Handler) []string {
+	t.Helper()
+	out := decoded[envelope](t, call(t, h, "GET", "/api/magic-tags", ""))
+	var ids []string
+	if err := json.Unmarshal(out.Result, &ids); err != nil {
+		t.Fatal(err)
 	}
-	return out
+	keys := []string{}
+	for _, key := range ids {
+		var tag magicTagResource
+		if err := json.Unmarshal(out.Resources["magic-tags"][key], &tag); err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, tag.Key)
+	}
+	return keys
+}
+
+func tagKeysOf(t *testing.T, h http.Handler) []string {
+	t.Helper()
+	out := decoded[envelope](t, call(t, h, "GET", "/api/tags", ""))
+	var ids []string
+	if err := json.Unmarshal(out.Result, &ids); err != nil {
+		t.Fatal(err)
+	}
+	keys := []string{}
+	for _, key := range ids {
+		keys = append(keys, TagKey(key))
+	}
+	return keys
 }
 
 var testHooks CalendarHooks
@@ -75,7 +99,16 @@ func calendarInvitesApp(t *testing.T) (http.Handler, *Store, *mailtest.Recorder)
 func invitesAppWith(t *testing.T) (http.Handler, *Store, *mailtest.Recorder, *sampleSources) {
 	t.Helper()
 	celebrate, team := invitesLinked()
-	cache := calendarStore(t, celebrate, team, nil)
+	sampleSheet(t)
+	outsideSuperAdmin(t, sheet)
+	linkRows(t, celebrate, team)
+	listRows(t, nil)
+	_, aliases, err := sheet.Table(CalendarApp, id.AliasesTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replaceRows(t, CalendarApp, id.AliasesTab, append(aliases, store.Row{"Alias": "celebrate/P001", "ID": partyA}, store.Row{"Alias": "team/E001", "ID": "tev0000000101"}))
+	cache := sampleStore(t, sheet, queue, sampleDeps(sampleKey))
 	testStore = cache
 	sources := &sampleSources{directory: cache}
 	kept := keptMail()
@@ -224,11 +257,14 @@ func TestInvitationLifecycle(t *testing.T) {
 		t.Errorf("someone else's picker: %+v", p)
 	}
 	picker, settings := pickerOf(t, jordan, "meetup"), settingsOf(t, jordan)
-	if got := listKeys(settings.Lists); !slices.Equal(got, []string{carpoolKey, TagKey(soccerTeam), TagKey(bookClub)}) || len(settings.Classrooms) != 9 || len(picker.OnList) != 0 {
-		t.Errorf("picker: lists %v classrooms %d on list %d", got, len(settings.Classrooms), len(picker.OnList))
+	if got := tagKeysOf(t, jordan); !slices.Equal(got, []string{carpoolKey, TagKey(soccerTeam), TagKey(bookClub)}) || len(settings.Classrooms) != 9 || len(picker.OnList) != 0 {
+		t.Errorf("picker: tags %v classrooms %d on list %d", got, len(settings.Classrooms), len(picker.OnList))
 	}
-	if got := listKeys(settingsOf(t, miaH).Lists); !slices.Equal(got, []string{"party:" + partyA, "activity:" + bookFair}) {
-		t.Errorf("the party host and Book Fair chair's lists: %v", got)
+	if got := magicKeysOf(t, jordan); !slices.Equal(got, []string{"room:3rd / 4th"}) {
+		t.Errorf("a room parent's Magic Tags: %v", got)
+	}
+	if got := magicKeysOf(t, miaH); !slices.Equal(got, []string{"party:" + partyA, "activity:" + bookFair}) {
+		t.Errorf("the party host and Book Fair chair's Magic Tags: %v", got)
 	}
 	rec = act(t, jordan, "meetup", "invite", `{"people":[{"email":"`+robin+`","via":"family"},{"email":"`+sam+`","via":"family"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"},{"email":"`+robin+`"},{"email":"not-an-address"}]}`)
 	if rec.Code != 400 {
@@ -860,17 +896,17 @@ func TestPartyStart(t *testing.T) {
 	if rec.Code != 204 || len(cache.Model().Calendar.Groups[partyA]) != 1 || cache.Model().Calendar.Groups[partyA][0].ID != made {
 		t.Errorf("a second start: %d %s, groups %+v", rec.Code, rec.Body, cache.Model().Calendar.Groups[partyA])
 	}
-	if r := testHooks.app.eventRSVPs(partyA); r == nil || r.Sent {
+	if r := testHooks.app.guestAnswers(partyA); r == nil || r.Sent {
 		t.Errorf("rsvps before sending: %+v", r)
 	}
 	act(t, miaH, partyA, "invite", `{"people":[{"email":"`+robin+`"},{"email":"`+sam+`"}]}`)
 	act(t, miaH, partyA, "send", `{}`)
 	act(t, miaH, partyA, "answer-for", `{"email":"`+robin+`","answer":"maybe"}`)
-	r := testHooks.app.eventRSVPs(partyA)
+	r := testHooks.app.guestAnswers(partyA)
 	if r == nil || !r.Sent || r.Answers[robin] != AnswerMaybe || r.Answers[sam] != "none" || r.Answers[ella] != "" {
 		t.Errorf("rsvps = %+v", r)
 	}
-	if r := testHooks.app.eventRSVPs("nope"); r != nil {
+	if r := testHooks.app.guestAnswers("nope"); r != nil {
 		t.Errorf("a party with no list has rsvps")
 	}
 }
@@ -1583,7 +1619,7 @@ func TestTeamStart(t *testing.T) {
 	if cache.Model().Calendar.AnswerOf(mia, teamA) != AnswerYes {
 		t.Errorf("the chair's answer = %q", cache.Model().Calendar.AnswerOf(mia, teamA))
 	}
-	if r := testHooks.app.eventRSVPs(teamA); r == nil || r.Sent {
+	if r := testHooks.app.guestAnswers(teamA); r == nil || r.Sent {
 		t.Errorf("rsvps before sending: %+v", r)
 	}
 	v := inviteView(t, miaH, teamA)

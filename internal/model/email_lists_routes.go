@@ -125,7 +125,7 @@ func (a emailListsApp) draftMembers(r *http.Request, body draftBody) ([]previewM
 		}
 		existing, draft.Managers = g.Rules, g.Managers
 	}
-	sources := m.EmailListAudience(now())
+	sources := m.Audience(now())
 	if err := sources.Writable(email, draft.Managers, existing, draft.Rules); err != nil {
 		return nil, nil, access.Invalid("%v", err)
 	}

@@ -93,17 +93,7 @@ func (a calendarApp) lookup(email, key string, sees func(*Event) bool) *Event {
 }
 
 func (a calendarApp) canonical(key string) string {
-	source, rest, ok := strings.Cut(key, "/")
-	if !ok || (source != SourceCelebrate && source != SourceTeam) {
-		return a.model().aliases.Resolve(key)
-	}
-	found := a.sourceID(source, rest)
-	for _, e := range withLinked(a.model().Events, a.linked("")) {
-		if found != "" && e.linkedID() == found {
-			return e.ID
-		}
-	}
-	return key
+	return a.model().aliases.Resolve(key)
 }
 
 func (a calendarApp) sees(actor access.Actor, e *Event) bool {

@@ -31,7 +31,7 @@ type memberKey struct {
 }
 
 func (m *Model) listSources() AudienceSources {
-	return m.EmailListAudience(m.scope.now)
+	return m.Audience(m.scope.now)
 }
 
 func (m *Model) listPlacement() placement {
@@ -173,7 +173,6 @@ type suggestionResource struct {
 type emailListSettingsResource struct {
 	Domain      string            `json:"domain"`
 	GradeColors map[string]string `json:"gradeColors,omitempty"`
-	MagicTags   []MagicTagOption  `json:"magicTags"`
 	Roles       []string          `json:"roles"`
 	Relations   []string          `json:"relations"`
 }
@@ -620,7 +619,7 @@ func (m *Model) listSuggestionKnown(key string) bool {
 		for _, tag := range m.Directory.TagIDs() {
 			m.scope.suggestions[m.EmailLists.suggestionID(TagKey(tag))] = true
 		}
-		for _, k := range m.MagicTagKeys() {
+		for _, k := range m.magicTagKeys() {
 			m.scope.suggestions[m.EmailLists.suggestionID(k)] = true
 		}
 	})
@@ -658,6 +657,13 @@ func suggestions() api.Type[*Model] {
 				}
 				return out
 			}},
+			"magic-tag": {Type: "magic-tags", List: func(m *Model, q api.Query, key string) []string {
+				s, ok := m.listSuggestionFor(key, q)
+				if !ok || s.kind == SuggestionTag {
+					return nil
+				}
+				return []string{m.magicTagID(s.key)}
+			}},
 		},
 	}
 }
@@ -671,8 +677,7 @@ func emailListSettings() api.Type[*Model] {
 			if key != m.EmailLists.settingsID() {
 				return nil, false
 			}
-			options := m.listSources().Options(q.Actor.Email)
-			return emailListSettingsResource{Domain: ListDomain, GradeColors: m.Config.GradeColors, MagicTags: options.Lists, Roles: options.Roles, Relations: options.Relations}, true
+			return emailListSettingsResource{Domain: ListDomain, GradeColors: m.Config.GradeColors, Roles: AudienceRoles, Relations: AudienceRelations}, true
 		},
 		List: func(m *Model, _ api.Query) []string { return []string{m.EmailLists.settingsID()} },
 		Relations: map[string]api.Relation[*Model]{

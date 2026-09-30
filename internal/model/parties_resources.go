@@ -104,7 +104,7 @@ func (a partiesApp) ticketAt(m *Model, q api.Query, key string) (*Ticket, *Party
 }
 
 func (a partiesApp) viewer(m *Model, q api.Query) partyViewer {
-	return partyViewer{Actor: q.Actor, directory: m.Directory, rsvps: a.calendar.at(m).eventRSVPs}
+	return partyViewer{Actor: q.Actor, directory: m.Directory, rsvps: a.calendar.at(m).guestAnswers}
 }
 
 func householdOf(d *Directory, email string) []*Person {

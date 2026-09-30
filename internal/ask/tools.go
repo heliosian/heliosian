@@ -113,11 +113,11 @@ func (v *viewer) linked() []model.Linked {
 }
 
 func (v *viewer) audience() model.AudienceSources {
-	return v.all.EmailListAudience(v.now)
+	return v.all.Audience(v.now)
 }
 
 func (v *viewer) lists(email string) []model.MagicTag {
-	return append(v.directory.RoomParentTags(email), v.all.ManagedMagicTags(email, v.now)...)
+	return v.all.MagicTagsOf(email, v.now)
 }
 
 func (v *viewer) run(ctx context.Context, name string, input json.RawMessage) (string, error) {

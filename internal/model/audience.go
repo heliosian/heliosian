@@ -84,19 +84,62 @@ func (r Rule) CheckFacets() error {
 }
 
 type AudienceSources struct {
-	Directory *Directory
-	MagicTags func(owner string) []MagicTag
+	Directory  *Directory
+	MagicTags  func(holder string) []MagicTag
+	EmailLists *EmailLists
+}
+
+func (s AudienceSources) managedLists(email string) []EmailList {
+	out := []EmailList{}
+	for _, g := range s.EmailLists.Groups {
+		if g.Manages(email) && !s.EmailLists.Archived(g.ID, email) {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 type reader struct {
-	s         AudienceSources
-	tags      map[string][]Tag
-	shared    map[string][]Tag
-	magicTags map[string][]MagicTag
+	s          AudienceSources
+	tags       map[string][]Tag
+	shared     map[string][]Tag
+	magicTags  map[string][]MagicTag
+	members    map[string][]string
+	evaluating map[string]bool
 }
 
 func (s AudienceSources) reader() *reader {
-	return &reader{s: s, tags: map[string][]Tag{}, shared: map[string][]Tag{}, magicTags: map[string][]MagicTag{}}
+	return &reader{s: s, tags: map[string][]Tag{}, shared: map[string][]Tag{}, magicTags: map[string][]MagicTag{}, members: map[string][]string{}, evaluating: map[string]bool{}}
+}
+
+func listRef(tag string) (string, bool) {
+	return strings.CutPrefix(tag, MagicTagGroup+":")
+}
+
+func (r *reader) managedList(key string, editors []string) *EmailList {
+	g := r.s.EmailLists.Group(key)
+	if g == nil || !slices.ContainsFunc(editors, g.Manages) {
+		return nil
+	}
+	return g
+}
+
+func (r *reader) listMembers(g *EmailList) []string {
+	if members, ok := r.members[g.ID]; ok {
+		return members
+	}
+	if r.evaluating[g.ID] {
+		return nil
+	}
+	r.evaluating[g.ID] = true
+	members := []string{}
+	for email := range g.audience().reasonsWith(r) {
+		members = append(members, email)
+	}
+	sort.Strings(members)
+	delete(r.evaluating, g.ID)
+	r.members[g.ID] = members
+	return members
 }
 
 func (r *reader) tagsOf(owner string) []Tag {
@@ -138,6 +181,13 @@ func (r *reader) people(tag string, editors []string) ([]string, bool) {
 		}
 		return nil, false
 	}
+	if key, isList := listRef(tag); isList {
+		g := r.managedList(key, editors)
+		if g == nil {
+			return nil, false
+		}
+		return r.listMembers(g), true
+	}
 	for _, e := range editors {
 		for _, l := range r.magicTagsOf(e) {
 			if l.Key == tag {
@@ -167,6 +217,14 @@ func (s AudienceSources) TagLabels(r Rule, editors []string, viewer string) []st
 	rd := s.reader()
 	out := []string{}
 	for _, tag := range r.Tags {
+		if key, isList := listRef(tag); isList {
+			label := tag + " (no longer a tag)"
+			if g := rd.managedList(key, editors); g != nil {
+				label = g.Title
+			}
+			out = append(out, label)
+			continue
+		}
 		key, isTag := tagRef(tag)
 		if !isTag {
 			label := tag + " (no longer a tag)"
@@ -305,7 +363,12 @@ type Audience struct {
 }
 
 func (l Audience) Reasons(s AudienceSources) map[string][]Reason {
-	tagged := s.reader().tagged(l.Rules, l.Editors)
+	return l.reasonsWith(s.reader())
+}
+
+func (l Audience) reasonsWith(rd *reader) map[string][]Reason {
+	s := rd.s
+	tagged := rd.tagged(l.Rules, l.Editors)
 	in, out := map[string][]Reason{}, map[string]bool{}
 	for i, r := range l.Rules {
 		for email, reason := range r.matches(s.Directory, tagged) {
@@ -435,6 +498,9 @@ func (s AudienceSources) Options(viewer string) AudienceOptions {
 			continue
 		}
 		lists = append(lists, MagicTagOption{Key: l.Key, Name: l.Name, Kind: l.Kind, Parent: l.Parent})
+	}
+	for _, g := range s.managedLists(viewer) {
+		lists = append(lists, MagicTagOption{Key: MagicTagGroup + ":" + g.ID, Name: g.Title, Kind: MagicTagGroup})
 	}
 	slices.SortFunc(lists, func(x, y MagicTagOption) int { return strings.Compare(x.Name, y.Name) })
 	return AudienceOptions{Classrooms: classrooms, Grades: grades, Tags: tags, Lists: lists, Roles: AudienceRoles, Relations: AudienceRelations}

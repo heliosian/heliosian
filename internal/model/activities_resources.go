@@ -71,7 +71,6 @@ type activityResource struct {
 	Past                bool       `json:"past"`
 	Started             bool       `json:"started,omitempty"`
 	Invited             bool       `json:"invited,omitempty"`
-	EmailList           string     `json:"emailList,omitempty"`
 	Path                string     `json:"path"`
 	App                 string     `json:"app"`
 	Me                  activityMe `json:"me"`
@@ -164,12 +163,12 @@ func (a activitiesApp) eventOf(m *Model, activityID string) string {
 	return s.activityEvents[activityID]
 }
 
-func (a activitiesApp) rsvpsOf(m *Model, activityID string) *LinkedRSVPs {
+func (a activitiesApp) rsvpsOf(m *Model, activityID string) *GuestAnswers {
 	eventID := a.eventOf(m, activityID)
 	if eventID == "" {
 		return nil
 	}
-	return a.calendar.at(m).eventRSVPs(eventID)
+	return a.calendar.at(m).guestAnswers(eventID)
 }
 
 func (a activitiesApp) visibleActivity(m *Model, q api.Query, key string) *Activity {
@@ -215,9 +214,6 @@ func (a activitiesApp) activityResource(m *Model, q api.Query, raw *Activity) ac
 		PrettyID: raw.PrettyID, AllowAddingOwn: raw.AllowAdding, AllowAdding: raw.Adding, AddedBy: raw.AddedBy, Added: raw.Added,
 		Taken: shown.Taken, Full: raw.full(), Past: pastActivity(acts, raw, q.Now),
 		Path: acts.PathOf(raw), App: activitiesHost, Me: activityMe{Runs: runs},
-	}
-	if runs || q.Actor.May(SeeAllActivities) {
-		out.EmailList = m.EmailLists.Tagged(MagicTagActivity + ":" + raw.ID)
 	}
 	if acts.Sees(raw, q.Actor) {
 		if r := a.rsvpsOf(m, raw.ID); r != nil {

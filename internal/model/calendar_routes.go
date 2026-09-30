@@ -79,10 +79,6 @@ func (a calendarApp) parties() *Parties {
 	return a.all().Parties
 }
 
-func (a calendarApp) activities() *Activities {
-	return a.all().Activities
-}
-
 func (a calendarApp) clock() time.Time {
 	if a.pinned != nil && a.pinned.scope != nil {
 		return a.pinned.scope.now
@@ -95,12 +91,7 @@ func (a calendarApp) commit(ctx context.Context, actor access.Actor, ops ...stor
 }
 
 func (a calendarApp) sources() AudienceSources {
-	return a.all().DirectoryAudience(a.clock())
-}
-
-func (a calendarApp) lists(email string) []PickerList {
-	m := a.all()
-	return PickerLists(m.Directory, m.ManagedMagicTags(email, a.clock()), email)
+	return a.all().Audience(a.clock())
 }
 
 func RegisterCalendar(mux *http.ServeMux, d CalendarDeps) CalendarHooks {
@@ -361,20 +352,6 @@ func (a calendarApp) feed(w http.ResponseWriter, r *http.Request) {
 
 func (a calendarApp) linked(email string) []Linked {
 	return a.all().LinkedEvents(email, a.clock())
-}
-
-func (a calendarApp) sourceID(source, key string) string {
-	switch source {
-	case SourceCelebrate:
-		if p := a.parties().Party(key); p != nil {
-			return p.ID
-		}
-	case SourceTeam:
-		if act := a.activities().Activity(key); act != nil {
-			return act.ID
-		}
-	}
-	return ""
 }
 
 func (a calendarApp) moveEverywhere(ctx context.Context, actor access.Actor, old, to, name string) error {
