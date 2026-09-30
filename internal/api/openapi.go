@@ -30,6 +30,10 @@ func implements(t, iface reflect.Type) bool {
 }
 
 func shapeOf(t reflect.Type) schema {
+	return shapeIn(t, map[reflect.Type]bool{})
+}
+
+func shapeIn(t reflect.Type, open map[reflect.Type]bool) schema {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
@@ -52,18 +56,23 @@ func shapeOf(t reflect.Type) schema {
 		if t.Elem().Kind() == reflect.Uint8 {
 			return schema{"type": "string"}
 		}
-		return schema{"type": "array", "items": shapeOf(t.Elem())}
+		return schema{"type": "array", "items": shapeIn(t.Elem(), open)}
 	case reflect.Map:
-		return schema{"type": "object", "additionalProperties": shapeOf(t.Elem())}
+		return schema{"type": "object", "additionalProperties": shapeIn(t.Elem(), open)}
 	case reflect.Struct:
+		if open[t] {
+			return schema{"type": "object"}
+		}
+		open[t] = true
+		defer delete(open, t)
 		properties := schema{}
-		fieldsOf(t, 0, properties, map[string]int{})
+		fieldsOf(t, 0, properties, map[string]int{}, open)
 		return schema{"type": "object", "properties": properties}
 	}
 	return schema{}
 }
 
-func fieldsOf(t reflect.Type, depth int, into schema, depths map[string]int) {
+func fieldsOf(t reflect.Type, depth int, into schema, depths map[string]int, open map[reflect.Type]bool) {
 	for i := range t.NumField() {
 		f := t.Field(i)
 		tag := f.Tag.Get("json")
@@ -76,7 +85,7 @@ func fieldsOf(t reflect.Type, depth int, into schema, depths map[string]int) {
 			inner = inner.Elem()
 		}
 		if f.Anonymous && name == "" && inner.Kind() == reflect.Struct {
-			fieldsOf(inner, depth+1, into, depths)
+			fieldsOf(inner, depth+1, into, depths, open)
 			continue
 		}
 		if !f.IsExported() {
@@ -89,7 +98,7 @@ func fieldsOf(t reflect.Type, depth int, into schema, depths map[string]int) {
 			continue
 		}
 		depths[name] = depth
-		into[name] = shapeOf(f.Type)
+		into[name] = shapeIn(f.Type, open)
 	}
 }
 

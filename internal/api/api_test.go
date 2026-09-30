@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -393,6 +394,27 @@ func TestAResourceMustMatchItsShape(t *testing.T) {
 	reg.types["people"].Shape = group{}
 	if code, _ := call(t, reg, "GET", "/api/people/"+ann, "", nil); code != http.StatusInternalServerError {
 		t.Errorf("status %d, want 500", code)
+	}
+}
+
+type relative struct {
+	Name     string     `json:"name"`
+	Children []relative `json:"children"`
+	Spouse   *relative  `json:"spouse"`
+}
+
+func TestASelfReferencingShapeEnds(t *testing.T) {
+	out := shapeOf(reflect.TypeFor[relative]())
+	properties := out["properties"].(schema)
+	children := properties["children"].(schema)["items"].(schema)
+	if children["type"] != "object" || children["properties"] != nil {
+		t.Errorf("children %v, want a bare object", children)
+	}
+	if spouse := properties["spouse"].(schema); spouse["type"] != "object" || spouse["properties"] != nil {
+		t.Errorf("spouse %v, want a bare object", spouse)
+	}
+	if _, err := json.Marshal(out); err != nil {
+		t.Fatal(err)
 	}
 }
 
