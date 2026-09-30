@@ -110,10 +110,5 @@ export const rules = rulesEditor({
 });
 
 export function groupRule(g) {
-  const options = ruleOptions || {lists: [], tags: []};
-  const labels = t => {
-    const named = options.tags.find(x => x.key === t) || options.lists.find(l => l.key === t);
-    return named ? named.name : t;
-  };
-  return {...g.rule, tagLabels: g.rule.tags.map(labels)};
+  return {...g.rule, tagLabels: g.tagNames};
 }

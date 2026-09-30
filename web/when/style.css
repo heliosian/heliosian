@@ -1808,6 +1808,12 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .hero-image-menu-item .invite-said { gap: 10px; color: var(--ink); }
 
+.hero-image-menu-item.is-send { width: calc(100% - 16px); margin: 4px 8px 6px; border-radius: 999px; background: var(--brand-fill); color: #fff; font-weight: 700; justify-content: center; }
+
+.hero-image-menu-item.is-send:hover { background: var(--brand-deep); }
+
+.hero-image-menu-item.is-send svg { color: #fff; }
+
 .hero-image-menu-item .invite-said-mark { width: 22px; height: 22px; }
 
 .hero-image-menu-item .invite-said-mark svg { width: 13px; height: 13px; color: #fff; }
@@ -1894,19 +1900,27 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .rsvps-pending-send { margin-left: auto; }
 
-.guest-card-ask { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.guest-card-ask { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
 
 .guest-card-ask:first-child { margin-top: 6px; padding-top: 0; border-top: 0; }
 
-.guest-card-ask .rsvps-head { margin: 0 0 8px; }
+.guest-card-ask .rsvps-head { margin: 0 0 12px; font-size: 12px; }
 
-.guest-card-ask .rsvp-mini { flex-wrap: wrap; }
+.guest-card-ask .rsvp-mini { flex-wrap: wrap; gap: 10px; }
 
-.guest-card-ask .rsvp-mini-choice { padding: 9px 16px; font-size: 14px; }
+.guest-card-ask .rsvp-mini-choice { gap: 8px; padding: 10px 22px; font-size: 15px; }
 
-.guest-card-links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.guest-card-ask .rsvp-mini-choice svg { width: 17px; height: 17px; }
 
-.guest-card-links .link-button { margin-top: 0; padding-left: 0; }
+.guest-card-ask .guests-by { max-width: none; margin-top: 10px; font-size: 12.5px; text-align: left; }
+
+.guest-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+
+.guest-card-links { display: flex; align-items: center; flex-wrap: wrap; }
+
+.guest-card-links .link-button { margin-top: 0; padding: 4px 0; }
+
+.guest-card-links .link-button + .link-button { margin-left: 16px; padding-left: 16px; border-left: 1px solid var(--line); }
 
 .rsvps-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
@@ -2051,7 +2065,7 @@ button.send-tile { font: inherit; text-align: left; }
 
 .ticket-mark.is-none { background: var(--card); color: var(--soft-ink, #9aa7a8); box-shadow: 0 0 0 2px var(--card), inset 0 0 0 1.5px var(--outline, #c9d3d4); }
 
-.guest-card-ticket { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 10px 14px; border-radius: 12px; background: var(--accent-wash, #eef6f5); color: var(--ticket-text, var(--brand)); font-size: 14px; }
+.guest-card-ticket { display: flex; align-items: center; gap: 16px; margin-top: 14px; padding: 16px 20px; border-radius: 14px; background: var(--accent-wash, #eef6f5); color: var(--ticket-text, var(--brand)); font-size: 14px; }
 
 .guest-card-ticket:first-child { margin-top: 6px; }
 

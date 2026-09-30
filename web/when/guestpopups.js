@@ -2,7 +2,7 @@ import {el, svg, button, toast, longToast} from '/elements.js';
 import {popup, closeModal, closeLayers} from '/modal.js';
 import {field, text as textInput} from '/form.js';
 import {load} from '/router.js';
-import {openPersonCard} from '/personcard.js';
+import {openPersonCard, doneButton} from '/personcard.js';
 import {act} from '/data.js';
 import {createPersonPicker} from '/picker.js';
 import {answerWords, firstName, answerButtons, ticketWords, ticketDetail, answeredWords, pickerPeople} from './inviteparts.js';
@@ -162,10 +162,10 @@ export function openGuestCard(e, p, view, refresh) {
       }
     }));
   }
-  if (links.childElementCount) {
-    fields.push(links);
-  }
-  return openPersonCard(person, [{label: 'Answer', icon: svg('calendar'), fields}]);
+  const foot = el('div', 'guest-card-foot');
+  foot.append(links, doneButton());
+  fields.push(foot);
+  return openPersonCard(person, [{label: 'Answer', icon: svg('calendar'), fields}], {actions: false});
 }
 
 export function warningChip(e, view, r, refresh) {

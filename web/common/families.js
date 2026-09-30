@@ -1,7 +1,10 @@
 import {el, svg} from '/elements.js';
-import {face, gradeBadge} from '/personrow.js';
+import {face, gradeBadge, personRow} from '/personrow.js';
+import {appOrigin} from '/appswitch.js';
+import {openModal} from '/modal.js';
+import {doneButton} from '/personcard.js';
 
-const saidWords = {yes: 'Yes', maybe: 'Maybe', no: 'No', pending: 'Pending (Unsent)'};
+const saidWords = {yes: 'Yes', maybe: 'Maybe', no: 'No', pending: 'Pending'};
 
 const saidIcons = {yes: 'check', maybe: 'clock', no: 'close', pending: 'mail'};
 
@@ -46,6 +49,39 @@ export function familySaid(answer, change) {
   return said;
 }
 
+function openFamilyCard(named, counts, members, gradeColors) {
+  const name = named.familyName || named.name || named.email;
+  const head = el('div', 'who-head');
+  const photo = face({name, photoUrl: named.familyPhoto || named.photoUrl}, 'who-face');
+  const names = el('div', 'who-names');
+  names.append(el('div', 'who-name', name));
+  if (counts.length) {
+    names.append(el('div', 'who-sub', counts.join(' · ')));
+  }
+  head.append(photo, names);
+  const list = el('div', 'family-card-members');
+  for (const m of members) {
+    list.append(personRow(m.person, {
+      className: 'family-card-member',
+      name: m.person.name || m.person.email,
+      lines: [m.role],
+      onClick: m.onClick,
+      gradeColors,
+    }));
+  }
+  const foot = el('div', 'who-foot');
+  if (named.familyKey) {
+    const who = el('a', 'button');
+    who.href = appOrigin('who') + '/families/' + encodeURIComponent(named.familyKey);
+    who.target = '_blank';
+    who.rel = 'noopener';
+    who.append(svg('open'), el('span', '', 'Open on Helios Who?'));
+    foot.append(who);
+  }
+  foot.append(doneButton());
+  openModal('', [head, list, foot], {actions: false, wide: 'person'});
+}
+
 export function familyRow(family, members, gradeColors) {
   const named = family.find(r => r.familyName) || family[0];
   const count = kind => members.filter(m => m.kind === kind).length;
@@ -53,7 +89,10 @@ export function familyRow(family, members, gradeColors) {
     .filter(([n]) => n).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
   const grades = [...new Set(members.filter(m => m.kind === 'kid').map(m => m.person.grade).filter(Boolean))];
   const row = el('div', 'family-row');
-  const head = el('div', 'family-row-head');
+  const head = el('button', 'family-row-head');
+  head.type = 'button';
+  head.title = 'About the ' + (named.familyName || named.name || 'family');
+  head.addEventListener('click', () => openFamilyCard(named, counts, members, gradeColors));
   const photo = face({name: named.familyName || named.name, photoUrl: named.familyPhoto || named.photoUrl}, 'family-row-photo');
   if (grades.length) {
     const badges = el('div', 'family-row-grades');

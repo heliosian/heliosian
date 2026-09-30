@@ -38,7 +38,15 @@
 
 .form-tab-body > .who-rows > .who-group:first-child { border-top: 0; padding-top: 6px; }
 
-.who-row { display: grid; grid-template-columns: 22px 96px 1fr; gap: 14px; align-items: center; font-size: 15px; }
+.who-row { display: grid; grid-template-columns: 22px 96px minmax(0, max-content) 1fr; gap: 14px; align-items: center; font-size: 15px; }
+
+.who-row-actions { display: flex; gap: 8px; }
+
+.who-row-action { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: var(--wash, #eaf3f3); color: var(--brand); }
+
+.who-row-action:hover { background: var(--glass-strong, #dfe9e9); }
+
+.who-row-action svg { width: 17px; height: 17px; }
 
 .who-row > svg { width: 20px; height: 20px; color: var(--muted); }
 
@@ -60,6 +68,8 @@
 
 .who-foot .button svg { width: 17px; height: 17px; }
 
+.who-done { margin-left: auto; }
+
 .form-tab-body > .who-foot { margin-top: 12px; }
 
 @media (max-width: 900px) {
@@ -68,6 +78,6 @@
   .who-names { flex: 1; min-width: 0; }
   .who-name { font-size: 22px; overflow-wrap: anywhere; }
   .who-actions { margin-left: 0; width: 100%; justify-content: flex-start; gap: 18px; }
-  .who-row { grid-template-columns: 22px 72px 1fr; gap: 10px; font-size: 14px; }
+  .who-row { grid-template-columns: 22px 72px minmax(0, max-content) 1fr; gap: 10px; font-size: 14px; }
   .who-foot { flex-wrap: wrap; }
 }

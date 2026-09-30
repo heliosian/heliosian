@@ -36,6 +36,7 @@ type GuestRow struct {
 	Outside      bool     `json:"outside,omitempty"`
 	Mine         bool     `json:"mine,omitempty"`
 	Household    string   `json:"household,omitempty"`
+	FamilyKey    string   `json:"familyKey,omitempty"`
 	FamilyName   string   `json:"familyName,omitempty"`
 	FamilyPhoto  string   `json:"familyPhoto,omitempty"`
 	Link         string   `json:"link,omitempty"`
@@ -179,7 +180,7 @@ func (a calendarApp) guestRow(viewer access.Actor, e *Event, email, name string,
 		g.Grades, g.Classrooms = a.facetsOf(known)
 	}
 	if family, ok := a.directory().FamilyOf(email); ok {
-		g.FamilyName, g.FamilyPhoto = family.Name, thumb(family.PhotoURL)
+		g.FamilyKey, g.FamilyName, g.FamilyPhoto = family.Key, family.Name, thumb(family.PhotoURL)
 	}
 	g.Warning, g.WarningWords = a.addressWarning(model, email, known != nil)
 	if ans, ok := model.Answered[email][e.ID]; ok && ans.Answer != AnswerHidden {
@@ -359,6 +360,7 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 		view.List = rows
 		view.TicketHolders = a.ticketHolderRows(actor, e, rows)
 		view.Groups = []InviteGroup{}
+		all := a.all()
 		for _, g := range model.Groups[e.ID] {
 			if g.Rule.Kind == RuleExclude {
 				g.Count = len(a.members(e, g))
@@ -367,6 +369,10 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 				if inv.Via == ViaGroup+g.ID {
 					g.Count++
 				}
+			}
+			g.TagNames = []string{}
+			for _, t := range g.Rule.Tags {
+				g.TagNames = append(g.TagNames, all.tagName(t))
 			}
 			view.Groups = append(view.Groups, g)
 		}

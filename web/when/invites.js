@@ -310,6 +310,15 @@ function guestFamilyRow(e, view, family, refresh) {
   return familyRow(family, family.map(r => {
     const unsent = view.host && r.invited && !r.sent && r.email && !r.answer;
     const said = familySaid(unsent ? 'pending' : r.answer, r.mine);
+    const send = {icon: 'mail', words: 'Send Now', cls: 'is-send', run: async () => {
+      try {
+        await act('events', e.id, 'send', {emails: [r.key]});
+        toast(`Invite sent to ${r.name || r.email}`);
+        refresh();
+      } catch (err) {
+        toast(err.message);
+      }
+    }};
     return {
       person: r,
       kind: r.guestOf ? 'guest' : r.isStudent ? 'kid' : r.isParent ? 'parent' : '',
@@ -317,7 +326,7 @@ function guestFamilyRow(e, view, family, refresh) {
       role: r.guestOf ? 'Guest' : r.isStudent ? r.grade || 'Student' : r.isParent ? 'Parent' : r.isStaff ? 'Staff' : '',
       onClick: () => openGuestCard(e, r, view, refresh),
       corner: ticketMark(view, r),
-      after: r.mine ? dropMenu(said, answerItems(e, r, refresh, 'Clear'), true) : said,
+      after: r.mine ? dropMenu(said, [...(unsent ? [send] : []), ...answerItems(e, r, refresh, 'Clear')], true) : said,
     };
   }), state.model.gradeColors);
 }
@@ -460,7 +469,7 @@ function dropMenu(toggle, items, below = false) {
   const menu = el('div', 'hero-image-menu' + (below ? ' rsvp-member-menu' : ''));
   menu.hidden = true;
   for (const item of items) {
-    const b = el('button', 'hero-image-menu-item');
+    const b = el('button', 'hero-image-menu-item' + (item.cls ? ' ' + item.cls : ''));
     b.type = 'button';
     if (item.word) {
       const said = el('span', 'invite-said is-' + item.word);
@@ -700,6 +709,7 @@ function paintGuests(e, view, people, panel, again) {
     },
     count: rule => (rule.id ? rule.count : undefined),
     extra: rule => (rule.kind === 'include' ? autoToggle(rule, again) : null),
+    fixed: rule => Boolean(e.linkedId) && rule.tags.includes((isParty(e) ? 'party:' : 'activity:') + e.linkedId),
   });
   const adders = guestAdders(e, view, words => {
     longToast(words);

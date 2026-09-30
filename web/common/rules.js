@@ -283,7 +283,7 @@ export function rulesEditor({options, personName}) {
     return {card, list};
   }
 
-  function rulesList({list, empty, opened = null, onAdd, onChange, onRemove, onDone, count, extra}) {
+  function rulesList({list, empty, opened = null, onAdd, onChange, onRemove, onDone, count, extra, fixed}) {
     const countChip = rule => {
       const n = count(rule);
       const chip = el('span', 'rule-count', n === undefined ? '' : rule.kind === 'exclude' ? `${n} excluded` : `${n} match`);
@@ -301,7 +301,7 @@ export function rulesEditor({options, personName}) {
       }
       for (const kind of ['include', 'exclude']) {
         for (const rule of all.filter(r => r.kind === kind)) {
-          rows.append(ruleRow(rule, () => onChange(rule), () => onRemove(rule), rule === open, countChip, () => onDone(rule), extra));
+          rows.append(ruleRow(rule, () => onChange(rule), () => onRemove(rule), rule === open, countChip, () => onDone(rule), extra, Boolean(fixed && fixed(rule))));
         }
       }
       open = null;
@@ -329,7 +329,7 @@ export function rulesEditor({options, personName}) {
     };
   }
 
-  function ruleRow(rule, onChange, onRemove, open, countChip, onDone, extra) {
+  function ruleRow(rule, onChange, onRemove, open, countChip, onDone, extra, fixed) {
     const row = el('div', 'rule');
     const mine = rule.tags.every(t => options().tags.some(o => o.key === t) || options().lists.some(l => l.key === t));
     let count = null;
@@ -346,7 +346,7 @@ export function rulesEditor({options, personName}) {
       row.replaceChildren();
       count = countChip ? countChip(rule) : null;
       const words = ruleLine(rule, count);
-      if (!mine) {
+      if (!mine && !fixed) {
         row.classList.add('is-theirs');
         words.append(el('div', 'rule-note', 'Names a tag that is not yours to name; it can be removed but not changed.'));
       }

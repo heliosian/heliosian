@@ -26,6 +26,8 @@ type InviteGroup struct {
 	Added   string `json:"added"`
 	Sent    string `json:"sent"`
 	Count   int    `json:"count"`
+
+	TagNames []string `json:"tagNames"`
 }
 
 func (b *builder) groups(rows []store.Row) {

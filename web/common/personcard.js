@@ -16,7 +16,7 @@ export async function openPersonCard(person, tabs = [], options = {}) {
     return;
   }
   const panels = tabbedFields([
-    {label: 'Contact', icon: svg('people'), fields: [cardContact(dir, person, info), cardFoot(person, info, null)]},
+    {label: 'Contact', icon: svg('people'), fields: [cardContact(dir, person, info), cardFoot(person, info, options.actions === false ? doneButton() : null)]},
     ...tabs,
   ]);
   openModal('', [head, panels], {...options, wide: 'person'});
@@ -54,15 +54,7 @@ function cardHead(person, info) {
     a.append(round, el('span', 'who-action-label', label));
     actions.append(a);
   };
-  if (person.email) {
-    action('mail', 'Email', `mailto:${person.email}`);
-  }
   const phone = info && info.phone ? info.phone : '';
-  const digits = phone.replace(/[^+\d]/g, '');
-  if (digits) {
-    action('chat', 'Message', `sms:${digits}`);
-    action('phone', 'Call', `tel:${digits}`);
-  }
   if (person.email) {
     action('copy', 'Copy info', null, () => {
       const lines = [name, person.email, phone].filter(Boolean);
@@ -76,20 +68,33 @@ function cardHead(person, info) {
 function cardContact(dir, person, info) {
   const card = el('div', 'who-rows');
   let group = null;
-  const row = (icon, label, value) => {
+  const row = (icon, label, value, links = []) => {
     if (!group) {
       group = el('div', 'who-group');
       card.append(group);
     }
     const r = el('div', 'who-row');
     r.append(svg(icon), el('span', 'who-label', label), typeof value === 'string' ? el('span', 'who-value', value) : value);
+    if (links.length) {
+      const wrap = el('span', 'who-row-actions');
+      for (const [linkIcon, title, href] of links) {
+        const a = el('a', 'who-row-action');
+        a.href = href;
+        a.title = title;
+        a.setAttribute('aria-label', title);
+        a.append(svg(linkIcon));
+        wrap.append(a);
+      }
+      r.append(wrap);
+    }
     group.append(r);
   };
   if (person.email) {
-    row('mail', 'Email', person.email);
+    row('mail', 'Email', person.email, [['mail', 'Email', `mailto:${person.email}`]]);
   }
   if (info && info.phone) {
-    row('phone', 'Phone', info.phone);
+    const digits = info.phone.replace(/[^+\d]/g, '');
+    row('phone', 'Phone', info.phone, digits ? [['chat', 'Message', `sms:${digits}`], ['phone', 'Call', `tel:${digits}`]] : []);
   }
   const chips = list => {
     const wrap = el('div', 'who-card-chips');
@@ -126,6 +131,13 @@ function cardContact(dir, person, info) {
     row('person', 'About', 'A guest, not in the directory.');
   }
   return card;
+}
+
+export function doneButton() {
+  const done = el('button', 'button who-done', 'Done');
+  done.type = 'button';
+  done.addEventListener('click', closeModal);
+  return done;
 }
 
 function cardFoot(person, info, done) {

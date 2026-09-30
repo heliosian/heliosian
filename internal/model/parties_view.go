@@ -112,6 +112,7 @@ type PartyAttendee struct {
 	AddedBy       string  `json:"addedBy,omitempty"`
 	RSVP          string  `json:"rsvp,omitempty"`
 	Household     string  `json:"household"`
+	FamilyKey     string  `json:"familyKey,omitempty"`
 	FamilyName    string  `json:"familyName,omitempty"`
 	FamilyPhoto   string  `json:"familyPhoto,omitempty"`
 }
@@ -190,7 +191,7 @@ func (v partyViewer) attendee(t Ticket, sees bool) PartyAttendee {
 	a.Household = cmp.Or(t.Purchaser, t.Email, t.ID)
 	for _, email := range []string{t.Purchaser, t.Email} {
 		if family, ok := v.directory.FamilyOf(email); ok && email != "" {
-			a.Household, a.FamilyName, a.FamilyPhoto = family.Key, family.Name, thumb(family.PhotoURL)
+			a.Household, a.FamilyKey, a.FamilyName, a.FamilyPhoto = family.Key, family.Key, family.Name, thumb(family.PhotoURL)
 			break
 		}
 	}

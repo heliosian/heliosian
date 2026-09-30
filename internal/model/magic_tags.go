@@ -69,6 +69,30 @@ func (m *Model) magicTagExists(key string) bool {
 	return false
 }
 
+func (m *Model) tagName(key string) string {
+	kind, rest, _ := strings.Cut(key, ":")
+	switch kind {
+	case MagicTagParty:
+		if p := m.Parties.Party(rest); p != nil {
+			return p.Title
+		}
+	case MagicTagActivity:
+		if a := m.Activities.Activity(rest); a != nil {
+			return a.Title
+		}
+	case MagicTagRoom:
+		return rest + " Parents"
+	case MagicTagGroup:
+		if g := m.EmailLists.Group(rest); g != nil {
+			return g.Title
+		}
+	}
+	if t := m.Directory.tagByKey(key); t != nil {
+		return t.name
+	}
+	return key
+}
+
 func (m *Model) magicTagKeys() []string {
 	out := []string{}
 	for _, p := range m.Parties.Parties {
