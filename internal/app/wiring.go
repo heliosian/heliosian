@@ -194,7 +194,8 @@ func NewCore(cfg Config) *Core {
 		Describer: cfg.Describer,
 		About:     loopAbout,
 	})
-	ask.Register(askMux, ask.Sources{Store: models, Embedder: cfg.Embedder, Now: time.Now}, cfg.Asker, spend, cfg.ChatKey)
+	askAbout := ask.About(appName("ask"), taglineOf("ask"))
+	ask.Register(askMux, ask.Sources{Store: models, Embedder: cfg.Embedder, Now: time.Now}, cfg.Asker, spend, cfg.ChatKey, askAbout)
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: model.HomePreviewHead(models, homeStyle)},
@@ -205,7 +206,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: model.PartiesPreviewHead(models, celebrateStyle)},
 		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: hooks.PreviewHead()},
 		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
-		{Key: "ask", Title: "Helios Ask", Mux: askMux},
+		{Key: "ask", Title: "Helios Ask", Mux: askMux, Preview: askAbout.PreviewHead},
 	}
 	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin, documents)
 	model.RegisterBirthdays(birthdayMux, model.BirthdaysDeps{

@@ -386,25 +386,33 @@ func (s *Style) drawListing(img *image.RGBA, panel image.Rectangle, l *Listing, 
 		titleSize, noteSize = 26, 20
 	}
 	dot := 10
-	for _, item := range l.Items {
-		indent := dot * 3
+	indentOf := func(item Item) int {
 		if item.Icon != nil {
-			indent = 62
+			return 62
 		}
-		var title font.Face
-		var lines []string
-		var err error
-		size := titleSize
-		for ; size >= 20; size -= 2 {
-			if title, err = face(bold, size); err != nil {
+		return dot * 3
+	}
+	size := titleSize
+	for _, item := range l.Items {
+		for ; size > 20; size -= 2 {
+			title, err := face(bold, size)
+			if err != nil {
 				return err
 			}
 			d.Face = title
-			lines = Wrap(d, item.Title, width-fixed.I(indent))
-			if len(lines) <= 1 {
+			if len(Wrap(d, item.Title, width-fixed.I(indentOf(item)))) <= 1 {
 				break
 			}
 		}
+	}
+	title, err := face(bold, size)
+	if err != nil {
+		return err
+	}
+	for _, item := range l.Items {
+		indent := indentOf(item)
+		d.Face = title
+		lines := Wrap(d, item.Title, width-fixed.I(indent))
 		text := item.Title
 		if len(lines) > 1 {
 			text = lines[0] + "…"

@@ -24,6 +24,7 @@ import (
 	"heliosian/internal/model"
 	"heliosian/internal/ratelimit"
 	"heliosian/internal/serve"
+	"heliosian/internal/sharecard"
 )
 
 const (
@@ -49,9 +50,10 @@ type app struct {
 	chatKey []byte
 }
 
-func Register(mux *http.ServeMux, sources Sources, claude *Claude, recent *ratelimit.Limiter, chatKey []byte) {
+func Register(mux *http.ServeMux, sources Sources, claude *Claude, recent *ratelimit.Limiter, chatKey []byte, about *sharecard.About) {
 	a := app{sources: sources, claude: claude, recent: recent, chatKey: chatKey}
 	mux.HandleFunc("GET /{$}", a.page)
+	mux.Handle("GET /open/share/about.png", about)
 	mux.HandleFunc("GET /api/ask/model", serve.JSON(a.model))
 	mux.HandleFunc("GET /api/ask/key", a.key)
 	mux.HandleFunc("POST /api/ask/chat", a.chat)
