@@ -25,6 +25,7 @@ import (
 	"heliosian/internal/intercept"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 	"heliosian/internal/testkit/mailtest"
 )
 
@@ -378,21 +379,35 @@ func TestCacheSavesAndHandles(t *testing.T) {
 
 const feedbackMember = "robin.whitfield@heliosschool.org"
 
-func feedbackAdminServer(t *testing.T, s *Store, bucket *blob.Bucket, filer *feedback.GitHubApp) *http.ServeMux {
+func feedbackAdminServer(t *testing.T, s *Store, queue *store.Queue, bucket *blob.Bucket, filer *feedback.GitHubApp) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
-	RegisterFeedbackAdmin(mux, s, bucket, filer)
+	hooks := RegisterFeedbackAdmin(mux, s, bucket, filer)
+	typedRegistry(s, queue, DirectoryResources(), hooks.Resources()).Register(mux)
 	return mux
 }
 
-func testFeedbackAdmin(t *testing.T, filer *feedback.GitHubApp, who string) (*Store, http.Handler) {
+func testFeedbackAdmin(t *testing.T, filer *feedback.GitHubApp) (*Store, http.Handler) {
 	t.Helper()
-	_, _, cache := testFeedbackCache(t)
-	return cache, auth.Fixed(who, feedbackAdminServer(t, cache, blob.NewMemoryBucket(), filer))
+	_, queue, cache := testFeedbackCache(t)
+	return cache, feedbackAdminServer(t, cache, queue, blob.NewMemoryBucket(), filer)
+}
+
+func reportOf(t *testing.T, h http.Handler, as, key string) (reportDetail, map[string]bool) {
+	t.Helper()
+	out := decoded[envelope](t, testkit.Call(t, h, as, "GET", "/api/feedback-reports/"+key, nil))
+	var got struct {
+		reportDetail
+		Can map[string]bool `json:"can"`
+	}
+	if err := json.Unmarshal(out.Resources["feedback-reports"][key], &got); err != nil {
+		t.Fatalf("no report %s: %v", key, err)
+	}
+	return got.reportDetail, got.Can
 }
 
 func TestAdminShowsTheScreenshot(t *testing.T) {
-	_, _, cache := testFeedbackCache(t)
+	_, queue, cache := testFeedbackCache(t)
 	bucket := blob.NewMemoryBucket()
 	shot := pngBytes(t)
 	r := sampleReport()
@@ -404,18 +419,16 @@ func TestAdminShowsTheScreenshot(t *testing.T) {
 	if err := bucket.Put(context.Background(), saved.Screenshot, "image/png", shot); err != nil {
 		t.Fatal(err)
 	}
-	mux := feedbackAdminServer(t, cache, bucket, nil)
+	mux := feedbackAdminServer(t, cache, queue, bucket, nil)
 	get := func(who, path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		auth.Fixed(who, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		return rec
 	}
-	rec := get(jordan, "/api/admin/feedback/"+saved.ID)
-	var one reportDetail
-	if err := json.Unmarshal(rec.Body.Bytes(), &one); err != nil || !one.Screenshot {
-		t.Errorf("the detail does not say there is a screenshot: %s %v", rec.Body.String(), err)
+	if one, _ := reportOf(t, mux, jordan, saved.ID); !one.Screenshot {
+		t.Errorf("the detail does not say there is a screenshot: %+v", one)
 	}
-	rec = get(jordan, "/api/admin/feedback/"+saved.ID+"/screenshot")
+	rec := get(jordan, "/api/admin/feedback/"+saved.ID+"/screenshot")
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || !bytes.Equal(rec.Body.Bytes(), shot) {
 		t.Errorf("screenshot: %d %q %d bytes", rec.Code, rec.Header().Get("Content-Type"), rec.Body.Len())
 	}
@@ -461,39 +474,45 @@ func filingApp(t *testing.T) (*feedback.GitHubApp, *filedIssue) {
 }
 
 func TestAdminNeedsASuperAdmin(t *testing.T) {
-	_, h := testFeedbackAdmin(t, nil, feedbackMember)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/admin/feedback", nil))
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("a member got %d", rec.Code)
+	_, h := testFeedbackAdmin(t, &feedback.GitHubApp{ID: "12345"})
+	rec := testkit.Call(t, h, feedbackMember, "GET", "/api/feedback-reports", nil)
+	var list struct {
+		Result []string `json:"result"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); rec.Code != http.StatusOK || err != nil || len(list.Result) != 0 {
+		t.Errorf("a member's list: %d %s", rec.Code, rec.Body)
+	}
+	if rec := testkit.Call(t, h, feedbackMember, "GET", "/api/feedback-reports/fbk0000000001", nil); rec.Code != http.StatusNotFound {
+		t.Errorf("a member opening a report: %d", rec.Code)
+	}
+	for _, action := range []string{"file", "dismiss"} {
+		if rec := testkit.Call(t, h, feedbackMember, "POST", "/api/feedback-reports/fbk0000000001/"+action, map[string]string{"title": "t", "body": "b", "type": "Bug"}); rec.Code != http.StatusNotFound {
+			t.Errorf("a member's %s: %d", action, rec.Code)
+		}
 	}
 }
 
 func TestAdminListsAndOpens(t *testing.T) {
-	_, h := testFeedbackAdmin(t, &feedback.GitHubApp{ID: "12345"}, jordan)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/admin/feedback", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
-	}
+	_, h := testFeedbackAdmin(t, &feedback.GitHubApp{ID: "12345"})
+	rec := testkit.Call(t, h, jordan, "GET", "/api/feedback-reports", nil)
 	var list struct {
-		Reports []reportSummary `json:"reports"`
-		CanFile bool            `json:"canFile"`
+		Result []string `json:"result"`
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
-		t.Fatal(err)
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); rec.Code != http.StatusOK || err != nil {
+		t.Fatalf("list: %d %s", rec.Code, rec.Body)
 	}
-	if len(list.Reports) != 4 || !list.CanFile {
-		t.Fatalf("list = %+v", list)
+	if len(list.Result) != 4 || list.Result[0] != "fbk0000000002" {
+		t.Fatalf("list = %v", list.Result)
 	}
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/admin/feedback/fbk0000000001", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("open: %d %s", rec.Code, rec.Body.String())
+	one, can := reportOf(t, h, jordan, "fbk0000000001")
+	if !can["file"] || !can["dismiss"] {
+		t.Errorf("a super admin's can on a new report: %v", can)
 	}
-	var one reportDetail
-	if err := json.Unmarshal(rec.Body.Bytes(), &one); err != nil {
-		t.Fatal(err)
+	if _, can := reportOf(t, h, jordan, "fbk0000000003"); can["file"] {
+		t.Errorf("a filed report can be filed: %v", can)
+	}
+	if byOld, _ := reportOf(t, h, jordan, "fbk0000000003"); byOld.Status != ReportStatusFiled {
+		t.Errorf("the filed report = %+v", byOld)
 	}
 	if one.Email != "rowan.avery@example.org" {
 		t.Errorf("the admin cannot see who reported it: %+v", one)
@@ -508,24 +527,25 @@ func TestAdminListsAndOpens(t *testing.T) {
 
 func TestAdminFilesAndDismisses(t *testing.T) {
 	app, filed := filingApp(t)
-	cache, h := testFeedbackAdmin(t, app, jordan)
+	cache, mux := testFeedbackAdmin(t, app)
+	h := auth.Fixed(jordan, mux)
 	post := func(path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
 		return rec
 	}
-	if rec := post("/api/admin/feedback/fbk0000000001/file", `{"title":"","body":"x"}`); rec.Code != http.StatusBadRequest {
+	if rec := post("/api/feedback-reports/fbk0000000001/file", `{"title":"","body":"x"}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("empty title: %d", rec.Code)
 	}
-	if rec := post("/api/admin/feedback/fbk0000000001/file", `{"title":"Blank grid","body":"x","type":" "}`); rec.Code != http.StatusBadRequest {
+	if rec := post("/api/feedback-reports/fbk0000000001/file", `{"title":"Blank grid","body":"x","type":" "}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("empty type: %d", rec.Code)
 	}
-	rec := post("/api/admin/feedback/fbk0000000001/file", `{"title":"Blank grid","body":"Reported by rowan.avery@example.org","type":"Bug"}`)
+	rec := post("/api/feedback-reports/fbk0000000001/file", `{"title":"Blank grid","body":"Reported by rowan.avery@example.org","type":"Bug"}`)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "rowan.avery@example.org") {
 		t.Errorf("an address slipped through: %d %s", rec.Code, rec.Body.String())
 	}
-	rec = post("/api/admin/feedback/fbk0000000001/file", `{"title":"Blank grid","body":"Forward a month and the grid empties.","type":"Bug","labels":["app:calendar"]}`)
-	if rec.Code != http.StatusOK {
+	rec = post("/api/feedback-reports/fbk0000000001/file", `{"title":"Blank grid","body":"Forward a month and the grid empties.","type":"Bug","labels":["app:calendar"]}`)
+	if rec.Code != http.StatusNoContent {
 		t.Fatalf("file: %d %s", rec.Code, rec.Body.String())
 	}
 	if filed.Title != "Blank grid" || filed.Type != "Bug" || strings.Join(filed.Labels, ",") != "app:calendar" {
@@ -535,25 +555,29 @@ func TestAdminFilesAndDismisses(t *testing.T) {
 	if got.Status != ReportStatusFiled || got.Issue != "https://github.com/heliosian/heliosian/issues/77" || got.HandledBy != jordan {
 		t.Errorf("report after filing = %+v", got)
 	}
-	if rec := post("/api/admin/feedback/fbk0000000001/file", `{"title":"Again","body":"x"}`); rec.Code != http.StatusConflict {
+	if _, can := reportOf(t, mux, jordan, "fbk0000000001"); can["file"] {
+		t.Errorf("a filed report can be filed again: %v", can)
+	}
+	if rec := post("/api/feedback-reports/fbk0000000001/file", `{"title":"Again","body":"x","type":"Bug"}`); rec.Code != http.StatusConflict {
 		t.Errorf("filed twice: %d", rec.Code)
 	}
-	if rec := post("/api/admin/feedback/fbk0000000002/dismiss", ""); rec.Code != http.StatusNoContent {
+	if rec := post("/api/feedback-reports/fbk0000000002/dismiss", ""); rec.Code != http.StatusNoContent {
 		t.Errorf("dismiss: %d %s", rec.Code, rec.Body.String())
 	}
 	if got, _ := cache.Model().Feedback.Report("fbk0000000002"); got.Status != ReportStatusDismissed {
 		t.Errorf("dismissed = %+v", got)
 	}
-	if rec := post("/api/admin/feedback/nope/dismiss", ""); rec.Code != http.StatusNotFound {
+	if rec := post("/api/feedback-reports/zzz9999999999/dismiss", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown report: %d", rec.Code)
 	}
 }
 
 func TestAdminWithoutAGitHubApp(t *testing.T) {
-	_, h := testFeedbackAdmin(t, nil, jordan)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/admin/feedback/fbk0000000001/file", strings.NewReader(`{"title":"t","body":"b"}`)))
-	if rec.Code != http.StatusServiceUnavailable {
+	_, h := testFeedbackAdmin(t, nil)
+	if _, can := reportOf(t, h, jordan, "fbk0000000001"); can["file"] || !can["dismiss"] {
+		t.Errorf("can with no app to file with: %v", can)
+	}
+	if rec := testkit.Call(t, h, jordan, "POST", "/api/feedback-reports/fbk0000000001/file", map[string]string{"title": "t", "body": "b", "type": "Bug"}); rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("filing with no app: %d %s", rec.Code, rec.Body.String())
 	}
 }

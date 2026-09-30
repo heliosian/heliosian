@@ -1,7 +1,6 @@
-import {state, isAdmin} from './state.js';
+import {state, isAdmin, feed, readUpcoming} from './state.js';
 import {appOrigin} from '/appswitch.js';
 import {searchInput} from '/shell.js';
-import {api} from '/api.js';
 import {el, svg} from '/elements.js';
 import {calendarMark, calendarMenu, dropdown, shownTo} from './cards.js';
 import {dayBar, dayChip, dayRow, eventRow, standing} from '/dayrows.js';
@@ -11,8 +10,6 @@ function parseDate(date) {
   const [y, m, d] = date.split('-').map(Number);
   return new Date(y, m - 1, d);
 }
-
-const pad = n => String(n).padStart(2, '0');
 
 function tint(event) {
   return event.linkApp === 'celebrate' ? 'is-celebrate' : event.linkApp === 'team' ? 'is-team' : 'is-school';
@@ -36,89 +33,38 @@ function sortKey(event, date) {
   return !time || day !== date ? '' : time;
 }
 
-function shown(event) {
-  return event.answer !== 'no' && event.answer !== 'hidden';
-}
-
 let picked = null;
 let base = null;
 
-function currentMonth() {
-  if (base !== state.model.calendar) {
-    base = state.model.calendar;
+function currentUpcoming() {
+  if (base !== state.model.upcoming) {
+    base = state.model.upcoming;
     picked = null;
   }
   return picked || base;
 }
 
-async function pick(token) {
-  const month = currentMonth();
+async function pick(calendar) {
   try {
-    picked = await api('GET', '/api/apps/calendar?month=' + month.today.slice(0, 7) + '&calendar=' + encodeURIComponent(token));
+    picked = await readUpcoming(calendar);
   } catch {
     return;
   }
-  nextMonth = null;
   renderWidgets(searchInput().value);
 }
 
-function calendarPick(month) {
-  const cal = state.model.upcomingCalendar;
-  const list = (cal && cal.calendars) || [];
-  if (!list.length) {
-    return null;
-  }
-  const current = list.find(c => c.token === month.calendar) || list[0];
-  const chosen = list.find(c => c.token === cal.default) || list[0];
+function calendarPick(upcoming) {
+  const list = state.model.calendars;
+  const current = feed(upcoming.calendar);
   const wrap = el('div', 'category-calendar widget-calendar');
   const toggle = el('button', 'category-calendar-toggle');
   toggle.type = 'button';
   toggle.title = current.locked ? 'The calendar\u2019s own view, for everyone' : 'The saved calendar these events come from';
   toggle.append(calendarMark(current), el('span', '', current.name), svg('chevron-right'));
-  const menu = calendarMenu(list, current, chosen, c => pick(c.token));
+  const menu = calendarMenu(list, current, list[0], c => pick(c.id));
   dropdown(toggle, menu);
   wrap.append(toggle, menu);
   return wrap;
-}
-
-let nextMonth = null;
-
-function allEvents(month) {
-  const events = [...(month.events || [])];
-  if (nextMonth && nextMonth.month !== month.month && nextMonth.calendar === month.calendar) {
-    for (const e of nextMonth.events || []) {
-      if (!events.some(x => x.id === e.id)) {
-        events.push(e);
-      }
-    }
-  }
-  return events.filter(shown);
-}
-
-function dayInfo(month, day) {
-  const here = (month.days || {})[day];
-  if (here || !nextMonth || nextMonth.calendar !== month.calendar) {
-    return here || {};
-  }
-  return (nextMonth.days || {})[day] || {};
-}
-
-let nextAsked = null;
-
-async function fetchNext(month) {
-  const [y, m] = month.month.split('-').map(Number);
-  const after = m === 12 ? `${y + 1}-01` : `${y}-${pad(m + 1)}`;
-  const want = after + '|' + (month.calendar || '');
-  if (nextAsked === want) {
-    return;
-  }
-  nextAsked = want;
-  try {
-    nextMonth = await api('GET', '/api/apps/calendar?month=' + after + '&calendar=' + encodeURIComponent(month.calendar || ''));
-  } catch {
-    return;
-  }
-  renderWidgets(searchInput().value);
 }
 
 function dayGroups(items, dayOf, order) {
@@ -201,7 +147,7 @@ function grouped(name, groups, bar, row) {
 function widgetTitle(app, words) {
   const title = el('h2', 'widget-title');
   const icon = el('img', 'widget-icon');
-  const mark = ((state.model.apps || []).find(a => a.key === app) || {}).mark;
+  const mark = (state.model.apps.find(a => a.key === app) || {}).mark;
   icon.src = `/brand/apps/${app}.png` + (mark ? `?v=${mark}` : '');
   icon.alt = '';
   title.append(icon, el('span', '', words));
@@ -215,63 +161,27 @@ function moreLink(words, href) {
   return a;
 }
 
-let rsvps = [];
-let rsvpsFor = null;
-
-async function fetchRsvps() {
-  rsvpsFor = state.model;
-  try {
-    rsvps = (await api('GET', '/api/apps/rsvp')).waiting || [];
-  } catch {
-    return;
-  }
-  renderWidgets(searchInput().value);
-}
-
 function whenWidget() {
-  const month = currentMonth();
-  if (!month || !month.today) {
-    return null;
-  }
-  if (rsvpsFor !== state.model) {
-    fetchRsvps();
-  }
-  const events = allEvents(month);
+  const upcoming = currentUpcoming();
+  const today = state.model.today;
+  const days = feed(upcoming.calendar).days || {};
   const card = el('article', 'widget widget-when');
   const head = el('header', 'widget-head');
-  head.append(widgetTitle('when', 'Upcoming'));
-  const choose = calendarPick(month);
-  if (choose) {
-    head.append(choose);
-  }
+  head.append(widgetTitle('when', 'Upcoming'), calendarPick(upcoming));
   card.append(head);
-  if (rsvps.length) {
-    card.append(rsvpPanel(rsvps, appOrigin('when')));
+  if (state.model.waiting.length) {
+    card.append(rsvpPanel(state.model.waiting, appOrigin('when')));
   }
-  const groups = dayGroups(events, event => event.dates.filter(d => d >= month.today), sortKey);
+  const groups = dayGroups(upcoming.events, event => event.dates.filter(d => d >= today), sortKey);
   if (!groups.length) {
     card.append(el('p', 'wg-empty', 'Nothing coming up on the calendar.'));
   }
   card.append(...grouped('when', groups,
-    g => dayBar(g.day, (dayInfo(month, g.day).kinds || []).map(k => dayChip(k.name, k.words))),
+    g => dayBar(g.day, (days[g.day] || []).map(k => dayChip(k.name, k.words))),
     (event, g) => eventRow(event, {base: appOrigin('when'), time: startTime(event, g.day), className: tint(event)})));
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
   card.append(widgetFoot('when', total, {href: appOrigin('when')}));
-  fetchNext(month);
   return card;
-}
-
-let team = null;
-let teamFor = null;
-
-async function fetchTeam() {
-  teamFor = state.model;
-  try {
-    team = await api('GET', '/api/apps/team');
-  } catch {
-    return;
-  }
-  renderWidgets(searchInput().value);
 }
 
 let teamChip = 'all';
@@ -279,13 +189,7 @@ let teamChip = 'all';
 const teamTones = ['is-red', 'is-blue', 'is-gold', 'is-green'];
 
 function teamWidget() {
-  if (teamFor !== state.model) {
-    team = null;
-    fetchTeam();
-  }
-  if (!team) {
-    return null;
-  }
+  const team = state.model.team;
   const card = el('article', 'widget widget-team');
   const head = el('header', 'widget-head');
   head.append(widgetTitle('team', 'Team'));
@@ -340,22 +244,10 @@ function teamWidget() {
   return card;
 }
 
-let parties = null;
-let partiesFor = null;
-
-async function fetchParties() {
-  partiesFor = state.model;
-  try {
-    parties = (await api('GET', '/api/apps/celebrate')).parties || [];
-  } catch {
-    return;
-  }
-  renderWidgets(searchInput().value);
-}
-
 let partyChip = 'upcoming';
 
 function partiesUnder(chip) {
+  const parties = state.model.parties;
   if (chip === 'mine') {
     return parties.filter(p => p.mine);
   }
@@ -432,13 +324,6 @@ function pictureList(name, items, row) {
 }
 
 function celebrateWidget() {
-  if (partiesFor !== state.model) {
-    parties = null;
-    fetchParties();
-  }
-  if (!parties) {
-    return null;
-  }
   const card = el('article', 'widget widget-celebrate');
   const head = el('header', 'widget-head');
   head.append(widgetTitle('celebrate', 'Celebrate'));
@@ -472,56 +357,6 @@ function celebrateWidget() {
   return card;
 }
 
-let school = null;
-let schoolFor = null;
-
-async function fetchSchool() {
-  schoolFor = state.model;
-  try {
-    school = (await api('GET', '/api/apps/school')).emails || [];
-  } catch {
-    return;
-  }
-  renderWidgets(searchInput().value);
-}
-
-const listNames = {
-  newsletter: 'Newsletter', parentsandstaff: 'Parents & staff', parentsonly: 'Parents', parentsandstudents: 'Parents & students',
-  community: 'Community', parents: 'All parents', newstudentfamilies: 'New families', 'new.parents': 'New families',
-};
-
-function sentTo(email) {
-  const cap = w => w.charAt(0).toUpperCase() + w.slice(1);
-  if (email.kind !== 'list') {
-    if (!email.audience || email.audience === 'Everyone') {
-      return 'All families';
-    }
-    const named = email.audience.split(',').map(r => r.trim()).filter(Boolean);
-    const isGrade = n => /^Grade \d+$/.test(n) || n === 'Kindergarten';
-    const and = list => list.length > 1 ? list.slice(0, -1).join(', ') + ' & ' + list[list.length - 1] : list.join('');
-    const rooms = named.filter(n => !isGrade(n));
-    const grades = named.filter(isGrade);
-    const numbers = grades.filter(g => g !== 'Kindergarten').map(g => g.slice(6));
-    const gradeWords = [];
-    if (grades.includes('Kindergarten')) {
-      gradeWords.push(numbers.length ? 'K' : 'Kindergarten');
-    }
-    if (numbers.length) {
-      gradeWords.push(...numbers);
-    }
-    const gradePart = !grades.length ? '' : grades.length === 1 ? grades[0] : `Grades ${and(gradeWords)}`;
-    return [rooms.length ? and(rooms) : '', gradePart].filter(Boolean).join(' \u00b7 ');
-  }
-  if (listNames[email.channel]) {
-    return listNames[email.channel];
-  }
-  const [room, who] = email.channel.split('.');
-  if (who) {
-    return `${cap(room)} ${who}`;
-  }
-  return room.split('and').map(cap).join(' & ');
-}
-
 const schoolTones = ['is-teal', 'is-lime', 'is-pink', 'is-blue'];
 
 let schoolOpen;
@@ -531,8 +366,8 @@ function emailRow(email, n, open) {
   const title = el('button', 'wg-title', email.title);
   title.type = 'button';
   title.setAttribute('aria-expanded', String(open));
-  const to = el('span', 'wg-email-to', sentTo(email));
-  to.title = sentTo(email);
+  const to = el('span', 'wg-email-to', email.to);
+  to.title = email.to;
   const body = el('div', 'wg-email-body');
   if (email.points.length) {
     const points = el('ul', 'wg-points');
@@ -567,10 +402,10 @@ function emailRow(email, n, open) {
 
 let schoolType = null;
 
-function typePick() {
+function typePick(school) {
   const counts = new Map();
   for (const e of school) {
-    counts.set(sentTo(e), (counts.get(sentTo(e)) || 0) + 1);
+    counts.set(e.to, (counts.get(e.to) || 0) + 1);
   }
   const wrap = el('div', 'category-calendar widget-calendar wg-type');
   const toggle = el('button', 'category-calendar-toggle');
@@ -596,13 +431,7 @@ function typePick() {
 }
 
 function schoolWidget() {
-  if (schoolFor !== state.model) {
-    school = null;
-    fetchSchool();
-  }
-  if (!school) {
-    return null;
-  }
+  const school = state.model.school;
   const card = el('article', 'widget widget-school');
   const head = el('header', 'widget-head');
   head.append(widgetTitle('ask', 'Inbox'));
@@ -611,11 +440,11 @@ function schoolWidget() {
     card.append(el('p', 'wg-empty', 'No school email in the last two weeks.'));
     return card;
   }
-  if (schoolType && !school.map(sentTo).includes(schoolType)) {
+  if (schoolType && !school.some(e => e.to === schoolType)) {
     schoolType = null;
   }
-  head.append(typePick());
-  const shown = !schoolType ? school : school.filter(e => sentTo(e) === schoolType);
+  head.append(typePick(school));
+  const shown = !schoolType ? school : school.filter(e => e.to === schoolType);
   const name = 'school-' + (schoolType || 'all');
   const groups = dayGroups(shown, e => e.date, e => e.time || '').reverse();
   const first = groups.length ? groups[0].rows[0].key : null;
@@ -635,27 +464,15 @@ const widgetNames = {when: 'Upcoming', team: 'Team', celebrate: 'Celebrate', sch
 const widgetApps = {when: 'when', team: 'team', celebrate: 'celebrate', school: 'ask'};
 
 export function widgetRows() {
-  return widgetOrder().map(key => {
-    const v = (state.model.widgets || {})[key] || {forMe: true, rules: []};
-    const icon = widgetTitle(widgetApps[key], '').querySelector('img');
-    const meta = [shownTo(v.rules), v.forMe === false ? 'Hidden from you' : ''].filter(Boolean).join(' · ');
-    return {key, name: widgetNames[key], mark: icon, meta};
+  return state.model.widgets.map(w => {
+    const icon = widgetTitle(widgetApps[w.key], '').querySelector('img');
+    const meta = [shownTo(w.rules), w.me.shown ? '' : 'Hidden from you'].filter(Boolean).join(' · ');
+    return {widget: w, name: widgetNames[w.key], mark: icon, meta};
   });
 }
 
-
-function adminTools(card, key) {
-  const head = card.querySelector('.widget-head');
-  const v = (state.model.widgets || {})[key] || {forMe: true, rules: []};
-  if (v.forMe === false) {
-    head.querySelector('.widget-title').append(el('span', 'hidden-badge', 'Hidden'));
-  }
-}
-
-function widgetOrder() {
-  const makers = Object.keys(widgetMakers);
-  const set = (state.model.widgetOrder || []).filter(k => makers.includes(k));
-  return [...set, ...makers.filter(k => !set.includes(k))];
+function hiddenBadge(card) {
+  card.querySelector('.widget-head .widget-title').append(el('span', 'hidden-badge', 'Hidden'));
 }
 
 function fitWidgets(query) {
@@ -703,18 +520,13 @@ export function renderWidgets(query = '', fitted = false) {
   if (root.hidden) {
     return;
   }
-  for (const key of widgetOrder()) {
-    const make = widgetMakers[key];
-    const forMe = ((state.model.widgets || {})[key] || {}).forMe !== false;
-    if (!forMe && !admin) {
+  for (const w of state.model.widgets) {
+    if (!w.me.shown && !admin) {
       continue;
     }
-    const widget = make();
-    if (!widget) {
-      continue;
-    }
-    if (admin) {
-      adminTools(widget, key);
+    const widget = widgetMakers[w.key]();
+    if (!w.me.shown) {
+      hiddenBadge(widget);
     }
     root.append(widget);
   }

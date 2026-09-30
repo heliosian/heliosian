@@ -1,7 +1,5 @@
-import {api} from '/api.js';
+import {query} from '/data.js';
 import {noteError, openFeedback} from '/feedback.js';
-
-const homeApp = {key: 'home', name: 'Heliosian', tagline: 'Helios Community Apps'};
 
 function tierLabels() {
   const labels = location.hostname.split('.');
@@ -24,12 +22,8 @@ export function whoLink(email) {
 }
 
 async function switchList() {
-  try {
-    return await api('GET', '/api/apps/switch');
-  } catch (err) {
-    noteError('/api/apps/switch: ' + err.message);
-    return {apps: [homeApp], hidden: []};
-  }
+  const read = await query('/api/apps');
+  return read.result.map(read.get);
 }
 
 const hoverGrace = 150;
@@ -78,18 +72,18 @@ function closeAppSwitches() {
 export function initAppSwitch() {
   const current = currentApp();
   const wraps = document.querySelectorAll('.app-switch');
-  switchList().then(({apps, hidden}) => {
+  switchList().then(apps => {
     for (const wrap of wraps) {
       const menu = wrap.querySelector('.app-switch-menu');
       for (const app of apps) {
-        if (hidden.includes(app.key) && app.key !== current) {
+        if (app.me.listed === false && app.key !== current) {
           continue;
         }
         menu.append(appRow(app, app.key === current));
       }
       menu.append(menuFoot());
     }
-  });
+  }).catch(err => noteError('/api/apps: ' + err.message));
   for (const wrap of wraps) {
     const button = wrap.querySelector('.app-switch-button');
     const menu = wrap.querySelector('.app-switch-menu');

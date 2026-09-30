@@ -1,45 +1,104 @@
 package model
 
 import (
+	"encoding/json"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
 	"heliosian/internal/testkit"
 )
 
-func TestWidget(t *testing.T) {
-	cache, _ := activitiesServer(t)
-	at := time.Date(2026, 9, 25, 12, 0, 0, 0, Location)
-	w := cache.Model().Activities.Widget("jordan.whitfield@heliosschool.org", at)
-	if len(w.Mine) != 3 {
-		t.Fatalf("mine: %+v", w.Mine)
+func clockAt(t *testing.T, at time.Time) {
+	t.Helper()
+	was := now
+	now = func() time.Time { return at }
+	t.Cleanup(func() { now = was })
+}
+
+func teamWidgetOf(t *testing.T, mux http.Handler, as string) map[string][]map[string]any {
+	t.Helper()
+	r := read(t, mux, as, "/api/team-settings?include=mine,needed,priority")
+	settings := r.one(t, "team-settings", teamSettingsKeyOf())
+	out := map[string][]map[string]any{}
+	for _, name := range []string{"mine", "needed", "priority"} {
+		out[name] = []map[string]any{}
+		list, _ := settings[name].([]any)
+		for _, key := range list {
+			out[name] = append(out[name], r.one(t, "activities", key.(string)))
+		}
 	}
-	if m := w.Mine[0]; m.Title != "Tech Setup" || m.Under != "All School Movie Night" || m.Start != "2026-11-06" || m.Position != PositionVolunteer || m.Path != "/activities/act0000000003/act0000000026" {
+	return out
+}
+
+func positionOf(a map[string]any) string {
+	me, _ := a["me"].(map[string]any)
+	position, _ := me["position"].(string)
+	return position
+}
+
+func TestWidget(t *testing.T) {
+	_, mux := activitiesServer(t)
+	clockAt(t, time.Date(2026, 9, 25, 12, 0, 0, 0, Location))
+	w := teamWidgetOf(t, mux, jordan)
+	if len(w["mine"]) != 3 {
+		t.Fatalf("mine: %+v", w["mine"])
+	}
+	if m := w["mine"][0]; m["title"] != "Tech Setup" || m["under"] != "All School Movie Night" || m["day"] != "2026-11-06" || positionOf(m) != PositionVolunteer || m["path"] != "/activities/act0000000003/act0000000026" {
 		t.Errorf("a role under a dated event: %+v", m)
 	}
-	if m := w.Mine[2]; m.Title != "Tech Team" || m.Start != "" || m.Timing != "All Year" || m.Position != PositionOpen {
+	if m := w["mine"][2]; m["title"] != "Tech Team" || m["day"] != nil || m["dayTiming"] != "All Year" || positionOf(m) != PositionOpen {
 		t.Errorf("all-year last: %+v", m)
 	}
-	if len(w.Open) == 0 || len(w.Open) > widgetOpen || w.Open[0].Title != "All School Movie Night" || w.Open[0].Note != "Co-chair wanted" {
-		t.Errorf("open: %+v", w.Open)
+	if n := w["needed"]; len(n) == 0 || len(n) > widgetNeeded || n[0]["title"] != "All School Movie Night" || n[0]["wants"] != "Co-chair wanted" {
+		t.Errorf("needed: %+v", n)
 	}
-	for _, o := range w.Open {
-		if o.Title == "Tech Team" {
-			t.Errorf("open lists what they are on: %+v", o)
+	for _, o := range w["needed"] {
+		if o["title"] == "Tech Team" {
+			t.Errorf("needed lists what they are on: %+v", o)
 		}
 	}
-	later := cache.Model().Activities.Widget("jordan.whitfield@heliosschool.org", time.Date(2026, 11, 7, 12, 0, 0, 0, Location))
-	for _, m := range later.Mine {
-		if m.Title == "Tech Setup" {
-			t.Errorf("passed sign-up still listed: %+v", later.Mine)
-		}
+	if p := w["priority"]; len(p) != 2 || p[0]["title"] != "Spring Celebration" || p[1]["title"] != "Helios Cares" || p[0]["wants"] == nil || p[0]["wants"] == "" {
+		t.Errorf("priority: %+v", p)
 	}
-	if none := cache.Model().Activities.Widget(activitiesParent, at); len(none.Mine) != 0 || len(none.Open) == 0 {
+	if none := teamWidgetOf(t, mux, activitiesParent); len(none["mine"]) != 0 || len(none["needed"]) == 0 {
 		t.Errorf("on nothing: %+v", none)
 	}
-	if p := w.Priority; len(p) != 2 || p[0].Title != "Spring Celebration" || p[1].Title != "Helios Cares" || p[0].Note == "" {
-		t.Errorf("priority: %+v", p)
+	clockAt(t, time.Date(2026, 11, 7, 12, 0, 0, 0, Location))
+	for _, m := range teamWidgetOf(t, mux, jordan)["mine"] {
+		if m["title"] == "Tech Setup" {
+			t.Errorf("passed sign-up still listed: %+v", m)
+		}
+	}
+}
+
+func approvableOf(t *testing.T, mux http.Handler, as string) []string {
+	t.Helper()
+	ids := []string{}
+	json.Unmarshal(read(t, mux, as, "/api/activities?can=approve").Result, &ids)
+	return ids
+}
+
+func TestApprovalsFollowCan(t *testing.T) {
+	cache, mux := activitiesServer(t)
+	if got := cache.Model().Activities.Activity("act0000000022"); got == nil || got.Status != StatusPending || got.Parent == "" {
+		t.Fatalf("act0000000022 is not a pending child: %+v", got)
+	}
+	if ids := approvableOf(t, mux, chair); !slices.Contains(ids, "act0000000022") || slices.Contains(ids, "act0000000012") {
+		t.Errorf("a co-chair's approvals: %v", ids)
+	}
+	if ids := approvableOf(t, mux, jordan); !slices.Contains(ids, "act0000000022") || !slices.Contains(ids, "act0000000012") {
+		t.Errorf("an admin's approvals: %v", ids)
+	}
+	if ids := approvableOf(t, mux, activitiesParent); len(ids) != 0 {
+		t.Errorf("a plain member's approvals: %v", ids)
+	}
+	if rec := testkit.Call(t, mux, chair, "POST", activityAction("act0000000022", "approve"), nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("the co-chair's approval: %d %s", rec.Code, rec.Body)
+	}
+	if ids := approvableOf(t, mux, chair); slices.Contains(ids, "act0000000022") {
+		t.Errorf("an approved child is still to approve: %v", ids)
 	}
 }
 

@@ -1,4 +1,5 @@
-import {api} from '/api.js';
+import {batch} from '/data.js';
+import {eventPath} from '/dayrows.js';
 import {el} from '/elements.js';
 import {appOrigin, hoverMenu, hoverClick} from '/appswitch.js';
 import {noteError} from '/feedback.js';
@@ -266,132 +267,138 @@ export function renderAlerts({stale = [], privacy = [], broken = false} = {}) {
   fitAlerts();
 }
 
-export function initAlerts() {
+function byStart(a, b) {
+  if (!a.start !== !b.start) {
+    return a.start ? -1 : 1;
+  }
+  return (a.start || '').localeCompare(b.start || '');
+}
+
+export function initAlerts(viewer) {
   bellStale();
-  initRSVP();
-  initApprovals();
-  initLate();
+  const user = document.querySelector('#user');
+  if (!user || document.querySelector('.rsvp-alert, .approvals-alert, .late-alert')) {
+    return;
+  }
+  Promise.all([batch({
+    waiting: '/api/events?waiting',
+    activities: '/api/activities?can=approve',
+    parties: '/api/parties?status=pending&can=status',
+    events: '/api/events?status=pending&can=approve',
+    late: '/api/birthdays?late&include=person,assignee',
+  }), viewer]).then(([read, me]) => {
+    const all = name => read.result[name].map(read.get);
+    showRSVP(user, all('waiting').sort(byStart).map(e => ({title: e.title, start: e.start, allDay: e.allDay, path: eventPath(e)})));
+    showApprovals(user, [...all('activities'), ...all('parties'), ...all('events')].map(a => ({app: a.app, title: a.title, start: a.start, path: a.path})).sort(byStart));
+    const late = all('late').map(b => ({
+      name: read.follow(b, 'person').fullName,
+      step: b.late.step,
+      due: b.late.due,
+      assignee: (read.follow(b, 'assignee') || {}).fullName || b.assignedTo,
+      path: b.path,
+    })).sort((a, b) => a.due.localeCompare(b.due));
+    showLate(user, late, me.allowances.includes('birthday.admins'));
+  }).catch(err => noteError('alerts: ' + err.message));
 }
 
 const rsvpDay = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
 
-function initRSVP() {
-  const user = document.querySelector('#user');
-  if (!user || document.querySelector('.rsvp-alert')) {
+function showRSVP(user, waiting) {
+  if (!waiting.length) {
     return;
   }
-  api('GET', '/api/apps/rsvp').then(view => {
-    const waiting = view.waiting || [];
-    if (!waiting.length) {
-      return;
-    }
-    const when = appOrigin('when');
-    const wrap = el('span', 'topbar-alert-wrap');
-    const badge = el('a', 'topbar-alert rsvp-alert');
-    badge.href = when + '/mine/rsvp';
-    const words = `${waiting.length} ${waiting.length === 1 ? 'invitation waits' : 'invitations wait'} for your reply`;
-    badge.setAttribute('aria-label', words);
-    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    icon.setAttribute('viewBox', '0 0 24 24');
-    icon.innerHTML = '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>';
-    badge.append(icon, el('span', 'rsvp-count', String(waiting.length)));
-    wrap.append(badge);
-    const first = user.parentElement.querySelector('.topbar-alert');
-    (first ? first.closest('.topbar-alert-wrap') || first : user).before(wrap);
-    alertMenu(badge, () => alertList({
-      count: waiting.length,
-      words: waiting.length === 1 ? 'invitation waits for your reply' : 'invitations wait for your reply',
-      items: waiting.map(r => {
-        const day = new Date(r.start.slice(0, 10) + 'T12:00:00');
-        const hours = r.allDay || r.start.length < 16 ? '' : ' · ' + new Date(r.start.replace(' ', 'T')).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
-        return {title: r.title, note: rsvpDay.format(day) + hours, href: when + r.path};
-      }),
-      icon: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="12" cy="15.5" r="1.6"/></svg>',
-      button: 'Open RSVP in Helios When',
-      href: badge.href,
-    }));
-    fitAlerts();
-  }).catch(err => noteError('/api/apps/rsvp: ' + err.message));
+  const when = appOrigin('when');
+  const wrap = el('span', 'topbar-alert-wrap');
+  const badge = el('a', 'topbar-alert rsvp-alert');
+  badge.href = when + '/mine/rsvp';
+  const words = `${waiting.length} ${waiting.length === 1 ? 'invitation waits' : 'invitations wait'} for your reply`;
+  badge.setAttribute('aria-label', words);
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('viewBox', '0 0 24 24');
+  icon.innerHTML = '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>';
+  badge.append(icon, el('span', 'rsvp-count', String(waiting.length)));
+  wrap.append(badge);
+  const first = user.parentElement.querySelector('.topbar-alert');
+  (first ? first.closest('.topbar-alert-wrap') || first : user).before(wrap);
+  alertMenu(badge, () => alertList({
+    count: waiting.length,
+    words: waiting.length === 1 ? 'invitation waits for your reply' : 'invitations wait for your reply',
+    items: waiting.map(r => {
+      const day = new Date(r.start.slice(0, 10) + 'T12:00:00');
+      const hours = r.allDay || r.start.length < 16 ? '' : ' · ' + new Date(r.start.replace(' ', 'T')).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
+      return {title: r.title, note: rsvpDay.format(day) + hours, href: when + r.path};
+    }),
+    icon: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="12" cy="15.5" r="1.6"/></svg>',
+    button: 'Open RSVP in Helios When',
+    href: badge.href,
+  }));
+  fitAlerts();
 }
 
 const approvalLists = {team: '/approvals', celebrate: '/approvals', when: '/admin'};
 const approvalApps = {team: 'HCA-Team', celebrate: 'Helios Celebrate', when: 'Helios When'};
 
-function initApprovals() {
-  const user = document.querySelector('#user');
-  if (!user || document.querySelector('.approvals-alert')) {
+function showApprovals(user, waiting) {
+  if (!waiting.length) {
     return;
   }
-  api('GET', '/api/apps/approvals').then(view => {
-    const waiting = view.waiting || [];
-    if (!waiting.length) {
-      return;
-    }
-    const wrap = el('span', 'topbar-alert-wrap');
-    const badge = el('a', 'topbar-alert approvals-alert');
-    badge.href = appOrigin(waiting[0].app) + approvalLists[waiting[0].app];
-    const words = `${waiting.length} ${waiting.length === 1 ? 'thing waits' : 'things wait'} for your approval`;
-    badge.setAttribute('aria-label', words);
-    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    icon.setAttribute('viewBox', '0 0 24 24');
-    icon.innerHTML = '<path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/>';
-    badge.append(icon, el('span', 'approvals-count', String(waiting.length)));
-    wrap.append(badge);
-    const rsvp = document.querySelector('.rsvp-alert');
-    const first = user.parentElement.querySelector('.topbar-alert');
-    (rsvp ? rsvp.closest('.topbar-alert-wrap') : first ? first.closest('.topbar-alert-wrap') || first : user).before(wrap);
-    alertMenu(badge, () => alertList({
-      count: waiting.length,
-      words: waiting.length === 1 ? 'thing waits for your approval' : 'things wait for your approval',
-      items: waiting.map(a => ({title: a.title, note: approvalApps[a.app] + (a.start ? ' · ' + rsvpDay.format(new Date(a.start.slice(0, 10) + 'T12:00:00')) : ''), href: appOrigin(a.app) + a.path, icon: alertIcons[a.app]})),
-      icon: '<svg viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/></svg>',
-      tone: 'amber',
-    }));
-    fitAlerts();
-  }).catch(err => noteError('/api/apps/approvals: ' + err.message));
+  const wrap = el('span', 'topbar-alert-wrap');
+  const badge = el('a', 'topbar-alert approvals-alert');
+  badge.href = appOrigin(waiting[0].app) + approvalLists[waiting[0].app];
+  const words = `${waiting.length} ${waiting.length === 1 ? 'thing waits' : 'things wait'} for your approval`;
+  badge.setAttribute('aria-label', words);
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('viewBox', '0 0 24 24');
+  icon.innerHTML = '<path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/>';
+  badge.append(icon, el('span', 'approvals-count', String(waiting.length)));
+  wrap.append(badge);
+  const rsvp = document.querySelector('.rsvp-alert');
+  const first = user.parentElement.querySelector('.topbar-alert');
+  (rsvp ? rsvp.closest('.topbar-alert-wrap') : first ? first.closest('.topbar-alert-wrap') || first : user).before(wrap);
+  alertMenu(badge, () => alertList({
+    count: waiting.length,
+    words: waiting.length === 1 ? 'thing waits for your approval' : 'things wait for your approval',
+    items: waiting.map(a => ({title: a.title, note: approvalApps[a.app] + (a.start ? ' · ' + rsvpDay.format(new Date(a.start.slice(0, 10) + 'T12:00:00')) : ''), href: appOrigin(a.app) + a.path, icon: alertIcons[a.app]})),
+    icon: '<svg viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/></svg>',
+    tone: 'amber',
+  }));
+  fitAlerts();
 }
 
 const lateCake = '<path d="M4 21V13a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8"/><path d="M4 16c1.3 0 1.3 1 2.7 1s1.3-1 2.6-1 1.3 1 2.7 1 1.3-1 2.6-1 1.3 1 2.7 1 1.3-1 2.7-1"/><path d="M2 21h20M12 11V7"/><path d="M12 7c-1.1 0-2-.9-2-2 0-1.4 2-3 2-3s2 1.6 2 3c0 1.1-.9 2-2 2z"/>';
 const lateSteps = {outreach: 'Outreach was due', info: 'Birthday info was due', newsletter: 'Newsletter went out'};
 
-function initLate() {
-  const user = document.querySelector('#user');
-  if (!user || document.querySelector('.late-alert')) {
+function showLate(user, late, admin) {
+  if (!late.length) {
     return;
   }
-  api('GET', '/api/apps/late').then(view => {
-    const late = view.late || [];
-    if (!late.length) {
-      return;
-    }
-    const birthday = appOrigin('birthday');
-    const wrap = el('span', 'topbar-alert-wrap');
-    const badge = el('a', 'topbar-alert late-alert');
-    badge.href = birthday + (view.admin ? '/process' : '/jobs');
-    const words = `${late.length} birthday ${late.length === 1 ? 'step is' : 'steps are'} late`;
-    badge.setAttribute('aria-label', words);
-    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    icon.setAttribute('viewBox', '0 0 24 24');
-    icon.innerHTML = lateCake;
-    badge.append(icon, el('span', 'late-count', String(late.length)));
-    wrap.append(badge);
-    const first = user.parentElement.querySelector('.topbar-alert');
-    (first ? first.closest('.topbar-alert-wrap') || first : user).before(wrap);
-    const day = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});
-    alertMenu(badge, () => alertList({
-      count: late.length,
-      words: late.length === 1 ? 'birthday step is late' : 'birthday steps are late',
-      items: late.map(l => {
-        let note = `${lateSteps[l.step] || 'Due'} ${day.format(new Date(l.due + 'T12:00:00'))}`;
-        if (view.admin && l.step !== 'newsletter') {
-          note += ' · ' + (l.assignee || 'Unassigned');
-        }
-        return {title: l.name, note, href: birthday + l.path};
-      }),
-      icon: '<svg viewBox="0 0 24 24">' + lateCake + '</svg>',
-      button: view.admin ? 'Open Process in Birthday' : 'Open My Jobs in Birthday',
-      href: badge.href,
-    }));
-    fitAlerts();
-  }).catch(err => noteError('/api/apps/late: ' + err.message));
+  const birthday = appOrigin('birthday');
+  const wrap = el('span', 'topbar-alert-wrap');
+  const badge = el('a', 'topbar-alert late-alert');
+  badge.href = birthday + (admin ? '/process' : '/jobs');
+  const words = `${late.length} birthday ${late.length === 1 ? 'step is' : 'steps are'} late`;
+  badge.setAttribute('aria-label', words);
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('viewBox', '0 0 24 24');
+  icon.innerHTML = lateCake;
+  badge.append(icon, el('span', 'late-count', String(late.length)));
+  wrap.append(badge);
+  const first = user.parentElement.querySelector('.topbar-alert');
+  (first ? first.closest('.topbar-alert-wrap') || first : user).before(wrap);
+  const day = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});
+  alertMenu(badge, () => alertList({
+    count: late.length,
+    words: late.length === 1 ? 'birthday step is late' : 'birthday steps are late',
+    items: late.map(l => {
+      let note = `${lateSteps[l.step] || 'Due'} ${day.format(new Date(l.due + 'T12:00:00'))}`;
+      if (admin && l.step !== 'newsletter') {
+        note += ' · ' + (l.assignee || 'Unassigned');
+      }
+      return {title: l.name, note, href: birthday + l.path};
+    }),
+    icon: '<svg viewBox="0 0 24 24">' + lateCake + '</svg>',
+    button: admin ? 'Open Process in Birthday' : 'Open My Jobs in Birthday',
+    href: badge.href,
+  }));
+  fitAlerts();
 }

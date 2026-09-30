@@ -28,7 +28,7 @@ func withChangeLog(tabs []store.Tab) []tab {
 }
 
 var seeds = map[string]map[string]map[string]string{
-	"Apps": {"Categories": {"Category ID": model.EventsCategoryID, "Title": model.EventsCategoryTitle, "Emoji": model.EventsCategoryEmoji, "Style": model.StyleEvents}},
+	"Apps": {"Categories": {"Category ID": model.EventsCategoryID, "Title": model.EventsCategoryTitle, "Emoji": model.EventsCategoryEmoji, "Style": model.StyleEvents, store.OrderColumn: "i"}},
 }
 
 var layouts = map[string][]tab{

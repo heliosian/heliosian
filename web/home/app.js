@@ -1,11 +1,10 @@
-import {state, applyModel, isAdmin} from './state.js';
+import {state, loadModel, isAdmin} from './state.js';
 import {el} from '/elements.js';
 import {renderCategories, renderNav} from './cards.js';
 import {renderMonth} from './month.js';
 import {renderWidgets} from './widgets.js';
 import {initEditing, refreshPanels, openEditPanel} from './edit.js';
 import {initTopbar, renderAccount, searchInput, onSlash} from '/shell.js';
-import {api} from '/api.js';
 import {startApp} from '/router.js';
 import {adminPage} from './adminpage.js';
 
@@ -89,7 +88,7 @@ initChrome();
 initSearch();
 initEditing();
 startApp({
-  model: async () => applyModel(await api('GET', '/api/apps/model')),
+  model: loadModel,
   routes: {
     '': homePage,
     admin: () => adminPage(),

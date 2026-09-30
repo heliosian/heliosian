@@ -59,7 +59,6 @@ func RegisterParties(mux *http.ServeMux, d PartiesDeps) PartiesHooks {
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
 	mux.HandleFunc("GET /api/celebrate/invoices.csv", a.invoicesCSV)
-	RegisterAdmins(mux, a.store, "celebrate", noAdminState)
 	return PartiesHooks{app: a}
 }
 

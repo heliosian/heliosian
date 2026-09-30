@@ -1,10 +1,10 @@
-import {state} from './state.js';
+import {state, isAdmin} from './state.js';
 import {el} from '/elements.js';
-import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
-import {api} from '/api.js';
+import {adminPage as buildAdminPage, adminsCard, appAdmins} from '/admin.js';
+import {query, act} from '/data.js';
 import {render} from '/router.js';
 
-const feedback = {rows: [], filter: 'New', canFile: false, repo: '', open: new URLSearchParams(location.search).get('report') || ''};
+const feedback = {rows: [], filter: 'New', open: new URLSearchParams(location.search).get('report') || ''};
 
 function describe(report) {
   const parts = [report.appName || report.app, report.received].filter(Boolean);
@@ -34,10 +34,8 @@ function field(tag, label, value, attrs = {}) {
 }
 
 async function loadFeedback() {
-  const data = await api('GET', '/api/admin/feedback');
-  feedback.rows = data.reports;
-  feedback.canFile = data.canFile;
-  feedback.repo = data.repo;
+  const read = await query('/api/feedback-reports');
+  feedback.rows = read.result.map(read.get);
 }
 
 async function fillReport(card, id, redraw) {
@@ -45,7 +43,8 @@ async function fillReport(card, id, redraw) {
   card.replaceChildren();
   let report;
   try {
-    report = await api('GET', '/api/admin/feedback/' + encodeURIComponent(id));
+    const read = await query('/api/feedback-reports/' + encodeURIComponent(id));
+    report = read.get(read.result);
   } catch (err) {
     card.textContent = `Could not open that report: ${err.message}`;
     return;
@@ -69,7 +68,7 @@ async function fillReport(card, id, redraw) {
   card.append(el('h3', '', report.summary), el('div', 'said', report.details || 'No details given.'), facts);
   if (report.screenshot) {
     const link = el('a', 'shot');
-    link.href = `/api/admin/feedback/${encodeURIComponent(id)}/screenshot`;
+    link.href = `/api/admin/feedback/${encodeURIComponent(report.id)}/screenshot`;
     link.target = '_blank';
     link.rel = 'noopener';
     const img = el('img');
@@ -87,19 +86,19 @@ async function fillReport(card, id, redraw) {
     }
     return;
   }
-  const hint = feedback.canFile
-    ? `This is what ${feedback.repo} will get, with the reporter's address already taken out. Edit it into an issue worth keeping, then file it.`
+  const hint = report.can.file
+    ? `This is what ${report.draft.repo} will get, with the reporter's address already taken out. Edit it into an issue worth keeping, then file it.`
     : 'Filing on GitHub is not set up on this server, so this report can only be dismissed.';
   const title = field('input', 'Title', report.draft.title, {type: 'text', maxLength: 200});
   const body = field('textarea', 'Body', report.draft.body);
   const issueType = field('input', 'Type', report.draft.type, {type: 'text'});
   const labels = field('input', 'Labels', (report.draft.labels || []).join(', '), {type: 'text'});
   const status = el('span', 'save-status');
-  const act = async (url, working, body) => {
+  const run = async (action, working, body) => {
     status.classList.remove('error');
     status.textContent = working;
     try {
-      await api('POST', url, body);
+      await act('feedback-reports', report.id, action, body);
     } catch (err) {
       status.classList.add('error');
       status.textContent = err.message;
@@ -110,10 +109,10 @@ async function fillReport(card, id, redraw) {
   };
   const fileButton = el('button', 'button', 'File on GitHub');
   fileButton.type = 'button';
-  fileButton.disabled = !feedback.canFile;
+  fileButton.disabled = !report.can.file;
   fileButton.addEventListener('click', async () => {
     fileButton.disabled = true;
-    const done = await act(`/api/admin/feedback/${encodeURIComponent(id)}/file`, 'Filing…', {
+    const done = await run('file', 'Filing…', {
       title: title.input.value,
       body: body.input.value,
       type: issueType.input.value,
@@ -123,7 +122,7 @@ async function fillReport(card, id, redraw) {
   });
   const dismissButton = el('button', 'link-button danger', 'Dismiss');
   dismissButton.type = 'button';
-  dismissButton.addEventListener('click', () => act(`/api/admin/feedback/${encodeURIComponent(id)}/dismiss`, 'Dismissing…'));
+  dismissButton.addEventListener('click', () => run('dismiss', 'Dismissing…'));
   const actions = el('div', 'report-actions');
   actions.append(fileButton, dismissButton, status);
   card.append(el('div', 'hint', hint), title.wrap, body.wrap, issueType.wrap, labels.wrap, actions);
@@ -187,15 +186,8 @@ function feedbackCard() {
 }
 
 async function fillAdminPage(slot) {
-  let admin;
-  try {
-    admin = await api('GET', '/api/admin/state');
-  } catch (err) {
-    slot.replaceWith(el('p', 'hint', `Failed to load admin state: ${err.message}`));
-    return;
-  }
-  const control = [{key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can add, edit, and delete links and categories, and reach this page. Changes save immediately.'})}];
-  if (admin.isSuperAdmin) {
+  const control = [{key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can add, edit, and delete links and categories, and reach this page. Changes save immediately.', ...appAdmins('home')})}];
+  if (state.model.allowances.includes('feedback')) {
     try {
       await loadFeedback();
     } catch (err) {
@@ -210,9 +202,8 @@ async function fillAdminPage(slot) {
 }
 
 export function adminPage() {
-  const user = state.model.user;
-  if (!user.isAdmin) {
-    return buildAdminPage({appName: 'Heliosian', allowed: false, email: user.email, sections: []});
+  if (!isAdmin()) {
+    return buildAdminPage({appName: 'Heliosian', allowed: false, email: state.model.user.email, sections: []});
   }
   const slot = el('div');
   fillAdminPage(slot);

@@ -68,7 +68,3 @@ func (m *Directory) Alerts(email string, years StaleYears, now time.Time) Alerts
 	}
 	return alerts
 }
-
-func (m *Model) Alerts(email string) Alerts {
-	return m.Directory.Alerts(m.Directory.Resolve(email), m.Config.StaleYears, time.Now())
-}

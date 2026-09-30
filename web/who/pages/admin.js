@@ -1,6 +1,6 @@
 import {state} from '../state.js';
 import {el} from '/elements.js';
-import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
+import {adminPage as buildAdminPage, adminsCard, appAdmins} from '/admin.js';
 import {createPersonPicker} from '/picker.js';
 import {popup} from '/modal.js';
 import {api} from '/api.js';
@@ -507,12 +507,11 @@ function sections() {
     control.push({key: 'super-admins', label: 'Super Admins', card: () => adminsCard({
       title: 'Super Admins',
       hint: 'Super admins can also use Spoof Mode, from the eye beside their avatar in any app’s toolbar, and manage this list. Regular admins never see this tab. Changes save immediately.',
-      read: '/api/config/super-admins',
-      write: '/api/config/super-admins',
-      key: 'superAdmins',
+      load: async () => (await api('GET', '/api/config/super-admins')).superAdmins,
+      save: superAdmins => api('POST', '/api/config/super-admins', {superAdmins}),
     })});
   }
-  control.push({key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can reach this page. Changes save immediately.'})});
+  control.push({key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can reach this page. Changes save immediately.', ...appAdmins('who')})});
   return [
     {title: 'Display', tabs: [
       {key: 'images', label: 'Images', card: imagesPanel},

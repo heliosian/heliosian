@@ -3,9 +3,8 @@ import {initUserMenu, renderAvatars, renderProfileLink} from '/usermenu.js';
 import {initAlerts, renderAlerts} from '/alerts.js';
 import {initSpoof} from '/spoof.js';
 import {noteError} from '/feedback.js';
-import {api} from '/api.js';
 import {el} from '/elements.js';
-import {me} from '/data.js';
+import {me, query} from '/data.js';
 
 let app = null;
 let allowances = [];
@@ -242,16 +241,17 @@ export function initTopbar(config) {
     searchInput().addEventListener('input', () => search(searchInput().value));
     onSlash(() => searchInput().focus());
   }
-  initAlerts();
+  const viewer = me();
+  initAlerts(viewer);
   initUserMenu();
   initSpoof();
-  me().then(m => {
+  viewer.then(m => {
     allowances = m.allowances;
     renderAdmin();
   }).catch(err => noteError('/api/me: ' + err.message));
   if (!app.alerts) {
-    api('GET', '/api/apps/alerts').catch(err => {
-      noteError('/api/apps/alerts: ' + err.message);
+    query('/api/alerts').then(read => read.get(read.result[0])).catch(err => {
+      noteError('/api/alerts: ' + err.message);
       return {broken: true};
     }).then(renderAlerts);
   }

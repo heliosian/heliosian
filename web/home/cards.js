@@ -2,7 +2,7 @@ import {state, isAdmin, tagLabelsOf} from './state.js';
 import {iconOf, categoryMark} from './dom.js';
 import {el, svg, toast} from '/elements.js';
 import {appOrigin} from '/appswitch.js';
-import {api} from '/api.js';
+import {act} from '/data.js';
 
 function categoryGlyph(category, className) {
   const wrap = el('span', className);
@@ -120,12 +120,8 @@ function matches(link, query) {
   return `${link.title} ${link.description || ''} ${link.url}`.toLowerCase().includes(query);
 }
 
-function listed(link) {
-  return (link.visible && link.forMe !== false) || isAdmin();
-}
-
 function sectionListed(category) {
-  return category.style !== 'events' && (category.forMe !== false || isAdmin());
+  return category.style !== 'events';
 }
 
 export function audienceWords(rules) {
@@ -169,7 +165,7 @@ export function renderCategories(query = '') {
       continue;
     }
     const apps = category.style === 'apps';
-    const links = apps ? [] : category.links.filter(link => listed(link) && matches(link, needle));
+    const links = apps ? [] : category.links.filter(link => matches(link, needle));
     const count = apps ? appsMatching(needle).length : links.length;
     if (!count && (needle || !isAdmin())) {
       continue;
@@ -309,7 +305,7 @@ export function dropdown(toggle, menu) {
 
 async function answer(event, word) {
   try {
-    await api('POST', '/api/apps/rsvp', {id: event.id, answer: word});
+    await act('events', event.id, 'answer', {answer: word});
   } catch (err) {
     toast(err.message);
     return false;
@@ -318,7 +314,7 @@ async function answer(event, word) {
 }
 
 function appsMatching(needle) {
-  return (state.model.apps || []).filter(a => sectionListed(a) && (!needle || `${a.name} ${a.tagline}`.toLowerCase().includes(needle)));
+  return state.model.apps.filter(a => (a.forMe || isAdmin()) && (!needle || `${a.name} ${a.tagline}`.toLowerCase().includes(needle)));
 }
 
 function appCard(app) {
@@ -368,7 +364,7 @@ function hasSomething(category) {
   if (category.style === 'apps') {
     return appsMatching('').length > 0;
   }
-  return category.links.some(listed);
+  return category.links.length > 0;
 }
 
 export function renderNav() {

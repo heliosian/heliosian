@@ -1,7 +1,6 @@
 package model
 
 import (
-	"log/slog"
 	"net/http"
 	"slices"
 	"sort"
@@ -57,10 +56,6 @@ func (l AdminList) Admins() []string {
 	return out
 }
 
-type adminsEdit struct {
-	Admins []string `json:"admins"`
-}
-
 func RegisterAdmins(mux *http.ServeMux, s *Store, app string, state func(m *Model, r *http.Request, actor access.Actor) map[string]any) {
 	mux.HandleFunc("GET /api/admin/state", serve.JSON(func(r *http.Request, _ serve.None) (map[string]any, error) {
 		m := s.Model()
@@ -71,26 +66,7 @@ func RegisterAdmins(mux *http.ServeMux, s *Store, app string, state func(m *Mode
 		}
 		view := state(m, r, v)
 		view["email"] = v.Email
-		view["admins"] = l.Admins()
 		view["isSuperAdmin"] = l.IsSuperAdmin(v.Email)
 		return view, nil
 	}))
-	mux.HandleFunc("POST /api/admin/admins", serve.JSON(func(r *http.Request, body adminsEdit) (serve.None, error) {
-		m := s.Model()
-		l := m.AdminList(app)
-		v := m.actor(r, app)
-		ops, admins, err := l.set(v, body.Admins)
-		if err != nil {
-			return serve.None{}, err
-		}
-		if err := s.Commit(r.Context(), v, l.sheet, ops...); err != nil {
-			return serve.None{}, err
-		}
-		slog.InfoContext(r.Context(), l.app+":set the admin list", "actor", v.Email, "admins", admins)
-		return serve.None{}, nil
-	}))
-}
-
-func noAdminState(*Model, *http.Request, access.Actor) map[string]any {
-	return map[string]any{}
 }

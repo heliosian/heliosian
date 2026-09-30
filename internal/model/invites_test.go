@@ -345,13 +345,13 @@ func TestInvitationLifecycle(t *testing.T) {
 	if rec := call(t, robinH, "POST", settingsPath("save-view"), `{"classrooms":["Hawks"],"tags":[`+quoted(t, "Community")+`]}`); rec.Code != 204 {
 		t.Fatalf("robin's saved view: %d %s", rec.Code, rec.Body)
 	}
-	if up := cache.Model().Calendar.UpcomingUnder(directoryOf(), robin, nil, now(), 0, ""); !slices.ContainsFunc(up, func(u EventCard) bool { return u.ID == meetup }) {
+	if up := upcomingOf(t, mux, robin, defaultFeedOf(t, mux, robin)); !slices.ContainsFunc(up, func(u map[string]any) bool { return u["id"] == meetup }) {
 		t.Errorf("an invitation is not in Robin's Upcoming")
 	}
 	if rec := call(t, robinH, "POST", settingsPath("forget-view"), ""); rec.Code != 204 {
 		t.Fatalf("robin forgets the view: %d %s", rec.Code, rec.Body)
 	}
-	if up := cache.Model().Calendar.UpcomingUnder(directoryOf(), mia, nil, now(), 0, ""); !slices.ContainsFunc(up, func(u EventCard) bool { return u.ID == meetup && u.Answer == AnswerYes }) {
+	if up := upcomingOf(t, mux, mia, defaultFeedOf(t, mux, mia)); !slices.ContainsFunc(up, func(u map[string]any) bool { return u["id"] == meetup && answerOf(u) == AnswerYes }) {
 		t.Errorf("the event is not in the co-host's Upcoming as a yes")
 	}
 	v := inviteView(t, robinH, meetup)
@@ -1970,22 +1970,49 @@ func TestToolbarRSVPs(t *testing.T) {
 	act(t, jordan, "meetup", "invite", `{"people":[{"email":"`+robin+`"}]}`)
 	act(t, jordan, "meetup", "send", `{}`)
 	waitFor(kept, 1)
-	waiting := func(h http.Handler) []RSVP {
-		var view struct {
-			Waiting []RSVP `json:"waiting"`
-		}
-		json.NewDecoder(call(t, h, "GET", "/api/apps/rsvp", "").Body).Decode(&view)
-		return view.Waiting
+	waiting := func(email string) []map[string]any {
+		return listOf(t, mux, email, "/api/events?waiting")
 	}
-	if w := waiting(robinH); len(w) != 1 || w[0].Title != "Meetup" || w[0].Path != "/e/meetup" {
+	if w := waiting(robin); len(w) != 1 || w[0]["title"] != "Meetup" || w[0]["path"] != "/e/meetup" {
 		t.Fatalf("robin owes: %+v", w)
 	}
-	if w := waiting(jordan); slices.ContainsFunc(w, func(r RSVP) bool { return r.Path == "/e/meetup" }) {
+	if w := waiting(host); slices.ContainsFunc(w, func(e map[string]any) bool { return e["path"] == "/e/meetup" }) {
 		t.Errorf("the host owes: %+v", w)
 	}
+	if err := cache.Commit(context.Background(), access.System("test"), ConfigApp, store.Insert(superAdminsTab, store.Row{configEmailColumn: robin})); err != nil {
+		t.Fatal(err)
+	}
+	if w := waiting(robin); len(w) != 1 || w[0]["title"] != "Meetup" {
+		t.Errorf("robin as a super admin owes: %+v", w)
+	}
 	act(t, robinH, "meetup", "answer", `{"answer":"yes"}`)
-	if w := waiting(robinH); len(w) != 0 {
+	if w := waiting(robin); len(w) != 0 {
 		t.Errorf("robin after answering owes: %+v", w)
+	}
+	if rec := testkit.Call(t, mux, robin, "GET", "/api/events?waiting=no", nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("waiting with a value: %d", rec.Code)
+	}
+}
+
+func TestWaitingLeavesOutTheCancelledAndThePast(t *testing.T) {
+	mux, cache, kept := calendarInvitesApp(t)
+	jordan := as(host, mux)
+	for _, e := range []struct{ address, start string }{{"later", "2026-10-10 15:00"}, {"gone", "2026-10-11 15:00"}, {"before", "2026-09-10 15:00"}} {
+		call(t, jordan, "POST", "/api/events", `{"title":"`+e.address+`","start":"`+e.start+`","tags":[],"sharing":"Link","address":"`+e.address+`"}`)
+		idOf(t, cache, e.address)
+		act(t, jordan, e.address, "invite", `{"people":[{"email":"`+robin+`"}]}`)
+		act(t, jordan, e.address, "send", `{}`)
+	}
+	waitFor(kept, 3)
+	if rec := act(t, jordan, "gone", "cancel", `{}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("cancel: %d %s", rec.Code, rec.Body)
+	}
+	titles := []string{}
+	for _, e := range listOf(t, mux, robin, "/api/events?waiting") {
+		titles = append(titles, e["title"].(string))
+	}
+	if !slices.Equal(titles, []string{"later"}) {
+		t.Errorf("robin owes %v, want the one neither cancelled nor past", titles)
 	}
 }
 

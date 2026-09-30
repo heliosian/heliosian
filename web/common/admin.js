@@ -1,5 +1,5 @@
 import {el} from '/elements.js';
-import {api} from '/api.js';
+import {query, act} from '/data.js';
 import {createPersonPicker} from '/picker.js';
 import {listed} from '/directory.js';
 
@@ -96,7 +96,17 @@ export function adminPage({appName, allowed, email, sections}) {
   return page;
 }
 
-export function adminsCard({hint, title = 'Admins', read = '/api/admin/state', write = '/api/admin/admins', key = 'admins'}) {
+export function appAdmins(app) {
+  return {
+    load: async () => {
+      const read = await query('/api/admin-lists/' + encodeURIComponent(app));
+      return read.get(read.result).admins;
+    },
+    save: admins => act('admin-lists', app, 'edit', {admins}),
+  };
+}
+
+export function adminsCard({hint, title = 'Admins', load, save}) {
   const card = el('div', 'card');
   card.append(el('h2', '', title), el('div', 'hint', hint));
   const rows = el('div');
@@ -110,7 +120,7 @@ export function adminsCard({hint, title = 'Admins', read = '/api/admin/state', w
   const persist = async () => {
     say('Saving…', false);
     try {
-      await api('POST', write, {[key]: list});
+      await save(list);
     } catch (err) {
       say(err.message, true);
       return;
@@ -170,8 +180,8 @@ export function adminsCard({hint, title = 'Admins', read = '/api/admin/state', w
   const bar = el('div', 'add-row');
   bar.append(mount, add, status);
   card.append(rows, bar);
-  Promise.all([api('GET', read), listed()]).then(([data, everyone]) => {
-    list = data[key];
+  Promise.all([load(), listed()]).then(([admins, everyone]) => {
+    list = admins;
     names = new Map(everyone.map(p => [p.email, p.fullName]));
     render();
   }).catch(err => say(`Failed to load the list: ${err.message}`, true));

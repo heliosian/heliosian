@@ -54,7 +54,6 @@ func RegisterActivities(mux *http.ServeMux, d ActivitiesDeps) ActivitiesHooks {
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
 	mux.HandleFunc("POST /api/team/describe", serve.JSON(a.describe))
-	RegisterAdmins(mux, a.store, "team", noAdminState)
 	return ActivitiesHooks{app: a}
 }
 

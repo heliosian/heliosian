@@ -226,6 +226,15 @@ func (a partiesApp) partiesType() api.Type[*Model] {
 					return p != nil && p.Celebration == c.ID
 				}, nil
 			},
+			"status": func(m *Model, _ api.Query, value string) (func(string) bool, error) {
+				if !strings.EqualFold(value, StatusPending) {
+					return nil, access.Invalid("status takes pending")
+				}
+				return func(key string) bool {
+					p := a.partyAt(m, key)
+					return p != nil && p.Status == StatusPending
+				}, nil
+			},
 		},
 		Relations: map[string]api.Relation[*Model]{
 			"event": {Type: "events", List: func(m *Model, q api.Query, key string) []string {

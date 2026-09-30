@@ -12,6 +12,13 @@ export function anchor(base, path, className, text) {
   return a;
 }
 
+export function eventPath(e) {
+  if (e.address) {
+    return '/e/' + encodeURIComponent(e.address);
+  }
+  return '/e/' + e.id.split('/').map(encodeURIComponent).join('/');
+}
+
 export function standing(event) {
   const pill = el('span', 'wg-standing');
   if (event.mine && event.call) {

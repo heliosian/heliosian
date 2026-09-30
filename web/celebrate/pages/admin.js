@@ -4,7 +4,7 @@ import {openCelebration, openCategory, openSettings, openMoveAddress} from '../e
 import {load} from '/router.js';
 import {query, act} from '/data.js';
 import {celebrationBand} from './parties.js';
-import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
+import {adminPage as buildAdminPage, adminsCard, appAdmins} from '/admin.js';
 
 function bannerCard() {
   const card = el('div', 'card');
@@ -315,7 +315,7 @@ const sections = [
   ]},
   {title: 'Editing & Control', tabs: [
     {key: 'addresses', label: 'Addresses', card: addressesCard},
-    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can approve parties, edit any party, record invoicing, and reach this page. Hosts edit their own parties without being here.'})},
+    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can approve parties, edit any party, record invoicing, and reach this page. Hosts edit their own parties without being here.', ...appAdmins('celebrate')})},
   ]},
 ];
 

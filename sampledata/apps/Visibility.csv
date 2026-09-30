@@ -1,8 +1,8 @@
 App,Visibility,Emails,Tagline,Name,Order
-who,everyone,,,,
-team,everyone,,HCA Volunteer Portal,,
-celebrate,list,"jordan.whitfield@heliosschool.org, mia.torres@heliosschool.org",,,
-when,everyone,,,,
-loop,everyone,,,,
-ask,everyone,,,,
-birthday,list,jordan.whitfield@heliosschool.org,,,
+who,everyone,,,,2
+team,everyone,,HCA Volunteer Portal,,4
+celebrate,list,"jordan.whitfield@heliosschool.org, mia.torres@heliosschool.org",,,6
+when,everyone,,,,a
+loop,everyone,,,,c
+ask,everyone,,,,e
+birthday,list,jordan.whitfield@heliosschool.org,,,8

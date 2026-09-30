@@ -5,7 +5,7 @@ import {listed} from '/directory.js';
 import {actAll, create, remove} from '/data.js';
 import {load} from '/router.js';
 import {openSettings} from '../edit.js';
-import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
+import {adminPage as buildAdminPage, adminsCard, appAdmins} from '/admin.js';
 
 function settingsCard() {
   const s = settings();
@@ -132,7 +132,7 @@ const sections = [
   {title: 'Editing & Control', tabs: [
     {key: 'team', label: 'Team', card: teamCard},
     {key: 'invites', label: 'Calendar Invites', card: invitesCard},
-    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can change the settings, the newsletter dates, and which charities are allowed, and reach this page. Everyone signed in can work the process.'})},
+    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can change the settings, the newsletter dates, and which charities are allowed, and reach this page. Everyone signed in can work the process.', ...appAdmins('birthday')})},
   ]},
 ];
 

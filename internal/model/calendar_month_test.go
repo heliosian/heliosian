@@ -1,44 +1,56 @@
 package model
 
 import (
+	"encoding/json"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
-	"time"
+
+	"heliosian/internal/testkit"
 )
 
+func daysOf(t *testing.T, h http.Handler, as, feed string) map[string][]DayKind {
+	t.Helper()
+	var f feedResource
+	raw := decoded[envelope](t, testkit.Call(t, h, as, "GET", "/api/calendar-feeds/"+feed, nil))
+	if err := json.Unmarshal(raw.Resources["calendar-feeds"][feed], &f); err != nil {
+		t.Fatalf("no calendar %s: %v", feed, err)
+	}
+	return f.Days
+}
+
 func TestMonth(t *testing.T) {
-	m := load(t)
-	d := calendarDirectory(t, "../../sampledata")
-	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-13 08:00", Location)
-	linked := []Linked{
-		{Source: SourceCelebrate, ID: "pty0000000001", EventID: "pty0000000001", Title: "Fondue & Fort Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available"},
-		{Source: SourceTeam, ID: "act0000000005", EventID: "tev0000000005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/act0000000005", Availability: "done"},
+	_, h := sampleEventsServer(t)
+	mine := feedKey(sam, MyHeliosianToken)
+	days := daysOf(t, h, sam, mine)
+	if _, weekend := days["2026-09-13"]; weekend {
+		t.Errorf("a Sunday is a school day: %v", days["2026-09-13"])
 	}
-	got := m.MonthUnder(d, sam, linked, at, "2026-09", "")
-	if got.Month != "2026-09" || got.Today != "2026-09-13" {
-		t.Errorf("month %q today %q", got.Month, got.Today)
+	if k, ok := days["2026-09-14"]; !ok || k == nil || len(k) != 0 {
+		t.Errorf("a regular Monday is no school day or has kinds: %v %v", ok, k)
 	}
-	if _, weekend := got.Days["2026-09-13"]; weekend || got.Days["2026-09-14"].Kinds == nil || len(got.Days["2026-09-14"].Kinds) != 0 {
-		t.Errorf("a Sunday is no school day and a regular Monday has no kinds: %v %v", got.Days["2026-09-13"], got.Days["2026-09-14"])
-	}
-	if k := got.Days["2026-09-07"].Kinds; len(k) != 1 || k[0].Name != "No School" || k[0].Words != "No School" {
+	if k := days["2026-09-07"]; len(k) != 1 || k[0].Name != "No School" || k[0].Words != "No School" {
 		t.Errorf("Labor Day = %+v", k)
 	}
-	if k := got.Days["2026-09-29"].Kinds; len(k) != 1 || k[0].Words != "Early Dismissal" {
+	if k := days["2026-09-29"]; len(k) != 1 || k[0].Words != "Early Dismissal" {
 		t.Errorf("conference day = %+v", k)
 	}
-	titles := []string{}
-	for i, e := range got.Events {
-		titles = append(titles, e.Title)
-		if i > 0 && got.Events[i-1].Start > e.Start {
-			t.Errorf("out of order: %q after %q", e.Title, got.Events[i-1].Title)
+	month := func(feed, from, to string) []map[string]any {
+		return listOf(t, h, sam, "/api/events?from="+from+"&to="+to+"&calendar="+feed)
+	}
+	got := month(mine, "2026-09-01", "2026-09-30")
+	titles := titlesOf(got)
+	for i, e := range got {
+		start, end := e["start"].(string), e["end"].(string)
+		if i > 0 && got[i-1]["start"].(string) > start {
+			t.Errorf("out of order: %q after %q", e["title"], got[i-1]["title"])
 		}
-		if e.Start > "2026-09-30" || strings.Compare(e.EndAt[:10], "2026-09-01") < 0 {
+		if start[:10] > "2026-09-30" || end[:10] < "2026-09-01" {
 			t.Errorf("outside the month: %+v", e)
 		}
-		if len(e.Dates) == 0 || e.Dates[0] != e.Start {
-			t.Errorf("card carries no days to sit on: %+v", e)
+		if dates, _ := e["dates"].([]any); len(dates) == 0 || dates[0] != start[:10] {
+			t.Errorf("event carries no days to sit on: %+v", e)
 		}
 	}
 	for _, want := range []string{"Labor Day - No School", "Jays and Ravens Camping", "Fondue & Fort Night", "Returning Grade ILP Conference, half days"} {
@@ -49,20 +61,23 @@ func TestMonth(t *testing.T) {
 	if slices.Contains(titles, "Hummingbird CAFE") || slices.Contains(titles, "MS Back to School Night") || slices.Contains(titles, "Back to School Social") {
 		t.Errorf("month lists another classroom's, the middle school's, or last month's: %v", titles)
 	}
-	before := m.MonthUnder(d, "nobody@x.org", linked, at, "2026-08", "")
-	if !slices.ContainsFunc(before.Events, func(u EventCard) bool { return u.Title == "Back to School Social" && u.LinkApp == "team" }) {
-		t.Errorf("August lacks the social: %+v", before.Events)
+	everything := write(t, h, sam, "POST", "/api/calendar-feeds", map[string]any{"name": "Everything", "classrooms": []string{}, "tags": []string{}})
+	before := month(everything, "2026-08-01", "2026-08-31")
+	if social := eventTitled(before, "Back to School Social"); social == nil || social["app"] != "team" {
+		t.Errorf("August lacks the social: %v", titlesOf(before))
 	}
-	if k := before.Days["2026-08-19"].Kinds; len(k) != 1 || k[0].Words != "Early Dismissal · Hummingbirds" {
-		t.Errorf("kindergarten's short day for a stranger = %+v", k)
+	if k := daysOf(t, h, sam, everything)["2026-08-19"]; len(k) != 1 || k[0].Words != "Early Dismissal · Hummingbirds" {
+		t.Errorf("kindergarten's short day on a calendar of every classroom = %+v", k)
 	}
-	if k := before.Days["2026-08-19"]; len(m.MonthUnder(d, sam, nil, at, "2026-08", "").Days["2026-08-19"].Kinds) != 0 {
+	if k := days["2026-08-19"]; len(k) != 0 {
 		t.Errorf("a Jays student sees the kindergarten's short day: %+v", k)
 	}
-	if fallback := m.MonthUnder(d, sam, nil, at, "next", ""); fallback.Month != "2026-09" {
-		t.Errorf("fallback month = %q", fallback.Month)
+	for date := range days {
+		if strings.HasPrefix(date, "2027-07") {
+			t.Errorf("July is in the school calendar: %s", date)
+		}
 	}
-	if summer := m.MonthUnder(d, sam, nil, at, "2027-07", ""); len(summer.Days) != 0 || len(summer.Events) != 0 {
-		t.Errorf("July = %d days %d events", len(summer.Days), len(summer.Events))
+	if summer := month(mine, "2027-07-01", "2027-07-31"); len(summer) != 0 {
+		t.Errorf("July = %v", titlesOf(summer))
 	}
 }

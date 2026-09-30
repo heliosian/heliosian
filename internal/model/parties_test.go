@@ -1399,3 +1399,43 @@ func TestProblemAddresses(t *testing.T) {
 		t.Fatalf("after the change: %+v %+v", view.Problems, view.Moved)
 	}
 }
+
+func TestPendingPartiesFollowCan(t *testing.T) {
+	cache, mux := partiesServer(t)
+	const pending, host = "pty0000000013", "layla.haddad@heliosschool.org"
+	if p := cache.Model().Parties.Party(pending); p == nil || p.Status != StatusPending {
+		t.Fatalf("the sample's pending party: %+v", p)
+	}
+	ids := func(as, path string) []string {
+		out := decoded[envelope](t, testkit.Call(t, mux, as, "GET", path, nil))
+		keys := []string{}
+		if err := json.Unmarshal(out.Result, &keys); err != nil {
+			t.Fatal(err)
+		}
+		return keys
+	}
+	if got := ids(partiesAdmin, "/api/parties?status=pending&can=status"); !slices.Equal(got, []string{partyKey(pending)}) {
+		t.Errorf("the admin's approvals = %v", got)
+	}
+	if got := ids(partiesAdmin, "/api/parties?status=pending"); !slices.Equal(got, []string{partyKey(pending)}) {
+		t.Errorf("the pending parties = %v", got)
+	}
+	if got := ids(host, "/api/parties?status=pending"); !slices.Contains(got, partyKey(pending)) {
+		t.Errorf("the host's pending parties = %v", got)
+	}
+	if got := ids(host, "/api/parties?status=pending&can=status"); len(got) != 0 {
+		t.Errorf("the host may approve %v", got)
+	}
+	if got := ids(jordan, "/api/parties?status=pending"); len(got) != 0 {
+		t.Errorf("someone else's pending parties = %v", got)
+	}
+	if rec := testkit.Call(t, mux, partiesAdmin, "GET", "/api/parties?status=open", nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("another status: %d", rec.Code)
+	}
+	if rec := testkit.Call(t, mux, partiesAdmin, "POST", "/api/parties/"+partyKey(pending)+"/status", map[string]string{"status": StatusOpen}); rec.Code != http.StatusNoContent {
+		t.Fatalf("approve: %d %s", rec.Code, rec.Body)
+	}
+	if got := ids(partiesAdmin, "/api/parties?status=pending&can=status"); len(got) != 0 {
+		t.Errorf("an approved party is still to approve: %v", got)
+	}
+}

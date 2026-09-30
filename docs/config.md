@@ -25,7 +25,7 @@ The `Signed Out` tab is written by sign-out itself: every app's `POST /auth/logo
 
 ## Super admins and app admins
 
-Super admins are a separate, disjoint tier from each app's `Admins` tab, not a role flag on one list. An app's admin page shows both merged and indistinguishable, and an edit to that merged list never round-trips a super admin into the app's tab or out of the super admin list.
+Super admins are a separate, disjoint tier from each app's `Admins` tab, not a role flag on one list. An app's admin page shows both merged and indistinguishable (the app's `admin-lists` resource, `docs/api.md`, Admin lists), and an edit to that merged list never round-trips a super admin into the app's tab or out of the super admin list.
 
 ## Sample data
 

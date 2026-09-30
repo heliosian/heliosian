@@ -1,9 +1,9 @@
-import {state} from './state.js';
+import {state, feed, readMonth, shiftMonth} from './state.js';
 import {el, svg} from '/elements.js';
 import {rsvpButtons, calendarMark, calendarMenu, dropdown} from './cards.js';
 import {dayTypeClass} from '/daytype.js';
 import {appOrigin} from '/appswitch.js';
-import {api} from '/api.js';
+import {parseWhen, timeRange} from '/datecard.js';
 
 let month = null;
 let selected = '';
@@ -21,19 +21,20 @@ function tint(event) {
 }
 
 function lastDay(event) {
-  return (event.endAt || event.startAt).slice(0, 10);
+  return event.endAt.slice(0, 10);
 }
 
 function eventsOn(date) {
-  return (month.events || []).filter(e => e.dates.includes(date));
+  return month.events.filter(e => e.dates.includes(date));
 }
 
 function hours(event, date) {
-  const [, time] = event.when.split(' · ');
-  if (time) {
-    return time;
-  }
   const last = lastDay(event);
+  if (!event.allDay && event.start === last) {
+    const from = parseWhen(event.startAt).date;
+    const to = parseWhen(event.endAt).date;
+    return to > from ? timeRange(from, to) : from.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
+  }
   if (last > date) {
     return 'Through ' + parseDate(last).toLocaleDateString('en-US', {weekday: 'short'});
   }
@@ -44,19 +45,17 @@ function monthLabel(ym) {
   return parseDate(ym + '-01').toLocaleDateString('en-US', {month: 'long', year: 'numeric'});
 }
 
-function shiftMonth(ym, by) {
-  const d = parseDate(ym + '-01');
-  d.setMonth(d.getMonth() + by);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+function days() {
+  return feed(month.calendar).days || {};
 }
 
 async function fetchMonth(ym, calendar) {
   try {
-    month = await api('GET', '/api/apps/calendar?month=' + ym + '&calendar=' + encodeURIComponent(calendar || ''));
+    month = await readMonth(ym, calendar);
   } catch {
     return;
   }
-  selected = month.today.startsWith(month.month) ? month.today : month.month + '-01';
+  selected = state.model.today.startsWith(month.month) ? state.model.today : month.month + '-01';
   renderMonth();
 }
 
@@ -65,19 +64,15 @@ function page(by) {
 }
 
 function picker() {
-  const cal = state.model.upcomingCalendar;
-  const list = (cal && cal.calendars) || [];
-  if (!list.length) {
-    return null;
-  }
-  const current = list.find(c => c.token === month.calendar) || list[0];
-  const chosen = list.find(c => c.token === cal.default) || list[0];
+  const list = state.model.calendars;
+  const current = feed(month.calendar);
+  const chosen = list[0];
   const wrap = el('div', 'mini-calendar');
   const toggle = el('button', 'mini-calendar-toggle');
   toggle.type = 'button';
-  toggle.title = current.locked ? 'The calendar\u2019s own view, for everyone' : 'The saved calendar this month is read under';
+  toggle.title = current.locked ? 'The calendar’s own view, for everyone' : 'The saved calendar this month is read under';
   toggle.append(calendarMark(current), el('span', 'mini-calendar-name', current.name), svg('chevron-right'));
-  const menu = calendarMenu(list, current, chosen, c => fetchMonth(month.month, c.token));
+  const menu = calendarMenu(list, current, chosen, c => fetchMonth(month.month, c.id));
   dropdown(toggle, menu);
   wrap.append(toggle, menu);
   return wrap;
@@ -97,26 +92,23 @@ function grid() {
   next.append(svg('chevron-right'));
   next.addEventListener('click', () => page(1));
   head.append(back, el('span', 'mini-title', monthLabel(month.month)), next);
-  const pick = picker();
-  if (pick) {
-    wrap.append(pick);
-  }
-  wrap.append(head);
-  const days = el('div', 'mini-grid');
+  wrap.append(picker(), head);
+  const cells = el('div', 'mini-grid');
   for (const w of ['S', 'M', 'T', 'W', 'T', 'F', 'S']) {
-    days.append(el('span', 'mini-weekday', w));
+    cells.append(el('span', 'mini-weekday', w));
   }
   const first = parseDate(month.month + '-01');
   for (let i = 0; i < first.getDay(); i++) {
-    days.append(el('span', 'mini-blank'));
+    cells.append(el('span', 'mini-blank'));
   }
   const last = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  const kinds = days();
   for (let n = 1; n <= last; n++) {
     const date = `${month.month}-${pad(n)}`;
-    const day = month.days[date];
+    const day = kinds[date];
     const cell = el('button', 'mini-day');
     cell.type = 'button';
-    if (date === month.today) {
+    if (date === state.model.today) {
       cell.classList.add('is-today');
     }
     if (date === selected) {
@@ -124,8 +116,8 @@ function grid() {
     }
     if (!day) {
       cell.classList.add('is-off');
-    } else if (day.kinds.length) {
-      cell.classList.add(dayTypeClass(day.kinds[0].name));
+    } else if (day.length) {
+      cell.classList.add(dayTypeClass(day[0].name));
     }
     cell.append(el('span', 'mini-number', String(n)));
     const dots = el('span', 'mini-dots');
@@ -142,9 +134,9 @@ function grid() {
       selected = date;
       renderMonth();
     });
-    days.append(cell);
+    cells.append(cell);
   }
-  wrap.append(days);
+  wrap.append(cells);
   return wrap;
 }
 
@@ -153,13 +145,13 @@ function dayCard() {
   const date = parseDate(selected);
   const head = el('a', 'rail-day-head');
   head.href = appOrigin('when') + '/day/' + selected;
-  head.append(el('span', 'rail-day-title', selected === month.today ? 'Today' : date.toLocaleDateString('en-US', {weekday: 'long'})));
+  head.append(el('span', 'rail-day-title', selected === state.model.today ? 'Today' : date.toLocaleDateString('en-US', {weekday: 'long'})));
   head.append(el('span', 'rail-day-date', date.toLocaleDateString('en-US', {month: 'long', day: 'numeric'})));
   card.append(head);
-  const day = month.days[selected];
-  if (day && day.kinds.length) {
+  const day = days()[selected];
+  if (day && day.length) {
     const kinds = el('div', 'rail-day-kinds');
-    for (const kind of day.kinds) {
+    for (const kind of day) {
       kinds.append(el('span', 'rail-day-kind ' + dayTypeClass(kind.name), kind.words));
     }
     card.append(kinds);
@@ -190,13 +182,10 @@ function dayCard() {
 export function renderMonth() {
   const root = document.querySelector('#rail-calendar');
   root.replaceChildren();
-  if (loaded !== state.model.calendar) {
-    loaded = state.model.calendar;
+  if (loaded !== state.model.month) {
+    loaded = state.model.month;
     month = loaded;
-    if (!month || !month.month) {
-      return;
-    }
-    selected = month.today;
+    selected = state.model.today;
   }
   root.append(grid(), dayCard());
 }

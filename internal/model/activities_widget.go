@@ -9,83 +9,65 @@ import (
 	"heliosian/internal/access"
 )
 
-type ActivityWidgetItem struct {
-	Title    string `json:"title"`
-	Under    string `json:"under,omitempty"`
-	Start    string `json:"start,omitempty"`
-	Timing   string `json:"timing,omitempty"`
-	Position string `json:"position,omitempty"`
-	Note     string `json:"note,omitempty"`
-	Path     string `json:"path"`
-	Image    string `json:"image,omitempty"`
+type activityWidget struct {
+	mine     []*Activity
+	needed   []*Activity
+	priority []*Activity
 }
 
-type ActivityWidget struct {
-	Mine     []ActivityWidgetItem `json:"mine"`
-	Open     []ActivityWidgetItem `json:"open"`
-	Priority []ActivityWidgetItem `json:"priority"`
-}
+const widgetNeeded = 12
 
-const widgetOpen = 12
-
-func (m *Activities) Widget(email string, at time.Time) ActivityWidget {
-	year, today := ActivityYear(at), at.Format(DateFormat)
-	out := ActivityWidget{Mine: []ActivityWidgetItem{}, Open: []ActivityWidgetItem{}, Priority: []ActivityWidgetItem{}}
-	on := func(a *Activity) (Volunteer, bool) {
-		i := slices.IndexFunc(a.Volunteers, func(v Volunteer) bool { return strings.EqualFold(v.Email, email) })
-		if i < 0 {
-			return Volunteer{}, false
-		}
-		return a.Volunteers[i], true
+func (m *Activities) volunteerOn(a *Activity, email string) (Volunteer, bool) {
+	i := slices.IndexFunc(a.Volunteers, func(v Volunteer) bool { return strings.EqualFold(v.Email, email) })
+	if i < 0 {
+		return Volunteer{}, false
 	}
+	return a.Volunteers[i], true
+}
+
+func (m *Activities) widget(email string, at time.Time) activityWidget {
+	year, today := ActivityYear(at), at.Format(DateFormat)
+	out := activityWidget{mine: []*Activity{}, needed: []*Activity{}, priority: []*Activity{}}
 	var walk func([]*Activity)
 	walk = func(list []*Activity) {
 		for _, a := range list {
 			walk(a.Children)
-			if a.Priority && m.wanted(a, year, today) {
-				if _, ok := on(a); !ok {
-					item := m.widgetItem(a)
-					item.Note = m.openNote(a)
-					out.Priority = append(out.Priority, item)
-				}
+			_, on := m.volunteerOn(a, email)
+			if a.Priority && m.wanted(a, year, today) && !on {
+				out.priority = append(out.priority, a)
 			}
-			v, ok := on(a)
-			if !ok || a.Year != year || a.Status == StatusDone || !m.VisibleTo(a, access.Actor{Email: email}) {
+			if !on || a.Year != year || a.Status == StatusDone || !m.VisibleTo(a, access.Actor{Email: email}) {
 				continue
 			}
-			item := m.widgetItem(a)
 			if last := lastDay(timed(m, a)); last != "" && last < today {
 				continue
 			}
-			item.Position = v.Position
-			out.Mine = append(out.Mine, item)
+			out.mine = append(out.mine, a)
 		}
 	}
 	walk(m.Activities)
-	slices.SortStableFunc(out.Mine, byDay)
-	slices.SortStableFunc(out.Priority, byDay)
+	byDay := func(x, y *Activity) int {
+		dx, dy := dayOf(timed(m, x).Start), dayOf(timed(m, y).Start)
+		if (dx == "") != (dy == "") {
+			if dx == "" {
+				return 1
+			}
+			return -1
+		}
+		return strings.Compare(dx, dy)
+	}
+	slices.SortStableFunc(out.mine, byDay)
+	slices.SortStableFunc(out.priority, byDay)
 	for _, a := range needs(m, at) {
-		if len(out.Open) == widgetOpen {
+		if len(out.needed) == widgetNeeded {
 			break
 		}
-		if _, ok := on(a); ok {
+		if _, on := m.volunteerOn(a, email); on {
 			continue
 		}
-		item := m.widgetItem(a)
-		item.Note = m.openNote(a)
-		out.Open = append(out.Open, item)
+		out.needed = append(out.needed, a)
 	}
 	return out
-}
-
-func byDay(x, y ActivityWidgetItem) int {
-	if (x.Start == "") != (y.Start == "") {
-		if x.Start == "" {
-			return 1
-		}
-		return -1
-	}
-	return strings.Compare(x.Start, y.Start)
 }
 
 func (m *Activities) wanted(a *Activity, year, today string) bool {
@@ -96,13 +78,13 @@ func (m *Activities) wanted(a *Activity, year, today string) bool {
 	return last == "" || last >= today
 }
 
-func (m *Activities) widgetItem(a *Activity) ActivityWidgetItem {
-	dated := timed(m, a)
-	image := ""
-	for n := a; n != nil && image == ""; n = m.byID[n.Parent] {
-		image = n.ImageURL
+func (m *Activities) picture(a *Activity) string {
+	for n := a; n != nil; n = m.byID[n.Parent] {
+		if n.ImageURL != "" {
+			return n.ImageURL
+		}
 	}
-	return ActivityWidgetItem{Title: a.Title, Under: lineage(m, a), Start: dayOf(dated.Start), Timing: dated.Timing, Path: m.PathOf(a), Image: image}
+	return ""
 }
 
 func dayOf(cell string) string {

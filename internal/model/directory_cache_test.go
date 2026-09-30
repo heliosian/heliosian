@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"heliosian/internal/access"
+	"heliosian/internal/api"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
@@ -64,6 +65,7 @@ func newServer(t *testing.T) server {
 	registerTags(mux, s)
 	registerPeopleAdmin(mux, s, media)
 	RegisterDirectoryUpload(mux, s, media)
+	typedRegistry(s, queue, []api.Type[*Model]{adminListResources(s)}).Register(mux)
 	return server{dir: dir, queue: queue, store: s, mux: mux}
 }
 
@@ -164,7 +166,7 @@ func TestTagChangesReachMemoryTheSheetAndTheLog(t *testing.T) {
 	s.form(t, abena, "/api/directory/tag-leave", url.Values{"tag": {kicks}})
 	s.form(t, jordan, "/api/directory/tag-delete", url.Values{"tag": {kicks}})
 	s.form(t, jordan, "/api/directory/tag-delete", url.Values{"tag": {kicks}})
-	s.post(t, jordan, "/api/admin/admins", "application/json", []byte(`{"admins":["`+abena+`"]}`))
+	s.post(t, jordan, "/api/admin-lists/who/edit", "application/json", []byte(`{"admins":["`+abena+`"]}`))
 
 	tags := s.directory().Tags(jordan)
 	names := []string{}

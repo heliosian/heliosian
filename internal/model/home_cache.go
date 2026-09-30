@@ -42,13 +42,14 @@ func (m *Model) HomeCategoriesFor(v access.Actor) []HomeCategory {
 		return len(rules) == 0 || m.homeIncludes(rules, v.Email)
 	}
 	admin := v.May(ConfigureHome)
+	hidden := m.HiddenApps(v.Email)
 	out := []HomeCategory{}
 	for _, category := range m.Home.Categories {
 		sectionMine := forMe(category.Rules)
 		if !sectionMine && !admin {
 			continue
 		}
-		shown := HomeCategory{ID: category.ID, Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []HomeLink{}, Virtual: category.Virtual, Rules: []Rule{}}
+		shown := HomeCategory{ID: category.ID, Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Order: category.Order, Links: []HomeLink{}, Rules: []Rule{}}
 		if admin {
 			shown.Rules = category.Rules
 		}
@@ -57,6 +58,9 @@ func (m *Model) HomeCategoriesFor(v access.Actor) []HomeCategory {
 			shown.ForMe = &no
 		}
 		for _, link := range category.Links {
+			if link.app != "" && slices.Contains(hidden, link.app) {
+				continue
+			}
 			mine := forMe(link.Rules)
 			if !(link.Visible && mine) && !admin {
 				continue
@@ -79,6 +83,7 @@ type AppVisibility struct {
 	App
 	Visibility string   `json:"visibility"`
 	Emails     []string `json:"emails"`
+	Order      string   `json:"order"`
 	Rules      []Rule   `json:"rules"`
 }
 
@@ -112,7 +117,7 @@ func (m *Home) AppVisibilities() []AppVisibility {
 	for _, app := range orderedApps(m) {
 		v := appVisibilityOf(m, app)
 		app.Name, app.Tagline, app.Mark = v.Name, v.Tagline, markVersion(app.Key)
-		out = append(out, AppVisibility{App: app, Visibility: v.Mode, Emails: v.Emails, Rules: v.Rules})
+		out = append(out, AppVisibility{App: app, Visibility: v.Mode, Emails: v.Emails, Order: v.Order, Rules: v.Rules})
 	}
 	return out
 }

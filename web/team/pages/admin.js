@@ -3,7 +3,7 @@ import {el, button} from '/elements.js';
 import {categoryList, openSettings, openRedirect} from '../edit.js';
 import {act, query} from '/data.js';
 import {checkbox} from '/form.js';
-import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
+import {adminPage as buildAdminPage, adminsCard, appAdmins} from '/admin.js';
 
 function categoriesCard() {
   const card = el('div', 'card');
@@ -127,7 +127,7 @@ const sections = [
   ]},
   {title: 'Editing & Control', tabs: [
     {key: 'notify', label: 'Email Notifications', card: notifyCard},
-    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can approve suggestions, edit any activity, and reach this page. Co-chairs edit their own activities without being here.'})},
+    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can approve suggestions, edit any activity, and reach this page. Co-chairs edit their own activities without being here.', ...appAdmins('team')})},
   ]},
   {title: 'Addresses', tabs: [
     {key: 'redirects', label: 'Redirects', card: redirectsCard},

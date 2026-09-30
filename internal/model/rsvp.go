@@ -10,8 +10,6 @@ import (
 	"heliosian/internal/mail"
 )
 
-type Answerer func(ctx context.Context, email, id, answer string) error
-
 var errNotRecorded = errors.New("the answer was not recorded")
 
 func (a calendarApp) recordBy(ctx context.Context, actor access.Actor, email, id, answer, via string, invite, wait bool) error {

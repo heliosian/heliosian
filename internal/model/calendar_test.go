@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/base64"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
+	"heliosian/internal/testkit/mailtest"
 )
 
 var sampleKey = []byte("sample")
@@ -619,49 +621,102 @@ func TestRenderLinked(t *testing.T) {
 	}
 }
 
-func TestUpcoming(t *testing.T) {
-	m := load(t)
-	d := calendarDirectory(t, "../../sampledata")
-	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-10 08:00", Location)
-	linked := []Linked{
-		{Source: SourceCelebrate, ID: "pty0000000001", EventID: "pty0000000001", Title: "Fondue & Fort Night", Summary: "A cozy evening of fondue", Location: "The Parks' House", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineWaitlisted, Image: "/party-images/fondue.jpg"},
-		{Source: SourceTeam, ID: "act0000000001", EventID: "tev0000000001", Title: "HCA International Night 2026", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open"},
-		{Source: SourceTeam, ID: "act0000000005", EventID: "tev0000000005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/act0000000005", Availability: "done"},
+func sampleEventsServer(t *testing.T) (*Store, http.Handler) {
+	t.Helper()
+	sampleSheet(t)
+	outsideSuperAdmin(t, sheet)
+	listRows(t, nil)
+	s := sampleStore(t, sheet, queue, sampleDeps(sampleKey))
+	mux := http.NewServeMux()
+	hooks := RegisterCalendar(mux, calendarDeps(s, CalendarMail{Sender: mailtest.Discard()}))
+	return s, served(mux, s, hooks)
+}
+
+func titlesOf(events []map[string]any) []string {
+	out := []string{}
+	for _, e := range events {
+		title, _ := e["title"].(string)
+		out = append(out, title)
 	}
-	got := m.UpcomingUnder(d, "jordan.whitfield@heliosschool.org", linked, at, 0, "")
-	titles := []string{}
-	for i, u := range got {
-		titles = append(titles, u.Title)
-		if i > 0 && got[i-1].Start > u.Start {
-			t.Errorf("out of order: %q (%s) after %q (%s)", u.Title, u.Start, got[i-1].Title, got[i-1].Start)
+	return out
+}
+
+func eventTitled(events []map[string]any, title string) map[string]any {
+	for _, e := range events {
+		if e["title"] == title {
+			return e
 		}
-		if u.EndAt < "2026-09-10" || u.When == "" || u.Path == "" || u.Image == "" || u.ImageApp == "" {
+	}
+	return nil
+}
+
+func TestUpcoming(t *testing.T) {
+	_, h := sampleEventsServer(t)
+	clockAt(t, time.Date(2026, 9, 10, 8, 0, 0, 0, Location))
+	const parentOf = "jordan.whitfield@heliosschool.org"
+	got := upcomingOf(t, h, parentOf, feedKey(parentOf, MyHeliosianToken))
+	titles := titlesOf(got)
+	for i, u := range got {
+		if i > 0 && got[i-1]["start"].(string) > u["start"].(string) {
+			t.Errorf("out of order: %q (%s) after %q (%s)", u["title"], u["start"], got[i-1]["title"], got[i-1]["start"])
+		}
+		if u["end"].(string) < "2026-09-10" || u["path"] == "" || u["app"] == "" {
 			t.Errorf("upcoming %+v", u)
 		}
 	}
 	if slices.Contains(titles, "Hummingbird CAFE") || slices.Contains(titles, "Hawks and Falcons CAFE") || !slices.Contains(titles, "Condors and Ospreys CAFE") || slices.Contains(titles, "Back to School Social") {
 		t.Errorf("a parent in Jays and Ospreys sees %v", titles)
 	}
-	if len(got) == 0 || got[0].Title != "Jays and Ravens Camping" || got[0].Path != "/e/gev0000000005" || got[0].Image != "/brand/default-header.jpg" || got[0].ImageApp != "when" || got[0].Link != "" || got[0].Call != "" {
-		t.Errorf("first = %+v", got[0])
+	if len(got) == 0 || got[0]["title"] != "Jays and Ravens Camping" || got[0]["path"] != "/e/gev0000000005" || got[0]["app"] != "when" || got[0]["link"] != nil || got[0]["call"] != nil {
+		t.Fatalf("first = %+v", got)
 	}
-	party, night := got[1], got[2]
-	if party.Title != "Fondue & Fort Night" || party.Path != "/e/pty0000000001" || party.Link != "/p/fondue" || party.LinkApp != "celebrate" || party.Call != "Waitlisted" || party.Mine != MineWaitlisted || party.Availability != "available" || party.Image != "/party-images/fondue.jpg" || party.ImageApp != "celebrate" || party.When != "Saturday, September 19 · 5:00 – 9:00 PM" || party.Description != "A cozy evening of fondue" {
+	party := eventTitled(got, "Fondue & Fort Night")
+	if party == nil || party["id"] != "pty0000000001" || party["path"] != "/p/fondue" || party["link"] != "/p/fondue" || party["app"] != "celebrate" || party["mine"] != MineGoing || party["availability"] != "available" || party["image"] == nil || party["start"] != "2026-09-19 17:00" {
 		t.Errorf("party = %+v", party)
 	}
-	if night.Title != "International Night" || night.Path != "/e/gev0000000007" || night.Link != "/v/international-night" || night.LinkApp != "team" || night.Call != "Join" || night.Mine != "" || night.ImageApp != "when" || night.StartAt != "2026-09-24 16:00" || night.EndAt != "2026-09-24 18:00" {
+	if call, _ := party["call"].(string); call != "You have a ticket" {
+		t.Errorf("the family's call on the party = %q", call)
+	}
+	night := eventTitled(got, "International Night")
+	if night == nil || night["id"] != "gev0000000007" || night["path"] != "/v/international-night" || night["link"] != "/v/international-night" || night["app"] != "team" || night["start"] != "2026-09-24 16:00" || night["end"] != "2026-09-24 18:00" {
 		t.Errorf("folded hca event = %+v", night)
 	}
-	// A stranger sees two classroom events the parent's classrooms leave
-	// out, and the parent two invitations sent them, so they see as many.
-	if all := m.UpcomingUnder(d, "nobody@x.org", linked, at, 0, ""); len(all) != len(got) {
-		t.Errorf("a stranger sees %d, a parent %d", len(all), len(got))
+	if later := listOf(t, h, parentOf, "/api/events?from=2027-09-10&calendar="+feedKey(parentOf, MyHeliosianToken)); len(later) != 0 {
+		t.Errorf("a year on = %v", titlesOf(later))
 	}
-	if two := m.UpcomingUnder(d, "jordan.whitfield@heliosschool.org", linked, at, 2, ""); len(two) != 2 || two[1].Title != party.Title {
-		t.Errorf("limit 2 = %+v", two)
+	if rec := testkit.Call(t, h, parentOf, "GET", "/api/events?from=next+week", nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("a from that is no date: %d", rec.Code)
 	}
-	if later := m.UpcomingUnder(d, "nobody@x.org", nil, at.AddDate(1, 0, 0), 0, ""); len(later) != 0 {
-		t.Errorf("a year on = %+v", later)
+	if rec := testkit.Call(t, h, parentOf, "GET", "/api/events?to=2026-9-1", nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("a to that is no date: %d", rec.Code)
+	}
+}
+
+func TestEventsFromAndTo(t *testing.T) {
+	_, h := sampleEventsServer(t)
+	const viewer = "jordan.whitfield@heliosschool.org"
+	all := listOf(t, h, viewer, "/api/events")
+	window := listOf(t, h, viewer, "/api/events?from=2026-09-20&to=2026-10-05")
+	if len(window) == 0 || len(window) >= len(all) {
+		t.Fatalf("a window of %d out of %d", len(window), len(all))
+	}
+	inWindow := func(e map[string]any) bool {
+		start, end := e["start"].(string)[:10], e["end"].(string)[:10]
+		return end >= "2026-09-20" && start <= "2026-10-05"
+	}
+	for _, e := range window {
+		if !inWindow(e) {
+			t.Errorf("%s (%s to %s) is outside the window", e["title"], e["start"], e["end"])
+		}
+	}
+	want := 0
+	for _, e := range all {
+		if inWindow(e) {
+			want++
+		}
+	}
+	if len(window) != want {
+		t.Errorf("the window holds %d of the %d the calendar has in it", len(window), want)
 	}
 }
 
@@ -812,41 +867,55 @@ func TestSharingWords(t *testing.T) {
 }
 
 func TestPartiesFor(t *testing.T) {
-	m := load(t)
-	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-10 08:00", Location)
-	linked := []Linked{
-		{Source: SourceCelebrate, ID: "pty0000000001", EventID: "pty0000000001", Title: "Fondue & Fort Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing, Who: []string{"Ella"}},
-		{Source: SourceCelebrate, ID: "pty0000000002", EventID: "pty0000000002", Title: "Bagels", Start: "2026-09-05 10:00", End: "2026-09-05 12:00", Path: "/p/bagels", Availability: "past"},
-		{Source: SourceCelebrate, ID: "pty0000000003", EventID: "pty0000000003", Title: "Wurst", Start: "2026-10-03 15:30", End: "2026-10-03 18:30", Path: "/p/wurst", Availability: "available"},
-		{Source: SourceTeam, ID: "act0000000001", EventID: "tev0000000001", Title: "HCA International Night 2026", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open"},
+	_, h := sampleEventsServer(t)
+	parties := func(email string) []map[string]any {
+		return listOf(t, h, email, "/api/events?app=celebrate&from="+now().Format(DateFormat))
 	}
-	got := m.PartiesFor(calendarDirectory(t, "../../sampledata"), "nobody@heliosschool.org", linked, at)
-	if len(got) != 2 || got[0].Title != "Fondue & Fort Night" || got[1].Title != "Wurst" {
-		t.Fatalf("parties: %+v", got)
+	got := parties(sam)
+	titles := titlesOf(got)
+	if len(got) == 0 || got[0]["title"] != "Fondue & Fort Night" || !slices.Contains(titles, "Wurst Helios Party") {
+		t.Fatalf("parties: %v", titles)
 	}
-	if f := got[0]; f.Mine != MineGoing || f.Call != "Ella has a ticket" || f.Link != "/p/fondue" || f.LinkApp != "celebrate" {
+	for i, p := range got {
+		if p["app"] != "celebrate" || p["source"] != SourceCelebrate || p["end"].(string)[:10] < now().Format(DateFormat) {
+			t.Errorf("not an upcoming party: %+v", p)
+		}
+		if i > 0 && got[i-1]["start"].(string) > p["start"].(string) {
+			t.Errorf("out of order: %s after %s", p["title"], got[i-1]["title"])
+		}
+	}
+	if slices.Contains(titles, "Baegels and Meimosas") || slices.Contains(titles, "International Night") || slices.Contains(titles, "Jays and Ravens Camping") {
+		t.Errorf("the parties list a past party, an HCA event or a school event: %v", titles)
+	}
+	if f := got[0]; f["mine"] != MineGoing || f["call"] == nil || f["link"] != "/p/fondue" {
 		t.Errorf("fondue: %+v", f)
 	}
-	if w := got[1]; w.Mine != "" || w.Call != "Get tickets" || w.StartAt != "2026-10-03 15:30" {
+	if w := eventTitled(got, "Wurst Helios Party"); w["mine"] != nil || w["call"] != "Get tickets" || w["start"] != "2026-10-03 15:30" {
 		t.Errorf("wurst: %+v", w)
 	}
-	if got[0].Hosted || got[1].Hosted {
-		t.Errorf("a party nobody hosts is marked hosted: %+v", got)
+	for _, p := range got {
+		if p["hosted"] == true {
+			t.Errorf("a party sam does not host is marked hosted: %+v", p)
+		}
+	}
+	for _, other := range []string{"when", "team"} {
+		for _, e := range listOf(t, h, sam, "/api/events?app="+other) {
+			if e["app"] != other {
+				t.Errorf("app=%s lists %s from %s", other, e["title"], e["app"])
+			}
+		}
 	}
 }
 
 func TestCardsMarkHosted(t *testing.T) {
-	m := load(t)
-	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-10 08:00", Location)
-	host := "jordan.whitfield@heliosschool.org"
-	linked := []Linked{
-		{Source: SourceCelebrate, ID: "P003", Title: "Wurst", Start: "2026-10-03 15:30", End: "2026-10-03 18:30", Path: "/p/wurst", Availability: "available", Hosts: []string{host}},
+	_, h := sampleEventsServer(t)
+	hosted := func(email string) any {
+		return eventTitled(listOf(t, h, email, "/api/events?app=celebrate"), "Tees & Teas")["hosted"]
 	}
-	dir := calendarDirectory(t, "../../sampledata")
-	if got := m.PartiesFor(dir, host, linked, at); len(got) != 1 || !got[0].Hosted {
-		t.Errorf("the host's own party: %+v", got)
+	if got := hosted("jordan.whitfield@heliosschool.org"); got != true {
+		t.Errorf("the host's own party: hosted %v", got)
 	}
-	if got := m.PartiesFor(dir, "nobody@heliosschool.org", linked, at); len(got) != 1 || got[0].Hosted {
-		t.Errorf("someone else's party: %+v", got)
+	if got := hosted(mia); got != nil {
+		t.Errorf("someone else's party: hosted %v", got)
 	}
 }

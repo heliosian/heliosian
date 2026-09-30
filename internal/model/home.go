@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -137,22 +138,22 @@ type HomeLink struct {
 	Visible     bool   `json:"visible"`
 	AddedBy     string `json:"addedBy,omitempty"`
 	Added       string `json:"added,omitempty"`
+	Order       string `json:"order"`
 	Rules       []Rule `json:"rules"`
 	ForMe       *bool  `json:"forMe,omitempty"`
-	order       string
+	app         string
 }
 
 type HomeCategory struct {
-	ID      string     `json:"id"`
-	Title   string     `json:"title"`
-	Emoji   string     `json:"emoji,omitempty"`
-	Style   string     `json:"style"`
-	Max     int        `json:"max,omitempty"`
-	Links   []HomeLink `json:"links"`
-	Virtual bool       `json:"virtual,omitempty"`
-	Rules   []Rule     `json:"rules"`
-	ForMe   *bool      `json:"forMe,omitempty"`
-	order   string
+	ID    string     `json:"id"`
+	Title string     `json:"title"`
+	Emoji string     `json:"emoji,omitempty"`
+	Style string     `json:"style"`
+	Max   int        `json:"max,omitempty"`
+	Order string     `json:"order"`
+	Links []HomeLink `json:"links"`
+	Rules []Rule     `json:"rules"`
+	ForMe *bool      `json:"forMe,omitempty"`
 }
 
 type Home struct {
@@ -166,11 +167,43 @@ type Home struct {
 
 var HomeWidgets = []string{"when", "team", "celebrate", "school"}
 
+var Domains = []string{"heliosian.com", "heliosiandev.com"}
+
 func compareOrder(a, b, aTitle, bTitle string) int {
-	if c := store.CompareKeys(a, b); c != 0 || a == "" {
+	if c := store.CompareKeys(a, b); c != 0 {
 		return c
 	}
 	return strings.Compare(aTitle, bTitle)
+}
+
+func checkOrder(cell string) (string, error) {
+	order := strings.TrimSpace(cell)
+	if order == "" {
+		return "", fmt.Errorf("has no order")
+	}
+	return order, store.CheckKey(order)
+}
+
+func keyAfter(keys []string) string {
+	return store.Order(append(slices.Clone(keys), ""))[len(keys)]
+}
+
+func appOfLink(link string) string {
+	u, err := url.Parse(link)
+	if err != nil {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	for _, domain := range Domains {
+		for _, app := range Apps {
+			for _, label := range app.Hosts {
+				if host == Qualify(label, domain) {
+					return app.Key
+				}
+			}
+		}
+	}
+	return ""
 }
 
 const (
@@ -190,8 +223,8 @@ func buildWidgetOrder(m *Home, rows []store.Row) error {
 		if _, dup := m.widgetKeys[name]; dup {
 			return fmt.Errorf("%s has two rows for %q", homeWidgetsTab, name)
 		}
-		order := strings.TrimSpace(row[store.OrderColumn])
-		if err := store.CheckKey(order); err != nil {
+		order, err := checkOrder(row[store.OrderColumn])
+		if err != nil {
 			return fmt.Errorf("widget %q: %w", name, err)
 		}
 		m.widgetKeys[name] = order
@@ -311,8 +344,8 @@ func BuildHome(ctx context.Context, tables store.Tables, images blob.Checker) (*
 		if err != nil {
 			return nil, fmt.Errorf("category %q: %w", title, err)
 		}
-		order := strings.TrimSpace(row[store.OrderColumn])
-		if err := store.CheckKey(order); err != nil {
+		order, err := checkOrder(row[store.OrderColumn])
+		if err != nil {
 			return nil, fmt.Errorf("category %q: %w", title, err)
 		}
 		rules, err := audienceRulesFor(audience, thingCategory+key)
@@ -320,18 +353,10 @@ func BuildHome(ctx context.Context, tables store.Tables, images blob.Checker) (*
 			return nil, err
 		}
 		index[key] = len(m.Categories)
-		m.Categories = append(m.Categories, HomeCategory{ID: key, Title: title, Emoji: emoji, Style: style, Max: max, Links: []HomeLink{}, Rules: rules, order: order})
+		m.Categories = append(m.Categories, HomeCategory{ID: key, Title: title, Emoji: emoji, Style: style, Max: max, Order: order, Links: []HomeLink{}, Rules: rules})
 	}
 	if !events {
-		if ids[EventsCategoryID] {
-			return nil, fmt.Errorf("category id %s is the events section's; give its row the %s style or another id", EventsCategoryID, StyleEvents)
-		}
-		m.Categories = append([]HomeCategory{{ID: EventsCategoryID, Title: EventsCategoryTitle, Emoji: EventsCategoryEmoji, Style: StyleEvents, Links: []HomeLink{}, Virtual: true}}, m.Categories...)
-		for key := range index {
-			index[key]++
-		}
-		index[EventsCategoryID] = 0
-		ids[EventsCategoryID] = true
+		return nil, fmt.Errorf("%s has no %s section; its row is %s (tools/createtabs seeds it)", homeCategoriesTab, StyleEvents, EventsCategoryID)
 	}
 	for _, row := range tables[homeLinksTab] {
 		title := strings.TrimSpace(row["Title"])
@@ -346,8 +371,8 @@ func BuildHome(ctx context.Context, tables store.Tables, images blob.Checker) (*
 			return nil, fmt.Errorf("link %q: id %s is used twice", title, key)
 		}
 		ids[key] = true
-		order := strings.TrimSpace(row[store.OrderColumn])
-		if err := store.CheckKey(order); err != nil {
+		order, err := checkOrder(row[store.OrderColumn])
+		if err != nil {
 			return nil, fmt.Errorf("link %q: %w", title, err)
 		}
 		if err := cells.URL(row["URL"], false); err != nil {
@@ -383,17 +408,13 @@ func BuildHome(ctx context.Context, tables store.Tables, images blob.Checker) (*
 			ID: key, Title: title, Description: row["Description"], URL: row["URL"],
 			Image: row["Image"], ImageURL: image, Category: category,
 			Visible: visible, AddedBy: row["Added By"], Added: row["Added"],
-			Rules: rules, order: order,
+			Order: order, Rules: rules, app: appOfLink(row["URL"]),
 		})
 	}
 	for i := range m.Categories {
-		slices.SortStableFunc(m.Categories[i].Links, func(a, b HomeLink) int { return compareOrder(a.order, b.order, a.Title, b.Title) })
+		slices.SortStableFunc(m.Categories[i].Links, func(a, b HomeLink) int { return compareOrder(a.Order, b.Order, a.Title, b.Title) })
 	}
-	stored := m.Categories
-	if !events {
-		stored = m.Categories[1:]
-	}
-	slices.SortStableFunc(stored, func(a, b HomeCategory) int { return compareOrder(a.order, b.order, a.Title, b.Title) })
+	slices.SortStableFunc(m.Categories, func(a, b HomeCategory) int { return compareOrder(a.Order, b.Order, a.Title, b.Title) })
 	visibility, err := buildVisibility(tables[homeVisibilityTab])
 	if err != nil {
 		return nil, err
@@ -433,8 +454,8 @@ func buildVisibility(rows []store.Row) (map[string]AppVisibilityRow, error) {
 		if len(name) > maxHomeTitleLength {
 			return nil, fmt.Errorf("%s row for %q: name is too long", homeVisibilityTab, app)
 		}
-		order := strings.TrimSpace(row[store.OrderColumn])
-		if err := store.CheckKey(order); err != nil {
+		order, err := checkOrder(row[store.OrderColumn])
+		if err != nil {
 			return nil, fmt.Errorf("%s row for %q: %w", homeVisibilityTab, app, err)
 		}
 		visibility[app] = AppVisibilityRow{Mode: mode, Emails: splitVisibilityEmails(row["Emails"]), Tagline: tagline, Name: name, Order: order}

@@ -321,7 +321,7 @@ func TestProvenanceForAdmins(t *testing.T) {
 }
 
 func TestSavedView(t *testing.T) {
-	handler, cache := testApp(t)
+	handler, _ := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
 	rec := call(t, as(me, handler), "POST", settingsPath("save-view"), `{"classrooms":["Hawks"],"tags":[`+quoted(t, "Community, HCA")+`,"Nonsense"]}`)
 	if rec.Code != 204 {
@@ -331,9 +331,10 @@ func TestSavedView(t *testing.T) {
 	if view.User.Saved == nil || strings.Join(view.User.Saved.Classrooms, ",") != "Hawks" || cells.JoinList(view.User.Saved.Tags) != calendarIDs(t, "Community, HCA") {
 		t.Errorf("saved view = %+v", view.User.Saved)
 	}
-	for _, u := range cache.Model().Calendar.UpcomingUnder(calendarDirectory(t, "sampledata"), me, nil, now(), 0, "") {
-		if !strings.Contains(u.Title, "Hawks") && !strings.Contains(u.Title, "CAFE") && u.Title != "International Night" && u.Title != "Halloween Parade" && u.Title != "HCA Meeting" && u.Title != "All School Movie Night" && u.Title != "Cocoa & Cookies" && u.Title != "Talent Show" && u.Title != "Back to School Social" && u.Title != "Spring Celebration" && u.Title != "Fall Potluck at the Torres'" && u.Title != "Jays & Ravens Beach Picnic" {
-			t.Errorf("upcoming under the saved view lists %q", u.Title)
+	for _, u := range upcomingOf(t, handler, me, defaultFeedOf(t, handler, me)) {
+		title, _ := u["title"].(string)
+		if !strings.Contains(title, "Hawks") && !strings.Contains(title, "CAFE") && title != "International Night" && title != "Halloween Parade" && title != "HCA Meeting" && title != "All School Movie Night" && title != "Cocoa & Cookies" && title != "Talent Show" && title != "Back to School Social" && title != "Spring Celebration" && title != "Fall Potluck at the Torres'" && title != "Jays & Ravens Beach Picnic" {
+			t.Errorf("upcoming under the saved view lists %q", title)
 		}
 	}
 	rec = call(t, as(me, handler), "POST", settingsPath("forget-view"), "")
@@ -350,13 +351,11 @@ func TestDefaultCalendar(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
 	viewer := as(me, handler)
-	dir := calendarDirectory(t, "sampledata")
-	found := false
-	for _, u := range cache.Model().Calendar.UpcomingUnder(dir, me, nil, now(), 0, "") {
-		found = found || u.Title == "International Night"
+	international := func(events []map[string]any) bool {
+		return slices.ContainsFunc(events, func(e map[string]any) bool { return e["title"] == "International Night" })
 	}
-	if !found {
-		t.Errorf("under My Heliosian, upcoming leaves out International Night")
+	if first := defaultFeedOf(t, handler, me); first != feedKey(me, MyHeliosianToken) || !international(upcomingOf(t, handler, me, first)) {
+		t.Errorf("under My Heliosian (%s first), upcoming leaves out International Night", first)
 	}
 	if rec := call(t, viewer, "POST", settingsPath("default"), `{"token":"nonsense"}`); rec.Code != 400 {
 		t.Errorf("a stranger's token: %d", rec.Code)
@@ -370,28 +369,24 @@ func TestDefaultCalendar(t *testing.T) {
 	if mine := cache.Model().Calendar.MyCalendars(me); len(mine) != 2 || mine[0].Token != "sample7feedtoken4jordan2whitfield" || !mine[1].Locked {
 		t.Errorf("rail = %+v", mine)
 	}
-	for _, u := range cache.Model().Calendar.UpcomingUnder(dir, me, nil, now(), 0, "") {
-		if u.Title == "International Night" {
-			t.Errorf("under the saved calendar, upcoming lists %q", u.Title)
-		}
+	chosen := defaultFeedOf(t, handler, me)
+	if chosen != feedKey(me, "sample7feedtoken4jordan2whitfield") || international(upcomingOf(t, handler, me, chosen)) {
+		t.Errorf("under the saved calendar %s, upcoming lists International Night", chosen)
 	}
-	found = false
-	for _, u := range cache.Model().Calendar.UpcomingUnder(dir, me, nil, now(), 0, MyHeliosianToken) {
-		found = found || u.Title == "International Night"
+	if !international(upcomingOf(t, handler, me, feedKey(me, MyHeliosianToken))) {
+		t.Errorf("under My Heliosian by its ID, upcoming leaves out International Night")
 	}
-	if !found {
-		t.Errorf("under My Heliosian by token, upcoming leaves out International Night")
+	inMonth := func(feed string) bool {
+		return international(listOf(t, handler, me, "/api/events?from=2026-09-01&to=2026-09-30&calendar="+feed))
 	}
-	inMonth := func(token string) bool {
-		for _, u := range cache.Model().Calendar.MonthUnder(dir, me, nil, now(), "2026-09", token).Events {
-			if u.Title == "International Night" {
-				return true
-			}
-		}
-		return false
+	if inMonth(chosen) || !inMonth(feedKey(me, MyHeliosianToken)) {
+		t.Errorf("month under default %v, under My Heliosian %v; want false, true", inMonth(chosen), inMonth(feedKey(me, MyHeliosianToken)))
 	}
-	if inMonth("") || !inMonth(MyHeliosianToken) {
-		t.Errorf("month under default %v, under My Heliosian %v; want false, true", inMonth(""), inMonth(MyHeliosianToken))
+	if rec := testkit.Call(t, handler, "robin.whitfield@heliosschool.org", "GET", "/api/events?calendar="+chosen, nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("another's calendar as a filter: %d", rec.Code)
+	}
+	if rec := testkit.Call(t, handler, me, "GET", "/api/events?calendar="+settingsKey(), nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("a calendar that is not one: %d", rec.Code)
 	}
 	if rec := call(t, viewer, "POST", settingsPath("default"), `{"token":"`+MyHeliosianToken+`"}`); rec.Code != 204 || cache.Model().Calendar.DefaultCalendar(me) != nil {
 		t.Errorf("back to My Heliosian: %d, default %+v", rec.Code, cache.Model().Calendar.DefaultCalendar(me))
@@ -601,11 +596,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if i := slices.IndexFunc(otherView.Events, func(e *Event) bool { return e.ID == shared }); i < 0 || !slices.Contains(otherView.Events[i].Tags, TagGoing) {
 		t.Errorf("a yes did not put the link event under Going on the other's calendar")
 	}
-	found := false
-	for _, u := range cache.Model().Calendar.UpcomingUnder(calendarDirectory(t, "sampledata"), "robin.whitfield@heliosschool.org", nil, now(), 0, "") {
-		found = found || u.ID == shared
-	}
-	if !found {
+	if !slices.ContainsFunc(upcomingOf(t, handler, robin, defaultFeedOf(t, handler, robin)), func(u map[string]any) bool { return u["id"] == shared }) {
 		t.Errorf("a yes did not put the link event in the other's Upcoming")
 	}
 	if rec := call(t, parent, "POST", "/api/events", `{"title":"Unsaid","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`]}`); rec.Code != 400 {
@@ -711,10 +702,9 @@ func TestAnswers(t *testing.T) {
 		t.Errorf("answers = %v", view.User.Answers)
 	}
 	dir := calendarDirectory(t, "sampledata")
-	for _, u := range cache.Model().Calendar.UpcomingUnder(dir, me, nil, now(), 0, "") {
-		if u.ID == "gev0000000007" {
-			t.Errorf("a hidden event is in Upcoming")
-		}
+	upcoming := func() []map[string]any { return upcomingOf(t, handler, me, defaultFeedOf(t, handler, me)) }
+	if slices.ContainsFunc(upcoming(), func(u map[string]any) bool { return u["id"] == "gev0000000007" }) {
+		t.Errorf("a hidden event is in Upcoming")
 	}
 	f := &Feed{Token: "t", Email: me, Name: "Mine"}
 	if strings.Contains(string(ICS(cache.Model().Calendar, dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
@@ -735,13 +725,7 @@ func TestAnswers(t *testing.T) {
 	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"yes"}`); rec.Code != 204 {
 		t.Fatalf("yes: %d %s", rec.Code, rec.Body)
 	}
-	found := false
-	for _, u := range cache.Model().Calendar.UpcomingUnder(dir, me, nil, now(), 0, "") {
-		if u.ID == "gev0000000007" {
-			found = u.Answer == AnswerYes
-		}
-	}
-	if !found {
+	if !slices.ContainsFunc(upcoming(), func(u map[string]any) bool { return u["id"] == "gev0000000007" && answerOf(u) == AnswerYes }) {
 		t.Errorf("a yes is not on the Upcoming card")
 	}
 	mine := calendarOf(t, viewer)
@@ -895,6 +879,46 @@ func TestOverrideFromThePage(t *testing.T) {
 	raw, _ := json.Marshal(map[string]any{"title": "Family Night", "start": e.Start, "end": e.End, "location": e.Location, "description": e.Description, "tags": tags, "keywords": e.Keywords})
 	if rec := correct(admin, "gev0000000002", string(raw)); rec.Code != 204 || row()["Note"] != "The admins'" {
 		t.Errorf("an edit sending no note: %d %v", rec.Code, row())
+	}
+}
+
+func TestPendingEventsFollowCan(t *testing.T) {
+	handler, _ := testApp(t)
+	const poster, admin = "jordan.whitfield@heliosschool.org", "dana.hawkins@heliosschool.org"
+	tags := cells.SplitList(calendarIDs(t, "Jays, Community"))
+	shared := write(t, handler, poster, "POST", "/api/events", map[string]any{"title": "Bake sale", "start": "2026-10-01 15:00", "tags": tags, "sharing": "Public"})
+	ids := func(as, path string) []string {
+		out := []string{}
+		for _, e := range listOf(t, handler, as, path) {
+			out = append(out, e["id"].(string))
+		}
+		return out
+	}
+	if got := ids(admin, "/api/events?status=pending&can=approve"); !slices.Contains(got, shared) {
+		t.Errorf("the admin's approvals lack the new event: %v", got)
+	}
+	if got := ids(poster, "/api/events?status=pending"); !slices.Contains(got, shared) {
+		t.Errorf("the poster's pending events lack their own: %v", got)
+	}
+	if got := ids(poster, "/api/events?status=pending&can=approve"); len(got) != 0 {
+		t.Errorf("the poster may approve %v", got)
+	}
+	for _, e := range listOf(t, handler, admin, "/api/events?status=pending") {
+		if e["pending"] != true || e["declined"] == true || e["cancelled"] == true {
+			t.Errorf("status=pending lists %v", e)
+		}
+	}
+	if rec := testkit.Call(t, handler, admin, "GET", "/api/events?status=approved", nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("another status: %d", rec.Code)
+	}
+	write(t, handler, admin, "POST", "/api/events/"+shared+"/approve", nil)
+	if got := ids(admin, "/api/events?status=pending&can=approve"); slices.Contains(got, shared) {
+		t.Errorf("an approved event is still to approve: %v", got)
+	}
+	declined := write(t, handler, poster, "POST", "/api/events", map[string]any{"title": "Not this", "start": "2026-10-02", "tags": tags, "sharing": "Public"})
+	write(t, handler, admin, "POST", "/api/events/"+declined+"/decline", nil)
+	if got := ids(admin, "/api/events?status=pending"); slices.Contains(got, declined) {
+		t.Errorf("a declined event is pending: %v", got)
 	}
 }
 

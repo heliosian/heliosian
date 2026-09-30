@@ -194,6 +194,42 @@ func write(t *testing.T, h http.Handler, as, method, path string, body any) stri
 	return made.ID
 }
 
+func listOf(t *testing.T, h http.Handler, as, path string) []map[string]any {
+	t.Helper()
+	r := read(t, h, as, path)
+	ids := []string{}
+	if err := json.Unmarshal(r.Result, &ids); err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	kind, _, _ := strings.Cut(strings.TrimPrefix(path, "/api/"), "?")
+	out := []map[string]any{}
+	for _, key := range ids {
+		out = append(out, r.one(t, kind, key))
+	}
+	return out
+}
+
+func defaultFeedOf(t *testing.T, h http.Handler, as string) string {
+	t.Helper()
+	r := read(t, h, as, "/api/when-settings/"+settingsKey()+"?include=feeds")
+	feeds, _ := r.one(t, "when-settings", settingsKey())["feeds"].([]any)
+	if len(feeds) == 0 {
+		t.Fatalf("%s has no calendars", as)
+	}
+	return feeds[0].(string)
+}
+
+func upcomingOf(t *testing.T, h http.Handler, as, feed string) []map[string]any {
+	t.Helper()
+	return listOf(t, h, as, "/api/events?from="+now().Format(DateFormat)+"&calendar="+feed)
+}
+
+func answerOf(e map[string]any) string {
+	me, _ := e["me"].(map[string]any)
+	answer, _ := me["answer"].(string)
+	return answer
+}
+
 func TestEventsAsResources(t *testing.T) {
 	h, cache, kept := calendarInvitesApp(t)
 	const meeting = "evt0000000002"

@@ -4,35 +4,9 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-	"time"
 
 	"heliosian/internal/mail"
 )
-
-type EventCard struct {
-	ID           string     `json:"id"`
-	Title        string     `json:"title"`
-	Path         string     `json:"path"`
-	Start        string     `json:"start"`
-	When         string     `json:"when"`
-	StartAt      string     `json:"startAt"`
-	EndAt        string     `json:"endAt,omitempty"`
-	Location     string     `json:"location,omitempty"`
-	Description  string     `json:"description,omitempty"`
-	Dates        []string   `json:"dates"`
-	Image        string     `json:"image,omitempty"`
-	ImageApp     string     `json:"imageApp,omitempty"`
-	Link         string     `json:"link,omitempty"`
-	LinkApp      string     `json:"linkApp,omitempty"`
-	Call         string     `json:"call,omitempty"`
-	Mine         string     `json:"mine,omitempty"`
-	Availability string     `json:"availability,omitempty"`
-	Answer       string     `json:"answer,omitempty"`
-	Invited      bool       `json:"invited,omitempty"`
-	Hosted       bool       `json:"hosted,omitempty"`
-	Cancelled    bool       `json:"cancelled,omitempty"`
-	People       []Standing `json:"people,omitempty"`
-}
 
 const (
 	appCalendar  = "when"
@@ -145,16 +119,6 @@ func (m *Calendar) ViewOf(directory *Directory, email string) (classrooms, tags 
 	return m.myHeliosianView(directory, email)
 }
 
-func (m *Calendar) viewUnder(directory *Directory, email, token string) (classrooms, tags []string) {
-	if token == MyHeliosianToken {
-		return m.myHeliosianView(directory, email)
-	}
-	if f := m.Feed(token); f != nil && token != "" && mail.Normalize(f.Email) == mail.Normalize(email) {
-		return m.feedView(f)
-	}
-	return m.ViewOf(directory, email)
-}
-
 func (m *Calendar) myHeliosianView(directory *Directory, email string) (classrooms, tags []string) {
 	classrooms = classroomsOf(m, directory.Person(email), students(directory, email))
 	if len(classrooms) == 0 {
@@ -206,50 +170,4 @@ func (m *Calendar) DefaultCalendar(email string) *Feed {
 		return nil
 	}
 	return m.Feed(mine[0].Token)
-}
-
-func (m *Calendar) PartiesFor(directory *Directory, email string, linked []Linked, now time.Time) []EventCard {
-	today := now.Format(DateFormat)
-	out := []EventCard{}
-	for _, e := range m.eventsFor(directory, email, linked) {
-		if e.Source != SourceCelebrate || e.end.Format(DateFormat) < today {
-			continue
-		}
-		out = append(out, m.card(directory, email, e))
-	}
-	return out
-}
-
-func (m *Calendar) card(directory *Directory, email string, e *Event) EventCard {
-	u := EventCard{
-		ID: e.ID, Title: e.Title, Path: EventPath(e), Start: e.start.Format(DateFormat), When: when(e),
-		StartAt: e.Start, EndAt: e.End, Dates: e.Dates, Location: e.Location, Description: blurb(e),
-		Image: "/" + m.pictureOf(e), ImageApp: appCalendar, Invited: e.Invited,
-		Hosted: m.hostedBy(directory, email, e), Cancelled: e.Cancelled, Answer: m.AnswerOf(email, e.ID),
-	}
-	if e.Link != "" {
-		u.Link, u.LinkApp = e.Link, linkedApp(e)
-		u.Mine, u.Availability, u.People, u.Call = e.Mine, e.Availability, e.MinePeople, e.Call
-		if e.Image != "" {
-			u.ImageApp = linkedApp(e)
-		}
-	}
-	return u
-}
-
-func (m *Calendar) UpcomingUnder(directory *Directory, email string, linked []Linked, now time.Time, limit int, token string) []EventCard {
-	classrooms, tags := m.viewUnder(directory, email, token)
-	today := now.Format(DateFormat)
-	out := []EventCard{}
-	for _, e := range m.eventsFor(directory, email, linked) {
-		answer := m.AnswerOf(email, e.ID)
-		if e.end.Format(DateFormat) < today || !m.InView(e, answer, classrooms, tags) {
-			continue
-		}
-		if limit > 0 && len(out) == limit {
-			break
-		}
-		out = append(out, m.card(directory, email, e))
-	}
-	return out
 }

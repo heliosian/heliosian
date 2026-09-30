@@ -130,6 +130,7 @@ type birthdayResource struct {
 	LevelNote        string   `json:"levelNote,omitempty"`
 	Stage            string   `json:"stage,omitempty"`
 	Urgency          *urgency `json:"urgency,omitempty"`
+	Late             *late    `json:"late,omitempty"`
 	Assigned         bool     `json:"assigned"`
 	AssignedTo       string   `json:"assignedTo,omitempty"`
 	AssignedOn       string   `json:"assignedOn,omitempty"`
@@ -241,6 +242,7 @@ func (r birthdayResources) birthdays() api.Type[*Model] {
 				Override: sv.Override, Level: sv.Level, LevelNote: sv.LevelNote, Stage: sv.Stage, Urgency: urgencyOf(sv, birthdayDayOf(q.Now)),
 				Assigned: sv.AssignedTo != "", AssignedOn: sv.AssignedOn, ContactedOn: sv.ContactedOn, ContactedBy: sv.ContactedBy,
 				Path: staffPath(sv.Email), App: birthdaysHost, Me: mine{Mine: sv.AssignedTo != "" && sv.AssignedTo == q.Actor.Email},
+				Late: m.lateFor(q, sv),
 			}
 			if sv.AssignedTo != "" && m.personID(sv.AssignedTo) == nil {
 				out.AssignedTo = sv.AssignedTo
@@ -264,6 +266,17 @@ func (r birthdayResources) birthdays() api.Type[*Model] {
 				out[address] = key
 			}
 			return out
+		},
+		Filters: map[string]api.Filter[*Model]{
+			"late": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+				if value != "" && value != "true" {
+					return nil, access.Invalid("late takes no value")
+				}
+				return func(key string) bool {
+					sv, ok := m.birthdayStaff(key, q.Now)
+					return ok && m.lateFor(q, sv) != nil
+				}, nil
+			},
 		},
 		Create: api.Make(func(wr api.Write[*Model], in struct {
 			Email    string `json:"email"`

@@ -62,7 +62,6 @@ func RegisterBirthdays(mux *http.ServeMux, d BirthdaysDeps) {
 	}
 	mux.Handle("GET /open/share/about.png", d.About)
 	mux.HandleFunc("POST /api/birthday/charity/describe", serve.JSON(a.describeCharity))
-	RegisterAdmins(mux, a.store, "birthday", noAdminState)
 }
 
 func (a birthdaysApp) page(w http.ResponseWriter, r *http.Request) {

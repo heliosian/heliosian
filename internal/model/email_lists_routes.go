@@ -41,7 +41,6 @@ func RegisterEmailLists(mux *http.ServeMux, d EmailListsDeps) {
 	}
 	mux.HandleFunc("POST /api/loop/preview", serve.JSON(a.preview))
 	mux.HandleFunc("POST /api/loop/describe", serve.JSON(a.describe))
-	RegisterAdmins(mux, a.store, "loop", noAdminState)
 	mux.HandleFunc("POST /hooks/mail/mime", a.inbound)
 	mux.HandleFunc("POST /hooks/events", a.events)
 	mux.Handle("GET /open/share/about.png", d.About)

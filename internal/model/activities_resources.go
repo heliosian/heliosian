@@ -32,7 +32,8 @@ type volunteerKey struct {
 }
 
 type activityMe struct {
-	Runs bool `json:"runs"`
+	Runs     bool   `json:"runs"`
+	Position string `json:"position,omitempty"`
 }
 
 type activityResource struct {
@@ -71,6 +72,11 @@ type activityResource struct {
 	Past                bool       `json:"past"`
 	Started             bool       `json:"started,omitempty"`
 	Invited             bool       `json:"invited,omitempty"`
+	Day                 string     `json:"day,omitempty"`
+	DayTiming           string     `json:"dayTiming,omitempty"`
+	Picture             string     `json:"picture,omitempty"`
+	Under               string     `json:"under,omitempty"`
+	Wants               string     `json:"wants,omitempty"`
 	Path                string     `json:"path"`
 	App                 string     `json:"app"`
 	Me                  activityMe `json:"me"`
@@ -213,7 +219,14 @@ func (a activitiesApp) activityResource(m *Model, q api.Query, raw *Activity) ac
 		DirectSignUpOwn: raw.DirectSignUpOwn, DirectSignUp: raw.DirectSignUp, CategoryHidden: raw.CategoryHidden, Priority: raw.Priority,
 		PrettyID: raw.PrettyID, AllowAddingOwn: raw.AllowAdding, AllowAdding: raw.Adding, AddedBy: raw.AddedBy, Added: raw.Added,
 		Taken: shown.Taken, Full: raw.full(), Past: pastActivity(acts, raw, q.Now),
+		Day: dayOf(timed(acts, raw).Start), DayTiming: timed(acts, raw).Timing, Picture: acts.picture(raw), Under: lineage(acts, raw),
 		Path: acts.PathOf(raw), App: activitiesHost, Me: activityMe{Runs: runs},
+	}
+	if raw.Status == StatusOpen {
+		out.Wants = acts.openNote(raw)
+	}
+	if v, on := acts.volunteerOn(raw, q.Actor.Email); on {
+		out.Me.Position = v.Position
 	}
 	if acts.Sees(raw, q.Actor) {
 		if r := a.rsvpsOf(m, raw.ID); r != nil {
@@ -856,6 +869,18 @@ func (a activitiesApp) activityCategoriesType() api.Type[*Model] {
 	}
 }
 
+func widgetList(pick func(activityWidget) []*Activity) func(*Model, api.Query, string) []string {
+	return func(m *Model, q api.Query, _ string) []string {
+		s := m.scope
+		s.teamWidgetOnce.Do(func() { s.teamWidget = m.Activities.widget(q.Actor.Email, q.Now) })
+		out := []string{}
+		for _, act := range pick(s.teamWidget) {
+			out = append(out, act.ID)
+		}
+		return out
+	}
+}
+
 func (a activitiesApp) teamSettingsType() api.Type[*Model] {
 	stage := a.store.stage
 	configures := may(ConfigureActivities)
@@ -897,7 +922,10 @@ func (a activitiesApp) teamSettingsType() api.Type[*Model] {
 		},
 		List: func(*Model, api.Query) []string { return []string{a.teamSettingsKey()} },
 		Relations: map[string]api.Relation[*Model]{
-			"viewer": {Type: "people", List: func(m *Model, q api.Query, _ string) []string { return m.personID(q.Actor.Email) }},
+			"viewer":   {Type: "people", List: func(m *Model, q api.Query, _ string) []string { return m.personID(q.Actor.Email) }},
+			"mine":     {Type: "activities", Many: true, List: widgetList(func(w activityWidget) []*Activity { return w.mine })},
+			"needed":   {Type: "activities", Many: true, List: widgetList(func(w activityWidget) []*Activity { return w.needed })},
+			"priority": {Type: "activities", Many: true, List: widgetList(func(w activityWidget) []*Activity { return w.priority })},
 		},
 		Actions: map[string]api.Action[*Model]{
 			"settings": api.DoFrom(configures, func(wr api.Write[*Model]) activitySettingsBody {

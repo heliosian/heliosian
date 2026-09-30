@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/api"
@@ -152,7 +153,8 @@ type guestListResource struct {
 
 type feedResource struct {
 	Feed
-	URL string `json:"url,omitempty"`
+	URL  string               `json:"url,omitempty"`
+	Days map[string][]DayKind `json:"days,omitempty"`
 }
 
 type calendarResources struct {
@@ -236,6 +238,78 @@ func (a calendarApp) bringer(q api.Query, e *Event) bool {
 	return model.othersInvite(e.ID) && (e.guestsWithoutInvite() || model.Listed(a.directory(), q.Actor.Email, e.ID))
 }
 
+func (r calendarResources) eventWhere(keep func(a calendarApp, q api.Query, e *Event) bool) func(*Model, api.Query) func(string) bool {
+	return func(m *Model, q api.Query) func(string) bool {
+		a := r.app.at(m)
+		return func(key string) bool {
+			e := a.viewerEvent(q, key)
+			return e != nil && keep(a, q, e)
+		}
+	}
+}
+
+func dateParam(name, value string) (string, error) {
+	if _, err := time.Parse(DateFormat, value); err != nil {
+		return "", access.Invalid("%s %q is not a date (YYYY-MM-DD)", name, value)
+	}
+	return value, nil
+}
+
+func (r calendarResources) eventFilters() map[string]api.Filter[*Model] {
+	return map[string]api.Filter[*Model]{
+		"from": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+			from, err := dateParam("from", value)
+			if err != nil {
+				return nil, err
+			}
+			return r.eventWhere(func(_ calendarApp, _ api.Query, e *Event) bool { return e.end.Format(DateFormat) >= from })(m, q), nil
+		},
+		"to": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+			to, err := dateParam("to", value)
+			if err != nil {
+				return nil, err
+			}
+			return r.eventWhere(func(_ calendarApp, _ api.Query, e *Event) bool { return e.start.Format(DateFormat) <= to })(m, q), nil
+		},
+		"calendar": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+			a := r.app.at(m)
+			a.index()
+			if _, known := a.pinned.scope.feeds[value]; !known {
+				return nil, access.Invalid("no calendar %s", value)
+			}
+			f, ok := a.feedOf(q, value)
+			if !ok {
+				return nil, access.Invalid("calendar %s is not yours", value)
+			}
+			classrooms, tags := a.model().calendarView(a.directory(), f.Feed)
+			return r.eventWhere(func(a calendarApp, q api.Query, e *Event) bool {
+				return a.model().InView(e, a.model().AnswerOf(q.Actor.Email, e.ID), classrooms, tags)
+			})(m, q), nil
+		},
+		"waiting": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+			if value != "" && value != "true" {
+				return nil, access.Invalid("waiting takes no value")
+			}
+			today := q.Now.Format(DateFormat)
+			return r.eventWhere(func(a calendarApp, q api.Query, e *Event) bool {
+				return e.Invited && !e.Cancelled && a.model().AnswerOf(q.Actor.Email, e.ID) == "" && e.end.Format(DateFormat) >= today && !a.isHost(access.Actor{Email: q.Actor.Email}, e)
+			})(m, q), nil
+		},
+		"app": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+			return r.eventWhere(func(_ calendarApp, _ api.Query, e *Event) bool {
+				app, _ := EventPage(e)
+				return app == value
+			})(m, q), nil
+		},
+		"status": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+			if !strings.EqualFold(value, StatusPending) {
+				return nil, access.Invalid("status takes pending")
+			}
+			return r.eventWhere(func(_ calendarApp, _ api.Query, e *Event) bool { return e.Pending && !e.Declined && !e.Cancelled })(m, q), nil
+		},
+	}
+}
+
 func (r calendarResources) events() api.Type[*Model] {
 	stage := r.app.store.stage
 	editable := func(e *Event) eventBody {
@@ -292,6 +366,7 @@ func (r calendarResources) events() api.Type[*Model] {
 			}
 			return out
 		},
+		Filters: r.eventFilters(),
 		Relations: map[string]api.Relation[*Model]{
 			"hosts": {Type: "people", Many: true, List: func(m *Model, q api.Query, key string) []string {
 				a := r.app.at(m)
@@ -731,10 +806,13 @@ func (r calendarResources) feeds() api.Type[*Model] {
 			return ok
 		},
 		Get: func(m *Model, q api.Query, key string) (any, bool) {
-			f, ok := r.app.at(m).feedOf(q, key)
+			a := r.app.at(m)
+			f, ok := a.feedOf(q, key)
 			if !ok {
 				return nil, false
 			}
+			classrooms, _ := a.model().calendarView(a.directory(), f.Feed)
+			f.Days = a.model().dayKinds(classrooms)
 			return *f, true
 		},
 		List: func(m *Model, q api.Query) []string {

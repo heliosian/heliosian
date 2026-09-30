@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/api"
 	"heliosian/internal/blob"
 	"heliosian/internal/feedback"
 	"heliosian/internal/serve"
+	"heliosian/internal/store"
 )
 
 const (
@@ -25,23 +27,17 @@ type feedbackAdmin struct {
 	filer  *feedback.GitHubApp
 }
 
-func RegisterFeedbackAdmin(mux *http.ServeMux, s *Store, bucket *blob.Bucket, filer *feedback.GitHubApp) {
-	a := feedbackAdmin{store: s, bucket: bucket, filer: filer}
-	mux.HandleFunc("GET /api/admin/feedback", serve.JSON(a.list))
-	mux.HandleFunc("GET /api/admin/feedback/{id}", serve.JSON(a.one))
-	mux.HandleFunc("GET /api/admin/feedback/{id}/screenshot", a.screenshot)
-	mux.HandleFunc("POST /api/admin/feedback/{id}/file", serve.JSON(a.file))
-	mux.HandleFunc("POST /api/admin/feedback/{id}/dismiss", serve.JSON(a.dismiss))
+type FeedbackHooks struct {
+	admin feedbackAdmin
 }
 
-type reportListView struct {
-	Reports []reportSummary `json:"reports"`
-	CanFile bool            `json:"canFile"`
-	Repo    string          `json:"repo"`
+func RegisterFeedbackAdmin(mux *http.ServeMux, s *Store, bucket *blob.Bucket, filer *feedback.GitHubApp) FeedbackHooks {
+	a := feedbackAdmin{store: s, bucket: bucket, filer: filer}
+	mux.HandleFunc("GET /api/admin/feedback/{id}/screenshot", a.screenshot)
+	return FeedbackHooks{admin: a}
 }
 
 type reportSummary struct {
-	ID        string `json:"id"`
 	Received  string `json:"received"`
 	App       string `json:"app"`
 	AppName   string `json:"appName"`
@@ -79,7 +75,6 @@ type issueDraft struct {
 
 func reportSummaryOf(r Report) reportSummary {
 	return reportSummary{
-		ID:        r.ID,
 		Received:  r.At.In(Location).Format("2006-01-02 15:04"),
 		App:       r.App,
 		AppName:   r.AppName,
@@ -91,27 +86,61 @@ func reportSummaryOf(r Report) reportSummary {
 	}
 }
 
-func (a feedbackAdmin) list(r *http.Request, _ serve.None) (reportListView, error) {
-	m := a.store.Model()
-	if err := requireSuperAdmin(superActor(m, r)); err != nil {
-		return reportListView{}, err
+func (h FeedbackHooks) Resources() []api.Type[*Model] {
+	a := h.admin
+	triages := func(m *Model, q api.Query, key string) bool {
+		_, ok := m.Feedback.Report(key)
+		return ok && q.Actor.May(Triage)
 	}
-	out := []reportSummary{}
-	for _, report := range m.Feedback.Reports() {
-		out = append(out, reportSummaryOf(report))
-	}
-	return reportListView{Reports: out, CanFile: a.filer != nil, Repo: feedback.Repo}, nil
+	return []api.Type[*Model]{{
+		Name:  "feedback-reports",
+		Shape: reportDetail{},
+		Has: func(m *Model, key string) bool {
+			_, ok := m.Feedback.Report(key)
+			return ok
+		},
+		Get: func(m *Model, q api.Query, key string) (any, bool) {
+			report, ok := m.Feedback.Report(key)
+			if !ok || !q.Actor.May(Triage) {
+				return reportDetail{}, false
+			}
+			return reportDetailOf(report), true
+		},
+		List: func(m *Model, q api.Query) []string {
+			out := []string{}
+			if !q.Actor.May(Triage) {
+				return out
+			}
+			for _, report := range m.Feedback.Reports() {
+				out = append(out, report.ID)
+			}
+			return out
+		},
+		Aliases: func(m *Model) map[string]string {
+			out := map[string]string{}
+			for old, target := range m.Feedback.aliases {
+				out[old] = target
+			}
+			return out
+		},
+		Actions: map[string]api.Action[*Model]{
+			"file": api.Do(func(m *Model, q api.Query, key string) bool {
+				report, ok := m.Feedback.Report(key)
+				return ok && a.filer != nil && q.Actor.May(Triage) && report.Status != ReportStatusFiled
+			}, func(wr api.Write[*Model], in issueDraft) error {
+				ops, err := a.file(wr, in)
+				return a.store.stage(wr, feedbackAppName, ops, err)
+			}),
+			"dismiss": api.Do(triages, func(wr api.Write[*Model], _ serve.None) error {
+				ops, err := wr.S.Feedback.dismissed(wr.Query.Actor, wr.ID, time.Now())
+				logAfter(wr, "feedback: dismissed", "id", wr.ID)
+				return a.store.stage(wr, feedbackAppName, ops, err)
+			}),
+		},
+	}}
 }
 
-func (a feedbackAdmin) one(r *http.Request, _ serve.None) (reportDetail, error) {
-	m := a.store.Model()
-	if err := requireSuperAdmin(superActor(m, r)); err != nil {
-		return reportDetail{}, err
-	}
-	report, ok := m.Feedback.Report(r.PathValue("id"))
-	if !ok {
-		return reportDetail{}, access.Missing("no such report")
-	}
+func reportDetailOf(report Report) reportDetail {
 	title, body, issueType, labels := StripReport(report)
 	return reportDetail{
 		reportSummary: reportSummaryOf(report),
@@ -128,7 +157,7 @@ func (a feedbackAdmin) one(r *http.Request, _ serve.None) (reportDetail, error) 
 		Errors:        report.Errors,
 		Screenshot:    report.Screenshot != "",
 		Draft:         issueDraft{Title: title, Body: body, Type: issueType, Labels: labels, Repo: feedback.Repo},
-	}, nil
+	}
 }
 
 func (a feedbackAdmin) screenshot(w http.ResponseWriter, r *http.Request) {
@@ -156,10 +185,9 @@ func (a feedbackAdmin) screenshot(w http.ResponseWriter, r *http.Request) {
 	serve.Content(w, r, report.Screenshot, content)
 }
 
-func (a feedbackAdmin) file(r *http.Request, in issueDraft) (map[string]string, error) {
-	m := a.store.Model()
-	actor := superActor(m, r)
-	report, err := m.Feedback.filing(actor, r.PathValue("id"))
+func (a feedbackAdmin) file(wr api.Write[*Model], in issueDraft) ([]store.Op, error) {
+	actor, r := wr.Query.Actor, wr.Request
+	report, err := wr.S.Feedback.filing(actor, wr.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -188,30 +216,6 @@ func (a feedbackAdmin) file(r *http.Request, in issueDraft) (map[string]string, 
 		slog.ErrorContext(r.Context(), "feedback: filing failed", "error", err, "id", report.ID)
 		return nil, access.Refuse(http.StatusBadGateway, "GitHub would not take the issue: %s", err)
 	}
-	if err := a.markFiled(r.Context(), actor, report.ID, issue); err != nil {
-		slog.ErrorContext(r.Context(), "feedback: mark filed", "error", err, "id", report.ID, "issue", issue)
-		return nil, access.Refuse(http.StatusInternalServerError, "the issue is filed at %s but the report could not be marked: %s", issue, err)
-	}
-	return map[string]string{"issue": issue}, nil
-}
-
-func (a feedbackAdmin) markFiled(ctx context.Context, actor access.Actor, id, issue string) error {
-	ops, err := a.store.Model().Feedback.filed(actor, id, issue, time.Now())
-	if err != nil {
-		return err
-	}
-	return a.store.Commit(ctx, actor, feedbackAppName, ops...)
-}
-
-func (a feedbackAdmin) dismiss(r *http.Request, _ serve.None) (serve.None, error) {
-	m := a.store.Model()
-	actor := superActor(m, r)
-	ops, err := m.Feedback.dismissed(actor, r.PathValue("id"), time.Now())
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.store.Commit(r.Context(), actor, feedbackAppName, ops...); err != nil {
-		return serve.None{}, err
-	}
-	return serve.None{}, nil
+	logAfter(wr, "feedback: filed", "id", report.ID, "issue", issue)
+	return wr.S.Feedback.filed(actor, report.ID, issue, time.Now())
 }

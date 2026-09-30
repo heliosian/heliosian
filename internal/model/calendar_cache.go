@@ -71,16 +71,6 @@ func carryInvite(_ store.Tables, before, after store.Row) []store.Op {
 	return []store.Op{store.Update(RSVPsTab, was, store.Row{"Email": after["Email"]})}
 }
 
-func (m *Calendar) pending() []Approval {
-	out := []Approval{}
-	for _, e := range m.Pending {
-		if e.Pending && !e.Declined && !e.Cancelled {
-			out = append(out, Approval{App: "when", Title: e.Title, Start: e.Start, Path: EventPath(e)})
-		}
-	}
-	return out
-}
-
 func resolveImages(ctx context.Context, images blob.Checker, model *Calendar) {
 	if images == nil {
 		return

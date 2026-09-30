@@ -1,7 +1,6 @@
 package model
 
 import (
-	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -15,32 +14,37 @@ import (
 )
 
 type linkEdit struct {
-	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	URL         string `json:"url"`
 	Image       string `json:"image"`
 	Category    string `json:"category"`
 	Visible     bool   `json:"visible"`
+	Order       string `json:"order"`
 	Rules       []Rule `json:"rules"`
 }
 
 type categoryEdit struct {
-	ID    string `json:"id"`
 	Title string `json:"title"`
 	Emoji string `json:"emoji"`
 	Style string `json:"style"`
 	Max   string `json:"max"`
+	Order string `json:"order"`
 	Rules []Rule `json:"rules"`
 }
 
 type visibilityEdit struct {
-	App        string   `json:"app"`
 	Visibility string   `json:"visibility"`
 	Emails     []string `json:"emails"`
 	Tagline    string   `json:"tagline"`
 	Name       string   `json:"name"`
-	Rules      *[]Rule  `json:"rules"`
+	Order      string   `json:"order"`
+	Rules      []Rule   `json:"rules"`
+}
+
+type widgetEdit struct {
+	Order string `json:"order"`
+	Rules []Rule `json:"rules"`
 }
 
 var ConfigureHome = access.Named("home.configure")
@@ -54,11 +58,46 @@ func requireHomeAdmin(actor access.Actor) error {
 	return nil
 }
 
+func sentOrder(cell string) (string, error) {
+	order, err := checkOrder(cell)
+	if err != nil {
+		return "", access.Invalid("order %s", err)
+	}
+	return order, nil
+}
+
+func (m *Home) appOrders() []string {
+	keys := []string{}
+	for _, app := range orderedApps(m) {
+		if v, ok := m.Visibility[app.Key]; ok {
+			keys = append(keys, v.Order)
+		}
+	}
+	return keys
+}
+
 func (m *Home) discover() ([]store.Op, []App) {
 	found := m.MissingVisibility()
 	ops := []store.Op{}
+	keys := m.appOrders()
 	for _, app := range found {
-		ops = append(ops, store.Insert(homeVisibilityTab, store.Row{"App": app.Key, "Visibility": VisibleToList, "Tagline": app.Tagline, "Name": app.Name}))
+		order := keyAfter(keys)
+		keys = append(keys, order)
+		ops = append(ops, store.Insert(homeVisibilityTab, store.Row{"App": app.Key, "Visibility": VisibleToList, "Tagline": app.Tagline, "Name": app.Name, store.OrderColumn: order}))
+	}
+	widgets := []string{}
+	for _, name := range m.WidgetOrder {
+		if key := m.widgetKeys[name]; key != "" {
+			widgets = append(widgets, key)
+		}
+	}
+	for _, name := range m.WidgetOrder {
+		if m.widgetKeys[name] != "" {
+			continue
+		}
+		order := keyAfter(widgets)
+		widgets = append(widgets, order)
+		ops = append(ops, store.Insert(homeWidgetsTab, store.Row{"Widget": name, store.OrderColumn: order}))
 	}
 	return ops, found
 }
@@ -66,13 +105,13 @@ func (m *Home) discover() ([]store.Op, []App) {
 func (m *Home) grant(actor access.Actor, appKey string) ([]store.Op, error) {
 	app, ok := appByKey(appKey)
 	if !ok {
-		return nil, fmt.Errorf("no app %q", appKey)
+		return nil, access.Invalid("no app %q", appKey)
 	}
 	v := appVisibilityOf(m, app)
 	if slices.Contains(v.Emails, actor.Email) {
 		return nil, nil
 	}
-	return []store.Op{store.Upsert(homeVisibilityTab, store.Row{"App": app.Key}, store.Row{"Visibility": v.Mode, "Emails": joinVisibilityEmails(mail.NormalizeAll(append(v.Emails, actor.Email)))})}, nil
+	return []store.Op{store.Update(homeVisibilityTab, store.Row{"App": app.Key}, store.Row{"Emails": joinVisibilityEmails(mail.NormalizeAll(append(v.Emails, actor.Email)))})}, nil
 }
 
 func (m *Model) checkHomeRules(existing, rules []Rule, actor string) ([]Rule, error) {
@@ -115,7 +154,7 @@ func audienceOps(key string, was, rules []Rule) []store.Op {
 	return ops
 }
 
-func (m *Model) saveHomeWidgetAudience(actor access.Actor, widget string, rules []Rule) ([]store.Op, error) {
+func (m *Model) saveHomeWidget(actor access.Actor, widget string, in widgetEdit) ([]store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
 		return nil, err
 	}
@@ -124,33 +163,17 @@ func (m *Model) saveHomeWidgetAudience(actor access.Actor, widget string, rules 
 	}
 	key := thingWidget + widget
 	was := rulesOf(m.Home, key)
-	checked, err := m.checkHomeRules(was, rules, actor.Email)
+	checked, err := m.checkHomeRules(was, in.Rules, actor.Email)
 	if err != nil {
 		return nil, err
 	}
-	return audienceOps(key, was, checked), nil
-}
-
-func (m *Home) setWidgetOrder(actor access.Actor, widgets []string) ([]store.Op, error) {
-	if err := requireHomeAdmin(actor); err != nil {
+	order, err := sentOrder(in.Order)
+	if err != nil {
 		return nil, err
 	}
-	got, want := slices.Clone(widgets), slices.Clone(HomeWidgets)
-	slices.Sort(got)
-	slices.Sort(want)
-	if !slices.Equal(got, want) {
-		return nil, access.Invalid("the order must list every widget once: %s", strings.Join(HomeWidgets, ", "))
-	}
-	current := []string{}
-	for _, name := range widgets {
-		current = append(current, m.widgetKeys[name])
-	}
-	next := store.Order(current)
-	ops := []store.Op{}
-	for i, name := range widgets {
-		if next[i] != current[i] {
-			ops = append(ops, store.Upsert(homeWidgetsTab, store.Row{"Widget": name}, store.Row{store.OrderColumn: next[i]}))
-		}
+	ops := audienceOps(key, was, checked)
+	if order != m.Home.widgetKeys[widget] {
+		ops = append(ops, store.Upsert(homeWidgetsTab, store.Row{"Widget": widget}, store.Row{store.OrderColumn: order}))
 	}
 	return ops, nil
 }
@@ -196,44 +219,15 @@ func (m *Home) taken(key string) bool {
 	return m.category(key) != nil || m.link(key) != nil
 }
 
-func categoryOrder(m *Home, order []string, events store.Row) ([]store.Op, error) {
-	byID := map[string]HomeCategory{}
-	for _, c := range m.Categories {
-		byID[c.ID] = c
+func linkOrders(c *HomeCategory) []string {
+	keys := []string{}
+	for _, l := range c.Links {
+		keys = append(keys, l.Order)
 	}
-	if len(order) != len(byID) {
-		return nil, access.Invalid("the order must name every category exactly once")
-	}
-	named := []string{}
-	current := []string{}
-	virtual := []bool{}
-	for _, raw := range order {
-		key, _ := id.Parse(raw)
-		c, ok := byID[key]
-		if !ok {
-			return nil, access.Invalid("unknown category %s", raw)
-		}
-		delete(byID, key)
-		named = append(named, key)
-		current = append(current, c.order)
-		virtual = append(virtual, c.Virtual)
-	}
-	placed := store.Order(current)
-	ops := []store.Op{}
-	for i, key := range named {
-		switch {
-		case virtual[i]:
-			row := maps.Clone(events)
-			row[store.OrderColumn] = placed[i]
-			ops = append(ops, store.Insert(homeCategoriesTab, row))
-		case placed[i] != current[i]:
-			ops = append(ops, store.Update(homeCategoriesTab, store.Row{"Category ID": key}, store.Row{store.OrderColumn: placed[i]}))
-		}
-	}
-	return ops, nil
+	return keys
 }
 
-func (all *Model) saveHomeLink(actor access.Actor, in linkEdit) (string, string, []store.Op, error) {
+func (all *Model) saveHomeLink(actor access.Actor, key string, in linkEdit, taken func(string) bool) (string, string, []store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
 		return "", "", nil, err
 	}
@@ -244,8 +238,8 @@ func (all *Model) saveHomeLink(actor access.Actor, in linkEdit) (string, string,
 	m := all.Home
 	var existing *HomeLink
 	var was []Rule
-	if strings.TrimSpace(in.ID) != "" {
-		if existing = m.link(in.ID); existing == nil {
+	if key != "" {
+		if existing = m.link(key); existing == nil {
 			return "", "", nil, access.Missing("no such link")
 		}
 		was = existing.Rules
@@ -255,22 +249,29 @@ func (all *Model) saveHomeLink(actor access.Actor, in linkEdit) (string, string,
 		return "", "", nil, err
 	}
 	category := m.category(in.Category)
-	if category == nil {
-		return "", "", nil, access.Invalid("no such category")
+	if category == nil || category.Style == StyleEvents || category.Style == StyleApps {
+		return "", "", nil, access.Invalid("no such category for links")
 	}
 	row := store.Row{
 		"Title": title, "Description": strings.TrimSpace(in.Description), "URL": strings.TrimSpace(in.URL),
 		"Image": strings.TrimSpace(in.Image), "Category": category.ID, "Visible": cells.YesNoCell(in.Visible),
 	}
+	switch {
+	case existing != nil && existing.Category == category.ID:
+		order, err := sentOrder(in.Order)
+		if err != nil {
+			return "", "", nil, err
+		}
+		row[store.OrderColumn] = order
+	default:
+		row[store.OrderColumn] = keyAfter(linkOrders(category))
+	}
 	if existing == nil {
-		key := id.New(m.taken)
+		key := id.New(taken)
 		row["Link ID"] = key
 		row["Added By"] = actor.Email
 		row["Added"] = time.Now().Format(linkAddedFormat)
 		return "add", key, append([]store.Op{store.Insert(homeLinksTab, row)}, audienceOps(thingLink+key, nil, rules)...), nil
-	}
-	if existing.Category != category.ID {
-		row[store.OrderColumn] = ""
 	}
 	return "edit", existing.ID, append([]store.Op{store.Update(homeLinksTab, store.Row{"Link ID": existing.ID}, row)}, audienceOps(thingLink+existing.ID, was, rules)...), nil
 }
@@ -286,7 +287,7 @@ func (m *Home) deleteLink(actor access.Actor, key string) ([]store.Op, error) {
 	return []store.Op{store.Delete(homeLinksTab, store.Row{"Link ID": link.ID})}, nil
 }
 
-func (all *Model) saveHomeCategory(actor access.Actor, in categoryEdit) (string, string, []store.Op, error) {
+func (all *Model) saveHomeCategory(actor access.Actor, key string, in categoryEdit, taken func(string) bool) (string, string, []store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
 		return "", "", nil, err
 	}
@@ -297,8 +298,8 @@ func (all *Model) saveHomeCategory(actor access.Actor, in categoryEdit) (string,
 	m := all.Home
 	var existing *HomeCategory
 	var was []Rule
-	if strings.TrimSpace(in.ID) != "" {
-		if existing = m.category(in.ID); existing == nil {
+	if key != "" {
+		if existing = m.category(key); existing == nil {
 			return "", "", nil, access.Missing("no such category")
 		}
 		was = existing.Rules
@@ -334,67 +335,21 @@ func (all *Model) saveHomeCategory(actor access.Actor, in categoryEdit) (string,
 	}
 	cells := store.Row{"Title": title, "Emoji": emoji, "Style": style, "Max": strings.TrimSpace(in.Max)}
 	if existing == nil {
-		key := id.New(m.taken)
+		orders := []string{}
+		for _, c := range m.Categories {
+			orders = append(orders, c.Order)
+		}
+		key := id.New(taken)
 		cells["Category ID"] = key
+		cells[store.OrderColumn] = keyAfter(orders)
 		return "add", key, append([]store.Op{store.Insert(homeCategoriesTab, cells)}, audienceOps(thingCategory+key, nil, rules)...), nil
 	}
-	changed := audienceOps(thingCategory+existing.ID, was, rules)
-	if !existing.Virtual {
-		return "edit", existing.ID, append([]store.Op{store.Update(homeCategoriesTab, store.Row{"Category ID": existing.ID}, cells)}, changed...), nil
-	}
-	cells["Category ID"] = existing.ID
-	order := []string{}
-	for _, cat := range m.Categories {
-		order = append(order, cat.ID)
-	}
-	ops, err := categoryOrder(m, order, cells)
+	order, err := sentOrder(in.Order)
 	if err != nil {
 		return "", "", nil, err
 	}
-	return "edit", existing.ID, append(ops, changed...), nil
-}
-
-func (m *Home) reorderCategories(actor access.Actor, order []string) ([]store.Op, error) {
-	if err := requireHomeAdmin(actor); err != nil {
-		return nil, err
-	}
-	return categoryOrder(m, order, store.Row{"Category ID": EventsCategoryID, "Title": EventsCategoryTitle, "Emoji": EventsCategoryEmoji, "Style": StyleEvents})
-}
-
-func (m *Home) moveLink(actor access.Actor, key string, by int) ([]store.Op, error) {
-	if err := requireHomeAdmin(actor); err != nil {
-		return nil, err
-	}
-	if by == 0 {
-		return nil, access.Invalid("by must not be 0")
-	}
-	link := m.link(key)
-	if link == nil {
-		return nil, access.Invalid("unknown link %s", key)
-	}
-	var keys, current []string
-	at := -1
-	for i, l := range m.category(link.Category).Links {
-		if l.ID == link.ID {
-			at = i
-		}
-		keys, current = append(keys, l.ID), append(current, l.order)
-	}
-	to := at + by
-	if to < 0 || to >= len(keys) {
-		return nil, nil
-	}
-	movedKey, movedOrder := keys[at], current[at]
-	keys = slices.Insert(slices.Delete(keys, at, at+1), to, movedKey)
-	current = slices.Insert(slices.Delete(current, at, at+1), to, movedOrder)
-	placed := store.Order(current)
-	ops := []store.Op{}
-	for i, k := range keys {
-		if placed[i] != current[i] {
-			ops = append(ops, store.Update(homeLinksTab, store.Row{"Link ID": k}, store.Row{store.OrderColumn: placed[i]}))
-		}
-	}
-	return ops, nil
+	cells[store.OrderColumn] = order
+	return "edit", existing.ID, append([]store.Op{store.Update(homeCategoriesTab, store.Row{"Category ID": existing.ID}, cells)}, audienceOps(thingCategory+existing.ID, was, rules)...), nil
 }
 
 func (m *Home) deleteCategory(actor access.Actor, key string) ([]store.Op, error) {
@@ -414,66 +369,35 @@ func (m *Home) deleteCategory(actor access.Actor, key string) ([]store.Op, error
 	return []store.Op{store.Delete(homeCategoriesTab, store.Row{"Category ID": cat.ID})}, nil
 }
 
-func (m *Model) setHomeVisibility(actor access.Actor, in visibilityEdit) (string, AppVisibilityRow, []store.Op, error) {
+func (m *Model) setHomeVisibility(actor access.Actor, key string, in visibilityEdit, sent map[string]bool) (AppVisibilityRow, []store.Op, error) {
 	if err := requireHomeAdmin(actor); err != nil {
-		return "", AppVisibilityRow{}, nil, err
+		return AppVisibilityRow{}, nil, err
 	}
-	key := strings.ToLower(strings.TrimSpace(in.App))
-	if !appKnown(key) {
-		return "", AppVisibilityRow{}, nil, access.Invalid("app must be one of %s", strings.Join(appKeys(), ", "))
+	app, ok := appByKey(key)
+	if !ok {
+		return AppVisibilityRow{}, nil, access.Invalid("app must be one of %s", strings.Join(appKeys(), ", "))
 	}
 	if in.Visibility != VisibleToEveryone && in.Visibility != VisibleToList {
-		return "", AppVisibilityRow{}, nil, access.Invalid("visibility must be %s or %s", VisibleToEveryone, VisibleToList)
+		return AppVisibilityRow{}, nil, access.Invalid("visibility must be %s or %s", VisibleToEveryone, VisibleToList)
 	}
 	tagline := strings.TrimSpace(in.Tagline)
-	if tagline == "" || len(tagline) > maxHomeDescLength {
-		return "", AppVisibilityRow{}, nil, access.Invalid("a short tagline is required")
+	if (sent["tagline"] && tagline == "") || len(tagline) > maxHomeDescLength {
+		return AppVisibilityRow{}, nil, access.Invalid("a short tagline is required")
 	}
 	name := strings.TrimSpace(in.Name)
-	if name == "" || len(name) > maxHomeTitleLength {
-		return "", AppVisibilityRow{}, nil, access.Invalid("a short name is required")
+	if (sent["name"] && name == "") || len(name) > maxHomeTitleLength {
+		return AppVisibilityRow{}, nil, access.Invalid("a short name is required")
 	}
-	app, _ := appByKey(key)
+	order, err := sentOrder(in.Order)
+	if err != nil {
+		return AppVisibilityRow{}, nil, err
+	}
 	was := appVisibilityOf(m.Home, app)
-	rules := was.Rules
-	if in.Rules != nil {
-		checked, err := m.checkHomeRules(was.Rules, *in.Rules, actor.Email)
-		if err != nil {
-			return "", AppVisibilityRow{}, nil, err
-		}
-		rules = checked
+	rules, err := m.checkHomeRules(was.Rules, in.Rules, actor.Email)
+	if err != nil {
+		return AppVisibilityRow{}, nil, err
 	}
-	v := AppVisibilityRow{Mode: in.Visibility, Emails: mail.NormalizeAll(in.Emails), Tagline: tagline, Name: name, Order: was.Order, Rules: rules}
+	v := AppVisibilityRow{Mode: in.Visibility, Emails: mail.NormalizeAll(in.Emails), Tagline: tagline, Name: name, Order: order, Rules: rules}
 	ops := append([]store.Op{store.Upsert(homeVisibilityTab, store.Row{"App": key}, v.cells())}, audienceOps(thingApp+key, was.Rules, rules)...)
-	return key, v, ops, nil
-}
-
-func (m *Home) setAppOrder(actor access.Actor, order []string) ([]store.Op, error) {
-	if err := requireHomeAdmin(actor); err != nil {
-		return nil, err
-	}
-	keys := []string{}
-	for _, key := range order {
-		keys = append(keys, strings.ToLower(strings.TrimSpace(key)))
-	}
-	slices.Sort(keys)
-	want := appKeys()
-	slices.Sort(want)
-	if !slices.Equal(keys, want) {
-		return nil, access.Invalid("the order must list every app once: %s", strings.Join(appKeys(), ", "))
-	}
-	apps := []App{}
-	current := []string{}
-	for _, key := range order {
-		app, _ := appByKey(strings.ToLower(strings.TrimSpace(key)))
-		apps, current = append(apps, app), append(current, appVisibilityOf(m, app).Order)
-	}
-	next := store.Order(current)
-	ops := []store.Op{}
-	for i, app := range apps {
-		if next[i] != current[i] {
-			ops = append(ops, store.Upsert(homeVisibilityTab, store.Row{"App": app.Key}, store.Row{"Visibility": appVisibilityOf(m, app).Mode, store.OrderColumn: next[i]}))
-		}
-	}
-	return ops, nil
+	return v, ops, nil
 }

@@ -13,7 +13,6 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/id"
 	"heliosian/internal/imagesearch"
-	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
@@ -110,7 +109,6 @@ func RegisterCalendar(mux *http.ServeMux, d CalendarDeps) CalendarHooks {
 	for _, page := range eventPages {
 		mux.HandleFunc("GET "+page, a.eventPage)
 	}
-	mux.HandleFunc("GET /api/apps/rsvp", serve.JSON(a.rsvps))
 	mux.HandleFunc("GET /api/when/invites/options", serve.JSON(a.groupOptions))
 	mux.HandleFunc("POST /api/when/invites/preview", serve.JSON(a.groupPreview))
 	mux.HandleFunc("GET /ext/{token}", a.extPage)
@@ -126,11 +124,7 @@ func RegisterCalendar(mux *http.ServeMux, d CalendarDeps) CalendarHooks {
 	mux.HandleFunc("GET /open/banner/{id...}", a.banner)
 	mux.HandleFunc("POST /hooks/replies/mime", a.replies)
 	mux.HandleFunc("POST /hooks/events", a.deliveryEvents)
-	answer := func(ctx context.Context, email, id, answer string) error {
-		actor := a.as(mail.Normalize(email))
-		return a.recordBy(ctx, actor, actor.Email, id, answer, ViaPage, true, false)
-	}
-	return CalendarHooks{Answer: answer, MakeDefault: a.makeDefault, RSVPs: serve.JSON(a.rsvps), app: a}
+	return CalendarHooks{app: a}
 }
 
 func (a calendarApp) page(w http.ResponseWriter, r *http.Request) {
@@ -177,35 +171,11 @@ type feedBody struct {
 }
 
 type CalendarHooks struct {
-	Answer      Answerer
-	MakeDefault func(ctx context.Context, email, token string) error
-	RSVPs       http.HandlerFunc
-	app         calendarApp
-}
-
-func (a calendarApp) makeDefault(ctx context.Context, email, token string) error {
-	actor := a.as(mail.Normalize(email))
-	ops, tokens, err := a.defaultOps(actor, token)
-	if err != nil {
-		return err
-	}
-	if err := a.saveOrder(ctx, actor, tokens, ops); err != nil {
-		return err
-	}
-	slog.InfoContext(ctx, "calendar: default calendar set", "actor", actor.Email, "token", token)
-	return nil
+	app calendarApp
 }
 
 type tokenBody struct {
 	Token string `json:"token"`
-}
-
-func (a calendarApp) saveOrder(ctx context.Context, actor access.Actor, tokens []string, ops []store.Op) error {
-	if err := a.commit(ctx, actor, ops...); err != nil {
-		return err
-	}
-	slog.InfoContext(ctx, "calendar: feeds ordered", "actor", actor.Email, "order", strings.Join(tokens, ","))
-	return nil
 }
 
 type tokensBody struct {

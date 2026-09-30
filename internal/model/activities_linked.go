@@ -124,18 +124,3 @@ func (m *Activities) magicTags(directory *Directory, now time.Time, chairs func(
 	}
 	return out
 }
-
-func (m *Activities) pending() []Approval {
-	out := []Approval{}
-	var walk func([]*Activity)
-	walk = func(list []*Activity) {
-		for _, a := range list {
-			if a.Status == StatusPending {
-				out = append(out, Approval{App: "team", Title: a.Title, Start: a.Start, Path: m.PathOf(a)})
-			}
-			walk(a.Children)
-		}
-	}
-	walk(m.Activities)
-	return out
-}

@@ -119,13 +119,3 @@ func (m *Parties) MagicTags(directory *Directory, email string, now time.Time) [
 	}
 	return out
 }
-
-func (m *Parties) pending() []Approval {
-	out := []Approval{}
-	for _, p := range m.Parties {
-		if p.Status == StatusPending {
-			out = append(out, Approval{App: "celebrate", Title: p.Title, Start: p.Start, Path: m.PathOf(p)})
-		}
-	}
-	return out
-}

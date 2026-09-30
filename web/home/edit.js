@@ -7,6 +7,8 @@ import {createPersonPicker} from '/picker.js';
 import {listed} from '/directory.js';
 import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
+import {act, create, remove} from '/data.js';
+import {movedKey} from '/order.js';
 import {rulesEditor} from '/rules.js';
 import {tabStrip} from '/tabs.js';
 import {widgetRows} from './widgets.js';
@@ -133,13 +135,12 @@ let linkAudience = null;
 let categoryAudience = null;
 let appAudience = null;
 let widgetAudience = null;
-let editingWidget = '';
+let editingWidget = null;
 
-export function openWidgetAudience(key, title) {
-  editingWidget = key;
-  const rules = ((state.model.widgets || {})[key] || {}).rules || [];
+export function openWidgetAudience(widget, title) {
+  editingWidget = widget;
   document.querySelector('#widget-modal-title').textContent = `Who sees ${title}`;
-  widgetAudience = audienceCard(document.querySelector('#widget-audience'), rules, 'No rules means everyone.', 'widget:' + key, false);
+  widgetAudience = audienceCard(document.querySelector('#widget-audience'), widget.rules, 'No rules means everyone.', 'widget:' + widget.key, false);
   setStatus('#widget-status', '');
   widgetModal.hidden = false;
 }
@@ -148,7 +149,7 @@ async function saveWidgetAudience(e) {
   e.preventDefault();
   setStatus('#widget-status', 'Saving…');
   try {
-    await api('POST', '/api/apps/widgets/audience', {widget: editingWidget, rules: widgetAudience.rules});
+    await act('home-widgets', editingWidget.id, 'edit', {rules: widgetAudience.rules});
     closeModals();
     await load();
   } catch (err) {
@@ -236,41 +237,9 @@ function closeModals() {
   widgetModal.hidden = true;
 }
 
-export async function moveLink(id, by) {
+async function move(type, list, from, to) {
   try {
-    await api('POST', '/api/apps/link/move', {id, by});
-    await load();
-  } catch (err) {
-    toast(err.message);
-  }
-}
-
-export async function moveApp(key, by) {
-  const keys = (state.model.apps || []).map(a => a.key);
-  const i = keys.indexOf(key);
-  const j = i + by;
-  if (i < 0 || j < 0 || j >= keys.length) {
-    return;
-  }
-  keys.splice(j, 0, ...keys.splice(i, 1));
-  try {
-    await api('POST', '/api/admin/visibility/order', {apps: keys});
-    await load();
-  } catch (err) {
-    toast(err.message);
-  }
-}
-
-export async function moveWidget(key, by) {
-  const keys = [...(state.model.widgetOrder || [])];
-  const i = keys.indexOf(key);
-  const j = i + by;
-  if (i < 0 || j < 0 || j >= keys.length) {
-    return;
-  }
-  keys.splice(j, 0, ...keys.splice(i, 1));
-  try {
-    await api('POST', '/api/apps/widgets/order', {widgets: keys});
+    await act(type, list[from].id, 'edit', {order: movedKey(list.map(item => item.order), from, to)});
     await load();
   } catch (err) {
     toast(err.message);
@@ -285,18 +254,17 @@ let appPicker = null;
 
 export async function openAppEditor(app) {
   editingApp = app;
-  const v = app.visibility || {visibility: 'list', emails: [], rules: []};
-  appMode = v.visibility;
-  appEmails = [...(v.emails || [])];
+  appMode = app.visibility;
+  appEmails = [...app.emails];
   document.querySelector('#app-modal-title').textContent = 'Edit ' + app.name;
   document.querySelector('#app-modal-mark').src = `/brand/apps/${app.key}.png` + (app.mark ? `?v=${app.mark}` : '');
   document.querySelector('#app-modal-host').textContent = appOrigin(app.key).replace(/^https?:\/\//, '');
-  document.querySelector('#app-name').value = v.name || app.name;
-  document.querySelector('#app-tagline').value = v.tagline || app.tagline;
+  document.querySelector('#app-name').value = app.name;
+  document.querySelector('#app-tagline').value = app.tagline;
   setStatus('#app-status', '');
   showTab('app', 'details');
   appModal.hidden = false;
-  appAudience = audienceCard(document.querySelector('#app-audience'), v.rules || [], 'The people these rules pick out. No rules and nobody named means nobody.', 'app:' + app.key, false);
+  appAudience = audienceCard(document.querySelector('#app-audience'), app.rules, 'The people these rules pick out. No rules and nobody named means nobody.', 'app:' + app.key, false);
   try {
     everyone = await listed();
   } catch (err) {
@@ -357,12 +325,35 @@ function addAppPerson() {
   renderAppPeople();
 }
 
+function sameRules(a, b) {
+  const plain = rules => rules.map(r => [r.kind, r.roles || [], r.search || '', r.classrooms || [], r.grades || [], r.tags || [], r.family || []]);
+  return JSON.stringify(plain(a)) === JSON.stringify(plain(b));
+}
+
+function changed(before, after) {
+  const out = {};
+  for (const [key, value] of Object.entries(after)) {
+    const same = key === 'rules' ? sameRules(before.rules, value) : JSON.stringify(before[key]) === JSON.stringify(value);
+    if (!same) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+async function edit(type, id, before, after) {
+  const body = changed(before, after);
+  if (Object.keys(body).length) {
+    await act(type, id, 'edit', body);
+  }
+}
+
 async function saveApp(e) {
   e.preventDefault();
   setStatus('#app-status', 'Saving…');
+  const app = editingApp;
   try {
-    await api('POST', '/api/admin/visibility', {
-      app: editingApp.key,
+    await edit('apps', app.id, {visibility: app.visibility, emails: app.emails, name: app.name, tagline: app.tagline, rules: app.rules}, {
       visibility: appMode,
       emails: appEmails,
       name: document.querySelector('#app-name').value,
@@ -434,14 +425,14 @@ function sortable(row, group, at, go) {
       return;
     }
     e.preventDefault();
-    const {at: from, go: move} = dragging;
+    const {at: from, go} = dragging;
     dragging = null;
     let to = zone(e) === 'before' ? at : at + 1;
     if (to > from) {
       to -= 1;
     }
     if (to !== from) {
-      move(to - from);
+      go(from, to);
     }
   });
 }
@@ -470,18 +461,17 @@ function itemRow(mark, title, meta, moves, edit, remove) {
 function categoryItems(category) {
   const group = el('div', 'item-children');
   const apps = category.style === 'apps';
-  const items = apps ? state.model.apps || [] : category.links;
+  const items = apps ? state.model.apps : category.links;
   items.forEach((item, at) => {
     const moves = {at, group: category.id};
     if (apps) {
       const img = el('img');
       img.src = `/brand/apps/${item.key}.png` + (item.mark ? `?v=${item.mark}` : '');
       img.alt = '';
-      moves.go = by => moveApp(item.key, by);
-      const v = item.visibility || {visibility: 'list', rules: [], emails: []};
+      moves.go = (from, to) => move('apps', items, from, to);
       let who = 'Shown to everyone';
-      if (v.visibility === 'list') {
-        who = (v.rules || []).length || (v.emails || []).length ? shownTo(v.rules, v.emails || []) : 'Shown to nobody';
+      if (item.visibility === 'list') {
+        who = item.rules.length || item.emails.length ? shownTo(item.rules, item.emails) : 'Shown to nobody';
       }
       group.append(itemRow(img, item.name, who, moves, () => openAppEditor(item), null));
       return;
@@ -492,7 +482,7 @@ function categoryItems(category) {
       mark.src = item.imageUrl;
       mark.alt = '';
     }
-    moves.go = by => moveLink(item.id, by);
+    moves.go = (from, to) => move('links', items, from, to);
     const meta = [item.visible === false ? 'Hidden' : '', shownTo(item.rules), item.url.replace(/^https?:\/\//, '')].filter(Boolean).join(' · ');
     group.append(itemRow(mark, item.title, meta, moves, () => openLinkEditor(item), () => removeLink(item)));
   });
@@ -538,8 +528,8 @@ function widgetSection() {
   const group = el('div', 'item-children');
   const rows = widgetRows();
   rows.forEach((w, at) => {
-    const moves = {at, group: 'widgets', go: by => moveWidget(w.key, by)};
-    group.append(itemRow(w.mark, w.name, w.meta, moves, () => openWidgetAudience(w.key, w.name), null));
+    const moves = {at, group: 'widgets', go: (from, to) => move('home-widgets', state.model.widgets, from, to)};
+    group.append(itemRow(w.mark, w.name, w.meta, moves, () => openWidgetAudience(w.widget, w.name), null));
   });
   section.append(heading, group);
   collapsible(section, heading, 'widgets', 'Widgets');
@@ -569,7 +559,7 @@ async function removeLink(link) {
   }
   setStatus('#items-status', 'Deleting…');
   try {
-    await api('DELETE', '/api/apps/link', {id: link.id});
+    await remove('links', link.id);
     setStatus('#items-status', '');
     await load();
   } catch (err) {
@@ -583,19 +573,11 @@ export function openEditPanel() {
   itemsModal.hidden = false;
 }
 
-async function moveCategory(id, by) {
-  const hidden = state.model.categories.filter(c => c.style === 'events').map(c => c.id);
-  const ids = linkCategories().map(c => c.id);
-  const at = ids.indexOf(id);
-  const to = at + by;
-  if (at < 0 || to < 0 || to >= ids.length) {
-    return;
-  }
-  ids.splice(to, 0, ...ids.splice(at, 1));
-  ids.push(...hidden);
+async function moveCategory(from, to) {
+  const categories = linkCategories();
   setStatus('#items-status', 'Saving…');
   try {
-    await api('POST', '/api/apps/categories/order', {ids});
+    await act('link-categories', categories[from].id, 'edit', {order: movedKey(categories.map(c => c.order), from, to)});
     setStatus('#items-status', '');
     await load();
   } catch (err) {
@@ -609,7 +591,7 @@ async function removeCategory(category) {
   }
   setStatus('#items-status', 'Deleting\u2026');
   try {
-    await api('DELETE', '/api/apps/category', {id: category.id});
+    await remove('link-categories', category.id);
     setStatus('#items-status', '');
     await load();
   } catch (err) {
@@ -625,11 +607,8 @@ function categoryRow(category, at) {
   const body = el('div', 'category-row-body');
   body.append(el('div', 'category-row-title', category.title));
   const limit = category.max ? ` \u00b7 shows ${category.max}` : '';
-  if (category.style === 'events') {
-    const n = (state.model.upcoming || []).length;
-    body.append(el('div', 'category-row-meta', `Upcoming events from Helios When \u00b7 ${n} ahead${limit}`));
-  } else if (category.style === 'apps') {
-    const n = (state.model.apps || []).length;
+  if (category.style === 'apps') {
+    const n = state.model.apps.length;
     body.append(el('div', 'category-row-meta', `The community apps \u00b7 ${n} you see${limit} \u00b7 ${shownTo(category.rules)}`));
   } else {
     const style = category.style === 'cards' ? 'Feature cards' : 'Compact tiles';
@@ -652,24 +631,29 @@ function categoryRow(category, at) {
   remove.addEventListener('click', () => removeCategory(category));
   actions.append(edit, remove);
   row.append(actions);
-  sortable(row, 'categories', at, by => moveCategory(category.id, by));
+  sortable(row, 'categories', at, moveCategory);
   return row;
 }
 
 async function saveLink(e) {
   e.preventDefault();
   setStatus('#link-status', 'Saving…');
+  const link = editingLink;
+  const fields = {
+    title: document.querySelector('#link-title').value,
+    description: document.querySelector('#link-description').value,
+    url: document.querySelector('#link-url').value,
+    image: linkImage.value(),
+    category: document.querySelector('#link-category').value,
+    visible: document.querySelector('#link-visible').checked,
+    rules: linkAudience.rules,
+  };
   try {
-    await api('POST', '/api/apps/link', {
-      id: editingLink ? editingLink.id : '',
-      title: document.querySelector('#link-title').value,
-      description: document.querySelector('#link-description').value,
-      url: document.querySelector('#link-url').value,
-      image: linkImage.value(),
-      category: document.querySelector('#link-category').value,
-      visible: document.querySelector('#link-visible').checked,
-      rules: linkAudience.rules,
-    });
+    if (link) {
+      await edit('links', link.id, {title: link.title, description: link.description || '', url: link.url, image: link.image || '', category: link.category, visible: link.visible, rules: link.rules}, fields);
+    } else {
+      await create('links', fields);
+    }
     closeModals();
     await load();
   } catch (err) {
@@ -683,7 +667,7 @@ async function deleteLink() {
   }
   setStatus('#link-status', 'Deleting…');
   try {
-    await api('DELETE', '/api/apps/link', {id: editingLink.id});
+    await remove('links', editingLink.id);
     closeModals();
     await load();
   } catch (err) {
@@ -694,15 +678,20 @@ async function deleteLink() {
 async function saveCategory(e) {
   e.preventDefault();
   setStatus('#category-status', 'Saving…');
+  const category = editingCategory;
+  const fields = {
+    title: document.querySelector('#category-title').value,
+    style: category && category.style === 'events' ? 'events' : document.querySelector('#category-style').value,
+    emoji: document.querySelector('#category-emoji').value.trim(),
+    max: document.querySelector('#category-max').value.trim(),
+    rules: categoryAudience.rules,
+  };
   try {
-    await api('POST', '/api/apps/category', {
-      id: editingCategory ? editingCategory.id : '',
-      title: document.querySelector('#category-title').value,
-      style: editingCategory && editingCategory.style === 'events' ? 'events' : document.querySelector('#category-style').value,
-      emoji: document.querySelector('#category-emoji').value.trim(),
-      max: document.querySelector('#category-max').value.trim(),
-      rules: categoryAudience.rules,
-    });
+    if (category) {
+      await edit('link-categories', category.id, {title: category.title, style: category.style, emoji: category.emoji || '', max: category.max ? String(category.max) : '', rules: category.rules}, fields);
+    } else {
+      await create('link-categories', fields);
+    }
     closeModals();
     await load();
   } catch (err) {
@@ -716,7 +705,7 @@ async function deleteCategory() {
   }
   setStatus('#category-status', 'Deleting…');
   try {
-    await api('DELETE', '/api/apps/category', {id: editingCategory.id});
+    await remove('link-categories', editingCategory.id);
     closeModals();
     await load();
   } catch (err) {

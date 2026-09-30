@@ -155,13 +155,13 @@ func NewCore(cfg Config) *Core {
 		IDKey:  cfg.IDKey,
 	})
 	homeMux := http.NewServeMux()
-	model.RegisterHome(homeMux, model.HomeDeps{
-		Store:    models,
-		Images:   homeImages,
-		Calendar: hooks,
-		Search:   cfg.ImageSearch,
-		Style:    homeStyle,
+	home := model.RegisterHome(homeMux, model.HomeDeps{
+		Store:  models,
+		Images: homeImages,
+		Search: cfg.ImageSearch,
+		Style:  homeStyle,
 	})
+	feedbackAdmin := model.RegisterFeedbackAdmin(homeMux, models, cfg.Bucket, cfg.FeedbackFiler)
 	teamMux := http.NewServeMux()
 	activities := model.RegisterActivities(teamMux, model.ActivitiesDeps{
 		Store:     models,
@@ -207,10 +207,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
 		{Key: "ask", Title: "Helios Ask", Mux: askMux},
 	}
-	waitingApprovals := approvals(models)
-	behind := lateBirthdays(models)
-	alerts := staleAlerts(models)
-	registry := model.NewRegistry(models, queue, hooks, parties, activities, documents)
+	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin, documents)
 	model.RegisterBirthdays(birthdayMux, model.BirthdaysDeps{
 		Store:     models,
 		Queue:     queue,
@@ -225,14 +222,7 @@ func NewCore(cfg Config) *Core {
 	optIn := who.OptInForm(func() string { return models.Model().Config.PrivacyLinks.HeliosWhoOptIn })
 	suggestions := geocode.NewSuggestions(cfg.Geocoder)
 	for _, a := range apps {
-		model.RegisterAppSwitch(a.Mux, models)
 		registry.Register(a.Mux)
-		if a.Key != "when" {
-			a.Mux.HandleFunc("GET /api/apps/rsvp", hooks.RSVPs)
-		}
-		a.Mux.HandleFunc("GET /api/apps/approvals", waitingApprovals)
-		a.Mux.HandleFunc("GET /api/apps/late", behind)
-		a.Mux.HandleFunc("GET /api/apps/alerts", alerts)
 		a.Mux.Handle("GET "+OptInPath, optIn)
 		model.RegisterFeedback(a.Mux, a.Key, appName(a.Key), feedbackIntake)
 		suggestions.Register(a.Mux)
@@ -242,7 +232,6 @@ func NewCore(cfg Config) *Core {
 		}
 		blob.Register(a.Mux, cfg.Store, folders...)
 	}
-	model.RegisterFeedbackAdmin(homeMux, models, cfg.Bucket, cfg.FeedbackFiler)
 	go queue.Tick()
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")

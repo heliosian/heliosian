@@ -32,6 +32,17 @@ type scope struct {
 	linkedOnce     sync.Once
 	activityEvents map[string]string
 
+	teamWidgetOnce sync.Once
+	teamWidget     activityWidget
+
+	homeOnce       sync.Once
+	home           []HomeCategory
+	homeLinks      map[string]HomeLink
+	homeCategories map[string]HomeCategory
+	schoolOnce     sync.Once
+	schoolOrder    []string
+	school         map[string]SchoolEmail
+
 	magicKeysOnce sync.Once
 	magicKeys     map[string]bool
 	heldOnce      sync.Once
