@@ -70,19 +70,19 @@ function answerItems(e, r, refresh, clear) {
   return items;
 }
 
-function memberChip(e, r, refresh) {
-  const chip = personRow(r, {
-    button: true,
-    className: 'rsvp-member',
-    name: firstName(r),
-    lines: [el('div', 'rsvp-member-answer is-' + (r.answer || 'none'), r.answer ? answerWords[r.answer] : r.guestOf ? 'Guest' : 'No response')],
-    after: [svg('chevron-down')],
+function memberRow(e, r, refresh) {
+  const row = el('div', 'rsvp-panel-person');
+  row.append(personRow(r, {
+    className: 'rsvp-person',
+    lines: [r.guestOf ? `Guest of ${r.guestOfName}` : ''],
     gradeColors: state.model.gradeColors,
-  });
-  chip.disabled = !r.mine;
-  const items = answerItems(e, r, refresh, r.answer ? 'Clear answer' : '');
-  if (r.guestOf) {
-    items.push({icon: 'trash', words: 'Remove guest', run: async () => {
+  }), bigChoices(e, r, refresh));
+  if (r.guestOf && r.mine) {
+    const remove = el('button', 'invite-remove rsvp-person-remove');
+    remove.type = 'button';
+    remove.title = 'Remove this guest';
+    remove.append(svg('close'));
+    remove.addEventListener('click', async () => {
       try {
         await act('events', e.id, 'uninvite', {email: r.key});
         toast(`${r.name} removed`);
@@ -90,9 +90,10 @@ function memberChip(e, r, refresh) {
       } catch (err) {
         toast(err.message);
       }
-    }});
+    });
+    row.append(remove);
   }
-  return dropMenu(chip, items, true);
+  return row;
 }
 
 export function familyBand(e, view, refresh) {
@@ -112,18 +113,8 @@ export function familyBand(e, view, refresh) {
     top.append(bigChoices(e, self, refresh));
   }
   box.append(top);
-  if (others.length) {
-    const fam = el('div', 'rsvp-panel-family');
-    const famIcon = el('div', 'guests-table-mark');
-    famIcon.append(svg('people'));
-    const famWords = el('div', 'guests-start-words');
-    famWords.append(el('div', 'guests-start-title', 'Family members'), el('div', 'guests-start-lead', 'Add family and guests'));
-    const chips = el('div', 'rsvp-members');
-    for (const r of others) {
-      chips.append(memberChip(e, r, refresh));
-    }
-    fam.append(famIcon, famWords, chips);
-    box.append(fam);
+  for (const r of others) {
+    box.append(memberRow(e, r, refresh));
   }
   const foot = el('div', 'rsvp-panel-foot');
   const of = self ? me().email : (view.mine.find(r => r.mine && !r.guestOf) || {}).key;

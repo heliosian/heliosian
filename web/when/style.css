@@ -1214,27 +1214,13 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .rsvp-choice.is-on.is-no { border-color: var(--no-fill, #b3261e); background: var(--no-wash, #f7eeee); color: var(--no-text, #b3261e); }
 
-.rsvp-panel-family { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid color-mix(in srgb, var(--green-2) 45%, var(--card)); }
+.rsvp-panel-person { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid color-mix(in srgb, var(--green-2) 45%, var(--card)); }
 
-.rsvp-members { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
+.rsvp-person { flex: 1 1 200px; min-width: 0; }
+
+.rsvp-person .person-row-name { font-family: Montserrat, Roboto, sans-serif; font-size: 18px; font-weight: 700; }
 
 .rsvp-member-holder { position: relative; }
-
-.rsvp-member { display: flex; align-items: center; gap: 8px; height: 100%; min-width: 130px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
-
-.rsvp-member:hover:not(:disabled) { background: var(--input); }
-
-.rsvp-member:disabled { cursor: default; }
-
-.rsvp-member > svg { width: 16px; height: 16px; color: var(--muted); }
-
-.rsvp-member-answer { font-size: 12px; font-weight: 600; color: var(--muted); }
-
-.rsvp-member-answer.is-yes { color: var(--yes-text, #1d6b48); }
-
-.rsvp-member-answer.is-maybe { color: var(--maybe-text, #7a5a00); }
-
-.rsvp-member-answer.is-no { color: var(--no-text, #b3261e); }
 
 .rsvp-member-holder .rsvp-member-menu { top: calc(100% + 6px); bottom: auto; left: 0; right: auto; }
 
