@@ -1,9 +1,9 @@
 import {el, svg} from '/elements.js';
 import {face, gradeBadge} from '/personrow.js';
 
-const saidWords = {yes: 'Yes', maybe: 'Maybe', no: 'No'};
+const saidWords = {yes: 'Yes', maybe: 'Maybe', no: 'No', pending: 'Pending (Unsent)'};
 
-const saidIcons = {yes: 'check', maybe: 'clock', no: 'close'};
+const saidIcons = {yes: 'check', maybe: 'clock', no: 'close', pending: 'mail'};
 
 export function familiesOf(rows) {
   const families = new Map();

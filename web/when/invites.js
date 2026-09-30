@@ -308,7 +308,8 @@ function ticketMark(view, p) {
 
 function guestFamilyRow(e, view, family, refresh) {
   return familyRow(family, family.map(r => {
-    const said = familySaid(r.answer, r.mine);
+    const unsent = view.host && r.invited && !r.sent && r.email && !r.answer;
+    const said = familySaid(unsent ? 'pending' : r.answer, r.mine);
     return {
       person: r,
       kind: r.guestOf ? 'guest' : r.isStudent ? 'kid' : r.isParent ? 'parent' : '',
