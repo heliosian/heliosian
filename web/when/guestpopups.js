@@ -6,7 +6,7 @@ import {openPersonCard} from '/personcard.js';
 import {act} from '/data.js';
 import {createPersonPicker} from '/picker.js';
 import {answerWords, firstName, answerButtons, ticketWords, ticketDetail, answeredWords, pickerPeople} from './inviteparts.js';
-import {state} from './state.js';
+import {state, me} from './state.js';
 import {personRow} from '/personrow.js';
 
 function guestForm(e, of, onDone) {
@@ -147,7 +147,7 @@ export function openGuestCard(e, p, view, refresh) {
       }
     }));
   }
-  if (p.invited) {
+  if (p.invited || p.key === me().email) {
     links.append(button('Take off the list', 'trash', 'link-button danger', async () => {
       if (!confirm(`Take ${p.name || p.email} off the list? Their answer goes with them${p.via && p.via.startsWith('group:') ? ', and the group will not add them back' : ''}.`)) {
         return;

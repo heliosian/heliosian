@@ -641,13 +641,22 @@ func (a calendarApp) uninviteOps(actor access.Actor, id, email string) ([]store.
 	}
 	email = mail.Normalize(email)
 	inv := a.model().InviteOf(e.ID, email)
-	if inv == nil {
+	answer := a.model().AnswerOf(email, e.ID)
+	answered := answer != "" && answer != AnswerHidden
+	if inv == nil && !answered {
 		return nil, nil, "", false, access.Missing("they are not on the list")
 	}
-	if !a.isHost(actor, e) && !(inv.GuestOf != "" && a.mayAnswerFor(actor, inv.GuestOf, e)) {
+	if !a.isHost(actor, e) && !(inv != nil && inv.GuestOf != "" && a.mayAnswerFor(actor, inv.GuestOf, e)) {
 		return nil, nil, "", false, access.Forbidden("only a host can take someone off the list")
 	}
-	ops := []store.Op{store.Delete(InvitesTab, store.Row{"Event ID": e.ID, "Email": email})}
+	ops := []store.Op{}
+	if answered {
+		ops = append(ops, store.Delete(RSVPsTab, store.Row{"Event ID": e.ID, "Email": email}))
+	}
+	if inv == nil {
+		return ops, e, email, false, nil
+	}
+	ops = append(ops, store.Delete(InvitesTab, store.Row{"Event ID": e.ID, "Email": email}))
 	gid, ok := strings.CutPrefix(inv.Via, ViaGroup)
 	if !ok {
 		return ops, e, email, false, nil

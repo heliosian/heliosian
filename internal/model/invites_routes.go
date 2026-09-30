@@ -31,6 +31,7 @@ type GuestRow struct {
 	AnsweredVia  string   `json:"answeredVia,omitempty"`
 	Opened       string   `json:"opened,omitempty"`
 	InvitedBy    string   `json:"invitedBy,omitempty"`
+	InvitedAt    string   `json:"invitedAt,omitempty"`
 	Ticket       string   `json:"ticket,omitempty"`
 	Outside      bool     `json:"outside,omitempty"`
 	Mine         bool     `json:"mine,omitempty"`
@@ -211,9 +212,10 @@ func (a calendarApp) rows(viewer access.Actor, e *Event) []GuestRow {
 	for _, inv := range model.Invites[e.ID] {
 		g := row(inv.Email, inv.Name, true)
 		g.GuestOf, g.Via, g.Sent, g.Opened = inv.GuestOf, inv.Via, inv.Sent, inv.Opened
-		if inv.Via == ViaInvited {
+		if inv.AddedBy != "" {
 			g.InvitedBy = nameOf(inv.AddedBy)
 		}
+		g.InvitedAt = inv.Added
 		if host && inv.Token != "" {
 			g.Link = extPath(inv.Token)
 		}

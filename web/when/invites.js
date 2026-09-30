@@ -74,7 +74,7 @@ function memberRow(e, r, refresh) {
   const row = el('div', 'rsvp-panel-person');
   row.append(personRow(r, {
     className: 'rsvp-person',
-    lines: [r.guestOf ? `Guest of ${r.guestOfName}` : ''],
+    lines: [r.guestOf ? `Guest of ${r.guestOfName}` : r.invitedBy ? `Invited by ${r.invitedBy}${r.invitedAt ? ' on ' + stamp(r.invitedAt) : ''}` : ''],
     gradeColors: state.model.gradeColors,
   }), bigChoices(e, r, refresh));
   if (r.guestOf && r.mine) {
@@ -400,8 +400,8 @@ export function hostsRow(e, view, refresh) {
 function openAddHost(e, view, refresh) {
   const form = el('form', 'admin-form');
   form.append(el('p', 'hint', 'A co-host builds and sends the list, reads every answer and hears replies, as you do.'));
-  const mount = el('div', 'cohost-picker');
-  const picker = createPersonPicker(mount, {people: pickerPeople(p => !p.isStudent && !view.hosts.some(h => h.email === p.email))});
+  const mount = el('div', 'cohost-picker cohost-add');
+  const picker = createPersonPicker(mount, {people: pickerPeople(p => !view.hosts.some(h => h.email === p.email))});
   form.append(mount);
   const actions = el('div', 'modal-actions');
   const status = el('span', 'save-status');
@@ -869,7 +869,7 @@ function guestActions(e, r, refresh) {
   if (!r.guestOf && r.invited && !r.outside) {
     actions.append(guestAction('plus', 'Add a guest for ' + firstName(r), 'guests-action', () => openGuestForm(e, r.key, refresh)));
   }
-  if (r.invited) {
+  if (r.invited || r.key === me().email) {
     actions.append(guestAction('trash', 'Take off the list', 'guests-action is-remove', async () => {
       if (!confirm(`Take ${r.name || r.email} off the list? Their answer goes with them${r.via && r.via.startsWith('group:') ? ', and the group will not add them back' : ''}.`)) {
         return;

@@ -1662,6 +1662,37 @@ func TestMailLeavesItsRecord(t *testing.T) {
 	}
 }
 
+func TestHostTakesThemselvesOff(t *testing.T) {
+	mux, cache, _ := calendarInvitesApp(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
+	meetup := idOf(t, cache, "meetup")
+	act(t, jordan, "meetup", "answer", `{"answer":"no"}`)
+	if r := rowOf(inviteView(t, jordan, meetup), host); r == nil || r.Invited {
+		t.Fatalf("the host's row before = %+v", r)
+	}
+	if rec := act(t, as(robin, mux), "meetup", "uninvite", `{"email":"`+host+`"}`); rec.Code != 403 {
+		t.Errorf("someone not hosting taking the host off: %d", rec.Code)
+	}
+	if rec := act(t, jordan, "meetup", "uninvite", `{"email":"`+host+`"}`); rec.Code != 204 {
+		t.Fatalf("the host taking themselves off: %d %s", rec.Code, rec.Body)
+	}
+	if r := rowOf(inviteView(t, jordan, meetup), host); r != nil || cache.Model().Calendar.AnswerOf(host, meetup) != "" {
+		t.Errorf("the host still on the list: %+v", r)
+	}
+	act(t, jordan, "meetup", "invite", `{"people":[{"email":"`+robin+`"}]}`)
+	act(t, jordan, "meetup", "answer-for", `{"email":"`+robin+`","answer":"yes"}`)
+	if r := rowOf(inviteView(t, jordan, meetup), robin); r == nil || r.InvitedBy != "Jordan Whitfield" || r.InvitedAt == "" {
+		t.Errorf("robin's row = %+v", r)
+	}
+	if rec := act(t, jordan, "meetup", "uninvite", `{"email":"`+robin+`"}`); rec.Code != 204 {
+		t.Fatalf("taking robin off: %d %s", rec.Code, rec.Body)
+	}
+	if r := rowOf(inviteView(t, jordan, meetup), robin); r != nil || cache.Model().Calendar.AnswerOf(robin, meetup) != "" {
+		t.Errorf("robin's answer stayed behind: %+v", r)
+	}
+}
+
 func TestStepDown(t *testing.T) {
 	mux, cache, _ := calendarInvitesApp(t)
 	jordan, miaH := as(host, mux), as(mia, mux)
