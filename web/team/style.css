@@ -1554,10 +1554,6 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .people-face img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
 
-/* The organizers' roster modal: wider than a form, a scrolling table inside. */
-.modal.modal-wide { max-width: 900px; }
-
-.modal.modal-table { max-width: min(1240px, calc(100vw - 40px)); }
 
 .form-tab-body { min-height: 300px; }
 
@@ -2024,28 +2020,6 @@ h2.section .link-button { font-size: 14px; }
   font-size: 13px;
   margin-bottom: 16px;
 }
-
-.modal {
-  background: var(--card);
-  border-radius: 14px;
-  padding: 20px 24px;
-  width: 100%;
-  max-width: 560px;
-  max-height: calc(100vh - 40px);
-  overflow-y: auto;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.modal-header h2 { font-size: 17px; margin: 0; }
-
-.modal-close { border: 0; background: none; font-size: 24px; line-height: 1; color: var(--muted); cursor: pointer; }
 
 .field { display: block; margin: 14px 0; }
 

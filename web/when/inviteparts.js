@@ -96,16 +96,24 @@ export function setRuleOptions(options) {
   ruleOptions = options;
 }
 
+const names = new Map();
+
+export function setNames(people) {
+  for (const p of people) {
+    names.set(p.email, p.fullName);
+  }
+}
+
 export const rules = rulesEditor({
   options: () => ruleOptions,
-  personName: () => '',
+  personName: email => names.get(email) || '',
 });
 
-export function groupWords(g) {
+export function groupRule(g) {
   const options = ruleOptions || {lists: [], tags: []};
   const labels = t => {
     const named = options.tags.find(x => x.key === t) || options.lists.find(l => l.key === t);
     return named ? named.name : t;
   };
-  return rules.ruleWords({...g.rule, tagLabels: g.rule.tags.map(labels)});
+  return {...g.rule, tagLabels: g.rule.tags.map(labels)};
 }

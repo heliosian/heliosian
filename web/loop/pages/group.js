@@ -1,7 +1,6 @@
 import {state, me, options, groupPath, person, personView, memberView, loadModel} from '../state.js';
 import {pageHead} from '../dom.js';
 import {el, svg, button, iconButton, copyText, toast} from '/elements.js';
-import {whoLink} from '/appswitch.js';
 import {setTitle} from '/shell.js';
 import {api} from '/api.js';
 import {query, act, create, remove} from '/data.js';
@@ -15,8 +14,9 @@ import {visibilityWords} from './groups.js';
 import {personCard} from '/people.js';
 import {personRow} from '/personrow.js';
 import {openPersonCard} from '/personcard.js';
+import {memberAdders, personAdder, outsideAdder, membersCard, reasonWords} from '/members.js';
 
-const {ruleRow, newRule, ruleSaysSomething, personWords, ruleWords} = rulesEditor({
+const {rulesCard, newRule, ruleSaysSomething, personWords, ruleWords} = rulesEditor({
   options,
   personName: email => (person(email) || {}).fullName || '',
 });
@@ -78,12 +78,12 @@ function editor(g, isNew, closeModal, startTab) {
   const ed = {
     g, isNew, closeModal, form, draft, original: JSON.parse(JSON.stringify(draft)),
     nameInput: null, nameTouched: false, addressNote: el('small'),
-    opened: firstRule, ruleRows: el('div', 'rules'), ruleCounts: new Map(),
+    opened: firstRule, rules: null, ruleCounts: new Map(),
     preview: previewParts(g, isNew), previewTimer: null, previewing: false, previewAgain: false, lastPreview: null,
   };
   const overviewPanel = detailsPanel(ed);
   const rulesPanel = el('div');
-  rulesPanel.append(rulesCard(ed), previewCard(ed));
+  rulesPanel.append(loopRulesCard(ed), previewCard(ed));
   form.append(tabbed([
     {key: 'members', label: 'Members', panel: rulesPanel},
     {key: 'details', label: 'Details', panel: overviewPanel},
@@ -360,22 +360,7 @@ function renderManagerRows(draft, rows) {
 
 function previewParts(g, isNew) {
   const current = isNew ? [] : g.members;
-  const changes = el('div', 'change-band');
-  changes.hidden = true;
-  const search = el('input', 'member-search');
-  search.type = 'search';
-  search.placeholder = 'Search the members…';
-  search.setAttribute('aria-label', 'Search the members');
-  const empty = el('div', 'rule-empty', 'Nobody matches that.');
-  empty.hidden = true;
   return {
-    head: el('h2', '', 'Members'),
-    headRow: el('div', 'card-head'),
-    changes,
-    list: el('div', 'compact-list'),
-    status: el('div', 'save-status'),
-    search,
-    empty,
     summary: el('span', 'change-summary'),
     current,
     currentEmails: new Set(current.map(m => m.email)),
@@ -384,145 +369,60 @@ function previewParts(g, isNew) {
 
 function previewCard(ed) {
   const p = ed.preview;
-  const person = personAdder(ed);
-  const addition = additionAdder(ed);
-  const headButtons = el('div', 'head-buttons');
-  headButtons.append(button('Add Helios', 'plus', 'button button-small button-secondary', () => {
-    addition.node.hidden = true;
-    person.node.hidden = false;
-    person.mount.querySelector('input').focus();
-  }), button('Add Non-Helios', 'plus', 'button button-small button-secondary', () => {
-    person.node.hidden = true;
-    addition.node.hidden = false;
-    addition.name.focus();
-  }));
-  p.headRow.append(p.head, headButtons);
-  p.search.addEventListener('input', () => drawPreviewList(ed));
-  const card = el('div', 'card preview');
-  card.append(p.headRow, person.node, addition.node, p.status, p.changes, p.search, p.list, p.empty);
-  return card;
-}
-
-function additionAdder(ed) {
-  const {draft} = ed;
-  const name = textInput('', {maxLength: 80, placeholder: 'Name'});
-  const email = textInput('', {type: 'email', maxLength: 120, placeholder: 'name@example.org'});
-  const status = el('span', 'save-status');
-  const node = el('div', 'add-row addition-add');
-  node.hidden = true;
-  const addAddition = () => {
-    const address = email.value.trim().toLowerCase();
-    const who = name.value.trim();
-    status.classList.remove('error');
-    status.textContent = '';
-    if (!address.includes('@')) {
-      status.classList.add('error');
-      status.textContent = 'An email address is needed.';
-      return;
-    }
-    if (draft.additions.some(a => a.email === address)) {
-      status.classList.add('error');
-      status.textContent = 'Already added.';
-      return;
-    }
-    draft.additions.push({email: address, name: who});
-    name.value = '';
-    email.value = '';
-    node.hidden = true;
-    rulesChanged(ed);
-  };
-  for (const input of [name, email]) {
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        addAddition();
+  const {draft, isNew} = ed;
+  const isOn = email => Boolean(ed.lastPreview && ed.lastPreview.members.some(m => m.email === email)) || draft.additions.some(a => a.email === email);
+  const add = memberAdders(close => personAdder({
+    isOn,
+    gradeColors: state.model.gradeColors,
+    onAdd: async people => {
+      for (const {email, name} of people) {
+        if (!draft.additions.some(a => a.email === email)) {
+          draft.additions.push({email, name});
+        }
       }
-    });
-  }
-  node.append(name, email, button('Add', 'plus', 'button button-secondary', addAddition), iconButton('close', 'Never mind', '', () => {
-    name.value = '';
-    email.value = '';
-    status.textContent = '';
-    node.hidden = true;
-  }), status, el('small', '', 'Someone the directory does not hold - a coach, a league office, a family friend - on the email list whatever the rules say.'));
-  return {node, name};
-}
-
-function personAdder(ed) {
-  const {draft} = ed;
-  const mount = el('div');
-  const picker = createPersonPicker(mount, {people: () => state.people});
-  const status = el('span', 'save-status');
-  const node = el('div', 'add-row addition-add');
-  node.hidden = true;
-  const addPerson = () => {
-    const email = picker.value;
-    status.classList.remove('error');
-    status.textContent = '';
-    if (!email) {
-      status.classList.add('error');
-      status.textContent = 'Pick someone from the list.';
-      return;
-    }
-    if (!draft.rules.some(r => r.kind === 'include' && r.search === email && !r.roles.length && !r.grades.length && !r.classrooms.length && !r.tags.length)) {
-      draft.rules.push({...newRule('include'), search: email});
-      renderRules(ed);
-    }
-    picker.reset();
-    node.hidden = true;
-    rulesChanged(ed);
-  };
-  mount.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addPerson();
-    }
+      rulesChanged(ed);
+      close();
+    },
+  }), close => outsideAdder({
+    isOn,
+    note: 'Someone the directory does not hold - a coach, a league office, a family friend - and their family, on the email list whatever the rules say.',
+    onAdd: async people => {
+      for (const {email, name} of people) {
+        if (email && !draft.additions.some(a => a.email === email)) {
+          draft.additions.push({email, name});
+        }
+      }
+      rulesChanged(ed);
+      close();
+    },
+  }));
+  ed.members = membersCard({
+    noun: ['member', 'members'],
+    listWord: 'email list',
+    adders: add,
+    phrase: personWords,
+    chip: m => (!isNew && !p.currentEmails.has(m.email) ? el('span', 'chip joins', 'Joins') : null),
+    onExclude: m => {
+      draft.additions = draft.additions.filter(a => a.email !== m.email);
+      if (!draft.rules.some(r => r.kind === 'exclude' && r.search === m.email && !r.roles.length && !r.grades.length && !r.classrooms.length && !r.tags.length)) {
+        draft.rules.push({...newRule('exclude'), search: m.email});
+        ed.rules.render();
+      }
+      rulesChanged(ed);
+    },
+    onRemove: m => {
+      draft.additions = draft.additions.filter(a => a.email !== m.email);
+      rulesChanged(ed);
+    },
+    gradeColors: state.model.gradeColors,
   });
-  node.append(mount, button('Add', 'plus', 'button button-secondary', addPerson), iconButton('close', 'Never mind', '', () => {
-    picker.reset();
-    status.textContent = '';
-    node.hidden = true;
-  }), status, el('small', '', 'Someone from the directory, on the email list by a rule of their own.'));
-  return {node, mount};
-}
-
-function pickMember(ed, row, m) {
-  const {draft} = ed;
-  for (const other of document.querySelectorAll('.member-menu')) {
-    other.remove();
-  }
-  const menu = el('div', 'member-menu');
-  const exclude = el('button', 'member-menu-item');
-  exclude.type = 'button';
-  exclude.append(svg('user-minus'), el('span', '', `Exclude ${m.name} from this email list`));
-  exclude.addEventListener('click', e => {
-    e.stopPropagation();
-    menu.remove();
-    if (!draft.rules.some(r => r.kind === 'exclude' && r.search === m.email && !r.roles.length && !r.grades.length && !r.classrooms.length && !r.tags.length)) {
-      draft.rules.push({...newRule('exclude'), search: m.email});
-      renderRules(ed);
-    }
-    rulesChanged(ed);
-  });
-  const who = el('a', 'member-menu-item');
-  who.href = whoLink(m.email);
-  who.target = '_blank';
-  who.rel = 'noopener';
-  who.append(svg('user'), el('span', '', 'Open in Helios Who?'));
-  menu.append(exclude, who);
-  row.append(menu);
-  const close = e => {
-    if (!menu.contains(e.target)) {
-      menu.remove();
-      document.removeEventListener('click', close, true);
-    }
-  };
-  setTimeout(() => document.addEventListener('click', close, true));
+  return ed.members.card;
 }
 
 function renderChanges(ed, members, rules) {
   const {isNew} = ed;
-  const {changes, summary, current, currentEmails} = ed.preview;
+  const {summary, current, currentEmails} = ed.preview;
+  const {changes} = ed.members;
   const memberEmails = new Set(members.map(m => m.email));
   const joining = isNew ? [] : members.filter(m => !currentEmails.has(m.email));
   const leaving = current.filter(m => !memberEmails.has(m.email));
@@ -542,42 +442,14 @@ function renderChanges(ed, members, rules) {
     }
   }
   ed.lastPreview = {members, rules, leaving};
-  drawPreviewList(ed);
-}
-
-function drawPreviewList(ed) {
-  if (!ed.lastPreview) {
-    return;
-  }
-  const {draft, isNew} = ed;
-  const {search, list, empty, currentEmails} = ed.preview;
-  const {members, rules, leaving} = ed.lastPreview;
-  const q = search.value.trim().toLowerCase();
-  const wanted = m => !q || m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q) || (m.words || '').toLowerCase().includes(q);
-  list.replaceChildren();
-  let shown = 0;
-  for (const m of [...members.filter(m => m.outside), ...members.filter(m => !m.outside)].filter(wanted)) {
-    const chip = !isNew && !currentEmails.has(m.email) ? el('span', 'chip joins', 'Joins') : null;
-    const row = compactRow(m, reasonWords(m, rules), chip, m.outside ? () => {
-      draft.additions = draft.additions.filter(a => a.email !== m.email);
-      rulesChanged(ed);
-    } : null, m.outside ? null : (pickedRow, picked) => pickMember(ed, pickedRow, picked));
-    list.append(row);
-    shown++;
-  }
-  for (const m of leaving.filter(wanted)) {
-    const row = compactRow(m, 'No rule picks them out any more.', el('span', 'chip leaves', 'Leaves'));
-    row.classList.add('is-leaving');
-    list.append(row);
-    shown++;
-  }
-  search.hidden = !members.length && !leaving.length;
-  empty.hidden = shown > 0 || (!members.length && !leaving.length);
+  const joins = m => !isNew && !currentEmails.has(m.email);
+  const ordered = [...members.filter(m => m.outside), ...members.filter(m => !m.outside)];
+  ed.members.show({members: [...ordered.filter(joins), ...ordered.filter(m => !joins(m))], rules, leaving});
 }
 
 async function refreshPreview(ed) {
   const {draft} = ed;
-  const {status, head} = ed.preview;
+  const {status} = ed.members;
   if (ed.previewing) {
     ed.previewAgain = true;
     return;
@@ -590,7 +462,6 @@ async function refreshPreview(ed) {
     const preview = await api('POST', '/api/loop/preview', {id: draft.id, rules, additions: draft.additions, excluded: draft.excluded});
     const members = preview.members.map(m => memberView(m, m.person ? state.dir.get(m.person) : null));
     const counts = preview.ruleCounts;
-    head.textContent = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
     renderChanges(ed, members, rules);
     showRuleCounts(ed, rules, counts || []);
     status.textContent = rules.length ? '' : 'Add a rule to pick people out.';
@@ -610,59 +481,30 @@ function rulesChanged(ed) {
   ed.previewTimer = setTimeout(() => refreshPreview(ed), 250);
 }
 
-function rulesCard(ed) {
-  const card = el('div', 'card');
-  card.append(el('h2', '', 'Rules'));
-  card.append(el('div', 'hint', 'Someone is on the email list if any include rule matches them and no exclude rule does; a rule matches only if every choice in it holds.'));
-  renderRules(ed);
-  const addRules = el('div', 'add-row');
-  for (const kind of ['include', 'exclude']) {
-    addRules.append(button(kind === 'include' ? 'Add include rule' : 'Add exclude rule', kind === 'include' ? 'plus' : 'minus', 'button button-secondary', () => {
-      ed.opened = newRule(kind);
-      ed.draft.rules.push(ed.opened);
-      renderRules(ed);
-    }));
-  }
-  card.append(ed.ruleRows, addRules);
-  return card;
-}
-
-function countChip(ed, rule) {
-  const chip = el('span', 'rule-count');
-  const n = ed.ruleCounts.get(rule);
-  chip.hidden = n === undefined;
-  if (n !== undefined) {
-    chip.textContent = rule.kind === 'include' ? `${n} match` : `${n} excluded`;
-  }
-  return chip;
-}
-
-function renderRules(ed) {
-  const {draft, ruleRows} = ed;
-  ruleRows.replaceChildren();
-  if (!draft.rules.length) {
-    ruleRows.append(el('div', 'rule-empty', 'No rules yet: the email list has nobody on it.'));
-  }
-  for (const kind of ['include', 'exclude']) {
-    for (const rule of draft.rules.filter(r => r.kind === kind)) {
-      ruleRows.append(ruleRow(rule, () => rulesChanged(ed), () => {
-        draft.rules = draft.rules.filter(r => r !== rule);
-        renderRules(ed);
-        rulesChanged(ed);
-      }, rule === ed.opened, r => countChip(ed, r)));
-    }
-  }
-  ed.opened = null;
+function loopRulesCard(ed) {
+  const made = rulesCard({
+    hint: 'Someone is on the email list if any include rule matches them and no exclude rule does; a rule matches only if every choice in it holds.',
+    list: () => ed.draft.rules,
+    empty: 'No rules yet: the email list has nobody on it.',
+    opened: ed.opened,
+    onAdd: rule => ed.draft.rules.push(rule),
+    onChange: () => rulesChanged(ed),
+    onRemove: rule => {
+      ed.draft.rules = ed.draft.rules.filter(r => r !== rule);
+      ed.rules.render();
+      rulesChanged(ed);
+    },
+    onDone: () => {},
+    count: r => ed.ruleCounts.get(r),
+  });
+  ed.rules = made.list;
+  return made.card;
 }
 
 function showRuleCounts(ed, rules, counts) {
   ed.ruleCounts.clear();
   rules.forEach((rule, i) => ed.ruleCounts.set(rule, counts[i]));
-  for (const row of ed.ruleRows.children) {
-    if (row.refreshCount) {
-      row.refreshCount();
-    }
-  }
+  ed.rules.refreshCounts();
 }
 
 function editorActions(ed) {
@@ -813,24 +655,6 @@ export function newGroupModal() {
   editModal({name: '', title: '', description: '', managers: [{email: me().email, name: me().name}], rules: [], additions: []}, null, true);
 }
 
-const throughWords = {Parents: 'Parent', Children: 'Child', Siblings: 'Sibling'};
-
-function reasonWords(member, rules) {
-  return (member.reasons || []).map(reason => {
-    if (reason.added) {
-      return 'Added by hand';
-    }
-    const rule = rules[reason.rule];
-    if (!rule) {
-      return '';
-    }
-    const phrase = personWords(rule);
-    if (reason.through) {
-      return `${throughWords[reason.through]} of ${(reason.viaName || '').split(' ')[0]}, ${phrase}`;
-    }
-    return phrase.charAt(0).toUpperCase() + phrase.slice(1);
-  }).filter(Boolean).join(' · ');
-}
 
 export function groupPage(g) {
   setTitle(g.title);
@@ -983,39 +807,6 @@ export function groupPage(g) {
   return page;
 }
 
-function compactRow(m, why, chip, onRemove, onPick) {
-  const line = el('div', 'person-row-line');
-  if (m.outside) {
-    line.append(el('span', 'chip outside', 'Non-Helios'), ' ');
-  }
-  line.append([m.outside ? '' : m.words, m.email].filter(Boolean).join(' · '));
-  const tail = el('span', 'compact-tail');
-  if (chip) {
-    tail.append(chip);
-  }
-  if (onRemove) {
-    tail.append(iconButton('close', `Remove ${m.name}`, 'compact-remove', onRemove));
-  }
-  const row = personRow(m, {
-    className: 'compact-row' + (m.outside ? ' is-outside' : '') + (onPick ? ' is-pickable' : ''),
-    lines: [line],
-    after: [el('span', 'compact-why', why), tail],
-    gradeColors: state.model.gradeColors,
-  });
-  if (onPick) {
-    row.tabIndex = 0;
-    row.setAttribute('role', 'button');
-    row.title = `${m.name}: exclude, or open in Helios Who?`;
-    row.addEventListener('click', e => onPick(row, m, e));
-    row.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        onPick(row, m, e);
-      }
-    });
-  }
-  return row;
-}
 
 let managersEditing = '';
 
@@ -1102,7 +893,7 @@ function managersCard(g, canEdit) {
 function memberCard(m, rules, title) {
   return personCard(m, {
     onClick: () => openPersonCard(m),
-    title: title || reasonWords(m, rules),
+    title: title || reasonWords(m, rules, personWords),
     line: m.outside ? 'Guest' : m.context,
     gradeColors: state.model.gradeColors,
   });

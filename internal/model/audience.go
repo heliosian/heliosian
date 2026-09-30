@@ -389,6 +389,10 @@ func (l Audience) reasonsWith(rd *reader) map[string][]Reason {
 		}
 	}
 	for _, email := range l.Additions {
+		email = s.Directory.Resolve(email)
+		if p := s.Directory.Person(email); p != nil && p.EmailMasked {
+			continue
+		}
 		if _, ok := in[email]; !ok {
 			in[email] = []Reason{{Added: true}}
 		}

@@ -4176,11 +4176,7 @@ a.person-card:hover .photo-wrap-peek::before {
 .admin .card-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .admin .card-header-row h2 { margin: 0; }
 
-.modal { width: 100%; max-width: 460px; max-height: calc(100vh - 40px); overflow-y: auto; padding: 20px 24px; border-radius: 12px; background: var(--card); color: var(--ink); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); }
-.modal-header { display: flex; align-items: center; justify-content: space-between; }
-.modal-header h2 { margin: 0; font-size: 16px; }
 .modal .hint { margin: 8px 0 16px; font-size: 13px; color: var(--muted); }
-.modal-close { padding: 4px 6px; border: 0; background: none; font-size: 22px; line-height: 1; color: var(--muted); cursor: pointer; }
 .modal-actions { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
 .modal .save-status { font-size: 13px; color: var(--muted); }
 .modal .save-status.error { color: var(--alert); }

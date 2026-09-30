@@ -13,7 +13,7 @@ import {openGuestForm} from '../guestpopups.js';
 import {answerIcon} from '../inviteparts.js';
 import {personTile} from '/people.js';
 import {audienceChips, blocks} from '../events.js';
-import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow, inviteCall} from '../invites.js';
+import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow, inviteCall, openGuestSettings} from '../invites.js';
 
 function hero(e) {
   const wrap = el('div', 'detail-hero');
@@ -205,6 +205,11 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
       const edit = button('Edit Event', 'edit', 'button button-small button-secondary', () => openEditor(e, view, refresh));
       edit.classList.add('detail-edit');
       tools.append(edit);
+    }
+    if (tools && !tools.querySelector('.detail-guest-settings')) {
+      const settings = button('Guest List Settings', 'gear', 'button button-small button-secondary', () => openGuestSettings(e, editorView, refresh));
+      settings.classList.add('detail-guest-settings');
+      tools.prepend(settings);
     }
     const heroWrap = ask.closest('.event-page')?.querySelector('.detail-hero');
     if ((e.source === 'sheet' || imported(e)) && heroWrap && !heroWrap.querySelector('.hero-image-bar')) {

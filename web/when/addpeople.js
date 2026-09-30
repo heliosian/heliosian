@@ -1,30 +1,47 @@
-import {el, svg, button, toast, longToast} from '/elements.js';
+import {el, button, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
-import {text as textInput} from '/form.js';
 import {api} from '/api.js';
 import {query, act, create} from '/data.js';
-import {directory, contactLine} from '/directory.js';
-import {chipToggle, familyDropdown} from '/rules.js';
-import {firstName, ruleOptions, setRuleOptions, rules} from './inviteparts.js';
+import {personAdder, outsideAdder} from '/members.js';
+import {ruleOptions, setRuleOptions, rules} from './inviteparts.js';
 import {state} from './state.js';
-import {personRow} from '/personrow.js';
 
-export async function openPicker(e, view, refresh) {
-  let dir = null;
+export const outsideNote = 'Someone outside Helios - a coach, a grandparent, a friend - and their family. They get the email and the calendar invite with a page of their own to answer from, no sign-in needed, that shows the event and nothing of who else is coming.';
+
+export function inviteWords(host, people) {
+  const n = people.length;
+  if (host) {
+    return n === 1 ? `${people[0].name} added to the list.` : `${n} people added to the list.`;
+  }
+  return n === 1 ? `${people[0].name} invited - the invitation is on its way.` : `${n} people invited - the invitations are on their way.`;
+}
+
+export function guestAdders(e, view, done) {
+  const onList = new Set([...(view.list || []), ...(view.coming || []), ...view.mine].filter(r => r.invited && r.email).map(r => r.email));
+  const isOn = email => onList.has(email);
+  const onAdd = close => async people => {
+    await act('events', e.id, 'invite', {people});
+    close();
+    done(inviteWords(view.host, people));
+  };
+  return {
+    person: close => personAdder({isOn, onAdd: onAdd(close), gradeColors: state.model.gradeColors}),
+    outside: close => outsideAdder({isOn, onAdd: onAdd(close), note: outsideNote}),
+  };
+}
+
+export async function openPicker(e, view, refresh, {tab = 'person'} = {}) {
   try {
-    const [people, options] = await Promise.all([directory(), view.host ? api('GET', '/api/when/invites/options') : ruleOptions]);
-    dir = people;
-    setRuleOptions(options);
+    setRuleOptions(view.host ? await api('GET', '/api/when/invites/options') : ruleOptions);
   } catch (err) {
     toast(err.message);
     return;
   }
-  const onList = new Set(view.onList);
   const box = el('div', 'picker');
   const tabs = el('div', 'tabs');
   const panel = el('div', 'picker-panel');
   const kinds = view.host ? [['person', 'Add Person'], ['group', 'Add Group'], ['outside', 'Add Non-Helios']] : [['person', 'Add Person'], ['outside', 'Add Non-Helios']];
-  let active = 'person';
+  let active = kinds.some(([key]) => key === tab) ? tab : 'person';
   for (const [key, label] of kinds) {
     const b = el('button', 'tab-button' + (key === active ? ' is-active' : ''), label);
     b.type = 'button';
@@ -43,163 +60,18 @@ export async function openPicker(e, view, refresh) {
     shut();
     refresh();
   };
+  const adders = guestAdders(e, view, done);
   const paintPanel = () => {
     panel.replaceChildren();
-    switch (active) {
-      case 'person':
-        panel.append(personPanel(e, view.host, dir, onList, done));
-        break;
-      case 'group':
-        panel.append(groupPanel(e, done));
-        break;
-      case 'outside':
-        panel.append(outsidePanel(e, view.host, onList, done));
-        break;
+    const made = active === 'group' ? groupPanel(e, done) : adders[active](() => {});
+    panel.append(made);
+    if (made.focus) {
+      setTimeout(() => made.focus(), 0);
     }
   };
   box.append(tabs, panel);
   paintPanel();
   shut = popup('Add to the guest list', box, {wide: true}).shut;
-}
-
-const roleTests = {student: p => p.isStudent, parent: p => p.isParent, staff: p => p.isStaff};
-
-function personPanel(e, host, dir, onList, done) {
-  const pick = {
-    dir,
-    people: dir.result.map(dir.get),
-    onList,
-    picked: new Map(),
-    family: new Set(),
-    roles: new Set(),
-    search: el('input', 'picker-search'),
-    list: el('div', 'picker-results'),
-    add: el('button', 'button'),
-  };
-  pick.search.type = 'search';
-  pick.search.placeholder = 'Search by name or email';
-  pick.search.addEventListener('input', () => paintPersonList(pick));
-  pick.add.type = 'button';
-  const status = el('span', 'save-status');
-  pick.add.addEventListener('click', () => addPicked(e, host, pick, status, done));
-  const foot = el('div', 'modal-actions');
-  foot.append(pick.add, status);
-  const wrap = el('div');
-  wrap.append(pick.search, personFilters(pick), pick.list, foot);
-  paintPersonList(pick);
-  paintPickButton(pick);
-  setTimeout(() => pick.search.focus(), 0);
-  return wrap;
-}
-
-function personFilters(pick) {
-  const bar = el('div', 'picker-bar');
-  const chips = el('div', 'chip-row picker-roles');
-  for (const [role, label] of [['student', 'Students'], ['parent', 'Parents'], ['staff', 'Staff']]) {
-    chips.append(chipToggle(label, false, on => {
-      if (on) {
-        pick.roles.add(role);
-      } else {
-        pick.roles.delete(role);
-      }
-      paintPersonList(pick);
-    }, role));
-  }
-  bar.append(chips, familyDropdown(['Parents', 'Children', 'Siblings'], pick.family, () => {
-    paintPersonList(pick);
-    paintPickButton(pick);
-  }));
-  return bar;
-}
-
-function relativesOf(pick, p) {
-  const out = [];
-  for (const relation of ['Parents', 'Children', 'Siblings']) {
-    if (!pick.family.has(relation)) {
-      continue;
-    }
-    for (const r of pick.dir.follow(p, relation.toLowerCase())) {
-      if (r && r.email && !pick.onList.has(r.email) && !out.includes(r)) {
-        out.push(r);
-      }
-    }
-  }
-  return out;
-}
-
-function everyonePicked(pick) {
-  const out = new Map();
-  for (const p of pick.picked.values()) {
-    out.set(p.email, {email: p.email, name: p.fullName, via: 'search'});
-    for (const r of relativesOf(pick, p)) {
-      if (!out.has(r.email)) {
-        out.set(r.email, {email: r.email, name: r.fullName, via: 'family'});
-      }
-    }
-  }
-  return out;
-}
-
-function paintPickButton(pick) {
-  const n = everyonePicked(pick).size;
-  pick.add.replaceChildren(svg('plus'), el('span', '', n ? `Add ${n} ${n === 1 ? 'person' : 'people'}` : 'Add to the list'));
-  pick.add.disabled = !n;
-}
-
-function paintPersonList(pick) {
-  const {list} = pick;
-  list.replaceChildren();
-  const q = pick.search.value.trim().toLowerCase();
-  const tests = [...pick.roles].map(role => roleTests[role]);
-  const found = pick.people.filter(p => (!q || p.fullName.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)) && (!tests.length || tests.some(t => t(p))));
-  if (!found.length) {
-    list.append(el('div', 'picker-note', 'Nobody by that name. Someone outside Helios goes on Add Non-Helios.'));
-  }
-  for (const p of found.slice(0, 200)) {
-    list.append(personChoice(pick, p));
-  }
-  if (found.length > 200) {
-    list.append(el('div', 'picker-note', `${found.length - 200} more - type a name to narrow it.`));
-  }
-}
-
-function personChoice(pick, p) {
-  const on = pick.onList.has(p.email);
-  const mark = el('span', 'picker-check');
-  mark.append(svg('check'));
-  const along = relativesOf(pick, p).map(r => firstName({name: r.fullName, email: r.email}));
-  const line = [on ? 'On the list' : contactLine(pick.dir, p), along.length ? 'with ' + along.join(', ') : ''].filter(Boolean).join(' · ');
-  const row = personRow({name: p.fullName || p.email, email: p.email, photoUrl: p.heroPhotoUrl && p.heroPhotoUrl + '?thumb=1', grade: p.grade}, {
-    button: true,
-    className: 'picker-person' + (on ? ' is-on' : pick.picked.has(p.email) ? ' is-picked' : ''),
-    before: [mark],
-    lines: [line ? el('div', 'person-row-line' + (along.length ? ' has-family' : ''), line) : null],
-    gradeColors: state.model.gradeColors,
-  });
-  row.disabled = on;
-  row.addEventListener('click', () => {
-    if (pick.picked.has(p.email)) {
-      pick.picked.delete(p.email);
-    } else {
-      pick.picked.set(p.email, p);
-    }
-    row.classList.toggle('is-picked', pick.picked.has(p.email));
-    paintPickButton(pick);
-  });
-  return row;
-}
-
-async function addPicked(e, host, pick, status, done) {
-  pick.add.disabled = true;
-  const people = [...everyonePicked(pick).values()];
-  try {
-    await act('events', e.id, 'invite', {people});
-    done(host ? `${people.length} added to the list.` : `${people.length} invited - the invitation is on its way.`);
-  } catch (err) {
-    status.textContent = err.message;
-    status.classList.add('error');
-    pick.add.disabled = false;
-  }
 }
 
 function groupPanel(e, done) {
@@ -254,144 +126,4 @@ function groupPanel(e, done) {
   foot.append(add, status);
   wrap.append(foot);
   return wrap;
-}
-
-const emailForm = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-
-function outsidePanel(e, host, onList, done) {
-  const wrap = el('div');
-  wrap.append(el('div', 'picker-note', 'Someone outside Helios - a coach, a grandparent, a friend - and their family. They get the email and the calendar invite with a page of their own to answer from, no sign-in needed, that shows the event and nothing of who else is coming.'));
-  const families = el('div', 'outside-families');
-  families.append(outsideFamilyCard());
-  wrap.append(families, button('Add another family', 'plus', 'link-button', () => {
-    const card = outsideFamilyCard();
-    families.append(card);
-    card.focus();
-  }));
-  const status = el('span', 'save-status');
-  const foot = el('div', 'modal-actions');
-  const add = button('Add to the list', 'plus', 'button', () => addOutside(e, host, onList, families, status, add, done));
-  foot.append(add, status);
-  wrap.append(foot);
-  setTimeout(() => families.firstChild.focus(), 0);
-  return wrap;
-}
-
-function outsideFamilyCard() {
-  const card = el('div', 'outside-family');
-  const members = [];
-  const name = textInput('', {placeholder: 'Name'});
-  const email = textInput('', {type: 'email', placeholder: 'Email address'});
-  const head = el('div', 'picker-email');
-  head.append(name, email);
-  card.append(head, outsideMembers(members));
-  card.members = members;
-  card.head = () => ({name: name.value.trim(), email: email.value.trim().toLowerCase()});
-  card.focus = () => name.focus();
-  return card;
-}
-
-function outsideMembers(members) {
-  const family = el('div', 'outside-members');
-  family.append(el('div', 'outside-members-title', 'Family members (optional)'), el('div', 'picker-note', 'A spouse, a partner, children - whoever is coming with them. Anyone with an address gets an invitation of their own.'));
-  const list = el('div', 'outside-member-list');
-  const adder = outsideMemberAdder(members, list);
-  family.append(list, button('Add family member', 'plus', 'button button-secondary button-small', () => {
-    adder.node.hidden = false;
-    adder.name.focus();
-  }), adder.node);
-  return family;
-}
-
-function paintOutsideMembers(list, members) {
-  list.replaceChildren();
-  for (const m of members) {
-    const remove = el('button', 'guests-action is-remove');
-    remove.type = 'button';
-    remove.title = 'Remove';
-    remove.append(svg('trash'));
-    remove.addEventListener('click', () => {
-      members.splice(members.indexOf(m), 1);
-      paintOutsideMembers(list, members);
-    });
-    list.append(personRow({name: m.name, email: m.email}, {
-      className: 'outside-member',
-      lines: [m.email || 'No address - answered for by the family'],
-      after: [remove],
-    }));
-  }
-}
-
-function outsideMemberAdder(members, list) {
-  const node = el('div', 'picker-email outside-adder');
-  node.hidden = true;
-  const name = textInput('', {placeholder: 'Family member’s name'});
-  const email = textInput('', {type: 'email', placeholder: 'Their email (optional)'});
-  const put = button('Add', 'plus', 'button button-small', () => {
-    const n = name.value.trim();
-    const a = email.value.trim().toLowerCase();
-    if (!n) {
-      name.focus();
-      return;
-    }
-    if (a && !emailForm.test(a)) {
-      email.focus();
-      return;
-    }
-    members.push({name: n, email: a});
-    name.value = '';
-    email.value = '';
-    paintOutsideMembers(list, members);
-    name.focus();
-  });
-  node.append(name, email, put);
-  for (const input of [name, email]) {
-    input.addEventListener('keydown', ev => {
-      if (ev.key === 'Enter') {
-        ev.preventDefault();
-        put.click();
-      }
-    });
-  }
-  return {node, name};
-}
-
-async function addOutside(e, host, onList, families, status, add, done) {
-  const people = [];
-  for (const card of families.children) {
-    const head = card.head();
-    if (!head.name && !head.email && !card.members.length) {
-      continue;
-    }
-    if (!head.name || !emailForm.test(head.email)) {
-      status.textContent = 'Each family needs a name and an email address at its head.';
-      status.classList.add('error');
-      card.focus();
-      return;
-    }
-    if (onList.has(head.email)) {
-      status.textContent = `${head.name} is on the list already.`;
-      status.classList.add('error');
-      return;
-    }
-    people.push({email: head.email, name: head.name, via: 'outside', household: head.email});
-    for (const m of card.members) {
-      people.push({email: m.email, name: m.name, via: 'outside', household: head.email});
-    }
-  }
-  if (!people.length) {
-    status.textContent = 'A name and an email address, please.';
-    status.classList.add('error');
-    return;
-  }
-  add.disabled = true;
-  try {
-    await act('events', e.id, 'invite', {people});
-    const added = people.length;
-    done(host ? (added === 1 ? `${people[0].name} added to the list.` : `${added} people added to the list.`) : added === 1 ? `${people[0].name} invited - the invitation is on its way.` : `${added} people invited - the invitations are on their way.`);
-  } catch (err) {
-    status.textContent = err.message;
-    status.classList.add('error');
-    add.disabled = false;
-  }
 }

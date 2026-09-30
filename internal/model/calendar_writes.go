@@ -646,27 +646,23 @@ func (a calendarApp) uninviteOps(actor access.Actor, id, email string) ([]store.
 	if inv == nil && !answered {
 		return nil, nil, "", false, access.Missing("they are not on the list")
 	}
-	if !a.isHost(actor, e) && !(inv != nil && inv.GuestOf != "" && a.mayAnswerFor(actor, inv.GuestOf, e)) {
+	host := a.isHost(actor, e)
+	if !host && !(inv != nil && inv.GuestOf != "" && a.mayAnswerFor(actor, inv.GuestOf, e)) {
 		return nil, nil, "", false, access.Forbidden("only a host can take someone off the list")
+	}
+	if host && (inv == nil || inv.GuestOf == "") && a.directory().Person(email) != nil {
+		g := InviteGroup{ID: a.model().Minter()(), Rule: Rule{Kind: RuleExclude, Search: email}, AddedBy: actor.Email, Added: now().Format(DateTimeFormat)}
+		dropped, _ := a.regroupOps(actor, e, nil, g)
+		return append(a.newGroupOps(actor, e, g), dropped...), e, email, true, nil
 	}
 	ops := []store.Op{}
 	if answered {
 		ops = append(ops, store.Delete(RSVPsTab, store.Row{"Event ID": e.ID, "Email": email}))
 	}
-	if inv == nil {
-		return ops, e, email, false, nil
+	if inv != nil {
+		ops = append(ops, store.Delete(InvitesTab, store.Row{"Event ID": e.ID, "Email": email}))
 	}
-	ops = append(ops, store.Delete(InvitesTab, store.Row{"Event ID": e.ID, "Email": email}))
-	gid, ok := strings.CutPrefix(inv.Via, ViaGroup)
-	if !ok {
-		return ops, e, email, false, nil
-	}
-	group := a.model().GroupOf(e.ID, gid)
-	if group == nil {
-		return ops, e, email, false, nil
-	}
-	ops = append(ops, store.Update(InviteGroupsTab, store.Row{"Event ID": e.ID, "Group ID": gid}, store.Row{"Removed": strings.Join(append(slices.Clone(group.Removed), email), ", ")}))
-	return ops, e, email, true, nil
+	return ops, e, email, false, nil
 }
 
 type broughtGuest struct {
@@ -965,6 +961,9 @@ func (a calendarApp) sentOps(actor access.Actor, e *Event, emails []string, stam
 		ops = append(ops, store.Update(InvitationsTab, store.Row{"Event ID": e.ID}, store.Row{"Sent": stamp}))
 	}
 	for _, g := range model.Groups[e.ID] {
+		if g.Rule.Kind == RuleExclude {
+			continue
+		}
 		unsent := slices.ContainsFunc(model.Invites[e.ID], func(inv Invite) bool {
 			return inv.Via == ViaGroup+g.ID && inv.Sent == "" && inv.Requested == "" && !slices.Contains(emails, inv.Email)
 		})
@@ -1022,7 +1021,9 @@ func (a calendarApp) openedOps(actor access.Actor, e *Event) []store.Op {
 
 func (a calendarApp) checkRule(actor access.Actor, r Rule, e *Event) (Rule, error) {
 	r = r.Clean()
-	r.Kind = RuleInclude
+	if r.Kind != RuleExclude {
+		r.Kind = RuleInclude
+	}
 	if err := r.Check(); err != nil {
 		return r, err
 	}
@@ -1058,23 +1059,35 @@ func (a calendarApp) addGroupOps(actor access.Actor, id string, rule Rule, auto 
 	if err != nil {
 		return nil, nil, InviteGroup{}, access.Invalid("%v", err)
 	}
-	if len(a.model().Groups[e.ID]) >= 20 {
-		return nil, nil, InviteGroup{}, access.Invalid("a guest list holds twenty groups at most")
+	if rule.Kind == RuleInclude && len(slices.DeleteFunc(slices.Clone(a.model().Groups[e.ID]), func(g InviteGroup) bool { return g.Rule.Kind == RuleExclude })) >= 20 {
+		return nil, nil, InviteGroup{}, access.Invalid("a guest list holds twenty include rules at most")
 	}
 	g := InviteGroup{ID: a.model().Minter()(), Rule: rule, Auto: auto == nil || *auto, AddedBy: actor.Email, Added: now().Format(DateTimeFormat)}
 	return a.newGroupOps(actor, e, g), e, g, nil
 }
 
-func (a calendarApp) setGroupOps(actor access.Actor, id, gid string, auto bool) ([]store.Op, *Event, *InviteGroup, error) {
+func (a calendarApp) setGroupOps(actor access.Actor, id, gid string, auto bool, rule *Rule) ([]store.Op, *Event, *InviteGroup, InviteGroup, error) {
 	e, err := a.hostedEvent(actor, id)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, InviteGroup{}, err
 	}
 	g := a.model().GroupOf(e.ID, gid)
 	if g == nil {
-		return nil, nil, nil, access.Missing("that group is not on the list")
+		return nil, nil, nil, InviteGroup{}, access.Missing("that group is not on the list")
 	}
-	return []store.Op{store.Update(InviteGroupsTab, store.Row{"Event ID": e.ID, "Group ID": g.ID}, store.Row{"Auto": cells.YesNoCell(auto)})}, e, g, nil
+	next := *g
+	next.Auto = auto
+	row := store.Row{"Auto": cells.YesNoCell(auto)}
+	if rule != nil {
+		checked, err := a.checkRule(actor, *rule, e)
+		if err != nil {
+			return nil, nil, nil, InviteGroup{}, access.Invalid("%v", err)
+		}
+		checked.Kind = g.Rule.Kind
+		next.Rule = checked
+		maps.Copy(row, checked.Cells())
+	}
+	return []store.Op{store.Update(InviteGroupsTab, store.Row{"Event ID": e.ID, "Group ID": g.ID}, row)}, e, g, next, nil
 }
 
 func (a calendarApp) removeGroupOps(actor access.Actor, id, gid string) ([]store.Op, *Event, *InviteGroup, error) {
@@ -1109,7 +1122,7 @@ func (a calendarApp) startPartyOps(actor access.Actor, id string) ([]store.Op, *
 		key = "activity:" + e.linkedID()
 	}
 	for _, g := range a.model().Groups[e.ID] {
-		if slices.Contains(g.Rule.Tags, key) {
+		if g.Rule.Kind == RuleInclude && slices.Contains(g.Rule.Tags, key) {
 			return nil, e, g, nil
 		}
 	}
@@ -1117,16 +1130,20 @@ func (a calendarApp) startPartyOps(actor access.Actor, id string) ([]store.Op, *
 	return append(a.newGroupOps(actor, e, g), a.hostYesOps(actor, e, a.hostsOf(e))...), e, g, nil
 }
 
-func (a calendarApp) fillOps(actor access.Actor, e *Event, g InviteGroup) ([]store.Op, []string) {
+func (a calendarApp) fillOps(actor access.Actor, e *Event, g InviteGroup, skip map[string]bool) ([]store.Op, []string) {
 	model := a.model()
 	stamp := now().Format(DateTimeFormat)
 	ops := []store.Op{}
 	emails := []string{}
+	if g.Rule.Kind == RuleExclude {
+		return ops, emails
+	}
 	guests := a.ticketGuests(g)
 	for _, email := range a.members(e, g) {
-		if model.InviteOf(e.ID, email) != nil || slices.Contains(g.Removed, email) {
+		if skip[email] || model.InviteOf(e.ID, email) != nil {
 			continue
 		}
+		skip[email] = true
 		name, token := email, ""
 		if p := a.directory().Person(email); p != nil {
 			name = p.FullName

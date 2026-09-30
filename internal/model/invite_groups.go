@@ -19,14 +19,13 @@ const ViaInvited = "invited"
 const sweepActor = "invite sweep"
 
 type InviteGroup struct {
-	ID      string   `json:"id"`
-	Rule    Rule     `json:"rule"`
-	Auto    bool     `json:"auto"`
-	AddedBy string   `json:"addedBy"`
-	Added   string   `json:"added"`
-	Sent    string   `json:"sent"`
-	Removed []string `json:"removed,omitempty"`
-	Count   int      `json:"count"`
+	ID      string `json:"id"`
+	Rule    Rule   `json:"rule"`
+	Auto    bool   `json:"auto"`
+	AddedBy string `json:"addedBy"`
+	Added   string `json:"added"`
+	Sent    string `json:"sent"`
+	Count   int    `json:"count"`
 }
 
 func (b *builder) groups(rows []store.Row) {
@@ -46,7 +45,6 @@ func (b *builder) groups(rows []store.Row) {
 		b.model.Groups[id] = append(b.model.Groups[id], InviteGroup{
 			ID: gid, Rule: rule, Auto: auto,
 			AddedBy: mail.Normalize(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]),
-			Removed: splitEmails(row["Removed"]),
 		})
 	}
 }
@@ -73,12 +71,71 @@ func (m *Calendar) GroupOf(id, gid string) *InviteGroup {
 
 func (a calendarApp) members(e *Event, g InviteGroup) []string {
 	out := []string{}
-	for _, m := range (Audience{Rules: []Rule{g.Rule}, Editors: a.hostsOf(e)}).Members(a.sources()) {
+	matched := g.Rule
+	matched.Kind = RuleInclude
+	for _, m := range (Audience{Rules: []Rule{matched}, Editors: a.hostsOf(e)}).Members(a.sources()) {
 		if m = a.directory().Resolve(mail.Normalize(m)); m != "" && !slices.Contains(out, m) {
 			out = append(out, m)
 		}
 	}
 	return a.ticketHolders(g, out)
+}
+
+func (a calendarApp) excluded(e *Event, groups []InviteGroup) map[string]bool {
+	out := map[string]bool{}
+	for _, g := range groups {
+		if g.Rule.Kind != RuleExclude {
+			continue
+		}
+		for _, m := range a.members(e, g) {
+			out[m] = true
+		}
+	}
+	return out
+}
+
+func (a calendarApp) regroupOps(actor access.Actor, e *Event, was *InviteGroup, g InviteGroup) ([]store.Op, []string) {
+	model := a.model()
+	before := model.Groups[e.ID]
+	after := []InviteGroup{}
+	for _, other := range before {
+		if other.ID != g.ID {
+			after = append(after, other)
+		}
+	}
+	after = append(after, g)
+	left := a.excluded(e, after)
+	ops := []store.Op{}
+	if g.Rule.Kind == RuleExclude {
+		had := a.excluded(e, before)
+		dropped := []string{}
+		for email := range left {
+			if had[email] {
+				continue
+			}
+			if model.InviteOf(e.ID, email) != nil {
+				ops = append(ops, store.Delete(InvitesTab, store.Row{"Event ID": e.ID, "Email": email}))
+				dropped = append(dropped, email)
+			}
+			if ans := model.AnswerOf(email, e.ID); ans != "" && ans != AnswerHidden {
+				ops = append(ops, store.Delete(RSVPsTab, store.Row{"Event ID": e.ID, "Email": email}))
+			}
+		}
+		return ops, dropped
+	}
+	if was != nil {
+		keep := map[string]bool{}
+		for _, m := range a.members(e, g) {
+			keep[m] = true
+		}
+		for _, inv := range model.Invites[e.ID] {
+			if inv.Via == ViaGroup+g.ID && inv.Sent == "" && !keep[inv.Email] {
+				ops = append(ops, store.Delete(InvitesTab, store.Row{"Event ID": e.ID, "Email": inv.Email}))
+			}
+		}
+	}
+	filled, emails := a.fillOps(actor, e, g, left)
+	return append(ops, filled...), emails
 }
 
 func (a calendarApp) ticketHolders(g InviteGroup, members []string) []string {
@@ -183,4 +240,5 @@ type setGroupBody struct {
 	ID    string `json:"id"`
 	Group string `json:"group"`
 	Auto  bool   `json:"auto"`
+	Rule  *Rule  `json:"rule"`
 }

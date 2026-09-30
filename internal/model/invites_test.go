@@ -792,6 +792,13 @@ func TestInviteGroups(t *testing.T) {
 	if rec := call(t, jordan, "POST", "/api/invite-groups/"+g.ID+"/edit", `{"auto":false}`); rec.Code != 204 {
 		t.Errorf("auto off: %d %s", rec.Code, rec.Body)
 	}
+	i := slices.IndexFunc(cache.Model().Calendar.Groups[meetup], func(g InviteGroup) bool { return g.Rule.Kind == RuleExclude && g.Rule.Search == robin })
+	if i < 0 {
+		t.Fatalf("taking robin off made no exclude rule: %+v", cache.Model().Calendar.Groups[meetup])
+	}
+	if rec := call(t, jordan, "DELETE", "/api/invite-groups/"+cache.Model().Calendar.Groups[meetup][i].ID, ""); rec.Code != 204 {
+		t.Fatalf("remove robin's exclude rule: %d %s", rec.Code, rec.Body)
+	}
 	sources.tag(t, carpool, robin)
 	queue.Refresh()
 	eventually(t, "a newcomer to a group with auto off comes on unsent", func() bool {
@@ -1370,8 +1377,8 @@ func TestRemovedStayRemoved(t *testing.T) {
 	if rec := act(t, jordan, "moms", "uninvite", `{"email":"`+dropped+`"}`); rec.Code != 204 {
 		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
 	}
-	if g := cache.Model().Calendar.GroupOf(moms, made); !slices.Contains(g.Removed, dropped) {
-		t.Errorf("the group does not remember the removal: %+v", g)
+	if !slices.ContainsFunc(cache.Model().Calendar.Groups[moms], func(g InviteGroup) bool { return g.Rule.Kind == RuleExclude && g.Rule.Search == dropped }) {
+		t.Errorf("taking %s off made no exclude rule: %+v", dropped, cache.Model().Calendar.Groups[moms])
 	}
 	fillNow(t)
 	fillNow(t)
@@ -1388,6 +1395,65 @@ func TestRemovedStayRemoved(t *testing.T) {
 	act(t, jordan, "moms", "invite", `{"people":[{"email":"`+dropped+`"}]}`)
 	if cache.Model().Calendar.InviteOf(moms, dropped) == nil {
 		t.Errorf("adding %s by hand did not take", dropped)
+	}
+}
+
+func TestExcludeAndEditGroups(t *testing.T) {
+	mux, cache, _, _ := invitesAppWith(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/events", `{"title":"Moms","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"moms"}`)
+	moms := idOf(t, cache, "moms")
+	abena, daniel := "abena.osei@heliosschool.org", "daniel.park@heliosschool.org"
+	rec := call(t, jordan, "POST", "/api/invite-groups", `{"id":"moms","rule":{"tags":["`+carpoolKey+`"]},"auto":false}`)
+	made := created(t, rec)
+	if rec.Code != 200 || viaGroup(cache, moms, made) != 2 {
+		t.Fatalf("group: %d %s", rec.Code, rec.Body)
+	}
+	act(t, jordan, "moms", "invite", `{"people":[{"email":"`+robin+`"}]}`)
+	act(t, jordan, "moms", "answer-for", `{"email":"`+abena+`","answer":"yes"}`)
+	rec = call(t, jordan, "POST", "/api/invite-groups", `{"id":"moms","rule":{"kind":"exclude","search":"`+abena+`"}}`)
+	left := created(t, rec)
+	if rec.Code != 200 || cache.Model().Calendar.InviteOf(moms, abena) != nil || cache.Model().Calendar.AnswerOf(abena, moms) != "" {
+		t.Fatalf("the exclude rule left abena on: %d %s", rec.Code, rec.Body)
+	}
+	if g := cache.Model().Calendar.GroupOf(moms, left); g == nil || g.Rule.Kind != RuleExclude {
+		t.Fatalf("exclude row = %+v", g)
+	}
+	if v := inviteView(t, jordan, moms); !slices.ContainsFunc(v.Groups, func(g InviteGroup) bool { return g.ID == left && g.Count == 1 }) {
+		t.Errorf("the exclude rule's count: %+v", v.Groups)
+	}
+	fillNow(t)
+	if cache.Model().Calendar.InviteOf(moms, abena) != nil {
+		t.Errorf("the group put abena back past the exclude rule")
+	}
+	rec = call(t, jordan, "POST", "/api/invite-groups", `{"id":"moms","rule":{"kind":"exclude","search":"`+robin+`"}}`)
+	if rec.Code != 200 || cache.Model().Calendar.InviteOf(moms, robin) != nil {
+		t.Errorf("the exclude rule left robin, added by hand, on: %d %s", rec.Code, rec.Body)
+	}
+	act(t, jordan, "moms", "invite", `{"people":[{"email":"`+robin+`"}]}`)
+	fillNow(t)
+	if cache.Model().Calendar.InviteOf(moms, robin) == nil {
+		t.Errorf("adding robin by hand after the exclude rule did not stay")
+	}
+	if rec := call(t, jordan, "DELETE", "/api/invite-groups/"+left, ""); rec.Code != 204 {
+		t.Fatalf("delete the exclude rule: %d %s", rec.Code, rec.Body)
+	}
+	fillNow(t)
+	if r := cache.Model().Calendar.InviteOf(moms, abena); r == nil || r.Via != ViaGroup+made {
+		t.Errorf("abena did not come back with the exclude rule gone: %+v", r)
+	}
+	if rec := call(t, jordan, "POST", "/api/invite-groups/"+made+"/edit", `{"auto":false,"rule":{"kind":"exclude","search":"`+abena+`"}}`); rec.Code != 204 {
+		t.Fatalf("edit the rule: %d %s", rec.Code, rec.Body)
+	}
+	g := cache.Model().Calendar.GroupOf(moms, made)
+	if g.Rule.Kind != RuleInclude || g.Rule.Search != abena || len(g.Rule.Tags) != 0 {
+		t.Errorf("the edited rule = %+v", g.Rule)
+	}
+	if cache.Model().Calendar.InviteOf(moms, daniel) != nil || cache.Model().Calendar.InviteOf(moms, abena) == nil {
+		t.Errorf("after the edit: daniel %+v, abena %+v", cache.Model().Calendar.InviteOf(moms, daniel), cache.Model().Calendar.InviteOf(moms, abena))
+	}
+	if rec := call(t, as(mia, mux), "POST", "/api/invite-groups/"+made+"/edit", `{"rule":{"tags":["`+carpoolKey+`"]}}`); rec.Code != 403 && rec.Code != 404 {
+		t.Errorf("someone else editing the rule: %d", rec.Code)
 	}
 }
 
@@ -2201,7 +2267,7 @@ func TestSweepActsOnlyForAHost(t *testing.T) {
 		t.Errorf("the fill filled the group for someone who no longer hosts")
 	}
 	e := a.eventFor(access.Actor{Email: mia}, meetup)
-	filled, _ := a.fillOps(access.System(sweepActor), e, cache.Model().Calendar.Groups[meetup][0])
+	filled, _ := a.fillOps(access.System(sweepActor), e, cache.Model().Calendar.Groups[meetup][0], map[string]bool{})
 	if len(filled) == 0 {
 		t.Errorf("the group no longer matches, so the fill proved nothing")
 	}

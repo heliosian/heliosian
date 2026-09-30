@@ -350,6 +350,9 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 		view.List = rows
 		view.Groups = []InviteGroup{}
 		for _, g := range model.Groups[e.ID] {
+			if g.Rule.Kind == RuleExclude {
+				g.Count = len(a.members(e, g))
+			}
 			for _, inv := range model.Invites[e.ID] {
 				if inv.Via == ViaGroup+g.ID {
 					g.Count++

@@ -73,6 +73,19 @@ func TestTagsReadForTheEditors(t *testing.T) {
 	}
 }
 
+func TestAnAdditionFromTheDirectory(t *testing.T) {
+	s, d := audienceSample(t)
+	masked := colin
+	d.Person(masked).EmailMasked = true
+	reasons := Audience{Rules: []Rule{{Kind: RuleExclude, Search: abena}}, Additions: []string{abena, masked}, Editors: []string{jordan}}.Reasons(s)
+	if got := reasons[abena]; len(got) != 1 || !got[0].Added {
+		t.Errorf("a directory person added by hand, past an exclude rule: %+v", got)
+	}
+	if _, ok := reasons[masked]; ok {
+		t.Errorf("someone with their address hidden went on by hand")
+	}
+}
+
 func TestTagLabels(t *testing.T) {
 	s, _ := audienceSample(t)
 	r := include(carpoolKey, bookClubKey, "party:p1", goneKey, "activity:abc")

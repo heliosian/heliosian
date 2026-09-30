@@ -109,8 +109,9 @@ func (a calendarApp) fillGroups(ctx context.Context) {
 			if e == nil || e.end.Before(now()) {
 				continue
 			}
+			skip := a.excluded(e, groups)
 			for _, g := range groups {
-				filled, emails := a.fillOps(actor, e, g)
+				filled, emails := a.fillOps(actor, e, g, skip)
 				if len(filled) > 0 {
 					slog.InfoContext(ctx, "calendar: group filled", "event", e.ID, "group", g.ID, "added", len(emails))
 				}

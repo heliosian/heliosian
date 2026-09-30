@@ -261,7 +261,75 @@ export function filterControl(sections, onChange, toggles = []) {
 export function rulesEditor({options, personName}) {
   const listIcons = {party: 'party', activity: 'activity', room: 'classrooms'};
 
-  function ruleRow(rule, onChange, onRemove, open, countChip) {
+  function ruleLine(rule, count) {
+    const words = el('div', 'rule-controls');
+    const line = el('div', 'rule-line');
+    line.append(el('span', 'rule-kind', rule.kind === 'include' ? 'Include' : 'Exclude'));
+    line.append(svg(rule.kind === 'include' ? 'groups' : 'user-minus'));
+    const sentence = el('span', 'rule-line-words');
+    sentence.append(...ruleNodes(rule));
+    line.append(sentence);
+    if (count) {
+      line.append(count);
+    }
+    words.append(line);
+    return words;
+  }
+
+  function rulesCard({hint, ...listing}) {
+    const card = el('div', 'card');
+    const list = rulesList(listing);
+    card.append(el('h2', '', 'Rules'), el('div', 'hint', hint), list.node);
+    return {card, list};
+  }
+
+  function rulesList({list, empty, opened = null, onAdd, onChange, onRemove, onDone, count, extra}) {
+    const countChip = rule => {
+      const n = count(rule);
+      const chip = el('span', 'rule-count', n === undefined ? '' : rule.kind === 'exclude' ? `${n} excluded` : `${n} match`);
+      chip.hidden = n === undefined;
+      return chip;
+    };
+    const node = el('div');
+    const rows = el('div', 'rules');
+    let open = opened;
+    const render = () => {
+      rows.replaceChildren();
+      const all = list();
+      if (!all.length) {
+        rows.append(el('div', 'rule-empty', empty));
+      }
+      for (const kind of ['include', 'exclude']) {
+        for (const rule of all.filter(r => r.kind === kind)) {
+          rows.append(ruleRow(rule, () => onChange(rule), () => onRemove(rule), rule === open, countChip, () => onDone(rule), extra));
+        }
+      }
+      open = null;
+    };
+    const adders = el('div', 'add-row');
+    for (const kind of ['include', 'exclude']) {
+      adders.append(button(kind === 'include' ? 'Add include rule' : 'Add exclude rule', kind === 'include' ? 'plus' : 'minus', 'button button-secondary', () => {
+        open = newRule(kind);
+        onAdd(open);
+        render();
+      }));
+    }
+    node.append(rows, adders);
+    render();
+    return {
+      node,
+      render,
+      refreshCounts() {
+        for (const row of rows.children) {
+          if (row.refreshCount) {
+            row.refreshCount();
+          }
+        }
+      },
+    };
+  }
+
+  function ruleRow(rule, onChange, onRemove, open, countChip, onDone, extra) {
     const row = el('div', 'rule');
     const mine = rule.tags.every(t => options().tags.some(o => o.key === t) || options().lists.some(l => l.key === t));
     let count = null;
@@ -276,23 +344,17 @@ export function rulesEditor({options, personName}) {
       row.classList.remove('is-open');
       row.classList.add('is-line', 'is-' + rule.kind);
       row.replaceChildren();
-      const words = el('div', 'rule-controls');
-      const line = el('div', 'rule-line');
-      line.append(el('span', 'rule-kind', rule.kind === 'include' ? 'Include' : 'Exclude'));
-      line.append(svg(rule.kind === 'include' ? 'groups' : 'user-minus'));
-      const sentence = el('span', 'rule-line-words');
-      sentence.append(...ruleNodes(rule));
-      line.append(sentence);
-      if (countChip) {
-        count = countChip(rule);
-        line.append(count);
-      }
-      words.append(line);
+      count = countChip ? countChip(rule) : null;
+      const words = ruleLine(rule, count);
       if (!mine) {
         row.classList.add('is-theirs');
         words.append(el('div', 'rule-note', 'Names a tag that is not yours to name; it can be removed but not changed.'));
       }
       row.append(words);
+      const more = extra && extra(rule);
+      if (more) {
+        row.append(more);
+      }
       if (mine) {
         row.append(iconButton('edit', 'Change this rule', 'rule-remove', showControls));
       }
@@ -311,6 +373,9 @@ export function rulesEditor({options, personName}) {
           return;
         }
         showWords();
+        if (onDone) {
+          onDone();
+        }
       });
       controls.querySelector('.rule-said').after(done);
       row.append(iconButton('trash', 'Remove this rule', 'rule-remove', onRemove));
@@ -494,5 +559,5 @@ export function rulesEditor({options, personName}) {
     });
   }
 
-  return {ruleRow, ruleControls, newRule, ruleSaysSomething, personWords, ruleWords, listIcons};
+  return {rulesCard, rulesList, ruleControls, newRule, ruleSaysSomething, personWords, ruleWords, listIcons};
 }

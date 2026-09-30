@@ -812,27 +812,6 @@ main {
 .host-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 
 /* Modals and forms. */
-.modal {
-  background: var(--card);
-  border-radius: 14px;
-  padding: 20px 24px;
-  width: 100%;
-  max-width: 560px;
-  max-height: calc(100vh - 40px);
-  overflow-y: auto;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-}
-
-.modal.modal-wide { max-width: 860px; }
-
-/* The attendee table: as wide as the window allows. */
-.modal.modal-table { max-width: min(1240px, calc(100vw - 40px)); }
-
-.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-
-.modal-header h2 { font-size: 17px; margin: 0; }
-
-.modal-close { border: 0; background: none; font-size: 24px; line-height: 1; color: var(--muted); cursor: pointer; }
 
 .modal-actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
 
@@ -1334,7 +1313,6 @@ body.is-admin main { background-image: none; }
   .row-actions .button span { display: none; }
   .row-actions .button { padding: 8px; }
   .list-bar { flex-direction: column; align-items: stretch; }
-  .modal { padding: 16px; }
   .invoice-row { grid-template-columns: 1fr 1fr; }
 }
 

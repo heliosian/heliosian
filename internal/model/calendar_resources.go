@@ -500,8 +500,8 @@ func (r calendarResources) events() api.Type[*Model] {
 			"uninvite": action(r, func(a calendarApp, q api.Query, e *Event) bool {
 				return e.keepsGuestList() && (a.isHost(q.Actor, e) || slices.ContainsFunc(a.model().Invites[e.ID], func(inv Invite) bool { return inv.GuestOf != "" && a.mayAnswerFor(q.Actor, inv.GuestOf, e) }))
 			}, func(wr api.Write[*Model], e *Event, body personBody) error {
-				ops, _, email, fromGroup, err := r.app.at(wr.S).uninviteOps(wr.Query.Actor, e.ID, body.Email)
-				logAfter(wr, "calendar: guest removed", "event", e.ID, "email", email, "from group", fromGroup)
+				ops, _, email, excluded, err := r.app.at(wr.S).uninviteOps(wr.Query.Actor, e.ID, body.Email)
+				logAfter(wr, "calendar: guest removed", "event", e.ID, "email", email, "excluded", excluded)
 				return stage(wr, CalendarApp, ops, err)
 			}),
 			"bring-guest": action(r, func(a calendarApp, q api.Query, e *Event) bool { return a.bringer(q, e) }, func(wr api.Write[*Model], e *Event, body guestBody) error {
@@ -584,7 +584,7 @@ func (r calendarResources) events() api.Type[*Model] {
 				if err != nil || len(ops) == 0 {
 					return err
 				}
-				filled, emails := a.fillOps(wr.Query.Actor, e, g)
+				filled, emails := a.fillOps(wr.Query.Actor, e, g, a.excluded(e, a.model().Groups[e.ID]))
 				logAfter(wr, "calendar: party list started", "event", e.ID, "group", g.ID, "added", len(emails))
 				return stage(wr, CalendarApp, append(ops, filled...), nil)
 			}),
@@ -714,6 +714,9 @@ func (r calendarResources) inviteGroups() api.Type[*Model] {
 				return nil, false
 			}
 			out := *g
+			if g.Rule.Kind == RuleExclude {
+				out.Count = len(a.members(e, *g))
+			}
 			for _, inv := range a.model().Invites[e.ID] {
 				if inv.Via == ViaGroup+g.ID {
 					out.Count++
@@ -741,9 +744,9 @@ func (r calendarResources) inviteGroups() api.Type[*Model] {
 			if err != nil {
 				return "", err
 			}
-			filled, emails := a.fillOps(wr.Query.Actor, e, g)
-			logAfter(wr, "calendar: group added", "event", e.ID, "group", g.ID, "added", len(emails))
-			return g.ID, r.app.store.stage(wr, CalendarApp, append(ops, filled...), nil)
+			changed, emails := a.regroupOps(wr.Query.Actor, e, nil, g)
+			logAfter(wr, "calendar: group added", "event", e.ID, "group", g.ID, "kind", g.Rule.Kind, "people", len(emails))
+			return g.ID, r.app.store.stage(wr, CalendarApp, append(ops, changed...), nil)
 		}),
 		Actions: map[string]api.Action[*Model]{
 			"edit": api.DoFrom(owns, func(wr api.Write[*Model]) setGroupBody {
@@ -752,9 +755,16 @@ func (r calendarResources) inviteGroups() api.Type[*Model] {
 			}, func(wr api.Write[*Model], body setGroupBody) error {
 				a := r.app.at(wr.S)
 				e, g := find(a, wr.Query, wr.ID)
-				ops, _, _, err := a.setGroupOps(wr.Query.Actor, e.ID, g.ID, body.Auto)
-				logAfter(wr, "calendar: group changed", "event", e.ID, "group", g.ID, "auto", body.Auto)
-				return r.app.store.stage(wr, CalendarApp, ops, err)
+				ops, _, was, next, err := a.setGroupOps(wr.Query.Actor, e.ID, g.ID, body.Auto, body.Rule)
+				if err != nil {
+					return err
+				}
+				changed, emails := []store.Op{}, []string{}
+				if body.Rule != nil || (next.Auto && !was.Auto) {
+					changed, emails = a.regroupOps(wr.Query.Actor, e, was, next)
+				}
+				logAfter(wr, "calendar: group changed", "event", e.ID, "group", g.ID, "auto", body.Auto, "rule", body.Rule != nil, "people", len(emails))
+				return r.app.store.stage(wr, CalendarApp, append(ops, changed...), nil)
 			}),
 			"delete": api.Do(owns, func(wr api.Write[*Model], _ serve.None) error {
 				a := r.app.at(wr.S)

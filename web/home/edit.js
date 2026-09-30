@@ -51,24 +51,12 @@ const rules = rulesEditor({
 
 function audienceCard(mount, initial, everyoneNote, thing, withHead = true) {
   const draft = (initial || []).map(r => ({...r, roles: [...(r.roles || [])], classrooms: [...(r.classrooms || [])], grades: [...(r.grades || [])], tags: [...(r.tags || [])], tagLabels: tagLabelsOf(r), family: [...(r.family || [])]}));
-  let opened = null;
   let counts = [];
   let previewTimer = null;
   mount.replaceChildren();
   const head = el('span', '', withHead ? 'Visibility ' : '');
   head.append(el('small', 'audience-note', everyoneNote));
-  const list = el('div', 'rules');
-  const adders = el('div', 'rule-adders');
   const preview = el('div', 'audience-preview');
-  mount.append(head, list, adders, preview);
-  const countChip = rule => {
-    const i = draft.indexOf(rule);
-    const chip = el('span', 'rule-count');
-    const n = counts[i];
-    chip.hidden = n === undefined;
-    chip.textContent = n === undefined ? '' : rule.kind === 'exclude' ? `${n} excluded` : `${n} match`;
-    return chip;
-  };
   const askPreview = () => {
     clearTimeout(previewTimer);
     previewTimer = setTimeout(async () => {
@@ -84,11 +72,7 @@ function audienceCard(mount, initial, everyoneNote, thing, withHead = true) {
         said.forEach((r, i) => {
           counts[draft.indexOf(r)] = answer.ruleCounts[i];
         });
-        for (const row of list.children) {
-          if (row.refreshCount) {
-            row.refreshCount();
-          }
-        }
+        list.refreshCounts();
         const names = answer.names.join(', ');
         preview.textContent = answer.count ? `Picks out ${answer.count} ${answer.count === 1 ? 'person' : 'people'}: ${names}${answer.count > answer.names.length ? '…' : ''}` : 'Picks out nobody yet.';
       } catch (err) {
@@ -96,33 +80,20 @@ function audienceCard(mount, initial, everyoneNote, thing, withHead = true) {
       }
     }, 300);
   };
-  const render = () => {
-    list.replaceChildren();
-    for (const rule of draft) {
-      list.append(rules.ruleRow(rule, askPreview, () => {
-        draft.splice(draft.indexOf(rule), 1);
-        if (opened === rule) {
-          opened = null;
-        }
-        render();
-        askPreview();
-      }, opened === rule, countChip));
-    }
-    opened = null;
-    adders.replaceChildren();
-    for (const [kind, words] of [['include', 'Add include rule'], ['exclude', 'Add exclude rule']]) {
-      const b = el('button', 'button button-secondary button-small', '');
-      b.type = 'button';
-      b.append(svg('plus'), el('span', '', words));
-      b.addEventListener('click', () => {
-        opened = rules.newRule(kind);
-        draft.push(opened);
-        render();
-      });
-      adders.append(b);
-    }
-  };
-  render();
+  const list = rules.rulesList({
+    list: () => draft,
+    empty: 'No rules yet.',
+    onAdd: rule => draft.push(rule),
+    onChange: askPreview,
+    onRemove: rule => {
+      draft.splice(draft.indexOf(rule), 1);
+      list.render();
+      askPreview();
+    },
+    onDone: () => {},
+    count: rule => counts[draft.indexOf(rule)],
+  });
+  mount.append(head, list.node, preview);
   askPreview();
   return {
     get rules() {

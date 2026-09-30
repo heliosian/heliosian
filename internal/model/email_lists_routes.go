@@ -133,9 +133,6 @@ func (a emailListsApp) draftMembers(r *http.Request, body draftBody) ([]previewM
 			return nil, nil, access.Invalid("rule %d: %v", i+1, err)
 		}
 	}
-	if err := checkAdditions(sources.Directory, draft.Additions); err != nil {
-		return nil, nil, err
-	}
 	reasons := draft.Reasons(sources)
 	inside, outside := []previewMember{}, []previewMember{}
 	for _, address := range SortedKeys(func() map[string]bool {

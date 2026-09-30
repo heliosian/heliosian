@@ -10,15 +10,6 @@ import (
 	"heliosian/internal/store"
 )
 
-func checkAdditions(directory *Directory, additions []Addition) error {
-	for _, added := range additions {
-		if p := directory.Person(directory.Resolve(added.Email)); p != nil {
-			return access.Invalid("%s is in the directory as %s; add them with a rule", added.Email, p.FullName)
-		}
-	}
-	return nil
-}
-
 func sameRule(x, y Rule) bool {
 	return maps.Equal(x.Cells(), y.Cells())
 }
@@ -110,9 +101,6 @@ func (m *EmailLists) SaveGroup(actor access.Actor, sources AudienceSources, g Em
 	}
 	if err := CheckList(g); err != nil {
 		return nil, EmailList{}, "", access.Invalid("%v", err)
-	}
-	if err := checkAdditions(sources.Directory, g.Additions); err != nil {
-		return nil, EmailList{}, "", err
 	}
 	return groupOps(was, g, action == "add"), g, action, nil
 }
