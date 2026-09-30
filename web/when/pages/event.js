@@ -409,9 +409,10 @@ function inviteBand(e) {
   const mine = e.hosted;
   if (e.sharing === 'Invite Only') {
     words.append(el('div', 'pending-title', 'Invite only'), el('div', 'pending-lead', mine ? 'Only the people you invite can open this event, and their answers put it on their calendars.' : 'You were invited. Your answer below puts it on your calendar.'));
-  } else {
-    words.append(el('div', 'pending-title', 'Anyone with the link'), el('div', 'pending-lead', mine ? 'On the calendar of the people you invite, and of anyone you send this link to who answers.' : 'You were invited, or sent this link. Your answer below puts it on your calendar.'));
+    band.append(words);
+    return band;
   }
+  words.append(el('div', 'pending-title', 'Anyone with the link'), el('div', 'pending-lead', mine ? 'On the calendar of the people you invite, and of anyone you send this link to who answers.' : 'You were invited, or sent this link. Your answer below puts it on your calendar.'));
   band.append(svg('link'), words);
   const url = location.origin + eventPath(e);
   band.append(button('Copy link', 'copy', 'button button-small', () => copyText(url, 'Link copied')));
