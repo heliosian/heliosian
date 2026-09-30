@@ -75,7 +75,7 @@ var (
 	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer", "Notify", "Stepped Down", "Hide Hosts", "Public Guest List", "Hosts To Tell"}
 	InviteColumns      = []string{"Event ID", "Email", "Name", "Guest Of", "Via", "Added By", "Added", "Sent", "Token", "Household", "Opened", "Requested", "Requested By"}
 	MessageColumns     = []string{"Message ID", "Event ID", "Kind", "Subject", "Text", "Recipients", "Attach", "Sent By", "Created", "Sent To"}
-	InviteGroupColumns = append([]string{"Event ID", "Group ID", "Auto", "Added By", "Added", "Sent", "Removed"}, RuleColumns...)
+	InviteGroupColumns = append([]string{"Event ID", "Group ID", "Auto", "Added By", "Added", "Sent"}, RuleColumns...)
 	BounceColumns      = []string{"Email", "When", "Reason"}
 )
 
