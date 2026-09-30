@@ -915,15 +915,18 @@ func (a calendarApp) messageWith(actor access.Actor, e *Event, body messageBody)
 		return store.Op{}, 0, access.Invalid("pick who to send to")
 	}
 	model := a.model()
-	standing := func(email string) string {
-		if answer := model.AnswerOf(email, e.ID); answer != "" && answer != AnswerHidden {
+	standing := func(inv Invite) string {
+		if answer := model.AnswerOf(inv.Email, e.ID); answer != "" && answer != AnswerHidden {
 			return answer
+		}
+		if inv.Sent == "" && inv.Requested == "" {
+			return "unsent"
 		}
 		return "none"
 	}
 	chosen := []string{}
 	for _, inv := range model.Invites[e.ID] {
-		if wanted[standing(inv.Email)] || slices.Contains(body.Emails, inv.Email) {
+		if wanted[standing(inv)] || slices.Contains(body.Emails, inv.Email) {
 			chosen = append(chosen, inv.Email)
 		}
 	}

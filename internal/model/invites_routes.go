@@ -133,6 +133,7 @@ type InviteView struct {
 	Mine           []GuestRow       `json:"mine"`
 	Coming         []GuestRow       `json:"coming"`
 	List           []GuestRow       `json:"list"`
+	TicketHolders  []GuestRow       `json:"ticketHolders,omitempty"`
 	Groups         []InviteGroup    `json:"groups,omitempty"`
 	Counts         GuestCounts      `json:"counts"`
 }
@@ -211,7 +212,7 @@ func (a calendarApp) rows(viewer access.Actor, e *Event) []GuestRow {
 	}
 	for _, inv := range model.Invites[e.ID] {
 		g := row(inv.Email, inv.Name, true)
-		g.GuestOf, g.Via, g.Sent, g.Opened = inv.GuestOf, inv.Via, inv.Sent, inv.Opened
+		g.GuestOf, g.Via, g.Sent, g.Opened = inv.GuestOf, inv.Via, cmp.Or(inv.Sent, inv.Requested), inv.Opened
 		if inv.AddedBy != "" {
 			g.InvitedBy = nameOf(inv.AddedBy)
 		}
@@ -336,6 +337,9 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 			break
 		}
 		if g.Answer == AnswerYes || g.Answer == AnswerMaybe || (g.Invited && g.Answer == "") {
+			if !host && g.Invited && g.Answer == "" && g.Sent == "" {
+				continue
+			}
 			if !host {
 				g.Ticket, g.Sent, g.Via, g.Warning, g.WarningWords = "", "", "", "", ""
 				g.AnsweredBy, g.AnsweredAt, g.AnsweredVia, g.Link, g.Opened = "", "", "", "", ""
@@ -348,6 +352,7 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 	}
 	if host {
 		view.List = rows
+		view.TicketHolders = a.ticketHolderRows(actor, e, rows)
 		view.Groups = []InviteGroup{}
 		for _, g := range model.Groups[e.ID] {
 			if g.Rule.Kind == RuleExclude {
@@ -362,6 +367,30 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 		}
 	}
 	return view
+}
+
+func (a calendarApp) ticketHolderRows(viewer access.Actor, e *Event, rows []GuestRow) []GuestRow {
+	p := a.party(e)
+	if p == nil {
+		return nil
+	}
+	out := []GuestRow{}
+	seen := map[string]bool{}
+	for _, t := range p.Attendees {
+		email := a.directory().Resolve(mail.Normalize(t.Email))
+		if email == "" || t.Status == "waitlist" || seen[email] {
+			continue
+		}
+		seen[email] = true
+		if i := slices.IndexFunc(rows, func(g GuestRow) bool { return g.Key == email }); i >= 0 {
+			g := rows[i]
+			g.Ticket = t.Status
+			out = append(out, g)
+			continue
+		}
+		out = append(out, a.guestRow(viewer, e, email, t.Name, false, true, t.Status))
+	}
+	return out
 }
 
 func b2i(b bool) int {

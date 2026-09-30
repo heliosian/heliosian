@@ -1229,7 +1229,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 /* The ask under the event: a band in a green wash with a ticked calendar,
    the question large, and the buttons big at the right - Yes green, No
    white, the one that holds ringed. */
-.rsvp-band { margin: 28px 0 8px; padding: 16px 20px; border: 1.5px solid var(--yes-line, #bfe0cf); border-radius: 16px; background: linear-gradient(90deg, var(--go-band, #e3f3ea), var(--go-band-end, #eef7f2)); container-type: inline-size; }
+.rsvp-band, .guests-start, .rsvps-pending { box-sizing: border-box; min-height: 106px; }
+
+.rsvp-band { display: flex; flex-direction: column; justify-content: center; margin: 28px 0 8px; padding: 16px 20px; border: 1.5px solid var(--yes-line, #bfe0cf); border-radius: 16px; background: linear-gradient(90deg, var(--go-band, #e3f3ea), var(--go-band-end, #eef7f2)); container-type: inline-size; }
 
 .rsvp-band-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 
@@ -1360,19 +1362,13 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .guests-settings .field-toggle { margin: 0; }
 
-.rsvps-pending-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pending-check { width: 18px; height: 18px; flex-shrink: 0; margin: 0; accent-color: var(--brand); cursor: pointer; }
 
-.pending-tools { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
+.pending-check:disabled { cursor: default; }
 
-.pending-skip { margin-top: 0; padding: 2px 4px; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.pending-row.is-sent .person-row-name { text-decoration: line-through; }
 
-.pending-skip:hover { color: var(--brand); }
-
-.rsvps-pending-row .link-button { margin-top: 0; padding: 2px 4px; font-size: 13px; }
-
-.rsvps-pending-delete { margin-left: auto; font-size: 12.5px; font-weight: 500; color: var(--muted); }
-
-.rsvps-pending-delete:hover { color: #b3261e; }
+.pending-row.is-sent .person-row-face, .pending-row.is-sent .person-row-words { opacity: 0.55; }
 
 .guests-cancel { display: flex; justify-content: flex-end; margin-top: 10px; }
 
@@ -1396,6 +1392,12 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .cancel-note .button { align-self: flex-start; }
 
+.pending-list { display: flex; flex-direction: column; }
+
+.pending-row { padding: 10px 4px; }
+
+.pending-row + .pending-row { border-top: 1px solid var(--line); }
+
 .pending-row .button { flex-shrink: 0; }
 
 .guest-form .field input[type=email] { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--field); }
@@ -1409,22 +1411,16 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .guests-tools .hero-image-menu { right: 0; left: auto; top: calc(100% + 6px); bottom: auto; }
 
 /* A host's way in when there is no list yet. */
-.guests-start { display: flex; align-items: center; gap: 16px; margin: 20px 0 8px; padding: 16px 20px; border: 1.5px dashed var(--accent); border-radius: 16px; background: var(--teal-wash, #eef6f5); flex-wrap: wrap; }
+.guests-start { display: flex; align-items: center; gap: 12px 18px; margin: 20px 0 8px; padding: 16px 20px; border: 1.5px dashed var(--accent); border-radius: 16px; background: var(--teal-wash, #eef6f5); flex-wrap: wrap; }
 
-.guests-start > svg { width: 30px; height: 30px; color: var(--accent); flex-shrink: 0; }
+.guests-start > svg { box-sizing: border-box; width: 54px; height: 54px; padding: 12px; border-radius: 50%; background: var(--glass, #fff); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); color: var(--accent); flex-shrink: 0; }
 
 .guests-start-words { flex: 1 1 240px; min-width: 0; }
 
-.guests-start-title { font-family: Montserrat, Roboto, sans-serif; font-size: 18px; font-weight: 700; color: var(--brand); }
+.guests-start-title { font-family: Montserrat, Roboto, sans-serif; font-size: 23px; font-weight: 700; color: var(--brand); line-height: 1.1; }
 
-.guests-start-lead { font-size: 13.5px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+.guests-start-lead { font-size: 15px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
 
-/* The hosts' guest list under the ask: the head with its tools, the
-   counts, and a row per person, households together. */
-/* The Guest list is the rail's card: a head with the mark, the title and
-   a word under it, Add people; the counts as tiles two to a row; then
-   Groups and Individuals, each with a heading and a word; and the way to
-   the Guest table at the foot. Everything stacks to the rail's width. */
 .guests-section { margin: 0; padding: 18px 16px 16px; }
 
 .guests-head { align-items: flex-start; }
@@ -1434,6 +1430,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .guests-head-mark svg { width: 30px; height: 30px; }
 
 .guests-head-words { flex: 1 1 60px; min-width: 0; }
+
+.guests-head .guests-settings-button { flex-shrink: 0; color: var(--muted); }
 
 .editor > .tabs { margin-bottom: 14px; }
 
@@ -1451,47 +1449,11 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .guests-section .guests-tools .button { padding: 7px 12px; font-size: 13px; }
 
-.guests-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 4px; }
-
-.guests-stat { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid transparent; border-radius: 12px; background: var(--input); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
-
-.guests-stat:hover { filter: brightness(0.97); }
-
-.guests-stat > svg { width: 24px; height: 24px; flex-shrink: 0; color: var(--muted); }
-
-.guests-stat-words { display: flex; flex-direction: column; line-height: 1.15; }
-
-.guests-stat-words strong { font-size: 18px; font-weight: 700; }
-
-.guests-stat-words span { font-size: 12.5px; color: var(--muted); }
-
-.guests-stat.is-yes { background: var(--yes-wash, #e3f3ea); }
-
-.guests-stat.is-yes > svg, .guests-stat.is-yes strong { color: var(--yes-text, #1d6b48); }
-
-.guests-stat.is-maybe { background: var(--maybe-wash, #fff8e8); }
-
-.guests-stat.is-maybe > svg, .guests-stat.is-maybe strong { color: var(--maybe-text, #7a5a00); }
-
-.guests-stat.is-no { background: var(--no-wash, #f7eeee); }
-
-.guests-stat.is-waiting { background: var(--hollow, #fff); border: 1px dashed var(--dash-line, var(--line)); }
-
-.guests-stat.is-pending { background: var(--maybe-wash, #fff8e8); border: 1px dashed var(--amber); }
-
-.guests-stat.is-pending > svg, .guests-stat.is-pending strong { color: var(--maybe-text, #7a5a00); }
-
 .guests-section .guests-note { font-size: 13px; margin-top: 10px; }
-
-.guests-section .guests-table { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
-
 .guests-group-info { display: inline-flex; color: var(--muted); }
 
 .guests-group-info svg { width: 15px; height: 15px; }
 
-.guests-section .guests-household { border: 1px solid var(--hairline, var(--line)); border-radius: 12px; overflow: hidden; margin-bottom: 8px; }
-
-/* Individuals: plain rows to the card. */
 .guests-plain { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; background: var(--card); font: inherit; color: inherit; text-align: left; cursor: pointer; }
 
 .guests-plain + .guests-plain { border-top: 1px solid var(--line); }
@@ -1516,21 +1478,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .guests-plain-warn svg { width: 16px; height: 16px; }
 
-.guests-table-row { display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 14px; padding: 12px; border: 0; border-radius: 12px; background: var(--input); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
-
-.guests-table-row:hover { filter: brightness(0.97); }
-
-.guests-table-row > svg { width: 18px; height: 18px; color: var(--muted); }
-
 .guests-table-mark { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; background: var(--card); color: var(--brand); }
 
 .guests-table-mark svg { width: 20px; height: 20px; }
-
-.guests-table-words { flex: 1; min-width: 0; }
-
-.guests-table-title { font-size: 15px; font-weight: 700; }
-
-.guests-table-sub { font-size: 12.5px; color: var(--muted); }
 
 /* Who's coming takes the page's width: a section of its own, the faces in
    a roomier grid. */
@@ -1590,10 +1540,6 @@ button.guests-count:hover { filter: brightness(0.96); }
 
 .guests-note { font-size: 13.5px; color: var(--muted); margin: 0 0 12px; line-height: 1.45; }
 
-.guests-table { display: flex; flex-direction: column; gap: 10px; }
-
-.guests-household { border: 1px solid var(--hairline, var(--line)); border-radius: 12px; overflow: hidden; }
-
 .guests-marks { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 
 .guests-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: var(--input); font-size: 11.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
@@ -1611,10 +1557,6 @@ button.guests-count:hover { filter: brightness(0.96); }
 .email-edit-input { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 
 .guests-chip.is-opened { background: var(--accent-wash, #eef6f5); color: var(--ticket-text, var(--brand)); }
-
-.guests-stat.is-opened { background: var(--accent-wash, #eef6f5); }
-
-.guests-stat.is-opened > svg, .guests-stat.is-opened strong { color: var(--ticket-text, var(--brand)); }
 
 .guest-table-opened { white-space: nowrap; color: var(--muted); }
 
@@ -1930,13 +1872,23 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 /* The RSVPs card, for admins: the yeses and the nos as face tiles, the
    way HCA-Team draws its volunteers - the face, a student's grade badged
    on its corner, the name under it. */
-/* The hosts' pending band at the head of Who's coming: the invites still
-   to go out, and the way to send them. */
-.rsvps-pending { display: flex; flex-direction: column; gap: 8px; margin: -4px -4px 14px; padding: 12px 14px; border: 1.5px dashed var(--maybe-line, var(--amber)); border-radius: 12px; background: var(--maybe-wash, #fff8e8); }
+.rsvps-pending { display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; margin: 0 0 14px; padding: 16px 20px; border: 1.5px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--maybe-wash, #fff8e8) 70%, var(--card)); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04); }
 
-.rsvps-pending-title { font-size: 13.5px; font-weight: 700; color: var(--maybe-text, #8a5a00); }
+.rsvps-pending-mark { display: flex; align-items: center; justify-content: center; width: 54px; height: 54px; flex-shrink: 0; border-radius: 50%; background: var(--maybe-wash, #fff1d1); color: var(--maybe-text, #a26b00); }
 
-.rsvps-pending .button { align-self: flex-start; }
+.rsvps-pending-mark svg { width: 30px; height: 30px; }
+
+.rsvps-pending-words { flex: 1 1 160px; min-width: 0; }
+
+.rsvps-pending-title { font-family: Montserrat, Roboto, sans-serif; font-size: 23px; font-weight: 700; line-height: 1.1; color: var(--maybe-text, #a26b00); }
+
+.rsvps-pending-sub { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; font-size: 15px; color: var(--muted); margin-top: 4px; }
+
+.rsvps-pending-sub .rsvps-pending-info { margin-top: 0; padding: 0; font-size: 12.5px; }
+
+.rsvps-pending-sub .rsvps-pending-info svg { width: 13px; height: 13px; }
+
+.rsvps-pending-send { margin-left: auto; }
 
 .guest-card-ask { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 
@@ -2040,8 +1992,6 @@ button.send-tile { font: inherit; text-align: left; }
 
 .guest-table-said.is-none { color: var(--muted); font-weight: 500; }
 
-.guest-table-actions { justify-content: flex-start; gap: 14px; }
-
 .pick-chip.is-on.is-yes { background: var(--yes-wash, #e3f3ea); border-color: #2f9e6a; color: var(--yes-text, #1d6b48); }
 
 .pick-chip.is-on.is-maybe { background: var(--maybe-wash, #fff8e8); border-color: var(--amber); color: var(--maybe-text, #7a5a00); }
@@ -2081,6 +2031,8 @@ button.send-tile { font: inherit; text-align: left; }
 .rsvps-head.is-maybe { color: var(--maybe-text, #b8860b); }
 
 .rsvps-head.is-no { color: var(--no-text, #b3261e); }
+
+.rsvps-head.is-pending { color: var(--maybe-text, #a26b00); }
 
 .rsvps-head { margin: 10px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 

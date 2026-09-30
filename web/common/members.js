@@ -30,7 +30,21 @@ export function reasonWords(member, rules, phrase) {
   }).filter(Boolean).join(' · ');
 }
 
-const pageSize = 10;
+export const pageSize = 10;
+
+export function fillPager(pager, page, total, onPage) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  pager.replaceChildren();
+  pager.hidden = pages === 1;
+  if (pages === 1) {
+    return;
+  }
+  const back = button('Previous', 'chevron-left', 'button button-small button-secondary', () => onPage(page - 1));
+  back.disabled = page === 0;
+  const next = button('Next', 'chevron-right', 'button button-small button-secondary', () => onPage(page + 1));
+  next.disabled = page === pages - 1;
+  pager.append(back, el('span', 'member-pager-words', `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)} of ${total}`), next);
+}
 
 export function membersCard({noun, listWord, adders, phrase, chip, onExclude, onRemove, gradeColors}) {
   const head = el('h2', '', `0 ${noun[1]}`);
@@ -75,21 +89,10 @@ export function membersCard({noun, listWord, adders, phrase, chip, onExclude, on
         gradeColors,
       }));
     }
-    pager.replaceChildren();
-    pager.hidden = pages === 1;
-    if (pages > 1) {
-      const back = button('Previous', 'chevron-left', 'button button-small button-secondary', () => {
-        page--;
-        draw();
-      });
-      back.disabled = page === 0;
-      const next = button('Next', 'chevron-right', 'button button-small button-secondary', () => {
-        page++;
-        draw();
-      });
-      next.disabled = page === pages - 1;
-      pager.append(back, el('span', 'member-pager-words', `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, rows.length)} of ${rows.length}`), next);
-    }
+    fillPager(pager, page, rows.length, to => {
+      page = to;
+      draw();
+    });
     search.hidden = !members.length && !leaving.length;
     empty.hidden = rows.length > 0 || (!members.length && !leaving.length);
   };

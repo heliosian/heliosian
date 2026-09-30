@@ -1,4 +1,4 @@
-import {el, svg, button, longToast, copyText} from '/elements.js';
+import {el, svg, button, longToast} from '/elements.js';
 import {popup} from '/modal.js';
 import {act} from '/data.js';
 import {chipToggle, filterControl} from '/rules.js';
@@ -141,19 +141,7 @@ export function openTable(e, view, refresh, {answer = '', opened = ''} = {}) {
   }, {answer, opened});
   box.append(bar, count, empty, rows);
   paint();
-  const actions = el('div', 'modal-actions guest-table-actions');
-  actions.append(button('Copy table', 'copy', 'link-button', () => {
-    const lines = [['Name', 'Details', 'Email', 'Grade', 'Classroom', 'RSVP', 'Answered by', 'Answered how', 'Answered when', view.party ? 'Ticket' : 'Invited', 'Sent', 'Opened'].join('\t')];
-    for (const r of shown()) {
-      lines.push([r.name || '', r.guestOf ? `Guest of ${r.guestOfName}` : r.line || '', r.email || '', (r.grades || []).join(', '), (r.classrooms || []).join(', '), answerWords[r.answer] || '', r.answeredBy || '', r.answer ? (r.answeredVia === 'calendar' ? 'Calendar app' : 'Page') : '', r.answeredAt || '', view.party ? r.ticket || '' : r.invited ? 'Yes' : 'By link', stamp(r.sent), r.opened || ''].join('\t'));
-    }
-    copyText(lines.join('\n'), 'Table copied');
-  }));
-  actions.append(button('Copy emails', 'copy', 'link-button', () => {
-    copyText([...new Set(shown().map(r => r.email).filter(Boolean))].join(', '), 'Addresses copied');
-  }));
-  box.append(actions);
-  popup('Guest table', box, {wide: true});
+  popup('Guest table', box, {wide: 'table'});
 }
 
 export function openMessage(e, view, refresh, preset = {}) {
@@ -205,7 +193,7 @@ export function openMessage(e, view, refresh, preset = {}) {
     tile('yes', 'Yes', counts.yes || 0, 'is-yes'),
     tile('maybe', 'Maybe', counts.maybe || 0, 'is-maybe'),
     tile('no', 'No', counts.no || 0, 'is-no'),
-    tile('none', 'No response', counts.waiting || 0, 'is-waiting'),
+    tile('none', 'No response', view.list.filter(r => r.invited && r.sent && !r.answer).length, 'is-waiting'),
     pickTile,
   );
   box.append(tiles);
@@ -251,7 +239,7 @@ export function openMessage(e, view, refresh, preset = {}) {
     send.disabled = true;
     try {
       await act('events', e.id, 'message', {subject: subject.value.trim(), message: message.value.trim(), to: [...to], emails: [...picked], attach: Boolean(preset.attach)});
-      const reached = view.list.filter(r => r.invited && r.email && (to.has(r.answer && r.answer !== 'hidden' ? r.answer : 'none') || picked.has(r.key))).length;
+      const reached = view.list.filter(r => r.invited && r.email && (to.has(r.answer && r.answer !== 'hidden' ? r.answer : r.sent ? 'none' : 'unsent') || picked.has(r.key))).length;
       longToast(reached === 1 ? 'Sent to one person' : `Sent to ${reached} people`);
       shut();
       refresh();

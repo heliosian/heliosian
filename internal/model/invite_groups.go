@@ -70,15 +70,33 @@ func (m *Calendar) GroupOf(id, gid string) *InviteGroup {
 }
 
 func (a calendarApp) members(e *Event, g InviteGroup) []string {
-	out := []string{}
 	matched := g.Rule
 	matched.Kind = RuleInclude
+	holds := a.ticketHolders(g)
+	if holds != nil {
+		matched.Family = nil
+	}
+	d := a.directory()
+	out := []string{}
 	for _, m := range (Audience{Rules: []Rule{matched}, Editors: a.hostsOf(e)}).Members(a.sources()) {
-		if m = a.directory().Resolve(mail.Normalize(m)); m != "" && !slices.Contains(out, m) {
+		if m = d.Resolve(mail.Normalize(m)); m != "" && !slices.Contains(out, m) && (holds == nil || holds[m]) {
 			out = append(out, m)
 		}
 	}
-	return a.ticketHolders(g, out)
+	if holds == nil {
+		return out
+	}
+	d.relatives(slices.Clone(out), g.Rule.Family, func(email, _, _ string) {
+		if p := d.Person(email); p != nil && !p.EmailMasked && inRole(p, g.Rule.Roles) && !slices.Contains(out, email) {
+			out = append(out, email)
+		}
+	})
+	for email := range a.ticketGuests(g) {
+		if !slices.Contains(out, email) {
+			out = append(out, email)
+		}
+	}
+	return out
 }
 
 func (a calendarApp) excluded(e *Event, groups []InviteGroup) map[string]bool {
@@ -138,13 +156,13 @@ func (a calendarApp) regroupOps(actor access.Actor, e *Event, was *InviteGroup, 
 	return append(ops, filled...), emails
 }
 
-func (a calendarApp) ticketHolders(g InviteGroup, members []string) []string {
+func (a calendarApp) ticketHolders(g InviteGroup) map[string]bool {
 	if len(g.Rule.Tags) != 1 || !strings.HasPrefix(g.Rule.Tags[0], "party:") {
-		return members
+		return nil
 	}
 	p := a.parties().PartyPeople(strings.TrimPrefix(g.Rule.Tags[0], "party:"))
 	if p == nil {
-		return members
+		return nil
 	}
 	keep := map[string]bool{}
 	for _, host := range p.Hosts {
@@ -155,18 +173,7 @@ func (a calendarApp) ticketHolders(g InviteGroup, members []string) []string {
 			keep[a.directory().Resolve(mail.Normalize(t.Email))] = true
 		}
 	}
-	out := []string{}
-	for _, m := range members {
-		if keep[m] {
-			out = append(out, m)
-		}
-	}
-	for email := range a.ticketGuests(g) {
-		if !slices.Contains(out, email) {
-			out = append(out, email)
-		}
-	}
-	return out
+	return keep
 }
 
 func (a calendarApp) ticketGuests(g InviteGroup) map[string]string {

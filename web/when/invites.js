@@ -1,5 +1,5 @@
 import {state, me, allows, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
-import {el, svg, button, toast, longToast} from '/elements.js';
+import {el, svg, button, iconButton, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
 import {api} from '/api.js';
 import {query, act, create, remove as removeResource} from '/data.js';
@@ -13,6 +13,7 @@ import {listFilters, openTable, openMessage} from './guesttable.js';
 import {openPicker, guestAdders} from './addpeople.js';
 import {personTile, personCard, peopleRow, andList} from '/people.js';
 import {personRow} from '/personrow.js';
+import {countList} from '/countlist.js';
 import {openPersonCard} from '/personcard.js';
 import {memberAdders, membersCard} from '/members.js';
 import {directory} from '/directory.js';
@@ -215,14 +216,14 @@ export function comingCard(e, view, refresh) {
     const unsent = view.list.filter(r => r.invited && !r.sent && r.email);
     if (unsent.length) {
       const pending = el('div', 'rsvps-pending');
-      pending.append(el('div', 'rsvps-pending-title', `Pending \u00b7 ${unsent.length} not sent yet`));
-      const row = el('div', 'rsvps-pending-row');
-      row.append(button('Send invitation now', 'calendar', 'button button-small', () => sendInvites(e, 'new', unsent.length, `Send the invitation to ${unsent.length} ${unsent.length === 1 ? 'person' : 'people'} who have not had it yet? Each gets an email with the calendar invite; a student's goes to them and their parents.`, refresh)));
-      row.append(button('More info', 'info', 'link-button', () => openPending(e, view, refresh)));
-      if (!view.sent) {
-        row.append(button(view.linked ? 'Delete invite' : 'Delete event', 'trash', 'link-button rsvps-pending-delete', () => deleteInvitation(e, view)));
-      }
-      pending.append(row);
+      const mark = el('span', 'rsvps-pending-mark');
+      mark.append(svg('mail'));
+      const words = el('div', 'rsvps-pending-words');
+      const sub = el('div', 'rsvps-pending-sub');
+      sub.append(el('span', '', `${unsent.length} ${unsent.length === 1 ? 'invitation' : 'invitations'} not sent yet`), button('More info', 'info', 'link-button rsvps-pending-info', () => openPending(e, view, refresh)));
+      words.append(el('div', 'rsvps-pending-title', 'Pending'), sub);
+      const send = button('Send Now', 'mail', 'button rsvps-pending-send', () => sendInvites(e, 'new', unsent.length, `Send the invitation to ${unsent.length} ${unsent.length === 1 ? 'person' : 'people'} who have not had it yet? Each gets an email with the calendar invite; a student's goes to them and their parents.`, refresh));
+      pending.append(mark, words, send);
       card.append(pending);
     }
   }
@@ -244,7 +245,11 @@ export function comingCard(e, view, refresh) {
     if (view.host) {
       groups.push(['No', shown.filter(r => r.answer === 'no'), 'is-no']);
     }
-    groups.push(['No response', shown.filter(r => r.invited && !r.answer), 'is-waiting']);
+    const unsent = r => view.host && r.invited && !r.sent && r.email && !r.answer;
+    groups.push(['No response', shown.filter(r => r.invited && !r.answer && !unsent(r)), 'is-waiting']);
+    if (view.host) {
+      groups.push(['Pending (Unsent)', shown.filter(unsent), 'is-pending']);
+    }
     if (!groups.some(([, people]) => people.length)) {
       grid.append(el('div', 'side-line', rows.length ? 'Nobody matches.' : 'Nobody has answered yet.'));
       return;
@@ -531,14 +536,11 @@ export function addFlyerLink(e, view, refresh) {
 
 export function guestListSection(e, view, refresh) {
   const section = el('section', 'side-card guests-section');
-  section.append(guestsHead(e, view, refresh), guestStats(e, view, refresh));
+  section.append(guestsHead(e, view, refresh), guestCounts(e, view, refresh));
   if (!view.list.length) {
     section.append(el('p', 'guests-note', 'Add people from the directory, a classroom, one of your lists' + (view.party ? ', the ticket holders' : '') + ', or by email - then send the invitation.'));
-  }
-  if (!view.list.length) {
     return section;
   }
-  section.append(guestsTable(e, view, refresh), guestTableButton(e, view, refresh));
   if (view.sent) {
     const foot = el('div', 'guests-cancel');
     foot.append(view.linked
@@ -725,24 +727,38 @@ function guestsHead(e, view, refresh) {
   headMark.append(svg('groups'));
   const headWords = el('div', 'guests-head-words');
   headWords.append(el('div', 'guests-title', 'Guest list'));
-  headWords.append(el('div', 'guests-subtitle', !view.sent
-    ? (view.list.length ? 'Add everyone, then send invites.' : 'Nobody on the list yet.')
-    : unsent ? `${unsent} added since the invites went out, not sent yet.` : 'Invites are out.'));
-  head.append(headMark, headWords);
-  if (view.sent) {
-    const tools = el('div', 'guests-tools');
-    tools.append(sendMenu(e, view, refresh));
-    head.append(tools);
+  const subtitle = !view.sent
+    ? (view.list.length ? '' : 'Nobody on the list yet.')
+    : unsent ? `${unsent} added since the invites went out, not sent yet.` : 'Invites are out.';
+  if (subtitle) {
+    headWords.append(el('div', 'guests-subtitle', subtitle));
   }
+  head.append(headMark, headWords, iconButton('gear', 'Guest List Settings', 'guests-settings-button', () => openGuestSettings(e, view, refresh)));
+  if (!view.list.length) {
+    return head;
+  }
+  const tools = el('div', 'guests-tools');
+  tools.append(button('See table', 'menu', 'button button-secondary', () => openTable(e, view, refresh)));
+  const menu = sendMenu(e, view, refresh);
+  if (menu) {
+    tools.append(menu);
+  }
+  head.append(tools);
   return head;
 }
 
 function sendMenu(e, view, refresh) {
-  const waiting = view.list.filter(r => r.invited && !r.answer).length;
+  const waiting = view.list.filter(r => r.invited && r.sent && !r.answer).length;
   const first = eventDates(e)[0];
   const day = weekdayLong(first) + ', ' + parseDate(first).toLocaleDateString('en-US', {month: 'long', day: 'numeric'});
   const when = e.allDay ? day : `${day}, ${timeLine(e)}`;
-  return menuButton('Send', 'calendar', [
+  const pending = view.list.filter(r => r.invited && !r.sent && r.email).length;
+  const pendingItem = {icon: 'send', words: `Pending invites \u00b7 ${pending}`, run: () => openPending(e, view, refresh)};
+  if (!view.sent) {
+    return pending ? menuButton('Send', 'mail', [pendingItem]) : null;
+  }
+  return menuButton('Send', 'mail', [
+    ...(pending ? [pendingItem] : []),
     {icon: 'clock', words: `RSVP reminder \u00b7 ${waiting}`, run: () => openMessage(e, view, refresh, {
       title: 'Send RSVP reminder', to: ['none'], subject: 'Reminder: you\u2019re invited!', attach: true,
       message: `We haven\u2019t heard back from you yet - please let us know if you can make it on ${when}.`,
@@ -755,41 +771,52 @@ function sendMenu(e, view, refresh) {
   ]);
 }
 
-function guestStat(n, label, icon, cls, onClick) {
-  const tile = el('button', 'guests-stat ' + cls);
-  tile.type = 'button';
-  tile.addEventListener('click', onClick);
-  tile.append(svg(icon));
-  const words = el('div', 'guests-stat-words');
-  words.append(el('strong', '', String(n)), el('span', '', label));
-  tile.append(words);
-  return tile;
-}
-
-function guestStats(e, view, refresh) {
+function guestCounts(e, view, refresh) {
   const c = view.counts;
-  const counts = el('div', 'guests-stats');
-  const tableOf = answer => () => openTable(e, view, refresh, {answer});
-  counts.append(
-    guestStat(c.invited, 'invited', 'mail', 'is-all', tableOf('')),
-    guestStat(c.yes, 'yes', 'check', 'is-yes', tableOf('yes')),
-    guestStat(c.maybe, 'maybe', 'help', 'is-maybe', tableOf('maybe')),
-    guestStat(c.no, 'no', 'ban', 'is-no', tableOf('no')),
-    guestStat(c.waiting, 'no reply yet', 'reply', 'is-waiting', tableOf('none')),
-  );
-  const pending = view.list.filter(r => r.invited && !r.sent && r.email).length;
-  if (pending) {
-    counts.append(guestStat(pending, 'pending', 'clock', 'is-pending', () => openPending(e, view, refresh)));
+  const listOf = keep => () => householdsOf(view.list).flat().filter(keep).map(r => guestPlainRow(e, view, r, refresh));
+  const unsent = r => r.invited && !r.sent && r.email && !r.answer;
+  const sent = r => !unsent(r);
+  const waiting = r => !r.answer && sent(r);
+  const items = [
+    {icon: 'mail', label: 'Invited', count: view.list.filter(sent).length, tone: 'all', expand: listOf(sent)},
+    {icon: 'check', label: 'Yes', count: c.yes, tone: 'yes', expand: listOf(r => r.answer === 'yes')},
+    {icon: 'help', label: 'Maybe', count: c.maybe, tone: 'maybe', expand: listOf(r => r.answer === 'maybe')},
+    {icon: 'ban', label: 'No', count: c.no, tone: 'no', expand: listOf(r => r.answer === 'no')},
+    {icon: 'reply', label: 'No reply yet', count: view.list.filter(waiting).length, tone: 'waiting', expand: listOf(waiting)},
+    {icon: 'clock', label: 'Unsent (Pending)', count: view.list.filter(unsent).length, tone: 'pending', expand: listOf(unsent)},
+  ];
+  if (view.ticketHolders) {
+    items.push(ticketHoldersItem(e, view, refresh));
   }
   if (view.sent) {
-    counts.append(guestStat(view.list.filter(r => r.opened).length, 'opened', 'eye', 'is-opened', () => openTable(e, view, refresh, {opened: 'yes'})));
+    items.push({icon: 'eye', label: 'Opened', count: view.list.filter(r => r.opened).length, tone: 'opened', expand: listOf(r => r.opened)});
   }
-  return counts;
+  return countList(items);
 }
 
-function householdsOf(view) {
+function ticketHoldersItem(e, view, refresh) {
+  const holders = view.ticketHolders;
+  return {icon: 'ticket', label: 'Ticket holders', count: holders.length, tone: 'ticket', expand: () => householdsOf(holders).flat().map(r => guestPlainRow(e, view, r, refresh))};
+}
+
+export function ticketHoldersSection(e, view, refresh) {
+  if (!view.ticketHolders) {
+    return null;
+  }
+  const section = el('section', 'side-card guests-section');
+  const head = el('div', 'guests-head');
+  const mark = el('div', 'guests-head-mark');
+  mark.append(svg('ticket'));
+  const words = el('div', 'guests-head-words');
+  words.append(el('div', 'guests-title', 'Tickets'), el('div', 'guests-subtitle', 'Who holds a ticket on Celebrate.'));
+  head.append(mark, words);
+  section.append(head, countList([ticketHoldersItem(e, view, refresh)]));
+  return section;
+}
+
+function householdsOf(rows) {
   const households = new Map();
-  for (const r of view.list) {
+  for (const r of rows) {
     const key = r.household || r.key;
     if (!households.has(key)) {
       households.set(key, []);
@@ -797,18 +824,6 @@ function householdsOf(view) {
     households.get(key).push(r);
   }
   return [...households.values()].sort((a, b) => (a[0].name || '').localeCompare(b[0].name || ''));
-}
-
-function guestsTable(e, view, refresh) {
-  const table = el('div', 'guests-table');
-  for (const household of householdsOf(view)) {
-    const block = el('div', 'guests-household guests-plain-list');
-    for (const r of household) {
-      block.append(guestPlainRow(e, view, r, refresh));
-    }
-    table.append(block);
-  }
-  return table;
 }
 
 function guestPlainRow(e, view, r, refresh) {
@@ -831,18 +846,6 @@ function guestPlainRow(e, view, r, refresh) {
     after,
     gradeColors: state.model.gradeColors,
   });
-}
-
-function guestTableButton(e, view, refresh) {
-  const open = el('button', 'guests-table-row');
-  open.type = 'button';
-  const openMark = el('div', 'guests-table-mark');
-  openMark.append(svg('menu'));
-  const openWords = el('div', 'guests-table-words');
-  openWords.append(el('div', 'guests-table-title', 'Guest table'), el('div', 'guests-table-sub', 'View and manage your full guest list.'));
-  open.append(openMark, openWords, svg('chevron-right'));
-  open.addEventListener('click', () => openTable(e, view, refresh));
-  return open;
 }
 
 export function openSettings(e, view, refresh) {
@@ -1021,6 +1024,11 @@ export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
       : button('Delete event', 'trash', 'link-button danger', () => deleteInvitation(e, view)));
     box.append(foot);
   }
+  if (view && view.host && isParty(e) && view.settings) {
+    const foot = el('div', 'editor-danger');
+    foot.append(button('Delete invite', 'trash', 'link-button danger', () => deleteInvitation(e, view)));
+    box.append(foot);
+  }
   if (!Object.keys(panels).length && !box.childElementCount) {
     return;
   }
@@ -1070,7 +1078,7 @@ export function inviteHostCall(e, view, refresh) {
   card.append(words);
   if (e.link) {
     const party = isParty(e);
-    card.append(button(party ? 'Invite the ticket holders' : 'Invite the volunteers', party ? 'ticket' : 'people', 'button', async () => {
+    card.append(button(party ? 'Add the Ticket Holders' : 'Invite the volunteers', party ? 'ticket' : 'people', 'button', async () => {
       try {
         const made = await startParty(e);
         const who = party ? ['ticket holders', 'the tickets'] : ['volunteers', 'the sign-ups'];
@@ -1081,6 +1089,6 @@ export function inviteHostCall(e, view, refresh) {
       }
     }));
   }
-  card.append(button('Add People', 'plus', 'button' + (isParty(e) ? ' button-secondary' : ''), () => openPicker(e, view, refresh)));
+  card.append(button(isParty(e) ? 'Add Others' : 'Add People', 'plus', 'button' + (isParty(e) ? ' button-secondary' : ''), () => openPicker(e, view, refresh)));
   return card;
 }

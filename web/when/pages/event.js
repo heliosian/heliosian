@@ -13,7 +13,7 @@ import {openGuestForm} from '../guestpopups.js';
 import {answerIcon} from '../inviteparts.js';
 import {personTile} from '/people.js';
 import {audienceChips, blocks} from '../events.js';
-import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow, inviteCall, openGuestSettings} from '../invites.js';
+import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, ticketHoldersSection,inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow, inviteCall, openGuestSettings} from '../invites.js';
 
 function hero(e) {
   const wrap = el('div', 'detail-hero');
@@ -230,7 +230,8 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
       answered.replaceChildren(guestListSection(e, view, refresh));
     } else {
       ask.append(inviteHostCall(e, view, refresh));
-      answered.replaceChildren();
+      const tickets = ticketHoldersSection(e, view, refresh);
+      answered.replaceChildren(...(tickets ? [tickets] : []));
     }
   } else if (e.invitation) {
     answered.replaceChildren();

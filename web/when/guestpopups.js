@@ -1,5 +1,5 @@
 import {el, svg, button, toast, longToast} from '/elements.js';
-import {popup, closeModal} from '/modal.js';
+import {popup, closeModal, closeLayers} from '/modal.js';
 import {field, text as textInput} from '/form.js';
 import {load} from '/router.js';
 import {openPersonCard} from '/personcard.js';
@@ -8,6 +8,7 @@ import {createPersonPicker} from '/picker.js';
 import {answerWords, firstName, answerButtons, ticketWords, ticketDetail, answeredWords, pickerPeople} from './inviteparts.js';
 import {state, me} from './state.js';
 import {personRow} from '/personrow.js';
+import {pageSize, fillPager} from '/members.js';
 
 function guestForm(e, of, onDone) {
   const form = el('form', 'admin-form guest-form');
@@ -136,7 +137,7 @@ export function openGuestCard(e, p, view, refresh) {
   fields.push(ask);
   const links = el('div', 'guest-card-links');
   if (p.invited && p.email) {
-    links.append(button(p.sent ? 'Resend invitation' : 'Send invitation', 'calendar', 'link-button', async () => {
+    links.append(button(p.sent ? 'Resend invitation' : 'Send invitation', 'mail', 'link-button', async () => {
       try {
         await act('events', e.id, 'send', {emails: [p.key]});
         longToast('The invitation is on its way');
@@ -231,10 +232,18 @@ function openEmailEdit(e, view, r, refresh) {
 export function openPending(e, view, refresh) {
   const box = el('div');
   const unsent = view.list.filter(r => r.invited && !r.sent && r.email);
-  box.append(el('p', 'hint', 'Not sent the invitation yet. Each gets an email with the calendar invite; a student’s goes to them and their parents.'));
-  const list = el('div', 'picker-results');
+  const checked = new Set(unsent.map(r => r.key));
+  const sent = new Set();
+  box.append(el('p', 'hint', 'Not sent the invitation yet. Untick anyone you don’t want to send it to. Each gets an email with the calendar invite; a student’s goes to them and their parents.'));
+  const list = el('div', 'pending-list');
+  const pager = el('div', 'member-pager');
   let shut = null;
-  const sendTo = async (emails, words) => {
+  let title = null;
+  let page = 0;
+  const actions = el('div', 'modal-actions');
+  const picked = () => unsent.filter(r => checked.has(r.key) && !sent.has(r.key)).map(r => r.key);
+  const sendAll = async () => {
+    const emails = picked();
     try {
       await act('events', e.id, 'send', {emails});
       longToast(emails.length === 1 ? 'One invite is on its way' : `${emails.length} invites are on their way`);
@@ -244,43 +253,69 @@ export function openPending(e, view, refresh) {
       toast(err.message);
     }
   };
-  for (const r of unsent) {
+  const sendOne = async r => {
+    try {
+      await act('events', e.id, 'send', {emails: [r.key]});
+      toast(`Invite sent to ${r.name || r.email}`);
+      sent.add(r.key);
+      refresh();
+      draw(page);
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+  const paintTotals = () => {
+    const emails = picked();
+    const all = button(`Send all ${emails.length}`, 'mail', 'button', sendAll);
+    all.disabled = !emails.length;
+    actions.replaceChildren(all);
+    if (title) {
+      title.textContent = `Pending · ${unsent.length - sent.size} not sent yet`;
+    }
+  };
+  const pendingRow = r => {
+    const done = sent.has(r.key);
     let marks = null;
-    if (r.warning) {
+    if (r.warning && !done) {
       marks = el('div', 'guests-marks');
       marks.append(warningChip(e, view, r, () => {
         shut();
         refresh();
       }));
     }
-    const tools = el('div', 'pending-tools');
-    tools.append(button('Send now', 'calendar', 'button button-small', () => sendTo([r.key])));
-    tools.append(button('Skip sending', null, 'link-button pending-skip', async () => {
-      const name = r.name || r.email;
-      if (!confirm(`${name} will be moved to No reply yet without being sent the invitation. Skip sending to ${name}?`)) {
-        return;
+    const tick = el('input', 'pending-check');
+    tick.type = 'checkbox';
+    tick.checked = done || checked.has(r.key);
+    tick.disabled = done;
+    tick.setAttribute('aria-label', `Send to ${r.name || r.email}`);
+    tick.addEventListener('change', () => {
+      if (tick.checked) {
+        checked.add(r.key);
+      } else {
+        checked.delete(r.key);
       }
-      try {
-        await act('events', e.id, 'skip', {emails: [r.key]});
-        toast(`${name} moved to No reply yet - no email sent`);
-        shut();
-        refresh();
-      } catch (err) {
-        toast(err.message);
-      }
-    }));
-    list.append(personRow(r, {
-      className: 'picker-person pending-row',
+      paintTotals();
+    });
+    const after = done ? el('span', 'guests-chip is-sent', 'Sent') : button('Send now', 'mail', 'button button-small', () => sendOne(r));
+    return personRow(r, {
+      className: 'pending-row' + (done ? ' is-sent' : ''),
+      before: [tick],
       lines: [[r.guestOf ? `Guest of ${r.guestOfName}` : r.line, r.email].filter(Boolean).join(' · '), marks],
-      after: [tools],
+      after: [after],
       gradeColors: state.model.gradeColors,
-    }));
-  }
-  box.append(list);
-  const actions = el('div', 'modal-actions');
-  actions.append(button(`Send all ${unsent.length}`, 'calendar', 'button', () => sendTo(unsent.map(r => r.key))));
-  box.append(actions);
-  shut = popup(`Pending · ${unsent.length} not sent yet`, box).shut;
+    });
+  };
+  const draw = to => {
+    page = to;
+    list.replaceChildren(...unsent.slice(page * pageSize, (page + 1) * pageSize).map(pendingRow));
+    fillPager(pager, page, unsent.length, draw);
+    paintTotals();
+  };
+  draw(0);
+  box.append(list, pager, actions);
+  const made = popup(`Pending · ${unsent.length} not sent yet`, box, {wide: true});
+  shut = made.shut;
+  title = made.box.querySelector('.modal-header h2');
 }
 
 export async function sendInvites(e, to, count, words, refresh) {
@@ -312,6 +347,7 @@ export async function deleteInvitation(e, view) {
     if (own) {
       location.href = '/';
     } else {
+      closeLayers();
       await load();
     }
   } catch (err) {

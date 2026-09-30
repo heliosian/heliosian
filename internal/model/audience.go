@@ -320,30 +320,34 @@ func (r Rule) matches(d *Directory, tagged map[string][]string) map[string]Reaso
 			out[email] = Reason{Through: through, Via: via, ViaName: d.DisplayName(via)}
 		}
 	}
-	for _, email := range SortedKeys(direct) {
-		if slices.Contains(r.Family, "Parents") {
-			for _, parent := range d.Parents(email) {
-				reach(parent.Email, "Parents", email)
-			}
-		}
-		if slices.Contains(r.Family, "Children") {
-			for _, kid := range d.Children(email) {
-				reach(kid.Email, "Children", email)
-			}
-		}
-		if slices.Contains(r.Family, "Siblings") && d.Person(email).IsStudent {
-			_, kids := d.Household(email)
-			for _, kid := range kids {
-				reach(kid.Email, "Siblings", email)
-			}
-		}
-	}
+	d.relatives(SortedKeys(direct), r.Family, reach)
 	for email := range out {
 		if !inRole(d.Person(email), r.Roles) {
 			delete(out, email)
 		}
 	}
 	return out
+}
+
+func (d *Directory) relatives(emails, family []string, reach func(email, through, via string)) {
+	for _, email := range emails {
+		if slices.Contains(family, "Parents") {
+			for _, parent := range d.Parents(email) {
+				reach(parent.Email, "Parents", email)
+			}
+		}
+		if slices.Contains(family, "Children") {
+			for _, kid := range d.Children(email) {
+				reach(kid.Email, "Children", email)
+			}
+		}
+		if slices.Contains(family, "Siblings") && d.Person(email).IsStudent {
+			_, kids := d.Household(email)
+			for _, kid := range kids {
+				reach(kid.Email, "Siblings", email)
+			}
+		}
+	}
 }
 
 func SortedKeys(m map[string]bool) []string {

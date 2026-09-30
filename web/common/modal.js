@@ -157,7 +157,7 @@ export function openModal(title, fields, options = {}) {
 
 export function popup(title, node, {wide = false} = {}) {
   const layer = el('div', 'modal-overlay modal-sheet');
-  const box = el('div', 'modal' + (wide ? ' modal-wide' : ''));
+  const box = el('div', 'modal' + (wide === 'table' ? ' modal-table' : wide ? ' modal-wide' : ''));
   const header = el('div', 'modal-header');
   header.append(el('h2', '', title));
   const close = el('button', 'modal-close', '×');

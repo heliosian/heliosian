@@ -499,6 +499,12 @@ func TestPartyInvitation(t *testing.T) {
 	if picker := pickerOf(t, miaH, partyA); len(picker.Attendees) != 3 || picker.Attendees[0].Email != robin || picker.Attendees[2].Status != "waitlist" {
 		t.Errorf("party picker: %+v", picker.Attendees)
 	}
+	if v := inviteView(t, miaH, partyA); len(v.List) != 0 || len(v.TicketHolders) != 2 || v.TicketHolders[0].Key != robin || v.TicketHolders[0].Ticket != "ticket" || v.TicketHolders[0].Invited {
+		t.Errorf("ticket holders before the list: %+v", v.TicketHolders)
+	}
+	if v := inviteView(t, robinH, partyA); v.TicketHolders != nil {
+		t.Errorf("a guest sees the ticket holders: %+v", v.TicketHolders)
+	}
 	if rec := act(t, miaH, partyA, "invite", `{"people":[{"email":"`+robin+`","via":"tickets"},{"email":"`+sam+`","via":"tickets"},{"email":"`+ella+`","via":"family"}]}`); rec.Code != 204 {
 		t.Fatalf("party list: %d %s", rec.Code, rec.Body)
 	}
@@ -594,8 +600,14 @@ func TestInviteOnlyIsForTheInvited(t *testing.T) {
 		t.Errorf("a parent of someone on the list, unsent: %d", rec.Code)
 	}
 	shut(miaH, "mia, with sam on the list")
+	if v := inviteView(t, robinH, "party"); slices.ContainsFunc(v.Coming, func(g GuestRow) bool { return g.Key == sam }) {
+		t.Errorf("a guest sees someone not yet sent the invitation: %+v", v.Coming)
+	}
 	if rec := act(t, jordan, "party", "send", `{"to":"new"}`); rec.Code != 204 {
 		t.Fatalf("send: %d %s", rec.Code, rec.Body)
+	}
+	if r := rowOf(inviteView(t, jordan, "party"), sam); r == nil || r.Sent == "" {
+		t.Errorf("an invitation on its way reads as unsent: %+v", r)
 	}
 	if rec := act(t, robinH, "party", "answer", `{"answer":"yes"}`); rec.Code != 204 {
 		t.Errorf("robin's own yes: %d %s", rec.Code, rec.Body)
@@ -835,6 +847,8 @@ func TestHostMessage(t *testing.T) {
 	call(t, jordan, "POST", "/api/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","address":"meetup"}`)
 	meetup := idOf(t, cache, "meetup")
 	act(t, jordan, "meetup", "invite", `{"people":[{"email":"`+robin+`"},{"email":"`+sam+`"},{"email":"`+mina+`"},{"email":"`+coach+`","name":"Coach Lee"}]}`)
+	act(t, jordan, "meetup", "skip", `{"emails":["`+robin+`","`+sam+`","`+mina+`","`+coach+`"]}`)
+	act(t, jordan, "meetup", "invite", `{"people":[{"email":"`+ella+`"}]}`)
 	act(t, jordan, "meetup", "answer-for", `{"email":"`+robin+`","answer":"yes"}`)
 	act(t, jordan, "meetup", "answer-for", `{"email":"`+mina+`","answer":"no"}`)
 	waitFor(kept, 1)
@@ -869,6 +883,9 @@ func TestHostMessage(t *testing.T) {
 	}
 	if m := mailTo(kept, mina); len(m) != 0 {
 		t.Errorf("a no was written to: %+v", m)
+	}
+	if m := mailTo(kept, ella); len(m) != 0 {
+		t.Errorf("someone never sent the invitation was reminded: %+v", m)
 	}
 	act(t, jordan, "meetup", "message", `{"subject":"Next time","message":"Sorry you can't make it.","to":["no"],"attach":true}`)
 	waitFor(kept, before+4)
@@ -1067,6 +1084,16 @@ func TestPartyListIsTheHolders(t *testing.T) {
 	slices.Sort(to)
 	if strings.Join(to, ",") != strings.Join([]string{mia, robin, sam}, ",") {
 		t.Errorf("sent to %v", to)
+	}
+	g := cache.Model().Calendar.Groups[partyA][0]
+	if rec := call(t, miaH, "POST", "/api/invite-groups/"+g.ID+"/edit", `{"rule":{"tags":["`+g.Rule.Tags[0]+`"],"family":["Children"]}}`); rec.Code != 204 {
+		t.Fatalf("add children: %d %s", rec.Code, rec.Body)
+	}
+	if cache.Model().Calendar.InviteOf(partyA, ella) == nil {
+		t.Errorf("a ticket holder's child is not on the list")
+	}
+	if cache.Model().Calendar.InviteOf(partyA, host) != nil {
+		t.Errorf("the buyer of a ticket is on the list once children are added")
 	}
 }
 
@@ -1749,6 +1776,7 @@ func TestMailLeavesItsRecord(t *testing.T) {
 		return len(mailTo(kept, mia)) == 1 && row(InvitationsTab, "Event ID", meetup)["Hosts To Tell"] == ""
 	})
 	act(t, jordan, "meetup", "invite", `{"people":[{"email":"`+robin+`"}]}`)
+	act(t, jordan, "meetup", "skip", `{"emails":["`+robin+`"]}`)
 	act(t, jordan, "meetup", "message", `{"subject":"Bring snacks","message":"Anything nut-free.","to":["none"]}`)
 	eventually(t, "the message reaches everyone it was for and says so", func() bool {
 		messages := cache.Model().Calendar.Messages
