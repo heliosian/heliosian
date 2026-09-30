@@ -1,7 +1,7 @@
-import {state, isAdmin, me} from '../state.js';
+import {state, allows, me} from '../state.js';
 import {el, button} from '/elements.js';
 import {categoryList, openSettings, openRedirect} from '../edit.js';
-import {api} from '/api.js';
+import {act, query} from '/data.js';
 import {checkbox} from '/form.js';
 import {adminPage as buildAdminPage, adminsCard} from '/admin.js';
 
@@ -48,7 +48,7 @@ function notifyCard() {
     status.classList.remove('error');
     status.textContent = 'Saving…';
     try {
-      await api('POST', '/api/team/notify', {kinds: kinds.map(k => k[0]).filter(k => boxes[k].checked)});
+      await act('team-settings', state.model.settingsId, 'notify', {kinds: kinds.map(k => k[0]).filter(k => boxes[k].checked)});
       status.textContent = 'Saved.';
     } catch (err) {
       status.classList.add('error');
@@ -63,9 +63,10 @@ function notifyCard() {
     stack.append(box.wrap);
   }
   card.append(stack, status);
-  api('GET', '/api/admin/state').then(data => {
+  query('/api/team-settings').then(read => {
+    const notify = read.get(read.result[0]).notify || [];
     for (const kind of Object.keys(boxes)) {
-      boxes[kind].checked = (data.notify || []).includes(kind);
+      boxes[kind].checked = notify.includes(kind);
       boxes[kind].disabled = false;
     }
   }).catch(err => {
@@ -80,7 +81,19 @@ function redirectsCard() {
   card.append(el('h2', '', 'Redirects'));
   card.append(el('div', 'hint', 'Old addresses on this site and where they now lead, followed before sign-in. Renaming an event adds one on its own; add one here for a link from the old volunteer site, or any address that should land somewhere else.'));
   const rows = el('div');
-  const redirects = (state.model.redirects || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.old.localeCompare(b.old));
+  const status = el('span', 'save-status');
+  query('/api/activity-redirects').then(read => fillRedirects(rows, read.result.map(read.get))).catch(err => {
+    status.classList.add('error');
+    status.textContent = err.message;
+  });
+  const add = el('div', 'add-row');
+  add.append(button('Add Redirect', 'plus', 'button', () => openRedirect(null)));
+  card.append(rows, add, status);
+  return card;
+}
+
+function fillRedirects(rows, list) {
+  const redirects = list.sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.old.localeCompare(b.old));
   if (!redirects.length) {
     rows.append(el('div', 'hint', 'None yet.'));
   }
@@ -105,10 +118,6 @@ function redirectsCard() {
     row.append(body, button('Edit', 'edit', 'button button-secondary button-small', () => openRedirect(item)));
     rows.append(row);
   }
-  const add = el('div', 'add-row');
-  add.append(button('Add Redirect', 'plus', 'button', () => openRedirect(null)));
-  card.append(rows, add);
-  return card;
 }
 
 const sections = [
@@ -126,5 +135,5 @@ const sections = [
 ];
 
 export function adminPage() {
-  return buildAdminPage({appName: 'HCA-Team', allowed: isAdmin(), email: me().email, sections});
+  return buildAdminPage({appName: 'HCA-Team', allowed: allows('team.configure'), email: me().email, sections});
 }

@@ -1,4 +1,4 @@
-import {state, me, family, isAdmin, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, isFull, matches, activityPath, shownVolunteers, listHidden, listRevealed, canAdd, addLabel} from '../state.js';
+import {state, me, family, allows, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, matches, shownVolunteers, listHidden, listRevealed, addLabel} from '../state.js';
 import {badge, searchBox, treeFilter} from '../dom.js';
 import {el, link, svg, imageThumb, button, copyText, toast} from '/elements.js';
 import {setTitle} from '/shell.js';
@@ -11,7 +11,7 @@ import {openPhotoLightbox} from '/crop.js';
 import {heroImageBar} from '/heroimage.js';
 import {personTile, peopleRow, offerTile, andList} from '/people.js';
 import {personRow} from '/personrow.js';
-import {api} from '/api.js';
+import {act} from '/data.js';
 import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, uploadAndSave, uploadImage, openVolunteerSettings, openVolunteerGrid, editPencil} from '../edit.js';
 
 const phone = window.matchMedia('(max-width: 900px)');
@@ -45,7 +45,7 @@ function heroStamp(act) {
   if (act.timing || !start) {
     return act.timing ? el('div', 'hero-stamp hero-stamp-text', act.timing) : null;
   }
-  const details = [act.description, location.origin + activityPath(act)].filter(Boolean).join('\n\n');
+  const details = [act.description, location.origin + act.path].filter(Boolean).join('\n\n');
   return dateCard({start: act.start, end: act.end, location: act.location || '', add: googleCalendarLink({title: act.title, start: act.start, end: act.end, location: act.location || '', details})});
 }
 
@@ -133,7 +133,7 @@ function makeChairButton(node, v) {
       return;
     }
     try {
-      await api('POST', '/api/team/volunteer', {id: node.id, email: v.email, position: 'Co-Chair', note: v.note || ''});
+      await act('volunteers', v.id, 'edit', {position: 'Co-Chair', note: v.note || ''});
       await load();
       toast(`${v.name} is now a co-chair`);
     } catch (err) {
@@ -162,7 +162,7 @@ function coChairAsk(node, save) {
   if (!mine || mine.position === 'Volunteer') {
     nodes.push(button('Offer to Co-Chair', 'people', 'button button-small side-offer', async () => {
       try {
-        await api('POST', '/api/team/volunteer', {id: node.id, position: 'Open to Co-Chair', note: mine ? mine.note : ''});
+        await act('activities', node.id, 'sign-up', {position: 'Open to Co-Chair', note: mine ? mine.note : ''});
         await load();
         toast('Thank you - the organizers will be in touch.');
       } catch (err) {
@@ -287,7 +287,7 @@ function volunteersBox(node) {
       () => openVolunteerGrid(node, [node, ...below], n => whereIs(node, n))));
     box.append(roster);
   }
-  if (node.status === 'Open' && isFull(node) && !mine && node.directSignUp) {
+  if (node.status === 'Open' && node.full && !mine && node.directSignUp) {
     box.append(el('div', 'vol-note vol-full', node.volunteersComplete ? 'The volunteers are all set. Thank you, everyone!' : 'Every spot is taken. Thank you, everyone!'));
   }
   if (listHidden(node) && revealed) {
@@ -328,7 +328,7 @@ function signUpButton(node, mine) {
   const self = mine
     ? {label: 'Edit my sign-up', icon: 'edit', onClick: () => openSignUp(node, mine)}
     : (canJoin(node) || node.canEdit ? {label: 'Join', icon: 'join', onClick: () => openSignUp(node, null)} : null);
-  const others = node.canEdit || (node.status === 'Open' && !isFull(node));
+  const others = node.canEdit || (node.status === 'Open' && !node.full);
   if (!others) {
     return self ? button(self.label, self.icon, 'button button-small', self.onClick) : null;
   }
@@ -409,7 +409,7 @@ function ownVolunteers(view, labelled) {
 }
 
 function priorityButton(node, save) {
-  if (!isAdmin() || isFull(node)) {
+  if (!allows('team.curate') || node.full) {
     return null;
   }
   const on = Boolean(node.priority);
@@ -534,7 +534,7 @@ function emailListPath(node) {
 }
 
 function emailListCard(node) {
-  if (!node.runs && !isAdmin()) {
+  if (!node.runs && !allows('team.see-all')) {
     return null;
   }
   const card = sideCard('side-card-invite');
@@ -584,7 +584,7 @@ function heroButton(icon, label, onClick) {
 
 function shareButton(node) {
   return heroButton('share', 'Share this page', async () => {
-    const url = location.origin + activityPath(node);
+    const url = location.origin + node.path;
     if (navigator.share) {
       try {
         await navigator.share({title: node.title, url});
@@ -638,10 +638,8 @@ function groupHead(node, cat, others) {
   const open = () => openActivity(null, {parent: node, category: cat ? cat.id : ''});
   let add = null;
   const policy = cat || node;
-  if (node.canEdit) {
-    add = button('Add', 'plus', 'button button-secondary button-small', open);
-  } else if (node.status === 'Open' && canAdd(policy)) {
-    add = button(addLabel(policy), 'plus', 'button button-secondary button-small', open);
+  if (policy.can.add) {
+    add = button(node.canEdit ? 'Add' : addLabel(policy), 'plus', 'button button-secondary button-small', open);
   }
   const tools = el('div', 'group-tools');
   if (add) {
@@ -673,7 +671,7 @@ async function reorderChildren(section, id, before, categoryId) {
   }
   ids.splice(at, 0, id);
   try {
-    await api('POST', '/api/team/order', {parent: node.id, ids});
+    await act('activities', node.id, 'order', {ids});
     await load();
   } catch (err) {
     toast(err.message);
@@ -799,7 +797,7 @@ export function activityPage(node) {
   const page = el('div', 'detail');
 
   const top = el('div', 'detail-top');
-  const back = link(parent ? activityPath(parent) : '/', 'detail-back');
+  const back = link(parent ? parent.path : '/', 'detail-back');
   back.append(svg('chevron-left'), el('span', '', parent ? `Back to ${parent.title}` : 'Back to Opportunities'));
   top.append(back);
   const tools = el('div', 'detail-tools');
@@ -836,7 +834,7 @@ export function activityPage(node) {
   const main = el('div', 'detail-main');
   const marks = el('div', 'detail-marks');
   if (parent) {
-    marks.append(link(activityPath(parent), 'card-chip is-inline is-link ' + categoryClass(root.category), parent.title));
+    marks.append(link(parent.path, 'card-chip is-inline is-link ' + categoryClass(root.category), parent.title));
   } else if (category(node.category)) {
     marks.append(el('span', 'card-chip is-inline ' + categoryClass(node.category), category(node.category).title));
   }
@@ -845,10 +843,10 @@ export function activityPage(node) {
   }
   if (node.status !== 'Open') {
     marks.append(badge(node.status === 'Pending' ? 'Needs approval' : node.status, node.status.toLowerCase()));
-    if (node.status === 'Pending' && isAdmin()) {
+    if (node.status === 'Pending') {
       marks.append(...approvalButtons(node));
     }
-  } else if (isFull(node)) {
+  } else if (node.full) {
     marks.append(completeBadge());
   }
   if (marks.children.length) {

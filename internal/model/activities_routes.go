@@ -1,14 +1,12 @@
 package model
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
@@ -18,7 +16,6 @@ import (
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
-	"heliosian/internal/store"
 )
 
 const activitiesShell = "web/team/index.html"
@@ -47,34 +44,18 @@ type ActivitiesDeps struct {
 	Describer *describe.Describer
 }
 
-func RegisterActivities(mux *http.ServeMux, d ActivitiesDeps) {
+func RegisterActivities(mux *http.ServeMux, d ActivitiesDeps) ActivitiesHooks {
 	d.Search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
 	a := activitiesApp{store: d.Store, images: d.Images, calendar: d.Calendar.app, search: d.Search, mailer: d.Mailer, style: d.Style, describer: d.Describer}
 	for _, page := range activitiesPages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
-	mux.HandleFunc("GET /api/team/model", serve.JSON(a.model))
 	a.search.Register(mux, "/api/team", a.images.Folder(), imagesearch.Members)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
-	mux.HandleFunc("POST /api/team/volunteer", serve.JSON(a.saveVolunteer))
-	mux.HandleFunc("DELETE /api/team/volunteer", serve.JSON(a.removeVolunteer))
-	mux.HandleFunc("POST /api/team/activity", serve.JSON(a.saveActivity))
-	mux.HandleFunc("POST /api/team/order", serve.JSON(a.orderChildren))
-	mux.HandleFunc("DELETE /api/team/activity", serve.JSON(a.deleteActivity))
-	mux.HandleFunc("POST /api/team/link", serve.JSON(a.saveLink))
-	mux.HandleFunc("DELETE /api/team/link", serve.JSON(a.deleteLink))
-	mux.HandleFunc("POST /api/team/category", serve.JSON(a.saveCategory))
-	mux.HandleFunc("DELETE /api/team/category", serve.JSON(a.deleteCategory))
-	mux.HandleFunc("POST /api/team/category/settings", serve.JSON(a.saveCategoryFlags))
-	mux.HandleFunc("POST /api/team/categories/order", serve.JSON(a.reorderCategories))
-	mux.HandleFunc("POST /api/team/copy", serve.JSON(a.copyActivity))
 	mux.HandleFunc("POST /api/team/describe", serve.JSON(a.describe))
-	mux.HandleFunc("POST /api/team/settings", serve.JSON(a.saveSettings))
-	mux.HandleFunc("POST /api/team/notify", serve.JSON(a.saveNotify))
-	RegisterAdmins(mux, a.store, "team", a.adminState)
-	mux.HandleFunc("POST /api/team/redirect", serve.JSON(a.saveRedirect))
-	mux.HandleFunc("DELETE /api/team/redirect", serve.JSON(a.deleteRedirect))
+	RegisterAdmins(mux, a.store, "team", noAdminState)
+	return ActivitiesHooks{app: a}
 }
 
 func (a activitiesApp) activities() *Activities {
@@ -83,10 +64,6 @@ func (a activitiesApp) activities() *Activities {
 
 func (a activitiesApp) directory() *Directory {
 	return a.store.Model().Directory
-}
-
-func (a activitiesApp) commit(ctx context.Context, actor access.Actor, ops ...store.Op) error {
-	return a.store.Commit(ctx, actor, activitiesAppName, ops...)
 }
 
 func ActivitiesRedirected(s *Store, next http.Handler) http.Handler {
@@ -122,18 +99,6 @@ func (a activitiesApp) actor(r *http.Request) access.Actor {
 	return a.store.Model().actor(r, "team")
 }
 
-func (a activitiesApp) model(r *http.Request, _ serve.None) (ActivitiesView, error) {
-	m := a.store.Model()
-	actor := m.actor(r, "team")
-	view := RenderActivities(m.Activities, m.Directory, m.Config, a.calendar.at(m).linkedRSVPs, m.EmailLists, actor, time.Now().In(Location))
-	view.ImageSearch = a.search.On()
-	return view, nil
-}
-
-type activityRef struct {
-	ID string `json:"id"`
-}
-
 type describeActivityBody struct {
 	Title    string `json:"title"`
 	Parent   string `json:"parent"`
@@ -158,39 +123,6 @@ func (a activitiesApp) describe(r *http.Request, body describeActivityBody) (map
 	}
 	slog.InfoContext(r.Context(), "team:described", "actor", email, "title", body.Title)
 	return map[string]string{"description": description}, nil
-}
-
-func (a activitiesApp) saveVolunteer(r *http.Request, body volunteerBody) (serve.None, error) {
-	actor := a.actor(r)
-	s, err := a.activities().saveVolunteer(actor, a.directory(), body)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, s.ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:saved volunteer", "actor", actor.Email, "action", s.action, "email", s.email, "activity", s.act.Title, "year", s.act.Year)
-	a.mailSignUp(r, s.act, s.email, s.position, s.note, actor.Email, s.existed, s.was)
-	return serve.None{}, nil
-}
-
-type removeVolunteerBody struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-}
-
-func (a activitiesApp) removeVolunteer(r *http.Request, body removeVolunteerBody) (serve.None, error) {
-	actor := a.actor(r)
-	act, email, ops, err := a.activities().removeVolunteer(actor, body.ID, body.Email)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:removed volunteer", "actor", actor.Email, "email", email, "activity", act.Title, "year", act.Year)
-	a.mailRemoved(r, act, email, actor.Email)
-	return serve.None{}, nil
 }
 
 type activityBody struct {
@@ -241,232 +173,11 @@ func (p activityPatch) fields() []string {
 	return out
 }
 
-func (a activitiesApp) saveActivity(r *http.Request, patch activityPatch) (activityRef, error) {
-	actor := a.actor(r)
-	s, err := a.activities().saveActivity(actor, patch)
-	if err != nil {
-		return activityRef{}, err
-	}
-	if err := a.commit(r.Context(), actor, s.ops...); err != nil {
-		return activityRef{}, err
-	}
-	slog.InfoContext(r.Context(), "team:saved activity", "actor", actor.Email, "action", s.action, "activity", s.title, "id", s.id, "year", s.year, "status", s.status)
-	if s.adding {
-		a.mailNewActivity(r, a.activities().Activity(s.id), actor.Email)
-	}
-	return activityRef{ID: s.id}, nil
-}
-
-func (a activitiesApp) deleteActivity(r *http.Request, body activityRef) (serve.None, error) {
-	actor := a.actor(r)
-	act, ops, err := a.activities().deleteActivity(actor, body.ID)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:deleted activity", "actor", actor.Email, "activity", act.Title, "year", act.Year)
-	return serve.None{}, nil
-}
-
-func (a activitiesApp) saveLink(r *http.Request, body linkBody) (serve.None, error) {
-	actor := a.actor(r)
-	act, action, ops, err := a.activities().saveLink(actor, body)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:saved link", "actor", actor.Email, "action", action, "link", strings.TrimSpace(body.Title), "activity", act.Title, "year", act.Year)
-	return serve.None{}, nil
-}
-
-type orderBody struct {
-	Parent string   `json:"parent"`
-	IDs    []string `json:"ids"`
-}
-
-func (a activitiesApp) orderChildren(r *http.Request, body orderBody) (serve.None, error) {
-	actor := a.actor(r)
-	parent, ops, err := a.activities().orderChildren(actor, body.Parent, body.IDs)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:reordered", "actor", actor.Email, "parent", parent.Title, "year", parent.Year, "changed", len(ops))
-	return serve.None{}, nil
-}
-
-type linkRef struct {
-	Link string `json:"link"`
-}
-
-func (a activitiesApp) deleteLink(r *http.Request, body linkRef) (serve.None, error) {
-	actor := a.actor(r)
-	act, ops, err := a.activities().deleteLink(actor, body.Link)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:deleted link", "actor", actor.Email, "link", body.Link, "activity", act.Title, "year", act.Year)
-	return serve.None{}, nil
-}
-
-func (a activitiesApp) saveCategory(r *http.Request, body categoryBody) (serve.None, error) {
-	actor := a.actor(r)
-	s, err := a.activities().saveCategory(actor, body)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, s.op); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:saved category", "actor", actor.Email, "action", s.action, "category", s.title, "id", s.id, "event", s.eventID)
-	return serve.None{}, nil
-}
-
-func (a activitiesApp) saveCategoryFlags(r *http.Request, body categoryFlagsBody) (serve.None, error) {
-	actor := a.actor(r)
-	op, c, err := a.activities().saveCategoryFlags(actor, body)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, op); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:saved category settings", "actor", actor.Email, "category", c.Title, "id", c.ID, "flags", body.Flags)
-	return serve.None{}, nil
-}
-
-type categoryOrderBody struct {
-	EventID string   `json:"eventId"`
-	IDs     []string `json:"ids"`
-}
-
-func (a activitiesApp) reorderCategories(r *http.Request, body categoryOrderBody) (serve.None, error) {
-	actor := a.actor(r)
-	eventID := strings.TrimSpace(body.EventID)
-	ops, err := a.activities().reorderCategories(actor, eventID, body.IDs)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:reordered categories", "actor", actor.Email, "event", eventID, "count", len(body.IDs))
-	return serve.None{}, nil
-}
-
-func (a activitiesApp) deleteCategory(r *http.Request, body activityRef) (serve.None, error) {
-	actor := a.actor(r)
-	cat, ops, err := a.store.deleteActivityCategory(actor, body.ID)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:deleted category", "actor", actor.Email, "category", cat.Title, "id", cat.ID)
-	return serve.None{}, nil
-}
-
-func (a activitiesApp) copyActivity(r *http.Request, body activityRef) (serve.None, error) {
-	actor := a.actor(r)
-	act, id, year, ops, err := a.activities().copyActivity(actor, body.ID)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:copied activity", "actor", actor.Email, "activity", act.Title, "from", act.Year, "to", year, "id", id)
-	return serve.None{}, nil
-}
-
 type activitySettingsBody struct {
 	ExpenseFormURL string `json:"expenseFormUrl"`
 	Intro          string `json:"intro"`
 }
 
-func (a activitiesApp) saveSettings(r *http.Request, body activitySettingsBody) (serve.None, error) {
-	actor := a.actor(r)
-	ops, err := activitySettingsOps(actor, body.ExpenseFormURL, body.Intro)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:changed the settings", "actor", actor.Email)
-	return serve.None{}, nil
-}
-
 type notifyBody struct {
 	Kinds []string `json:"kinds"`
-}
-
-func (a activitiesApp) saveNotify(r *http.Request, body notifyBody) (serve.None, error) {
-	actor := a.actor(r)
-	value, ops, err := activityNotifyOps(actor, body.Kinds)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:set notifications", "actor", actor.Email, "kinds", value)
-	return serve.None{}, nil
-}
-
-func (a activitiesApp) adminState(m *Model, _ *http.Request, actor access.Actor) map[string]any {
-	prefs := m.Activities.notifyPrefs(actor.Email)
-	notify := []string{}
-	for _, k := range NotifyKinds {
-		if prefs[k] {
-			notify = append(notify, k)
-		}
-	}
-	return map[string]any{"notify": notify}
-}
-
-type redirectBody struct {
-	Original string `json:"original"`
-	Old      string `json:"old"`
-	New      string `json:"new"`
-}
-
-func (a activitiesApp) saveRedirect(r *http.Request, body redirectBody) (serve.None, error) {
-	actor := a.actor(r)
-	s, err := a.activities().saveRedirect(actor, body.Original, body.Old, body.New)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, s.op); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:saved redirect", "actor", actor.Email, "action", s.action, "old", s.old, "new", s.to)
-	return serve.None{}, nil
-}
-
-type redirectRef struct {
-	Old string `json:"old"`
-}
-
-func (a activitiesApp) deleteRedirect(r *http.Request, body redirectRef) (serve.None, error) {
-	actor := a.actor(r)
-	redirect, ops, err := a.activities().deleteRedirect(actor, body.Old)
-	if err != nil {
-		return serve.None{}, err
-	}
-	if err := a.commit(r.Context(), actor, ops...); err != nil {
-		return serve.None{}, err
-	}
-	slog.InfoContext(r.Context(), "team:deleted redirect", "actor", actor.Email, "old", redirect.Old)
-	return serve.None{}, nil
 }

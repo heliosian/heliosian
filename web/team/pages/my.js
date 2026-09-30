@@ -1,4 +1,4 @@
-import {state, me, years, myRows, sortByStart, isPrevious, matches, rootOf, parentOf, descendants, family} from '../state.js';
+import {state, me, years, myRows, sortByStart, matches, rootOf, parentOf, descendants, family} from '../state.js';
 import {toggle, selectPill} from '../dom.js';
 import {el} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
@@ -8,7 +8,7 @@ let year = null;
 let query = '';
 
 function list(rows, who) {
-  const over = node => isPrevious(node) || (parentOf(node) ? over(parentOf(node)) : false);
+  const over = node => node.past || (parentOf(node) ? over(parentOf(node)) : false);
   const shown = rows.filter(r => (state.showPrevious || !over(r.act)) && (matches(r.act, query) || matches(rootOf(r.act), query)));
   const signed = new Set(shown.map(r => r.act));
   const events = sortByStart([...new Set(shown.map(r => rootOf(r.act)))]);

@@ -1,4 +1,4 @@
-import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, canJoin, isFull, mySignUp, signUpOf, activityPath, rootOf, parentOf, category, UNCATEGORIZED} from './state.js';
+import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, canJoin, mySignUp, signUpOf, rootOf, parentOf, category, UNCATEGORIZED} from './state.js';
 import {parseWhen} from '/datecard.js';
 import {badge} from './dom.js';
 import {el, link, svg, imageThumb, button} from '/elements.js';
@@ -17,7 +17,7 @@ function statusBadges(node) {
   if (node.status === 'Done') {
     out.push(badge('Done', 'done'));
   }
-  if (node.status === 'Open' && isFull(node)) {
+  if (node.status === 'Open' && node.full) {
     out.push(completeBadge());
   }
   return out;
@@ -96,7 +96,7 @@ function needChip(node) {
 }
 
 export function wanted(node) {
-  return Boolean(node.priority) && node.status === 'Open' && !isFull(node);
+  return Boolean(node.priority) && node.status === 'Open' && !node.full;
 }
 
 function priorityChip(node) {
@@ -121,7 +121,7 @@ function priorityCallout(act) {
     if (i) {
       words.append(document.createTextNode(' \u00b7 '));
     }
-    words.append(link(activityPath(n), 'card-priority-link', n.title));
+    words.append(link(n.path, 'card-priority-link', n.title));
   });
   line.append(words);
   return line;
@@ -140,7 +140,7 @@ function joinButton(node) {
 }
 
 export function childRow(node, editing) {
-  const row = link(activityPath(node), 'row is-link' + (node.status === 'Hidden' || node.status === 'Pending' || node.categoryHidden ? ' is-muted' : ''));
+  const row = link(node.path, 'row is-link' + (node.status === 'Hidden' || node.status === 'Pending' || node.categoryHidden ? ' is-muted' : ''));
   row.append(imageThumb(node.imageUrl || rootOf(node).imageUrl, node.title));
   const body = el('div', 'row-body');
   body.append(labelLine(node));
@@ -162,7 +162,7 @@ export function childRow(node, editing) {
     if (under.length) {
       const line = el('div', 'row-under');
       for (const c of under) {
-        const chip = button(`${c.title} (${c.spots > 0 ? `${c.taken} of ${c.spots}` : c.taken})`, null, 'row-under-chip', () => navigate(activityPath(c)));
+        const chip = button(`${c.title} (${c.spots > 0 ? `${c.taken} of ${c.spots}` : c.taken})`, null, 'row-under-chip', () => navigate(c.path));
         chip.title = `Open ${c.title}`;
         line.append(chip);
       }
@@ -237,7 +237,7 @@ function dateBadge(act) {
 }
 
 function spotsNote(act) {
-  if (isFull(act)) {
+  if (act.full) {
     return '';
   }
   if (act.spots > 0) {
@@ -255,7 +255,7 @@ export function activityCard(act, opts = {}) {
 
 function activityCardBody(act, opts) {
   const card = el('div', 'card' + (act.status === 'Hidden' || act.status === 'Pending' ? ' is-muted' : ''));
-  const media = link(activityPath(act), 'card-media');
+  const media = link(act.path, 'card-media');
   media.append(imageThumb(act.imageUrl, act.title, 'card-image ' + categoryClass(act.category)));
   if (act.coLeaderNeeded) {
     const need = el('span', 'card-chip card-need');
@@ -268,7 +268,7 @@ function activityCardBody(act, opts) {
   }
   card.append(media);
   const body = el('div', 'card-body');
-  const title = link(activityPath(act), 'card-title');
+  const title = link(act.path, 'card-title');
   title.textContent = act.title;
   body.append(title);
   if (act.description) {
@@ -290,7 +290,7 @@ function activityCardBody(act, opts) {
   if (opts.signUps) {
     const under = el('div', 'card-under');
     for (const node of opts.signUps) {
-      const item = link(activityPath(node), 'card-under-item');
+      const item = link(node.path, 'card-under-item');
       item.append(svg('join'), el('span', 'card-under-title', node.title));
       const mine = signUpOf(node, opts.email || me().email);
       if (mine && mine.position === 'Co-Chair') {
@@ -325,7 +325,7 @@ function activityCardBody(act, opts) {
   }
   const foot = el('div', 'card-foot');
   const join = joinButton(act);
-  foot.append(join || link(activityPath(act), 'button button-secondary button-small', 'Learn More'));
+  foot.append(join || link(act.path, 'button button-secondary button-small', 'Learn More'));
   const note = spotsNote(act);
   if (note) {
     foot.append(el('span', 'card-note', note));
@@ -336,7 +336,7 @@ function activityCardBody(act, opts) {
 
 export function priorityRow(node) {
   const root = rootOf(node);
-  const row = link(activityPath(node), 'prio-row');
+  const row = link(node.path, 'prio-row');
   row.append(imageThumb(node.imageUrl || root.imageUrl, node.title, 'prio-pic'));
   const main = el('div', 'prio-main');
   const above = [];

@@ -249,17 +249,6 @@ type LinkedRSVPs struct {
 
 type RSVPLookup func(id string) *LinkedRSVPs
 
-func (a calendarApp) linkedRSVPs(id string) *LinkedRSVPs {
-	model := a.model()
-	for _, e := range withLinked(model.Events, a.linked("")) {
-		if e.linked() && e.LinkedID == id {
-			id = e.ID
-			break
-		}
-	}
-	return a.eventRSVPs(id)
-}
-
 func (a calendarApp) eventRSVPs(id string) *LinkedRSVPs {
 	model := a.model()
 	inv := model.Invitations[id]

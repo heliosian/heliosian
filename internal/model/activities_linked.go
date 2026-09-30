@@ -30,7 +30,7 @@ func (m *Activities) Linked(family Household) []Linked {
 		switch {
 		case a.Status == StatusDone:
 			availability = "done"
-		case a.VolunteersComplete || (a.Spots > 0 && a.Taken >= a.Spots):
+		case raw.full():
 			availability = "full"
 		}
 		var signed Circle

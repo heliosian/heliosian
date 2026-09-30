@@ -45,38 +45,39 @@ func TestWidget(t *testing.T) {
 
 func TestPriorityIsAnAdmins(t *testing.T) {
 	cache, mux := activitiesServer(t)
+	path := activityAction("act0000000020", "edit")
 	edit := map[string]any{
-		"id": "act0000000020", "year": "2026 - 2027", "title": "India", "parent": "act0000000001",
+		"year": "2026 - 2027", "title": "India", "parent": "act0000000001",
 		"category": "tcg0000000008", "status": StatusOpen, "coLeaderNeeded": true, "directSignUp": "Yes", "priority": true,
 	}
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
+	if rec := testkit.Call(t, mux, chair, "POST", path, edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("co-chair save: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Model().Activities.Activity("act0000000020").Priority {
 		t.Fatal("a co-chair marked a priority")
 	}
-	if rec := testkit.Call(t, mux, jordan, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
+	if rec := testkit.Call(t, mux, jordan, "POST", path, edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("admin save: %d %s", rec.Code, rec.Body)
 	}
 	if !cache.Model().Activities.Activity("act0000000020").Priority {
 		t.Fatal("an admin's mark did not stick")
 	}
 	edit["priority"] = false
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
+	if rec := testkit.Call(t, mux, chair, "POST", path, edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("co-chair save: %d %s", rec.Code, rec.Body)
 	}
 	if !cache.Model().Activities.Activity("act0000000020").Priority {
 		t.Fatal("a co-chair cleared an admin's mark")
 	}
 	edit["volunteersComplete"] = true
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
+	if rec := testkit.Call(t, mux, chair, "POST", path, edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("complete: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Model().Activities.Activity("act0000000020").Priority {
 		t.Fatal("a complete thing kept its priority")
 	}
 	edit["priority"] = true
-	if rec := testkit.Call(t, mux, jordan, "POST", "/api/team/activity", edit); rec.Code != http.StatusOK {
+	if rec := testkit.Call(t, mux, jordan, "POST", path, edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("admin save: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Model().Activities.Activity("act0000000020").Priority {

@@ -1,7 +1,6 @@
 package model
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,33 +22,34 @@ func TestOldIDsReachTheirThings(t *testing.T) {
 	if m.Resolve("/activities/E001/E020") != m.Activity("act0000000020") || m.Resolve("/v/international-night/E020") != m.Activity("act0000000020") {
 		t.Fatalf("an old id in a path did not reach its activity")
 	}
-	if rec := testkit.Call(t, mux, activitiesParent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, activitiesParent, "POST", activityAction("E017", "sign-up"), map[string]any{"position": PositionVolunteer}); rec.Code != http.StatusNoContent {
 		t.Fatalf("sign up by an old id: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Count(activitiesAppName, volunteersTab, store.Row{"Event ID": "act0000000017", "Email": activitiesParent}) != 1 || cache.Count(activitiesAppName, volunteersTab, store.Row{"Event ID": "E017"}) != 0 {
 		t.Fatalf("a sign-up by an old id was not stored under the activity's id")
 	}
-	if rec := testkit.Call(t, mux, activitiesParent, "POST", "/api/team/volunteer", map[string]any{"id": "act0000000018", "position": PositionVolunteer, "from": "E017"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, activitiesParent, "POST", activityAction("act0000000018", "sign-up"), map[string]any{"position": PositionVolunteer, "from": "E017"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move from an old id: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Model().Activities.Activity("act0000000017").volunteer(activitiesParent) != nil || cache.Model().Activities.Activity("act0000000018").volunteer(activitiesParent) == nil {
 		t.Fatalf("a move from an old id did not move")
 	}
-	if rec := testkit.Call(t, mux, jordan, "POST", "/api/team/category", map[string]any{"id": "C02", "title": "Gatherings", "allowAdding": AddingNo}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, jordan, "POST", "/api/activity-categories/C02/edit", map[string]any{"title": "Gatherings", "allowAdding": AddingNo}); rec.Code != http.StatusNoContent {
 		t.Fatalf("edit a category by an old id: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Count(activitiesAppName, activityCategoriesTab, store.Row{"Category ID": "tcg0000000002", "Title": "Gatherings"}) != 1 || cache.Count(activitiesAppName, activityCategoriesTab, store.Row{"Category ID": "C02"}) != 0 {
 		t.Fatalf("a category edit by an old id missed its row")
 	}
-	rec := testkit.Call(t, mux, activitiesParent, "POST", "/api/team/activity", map[string]any{"year": "2026 - 2027", "title": "Sweden", "parent": "E001", "category": "C08"})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("add under old ids: %d %s", rec.Code, rec.Body)
-	}
+	madeBy(t, testkit.Call(t, mux, activitiesParent, "POST", "/api/activities", map[string]any{"year": "2026 - 2027", "title": "Sweden", "parent": "E001", "category": "C08"}))
 	if cache.Count(activitiesAppName, activitiesTab, store.Row{"Title": "Sweden", "Parent": "act0000000001", "Category": "tcg0000000008"}) != 1 {
 		t.Fatalf("an add naming old ids stored them")
 	}
+	madeBy(t, testkit.Call(t, mux, activitiesParent, "POST", "/api/activity-categories/C08/add", map[string]any{"year": "2026 - 2027", "title": "Denmark"}))
+	if cache.Count(activitiesAppName, activitiesTab, store.Row{"Title": "Denmark", "Parent": "act0000000001", "Category": "tcg0000000008"}) != 1 {
+		t.Fatalf("an add into a category by its old id stored the old id")
+	}
 	order := []string{"E025", "act0000000023", "E024"}
-	if rec := testkit.Call(t, mux, chair, "POST", "/api/team/order", map[string]any{"parent": "E002", "ids": order}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, chair, "POST", activityAction("E002", "order"), map[string]any{"ids": order}); rec.Code != http.StatusNoContent {
 		t.Fatalf("reorder by old ids: %d %s", rec.Code, rec.Body)
 	}
 	if first := cache.Model().Activities.Activity("act0000000002").Children[0]; first.ID != "act0000000025" {
@@ -59,9 +59,7 @@ func TestOldIDsReachTheirThings(t *testing.T) {
 
 func TestOldPagePathsRedirect(t *testing.T) {
 	cache, mux := activitiesServer(t)
-	if rec := testkit.Call(t, mux, jordan, "POST", "/api/team/redirect", map[string]string{"old": "/old-booth", "new": "/activities/E001/E020"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("a redirect naming old ids: %d %s", rec.Code, rec.Body)
-	}
+	madeBy(t, testkit.Call(t, mux, jordan, "POST", "/api/activity-redirects", map[string]string{"old": "/old-booth", "new": "/activities/E001/E020"}))
 	handler := ActivitiesRedirected(cache, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
 	for _, c := range []struct {
 		path   string
@@ -88,35 +86,31 @@ func TestOldPagePathsRedirect(t *testing.T) {
 
 func TestMintedIDs(t *testing.T) {
 	cache, mux := activitiesServer(t)
-	rec := testkit.Call(t, mux, jordan, "POST", "/api/team/activity", map[string]any{"year": "2026 - 2027", "title": "Bake Sale", "category": "tcg0000000002", "status": StatusOpen})
-	var saved activityRef
-	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &saved) != nil {
-		t.Fatalf("add: %d %s", rec.Code, rec.Body)
+	saved := madeBy(t, testkit.Call(t, mux, jordan, "POST", "/api/activities", map[string]any{"year": "2026 - 2027", "title": "Bake Sale", "category": "tcg0000000002", "status": StatusOpen}))
+	if _, ok := id.Parse(saved); !ok || cache.Model().Activities.Activity(saved) == nil || cache.Model().Activities.Activity(saved).Title != "Bake Sale" {
+		t.Fatalf("the add answered %q", saved)
 	}
-	if _, ok := id.Parse(saved.ID); !ok || cache.Model().Activities.Activity(saved.ID) == nil || cache.Model().Activities.Activity(saved.ID).Title != "Bake Sale" {
-		t.Fatalf("the add answered %q", saved.ID)
-	}
-	if rec := testkit.Call(t, mux, jordan, "POST", "/api/team/category", map[string]any{"title": "Fundraisers", "allowAdding": AddingNo}); rec.Code != http.StatusNoContent {
-		t.Fatalf("add category: %d %s", rec.Code, rec.Body)
+	fundraisers := madeBy(t, testkit.Call(t, mux, jordan, "POST", "/api/activity-categories", map[string]any{"title": "Fundraisers", "allowAdding": AddingNo}))
+	if c := cache.Model().Activities.Category(fundraisers); c == nil || c.Title != "Fundraisers" {
+		t.Fatalf("the category add answered %q: %+v", fundraisers, c)
 	}
 	for _, c := range cache.Model().Activities.Categories {
 		if _, ok := id.Parse(c.ID); !ok && !c.BuiltIn {
 			t.Errorf("category %q has id %q", c.Title, c.ID)
 		}
 	}
-	if rec := testkit.Call(t, mux, jordan, "POST", "/api/team/link", map[string]any{"id": saved.ID, "title": "Menu", "url": "https://example.org/menu"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("add link: %d %s", rec.Code, rec.Body)
-	}
-	if links := cache.Model().Activities.Activity(saved.ID).Links; len(links) != 1 {
-		t.Fatalf("links: %+v", links)
+	link := madeBy(t, testkit.Call(t, mux, jordan, "POST", "/api/activity-links", map[string]any{"activity": saved, "title": "Menu", "url": "https://example.org/menu"}))
+	if links := cache.Model().Activities.Activity(saved).Links; len(links) != 1 || links[0].ID != link {
+		t.Fatalf("links: %+v, the add answered %q", links, link)
 	} else if _, ok := id.Parse(links[0].ID); !ok {
 		t.Fatalf("link id %q", links[0].ID)
 	}
-	if rec := testkit.Call(t, mux, jordan, "POST", "/api/team/copy", map[string]string{"id": "act0000000001"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("copy: %d %s", rec.Code, rec.Body)
-	}
+	copied := madeBy(t, testkit.Call(t, mux, jordan, "POST", activityAction("act0000000001", "copy"), nil))
 	m := cache.Model().Activities
 	next := byTitle(m, "2027 - 2028", "International Night")
+	if next == nil || next.ID != copied {
+		t.Fatalf("the copy answered %q for %+v", copied, next)
+	}
 	seen := map[string]bool{}
 	for _, a := range append([]*Activity{next}, next.Descendants()...) {
 		ids := []string{a.ID}
@@ -147,33 +141,37 @@ func TestLinksByID(t *testing.T) {
 	cache, mux := activitiesServer(t)
 	const booth = "act0000000019"
 	for _, url := range []string{"https://example.org/one", "https://example.org/two"} {
-		if rec := testkit.Call(t, mux, jordan, "POST", "/api/team/link", map[string]any{"id": booth, "title": "Plan", "url": url}); rec.Code != http.StatusNoContent {
-			t.Fatalf("add link: %d %s", rec.Code, rec.Body)
-		}
+		madeBy(t, testkit.Call(t, mux, jordan, "POST", "/api/activity-links", map[string]any{"activity": booth, "title": "Plan", "url": url}))
 	}
 	links := cache.Model().Activities.Activity(booth).Links
 	if len(links) != 2 || links[0].ID == links[1].ID {
 		t.Fatalf("two links of one title: %+v", links)
 	}
 	one, two := links[0], links[1]
-	if rec := testkit.Call(t, mux, activitiesParent, "POST", "/api/team/link", map[string]any{"link": one.ID, "title": "Mine", "url": "https://example.org/x"}); rec.Code != http.StatusForbidden {
+	if rec := testkit.Call(t, mux, activitiesParent, "POST", "/api/activity-links", map[string]any{"activity": booth, "title": "Mine", "url": "https://example.org/x"}); rec.Code != http.StatusForbidden {
+		t.Fatalf("a parent added a link: %d", rec.Code)
+	}
+	if rec := testkit.Call(t, mux, activitiesParent, "POST", "/api/activity-links/"+one.ID+"/edit", map[string]any{"title": "Mine", "url": "https://example.org/x"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent edited a link: %d", rec.Code)
 	}
-	if rec := testkit.Call(t, mux, jordan, "POST", "/api/team/link", map[string]any{"link": one.ID, "title": "Plan", "url": "https://example.org/uno"}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, jordan, "POST", "/api/activity-links/"+one.ID+"/edit", map[string]any{"title": "Plan", "url": "https://example.org/uno"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("edit link: %d %s", rec.Code, rec.Body)
 	}
 	links = cache.Model().Activities.Activity(booth).Links
 	if len(links) != 2 || links[0].ID != one.ID || links[0].URL != "https://example.org/uno" || links[1] != two {
 		t.Fatalf("after editing one: %+v", links)
 	}
-	if rec := testkit.Call(t, mux, jordan, "DELETE", "/api/team/link", map[string]any{"link": two.ID}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, activitiesParent, "DELETE", "/api/activity-links/"+two.ID, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("a parent deleted a link: %d", rec.Code)
+	}
+	if rec := testkit.Call(t, mux, jordan, "DELETE", "/api/activity-links/"+two.ID, nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete link: %d %s", rec.Code, rec.Body)
 	}
 	links = cache.Model().Activities.Activity(booth).Links
 	if len(links) != 1 || links[0].ID != one.ID {
 		t.Fatalf("after deleting two: %+v", links)
 	}
-	if rec := testkit.Call(t, mux, jordan, "DELETE", "/api/team/link", map[string]any{"link": two.ID}); rec.Code != http.StatusNotFound {
+	if rec := testkit.Call(t, mux, jordan, "DELETE", "/api/activity-links/"+two.ID, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("deleted a deleted link: %d", rec.Code)
 	}
 	next := activitiesTables(t)

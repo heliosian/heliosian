@@ -1,4 +1,4 @@
-import {state, descendants, activityPath, mySignUp, rootOf, parentOf, revealed} from '../state.js';
+import {state, descendants, mySignUp, rootOf, parentOf, revealed} from '../state.js';
 import {parseWhen} from '/datecard.js';
 import {el, link, svg, button} from '/elements.js';
 import {setTitle} from '/shell.js';
@@ -39,7 +39,7 @@ function entries() {
     const last = end ? end.date : start.date;
     const day = new Date(start.date.getFullYear(), start.date.getMonth(), start.date.getDate());
     for (let i = 0; i < 31 && day <= last; i++) {
-      out.push({key: day.toDateString(), title: node.title, href: activityPath(node), isChild, mine: own, category: root.category || ''});
+      out.push({key: day.toDateString(), title: node.title, href: node.path, isChild, mine: own, category: root.category || ''});
       day.setDate(day.getDate() + 1);
     }
   };

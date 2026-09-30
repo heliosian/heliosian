@@ -113,13 +113,19 @@ func (reg *Registry[S]) create(r *http.Request, _ serve.None) (created, error) {
 	return results[0], nil
 }
 
-func (reg *Registry[S]) act(r *http.Request, _ serve.None) (serve.None, error) {
+func (reg *Registry[S]) act(r *http.Request, _ serve.None) (any, error) {
 	body, err := readBody(r)
 	if err != nil {
-		return serve.None{}, err
+		return nil, err
 	}
-	_, err = reg.write(r, []step{{Method: r.Method, Path: r.URL.Path, Body: body}})
-	return serve.None{}, err
+	results, err := reg.write(r, []step{{Method: r.Method, Path: r.URL.Path, Body: body}})
+	if err != nil {
+		return nil, err
+	}
+	if results[0].ID == "" {
+		return serve.None{}, nil
+	}
+	return results[0], nil
 }
 
 func (reg *Registry[S]) acts(r *http.Request, steps []step) (acted, error) {
@@ -193,24 +199,26 @@ func (reg *Registry[S]) step(w *world[S], wr Write[S], st step) (created, error)
 		key, err := t.Create.do(wr)
 		return created{ID: key}, err
 	case st.Method == http.MethodPost && len(parts) == 3:
-		return created{}, reg.run(w, t, wr, parts[1], parts[2])
+		key, err := reg.run(w, t, wr, parts[1], parts[2])
+		return created{ID: key}, err
 	case st.Method == http.MethodDelete && len(parts) == 2:
-		return created{}, reg.run(w, t, wr, parts[1], "delete")
+		key, err := reg.run(w, t, wr, parts[1], "delete")
+		return created{ID: key}, err
 	}
 	return created{}, access.Invalid("%s %s is not a write", st.Method, st.Path)
 }
 
-func (reg *Registry[S]) run(w *world[S], t *Type[S], wr Write[S], segment, name string) error {
+func (reg *Registry[S]) run(w *world[S], t *Type[S], wr Write[S], segment, name string) (string, error) {
 	action, ok := t.Actions[name]
 	if !ok {
-		return access.Missing("%s has no action %s", t.Name, name)
+		return "", access.Missing("%s has no action %s", t.Name, name)
 	}
 	key, ok := w.resolveIn(wr.S, t, segment)
 	if !ok {
-		return access.Missing("no %s %s", t.Name, segment)
+		return "", access.Missing("no %s %s", t.Name, segment)
 	}
 	if _, visible := t.Get(wr.S, wr.Query, key); !visible {
-		return access.Missing("no %s %s", t.Name, segment)
+		return "", access.Missing("no %s %s", t.Name, segment)
 	}
 	wr.ID = key
 	return action.do(wr)

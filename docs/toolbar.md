@@ -30,7 +30,7 @@ The avatar is the hero photo the directory leads with for the viewer - their own
 
 ## Admins
 
-There is no admin mode. An app's admins hold every allowance its admin list confers (`docs/dev.md`, The rules live with the thing) always, and a super admin every app's admin powers and the super-admin ones; their pages show every control those allow. Staff Birthdays, on the resource API, shows each control by the resource's `can`, and its admin-only pages by the viewer holding `birthday.configure` in `/api/me`; Helios Celebrate likewise, its admin page and controls by the `celebrate.` allowance each one's rule checks. In the other apps `isAdmin()` is being on the app's admin list, what the pages' admin controls go by. The Admin Tools links are the shell's, from `/api/me`.
+There is no admin mode. An app's admins hold every allowance its admin list confers (`docs/dev.md`, The rules live with the thing) always, and a super admin every app's admin powers and the super-admin ones; their pages show every control those allow. Staff Birthdays, on the resource API, shows each control by the resource's `can`, and its admin-only pages by the viewer holding `birthday.configure` in `/api/me`; Helios Celebrate and HCA-Team likewise, their admin pages and controls by the `celebrate.` or `team.` allowance each one's rule checks. In the other apps `isAdmin()` is being on the app's admin list, what the pages' admin controls go by. The Admin Tools links are the shell's, from `/api/me`.
 
 ## Spoof Mode
 

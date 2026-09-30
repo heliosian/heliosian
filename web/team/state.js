@@ -1,10 +1,54 @@
 import {parseWhen} from '/datecard.js';
+import {batch, me as whoAmI} from '/data.js';
 
 export const state = {model: null, showPrevious: false, showHidden: false, year: '', category: ''};
 
 const index = new Map();
 
-export function applyModel(model) {
+export async function loadModel() {
+  const [read, viewer] = await Promise.all([batch({
+    activities: '/api/activities?include=volunteers,links',
+    categories: '/api/activity-categories',
+    settings: '/api/team-settings',
+  }), whoAmI()]);
+  const s = read.get(read.result.settings[0]);
+  const categories = read.result.categories.map(read.get);
+  const nodes = new Map();
+  const roots = [];
+  for (const id of read.result.activities) {
+    const a = read.get(id);
+    const node = {
+      ...a,
+      canEdit: Boolean(a.can.edit),
+      runs: a.me.runs,
+      children: [],
+      volunteers: read.follow(a, 'volunteers'),
+      links: read.follow(a, 'links'),
+      categories: categories.filter(c => c.eventId === a.id),
+    };
+    nodes.set(id, node);
+    if (a.parent) {
+      nodes.get(a.parent).children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  const headings = categories.filter(c => !c.eventId);
+  applyModel({
+    user: s.user,
+    allowances: viewer.allowances,
+    settingsId: s.id,
+    years: s.years,
+    settings: s.settings,
+    gradeColors: s.gradeColors,
+    imageSearch: s.imageSearch,
+    people: s.people,
+    categories: s.uncategorized ? [...headings, s.uncategorized] : headings,
+    activities: roots,
+  });
+}
+
+function applyModel(model) {
   state.model = model;
   index.clear();
   const add = (list, parent) => {
@@ -28,8 +72,8 @@ export function me() {
   return state.model.user;
 }
 
-export function isAdmin() {
-  return state.model.user.isAdmin;
+export function allows(name) {
+  return state.model.allowances.includes(name);
 }
 
 export function years() {
@@ -43,10 +87,6 @@ export function activity(id) {
 export const UNCATEGORIZED = 'uncategorized';
 
 export const ADDING = {yes: 'Yes', approval: 'Approval Needed', no: 'No'};
-
-export function canAdd(thing) {
-  return Boolean(thing) && thing.allowAdding !== ADDING.no && Boolean(thing.allowAdding);
-}
 
 export function addLabel(thing) {
   return thing && thing.allowAdding === ADDING.approval ? 'Suggest' : 'Add';
@@ -115,21 +155,12 @@ export function rootOf(node) {
   return top;
 }
 
-export function activityPath(act) {
-  const own = act.prettyId ? encodeURIComponent(act.prettyId) : encodeURIComponent(act.id);
-  const parent = parentOf(act);
-  if (parent) {
-    return `${activityPath(parent)}/${own}`;
-  }
-  return act.prettyId ? `/v/${own}` : `/activities/${own}`;
-}
-
 export function byPretty(pretty) {
   const want = (pretty || '').toLowerCase();
   return state.model.activities.find(a => a.prettyId === want) || null;
 }
 
-function walkPath(path) {
+export function resolvePath(path) {
   const segs = path.split('/').filter(Boolean).map(decodeURIComponent);
   if (segs.length < 2) {
     return null;
@@ -143,75 +174,6 @@ function walkPath(path) {
     node = node.children.find(c => c.id === seg || (c.prettyId && c.prettyId === want)) || null;
   }
   return node;
-}
-
-export function resolvePath(path) {
-  let at = normalizePath(path);
-  for (let hops = 0; hops < 20 && at && !isURL(at); hops++) {
-    const live = walkPath(at);
-    if (live) {
-      return live;
-    }
-    at = moved(at);
-  }
-  return null;
-}
-
-function isURL(s) {
-  return /^https?:\/\//i.test(s);
-}
-
-function normalizePath(path) {
-  let at = (path || '').replace(/\/+$/, '');
-  if (at && !at.startsWith('/')) {
-    at = '/v/' + at;
-  }
-  return at;
-}
-
-function moved(at) {
-  let to = '';
-  let matched = '';
-  const lower = at.toLowerCase();
-  for (const r of state.model.redirects || []) {
-    const old = r.old.toLowerCase();
-    if (old === lower) {
-      to = r.new;
-      matched = at;
-    } else if (lower.startsWith(old + '/') && r.old.length > matched.length) {
-      to = r.new.replace(/\/$/, '') + at.slice(r.old.length);
-      matched = r.old;
-    }
-  }
-  return to;
-}
-
-export function redirectTarget(path) {
-  const start = normalizePath(path);
-  if (!start || walkPath(start)) {
-    return '';
-  }
-  let at = start;
-  const seen = new Set([start.toLowerCase()]);
-  for (let hops = 0; hops < 20; hops++) {
-    const next = moved(at);
-    if (!next) {
-      break;
-    }
-    if (isURL(next)) {
-      return next;
-    }
-    const live = walkPath(next);
-    if (live) {
-      return activityPath(live);
-    }
-    if (seen.has(next.toLowerCase())) {
-      return '';
-    }
-    seen.add(next.toLowerCase());
-    at = next;
-  }
-  return at === start || !/^\/(?![/\\])/.test(at) ? '' : at;
 }
 
 
@@ -301,25 +263,12 @@ export function sortByStart(list) {
   });
 }
 
-export function isPrevious(node) {
-  if (node.status === 'Done') {
-    return true;
-  }
-  const last = parseWhen(node.end) || parseWhen(node.start);
-  if (!last) {
-    return false;
-  }
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return last.date < today;
-}
-
 export function listHidden(node) {
   return Boolean(node.volunteersHidden);
 }
 
 export function listRevealed(node, editing) {
-  return !listHidden(node) || editing || isAdmin() || (state.showHidden && Boolean(node.canEdit));
+  return !listHidden(node) || editing || allows('team.see-all') || (state.showHidden && Boolean(node.canEdit));
 }
 
 export function shownVolunteers(node, editing) {
@@ -351,15 +300,8 @@ export function isFamily(email) {
   return family().some(c => c.email === email);
 }
 
-export function isFull(node) {
-  return Boolean(node.volunteersComplete) || (node.spots > 0 && node.taken >= node.spots);
-}
-
 export function canJoin(node) {
-  if (node.status !== 'Open' || mySignUp(node) || isFull(node)) {
-    return false;
-  }
-  return Boolean(node.directSignUp);
+  return node.status === 'Open' && !node.full && Boolean(node.directSignUp) && !mySignUp(node) && Boolean(node.can['sign-up']);
 }
 
 export function myRows(email = me().email) {
@@ -429,7 +371,7 @@ export function categoryPath(id) {
 export const PRIORITY = 'high-priority';
 
 export function isPriority(node) {
-  return (Boolean(node.priority) && !isFull(node)) || (node.children || []).some(isPriority);
+  return (Boolean(node.priority) && !node.full) || (node.children || []).some(isPriority);
 }
 
 export function categoryFromAddress() {
@@ -446,7 +388,7 @@ export function categoryFromAddress() {
 
 export function listedIn(year) {
   return activitiesIn(year).filter(a =>
-    (state.showPrevious || !isPrevious(a)) && revealed(a));
+    (state.showPrevious || !a.past) && revealed(a));
 }
 
 export function matches(node, query) {

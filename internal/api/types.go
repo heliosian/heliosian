@@ -58,8 +58,9 @@ type Filter[S any] func(s S, q Query, value string) (func(id string) bool, error
 
 type Action[S any] struct {
 	Can   func(s S, q Query, id string) bool
-	do    func(w Write[S]) error
+	do    func(w Write[S]) (string, error)
 	input reflect.Type
+	makes bool
 }
 
 func Do[S, In any](can func(s S, q Query, id string) bool, do func(w Write[S], in In) error) Action[S] {
@@ -67,10 +68,20 @@ func Do[S, In any](can func(s S, q Query, id string) bool, do func(w Write[S], i
 }
 
 func DoFrom[S, In any](can func(s S, q Query, id string) bool, seed func(w Write[S]) In, do func(w Write[S], in In) error) Action[S] {
-	return Action[S]{Can: can, input: reflect.TypeFor[In](), do: func(w Write[S]) error {
+	return Action[S]{Can: can, input: reflect.TypeFor[In](), do: func(w Write[S]) (string, error) {
 		in := seed(w)
 		if err := decode(w.Body, &in); err != nil {
-			return err
+			return "", err
+		}
+		return "", do(w, in)
+	}}
+}
+
+func DoMaking[S, In any](can func(s S, q Query, id string) bool, do func(w Write[S], in In) (string, error)) Action[S] {
+	return Action[S]{Can: can, input: reflect.TypeFor[In](), makes: true, do: func(w Write[S]) (string, error) {
+		var in In
+		if err := decode(w.Body, &in); err != nil {
+			return "", err
 		}
 		return do(w, in)
 	}}

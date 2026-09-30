@@ -26,6 +26,11 @@ type scope struct {
 
 	partiesOnce sync.Once
 	partyKeys   map[string]*Party
+
+	volunteersOnce sync.Once
+	volunteerKeys  map[string]volunteerKey
+	linkedOnce     sync.Once
+	activityEvents map[string]string
 }
 
 func (m *Model) at(q api.Query) *Model {

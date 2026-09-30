@@ -118,7 +118,7 @@ func (m *Activities) saveVolunteer(actor access.Actor, directory *Directory, bod
 	if existing && !editor && !actor.Mine(email) {
 		return signUp{}, access.Forbidden("only a co-chair or admin can change someone else's sign-up")
 	}
-	if !existing && !editor && act.Spots > 0 && len(act.Volunteers) >= act.Spots {
+	if !existing && !editor && act.full() {
 		return signUp{}, access.Invalid("every spot is taken")
 	}
 	note := strings.TrimSpace(body.Note)
@@ -289,17 +289,7 @@ func (m *Activities) saveActivity(actor access.Actor, patch activityPatch) (acti
 	if category == UncategorizedID {
 		category = ""
 	}
-	editor := actor.May(CurateActivities)
-	if parent != "" {
-		editor = actor.May(ActAsCochair) || m.Runs(m.Activity(parent), actor.Email)
-	}
-	policy := AddingNo
-	if parent != "" {
-		policy = m.Activity(parent).Adding
-	}
-	if category == "" && parent == "" && adding && !editor {
-		return activitySave{}, access.Invalid("pick a category")
-	}
+	editor := m.addsAsEditor(actor, parent)
 	if category != "" {
 		c := m.Category(category)
 		if c == nil {
@@ -312,17 +302,13 @@ func (m *Activities) saveActivity(actor access.Actor, patch activityPatch) (acti
 		if parent != "" && c.EventID != m.Root(m.Activity(parent)).ID {
 			return activitySave{}, access.Invalid("%q is not one of this event's categories", c.Title)
 		}
-		policy = c.Adding
 	}
 	if adding && !editor {
-		switch policy {
-		case AddingYes:
-			status = StatusOpen
-		case AddingApproval:
-			status = StatusPending
-		default:
-			return activitySave{}, access.Invalid("new things cannot be added here")
+		suggested, err := m.addedStatus(actor, parent, category)
+		if err != nil {
+			return activitySave{}, err
 		}
+		status = suggested
 	}
 	mint := m.minter()
 	var key string
@@ -444,6 +430,36 @@ func (m *Activities) saveActivity(actor access.Actor, patch activityPatch) (acti
 	return activitySave{ops: ops, id: key, title: title, year: year, status: status, action: action, adding: adding}, nil
 }
 
+func (m *Activities) addsAsEditor(actor access.Actor, parent string) bool {
+	if parent == "" {
+		return actor.May(CurateActivities)
+	}
+	return actor.May(ActAsCochair) || m.Runs(m.Activity(parent), actor.Email)
+}
+
+func (m *Activities) addedStatus(actor access.Actor, parent, category string) (string, error) {
+	if m.addsAsEditor(actor, parent) {
+		return "", nil
+	}
+	if category == "" && parent == "" {
+		return "", access.Invalid("pick a category")
+	}
+	policy := AddingNo
+	if parent != "" {
+		policy = m.Activity(parent).Adding
+	}
+	if c := m.Category(category); c != nil {
+		policy = c.Adding
+	}
+	switch policy {
+	case AddingYes:
+		return StatusOpen, nil
+	case AddingApproval:
+		return StatusPending, nil
+	}
+	return "", access.Invalid("new things cannot be added here")
+}
+
 func (m *Activities) deleteActivity(actor access.Actor, id string) (*Activity, []store.Op, error) {
 	if err := require(actor, CurateActivities); err != nil {
 		return nil, nil, err
@@ -503,9 +519,9 @@ func (m *Activities) saveLink(actor access.Actor, body linkBody) (*Activity, str
 	}
 	if adding {
 		cells["Link ID"], cells["Event ID"] = key, act.ID
-		return act, "add", []store.Op{store.Insert(linksTab, cells)}, nil
+		return act, key, []store.Op{store.Insert(linksTab, cells)}, nil
 	}
-	return act, "edit", []store.Op{store.Update(linksTab, store.Row{"Link ID": key}, cells)}, nil
+	return act, key, []store.Op{store.Update(linksTab, store.Row{"Link ID": key}, cells)}, nil
 }
 
 func (m *Activities) deleteLink(actor access.Actor, link string) (*Activity, []store.Op, error) {

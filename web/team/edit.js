@@ -1,4 +1,4 @@
-import {state, me, isAdmin, longDate, whenLabel, years, allYears, activityPath, activity, parentOf, canAdd, ADDING, category as categoryOf, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED, isFamily} from './state.js';
+import {state, me, allows, longDate, whenLabel, years, allYears, activity, parentOf, ADDING, category as categoryOf, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED, isFamily} from './state.js';
 
 import {whenEditor, treeFilter} from './dom.js';
 import {dataGrid} from '/datagrid.js';
@@ -9,6 +9,7 @@ import {createPersonPicker} from '/picker.js';
 import {directory, listed} from '/directory.js';
 import {openPersonCard} from '/personcard.js';
 import {api} from '/api.js';
+import {act, create, remove} from '/data.js';
 import {openModal, closeModal} from '/modal.js';
 import {load, navigate, render} from '/router.js';
 import {field, text, textarea, select, checkbox, segmented} from '/form.js';
@@ -16,11 +17,26 @@ import {tabbedFields} from '/tabs.js';
 
 export const {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/team', {state});
 
+async function writeActivity(body) {
+  const {id, ...fields} = body;
+  if (id) {
+    await act('activities', id, 'edit', fields);
+    return {id};
+  }
+  if (fields.category && fields.category !== UNCATEGORIZED) {
+    return act('activity-categories', fields.category, 'add', fields);
+  }
+  if (fields.parent) {
+    return act('activities', fields.parent, 'add', fields);
+  }
+  return create('activities', fields);
+}
+
 export async function saveActivity(body) {
-  const before = body.id && activity(body.id) ? activityPath(activity(body.id)) : null;
+  const before = body.id && activity(body.id) ? activity(body.id).path : null;
   let saved;
   try {
-    saved = await api('POST', '/api/team/activity', body);
+    saved = await writeActivity(body);
   } catch (err) {
     const c = err.conflict;
     if (!c || !c.prior) {
@@ -29,12 +45,12 @@ export async function saveActivity(body) {
     if (!confirm(`“${body.prettyId}” is the address of “${c.title}” from ${c.year}. Rename that one to “${c.renamed}” and use “${body.prettyId}” here?`)) {
       throw new Error('Pick another address, or agree to rename the old one.');
     }
-    saved = await api('POST', '/api/team/activity', {...body, takeOver: true});
+    saved = await writeActivity({...body, takeOver: true});
   }
   await load();
   const now = body.id ? activity(body.id) : null;
-  if (before && now && location.pathname === before && activityPath(now) !== before) {
-    history.replaceState(null, '', activityPath(now));
+  if (before && now && location.pathname === before && now.path !== before) {
+    history.replaceState(null, '', now.path);
     render();
   }
   return saved.id;
@@ -160,9 +176,7 @@ function signUpForm(node, existing, someoneElse) {
     const appoint = button(isChair ? 'Remove as co-chair' : 'Make co-chair', isChair ? 'close' : 'plus',
       'button button-secondary button-small', async () => {
         try {
-          await api('POST', '/api/team/volunteer', {
-            id: node.id, email: existing.email, position: isChair ? 'Volunteer' : 'Co-Chair', note: note.value,
-          });
+          await act('volunteers', existing.id, 'edit', {position: isChair ? 'Volunteer' : 'Co-Chair', note: note.value});
           closeModal();
           await load();
           toast(isChair ? `${existing.name} is no longer a co-chair` : `${existing.name} is now a co-chair`);
@@ -180,14 +194,13 @@ function signUpForm(node, existing, someoneElse) {
       if (!existing && who.value === 'other' && !picker.value) {
         throw new Error('Pick who to sign up from the directory');
       }
-      return api('POST', '/api/team/volunteer', {
-        id: where ? where.value : node.id,
+      return act('activities', where ? where.value : node.id, 'sign-up', {
         from: where && where.value !== node.id ? node.id : '',
         email: existing ? existing.email : (who.value === 'other' ? picker.value : ''),
         position: isChair && !editor ? 'Co-Chair' : position.value, note: note.value,
       });
     },
-    onDelete: existing ? () => api('DELETE', '/api/team/volunteer', {id: node.id, email: existing.email}) : null,
+    onDelete: existing && existing.can.delete ? () => remove('volunteers', existing.id) : null,
     deleteLabel: 'Remove',
     confirmDelete: existing ? `Remove ${existing.name} from ${node.title}?` : '',
   };
@@ -198,7 +211,7 @@ export async function removeVolunteer(node, volunteer) {
     return;
   }
   try {
-    await api('DELETE', '/api/team/volunteer', {id: node.id, email: volunteer.email});
+    await remove('volunteers', volunteer.id);
     await load();
   } catch (err) {
     toast(err.message);
@@ -291,7 +304,7 @@ function whenFields(act, parent) {
 
 export function openActivity(act, options) {
   const opts = options || {};
-  const admin = isAdmin();
+  const admin = allows('team.curate');
   const suggesting = !act && !admin && !(opts.parent && opts.parent.canEdit);
   const yearOptions = allYears().map(y => ({label: y, value: y}));
   const known = new Set(yearOptions.map(y => y.value));
@@ -327,10 +340,10 @@ export function openActivity(act, options) {
   const underField = field('Parent Event', parentSelect, 'What this is part of, if anything');
   const runsHere = currentParent || root;
   const editor = admin || Boolean(runsHere && runsHere.canEdit);
-  const headings = headingChoices(c => editor || canAdd(c)).filter(c => editor || c.value !== UNCATEGORIZED);
+  const headings = headingChoices(c => editor || c.can.add).filter(c => editor || c.value !== UNCATEGORIZED);
   const category = select(headings,
     act ? act.category : (opts.category || (headings[0] ? headings[0].value : '')));
-  const own = root ? eventCategories(root).filter(c => editor || canAdd(c)) : [];
+  const own = root ? eventCategories(root).filter(c => editor || c.can.add) : [];
   const eventCategory = select([{label: 'None', value: ''}, ...own.map(c => ({label: c.title, value: c.id}))],
     act ? act.category : (opts.category || ''));
   const description = textarea(act ? act.description : '', 6);
@@ -346,7 +359,7 @@ export function openActivity(act, options) {
   const signMeRow = act ? null : settingRow('Sign me up as', 'Whether you are on this yourself.', signMe);
   const suggestImage = imagePicker('', '', {dropzone: true, query: () => title.value.trim()});
   const pretty = text(act ? act.prettyId || '' : '', {placeholder: 'applause', maxLength: 40});
-  const addressBase = () => `${location.origin}${under ? activityPath(root) + '/' : '/v/'}`;
+  const addressBase = () => `${location.origin}${under ? root.path + '/' : '/v/'}`;
   const addressLine = el('div', 'address-line');
   const addressText = el('code', 'address-text');
   const addressCopy = button('Copy', 'copy', 'button button-secondary button-small', () => {
@@ -490,12 +503,12 @@ export function openActivity(act, options) {
       const saved = await saveActivity(body);
       const made = act ? null : activity(saved);
       if (made) {
-        navigate(activityPath(made));
+        navigate(made.path);
       }
     },
-    onDelete: act && admin ? () => api('DELETE', '/api/team/activity', {id: act.id}) : null,
+    onDelete: act && act.can.delete ? () => remove('activities', act.id) : null,
     confirmDelete: act ? `Delete “${act.title}” (${act.year})? Its links go with it.` : '',
-    afterDelete: () => navigate(currentParent ? activityPath(currentParent) : '/'),
+    afterDelete: () => navigate(currentParent ? currentParent.path : '/'),
   });
 }
 
@@ -509,11 +522,11 @@ export function openLink(node, item) {
     field('Description', description, 'A line about what people will find there'),
     image.wrap,
   ], {
-    submit: () => api('POST', '/api/team/link', {
-      id: node.id, link: item ? item.id : '',
-      title: title.value, url: url.value, description: description.value, image: image.value(),
-    }),
-    onDelete: item ? () => api('DELETE', '/api/team/link', {link: item.id}) : null,
+    submit: () => {
+      const fields = {title: title.value, url: url.value, description: description.value, image: image.value()};
+      return item ? act('activity-links', item.id, 'edit', fields) : create('activity-links', {activity: node.id, ...fields});
+    },
+    onDelete: item && item.can.delete ? () => remove('activity-links', item.id) : null,
     confirmDelete: item ? `Remove the link “${item.title}”?` : '',
   });
 }
@@ -655,7 +668,7 @@ export function openVolunteerSettings(node, replace) {
     return (n.parent === root.id && cats.find(c => c.id === n.category)) || activity(n.parent);
   };
   const saveCategory = async (cat, flags) => {
-    await api('POST', '/api/team/category/settings', {id: cat.id, flags});
+    await act('activity-categories', cat.id, 'settings', {flags});
     await load();
   };
   const closedAbove = n => {
@@ -753,7 +766,7 @@ export function openVolunteerSettings(node, replace) {
       after.nextElementSibling.querySelector('input').focus();
       return;
     }
-    const box = adder('New category name', title => api('POST', '/api/team/category', {eventId: node.id, title, allowAdding: ''}).then(load));
+    const box = adder('New category name', title => create('activity-categories', {eventId: node.id, title, allowAdding: ''}).then(load));
     box.classList.add('is-inline');
     box.style.setProperty('--depth', 1);
     after.after(box);
@@ -901,7 +914,7 @@ export function openVolunteerSettings(node, replace) {
     await place(moved, parent, parent.id === root.id ? target.category || '' : '');
     const ids = activity(parent.id).children.map(c => c.id).filter(id => id !== moved.node.id);
     ids.splice(ids.indexOf(target.id) + (after ? 1 : 0), 0, moved.node.id);
-    await api('POST', '/api/team/order', {parent: parent.id, ids});
+    await act('activities', parent.id, 'order', {ids});
     await load();
   };
   const row = (n, depth, below, parent) => {
@@ -991,7 +1004,7 @@ export function openVolunteerSettings(node, replace) {
     if (managing) {
       const pencil = editPencil(`Rename ${cat.title}`);
       pencil.addEventListener('click', () => rename(words, cat.title, async next => {
-        await api('POST', '/api/team/category', {id: cat.id, title: next, description: cat.description || '', image: cat.image || '', allowAdding: cat.allowAddingOwn || ''});
+        await act('activity-categories', cat.id, 'edit', {title: next, description: cat.description || '', image: cat.image || '', allowAdding: cat.allowAddingOwn || ''});
         await load();
       }));
       name.append(pencil);
@@ -1184,13 +1197,15 @@ export function openCategory(category, eventId, after) {
   openModal(category ? 'Edit Category' : 'Add Category', fields, {
     replace: true,
     saveLabel: category ? 'Save changes' : 'Add',
-    submit: () => api('POST', '/api/team/category', {
-      id: category ? category.id : '', eventId: eventId || '',
-      title: title.value, description: description.value, image: image.value(), allowAdding: adding.value,
-      showOnMain: onMain ? onMain.input.checked : true,
-    }),
+    submit: () => {
+      const fields = {
+        title: title.value, description: description.value, image: image.value(), allowAdding: adding.value,
+        showOnMain: onMain ? onMain.input.checked : true,
+      };
+      return category ? act('activity-categories', category.id, 'edit', fields) : create('activity-categories', {eventId: eventId || '', ...fields});
+    },
     afterSave: after,
-    onDelete: category ? () => api('DELETE', '/api/team/category', {id: category.id}) : null,
+    onDelete: category && category.can.delete ? () => remove('activity-categories', category.id) : null,
     confirmDelete: category ? `Delete the category “${category.title}”?` : '',
     afterDelete: after,
   });
@@ -1207,7 +1222,7 @@ async function moveCategory(eventId, list, from, to, after) {
   const [moved] = ids.splice(from, 1);
   ids.splice(to, 0, moved);
   try {
-    await api('POST', '/api/team/categories/order', {eventId, ids});
+    await (eventId ? act('activities', eventId, 'order-categories', {ids}) : act('team-settings', state.model.settingsId, 'order-categories', {ids}));
     await load();
     if (after) {
       after();
@@ -1257,7 +1272,7 @@ export function openSettings() {
   const expense = text(settings.expenseFormUrl, {type: 'url', required: true});
   const intro = textarea(settings.intro, 4);
   openModal('Settings', [field('Expense form URL', expense), field('Intro', intro, 'Shown under the Sign Up heading')], {
-    submit: () => api('POST', '/api/team/settings', {expenseFormUrl: expense.value, intro: intro.value}),
+    submit: () => act('team-settings', state.model.settingsId, 'settings', {expenseFormUrl: expense.value, intro: intro.value}),
   });
 }
 
@@ -1268,19 +1283,19 @@ export function openRedirect(item) {
     field('Old address', old, 'The link people still hold: paste the whole link, or its path. A bare word is a friendly address, /v/word.'),
     field('Send them to', to, 'A page here, as its path, or a whole address on another site. A link into what sits under the old address follows along.'),
   ], {
-    submit: () => api('POST', '/api/team/redirect', {original: item ? item.old : '', old: old.value, new: to.value}),
-    onDelete: item ? () => api('DELETE', '/api/team/redirect', {old: item.old}) : null,
+    submit: () => (item ? act('activity-redirects', item.id, 'edit', {old: old.value, new: to.value}) : create('activity-redirects', {old: old.value, new: to.value})),
+    onDelete: item && item.can.delete ? () => remove('activity-redirects', item.id) : null,
     confirmDelete: item ? `Remove the redirect from ${item.old}? Anyone holding that link will get Not found.` : '',
     deleteLabel: 'Remove',
   });
 }
 
-export async function copyToNextYear(act) {
-  if (!confirm(`Copy “${act.title}” and everything under it into ${years().next}?`)) {
+export async function copyToNextYear(node) {
+  if (!confirm(`Copy “${node.title}” and everything under it into ${years().next}?`)) {
     return;
   }
   try {
-    await api('POST', '/api/team/copy', {id: act.id});
+    await act('activities', node.id, 'copy');
     await load();
     toast(`Copied to ${years().next}`);
   } catch (err) {

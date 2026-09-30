@@ -1,14 +1,31 @@
-import {pendingItems, activityPath, rootOf, longDate} from '../state.js';
-import {el, link, svg, imageThumb, button} from '/elements.js';
+import {pendingItems, rootOf, longDate} from '../state.js';
+import {el, link, svg, imageThumb, button, toast} from '/elements.js';
 import {setTitle} from '/shell.js';
-import {saveActivityFields} from '../edit.js';
+import {act} from '/data.js';
+import {load} from '/router.js';
 
-export function approvalButtons(act) {
-  const approve = button('Approve', 'check', 'button button-small', () => saveActivityFields(act, {status: 'Open'}));
-  approve.title = `Approve ${act.title}`;
-  const hide = button('Hide', 'close', 'button button-secondary button-small', () => saveActivityFields(act, {status: 'Hidden'}));
-  hide.title = `Hide ${act.title}`;
-  return [approve, hide];
+async function decide(node, action) {
+  try {
+    await act('activities', node.id, action);
+  } catch (err) {
+    toast(err.message);
+  }
+  await load();
+}
+
+export function approvalButtons(node) {
+  const out = [];
+  if (node.can.approve) {
+    const approve = button('Approve', 'check', 'button button-small', () => decide(node, 'approve'));
+    approve.title = `Approve ${node.title}`;
+    out.push(approve);
+  }
+  if (node.can.decline) {
+    const hide = button('Hide', 'close', 'button button-secondary button-small', () => decide(node, 'decline'));
+    hide.title = `Hide ${node.title}`;
+    out.push(hide);
+  }
+  return out;
 }
 
 export function approvalsPage() {
@@ -22,7 +39,7 @@ export function approvalsPage() {
   }
   for (const {act} of items) {
     const root = rootOf(act);
-    const row = link(activityPath(act), 'row is-link');
+    const row = link(act.path, 'row is-link');
     row.append(imageThumb(act.imageUrl || root.imageUrl, act.title));
     const body = el('div', 'row-body');
     body.append(el('div', 'label', `Proposed by ${act.addedBy || 'someone'} on ${longDate(act.added)}`));

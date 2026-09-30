@@ -281,8 +281,12 @@ func (reg *Registry[S]) spec() schema {
 				one["delete"] = schema{"tags": tag, "summary": "Delete one of " + name, "parameters": []schema{id}, "responses": noContent()}
 				continue
 			}
+			responses := noContent()
+			if t.Actions[action].makes {
+				responses = schema{"200": answer("The new ID.", schema{"type": "object", "properties": schema{"id": schema{"type": "string"}}})}
+			}
 			paths["/api/"+name+"/{id}/"+action] = schema{"post": withBody(schema{
-				"tags": tag, "summary": action, "parameters": []schema{id}, "responses": noContent(),
+				"tags": tag, "summary": action, "parameters": []schema{id}, "responses": responses,
 			}, t.Actions[action].input)}
 		}
 		paths["/api/"+name+"/{id}"] = one

@@ -488,6 +488,10 @@ func (a *Activity) volunteer(email string) *Volunteer {
 	return nil
 }
 
+func (a *Activity) full() bool {
+	return a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots)
+}
+
 func (m *Activities) Runs(a *Activity, email string) bool {
 	for node := a; node != nil; {
 		if node.IsCoChair(email) {

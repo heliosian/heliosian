@@ -1,4 +1,4 @@
-import {state, isAdmin, years, allYears, sortByStart, selectedYear, listedIn, canAdd, addLabel, categoryPath, categoryFromAddress, PRIORITY, isPriority, descendants} from '../state.js';
+import {state, allows, years, allYears, sortByStart, selectedYear, listedIn, addLabel, categoryPath, categoryFromAddress, PRIORITY, isPriority, descendants} from '../state.js';
 import {searchOpportunities} from '../chrome.js';
 import {toggle, selectPill} from '../dom.js';
 import {el, imageThumb, button, svg} from '/elements.js';
@@ -39,8 +39,8 @@ function yearGrid(year) {
       heading.append(el('p', 'group-note', c.description));
     }
     head.append(heading);
-    if (!c.builtIn && (canAdd(c) || isAdmin())) {
-      const add = button(isAdmin() ? 'Add' : addLabel(c), 'plus', 'button button-secondary button-small group-add',
+    if (!c.builtIn && c.can.add) {
+      const add = button(allows('team.curate') ? 'Add' : addLabel(c), 'plus', 'button button-secondary button-small group-add',
         () => openActivity(null, {category: c.id}));
       add.title = `Add to ${c.title}`;
       head.append(add);

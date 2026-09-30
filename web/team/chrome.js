@@ -1,4 +1,4 @@
-import {state, me, isAdmin, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, family, myRows, isPrevious, revealed, runsAnything, parentOf, shownVolunteers, activitiesIn, allYears, sortByStart, matches} from './state.js';
+import {state, me, allows, pendingItems, selectedYear, yearPath, categoryPath, listedIn, years, resolvePath, rootOf, eventCategories, descendants, family, myRows, revealed, runsAnything, parentOf, shownVolunteers, activitiesIn, allYears, sortByStart, matches} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {initResults, showResults, closeResults, resultDay} from '/searchmenu.js';
@@ -13,7 +13,7 @@ const primary = [
 ];
 
 function navItems() {
-  return primary.filter(item => !item.admin || isAdmin());
+  return primary.filter(item => !item.admin || allows('team.curate'));
 }
 
 function active(href) {
@@ -71,7 +71,7 @@ function familyLinks() {
   const wrap = el('div', 'nav-sub');
   const current = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   const on = current[0] === 'my' ? current[1] || '' : null;
-  const count = email => myRows(email).filter(r => r.act.year === years().current && (state.showPrevious || !isPrevious(r.act))).length;
+  const count = email => myRows(email).filter(r => r.act.year === years().current && (state.showPrevious || !r.act.past)).length;
   const add = (href, label, email, self) => {
     const a = link(href, 'nav-sub-item nav-family-item' + (on === (self ? '' : email) ? ' is-on' : ''));
     a.append(el('span', 'nav-sub-name', label), el('span', 'nav-sub-count', String(count(email))));
@@ -105,7 +105,7 @@ function countLabel(node) {
 function eventTree(current) {
   const root = rootOf(current);
   const wrap = el('div', 'nav-event');
-  const head = link(activityPath(root), 'nav-event-link' + (current === root ? ' is-active' : ''));
+  const head = link(root.path, 'nav-event-link' + (current === root ? ' is-active' : ''));
   head.append(svg('join'), el('span', '', root.title));
   wrap.append(head);
   const shown = revealed;
@@ -139,7 +139,7 @@ function eventTree(current) {
     const key = 'node/' + node.id;
     const open = kids.length > 0 && openGroups.has(key);
     row.append(kids.length ? disclosure(key, open) : el('span', 'nav-tree-toggle is-leaf'));
-    const a = link(activityPath(node), 'nav-sub-item nav-tree-item' + (node === current ? ' is-on' : ''));
+    const a = link(node.path, 'nav-sub-item nav-tree-item' + (node === current ? ' is-on' : ''));
     a.append(el('span', 'nav-sub-name', node.title), el('span', 'nav-sub-count', countLabel(node)));
     row.append(a);
     list.append(row);
@@ -223,7 +223,7 @@ hiddenBox.addEventListener('change', () => {
 });
 
 function renderHiddenRow() {
-  hiddenRow.hidden = !isAdmin() && !runsAnything();
+  hiddenRow.hidden = !allows('team.see-all') && !runsAnything();
   hiddenBox.checked = state.showHidden;
 }
 
@@ -232,7 +232,7 @@ function startOf(node) {
 }
 
 function past(node) {
-  return isPrevious(node) || isPrevious(rootOf(node));
+  return node.past || rootOf(node).past;
 }
 
 function found(year, query) {
@@ -259,7 +259,7 @@ function resultItem({node: act, person}) {
   const c = state.model.categories.find(c => c.id === act.category);
   const where = person ? `${person.position || 'Volunteer'} · ${act.title}` : parent ? parent.title : c ? c.title : '';
   return {
-    href: activityPath(act),
+    href: act.path,
     image: person ? person.photoUrl : act.imageUrl || rootOf(act).imageUrl,
     day: resultDay(startOf(act)),
     title: person ? person.name : act.title,

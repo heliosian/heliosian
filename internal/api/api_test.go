@@ -134,6 +134,11 @@ func registry(w *fake) *Registry[*fake] {
 				})
 				return nil
 			}),
+			"split": DoMaking(func(s *fake, q Query, key string) bool {
+				return q.Actor.May(edit)
+			}, func(w Write[*fake], in rename) (string, error) {
+				return "g000000000003", nil
+			}),
 		},
 	})
 	reg.Publish(w)
@@ -354,6 +359,22 @@ func TestAnActionGetsItsBodyTyped(t *testing.T) {
 	}
 	if !slices.Equal(w.names, []string{"Chess Club"}) {
 		t.Errorf("names %v", w.names)
+	}
+}
+
+func TestAMakingActionAnswersTheNewID(t *testing.T) {
+	reg := registry(sample())
+	mux := http.NewServeMux()
+	reg.Register(mux)
+	req := httptest.NewRequest("POST", "/api/groups/"+chess+"/split", bytes.NewBufferString(`{"name":"Chess B"}`))
+	req.Header.Set("X-As", admin)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	var out struct {
+		ID string `json:"id"`
+	}
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &out) != nil || out.ID != "g000000000003" {
+		t.Errorf("split: status %d, body %s", rec.Code, rec.Body)
 	}
 }
 

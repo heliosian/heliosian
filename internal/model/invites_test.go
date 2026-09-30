@@ -860,17 +860,17 @@ func TestPartyStart(t *testing.T) {
 	if rec.Code != 204 || len(cache.Model().Calendar.Groups[partyA]) != 1 || cache.Model().Calendar.Groups[partyA][0].ID != made {
 		t.Errorf("a second start: %d %s, groups %+v", rec.Code, rec.Body, cache.Model().Calendar.Groups[partyA])
 	}
-	if r := testHooks.app.linkedRSVPs(partyA); r == nil || r.Sent {
+	if r := testHooks.app.eventRSVPs(partyA); r == nil || r.Sent {
 		t.Errorf("rsvps before sending: %+v", r)
 	}
 	act(t, miaH, partyA, "invite", `{"people":[{"email":"`+robin+`"},{"email":"`+sam+`"}]}`)
 	act(t, miaH, partyA, "send", `{}`)
 	act(t, miaH, partyA, "answer-for", `{"email":"`+robin+`","answer":"maybe"}`)
-	r := testHooks.app.linkedRSVPs(partyA)
+	r := testHooks.app.eventRSVPs(partyA)
 	if r == nil || !r.Sent || r.Answers[robin] != AnswerMaybe || r.Answers[sam] != "none" || r.Answers[ella] != "" {
 		t.Errorf("rsvps = %+v", r)
 	}
-	if r := testHooks.app.linkedRSVPs("nope"); r != nil {
+	if r := testHooks.app.eventRSVPs("nope"); r != nil {
 		t.Errorf("a party with no list has rsvps")
 	}
 }
@@ -1583,7 +1583,7 @@ func TestTeamStart(t *testing.T) {
 	if cache.Model().Calendar.AnswerOf(mia, teamA) != AnswerYes {
 		t.Errorf("the chair's answer = %q", cache.Model().Calendar.AnswerOf(mia, teamA))
 	}
-	if r := testHooks.app.linkedRSVPs(bookFair); r == nil || r.Sent {
+	if r := testHooks.app.eventRSVPs(teamA); r == nil || r.Sent {
 		t.Errorf("rsvps before sending: %+v", r)
 	}
 	v := inviteView(t, miaH, teamA)

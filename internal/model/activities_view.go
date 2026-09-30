@@ -3,7 +3,6 @@ package model
 import (
 	"sort"
 	"strings"
-	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
@@ -55,18 +54,6 @@ type Years struct {
 	Next    string `json:"next"`
 }
 
-type ActivityView struct {
-	*Activity
-	Children   []*ActivityView `json:"children"`
-	Volunteers []Volunteer     `json:"volunteers"`
-	Taken      int             `json:"taken"`
-	CanEdit    bool            `json:"canEdit"`
-	Runs       bool            `json:"runs,omitempty"`
-	Started    bool            `json:"started,omitempty"`
-	Invited    bool            `json:"invited,omitempty"`
-	EmailList  string          `json:"emailList,omitempty"`
-}
-
 type PersonView struct {
 	Email      string `json:"email"`
 	Name       string `json:"name"`
@@ -75,24 +62,11 @@ type PersonView struct {
 	CoChairing int    `json:"coChairing"`
 }
 
-type ActivitiesView struct {
-	User        ActivitiesUser     `json:"user"`
-	Years       Years              `json:"years"`
-	Settings    ActivitiesSettings `json:"settings"`
-	Categories  []ActivityCategory `json:"categories"`
-	Activities  []ActivityView     `json:"activities"`
-	People      []PersonView       `json:"people,omitempty"`
-	Redirects   []ActivityRedirect `json:"redirects"`
-	ImageSearch bool               `json:"imageSearch"`
-	GradeColors map[string]string  `json:"gradeColors,omitempty"`
-}
-
 type ActivitiesUser struct {
 	Email    string  `json:"email"`
 	Name     string  `json:"name"`
 	Initial  string  `json:"initial"`
 	PhotoURL string  `json:"photoUrl,omitempty"`
-	IsAdmin  bool    `json:"isAdmin"`
 	Spouses  []Child `json:"spouses,omitempty"`
 	Children []Child `json:"children,omitempty"`
 }
@@ -180,65 +154,6 @@ func (v activityViewer) volunteers(list []Volunteer) []Volunteer {
 		return out[i].Position == PositionCoChair && out[j].Position != PositionCoChair
 	})
 	return out
-}
-
-func (v activityViewer) activity(m *Activities, a *Activity, runs bool, lists *EmailLists) ActivityView {
-	chairs := runs || a.IsCoChair(v.Email)
-	view := ActivityView{
-		Activity:   a,
-		Children:   []*ActivityView{},
-		Volunteers: v.volunteers(a.Volunteers),
-		Taken:      a.Taken,
-		CanEdit:    m.Edits(a, v.Actor),
-		Runs:       chairs,
-	}
-	for _, c := range a.Children {
-		child := v.activity(m, c, chairs, lists)
-		view.Children = append(view.Children, &child)
-	}
-	if chairs || v.May(SeeAllActivities) {
-		view.EmailList = lists.Tagged(MagicTagActivity + ":" + a.ID)
-	}
-	return view
-}
-
-func RenderActivities(m *Activities, directory *Directory, settings *Config, rsvps RSVPLookup, lists *EmailLists, as access.Actor, now time.Time) ActivitiesView {
-	v := activityViewer{Actor: as, directory: directory}
-	email, admin := as.Email, as.May(SeeAllActivities)
-	name, photo := v.person(email)
-	spouses, children := activityHousehold(directory, directory.Person(email))
-	current := ActivityYear(now)
-	view := ActivitiesView{
-		User:        ActivitiesUser{Email: email, Name: name, Initial: strings.ToUpper(name[:1]), PhotoURL: photo, IsAdmin: admin, Spouses: spouses, Children: children},
-		Years:       Years{Current: current, Last: ShiftYearSpan(current, -1), Next: ShiftYearSpan(current, 1)},
-		Settings:    m.Settings,
-		Categories:  m.Categories,
-		Activities:  []ActivityView{},
-		Redirects:   m.Redirects,
-		GradeColors: settings.GradeColors,
-	}
-	for _, raw := range m.Activities {
-		a := m.ActivityFor(raw, as)
-		if a == nil {
-			continue
-		}
-		av := v.activity(m, a, false, lists)
-		if m.Sees(raw, as) {
-			if r := rsvps(a.ID); r != nil {
-				av.Started, av.Invited = true, r.Sent
-				if r.Sent {
-					for i := range av.Volunteers {
-						av.Volunteers[i].RSVP = r.Answers[directory.Resolve(strings.ToLower(av.Volunteers[i].Email))]
-					}
-				}
-			}
-		}
-		view.Activities = append(view.Activities, av)
-	}
-	if admin {
-		view.People = v.people(m)
-	}
-	return view
 }
 
 func (v activityViewer) people(m *Activities) []PersonView {

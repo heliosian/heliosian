@@ -71,10 +71,6 @@ func partiesServeWith(t *testing.T, mailer *mail.Mailgun) (*Store, *http.ServeMu
 	return s, mux
 }
 
-func noRSVPs(string) *LinkedRSVPs {
-	return nil
-}
-
 var partiesTestStyle = PartiesCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" })
 
 func partiesServer(t *testing.T) (*Store, *http.ServeMux) {
