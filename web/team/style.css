@@ -695,7 +695,6 @@ main {
 .toggle-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   font-weight: 600;
   margin: 12px 0;
