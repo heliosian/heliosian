@@ -803,7 +803,7 @@ export function groupPage(g) {
   if (canEdit) {
     tabs.push(historyTab(g));
   }
-  page.append(tabbed(tabs));
+  page.append(tabbed(tabs, true, null, tabs.length > 2 ? 1 : 2));
   return page;
 }
 
@@ -899,13 +899,13 @@ function memberCard(m, rules, title) {
   });
 }
 
-function tabbed(tabs, sync = true, initial) {
+function tabbed(tabs, sync = true, initial, mobileVisible = 2) {
   const wrap = el('div', 'group-tabs');
   const fallback = tabs[0].key;
   const wanted = sync ? tabParam(fallback) : (initial || fallback);
   let strip = null;
   const show = key => {
-    const next = tabStrip(tabs, key, 2, pick => {
+    const next = tabStrip(tabs, key, mobileVisible, pick => {
       if (sync) {
         history.replaceState(null, '', tabHref(pick));
       }
