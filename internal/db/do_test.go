@@ -1,0 +1,93 @@
+package db
+
+import (
+	"bytes"
+	"encoding/json"
+	"image"
+	"image/png"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"heliosian/internal/auth"
+	"heliosian/internal/blob"
+	"heliosian/internal/store"
+)
+
+func pngOf(t *testing.T, size int) []byte {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	if err := png.Encode(buf, image.NewRGBA(image.Rect(0, 0, size, size))); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func addPhoto(t *testing.T, s *Store, queue *store.Queue, media *blob.Store, as, person string, photo []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	body := &bytes.Buffer{}
+	form := multipart.NewWriter(body)
+	if err := form.WriteField("person", person); err != nil {
+		t.Fatal(err)
+	}
+	part, err := form.CreateFormFile("photo", "photo.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write(photo)
+	form.Close()
+	mux := http.NewServeMux()
+	Register(mux, s, queue, media, []byte(testImportKey), func() time.Time { return testNow })
+	r := httptest.NewRequest(http.MethodPost, doPrefix+"person-photo", body)
+	r.Header.Set("Content-Type", form.FormDataContentType())
+	rec := httptest.NewRecorder()
+	if key, ok := strings.CutPrefix(as, "bearer:"); ok {
+		r.Header.Set("Authorization", "Bearer "+key)
+		mux.ServeHTTP(rec, r)
+		return rec
+	}
+	auth.Fixed(as, mux).ServeHTTP(rec, r)
+	return rec
+}
+
+func TestPersonPhotoAddsFirst(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	media := blob.New(blob.NewMemoryBucket())
+	var orders []string
+	for i, size := range []int{2, 3} {
+		rec := addPhoto(t, s, queue, media, "bearer:"+testImportKey, staff, pngOf(t, size))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("photo %d: %d %s", i, rec.Code, rec.Body.String())
+		}
+		var out addedPhoto
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		row, ok := s.Model().Table("PERSON_PHOTO").Get(out.Result[0])
+		if !ok || row["person"] != staff || row["photo"] != out.Hash+".png" {
+			t.Fatalf("photo %d answered %+v and reads %v", i, out, row)
+		}
+		if found, err := media.Has("photos/" + row["photo"]); err != nil || !found {
+			t.Fatalf("photo %d is not in the bucket: %v", i, err)
+		}
+		orders = append(orders, row["order"])
+	}
+	if store.CompareKeys(orders[1], orders[0]) >= 0 {
+		t.Fatalf("the second photo's order %q is not before the first's %q", orders[1], orders[0])
+	}
+
+	photo := pngOf(t, 4)
+	rec := addPhoto(t, s, queue, media, "maya.lindqvist@example.org", staff, photo)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("a person with no grant: %d %s", rec.Code, rec.Body.String())
+	}
+	if found, _ := media.Has("photos/" + blob.Name(photo, "png")); found {
+		t.Fatal("a refused photo was stored")
+	}
+	if rec := addPhoto(t, s, queue, media, "bearer:"+testImportKey, staff, []byte("not a picture")); rec.Code != http.StatusBadRequest {
+		t.Fatalf("not an image: %d %s", rec.Code, rec.Body.String())
+	}
+}

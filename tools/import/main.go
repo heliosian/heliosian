@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log/slog"
 	"maps"
 	"os"
@@ -13,7 +14,7 @@ import (
 	"heliosian/internal/logging"
 )
 
-const server = "https://who.heliosian.com/api/q"
+const server = "https://who.heliosian.com"
 
 func run(dir string, args ...string) error {
 	cmd := exec.Command(args[0], args[1:]...)
@@ -27,7 +28,7 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "print the batch the import would send, and send nothing")
 	flag.Parse()
 
-	c := client{url: server, key: env.Required("IMPORT_KEY")}
+	c := client{base: server, key: env.Required("IMPORT_KEY")}
 	exporter := env.Required("VCEXPORT")
 	website := env.Required("WEBEXPORT")
 	out, err := os.MkdirTemp("", "vcexport")
@@ -47,33 +48,65 @@ func main() {
 	if err != nil {
 		logging.Fatal("read the export", "error", err)
 	}
-	st, err := c.read()
-	if err != nil {
-		logging.Fatal("read the data model", "error", err)
-	}
-	batch, counts, err := plan(x, st)
+	p, err := planned(c, x)
 	if err != nil {
 		logging.Fatal("plan the import", "error", err)
 	}
-	attrs := []any{"writes", len(batch)}
-	for _, k := range slices.Sorted(maps.Keys(counts)) {
-		attrs = append(attrs, k, counts[k])
+	attrs := []any{"writes", len(p.batch)}
+	for _, k := range slices.Sorted(maps.Keys(p.counts)) {
+		attrs = append(attrs, k, p.counts[k])
 	}
 	slog.Info("planned", attrs...)
 	if *dryRun {
+		portraits, err := p.portraits()
+		if err != nil {
+			logging.Fatal("read the photos", "error", err)
+		}
+		slog.Info("photos to add", "photos", len(portraits))
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(map[string]any{"batch": batch}); err != nil {
+		if err := enc.Encode(map[string]any{"batch": p.batch}); err != nil {
 			logging.Fatal("print the batch", "error", err)
 		}
 		return
 	}
-	if len(batch) == 0 {
-		return
-	}
-	written, err := c.write(batch)
+	added, err := apply(c, x, p)
 	if err != nil {
-		logging.Fatal("write the batch", "error", err)
+		logging.Fatal("import", "error", err)
 	}
-	slog.Info("written", "writes", len(written))
+	slog.Info("photos added", "photos", added)
+}
+
+func planned(c client, x *export) (*planner, error) {
+	st, err := c.read()
+	if err != nil {
+		return nil, err
+	}
+	return plan(x, st)
+}
+
+func apply(c client, x *export, p *planner) (int, error) {
+	if len(p.batch) > 0 {
+		written, err := c.write(p.batch)
+		if err != nil {
+			return 0, err
+		}
+		slog.Info("written", "writes", len(written))
+		if p, err = planned(c, x); err != nil {
+			return 0, err
+		}
+		if len(p.batch) > 0 {
+			return 0, fmt.Errorf("after writing, a fresh plan still has %d writes", len(p.batch))
+		}
+	}
+	portraits, err := p.portraits()
+	if err != nil {
+		return 0, err
+	}
+	for _, photo := range portraits {
+		if err := c.addPhoto(photo); err != nil {
+			return 0, err
+		}
+	}
+	return len(portraits), nil
 }

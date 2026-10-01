@@ -1,8 +1,12 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"maps"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -24,6 +28,7 @@ type state struct {
 	now     string
 	people  table
 	emails  table
+	photos  table
 	groups  table
 	members table
 }
@@ -38,13 +43,13 @@ type write struct {
 }
 
 type identity struct {
-	name      string
-	entries   []int
-	roles     map[role]bool
-	addresses []string
-	person    string
-	isNew     bool
-	cells     row
+	name    string
+	entries []int
+	roles   map[role]bool
+	emails  []string
+	person  string
+	isNew   bool
+	cells   row
 }
 
 type household struct {
@@ -94,39 +99,79 @@ type planner struct {
 	groups  table
 	counts  map[string]int
 	named   int
+	batch   []write
 
 	groupWrites, personWrites, emailWrites, familyWrites []write
 	memberDeletes, memberInserts, memberSets             []write
 }
 
-func plan(x *export, st *state) ([]write, map[string]int, error) {
+func plan(x *export, st *state) (*planner, error) {
 	p := &planner{x: x, st: st, claimed: map[string]*identity{}, counts: map[string]int{}, groups: table{rows: map[string]row{}}}
 	for _, id := range st.groups.order {
 		p.groups.add(id, st.groups.rows[id])
 	}
 	if err := p.identify(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if err := p.match(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	p.ensureGrades()
 	households, err := p.households()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if err := p.people(households); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	for _, id := range p.ids {
 		if err := p.emails(id); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 	p.families(households)
 	p.roles()
-	batch := slices.Concat(p.groupWrites, p.personWrites, p.emailWrites, p.familyWrites, p.memberDeletes, p.memberInserts, p.memberSets)
-	return batch, p.counts, nil
+	p.batch = slices.Concat(p.groupWrites, p.personWrites, p.emailWrites, p.familyWrites, p.memberDeletes, p.memberInserts, p.memberSets)
+	return p, nil
+}
+
+type portrait struct {
+	person  string
+	name    string
+	content []byte
+}
+
+func (p *planner) portraits() ([]portrait, error) {
+	held := map[string]bool{}
+	for _, pid := range p.st.photos.order {
+		r := p.st.photos.rows[pid]
+		held[r["person"]+"/"+strings.TrimSuffix(r["photo"], filepath.Ext(r["photo"]))] = true
+	}
+	out := []portrait{}
+	for _, id := range p.ids {
+		files := []string{}
+		for _, i := range id.entries {
+			for _, f := range p.x.entries[i].photos {
+				if !slices.Contains(files, f) {
+					files = append(files, f)
+				}
+			}
+		}
+		for _, f := range slices.Backward(files) {
+			content, err := os.ReadFile(filepath.Join(p.x.photoDir, f))
+			if err != nil {
+				return nil, fmt.Errorf("%s's photo: %w", id.name, err)
+			}
+			sum := sha256.Sum256(content)
+			hash := hex.EncodeToString(sum[:])
+			if held[id.person+"/"+hash] {
+				continue
+			}
+			held[id.person+"/"+hash] = true
+			out = append(out, portrait{person: id.person, name: f, content: content})
+		}
+	}
+	return out, nil
 }
 
 func (p *planner) identify() error {
@@ -148,26 +193,26 @@ func (p *planner) identify() error {
 		}
 		up[b] = a
 	}
-	byAddress := map[string]int{}
+	byEmail := map[string]int{}
 	byName := map[string][]int{}
 	for i, e := range p.x.entries {
-		for _, a := range e.addresses {
-			if j, ok := byAddress[a]; ok {
+		for _, a := range e.emails {
+			if j, ok := byEmail[a]; ok {
 				union(i, j)
 				continue
 			}
-			byAddress[a] = i
+			byEmail[a] = i
 		}
 		key := string(e.role) + "\x00" + resolved(e.name)
 		byName[key] = append(byName[key], i)
 	}
 	for _, group := range byName {
 		anchor := group[0]
-		if i := slices.IndexFunc(group, func(i int) bool { return len(p.x.entries[i].addresses) > 0 }); i >= 0 {
+		if i := slices.IndexFunc(group, func(i int) bool { return len(p.x.entries[i].emails) > 0 }); i >= 0 {
 			anchor = group[i]
 		}
 		for _, i := range group {
-			if len(p.x.entries[i].addresses) == 0 {
+			if len(p.x.entries[i].emails) == 0 {
 				union(anchor, i)
 			}
 		}
@@ -184,13 +229,13 @@ func (p *planner) identify() error {
 		}
 		id := p.ids[k]
 		if resolved(id.name) != resolved(e.name) {
-			return fmt.Errorf("the export names one person both %q and %q, sharing an address", id.name, e.name)
+			return fmt.Errorf("the export names one person both %q and %q, sharing an email", id.name, e.name)
 		}
 		id.entries = append(id.entries, i)
 		id.roles[e.role] = true
-		for _, a := range e.addresses {
-			if !slices.Contains(id.addresses, a) {
-				id.addresses = append(id.addresses, a)
+		for _, a := range e.emails {
+			if !slices.Contains(id.emails, a) {
+				id.emails = append(id.emails, a)
 			}
 		}
 		p.of[i] = k
@@ -228,24 +273,24 @@ func (p *planner) match() error {
 	}
 	for _, id := range p.ids {
 		owners := []string{}
-		for _, a := range id.addresses {
+		for _, a := range id.emails {
 			if o := owner[a]; o != "" && !slices.Contains(owners, o) {
 				owners = append(owners, o)
 			}
 		}
 		if len(owners) > 1 {
-			return fmt.Errorf("%s's addresses %v belong to %d people: %v", id.name, id.addresses, len(owners), owners)
+			return fmt.Errorf("%s's emails %v belong to %d people: %v", id.name, id.emails, len(owners), owners)
 		}
 		if len(owners) == 1 {
-			if err := p.claim(id, owners[0], "by address"); err != nil {
+			if err := p.claim(id, owners[0], "by email"); err != nil {
 				return err
 			}
 		}
 	}
-	byAddress := maps.Clone(p.claimed)
+	byEmail := maps.Clone(p.claimed)
 	byName := map[string][]string{}
 	for _, pid := range p.st.people.order {
-		if _, taken := byAddress[pid]; taken {
+		if _, taken := byEmail[pid]; taken {
 			continue
 		}
 		if n := resolved(p.st.people.rows[pid]["vc_name"]); n != "" {
@@ -266,14 +311,17 @@ func (p *planner) match() error {
 				return err
 			}
 		default:
-			return fmt.Errorf("%s matches %d people by name (%v) and none by address: add an address to the right one", id.name, len(candidates), candidates)
+			return fmt.Errorf("%s matches %d people by name (%v) and none by email: add an email to the right one", id.name, len(candidates), candidates)
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(unmatched)) {
 		group := unmatched[name]
-		for _, id := range group[1:] {
-			if rolesOf(id) != rolesOf(group[0]) {
-				return fmt.Errorf("%s is on export rows as %s and as %s with no address in common: add an address to tell them apart or join them", id.name, rolesOf(group[0]), rolesOf(id))
+		for i, a := range group {
+			for _, b := range group[i+1:] {
+				adults := !a.roles[student] && !b.roles[student]
+				if adults && rolesOf(a) != rolesOf(b) && (len(a.emails) == 0 || len(b.emails) == 0) {
+					return fmt.Errorf("%s is on export rows as %s and as %s, and one has no email: give it the other's email if they are one person", a.name, rolesOf(a), rolesOf(b))
+				}
 			}
 		}
 	}
@@ -517,9 +565,9 @@ func (p *planner) emails(id *identity) error {
 			held[e["address"]] = true
 		}
 	}
-	adds := slices.DeleteFunc(slices.Clone(id.addresses), func(a string) bool { return held[a] })
+	adds := slices.DeleteFunc(slices.Clone(id.emails), func(a string) bool { return held[a] })
 	removes := slices.DeleteFunc(slices.Clone(existing), func(e row) bool {
-		return e["source"] != "veracross" || slices.Contains(id.addresses, e["address"])
+		return e["source"] != "veracross" || slices.Contains(id.emails, e["address"])
 	})
 	slices.SortStableFunc(removes, func(a, b row) int {
 		switch {
@@ -532,15 +580,15 @@ func (p *planner) emails(id *identity) error {
 	})
 	for len(adds) > 0 && len(removes) > 0 {
 		p.emailWrites = append(p.emailWrites, write{Set: removes[0]["id"], Cells: row{"address": adds[0]}})
-		p.counts["addresses changed"]++
+		p.counts["emails changed"]++
 		adds, removes = adds[1:], removes[1:]
 	}
 	if len(removes) > 0 && primary(removes[0]) && len(removes) < len(existing) {
-		return fmt.Errorf("%s's primary address %s is gone from the export and they have others: mark one of those primary in the sheet", id.name, removes[0]["address"])
+		return fmt.Errorf("%s's primary email %s is gone from the export and they have others: mark one of those primary in the sheet", id.name, removes[0]["address"])
 	}
 	for i := len(removes) - 1; i >= 0; i-- {
 		p.emailWrites = append(p.emailWrites, write{Delete: removes[i]["id"]})
-		p.counts["addresses removed"]++
+		p.counts["emails removed"]++
 	}
 	for i, a := range adds {
 		r := row{"address": a, "person": id.person, "source": "veracross", "primary": "No"}
@@ -548,7 +596,7 @@ func (p *planner) emails(id *identity) error {
 			r["primary"] = "Yes"
 		}
 		p.emailWrites = append(p.emailWrites, write{Insert: "PERSON_EMAIL", Row: r})
-		p.counts["addresses added"]++
+		p.counts["emails added"]++
 	}
 	return nil
 }

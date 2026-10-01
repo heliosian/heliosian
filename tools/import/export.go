@@ -29,13 +29,14 @@ const (
 type entry struct {
 	role      role
 	name      string
-	addresses []string
+	emails    []string
 	grade     string
 	classroom string
 	crew      string
 	jobTitle  string
 	phone     string
 	bio       string
+	photos    []string
 }
 
 type householdRow struct {
@@ -48,6 +49,7 @@ type householdRow struct {
 type export struct {
 	entries    []entry
 	households []householdRow
+	photoDir   string
 }
 
 var gradeCodes = map[string]string{
@@ -92,7 +94,7 @@ func norm(s string) string {
 	return strings.ToLower(clean(s))
 }
 
-func addresses(cells ...string) []string {
+func emails(cells ...string) []string {
 	out := []string{}
 	for _, cell := range cells {
 		a := strings.ToLower(strings.TrimSpace(cell))
@@ -102,6 +104,13 @@ func addresses(cells ...string) []string {
 		out = append(out, a)
 	}
 	return out
+}
+
+func photoFiles(cell string) []string {
+	if name := strings.TrimSpace(cell); name != "" {
+		return []string{name}
+	}
+	return []string{}
 }
 
 type names struct {
@@ -162,7 +171,7 @@ func readCSV(path string) ([]map[string]string, error) {
 }
 
 func readExport(dir string) (*export, error) {
-	x := &export{}
+	x := &export{photoDir: filepath.Join(dir, "photos")}
 	if err := x.readStudents(filepath.Join(dir, studentsFile)); err != nil {
 		return nil, err
 	}
@@ -202,8 +211,8 @@ func (x *export) readStudents(path string) error {
 		classroom, crew := splitHomeroom(classifications.Homeroom)
 		kid := len(x.entries)
 		x.entries = append(x.entries, entry{
-			role: student, name: name, addresses: addresses(row["student_email"]),
-			grade: grade, classroom: classroom, crew: crew,
+			role: student, name: name, emails: emails(row["student_email"]),
+			grade: grade, classroom: classroom, crew: crew, photos: photoFiles(row["student_photo"]),
 		})
 		for _, hc := range householdColumns {
 			adults := []int{}
@@ -217,7 +226,7 @@ func (x *export) readStudents(path string) error {
 					phone = strings.TrimSpace(row[ac.business])
 				}
 				adults = append(adults, len(x.entries))
-				x.entries = append(x.entries, entry{role: parent, name: adult, addresses: addresses(row[ac.email], row[ac.email2]), phone: phone})
+				x.entries = append(x.entries, entry{role: parent, name: adult, emails: emails(row[ac.email], row[ac.email2]), phone: phone})
 			}
 			if len(adults) == 0 {
 				continue
@@ -253,8 +262,9 @@ func (x *export) readStaff(path string) error {
 			continue
 		}
 		x.entries = append(x.entries, entry{
-			role: staff, name: name, addresses: addresses(row["person_email"], row["person_email_2"]),
+			role: staff, name: name, emails: emails(row["person_email"], row["person_email_2"]),
 			jobTitle: clean(row["person_job_title"]), phone: strings.TrimSpace(row["person_phone_business"]),
+			photos: photoFiles(row["person_photo"]),
 		})
 	}
 	return nil
@@ -265,14 +275,14 @@ func (x *export) readWebsite(path string) error {
 	if err != nil {
 		return err
 	}
-	byAddress := map[string]int{}
+	byEmail := map[string]int{}
 	byName := map[string][]int{}
 	for i, e := range x.entries {
 		if e.role != staff {
 			continue
 		}
-		for _, a := range e.addresses {
-			byAddress[a] = i
+		for _, a := range e.emails {
+			byEmail[a] = i
 		}
 		byName[resolved(e.name)] = append(byName[resolved(e.name)], i)
 	}
@@ -281,8 +291,8 @@ func (x *export) readWebsite(path string) error {
 	for _, row := range rows {
 		name := clean(row["full_name"])
 		i, ok := -1, false
-		if found := addresses(row["email"]); len(found) > 0 {
-			i, ok = byAddress[found[0]]
+		if found := emails(row["email"]); len(found) > 0 {
+			i, ok = byEmail[found[0]]
 		}
 		if !ok {
 			switch candidates := byName[norm(name)]; len(candidates) {
@@ -292,7 +302,7 @@ func (x *export) readWebsite(path string) error {
 			case 1:
 				i = candidates[0]
 			default:
-				return fmt.Errorf("the staff page's entry for %s has no address the staff export holds, and %d staff share the name", name, len(candidates))
+				return fmt.Errorf("the staff page's entry for %s has no email the staff export holds, and %d staff share the name", name, len(candidates))
 			}
 		}
 		if seen[i] {
@@ -304,6 +314,7 @@ func (x *export) readWebsite(path string) error {
 			return fmt.Errorf("flatten the bio of %s: %w", name, err)
 		}
 		x.entries[i].bio = bio
+		x.entries[i].photos = append(x.entries[i].photos, photoFiles(row["photo"])...)
 		if x.entries[i].jobTitle == "" {
 			x.entries[i].jobTitle = clean(row["title"])
 		}

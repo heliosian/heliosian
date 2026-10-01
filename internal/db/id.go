@@ -18,7 +18,6 @@ const (
 	PersonEmailPrefix    = "eml"
 	PersonPhotoPrefix    = "pho"
 	PersonSettingPrefix  = "pst"
-	PersonNotePrefix     = "not"
 	BirthdayYearPrefix   = "bdy"
 	SavedViewPrefix      = "svw"
 	FeedTokenPrefix      = "fed"
@@ -48,7 +47,7 @@ const (
 
 var prefixes = map[string]bool{
 	PersonPrefix: true, PersonEmailPrefix: true, PersonPhotoPrefix: true, PersonSettingPrefix: true,
-	PersonNotePrefix: true, BirthdayYearPrefix: true, SavedViewPrefix: true, FeedTokenPrefix: true,
+	BirthdayYearPrefix: true, SavedViewPrefix: true, FeedTokenPrefix: true,
 	GroupPrefix: true, GroupSourcePrefix: true, MemberPrefix: true,
 	RulePrefix: true, GroupCategoryPrefix: true, DocumentPrefix: true, DocumentGroupPrefix: true,
 	ReportPrefix: true, MessagePrefix: true, RecipientPrefix: true, MailTokenPrefix: true,

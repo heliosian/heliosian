@@ -231,7 +231,7 @@ func NewCore(cfg Config) *Core {
 	schoolNow := func() time.Time { return time.Now().In(model.Location) }
 	for _, a := range apps {
 		registry.Register(a.Mux)
-		db.Register(a.Mux, dataStore, queue, cfg.ImportKey, schoolNow)
+		db.Register(a.Mux, dataStore, queue, cfg.Store, cfg.ImportKey, schoolNow)
 		a.Mux.Handle("GET "+OptInPath, optIn)
 		model.RegisterFeedback(a.Mux, a.Key, appName(a.Key), feedbackIntake)
 		suggestions.Register(a.Mux)

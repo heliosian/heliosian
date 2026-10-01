@@ -106,7 +106,6 @@ var Tables = []Table{
 			col("vc_job_title", Text),
 			col("vc_phone", Text),
 			col("vc_bio", Text),
-			col("vc_photo", Blob),
 			enum("vc_address_visibility", "full", "partial", "hidden"),
 			enum("vc_phone_visibility", "visible", "mixed", "hidden"),
 			col("name_long_import", Text),
@@ -174,18 +173,6 @@ var Tables = []Table{
 			enum("app", apps...).required(),
 			col("key", Text).required(),
 			col("value", Text),
-		},
-	},
-	{
-		Name:  "PERSON_NOTE",
-		Sheet: PeopleSheet,
-		Columns: []Column{
-			ident(PersonNotePrefix),
-			ref("person", "PERSON").required(),
-			enum("app", apps...).required(),
-			col("note", Text).required(),
-			ref("added_by", "PERSON"),
-			col("added", Date),
 		},
 	},
 	{

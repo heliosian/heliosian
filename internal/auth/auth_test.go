@@ -116,13 +116,13 @@ func TestSignInAndOutRefuseOtherSites(t *testing.T) {
 	}
 }
 
-func TestBearerPassesOnlyToTheQueryAPI(t *testing.T) {
+func TestBearerPassesOnlyToTheDataAPI(t *testing.T) {
 	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, noSessions())
 	reached := ""
 	handler := a.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reached = r.URL.Path
 	}))
-	for path, through := range map[string]bool{"/api/q": true, "/api/people": false, "/people": false} {
+	for path, through := range map[string]bool{"/api/q": true, "/api/do/person-photo": true, "/api/do": false, "/api/people": false, "/people": false} {
 		reached = ""
 		req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com"+path, nil)
 		req.Header.Set("Authorization", "Bearer anything")

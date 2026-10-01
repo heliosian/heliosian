@@ -12,6 +12,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/blob"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
@@ -67,7 +68,8 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, importKey []byte, 
 	return Env{System: importReader, Now: at}, access.System(importReader), true
 }
 
-func Register(mux *http.ServeMux, s *Store, queue *store.Queue, importKey []byte, now func() time.Time) {
+func Register(mux *http.ServeMux, s *Store, queue *store.Queue, media *blob.Store, importKey []byte, now func() time.Time) {
+	registerDo(mux, s, queue, media, importKey, now)
 	mux.HandleFunc("QUERY /api/q", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
 		env, _, ok := caller(w, r, m, importKey, now())
