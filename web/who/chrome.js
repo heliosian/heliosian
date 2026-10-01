@@ -350,13 +350,14 @@ function groupedTags() {
 }
 
 function sharedTagIcon(icon, mine) {
-  if (!mine) {
-    return icon;
-  }
   const wrap = el('span', 'magic-tag-icon');
+  wrap.append(icon);
+  if (!mine) {
+    return wrap;
+  }
   const star = svg('star');
   star.classList.add('owner-star');
-  wrap.append(icon, star);
+  wrap.append(star);
   return wrap;
 }
 
