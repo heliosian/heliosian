@@ -65,10 +65,6 @@ func token(name, prefix string) Column {
 	return Column{Name: name, Kind: ID, Prefix: prefix, Required: true}
 }
 
-func minted(name, prefix string) Column {
-	return Column{Name: name, Kind: ID, Prefix: prefix}
-}
-
 func ref(name, target string) Column {
 	return Column{Name: name, Kind: Ref, Target: target}
 }
@@ -304,7 +300,7 @@ var Tables = []Table{
 			enum("status", "invited", "pending", "yes", "maybe", "no", "excluded", "cancelled"),
 			col("quantity", Int),
 			col("price", Money),
-			minted("purchase_id", PurchasePrefix),
+			col("purchase_id", Text),
 			ref("guest_of", "PERSON"),
 			col("note", Text),
 			col("answered", Moment),

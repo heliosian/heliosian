@@ -38,10 +38,6 @@ func directoryTabs() []store.Tab {
 	)
 }
 
-func NewDirectoryBook(source data.Source, writer data.Writer, queue *store.Queue) (*store.Book, error) {
-	return store.NewBook(DirectoryApp, directoryTabs(), source, writer, queue)
-}
-
 func carryPerson(_ store.Tables, before, after store.Row) []store.Op {
 	if before == nil {
 		return nil

@@ -35,15 +35,19 @@ func send(t *testing.T, s *Store, queue *store.Queue, method, kind, as, body str
 func TestImportKey(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	code, out, body := ask(t, s, "application/json", "bearer:"+testImportKey, `{"from": "PERSON"}`)
-	if code != http.StatusOK || len(out.Result) != 3 {
-		t.Fatalf("the import sees what anyone sees, but got %d %s", code, body)
+	if code != http.StatusOK || len(out.Result) != 4 {
+		t.Fatalf("the import sees every person, but got %d %s", code, body)
 	}
-	if code, _, _ := ask(t, s, "application/json", "bearer:"+testImportKey, `{"from": "SAVED_VIEW"}`); code != http.StatusOK {
-		t.Fatalf("the import's query got %d", code)
+	if _, out, _ := ask(t, s, "application/json", "bearer:"+testImportKey, `{"from": "SAVED_VIEW"}`); len(out.Result) != 0 {
+		t.Fatalf("the import sees %d saved views", len(out.Result))
 	}
 	rec := send(t, s, queue, http.MethodPost, "application/json", "bearer:"+testImportKey, `{"batch": [{"set": "per00000000001", "cells": {"vc_name": "June Ashdown"}}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("the import setting a vc_ column got %d %s", rec.Code, rec.Body.String())
+	}
+	rec = send(t, s, queue, http.MethodPost, "application/json", "bearer:"+testImportKey, `{"batch": [{"set": "per00000000001", "cells": {"name_long_override": "June"}}]}`)
 	if rec.Code != http.StatusForbidden {
-		t.Fatalf("the import, granted no writes yet, got %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("the import setting an override got %d %s", rec.Code, rec.Body.String())
 	}
 	if code, _, body := ask(t, s, "application/json", "bearer:wrong", `{"from": "PERSON"}`); code != http.StatusUnauthorized {
 		t.Fatalf("a wrong key got %d %s", code, body)
@@ -141,7 +145,7 @@ func TestServeQueryRefuses(t *testing.T) {
 		{"application/json", `{"from": "PERSON", "where": [{"=": [{"path": "@row.id"}, "x"]}]}`, "no row named @row", http.StatusBadRequest},
 		{"application/json", `(from PERSON)`, "not JSON", http.StatusBadRequest},
 		{"", `(from PERSON)`, "application/json", http.StatusUnsupportedMediaType},
-		{"text/plain", "(from PERSON " + strings.Repeat(" ", bodyLimit) + ")", "too large", http.StatusRequestEntityTooLarge},
+		{"text/plain", "(from PERSON " + strings.Repeat(" ", queryLimit) + ")", "too large", http.StatusRequestEntityTooLarge},
 	} {
 		code, _, body := ask(t, s, c.kind, "rowan.ashdown@example.org", c.query)
 		if code != c.code || !strings.Contains(body, c.want) {
@@ -180,6 +184,10 @@ func TestServeWrites(t *testing.T) {
 		{"rowan.ashdown@example.org", `{"batch": [{"set": "mem00000000014", "cells": {"status": "sure"}}]}`, "not one of", http.StatusBadRequest},
 		{"rowan.ashdown@example.org", `{"batch": [{"set": "mem00000000014", "delete": "mem00000000014"}]}`, "one of insert", http.StatusBadRequest},
 		{"rowan.ashdown@example.org", `{"batch": []}`, "empty", http.StatusBadRequest},
+		{"bearer:" + testImportKey, `{"batch": [{"insert": "GROUP", "row": {"id": "grp00000000099", "kind": "family"}}]}`, "minted by the server", http.StatusBadRequest},
+		{"bearer:" + testImportKey, `{"batch": [{"set": "per00000000001", "cells": {"vc_classroom": "@nowhere"}}]}`, "@nowhere names no earlier insert", http.StatusBadRequest},
+		{"bearer:" + testImportKey, `{"batch": [{"delete": "@nowhere"}]}`, "@nowhere names no earlier insert", http.StatusBadRequest},
+		{"bearer:" + testImportKey, `{"batch": [{"set": "per00000000001", "as": "x", "cells": {"vc_name": "x"}}]}`, "as names an insert", http.StatusBadRequest},
 		{"rowan.ashdown@example.org", `{"writes": []}`, "shape", http.StatusBadRequest},
 	} {
 		code, body := write(c.as, c.batch)

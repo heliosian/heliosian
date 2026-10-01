@@ -84,7 +84,7 @@ func TestCheck(t *testing.T) {
 		"role":        "Member",
 		"status":      "yes",
 		"price":       "12.50",
-		"purchase_id": "purX7pQ2m9KdLr",
+		"purchase_id": "pi_3PqXyZ2eZvKYlo2C",
 		"archived":    "No",
 		"answered":    "2026-09-24 16:00",
 		"unknown":     "a column added by hand",
@@ -93,16 +93,15 @@ func TestCheck(t *testing.T) {
 		t.Fatalf("Check(%v) = %v", good, err)
 	}
 	for column, bad := range map[string]string{
-		"group":       "perX7pQ2m9KdLr",
-		"person":      "",
-		"role":        "host",
-		"price":       "12.5.0",
-		"purchase_id": "grpX7pQ2m9KdLr",
-		"archived":    "maybe",
-		"answered":    "yesterday",
-		"quantity":    "-1",
-		"guest_of":    " perX7pQ2m9KdLr",
-		"id":          "grpX7pQ2m9KdLr",
+		"group":    "perX7pQ2m9KdLr",
+		"person":   "",
+		"role":     "host",
+		"price":    "12.5.0",
+		"archived": "maybe",
+		"answered": "yesterday",
+		"quantity": "-1",
+		"guest_of": " perX7pQ2m9KdLr",
+		"id":       "grpX7pQ2m9KdLr",
 	} {
 		row := map[string]string{}
 		for k, v := range good {

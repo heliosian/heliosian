@@ -30,9 +30,9 @@ Staff who are also parents arrive from both imports, and the household copy of s
 
 ## The school's own staff page is a third source
 
-The school publishes a bio, a title and a headshot for its staff on its public website, and `webexport` carries them into the `Website Staff Import` tab. It is the only source of a bio the directory has, and the bios arrive as the school's own HTML — the import flattens them to text, since nothing downstream renders markup.
+The school publishes a bio, a title and a headshot for its staff on its public website, and the `Website Staff Import` tab holds them as the old import last wrote them, flattened to text. It is the only source of a bio the directory has.
 
-It is an import like any other and runs before Overrides, which behave exactly as they do over Veracross: a Veracross title stands, an override wins, an override's `-` clears, and an override that only restates what the page publishes is the dead weight the load refuses to carry. That last rule is what makes the import clear the Facts and Job Title overrides the page has caught up with — the ones saying the same thing as the published bio, or that the bio has grown past — the same bargain it strikes with `Name to Email` when Veracross learns an address. An override still saying something of its own survives and keeps winning.
+It is an import like any other and runs before Overrides, which behave exactly as they do over Veracross: a Veracross title stands, an override wins, an override's `-` clears, and an override that only restates what the page publishes is the dead weight the load refuses to carry. An override still saying something of its own survives and keeps winning.
 
 Running before Overrides also means the page reaches nobody it adds: a staff member Veracross does not carry exists only once Overrides has created them, which is after the layer has run.
 
@@ -92,11 +92,9 @@ Every family address on the map was once a Geocoding API call, and a call per ad
 
 ## Every write is a commit
 
-The directory spreadsheet is a part of the one store (`docs/storage.md`): its tabs and the preferences form's `Sheet1`, read alongside and never written, are `directoryTabs` in `internal/model/directory_cache.go`, and every handler, the geocoder and the import state their changes as row operations on it. The Change Log tab holds each cell's previous value.
+The directory spreadsheet is a part of the one store (`docs/storage.md`): its tabs and the preferences form's `Sheet1`, read alongside and never written, are `directoryTabs` in `internal/model/directory_cache.go`, and every handler and the geocoder state their changes as row operations on it. The Change Log tab holds each cell's previous value. Nothing writes the Veracross tabs, the staff page tab or `Name to Email` any more: `tools/import` writes the data model (`docs/datamodel.md`, Veracross import), and those tabs hold what they held when the old import last ran.
 
 A person added by hand, flagged `Added` in Overrides, is known by nothing but that row, so the row carries the rest with it: renaming their address renames it on their Tag List, Tags and Tag Managers rows, as owner, tagged person and manager, and on their Photos rows; deleting the row deletes all of those, the tags they own going whole and any tag they were the last person on going with them (Tags are kept by ID, below). A person Veracross carries loses nothing when their Overrides row goes, since they are still in the import.
-
-The import (`tools/import`) reads the sheet and the exports, works out the rows that differ in the Veracross tabs, the staff page tab and `Name to Email`, the Overrides cells the staff page has caught up with and the `Name to Email` entries Veracross now has an address for, and plans all of it at once as `import` through the directory's book (`docs/storage.md`). It builds the model from the tables as the plan leaves them, and a result the model would refuse is refused whole and writes nothing, `--dry-run` included; the sheet as it stands before the import is never built, so it need not load. Otherwise it writes the plan and waits for the write. The server sees it on its next refresh.
 
 ## Tags are kept by ID
 

@@ -25,7 +25,6 @@ const (
 	GroupPrefix          = "grp"
 	GroupSourcePrefix    = "src"
 	MemberPrefix         = "mem"
-	PurchasePrefix       = "pur"
 	RulePrefix           = "rul"
 	GroupCategoryPrefix  = "gct"
 	DocumentPrefix       = "doc"
@@ -50,7 +49,7 @@ const (
 var prefixes = map[string]bool{
 	PersonPrefix: true, PersonEmailPrefix: true, PersonPhotoPrefix: true, PersonSettingPrefix: true,
 	PersonNotePrefix: true, BirthdayYearPrefix: true, SavedViewPrefix: true, FeedTokenPrefix: true,
-	GroupPrefix: true, GroupSourcePrefix: true, MemberPrefix: true, PurchasePrefix: true,
+	GroupPrefix: true, GroupSourcePrefix: true, MemberPrefix: true,
 	RulePrefix: true, GroupCategoryPrefix: true, DocumentPrefix: true, DocumentGroupPrefix: true,
 	ReportPrefix: true, MessagePrefix: true, RecipientPrefix: true, MailTokenPrefix: true,
 	SettingPrefix: true, CategoryPrefix: true, CharityPrefix: true, AppPrefix: true,

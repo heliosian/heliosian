@@ -16,7 +16,10 @@ import (
 	"heliosian/internal/store"
 )
 
-const bodyLimit = 256 << 10
+const (
+	queryLimit = 256 << 10
+	batchLimit = 16 << 20
+)
 
 type answer struct {
 	Now       string                          `json:"now"`
@@ -30,13 +33,13 @@ type written struct {
 	Result []string `json:"result"`
 }
 
-func body(w http.ResponseWriter, r *http.Request) (string, []byte, bool) {
+func body(w http.ResponseWriter, r *http.Request, limit int64) (string, []byte, bool) {
 	kind, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if kind != "application/json" && kind != "text/plain" {
 		http.Error(w, "send application/json, or text/plain for the query language", http.StatusUnsupportedMediaType)
 		return "", nil, false
 	}
-	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, bodyLimit))
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 	var tooBig *http.MaxBytesError
 	if errors.As(err, &tooBig) {
 		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
@@ -71,7 +74,7 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, importKey []byte
 		if !ok {
 			return
 		}
-		kind, raw, ok := body(w, r)
+		kind, raw, ok := body(w, r, queryLimit)
 		if !ok {
 			return
 		}
@@ -104,7 +107,7 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, importKey []byte
 		if !ok {
 			return
 		}
-		kind, raw, ok := body(w, r)
+		kind, raw, ok := body(w, r, batchLimit)
 		if !ok {
 			return
 		}
