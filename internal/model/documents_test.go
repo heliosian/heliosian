@@ -306,6 +306,10 @@ func TestVectorsRoundTripAsBase64(t *testing.T) {
 	}
 }
 
+func everyPassage(*Document, int) bool {
+	return true
+}
+
 func TestSearchRanksTheMatchingChunkFirst(t *testing.T) {
 	m := sampleDocuments(t)
 	if len(m.Documents) != 9 || m.Documents[0].Date != "2026-09-25" {
@@ -321,7 +325,7 @@ func TestSearchRanksTheMatchingChunkFirst(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		hits := m.Search(vectors[0], query, 3)
+		hits := m.Search(vectors[0], query, 3, everyPassage)
 		if len(hits) == 0 {
 			t.Fatalf("nothing found for %q", query)
 		}
@@ -360,26 +364,13 @@ func TestAQuotedPassageIsReturnedOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hits := m.Search(vectors[0], "bake sale ingredients allergies", 5)
+	hits := m.Search(vectors[0], "bake sale ingredients allergies", 5, everyPassage)
 	keys := []string{}
 	for _, hit := range hits {
 		keys = append(keys, hit.Document.Key)
 	}
 	if len(hits) != 2 {
 		t.Fatalf("hits: %v", keys)
-	}
-}
-
-func TestDatesNarrowTheSearch(t *testing.T) {
-	m := sampleDocuments(t)
-	if since := m.Between("2026-09-05", ""); len(since.Documents) != 6 || since.Documents[0].Date != "2026-09-25" {
-		t.Fatalf("since: %d", len(since.Documents))
-	}
-	if until := m.Between("", "2026-09-04"); len(until.Documents) != 3 {
-		t.Fatalf("until: %d", len(until.Documents))
-	}
-	if none := m.Between("2027-01-01", ""); len(none.Documents) != 0 {
-		t.Fatalf("next year: %d", len(none.Documents))
 	}
 }
 

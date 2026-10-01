@@ -3,6 +3,7 @@ package model
 import (
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 
 	"heliosian/internal/access"
@@ -233,6 +234,29 @@ func (a partiesApp) partiesType() api.Type[*Model] {
 				return func(key string) bool {
 					p := a.partyAt(m, key)
 					return p != nil && p.Status == StatusPending
+				}, nil
+			},
+			"q": func(m *Model, _ api.Query, value string) (func(string) bool, error) {
+				return func(key string) bool {
+					p := a.partyAt(m, key)
+					if p == nil {
+						return false
+					}
+					category := ""
+					if c := m.Parties.Category(p.Category); c != nil {
+						category = c.Title
+					}
+					return mentions(value, p.Title, p.Subtitle, p.Summary, category)
+				}, nil
+			},
+			"past": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+				want, err := strconv.ParseBool(value)
+				if err != nil {
+					return nil, access.Invalid("past takes true or false")
+				}
+				return func(key string) bool {
+					p := a.partyAt(m, key)
+					return p != nil && p.Past(q.Now) == want
 				}, nil
 			},
 		},

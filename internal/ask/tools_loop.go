@@ -3,24 +3,7 @@ package ask
 import (
 	"encoding/json"
 	"fmt"
-	"slices"
-
-	"heliosian/internal/model"
 )
-
-type groupCard struct {
-	Title       string   `json:"title"`
-	Address     string   `json:"address"`
-	Aliases     []string `json:"aliases,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Visibility  string   `json:"visibility"`
-	Managers    []string `json:"managers"`
-	Manage      bool     `json:"youManage,omitempty"`
-	OnIt        bool     `json:"youAreOnIt,omitempty"`
-	Members     int      `json:"members"`
-	People      []string `json:"people,omitempty"`
-	Link        string   `json:"link"`
-}
 
 var myGroups = tool{
 	name:        "my_groups",
@@ -29,36 +12,13 @@ var myGroups = tool{
 	properties: map[string]any{
 		"query": str("Words to find in a title, address or description."),
 	},
-	run: func(v *viewer, input json.RawMessage) (any, error) {
+	run: func(t *turn, input json.RawMessage) (any, error) {
 		in, err := decodeInput[struct{ Query string }](input)
 		if err != nil {
 			return nil, err
 		}
-		sources := v.audience()
-		out := []groupCard{}
-		for _, raw := range v.loop.Groups {
-			g := raw.For(v.loopAs, sources)
-			if g == nil {
-				continue
-			}
-			if in.Query != "" && !contains(g.Title, in.Query) && !contains(g.Name, in.Query) && !contains(g.Description, in.Query) {
-				continue
-			}
-			members := raw.Members(sources)
-			c := groupCard{
-				Title: g.Title, Address: g.Address(), Aliases: g.Aliases, Description: g.Description, Visibility: g.Visibility, Managers: v.names(g.Managers),
-				Manage: g.Manages(v.email), OnIt: slices.Contains(members, v.email), Members: len(members), Link: loopBase + g.Path(),
-			}
-			for _, m := range members {
-				name := v.name(m)
-				if added := g.Addition(m); added != nil && added.Name != "" {
-					name = added.Name + " (outside the directory)"
-				}
-				c.People = append(c.People, name)
-			}
-			out = append(out, c)
-		}
-		return map[string]any{"groups": out}, nil
+		spec := "title,address,aliases,description,visibility,managers.fullName,memberCount,me.managing,me.member,members.name,members.person.fullName,link"
+		return t.ask(query{name: "groups", path: collection("email-lists", params("q", in.Query, "include", "managers,members.person")), fields: fields(spec)})
 	},
 }
 
@@ -66,64 +26,33 @@ var myLists = tool{
 	name:        "my_lists",
 	description: "The viewer's own lists in Helios Who?: their tags, each with the people on it, and their Magic Tags - the lists their roles give them: the parties they host, the things they co-chair, the room parent lists, the email lists they manage - each with its people.",
 	words:       "Reading your lists",
-	run: func(v *viewer, input json.RawMessage) (any, error) {
-		tags := []map[string]any{}
-		for _, t := range v.directory.Tags(v.email) {
-			tags = append(tags, map[string]any{"id": t.ID, "name": t.Name, "people": v.names(t.People), "link": whoBase + model.TagPath(t.ID)})
-		}
-		lists := []map[string]any{}
-		for _, l := range v.lists(v.email) {
-			if l.Archived {
-				continue
-			}
-			guests := []string{}
-			for _, g := range l.Guests {
-				guests = append(guests, g.Name)
-			}
-			lists = append(lists, map[string]any{"name": l.Name, "kind": listKind(l.Kind), "people": v.names(l.People), "guests": guests, "link": whoBase + model.ListPath(l.Key)})
-		}
-		return map[string]any{"tags": tags, "magicTags": lists}, nil
+	run: func(t *turn, input json.RawMessage) (any, error) {
+		return t.ask(
+			query{name: "tags", path: collection("tags", params("mine", "true", "include", "people")), fields: fields("name,people.fullName,link")},
+			query{name: "magicTags", path: collection("magic-tags", params("include", "people")), fields: fields("name,kind,archived,people.fullName,guests.name,link")},
+		)
 	},
 }
 
 var communityLinks = tool{
 	name:        "community_links",
-	description: "The links on Heliosian's front page, the community's page of everything else it uses: the school's own sites, the handbook, lunch ordering, chats and the like, by section.",
+	description: "The links on Heliosian's front page, the community's page of everything else it uses: the school's own sites, the handbook, lunch ordering, chats and the like, each with its section.",
 	words:       "Looking at Heliosian's links",
 	properties: map[string]any{
 		"query": str("Words to find in a link's title or description."),
 	},
-	run: func(v *viewer, input json.RawMessage) (any, error) {
+	run: func(t *turn, input json.RawMessage) (any, error) {
 		in, err := decodeInput[struct{ Query string }](input)
 		if err != nil {
 			return nil, err
 		}
-		sections := []map[string]any{}
-		for _, category := range v.all.HomeCategoriesFor(v.homeAs) {
-			if category.Style == model.StyleEvents || category.Style == model.StyleApps {
-				continue
-			}
-			links := []map[string]any{}
-			for _, l := range category.Links {
-				if in.Query != "" && !contains(l.Title, in.Query) && !contains(l.Description, in.Query) {
-					continue
-				}
-				link := map[string]any{"title": l.Title, "description": l.Description, "url": l.URL}
-				if !l.Visible {
-					link["hiddenFromEveryone"] = true
-				}
-				if l.ForMe != nil && !*l.ForMe {
-					link["notForYou"] = true
-				}
-				links = append(links, link)
-			}
-			if len(links) > 0 {
-				sections = append(sections, map[string]any{"section": category.Title, "links": links})
-			}
+		out, err := t.ask(query{name: "links", path: collection("links", params("q", in.Query, "include", "category")), fields: fields("title,description,url,visible,forMe,category.title")})
+		if err != nil {
+			return nil, err
 		}
-		if len(sections) == 0 {
+		if empty(out["links"]) {
 			return nil, fmt.Errorf("no link matches that; Heliosian's front page is https://heliosian.com")
 		}
-		return map[string]any{"sections": sections}, nil
+		return out, nil
 	},
 }

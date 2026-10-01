@@ -29,6 +29,7 @@ import (
 	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
+	"heliosian/internal/testkit/mailtest"
 )
 
 const jordan = "jordan.whitfield@heliosschool.org"
@@ -59,12 +60,13 @@ func sampleDir(t *testing.T) *data.Dir {
 	return dir
 }
 
-func sampleSources(t *testing.T) Sources {
-	t.Helper()
-	return sourcesFrom(t, sampleDir(t))
+type sample struct {
+	sources Sources
+	store   *model.Store
+	filer   *model.DocumentFiler
 }
 
-func sourcesFrom(t *testing.T, dir *data.Dir) Sources {
+func sampleFrom(t *testing.T, dir *data.Dir) sample {
 	t.Helper()
 	queue := store.NewQueue()
 	bucket := blob.NewMemoryBucket()
@@ -72,12 +74,20 @@ func sourcesFrom(t *testing.T, dir *data.Dir) Sources {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deps := model.Deps{IDKey: []byte("sample"), Photos: testkit.All, Static: testkit.All, Parties: testkit.All, Activities: testkit.All, Home: testkit.All, Objects: bucket, Embedder: embedder}
+	key := []byte("sample")
+	deps := model.Deps{IDKey: key, Photos: testkit.All, Static: testkit.All, Parties: testkit.All, Activities: testkit.All, Home: testkit.All, Objects: bucket, Embedder: embedder}
 	s, err := model.NewStore(dir, dir, queue, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
+	images := blob.New(bucket)
+	calendar := model.RegisterCalendar(http.NewServeMux(), model.CalendarDeps{Store: s, Images: blob.NewImages(images, "when", "celebrate", "team"), Mail: model.CalendarMail{Sender: mailtest.Discard()}, Queue: queue, IDKey: key})
+	home := model.RegisterHome(http.NewServeMux(), model.HomeDeps{Store: s, Images: blob.NewImages(images, "home")})
+	activities := model.RegisterActivities(http.NewServeMux(), model.ActivitiesDeps{Store: s, Images: blob.NewImages(images, "team"), Calendar: calendar, Mailer: mailtest.Discard()})
+	parties := model.RegisterParties(http.NewServeMux(), model.PartiesDeps{Store: s, Images: blob.NewImages(images, "celebrate"), Calendar: calendar, Mailer: mailtest.Discard()})
+	feedback := model.RegisterFeedbackAdmin(http.NewServeMux(), s, bucket, nil)
 	filer := model.RegisterDocuments(http.NewServeMux(), s, embedder, queue, artifacts.Inbox{Bucket: bucket})
+	registry := model.NewRegistry(s, queue, calendar, parties, activities, home, feedback, filer, "")
 	saved, err := filepath.Glob("../../sampledata/artifacts/*.json")
 	if err != nil {
 		t.Fatal(err)
@@ -87,19 +97,38 @@ func sourcesFrom(t *testing.T, dir *data.Dir) Sources {
 			t.Fatal(err)
 		}
 	}
-	return Sources{Store: s, Embedder: embedder, Now: func() time.Time { return sampleNow }}
+	return sample{sources: Sources{Registry: registry, Now: func() time.Time { return sampleNow }}, store: s, filer: filer}
+}
+
+func sampleSources(t *testing.T) sample {
+	t.Helper()
+	return sampleFrom(t, sampleDir(t))
 }
 
 const sampleAdmin = "grace.kim@heliosschool.org"
 
-func sampleViewer(t *testing.T, email string) *viewer {
-	t.Helper()
-	return app{sources: sampleSources(t)}.viewer(email)
+func requestAs(email string) *http.Request {
+	var got *http.Request
+	auth.Fixed(email, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = r })).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	return got
 }
 
-func call(t *testing.T, v *viewer, name, input string) map[string]any {
+func (s sample) turn(email string) *turn {
+	return &turn{reg: s.sources.Registry, r: requestAs(email), clock: s.sources.Now, found: newFound()}
+}
+
+func sampleTurn(t *testing.T, email string) *turn {
 	t.Helper()
-	out, err := v.run(context.Background(), name, json.RawMessage(input))
+	return sampleSources(t).turn(email)
+}
+
+func runTool(tr *turn, name, input string) (string, error) {
+	return tr.run(tr.r.Context(), name, json.RawMessage(input))
+}
+
+func call(t *testing.T, tr *turn, name, input string) map[string]any {
+	t.Helper()
+	out, err := runTool(tr, name, input)
 	if err != nil {
 		t.Fatalf("%s %s: %v", name, input, err)
 	}
@@ -110,17 +139,36 @@ func call(t *testing.T, v *viewer, name, input string) map[string]any {
 	return result
 }
 
+func items(v any) []map[string]any {
+	out := []map[string]any{}
+	list, _ := v.([]any)
+	for _, item := range list {
+		out = append(out, item.(map[string]any))
+	}
+	return out
+}
+
 func TestViewerBlockNamesTheFamily(t *testing.T) {
-	block := viewerBlock(sampleViewer(t, jordan))
-	for _, want := range []string{"Jordan Whitfield", "a parent", "Sam Whitfield, Grade 3, in Jays", "Ella Whitfield, Grade 6", "Robin Whitfield", "they/them", "Room parent for: 3rd / 4th"} {
+	block, err := sampleTurn(t, jordan).viewerBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Jordan Whitfield", "a parent", "Sam Whitfield, Grade 3, in Jays", "Ella Whitfield, Grade 6", "Robin Whitfield", "they/them", "Room parent for: ", "Grade 3"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("viewer block lacks %q:\n%s", want, block)
 		}
 	}
+	stranger, err := sampleTurn(t, "nobody@heliosschool.org").viewerBlock()
+	if err != nil || !strings.Contains(stranger, "whom the directory does not list") {
+		t.Fatalf("a stranger: %v\n%s", err, stranger)
+	}
 }
 
 func TestLingoReadsTheModels(t *testing.T) {
-	words := lingo(sampleViewer(t, jordan))
+	words, err := sampleTurn(t, jordan).lingo()
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{"Grade 3: Jayvens", "- Hegrets (Grade 7, Grade 8; Egrets, Herons)", "- Jays (https://who.heliosian.com/classrooms/jays; Jayvens; Grade 3", "Early Dismissal: dropoff 08:15-08:30", "Community:", "Schedule:"} {
 		if !strings.Contains(words, want) {
 			t.Errorf("lingo lacks %q:\n%s", want, words)
@@ -129,10 +177,14 @@ func TestLingoReadsTheModels(t *testing.T) {
 }
 
 func TestRecentBlockListsTheNewestDocuments(t *testing.T) {
-	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, model.Location)
-	block := recentBlock(v, recentDocuments(v))
-	for _, want := range []string{"## Recent documents", "- Friday, September 11, 2026, past (6 days ago): Helios Weekly Newsletter 2026 Sep 11 (key ", "Helios Weekly Newsletter 2026 September 4"} {
+	tr := sampleTurn(t, jordan)
+	tr.clock = func() time.Time { return time.Date(2026, 9, 17, 9, 0, 0, 0, model.Location) }
+	recent, err := tr.recentDocuments()
+	if err != nil {
+		t.Fatal(err)
+	}
+	block := recentBlock(tr, recent)
+	for _, want := range []string{"## Recent documents", "- Friday, September 11, 2026, past (6 days ago): Helios Weekly Newsletter 2026 Sep 11 (id ", "Helios Weekly Newsletter 2026 September 4"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("recent block lacks %q:\n%s", want, block)
 		}
@@ -142,9 +194,9 @@ func TestRecentBlockListsTheNewestDocuments(t *testing.T) {
 			t.Errorf("recent block reaches back to %q:\n%s", unwanted, block)
 		}
 	}
-	v.now = time.Date(2027, 1, 4, 9, 0, 0, 0, model.Location)
-	if block := recentBlock(v, recentDocuments(v)); !strings.Contains(block, "No documents have come in") {
-		t.Fatalf("a quiet fortnight: %s", block)
+	tr.clock = func() time.Time { return time.Date(2027, 1, 4, 9, 0, 0, 0, model.Location) }
+	if recent, err = tr.recentDocuments(); err != nil || !strings.Contains(recentBlock(tr, recent), "No documents have come in") {
+		t.Fatalf("a quiet fortnight: %v %v", err, recent)
 	}
 }
 
@@ -257,24 +309,34 @@ func done(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
 	return nil
 }
 
+const lateReminder = "Received: by mxa.mailgun.org with SMTP id 3; Sat, 12 Sep 2026 15:00:00 +0000\r\n" +
+	"Message-ID: <late-reminder@example.org>\r\n" +
+	"Date: Sat, 12 Sep 2026 08:00:00 -0700\r\n" +
+	"From: Coach <coach@example.org>\r\n" +
+	"To: soccer-team@loop.heliosian.com\r\n" +
+	"Subject: Picture Day moves to Friday\r\n" +
+	"Content-Type: text/plain; charset=us-ascii\r\n" +
+	"\r\n" +
+	"Picture Day is on Friday now.\r\n"
+
 func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 	t.Parallel()
-	sources := sampleSources(t)
-	current := sources.Store.Model().Documents
-	documents := *current
+	s := sampleSources(t)
 	mux := http.NewServeMux()
-	Register(mux, sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"), About(func() string { return "Ask" }, func() string { return "" }))
+	Register(mux, s.sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"), About(func() string { return "Ask" }, func() string { return "" }))
 	handler := auth.Fixed(jordan, mux)
 	chat := &transcript{}
 	first := chat.keep(t, post(t, handler, chat.body(t, "Anything new?")))
-	if known := anyStrings(first["known"]); len(known) == 0 || slices.Contains(known, "late-reminder") {
-		t.Fatalf("the first turn knew %v", known)
+	if len(anyStrings(first["known"])) == 0 {
+		t.Fatalf("the first turn knew %v", first["known"])
 	}
-	arrived := &model.Document{Key: "late-reminder", Title: "Picture Day moves to Friday", Date: sampleNow.Format(model.DateFormat), Kind: model.DocumentKindList}
-	*current = model.Documents{Documents: append([]*model.Document{arrived}, documents.Documents...)}
+	if err := s.filer.Post(context.Background(), access.System("loop mailer"), "soccer-team", []byte(lateReminder)); err != nil {
+		t.Fatal(err)
+	}
 	second := chat.keep(t, post(t, handler, chat.body(t, "And now?")))
-	if !slices.Contains(anyStrings(second["known"]), "late-reminder") {
-		t.Fatalf("the arrival was not kept as known: %v", second["known"])
+	arrived := slices.DeleteFunc(anyStrings(second["known"]), func(key string) bool { return slices.Contains(anyStrings(first["known"]), key) })
+	if len(arrived) != 1 {
+		t.Fatalf("the arrival was not kept as known: %v after %v", second["known"], first["known"])
 	}
 	chat.keep(t, post(t, handler, chat.body(t, "Still?")))
 	requests := sentTo(t)
@@ -289,10 +351,10 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 		t.Fatalf("the arrival does not follow the question: %v", messages)
 	}
 	told := systemMessages(messages)
-	if len(told) != 1 || !strings.Contains(told[0], "Picture Day moves to Friday (key late-reminder)") || strings.Contains(told[0], "Sep 11") {
+	if len(told) != 1 || !strings.Contains(told[0], "Picture Day moves to Friday (id "+arrived[0]) || strings.Contains(told[0], "Sep 11") {
 		t.Fatalf("second turn told: %v", told)
 	}
-	if strings.Contains(requests[1].System[1].Text, "late-reminder") || !strings.Contains(requests[2].System[1].Text, "late-reminder") {
+	if strings.Contains(requests[1].System[1].Text, "Picture Day moves") || !strings.Contains(requests[2].System[1].Text, "Picture Day moves") {
 		t.Fatal("the prompt lists the arrival only once it has been told")
 	}
 	third := requests[2].Messages
@@ -302,79 +364,86 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 }
 
 func TestFindPeopleReadsAParentThroughTheirChildren(t *testing.T) {
-	v := sampleViewer(t, jordan)
-	result := call(t, v, "find_people", `{"queries":["whitfield","Sam Whit"]}`)
-	results := result["results"].([]any)
-	if len(results) != 2 || results[0].(map[string]any)["matched"].(float64) != 4 || results[1].(map[string]any)["matched"].(float64) != 1 {
-		t.Fatalf("whitfields: %v", result)
+	tr := sampleTurn(t, jordan)
+	results := items(call(t, tr, "find_people", `{"queries":["whitfield","Sam Whit"]}`)["results"])
+	if len(results) != 2 || len(items(results[0]["people"])) != 4 || len(items(results[1]["people"])) != 1 {
+		t.Fatalf("whitfields: %v", results)
 	}
-	result = call(t, v, "find_people", `{"role":"parent","classroom":"Jays"}`)
+	sam := items(results[1]["people"])[0]
+	if sam["classroom"].(map[string]any)["name"] != "Jays" || sam["grade"] != "Grade 3" || len(anyStrings(sam["parents"])) != 2 {
+		t.Fatalf("sam: %v", sam)
+	}
 	names := []string{}
-	for _, p := range result["results"].([]any)[0].(map[string]any)["people"].([]any) {
-		names = append(names, p.(map[string]any)["name"].(string))
+	for _, p := range items(items(call(t, tr, "find_people", `{"role":"parent","classroom":"Jays"}`)["results"])[0]["people"]) {
+		names = append(names, p["fullName"].(string))
 	}
-	if !strings.Contains(strings.Join(names, ","), "Jordan Whitfield") {
+	if !slices.Contains(names, "Jordan Whitfield") {
 		t.Fatalf("parents of Jays: %v", names)
+	}
+	page := items(call(t, tr, "find_people", `{"limit":3}`)["results"])[0]
+	if len(items(page["people"])) != 3 || page["more"] != true {
+		t.Fatalf("a full page: %v", page)
 	}
 }
 
 func TestGetPersonCarriesTheFamilyAndTeachers(t *testing.T) {
-	result := call(t, sampleViewer(t, jordan), "get_person", `{"name":"Sam Whitfield"}`)
-	person := result["person"].(map[string]any)
-	if person["classroom"] != "Jays" || person["link"] != "https://who.heliosian.com/people/sam.whitfield" {
+	person := call(t, sampleTurn(t, jordan), "get_person", `{"name":"Sam Whitfield"}`)["person"].(map[string]any)
+	if person["classroom"].(map[string]any)["name"] != "Jays" || person["link"] != "https://who.heliosian.com/people/sam.whitfield" {
 		t.Fatalf("sam: %v", person)
 	}
-	if parents := person["parents"].([]any); len(parents) != 2 {
-		t.Fatalf("parents: %v", parents)
+	if len(anyStrings(person["parents"])) != 2 || len(items(person["families"])) != 1 {
+		t.Fatalf("sam's parents and families: %v", person)
 	}
-	if families := result["families"].([]any); len(families) != 1 {
-		t.Fatalf("families: %v", families)
+	several := call(t, sampleTurn(t, jordan), "get_person", `{"name":"whitfield"}`)
+	if len(items(several["several"])) != 4 {
+		t.Fatalf("several: %v", several)
+	}
+	if _, err := runTool(sampleTurn(t, jordan), "get_person", `{"name":"nobody at all"}`); err == nil {
+		t.Fatal("a name nobody has was found")
 	}
 }
 
 func TestDayPlanReadsTheViewersClassrooms(t *testing.T) {
-	result := call(t, sampleViewer(t, jordan), "day_plan", `{"date":"2026-09-07"}`)
-	plans := result["classrooms"].([]any)
-	if len(plans) != 2 {
-		t.Fatalf("classrooms: %v", plans)
+	result := call(t, sampleTurn(t, jordan), "day_plan", `{"date":"2026-09-07"}`)
+	plans := items(result["plans"])
+	if len(plans) != 2 || result["weekday"] != "Monday" {
+		t.Fatalf("plans: %v", result)
 	}
 	for _, p := range plans {
-		if p.(map[string]any)["dayType"] != "No School" {
+		if p["day-type"].(map[string]any)["name"] != "No School" {
 			t.Errorf("labor day: %v", p)
 		}
 	}
 }
 
 func TestCalendarEventsSearchesTheYear(t *testing.T) {
-	result := call(t, sampleViewer(t, jordan), "calendar_events", `{"query":"thanksgiving"}`)
-	events := result["events"].([]any)
-	if len(events) != 1 || events[0].(map[string]any)["dayType"] != "No School" {
+	tr := sampleTurn(t, jordan)
+	events := items(call(t, tr, "calendar_events", `{"query":"thanksgiving"}`)["events"])
+	if len(events) != 1 || events[0]["day-type"] != "No School" {
 		t.Fatalf("thanksgiving: %v", events)
 	}
-	if tags := fmt.Sprint(events[0].(map[string]any)["tags"]); !strings.Contains(tags, "Jays") || !strings.Contains(tags, "Schedule") {
+	if tags := fmt.Sprint(events[0]["calendar-tags"], events[0]["classrooms"]); !strings.Contains(tags, "Jays") || !strings.Contains(tags, "Schedule") {
 		t.Errorf("thanksgiving's tags by name: %s", tags)
 	}
-	tagged := call(t, sampleViewer(t, jordan), "calendar_events", `{"from":"2026-09-01","to":"2026-09-30","tag":"trip"}`)["events"].([]any)
-	if len(tagged) != 1 || tagged[0].(map[string]any)["title"] != "Jays and Ravens Camping" {
+	tagged := items(call(t, tr, "calendar_events", `{"from":"2026-09-01","to":"2026-09-30","tag":"trip"}`)["events"])
+	if len(tagged) != 1 || tagged[0]["title"] != "Jays and Ravens Camping" {
 		t.Errorf("trips in September: %v", tagged)
 	}
 }
 
-func TestVolunteerOpportunitiesNameTheHouseholdsSignUps(t *testing.T) {
-	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 1, 9, 0, 0, 0, model.Location)
-	result := call(t, v, "get_activity", `{"path":"/v/international-night"}`)
+func TestGetActivityNamesTheViewersPosition(t *testing.T) {
+	result := call(t, sampleTurn(t, jordan), "get_activity", `{"id":"international-night"}`)
 	thing := result["thing"].(map[string]any)
-	if !strings.Contains(strings.Join(anyStrings(thing["household"]), ","), "you: Co-Chair") {
-		t.Fatalf("international night: %v", thing)
+	if thing["me"].(map[string]any)["position"] != model.PositionCoChair || len(items(result["under"])) == 0 {
+		t.Fatalf("international night: %v", result)
 	}
 }
 
 func TestPrivateVolunteerListAsTeamShowsIt(t *testing.T) {
 	const student, stranger = "sam.whitfield@heliosschool.org", "elena.torres@heliosschool.org"
-	sources := sampleSources(t)
+	s := sampleSources(t)
 	var room *model.Activity
-	for _, root := range sources.Store.Model().Activities.Activities {
+	for _, root := range s.store.Model().Activities.Activities {
 		for _, a := range append([]*model.Activity{root}, root.Descendants()...) {
 			if a.Title == "Room Parents" {
 				room = a
@@ -387,46 +456,39 @@ func TestPrivateVolunteerListAsTeamShowsIt(t *testing.T) {
 	room.Volunteers = append(room.Volunteers, model.Volunteer{Email: jordan, Position: model.PositionOpen}, model.Volunteer{Email: stranger, Position: model.PositionOpen})
 	chairs := len(room.CoChairs())
 	for _, c := range []struct {
-		email      string
-		volunteers int
-		household  int
-		private    bool
+		email  string
+		others int
 	}{
-		{student, 0, 0, true},
-		{jordan, 1, 1, true},
-		{sampleAdmin, 2, 0, false},
+		{student, 0},
+		{jordan, 1},
+		{sampleAdmin, 2},
 	} {
-		result := call(t, app{sources: sources}.viewer(c.email), "get_activity", `{"id":"`+room.ID+`"}`)
-		thing := result["thing"].(map[string]any)
-		if got := len(anyStrings(thing["volunteers"])); got != c.volunteers {
-			t.Errorf("%s: %d volunteers, want %d: %v", c.email, got, c.volunteers, thing["volunteers"])
+		thing := call(t, s.turn(c.email), "get_activity", `{"id":"`+room.ID+`"}`)["thing"].(map[string]any)
+		open := 0
+		for _, v := range items(thing["volunteers"]) {
+			if v["position"] == model.PositionOpen {
+				open++
+			}
 		}
-		if got := len(anyStrings(thing["household"])); got != c.household {
-			t.Errorf("%s: %d household sign-ups, want %d: %v", c.email, got, c.household, thing["household"])
-		}
-		if got := len(anyStrings(thing["coChairs"])); got != chairs {
-			t.Errorf("%s: %d co-chairs, want %d", c.email, got, chairs)
-		}
-		if (thing["volunteerListPrivate"] == true) != c.private || thing["taken"].(float64) != float64(chairs+2) {
-			t.Errorf("%s: private %v, taken %v", c.email, thing["volunteerListPrivate"], thing["taken"])
+		if open != c.others || thing["volunteersHidden"] != true || thing["taken"].(float64) != float64(chairs+2) {
+			t.Errorf("%s: %d open volunteers, want %d: %v", c.email, open, c.others, thing)
 		}
 	}
 }
 
 func TestAdminSeesTeamsHiddenThings(t *testing.T) {
-	sources := sampleSources(t)
+	s := sampleSources(t)
 	hidden := 0
-	for _, root := range sources.Store.Model().Activities.Activities {
+	for _, root := range s.store.Model().Activities.Activities {
 		if root.Status != model.StatusHidden && root.Status != model.StatusPending {
 			continue
 		}
 		hidden++
-		input := json.RawMessage(`{"id":"` + root.ID + `"}`)
-		admin, stranger := app{sources: sources}.viewer(sampleAdmin), app{sources: sources}.viewer("nobody@heliosschool.org")
-		if _, err := admin.run(context.Background(), "get_activity", input); err != nil {
+		input := `{"id":"` + root.ID + `"}`
+		if _, err := runTool(s.turn(sampleAdmin), "get_activity", input); err != nil {
 			t.Errorf("admin cannot read %s (%s): %v", root.Title, root.Status, err)
 		}
-		if _, err := stranger.run(context.Background(), "get_activity", input); err == nil {
+		if _, err := runTool(s.turn("nobody@heliosschool.org"), "get_activity", input); err == nil {
 			t.Errorf("a stranger read %s (%s)", root.Title, root.Status)
 		}
 	}
@@ -435,85 +497,29 @@ func TestAdminSeesTeamsHiddenThings(t *testing.T) {
 	}
 }
 
-func TestPartiesListWhoHoldsTickets(t *testing.T) {
-	result := call(t, sampleViewer(t, "nobody@heliosschool.org"), "parties", `{"include_past":true}`)
+func TestPartiesListTheirTicketsAndPage(t *testing.T) {
+	result := call(t, sampleTurn(t, jordan), "parties", `{"include_past":true}`)
 	named := 0
-	for _, p := range result["parties"].([]any) {
-		party := p.(map[string]any)
-		if party["sold"].(float64) > 0 && len(anyStrings(party["attendees"])) == 0 {
-			t.Errorf("%v: tickets sold but no attendees named", party["title"])
+	for _, party := range items(result["parties"]) {
+		if party["sold"].(float64) > 0 && len(items(party["tickets"])) == 0 {
+			t.Errorf("%v: tickets sold but none named", party["title"])
 		}
-		named += len(anyStrings(party["attendees"]))
+		named += len(items(party["tickets"]))
 	}
 	if named == 0 {
-		t.Fatal("no attendee named anywhere")
+		t.Fatal("no ticket named anywhere")
 	}
-}
-
-func TestRolesTakeTheirEventsDay(t *testing.T) {
-	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 10, 1, 9, 0, 0, 0, model.Location)
-	result := call(t, v, "get_activity", `{"path":"/v/international-night"}`)
-	thing := result["thing"].(map[string]any)
-	if thing["past"] != true {
-		t.Fatalf("international night on October 1: %v", thing)
-	}
-	under := result["under"].([]any)
-	if len(under) == 0 {
-		t.Fatal("international night has nothing under it")
-	}
-	inherited := 0
-	for _, u := range under {
-		role := u.(map[string]any)
-		if role["past"] != true {
-			t.Errorf("a role under a past event is not past: %v", role)
-		}
-		if role["datesFrom"] == "International Night" {
-			inherited++
-		}
-	}
-	if inherited == 0 {
-		t.Fatalf("no role took the event's day: %v", under)
-	}
-	listed := call(t, v, "volunteer_opportunities", `{"query":"international"}`)
-	if listed["matched"].(float64) != 0 {
-		t.Fatalf("things under a past event were listed: %v", listed)
-	}
-}
-
-func TestPartiesSayWhereTheyStandAgainstToday(t *testing.T) {
-	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 18, 9, 0, 0, 0, model.Location)
-	result := call(t, v, "parties", `{}`)
-	for _, p := range result["parties"].([]any) {
-		party := p.(map[string]any)
-		if party["past"] == true {
-			t.Errorf("a past party was listed: %v", party["title"])
-		}
-		if party["title"] == "Fondue & Fort Night" && (party["whenAgainstToday"] != "tomorrow" || party["category"] != "Family Social") {
-			t.Errorf("fondue: %v, %v", party["whenAgainstToday"], party["category"])
-		}
-	}
-	social := call(t, v, "parties", `{"query":"children social"}`)
-	if found := social["parties"].([]any); len(found) != 1 || found[0].(map[string]any)["title"] != "Nerf Blaster Bash" {
-		t.Errorf("parties by category: %v", found)
-	}
-	all := call(t, v, "parties", `{"include_past":true}`)
-	if len(all["parties"].([]any)) <= len(result["parties"].([]any)) || result["pastPartiesLeftOut"].(float64) == 0 {
-		t.Fatalf("past parties: %v left out, %d with them", result["pastPartiesLeftOut"], len(all["parties"].([]any)))
-	}
-	if got := v.timing("2026-09-10", ""); got != "past (8 days ago)" {
-		t.Errorf("timing: %q", got)
+	social := items(call(t, sampleTurn(t, jordan), "parties", `{"query":"children social","include_past":true}`)["parties"])
+	if len(social) != 1 || social[0]["title"] != "Nerf Blaster Bash" || social[0]["category"] != "Children Social" {
+		t.Errorf("parties by category: %v", social)
 	}
 }
 
 func TestGroupsShowMembersAsLoopDoes(t *testing.T) {
-	result := call(t, sampleViewer(t, jordan), "my_groups", `{}`)
 	seen := map[string]bool{}
-	for _, g := range result["groups"].([]any) {
-		group := g.(map[string]any)
+	for _, group := range items(call(t, sampleTurn(t, jordan), "my_groups", `{}`)["groups"]) {
 		seen[group["address"].(string)] = true
-		if group["members"].(float64) > 0 && len(anyStrings(group["people"])) == 0 {
+		if group["memberCount"].(float64) > 0 && len(items(group["members"])) == 0 {
 			t.Errorf("group without its members: %v", group)
 		}
 	}
@@ -523,85 +529,69 @@ func TestGroupsShowMembersAsLoopDoes(t *testing.T) {
 }
 
 func TestMyListsAreTheViewersOwn(t *testing.T) {
-	result := call(t, sampleViewer(t, jordan), "my_lists", `{}`)
 	names := []string{}
-	for _, l := range result["magicTags"].([]any) {
-		names = append(names, l.(map[string]any)["name"].(string))
+	for _, l := range items(call(t, sampleTurn(t, jordan), "my_lists", `{}`)["magicTags"]) {
+		names = append(names, l["name"].(string))
 	}
-	if !strings.Contains(strings.Join(names, ","), "3rd / 4th Parents") {
+	if !slices.Contains(names, "3rd / 4th Parents") {
 		t.Fatalf("magic tags: %v", names)
 	}
 }
 
 func TestSearchDocumentsFindsTheIssueAndReadsIt(t *testing.T) {
-	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, model.Location)
-	result := call(t, v, "search_documents", `{"query":"international night booths"}`)
-	if result["documents"].(float64) != 9 || result["newest"] != "2026-09-25" || result["oldest"] != "2026-08-30" {
-		t.Fatalf("documents: %v", result)
-	}
-	passages := result["passages"].([]any)
+	tr := sampleTurn(t, jordan)
+	passages := items(call(t, tr, "search_documents", `{"query":"international night booths"}`)["passages"])
 	if len(passages) == 0 {
 		t.Fatal("no passages")
 	}
-	first := passages[0].(map[string]any)
-	if first["section"] != "HCA NEWSLETTER" || !strings.Contains(first["text"].(string), "booth") {
+	first := passages[0]
+	if first["section"] != "HCA NEWSLETTER" || !strings.Contains(first["text"].(string), "booth") || first["score"].(float64) <= 0 {
 		t.Fatalf("first passage: %v", first)
 	}
-	if first["published"] != "past (6 days ago)" {
-		t.Fatalf("first passage's date: %v", first)
+	document := first["document"].(map[string]any)
+	if _, ok := document["url"]; ok {
+		t.Fatalf("a mailed document's passage carries a url: %v", first)
 	}
-	for _, field := range []string{"url", "channel", "kind", "author"} {
-		if _, ok := first[field]; ok {
-			t.Fatalf("a mailed document's passage carries %s: %v", field, first)
-		}
-	}
-	issue := call(t, v, "read_document", `{"key":"`+first["key"].(string)+`"}`)
+	issue := call(t, tr, "read_document", `{"id":"`+document["id"].(string)+`"}`)["document"].(map[string]any)
 	if !strings.Contains(issue["markdown"].(string), "# A NOTE FROM BEN") || issue["title"] != "Helios Weekly Newsletter 2026 Sep 11" {
 		t.Fatalf("issue: %v", issue)
 	}
-	if _, err := v.run(context.Background(), "read_document", json.RawMessage(`{"key":"nope"}`)); err == nil {
-		t.Fatal("an unknown key was read")
+	if _, err := runTool(tr, "read_document", `{"id":"nope"}`); err == nil {
+		t.Fatal("an unknown document was read")
 	}
 }
 
 func TestSearchDocumentsLinksAPage(t *testing.T) {
-	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, model.Location)
-	result := call(t, v, "search_documents", `{"query":"what to bring for family camping tents"}`)
-	first := result["passages"].([]any)[0].(map[string]any)
+	tr := sampleTurn(t, jordan)
+	first := items(call(t, tr, "search_documents", `{"query":"what to bring for family camping tents"}`)["passages"])[0]
+	document := first["document"].(map[string]any)
 	const url = "https://www.heliosschool.org/student-life/family-camping"
-	if first["title"] != "Family Camping" || first["url"] != url {
+	if document["title"] != "Family Camping" || document["url"] != url {
 		t.Fatalf("first passage: %v", first)
 	}
-	page := call(t, v, "read_document", `{"key":"`+first["key"].(string)+`"}`)
+	page := call(t, tr, "read_document", `{"id":"`+document["id"].(string)+`"}`)["document"].(map[string]any)
 	if page["url"] != url || !strings.Contains(page["markdown"].(string), "## What to Bring") {
 		t.Fatalf("page: %v", page)
-	}
-	for _, field := range []string{"channel", "kind", "author"} {
-		if _, ok := page[field]; ok {
-			t.Fatalf("the document carries %s: %v", field, page)
-		}
 	}
 }
 
 func TestSearchDocumentsNarrows(t *testing.T) {
-	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, model.Location)
-	result := call(t, v, "search_documents", `{"query":"labor day","until":"2026-09-04"}`)
-	if result["searched"].(float64) != 3 {
-		t.Fatalf("until: %v", result["searched"])
+	tr := sampleTurn(t, jordan)
+	for _, p := range items(call(t, tr, "search_documents", `{"query":"labor day","until":"2026-09-04"}`)["passages"]) {
+		if date := p["document"].(map[string]any)["date"].(string); date > "2026-09-04" {
+			t.Errorf("a passage from %s", date)
+		}
 	}
-	if _, err := v.run(context.Background(), "search_documents", json.RawMessage(`{"query":"x","since":"2027-01-01"}`)); err == nil {
-		t.Fatal("a range with nothing in it was searched")
+	if none := items(call(t, tr, "search_documents", `{"query":"x","since":"2027-01-01"}`)["passages"]); len(none) != 0 {
+		t.Fatalf("passages from 2027: %v", none)
 	}
-	if _, err := v.run(context.Background(), "search_documents", json.RawMessage(`{"query":"x","since":"last summer"}`)); err == nil {
+	if _, err := runTool(tr, "search_documents", `{"query":"x","since":"last summer"}`); err == nil {
 		t.Fatal("a date that is not a date was taken")
 	}
 }
 
 func TestToolsRunTogether(t *testing.T) {
-	v := sampleViewer(t, jordan)
+	tr := sampleTurn(t, jordan)
 	l := newLinks()
 	wg := sync.WaitGroup{}
 	for _, c := range []struct{ name, input string }{
@@ -609,7 +599,7 @@ func TestToolsRunTogether(t *testing.T) {
 		{"get_person", `{"name":"Sam Whitfield"}`}, {"search_documents", `{"query":"camping"}`},
 	} {
 		wg.Go(func() {
-			out, err := v.run(context.Background(), c.name, json.RawMessage(c.input))
+			out, err := runTool(tr, c.name, c.input)
 			if err != nil {
 				t.Errorf("%s: %v", c.name, err)
 				return
@@ -621,11 +611,11 @@ func TestToolsRunTogether(t *testing.T) {
 }
 
 func TestTooMuchIsRefused(t *testing.T) {
-	v := sampleViewer(t, jordan)
-	if _, err := v.run(context.Background(), "get_classroom", json.RawMessage(`{}`)); err != nil {
+	tr := sampleTurn(t, jordan)
+	if _, err := runTool(tr, "get_classroom", `{}`); err != nil {
 		t.Fatalf("classrooms in brief: %v", err)
 	}
-	if _, err := v.run(context.Background(), "no_such_tool", json.RawMessage(`{}`)); err == nil {
+	if _, err := runTool(tr, "no_such_tool", `{}`); err == nil {
 		t.Fatal("an unknown tool ran")
 	}
 }
@@ -644,7 +634,7 @@ func anyStrings(list any) []string {
 func serveApp(t *testing.T) http.Handler {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), NewClaude(t.Name()), claude.NewLimiter(), []byte("test"), About(func() string { return "Ask" }, func() string { return "" }))
+	Register(mux, sampleSources(t).sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"), About(func() string { return "Ask" }, func() string { return "" }))
 	return auth.Fixed(jordan, mux)
 }
 
@@ -675,9 +665,21 @@ func TestChatKeyIsTheSameEachLoadAndGoesWithTheServerKey(t *testing.T) {
 		t.Fatalf("a second load gave %q, not %q", again, first)
 	}
 	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), NewClaude("test"), claude.NewLimiter(), []byte("other"), About(func() string { return "Ask" }, func() string { return "" }))
+	Register(mux, sampleSources(t).sources, NewClaude("test"), claude.NewLimiter(), []byte("other"), About(func() string { return "Ask" }, func() string { return "" }))
 	if other := chatKey(t, auth.Fixed(jordan, mux)); other == first {
 		t.Fatalf("a different server key gave the same chat key")
+	}
+}
+
+func TestModelNamesTheViewerAndStarters(t *testing.T) {
+	rec := httptest.NewRecorder()
+	serveApp(t).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/ask/model", nil))
+	var body modelView
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("model: %d %s", rec.Code, rec.Body)
+	}
+	if body.User.Name != "Jordan Whitfield" || body.User.Initial != "J" || !slices.ContainsFunc(body.Starters, func(s string) bool { return strings.HasPrefix(s, "Who teaches ") }) {
+		t.Fatalf("model: %+v", body)
 	}
 }
 

@@ -244,7 +244,7 @@ func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hits := m.Search(query[0], "field trip to the library", 1); len(hits) != 1 || hits[0].Document.Key != rows[0]["Key"] {
+	if hits := m.Search(query[0], "field trip to the library", 1, everyPassage); len(hits) != 1 || hits[0].Document.Key != rows[0]["Key"] {
 		t.Fatalf("search finds %+v", hits)
 	}
 }

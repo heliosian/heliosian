@@ -4,20 +4,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"heliosian/internal/access"
 	"heliosian/internal/id"
 )
 
-type object map[string]json.RawMessage
+type Object map[string]json.RawMessage
 
-type envelope struct {
+type Envelope struct {
 	Now       string                       `json:"now"`
 	Result    any                          `json:"result"`
-	Resources map[string]map[string]object `json:"resources"`
+	Resources map[string]map[string]Object `json:"resources"`
 }
 
 type tree map[string]tree
@@ -27,15 +29,33 @@ type reader[S any] struct {
 	w         *world[S]
 	s         S
 	q         Query
-	resources map[string]map[string]object
+	resources map[string]map[string]Object
 }
 
 func (reg *Registry[S]) reader(w *world[S], q Query) *reader[S] {
-	return &reader[S]{reg: reg, w: w, s: reg.config.Scope(w.s, q), q: q, resources: map[string]map[string]object{}}
+	return &reader[S]{reg: reg, w: w, s: reg.config.Scope(w.s, q), q: q, resources: map[string]map[string]Object{}}
 }
 
-func (rd *reader[S]) envelope(result any) envelope {
-	return envelope{Now: rd.q.Now.Format(nowLayout), Result: result, Resources: rd.resources}
+func (rd *reader[S]) envelope(result any) Envelope {
+	return Envelope{Now: rd.q.Now.Format(nowLayout), Result: result, Resources: rd.resources}
+}
+
+func (reg *Registry[S]) Read(r *http.Request, paths map[string]string) (Envelope, error) {
+	w := reg.current.Load()
+	rd := reg.reader(w, reg.query(r, w))
+	result := map[string]any{}
+	for name, path := range paths {
+		target, err := url.Parse(path)
+		if err != nil {
+			return Envelope{}, access.Invalid("%s: %v", name, err)
+		}
+		out, err := rd.read(target)
+		if err != nil {
+			return Envelope{}, named(name, err)
+		}
+		result[name] = out
+	}
+	return rd.envelope(result), nil
 }
 
 func (rd *reader[S]) read(target *url.URL) (any, error) {
@@ -126,8 +146,26 @@ func (rd *reader[S]) one(t *Type[S], key string, includes tree) (any, error) {
 
 func (rd *reader[S]) collection(t *Type[S], params url.Values, includes tree) (any, error) {
 	keep := []func(string) (bool, error){}
+	limit := -1
+	var ranker Ranker[S]
+	ranking := ""
 	for name, values := range params {
 		if name == "include" {
+			continue
+		}
+		if name == "limit" {
+			n, err := limitOf(values)
+			if err != nil {
+				return nil, err
+			}
+			limit = n
+			continue
+		}
+		if r, ok := t.Rankers[name]; ok {
+			if ranker != nil || len(values) != 1 {
+				return nil, access.Invalid("%s takes one ranking at a time", t.Name)
+			}
+			ranker, ranking = r, values[0]
 			continue
 		}
 		for _, value := range values {
@@ -138,28 +176,72 @@ func (rd *reader[S]) collection(t *Type[S], params url.Values, includes tree) (a
 			keep = append(keep, pred)
 		}
 	}
-	out := []string{}
-	for _, key := range t.List(rd.s, rd.q) {
-		kept, err := rd.passes(keep, key)
+	ranked := []Hit{}
+	if ranker != nil {
+		var failed error
+		hits, err := ranker(rd.s, rd.q, ranking, func(key string) bool {
+			kept, err := rd.passes(keep, key)
+			if err != nil && failed == nil {
+				failed = err
+			}
+			return kept
+		})
+		if err != nil {
+			return nil, err
+		}
+		if failed != nil {
+			return nil, failed
+		}
+		ranked = hits
+	}
+	if ranker == nil {
+		for _, key := range t.List(rd.s, rd.q) {
+			ranked = append(ranked, Hit{ID: key})
+		}
+	}
+	hits := []Hit{}
+	for _, hit := range ranked {
+		if limit >= 0 && len(hits) >= limit {
+			break
+		}
+		kept, err := rd.passes(keep, hit.ID)
 		if err != nil {
 			return nil, err
 		}
 		if !kept {
 			continue
 		}
-		obj, ok, err := rd.object(t, key)
+		obj, ok, err := rd.object(t, hit.ID)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
 			continue
 		}
-		if err := rd.expand(t, key, obj, includes); err != nil {
+		if err := rd.expand(t, hit.ID, obj, includes); err != nil {
 			return nil, err
 		}
-		out = append(out, key)
+		hits = append(hits, hit)
+	}
+	if ranker != nil {
+		return hits, nil
+	}
+	out := []string{}
+	for _, hit := range hits {
+		out = append(out, hit.ID)
 	}
 	return out, nil
+}
+
+func limitOf(values []string) (int, error) {
+	if len(values) != 1 {
+		return 0, access.Invalid("limit takes one number")
+	}
+	n, err := strconv.Atoi(values[0])
+	if err != nil || n < 0 {
+		return 0, access.Invalid("limit %q is not a count", values[0])
+	}
+	return n, nil
 }
 
 func (rd *reader[S]) passes(keep []func(string) (bool, error), key string) (bool, error) {
@@ -211,7 +293,7 @@ func (rd *reader[S]) mine(t *Type[S], key string) (bool, error) {
 	return me.Mine, nil
 }
 
-func (rd *reader[S]) object(t *Type[S], key string) (object, bool, error) {
+func (rd *reader[S]) object(t *Type[S], key string) (Object, bool, error) {
 	if obj, ok := rd.resources[t.Name][key]; ok {
 		return obj, true, nil
 	}
@@ -226,7 +308,7 @@ func (rd *reader[S]) object(t *Type[S], key string) (object, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	obj := object{}
+	obj := Object{}
 	if err := json.Unmarshal(raw, &obj); err != nil {
 		return nil, false, err
 	}
@@ -239,13 +321,13 @@ func (rd *reader[S]) object(t *Type[S], key string) (object, bool, error) {
 		obj["can"] = must(can)
 	}
 	if rd.resources[t.Name] == nil {
-		rd.resources[t.Name] = map[string]object{}
+		rd.resources[t.Name] = map[string]Object{}
 	}
 	rd.resources[t.Name][key] = obj
 	return obj, true, nil
 }
 
-func (rd *reader[S]) expand(t *Type[S], key string, obj object, includes tree) error {
+func (rd *reader[S]) expand(t *Type[S], key string, obj Object, includes tree) error {
 	for name, sub := range includes {
 		rel, ok := t.Relations[name]
 		if !ok {

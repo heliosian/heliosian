@@ -261,6 +261,17 @@ func (reg *Registry[S]) spec() schema {
 		for _, filter := range filters {
 			list = append(list, param("query", filter, "Declared filter."))
 		}
+		rankers := []string{}
+		for ranker := range t.Rankers {
+			rankers = append(rankers, ranker)
+		}
+		slices.Sort(rankers)
+		for _, ranker := range rankers {
+			list = append(list, param("query", ranker, "Ranks the collection by this; each result entry is then {id, score}. One ranking a query."))
+		}
+		limit := param("query", "limit", "Keep at most this many, after ranking and filters.")
+		limit["schema"] = schema{"type": "integer", "minimum": 0}
+		list = append(list, limit)
 		mine := param("query", "mine", "Keep what me.mine says is the viewer's.")
 		mine["schema"] = schema{"type": "boolean", "enum": []bool{true}}
 		list = append(list, mine)
@@ -269,9 +280,13 @@ func (reg *Registry[S]) spec() schema {
 			can["schema"] = schema{"type": "string", "enum": t.actions()}
 			list = append(list, can)
 		}
+		items := schema{"type": "string"}
+		if len(rankers) > 0 {
+			items = schema{"oneOf": []schema{items, {"type": "object", "properties": schema{"id": schema{"type": "string"}, "score": schema{"type": "number"}}}}}
+		}
 		collection := schema{"get": schema{
 			"tags": tag, "summary": "List " + name, "parameters": list,
-			"responses": schema{"200": answer("The collection.", wrapped(schema{"type": "array", "items": schema{"type": "string"}}, reached))},
+			"responses": schema{"200": answer("The collection.", wrapped(schema{"type": "array", "items": items}, reached))},
 		}}
 		if t.Create.do != nil {
 			collection["post"] = withBody(schema{

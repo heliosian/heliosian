@@ -16,24 +16,37 @@ func TestClassroomChipsWearTheirColor(t *testing.T) {
 	if err := dir.Delete(model.ConfigApp, "Classroom Colors", map[string]string{"Classroom": "Hawks"}); err != nil {
 		t.Fatal(err)
 	}
-	v := app{sources: sourcesFrom(t, dir)}.viewer(jordan)
-	jays, _ := v.linkCard(whoBase + model.ClassroomPath("Jays"))
-	if jays.Color != "#1f6fb2" || jays.Image == "" {
+	tr := sampleFrom(t, dir).turn(jordan)
+	cards := map[string]linkCard{}
+	for _, c := range items(call(t, tr, "get_classroom", `{}`)["classrooms"]) {
+		card, ok := tr.linkCard(c["link"].(string))
+		if !ok {
+			t.Fatalf("no chip for %v", c)
+		}
+		cards[card.Name] = card
+	}
+	if jays := cards["Jays"]; jays.Color != "#1f6fb2" || jays.Image == "" || jays.Kind != "classroom" {
 		t.Errorf("Jays: %+v", jays)
 	}
-	if hawks, _ := v.linkCard(whoBase + model.ClassroomPath("Hawks")); hawks.Color != "" {
+	if hawks := cards["Hawks"]; hawks.Color != "" {
 		t.Errorf("Hawks has no color set, but its chip has %q", hawks.Color)
 	}
 }
 
 func TestLinkExamplesShowWhatTheChipsShow(t *testing.T) {
-	v := sampleViewer(t, jordan)
-	v.now = time.Date(2026, 9, 18, 9, 0, 0, 0, model.Location)
-	out := linkExamples(v)
-	t.Log(out)
+	tr := sampleTurn(t, jordan)
+	tr.clock = func() time.Time { return time.Date(2026, 9, 18, 9, 0, 0, 0, model.Location) }
+	out, err := tr.linkExamples()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addresses, err := tr.exampleLinks()
+	if err != nil {
+		t.Fatal(err)
+	}
 	kinds := map[string]bool{}
-	for _, address := range v.exampleLinks() {
-		card, ok := v.linkCard(address)
+	for _, address := range addresses {
+		card, ok := tr.linkCard(address)
 		if !ok {
 			t.Errorf("an example with no chip: %s", address)
 			continue
@@ -43,9 +56,9 @@ func TestLinkExamplesShowWhatTheChipsShow(t *testing.T) {
 			t.Errorf("the examples lack %s", address)
 		}
 	}
-	for _, kind := range []string{"person", "family", "classroom", "event", "activity", "party", "group"} {
+	for _, kind := range []string{"person", "family", "classroom", "event", "activity", "group"} {
 		if !kinds[kind] {
-			t.Errorf("no %s among the examples", kind)
+			t.Errorf("no %s among the examples:\n%s", kind, out)
 		}
 	}
 	if !strings.Contains(out, `a badge reading "`) {
@@ -53,72 +66,46 @@ func TestLinkExamplesShowWhatTheChipsShow(t *testing.T) {
 	}
 }
 
-func TestLinkCardsKeepEachAppsVisibility(t *testing.T) {
-	for _, email := range []string{jordan, "ruth.amari@heliosschool.org"} {
-		v := sampleViewer(t, email)
-		if card, ok := v.linkCard(whoLink("sam.whitfield@heliosschool.org")); !ok || card.Kind != "person" || card.Name != "Sam Whitfield" {
-			t.Errorf("%s: Sam's card %+v %v", email, card, ok)
+func TestLinkCardsAreWhatTheViewerMayRead(t *testing.T) {
+	s := sampleSources(t)
+	admin := s.turn(sampleAdmin)
+	links := []string{}
+	for _, c := range []struct{ tool, input, list string }{
+		{"parties", `{"include_past":true}`, "parties"},
+		{"volunteer_opportunities", `{"include_past":true,"limit":80}`, "things"},
+		{"find_people", `{"queries":["whitfield"]}`, ""},
+	} {
+		result := call(t, admin, c.tool, c.input)
+		list := result[c.list]
+		if c.list == "" {
+			list = items(result["results"])[0]["people"]
 		}
-		if _, ok := v.linkCard(whoLink("nobody.here@heliosschool.org")); ok {
-			t.Errorf("%s: a card for someone the directory does not list", email)
+		for _, item := range items(list) {
+			links = append(links, item["link"].(string))
 		}
-		for key, family := range v.directory.Families {
-			if card, ok := v.linkCard(whoBase + model.FamilyPath(key)); !ok || card.Kind != "family" || card.Name != family.Name || card.Image != family.PhotoURL {
-				t.Errorf("%s: family %s card %+v %v", email, key, card, ok)
+	}
+	stranger := s.turn("nobody@heliosschool.org")
+	stranger.found = admin.found
+	shown, hidden := 0, 0
+	for _, link := range links {
+		adminCard, ok := admin.linkCard(link)
+		if !ok {
+			t.Fatalf("the admin's own link has no chip: %s", link)
+		}
+		card, ok := stranger.linkCard(link)
+		if ok {
+			shown++
+			if card != adminCard {
+				t.Errorf("%s: %+v, the admin's %+v", link, card, adminCard)
 			}
+		} else {
+			hidden++
 		}
-		if _, ok := v.linkCard(whoBase + model.FamilyPath("no-such-family")); ok {
-			t.Errorf("%s: a card for a family the directory does not list", email)
-		}
-		for _, c := range v.directory.Classrooms {
-			if card, ok := v.linkCard(whoBase + model.ClassroomPath(c.Name)); !ok || card.Kind != "classroom" || card.Name != c.Name {
-				t.Errorf("%s: classroom %s card %+v %v", email, c.Name, card, ok)
-			}
-		}
-		seen := map[string]bool{}
-		for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.linked()) {
-			seen[e.ID] = true
-			if !strings.HasPrefix(eventLink(e), whenBase) {
-				continue
-			}
-			if card, ok := v.linkCard(eventLink(e)); !ok || card.Kind != "event" || card.Name != e.Title || card.Badge == "" {
-				t.Errorf("%s: event %q card %+v %v", email, e.Title, card, ok)
-			}
-		}
-		for _, e := range append(append([]*model.Event{}, v.calendar.Events...), v.calendar.Pending...) {
-			if _, ok := v.linkCard(eventLink(e)); !seen[e.ID] && strings.HasPrefix(eventLink(e), whenBase) && ok {
-				t.Errorf("%s: a card for %q, which the calendar does not show them", email, e.Title)
-			}
-		}
-		for _, g := range v.loop.Groups {
-			_, ok := v.linkCard(loopBase + g.Path())
-			if ok != g.VisibleTo(v.loopAs, v.audience()) {
-				t.Errorf("%s: group %s card %v", email, g.Name, ok)
-			}
-		}
-		hidden, shown := 0, 0
-		for _, p := range v.celebrate.Parties {
-			_, ok := v.linkCard(celebrateBase + v.celebrate.PathOf(p))
-			if ok != p.VisibleTo(v.partyAs) {
-				t.Errorf("%s: party %q (%s) card %v", email, p.Title, p.Status, ok)
-			}
-			if ok {
-				shown++
-			} else {
-				hidden++
-			}
-		}
-		for _, root := range v.team.Activities {
-			for _, a := range append([]*model.Activity{root}, root.Descendants()...) {
-				_, ok := v.linkCard(teamBase + v.team.PathOf(a))
-				if ok != v.team.VisibleTo(a, v.teamAs) {
-					t.Errorf("%s: activity %q (%s) card %v", email, a.Title, a.Status, ok)
-				}
-			}
-		}
-		if shown == 0 {
-			t.Errorf("%s: no party has a card", email)
-		}
-		t.Logf("%s: %d parties with cards, %d without", email, shown, hidden)
+	}
+	if shown == 0 || hidden == 0 {
+		t.Fatalf("%d chips shown to a stranger, %d kept from them", shown, hidden)
+	}
+	if _, ok := admin.linkCard("https://who.heliosian.com/people/nobody.here"); ok {
+		t.Fatal("a chip for a link no tool gave")
 	}
 }

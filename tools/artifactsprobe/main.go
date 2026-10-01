@@ -50,7 +50,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("embed: %v", err)
 	}
-	for _, hit := range docs.Search(vectors[0], query, 6) {
+	for _, hit := range docs.Search(vectors[0], query, 6, func(*model.Document, int) bool { return true }) {
 		d, c := hit.Document, hit.Document.Chunks[hit.Index]
 		section := c.Section
 		if section != "" {

@@ -41,12 +41,14 @@ type familyResource struct {
 }
 
 type classroomResource struct {
-	Name     string `json:"name"`
-	ImageURL string `json:"imageUrl,omitempty"`
-	HasCrews bool   `json:"hasCrews"`
-	Slug     string `json:"slug"`
-	Path     string `json:"path"`
-	App      string `json:"app"`
+	Name     string   `json:"name"`
+	ImageURL string   `json:"imageUrl,omitempty"`
+	HasCrews bool     `json:"hasCrews"`
+	Band     string   `json:"band,omitempty"`
+	Grades   []string `json:"grades"`
+	Slug     string   `json:"slug"`
+	Path     string   `json:"path"`
+	App      string   `json:"app"`
 }
 
 type gradeResource struct {
@@ -82,6 +84,8 @@ type tagMe struct {
 type tagResource struct {
 	Name      string `json:"name"`
 	OwnerName string `json:"ownerName"`
+	Path      string `json:"path"`
+	App       string `json:"app"`
 	Me        tagMe  `json:"me"`
 }
 
@@ -133,7 +137,7 @@ func tagsType() api.Type[*Model] {
 			if !ok {
 				return nil, false
 			}
-			return tagResource{Name: t.Name, OwnerName: t.OwnerName, Me: tagMe{Mine: t.Owner == q.Actor.Email}}, true
+			return tagResource{Name: t.Name, OwnerName: t.OwnerName, Path: TagPath(t.ID), App: whoHost, Me: tagMe{Mine: t.Owner == q.Actor.Email}}, true
 		},
 		List: func(m *Model, q api.Query) []string {
 			d := m.Directory
@@ -332,6 +336,20 @@ func peopleType() api.Type[*Model] {
 				}
 				return nil
 			}),
+			"room-parent-for": {Type: "grades", Many: true, List: func(m *Model, _ api.Query, key string) []string {
+				d := m.Directory
+				p := d.personByID(key)
+				if p == nil {
+					return nil
+				}
+				out := []string{}
+				for _, g := range d.Grades {
+					if g.Band != "" && slices.Contains(d.RoomParentsOf(g.Band), p.Email) {
+						out = append(out, g.ID)
+					}
+				}
+				return out
+			}},
 		},
 		Filters: map[string]api.Filter[*Model]{
 			"listed": func(m *Model, _ api.Query, value string) (func(string) bool, error) {
@@ -344,8 +362,63 @@ func peopleType() api.Type[*Model] {
 					return p != nil && !p.EmailMasked
 				}, nil
 			},
+			"q": personWhere(func(_ *Directory, p *Person, value string) bool {
+				email := p.Email
+				if p.EmailMasked {
+					email = ""
+				}
+				return mentions(value, p.FullName, p.PreferredName, p.JobTitle, email)
+			}),
+			"role": func(m *Model, _ api.Query, value string) (func(string) bool, error) {
+				is := map[string]func(p *Person) bool{
+					"student": func(p *Person) bool { return p.IsStudent },
+					"parent":  func(p *Person) bool { return p.IsParent },
+					"staff":   func(p *Person) bool { return p.IsStaff },
+				}[value]
+				if is == nil {
+					return nil, access.Invalid("role takes student, parent or staff")
+				}
+				d := m.Directory
+				return func(key string) bool {
+					p := d.personByID(key)
+					return p != nil && is(p)
+				}, nil
+			},
+			"grade": personWhere(func(d *Directory, p *Person, value string) bool {
+				return slices.ContainsFunc(d.placesOf(p, func(q *Person) string { return q.Grade }), func(g string) bool { return strings.EqualFold(g, value) })
+			}),
+			"classroom": personWhere(func(d *Directory, p *Person, value string) bool {
+				return slices.ContainsFunc(d.placesOf(p, func(q *Person) string { return q.Classroom }), func(c string) bool { return strings.EqualFold(c, value) })
+			}),
+			"department": personWhere(func(_ *Directory, p *Person, value string) bool {
+				return mentions(value, p.Department)
+			}),
 		},
 	}
+}
+
+func personWhere(keep func(d *Directory, p *Person, value string) bool) api.Filter[*Model] {
+	return func(m *Model, _ api.Query, value string) (func(string) bool, error) {
+		value = strings.TrimSpace(value)
+		d := m.Directory
+		return func(key string) bool {
+			p := d.personByID(key)
+			return p != nil && keep(d, p, value)
+		}, nil
+	}
+}
+
+func (m *Directory) placesOf(p *Person, place func(*Person) string) []string {
+	out := []string{}
+	if own := place(p); own != "" && (p.IsStudent || p.IsStaff) {
+		out = append(out, own)
+	}
+	for _, k := range m.Children(p.Email) {
+		if place(k) != "" {
+			out = append(out, place(k))
+		}
+	}
+	return out
 }
 
 func familyMembers(adults bool) api.Relation[*Model] {
@@ -394,6 +467,8 @@ func familiesType() api.Type[*Model] {
 			"adults": familyMembers(true),
 			"kids":   familyMembers(false),
 		},
+		Filters: familyFilters,
+		Rankers: map[string]api.Ranker[*Model]{"near": nearRanker},
 	}
 }
 
@@ -434,7 +509,11 @@ func classroomsType() api.Type[*Model] {
 			if c == nil {
 				return nil, false
 			}
-			return classroomResource{Name: c.Name, ImageURL: c.ImageURL, HasCrews: c.HasCrews, Slug: ClassroomSlug(c.Name), Path: ClassroomPath(c.Name), App: whoHost}, true
+			out := classroomResource{Name: c.Name, ImageURL: c.ImageURL, HasCrews: c.HasCrews, Grades: []string{}, Slug: ClassroomSlug(c.Name), Path: ClassroomPath(c.Name), App: whoHost}
+			if r := m.Directory.Roster().byID(key); r != nil {
+				out.Band, out.Grades = r.Band, r.Grades
+			}
+			return out, true
 		},
 		List: func(m *Model, _ api.Query) []string {
 			out := []string{}
@@ -471,8 +550,44 @@ func classroomsType() api.Type[*Model] {
 				}
 				return out
 			}},
+			"teachers": {Type: "people", Many: true, List: func(m *Model, _ api.Query, key string) []string {
+				c := m.Directory.classroomByID(key)
+				if c == nil {
+					return nil
+				}
+				return ids(m.Directory.teachersOf(c.Name))
+			}},
+			"room-parents": {Type: "people", Many: true, List: func(m *Model, _ api.Query, key string) []string {
+				r := m.Directory.Roster().byID(key)
+				if r == nil || r.Band == "" {
+					return nil
+				}
+				return m.Directory.emailIDs(m.Directory.RoomParentsOf(r.Band))
+			}},
 		},
 	}
+}
+
+func (m *Directory) teachersOf(classroom string) []*Person {
+	out := []*Person{}
+	add := func(p *Person) {
+		if p != nil && !slices.Contains(out, p) {
+			out = append(out, p)
+		}
+	}
+	for _, c := range m.Crews {
+		if c.Classroom == classroom {
+			for _, t := range c.Teachers {
+				add(m.Person(t))
+			}
+		}
+	}
+	for i := range m.People {
+		if m.People[i].IsStaff && m.People[i].Classroom == classroom {
+			add(&m.People[i])
+		}
+	}
+	return out
 }
 
 func gradesType() api.Type[*Model] {

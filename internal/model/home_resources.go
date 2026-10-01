@@ -188,6 +188,14 @@ func (a homeApp) linksType() api.Type[*Model] {
 				return nil
 			}},
 		},
+		Filters: map[string]api.Filter[*Model]{
+			"q": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+				return func(key string) bool {
+					l, ok := m.homeLink(q, key)
+					return ok && mentions(value, l.Title, l.Description)
+				}, nil
+			},
+		},
 		Create: api.Make(func(wr api.Write[*Model], body linkEdit) (string, error) {
 			_, key, ops, err := wr.S.saveHomeLink(wr.Query.Actor, "", body, wr.Taken)
 			if err := stage(wr, homeAppName, ops, err); err != nil {

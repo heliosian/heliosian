@@ -3,114 +3,22 @@ package ask
 import (
 	"encoding/json"
 	"fmt"
-	"slices"
+	"strconv"
 	"strings"
 
 	"heliosian/internal/model"
 )
 
-type card struct {
-	Name        string   `json:"name"`
-	Email       string   `json:"email,omitempty"`
-	Roles       string   `json:"roles"`
-	Pronouns    string   `json:"pronouns,omitempty"`
-	Grade       string   `json:"grade,omitempty"`
-	Classroom   string   `json:"classroom,omitempty"`
-	Crew        string   `json:"crew,omitempty"`
-	Teachers    []string `json:"teachers,omitempty"`
-	JobTitle    string   `json:"jobTitle,omitempty"`
-	Department  string   `json:"department,omitempty"`
-	Phone       string   `json:"phone,omitempty"`
-	NewToHelios bool     `json:"newToHelios,omitempty"`
-	Kids        []string `json:"kids,omitempty"`
-	Parents     []string `json:"parents,omitempty"`
-	Link        string   `json:"link"`
-}
-
-func (v *viewer) card(p *model.Person) card {
-	c := card{Name: p.FullName, Roles: rolesOf(p), Pronouns: p.Pronouns, Grade: p.Grade, Classroom: p.Classroom, Crew: p.Crew, JobTitle: p.JobTitle, Department: p.Department, Phone: p.Phone, NewToHelios: p.IsNew, Link: whoLink(p.Email)}
-	if !p.EmailMasked {
-		c.Email = p.Email
-	}
-	if p.IsStudent {
-		c.Teachers = v.crewTeachers(p.Classroom, p.Crew)
-		c.Parents = v.names(p.ParentContactEmails)
-	}
-	for _, k := range v.directory.Children(p.Email) {
-		words := k.FullName
-		if k.Grade != "" {
-			words += " (" + k.Grade + ")"
-		}
-		c.Kids = append(c.Kids, words)
-	}
-	return c
-}
-
-type familyCard struct {
-	Name    string `json:"name"`
-	Address string `json:"address,omitempty"`
-	Phone   string `json:"phone,omitempty"`
-	Adults  []card `json:"adults"`
-	Kids    []card `json:"kids"`
-	Caption string `json:"photoCaption,omitempty"`
-	Link    string `json:"link"`
-}
-
-func (v *viewer) familyCard(key string) familyCard {
-	family := v.directory.Families[key]
-	f := familyCard{Name: family.Name, Address: family.Address, Phone: family.Phone, Adults: []card{}, Kids: []card{}, Caption: family.PhotoCaption, Link: whoBase + model.FamilyPath(key)}
-	adults, kids := v.directory.Members(key)
-	for _, p := range adults {
-		f.Adults = append(f.Adults, v.card(p))
-	}
-	for _, p := range kids {
-		f.Kids = append(f.Kids, v.card(p))
-	}
-	return f
-}
-
-func (v *viewer) familyKeys(email, name string) []string {
-	keys := []string{}
-	for _, p := range v.findByEmailOrName(email, name) {
-		for _, key := range v.directory.FamilyKeysOf(p.Email) {
-			if !slices.Contains(keys, key) {
-				keys = append(keys, key)
-			}
-		}
-	}
-	if name = strings.TrimSpace(name); name != "" {
-		for key, family := range v.directory.Families {
-			if contains(family.Name, name) && !slices.Contains(keys, key) {
-				keys = append(keys, key)
-			}
-		}
-	}
-	slices.Sort(keys)
-	return keys
-}
-
-func (v *viewer) findByEmailOrName(email, name string) []*model.Person {
-	if email = strings.ToLower(strings.TrimSpace(email)); email != "" {
-		if p := v.directory.Person(v.directory.Resolve(email)); p != nil {
-			return []*model.Person{p}
-		}
-	}
-	out := []*model.Person{}
-	if name = strings.TrimSpace(name); name == "" {
-		return out
-	}
-	for i := range v.directory.People {
-		p := &v.directory.People[i]
-		if contains(p.FullName, name) || contains(p.LegalName, name) || contains(p.PreferredName, name) {
-			out = append(out, p)
-		}
-	}
-	return out
-}
+const (
+	personIncludes = "parents,children.grade,grade,classroom.teachers,crew.teachers"
+	personFields   = "fullName,email,pronouns,isStudent,isParent,isStaff,isNew,jobTitle,department,phone,grade.name,classroom.name,classroom.teachers.fullName,crew.name,crew.teachers.fullName,parents.fullName,children.fullName,children.grade.name,link"
+	familyIncludes = "adults,kids.grade,kids.classroom"
+	familyFields   = "name,address,phone,photoCaption,link,adults.fullName,adults.email,adults.phone,kids.fullName,kids.grade.name,kids.classroom.name"
+)
 
 var findPeople = tool{
 	name:        "find_people",
-	description: "Search the school directory (Helios Who?) for people: students, parents and staff. Each query is searched on its own, so every person a document names is found in one call. Every filter narrows every query; a parent matches a grade or classroom through their children. Returns, for each query, at most a page of people with what places them, their contact details as shared, and a link to each one's page.",
+	description: "Search the school directory (Helios Who?) for people: students, parents and staff. Each query is searched on its own, so every person a document names is found in one call. Every filter narrows every query; a parent matches a grade or classroom through their children. Returns, for each query, at most a page of people with what places them, their contact details as shared, and a link to each one's page; more says the page was full.",
 	words:       "Looking in the directory",
 	properties: map[string]any{
 		"queries":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Words to find in a name, an email or a job title, one entry per person or search. Leave it out to list everyone the filters pick."},
@@ -120,7 +28,7 @@ var findPeople = tool{
 		"department": str("A staff department, for staff."),
 		"limit":      integer("How many to return, 25 unless said, 50 at most."),
 	},
-	run: func(v *viewer, input json.RawMessage) (any, error) {
+	run: func(t *turn, input json.RawMessage) (any, error) {
 		in, err := decodeInput[struct {
 			Queries                            []string
 			Role, Grade, Classroom, Department string
@@ -134,207 +42,129 @@ var findPeople = tool{
 		if len(queries) == 0 {
 			queries = []string{""}
 		}
+		asked := []query{}
+		for i, words := range queries {
+			v := params("q", words, "role", in.Role, "grade", in.Grade, "classroom", in.Classroom, "department", in.Department, "include", personIncludes, "limit", shown(limit))
+			asked = append(asked, query{name: "q" + strconv.Itoa(i), path: collection("people", v), fields: fields(personFields), limit: limit})
+		}
+		out, err := t.ask(asked...)
+		if err != nil {
+			return nil, err
+		}
 		results := []map[string]any{}
-		for _, query := range queries {
-			matches := []card{}
-			total := 0
-			for i := range v.directory.People {
-				p := &v.directory.People[i]
-				if !v.matches(p, strings.TrimSpace(query), in.Role, in.Grade, in.Classroom, in.Department) {
-					continue
-				}
-				total++
-				if len(matches) < limit {
-					matches = append(matches, v.card(p))
-				}
-			}
-			sortedByName(matches, func(c card) string { return c.Name })
-			results = append(results, map[string]any{"query": query, "people": matches, "matched": total, "shown": len(matches)})
+		for i, words := range queries {
+			name := "q" + strconv.Itoa(i)
+			results = append(results, map[string]any{"query": words, "people": out[name], "more": out[name+"More"]})
 		}
 		return map[string]any{"results": results}, nil
 	},
 }
 
-func (v *viewer) matches(p *model.Person, query, role, grade, classroom, department string) bool {
-	if query != "" && !contains(p.FullName, query) && !contains(p.Email, query) && !contains(p.JobTitle, query) && !contains(p.PreferredName, query) {
-		return false
+func (t *turn) peopleNamed(email, name string) ([]string, error) {
+	if email != "" {
+		return []string{email}, nil
 	}
-	switch role {
-	case "student":
-		if !p.IsStudent {
-			return false
-		}
-	case "parent":
-		if !p.IsParent {
-			return false
-		}
-	case "staff":
-		if !p.IsStaff {
-			return false
-		}
+	if name == "" {
+		return nil, fmt.Errorf("say whose")
 	}
-	if department != "" && !contains(p.Department, department) {
-		return false
+	env, err := t.read(map[string]string{"people": collection("people", params("q", name, "limit", "11"))})
+	if err != nil {
+		return nil, err
 	}
-	if grade != "" && !slices.ContainsFunc(v.facets(p, false), func(g string) bool { return strings.EqualFold(g, grade) }) {
-		return false
-	}
-	if classroom != "" && !slices.ContainsFunc(v.facets(p, true), func(c string) bool { return strings.EqualFold(c, classroom) }) {
-		return false
-	}
-	return true
-}
-
-func (v *viewer) facets(p *model.Person, classroom bool) []string {
-	pick := func(q *model.Person) string {
-		if classroom {
-			return q.Classroom
-		}
-		return q.Grade
-	}
-	out := []string{}
-	if own := pick(p); own != "" && (p.IsStudent || p.IsStaff) {
-		out = append(out, own)
-	}
-	for _, k := range v.directory.Children(p.Email) {
-		if pick(k) != "" {
-			out = append(out, pick(k))
-		}
-	}
-	return out
+	return env.Result.(map[string]any)["people"].([]string), nil
 }
 
 var getPerson = tool{
 	name:        "get_person",
-	description: "One person in full from the directory, by email or by name: their card, their About Me, and each family they belong to with its members, address and phone as shared. Several people matching a name are all returned as cards to choose from.",
+	description: "One person in full from the directory, by email or by name: who they are and what places them, their About Me, each family they belong to with its members, address and phone as shared, and the grades they are a room parent for. Several people matching a name are all returned in brief to choose from.",
 	words:       "Reading a directory page",
 	properties: map[string]any{
 		"email": str("The person's email address, when known."),
 		"name":  str("Words of the person's name, when the address is not known."),
 	},
-	run: func(v *viewer, input json.RawMessage) (any, error) {
+	run: func(t *turn, input json.RawMessage) (any, error) {
 		in, err := decodeInput[struct{ Email, Name string }](input)
 		if err != nil {
 			return nil, err
 		}
-		people := v.findByEmailOrName(in.Email, in.Name)
-		if len(people) == 0 {
+		people, err := t.peopleNamed(in.Email, in.Name)
+		if err != nil {
+			return nil, err
+		}
+		switch len(people) {
+		case 0:
 			return nil, fmt.Errorf("nobody in the directory matches that")
+		case 1:
+			v := params("include", personIncludes+","+under("families", familyIncludes)+",room-parent-for")
+			spec := personFields + ",facts,room-parent-for.name," + under("families", familyFields)
+			return t.ask(query{name: "person", path: one("people", people[0], v), fields: fields(spec)})
 		}
-		if len(people) > 1 {
-			cards := []card{}
-			for _, p := range people {
-				cards = append(cards, v.card(p))
-			}
-			sortedByName(cards, func(c card) string { return c.Name })
-			return map[string]any{"several": cards}, nil
-		}
-		p := people[0]
-		families := []familyCard{}
-		for _, key := range v.directory.FamilyKeysOf(p.Email) {
-			families = append(families, v.familyCard(key))
-		}
-		bands := []string{}
-		for label, parents := range v.directory.RoomParents {
-			if slices.Contains(parents, p.Email) {
-				bands = append(bands, label)
-			}
-		}
-		slices.Sort(bands)
-		return map[string]any{"person": v.card(p), "aboutMe": p.Facts, "families": families, "roomParentFor": bands}, nil
+		v := params("q", in.Name, "include", personIncludes, "limit", "11")
+		return t.ask(query{name: "several", path: collection("people", v), fields: fields(personFields), limit: 10})
 	},
+}
+
+func under(relation, spec string) string {
+	parts := strings.Split(spec, ",")
+	for i := range parts {
+		parts[i] = relation + "." + parts[i]
+	}
+	return strings.Join(parts, ",")
 }
 
 var getFamily = tool{
 	name:        "get_family",
-	description: "A family from the directory, found through any of its members by email or name: the family's name, address and phone as shared, and its adults and students.",
+	description: "A family from the directory, found through any of its members by email, or by words of a member's or the family's name: the family's name, address and phone as shared, and its adults and students.",
 	words:       "Reading a family page",
 	properties: map[string]any{
 		"email": str("A member's email address, when known."),
 		"name":  str("Words of a member's name or the family's name."),
 	},
-	run: func(v *viewer, input json.RawMessage) (any, error) {
+	run: func(t *turn, input json.RawMessage) (any, error) {
 		in, err := decodeInput[struct{ Email, Name string }](input)
 		if err != nil {
 			return nil, err
 		}
-		keys := v.familyKeys(in.Email, in.Name)
-		if len(keys) == 0 {
+		var out map[string]any
+		var families any
+		if in.Email != "" {
+			v := params("include", under("families", familyIncludes))
+			out, err = t.ask(query{name: "person", path: one("people", in.Email, v), fields: fields(under("families", familyFields))})
+			if err != nil {
+				return nil, err
+			}
+			families = out["person"].(map[string]any)["families"]
+		} else {
+			out, err = t.ask(query{name: "families", path: collection("families", params("q", in.Name, "include", familyIncludes, "limit", "11")), fields: fields(familyFields), limit: 10})
+			if err != nil {
+				return nil, err
+			}
+			families = out["families"]
+		}
+		if empty(families) {
 			return nil, fmt.Errorf("no family in the directory matches that")
 		}
-		families := []familyCard{}
-		for _, key := range keys {
-			families = append(families, v.familyCard(key))
-		}
-		return map[string]any{"families": families}, nil
+		return map[string]any{"families": families, "more": out["familiesMore"]}, nil
 	},
 }
 
 var getClassroom = tool{
 	name:        "get_classroom",
-	description: "One classroom: its band and grades, its teachers, its crews with each crew's teachers and students, the rest of its students, and the room parents of its band. Without a name, every classroom in brief.",
+	description: "One classroom: its band and grades, its teachers, the room parents of its band, its crews with each crew's teachers, and its students with their crews. Without a name, every classroom in brief.",
 	words:       "Looking at a classroom",
 	properties: map[string]any{
 		"classroom": str("The classroom's name."),
 	},
-	run: func(v *viewer, input json.RawMessage) (any, error) {
+	run: func(t *turn, input json.RawMessage) (any, error) {
 		in, err := decodeInput[struct{ Classroom string }](input)
 		if err != nil {
 			return nil, err
 		}
-		want := strings.TrimSpace(in.Classroom)
-		if want == "" {
-			out := []map[string]any{}
-			for _, c := range v.calendar.Roster.Classrooms {
-				out = append(out, map[string]any{"name": c.Name, "band": c.Band, "grades": c.Grades, "teachers": v.classroomTeachers(c.Name), "students": v.count(c.Name), "link": whoBase + model.ClassroomPath(c.Name)})
-			}
-			return map[string]any{"classrooms": out}, nil
+		if in.Classroom == "" {
+			return t.ask(query{name: "classrooms", path: collection("classrooms", params("include", "teachers")), fields: fields("name,band,grades,link,teachers.fullName")})
 		}
-		i := slices.IndexFunc(v.calendar.Roster.Classrooms, func(c model.RosterClassroom) bool { return contains(c.Name, want) })
-		if i < 0 {
-			return nil, fmt.Errorf("there is no classroom called %q", want)
-		}
-		c := v.calendar.Roster.Classrooms[i]
-		crews := []map[string]any{}
-		inCrew := map[string]bool{}
-		for _, crew := range v.directory.Crews {
-			if crew.Classroom != c.Name || crew.Name == "" {
-				continue
-			}
-			students := []card{}
-			for j := range v.directory.People {
-				p := &v.directory.People[j]
-				if p.IsStudent && p.Classroom == c.Name && p.Crew == crew.Name {
-					students = append(students, v.card(p))
-					inCrew[p.Email] = true
-				}
-			}
-			sortedByName(students, func(c card) string { return c.Name })
-			crews = append(crews, map[string]any{"name": crew.Name, "teachers": v.names(crew.Teachers), "students": students})
-		}
-		others := []card{}
-		for j := range v.directory.People {
-			p := &v.directory.People[j]
-			if p.IsStudent && p.Classroom == c.Name && !inCrew[p.Email] {
-				others = append(others, v.card(p))
-			}
-		}
-		sortedByName(others, func(c card) string { return c.Name })
-		roomParents := v.names(v.directory.RoomParentsOf(c.Band))
-		slices.Sort(roomParents)
-		return map[string]any{
-			"name": c.Name, "band": c.Band, "grades": c.Grades, "teachers": v.classroomTeachers(c.Name), "crews": crews, "students": others,
-			"roomParents": roomParents, "link": whoBase + model.ClassroomPath(c.Name),
-		}, nil
+		v := params("include", "teachers,room-parents,crews.teachers,students.crew")
+		spec := "name,band,grades,link,teachers.fullName,room-parents.fullName,crews.name,crews.teachers.fullName,students.fullName,students.crew.name"
+		return t.ask(query{name: "classroom", path: one("classrooms", model.ClassroomSlug(in.Classroom), v), fields: fields(spec)})
 	},
-}
-
-func (v *viewer) count(classroom string) int {
-	n := 0
-	for i := range v.directory.People {
-		if v.directory.People[i].IsStudent && v.directory.People[i].Classroom == classroom {
-			n++
-		}
-	}
-	return n
 }

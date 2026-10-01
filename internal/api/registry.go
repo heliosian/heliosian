@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -13,6 +14,8 @@ import (
 )
 
 const nowLayout = "2006-01-02 15:04"
+
+var reserved = map[string]bool{"include": true, "limit": true, "can": true, "mine": true}
 
 type Config[S any] struct {
 	Actor  func(r *http.Request, s S) access.Actor
@@ -50,6 +53,16 @@ func (reg *Registry[S]) Add(t Type[S]) {
 	if t.Shape == nil {
 		panic(fmt.Sprintf("api: %s needs a shape", t.Name))
 	}
+	for name := range t.Filters {
+		if reserved[name] {
+			panic(fmt.Sprintf("api: %s filter %q is a reserved parameter", t.Name, name))
+		}
+	}
+	for name := range t.Rankers {
+		if _, ok := t.Filters[name]; ok || reserved[name] {
+			panic(fmt.Sprintf("api: %s ranker %q is a filter or a reserved parameter", t.Name, name))
+		}
+	}
 	reg.types[t.Name] = &t
 }
 
@@ -70,7 +83,7 @@ func (reg *Registry[S]) Publish(s S) {
 
 func (reg *Registry[S]) Taken(candidate string) bool {
 	w := reg.current.Load()
-	return reg.takenIn(w, reg.config.Scope(w.s, Query{Now: reg.config.Now()}))(candidate)
+	return reg.takenIn(w, reg.config.Scope(w.s, Query{Now: reg.config.Now(), Context: context.Background()}))(candidate)
 }
 
 func (reg *Registry[S]) takenIn(w *world[S], s S) func(string) bool {
@@ -105,5 +118,5 @@ func (reg *Registry[S]) owner(s S, candidate string) (*Type[S], bool) {
 }
 
 func (reg *Registry[S]) query(r *http.Request, w *world[S]) Query {
-	return Query{Actor: reg.config.Actor(r, w.s), Now: reg.config.Now()}
+	return Query{Actor: reg.config.Actor(r, w.s), Now: reg.config.Now(), Context: r.Context()}
 }

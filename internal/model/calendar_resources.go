@@ -164,7 +164,7 @@ type calendarResources struct {
 
 func (h CalendarHooks) Resources() []api.Type[*Model] {
 	r := calendarResources{app: h.app}
-	return []api.Type[*Model]{r.events(), r.guestLists(), r.inviteGroups(), r.feeds(), r.settings()}
+	return []api.Type[*Model]{r.events(), r.guestLists(), r.inviteGroups(), r.feeds(), r.settings(), r.calendarTags(), r.dayTypes(), r.dayPlans()}
 }
 
 func (r calendarResources) staged(wr api.Write[*Model]) calendarApp {
@@ -308,7 +308,32 @@ func (r calendarResources) eventFilters() map[string]api.Filter[*Model] {
 			}
 			return r.eventWhere(func(_ calendarApp, _ api.Query, e *Event) bool { return e.Pending && !e.Declined && !e.Cancelled })(m, q), nil
 		},
+		"q": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+			return r.eventWhere(func(_ calendarApp, _ api.Query, e *Event) bool {
+				return mentions(value, e.Title, e.Description, strings.Join(e.Keywords, " "))
+			})(m, q), nil
+		},
+		"classroom": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+			return r.eventWhere(func(_ calendarApp, _ api.Query, e *Event) bool {
+				return len(e.Classrooms) == 0 || slices.ContainsFunc(e.Classrooms, func(c string) bool { return strings.EqualFold(c, strings.TrimSpace(value)) })
+			})(m, q), nil
+		},
+		"tag": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+			return r.eventWhere(func(a calendarApp, _ api.Query, e *Event) bool {
+				return slices.ContainsFunc(a.model().TagNames(e.Tags), func(t string) bool { return strings.EqualFold(t, strings.TrimSpace(value)) })
+			})(m, q), nil
+		},
 	}
+}
+
+func mentions(words string, fields ...string) bool {
+	words = strings.ToLower(strings.TrimSpace(words))
+	for _, f := range fields {
+		if strings.Contains(strings.ToLower(f), words) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r calendarResources) events() api.Type[*Model] {
@@ -390,6 +415,28 @@ func (r calendarResources) events() api.Type[*Model] {
 					return nil
 				}
 				return []string{a.guestListID(e.ID)}
+			}},
+			"calendar-tags": {Type: "calendar-tags", Many: true, List: func(m *Model, q api.Query, key string) []string {
+				a := r.app.at(m)
+				e := a.viewerEvent(q, key)
+				if e == nil {
+					return nil
+				}
+				out := []string{}
+				for _, tag := range e.Tags {
+					if a.model().Tag(tag) != nil {
+						out = append(out, tag)
+					}
+				}
+				return out
+			}},
+			"day-type": {Type: "day-types", List: func(m *Model, q api.Query, key string) []string {
+				a := r.app.at(m)
+				e := a.viewerEvent(q, key)
+				if e == nil || a.model().DayType(e.DayType) == nil {
+					return nil
+				}
+				return []string{e.DayType}
 			}},
 		},
 		Create: api.Make(func(wr api.Write[*Model], body eventBody) (string, error) {

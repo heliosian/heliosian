@@ -2,74 +2,37 @@ package ask
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"math"
-	"regexp"
-	"slices"
-	"sort"
-	"strings"
+	"net/http"
+	"strconv"
 
-	"heliosian/internal/model"
+	"heliosian/internal/access"
 )
 
-var streetAddress = regexp.MustCompile(`^\s*\d`)
+const nearbyFields = "name,address,link,adults.fullName,kids.fullName,kids.grade.name,kids.classroom.name"
 
-type nearbyCard struct {
-	Name     string   `json:"name"`
-	Miles    float64  `json:"milesAway,omitempty"`
-	City     string   `json:"city,omitempty"`
-	Adults   []string `json:"adults"`
-	Students []string `json:"students"`
-	Link     string   `json:"link"`
-}
-
-func cityOf(address string) string {
-	parts := strings.Split(address, ",")
-	if !streetAddress.MatchString(address) {
-		return strings.TrimSpace(parts[0])
+func (t *turn) ownFamilies() ([]string, error) {
+	email := t.reg.Actor(t.r).Email
+	env, err := t.read(map[string]string{"me": one("people", email, params("include", "families"))})
+	var refusal *access.Refusal
+	if errors.As(err, &refusal) && refusal.Status == http.StatusNotFound {
+		return nil, fmt.Errorf("the directory does not list you, so there is no family to measure from")
 	}
-	if len(parts) >= 3 {
-		return strings.TrimSpace(parts[len(parts)-2])
+	if err != nil {
+		return nil, err
 	}
-	return strings.TrimSpace(parts[len(parts)-1])
-}
-
-func milesBetween(a, b model.Family) float64 {
-	const earth = 3958.8
-	lat1, lat2 := a.Lat*math.Pi/180, b.Lat*math.Pi/180
-	dLat, dLng := lat2-lat1, (b.Lng-a.Lng)*math.Pi/180
-	h := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(lat1)*math.Cos(lat2)*math.Sin(dLng/2)*math.Sin(dLng/2)
-	return 2 * earth * math.Asin(math.Sqrt(h))
-}
-
-func (v *viewer) nearbyCard(key string, family model.Family) nearbyCard {
-	c := nearbyCard{Name: family.Name, City: cityOf(family.Address), Adults: []string{}, Students: []string{}, Link: whoBase + model.FamilyPath(key)}
-	adults, kids := v.directory.Members(key)
-	for _, p := range adults {
-		c.Adults = append(c.Adults, p.FullName)
+	key := env.Result.(map[string]any)["me"].(string)
+	var families []string
+	if err := json.Unmarshal(env.Resources["people"][key]["families"], &families); err != nil {
+		return nil, err
 	}
-	for _, p := range kids {
-		c.Students = append(c.Students, p.FullName+" ("+placeWords(v, p)+")")
-	}
-	return c
-}
-
-func (v *viewer) familyMatches(family model.Family, classroom, grade string) bool {
-	if classroom == "" && grade == "" {
-		return true
-	}
-	_, kids := v.directory.Members(family.Key)
-	for _, p := range kids {
-		if (classroom == "" || strings.EqualFold(p.Classroom, classroom)) && (grade == "" || contains(p.Grade, grade)) {
-			return true
-		}
-	}
-	return false
+	return families, nil
 }
 
 var nearbyFamilies = tool{
 	name:        "nearby_families",
-	description: "Families who live near a family - the viewer's own unless another is named - nearest first, by straight-line distance between the addresses families share in Helios Who?, as its map shows them: for carpools, walking groups and playdates. Each comes with its adults, its students' grades and classrooms, and its city. Narrow them to a classroom or a grade. A family that shares only its city has no distance and is listed apart when it is in the same city; a family that shares no address is never listed.",
+	description: "Families who live near a family - the viewer's own unless another is named - nearest first, by straight-line distance between the street addresses families share in Helios Who?, as its map shows them: for carpools, walking groups and playdates. Each comes with milesAway, its address as shared, its adults and its students' grades and classrooms. Narrow them to a classroom, a grade or a distance. A family that shares no street address is never listed.",
 	words:       "Looking for families nearby",
 	properties: map[string]any{
 		"name":         str("Words of a member's name or the family's name, to measure from a family other than the viewer's."),
@@ -78,7 +41,7 @@ var nearbyFamilies = tool{
 		"within_miles": map[string]any{"type": "number", "description": "Only families within this many miles."},
 		"limit":        integer("How many families to return, 10 unless said, 30 at most."),
 	},
-	run: func(v *viewer, input json.RawMessage) (any, error) {
+	run: func(t *turn, input json.RawMessage) (any, error) {
 		in, err := decodeInput[struct {
 			Name, Classroom, Grade string
 			WithinMiles            float64 `json:"within_miles"`
@@ -87,64 +50,40 @@ var nearbyFamilies = tool{
 		if err != nil {
 			return nil, err
 		}
-		keys := v.directory.FamilyKeysOf(v.email)
-		if strings.TrimSpace(in.Name) != "" {
-			keys = v.familyKeys("", in.Name)
+		candidates := []string{}
+		if in.Name != "" {
+			env, err := t.read(map[string]string{"families": collection("families", params("q", in.Name))})
+			if err != nil {
+				return nil, err
+			}
+			candidates = env.Result.(map[string]any)["families"].([]string)
+		} else if candidates, err = t.ownFamilies(); err != nil {
+			return nil, err
 		}
-		if len(keys) == 0 {
+		if len(candidates) == 0 {
 			return nil, fmt.Errorf("no family in the directory matches that")
 		}
-		from, fromKey, city := model.Family{}, "", ""
-		for _, key := range keys {
-			family := v.directory.Families[key]
-			if family.Address == "" {
-				continue
-			}
-			if city == "" {
-				city = cityOf(family.Address)
-			}
-			if streetAddress.MatchString(family.Address) && family.Lat != 0 {
-				from, fromKey, city = family, key, cityOf(family.Address)
-				break
-			}
+		within := ""
+		if in.WithinMiles > 0 {
+			within = strconv.FormatFloat(in.WithinMiles, 'f', -1, 64)
 		}
-		if city == "" {
-			return nil, fmt.Errorf("that family shares no address in Helios Who?, so there is nothing to measure from")
-		}
-		classroom, grade := strings.TrimSpace(in.Classroom), strings.TrimSpace(in.Grade)
-		near, sameCity := []nearbyCard{}, []nearbyCard{}
-		for key, family := range v.directory.Families {
-			if slices.Contains(keys, key) || family.Address == "" || !v.familyMatches(family, classroom, grade) {
-				continue
-			}
-			if !streetAddress.MatchString(family.Address) || family.Lat == 0 || fromKey == "" {
-				if strings.EqualFold(cityOf(family.Address), city) {
-					sameCity = append(sameCity, v.nearbyCard(key, family))
-				}
-				continue
-			}
-			c := v.nearbyCard(key, family)
-			c.Miles = math.Round(milesBetween(from, family)*10) / 10
-			if in.WithinMiles > 0 && c.Miles > in.WithinMiles {
-				continue
-			}
-			near = append(near, c)
-		}
-		sort.Slice(near, func(i, j int) bool {
-			if near[i].Miles != near[j].Miles {
-				return near[i].Miles < near[j].Miles
-			}
-			return near[i].Name < near[j].Name
-		})
-		sort.Slice(sameCity, func(i, j int) bool { return sameCity[i].Name < sameCity[j].Name })
 		limit := limitOf(in.Limit, 10, 30)
-		out := map[string]any{
-			"from": map[string]string{"city": city}, "families": near[:min(limit, len(near))], "sameCityNoDistance": sameCity[:min(limit, len(sameCity))],
-			"note": "Distances are straight lines between the addresses families share, not driving routes.",
+		for _, from := range candidates {
+			v := params("near", from, "within", within, "classroom", in.Classroom, "grade", in.Grade, "include", familyIncludes, "limit", shown(limit))
+			out, err := t.ask(
+				query{name: "families", path: collection("families", v), fields: fields(nearbyFields), scoreAs: "milesAway", limit: limit},
+				query{name: "from", path: one("families", from, params()), fields: fields("name")},
+			)
+			var refusal *access.Refusal
+			if errors.As(err, &refusal) && refusal.Status == http.StatusBadRequest {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			out["note"] = "Distances are straight lines between the addresses families share, not driving routes."
+			return out, nil
 		}
-		if fromKey != "" {
-			out["from"] = map[string]string{"family": from.Name, "city": city}
-		}
-		return out, nil
+		return nil, fmt.Errorf("that family shares no street address in Helios Who?, so there is nothing to measure from")
 	},
 }

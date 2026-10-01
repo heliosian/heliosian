@@ -194,7 +194,6 @@ func NewCore(cfg Config) *Core {
 		About:     loopAbout,
 	})
 	askAbout := ask.About(appName("ask"), taglineOf("ask"))
-	ask.Register(askMux, ask.Sources{Store: models, Embedder: cfg.Embedder, Now: time.Now}, cfg.Asker, spend, cfg.ChatKey, askAbout)
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: model.HomePreviewHead(models, homeStyle)},
@@ -208,6 +207,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "ask", Title: "Helios Ask", Mux: askMux, Preview: askAbout.PreviewHead},
 	}
 	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin, documents, cfg.BrowserKey)
+	ask.Register(askMux, ask.Sources{Registry: registry, Now: time.Now}, cfg.Asker, spend, cfg.ChatKey, askAbout)
 	model.RegisterBirthdays(birthdayMux, model.BirthdaysDeps{
 		Store:     models,
 		Queue:     queue,

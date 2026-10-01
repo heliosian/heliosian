@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -257,6 +258,16 @@ func (a activitiesApp) volunteerResource(m *Model, q api.Query, raw *Activity, v
 
 type activityCheck func(m *Model, q api.Query, act *Activity) bool
 
+func activityWhere(keep func(m *Model, q api.Query, act *Activity, value string) bool) api.Filter[*Model] {
+	return func(m *Model, q api.Query, value string) (func(string) bool, error) {
+		value = strings.TrimSpace(value)
+		return func(key string) bool {
+			act := m.Activities.byID[key]
+			return act != nil && keep(m, q, act, value)
+		}, nil
+	}
+}
+
 func (a activitiesApp) onActivity(can activityCheck) func(*Model, api.Query, string) bool {
 	return func(m *Model, q api.Query, key string) bool {
 		act := a.visibleActivity(m, q, key)
@@ -424,6 +435,16 @@ func (a activitiesApp) activitiesType() api.Type[*Model] {
 				}
 				return out
 			}},
+			"category": {Type: "activity-categories", List: func(m *Model, q api.Query, key string) []string {
+				act := a.visibleActivity(m, q, key)
+				if act == nil {
+					return nil
+				}
+				if c := m.Activities.categories[act.Category]; c == nil || c.BuiltIn {
+					return nil
+				}
+				return []string{act.Category}
+			}},
 			"event": {Type: "events", List: func(m *Model, q api.Query, key string) []string {
 				act := a.visibleActivity(m, q, key)
 				if act == nil {
@@ -435,6 +456,37 @@ func (a activitiesApp) activitiesType() api.Type[*Model] {
 				}
 				return []string{eventID}
 			}},
+		},
+		Filters: map[string]api.Filter[*Model]{
+			"q": activityWhere(func(_ *Model, _ api.Query, act *Activity, value string) bool {
+				return mentions(value, act.Title, act.Description)
+			}),
+			"year": activityWhere(func(_ *Model, q api.Query, act *Activity, value string) bool {
+				if value == "current" {
+					value = ActivityYear(q.Now)
+				}
+				return act.Year == value
+			}),
+			"past": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+				want, err := strconv.ParseBool(value)
+				if err != nil {
+					return nil, access.Invalid("past takes true or false")
+				}
+				return activityWhere(func(m *Model, q api.Query, act *Activity, _ string) bool {
+					return pastActivity(m.Activities, act, q.Now) == want
+				})(m, q, value)
+			},
+			"under": func(m *Model, q api.Query, value string) (func(string) bool, error) {
+				root := m.Activities.byID[strings.TrimSpace(value)]
+				if root == nil {
+					return nil, access.Missing("no activity %s", value)
+				}
+				below := map[string]bool{}
+				for _, d := range root.Descendants() {
+					below[d.ID] = true
+				}
+				return func(key string) bool { return below[key] }, nil
+			},
 		},
 		Create: api.Make(func(wr api.Write[*Model], patch activityPatch) (string, error) {
 			return a.create(wr, patch)

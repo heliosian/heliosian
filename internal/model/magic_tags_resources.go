@@ -16,6 +16,8 @@ type magicTagResource struct {
 	Slug     string  `json:"slug,omitempty"`
 	Archived bool    `json:"archived"`
 	Guests   []Guest `json:"guests"`
+	Path     string  `json:"path"`
+	App      string  `json:"app"`
 }
 
 func (m *Model) magicTagID(key string) string {
@@ -84,7 +86,7 @@ func MagicTagResources() []api.Type[*Model] {
 			if !ok {
 				return nil, false
 			}
-			return magicTagResource{Key: t.Key, Name: t.Name, Kind: t.Kind, Slug: t.Slug, Archived: t.Archived, Guests: t.Guests}, true
+			return magicTagResource{Key: t.Key, Name: t.Name, Kind: t.Kind, Slug: t.Slug, Archived: t.Archived, Guests: t.Guests, Path: ListPath(t.Key), App: whoHost}, true
 		},
 		List: func(m *Model, q api.Query) []string {
 			order, _ := m.heldTags(q)

@@ -1,7 +1,9 @@
 package ask
 
 import (
+	"encoding/json"
 	"strings"
+	"time"
 
 	"heliosian/internal/model"
 )
@@ -15,63 +17,56 @@ type linkCard struct {
 	Color string `json:"color,omitempty"`
 }
 
-func (v *viewer) linkCard(address string) (linkCard, bool) {
-	switch {
-	case strings.HasPrefix(address, whoBase+"/"):
-		for i := range v.directory.People {
-			p := &v.directory.People[i]
-			if whoLink(p.Email) == address {
-				return linkCard{URL: address, Kind: "person", Name: p.FullName, Image: v.directory.HeroPhoto(p.Email)}, true
-			}
-		}
-		for key, family := range v.directory.Families {
-			if whoBase+model.FamilyPath(key) == address {
-				return linkCard{URL: address, Kind: "family", Name: family.Name, Image: family.PhotoURL}, true
-			}
-		}
-		for _, c := range v.directory.Classrooms {
-			if whoBase+model.ClassroomPath(c.Name) == address {
-				card := linkCard{URL: address, Kind: "classroom", Name: c.Name, Color: v.all.Config.ClassroomColors[c.Name]}
-				if c.ImageURL != "" {
-					card.Image = whoBase + c.ImageURL
-				}
-				return card, true
-			}
-		}
-	case strings.HasPrefix(address, whenBase+"/"):
-		for _, e := range v.calendar.EventsFor(v.whenAs, v.directory, v.linked()) {
-			if eventLink(e) != address {
-				continue
-			}
-			return linkCard{URL: address, Kind: "event", Name: e.Title, Badge: e.StartTime().Format("Mon Jan 2")}, true
-		}
-	case strings.HasPrefix(address, loopBase+"/"):
-		sources := v.audience()
-		for _, g := range v.loop.Groups {
-			if loopBase+g.Path() == address && g.VisibleTo(v.loopAs, sources) {
-				return linkCard{URL: address, Kind: "group", Name: g.Title}, true
-			}
-		}
-	case strings.HasPrefix(address, teamBase+"/"):
-		a := v.team.Resolve(strings.TrimPrefix(address, teamBase))
-		if a == nil || !v.team.VisibleTo(a, v.teamAs) {
-			return linkCard{}, false
-		}
-		c := linkCard{URL: address, Kind: "activity", Name: a.Title}
-		if a.ImageURL != "" {
-			c.Image = teamBase + a.ImageURL
-		}
-		return c, true
-	case strings.HasPrefix(address, celebrateBase+"/"):
-		p := v.celebrate.Resolve(strings.TrimPrefix(address, celebrateBase))
-		if p == nil || !p.VisibleTo(v.partyAs) {
-			return linkCard{}, false
-		}
-		c := linkCard{URL: address, Kind: "party", Name: p.Title}
-		if p.ImageURL != "" {
-			c.Image = celebrateBase + p.ImageURL
-		}
-		return c, true
+var cardKinds = map[string]struct{ kind, name, image string }{
+	"people":      {"person", "fullName", "heroPhotoUrl"},
+	"families":    {"family", "name", "photoUrl"},
+	"classrooms":  {"classroom", "name", "imageUrl"},
+	"events":      {"event", "title", ""},
+	"email-lists": {"group", "title", ""},
+	"activities":  {"activity", "title", "imageUrl"},
+	"parties":     {"party", "title", "imageUrl"},
+}
+
+func (t *turn) linkCard(address string) (linkCard, bool) {
+	r, ok := t.found.of(address)
+	if !ok {
+		return linkCard{}, false
 	}
-	return linkCard{}, false
+	shape, ok := cardKinds[r.typ]
+	if !ok {
+		return linkCard{}, false
+	}
+	paths := map[string]string{"it": one(r.typ, r.id, params())}
+	if r.typ == "classrooms" {
+		paths["settings"] = collection("when-settings", params())
+	}
+	env, err := t.read(paths)
+	if err != nil {
+		return linkCard{}, false
+	}
+	obj := env.Resources[r.typ][r.id]
+	card := linkCard{URL: address, Kind: shape.kind, Name: text(obj, shape.name)}
+	if shape.image != "" {
+		card.Image = text(obj, shape.image)
+		if strings.HasPrefix(card.Image, "/") {
+			card.Image = appURL(text(obj, "app"), card.Image)
+		}
+	}
+	if start := text(obj, "start"); r.typ == "events" && len(start) >= len(model.DateFormat) {
+		day, err := time.ParseInLocation(model.DateFormat, start[:len(model.DateFormat)], model.Location)
+		if err != nil {
+			panic(err)
+		}
+		card.Badge = day.Format("Mon Jan 2")
+	}
+	if r.typ == "classrooms" {
+		for _, settings := range env.Resources["when-settings"] {
+			colors := map[string]string{}
+			if err := json.Unmarshal(settings["colors"], &colors); err != nil {
+				panic(err)
+			}
+			card.Color = colors[card.Name]
+		}
+	}
+	return card, true
 }

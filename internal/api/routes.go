@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"heliosian/internal/access"
@@ -55,9 +54,12 @@ func (reg *Registry[S]) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/{type}/{id}", serve.JSON(reg.act))
 }
 
+func (reg *Registry[S]) Actor(r *http.Request) access.Actor {
+	return reg.config.Actor(r, reg.current.Load().s)
+}
+
 func (reg *Registry[S]) me(r *http.Request, _ serve.None) (me, error) {
-	w := reg.current.Load()
-	actor := reg.config.Actor(r, w.s)
+	actor := reg.Actor(r)
 	out := me{Email: actor.Email, Allowances: []string{}}
 	for _, a := range reg.config.Held(actor.Email) {
 		out.Allowances = append(out.Allowances, a.Name)
@@ -65,32 +67,22 @@ func (reg *Registry[S]) me(r *http.Request, _ serve.None) (me, error) {
 	return out, nil
 }
 
-func (reg *Registry[S]) get(r *http.Request, _ serve.None) (envelope, error) {
+func (reg *Registry[S]) get(r *http.Request, _ serve.None) (Envelope, error) {
 	w := reg.current.Load()
 	rd := reg.reader(w, reg.query(r, w))
 	result, err := rd.read(r.URL)
 	if err != nil {
-		return envelope{}, err
+		return Envelope{}, err
 	}
 	return rd.envelope(result), nil
 }
 
-func (reg *Registry[S]) batch(r *http.Request, entries map[string]entry) (envelope, error) {
-	w := reg.current.Load()
-	rd := reg.reader(w, reg.query(r, w))
-	result := map[string]any{}
+func (reg *Registry[S]) batch(r *http.Request, entries map[string]entry) (Envelope, error) {
+	paths := map[string]string{}
 	for name, e := range entries {
-		target, err := url.Parse(e.Path)
-		if err != nil {
-			return envelope{}, access.Invalid("%s: %v", name, err)
-		}
-		out, err := rd.read(target)
-		if err != nil {
-			return envelope{}, named(name, err)
-		}
-		result[name] = out
+		paths[name] = e.Path
 	}
-	return rd.envelope(result), nil
+	return reg.Read(r, paths)
 }
 
 func named(name string, err error) error {

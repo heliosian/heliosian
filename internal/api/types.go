@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"reflect"
@@ -11,8 +12,9 @@ import (
 )
 
 type Query struct {
-	Actor access.Actor
-	Now   time.Time
+	Actor   access.Actor
+	Now     time.Time
+	Context context.Context
 }
 
 type Write[S any] struct {
@@ -44,9 +46,17 @@ type Type[S any] struct {
 	Aliases   func(s S) map[string]string
 	Relations map[string]Relation[S]
 	Filters   map[string]Filter[S]
+	Rankers   map[string]Ranker[S]
 	Actions   map[string]Action[S]
 	Create    Maker[S]
 }
+
+type Hit struct {
+	ID    string  `json:"id"`
+	Score float64 `json:"score"`
+}
+
+type Ranker[S any] func(s S, q Query, value string, keep func(id string) bool) ([]Hit, error)
 
 type Relation[S any] struct {
 	Type string

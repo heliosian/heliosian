@@ -19,8 +19,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 
-	"heliosian/internal/artifacts"
-	"heliosian/internal/auth"
+	"heliosian/internal/api"
 	"heliosian/internal/model"
 	"heliosian/internal/ratelimit"
 	"heliosian/internal/serve"
@@ -38,8 +37,7 @@ const (
 )
 
 type Sources struct {
-	Store    *model.Store
-	Embedder *artifacts.Vertex
+	Registry *api.Registry[*model.Model]
 	Now      func() time.Time
 }
 
@@ -63,8 +61,12 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, shell)
 }
 
+func (a app) turn(r *http.Request) *turn {
+	return &turn{reg: a.sources.Registry, r: r, clock: a.sources.Now, found: newFound()}
+}
+
 func (a app) who(r *http.Request) string {
-	return a.sources.Store.Model().Directory.Resolve(strings.ToLower(auth.Email(r)))
+	return a.sources.Registry.Actor(r).Email
 }
 
 type user struct {
@@ -81,14 +83,22 @@ type modelView struct {
 }
 
 func (a app) model(r *http.Request, _ serve.None) (modelView, error) {
+	t := a.turn(r)
 	email := a.who(r)
-	v := a.viewer(email)
-	u := user{Email: email, Name: v.name(email), Initial: strings.ToUpper(email[:1])}
-	if u.Name != "" {
-		u.Initial = strings.ToUpper(u.Name[:1])
+	p, err := t.viewer()
+	if err != nil {
+		return modelView{}, err
 	}
-	u.PhotoURL = v.directory.HeroPhoto(email)
-	return modelView{User: u, Starters: v.starters(), MaxTurns: maxTurns}, nil
+	u := user{Email: email, Name: s(p, "fullName"), Initial: strings.ToUpper(email[:1]), PhotoURL: s(p, "heroPhotoUrl")}
+	if u.Name == "" {
+		u.Name, _, _ = strings.Cut(email, "@")
+	}
+	u.Initial = strings.ToUpper(u.Name[:1])
+	starters, err := t.starters()
+	if err != nil {
+		return modelView{}, err
+	}
+	return modelView{User: u, Starters: starters, MaxTurns: maxTurns}, nil
 }
 
 func (a app) key(w http.ResponseWriter, r *http.Request) {
@@ -129,29 +139,43 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "that's a lot of questions for one hour; try again a little later", http.StatusTooManyRequests)
 		return
 	}
-	v := a.viewer(email)
-	recent := recentDocuments(v)
+	t := a.turn(r)
+	recent, err := t.recentDocuments()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	known := map[string]bool{}
 	for _, key := range body.Known {
 		known[key] = true
 	}
 	if len(history) == 0 {
 		for _, d := range recent {
-			known[d.Key] = true
+			known[s(d, "id")] = true
 		}
 	}
-	fresh := []*model.Document{}
+	fresh := []document{}
 	for _, d := range recent {
-		if !known[d.Key] {
+		if !known[s(d, "id")] {
 			fresh = append(fresh, d)
-			known[d.Key] = true
 		}
 	}
-	listed := []*model.Document{}
-	for _, d := range v.documents().Documents {
-		if known[d.Key] && !slices.Contains(fresh, d) {
-			listed = append(listed, d)
+	told := []string{}
+	for key := range known {
+		if !slices.ContainsFunc(fresh, func(d document) bool { return s(d, "id") == key }) {
+			told = append(told, key)
 		}
+	}
+	listed, err := t.documentsKnown(told)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	slices.SortStableFunc(listed, func(x, y document) int { return strings.Compare(s(y, "date"), s(x, "date")) })
+	system, err := systemBlocks(t, listed, links)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	controller := http.NewResponseController(w)
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -172,14 +196,14 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	messages := append(history, anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(links.shorten(message))))
 	if len(fresh) > 0 {
-		messages = append(messages, anthropic.BetaMessageParam{Role: anthropic.BetaMessageParamRoleSystem, Content: []anthropic.BetaContentBlockParamUnion{anthropic.NewBetaTextBlock(links.shorten(arrivals(v, fresh)))}})
+		messages = append(messages, anthropic.BetaMessageParam{Role: anthropic.BetaMessageParamRoleSystem, Content: []anthropic.BetaContentBlockParamUnion{anthropic.NewBetaTextBlock(links.shorten(arrivals(t, fresh)))}})
 	}
 	req := Request{
-		System:   systemBlocks(v, listed, links),
+		System:   system,
 		Messages: messages,
 		Tools:    definitions(),
 		Run: func(ctx context.Context, name string, input json.RawMessage) (string, error) {
-			out, err := v.run(ctx, name, links.expandInput(input))
+			out, err := t.run(ctx, name, links.expandInput(input))
 			if err != nil {
 				return "", errors.New(links.shorten(err.Error()))
 			}
@@ -188,7 +212,7 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 		Label: label,
 	}
 	started := time.Now()
-	out := &expander{links: links, emit: emit, cards: v.linkCard, sent: map[string]bool{}}
+	out := &expander{links: links, emit: emit, cards: t.linkCard, sent: map[string]bool{}}
 	reply, err := a.claude.Respond(ctx, req, out.send)
 	out.flush()
 	if err != nil && r.Context().Err() != nil {
@@ -202,10 +226,8 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	turns := asked(history) + 1
 	keys := []string{}
-	for _, d := range v.documents().Documents {
-		if known[d.Key] {
-			keys = append(keys, d.Key)
-		}
+	for _, d := range slices.Concat(listed, fresh) {
+		keys = append(keys, s(d, "id"))
 	}
 	slog.InfoContext(r.Context(), "ask: answered", "conversation", body.Conversation, "turn", turns, "rounds", reply.Usage.Rounds, "tools", len(reply.Tools), "new_documents", len(fresh),
 		"input_tokens", reply.Usage.Input, "cached_tokens", reply.Usage.Cached, "output_tokens", reply.Usage.Output, "took", time.Since(started).Round(time.Millisecond))

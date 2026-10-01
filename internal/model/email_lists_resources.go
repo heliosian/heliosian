@@ -301,6 +301,14 @@ func (r emailListResources) emailLists() api.Type[*Model] {
 			}
 			return out
 		},
+		Filters: map[string]api.Filter[*Model]{
+			"q": func(m *Model, _ api.Query, value string) (func(string) bool, error) {
+				return func(key string) bool {
+					g := m.EmailLists.Group(key)
+					return g != nil && mentions(value, g.Title, g.Name, g.Description)
+				}, nil
+			},
+		},
 		Create: api.Make(func(wr api.Write[*Model], in EmailList) (string, error) {
 			in.ID = ""
 			ops, g, _, err := wr.S.EmailLists.SaveGroup(wr.Query.Actor, wr.S.listSources(), in, wr.Taken)

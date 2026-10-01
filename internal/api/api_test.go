@@ -98,6 +98,24 @@ func registry(w *fake) *Registry[*fake] {
 			return p, ok && !p.Hidden
 		},
 		List: func(s *fake, _ Query) []string { return sortedKeys(s.people) },
+		Rankers: map[string]Ranker[*fake]{
+			"reversed": func(s *fake, _ Query, _ string, keep func(string) bool) ([]Hit, error) {
+				keys := sortedKeys(s.people)
+				slices.Reverse(keys)
+				hits := []Hit{}
+				for i, key := range keys {
+					if keep(key) {
+						hits = append(hits, Hit{ID: key, Score: float64(i + 1)})
+					}
+				}
+				return hits, nil
+			},
+		},
+		Filters: map[string]Filter[*fake]{
+			"not": func(_ *fake, _ Query, value string) (func(string) bool, error) {
+				return func(key string) bool { return key != value }, nil
+			},
+		},
 	})
 	reg.Add(Type[*fake]{
 		Name:    "groups",
@@ -191,6 +209,69 @@ func ids(t *testing.T, raw json.RawMessage) []string {
 		t.Fatalf("result %s: %v", raw, err)
 	}
 	return out
+}
+
+func TestARankerOrdersAndScoresWhatTheViewerMaySee(t *testing.T) {
+	code, out := call(t, registry(sample()), "GET", "/api/people?reversed=x", "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	var hits []Hit
+	if err := json.Unmarshal(out.Result, &hits); err != nil {
+		t.Fatal(err)
+	}
+	if want := []Hit{{ID: bob, Score: 2}, {ID: ann, Score: 3}}; !reflect.DeepEqual(hits, want) {
+		t.Fatalf("hits %v, want %v", hits, want)
+	}
+}
+
+func TestLimitKeepsTheFirstAfterRankingAndFilters(t *testing.T) {
+	reg := registry(sample())
+	code, out := call(t, reg, "GET", "/api/people?limit=1", "", nil)
+	if code != http.StatusOK || !slices.Equal(ids(t, out.Result), []string{ann}) {
+		t.Fatalf("status %d, result %s", code, out.Result)
+	}
+	code, out = call(t, reg, "GET", "/api/people?reversed=x&limit=1", "", nil)
+	var hits []Hit
+	if code != http.StatusOK || json.Unmarshal(out.Result, &hits) != nil || !reflect.DeepEqual(hits, []Hit{{ID: bob, Score: 2}}) {
+		t.Fatalf("status %d, result %s", code, out.Result)
+	}
+	code, out = call(t, reg, "GET", "/api/people?reversed=x&not="+bob+"&limit=1", "", nil)
+	if code != http.StatusOK || json.Unmarshal(out.Result, &hits) != nil || !reflect.DeepEqual(hits, []Hit{{ID: ann, Score: 3}}) {
+		t.Fatalf("status %d, result %s", code, out.Result)
+	}
+	code, out = call(t, reg, "GET", "/api/groups?member="+bob+"&limit=1", "", nil)
+	if code != http.StatusOK || !slices.Equal(ids(t, out.Result), []string{chess}) {
+		t.Fatalf("status %d, result %s", code, out.Result)
+	}
+	for _, path := range []string{"/api/people?limit=-1", "/api/people?limit=x", "/api/people?reversed=a&reversed=b"} {
+		if code, _ := call(t, reg, "GET", path, "", nil); code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", path, code)
+		}
+	}
+}
+
+func TestReadAnswersTheBatchEnvelopeInProcess(t *testing.T) {
+	reg := registry(sample())
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("X-As", "ann@example.org")
+	out, err := reg.Read(req, map[string]string{"club": "/api/groups/chess-club?include=members"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := out.Result.(map[string]any)
+	if result["club"] != chess {
+		t.Fatalf("result %v", result)
+	}
+	if string(out.Resources["groups"][chess]["me"]) != `{"mine":true}` {
+		t.Fatalf("me %s", out.Resources["groups"][chess]["me"])
+	}
+	if _, ok := out.Resources["people"][cat]; ok || len(out.Resources["people"]) != 2 {
+		t.Fatalf("people %v", out.Resources["people"])
+	}
+	if _, err := reg.Read(req, map[string]string{"bad": "/api/nothing"}); err == nil {
+		t.Fatal("a read of no type answered")
+	}
 }
 
 func TestIncludesNameEachResourceOnceAndNeverReachHiddenOnes(t *testing.T) {

@@ -157,16 +157,21 @@ func (d *Document) normalize() error {
 }
 
 type Documents struct {
-	Documents []*Document
-	Fetched   int
-	Points    map[string][]string
-	Audience  map[string]string
-	Judged    map[string]string
+	Documents  []*Document
+	Fetched    int
+	Points     map[string][]string
+	Audience   map[string]string
+	Judged     map[string]string
+	ids        map[string]*Document
+	idOf       map[*Document]string
+	passages   map[string]documentPassage
+	passageIDs map[documentPassage]string
 }
 
 type documentObjects struct {
 	objects  *blob.Bucket
 	embedder *artifacts.Vertex
+	idKey    []byte
 	mu       sync.Mutex
 	held     map[string]*Document
 }
@@ -245,6 +250,7 @@ func (d *documentObjects) build(ctx context.Context, tables store.Tables) (*Docu
 	d.mu.Unlock()
 	m.Fetched = len(wanted)
 	m.sort()
+	m.index(d.idKey)
 	return m, nil
 }
 
@@ -310,40 +316,13 @@ func (m *Documents) Span() (oldest, newest string) {
 	return m.Documents[len(m.Documents)-1].Date, m.Documents[0].Date
 }
 
-func (m *Documents) Where(keep func(*Document) bool) *Documents {
-	out := &Documents{Documents: []*Document{}, Fetched: m.Fetched}
-	for _, d := range m.Documents {
-		if keep(d) {
-			out.Documents = append(out.Documents, d)
-		}
-	}
-	return out
-}
-
-func (m *Documents) Between(since, until string) *Documents {
-	if since == "" && until == "" {
-		return m
-	}
-	out := &Documents{Documents: []*Document{}}
-	for _, d := range m.Documents {
-		if since != "" && d.Date < since {
-			continue
-		}
-		if until != "" && d.Date > until {
-			continue
-		}
-		out.Documents = append(out.Documents, d)
-	}
-	return out
-}
-
 type DocumentHit struct {
 	Document *Document
 	Index    int
 	Score    float64
 }
 
-func (m *Documents) Search(vector []float32, query string, limit int) []DocumentHit {
+func (m *Documents) Search(vector []float32, query string, limit int, keep func(d *Document, chunk int) bool) []DocumentHit {
 	NormalizeVector(vector)
 	terms := []string{}
 	for _, t := range wordTokens(query) {
@@ -354,6 +333,9 @@ func (m *Documents) Search(vector []float32, query string, limit int) []Document
 	hits := []DocumentHit{}
 	for _, d := range m.Documents {
 		for i, c := range d.Chunks {
+			if !keep(d, i) {
+				continue
+			}
 			score := dotProduct(vector, c.Vector)
 			if len(terms) > 0 {
 				lower := strings.ToLower(c.Section + "\n" + c.Text)
