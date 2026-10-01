@@ -20,6 +20,13 @@ import (
 
 type counts struct {
 	things, uses, answers, report, reportBuilds int
+	consents, reportAtConsent                   int
+}
+
+func consent(m *counts) error {
+	m.consents++
+	m.reportAtConsent = m.report
+	return nil
 }
 
 type fixture struct {
@@ -92,7 +99,7 @@ func newFixture(t *testing.T) fixture {
 	write(t, root, "report", ChangeLogTab, strings.Join(ChangeLogColumns, ",")+"\n")
 	dir := &data.Dir{Root: root}
 	queue := NewQueue()
-	s, err := New([]Part[counts]{part()}, dir, dir, queue)
+	s, err := New([]Part[counts]{part()}, consent, dir, dir, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +215,7 @@ func TestAnotherSheetsTabIsReadNotWritten(t *testing.T) {
 		m.answers = len(tables["Answers"])
 		return nil
 	}
-	s, err := New([]Part[counts]{withAnswers}, f.dir, f.dir, f.queue)
+	s, err := New([]Part[counts]{withAnswers}, consent, f.dir, f.dir, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +374,7 @@ func TestATransactionCommitsEveryStageOrNone(t *testing.T) {
 func reportFixture(t *testing.T) (fixture, *Store[counts]) {
 	t.Helper()
 	f := newFixture(t)
-	s, err := New([]Part[counts]{reportPart(), part()}, f.dir, f.dir, f.queue)
+	s, err := New([]Part[counts]{reportPart(), part()}, consent, f.dir, f.dir, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,6 +403,37 @@ func TestAPartRebuildsWithWhatItReads(t *testing.T) {
 	}
 }
 
+func TestConsentRunsAfterEveryPart(t *testing.T) {
+	_, s := reportFixture(t)
+	if m := s.Model(); m.consents != 1 || m.reportAtConsent != 21 {
+		t.Fatalf("loaded %+v", *m)
+	}
+	if err := s.CommitAndWait(context.Background(), access.System("job"), "app", Insert("Things", Row{"Name": "cap"})); err != nil {
+		t.Fatal(err)
+	}
+	if m := s.Model(); m.consents != 2 || m.reportAtConsent != 31 {
+		t.Fatalf("after a change: %+v", *m)
+	}
+}
+
+func TestConsentThatRefusesRefusesTheWrite(t *testing.T) {
+	f := newFixture(t)
+	refusing := func(m *counts) error {
+		if m.things > 2 {
+			return errors.New("three things")
+		}
+		return nil
+	}
+	s, err := New([]Part[counts]{part()}, refusing, f.dir, f.dir, f.queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.CommitAndWait(context.Background(), access.System("job"), "app", Insert("Things", Row{"Name": "cap"}))
+	if err == nil || !strings.Contains(err.Error(), "consent: three things") {
+		t.Fatalf("a write the consent step refuses: %v", err)
+	}
+}
+
 func TestAPartThatRefusesRefusesTheWriteItReads(t *testing.T) {
 	f, s := reportFixture(t)
 	err := s.CommitAndWait(context.Background(), access.System("job"), "app", Insert("Things", Row{"Name": "cap"}), Insert("Things", Row{"Name": "sock"}))
@@ -409,12 +447,12 @@ func TestAPartThatRefusesRefusesTheWriteItReads(t *testing.T) {
 
 func TestPartsReadingNothingThereAreRefused(t *testing.T) {
 	f := newFixture(t)
-	if _, err := New([]Part[counts]{reportPart()}, f.dir, f.dir, f.queue); err == nil || !strings.Contains(err.Error(), "no part app") {
+	if _, err := New([]Part[counts]{reportPart()}, consent, f.dir, f.dir, f.queue); err == nil || !strings.Contains(err.Error(), "no part app") {
 		t.Fatalf("a part reading a missing part was taken: %v", err)
 	}
 	loop := part()
 	loop.Reads = []string{"report"}
-	if _, err := New([]Part[counts]{reportPart(), loop}, f.dir, f.dir, f.queue); err == nil || !strings.Contains(err.Error(), "reads itself") {
+	if _, err := New([]Part[counts]{reportPart(), loop}, consent, f.dir, f.dir, f.queue); err == nil || !strings.Contains(err.Error(), "reads itself") {
 		t.Fatalf("parts reading each other were taken: %v", err)
 	}
 }
@@ -452,7 +490,7 @@ func (w *countingWriter) Delete(app, table string, match map[string]string) erro
 func TestWritesToOneTabAreBatched(t *testing.T) {
 	f := newFixture(t)
 	writer := &countingWriter{Dir: f.dir}
-	s, err := New([]Part[counts]{part()}, f.dir, writer, f.queue)
+	s, err := New([]Part[counts]{part()}, consent, f.dir, writer, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -494,7 +532,7 @@ func (p pausedSource) Tabs(ctx context.Context, app string, tables, headers []st
 func TestACommitAbandonsTheRefresh(t *testing.T) {
 	f := newFixture(t)
 	paused := pausedSource{Dir: f.dir, pause: &atomic.Bool{}, reading: make(chan struct{}), release: make(chan struct{})}
-	other, err := New([]Part[counts]{part()}, paused, f.dir, f.queue)
+	other, err := New([]Part[counts]{part()}, consent, paused, f.dir, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}

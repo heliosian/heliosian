@@ -53,20 +53,16 @@ const policySource = `
            (and (= @g.members_visible "members")
                 (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))))))
 
-; @p is the viewer, a guest in one of the viewer's groups, or listed, not hidden and active
+; @p is the viewer, a guest in one of the viewer's groups, or anyone else not hidden and active; the consent step has already removed everyone unconsented
 (define (person_visible @p)
   (or (= @p @viewer)
       (and (= @p.source "guest")
            (exists MEMBER (in group (groups_of @viewer)) (= person @p)))
-      (and (= @p.consent "listed") (not @p.hidden) (blank @p.deactivated))))
+      (and (!= @p.source "guest") (not @p.hidden) (blank @p.deactivated))))
 
-; every adult of family @f shared their address in the opt-in form
-(define (shares_address @f)
-  (not (exists MEMBER (= group @f) (= role "lead") (!= person.address_consent "shared"))))
-
-; every adult of family @f shared their phone in the opt-in form
-(define (shares_phone @f)
-  (not (exists MEMBER (= group @f) (= role "lead") (!= person.phone_consent "shared"))))
+; the viewer is @p or a lead of @p's family
+(define (self_or_household @p)
+  (or (= @p @viewer) (in @p (household @viewer))))
 
 ; the viewer leads @g, or is in it and it is not hidden
 (define (sees_mail @g)
@@ -83,18 +79,16 @@ const policySource = `
 
 ; people the viewer may see
 (read PERSON (person_visible @row))
-; a person's phone, only when they shared it in the opt-in form
-(read PERSON.phone (= phone_consent "shared"))
-; a person's phone override, only when they shared their phone in the opt-in form
-(read PERSON.phone_override (= phone_consent "shared"))
-; a person's imported phone, only when they shared their phone in the opt-in form
-(read PERSON.vc_phone (= phone_consent "shared"))
+; whether the form shares a person's address, to them and their family's leads
+(read PERSON.address_consent (self_or_household @row))
+; whether the form shares a person's phone, to them and their family's leads
+(read PERSON.phone_consent (self_or_household @row))
 ; a person or a lead of their family overrides their long name
-(set PERSON.name_long_override (or (= @old @viewer) (in @old (household @viewer))))
+(set PERSON.name_long_override (self_or_household @old))
 ; a person or a lead of their family overrides their short name
-(set PERSON.name_short_override (or (= @old @viewer) (in @old (household @viewer))))
+(set PERSON.name_short_override (self_or_household @old))
 ; a person or a lead of their family overrides their sort name
-(set PERSON.name_sort_override (or (= @old @viewer) (in @old (household @viewer))))
+(set PERSON.name_sort_override (self_or_household @old))
 ; the emails of people the viewer may see
 (read PERSON_EMAIL (person_visible person))
 ; the photos of people the viewer may see
@@ -110,28 +104,19 @@ const policySource = `
 
 ; groups the viewer may see
 (read GROUP (visible @row))
-; a family's address, only when every adult shared theirs; any other group's
-(read GROUP.address (or (!= kind "family") (shares_address @row)))
-; a family's address override, as its address
-(read GROUP.address_override (or (!= kind "family") (shares_address @row)))
-; a family's imported address, as its address
-(read GROUP.vc_address (or (!= kind "family") (shares_address @row)))
-; a family's phone, only when every adult shared theirs; any other group's
-(read GROUP.phone (or (!= kind "family") (shares_phone @row)))
-; a family's phone override, as its phone
-(read GROUP.phone_override (or (!= kind "family") (shares_phone @row)))
-; a family's imported phone, as its phone
-(read GROUP.vc_phone (or (!= kind "family") (shares_phone @row)))
+; whether a family's adults all share their address, to its members
+(read GROUP.address_consent (exists MEMBER (= group @row) (= person @viewer)))
+; whether a family's adults all share their phone, to its members
+(read GROUP.phone_consent (exists MEMBER (= group @row) (= person @viewer)))
 ; where the calendar groups the viewer may see came from
 (read GROUP_SOURCE (visible group))
 ; the categories of groups the viewer may see
 (read GROUP_CATEGORY (visible group))
 ; the rules of groups the viewer leads
 (read RULE (leads group))
-; the viewer's own, household's and guests' memberships, groups they lead, visible groups' leads, and members where shown
+; the viewer's own, household's and guests' memberships, those in groups they lead, visible groups' leads, and members where shown
 (read MEMBER
-  (or (= person @viewer)
-      (in person (household @viewer))
+  (or (self_or_household person)
       (= guest_of @viewer)
       (leads group)
       (and (= role "lead") (visible group))
@@ -142,15 +127,13 @@ const policySource = `
 (read MEMBER.purchase_id (or (= person @viewer) (= guest_of @viewer) (leads group)))
 ; a person, their family's lead or their host answers an invitation; the group's leads set any status
 (set MEMBER.status
-  (or (and (or (= @old.person @viewer)
-               (in @old.person (household @viewer))
+  (or (and (or (self_or_household @old.person)
                (= @old.guest_of @viewer))
            (in @new.status "yes" "maybe" "no" "cancelled"))
       (leads @old.group)))
 ; the viewer's own and household's effective memberships, and members of groups that show them
 (read EFFECTIVE_MEMBER
-  (or (= person @viewer)
-      (in person (household @viewer))
+  (or (self_or_household person)
       (sees_members group)))
 
 ; documents sent to no list, or to a list whose mail the viewer sees
@@ -187,9 +170,9 @@ const policySource = `
 (read WIDGET
   (or (blank visible_to)
       (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))))
-; the coordinates of a family address the viewer may see
+; the coordinates of a family address the viewer may see; a withheld address is blank, so it matches nothing
 (read GEOCODE
-  (exists GROUP @f (= kind "family") (= address @row.address) (visible @f) (shares_address @f)))
+  (exists GROUP @f (= kind "family") (= address @row.address) (visible @f)))
 ; the invite list services
 (read INVITE_SERVICE true)
 ; the invite list templates
@@ -199,7 +182,7 @@ const policySource = `
 
 ;; Who? admins
 
-; every person, hidden, withheld or deactivated
+; every person, hidden or deactivated too
 (read PERSON (admin_of "who"))
 ; override anyone's long name
 (set PERSON.name_long_override (admin_of "who"))
@@ -328,10 +311,8 @@ const policySource = `
 
 ;; System: import
 
-; every person, to match the Veracross export against
+; every person, withheld too, to match the Veracross export against
 (read PERSON (system "import"))
-; every imported phone, shared or not, to compare with the export
-(read PERSON.vc_phone (system "import"))
 ; add a Veracross person new in the export
 (insert PERSON (and (system "import") (= @new.source "veracross")))
 ; a person's name as Veracross has it
@@ -380,12 +361,8 @@ const policySource = `
 (read PERSON_PHOTO (system "import"))
 ; add a portrait from the website
 (insert PERSON_PHOTO (system "import"))
-; every directory group the import keeps
+; every directory group the import keeps, withheld families too
 (read GROUP (and (system "import") (in kind "family" "role" "classroom" "crew" "grade" "band")))
-; every family's imported address, shared or not, to compare with the export
-(read GROUP.vc_address (and (system "import") (= kind "family")))
-; every family's imported phone, shared or not, to compare with the export
-(read GROUP.vc_phone (and (system "import") (= kind "family")))
 ; add a family, role, classroom, crew, grade or band new in the export
 (insert GROUP (and (system "import") (in @new.kind "family" "role" "classroom" "crew" "grade" "band")))
 ; a family's title built from its members' names
@@ -394,6 +371,12 @@ const policySource = `
 (set GROUP.vc_address (and (system "import") (= @old.kind "family")))
 ; a family's phone as Veracross has it
 (set GROUP.vc_phone (and (system "import") (= @old.kind "family")))
+; whether the form lists all of a family's adults
+(set GROUP.consent (and (system "import") (= @old.kind "family")))
+; whether the form shares all of a family's adults' addresses
+(set GROUP.address_consent (and (system "import") (= @old.kind "family")))
+; whether the form shares all of a family's adults' phones
+(set GROUP.phone_consent (and (system "import") (= @old.kind "family")))
 ; every family and role membership, to compare with the export
 (read MEMBER (and (system "import") (in group.kind "family" "role")))
 ; add a family or role membership new in the export
@@ -531,13 +514,19 @@ func (r *run) columnReadable(t *Table, row store.Row, column string) bool {
 }
 
 func (r *run) idReadable(id string) bool {
-	if !r.m.Has(id) {
+	table, ok := TableOf(id)
+	if !ok {
 		return false
 	}
-	table, _ := TableOf(id)
-	rows := r.m.Table(table)
-	row, _ := rows.Get(id)
-	return r.readable(rows.table, row)
+	if t, _ := Lookup(table); t.Generated {
+		return false
+	}
+	rows := r.table(table)
+	row, ok := rows.Get(id)
+	if !ok {
+		return false
+	}
+	return r.readable(rows.Table(), row)
 }
 
 func (r *run) cell(guarded bool, t *Table, row store.Row, c Column) value {

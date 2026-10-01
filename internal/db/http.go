@@ -59,7 +59,7 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, importKey []byte, 
 	key, bearer := auth.Bearer(r)
 	if !bearer {
 		email := auth.Email(r)
-		return Env{Viewer: m.PersonOf(email), Now: at}, access.Actor{Email: email}, true
+		return Env{Viewer: m.signedIn(email), Now: at}, access.Actor{Email: email}, true
 	}
 	if len(importKey) == 0 || subtle.ConstantTimeCompare([]byte(key), importKey) != 1 {
 		http.Error(w, "unknown key", http.StatusUnauthorized)
@@ -134,6 +134,14 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, media *blob.Stor
 
 func (m *Model) PersonOf(email string) string {
 	row, ok := m.Table("PERSON_EMAIL").Find(strings.ToLower(strings.TrimSpace(email)))
+	if !ok {
+		return ""
+	}
+	return row["person"]
+}
+
+func (m *Model) signedIn(email string) string {
+	row, ok := m.Shown("PERSON_EMAIL").Find(strings.ToLower(strings.TrimSpace(email)))
 	if !ok {
 		return ""
 	}

@@ -36,7 +36,7 @@ func fire(s *Store, tx *store.Tx, c Change, where string) error {
 				return access.Invalid("%s: %v", where, err)
 			}
 			for _, w := range writes {
-				_, c, err := stageWrite(s, tx, w, where, nil, unchecked)
+				_, c, err := stageWrite(s, tx, w, where, nil, true, unchecked)
 				if err != nil {
 					return err
 				}

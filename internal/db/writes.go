@@ -105,6 +105,7 @@ func resolve(text string, list bool, names map[string]string) (string, error) {
 
 func Write(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor, env Env, b Batch) ([]string, error) {
 	written := []string{}
+	whole := env.System == importReader
 	authorize := func(m *Model, c Change) error { return m.Authorize(env, c) }
 	names := map[string]string{}
 	_, err := queue.Transact(ctx, actor, func(tx *store.Tx) error {
@@ -118,7 +119,7 @@ func Write(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor
 					return access.Invalid("%s: the batch names two rows %s", where, w.As)
 				}
 			}
-			id, c, err := stageWrite(s, tx, w, where, names, authorize)
+			id, c, err := stageWrite(s, tx, w, where, names, whole, authorize)
 			if err != nil {
 				return err
 			}
@@ -138,7 +139,7 @@ func Write(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor
 	return written, nil
 }
 
-func stageWrite(s *Store, tx *store.Tx, w write, where string, names map[string]string, authorize func(*Model, Change) error) (string, Change, error) {
+func stageWrite(s *Store, tx *store.Tx, w write, where string, names map[string]string, whole bool, authorize func(*Model, Change) error) (string, Change, error) {
 	m := s.In(tx)
 	switch {
 	case w.Insert != "" && w.Set == "" && w.Delete == "" && w.Cells == nil:
@@ -159,6 +160,9 @@ func stageWrite(s *Store, tx *store.Tx, w write, where string, names map[string]
 		if err := t.Check(row); err != nil {
 			return "", Change{}, access.Invalid("%s: %v", where, err)
 		}
+		if err := m.referencesExist(t, row, where, whole); err != nil {
+			return "", Change{}, err
+		}
 		c := Change{Table: t.Name, New: row}
 		if err := authorize(m, c); err != nil {
 			return "", Change{}, err
@@ -169,12 +173,15 @@ func stageWrite(s *Store, tx *store.Tx, w write, where string, names map[string]
 		if err != nil {
 			return "", Change{}, access.Invalid("%s: %v", where, err)
 		}
-		t, old, err := m.existing(target, where)
+		t, old, err := m.existing(target, where, whole)
 		if err != nil {
 			return "", Change{}, err
 		}
 		set, err := cellsOf(t, w.Cells, where, names)
 		if err != nil {
+			return "", Change{}, err
+		}
+		if err := m.referencesExist(t, set, where, whole); err != nil {
 			return "", Change{}, err
 		}
 		updated := maps.Clone(old)
@@ -194,7 +201,7 @@ func stageWrite(s *Store, tx *store.Tx, w write, where string, names map[string]
 		if err != nil {
 			return "", Change{}, access.Invalid("%s: %v", where, err)
 		}
-		t, old, err := m.existing(target, where)
+		t, old, err := m.existing(target, where, whole)
 		if err != nil {
 			return "", Change{}, err
 		}
@@ -207,7 +214,7 @@ func stageWrite(s *Store, tx *store.Tx, w write, where string, names map[string]
 	return "", Change{}, access.Invalid("%s: a write is one of insert with row, set with cells, or delete", where)
 }
 
-func (m *Model) existing(id, where string) (*Table, store.Row, error) {
+func (m *Model) existing(id, where string, whole bool) (*Table, store.Row, error) {
 	table, ok := TableOf(strings.TrimSpace(id))
 	if !ok {
 		return nil, nil, access.Invalid("%s: %q is not an id", where, id)
@@ -215,10 +222,33 @@ func (m *Model) existing(id, where string) (*Table, store.Row, error) {
 	if t, _ := Lookup(table); t.Generated {
 		return nil, nil, access.Invalid("%s: %s is generated and can't be written", where, table)
 	}
-	rows := m.Table(table)
+	rows := m.view(table, whole)
 	row, ok := rows.Get(id)
 	if !ok {
 		return nil, nil, access.Missing("%s: no %s %s", where, table, id)
 	}
-	return rows.table, row, nil
+	return rows.Table(), row, nil
+}
+
+func (m *Model) referencesExist(t *Table, row store.Row, where string, whole bool) error {
+	for _, c := range t.Columns {
+		for _, id := range references(c, row[c.Name]) {
+			if !m.holds(id, whole) {
+				return access.Missing("%s: %s.%s names no row %s", where, t.Name, c.Name, id)
+			}
+		}
+	}
+	return nil
+}
+
+func (m *Model) holds(id string, whole bool) bool {
+	table, ok := TableOf(id)
+	if !ok {
+		return false
+	}
+	if t, _ := Lookup(table); t.Generated {
+		return false
+	}
+	_, ok = m.view(table, whole).Get(id)
+	return ok
 }

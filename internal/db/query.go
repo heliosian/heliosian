@@ -56,6 +56,7 @@ type frame struct {
 
 type run struct {
 	m       *Model
+	whole   bool
 	viewer  store.Row
 	system  string
 	now     time.Time
@@ -247,7 +248,7 @@ func (s *scan) candidates(f *frame) []store.Row {
 		if s.table.Generated {
 			return m.effectiveAll().rows
 		}
-		return m.Table(s.table.Name).All()
+		return f.run.table(s.table.Name).All()
 	}
 	v := s.probe.eval(f)
 	if v.blank {
@@ -259,7 +260,7 @@ func (s *scan) candidates(f *frame) []store.Row {
 		}
 		return m.effectiveAll().byPerson[v.s]
 	}
-	rows := m.Table(s.table.Name)
+	rows := f.run.table(s.table.Name)
 	if s.probeCol == "id" {
 		if row, ok := rows.Get(v.s); ok {
 			return []store.Row{row}
@@ -626,7 +627,7 @@ func (cx *compiler) set(s *sexp, sc *scope) (func(f *frame) []value, typ, error)
 			for id := v.s; id != "" && !seen[id]; {
 				seen[id] = true
 				out = append(out, value{kind: ID, s: id})
-				row, ok := f.run.m.Table("GROUP").Get(id)
+				row, ok := f.run.table("GROUP").Get(id)
 				if !ok {
 					break
 				}
@@ -883,12 +884,12 @@ func (cx *compiler) path(s *sexp, sc *scope) (operand, error) {
 			return value{kind: ID, s: row["id"]}
 		}
 		for _, c := range steps[:len(steps)-1] {
-			target := f.run.m.Table(c.Target)
+			target := f.run.table(c.Target)
 			next, ok := target.Get(row[c.Name])
-			if !ok || (guarded && !f.run.readable(target.table, next)) {
+			if !ok || (guarded && !f.run.readable(target.Table(), next)) {
 				return blankValue
 			}
-			row, t = next, target.table
+			row, t = next, target.Table()
 		}
 		return f.run.cell(guarded, t, row, steps[len(steps)-1])
 	}
@@ -938,11 +939,15 @@ func compileInclude(s *sexp, start *Table) (*pathSpec, error) {
 }
 
 func (m *Model) newRun(env Env) *run {
-	r := &run{m: m, system: env.System, now: wallClock(env.Now), rows: map[string]bool{}, columns: map[string]bool{}}
+	r := &run{m: m, whole: env.System == importReader, system: env.System, now: wallClock(env.Now), rows: map[string]bool{}, columns: map[string]bool{}}
 	if env.Viewer != "" {
-		r.viewer, _ = m.Table("PERSON").Get(env.Viewer)
+		r.viewer, _ = r.table("PERSON").Get(env.Viewer)
 	}
 	return r
+}
+
+func (r *run) table(name string) *View {
+	return r.m.view(name, r.whole)
 }
 
 func (m *Model) Run(q *Query, env Env) Result {
@@ -1022,14 +1027,14 @@ func (r *run) includePath(guarded bool, row store.Row, steps []Column, into map[
 		return
 	}
 	c := steps[0]
-	target := r.m.Table(c.Target)
+	target := r.table(c.Target)
 	for _, id := range cells.SplitList(row[c.Name]) {
 		next, ok := target.Get(id)
-		if !ok || (guarded && !r.readable(target.table, next)) {
+		if !ok || (guarded && !r.readable(target.Table(), next)) {
 			continue
 		}
 		if guarded {
-			next = r.redact(target.table, next)
+			next = r.redact(target.Table(), next)
 		}
 		if into[c.Target] == nil {
 			into[c.Target] = map[string]store.Row{}

@@ -90,6 +90,8 @@ func TestCommitsTheModelRefuses(t *testing.T) {
 		"bad enum":         {GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"status": "maybe"}), "not one of"},
 		"referenced alias": {ConfigSheet, store.Insert("ALIAS", store.Row{"id": "als00000000099", "alias": "old", "target": "doc99999999999"}), "names no row"},
 		"still named":      {PeopleSheet, store.Delete("PERSON", store.Row{"id": "per00000000004"}), "names no row"},
+		"private property": {GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000030", "order": "j", "kind": "include", "property": "vc_phone", "value": "555-0100"}), "is private"},
+		"guarded property": {GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000030", "order": "j", "kind": "include", "property": "phone_consent", "value": "shared"}), "the policies guard"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			err := commit(sample(t), c.sheet, c.op)

@@ -28,6 +28,11 @@ func consentOf(s *Store, person string) string {
 	return p["consent"] + " " + p["address_consent"] + " " + p["phone_consent"]
 }
 
+func familyConsent(s *Store) string {
+	g, _ := s.Model().Table("GROUP").Get("grp00000000020")
+	return g["consent"] + " " + g["address_consent"] + " " + g["phone_consent"]
+}
+
 func TestConsent(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	run := func(form *data.Dir) {
@@ -47,6 +52,9 @@ func TestConsent(t *testing.T) {
 			t.Errorf("with no responses, %s is %q, want %q", person, got, want)
 		}
 	}
+	if got := familyConsent(s); got != "withheld withheld withheld" {
+		t.Errorf("with no responses, the family is %q", got)
+	}
 
 	run(consentForm(t,
 		`8/18/2026 9:12:04,Rowan@Example.com,I agree to have family names and emails in the Helios Community Apps,Home Address (if provided on Veracross)`,
@@ -57,12 +65,18 @@ func TestConsent(t *testing.T) {
 			t.Errorf("after the family's opt-in through another email, %s is %q, want %q", person, got, want)
 		}
 	}
+	if got := familyConsent(s); got != "listed shared withheld" {
+		t.Errorf("after the family's opt-in, the family is %q", got)
+	}
 
 	run(consentForm(t,
 		`8/18/2026 9:12:04,rowan@example.com,I agree to have family names and emails in the Helios Community Apps,Home Address (if provided on Veracross)`,
 		`8/20/2026 9:12:04,rowan.ashdown@example.org,"Please remove all family names and emails from the Helios Community Apps. I understand that we will be unable to access the Helios Who directory, the volunteer portal and Spring Celebration fun(d)raiser events.",`))
 	if got := consentOf(s, student); got != "withheld withheld withheld" {
 		t.Errorf("after the family's later opt-out, the student is %q", got)
+	}
+	if got := familyConsent(s); got != "withheld withheld withheld" {
+		t.Errorf("after the family's later opt-out, the family is %q", got)
 	}
 	if p, _ := s.Model().Table("PERSON").Get(guest); p["consent"] != "" {
 		t.Errorf("a guest was given consent %q", p["consent"])

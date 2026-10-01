@@ -1,9 +1,11 @@
 package db
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	"heliosian/internal/access"
 	"heliosian/internal/store"
 )
 
@@ -97,13 +99,18 @@ func TestPhoneFollowsConsent(t *testing.T) {
 		if got := cellAs(t, s, viewer, maya, "phone"); got != "555-0300" {
 			t.Errorf("Maya's shared phone as %s = %q, want the override", viewer, got)
 		}
+		for _, column := range []string{"vc_phone", "phone_override"} {
+			if got := cellAs(t, s, viewer, maya, column); got != "" {
+				t.Errorf("Maya's %s as %s = %q, want only the generated phone", column, viewer, got)
+			}
+		}
 	}
 	if n := len(as(t, s, student, `(from PERSON (where (= phone "555-0100")))`)); n != 0 {
 		t.Fatal("a withheld phone matched a condition")
 	}
 }
 
-func TestFamilyAddressFollowsItsAdults(t *testing.T) {
+func TestFamilyAddressFollowsItsConsent(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000020"}, store.Row{"vc_address": "12 Oak St"})); err != nil {
 		t.Fatal(err)
@@ -112,7 +119,10 @@ func TestFamilyAddressFollowsItsAdults(t *testing.T) {
 	if got := cellAs(t, s, student, q, "address"); got != "12 Oak St" {
 		t.Fatalf("a shared address reads %q", got)
 	}
-	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": parent}, store.Row{"address_consent": "withheld"})); err != nil {
+	if got := cellAs(t, s, student, q, "vc_address"); got != "" {
+		t.Fatalf("the imported address behind a shared one reads %q", got)
+	}
+	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000020"}, store.Row{"address_consent": "withheld"})); err != nil {
 		t.Fatal(err)
 	}
 	for _, viewer := range []string{student, parent, staff} {
@@ -121,6 +131,139 @@ func TestFamilyAddressFollowsItsAdults(t *testing.T) {
 				t.Errorf("the withheld %s as %s = %q", column, viewer, got)
 			}
 		}
+	}
+}
+
+func TestWithheldPeopleVanish(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": student}, store.Row{"consent": "withheld"})); err != nil {
+		t.Fatal(err)
+	}
+	for _, viewer := range []string{nobody, student, parent, staff} {
+		for _, q := range []string{
+			`(from PERSON (where (= id "per00000000001")))`,
+			`(from MEMBER (where (= person "per00000000001")))`,
+			`(from EFFECTIVE_MEMBER (where (= person "per00000000001")))`,
+			`(from BIRTHDAY_YEAR (where (= person "per00000000001")))`,
+		} {
+			if n := len(as(t, s, viewer, q)); n != 0 {
+				t.Errorf("%s as %q: %d rows of the withheld student", q, viewer, n)
+			}
+		}
+	}
+	if n := len(as(t, s, staff, `(from MEMBER (where (= group "grp00000000010")))`)); n != 0 {
+		t.Errorf("the classroom still counts the withheld student: %d", n)
+	}
+	if _, ok := s.Model().Table("PERSON").Get(student); !ok {
+		t.Fatal("the model lost the withheld student the import still keeps")
+	}
+	for _, row := range s.Model().effectiveRows("grp00000000030") {
+		if row["person"] == parent {
+			t.Errorf("a rule reached the parent through the withheld student: %v", row)
+		}
+	}
+}
+
+func TestWithheldPersonSignsInAsNobody(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": parent}, store.Row{"consent": "withheld"})); err != nil {
+		t.Fatal(err)
+	}
+	m := s.Model()
+	if got := m.signedIn("rowan@example.com"); got != "" {
+		t.Errorf("a withheld parent signs in as %q", got)
+	}
+	if got := m.PersonOf("rowan@example.com"); got != parent {
+		t.Errorf("the consent import no longer finds the withheld parent: %q", got)
+	}
+}
+
+func TestWritesCantReachWithheldRows(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": student}, store.Row{"consent": "withheld"})); err != nil {
+		t.Fatal(err)
+	}
+	env := Env{Viewer: parent, Now: testNow}
+	for name, c := range map[string]struct {
+		w    write
+		want string
+	}{
+		"set":       {write{Set: student, Cells: map[string]any{"name_long_override": "Juni A."}}, "no PERSON " + student},
+		"reference": {write{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000040", "person": student, "role": "member", "status": "yes"}}, "names no row " + student},
+	} {
+		_, err := Write(context.Background(), s, queue, access.Actor{Email: "rowan@example.com"}, env, Batch{Batch: []write{c.w}})
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s on the withheld student: %v, want %q", name, err, c.want)
+		}
+	}
+}
+
+func TestWithheldFamilyNeverAppears(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000020"}, store.Row{"consent": "withheld"})); err != nil {
+		t.Fatal(err)
+	}
+	for _, viewer := range []string{nobody, student, parent, staff} {
+		if n := len(as(t, s, viewer, `(from GROUP (where (= id "grp00000000020")))`)); n != 0 {
+			t.Errorf("the withheld family as %q: %d rows", viewer, n)
+		}
+		if n := len(as(t, s, viewer, `(from MEMBER (where (= group "grp00000000020")))`)); n != 0 {
+			t.Errorf("the withheld family's memberships as %q: %d rows", viewer, n)
+		}
+	}
+}
+
+func TestGuestsAreAlwaysShown(t *testing.T) {
+	s := sample(t)
+	if p, _ := s.Model().Table("PERSON").Get(guest); p["consent"] != "" {
+		t.Fatalf("the sample guest has consent %q", p["consent"])
+	}
+	if _, ok := s.Model().Shown("PERSON").Get(guest); !ok {
+		t.Fatal("a guest with no consent is hidden")
+	}
+}
+
+func TestConsentFailsClosed(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": staff}, store.Row{"consent": ""})); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.Model().Shown("PERSON").Get(staff); ok {
+		t.Fatal("a person with no consent yet is shown")
+	}
+}
+
+func TestOnlyTheImportSeesWithheldRows(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": student}, store.Row{"consent": "withheld"})); err != nil {
+		t.Fatal(err)
+	}
+	q := mustParse(t, `(from PERSON (where (= id "per00000000001")))`)
+	if n := len(s.Model().Run(q, Env{System: importReader, Now: testNow}).IDs); n != 1 {
+		t.Errorf("the import sees %d withheld students, want 1", n)
+	}
+	if n := len(s.Model().Run(q, Env{System: "other", Now: testNow}).IDs); n != 0 {
+		t.Errorf("another system reader sees %d withheld students, want 0", n)
+	}
+}
+
+func TestPrivateColumnsNeverShow(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": staff}, store.Row{"vc_phone": "555-0200"})); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"PERSON", "GROUP"} {
+		ts, _ := Lookup(table)
+		for _, row := range s.Model().Shown(table).All() {
+			for _, c := range ts.Columns {
+				if _, ok := row[c.Name]; c.Private && ok {
+					t.Errorf("%s %s shows private %s", table, row["id"], c.Name)
+				}
+			}
+		}
+	}
+	if p, _ := s.Model().Table("PERSON").Get(staff); p["vc_phone"] != "555-0200" {
+		t.Errorf("the model lost the imported phone the import compares with: %q", p["vc_phone"])
 	}
 }
 

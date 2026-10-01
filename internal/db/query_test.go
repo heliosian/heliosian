@@ -248,7 +248,7 @@ func TestRuleSelectors(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
 		store.Insert("GROUP", store.Row{"id": "grp00000000050", "kind": "tag", "title": "Test"}),
-		store.Insert("RULE", store.Row{"id": "rul00000000051", "group": "grp00000000050", "order": "a", "kind": "include", "property": "consent", "value": "listed", "within": "grp00000000004"}),
+		store.Insert("RULE", store.Row{"id": "rul00000000051", "group": "grp00000000050", "order": "a", "kind": "include", "property": "source", "value": "veracross", "within": "grp00000000004"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000052", "group": "grp00000000050", "order": "b", "kind": "exclude", "search": "lindqvist"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000053", "group": "grp00000000050", "order": "c", "kind": "include", "person": "per00000000001", "expand": "household"}),
 	); err != nil {

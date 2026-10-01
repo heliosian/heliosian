@@ -132,6 +132,7 @@ func (m *Model) consentWrites(responses []map[string]string) ([]write, error) {
 	}
 
 	writes := []write{}
+	wants := map[string]map[string]string{}
 	for _, p := range m.Table("PERSON").All() {
 		if p["source"] == "guest" {
 			continue
@@ -164,17 +165,48 @@ func (m *Model) consentWrites(responses []map[string]string) ([]write, error) {
 			shareAddress, sharePhone = false, false
 		}
 		want := map[string]string{"consent": consent, "address_consent": sharedOr(shareAddress), "phone_consent": sharedOr(sharePhone)}
-		cells := map[string]any{}
-		for _, column := range slices.Sorted(maps.Keys(want)) {
-			if !strings.EqualFold(p[column], want[column]) {
-				cells[column] = want[column]
+		wants[p["id"]] = want
+		writes = appendChanges(writes, p, want)
+	}
+	for _, g := range groups.All() {
+		if g["kind"] != "family" {
+			continue
+		}
+		leads := 0
+		listed, shareAddress, sharePhone := true, true, true
+		for _, row := range m.Table("MEMBER").Referencing("group", g["id"]) {
+			if row["role"] != "lead" {
+				continue
 			}
+			leads++
+			w := wants[row["person"]]
+			listed = listed && w["consent"] == "listed"
+			shareAddress = shareAddress && w["address_consent"] == "shared"
+			sharePhone = sharePhone && w["phone_consent"] == "shared"
 		}
-		if len(cells) > 0 {
-			writes = append(writes, write{Set: p["id"], Cells: cells})
+		if leads == 0 {
+			listed, shareAddress, sharePhone = false, false, false
 		}
+		consent := "listed"
+		if !listed {
+			consent = "withheld"
+		}
+		writes = appendChanges(writes, g, map[string]string{"consent": consent, "address_consent": sharedOr(shareAddress), "phone_consent": sharedOr(sharePhone)})
 	}
 	return writes, nil
+}
+
+func appendChanges(writes []write, row store.Row, want map[string]string) []write {
+	cells := map[string]any{}
+	for _, column := range slices.Sorted(maps.Keys(want)) {
+		if !strings.EqualFold(row[column], want[column]) {
+			cells[column] = want[column]
+		}
+	}
+	if len(cells) == 0 {
+		return writes
+	}
+	return append(writes, write{Set: row["id"], Cells: cells})
 }
 
 type Consent struct {

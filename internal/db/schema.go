@@ -28,6 +28,7 @@ type Column struct {
 	Values    []string
 	Required  bool
 	Generated bool
+	Private   bool
 }
 
 type Table struct {
@@ -90,6 +91,11 @@ func (c Column) required() Column {
 	return c
 }
 
+func (c Column) private() Column {
+	c.Private = true
+	return c
+}
+
 var Tables = []Table{
 	{
 		Name:     "PERSON",
@@ -104,7 +110,7 @@ var Tables = []Table{
 			ref("vc_classroom", "GROUP"),
 			ref("vc_crew", "GROUP"),
 			col("vc_job_title", Text),
-			col("vc_phone", Text),
+			col("vc_phone", Text).private(),
 			col("vc_bio", Text),
 			enum("vc_address_visibility", "full", "partial", "hidden"),
 			enum("vc_phone_visibility", "visible", "mixed", "hidden"),
@@ -123,7 +129,7 @@ var Tables = []Table{
 			ref("crew", "GROUP"),
 			col("job_title", Text),
 			ref("department", "GROUP"),
-			col("phone_override", Text),
+			col("phone_override", Text).private(),
 			generated("phone"),
 			col("facts", Text),
 			col("pronouns", Text),
@@ -220,8 +226,8 @@ var Tables = []Table{
 			enum("kind", "family", "classroom", "grade", "band", "crew", "department", "role", "event", "series", "activity", "party", "celebration", "day", "day_part", "day_template", "list", "tag", "audience", "admins", "section").required(),
 			col("slug", Text),
 			col("vc_title", Text),
-			col("vc_address", Text),
-			col("vc_phone", Text),
+			col("vc_address", Text).private(),
+			col("vc_phone", Text).private(),
 			col("title", Text),
 			col("subtitle", Text),
 			col("description", Text),
@@ -230,10 +236,13 @@ var Tables = []Table{
 			col("color", Text),
 			col("flyer", Blob),
 			col("pronunciation", Blob),
-			col("address_override", Text),
-			col("phone_override", Text),
+			col("address_override", Text).private(),
+			col("phone_override", Text).private(),
 			generated("address"),
 			generated("phone"),
+			enum("consent", "listed", "withheld"),
+			enum("address_consent", "shared", "withheld"),
+			enum("phone_consent", "shared", "withheld"),
 			enum("status", "pending", "open", "hidden", "done", "cancelled", "closed"),
 			enum("visibility", "everyone", "unlisted", "members", "leads", "group"),
 			ref("visible_to", "GROUP"),

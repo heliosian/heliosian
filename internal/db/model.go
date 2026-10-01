@@ -27,6 +27,69 @@ type Model struct {
 	Mail      Sheet
 	Config    Sheet
 	derived   *derived
+	consented map[string]*View
+}
+
+type View struct {
+	rows  *Rows
+	shown []store.Row
+	all   []store.Row
+}
+
+func wholeView(rows *Rows) *View {
+	return &View{rows: rows, shown: rows.rows, all: rows.rows}
+}
+
+func (m *Model) Shown(name string) *View {
+	return m.consented[name]
+}
+
+func (m *Model) view(name string, whole bool) *View {
+	if whole {
+		return wholeView(m.Table(name))
+	}
+	return m.Shown(name)
+}
+
+func (v *View) Table() *Table {
+	return v.rows.table
+}
+
+func (v *View) Len() int {
+	return len(v.all)
+}
+
+func (v *View) All() []store.Row {
+	return v.all
+}
+
+func (v *View) Get(id string) (store.Row, bool) {
+	i, ok := v.rows.byID[id]
+	if !ok || v.shown[i] == nil {
+		return nil, false
+	}
+	return v.shown[i], true
+}
+
+func (v *View) Find(values ...string) (store.Row, bool) {
+	if _, ok := v.rows.Find(values...); !ok {
+		return nil, false
+	}
+	i := v.rows.byUnique[strings.Join(values, "\x00")]
+	if v.shown[i] == nil {
+		return nil, false
+	}
+	return v.shown[i], true
+}
+
+func (v *View) Referencing(column, id string) []store.Row {
+	out := []store.Row{}
+	for _, i := range v.rows.refs[column][id] {
+		if v.shown[i] != nil {
+			out = append(out, v.shown[i])
+		}
+	}
+	return out
 }
 
 func (m *Model) slot(sheet string) *Sheet {
@@ -109,7 +172,7 @@ func uniqueOf(t *Table, row store.Row) string {
 }
 
 func buildRows(t *Table, raw []store.Row) (*Rows, error) {
-	out := &Rows{table: t, byID: map[string]int{}, byUnique: map[string]int{}, refs: map[string]map[string][]int{}}
+	rows := []store.Row{}
 	for _, row := range raw {
 		if err := t.Check(row); err != nil {
 			return nil, err
@@ -118,6 +181,14 @@ func buildRows(t *Table, raw []store.Row) (*Rows, error) {
 			row = maps.Clone(row)
 			t.Generate(row)
 		}
+		rows = append(rows, row)
+	}
+	return indexRows(t, rows)
+}
+
+func indexRows(t *Table, rows []store.Row) (*Rows, error) {
+	out := &Rows{table: t, byID: map[string]int{}, byUnique: map[string]int{}, refs: map[string]map[string][]int{}}
+	for _, row := range rows {
 		if _, dup := out.byID[row["id"]]; dup {
 			return nil, fmt.Errorf("%s: two rows have the id %s", t.Name, row["id"])
 		}
@@ -170,7 +241,7 @@ func personGenerated(row map[string]string) {
 			row[name] = row[name+"_import"]
 		}
 	}
-	row["phone"] = overrideOr(row, "phone")
+	row["phone"] = consented(row, "phone")
 	switch {
 	case row["name_long"] != "":
 		row["name_show"] = row["name_long"]
@@ -182,8 +253,20 @@ func personGenerated(row map[string]string) {
 }
 
 func groupGenerated(row map[string]string) {
-	row["address"] = overrideOr(row, "address")
-	row["phone"] = overrideOr(row, "phone")
+	if !strings.EqualFold(row["kind"], "family") {
+		row["address"] = overrideOr(row, "address")
+		row["phone"] = overrideOr(row, "phone")
+		return
+	}
+	row["address"] = consented(row, "address")
+	row["phone"] = consented(row, "phone")
+}
+
+func consented(row map[string]string, name string) string {
+	if !strings.EqualFold(row[name+"_consent"], "shared") {
+		return ""
+	}
+	return overrideOr(row, name)
 }
 
 func overrideOr(row map[string]string, name string) string {
@@ -224,6 +307,12 @@ func checkRuleProperties(groups Sheet) error {
 		if property := row["property"]; property != "" {
 			if _, ok := person.Column(property); !ok {
 				return fmt.Errorf("RULE %s: property %s is no PERSON column", row["id"], property)
+			}
+			if c, _ := person.Column(property); c.Private {
+				return fmt.Errorf("RULE %s: property %s is private", row["id"], property)
+			}
+			if _, guarded := policies.read["PERSON."+property]; guarded {
+				return fmt.Errorf("RULE %s: property %s is a column the policies guard", row["id"], property)
 			}
 		}
 	}

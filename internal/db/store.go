@@ -13,7 +13,7 @@ import (
 type Store = store.Store[Model]
 
 func NewStore(source data.Source, writer data.Writer, queue *store.Queue) (*Store, error) {
-	return store.New(parts(), source, writer, queue)
+	return store.New(parts(), consentStep, source, writer, queue)
 }
 
 func parts() []store.Part[Model] {

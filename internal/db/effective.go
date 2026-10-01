@@ -45,7 +45,7 @@ func (m *Model) effectiveAll() *effectiveSet {
 		return all
 	}
 	all = &effectiveSet{byPerson: map[string][]store.Row{}}
-	for _, g := range m.Table("GROUP").All() {
+	for _, g := range m.Shown("GROUP").All() {
 		for _, row := range m.effectiveRows(g["id"]) {
 			all.rows = append(all.rows, row)
 			all.byPerson[row["person"]] = append(all.byPerson[row["person"]], row)
@@ -60,7 +60,7 @@ func (m *Model) effectiveAll() *effectiveSet {
 func (m *Model) effectiveOf(group string) []store.Row {
 	reasons := m.resolve(group, map[string]bool{})
 	statuses := map[string]string{}
-	for _, row := range m.Table("MEMBER").Referencing("group", group) {
+	for _, row := range m.Shown("MEMBER").Referencing("group", group) {
 		status := strings.ToLower(strings.TrimSpace(row["status"]))
 		if row["role"] == "member" && slices.Contains(effectiveStatuses, status) {
 			statuses[row["person"]] = status
@@ -81,7 +81,7 @@ func (m *Model) resolve(group string, stack map[string]bool) map[string][]string
 	stack[group] = true
 	defer delete(stack, group)
 	excluded := map[string]bool{}
-	for _, row := range m.Table("MEMBER").Referencing("group", group) {
+	for _, row := range m.Shown("MEMBER").Referencing("group", group) {
 		if row["role"] != "member" {
 			continue
 		}
@@ -92,7 +92,7 @@ func (m *Model) resolve(group string, stack map[string]bool) map[string][]string
 			out[row["person"]] = append(out[row["person"]], "member")
 		}
 	}
-	rules := m.Table("RULE").Referencing("group", group)
+	rules := m.Shown("RULE").Referencing("group", group)
 	slices.SortStableFunc(rules, func(a, b store.Row) int { return store.CompareKeys(a["order"], b["order"]) })
 	for _, rule := range rules {
 		selected := m.selectRule(rule, stack)
@@ -104,7 +104,7 @@ func (m *Model) resolve(group string, stack map[string]bool) map[string][]string
 			out[person] = append(out[person], "rule "+rule["order"])
 		}
 	}
-	people := m.Table("PERSON")
+	people := m.Shown("PERSON")
 	for person := range out {
 		row, ok := people.Get(person)
 		if excluded[person] || !ok || strings.TrimSpace(row["deactivated"]) != "" {
@@ -149,7 +149,7 @@ func (m *Model) selectRule(rule store.Row, stack map[string]bool) map[string]boo
 	if property := strings.TrimSpace(rule["property"]); property != "" {
 		want := strings.TrimSpace(rule["value"])
 		s := map[string]bool{}
-		for _, row := range m.Table("PERSON").All() {
+		for _, row := range m.Shown("PERSON").All() {
 			if strings.EqualFold(strings.TrimSpace(row[property]), want) {
 				s[row["id"]] = true
 			}
@@ -178,7 +178,7 @@ func (m *Model) descendants(group string) []string {
 	for len(queue) > 0 {
 		g := queue[0]
 		queue = queue[1:]
-		for _, child := range m.Table("GROUP").Referencing("parent", g) {
+		for _, child := range m.Shown("GROUP").Referencing("parent", g) {
 			if seen[child["id"]] {
 				continue
 			}
@@ -192,12 +192,12 @@ func (m *Model) descendants(group string) []string {
 
 func (m *Model) search(text string) map[string]bool {
 	out := map[string]bool{}
-	for _, row := range m.Table("PERSON").All() {
+	for _, row := range m.Shown("PERSON").All() {
 		if strings.Contains(strings.ToLower(row["name_show"]), text) {
 			out[row["id"]] = true
 		}
 	}
-	for _, row := range m.Table("PERSON_EMAIL").All() {
+	for _, row := range m.Shown("PERSON_EMAIL").All() {
 		if strings.Contains(strings.ToLower(row["address"]), text) {
 			out[row["person"]] = true
 		}
@@ -207,11 +207,11 @@ func (m *Model) search(text string) map[string]bool {
 
 func (m *Model) familyRows(person, role string) []string {
 	out := []string{}
-	for _, row := range m.Table("MEMBER").Referencing("person", person) {
+	for _, row := range m.Shown("MEMBER").Referencing("person", person) {
 		if row["role"] != role {
 			continue
 		}
-		if g, ok := m.Table("GROUP").Get(row["group"]); ok && g["kind"] == "family" {
+		if g, ok := m.Shown("GROUP").Get(row["group"]); ok && g["kind"] == "family" {
 			out = append(out, row["group"])
 		}
 	}
@@ -220,7 +220,7 @@ func (m *Model) familyRows(person, role string) []string {
 
 func (m *Model) familyPeople(family, role string) []string {
 	out := []string{}
-	for _, row := range m.Table("MEMBER").Referencing("group", family) {
+	for _, row := range m.Shown("MEMBER").Referencing("group", family) {
 		if row["role"] == role {
 			out = append(out, row["person"])
 		}

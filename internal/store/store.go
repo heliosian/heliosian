@@ -23,20 +23,21 @@ type Part[M any] struct {
 }
 
 type Store[M any] struct {
-	parts  []Part[M]
-	books  map[string]*Book
-	queue  *Queue
-	mu     sync.RWMutex
-	tables map[string]Tables
-	model  *M
+	parts   []Part[M]
+	consent func(m *M) error
+	books   map[string]*Book
+	queue   *Queue
+	mu      sync.RWMutex
+	tables  map[string]Tables
+	model   *M
 }
 
-func New[M any](parts []Part[M], source data.Source, writer data.Writer, queue *Queue) (*Store[M], error) {
+func New[M any](parts []Part[M], consent func(m *M) error, source data.Source, writer data.Writer, queue *Queue) (*Store[M], error) {
 	ordered, err := order(parts)
 	if err != nil {
 		return nil, err
 	}
-	s := &Store[M]{parts: ordered, books: map[string]*Book{}, queue: queue}
+	s := &Store[M]{parts: ordered, consent: consent, books: map[string]*Book{}, queue: queue}
 	for _, p := range ordered {
 		book, err := NewBook(p.App, p.Tabs, source, writer, queue)
 		if err != nil {
@@ -138,6 +139,9 @@ func (s *Store[M]) build(ctx context.Context, tables map[string]Tables, base *M,
 		if changed != nil {
 			changed[p.App] = true
 		}
+	}
+	if err := s.consent(&next); err != nil {
+		return nil, fmt.Errorf("consent: %w", err)
 	}
 	return &next, nil
 }
