@@ -573,9 +573,9 @@ function todoRow(todo, n) {
   summary.title = todo.details;
   const actions = el('div', 'wg-todo-acts');
   if (mark === 'done') {
-    actions.append(todoButton('Undo', 'reply', 'is-undo', () => setTodo(todo, 'clear')));
+    actions.append(todoButton('Done', 'check', 'is-done', () => setTodo(todo, 'clear')));
   } else {
-    actions.append(todoButton('Done', 'check', 'is-done', () => setTodo(todo, 'complete')));
+    actions.append(todoButton('Done', 'check', 'is-mark-done', () => setTodo(todo, 'complete')));
     actions.append(mark === 'saved'
       ? todoButton('Saved', 'star', 'is-saved', () => setTodo(todo, 'clear'))
       : todoButton('Save', 'star', 'is-save', () => setTodo(todo, 'save')));
