@@ -142,8 +142,8 @@ func TestRun(t *testing.T) {
 		viewer, src, column string
 		want                []string
 	}{
-		{"", `(from PERSON (where (= consent "listed")) (order name_sort asc))`, "id", []string{"per00000000001", "per00000000002", "per00000000003"}},
-		{"", `(from PERSON (where (= consent "listed")) (order name_sort desc) (limit 1))`, "id", []string{"per00000000003"}},
+		{"", `(from PERSON (where (= source "veracross")) (order name_sort asc))`, "id", []string{"per00000000001", "per00000000002", "per00000000003"}},
+		{"", `(from PERSON (where (= source "veracross")) (order name_sort desc) (limit 1))`, "id", []string{"per00000000003"}},
 		{"", `(from MEMBER (where (= group "grp00000000040") (= role "member")) (order person.name_sort asc))`, "person", []string{"per00000000002", "per00000000003", "per00000000004"}},
 		{"per00000000002", `(from GROUP @g (where (exists MEMBER (= group @g) (= person @viewer) (= role "lead"))))`, "id", []string{"grp00000000020"}},
 		{"", `(from GROUP @g (where (> (count MEMBER (= group @g) (= role "member")) 2)))`, "id", []string{"grp00000000004", "grp00000000040"}},
@@ -155,7 +155,7 @@ func TestRun(t *testing.T) {
 		{"", `(from PERSON (where (= vc_classroom.title "Hummingbirds")))`, "id", []string{"per00000000001"}},
 		{"", `(from MEMBER (where (= guest_of.name_short "Rowan")))`, "person", []string{"per00000000004"}},
 		{"", `(from GROUP (where (in kind "family" "list")))`, "id", []string{"grp00000000020", "grp00000000030"}},
-		{"", `(from PERSON (where (blank consent)))`, "id", []string{"per00000000004"}},
+		{"", `(from PERSON (where (blank vc_name)))`, "id", []string{"per00000000004"}},
 		{"", `(from BIRTHDAY_YEAR (where (>= year 2026) (= charity.name "Second Harvest")))`, "id", []string{"bdy00000000001"}},
 		{"", `(from GROUP (where (!= status "closed") (= kind "Event")))`, "id", []string{"grp00000000040"}},
 		{"per00000000003", `(from PERSON (where (= @viewer id)))`, "id", []string{"per00000000003"}},

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"strings"
 
 	"heliosian/internal/access"
@@ -79,10 +80,16 @@ const policySource = `
 
 ; people the viewer may see
 (read PERSON (person_visible @row))
-; whether the form shares a person's address, to them and their family's leads
-(read PERSON.address_consent (self_or_household @row))
-; whether the form shares a person's phone, to them and their family's leads
-(read PERSON.phone_consent (self_or_household @row))
+; every column of a person but what the form shares
+(read PERSON
+  (id source vc_name vc_legal_name vc_grade vc_classroom vc_crew vc_job_title vc_bio
+   vc_address_visibility vc_phone_visibility name_long_import name_short_import name_sort_import
+   name_long_override name_short_override name_sort_override name_long name_short name_sort
+   name_show grade classroom crew job_title department phone facts pronouns pronunciation
+   facts_updated photo_updated birthday hidden deactivated signed_out added_by)
+  true)
+; whether the form shares a person's address and phone, to them and their family's leads
+(read PERSON (address_consent phone_consent) (self_or_household @row))
 ; a person or a lead of their family overrides their long name
 (set PERSON.name_long_override (self_or_household @old))
 ; a person or a lead of their family overrides their short name
@@ -91,29 +98,60 @@ const policySource = `
 (set PERSON.name_sort_override (self_or_household @old))
 ; the emails of people the viewer may see
 (read PERSON_EMAIL (person_visible person))
+; every column of an email
+(read PERSON_EMAIL (id address person primary source) true)
 ; the photos of people the viewer may see
 (read PERSON_PHOTO (person_visible person))
+; every column of a photo
+(read PERSON_PHOTO (id person photo thumbnail crop order) true)
 ; the viewer's own app settings
 (read PERSON_SETTING (= person @viewer))
+; every column of an app setting
+(read PERSON_SETTING (id person app key value) true)
 ; the birthday years of people the viewer may see
 (read BIRTHDAY_YEAR (person_visible person))
+; every column of a birthday year
+(read BIRTHDAY_YEAR
+  (id person year assigned_to contacted_on contacted_by charity participation used_on note)
+  true)
 ; the viewer's own saved calendars
 (read SAVED_VIEW (= person @viewer))
+; every column of a saved calendar
+(read SAVED_VIEW (id token person name groups categories emoji order is_default) true)
 ; the viewer's own bug reports and ideas
 (read REPORT (= reporter @viewer))
+; every column of a bug report or idea
+(read REPORT
+  (id reporter received app kind status summary details page_url browser errors screenshot
+   issue handled_by)
+  true)
 
 ; groups the viewer may see
 (read GROUP (visible @row))
-; whether a family's adults all share their address, to its members
-(read GROUP.address_consent (exists MEMBER (= group @row) (= person @viewer)))
-; whether a family's adults all share their phone, to its members
-(read GROUP.phone_consent (exists MEMBER (= group @row) (= person @viewer)))
+; every column of a group but what its family's form shares
+(read GROUP
+  (id parent kind slug vc_title title subtitle description image image_crop color flyer
+   pronunciation address phone status visibility visible_to members_visible posting
+   replying join adding capacity minimum price unit waitlist eligible parent_required
+   lead_needed priority start end all_day location order added_by added)
+  true)
+; whether a family's adults all share their address and phone, to its members
+(read GROUP (address_consent phone_consent) (exists MEMBER (= group @row) (= person @viewer)))
 ; where the calendar groups the viewer may see came from
 (read GROUP_SOURCE (visible group))
+; every column of where a calendar group came from
+(read GROUP_SOURCE
+  (id group calendar_event document title start end all_day location description categories
+   audience marker hash)
+  true)
 ; the categories of groups the viewer may see
 (read GROUP_CATEGORY (visible group))
+; every column of a group's category
+(read GROUP_CATEGORY (id group category) true)
 ; the rules of groups the viewer leads
 (read RULE (leads group))
+; every column of a rule
+(read RULE (id group order kind target person search property value descend expand within) true)
 ; the viewer's own, household's and guests' memberships, those in groups they lead, visible groups' leads, and members where shown
 (read MEMBER
   (or (self_or_household person)
@@ -121,10 +159,13 @@ const policySource = `
       (leads group)
       (and (= role "lead") (visible group))
       (and (= role "member") (sees_members group))))
-; what a membership cost, to the member, their host and the group's leads
-(read MEMBER.price (or (= person @viewer) (= guest_of @viewer) (leads group)))
-; a membership's payment reference, to the member, their host and the group's leads
-(read MEMBER.purchase_id (or (= person @viewer) (= guest_of @viewer) (leads group)))
+; every column of a membership but what it cost
+(read MEMBER
+  (id group person role status quantity guest_of note answered answered_by via archived opened
+   added_by added)
+  true)
+; what a membership cost and its payment reference, to the member, their host and the group's leads
+(read MEMBER (price purchase_id) (or (= person @viewer) (= guest_of @viewer) (leads group)))
 ; a person, their family's lead or their host answers an invitation; the group's leads set any status
 (set MEMBER.status
   (or (and (or (self_or_household @old.person)
@@ -135,50 +176,80 @@ const policySource = `
 (read EFFECTIVE_MEMBER
   (or (self_or_household person)
       (sees_members group)))
+; every column of an effective membership
+(read EFFECTIVE_MEMBER (id group person status reasons) true)
 
 ; documents sent to no list, or to a list whose mail the viewer sees
 (read DOCUMENT (document_visible @row))
+; every column of a document
+(read DOCUMENT (id kind title date author url message object category key_points indexed order) true)
 ; links between a document and a group, where the viewer may see both
 (read DOCUMENT_GROUP (and (document_visible document) (visible group)))
+; every column of a link between a document and a group
+(read DOCUMENT_GROUP (id document group relation) true)
 
 ; mail the viewer sent or received, and mail to groups they lead
 (read MESSAGE
   (or (= from_person @viewer)
       (exists RECIPIENT (= message @row) (= person @viewer))
       (leads group)))
+; every column of a message
+(read MESSAGE
+  (id direction kind group about from_person from_address subject object header_id parent created)
+  true)
 ; the viewer's own deliveries, deliveries of mail they sent, and of mail to groups they lead
 (read RECIPIENT
   (or (= person @viewer)
       (= message.from_person @viewer)
       (leads message.group)))
+; every column of a delivery but its link token
+(read RECIPIENT (id message person provider_id created sent delivered failed detail) true)
 ; a delivery's link token, to its recipient alone
-(read RECIPIENT.token (= person @viewer))
+(read RECIPIENT (token) (= person @viewer))
 
 ; app settings
 (read SETTING true)
+; every column of an app setting
+(read SETTING (id app key value) true)
 ; categories open to everyone or to a group the viewer is in
 (read CATEGORY
   (or (blank visible_to)
       (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))))
+; every column of a category
+(read CATEGORY (id scope title description image color style max default order visible_to) true)
 ; the birthday charities
 (read CHARITY true)
+; every column of a charity
+(read CHARITY (id name link about allowed) true)
 ; apps open to everyone or to a group the viewer is in
 (read APP
   (or (blank visible_to)
       (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))))
+; every column of an app
+(read APP (id key name tagline visible_to admins order) true)
 ; front-page widgets open to everyone or to a group the viewer is in
 (read WIDGET
   (or (blank visible_to)
       (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))))
+; every column of a widget
+(read WIDGET (id key order visible_to) true)
 ; the coordinates of a family address the viewer may see; a withheld address is blank, so it matches nothing
 (read GEOCODE
   (exists GROUP @f (= kind "family") (= address @row.address) (visible @f)))
+; every column of a geocode
+(read GEOCODE (id address lat lng) true)
 ; the invite list services
 (read INVITE_SERVICE true)
+; every column of an invite list service
+(read INVITE_SERVICE (id service name header_row supports_groups description) true)
 ; the invite list templates
 (read INVITE_TEMPLATE true)
+; every column of an invite list template
+(read INVITE_TEMPLATE (id service order column template) true)
 ; shared greetings and the viewer's own
 (read GREETING (or (blank owner) (= owner @viewer)))
+; every column of a greeting
+(read GREETING (id owner name format grouped individual) true)
 
 ;; Who? admins
 
@@ -247,10 +318,8 @@ const policySource = `
 (set GROUP.status (and (admin_of "celebrate") (in @old.kind "party" "celebration")))
 ; every party's and celebration's ticket holders and hosts
 (read MEMBER (and (admin_of "celebrate") (in group.kind "party" "celebration")))
-; what every party ticket cost
-(read MEMBER.price (and (admin_of "celebrate") (in group.kind "party")))
-; every party ticket's payment reference
-(read MEMBER.purchase_id (and (admin_of "celebrate") (in group.kind "party")))
+; what every party ticket cost and its payment reference
+(read MEMBER (price purchase_id) (and (admin_of "celebrate") (in group.kind "party")))
 ; make a ticket holder a host, or a host a ticket holder
 (set MEMBER.role (and (admin_of "celebrate") (in @old.group.kind "party")))
 ; every party's and celebration's effective members
@@ -306,8 +375,12 @@ const policySource = `
 
 ; old IDs and the rows they now name
 (read ALIAS (super_admin))
+; every column of an alias
+(read ALIAS (id alias target) true)
 ; old paths and where they now go
 (read REDIRECT (super_admin))
+; every column of a redirect
+(read REDIRECT (id app old new added) true)
 
 ;; System: import
 
@@ -389,6 +462,7 @@ const policySource = `
 
 type policySet struct {
 	read   map[string][]cond
+	open   map[string]bool
 	insert map[string][]cond
 	set    map[string][]cond
 	delete map[string][]cond
@@ -410,11 +484,17 @@ func compilePolicies(src string) (*policySet, error) {
 		return nil, err
 	}
 	cx := &compiler{policy: true, defines: map[string]*define{}}
-	out := &policySet{read: map[string][]cond{}, insert: map[string][]cond{}, set: map[string][]cond{}, delete: map[string][]cond{}}
+	out := &policySet{read: map[string][]cond{}, open: map[string]bool{}, insert: map[string][]cond{}, set: map[string][]cond{}, delete: map[string][]cond{}}
 	for _, form := range forms {
 		head := form.head()
 		if head == "define" {
 			if err := cx.define(form); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if head == "read" && len(form.list) == 4 {
+			if err := cx.columnGrant(form, out); err != nil {
 				return nil, err
 			}
 			continue
@@ -435,7 +515,7 @@ func compilePolicies(src string) (*policySet, error) {
 		var sc *scope
 		var into map[string][]cond
 		switch {
-		case head == "read":
+		case head == "read" && !hasColumn:
 			sc, into = &scope{table: t, name: "row"}, out.read
 		case head == "set" && hasColumn:
 			sc, into = &scope{table: t, name: "new", outer: &scope{table: t, name: "old"}}, out.set
@@ -444,7 +524,7 @@ func compilePolicies(src string) (*policySet, error) {
 		case head == "delete" && !hasColumn:
 			sc, into = &scope{table: t, name: "old"}, out.delete
 		default:
-			return nil, form.errorf("policies are define, read, set TABLE.column, insert TABLE and delete TABLE")
+			return nil, form.errorf("policies are define, read TABLE, read TABLE (column…), set TABLE.column, insert TABLE and delete TABLE")
 		}
 		c, err := cx.cond(form.list[2], sc)
 		if err != nil {
@@ -452,7 +532,50 @@ func compilePolicies(src string) (*policySet, error) {
 		}
 		into[form.list[1].text] = append(into[form.list[1].text], c)
 	}
+	for _, t := range Tables {
+		if len(out.read[t.Name]) == 0 {
+			continue
+		}
+		for _, c := range t.Columns {
+			if _, ok := out.read[t.Name+"."+c.Name]; !ok && !c.Private {
+				return nil, fmt.Errorf("%s.%s has no read grant", t.Name, c.Name)
+			}
+		}
+	}
 	return out, nil
+}
+
+func (cx *compiler) columnGrant(form *sexp, out *policySet) error {
+	if form.list[1].isList || form.list[1].kind != atomName || !form.list[2].isList || len(form.list[2].list) == 0 {
+		return form.errorf("a column grant is (read TABLE (column…) condition)")
+	}
+	t, err := tableNamed(form.list[1])
+	if err != nil {
+		return err
+	}
+	c, err := cx.cond(form.list[3], &scope{table: t, name: "row"})
+	if err != nil {
+		return err
+	}
+	open := !form.list[3].isList && form.list[3].kind == atomName && form.list[3].text == "true"
+	for _, item := range form.list[2].list {
+		if item.isList || item.kind != atomName {
+			return item.errorf("a column grant lists column names")
+		}
+		col, err := columnNamed(t, item.text, item)
+		if err != nil {
+			return err
+		}
+		if col.Private {
+			return item.errorf("%s.%s is private, kept from everyone but the import by the consent step", t.Name, col.Name)
+		}
+		key := t.Name + "." + col.Name
+		out.read[key] = append(out.read[key], c)
+		if open {
+			out.open[key] = true
+		}
+	}
+	return nil
 }
 
 func (cx *compiler) define(form *sexp) error {
@@ -499,16 +622,16 @@ func (r *run) readable(t *Table, row store.Row) bool {
 	return ok
 }
 
-func (r *run) columnReadable(t *Table, row store.Row, column string) bool {
-	conds, ok := policies.read[t.Name+"."+column]
-	if !ok {
+func (r *run) columnReadable(t *Table, row store.Row, c Column) bool {
+	if c.Private {
+		// The consent step strips private columns from every view but the import's.
 		return true
 	}
-	key := t.Name + "." + column + "\x00" + row["id"]
+	key := t.Name + "." + c.Name + "\x00" + row["id"]
 	if seen, ok := r.columns[key]; ok {
 		return seen
 	}
-	held := holds(conds, &frame{table: t, row: row, name: "row", run: r})
+	held := holds(policies.read[t.Name+"."+c.Name], &frame{table: t, row: row, name: "row", run: r})
 	r.columns[key] = held
 	return held
 }
@@ -543,7 +666,7 @@ func (r *run) cell(guarded bool, t *Table, row store.Row, c Column) value {
 
 func (r *run) guardedCell(t *Table, row store.Row, c Column) string {
 	raw := row[c.Name]
-	if raw == "" || !r.columnReadable(t, row, c.Name) {
+	if raw == "" || !r.columnReadable(t, row, c) {
 		return ""
 	}
 	switch c.Kind {

@@ -311,8 +311,8 @@ func checkRuleProperties(groups Sheet) error {
 			if c, _ := person.Column(property); c.Private {
 				return fmt.Errorf("RULE %s: property %s is private", row["id"], property)
 			}
-			if _, guarded := policies.read["PERSON."+property]; guarded {
-				return fmt.Errorf("RULE %s: property %s is a column the policies guard", row["id"], property)
+			if !policies.open["PERSON."+property] {
+				return fmt.Errorf("RULE %s: property %s is not open to everyone who sees the person", row["id"], property)
 			}
 		}
 	}

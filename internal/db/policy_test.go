@@ -33,6 +33,18 @@ func TestEveryTableHasAReadPolicy(t *testing.T) {
 	}
 }
 
+func TestPoliciesRefuse(t *testing.T) {
+	for src, want := range map[string]string{
+		`(read SETTING true) (read SETTING (id app key) true)`: "SETTING.value has no read grant",
+		`(read PERSON (vc_phone) (system "import"))`:           "PERSON.vc_phone is private",
+		`(read MEMBER.price true)`:                             "policies are define",
+	} {
+		if _, err := compilePolicies(src); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("compilePolicies(%s) = %v, want %q", src, err, want)
+		}
+	}
+}
+
 func TestWhoSeesWhichRows(t *testing.T) {
 	s := sample(t)
 	viewers := []string{nobody, student, parent, staff, guest}
