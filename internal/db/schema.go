@@ -37,6 +37,7 @@ type Table struct {
 	Columns    []Column
 	AppendOnly bool
 	Generated  bool
+	Generate   func(row map[string]string)
 }
 
 const (
@@ -91,9 +92,10 @@ func (c Column) required() Column {
 
 var Tables = []Table{
 	{
-		Name:  "PERSON",
-		Sheet: PeopleSheet,
-		Key:   []string{"id"},
+		Name:     "PERSON",
+		Sheet:    PeopleSheet,
+		Key:      []string{"id"},
+		Generate: personNames,
 		Columns: []Column{
 			id("id", PersonPrefix),
 			enum("source", sources...).required(),

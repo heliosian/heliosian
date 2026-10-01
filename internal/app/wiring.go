@@ -21,6 +21,7 @@ import (
 	"heliosian/internal/calendarimport"
 	"heliosian/internal/claude"
 	"heliosian/internal/data"
+	"heliosian/internal/db"
 	"heliosian/internal/describe"
 	"heliosian/internal/env"
 	"heliosian/internal/feedback"
@@ -77,6 +78,7 @@ type appSpec struct {
 
 type Core struct {
 	Store     *model.Store
+	Data      *db.Store
 	Documents *model.DocumentFiler
 	Queue     *store.Queue
 	Spoof     *auth.Spoof
@@ -102,6 +104,10 @@ func NewCore(cfg Config) *Core {
 	})
 	if err != nil {
 		logging.Fatal("load the models", "error", err)
+	}
+	dataStore, err := db.NewStore(cfg.Source, cfg.Writer, queue)
+	if err != nil {
+		logging.Fatal("load the data sheets", "error", err)
 	}
 	go models.Locate(cfg.Geocoder)
 	taglineOf := func(key string) func() string {
@@ -238,7 +244,7 @@ func NewCore(cfg Config) *Core {
 		queue.Refresh()
 	})
 	return &Core{
-		Store: models, Documents: documents, Queue: queue,
+		Store: models, Data: dataStore, Documents: documents, Queue: queue,
 		Spoof: &auth.Spoof{Allowed: models.IsSuperAdmin, Person: spoofPerson(models)},
 		apps:  apps,
 	}

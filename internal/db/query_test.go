@@ -1,0 +1,248 @@
+package db
+
+import (
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"heliosian/internal/store"
+)
+
+var designQueries = []string{
+	`(from GROUP @g
+  (where (= kind "list")
+         (= status "open")
+         (or (= visibility "everyone")
+             (and (= visibility "members")
+                  (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer)))
+             (and (= visibility "leads")
+                  (exists MEMBER (= group @g) (= person @viewer) (= role "lead")))
+             (and (= visibility "group")
+                  (exists EFFECTIVE_MEMBER (= group @g.visible_to) (= person @viewer))))))`,
+	`(from GROUP @g
+  (where (exists MEMBER (= group @g) (= person.grade "6"))))`,
+	`(from MEMBER
+  (where (= group "grpX7pQ2m9KdLr") (= person.grade "6"))
+  (order person.name_sort asc)
+  (include person))`,
+	`(from GROUP @p
+  (where (= kind "party")
+         (>= start today)
+         (> capacity (count MEMBER (= group @p) (= role "member") (= status "yes")
+                                  (not (blank purchase_id))))))`,
+}
+
+func mustParse(t *testing.T, src string) *Query {
+	t.Helper()
+	q, err := Parse(src)
+	if err != nil {
+		t.Fatalf("Parse(%s): %v", src, err)
+	}
+	return q
+}
+
+func TestDesignQueriesParse(t *testing.T) {
+	for _, src := range designQueries {
+		mustParse(t, src)
+	}
+}
+
+func TestRenderIsCanonical(t *testing.T) {
+	for _, src := range designQueries {
+		q := mustParse(t, src)
+		once := q.String()
+		again := mustParse(t, once)
+		if !q.tree.equal(again.tree) {
+			t.Fatalf("rendering changed the query:\n%s\n%s", src, once)
+		}
+		if again.String() != once {
+			t.Fatalf("rendering is not stable:\n%s\n%s", once, again.String())
+		}
+		for _, line := range strings.Split(once, "\n") {
+			if len(line) > renderWidth && !strings.Contains(line, "(") {
+				t.Fatalf("line runs past the width: %q", line)
+			}
+		}
+	}
+	if got := mustParse(t, "(from   PERSON\n (where (=  consent \"listed\")))").String(); got != `(from PERSON (where (= consent "listed")))` {
+		t.Fatalf("a short query renders as %q", got)
+	}
+	long := mustParse(t, designQueries[0]).String()
+	if !strings.HasPrefix(long, "(from GROUP @g\n  (where (= kind \"list\")\n         (= status \"open\")") {
+		t.Fatalf("a long query renders as\n%s", long)
+	}
+}
+
+func TestParseRefuses(t *testing.T) {
+	for src, want := range map[string]string{
+		`(from PERSON (where (= grde "6")))`:                  "no column grde on PERSON; did you mean grade?",
+		`(from PERSN)`:                                        "no table PERSN; did you mean PERSON?",
+		`(from PERSON (where (= grade "13")))`:                `"13" is not one of`,
+		`(from MEMBER (where (= group "perX7pQ2m9KdLr")))`:    "is a PERSON id",
+		`(from PERSON (where (= "a" "b")))`:                   "two literals",
+		`(from MEMBER (where (< group group)))`:               "orders numbers",
+		`(from MEMBER (where (= group @g)))`:                  "no row named @g",
+		`(from GROUP (where (= capacity "ten")))`:             "is text",
+		`(from GROUP (where (= start "soon")))`:               "not a date",
+		`(from PERSON (where (= consent PERSON)))`:            "is a table",
+		`(from MEMBER (where (= person.name.long "x")))`:      "no column name",
+		`(from MEMBER (where (= group.kind.x "x")))`:          "not a reference",
+		`(from PERSON (wher (= consent "listed")))`:           "parts are",
+		`(from PERSON (where (= consent "listed"))`:           "never closed",
+		`(from PERSON (order name_sort up))`:                  "asc or desc",
+		`(from PERSON (where consent))`:                       "not true or false",
+		`(from INBOX)`:                                        "not built yet",
+		`(from MEMBER (where (= group (count MEMBER))))`:      "can't compare",
+		`(from GROUP (where (in kind "party" "nope")))`:       `"nope" is not one of`,
+		`(from PERSON (where (in id (select MEMBER.group))))`: "can't compare",
+		`(from PERSON (include source))`:                      "not a reference",
+		`(from PERSON (where (= share_phone "Yes")))`:         "is text",
+		`(from GROUP @viewer)`:                                "can't name a row",
+		`(select PERSON.id)`:                                  "starts with from",
+	} {
+		_, err := Parse(src)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Parse(%s) = %v, want %q", src, err, want)
+		}
+	}
+}
+
+func runAs(t *testing.T, m *Model, viewer, src string) Result {
+	t.Helper()
+	return m.Run(mustParse(t, src), Env{Viewer: viewer, Now: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)})
+}
+
+func ids(rows []store.Row, column string) []string {
+	out := []string{}
+	for _, row := range rows {
+		out = append(out, row[column])
+	}
+	return out
+}
+
+func TestRun(t *testing.T) {
+	m := sample(t).Model()
+	for _, c := range []struct {
+		viewer, src, column string
+		want                []string
+	}{
+		{"", `(from PERSON (where (= consent "listed")) (order name_sort asc))`, "id", []string{"per00000000001", "per00000000002", "per00000000003"}},
+		{"", `(from PERSON (where (= consent "listed")) (order name_sort desc) (limit 1))`, "id", []string{"per00000000003"}},
+		{"", `(from MEMBER (where (= group "grp00000000040") (= role "member")) (order person.name_sort asc))`, "person", []string{"per00000000002", "per00000000003", "per00000000004"}},
+		{"per00000000002", `(from GROUP @g (where (exists MEMBER (= group @g) (= person @viewer) (= role "lead"))))`, "id", []string{"grp00000000020"}},
+		{"", `(from GROUP @g (where (> (count MEMBER (= group @g) (= role "member")) 2)))`, "id", []string{"grp00000000004", "grp00000000040"}},
+		{"", `(from GROUP (where (>= start today)))`, "id", []string{"grp00000000040"}},
+		{"", `(from GROUP (where (< end now)))`, "id", nil},
+		{"", `(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020")))))`, "id", []string{"per00000000001", "per00000000002"}},
+		{"", `(from SAVED_VIEW (where (= groups "grp00000000010")))`, "token", []string{"fed00000000001"}},
+		{"", `(from PERSON (where (not share_phone)))`, "id", []string{"per00000000002", "per00000000004"}},
+		{"", `(from PERSON (where (= vc_classroom.title "Hummingbirds")))`, "id", []string{"per00000000001"}},
+		{"", `(from MEMBER (where (= guest_of.name_short "Rowan")))`, "person", []string{"per00000000004"}},
+		{"", `(from GROUP (where (in kind "family" "list")))`, "id", []string{"grp00000000020", "grp00000000030"}},
+		{"", `(from PERSON (where (blank consent)))`, "id", []string{"per00000000004"}},
+		{"", `(from BIRTHDAY_YEAR (where (>= year 2026) (= charity.name "Second Harvest")))`, "id", []string{"bdy00000000001"}},
+		{"", `(from GROUP (where (!= status "closed") (= kind "Event")))`, "id", []string{"grp00000000040"}},
+		{"per00000000003", `(from PERSON (where (= @viewer id)))`, "id", []string{"per00000000003"}},
+		{"", `(from PERSON (where (= @viewer id)))`, "id", nil},
+	} {
+		got := ids(runAs(t, m, c.viewer, c.src).Rows, c.column)
+		if !slices.Equal(got, c.want) && (len(got) != 0 || len(c.want) != 0) {
+			t.Errorf("%s as %q = %v, want %v", c.src, c.viewer, got, c.want)
+		}
+	}
+}
+
+func TestInclude(t *testing.T) {
+	m := sample(t).Model()
+	r := runAs(t, m, "", `(from MEMBER (where (= group "grp00000000040")) (include person group.added_by))`)
+	if len(r.Included["PERSON"]) != 3 || len(r.Included["GROUP"]) != 1 {
+		t.Fatalf("included %v", r.Included)
+	}
+	r = runAs(t, m, "", `(from SAVED_VIEW (include groups categories))`)
+	if len(r.Included["GROUP"]) != 1 || len(r.Included["CATEGORY"]) != 1 {
+		t.Fatalf("included %v", r.Included)
+	}
+}
+
+func TestSum(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, GroupsSheet,
+		store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000002", "role": "member"}, store.Row{"price": "12.50"}),
+		store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000004", "role": "member"}, store.Row{"price": "7.25"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	got := ids(runAs(t, s.Model(), "", `(from GROUP @g (where (= (sum price MEMBER (= group @g)) 19.75)))`).Rows, "id")
+	if !slices.Equal(got, []string{"grp00000000040"}) {
+		t.Fatalf("sum matched %v", got)
+	}
+}
+
+func effective(t *testing.T, s *Store, group string) []string {
+	t.Helper()
+	return ids(runAs(t, s.Model(), "", `(from EFFECTIVE_MEMBER (where (= group "`+group+`")))`).Rows, "person")
+}
+
+func TestEffectiveMembers(t *testing.T) {
+	s := sample(t)
+	if got := effective(t, s, "grp00000000030"); !slices.Equal(got, []string{"per00000000002"}) {
+		t.Fatalf("the Hummingbirds parents list holds %v", got)
+	}
+	if got := effective(t, s, "grp00000000006"); !slices.Equal(got, []string{"per00000000003"}) {
+		t.Fatalf("Who? admins are %v", got)
+	}
+	if got := effective(t, s, "grp00000000040"); !slices.Equal(got, []string{"per00000000002", "per00000000003", "per00000000004"}) {
+		t.Fatalf("the picnic holds %v", got)
+	}
+	rows := runAs(t, s.Model(), "per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))) (order id asc))`).Rows
+	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000020", "grp00000000030", "grp00000000040"}) {
+		t.Fatalf("Rowan is effectively in %v", got)
+	}
+	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000030", "person": "per00000000002", "role": "member", "status": "excluded"})); err != nil {
+		t.Fatal(err)
+	}
+	if got := effective(t, s, "grp00000000030"); len(got) != 0 {
+		t.Fatalf("an excluded parent stays on the list: %v", got)
+	}
+}
+
+func TestEffectiveCycleResolves(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, GroupsSheet, store.Insert("RULE", store.Row{"group": "grp00000000005", "order": "i", "kind": "include", "target": "grp00000000006"})); err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range []string{"grp00000000005", "grp00000000006"} {
+		if got := effective(t, s, g); !slices.Equal(got, []string{"per00000000003"}) {
+			t.Fatalf("%s holds %v", g, got)
+		}
+	}
+}
+
+func TestEffectiveDropsDeactivated(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": "per00000000003"}, store.Row{"deactivated": "2026-09-30 08:00"})); err != nil {
+		t.Fatal(err)
+	}
+	if got := effective(t, s, "grp00000000006"); len(got) != 0 {
+		t.Fatalf("a deactivated admin stays an admin: %v", got)
+	}
+}
+
+func TestRuleSelectors(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, GroupsSheet,
+		store.Insert("GROUP", store.Row{"id": "grp00000000050", "kind": "tag", "title": "Test"}),
+		store.Insert("RULE", store.Row{"group": "grp00000000050", "order": "a", "kind": "include", "property": "consent", "value": "listed", "within": "grp00000000004"}),
+		store.Insert("RULE", store.Row{"group": "grp00000000050", "order": "b", "kind": "exclude", "search": "lindqvist"}),
+		store.Insert("RULE", store.Row{"group": "grp00000000050", "order": "c", "kind": "include", "person": "per00000000001", "expand": "household"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if got := effective(t, s, "grp00000000050"); !slices.Equal(got, []string{"per00000000001", "per00000000002"}) {
+		t.Fatalf("the tag holds %v", got)
+	}
+	if err := commit(s, GroupsSheet, store.Insert("RULE", store.Row{"group": "grp00000000050", "order": "d", "kind": "include", "property": "colour", "value": "red"})); err == nil || !strings.Contains(err.Error(), "no PERSON column") {
+		t.Fatalf("a rule on no column: %v", err)
+	}
+}

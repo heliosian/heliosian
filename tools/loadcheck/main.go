@@ -10,6 +10,7 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/db"
 	"heliosian/internal/devcache"
 	"heliosian/internal/env"
 	"heliosian/internal/model"
@@ -48,6 +49,16 @@ func main() {
 	})
 	if err != nil {
 		log.Fatalf("load the models: %v", err)
+	}
+	dataStore, err := db.NewStore(source, nil, store.NewQueue())
+	if err != nil {
+		log.Fatalf("load the data sheets: %v", err)
+	}
+	fmt.Println("data sheets:")
+	for _, t := range db.Tables {
+		if !t.Generated {
+			fmt.Printf("  %s: %d rows\n", t.Name, dataStore.Model().Table(t.Name).Len())
+		}
 	}
 	m := models.Model()
 	directory := m.Directory

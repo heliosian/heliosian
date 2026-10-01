@@ -1,0 +1,2 @@
+message,person,token,provider_id,created,sent,delivered,failed,detail
+msg00000000001,per00000000002,tok00000000001,,2026-09-26 09:00,2026-09-26 09:01,2026-09-26 09:01,,

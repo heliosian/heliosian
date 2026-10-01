@@ -1,0 +1,102 @@
+package db
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"heliosian/internal/access"
+	"heliosian/internal/data"
+	"heliosian/internal/store"
+)
+
+func sample(t *testing.T) *Store {
+	t.Helper()
+	dir := &data.Dir{Root: "../../sampledata"}
+	s, err := NewStore(dir, dir, store.NewQueue())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func commit(s *Store, sheet string, ops ...store.Op) error {
+	return s.Commit(context.Background(), access.System("test"), sheet, ops...)
+}
+
+func TestSampleLoads(t *testing.T) {
+	m := sample(t).Model()
+	if n := m.Table("PERSON").Len(); n != 4 {
+		t.Fatalf("PERSON has %d rows", n)
+	}
+	if n := len(m.Table("MEMBER").Referencing("group", "grp00000000040")); n != 4 {
+		t.Fatalf("the picnic has %d member rows", n)
+	}
+	if n := len(m.Table("SAVED_VIEW").Referencing("groups", "grp00000000010")); n != 1 {
+		t.Fatalf("%d saved views name the Hummingbirds", n)
+	}
+	if _, ok := m.Table("MEMBER").Get("grp00000000020", "per00000000002", "lead"); !ok {
+		t.Fatal("Rowan does not lead the Hockins")
+	}
+	if !m.Has("grp00000000030") || m.Has("grp99999999999") {
+		t.Fatal("Has is wrong")
+	}
+}
+
+func TestGeneratedNames(t *testing.T) {
+	s := sample(t)
+	people := s.Model().Table("PERSON")
+	for id, want := range map[string]string{"per00000000001": "Ozzy Hockin", "per00000000004": "Guest"} {
+		row, _ := people.Get(id)
+		if row["name_show"] != want {
+			t.Fatalf("%s shows as %q, want %q", id, row["name_show"], want)
+		}
+	}
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": "per00000000001"}, store.Row{"name_long_override": "Oz Hockin"})); err != nil {
+		t.Fatal(err)
+	}
+	row, _ := s.Model().Table("PERSON").Get("per00000000001")
+	if row["name_long"] != "Oz Hockin" || row["name_short"] != "Ozzy" {
+		t.Fatalf("after an override: long %q short %q", row["name_long"], row["name_short"])
+	}
+	if row, _ := people.Get("per00000000001"); row["name_long"] != "Ozzy Hockin" {
+		t.Fatalf("the earlier model changed: %q", row["name_long"])
+	}
+}
+
+func TestCommitsTheModelRefuses(t *testing.T) {
+	for name, c := range map[string]struct {
+		sheet string
+		op    store.Op
+		want  string
+	}{
+		"missing person":   {GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "per99999999999", "role": "member"}), "names no row"},
+		"wrong table":      {GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "grp00000000001", "role": "member"}), "not a PERSON id"},
+		"duplicate key":    {GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000002", "role": "member"}), "two rows"},
+		"second primary":   {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"address": "ro@example.net", "person": "per00000000002", "primary": "Yes", "source": "manual"}), "2 primary"},
+		"no primary":       {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"address": "ozzy@example.net", "person": "per00000000001", "source": "manual"}), "0 primary"},
+		"bad enum":         {GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"status": "maybe"}), "not one of"},
+		"referenced alias": {ConfigSheet, store.Insert("ALIAS", store.Row{"alias": "old", "id": "doc99999999999"}), "names no row"},
+		"still named":      {PeopleSheet, store.Delete("PERSON", store.Row{"id": "per00000000004"}), "names no row"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := commit(sample(t), c.sheet, c.op)
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("got %v, want %q", err, c.want)
+			}
+		})
+	}
+}
+
+func TestCommitAcrossSheets(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, PeopleSheet, store.Insert("PERSON", store.Row{"id": "per00000000005", "source": "manual", "name_long_override": "Sam Ortiz"})); err != nil {
+		t.Fatal(err)
+	}
+	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000005", "role": "member", "status": "invited"})); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(s.Model().Table("MEMBER").Referencing("person", "per00000000005")); n != 1 {
+		t.Fatalf("Sam has %d member rows", n)
+	}
+}
