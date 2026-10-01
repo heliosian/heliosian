@@ -32,6 +32,9 @@ func (s *sexp) head() string {
 }
 
 func (s *sexp) errorf(format string, args ...any) error {
+	if s.pos < 0 {
+		return fmt.Errorf(format, args...)
+	}
 	return fmt.Errorf("at %d: %s", s.pos+1, fmt.Sprintf(format, args...))
 }
 

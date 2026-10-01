@@ -10,13 +10,20 @@ import (
 	"heliosian/internal/store"
 )
 
-func sample(t *testing.T) *Store {
+func sampleWithQueue(t *testing.T) (*Store, *store.Queue) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	s, err := NewStore(dir, dir, store.NewQueue())
+	queue := store.NewQueue()
+	s, err := NewStore(dir, dir, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return s, queue
+}
+
+func sample(t *testing.T) *Store {
+	t.Helper()
+	s, _ := sampleWithQueue(t)
 	return s
 }
 
@@ -36,7 +43,7 @@ func TestSampleLoads(t *testing.T) {
 		t.Fatalf("%d saved views name the Hummingbirds", n)
 	}
 	if _, ok := m.Table("MEMBER").Find("grp00000000020", "per00000000002", "lead"); !ok {
-		t.Fatal("Rowan does not lead the Hockins")
+		t.Fatal("Rowan does not lead the Ashdowns")
 	}
 	if row, ok := m.Table("MEMBER").Get("mem00000000011"); !ok || row["role"] != "lead" {
 		t.Fatalf("mem00000000011 is %v", row)
@@ -49,20 +56,20 @@ func TestSampleLoads(t *testing.T) {
 func TestGeneratedNames(t *testing.T) {
 	s := sample(t)
 	people := s.Model().Table("PERSON")
-	for id, want := range map[string]string{"per00000000001": "Ozzy Hockin", "per00000000004": "Guest"} {
+	for id, want := range map[string]string{"per00000000001": "Juni Ashdown", "per00000000004": "Guest"} {
 		row, _ := people.Get(id)
 		if row["name_show"] != want {
 			t.Fatalf("%s shows as %q, want %q", id, row["name_show"], want)
 		}
 	}
-	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": "per00000000001"}, store.Row{"name_long_override": "Oz Hockin"})); err != nil {
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": "per00000000001"}, store.Row{"name_long_override": "June Ashdown"})); err != nil {
 		t.Fatal(err)
 	}
 	row, _ := s.Model().Table("PERSON").Get("per00000000001")
-	if row["name_long"] != "Oz Hockin" || row["name_short"] != "Ozzy" {
+	if row["name_long"] != "June Ashdown" || row["name_short"] != "Juni" {
 		t.Fatalf("after an override: long %q short %q", row["name_long"], row["name_short"])
 	}
-	if row, _ := people.Get("per00000000001"); row["name_long"] != "Ozzy Hockin" {
+	if row, _ := people.Get("per00000000001"); row["name_long"] != "Juni Ashdown" {
 		t.Fatalf("the earlier model changed: %q", row["name_long"])
 	}
 }
@@ -79,7 +86,7 @@ func TestCommitsTheModelRefuses(t *testing.T) {
 		"duplicate id":     {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000001", "group": "grp00000000040", "person": "per00000000001", "role": "member"}), "two rows have the id"},
 		"no id":            {GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000001", "role": "member"}), "id is required"},
 		"second primary":   {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "ro@example.net", "person": "per00000000002", "primary": "Yes", "source": "manual"}), "2 primary"},
-		"no primary":       {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "ozzy@example.net", "person": "per00000000001", "source": "manual"}), "0 primary"},
+		"no primary":       {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "juni@example.net", "person": "per00000000001", "source": "manual"}), "0 primary"},
 		"bad enum":         {GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"status": "maybe"}), "not one of"},
 		"referenced alias": {ConfigSheet, store.Insert("ALIAS", store.Row{"id": "als00000000099", "alias": "old", "target": "doc99999999999"}), "names no row"},
 		"still named":      {PeopleSheet, store.Delete("PERSON", store.Row{"id": "per00000000004"}), "names no row"},

@@ -135,7 +135,7 @@ func TestHiddenPersonIsUnreachable(t *testing.T) {
 	if got := cellAs(t, s, guest, `(from MEMBER (where (= group "grp00000000010")))`, "person"); got != "" {
 		t.Fatalf("a classroom row names a hidden person: %q", got)
 	}
-	if n := len(as(t, s, guest, `(from MEMBER (where (= person.name_short "Ozzy")))`)); n != 0 {
+	if n := len(as(t, s, guest, `(from MEMBER (where (= person.name_short "Juni")))`)); n != 0 {
 		t.Fatal("a path reached a hidden person")
 	}
 	if n := len(as(t, s, guest, `(from GROUP @g (where (exists MEMBER (= group @g) (= person "per00000000001"))))`)); n != 0 {
@@ -213,9 +213,9 @@ func TestAuthorize(t *testing.T) {
 		{"exclude oneself", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"status": "excluded"}), false},
 		{"a host excludes", staff, change(t, s, "MEMBER", picnic(parent), store.Row{"status": "excluded"}), true},
 		{"answer and change one's note", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"status": "no", "note": "sorry"}), false},
-		{"a parent renames a child", parent, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "Oz Hockin"}), true},
-		{"a guest renames a child", guest, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "Oz Hockin"}), false},
-		{"Who?'s admin renames anyone", staff, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "Oz Hockin"}), true},
+		{"a parent renames a child", parent, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), true},
+		{"a guest renames a child", guest, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), false},
+		{"Who?'s admin renames anyone", staff, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), true},
 		{"nobody approves without being an admin", staff, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"}), false},
 		{"nobody may add rows yet", staff, Change{Table: "MEMBER", New: store.Row{"group": "grp00000000040", "person": student, "role": "member"}}, false},
 		{"nobody may remove rows yet", staff, Change{Table: "MEMBER", Old: store.Row{"group": "grp00000000040", "person": parent, "role": "member"}}, false},
