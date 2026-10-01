@@ -116,6 +116,24 @@ func TestSignInAndOutRefuseOtherSites(t *testing.T) {
 	}
 }
 
+func TestBearerPassesOnlyToTheQueryAPI(t *testing.T) {
+	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, noSessions())
+	reached := ""
+	handler := a.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = r.URL.Path
+	}))
+	for path, through := range map[string]bool{"/api/q": true, "/api/people": false, "/people": false} {
+		reached = ""
+		req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com"+path, nil)
+		req.Header.Set("Authorization", "Bearer anything")
+		req.Header.Set("Sec-Fetch-Dest", "empty")
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+		if (reached == path) != through {
+			t.Errorf("a bearer request to %s reached the app: %v", path, reached == path)
+		}
+	}
+}
+
 func TestSignedOutGetsTheLoginPageOnlyForAPage(t *testing.T) {
 	t.Chdir("../..")
 	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, noSessions())

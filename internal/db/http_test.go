@@ -12,17 +12,45 @@ import (
 	"heliosian/internal/store"
 )
 
+const testImportKey = "test-import-key"
+
 func send(t *testing.T, s *Store, queue *store.Queue, method, kind, as, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, s, queue, func() time.Time { return testNow })
+	Register(mux, s, queue, []byte(testImportKey), func() time.Time { return testNow })
 	r := httptest.NewRequest(method, "/api/q", strings.NewReader(body))
 	if kind != "" {
 		r.Header.Set("Content-Type", kind)
 	}
 	rec := httptest.NewRecorder()
+	if key, ok := strings.CutPrefix(as, "bearer:"); ok {
+		r.Header.Set("Authorization", "Bearer "+key)
+		mux.ServeHTTP(rec, r)
+		return rec
+	}
 	auth.Fixed(as, mux).ServeHTTP(rec, r)
 	return rec
+}
+
+func TestImportKey(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	code, out, body := ask(t, s, "application/json", "bearer:"+testImportKey, `{"from": "PERSON"}`)
+	if code != http.StatusOK || len(out.Result) != 3 {
+		t.Fatalf("the import sees what anyone sees, but got %d %s", code, body)
+	}
+	if code, _, _ := ask(t, s, "application/json", "bearer:"+testImportKey, `{"from": "SAVED_VIEW"}`); code != http.StatusOK {
+		t.Fatalf("the import's query got %d", code)
+	}
+	rec := send(t, s, queue, http.MethodPost, "application/json", "bearer:"+testImportKey, `{"batch": [{"set": "per00000000001", "cells": {"vc_name": "June Ashdown"}}]}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("the import, granted no writes yet, got %d %s", rec.Code, rec.Body.String())
+	}
+	if code, _, body := ask(t, s, "application/json", "bearer:wrong", `{"from": "PERSON"}`); code != http.StatusUnauthorized {
+		t.Fatalf("a wrong key got %d %s", code, body)
+	}
+	if code, _, _ := ask(t, s, "application/json", "bearer:", `{"from": "PERSON"}`); code != http.StatusUnauthorized {
+		t.Fatalf("an empty key got %d", code)
+	}
 }
 
 func ask(t *testing.T, s *Store, kind, as, query string) (int, answer, string) {

@@ -25,6 +25,7 @@ var Secrets = []Secret{
 	{"GITHUB_APP_ID", "heliosian-github-app-id"},
 	{"GITHUB_APP_KEY", "heliosian-github-app-key"},
 	{"ANTHROPIC_API_KEY", "heliosian-anthropic-key"},
+	{"IMPORT_KEY", "heliosian-import-key"},
 }
 
 func Required(name string) string {

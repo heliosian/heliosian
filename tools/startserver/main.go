@@ -95,6 +95,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 		Bucket:        bucket,
 		Store:         media,
 		IDKey:         []byte("sample"),
+		ImportKey:     []byte("sample"),
 		ChatKey:       []byte("sample"),
 		BrowserKey:    os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch:   app.ImageSearchKeys(),

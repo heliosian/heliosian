@@ -50,6 +50,7 @@ type Config struct {
 	Bucket        *blob.Bucket
 	Store         *blob.Store
 	IDKey         []byte
+	ImportKey     []byte
 	ChatKey       []byte
 	BrowserKey    string
 	ImageSearch   imagesearch.Search
@@ -230,7 +231,7 @@ func NewCore(cfg Config) *Core {
 	schoolNow := func() time.Time { return time.Now().In(model.Location) }
 	for _, a := range apps {
 		registry.Register(a.Mux)
-		db.Register(a.Mux, dataStore, queue, schoolNow)
+		db.Register(a.Mux, dataStore, queue, cfg.ImportKey, schoolNow)
 		a.Mux.Handle("GET "+OptInPath, optIn)
 		model.RegisterFeedback(a.Mux, a.Key, appName(a.Key), feedbackIntake)
 		suggestions.Register(a.Mux)
@@ -307,6 +308,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		Bucket:        bucket,
 		Store:         store,
 		IDKey:         []byte(env.Required("ID_KEY")),
+		ImportKey:     []byte(env.Required("IMPORT_KEY")),
 		ChatKey:       chatKey.Sum(nil),
 		BrowserKey:    env.Required("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch:   ImageSearchKeys(),

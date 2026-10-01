@@ -1,6 +1,7 @@
 package db
 
 import (
+	"crypto/subtle"
 	"errors"
 	"io"
 	"log/slog"
@@ -48,8 +49,28 @@ func body(w http.ResponseWriter, r *http.Request) (string, []byte, bool) {
 	return kind, raw, true
 }
 
-func Register(mux *http.ServeMux, s *Store, queue *store.Queue, now func() time.Time) {
+const importReader = "import"
+
+func caller(w http.ResponseWriter, r *http.Request, m *Model, importKey []byte, at time.Time) (Env, access.Actor, bool) {
+	key, bearer := auth.Bearer(r)
+	if !bearer {
+		email := auth.Email(r)
+		return Env{Viewer: m.PersonOf(email), Now: at}, access.Actor{Email: email}, true
+	}
+	if len(importKey) == 0 || subtle.ConstantTimeCompare([]byte(key), importKey) != 1 {
+		http.Error(w, "unknown key", http.StatusUnauthorized)
+		return Env{}, access.Actor{}, false
+	}
+	return Env{System: importReader, Now: at}, access.System(importReader), true
+}
+
+func Register(mux *http.ServeMux, s *Store, queue *store.Queue, importKey []byte, now func() time.Time) {
 	mux.HandleFunc("QUERY /api/q", func(w http.ResponseWriter, r *http.Request) {
+		m := s.Model()
+		env, _, ok := caller(w, r, m, importKey, now())
+		if !ok {
+			return
+		}
 		kind, raw, ok := body(w, r)
 		if !ok {
 			return
@@ -65,13 +86,10 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, now func() time.
 			serve.Error(w, r, access.Invalid("%v", err))
 			return
 		}
-		m := s.Model()
-		viewer := m.PersonOf(auth.Email(r))
-		at := now()
-		slog.InfoContext(r.Context(), "query", "viewer", viewer, "query", q.tree.flat())
-		result := m.Run(q, Env{Viewer: viewer, Now: at})
+		slog.InfoContext(r.Context(), "query", "viewer", env.Viewer, "system", env.System, "query", q.tree.flat())
+		result := m.Run(q, env)
 		out := answer{
-			Now:       at.Format("2006-01-02 15:04"),
+			Now:       env.Now.Format("2006-01-02 15:04"),
 			Query:     q.String(),
 			Result:    result.IDs,
 			Resources: result.Resources,
@@ -82,6 +100,10 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, now func() time.
 		serve.Write(w, r, http.StatusOK, out)
 	})
 	mux.HandleFunc("POST /api/q", func(w http.ResponseWriter, r *http.Request) {
+		env, actor, ok := caller(w, r, s.Model(), importKey, now())
+		if !ok {
+			return
+		}
 		kind, raw, ok := body(w, r)
 		if !ok {
 			return
@@ -95,10 +117,8 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, now func() time.
 			serve.Error(w, r, access.Invalid("%v", err))
 			return
 		}
-		email := auth.Email(r)
-		viewer := s.Model().PersonOf(email)
-		slog.InfoContext(r.Context(), "write", "viewer", viewer, "writes", len(b.Batch))
-		ids, err := Write(r.Context(), s, queue, access.Actor{Email: email}, Env{Viewer: viewer, Now: now()}, b)
+		slog.InfoContext(r.Context(), "write", "viewer", env.Viewer, "system", env.System, "writes", len(b.Batch))
+		ids, err := Write(r.Context(), s, queue, actor, env, b)
 		if err != nil {
 			serve.Error(w, r, err)
 			return
