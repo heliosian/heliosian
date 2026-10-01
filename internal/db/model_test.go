@@ -35,8 +35,11 @@ func TestSampleLoads(t *testing.T) {
 	if n := len(m.Table("SAVED_VIEW").Referencing("groups", "grp00000000010")); n != 1 {
 		t.Fatalf("%d saved views name the Hummingbirds", n)
 	}
-	if _, ok := m.Table("MEMBER").Get("grp00000000020", "per00000000002", "lead"); !ok {
+	if _, ok := m.Table("MEMBER").Find("grp00000000020", "per00000000002", "lead"); !ok {
 		t.Fatal("Rowan does not lead the Hockins")
+	}
+	if row, ok := m.Table("MEMBER").Get("mem00000000011"); !ok || row["role"] != "lead" {
+		t.Fatalf("mem00000000011 is %v", row)
 	}
 	if !m.Has("grp00000000030") || m.Has("grp99999999999") {
 		t.Fatal("Has is wrong")
@@ -70,13 +73,15 @@ func TestCommitsTheModelRefuses(t *testing.T) {
 		op    store.Op
 		want  string
 	}{
-		"missing person":   {GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "per99999999999", "role": "member"}), "names no row"},
-		"wrong table":      {GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "grp00000000001", "role": "member"}), "not a PERSON id"},
-		"duplicate key":    {GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000002", "role": "member"}), "two rows"},
-		"second primary":   {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"address": "ro@example.net", "person": "per00000000002", "primary": "Yes", "source": "manual"}), "2 primary"},
-		"no primary":       {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"address": "ozzy@example.net", "person": "per00000000001", "source": "manual"}), "0 primary"},
+		"missing person":   {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per99999999999", "role": "member"}), "names no row"},
+		"wrong table":      {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "grp00000000001", "role": "member"}), "not a PERSON id"},
+		"duplicate member": {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per00000000002", "role": "member"}), "two rows have the same group="},
+		"duplicate id":     {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000001", "group": "grp00000000040", "person": "per00000000001", "role": "member"}), "two rows have the id"},
+		"no id":            {GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000001", "role": "member"}), "id is required"},
+		"second primary":   {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "ro@example.net", "person": "per00000000002", "primary": "Yes", "source": "manual"}), "2 primary"},
+		"no primary":       {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "ozzy@example.net", "person": "per00000000001", "source": "manual"}), "0 primary"},
 		"bad enum":         {GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"status": "maybe"}), "not one of"},
-		"referenced alias": {ConfigSheet, store.Insert("ALIAS", store.Row{"alias": "old", "id": "doc99999999999"}), "names no row"},
+		"referenced alias": {ConfigSheet, store.Insert("ALIAS", store.Row{"id": "als00000000099", "alias": "old", "target": "doc99999999999"}), "names no row"},
 		"still named":      {PeopleSheet, store.Delete("PERSON", store.Row{"id": "per00000000004"}), "names no row"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -93,7 +98,7 @@ func TestCommitAcrossSheets(t *testing.T) {
 	if err := commit(s, PeopleSheet, store.Insert("PERSON", store.Row{"id": "per00000000005", "source": "manual", "name_long_override": "Sam Ortiz"})); err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000005", "role": "member", "status": "invited"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per00000000005", "role": "member", "status": "invited"})); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(s.Model().Table("MEMBER").Referencing("person", "per00000000005")); n != 1 {

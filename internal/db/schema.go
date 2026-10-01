@@ -33,7 +33,7 @@ type Column struct {
 type Table struct {
 	Name       string
 	Sheet      string
-	Key        []string
+	Unique     []string
 	Columns    []Column
 	AppendOnly bool
 	Generated  bool
@@ -57,7 +57,11 @@ var (
 	audience = []string{"everyone", "members", "leads"}
 )
 
-func id(name, prefix string) Column {
+func ident(prefix string) Column {
+	return Column{Name: "id", Kind: ID, Prefix: prefix, Required: true}
+}
+
+func token(name, prefix string) Column {
 	return Column{Name: name, Kind: ID, Prefix: prefix, Required: true}
 }
 
@@ -94,10 +98,9 @@ var Tables = []Table{
 	{
 		Name:     "PERSON",
 		Sheet:    PeopleSheet,
-		Key:      []string{"id"},
 		Generate: personNames,
 		Columns: []Column{
-			id("id", PersonPrefix),
+			ident(PersonPrefix),
 			enum("source", sources...).required(),
 			col("vc_name", Text),
 			col("vc_legal_name", Text),
@@ -142,10 +145,11 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:  "PERSON_EMAIL",
-		Sheet: PeopleSheet,
-		Key:   []string{"address"},
+		Name:   "PERSON_EMAIL",
+		Sheet:  PeopleSheet,
+		Unique: []string{"address"},
 		Columns: []Column{
+			ident(PersonEmailPrefix),
 			col("address", Email).required(),
 			ref("person", "PERSON").required(),
 			col("primary", Bool),
@@ -153,10 +157,11 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:  "PERSON_PHOTO",
-		Sheet: PeopleSheet,
-		Key:   []string{"person", "photo"},
+		Name:   "PERSON_PHOTO",
+		Sheet:  PeopleSheet,
+		Unique: []string{"person", "photo"},
 		Columns: []Column{
+			ident(PersonPhotoPrefix),
 			ref("person", "PERSON").required(),
 			col("photo", Blob).required(),
 			col("crop", Blob),
@@ -164,10 +169,11 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:  "PERSON_SETTING",
-		Sheet: PeopleSheet,
-		Key:   []string{"person", "app", "key"},
+		Name:   "PERSON_SETTING",
+		Sheet:  PeopleSheet,
+		Unique: []string{"person", "app", "key"},
 		Columns: []Column{
+			ident(PersonSettingPrefix),
 			ref("person", "PERSON").required(),
 			enum("app", apps...).required(),
 			col("key", Text).required(),
@@ -177,8 +183,8 @@ var Tables = []Table{
 	{
 		Name:  "PERSON_NOTE",
 		Sheet: PeopleSheet,
-		Key:   []string{"person", "app", "added_by", "added"},
 		Columns: []Column{
+			ident(PersonNotePrefix),
 			ref("person", "PERSON").required(),
 			enum("app", apps...).required(),
 			col("note", Text).required(),
@@ -187,11 +193,11 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:  "BIRTHDAY_YEAR",
-		Sheet: PeopleSheet,
-		Key:   []string{"id"},
+		Name:   "BIRTHDAY_YEAR",
+		Sheet:  PeopleSheet,
+		Unique: []string{"person", "year"},
 		Columns: []Column{
-			id("id", BirthdayYearPrefix),
+			ident(BirthdayYearPrefix),
 			ref("person", "PERSON").required(),
 			col("year", Int).required(),
 			ref("assigned_to", "PERSON"),
@@ -204,11 +210,12 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:  "SAVED_VIEW",
-		Sheet: PeopleSheet,
-		Key:   []string{"token"},
+		Name:   "SAVED_VIEW",
+		Sheet:  PeopleSheet,
+		Unique: []string{"token"},
 		Columns: []Column{
-			id("token", FeedPrefix),
+			ident(SavedViewPrefix),
+			token("token", FeedTokenPrefix),
 			ref("person", "PERSON").required(),
 			col("name", Text),
 			refs("groups", "GROUP"),
@@ -221,11 +228,10 @@ var Tables = []Table{
 	{
 		Name:  "GROUP",
 		Sheet: GroupsSheet,
-		Key:   []string{"id"},
 		Columns: []Column{
-			id("id", GroupPrefix),
+			ident(GroupPrefix),
 			ref("parent", "GROUP"),
-			enum("kind", "family", "classroom", "grade", "band", "crew", "department", "role", "event", "series", "activity", "party", "celebration", "day", "day_part", "day_template", "list", "tag", "team", "audience", "admins", "section").required(),
+			enum("kind", "family", "classroom", "grade", "band", "crew", "department", "role", "event", "series", "activity", "party", "celebration", "day", "day_part", "day_template", "list", "tag", "audience", "admins", "section").required(),
 			col("slug", Text),
 			col("vc_title", Text),
 			col("vc_address", Text),
@@ -269,8 +275,8 @@ var Tables = []Table{
 	{
 		Name:  "GROUP_SOURCE",
 		Sheet: GroupsSheet,
-		Key:   []string{"group", "calendar_event", "document"},
 		Columns: []Column{
+			ident(GroupSourcePrefix),
 			ref("group", "GROUP").required(),
 			col("calendar_event", Text),
 			ref("document", "DOCUMENT"),
@@ -287,10 +293,11 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:  "MEMBER",
-		Sheet: GroupsSheet,
-		Key:   []string{"group", "person", "role"},
+		Name:   "MEMBER",
+		Sheet:  GroupsSheet,
+		Unique: []string{"group", "person", "role"},
 		Columns: []Column{
+			ident(MemberPrefix),
 			ref("group", "GROUP").required(),
 			ref("person", "PERSON").required(),
 			enum("role", "lead", "member", "waitlist").required(),
@@ -312,8 +319,8 @@ var Tables = []Table{
 	{
 		Name:  "RULE",
 		Sheet: GroupsSheet,
-		Key:   []string{"group", "order"},
 		Columns: []Column{
+			ident(RulePrefix),
 			ref("group", "GROUP").required(),
 			col("order", Order).required(),
 			enum("kind", "include", "exclude").required(),
@@ -328,10 +335,11 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:  "GROUP_CATEGORY",
-		Sheet: GroupsSheet,
-		Key:   []string{"group", "category"},
+		Name:   "GROUP_CATEGORY",
+		Sheet:  GroupsSheet,
+		Unique: []string{"group", "category"},
 		Columns: []Column{
+			ident(GroupCategoryPrefix),
 			ref("group", "GROUP").required(),
 			ref("category", "CATEGORY").required(),
 		},
@@ -339,9 +347,8 @@ var Tables = []Table{
 	{
 		Name:  "DOCUMENT",
 		Sheet: DocumentsSheet,
-		Key:   []string{"id"},
 		Columns: []Column{
-			id("id", DocumentPrefix),
+			ident(DocumentPrefix),
 			enum("kind", "newsletter", "list", "page", "portal", "post", "link", "calendar").required(),
 			col("title", Text),
 			col("date", Date),
@@ -356,10 +363,11 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:  "DOCUMENT_GROUP",
-		Sheet: DocumentsSheet,
-		Key:   []string{"document", "group", "relation"},
+		Name:   "DOCUMENT_GROUP",
+		Sheet:  DocumentsSheet,
+		Unique: []string{"document", "group", "relation"},
 		Columns: []Column{
+			ident(DocumentGroupPrefix),
 			ref("document", "DOCUMENT").required(),
 			ref("group", "GROUP").required(),
 			enum("relation", "sent_to", "for", "attached").required(),
@@ -368,9 +376,8 @@ var Tables = []Table{
 	{
 		Name:  "REPORT",
 		Sheet: DocumentsSheet,
-		Key:   []string{"id"},
 		Columns: []Column{
-			id("id", ReportPrefix),
+			ident(ReportPrefix),
 			ref("reporter", "PERSON").required(),
 			col("received", Date),
 			enum("app", apps...),
@@ -389,9 +396,8 @@ var Tables = []Table{
 	{
 		Name:  "MESSAGE",
 		Sheet: MailSheet,
-		Key:   []string{"id"},
 		Columns: []Column{
-			id("id", MessagePrefix),
+			ident(MessagePrefix),
 			enum("direction", "in", "out").required(),
 			enum("kind", "post", "invitation", "skip", "update", "reminder", "calendar", "notice", "reply", "forward").required(),
 			ref("group", "GROUP"),
@@ -406,13 +412,14 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:  "RECIPIENT",
-		Sheet: MailSheet,
-		Key:   []string{"token"},
+		Name:   "RECIPIENT",
+		Sheet:  MailSheet,
+		Unique: []string{"token"},
 		Columns: []Column{
+			ident(RecipientPrefix),
 			ref("message", "MESSAGE").required(),
 			ref("person", "PERSON").required(),
-			id("token", RecipientPrefix),
+			token("token", MailTokenPrefix),
 			col("provider_id", Text),
 			col("created", Moment).required(),
 			col("sent", Moment),
@@ -425,6 +432,7 @@ var Tables = []Table{
 		Name:      "EFFECTIVE_MEMBER",
 		Generated: true,
 		Columns: []Column{
+			col("id", Text),
 			ref("group", "GROUP"),
 			ref("person", "PERSON"),
 			enum("status", "invited", "pending", "yes", "maybe", "no"),
@@ -435,15 +443,17 @@ var Tables = []Table{
 		Name:      "INBOX",
 		Generated: true,
 		Columns: []Column{
+			col("id", Text),
 			ref("person", "PERSON"),
 			ref("document", "DOCUMENT"),
 		},
 	},
 	{
-		Name:  "SETTING",
-		Sheet: ConfigSheet,
-		Key:   []string{"app", "key"},
+		Name:   "SETTING",
+		Sheet:  ConfigSheet,
+		Unique: []string{"app", "key"},
 		Columns: []Column{
+			ident(SettingPrefix),
 			enum("app", append([]string{"platform"}, apps...)...).required(),
 			col("key", Text).required(),
 			col("value", Text),
@@ -452,10 +462,9 @@ var Tables = []Table{
 	{
 		Name:  "CATEGORY",
 		Sheet: ConfigSheet,
-		Key:   []string{"id"},
 		Columns: []Column{
-			id("id", CategoryPrefix),
-			enum("scope", "when", "team", "celebrate", "home", "day_type", "day_part").required(),
+			ident(CategoryPrefix),
+			enum("scope", "event", "activity", "party", "link", "day_type", "day_part").required(),
 			col("title", Text).required(),
 			col("description", Text),
 			col("image", Blob),
@@ -470,9 +479,8 @@ var Tables = []Table{
 	{
 		Name:  "CHARITY",
 		Sheet: ConfigSheet,
-		Key:   []string{"id"},
 		Columns: []Column{
-			id("id", CharityPrefix),
+			ident(CharityPrefix),
 			col("name", Text).required(),
 			col("link", URL),
 			col("about", Text),
@@ -480,10 +488,11 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:  "APP",
-		Sheet: ConfigSheet,
-		Key:   []string{"key"},
+		Name:   "APP",
+		Sheet:  ConfigSheet,
+		Unique: []string{"key"},
 		Columns: []Column{
+			ident(AppPrefix),
 			enum("key", apps...).required(),
 			col("name", Text),
 			col("tagline", Text),
@@ -493,10 +502,11 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:  "WIDGET",
-		Sheet: ConfigSheet,
-		Key:   []string{"key"},
+		Name:   "WIDGET",
+		Sheet:  ConfigSheet,
+		Unique: []string{"key"},
 		Columns: []Column{
+			ident(WidgetPrefix),
 			enum("key", "when", "team", "celebrate", "school").required(),
 			col("order", Order),
 			ref("visible_to", "GROUP"),
@@ -505,28 +515,31 @@ var Tables = []Table{
 	{
 		Name:       "GEOCODE",
 		Sheet:      ConfigSheet,
-		Key:        []string{"address"},
+		Unique:     []string{"address"},
 		AppendOnly: true,
 		Columns: []Column{
+			ident(GeocodePrefix),
 			col("address", Text).required(),
 			col("lat", Float),
 			col("lng", Float),
 		},
 	},
 	{
-		Name:  "ALIAS",
-		Sheet: ConfigSheet,
-		Key:   []string{"alias"},
+		Name:   "ALIAS",
+		Sheet:  ConfigSheet,
+		Unique: []string{"alias"},
 		Columns: []Column{
+			ident(AliasPrefix),
 			col("alias", Text).required(),
-			ref("id", "").required(),
+			ref("target", "").required(),
 		},
 	},
 	{
-		Name:  "REDIRECT",
-		Sheet: ConfigSheet,
-		Key:   []string{"app", "old"},
+		Name:   "REDIRECT",
+		Sheet:  ConfigSheet,
+		Unique: []string{"app", "old"},
 		Columns: []Column{
+			ident(RedirectPrefix),
 			enum("app", apps...).required(),
 			col("old", Text).required(),
 			col("new", Text).required(),
@@ -534,10 +547,11 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:  "INVITE_SERVICE",
-		Sheet: ConfigSheet,
-		Key:   []string{"service"},
+		Name:   "INVITE_SERVICE",
+		Sheet:  ConfigSheet,
+		Unique: []string{"service"},
 		Columns: []Column{
+			ident(InviteServicePrefix),
 			col("service", Text).required(),
 			col("name", Text),
 			col("header_row", Bool),
@@ -548,9 +562,9 @@ var Tables = []Table{
 	{
 		Name:  "INVITE_TEMPLATE",
 		Sheet: ConfigSheet,
-		Key:   []string{"service", "order"},
 		Columns: []Column{
-			col("service", Text).required(),
+			ident(InviteTemplatePrefix),
+			ref("service", "INVITE_SERVICE").required(),
 			col("order", Order).required(),
 			col("column", Text),
 			col("template", Text),
@@ -559,9 +573,8 @@ var Tables = []Table{
 	{
 		Name:  "GREETING",
 		Sheet: ConfigSheet,
-		Key:   []string{"id"},
 		Columns: []Column{
-			id("id", GreetingPrefix),
+			ident(GreetingPrefix),
 			ref("owner", "PERSON"),
 			col("name", Text).required(),
 			col("format", Text),
@@ -582,10 +595,7 @@ var byName = func() map[string]*Table {
 var prefixTable = func() map[string]string {
 	out := map[string]string{}
 	for _, t := range Tables {
-		if len(t.Key) != 1 {
-			continue
-		}
-		if c, ok := t.Column(t.Key[0]); ok && c.Kind == ID {
+		if c, ok := t.Column("id"); ok && c.Kind == ID {
 			out[c.Prefix] = t.Name
 		}
 	}

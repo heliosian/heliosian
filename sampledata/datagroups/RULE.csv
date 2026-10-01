@@ -1,3 +1,3 @@
-group,order,kind,target,person,search,property,value,descend,expand,within
-grp00000000030,i,include,grp00000000010,,,,,,parents,
-grp00000000006,i,include,grp00000000005,,,,,,,
+id,group,order,kind,target,person,search,property,value,descend,expand,within
+rul00000000001,grp00000000030,i,include,grp00000000010,,,,,,parents,
+rul00000000002,grp00000000006,i,include,grp00000000005,,,,,,,

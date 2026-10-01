@@ -108,9 +108,24 @@ func TestParseRefuses(t *testing.T) {
 	}
 }
 
+func unfiltered(t *testing.T, src string) *Query {
+	t.Helper()
+	tree, err := readSexp(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err := (&compiler{policy: true}).query(tree)
+	if err != nil {
+		t.Fatalf("%s: %v", src, err)
+	}
+	return q
+}
+
+var testNow = time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+
 func runAs(t *testing.T, m *Model, viewer, src string) Result {
 	t.Helper()
-	return m.Run(mustParse(t, src), Env{Viewer: viewer, Now: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)})
+	return m.Run(unfiltered(t, src), Env{Viewer: viewer, Now: testNow})
 }
 
 func ids(rows []store.Row, column string) []string {
@@ -146,7 +161,7 @@ func TestRun(t *testing.T) {
 		{"per00000000003", `(from PERSON (where (= @viewer id)))`, "id", []string{"per00000000003"}},
 		{"", `(from PERSON (where (= @viewer id)))`, "id", nil},
 	} {
-		got := ids(runAs(t, m, c.viewer, c.src).Rows, c.column)
+		got := ids(runAs(t, m, c.viewer, c.src).Rows(), c.column)
 		if !slices.Equal(got, c.want) && (len(got) != 0 || len(c.want) != 0) {
 			t.Errorf("%s as %q = %v, want %v", c.src, c.viewer, got, c.want)
 		}
@@ -156,12 +171,12 @@ func TestRun(t *testing.T) {
 func TestInclude(t *testing.T) {
 	m := sample(t).Model()
 	r := runAs(t, m, "", `(from MEMBER (where (= group "grp00000000040")) (include person group.added_by))`)
-	if len(r.Included["PERSON"]) != 3 || len(r.Included["GROUP"]) != 1 {
-		t.Fatalf("included %v", r.Included)
+	if len(r.Resources["MEMBER"]) != 4 || len(r.Resources["PERSON"]) != 3 || len(r.Resources["GROUP"]) != 1 {
+		t.Fatalf("resources %v", r.Resources)
 	}
 	r = runAs(t, m, "", `(from SAVED_VIEW (include groups categories))`)
-	if len(r.Included["GROUP"]) != 1 || len(r.Included["CATEGORY"]) != 1 {
-		t.Fatalf("included %v", r.Included)
+	if len(r.Resources["GROUP"]) != 1 || len(r.Resources["CATEGORY"]) != 1 {
+		t.Fatalf("resources %v", r.Resources)
 	}
 }
 
@@ -173,7 +188,7 @@ func TestSum(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	got := ids(runAs(t, s.Model(), "", `(from GROUP @g (where (= (sum price MEMBER (= group @g)) 19.75)))`).Rows, "id")
+	got := ids(runAs(t, s.Model(), "", `(from GROUP @g (where (= (sum price MEMBER (= group @g)) 19.75)))`).Rows(), "id")
 	if !slices.Equal(got, []string{"grp00000000040"}) {
 		t.Fatalf("sum matched %v", got)
 	}
@@ -181,7 +196,7 @@ func TestSum(t *testing.T) {
 
 func effective(t *testing.T, s *Store, group string) []string {
 	t.Helper()
-	return ids(runAs(t, s.Model(), "", `(from EFFECTIVE_MEMBER (where (= group "`+group+`")))`).Rows, "person")
+	return ids(runAs(t, s.Model(), "", `(from EFFECTIVE_MEMBER (where (= group "`+group+`")))`).Rows(), "person")
 }
 
 func TestEffectiveMembers(t *testing.T) {
@@ -195,11 +210,11 @@ func TestEffectiveMembers(t *testing.T) {
 	if got := effective(t, s, "grp00000000040"); !slices.Equal(got, []string{"per00000000002", "per00000000003", "per00000000004"}) {
 		t.Fatalf("the picnic holds %v", got)
 	}
-	rows := runAs(t, s.Model(), "per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))) (order id asc))`).Rows
+	rows := runAs(t, s.Model(), "per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))) (order id asc))`).Rows()
 	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000020", "grp00000000030", "grp00000000040"}) {
 		t.Fatalf("Rowan is effectively in %v", got)
 	}
-	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000030", "person": "per00000000002", "role": "member", "status": "excluded"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000030", "person": "per00000000002", "role": "member", "status": "excluded"})); err != nil {
 		t.Fatal(err)
 	}
 	if got := effective(t, s, "grp00000000030"); len(got) != 0 {
@@ -209,7 +224,7 @@ func TestEffectiveMembers(t *testing.T) {
 
 func TestEffectiveCycleResolves(t *testing.T) {
 	s := sample(t)
-	if err := commit(s, GroupsSheet, store.Insert("RULE", store.Row{"group": "grp00000000005", "order": "i", "kind": "include", "target": "grp00000000006"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000005", "order": "i", "kind": "include", "target": "grp00000000006"})); err != nil {
 		t.Fatal(err)
 	}
 	for _, g := range []string{"grp00000000005", "grp00000000006"} {
@@ -233,16 +248,16 @@ func TestRuleSelectors(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
 		store.Insert("GROUP", store.Row{"id": "grp00000000050", "kind": "tag", "title": "Test"}),
-		store.Insert("RULE", store.Row{"group": "grp00000000050", "order": "a", "kind": "include", "property": "consent", "value": "listed", "within": "grp00000000004"}),
-		store.Insert("RULE", store.Row{"group": "grp00000000050", "order": "b", "kind": "exclude", "search": "lindqvist"}),
-		store.Insert("RULE", store.Row{"group": "grp00000000050", "order": "c", "kind": "include", "person": "per00000000001", "expand": "household"}),
+		store.Insert("RULE", store.Row{"id": "rul00000000051", "group": "grp00000000050", "order": "a", "kind": "include", "property": "consent", "value": "listed", "within": "grp00000000004"}),
+		store.Insert("RULE", store.Row{"id": "rul00000000052", "group": "grp00000000050", "order": "b", "kind": "exclude", "search": "lindqvist"}),
+		store.Insert("RULE", store.Row{"id": "rul00000000053", "group": "grp00000000050", "order": "c", "kind": "include", "person": "per00000000001", "expand": "household"}),
 	); err != nil {
 		t.Fatal(err)
 	}
 	if got := effective(t, s, "grp00000000050"); !slices.Equal(got, []string{"per00000000001", "per00000000002"}) {
 		t.Fatalf("the tag holds %v", got)
 	}
-	if err := commit(s, GroupsSheet, store.Insert("RULE", store.Row{"group": "grp00000000050", "order": "d", "kind": "include", "property": "colour", "value": "red"})); err == nil || !strings.Contains(err.Error(), "no PERSON column") {
+	if err := commit(s, GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000054", "group": "grp00000000050", "order": "d", "kind": "include", "property": "colour", "value": "red"})); err == nil || !strings.Contains(err.Error(), "no PERSON column") {
 		t.Fatalf("a rule on no column: %v", err)
 	}
 }

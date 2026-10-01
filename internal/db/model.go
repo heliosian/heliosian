@@ -11,10 +11,11 @@ import (
 )
 
 type Rows struct {
-	table *Table
-	rows  []store.Row
-	byKey map[string]int
-	refs  map[string]map[string][]int
+	table    *Table
+	rows     []store.Row
+	byID     map[string]int
+	byUnique map[string]int
+	refs     map[string]map[string][]int
 }
 
 type Sheet map[string]*Rows
@@ -69,8 +70,19 @@ func (r *Rows) All() []store.Row {
 	return r.rows
 }
 
-func (r *Rows) Get(key ...string) (store.Row, bool) {
-	i, ok := r.byKey[strings.Join(key, "\x00")]
+func (r *Rows) Get(id string) (store.Row, bool) {
+	i, ok := r.byID[id]
+	if !ok {
+		return nil, false
+	}
+	return r.rows[i], true
+}
+
+func (r *Rows) Find(values ...string) (store.Row, bool) {
+	if len(values) != len(r.table.Unique) {
+		panic(fmt.Sprintf("db: %s is unique by %v", r.table.Name, r.table.Unique))
+	}
+	i, ok := r.byUnique[strings.Join(values, "\x00")]
 	if !ok {
 		return nil, false
 	}
@@ -85,16 +97,16 @@ func (r *Rows) Referencing(column, id string) []store.Row {
 	return out
 }
 
-func keyOf(t *Table, row store.Row) string {
+func uniqueOf(t *Table, row store.Row) string {
 	parts := []string{}
-	for _, k := range t.Key {
+	for _, k := range t.Unique {
 		parts = append(parts, row[k])
 	}
 	return strings.Join(parts, "\x00")
 }
 
 func buildRows(t *Table, raw []store.Row) (*Rows, error) {
-	out := &Rows{table: t, byKey: map[string]int{}, refs: map[string]map[string][]int{}}
+	out := &Rows{table: t, byID: map[string]int{}, byUnique: map[string]int{}, refs: map[string]map[string][]int{}}
 	for _, row := range raw {
 		if err := t.Check(row); err != nil {
 			return nil, err
@@ -103,11 +115,17 @@ func buildRows(t *Table, raw []store.Row) (*Rows, error) {
 			row = maps.Clone(row)
 			t.Generate(row)
 		}
-		key := keyOf(t, row)
-		if _, dup := out.byKey[key]; dup {
-			return nil, fmt.Errorf("%s: two rows have the key %s", t.Name, describeKey(t, row))
+		if _, dup := out.byID[row["id"]]; dup {
+			return nil, fmt.Errorf("%s: two rows have the id %s", t.Name, row["id"])
 		}
-		out.byKey[key] = len(out.rows)
+		out.byID[row["id"]] = len(out.rows)
+		if len(t.Unique) > 0 {
+			unique := uniqueOf(t, row)
+			if _, dup := out.byUnique[unique]; dup {
+				return nil, fmt.Errorf("%s: two rows have the same %s", t.Name, describeUnique(t, row))
+			}
+			out.byUnique[unique] = len(out.rows)
+		}
 		for _, c := range t.Columns {
 			for _, value := range references(c, row[c.Name]) {
 				if out.refs[c.Name] == nil {
@@ -134,9 +152,9 @@ func references(c Column, cell string) []string {
 	return nil
 }
 
-func describeKey(t *Table, row store.Row) string {
+func describeUnique(t *Table, row store.Row) string {
 	parts := []string{}
-	for _, k := range t.Key {
+	for _, k := range t.Unique {
 		parts = append(parts, k+"="+row[k])
 	}
 	return strings.Join(parts, "; ")
@@ -159,9 +177,12 @@ func personNames(row map[string]string) {
 	}
 }
 
-func checkPrimaryEmails(people Sheet) error {
+func checkEmails(people Sheet) error {
 	primaries := map[string]int{}
 	for _, row := range people["PERSON_EMAIL"].rows {
+		if row["address"] != strings.ToLower(strings.TrimSpace(row["address"])) {
+			return fmt.Errorf("PERSON_EMAIL: %q is not written in lower case", row["address"])
+		}
 		primary, err := cells.YesNo(row["primary"], false)
 		if err != nil {
 			return err
@@ -186,7 +207,7 @@ func checkRuleProperties(groups Sheet) error {
 	for _, row := range groups["RULE"].rows {
 		if property := row["property"]; property != "" {
 			if _, ok := person.Column(property); !ok {
-				return fmt.Errorf("RULE %s: property %s is no PERSON column", describeKey(groups["RULE"].table, row), property)
+				return fmt.Errorf("RULE %s: property %s is no PERSON column", row["id"], property)
 			}
 		}
 	}
@@ -202,7 +223,7 @@ func (m *Model) checkReferences() error {
 			for _, c := range t.Columns {
 				for _, value := range references(c, row[c.Name]) {
 					if !m.Has(value) {
-						return fmt.Errorf("%s %s: %s %s names no row", t.Name, describeKey(&t, row), c.Name, value)
+						return fmt.Errorf("%s %s: %s %s names no row", t.Name, row["id"], c.Name, value)
 					}
 				}
 			}

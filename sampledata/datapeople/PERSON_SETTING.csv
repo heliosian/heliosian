@@ -1,2 +1,2 @@
-person,app,key,value
-per00000000003,when,notify_hosts,yes
+id,person,app,key,value
+pst00000000001,per00000000003,when,notify_hosts,yes

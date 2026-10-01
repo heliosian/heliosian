@@ -227,8 +227,10 @@ func NewCore(cfg Config) *Core {
 	feedbackIntake := model.NewFeedbackIntake(models, cfg.Bucket, notifier.Notify)
 	optIn := who.OptInForm(func() string { return models.Model().Config.PrivacyLinks.HeliosWhoOptIn })
 	suggestions := geocode.NewSuggestions(cfg.Geocoder)
+	schoolNow := func() time.Time { return time.Now().In(model.Location) }
 	for _, a := range apps {
 		registry.Register(a.Mux)
+		db.Register(a.Mux, dataStore, schoolNow)
 		a.Mux.Handle("GET "+OptInPath, optIn)
 		model.RegisterFeedback(a.Mux, a.Key, appName(a.Key), feedbackIntake)
 		suggestions.Register(a.Mux)

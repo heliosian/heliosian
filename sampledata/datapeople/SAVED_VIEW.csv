@@ -1,2 +1,2 @@
-token,person,name,groups,categories,emoji,order,is_default
-fed00000000001,per00000000002,My Heliosian,grp00000000010,cat00000000001,,i,Yes
+id,token,person,name,groups,categories,emoji,order,is_default
+svw00000000001,fed00000000001,per00000000002,My Heliosian,grp00000000010,cat00000000001,,i,Yes

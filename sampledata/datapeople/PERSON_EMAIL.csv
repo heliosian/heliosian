@@ -1,4 +1,4 @@
-address,person,primary,source
-rowan.hockin@example.org,per00000000002,Yes,veracross
-rowan@example.com,per00000000002,No,manual
-maya.lindqvist@example.org,per00000000003,Yes,veracross
+id,address,person,primary,source
+eml00000000001,rowan.hockin@example.org,per00000000002,Yes,veracross
+eml00000000002,rowan@example.com,per00000000002,No,manual
+eml00000000003,maya.lindqvist@example.org,per00000000003,Yes,veracross

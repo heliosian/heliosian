@@ -14,33 +14,48 @@ const (
 )
 
 const (
-	PersonPrefix       = "per"
-	GroupPrefix        = "grp"
-	PurchasePrefix     = "pur"
-	DocumentPrefix     = "doc"
-	MessagePrefix      = "msg"
-	RecipientPrefix    = "tok"
-	FeedPrefix         = "fed"
-	ReportPrefix       = "rpt"
-	CategoryPrefix     = "cat"
-	CharityPrefix      = "chr"
-	BirthdayYearPrefix = "bdy"
-	GreetingPrefix     = "grt"
+	PersonPrefix         = "per"
+	PersonEmailPrefix    = "eml"
+	PersonPhotoPrefix    = "pho"
+	PersonSettingPrefix  = "pst"
+	PersonNotePrefix     = "not"
+	BirthdayYearPrefix   = "bdy"
+	SavedViewPrefix      = "svw"
+	FeedTokenPrefix      = "fed"
+	GroupPrefix          = "grp"
+	GroupSourcePrefix    = "src"
+	MemberPrefix         = "mem"
+	PurchasePrefix       = "pur"
+	RulePrefix           = "rul"
+	GroupCategoryPrefix  = "gct"
+	DocumentPrefix       = "doc"
+	DocumentGroupPrefix  = "dgr"
+	ReportPrefix         = "rpt"
+	MessagePrefix        = "msg"
+	RecipientPrefix      = "rcp"
+	MailTokenPrefix      = "tok"
+	SettingPrefix        = "set"
+	CategoryPrefix       = "cat"
+	CharityPrefix        = "chr"
+	AppPrefix            = "app"
+	WidgetPrefix         = "wdg"
+	GeocodePrefix        = "geo"
+	AliasPrefix          = "als"
+	RedirectPrefix       = "rdr"
+	InviteServicePrefix  = "isv"
+	InviteTemplatePrefix = "itp"
+	GreetingPrefix       = "grt"
 )
 
 var prefixes = map[string]bool{
-	PersonPrefix:       true,
-	GroupPrefix:        true,
-	PurchasePrefix:     true,
-	DocumentPrefix:     true,
-	MessagePrefix:      true,
-	RecipientPrefix:    true,
-	FeedPrefix:         true,
-	ReportPrefix:       true,
-	CategoryPrefix:     true,
-	CharityPrefix:      true,
-	BirthdayYearPrefix: true,
-	GreetingPrefix:     true,
+	PersonPrefix: true, PersonEmailPrefix: true, PersonPhotoPrefix: true, PersonSettingPrefix: true,
+	PersonNotePrefix: true, BirthdayYearPrefix: true, SavedViewPrefix: true, FeedTokenPrefix: true,
+	GroupPrefix: true, GroupSourcePrefix: true, MemberPrefix: true, PurchasePrefix: true,
+	RulePrefix: true, GroupCategoryPrefix: true, DocumentPrefix: true, DocumentGroupPrefix: true,
+	ReportPrefix: true, MessagePrefix: true, RecipientPrefix: true, MailTokenPrefix: true,
+	SettingPrefix: true, CategoryPrefix: true, CharityPrefix: true, AppPrefix: true,
+	WidgetPrefix: true, GeocodePrefix: true, AliasPrefix: true, RedirectPrefix: true,
+	InviteServicePrefix: true, InviteTemplatePrefix: true, GreetingPrefix: true,
 }
 
 func Mint(prefix string, taken func(string) bool) string {

@@ -68,7 +68,7 @@ func (m *Model) effectiveOf(group string) []store.Row {
 	}
 	out := []store.Row{}
 	for _, person := range slices.Sorted(maps.Keys(reasons)) {
-		out = append(out, store.Row{"group": group, "person": person, "status": statuses[person], "reasons": strings.Join(reasons[person], ", ")})
+		out = append(out, store.Row{"id": group + ":" + person, "group": group, "person": person, "status": statuses[person], "reasons": strings.Join(reasons[person], ", ")})
 	}
 	return out
 }

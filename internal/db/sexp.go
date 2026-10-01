@@ -59,6 +59,25 @@ func readSexp(src string) (*sexp, error) {
 	return s, nil
 }
 
+func readForms(src string) ([]*sexp, error) {
+	p := &reader{src: []rune(src)}
+	out := []*sexp{}
+	for {
+		p.space()
+		if p.done() {
+			return out, nil
+		}
+		s, err := p.read()
+		if err != nil {
+			return nil, err
+		}
+		if !s.isList {
+			return nil, s.errorf("%s stands outside a bracket", s.flat())
+		}
+		out = append(out, s)
+	}
+}
+
 type reader struct {
 	src []rune
 	at  int

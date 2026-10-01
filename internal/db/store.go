@@ -22,7 +22,7 @@ func parts() []store.Part[Model] {
 		tabs := []store.Tab{}
 		for _, t := range Tables {
 			if t.Sheet == sheet {
-				tabs = append(tabs, store.Tab{Name: t.Name, Columns: t.Stored(), Key: t.Key, AppendOnly: t.AppendOnly})
+				tabs = append(tabs, store.Tab{Name: t.Name, Columns: t.Stored(), Key: []string{"id"}, AppendOnly: t.AppendOnly})
 			}
 		}
 		part := store.Part[Model]{App: sheet, Tabs: tabs, Build: build(sheet), Loaded: loaded(sheet)}
@@ -51,7 +51,7 @@ func build(sheet string) func(context.Context, store.Tables, *Model) error {
 			built[t.Name] = rows
 		}
 		if sheet == PeopleSheet {
-			if err := checkPrimaryEmails(built); err != nil {
+			if err := checkEmails(built); err != nil {
 				return err
 			}
 		}

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"math/big"
 	"slices"
 	"strings"
@@ -21,13 +22,22 @@ type Query struct {
 
 type Env struct {
 	Viewer string
+	System string
 	Now    time.Time
 }
 
 type Result struct {
-	Table    string
-	Rows     []store.Row
-	Included map[string]map[string]store.Row
+	Table     string
+	IDs       []string
+	Resources map[string]map[string]store.Row
+}
+
+func (r Result) Rows() []store.Row {
+	out := []store.Row{}
+	for _, id := range r.IDs {
+		out = append(out, r.Resources[r.Table][id])
+	}
+	return out
 }
 
 type scope struct {
@@ -45,9 +55,12 @@ type frame struct {
 }
 
 type run struct {
-	m      *Model
-	viewer store.Row
-	now    time.Time
+	m       *Model
+	viewer  store.Row
+	system  string
+	now     time.Time
+	rows    map[string]bool
+	columns map[string]bool
 }
 
 type operand struct {
@@ -67,6 +80,7 @@ type cond struct {
 type scan struct {
 	table    *Table
 	name     string
+	guarded  bool
 	conds    []cond
 	probeCol string
 	probe    *operand
@@ -78,20 +92,36 @@ type orderKey struct {
 }
 
 type pathSpec struct {
-	start *Table
 	steps []Column
 }
+
+type define struct {
+	params []string
+	body   *sexp
+}
+
+type compiler struct {
+	policy  bool
+	defines map[string]*define
+	hidden  int
+}
+
+var keywords = []string{"true", "false", "today", "now", "asc", "desc"}
 
 func Parse(src string) (*Query, error) {
 	tree, err := readSexp(src)
 	if err != nil {
 		return nil, err
 	}
+	return (&compiler{}).query(tree)
+}
+
+func (cx *compiler) query(tree *sexp) (*Query, error) {
 	if tree.head() != "from" {
 		return nil, tree.errorf("a query starts with from")
 	}
 	q := &Query{tree: tree}
-	s, rest, err := compileScanHead(tree, 1)
+	s, rest, err := cx.scanHead(tree, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -100,20 +130,18 @@ func Parse(src string) (*Query, error) {
 	for _, part := range rest {
 		switch part.head() {
 		case "where":
-			for _, item := range part.list[1:] {
-				c, err := compileCond(item, sc)
-				if err != nil {
-					return nil, err
-				}
-				s.conds = append(s.conds, c)
+			conds, err := cx.conds(part.list[1:], sc)
+			if err != nil {
+				return nil, err
 			}
+			s.conds = append(s.conds, conds...)
 		case "order":
 			args := part.list[1:]
 			if len(args) == 0 || len(args)%2 != 0 {
 				return nil, part.errorf("order takes pairs of a path and asc or desc")
 			}
 			for i := 0; i < len(args); i += 2 {
-				p, err := compilePath(args[i], sc)
+				p, err := cx.path(args[i], sc)
 				if err != nil {
 					return nil, err
 				}
@@ -152,7 +180,7 @@ func (q *Query) String() string {
 	return q.tree.render(0)
 }
 
-func compileScanHead(s *sexp, at int) (*scan, []*sexp, error) {
+func (cx *compiler) scanHead(s *sexp, at int) (*scan, []*sexp, error) {
 	if len(s.list) <= at || s.list[at].isList || s.list[at].kind != atomName {
 		return nil, nil, s.errorf("%s needs a table", s.head())
 	}
@@ -160,14 +188,18 @@ func compileScanHead(s *sexp, at int) (*scan, []*sexp, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	out := &scan{table: t}
+	out := &scan{table: t, guarded: !cx.policy}
 	rest := s.list[at+1:]
 	if len(rest) > 0 && !rest[0].isList && rest[0].kind == atomAt {
 		out.name = rest[0].text
-		if out.name == "viewer" {
-			return nil, nil, rest[0].errorf("@viewer is the signed-in person and can't name a row")
+		if slices.Contains([]string{"viewer", "row", "old", "new"}, out.name) {
+			return nil, nil, rest[0].errorf("@%s is taken and can't name a row", out.name)
 		}
 		rest = rest[1:]
+	}
+	if out.name == "" && cx.policy {
+		cx.hidden++
+		out.name = fmt.Sprintf("_%d", cx.hidden)
 	}
 	return out, rest, nil
 }
@@ -187,18 +219,14 @@ func tableNamed(s *sexp) (*Table, error) {
 	return t, nil
 }
 
-func compileScan(s *sexp, at int, outer *scope) (*scan, error) {
-	out, rest, err := compileScanHead(s, at)
+func (cx *compiler) scan(s *sexp, at int, outer *scope) (*scan, error) {
+	out, rest, err := cx.scanHead(s, at)
 	if err != nil {
 		return nil, err
 	}
-	sc := &scope{table: out.table, name: out.name, outer: outer}
-	for _, item := range rest {
-		c, err := compileCond(item, sc)
-		if err != nil {
-			return nil, err
-		}
-		out.conds = append(out.conds, c)
+	out.conds, err = cx.conds(rest, &scope{table: out.table, name: out.name, outer: outer})
+	if err != nil {
+		return nil, err
 	}
 	out.pickProbe()
 	return out, nil
@@ -232,7 +260,7 @@ func (s *scan) candidates(f *frame) []store.Row {
 		return m.effectiveAll().byPerson[v.s]
 	}
 	rows := m.Table(s.table.Name)
-	if slices.Equal(s.table.Key, []string{s.probeCol}) {
+	if s.probeCol == "id" {
 		if row, ok := rows.Get(v.s); ok {
 			return []store.Row{row}
 		}
@@ -243,6 +271,9 @@ func (s *scan) candidates(f *frame) []store.Row {
 
 func (s *scan) each(f *frame, fn func(inner *frame) bool) {
 	for _, row := range s.candidates(f) {
+		if s.guarded && !f.run.readable(s.table, row) {
+			continue
+		}
 		inner := &frame{table: s.table, row: row, name: s.name, outer: f, run: f.run}
 		if s.matches(inner) && !fn(inner) {
 			return
@@ -259,10 +290,10 @@ func (s *scan) matches(f *frame) bool {
 	return true
 }
 
-func compileConds(items []*sexp, sc *scope) ([]cond, error) {
+func (cx *compiler) conds(items []*sexp, sc *scope) ([]cond, error) {
 	out := []cond{}
 	for _, item := range items {
-		c, err := compileCond(item, sc)
+		c, err := cx.cond(item, sc)
 		if err != nil {
 			return nil, err
 		}
@@ -271,9 +302,13 @@ func compileConds(items []*sexp, sc *scope) ([]cond, error) {
 	return out, nil
 }
 
-func compileCond(s *sexp, sc *scope) (cond, error) {
+func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 	if !s.isList {
-		p, err := compilePath(s, sc)
+		if s.kind == atomName && (s.text == "true" || s.text == "false") {
+			holds := s.text == "true"
+			return cond{eval: func(*frame) bool { return holds }}, nil
+		}
+		p, err := cx.path(s, sc)
 		if err != nil {
 			return cond{}, err
 		}
@@ -285,7 +320,7 @@ func compileCond(s *sexp, sc *scope) (cond, error) {
 	args := s.list[1:]
 	switch op := s.head(); op {
 	case "and", "or":
-		conds, err := compileConds(args, sc)
+		conds, err := cx.conds(args, sc)
 		if err != nil {
 			return cond{}, err
 		}
@@ -314,26 +349,26 @@ func compileCond(s *sexp, sc *scope) (cond, error) {
 		if len(args) != 1 {
 			return cond{}, s.errorf("not takes one condition")
 		}
-		c, err := compileCond(args[0], sc)
+		c, err := cx.cond(args[0], sc)
 		if err != nil {
 			return cond{}, err
 		}
 		return cond{eval: func(f *frame) bool { return !c.eval(f) }}, nil
 	case "=", "!=", "<", "<=", ">", ">=":
-		return compileCompare(s, op, sc)
+		return cx.compare(s, op, sc)
 	case "in":
-		return compileIn(s, sc)
+		return cx.in(s, sc)
 	case "blank":
 		if len(args) != 1 {
 			return cond{}, s.errorf("blank takes one path")
 		}
-		p, err := compilePath(args[0], sc)
+		p, err := cx.path(args[0], sc)
 		if err != nil {
 			return cond{}, err
 		}
 		return cond{eval: func(f *frame) bool { return p.eval(f).blank }}, nil
 	case "exists":
-		inner, err := compileScan(s, 1, sc)
+		inner, err := cx.scan(s, 1, sc)
 		if err != nil {
 			return cond{}, err
 		}
@@ -342,22 +377,105 @@ func compileCond(s *sexp, sc *scope) (cond, error) {
 			inner.each(f, func(*frame) bool { found = true; return false })
 			return found
 		}}, nil
+	case "system":
+		if !cx.policy {
+			return cond{}, s.errorf("system belongs to policies")
+		}
+		if len(args) != 1 || args[0].isList || args[0].kind != atomString {
+			return cond{}, s.errorf("system takes one quoted name")
+		}
+		name := args[0].text
+		return cond{eval: func(f *frame) bool { return f.run.system == name }}, nil
 	case "":
 		return cond{}, s.errorf("a condition starts with its operator")
 	default:
+		if d, ok := cx.defines[op]; ok {
+			expanded, err := cx.expand(s, d, sc)
+			if err != nil {
+				return cond{}, err
+			}
+			return cx.cond(expanded, sc)
+		}
 		return cond{}, s.errorf("no condition %s", op)
 	}
 }
 
-func compileCompare(s *sexp, op string, sc *scope) (cond, error) {
+func (cx *compiler) expand(call *sexp, d *define, sc *scope) (*sexp, error) {
+	args := call.list[1:]
+	if len(args) != len(d.params) {
+		return nil, call.errorf("%s takes %d arguments", call.head(), len(d.params))
+	}
+	bound := map[string]*sexp{}
+	for i, p := range d.params {
+		bound[p] = anchor(args[i], sc)
+	}
+	return substitute(d.body, bound)
+}
+
+func anchor(arg *sexp, sc *scope) *sexp {
+	if arg.isList {
+		if slices.Contains([]string{"exists", "count", "sum", "select"}, arg.head()) {
+			return arg
+		}
+		out := &sexp{isList: true, pos: arg.pos, list: []*sexp{arg.list[0]}}
+		for _, item := range arg.list[1:] {
+			out.list = append(out.list, anchor(item, sc))
+		}
+		return out
+	}
+	if arg.kind != atomName || slices.Contains(keywords, arg.text) || unicode.IsUpper([]rune(arg.text)[0]) || sc == nil || sc.name == "" {
+		return arg
+	}
+	return &sexp{kind: atomAt, text: sc.name + "." + arg.text, pos: arg.pos}
+}
+
+func substitute(body *sexp, bound map[string]*sexp) (*sexp, error) {
+	if body.isList {
+		out := &sexp{isList: true, pos: body.pos}
+		for i, item := range body.list {
+			if i == 0 && !item.isList {
+				out.list = append(out.list, item)
+				continue
+			}
+			next, err := substitute(item, bound)
+			if err != nil {
+				return nil, err
+			}
+			out.list = append(out.list, next)
+		}
+		return out, nil
+	}
+	switch body.kind {
+	case atomAt:
+		name, rest, dotted := strings.Cut(body.text, ".")
+		arg, ok := bound["@"+name]
+		if !ok {
+			return body, nil
+		}
+		if !dotted {
+			return arg, nil
+		}
+		if arg.isList || arg.kind != atomAt {
+			return nil, body.errorf("@%s is %s, which has no columns to follow", name, arg.flat())
+		}
+		return &sexp{kind: atomAt, text: arg.text + "." + rest, pos: body.pos}, nil
+	case atomName:
+		if arg, ok := bound[body.text]; ok {
+			return arg, nil
+		}
+	}
+	return body, nil
+}
+
+func (cx *compiler) compare(s *sexp, op string, sc *scope) (cond, error) {
 	if len(s.list) != 3 {
 		return cond{}, s.errorf("%s compares two things", op)
 	}
-	a, err := compileOperand(s.list[1], sc)
+	a, err := cx.operand(s.list[1], sc)
 	if err != nil {
 		return cond{}, err
 	}
-	b, err := compileOperand(s.list[2], sc)
+	b, err := cx.operand(s.list[2], sc)
 	if err != nil {
 		return cond{}, err
 	}
@@ -428,19 +546,19 @@ func comparable(s *sexp, a, b typ) error {
 	return nil
 }
 
-func compileIn(s *sexp, sc *scope) (cond, error) {
+func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 	if len(s.list) < 3 {
 		return cond{}, s.errorf("in takes a value and what it may be")
 	}
-	x, err := compileOperand(s.list[1], sc)
+	x, err := cx.operand(s.list[1], sc)
 	if err != nil {
 		return cond{}, err
 	}
 	if x.lit != nil {
 		return cond{}, s.list[1].errorf("in tests a path, not a literal")
 	}
-	if len(s.list) == 3 && s.list[2].head() == "select" {
-		set, t, err := compileSelect(s.list[2], sc)
+	if len(s.list) == 3 && s.list[2].isList {
+		set, t, err := cx.set(s.list[2], sc)
 		if err != nil {
 			return cond{}, err
 		}
@@ -479,7 +597,56 @@ func compileIn(s *sexp, sc *scope) (cond, error) {
 	}}, nil
 }
 
-func compileSelect(s *sexp, sc *scope) (func(f *frame) []value, typ, error) {
+func (cx *compiler) set(s *sexp, sc *scope) (func(f *frame) []value, typ, error) {
+	switch head := s.head(); head {
+	case "select":
+		return cx.selectSet(s, sc)
+	case "ancestors":
+		if !cx.policy {
+			return nil, typ{}, s.errorf("ancestors belongs to policies")
+		}
+		if len(s.list) != 2 {
+			return nil, typ{}, s.errorf("ancestors takes one group")
+		}
+		g, err := cx.operand(s.list[1], sc)
+		if err != nil {
+			return nil, typ{}, err
+		}
+		t := typ{class: classRow, kind: ID, table: "GROUP"}
+		if g.lit != nil || g.t.class != classRow || g.t.table != "GROUP" || g.t.list {
+			return nil, typ{}, s.errorf("ancestors takes a group")
+		}
+		return func(f *frame) []value {
+			out := []value{}
+			v := g.eval(f)
+			if v.blank {
+				return out
+			}
+			seen := map[string]bool{}
+			for id := v.s; id != "" && !seen[id]; {
+				seen[id] = true
+				out = append(out, value{kind: ID, s: id})
+				row, ok := f.run.m.Table("GROUP").Get(id)
+				if !ok {
+					break
+				}
+				id = row["parent"]
+			}
+			return out
+		}, t, nil
+	default:
+		if d, ok := cx.defines[head]; ok {
+			expanded, err := cx.expand(s, d, sc)
+			if err != nil {
+				return nil, typ{}, err
+			}
+			return cx.set(expanded, sc)
+		}
+	}
+	return nil, typ{}, s.errorf("in takes literals or one select")
+}
+
+func (cx *compiler) selectSet(s *sexp, sc *scope) (func(f *frame) []value, typ, error) {
 	if len(s.list) < 2 || s.list[1].isList || s.list[1].kind != atomName {
 		return nil, typ{}, s.errorf("select names TABLE.column")
 	}
@@ -495,23 +662,28 @@ func compileSelect(s *sexp, sc *scope) (func(f *frame) []value, typ, error) {
 	if err != nil {
 		return nil, typ{}, err
 	}
-	inner := &scan{table: t}
-	inner.conds, err = compileConds(s.list[2:], &scope{table: t, outer: sc})
+	inner := &scan{table: t, guarded: !cx.policy}
+	if cx.policy {
+		cx.hidden++
+		inner.name = fmt.Sprintf("_%d", cx.hidden)
+	}
+	inner.conds, err = cx.conds(s.list[2:], &scope{table: t, name: inner.name, outer: sc})
 	if err != nil {
 		return nil, typ{}, err
 	}
 	inner.pickProbe()
+	guarded := !cx.policy
 	return func(f *frame) []value {
 		out := []value{}
 		inner.each(f, func(g *frame) bool {
-			out = append(out, cellValue(c, g.row[c.Name]))
+			out = append(out, g.run.cell(guarded, t, g.row, c))
 			return true
 		})
 		return out
 	}, columnType(t.Name, c), nil
 }
 
-func compileOperand(s *sexp, sc *scope) (operand, error) {
+func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
 	if !s.isList {
 		switch s.kind {
 		case atomString, atomNumber:
@@ -531,11 +703,11 @@ func compileOperand(s *sexp, sc *scope) (operand, error) {
 				}}, nil
 			}
 		}
-		return compilePath(s, sc)
+		return cx.path(s, sc)
 	}
 	switch s.head() {
 	case "count":
-		inner, err := compileScan(s, 1, sc)
+		inner, err := cx.scan(s, 1, sc)
 		if err != nil {
 			return operand{}, err
 		}
@@ -548,11 +720,11 @@ func compileOperand(s *sexp, sc *scope) (operand, error) {
 		if len(s.list) < 3 {
 			return operand{}, s.errorf("sum takes a path and a table")
 		}
-		inner, err := compileScan(s, 2, sc)
+		inner, err := cx.scan(s, 2, sc)
 		if err != nil {
 			return operand{}, err
 		}
-		p, err := compilePath(s.list[1], &scope{table: inner.table, name: inner.name, outer: sc})
+		p, err := cx.path(s.list[1], &scope{table: inner.table, name: inner.name, outer: sc})
 		if err != nil {
 			return operand{}, err
 		}
@@ -633,7 +805,7 @@ func columnNamed(t *Table, name string, at *sexp) (Column, error) {
 	return Column{}, at.errorf("no column %s on %s%s", name, t.Name, suggest(name, names))
 }
 
-func compilePath(s *sexp, sc *scope) (operand, error) {
+func (cx *compiler) path(s *sexp, sc *scope) (operand, error) {
 	if s.isList || (s.kind != atomName && s.kind != atomAt) {
 		return operand{}, s.errorf("%s is not a path", s.flat())
 	}
@@ -669,6 +841,7 @@ func compilePath(s *sexp, sc *scope) (operand, error) {
 			return operand{}, s.errorf("%s names no row", text)
 		}
 		start = sc.table
+		startName = sc.name
 	}
 	segments := []string{}
 	if text != "" {
@@ -700,28 +873,24 @@ func compilePath(s *sexp, sc *scope) (operand, error) {
 		out.direct = steps[0].Name
 	}
 	at := s.kind == atomAt
+	guarded := !cx.policy
 	out.eval = func(f *frame) value {
 		row, t := startRow(f, at, startName)
 		if row == nil {
 			return blankValue
 		}
 		if len(steps) == 0 {
-			return value{kind: ID, s: keyOf(t, row)}
+			return value{kind: ID, s: row["id"]}
 		}
 		for _, c := range steps[:len(steps)-1] {
 			target := f.run.m.Table(c.Target)
 			next, ok := target.Get(row[c.Name])
-			if !ok {
+			if !ok || (guarded && !f.run.readable(target.table, next)) {
 				return blankValue
 			}
 			row, t = next, target.table
 		}
-		last := steps[len(steps)-1]
-		v := cellValue(last, row[last.Name])
-		if last.Kind == ID {
-			v.s = row[last.Name]
-		}
-		return v
+		return f.run.cell(guarded, t, row, steps[len(steps)-1])
 	}
 	return out, nil
 }
@@ -746,7 +915,7 @@ func compileInclude(s *sexp, start *Table) (*pathSpec, error) {
 	if s.isList || s.kind != atomName {
 		return nil, s.errorf("include takes paths")
 	}
-	out := &pathSpec{start: start}
+	out := &pathSpec{}
 	table := start
 	for _, seg := range strings.Split(s.text, ".") {
 		if table == nil {
@@ -768,11 +937,16 @@ func compileInclude(s *sexp, start *Table) (*pathSpec, error) {
 	return out, nil
 }
 
-func (m *Model) Run(q *Query, env Env) Result {
-	r := &run{m: m, now: wallClock(env.Now)}
+func (m *Model) newRun(env Env) *run {
+	r := &run{m: m, system: env.System, now: wallClock(env.Now), rows: map[string]bool{}, columns: map[string]bool{}}
 	if env.Viewer != "" {
 		r.viewer, _ = m.Table("PERSON").Get(env.Viewer)
 	}
+	return r
+}
+
+func (m *Model) Run(q *Query, env Env) Result {
+	r := m.newRun(env)
 	top := &frame{run: r}
 	rows := []store.Row{}
 	q.scan.each(top, func(f *frame) bool {
@@ -785,10 +959,17 @@ func (m *Model) Run(q *Query, env Env) Result {
 	if q.limit > 0 && len(rows) > q.limit {
 		rows = rows[:q.limit]
 	}
-	out := Result{Table: q.scan.table.Name, Rows: rows, Included: map[string]map[string]store.Row{}}
+	table := q.scan.table.Name
+	out := Result{Table: table, IDs: []string{}, Resources: map[string]map[string]store.Row{table: {}}}
+	guarded := q.scan.guarded
 	for _, row := range rows {
+		if guarded {
+			row = r.redact(q.scan.table, row)
+		}
+		out.IDs = append(out.IDs, row["id"])
+		out.Resources[table][row["id"]] = row
 		for _, p := range q.include {
-			m.includePath(row, p.steps, out.Included)
+			r.includePath(guarded, row, p.steps, out.Resources)
 		}
 	}
 	return out
@@ -836,23 +1017,25 @@ func (q *Query) sorted(rows []store.Row, top *frame) []store.Row {
 	return out
 }
 
-func (m *Model) includePath(row store.Row, steps []Column, into map[string]map[string]store.Row) {
+func (r *run) includePath(guarded bool, row store.Row, steps []Column, into map[string]map[string]store.Row) {
 	if len(steps) == 0 {
 		return
 	}
 	c := steps[0]
-	ids := cells.SplitList(row[c.Name])
-	target := m.Table(c.Target)
-	for _, id := range ids {
+	target := r.m.Table(c.Target)
+	for _, id := range cells.SplitList(row[c.Name]) {
 		next, ok := target.Get(id)
-		if !ok {
+		if !ok || (guarded && !r.readable(target.table, next)) {
 			continue
+		}
+		if guarded {
+			next = r.redact(target.table, next)
 		}
 		if into[c.Target] == nil {
 			into[c.Target] = map[string]store.Row{}
 		}
 		into[c.Target][id] = next
-		m.includePath(next, steps[1:], into)
+		r.includePath(guarded, next, steps[1:], into)
 	}
 }
 

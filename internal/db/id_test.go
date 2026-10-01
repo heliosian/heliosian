@@ -64,15 +64,17 @@ func TestTableOf(t *testing.T) {
 	for s, want := range map[string]string{
 		"perX7pQ2m9KdLr": "PERSON",
 		"grpX7pQ2m9KdLr": "GROUP",
-		"tokX7pQ2m9KdLr": "RECIPIENT",
-		"fedX7pQ2m9KdLr": "SAVED_VIEW",
+		"rcpX7pQ2m9KdLr": "RECIPIENT",
+		"memX7pQ2m9KdLr": "MEMBER",
 		"bdyX7pQ2m9KdLr": "BIRTHDAY_YEAR",
 	} {
 		if got, ok := TableOf(s); !ok || got != want {
 			t.Fatalf("TableOf(%s) = %q %v, want %s", s, got, ok, want)
 		}
 	}
-	if got, ok := TableOf("purX7pQ2m9KdLr"); ok {
-		t.Fatalf("TableOf(purchase) = %q, but no table is keyed by purchases", got)
+	for _, s := range []string{"purX7pQ2m9KdLr", "tokX7pQ2m9KdLr", "fedX7pQ2m9KdLr"} {
+		if got, ok := TableOf(s); ok {
+			t.Fatalf("TableOf(%s) = %q, but no table is keyed by it", s, got)
+		}
 	}
 }

@@ -42,29 +42,21 @@ func TestSchemaHangsTogether(t *testing.T) {
 					continue
 				}
 				target, ok := Lookup(c.Target)
-				if !ok {
-					t.Errorf("%s.%s refers to no table %s", table.Name, c.Name, c.Target)
-					continue
-				}
-				if len(target.Key) != 1 {
-					t.Errorf("%s.%s refers to %s, which has no single key", table.Name, c.Name, c.Target)
-					continue
-				}
-				if k, _ := target.Column(target.Key[0]); k.Kind != ID {
-					t.Errorf("%s.%s refers to %s, whose key is not a minted id", table.Name, c.Name, c.Target)
+				if !ok || target.Generated {
+					t.Errorf("%s.%s refers to no stored table %s", table.Name, c.Name, c.Target)
 				}
 			}
 		}
-		if table.Generated {
-			continue
+		if table.Columns[0].Name != "id" {
+			t.Errorf("%s does not start with its id", table.Name)
 		}
-		if len(table.Key) == 0 {
-			t.Errorf("%s has no key", table.Name)
+		if id := table.Columns[0]; !table.Generated && (id.Kind != ID || !id.Required) {
+			t.Errorf("%s's id is not a minted id", table.Name)
 		}
-		for _, k := range table.Key {
+		for _, k := range table.Unique {
 			c, ok := table.Column(k)
 			if !ok || c.Generated {
-				t.Errorf("%s: key column %s is not a stored column", table.Name, k)
+				t.Errorf("%s: unique column %s is not a stored column", table.Name, k)
 			}
 		}
 	}
@@ -86,6 +78,7 @@ func TestStoredLeavesOutGenerated(t *testing.T) {
 func TestCheck(t *testing.T) {
 	member, _ := Lookup("MEMBER")
 	good := map[string]string{
+		"id":          "memX7pQ2m9KdLr",
 		"group":       "grpX7pQ2m9KdLr",
 		"person":      "perX7pQ2m9KdLr",
 		"role":        "Member",
@@ -109,6 +102,7 @@ func TestCheck(t *testing.T) {
 		"answered":    "yesterday",
 		"quantity":    "-1",
 		"guest_of":    " perX7pQ2m9KdLr",
+		"id":          "grpX7pQ2m9KdLr",
 	} {
 		row := map[string]string{}
 		for k, v := range good {
@@ -123,7 +117,7 @@ func TestCheck(t *testing.T) {
 
 func TestCheckRefs(t *testing.T) {
 	view, _ := Lookup("SAVED_VIEW")
-	row := map[string]string{"token": "fedX7pQ2m9KdLr", "person": "perX7pQ2m9KdLr", "groups": "grpX7pQ2m9KdLr, grpY7pQ2m9KdLr"}
+	row := map[string]string{"id": "svwX7pQ2m9KdLr", "token": "fedX7pQ2m9KdLr", "person": "perX7pQ2m9KdLr", "groups": "grpX7pQ2m9KdLr, grpY7pQ2m9KdLr"}
 	if err := view.Check(row); err != nil {
 		t.Fatal(err)
 	}
@@ -135,10 +129,10 @@ func TestCheckRefs(t *testing.T) {
 
 func TestAnyTableReference(t *testing.T) {
 	alias, _ := Lookup("ALIAS")
-	if err := alias.Check(map[string]string{"alias": "k7m2q9x4v1bnc", "id": "bdyX7pQ2m9KdLr"}); err != nil {
+	if err := alias.Check(map[string]string{"id": "alsX7pQ2m9KdLr", "alias": "k7m2q9x4v1bnc", "target": "bdyX7pQ2m9KdLr"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := alias.Check(map[string]string{"alias": "k7m2q9x4v1bnc", "id": "purX7pQ2m9KdLr"}); err == nil {
+	if err := alias.Check(map[string]string{"id": "alsX7pQ2m9KdLr", "alias": "k7m2q9x4v1bnc", "target": "purX7pQ2m9KdLr"}); err == nil {
 		t.Fatal("ALIAS accepted a purchase, which no table is keyed by")
 	}
 }
