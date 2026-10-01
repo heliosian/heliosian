@@ -514,6 +514,8 @@ main {
 
 .wg-party-pic svg { width: 28px; height: 28px; }
 
+.widget-birthday .wg-party-pic { flex-basis: 72px; }
+
 .wg-party-pill { margin-top: 6px; }
 
 .wg-party-pill .wg-pill { display: inline-block; padding: 5px 14px; font-size: 13px; background: var(--glass, var(--pale-tint, #fde4ec)); color: var(--ink-tint, #d0346a); }

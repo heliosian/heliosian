@@ -261,7 +261,7 @@ func TestAnEditSendingOrderAloneWritesOneCell(t *testing.T) {
 	if got := c.Model().Home.Categories[0].ID; got != chatsID {
 		t.Errorf("the first category after the move = %s", got)
 	}
-	if got := c.Model().Home.WidgetOrder; !slices.Equal(got, []string{"school", "when", "team", "celebrate"}) {
+	if got := c.Model().Home.WidgetOrder; !slices.Equal(got, []string{"school", "when", "team", "celebrate", "birthday"}) {
 		t.Errorf("widgets after the move = %v", got)
 	}
 	for _, bad := range []string{"", "a b"} {
@@ -455,7 +455,7 @@ func TestWidgetAudience(t *testing.T) {
 			t.Errorf("a widget without its key: %v", w)
 		}
 	}
-	if !slices.Equal(keys, []string{"when", "team", "celebrate", "school"}) {
+	if !slices.Equal(keys, []string{"when", "team", "celebrate", "school", "birthday"}) {
 		t.Errorf("widgets in order = %v", keys)
 	}
 	if got := read(t, mux, homeAdmin, "/api/home-widgets/"+widgetKey("school")).one(t, "home-widgets", widgetKey("school")); got["key"] != "school" {

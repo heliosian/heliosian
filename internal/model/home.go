@@ -165,7 +165,7 @@ type Home struct {
 	admins      []string
 }
 
-var HomeWidgets = []string{"when", "team", "celebrate", "school"}
+var HomeWidgets = []string{"when", "team", "celebrate", "school", "birthday"}
 
 var Domains = []string{"heliosian.com", "heliosiandev.com"}
 

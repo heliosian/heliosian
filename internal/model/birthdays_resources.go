@@ -117,28 +117,29 @@ type mine struct {
 }
 
 type birthdayResource struct {
-	Email            string   `json:"email"`
-	Missing          bool     `json:"missing,omitempty"`
-	Year             string   `json:"year"`
-	Birthday         string   `json:"birthday,omitempty"`
-	BirthdayThisYear string   `json:"birthdayThisYear,omitempty"`
-	NewsletterDate   string   `json:"newsletterDate,omitempty"`
-	RequestBy        string   `json:"requestBy,omitempty"`
-	DueBy            string   `json:"dueBy,omitempty"`
-	Override         string   `json:"override,omitempty"`
-	Level            string   `json:"level,omitempty"`
-	LevelNote        string   `json:"levelNote,omitempty"`
-	Stage            string   `json:"stage,omitempty"`
-	Urgency          *urgency `json:"urgency,omitempty"`
-	Late             *late    `json:"late,omitempty"`
-	Assigned         bool     `json:"assigned"`
-	AssignedTo       string   `json:"assignedTo,omitempty"`
-	AssignedOn       string   `json:"assignedOn,omitempty"`
-	ContactedOn      string   `json:"contactedOn,omitempty"`
-	ContactedBy      string   `json:"contactedBy,omitempty"`
-	Path             string   `json:"path"`
-	App              string   `json:"app"`
-	Me               mine     `json:"me"`
+	Email            string        `json:"email"`
+	Missing          bool          `json:"missing,omitempty"`
+	Year             string        `json:"year"`
+	Birthday         string        `json:"birthday,omitempty"`
+	BirthdayThisYear string        `json:"birthdayThisYear,omitempty"`
+	NewsletterDate   string        `json:"newsletterDate,omitempty"`
+	RequestBy        string        `json:"requestBy,omitempty"`
+	DueBy            string        `json:"dueBy,omitempty"`
+	Override         string        `json:"override,omitempty"`
+	Level            string        `json:"level,omitempty"`
+	LevelNote        string        `json:"levelNote,omitempty"`
+	Stage            string        `json:"stage,omitempty"`
+	Urgency          *urgency      `json:"urgency,omitempty"`
+	Next             *birthdayStep `json:"next,omitempty"`
+	Late             *late         `json:"late,omitempty"`
+	Assigned         bool          `json:"assigned"`
+	AssignedTo       string        `json:"assignedTo,omitempty"`
+	AssignedOn       string        `json:"assignedOn,omitempty"`
+	ContactedOn      string        `json:"contactedOn,omitempty"`
+	ContactedBy      string        `json:"contactedBy,omitempty"`
+	Path             string        `json:"path"`
+	App              string        `json:"app"`
+	Me               mine          `json:"me"`
 }
 
 type donationResource struct {
@@ -239,7 +240,7 @@ func (r birthdayResources) birthdays() api.Type[*Model] {
 			out := birthdayResource{
 				Email: sv.Email, Missing: m.Birthdays.Birthday(sv.Email) == nil, Year: sv.Year, Birthday: sv.Birthday,
 				BirthdayThisYear: sv.BirthdayThisYear, NewsletterDate: sv.NewsletterDate, RequestBy: sv.RequestBy, DueBy: sv.DueBy,
-				Override: sv.Override, Level: sv.Level, LevelNote: sv.LevelNote, Stage: sv.Stage, Urgency: urgencyOf(sv, birthdayDayOf(q.Now)),
+				Override: sv.Override, Level: sv.Level, LevelNote: sv.LevelNote, Stage: sv.Stage, Urgency: urgencyOf(sv, birthdayDayOf(q.Now)), Next: nextStep(sv),
 				Assigned: sv.AssignedTo != "", AssignedOn: sv.AssignedOn, ContactedOn: sv.ContactedOn, ContactedBy: sv.ContactedBy,
 				Path: staffPath(sv.Email), App: birthdaysHost, Me: mine{Mine: sv.AssignedTo != "" && sv.AssignedTo == q.Actor.Email},
 				Late: m.lateFor(q, sv),
@@ -760,6 +761,8 @@ func (r birthdayResources) settings() api.Type[*Model] {
 		List: func(m *Model, _ api.Query) []string { return []string{m.Birthdays.settingsID()} },
 		Relations: map[string]api.Relation[*Model]{
 			"viewer": {Type: "people", List: func(m *Model, q api.Query, _ string) []string { return m.personID(q.Actor.Email) }},
+			"mine":   {Type: "birthdays", Many: true, List: func(m *Model, q api.Query, _ string) []string { return m.birthdayMine(q) }},
+			"all":    {Type: "birthdays", Many: true, List: func(m *Model, q api.Query, _ string) []string { return m.birthdayIssues(q) }},
 		},
 		Actions: map[string]api.Action[*Model]{
 			"edit": api.Do(func(_ *Model, q api.Query, _ string) bool { return permitted(requireAdmin(q.Actor)) }, func(wr api.Write[*Model], in BirthdaysSettings) error {

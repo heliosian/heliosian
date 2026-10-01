@@ -73,6 +73,15 @@ function teamItem(a) {
   return {title: a.title, under: a.under, start: a.day, timing: a.dayTiming, position: a.me.position, note: a.wants, path: a.path, image: a.picture};
 }
 
+function birthdayItem(read, b) {
+  const person = read.follow(b, 'person') || {};
+  const assignee = read.follow(b, 'assignee');
+  return {
+    name: person.fullName || b.email, photo: person.photoUrl || '', path: b.path, stage: b.stage, next: b.next,
+    newsletter: b.newsletterDate, urgency: b.urgency ? b.urgency.when : '', assignee: assignee ? assignee.fullName : b.assignedTo || '',
+  };
+}
+
 function options(read) {
   return {
     classrooms: read.result.classrooms.map(id => read.get(id).name),
@@ -94,6 +103,7 @@ export async function loadModel() {
     waiting: '/api/events?waiting',
     team: '/api/team-settings?include=mine,needed,priority',
     school: '/api/school-emails',
+    birthday: '/api/birthday-settings?include=mine.person,all.person,all.assignee',
   }), whoAmI()]);
   const admin = viewer.allowances.includes('home.configure');
   const today = read.now.slice(0, 10);
@@ -114,6 +124,7 @@ export async function loadModel() {
   const person = read.follow(s, 'viewer') || {};
   const name = person.fullName || viewer.email;
   const team = read.get(read.result.team[0]);
+  const birthday = read.get(read.result.birthday[0]);
   state.model = {
     user: {email: viewer.email, name, initial: name[0].toUpperCase(), photoUrl: person.heroPhotoUrl},
     allowances: viewer.allowances,
@@ -133,6 +144,10 @@ export async function loadModel() {
     waiting: read.result.waiting.map(read.get).sort((a, b) => a.start.localeCompare(b.start)).map(e => ({title: e.title, start: e.start, path: eventPath(e)})),
     team: {mine: read.follow(team, 'mine').map(teamItem), open: read.follow(team, 'needed').map(teamItem), priority: read.follow(team, 'priority').map(teamItem)},
     school: read.result.school.map(read.get),
+    birthday: {
+      admin: viewer.allowances.includes('birthday.configure'),      mine: read.follow(birthday, 'mine').map(b => birthdayItem(read, b)),
+      all: read.follow(birthday, 'all').map(b => birthdayItem(read, b)),
+    },
     options: admin ? {...options(later), roles: s.roles, relations: s.relations} : null,
   };
 }

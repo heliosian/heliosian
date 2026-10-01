@@ -357,6 +357,68 @@ function celebrateWidget() {
   return card;
 }
 
+let birthdayChip = 'mine';
+
+const stageNames = {'Wait': 'Scheduled', 'Awaiting Outreach': 'Ready to Contact', 'Awaiting Response': 'Waiting for Reply', 'Awaiting Newsletter': 'Ready for Newsletter', 'Complete': 'Complete'};
+
+const stepWords = {outreach: 'Ask by', info: 'Charity due', newsletter: 'Newsletter'};
+
+function shortDay(date) {
+  return parseDate(date).toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
+}
+
+function birthdayRow(item, i, all) {
+  const line = all
+    ? [stageNames[item.stage] || item.stage, item.assignee || 'Unassigned']
+    : [stepWords[item.next.step] + ' ' + shortDay(item.next.day), stageNames[item.stage] || item.stage];
+  let pill = null;
+  if (item.urgency) {
+    pill = el('span', 'wg-pill', item.urgency === 'late' ? 'Late' : 'Due today');
+  }
+  const tone = item.urgency === 'late' ? 'is-red' : item.urgency === 'today' ? 'is-gold' : teamTones[i % teamTones.length];
+  return pictureRow({href: appOrigin('birthday') + item.path, image: item.photo, title: item.name, line: line.join(' · '), pill, tone});
+}
+
+function birthdayWidget() {
+  const birthday = state.model.birthday;
+  const card = el('article', 'widget widget-birthday');
+  const head = el('header', 'widget-head');
+  head.append(widgetTitle('birthday', 'Birthdays'));
+  if (!birthday.admin) {
+    birthdayChip = 'mine';
+  }
+  const chips = el('div', 'wg-chips');
+  for (const [key, label] of [['mine', 'Mine'], ['all', 'All']].filter(([key]) => key === 'mine' || birthday.admin)) {
+    const chip = el('button', 'wg-chip' + (birthdayChip === key ? ' is-on' : ''), label);
+    chip.type = 'button';
+    chip.append(el('span', 'wg-chip-count', String(birthday[key].length)));
+    chip.addEventListener('click', () => {
+      birthdayChip = key;
+      renderWidgets(searchInput().value);
+    });
+    chips.append(chip);
+  }
+  card.append(head, chips);
+  const all = birthdayChip === 'all';
+  const items = birthday[birthdayChip];
+  const name = 'birthday-' + birthdayChip;
+  if (!items.length) {
+    card.append(el('p', 'wg-empty', all ? 'Nobody in the next two newsletters.' : 'None of yours in the next two newsletters need anything.'));
+  } else if (all) {
+    const groups = dayGroups(items, b => b.newsletter, () => '');
+    card.append(...grouped(name, groups,
+      g => dayBar(g.day, [el('span', 'wg-day-count', `${g.rows.length} ${g.rows.length === 1 ? 'birthday' : 'birthdays'}`)]),
+      (item, g, n) => birthdayRow(item, n, true)));
+  } else {
+    card.append(pictureList(name, items, (item, i) => birthdayRow(item, i, false)));
+  }
+  const foot = widgetFoot(name, items.length, {href: appOrigin('birthday')});
+  if (foot) {
+    card.append(foot);
+  }
+  return card;
+}
+
 const schoolTones = ['is-teal', 'is-lime', 'is-pink', 'is-blue'];
 
 let schoolOpen;
@@ -457,11 +519,16 @@ function schoolWidget() {
   return card;
 }
 
-const widgetMakers = {when: whenWidget, team: teamWidget, celebrate: celebrateWidget, school: schoolWidget};
+const widgetMakers = {when: whenWidget, team: teamWidget, celebrate: celebrateWidget, school: schoolWidget, birthday: birthdayWidget};
 
-const widgetNames = {when: 'Upcoming', team: 'Team', celebrate: 'Celebrate', school: 'Inbox'};
+const widgetNames = {when: 'Upcoming', team: 'Team', celebrate: 'Celebrate', school: 'Inbox', birthday: 'Birthdays'};
 
-const widgetApps = {when: 'when', team: 'team', celebrate: 'celebrate', school: 'ask'};
+const widgetApps = {when: 'when', team: 'team', celebrate: 'celebrate', school: 'ask', birthday: 'birthday'};
+
+function hasWork() {
+  const birthday = state.model.birthday;
+  return birthday.mine.length > 0 || birthday.all.length > 0;
+}
 
 export function widgetRows() {
   return state.model.widgets.map(w => {
@@ -521,7 +588,7 @@ export function renderWidgets(query = '', fitted = false) {
     return;
   }
   for (const w of state.model.widgets) {
-    if (!w.me.shown && !admin) {
+    if ((!w.me.shown && !admin) || (w.key === 'birthday' && !hasWork())) {
       continue;
     }
     const widget = widgetMakers[w.key]();
