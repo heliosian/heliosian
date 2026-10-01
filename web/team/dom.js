@@ -117,8 +117,11 @@ export function treeFilter(node, below, onChange, start) {
   return {wrap: filter, sources, self};
 }
 
-export function toggle(label, checked, onChange) {
+export function toggle(label, checked, onChange, tip) {
   const row = el('div', 'toggle-row');
+  if (tip) {
+    row.title = tip;
+  }
   row.append(el('span', '', label));
   const wrap = el('label', 'switch');
   const input = el('input');

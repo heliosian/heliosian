@@ -388,7 +388,7 @@ export function categoryFromAddress() {
 
 export function listedIn(year) {
   return activitiesIn(year).filter(a =>
-    (state.showPrevious || !a.past) && revealed(a));
+    (state.showPrevious || (!a.past && !a.full)) && revealed(a));
 }
 
 export function matches(node, query) {
