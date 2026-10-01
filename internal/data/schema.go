@@ -186,3 +186,24 @@ func (s *Sheet) RenameTab(app, from, to string) error {
 	s.mu.Unlock()
 	return nil
 }
+
+func (s *Sheet) DeleteTab(app, title string) error {
+	id, err := s.spreadsheet(app)
+	if err != nil {
+		return err
+	}
+	tab, err := s.tabID(id, title)
+	if err != nil {
+		return err
+	}
+	_, err = call("delete tab "+title, s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{{DeleteSheet: &sheets.DeleteSheetRequest{SheetId: tab}}},
+	}).Do)
+	if err != nil {
+		return fmt.Errorf("delete tab %q: %w", title, err)
+	}
+	s.mu.Lock()
+	s.ids = nil
+	s.mu.Unlock()
+	return nil
+}

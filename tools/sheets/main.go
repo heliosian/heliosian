@@ -22,16 +22,17 @@ type command struct {
 }
 
 var commands = map[string]command{
-	"create": {"create an empty spreadsheet in the same shared drive folder as --sheet", create},
-	"tabs":   {"list the tabs with their sizes and header rows", tabs},
-	"rows":   {"print the rows of one tab", rows},
-	"dump":   {"copy one tab to a local csv", dump},
-	"write":  {"write a local csv into a tab, header-checked", write},
-	"sync":   {"sync a tab's cells to a local csv by key column", sync},
-	"set":    {"set one cell by key column, appending the row if missing", set},
-	"delete": {"delete the rows matching a key column value", deleteRows},
-	"rename": {"rename a tab", rename},
-	"drop":   {"delete named columns from a tab, header and cells", drop},
+	"create":   {"create an empty spreadsheet in the same shared drive folder as --sheet", create},
+	"tabs":     {"list the tabs with their sizes and header rows", tabs},
+	"rows":     {"print the rows of one tab", rows},
+	"dump":     {"copy one tab to a local csv", dump},
+	"write":    {"write a local csv into a tab, header-checked", write},
+	"sync":     {"sync a tab's cells to a local csv by key column", sync},
+	"set":      {"set one cell by key column, appending the row if missing", set},
+	"delete":   {"delete the rows matching a key column value", deleteRows},
+	"rename":   {"rename a tab", rename},
+	"drop":     {"delete named columns from a tab, header and cells", drop},
+	"drop-tab": {"delete a tab that holds no rows beyond its header", dropTab},
 }
 
 func usage() {
@@ -42,7 +43,7 @@ func usage() {
 	slices.Sort(names)
 	fmt.Fprintln(os.Stderr, "usage: go run ./tools/sheets <command> --sheet <spreadsheet id> [flags]")
 	for _, name := range names {
-		fmt.Fprintf(os.Stderr, "  %-7s %s\n", name, commands[name].summary)
+		fmt.Fprintf(os.Stderr, "  %-8s %s\n", name, commands[name].summary)
 	}
 	os.Exit(2)
 }
@@ -457,4 +458,25 @@ func drop(args []string) {
 		log.Fatalf("delete columns from %q: %v", *tab, err)
 	}
 	log.Printf("deleted %d columns from %q: %s", len(names), *tab, *columns)
+}
+
+func dropTab(args []string) {
+	var tab *string
+	var apply *bool
+	source := parse("drop-tab", args, func(fs *flag.FlagSet) {
+		tab = fs.String("tab", "", "tab title")
+		apply = fs.Bool("apply", false, "delete the tab; without it the run only reports it")
+	}, "tab")
+	all := raw(source, *tab)
+	if len(all) > 1 {
+		log.Fatalf("tab %q holds %d rows beyond its header", *tab, len(all)-1)
+	}
+	if !*apply {
+		log.Printf("reporting only, pass --apply to delete tab %q", *tab)
+		return
+	}
+	if err := source.DeleteTab("sheet", *tab); err != nil {
+		log.Fatalf("delete tab %q: %v", *tab, err)
+	}
+	log.Printf("deleted tab %q", *tab)
 }

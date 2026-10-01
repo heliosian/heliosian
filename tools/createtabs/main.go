@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"heliosian/internal/data"
+	"heliosian/internal/db"
 	"heliosian/internal/env"
 	"heliosian/internal/id"
 	"heliosian/internal/model"
@@ -192,7 +193,22 @@ func applyLayout(source *data.Sheet, layout string) (tabs, columns int, err erro
 	return tabs, columns, nil
 }
 
+func addDataLayouts() {
+	for _, s := range spreadsheets.All {
+		tabs := []tab{}
+		for _, t := range db.Tables {
+			if t.Sheet == s.Source {
+				tabs = append(tabs, tab{t.Name, t.Stored()})
+			}
+		}
+		if len(tabs) > 0 {
+			layouts[s.Title] = append(tabs, tab{store.ChangeLogTab, store.ChangeLogColumns})
+		}
+	}
+}
+
 func main() {
+	addDataLayouts()
 	sheets := []spreadsheets.Spreadsheet{}
 	for _, s := range spreadsheets.All {
 		if _, ok := layouts[s.Title]; ok {

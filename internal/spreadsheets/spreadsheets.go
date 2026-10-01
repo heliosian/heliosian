@@ -22,6 +22,11 @@ var All = []Spreadsheet{
 	{"groups", "GROUPS_SHEET", "Groups"},
 	{"artifacts", "ARTIFACTS_SHEET", "Artifacts"},
 	{"feedback", "FEEDBACK_SHEET", "Feedback"},
+	{"datapeople", "DATA_PEOPLE_SHEET", "Data: People"},
+	{"datagroups", "DATA_GROUPS_SHEET", "Data: Groups"},
+	{"datadocuments", "DATA_DOCUMENTS_SHEET", "Data: Documents"},
+	{"datamail", "DATA_MAIL_SHEET", "Data: Mail"},
+	{"dataconfig", "DATA_CONFIG_SHEET", "Data: Config"},
 }
 
 func IDs(sheets []Spreadsheet) map[string]string {
