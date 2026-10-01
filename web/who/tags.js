@@ -1,9 +1,9 @@
-import {state, tags, shared, lists, byEmail, tagKey} from './state.js';
+import {state, tags, shared, lists, byId, tagKey} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {firstName} from './dom.js';
 import {el, svg} from '/elements.js';
 import {appOrigin} from '/appswitch.js';
-import {api} from '/api.js';
+import {act, create, remove} from '/data.js';
 import {photoOrInitials, personPhotoUrl} from './people.js';
 import {clampFilterPanel} from '/rules.js';
 
@@ -12,7 +12,7 @@ export function tagKeys() {
 }
 
 export function sharedKeys() {
-  return Object.keys(shared).sort((a, b) => shared[a].name.localeCompare(shared[b].name) || shared[a].owner.localeCompare(shared[b].owner));
+  return Object.keys(shared).sort((a, b) => shared[a].name.localeCompare(shared[b].name) || shared[a].ownerName.localeCompare(shared[b].ownerName));
 }
 
 export function sharedOf(key) {
@@ -113,10 +113,8 @@ export function onTagsChangeChrome(fn) {
 }
 
 export async function deleteTag(key) {
-  const form = new FormData();
-  form.append('tag', tags[key].id);
   try {
-    await api('POST', '/api/directory/tag-delete', form);
+    await remove('tags', tags[key].id);
   } catch (err) {
     alert(err.message);
     return false;
@@ -128,11 +126,8 @@ export async function deleteTag(key) {
 }
 
 export async function renameTag(key, to) {
-  const form = new FormData();
-  form.append('tag', tags[key].id);
-  form.append('name', to);
   try {
-    await api('POST', '/api/directory/tag-rename', form);
+    await act('tags', tags[key].id, 'rename', {name: to});
   } catch (err) {
     alert(err.message);
     return false;
@@ -143,19 +138,20 @@ export async function renameTag(key, to) {
   return true;
 }
 
+function ownTag(id, name, people) {
+  const me = state.model.user;
+  return {id, owner: me.id, ownerName: me.name, name, people, managers: [], me: {mine: true}};
+}
+
 export async function copyTag(key, to) {
-  const form = new FormData();
-  form.append('tag', tagOf(key).id);
-  form.append('name', to);
   let saved;
   try {
-    saved = await api('POST', '/api/directory/tag-copy', form);
+    saved = await act('tags', tagOf(key).id, 'copy', {name: to});
   } catch (err) {
     alert(err.message);
     return null;
   }
-  const me = state.model.user;
-  tags[tagKey(saved.id)] = {id: saved.id, owner: me.email, ownerName: me.name, name: to, people: [...members(key)], managers: []};
+  tags[tagKey(saved.id)] = ownTag(saved.id, to, [...members(key)]);
   chromeChanged();
   pageChanged();
   return saved.id;
@@ -166,17 +162,17 @@ function tagKeysByRecency() {
   return tagKeys().sort((a, b) => (usage[b] || 0) - (usage[a] || 0));
 }
 
-export function tagsOf(email) {
-  return [...tagKeys(), ...sharedKeys()].filter(key => tagOf(key).people.includes(email));
+export function tagsOf(id) {
+  return [...tagKeys(), ...sharedKeys()].filter(key => tagOf(key).people.includes(id));
 }
 
-function isTagged(email) {
-  return tagsOf(email).length > 0;
+function isTagged(id) {
+  return tagsOf(id).length > 0;
 }
 
-async function setTag(email, key, on) {
+async function setTag(id, key, on) {
   const t = tagOf(key);
-  t.people = on ? (t.people.includes(email) ? t.people : [...t.people, email].sort()) : t.people.filter(e => e !== email);
+  t.people = on ? (t.people.includes(id) ? t.people : [...t.people, id]) : t.people.filter(e => e !== id);
   if (!t.people.length) {
     delete tags[key];
     delete shared[key];
@@ -187,35 +183,26 @@ async function setTag(email, key, on) {
   }
   chromeChanged();
   pageChanged();
-  const form = new FormData();
-  form.append('person', email);
-  form.append('on', on ? '1' : '0');
-  form.append('tag', t.id);
   try {
-    await api('POST', '/api/directory/tag', form);
+    await act('tags', t.id, on ? 'add' : 'remove', {person: id});
   } catch (err) {
     alert(err.message);
   }
 }
 
-async function addToNewTag(email, name) {
-  const form = new FormData();
-  form.append('person', email);
-  form.append('on', '1');
-  form.append('name', name);
+async function addToNewTag(id, name) {
   let saved;
   try {
-    saved = await api('POST', '/api/directory/tag', form);
+    saved = await create('tags', {name, person: id});
   } catch (err) {
     alert(err.message);
     return null;
   }
   const key = tagKey(saved.id);
   if (tags[key]) {
-    tags[key].people = tags[key].people.includes(email) ? tags[key].people : [...tags[key].people, email].sort();
+    tags[key].people = tags[key].people.includes(id) ? tags[key].people : [...tags[key].people, id];
   } else {
-    const me = state.model.user;
-    tags[key] = {id: saved.id, owner: me.email, ownerName: me.name, name, people: [email], managers: []};
+    tags[key] = ownTag(saved.id, name, [id]);
   }
   saveLastTag(key);
   recordTagUsage(key);
@@ -225,12 +212,8 @@ async function addToNewTag(email, name) {
 }
 
 export async function shareTag(key, manager, on) {
-  const form = new FormData();
-  form.append('tag', tags[key].id);
-  form.append('manager', manager);
-  form.append('on', on ? '1' : '0');
   try {
-    await api('POST', '/api/directory/tag-share', form);
+    await act('tags', tags[key].id, on ? 'share' : 'unshare', {person: manager});
   } catch (err) {
     alert(err.message);
     return false;
@@ -238,7 +221,6 @@ export async function shareTag(key, manager, on) {
   const current = tags[key].managers.filter(e => e !== manager);
   if (on) {
     current.push(manager);
-    current.sort();
   }
   tags[key].managers = current;
   return true;
@@ -355,8 +337,8 @@ export function manageControl(key, onManagersChange) {
   };
   const paintManagers = () => {
     managers.replaceChildren();
-    for (const email of managersOf(key)) {
-      const p = byEmail[email];
+    for (const id of managersOf(key)) {
+      const p = byId[id];
       if (!p) {
         continue;
       }
@@ -367,7 +349,7 @@ export function manageControl(key, onManagersChange) {
       remove.title = `Stop ${firstName(p.fullName)} managing this tag`;
       remove.append(svg('close'));
       remove.addEventListener('click', async () => {
-        if (await shareTag(key, email, false)) {
+        if (await shareTag(key, id, false)) {
           paintManagers();
           updateLabel();
           onManagersChange();
@@ -384,10 +366,10 @@ export function manageControl(key, onManagersChange) {
     if (!q) {
       return;
     }
-    const me = state.model.user.email;
+    const me = state.model.user.id;
     const matches = state.model.people
-      .filter(p => p.email !== me && !managersOf(key).includes(p.email))
-      .filter(p => p.fullName.toLowerCase().includes(q) || p.email.toLowerCase().includes(q))
+      .filter(p => p.id !== me && !managersOf(key).includes(p.id))
+      .filter(p => p.fullName.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q))
       .slice(0, 6);
     if (!matches.length) {
       results.append(el('div', 'share-empty', 'No one by that name.'));
@@ -398,7 +380,7 @@ export function manageControl(key, onManagersChange) {
       row.type = 'button';
       row.append(photoOrInitials(personPhotoUrl(p), p.fullName, 'share-avatar'), el('span', '', p.fullName), svg('plus'));
       row.addEventListener('click', async () => {
-        if (await shareTag(key, p.email, true)) {
+        if (await shareTag(key, p.id, true)) {
           input.value = '';
           paintResults();
           paintManagers();
@@ -418,10 +400,8 @@ export function manageControl(key, onManagersChange) {
 }
 
 export async function leaveTag(key) {
-  const form = new FormData();
-  form.append('tag', shared[key].id);
   try {
-    await api('POST', '/api/directory/tag-leave', form);
+    await act('tags', shared[key].id, 'leave');
   } catch (err) {
     alert(err.message);
     return false;
@@ -432,7 +412,7 @@ export async function leaveTag(key) {
   return true;
 }
 
-function tagMenu(email, onChange) {
+function tagMenu(id, onChange) {
   const menu = el('div', 'card-menu tag-menu');
   menu.hidden = true;
   menu.focusTag = key => {
@@ -446,9 +426,9 @@ function tagMenu(email, onChange) {
       const box = el('input');
       box.type = 'checkbox';
       box.dataset.tagKey = key;
-      box.checked = members(key).includes(email);
+      box.checked = members(key).includes(id);
       box.addEventListener('change', async () => {
-        await setTag(email, key, box.checked);
+        await setTag(id, key, box.checked);
         render();
         onChange();
         menu.focusTag(key);
@@ -479,7 +459,7 @@ function tagMenu(email, onChange) {
         return;
       }
       input.value = '';
-      await addToNewTag(email, name);
+      await addToNewTag(id, name);
       render();
       onChange();
     });
@@ -517,13 +497,13 @@ function mostRecentTag() {
   return existing.includes(last) ? last : existing[0];
 }
 
-export function tagControl(email, wrapClass, buttonClass, onChange) {
+export function tagControl(id, wrapClass, buttonClass, onChange) {
   const wrap = el('div', wrapClass);
-  const button = el('button', buttonClass + (isTagged(email) ? ' active' : ''));
+  const button = el('button', buttonClass + (isTagged(id) ? ' active' : ''));
   button.title = 'Tags';
   button.append(svg('tag'));
-  const menu = tagMenu(email, () => {
-    button.classList.toggle('active', isTagged(email));
+  const menu = tagMenu(id, () => {
+    button.classList.toggle('active', isTagged(id));
     onChange();
   });
   button.addEventListener('click', async e => {
@@ -534,19 +514,19 @@ export function tagControl(email, wrapClass, buttonClass, onChange) {
     if (!opening) {
       return;
     }
-    if (isTagged(email)) {
+    if (isTagged(id)) {
       menu.refreshTags();
       menu.querySelector('.tag-option input')?.focus();
       return;
     }
     let tag = mostRecentTag();
     if (tag) {
-      await setTag(email, tag, true);
+      await setTag(id, tag, true);
     } else {
-      tag = await addToNewTag(email, 'My List');
+      tag = await addToNewTag(id, 'My List');
     }
     menu.refreshTags();
-    button.classList.toggle('active', isTagged(email));
+    button.classList.toggle('active', isTagged(id));
     onChange();
     menu.focusTag(tag);
   });

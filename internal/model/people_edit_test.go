@@ -10,7 +10,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
-	"heliosian/internal/serve"
 )
 
 func TestAParentEditsTheirHouseholdAndKidButNotTheOtherParents(t *testing.T) {
@@ -46,7 +45,7 @@ func TestAParentEditsTheirHouseholdAndKidButNotTheOtherParents(t *testing.T) {
 func requestAs(s *Store, email string) access.Actor {
 	var got access.Actor
 	r := httptest.NewRequest("POST", "/", nil)
-	auth.Fixed(email, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = requestActor(s, r) })).ServeHTTP(httptest.NewRecorder(), r)
+	auth.Fixed(email, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = s.Model().actor(r, "who") })).ServeHTTP(httptest.NewRecorder(), r)
 	return got
 }
 
@@ -74,26 +73,24 @@ func TestSpoofedParentCannotEditAnyone(t *testing.T) {
 		Allowed: func(email string) bool { return email == jordan },
 		Person:  func(email string) (auth.Person, bool) { return auth.Person{Email: email}, true },
 	}
-	routes := DirectoryRoutes{Store: s.store}
+	rohans := familyID(sampleKey, rohan)
 	for _, c := range []struct {
 		as   string
 		want bool
 	}{{"", true}, {asha, false}} {
-		r := httptest.NewRequest("GET", "/api/directory/model", nil)
+		r := httptest.NewRequest("GET", "/api/families/"+rohans, nil)
 		if c.as != "" {
 			r.AddCookie(&http.Cookie{Name: "spoof", Value: auth.SpoofToken(key, jordan, c.as, time.Now().Add(time.Hour))})
 		}
 		w := httptest.NewRecorder()
-		signin.Fixed(jordan, serve.JSON(routes.model)).ServeHTTP(w, r)
-		var view struct {
-			User       user `json:"user"`
-			EditAnyone bool `json:"editAnyone"`
-		}
-		if err := json.NewDecoder(w.Body).Decode(&view); err != nil {
+		signin.Fixed(jordan, s.mux).ServeHTTP(w, r)
+		var read resourceReply
+		if err := json.NewDecoder(w.Body).Decode(&read); err != nil {
 			t.Fatal(err)
 		}
-		if view.EditAnyone != c.want {
-			t.Errorf("viewing as %q (%s): edit anyone %v, want %v", c.as, view.User.Email, view.EditAnyone, c.want)
+		can, _ := read.Resources["families"][rohans]["can"].(map[string]any)
+		if can["edit"] != c.want {
+			t.Errorf("viewing as %q: may edit another family %v, want %v", c.as, can["edit"], c.want)
 		}
 	}
 }

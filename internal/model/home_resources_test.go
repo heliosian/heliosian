@@ -212,7 +212,7 @@ func TestAdminListsAsResources(t *testing.T) {
 	if got := lists(homeAdmin); !slices.Equal(got, mine) || !slices.Contains(got, "home") {
 		t.Errorf("the home admin's lists = %v, want %v", got, mine)
 	}
-	if got := lists(outsider); len(got) != len(adminApps) {
+	if got := lists(outsider); len(got) != len(adminApps)+1 || got[len(got)-1] != superAdminList {
 		t.Errorf("a super admin's lists = %v", got)
 	}
 	if got := lists("robin.whitfield@heliosschool.org"); len(got) != 0 {

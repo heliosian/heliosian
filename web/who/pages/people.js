@@ -53,7 +53,7 @@ function renderStudents(grid) {
       head.append(bg);
     }
     head.append(photoOrInitials(p.photoUrl, p.fullName, 'student-photo'));
-    head.append(cardMore(p.email));
+    head.append(cardMore(p.id));
     card.append(head);
     card.append(el('div', 'student-first', firstName(p.fullName)));
     card.append(el('div', 'student-last', p.fullName.replace(firstName(p.fullName), '').trim()));

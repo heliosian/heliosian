@@ -1,29 +1,22 @@
-import {byEmail, colors} from './state.js';
+import {state, colors, peopleOf} from './state.js';
 import {withFrom, thumbUrl, hue, lastName} from './dom.js';
 import {el} from '/elements.js';
 import {familyOf} from './families.js';
 import {tagControl} from './tags.js';
 
-export function personSlug(email) {
-  return (email || '').split('@')[0];
-}
-
 export function personByKey(key) {
   if (!key) {
     return undefined;
   }
-  if (byEmail[key]) {
-    return byEmail[key];
-  }
   const lower = key.toLowerCase();
-  return Object.values(byEmail).find(p => personSlug(p.email).toLowerCase() === lower);
+  return state.model.people.find(p => p.email === lower) || state.model.people.find(p => p.slug.toLowerCase() === lower);
 }
 
 export function personLink(p) {
   if (p.guest) {
     return withFrom('/people/' + encodeURIComponent('guest:' + p.guest.id));
   }
-  return withFrom('/people/' + encodeURIComponent(personSlug(p.email)));
+  return withFrom(p.path);
 }
 
 export function guestPerson(g) {
@@ -72,9 +65,9 @@ function ringColorFor(p) {
     return colors.staff || null;
   }
   const family = familyOf(p);
-  const kids = ((family && family.kidEmails) || []).map(e => byEmail[e]).filter(Boolean);
+  const kids = family ? peopleOf(family.kids) : [];
   if (kids.length) {
-    const pick = kids[hue(p.email) % kids.length];
+    const pick = kids[hue(p.email || p.id) % kids.length];
     if (colors.grades[pick.grade]) {
       return colors.grades[pick.grade];
     }
@@ -130,16 +123,16 @@ function personContext(p) {
   }
   const family = familyOf(p);
   if (family) {
-    return (family.kidEmails || []).map(e => byEmail[e]?.fullName).filter(Boolean).join(', ');
+    return peopleOf(family.kids).map(k => k.fullName).filter(Boolean).join(', ');
   }
   return '';
 }
 
-export function cardMore(email) {
-  return tagControl(email, 'card-more-wrap', 'card-more', () => {});
+export function cardMore(id) {
+  return tagControl(id, 'card-more-wrap', 'card-more', () => {});
 }
 
-export function photoWithTag(photoEl, email, topLeft) {
+export function photoWithTag(photoEl, id, topLeft) {
   const wrap = el('div', 'photo-wrap photo-wrap-peek');
   const ringColor = photoEl.style.getPropertyValue('--ring-color');
   if (ringColor) {
@@ -149,7 +142,7 @@ export function photoWithTag(photoEl, email, topLeft) {
   if (topLeft) {
     wrap.append(topLeft);
   }
-  wrap.append(cardMore(email));
+  wrap.append(cardMore(id));
   return wrap;
 }
 
@@ -168,7 +161,7 @@ function gradeBadge(p) {
 export function personCard(p) {
   const card = el('a', 'person-card');
   card.href = personLink(p);
-  card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.fullName, 'person-photo'), p), p.email, gradeBadge(p)));
+  card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.fullName, 'person-photo'), p), p.id, gradeBadge(p)));
   card.append(el('div', 'role-label role-label-' + baseRole(p).toLowerCase(), baseRole(p)));
   card.append(el('div', 'person-name', p.fullName));
   const context = personContext(p);

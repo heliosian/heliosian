@@ -7,7 +7,7 @@ import (
 	"heliosian/internal/store"
 )
 
-func (i *InviteTemplates) saveGreeting(actor access.Actor, format, key string, grouped, individual bool) (string, []store.Op, error) {
+func (i *InviteTemplates) saveGreeting(actor access.Actor, format, key string, grouped, individual bool, taken func(string) bool) (string, []store.Op, error) {
 	if format == "" {
 		return "", nil, access.Invalid("format is required")
 	}
@@ -22,7 +22,7 @@ func (i *InviteTemplates) saveGreeting(actor access.Actor, format, key string, g
 		"Email":      actor.Email,
 	}
 	if key == "" {
-		row["Greeting ID"] = id.New(i.taken)
+		row["Greeting ID"] = id.New(taken)
 		return row["Greeting ID"], []store.Op{store.Insert(greetingsTab, row)}, nil
 	}
 	have, ok := i.greeting(key)

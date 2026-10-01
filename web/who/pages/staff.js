@@ -32,7 +32,7 @@ export function renderStaff(grid, autoFit) {
     for (const p of groups.get(dept)) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
-      card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.fullName, 'person-photo'), p), p.email));
+      card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.fullName, 'person-photo'), p), p.id));
       card.append(el('div', 'role-label role-label-staff', p.jobTitle || 'Staff'));
       card.append(el('div', 'person-name', p.fullName));
       deptGrid.append(card);

@@ -565,10 +565,20 @@ func alertResources() api.Type[*Model] {
 	}
 }
 
-func adminListByResource(m *Model, key string) (string, bool) {
+const superAdminList = "super"
+
+func adminListKeys() []string {
+	out := []string{}
 	for _, a := range adminApps {
-		if derived(m, kindAdminList, a.key) == key {
-			return a.key, true
+		out = append(out, a.key)
+	}
+	return append(out, superAdminList)
+}
+
+func adminListByResource(m *Model, key string) (string, bool) {
+	for _, k := range adminListKeys() {
+		if derived(m, kindAdminList, k) == key {
+			return k, true
 		}
 	}
 	return "", false
@@ -576,6 +586,9 @@ func adminListByResource(m *Model, key string) (string, bool) {
 
 func managesAdmins(m *Model, q api.Query, key string) bool {
 	app, ok := adminListByResource(m, key)
+	if app == superAdminList {
+		return q.Actor.May(ManageSuperAdmins)
+	}
 	return ok && q.Actor.May(ManageAdmins(app))
 }
 
@@ -592,12 +605,15 @@ func adminListResources(s *Store) api.Type[*Model] {
 				return nil, false
 			}
 			app, _ := adminListByResource(m, key)
+			if app == superAdminList {
+				return adminListResource{App: app, Admins: slices.Clone(m.Config.SuperAdmins)}, true
+			}
 			return adminListResource{App: app, Admins: m.AdminList(app).Admins()}, true
 		},
 		List: func(m *Model, q api.Query) []string {
 			out := []string{}
-			for _, a := range adminApps {
-				if key := derived(m, kindAdminList, a.key); managesAdmins(m, q, key) {
+			for _, k := range adminListKeys() {
+				if key := derived(m, kindAdminList, k); managesAdmins(m, q, key) {
 					out = append(out, key)
 				}
 			}
@@ -605,14 +621,19 @@ func adminListResources(s *Store) api.Type[*Model] {
 		},
 		Aliases: func(m *Model) map[string]string {
 			out := map[string]string{}
-			for _, a := range adminApps {
-				out[a.key] = derived(m, kindAdminList, a.key)
+			for _, k := range adminListKeys() {
+				out[k] = derived(m, kindAdminList, k)
 			}
 			return out
 		},
 		Actions: map[string]api.Action[*Model]{
 			"edit": api.Do(managesAdmins, func(wr api.Write[*Model], body adminsBody) error {
 				app, _ := adminListByResource(wr.S, wr.ID)
+				if app == superAdminList {
+					admins, ops, err := wr.S.Config.setSuperAdmins(wr.Query.Actor, body.Admins)
+					logAfter(wr, "config: set the super admin list", "admins", admins)
+					return s.stage(wr, ConfigApp, ops, err)
+				}
 				l := wr.S.AdminList(app)
 				ops, admins, err := l.set(wr.Query.Actor, body.Admins)
 				logAfter(wr, app+": set the admin list", "admins", admins)

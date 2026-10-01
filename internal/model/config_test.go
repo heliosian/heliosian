@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/api"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -124,11 +125,16 @@ func TestSignOutIsRecordedOncePerAddress(t *testing.T) {
 	}
 }
 
+func configMux(cache *Store, queue *store.Queue) (*http.ServeMux, string) {
+	mux := http.NewServeMux()
+	typedRegistry(cache, queue, WhoResources(cache, ""), []api.Type[*Model]{adminListResources(cache)}).Register(mux)
+	return mux, "/api/who-settings/" + derived(cache.Model(), kindWhoSettings, "")
+}
+
 func TestAdminEditsAreCommits(t *testing.T) {
 	dir, queue, cache := sampleConfig(t)
 	const jordan = "jordan.whitfield@heliosschool.org"
-	mux := http.NewServeMux()
-	RegisterConfig(mux, cache)
+	mux, settings := configMux(cache, queue)
 	post := func(path, body string, want int) {
 		t.Helper()
 		rec := httptest.NewRecorder()
@@ -137,9 +143,9 @@ func TestAdminEditsAreCommits(t *testing.T) {
 			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
 		}
 	}
-	post("/api/config/stale-years", `{"photo":1,"facts":0.6,"familyPhoto":1.5}`, http.StatusNoContent)
-	post("/api/config/color", `{"kind":"grade","name":"Kindergarten","color":"#000000"}`, http.StatusNoContent)
-	post("/api/config/super-admins", `{"superAdmins":["`+jordan+`","asha.chandra@heliosschool.org"]}`, http.StatusNoContent)
+	post(settings+"/stale-years", `{"photo":1,"facts":0.6,"familyPhoto":1.5}`, http.StatusNoContent)
+	post(settings+"/color", `{"kind":"grade","name":"Kindergarten","color":"#000000"}`, http.StatusNoContent)
+	post("/api/admin-lists/super/edit", `{"admins":["`+jordan+`","asha.chandra@heliosschool.org"]}`, http.StatusNoContent)
 	s := cache.Model().Config
 	if s.StaleYears.Photo != 1 || s.GradeColors["Kindergarten"] != "#000000" || !cache.IsSuperAdmin("asha.chandra@heliosschool.org") {
 		t.Fatalf("settings after the edits: %+v", s)
@@ -161,17 +167,16 @@ func TestAdminEditsAreCommits(t *testing.T) {
 
 func TestEditsNeedTheirAdmin(t *testing.T) {
 	const asha = "asha.chandra@heliosschool.org"
-	_, _, cache := sampleConfig(t, asha)
-	mux := http.NewServeMux()
-	RegisterConfig(mux, cache)
+	_, queue, cache := sampleConfig(t, asha)
+	mux, settings := configMux(cache, queue)
+	color, supers := settings+"/color", "/api/admin-lists/super/edit"
 	for path, body := range map[string]string{
-		"/api/config/color":        `{"kind":"staff","color":"#000000"}`,
-		"/api/config/super-admins": `{"superAdmins":["` + asha + `"]}`,
-		"/api/config/sign-out":     `{"email":"parent@heliosschool.org"}`,
+		color:  `{"kind":"staff","color":"#000000"}`,
+		supers: `{"admins":["` + asha + `"]}`,
 	} {
 		for who, want := range map[string]int{"robin.whitfield@heliosschool.org": http.StatusForbidden, asha: http.StatusNoContent} {
-			if path != "/api/config/color" && who == asha {
-				want = http.StatusForbidden
+			if path == supers {
+				want = http.StatusNotFound
 			}
 			rec := httptest.NewRecorder()
 			auth.Fixed(who, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))

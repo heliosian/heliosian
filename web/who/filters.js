@@ -1,4 +1,4 @@
-import {state, byEmail} from './state.js';
+import {state, peopleOf} from './state.js';
 import {segments} from './dom.js';
 import {el} from '/elements.js';
 import {chipToggle, filterControl} from '/rules.js';
@@ -11,7 +11,7 @@ function personFacets(p, field) {
   }
   if (p.isParent) {
     const family = familyOf(p);
-    return ((family && family.kidEmails) || []).map(e => byEmail[e]).filter(Boolean).map(k => k[field]).filter(Boolean);
+    return (family ? peopleOf(family.kids) : []).map(k => k[field]).filter(Boolean);
   }
   return [];
 }
@@ -43,7 +43,7 @@ function roleChipsVisible() {
 }
 
 export function tagRelationOptionsFor(tag) {
-  const tagged = members(tag).map(e => byEmail[e]).filter(Boolean);
+  const tagged = peopleOf(members(tag));
   const hasKids = tagged.some(p => p.isStudent);
   const hasParents = tagged.some(p => p.isParent);
   const options = [];
@@ -72,15 +72,15 @@ function tagRelatedMatch(p) {
   const tagged = members(tag);
   for (const family of familiesOf(p)) {
     if (state.filterTagRelations.has('Parents') && p.isParent &&
-      (family.kidEmails || []).some(e => tagged.includes(e))) {
+      family.kids.some(id => tagged.includes(id))) {
       return true;
     }
     if (state.filterTagRelations.has('Children') && p.isStudent &&
-      (family.adultEmails || []).some(e => tagged.includes(e))) {
+      family.adults.some(id => tagged.includes(id))) {
       return true;
     }
     if (state.filterTagRelations.has('Siblings') && p.isStudent &&
-      (family.kidEmails || []).some(e => e !== p.email && tagged.includes(e))) {
+      family.kids.some(id => id !== p.id && tagged.includes(id))) {
       return true;
     }
   }
@@ -101,7 +101,7 @@ export function matchesFilters(p) {
   const cityOK = !state.filterCities.size || state.filterCities.has(cityOf(p));
   const pronounsOK = !state.filterPronouns.size || (p.pronouns && state.filterPronouns.has(p.pronouns.toLowerCase()));
   const newOK = !state.filterNew || p.isNew;
-  const tagOK = !state.filterTags.size || [...state.filterTags].some(k => members(k).includes(p.email)) || tagRelatedMatch(p);
+  const tagOK = !state.filterTags.size || [...state.filterTags].some(k => members(k).includes(p.id)) || tagRelatedMatch(p);
   return gradeOK && classOK && roleOK && cityOK && pronounsOK && newOK && tagOK;
 }
 
@@ -110,7 +110,7 @@ export function familyMatchesFilters(key) {
   if (!family) {
     return !anyFiltersActive();
   }
-  const members = [...(family.kidEmails || []), ...(family.adultEmails || [])].map(e => byEmail[e]).filter(Boolean);
+  const members = peopleOf([...family.kids, ...family.adults]);
   return !anyFiltersActive() || members.some(matchesFilters);
 }
 

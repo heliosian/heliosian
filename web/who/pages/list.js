@@ -1,4 +1,4 @@
-import {state, byEmail, lists, tags} from '../state.js';
+import {state, byId, lists, tags, peopleOf} from '../state.js';
 import {csvField} from '../dom.js';
 import {dataGrid} from '/datagrid.js';
 import {el, svg} from '/elements.js';
@@ -43,7 +43,7 @@ function renderTagMap(container) {
   const canvas = el('div', 'map-canvas');
   container.append(canvas);
   const q = state.q;
-  initFamilyMap(canvas, family => familyMatchesFilters(family.key) && familySearchText(family).includes(q));
+  initFamilyMap(canvas, family => familyMatchesFilters(family.id) && familySearchText(family).includes(q));
 }
 
 const emailColumns = [
@@ -56,9 +56,7 @@ const emailColumns = [
 
 function kidsField(parent, field) {
   const family = familyOf(parent);
-  const values = ((family && family.kidEmails) || [])
-    .map(e => byEmail[e])
-    .filter(Boolean)
+  const values = (family ? peopleOf(family.kids) : [])
     .map(k => k[field])
     .filter(Boolean);
   return [...new Set(values)].join(', ');
@@ -68,10 +66,10 @@ function emailEntries() {
   const rows = [];
   const seen = new Set();
   const add = (p, role, grade, classroom) => {
-    if (p.emailMasked || seen.has(p.email)) {
+    if (!p.email || seen.has(p.id)) {
       return;
     }
-    seen.add(p.email);
+    seen.add(p.id);
     rows.push({p, role, grade, classroom});
   };
   const students = state.model.people
@@ -80,11 +78,8 @@ function emailEntries() {
   for (const s of students) {
     add(s, 'Student', s.grade || '', s.classroom || '');
     for (const family of familiesOf(s)) {
-      for (const email of family.adultEmails || []) {
-        const parent = byEmail[email];
-        if (parent) {
-          add(parent, 'Parent', kidsField(parent, 'grade'), kidsField(parent, 'classroom'));
-        }
+      for (const parent of peopleOf(family.adults)) {
+        add(parent, 'Parent', kidsField(parent, 'grade'), kidsField(parent, 'classroom'));
       }
     }
   }
@@ -125,28 +120,30 @@ export function listPage() {
     }
     titleWrap.append(line);
   }
-  const chip = email => {
-    const p = byEmail[email];
-    const a = el('a', 'tag-chip person-chip', p ? p.fullName : email);
-    if (p) {
-      a.href = personLink(p);
-    }
+  const chip = p => {
+    const a = el('a', 'tag-chip person-chip', p.fullName);
+    a.href = personLink(p);
     return a;
   };
-  const chips = (target, emails, joiner) => {
-    emails.forEach((email, i) => {
+  const ownerChip = t => {
+    const owner = byId[t.owner];
+    return owner ? chip(owner) : el('a', 'tag-chip person-chip', t.ownerName);
+  };
+  const chips = (target, ids, joiner) => {
+    const people = peopleOf(ids);
+    people.forEach((p, i) => {
       if (i) {
-        target.append(el('span', '', i === emails.length - 1 ? ` ${joiner} ` : ', '));
+        target.append(el('span', '', i === people.length - 1 ? ` ${joiner} ` : ', '));
       }
-      target.append(chip(email));
+      target.append(chip(p));
     });
   };
   const ownership = el('div', 'page-subtitle tag-ownership');
   const paintOwnership = () => {
     ownership.replaceChildren();
     if (sharedTag) {
-      const others = sharedTag.managers.filter(e => e !== state.model.user.email);
-      ownership.append(svg('families'), chip(sharedTag.owner), el('span', '', "'s tag, shared with you" + (others.length ? ' and ' : '')));
+      const others = sharedTag.managers.filter(id => id !== state.model.user.id);
+      ownership.append(svg('families'), ownerChip(sharedTag), el('span', '', "'s tag, shared with you" + (others.length ? ' and ' : '')));
       chips(ownership, others, 'and');
     } else if (ownTag && managersOf(ownTag).length) {
       ownership.append(svg('families'), el('span', '', 'Managed with '));
@@ -247,7 +244,7 @@ export function listPage() {
       link.href = personLink(r.p);
       return link;
     }} : c));
-    const trailing = r => (r.p.guest ? el('span') : tagControl(r.p.email, 'tag-wrap', 'row-tag', () => {
+    const trailing = r => (r.p.guest ? el('span') : tagControl(r.p.id, 'tag-wrap', 'row-tag', () => {
       if (state.filterTags.size) {
         renderGrid();
       }

@@ -1,21 +1,23 @@
-import {state, byEmail} from './state.js';
 import {el, svg} from '/elements.js';
-import {familiesOf} from './families.js';
 import {load} from '/router.js';
 import {api} from '/api.js';
+import {act} from '/data.js';
 
-export async function submitField(key, field, value, status) {
+const types = {person: 'people', family: 'families'};
+const photoActions = {person: 'add-photo', family: 'photo'};
+
+function failed(status, err) {
+  status.classList.add('error');
+  status.textContent = err.message;
+}
+
+export async function submitEdit(target, id, body, status) {
   status.classList.remove('error');
   status.textContent = 'Saving…';
-  const form = new FormData();
-  form.append('key', key);
-  form.append('field', field);
-  form.append('value', value);
   try {
-    await api('POST', '/api/directory/edit', form);
+    await act(types[target], id, 'edit', body);
   } catch (err) {
-    status.classList.add('error');
-    status.textContent = err.message;
+    failed(status, err);
     return false;
   }
   await load();
@@ -72,34 +74,32 @@ export function fieldEditor(anchor, pencil, opts) {
   input.focus();
 }
 
-export async function submitMedia(target, key, kind, file, name, status) {
-  status.classList.remove('error');
-  status.textContent = 'Uploading…';
+export async function storeMedia(kind, file, name) {
   const form = new FormData();
-  form.append('target', target);
-  form.append('key', key);
   form.append('kind', kind);
   form.append('file', file, name);
+  return (await api('POST', '/api/directory/media', form)).name;
+}
+
+export async function submitMedia(target, id, kind, file, name, status) {
+  status.classList.remove('error');
+  status.textContent = 'Uploading…';
   try {
-    await api('POST', '/api/directory/upload', form);
+    const stored = await storeMedia(kind, file, name);
+    await act(types[target], id, kind === 'pronunciation' ? 'pronunciation' : photoActions[target], {name: stored});
   } catch (err) {
-    status.classList.add('error');
-    status.textContent = err.message;
+    failed(status, err);
     return;
   }
   await load();
 }
 
-export async function submitPhotoOrder(key, order, status, onError) {
+export async function submitPhotoOrder(id, order, status, onError) {
   status.classList.remove('error');
-  const form = new FormData();
-  form.append('key', key);
-  form.append('order', order.join(','));
   try {
-    await api('POST', '/api/directory/reorder-photos', form);
+    await act('people', id, 'order-photos', {names: order});
   } catch (err) {
-    status.classList.add('error');
-    status.textContent = err.message;
+    failed(status, err);
     if (onError) {
       onError();
     }
@@ -109,35 +109,21 @@ export async function submitPhotoOrder(key, order, status, onError) {
   return true;
 }
 
-export async function submitCrop(target, key, name, blob, status) {
+export async function submitCrop(target, id, name, blob, status) {
   status.classList.remove('error');
   status.textContent = 'Saving crop…';
-  const form = new FormData();
-  form.append('target', target);
-  form.append('key', key);
-  form.append('name', name);
-  form.append('file', blob, 'crop.jpg');
   try {
-    await api('POST', '/api/directory/crop-photo', form);
+    const crop = await storeMedia('photo', blob, 'crop.jpg');
+    await act(types[target], id, 'crop-photo', target === 'family' ? {crop} : {name, crop});
   } catch (err) {
-    status.classList.add('error');
-    status.textContent = err.message;
+    failed(status, err);
     return false;
   }
   await load();
   return true;
 }
 
-export function canEditPerson(email) {
-  const meEmail = document.body.dataset.userEmail;
-  if (email === meEmail || state.model.editAnyone) {
-    return true;
-  }
-  return familiesOf(byEmail[meEmail]).some(family => (family.adultEmails || []).includes(meEmail) &&
-    [...(family.kidEmails || []), ...(family.adultEmails || [])].includes(email));
-}
-
-export function uploadIcon(iconName, title, accept, target, key, kind, status) {
+export function uploadIcon(iconName, title, accept, target, id, kind, status) {
   const wrap = el('label', 'edit-icon');
   wrap.title = title;
   wrap.append(svg(iconName));
@@ -147,14 +133,14 @@ export function uploadIcon(iconName, title, accept, target, key, kind, status) {
   input.hidden = true;
   input.addEventListener('change', () => {
     if (input.files.length) {
-      submitMedia(target, key, kind, input.files[0], input.files[0].name, status);
+      submitMedia(target, id, kind, input.files[0], input.files[0].name, status);
     }
   });
   wrap.append(input);
   return wrap;
 }
 
-function recordIcon(target, key, status, preview) {
+function recordIcon(target, id, status, preview) {
   const button = el('button', 'edit-icon');
   button.title = 'Record pronunciation';
   button.append(svg('mic'));
@@ -190,7 +176,7 @@ function recordIcon(target, key, status, preview) {
       audio.controls = true;
       audio.src = URL.createObjectURL(blob);
       const save = el('button', 'media-button primary', 'Save');
-      save.addEventListener('click', () => submitMedia(target, key, 'pronunciation', blob, 'recording', status));
+      save.addEventListener('click', () => submitMedia(target, id, 'pronunciation', blob, 'recording', status));
       const discard = el('button', 'media-button', 'Discard');
       discard.addEventListener('click', () => preview.replaceChildren());
       preview.append(audio, save, discard);
@@ -201,24 +187,34 @@ function recordIcon(target, key, status, preview) {
   return button;
 }
 
-function deletePronunciationIcon(target, key, status) {
+function deletePronunciationIcon(target, id, status) {
   const button = el('button', 'edit-icon');
   button.type = 'button';
   button.title = 'Delete pronunciation';
   button.append(svg('trash'));
-  button.addEventListener('click', () => submitField(key, target === 'family' ? 'family-pronunciation' : 'pronunciation', '', status));
+  button.addEventListener('click', async () => {
+    status.classList.remove('error');
+    status.textContent = 'Saving…';
+    try {
+      await act(types[target], id, 'pronunciation', {name: ''});
+    } catch (err) {
+      failed(status, err);
+      return;
+    }
+    await load();
+  });
   return button;
 }
 
-export function pronounceEditor(target, key, hasPronunciation) {
+export function pronounceEditor(target, id, hasPronunciation) {
   const box = el('div', 'pronounce-edit');
   const actions = el('div', 'pronounce-actions');
   const status = el('div', 'media-status');
   const preview = el('div', 'record-preview');
-  actions.append(recordIcon(target, key, status, preview));
-  actions.append(uploadIcon('upload', 'Upload an audio file', 'audio/*', target, key, 'pronunciation', status));
+  actions.append(recordIcon(target, id, status, preview));
+  actions.append(uploadIcon('upload', 'Upload an audio file', 'audio/*', target, id, 'pronunciation', status));
   if (hasPronunciation) {
-    actions.append(deletePronunciationIcon(target, key, status));
+    actions.append(deletePronunciationIcon(target, id, status));
   }
   box.append(actions, status, preview);
   return box;

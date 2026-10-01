@@ -52,7 +52,7 @@ export function fromCrumbs() {
   return null;
 }
 
-export function breadcrumbs(parts, tagEmail, action) {
+export function breadcrumbs(parts, tagPerson, action) {
   const parent = [...parts].reverse().find(([, href]) => href);
   setChrome(parts[parts.length - 1][0], parent ? parent[1] : '/people');
   const top = el('div', 'detail-top container');
@@ -75,12 +75,12 @@ export function breadcrumbs(parts, tagEmail, action) {
   });
   top.append(crumbs);
   const right = el('div', 'detail-top-right');
-  if (tagEmail) {
+  if (tagPerson) {
     const tagArea = el('div', 'tag-area');
     const tagList = el('div', 'tag-list');
     const renderTagList = () => {
       tagList.replaceChildren();
-      for (const key of tagsOf(tagEmail)) {
+      for (const key of tagsOf(tagPerson)) {
         const chip = el('a', 'tag-chip', tagLabel(key));
         chip.href = tagHref(key);
         chip.title = `See everyone tagged "${tagLabel(key)}"`;
@@ -88,7 +88,7 @@ export function breadcrumbs(parts, tagEmail, action) {
       }
     };
     renderTagList();
-    const tagWrap = tagControl(tagEmail, 'tag-wrap', 'tag-button', renderTagList);
+    const tagWrap = tagControl(tagPerson, 'tag-wrap', 'tag-button', renderTagList);
     tagWrap.querySelector('.tag-button').title = 'Tags (Shift+T)';
     tagArea.append(tagList, tagWrap);
     right.append(tagArea);

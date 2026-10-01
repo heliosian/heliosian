@@ -2,14 +2,11 @@ package model
 
 import (
 	"fmt"
-	"log/slog"
-	"net/http"
 	"slices"
 	"strings"
 
 	"heliosian/internal/id"
 	"heliosian/internal/mail"
-	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -85,11 +82,6 @@ func tagEmails(tags map[string]*tagRecord, tab, column string, rows []store.Row)
 		out[key] = append(out[key], email)
 	}
 	return out, nil
-}
-
-func (m *Directory) taken(key string) bool {
-	_, ok := m.tags[key]
-	return ok
 }
 
 func (m *Directory) TagIDs() []string {
@@ -171,133 +163,4 @@ func (m *Directory) ownTagNamed(owner, name string) *tagRecord {
 		}
 	}
 	return nil
-}
-
-type tagger struct {
-	store *Store
-}
-
-type savedTag struct {
-	ID string `json:"id"`
-}
-
-func registerTags(mux *http.ServeMux, s *Store) {
-	t := tagger{store: s}
-	mux.HandleFunc("POST /api/directory/tag", t.set)
-	mux.HandleFunc("POST /api/directory/tag-delete", t.drop)
-	mux.HandleFunc("POST /api/directory/tag-rename", t.rename)
-	mux.HandleFunc("POST /api/directory/tag-copy", t.copy)
-	mux.HandleFunc("POST /api/directory/tag-share", t.share)
-	mux.HandleFunc("POST /api/directory/tag-leave", t.leave)
-}
-
-func formEmail(r *http.Request, name string) string {
-	return mail.Normalize(r.FormValue(name))
-}
-
-func (t tagger) rename(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	key := strings.TrimSpace(r.FormValue("tag"))
-	to := strings.TrimSpace(r.FormValue("name"))
-	actor := requestActor(t.store, r)
-	ops, from, err := t.store.Model().Directory.renameTag(actor, key, to)
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if err := t.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	slog.InfoContext(r.Context(), "tag: renamed", "owner", actor.Email, "tag", key, "from", from, "to", to)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	key := strings.TrimSpace(r.FormValue("tag"))
-	to := strings.TrimSpace(r.FormValue("name"))
-	actor := requestActor(t.store, r)
-	ops, made, people, err := t.store.Model().Directory.copyTag(actor, key, to)
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if err := t.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	slog.InfoContext(r.Context(), "tag: copied", "owner", actor.Email, "from", key, "to", made, "name", to, "people", people)
-	serve.Write(w, r, http.StatusOK, savedTag{ID: made})
-}
-
-func (t tagger) share(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	key := strings.TrimSpace(r.FormValue("tag"))
-	manager := formEmail(r, "manager")
-	on := r.FormValue("on") == "1"
-	actor := requestActor(t.store, r)
-	ops, err := t.store.Model().Directory.shareTag(actor, key, manager, on)
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if err := t.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	slog.InfoContext(r.Context(), "tag: shared", "owner", actor.Email, "on", on, "tag", key, "manager", manager)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (t tagger) leave(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	key := strings.TrimSpace(r.FormValue("tag"))
-	actor := requestActor(t.store, r)
-	ops, err := t.store.Model().Directory.leaveTag(actor, key)
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if err := t.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	slog.InfoContext(r.Context(), "tag: left", "tag", key, "manager", actor.Email)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (t tagger) drop(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	key := strings.TrimSpace(r.FormValue("tag"))
-	actor := requestActor(t.store, r)
-	ops, people, err := t.store.Model().Directory.dropTag(actor, key)
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if err := t.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	slog.InfoContext(r.Context(), "tag: deleted", "owner", actor.Email, "tag", key, "people", people)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (t tagger) set(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	person := formEmail(r, "person")
-	on := r.FormValue("on") == "1"
-	actor := requestActor(t.store, r)
-	ops, key, err := t.store.Model().Directory.setTag(actor, strings.TrimSpace(r.FormValue("tag")), strings.TrimSpace(r.FormValue("name")), person, on)
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if err := t.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	slog.InfoContext(r.Context(), "tag: changed", "on", on, "tag", key, "person", person, "by", actor.Email)
-	serve.Write(w, r, http.StatusOK, savedTag{ID: key})
 }

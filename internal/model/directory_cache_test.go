@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
+	"net/textproto"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -62,10 +64,8 @@ func newServer(t *testing.T) server {
 	s := sampleDirectory(t, dir, queue)
 	media := blob.New(blob.NewMemoryBucket())
 	mux := http.NewServeMux()
-	registerTags(mux, s)
-	registerPeopleAdmin(mux, s, media)
-	RegisterDirectoryUpload(mux, s, media)
-	typedRegistry(s, queue, []api.Type[*Model]{adminListResources(s)}).Register(mux)
+	RegisterDirectoryMedia(mux, media)
+	typedRegistry(s, queue, DirectoryResources(s), WhoResources(s, ""), []api.Type[*Model]{adminListResources(s)}).Register(mux)
 	return server{dir: dir, queue: queue, store: s, mux: mux}
 }
 
@@ -73,20 +73,40 @@ func (s server) directory() *Directory {
 	return s.store.Model().Directory
 }
 
-func (s server) post(t *testing.T, as, path, contentType string, body []byte) {
+func (s server) personID(email string) string {
+	return s.directory().Person(email).ID
+}
+
+func (s server) record(email string) string {
+	return derived(s.store.Model(), kindPersonRecord, email)
+}
+
+func (s server) call(t *testing.T, as, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
-	req.Header.Set("Content-Type", contentType)
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	auth.Fixed(as, s.mux).ServeHTTP(rec, req)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
+	return rec
+}
+
+func (s server) ok(t *testing.T, as, method, path, body string) {
+	t.Helper()
+	if rec := s.call(t, as, method, path, body); rec.Code != http.StatusNoContent {
+		t.Fatalf("%s %s: %d %s", method, path, rec.Code, rec.Body)
 	}
 }
 
-func (s server) form(t *testing.T, as, path string, values url.Values) {
+func (s server) made(t *testing.T, as, path, body string) string {
 	t.Helper()
-	s.post(t, as, path, "application/x-www-form-urlencoded", []byte(values.Encode()))
+	rec := s.call(t, as, http.MethodPost, path, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
+	}
+	return created(t, rec)
+}
+
+func (s server) person(email string) string {
+	return `{"person":"` + s.personID(email) + `"}`
 }
 
 func (s server) rows(t *testing.T, tab string) []map[string]string {
@@ -128,19 +148,6 @@ func logged(t *testing.T, log []string, want ...string) {
 	}
 }
 
-func (s server) saveTag(t *testing.T, as, path string, values url.Values) string {
-	t.Helper()
-	rec := testkit.Form(t, s.mux, as, path, values)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
-	}
-	var saved savedTag
-	if err := json.NewDecoder(rec.Body).Decode(&saved); err != nil {
-		t.Fatal(err)
-	}
-	return saved.ID
-}
-
 func tagNamed(tags []Tag, name string) (Tag, bool) {
 	i := slices.IndexFunc(tags, func(t Tag) bool { return t.Name == name })
 	if i < 0 {
@@ -151,22 +158,22 @@ func tagNamed(tags []Tag, name string) (Tag, bool) {
 
 func TestTagChangesReachMemoryTheSheetAndTheLog(t *testing.T) {
 	s := newServer(t)
-	if got := s.saveTag(t, jordan, "/api/directory/tag", url.Values{"tag": {strings.ToUpper(carpool)}, "person": {"daniel.park@heliosschool.org"}, "on": {"0"}}); got != carpool {
-		t.Fatalf("untagging answered %q, want %q", got, carpool)
-	}
-	s.form(t, jordan, "/api/directory/tag-rename", url.Values{"tag": {soccerTeam}, "name": {"Football"}})
-	kicks := s.saveTag(t, jordan, "/api/directory/tag-copy", url.Values{"tag": {soccerTeam}, "name": {"Kicks"}})
+	s.ok(t, jordan, "POST", "/api/tags/"+strings.ToUpper(carpool)+"/remove", s.person("daniel.park@heliosschool.org"))
+	s.ok(t, jordan, "POST", "/api/tags/"+soccerTeam+"/rename", `{"name":"Football"}`)
+	kicks := s.made(t, jordan, "/api/tags/"+soccerTeam+"/copy", `{"name":"Kicks"}`)
 	if parsed, ok := id.Parse(kicks); !ok || parsed != kicks || kicks == soccerTeam {
 		t.Fatalf("minted tag id %q", kicks)
 	}
-	s.form(t, jordan, "/api/directory/tag-share", url.Values{"tag": {kicks}, "manager": {abena}, "on": {"1"}})
+	s.ok(t, jordan, "POST", "/api/tags/"+kicks+"/share", s.person(abena))
 	if shared := s.directory().SharedTags(abena); len(shared) != 1 || shared[0].ID != kicks || shared[0].Name != "Kicks" || len(shared[0].People) != 3 {
 		t.Fatalf("shared tags of %s: %+v", abena, shared)
 	}
-	s.form(t, abena, "/api/directory/tag-leave", url.Values{"tag": {kicks}})
-	s.form(t, jordan, "/api/directory/tag-delete", url.Values{"tag": {kicks}})
-	s.form(t, jordan, "/api/directory/tag-delete", url.Values{"tag": {kicks}})
-	s.post(t, jordan, "/api/admin-lists/who/edit", "application/json", []byte(`{"admins":["`+abena+`"]}`))
+	s.ok(t, abena, "POST", "/api/tags/"+kicks+"/leave", "")
+	s.ok(t, jordan, "DELETE", "/api/tags/"+kicks, "")
+	if rec := s.call(t, jordan, "DELETE", "/api/tags/"+kicks, ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("deleting a deleted tag: %d %s", rec.Code, rec.Body)
+	}
+	s.ok(t, jordan, "POST", "/api/admin-lists/who/edit", `{"admins":["`+abena+`"]}`)
 
 	tags := s.directory().Tags(jordan)
 	names := []string{}
@@ -210,28 +217,28 @@ func TestTagChangesReachMemoryTheSheetAndTheLog(t *testing.T) {
 func TestTagsAreKeptByTheirOwnersAndManagers(t *testing.T) {
 	s := newServer(t)
 	for _, c := range []struct {
-		as, path string
-		values   url.Values
-		want     int
+		as, path, body string
+		want           int
 	}{
-		{asha, "/api/directory/tag-rename", url.Values{"tag": {soccerTeam}, "name": {"Mine Now"}}, http.StatusForbidden},
-		{asha, "/api/directory/tag-delete", url.Values{"tag": {soccerTeam}}, http.StatusForbidden},
-		{asha, "/api/directory/tag-share", url.Values{"tag": {soccerTeam}, "manager": {abena}, "on": {"1"}}, http.StatusForbidden},
-		{abena, "/api/directory/tag", url.Values{"tag": {soccerTeam}, "person": {noa}, "on": {"1"}}, http.StatusForbidden},
-		{abena, "/api/directory/tag-copy", url.Values{"tag": {soccerTeam}, "name": {"Kicks"}}, http.StatusForbidden},
-		{jordan, "/api/directory/tag-rename", url.Values{"tag": {soccerTeam}, "name": {"carpool"}}, http.StatusConflict},
-		{jordan, "/api/directory/tag-copy", url.Values{"tag": {bookClub}, "name": {"Carpool"}}, http.StatusConflict},
-		{jordan, "/api/directory/tag-rename", url.Values{"tag": {"Soccer Team"}, "name": {"Football"}}, http.StatusBadRequest},
-		{jordan, "/api/directory/tag", url.Values{"tag": {"dtg0000000099"}, "person": {noa}, "on": {"1"}}, http.StatusBadRequest},
+		{asha, "/api/tags/" + soccerTeam + "/rename", `{"name":"Mine Now"}`, http.StatusForbidden},
+		{asha, "/api/tags/" + soccerTeam + "/delete", "", http.StatusForbidden},
+		{asha, "/api/tags/" + soccerTeam + "/share", s.person(abena), http.StatusForbidden},
+		{abena, "/api/tags/" + soccerTeam + "/add", s.person(noa), http.StatusNotFound},
+		{abena, "/api/tags/" + soccerTeam + "/copy", `{"name":"Kicks"}`, http.StatusNotFound},
+		{jordan, "/api/tags/" + soccerTeam + "/rename", `{"name":"carpool"}`, http.StatusConflict},
+		{jordan, "/api/tags/" + bookClub + "/copy", `{"name":"Carpool"}`, http.StatusConflict},
+		{jordan, "/api/tags/Soccer%20Team/rename", `{"name":"Football"}`, http.StatusNotFound},
+		{jordan, "/api/tags/dtg0000000099/add", s.person(noa), http.StatusNotFound},
 	} {
-		if rec := testkit.Form(t, s.mux, c.as, c.path, c.values); rec.Code != c.want {
-			t.Errorf("%s %s %v: %d %s, want %d", c.as, c.path, c.values, rec.Code, rec.Body, c.want)
+		if rec := s.call(t, c.as, http.MethodPost, c.path, c.body); rec.Code != c.want {
+			t.Errorf("%s %s %s: %d %s, want %d", c.as, c.path, c.body, rec.Code, rec.Body, c.want)
 		}
 	}
-	if got := s.saveTag(t, asha, "/api/directory/tag", url.Values{"tag": {soccerTeam}, "person": {noa}, "on": {"1"}}); got != soccerTeam {
-		t.Fatalf("a manager tagging answered %q", got)
+	s.ok(t, asha, "POST", "/api/tags/"+soccerTeam+"/add", s.person(noa))
+	if tag, _ := s.directory().Tag(soccerTeam); !slices.Contains(tag.People, noa) {
+		t.Fatalf("a manager's tagging did not take: %+v", tag)
 	}
-	copied := s.saveTag(t, jordan, "/api/directory/tag-copy", url.Values{"tag": {bookClub}, "name": {"Book Club"}})
+	copied := s.made(t, jordan, "/api/tags/"+bookClub+"/copy", `{"name":"Book Club"}`)
 	if tag, ok := s.directory().Tag(copied); !ok || tag.Owner != jordan || tag.Name != "Book Club" || len(tag.People) != 3 {
 		t.Fatalf("a manager's copy of the owner's tag: %+v", tag)
 	}
@@ -239,11 +246,11 @@ func TestTagsAreKeptByTheirOwnersAndManagers(t *testing.T) {
 
 func TestANewTagNameMintsATagAndAnOldOneReusesIt(t *testing.T) {
 	s := newServer(t)
-	made := s.saveTag(t, jordan, "/api/directory/tag", url.Values{"name": {"Chess"}, "person": {noa}, "on": {"1"}})
+	made := s.made(t, jordan, "/api/tags", `{"name":"Chess","person":"`+s.personID(noa)+`"}`)
 	if parsed, ok := id.Parse(made); !ok || parsed != made || made == carpool || made == soccerTeam || made == bookClub {
 		t.Fatalf("minted tag id %q", made)
 	}
-	if again := s.saveTag(t, jordan, "/api/directory/tag", url.Values{"name": {"chess"}, "person": {abena}, "on": {"1"}}); again != made {
+	if again := s.made(t, jordan, "/api/tags", `{"name":"chess","person":"`+s.personID(abena)+`"}`); again != made {
 		t.Fatalf("a second tagging by name made %q, want %q", again, made)
 	}
 	if tag, ok := tagNamed(s.directory().Tags(jordan), "Chess"); !ok || tag.ID != made || !slices.Equal(tag.People, []string{abena, noa}) {
@@ -257,7 +264,7 @@ func TestANewTagNameMintsATagAndAnOldOneReusesIt(t *testing.T) {
 func TestRemovingATagsLastMemberRemovesTheTag(t *testing.T) {
 	s := newServer(t)
 	for _, person := range []string{"daniel.park@heliosschool.org", "elena.torres@heliosschool.org", "anders.lindqvist@heliosschool.org"} {
-		s.saveTag(t, abena, "/api/directory/tag", url.Values{"tag": {bookClub}, "person": {person}, "on": {"0"}})
+		s.ok(t, abena, "POST", "/api/tags/"+bookClub+"/remove", s.person(person))
 	}
 	if _, ok := s.directory().Tag(bookClub); ok {
 		t.Fatal("the emptied tag is still in memory")
@@ -320,7 +327,7 @@ func TestRenamingAnAddedPersonCarriesTheirRows(t *testing.T) {
 	s := newServer(t)
 	seedAddedPerson(t, s)
 	const renamed = "noa.a@heliosschool.org"
-	s.post(t, jordan, "/api/admin/added-fields", "application/json", []byte(`{"email":"`+noa+`","newEmail":"`+renamed+`","fullName":"Noa Adler","isStaff":true}`))
+	s.ok(t, jordan, "POST", "/api/person-records/"+s.record(noa)+"/edit", `{"email":"`+renamed+`","fullName":"Noa Adler","isStudent":false,"isParent":false,"isStaff":true}`)
 	if s.directory().Person(noa) != nil || s.directory().Person(renamed) == nil {
 		t.Fatal("the rename did not reach memory")
 	}
@@ -351,7 +358,7 @@ func TestRenamingAnAddedPersonCarriesTheirRows(t *testing.T) {
 func TestDeletingAnAddedPersonTakesTheirRows(t *testing.T) {
 	s := newServer(t)
 	seedAddedPerson(t, s)
-	s.post(t, jordan, "/api/admin/delete-person", "application/json", []byte(`{"email":"`+noa+`"}`))
+	s.ok(t, jordan, "DELETE", "/api/person-records/"+s.record(noa), "")
 	if s.directory().Person(noa) != nil {
 		t.Fatal("the person is still in memory")
 	}
@@ -404,7 +411,7 @@ func TestPhotoOrderIsSortKeys(t *testing.T) {
 	if got := names(); !slices.Equal(got, []string{"a.jpg", "b.jpg", "c.jpg"}) {
 		t.Fatalf("photos %v", got)
 	}
-	s.form(t, elena, "/api/directory/reorder-photos", url.Values{"key": {elena}, "order": {"c.jpg,a.jpg"}})
+	s.ok(t, elena, "POST", "/api/people/"+s.personID(elena)+"/order-photos", `{"names":["c.jpg","a.jpg"]}`)
 	if got := names(); !slices.Equal(got, []string{"c.jpg", "a.jpg"}) {
 		t.Fatalf("photos after the reorder %v", got)
 	}
@@ -457,71 +464,87 @@ func TestGeocoderRecordsWhatItFinds(t *testing.T) {
 	}
 }
 
+func (s server) upload(t *testing.T, as, kind, file string, content []byte) string {
+	t.Helper()
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	form.WriteField("kind", kind)
+	header := textproto.MIMEHeader{}
+	header.Set("Content-Disposition", `form-data; name="file"; filename="`+file+`"`)
+	header.Set("Content-Type", mime.TypeByExtension(filepath.Ext(file)))
+	part, err := form.CreatePart(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write(content)
+	form.Close()
+	req := httptest.NewRequest(http.MethodPost, "/api/directory/media", &body)
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	rec := httptest.NewRecorder()
+	auth.Fixed(as, s.mux).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("upload: %d %s", rec.Code, rec.Body)
+	}
+	var stored storedMedia
+	if err := json.NewDecoder(rec.Body).Decode(&stored); err != nil {
+		t.Fatal(err)
+	}
+	return stored.Name
+}
+
 func TestClassroomImageIsACommit(t *testing.T) {
 	var picture bytes.Buffer
 	if err := png.Encode(&picture, image.NewRGBA(image.Rect(0, 0, 4, 4))); err != nil {
 		t.Fatal(err)
 	}
-	var body bytes.Buffer
-	form := multipart.NewWriter(&body)
-	form.WriteField("kind", "classroom")
-	form.WriteField("name", "Condors")
-	part, err := form.CreateFormFile("file", "condors.png")
-	if err != nil {
-		t.Fatal(err)
-	}
-	part.Write(picture.Bytes())
-	form.Close()
 	s := newServer(t)
-	s.post(t, jordan, "/api/admin/images", form.FormDataContentType(), body.Bytes())
-	name := fmt.Sprintf("%x.png", sha256.Sum256(picture.Bytes()))
-	for _, c := range s.directory().Classrooms {
-		if c.Name == "Condors" && c.ImageURL != "/photos/"+name {
-			t.Fatalf("classroom image %q, want the uploaded object", c.ImageURL)
-		}
+	name := s.upload(t, jordan, "photo", "condors.png", picture.Bytes())
+	if want := fmt.Sprintf("%x.png", sha256.Sum256(picture.Bytes())); name != want {
+		t.Fatalf("stored as %q, want %q", name, want)
+	}
+	i := slices.IndexFunc(s.directory().Classrooms, func(c Classroom) bool { return c.Name == "Condors" })
+	condors := s.directory().Classrooms[i].ID
+	if rec := s.call(t, asha, "POST", "/api/classrooms/"+condors+"/image", `{"name":"`+name+`"}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("a parent replacing a classroom image: %d %s", rec.Code, rec.Body)
+	}
+	s.ok(t, jordan, "POST", "/api/classrooms/"+condors+"/image", `{"name":"`+name+`"}`)
+	if got := s.directory().Classrooms[i].ImageURL; got != "/photos/"+name {
+		t.Fatalf("classroom image %q, want the uploaded object", got)
 	}
 	if s.count(t, imagesTab, store.Row{imageKind: "classroom", imageName: "Condors", imageImage: name}) != 1 {
 		t.Fatalf("images tab %v", s.rows(t, imagesTab))
 	}
 	logged(t, s.changeLog(t), jordan+"|insert|Images|Kind=classroom; Name=Condors||")
+	if rec := s.call(t, jordan, "POST", "/api/classrooms/"+condors+"/image", `{"name":"https://example.org/x.png"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("an image that was never uploaded: %d %s", rec.Code, rec.Body)
+	}
 }
 
 func TestGreetingsAreTheirCreatorsToChange(t *testing.T) {
 	s := newServer(t)
 	dir := s.dir
-	registerInviteTemplates(s.mux, s.store)
-	key := s.saveGreeting(t, asha, url.Values{"format": {"Dear Enders"}, "grouped": {"1"}})
+	key := s.made(t, asha, "/api/greetings", `{"format":"Dear Enders","grouped":true}`)
 	if parsed, ok := id.Parse(key); !ok || parsed != key {
 		t.Fatalf("minted greeting id %q", key)
 	}
-	if again := s.saveGreeting(t, asha, url.Values{"format": {"Hello Enders"}, "id": {strings.ToUpper(key)}, "grouped": {"1"}}); again != key {
-		t.Fatalf("the edit answered %q, want %q", again, key)
-	}
+	s.ok(t, asha, "POST", "/api/greetings/"+strings.ToUpper(key)+"/edit", `{"format":"Hello Enders","grouped":true}`)
 	for _, c := range []struct {
-		as, method, query, body string
+		as, method, path string
+		want             int
 	}{
-		{jordan, http.MethodPost, "", url.Values{"format": {"Hi"}, "id": {key}}.Encode()},
-		{asha, http.MethodPost, "", url.Values{"format": {"Hi"}, "id": {builtinGreetings.Kids}}.Encode()},
-		{asha, http.MethodPost, "", url.Values{"format": {"Hi"}, "id": {"Hello Enders"}}.Encode()},
-		{jordan, http.MethodDelete, "?" + url.Values{"id": {key}}.Encode(), ""},
+		{jordan, http.MethodPost, "/api/greetings/" + key + "/edit", http.StatusNotFound},
+		{asha, http.MethodPost, "/api/greetings/" + builtinGreetings.Kids + "/edit", http.StatusForbidden},
+		{asha, http.MethodPost, "/api/greetings/Hello%20Enders/edit", http.StatusNotFound},
+		{jordan, http.MethodDelete, "/api/greetings/" + key, http.StatusNotFound},
 	} {
-		req := httptest.NewRequest(c.method, "/api/directory/greetings"+c.query, strings.NewReader(c.body))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		rec := httptest.NewRecorder()
-		auth.Fixed(c.as, s.mux).ServeHTTP(rec, req)
-		if rec.Code != http.StatusForbidden {
-			t.Fatalf("%s %s %s: %d", c.as, c.method, c.body, rec.Code)
+		if rec := s.call(t, c.as, c.method, c.path, `{"format":"Hi"}`); rec.Code != c.want {
+			t.Fatalf("%s %s %s: %d, want %d", c.as, c.method, c.path, rec.Code, c.want)
 		}
 	}
 	if g, ok := s.store.Model().Invites.greeting(key); !ok || g.Name != "Hello Enders" || g.Format != "Hello Enders" {
 		t.Fatalf("the edit did not take: %+v", g)
 	}
-	req := httptest.NewRequest(http.MethodDelete, "/api/directory/greetings?"+url.Values{"id": {key}}.Encode(), nil)
-	rec := httptest.NewRecorder()
-	auth.Fixed(asha, s.mux).ServeHTTP(rec, req)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
-	}
+	s.ok(t, asha, "DELETE", "/api/greetings/"+key, "")
 	if _, ok := s.store.Model().Invites.greeting(key); ok {
 		t.Fatal("the delete did not take")
 	}
@@ -540,20 +563,4 @@ func TestGreetingsAreTheirCreatorsToChange(t *testing.T) {
 	if len(log) == 0 || log[0]["Action"] != "insert" || log[0]["Key"] != "Greeting ID="+key {
 		t.Fatalf("change log %v", log)
 	}
-}
-
-func (s server) saveGreeting(t *testing.T, as string, values url.Values) string {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/api/directory/greetings", strings.NewReader(values.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec := httptest.NewRecorder()
-	auth.Fixed(as, s.mux).ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("save greeting: %d %s", rec.Code, rec.Body)
-	}
-	var saved savedGreeting
-	if err := json.NewDecoder(rec.Body).Decode(&saved); err != nil {
-		t.Fatal(err)
-	}
-	return saved.ID
 }

@@ -1,4 +1,4 @@
-import {state, byEmail} from './state.js';
+import {state, peopleOf} from './state.js';
 import {withFrom, slugify, firstName} from './dom.js';
 import {el} from '/elements.js';
 import {familyOf} from './families.js';
@@ -14,7 +14,7 @@ function personSearchSubtitle(p) {
     return p.jobTitle || roleLabel(p);
   }
   const family = familyOf(p);
-  const kids = ((family && family.kidEmails) || []).map(e => byEmail[e]).filter(Boolean);
+  const kids = family ? peopleOf(family.kids) : [];
   if (kids.length) {
     const names = kids.map(k => firstName(k.fullName)).join(', ');
     const grades = [...new Set(kids.map(k => k.grade).filter(Boolean))].join(', ');
@@ -31,7 +31,7 @@ function renderGlobalSearchResults(resultsEl, query) {
     return;
   }
   const people = state.model.people
-    .filter(p => p.fullName.toLowerCase().includes(q) || p.email.toLowerCase().includes(q))
+    .filter(p => p.fullName.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q))
     .slice(0, 8);
   const grades = state.model.grades
     .filter(g => g.name.toLowerCase().includes(q))

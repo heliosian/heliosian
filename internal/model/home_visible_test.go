@@ -65,7 +65,7 @@ func homeOver(t *testing.T, c *Store, s homeSheet) *http.ServeMux {
 		Images: blob.NewImages(images, "home"),
 		Search: imagesearch.Search{Stock: imagesearch.NewStock(bucket, images), Limits: imagesearch.NewLimits()},
 	})
-	typedRegistry(c, s.queue, DirectoryResources(), homeCalendar(c, s).Resources(), home.Resources(), MagicTagResources()).Register(mux)
+	typedRegistry(c, s.queue, DirectoryResources(c), homeCalendar(c, s).Resources(), home.Resources(), MagicTagResources()).Register(mux)
 	return mux
 }
 

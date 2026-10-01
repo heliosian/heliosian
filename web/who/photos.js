@@ -85,7 +85,7 @@ export function photoMenu(p, getPhoto, editing, status) {
     if (!isPrimary) {
       item('star', 'Set as primary', () => {
         const order = [photo.name, ...photos.map(ph => ph.name).filter(n => n !== photo.name)];
-        submitPhotoOrder(p.email, order, status);
+        submitPhotoOrder(p.id, order, status);
       });
     }
     if (editing) {
@@ -95,11 +95,11 @@ export function photoMenu(p, getPhoto, editing, status) {
         }
         status.textContent = 'Removing…';
         const order = photos.map(ph => ph.name).filter(name => name !== photo.name);
-        submitPhotoOrder(p.email, order, status);
+        submitPhotoOrder(p.id, order, status);
       });
     }
     item('crop', 'Crop photo', () => openCropTool(photo.originalUrl, true,
-      blob => submitCrop('person', p.email, photo.name, blob, status)));
+      blob => submitCrop('person', p.id, photo.name, blob, status)));
   };
   menu.rebuild();
   return menu;
@@ -123,7 +123,7 @@ export function familyPhotoMenu(family, status) {
   };
   item('eye', 'View photo', () => openPhotoLightbox(family.originalPhotoUrl || family.photoUrl));
   item('crop', 'Crop photo', () => openCropTool(family.originalPhotoUrl || family.photoUrl, false,
-    blob => submitCrop('family', family.key, '', blob, status)));
+    blob => submitCrop('family', family.id, '', blob, status)));
   return menu;
 }
 
@@ -354,7 +354,7 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
   const currentOrder = () => [...grid.querySelectorAll('.photo-slot')].map(t => t.dataset.name);
 
   const commitOrder = (revertOrder) => {
-    submitPhotoOrder(p.email, currentOrder(), status, () => {
+    submitPhotoOrder(p.id, currentOrder(), status, () => {
       const addTile = grid.querySelector('.photo-slot-add');
       for (const name of revertOrder) {
         grid.insertBefore(grid.querySelector(`.photo-slot[data-name="${CSS.escape(name)}"]`), addTile);
@@ -364,7 +364,7 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
 
   const deletePhoto = (photo) => {
     status.textContent = 'Removing…';
-    submitPhotoOrder(p.email, currentOrder().filter(name => name !== photo.name), status);
+    submitPhotoOrder(p.id, currentOrder().filter(name => name !== photo.name), status);
   };
 
   function wireDrag(tile, photo) {
@@ -455,7 +455,7 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
     input.hidden = true;
     input.addEventListener('change', () => {
       if (input.files.length) {
-        submitMedia('person', p.email, 'photo', input.files[0], input.files[0].name, status);
+        submitMedia('person', p.id, 'photo', input.files[0], input.files[0].name, status);
       }
     });
     tile.append(input);

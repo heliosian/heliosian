@@ -1,10 +1,10 @@
-import {state, byEmail, colors} from '../state.js';
+import {state, colors, peopleOf} from '../state.js';
 import {thumbUrl, firstName, copyButton, pronouncePill, contactRow, withFrom, slugify} from '../dom.js';
 import {el, svg, iconButton, iconLink, editToggle} from '/elements.js';
-import {myFamilyKey, familyLink, canEditFamily} from '../families.js';
+import {myFamilyKey, familyLink} from '../families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl, roleWithPronouns, gradeChain} from '../people.js';
 import {familyPhotoNeedsUpdate, staleItems, todoChecklist} from '../stale.js';
-import {submitField, editPencil, fieldEditor, uploadIcon, pronounceEditor} from '../edit.js';
+import {submitEdit, editPencil, fieldEditor, uploadIcon, pronounceEditor} from '../edit.js';
 import {openPhotoLightbox, cropBadge, familyPhotoMenu, togglePhotoMenu} from '../photos.js';
 import {fromURL, breadcrumbs} from '../crumbs.js';
 import {render} from '/router.js';
@@ -53,8 +53,8 @@ export function familyCard(p, family) {
 
   const grid = el('div', 'fcard-grid');
   const left = el('div');
-  const familyEditable = canEditFamily(family);
-  const showFamilyPhotoEdit = familyEditable && familyPhotoNeedsUpdate(family);
+  const familyEditable = family.can['crop-photo'];
+  const showFamilyPhotoEdit = family.can.photo && familyPhotoNeedsUpdate(family);
   const nagFamilyPhoto = showFamilyPhotoEdit && p.isStudent;
   const photoWrap = el('div', 'photo-wrap' + (nagFamilyPhoto ? ' needs-update' : ''));
   const status = el('div', 'media-status');
@@ -81,7 +81,7 @@ export function familyCard(p, family) {
     if (nagFamilyPhoto) {
       status.textContent = 'Add your family photo for the new year';
     }
-    photoWrap.append(uploadIcon('camera', 'Upload family photo', 'image/*', 'family', family.key, 'photo', status));
+    photoWrap.append(uploadIcon('camera', 'Upload family photo', 'image/*', 'family', family.id, 'photo', status));
   }
   if (familyEditable) {
     left.append(status);
@@ -92,17 +92,17 @@ export function familyCard(p, family) {
   grid.append(left);
 
   const right = el('div');
-  const kidsList = (family.kidEmails || []).map(e => byEmail[e]).filter(Boolean);
-  if (kidsList.length && !(p.isStudent && kidsList.length === 1 && kidsList[0].email === p.email)) {
+  const kidsList = peopleOf(family.kids);
+  if (kidsList.length && !(p.isStudent && kidsList.length === 1 && kidsList[0].id === p.id)) {
     right.append(el('div', 'fcard-section-header', 'Children'));
     for (const kid of kidsList) {
-      if (p.isStudent && kid.email === p.email) {
+      if (p.isStudent && kid.id === p.id) {
         continue;
       }
       right.append(familyCardRow(kid, gradeChain(kid)));
     }
   }
-  const adults = (family.adultEmails || []).map(e => byEmail[e]).filter(Boolean).filter(a => a.email !== p.email);
+  const adults = peopleOf(family.adults).filter(a => a.id !== p.id);
   if (adults.length) {
     right.append(el('div', 'fcard-section-header', 'Other Family Members'));
     for (const adult of adults) {
@@ -110,7 +110,7 @@ export function familyCard(p, family) {
     }
   }
   const seeChip = el('a', 'fcard-see-chip');
-  seeChip.href = familyLink(family.key);
+  seeChip.href = familyLink(family.id);
   seeChip.append(el('span', '', `See ${family.name || ''}`), svg('chevron-right'));
   right.append(seeChip);
   grid.append(right);
@@ -127,7 +127,7 @@ export function familyPage(key) {
     page.append(el('div', 'empty', 'Not found.'));
     return page;
   }
-  const editable = canEditFamily(family);
+  const editable = family.can.edit;
   const editing = editable && familyEdit === key;
   const shortName = family.shortName || '';
   let crumbs = [['People', '/people'], [shortName, null], ['Family', null]];
@@ -193,7 +193,7 @@ export function familyPage(key) {
     wrap.append(photoOrInitials(null, family.name, 'detail-photo detail-photo-empty'));
   }
   left.append(wrap);
-  if (editing) {
+  if (editing && family.can.photo) {
     wrap.append(uploadIcon('camera', 'Upload family photo', 'image/*', 'family', key, 'photo', status));
   }
   if (editable) {
@@ -207,15 +207,15 @@ export function familyPage(key) {
       captionRow.append(captionPencil);
       captionPencil.addEventListener('click', () => fieldEditor(captionRow, captionPencil, {
         current: family.photoCaption || '',
-        submit: (value, status) => submitField(key, 'family-photo-caption', value, status),
+        submit: (value, status) => submitEdit('family', key, {photoCaption: value}, status),
       }));
     }
   }
   grid.append(left);
 
   const right = el('div');
-  const kids = (family.kidEmails || []).map(e => byEmail[e]).filter(Boolean);
-  const adults = (family.adultEmails || []).map(e => byEmail[e]).filter(Boolean);
+  const kids = peopleOf(family.kids);
+  const adults = peopleOf(family.adults);
   const grades = [...new Set(kids.map(k => k.grade).filter(Boolean))];
   const homerooms = [...new Set(kids.map(k => k.classroom).filter(Boolean))];
   const topRow = el('div', 'detail-top');
@@ -251,7 +251,7 @@ export function familyPage(key) {
       copyButton(family.address),
     ]));
   }
-  if (editing) {
+  if (editing && family.can.pronunciation) {
     right.append(el('div', 'pronounce-label', 'How do I pronounce this?'));
     if (family.pronunciationUrl) {
       const audio = el('audio', 'pronounce-player');

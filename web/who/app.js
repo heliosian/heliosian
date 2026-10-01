@@ -1,7 +1,6 @@
-import {state, applyModel, applyConfig, tagKey} from './state.js';
+import {state, loadModel, tagKey} from './state.js';
 import {segments, shuffled} from './dom.js';
 import {tabParam} from '/tabs.js';
-import {api} from '/api.js';
 import {startApp, notFound} from '/router.js';
 import {loadTagRelations} from './storage.js';
 import {familyEntries} from './families.js';
@@ -94,9 +93,7 @@ const routes = {
 };
 
 async function model() {
-  const [directory, config] = await Promise.all([api('GET', '/api/directory/model'), api('GET', '/api/config')]);
-  applyConfig(config);
-  applyModel(directory);
+  await loadModel();
   state.everyoneOrder = shuffled(state.model.people);
   state.familyOrder = shuffled(familyEntries());
   renderUserChrome();

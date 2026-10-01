@@ -30,7 +30,7 @@ func resourceGetAs(t *testing.T, m *Directory, as, path string) (int, resourceRe
 		Now:   time.Now,
 		Scope: (*Model).at,
 	})
-	for _, rt := range DirectoryResources() {
+	for _, rt := range DirectoryResources(nil) {
 		reg.Add(rt)
 	}
 	reg.Publish(&Model{Directory: m})

@@ -2,10 +2,7 @@ package model
 
 import (
 	"net/http"
-	"net/url"
 	"testing"
-
-	"heliosian/internal/testkit"
 )
 
 func TestRenamingATagKeepsTheInviteGroupsThatNameIt(t *testing.T) {
@@ -20,12 +17,11 @@ func TestRenamingATagKeepsTheInviteGroupsThatNameIt(t *testing.T) {
 		t.Fatalf("group: %d %s", rec.Code, rec.Body)
 	}
 
-	tags := http.NewServeMux()
-	RegisterDirectory(tags, DirectoryRoutes{Store: sources.directory})
-	if rec := testkit.Form(t, tags, host, "/api/directory/tag-rename", url.Values{"tag": {carpool}, "name": {"Rideshare"}}); rec.Code != http.StatusNoContent {
+	if rec := call(t, jordan, "POST", "/api/tags/"+carpool+"/rename", `{"name":"Rideshare"}`); rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
-	if rec := testkit.Form(t, tags, host, "/api/directory/tag", url.Values{"tag": {carpool}, "person": {mia}, "on": {"1"}}); rec.Code != http.StatusOK {
+	miaID := sources.directory.Model().Directory.Person(mia).ID
+	if rec := call(t, jordan, "POST", "/api/tags/"+carpool+"/add", `{"person":"`+miaID+`"}`); rec.Code != http.StatusNoContent {
 		t.Fatalf("tag mia: %d %s", rec.Code, rec.Body)
 	}
 

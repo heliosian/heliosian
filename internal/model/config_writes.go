@@ -13,10 +13,9 @@ import (
 var (
 	Configure         = access.Named("config.configure")
 	ManageSuperAdmins = access.Named("super-admins")
-	SignOutAnyone     = access.Named("sign-out-anyone")
 )
 
-var SuperAllowances = []access.Allowance{ManageSuperAdmins, SignOutAnyone, Triage}
+var SuperAllowances = []access.Allowance{ManageSuperAdmins, Triage}
 
 func require(actor access.Actor, allowance access.Allowance) error {
 	if !actor.May(allowance) {
@@ -111,15 +110,4 @@ func (s *Config) setSuperAdmins(actor access.Actor, emails []string) ([]string, 
 func signedOut(email string) []store.Op {
 	at := time.Now().Truncate(time.Second)
 	return []store.Op{store.Upsert(signedOutTab, store.Row{configEmailColumn: email}, store.Row{signedOutColumn: at.Format(time.RFC3339)})}
-}
-
-func (s *Config) signOut(actor access.Actor, email string) (string, []store.Op, error) {
-	if err := require(actor, SignOutAnyone); err != nil {
-		return "", nil, err
-	}
-	email = mail.Normalize(email)
-	if !strings.Contains(email, "@") {
-		return "", nil, access.Invalid("missing email")
-	}
-	return email, signedOut(email), nil
 }

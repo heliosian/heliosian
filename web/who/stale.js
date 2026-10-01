@@ -1,8 +1,7 @@
-import {byEmail, staleYears} from './state.js';
+import {staleYears, viewer, peopleOf} from './state.js';
 import {withFrom, firstName, infoBanner} from './dom.js';
 import {el, svg} from '/elements.js';
-import {familyOf, canEditFamily} from './families.js';
-import {personSlug} from './people.js';
+import {familyOf} from './families.js';
 import {submitMedia} from './edit.js';
 
 function agedPast(present, updated, years) {
@@ -34,24 +33,24 @@ export function familyPhotoNeedsUpdate(family) {
 }
 
 export function staleItems() {
-  const me = byEmail[document.body.dataset.userEmail];
+  const me = viewer();
   if (!me) {
     return [];
   }
   const family = familyOf(me);
   const items = [];
   for (const p of familyNavPeople()) {
-    const whose = p.email === me.email ? 'your' : `${p.fullName}'s`;
-    const shortWhose = p.email === me.email ? 'your' : `${firstName(p.fullName)}'s`;
+    const whose = p.id === me.id ? 'your' : `${p.fullName}'s`;
+    const shortWhose = p.id === me.id ? 'your' : `${firstName(p.fullName)}'s`;
     if (photoNeedsUpdate(p)) {
-      items.push({type: 'photo', target: 'person', key: p.email, text: `Update ${whose} photo for new year`, label: `${shortWhose} photo`, person: p});
+      items.push({type: 'photo', target: 'person', key: p.id, text: `Update ${whose} photo for new year`, label: `${shortWhose} photo`, person: p});
     }
     if (factsNeedUpdate(p)) {
-      items.push({type: 'facts', target: 'person', key: p.email, text: `Update ${whose} facts for new year`, label: `${shortWhose} facts`, person: p});
+      items.push({type: 'facts', target: 'person', key: p.id, text: `Update ${whose} facts for new year`, label: `${shortWhose} facts`, person: p});
     }
   }
-  if (family && canEditFamily(family) && familyPhotoNeedsUpdate(family)) {
-    items.push({type: 'photo', target: 'family', key: family.key, text: 'Update your family photo for new year', label: 'your family photo'});
+  if (family && family.can.photo && familyPhotoNeedsUpdate(family)) {
+    items.push({type: 'photo', target: 'family', key: family.id, text: 'Update your family photo for new year', label: 'your family photo'});
   }
   return items;
 }
@@ -87,7 +86,7 @@ function todoPhotoRow(item) {
 
 function todoFactsRow(item) {
   const row = el('a', 'todo-row');
-  row.href = withFrom(`/people/${encodeURIComponent(personSlug(item.key))}?edit=1&focus=facts`);
+  row.href = withFrom(`${item.person.path}?edit=1&focus=facts`);
   row.append(el('div', 'todo-mark'));
   row.append(el('div', 'todo-text', item.text));
   const chev = el('div', 'todo-chevron');
@@ -106,25 +105,13 @@ export function todoChecklist(items) {
 }
 
 export function familyNavPeople() {
-  const me = byEmail[document.body.dataset.userEmail];
+  const me = viewer();
   if (!me || (me.isStaff && !me.isParent)) {
     return [];
   }
   const family = familyOf(me);
-  const emails = [me.email, ...((family && family.adultEmails) || []), ...((family && family.kidEmails) || [])];
-  const seen = new Set();
-  const people = [];
-  for (const email of emails) {
-    if (seen.has(email)) {
-      continue;
-    }
-    seen.add(email);
-    const p = byEmail[email];
-    if (p) {
-      people.push(p);
-    }
-  }
-  return people;
+  const ids = [me.id, ...((family && family.adults) || []), ...((family && family.kids) || [])];
+  return peopleOf([...new Set(ids)]);
 }
 
 export function personTodoCount(p) {

@@ -2,15 +2,11 @@ package model
 
 import (
 	"fmt"
-	"log/slog"
 	"maps"
-	"net/http"
 	"slices"
-	"strings"
 
 	"heliosian/internal/cells"
 	"heliosian/internal/id"
-	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -89,11 +85,6 @@ func buildInvites(tables store.Tables) (*InviteTemplates, error) {
 		return nil, err
 	}
 	return &InviteTemplates{Systems: systems, Greetings: greetings}, nil
-}
-
-func (m *InviteTemplates) taken(key string) bool {
-	return slices.ContainsFunc(m.Systems, func(s InviteTemplate) bool { return s.ID == key }) ||
-		slices.ContainsFunc(m.Greetings, func(g GreetingTemplate) bool { return g.ID == key })
 }
 
 func claimID(ids map[string]bool, what, raw string) (string, error) {
@@ -221,67 +212,6 @@ func (m *InviteTemplates) greeting(raw string) (GreetingTemplate, bool) {
 		}
 	}
 	return GreetingTemplate{}, false
-}
-
-type inviteTemplatesView struct {
-	Systems   []InviteTemplate   `json:"systems"`
-	Greetings []GreetingTemplate `json:"greetings"`
-	Builtins  greetingBuiltins   `json:"builtins"`
-}
-
-type savedGreeting struct {
-	ID string `json:"id"`
-}
-
-func registerInviteTemplates(mux *http.ServeMux, s *Store) {
-	mux.HandleFunc("GET /api/directory/invite-templates", serve.JSON(func(r *http.Request, _ serve.None) (inviteTemplatesView, error) {
-		m := s.Model()
-		return inviteTemplatesView{Systems: m.Invites.Systems, Greetings: visibleGreetings(m.Invites.Greetings, m.actor(r, "who").Email), Builtins: builtinGreetings}, nil
-	}))
-
-	mux.HandleFunc("POST /api/directory/greetings", func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, "invalid form", http.StatusBadRequest)
-			return
-		}
-		format := strings.TrimSpace(r.FormValue("format"))
-		m := s.Model()
-		actor := m.actor(r, "who")
-		key, ops, err := m.Invites.saveGreeting(actor, format, strings.TrimSpace(r.FormValue("id")), r.FormValue("grouped") == "1", r.FormValue("individual") == "1")
-		if err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		if err := s.Commit(r.Context(), actor, invitesApp, ops...); err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		slog.InfoContext(r.Context(), "greeting: saved", "actor", actor.Email, "id", key, "name", format)
-		serve.Write(w, r, http.StatusOK, savedGreeting{ID: key})
-	})
-
-	mux.HandleFunc("DELETE /api/directory/greetings", func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, "invalid form", http.StatusBadRequest)
-			return
-		}
-		key := strings.TrimSpace(r.FormValue("id"))
-		m := s.Model()
-		actor := m.actor(r, "who")
-		ops, err := m.Invites.deleteGreeting(actor, key)
-		if err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		if err := s.Commit(r.Context(), actor, invitesApp, ops...); err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		slog.InfoContext(r.Context(), "greeting: deleted", "actor", actor.Email, "id", key)
-		w.WriteHeader(http.StatusNoContent)
-	})
 }
 
 func visibleGreetings(greetings []GreetingTemplate, email string) []GreetingTemplate {

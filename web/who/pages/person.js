@@ -1,12 +1,11 @@
-import {load, render} from '/router.js';
-import {api} from '/api.js';
-import {colors} from '../state.js';
+import {render} from '/router.js';
+import {colors, state} from '../state.js';
 import {withFrom, slugify, thumbUrl, firstName, copyButton, pronouncePill, contactRow, aboutMeText, paletteColor} from '../dom.js';
 import {el, svg, iconLink, editToggle} from '/elements.js';
 import {familiesOf} from '../families.js';
 import {personByKey, baseRole, gradeChain, photoOrInitials, formatPronouns} from '../people.js';
 import {photoNeedsUpdate, factsNeedUpdate, staleItems, todoChecklist, monthYear} from '../stale.js';
-import {canEditPerson, submitField, editPencil, fieldEditor, uploadIcon, pronounceEditor} from '../edit.js';
+import {submitEdit, editPencil, fieldEditor, uploadIcon, pronounceEditor} from '../edit.js';
 import {openPhotoLightbox, cropBadge, photoMenu, togglePhotoMenu, photoGrid} from '../photos.js';
 import {fromCrumbs, breadcrumbs} from '../crumbs.js';
 import {familyCard} from './family.js';
@@ -25,7 +24,7 @@ function personSummaryText(p, family) {
   if (p.phone) {
     lines.push('Phone: ' + p.phone);
   }
-  if (!p.emailMasked) {
+  if (p.email) {
     lines.push('Email: ' + p.email);
   }
   if (family && family.address) {
@@ -46,9 +45,9 @@ function displayNameLine(p) {
 
 let personEdit = null;
 
-export function personPage(email) {
+export function personPage(key) {
   const page = document.createDocumentFragment();
-  const p = personByKey(email);
+  const p = personByKey(key);
   if (!p) {
     page.append(el('div', 'empty', 'Not found.'));
     return page;
@@ -60,27 +59,27 @@ export function personPage(email) {
     params.delete('focus');
     const query = params.toString();
     history.replaceState(null, '', location.pathname + (query ? '?' + query : ''));
-    personEdit = email;
+    personEdit = p.id;
   }
-  const editable = canEditPerson(p.email);
-  const editing = editable && personEdit === p.email;
+  const editable = p.can.edit;
+  const editing = editable && personEdit === p.id;
   let toggle = null;
   if (editable) {
     toggle = editToggle('Edit Person', editing, () => {
-      personEdit = editing ? null : p.email;
+      personEdit = editing ? null : p.id;
       render();
     });
   }
   const origin = fromCrumbs() || [['People', '/people']];
-  const crumbsRow = breadcrumbs([...origin, [p.fullName, null]], p.email, toggle);
+  const crumbsRow = breadcrumbs([...origin, [p.fullName, null]], p.id, toggle);
 
   const nagPhoto = editable && photoNeedsUpdate(p);
-  const showPhotoEdit = editable && (p.photos || []).length === 0;
+  const showPhotoEdit = p.can['add-photo'] && (p.photos || []).length === 0;
   const showFactsEdit = editing || (editable && factsNeedUpdate(p));
-  const self = p.email === document.body.dataset.userEmail;
+  const self = p.id === state.model.user.id;
 
   if (editable) {
-    const personTasks = staleItems().filter(i => i.person && i.person.email === p.email);
+    const personTasks = staleItems().filter(i => i.person && i.person.id === p.id);
     if (personTasks.length) {
       const wrap = el('div', 'container');
       wrap.append(todoChecklist(personTasks));
@@ -139,7 +138,7 @@ export function personPage(email) {
     if (nagPhoto) {
       status.textContent = `Add ${self ? 'your' : `${firstName(p.fullName)}'s`} photo for the new year`;
     }
-    wrap.append(uploadIcon('camera', 'Upload photo', 'image/*', 'person', p.email, 'photo', status));
+    wrap.append(uploadIcon('camera', 'Upload photo', 'image/*', 'person', p.id, 'photo', status));
   } else if (nagPhoto) {
     left.append(el('div', 'media-status', `Update ${self ? 'your' : `${firstName(p.fullName)}'s`} photo for the new year`));
   }
@@ -191,7 +190,7 @@ export function personPage(email) {
     nameHeader.append(pencil);
     pencil.addEventListener('click', () => fieldEditor(nameHeader, pencil, {
       current: p.preferredName || '',
-      submit: (value, status) => submitField(p.email, 'preferred-name', value, status),
+      submit: (value, status) => submitEdit('person', p.id, {preferredName: value}, status),
     }));
   }
   if (p.pronouns || editing) {
@@ -208,7 +207,7 @@ export function personPage(email) {
           {label: 'he/him', value: 'he/him'},
           {label: 'they/them', value: 'they/them'},
         ],
-        submit: (value, status) => submitField(p.email, 'pronouns', value, status),
+        submit: (value, status) => submitEdit('person', p.id, {pronouns: value}, status),
       }));
     }
   }
@@ -225,7 +224,7 @@ export function personPage(email) {
   } else if (p.isStaff && p.jobTitle) {
     right.append(el('div', 'detail-sub', p.jobTitle));
   }
-  if (!p.emailMasked) {
+  if (p.email) {
     const emailValue = el('div', 'contact-value');
     emailValue.append(svg('mail'), el('span', '', p.email));
     right.append(contactRow(emailValue, [
@@ -259,7 +258,7 @@ export function personPage(email) {
       audio.src = p.pronunciationUrl;
       right.append(audio);
     }
-    right.append(pronounceEditor('person', p.email, !!p.hasOwnPronunciation));
+    right.append(pronounceEditor('person', p.id, !!p.hasOwnPronunciation));
   }
   grid.append(right);
   headerCard.append(grid);
@@ -306,21 +305,7 @@ export function personPage(email) {
           editor.replaceWith(text);
           pencil.hidden = false;
         });
-        save.addEventListener('click', async () => {
-          status.classList.remove('error');
-          status.textContent = 'Saving…';
-          const form = new FormData();
-          form.append('key', p.email);
-          form.append('facts', editor.value);
-          try {
-            await api('POST', '/api/directory/facts', form);
-          } catch (err) {
-            status.classList.add('error');
-            status.textContent = err.message;
-            return;
-          }
-          await load();
-        });
+        save.addEventListener('click', () => submitEdit('person', p.id, {facts: editor.value}, status));
       });
       if (focusFacts) {
         queueMicrotask(() => pencil.click());

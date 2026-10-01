@@ -2,7 +2,6 @@ package model
 
 import (
 	"net/http"
-	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -47,7 +46,8 @@ func sourcesOf(directory *Directory) AudienceSources {
 
 func TestRenamingATagKeepsTheGroupsThatNameIt(t *testing.T) {
 	dir := &data.Dir{Root: "../../sampledata"}
-	s := sampleStore(t, dir, store.NewQueue(), sampleDeps(sampleKey))
+	q := store.NewQueue()
+	s := sampleStore(t, dir, q, sampleDeps(sampleKey))
 	g := *s.Model().EmailLists.Group(soccerGroup)
 	if !slices.Contains(g.Rules[0].Tags, TagKey(soccerTeamID)) {
 		t.Fatalf("the sample group's rules do not name the soccer team: %+v", g.Rules)
@@ -57,8 +57,8 @@ func TestRenamingATagKeepsTheGroupsThatNameIt(t *testing.T) {
 		t.Fatalf("the group's members %v do not reach past the tag to its parents", before)
 	}
 	mux := http.NewServeMux()
-	RegisterDirectory(mux, DirectoryRoutes{Store: s})
-	if rec := testkit.Form(t, mux, jordan, "/api/directory/tag-rename", url.Values{"tag": {soccerTeamID}, "name": {"Football"}}); rec.Code != http.StatusNoContent {
+	typedRegistry(s, q, DirectoryResources(s)).Register(mux)
+	if rec := testkit.Call(t, mux, jordan, "POST", "/api/tags/"+soccerTeamID+"/rename", map[string]string{"name": "Football"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
 	renamed := sourcesOf(s.Model().Directory)

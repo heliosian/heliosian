@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/serve"
 )
@@ -25,18 +26,50 @@ var audioExtensions = map[string]string{
 	"audio/wav":   "wav",
 }
 
-type uploader struct {
-	store *Store
-	media *blob.Store
+type storedMedia struct {
+	Name string `json:"name"`
 }
 
-func RegisterDirectoryUpload(mux *http.ServeMux, s *Store, media *blob.Store) {
-	u := uploader{store: s, media: media}
-	mux.HandleFunc("POST /api/directory/upload", u.upload)
-	mux.HandleFunc("POST /api/directory/facts", u.facts)
-	mux.HandleFunc("POST /api/directory/edit", u.edit)
-	mux.HandleFunc("POST /api/directory/reorder-photos", u.reorderPhotos)
-	mux.HandleFunc("POST /api/directory/crop-photo", u.cropPhoto)
+func RegisterDirectoryMedia(mux *http.ServeMux, media *blob.Store) {
+	mux.HandleFunc("POST /api/directory/media", func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 30<<20)
+		if err := r.ParseMultipartForm(30 << 20); err != nil {
+			http.Error(w, "upload too large or malformed", http.StatusBadRequest)
+			return
+		}
+		kind := r.FormValue("kind")
+		if kind != "photo" && kind != "pronunciation" {
+			serve.Error(w, r, access.Invalid("bad kind: must be photo or pronunciation"))
+			return
+		}
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, "missing file", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+		content, err := io.ReadAll(file)
+		if err != nil || len(content) == 0 {
+			http.Error(w, "unreadable file", http.StatusBadRequest)
+			return
+		}
+		mimeType, ext, err := mediaType(kind, content, header.Header.Get("Content-Type"))
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		folder := "photos"
+		if kind != "photo" {
+			folder = "pronunciation"
+		}
+		name := blob.Name(content, ext)
+		if err := media.Put(folder, name, mimeType, content); err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		slog.InfoContext(r.Context(), "who: stored media", "actor", auth.Email(r), "kind", kind, "name", name)
+		serve.Write(w, r, http.StatusOK, storedMedia{Name: name})
+	})
 }
 
 func today() string {
@@ -56,178 +89,6 @@ func refsOf(person *Person) []photoRef {
 		refs = append(refs, photoRef{Name: photo.Name, CropName: photo.cropName, order: photo.order, stored: photo.stored})
 	}
 	return refs
-}
-
-func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
-	field := r.FormValue("field")
-	value := strings.TrimSpace(r.FormValue("value"))
-	actor := requestActor(u.store, r)
-	ops, err := u.store.Model().Directory.editField(actor, field, key, value)
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if err := u.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	slog.InfoContext(r.Context(), "edit: set field", "actor", actor.Email, "field", field, "key", key)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (u uploader) facts(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
-	facts := strings.TrimSpace(r.FormValue("facts"))
-	actor := requestActor(u.store, r)
-	ops, err := u.store.Model().Directory.setFacts(actor, key, facts)
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if err := u.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	slog.InfoContext(r.Context(), "facts: set", "actor", actor.Email, "key", key, "chars", len(facts))
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 30<<20)
-	if err := r.ParseMultipartForm(30 << 20); err != nil {
-		http.Error(w, "upload too large or malformed", http.StatusBadRequest)
-		return
-	}
-	target := r.FormValue("target")
-	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
-	kind := r.FormValue("kind")
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "missing file", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-	content, err := io.ReadAll(file)
-	if err != nil || len(content) == 0 {
-		http.Error(w, "unreadable file", http.StatusBadRequest)
-		return
-	}
-
-	mimeType, ext, err := mediaType(kind, content, header.Header.Get("Content-Type"))
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-
-	folder := "photos"
-	if kind != "photo" {
-		folder = "pronunciation"
-	}
-	name := blob.Name(content, ext)
-	actor := requestActor(u.store, r)
-	ops, err := u.store.Model().Directory.upload(actor, target, kind, key, name)
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if err := u.media.Put(folder, name, mimeType, content); err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if err := u.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if kind == "photo" && target == "person" {
-		slog.InfoContext(r.Context(), "upload: added photo", "actor", actor.Email, "name", name, "key", key)
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	slog.InfoContext(r.Context(), "upload: set media", "actor", actor.Email, "target", target, "key", key, "kind", kind, "name", name)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (u uploader) reorderPhotos(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
-	names := splitNonEmpty(r.FormValue("order"), ",")
-	actor := requestActor(u.store, r)
-	ops, err := u.store.Model().Directory.reorderPhotos(actor, key, names)
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if err := u.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	slog.InfoContext(r.Context(), "reorder-photos: set photo list", "actor", actor.Email, "photos", len(names), "key", key)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 30<<20)
-	if err := r.ParseMultipartForm(30 << 20); err != nil {
-		http.Error(w, "upload too large or malformed", http.StatusBadRequest)
-		return
-	}
-	target := r.FormValue("target")
-	if target == "" {
-		target = "person"
-	}
-	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
-	name := r.FormValue("name")
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "missing file", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-	content, err := io.ReadAll(file)
-	if err != nil || len(content) == 0 {
-		http.Error(w, "unreadable file", http.StatusBadRequest)
-		return
-	}
-	mimeType, ext, err := mediaType("photo", content, header.Header.Get("Content-Type"))
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	cropName := blob.Name(content, ext)
-	actor := requestActor(u.store, r)
-	ops, err := u.store.Model().Directory.cropPhoto(actor, target, key, name, cropName)
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if err := u.media.Put("photos", cropName, mimeType, content); err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if err := u.store.Commit(r.Context(), actor, DirectoryApp, ops...); err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	if target == "family" {
-		slog.InfoContext(r.Context(), "crop-photo: set a crop on the family photo", "actor", actor.Email, "family", key)
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	slog.InfoContext(r.Context(), "crop-photo: set a crop on a photo", "actor", actor.Email, "key", key, "photo", name)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func splitNonEmpty(s, sep string) []string {
-	var out []string
-	for _, part := range strings.Split(s, sep) {
-		if part = strings.TrimSpace(part); part != "" {
-			out = append(out, part)
-		}
-	}
-	return out
 }
 
 func isPhotoSubset(order []string, photos []Photo) bool {

@@ -3,7 +3,6 @@ package model
 import (
 	"context"
 	"net/http"
-	"net/url"
 	"testing"
 
 	"heliosian/internal/access"
@@ -40,9 +39,7 @@ func TestRenamingATagKeepsTheAudiencesThatNameIt(t *testing.T) {
 	if !includes() || tagLabel() != "Soccer Team" {
 		t.Fatalf("the audience naming the tag leaves out %s or reads %q", asha, tagLabel())
 	}
-	directory := http.NewServeMux()
-	RegisterDirectory(directory, DirectoryRoutes{Store: c})
-	if rec := testkit.Form(t, directory, homeAdmin, "/api/directory/tag-rename", url.Values{"tag": {soccerTeamID}, "name": {"Football"}}); rec.Code != http.StatusNoContent {
+	if rec := testkit.Call(t, mux, homeAdmin, "POST", "/api/tags/"+soccerTeamID+"/rename", map[string]string{"name": "Football"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
 	if !includes() {

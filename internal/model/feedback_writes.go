@@ -11,6 +11,10 @@ import (
 
 var Triage = access.Named("feedback")
 
+func superActor(m *Model, r *http.Request) access.Actor {
+	return m.Directory.Actor(r, m.SuperHeld)
+}
+
 func requireSuperAdmin(actor access.Actor) error {
 	if !actor.May(Triage) {
 		return access.Forbidden("super admin access required")

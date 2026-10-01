@@ -60,6 +60,20 @@ An action is built with `api.Do(can, do)` and a create with `api.Make(do)`, wher
 
 A tag is seen by its owner and the people they share it with, and only while it holds someone: `tags` lists the viewer's own, then those shared with them, with `me.mine` saying which, and relations `owner`, `people` and `managers`. A rule names a tag as `tag:<id>` (`docs/loop/loop.md`, A rule discloses the tags it names).
 
+A family carries `veracrossAddress` and `veracrossPhone`, how Veracross shows its address and phone, which the map and My Privacy read. A grade's `room-parents` are the room parents of its band.
+
+## Helios Who?
+
+Who?'s pages read the directory types above in one batch, with `who-settings` and `/api/me`; `internal/model/who_resources.go` holds the writes and Who?'s own types.
+
+- **People and families** carry `can` from `mayEdit` (`docs/who/directory.md`, Who may edit what). A person's actions are `edit` (partial: `preferredName`, `pronouns`, `facts`), `add-photo`, `order-photos` (`names`, in order; a photo left out is removed), `crop-photo` (`name` of the photo and `crop`) and `pronunciation` (an empty `name` clears it); a family's are `edit` (partial: `photoCaption`), `photo`, `crop-photo` and `pronunciation`.
+- **Uploads** are bytes first: `POST /api/directory/media`, a form with `kind` (`photo` or `pronunciation`) and `file`, stores the file and answers its content-addressed `name`, which the action then names. An action refuses a name that is not one.
+- **Tags**: `POST /api/tags` with a `name` and a `person` tags them with the viewer's tag of that name, making it if there is none, and answers its ID. `add` and `remove` (a `person`) are the owner's and the managers', as is `copy` (a `name`, answering the copy's ID); `rename`, `share`, `unshare` and `delete` are the owner's; `leave` is a manager's.
+- **`classrooms` and `grades`** take an admin's `image`.
+- **`person-records`** are an admin's (`who.administer`; anyone else lists none): one per person in the directory's sheets, hidden people included, with the Overrides and Veracross values the admin page compares and relation `person`. Creating one adds a person by hand. `edit` is partial, and each field is accepted only for the people it applies to: names for anyone, facts, department, job title and grade band for staff, grade for students, classroom and crew for staff and students, phone, room parent and address for parents, and the address and roles of a person added by hand. `hide`, `unhide`, and `delete` for a person added by hand.
+- **`who-settings`**, one for every viewer, carries the Maps key, the update thresholds, the privacy links and the colours from the Config sheet (`docs/config.md`), and relation `viewer`; `stale-years`, `privacy-links` and `color` are the configure allowance's.
+- **`greetings`** are the built-in ones (each with its `role`) and the viewer's own, which they create, `edit` and `delete`; **`invite-services`** are the invite export's services and their columns.
+
 ## Magic Tags
 
 A Magic Tag is a group of people worked out from something a person runs, which that person holds and may name in a rule or a picker: a grade band's parents for its room parents (`room:<band>`), a party's ticket holders and buyers for its hosts (`party:<id>`), an activity's volunteers, and those under it, for its co-chairs and those of anything above it (`activity:<id>`; a Team admin holds every activity's), and an email list's members for its managers (`group:<id>`). `Model.MagicTagsOf` in `internal/model/magic_tags.go` is the one rule, and rule evaluation, the rule editors' options, Who?'s Lists and Ask all read it. A rule may name an email list's Magic Tag; saving an email list whose rules would have lists name each other in a circle is refused.
@@ -138,7 +152,7 @@ Audience preview reads an unsaved draft and is Heliosian's own route (`POST /api
 
 ## Admin lists
 
-`admin-lists` (in `home_resources.go`) is one resource per app's admin list (`adminApps` in `internal/model/model.go` lists them), each ID derived from the app's key and the key an alias (`/api/admin-lists/team`). It is seen, listed and written only by someone holding that app's `<app>.admins` allowance: `app`, and `admins`, the Admins tab's addresses and the platform super admins. `edit` takes `admins` and writes the tab to match, the super admins left out of it, since they stand on every list from the Config sheet. Every app's Admin Tools card reads and writes it (`appAdmins` in `web/common/admin.js`, `docs/toolbar.md`, Admin Tools).
+`admin-lists` (in `home_resources.go`) is one resource per app's admin list (`adminApps` in `internal/model/model.go` lists them), each ID derived from the app's key and the key an alias (`/api/admin-lists/team`). It is seen, listed and written only by someone holding that app's `<app>.admins` allowance: `app`, and `admins`, the Admins tab's addresses and the platform super admins. `edit` takes `admins` and writes the tab to match, the super admins left out of it, since they stand on every list from the Config sheet. The super admins are a list of their own, `super`, seen and written only by someone holding `super-admins`, over the Config sheet's Super Admins tab, which may not be left empty. Every app's Admin Tools card reads and writes it (`appAdmins` in `web/common/admin.js`, `docs/toolbar.md`, Admin Tools).
 
 ## Feedback reports
 

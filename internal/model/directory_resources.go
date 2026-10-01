@@ -34,6 +34,8 @@ type familyResource struct {
 	PronunciationURL string  `json:"pronunciationUrl,omitempty"`
 	AddressMasked    bool    `json:"addressMasked,omitempty"`
 	PhoneMasked      bool    `json:"phoneMasked,omitempty"`
+	VeracrossAddress string  `json:"veracrossAddress"`
+	VeracrossPhone   string  `json:"veracrossPhone"`
 	Path             string  `json:"path"`
 	App              string  `json:"app"`
 }
@@ -83,8 +85,14 @@ type tagResource struct {
 	Me        tagMe  `json:"me"`
 }
 
-func DirectoryResources() []api.Type[*Model] {
-	return []api.Type[*Model]{peopleType(), familiesType(), classroomsType(), gradesType(), crewsType(), departmentsType(), tagsType()}
+func DirectoryResources(s *Store) []api.Type[*Model] {
+	people, families, classrooms, grades, tags := peopleType(), familiesType(), classroomsType(), gradesType(), tagsType()
+	people.Actions = personActions(s)
+	families.Actions = familyActions(s)
+	classrooms.Actions = map[string]api.Action[*Model]{"image": imageAction(s, imageClassroom, func(m *Model, key string) string { return m.Directory.classroomByID(key).Name })}
+	grades.Actions = map[string]api.Action[*Model]{"image": imageAction(s, imageGrade, func(m *Model, key string) string { return m.Directory.gradeByID(key).Name })}
+	tags.Actions, tags.Create = tagActions(s), tagCreator(s)
+	return []api.Type[*Model]{people, families, classrooms, grades, crewsType(), departmentsType(), tags}
 }
 
 func (m *Directory) tagFor(key string, viewer string) (Tag, bool) {
@@ -364,6 +372,7 @@ func familiesType() api.Type[*Model] {
 				Name: f.Name, ShortName: f.ShortName, Address: f.Address, Phone: f.Phone, Lat: f.Lat, Lng: f.Lng,
 				PhotoURL: f.PhotoURL, OriginalPhotoURL: f.OriginalPhotoURL, PhotoCaption: f.PhotoCaption, PhotoUpdated: f.PhotoUpdated,
 				PronunciationURL: f.PronunciationURL, AddressMasked: f.AddressMasked, PhoneMasked: f.PhoneMasked,
+				VeracrossAddress: f.VeracrossAddress, VeracrossPhone: f.VeracrossPhone,
 				Path: FamilyPath(key), App: whoHost,
 			}, true
 		},
@@ -499,6 +508,13 @@ func gradesType() api.Type[*Model] {
 					return nil
 				}
 				return m.Directory.peopleWhere(func(p *Person) bool { return p.IsStudent && p.Grade == g.Name })
+			}},
+			"room-parents": {Type: "people", Many: true, List: func(m *Model, _ api.Query, key string) []string {
+				g := m.Directory.gradeByID(key)
+				if g == nil || g.Band == "" {
+					return nil
+				}
+				return m.Directory.emailIDs(m.Directory.RoomParentsOf(g.Band))
 			}},
 		},
 		Filters: map[string]api.Filter[*Model]{

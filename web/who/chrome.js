@@ -1,4 +1,4 @@
-import {state, byEmail, tagKey} from './state.js';
+import {state, tagKey, viewer} from './state.js';
 import {segments, hue, firstName, trimMiddle} from './dom.js';
 import {el, svg} from '/elements.js';
 import {saveNavOpen, loadNavScroll, saveNavScroll} from './storage.js';
@@ -82,9 +82,9 @@ export function showPage(node) {
     }
   }
   const onOwnFamilyPage = seg[0] === 'families' && seg[1] === myFamilyKey();
-  const familyEmails = new Set(familyNavPeople().map(fp => fp.email));
+  const familyIds = new Set(familyNavPeople().map(fp => fp.id));
   const segPerson = seg[0] === 'people' && seg[1] ? personByKey(seg[1]) : undefined;
-  const onOwnFamilyMemberPage = !!segPerson && familyEmails.has(segPerson.email);
+  const onOwnFamilyMemberPage = !!segPerson && familyIds.has(segPerson.id);
   if (!onOwnFamilyPage && !onOwnFamilyMemberPage && seg[0] !== 'my-privacy') {
     const stale = staleItems();
     if (stale.length) {
@@ -100,18 +100,18 @@ function navBadge(count) {
   return el('span', 'nav-badge', String(count));
 }
 
-function familyMemberRow(p, meEmail, activeEmail) {
+function familyMemberRow(p, meId, activeId) {
   const a = el('a', 'nav-family-link');
   a.href = personLink(p);
-  if (p.email === activeEmail) {
+  if (p.id === activeId) {
     a.className = 'nav-family-link active';
   }
   a.append(photoOrInitials(personPhotoUrl(p), p.fullName, 'nav-family-avatar'));
-  a.append(el('span', 'nav-family-name', p.email === meEmail ? 'Me' : firstName(p.fullName)));
+  a.append(el('span', 'nav-family-name', p.id === meId ? 'Me' : firstName(p.fullName)));
   const count = personTodoCount(p);
   if (count) {
     const badge = navBadge(count);
-    badge.title = `${p.email === meEmail ? 'You have' : `${firstName(p.fullName)} has`} ${count} thing${count === 1 ? '' : 's'} to update`;
+    badge.title = `${p.id === meId ? 'You have' : `${firstName(p.fullName)} has`} ${count} thing${count === 1 ? '' : 's'} to update`;
     a.append(badge);
   }
   return a;
@@ -139,11 +139,11 @@ function placeNavScroll(top) {
 function fillNav(nav) {
   const seg = activeSection();
   const rawSeg = segments();
-  const me = byEmail[document.body.dataset.userEmail];
+  const me = viewer();
   const familyPeople = familyNavPeople();
-  const familyEmails = new Set(familyPeople.map(p => p.email));
+  const familyIds = new Set(familyPeople.map(p => p.id));
   const rawSegPerson = rawSeg[0] === 'people' && rawSeg[1] ? personByKey(rawSeg[1]) : undefined;
-  const onFamilyMember = !!rawSegPerson && familyEmails.has(rawSegPerson.email);
+  const onFamilyMember = !!rawSegPerson && familyIds.has(rawSegPerson.id);
 
   function renderItem(container, item, indicator) {
     const a = el('a');
@@ -214,7 +214,7 @@ function fillNav(nav) {
     if (familyBody) {
       renderItem(familyBody, {path: 'my-family', label: 'My Family'}, familyTodos || (todos.length > familyTodos && 'alert'));
       for (const p of familyPeople) {
-        familyBody.append(familyMemberRow(p, me.email, onFamilyMember ? rawSegPerson.email : null));
+        familyBody.append(familyMemberRow(p, me.id, onFamilyMember ? rawSegPerson.id : null));
       }
     }
   }
@@ -421,9 +421,8 @@ privacyAlert.hidden = true;
 privacyRow.append(privacyAlert);
 
 function me() {
-  const user = state.model.user;
-  const person = personByKey(user.email);
-  return {...user, photoUrl: person && personPhotoUrl(person)};
+  const person = viewer();
+  return {...state.model.user, photoUrl: person && personPhotoUrl(person)};
 }
 
 function alerts() {
@@ -433,7 +432,7 @@ function alerts() {
 
 export function renderUserChrome() {
   renderAccount();
-  privacyRow.hidden = !familyOf(byEmail[document.body.dataset.userEmail]);
+  privacyRow.hidden = !familyOf(viewer());
   const mismatch = myPrivacyWarnings().length > 0;
   privacyAlert.hidden = !mismatch;
   if (mismatch && !privacyAlert.firstChild) {

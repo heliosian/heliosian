@@ -92,7 +92,7 @@ A second check that costs a few lines where one check stands alone today. The te
 - Mail a person is not a reader of (`model.EmailList.MailReadableBy`), group membership, and the rules that decide it.
 - Helios Ask as a side door: its tools and its document search must read with the asker's eyes - the same `VisibleTo` the pages call, and `MailReadableBy` for a Loop email list's mail, which has a membership to hold it to. Its other documents are open to every asker on purpose: the forwarding hook files mail only when it went to everyone or to a whole class (`docs/ask/artifacts.md`, What is in it and what is not), what went to one class is not secret from another, and nothing is kept from students. The question for those is what gets filed, not who reads it.
 - What differs by kind of member: whether a student, a parent and a staff member are meant to see the same things, and whether the server knows the difference.
-- Admin-only state reaching everyone: `/api/config` and its super admin list, feedback reports, change logs, bounce lists, other people's feed addresses.
+- Admin-only state reaching everyone: `who-settings` and the super admin list, feedback reports, change logs, bounce lists, other people's feed addresses.
 - Anything reachable by changing an id in a request.
 - What a signed-out fetcher gets: share cards and link previews at `/open/share/`, the outside guest's page at `/ext/`, a feed's contents - each asked with no viewer, so each should show only what everyone may see.
 

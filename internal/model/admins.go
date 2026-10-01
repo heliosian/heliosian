@@ -1,13 +1,11 @@
 package model
 
 import (
-	"net/http"
 	"slices"
 	"sort"
 
 	"heliosian/internal/access"
 	"heliosian/internal/mail"
-	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -54,19 +52,4 @@ func (l AdminList) Admins() []string {
 	out := mail.NormalizeAll(append(slices.Clone(l.listed), l.superAdmins...))
 	sort.Strings(out)
 	return out
-}
-
-func RegisterAdmins(mux *http.ServeMux, s *Store, app string, state func(m *Model, r *http.Request, actor access.Actor) map[string]any) {
-	mux.HandleFunc("GET /api/admin/state", serve.JSON(func(r *http.Request, _ serve.None) (map[string]any, error) {
-		m := s.Model()
-		l := m.AdminList(app)
-		v := m.actor(r, app)
-		if !v.May(ManageAdmins(l.app)) {
-			return nil, access.Forbidden("admin access required")
-		}
-		view := state(m, r, v)
-		view["email"] = v.Email
-		view["isSuperAdmin"] = l.IsSuperAdmin(v.Email)
-		return view, nil
-	}))
 }

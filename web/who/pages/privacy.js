@@ -1,4 +1,4 @@
-import {byEmail, privacyLinks} from '../state.js';
+import {privacyLinks, peopleOf, viewer} from '../state.js';
 import {infoBanner} from '../dom.js';
 import {el, svg} from '/elements.js';
 import {familyOf} from '../families.js';
@@ -32,9 +32,8 @@ function privacyHeliosCell(masked) {
 }
 
 function familyShownPhone(family) {
-  return (family.adultEmails || [])
-    .map(email => byEmail[email])
-    .filter(p => p && p.phone)
+  return peopleOf(family.adults)
+    .filter(p => p.phone)
     .map(p => p.phone)
     .join(', ');
 }
@@ -76,8 +75,7 @@ function privacyActionButton(iconName, label, href) {
 
 export function privacyPage() {
   const page = document.createDocumentFragment();
-  const me = byEmail[document.body.dataset.userEmail];
-  const family = familyOf(me);
+  const family = familyOf(viewer());
   if (!family) {
     page.append(el('div', 'container', 'No family record found for your account.'));
     return page;
@@ -165,7 +163,7 @@ function privacyWarnings(family) {
 }
 
 export function myPrivacyWarnings() {
-  const family = familyOf(byEmail[document.body.dataset.userEmail]);
+  const family = familyOf(viewer());
   return family ? privacyWarnings(family) : [];
 }
 

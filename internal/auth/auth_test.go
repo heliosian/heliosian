@@ -137,8 +137,8 @@ func TestSignedOutGetsTheLoginPageOnlyForAPage(t *testing.T) {
 		{"/fonts/missing.woff2", "font", false},
 		{"/manifest.webmanifest", "manifest", false},
 		{"/sw.js", "serviceworker", false},
-		{"/api/directory/model", "empty", false},
-		{"/api/directory/model", "document", false},
+		{"/api/people", "empty", false},
+		{"/api/people", "document", false},
 	}
 	for _, c := range cases {
 		req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com"+c.path, nil)
@@ -361,7 +361,7 @@ func TestWrapAdmitsOnlyMembers(t *testing.T) {
 		{"an unlisted page", a.Wrap(next), "left@heliosschool.org", "", "/people", http.StatusForbidden, true},
 		{"an unlisted static file", a.Wrap(next), "left@heliosschool.org", "", "/app.js", http.StatusForbidden, true},
 		{"an unlisted api", a.Wrap(next), "left@heliosschool.org", "", "/api/people", http.StatusForbidden, false},
-		{"an unlisted admin", a.Wrap(next), "left@heliosschool.org", "", "/api/admin/state", http.StatusForbidden, false},
+		{"an unlisted admin", a.Wrap(next), "left@heliosschool.org", "", "/api/person-records", http.StatusForbidden, false},
 		{"an unlisted sign-out", a.Wrap(next), "left@heliosschool.org", "", "/auth/logout", http.StatusTeapot, false},
 		{"an unlisted opt-in", a.Wrap(next), "left@heliosschool.org", "", "/optin", http.StatusTeapot, false},
 		{"an unlisted public path", a.Wrap(next), "left@heliosschool.org", "", "/open/share/about.png", http.StatusTeapot, false},

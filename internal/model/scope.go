@@ -48,6 +48,9 @@ type scope struct {
 	heldOnce      sync.Once
 	heldOrder     []string
 	held          map[string]MagicTag
+
+	recordsOnce sync.Once
+	records     map[string]string
 }
 
 func (m *Model) at(q api.Query) *Model {

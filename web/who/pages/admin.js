@@ -1,18 +1,37 @@
-import {state} from '../state.js';
+import {state, allowed} from '../state.js';
 import {el} from '/elements.js';
 import {adminPage as buildAdminPage, adminsCard, appAdmins} from '/admin.js';
 import {createPersonPicker} from '/picker.js';
 import {popup} from '/modal.js';
-import {api} from '/api.js';
+import {batch, act, create, remove} from '/data.js';
 import {dataGrid} from '/datagrid.js';
+import {storeMedia} from '../edit.js';
 
 let data = null;
 const painters = [];
 
 async function fetchState() {
-  const [admin, config] = await Promise.all([api('GET', '/api/admin/state'), api('GET', '/api/config')]);
-  data = admin;
-  data.config = config;
+  const read = await batch({
+    records: '/api/person-records?include=person',
+    classrooms: '/api/classrooms',
+    grades: '/api/grades',
+    crews: '/api/crews?include=classroom',
+    departments: '/api/departments',
+    settings: '/api/who-settings',
+  });
+  const all = name => read.result[name].map(read.get);
+  const records = all('records');
+  const grades = all('grades');
+  data = {
+    people: records.filter(r => !r.hidden).sort((a, b) => a.fullName < b.fullName ? -1 : a.fullName > b.fullName ? 1 : 0),
+    hidden: records.filter(r => r.hidden),
+    classrooms: all('classrooms'),
+    grades,
+    bands: [...new Set(grades.map(g => g.band).filter(Boolean))],
+    crews: all('crews').filter(c => c.name).map(c => ({name: c.name, classroom: (read.follow(c, 'classroom') || {}).name || ''})),
+    departments: all('departments').map(d => d.name),
+    config: read.get(read.result.settings[0]),
+  };
 }
 
 async function refresh() {
@@ -34,10 +53,14 @@ function actionButton(label, className, onClick) {
   return b;
 }
 
+function settingsAct(action, body) {
+  return act('who-settings', data.config.id, action, body);
+}
+
 async function setColor(kind, name, input, status) {
   say(status, 'Saving…');
   try {
-    await api('POST','/api/config/color', {kind, name, color: input.value});
+    await settingsAct('color', {kind, name, color: input.value});
     say(status, '');
   } catch (err) {
     say(status, err.message, true);
@@ -72,17 +95,14 @@ function staffColorCard() {
   return node;
 }
 
-async function uploadImage(kind, name, input, status) {
+async function uploadImage(type, item, input, status) {
   if (!input.files.length) {
     return;
   }
   say(status, 'Uploading…');
-  const form = new FormData();
-  form.append('kind', kind);
-  form.append('name', name);
-  form.append('file', input.files[0]);
   try {
-    await api('POST', '/api/admin/images', form);
+    const name = await storeMedia('photo', input.files[0], input.files[0].name);
+    await act(type, item.id, 'image', {name});
   } catch (err) {
     say(status, err.message, true);
     return;
@@ -115,7 +135,7 @@ function imagesCard(title, hint, kind, items, colors) {
       file.type = 'file';
       file.accept = 'image/*';
       file.hidden = true;
-      file.addEventListener('change', () => uploadImage(kind, item.name, file, status));
+      file.addEventListener('change', () => uploadImage(items, item, file, status));
       replace.append(file);
       row.append(el('div', 'name', item.name), status, color, replace);
       list.append(row);
@@ -140,14 +160,14 @@ function fieldRow(label, input) {
   return row;
 }
 
-function savingCard(title, hint, fields, url, body) {
+function savingCard(title, hint, fields, action, body) {
   const node = card(title, hint);
   const status = el('span', 'save-status');
   const save = actionButton('Save', 'button', async () => {
     save.disabled = true;
     say(status, 'Saving…');
     try {
-      await api('POST',url, body());
+      await settingsAct(action, body());
       say(status, 'Saved.');
       await refresh();
     } catch (err) {
@@ -172,7 +192,7 @@ function thresholdsCard() {
     years[key] = input;
     return fieldRow(label, input);
   });
-  return savingCard('Update thresholds', 'How many years old a photo or facts entry can get before the directory asks someone to refresh it.', fields, '/api/config/stale-years',
+  return savingCard('Update thresholds', 'How many years old a photo or facts entry can get before the directory asks someone to refresh it.', fields, 'stale-years',
     () => Object.fromEntries(Object.entries(years).map(([key, input]) => [key, Number(input.value)])));
 }
 
@@ -185,7 +205,7 @@ function privacyCard() {
     links[key] = input;
     return fieldRow(label, input);
   });
-  return savingCard('Privacy links', 'Where My Privacy sends people to fix a Veracross/Helios Who mismatch. Update these if either URL ever changes.', fields, '/api/config/privacy-links',
+  return savingCard('Privacy links', 'Where My Privacy sends people to fix a Veracross/Helios Who mismatch. Update these if either URL ever changes.', fields, 'privacy-links',
     () => Object.fromEntries(Object.entries(links).map(([key, input]) => [key, input.value.trim()])));
 }
 
@@ -202,7 +222,7 @@ function crewNamesFor(classroom) {
   return [...new Set(crews.map(c => c.name))];
 }
 
-function overridesPanel({title, hint, endpoint, filter, fields}) {
+function overridesPanel({title, hint, filter, fields}) {
   const wrap = el('div');
   const find = card(title, hint);
   const mount = el('div');
@@ -247,12 +267,12 @@ function overridesPanel({title, hint, endpoint, filter, fields}) {
     inputs.classroom.addEventListener('change', () => fillSelect(inputs.crew, crewNamesFor(inputs.classroom.value), ''));
   }
   let selected = '';
-  const show = (email, clear) => {
-    const person = data.people.find(p => p.email === email);
+  const show = (id, clear) => {
+    const person = data.people.find(p => p.id === id);
     if (!person) {
       return;
     }
-    selected = email;
+    selected = id;
     form.hidden = false;
     heading.textContent = person.fullName;
     address.textContent = person.email;
@@ -270,14 +290,14 @@ function overridesPanel({title, hint, endpoint, filter, fields}) {
     }
   };
   const save = actionButton('Save', 'button', async () => {
-    const body = {email: selected};
+    const body = {};
     for (const f of fields) {
       body[f.key] = inputs[f.key].value;
     }
     save.disabled = true;
     say(status, 'Saving…');
     try {
-      await api('POST',endpoint, body);
+      await act('person-records', selected, 'edit', body);
       say(status, 'Saved.');
       await refresh();
     } catch (err) {
@@ -288,7 +308,7 @@ function overridesPanel({title, hint, endpoint, filter, fields}) {
   const actions = el('div', 'add-row');
   actions.append(save, status);
   form.append(actions);
-  bar.append(mount, actionButton('Load', 'button button-secondary', () => show(picker.value, true)));
+  bar.append(mount, actionButton('Load', 'button button-secondary', () => show(picker.person && picker.person.id, true)));
   find.append(bar);
   painters.push(() => {
     if (selected) {
@@ -308,7 +328,6 @@ const names = [
 const staffOverrides = () => overridesPanel({
   title: 'Find a person',
   hint: 'Edit the fields that decide which classroom or crew a staff member belongs to, plus their name and facts — Classroom, Crew, Department, Job Title, Grade Band, Full Name, Legal Name, Preferred Name, and Facts. Changes here save straight to the Overrides sheet, whether or not the field also has its own self-service editor elsewhere.',
-  endpoint: '/api/admin/person-fields',
   filter: p => p.isStaff,
   fields: [
     ...names,
@@ -324,7 +343,6 @@ const staffOverrides = () => overridesPanel({
 const studentOverrides = () => overridesPanel({
   title: 'Find a student',
   hint: 'Edit a student’s Overrides-backed fields — Full Name, Legal Name, Preferred Name, Grade, Classroom, and Crew. Changes here save straight to the Overrides sheet, whether or not the field also has its own self-service editor elsewhere.',
-  endpoint: '/api/admin/student-fields',
   filter: p => p.isStudent,
   fields: [
     ...names,
@@ -337,7 +355,6 @@ const studentOverrides = () => overridesPanel({
 const parentOverrides = () => overridesPanel({
   title: 'Find a parent',
   hint: 'Edit a parent’s Overrides-backed fields — Full Name, Legal Name, Preferred Name, Phone, Room Parent, and Address. Address is family-level: it’s written to this parent’s own row, and merges with whatever their co-parent’s row supplies.',
-  endpoint: '/api/admin/parent-fields',
   filter: p => p.isParent,
   fields: [
     ...names,
@@ -347,7 +364,7 @@ const parentOverrides = () => overridesPanel({
   ],
 });
 
-function personForm(hint, person, label, submit, remove) {
+function personForm(hint, person, label, submit, drop) {
   const box = el('div');
   const email = el('input');
   email.type = 'text';
@@ -381,8 +398,8 @@ function personForm(hint, person, label, submit, remove) {
     go.disabled = false;
   });
   actions.append(go);
-  if (remove) {
-    actions.append(actionButton('Delete', 'danger-button', remove));
+  if (drop) {
+    actions.append(actionButton('Delete', 'danger-button', drop));
   }
   actions.append(status);
   box.append(el('div', 'hint', hint), fieldRow('Email', email), fieldRow('Full name', fullName), roles, actions);
@@ -393,7 +410,7 @@ function openAddPerson() {
   let shut = null;
   const form = personForm('Create someone Veracross genuinely doesn’t have a record for yet - Overrides becomes the only source of their name and role. Pick at least one role; you can add the rest of their details (classroom, phone, and so on) afterward from the table or the other Overrides tabs.',
     {email: '', fullName: ''}, 'Add', async person => {
-      await api('POST','/api/admin/add-person', person);
+      await create('person-records', person);
       shut();
       await refresh();
     });
@@ -404,7 +421,7 @@ function openEditPerson(p) {
   let shut = null;
   const form = personForm('Changing the email renames this person everywhere they’re keyed by it - their Overrides row, and any Tags or Photos rows they already have.',
     p, 'Save', async person => {
-      await api('POST','/api/admin/added-fields', {...person, email: p.email, newEmail: person.email});
+      await act('person-records', p.id, 'edit', person);
       shut();
       await refresh();
     }, async () => {
@@ -412,7 +429,7 @@ function openEditPerson(p) {
         return;
       }
       try {
-        await api('POST','/api/admin/delete-person', {email: p.email});
+        await remove('person-records', p.id);
       } catch (err) {
         alert(err.message);
         return;
@@ -437,7 +454,7 @@ function addedPanel() {
     {label: 'Staff', get: p => p.isStaff ? '✓' : ''},
   ];
   painters.push(() => {
-    const added = data.people.filter(p => p.isAdded);
+    const added = data.people.filter(p => p.added);
     if (!added.length) {
       holder.replaceChildren(el('div', 'empty', 'Nobody yet.'));
       return;
@@ -454,14 +471,14 @@ function hiddenPanel() {
   const picker = createPersonPicker(mount, {people: () => data.people});
   const status = el('span', 'save-status');
   const go = actionButton('Hide', 'button', async () => {
-    const email = picker.value;
-    if (!email) {
+    const person = picker.person;
+    if (!person) {
       return;
     }
     go.disabled = true;
     say(status, 'Hiding…');
     try {
-      await api('POST','/api/admin/hide-person', {email});
+      await act('person-records', person.id, 'hide');
       picker.reset();
       say(status, '');
       await refresh();
@@ -476,11 +493,11 @@ function hiddenPanel() {
   const hidden = card('Currently hidden');
   const holder = el('div');
   hidden.append(holder);
-  const unhideButton = email => {
+  const unhideButton = record => {
     const unhide = actionButton('Unhide', 'button button-secondary button-small', async () => {
       unhide.disabled = true;
       try {
-        await api('POST','/api/admin/unhide-person', {email});
+        await act('person-records', record.id, 'unhide');
       } catch (err) {
         alert(err.message);
         unhide.disabled = false;
@@ -491,11 +508,11 @@ function hiddenPanel() {
     return unhide;
   };
   painters.push(() => {
-    if (!data.hiddenEmails.length) {
+    if (!data.hidden.length) {
       holder.replaceChildren(el('div', 'empty', 'Nobody hidden.'));
       return;
     }
-    holder.replaceChildren(dataGrid({columns: [{label: 'Email', get: email => email}], rows: data.hiddenEmails, trailing: unhideButton}).wrap);
+    holder.replaceChildren(dataGrid({columns: [{label: 'Email', get: record => record.email}], rows: data.hidden, trailing: unhideButton}).wrap);
   });
   wrap.append(hide, hidden);
   return wrap;
@@ -503,12 +520,11 @@ function hiddenPanel() {
 
 function sections() {
   const control = [];
-  if (data.isSuperAdmin) {
+  if (allowed('super-admins')) {
     control.push({key: 'super-admins', label: 'Super Admins', card: () => adminsCard({
       title: 'Super Admins',
       hint: 'Super admins can also use Spoof Mode, from the eye beside their avatar in any app’s toolbar, and manage this list. Regular admins never see this tab. Changes save immediately.',
-      load: async () => (await api('GET', '/api/config/super-admins')).superAdmins,
-      save: superAdmins => api('POST', '/api/config/super-admins', {superAdmins}),
+      ...appAdmins('super'),
     })});
   }
   control.push({key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can reach this page. Changes save immediately.', ...appAdmins('who')})});
@@ -545,7 +561,7 @@ async function fillAdminPage(slot) {
 
 export function adminPage() {
   const user = state.model.user;
-  if (!user.isAdmin) {
+  if (!allowed('who.administer')) {
     return buildAdminPage({appName: 'Helios Who?', allowed: false, email: user.email, sections: []});
   }
   const slot = el('div');

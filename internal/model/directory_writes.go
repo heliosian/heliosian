@@ -56,174 +56,152 @@ func (m *Directory) adminTarget(actor access.Actor, email string) (*Person, erro
 	return person, nil
 }
 
-func (m *Directory) setPersonFields(actor access.Actor, f personFields) (string, store.Row, []store.Op, error) {
-	person, err := m.adminTarget(actor, f.Email)
-	if err != nil {
-		return "", nil, nil, err
+func recordFieldApplies(field string, person *Person) bool {
+	switch field {
+	case "fullName", "legalName", "preferredName":
+		return true
+	case "facts", "department", "jobTitle", "gradeBand":
+		return person.IsStaff
+	case "grade":
+		return person.IsStudent
+	case "classroom", "crew":
+		return person.IsStaff || person.IsStudent
+	case "phone", "roomParent", "address":
+		return person.IsParent
+	case "email", "isStudent", "isParent", "isStaff":
+		return overrideBoolValue(person, "Added")
 	}
-	target := strings.ToLower(strings.TrimSpace(f.Email))
-	if len(f.JobTitle) > maxJobTitleLength {
-		return "", nil, nil, access.Invalid("job title too long")
-	}
-	if !validClassroom(m, f.Classroom) {
-		return "", nil, nil, access.Invalid("unknown classroom")
-	}
-	if !validCrew(m, f.Classroom, f.Crew) {
-		return "", nil, nil, access.Invalid("unknown crew for that classroom")
-	}
-	if f.Department != "" && !slices.Contains(m.Departments, f.Department) {
-		return "", nil, nil, access.Invalid("unknown department")
-	}
-	if f.GradeBand != "" && !gradeBandSet()[f.GradeBand] {
-		return "", nil, nil, access.Invalid("unknown grade band")
-	}
-	if err := validFullName(f.FullName, person); err != nil {
-		return "", nil, nil, err
-	}
-	if len(f.LegalName) > maxNameLength {
-		return "", nil, nil, access.Invalid("bad legal name")
-	}
-	if len(f.PreferredName) > maxNameLength {
-		return "", nil, nil, access.Invalid("bad preferred name")
-	}
-	if len(f.Facts) > maxFactsLength {
-		return "", nil, nil, access.Invalid("bad facts")
-	}
-	cells := store.Row{}
-	diffStringCellNoBaseline(cells, "Classroom", f.Classroom, overrideStringValue(person, "Classroom"))
-	diffStringCellNoBaseline(cells, "Crew", f.Crew, overrideStringValue(person, "Crew"))
-	diffStringCellNoBaseline(cells, "Department", f.Department, overrideStringValue(person, "Department"))
-	diffStringCell(cells, "Job Title", f.JobTitle, overrideStringValue(person, "Job Title"))
-	diffStringCellNoBaseline(cells, "Grade Band", f.GradeBand, overrideStringValue(person, "Grade Band"))
-	diffStringCell(cells, "Full Name", f.FullName, overrideStringValue(person, "Full Name"))
-	diffStringCell(cells, "Legal Name", f.LegalName, overrideStringValue(person, "Legal Name"))
-	diffStringCell(cells, "Preferred Name", f.PreferredName, overrideStringValue(person, "Preferred Name"))
-	diffFacts(cells, f.Facts, person)
-	if len(cells) == 0 {
-		return target, cells, nil, nil
-	}
-	return target, cells, []store.Op{setOverride(target, cells)}, nil
+	return false
 }
 
-func (m *Directory) setStudentFields(actor access.Actor, f studentFields) (string, store.Row, []store.Op, error) {
-	person, err := m.adminTarget(actor, f.Email)
-	if err != nil {
-		return "", nil, nil, err
+func (m *Directory) checkRecordFields(person *Person, f recordFields, sent map[string]bool) error {
+	for field := range sent {
+		if !recordFieldApplies(field, person) {
+			return access.Invalid("%s does not apply to %s", field, person.Email)
+		}
 	}
-	target := strings.ToLower(strings.TrimSpace(f.Email))
-	if err := validFullName(f.FullName, person); err != nil {
-		return "", nil, nil, err
+	classroom := overrideStringValue(person, "Classroom")
+	if sent["classroom"] {
+		classroom = f.Classroom
 	}
-	if len(f.LegalName) > maxNameLength {
-		return "", nil, nil, access.Invalid("bad legal name")
+	checks := []struct {
+		field string
+		bad   bool
+		why   string
+	}{
+		{"legalName", len(f.LegalName) > maxNameLength, "bad legal name"},
+		{"preferredName", len(f.PreferredName) > maxNameLength, "bad preferred name"},
+		{"facts", len(f.Facts) > maxFactsLength, "bad facts"},
+		{"jobTitle", len(f.JobTitle) > maxJobTitleLength, "job title too long"},
+		{"department", f.Department != "" && !slices.Contains(m.Departments, f.Department), "unknown department"},
+		{"gradeBand", f.GradeBand != "" && !gradeBandSet()[f.GradeBand], "unknown grade band"},
+		{"grade", !validGrade(f.Grade), "unknown grade"},
+		{"classroom", !validClassroom(m, f.Classroom), "unknown classroom"},
+		{"crew", !validCrew(m, classroom, f.Crew), "unknown crew for that classroom"},
+		{"phone", len(f.Phone) > maxPhoneLength, "bad phone number"},
+		{"address", len(f.Address) > maxAddressLength, "bad address"},
+		{"roomParent", f.RoomParent != "" && !gradeBandSet()[f.RoomParent], "unknown room parent band"},
 	}
-	if len(f.PreferredName) > maxNameLength {
-		return "", nil, nil, access.Invalid("bad preferred name")
+	for _, c := range checks {
+		if sent[c.field] && c.bad {
+			return access.Invalid("%s", c.why)
+		}
 	}
-	if !validGrade(f.Grade) {
-		return "", nil, nil, access.Invalid("unknown grade")
+	if sent["fullName"] {
+		if err := validFullName(f.FullName, person); err != nil {
+			return err
+		}
 	}
-	if !validClassroom(m, f.Classroom) {
-		return "", nil, nil, access.Invalid("unknown classroom")
-	}
-	if !validCrew(m, f.Classroom, f.Crew) {
-		return "", nil, nil, access.Invalid("unknown crew for that classroom")
-	}
-	cells := store.Row{}
-	diffStringCell(cells, "Full Name", f.FullName, overrideStringValue(person, "Full Name"))
-	diffStringCell(cells, "Legal Name", f.LegalName, overrideStringValue(person, "Legal Name"))
-	diffStringCell(cells, "Preferred Name", f.PreferredName, overrideStringValue(person, "Preferred Name"))
-	diffStringCell(cells, "Grade", f.Grade, overrideStringValue(person, "Grade"))
-	diffStringCell(cells, "Classroom", f.Classroom, overrideStringValue(person, "Classroom"))
-	diffStringCell(cells, "Crew", f.Crew, overrideStringValue(person, "Crew"))
-	if len(cells) == 0 {
-		return target, cells, nil, nil
-	}
-	return target, cells, []store.Op{setOverride(target, cells)}, nil
+	return nil
 }
 
-func (m *Directory) setParentFields(actor access.Actor, f parentFields) (string, store.Row, store.Row, []store.Op, error) {
-	person, err := m.adminTarget(actor, f.Email)
+func (m *Directory) setRecordFields(actor access.Actor, email string, f recordFields, sent map[string]bool) ([]store.Op, error) {
+	person, err := m.adminTarget(actor, email)
 	if err != nil {
-		return "", nil, nil, nil, err
+		return nil, err
 	}
-	target := strings.ToLower(strings.TrimSpace(f.Email))
-	if !person.IsParent {
-		return "", nil, nil, nil, access.Invalid("not a parent")
+	if err := m.checkRecordFields(person, f, sent); err != nil {
+		return nil, err
 	}
-	if err := validFullName(f.FullName, person); err != nil {
-		return "", nil, nil, nil, err
-	}
-	if len(f.LegalName) > maxNameLength {
-		return "", nil, nil, nil, access.Invalid("bad legal name")
-	}
-	if len(f.PreferredName) > maxNameLength {
-		return "", nil, nil, nil, access.Invalid("bad preferred name")
-	}
-	if len(f.Phone) > maxPhoneLength {
-		return "", nil, nil, nil, access.Invalid("bad phone number")
-	}
-	if len(f.Address) > maxAddressLength {
-		return "", nil, nil, nil, access.Invalid("bad address")
-	}
-	if f.RoomParent != "" && !gradeBandSet()[f.RoomParent] {
-		return "", nil, nil, nil, access.Invalid("unknown room parent band")
-	}
+	target := person.Email
 	cells := store.Row{}
-	diffStringCell(cells, "Full Name", f.FullName, overrideStringValue(person, "Full Name"))
-	diffStringCell(cells, "Legal Name", f.LegalName, overrideStringValue(person, "Legal Name"))
-	diffStringCell(cells, "Preferred Name", f.PreferredName, overrideStringValue(person, "Preferred Name"))
-	diffStringCell(cells, "Phone", f.Phone, overrideStringValue(person, "Phone"))
-	diffStringCellNoBaseline(cells, "Room Parent", f.RoomParent, overrideStringValue(person, "Room Parent"))
-	family, _ := m.FamilyOf(person.Email)
-	familyCells := store.Row{}
-	if family.Key != "" {
-		diffStringCell(familyCells, "Address", f.Address, familyStringValue(family, "Address"))
+	text := func(field, column string, diff func(store.Row, string, string, string), value string) {
+		if sent[field] {
+			diff(cells, column, value, overrideStringValue(person, column))
+		}
+	}
+	text("fullName", "Full Name", diffStringCell, f.FullName)
+	text("legalName", "Legal Name", diffStringCell, f.LegalName)
+	text("preferredName", "Preferred Name", diffStringCell, f.PreferredName)
+	text("jobTitle", "Job Title", diffStringCell, f.JobTitle)
+	text("department", "Department", diffStringCellNoBaseline, f.Department)
+	text("gradeBand", "Grade Band", diffStringCellNoBaseline, f.GradeBand)
+	text("grade", "Grade", diffStringCell, f.Grade)
+	text("phone", "Phone", diffStringCell, f.Phone)
+	text("roomParent", "Room Parent", diffStringCellNoBaseline, f.RoomParent)
+	placement := diffStringCellNoBaseline
+	if person.IsStudent {
+		placement = diffStringCell
+	}
+	text("classroom", "Classroom", placement, f.Classroom)
+	text("crew", "Crew", placement, f.Crew)
+	if sent["facts"] {
+		diffFacts(cells, f.Facts, person)
+	}
+	added := overrideBoolValue(person, "Added")
+	if added {
+		roles := map[string]bool{}
+		for _, r := range []struct {
+			field, column string
+			value         bool
+		}{{"isStudent", "Is Student", f.IsStudent}, {"isParent", "Is Parent", f.IsParent}, {"isStaff", "Is Staff", f.IsStaff}} {
+			current := overrideBoolValue(person, r.column)
+			roles[r.field] = current
+			if sent[r.field] {
+				roles[r.field] = r.value
+				diffBoolCell(cells, r.column, r.value, current)
+			}
+		}
+		if !roles["isStudent"] && !roles["isParent"] && !roles["isStaff"] {
+			return nil, access.Invalid("choose at least one of Is Student, Is Parent, or Is Staff")
+		}
+		if sent["email"] {
+			next := strings.ToLower(strings.TrimSpace(f.Email))
+			if !strings.Contains(next, "@") {
+				return nil, access.Invalid("bad email address")
+			}
+			if next != target && m.Person(next) != nil {
+				return nil, access.Invalid("a person with this email already exists")
+			}
+			if next != target {
+				cells["Email"] = next
+			}
+		}
 	}
 	ops := []store.Op{}
-	if len(cells) > 0 {
+	if len(cells) > 0 && added {
+		ops = append(ops, store.Update(overridesTab, store.Row{"Email": target}, cells))
+	}
+	if len(cells) > 0 && !added {
 		ops = append(ops, setOverride(target, cells))
 	}
-	if len(familyCells) > 0 {
-		ops = append(ops, setFamily(family.email, familyCells))
+	family, _ := m.FamilyOf(person.Email)
+	if sent["address"] && family.Key != "" {
+		familyCells := store.Row{}
+		diffStringCell(familyCells, "Address", f.Address, familyStringValue(family, "Address"))
+		if len(familyCells) > 0 {
+			ops = append(ops, setFamily(family.email, familyCells))
+		}
 	}
-	return target, cells, familyCells, ops, nil
+	return ops, nil
 }
 
-func (m *Directory) setAddedFields(actor access.Actor, f addedFields) (string, store.Row, []store.Op, error) {
-	person, err := m.adminTarget(actor, f.Email)
-	if err != nil {
-		return "", nil, nil, err
-	}
-	target := strings.ToLower(strings.TrimSpace(f.Email))
-	if !overrideBoolValue(person, "Added") {
-		return "", nil, nil, access.Invalid("not an added-only person")
-	}
-	if err := validFullName(f.FullName, person); err != nil {
-		return "", nil, nil, err
-	}
-	if !f.IsStudent && !f.IsParent && !f.IsStaff {
-		return "", nil, nil, access.Invalid("choose at least one of Is Student, Is Parent, or Is Staff")
-	}
-	newEmail := strings.ToLower(strings.TrimSpace(f.NewEmail))
-	if !strings.Contains(newEmail, "@") {
-		return "", nil, nil, access.Invalid("bad email address")
-	}
-	if newEmail != target && m.Person(newEmail) != nil {
-		return "", nil, nil, access.Invalid("a person with this email already exists")
-	}
-	cells := store.Row{}
-	diffStringCell(cells, "Full Name", f.FullName, overrideStringValue(person, "Full Name"))
-	diffBoolCell(cells, "Is Student", f.IsStudent, overrideBoolValue(person, "Is Student"))
-	diffBoolCell(cells, "Is Parent", f.IsParent, overrideBoolValue(person, "Is Parent"))
-	diffBoolCell(cells, "Is Staff", f.IsStaff, overrideBoolValue(person, "Is Staff"))
-	if newEmail != target {
-		cells["Email"] = newEmail
-	}
-	if len(cells) == 0 {
-		return target, cells, nil, nil
-	}
-	return target, cells, []store.Op{store.Update(overridesTab, store.Row{"Email": target}, cells)}, nil
+type newPerson struct {
+	Email     string `json:"email"`
+	FullName  string `json:"fullName"`
+	IsStudent bool   `json:"isStudent"`
+	IsParent  bool   `json:"isParent"`
+	IsStaff   bool   `json:"isStaff"`
 }
 
 func (m *Directory) addPerson(actor access.Actor, f newPerson) (string, string, []store.Op, error) {
@@ -547,7 +525,7 @@ func (m *Directory) renameTag(actor access.Actor, key, to string) ([]store.Op, s
 	return []store.Op{store.Update(tagListTable, store.Row{tagID: t.id}, store.Row{tagName: to})}, t.name, nil
 }
 
-func (m *Directory) copyTag(actor access.Actor, key, to string) ([]store.Op, string, int, error) {
+func (m *Directory) copyTag(actor access.Actor, key, to string, taken func(string) bool) ([]store.Op, string, int, error) {
 	if !validTagName(to) {
 		return nil, "", 0, access.Invalid("bad tag name")
 	}
@@ -562,7 +540,7 @@ func (m *Directory) copyTag(actor access.Actor, key, to string) ([]store.Op, str
 	if m.ownTagNamed(actor.Email, to) != nil {
 		return nil, "", 0, access.Refuse(http.StatusConflict, "you already have a tag called %s", to)
 	}
-	made := id.New(m.taken)
+	made := id.New(taken)
 	ops := []store.Op{store.Insert(tagListTable, store.Row{tagID: made, tagOwner: actor.Email, tagName: to})}
 	for _, person := range people {
 		ops = append(ops, store.Insert(tagsTable, store.Row{tagID: made, tagPerson: person}))
@@ -610,12 +588,12 @@ func (m *Directory) dropTag(actor access.Actor, key string) ([]store.Op, int, er
 	return []store.Op{store.Delete(tagListTable, store.Row{tagID: t.id})}, len(m.listed(t.people)), nil
 }
 
-func (m *Directory) setTag(actor access.Actor, key, name, person string, on bool) ([]store.Op, string, error) {
+func (m *Directory) setTag(actor access.Actor, key, name, person string, on bool, taken func(string) bool) ([]store.Op, string, error) {
 	if m.Person(person) == nil {
 		return nil, "", access.Invalid("no such person")
 	}
 	if key == "" {
-		return m.tagNamed(actor, name, person, on)
+		return m.tagNamed(actor, name, person, on, taken)
 	}
 	t, err := m.managedTag(actor, key)
 	if err != nil {
@@ -631,14 +609,14 @@ func (m *Directory) setTag(actor access.Actor, key, name, person string, on bool
 	return []store.Op{store.Delete(tagsTable, row)}, t.id, nil
 }
 
-func (m *Directory) tagNamed(actor access.Actor, name, person string, on bool) ([]store.Op, string, error) {
+func (m *Directory) tagNamed(actor access.Actor, name, person string, on bool, taken func(string) bool) ([]store.Op, string, error) {
 	if !validTagName(name) || !on {
 		return nil, "", access.Invalid("bad tag name")
 	}
 	if t := m.ownTagNamed(actor.Email, name); t != nil {
-		return m.setTag(actor, t.id, "", person, true)
+		return m.setTag(actor, t.id, "", person, true, taken)
 	}
-	made := id.New(m.taken)
+	made := id.New(taken)
 	return []store.Op{
 		store.Insert(tagListTable, store.Row{tagID: made, tagOwner: actor.Email, tagName: name}),
 		store.Insert(tagsTable, store.Row{tagID: made, tagPerson: person}),

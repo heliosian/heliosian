@@ -1,4 +1,4 @@
-import {lists, byEmail} from '../state.js';
+import {state, lists} from '../state.js';
 import {withFrom, copyButton, contactRow} from '../dom.js';
 import {el, svg, iconLink} from '/elements.js';
 import {personLink, photoOrInitials} from '../people.js';
@@ -52,7 +52,7 @@ export function guestPage(id) {
   if (guest.purchaserName) {
     const by = el('div', 'detail-sub');
     by.append(el('span', '', 'Guest of '));
-    const host = byEmail[guest.purchaser];
+    const host = state.model.people.find(p => p.email && p.email === guest.purchaser);
     if (host) {
       const hostLink = el('a', '', host.fullName);
       hostLink.href = personLink(host);

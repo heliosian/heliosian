@@ -1,4 +1,4 @@
-import {state, byEmail} from '../state.js';
+import {state, peopleOf} from '../state.js';
 import {thumbUrl, withFrom} from '../dom.js';
 import {el, svg} from '/elements.js';
 import {familyLink, familySearchText} from '../families.js';
@@ -12,7 +12,7 @@ function loadMaps() {
       window._mapsReady = resolve;
       const script = el('script');
       script.src = 'https://maps.googleapis.com/maps/api/js?key=' +
-        encodeURIComponent(document.body.dataset.mapsKey) + '&callback=_mapsReady';
+        encodeURIComponent(state.model.mapsKey) + '&callback=_mapsReady';
       script.async = true;
       document.head.append(script);
     });
@@ -39,7 +39,7 @@ function familyMapPopup(family) {
     body.append(el('div', 'map-popup-sub', family.address));
   }
   const link = el('a', 'map-popup-link', 'See family');
-  link.href = familyLink(family.key);
+  link.href = familyLink(family.id);
   body.append(link);
   box.append(body);
   return box;
@@ -66,14 +66,13 @@ export function initFamilyMap(canvas, familyMatches) {
       if (!familyMatches(family)) {
         continue;
       }
-      const emails = [...(family.kidEmails || []), ...(family.adultEmails || [])];
-      const matchingMembers = emails.map(e => byEmail[e]).filter(p => p && matchesFilters(p));
+      const matchingMembers = peopleOf([...family.kids, ...family.adults]).filter(matchesFilters);
       for (const p of matchingMembers) {
-        allPeople.set(p.email, p);
+        allPeople.set(p.id, p);
       }
       if (!family.address || family.veracrossAddress === 'partial') {
         for (const p of matchingMembers) {
-          withoutAddress.set(p.email, p);
+          withoutAddress.set(p.id, p);
         }
         continue;
       }
@@ -158,6 +157,6 @@ export function mapPage() {
   content.append(update);
   page.append(content);
 
-  renderPins = initFamilyMap(canvas, family => familyMatchesFilters(family.key) && familySearchText(family).includes(state.q));
+  renderPins = initFamilyMap(canvas, family => familyMatchesFilters(family.id) && familySearchText(family).includes(state.q));
   return page;
 }

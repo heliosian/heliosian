@@ -1,4 +1,4 @@
-import {state, byEmail, colors} from '../state.js';
+import {state, colors, peopleOf} from '../state.js';
 import {withFrom, slugify, ordinal, thumbUrl, firstName, listSub, paletteColor} from '../dom.js';
 import {el, svg} from '/elements.js';
 import {tabStrip, tabHref} from '/tabs.js';
@@ -156,9 +156,7 @@ function kidsSummary(parent) {
   if (!family) {
     return '';
   }
-  return (family.kidEmails || [])
-    .map(e => byEmail[e])
-    .filter(Boolean)
+  return peopleOf(family.kids)
     .map(k => `${firstName(k.fullName)} (${[k.classroom, abbreviateGrade(k.grade)].filter(Boolean).join(' - ')})`)
     .join(' • ');
 }
@@ -167,9 +165,8 @@ function renderRoomParents(list) {
   const q = state.q;
   let count = 0;
   for (const group of bandGroups()) {
-    const parents = (state.model.roomParents[group.label] || [])
-      .map(e => byEmail[e])
-      .filter(Boolean)
+    const grades = state.model.grades.filter(g => g.band === group.band);
+    const parents = peopleOf([...new Set(grades.flatMap(g => g['room-parents']))])
       .filter(p => p.fullName.toLowerCase().includes(q));
     if (!parents.length) {
       continue;
@@ -179,7 +176,7 @@ function renderRoomParents(list) {
     for (const p of parents) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
-      card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.fullName, 'person-photo'), p), p.email));
+      card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.fullName, 'person-photo'), p), p.id));
       card.append(el('div', 'person-name', p.fullName));
       card.append(el('div', 'person-sub', kidsSummary(p)));
       grid.append(card);
@@ -246,51 +243,27 @@ export function classroomsPage() {
 }
 
 function parentsOf(students) {
-  const seen = new Set();
-  const parents = [];
+  const ids = [];
   for (const s of students) {
     for (const family of familiesOf(s)) {
-      for (const email of family.adultEmails || []) {
-        if (!seen.has(email) && byEmail[email]) {
-          seen.add(email);
-          parents.push(byEmail[email]);
-        }
-      }
+      ids.push(...family.adults);
     }
   }
-  return parents;
+  return peopleOf([...new Set(ids)]);
 }
 
 function teachersOf(classroomNames) {
-  const seen = new Set();
-  const teachers = [];
-  for (const crew of state.model.crews) {
-    if (!classroomNames.includes(crew.classroom)) {
-      continue;
-    }
-    for (const name of crew.teachers || []) {
-      if (!seen.has(name)) {
-        seen.add(name);
-        teachers.push(name);
-      }
-    }
-  }
-  return teachers;
+  const rooms = state.model.classrooms.filter(c => classroomNames.includes(c.name)).map(c => c.id);
+  const ids = state.model.crews.filter(crew => rooms.includes(crew.classroom)).flatMap(crew => crew.teachers);
+  return peopleOf([...new Set(ids)]);
 }
 
 function otherFamilyMembers(student) {
-  const seen = new Set();
-  const names = [];
+  const ids = [];
   for (const family of familiesOf(student)) {
-    for (const email of [...(family.kidEmails || []), ...(family.adultEmails || [])]) {
-      if (email === student.email || seen.has(email) || !byEmail[email]) {
-        continue;
-      }
-      seen.add(email);
-      names.push(byEmail[email].fullName);
-    }
+    ids.push(...family.kids, ...family.adults);
   }
-  return names.join(', ');
+  return peopleOf([...new Set(ids)].filter(id => id !== student.id)).map(p => p.fullName).join(', ');
 }
 
 function sectionFilterBar(groups, rerender, colorFor) {
@@ -387,17 +360,8 @@ function rosterPage(title, image, groups, backLabel, sectionColorFor) {
   } else if (state.rosterTab === 'staff') {
     list.append(el('h2', 'roster-heading', `${teachers.length} Staff`));
     const listBody = el('div', 'roster-list grid');
-    const staffItems = teachers.map(email => {
-      const person = byEmail[email.toLowerCase()];
-      return person ? {fullName: person.fullName, person} : {fullName: email, email};
-    });
-    for (const item of sortPeople(staffItems)) {
-      if (item.person) {
-        const person = item.person;
-        listBody.append(listRow(thumbUrl(person.photoUrl), (person.jobTitle || '').toUpperCase(), person.fullName, person.facts || '', personLink(person)));
-      } else {
-        listBody.append(el('div', 'list-row plain', item.email));
-      }
+    for (const person of sortPeople(teachers)) {
+      listBody.append(listRow(thumbUrl(person.photoUrl), (person.jobTitle || '').toUpperCase(), person.fullName, person.facts || '', personLink(person)));
     }
     list.append(listBody);
   } else {

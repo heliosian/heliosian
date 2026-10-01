@@ -139,9 +139,8 @@ func NewCore(cfg Config) *Core {
 	calendarStyle := model.CalendarCardStyle(appName("when"), taglineOf("when"))
 	go keypoints.Run(models, cfg.KeyPoints)
 	mux := http.NewServeMux()
-	model.RegisterConfig(mux, models)
 	who.Register(mux, models, whoAbout)
-	model.RegisterDirectory(mux, model.DirectoryRoutes{Store: models, Media: cfg.Store, MapsKey: cfg.BrowserKey})
+	model.RegisterDirectoryMedia(mux, cfg.Store)
 	blob.Register(mux, cfg.Store, "pronunciation")
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	calendarMux := http.NewServeMux()
@@ -208,7 +207,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
 		{Key: "ask", Title: "Helios Ask", Mux: askMux, Preview: askAbout.PreviewHead},
 	}
-	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin, documents)
+	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin, documents, cfg.BrowserKey)
 	model.RegisterBirthdays(birthdayMux, model.BirthdaysDeps{
 		Store:     models,
 		Queue:     queue,
@@ -318,7 +317,6 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		ArtifactsMail: artifactsMail(bucket),
 	})
 	muxes := core.Muxes()
-	model.RegisterDirectoryUpload(muxes["who"], core.Store, store)
 	client := env.Required("GOOGLE_CLIENT_ID")
 	auths := map[string]*auth.Auth{}
 	for _, a := range core.apps {
