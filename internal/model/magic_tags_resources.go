@@ -89,8 +89,18 @@ func MagicTagResources() []api.Type[*Model] {
 			return magicTagResource{Key: t.Key, Name: t.Name, Kind: t.Kind, Slug: t.Slug, Archived: t.Archived, Guests: t.Guests, Path: ListPath(t.Key), App: whoHost}, true
 		},
 		List: func(m *Model, q api.Query) []string {
-			order, _ := m.heldTags(q)
-			return order
+			order, held := m.heldTags(q)
+			chaired := map[string]bool{}
+			for _, t := range m.Activities.MagicTags(m.Directory, q.Actor.Email, q.Now) {
+				chaired[t.Key] = true
+			}
+			out := []string{}
+			for _, key := range order {
+				if t := held[key]; t.Kind != MagicTagActivity || chaired[t.Key] {
+					out = append(out, key)
+				}
+			}
+			return out
 		},
 		Aliases: func(m *Model) map[string]string {
 			out := map[string]string{}

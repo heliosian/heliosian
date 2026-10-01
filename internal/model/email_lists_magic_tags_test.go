@@ -58,12 +58,19 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 func TestMagicTagsAreTheirOwnResource(t *testing.T) {
 	h := newHarness(t)
 	m := h.store.Model()
+	chaired := map[string]bool{}
+	for _, tag := range m.Activities.MagicTags(m.Directory, jordan, now()) {
+		chaired[tag.Key] = true
+	}
 	want := []string{}
 	for _, tag := range m.MagicTagsOf(jordan, now()) {
+		if tag.Kind == MagicTagActivity && !chaired[tag.Key] {
+			continue
+		}
 		want = append(want, m.magicTagID(tag.Key))
 	}
 	if got := h.get(jordan, "/api/magic-tags").ids(t); len(want) == 0 || !slices.Equal(got, want) {
-		t.Fatalf("the listed Magic Tags %v are not the ones jordan holds %v", got, want)
+		t.Fatalf("the listed Magic Tags %v are not the ones jordan holds outside the activities they do not co-chair %v", got, want)
 	}
 	soccer := m.magicTagID("group:" + soccerID)
 	out := h.get(jordan, "/api/magic-tags/group:"+soccerID+"?include=email-list,holders")
@@ -78,6 +85,41 @@ func TestMagicTagsAreTheirOwnResource(t *testing.T) {
 		t.Fatalf("holders %v leave out its manager", holders)
 	}
 	h.want("ruth.amari@heliosschool.org", http.MethodGet, "/api/magic-tags/group:"+soccerID, "", http.StatusNotFound)
+}
+
+func TestATeamAdminListsOnlyTheActivitiesTheyCoChair(t *testing.T) {
+	const other = "ruth.amari@heliosschool.org"
+	activity := func(id, event, title, parent string) store.Row {
+		return store.Row{"Event ID": id, CalendarEventColumn: event, "Year": ActivityYear(now()), "Title": title, "Parent": parent, "Category": "tcg0000000002", "Status": StatusOpen}
+	}
+	h := loopHarness(t, store.Tables{
+		activitiesTab: {activity("run", "tev0000000201", "Run", ""), activity("under", "tev0000000202", "Under", "run"), activity("theirs", "tev0000000203", "Theirs", "")},
+		volunteersTab: {
+			{"Event ID": "run", "Email": jordan, "Position": PositionCoChair},
+			{"Event ID": "under", "Email": other, "Position": PositionCoChair},
+			{"Event ID": "theirs", "Email": other, "Position": PositionCoChair},
+		},
+	})
+	if err := h.store.Commit(context.Background(), access.System("test"), activitiesAppName, store.Insert(AdminsTab.Name, store.Row{"Email": jordan})); err != nil {
+		t.Fatal(err)
+	}
+	m := h.store.Model()
+	held := map[string]bool{}
+	for _, tag := range m.MagicTagsOf(jordan, now()) {
+		held[tag.Key] = true
+	}
+	if !held["activity:theirs"] {
+		t.Fatal("the Team admin no longer holds an activity they do not co-chair")
+	}
+	listed := map[string]bool{}
+	for _, key := range h.get(jordan, "/api/magic-tags").ids(t) {
+		listed[key] = true
+	}
+	for key, want := range map[string]bool{"activity:run": true, "activity:under": true, "activity:theirs": false} {
+		if listed[m.magicTagID(key)] != want {
+			t.Errorf("%s listed = %v, want %v", key, !want, want)
+		}
+	}
 }
 
 func TestRulesNameAnEmailListsMagicTag(t *testing.T) {
