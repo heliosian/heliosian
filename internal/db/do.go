@@ -53,14 +53,24 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, media *blob.St
 			serve.Error(w, r, access.Invalid("%s is not a supported photo", mimeType))
 			return
 		}
+		thumb, err := blob.Thumbnail(content)
+		if err != nil {
+			serve.Error(w, r, access.Invalid("could not read the photo: %v", err))
+			return
+		}
 		name := blob.Name(content, ext)
+		thumbName := blob.Name(thumb, "jpg")
 		m := s.Model()
-		row := map[string]any{"person": person, "photo": name, "order": m.firstOrder(person)}
-		if err := m.Authorize(env, Change{Table: "PERSON_PHOTO", New: store.Row{"person": person, "photo": name}}); err != nil {
+		row := map[string]any{"person": person, "photo": name, "thumbnail": thumbName, "order": m.firstOrder(person)}
+		if err := m.Authorize(env, Change{Table: "PERSON_PHOTO", New: store.Row{"person": person, "photo": name, "thumbnail": thumbName}}); err != nil {
 			serve.Error(w, r, err)
 			return
 		}
 		if err := media.Put("photos", name, mimeType, content); err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		if err := media.Put("photos", thumbName, "image/jpeg", thumb); err != nil {
 			serve.Error(w, r, err)
 			return
 		}

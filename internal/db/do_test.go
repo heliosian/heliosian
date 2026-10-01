@@ -73,6 +73,10 @@ func TestPersonPhotoAddsFirst(t *testing.T) {
 		if found, err := media.Has("photos/" + row["photo"]); err != nil || !found {
 			t.Fatalf("photo %d is not in the bucket: %v", i, err)
 		}
+		thumb, mimeType, ok := media.Bytes("photos/" + row["thumbnail"])
+		if !ok || row["thumbnail"] == row["photo"] || mimeType != "image/jpeg" || blob.Name(thumb, "jpg") != row["thumbnail"] {
+			t.Fatalf("photo %d's thumbnail %q is not its own stored jpeg", i, row["thumbnail"])
+		}
 		orders = append(orders, row["order"])
 	}
 	if store.CompareKeys(orders[1], orders[0]) >= 0 {

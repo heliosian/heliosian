@@ -159,6 +159,7 @@ var Tables = []Table{
 			ident(PersonPhotoPrefix),
 			ref("person", "PERSON").required(),
 			col("photo", Blob).required(),
+			col("thumbnail", Blob).required(),
 			col("crop", Blob),
 			col("order", Order),
 		},
