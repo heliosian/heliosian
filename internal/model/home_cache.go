@@ -16,6 +16,7 @@ var homeTabs = []store.Tab{
 	{Name: homeVisibilityTab, Columns: HomeVisibilityColumns, Key: []string{"App"}},
 	{Name: homeAudienceTab, Columns: HomeAudienceColumns, Key: HomeAudienceColumns},
 	{Name: homeWidgetsTab, Columns: HomeWidgetColumns, Key: []string{"Widget"}},
+	{Name: homeToDosTab, Columns: HomeToDoColumns, Key: []string{"Email", "To Do"}},
 }
 
 func dropAudience(thing string, before, after store.Row) []store.Op {

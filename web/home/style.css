@@ -588,6 +588,42 @@ main {
 
 .wg-ask svg { width: 15px; height: 15px; }
 
+.wg-todo { cursor: pointer; }
+
+.wg-todo .wg-title { text-decoration: none; }
+
+.wg-todo:hover .wg-title { text-decoration: underline; }
+
+.wg-todo.is-gold { --ink-tint: #8a6800; --pale-tint: #fdf2d6; --dot-tint: #d49b0b; }
+
+.wg-todo-body { padding: 2px 0 4px; cursor: default; }
+
+.wg-todo-summary { font-size: 14px; line-height: 1.4; color: var(--ink); }
+
+.wg-todo-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 8px; }
+
+.wg-todo-acts .wg-ask { margin: 0 0 0 auto; }
+
+.wg-todo-act { display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--brand); font: inherit; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; }
+
+.wg-todo-act svg { width: 14px; height: 14px; }
+
+.wg-todo-act:hover { background: var(--input); }
+
+.wg-todo-act:disabled { opacity: 0.5; cursor: default; }
+
+.wg-todo-act.is-done { border-color: transparent; background: var(--glass, #e2f3e5); color: color-mix(in srgb, #24763c var(--tint-share, 100%), white); }
+
+.wg-todo-act.is-saved { border-color: transparent; background: var(--glass, #fdf2d6); color: color-mix(in srgb, #8a6800 var(--tint-share, 100%), white); }
+
+.wg-todo-act.is-saved svg { fill: currentColor; }
+
+.wg-todo.is-done .wg-title { color: var(--muted); text-decoration: line-through; }
+
+.wg-todo.is-saved::before, .wg-todo.is-saved .wg-dot { background: #d49b0b; }
+
+.wg-todo-late { padding: 2px 10px; border-radius: 999px; background: var(--glass, #fde4ec); color: color-mix(in srgb, #b3264f var(--tint-share, 100%), white); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+
 /* The Inbox's dropdown, at the heading's end, as a soft pill like This
    Week's calendar picker; each kind's count at its row's end. */
 .widget-school .widget-calendar .category-calendar-toggle { padding: 7px 12px 7px 14px; border-radius: 12px; background: var(--glass, #e8f3f2); color: var(--brand); font-size: 15px; font-weight: 600; }

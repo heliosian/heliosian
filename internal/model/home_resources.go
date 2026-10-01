@@ -103,7 +103,7 @@ type adminsBody struct {
 
 func (h HomeHooks) Resources() []api.Type[*Model] {
 	a := h.app
-	return []api.Type[*Model]{a.linksType(), a.linkCategoriesType(), a.appsType(), a.widgetsType(), a.settingsType(), schoolEmailResources(), alertResources(), adminListResources(a.store)}
+	return []api.Type[*Model]{a.linksType(), a.linkCategoriesType(), a.appsType(), a.widgetsType(), a.settingsType(), schoolEmailResources(), a.toDosType(), alertResources(), adminListResources(a.store)}
 }
 
 func derived(m *Model, kind, key string) string {

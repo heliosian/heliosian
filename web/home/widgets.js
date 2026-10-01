@@ -1,7 +1,8 @@
-import {state, isAdmin, feed, readUpcoming} from './state.js';
+import {state, isAdmin, feed, readUpcoming, readToDos} from './state.js';
 import {appOrigin} from '/appswitch.js';
 import {searchInput} from '/shell.js';
-import {el, svg} from '/elements.js';
+import {el, svg, toast} from '/elements.js';
+import {act} from '/data.js';
 import {calendarMark, calendarMenu, dropdown, shownTo} from './cards.js';
 import {dayBar, dayChip, dayRow, eventRow, standing} from '/dayrows.js';
 import {rsvpPanel} from '/rsvps.js';
@@ -144,11 +145,11 @@ function grouped(name, groups, bar, row) {
   return out;
 }
 
-function widgetTitle(app, words) {
+function widgetTitle(app, words, src) {
   const title = el('h2', 'widget-title');
   const icon = el('img', 'widget-icon');
   const mark = (state.model.apps.find(a => a.key === app) || {}).mark;
-  icon.src = `/brand/apps/${app}.png` + (mark ? `?v=${mark}` : '');
+  icon.src = src || `/brand/apps/${app}.png` + (mark ? `?v=${mark}` : '');
   icon.alt = '';
   title.append(icon, el('span', '', words));
   return title;
@@ -518,11 +519,141 @@ function schoolWidget() {
   return card;
 }
 
-const widgetMakers = {when: whenWidget, team: teamWidget, celebrate: celebrateWidget, school: schoolWidget, birthday: birthdayWidget};
+let todoChip = 'open';
 
-const widgetNames = {when: 'Upcoming', team: 'Team', celebrate: 'Celebrate', school: 'Inbox', birthday: 'Birthdays'};
+const todoTones = ['is-teal', 'is-gold', 'is-pink', 'is-blue'];
 
-const widgetApps = {when: 'when', team: 'team', celebrate: 'celebrate', school: 'ask', birthday: 'birthday'};
+const todoChips = [['open', 'To do'], ['saved', 'Saved'], ['done', 'Done']];
+
+function todosUnder(chip) {
+  const todos = state.model.todos;
+  if (chip === 'saved') {
+    return todos.filter(t => t.me.state === 'saved');
+  }
+  if (chip === 'done') {
+    return todos.filter(t => t.me.state === 'done');
+  }
+  return todos.filter(t => t.me.state !== 'done');
+}
+
+async function setTodo(todo, action) {
+  try {
+    await act('to-dos', todo.id, action);
+    await readToDos();
+  } catch (err) {
+    toast(err.message);
+    return;
+  }
+  renderWidgets(searchInput().value);
+}
+
+function todoAsk(todo) {
+  const day = parseDate(todo.source.date).toLocaleDateString('en-US', {weekday: 'long', month: 'long', day: 'numeric'});
+  return appOrigin('ask') + '/?q=' + encodeURIComponent(`Tell me more about "${todo.title}" from the school email "${todo.source.title}" sent ${day}. What do I need to do, and by when?`);
+}
+
+function todoButton(words, icon, className, onClick) {
+  const b = el('button', 'wg-todo-act ' + className);
+  b.type = 'button';
+  b.append(svg(icon), el('span', '', words));
+  b.addEventListener('click', e => {
+    e.stopPropagation();
+    b.disabled = true;
+    onClick();
+  });
+  return b;
+}
+
+function todoRow(todo, n) {
+  const mark = todo.me.state || '';
+  const title = el('a', 'wg-title', todo.title);
+  title.href = todoAsk(todo);
+  title.title = todo.details;
+  const summary = el('div', 'wg-sub wg-todo-summary', todo.summary);
+  summary.title = todo.details;
+  const actions = el('div', 'wg-todo-acts');
+  if (mark === 'done') {
+    actions.append(todoButton('Undo', 'reply', 'is-undo', () => setTodo(todo, 'clear')));
+  } else {
+    actions.append(todoButton('Done', 'check', 'is-done', () => setTodo(todo, 'complete')));
+    actions.append(mark === 'saved'
+      ? todoButton('Saved', 'star', 'is-saved', () => setTodo(todo, 'clear'))
+      : todoButton('Save', 'star', 'is-save', () => setTodo(todo, 'save')));
+  }
+  if (todo.link) {
+    const open = el('a', 'wg-todo-act is-link');
+    open.href = todo.link;
+    open.target = '_blank';
+    open.rel = 'noopener';
+    open.append(svg('open'), el('span', '', 'Open link'));
+    actions.append(open);
+  }
+  const ask = el('a', 'wg-ask');
+  ask.href = todoAsk(todo);
+  ask.append(el('span', '', 'Ask about this'), svg('chevron-right'));
+  actions.append(ask);
+  const body = el('div', 'wg-todo-body');
+  body.append(summary, actions);
+  const to = el('span', 'wg-email-to', todo.source.to);
+  to.title = `From "${todo.source.title}", ${parseDate(todo.source.date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;
+  const chips = [to];
+  if (todo.due && todo.due < state.model.today) {
+    chips.push(el('span', 'wg-todo-late', 'Past due'));
+  }
+  const row = dayRow('wg-email wg-todo ' + todoTones[n % todoTones.length] + (mark ? ' is-' + mark : ''), {title, chips, time: '', after: body}, () => {
+    location.href = todoAsk(todo);
+  });
+  return row;
+}
+
+function todoWidget() {
+  const card = el('article', 'widget widget-todo');
+  const head = el('header', 'widget-head');
+  head.append(widgetTitle('ask', 'Reminders', widgetMarks.todo));
+  const chips = el('div', 'wg-chips');
+  for (const [key, label] of todoChips) {
+    const chip = el('button', 'wg-chip' + (todoChip === key ? ' is-on' : ''), label);
+    chip.type = 'button';
+    chip.append(el('span', 'wg-chip-count', String(todosUnder(key).length)));
+    chip.addEventListener('click', () => {
+      todoChip = key;
+      renderWidgets(searchInput().value);
+    });
+    chips.append(chip);
+  }
+  card.append(head, chips);
+  const items = todosUnder(todoChip);
+  const name = 'todo-' + todoChip;
+  if (!items.length) {
+    const empty = {open: 'Nothing to do from the school’s email just now.', saved: 'Save a to-do to keep it here after its day passes.', done: 'Nothing checked off yet.'}[todoChip];
+    card.append(el('p', 'wg-empty', empty));
+    return card;
+  }
+  const dated = dayGroups(items.filter(t => t.due), t => t.due, () => '');
+  const undated = items.filter(t => !t.due);
+  const groups = undated.length ? [...dated, {day: '', rows: undated}] : dated;
+  const count = rows => el('span', 'wg-day-count', `${rows.length} ${rows.length === 1 ? 'to-do' : 'to-dos'}`);
+  card.append(...grouped(name, groups, g => {
+    const bar = dayBar(g.day, [count(g.rows)]);
+    if (!g.day) {
+      bar.querySelector('.wg-day-label').replaceChildren(el('span', '', 'No due date'));
+    }
+    return bar;
+  }, (todo, g, n) => todoRow(todo, n)));
+  const foot = widgetFoot(name, items.length, null);
+  if (foot) {
+    card.append(foot);
+  }
+  return card;
+}
+
+const widgetMakers = {when: whenWidget, team: teamWidget, celebrate: celebrateWidget, school: schoolWidget, birthday: birthdayWidget, todo: todoWidget};
+
+const widgetNames = {when: 'Upcoming', team: 'Team', celebrate: 'Celebrate', school: 'Inbox', birthday: 'Birthdays', todo: 'Reminders'};
+
+const widgetApps = {when: 'when', team: 'team', celebrate: 'celebrate', school: 'ask', birthday: 'birthday', todo: 'ask'};
+
+const widgetMarks = {todo: '/brand/reminders.png'};
 
 function hasWork() {
   const birthday = state.model.birthday;
@@ -531,7 +662,7 @@ function hasWork() {
 
 export function widgetRows() {
   return state.model.widgets.map(w => {
-    const icon = widgetTitle(widgetApps[w.key], '').querySelector('img');
+    const icon = widgetTitle(widgetApps[w.key], '', widgetMarks[w.key]).querySelector('img');
     const meta = [shownTo(w.rules), w.me.shown ? '' : 'Hidden from you'].filter(Boolean).join(' · ');
     return {widget: w, name: widgetNames[w.key], mark: icon, meta};
   });

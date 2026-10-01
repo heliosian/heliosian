@@ -34,6 +34,7 @@ import (
 	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/store"
+	"heliosian/internal/todos"
 )
 
 const (
@@ -111,6 +112,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 		Embedder:      embedder,
 		ArtifactsMail: artifacts.Inbox{Bucket: bucket},
 		KeyPoints:     keypoints.New("sample"),
+		ToDos:         todos.New("sample"),
 	})
 	saved, err := filepath.Glob("sampledata/artifacts/*.json")
 	if err != nil {

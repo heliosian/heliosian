@@ -162,6 +162,10 @@ type Documents struct {
 	Points     map[string][]string
 	Audience   map[string]string
 	Judged     map[string]string
+	ToDos      []*ToDo
+	ToDosRead  map[string]string
+	byKey      map[string]*Document
+	toDoIDs    map[string]*ToDo
 	ids        map[string]*Document
 	idOf       map[*Document]string
 	passages   map[string]documentPassage
@@ -208,6 +212,9 @@ func (d *documentObjects) build(ctx context.Context, tables store.Tables) (*Docu
 		if audience := strings.TrimSpace(row[DocumentAudienceColumn]); audience != "" {
 			m.Audience[row["Key"]] = audience
 		}
+	}
+	if err := buildToDos(tables, m); err != nil {
+		return nil, err
 	}
 	wanted := []int{}
 	for i, row := range rows {
@@ -388,7 +395,11 @@ func quotes(words string, taken []string) bool {
 	return false
 }
 
-var documentsTabs = []store.Tab{{Name: documentsTab, Columns: DocumentColumns, Key: []string{"Key"}}}
+var documentsTabs = []store.Tab{
+	{Name: documentsTab, Columns: DocumentColumns, Key: []string{"Key"}, Cascade: dropDocumentToDos},
+	{Name: toDosTab, Columns: ToDoColumns, Key: []string{"Document", "Title"}},
+	{Name: toDoReadsTab, Columns: ToDoReadColumns, Key: []string{"Document"}},
+}
 
 func splitPoints(cell string) []string {
 	out := []string{}

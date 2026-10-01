@@ -51,6 +51,9 @@ type scope struct {
 	schoolOnce     sync.Once
 	schoolOrder    []string
 	school         map[string]SchoolEmail
+	toDosOnce      sync.Once
+	toDoOrder      []string
+	toDos          map[string]*ToDo
 
 	magicKeysOnce sync.Once
 	magicKeys     map[string]bool

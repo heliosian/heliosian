@@ -35,6 +35,8 @@ var seeds = map[string]map[string]map[string]string{
 var layouts = map[string][]tab{
 	"Artifacts": {
 		{"Documents", model.DocumentColumns},
+		{"To Dos", model.ToDoColumns},
+		{"To Do Reads", model.ToDoReadColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Feedback": {
@@ -56,6 +58,7 @@ var layouts = map[string][]tab{
 		{"Visibility", model.HomeVisibilityColumns},
 		{"Audience", model.HomeAudienceColumns},
 		{"Widgets", model.HomeWidgetColumns},
+		{"To Dos", model.HomeToDoColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Events": {

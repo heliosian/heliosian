@@ -34,6 +34,7 @@ import (
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
+	"heliosian/internal/todos"
 	"heliosian/internal/who"
 )
 
@@ -67,6 +68,7 @@ type Config struct {
 	Embedder      *artifacts.Vertex
 	ArtifactsMail artifacts.Inbox
 	KeyPoints     *keypoints.Claude
+	ToDos         *todos.Claude
 }
 
 type appSpec struct {
@@ -145,6 +147,7 @@ func NewCore(cfg Config) *Core {
 	celebrateStyle := model.PartiesCardStyle(appName("celebrate"), taglineOf("celebrate"))
 	calendarStyle := model.CalendarCardStyle(appName("when"), taglineOf("when"))
 	go keypoints.Run(models, cfg.KeyPoints)
+	todos.Start(models, queue, cfg.ToDos)
 	mux := http.NewServeMux()
 	who.Register(mux, models, whoAbout)
 	model.RegisterDirectoryMedia(mux, cfg.Store)
@@ -323,6 +326,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		Loop:          loopMail(sessionKey),
 		Asker:         ask.NewClaude(anthropicKey),
 		KeyPoints:     keypoints.New(anthropicKey),
+		ToDos:         todos.New(anthropicKey),
 		Embedder:      embedder,
 		ArtifactsMail: artifactsMail(bucket),
 	})

@@ -157,15 +157,16 @@ type HomeCategory struct {
 }
 
 type Home struct {
-	Categories  []HomeCategory              `json:"categories"`
-	Visibility  map[string]AppVisibilityRow `json:"-"`
-	WidgetRules map[string][]Rule           `json:"-"`
-	WidgetOrder []string                    `json:"-"`
+	Categories  []HomeCategory               `json:"categories"`
+	Visibility  map[string]AppVisibilityRow  `json:"-"`
+	WidgetRules map[string][]Rule            `json:"-"`
+	WidgetOrder []string                     `json:"-"`
+	ToDoStates  map[string]map[string]string `json:"-"`
 	widgetKeys  map[string]string
 	admins      []string
 }
 
-var HomeWidgets = []string{"when", "team", "celebrate", "school", "birthday"}
+var HomeWidgets = []string{"when", "team", "celebrate", "school", "birthday", "todo"}
 
 var Domains = []string{"heliosian.com", "heliosiandev.com"}
 
@@ -304,6 +305,11 @@ func BuildHome(ctx context.Context, tables store.Tables, images blob.Checker) (*
 		return nil, err
 	}
 	m.admins = ReadAdmins(tables)
+	toDos, err := buildHomeToDos(tables[homeToDosTab])
+	if err != nil {
+		return nil, err
+	}
+	m.ToDoStates = toDos
 	index := map[string]int{}
 	ids := map[string]bool{}
 	events, apps := false, false

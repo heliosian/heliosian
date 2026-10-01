@@ -171,7 +171,7 @@ func TestDiscoverKeysWhatIsMissing(t *testing.T) {
 			t.Errorf("the new app's key %q is not after %s's %q", ask.Order, key, v.Order)
 		}
 	}
-	if got := home.WidgetOrder; !slices.Equal(got, []string{"when", "team", "school", "birthday", "celebrate"}) {
+	if got := home.WidgetOrder; !slices.Equal(got, []string{"when", "todo", "team", "school", "birthday", "celebrate"}) {
 		t.Errorf("widgets after the new row = %v", got)
 	}
 	for _, row := range s.rows(t, homeWidgetsTab) {

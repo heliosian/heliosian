@@ -69,6 +69,11 @@ export async function readUpcoming(calendar) {
   return {calendar, events: read.result.map(id => eventCard(read.get(id)))};
 }
 
+export async function readToDos() {
+  const read = await query('/api/to-dos');
+  state.model.todos = read.result.map(read.get);
+}
+
 function teamItem(a) {
   return {title: a.title, under: a.under, start: a.day, timing: a.dayTiming, position: a.me.position, note: a.wants, path: a.path, image: a.picture};
 }
@@ -106,6 +111,7 @@ export async function loadModel() {
     waiting: '/api/events?waiting',
     team: '/api/team-settings?include=mine,needed,priority',
     school: '/api/school-emails',
+    todos: '/api/to-dos',
     birthday: '/api/birthday-settings?include=mine.person,mine.donation.charity,all.person,all.assignee,all.donation.charity,default-charity',
   }), whoAmI()]);
   const admin = viewer.allowances.includes('home.configure');
@@ -148,6 +154,7 @@ export async function loadModel() {
     waiting: read.result.waiting.map(read.get).sort((a, b) => a.start.localeCompare(b.start)).map(e => ({title: e.title, start: e.start, path: eventPath(e)})),
     team: {mine: read.follow(team, 'mine').map(teamItem), open: read.follow(team, 'needed').map(teamItem), priority: read.follow(team, 'priority').map(teamItem)},
     school: read.result.school.map(read.get),
+    todos: read.result.todos.map(read.get),
     birthday: {
       admin: viewer.allowances.includes('birthday.configure'),      mine: read.follow(birthday, 'mine').map(b => birthdayItem(read, b, fallback)),
       all: read.follow(birthday, 'all').map(b => birthdayItem(read, b, fallback)),

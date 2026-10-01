@@ -38,7 +38,13 @@ type passageResource struct {
 
 func (m *Documents) index(key []byte) {
 	m.ids, m.idOf, m.passages, m.passageIDs = map[string]*Document{}, map[*Document]string{}, map[string]documentPassage{}, map[documentPassage]string{}
+	m.byKey, m.toDoIDs = map[string]*Document{}, map[string]*ToDo{}
+	for _, t := range m.ToDos {
+		t.ID = toDoID(key, t.Document, t.Title)
+		m.toDoIDs[t.ID] = t
+	}
 	for _, d := range m.Documents {
+		m.byKey[d.Key] = d
 		docID := id.Of(key, kindDocument, d.Key)
 		m.ids[docID], m.idOf[d] = d, docID
 		for i := range d.Chunks {
