@@ -368,15 +368,15 @@ function shortDay(date) {
 }
 
 function birthdayRow(item, i, all) {
-  const line = all
-    ? [stageNames[item.stage] || item.stage, item.assignee || 'Unassigned']
-    : [stepWords[item.next.step] + ' ' + shortDay(item.next.day), stageNames[item.stage] || item.stage];
-  let pill = null;
+  const charity = (item.chosen ? '' : 'Default: ') + item.charity;
+  const line = all ? [item.assignee || 'Unassigned', charity] : [stepWords[item.next.step] + ' ' + shortDay(item.next.day), charity];
+  const pills = el('span', 'wg-stage-pills');
+  pills.append(el('span', 'wg-stage stage-' + item.stage.toLowerCase().replace(/[^a-z]+/g, '-'), stageNames[item.stage] || item.stage));
   if (item.urgency) {
-    pill = el('span', 'wg-pill', item.urgency === 'late' ? 'Late' : 'Due today');
+    pills.append(el('span', 'wg-pill', item.urgency === 'late' ? 'Late' : 'Due today'));
   }
   const tone = item.urgency === 'late' ? 'is-red' : item.urgency === 'today' ? 'is-gold' : teamTones[i % teamTones.length];
-  return pictureRow({href: appOrigin('birthday') + item.path, image: item.photo, title: item.name, line: line.join(' · '), pill, tone});
+  return pictureRow({href: appOrigin('birthday') + item.path, image: item.photo, title: item.name, line: line.join(' · '), pill: pills, tone});
 }
 
 function birthdayWidget() {
@@ -384,11 +384,12 @@ function birthdayWidget() {
   const card = el('article', 'widget widget-birthday');
   const head = el('header', 'widget-head');
   head.append(widgetTitle('birthday', 'Birthdays'));
-  if (!birthday.admin) {
-    birthdayChip = 'mine';
+  const tabs = [['mine', 'Mine'], ['all', 'All']].filter(([key]) => birthday[key].length > 0);
+  if (!tabs.some(([key]) => key === birthdayChip)) {
+    birthdayChip = tabs[0][0];
   }
   const chips = el('div', 'wg-chips');
-  for (const [key, label] of [['mine', 'Mine'], ['all', 'All']].filter(([key]) => key === 'mine' || birthday.admin)) {
+  for (const [key, label] of tabs) {
     const chip = el('button', 'wg-chip' + (birthdayChip === key ? ' is-on' : ''), label);
     chip.type = 'button';
     chip.append(el('span', 'wg-chip-count', String(birthday[key].length)));
@@ -402,9 +403,7 @@ function birthdayWidget() {
   const all = birthdayChip === 'all';
   const items = birthday[birthdayChip];
   const name = 'birthday-' + birthdayChip;
-  if (!items.length) {
-    card.append(el('p', 'wg-empty', all ? 'Nobody in the next two newsletters.' : 'None of yours in the next two newsletters need anything.'));
-  } else if (all) {
+  if (all) {
     const groups = dayGroups(items, b => b.newsletter, () => '');
     card.append(...grouped(name, groups,
       g => dayBar(g.day, [el('span', 'wg-day-count', `${g.rows.length} ${g.rows.length === 1 ? 'birthday' : 'birthdays'}`)]),

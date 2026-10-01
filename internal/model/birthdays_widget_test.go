@@ -63,6 +63,14 @@ func TestBirthdayWidget(t *testing.T) {
 	if len(admin["all"]) == 0 || len(issues) != 0 {
 		t.Errorf("all reaches past the next two issues %v: %v", issues, emailsOf(admin["all"]))
 	}
+	r := get(t, mux, parent, "/api/birthday-settings?include=default-charity")
+	if got := r.follow(r.Resources["birthday-settings"][r.ids(t)[0]], "default-charity", "charities"); got == nil || got["name"] == "" {
+		t.Errorf("the default charity: %v", got)
+	}
+	r = get(t, mux, "sam.whitfield@heliosschool.org", "/api/birthday-settings?include=default-charity")
+	if got := r.Resources["birthday-settings"][r.ids(t)[0]]["default-charity"]; got != nil {
+		t.Errorf("someone off the team sees the default charity: %v", got)
+	}
 	if stranger := birthdayWidgetOf(t, mux, "sam.whitfield@heliosschool.org"); len(stranger["mine"])+len(stranger["all"]) != 0 {
 		t.Errorf("someone off the team: %+v", stranger)
 	}

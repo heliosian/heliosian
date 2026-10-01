@@ -763,6 +763,12 @@ func (r birthdayResources) settings() api.Type[*Model] {
 			"viewer": {Type: "people", List: func(m *Model, q api.Query, _ string) []string { return m.personID(q.Actor.Email) }},
 			"mine":   {Type: "birthdays", Many: true, List: func(m *Model, q api.Query, _ string) []string { return m.birthdayMine(q) }},
 			"all":    {Type: "birthdays", Many: true, List: func(m *Model, q api.Query, _ string) []string { return m.birthdayIssues(q) }},
+			"default-charity": {Type: "charities", List: func(m *Model, q api.Query, _ string) []string {
+				if !birthdaySees(m, q) {
+					return nil
+				}
+				return []string{m.Birthdays.Settings.DefaultCharity}
+			}},
 		},
 		Actions: map[string]api.Action[*Model]{
 			"edit": api.Do(func(_ *Model, q api.Query, _ string) bool { return permitted(requireAdmin(q.Actor)) }, func(wr api.Write[*Model], in BirthdaysSettings) error {
