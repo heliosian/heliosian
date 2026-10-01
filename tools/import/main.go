@@ -12,9 +12,8 @@ import (
 
 	"heliosian/internal/env"
 	"heliosian/internal/logging"
+	"heliosian/internal/qclient"
 )
-
-const server = "https://who.heliosian.com"
 
 func run(dir string, args ...string) error {
 	cmd := exec.Command(args[0], args[1:]...)
@@ -28,7 +27,7 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "print the batch the import would send, and send nothing")
 	flag.Parse()
 
-	c := client{base: server, key: env.Required("IMPORT_KEY")}
+	c := client{qclient.Client{Base: qclient.Production, Key: env.Required("IMPORT_KEY")}}
 	exporter := env.Required("VCEXPORT")
 	website := env.Required("WEBEXPORT")
 	out, err := os.MkdirTemp("", "vcexport")

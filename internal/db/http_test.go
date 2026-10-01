@@ -189,6 +189,7 @@ func TestServeWrites(t *testing.T) {
 		{"bearer:" + testImportKey, `{"batch": [{"set": "per00000000001", "cells": {"vc_classroom": "@nowhere"}}]}`, "@nowhere names no earlier insert", http.StatusBadRequest},
 		{"bearer:" + testImportKey, `{"batch": [{"delete": "@nowhere"}]}`, "@nowhere names no earlier insert", http.StatusBadRequest},
 		{"bearer:" + testImportKey, `{"batch": [{"set": "per00000000001", "as": "x", "cells": {"vc_name": "x"}}]}`, "as names an insert", http.StatusBadRequest},
+		{"bearer:" + testImportKey, `{"batch": [{"delete": "` + Derive(EffectiveMemberPrefix, "grp00000000020", "per00000000001") + `"}]}`, "EFFECTIVE_MEMBER is generated", http.StatusBadRequest},
 		{"rowan.ashdown@example.org", `{"writes": []}`, "shape", http.StatusBadRequest},
 	} {
 		code, body := write(c.as, c.batch)

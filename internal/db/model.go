@@ -58,6 +58,9 @@ func (m *Model) Has(id string) bool {
 	if !ok {
 		return false
 	}
+	if t, _ := Lookup(table); t.Generated {
+		return false
+	}
 	_, ok = m.Table(table).Get(id)
 	return ok
 }

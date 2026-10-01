@@ -366,13 +366,13 @@ func (r *run) columnReadable(t *Table, row store.Row, column string) bool {
 }
 
 func (r *run) idReadable(id string) bool {
-	table, ok := TableOf(id)
-	if !ok {
+	if !r.m.Has(id) {
 		return false
 	}
+	table, _ := TableOf(id)
 	rows := r.m.Table(table)
-	row, ok := rows.Get(id)
-	return ok && r.readable(rows.table, row)
+	row, _ := rows.Get(id)
+	return r.readable(rows.table, row)
 }
 
 func (r *run) cell(guarded bool, t *Table, row store.Row, c Column) value {

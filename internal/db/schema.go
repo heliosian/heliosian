@@ -415,7 +415,7 @@ var Tables = []Table{
 		Name:      "EFFECTIVE_MEMBER",
 		Generated: true,
 		Columns: []Column{
-			col("id", Text),
+			ident(EffectiveMemberPrefix),
 			ref("group", "GROUP"),
 			ref("person", "PERSON"),
 			enum("status", "invited", "pending", "yes", "maybe", "no"),

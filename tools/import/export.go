@@ -4,7 +4,6 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -35,7 +34,6 @@ type entry struct {
 	crew      string
 	jobTitle  string
 	phone     string
-	bio       string
 	photos    []string
 }
 
@@ -46,9 +44,18 @@ type householdRow struct {
 	phone   string
 }
 
+type websiteRow struct {
+	name   string
+	emails []string
+	title  string
+	bio    string
+	photos []string
+}
+
 type export struct {
 	entries    []entry
 	households []householdRow
+	website    []websiteRow
 	photoDir   string
 }
 
@@ -275,50 +282,15 @@ func (x *export) readWebsite(path string) error {
 	if err != nil {
 		return err
 	}
-	byEmail := map[string]int{}
-	byName := map[string][]int{}
-	for i, e := range x.entries {
-		if e.role != staff {
-			continue
-		}
-		for _, a := range e.emails {
-			byEmail[a] = i
-		}
-		byName[resolved(e.name)] = append(byName[resolved(e.name)], i)
-	}
-	seen := map[int]bool{}
-	unmatched := []string{}
 	for _, row := range rows {
 		name := clean(row["full_name"])
-		i, ok := -1, false
-		if found := emails(row["email"]); len(found) > 0 {
-			i, ok = byEmail[found[0]]
-		}
-		if !ok {
-			switch candidates := byName[norm(name)]; len(candidates) {
-			case 0:
-				unmatched = append(unmatched, name)
-				continue
-			case 1:
-				i = candidates[0]
-			default:
-				return fmt.Errorf("the staff page's entry for %s has no email the staff export holds, and %d staff share the name", name, len(candidates))
-			}
-		}
-		if seen[i] {
-			return fmt.Errorf("the staff page has two entries for %s", x.entries[i].name)
-		}
-		seen[i] = true
 		bio, err := flattenBio(row["bio_html"])
 		if err != nil {
 			return fmt.Errorf("flatten the bio of %s: %w", name, err)
 		}
-		x.entries[i].bio = bio
-		x.entries[i].photos = append(x.entries[i].photos, photoFiles(row["photo"])...)
-		if x.entries[i].jobTitle == "" {
-			x.entries[i].jobTitle = clean(row["title"])
-		}
+		x.website = append(x.website, websiteRow{
+			name: name, emails: emails(row["email"]), title: clean(row["title"]), bio: bio, photos: photoFiles(row["photo"]),
+		})
 	}
-	slog.Info("website staff page", "entries", len(rows), "matched", len(seen), "unmatched", unmatched)
 	return nil
 }

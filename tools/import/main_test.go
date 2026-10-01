@@ -16,6 +16,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/db"
+	"heliosian/internal/qclient"
 	"heliosian/internal/store"
 )
 
@@ -84,7 +85,7 @@ func sampleServer(t *testing.T) (client, *db.Store) {
 	db.Register(mux, s, queue, blob.New(blob.NewMemoryBucket()), []byte(testKey), func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) })
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return client{base: srv.URL, key: testKey}, s
+	return client{qclient.Client{Base: srv.URL, Key: testKey}}, s
 }
 
 func writePNG(t *testing.T, dir string, size int) string {
@@ -110,12 +111,17 @@ func sampleExport(t *testing.T, withMaya bool) *export {
 		{role: student, name: "Wren (Wrennie) Ashdown", grade: "K", classroom: "Oak", crew: "Acorn"},
 		{role: parent, name: "Rowan Ashdown", emails: []string{"rowan.ashdown@example.org"}, phone: "555-0100"},
 		{role: parent, name: "Sam (Samuel) Ashdown", emails: []string{"sam@example.org"}},
-		{role: staff, name: "Ines Okafor", emails: []string{"ines@example.org"}, jobTitle: "Librarian", bio: "Reads.", photos: []string{writePNG(t, dir, 3), writePNG(t, dir, 4)}},
+		{role: staff, name: "Ines Okafor", emails: []string{"ines@example.org"}, jobTitle: "Librarian", photos: []string{writePNG(t, dir, 3)}},
 		{role: staff, name: "Sam Ashdown", emails: []string{"sam@example.org"}, jobTitle: "Coach"},
 	}}
 	x.households = []householdRow{
 		{adults: []int{1, 2}, kid: 0, address: "12 Elm St"},
 		{adults: []int{4, 5}, kid: 3, address: "12 Elm St"},
+	}
+	x.website = []websiteRow{
+		{name: "Ines Okafor", bio: "Reads.", photos: []string{writePNG(t, dir, 4)}},
+		{name: "Maya Lindqvist-Berg", emails: []string{"maya@example.com"}, bio: "Teaches."},
+		{name: "Nobody Here", emails: []string{"nobody@example.org"}, bio: "Gone."},
 	}
 	if withMaya {
 		x.entries = append(x.entries, entry{role: staff, name: "Maya Lindqvist", emails: []string{"maya.lindqvist@example.org"}, jobTitle: "Teacher"})
@@ -209,8 +215,14 @@ func TestImportAgainstTheSample(t *testing.T) {
 		t.Fatalf("the first run: %v, %d photos", p.counts, photos)
 	}
 	ines := personNamed(s, "Ines Okafor")
-	if got := photosOf(s, ines["id"]); len(got) != 2 || got[0]["photo"] != x.entries[6].photos[0] || got[1]["photo"] != x.entries[6].photos[1] {
+	if got := photosOf(s, ines["id"]); len(got) != 2 || got[0]["photo"] != x.entries[6].photos[0] || got[1]["photo"] != x.website[0].photos[0] {
 		t.Fatalf("Ines's photos, Veracross's first: %v", got)
+	}
+	if ines["vc_bio"] != "Reads." {
+		t.Fatalf("Ines's bio, matched to the staff page by name: %v", ines)
+	}
+	if maya, _ := s.Model().Table("PERSON").Get("per00000000003"); maya["vc_bio"] != "Teaches." {
+		t.Fatalf("Maya's bio, matched to the staff page by another email on file: %v", maya)
 	}
 	if juni := personNamed(s, "Juni (Juniper) Ashdown"); juni["id"] != "per00000000001" {
 		t.Fatalf("Juni was not matched by name: %v", juni)

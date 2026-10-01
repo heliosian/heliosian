@@ -36,7 +36,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 	viewers := []string{nobody, student, parent, staff, guest}
 	for table, want := range map[string][]int{
 		"PERSON":           {3, 3, 4, 4, 4},
-		"PERSON_EMAIL":     {3, 3, 3, 3, 3},
+		"PERSON_EMAIL":     {4, 4, 4, 4, 4},
 		"PERSON_SETTING":   {0, 0, 0, 1, 0},
 		"BIRTHDAY_YEAR":    {1, 1, 1, 1, 1},
 		"SAVED_VIEW":       {0, 0, 1, 0, 0},

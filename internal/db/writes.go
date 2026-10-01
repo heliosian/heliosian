@@ -212,6 +212,9 @@ func (m *Model) existing(id, where string) (*Table, store.Row, error) {
 	if !ok {
 		return nil, nil, access.Invalid("%s: %q is not an id", where, id)
 	}
+	if t, _ := Lookup(table); t.Generated {
+		return nil, nil, access.Invalid("%s: %s is generated and can't be written", where, table)
+	}
 	rows := m.Table(table)
 	row, ok := rows.Get(id)
 	if !ok {

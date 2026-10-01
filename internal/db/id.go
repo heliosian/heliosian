@@ -2,6 +2,8 @@ package db
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"strings"
 )
@@ -14,41 +16,42 @@ const (
 )
 
 const (
-	PersonPrefix         = "per"
-	PersonEmailPrefix    = "eml"
-	PersonPhotoPrefix    = "pho"
-	PersonSettingPrefix  = "pst"
-	BirthdayYearPrefix   = "bdy"
-	SavedViewPrefix      = "svw"
-	FeedTokenPrefix      = "fed"
-	GroupPrefix          = "grp"
-	GroupSourcePrefix    = "src"
-	MemberPrefix         = "mem"
-	RulePrefix           = "rul"
-	GroupCategoryPrefix  = "gct"
-	DocumentPrefix       = "doc"
-	DocumentGroupPrefix  = "dgr"
-	ReportPrefix         = "rpt"
-	MessagePrefix        = "msg"
-	RecipientPrefix      = "rcp"
-	MailTokenPrefix      = "tok"
-	SettingPrefix        = "set"
-	CategoryPrefix       = "cat"
-	CharityPrefix        = "chr"
-	AppPrefix            = "app"
-	WidgetPrefix         = "wdg"
-	GeocodePrefix        = "geo"
-	AliasPrefix          = "als"
-	RedirectPrefix       = "rdr"
-	InviteServicePrefix  = "isv"
-	InviteTemplatePrefix = "itp"
-	GreetingPrefix       = "grt"
+	PersonPrefix          = "per"
+	PersonEmailPrefix     = "eml"
+	PersonPhotoPrefix     = "pho"
+	PersonSettingPrefix   = "pst"
+	BirthdayYearPrefix    = "bdy"
+	SavedViewPrefix       = "svw"
+	FeedTokenPrefix       = "fed"
+	GroupPrefix           = "grp"
+	GroupSourcePrefix     = "src"
+	MemberPrefix          = "mem"
+	EffectiveMemberPrefix = "efm"
+	RulePrefix            = "rul"
+	GroupCategoryPrefix   = "gct"
+	DocumentPrefix        = "doc"
+	DocumentGroupPrefix   = "dgr"
+	ReportPrefix          = "rpt"
+	MessagePrefix         = "msg"
+	RecipientPrefix       = "rcp"
+	MailTokenPrefix       = "tok"
+	SettingPrefix         = "set"
+	CategoryPrefix        = "cat"
+	CharityPrefix         = "chr"
+	AppPrefix             = "app"
+	WidgetPrefix          = "wdg"
+	GeocodePrefix         = "geo"
+	AliasPrefix           = "als"
+	RedirectPrefix        = "rdr"
+	InviteServicePrefix   = "isv"
+	InviteTemplatePrefix  = "itp"
+	GreetingPrefix        = "grt"
 )
 
 var prefixes = map[string]bool{
 	PersonPrefix: true, PersonEmailPrefix: true, PersonPhotoPrefix: true, PersonSettingPrefix: true,
 	BirthdayYearPrefix: true, SavedViewPrefix: true, FeedTokenPrefix: true,
-	GroupPrefix: true, GroupSourcePrefix: true, MemberPrefix: true,
+	GroupPrefix: true, GroupSourcePrefix: true, MemberPrefix: true, EffectiveMemberPrefix: true,
 	RulePrefix: true, GroupCategoryPrefix: true, DocumentPrefix: true, DocumentGroupPrefix: true,
 	ReportPrefix: true, MessagePrefix: true, RecipientPrefix: true, MailTokenPrefix: true,
 	SettingPrefix: true, CategoryPrefix: true, CharityPrefix: true, AppPrefix: true,
@@ -66,6 +69,20 @@ func Mint(prefix string, taken func(string) bool) string {
 			return s
 		}
 	}
+}
+
+func Derive(prefix string, parts ...string) string {
+	if !prefixes[prefix] {
+		panic(fmt.Sprintf("no id prefix %q", prefix))
+	}
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	n := binary.BigEndian.Uint64(sum[:8])
+	out := make([]byte, randomLength)
+	for i := range out {
+		out[i] = idAlphabet[n%uint64(len(idAlphabet))]
+		n /= uint64(len(idAlphabet))
+	}
+	return prefix + string(out)
 }
 
 func ParseID(s string) (prefix string, ok bool) {

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -100,13 +101,14 @@ type planner struct {
 	counts  map[string]int
 	named   int
 	batch   []write
+	web     map[int]websiteRow
 
 	groupWrites, personWrites, emailWrites, familyWrites []write
 	memberDeletes, memberInserts, memberSets             []write
 }
 
 func plan(x *export, st *state) (*planner, error) {
-	p := &planner{x: x, st: st, claimed: map[string]*identity{}, counts: map[string]int{}, groups: table{rows: map[string]row{}}}
+	p := &planner{x: x, st: st, claimed: map[string]*identity{}, counts: map[string]int{}, groups: table{rows: map[string]row{}}, web: map[int]websiteRow{}}
 	for _, id := range st.groups.order {
 		p.groups.add(id, st.groups.rows[id])
 	}
@@ -114,6 +116,9 @@ func plan(x *export, st *state) (*planner, error) {
 		return nil, err
 	}
 	if err := p.match(); err != nil {
+		return nil, err
+	}
+	if err := p.website(); err != nil {
 		return nil, err
 	}
 	p.ensureGrades()
@@ -151,7 +156,7 @@ func (p *planner) portraits() ([]portrait, error) {
 	for _, id := range p.ids {
 		files := []string{}
 		for _, i := range id.entries {
-			for _, f := range p.x.entries[i].photos {
+			for _, f := range slices.Concat(p.x.entries[i].photos, p.web[i].photos) {
 				if !slices.Contains(files, f) {
 					files = append(files, f)
 				}
@@ -335,6 +340,64 @@ func (p *planner) match() error {
 	return nil
 }
 
+func (p *planner) staffEntry(id *identity) int {
+	for _, i := range id.entries {
+		if p.x.entries[i].role == staff {
+			return i
+		}
+	}
+	return -1
+}
+
+func (p *planner) website() error {
+	byEmail := map[string]int{}
+	byName := map[string][]int{}
+	for _, id := range p.ids {
+		i := p.staffEntry(id)
+		if i < 0 {
+			continue
+		}
+		for _, e := range id.emails {
+			byEmail[e] = i
+		}
+		byName[resolved(id.name)] = append(byName[resolved(id.name)], i)
+	}
+	for _, eid := range p.st.emails.order {
+		e := p.st.emails.rows[eid]
+		if id, ok := p.claimed[e["person"]]; ok && p.staffEntry(id) >= 0 {
+			byEmail[e["address"]] = p.staffEntry(id)
+		}
+	}
+	seen := map[int]bool{}
+	unmatched := []string{}
+	for _, w := range p.x.website {
+		i, ok := -1, false
+		for _, e := range w.emails {
+			if i, ok = byEmail[e]; ok {
+				break
+			}
+		}
+		if !ok {
+			switch candidates := byName[resolved(w.name)]; len(candidates) {
+			case 0:
+				unmatched = append(unmatched, w.name)
+				continue
+			case 1:
+				i = candidates[0]
+			default:
+				return fmt.Errorf("the staff page's entry for %s has no email on file, and %d staff share the name", w.name, len(candidates))
+			}
+		}
+		if seen[i] {
+			return fmt.Errorf("the staff page has two entries for %s", p.x.entries[i].name)
+		}
+		seen[i] = true
+		p.web[i] = w
+	}
+	slog.Info("website staff page", "entries", len(p.x.website), "matched", len(seen), "unmatched", unmatched)
+	return nil
+}
+
 func (p *planner) name(kind string) string {
 	p.named++
 	return fmt.Sprintf("@%s%d", kind, p.named)
@@ -485,8 +548,12 @@ func (p *planner) desired(id *identity) (row, error) {
 				cells["vc_phone"] = e.phone
 			}
 		case staff:
+			w := p.web[i]
 			cells["vc_job_title"] = e.jobTitle
-			cells["vc_bio"] = e.bio
+			if e.jobTitle == "" {
+				cells["vc_job_title"] = w.title
+			}
+			cells["vc_bio"] = w.bio
 			staffPhone = e.phone
 		}
 	}

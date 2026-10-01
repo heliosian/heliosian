@@ -49,6 +49,21 @@ func TestMintRefusesUnknownPrefix(t *testing.T) {
 	Mint("zzz", func(string) bool { return false })
 }
 
+func TestDeriveIsStable(t *testing.T) {
+	a := Derive(EffectiveMemberPrefix, "grp00000000020", "per00000000001")
+	if prefix, ok := ParseID(a); !ok || prefix != EffectiveMemberPrefix {
+		t.Fatalf("Derive() = %q, which does not parse as an effective member id", a)
+	}
+	if b := Derive(EffectiveMemberPrefix, "grp00000000020", "per00000000001"); b != a {
+		t.Fatalf("the same parts derived %q and %q", a, b)
+	}
+	for _, other := range [][]string{{"grp00000000020", "per00000000002"}, {"per00000000001", "grp00000000020"}, {"grp00000000020per00000000001", ""}} {
+		if b := Derive(EffectiveMemberPrefix, other...); b == a {
+			t.Fatalf("%v derived the same id as grp00000000020, per00000000001", other)
+		}
+	}
+}
+
 func TestParseID(t *testing.T) {
 	if prefix, ok := ParseID("grpX7pQ2m9KdLr"); !ok || prefix != GroupPrefix {
 		t.Fatalf("ParseID(grpX7pQ2m9KdLr) = %q %v", prefix, ok)
@@ -67,6 +82,7 @@ func TestTableOf(t *testing.T) {
 		"rcpX7pQ2m9KdLr": "RECIPIENT",
 		"memX7pQ2m9KdLr": "MEMBER",
 		"bdyX7pQ2m9KdLr": "BIRTHDAY_YEAR",
+		"efmX7pQ2m9KdLr": "EFFECTIVE_MEMBER",
 	} {
 		if got, ok := TableOf(s); !ok || got != want {
 			t.Fatalf("TableOf(%s) = %q %v, want %s", s, got, ok, want)

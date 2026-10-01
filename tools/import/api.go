@@ -2,53 +2,14 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
-	"fmt"
-	"io"
 	"mime/multipart"
 	"net/http"
-	"strings"
+
+	"heliosian/internal/qclient"
 )
 
 type client struct {
-	base string
-	key  string
-}
-
-type answer struct {
-	Now       string                    `json:"now"`
-	Result    []string                  `json:"result"`
-	Resources map[string]map[string]row `json:"resources"`
-}
-
-func (c client) send(method, path, kind string, body io.Reader, out any) error {
-	req, err := http.NewRequest(method, c.base+path, body)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", kind)
-	req.Header.Set("Authorization", "Bearer "+c.key)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	got, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(got)))
-	}
-	return json.Unmarshal(got, out)
-}
-
-func (c client) q(method string, body, out any) error {
-	raw, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-	return c.send(method, "/api/q", "application/json", bytes.NewReader(raw), out)
+	qclient.Client
 }
 
 func (c client) table(name string, where ...any) (table, string, error) {
@@ -56,8 +17,8 @@ func (c client) table(name string, where ...any) (table, string, error) {
 	if len(where) > 0 {
 		q["where"] = where
 	}
-	var a answer
-	if err := c.q("QUERY", q, &a); err != nil {
+	a, err := c.Query(q)
+	if err != nil {
 		return table{}, "", err
 	}
 	t := table{rows: map[string]row{}}
@@ -93,13 +54,7 @@ func (c client) read() (*state, error) {
 }
 
 func (c client) write(batch []write) ([]string, error) {
-	var out struct {
-		Result []string `json:"result"`
-	}
-	if err := c.q(http.MethodPost, map[string]any{"batch": batch}, &out); err != nil {
-		return nil, err
-	}
-	return out.Result, nil
+	return c.Write(map[string]any{"batch": batch})
 }
 
 func (c client) addPhoto(p portrait) error {
@@ -121,5 +76,5 @@ func (c client) addPhoto(p portrait) error {
 	var out struct {
 		Result []string `json:"result"`
 	}
-	return c.send(http.MethodPost, "/api/do/person-photo", form.FormDataContentType(), body, &out)
+	return c.Send(http.MethodPost, "/api/do/person-photo", form.FormDataContentType(), body, &out)
 }
