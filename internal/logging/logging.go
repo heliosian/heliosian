@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lmittmann/tint"
+
 	"heliosian/internal/auth"
 )
 
@@ -98,7 +100,9 @@ func Cloud() *slog.Logger {
 }
 
 func Console() *slog.Logger {
-	return slog.New(handler{slog.NewTextHandler(os.Stderr, nil)})
+	info, err := os.Stderr.Stat()
+	color := err == nil && info.Mode()&os.ModeCharDevice != 0
+	return slog.New(handler{tint.NewHandler(os.Stderr, &tint.Options{TimeFormat: "15:04:05.000", NoColor: !color})})
 }
 
 func traceOf(header string) (string, string) {
