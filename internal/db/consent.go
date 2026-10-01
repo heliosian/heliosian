@@ -78,11 +78,11 @@ func latest(into map[string]response, key string, r response) {
 	}
 }
 
-func yesNo(b bool) string {
-	if b {
-		return "Yes"
+func sharedOr(shared bool) string {
+	if shared {
+		return "shared"
 	}
-	return "No"
+	return "withheld"
 }
 
 func (m *Model) consentWrites(responses []map[string]string) ([]write, error) {
@@ -161,8 +161,9 @@ func (m *Model) consentWrites(responses []map[string]string) ([]write, error) {
 		consent := "listed"
 		if out || (!answered && !staff[p["id"]]) {
 			consent = "withheld"
+			shareAddress, sharePhone = false, false
 		}
-		want := map[string]string{"consent": consent, "share_address": yesNo(shareAddress), "share_phone": yesNo(sharePhone)}
+		want := map[string]string{"consent": consent, "address_consent": sharedOr(shareAddress), "phone_consent": sharedOr(sharePhone)}
 		cells := map[string]any{}
 		for _, column := range slices.Sorted(maps.Keys(want)) {
 			if !strings.EqualFold(p[column], want[column]) {

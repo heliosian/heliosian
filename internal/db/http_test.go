@@ -102,7 +102,7 @@ func TestServeQuery(t *testing.T) {
 
 func TestTextAndJSONAreOneTree(t *testing.T) {
 	for _, src := range append(designQueries, picnicText,
-		`(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020"))) (not share_phone) (blank consent) true) (limit 3))`,
+		`(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020"))) (not hidden) (blank consent) true) (limit 3))`,
 		`(from GROUP @g (where (= (sum price MEMBER (= group @g)) 19.75) (>= start now)))`) {
 		q := mustParse(t, src)
 		raw, err := json.Marshal(q.Tree())

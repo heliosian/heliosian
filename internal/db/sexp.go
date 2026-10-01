@@ -91,8 +91,17 @@ func (p *reader) done() bool {
 }
 
 func (p *reader) space() {
-	for !p.done() && unicode.IsSpace(p.src[p.at]) {
-		p.at++
+	for !p.done() {
+		switch {
+		case unicode.IsSpace(p.src[p.at]):
+			p.at++
+		case p.src[p.at] == ';':
+			for !p.done() && p.src[p.at] != '\n' {
+				p.at++
+			}
+		default:
+			return
+		}
 	}
 }
 

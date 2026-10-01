@@ -9,23 +9,31 @@ import (
 )
 
 const policySource = `
+;; Definitions
+
+; the viewer is an accepted lead of @g or of a group above it
 (define (leads @g)
   (exists MEMBER (in group (ancestors @g)) (= person @viewer) (= role "lead") (= status "yes")))
 
+; the members of every family @p leads
 (define (household @p)
   (select MEMBER.person
     (in group (select MEMBER.group (= person @p) (= role "lead") (= group.kind "family")))
     (= role "member")))
 
+; every group @p has a membership row in
 (define (groups_of @p)
   (select MEMBER.group (= person @p)))
 
+; the viewer is in effect a member of the app's admins group
 (define (admin_of app)
   (exists EFFECTIVE_MEMBER (in group (select APP.admins (= key app))) (= person @viewer)))
 
+; the viewer is in effect a member of super-admins
 (define (super_admin)
   (exists EFFECTIVE_MEMBER (= group.slug "super-admins") (= person @viewer)))
 
+; @g is not closed, and the viewer leads it or its visibility lets them see it
 (define (visible @g)
   (and (!= @g.status "closed")
        (or (leads @g)
@@ -36,6 +44,7 @@ const policySource = `
                     (and (= @g.visibility "group")
                          (exists EFFECTIVE_MEMBER (= group @g.visible_to) (= person @viewer))))))))
 
+; the viewer may see @g, and @g lets them see its members
 (define (sees_members @g)
   (and (visible @g)
        (or (leads @g)
@@ -44,41 +53,82 @@ const policySource = `
            (and (= @g.members_visible "members")
                 (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))))))
 
+; @p is the viewer, a guest in one of the viewer's groups, or listed, not hidden and active
 (define (person_visible @p)
   (or (= @p @viewer)
       (and (= @p.source "guest")
            (exists MEMBER (in group (groups_of @viewer)) (= person @p)))
       (and (= @p.consent "listed") (not @p.hidden) (blank @p.deactivated))))
 
+; every adult of family @f shared their address in the opt-in form
 (define (shares_address @f)
-  (or (leads @f)
-      (not (exists MEMBER (= group @f) (= role "lead") (not person.share_address)))))
+  (not (exists MEMBER (= group @f) (= role "lead") (!= person.address_consent "shared"))))
 
+; every adult of family @f shared their phone in the opt-in form
 (define (shares_phone @f)
-  (or (leads @f)
-      (not (exists MEMBER (= group @f) (= role "lead") (not person.share_phone)))))
+  (not (exists MEMBER (= group @f) (= role "lead") (!= person.phone_consent "shared"))))
 
+; the viewer leads @g, or is in it and it is not hidden
 (define (sees_mail @g)
   (or (leads @g)
       (and (!= @g.status "hidden")
            (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer)))))
 
+; @d was sent to no list, or to a list whose mail the viewer sees
 (define (document_visible @d)
   (or (not (exists DOCUMENT_GROUP (= document @d) (= relation "sent_to") (= group.kind "list")))
       (exists DOCUMENT_GROUP (= document @d) (= relation "sent_to") (= group.kind "list") (sees_mail group))))
 
+;; Everyone
+
+; people the viewer may see
 (read PERSON (person_visible @row))
+; a person's phone, only when they shared it in the opt-in form
+(read PERSON.phone (= phone_consent "shared"))
+; a person's phone override, only when they shared their phone in the opt-in form
+(read PERSON.phone_override (= phone_consent "shared"))
+; a person's imported phone, only when they shared their phone in the opt-in form
+(read PERSON.vc_phone (= phone_consent "shared"))
+; a person or a lead of their family overrides their long name
+(set PERSON.name_long_override (or (= @old @viewer) (in @old (household @viewer))))
+; a person or a lead of their family overrides their short name
+(set PERSON.name_short_override (or (= @old @viewer) (in @old (household @viewer))))
+; a person or a lead of their family overrides their sort name
+(set PERSON.name_sort_override (or (= @old @viewer) (in @old (household @viewer))))
+; the emails of people the viewer may see
 (read PERSON_EMAIL (person_visible person))
+; the photos of people the viewer may see
 (read PERSON_PHOTO (person_visible person))
+; the viewer's own app settings
 (read PERSON_SETTING (= person @viewer))
+; the birthday years of people the viewer may see
 (read BIRTHDAY_YEAR (person_visible person))
+; the viewer's own saved calendars
 (read SAVED_VIEW (= person @viewer))
+; the viewer's own bug reports and ideas
 (read REPORT (= reporter @viewer))
 
+; groups the viewer may see
 (read GROUP (visible @row))
+; a family's address, only when every adult shared theirs; any other group's
+(read GROUP.address (or (!= kind "family") (shares_address @row)))
+; a family's address override, as its address
+(read GROUP.address_override (or (!= kind "family") (shares_address @row)))
+; a family's imported address, as its address
+(read GROUP.vc_address (or (!= kind "family") (shares_address @row)))
+; a family's phone, only when every adult shared theirs; any other group's
+(read GROUP.phone (or (!= kind "family") (shares_phone @row)))
+; a family's phone override, as its phone
+(read GROUP.phone_override (or (!= kind "family") (shares_phone @row)))
+; a family's imported phone, as its phone
+(read GROUP.vc_phone (or (!= kind "family") (shares_phone @row)))
+; where the calendar groups the viewer may see came from
 (read GROUP_SOURCE (visible group))
+; the categories of groups the viewer may see
 (read GROUP_CATEGORY (visible group))
+; the rules of groups the viewer leads
 (read RULE (leads group))
+; the viewer's own, household's and guests' memberships, groups they lead, visible groups' leads, and members where shown
 (read MEMBER
   (or (= person @viewer)
       (in person (household @viewer))
@@ -86,159 +136,271 @@ const policySource = `
       (leads group)
       (and (= role "lead") (visible group))
       (and (= role "member") (sees_members group))))
-(read EFFECTIVE_MEMBER
-  (or (= person @viewer)
-      (in person (household @viewer))
-      (sees_members group)))
-
-(read DOCUMENT (document_visible @row))
-(read DOCUMENT_GROUP (and (document_visible document) (visible group)))
-
-(read MESSAGE
-  (or (= from_person @viewer)
-      (exists RECIPIENT (= message @row) (= person @viewer))
-      (leads group)))
-(read RECIPIENT
-  (or (= person @viewer)
-      (= message.from_person @viewer)
-      (leads message.group)))
-
-(read SETTING true)
-(read CATEGORY
-  (or (blank visible_to)
-      (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))))
-(read CHARITY true)
-(read APP
-  (or (blank visible_to)
-      (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))))
-(read WIDGET
-  (or (blank visible_to)
-      (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))))
-(read GEOCODE
-  (exists GROUP @f (= kind "family") (or (= address @row.address) (= vc_address @row.address))
-          (visible @f) (shares_address @f)))
-(read ALIAS (super_admin))
-(read REDIRECT (super_admin))
-(read INVITE_SERVICE true)
-(read INVITE_TEMPLATE true)
-(read GREETING (or (blank owner) (= owner @viewer)))
-
-(read PERSON.phone (or (= @row @viewer) share_phone))
-(read PERSON.vc_phone (or (= @row @viewer) share_phone))
-(read GROUP.address (or (!= kind "family") (shares_address @row)))
-(read GROUP.vc_address (or (!= kind "family") (shares_address @row)))
-(read GROUP.phone (or (!= kind "family") (shares_phone @row)))
-(read GROUP.vc_phone (or (!= kind "family") (shares_phone @row)))
+; what a membership cost, to the member, their host and the group's leads
 (read MEMBER.price (or (= person @viewer) (= guest_of @viewer) (leads group)))
+; a membership's payment reference, to the member, their host and the group's leads
 (read MEMBER.purchase_id (or (= person @viewer) (= guest_of @viewer) (leads group)))
-(read RECIPIENT.token (= person @viewer))
-
+; a person, their family's lead or their host answers an invitation; the group's leads set any status
 (set MEMBER.status
   (or (and (or (= @old.person @viewer)
                (in @old.person (household @viewer))
                (= @old.guest_of @viewer))
            (in @new.status "yes" "maybe" "no" "cancelled"))
       (leads @old.group)))
-(set PERSON.name_long_override (or (= @old @viewer) (in @old (household @viewer))))
-(set PERSON.name_short_override (or (= @old @viewer) (in @old (household @viewer))))
-(set PERSON.name_sort_override (or (= @old @viewer) (in @old (household @viewer))))
+; the viewer's own and household's effective memberships, and members of groups that show them
+(read EFFECTIVE_MEMBER
+  (or (= person @viewer)
+      (in person (household @viewer))
+      (sees_members group)))
 
+; documents sent to no list, or to a list whose mail the viewer sees
+(read DOCUMENT (document_visible @row))
+; links between a document and a group, where the viewer may see both
+(read DOCUMENT_GROUP (and (document_visible document) (visible group)))
+
+; mail the viewer sent or received, and mail to groups they lead
+(read MESSAGE
+  (or (= from_person @viewer)
+      (exists RECIPIENT (= message @row) (= person @viewer))
+      (leads group)))
+; the viewer's own deliveries, deliveries of mail they sent, and of mail to groups they lead
+(read RECIPIENT
+  (or (= person @viewer)
+      (= message.from_person @viewer)
+      (leads message.group)))
+; a delivery's link token, to its recipient alone
+(read RECIPIENT.token (= person @viewer))
+
+; app settings
+(read SETTING true)
+; categories open to everyone or to a group the viewer is in
+(read CATEGORY
+  (or (blank visible_to)
+      (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))))
+; the birthday charities
+(read CHARITY true)
+; apps open to everyone or to a group the viewer is in
+(read APP
+  (or (blank visible_to)
+      (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))))
+; front-page widgets open to everyone or to a group the viewer is in
+(read WIDGET
+  (or (blank visible_to)
+      (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))))
+; the coordinates of a family address the viewer may see
+(read GEOCODE
+  (exists GROUP @f (= kind "family") (= address @row.address) (visible @f) (shares_address @f)))
+; the invite list services
+(read INVITE_SERVICE true)
+; the invite list templates
+(read INVITE_TEMPLATE true)
+; shared greetings and the viewer's own
+(read GREETING (or (blank owner) (= owner @viewer)))
+
+;; Who? admins
+
+; every person, hidden, withheld or deactivated
 (read PERSON (admin_of "who"))
-(read PERSON.phone (admin_of "who"))
-(read PERSON.vc_phone (admin_of "who"))
-(read GROUP (and (admin_of "who") (in kind "family" "tag" "classroom" "grade" "band" "crew" "department" "role")))
-(read MEMBER (and (admin_of "who") (in group.kind "family" "tag" "classroom" "grade" "band" "crew" "department" "role")))
-(read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "tag" "classroom" "grade" "band" "crew" "department" "role")))
-(read RULE (and (admin_of "who") (in group.kind "tag")))
+; override anyone's long name
 (set PERSON.name_long_override (admin_of "who"))
+; override anyone's short name
 (set PERSON.name_short_override (admin_of "who"))
+; override anyone's sort name
 (set PERSON.name_sort_override (admin_of "who"))
+; every directory group, hidden or pending
+(read GROUP (and (admin_of "who") (in kind "family" "tag" "classroom" "grade" "band" "crew" "department" "role")))
+; every directory group's memberships
+(read MEMBER (and (admin_of "who") (in group.kind "family" "tag" "classroom" "grade" "band" "crew" "department" "role")))
+; every directory group's effective members
+(read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "tag" "classroom" "grade" "band" "crew" "department" "role")))
+; the rules that pick each tag's members
+(read RULE (and (admin_of "who") (in group.kind "tag")))
 
+;; When admins
+
+; every calendar group: events, series, days, their parts and the day templates
 (read GROUP (and (admin_of "when") (in kind "event" "series" "day" "day_part" "day_template")))
-(read GROUP_SOURCE (and (admin_of "when") (in group.kind "event" "series" "day" "day_part")))
-(read MEMBER (and (admin_of "when") (in group.kind "event" "series")))
-(read EFFECTIVE_MEMBER (and (admin_of "when") (in group.kind "event" "series")))
-(read RULE (and (admin_of "when") (in group.kind "event" "series" "day_part")))
-(read MESSAGE (and (admin_of "when") (in group.kind "event" "series")))
-(read RECIPIENT (and (admin_of "when") (in message.group.kind "event" "series")))
+; open, hide, cancel or close an event or series
 (set GROUP.status (and (admin_of "when") (in @old.kind "event" "series")))
+; where every calendar group came from
+(read GROUP_SOURCE (and (admin_of "when") (in group.kind "event" "series" "day" "day_part")))
+; every event's and series' invitees and hosts
+(read MEMBER (and (admin_of "when") (in group.kind "event" "series")))
+; make an invitee a host, or a host an invitee
 (set MEMBER.role (and (admin_of "when") (in @old.group.kind "event" "series")))
+; every event's and series' effective invitees
+(read EFFECTIVE_MEMBER (and (admin_of "when") (in group.kind "event" "series")))
+; the rules that say who events, series and day parts are for
+(read RULE (and (admin_of "when") (in group.kind "event" "series" "day_part")))
+; all mail about events and series
+(read MESSAGE (and (admin_of "when") (in group.kind "event" "series")))
+; every delivery of mail about events and series
+(read RECIPIENT (and (admin_of "when") (in message.group.kind "event" "series")))
 
+;; Team admins
+
+; every activity
 (read GROUP (and (admin_of "team") (in kind "activity")))
-(read MEMBER (and (admin_of "team") (in group.kind "activity")))
-(read EFFECTIVE_MEMBER (and (admin_of "team") (in group.kind "activity")))
-(read RULE (and (admin_of "team") (in group.kind "activity")))
-(read MESSAGE (and (admin_of "team") (in group.kind "activity")))
-(read RECIPIENT (and (admin_of "team") (in message.group.kind "activity")))
+; open, hide, cancel or close an activity
 (set GROUP.status (and (admin_of "team") (in @old.kind "activity")))
+; every activity's volunteers and leads
+(read MEMBER (and (admin_of "team") (in group.kind "activity")))
+; make a volunteer a lead, or a lead a volunteer
 (set MEMBER.role (and (admin_of "team") (in @old.group.kind "activity")))
+; every activity's effective volunteers
+(read EFFECTIVE_MEMBER (and (admin_of "team") (in group.kind "activity")))
+; the rules that say who activities are for
+(read RULE (and (admin_of "team") (in group.kind "activity")))
+; all mail about activities
+(read MESSAGE (and (admin_of "team") (in group.kind "activity")))
+; every delivery of mail about activities
+(read RECIPIENT (and (admin_of "team") (in message.group.kind "activity")))
 
+;; Celebrate admins
+
+; every party and celebration
 (read GROUP (and (admin_of "celebrate") (in kind "party" "celebration")))
-(read MEMBER (and (admin_of "celebrate") (in group.kind "party" "celebration")))
-(read EFFECTIVE_MEMBER (and (admin_of "celebrate") (in group.kind "party" "celebration")))
-(read RULE (and (admin_of "celebrate") (in group.kind "party" "celebration")))
-(read MESSAGE (and (admin_of "celebrate") (in group.kind "party" "celebration")))
-(read RECIPIENT (and (admin_of "celebrate") (in message.group.kind "party" "celebration")))
-(read MEMBER.price (and (admin_of "celebrate") (in group.kind "party")))
-(read MEMBER.purchase_id (and (admin_of "celebrate") (in group.kind "party")))
+; open, hide, cancel or close a party or celebration
 (set GROUP.status (and (admin_of "celebrate") (in @old.kind "party" "celebration")))
+; every party's and celebration's ticket holders and hosts
+(read MEMBER (and (admin_of "celebrate") (in group.kind "party" "celebration")))
+; what every party ticket cost
+(read MEMBER.price (and (admin_of "celebrate") (in group.kind "party")))
+; every party ticket's payment reference
+(read MEMBER.purchase_id (and (admin_of "celebrate") (in group.kind "party")))
+; make a ticket holder a host, or a host a ticket holder
 (set MEMBER.role (and (admin_of "celebrate") (in @old.group.kind "party")))
+; every party's and celebration's effective members
+(read EFFECTIVE_MEMBER (and (admin_of "celebrate") (in group.kind "party" "celebration")))
+; the rules that say who parties and celebrations are for
+(read RULE (and (admin_of "celebrate") (in group.kind "party" "celebration")))
+; all mail about parties and celebrations
+(read MESSAGE (and (admin_of "celebrate") (in group.kind "party" "celebration")))
+; every delivery of mail about parties and celebrations
+(read RECIPIENT (and (admin_of "celebrate") (in message.group.kind "party" "celebration")))
 
+;; Loop admins
+
+; every list
 (read GROUP (and (admin_of "loop") (in kind "list")))
-(read MEMBER (and (admin_of "loop") (in group.kind "list")))
-(read EFFECTIVE_MEMBER (and (admin_of "loop") (in group.kind "list")))
-(read RULE (and (admin_of "loop") (in group.kind "list")))
-(read MESSAGE (and (admin_of "loop") (in group.kind "list")))
-(read RECIPIENT (and (admin_of "loop") (in message.group.kind "list")))
-(read DOCUMENT (and (admin_of "loop") (exists DOCUMENT_GROUP (= document @row) (= relation "sent_to") (= group.kind "list"))))
-(read DOCUMENT_GROUP (and (admin_of "loop") (= group.kind "list")))
+; open, hide or close a list
 (set GROUP.status (and (admin_of "loop") (in @old.kind "list")))
+; every list's members and leads
+(read MEMBER (and (admin_of "loop") (in group.kind "list")))
+; make a member a lead, or a lead a member
 (set MEMBER.role (and (admin_of "loop") (in @old.group.kind "list")))
+; every list's effective members
+(read EFFECTIVE_MEMBER (and (admin_of "loop") (in group.kind "list")))
+; the rules that pick each list's members
+(read RULE (and (admin_of "loop") (in group.kind "list")))
+; all mail to lists
+(read MESSAGE (and (admin_of "loop") (in group.kind "list")))
+; every delivery of mail to lists
+(read RECIPIENT (and (admin_of "loop") (in message.group.kind "list")))
+; every post sent to a list
+(read DOCUMENT (and (admin_of "loop") (exists DOCUMENT_GROUP (= document @row) (= relation "sent_to") (= group.kind "list"))))
+; which lists each post was sent to
+(read DOCUMENT_GROUP (and (admin_of "loop") (= group.kind "list")))
 
+;; Home admins
+
+; every audience, admins group and front-page section
 (read GROUP (and (admin_of "home") (in kind "audience" "admins" "section")))
+; the members of audiences, admins groups and sections
 (read MEMBER (and (admin_of "home") (in group.kind "audience" "admins" "section")))
+; the effective members of audiences, admins groups and sections
 (read EFFECTIVE_MEMBER (and (admin_of "home") (in group.kind "audience" "admins" "section")))
+; the rules that pick audiences', admins groups' and sections' members
 (read RULE (and (admin_of "home") (in group.kind "audience" "admins" "section")))
+; every link category, whoever it is open to
 (read CATEGORY (and (admin_of "home") (= scope "link")))
+; every app, whoever it is open to
 (read APP (admin_of "home"))
+; every front-page widget, whoever it is open to
 (read WIDGET (admin_of "home"))
 
+;; Super admins
+
+; old IDs and the rows they now name
+(read ALIAS (super_admin))
+; old paths and where they now go
+(read REDIRECT (super_admin))
+
+;; System: import
+
+; every person, to match the Veracross export against
 (read PERSON (system "import"))
+; every imported phone, shared or not, to compare with the export
 (read PERSON.vc_phone (system "import"))
-(read PERSON_EMAIL (system "import"))
-(read PERSON_PHOTO (system "import"))
-(insert PERSON_PHOTO (system "import"))
-(read GROUP (and (system "import") (in kind "family" "role" "classroom" "crew" "grade" "band")))
-(read GROUP.vc_address (and (system "import") (= kind "family")))
-(read GROUP.vc_phone (and (system "import") (= kind "family")))
-(read MEMBER (and (system "import") (in group.kind "family" "role")))
+; add a Veracross person new in the export
 (insert PERSON (and (system "import") (= @new.source "veracross")))
-(insert PERSON_EMAIL (and (system "import") (= @new.source "veracross")))
-(insert GROUP (and (system "import") (in @new.kind "family" "role" "classroom" "crew" "grade" "band")))
-(insert MEMBER (and (system "import") (in @new.group.kind "family" "role")))
+; a person's name as Veracross has it
 (set PERSON.vc_name (system "import"))
+; a person's legal name as Veracross has it
 (set PERSON.vc_legal_name (system "import"))
+; a student's grade as Veracross has it
 (set PERSON.vc_grade (system "import"))
+; a student's classroom as Veracross has it
 (set PERSON.vc_classroom (system "import"))
+; a person's crew as Veracross has it
 (set PERSON.vc_crew (system "import"))
+; a staff member's job title as Veracross has it
 (set PERSON.vc_job_title (system "import"))
+; a person's phone as Veracross has it
 (set PERSON.vc_phone (system "import"))
+; a staff member's bio as Veracross has it
 (set PERSON.vc_bio (system "import"))
+; Veracross's address privacy, shown on the profile to explain it
 (set PERSON.vc_address_visibility (system "import"))
+; Veracross's phone privacy, shown on the profile to explain it
 (set PERSON.vc_phone_visibility (system "import"))
+; a person's long name derived from Veracross's
 (set PERSON.name_long_import (system "import"))
+; a person's short name derived from Veracross's
 (set PERSON.name_short_import (system "import"))
+; a person's sort name derived from Veracross's
 (set PERSON.name_sort_import (system "import"))
+; deactivate a Veracross person gone from the export, or bring one back
 (set PERSON.deactivated (and (system "import") (= @old.source "veracross")))
+; whether the opt-in form lists a person
 (set PERSON.consent (system "import"))
-(set PERSON.share_address (system "import"))
-(set PERSON.share_phone (system "import"))
+; whether the opt-in form shares a person's address
+(set PERSON.address_consent (system "import"))
+; whether the opt-in form shares a person's phone
+(set PERSON.phone_consent (system "import"))
+; every email, to match the export's people by
+(read PERSON_EMAIL (system "import"))
+; add an email new in the export
+(insert PERSON_EMAIL (and (system "import") (= @new.source "veracross")))
+; change an imported email the export changed
 (set PERSON_EMAIL.address (and (system "import") (= @old.source "veracross")))
-(set GROUP.vc_title (and (system "import") (= @old.kind "family")))
-(set GROUP.vc_address (and (system "import") (= @old.kind "family")))
-(set GROUP.vc_phone (and (system "import") (= @old.kind "family")))
-(set MEMBER.status (and (system "import") (in @old.group.kind "family" "role")))
+; remove an imported email gone from the export
 (delete PERSON_EMAIL (and (system "import") (= @old.source "veracross")))
+; every portrait, to skip those already imported
+(read PERSON_PHOTO (system "import"))
+; add a portrait from the website
+(insert PERSON_PHOTO (system "import"))
+; every directory group the import keeps
+(read GROUP (and (system "import") (in kind "family" "role" "classroom" "crew" "grade" "band")))
+; every family's imported address, shared or not, to compare with the export
+(read GROUP.vc_address (and (system "import") (= kind "family")))
+; every family's imported phone, shared or not, to compare with the export
+(read GROUP.vc_phone (and (system "import") (= kind "family")))
+; add a family, role, classroom, crew, grade or band new in the export
+(insert GROUP (and (system "import") (in @new.kind "family" "role" "classroom" "crew" "grade" "band")))
+; a family's title built from its members' names
+(set GROUP.vc_title (and (system "import") (= @old.kind "family")))
+; a family's address as Veracross has it
+(set GROUP.vc_address (and (system "import") (= @old.kind "family")))
+; a family's phone as Veracross has it
+(set GROUP.vc_phone (and (system "import") (= @old.kind "family")))
+; every family and role membership, to compare with the export
+(read MEMBER (and (system "import") (in group.kind "family" "role")))
+; add a family or role membership new in the export
+(insert MEMBER (and (system "import") (in @new.group.kind "family" "role")))
+; the status of a family or role membership
+(set MEMBER.status (and (system "import") (in @old.group.kind "family" "role")))
+; remove a family or role membership gone from the export
 (delete MEMBER (and (system "import") (in @old.group.kind "family" "role")))
 `
 

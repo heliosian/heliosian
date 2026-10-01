@@ -73,13 +73,29 @@ func cellAs(t *testing.T, s *Store, viewer, src, column string) string {
 
 func TestPhoneFollowsConsent(t *testing.T) {
 	s := sample(t)
-	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": parent}, store.Row{"phone": "555-0100"})); err != nil {
+	if err := commit(s, PeopleSheet,
+		store.Update("PERSON", store.Row{"id": parent}, store.Row{"vc_phone": "555-0100"}),
+		store.Update("PERSON", store.Row{"id": staff}, store.Row{"vc_phone": "555-0200", "phone_override": "555-0300"}),
+	); err != nil {
 		t.Fatal(err)
 	}
-	q := `(from PERSON (where (= id "per00000000002")))`
-	for viewer, want := range map[string]string{student: "", parent: "555-0100", staff: "555-0100"} {
-		if got := cellAs(t, s, viewer, q, "phone"); got != want {
-			t.Errorf("Rowan's phone as %s = %q, want %q", viewer, got, want)
+	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000020"}, store.Row{"vc_phone": "555-0400"})); err != nil {
+		t.Fatal(err)
+	}
+	rowan := `(from PERSON (where (= id "per00000000002")))`
+	maya := `(from PERSON (where (= id "per00000000003")))`
+	family := `(from GROUP (where (= id "grp00000000020")))`
+	for _, viewer := range []string{student, parent, staff} {
+		for _, column := range []string{"phone", "vc_phone", "phone_override"} {
+			if got := cellAs(t, s, viewer, rowan, column); got != "" {
+				t.Errorf("Rowan's withheld %s as %s = %q", column, viewer, got)
+			}
+			if got := cellAs(t, s, viewer, family, column); got != "" {
+				t.Errorf("the family's %s, withheld by Rowan, as %s = %q", column, viewer, got)
+			}
+		}
+		if got := cellAs(t, s, viewer, maya, "phone"); got != "555-0300" {
+			t.Errorf("Maya's shared phone as %s = %q, want the override", viewer, got)
 		}
 	}
 	if n := len(as(t, s, student, `(from PERSON (where (= phone "555-0100")))`)); n != 0 {
@@ -93,15 +109,17 @@ func TestFamilyAddressFollowsItsAdults(t *testing.T) {
 		t.Fatal(err)
 	}
 	q := `(from GROUP (where (= id "grp00000000020")))`
-	if got := cellAs(t, s, student, q, "vc_address"); got != "12 Oak St" {
+	if got := cellAs(t, s, student, q, "address"); got != "12 Oak St" {
 		t.Fatalf("a shared address reads %q", got)
 	}
-	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": parent}, store.Row{"share_address": "No"})); err != nil {
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": parent}, store.Row{"address_consent": "withheld"})); err != nil {
 		t.Fatal(err)
 	}
-	for viewer, want := range map[string]string{student: "", parent: "12 Oak St", staff: ""} {
-		if got := cellAs(t, s, viewer, q, "vc_address"); got != want {
-			t.Errorf("the address as %s = %q, want %q", viewer, got, want)
+	for _, viewer := range []string{student, parent, staff} {
+		for _, column := range []string{"address", "vc_address", "address_override"} {
+			if got := cellAs(t, s, viewer, q, column); got != "" {
+				t.Errorf("the withheld %s as %s = %q", column, viewer, got)
+			}
 		}
 	}
 }

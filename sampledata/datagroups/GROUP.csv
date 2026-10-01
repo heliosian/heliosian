@@ -1,4 +1,4 @@
-id,kind,slug,title,parent,vc_title,status,visibility,visible_to,posting,start,end,order,vc_address,vc_phone,subtitle,description,image,image_crop,color,flyer,pronunciation,address,phone,members_visible,replying,join,adding,capacity,minimum,price,unit,waitlist,eligible,parent_required,lead_needed,priority,all_day,location,added_by,added
+id,kind,slug,title,parent,vc_title,status,visibility,visible_to,posting,start,end,order,vc_address,vc_phone,subtitle,description,image,image_crop,color,flyer,pronunciation,address_override,phone_override,members_visible,replying,join,adding,capacity,minimum,price,unit,waitlist,eligible,parent_required,lead_needed,priority,all_day,location,added_by,added
 grp00000000001,role,students,Students,,,open,everyone,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 grp00000000002,role,parents,Parents,,,open,everyone,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 grp00000000003,role,staff,Staff,,,open,everyone,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

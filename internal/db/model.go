@@ -163,13 +163,14 @@ func describeUnique(t *Table, row store.Row) string {
 	return strings.Join(parts, "; ")
 }
 
-func personNames(row map[string]string) {
+func personGenerated(row map[string]string) {
 	for _, name := range []string{"name_long", "name_short", "name_sort"} {
 		row[name] = row[name+"_override"]
 		if row[name] == "" {
 			row[name] = row[name+"_import"]
 		}
 	}
+	row["phone"] = overrideOr(row, "phone")
 	switch {
 	case row["name_long"] != "":
 		row["name_show"] = row["name_long"]
@@ -178,6 +179,18 @@ func personNames(row map[string]string) {
 	default:
 		row["name_show"] = "[Missing Name]"
 	}
+}
+
+func groupGenerated(row map[string]string) {
+	row["address"] = overrideOr(row, "address")
+	row["phone"] = overrideOr(row, "phone")
+}
+
+func overrideOr(row map[string]string, name string) string {
+	if v := row[name+"_override"]; v != "" {
+		return v
+	}
+	return row["vc_"+name]
 }
 
 func checkEmails(people Sheet) error {

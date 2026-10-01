@@ -97,7 +97,7 @@ func TestParseRefuses(t *testing.T) {
 		`(from GROUP (where (in kind "party" "nope")))`:       `"nope" is not one of`,
 		`(from PERSON (where (in id (select MEMBER.group))))`: "can't compare",
 		`(from PERSON (include source))`:                      "not a reference",
-		`(from PERSON (where (= share_phone "Yes")))`:         "is text",
+		`(from PERSON (where (= hidden "Yes")))`:              "is text",
 		`(from GROUP @viewer)`:                                "can't name a row",
 		`(select PERSON.id)`:                                  "starts with from",
 	} {
@@ -151,7 +151,7 @@ func TestRun(t *testing.T) {
 		{"", `(from GROUP (where (< end now)))`, "id", nil},
 		{"", `(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020")))))`, "id", []string{"per00000000001", "per00000000002"}},
 		{"", `(from SAVED_VIEW (where (= groups "grp00000000010")))`, "token", []string{"fed00000000001"}},
-		{"", `(from PERSON (where (not share_phone)))`, "id", []string{"per00000000002", "per00000000004"}},
+		{"", `(from PERSON (where (not hidden)))`, "id", []string{"per00000000001", "per00000000002", "per00000000003", "per00000000004"}},
 		{"", `(from PERSON (where (= vc_classroom.title "Hummingbirds")))`, "id", []string{"per00000000001"}},
 		{"", `(from MEMBER (where (= guest_of.name_short "Rowan")))`, "person", []string{"per00000000004"}},
 		{"", `(from GROUP (where (in kind "family" "list")))`, "id", []string{"grp00000000020", "grp00000000030"}},
