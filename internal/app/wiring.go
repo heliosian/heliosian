@@ -340,6 +340,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		return auths[key].Wrap(next)
 	}), core.Aliased())
 	if os.Getenv("K_SERVICE") != "" {
+		db.StartConsent(core.Data, core.Queue, sheet)
 		watcher := calendarWatcher(sheet, core, sessionKey, anthropicKey)
 		muxes["when"].Handle("POST "+calendarimport.HookPath, watcher)
 		watcher.Start()
