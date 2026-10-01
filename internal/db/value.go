@@ -2,6 +2,7 @@ package db
 
 import (
 	"math/big"
+	"strconv"
 	"strings"
 	"time"
 
@@ -140,6 +141,58 @@ func compareValues(a, b value) (int, bool) {
 		return -1, true
 	}
 	return strings.Compare(strings.ToLower(a.s), strings.ToLower(b.s)), true
+}
+
+type valueSet struct {
+	exact  bool
+	scalar map[string]bool
+	whole  map[string]bool
+}
+
+func newValueSet(exact bool) *valueSet {
+	return &valueSet{exact: exact, scalar: map[string]bool{}, whole: map[string]bool{}}
+}
+
+func (s *valueSet) key(v value) string {
+	switch {
+	case v.num != nil:
+		return v.num.RatString()
+	case !v.t.IsZero():
+		return strconv.FormatInt(v.t.UnixNano(), 10)
+	case s.exact || classOf(v.kind) == classRow:
+		return v.s
+	case classOf(v.kind) == classBool:
+		return strconv.FormatBool(v.b)
+	}
+	return strings.ToLower(v.s)
+}
+
+func (s *valueSet) add(v value) {
+	if v.blank {
+		return
+	}
+	if v.list != nil {
+		for _, item := range v.list {
+			s.scalar[item] = true
+		}
+		s.whole[v.s] = true
+		return
+	}
+	k := s.key(v)
+	s.scalar[k] = true
+	s.whole[k] = true
+}
+
+func (s *valueSet) has(v value) bool {
+	if v.list != nil {
+		for _, item := range v.list {
+			if s.whole[item] {
+				return true
+			}
+		}
+		return false
+	}
+	return !v.blank && s.scalar[s.key(v)]
 }
 
 func equalValues(a, b value) bool {

@@ -62,6 +62,8 @@ type run struct {
 	now     time.Time
 	rows    map[string]bool
 	columns map[string]bool
+	exists  map[*scan]bool
+	selects map[*scan]*valueSet
 }
 
 type operand struct {
@@ -82,6 +84,7 @@ type scan struct {
 	table    *Table
 	name     string
 	guarded  bool
+	constant bool
 	conds    []cond
 	probeCol string
 	probe    *operand
@@ -105,6 +108,7 @@ type compiler struct {
 	policy  bool
 	defines map[string]*define
 	hidden  int
+	touched []*scope
 }
 
 var keywords = []string{"true", "false", "today", "now", "asc", "desc"}
@@ -225,12 +229,27 @@ func (cx *compiler) scan(s *sexp, at int, outer *scope) (*scan, error) {
 	if err != nil {
 		return nil, err
 	}
-	out.conds, err = cx.conds(rest, &scope{table: out.table, name: out.name, outer: outer})
+	inner := &scope{table: out.table, name: out.name, outer: outer}
+	mark := len(cx.touched)
+	out.conds, err = cx.conds(rest, inner)
 	if err != nil {
 		return nil, err
 	}
+	out.constant = cx.closed(mark, inner)
 	out.pickProbe()
 	return out, nil
+}
+
+func (cx *compiler) closed(mark int, inner *scope) bool {
+	for _, at := range cx.touched[mark:] {
+		for at != nil && at != inner {
+			at = at.outer
+		}
+		if at == nil {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *scan) pickProbe() {
@@ -374,8 +393,14 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 			return cond{}, err
 		}
 		return cond{eval: func(f *frame) bool {
+			if found, ok := f.run.exists[inner]; ok {
+				return found
+			}
 			found := false
 			inner.each(f, func(*frame) bool { found = true; return false })
+			if inner.constant {
+				f.run.exists[inner] = found
+			}
 			return found
 		}}, nil
 	case "system":
@@ -559,22 +584,14 @@ func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 		return cond{}, s.list[1].errorf("in tests a path, not a literal")
 	}
 	if len(s.list) == 3 && s.list[2].isList {
-		set, t, err := cx.set(s.list[2], sc)
+		set, t, err := cx.set(s.list[2], sc, x.t)
 		if err != nil {
 			return cond{}, err
 		}
 		if err := comparable(s, x.t, t); err != nil {
 			return cond{}, err
 		}
-		return cond{eval: func(f *frame) bool {
-			v := x.eval(f)
-			for _, item := range set(f) {
-				if equalValues(v, item) {
-					return true
-				}
-			}
-			return false
-		}}, nil
+		return cond{eval: func(f *frame) bool { return set(f).has(x.eval(f)) }}, nil
 	}
 	options := []value{}
 	for _, item := range s.list[2:] {
@@ -598,10 +615,10 @@ func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 	}}, nil
 }
 
-func (cx *compiler) set(s *sexp, sc *scope) (func(f *frame) []value, typ, error) {
+func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, typ, error) {
 	switch head := s.head(); head {
 	case "select":
-		return cx.selectSet(s, sc)
+		return cx.selectSet(s, sc, x)
 	case "ancestors":
 		if !cx.policy {
 			return nil, typ{}, s.errorf("ancestors belongs to policies")
@@ -617,16 +634,14 @@ func (cx *compiler) set(s *sexp, sc *scope) (func(f *frame) []value, typ, error)
 		if g.lit != nil || g.t.class != classRow || g.t.table != "GROUP" || g.t.list {
 			return nil, typ{}, s.errorf("ancestors takes a group")
 		}
-		return func(f *frame) []value {
-			out := []value{}
+		return func(f *frame) *valueSet {
+			out := newValueSet(false)
 			v := g.eval(f)
 			if v.blank {
 				return out
 			}
-			seen := map[string]bool{}
-			for id := v.s; id != "" && !seen[id]; {
-				seen[id] = true
-				out = append(out, value{kind: ID, s: id})
+			for id := v.s; id != "" && !out.scalar[id]; {
+				out.add(value{kind: ID, s: id})
 				row, ok := f.run.table("GROUP").Get(id)
 				if !ok {
 					break
@@ -641,13 +656,13 @@ func (cx *compiler) set(s *sexp, sc *scope) (func(f *frame) []value, typ, error)
 			if err != nil {
 				return nil, typ{}, err
 			}
-			return cx.set(expanded, sc)
+			return cx.set(expanded, sc, x)
 		}
 	}
 	return nil, typ{}, s.errorf("in takes literals or one select")
 }
 
-func (cx *compiler) selectSet(s *sexp, sc *scope) (func(f *frame) []value, typ, error) {
+func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, typ, error) {
 	if len(s.list) < 2 || s.list[1].isList || s.list[1].kind != atomName {
 		return nil, typ{}, s.errorf("select names TABLE.column")
 	}
@@ -668,20 +683,31 @@ func (cx *compiler) selectSet(s *sexp, sc *scope) (func(f *frame) []value, typ, 
 		cx.hidden++
 		inner.name = fmt.Sprintf("_%d", cx.hidden)
 	}
-	inner.conds, err = cx.conds(s.list[2:], &scope{table: t, name: inner.name, outer: sc})
+	within := &scope{table: t, name: inner.name, outer: sc}
+	mark := len(cx.touched)
+	inner.conds, err = cx.conds(s.list[2:], within)
 	if err != nil {
 		return nil, typ{}, err
 	}
+	inner.constant = cx.closed(mark, within)
 	inner.pickProbe()
 	guarded := !cx.policy
-	return func(f *frame) []value {
-		out := []value{}
+	ct := columnType(t.Name, c)
+	exact := x.kind == Order && ct.kind == Order
+	return func(f *frame) *valueSet {
+		if out, ok := f.run.selects[inner]; ok {
+			return out
+		}
+		out := newValueSet(exact)
 		inner.each(f, func(g *frame) bool {
-			out = append(out, g.run.cell(guarded, t, g.row, c))
+			out.add(g.run.cell(guarded, t, g.row, c))
 			return true
 		})
+		if inner.constant {
+			f.run.selects[inner] = out
+		}
 		return out
-	}, columnType(t.Name, c), nil
+	}, ct, nil
 }
 
 func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
@@ -827,6 +853,7 @@ func (cx *compiler) path(s *sexp, sc *scope) (operand, error) {
 				if at.name == name {
 					start, found = at.table, true
 					local = at == sc
+					cx.touched = append(cx.touched, at)
 					break
 				}
 			}
@@ -843,6 +870,7 @@ func (cx *compiler) path(s *sexp, sc *scope) (operand, error) {
 		}
 		start = sc.table
 		startName = sc.name
+		cx.touched = append(cx.touched, sc)
 	}
 	segments := []string{}
 	if text != "" {
@@ -939,7 +967,7 @@ func compileInclude(s *sexp, start *Table) (*pathSpec, error) {
 }
 
 func (m *Model) newRun(env Env) *run {
-	r := &run{m: m, whole: env.System == importReader, system: env.System, now: wallClock(env.Now), rows: map[string]bool{}, columns: map[string]bool{}}
+	r := &run{m: m, whole: env.System == importReader, system: env.System, now: wallClock(env.Now), rows: map[string]bool{}, columns: map[string]bool{}, exists: map[*scan]bool{}, selects: map[*scan]*valueSet{}}
 	if env.Viewer != "" {
 		r.viewer, _ = r.table("PERSON").Get(env.Viewer)
 	}

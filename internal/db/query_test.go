@@ -168,6 +168,62 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestCorrelatedSelectsAreNotShared(t *testing.T) {
+	m := sample(t).Model()
+	for _, viewer := range []string{"", "per00000000002", "per00000000003"} {
+		direct := ids(runAs(t, m, viewer, `(from GROUP @g (where (exists MEMBER (= group @g))))`).Rows(), "id")
+		nested := ids(runAs(t, m, viewer, `(from GROUP @g (where (in id (select MEMBER.group (in person (select MEMBER.person (= group @g)))))))`).Rows(), "id")
+		if len(direct) < 2 || !slices.Equal(direct, nested) {
+			t.Errorf("as %q: groups with members %v, through a nested select %v", viewer, direct, nested)
+		}
+		constant := ids(runAs(t, m, viewer, `(from GROUP (where (exists MEMBER (= group "grp00000000040"))))`).Rows(), "id")
+		all := ids(runAs(t, m, viewer, `(from GROUP)`).Rows(), "id")
+		if !slices.Equal(constant, all) {
+			t.Errorf("as %q: a constant exists kept %v of %v", viewer, constant, all)
+		}
+	}
+}
+
+func TestValueSetMatchesEquality(t *testing.T) {
+	vals := map[Kind][]string{
+		Text:  {"Ash", "ash", "ASH ", "oak", ""},
+		Order: {"a", "A", "b", ""},
+		Int:   {"1", "1.0", "2", "x"},
+		Money: {"7.25", "7.250", "7.2"},
+		Date:  {"2026-09-24", "2026-09-25"},
+		Bool:  {"Yes", "No", "true"},
+		Ref:   {"per00000000001", "per00000000002", ""},
+		Refs:  {"per00000000001, per00000000002", "per00000000002", "per00000000003"},
+	}
+	moments := []string{"2026-09-24 00:00", "2026-09-24 16:00"}
+	values := func(k Kind) []value {
+		out := []value{}
+		for _, s := range vals[k] {
+			out = append(out, cellValue(Column{Kind: k}, s))
+		}
+		if k == Date {
+			for _, s := range moments {
+				out = append(out, cellValue(Column{Kind: Moment}, s))
+			}
+		}
+		return out
+	}
+	pairs := [][2]Kind{{Text, Text}, {Order, Order}, {Order, Text}, {Text, Order}, {Int, Int}, {Int, Money}, {Date, Date}, {Bool, Bool}, {Ref, Ref}, {Ref, Refs}, {Refs, Ref}, {Refs, Refs}}
+	for _, p := range pairs {
+		items := values(p[1])
+		set := newValueSet(p[0] == Order && p[1] == Order)
+		for _, item := range items {
+			set.add(item)
+		}
+		for _, x := range values(p[0]) {
+			want := slices.ContainsFunc(items, func(item value) bool { return equalValues(x, item) })
+			if got := set.has(x); got != want {
+				t.Errorf("%v in %v: %q has %v, equality says %v", p[0], p[1], x.s, got, want)
+			}
+		}
+	}
+}
+
 func TestInclude(t *testing.T) {
 	m := sample(t).Model()
 	r := runAs(t, m, "", `(from MEMBER (where (= group "grp00000000040")) (include person group.added_by))`)
