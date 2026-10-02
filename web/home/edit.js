@@ -1,4 +1,4 @@
-import {state, linkCategories, tagLabelsOf} from './state.js';
+import {state, linkCategories, tagLabelsOf, holdsApps, inGrid, widgetGrid, widgetKey, categoryOf, fraction} from './state.js';
 import {categoryIcons, iconOf, categoryMark} from './dom.js';
 import {el, svg, toast} from '/elements.js';
 import {load} from '/router.js';
@@ -108,9 +108,10 @@ let appAudience = null;
 let widgetAudience = null;
 let editingWidget = null;
 
-export function openWidgetAudience(widget, title) {
+function openWidgetAudience(widget, title) {
   editingWidget = widget;
-  document.querySelector('#widget-modal-title').textContent = `Who sees ${title}`;
+  document.querySelector('#widget-modal-title').textContent = title;
+  document.querySelector('#widget-sidebar').checked = widget.sidebar;
   widgetAudience = audienceCard(document.querySelector('#widget-audience'), widget.rules, 'No rules means everyone.', 'widget:' + widget.key, false);
   setStatus('#widget-status', '');
   widgetModal.hidden = false;
@@ -120,7 +121,7 @@ async function saveWidgetAudience(e) {
   e.preventDefault();
   setStatus('#widget-status', 'Saving…');
   try {
-    await act('home-widgets', editingWidget.id, 'edit', {rules: widgetAudience.rules});
+    await act('home-widgets', editingWidget.id, 'edit', {rules: widgetAudience.rules, sidebar: document.querySelector('#widget-sidebar').checked});
     closeModals();
     await load();
   } catch (err) {
@@ -135,7 +136,7 @@ function showTab(prefix, key) {
   document.querySelector(`#${prefix}-tab-visibility`).hidden = key !== 'visibility';
 }
 
-export function openLinkEditor(link, category) {
+function openLinkEditor(link, category) {
   editingLink = link;
   linkImage = imagePicker(link ? link.image || '' : '', link && link.imageUrl ? link.imageUrl : '', {
     dropzone: true,
@@ -157,17 +158,16 @@ export function openLinkEditor(link, category) {
   document.querySelector('#link-title').focus();
 }
 
-export function openCategoryEditor(category) {
+function openCategoryEditor(category) {
   editingCategory = category;
   document.querySelector('#category-modal-title').textContent = category ? 'Edit Category' : 'Add Category';
   document.querySelector('#category-title').value = category ? category.title : '';
-  const events = Boolean(category && category.style === 'events');
-  document.querySelector('#category-style').value = category && !events ? category.style : 'tiles';
-  document.querySelector('#category-style-field').hidden = events;
-  document.querySelector('#category-events-note').hidden = !events;
-  syncAppsNote();
-  document.querySelector('#category-delete').hidden = !category || events;
-  document.querySelector('#category-max').value = category && category.max ? String(category.max) : '';
+  document.querySelector('#category-style').value = category && inGrid(category) ? 'grid' : 'list';
+  document.querySelector('#category-apps-note').hidden = !category || !holdsApps(category);
+  document.querySelector('#category-delete').hidden = !category || holdsApps(category);
+  document.querySelector('#category-descriptions').checked = category ? category.descriptions : true;
+  const widget = category && widgetOf(category);
+  document.querySelector('#category-sidebar').checked = Boolean(widget && widget.sidebar);
   categoryAudience = audienceCard(document.querySelector('#category-audience'), category ? category.rules : [], 'No rules means everyone; the whole section, links and all.', 'category:' + (category ? category.id : ''));
   setEmoji(category ? category.emoji || '' : '');
   setStatus('#category-status', '');
@@ -200,7 +200,6 @@ function wireEmojiPicker() {
   document.querySelector('#category-emoji-clear').addEventListener('click', () => setEmoji(''));
 }
 
-
 function closeModals() {
   linkModal.hidden = true;
   categoryModal.hidden = true;
@@ -223,7 +222,7 @@ let appEmails = [];
 let everyone = [];
 let appPicker = null;
 
-export async function openAppEditor(app) {
+async function openAppEditor(app) {
   editingApp = app;
   appMode = app.visibility;
   appEmails = [...app.emails];
@@ -343,6 +342,7 @@ const itemsModal = document.querySelector('#items-modal');
 export function refreshPanels() {
   if (!itemsModal.hidden) {
     renderItemList();
+    renderLayout();
   }
 }
 
@@ -429,9 +429,9 @@ function itemRow(mark, title, meta, moves, edit, remove) {
   return row;
 }
 
-function categoryItems(category) {
+function categoryChildren(category) {
   const group = el('div', 'item-children');
-  const apps = category.style === 'apps';
+  const apps = holdsApps(category);
   const items = apps ? state.model.apps : category.links;
   items.forEach((item, at) => {
     const moves = {at, group: category.id};
@@ -490,38 +490,164 @@ function collapsible(section, heading, id, title) {
   heading.insertBefore(toggle, heading.querySelector('.category-row-image') || heading.querySelector('.category-row-body'));
 }
 
-function widgetSection() {
-  const section = el('div', 'item-section');
-  const heading = el('div', 'category-row item-heading');
-  const body = el('div', 'category-row-body');
-  body.append(el('div', 'category-row-title', 'Widgets'));
-  heading.append(body);
-  const group = el('div', 'item-children');
-  const rows = widgetRows();
-  rows.forEach((w, at) => {
-    const moves = {at, group: 'widgets', go: (from, to) => move('home-widgets', state.model.widgets, from, to)};
-    group.append(itemRow(w.mark, w.name, w.meta, moves, () => openWidgetAudience(w.widget, w.name), null));
-  });
-  section.append(heading, group);
-  collapsible(section, heading, 'widgets', 'Widgets');
-  return section;
-}
-
 function renderItemList() {
   const list = document.querySelector('#item-list');
-  list.replaceChildren(widgetSection());
-  const categories = linkCategories();
-  if (!categories.length) {
-    list.append(el('div', 'category-empty', 'No categories yet.'));
-    return;
-  }
-  categories.forEach((category, at) => {
+  list.replaceChildren();
+  const go = (from, to) => move('home-widgets', state.model.widgets, from, to);
+  widgetRows().forEach((w, at) => {
+    const moves = {at, group: 'page', go};
     const section = el('div', 'item-section');
-    const heading = categoryRow(category, at);
-    section.append(heading, categoryItems(category));
-    collapsible(section, heading, category.id, category.title);
+    const category = categoryOf(w.widget.key);
+    if (category) {
+      const heading = categoryRow(category, moves);
+      section.append(heading, categoryChildren(category));
+      collapsible(section, heading, category.id, category.title);
+    } else {
+      const row = itemRow(w.mark, w.name, w.meta, moves, () => openWidgetAudience(w.widget, w.name), null);
+      row.classList.add('item-heading');
+      row.insertBefore(el('span', 'item-toggle-space'), row.querySelector('.category-row-image'));
+      section.append(row);
+    }
     list.append(section);
   });
+}
+
+function shapeOf(layout) {
+  const shape = el('span', 'layout-shape');
+  for (const share of layout.split(' ')) {
+    const part = el('span', 'layout-part');
+    part.style.flexGrow = String(fraction(share));
+    shape.append(part);
+  }
+  return shape;
+}
+
+async function layoutSave(write) {
+  const list = document.querySelector('#layout-list');
+  list.inert = true;
+  setStatus('#items-status', 'Saving…');
+  try {
+    await write();
+    setStatus('#items-status', '');
+    await load();
+  } catch (err) {
+    setStatus('#items-status', err.message, true);
+  } finally {
+    list.inert = false;
+  }
+}
+
+function saveLayout(rows) {
+  return layoutSave(() => act('home-settings', state.model.settingsId, 'layout', {rows}));
+}
+
+function placeWidget(position, key) {
+  const widgets = state.model.widgets;
+  const from = widgets.findIndex(w => w.key === key);
+  const last = widgets.length - 1;
+  const to = Math.min(position, last);
+  if (from === to) {
+    return;
+  }
+  return layoutSave(async () => {
+    const moved = movedKey(widgets.map(w => w.order), from, to);
+    await act('home-widgets', widgets[from].id, 'edit', {order: moved});
+    if (position > last) {
+      return;
+    }
+    const there = widgets[position];
+    const after = widgets.filter((_, i) => i !== from);
+    after.splice(to, 0, {...widgets[from], order: moved});
+    await act('home-widgets', there.id, 'edit', {order: movedKey(after.map(w => w.order), after.indexOf(there), from)});
+  });
+}
+
+function slotPicker(position, key, names) {
+  const widgets = state.model.widgets;
+  const select = el('select', 'layout-slot' + (key ? '' : ' is-empty'));
+  const widget = widgets.find(w => w.key === key);
+  const limited = Boolean(widget && widget.rules.length);
+  select.setAttribute('aria-label', `Widget in place ${position + 1}` + (limited ? `, ${shownTo(widget.rules)}` : ''));
+  if (!key) {
+    const none = el('option', '', 'Empty');
+    none.value = '';
+    none.selected = true;
+    select.append(none);
+  }
+  if (position <= widgets.length) {
+    for (const w of widgets) {
+      const option = el('option', '', names.get(w.key));
+      option.value = w.key;
+      option.selected = w.key === key;
+      select.append(option);
+    }
+  }
+  select.disabled = position > widgets.length;
+  select.addEventListener('change', () => placeWidget(position, select.value));
+  const place = el('span', 'layout-place' + (limited ? ' is-limited' : ''));
+  const chevron = svg('chevron-right');
+  chevron.classList.add('layout-chevron');
+  place.append(select, chevron);
+  if (limited) {
+    select.title = shownTo(widget.rules);
+    const eye = svg('eye');
+    eye.classList.add('layout-eye');
+    place.append(eye);
+  }
+  return place;
+}
+
+function renderLayout() {
+  const list = document.querySelector('#layout-list');
+  list.replaceChildren();
+  const rows = widgetGrid();
+  const names = new Map(widgetRows().map(w => [w.widget.key, w.name]));
+  const set = state.model.layout.length;
+  let position = 0;
+  rows.forEach((row, at) => {
+    const line = el('div', 'layout-row');
+    line.append(el('span', 'layout-row-number', String(at + 1)));
+    const preview = el('div', 'layout-preview');
+    const empty = row.slots.every(slot => !slot.key);
+    for (const slot of row.slots) {
+      const box = slotPicker(position++, slot.key, names);
+      box.style.flexGrow = String(fraction(slot.share));
+      preview.append(box);
+    }
+    const choices = el('div', 'layout-choices');
+    for (const layout of state.model.layouts) {
+      const choice = el('button', 'layout-choice' + (layout === row.layout ? ' is-on' : ''));
+      choice.type = 'button';
+      choice.title = layout;
+      choice.setAttribute('aria-label', `Row ${at + 1}: ${layout}`);
+      choice.setAttribute('aria-pressed', String(layout === row.layout));
+      choice.append(shapeOf(layout));
+      choice.addEventListener('click', () => {
+        if (layout === row.layout && row.set) {
+          return;
+        }
+        const next = rows.slice(0, Math.max(at + 1, set)).map(r => r.layout);
+        next[at] = layout;
+        saveLayout(next);
+      });
+      choices.append(choice);
+    }
+    line.append(preview, choices);
+    if (empty && row.set) {
+      const x = rowButton(`Remove row ${at + 1}`, '×', () => saveLayout(state.model.layout.filter((_, i) => i !== at)));
+      x.classList.add('is-danger');
+      line.append(x);
+    }
+    list.append(line);
+  });
+}
+
+function showPageTab(key) {
+  const strip = tabStrip([{key: 'widgets', label: 'Widgets'}, {key: 'layout', label: 'Layout'}], key, 2, showPageTab);
+  document.querySelector('#page-tabs').replaceChildren(strip);
+  document.querySelector('#page-tab-widgets').hidden = key !== 'widgets';
+  document.querySelector('#page-tab-layout').hidden = key !== 'layout';
+  document.querySelector('#add-section').hidden = key !== 'widgets';
 }
 
 async function removeLink(link) {
@@ -541,19 +667,9 @@ async function removeLink(link) {
 export function openEditPanel() {
   setStatus('#items-status', '');
   renderItemList();
+  renderLayout();
+  showPageTab('widgets');
   itemsModal.hidden = false;
-}
-
-async function moveCategory(from, to) {
-  const categories = linkCategories();
-  setStatus('#items-status', 'Saving…');
-  try {
-    await act('link-categories', categories[from].id, 'edit', {order: movedKey(categories.map(c => c.order), from, to)});
-    setStatus('#items-status', '');
-    await load();
-  } catch (err) {
-    setStatus('#items-status', err.message, true);
-  }
 }
 
 async function removeCategory(category) {
@@ -570,39 +686,30 @@ async function removeCategory(category) {
   }
 }
 
-function categoryRow(category, at) {
+function categoryRow(category, moves) {
   const row = el('div', 'category-row');
   const mark = el('div', 'category-row-image');
   mark.append(categoryMark(iconOf(category)));
   row.append(mark);
   const body = el('div', 'category-row-body');
   body.append(el('div', 'category-row-title', category.title));
-  const limit = category.max ? ` \u00b7 shows ${category.max}` : '';
-  if (category.style === 'apps') {
+  const style = inGrid(category) ? 'Icon grid' : 'Compact list';
+  if (holdsApps(category)) {
     const n = state.model.apps.length;
-    body.append(el('div', 'category-row-meta', `The community apps \u00b7 ${n} you see${limit} \u00b7 ${shownTo(category.rules)}`));
+    body.append(el('div', 'category-row-meta', `The community apps \u00b7 ${style} \u00b7 ${n} you see \u00b7 ${shownTo(category.rules)}`));
   } else {
-    const style = category.style === 'cards' ? 'Feature cards' : 'Compact tiles';
-    body.append(el('div', 'category-row-meta', `${style} \u00b7 ${category.links.length} link${category.links.length === 1 ? '' : 's'}${limit} \u00b7 ${shownTo(category.rules)}`));
+    body.append(el('div', 'category-row-meta', `${style} \u00b7 ${category.links.length} link${category.links.length === 1 ? '' : 's'} \u00b7 ${shownTo(category.rules)}`));
   }
   row.append(body);
-
   const actions = el('div', 'category-row-actions');
-  const edit = el('button', 'row-button');
-  edit.type = 'button';
-  edit.setAttribute('aria-label', `Edit ${category.title}`);
-  edit.append(svg('edit'));
-  edit.addEventListener('click', () => openCategoryEditor(category));
-  const remove = el('button', 'row-button is-danger');
-  remove.type = 'button';
-  remove.setAttribute('aria-label', `Delete ${category.title}`);
-  remove.textContent = '\u00d7';
-  remove.disabled = category.style === 'events';
-  remove.title = category.style === 'events' ? 'The events section can be renamed or moved, not deleted' : '';
-  remove.addEventListener('click', () => removeCategory(category));
-  actions.append(edit, remove);
+  actions.append(rowButton(`Edit ${category.title}`, svg('edit'), () => openCategoryEditor(category)));
+  if (!holdsApps(category)) {
+    const remove = rowButton(`Delete ${category.title}`, '\u00d7', () => removeCategory(category));
+    remove.classList.add('is-danger');
+    actions.append(remove);
+  }
   row.append(actions);
-  sortable(row, 'categories', at, moveCategory);
+  sortable(row, moves.group, moves.at, moves.go);
   return row;
 }
 
@@ -652,14 +759,16 @@ async function saveCategory(e) {
   const category = editingCategory;
   const fields = {
     title: document.querySelector('#category-title').value,
-    style: category && category.style === 'events' ? 'events' : document.querySelector('#category-style').value,
+    style: styleOf(category, document.querySelector('#category-style').value === 'grid'),
     emoji: document.querySelector('#category-emoji').value.trim(),
-    max: document.querySelector('#category-max').value.trim(),
+    descriptions: document.querySelector('#category-descriptions').checked,
+    sidebar: document.querySelector('#category-sidebar').checked,
     rules: categoryAudience.rules,
   };
   try {
     if (category) {
-      await edit('link-categories', category.id, {title: category.title, style: category.style, emoji: category.emoji || '', max: category.max ? String(category.max) : '', rules: category.rules}, fields);
+      const widget = widgetOf(category);
+      await edit('link-categories', category.id, {title: category.title, style: category.style, emoji: category.emoji || '', descriptions: category.descriptions, sidebar: Boolean(widget && widget.sidebar), rules: category.rules}, fields);
     } else {
       await create('link-categories', fields);
     }
@@ -684,13 +793,18 @@ async function deleteCategory() {
   }
 }
 
-function syncAppsNote() {
-  const style = document.querySelector('#category-style');
-  document.querySelector('#category-apps-note').hidden = style.closest('.field').hidden || style.value !== 'apps';
+function widgetOf(category) {
+  return state.model.widgets.find(w => w.key === widgetKey(category));
+}
+
+function styleOf(category, grid) {
+  if (category && holdsApps(category)) {
+    return grid ? 'apps-grid' : 'apps';
+  }
+  return grid ? 'cards' : 'tiles';
 }
 
 export function initEditing() {
-  document.querySelector('#category-style').addEventListener('change', syncAppsNote);
   document.querySelector('#add-section').addEventListener('click', () => openCategoryEditor(null));
   linkForm.addEventListener('submit', saveLink);
   categoryForm.addEventListener('submit', saveCategory);

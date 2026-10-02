@@ -52,10 +52,10 @@ func (a homeApp) discover() {
 	actor := access.System("app discovery")
 	ops, found := a.store.Model().Home.discover()
 	for _, app := range found {
-		slog.Info("home:found a new app, listed for nobody yet", "app", app.Key)
+		slog.Info("home: found a new app, listed for nobody yet", "app", app.Key)
 	}
 	if err := a.store.Commit(context.Background(), actor, homeAppName, ops...); err != nil {
-		slog.Error("home:discover apps and widgets", "error", err)
+		slog.Error("home: discover apps and widgets", "error", err)
 	}
 }
 

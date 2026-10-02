@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -261,7 +262,7 @@ func TestAnEditSendingOrderAloneWritesOneCell(t *testing.T) {
 	if got := c.Model().Home.Categories[0].ID; got != chatsID {
 		t.Errorf("the first category after the move = %s", got)
 	}
-	if got := c.Model().Home.WidgetOrder; !slices.Equal(got, []string{"school", "when", "todo", "team", "celebrate", "birthday"}) {
+	if got := c.Model().Home.WidgetOrder; !slices.Equal(got, []string{"school", "when", "todo", "team", "celebrate", "birthday", "category:hcg0000000002", "category:hcg0000000004", "category:hcg0000000003", "category:hcg0000000001"}) {
 		t.Errorf("widgets after the move = %v", got)
 	}
 	for _, bad := range []string{"", "a b"} {
@@ -273,6 +274,86 @@ func TestAnEditSendingOrderAloneWritesOneCell(t *testing.T) {
 	}
 	if rec := testkit.Call(t, mux, "robin.whitfield@heliosschool.org", "POST", "/api/links/"+parentPortalID+"/edit", map[string]any{"order": "1"}); rec.Code != http.StatusForbidden {
 		t.Errorf("a member's move: %d", rec.Code)
+	}
+}
+
+func TestTheHomeLayoutIsSavedRowByRow(t *testing.T) {
+	c, dir, mux := homeServer(t)
+	if got := c.Model().Home.Layout; !slices.Equal(got, []string{"2/3 1/3", "1/3 1/3 1/3", "1/3 1/3 1/3", "1/2 1/2"}) {
+		t.Fatalf("the sample layout = %v", got)
+	}
+	path := "/api/home-settings/" + derived(c.Model(), kindHomeSettings, "") + "/layout"
+	before := len(homeChangeLog(t, dir))
+	write(t, mux, homeAdmin, "POST", path, map[string]any{"rows": []string{"2/3 1/3", "1"}})
+	if got := c.Model().Home.Layout; !slices.Equal(got, []string{"2/3 1/3", "1"}) {
+		t.Errorf("the layout after the save = %v", got)
+	}
+	want := []string{homeAdmin + "|set|Layout|Row=2|Columns"}
+	for _, n := range []string{"3", "4"} {
+		want = append(want, homeAdmin+"|delete|Layout|Row="+n+"|Columns", homeAdmin+"|delete|Layout|Row="+n+"|Row")
+	}
+	if log := homeLog(t, dir, before); !slices.Equal(log, want) {
+		t.Errorf("the save wrote %v, want %v", log, want)
+	}
+	before = len(homeChangeLog(t, dir))
+	write(t, mux, homeAdmin, "POST", path, map[string]any{"rows": []string{"2/3 1/3", "1"}})
+	if log := homeLog(t, dir, before); len(log) != 0 {
+		t.Errorf("a save changing nothing wrote %v", log)
+	}
+	write(t, mux, homeAdmin, "POST", path, map[string]any{"rows": []string{"2/3 1/3", "1", "1/2 1/2"}})
+	if got := c.Model().Home.Layout; !slices.Equal(got, []string{"2/3 1/3", "1", "1/2 1/2"}) {
+		t.Errorf("the layout after adding a row = %v", got)
+	}
+	write(t, mux, homeAdmin, "POST", path, map[string]any{"rows": []string{"2/3 1/3", "1/3 1/3 1/3", "1/2 1/2"}})
+	if got := c.Model().Home.Layout; !slices.Equal(got, []string{"2/3 1/3", "1/3 1/3 1/3", "1/2 1/2"}) {
+		t.Errorf("the layout after changing a middle row = %v", got)
+	}
+	if rec := testkit.Call(t, mux, homeAdmin, "POST", path, map[string]any{"rows": []string{"1/4 3/4"}}); rec.Code != http.StatusBadRequest {
+		t.Errorf("an unknown layout: %d", rec.Code)
+	}
+	many := []string{}
+	for range len(c.Model().Home.WidgetOrder) + 1 {
+		many = append(many, "1")
+	}
+	if rec := testkit.Call(t, mux, homeAdmin, "POST", path, map[string]any{"rows": many}); rec.Code != http.StatusBadRequest {
+		t.Errorf("more rows than widgets: %d", rec.Code)
+	}
+	if rec := testkit.Call(t, mux, "robin.whitfield@heliosschool.org", "POST", path, map[string]any{"rows": []string{"1"}}); rec.Code != http.StatusForbidden {
+		t.Errorf("a member's layout: %d", rec.Code)
+	}
+}
+
+func TestARowlessHomeWidgetIsWrittenWithAnOrder(t *testing.T) {
+	c, _, _ := homeServer(t)
+	h := c.Model().Home
+	widget := thingCategory + "hcg0000000099"
+	want := store.Upsert(homeWidgetsTab, store.Row{"Widget": widget}, store.Row{"Sidebar": "Yes", store.OrderColumn: keyAfter(h.widgetOrders())})
+	if got := h.widgetRowOp(widget, store.Row{"Sidebar": "Yes"}); !reflect.DeepEqual(got, want) {
+		t.Errorf("a rowless widget's write = %+v, want %+v", got, want)
+	}
+	want = store.Upsert(homeWidgetsTab, store.Row{"Widget": "todo"}, store.Row{"Sidebar": "No"})
+	if got := h.widgetRowOp("todo", store.Row{"Sidebar": "No"}); !reflect.DeepEqual(got, want) {
+		t.Errorf("a widget with a row wrote %+v, want %+v", got, want)
+	}
+}
+
+func TestABadHomeLayoutRefusesTheLoad(t *testing.T) {
+	for _, rows := range [][]store.Row{
+		{{"Row": "1", "Columns": "1"}, {"Row": "3", "Columns": "1"}},
+		{{"Row": "1", "Columns": "1/4 3/4"}},
+		{{"Row": "1", "Columns": "1"}, {"Row": "1", "Columns": "1/2 1/2"}},
+		{{"Row": "0", "Columns": "1"}},
+		{{"Row": "abc", "Columns": "1"}},
+		{{"Row": "01", "Columns": "1"}},
+		{{"Row": "+1", "Columns": "1"}},
+		{{"Row": "", "Columns": "1"}},
+	} {
+		if _, err := buildLayout(rows); err == nil {
+			t.Errorf("%v loaded", rows)
+		}
+	}
+	if got, err := buildLayout([]store.Row{{"Row": "2", "Columns": " 1/2  1/2 "}, {"Row": "1", "Columns": "1"}}); err != nil || !slices.Equal(got, []string{"1", "1/2 1/2"}) {
+		t.Errorf("buildLayout = %v, %v", got, err)
 	}
 }
 
@@ -423,8 +504,77 @@ func shownTo(w map[string]any) bool {
 	return me["shown"] == true
 }
 
+func TestACategoryDrawnAsAWidget(t *testing.T) {
+	c, s, mux := homeServer(t)
+	widgetRows := func() []string {
+		out := []string{}
+		for _, row := range s.rows(t, homeWidgetsTab) {
+			out = append(out, row["Widget"])
+		}
+		return out
+	}
+	order := c.Model().Home.WidgetOrder
+	for _, cat := range c.Model().Home.Categories {
+		if drawn := slices.Contains(order, thingCategory+cat.ID); drawn == (cat.Style == StyleEvents) {
+			t.Errorf("category %q (%s) drawn as a widget: %v", cat.Title, cat.Style, drawn)
+		}
+	}
+	school := "category:hcg0000000002"
+	keyed := c.Model().Home.widgetKeys[school]
+	write(t, mux, homeAdmin, "POST", "/api/link-categories/hcg0000000002/edit", map[string]any{"style": StyleTiles})
+	if got := c.Model().Home.widgetKeys[school]; got != keyed || !slices.Contains(widgetRows(), school) {
+		t.Errorf("a widget moved from grid to list lost its place: %q, was %q", got, keyed)
+	}
+	if c.Model().Home.category("hcg0000000002").Descriptions {
+		t.Fatalf("the sample's School hides its descriptions, so the test proves little")
+	}
+	write(t, mux, homeAdmin, "POST", "/api/link-categories/hcg0000000002/edit", map[string]any{"descriptions": true})
+	if !c.Model().Home.category("hcg0000000002").Descriptions || !c.Model().Home.category("hcg0000000004").Descriptions {
+		t.Errorf("descriptions did not take, or a blank cell does not mean shown")
+	}
+	chats := thingCategory + "hcg0000000004"
+	if c.Model().Home.sidebar[chats] || !c.Model().Home.sidebar["todo"] {
+		t.Fatalf("the sample's sidebar = %v", c.Model().Home.sidebar)
+	}
+	before := len(homeChangeLog(t, s))
+	write(t, mux, homeAdmin, "POST", "/api/home-widgets/"+chats+"/edit", map[string]any{"sidebar": true})
+	if !c.Model().Home.sidebar[chats] || c.Model().Home.sidebar[school] {
+		t.Errorf("show in sidebar did not take, or reached another widget")
+	}
+	if log, want := homeLog(t, s, before), []string{homeAdmin + "|set|" + homeWidgetsTab + "|Widget=" + chats + "|Sidebar"}; !slices.Equal(log, want) {
+		t.Errorf("show in sidebar wrote %v, want %v", log, want)
+	}
+	before = len(homeChangeLog(t, s))
+	write(t, mux, homeAdmin, "POST", "/api/link-categories/hcg0000000002/edit", map[string]any{"title": "School", "sidebar": true})
+	if !c.Model().Home.sidebar[school] {
+		t.Errorf("the category editor's show in sidebar did not take")
+	}
+	if log, want := homeLog(t, s, before), []string{homeAdmin + "|set|" + homeWidgetsTab + "|Widget=" + school + "|Sidebar"}; !slices.Equal(log, want) {
+		t.Errorf("the category editor's show in sidebar wrote %v, want %v", log, want)
+	}
+	made := write(t, mux, homeAdmin, "POST", "/api/link-categories", map[string]any{"title": "Quick Links", "style": StyleTiles, "descriptions": true, "sidebar": true})
+	if order := c.Model().Home.WidgetOrder; order[len(order)-1] != thingCategory+made || !slices.Contains(widgetRows(), thingCategory+made) {
+		t.Fatalf("a new category is not the last widget: %v", order)
+	}
+	if !c.Model().Home.sidebar[thingCategory+made] {
+		t.Errorf("a new category asked for the sidebar is not in it")
+	}
+	for _, row := range s.rows(t, homeCategoriesTab) {
+		if row["Category ID"] == made && row["Descriptions"] != "" {
+			t.Errorf("a new category showing descriptions wrote %q, want a blank cell", row["Descriptions"])
+		}
+	}
+	if rec := testkit.Call(t, mux, homeAdmin, "DELETE", "/api/link-categories/"+appsID, nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("deleting the community apps section: %d", rec.Code)
+	}
+	write(t, mux, homeAdmin, "DELETE", "/api/link-categories/"+made, nil)
+	if slices.Contains(widgetRows(), thingCategory+made) {
+		t.Errorf("deleting the category left its widget row: %v", widgetRows())
+	}
+}
+
 func TestWidgetAudience(t *testing.T) {
-	_, dir, mux := homeServer(t)
+	c, dir, mux := homeServer(t)
 	parentsOnly := []Rule{{Kind: RuleInclude, Roles: []string{"Parent"}}}
 	before := len(homeChangeLog(t, dir))
 	write(t, mux, homeAdmin, "POST", "/api/home-widgets/team/edit", map[string]any{"rules": parentsOnly})
@@ -438,7 +588,13 @@ func TestWidgetAudience(t *testing.T) {
 		t.Errorf("a member's edit: %d", rec.Code)
 	}
 	student := widgetsFor(t, mux, "sam.whitfield@heliosschool.org")
-	if len(student) != len(HomeWidgets) || shownTo(student["team"]) || !shownTo(student["when"]) || student["team"]["rules"] != nil {
+	sections := 0
+	for _, cat := range c.Model().Home.Categories {
+		if cat.Style != StyleEvents {
+			sections++
+		}
+	}
+	if len(student) != len(HomeWidgets)+sections || shownTo(student["team"]) || !shownTo(student["when"]) || student["team"]["rules"] != nil {
 		t.Errorf("a student's widgets: %+v", student)
 	}
 	if parent := widgetsFor(t, mux, "robin.whitfield@heliosschool.org"); !shownTo(parent["team"]) {
@@ -455,8 +611,13 @@ func TestWidgetAudience(t *testing.T) {
 			t.Errorf("a widget without its key: %v", w)
 		}
 	}
-	if !slices.Equal(keys, []string{"when", "todo", "team", "celebrate", "school", "birthday"}) {
+	if !slices.Equal(keys, []string{"when", "todo", "team", "celebrate", "school", "birthday", "category:hcg0000000002", "category:hcg0000000004", "category:hcg0000000003", "category:hcg0000000001"}) {
 		t.Errorf("widgets in order = %v", keys)
+	}
+	before = len(homeChangeLog(t, dir))
+	write(t, mux, homeAdmin, "POST", "/api/home-widgets/category:hcg0000000004/edit", map[string]any{"rules": []Rule{{Kind: RuleInclude, Roles: []string{"Staff"}}}})
+	if log := homeLog(t, dir, before); len(log) == 0 || slices.ContainsFunc(log, func(line string) bool { return !strings.Contains(line, "|Thing=category:hcg0000000004") }) {
+		t.Errorf("a category widget's rules edit wrote %v, want the category's own Audience rows", log)
 	}
 	if got := read(t, mux, homeAdmin, "/api/home-widgets/"+widgetKey("school")).one(t, "home-widgets", widgetKey("school")); got["key"] != "school" {
 		t.Errorf("a widget by its ID = %v", got)

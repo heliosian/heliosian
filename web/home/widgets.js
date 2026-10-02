@@ -1,9 +1,10 @@
-import {state, isAdmin, feed, readUpcoming, readToDos} from './state.js';
+import {state, isAdmin, feed, readUpcoming, readToDos, holdsApps, inGrid, widgetGrid, categoryOf, fraction, clock} from './state.js';
 import {appOrigin} from '/appswitch.js';
 import {searchInput} from '/shell.js';
 import {el, svg, toast} from '/elements.js';
 import {act} from '/data.js';
-import {calendarMark, calendarMenu, dropdown, shownTo} from './cards.js';
+import {calendarMark, calendarMenu, categoryItems, dropdown, opensOutside, shownTo} from './cards.js';
+import {iconOf, categoryMark} from './dom.js';
 import {dayBar, dayChip, dayRow, eventRow, standing} from '/dayrows.js';
 import {rsvpPanel} from '/rsvps.js';
 
@@ -14,11 +15,6 @@ function parseDate(date) {
 
 function tint(event) {
   return event.linkApp === 'celebrate' ? 'is-celebrate' : event.linkApp === 'team' ? 'is-team' : 'is-school';
-}
-
-function clock(time) {
-  const [h, m] = time.split(':').map(Number);
-  return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
 }
 
 function startTime(event, date) {
@@ -51,6 +47,7 @@ async function pick(calendar) {
   } catch {
     return;
   }
+  renderNav();
   renderWidgets(searchInput().value);
 }
 
@@ -145,13 +142,17 @@ function grouped(name, groups, bar, row) {
   return out;
 }
 
-function widgetTitle(app, words, src) {
-  const title = el('h2', 'widget-title');
+function appIcon(app, src) {
   const icon = el('img', 'widget-icon');
   const mark = (state.model.apps.find(a => a.key === app) || {}).mark;
   icon.src = src || `/brand/apps/${app}.png` + (mark ? `?v=${mark}` : '');
   icon.alt = '';
-  title.append(icon, el('span', '', words));
+  return icon;
+}
+
+function widgetTitle(app, words, src) {
+  const title = el('h2', 'widget-title');
+  title.append(appIcon(app, src), el('span', '', words));
   return title;
 }
 
@@ -271,20 +272,29 @@ function partyPill(p) {
   return null;
 }
 
-function pictureRow({href, image, title, line, pill, tone}) {
-  const row = el('li', 'wg-party' + (tone ? ' ' + tone : ''));
-  row.dataset.row = '';
-  const pic = el('span', 'wg-party-pic');
+function picture(className, image, letter, tone = '') {
+  const pic = el('span', className);
   if (image) {
     const img = el('img');
     img.src = image;
     img.alt = '';
     img.loading = 'lazy';
     pic.append(img);
-  } else {
-    pic.classList.add('is-letter');
-    pic.append(el('span', '', title.trim().charAt(0).toUpperCase()));
+    return pic;
   }
+  pic.classList.add('is-letter', ...tone.split(' ').filter(Boolean));
+  pic.append(el('span', '', letter));
+  return pic;
+}
+
+function initial(title) {
+  return title.trim().charAt(0).toUpperCase();
+}
+
+function pictureRow({href, image, title, line, pill, tone, mark}) {
+  const row = el('li', 'wg-party' + (tone ? ' ' + tone : ''));
+  row.dataset.row = '';
+  const pic = picture('wg-party-pic' + (mark ? ' is-mark' : ''), image, initial(title));
   const text = el('div', 'wg-text');
   const name = el('a', 'wg-title', title);
   name.href = href;
@@ -423,6 +433,11 @@ const schoolTones = ['is-teal', 'is-lime', 'is-pink', 'is-blue'];
 
 let schoolOpen;
 
+function emailAsk(email) {
+  const day = parseDate(email.date).toLocaleDateString('en-US', {weekday: 'long', month: 'long', day: 'numeric'});
+  return appOrigin('ask') + '/?q=' + encodeURIComponent(`What should I know from the school email "${email.title}" sent ${day}?`);
+}
+
 function emailRow(email, n, open) {
   const date = parseDate(email.date);
   const title = el('button', 'wg-title', email.title);
@@ -440,9 +455,8 @@ function emailRow(email, n, open) {
   } else {
     body.append(el('div', 'wg-sub', 'Key points on their way.'));
   }
-  const day = date.toLocaleDateString('en-US', {weekday: 'long', month: 'long', day: 'numeric'});
   const ask = el('a', 'wg-ask');
-  ask.href = appOrigin('ask') + '/?q=' + encodeURIComponent(`What should I know from the school email "${email.title}" sent ${day}?`);
+  ask.href = emailAsk(email);
   ask.append(el('span', '', 'Ask about this'), svg('chevron-right'));
   body.append(ask);
   const row = dayRow('wg-email ' + schoolTones[n % schoolTones.length], {title, chips: [to], time: email.time ? clock(email.time) : '', after: body}, e => {
@@ -521,9 +535,7 @@ function schoolWidget() {
 
 let todoChip = 'open';
 
-const todoTones = ['is-teal', 'is-gold', 'is-pink', 'is-blue'];
-
-const todoChips = [['open', 'To do'], ['saved', 'Saved'], ['done', 'Done']];
+const todoChips = [['open', 'Recent'], ['saved', 'Saved'], ['done', 'Done']];
 
 function todosUnder(chip) {
   const todos = state.model.todos;
@@ -542,8 +554,8 @@ async function setTodo(todo, action) {
     await readToDos();
   } catch (err) {
     toast(err.message);
-    return;
   }
+  renderNav();
   renderWidgets(searchInput().value);
 }
 
@@ -552,58 +564,57 @@ function todoAsk(todo) {
   return appOrigin('ask') + '/?q=' + encodeURIComponent(`Tell me more about "${todo.title}" from the school email "${todo.source.title}" sent ${day}. What do I need to do, and by when?`);
 }
 
-function todoButton(words, icon, className, onClick) {
-  const b = el('button', 'wg-todo-act ' + className);
+function todoButton(label, tip, pressed, className, content, onClick) {
+  const b = el('button', className);
   b.type = 'button';
-  b.append(svg(icon), el('span', '', words));
-  b.addEventListener('click', e => {
-    e.stopPropagation();
+  b.setAttribute('aria-label', label);
+  b.setAttribute('aria-pressed', String(pressed));
+  b.title = tip;
+  b.append(content);
+  b.addEventListener('click', () => {
     b.disabled = true;
     onClick();
   });
   return b;
 }
 
-function todoRow(todo, n) {
+function todoTip(todo) {
+  const sent = parseDate(todo.source.date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+  return `${todo.summary}\n\n${todo.details}\n\nFrom “${todo.source.title}” to ${todo.source.to}, ${sent}`;
+}
+
+function todoRow(todo) {
   const mark = todo.me.state || '';
-  const title = el('a', 'wg-title', todo.title);
+  const row = el('li', 'wg-check-row' + (mark ? ' is-' + mark : ''));
+  row.dataset.row = '';
+  const done = mark === 'done';
+  const box = todoButton('Done: ' + todo.title, done ? 'Mark not done' : 'Mark done', done, 'wg-check', svg('check'), () => setTodo(todo, done ? 'clear' : 'complete'));
+  const title = el('a', 'wg-check-title', todo.title);
   title.href = todoAsk(todo);
-  title.title = todo.details;
-  const summary = el('div', 'wg-sub wg-todo-summary', todo.summary);
-  summary.title = todo.details;
-  const actions = el('div', 'wg-todo-acts');
-  if (mark === 'done') {
-    actions.append(todoButton('Done', 'check', 'is-done', () => setTodo(todo, 'clear')));
-  } else {
-    actions.append(todoButton('Done', 'check', 'is-mark-done', () => setTodo(todo, 'complete')));
-    actions.append(mark === 'saved'
-      ? todoButton('Saved', 'star', 'is-saved', () => setTodo(todo, 'clear'))
-      : todoButton('Save', 'star', 'is-save', () => setTodo(todo, 'save')));
-  }
+  title.title = todoTip(todo);
+  row.append(box, title);
   if (todo.link) {
-    const open = el('a', 'wg-todo-act is-link');
+    const open = opensOutside(el('a', 'wg-check-icon'));
     open.href = todo.link;
-    open.target = '_blank';
-    open.rel = 'noopener';
-    open.append(svg('open'), el('span', '', 'Open link'));
-    actions.append(open);
+    open.setAttribute('aria-label', 'Open the link for ' + todo.title);
+    open.title = 'Open the link';
+    open.append(svg('open'));
+    row.append(open);
   }
-  const ask = el('a', 'wg-ask');
-  ask.href = todoAsk(todo);
-  ask.append(el('span', '', 'Ask about this'), svg('chevron-right'));
-  actions.append(ask);
-  const body = el('div', 'wg-todo-body');
-  body.append(summary, actions);
-  const to = el('span', 'wg-email-to', todo.source.to);
-  to.title = `From "${todo.source.title}", ${parseDate(todo.source.date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;
-  const chips = [to];
-  if (todo.due && todo.due < state.model.today) {
-    chips.push(el('span', 'wg-todo-late', 'Past due'));
+  if (!done) {
+    const saved = mark === 'saved';
+    row.append(todoButton('Save: ' + todo.title, saved ? 'Saved - click to unsave' : 'Save so it stays on the list', saved, 'wg-check-icon wg-check-save', svg('star'), () => setTodo(todo, saved ? 'clear' : 'save')));
   }
-  const row = dayRow('wg-email wg-todo ' + todoTones[n % todoTones.length] + (mark ? ' is-' + mark : ''), {title, chips, time: '', after: body}, () => {
-    location.href = todoAsk(todo);
-  });
+  const due = el('span', 'wg-check-due' + (todo.due && todo.due < state.model.today && !done ? ' is-late' : ''));
+  if (todo.due) {
+    due.textContent = parseDate(todo.due).toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+  }
+  row.append(due);
   return row;
+}
+
+function byDue(a, b) {
+  return (a.due || '9999').localeCompare(b.due || '9999');
 }
 
 function todoWidget() {
@@ -629,17 +640,94 @@ function todoWidget() {
     card.append(el('p', 'wg-empty', empty));
     return card;
   }
-  const dated = dayGroups(items.filter(t => t.due), t => t.due, () => '');
-  const undated = items.filter(t => !t.due);
-  const groups = undated.length ? [...dated, {day: '', rows: undated}] : dated;
-  const count = rows => el('span', 'wg-day-count', `${rows.length} ${rows.length === 1 ? 'to-do' : 'to-dos'}`);
-  card.append(...grouped(name, groups, g => {
-    const bar = dayBar(g.day, [count(g.rows)]);
-    if (!g.day) {
-      bar.querySelector('.wg-day-label').replaceChildren(el('span', '', 'No due date'));
+  const list = el('ul', 'wg-checklist');
+  items.slice().sort(byDue).slice(0, shownCount(name)).forEach(todo => list.append(todoRow(todo)));
+  card.append(list);
+  const foot = widgetFoot(name, items.length, null);
+  if (foot) {
+    card.append(foot);
+  }
+  return card;
+}
+
+function categoryTitle(category) {
+  const title = el('h2', 'widget-title');
+  const mark = el('span', 'widget-icon widget-mark');
+  mark.append(categoryMark(iconOf(category)));
+  title.append(mark, el('span', '', category.title));
+  return title;
+}
+
+function linkIcon(item, className, tone) {
+  return picture(className, item.image, initial(item.title), tone);
+}
+
+function linkGrid(items) {
+  const grid = el('ul', 'wg-grid');
+  items.forEach((item, i) => {
+    const a = el('a', 'wg-grid-item');
+    if (item.external) {
+      opensOutside(a);
     }
-    return bar;
-  }, (todo, g, n) => todoRow(todo, n)));
+    a.href = item.href;
+    a.title = item.tip || item.title;
+    a.append(linkIcon(item, 'wg-grid-icon', teamTones[i % teamTones.length]), el('span', 'wg-grid-title', item.title));
+    if (item.line) {
+      a.append(el('span', 'wg-grid-line', item.line));
+    }
+    const li = el('li');
+    li.append(a);
+    grid.append(li);
+  });
+  return grid;
+}
+
+function compactList(items) {
+  const list = el('ul', 'wg-links');
+  items.forEach((item, i) => {
+    const li = el('li', 'wg-link');
+    const a = opensOutside(el('a', 'wg-link-main'));
+    a.href = item.href;
+    const text = el('span', 'wg-link-text');
+    text.append(el('span', 'wg-link-title', item.title));
+    if (item.line) {
+      text.append(el('span', 'wg-link-sub', item.line));
+    }
+    a.title = item.tip || item.title;
+    a.append(linkIcon(item, 'wg-link-icon', teamTones[i % teamTones.length]), text);
+    li.append(a);
+    list.append(li);
+  });
+  return list;
+}
+
+function categoryWidget(key) {
+  const category = categoryOf(key);
+  if (!category) {
+    return null;
+  }
+  const items = categoryItems(category);
+  if (!items.length && !isAdmin()) {
+    return null;
+  }
+  const card = el('article', 'widget widget-category');
+  const head = el('header', 'widget-head');
+  head.append(categoryTitle(category));
+  card.append(head);
+  if (!items.length) {
+    card.append(el('p', 'wg-empty', holdsApps(category) ? 'No apps to show.' : 'No links yet.'));
+    return card;
+  }
+  if (inGrid(category)) {
+    card.append(linkGrid(items));
+    return card;
+  }
+  if (!holdsApps(category)) {
+    card.append(compactList(items));
+    return card;
+  }
+  const name = 'category-' + category.id;
+  card.append(pictureList(name, items, (item, i) => pictureRow({...item, tone: teamTones[i % teamTones.length]})));
   const foot = widgetFoot(name, items.length, null);
   if (foot) {
     card.append(foot);
@@ -662,19 +750,130 @@ function hasWork() {
 
 export function widgetRows() {
   return state.model.widgets.map(w => {
-    const icon = widgetTitle(widgetApps[w.key], '', widgetMarks[w.key]).querySelector('img');
     const meta = [shownTo(w.rules), w.me.shown ? '' : 'Hidden from you'].filter(Boolean).join(' · ');
-    return {widget: w, name: widgetNames[w.key], mark: icon, meta};
+    const category = categoryOf(w.key);
+    if (category) {
+      return {widget: w, name: category.title, mark: categoryMark(iconOf(category)), meta};
+    }
+    return {widget: w, name: widgetNames[w.key], mark: appIcon(widgetApps[w.key], widgetMarks[w.key]), meta};
   });
+}
+
+const sidebarCount = 5;
+
+function navPic(item) {
+  if (item.todo) {
+    return el('span', 'app-nav-dot');
+  }
+  if (item.icon && !item.image) {
+    const pic = el('span', 'app-nav-pic');
+    pic.append(svg(item.icon));
+    return pic;
+  }
+  return picture('app-nav-pic', item.image, item.letter || initial(item.title));
+}
+
+function navLink(item) {
+  const a = el('a', 'app-nav-link');
+  a.href = item.href;
+  a.title = item.tip || item.title;
+  if (item.external) {
+    opensOutside(a);
+  }
+  const pic = navPic(item);
+  pic.setAttribute('aria-hidden', 'true');
+  a.append(pic, el('span', 'app-nav-link-title', item.title));
+  return a;
+}
+
+function upcomingItems() {
+  const today = state.model.today;
+  const seen = new Set();
+  const out = [];
+  for (const g of dayGroups(currentUpcoming().events, event => event.dates.filter(d => d >= today), sortKey)) {
+    for (const event of g.rows) {
+      if (seen.has(event.path)) {
+        continue;
+      }
+      seen.add(event.path);
+      out.push({href: appOrigin('when') + event.path, title: event.title, letter: String(parseDate(g.day).getDate()), tip: `${event.title}, ${shortDay(g.day)}`});
+    }
+  }
+  return out;
+}
+
+function schoolItems() {
+  return dayGroups(state.model.school, e => e.date, e => e.time || '').reverse().flatMap(g => g.rows.reverse()).map(email => ({
+    href: emailAsk(email), title: email.title, icon: 'mail', tip: `${email.title} · ${email.to}`,
+  }));
+}
+
+const sidebarItems = {
+  when: upcomingItems,
+  todo: () => todosUnder('open').slice().sort(byDue).map(todo => ({href: todoAsk(todo), title: todo.title, todo, tip: todo.summary})),
+  team: () => state.model.team.open.map(item => ({href: appOrigin('team') + item.path, title: item.title, image: item.image ? appOrigin('team') + item.image : ''})),
+  celebrate: () => partiesUnder('upcoming').map(p => ({href: appOrigin('celebrate') + p.link, title: p.title, image: p.image ? appOrigin(p.imageApp) + p.image : ''})),
+  school: schoolItems,
+  birthday: () => {
+    const birthday = state.model.birthday;
+    return (birthday.mine.length ? birthday.mine : birthday.all).map(item => ({href: appOrigin('birthday') + item.path, title: item.name, image: item.photo}));
+  },
+};
+
+function viewable(w, admin) {
+  return (w.me.shown || admin) && (w.key !== 'birthday' || hasWork());
+}
+
+export function renderNav() {
+  const nav = document.querySelector('#app-nav');
+  nav.replaceChildren();
+  const admin = isAdmin();
+  for (const row of widgetRows()) {
+    const w = row.widget;
+    if (!w.sidebar || !viewable(w, admin)) {
+      continue;
+    }
+    const category = categoryOf(w.key);
+    const items = (category ? categoryItems(category) : sidebarItems[w.key]()).slice(0, sidebarCount);
+    if (!items.length) {
+      continue;
+    }
+    const glyph = el('span', 'app-nav-glyph');
+    glyph.setAttribute('aria-hidden', 'true');
+    glyph.append(row.mark);
+    const head = el('div', 'app-nav-heading');
+    head.id = 'nav-' + w.key.replace(/[^a-z0-9]+/g, '-');
+    head.append(glyph, el('span', '', row.name));
+    if (!w.me.shown) {
+      head.append(el('span', 'hidden-badge', 'Hidden'));
+    }
+    const group = el('div', 'app-nav-group');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-labelledby', head.id);
+    group.append(head, ...items.map(navLink));
+    nav.append(group);
+  }
+  nav.hidden = !nav.children.length;
 }
 
 function hiddenBadge(card) {
   card.querySelector('.widget-head .widget-title').append(el('span', 'hidden-badge', 'Hidden'));
 }
 
+function drawWidget(w, admin) {
+  if (!w || !viewable(w, admin)) {
+    return null;
+  }
+  const widget = w.key.startsWith('category:') ? categoryWidget(w.key) : widgetMakers[w.key]();
+  if (widget && !w.me.shown) {
+    hiddenBadge(widget);
+  }
+  return widget;
+}
+
 function fitWidgets(query) {
   let changed = false;
-  for (const card of document.querySelector('#widgets').children) {
+  for (const card of document.querySelectorAll('#widgets .widget')) {
     const foot = card.querySelector('.widget-foot[data-list]');
     const rows = card.querySelectorAll('[data-row]');
     if (!foot || !rows.length) {
@@ -717,15 +916,29 @@ export function renderWidgets(query = '', fitted = false) {
   if (root.hidden) {
     return;
   }
-  for (const w of state.model.widgets) {
-    if ((!w.me.shown && !admin) || (w.key === 'birthday' && !hasWork())) {
+  for (const row of widgetGrid()) {
+    const line = el('div', 'widget-row');
+    const shares = [];
+    for (const slot of row.slots) {
+      const widget = drawWidget(state.model.widgets.find(w => w.key === slot.key), admin);
+      if (widget) {
+        line.append(widget);
+        shares.push(slot.share);
+      }
+    }
+    if (!shares.length) {
       continue;
     }
-    const widget = widgetMakers[w.key]();
-    if (!w.me.shown) {
-      hiddenBadge(widget);
-    }
-    root.append(widget);
+    line.dataset.count = String(shares.length);
+    const parts = shares.map(fraction);
+    const total = parts.reduce((a, b) => a + b, 0);
+    let left = 6;
+    [...line.children].forEach((widget, i) => {
+      const span = i === parts.length - 1 ? left : Math.round(6 * parts[i] / total);
+      left -= span;
+      widget.style.setProperty('--span', String(span));
+    });
+    root.append(line);
   }
   root.hidden = !root.children.length;
   if (!fitted && !root.hidden) {

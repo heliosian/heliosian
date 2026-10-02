@@ -3,7 +3,6 @@ package model
 import (
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 
 	"heliosian/internal/api"
@@ -45,13 +44,13 @@ type linkResource struct {
 }
 
 type linkCategoryResource struct {
-	Title string     `json:"title"`
-	Emoji string     `json:"emoji,omitempty"`
-	Style string     `json:"style"`
-	Max   int        `json:"max,omitempty"`
-	Order string     `json:"order"`
-	Rules []RuleView `json:"rules,omitempty"`
-	ForMe *bool      `json:"forMe,omitempty"`
+	Title        string     `json:"title"`
+	Emoji        string     `json:"emoji,omitempty"`
+	Style        string     `json:"style"`
+	Descriptions bool       `json:"descriptions"`
+	Order        string     `json:"order"`
+	Rules        []RuleView `json:"rules,omitempty"`
+	ForMe        *bool      `json:"forMe,omitempty"`
 }
 
 type appMe struct {
@@ -75,16 +74,19 @@ type widgetMe struct {
 }
 
 type widgetResource struct {
-	Key   string     `json:"key"`
-	Order string     `json:"order"`
-	Rules []RuleView `json:"rules,omitempty"`
-	Me    widgetMe   `json:"me"`
+	Key     string     `json:"key"`
+	Order   string     `json:"order"`
+	Sidebar bool       `json:"sidebar"`
+	Rules   []RuleView `json:"rules,omitempty"`
+	Me      widgetMe   `json:"me"`
 }
 
 type homeSettingsResource struct {
 	ImageSearch bool     `json:"imageSearch"`
 	Roles       []string `json:"roles"`
 	Relations   []string `json:"relations"`
+	Layout      []string `json:"layout"`
+	Layouts     []string `json:"layouts"`
 }
 
 type schoolEmailResource struct {
@@ -207,7 +209,7 @@ func (a homeApp) linksType() api.Type[*Model] {
 		Actions: map[string]api.Action[*Model]{
 			"edit": api.DoFrom(configuresHome, func(wr api.Write[*Model]) linkEdit {
 				l := wr.S.Home.link(wr.ID)
-				return linkEdit{Title: l.Title, Description: l.Description, URL: l.URL, Image: l.Image, Category: l.Category, Visible: l.Visible, Order: l.Order, Rules: l.Rules}
+				return linkEdit{Title: l.Title, Description: l.Description, URL: l.URL, Image: l.Image, Category: l.Category, Visible: l.Visible, Order: l.Order, Rules: copyRules(l.Rules)}
 			}, func(wr api.Write[*Model], body linkEdit) error {
 				_, key, ops, err := wr.S.saveHomeLink(wr.Query.Actor, wr.ID, body, wr.Taken)
 				logAfter(wr, "home: saved link", "action", "edit", "id", key, "title", strings.TrimSpace(body.Title))
@@ -233,7 +235,7 @@ func (a homeApp) linkCategoriesType() api.Type[*Model] {
 			if !ok {
 				return nil, false
 			}
-			return linkCategoryResource{Title: c.Title, Emoji: c.Emoji, Style: c.Style, Max: c.Max, Order: c.Order, Rules: m.homeRules(q, c.Rules), ForMe: c.ForMe}, true
+			return linkCategoryResource{Title: c.Title, Emoji: c.Emoji, Style: c.Style, Descriptions: c.Descriptions, Order: c.Order, Rules: m.homeRules(q, c.Rules), ForMe: c.ForMe}, true
 		},
 		List: func(m *Model, q api.Query) []string {
 			out := []string{}
@@ -266,11 +268,7 @@ func (a homeApp) linkCategoriesType() api.Type[*Model] {
 		Actions: map[string]api.Action[*Model]{
 			"edit": api.DoFrom(configuresHome, func(wr api.Write[*Model]) categoryEdit {
 				c := wr.S.Home.category(wr.ID)
-				max := ""
-				if c.Max > 0 {
-					max = strconv.Itoa(c.Max)
-				}
-				return categoryEdit{Title: c.Title, Emoji: c.Emoji, Style: c.Style, Max: max, Order: c.Order, Rules: c.Rules}
+				return categoryEdit{Title: c.Title, Emoji: c.Emoji, Style: c.Style, Descriptions: c.Descriptions, Sidebar: wr.S.Home.sidebar[thingCategory+c.ID], Order: c.Order, Rules: copyRules(c.Rules)}
 			}, func(wr api.Write[*Model], body categoryEdit) error {
 				_, key, ops, err := wr.S.saveHomeCategory(wr.Query.Actor, wr.ID, body, wr.Taken)
 				logAfter(wr, "home: saved category", "action", "edit", "id", key, "title", strings.TrimSpace(body.Title))
@@ -350,7 +348,7 @@ func (a homeApp) appsType() api.Type[*Model] {
 			}, func(wr api.Write[*Model]) visibilityEdit {
 				app, _ := appByResource(wr.S, wr.ID)
 				v := wr.S.Home.Visibility[app.Key]
-				return visibilityEdit{Visibility: v.Mode, Emails: v.Emails, Tagline: v.Tagline, Name: v.Name, Order: v.Order, Rules: v.Rules}
+				return visibilityEdit{Visibility: v.Mode, Emails: slices.Clone(v.Emails), Tagline: v.Tagline, Name: v.Name, Order: v.Order, Rules: copyRules(v.Rules)}
 			}, func(wr api.Write[*Model], body visibilityEdit) error {
 				app, _ := appByResource(wr.S, wr.ID)
 				v, ops, err := wr.S.setHomeVisibility(wr.Query.Actor, app.Key, body, sent(wr.Body))
@@ -362,7 +360,7 @@ func (a homeApp) appsType() api.Type[*Model] {
 }
 
 func widgetByResource(m *Model, key string) (string, bool) {
-	for _, w := range HomeWidgets {
+	for _, w := range m.Home.WidgetOrder {
 		if derived(m, kindHomeWidget, w) == key {
 			return w, true
 		}
@@ -386,7 +384,7 @@ func (a homeApp) widgetsType() api.Type[*Model] {
 			}
 			rules := m.Home.WidgetRules[w]
 			shown := len(rules) == 0 || m.homeIncludes(rules, q.Actor.Email)
-			return widgetResource{Key: w, Order: m.Home.widgetKeys[w], Rules: m.homeRules(q, rules), Me: widgetMe{Shown: shown}}, true
+			return widgetResource{Key: w, Order: m.Home.widgetKeys[w], Sidebar: m.Home.sidebar[w], Rules: m.homeRules(q, rules), Me: widgetMe{Shown: shown}}, true
 		},
 		List: func(m *Model, _ api.Query) []string {
 			out := []string{}
@@ -397,7 +395,7 @@ func (a homeApp) widgetsType() api.Type[*Model] {
 		},
 		Aliases: func(m *Model) map[string]string {
 			out := map[string]string{}
-			for _, w := range HomeWidgets {
+			for _, w := range m.Home.WidgetOrder {
 				out[w] = derived(m, kindHomeWidget, w)
 			}
 			return out
@@ -405,11 +403,11 @@ func (a homeApp) widgetsType() api.Type[*Model] {
 		Actions: map[string]api.Action[*Model]{
 			"edit": api.DoFrom(configuresHome, func(wr api.Write[*Model]) widgetEdit {
 				w, _ := widgetByResource(wr.S, wr.ID)
-				return widgetEdit{Order: wr.S.Home.widgetKeys[w], Rules: wr.S.Home.WidgetRules[w]}
+				return widgetEdit{Order: wr.S.Home.widgetKeys[w], Sidebar: wr.S.Home.sidebar[w], Rules: copyRules(wr.S.Home.WidgetRules[w])}
 			}, func(wr api.Write[*Model], body widgetEdit) error {
 				w, _ := widgetByResource(wr.S, wr.ID)
 				ops, err := wr.S.saveHomeWidget(wr.Query.Actor, w, body)
-				logAfter(wr, "home: saved a widget", "widget", w, "rules", len(body.Rules), "order", body.Order)
+				logAfter(wr, "home: saved a widget", "widget", w, "rules", len(body.Rules), "order", body.Order, "sidebar", body.Sidebar)
 				return stage(wr, homeAppName, ops, err)
 			}),
 		},
@@ -417,6 +415,7 @@ func (a homeApp) widgetsType() api.Type[*Model] {
 }
 
 func (a homeApp) settingsType() api.Type[*Model] {
+	stage := a.store.stage
 	return api.Type[*Model]{
 		Name:  homeSettingsType,
 		Shape: homeSettingsResource{},
@@ -425,9 +424,18 @@ func (a homeApp) settingsType() api.Type[*Model] {
 			if key != derived(m, kindHomeSettings, "") {
 				return nil, false
 			}
-			return homeSettingsResource{ImageSearch: a.search.On(), Roles: AudienceRoles, Relations: AudienceRelations}, true
+			return homeSettingsResource{ImageSearch: a.search.On(), Roles: AudienceRoles, Relations: AudienceRelations, Layout: m.Home.Layout, Layouts: RowLayouts}, true
 		},
 		List: func(m *Model, _ api.Query) []string { return []string{derived(m, kindHomeSettings, "")} },
+		Actions: map[string]api.Action[*Model]{
+			"layout": api.DoFrom(configuresHome, func(wr api.Write[*Model]) layoutEdit {
+				return layoutEdit{Rows: slices.Clone(wr.S.Home.Layout)}
+			}, func(wr api.Write[*Model], body layoutEdit) error {
+				ops, err := wr.S.Home.saveLayout(wr.Query.Actor, body)
+				logAfter(wr, "home: saved the page layout", "rows", body.Rows)
+				return stage(wr, homeAppName, ops, err)
+			}),
+		},
 		Relations: map[string]api.Relation[*Model]{
 			"viewer": {Type: "people", List: func(m *Model, q api.Query, _ string) []string { return m.personID(q.Actor.Email) }},
 		},

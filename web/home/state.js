@@ -13,8 +13,49 @@ export function tagLabelsOf(rule) {
   return rule.tagLabels || rule.tags || [];
 }
 
+export function holdsApps(category) {
+  return category.style === 'apps' || category.style === 'apps-grid';
+}
+
+export function inGrid(category) {
+  return category.style === 'cards' || category.style === 'apps-grid';
+}
+
+export function widgetKey(category) {
+  return 'category:' + category.id;
+}
+
+export function categoryOf(key) {
+  return state.model.categories.find(c => widgetKey(c) === key);
+}
+
 export function linkCategories() {
-  return state.model.categories.filter(c => c.style !== 'events');
+  const place = c => state.model.widgets.findIndex(w => w.key === widgetKey(c));
+  return state.model.categories.filter(c => c.style !== 'events').sort((a, b) => place(a) - place(b));
+}
+
+export function fraction(share) {
+  const [top, bottom] = share.split('/').map(Number);
+  return top / (bottom || 1);
+}
+
+export function clock(time) {
+  const [h, m] = time.split(':').map(Number);
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
+}
+
+export function widgetGrid() {
+  const layout = state.model.layout;
+  const keys = state.model.widgets.map(w => w.key);
+  const rows = [];
+  let at = 0;
+  for (let i = 0; at < keys.length || i < layout.length; i++) {
+    const row = layout[i] || state.model.layouts[0];
+    const columns = row.split(' ');
+    rows.push({layout: row, set: i < layout.length, slots: columns.map((share, n) => ({share, key: keys[at + n] || ''}))});
+    at += columns.length;
+  }
+  return rows;
 }
 
 export function feed(id) {
@@ -108,6 +149,7 @@ export async function loadModel() {
     apps: '/api/apps',
     widgets: '/api/home-widgets',
     feeds: '/api/calendar-feeds',
+    dayTypes: '/api/day-types',
     waiting: '/api/events?waiting',
     team: '/api/team-settings?include=mine,needed,priority',
     school: '/api/school-emails',
@@ -139,7 +181,11 @@ export async function loadModel() {
     user: {email: viewer.email, name, initial: name[0].toUpperCase(), photoUrl: person.heroPhotoUrl},
     allowances: viewer.allowances,
     imageSearch: s.imageSearch,
+    settingsId: s.id,
+    layout: s.layout,
+    layouts: s.layouts,
     today,
+    now: read.now,
     categories: read.result.categories.map(read.get).map(c => ({
       ...c,
       rules: c.rules || [],
@@ -148,6 +194,7 @@ export async function loadModel() {
     apps: read.result.apps.map(read.get).filter(a => a.key !== 'home').map(a => ({...a, emails: a.emails || [], rules: a.rules || [], forMe: a.me.listed})),
     widgets: read.result.widgets.map(read.get).map(w => ({...w, rules: w.rules || []})),
     calendars,
+    dayTypes: read.result.dayTypes.map(read.get),
     month: {month: today.slice(0, 7), calendar, events: cards(later, 'month')},
     upcoming: {calendar, events: cards(later, 'upcoming')},
     parties: cards(later, 'parties'),
@@ -156,7 +203,8 @@ export async function loadModel() {
     school: read.result.school.map(read.get),
     todos: read.result.todos.map(read.get),
     birthday: {
-      admin: viewer.allowances.includes('birthday.configure'),      mine: read.follow(birthday, 'mine').map(b => birthdayItem(read, b, fallback)),
+      admin: viewer.allowances.includes('birthday.configure'),
+      mine: read.follow(birthday, 'mine').map(b => birthdayItem(read, b, fallback)),
       all: read.follow(birthday, 'all').map(b => birthdayItem(read, b, fallback)),
     },
     options: admin ? {...options(later), roles: s.roles, relations: s.relations} : null,

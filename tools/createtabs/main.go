@@ -58,6 +58,7 @@ var layouts = map[string][]tab{
 		{"Visibility", model.HomeVisibilityColumns},
 		{"Audience", model.HomeAudienceColumns},
 		{"Widgets", model.HomeWidgetColumns},
+		{"Layout", model.HomeLayoutColumns},
 		{"To Dos", model.HomeToDoColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},

@@ -1,8 +1,8 @@
 import {state, loadModel, isAdmin} from './state.js';
 import {el} from '/elements.js';
-import {renderCategories, renderNav} from './cards.js';
+import {renderCategories} from './cards.js';
 import {renderMonth} from './month.js';
-import {renderWidgets} from './widgets.js';
+import {renderNav, renderWidgets} from './widgets.js';
 import {initEditing, refreshPanels, openEditPanel} from './edit.js';
 import {initTopbar, renderAccount, searchInput, onSlash} from '/shell.js';
 import {startApp} from '/router.js';
@@ -22,10 +22,10 @@ const main = document.querySelector('#main');
 const view = [...main.children];
 
 function paintHome() {
-  renderNav();
   renderCategories(searchInput().value);
   refreshPanels();
   renderMonth();
+  renderNav();
   renderWidgets(searchInput().value);
 }
 

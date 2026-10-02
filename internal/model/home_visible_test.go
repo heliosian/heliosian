@@ -171,7 +171,7 @@ func TestDiscoverKeysWhatIsMissing(t *testing.T) {
 			t.Errorf("the new app's key %q is not after %s's %q", ask.Order, key, v.Order)
 		}
 	}
-	if got := home.WidgetOrder; !slices.Equal(got, []string{"when", "todo", "team", "school", "birthday", "celebrate"}) {
+	if got := home.WidgetOrder; !slices.Equal(got, []string{"when", "todo", "team", "school", "birthday", "category:hcg0000000002", "category:hcg0000000004", "category:hcg0000000003", "category:hcg0000000001", "celebrate"}) {
 		t.Errorf("widgets after the new row = %v", got)
 	}
 	for _, row := range s.rows(t, homeWidgetsTab) {
@@ -318,8 +318,24 @@ func TestAppsSection(t *testing.T) {
 		t.Errorf("a link under the apps section built: %v", err)
 	}
 	tables[homeLinksTab] = nil
-	tables[homeCategoriesTab] = append(tables[homeCategoriesTab], categoryRow(chatsID, "More Apps", "", StyleApps, "8"))
+	tables[homeCategoriesTab] = append(tables[homeCategoriesTab], categoryRow(chatsID, "More Apps", "", StyleAppsGrid, "8"))
 	if _, err := BuildHome(context.Background(), tables, testkit.All); err == nil || !strings.Contains(err.Error(), "only one") {
-		t.Errorf("two apps rows built: %v", err)
+		t.Errorf("two apps rows, one a grid, built: %v", err)
+	}
+	tables[homeCategoriesTab] = withEvents(store.Tables{homeCategoriesTab: {categoryRow(appsID, "Helios Community Apps", "📌", StyleAppsGrid, "4")}})[homeCategoriesTab]
+	tables[homeLinksTab] = []store.Row{{"Link ID": directoryID, "Title": "Directory", "URL": "https://who.heliosian.com/", "Category": appsID, "Visible": "Yes", store.OrderColumn: "2"}}
+	if _, err := BuildHome(context.Background(), tables, testkit.All); err == nil || !strings.Contains(err.Error(), "community apps") {
+		t.Errorf("a link under the apps grid built: %v", err)
+	}
+}
+
+func TestTheAppsSectionTakesEitherLayout(t *testing.T) {
+	c, _, mux := homeServer(t)
+	write(t, mux, homeAdmin, "POST", "/api/link-categories/hcg0000000001/edit", map[string]any{"style": StyleAppsGrid})
+	if apps := c.Model().Home.appsSection(); apps == nil || apps.Style != StyleAppsGrid || !slices.Contains(c.Model().Home.WidgetOrder, "category:hcg0000000001") {
+		t.Errorf("the apps section as a grid = %+v", apps)
+	}
+	if rec := testkit.Call(t, mux, homeAdmin, "POST", "/api/link-categories/hcg0000000002/edit", map[string]any{"style": StyleApps}); rec.Code != http.StatusBadRequest {
+		t.Errorf("a second apps section: %d", rec.Code)
 	}
 }

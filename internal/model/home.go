@@ -31,14 +31,16 @@ const (
 	homeVisibilityTab  = "Visibility"
 	homeAudienceTab    = "Audience"
 	homeWidgetsTab     = "Widgets"
+	homeLayoutTab      = "Layout"
 	linkAddedFormat    = "2006-01-02"
 	maxHomeTitleLength = 80
 	maxHomeDescLength  = 300
 
-	StyleCards  = "cards"
-	StyleTiles  = "tiles"
-	StyleEvents = "events"
-	StyleApps   = "apps"
+	StyleCards    = "cards"
+	StyleTiles    = "tiles"
+	StyleEvents   = "events"
+	StyleApps     = "apps"
+	StyleAppsGrid = "apps-grid"
 
 	EventsCategoryID    = "hcg0000000000"
 	EventsCategoryTitle = "Upcoming Events"
@@ -46,11 +48,13 @@ const (
 )
 
 var (
-	HomeCategoryColumns   = []string{"Category ID", "Title", "Emoji", "Style", "Max", store.OrderColumn}
+	HomeCategoryColumns   = []string{"Category ID", "Title", "Emoji", "Style", "Descriptions", store.OrderColumn}
 	HomeLinkColumns       = []string{"Link ID", "Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added", store.OrderColumn}
 	HomeAudienceColumns   = append([]string{"Thing"}, RuleColumns...)
 	HomeVisibilityColumns = []string{"App", "Visibility", "Emails", "Tagline", "Name", store.OrderColumn}
-	HomeWidgetColumns     = []string{"Widget", store.OrderColumn}
+	HomeWidgetColumns     = []string{"Widget", "Sidebar", store.OrderColumn}
+	HomeLayoutColumns     = []string{"Row", "Columns"}
+	RowLayouts            = []string{"1/3 1/3 1/3", "2/3 1/3", "1/3 2/3", "1/2 1/2", "1"}
 )
 
 type App struct {
@@ -145,15 +149,15 @@ type HomeLink struct {
 }
 
 type HomeCategory struct {
-	ID    string     `json:"id"`
-	Title string     `json:"title"`
-	Emoji string     `json:"emoji,omitempty"`
-	Style string     `json:"style"`
-	Max   int        `json:"max,omitempty"`
-	Order string     `json:"order"`
-	Links []HomeLink `json:"links"`
-	Rules []Rule     `json:"rules"`
-	ForMe *bool      `json:"forMe,omitempty"`
+	ID           string     `json:"id"`
+	Title        string     `json:"title"`
+	Emoji        string     `json:"emoji,omitempty"`
+	Style        string     `json:"style"`
+	Descriptions bool       `json:"descriptions"`
+	Order        string     `json:"order"`
+	Links        []HomeLink `json:"links"`
+	Rules        []Rule     `json:"rules"`
+	ForMe        *bool      `json:"forMe,omitempty"`
 }
 
 type Home struct {
@@ -162,7 +166,9 @@ type Home struct {
 	WidgetRules map[string][]Rule            `json:"-"`
 	WidgetOrder []string                     `json:"-"`
 	ToDoStates  map[string]map[string]string `json:"-"`
+	Layout      []string                     `json:"-"`
 	widgetKeys  map[string]string
+	sidebar     map[string]bool
 	admins      []string
 }
 
@@ -214,12 +220,28 @@ const (
 	thingWidget   = "widget:"
 )
 
+func drawnAsWidget(style string) bool {
+	return style != StyleEvents
+}
+
+func (m *Home) widgetNames() []string {
+	out := slices.Clone(HomeWidgets)
+	for _, c := range m.Categories {
+		if drawnAsWidget(c.Style) {
+			out = append(out, thingCategory+c.ID)
+		}
+	}
+	return out
+}
+
 func buildWidgetOrder(m *Home, rows []store.Row) error {
 	m.widgetKeys = map[string]string{}
+	m.sidebar = map[string]bool{}
+	names := m.widgetNames()
 	for _, row := range rows {
 		name := strings.TrimSpace(row["Widget"])
-		if !slices.Contains(HomeWidgets, name) {
-			return fmt.Errorf("%s has no widget %q; the widgets are %s", homeWidgetsTab, name, strings.Join(HomeWidgets, ", "))
+		if !slices.Contains(names, name) {
+			return fmt.Errorf("%s has no widget %q; the widgets are %s", homeWidgetsTab, name, strings.Join(names, ", "))
 		}
 		if _, dup := m.widgetKeys[name]; dup {
 			return fmt.Errorf("%s has two rows for %q", homeWidgetsTab, name)
@@ -229,10 +251,43 @@ func buildWidgetOrder(m *Home, rows []store.Row) error {
 			return fmt.Errorf("widget %q: %w", name, err)
 		}
 		m.widgetKeys[name] = order
+		sidebar, err := cells.YesNo(row["Sidebar"], false)
+		if err != nil {
+			return fmt.Errorf("widget %q: sidebar %w", name, err)
+		}
+		m.sidebar[name] = sidebar
 	}
-	m.WidgetOrder = slices.Clone(HomeWidgets)
+	m.WidgetOrder = names
 	slices.SortStableFunc(m.WidgetOrder, func(a, b string) int { return store.CompareKeys(m.widgetKeys[a], m.widgetKeys[b]) })
 	return nil
+}
+
+func buildLayout(rows []store.Row) ([]string, error) {
+	byRow := map[int]string{}
+	for _, row := range rows {
+		cell := strings.TrimSpace(row["Row"])
+		n, err := strconv.Atoi(cell)
+		if err != nil || n < 1 || strconv.Itoa(n) != cell {
+			return nil, fmt.Errorf("%s row %q is not a row number", homeLayoutTab, row["Row"])
+		}
+		if _, dup := byRow[n]; dup {
+			return nil, fmt.Errorf("%s has two rows numbered %d", homeLayoutTab, n)
+		}
+		columns, err := checkRowLayout(row["Columns"])
+		if err != nil {
+			return nil, fmt.Errorf("%s row %d: %w", homeLayoutTab, n, err)
+		}
+		byRow[n] = columns
+	}
+	out := []string{}
+	for n := 1; n <= len(byRow); n++ {
+		columns, ok := byRow[n]
+		if !ok {
+			return nil, fmt.Errorf("%s has no row %d, but has %d rows; they are numbered from 1 without gaps", homeLayoutTab, n, len(byRow))
+		}
+		out = append(out, columns)
+	}
+	return out, nil
 }
 
 func audienceRulesFor(rows []store.Row, key string) ([]Rule, error) {
@@ -250,24 +305,24 @@ func audienceRulesFor(rows []store.Row, key string) ([]Rule, error) {
 	return out, nil
 }
 
-func checkCategoryMax(cell string) (int, error) {
-	cell = strings.TrimSpace(cell)
-	if cell == "" {
-		return 0, nil
+func checkRowLayout(cell string) (string, error) {
+	columns := strings.Join(strings.Fields(cell), " ")
+	if !slices.Contains(RowLayouts, columns) {
+		return "", fmt.Errorf("columns %q are not one of %s", cell, strings.Join(RowLayouts, ", "))
 	}
-	n, err := strconv.Atoi(cell)
-	if err != nil || n < 1 {
-		return 0, fmt.Errorf("max %q is not a whole number of one or more", cell)
-	}
-	return n, nil
+	return columns, nil
 }
 
 func checkCategoryStyle(cell string) (string, error) {
 	switch cell {
-	case StyleCards, StyleTiles, StyleEvents, StyleApps:
+	case StyleCards, StyleTiles, StyleEvents, StyleApps, StyleAppsGrid:
 		return cell, nil
 	}
-	return "", fmt.Errorf("%q is not %s, %s, %s or %s", cell, StyleCards, StyleTiles, StyleEvents, StyleApps)
+	return "", fmt.Errorf("%q is not %s, %s, %s, %s or %s", cell, StyleCards, StyleTiles, StyleEvents, StyleApps, StyleAppsGrid)
+}
+
+func holdsApps(style string) bool {
+	return style == StyleApps || style == StyleAppsGrid
 }
 
 var iconValue = regexp.MustCompile(`^icon:[a-z]+$`)
@@ -300,9 +355,6 @@ func BuildHome(ctx context.Context, tables store.Tables, images blob.Checker) (*
 			return nil, err
 		}
 		m.WidgetRules[key] = rules
-	}
-	if err := buildWidgetOrder(m, tables[homeWidgetsTab]); err != nil {
-		return nil, err
 	}
 	m.admins = ReadAdmins(tables)
 	toDos, err := buildHomeToDos(tables[homeToDosTab])
@@ -340,26 +392,26 @@ func BuildHome(ctx context.Context, tables store.Tables, images blob.Checker) (*
 			}
 			events = true
 		}
-		if style == StyleApps {
+		if holdsApps(style) {
 			if apps {
 				return nil, fmt.Errorf("category %q: only one category can be the %s section", title, StyleApps)
 			}
 			apps = true
 		}
-		max, err := checkCategoryMax(row["Max"])
-		if err != nil {
-			return nil, fmt.Errorf("category %q: %w", title, err)
-		}
 		order, err := checkOrder(row[store.OrderColumn])
 		if err != nil {
 			return nil, fmt.Errorf("category %q: %w", title, err)
+		}
+		descriptions, err := cells.YesNo(row["Descriptions"], true)
+		if err != nil {
+			return nil, fmt.Errorf("category %q: descriptions %w", title, err)
 		}
 		rules, err := audienceRulesFor(audience, thingCategory+key)
 		if err != nil {
 			return nil, err
 		}
 		index[key] = len(m.Categories)
-		m.Categories = append(m.Categories, HomeCategory{ID: key, Title: title, Emoji: emoji, Style: style, Max: max, Order: order, Links: []HomeLink{}, Rules: rules})
+		m.Categories = append(m.Categories, HomeCategory{ID: key, Title: title, Emoji: emoji, Style: style, Descriptions: descriptions, Order: order, Links: []HomeLink{}, Rules: rules})
 	}
 	if !events {
 		return nil, fmt.Errorf("%s has no %s section; its row is %s (tools/createtabs seeds it)", homeCategoriesTab, StyleEvents, EventsCategoryID)
@@ -392,7 +444,7 @@ func BuildHome(ctx context.Context, tables store.Tables, images blob.Checker) (*
 		if m.Categories[at].Style == StyleEvents {
 			return nil, fmt.Errorf("link %q sits under %q, which holds HCA-Team's events rather than links", title, m.Categories[at].Title)
 		}
-		if m.Categories[at].Style == StyleApps {
+		if holdsApps(m.Categories[at].Style) {
 			return nil, fmt.Errorf("link %q sits under %q, which holds the community apps rather than links", title, m.Categories[at].Title)
 		}
 		visible, err := cells.YesNo(row["Visible"], false)
@@ -421,6 +473,17 @@ func BuildHome(ctx context.Context, tables store.Tables, images blob.Checker) (*
 		slices.SortStableFunc(m.Categories[i].Links, func(a, b HomeLink) int { return compareOrder(a.Order, b.Order, a.Title, b.Title) })
 	}
 	slices.SortStableFunc(m.Categories, func(a, b HomeCategory) int { return compareOrder(a.Order, b.Order, a.Title, b.Title) })
+	for _, c := range m.Categories {
+		if drawnAsWidget(c.Style) {
+			m.WidgetRules[thingCategory+c.ID] = c.Rules
+		}
+	}
+	if err := buildWidgetOrder(m, tables[homeWidgetsTab]); err != nil {
+		return nil, err
+	}
+	if m.Layout, err = buildLayout(tables[homeLayoutTab]); err != nil {
+		return nil, err
+	}
 	visibility, err := buildVisibility(tables[homeVisibilityTab])
 	if err != nil {
 		return nil, err

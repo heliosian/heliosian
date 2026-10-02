@@ -1,4 +1,4 @@
-import {state, isAdmin, tagLabelsOf} from './state.js';
+import {state, isAdmin, tagLabelsOf, linkCategories, holdsApps} from './state.js';
 import {iconOf, categoryMark} from './dom.js';
 import {el, svg, toast} from '/elements.js';
 import {appOrigin} from '/appswitch.js';
@@ -23,9 +23,7 @@ function artwork(link, category, imageClass, initialClass) {
   return mark;
 }
 
-function openInNewTab(url) {
-  const a = el('a');
-  a.href = url;
+export function opensOutside(a) {
   a.target = '_blank';
   a.rel = 'noopener';
   return a;
@@ -33,8 +31,8 @@ function openInNewTab(url) {
 
 function featureCard(link, category) {
   const slot = el('div', 'chip-slot');
-  const card = openInNewTab(link.url);
-  card.className = 'chip' + (link.visible ? '' : ' is-hidden');
+  const card = opensOutside(el('a', 'chip' + (link.visible ? '' : ' is-hidden')));
+  card.href = link.url;
   const disc = el('div', 'chip-disc');
   disc.append(artwork(link, category, 'chip-image', 'chip-initial'));
   card.append(disc);
@@ -53,8 +51,8 @@ function featureCard(link, category) {
 
 function tile(link, category) {
   const card = el('div', 'tile' + (link.visible ? '' : ' is-hidden'));
-  const open = openInNewTab(link.url);
-  open.className = 'tile-link';
+  const open = opensOutside(el('a', 'tile-link'));
+  open.href = link.url;
   if (link.imageUrl) {
     open.append(artwork(link, category, 'tile-image', ''));
   } else {
@@ -74,54 +72,17 @@ function tile(link, category) {
   return card;
 }
 
-const expanded = new Set();
-
-function limited(category, items, needle) {
-  if (!category.max || needle || expanded.has(category.id) || items.length <= category.max) {
-    return {shown: items, hidden: 0};
-  }
-  return {shown: items.slice(0, category.max), hidden: items.length - category.max};
-}
-
-function seeMore(category, hidden, rerender) {
-  const button = el('button', 'button button-secondary see-more');
-  button.type = 'button';
-  button.append(el('span', '', `See more (${hidden})`), svg('chevron-right'));
-  button.addEventListener('click', () => {
-    expanded.add(category.id);
-    rerender();
-  });
-  return button;
-}
-
-function panel(category, links, needle) {
+function panel(category, links) {
   const cards = category.style === 'cards';
-  const wrap = el('div');
   const grid = el('div', cards ? 'chip-grid' : 'tile-grid');
-  const {shown, hidden} = limited(category, links, needle);
-  for (const link of shown) {
+  for (const link of links) {
     grid.append(cards ? featureCard(link, category) : tile(link, category));
   }
-  wrap.append(grid);
-  if (hidden) {
-    wrap.append(seeMore(category, hidden, () => renderCategories(needle)));
-  }
-  return wrap;
-}
-
-export function anchorFor(title) {
-  return 'section-' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return grid;
 }
 
 function matches(link, query) {
-  if (!query) {
-    return true;
-  }
   return `${link.title} ${link.description || ''} ${link.url}`.toLowerCase().includes(query);
-}
-
-function sectionListed(category) {
-  return category.style !== 'events';
 }
 
 export function audienceWords(rules) {
@@ -160,32 +121,25 @@ export function renderCategories(query = '') {
   const needle = query.trim().toLowerCase();
   root.replaceChildren();
   let shown = 0;
-  for (const category of state.model.categories) {
-    if (!sectionListed(category)) {
-      continue;
-    }
-    const apps = category.style === 'apps';
+  for (const category of needle ? linkCategories() : []) {
+    const apps = holdsApps(category);
     const links = apps ? [] : category.links.filter(link => matches(link, needle));
     const count = apps ? appsMatching(needle).length : links.length;
-    if (!count && (needle || !isAdmin())) {
+    if (!count) {
       continue;
     }
     shown += count;
     const section = el('section', 'category' + (category.style === 'tiles' ? ' is-compact' : ''));
-    section.id = anchorFor(category.title);
     const head = el('div', 'category-head');
     const title = el('h2', 'category-title', category.title);
     title.append(...badges(category));
     head.append(title);
     section.append(head);
-    section.append(apps ? appsPanel(category, needle) : panel(category, links, needle));
+    section.append(apps ? appsPanel(needle) : panel(category, links));
     root.append(section);
   }
   const empty = document.querySelector('#empty-search');
   empty.hidden = Boolean(shown) || !needle;
-  if (!state.model.categories.length) {
-    root.append(el('div', 'footnote', 'Nothing here yet.'));
-  }
 }
 
 export function rsvpButtons(event) {
@@ -336,62 +290,23 @@ function appCard(app) {
   return slot;
 }
 
-function appsPanel(category, needle) {
-  const apps = appsMatching(needle);
-  if (!apps.length) {
-    return el('div', 'category-empty', needle ? 'No apps match.' : 'No apps to show.');
-  }
-  const wrap = el('div');
+function appsPanel(needle) {
   const grid = el('div', 'chip-grid');
-  const {shown, hidden} = limited(category, apps, needle);
-  for (const app of shown) {
+  for (const app of appsMatching(needle)) {
     grid.append(appCard(app));
   }
-  wrap.append(grid);
-  if (hidden) {
-    wrap.append(seeMore(category, hidden, () => renderCategories(needle)));
-  }
-  return wrap;
+  return grid;
 }
 
-function hasSomething(category) {
-  if (!sectionListed(category)) {
-    return false;
+export function categoryItems(category) {
+  const said = words => category.descriptions ? words || '' : '';
+  if (holdsApps(category)) {
+    return appsMatching('').map(app => ({
+      href: appOrigin(app.key), image: `/brand/apps/${app.key}.png` + (app.mark ? `?v=${app.mark}` : ''), title: app.name, tip: app.tagline, line: said(app.tagline), mark: true,
+    }));
   }
-  if (isAdmin()) {
-    return true;
-  }
-  if (category.style === 'apps') {
-    return appsMatching('').length > 0;
-  }
-  return category.links.length > 0;
+  return category.links.map(link => ({
+    href: link.url, image: link.imageUrl || '', title: link.title, external: true, tip: link.description || '',
+    line: [link.visible ? '' : 'Hidden', said(link.description)].filter(Boolean).join(' · '),
+  }));
 }
-
-export function renderNav() {
-  const nav = document.querySelector('#app-nav');
-  nav.replaceChildren();
-  let first = true;
-  for (const category of state.model.categories.filter(hasSomething)) {
-    const item = el('a', first ? 'is-active' : '');
-    item.href = '#' + anchorFor(category.title);
-    const glyph = first ? el('span', 'app-nav-glyph') : categoryGlyph(category, 'app-nav-glyph');
-    if (first) {
-      glyph.append(el('span', 'app-symbol'));
-    }
-    item.append(glyph, el('span', '', category.title));
-    nav.append(item);
-    first = false;
-  }
-}
-
-document.querySelector('#app-nav').addEventListener('click', e => {
-  const nav = e.currentTarget;
-  const link = e.target.closest('a');
-  if (!link) {
-    return;
-  }
-  for (const a of nav.querySelectorAll('a')) {
-    a.classList.toggle('is-active', a === link);
-  }
-});
-

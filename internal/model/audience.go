@@ -30,6 +30,16 @@ type Rule struct {
 	Family     []string `json:"family"`
 }
 
+func copyRules(rules []Rule) []Rule {
+	out := []Rule{}
+	for _, r := range rules {
+		c := r
+		c.Roles, c.Classrooms, c.Grades, c.Tags, c.Family = slices.Clone(r.Roles), slices.Clone(r.Classrooms), slices.Clone(r.Grades), slices.Clone(r.Tags), slices.Clone(r.Family)
+		out = append(out, c)
+	}
+	return out
+}
+
 func (r Rule) Empty() bool {
 	return len(r.Roles)+len(r.Classrooms)+len(r.Grades)+len(r.Tags) == 0 && r.Search == ""
 }

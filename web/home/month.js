@@ -1,4 +1,4 @@
-import {state, feed, readMonth, shiftMonth} from './state.js';
+import {state, feed, readMonth, shiftMonth, clock} from './state.js';
 import {el, svg} from '/elements.js';
 import {rsvpButtons, calendarMark, calendarMenu, dropdown} from './cards.js';
 import {dayTypeClass} from '/daytype.js';
@@ -179,6 +179,116 @@ function dayCard() {
   return card;
 }
 
+function span(block) {
+  const from = clock(block.start);
+  const to = clock(block.end);
+  if (from.slice(-2) === to.slice(-2)) {
+    return `${from.slice(0, -3)} – ${to}`;
+  }
+  return `${from} – ${to}`;
+}
+
+const scheduleRows = [['Dropoff', 'car', 'is-dropoff'], ['School', 'school', 'is-school'], ['Pickup', 'car', 'is-pickup'], ['Aftercare', 'ball', 'is-aftercare']];
+
+function minutes(time) {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function schoolDays() {
+  return feed(state.model.month.calendar).days || {};
+}
+
+function schoolDay(date) {
+  const day = schoolDays()[date];
+  if (!day) {
+    return null;
+  }
+  const types = state.model.dayTypes;
+  const kinds = day.map(kind => ({kind, type: types.find(t => t.name === kind.name)})).filter(k => k.type);
+  if (kinds.some(k => k.type.role === 'no-school')) {
+    return null;
+  }
+  const early = kinds.find(k => k.type.role === 'early-dismissal');
+  const type = (early || kinds[0] || {type: types.find(t => t.role === 'regular')}).type;
+  if (!type || !type.blocks.length) {
+    return null;
+  }
+  return {date, early, type};
+}
+
+function nextSchoolDay() {
+  const today = state.model.today;
+  const now = minutes(state.model.now.slice(11));
+  for (const date of Object.keys(schoolDays()).filter(d => d >= today).sort()) {
+    const day = schoolDay(date);
+    if (!day) {
+      continue;
+    }
+    if (date === today && now >= Math.max(...day.type.blocks.map(b => minutes(b.end)))) {
+      continue;
+    }
+    return day;
+  }
+  return null;
+}
+
+function dayName(date) {
+  const today = parseDate(state.model.today);
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  if (date === state.model.today) {
+    return 'Today';
+  }
+  if (date === `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`) {
+    return 'Tomorrow';
+  }
+  const day = parseDate(date);
+  if (Math.round((day - today) / 86400000) > 6) {
+    return day.toLocaleDateString('en-US', {weekday: 'long', month: 'short', day: 'numeric'});
+  }
+  return day.toLocaleDateString('en-US', {weekday: 'long'});
+}
+
+function dismissal(early, type) {
+  if (early) {
+    return 'Early Dismissal';
+  }
+  return type.role === 'regular' ? 'Regular Dismissal' : type.name;
+}
+
+function schedule() {
+  const day = nextSchoolDay();
+  if (!day) {
+    return null;
+  }
+  const {date, early, type} = day;
+  const card = el('a', 'hero-schedule');
+  card.href = appOrigin('when') + '/day/' + date;
+  const head = el('div', 'hero-schedule-head');
+  const title = el('span', 'hero-schedule-title');
+  title.append(el('span', 'hero-schedule-day', dayName(date)), dismissal(early, type));
+  head.append(title, svg('chevron-right'));
+  card.append(head);
+  const only = early && early.kind.words.startsWith(early.kind.name + ' · ') ? early.kind.words.slice(early.kind.name.length + 3) : '';
+  if (only) {
+    card.append(el('div', 'hero-schedule-note', only));
+  }
+  for (const [name, icon, tone] of scheduleRows) {
+    const block = type.blocks.find(b => b.name === name);
+    if (!block) {
+      continue;
+    }
+    const row = el('div', 'hero-schedule-row');
+    const mark = el('span', 'hero-schedule-mark ' + tone);
+    mark.append(svg(icon));
+    const words = el('span', 'hero-schedule-words');
+    words.append(el('span', 'hero-schedule-name', name), el('span', 'hero-schedule-time', span(block)));
+    row.append(mark, words);
+    card.append(row);
+  }
+  return card;
+}
+
 export function renderMonth() {
   const root = document.querySelector('#rail-calendar');
   root.replaceChildren();
@@ -188,4 +298,8 @@ export function renderMonth() {
     selected = state.model.today;
   }
   root.append(grid(), dayCard());
+  const card = schedule();
+  const slot = document.querySelector('#hero-schedule');
+  slot.replaceChildren(...(card ? [card] : []));
+  slot.hidden = !card;
 }

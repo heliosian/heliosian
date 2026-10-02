@@ -10,12 +10,13 @@ import (
 )
 
 var homeTabs = []store.Tab{
-	{Name: homeCategoriesTab, Columns: HomeCategoryColumns, Key: []string{"Category ID"}, Cascade: dropCategoryAudience},
+	{Name: homeCategoriesTab, Columns: HomeCategoryColumns, Key: []string{"Category ID"}, Cascade: dropCategoryRows},
 	{Name: homeLinksTab, Columns: HomeLinkColumns, Key: []string{"Link ID"}, Cascade: dropLinkAudience},
 	AdminsTab,
 	{Name: homeVisibilityTab, Columns: HomeVisibilityColumns, Key: []string{"App"}},
 	{Name: homeAudienceTab, Columns: HomeAudienceColumns, Key: HomeAudienceColumns},
 	{Name: homeWidgetsTab, Columns: HomeWidgetColumns, Key: []string{"Widget"}},
+	{Name: homeLayoutTab, Columns: HomeLayoutColumns, Key: []string{"Row"}},
 	{Name: homeToDosTab, Columns: HomeToDoColumns, Key: []string{"Email", "To Do"}},
 }
 
@@ -30,8 +31,12 @@ func dropLinkAudience(_ store.Tables, before, after store.Row) []store.Op {
 	return dropAudience(thingLink+before["Link ID"], before, after)
 }
 
-func dropCategoryAudience(_ store.Tables, before, after store.Row) []store.Op {
-	return dropAudience(thingCategory+before["Category ID"], before, after)
+func dropCategoryRows(_ store.Tables, before, after store.Row) []store.Op {
+	ops := dropAudience(thingCategory+before["Category ID"], before, after)
+	if ops == nil {
+		return nil
+	}
+	return append(ops, store.Delete(homeWidgetsTab, store.Row{"Widget": thingCategory + before["Category ID"]}))
 }
 
 func (m *Model) homeIncludes(rules []Rule, email string) bool {
@@ -50,7 +55,7 @@ func (m *Model) HomeCategoriesFor(v access.Actor) []HomeCategory {
 		if !sectionMine && !admin {
 			continue
 		}
-		shown := HomeCategory{ID: category.ID, Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Order: category.Order, Links: []HomeLink{}, Rules: []Rule{}}
+		shown := HomeCategory{ID: category.ID, Title: category.Title, Emoji: category.Emoji, Style: category.Style, Descriptions: category.Descriptions, Order: category.Order, Links: []HomeLink{}, Rules: []Rule{}}
 		if admin {
 			shown.Rules = category.Rules
 		}

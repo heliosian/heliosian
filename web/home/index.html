@@ -84,7 +84,7 @@
 <aside class="sidebar" id="sidebar">
 <div class="sidebar-scroll">
 <a class="brand" href="/" aria-label="Heliosian home"><img class="brand-lockup" src="/brand/logo-lockup-light.png" alt=""></a>
-<nav class="app-nav" id="app-nav" aria-label="Sections"></nav>
+<nav class="app-nav" id="app-nav" aria-label="Highlights"></nav>
 <section class="rail-calendar" id="rail-calendar" aria-label="Calendar"></section>
 </div>
 </aside>
@@ -101,6 +101,7 @@
 <p class="hero-lead">Find what you need, stay connected, and get involved.</p>
 </div>
 <img class="hero-art hero-art-light" src="/brand/hero-art.png" alt=""><img class="hero-art hero-art-dark" src="/brand/hero-art-dark.png" alt="">
+<div class="hero-schedule-slot" id="hero-schedule" hidden></div>
 </section>
 <div class="page-body">
 <div class="widgets" id="widgets" hidden></div>
@@ -114,10 +115,17 @@
 </div>
 </div>
 <div class="modal-overlay" id="items-modal" hidden>
-<div class="modal">
+<div class="modal modal-page">
 <div class="modal-header"><h2>Edit the Page</h2><button class="modal-close" type="button" data-close aria-label="Close">&times;</button></div>
-<p class="modal-hint">Every section and what is in it, in the order on the page. Changes save immediately.</p>
+<div class="form-tabs" id="page-tabs"></div>
+<div class="form-tab-body" id="page-tab-widgets">
+<p class="modal-hint">Every widget and what is in it, in the order on the page. Changes save immediately.</p>
 <div id="item-list"></div>
+</div>
+<div class="form-tab-body" id="page-tab-layout" hidden>
+<p class="modal-hint">How each row of widgets is split. The widgets fill the rows in their order from Widgets; a widget someone cannot see leaves its row to the others. Changes save immediately.</p>
+<div id="layout-list"></div>
+</div>
 <div class="modal-actions">
 <button type="button" class="button" id="add-section">＋ Add Category</button>
 <button type="button" class="button button-secondary" data-close>Done</button>
@@ -179,7 +187,9 @@
 </div>
 <div class="modal-overlay" id="widget-modal" hidden>
 <form class="modal" id="widget-form">
-<div class="modal-header"><h2 id="widget-modal-title">Who sees this widget</h2><button class="modal-close" type="button" data-close aria-label="Close">&times;</button></div>
+<div class="modal-header"><h2 id="widget-modal-title">Widget</h2><button class="modal-close" type="button" data-close aria-label="Close">&times;</button></div>
+<label class="field field-toggle"><span>Show in sidebar</span><input type="checkbox" id="widget-sidebar"></label>
+<p class="modal-hint">Who sees it</p>
 <div class="field audience" id="widget-audience"></div>
 <div class="modal-actions">
 <button type="submit" class="button">Save</button>
@@ -195,10 +205,10 @@
 <div class="form-tabs" id="category-tabs"></div>
 <div class="form-tab-body" id="category-tab-details">
 <label class="field"><span>Title</span><input type="text" id="category-title" maxlength="80" required></label>
-<label class="field" id="category-style-field"><span>Style</span><select id="category-style"><option value="cards">Feature cards</option><option value="tiles">Compact tiles</option><option value="apps">Community apps</option></select></label>
-<label class="field field-max"><span>Show at most</span><input type="number" id="category-max" min="1" step="1" placeholder="All" inputmode="numeric"><small class="field-lead">Leave blank to show everything; with a number, the rest sit behind a See More button.</small></label>
-<p class="modal-hint" id="category-events-note" hidden>This section is filled by Helios When with the events coming up for each person. Give it any name and icon, and move it where you like; it cannot hold links or be deleted.</p>
-<p class="modal-hint" id="category-apps-note" hidden>This section lists the community apps themselves - the ones in the toolbar's app switch, with their marks - each shown only to the people its own editor allows - the pencil on its card. It holds no links of its own.</p>
+<label class="field"><span>Layout</span><select id="category-style"><option value="grid">Icon grid</option><option value="list">Compact list</option></select></label>
+<label class="field field-toggle"><span>Show descriptions</span><input type="checkbox" id="category-descriptions" checked></label>
+<label class="field field-toggle"><span>Show in sidebar</span><input type="checkbox" id="category-sidebar"></label>
+<p class="modal-hint" id="category-apps-note" hidden>This widget lists the community apps themselves - the ones in the toolbar's app switch, with their marks - each shown only to the people its own editor allows. It holds no links of its own.</p>
 <div class="field field-emoji">
 <span>Icon <button type="button" class="link-button" id="category-emoji-clear">None</button></span>
 <input type="hidden" id="category-emoji">

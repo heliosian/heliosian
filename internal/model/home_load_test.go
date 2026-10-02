@@ -87,7 +87,7 @@ func TestTheEventsSectionIsFoundByItsStyle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a plain category titled as the events section refused: %v", err)
 	}
-	if events := m.styled(StyleEvents); events == nil || events.ID != EventsCategoryID {
+	if events := m.category(EventsCategoryID); events == nil || events.Style != StyleEvents {
 		t.Errorf("the events section = %+v", events)
 	}
 }
