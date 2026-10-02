@@ -109,6 +109,7 @@ var Tables = []Table{
 			enum("vc_grade", grades...),
 			ref("vc_classroom", "GROUP"),
 			ref("vc_crew", "GROUP"),
+			ref("vc_department", "GROUP"),
 			col("vc_job_title", Text),
 			col("vc_phone", Text).private(),
 			col("vc_bio", Text),

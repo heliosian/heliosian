@@ -56,7 +56,7 @@ func (c client) read() (*state, error) {
 	if st.photos, _, err = c.table("PERSON_PHOTO"); err != nil {
 		return nil, err
 	}
-	if st.groups, _, err = c.table("GROUP", or(in("kind", "family", "classroom", "crew", "grade", "band"), roleGroup("kind", "slug"))); err != nil {
+	if st.groups, _, err = c.table("GROUP", or(in("kind", "family", "classroom", "crew", "grade", "band", "department"), roleGroup("kind", "slug"))); err != nil {
 		return nil, err
 	}
 	if st.members, _, err = c.table("MEMBER", or(in("group.kind", "family"), roleGroup("group.kind", "group.slug"))); err != nil {

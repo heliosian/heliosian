@@ -90,7 +90,7 @@ const policySource = `
 (read PERSON (person_visible @row))
 ; every column of a person but what the form shares
 (read PERSON
-  (id source vc_name vc_legal_name vc_grade vc_classroom vc_crew vc_job_title vc_bio
+  (id source vc_name vc_legal_name vc_grade vc_classroom vc_crew vc_department vc_job_title vc_bio
    vc_address_visibility vc_phone_visibility name_long_import name_short_import name_sort_import
    name_long_override name_short_override name_sort_override name_long name_short name_sort
    name_show grade classroom crew job_title department phone facts pronouns pronunciation
@@ -410,6 +410,8 @@ const policySource = `
 (set PERSON.vc_classroom (system "import"))
 ; a person's crew as Veracross has it
 (set PERSON.vc_crew (system "import"))
+; a staff member's department as Veracross has it
+(set PERSON.vc_department (system "import"))
 ; a staff member's job title as Veracross has it
 (set PERSON.vc_job_title (system "import"))
 ; a person's phone as Veracross has it
@@ -447,9 +449,9 @@ const policySource = `
 ; add a portrait from the website
 (insert PERSON_PHOTO (system "import"))
 ; every directory group the import keeps, withheld families too
-(read GROUP (and (system "import") (or (in kind "family" "classroom" "crew" "grade" "band") (role_group @row))))
-; add a family, role group, classroom, crew, grade or band new in the export
-(insert GROUP (and (system "import") (or (in @new.kind "family" "classroom" "crew" "grade" "band") (role_group @new))))
+(read GROUP (and (system "import") (or (in kind "family" "classroom" "crew" "grade" "band" "department") (role_group @row))))
+; add a family, role group, classroom, crew, grade, band or department new in the export
+(insert GROUP (and (system "import") (or (in @new.kind "family" "classroom" "crew" "grade" "band" "department") (role_group @new))))
 ; put a classroom under the band of its students' grades
 (set GROUP.parent (and (system "import") (= @old.kind "classroom")))
 ; every band's rules, to find the one that takes in its grades and classrooms

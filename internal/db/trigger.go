@@ -49,7 +49,7 @@ func fire(s *Store, tx *store.Tx, c Change, where string) error {
 
 var (
 	schoolKinds   = []string{"classroom", "crew", "grade", "band", "department"}
-	schoolColumns = []string{"grade", "vc_grade", "classroom", "vc_classroom", "crew", "vc_crew", "department", "deactivated"}
+	schoolColumns = []string{"grade", "vc_grade", "classroom", "vc_classroom", "crew", "vc_crew", "department", "vc_department", "deactivated"}
 )
 
 func schoolGroups(m *Model, c Change) ([]Edit, error) {

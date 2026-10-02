@@ -89,7 +89,7 @@ var roleGroups = []struct {
 }
 
 var personColumns = []string{
-	"vc_name", "vc_legal_name", "vc_grade", "vc_classroom", "vc_crew", "vc_job_title", "vc_phone", "vc_bio",
+	"vc_name", "vc_legal_name", "vc_grade", "vc_classroom", "vc_crew", "vc_department", "vc_job_title", "vc_phone", "vc_bio",
 	"vc_address_visibility", "vc_phone_visibility", "name_long_import", "name_short_import", "name_sort_import", "deactivated",
 }
 
@@ -496,6 +496,13 @@ func (p *planner) classroom(name, grade string) (string, error) {
 	return id, nil
 }
 
+func (p *planner) department(name string) string {
+	if id := p.findGroup(func(r row) bool { return r["kind"] == "department" && strings.EqualFold(r["title"], name) }); id != "" {
+		return id
+	}
+	return p.newGroup(row{"kind": "department", "title": name})
+}
+
 func (p *planner) crew(classroom, name string) string {
 	if id := p.findGroup(func(r row) bool {
 		return r["kind"] == "crew" && r["parent"] == classroom && strings.EqualFold(r["title"], name)
@@ -605,6 +612,9 @@ func (p *planner) desired(id *identity) (row, error) {
 			}
 		case staff:
 			w := p.web[i]
+			if e.department != "" {
+				cells["vc_department"] = p.department(e.department)
+			}
 			cells["vc_job_title"] = e.jobTitle
 			if e.jobTitle == "" {
 				cells["vc_job_title"] = w.title

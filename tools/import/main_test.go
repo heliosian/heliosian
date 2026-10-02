@@ -111,7 +111,7 @@ func sampleExport(t *testing.T, withMaya bool) *export {
 		{role: student, name: "Wren (Wrennie) Ashdown", grade: "K", classroom: "Oak", crew: "Acorn"},
 		{role: parent, name: "Rowan Ashdown", emails: []string{"rowan.ashdown@example.org"}, phone: "555-0100"},
 		{role: parent, name: "Sam (Samuel) Ashdown", emails: []string{"sam@example.org"}},
-		{role: staff, name: "Ines Okafor", emails: []string{"ines@example.org"}, jobTitle: "Librarian", photos: []string{writePNG(t, dir, 3)}},
+		{role: staff, name: "Ines Okafor", emails: []string{"ines@example.org"}, jobTitle: "Librarian", department: "Specials", photos: []string{writePNG(t, dir, 3)}},
 		{role: staff, name: "Sam Ashdown", emails: []string{"sam@example.org"}, jobTitle: "Coach"},
 	}}
 	x.households = []householdRow{
@@ -220,6 +220,9 @@ func TestImportAgainstTheSample(t *testing.T) {
 	}
 	if ines["vc_bio"] != "Reads." {
 		t.Fatalf("Ines's bio, matched to the staff page by name: %v", ines)
+	}
+	if got := groupsOf(s, ines["id"]); !slices.Contains(got, "department:Specials:member") {
+		t.Fatalf("Ines, in Veracross's Specials department, is in %v", got)
 	}
 	if maya, _ := s.Model().Table("PERSON").Get("per00000000003"); maya["vc_bio"] != "Teaches." {
 		t.Fatalf("Maya's bio, matched to the staff page by another email on file: %v", maya)

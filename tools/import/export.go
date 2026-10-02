@@ -26,15 +26,16 @@ const (
 )
 
 type entry struct {
-	role      role
-	name      string
-	emails    []string
-	grade     string
-	classroom string
-	crew      string
-	jobTitle  string
-	phone     string
-	photos    []string
+	role       role
+	name       string
+	emails     []string
+	grade      string
+	classroom  string
+	crew       string
+	department string
+	jobTitle   string
+	phone      string
+	photos     []string
 }
 
 type householdRow struct {
@@ -270,7 +271,7 @@ func (x *export) readStaff(path string) error {
 		}
 		x.entries = append(x.entries, entry{
 			role: staff, name: name, emails: emails(row["person_email"], row["person_email_2"]),
-			jobTitle: clean(row["person_job_title"]), phone: strings.TrimSpace(row["person_phone_business"]),
+			jobTitle: clean(row["person_job_title"]), department: clean(row["person_department"]), phone: strings.TrimSpace(row["person_phone_business"]),
 			photos: photoFiles(row["person_photo"]),
 		})
 	}
