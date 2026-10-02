@@ -150,7 +150,7 @@ func (s *Sheet) DropColumns(app, table string, names []string) error {
 			Range: &sheets.DimensionRange{SheetId: tab, Dimension: "COLUMNS", StartIndex: int64(i), EndIndex: int64(i + 1)},
 		}})
 	}
-	_, err = call("drop columns "+table, s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{Requests: requests}).Do)
+	_, err = callOnce("drop columns "+table, s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{Requests: requests}).Do)
 	return err
 }
 

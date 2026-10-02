@@ -18,18 +18,37 @@ import (
 
 var retryWaits = []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second, 40 * time.Second}
 
-func call[T any](what string, do func(...googleapi.CallOption) (T, error)) (T, error) {
+func refused(err error) bool {
+	var apiErr *googleapi.Error
+	return errors.As(err, &apiErr) && apiErr.Code == 429
+}
+
+func unavailable(err error) bool {
+	var apiErr *googleapi.Error
+	return errors.As(err, &apiErr) && apiErr.Code >= 500
+}
+
+func retried[T any](what string, again func(error) bool, do func(...googleapi.CallOption) (T, error)) (T, error) {
 	var out T
 	var err error
 	for attempt := 0; ; attempt++ {
 		out, err = do()
-		var apiErr *googleapi.Error
-		if err == nil || !errors.As(err, &apiErr) || apiErr.Code != 429 || attempt >= len(retryWaits) {
+		if err == nil || !again(err) || attempt >= len(retryWaits) {
 			return out, err
 		}
-		slog.Warn("sheets quota refused a call; waiting to retry", "call", what, "wait", retryWaits[attempt])
+		slog.Warn("sheets refused a call; waiting to retry", "call", what, "error", err, "wait", retryWaits[attempt])
 		time.Sleep(retryWaits[attempt])
 	}
+}
+
+func call[T any](what string, do func(...googleapi.CallOption) (T, error)) (T, error) {
+	return retried(what, func(err error) bool { return refused(err) || unavailable(err) }, do)
+}
+
+// A call that removes rows or columns by position is repeated only when it was refused outright:
+// after a server error it may have gone through, and repeating it would remove whatever moved up.
+func callOnce[T any](what string, do func(...googleapi.CallOption) (T, error)) (T, error) {
+	return retried(what, refused, do)
 }
 
 type Sheet struct {
@@ -292,6 +311,17 @@ func (s *Sheet) writeRows(id, table string, used int, rows [][]any) error {
 }
 
 func (s *Sheet) Delete(app, table string, match map[string]string) error {
+	for attempt := 0; ; attempt++ {
+		err := s.deleteOnce(app, table, match, attempt > 0)
+		if err == nil || !unavailable(err) || attempt >= len(retryWaits) {
+			return err
+		}
+		slog.Warn("sheets failed a delete; reading the tab again before retrying", "table", table, "error", err, "wait", retryWaits[attempt])
+		time.Sleep(retryWaits[attempt])
+	}
+}
+
+func (s *Sheet) deleteOnce(app, table string, match map[string]string, retry bool) error {
 	g, err := s.read(app, table)
 	if err != nil {
 		return err
@@ -318,10 +348,13 @@ func (s *Sheet) Delete(app, table string, match map[string]string) error {
 			},
 		}})
 	}
+	if len(requests) == 0 && retry {
+		return nil
+	}
 	if len(requests) == 0 {
 		return fmt.Errorf("table %s has no row matching %v", table, match)
 	}
-	_, err = call("delete "+table, s.service.Spreadsheets.BatchUpdate(g.id, &sheets.BatchUpdateSpreadsheetRequest{
+	_, err = callOnce("delete "+table, s.service.Spreadsheets.BatchUpdate(g.id, &sheets.BatchUpdateSpreadsheetRequest{
 		Requests: requests,
 	}).Do)
 	return err
