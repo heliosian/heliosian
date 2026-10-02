@@ -668,6 +668,34 @@ const policySource = `
 (set GREETING.grouped (system "import"))
 ; whether a greeting addresses one person, as the old sheet has it
 (set GREETING.individual (system "import"))
+; a Loop list's address, as the old sheet has it
+(set GROUP.slug (and (system "import") (= @old.kind "group")))
+; a Loop list's title, as the old sheet has it
+(set GROUP.title (and (system "import") (= @old.kind "group")))
+; a Loop list's description, as the old sheet has it
+(set GROUP.description (and (system "import") (= @old.kind "group")))
+; who sees a Loop list, as the old sheet has it
+(set GROUP.visibility (and (system "import") (= @old.kind "group")))
+; who may post to a Loop list, as the old sheet has it
+(set GROUP.posting (and (system "import") (= @old.kind "group")))
+; who may reply on a Loop list, as the old sheet has it
+(set GROUP.replying (and (system "import") (= @old.kind "group")))
+; the rules of plain groups, to compare a Loop list's with the old sheet's
+(read RULE (and (system "import") (= group.kind "group")))
+; a Loop list's rule
+(insert RULE (and (system "import") (= @new.group.kind "group")))
+; someone a Loop list's manager added by address alone
+(insert PERSON (and (system "import") (= @new.source "guest")))
+; the address of someone a Loop list's manager added
+(insert PERSON_EMAIL (and (system "import") (= @new.source "guest")))
+; Loop's mail, to find what an earlier sync added
+(read MESSAGE (and (system "import") (= group.kind "group")))
+; a post to a Loop list, and the copy it sent out
+(insert MESSAGE (and (system "import") (= @new.group.kind "group")))
+; Loop's deliveries, to find what an earlier sync added
+(read RECIPIENT (and (system "import") (= message.group.kind "group")))
+; a copy of a Loop post that went to one person
+(insert RECIPIENT (and (system "import") (= @new.message.group.kind "group")))
 `
 
 type policySet struct {
