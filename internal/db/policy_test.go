@@ -321,6 +321,30 @@ func TestHiddenPersonIsUnreachable(t *testing.T) {
 	}
 }
 
+func TestPersonFlagsAreKeptFromReaders(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, PeopleSheet,
+		store.Update("PERSON", store.Row{"id": student}, store.Row{"hidden": "Yes", "deactivated": "2026-09-30 12:00"}),
+		store.Update("PERSON", store.Row{"id": parent}, store.Row{"signed_out": "2026-09-30 11:00"})); err != nil {
+		t.Fatal(err)
+	}
+	juni := `(from PERSON (where (= id "per00000000001")))`
+	for _, c := range []struct {
+		viewer, query, column, want string
+	}{
+		{staff, juni, "hidden", "Yes"},
+		{student, juni, "hidden", ""},
+		{staff, juni, "deactivated", ""},
+		{student, juni, "deactivated", ""},
+		{parent, `(from PERSON (where (= id "per00000000002")))`, "signed_out", ""},
+		{staff, `(from PERSON (where (= id "per00000000002")))`, "signed_out", ""},
+	} {
+		if got := cellAs(t, s, c.viewer, c.query, c.column); got != c.want {
+			t.Errorf("%s as %s = %q, want %q", c.column, c.viewer, got, c.want)
+		}
+	}
+}
+
 func TestPendingIsForManagersAndAdmins(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"status": "pending"})); err != nil {

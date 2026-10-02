@@ -94,8 +94,10 @@ const policySource = `
    vc_address_visibility vc_phone_visibility name_long_import name_short_import name_sort_import
    name_long_override name_short_override name_sort_override name_long name_short name_sort
    name_show grade classroom crew job_title department phone facts pronouns pronunciation
-   facts_updated photo_updated birthday hidden deactivated signed_out added_by)
+   facts_updated photo_updated birthday)
   true)
+; when a person last signed out everywhere and when the import dropped them, for the server alone
+(read PERSON (signed_out deactivated) false)
 ; whether the form shares a person's address and phone, to them and their family's managers
 (read PERSON (address_consent phone_consent) (self_or_household @row))
 ; a person or a manager of their family overrides their long name
@@ -273,6 +275,8 @@ const policySource = `
 
 ; every person, hidden or deactivated too
 (read PERSON (admin_of "who"))
+; which people are hidden
+(read PERSON (hidden) (admin_of "who"))
 ; override anyone's long name
 (set PERSON.name_long_override (admin_of "who"))
 ; override anyone's short name
@@ -434,6 +438,8 @@ const policySource = `
 (set PERSON.name_short_import (system "import"))
 ; a person's sort name derived from Veracross's
 (set PERSON.name_sort_import (system "import"))
+; whether a person is deactivated, to compare with the export
+(read PERSON (deactivated) (system "import"))
 ; deactivate a Veracross person gone from the export, or bring one back
 (set PERSON.deactivated (and (system "import") (= @old.source "veracross")))
 ; whether the opt-in form lists a person
@@ -582,6 +588,8 @@ const policySource = `
 (set PERSON.job_title (system "import"))
 ; a person's phone as the old directory overrode it
 (set PERSON.phone_override (system "import"))
+; whether a person is hidden and when they last signed out, to compare with the old directory
+(read PERSON (hidden signed_out) (system "import"))
 ; hide a person the old directory hid
 (set PERSON.hidden (system "import"))
 ; when a person last signed out everywhere

@@ -289,6 +289,9 @@ func checkEmails(people Sheet) error {
 		if row["address"] != strings.ToLower(strings.TrimSpace(row["address"])) {
 			return fmt.Errorf("PERSON_EMAIL: %q is not written in lower case", row["address"])
 		}
+		if strings.Contains(row["address"], ".noemail") {
+			return fmt.Errorf("PERSON_EMAIL: %q is a placeholder for no address", row["address"])
+		}
 		primary, err := cells.YesNo(row["primary"], false)
 		if err != nil {
 			return err

@@ -12,6 +12,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
+	"heliosian/internal/cells"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
@@ -58,7 +59,12 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, importKey []byte, 
 	key, bearer := auth.Bearer(r)
 	if !bearer {
 		email := auth.Email(r)
-		return Env{Viewer: m.signedIn(email), Now: at}, access.Actor{Email: email}, true
+		viewer := m.signedIn(email)
+		if viewer == "" {
+			http.Error(w, "not in the directory", http.StatusForbidden)
+			return Env{}, access.Actor{}, false
+		}
+		return Env{Viewer: viewer, Now: at}, access.Actor{Email: email}, true
 	}
 	if len(importKey) == 0 || subtle.ConstantTimeCompare([]byte(key), importKey) != 1 {
 		http.Error(w, "unknown key", http.StatusUnauthorized)
@@ -142,6 +148,13 @@ func (m *Model) PersonOf(email string) string {
 func (m *Model) signedIn(email string) string {
 	row, ok := m.Shown("PERSON_EMAIL").Find(strings.ToLower(strings.TrimSpace(email)))
 	if !ok {
+		return ""
+	}
+	p, ok := m.Shown("PERSON").Get(row["person"])
+	if !ok || p["deactivated"] != "" {
+		return ""
+	}
+	if hidden, _ := cells.YesNo(p["hidden"], false); hidden {
 		return ""
 	}
 	return row["person"]

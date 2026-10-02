@@ -127,8 +127,32 @@ func TestServeQueryAsTheViewer(t *testing.T) {
 	if _, out, _ := ask(t, s, "application/json", "maya.lindqvist@example.org", q); len(out.Result) != 0 {
 		t.Fatalf("Maya sees %d of Rowan's saved views", len(out.Result))
 	}
-	if _, out, _ := ask(t, s, "application/json", "stranger@example.org", `{"from": "PERSON"}`); len(out.Result) != 3 {
-		t.Fatalf("an address the sheets don't hold sees %d people", len(out.Result))
+}
+
+func TestOnlyListedActivePeopleGetIn(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	refused := func(as, why string) {
+		t.Helper()
+		if code, _, body := ask(t, s, "application/json", as, `{"from": "PERSON"}`); code != http.StatusForbidden {
+			t.Errorf("%s reading: %d %s", why, code, body)
+		}
+		rec := send(t, s, queue, http.MethodPost, "application/json", as, `{"batch": [{"set": "mem00000000014", "cells": {"status": "no"}}]}`)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s writing: %d %s", why, rec.Code, rec.Body.String())
+		}
+	}
+	if code, _, body := ask(t, s, "application/json", "rowan@example.com", `{"from": "PERSON"}`); code != http.StatusOK {
+		t.Fatalf("a listed parent: %d %s", code, body)
+	}
+	refused("stranger@example.org", "an address the sheets don't hold")
+	for column, value := range map[string]string{"hidden": "Yes", "deactivated": "2026-09-30 12:00", "consent": "withheld"} {
+		if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": parent}, store.Row{column: value})); err != nil {
+			t.Fatal(err)
+		}
+		refused("rowan@example.com", "a parent with "+column+" "+value)
+		if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": parent}, store.Row{column: map[string]string{"consent": "listed"}[column]})); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -175,7 +199,6 @@ func TestServeWrites(t *testing.T) {
 		as, batch, want string
 		code            int
 	}{
-		{"juni@example.org", `{"batch": [{"set": "mem00000000014", "cells": {"status": "yes"}}]}`, "may not change MEMBER.status", http.StatusForbidden},
 		{"rowan.ashdown@example.org", `{"batch": [{"set": "mem00000000014", "cells": {"status": "yes"}}, {"set": "mem00000000014", "cells": {"note": "hi"}}]}`, "may not change MEMBER.note", http.StatusForbidden},
 		{"rowan.ashdown@example.org", `{"batch": [{"insert": "MEMBER", "row": {"group": "grp00000000040", "person": "per00000000001", "role": "member"}}]}`, "may not add to MEMBER", http.StatusForbidden},
 		{"rowan.ashdown@example.org", `{"batch": [{"delete": "mem00000000014"}]}`, "may not remove from MEMBER", http.StatusForbidden},
@@ -206,5 +229,9 @@ func TestEmailsAreLowerCase(t *testing.T) {
 	err := commit(s, PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "Maya@Example.org", "person": staff, "source": "manual"}))
 	if err == nil || !strings.Contains(err.Error(), "lower case") {
 		t.Fatalf("a capitalised address: %v", err)
+	}
+	err = commit(s, PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "juni.ashdown.noemail@example.org", "person": student, "source": "manual"}))
+	if err == nil || !strings.Contains(err.Error(), "placeholder") {
+		t.Fatalf("a placeholder address: %v", err)
 	}
 }

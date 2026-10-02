@@ -1,5 +1,5 @@
-id,source,vc_name,vc_legal_name,vc_grade,vc_classroom,vc_job_title,name_long_import,name_short_import,name_sort_import,birthday,consent,address_consent,phone_consent,vc_crew,vc_phone,vc_bio,vc_address_visibility,vc_phone_visibility,name_long_override,name_short_override,name_sort_override,grade,classroom,crew,job_title,department,phone_override,facts,pronouns,pronunciation,facts_updated,photo_updated,hidden,deactivated,signed_out,added_by,vc_department
-per00000000001,veracross,Juni (Juniper) Ashdown,Juniper Ashdown,3,grp00000000010,,Juni Ashdown,Juni,"Ashdown, Juni",,listed,shared,shared,,,,,,,,,,,,,,,,,,,,,,,,
-per00000000002,veracross,Rowan Ashdown,Rowan Ashdown,,,,Rowan Ashdown,Rowan,"Ashdown, Rowan",,listed,shared,withheld,,,,,,,,,,,,,,,,,,,,,,,,
-per00000000003,veracross,Maya Lindqvist,Maya Lindqvist,,,Teacher,Maya Lindqvist,Maya,"Lindqvist, Maya",1985-04-12,listed,shared,shared,,,,,,,,,,,,,,,,,,,,,,,,
-per00000000004,guest,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+id,source,vc_name,vc_legal_name,vc_grade,vc_classroom,vc_job_title,name_long_import,name_short_import,name_sort_import,birthday,consent,address_consent,phone_consent,vc_crew,vc_phone,vc_bio,vc_address_visibility,vc_phone_visibility,name_long_override,name_short_override,name_sort_override,grade,classroom,crew,job_title,department,phone_override,facts,pronouns,pronunciation,facts_updated,photo_updated,hidden,deactivated,signed_out,vc_department
+per00000000001,veracross,Juni (Juniper) Ashdown,Juniper Ashdown,3,grp00000000010,,Juni Ashdown,Juni,"Ashdown, Juni",,listed,shared,shared,,,,,,,,,,,,,,,,,,,,,,,
+per00000000002,veracross,Rowan Ashdown,Rowan Ashdown,,,,Rowan Ashdown,Rowan,"Ashdown, Rowan",,listed,shared,withheld,,,,,,,,,,,,,,,,,,,,,,,
+per00000000003,veracross,Maya Lindqvist,Maya Lindqvist,,,Teacher,Maya Lindqvist,Maya,"Lindqvist, Maya",1985-04-12,listed,shared,shared,,,,,,,,,,,,,,,,,,,,,,,
+per00000000004,guest,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

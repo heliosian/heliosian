@@ -144,7 +144,6 @@ var Tables = []Table{
 			col("hidden", Bool),
 			col("deactivated", Moment),
 			col("signed_out", Moment),
-			ref("added_by", "PERSON"),
 		},
 	},
 	{
