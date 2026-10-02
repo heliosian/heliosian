@@ -1,4 +1,4 @@
-import {settings, charity, charityName, longDate, mediumDate, emailLink, newsletterText} from '../state.js';
+import {charity, charityName, longDate, mediumDate, emailLink, newsletterText} from '../state.js';
 import {el, link, svg, thumb, button, iconButton, copyText} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {openAssign, markContacted, markUsed, useDefault, reuseLast, openDonation, openBirthday, openParticipation, openNote, removeNote} from '../edit.js';
@@ -139,8 +139,8 @@ function askBand(sv) {
   band.append(el('div', 'ask-icon', '🎁'));
   const body = el('div', 'row-body');
   body.append(el('div', 'row-title', 'Select Donation'));
-  const last = sv.lastDonation ? charityName(sv.lastDonation.charity) : '';
-  body.append(el('div', 'row-text', `If no donation is specified, we will default to either last year's donation${last ? ` (${last})` : ''} or the default (${charityName(settings().defaultCharity)}).`));
+  const whose = sv.lastDonation && sv.lastDonation.charity === sv.fallback.charity ? "last year's donation" : 'the default';
+  body.append(el('div', 'row-text', `If no donation is specified, we will use ${charityName(sv.fallback.charity)}, ${whose}.`));
   band.append(body);
   const actions = el('div', 'row-actions');
   actions.append(filled('Add Donation', null, () => openDonation(sv)));
@@ -201,7 +201,7 @@ function donationBand(sv) {
     reuse.disabled = Boolean(sv.donation && sv.donation.charity === sv.lastDonation.charity);
     cols.append(donationColumn('Last Year', 'sky', sv, sv.lastDonation, [reuse]));
   } else {
-    const d = settings().defaultCharity;
+    const d = sv.fallback.charity;
     const useDefaultButton = outlined('Use Default Charity', 'sync', () => useDefault(sv));
     useDefaultButton.disabled = Boolean(sv.donation && sv.donation.charity === d);
     const c = charity(d);

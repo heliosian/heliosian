@@ -268,6 +268,15 @@ func (m *Birthdays) Donation(email, year string) (Donation, bool) {
 	return d, ok
 }
 
+func (m *Birthdays) fallback(email, year string) (string, string) {
+	if d, ok := m.Donation(email, ShiftYearSpan(year, -1)); ok {
+		if c := m.Charity(d.Charity); c != nil && c.Allowed {
+			return d.Charity, d.Note
+		}
+	}
+	return m.Settings.DefaultCharity, ""
+}
+
 func (m *Birthdays) Skipped(email string) bool {
 	b := m.Birthday(email)
 	return b != nil && b.Level == LevelSkip

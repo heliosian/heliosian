@@ -82,12 +82,13 @@ func (m *Model) toExport(issue string, now time.Time) []exported {
 		if sv.Donation != nil && sv.Donation.UsedOn != "" {
 			continue
 		}
-		key, note, selected := b.Settings.DefaultCharity, "", ""
+		key, note := b.fallback(sv.Email, sv.Year)
+		selected := ""
 		donation := map[string]string{}
 		if sv.Donation != nil {
 			key, note, selected = sv.Donation.Charity, sv.Donation.Note, sv.Donation.RecordedOn
 		} else {
-			donation["Charity"], donation["Note"], donation["Recorded On"], donation["Recorded By"] = key, "", day, ""
+			donation["Charity"], donation["Note"], donation["Recorded On"], donation["Recorded By"] = key, note, day, ""
 		}
 		c := b.Charity(key)
 		name, link, about := c.Name, c.DonationLink, c.About

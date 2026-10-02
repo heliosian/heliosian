@@ -137,6 +137,7 @@ type birthdayResource struct {
 	AssignedOn       string        `json:"assignedOn,omitempty"`
 	ContactedOn      string        `json:"contactedOn,omitempty"`
 	ContactedBy      string        `json:"contactedBy,omitempty"`
+	FallbackNote     string        `json:"fallbackNote,omitempty"`
 	Path             string        `json:"path"`
 	App              string        `json:"app"`
 	Me               mine          `json:"me"`
@@ -245,6 +246,7 @@ func (r birthdayResources) birthdays() api.Type[*Model] {
 				Path: staffPath(sv.Email), App: birthdaysHost, Me: mine{Mine: sv.AssignedTo != "" && sv.AssignedTo == q.Actor.Email},
 				Late: m.lateFor(q, sv),
 			}
+			_, out.FallbackNote = m.Birthdays.fallback(sv.Email, sv.Year)
 			if sv.AssignedTo != "" && m.personID(sv.AssignedTo) == nil {
 				out.AssignedTo = sv.AssignedTo
 			}
@@ -310,6 +312,10 @@ func (r birthdayResources) birthdays() api.Type[*Model] {
 			}},
 			"last-donation": {Type: "donations", List: func(m *Model, q api.Query, key string) []string {
 				return m.Birthdays.donationIn(email(m, key), ShiftYearSpan(m.Birthdays.year(q.Now), -1))
+			}},
+			"fallback-charity": {Type: "charities", List: func(m *Model, q api.Query, key string) []string {
+				charity, _ := m.Birthdays.fallback(email(m, key), m.Birthdays.year(q.Now))
+				return []string{charity}
 			}},
 			"notes": {Type: "birthday-notes", Many: true, List: func(m *Model, _ api.Query, key string) []string {
 				out := []string{}
@@ -763,12 +769,6 @@ func (r birthdayResources) settings() api.Type[*Model] {
 			"viewer": {Type: "people", List: func(m *Model, q api.Query, _ string) []string { return m.personID(q.Actor.Email) }},
 			"mine":   {Type: "birthdays", Many: true, List: func(m *Model, q api.Query, _ string) []string { return m.birthdayMine(q) }},
 			"all":    {Type: "birthdays", Many: true, List: func(m *Model, q api.Query, _ string) []string { return m.birthdayIssues(q) }},
-			"default-charity": {Type: "charities", List: func(m *Model, q api.Query, _ string) []string {
-				if !birthdaySees(m, q) {
-					return nil
-				}
-				return []string{m.Birthdays.Settings.DefaultCharity}
-			}},
 		},
 		Actions: map[string]api.Action[*Model]{
 			"edit": api.Do(func(_ *Model, q api.Query, _ string) bool { return permitted(requireAdmin(q.Actor)) }, func(wr api.Write[*Model], in BirthdaysSettings) error {

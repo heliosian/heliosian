@@ -12,12 +12,12 @@ const SchoolMailWindow = 14 * 24 * time.Hour
 var allFamilies = []string{"parentsandstaff", "parentsonly", "parentsandstudents", "community", "parents", "newstudentfamilies", "new.parents"}
 
 type SchoolEmail struct {
-	Key      string   `json:"key"`
-	Title    string   `json:"title"`
-	Date     string   `json:"date"`
-	Time     string   `json:"time"`
-	Kind     string   `json:"kind"`
-	Channel  string   `json:"channel"`
+	Key      string            `json:"key"`
+	Title    string            `json:"title"`
+	Date     string            `json:"date"`
+	Time     string            `json:"time"`
+	Kind     string            `json:"kind"`
+	Channel  string            `json:"channel"`
 	Audience string            `json:"audience"`
 	Points   []string          `json:"points"`
 	Repeats  map[string]string `json:"repeats"`

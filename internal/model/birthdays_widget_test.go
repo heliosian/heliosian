@@ -63,13 +63,15 @@ func TestBirthdayWidget(t *testing.T) {
 	if len(admin["all"]) == 0 || len(issues) != 0 {
 		t.Errorf("all reaches past the next two issues %v: %v", issues, emailsOf(admin["all"]))
 	}
-	r := get(t, mux, parent, "/api/birthday-settings?include=default-charity")
-	if got := r.follow(r.Resources["birthday-settings"][r.ids(t)[0]], "default-charity", "charities"); got == nil || got["name"] == "" {
-		t.Errorf("the default charity: %v", got)
+	r := get(t, mux, parent, "/api/birthday-settings?include=mine.fallback-charity")
+	bill := r.Resources["birthdays"][r.Resources["birthday-settings"][r.ids(t)[0]]["mine"].([]any)[0].(string)]
+	if got := r.follow(bill, "fallback-charity", "charities"); got == nil || got["name"] != "Second Harvest of Silicon Valley" || bill["fallbackNote"] != nil {
+		t.Errorf("Bill, with no charity last year, falls back to the default: %v %v", got, bill)
 	}
-	r = get(t, mux, "sam.whitfield@heliosschool.org", "/api/birthday-settings?include=default-charity")
-	if got := r.Resources["birthday-settings"][r.ids(t)[0]]["default-charity"]; got != nil {
-		t.Errorf("someone off the team sees the default charity: %v", got)
+	r = get(t, mux, parent, "/api/birthdays/dana.hawkins@heliosschool.org?include=fallback-charity")
+	dana := r.Resources["birthdays"][r.id(t)]
+	if got := r.follow(dana, "fallback-charity", "charities"); got == nil || got["name"] != "Birthfund" || dana["fallbackNote"] != "Because caring for children starts with caring for their mothers." {
+		t.Errorf("Dana falls back to last year's: %v %v", got, dana)
 	}
 	if stranger := birthdayWidgetOf(t, mux, "sam.whitfield@heliosschool.org"); len(stranger["mine"])+len(stranger["all"]) != 0 {
 		t.Errorf("someone off the team: %+v", stranger)

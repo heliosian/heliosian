@@ -70,7 +70,7 @@ export function markUsed(sv, used) {
 }
 
 export function useDefault(sv) {
-  return run(() => act('birthdays', sv.id, 'donate', {charity: settings().defaultCharity, note: ''}), `Recorded ${charityName(settings().defaultCharity)}`);
+  return run(() => act('birthdays', sv.id, 'donate', sv.fallback), `Recorded ${charityName(sv.fallback.charity)}`);
 }
 
 export function reuseLast(sv) {
@@ -85,7 +85,7 @@ function charityOptions(current) {
 
 export function openDonation(sv) {
   const existing = sv.donation;
-  const pick = select(charityOptions(existing ? existing.charity : ''), existing ? existing.charity : settings().defaultCharity);
+  const pick = select(charityOptions(existing ? existing.charity : ''), existing ? existing.charity : sv.fallback.charity);
   const note = textarea(existing ? existing.note : '', 5);
   const add = el('div', 'field-note');
   const addLink = el('button', 'link-button', 'Not on the list? Add a charity.');

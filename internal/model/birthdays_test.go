@@ -959,3 +959,25 @@ func TestShareIssue(t *testing.T) {
 		t.Errorf("Omar's donation after: %+v", d)
 	}
 }
+
+func TestShareLastYearsCharity(t *testing.T) {
+	st, _ := birthdaysServer(t)
+	m := st.Model()
+	bill := "bill.ryder@heliosschool.org"
+	billOf := func() exported {
+		out := m.toExport("2026-09-11", now())
+		i := slices.IndexFunc(out, func(e exported) bool { return e.email == bill })
+		if i < 0 {
+			t.Fatalf("Bill is not in the copy: %+v", out)
+		}
+		return out[i]
+	}
+	m.Birthdays.Donations[yearKey(bill, "2025 - 2026")] = Donation{Email: bill, Year: "2025 - 2026", Charity: birthfund, Note: "For the midwives.", RecordedOn: "2025-09-10"}
+	if e := billOf(); e.row["Charity Name"] != "Birthfund" || e.row["Note"] != "For the midwives." || e.donation["Charity"] != birthfund || e.donation["Note"] != "For the midwives." {
+		t.Errorf("Bill, last year's charity: row %v, donation %v", e.row, e.donation)
+	}
+	m.Birthdays.Donations[yearKey(bill, "2025 - 2026")] = Donation{Email: bill, Year: "2025 - 2026", Charity: sierraClub, Note: "For the trails.", RecordedOn: "2025-09-10"}
+	if e := billOf(); e.row["Charity Name"] != "Second Harvest of Silicon Valley" || e.row["Note"] != "" || e.donation["Charity"] != secondHarvest || e.donation["Note"] != "" {
+		t.Errorf("Bill, last year's charity no longer allowed: row %v, donation %v", e.row, e.donation)
+	}
+}

@@ -17,6 +17,7 @@ function staffView(read, b) {
     assignedToName: assignee ? assignee.fullName : b.assignedTo || '',
     donation: read.follow(b, 'donation'),
     lastDonation: read.follow(b, 'last-donation'),
+    fallback: {charity: read.follow(b, 'fallback-charity').id, note: b.fallbackNote || ''},
     notes: read.follow(b, 'notes'),
   };
 }
@@ -31,7 +32,7 @@ const byName = (a, b) => a.name.localeCompare(b.name);
 export async function loadModel() {
   const [read, viewer] = await Promise.all([batch({
     settings: '/api/birthday-settings?include=viewer',
-    birthdays: '/api/birthdays?include=person,assignee,donation,last-donation,notes',
+    birthdays: '/api/birthdays?include=person,assignee,donation,last-donation,fallback-charity,notes',
     charities: '/api/charities',
     newsletterDates: '/api/newsletter-dates',
     team: '/api/birthday-team?include=person',
