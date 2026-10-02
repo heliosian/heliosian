@@ -177,7 +177,7 @@ const policySource = `
       (and (= role "member") (sees_members group))))
 ; every column of a membership but what it cost
 (read MEMBER
-  (id group person role status lead quantity guest_of note answered answered_by via archived opened
+  (id group person role status lead quantity guest_of note answered answered_by via opened
    added_by added)
   true)
 ; what a membership cost and its payment reference, to the member, their host and the group's managers

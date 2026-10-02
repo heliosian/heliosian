@@ -316,7 +316,6 @@ var Tables = []Table{
 			col("answered", Moment),
 			ref("answered_by", "PERSON"),
 			enum("via", "page", "mail"),
-			col("archived", Bool),
 			col("opened", Moment),
 			ref("added_by", "PERSON"),
 			col("added", Moment),

@@ -85,7 +85,7 @@ func TestCheck(t *testing.T) {
 		"status":      "yes",
 		"price":       "12.50",
 		"purchase_id": "pi_3PqXyZ2eZvKYlo2C",
-		"archived":    "No",
+		"lead":        "No",
 		"answered":    "2026-09-24 16:00",
 		"unknown":     "a column added by hand",
 	}
@@ -97,7 +97,7 @@ func TestCheck(t *testing.T) {
 		"person":   "",
 		"role":     "host",
 		"price":    "12.5.0",
-		"archived": "maybe",
+		"lead":     "maybe",
 		"answered": "yesterday",
 		"quantity": "-1",
 		"guest_of": " perX7pQ2m9KdLr",
