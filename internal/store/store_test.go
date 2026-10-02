@@ -514,6 +514,65 @@ func TestWritesToOneTabAreBatched(t *testing.T) {
 	equal(t, "sheet", got, []string{"hat|green|large", "boot|black|small", "beret||", "sock||"})
 }
 
+func TestBatchingReachesPastOtherTabs(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		ops    []Op
+		calls  []string
+		things []string
+		uses   []string
+	}{
+		{
+			name: "interleaved tabs collapse to one call each",
+			ops: []Op{
+				Insert("Things", Row{"Name": "cap"}), Insert("Uses", Row{"Thing": "hat", "By": "cy"}),
+				Insert("Things", Row{"Name": "sock"}), Insert("Uses", Row{"Thing": "boot", "By": "cy"}),
+				Update("Things", Row{"Name": "hat"}, Row{"Color": "green"}), Insert("Things", Row{"Name": "scarf"}),
+				Update("Things", Row{"Name": "boot"}, Row{"Color": "brown"}),
+			},
+			calls:  []string{"insert Things", "insert Uses", "setmany Things", "insert Change Log"},
+			things: []string{"hat|green", "boot|brown", "cap|", "sock|", "scarf|"},
+			uses:   []string{"hat|ann", "hat|bo", "boot|ann", "hat|cy", "boot|cy"},
+		},
+		{
+			name:   "a delete holds back a later insert of the row it matched",
+			ops:    []Op{Insert("Things", Row{"Name": "cap"}), Delete("Things", Row{"Name": "cap"}), Insert("Things", Row{"Name": "cap", "Color": "blue"})},
+			calls:  []string{"insert Things", "delete Things", "insert Things", "insert Change Log"},
+			things: []string{"hat|red", "boot|black", "cap|blue"},
+			uses:   []string{"hat|ann", "hat|bo", "boot|ann"},
+		},
+		{
+			name:   "a row naming another tab's new row waits for it",
+			ops:    []Op{Insert("Uses", Row{"Thing": "hat", "By": "cy"}), Insert("Things", Row{"Name": "newt"}), Insert("Uses", Row{"Thing": "newt", "By": "cy"})},
+			calls:  []string{"insert Uses", "insert Things", "insert Uses", "insert Change Log"},
+			things: []string{"hat|red", "boot|black", "newt|"},
+			uses:   []string{"hat|ann", "hat|bo", "boot|ann", "hat|cy", "newt|cy"},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			writer := &countingWriter{Dir: f.dir}
+			s, err := New([]Part[counts]{part()}, consent, f.dir, writer, f.queue)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.CommitAndWait(context.Background(), access.System("job"), "app", c.ops...); err != nil {
+				t.Fatal(err)
+			}
+			equal(t, "calls", writer.calls, c.calls)
+			things, uses := []string{}, []string{}
+			for _, row := range f.rows(t, "Things") {
+				things = append(things, row["Name"]+"|"+row["Color"])
+			}
+			for _, row := range f.rows(t, "Uses") {
+				uses = append(uses, row["Thing"]+"|"+row["By"])
+			}
+			equal(t, "things", things, c.things)
+			equal(t, "uses", uses, c.uses)
+		})
+	}
+}
+
 type pausedSource struct {
 	*data.Dir
 	pause   *atomic.Bool

@@ -193,9 +193,7 @@ func (b *Book) Write(p Plan) <-chan struct{} {
 }
 
 func (b *Book) write(writes []Op, log []Row) {
-	for len(writes) > 0 {
-		run := batch(writes)
-		writes = writes[len(run):]
+	for _, run := range b.batches(writes) {
 		if err := b.put(run); err != nil {
 			logging.Fatal("write", "app", b.app, "tab", run[0].tab, "error", err)
 		}
@@ -226,16 +224,89 @@ func planned(op Op, changes []change) []Op {
 	return out
 }
 
-func batch(writes []Op) []Op {
-	first := writes[0]
-	if first.kind != insert && first.kind != keyed {
-		return writes[:1]
+func (b *Book) batches(writes []Op) [][]Op {
+	out := [][]Op{}
+	for _, w := range writes {
+		if i := b.joinable(out, w); i >= 0 {
+			out[i] = append(out[i], w)
+			continue
+		}
+		out = append(out, []Op{w})
 	}
-	n := 1
-	for n < len(writes) && writes[n].kind == first.kind && writes[n].tab == first.tab && slices.Equal(slices.Sorted(maps.Keys(writes[n].match)), slices.Sorted(maps.Keys(first.match))) {
-		n++
+	return out
+}
+
+func (b *Book) joinable(out [][]Op, w Op) int {
+	if w.kind != insert && w.kind != keyed {
+		return -1
 	}
-	return writes[:n]
+	for i := len(out) - 1; i >= 0; i-- {
+		first := out[i][0]
+		if first.kind == w.kind && first.tab == w.tab && slices.Equal(slices.Sorted(maps.Keys(first.match)), slices.Sorted(maps.Keys(w.match))) {
+			return i
+		}
+		for _, p := range out[i] {
+			if b.blocks(p, w) {
+				return -1
+			}
+		}
+	}
+	return -1
+}
+
+func (b *Book) blocks(p, w Op) bool {
+	if p.tab != w.tab {
+		return (p.kind == insert || p.kind == upsert) && b.references(w, p)
+	}
+	if w.kind == insert {
+		return p.kind == insert || data.Matches(w.cells, p.match)
+	}
+	if p.kind == insert {
+		return data.Matches(p.cells, w.match)
+	}
+	if !overlap(p.match, w.match) {
+		return false
+	}
+	return p.kind == remove || sharesColumn(p.cells, w.cells) || sharesColumn(p.cells, w.match) || sharesColumn(w.cells, p.match)
+}
+
+func (b *Book) references(w, p Op) bool {
+	keys := []string{}
+	for _, column := range b.byName[p.tab].Key {
+		for _, row := range []Row{p.match, p.cells} {
+			if k := data.Key(row[column]); k != "" {
+				keys = append(keys, k)
+			}
+		}
+	}
+	for _, row := range []Row{w.match, w.cells} {
+		for _, v := range row {
+			for _, k := range keys {
+				if strings.Contains(data.Key(v), k) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func overlap(a, b Row) bool {
+	for column, v := range a {
+		if other, ok := b[column]; ok && data.Key(other) != data.Key(v) {
+			return false
+		}
+	}
+	return true
+}
+
+func sharesColumn(a, b Row) bool {
+	for column := range a {
+		if _, ok := b[column]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *Book) put(run []Op) error {

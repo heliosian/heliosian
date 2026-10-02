@@ -323,6 +323,25 @@ func (v *Vocabulary) Classify(ctx context.Context, client anthropic.Client, item
 	return out
 }
 
+func classifyRequest(items []CalendarItem) (string, map[string]CalendarItem, error) {
+	type handled struct {
+		ID string `json:"id"`
+		CalendarItem
+	}
+	sent := map[string]CalendarItem{}
+	list := []handled{}
+	for i, it := range items {
+		handle := "e" + strconv.Itoa(i+1)
+		sent[handle] = it
+		list = append(list, handled{ID: handle, CalendarItem: it})
+	}
+	encoded, err := json.MarshalIndent(list, "", " ")
+	if err != nil {
+		return "", nil, err
+	}
+	return "Classify each of these events:\n\n" + string(encoded), sent, nil
+}
+
 func (v *Vocabulary) classifyBatch(ctx context.Context, client anthropic.Client, items []CalendarItem) (map[string]Classification, error) {
 	categories := []string{}
 	byTitle := map[string]string{}
@@ -343,10 +362,8 @@ func (v *Vocabulary) classifyBatch(ctx context.Context, client anthropic.Client,
 	}
 	properties := map[string]any{}
 	required := []string{}
-	sent := map[string]CalendarItem{}
-	for i, it := range items {
+	for i := range items {
 		handle := "e" + strconv.Itoa(i+1)
-		sent[handle] = it
 		properties[handle] = map[string]any{"$ref": "#/$defs/answer"}
 		required = append(required, handle)
 	}
@@ -354,11 +371,11 @@ func (v *Vocabulary) classifyBatch(ctx context.Context, client anthropic.Client,
 		"type": "object", "additionalProperties": false, "required": required, "properties": properties,
 		"$defs": map[string]any{"answer": one},
 	}
-	encoded, err := json.MarshalIndent(sent, "", " ")
+	request, sent, err := classifyRequest(items)
 	if err != nil {
 		return nil, err
 	}
-	content := []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock("Classify each of these events:\n\n" + string(encoded))}
+	content := []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(request)}
 	for attempt := 1; ; attempt++ {
 		answers := map[string]classifyAnswer{}
 		raw, err := Ask(ctx, client, v.classifierSystem(), content, schema, &answers)
