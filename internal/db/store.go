@@ -54,6 +54,9 @@ func build(sheet string) func(context.Context, store.Tables, *Model) error {
 			if err := checkEmails(built); err != nil {
 				return err
 			}
+			if err := checkPhotos(built); err != nil {
+				return err
+			}
 		}
 		if sheet == GroupsSheet {
 			if err := checkRuleProperties(built); err != nil {

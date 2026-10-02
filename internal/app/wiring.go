@@ -81,6 +81,7 @@ type appSpec struct {
 type Core struct {
 	Store     *model.Store
 	Data      *db.Store
+	Pictures  *db.Pictures
 	Documents *model.DocumentFiler
 	Queue     *store.Queue
 	Spoof     *auth.Spoof
@@ -111,6 +112,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load the data sheets", "error", err)
 	}
+	pictures := db.NewPictures(dataStore, queue, cfg.Bucket)
 	go models.Locate(cfg.Geocoder)
 	taglineOf := func(key string) func() string {
 		return func() string {
@@ -233,7 +235,7 @@ func NewCore(cfg Config) *Core {
 	schoolNow := func() time.Time { return time.Now().In(model.Location) }
 	for _, a := range apps {
 		registry.Register(a.Mux)
-		db.Register(a.Mux, dataStore, queue, cfg.Store, cfg.ImportKey, schoolNow)
+		db.Register(a.Mux, dataStore, queue, pictures, cfg.ImportKey, schoolNow)
 		a.Mux.Handle("GET "+OptInPath, optIn)
 		model.RegisterFeedback(a.Mux, a.Key, appName(a.Key), feedbackIntake)
 		suggestions.Register(a.Mux)
@@ -249,7 +251,7 @@ func NewCore(cfg Config) *Core {
 		queue.Refresh()
 	})
 	return &Core{
-		Store: models, Data: dataStore, Documents: documents, Queue: queue,
+		Store: models, Data: dataStore, Pictures: pictures, Documents: documents, Queue: queue,
 		Spoof: &auth.Spoof{Allowed: models.IsSuperAdmin, Person: spoofPerson(models)},
 		apps:  apps,
 	}
@@ -343,7 +345,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		return auths[key].Wrap(next)
 	}), core.Aliased())
 	if os.Getenv("K_SERVICE") != "" {
-		db.StartConsent(core.Data, core.Queue, sheet)
+		db.StartConsent(core.Data, core.Queue, core.Pictures, sheet)
 		watcher := calendarWatcher(core, sessionKey, anthropicKey)
 		muxes["when"].Handle("POST "+db.CalendarHookPath, watcher)
 		watcher.Start()
@@ -359,5 +361,5 @@ func calendarWatcher(core *Core, sessionKey, anthropicKey string) *db.CalendarWa
 	}
 	mac := hmac.New(sha256.New, []byte(sessionKey))
 	mac.Write([]byte("calendar watch"))
-	return db.NewCalendarWatcher(core.Data, core.Queue, cal, anthropicKey, hex.EncodeToString(mac.Sum(nil)))
+	return db.NewCalendarWatcher(core.Data, core.Queue, core.Pictures, cal, anthropicKey, hex.EncodeToString(mac.Sum(nil)))
 }

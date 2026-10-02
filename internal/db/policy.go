@@ -108,10 +108,12 @@ const policySource = `
 (read PERSON_EMAIL (person_visible person))
 ; every column of an email
 (read PERSON_EMAIL (id address person primary source) true)
-; the photos of people the viewer may see
-(read PERSON_PHOTO (person_visible person))
-; every column of a photo
-(read PERSON_PHOTO (id person photo thumbnail crop order) true)
+; the photos of people and groups the viewer may see
+(read PHOTO
+  (or (and (not (blank person)) (person_visible person))
+      (and (not (blank group)) (visible group))))
+; every column of a photo but its original
+(read PHOTO (id person group reencode crop_left crop_top crop_width crop_height crop thumbnail order) true)
 ; the viewer's own app settings
 (read PERSON_SETTING (= person @viewer))
 ; every column of an app setting
@@ -138,8 +140,8 @@ const policySource = `
 (read GROUP (visible @row))
 ; every column of a group but what its family's form shares
 (read GROUP
-  (id parent kind listed mail slug vc_title title subtitle description image image_crop color flyer
-   pronunciation address phone status visibility visible_to members_visible posting
+  (id parent kind listed mail slug vc_title title subtitle description
+   color flyer pronunciation address phone status visibility visible_to members_visible posting
    replying join adding capacity minimum price unit waitlist eligible parent_required
    manager_needed priority start end all_day location order added_by added)
   true)
@@ -444,10 +446,10 @@ const policySource = `
 (set PERSON_EMAIL.address (and (system "import") (= @old.source "veracross")))
 ; remove an imported email gone from the export
 (delete PERSON_EMAIL (and (system "import") (= @old.source "veracross")))
-; every portrait, to skip those already imported
-(read PERSON_PHOTO (system "import"))
-; add a portrait from the website
-(insert PERSON_PHOTO (system "import"))
+; every photo, to skip those already imported
+(read PHOTO (system "import"))
+; add a portrait from Veracross or the website, or a picture the old sheets held
+(insert PHOTO (system "import"))
 ; every directory group the import keeps, withheld families too
 (read GROUP (and (system "import") (or (in kind "family" "classroom" "crew" "grade" "band" "department") (role_group @row))))
 ; add a family, role group, classroom, crew, grade, band or department new in the export
@@ -584,20 +586,22 @@ const policySource = `
 (set PERSON.signed_out (system "import"))
 ; another address the old directory knew for a person
 (insert PERSON_EMAIL (and (system "import") (= @new.source "manual")))
-; a photo's crop as the old directory had it
-(set PERSON_PHOTO.crop (system "import"))
-; a photo's place among a person's photos as the old directory showed them
-(set PERSON_PHOTO.order (system "import"))
+; where the old directory cropped a photo: its left edge
+(set PHOTO.crop_left (system "import"))
+; where the old directory cropped a photo: its top edge
+(set PHOTO.crop_top (system "import"))
+; where the old directory cropped a photo: its width
+(set PHOTO.crop_width (system "import"))
+; where the old directory cropped a photo: its height
+(set PHOTO.crop_height (system "import"))
+; a photo's place among a person's or group's photos as the old directory showed them
+(set PHOTO.order (system "import"))
 ; a family's address as the old directory overrode it
 (set GROUP.address_override (and (system "import") (= @old.kind "family")))
 ; a family's phone as the old directory overrode it
 (set GROUP.phone_override (and (system "import") (= @old.kind "family")))
 ; a family photo's caption
 (set GROUP.description (and (system "import") (= @old.kind "family")))
-; a family's, classroom's or grade's picture
-(set GROUP.image (and (system "import") (in @old.kind "family" "classroom" "grade")))
-; a family picture's crop
-(set GROUP.image_crop (and (system "import") (= @old.kind "family")))
 ; a family's recorded name
 (set GROUP.pronunciation (and (system "import") (= @old.kind "family")))
 ; a classroom's or grade's color

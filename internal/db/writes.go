@@ -103,7 +103,7 @@ func resolve(text string, list bool, names map[string]string) (string, error) {
 	return parts[0], nil
 }
 
-func Write(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor, env Env, b Batch) ([]string, error) {
+func Write(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, b Batch) ([]string, error) {
 	written := []string{}
 	whole := env.System == importReader
 	authorize := func(m *Model, c Change) error { return m.Authorize(env, c) }
@@ -129,6 +129,7 @@ func Write(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor
 			if err := fire(s, tx, c, where); err != nil {
 				return err
 			}
+			pics.watch(tx, c)
 			written = append(written, id)
 		}
 		return nil

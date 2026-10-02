@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"heliosian/internal/auth"
-	"heliosian/internal/blob"
 	"heliosian/internal/store"
 )
 
@@ -18,7 +17,7 @@ const testImportKey = "test-import-key"
 func send(t *testing.T, s *Store, queue *store.Queue, method, kind, as, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, s, queue, blob.New(blob.NewMemoryBucket()), []byte(testImportKey), func() time.Time { return testNow })
+	Register(mux, s, queue, newPictures(s, queue), []byte(testImportKey), func() time.Time { return testNow })
 	r := httptest.NewRequest(method, "/api/q", strings.NewReader(body))
 	if kind != "" {
 		r.Header.Set("Content-Type", kind)

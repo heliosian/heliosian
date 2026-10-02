@@ -31,7 +31,7 @@ func TestSchoolGroupsFollowThePerson(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		written, err = Write(context.Background(), s, queue, access.System(importReader), Env{System: importReader, Now: testNow}, b)
+		written, err = Write(context.Background(), s, queue, newPictures(s, queue), access.System(importReader), Env{System: importReader, Now: testNow}, b)
 		return err
 	}
 	if got := schoolGroupsHeld(s, student); !slices.Equal(got, []string{"grp00000000010", "grp00000000011"}) {

@@ -3,8 +3,10 @@ package db
 import (
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,8 +27,12 @@ type stored struct {
 	Hash   string   `json:"hash"`
 }
 
-func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, media *blob.Store, importKey []byte, now func() time.Time) {
-	mux.HandleFunc("POST "+doPrefix+"person-photo", func(w http.ResponseWriter, r *http.Request) {
+type queued struct {
+	Queued int `json:"queued"`
+}
+
+func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, importKey []byte, now func() time.Time) {
+	mux.HandleFunc("POST "+doPrefix+"photo", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), importKey, now())
 		if !ok {
 			return
@@ -36,52 +42,58 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, media *blob.St
 			serve.Error(w, r, access.Invalid("send the photo as multipart form data: %v", err))
 			return
 		}
-		person := r.FormValue("person")
-		file, _, err := r.FormFile("photo")
+		person, group := r.FormValue("person"), r.FormValue("group")
+		if (person == "") == (group == "") {
+			serve.Error(w, r, access.Invalid("a photo is of a person or of a group: send one of them"))
+			return
+		}
+		img, err := readImage(r, "photo")
 		if err != nil {
-			serve.Error(w, r, access.Invalid("the photo is required"))
+			serve.Error(w, r, err)
 			return
 		}
-		defer file.Close()
-		content, err := io.ReadAll(file)
+		box, err := formBox(r)
 		if err != nil {
-			serve.Error(w, r, access.Invalid("could not read the photo"))
+			serve.Error(w, r, err)
 			return
 		}
-		mimeType := http.DetectContentType(content)
-		ext, ok := blob.ImageExtensions[mimeType]
-		if !ok {
-			serve.Error(w, r, access.Invalid("%s is not a supported photo", mimeType))
-			return
-		}
-		thumb, err := blob.Thumbnail(content)
-		if err != nil {
-			serve.Error(w, r, access.Invalid("could not read the photo: %v", err))
-			return
-		}
-		name := blob.Name(content, ext)
-		thumbName := blob.Name(thumb, "jpg")
 		m := s.Model()
-		row := map[string]any{"person": person, "photo": name, "thumbnail": thumbName, "order": m.firstOrder(person)}
-		if err := m.Authorize(env, Change{Table: "PERSON_PHOTO", New: store.Row{"person": person, "photo": name, "thumbnail": thumbName}}); err != nil {
+		row := store.Row{"person": person, "group": group, "photo": img.name}
+		maps.Copy(row, box)
+		if err := m.Authorize(env, Change{Table: "PHOTO", New: row}); err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		if err := media.Put("photos", name, mimeType, content); err != nil {
+		if err := pics.bucket.Put(r.Context(), pictureFolder+"/"+img.name, img.mimeType, img.content); err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		if err := media.Put("photos", thumbName, "image/jpeg", thumb); err != nil {
-			serve.Error(w, r, err)
-			return
+		cells := map[string]any{"order": m.firstOrder(person, group)}
+		for k, v := range row {
+			if v != "" {
+				cells[k] = v
+			}
 		}
-		ids, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []Edit{{Insert: "PERSON_PHOTO", Row: row}}})
+		ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: []Edit{{Insert: "PHOTO", Row: cells}}})
 		if err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "added a person's photo", "viewer", env.Viewer, "system", env.System, "person", person, "photo", name)
-		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(name, "."+ext)})
+		slog.InfoContext(r.Context(), "added a photo", "viewer", env.Viewer, "system", env.System, "person", person, "group", group, "photo", img.name)
+		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(img.name, "."+img.ext)})
+	})
+	mux.HandleFunc("POST "+doPrefix+"pictures", func(w http.ResponseWriter, r *http.Request) {
+		env, _, ok := caller(w, r, s.Model(), importKey, now())
+		if !ok {
+			return
+		}
+		if env.System != importReader {
+			serve.Error(w, r, access.Forbidden("only the import may queue every picture"))
+			return
+		}
+		n := pics.Backfill()
+		slog.InfoContext(r.Context(), "queued pictures missing what is made from them", "queued", n)
+		serve.Write(w, r, http.StatusOK, queued{Queued: n})
 	})
 	mux.HandleFunc("POST "+doPrefix+"calendar-pdf", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), importKey, now())
@@ -122,11 +134,11 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, media *blob.St
 			serve.Error(w, r, err)
 			return
 		}
-		if err := media.Put("calendar", name, "application/pdf", content); err != nil {
+		if err := pics.bucket.Put(r.Context(), "calendar/"+name, "application/pdf", content); err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		ids, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []Edit{{Insert: "DOCUMENT", Row: row}}})
+		ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: []Edit{{Insert: "DOCUMENT", Row: row}}})
 		if err != nil {
 			serve.Error(w, r, err)
 			return
@@ -136,9 +148,60 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, media *blob.St
 	})
 }
 
-func (m *Model) firstOrder(person string) string {
+type upload struct {
+	content       []byte
+	mimeType, ext string
+	name          string
+}
+
+func readImage(r *http.Request, field string) (upload, error) {
+	file, _, err := r.FormFile(field)
+	if err != nil {
+		return upload{}, access.Invalid("the %s is required", field)
+	}
+	defer file.Close()
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return upload{}, access.Invalid("could not read the %s", field)
+	}
+	mimeType := http.DetectContentType(content)
+	ext, ok := blob.ImageExtensions[mimeType]
+	if !ok {
+		return upload{}, access.Invalid("%s is not a supported %s", mimeType, field)
+	}
+	if err := blob.Check(content); err != nil {
+		return upload{}, access.Invalid("could not read the %s: %v", field, err)
+	}
+	return upload{content: content, mimeType: mimeType, ext: ext, name: blob.Name(content, ext)}, nil
+}
+
+func formBox(r *http.Request) (store.Row, error) {
+	names := cropColumns
+	values := []string{}
+	for _, name := range names {
+		values = append(values, strings.TrimSpace(r.FormValue(name)))
+	}
+	if !slices.ContainsFunc(values, func(v string) bool { return v != "" }) {
+		return store.Row{}, nil
+	}
+	out := store.Row{}
+	for i, v := range values {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || (i >= 2 && n == 0) {
+			return nil, access.Invalid("a crop box is %s, whole numbers with a width and height above zero", strings.Join(names, ", "))
+		}
+		out[names[i]] = v
+	}
+	return out, nil
+}
+
+func (m *Model) firstOrder(person, group string) string {
 	keys := []string{""}
-	for _, row := range m.Table("PERSON_PHOTO").Referencing("person", person) {
+	of, id := "person", person
+	if group != "" {
+		of, id = "group", group
+	}
+	for _, row := range m.Table("PHOTO").Referencing(of, id) {
 		if row["order"] != "" {
 			keys = append(keys, row["order"])
 		}

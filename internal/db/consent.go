@@ -212,13 +212,14 @@ func appendChanges(writes []Edit, row store.Row, want map[string]string) []Edit 
 type Consent struct {
 	s      *Store
 	queue  *store.Queue
+	pics   *Pictures
 	source data.Source
 	wake   chan struct{}
 	rows   []map[string]string
 }
 
-func StartConsent(s *Store, queue *store.Queue, source data.Source) {
-	c := &Consent{s: s, queue: queue, source: source, wake: make(chan struct{}, 1)}
+func StartConsent(s *Store, queue *store.Queue, pics *Pictures, source data.Source) {
+	c := &Consent{s: s, queue: queue, pics: pics, source: source, wake: make(chan struct{}, 1)}
 	go c.loop()
 	queue.OnSwap(c.poke)
 }
@@ -265,7 +266,7 @@ func (c *Consent) apply() {
 		return
 	}
 	env := Env{System: importReader, Now: time.Now()}
-	if _, err := Write(context.Background(), c.s, c.queue, access.System(importReader), env, Batch{Batch: writes}); err != nil {
+	if _, err := Write(context.Background(), c.s, c.queue, c.pics, access.System(importReader), env, Batch{Batch: writes}); err != nil {
 		slog.Error("write consent", "people", len(writes), "error", err)
 		return
 	}

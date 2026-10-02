@@ -24,7 +24,7 @@ type Suggestions struct {
 }
 
 func NewSuggestions(c *Client) *Suggestions {
-	return &Suggestions{client: c, recent: ratelimit.New(suggestPerMinute, time.Minute), cache: lru.New[string, []Suggestion](suggestCached)}
+	return &Suggestions{client: c, recent: ratelimit.New(suggestPerMinute, time.Minute), cache: lru.New[string, []Suggestion](suggestCached, func([]Suggestion) int { return 1 })}
 }
 
 func (s *Suggestions) Register(mux *http.ServeMux) {

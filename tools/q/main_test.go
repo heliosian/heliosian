@@ -24,7 +24,7 @@ func sampleClient(t *testing.T) qclient.Client {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	db.Register(mux, s, queue, blob.New(blob.NewMemoryBucket()), []byte("key"), time.Now)
+	db.Register(mux, s, queue, db.NewPictures(s, queue, blob.NewMemoryBucket()), []byte("key"), time.Now)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return qclient.Client{Base: srv.URL, Key: "key"}

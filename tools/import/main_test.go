@@ -82,7 +82,7 @@ func sampleServer(t *testing.T) (client, *db.Store) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	db.Register(mux, s, queue, blob.New(blob.NewMemoryBucket()), []byte(testKey), func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) })
+	db.Register(mux, s, queue, db.NewPictures(s, queue, blob.NewMemoryBucket()), []byte(testKey), func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) })
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return client{qclient.Client{Base: srv.URL, Key: testKey}}, s
@@ -182,7 +182,7 @@ func importOnce(t *testing.T, c client, x *export) (*planner, int) {
 }
 
 func photosOf(s *db.Store, person string) []map[string]string {
-	rows := s.Model().Table("PERSON_PHOTO").Referencing("person", person)
+	rows := s.Model().Table("PHOTO").Referencing("person", person)
 	slices.SortFunc(rows, func(a, b map[string]string) int { return store.CompareKeys(a["order"], b["order"]) })
 	return rows
 }

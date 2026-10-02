@@ -85,9 +85,12 @@ func TestDecodeRefusesOversizeHeader(t *testing.T) {
 }
 
 func TestServeCaching(t *testing.T) {
-	s := &Store{entries: map[string]*entry{
-		"photos/abc": {generation: 7, mimeType: "image/jpeg", data: []byte("photo"), thumb: []byte("photo-thumb")},
-	}}
+	bucket := NewMemoryBucket()
+	if err := bucket.Put(context.Background(), "photos/abc.jpg", "image/jpeg", []byte("photo")); err != nil {
+		t.Fatal(err)
+	}
+	s := New(bucket)
+	s.entries["photos/abc"] = &entry{name: "photos/abc.jpg", generation: 7, mimeType: "image/jpeg", thumb: []byte("photo-thumb")}
 	get := func(target, etag string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, target, nil)
 		if etag != "" {
@@ -123,5 +126,53 @@ func TestServeCaching(t *testing.T) {
 
 	if rec = get("/photos/abc.jpg", `"7"`); rec.Code != http.StatusNotModified {
 		t.Errorf("revalidate: got %d, want 304", rec.Code)
+	}
+}
+
+func TestReencodeShrinksAndCropCuts(t *testing.T) {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewGray(image.Rect(0, 0, 4096, 1024))); err != nil {
+		t.Fatal(err)
+	}
+	re, err := Reencode(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, format, err := image.Decode(bytes.NewReader(re))
+	if err != nil || format != "jpeg" || img.Bounds().Dx() != 2048 || img.Bounds().Dy() != 512 {
+		t.Fatalf("re-encode is %s %v: %v", format, img.Bounds(), err)
+	}
+	cropped, err := Crop(re, image.Rect(100, 50, 400, 250))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if img, _, err := image.Decode(bytes.NewReader(cropped)); err != nil || img.Bounds().Dx() != 300 || img.Bounds().Dy() != 200 {
+		t.Fatalf("crop is %v: %v", img.Bounds(), err)
+	}
+	if _, err := Crop(re, image.Rect(2000, 0, 2100, 100)); err == nil {
+		t.Fatal("a crop past the edge was cut")
+	}
+}
+
+func TestFullBytesAreCachedThumbnailsHeld(t *testing.T) {
+	bucket := NewMemoryBucket()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewGray(image.Rect(0, 0, 8, 8))); err != nil {
+		t.Fatal(err)
+	}
+	s := New(bucket)
+	if err := s.Put("photos", "a.png", "image/png", buf.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.data.Get("photos/a"); !ok {
+		t.Fatal("the bytes just written are not cached")
+	}
+	s.data = New(bucket).data
+	if e, ok := s.held("photos/a"); !ok || e.thumb == nil {
+		t.Fatal("the thumbnail is not held")
+	}
+	data, mimeType, ok := s.Bytes("photos/a.png")
+	if !ok || mimeType != "image/png" || !bytes.Equal(data, buf.Bytes()) {
+		t.Fatalf("bytes no longer cached were not read again from the bucket: %v %q", ok, mimeType)
 	}
 }

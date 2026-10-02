@@ -301,6 +301,15 @@ func checkEmails(people Sheet) error {
 	return nil
 }
 
+func checkPhotos(people Sheet) error {
+	for _, row := range people["PHOTO"].rows {
+		if (row["person"] == "") == (row["group"] == "") {
+			return fmt.Errorf("PHOTO %s: a photo is of a person or of a group, not both or neither", row["id"])
+		}
+	}
+	return nil
+}
+
 func checkRuleProperties(groups Sheet) error {
 	person, _ := Lookup("PERSON")
 	for _, row := range groups["RULE"].rows {

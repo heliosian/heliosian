@@ -24,6 +24,8 @@ import (
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 
+	"heliosian/internal/lru"
+
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 	storage "google.golang.org/api/storage/v1"
@@ -39,6 +41,10 @@ const (
 	thumbVersion = "1"
 	fetchWorkers = 32
 	maxPixels    = 40_000_000
+	dataBudget   = 256 << 20
+
+	reencodeSide    = 2048
+	reencodeQuality = 85
 )
 
 var ErrNotFound = errors.New("no such object")
@@ -216,9 +222,9 @@ func thumbName(name string) string {
 }
 
 type entry struct {
+	name       string
 	generation int64
 	mimeType   string
-	data       []byte
 	thumb      []byte
 }
 
@@ -227,10 +233,11 @@ type Store struct {
 	mu      sync.RWMutex
 	entries map[string]*entry
 	named   map[string]bool
+	data    *lru.Cache[string, []byte]
 }
 
 func New(bucket *Bucket) *Store {
-	return &Store{bucket: bucket, entries: map[string]*entry{}}
+	return &Store{bucket: bucket, entries: map[string]*entry{}, data: lru.New[string, []byte](dataBudget, func(b []byte) int { return len(b) })}
 }
 
 func Register(mux *http.ServeMux, s *Store, folders ...string) {
@@ -285,11 +292,29 @@ func (s *Store) keep(key string) (*entry, bool) {
 }
 
 func (s *Store) Bytes(name string) ([]byte, string, bool) {
-	e, ok := s.held(trimExt(name))
+	key := trimExt(name)
+	e, ok := s.held(key)
 	if !ok {
 		return nil, "", false
 	}
-	return e.data, e.mimeType, true
+	data, err := s.dataOf(context.Background(), key, e)
+	if err != nil {
+		slog.Error("blob store: read", "name", e.name, "error", err)
+		return nil, "", false
+	}
+	return data, e.mimeType, true
+}
+
+func (s *Store) dataOf(ctx context.Context, key string, e *entry) ([]byte, error) {
+	if data, ok := s.data.Get(key); ok {
+		return data, nil
+	}
+	o, err := s.bucket.objects.get(ctx, e.name)
+	if err != nil {
+		return nil, err
+	}
+	s.data.Put(key, o.data)
+	return o.data, nil
 }
 
 func (s *Store) Has(name string) (bool, error) {
@@ -302,13 +327,14 @@ func (s *Store) has(ctx context.Context, name string) (bool, error) {
 		return true, nil
 	}
 	start := time.Now()
-	e, err := s.download(ctx, name)
+	e, data, err := s.download(ctx, name)
 	if errors.Is(err, ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
+	s.data.Put(key, data)
 	s.mu.Lock()
 	s.entries[key] = e
 	if s.named != nil {
@@ -316,7 +342,7 @@ func (s *Store) has(ctx context.Context, name string) (bool, error) {
 	}
 	held := len(s.entries)
 	s.mu.Unlock()
-	slog.Info("blob store: fetched", "name", name, "bytes", len(e.data)+len(e.thumb), "held", held, "took", time.Since(start).Round(time.Millisecond))
+	slog.Info("blob store: fetched", "name", name, "bytes", len(data)+len(e.thumb), "held", held, "took", time.Since(start).Round(time.Millisecond))
 	return true, nil
 }
 
@@ -362,24 +388,24 @@ func (s *Store) count() int {
 	return len(s.entries)
 }
 
-func (s *Store) download(ctx context.Context, name string) (*entry, error) {
+func (s *Store) download(ctx context.Context, name string) (*entry, []byte, error) {
 	o, err := s.bucket.objects.get(ctx, name)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	e := &entry{generation: o.generation, mimeType: o.mimeType, data: o.data}
+	e := &entry{name: name, generation: o.generation, mimeType: o.mimeType}
 	if !strings.HasPrefix(o.mimeType, "image/") {
-		return e, nil
+		return e, o.data, nil
 	}
 	thumb, err := s.bucket.objects.get(ctx, thumbName(name))
 	if errors.Is(err, ErrNotFound) {
-		return nil, fmt.Errorf("no thumbnail stored for %s", name)
+		return nil, nil, fmt.Errorf("no thumbnail stored for %s", name)
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	e.thumb = thumb.data
-	return e, nil
+	return e, o.data, nil
 }
 
 func (s *Store) Put(folder, name, mimeType string, content []byte) error {
@@ -422,17 +448,30 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 		http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(e.thumb))
 		return
 	}
+	data, err := s.dataOf(r.Context(), key, e)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "blob store: read", "name", e.name, "error", err)
+		http.Error(w, "could not read the object", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", e.mimeType)
-	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(e.data))
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(data))
+}
+
+func Check(src []byte) error {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(src))
+	if err != nil {
+		return err
+	}
+	if cfg.Width < 1 || cfg.Height < 1 || cfg.Width > maxPixels/cfg.Height {
+		return fmt.Errorf("image declares %dx%d pixels, over the limit of %d", cfg.Width, cfg.Height, maxPixels)
+	}
+	return nil
 }
 
 func Decode(src []byte) (image.Image, error) {
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(src))
-	if err != nil {
+	if err := Check(src); err != nil {
 		return nil, err
-	}
-	if cfg.Width < 1 || cfg.Height < 1 || cfg.Width > maxPixels/cfg.Height {
-		return nil, fmt.Errorf("image declares %dx%d pixels, over the limit of %d", cfg.Width, cfg.Height, maxPixels)
 	}
 	img, _, err := image.Decode(bytes.NewReader(src))
 	return img, err
@@ -516,4 +555,39 @@ func reorient(img image.Image, o int) image.Image {
 		}
 	}
 	return out
+}
+
+func Reencode(src []byte) ([]byte, error) {
+	img, err := Decode(src)
+	if err != nil {
+		return nil, err
+	}
+	b := img.Bounds()
+	if long := max(b.Dx(), b.Dy()); long > reencodeSide {
+		scaled := image.NewRGBA(image.Rect(0, 0, b.Dx()*reencodeSide/long, b.Dy()*reencodeSide/long))
+		draw.CatmullRom.Scale(scaled, scaled.Bounds(), img, b, draw.Over, nil)
+		img = scaled
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, reorient(img, orientation(src)), &jpeg.Options{Quality: reencodeQuality}); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func Crop(src []byte, r image.Rectangle) ([]byte, error) {
+	img, err := Decode(src)
+	if err != nil {
+		return nil, err
+	}
+	if !r.In(img.Bounds()) || r.Empty() {
+		return nil, fmt.Errorf("crop %v is not inside the picture's %v", r, img.Bounds())
+	}
+	out := image.NewRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
+	draw.Draw(out, out.Bounds(), img, r.Min, draw.Src)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, out, &jpeg.Options{Quality: reencodeQuality}); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }

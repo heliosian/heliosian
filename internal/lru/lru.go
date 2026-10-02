@@ -6,19 +6,22 @@ import (
 )
 
 type entry[K comparable, V any] struct {
-	key   K
-	value V
+	key    K
+	value  V
+	weight int
 }
 
 type Cache[K comparable, V any] struct {
-	size  int
-	mu    sync.Mutex
-	order *list.List
-	items map[K]*list.Element
+	budget int
+	weigh  func(V) int
+	mu     sync.Mutex
+	used   int
+	order  *list.List
+	items  map[K]*list.Element
 }
 
-func New[K comparable, V any](size int) *Cache[K, V] {
-	return &Cache[K, V]{size: size, order: list.New(), items: map[K]*list.Element{}}
+func New[K comparable, V any](budget int, weigh func(V) int) *Cache[K, V] {
+	return &Cache[K, V]{budget: budget, weigh: weigh, order: list.New(), items: map[K]*list.Element{}}
 }
 
 func (c *Cache[K, V]) Get(key K) (V, bool) {
@@ -37,14 +40,19 @@ func (c *Cache[K, V]) Put(key K, value V) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if e, ok := c.items[key]; ok {
-		e.Value.(*entry[K, V]).value = value
-		c.order.MoveToFront(e)
-		return
+		c.remove(e)
 	}
-	c.items[key] = c.order.PushFront(&entry[K, V]{key: key, value: value})
-	if c.order.Len() > c.size {
-		oldest := c.order.Back()
-		c.order.Remove(oldest)
-		delete(c.items, oldest.Value.(*entry[K, V]).key)
+	weight := c.weigh(value)
+	c.items[key] = c.order.PushFront(&entry[K, V]{key: key, value: value, weight: weight})
+	c.used += weight
+	for c.used > c.budget && c.order.Len() > 1 {
+		c.remove(c.order.Back())
 	}
+}
+
+func (c *Cache[K, V]) remove(e *list.Element) {
+	it := e.Value.(*entry[K, V])
+	c.order.Remove(e)
+	delete(c.items, it.key)
+	c.used -= it.weight
 }

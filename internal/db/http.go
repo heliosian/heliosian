@@ -12,7 +12,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
-	"heliosian/internal/blob"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
@@ -68,8 +67,8 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, importKey []byte, 
 	return Env{System: importReader, Now: at}, access.System(importReader), true
 }
 
-func Register(mux *http.ServeMux, s *Store, queue *store.Queue, media *blob.Store, importKey []byte, now func() time.Time) {
-	registerDo(mux, s, queue, media, importKey, now)
+func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, importKey []byte, now func() time.Time) {
+	registerDo(mux, s, queue, pics, importKey, now)
 	mux.HandleFunc("QUERY /api/q", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
 		env, _, ok := caller(w, r, m, importKey, now())
@@ -123,7 +122,7 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, media *blob.Stor
 			return
 		}
 		slog.InfoContext(r.Context(), "write", "viewer", env.Viewer, "system", env.System, "writes", len(b.Batch))
-		ids, err := Write(r.Context(), s, queue, actor, env, b)
+		ids, err := Write(r.Context(), s, queue, pics, actor, env, b)
 		if err != nil {
 			serve.Error(w, r, err)
 			return

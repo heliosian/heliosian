@@ -202,7 +202,7 @@ func TestWritesCantReachWithheldRows(t *testing.T) {
 		"set":       {Edit{Set: student, Cells: map[string]any{"name_long_override": "Juni A."}}, "no PERSON " + student},
 		"reference": {Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000040", "person": student, "role": "member", "status": "yes"}}, "names no row " + student},
 	} {
-		_, err := Write(context.Background(), s, queue, access.Actor{Email: "rowan@example.com"}, env, Batch{Batch: []Edit{c.w}})
+		_, err := Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "rowan@example.com"}, env, Batch{Batch: []Edit{c.w}})
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s on the withheld student: %v, want %q", name, err, c.want)
 		}

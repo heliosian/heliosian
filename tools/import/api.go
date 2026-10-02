@@ -53,7 +53,7 @@ func (c client) read() (*state, error) {
 	if st.emails, _, err = c.table("PERSON_EMAIL"); err != nil {
 		return nil, err
 	}
-	if st.photos, _, err = c.table("PERSON_PHOTO"); err != nil {
+	if st.photos, _, err = c.table("PHOTO"); err != nil {
 		return nil, err
 	}
 	if st.groups, _, err = c.table("GROUP", or(in("kind", "family", "classroom", "crew", "grade", "band", "department"), roleGroup("kind", "slug"))); err != nil {
@@ -91,5 +91,5 @@ func (c client) addPhoto(p portrait) error {
 	var out struct {
 		Result []string `json:"result"`
 	}
-	return c.Send(http.MethodPost, "/api/do/person-photo", form.FormDataContentType(), body, &out)
+	return c.Send(http.MethodPost, "/api/do/photo", form.FormDataContentType(), body, &out)
 }
