@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"image"
 	"image/png"
+	"maps"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -109,8 +110,8 @@ func TestPersonPhotoAddsFirst(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 			t.Fatal(err)
 		}
-		row := made(t, s, "PHOTO", out.Result[0], "thumbnail")
-		if row["person"] != staff || row["photo"] != out.Hash+".png" || row["crop"] != "" {
+		row := made(t, s, "PHOTO", out.Result[0], "ready")
+		if row["person"] != staff || row["photo"] != out.Hash+".png" || row["crop"] != "" || row["thumbnail"] == "" {
 			t.Fatalf("photo %d answered %+v and reads %v", i, out, row)
 		}
 		if found, err := pics.bucket.Exists(context.Background(), pictureFolder+"/"+row["photo"]); err != nil || !found {
@@ -235,26 +236,35 @@ func TestGroupPhotos(t *testing.T) {
 	}
 }
 
-func TestPicturesQueuesWhatIsMissing(t *testing.T) {
+func TestStartupMakesPhotosNotReady(t *testing.T) {
 	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	bucket := blob.NewMemoryBucket()
 	original := pngOf(t, 7)
 	name := blob.Name(original, "png")
-	if err := pics.bucket.Put(context.Background(), pictureFolder+"/"+name, "image/png", original); err != nil {
+	if err := bucket.Put(context.Background(), pictureFolder+"/"+name, "image/png", original); err != nil {
 		t.Fatal(err)
 	}
 	if err := commit(s, PeopleSheet, store.Insert("PHOTO", store.Row{"id": "pho00000000099", "person": staff, "photo": name, "order": "m"})); err != nil {
 		t.Fatal(err)
 	}
-	if rec := postFile(t, s, queue, pics, parent, "pictures", nil, "", nil); rec.Code != http.StatusForbidden {
-		t.Fatalf("a person queued every picture: %d %s", rec.Code, rec.Body.String())
+	NewPictures(s, queue, bucket)
+	if row := made(t, s, "PHOTO", "pho00000000099", "ready"); row["ready"] != "Yes" || row["thumbnail"] == "" || row["reencode"] == "" {
+		t.Fatalf("a photo left unmade before a restart reads %v", row)
 	}
-	rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "pictures", nil, "", nil)
-	var out queued
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != http.StatusOK || out.Queued != 1 {
-		t.Fatalf("queue: %d %s", rec.Code, rec.Body.String())
+}
+
+func TestChangingWhatAPhotoIsMadeFromClearsReady(t *testing.T) {
+	old := store.Row{"id": "pho00000000099", "photo": "a.png", "ready": "Yes"}
+	moved := maps.Clone(old)
+	moved["crop_left"] = "3"
+	if edits, _ := photoNotReady(nil, Change{Table: "PHOTO", Old: old, New: moved}); len(edits) != 1 || edits[0].Cells["ready"] != "" {
+		t.Fatalf("a new box left the photo ready: %v", edits)
 	}
-	made(t, s, "PHOTO", "pho00000000099", "thumbnail")
+	reordered := maps.Clone(old)
+	reordered["order"] = "x"
+	if edits, _ := photoNotReady(nil, Change{Table: "PHOTO", Old: old, New: reordered}); len(edits) != 0 {
+		t.Fatalf("a new order cleared ready: %v", edits)
+	}
 }
 
 func TestCalendarPDFIsStoredOnce(t *testing.T) {

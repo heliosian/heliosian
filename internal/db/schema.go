@@ -175,6 +175,7 @@ var Tables = []Table{
 			col("crop_height", Int),
 			col("crop", Blob),
 			col("thumbnail", Blob),
+			col("ready", Bool),
 			col("order", Order),
 		},
 	},

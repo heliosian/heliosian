@@ -27,10 +27,6 @@ type stored struct {
 	Hash   string   `json:"hash"`
 }
 
-type queued struct {
-	Queued int `json:"queued"`
-}
-
 func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, importKey []byte, now func() time.Time) {
 	mux.HandleFunc("POST "+doPrefix+"photo", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), importKey, now())
@@ -81,19 +77,6 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		}
 		slog.InfoContext(r.Context(), "added a photo", "viewer", env.Viewer, "system", env.System, "person", person, "group", group, "photo", img.name)
 		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(img.name, "."+img.ext)})
-	})
-	mux.HandleFunc("POST "+doPrefix+"pictures", func(w http.ResponseWriter, r *http.Request) {
-		env, _, ok := caller(w, r, s.Model(), importKey, now())
-		if !ok {
-			return
-		}
-		if env.System != importReader {
-			serve.Error(w, r, access.Forbidden("only the import may queue every picture"))
-			return
-		}
-		n := pics.Backfill()
-		slog.InfoContext(r.Context(), "queued pictures missing what is made from them", "queued", n)
-		serve.Write(w, r, http.StatusOK, queued{Queued: n})
 	})
 	mux.HandleFunc("POST "+doPrefix+"calendar-pdf", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), importKey, now())

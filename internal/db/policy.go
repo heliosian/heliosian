@@ -113,7 +113,7 @@ const policySource = `
   (or (and (not (blank person)) (person_visible person))
       (and (not (blank group)) (visible group))))
 ; every column of a photo but its original
-(read PHOTO (id person group reencode crop_left crop_top crop_width crop_height crop thumbnail order) true)
+(read PHOTO (id person group reencode crop_left crop_top crop_width crop_height crop thumbnail ready order) true)
 ; the viewer's own app settings
 (read PERSON_SETTING (= person @viewer))
 ; every column of an app setting

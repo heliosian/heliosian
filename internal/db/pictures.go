@@ -37,6 +37,14 @@ type Pictures struct {
 func NewPictures(s *Store, queue *store.Queue, bucket *blob.Bucket) *Pictures {
 	p := &Pictures{s: s, queue: queue, bucket: bucket, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
 	go p.run()
+	queued := 0
+	for _, row := range s.Model().Table("PHOTO").All() {
+		if row["ready"] == "" {
+			p.enqueue(row["id"])
+			queued++
+		}
+	}
+	slog.Info("pictures: queued photos not ready at startup", "queued", queued)
 	return p
 }
 
@@ -62,17 +70,6 @@ func (p *Pictures) enqueue(id string) {
 	case p.wake <- struct{}{}:
 	default:
 	}
-}
-
-func (p *Pictures) Backfill() int {
-	queued := 0
-	for _, row := range p.s.Model().Table("PHOTO").All() {
-		if row["reencode"] == "" {
-			p.enqueue(row["id"])
-			queued++
-		}
-	}
-	return queued
 }
 
 func (p *Pictures) next() (string, bool) {
@@ -177,6 +174,9 @@ func (p *Pictures) make(id string) error {
 			if now[col] != want[col] {
 				set[col] = want[col]
 			}
+		}
+		if now["ready"] != "Yes" {
+			set["ready"] = "Yes"
 		}
 		if len(set) == 0 {
 			return nil

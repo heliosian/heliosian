@@ -17,6 +17,17 @@ type trigger struct {
 
 var triggers = []trigger{
 	{table: "PERSON", fire: schoolGroups},
+	{table: "PHOTO", fire: photoNotReady},
+}
+
+func photoNotReady(_ *Model, c Change) ([]Edit, error) {
+	if c.Old == nil || c.New == nil || c.New["ready"] == "" {
+		return nil, nil
+	}
+	if !slices.ContainsFunc(photoInputs, func(col string) bool { return c.Old[col] != c.New[col] }) {
+		return nil, nil
+	}
+	return []Edit{{Set: c.New["id"], Cells: map[string]any{"ready": ""}}}, nil
 }
 
 func unchecked(*Model, Change) error {
