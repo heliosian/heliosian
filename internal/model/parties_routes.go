@@ -98,6 +98,17 @@ func nameOf(directory *Directory, email string) string {
 	return cells.DisplayName(email)
 }
 
+func (p *Party) PurchaserName(directory *Directory, email string) string {
+	if directory.Person(directory.Resolve(email)) == nil {
+		for _, t := range p.Tickets {
+			if t.Email == email && t.Name != "" {
+				return t.Name
+			}
+		}
+	}
+	return nameOf(directory, email)
+}
+
 func ticketName(directory *Directory, t map[string]string) string {
 	if t["Email"] != "" {
 		if p := directory.Person(directory.Resolve(t["Email"])); p != nil && p.FullName != "" {

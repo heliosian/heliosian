@@ -172,7 +172,7 @@ func (v partyViewer) line(t Ticket, person *Person, purchaserName string) string
 	return "Guest"
 }
 
-func (v partyViewer) attendee(t Ticket, sees bool) PartyAttendee {
+func (v partyViewer) attendee(p *Party, t Ticket, sees bool) PartyAttendee {
 	var person *Person
 	name := t.Name
 	if t.Email != "" {
@@ -181,7 +181,7 @@ func (v partyViewer) attendee(t Ticket, sees bool) PartyAttendee {
 			name = cells.DisplayName(t.Email)
 		}
 	}
-	purchaserName := nameOf(v.directory, t.Purchaser)
+	purchaserName := p.PurchaserName(v.directory, t.Purchaser)
 	a := PartyAttendee{
 		TicketID: t.ID, Email: t.Email, Name: name, Kind: kindOf(person),
 		Line: v.line(t, person, purchaserName), Status: t.Status, Quantity: t.Quantity, Added: t.Added,
@@ -190,7 +190,7 @@ func (v partyViewer) attendee(t Ticket, sees bool) PartyAttendee {
 		a.Name, a.PhotoURL, a.Grade = person.FullName, v.directory.HeroPhoto(person.Email), person.Grade
 	}
 	a.Household = cmp.Or(t.Purchaser, t.Email, t.ID)
-	for _, email := range []string{t.Purchaser, t.Email} {
+	for _, email := range []string{t.Email, t.Purchaser} {
 		if family, ok := v.directory.FamilyOf(email); ok && email != "" {
 			a.Household, a.FamilyKey, a.FamilyName, a.FamilyPhoto = family.Key, family.Key, family.Name, thumb(family.PhotoURL)
 			break
@@ -221,7 +221,7 @@ func (v partyViewer) party(raw *Party, now time.Time) PartyView {
 		pv.Invited = rsvps != nil && rsvps.Sent
 	}
 	for _, t := range p.Tickets {
-		a := v.attendee(t, sees)
+		a := v.attendee(p, t, sees)
 		if pv.Invited && t.Email != "" {
 			a.RSVP = rsvps.Answers[v.directory.Resolve(strings.ToLower(t.Email))]
 		}

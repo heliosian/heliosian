@@ -390,7 +390,7 @@ func (a partiesApp) ticketsType() api.Type[*Model] {
 			}
 			shown := p.For(q.Actor, m.Directory)
 			i := slices.IndexFunc(shown.Tickets, func(s Ticket) bool { return s.ID == t.ID })
-			return ticketResource{a.viewer(m, q).attendee(shown.Tickets[i], p.Sees(q.Actor))}, true
+			return ticketResource{a.viewer(m, q).attendee(shown, shown.Tickets[i], p.Sees(q.Actor))}, true
 		},
 		List: func(m *Model, q api.Query) []string {
 			out := []string{}
@@ -452,7 +452,12 @@ func (a partiesApp) ticketsType() api.Type[*Model] {
 					return err
 				}
 				logAfter(wr, "celebrate: ticket reassigned", "party", p.Title, "from", ticketHolder(t), "to", who)
-				return stage(wr, partiesAppName, ops, nil)
+				if err := stage(wr, partiesAppName, ops, nil); err != nil {
+					return err
+				}
+				r, by, id := wr.Request, wr.Query.Actor.Email, t.ID
+				wr.Tx.After(func() { a.mailReassigned(r, p, id, by) })
+				return nil
 			}),
 			"offer": api.Do(a.onTicket(func(_ *Model, q api.Query, t *Ticket, p *Party) bool {
 				return p.Edits(q.Actor) && t.Status == TicketWaitlist

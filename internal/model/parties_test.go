@@ -1225,6 +1225,46 @@ func TestPartiesMail(t *testing.T) {
 	}
 }
 
+func TestOutsidePurchaserGoesByTheirTicketsName(t *testing.T) {
+	cache, _ := partiesServer(t)
+	d := cache.Model().Directory
+	outside := "ahappyvillage@gmail.com"
+	p := &Party{Tickets: []Ticket{
+		{ID: "tkt0000000801", Email: outside, Name: "Elaine Tse", Purchaser: outside, Status: TicketSold},
+		{ID: "tkt0000000802", Name: "Pat Guest", Purchaser: outside, Status: TicketSold},
+	}}
+	if got := p.PurchaserName(d, outside); got != "Elaine Tse" {
+		t.Fatalf("outside purchaser named %q", got)
+	}
+	if got := p.PurchaserName(d, jordan); got != nameOf(d, jordan) {
+		t.Fatalf("directory purchaser named %q", got)
+	}
+	if a := (partyViewer{directory: d}).attendee(p, p.Tickets[1], true); a.PurchaserName != "Elaine Tse" || a.Line != "Guest of Elaine Tse" {
+		t.Fatalf("guest of an outside purchaser: %+v", a)
+	}
+}
+
+func TestHolderGroupsWithTheirOwnFamily(t *testing.T) {
+	cache, _ := partiesServer(t)
+	d := cache.Model().Directory
+	mine, ok := d.FamilyOf(partner)
+	theirs, ok2 := d.FamilyOf(elena)
+	if !ok || !ok2 || mine.Key == theirs.Key {
+		t.Fatalf("sample families: %v %v", mine.Key, theirs.Key)
+	}
+	p := &Party{Tickets: []Ticket{
+		{ID: "tkt0000000811", Email: partner, Purchaser: elena, Status: TicketSold},
+		{ID: "tkt0000000812", Name: "Pat Guest", Purchaser: elena, Status: TicketSold},
+	}}
+	v := partyViewer{directory: d}
+	if a := v.attendee(p, p.Tickets[0], true); a.FamilyKey != mine.Key || a.Household != mine.Key {
+		t.Fatalf("a holder given a ticket by another family grouped as %q, want %q", a.FamilyKey, mine.Key)
+	}
+	if a := v.attendee(p, p.Tickets[1], true); a.FamilyKey != theirs.Key {
+		t.Fatalf("a guest grouped as %q, want the buyer's %q", a.FamilyKey, theirs.Key)
+	}
+}
+
 func TestReassign(t *testing.T) {
 	cache, mux := partiesServer(t)
 	var mine string
@@ -1276,6 +1316,30 @@ func TestReassign(t *testing.T) {
 	}
 	if rec := testkit.Call(t, mux, jordan, "POST", "/api/tickets/"+adults+"/reassign", map[string]any{"email": partiesKid}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("reassigned an adults-only ticket to a child: %d", rec.Code)
+	}
+}
+
+func TestReassignMail(t *testing.T) {
+	rec := mailtest.NewRecorder(mailtest.From)
+	cache, mux := partiesServeWith(t, rec.Mailgun)
+	p := cache.Model().Parties.Party("pty0000000001")
+	var mine string
+	for _, tk := range p.Tickets {
+		if tk.Email == teen {
+			mine = tk.ID
+		}
+	}
+	if r := testkit.Call(t, mux, partner, "POST", "/api/tickets/"+mine+"/reassign", map[string]any{"name": "Percy Jackson", "email": "percy.jackson@gmail.com"}); r.Code != http.StatusNoContent {
+		t.Fatalf("reassign: %d %s", r.Code, r.Body)
+	}
+	m := rec.Next(t)
+	if m.Subject != "Percy Jackson's ticket to "+p.Title || !slices.Equal(m.To, []string{"percy.jackson@gmail.com"}) || !slices.Equal(m.CC, append([]string{partner}, p.HostEmails...)) || !slices.Equal(m.ReplyTo, p.HostEmails) {
+		t.Fatalf("reassign note: %s to %v cc %v reply-to %v", m.Subject, m.To, m.CC, m.ReplyTo)
+	}
+	for _, want := range []string{"Percy, you", "Hi Percy", "Robin Whitfield has passed you a ticket"} {
+		if !strings.Contains(m.HTML, want) {
+			t.Errorf("reassign note lacks %q", want)
+		}
 	}
 }
 

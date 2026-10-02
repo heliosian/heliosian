@@ -885,7 +885,15 @@ export async function openContacts(p) {
     link.href = `mailto:${e}`;
     return link;
   };
-  const statusOf = a => (a.status === 'Waitlist' || a.status === 'Offered' ? `${a.status} (${a.quantity || 1})` : a.status || '');
+  const statusOf = a => {
+    if (a.status === 'Waitlist' || a.status === 'Offered') {
+      return `${a.status} (${a.quantity || 1})`;
+    }
+    if (a.status === 'Ticket' && !a.price) {
+      return 'Free ticket';
+    }
+    return a.status || '';
+  };
   const columns = [
     {label: 'Name', get: r => r.a.name || r.a.email || ''},
     {label: 'Title', get: titleOf},
