@@ -48,11 +48,14 @@ func TestPointsAndAudience(t *testing.T) {
 	if got := known([]string{"condors", "Nowhere", "Condors"}, []string{"Condors", "Jays"}); !slices.Equal(got, []string{"Condors"}) {
 		t.Errorf("known: %v", got)
 	}
-	if got := audience([]string{"Condors"}, []string{"Grade 6"}); got != "Condors, Grade 6" {
+	if got := audience(false, []string{"Condors"}, []string{"Grade 6"}); got != "Condors, Grade 6" {
 		t.Errorf("audience: %q", got)
 	}
-	if got := audience(nil, nil); got != model.DocumentForEveryone {
+	if got := audience(false, nil, nil); got != model.DocumentForEveryone {
 		t.Errorf("an email to nobody named is for %q", got)
+	}
+	if got := audience(true, []string{"Redwoods"}, nil); got != "" {
+		t.Errorf("an email to one lit circle is for %q", got)
 	}
 }
 
