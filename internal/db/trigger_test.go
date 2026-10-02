@@ -71,3 +71,38 @@ func TestSchoolGroupsFollowThePerson(t *testing.T) {
 		t.Fatalf("a new student is in %v", got)
 	}
 }
+
+func TestFamilyTitleFollowsItsMembers(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	write := func(raw string) []string {
+		t.Helper()
+		b, err := ParseBatch([]byte(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		written, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(importReader), Env{System: importReader, Now: testNow}, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return written
+	}
+	title := func(want, when string) {
+		t.Helper()
+		family, _ := s.Model().Table("GROUP").Get("grp00000000020")
+		if family["title_auto"] != want {
+			t.Fatalf("%s, the family is %q, not %q", when, family["title_auto"], want)
+		}
+	}
+	title("Ashdown Family", "as the sample has it")
+
+	write(`{"batch": [{"set": "per00000000001", "cells": {"name_long_override": "Juni Chang-Ashdown"}}]}`)
+	title("Chang-Ashdown Family", "with a hyphenated name taking in the other")
+
+	kai := write(`{"batch": [
+		{"insert": "PERSON", "as": "kai", "row": {"source": "veracross", "name_long_import": "Kai Lindqvist", "consent": "listed"}},
+		{"insert": "MEMBER", "row": {"group": "grp00000000020", "person": "@kai", "role": "member", "status": "yes"}}]}`)[0]
+	title("Chang-Ashdown & Lindqvist Family", "once Kai joins")
+
+	write(`{"batch": [{"set": "` + kai + `", "cells": {"consent": "withheld"}}]}`)
+	title("Chang-Ashdown Family", "with Kai withheld")
+}

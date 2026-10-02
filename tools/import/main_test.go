@@ -257,7 +257,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 	}
 	x.entries, x.households = x.entries[:len(x.entries)-1], x.households[:len(x.households)-1]
 	family, _ := s.Model().Table("GROUP").Get("grp00000000020")
-	if family["vc_title"] != "Ashdown Family" || family["vc_address"] != "12 Elm St" {
+	if family["title_auto"] != "Ashdown Family" || family["vc_address"] != "12 Elm St" {
 		t.Fatalf("the Ashdowns' family reads %v", family)
 	}
 	sam := personNamed(s, "Sam (Samuel) Ashdown")

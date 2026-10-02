@@ -144,7 +144,7 @@ const policySource = `
 (read GROUP (visible @row))
 ; every column of a group but what its family's form shares
 (read GROUP
-  (id parent kind listed mail slug vc_title title subtitle description
+  (id parent kind listed mail slug title_auto title subtitle description
    color flyer pronunciation address phone status visibility visible_to members_visible posting
    replying join adding capacity minimum price unit waitlist eligible parent_required
    manager_needed priority start end all_day location order added_by added)
@@ -464,8 +464,6 @@ const policySource = `
 (read RULE (and (system "import") (= group.kind "band")))
 ; make a band hold everyone in its grades and classrooms
 (insert RULE (and (system "import") (= @new.group.kind "band")))
-; a family's title built from its members' names
-(set GROUP.vc_title (and (system "import") (= @old.kind "family")))
 ; a family's address as Veracross has it
 (set GROUP.vc_address (and (system "import") (= @old.kind "family")))
 ; a family's phone as Veracross has it

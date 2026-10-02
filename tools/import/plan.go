@@ -93,7 +93,7 @@ var personColumns = []string{
 	"vc_address_visibility", "vc_phone_visibility", "name_long_import", "name_short_import", "name_sort_import", "deactivated",
 }
 
-var familyColumns = []string{"vc_title", "vc_address", "vc_phone"}
+var familyColumns = []string{"vc_address", "vc_phone"}
 
 type planner struct {
 	x       *export
@@ -782,38 +782,6 @@ func (p *planner) syncMembers(group string, want map[membership]bool) {
 	}
 }
 
-func surname(fullName string) string {
-	fields := strings.Fields(fullName)
-	if len(fields) == 0 {
-		return ""
-	}
-	return fields[len(fields)-1]
-}
-
-func familyTitle(h *household) string {
-	found := []string{}
-	for _, id := range slices.Concat(h.kids, h.adults) {
-		s := surname(parseName(id.name).long)
-		if s == "" || slices.ContainsFunc(found, func(n string) bool { return strings.EqualFold(n, s) }) {
-			continue
-		}
-		found = append(found, s)
-	}
-	kept := []string{}
-	for _, s := range found {
-		within := slices.ContainsFunc(found, func(other string) bool {
-			return !strings.EqualFold(other, s) && slices.ContainsFunc(strings.Split(other, "-"), func(part string) bool { return strings.EqualFold(part, s) })
-		})
-		if !within {
-			kept = append(kept, s)
-		}
-	}
-	if len(kept) == 0 {
-		return ""
-	}
-	return strings.Join(kept, " & ") + " Family"
-}
-
 func (p *planner) families(households []*household) {
 	managers := map[string]map[string]bool{}
 	members := map[string]map[string]bool{}
@@ -884,7 +852,7 @@ func (p *planner) families(households []*household) {
 		}
 	}
 	for _, h := range households {
-		cells := row{"vc_title": familyTitle(h), "vc_address": h.address, "vc_phone": h.phone}
+		cells := row{"vc_address": h.address, "vc_phone": h.phone}
 		if h.family == "" {
 			insert := row{"kind": "family"}
 			for k, v := range cells {

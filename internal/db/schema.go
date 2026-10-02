@@ -237,7 +237,7 @@ var Tables = []Table{
 			col("listed", Bool),
 			col("mail", Bool),
 			col("slug", Text),
-			col("vc_title", Text),
+			col("title_auto", Text),
 			col("vc_address", Text).private(),
 			col("vc_phone", Text).private(),
 			col("title", Text),

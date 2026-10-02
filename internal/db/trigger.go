@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
+	"heliosian/internal/cells"
 	"heliosian/internal/store"
 )
 
@@ -17,7 +18,100 @@ type trigger struct {
 
 var triggers = []trigger{
 	{table: "PERSON", fire: schoolGroups},
+	{table: "PERSON", fire: personFamilyTitles},
+	{table: "MEMBER", fire: memberFamilyTitle},
 	{table: "PHOTO", fire: photoNotReady},
+}
+
+func personFamilyTitles(m *Model, c Change) ([]Edit, error) {
+	p := c.New
+	if p == nil {
+		p = c.Old
+	}
+	families := []string{}
+	for _, row := range m.Table("MEMBER").Referencing("person", p["id"]) {
+		families = append(families, row["group"])
+	}
+	return m.retitleFamilies(families), nil
+}
+
+func memberFamilyTitle(m *Model, c Change) ([]Edit, error) {
+	families := []string{}
+	for _, row := range []store.Row{c.Old, c.New} {
+		if row != nil {
+			families = append(families, row["group"])
+		}
+	}
+	return m.retitleFamilies(families), nil
+}
+
+func (m *Model) retitleFamilies(groups []string) []Edit {
+	slices.Sort(groups)
+	writes := []Edit{}
+	for _, id := range slices.Compact(groups) {
+		g, ok := m.Table("GROUP").Get(id)
+		if !ok || g["kind"] != "family" {
+			continue
+		}
+		if title := m.familyTitle(id); title != g["title_auto"] {
+			writes = append(writes, Edit{Set: id, Cells: map[string]any{"title_auto": title}})
+		}
+	}
+	return writes
+}
+
+func (m *Model) familyTitle(group string) string {
+	rows := m.Table("MEMBER").Referencing("group", group)
+	managers := map[string]bool{}
+	for _, row := range rows {
+		if row["role"] == "manager" {
+			managers[row["person"]] = true
+		}
+	}
+	order := []string{}
+	for _, row := range rows {
+		if row["role"] == "member" && !managers[row["person"]] {
+			order = append(order, row["person"])
+		}
+	}
+	for _, row := range rows {
+		if row["role"] == "manager" {
+			order = append(order, row["person"])
+		}
+	}
+	found := []string{}
+	for _, id := range order {
+		p, ok := m.Table("PERSON").Get(id)
+		if !ok || !named(p) {
+			continue
+		}
+		fields := strings.Fields(p["name_long"])
+		if len(fields) == 0 {
+			continue
+		}
+		s := fields[len(fields)-1]
+		if !slices.ContainsFunc(found, func(n string) bool { return strings.EqualFold(n, s) }) {
+			found = append(found, s)
+		}
+	}
+	kept := []string{}
+	for _, s := range found {
+		within := slices.ContainsFunc(found, func(other string) bool {
+			return !strings.EqualFold(other, s) && slices.ContainsFunc(strings.Split(other, "-"), func(part string) bool { return strings.EqualFold(part, s) })
+		})
+		if !within {
+			kept = append(kept, s)
+		}
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	return strings.Join(kept, " & ") + " Family"
+}
+
+func named(p store.Row) bool {
+	hidden, _ := cells.YesNo(p["hidden"], false)
+	return !hidden && p["deactivated"] == "" && strings.EqualFold(p["consent"], "listed")
 }
 
 func photoNotReady(_ *Model, c Change) ([]Edit, error) {
