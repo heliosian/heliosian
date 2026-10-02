@@ -27,8 +27,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/who` — the directory app's page host: its page routes, the opt-in form and its share card
 - `internal/ask` — Helios Ask: the chat with Claude over every app's data - the prompt, the conversation, the streaming turn and the read-only tools
 - `internal/artifacts` — the embeddings of Helios Ask's documents through Vertex AI, and the mail hook's settings
-- `internal/keypoints` — the few short lines Claude reads out of each school email for Heliosian's Inbox widget, what to do and by when first, kept in the artifacts Documents tab's Key Points column
-- `internal/todos` — the to-dos Claude reads out of each school email and Loop email list post for Heliosian's Reminders widget, kept in the artifacts sheet's To Dos tab
+- `internal/digest` — what Claude reads out of each school email and Loop email list post in one call: the key points and audience for Heliosian's Inbox widget and the to-dos for its Reminders widget, kept in the artifacts sheet's Reads and To Dos tabs
 - `internal/mail` — outgoing email: Mailgun in production, and in development each message written to disk to open in a browser
 - `internal/logging` — structured records Cloud Logging indexes: severity, the signed-in user, the app, and the request's trace
 - `internal/feedback` — the GitHub App the triage queue files a kept report as

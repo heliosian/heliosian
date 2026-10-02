@@ -2,37 +2,47 @@ package model
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/store"
 )
 
-func dropDocumentToDos(_ store.Tables, before, after store.Row) []store.Op {
+func dropDocumentReading(_ store.Tables, before, after store.Row) []store.Op {
 	if before == nil || after != nil {
 		return nil
 	}
 	named := store.Row{"Document": before["Key"]}
-	return []store.Op{store.Delete(toDosTab, named), store.Delete(toDoReadsTab, named)}
+	return []store.Op{store.Delete(toDosTab, named), store.Delete(readsTab, named)}
 }
 
-func (m *Documents) setToDos(actor access.Actor, document string, toDos []ToDo, read string) ([]store.Op, error) {
+func (m *Documents) setReading(actor access.Actor, document string, reading Reading, read string) ([]store.Op, error) {
 	if m.byKey[document] == nil {
 		return nil, access.Missing("no document %s", document)
 	}
 	ops := []store.Op{store.Delete(toDosTab, store.Row{"Document": document})}
-	for _, t := range toDos {
+	for _, t := range reading.ToDos {
 		t.Document = document
 		if err := CheckToDo(t); err != nil {
 			return nil, access.Invalid("%v", err)
 		}
-		ops = append(ops, store.Insert(toDosTab, store.Row{"Document": document, "Title": t.Title, "Summary": t.Summary, "Details": t.Details, "Link": t.Link, "Due": t.Due}))
+		if t.Point > len(reading.Points) {
+			return nil, access.Invalid("to-do %q names point %d of %d", t.Title, t.Point, len(reading.Points))
+		}
+		point := ""
+		if t.Point > 0 {
+			point = strconv.Itoa(t.Point)
+		}
+		ops = append(ops, store.Insert(toDosTab, store.Row{"Document": document, "Title": t.Title, "Summary": t.Summary, "Details": t.Details, "Link": t.Link, "Due": t.Due, "Point": point}))
 	}
-	return append(ops, store.Upsert(toDoReadsTab, store.Row{"Document": document}, store.Row{"Read": read})), nil
+	row := store.Row{"Read": read, "Key Points": strings.Join(reading.Points, "\n"), "Audience": reading.Audience}
+	return append(ops, store.Upsert(readsTab, store.Row{"Document": document}, row)), nil
 }
 
-func (s *Store) SetToDos(ctx context.Context, actor access.Actor, document string, toDos []ToDo, read string) error {
-	ops, err := s.Model().Documents.setToDos(actor, document, toDos, read)
+func (s *Store) SetReading(ctx context.Context, actor access.Actor, document string, reading Reading, read string) error {
+	ops, err := s.Model().Documents.setReading(actor, document, reading, read)
 	if err != nil {
 		return err
 	}

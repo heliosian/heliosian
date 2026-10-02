@@ -22,18 +22,17 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/db"
 	"heliosian/internal/describe"
+	"heliosian/internal/digest"
 	"heliosian/internal/env"
 	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
 	"heliosian/internal/imagesearch"
-	"heliosian/internal/keypoints"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
-	"heliosian/internal/todos"
 	"heliosian/internal/who"
 )
 
@@ -66,8 +65,7 @@ type Config struct {
 	Asker         *ask.Claude
 	Embedder      *artifacts.Vertex
 	ArtifactsMail artifacts.Inbox
-	KeyPoints     *keypoints.Claude
-	ToDos         *todos.Claude
+	Digest        *digest.Claude
 }
 
 type appSpec struct {
@@ -147,8 +145,7 @@ func NewCore(cfg Config) *Core {
 	teamStyle := model.ActivitiesCardStyle(appName("team"), taglineOf("team"))
 	celebrateStyle := model.PartiesCardStyle(appName("celebrate"), taglineOf("celebrate"))
 	calendarStyle := model.CalendarCardStyle(appName("when"), taglineOf("when"))
-	go keypoints.Run(models, cfg.KeyPoints)
-	todos.Start(models, queue, cfg.ToDos)
+	digest.Start(models, queue, cfg.Digest)
 	mux := http.NewServeMux()
 	who.Register(mux, models, whoAbout)
 	model.RegisterDirectoryMedia(mux, cfg.Store)
@@ -326,8 +323,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		FeedbackBase:  feedbackBase,
 		Loop:          loopMail(sessionKey),
 		Asker:         ask.NewClaude(anthropicKey),
-		KeyPoints:     keypoints.New(anthropicKey),
-		ToDos:         todos.New(anthropicKey),
+		Digest:        digest.New(anthropicKey),
 		Embedder:      embedder,
 		ArtifactsMail: artifactsMail(bucket),
 	})

@@ -82,7 +82,7 @@ func TestSchoolEmails(t *testing.T) {
 	ops := []store.Op{}
 	for _, d := range c.Model().Documents.Documents {
 		if a, ok := audience[d.Date]; ok && d.Kind == DocumentKindNewsletter {
-			ops = append(ops, store.Update(documentsTab, store.Row{"Key": d.Key}, store.Row{DocumentAudienceColumn: a}))
+			ops = append(ops, store.Upsert(readsTab, store.Row{"Document": d.Key}, store.Row{"Audience": a}))
 		}
 	}
 	if len(ops) != 3 {

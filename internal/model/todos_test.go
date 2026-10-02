@@ -43,7 +43,7 @@ func toDoState(item map[string]any) string {
 
 func TestToDos(t *testing.T) {
 	c, s, mux := schoolServer(t)
-	if err := c.Commit(context.Background(), access.System("test"), DocumentsApp, store.Update(documentsTab, store.Row{"Key": newsletter925Key}, store.Row{DocumentAudienceColumn: DocumentForEveryone})); err != nil {
+	if err := c.Commit(context.Background(), access.System("test"), DocumentsApp, store.Upsert(readsTab, store.Row{"Document": newsletter925Key}, store.Row{"Audience": DocumentForEveryone})); err != nil {
 		t.Fatal(err)
 	}
 	toDos := func(as string) []map[string]any { return listOf(t, mux, as, "/api/to-dos") }
@@ -92,35 +92,42 @@ func TestToDos(t *testing.T) {
 	}
 }
 
-func TestSettingToDosReplacesADocumentsOwn(t *testing.T) {
+func TestSettingAReadingReplacesADocumentsOwn(t *testing.T) {
 	c, _, _ := schoolServer(t)
 	ctx, system := context.Background(), access.System("test")
-	if err := c.SetToDos(ctx, system, jaysTripKey, []ToDo{{Title: "Drive on the trip", Summary: "Drivers wanted", Details: "Four drivers.", Due: "2026-10-09"}}, "2026-10-01"); err != nil {
+	reading := Reading{
+		Points:   []string{"The Jays visit the tide pools on Fri, Oct 9.", "Four parent drivers are needed."},
+		Audience: "Jays",
+		ToDos:    []ToDo{{Title: "Drive on the trip", Summary: "Drivers wanted", Details: "Four drivers.", Due: "2026-10-09", Point: 2}},
+	}
+	if err := c.SetReading(ctx, system, jaysTripKey, reading, "2026-10-01"); err != nil {
 		t.Fatal(err)
 	}
 	docs := c.Model().Documents
-	titles := []string{}
+	got := []ToDo{}
 	for _, toDo := range docs.ToDos {
 		if toDo.Document == jaysTripKey {
-			titles = append(titles, toDo.Title)
+			got = append(got, *toDo)
 		}
 	}
-	if !slices.Equal(titles, []string{"Drive on the trip"}) || docs.ToDosRead[jaysTripKey] != "2026-10-01" {
-		t.Errorf("after setting, the trip's to-dos are %v, read %q", titles, docs.ToDosRead[jaysTripKey])
+	if len(got) != 1 || got[0].Title != "Drive on the trip" || got[0].Point != 2 || docs.Read[jaysTripKey] != "2026-10-01" {
+		t.Errorf("after setting, the trip's to-dos are %+v, read %q", got, docs.Read[jaysTripKey])
 	}
-	if err := c.SetToDos(ctx, system, jaysTripKey, []ToDo{{Title: "Pay", Link: "not a link"}}, "2026-10-01"); err == nil {
-		t.Errorf("a to-do with a bad link was taken")
+	if !slices.Equal(docs.Points[jaysTripKey], reading.Points) || docs.Audience[jaysTripKey] != "Jays" {
+		t.Errorf("after setting, the trip's points are %v to %q", docs.Points[jaysTripKey], docs.Audience[jaysTripKey])
 	}
-	if err := c.SetToDos(ctx, system, jaysTripKey, []ToDo{{Title: "Pay", Due: "Friday"}}, "2026-10-01"); err == nil {
-		t.Errorf("a to-do with a bad due day was taken")
+	for _, bad := range []ToDo{{Title: "Pay", Link: "not a link"}, {Title: "Pay", Due: "Friday"}, {Title: "Pay", Point: 3}} {
+		if err := c.SetReading(ctx, system, jaysTripKey, Reading{Points: reading.Points, ToDos: []ToDo{bad}}, "2026-10-01"); err == nil {
+			t.Errorf("a to-do %+v was taken", bad)
+		}
 	}
-	if err := c.SetToDos(ctx, system, "no-such-document", []ToDo{}, "2026-10-01"); err == nil {
-		t.Errorf("to-dos for a document not on file were taken")
+	if err := c.SetReading(ctx, system, "no-such-document", Reading{}, "2026-10-01"); err == nil {
+		t.Errorf("a reading of a document not on file was taken")
 	}
 	if err := c.Commit(ctx, system, DocumentsApp, c.Model().Documents.Drop(system, jaysTripKey)...); err != nil {
 		t.Fatal(err)
 	}
-	if docs := c.Model().Documents; slices.ContainsFunc(docs.ToDos, func(t *ToDo) bool { return t.Document == jaysTripKey }) || docs.ToDosRead[jaysTripKey] != "" {
-		t.Errorf("dropping the document left its to-dos")
+	if docs := c.Model().Documents; slices.ContainsFunc(docs.ToDos, func(t *ToDo) bool { return t.Document == jaysTripKey }) || docs.Read[jaysTripKey] != "" || docs.Points[jaysTripKey] != nil {
+		t.Errorf("dropping the document left its reading")
 	}
 }

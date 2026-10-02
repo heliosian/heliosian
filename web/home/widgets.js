@@ -438,6 +438,23 @@ function emailAsk(email) {
   return appOrigin('ask') + '/?q=' + encodeURIComponent(`What should I know from the school email "${email.title}" sent ${day}?`);
 }
 
+function pointItem(email, words, point) {
+  const todo = state.model.todos.find(t => t.email === email.id && t.point === point);
+  if (!todo) {
+    return el('li', '', words);
+  }
+  const done = todo.me.state === 'done';
+  const item = el('li', 'wg-point-todo' + (done ? ' is-done' : ''));
+  const box = todoButton('Done: ' + todo.title, done ? 'Mark not done' : 'Mark done', done, 'wg-check', svg('check'), () => setTodo(todo, done ? 'clear' : 'complete'));
+  const text = el('span', 'wg-point-words', todo.title);
+  text.title = words;
+  if (todo.due) {
+    text.append(el('span', 'wg-point-due', ' · ' + parseDate(todo.due).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})));
+  }
+  item.append(box, text);
+  return item;
+}
+
 function emailRow(email, n, open) {
   const date = parseDate(email.date);
   const title = el('button', 'wg-title', email.title);
@@ -448,9 +465,7 @@ function emailRow(email, n, open) {
   const body = el('div', 'wg-email-body');
   if (email.points.length) {
     const points = el('ul', 'wg-points');
-    for (const p of email.points) {
-      points.append(el('li', '', p));
-    }
+    email.points.forEach((p, i) => points.append(pointItem(email, p, i + 1)));
     body.append(points);
   } else {
     body.append(el('div', 'wg-sub', 'Key points on their way.'));

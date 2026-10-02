@@ -25,16 +25,15 @@ import (
 	"heliosian/internal/describe"
 	"heliosian/internal/devcache"
 	"heliosian/internal/devtls"
+	"heliosian/internal/digest"
 	"heliosian/internal/env"
 	"heliosian/internal/geocode"
 	"heliosian/internal/intercept"
-	"heliosian/internal/keypoints"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/store"
-	"heliosian/internal/todos"
 )
 
 const (
@@ -111,8 +110,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 		Asker:         ask.NewClaude("sample"),
 		Embedder:      embedder,
 		ArtifactsMail: artifacts.Inbox{Bucket: bucket},
-		KeyPoints:     keypoints.New("sample"),
-		ToDos:         todos.New("sample"),
+		Digest:        digest.New("sample"),
 	})
 	saved, err := filepath.Glob("sampledata/artifacts/*.json")
 	if err != nil {

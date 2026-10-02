@@ -36,7 +36,7 @@ var layouts = map[string][]tab{
 	"Artifacts": {
 		{"Documents", model.DocumentColumns},
 		{"To Dos", model.ToDoColumns},
-		{"To Do Reads", model.ToDoReadColumns},
+		{"Reads", model.ReadColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Feedback": {

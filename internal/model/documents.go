@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
 	"heliosian/internal/store"
@@ -34,13 +33,7 @@ const (
 	DocumentKindAnnouncement = "announcement"
 )
 
-var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object", DocumentPointsColumn, DocumentAudienceColumn, DocumentJudgedColumn}
-
-const DocumentPointsColumn = "Key Points"
-
-const DocumentAudienceColumn = "Audience"
-
-const DocumentJudgedColumn = "Judged"
+var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object"}
 
 const DocumentForEveryone = "Everyone"
 
@@ -161,9 +154,8 @@ type Documents struct {
 	Fetched    int
 	Points     map[string][]string
 	Audience   map[string]string
-	Judged     map[string]string
+	Read       map[string]string
 	ToDos      []*ToDo
-	ToDosRead  map[string]string
 	byKey      map[string]*Document
 	toDoIDs    map[string]*ToDo
 	ids        map[string]*Document
@@ -201,19 +193,8 @@ func (d *documentObjects) build(ctx context.Context, tables store.Tables) (*Docu
 	d.mu.Lock()
 	held := maps.Clone(d.held)
 	d.mu.Unlock()
-	m := &Documents{Documents: make([]*Document, len(rows)), Points: map[string][]string{}, Audience: map[string]string{}, Judged: map[string]string{}}
-	for _, row := range rows {
-		if judged := strings.TrimSpace(row[DocumentJudgedColumn]); judged != "" {
-			m.Judged[row["Key"]] = judged
-		}
-		if points := splitPoints(row[DocumentPointsColumn]); len(points) > 0 {
-			m.Points[row["Key"]] = points
-		}
-		if audience := strings.TrimSpace(row[DocumentAudienceColumn]); audience != "" {
-			m.Audience[row["Key"]] = audience
-		}
-	}
-	if err := buildToDos(tables, m); err != nil {
+	m := &Documents{Documents: make([]*Document, len(rows))}
+	if err := buildReads(tables, m); err != nil {
 		return nil, err
 	}
 	wanted := []int{}
@@ -396,9 +377,9 @@ func quotes(words string, taken []string) bool {
 }
 
 var documentsTabs = []store.Tab{
-	{Name: documentsTab, Columns: DocumentColumns, Key: []string{"Key"}, Cascade: dropDocumentToDos},
+	{Name: documentsTab, Columns: DocumentColumns, Key: []string{"Key"}, Cascade: dropDocumentReading},
 	{Name: toDosTab, Columns: ToDoColumns, Key: []string{"Document", "Title"}},
-	{Name: toDoReadsTab, Columns: ToDoReadColumns, Key: []string{"Document"}},
+	{Name: readsTab, Columns: ReadColumns, Key: []string{"Document"}},
 }
 
 func splitPoints(cell string) []string {
@@ -409,10 +390,6 @@ func splitPoints(cell string) []string {
 		}
 	}
 	return out
-}
-
-func (s *Store) SetPoints(ctx context.Context, actor access.Actor, key string, points []string, audience, judged string) error {
-	return s.Commit(ctx, actor, DocumentsApp, s.Model().Documents.setPoints(actor, key, points, audience, judged)...)
 }
 
 func AudienceClassrooms(audience string) []string {

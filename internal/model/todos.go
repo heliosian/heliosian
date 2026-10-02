@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 
 const (
 	toDosTab        = "To Dos"
-	toDoReadsTab    = "To Do Reads"
+	readsTab        = "Reads"
 	homeToDosTab    = "To Dos"
 	kindToDo        = "to-do"
 	ToDoWindow      = SchoolMailWindow
@@ -25,8 +26,8 @@ const (
 )
 
 var (
-	ToDoColumns     = []string{"Document", "Title", "Summary", "Details", "Link", "Due"}
-	ToDoReadColumns = []string{"Document", "Read"}
+	ToDoColumns     = []string{"Document", "Title", "Summary", "Details", "Link", "Due", "Point"}
+	ReadColumns     = []string{"Document", "Read", "Key Points", "Audience"}
 	HomeToDoColumns = []string{"Email", "To Do", "State", "Changed"}
 )
 
@@ -38,6 +39,13 @@ type ToDo struct {
 	Details  string
 	Link     string
 	Due      string
+	Point    int
+}
+
+type Reading struct {
+	Points   []string
+	Audience string
+	ToDos    []ToDo
 }
 
 func toDoID(key []byte, document, title string) string {
@@ -59,16 +67,35 @@ func CheckToDo(t ToDo) error {
 	if err := cells.URL(t.Link, true); err != nil {
 		return fmt.Errorf("to-do %q: %w", t.Title, err)
 	}
+	if t.Point < 0 {
+		return fmt.Errorf("to-do %q: point %d is below zero", t.Title, t.Point)
+	}
 	return nil
 }
 
-func buildToDos(tables store.Tables, m *Documents) error {
-	m.ToDos, m.ToDosRead = []*ToDo{}, map[string]string{}
+func toDoPoint(cell string) (int, error) {
+	cell = strings.TrimSpace(cell)
+	if cell == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(cell)
+	if err != nil || n < 1 || strconv.Itoa(n) != cell {
+		return 0, fmt.Errorf("point %q is not a key point's number", cell)
+	}
+	return n, nil
+}
+
+func buildReads(tables store.Tables, m *Documents) error {
+	m.ToDos, m.Read, m.Points, m.Audience = []*ToDo{}, map[string]string{}, map[string][]string{}, map[string]string{}
 	seen := map[string]bool{}
 	for _, row := range tables[toDosTab] {
+		point, err := toDoPoint(row["Point"])
+		if err != nil {
+			return fmt.Errorf("%s: to-do %q: %w", toDosTab, row["Title"], err)
+		}
 		t := &ToDo{
 			Document: strings.TrimSpace(row["Document"]), Title: strings.TrimSpace(row["Title"]), Summary: strings.TrimSpace(row["Summary"]),
-			Details: strings.TrimSpace(row["Details"]), Link: strings.TrimSpace(row["Link"]), Due: strings.TrimSpace(row["Due"]),
+			Details: strings.TrimSpace(row["Details"]), Link: strings.TrimSpace(row["Link"]), Due: strings.TrimSpace(row["Due"]), Point: point,
 		}
 		if t.Document == "" {
 			return fmt.Errorf("%s: to-do %q names no document", toDosTab, t.Title)
@@ -83,8 +110,15 @@ func buildToDos(tables store.Tables, m *Documents) error {
 		seen[named] = true
 		m.ToDos = append(m.ToDos, t)
 	}
-	for _, row := range tables[toDoReadsTab] {
-		m.ToDosRead[strings.TrimSpace(row["Document"])] = strings.TrimSpace(row["Read"])
+	for _, row := range tables[readsTab] {
+		key := strings.TrimSpace(row["Document"])
+		m.Read[key] = strings.TrimSpace(row["Read"])
+		if points := splitPoints(row["Key Points"]); len(points) > 0 {
+			m.Points[key] = points
+		}
+		if audience := strings.TrimSpace(row["Audience"]); audience != "" {
+			m.Audience[key] = audience
+		}
 	}
 	return nil
 }

@@ -27,6 +27,8 @@ type toDoResource struct {
 	Details string     `json:"details"`
 	Link    string     `json:"link,omitempty"`
 	Due     string     `json:"due,omitempty"`
+	Email   string     `json:"email,omitempty"`
+	Point   int        `json:"point,omitempty"`
 	Source  toDoSource `json:"source"`
 	Me      toDoMe     `json:"me"`
 }
@@ -122,8 +124,12 @@ func (a homeApp) toDosType() api.Type[*Model] {
 				return nil, false
 			}
 			d := m.Documents.byKey[t.Document]
+			email := ""
+			if d.School() {
+				email = derived(m, kindSchoolEmail, d.Key)
+			}
 			return toDoResource{
-				Title: t.Title, Summary: t.Summary, Details: t.Details, Link: t.Link, Due: t.Due,
+				Title: t.Title, Summary: t.Summary, Details: t.Details, Link: t.Link, Due: t.Due, Email: email, Point: t.Point,
 				Source: toDoSource{Title: d.Title, Date: d.Date, Time: d.Time, To: m.DocumentSentTo(d)},
 				Me:     toDoMe{State: m.Home.ToDoStates[q.Actor.Email][key]},
 			}, true
