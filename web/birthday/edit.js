@@ -56,9 +56,9 @@ export function toShare(date) {
 
 export function shareIssue(date) {
   const list = toShare(date);
-  const bare = list.filter(sv => !sv.donation).length;
+  const bare = list.filter(sv => !sv.donation).map(sv => `${sv.name} gets ${charityName(sv.fallback.charity)}`);
   const words = `Copy ${list.length} ${list.length === 1 ? 'birthday' : 'birthdays'} for ${longDate(date)} to the Staff Birthday List (Shared) and mark ${list.length === 1 ? 'it' : 'them'} done?` +
-    (bare ? ` ${bare} with no charity recorded ${bare === 1 ? 'gets' : 'get'} ${charityName(settings().defaultCharity)}.` : '');
+    (bare.length ? ` With no charity recorded, ${bare.join(', ')}.` : '');
   if (!confirm(words)) {
     return;
   }
