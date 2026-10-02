@@ -89,8 +89,8 @@ func TestFamilyTitleFollowsItsMembers(t *testing.T) {
 	title := func(want, when string) {
 		t.Helper()
 		family, _ := s.Model().Table("GROUP").Get("grp00000000020")
-		if family["title_auto"] != want {
-			t.Fatalf("%s, the family is %q, not %q", when, family["title_auto"], want)
+		if family["title"] != want {
+			t.Fatalf("%s, the family is %q, not %q", when, family["title"], want)
 		}
 	}
 	title("Ashdown Family", "as the sample has it")

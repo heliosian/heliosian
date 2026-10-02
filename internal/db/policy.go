@@ -144,7 +144,7 @@ const policySource = `
 (read GROUP (visible @row))
 ; every column of a group but what its family's form shares
 (read GROUP
-  (id parent kind listed mail slug title_auto title subtitle description
+  (id parent kind listed mail slug title subtitle description
    color flyer pronunciation address phone status visibility visible_to members_visible posting
    replying join adding capacity minimum price unit waitlist eligible parent_required
    manager_needed priority start end all_day location order added_by added)

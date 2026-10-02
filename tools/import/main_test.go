@@ -234,7 +234,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 	if wren == nil || wren["name_sort_import"] != "Ashdown, Wren" || wren["vc_grade"] != "K" {
 		t.Fatalf("Wren reads %v", wren)
 	}
-	want := []string{"classroom:Oak:member", "crew:Acorn:member", "family::member", "grade:Kindergartengrade-k:member", "group:Everyoneeveryone:member", "group:Studentsstudents:member"}
+	want := []string{"classroom:Oak:member", "crew:Acorn:member", "family:Ashdown Family:member", "grade:Kindergartengrade-k:member", "group:Everyoneeveryone:member", "group:Studentsstudents:member"}
 	if got := groupsOf(s, wren["id"]); !slices.Equal(got, want) {
 		t.Fatalf("Wren is in %v", got)
 	}
@@ -257,7 +257,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 	}
 	x.entries, x.households = x.entries[:len(x.entries)-1], x.households[:len(x.households)-1]
 	family, _ := s.Model().Table("GROUP").Get("grp00000000020")
-	if family["title_auto"] != "Ashdown Family" || family["vc_address"] != "12 Elm St" {
+	if family["title"] != "Ashdown Family" || family["vc_address"] != "12 Elm St" {
 		t.Fatalf("the Ashdowns' family reads %v", family)
 	}
 	sam := personNamed(s, "Sam (Samuel) Ashdown")

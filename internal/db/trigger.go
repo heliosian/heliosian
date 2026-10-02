@@ -53,8 +53,8 @@ func (m *Model) retitleFamilies(groups []string) []Edit {
 		if !ok || g["kind"] != "family" {
 			continue
 		}
-		if title := m.familyTitle(id); title != g["title_auto"] {
-			writes = append(writes, Edit{Set: id, Cells: map[string]any{"title_auto": title}})
+		if title := m.familyTitle(id); title != g["title"] {
+			writes = append(writes, Edit{Set: id, Cells: map[string]any{"title": title}})
 		}
 	}
 	return writes
