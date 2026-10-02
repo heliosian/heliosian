@@ -261,7 +261,7 @@ const policySource = `
 ; the invite list services
 (read INVITE_SERVICE true)
 ; every column of an invite list service
-(read INVITE_SERVICE (id service name header_row supports_groups description) true)
+(read INVITE_SERVICE (id name header_row supports_groups description) true)
 ; the invite list templates
 (read INVITE_TEMPLATE true)
 ; every column of an invite list template
@@ -640,6 +640,34 @@ const policySource = `
 (read GEOCODE (system "import"))
 ; add an address the old directory had geocoded
 (insert GEOCODE (system "import"))
+; add an invite list service the old Invites sheet held
+(insert INVITE_SERVICE (system "import"))
+; whether a service's list has a header row, as the old sheet has it
+(set INVITE_SERVICE.header_row (system "import"))
+; whether a service takes one row per family, as the old sheet has it
+(set INVITE_SERVICE.supports_groups (system "import"))
+; a service's description, as the old sheet has it
+(set INVITE_SERVICE.description (system "import"))
+; add a column of a service's list
+(insert INVITE_TEMPLATE (system "import"))
+; a column's place in its service's list, as the old sheet has it
+(set INVITE_TEMPLATE.order (system "import"))
+; a column's heading, as the old sheet has it
+(set INVITE_TEMPLATE.column (system "import"))
+; what fills a column, as the old sheet has it
+(set INVITE_TEMPLATE.template (system "import"))
+; every greeting, owned ones too, to find what an earlier sync added
+(read GREETING (system "import"))
+; add a greeting the old Invites sheet held
+(insert GREETING (system "import"))
+; a greeting's name, as the old sheet has it
+(set GREETING.name (system "import"))
+; a greeting's format, as the old sheet has it
+(set GREETING.format (system "import"))
+; whether a greeting addresses a family, as the old sheet has it
+(set GREETING.grouped (system "import"))
+; whether a greeting addresses one person, as the old sheet has it
+(set GREETING.individual (system "import"))
 `
 
 type policySet struct {

@@ -556,11 +556,10 @@ var Tables = []Table{
 	{
 		Name:   "INVITE_SERVICE",
 		Sheet:  ConfigSheet,
-		Unique: []string{"service"},
+		Unique: []string{"name"},
 		Columns: []Column{
 			ident(InviteServicePrefix),
-			col("service", Text).required(),
-			col("name", Text),
+			col("name", Text).required(),
 			col("header_row", Bool),
 			col("supports_groups", Bool),
 			col("description", Text),
@@ -585,8 +584,8 @@ var Tables = []Table{
 			ref("owner", "PERSON"),
 			col("name", Text).required(),
 			col("format", Text),
-			col("grouped", Text),
-			col("individual", Text),
+			col("grouped", Bool),
+			col("individual", Bool),
 		},
 	},
 }
