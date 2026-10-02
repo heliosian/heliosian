@@ -35,52 +35,56 @@ func main() {
 	if err != nil {
 		logging.Fatal("create the output directory", "error", err)
 	}
+	err = importDirectory(c, exporter, website, out, *dryRun)
+	if rmErr := os.RemoveAll(out); rmErr != nil {
+		logging.Fatal("remove the export", "dir", out, "error", rmErr)
+	}
+	if err != nil {
+		logging.Fatal("directory import", "error", err)
+	}
+	if err := importCalendar(c, anthropicKey, *dryRun); err != nil {
+		logging.Fatal("calendar import", "error", err)
+	}
+}
+
+func importDirectory(c client, exporter, website, out string, dryRun bool) error {
 	slog.Info("exporting from veracross", "into", out)
 	if err := run(exporter, "go", "run", ".", "--out", out); err != nil {
-		logging.Fatal("veracross export", "error", err)
+		return fmt.Errorf("veracross export: %w", err)
 	}
 	slog.Info("exporting the school website's staff page", "into", out)
 	if err := run(website, "go", "run", ".", "--out", out); err != nil {
-		logging.Fatal("website export", "error", err)
+		return fmt.Errorf("website export: %w", err)
 	}
-
 	x, err := readExport(out)
 	if err != nil {
-		logging.Fatal("read the export", "error", err)
+		return fmt.Errorf("read the export: %w", err)
 	}
 	p, err := planned(c, x)
 	if err != nil {
-		logging.Fatal("plan the import", "error", err)
+		return fmt.Errorf("plan the import: %w", err)
 	}
 	attrs := []any{"writes", len(p.batch)}
 	for _, k := range slices.Sorted(maps.Keys(p.counts)) {
 		attrs = append(attrs, k, p.counts[k])
 	}
 	slog.Info("planned", attrs...)
-	if *dryRun {
+	if dryRun {
 		portraits, err := p.portraits()
 		if err != nil {
-			logging.Fatal("read the photos", "error", err)
+			return fmt.Errorf("read the photos: %w", err)
 		}
 		slog.Info("photos to add", "photos", len(portraits))
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(map[string]any{"batch": p.batch}); err != nil {
-			logging.Fatal("print the batch", "error", err)
-		}
-		if err := importCalendar(c, anthropicKey, true); err != nil {
-			logging.Fatal("calendar import", "error", err)
-		}
-		return
+		return enc.Encode(map[string]any{"batch": p.batch})
 	}
 	added, err := apply(c, x, p)
 	if err != nil {
-		logging.Fatal("import", "error", err)
+		return err
 	}
 	slog.Info("photos added", "photos", added)
-	if err := importCalendar(c, anthropicKey, false); err != nil {
-		logging.Fatal("calendar import", "error", err)
-	}
+	return nil
 }
 
 func planned(c client, x *export) (*planner, error) {

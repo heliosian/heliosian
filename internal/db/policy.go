@@ -545,6 +545,87 @@ const policySource = `
 (delete DOCUMENT_GROUP (and (system "import") (calendar_kind @old.group)))
 ; add a version of the school's year calendar
 (insert DOCUMENT (and (system "import") (= @new.kind "calendar")))
+
+;; System: import, the sync from the old sheets, until the cutover
+
+; every alias, to find what an earlier sync wrote
+(read ALIAS (system "import"))
+; an old ID and the row it now names
+(insert ALIAS (system "import"))
+; a person's long name as the old directory overrode it
+(set PERSON.name_long_override (system "import"))
+; a person's short name as the old directory overrode it
+(set PERSON.name_short_override (system "import"))
+; a person's sort name, built from the old directory's long name
+(set PERSON.name_sort_override (system "import"))
+; a person's pronouns
+(set PERSON.pronouns (system "import"))
+; a person's facts
+(set PERSON.facts (system "import"))
+; when a person's facts were last written
+(set PERSON.facts_updated (system "import"))
+; when a person's photo was last changed
+(set PERSON.photo_updated (system "import"))
+; a person's recorded name
+(set PERSON.pronunciation (system "import"))
+; a person's grade as the old directory overrode it
+(set PERSON.grade (system "import"))
+; a person's classroom as the old directory overrode it
+(set PERSON.classroom (system "import"))
+; a person's crew as the old directory overrode it
+(set PERSON.crew (system "import"))
+; a person's job title as the old directory overrode it
+(set PERSON.job_title (system "import"))
+; a person's phone as the old directory overrode it
+(set PERSON.phone_override (system "import"))
+; hide a person the old directory hid
+(set PERSON.hidden (system "import"))
+; when a person last signed out everywhere
+(set PERSON.signed_out (system "import"))
+; another address the old directory knew for a person
+(insert PERSON_EMAIL (and (system "import") (= @new.source "manual")))
+; a photo's crop as the old directory had it
+(set PERSON_PHOTO.crop (system "import"))
+; a photo's place among a person's photos as the old directory showed them
+(set PERSON_PHOTO.order (system "import"))
+; a family's address as the old directory overrode it
+(set GROUP.address_override (and (system "import") (= @old.kind "family")))
+; a family's phone as the old directory overrode it
+(set GROUP.phone_override (and (system "import") (= @old.kind "family")))
+; a family photo's caption
+(set GROUP.description (and (system "import") (= @old.kind "family")))
+; a family's, classroom's or grade's picture
+(set GROUP.image (and (system "import") (in @old.kind "family" "classroom" "grade")))
+; a family picture's crop
+(set GROUP.image_crop (and (system "import") (= @old.kind "family")))
+; a family's recorded name
+(set GROUP.pronunciation (and (system "import") (= @old.kind "family")))
+; a classroom's or grade's color
+(set GROUP.color (and (system "import") (in @old.kind "classroom" "grade")))
+; every plain group and admins group, to find what an earlier sync added
+(read GROUP (and (system "import") (in kind "group" "admins")))
+; add a tag, a band's room parents or an admins group
+(insert GROUP (and (system "import") (in @new.kind "group" "admins")))
+; the memberships of plain groups and admins groups
+(read MEMBER (and (system "import") (in group.kind "group" "admins")))
+; add someone to a tag, a band's room parents or an admins group
+(insert MEMBER (and (system "import") (in @new.group.kind "group" "admins")))
+; the rules of admins groups
+(read RULE (and (system "import") (= group.kind "admins")))
+; let super admins into an app's admins group
+(insert RULE (and (system "import") (= @new.group.kind "admins")))
+; every app, to find its admins group
+(read APP (system "import"))
+; add an app, naming its admins group
+(insert APP (system "import"))
+; add an app setting the old sheets held
+(insert SETTING (system "import"))
+; change an app setting to what the old sheets hold
+(set SETTING.value (system "import"))
+; every geocoded address, to skip those already held
+(read GEOCODE (system "import"))
+; add an address the old directory had geocoded
+(insert GEOCODE (system "import"))
 `
 
 type policySet struct {
