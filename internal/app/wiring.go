@@ -18,7 +18,6 @@ import (
 	"heliosian/internal/ask"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
-	"heliosian/internal/calendarimport"
 	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/db"
@@ -345,21 +344,20 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	}), core.Aliased())
 	if os.Getenv("K_SERVICE") != "" {
 		db.StartConsent(core.Data, core.Queue, sheet)
-		watcher := calendarWatcher(sheet, core, sessionKey, anthropicKey)
-		muxes["when"].Handle("POST "+calendarimport.HookPath, watcher)
+		watcher := calendarWatcher(core, sessionKey, anthropicKey)
+		muxes["when"].Handle("POST "+db.CalendarHookPath, watcher)
 		watcher.Start()
 		server.RegisterOnShutdown(func() { core.Queue.Add(watcher.Stop) })
 	}
 	return server, core.Queue
 }
 
-func calendarWatcher(sheet *data.Sheet, core *Core, sessionKey, anthropicKey string) *calendarimport.Watcher {
+func calendarWatcher(core *Core, sessionKey, anthropicKey string) *db.CalendarWatcher {
 	cal, err := gcal.NewService(context.Background(), option.WithScopes(gcal.CalendarReadonlyScope))
 	if err != nil {
 		logging.Fatal("calendar client", "error", err)
 	}
 	mac := hmac.New(sha256.New, []byte(sessionKey))
 	mac.Write([]byte("calendar watch"))
-	opts := calendarimport.Options{Source: sheet, Store: core.Store, Calendar: cal, AnthropicKey: anthropicKey}
-	return calendarimport.NewWatcher(opts, hex.EncodeToString(mac.Sum(nil)))
+	return db.NewCalendarWatcher(core.Data, core.Queue, cal, anthropicKey, hex.EncodeToString(mac.Sum(nil)))
 }

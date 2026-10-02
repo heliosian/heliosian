@@ -13,7 +13,7 @@ import (
 	"heliosian/internal/store"
 )
 
-type write struct {
+type Edit struct {
 	Insert string         `json:"insert,omitempty"`
 	As     string         `json:"as,omitempty"`
 	Row    map[string]any `json:"row,omitempty"`
@@ -23,7 +23,7 @@ type write struct {
 }
 
 type Batch struct {
-	Batch []write `json:"batch"`
+	Batch []Edit `json:"batch"`
 }
 
 func ParseBatch(raw []byte) (Batch, error) {
@@ -139,7 +139,7 @@ func Write(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor
 	return written, nil
 }
 
-func stageWrite(s *Store, tx *store.Tx, w write, where string, names map[string]string, whole bool, authorize func(*Model, Change) error) (string, Change, error) {
+func stageWrite(s *Store, tx *store.Tx, w Edit, where string, names map[string]string, whole bool, authorize func(*Model, Change) error) (string, Change, error) {
 	m := s.In(tx)
 	switch {
 	case w.Insert != "" && w.Set == "" && w.Delete == "" && w.Cells == nil:

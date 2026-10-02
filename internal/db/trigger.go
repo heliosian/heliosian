@@ -12,7 +12,7 @@ import (
 
 type trigger struct {
 	table string
-	fire  func(m *Model, c Change) ([]write, error)
+	fire  func(m *Model, c Change) ([]Edit, error)
 }
 
 var triggers = []trigger{
@@ -52,7 +52,7 @@ var (
 	schoolColumns = []string{"grade", "vc_grade", "classroom", "vc_classroom", "crew", "vc_crew", "department", "deactivated"}
 )
 
-func schoolGroups(m *Model, c Change) ([]write, error) {
+func schoolGroups(m *Model, c Change) ([]Edit, error) {
 	if c.New == nil {
 		return nil, nil
 	}
@@ -65,7 +65,7 @@ func schoolGroups(m *Model, c Change) ([]write, error) {
 	}
 	person := c.New["id"]
 	groups := m.Table("GROUP")
-	writes := []write{}
+	writes := []Edit{}
 	for _, row := range m.Table("MEMBER").Referencing("person", person) {
 		g, _ := groups.Get(row["group"])
 		if !slices.Contains(schoolKinds, g["kind"]) {
@@ -75,10 +75,10 @@ func schoolGroups(m *Model, c Change) ([]write, error) {
 			delete(want, row["group"])
 			continue
 		}
-		writes = append(writes, write{Delete: row["id"]})
+		writes = append(writes, Edit{Delete: row["id"]})
 	}
 	for _, group := range slices.Sorted(maps.Keys(want)) {
-		writes = append(writes, write{Insert: "MEMBER", Row: map[string]any{"group": group, "person": person, "role": "member", "status": "yes"}})
+		writes = append(writes, Edit{Insert: "MEMBER", Row: map[string]any{"group": group, "person": person, "role": "member", "status": "yes"}})
 	}
 	return writes, nil
 }

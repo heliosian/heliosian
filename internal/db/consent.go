@@ -85,7 +85,7 @@ func sharedOr(shared bool) string {
 	return "withheld"
 }
 
-func (m *Model) consentWrites(responses []map[string]string) ([]write, error) {
+func (m *Model) consentWrites(responses []map[string]string) ([]Edit, error) {
 	groups := m.Table("GROUP")
 	familiesOf := map[string][]string{}
 	staff := map[string]bool{}
@@ -131,7 +131,7 @@ func (m *Model) consentWrites(responses []map[string]string) ([]write, error) {
 		latest(byLinked, find(familiesOf[person][0]), r)
 	}
 
-	writes := []write{}
+	writes := []Edit{}
 	wants := map[string]map[string]string{}
 	for _, p := range m.Table("PERSON").All() {
 		if p["source"] == "guest" {
@@ -196,7 +196,7 @@ func (m *Model) consentWrites(responses []map[string]string) ([]write, error) {
 	return writes, nil
 }
 
-func appendChanges(writes []write, row store.Row, want map[string]string) []write {
+func appendChanges(writes []Edit, row store.Row, want map[string]string) []Edit {
 	cells := map[string]any{}
 	for _, column := range slices.Sorted(maps.Keys(want)) {
 		if !strings.EqualFold(row[column], want[column]) {
@@ -206,7 +206,7 @@ func appendChanges(writes []write, row store.Row, want map[string]string) []writ
 	if len(cells) == 0 {
 		return writes
 	}
-	return append(writes, write{Set: row["id"], Cells: cells})
+	return append(writes, Edit{Set: row["id"], Cells: cells})
 }
 
 type Consent struct {

@@ -223,7 +223,7 @@ var Tables = []Table{
 		Columns: []Column{
 			ident(GroupPrefix),
 			ref("parent", "GROUP"),
-			enum("kind", "family", "classroom", "grade", "band", "crew", "department", "role", "event", "series", "activity", "party", "celebration", "day", "day_part", "day_template", "list", "tag", "audience", "admins", "section").required(),
+			enum("kind", "family", "classroom", "grade", "band", "crew", "department", "role", "event", "series", "activity", "party", "celebration", "day", "day_part", "list", "tag", "audience", "admins", "section").required(),
 			col("slug", Text),
 			col("vc_title", Text),
 			col("vc_address", Text).private(),
@@ -353,6 +353,7 @@ var Tables = []Table{
 			col("url", URL),
 			ref("message", "MESSAGE"),
 			col("object", Blob),
+			col("hash", Text),
 			ref("category", "CATEGORY"),
 			col("key_points", Text),
 			col("indexed", Bool),

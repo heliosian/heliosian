@@ -18,12 +18,8 @@ const (
 	service  = "heliosian"
 	region   = "us-west1"
 	image    = "us-west1-docker.pkg.dev/heliosian/heliosian/heliosian:latest"
-	job      = "periodicsync"
-	jobImage = "us-west1-docker.pkg.dev/heliosian/heliosian/periodicsync:latest"
 	identity = "directory@heliosian.iam.gserviceaccount.com"
 )
-
-var jobSecrets = []string{"ANTHROPIC_API_KEY", "ID_KEY"}
 
 func sheetEnvVars(sheets []spreadsheets.Spreadsheet, ids map[string]string) string {
 	pairs := []string{}
@@ -39,16 +35,6 @@ func secretRefs(secrets []env.Secret) string {
 		pairs = append(pairs, s.Env+"="+s.Name+":latest")
 	}
 	return strings.Join(pairs, ",")
-}
-
-func secretsNamed(names []string) []env.Secret {
-	out := []env.Secret{}
-	for _, s := range env.Secrets {
-		if slices.Contains(names, s.Env) {
-			out = append(out, s)
-		}
-	}
-	return out
 }
 
 func gcloud(args ...string) {
@@ -100,16 +86,4 @@ func main() {
 		"--set-secrets", secretRefs(env.Secrets),
 		"--quiet")
 	mapDomains()
-	log.Printf("deploying %s to job %s in %s", jobImage, job, region)
-	gcloud("run", "jobs", "deploy", job,
-		"--image", jobImage,
-		"--region", region,
-		"--service-account", identity,
-		"--memory", "1Gi",
-		"--task-timeout", "30m",
-		"--max-retries", "0",
-		"--args=--i-have-user-permission-to-spend-money",
-		"--set-env-vars", envVars,
-		"--set-secrets", secretRefs(secretsNamed(jobSecrets)),
-		"--quiet")
 }

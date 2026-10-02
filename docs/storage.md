@@ -86,7 +86,7 @@ Every spreadsheet has one `Change Log` tab, written by the store and by nothing 
 - **Action** is `insert`, `set` or `delete`.
 - **Key** names the row: each of the tab's key columns and its value, `Email=…; Year=…`.
 - **Column** and **Previous** are the cell and what it held before the change. An insert has neither: before it the row did not exist, and its values are in the tab.
-- **Actor** is who the change was made as, and **Real Actor** who was signed in, the two differing under Spoof Mode (`docs/toolbar.md`). Work nobody signed in does - the calendar import (`calendarimport`), the directory import (`import`), the documents import (`importartifacts`), Who?'s geocoder (`geocoder`), the birthday reminders, Loop's mailer (`loop mailer`, which also files a sent post among Ask's documents), the mail Ask files (`ask mail`), the invite sweep (`invite sweep`) - names itself as the actor, and Real Actor is empty; a calendar reply or an outside guest's page names the guest.
+- **Actor** is who the change was made as, and **Real Actor** who was signed in, the two differing under Spoof Mode (`docs/toolbar.md`). Work nobody signed in does - the directory and calendar imports (`import`), the documents import (`importartifacts`), Who?'s geocoder (`geocoder`), the birthday reminders, Loop's mailer (`loop mailer`, which also files a sent post among Ask's documents), the mail Ask files (`ask mail`), the invite sweep (`invite sweep`) - names itself as the actor, and Real Actor is empty; a calendar reply or an outside guest's page names the guest.
 
 What a row holds now is the tab itself; the Change Log is how to get back to what it held before. Nothing reads it back.
 

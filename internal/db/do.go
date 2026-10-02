@@ -17,9 +17,10 @@ import (
 const (
 	doPrefix   = "/api/do/"
 	photoLimit = 30 << 20
+	pdfLimit   = 30 << 20
 )
 
-type addedPhoto struct {
+type stored struct {
 	Result []string `json:"result"`
 	Hash   string   `json:"hash"`
 }
@@ -74,13 +75,64 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, media *blob.St
 			serve.Error(w, r, err)
 			return
 		}
-		ids, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []write{{Insert: "PERSON_PHOTO", Row: row}}})
+		ids, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []Edit{{Insert: "PERSON_PHOTO", Row: row}}})
 		if err != nil {
 			serve.Error(w, r, err)
 			return
 		}
 		slog.InfoContext(r.Context(), "added a person's photo", "viewer", env.Viewer, "system", env.System, "person", person, "photo", name)
-		serve.Write(w, r, http.StatusOK, addedPhoto{Result: ids, Hash: strings.TrimSuffix(name, "."+ext)})
+		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(name, "."+ext)})
+	})
+	mux.HandleFunc("POST "+doPrefix+"calendar-pdf", func(w http.ResponseWriter, r *http.Request) {
+		env, actor, ok := caller(w, r, s.Model(), importKey, now())
+		if !ok {
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, pdfLimit)
+		if err := r.ParseMultipartForm(pdfLimit); err != nil {
+			serve.Error(w, r, access.Invalid("send the pdf as multipart form data: %v", err))
+			return
+		}
+		file, _, err := r.FormFile("pdf")
+		if err != nil {
+			serve.Error(w, r, access.Invalid("the pdf is required"))
+			return
+		}
+		defer file.Close()
+		content, err := io.ReadAll(file)
+		if err != nil {
+			serve.Error(w, r, access.Invalid("could not read the pdf"))
+			return
+		}
+		if mimeType := http.DetectContentType(content); mimeType != "application/pdf" {
+			serve.Error(w, r, access.Invalid("%s is not a pdf", mimeType))
+			return
+		}
+		name := blob.Name(content, "pdf")
+		hash := strings.TrimSuffix(name, ".pdf")
+		m := s.Model()
+		for _, row := range m.Table("DOCUMENT").All() {
+			if row["kind"] == "calendar" && row["hash"] == hash {
+				serve.Write(w, r, http.StatusOK, stored{Result: []string{row["id"]}, Hash: hash})
+				return
+			}
+		}
+		row := map[string]any{"kind": "calendar", "object": "calendar/" + name, "hash": hash, "url": r.FormValue("url"), "date": now().In(School).Format(DateLayout)}
+		if err := m.Authorize(env, Change{Table: "DOCUMENT", New: store.Row{"kind": "calendar", "object": "calendar/" + name, "hash": hash}}); err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		if err := media.Put("calendar", name, "application/pdf", content); err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		ids, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []Edit{{Insert: "DOCUMENT", Row: row}}})
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		slog.InfoContext(r.Context(), "added a version of the year calendar", "viewer", env.Viewer, "system", env.System, "document", ids[0], "hash", hash)
+		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: hash})
 	})
 }
 

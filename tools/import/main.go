@@ -28,6 +28,7 @@ func main() {
 	flag.Parse()
 
 	c := client{qclient.Client{Base: qclient.Production, Key: env.Required("IMPORT_KEY")}}
+	anthropicKey := env.Required("ANTHROPIC_API_KEY")
 	exporter := env.Required("VCEXPORT")
 	website := env.Required("WEBEXPORT")
 	out, err := os.MkdirTemp("", "vcexport")
@@ -67,6 +68,9 @@ func main() {
 		if err := enc.Encode(map[string]any{"batch": p.batch}); err != nil {
 			logging.Fatal("print the batch", "error", err)
 		}
+		if err := importCalendar(c, anthropicKey, true); err != nil {
+			logging.Fatal("calendar import", "error", err)
+		}
 		return
 	}
 	added, err := apply(c, x, p)
@@ -74,6 +78,9 @@ func main() {
 		logging.Fatal("import", "error", err)
 	}
 	slog.Info("photos added", "photos", added)
+	if err := importCalendar(c, anthropicKey, false); err != nil {
+		logging.Fatal("calendar import", "error", err)
+	}
 }
 
 func planned(c client, x *export) (*planner, error) {

@@ -61,6 +61,10 @@ const policySource = `
            (exists MEMBER (in group (groups_of @viewer)) (= person @p)))
       (and (!= @p.source "guest") (not @p.hidden) (blank @p.deactivated))))
 
+; @g is an event, a series, a school day or a part of one
+(define (calendar_kind @g)
+  (in @g.kind "event" "series" "day" "day_part"))
+
 ; the viewer is @p or a lead of @p's family
 (define (self_or_household @p)
   (or (= @p @viewer) (in @p (household @viewer))))
@@ -182,7 +186,7 @@ const policySource = `
 ; documents sent to no list, or to a list whose mail the viewer sees
 (read DOCUMENT (document_visible @row))
 ; every column of a document
-(read DOCUMENT (id kind title date author url message object category key_points indexed order) true)
+(read DOCUMENT (id kind title date author url message object hash category key_points indexed order) true)
 ; links between a document and a group, where the viewer may see both
 (read DOCUMENT_GROUP (and (document_visible document) (visible group)))
 ; every column of a link between a document and a group
@@ -276,8 +280,8 @@ const policySource = `
 
 ;; When admins
 
-; every calendar group: events, series, days, their parts and the day templates
-(read GROUP (and (admin_of "when") (in kind "event" "series" "day" "day_part" "day_template")))
+; every calendar group: events, series, days and their parts
+(read GROUP (and (admin_of "when") (in kind "event" "series" "day" "day_part")))
 ; open, hide, cancel or close an event or series
 (set GROUP.status (and (admin_of "when") (in @old.kind "event" "series")))
 ; where every calendar group came from
@@ -462,6 +466,73 @@ const policySource = `
 (set MEMBER.status (and (system "import") (in @old.group.kind "family" "role")))
 ; remove a family or role membership gone from the export
 (delete MEMBER (and (system "import") (in @old.group.kind "family" "role")))
+
+;; System: import, the calendar
+
+; every event, series, day and day part, to compare with the school's calendars
+(read GROUP (and (system "import") (calendar_kind @row)))
+; add an event, series, day or day part
+(insert GROUP (and (system "import") (calendar_kind @new)))
+; a calendar group's title as its source has it
+(set GROUP.title (and (system "import") (calendar_kind @old)))
+; a calendar group's start as its source has it
+(set GROUP.start (and (system "import") (calendar_kind @old)))
+; a calendar group's end as its source has it
+(set GROUP.end (and (system "import") (calendar_kind @old)))
+; whether a calendar group runs all day, as its source has it
+(set GROUP.all_day (and (system "import") (calendar_kind @old)))
+; a calendar group's location as its source has it
+(set GROUP.location (and (system "import") (calendar_kind @old)))
+; a calendar group's description as its source has it
+(set GROUP.description (and (system "import") (calendar_kind @old)))
+; the series an event is an instance of
+(set GROUP.parent (and (system "import") (calendar_kind @old)))
+; remove a calendar group its sources no longer state
+(delete GROUP (and (system "import") (calendar_kind @old)))
+; where every calendar group came from
+(read GROUP_SOURCE (system "import"))
+; record where a calendar group came from
+(insert GROUP_SOURCE (and (system "import") (calendar_kind @new.group)))
+; a source's title as it reads now
+(set GROUP_SOURCE.title (and (system "import") (calendar_kind @old.group)))
+; a source's start as it reads now
+(set GROUP_SOURCE.start (and (system "import") (calendar_kind @old.group)))
+; a source's end as it reads now
+(set GROUP_SOURCE.end (and (system "import") (calendar_kind @old.group)))
+; whether a source runs all day as it reads now
+(set GROUP_SOURCE.all_day (and (system "import") (calendar_kind @old.group)))
+; a source's location as it reads now
+(set GROUP_SOURCE.location (and (system "import") (calendar_kind @old.group)))
+; a source's description as it reads now
+(set GROUP_SOURCE.description (and (system "import") (calendar_kind @old.group)))
+; the version of the year calendar a source now comes from
+(set GROUP_SOURCE.document (and (system "import") (calendar_kind @old.group)))
+; the hash of what the classifier was last given for a source
+(set GROUP_SOURCE.hash (and (system "import") (calendar_kind @old.group)))
+; remove a source the school's calendars no longer state
+(delete GROUP_SOURCE (and (system "import") (calendar_kind @old.group)))
+; the categories of every calendar group
+(read GROUP_CATEGORY (and (system "import") (calendar_kind group)))
+; file a calendar group under a category
+(insert GROUP_CATEGORY (and (system "import") (calendar_kind @new.group)))
+; take a calendar group out of a category
+(delete GROUP_CATEGORY (and (system "import") (calendar_kind @old.group)))
+; the rules saying who every calendar group is for
+(read RULE (and (system "import") (calendar_kind group)))
+; say who a calendar group is for
+(insert RULE (and (system "import") (calendar_kind @new.group)))
+; take back who a calendar group was for
+(delete RULE (and (system "import") (calendar_kind @old.group)))
+; the people of every calendar group, to remove them with it
+(read MEMBER (and (system "import") (calendar_kind group)))
+; remove someone from a calendar group being removed
+(delete MEMBER (and (system "import") (calendar_kind @old.group)))
+; links between documents and calendar groups, to remove them with the group
+(read DOCUMENT_GROUP (and (system "import") (calendar_kind group)))
+; unlink a document from a calendar group being removed
+(delete DOCUMENT_GROUP (and (system "import") (calendar_kind @old.group)))
+; add a version of the school's year calendar
+(insert DOCUMENT (and (system "import") (= @new.kind "calendar")))
 `
 
 type policySet struct {

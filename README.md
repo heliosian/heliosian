@@ -19,12 +19,12 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/app` — server wiring shared by production and the dev server: host routing, file serving, and the production assembly
 - `internal/auth` — Google sign-in and session cookies
 - `internal/data` — tabular data sources: sample CSVs and Google Sheets
-- `internal/spreadsheets` — which Google Sheets the server and the periodic sync read, the environment variable holding each one's ID, and its title in Drive
+- `internal/spreadsheets` — which Google Sheets the server and the tools read, the environment variable holding each one's ID, and its title in Drive
 - `internal/static` — reads the bundled files under `web/` that the models check image names against
 - `internal/store` — the one store over every spreadsheet: the parts that build its model, commits and transactions, the Change Log and the write queue ([docs/storage.md](docs/storage.md))
+- `internal/db` — the new data model: its schema, sheets and store, the query language and permissions, `/api/q` and `/api/do/`, the consent step and the opt-in sync, and the calendar import's Google stage and the planning both stages share ([docs/datamodel.md](docs/datamodel.md))
 - `internal/model` — the shared data layer: the one `model.Model` every app reads, a field per sheet, with the parts that fill it and the store the server runs (`model.go`), the per-request scope the resource API reads it through (`scope.go`) and the registry of every resource type (`resources.go`); the Config sheet (super admins and the platform settings), every app's admin list, the audience rules every filter reads, the directory's model load, handlers, admin tools and self-service edits; Helios When: the Calendar sheet's model, audience resolution, the day plan, handlers, guest lists and invitations, and personal feeds; HCA-Team, the volunteer portal: the Events sheet's activities, handlers, sign-ups, admin edits, pages and share cards; Helios Celebrate: the Celebrate sheet's parties, tickets and the waitlist, handlers, admin edits, pages and share cards; Staff Birthdays: the Birthdays sheet's model, the derived dates and stages, handlers, and admin edits; Helios Loop: the Groups sheet's email lists, the rule evaluator, the mail received and forwarded, handlers, and admin edits; Heliosian, the link portal: the Apps sheet's model load, handlers, widgets and admin edits; Helios Ask's documents: which mail, website pages and parent portal resources belong, each to markdown, the chunks, and the model that scans them; the toolbar's reports: the Reports sheet they land in, the word of them to the super admins, and the triage queue that edits one into a GitHub issue; and the Magic Tags each app reads from the others
 - `internal/who` — the directory app's page host: its page routes, the opt-in form and its share card
-- `internal/calendarimport` — the calendar import: the school's Google Calendar into the Calendar sheet as it changes, from the serving binary, and its year calendar PDF from the periodic sync, classified by Claude
 - `internal/ask` — Helios Ask: the chat with Claude over every app's data - the prompt, the conversation, the streaming turn and the read-only tools
 - `internal/artifacts` — the embeddings of Helios Ask's documents through Vertex AI, and the mail hook's settings
 - `internal/keypoints` — the few short lines Claude reads out of each school email for Heliosian's Inbox widget, what to do and by when first, kept in the artifacts Documents tab's Key Points column
@@ -42,7 +42,6 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/devcache` — the dev tools' intercept of the storage API that caches bucket reads under `local/cache/blobs/`
 - `web/` — one directory per app, named for its hostname, holding its pages and every file it serves behind sign-in, `web/common/` for what all apps share, and `web/public/<app>/` and `web/public/common/` for the few files served before sign-in (frameworkless JavaScript throughout)
 - `sampledata/` — the fictional community served by default
-- `cmd/` — the binaries production runs besides `main.go`: `cmd/periodicsync`, the scheduled job that reads the school's year calendar PDF
 - `tools/` — dev tooling, never deployed: the dev server, screenshots, browser driving, sheet inspection, imports, deploy
 - `asset-sources/` — the designer's Photoshop files and exports every app's brand art is cut from, never deployed (`docs/brand.md`)
 - `docs/` — everything below
