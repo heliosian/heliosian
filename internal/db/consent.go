@@ -94,7 +94,7 @@ func (m *Model) consentWrites(responses []map[string]string) ([]Edit, error) {
 		if g["kind"] == "family" && !slices.Contains(familiesOf[row["person"]], row["group"]) {
 			familiesOf[row["person"]] = append(familiesOf[row["person"]], row["group"])
 		}
-		if g["kind"] == "role" && g["slug"] == "staff" {
+		if g["kind"] == "group" && g["slug"] == "staff" {
 			staff[row["person"]] = true
 		}
 	}
@@ -172,19 +172,19 @@ func (m *Model) consentWrites(responses []map[string]string) ([]Edit, error) {
 		if g["kind"] != "family" {
 			continue
 		}
-		leads := 0
+		managers := 0
 		listed, shareAddress, sharePhone := true, true, true
 		for _, row := range m.Table("MEMBER").Referencing("group", g["id"]) {
-			if row["role"] != "lead" {
+			if row["role"] != "manager" {
 				continue
 			}
-			leads++
+			managers++
 			w := wants[row["person"]]
 			listed = listed && w["consent"] == "listed"
 			shareAddress = shareAddress && w["address_consent"] == "shared"
 			sharePhone = sharePhone && w["phone_consent"] == "shared"
 		}
-		if leads == 0 {
+		if managers == 0 {
 			listed, shareAddress, sharePhone = false, false, false
 		}
 		consent := "listed"

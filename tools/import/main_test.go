@@ -231,7 +231,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 	if wren == nil || wren["name_sort_import"] != "Ashdown, Wren" || wren["vc_grade"] != "K" {
 		t.Fatalf("Wren reads %v", wren)
 	}
-	want := []string{"classroom:Oak:member", "crew:Acorn:member", "family::member", "grade:Kindergartengrade-k:member", "role:Everyoneeveryone:member", "role:Studentsstudents:member"}
+	want := []string{"classroom:Oak:member", "crew:Acorn:member", "family::member", "grade:Kindergartengrade-k:member", "group:Everyoneeveryone:member", "group:Studentsstudents:member"}
 	if got := groupsOf(s, wren["id"]); !slices.Equal(got, want) {
 		t.Fatalf("Wren is in %v", got)
 	}
@@ -261,8 +261,8 @@ func TestImportAgainstTheSample(t *testing.T) {
 	if sam == nil || sam["vc_job_title"] != "Coach" || sam["vc_legal_name"] != "Samuel Ashdown" {
 		t.Fatalf("Sam, a parent and staff, reads %v", sam)
 	}
-	if _, ok := s.Model().Table("MEMBER").Find("grp00000000020", sam["id"], "lead"); !ok {
-		t.Fatal("Sam does not lead the Ashdowns' family")
+	if _, ok := s.Model().Table("MEMBER").Find("grp00000000020", sam["id"], "manager"); !ok {
+		t.Fatal("Sam does not manage the Ashdowns' family")
 	}
 	if email, ok := s.Model().Table("PERSON_EMAIL").Find("sam@example.org"); !ok || email["primary"] != "Yes" || email["source"] != "veracross" {
 		t.Fatalf("Sam's address reads %v", email)
@@ -279,7 +279,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 		t.Fatalf("Maya gone from the export: %v, %v", p.counts, maya)
 	}
 	for _, g := range groupsOf(s, "per00000000003") {
-		if strings.HasPrefix(g, "role:") {
+		if strings.HasPrefix(g, "group:") {
 			t.Fatalf("deactivated, Maya is still in %v", g)
 		}
 	}

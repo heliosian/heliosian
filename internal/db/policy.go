@@ -12,15 +12,19 @@ import (
 const policySource = `
 ;; Definitions
 
-; the viewer is an accepted lead of @g or of a group above it
-(define (leads @g)
-  (exists MEMBER (in group (ancestors @g)) (= person @viewer) (= role "lead") (= status "yes")))
+; the viewer is an accepted manager of @g or of a group above it
+(define (manages @g)
+  (exists MEMBER (in group (ancestors @g)) (= person @viewer) (= role "manager") (= status "yes")))
 
-; the members of every family @p leads
+; the members of every family @p manages
 (define (household @p)
   (select MEMBER.person
-    (in group (select MEMBER.group (= person @p) (= role "lead") (= group.kind "family")))
+    (in group (select MEMBER.group (= person @p) (= role "manager") (= group.kind "family")))
     (= role "member")))
+
+; @g is one of the role groups the import keeps: students, parents, staff, adults, everyone
+(define (role_group @g)
+  (and (= @g.kind "group") (in @g.slug "students" "parents" "staff" "adults" "everyone")))
 
 ; every group @p has a membership row in
 (define (groups_of @p)
@@ -34,12 +38,12 @@ const policySource = `
 (define (super_admin)
   (exists EFFECTIVE_MEMBER (= group.slug "super-admins") (= person @viewer)))
 
-; @g is not closed, and the viewer leads it or its visibility lets them see it
+; @g is not closed, and the viewer manages it or its visibility lets them see it
 (define (visible @g)
   (and (!= @g.status "closed")
-       (or (leads @g)
-           (and (not (in @g.status "pending" "hidden"))
-                (or (in @g.visibility "everyone" "unlisted")
+       (or (manages @g)
+           (and (!= @g.status "pending")
+                (or (= @g.visibility "everyone")
                     (and (= @g.visibility "members")
                          (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer)))
                     (and (= @g.visibility "group")
@@ -48,7 +52,7 @@ const policySource = `
 ; the viewer may see @g, and @g lets them see its members
 (define (sees_members @g)
   (and (visible @g)
-       (or (leads @g)
+       (or (manages @g)
            (blank @g.members_visible)
            (= @g.members_visible "everyone")
            (and (= @g.members_visible "members")
@@ -61,24 +65,24 @@ const policySource = `
            (exists MEMBER (in group (groups_of @viewer)) (= person @p)))
       (and (!= @p.source "guest") (not @p.hidden) (blank @p.deactivated))))
 
-; @g is an event, a series, a school day or a part of one
+; @g is an event, a school day or a part of one
 (define (calendar_kind @g)
-  (in @g.kind "event" "series" "day" "day_part"))
+  (in @g.kind "event" "day" "day_part"))
 
-; the viewer is @p or a lead of @p's family
+; the viewer is @p or a manager of @p's family
 (define (self_or_household @p)
   (or (= @p @viewer) (in @p (household @viewer))))
 
-; the viewer leads @g, or is in it and it is not hidden
+; the viewer manages @g, or is in it and it is not for its managers alone
 (define (sees_mail @g)
-  (or (leads @g)
-      (and (!= @g.status "hidden")
+  (or (manages @g)
+      (and (!= @g.visibility "managers")
            (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer)))))
 
-; @d was sent to no list, or to a list whose mail the viewer sees
+; @d was sent to no group that takes mail, or to one whose mail the viewer sees
 (define (document_visible @d)
-  (or (not (exists DOCUMENT_GROUP (= document @d) (= relation "sent_to") (= group.kind "list")))
-      (exists DOCUMENT_GROUP (= document @d) (= relation "sent_to") (= group.kind "list") (sees_mail group))))
+  (or (not (exists DOCUMENT_GROUP (= document @d) (= relation "sent_to") group.mail))
+      (exists DOCUMENT_GROUP (= document @d) (= relation "sent_to") group.mail (sees_mail group))))
 
 ;; Everyone
 
@@ -92,13 +96,13 @@ const policySource = `
    name_show grade classroom crew job_title department phone facts pronouns pronunciation
    facts_updated photo_updated birthday hidden deactivated signed_out added_by)
   true)
-; whether the form shares a person's address and phone, to them and their family's leads
+; whether the form shares a person's address and phone, to them and their family's managers
 (read PERSON (address_consent phone_consent) (self_or_household @row))
-; a person or a lead of their family overrides their long name
+; a person or a manager of their family overrides their long name
 (set PERSON.name_long_override (self_or_household @old))
-; a person or a lead of their family overrides their short name
+; a person or a manager of their family overrides their short name
 (set PERSON.name_short_override (self_or_household @old))
-; a person or a lead of their family overrides their sort name
+; a person or a manager of their family overrides their sort name
 (set PERSON.name_sort_override (self_or_household @old))
 ; the emails of people the viewer may see
 (read PERSON_EMAIL (person_visible person))
@@ -134,10 +138,10 @@ const policySource = `
 (read GROUP (visible @row))
 ; every column of a group but what its family's form shares
 (read GROUP
-  (id parent kind slug vc_title title subtitle description image image_crop color flyer
+  (id parent kind listed mail slug vc_title title subtitle description image image_crop color flyer
    pronunciation address phone status visibility visible_to members_visible posting
    replying join adding capacity minimum price unit waitlist eligible parent_required
-   lead_needed priority start end all_day location order added_by added)
+   manager_needed priority start end all_day location order added_by added)
   true)
 ; whether a family's adults all share their address and phone, to its members
 (read GROUP (address_consent phone_consent) (exists MEMBER (= group @row) (= person @viewer)))
@@ -152,30 +156,30 @@ const policySource = `
 (read GROUP_CATEGORY (visible group))
 ; every column of a group's category
 (read GROUP_CATEGORY (id group category) true)
-; the rules of groups the viewer leads
-(read RULE (leads group))
+; the rules of groups the viewer manages
+(read RULE (manages group))
 ; every column of a rule
-(read RULE (id group order kind target person search property value descend expand within) true)
-; the viewer's own, household's and guests' memberships, those in groups they lead, visible groups' leads, and members where shown
+(read RULE (id group order exclude target person search property value descend expand within) true)
+; the viewer's own, household's and guests' memberships, those in groups they manage, visible groups' managers, and members where shown
 (read MEMBER
   (or (self_or_household person)
       (= guest_of @viewer)
-      (leads group)
-      (and (= role "lead") (visible group))
+      (manages group)
+      (and (= role "manager") (visible group))
       (and (= role "member") (sees_members group))))
 ; every column of a membership but what it cost
 (read MEMBER
-  (id group person role status quantity guest_of note answered answered_by via archived opened
+  (id group person role status lead quantity guest_of note answered answered_by via archived opened
    added_by added)
   true)
-; what a membership cost and its payment reference, to the member, their host and the group's leads
-(read MEMBER (price purchase_id) (or (= person @viewer) (= guest_of @viewer) (leads group)))
-; a person, their family's lead or their host answers an invitation; the group's leads set any status
+; what a membership cost and its payment reference, to the member, their host and the group's managers
+(read MEMBER (price purchase_id) (or (= person @viewer) (= guest_of @viewer) (manages group)))
+; a person, their family's manager or their host answers an invitation; the group's managers set any status
 (set MEMBER.status
   (or (and (or (self_or_household @old.person)
                (= @old.guest_of @viewer))
            (in @new.status "yes" "maybe" "no" "cancelled"))
-      (leads @old.group)))
+      (manages @old.group)))
 ; the viewer's own and household's effective memberships, and members of groups that show them
 (read EFFECTIVE_MEMBER
   (or (self_or_household person)
@@ -183,7 +187,7 @@ const policySource = `
 ; every column of an effective membership
 (read EFFECTIVE_MEMBER (id group person status reasons) true)
 
-; documents sent to no list, or to a list whose mail the viewer sees
+; documents sent to no group that takes mail, or to one whose mail the viewer sees
 (read DOCUMENT (document_visible @row))
 ; every column of a document
 (read DOCUMENT (id kind title date author url message object hash category key_points indexed order) true)
@@ -196,20 +200,20 @@ const policySource = `
 ; every column of an inbox entry
 (read INBOX (id person document) true)
 
-; mail the viewer sent or received, and mail to groups they lead
+; mail the viewer sent or received, and mail to groups they manage
 (read MESSAGE
   (or (= from_person @viewer)
       (exists RECIPIENT (= message @row) (= person @viewer))
-      (leads group)))
+      (manages group)))
 ; every column of a message
 (read MESSAGE
   (id direction kind group about from_person from_address subject object header_id parent created)
   true)
-; the viewer's own deliveries, deliveries of mail they sent, and of mail to groups they lead
+; the viewer's own deliveries, deliveries of mail they sent, and of mail to groups they manage
 (read RECIPIENT
   (or (= person @viewer)
       (= message.from_person @viewer)
-      (leads message.group)))
+      (manages message.group)))
 ; every column of a delivery but its link token
 (read RECIPIENT (id message person provider_id created sent delivered failed detail) true)
 ; a delivery's link token, to its recipient alone
@@ -269,45 +273,45 @@ const policySource = `
 (set PERSON.name_short_override (admin_of "who"))
 ; override anyone's sort name
 (set PERSON.name_sort_override (admin_of "who"))
-; every directory group, hidden or pending
-(read GROUP (and (admin_of "who") (in kind "family" "tag" "classroom" "grade" "band" "crew" "department" "role")))
-; every directory group's memberships
-(read MEMBER (and (admin_of "who") (in group.kind "family" "tag" "classroom" "grade" "band" "crew" "department" "role")))
-; every directory group's effective members
-(read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "tag" "classroom" "grade" "band" "crew" "department" "role")))
-; the rules that pick each tag's members
-(read RULE (and (admin_of "who") (in group.kind "tag")))
+; every directory group and plain group, pending too
+(read GROUP (and (admin_of "who") (in kind "family" "group" "classroom" "grade" "band" "crew" "department")))
+; every directory group's and plain group's memberships
+(read MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department")))
+; every directory group's and plain group's effective members
+(read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department")))
+; the rules that pick each plain group's members
+(read RULE (and (admin_of "who") (= group.kind "group")))
 
 ;; When admins
 
-; every calendar group: events, series, days and their parts
-(read GROUP (and (admin_of "when") (in kind "event" "series" "day" "day_part")))
-; open, hide, cancel or close an event or series
-(set GROUP.status (and (admin_of "when") (in @old.kind "event" "series")))
+; every calendar group: events, days and their parts
+(read GROUP (and (admin_of "when") (in kind "event" "day" "day_part")))
+; open, cancel or close an event
+(set GROUP.status (and (admin_of "when") (= @old.kind "event")))
 ; where every calendar group came from
-(read GROUP_SOURCE (and (admin_of "when") (in group.kind "event" "series" "day" "day_part")))
-; every event's and series' invitees and hosts
-(read MEMBER (and (admin_of "when") (in group.kind "event" "series")))
+(read GROUP_SOURCE (and (admin_of "when") (in group.kind "event" "day" "day_part")))
+; every event's invitees and hosts
+(read MEMBER (and (admin_of "when") (= group.kind "event")))
 ; make an invitee a host, or a host an invitee
-(set MEMBER.role (and (admin_of "when") (in @old.group.kind "event" "series")))
-; every event's and series' effective invitees
-(read EFFECTIVE_MEMBER (and (admin_of "when") (in group.kind "event" "series")))
-; the rules that say who events, series and day parts are for
-(read RULE (and (admin_of "when") (in group.kind "event" "series" "day_part")))
-; all mail about events and series
-(read MESSAGE (and (admin_of "when") (in group.kind "event" "series")))
-; every delivery of mail about events and series
-(read RECIPIENT (and (admin_of "when") (in message.group.kind "event" "series")))
+(set MEMBER.role (and (admin_of "when") (= @old.group.kind "event")))
+; every event's effective invitees
+(read EFFECTIVE_MEMBER (and (admin_of "when") (= group.kind "event")))
+; the rules that say who events and day parts are for
+(read RULE (and (admin_of "when") (in group.kind "event" "day_part")))
+; all mail about events
+(read MESSAGE (and (admin_of "when") (= group.kind "event")))
+; every delivery of mail about events
+(read RECIPIENT (and (admin_of "when") (= message.group.kind "event")))
 
 ;; Team admins
 
 ; every activity
 (read GROUP (and (admin_of "team") (in kind "activity")))
-; open, hide, cancel or close an activity
+; open, finish, cancel or close an activity
 (set GROUP.status (and (admin_of "team") (in @old.kind "activity")))
-; every activity's volunteers and leads
+; every activity's volunteers and chairs
 (read MEMBER (and (admin_of "team") (in group.kind "activity")))
-; make a volunteer a lead, or a lead a volunteer
+; make a volunteer a chair, or a chair a volunteer
 (set MEMBER.role (and (admin_of "team") (in @old.group.kind "activity")))
 ; every activity's effective volunteers
 (read EFFECTIVE_MEMBER (and (admin_of "team") (in group.kind "activity")))
@@ -322,7 +326,7 @@ const policySource = `
 
 ; every party and celebration
 (read GROUP (and (admin_of "celebrate") (in kind "party" "celebration")))
-; open, hide, cancel or close a party or celebration
+; open, cancel or close a party or celebration
 (set GROUP.status (and (admin_of "celebrate") (in @old.kind "party" "celebration")))
 ; every party's and celebration's ticket holders and hosts
 (read MEMBER (and (admin_of "celebrate") (in group.kind "party" "celebration")))
@@ -341,37 +345,37 @@ const policySource = `
 
 ;; Loop admins
 
-; every list
-(read GROUP (and (admin_of "loop") (in kind "list")))
-; open, hide or close a list
-(set GROUP.status (and (admin_of "loop") (in @old.kind "list")))
-; every list's members and leads
-(read MEMBER (and (admin_of "loop") (in group.kind "list")))
-; make a member a lead, or a lead a member
-(set MEMBER.role (and (admin_of "loop") (in @old.group.kind "list")))
-; every list's effective members
-(read EFFECTIVE_MEMBER (and (admin_of "loop") (in group.kind "list")))
-; the rules that pick each list's members
-(read RULE (and (admin_of "loop") (in group.kind "list")))
-; all mail to lists
-(read MESSAGE (and (admin_of "loop") (in group.kind "list")))
-; every delivery of mail to lists
-(read RECIPIENT (and (admin_of "loop") (in message.group.kind "list")))
-; every post sent to a list
-(read DOCUMENT (and (admin_of "loop") (exists DOCUMENT_GROUP (= document @row) (= relation "sent_to") (= group.kind "list"))))
-; which lists each post was sent to
-(read DOCUMENT_GROUP (and (admin_of "loop") (= group.kind "list")))
+; every group that takes mail
+(read GROUP (and (admin_of "loop") mail))
+; open or close a group that takes mail
+(set GROUP.status (and (admin_of "loop") @old.mail))
+; every mail group's members and managers
+(read MEMBER (and (admin_of "loop") group.mail))
+; make a member a manager, or a manager a member
+(set MEMBER.role (and (admin_of "loop") @old.group.mail))
+; every mail group's effective members
+(read EFFECTIVE_MEMBER (and (admin_of "loop") group.mail))
+; the rules that pick each mail group's members
+(read RULE (and (admin_of "loop") group.mail))
+; all mail to groups that take it
+(read MESSAGE (and (admin_of "loop") group.mail))
+; every delivery of mail to groups that take it
+(read RECIPIENT (and (admin_of "loop") message.group.mail))
+; every post sent to a group that takes mail
+(read DOCUMENT (and (admin_of "loop") (exists DOCUMENT_GROUP (= document @row) (= relation "sent_to") group.mail)))
+; which mail groups each post was sent to
+(read DOCUMENT_GROUP (and (admin_of "loop") group.mail))
 
 ;; Home admins
 
-; every audience, admins group and front-page section
-(read GROUP (and (admin_of "home") (in kind "audience" "admins" "section")))
-; the members of audiences, admins groups and sections
-(read MEMBER (and (admin_of "home") (in group.kind "audience" "admins" "section")))
-; the effective members of audiences, admins groups and sections
-(read EFFECTIVE_MEMBER (and (admin_of "home") (in group.kind "audience" "admins" "section")))
-; the rules that pick audiences', admins groups' and sections' members
-(read RULE (and (admin_of "home") (in group.kind "audience" "admins" "section")))
+; every plain group and admins group
+(read GROUP (and (admin_of "home") (in kind "group" "admins")))
+; the members of plain groups and admins groups
+(read MEMBER (and (admin_of "home") (in group.kind "group" "admins")))
+; the effective members of plain groups and admins groups
+(read EFFECTIVE_MEMBER (and (admin_of "home") (in group.kind "group" "admins")))
+; the rules that pick plain groups' and admins groups' members
+(read RULE (and (admin_of "home") (in group.kind "group" "admins")))
 ; every link category, whoever it is open to
 (read CATEGORY (and (admin_of "home") (= scope "link")))
 ; every app, whoever it is open to
@@ -443,9 +447,9 @@ const policySource = `
 ; add a portrait from the website
 (insert PERSON_PHOTO (system "import"))
 ; every directory group the import keeps, withheld families too
-(read GROUP (and (system "import") (in kind "family" "role" "classroom" "crew" "grade" "band")))
-; add a family, role, classroom, crew, grade or band new in the export
-(insert GROUP (and (system "import") (in @new.kind "family" "role" "classroom" "crew" "grade" "band")))
+(read GROUP (and (system "import") (or (in kind "family" "classroom" "crew" "grade" "band") (role_group @row))))
+; add a family, role group, classroom, crew, grade or band new in the export
+(insert GROUP (and (system "import") (or (in @new.kind "family" "classroom" "crew" "grade" "band") (role_group @new))))
 ; put a classroom under the band of its students' grades
 (set GROUP.parent (and (system "import") (= @old.kind "classroom")))
 ; every band's rules, to find the one that takes in its grades and classrooms
@@ -464,20 +468,20 @@ const policySource = `
 (set GROUP.address_consent (and (system "import") (= @old.kind "family")))
 ; whether the form shares all of a family's adults' phones
 (set GROUP.phone_consent (and (system "import") (= @old.kind "family")))
-; every family and role membership, to compare with the export
-(read MEMBER (and (system "import") (in group.kind "family" "role")))
-; add a family or role membership new in the export
-(insert MEMBER (and (system "import") (in @new.group.kind "family" "role")))
-; the status of a family or role membership
-(set MEMBER.status (and (system "import") (in @old.group.kind "family" "role")))
-; remove a family or role membership gone from the export
-(delete MEMBER (and (system "import") (in @old.group.kind "family" "role")))
+; every family and role group membership, to compare with the export
+(read MEMBER (and (system "import") (or (= group.kind "family") (role_group group))))
+; add a family or role group membership new in the export
+(insert MEMBER (and (system "import") (or (= @new.group.kind "family") (role_group @new.group))))
+; the status of a family or role group membership
+(set MEMBER.status (and (system "import") (or (= @old.group.kind "family") (role_group @old.group))))
+; remove a family or role group membership gone from the export
+(delete MEMBER (and (system "import") (or (= @old.group.kind "family") (role_group @old.group))))
 
 ;; System: import, the calendar
 
-; every event, series, day and day part, to compare with the school's calendars
+; every event, day and day part, to compare with the school's calendars
 (read GROUP (and (system "import") (calendar_kind @row)))
-; add an event, series, day or day part
+; add an event, day or day part
 (insert GROUP (and (system "import") (calendar_kind @new)))
 ; a calendar group's title as its source has it
 (set GROUP.title (and (system "import") (calendar_kind @old)))
@@ -491,7 +495,7 @@ const policySource = `
 (set GROUP.location (and (system "import") (calendar_kind @old)))
 ; a calendar group's description as its source has it
 (set GROUP.description (and (system "import") (calendar_kind @old)))
-; the series an event is an instance of
+; the recurring event an event is an instance of
 (set GROUP.parent (and (system "import") (calendar_kind @old)))
 ; remove a calendar group its sources no longer state
 (delete GROUP (and (system "import") (calendar_kind @old)))

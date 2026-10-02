@@ -61,6 +61,16 @@ func groupsOf(m *Model, kind string) []store.Row {
 	return out
 }
 
+func eventsOf(m *Model, recurring bool) []store.Row {
+	out := []store.Row{}
+	for _, g := range groupsOf(m, "event") {
+		if (g["start"] == "") == recurring {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
 func sourcesKeyed(m *Model, key string) []store.Row {
 	out := []store.Row{}
 	for _, row := range m.Table("GROUP_SOURCE").All() {
@@ -98,15 +108,15 @@ func TestGooglePlan(t *testing.T) {
 		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, classified))
 	}
 
-	before := len(groupsOf(s.Model(), "event"))
+	before := len(eventsOf(s.Model(), false))
 	sync([]GoogleEvent{cafe, early, first, second})
 	m := s.Model()
-	if n := len(groupsOf(m, "event")) - before; n != 4 {
+	if n := len(eventsOf(m, false)) - before; n != 4 {
 		t.Fatalf("%d events added, want 4", n)
 	}
-	series := groupsOf(m, "series")
+	series := eventsOf(m, true)
 	if len(series) != 1 {
-		t.Fatalf("%d series, want 1", len(series))
+		t.Fatalf("%d recurring events, want 1", len(series))
 	}
 	instances := 0
 	for _, g := range groupsOf(m, "event") {
@@ -145,19 +155,19 @@ func TestGooglePlan(t *testing.T) {
 
 	sync([]GoogleEvent{cafe, second})
 	m = s.Model()
-	if n := len(groupsOf(m, "event")) - before; n != 2 {
+	if n := len(eventsOf(m, false)) - before; n != 2 {
 		t.Fatalf("%d events left after two left the feed, want 2", n)
 	}
 	if n := len(groupsOf(m, "day")) + len(groupsOf(m, "day_part")); n != 0 {
 		t.Fatalf("%d days and parts outlived their event", n)
 	}
-	if n := len(groupsOf(m, "series")); n != 1 {
-		t.Fatalf("the series went with one instance left: %d", n)
+	if n := len(eventsOf(m, true)); n != 1 {
+		t.Fatalf("the recurring event went with one instance left: %d", n)
 	}
 
 	sync([]GoogleEvent{cafe})
-	if n := len(groupsOf(s.Model(), "series")); n != 0 {
-		t.Fatalf("a series with no instances stayed: %d", n)
+	if n := len(eventsOf(s.Model(), true)); n != 0 {
+		t.Fatalf("a recurring event with no instances stayed: %d", n)
 	}
 }
 

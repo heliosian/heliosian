@@ -155,7 +155,7 @@ func (p *calendarPlan) insert(table string, row map[string]any) string {
 }
 
 func (p *calendarPlan) newGroup(kind string, row map[string]any) string {
-	row["kind"], row["status"], row["visibility"] = kind, "open", "everyone"
+	row["kind"], row["listed"], row["status"], row["visibility"] = kind, true, "open", "everyone"
 	return p.insert("GROUP", row)
 }
 
@@ -193,7 +193,7 @@ func (p *calendarPlan) rules(group string, classrooms []string, who string) {
 	}
 	orders := store.Order(make([]string, len(want)))
 	for i, r := range want {
-		row := map[string]any{"group": group, "order": orders[i], "kind": "include", "target": r.target}
+		row := map[string]any{"group": group, "order": orders[i], "target": r.target}
 		if r.expand != "" {
 			row["expand"] = r.expand
 		}
@@ -222,7 +222,7 @@ func (p *calendarPlan) addDay(date, dayType string, classrooms []string, source 
 	if !p.everyClassroom(classrooms) {
 		orders := store.Order(make([]string, len(classrooms)))
 		for i, c := range classrooms {
-			p.edits = append(p.edits, Edit{Insert: "RULE", Row: map[string]any{"group": day, "order": orders[i], "kind": "include", "target": c}})
+			p.edits = append(p.edits, Edit{Insert: "RULE", Row: map[string]any{"group": day, "order": orders[i], "target": c}})
 		}
 	}
 	row := maps.Clone(source)
@@ -264,10 +264,10 @@ func SchoolYear(date string) string {
 	return fmt.Sprintf("%d-%d", start, start+1)
 }
 
-func (p *calendarPlan) googleSources(kind string) map[string]map[string]string {
+func (p *calendarPlan) googleEvents(recurring bool) map[string]map[string]string {
 	out := map[string]map[string]string{}
 	for _, s := range p.sources {
-		if s["calendar_event"] != "" && p.kind(s) == kind {
+		if s["calendar_event"] != "" && p.kind(s) == "event" && (p.groups[s["group"]]["start"] == "") == recurring {
 			out[s["calendar_event"]] = s
 		}
 	}
@@ -276,7 +276,7 @@ func (p *calendarPlan) googleSources(kind string) map[string]map[string]string {
 
 func GoogleToClassify(rows CalendarRows, v *Vocabulary, feed []GoogleEvent) []CalendarItem {
 	p := newCalendarPlan(rows, v)
-	events := p.googleSources("event")
+	events := p.googleEvents(false)
 	out := []CalendarItem{}
 	for _, e := range feed {
 		if s, ok := events[e.Key]; !ok || s["hash"] != v.InputHash(e.CalendarItem) {
@@ -288,8 +288,8 @@ func GoogleToClassify(rows CalendarRows, v *Vocabulary, feed []GoogleEvent) []Ca
 
 func GooglePlan(rows CalendarRows, v *Vocabulary, feed []GoogleEvent, from, to time.Time, classified map[string]Classification) []Edit {
 	p := newCalendarPlan(rows, v)
-	events := p.googleSources("event")
-	series := p.googleSources("series")
+	events := p.googleEvents(false)
+	series := p.googleEvents(true)
 	days := map[string][]string{}
 	for _, s := range p.sources {
 		if s["calendar_event"] != "" && p.kind(s) == "day" {
@@ -307,7 +307,7 @@ func GooglePlan(rows CalendarRows, v *Vocabulary, feed []GoogleEvent, from, to t
 				if s, ok := series[e.Series]; ok {
 					seriesRef[e.Series] = s["group"]
 				} else {
-					ref := p.newGroup("series", map[string]any{"title": e.Title})
+					ref := p.newGroup("event", map[string]any{"title": e.Title})
 					p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: map[string]any{"group": ref, "calendar_event": e.Series, "title": e.Title}})
 					seriesRef[e.Series] = ref
 				}

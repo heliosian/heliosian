@@ -55,7 +55,7 @@ var (
 	apps     = []string{"who", "when", "team", "celebrate", "birthday", "loop", "ask", "home"}
 	grades   = []string{"K", "1", "2", "3", "4", "5", "6", "7", "8"}
 	sources  = []string{"veracross", "manual", "guest"}
-	audience = []string{"everyone", "members", "leads"}
+	audience = []string{"everyone", "members", "managers"}
 )
 
 func ident(prefix string) Column {
@@ -223,7 +223,9 @@ var Tables = []Table{
 		Columns: []Column{
 			ident(GroupPrefix),
 			ref("parent", "GROUP"),
-			enum("kind", "family", "classroom", "grade", "band", "crew", "department", "role", "event", "series", "activity", "party", "celebration", "day", "day_part", "list", "tag", "audience", "admins", "section").required(),
+			enum("kind", "family", "classroom", "grade", "band", "crew", "department", "event", "day", "day_part", "activity", "party", "celebration", "group", "admins").required(),
+			col("listed", Bool),
+			col("mail", Bool),
 			col("slug", Text),
 			col("vc_title", Text),
 			col("vc_address", Text).private(),
@@ -243,14 +245,14 @@ var Tables = []Table{
 			enum("consent", "listed", "withheld").private(),
 			enum("address_consent", "shared", "withheld"),
 			enum("phone_consent", "shared", "withheld"),
-			enum("status", "pending", "open", "hidden", "done", "cancelled", "closed"),
-			enum("visibility", "everyone", "unlisted", "members", "leads", "group"),
+			enum("status", "pending", "open", "done", "cancelled", "closed"),
+			enum("visibility", "everyone", "members", "managers", "group"),
 			ref("visible_to", "GROUP"),
 			enum("members_visible", audience...),
 			enum("posting", audience...),
 			enum("replying", audience...),
-			enum("join", "invite", "direct", "approval", "closed"),
-			enum("adding", "anyone", "approval", "leads"),
+			enum("join", "invite", "direct", "approval", "none"),
+			enum("adding", "anyone", "approval", "managers"),
 			col("capacity", Int),
 			col("minimum", Int),
 			col("price", Money),
@@ -258,7 +260,7 @@ var Tables = []Table{
 			col("waitlist", Bool),
 			ref("eligible", "GROUP"),
 			col("parent_required", Bool),
-			col("lead_needed", Bool),
+			col("manager_needed", Bool),
 			col("priority", Bool),
 			col("start", Moment),
 			col("end", Moment),
@@ -297,8 +299,9 @@ var Tables = []Table{
 			ident(MemberPrefix),
 			ref("group", "GROUP").required(),
 			ref("person", "PERSON").required(),
-			enum("role", "lead", "member", "waitlist").required(),
+			enum("role", "manager", "member", "waitlist").required(),
 			enum("status", "invited", "pending", "yes", "maybe", "no", "excluded", "cancelled"),
+			col("lead", Bool),
 			col("quantity", Int),
 			col("price", Money),
 			col("purchase_id", Text),
@@ -320,14 +323,14 @@ var Tables = []Table{
 			ident(RulePrefix),
 			ref("group", "GROUP").required(),
 			col("order", Order).required(),
-			enum("kind", "include", "exclude").required(),
+			col("exclude", Bool),
 			ref("target", "GROUP"),
 			ref("person", "PERSON"),
 			col("search", Text),
 			col("property", Text),
 			col("value", Text),
 			col("descend", Bool),
-			enum("expand", "self", "parents", "children", "household"),
+			enum("expand", "parents", "children", "household"),
 			ref("within", "GROUP"),
 		},
 	},

@@ -420,6 +420,7 @@ func (p *planner) findGroup(match func(row) bool) string {
 
 func (p *planner) newGroup(cells row) string {
 	id := p.name("g")
+	cells["listed"] = "Yes"
 	cells["status"] = "open"
 	cells["visibility"] = "everyone"
 	p.groups.add(id, cells)
@@ -453,13 +454,14 @@ func (p *planner) ensureGrades() {
 			}
 			orders = append(orders, r["order"])
 			descend, _ := cells.YesNo(r["descend"], false)
-			held = held || (r["kind"] == "include" && r["target"] == band && descend)
+			exclude, _ := cells.YesNo(r["exclude"], false)
+			held = held || (!exclude && r["target"] == band && descend)
 		}
 		if held {
 			continue
 		}
 		order := store.Order(append(orders, ""))[len(orders)]
-		p.groupWrites = append(p.groupWrites, write{Insert: "RULE", Row: row{"group": band, "order": order, "kind": "include", "target": band, "descend": "Yes"}})
+		p.groupWrites = append(p.groupWrites, write{Insert: "RULE", Row: row{"group": band, "order": order, "target": band, "descend": "Yes"}})
 		p.counts["band rules added"]++
 	}
 }
@@ -738,7 +740,7 @@ func (p *planner) syncMembers(group string, want map[membership]bool) {
 	seen := map[membership]bool{}
 	for _, mid := range p.st.members.order {
 		m := p.st.members.rows[mid]
-		if m["group"] != group || (m["role"] != "member" && m["role"] != "lead") {
+		if m["group"] != group || (m["role"] != "member" && m["role"] != "manager") {
 			continue
 		}
 		key := membership{m["person"], m["role"]}
@@ -803,7 +805,7 @@ func familyTitle(h *household) string {
 }
 
 func (p *planner) families(households []*household) {
-	leads := map[string]map[string]bool{}
+	managers := map[string]map[string]bool{}
 	members := map[string]map[string]bool{}
 	for _, mid := range p.st.members.order {
 		m := p.st.members.rows[mid]
@@ -811,8 +813,8 @@ func (p *planner) families(households []*household) {
 			continue
 		}
 		into := members
-		if m["role"] == "lead" {
-			into = leads
+		if m["role"] == "manager" {
+			into = managers
 		}
 		if into[m["group"]] == nil {
 			into[m["group"]] = map[string]bool{}
@@ -828,7 +830,7 @@ func (p *planner) families(households []*household) {
 	shared := func(h *household, family string) int {
 		n := 0
 		for _, a := range h.adults {
-			if leads[family][a.person] {
+			if managers[family][a.person] {
 				n++
 			}
 		}
@@ -840,7 +842,7 @@ func (p *planner) families(households []*household) {
 			inHousehold[id.person] = true
 		}
 		for _, f := range families {
-			if len(leads[f]) == len(h.adults) && shared(h, f) == len(h.adults) {
+			if len(managers[f]) == len(h.adults) && shared(h, f) == len(h.adults) {
 				h.family = f
 				break
 			}
@@ -851,8 +853,8 @@ func (p *planner) families(households []*household) {
 		best := 0
 		for _, f := range families {
 			hasMember := slices.ContainsFunc(slices.Collect(maps.Keys(members[f])), func(person string) bool { return inHousehold[person] })
-			hasLead := slices.ContainsFunc(slices.Collect(maps.Keys(leads[f])), func(person string) bool { return inHousehold[person] })
-			if hasMember && hasLead && shared(h, f) > best {
+			hasManager := slices.ContainsFunc(slices.Collect(maps.Keys(managers[f])), func(person string) bool { return inHousehold[person] })
+			if hasMember && hasManager && shared(h, f) > best {
 				h.family, best = f, shared(h, f)
 			}
 		}
@@ -899,7 +901,7 @@ func (p *planner) families(households []*household) {
 			want[membership{id.person, "member"}] = true
 		}
 		for _, a := range h.adults {
-			want[membership{a.person, "lead"}] = true
+			want[membership{a.person, "manager"}] = true
 		}
 		p.syncMembers(h.family, want)
 	}
@@ -907,9 +909,9 @@ func (p *planner) families(households []*household) {
 
 func (p *planner) roles() {
 	for _, rg := range roleGroups {
-		group := p.findGroup(func(r row) bool { return r["kind"] == "role" && strings.EqualFold(r["slug"], rg.slug) })
+		group := p.findGroup(func(r row) bool { return r["kind"] == "group" && strings.EqualFold(r["slug"], rg.slug) })
 		if group == "" {
-			group = p.newGroup(row{"kind": "role", "slug": rg.slug, "title": rg.title})
+			group = p.newGroup(row{"kind": "group", "slug": rg.slug, "title": rg.title})
 		}
 		want := map[membership]bool{}
 		for _, id := range p.ids {

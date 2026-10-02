@@ -55,7 +55,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"GROUP":            {10, 10, 10, 12, 10},
 		"MEMBER":           {15, 15, 15, 16, 15},
 		"EFFECTIVE_MEMBER": {15, 15, 15, 17, 15},
-		"RULE":             {0, 0, 0, 0, 0},
+		"RULE":             {0, 0, 0, 1, 0},
 		"GROUP_CATEGORY":   {1, 1, 1, 1, 1},
 		"DOCUMENT":         {1, 1, 1, 1, 1},
 		"DOCUMENT_GROUP":   {1, 1, 1, 1, 1},
@@ -321,7 +321,7 @@ func TestHiddenPersonIsUnreachable(t *testing.T) {
 	}
 }
 
-func TestPendingIsForLeadsAndAdmins(t *testing.T) {
+func TestPendingIsForManagersAndAdmins(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"status": "pending"})); err != nil {
 		t.Fatal(err)
@@ -333,7 +333,7 @@ func TestPendingIsForLeadsAndAdmins(t *testing.T) {
 	if n := len(as(t, s, staff, q)); n != 1 {
 		t.Fatal("a host can't see their pending event")
 	}
-	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000040", "person": staff, "role": "lead"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000040", "person": staff, "role": "manager"})); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(as(t, s, staff, q)); n != 0 {
@@ -397,6 +397,12 @@ func TestAuthorize(t *testing.T) {
 			t.Errorf("%s: %v", c.name, err)
 		}
 	}
+	if err := commit(s, GroupsSheet, store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": parent, "role": "member"}, store.Row{"lead": "Yes"})); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Model().Authorize(Env{Viewer: parent, Now: testNow}, change(t, s, "MEMBER", picnic(guest), store.Row{"status": "excluded"})); err == nil {
+		t.Fatal("an event's lead may set any status, as if they managed it")
+	}
 	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "admins": "grp00000000006"})); err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +415,7 @@ func TestClientsGetNoPolicyLanguage(t *testing.T) {
 	for src, want := range map[string]string{
 		`(from GROUP @g (where (in id (ancestors @g))))`: "belongs to policies",
 		`(from GROUP (where (system "import")))`:         "belongs to policies",
-		`(from GROUP (where (leads id)))`:                "no condition leads",
+		`(from GROUP (where (manages id)))`:              "no condition manages",
 		`(from GROUP @row)`:                              "is taken",
 	} {
 		if _, err := Parse(src); err == nil || !strings.Contains(err.Error(), want) {

@@ -64,7 +64,7 @@ func scaleStore(tb testing.TB) *Store {
 			id := fmt.Sprintf("per%011d", n)
 			people = append(people, map[string]string{"id": id, "source": "veracross", "vc_name": fmt.Sprintf("Person %d", n), "name_long_import": fmt.Sprintf("Person %d", n), "name_short_import": fmt.Sprintf("P%d", n), "name_sort_import": fmt.Sprintf("%d, Person", n), "consent": "listed", "address_consent": "shared", "phone_consent": "shared", "vc_phone": "555-0100"})
 			emails = append(emails, map[string]string{"id": fmt.Sprintf("eml%011d", n), "address": fmt.Sprintf("p%d@example.org", n), "person": id, "primary": "Yes", "source": "veracross"})
-			role, roleGroup := "lead", "grp00000000002"
+			role, roleGroup := "manager", "grp00000000002"
 			if k >= 2 {
 				role, roleGroup = "member", "grp00000000001"
 			}

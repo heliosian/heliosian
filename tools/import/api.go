@@ -32,6 +32,18 @@ func in(path string, values ...any) map[string]any {
 	return map[string]any{"in": append([]any{map[string]any{"path": path}}, values...)}
 }
 
+func or(conditions ...any) map[string]any {
+	return map[string]any{"or": conditions}
+}
+
+func roleGroup(kind, slug string) map[string]any {
+	slugs := []any{}
+	for _, rg := range roleGroups {
+		slugs = append(slugs, rg.slug)
+	}
+	return map[string]any{"and": []any{in(kind, "group"), in(slug, slugs...)}}
+}
+
 func (c client) read() (*state, error) {
 	st := &state{}
 	var err error
@@ -44,10 +56,10 @@ func (c client) read() (*state, error) {
 	if st.photos, _, err = c.table("PERSON_PHOTO"); err != nil {
 		return nil, err
 	}
-	if st.groups, _, err = c.table("GROUP", in("kind", "family", "role", "classroom", "crew", "grade", "band")); err != nil {
+	if st.groups, _, err = c.table("GROUP", or(in("kind", "family", "classroom", "crew", "grade", "band"), roleGroup("kind", "slug"))); err != nil {
 		return nil, err
 	}
-	if st.members, _, err = c.table("MEMBER", in("group.kind", "family", "role")); err != nil {
+	if st.members, _, err = c.table("MEMBER", or(in("group.kind", "family"), roleGroup("group.kind", "group.slug"))); err != nil {
 		return nil, err
 	}
 	if st.rules, _, err = c.table("RULE", in("group.kind", "band")); err != nil {

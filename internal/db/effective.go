@@ -140,7 +140,7 @@ func (m *Model) resolve(group string, stack map[string]bool) map[string][]string
 	for _, rule := range rules {
 		selected := m.selectRule(rule, stack)
 		for person := range selected {
-			if strings.EqualFold(rule["kind"], "exclude") {
+			if exclude, _ := cells.YesNo(rule["exclude"], false); exclude {
 				excluded[person] = true
 				continue
 			}
@@ -272,27 +272,27 @@ func (m *Model) familyPeople(family, role string) []string {
 }
 
 func (m *Model) expand(people map[string]bool, how string) map[string]bool {
-	if how == "" || how == "self" {
+	if how == "" {
 		return people
 	}
 	out := map[string]bool{}
 	for person := range people {
 		switch how {
 		case "parents":
-			led := m.familyRows(person, "lead")
+			managed := m.familyRows(person, "manager")
 			for _, f := range m.familyRows(person, "member") {
-				if slices.Contains(led, f) {
+				if slices.Contains(managed, f) {
 					continue
 				}
-				for _, p := range m.familyPeople(f, "lead") {
+				for _, p := range m.familyPeople(f, "manager") {
 					out[p] = true
 				}
 			}
 		case "children":
-			for _, f := range m.familyRows(person, "lead") {
-				leads := m.familyPeople(f, "lead")
+			for _, f := range m.familyRows(person, "manager") {
+				managers := m.familyPeople(f, "manager")
 				for _, p := range m.familyPeople(f, "member") {
-					if !slices.Contains(leads, p) {
+					if !slices.Contains(managers, p) {
 						out[p] = true
 					}
 				}

@@ -11,13 +11,13 @@ import (
 
 var designQueries = []string{
 	`(from GROUP @g
-  (where (= kind "list")
+  (where mail
          (= status "open")
          (or (= visibility "everyone")
              (and (= visibility "members")
                   (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer)))
-             (and (= visibility "leads")
-                  (exists MEMBER (= group @g) (= person @viewer) (= role "lead")))
+             (and (= visibility "managers")
+                  (exists MEMBER (= group @g) (= person @viewer) (= role "manager")))
              (and (= visibility "group")
                   (exists EFFECTIVE_MEMBER (= group @g.visible_to) (= person @viewer))))))`,
 	`(from GROUP @g
@@ -69,7 +69,7 @@ func TestRenderIsCanonical(t *testing.T) {
 		t.Fatalf("a short query renders as %q", got)
 	}
 	long := mustParse(t, designQueries[0]).String()
-	if !strings.HasPrefix(long, "(from GROUP @g\n  (where (= kind \"list\")\n         (= status \"open\")") {
+	if !strings.HasPrefix(long, "(from GROUP @g\n  (where mail\n         (= status \"open\")") {
 		t.Fatalf("a long query renders as\n%s", long)
 	}
 }
@@ -144,7 +144,8 @@ func TestRun(t *testing.T) {
 		{"", `(from PERSON (where (= source "veracross")) (order name_sort asc))`, "id", []string{"per00000000001", "per00000000002", "per00000000003"}},
 		{"", `(from PERSON (where (= source "veracross")) (order name_sort desc) (limit 1))`, "id", []string{"per00000000003"}},
 		{"", `(from MEMBER (where (= group "grp00000000040") (= role "member")) (order person.name_sort asc))`, "person", []string{"per00000000002", "per00000000003", "per00000000004"}},
-		{"per00000000002", `(from GROUP @g (where (exists MEMBER (= group @g) (= person @viewer) (= role "lead"))))`, "id", []string{"grp00000000020"}},
+		{"per00000000002", `(from GROUP @g (where (exists MEMBER (= group @g) (= person @viewer) (= role "manager"))))`, "id", []string{"grp00000000020"}},
+		{"", `(from MEMBER (where lead))`, "person", []string{"per00000000003"}},
 		{"", `(from GROUP @g (where (> (count MEMBER (= group @g) (= role "member")) 2)))`, "id", []string{"grp00000000004", "grp00000000040"}},
 		{"", `(from GROUP (where (>= start today)))`, "id", []string{"grp00000000040"}},
 		{"", `(from GROUP (where (< end now)))`, "id", nil},
@@ -153,7 +154,7 @@ func TestRun(t *testing.T) {
 		{"", `(from PERSON (where (not hidden)))`, "id", []string{"per00000000001", "per00000000002", "per00000000003", "per00000000004"}},
 		{"", `(from PERSON (where (= vc_classroom.title "Hummingbirds")))`, "id", []string{"per00000000001"}},
 		{"", `(from MEMBER (where (= guest_of.name_short "Rowan")))`, "person", []string{"per00000000004"}},
-		{"", `(from GROUP (where (in kind "family" "list")))`, "id", []string{"grp00000000020", "grp00000000030"}},
+		{"", `(from GROUP (where (or (= kind "family") mail)))`, "id", []string{"grp00000000020", "grp00000000030"}},
 		{"", `(from PERSON (where (blank vc_name)))`, "id", []string{"per00000000004"}},
 		{"", `(from BIRTHDAY_YEAR (where (>= year 2026) (= charity.name "Second Harvest")))`, "id", []string{"bdy00000000001"}},
 		{"", `(from GROUP (where (!= status "closed") (= kind "Event")))`, "id", []string{"grp00000000040"}},
@@ -282,7 +283,7 @@ func TestEffectiveMembers(t *testing.T) {
 
 func TestEffectiveCycleResolves(t *testing.T) {
 	s := sample(t)
-	if err := commit(s, GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000005", "order": "i", "kind": "include", "target": "grp00000000006"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000005", "order": "i", "target": "grp00000000006"})); err != nil {
 		t.Fatal(err)
 	}
 	for _, g := range []string{"grp00000000005", "grp00000000006"} {
@@ -305,17 +306,17 @@ func TestEffectiveDropsDeactivated(t *testing.T) {
 func TestRuleSelectors(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000050", "kind": "tag", "title": "Test"}),
-		store.Insert("RULE", store.Row{"id": "rul00000000051", "group": "grp00000000050", "order": "a", "kind": "include", "property": "source", "value": "veracross", "within": "grp00000000004"}),
-		store.Insert("RULE", store.Row{"id": "rul00000000052", "group": "grp00000000050", "order": "b", "kind": "exclude", "search": "lindqvist"}),
-		store.Insert("RULE", store.Row{"id": "rul00000000053", "group": "grp00000000050", "order": "c", "kind": "include", "person": "per00000000001", "expand": "household"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000050", "kind": "group", "title": "Test"}),
+		store.Insert("RULE", store.Row{"id": "rul00000000051", "group": "grp00000000050", "order": "a", "property": "source", "value": "veracross", "within": "grp00000000004"}),
+		store.Insert("RULE", store.Row{"id": "rul00000000052", "group": "grp00000000050", "order": "b", "exclude": "Yes", "search": "lindqvist"}),
+		store.Insert("RULE", store.Row{"id": "rul00000000053", "group": "grp00000000050", "order": "c", "person": "per00000000001", "expand": "household"}),
 	); err != nil {
 		t.Fatal(err)
 	}
 	if got := effective(t, s, "grp00000000050"); !slices.Equal(got, []string{"per00000000001", "per00000000002"}) {
 		t.Fatalf("the tag holds %v", got)
 	}
-	if err := commit(s, GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000054", "group": "grp00000000050", "order": "d", "kind": "include", "property": "colour", "value": "red"})); err == nil || !strings.Contains(err.Error(), "no PERSON column") {
+	if err := commit(s, GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000054", "group": "grp00000000050", "order": "d", "property": "colour", "value": "red"})); err == nil || !strings.Contains(err.Error(), "no PERSON column") {
 		t.Fatalf("a rule on no column: %v", err)
 	}
 }

@@ -42,10 +42,10 @@ func TestSampleLoads(t *testing.T) {
 	if n := len(m.Table("SAVED_VIEW").Referencing("groups", "grp00000000010")); n != 1 {
 		t.Fatalf("%d saved views name the Hummingbirds", n)
 	}
-	if _, ok := m.Table("MEMBER").Find("grp00000000020", "per00000000002", "lead"); !ok {
-		t.Fatal("Rowan does not lead the Ashdowns")
+	if _, ok := m.Table("MEMBER").Find("grp00000000020", "per00000000002", "manager"); !ok {
+		t.Fatal("Rowan does not manage the Ashdowns")
 	}
-	if row, ok := m.Table("MEMBER").Get("mem00000000011"); !ok || row["role"] != "lead" {
+	if row, ok := m.Table("MEMBER").Get("mem00000000011"); !ok || row["role"] != "manager" {
 		t.Fatalf("mem00000000011 is %v", row)
 	}
 	if !m.Has("grp00000000030") || m.Has("grp99999999999") {
@@ -90,8 +90,8 @@ func TestCommitsTheModelRefuses(t *testing.T) {
 		"bad enum":         {GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"status": "maybe"}), "not one of"},
 		"referenced alias": {ConfigSheet, store.Insert("ALIAS", store.Row{"id": "als00000000099", "alias": "old", "target": "doc99999999999"}), "names no row"},
 		"still named":      {PeopleSheet, store.Delete("PERSON", store.Row{"id": "per00000000004"}), "names no row"},
-		"private property": {GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000030", "order": "j", "kind": "include", "property": "vc_phone", "value": "555-0100"}), "is private"},
-		"guarded property": {GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000030", "order": "j", "kind": "include", "property": "phone_consent", "value": "shared"}), "not open to everyone"},
+		"private property": {GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000030", "order": "j", "property": "vc_phone", "value": "555-0100"}), "is private"},
+		"guarded property": {GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000030", "order": "j", "property": "phone_consent", "value": "shared"}), "not open to everyone"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			err := commit(sample(t), c.sheet, c.op)

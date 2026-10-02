@@ -103,8 +103,10 @@ func NewVocabulary(rows CalendarRows) (*Vocabulary, error) {
 		switch g["kind"] {
 		case "classroom":
 			byClassroom[g["id"]] = &Classroom{ID: g["id"], Name: g["title"]}
-		case "role":
-			v.Roles[g["slug"]] = g["id"]
+		case "group":
+			if g["slug"] != "" {
+				v.Roles[g["slug"]] = g["id"]
+			}
 		}
 	}
 	for _, slug := range []string{"everyone", "parents", "staff"} {
