@@ -81,6 +81,10 @@ function panel(category, links) {
   return grid;
 }
 
+function linksForMe(category) {
+  return category.links.filter(link => link.forMe !== false);
+}
+
 function matches(link, query) {
   return `${link.title} ${link.description || ''} ${link.url}`.toLowerCase().includes(query);
 }
@@ -123,7 +127,7 @@ export function renderCategories(query = '') {
   let shown = 0;
   for (const category of needle ? linkCategories() : []) {
     const apps = holdsApps(category);
-    const links = apps ? [] : category.links.filter(link => matches(link, needle));
+    const links = apps ? [] : linksForMe(category).filter(link => matches(link, needle));
     const count = apps ? appsMatching(needle).length : links.length;
     if (!count) {
       continue;
@@ -305,7 +309,7 @@ export function categoryItems(category) {
       href: appOrigin(app.key), image: `/brand/apps/${app.key}.png` + (app.mark ? `?v=${app.mark}` : ''), title: app.name, tip: app.tagline, line: said(app.tagline), mark: true,
     }));
   }
-  return category.links.map(link => ({
+  return linksForMe(category).map(link => ({
     href: link.url, image: link.imageUrl || '', title: link.title, external: true, tip: link.description || '',
     line: [link.visible ? '' : 'Hidden', said(link.description)].filter(Boolean).join(' · '),
   }));

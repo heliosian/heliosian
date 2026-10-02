@@ -850,7 +850,9 @@ export function renderNav() {
     const group = el('div', 'app-nav-group');
     group.setAttribute('role', 'group');
     group.setAttribute('aria-labelledby', head.id);
-    group.append(head, ...items.map(navLink));
+    const body = el('div', 'app-nav-items');
+    body.append(...items.map(navLink));
+    group.append(head, body);
     nav.append(group);
   }
   nav.hidden = !nav.children.length;

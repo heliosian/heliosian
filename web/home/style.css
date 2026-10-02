@@ -96,7 +96,7 @@ html[data-theme="quan"] .sidebar { background-image: url('/brand/sidebar-camp.pn
 
 .app-nav[hidden] { display: none; }
 
-.app-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.app-nav-group { display: flex; flex-direction: column; }
 
 .app-nav-heading { display: flex; align-items: center; gap: 10px; padding: 0 14px 6px; color: rgba(255, 255, 255, 0.7); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 
@@ -110,17 +110,19 @@ html[data-theme="quan"] .sidebar { background-image: url('/brand/sidebar-camp.pn
 
 .app-nav-heading svg, .app-nav-heading .icon-mask { width: 22px; height: 22px; }
 
-.app-nav a.app-nav-link { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 4px 14px; border-radius: 10px; color: #fff; text-decoration: none; font-size: 14px; font-weight: 500; line-height: 1.25; }
+.app-nav-items { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px 22px; padding-left: 10px; border-left: 1.5px solid rgba(255, 255, 255, 0.14); }
+
+.app-nav a.app-nav-link { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 3px 12px 3px 10px; border-radius: 7px; color: #fff; text-decoration: none; font-size: 14px; font-weight: 500; line-height: 1.25; }
 
 .app-nav a.app-nav-link:hover { background: rgba(255, 255, 255, 0.1); }
 
-.app-nav-pic { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 22px; height: 22px; margin: 0 2px; overflow: hidden; border-radius: 6px; background: rgba(255, 255, 255, 0.12); }
+.app-nav-pic { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 22px; height: 22px; overflow: hidden; border-radius: 6px; background: rgba(255, 255, 255, 0.12); }
 
 .app-nav-pic img { width: 100%; height: 100%; object-fit: contain; }
 
-.app-nav-pic.is-letter { font-size: 12px; font-weight: 700; }
+.app-nav-pic.is-letter { font-size: 10px; font-weight: 700; }
 
-.app-nav-dot { flex-shrink: 0; width: 7px; height: 7px; margin: 0 9.5px; border-radius: 50%; background: rgba(255, 255, 255, 0.75); }
+.app-nav-dot { flex-shrink: 0; width: 7px; height: 7px; margin: 0 7.5px; border-radius: 50%; background: rgba(255, 255, 255, 0.75); }
 
 .app-nav-link-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
