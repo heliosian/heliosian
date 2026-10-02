@@ -13,12 +13,12 @@ import (
 type derived struct {
 	mu      sync.Mutex
 	byGroup map[string][]store.Row
-	all     *effectiveSet
+	sets    map[string]*generatedSet
 }
 
-type effectiveSet struct {
-	rows     []store.Row
-	byPerson map[string][]store.Row
+type generatedSet struct {
+	rows []store.Row
+	by   map[string]map[string][]store.Row
 }
 
 var effectiveStatuses = []string{"invited", "pending", "yes", "maybe", "no"}
@@ -37,24 +37,67 @@ func (m *Model) effectiveRows(group string) []store.Row {
 	return rows
 }
 
-func (m *Model) effectiveAll() *effectiveSet {
+func (m *Model) generated(t *Table) *generatedSet {
 	m.derived.mu.Lock()
-	all := m.derived.all
+	set := m.derived.sets[t.Name]
 	m.derived.mu.Unlock()
-	if all != nil {
-		return all
+	if set != nil {
+		return set
 	}
-	all = &effectiveSet{byPerson: map[string][]store.Row{}}
+	var rows []store.Row
+	switch t.Name {
+	case "EFFECTIVE_MEMBER":
+		rows = m.effectiveAll()
+	case "INBOX":
+		rows = m.inbox()
+	default:
+		panic("db: no builder for " + t.Name)
+	}
+	set = &generatedSet{rows: rows, by: map[string]map[string][]store.Row{}}
+	for _, c := range t.Columns {
+		if c.Kind != ID && c.Kind != Ref {
+			continue
+		}
+		index := map[string][]store.Row{}
+		for _, row := range rows {
+			index[row[c.Name]] = append(index[row[c.Name]], row)
+		}
+		set.by[c.Name] = index
+	}
+	m.derived.mu.Lock()
+	m.derived.sets[t.Name] = set
+	m.derived.mu.Unlock()
+	return set
+}
+
+func (m *Model) effectiveAll() []store.Row {
+	out := []store.Row{}
 	for _, g := range m.Shown("GROUP").All() {
-		for _, row := range m.effectiveRows(g["id"]) {
-			all.rows = append(all.rows, row)
-			all.byPerson[row["person"]] = append(all.byPerson[row["person"]], row)
+		out = append(out, m.effectiveRows(g["id"])...)
+	}
+	return out
+}
+
+func (m *Model) inbox() []store.Row {
+	out := []store.Row{}
+	for _, doc := range m.Shown("DOCUMENT").All() {
+		if !slices.Contains([]string{"newsletter", "list", "post"}, doc["kind"]) {
+			continue
+		}
+		members := map[string]bool{}
+		for _, link := range m.Shown("DOCUMENT_GROUP").Referencing("document", doc["id"]) {
+			if link["relation"] != "sent_to" && link["relation"] != "for" {
+				continue
+			}
+			for _, row := range m.effectiveRows(link["group"]) {
+				members[row["person"]] = true
+			}
+		}
+		for _, person := range slices.Sorted(maps.Keys(m.expand(members, "household"))) {
+			out = append(out, store.Row{"id": Derive(InboxPrefix, person, doc["id"]), "person": person, "document": doc["id"]})
 		}
 	}
-	m.derived.mu.Lock()
-	m.derived.all = all
-	m.derived.mu.Unlock()
-	return all
+	return out
 }
 
 func (m *Model) effectiveOf(group string) []store.Row {

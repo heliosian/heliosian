@@ -61,7 +61,7 @@ func build(sheet string) func(context.Context, store.Tables, *Model) error {
 			}
 		}
 		*m.slot(sheet) = built
-		m.derived = &derived{byGroup: map[string][]store.Row{}}
+		m.derived = &derived{byGroup: map[string][]store.Row{}, sets: map[string]*generatedSet{}}
 		if sheet == MailSheet {
 			return m.checkReferences()
 		}

@@ -102,6 +102,7 @@ type pathSpec struct {
 type define struct {
 	params []string
 	body   *sexp
+	used   bool
 }
 
 type compiler struct {
@@ -218,9 +219,6 @@ func tableNamed(s *sexp) (*Table, error) {
 		}
 		return nil, s.errorf("no table %s%s", s.text, suggest(s.text, names))
 	}
-	if t.Name == "INBOX" {
-		return nil, s.errorf("INBOX is not built yet")
-	}
 	return t, nil
 }
 
@@ -265,7 +263,7 @@ func (s *scan) candidates(f *frame) []store.Row {
 	m := f.run.m
 	if s.probe == nil {
 		if s.table.Generated {
-			return m.effectiveAll().rows
+			return m.generated(s.table).rows
 		}
 		return f.run.table(s.table.Name).All()
 	}
@@ -274,10 +272,10 @@ func (s *scan) candidates(f *frame) []store.Row {
 		return nil
 	}
 	if s.table.Generated {
-		if s.probeCol == "group" {
+		if s.table.Name == "EFFECTIVE_MEMBER" && s.probeCol == "group" {
 			return m.effectiveRows(v.s)
 		}
-		return m.effectiveAll().byPerson[v.s]
+		return m.generated(s.table).by[s.probeCol][v.s]
 	}
 	rows := f.run.table(s.table.Name)
 	if s.probeCol == "id" {
@@ -431,6 +429,7 @@ func (cx *compiler) expand(call *sexp, d *define, sc *scope) (*sexp, error) {
 	if len(args) != len(d.params) {
 		return nil, call.errorf("%s takes %d arguments", call.head(), len(d.params))
 	}
+	d.used = true
 	bound := map[string]*sexp{}
 	for i, p := range d.params {
 		bound[p] = anchor(args[i], sc)

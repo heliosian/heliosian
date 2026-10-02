@@ -31,6 +31,7 @@ const (
 	GroupCategoryPrefix   = "gct"
 	DocumentPrefix        = "doc"
 	DocumentGroupPrefix   = "dgr"
+	InboxPrefix           = "inb"
 	ReportPrefix          = "rpt"
 	MessagePrefix         = "msg"
 	RecipientPrefix       = "rcp"
@@ -52,7 +53,7 @@ var prefixes = map[string]bool{
 	PersonPrefix: true, PersonEmailPrefix: true, PersonPhotoPrefix: true, PersonSettingPrefix: true,
 	BirthdayYearPrefix: true, SavedViewPrefix: true, FeedTokenPrefix: true,
 	GroupPrefix: true, GroupSourcePrefix: true, MemberPrefix: true, EffectiveMemberPrefix: true,
-	RulePrefix: true, GroupCategoryPrefix: true, DocumentPrefix: true, DocumentGroupPrefix: true,
+	RulePrefix: true, GroupCategoryPrefix: true, DocumentPrefix: true, DocumentGroupPrefix: true, InboxPrefix: true,
 	ReportPrefix: true, MessagePrefix: true, RecipientPrefix: true, MailTokenPrefix: true,
 	SettingPrefix: true, CategoryPrefix: true, CharityPrefix: true, AppPrefix: true,
 	WidgetPrefix: true, GeocodePrefix: true, AliasPrefix: true, RedirectPrefix: true,

@@ -187,6 +187,10 @@ const policySource = `
 (read DOCUMENT_GROUP (and (document_visible document) (visible group)))
 ; every column of a link between a document and a group
 (read DOCUMENT_GROUP (id document group relation) true)
+; the viewer's own inbox
+(read INBOX (= person @viewer))
+; every column of an inbox entry
+(read INBOX (id person document) true)
 
 ; mail the viewer sent or received, and mail to groups they lead
 (read MESSAGE
@@ -532,10 +536,12 @@ func compilePolicies(src string) (*policySet, error) {
 		}
 		into[form.list[1].text] = append(into[form.list[1].text], c)
 	}
-	for _, t := range Tables {
-		if len(out.read[t.Name]) == 0 {
-			continue
+	for _, form := range forms {
+		if form.head() == "define" && !cx.defines[form.list[1].list[0].text].used {
+			return nil, form.errorf("%s is never used", form.list[1].list[0].text)
 		}
+	}
+	for _, t := range Tables {
 		for _, c := range t.Columns {
 			if _, ok := out.read[t.Name+"."+c.Name]; !ok && !c.Private {
 				return nil, fmt.Errorf("%s.%s has no read grant", t.Name, c.Name)

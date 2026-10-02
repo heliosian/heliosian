@@ -92,7 +92,6 @@ func TestParseRefuses(t *testing.T) {
 		`(from PERSON (where (= consent "listed"))`:           "never closed",
 		`(from PERSON (order name_sort up))`:                  "asc or desc",
 		`(from PERSON (where consent))`:                       "not true or false",
-		`(from INBOX)`:                                        "not built yet",
 		`(from MEMBER (where (= group (count MEMBER))))`:      "can't compare",
 		`(from GROUP (where (in kind "party" "nope")))`:       `"nope" is not one of`,
 		`(from PERSON (where (in id (select MEMBER.group))))`: "can't compare",

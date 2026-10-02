@@ -24,9 +24,6 @@ func as(t *testing.T, s *Store, viewer, src string) []store.Row {
 
 func TestEveryTableHasAReadPolicy(t *testing.T) {
 	for _, table := range Tables {
-		if table.Name == "INBOX" {
-			continue
-		}
 		if len(policies.read[table.Name]) == 0 {
 			t.Errorf("%s has no read policy", table.Name)
 		}
@@ -35,12 +32,13 @@ func TestEveryTableHasAReadPolicy(t *testing.T) {
 
 func TestPoliciesRefuse(t *testing.T) {
 	for src, want := range map[string]string{
-		`(read SETTING true) (read SETTING (id app key) true)`: "SETTING.value has no read grant",
-		`(read PERSON (vc_phone) (system "import"))`:           "PERSON.vc_phone is private",
-		`(read MEMBER.price true)`:                             "policies are define",
+		strings.Replace(policySource, "(read SETTING (id app key value) true)", "(read SETTING (id app key) true)", 1): "SETTING.value has no read grant",
+		policySource + `(read PERSON (vc_phone) (system "import"))`:                                                    "PERSON.vc_phone is private",
+		policySource + `(read MEMBER.price true)`:                                                                      "policies are define",
+		policySource + `(define (nobody) false)`:                                                                       "nobody is never used",
 	} {
 		if _, err := compilePolicies(src); err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("compilePolicies(%s) = %v, want %q", src, err, want)
+			t.Errorf("compilePolicies = %v, want %q", err, want)
 		}
 	}
 }
@@ -61,6 +59,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"GROUP_CATEGORY":   {1, 1, 1, 1, 1},
 		"DOCUMENT":         {1, 1, 1, 1, 1},
 		"DOCUMENT_GROUP":   {1, 1, 1, 1, 1},
+		"INBOX":            {0, 1, 1, 0, 0},
 		"MESSAGE":          {0, 0, 1, 1, 0},
 		"RECIPIENT":        {0, 0, 1, 1, 0},
 		"CATEGORY":         {1, 1, 1, 1, 1},

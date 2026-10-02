@@ -440,7 +440,7 @@ var Tables = []Table{
 		Name:      "INBOX",
 		Generated: true,
 		Columns: []Column{
-			col("id", Text),
+			ident(InboxPrefix),
 			ref("person", "PERSON"),
 			ref("document", "DOCUMENT"),
 		},
