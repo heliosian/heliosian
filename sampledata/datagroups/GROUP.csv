@@ -5,7 +5,7 @@ grp00000000003,role,staff,Staff,,,open,everyone,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 grp00000000004,role,everyone,Everyone,,,open,everyone,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 grp00000000005,admins,super-admins,Super Admins,,,open,members,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 grp00000000006,admins,who-admins,Who? Admins,,,open,members,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-grp00000000010,classroom,hummingbirds,Hummingbirds,,,open,everyone,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+grp00000000010,classroom,hummingbirds,Hummingbirds,grp00000000012,,open,everyone,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 grp00000000011,grade,grade-3,Grade 3,grp00000000012,,open,everyone,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 grp00000000012,band,,Jayvens,,,open,everyone,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 grp00000000020,family,,,,The Ashdowns,open,everyone,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,listed,shared,withheld

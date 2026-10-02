@@ -11,6 +11,9 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"heliosian/internal/cells"
+	"heliosian/internal/store"
 )
 
 type row = map[string]string
@@ -32,6 +35,7 @@ type state struct {
 	photos  table
 	groups  table
 	members table
+	rules   table
 }
 
 type write struct {
@@ -103,12 +107,14 @@ type planner struct {
 	batch   []write
 	web     map[int]websiteRow
 
+	classroomBands map[string]string
+
 	groupWrites, personWrites, emailWrites, familyWrites []write
 	memberDeletes, memberInserts, memberSets             []write
 }
 
 func plan(x *export, st *state) (*planner, error) {
-	p := &planner{x: x, st: st, claimed: map[string]*identity{}, counts: map[string]int{}, groups: table{rows: map[string]row{}}, web: map[int]websiteRow{}}
+	p := &planner{x: x, st: st, claimed: map[string]*identity{}, counts: map[string]int{}, groups: table{rows: map[string]row{}}, web: map[int]websiteRow{}, classroomBands: map[string]string{}}
 	for _, id := range st.groups.order {
 		p.groups.add(id, st.groups.rows[id])
 	}
@@ -434,13 +440,58 @@ func (p *planner) ensureGrades() {
 		}
 		p.newGroup(row{"kind": "grade", "slug": slug, "title": g.title, "parent": band})
 	}
+	for _, band := range p.groups.order {
+		if p.groups.rows[band]["kind"] != "band" {
+			continue
+		}
+		orders := []string{}
+		held := false
+		for _, rid := range p.st.rules.order {
+			r := p.st.rules.rows[rid]
+			if r["group"] != band {
+				continue
+			}
+			orders = append(orders, r["order"])
+			descend, _ := cells.YesNo(r["descend"], false)
+			held = held || (r["kind"] == "include" && r["target"] == band && descend)
+		}
+		if held {
+			continue
+		}
+		order := store.Order(append(orders, ""))[len(orders)]
+		p.groupWrites = append(p.groupWrites, write{Insert: "RULE", Row: row{"group": band, "order": order, "kind": "include", "target": band, "descend": "Yes"}})
+		p.counts["band rules added"]++
+	}
 }
 
-func (p *planner) classroom(name string) string {
-	if id := p.findGroup(func(r row) bool { return r["kind"] == "classroom" && strings.EqualFold(r["title"], name) }); id != "" {
-		return id
+func (p *planner) bandOf(grade string) (string, error) {
+	slug := "grade-" + strings.ToLower(grade)
+	g := p.findGroup(func(r row) bool { return r["kind"] == "grade" && strings.EqualFold(r["slug"], slug) })
+	if g == "" {
+		return "", fmt.Errorf("no grade group has the slug %s", slug)
 	}
-	return p.newGroup(row{"kind": "classroom", "title": name})
+	return p.groups.rows[g]["parent"], nil
+}
+
+func (p *planner) classroom(name, grade string) (string, error) {
+	band, err := p.bandOf(grade)
+	if err != nil {
+		return "", err
+	}
+	id := p.findGroup(func(r row) bool { return r["kind"] == "classroom" && strings.EqualFold(r["title"], name) })
+	if id == "" {
+		id = p.newGroup(row{"kind": "classroom", "title": name, "parent": band})
+	}
+	if seen, ok := p.classroomBands[id]; ok && seen != band {
+		return "", fmt.Errorf("classroom %s has students in the %s and %s bands", name, p.groups.rows[seen]["title"], p.groups.rows[band]["title"])
+	}
+	p.classroomBands[id] = band
+	if current := p.groups.rows[id]; current["parent"] != band {
+		current["parent"] = band
+		p.groupWrites = append(p.groupWrites, write{Set: id, Cells: row{"parent": band}})
+		p.counts["classroom bands set"]++
+	}
+	return id, nil
 }
 
 func (p *planner) crew(classroom, name string) string {
@@ -538,7 +589,10 @@ func (p *planner) desired(id *identity) (row, error) {
 				return nil, fmt.Errorf("%s is on two students' rows", id.name)
 			}
 			cells["vc_grade"] = e.grade
-			classroom := p.classroom(e.classroom)
+			classroom, err := p.classroom(e.classroom, e.grade)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", id.name, err)
+			}
 			cells["vc_classroom"] = classroom
 			if e.crew != "" {
 				cells["vc_crew"] = p.crew(classroom, e.crew)

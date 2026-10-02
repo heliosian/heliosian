@@ -135,7 +135,7 @@ func TestOneNameTwoPeople(t *testing.T) {
 		x := sampleExport(t, true)
 		x.households = append(x.households, householdRow{adults: []int{len(x.entries) + 1}, kid: len(x.entries)})
 		x.entries = append(x.entries,
-			entry{role: student, name: "Marco Mena", emails: kidEmails, grade: "4", classroom: "Oak"},
+			entry{role: student, name: "Marco Mena", emails: kidEmails, grade: "K", classroom: "Oak"},
 			entry{role: parent, name: "Marco Mena", emails: []string{"marco@example.org"}},
 		)
 		importOnce(t, c, x)
@@ -231,10 +231,28 @@ func TestImportAgainstTheSample(t *testing.T) {
 	if wren == nil || wren["name_sort_import"] != "Ashdown, Wren" || wren["vc_grade"] != "K" {
 		t.Fatalf("Wren reads %v", wren)
 	}
-	want := []string{"band:Hummingbirds:member", "classroom:Oak:member", "crew:Acorn:member", "family::member", "grade:Kindergartengrade-k:member", "role:Everyoneeveryone:member", "role:Studentsstudents:member"}
+	want := []string{"classroom:Oak:member", "crew:Acorn:member", "family::member", "grade:Kindergartengrade-k:member", "role:Everyoneeveryone:member", "role:Studentsstudents:member"}
 	if got := groupsOf(s, wren["id"]); !slices.Equal(got, want) {
 		t.Fatalf("Wren is in %v", got)
 	}
+	groups := s.Model().Table("GROUP")
+	for classroom, title := range map[string]string{"grp00000000010": "Jayvens", wren["vc_classroom"]: "Hummingbirds"} {
+		c, _ := groups.Get(classroom)
+		band, _ := groups.Get(c["parent"])
+		if band["kind"] != "band" || band["title"] != title {
+			t.Fatalf("classroom %s sits under %v, not the %s band", c["title"], band, title)
+		}
+		rules := s.Model().Table("RULE").Referencing("group", band["id"])
+		if len(rules) != 1 || rules[0]["target"] != band["id"] || rules[0]["descend"] != "Yes" {
+			t.Fatalf("the %s band's rules: %v", title, rules)
+		}
+	}
+	x.entries = append(x.entries, entry{role: student, name: "Ada Ashdown", grade: "4", classroom: "Oak"})
+	x.households = append(x.households, householdRow{adults: []int{1, 2}, kid: len(x.entries) - 1, address: "12 Elm St"})
+	if _, err := planned(c, x); err == nil || !strings.Contains(err.Error(), "Oak has students in the Hummingbirds and Jayvens bands") {
+		t.Fatalf("a classroom spanning two bands: %v", err)
+	}
+	x.entries, x.households = x.entries[:len(x.entries)-1], x.households[:len(x.households)-1]
 	family, _ := s.Model().Table("GROUP").Get("grp00000000020")
 	if family["vc_title"] != "Ashdown Family" || family["vc_address"] != "12 Elm St" {
 		t.Fatalf("the Ashdowns' family reads %v", family)

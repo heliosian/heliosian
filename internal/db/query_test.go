@@ -262,6 +262,9 @@ func TestEffectiveMembers(t *testing.T) {
 	if got := effective(t, s, "grp00000000006"); !slices.Equal(got, []string{"per00000000003"}) {
 		t.Fatalf("Who? admins are %v", got)
 	}
+	if got := effective(t, s, "grp00000000012"); !slices.Equal(got, []string{"per00000000001"}) {
+		t.Fatalf("the Jayvens band, through its grades and classrooms, holds %v", got)
+	}
 	if got := effective(t, s, "grp00000000040"); !slices.Equal(got, []string{"per00000000002", "per00000000003", "per00000000004"}) {
 		t.Fatalf("the picnic holds %v", got)
 	}

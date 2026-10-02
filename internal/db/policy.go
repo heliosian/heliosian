@@ -446,6 +446,12 @@ const policySource = `
 (read GROUP (and (system "import") (in kind "family" "role" "classroom" "crew" "grade" "band")))
 ; add a family, role, classroom, crew, grade or band new in the export
 (insert GROUP (and (system "import") (in @new.kind "family" "role" "classroom" "crew" "grade" "band")))
+; put a classroom under the band of its students' grades
+(set GROUP.parent (and (system "import") (= @old.kind "classroom")))
+; every band's rules, to find the one that takes in its grades and classrooms
+(read RULE (and (system "import") (= group.kind "band")))
+; make a band hold everyone in its grades and classrooms
+(insert RULE (and (system "import") (= @new.group.kind "band")))
 ; a family's title built from its members' names
 (set GROUP.vc_title (and (system "import") (= @old.kind "family")))
 ; a family's address as Veracross has it

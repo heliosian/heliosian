@@ -50,6 +50,9 @@ func (c client) read() (*state, error) {
 	if st.members, _, err = c.table("MEMBER", in("group.kind", "family", "role")); err != nil {
 		return nil, err
 	}
+	if st.rules, _, err = c.table("RULE", in("group.kind", "band")); err != nil {
+		return nil, err
+	}
 	return st, nil
 }
 

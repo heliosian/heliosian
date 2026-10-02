@@ -109,10 +109,6 @@ func (m *Model) schoolGroupsOf(p store.Row) (map[string]bool, error) {
 	if i < 0 {
 		return nil, fmt.Errorf("%s is in grade %s, and no grade group has the slug %s", p["id"], grade, slug)
 	}
-	g := groups.All()[i]
-	out[g["id"]] = true
-	if band, ok := groups.Get(g["parent"]); ok && band["kind"] == "band" {
-		out[band["id"]] = true
-	}
+	out[groups.All()[i]["id"]] = true
 	return out, nil
 }
