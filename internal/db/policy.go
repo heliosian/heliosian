@@ -112,8 +112,12 @@ const policySource = `
 (read PHOTO
   (or (and (not (blank person)) (person_visible person))
       (and (not (blank group)) (visible group))))
-; every column of a photo but its original
-(read PHOTO (id person group reencode crop_left crop_top crop_width crop_height crop thumbnail ready order) true)
+; every column of a photo but its original, its re-encode and its crop
+(read PHOTO (id person group crop_left crop_top crop_width crop_height image thumbnail ready order) true)
+; a photo's re-encode and crop, to its person and their family's managers, or its group's managers
+(read PHOTO (reencode crop)
+  (or (and (not (blank person)) (self_or_household person))
+      (and (not (blank group)) (manages group))))
 ; the viewer's own app settings
 (read PERSON_SETTING (= person @viewer))
 ; every column of an app setting

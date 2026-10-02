@@ -262,6 +262,13 @@ func groupGenerated(row map[string]string) {
 	row["phone"] = consented(row, "phone")
 }
 
+func photoGenerated(row map[string]string) {
+	row["image"] = row["crop"]
+	if row["image"] == "" {
+		row["image"] = row["reencode"]
+	}
+}
+
 func consented(row map[string]string, name string) string {
 	if !strings.EqualFold(row[name+"_consent"], "shared") {
 		return ""

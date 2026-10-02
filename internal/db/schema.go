@@ -160,9 +160,10 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:   "PHOTO",
-		Sheet:  PeopleSheet,
-		Unique: []string{"person", "group", "photo"},
+		Name:     "PHOTO",
+		Sheet:    PeopleSheet,
+		Unique:   []string{"person", "group", "photo"},
+		Generate: photoGenerated,
 		Columns: []Column{
 			ident(PhotoPrefix),
 			ref("person", "PERSON"),
@@ -174,6 +175,7 @@ var Tables = []Table{
 			col("crop_width", Int),
 			col("crop_height", Int),
 			col("crop", Blob),
+			{Name: "image", Kind: Blob, Generated: true},
 			col("thumbnail", Blob),
 			col("ready", Bool),
 			col("order", Order),
