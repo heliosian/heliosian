@@ -63,6 +63,9 @@ function hero(p, save) {
 }
 
 function ticketWords(p, mine) {
+  if (p.offered && p.availability !== 'past') {
+    return 'A Place Opened Up - Get Your Tickets';
+  }
   switch (p.availability) {
     case 'available':
       return 'Tickets Available!';
@@ -91,19 +94,20 @@ function ticketBand(p) {
     band.append(personRow(a, {
       className: 'ticket-mine',
       open: true,
-      lines: [`Waiting for ${n} ${n === 1 ? 'ticket' : 'tickets'}`, a.note ? el('div', 'ticket-mine-note', `\u201c${a.note}\u201d`) : null],
+      lines: [`${a.status === 'Offered' ? 'Offered' : 'Waiting for'} ${n} ${n === 1 ? 'ticket' : 'tickets'}`, a.note ? el('div', 'ticket-mine-note', `\u201c${a.note}\u201d`) : null],
     }));
   }
   const actions = el('div', 'ticket-actions');
-  const selling = p.availability === 'available' || p.availability === 'waitlist';
-  const waiting = p.availability === 'waitlist' && mine.some(a => a.status !== 'Ticket');
+  const offered = p.offered > 0 && p.availability !== 'past';
+  const selling = p.availability === 'available' || p.availability === 'waitlist' || offered;
+  const waiting = p.availability === 'waitlist' && mine.some(a => a.status === 'Waitlist');
   if (!mayTake(p)) {
     if (selling && !mine.length) {
       actions.append(el('span', 'ticket-kid-note', 'Ask a parent to sign in to get tickets.'));
     }
   } else if (selling || p.can.edit) {
     const label = !selling ? 'Add Attendee'
-      : p.availability !== 'waitlist' ? 'Get Tickets'
+      : offered || p.availability !== 'waitlist' ? 'Get Tickets'
       : waiting ? 'Update Waitlist Request' : 'Join the Waitlist';
     actions.append(button(label, 'ticket', 'button', () => openBuy(p)));
   }
@@ -223,8 +227,13 @@ function waitlistSection(p) {
   p.waitlisted.forEach((a, i) => {
     const n = a.quantity || 1;
     const after = a.mine ? [el('span', 'wait-mine', 'Your family')] : [];
+    const offered = a.status === 'Offered';
     if (p.can.edit) {
-      after.push(button(`Offer ${n === 1 ? 'a ticket' : n + ' tickets'}`, 'ticket', 'button button-secondary button-small', () => offerTickets(p, a)));
+      if (offered) {
+        after.push(button('Withdraw offer', 'close', 'button button-secondary button-small', () => removeTicket(p, a)));
+      } else {
+        after.push(button(`Offer ${n === 1 ? 'a ticket' : n + ' tickets'}`, 'ticket', 'button button-secondary button-small', () => offerTickets(p, a)));
+      }
       after.push(button('', 'edit', 'edit-icon', () => openTicket(p, a)));
     } else if (a.mine && a.can.delete) {
       after.push(button('Leave waitlist', 'close', 'link-button', () => removeTicket(p, a)));
@@ -233,7 +242,7 @@ function waitlistSection(p) {
       className: 'wait-row',
       open: true,
       before: [el('span', 'wait-num', String(i + 1))],
-      lines: [`${n} ${n === 1 ? 'ticket' : 'tickets'}${a.line ? ` · ${a.line}` : ''}`],
+      lines: [`${offered ? 'Offered ' : ''}${n} ${n === 1 ? 'ticket' : 'tickets'}${a.line ? ` · ${a.line}` : ''}`],
       after,
     }));
   });

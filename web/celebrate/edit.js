@@ -41,13 +41,13 @@ function takenCounts(id) {
   const mine = myTickets(party(id));
   return {
     sold: mine.filter(a => a.status === 'Ticket').length,
-    waitlisted: mine.filter(a => a.status !== 'Ticket').reduce((n, a) => n + (a.quantity || 1), 0),
+    waitlisted: mine.filter(a => a.status === 'Waitlist').reduce((n, a) => n + (a.quantity || 1), 0),
   };
 }
 
 export function openBuy(p) {
   const editor = p.can.edit;
-  if (p.availability === 'waitlist') {
+  if (p.availability === 'waitlist' && !p.offered) {
     openWaitlist(p);
     return;
   }
@@ -88,8 +88,10 @@ export function openBuy(p) {
     for (const person of household()) {
       let why = '';
       const have = ticketFor(p, person.email);
-      if (have) {
-        why = have.status === 'Ticket' ? `${person.name} already has a ticket` : `${person.name} is already on the waitlist`;
+      if (have && have.status === 'Ticket') {
+        why = `${person.name} already has a ticket`;
+      } else if (have && !p.offered) {
+        why = `${person.name} is already on the waitlist`;
       } else if (!admits(p, person)) {
         why = `This party is for ${audienceWords(p)}`;
       }
@@ -152,10 +154,14 @@ export function openBuy(p) {
       return;
     }
     total.append(el('span', 'buy-total-sum', `${n} ${n === 1 ? 'ticket' : 'tickets'} × ${money(p.price)} = ${money(n * p.price)}`));
-    if (!editor && p.remaining >= 0 && n > p.remaining) {
-      const over = n - p.remaining;
-      total.append(el('span', 'buy-total-hint', p.remaining
-        ? `Only ${p.remaining} left: ${over} of these will go on the waitlist.`
+    if (!editor && p.offered) {
+      total.append(el('span', 'buy-total-hint', `The hosts offered your family ${p.offered} ${p.offered === 1 ? 'ticket' : 'tickets'}.`));
+    }
+    const room = p.remaining + (p.offered || 0);
+    if (!editor && p.remaining >= 0 && n > room) {
+      const over = n - room;
+      total.append(el('span', 'buy-total-hint', room
+        ? `Only ${room} left: ${over} of these will go on the waitlist.`
         : 'This party is full: these will go on the waitlist.'));
     }
   };
@@ -436,14 +442,16 @@ export function openMoveAddress(a, onDone) {
 }
 
 export async function removeTicket(p, a) {
-  const what = a.status === 'Ticket' ? `Remove ${a.name}'s ticket to ${p.title}?` : `Take ${a.name} off the waitlist for ${p.title}?`;
+  const what = a.status === 'Ticket' ? `Remove ${a.name}'s ticket to ${p.title}?`
+    : a.status === 'Offered' ? `Withdraw the offer to ${a.name} for ${p.title}?`
+    : `Take ${a.name} off the waitlist for ${p.title}?`;
   if (!confirm(what)) {
     return;
   }
   try {
     await remove('tickets', a.ticketId);
     await load();
-    toast(a.status === 'Ticket' ? 'Ticket removed' : 'Off the waitlist');
+    toast(a.status === 'Ticket' ? 'Ticket removed' : a.status === 'Offered' ? 'Offer withdrawn' : 'Off the waitlist');
   } catch (err) {
     toast(err.message);
   }
@@ -451,13 +459,13 @@ export async function removeTicket(p, a) {
 
 export async function offerTickets(p, a, quantity) {
   const n = quantity || a.quantity || 1;
-  if (!confirm(`Offer ${a.name} ${n === 1 ? 'a ticket' : n + ' tickets'} to ${p.title}? They\u2019ll be billed and told by email.`)) {
+  if (!confirm(`Offer ${a.name} ${n === 1 ? 'a ticket' : n + ' tickets'} to ${p.title}? They\u2019re told by email and can buy them, even while the party is full or closed, until you withdraw the offer.`)) {
     return;
   }
   try {
     await act('tickets', a.ticketId, 'offer', {quantity: n});
     await load();
-    toast(`${a.name} now has ${n === 1 ? 'a ticket' : n + ' tickets'}`);
+    toast(`${a.name} was offered ${n === 1 ? 'a ticket' : n + ' tickets'}`);
   } catch (err) {
     toast(err.message);
   }
@@ -516,7 +524,7 @@ function ticketForm(p, a) {
     fields.push(field('Tickets asked for', quantity));
     const card = el('div', 'appoint-card');
     const words = el('div', 'setting-text');
-    words.append(el('div', 'setting-label', 'Offer the tickets'), el('div', 'setting-hint', 'They get that many tickets at the price they were asked for, billed to their family, and a note saying so.'));
+    words.append(el('div', 'setting-label', 'Offer the tickets'), el('div', 'setting-hint', 'They get a note saying so, and can buy that many tickets even while the party is full or closed, until you withdraw the offer. Nothing is billed until they do.'));
     const n = a.quantity || 1;
     card.append(words, button(`Offer ${n === 1 ? 'a ticket' : n + ' tickets'}`, 'ticket', 'button button-small', () => {
       closeModal();
@@ -548,8 +556,8 @@ function ticketForm(p, a) {
       return act('tickets', a.ticketId, 'edit', body);
     },
     onDelete: () => remove('tickets', a.ticketId),
-    deleteLabel: 'Remove',
-    confirmDelete: `Remove ${a.name} from ${p.title}?`,
+    deleteLabel: a.status === 'Offered' ? 'Withdraw offer' : 'Remove',
+    confirmDelete: a.status === 'Offered' ? `Withdraw the offer to ${a.name} for ${p.title}?` : `Remove ${a.name} from ${p.title}?`,
   };
 }
 
@@ -877,7 +885,7 @@ export async function openContacts(p) {
     link.href = `mailto:${e}`;
     return link;
   };
-  const statusOf = a => (a.status === 'Waitlist' ? `Waitlist (${a.quantity || 1})` : a.status || '');
+  const statusOf = a => (a.status === 'Waitlist' || a.status === 'Offered' ? `${a.status} (${a.quantity || 1})` : a.status || '');
   const columns = [
     {label: 'Name', get: r => r.a.name || r.a.email || ''},
     {label: 'Title', get: titleOf},

@@ -82,7 +82,7 @@ func Problems(m *Parties, directory *Directory, now time.Time) []Problem {
 		}
 		for _, t := range p.Tickets {
 			role := "Ticket"
-			if t.Status == TicketWaitlist {
+			if t.Status != TicketSold {
 				role = "Waitlist"
 			}
 			if t.Email != "" {

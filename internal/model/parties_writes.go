@@ -135,10 +135,14 @@ func (m *Parties) takeTickets(actor access.Actor, directory *Directory, order ti
 	if err := checkText("note", order.Note); err != nil {
 		return taken{}, access.Invalid("%s", err)
 	}
-	if !editor {
-		switch p.Availability(now()) {
-		case Past:
-			return taken{}, access.Invalid("this party has already happened")
+	availability := p.Availability(now())
+	offers := p.OffersTo(directory, actor.Email)
+	offered := p.OfferedTo(directory, actor.Email)
+	if !editor && availability == Past {
+		return taken{}, access.Invalid("this party has already happened")
+	}
+	if !editor && offered == 0 {
+		switch availability {
 		case Closed:
 			return taken{}, access.Invalid("tickets are closed for this party")
 		case SoldOut:
@@ -223,9 +227,15 @@ func (m *Parties) takeTickets(actor access.Actor, directory *Directory, order ti
 	if order.Free {
 		price = "0"
 	}
+	used := 0
 	for _, rw := range rows {
 		switch {
-		case editor || remaining < 0:
+		case editor:
+		case used < offered:
+			used++
+		case availability == Closed:
+			return taken{}, access.Invalid("your family was offered %d %s", offered, plural(offered, "ticket"))
+		case remaining < 0:
 		case remaining > 0:
 			remaining--
 		case p.Waitlist:
@@ -247,6 +257,18 @@ func (m *Parties) takeTickets(actor access.Actor, directory *Directory, order ti
 		out.ops = append(out.ops, store.Update(partiesTab, store.Row{"Party ID": p.ID}, store.Row{"Capacity": countCell(p.Capacity + out.sold)}))
 	}
 	out.ops = append(out.ops, ticketOps(directory, p, out.added)...)
+	for _, o := range offers {
+		if used == 0 {
+			break
+		}
+		match := store.Row{"Ticket ID": o.ID}
+		if used < o.Quantity {
+			out.ops = append(out.ops, store.Update(ticketsTab, match, store.Row{"Quantity": strconv.Itoa(o.Quantity - used)}))
+			break
+		}
+		used -= o.Quantity
+		out.ops = append(out.ops, store.Delete(ticketsTab, match))
+	}
 	return out, nil
 }
 
@@ -309,13 +331,12 @@ type offer struct {
 type offered struct {
 	party   *Party
 	ticket  *Ticket
-	added   []store.Row
 	ops     []store.Op
 	offered int
 	left    int
 }
 
-func (m *Parties) offerTickets(actor access.Actor, directory *Directory, o offer) (offered, error) {
+func (m *Parties) offerTickets(actor access.Actor, o offer) (offered, error) {
 	t, p, err := m.findTicket(o.TicketID)
 	if err != nil {
 		return offered{}, err
@@ -330,37 +351,25 @@ func (m *Parties) offerTickets(actor access.Actor, directory *Directory, o offer
 	if n <= 0 || n > t.Quantity {
 		n = t.Quantity
 	}
-	holder := directory.Person(directory.Resolve(t.Purchaser))
-	holderName := nameOf(directory, t.Purchaser)
-	selfTicket := holder != nil && p.Admits(holder)
-	for _, other := range p.Tickets {
-		if other.Status == TicketSold && other.Email == t.Purchaser {
-			selfTicket = false
-		}
-	}
-	added := []store.Row{}
-	mint := m.minter()
-	for i := 0; i < n; i++ {
-		cells := store.Row{
-			"Ticket ID": mint(), "Party ID": p.ID, "Purchaser": t.Purchaser, "Status": TicketSold, "Quantity": "1",
-			"Price": PriceCell(t.Price), "Note": t.Note, "Added By": actor.Email, "Added": stamp(),
-		}
-		if i == 0 && selfTicket {
-			cells["Email"] = t.Purchaser
-		} else {
-			cells["Name"] = holderName + "'s guest (to be named)"
-		}
-		added = append(added, cells)
-	}
 	match := store.Row{"Ticket ID": t.ID}
 	left := t.Quantity - n
-	ops := ticketOps(directory, p, added)
+	ops := []store.Op{}
 	if left > 0 {
 		ops = append(ops, store.Update(ticketsTab, match, store.Row{"Quantity": strconv.Itoa(left)}))
 	} else {
 		ops = append(ops, store.Delete(ticketsTab, match))
 	}
-	return offered{party: p, ticket: t, added: added, ops: ops, offered: n, left: left}, nil
+	for _, other := range p.Tickets {
+		if other.Status == TicketOffered && other.Purchaser == t.Purchaser {
+			ops = append(ops, store.Update(ticketsTab, store.Row{"Ticket ID": other.ID}, store.Row{"Quantity": strconv.Itoa(other.Quantity + n)}))
+			return offered{party: p, ticket: t, ops: ops, offered: n, left: left}, nil
+		}
+	}
+	ops = append(ops, store.Insert(ticketsTab, store.Row{
+		"Ticket ID": m.minter()(), "Party ID": p.ID, "Email": t.Email, "Purchaser": t.Purchaser, "Status": TicketOffered, "Quantity": strconv.Itoa(n),
+		"Price": PriceCell(t.Price), "Note": t.Note, "Added By": actor.Email, "Added": stamp(),
+	}))
+	return offered{party: p, ticket: t, ops: ops, offered: n, left: left}, nil
 }
 
 func (m *Parties) removeTicket(actor access.Actor, id string) (*Ticket, *Party, []store.Op, error) {
@@ -371,6 +380,9 @@ func (m *Parties) removeTicket(actor access.Actor, id string) (*Ticket, *Party, 
 	editor := p.Edits(actor)
 	if !editor && t.Status == TicketSold {
 		return nil, nil, nil, access.Forbidden("tickets can't be given back; ask the party's host, or resell it to another family")
+	}
+	if !editor && t.Status == TicketOffered {
+		return nil, nil, nil, access.Forbidden("only a host can withdraw an offer")
 	}
 	if !editor && !owns(t, actor) {
 		return nil, nil, nil, access.Forbidden("only the family that asked, a host, or an admin can remove this")

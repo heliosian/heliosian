@@ -242,7 +242,7 @@ func (a partiesApp) mailWaitlistHosts(r *http.Request, directory *Directory, p *
 	l := a.letterFor(mail.Base(r), p)
 	who := nameOf(directory, purchaser)
 	l.Heading = fmt.Sprintf("%s joined the waitlist", who)
-	l.Intro = fmt.Sprintf("%s would like %d %s to %s once places open up. Nothing is billed until you offer them - open the party and use Offer beside the request when you can. Reply to this note to reach %s directly.", who, waiting, plural(waiting, "ticket"), p.Title, who)
+	l.Intro = fmt.Sprintf("%s would like %d %s to %s once places open up. Nothing is billed until they buy - open the party and use Offer beside the request when you can, and they can buy that many even while the party is full or closed. Reply to this note to reach %s directly.", who, waiting, plural(waiting, "ticket"), p.Title, who)
 	if actor != purchaser {
 		l.Intro += fmt.Sprintf(" (%s made the request for the family.)", nameOf(directory, actor))
 	}
@@ -255,38 +255,24 @@ func (a partiesApp) mailWaitlistHosts(r *http.Request, directory *Directory, p *
 	mail.Post(r.Context(), a.mailer, l.Message(fmt.Sprintf("Waitlist for %s: %s wants %d %s", p.Title, who, waiting, plural(waiting, "ticket")), hosts, nil, []string{purchaser}))
 }
 
-func (a partiesApp) mailOffered(r *http.Request, p *Party, purchaser string, tickets []map[string]string, actor string) {
-	if len(tickets) == 0 {
-		return
-	}
-	base := mail.Base(r)
+func (a partiesApp) mailOffered(r *http.Request, p *Party, purchaser string, n int, actor string) {
 	directory := a.directory()
 	if now := a.parties().Party(p.ID); now != nil {
 		p = now
 	}
-	l := a.letterFor(base, p)
+	l := a.letterFor(mail.Base(r), p)
 	hi := "Hi"
 	if first := firstNameIn(directory, purchaser); first != "" {
 		hi = "Hi " + first
 	}
-	n := len(tickets)
-	names := []string{}
-	total := 0.0
-	for _, t := range tickets {
-		names = append(names, ticketName(directory, t))
-		price, _ := ParsePrice(t["Price"])
-		total += price
-	}
 	l.Heading = "A place opened up!"
-	l.Intro = fmt.Sprintf("%s - %s has offered your family %d %s to %s, off the waitlist. They're yours now. The hosts are copied here, so just reply if you have a question.", hi, nameOf(directory, actor), n, plural(n, "ticket"), p.Title)
-	l.Rows = [][2]string{{"Tickets", strings.Join(names, ", ")}, {"Total", fmt.Sprintf("$%s (%d × $%s)", PriceCell(total), n, PriceCell(total/float64(n)))}, {"Billed to", fmt.Sprintf("%s (%s)", nameOf(directory, purchaser), purchaser)}}
+	l.Intro = fmt.Sprintf("%s - %s has offered your family %d %s to %s, off the waitlist. Open the party and use Get Tickets to say who is coming; nothing is billed until you do, and the offer stands until the hosts withdraw it. The hosts are copied here, so just reply if you have a question.", hi, nameOf(directory, actor), n, plural(n, "ticket"), p.Title)
+	l.Rows = [][2]string{{"Offered", fmt.Sprintf("%d %s at $%s", n, plural(n, "ticket"), PriceCell(p.Price))}}
 	if hosts := hostNames(directory, p); hosts != "" {
 		l.Rows = append(l.Rows, [2]string{"Hosts", hosts})
 	}
-	l.Button = "See the party"
-	l.Calendar = calendarLink(p, l.Path)
-	l.Footnote = "A ticket marked \"to be named\" is a guest's: open the party and use Reassign beside it to say who is coming. " + a.parties().Settings.TicketNote
-	a.sendGoing(r.Context(), directory, fmt.Sprintf("You're in: %d %s to %s", n, plural(n, "ticket"), p.Title), []string{purchaser}, except(p.HostEmails, purchaser), l, p, purchaser)
+	l.Button = "Get Tickets"
+	mail.Post(r.Context(), a.mailer, l.Message(fmt.Sprintf("A place opened up: %d %s to %s", n, plural(n, "ticket"), p.Title), []string{purchaser}, except(p.HostEmails, purchaser), except(p.HostEmails, purchaser)))
 }
 
 func hostNames(directory *Directory, p *Party) string {

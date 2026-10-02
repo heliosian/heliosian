@@ -337,7 +337,14 @@ func (a partiesApp) partiesType() api.Type[*Model] {
 				return stage(wr, partiesAppName, ops, nil)
 			}),
 			"buy": api.Do(a.onParty(func(m *Model, q api.Query, p *Party) bool {
-				return p.Edits(q.Actor) || (!isKid(m.Directory, q.Actor.Email) && p.Availability(q.Now) == Available)
+				if p.Edits(q.Actor) {
+					return true
+				}
+				if isKid(m.Directory, q.Actor.Email) {
+					return false
+				}
+				availability := p.Availability(q.Now)
+				return availability == Available || (availability != Past && p.OfferedTo(m.Directory, q.Actor.Email) > 0)
 			}), func(wr api.Write[*Model], body ticketOrder) error {
 				body.PartyID = a.partyAt(wr.S, wr.ID).ID
 				got, err := wr.S.Parties.takeTickets(wr.Query.Actor, wr.S.Directory, body)
@@ -451,14 +458,14 @@ func (a partiesApp) ticketsType() api.Type[*Model] {
 				return p.Edits(q.Actor) && t.Status == TicketWaitlist
 			}), func(wr api.Write[*Model], body offer) error {
 				body.TicketID = wr.ID
-				got, err := wr.S.Parties.offerTickets(wr.Query.Actor, wr.S.Directory, body)
+				got, err := wr.S.Parties.offerTickets(wr.Query.Actor, body)
 				if err := stage(wr, partiesAppName, got.ops, err); err != nil {
 					return err
 				}
 				purchaser := got.ticket.Purchaser
 				logAfter(wr, "celebrate: offered tickets", "party", got.party.Title, "purchaser", purchaser, "offered", got.offered, "left", got.left)
 				r, by := wr.Request, wr.Query.Actor.Email
-				wr.Tx.After(func() { a.mailOffered(r, got.party, purchaser, got.added, by) })
+				wr.Tx.After(func() { a.mailOffered(r, got.party, purchaser, got.offered, by) })
 				return nil
 			}),
 		},

@@ -166,6 +166,9 @@ export function ticketFor(p, email) {
 }
 
 export function mayTake(p) {
+  if (p.offered) {
+    return p.can.buy;
+  }
   return p.availability === 'waitlist' ? p.can['join-waitlist'] : p.can.buy;
 }
 

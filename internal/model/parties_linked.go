@@ -37,6 +37,9 @@ func (m *Parties) Linked(family Household, now time.Time) []Linked {
 			case TicketWaitlist:
 				waiting.Add(family, holder, t.Name)
 				people = append(people, Standing{Name: family.Name(holder, t.Name), Note: "waitlisted"})
+			case TicketOffered:
+				waiting.Add(family, holder, t.Name)
+				people = append(people, Standing{Name: family.Name(holder, t.Name), Note: "offered"})
 			}
 		}
 		mine, names := "", []string(nil)
@@ -62,7 +65,7 @@ func (m *Parties) PartyPeople(id string) *PartyPeople {
 	out := &PartyPeople{Hosts: append([]string{}, party.HostEmails...), Attendees: []Attendee{}}
 	for _, t := range party.Tickets {
 		status := "ticket"
-		if t.Status == TicketWaitlist {
+		if t.Status != TicketSold {
 			status = "waitlist"
 		} else if t.Price <= 0 {
 			status = "free"

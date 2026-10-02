@@ -48,9 +48,10 @@ var PartyStatuses = []string{StatusPending, StatusOpen, StatusHidden}
 const (
 	TicketSold     = "Ticket"
 	TicketWaitlist = "Waitlist"
+	TicketOffered  = "Offered"
 )
 
-var TicketStatuses = []string{TicketSold, TicketWaitlist}
+var TicketStatuses = []string{TicketSold, TicketWaitlist, TicketOffered}
 
 const (
 	PartiesIntroKey = "Parties Intro"
@@ -403,6 +404,25 @@ func (p *Party) Waiting() int {
 		if t.Status == TicketWaitlist {
 			n += t.Quantity
 		}
+	}
+	return n
+}
+
+func (p *Party) OffersTo(directory *Directory, email string) []Ticket {
+	family := Billable(directory, email)
+	out := []Ticket{}
+	for _, t := range p.Tickets {
+		if t.Status == TicketOffered && slices.Contains(family, t.Purchaser) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func (p *Party) OfferedTo(directory *Directory, email string) int {
+	n := 0
+	for _, t := range p.OffersTo(directory, email) {
+		n += t.Quantity
 	}
 	return n
 }

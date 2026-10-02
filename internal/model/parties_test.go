@@ -632,19 +632,42 @@ func TestRemoveAndPromote(t *testing.T) {
 	if !deleted {
 		t.Fatalf("the request's delete was not logged with its last quantity: %v", partiesChangeLog(t))
 	}
-	held, guests := 0, 0
-	for _, tk := range cache.Model().Parties.Party("pty0000000006").Tickets {
-		if tk.Status == TicketSold && tk.Purchaser == jordan {
-			if tk.Email == jordan {
-				held++
-				waiting = tk.ID
-			} else if strings.Contains(tk.Name, "to be named") {
-				guests++
+	offerTo := func(purchaser string) *Ticket {
+		for _, tk := range cache.Model().Parties.Party("pty0000000006").Tickets {
+			if tk.Status == TicketOffered && tk.Purchaser == purchaser {
+				return &tk
 			}
 		}
+		return nil
 	}
-	if held != 1 || guests != 1 || cache.Model().Parties.Party("pty0000000006").Sold() != 10 {
-		t.Fatalf("after the offers: held %d, guests %d, sold %d", held, guests, cache.Model().Parties.Party("pty0000000006").Sold())
+	if o := offerTo(jordan); o == nil || o.Quantity != 2 || cache.Model().Parties.Party("pty0000000006").Sold() != 8 {
+		t.Fatalf("after the offers: offer %+v, sold %d", o, cache.Model().Parties.Party("pty0000000006").Sold())
+	}
+	if rec := testkit.Call(t, mux, partner, "DELETE", "/api/tickets/"+offerTo(jordan).ID, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("the family withdrew its own offer: %d %s", rec.Code, rec.Body)
+	}
+	if rec := testkit.Call(t, mux, elena, "POST", "/api/parties/pty0000000006/buy", map[string]any{"attendees": []map[string]any{{"email": elena}}}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a family with no offer bought into a full party: %d %s", rec.Code, rec.Body)
+	}
+	if rec := testkit.Call(t, mux, jordan, "POST", "/api/parties/pty0000000006/buy", map[string]any{"attendees": []map[string]any{{"email": jordan}, {"email": partner}}}); rec.Code != http.StatusNoContent {
+		t.Fatalf("the family could not buy what it was offered: %d %s", rec.Code, rec.Body)
+	}
+	if o := offerTo(jordan); o != nil || cache.Model().Parties.Party("pty0000000006").Sold() != 10 {
+		t.Fatalf("after buying the offer: offer %+v, sold %d", o, cache.Model().Parties.Party("pty0000000006").Sold())
+	}
+	for _, tk := range cache.Model().Parties.Party("pty0000000006").Tickets {
+		if tk.Status == TicketSold && tk.Email == jordan {
+			waiting = tk.ID
+		}
+	}
+	if rec := testkit.Call(t, mux, "freja.lindqvist@heliosschool.org", "POST", "/api/tickets/tkt0000000058/offer", nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("a host could not offer: %d %s", rec.Code, rec.Body)
+	}
+	if rec := testkit.Call(t, mux, "freja.lindqvist@heliosschool.org", "DELETE", "/api/tickets/"+offerTo("asha.chandra@heliosschool.org").ID, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("a host could not withdraw an offer: %d %s", rec.Code, rec.Body)
+	}
+	if rec := testkit.Call(t, mux, "asha.chandra@heliosschool.org", "POST", "/api/parties/pty0000000006/buy", map[string]any{"attendees": []map[string]any{{"email": "asha.chandra@heliosschool.org"}}}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a withdrawn offer still let the family buy: %d %s", rec.Code, rec.Body)
 	}
 	if rec := testkit.Call(t, mux, partner, "DELETE", "/api/tickets/"+waiting, nil); rec.Code != http.StatusForbidden {
 		t.Fatalf("the family gave a sold ticket back: %d %s", rec.Code, rec.Body)
@@ -1196,12 +1219,9 @@ func TestPartiesMail(t *testing.T) {
 	if r := testkit.Call(t, mux, "freja.lindqvist@heliosschool.org", "POST", "/api/tickets/"+waiting+"/offer", nil); r.Code != http.StatusNoContent {
 		t.Fatalf("offer: %d %s", r.Code, r.Body)
 	}
-	m, invite = pair()
-	if m.Subject != "You're in: 2 tickets to Baegels and Meimosas" || !slices.Equal(m.To, []string{jordan}) || !slices.Equal(m.CC, []string{"freja.lindqvist@heliosschool.org", "anders.lindqvist@heliosschool.org"}) || !strings.Contains(m.HTML, "Freja Lindqvist has offered") || !strings.Contains(m.HTML, "to be named") {
+	m = rec.Next(t)
+	if m.Subject != "A place opened up: 2 tickets to Baegels and Meimosas" || !slices.Equal(m.To, []string{jordan}) || !slices.Equal(m.CC, []string{"freja.lindqvist@heliosschool.org", "anders.lindqvist@heliosschool.org"}) || !strings.Contains(m.HTML, "Freja Lindqvist has offered") || !strings.Contains(m.HTML, "nothing is billed until you do") || len(m.Attachments) != 0 {
 		t.Fatalf("offer note: %+v", m)
-	}
-	if !slices.Equal(invite.To, []string{jordan}) || !strings.Contains(string(invite.Attachments[0].Content), "UID:celebrate-pty0000000006-"+jordan+"@heliosian.com") {
-		t.Fatalf("offer invite: %+v", invite)
 	}
 }
 

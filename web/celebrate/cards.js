@@ -48,7 +48,7 @@ function dateStamp(p) {
 }
 
 function footButton(p, mine) {
-  if (p.availability === 'available' && p.can.buy) {
+  if ((p.availability === 'available' || p.offered) && p.can.buy) {
     return button('Get Tickets', null, 'button button-small', () => openBuy(p));
   }
   if (p.availability === 'waitlist' && !mine.length && p.can['join-waitlist']) {
@@ -111,7 +111,7 @@ function partyCardBody(p) {
       const item = el('div', 'card-under-item');
       item.append(svg(a.status === 'Ticket' ? 'ticket' : 'hourglass'), el('span', 'card-under-name', a.name));
       if (a.status !== 'Ticket') {
-        item.append(el('span', 'card-under-wait', 'waitlist'));
+        item.append(el('span', 'card-under-wait', a.status === 'Offered' ? 'offered' : 'waitlist'));
       }
       under.append(item);
     }

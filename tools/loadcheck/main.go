@@ -185,10 +185,10 @@ func main() {
 		for _, p := range parties {
 			hosts += len(p.HostEmails)
 			for _, t := range p.Tickets {
-				if t.Status == model.TicketWaitlist {
-					waiting++
-				} else {
+				if t.Status == model.TicketSold {
 					sold++
+				} else {
+					waiting++
 				}
 			}
 		}

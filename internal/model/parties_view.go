@@ -122,6 +122,7 @@ type PartyView struct {
 	Availability string          `json:"availability"`
 	Sold         int             `json:"sold"`
 	Waiting      int             `json:"waiting"`
+	Offered      int             `json:"offered"`
 	Raised       float64         `json:"raised"`
 	Remaining    int             `json:"remaining"`
 	HostPeople   []PartyPerson   `json:"hostPeople"`
@@ -207,7 +208,7 @@ func (v partyViewer) party(raw *Party, now time.Time) PartyView {
 	hosting := p.Hosted(v.Email)
 	sees := p.Sees(v.Actor)
 	pv := PartyView{
-		Party: p, Availability: p.Availability(now), Sold: p.Sold(), Waiting: p.Waiting(), Raised: raw.Raised(), Remaining: p.Remaining(),
+		Party: p, Availability: p.Availability(now), Sold: p.Sold(), Waiting: p.Waiting(), Offered: raw.OfferedTo(v.directory, v.Email), Raised: raw.Raised(), Remaining: p.Remaining(),
 		HostPeople: []PartyPerson{}, Attendees: []PartyAttendee{}, Waitlisted: []PartyAttendee{}, Hosting: hosting,
 	}
 	for _, email := range p.HostEmails {
