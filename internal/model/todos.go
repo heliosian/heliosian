@@ -27,7 +27,7 @@ const (
 
 var (
 	ToDoColumns     = []string{"Document", "Title", "Summary", "Details", "Link", "Due", "Point"}
-	ReadColumns     = []string{"Document", "Read", "Key Points", "Audience"}
+	ReadColumns     = []string{"Document", "Read", "Key Points", "Audience", "Repeats"}
 	HomeToDoColumns = []string{"Email", "To Do", "State", "Changed"}
 )
 
@@ -46,6 +46,34 @@ type Reading struct {
 	Points   []string
 	Audience string
 	ToDos    []ToDo
+	Repeats  map[int]string
+}
+
+func parseRepeats(cell string) (map[int]string, error) {
+	out := map[int]string{}
+	for _, line := range splitPoints(cell) {
+		number, toDo, found := strings.Cut(line, ":")
+		point, err := toDoPoint(number)
+		if !found || err != nil || point == 0 {
+			return nil, fmt.Errorf("repeat %q is not a point's number, a colon and a to-do's ID", line)
+		}
+		key, ok := id.Parse(strings.TrimSpace(toDo))
+		if !ok {
+			return nil, fmt.Errorf("repeat %q names no to-do ID", line)
+		}
+		out[point] = key
+	}
+	return out, nil
+}
+
+func repeatsCell(repeats map[int]string) string {
+	lines := []string{}
+	for point := 1; len(lines) < len(repeats); point++ {
+		if toDo, ok := repeats[point]; ok {
+			lines = append(lines, strconv.Itoa(point)+": "+toDo)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func toDoID(key []byte, document, title string) string {
@@ -86,7 +114,7 @@ func toDoPoint(cell string) (int, error) {
 }
 
 func buildReads(tables store.Tables, m *Documents) error {
-	m.ToDos, m.Read, m.Points, m.Audience = []*ToDo{}, map[string]string{}, map[string][]string{}, map[string]string{}
+	m.ToDos, m.Read, m.Points, m.Audience, m.Repeats = []*ToDo{}, map[string]string{}, map[string][]string{}, map[string]string{}, map[string]map[int]string{}
 	seen := map[string]bool{}
 	for _, row := range tables[toDosTab] {
 		point, err := toDoPoint(row["Point"])
@@ -118,6 +146,13 @@ func buildReads(tables store.Tables, m *Documents) error {
 		}
 		if audience := strings.TrimSpace(row["Audience"]); audience != "" {
 			m.Audience[key] = audience
+		}
+		repeats, err := parseRepeats(row["Repeats"])
+		if err != nil {
+			return fmt.Errorf("%s row for %s: %w", readsTab, key, err)
+		}
+		if len(repeats) > 0 {
+			m.Repeats[key] = repeats
 		}
 	}
 	return nil

@@ -37,7 +37,13 @@ func (m *Documents) setReading(actor access.Actor, document string, reading Read
 		}
 		ops = append(ops, store.Insert(toDosTab, store.Row{"Document": document, "Title": t.Title, "Summary": t.Summary, "Details": t.Details, "Link": t.Link, "Due": t.Due, "Point": point}))
 	}
-	row := store.Row{"Read": read, "Key Points": strings.Join(reading.Points, "\n"), "Audience": reading.Audience}
+	for point, toDo := range reading.Repeats {
+		listed := m.toDoIDs[toDo]
+		if point < 1 || point > len(reading.Points) || listed == nil || listed.Document == document {
+			return nil, access.Invalid("point %d repeats %q, not another email's to-do", point, toDo)
+		}
+	}
+	row := store.Row{"Read": read, "Key Points": strings.Join(reading.Points, "\n"), "Audience": reading.Audience, "Repeats": repeatsCell(reading.Repeats)}
 	return append(ops, store.Upsert(readsTab, store.Row{"Document": document}, row)), nil
 }
 

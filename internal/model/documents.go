@@ -155,6 +155,7 @@ type Documents struct {
 	Points     map[string][]string
 	Audience   map[string]string
 	Read       map[string]string
+	Repeats    map[string]map[int]string
 	ToDos      []*ToDo
 	byKey      map[string]*Document
 	toDoIDs    map[string]*ToDo

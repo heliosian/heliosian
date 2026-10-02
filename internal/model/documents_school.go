@@ -2,6 +2,7 @@ package model
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -17,8 +18,9 @@ type SchoolEmail struct {
 	Time     string   `json:"time"`
 	Kind     string   `json:"kind"`
 	Channel  string   `json:"channel"`
-	Audience string   `json:"audience"`
-	Points   []string `json:"points"`
+	Audience string            `json:"audience"`
+	Points   []string          `json:"points"`
+	Repeats  map[string]string `json:"repeats"`
 }
 
 func (m *Documents) SchoolMail(people *Directory, email, since string) []SchoolEmail {
@@ -35,7 +37,11 @@ func (m *Documents) SchoolMail(people *Directory, email, since string) []SchoolE
 		if points == nil {
 			points = []string{}
 		}
-		out = append(out, SchoolEmail{Key: d.Key, Title: d.Title, Date: d.Date, Time: d.Time, Kind: d.Kind, Channel: d.Channel, Audience: m.Audience[d.Key], Points: points})
+		repeats := map[string]string{}
+		for point, toDo := range m.Repeats[d.Key] {
+			repeats[strconv.Itoa(point)] = toDo
+		}
+		out = append(out, SchoolEmail{Key: d.Key, Title: d.Title, Date: d.Date, Time: d.Time, Kind: d.Kind, Channel: d.Channel, Audience: m.Audience[d.Key], Points: points, Repeats: repeats})
 	}
 	return out
 }

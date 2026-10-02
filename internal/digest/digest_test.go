@@ -33,6 +33,14 @@ func TestClean(t *testing.T) {
 	}
 }
 
+func TestRepeats(t *testing.T) {
+	listed := []Listed{{ID: "first"}, {ID: "second"}}
+	got := repeats([]repeat{{Point: 2, Listed: 1}, {Point: 2, Listed: 2}, {Point: 1, Listed: 3}, {Point: 4, Listed: 1}, {Point: 3, Listed: 2}}, 3, listed)
+	if len(got) != 2 || got[2] != "first" || got[3] != "second" {
+		t.Errorf("repeats = %v, want point 2 on the first listed and point 3 on the second, the rest dropped", got)
+	}
+}
+
 func TestPointsAndAudience(t *testing.T) {
 	if got := cleanPoints([]string{"  a   b ", "", "c"}); !slices.Equal(got, []string{"a b", "c"}) {
 		t.Errorf("cleanPoints: %v", got)

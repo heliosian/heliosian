@@ -22,7 +22,7 @@ const claudeModel = "claude-sonnet-5"
 
 const maxEmail = 24 << 10
 
-const Revision = "2026-10-02"
+const Revision = "2026-10-02.2"
 
 var actor = access.System("digest")
 
@@ -44,7 +44,9 @@ For each to-do:
 - due: the day it has to be done by, as YYYY-MM-DD, worked out from the email's words and the day it was sent; for something to bring or do at an event, the event's day; empty when the email names no day.
 - point: the number of the key point that says the same thing, 1 for the first; 0 when no point does. What a family must do leads the key points, so most to-dos have one.
 
-The list already holds the to-dos given with the email, from earlier emails. Leave out any to-do already there, however this email words it.`
+The list already holds the to-dos given with the email, numbered, from earlier emails. Leave out any to-do already there, however this email words it.
+
+Last, in repeats, name each key point that says the same thing as a to-do already on the list: the point's number, 1 for the first, and that to-do's number on the list. A reminder of an earlier email's to-do is a key point that repeats it.`
 
 type field struct {
 	Type        string `json:"type"`
@@ -74,12 +76,18 @@ type toDoList struct {
 	Description string `json:"description"`
 }
 
+type repeatFields struct {
+	Point  field `json:"point"`
+	Listed field `json:"listed"`
+}
+
 type readingFields struct {
 	Points     listField `json:"points"`
 	Classrooms listField `json:"classrooms"`
 	Grades     listField `json:"grades"`
 	Asks       field     `json:"asks"`
 	ToDos      toDoList  `json:"todos"`
+	Repeats    toDoList  `json:"repeats"`
 }
 
 var schema = map[string]any{
@@ -106,13 +114,31 @@ var schema = map[string]any{
 			},
 			Description: "what the email asks families to do, soonest first",
 		},
+		Repeats: toDoList{
+			Type: "array",
+			Items: map[string]any{
+				"type": "object",
+				"properties": repeatFields{
+					Point:  field{"integer", "the number of the key point"},
+					Listed: field{"integer", "the number of the to-do already on the list that it says the same as"},
+				},
+				"required":             []string{"point", "listed"},
+				"additionalProperties": false,
+			},
+			Description: "each key point that repeats a to-do already on the list",
+		},
 	},
-	"required":             []string{"points", "classrooms", "grades", "asks", "todos"},
+	"required":             []string{"points", "classrooms", "grades", "asks", "todos", "repeats"},
 	"additionalProperties": false,
 }
 
 type Listed struct {
-	Title, Due, To string
+	ID, Title, Due, To string
+}
+
+type repeat struct {
+	Point  int `json:"point"`
+	Listed int `json:"listed"`
 }
 
 type Email struct {
@@ -154,8 +180,8 @@ func (c *Claude) Read(ctx context.Context, e Email) (model.Reading, error) {
 		teaches = strings.Join(e.Teaches, ", ")
 	}
 	listed := []string{}
-	for _, l := range e.Listed {
-		line := "- " + l.Title + " (for " + l.To
+	for i, l := range e.Listed {
+		line := fmt.Sprintf("%d. %s (for %s", i+1, l.Title, l.To)
 		if l.Due != "" {
 			line += ", due " + l.Due
 		}
@@ -172,6 +198,7 @@ func (c *Claude) Read(ctx context.Context, e Email) (model.Reading, error) {
 		Grades     []string `json:"grades"`
 		Asks       string   `json:"asks"`
 		ToDos      []answer `json:"todos"`
+		Repeats    []repeat `json:"repeats"`
 	}
 	raw, err := claude.JSON(ctx, c.client, anthropic.MessageNewParams{
 		Model:        claudeModel,
@@ -184,12 +211,26 @@ func (c *Claude) Read(ctx context.Context, e Email) (model.Reading, error) {
 		return model.Reading{}, err
 	}
 	points := cleanPoints(out.Points)
-	reading := model.Reading{Points: points, Audience: audience(known(out.Classrooms, e.Classrooms), known(out.Grades, e.Grades)), ToDos: clean(out.ToDos, e.Markdown, len(points))}
-	slog.InfoContext(ctx, "digest: read an email", "title", e.Title, "points", len(points), "audience", reading.Audience, "asks", out.Asks, "asked", len(out.ToDos), "kept", len(reading.ToDos))
+	reading := model.Reading{Points: points, Audience: audience(known(out.Classrooms, e.Classrooms), known(out.Grades, e.Grades)), ToDos: clean(out.ToDos, e.Markdown, len(points)), Repeats: repeats(out.Repeats, len(points), e.Listed)}
+	slog.InfoContext(ctx, "digest: read an email", "title", e.Title, "points", len(points), "audience", reading.Audience, "asks", out.Asks, "asked", len(out.ToDos), "kept", len(reading.ToDos), "repeats", len(reading.Repeats))
 	if len(reading.ToDos) < len(out.ToDos) {
 		slog.InfoContext(ctx, "digest: claude's whole answer, some of it left out", "title", e.Title, "answer", raw)
 	}
 	return reading, nil
+}
+
+func repeats(answers []repeat, points int, listed []Listed) map[int]string {
+	out := map[int]string{}
+	for _, r := range answers {
+		if r.Point < 1 || r.Point > points || r.Listed < 1 || r.Listed > len(listed) {
+			slog.Info("digest: a repeat naming no point or no listed to-do, dropped", "point", r.Point, "listed", r.Listed)
+			continue
+		}
+		if _, taken := out[r.Point]; !taken {
+			out[r.Point] = listed[r.Listed-1].ID
+		}
+	}
+	return out
 }
 
 func audience(classrooms, grades []string) string {
@@ -285,7 +326,7 @@ func listed(m *model.Model, except string, now time.Time) []Listed {
 		if t.Document == except || d == nil || !m.Documents.Current(t, today) {
 			continue
 		}
-		out = append(out, Listed{Title: t.Title, Due: t.Due, To: m.DocumentSentTo(d)})
+		out = append(out, Listed{ID: t.ID, Title: t.Title, Due: t.Due, To: m.DocumentSentTo(d)})
 	}
 	return out
 }

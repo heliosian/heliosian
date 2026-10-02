@@ -121,6 +121,33 @@ func TestSettingAReadingReplacesADocumentsOwn(t *testing.T) {
 			t.Errorf("a to-do %+v was taken", bad)
 		}
 	}
+	ilp := ""
+	for _, toDo := range c.Model().Documents.ToDos {
+		if toDo.Document == newsletter925Key {
+			ilp = toDo.ID
+		}
+	}
+	repeating := Reading{Points: reading.Points, ToDos: reading.ToDos, Repeats: map[int]string{1: ilp}}
+	if err := c.SetReading(ctx, system, jaysTripKey, repeating, "2026-10-01"); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Model().Documents.Repeats[jaysTripKey]; len(got) != 1 || got[1] != ilp {
+		t.Errorf("after setting, the trip's repeats are %v, want point 1 on %s", got, ilp)
+	}
+	own := c.Model().Documents.ToDos[0].ID
+	for _, bad := range []map[int]string{{3: ilp}, {1: "nosuchtodo00"}} {
+		if err := c.SetReading(ctx, system, jaysTripKey, Reading{Points: reading.Points, Repeats: bad}, "2026-10-01"); err == nil {
+			t.Errorf("repeats %v were taken", bad)
+		}
+	}
+	for _, toDo := range c.Model().Documents.ToDos {
+		if toDo.Document == jaysTripKey {
+			own = toDo.ID
+		}
+	}
+	if err := c.SetReading(ctx, system, jaysTripKey, Reading{Points: reading.Points, ToDos: reading.ToDos, Repeats: map[int]string{1: own}}, "2026-10-01"); err == nil {
+		t.Errorf("a point repeating the email's own to-do was taken")
+	}
 	if err := c.SetReading(ctx, system, "no-such-document", Reading{}, "2026-10-01"); err == nil {
 		t.Errorf("a reading of a document not on file was taken")
 	}

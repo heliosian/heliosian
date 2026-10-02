@@ -439,7 +439,8 @@ function emailAsk(email) {
 }
 
 function pointItem(email, words, point) {
-  const todo = state.model.todos.find(t => t.email === email.id && t.point === point);
+  const repeated = email.repeats[point];
+  const todo = state.model.todos.find(t => t.email === email.id && t.point === point) || state.model.todos.find(t => t.id === repeated);
   if (!todo) {
     return el('li', '', words);
   }
