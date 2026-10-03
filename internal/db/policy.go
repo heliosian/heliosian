@@ -133,7 +133,7 @@ const policySource = `
 ; the viewer's own saved calendars
 (read SAVED_VIEW (= person @viewer))
 ; every column of a saved calendar
-(read SAVED_VIEW (id token person name groups categories emoji order is_default) true)
+(read SAVED_VIEW (id token person name groups emoji order is_default) true)
 ; the viewer's own bug reports and ideas
 (read REPORT (= reporter @viewer))
 ; every column of a bug report or idea
@@ -149,7 +149,7 @@ const policySource = `
   (id parent kind listed mail slug title subtitle description
    color flyer pronunciation address phone status visibility visible_to members_visible posting
    replying join adding capacity minimum price unit waitlist eligible parent_required
-   manager_needed priority start end all_day location order added_by added)
+   manager_needed priority start end all_day timing location url default order added_by added)
   true)
 ; whether a family's adults all share their address and phone, to its members
 (read GROUP (address_consent phone_consent) (exists MEMBER (= group @row) (= person @viewer)))
@@ -157,13 +157,9 @@ const policySource = `
 (read GROUP_SOURCE (visible group))
 ; every column of where a calendar group came from
 (read GROUP_SOURCE
-  (id group calendar_event document title start end all_day location description categories
-   audience marker hash)
+  (id group calendar_event document title start end all_day location description audience marker
+   hash)
   true)
-; the categories of groups the viewer may see
-(read GROUP_CATEGORY (visible group))
-; every column of a group's category
-(read GROUP_CATEGORY (id group category) true)
 ; the rules of groups the viewer manages
 (read RULE (manages group))
 ; every column of a rule
@@ -198,7 +194,7 @@ const policySource = `
 ; documents sent to no group that takes mail, or to one whose mail the viewer sees
 (read DOCUMENT (document_visible @row))
 ; every column of a document
-(read DOCUMENT (id kind title date author url message object hash category key_points indexed order) true)
+(read DOCUMENT (id kind title date author url message object hash key_points indexed order) true)
 ; links between a document and a group, where the viewer may see both
 (read DOCUMENT_GROUP (and (document_visible document) (visible group)))
 ; every column of a link between a document and a group
@@ -231,12 +227,6 @@ const policySource = `
 (read SETTING true)
 ; every column of an app setting
 (read SETTING (id app key value) true)
-; categories open to everyone or to a group the viewer is in
-(read CATEGORY
-  (or (blank visible_to)
-      (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))))
-; every column of a category
-(read CATEGORY (id scope title description image color style max default order visible_to) true)
 ; the birthday charities
 (read CHARITY true)
 ; every column of a charity
@@ -386,8 +376,6 @@ const policySource = `
 (read EFFECTIVE_MEMBER (and (admin_of "home") (in group.kind "group" "admins")))
 ; the rules that pick plain groups' and admins groups' members
 (read RULE (and (admin_of "home") (in group.kind "group" "admins")))
-; every link category, whoever it is open to
-(read CATEGORY (and (admin_of "home") (= scope "link")))
 ; every app, whoever it is open to
 (read APP (admin_of "home"))
 ; every front-page widget, whoever it is open to
@@ -533,12 +521,8 @@ const policySource = `
 (set GROUP_SOURCE.hash (and (system "import") (calendar_kind @old.group)))
 ; remove a source the school's calendars no longer state
 (delete GROUP_SOURCE (and (system "import") (calendar_kind @old.group)))
-; the categories of every calendar group
-(read GROUP_CATEGORY (and (system "import") (calendar_kind group)))
-; file a calendar group under a category
-(insert GROUP_CATEGORY (and (system "import") (calendar_kind @new.group)))
-; take a calendar group out of a category
-(delete GROUP_CATEGORY (and (system "import") (calendar_kind @old.group)))
+; every category, to classify into and file under
+(read GROUP (and (system "import") (= kind "category")))
 ; the rules saying who every calendar group is for
 (read RULE (and (system "import") (calendar_kind group)))
 ; say who a calendar group is for
@@ -696,6 +680,86 @@ const policySource = `
 (read RECIPIENT (and (system "import") (= message.group.kind "group")))
 ; a copy of a Loop post that went to one person
 (insert RECIPIENT (and (system "import") (= @new.message.group.kind "group")))
+; every activity, to find what an earlier sync added
+(read GROUP (and (system "import") (= kind "activity")))
+; add a school year, an activity or a heading of an event's activities
+(insert GROUP (and (system "import") (= @new.kind "activity")))
+; an activity's place in its tree, as the old sheet has it
+(set GROUP.parent (and (system "import") (= @old.kind "activity")))
+; an activity's title, as the old sheet has it
+(set GROUP.title (and (system "import") (= @old.kind "activity")))
+; an activity's description, as the old sheet has it
+(set GROUP.description (and (system "import") (= @old.kind "activity")))
+; an activity's stub, as the old sheet has it
+(set GROUP.slug (and (system "import") (= @old.kind "activity")))
+; whether an activity is open or done, as the old sheet has it
+(set GROUP.status (and (system "import") (= @old.kind "activity")))
+; whether an activity is hidden, as the old sheet has it
+(set GROUP.visibility (and (system "import") (= @old.kind "activity")))
+; when an activity starts, as the old sheet has it
+(set GROUP.start (and (system "import") (= @old.kind "activity")))
+; when an activity ends, as the old sheet has it
+(set GROUP.end (and (system "import") (= @old.kind "activity")))
+; when an activity happens, in words, as the old sheet has it
+(set GROUP.timing (and (system "import") (= @old.kind "activity")))
+; where an activity happens, as the old sheet has it
+(set GROUP.location (and (system "import") (= @old.kind "activity")))
+; how many volunteers an activity takes, as the old sheet has it
+(set GROUP.capacity (and (system "import") (= @old.kind "activity")))
+; how volunteers join an activity, as the old sheet has it
+(set GROUP.join (and (system "import") (= @old.kind "activity")))
+; who sees an activity's volunteers, as the old sheet has it
+(set GROUP.members_visible (and (system "import") (= @old.kind "activity")))
+; who may add activities under an activity, as the old sheet has it
+(set GROUP.adding (and (system "import") (= @old.kind "activity")))
+; whether an activity needs a co-chair, as the old sheet has it
+(set GROUP.manager_needed (and (system "import") (= @old.kind "activity")))
+; whether an activity is a priority, as the old sheet has it
+(set GROUP.priority (and (system "import") (= @old.kind "activity")))
+; an activity's flyer, as the old sheet has it
+(set GROUP.flyer (and (system "import") (= @old.kind "activity")))
+; an activity's place among its siblings, as the old sheet has it
+(set GROUP.order (and (system "import") (= @old.kind "activity")))
+; the volunteers and co-chairs of activities
+(read MEMBER (and (system "import") (= group.kind "activity")))
+; add a volunteer or co-chair the old sheet has
+(insert MEMBER (and (system "import") (= @new.group.kind "activity")))
+; add a category the old tables or sheets held
+(insert GROUP (and (system "import") (= @new.kind "category")))
+; a category's title, as the old tables or sheets have it
+(set GROUP.title (and (system "import") (= @old.kind "category")))
+; a category's description, as the old tables or sheets have it
+(set GROUP.description (and (system "import") (= @old.kind "category")))
+; a category's place among the others, as the old tables or sheets have it
+(set GROUP.order (and (system "import") (= @old.kind "category")))
+; a category's place in the tree, as the old tables or sheets have it
+(set GROUP.parent (and (system "import") (= @old.kind "category")))
+; whether a category is on its app's page, as the old tables or sheets have it
+(set GROUP.listed (and (system "import") (= @old.kind "category")))
+; whether a When category is on by default, as the old tables have it
+(set GROUP.default (and (system "import") (= @old.kind "category")))
+; a category's color, as the old tables have it
+(set GROUP.color (and (system "import") (= @old.kind "category")))
+; whether a heading is hidden, as the old sheet has it
+(set GROUP.visibility (and (system "import") (= @old.kind "category")))
+; how volunteers join the activities under a heading, as the old sheet has it
+(set GROUP.join (and (system "import") (= @old.kind "category")))
+; who sees the volunteers of the activities under a heading, as the old sheet has it
+(set GROUP.members_visible (and (system "import") (= @old.kind "category")))
+; who may add activities under a heading, as the old sheet has it
+(set GROUP.adding (and (system "import") (= @old.kind "category")))
+; every redirect, to find what an earlier sync added
+(read REDIRECT (system "import"))
+; add an old path the old sheets redirect
+(insert REDIRECT (system "import"))
+; where an old path goes, as the old sheets have it
+(set REDIRECT.new (system "import"))
+; every app setting of people, to find what an earlier sync added
+(read PERSON_SETTING (system "import"))
+; add a person's app setting the old sheets hold
+(insert PERSON_SETTING (system "import"))
+; a person's app setting, as the old sheets hold it
+(set PERSON_SETTING.value (system "import"))
 `
 
 type policySet struct {

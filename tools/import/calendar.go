@@ -23,7 +23,7 @@ import (
 	"heliosian/internal/db"
 )
 
-var calendarTables = []string{"GROUP", "GROUP_SOURCE", "GROUP_CATEGORY", "RULE", "MEMBER", "DOCUMENT_GROUP", "CATEGORY", "PERSON", "DOCUMENT"}
+var calendarTables = []string{"GROUP", "GROUP_SOURCE", "RULE", "MEMBER", "DOCUMENT_GROUP", "PERSON", "DOCUMENT"}
 
 func (c client) calendarRows() (db.CalendarRows, error) {
 	out := db.CalendarRows{}
@@ -172,7 +172,11 @@ func importCalendar(c client, anthropicKey string, dryRun bool) error {
 	if err != nil {
 		return err
 	}
-	pending := db.PDFToClassify(rows, v, cal)
+	matched, err := v.MatchPDF(ctx, ai, rows, cal)
+	if err != nil {
+		return err
+	}
+	pending := db.PDFToClassify(rows, v, cal, matched)
 	classified := v.Classify(ctx, ai, pending)
 	if len(classified) != len(pending) {
 		return fmt.Errorf("classified %d of %d events; nothing written", len(classified), len(pending))
@@ -185,7 +189,7 @@ func importCalendar(c client, anthropicKey string, dryRun bool) error {
 	} else if cal.Document, err = c.addCalendarPDF(pdf, address); err != nil {
 		return err
 	}
-	edits, err := db.PDFPlan(rows, v, cal, classified)
+	edits, err := db.PDFPlan(rows, v, cal, classified, matched)
 	if err != nil {
 		return err
 	}

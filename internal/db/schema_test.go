@@ -120,9 +120,9 @@ func TestCheckRefs(t *testing.T) {
 	if err := view.Check(row); err != nil {
 		t.Fatal(err)
 	}
-	row["groups"] = "grpX7pQ2m9KdLr, catY7pQ2m9KdLr"
+	row["groups"] = "grpX7pQ2m9KdLr, perY7pQ2m9KdLr"
 	if err := view.Check(row); err == nil {
-		t.Fatal("Check accepted a category among groups")
+		t.Fatal("Check accepted a person among groups")
 	}
 }
 

@@ -81,7 +81,7 @@ You are reading the school's one-page year calendar PDF: twelve month grids, a l
 }
 
 func readingHash(v *db.Vocabulary) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{db.CalendarModel, legendSystem, entriesSystem(v), monthSystem("")}, "\x00")))
+	sum := sha256.Sum256([]byte(strings.Join([]string{db.CalendarModel, legendSystem, entriesSystem(v), monthSystem(""), db.MatchSystem}, "\x00")))
 	return hex.EncodeToString(sum[:])[:16]
 }
 

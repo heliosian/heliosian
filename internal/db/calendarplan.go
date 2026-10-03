@@ -51,7 +51,7 @@ type calendarPlan struct {
 	names    int
 }
 
-var underTables = []string{"GROUP_CATEGORY", "RULE", "MEMBER", "DOCUMENT_GROUP", "GROUP_SOURCE"}
+var underTables = []string{"RULE", "MEMBER", "DOCUMENT_GROUP", "GROUP_SOURCE"}
 
 func newCalendarPlan(rows CalendarRows, v *Vocabulary) *calendarPlan {
 	p := &calendarPlan{v: v, groups: map[string]map[string]string{}, under: map[string]map[string][]map[string]string{}, children: map[string][]string{}, deleted: map[string]bool{}}
@@ -159,10 +159,6 @@ func (p *calendarPlan) newGroup(kind string, row map[string]any) string {
 	return p.insert("GROUP", row)
 }
 
-func (p *calendarPlan) file(group, category string) {
-	p.edits = append(p.edits, Edit{Insert: "GROUP_CATEGORY", Row: map[string]any{"group": group, "category": category}})
-}
-
 func (p *calendarPlan) everyClassroom(classrooms []string) bool {
 	for _, c := range p.v.Classrooms {
 		if !slices.Contains(classrooms, c.ID) {
@@ -201,24 +197,14 @@ func (p *calendarPlan) rules(group string, classrooms []string, who string) {
 	}
 }
 
-func (p *calendarPlan) classify(group string, c Classification, classrooms []string) {
-	for _, category := range c.Categories {
-		p.file(group, category)
-	}
-	p.rules(group, classrooms, c.Who)
-}
-
 func (p *calendarPlan) unclassify(group string) {
-	for _, t := range []string{"GROUP_CATEGORY", "RULE"} {
-		for _, row := range p.under[t][group] {
-			p.remove(row["id"])
-		}
+	for _, row := range p.under["RULE"][group] {
+		p.remove(row["id"])
 	}
 }
 
 func (p *calendarPlan) addDay(date, dayType string, classrooms []string, source map[string]any) {
-	day := p.newGroup("day", map[string]any{"title": dayType, "start": date, "all_day": true})
-	p.file(day, p.v.DayTypes[dayType])
+	day := p.newGroup("day", map[string]any{"title": dayType, "parent": p.v.DayTypes[dayType], "start": date, "all_day": true})
 	if !p.everyClassroom(classrooms) {
 		orders := store.Order(make([]string, len(classrooms)))
 		for i, c := range classrooms {
@@ -229,8 +215,7 @@ func (p *calendarPlan) addDay(date, dayType string, classrooms []string, source 
 	row["group"], row["title"], row["start"], row["all_day"] = day, dayType, date, true
 	p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: row})
 	for _, part := range DayTemplates[dayType] {
-		id := p.newGroup("day_part", map[string]any{"title": part.Part, "parent": day, "start": date + " " + part.Start, "end": date + " " + part.End})
-		p.file(id, p.v.Parts[part.Part])
+		p.newGroup("day_part", map[string]any{"title": part.Part, "parent": day, "start": date + " " + part.Start, "end": date + " " + part.End})
 	}
 }
 
@@ -296,6 +281,17 @@ func GooglePlan(rows CalendarRows, v *Vocabulary, feed []GoogleEvent, from, to t
 			days[s["calendar_event"]] = append(days[s["calendar_event"]], s["group"])
 		}
 	}
+	reclassified := func(e GoogleEvent) (Classification, bool) {
+		c, have := classified[e.Key]
+		s, ok := events[e.Key]
+		return c, have && (!ok || s["hash"] != v.InputHash(e.CalendarItem))
+	}
+	seriesCategory := map[string]string{}
+	for _, e := range feed {
+		if c, ok := reclassified(e); ok && e.Series != "" {
+			seriesCategory[e.Series] = c.Category
+		}
+	}
 	seen := map[string]bool{}
 	seriesRef := map[string]string{}
 	for _, e := range feed {
@@ -304,10 +300,18 @@ func GooglePlan(rows CalendarRows, v *Vocabulary, feed []GoogleEvent, from, to t
 		if e.Series != "" {
 			seen[e.Series] = true
 			if seriesRef[e.Series] == "" {
+				category, recategorized := seriesCategory[e.Series]
 				if s, ok := series[e.Series]; ok {
 					seriesRef[e.Series] = s["group"]
+					if recategorized {
+						p.setChanged(s["group"], p.groups[s["group"]], map[string]any{"parent": category})
+					}
 				} else {
-					ref := p.newGroup("event", map[string]any{"title": e.Title})
+					row := map[string]any{"title": e.Title}
+					if category != "" {
+						row["parent"] = category
+					}
+					ref := p.newGroup("event", row)
 					p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: map[string]any{"group": ref, "calendar_event": e.Series, "title": e.Title}})
 					seriesRef[e.Series] = ref
 				}
@@ -315,35 +319,41 @@ func GooglePlan(rows CalendarRows, v *Vocabulary, feed []GoogleEvent, from, to t
 			parent = seriesRef[e.Series]
 		}
 		hash := v.InputHash(e.CalendarItem)
-		c, have := classified[e.Key]
+		c, reclassify := reclassified(e)
 		want := itemCells(e.CalendarItem)
-		if parent != "" {
+		switch {
+		case parent != "":
 			want["parent"] = parent
+		case reclassify:
+			want["parent"] = c.Category
 		}
 		source := map[string]any{"calendar_event": e.Key, "hash": hash}
 		maps.Copy(source, itemCells(e.CalendarItem))
 		s, ok := events[e.Key]
 		if !ok {
-			if !have {
+			if !reclassify {
 				continue
+			}
+			if want["parent"] == "" {
+				delete(want, "parent")
 			}
 			group := p.newGroup("event", want)
 			source["group"] = group
 			p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: source})
-			p.classify(group, c, c.Classrooms)
+			p.rules(group, c.Classrooms, c.Who)
 			p.googleDays(e, c, hash)
 			continue
 		}
 		p.setChanged(s["group"], p.groups[s["group"]], want)
 		delete(source, "calendar_event")
-		if s["hash"] == hash || !have {
+		if !reclassify {
 			delete(source, "hash")
 			p.setChanged(s["id"], s, source)
 			continue
 		}
 		p.setChanged(s["id"], s, source)
 		p.unclassify(s["group"])
-		p.classify(s["group"], c, c.Classrooms)
+		p.rules(s["group"], c.Classrooms, c.Who)
 		for _, day := range days[e.Key] {
 			p.deleteGroup(day)
 		}
@@ -397,43 +407,63 @@ func (p *calendarPlan) pdfSourcesOf(year string) []map[string]string {
 	return out
 }
 
-func (p *calendarPlan) pdfMatches(cal YearCalendar) (map[string]map[string]string, map[string]string) {
-	pdf := map[string]map[string]string{}
+func (p *calendarPlan) pdfEvents(cal YearCalendar) map[string][]map[string]string {
+	pdf := map[string][]map[string]string{}
 	for _, s := range p.pdfSourcesOf(cal.Year) {
 		if p.kind(s) == "event" {
-			pdf[matchKey(s["start"], s["title"])] = s
+			key := matchKey(s["start"], s["title"])
+			pdf[key] = append(pdf[key], s)
 		}
 	}
-	google := map[string]string{}
+	return pdf
+}
+
+func dates(start, end string) (string, string) {
+	from := start[:min(len(start), len(DateLayout))]
+	to := end[:min(len(end), len(DateLayout))]
+	if to < from {
+		to = from
+	}
+	return from, to
+}
+
+func (p *calendarPlan) googleOn(e YearEntry) []map[string]string {
+	from, to := dates(e.Start, e.End)
+	out := []map[string]string{}
+	seen := map[string]bool{}
 	for _, s := range p.sources {
-		if s["calendar_event"] != "" && p.kind(s) == "event" {
-			g := p.groups[s["group"]]
-			google[matchKey(g["start"], g["title"])] = g["id"]
+		g := p.groups[s["group"]]
+		if s["calendar_event"] == "" || g["kind"] != "event" || g["start"] == "" || seen[g["id"]] {
+			continue
+		}
+		gFrom, gTo := dates(g["start"], g["end"])
+		if gFrom <= to && from <= gTo {
+			seen[g["id"]] = true
+			out = append(out, g)
 		}
 	}
-	return pdf, google
+	return out
 }
 
 func entryItem(e YearEntry) CalendarItem {
 	return CalendarItem{Key: e.Key, Title: e.Title, Start: e.Start, End: e.End, AllDay: true}
 }
 
-func PDFToClassify(rows CalendarRows, v *Vocabulary, cal YearCalendar) []CalendarItem {
+func PDFToClassify(rows CalendarRows, v *Vocabulary, cal YearCalendar, matched map[string][]string) []CalendarItem {
 	p := newCalendarPlan(rows, v)
-	pdf, google := p.pdfMatches(cal)
+	pdf := p.pdfEvents(cal)
 	out := []CalendarItem{}
 	for _, e := range cal.Entries {
-		key := matchKey(e.Start, e.Title)
-		if pdf[key] == nil && google[key] == "" {
+		if len(pdf[matchKey(e.Start, e.Title)]) == 0 && len(matched[e.Key]) == 0 {
 			out = append(out, entryItem(e))
 		}
 	}
 	return out
 }
 
-func PDFPlan(rows CalendarRows, v *Vocabulary, cal YearCalendar, classified map[string]Classification) ([]Edit, error) {
+func PDFPlan(rows CalendarRows, v *Vocabulary, cal YearCalendar, classified map[string]Classification, matched map[string][]string) ([]Edit, error) {
 	p := newCalendarPlan(rows, v)
-	pdf, google := p.pdfMatches(cal)
+	pdf := p.pdfEvents(cal)
 	kept := map[string]bool{}
 	first, last := "", ""
 	for _, e := range cal.Entries {
@@ -447,7 +477,22 @@ func PDFPlan(rows CalendarRows, v *Vocabulary, cal YearCalendar, classified map[
 		source := map[string]any{"document": cal.Document, "hash": cal.Hash}
 		maps.Copy(source, itemCells(item))
 		key := matchKey(e.Start, e.Title)
-		if s := pdf[key]; s != nil && !kept[s["id"]] {
+		if groups := matched[e.Key]; len(groups) > 0 {
+			for _, group := range groups {
+				i := slices.IndexFunc(pdf[key], func(s map[string]string) bool { return s["group"] == group && !kept[s["id"]] })
+				if i >= 0 {
+					kept[pdf[key][i]["id"]] = true
+					p.setChanged(pdf[key][i]["id"], pdf[key][i], source)
+					continue
+				}
+				row := maps.Clone(source)
+				row["group"] = group
+				p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: row})
+			}
+			continue
+		}
+		if i := slices.IndexFunc(pdf[key], func(s map[string]string) bool { return !kept[s["id"]] }); i >= 0 {
+			s := pdf[key][i]
 			kept[s["id"]] = true
 			p.setChanged(s["id"], s, source)
 			if len(p.under["GROUP_SOURCE"][s["group"]]) == 1 {
@@ -455,19 +500,18 @@ func PDFPlan(rows CalendarRows, v *Vocabulary, cal YearCalendar, classified map[
 			}
 			continue
 		}
-		if group := google[key]; group != "" {
-			source["group"] = group
-			p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: source})
-			continue
-		}
 		c, ok := classified[e.Key]
 		if !ok {
 			return nil, fmt.Errorf("%q on %s was not classified", e.Title, e.Start)
 		}
-		group := p.newGroup("event", itemCells(item))
+		row := itemCells(item)
+		if c.Category != "" {
+			row["parent"] = c.Category
+		}
+		group := p.newGroup("event", row)
 		source["group"] = group
 		p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: source})
-		p.classify(group, c, e.Classrooms)
+		p.rules(group, e.Classrooms, c.Who)
 	}
 	if first == "" || last == "" {
 		return nil, fmt.Errorf("the year calendar has no first or last day of school")

@@ -11,26 +11,22 @@ import (
 const (
 	hummingbirds = "grp00000000010"
 	ospreys      = "grp00000000013"
-	conference   = "cat00000000002"
+	conference   = "grp00000000070"
 )
 
 func calendarSample(t *testing.T) (*Store, *store.Queue) {
 	t.Helper()
 	s, queue := sampleWithQueue(t)
-	categories := []store.Op{store.Insert("CATEGORY", store.Row{"id": conference, "scope": "event", "title": "Conference", "description": "Family and teacher conferences."})}
-	n := 10
-	for _, part := range []string{"Dropoff", "School", "Pickup", "Aftercare"} {
-		n++
-		categories = append(categories, store.Insert("CATEGORY", store.Row{"id": "cat000000000" + itoa2(n), "scope": "day_part", "title": part}))
+	ops := []store.Op{
+		store.Insert("GROUP", store.Row{"id": ospreys, "kind": "classroom", "title": "Ospreys", "status": "open", "visibility": "everyone"}),
+		store.Insert("GROUP", store.Row{"id": conference, "kind": "category", "title": "Conference", "description": "Family and teacher conferences.", "status": "open", "visibility": "everyone"}),
 	}
+	n := 70
 	for name := range DayTemplates {
 		n++
-		categories = append(categories, store.Insert("CATEGORY", store.Row{"id": "cat000000000" + itoa2(n), "scope": "day_type", "title": name}))
+		ops = append(ops, store.Insert("GROUP", store.Row{"id": "grp000000000" + itoa2(n), "kind": "category", "title": name, "status": "open", "visibility": "everyone"}))
 	}
-	if err := commit(s, ConfigSheet, categories...); err != nil {
-		t.Fatal(err)
-	}
-	if err := commit(s, GroupsSheet, store.Insert("GROUP", store.Row{"id": ospreys, "kind": "classroom", "title": "Ospreys", "status": "open", "visibility": "everyone"})); err != nil {
+	if err := commit(s, GroupsSheet, ops...); err != nil {
 		t.Fatal(err)
 	}
 	return s, queue
@@ -91,8 +87,8 @@ func TestGooglePlan(t *testing.T) {
 	answers := map[string]Classification{
 		cafe.Key:   {Classrooms: []string{hummingbirds}, Who: "parents"},
 		early.Key:  {Classrooms: []string{hummingbirds}, Who: "families", DayType: "Early Dismissal"},
-		first.Key:  {Classrooms: []string{hummingbirds, ospreys}, Who: "parents", Categories: []string{conference}},
-		second.Key: {Classrooms: []string{hummingbirds, ospreys}, Who: "parents", Categories: []string{conference}},
+		first.Key:  {Classrooms: []string{hummingbirds, ospreys}, Who: "parents", Category: conference},
+		second.Key: {Classrooms: []string{hummingbirds, ospreys}, Who: "parents", Category: conference},
 	}
 	sync := func(feed []GoogleEvent) {
 		t.Helper()
@@ -127,6 +123,9 @@ func TestGooglePlan(t *testing.T) {
 	if instances != 2 {
 		t.Fatalf("the series has %d instances, want 2", instances)
 	}
+	if series[0]["parent"] != conference {
+		t.Fatalf("the series is under %q, want its instances' category", series[0]["parent"])
+	}
 	cafeGroup := sourcesKeyed(m, cafe.Key)[0]["group"]
 	rules := m.Table("RULE").Referencing("group", cafeGroup)
 	if len(rules) != 1 || rules[0]["target"] != hummingbirds || rules[0]["expand"] != "parents" {
@@ -135,6 +134,9 @@ func TestGooglePlan(t *testing.T) {
 	days := groupsOf(m, "day")
 	if len(days) != 1 || days[0]["start"] != "2026-10-09" {
 		t.Fatalf("days %v, want one on 2026-10-09", days)
+	}
+	if dayType, _ := m.Table("GROUP").Get(days[0]["parent"]); dayType["title"] != "Early Dismissal" || dayType["kind"] != "category" {
+		t.Fatalf("the day is under %v, want its day type", dayType)
 	}
 	if parts := len(m.Table("GROUP").Referencing("parent", days[0]["id"])); parts != len(DayTemplates["Early Dismissal"]) {
 		t.Fatalf("the early dismissal day has %d parts", parts)
@@ -198,22 +200,44 @@ func TestPDFPlan(t *testing.T) {
 	}
 	btsn := YearEntry{Key: "btsn", Title: "Back to School Night", Start: "2026-08-27", End: "2026-08-27", Classrooms: both}
 	picnic := YearEntry{Key: "picnic", Title: "Picnic", Start: "2026-08-28", End: "2026-08-28", Classrooms: both}
-	run := func(cal YearCalendar) {
+	run := func(cal YearCalendar, matching bool) {
 		t.Helper()
 		rows := s.Model().calendarRows()
 		v, _ := NewVocabulary(rows)
+		matched := map[string][]string{}
+		if matching {
+			p := newCalendarPlan(rows, v)
+			for _, e := range cal.Entries {
+				for _, g := range p.googleOn(e) {
+					if g["title"] == e.Title {
+						matched[e.Key] = append(matched[e.Key], g["id"])
+					}
+				}
+			}
+		}
 		classified := map[string]Classification{}
-		for _, it := range PDFToClassify(rows, v, cal) {
+		for _, it := range PDFToClassify(rows, v, cal, matched) {
 			classified[it.Key] = Classification{Who: "families"}
 		}
-		edits, err := PDFPlan(rows, v, cal, classified)
+		edits, err := PDFPlan(rows, v, cal, classified, matched)
 		if err != nil {
 			t.Fatal(err)
 		}
 		apply(t, s, queue, edits)
 	}
 
-	run(year("doc00000000002", btsn, picnic))
+	run(year("doc00000000002", btsn, picnic), false)
+	btsnGroup := sourcesKeyed(s.Model(), btsnGoogle.Key)[0]["group"]
+	twins := 0
+	for _, g := range groupsOf(s.Model(), "event") {
+		if g["title"] == btsn.Title {
+			twins++
+		}
+	}
+	if twins != 2 {
+		t.Fatalf("%d Back to School Nights with no match, want the feed's and a pdf twin", twins)
+	}
+	run(year("doc00000000002", btsn, picnic), true)
 	m := s.Model()
 	days := groupsOf(m, "day")
 	if len(days) != 9 {
@@ -235,13 +259,21 @@ func TestPDFPlan(t *testing.T) {
 	if markers != 2 {
 		t.Fatalf("%d marked days, want 2", markers)
 	}
-	btsnGroup := sourcesKeyed(m, btsnGoogle.Key)[0]["group"]
 	if n := len(m.Table("GROUP_SOURCE").Referencing("group", btsnGroup)); n != 2 {
 		t.Fatalf("Back to School Night has %d sources, want the feed's and the pdf's", n)
 	}
+	twins = 0
+	for _, g := range groupsOf(m, "event") {
+		if g["title"] == btsn.Title {
+			twins++
+		}
+	}
+	if twins != 1 {
+		t.Fatalf("%d Back to School Nights once matched, want the twin gone", twins)
+	}
 	events := len(groupsOf(m, "event"))
 
-	run(year("doc00000000003", btsn))
+	run(year("doc00000000003", btsn), true)
 	m = s.Model()
 	if n := len(groupsOf(m, "event")); n != events-1 {
 		t.Fatalf("%d events after the picnic left the pdf, want %d", n, events-1)

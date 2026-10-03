@@ -27,6 +27,7 @@ const (
 	MomentLayout       = "2006-01-02 15:04"
 	classifyBatch      = 10
 	noDayType          = "None"
+	noCategory         = "None"
 )
 
 var School = func() *time.Location {
@@ -58,7 +59,6 @@ type Vocabulary struct {
 	Roles      map[string]string
 	Events     []Category
 	DayTypes   map[string]string
-	Parts      map[string]string
 }
 
 func effectiveCell(p map[string]string, column string) string {
@@ -69,34 +69,31 @@ func effectiveCell(p map[string]string, column string) string {
 }
 
 func NewVocabulary(rows CalendarRows) (*Vocabulary, error) {
-	v := &Vocabulary{Roles: map[string]string{}, DayTypes: map[string]string{}, Parts: map[string]string{}}
-	for _, c := range rows["CATEGORY"] {
-		switch c["scope"] {
-		case "event":
-			v.Events = append(v.Events, Category{ID: c["id"], Title: c["title"], Description: c["description"]})
-		case "day_type":
+	v := &Vocabulary{Roles: map[string]string{}, DayTypes: map[string]string{}}
+	groups := map[string]map[string]string{}
+	for _, g := range rows["GROUP"] {
+		groups[g["id"]] = g
+	}
+	for _, c := range rows["GROUP"] {
+		if c["kind"] != "category" {
+			continue
+		}
+		if _, ok := DayTemplates[c["title"]]; ok {
 			v.DayTypes[c["title"]] = c["id"]
-		case "day_part":
-			v.Parts[c["title"]] = c["id"]
+			continue
+		}
+		if parent := groups[c["parent"]]; parent == nil || parent["kind"] == "category" {
+			v.Events = append(v.Events, Category{ID: c["id"], Title: c["title"], Description: c["description"]})
 		}
 	}
 	slices.SortStableFunc(v.Events, func(a, b Category) int { return strings.Compare(a.Title, b.Title) })
 	for name := range DayTemplates {
 		if v.DayTypes[name] == "" {
-			return nil, fmt.Errorf("no day_type category %s for its template", name)
-		}
-		for _, p := range DayTemplates[name] {
-			if v.Parts[p.Part] == "" {
-				return nil, fmt.Errorf("no day_part category %s for the %s template", p.Part, name)
-			}
+			return nil, fmt.Errorf("no day type category %s for its template", name)
 		}
 	}
 	if len(v.Events) == 0 {
 		return nil, fmt.Errorf("no event categories to classify into")
-	}
-	groups := map[string]map[string]string{}
-	for _, g := range rows["GROUP"] {
-		groups[g["id"]] = g
 	}
 	byClassroom := map[string]*Classroom{}
 	for _, g := range rows["GROUP"] {
@@ -233,7 +230,7 @@ You classify events from the school calendar for a family-facing app. For each e
 
 - classrooms: the classrooms the event concerns, as the narrowest set the event supports: a band's two classrooms when the title names a band, a grade pair, or both classrooms; one classroom when it names one; the Lower School or Middle School classrooms when it says LS or MS; every classroom when nothing narrows it.
 - who: "families" when students and their families take part; "parents" when adults attend without students, such as a parent coffee, a parent education session or an HCA meeting; "staff" when it is for staff only.
-- categories: every one of these that applies, possibly none:
+- category: the one of these the event is, or "None" when none fits. Schedule is only for an event about the school day itself; an event that also changes the school day, such as a conference with an early dismissal, takes its own category and gives the day type:
 ` + described.String() + `- dayType: for an all-day event only, the day type it imposes on the students it applies to, or "None". "No School" for holidays, breaks and professional development days; "Early Dismissal" for early dismissal and half days; any other listed type only when the title says so plainly. An event with a time of day, or one that merely happens on a school day, is "None".
 
 Answer under every event's id, repeating its title exactly as given.`
@@ -255,7 +252,7 @@ type CalendarItem struct {
 }
 
 type Classification struct {
-	Categories []string
+	Category   string
 	Classrooms []string
 	Who        string
 	DayType    string
@@ -275,7 +272,7 @@ func enumOf(values []string) map[string]any {
 
 type classifyAnswer struct {
 	Title      string   `json:"title"`
-	Categories []string `json:"categories"`
+	Category   string   `json:"category"`
 	Classrooms []string `json:"classrooms"`
 	Who        string   `json:"who"`
 	DayType    string   `json:"dayType"`
@@ -345,7 +342,7 @@ func classifyRequest(items []CalendarItem) (string, map[string]CalendarItem, err
 }
 
 func (v *Vocabulary) classifyBatch(ctx context.Context, client anthropic.Client, items []CalendarItem) (map[string]Classification, error) {
-	categories := []string{}
+	categories := []string{noCategory}
 	byTitle := map[string]string{}
 	for _, c := range v.Events {
 		categories = append(categories, c.Title)
@@ -353,10 +350,10 @@ func (v *Vocabulary) classifyBatch(ctx context.Context, client anthropic.Client,
 	}
 	one := map[string]any{
 		"type": "object", "additionalProperties": false,
-		"required": []string{"title", "categories", "classrooms", "who", "dayType"},
+		"required": []string{"title", "category", "classrooms", "who", "dayType"},
 		"properties": map[string]any{
 			"title":      map[string]any{"type": "string", "description": "the event's title, exactly as given"},
-			"categories": map[string]any{"type": "array", "items": enumOf(categories)},
+			"category":   enumOf(categories),
 			"classrooms": map[string]any{"type": "array", "minItems": 1, "items": enumOf(v.ClassroomNames())},
 			"who":        enumOf([]string{"families", "parents", "staff"}),
 			"dayType":    enumOf(append([]string{noDayType}, v.DayTypeNames()...)),
@@ -402,10 +399,7 @@ func (v *Vocabulary) classified(sent map[string]CalendarItem, answers map[string
 		if Collapse(a.Title) != Collapse(it.Title) {
 			return nil, fmt.Errorf("claude answered %s with the title %q, not %q", handle, a.Title, it.Title)
 		}
-		c := Classification{Who: a.Who}
-		for _, title := range a.Categories {
-			c.Categories = append(c.Categories, byTitle[title])
-		}
+		c := Classification{Who: a.Who, Category: byTitle[a.Category]}
 		for _, name := range a.Classrooms {
 			id, _ := v.ClassroomID(name)
 			c.Classrooms = append(c.Classrooms, id)
@@ -414,6 +408,97 @@ func (v *Vocabulary) classified(sent map[string]CalendarItem, answers map[string
 			c.DayType = a.DayType
 		}
 		out[it.Key] = c
+	}
+	return out, nil
+}
+
+const MatchSystem = `The school publishes its year calendar twice: as events on a Google calendar and as entries in a PDF. You are given PDF entries, each with the Google events on its dates. For each entry, answer the ids of the Google events that are the same occasion as the entry, however differently worded: an entry naming two occasions, such as "Last Day of School, Graduation", is both Google events; an entry and an event that say the same day changes ("Parent Conferences, half days" and "Parent Conferences - Early Dismissal") are the same occasion. An entry that is a different occasion from every event on its dates is none of them.`
+
+const matchBatch = 10
+
+type matchCandidate struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Start string `json:"start"`
+	End   string `json:"end,omitempty"`
+}
+
+type matchEntry struct {
+	ID     string           `json:"id"`
+	Title  string           `json:"title"`
+	Start  string           `json:"start"`
+	End    string           `json:"end,omitempty"`
+	Google []matchCandidate `json:"google"`
+}
+
+type matchAsk struct {
+	entry  YearEntry
+	google []map[string]string
+}
+
+func (v *Vocabulary) MatchPDF(ctx context.Context, client anthropic.Client, rows CalendarRows, cal YearCalendar) (map[string][]string, error) {
+	p := newCalendarPlan(rows, v)
+	asks := []matchAsk{}
+	for _, e := range cal.Entries {
+		if google := p.googleOn(e); len(google) > 0 {
+			asks = append(asks, matchAsk{entry: e, google: google})
+		}
+	}
+	batches := [][]matchAsk{}
+	for start := 0; start < len(asks); start += matchBatch {
+		batches = append(batches, asks[start:min(start+matchBatch, len(asks))])
+	}
+	results, errs := FanOut(len(batches), func(i int) (map[string][]string, error) {
+		return v.matchBatch(ctx, client, batches[i])
+	})
+	out := map[string][]string{}
+	for i := range batches {
+		if errs[i] != nil {
+			return nil, fmt.Errorf("match pdf entries to google events, batch %d of %d: %w", i+1, len(batches), errs[i])
+		}
+		maps.Copy(out, results[i])
+	}
+	slog.InfoContext(ctx, "calendar import: matched", "entries", len(asks), "same as google", len(out))
+	return out, nil
+}
+
+func (v *Vocabulary) matchBatch(ctx context.Context, client anthropic.Client, asks []matchAsk) (map[string][]string, error) {
+	entries := []matchEntry{}
+	properties := map[string]any{}
+	required := []string{}
+	groups := map[string]map[string]string{}
+	for i, a := range asks {
+		handle := "p" + strconv.Itoa(i+1)
+		e := matchEntry{ID: handle, Title: a.entry.Title, Start: a.entry.Start, End: a.entry.End, Google: []matchCandidate{}}
+		ids := []string{}
+		for j, g := range a.google {
+			id := handle + "g" + strconv.Itoa(j+1)
+			groups[id] = g
+			ids = append(ids, id)
+			e.Google = append(e.Google, matchCandidate{ID: id, Title: g["title"], Start: g["start"], End: g["end"]})
+		}
+		entries = append(entries, e)
+		properties[handle] = map[string]any{"type": "array", "items": enumOf(ids)}
+		required = append(required, handle)
+	}
+	encoded, err := json.MarshalIndent(entries, "", " ")
+	if err != nil {
+		return nil, err
+	}
+	schema := map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}
+	answers := map[string][]string{}
+	if _, err := Ask(ctx, client, v.Glossary()+"\n"+MatchSystem, []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock("Match each of these entries:\n\n" + string(encoded))}, schema, &answers); err != nil {
+		return nil, err
+	}
+	out := map[string][]string{}
+	for i, a := range asks {
+		for _, id := range answers["p"+strconv.Itoa(i+1)] {
+			g, ok := groups[id]
+			if !ok || !strings.HasPrefix(id, "p"+strconv.Itoa(i+1)+"g") {
+				return nil, fmt.Errorf("claude matched %q to %q, which is not one of its events", a.entry.Title, id)
+			}
+			out[a.entry.Key] = append(out[a.entry.Key], g["id"])
+		}
 	}
 	return out, nil
 }

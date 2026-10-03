@@ -230,8 +230,8 @@ func TestInclude(t *testing.T) {
 	if len(r.Resources["MEMBER"]) != 4 || len(r.Resources["PERSON"]) != 3 || len(r.Resources["GROUP"]) != 1 {
 		t.Fatalf("resources %v", r.Resources)
 	}
-	r = runAs(t, m, "", `(from SAVED_VIEW (include groups categories))`)
-	if len(r.Resources["GROUP"]) != 1 || len(r.Resources["CATEGORY"]) != 1 {
+	r = runAs(t, m, "", `(from SAVED_VIEW (include groups))`)
+	if len(r.Resources["GROUP"]) != 2 {
 		t.Fatalf("resources %v", r.Resources)
 	}
 }
