@@ -45,6 +45,7 @@ const (
 	InviteServicePrefix   = "isv"
 	InviteTemplatePrefix  = "itp"
 	GreetingPrefix        = "grt"
+	ChangePrefix          = "chg"
 )
 
 var prefixes = map[string]bool{
@@ -56,6 +57,7 @@ var prefixes = map[string]bool{
 	SettingPrefix: true, CharityPrefix: true, AppPrefix: true,
 	WidgetPrefix: true, GeocodePrefix: true, AliasPrefix: true, RedirectPrefix: true,
 	InviteServicePrefix: true, InviteTemplatePrefix: true, GreetingPrefix: true,
+	ChangePrefix: true,
 }
 
 func Mint(prefix string, taken func(string) bool) string {

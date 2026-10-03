@@ -15,6 +15,7 @@ import (
 const (
 	dateFormat      = "2006-01-02"
 	dateTimeFormat  = "2006-01-02 15:04"
+	StampFormat     = "2006-01-02 15:04:05"
 	maxURLLength    = 1000
 	MaxPrettyLength = 40
 )
@@ -75,13 +76,12 @@ func URL(raw string, optional bool) error {
 }
 
 func When(cell string) (time.Time, error) {
-	if t, err := time.Parse(dateTimeFormat, cell); err == nil {
-		return t, nil
+	for _, layout := range []string{StampFormat, dateTimeFormat, dateFormat} {
+		if t, err := time.Parse(layout, cell); err == nil {
+			return t, nil
+		}
 	}
-	if t, err := time.Parse(dateFormat, cell); err == nil {
-		return t, nil
-	}
-	return time.Time{}, fmt.Errorf("%q is not a date like 2026-09-24 or 2026-09-24 16:00", cell)
+	return time.Time{}, fmt.Errorf("%q is not a date like 2026-09-24, 2026-09-24 16:00 or 2026-09-24 16:00:05", cell)
 }
 
 func Span(start, end string) error {

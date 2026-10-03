@@ -15,11 +15,12 @@ import (
 const refreshInterval = 5 * time.Minute
 
 type Part[M any] struct {
-	App    string
-	Tabs   []Tab
-	Reads  []string
-	Build  func(ctx context.Context, tables Tables, m *M) error
-	Loaded func(m *M, took time.Duration)
+	App     string
+	Tabs    []Tab
+	Changes *ChangeLog
+	Reads   []string
+	Build   func(ctx context.Context, tables Tables, m *M) error
+	Loaded  func(m *M, took time.Duration)
 }
 
 type Store[M any] struct {
@@ -39,7 +40,7 @@ func New[M any](parts []Part[M], consent func(m *M) error, source data.Source, w
 	}
 	s := &Store[M]{parts: ordered, consent: consent, books: map[string]*Book{}, queue: queue}
 	for _, p := range ordered {
-		book, err := NewBook(p.App, p.Tabs, source, writer, queue)
+		book, err := NewBook(p.App, p.Tabs, p.Changes, source, writer, queue)
 		if err != nil {
 			return nil, err
 		}

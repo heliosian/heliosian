@@ -201,12 +201,12 @@ func addDataLayouts() {
 	for _, s := range spreadsheets.All {
 		tabs := []tab{}
 		for _, t := range db.Tables {
-			if t.Sheet == s.Source {
+			if t.Sheet == s.Source || (t.Sheet == db.EverySheet && slices.Contains(db.Sheets, s.Source)) {
 				tabs = append(tabs, tab{t.Name, t.Stored()})
 			}
 		}
 		if len(tabs) > 0 {
-			layouts[s.Title] = append(tabs, tab{store.ChangeLogTab, store.ChangeLogColumns})
+			layouts[s.Title] = tabs
 		}
 	}
 }

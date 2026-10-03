@@ -102,7 +102,7 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 		slog.InfoContext(r.Context(), "query", "viewer", env.Viewer, "system", env.System, "query", q.tree.flat())
 		result := m.Run(q, env)
 		out := answer{
-			Now:       env.Now.Format("2006-01-02 15:04"),
+			Now:       env.Now.Format(cells.StampFormat),
 			Query:     q.String(),
 			Result:    result.IDs,
 			Resources: result.Resources,

@@ -84,6 +84,18 @@
   word-break: break-word;
 }
 
+.access > summary,
+.history > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--k);
+}
+
+.access[open] > summary,
+.history[open] > summary {
+  margin-bottom: 8px;
+}
+
 .access h3 {
   margin: 4px 0 6px;
   font-size: 13px;

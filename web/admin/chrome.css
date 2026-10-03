@@ -22,6 +22,7 @@
 [data-sheet="datamail"] { --k: #c77dff; }
 [data-sheet="dataconfig"] { --k: #ffd166; }
 [data-sheet="generated"] { --k: #3fd0b4; }
+[data-sheet="*"] { --k: #ef476f; }
 
 * {
   box-sizing: border-box;

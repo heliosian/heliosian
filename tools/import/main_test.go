@@ -278,7 +278,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 	x.entries = x.entries[:len(x.entries)-1]
 	p, _ = importOnce(t, c, x)
 	maya, _ := s.Model().Table("PERSON").Get("per00000000003")
-	if p.counts["people deactivated"] != 1 || maya["deactivated"] != "2026-09-30 12:00" {
+	if p.counts["people deactivated"] != 1 || maya["deactivated"] != "2026-09-30 12:00:00" {
 		t.Fatalf("Maya gone from the export: %v, %v", p.counts, maya)
 	}
 	for _, g := range groupsOf(s, "per00000000003") {

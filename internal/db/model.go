@@ -26,6 +26,7 @@ type Model struct {
 	Documents Sheet
 	Mail      Sheet
 	Config    Sheet
+	changes   *Rows
 	derived   *derived
 	consented map[string]*View
 }
@@ -112,6 +113,9 @@ func (m *Model) Table(name string) *Rows {
 	t, ok := Lookup(name)
 	if !ok || t.Generated {
 		panic("db: no stored table " + name)
+	}
+	if t.Sheet == EverySheet {
+		return m.changes
 	}
 	return (*m.slot(t.Sheet))[name]
 }
@@ -340,7 +344,8 @@ func checkRuleProperties(groups Sheet) error {
 
 func (m *Model) checkReferences() error {
 	for _, t := range Tables {
-		if t.Generated {
+		// History names rows since deleted.
+		if t.Generated || t.Name == ChangesTable {
 			continue
 		}
 		for _, row := range m.Table(t.Name).rows {

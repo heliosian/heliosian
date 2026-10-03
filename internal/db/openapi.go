@@ -70,8 +70,8 @@ func cellSchema(c Column) schema {
 	case Date:
 		out["examples"] = []string{"2026-09-24"}
 	case Moment:
-		out["examples"] = []string{"2026-09-24", "2026-09-24 16:00"}
-		notes = append(notes, "A day, or a day and a time, in the school's time zone.")
+		out["examples"] = []string{"2026-09-24", "2026-09-24 16:00", "2026-09-24 16:00:05"}
+		notes = append(notes, "A day, or a day and a time to the minute or the second, in the school's time zone.")
 	case Blob:
 		notes = append(notes, "An object's name in the media bucket.")
 	case Order:
@@ -161,7 +161,7 @@ func spec() schema {
 		"type":     "object",
 		"required": []string{"now", "query", "result", "resources"},
 		"properties": schema{
-			"now":       schema{"type": "string", "description": "The school's time as the query saw it.", "examples": []string{"2026-09-24 16:00"}},
+			"now":       schema{"type": "string", "description": "The school's time as the query saw it.", "examples": []string{"2026-09-24 16:00:05"}},
 			"query":     schema{"type": "string", "description": "The query in canonical text."},
 			"tree":      schema{"$ref": "#/components/schemas/Query", "description": "The query's JSON form, answered when it was sent as text."},
 			"result":    schema{"type": "array", "items": schema{"type": "string"}, "description": "The IDs the query answers, in order."},

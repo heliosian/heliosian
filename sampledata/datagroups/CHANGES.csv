@@ -1,0 +1,3 @@
+id,at,actor,real_actor,action,table,row,column,previous
+chg00000000001,2026-09-20 09:30:12,import,,insert,GROUP,grp00000000040,,
+chg00000000002,2026-09-29 10:15:30,maya.lindqvist@example.org,,set,GROUP,grp00000000040,title,Picnic

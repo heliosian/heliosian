@@ -63,13 +63,42 @@ type Tab struct {
 	AppendOnly bool
 }
 
+type Change struct {
+	At       time.Time
+	Actor    string
+	Real     string
+	Action   string
+	Tab      string
+	Key      []string
+	Named    Row
+	Column   string
+	Previous string
+}
+
+type ChangeLog struct {
+	Tab string
+	Row func(Change) Row
+}
+
+var oldChangeLog = &ChangeLog{Tab: ChangeLogTab, Row: func(c Change) Row {
+	key := []string{}
+	for _, column := range c.Key {
+		key = append(key, column+"="+c.Named[column])
+	}
+	return Row{
+		"Timestamp": c.At.Format(time.RFC3339), "Actor": c.Actor, "Real Actor": c.Real, "Action": c.Action,
+		"Tab": c.Tab, "Key": strings.Join(key, "; "), "Column": c.Column, "Previous": c.Previous,
+	}
+}}
+
 type Book struct {
-	app    string
-	tabs   []Tab
-	byName map[string]Tab
-	source data.Source
-	writer data.Writer
-	queue  *Queue
+	app     string
+	tabs    []Tab
+	byName  map[string]Tab
+	changes *ChangeLog
+	source  data.Source
+	writer  data.Writer
+	queue   *Queue
 }
 
 type Plan struct {
@@ -86,8 +115,11 @@ type change struct {
 	before, after Row
 }
 
-func NewBook(app string, tabs []Tab, source data.Source, writer data.Writer, queue *Queue) (*Book, error) {
-	b := &Book{app: app, tabs: tabs, byName: map[string]Tab{}, source: source, writer: writer, queue: queue}
+func NewBook(app string, tabs []Tab, changes *ChangeLog, source data.Source, writer data.Writer, queue *Queue) (*Book, error) {
+	if changes == nil {
+		changes = oldChangeLog
+	}
+	b := &Book{app: app, tabs: tabs, byName: map[string]Tab{}, changes: changes, source: source, writer: writer, queue: queue}
 	for _, t := range tabs {
 		if len(t.Key) == 0 {
 			return nil, fmt.Errorf("%s: tab %s names no key", app, t.Name)
@@ -105,7 +137,7 @@ func (b *Book) Read(ctx context.Context) (Tables, error) {
 	read := map[string]map[string]data.Tab{}
 	for app, tabs := range names {
 		headers := []string{}
-		if app == b.app && b.logged() {
+		if app == b.app && b.logged() && b.changes == oldChangeLog {
 			headers = []string{ChangeLogTab}
 		}
 		got, err := b.source.Tabs(ctx, app, tabs, headers)
@@ -122,7 +154,7 @@ func (b *Book) Read(ctx context.Context) (Tables, error) {
 		}
 		tables[t.Name] = tab.Rows
 	}
-	if b.logged() {
+	if b.logged() && b.changes == oldChangeLog {
 		if err := data.CheckColumns(ChangeLogTab, read[b.app][ChangeLogTab].Header, ChangeLogColumns); err != nil {
 			return nil, err
 		}
@@ -148,7 +180,7 @@ func (b *Book) appOf(t Tab) string {
 
 func (b *Book) Plan(ctx context.Context, tables Tables, actor string, ops []Op) (Plan, error) {
 	tables = maps.Clone(tables)
-	stamp := time.Now().Format(time.RFC3339)
+	at := time.Now()
 	real := auth.RealEmailFrom(ctx)
 	writes := []Op{}
 	log := []Row{}
@@ -173,12 +205,15 @@ func (b *Book) Plan(ctx context.Context, tables Tables, actor string, ops []Op) 
 		writes = append(writes, planned(op, changes)...)
 		for _, c := range changes {
 			if !tab.AppendOnly {
-				log = append(log, entries(stamp, actor, real, tab, c)...)
+				log = append(log, entries(b.changes, at, actor, real, tab, c)...)
 			}
 			if tab.Cascade != nil {
 				pending = append(pending, tab.Cascade(tables, c.before, c.after)...)
 			}
 		}
+	}
+	if b.changes != oldChangeLog && len(log) > 0 {
+		tables[b.changes.Tab] = append(slices.Clone(tables[b.changes.Tab]), log...)
 	}
 	return Plan{Tables: tables, writes: writes, log: log}, nil
 }
@@ -199,7 +234,7 @@ func (b *Book) write(writes []Op, log []Row) {
 		}
 	}
 	if len(log) > 0 {
-		if err := b.writer.Insert(b.app, ChangeLogTab, log); err != nil {
+		if err := b.writer.Insert(b.app, b.changes.Tab, log); err != nil {
 			logging.Fatal("write the change log", "app", b.app, "error", err)
 		}
 	}
@@ -384,7 +419,7 @@ func apply(rows []Row, op Op) ([]Row, []change) {
 	return next, changes
 }
 
-func entries(stamp, actor, real string, tab Tab, c change) []Row {
+func entries(changes *ChangeLog, at time.Time, actor, real string, tab Tab, c change) []Row {
 	named := c.after
 	action := "set"
 	switch {
@@ -394,19 +429,15 @@ func entries(stamp, actor, real string, tab Tab, c change) []Row {
 		action = "delete"
 		named = c.before
 	}
-	key := []string{}
-	for _, column := range tab.Key {
-		key = append(key, column+"="+named[column])
-	}
+	base := Change{At: at, Actor: actor, Real: real, Action: action, Tab: tab.Name, Key: tab.Key, Named: named}
 	if c.before == nil {
-		return []Row{{"Timestamp": stamp, "Actor": actor, "Real Actor": real, "Action": action, "Tab": tab.Name, "Key": strings.Join(key, "; ")}}
+		return []Row{changes.Row(base)}
 	}
 	out := []Row{}
 	for _, column := range differing(c.before, c.after) {
-		out = append(out, Row{
-			"Timestamp": stamp, "Actor": actor, "Real Actor": real, "Action": action,
-			"Tab": tab.Name, "Key": strings.Join(key, "; "), "Column": column, "Previous": c.before[column],
-		})
+		one := base
+		one.Column, one.Previous = column, c.before[column]
+		out = append(out, changes.Row(one))
 	}
 	return out
 }

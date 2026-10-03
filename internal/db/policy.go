@@ -390,6 +390,10 @@ const policySource = `
 (read REDIRECT (super_admin))
 ; every column of a redirect
 (read REDIRECT (id app old new added) true)
+; every change the store recorded, but those the consent step hides
+(read CHANGES (super_admin))
+; every column of a change
+(read CHANGES (id at actor real_actor action table row column previous) true)
 
 ;; System: import
 

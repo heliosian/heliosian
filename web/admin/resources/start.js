@@ -7,7 +7,8 @@ import {policyList, clauseQuery, queryHref, clauseHref} from '/policies.js';
 chrome('resources');
 
 const limit = 1000;
-const sheets = ['datapeople', 'datagroups', 'datadocuments', 'datamail', 'dataconfig', 'generated'];
+const sheets = ['datapeople', 'datagroups', 'datadocuments', 'datamail', 'dataconfig', '*', 'generated'];
+const sheetNames = {'*': 'every sheet'};
 
 const rail = document.getElementById('rail');
 const view = document.getElementById('view');
@@ -16,7 +17,7 @@ const filter = document.getElementById('filter');
 const summary = document.getElementById('summary');
 
 const referrers = new Map();
-for (const t of all) {
+for (const t of all.filter(t => t.name !== 'CHANGES')) {
   for (const c of t.columns) {
     if (c.kind !== 'ref' && c.kind !== 'refs') {
       continue;
@@ -74,7 +75,7 @@ function drawRail(current) {
     }
     const section = el('div', 'sheet');
     section.dataset.sheet = sheet;
-    section.append(el('div', 'sheet-name', sheet.replace(/^data/, '')));
+    section.append(el('div', 'sheet-name', sheetNames[sheet] ?? sheet.replace(/^data/, '')));
     for (const t of list) {
       section.append(link(`#${t.name}`, t.name === current ? 'here' : '', t.name));
     }
@@ -113,9 +114,10 @@ function verdictItem(clauses, v) {
 
 async function accessCard(table, id) {
   const [clauses, ex] = await Promise.all([policyList(), api('GET', `/api/explain/${id}`)]);
-  const box = el('section', 'card access');
+  const box = el('details', 'card access');
   box.dataset.sheet = table.sheet;
-  box.append(el('h3', '', ex.readable ? 'readable: the row clauses that hold' : 'not readable as the viewer: no row clause holds'));
+  const held = ex.clauses.filter(v => v.holds).length;
+  box.append(el('summary', '', `who may see this · ${ex.readable ? 'readable' : 'not readable'} as the viewer, ${held} of ${ex.clauses.length} row clauses hold`));
   const rows = el('ul', 'verdicts');
   for (const v of ex.clauses) {
     rows.append(verdictItem(clauses, v));
@@ -141,6 +143,24 @@ async function accessCard(table, id) {
     columns.append(tr);
   }
   box.append(el('h3', '', 'columns'), columns);
+  return box;
+}
+
+async function historyCard(id) {
+  const changes = byName.get('CHANGES');
+  const box = el('details', 'card history');
+  box.dataset.sheet = changes.sheet;
+  try {
+    const answer = await query({from: 'CHANGES', where: [{'=': [{path: 'row'}, id]}], order: [{path: 'at', dir: 'desc'}]});
+    box.append(el('summary', '', answer.result.length ? `history · ${answer.result.length} changes, the last ${answer.resources.CHANGES[answer.result[0]].at}` : 'history · no changes the viewer can see'));
+    if (answer.result.length) {
+      const g = grid(changes, answer, answer.result, changed);
+      grids.push(g);
+      box.append(g.wrap);
+    }
+  } catch (err) {
+    box.append(el('summary', '', 'history'), el('p', 'error', err.message));
+  }
   return box;
 }
 
@@ -175,10 +195,9 @@ async function detailView(table, id) {
   card.append(fields);
   const sections = [card];
   if (table.sheet !== 'generated') {
-    sections.push(await accessCard(table, id));
+    sections.push(await accessCard(table, id), await historyCard(id));
   }
   const found = [];
-  grids = [];
   const refs = [...(referrers.get(table.name) ?? []), ...(referrers.get('*') ?? [])];
   const answers = await Promise.all(refs.map(async ({table: from, column}) => {
     try {

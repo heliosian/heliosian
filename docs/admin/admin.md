@@ -14,7 +14,9 @@ Helios Admin, at `admin.heliosian.com`, holds views of the data behind the apps.
 
 `/policies` (`web/admin/policies/`) lists every clause and definition of `policySource` from `GET /api/policies`, under its `;;` section with its `;` comment and its canonical form, filtered by any text in them. A clause with a condition has a run link that opens it in Query over its table, the row named as the clause names it: `@row` for a read, `@new` for an insert, `@old` for a delete, and for a set the rows the change would leave, with `@old` and `@new` the same row.
 
-A row's page under Resources ends with who may see it, from `GET /api/explain/{id}`: each read clause for its table, marked held or not for the viewer, with its comment linking to it here and its run link; then each column, readable or not, with the column clauses that name it. A row the viewer cannot see still shows this when the signed-in person could see it themselves - the case Spoof Mode is for - and nothing at all otherwise.
+A row's page under Resources ends with who may see it, folded to one line saying whether the viewer may and how many row clauses hold, from `GET /api/explain/{id}`: each read clause for its table, marked held or not for the viewer, with its comment linking to it here and its run link; then each column, readable or not, with the column clauses that name it. A row the viewer cannot see still shows this when the signed-in person could see it themselves - the case Spoof Mode is for - and nothing at all otherwise.
+
+After it, folded too, is the row's history: its `CHANGES` entries newest first in the shared grid (`docs/datamodel.md`, Changes), which only a super admin reads. `CHANGES` is in the Resources rail under every sheet, since each sheet holds its own part of it, and is not among the tables that point at a row, which would repeat its history.
 
 ## Schema
 

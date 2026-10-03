@@ -18,7 +18,7 @@ func TestSchemaHangsTogether(t *testing.T) {
 		if table.Generated != (table.Sheet == "") {
 			t.Errorf("%s: a table is either generated or on a sheet", table.Name)
 		}
-		if table.Sheet != "" && !slices.Contains(Sheets, table.Sheet) {
+		if table.Sheet != "" && table.Sheet != EverySheet && !slices.Contains(Sheets, table.Sheet) {
 			t.Errorf("%s: no sheet %s", table.Name, table.Sheet)
 		}
 		names := map[string]bool{}
@@ -91,6 +91,10 @@ func TestCheck(t *testing.T) {
 	}
 	if err := member.Check(good); err != nil {
 		t.Fatalf("Check(%v) = %v", good, err)
+	}
+	good["answered"] = "2026-09-24 16:00:05"
+	if err := member.Check(good); err != nil {
+		t.Fatalf("a moment to the second: %v", err)
 	}
 	for column, bad := range map[string]string{
 		"group":    "perX7pQ2m9KdLr",

@@ -83,7 +83,7 @@ func TestServeQuery(t *testing.T) {
 		if code != http.StatusOK {
 			t.Fatalf("%s: %d %s", kind, code, body)
 		}
-		if len(out.Result) != 3 || out.Now != "2026-09-30 12:00" || len(out.Resources["MEMBER"]) != 3 || len(out.Resources["PERSON"]) != 3 {
+		if len(out.Result) != 3 || out.Now != "2026-09-30 12:00:00" || len(out.Resources["MEMBER"]) != 3 || len(out.Resources["PERSON"]) != 3 {
 			t.Fatalf("%s: answer %+v", kind, out)
 		}
 		if out.Query != mustParse(t, picnicText).String() {

@@ -51,6 +51,15 @@ const (
 
 var Sheets = []string{PeopleSheet, GroupsSheet, DocumentsSheet, MailSheet, ConfigSheet}
 
+const (
+	EverySheet   = "*"
+	ChangesTable = "CHANGES"
+)
+
+func (t Table) In(sheet string) bool {
+	return t.Sheet == sheet || t.Sheet == EverySheet
+}
+
 var (
 	apps     = []string{"who", "when", "team", "celebrate", "birthday", "loop", "ask", "admin", "home"}
 	grades   = []string{"K", "1", "2", "3", "4", "5", "6", "7", "8"}
@@ -557,6 +566,22 @@ var Tables = []Table{
 			col("format", Text),
 			col("grouped", Bool),
 			col("individual", Bool),
+		},
+	},
+	{
+		Name:       ChangesTable,
+		Sheet:      EverySheet,
+		AppendOnly: true,
+		Columns: []Column{
+			ident(ChangePrefix),
+			col("at", Moment).required(),
+			col("actor", Text).required(),
+			col("real_actor", Text),
+			enum("action", "insert", "set", "delete").required(),
+			col("table", Text).required(),
+			ref("row", "").required(),
+			col("column", Text),
+			col("previous", Text),
 		},
 	},
 }

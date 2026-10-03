@@ -22,6 +22,13 @@ func consentStep(m *Model) error {
 			hidden[row["id"]] = true
 		}
 	}
+	for _, row := range m.Table(ChangesTable).All() {
+		if t, ok := Lookup(row["table"]); ok {
+			if c, ok := t.Column(row["column"]); ok && c.Private {
+				hidden[row["id"]] = true
+			}
+		}
+	}
 	for grew := true; grew; {
 		grew = false
 		for _, t := range Tables {
