@@ -762,11 +762,26 @@ const policySource = `
 `
 
 type policySet struct {
-	read   map[string][]cond
-	open   map[string]bool
-	insert map[string][]cond
-	set    map[string][]cond
-	delete map[string][]cond
+	read    map[string][]cond
+	open    map[string]bool
+	insert  map[string][]cond
+	set     map[string][]cond
+	delete  map[string][]cond
+	clauses []Clause
+}
+
+type Clause struct {
+	Section   string   `json:"section"`
+	Comment   string   `json:"comment"`
+	Kind      string   `json:"kind"`
+	Table     string   `json:"table,omitempty"`
+	Column    string   `json:"column,omitempty"`
+	Columns   []string `json:"columns,omitempty"`
+	Name      string   `json:"name,omitempty"`
+	Params    []string `json:"params,omitempty"`
+	Condition string   `json:"condition"`
+	Form      string   `json:"form"`
+	cond      cond
 }
 
 var (
@@ -783,24 +798,34 @@ func init() {
 }
 
 func compilePolicies(src string) (*policySet, map[string]*define, error) {
-	forms, err := readForms(src)
+	forms, notes, err := readForms(src)
 	if err != nil {
 		return nil, nil, err
 	}
 	cx := &compiler{policy: true, defines: map[string]*define{}, used: map[string]bool{}}
-	out := &policySet{read: map[string][]cond{}, open: map[string]bool{}, insert: map[string][]cond{}, set: map[string][]cond{}, delete: map[string][]cond{}}
-	for _, form := range forms {
+	out := &policySet{read: map[string][]cond{}, open: map[string]bool{}, insert: map[string][]cond{}, set: map[string][]cond{}, delete: map[string][]cond{}, clauses: []Clause{}}
+	for i, form := range forms {
 		head := form.head()
+		described := Clause{Section: notes[i].section, Comment: notes[i].comment, Kind: head, Form: form.render(0)}
 		if head == "define" {
 			if err := cx.define(form); err != nil {
 				return nil, nil, err
 			}
+			d := cx.defines[form.list[1].list[0].text]
+			described.Name, described.Params, described.Condition = form.list[1].list[0].text, d.params, d.body.render(0)
+			out.clauses = append(out.clauses, described)
 			continue
 		}
 		if head == "read" && len(form.list) == 4 {
-			if err := cx.columnGrant(form, out); err != nil {
+			c, err := cx.columnGrant(form, out)
+			if err != nil {
 				return nil, nil, err
 			}
+			described.Kind, described.Table, described.Condition, described.cond = "read columns", form.list[1].text, form.list[3].render(0), c
+			for _, item := range form.list[2].list {
+				described.Columns = append(described.Columns, item.text)
+			}
+			out.clauses = append(out.clauses, described)
 			continue
 		}
 		if len(form.list) != 3 || form.list[1].isList || form.list[1].kind != atomName {
@@ -835,6 +860,8 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 			return nil, nil, err
 		}
 		into[form.list[1].text] = append(into[form.list[1].text], c)
+		described.Table, described.Column, described.Condition, described.cond = tableName, column, form.list[2].render(0), c
+		out.clauses = append(out.clauses, described)
 	}
 	for _, form := range forms {
 		if form.head() == "define" && !cx.used[form.list[1].list[0].text] {
@@ -851,29 +878,29 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 	return out, cx.defines, nil
 }
 
-func (cx *compiler) columnGrant(form *sexp, out *policySet) error {
+func (cx *compiler) columnGrant(form *sexp, out *policySet) (cond, error) {
 	if form.list[1].isList || form.list[1].kind != atomName || !form.list[2].isList || len(form.list[2].list) == 0 {
-		return form.errorf("a column grant is (read TABLE (column…) condition)")
+		return cond{}, form.errorf("a column grant is (read TABLE (column…) condition)")
 	}
 	t, err := tableNamed(form.list[1])
 	if err != nil {
-		return err
+		return cond{}, err
 	}
 	c, err := cx.cond(form.list[3], &scope{table: t, name: "row"})
 	if err != nil {
-		return err
+		return cond{}, err
 	}
 	open := !form.list[3].isList && form.list[3].kind == atomName && form.list[3].text == "true"
 	for _, item := range form.list[2].list {
 		if item.isList || item.kind != atomName {
-			return item.errorf("a column grant lists column names")
+			return cond{}, item.errorf("a column grant lists column names")
 		}
 		col, err := columnNamed(t, item.text, item)
 		if err != nil {
-			return err
+			return cond{}, err
 		}
 		if col.Private {
-			return item.errorf("%s.%s is private, kept from everyone but the import by the consent step", t.Name, col.Name)
+			return cond{}, item.errorf("%s.%s is private, kept from everyone but the import by the consent step", t.Name, col.Name)
 		}
 		key := t.Name + "." + col.Name
 		out.read[key] = append(out.read[key], c)
@@ -881,7 +908,7 @@ func (cx *compiler) columnGrant(form *sexp, out *policySet) error {
 			out.open[key] = true
 		}
 	}
-	return nil
+	return c, nil
 }
 
 func (cx *compiler) define(form *sexp) error {

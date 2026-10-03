@@ -2,7 +2,7 @@ import {el} from '/elements.js';
 import {api} from '/api.js';
 import {listed} from '/directory.js';
 
-const pages = [['resources', '/resources'], ['query', '/query'], ['erd', '/erd']];
+const pages = [['resources', '/resources'], ['query', '/query'], ['policies', '/policies'], ['erd', '/erd']];
 
 export function chrome(current) {
   const header = document.querySelector('header');

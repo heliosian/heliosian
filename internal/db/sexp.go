@@ -62,28 +62,46 @@ func readSexp(src string) (*sexp, error) {
 	return s, nil
 }
 
-func readForms(src string) ([]*sexp, error) {
+type note struct {
+	section string
+	comment string
+}
+
+func readForms(src string) ([]*sexp, []note, error) {
 	p := &reader{src: []rune(src)}
 	out := []*sexp{}
+	notes := []note{}
+	section := ""
 	for {
+		p.comments = nil
 		p.space()
 		if p.done() {
-			return out, nil
+			return out, notes, nil
+		}
+		comment := []string{}
+		for _, line := range p.comments {
+			if heading, ok := strings.CutPrefix(line, ";;"); ok {
+				section, comment = strings.TrimSpace(heading), []string{}
+				continue
+			}
+			comment = append(comment, strings.TrimSpace(strings.TrimPrefix(line, ";")))
 		}
 		s, err := p.read()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if !s.isList {
-			return nil, s.errorf("%s stands outside a bracket", s.flat())
+			return nil, nil, s.errorf("%s stands outside a bracket", s.flat())
 		}
 		out = append(out, s)
+		notes = append(notes, note{section: section, comment: strings.Join(comment, " ")})
 	}
 }
 
 type reader struct {
-	src []rune
-	at  int
+	src      []rune
+	at       int
+	comments []string
 }
 
 func (p *reader) done() bool {
@@ -96,9 +114,11 @@ func (p *reader) space() {
 		case unicode.IsSpace(p.src[p.at]):
 			p.at++
 		case p.src[p.at] == ';':
+			start := p.at
 			for !p.done() && p.src[p.at] != '\n' {
 				p.at++
 			}
+			p.comments = append(p.comments, string(p.src[start:p.at]))
 		default:
 			return
 		}

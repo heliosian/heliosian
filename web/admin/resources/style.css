@@ -84,6 +84,74 @@
   word-break: break-word;
 }
 
+.access h3 {
+  margin: 4px 0 6px;
+  font-size: 13px;
+  color: var(--k);
+}
+
+.verdicts {
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.verdicts li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.verdict-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.verdict-text code {
+  color: var(--dim);
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+.verdicts .run {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.mark {
+  width: 1.5ch;
+  color: var(--warn);
+}
+
+.mark.held {
+  color: var(--accent);
+}
+
+.verdicts li:not(.held) .verdict-comment,
+.column-access a:not(.held) {
+  color: var(--dim);
+}
+
+.column-access {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.column-access td {
+  padding: 1px 10px 1px 0;
+  vertical-align: baseline;
+}
+
+.column-name {
+  color: var(--k);
+}
+
+.note {
+  color: var(--dim);
+}
+
 .referrer {
   margin-bottom: 18px;
 }

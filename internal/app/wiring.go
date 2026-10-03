@@ -205,7 +205,7 @@ func NewCore(cfg Config) *Core {
 	askAbout := ask.About(appName("ask"), taglineOf("ask"))
 	adminMux := http.NewServeMux()
 	adminMux.Handle("GET /{$}", http.RedirectHandler("/resources", http.StatusFound))
-	for _, page := range []string{"resources", "query", "erd"} {
+	for _, page := range []string{"resources", "query", "policies", "erd"} {
 		adminMux.HandleFunc("GET /"+page, func(w http.ResponseWriter, r *http.Request) {
 			serve.File(w, r, "web/admin/"+page+"/index.html")
 		})

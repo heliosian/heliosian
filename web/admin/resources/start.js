@@ -1,6 +1,8 @@
 import {el} from '/elements.js';
+import {api} from '/api.js';
 import {chrome, query, labelOf} from '/chrome.js';
 import {all, byName, link, cell, grid} from '/grid.js';
+import {policyList, clauseQuery, queryHref, clauseHref} from '/policies.js';
 
 chrome('resources');
 
@@ -96,12 +98,64 @@ async function listView(table) {
   update();
 }
 
+function mark(holds) {
+  return el('span', holds ? 'mark held' : 'mark', holds ? '✓' : '✗');
+}
+
+function verdictItem(clauses, v) {
+  const c = clauses[v.clause];
+  const li = el('li', v.holds ? 'held' : '');
+  const text = el('div', 'verdict-text');
+  text.append(link(clauseHref(v.clause), 'verdict-comment', c.comment || '(no comment)'), el('code', '', c.condition));
+  li.append(mark(v.holds), text, link(queryHref(clauseQuery(c)), 'run', 'run ↗'));
+  return li;
+}
+
+async function accessCard(table, id) {
+  const [clauses, ex] = await Promise.all([policyList(), api('GET', `/api/explain/${id}`)]);
+  const box = el('section', 'card access');
+  box.dataset.sheet = table.sheet;
+  box.append(el('h3', '', ex.readable ? 'readable: the row clauses that hold' : 'not readable as the viewer: no row clause holds'));
+  const rows = el('ul', 'verdicts');
+  for (const v of ex.clauses) {
+    rows.append(verdictItem(clauses, v));
+  }
+  box.append(rows);
+  const columns = el('table', 'column-access');
+  for (const c of ex.columns) {
+    const tr = el('tr', c.readable ? 'held' : '');
+    const why = el('td');
+    if (c.private) {
+      why.textContent = 'private: the import alone';
+    } else if (!c.clauses.length) {
+      why.textContent = 'no column clause names it';
+    } else {
+      for (const v of c.clauses) {
+        const a = link(clauseHref(v.clause), v.holds ? 'held' : '', clauses[v.clause].comment || clauses[v.clause].condition);
+        a.title = clauses[v.clause].condition;
+        why.append(a, ' ');
+      }
+    }
+    tr.append(el('td', 'column-name', c.column), el('td', '', ''), why);
+    tr.children[1].append(c.private ? el('span', 'mark', '·') : mark(c.readable));
+    columns.append(tr);
+  }
+  box.append(el('h3', '', 'columns'), columns);
+  return box;
+}
+
 async function detailView(table, id) {
   heading.replaceChildren(link(`#${table.name}`, '', table.name), ` / ${id}`);
   const answer = await scan(table, [{'=': [{path: 'id'}, id]}]);
   const row = answer.resources[table.name]?.[id];
   if (!row) {
-    view.replaceChildren(el('p', 'error', `no ${table.name} ${id} that you can see`));
+    const parts = [el('p', 'error', `no ${table.name} ${id} that the viewer can see`)];
+    try {
+      parts.push(await accessCard(table, id));
+    } catch {
+      parts.push(el('p', 'note', 'nor one you could see as yourself, so there is nothing to explain'));
+    }
+    view.replaceChildren(...parts);
     return;
   }
   const card = el('section', 'card');
@@ -120,6 +174,9 @@ async function detailView(table, id) {
   }
   card.append(fields);
   const sections = [card];
+  if (table.sheet !== 'generated') {
+    sections.push(await accessCard(table, id));
+  }
   const found = [];
   grids = [];
   const refs = [...(referrers.get(table.name) ?? []), ...(referrers.get('*') ?? [])];
