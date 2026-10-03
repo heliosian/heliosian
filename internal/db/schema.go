@@ -579,7 +579,7 @@ var Tables = []Table{
 			col("real_actor", Text),
 			enum("action", "insert", "set", "delete").required(),
 			col("table", Text).required(),
-			col("row", Text).required(),
+			ref("row", "").required(),
 			col("column", Text),
 			col("previous", Text),
 		},

@@ -43,12 +43,6 @@ func consentStep(m *Model) error {
 			}
 		}
 	}
-	// A change's row is text, since history names rows of tables since dropped.
-	for _, row := range m.Table(ChangesTable).All() {
-		if hidden[row["row"]] {
-			hidden[row["id"]] = true
-		}
-	}
 	consented := map[string]*View{}
 	for _, t := range Tables {
 		if t.Generated {

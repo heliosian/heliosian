@@ -17,11 +17,15 @@ func changesOf(rows []store.Row, id string) []store.Row {
 	return out
 }
 
-func TestAChangeMayNameARowOfADroppedTable(t *testing.T) {
+func TestAChangeNamesARowOfACurrentTable(t *testing.T) {
 	changes, _ := Lookup(ChangesTable)
-	row := map[string]string{"id": "chgX7pQ2m9KdLr", "at": "2026-09-24 16:00:05", "actor": "import", "action": "delete", "table": "GONE", "row": "gctyCb75KlEPU7"}
+	row := map[string]string{"id": "chgX7pQ2m9KdLr", "at": "2026-09-24 16:00:05", "actor": "import", "action": "delete", "table": "GROUP", "row": "grpyCb75KlEPU7"}
 	if err := changes.Check(row); err != nil {
-		t.Fatal(err)
+		t.Fatalf("a deleted group's change: %v", err)
+	}
+	row["row"] = "gctyCb75KlEPU7"
+	if err := changes.Check(row); err == nil {
+		t.Fatal("a change naming a row of no table loaded")
 	}
 }
 
