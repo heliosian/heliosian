@@ -215,7 +215,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 		t.Fatalf("the first run: %v, %d photos", p.counts, photos)
 	}
 	ines := personNamed(s, "Ines Okafor")
-	if got := photosOf(s, ines["id"]); len(got) != 2 || got[0]["photo"] != x.entries[6].photos[0] || got[1]["photo"] != x.website[0].photos[0] {
+	if got := photosOf(s, ines["id"]); len(got) != 2 || got[0]["photo"] != "photos/"+x.entries[6].photos[0] || got[1]["photo"] != "photos/"+x.website[0].photos[0] {
 		t.Fatalf("Ines's photos, Veracross's first: %v", got)
 	}
 	if ines["vc_bio"] != "Reads." {

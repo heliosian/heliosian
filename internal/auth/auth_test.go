@@ -122,7 +122,7 @@ func TestBearerPassesOnlyToTheDataAPI(t *testing.T) {
 	handler := a.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reached = r.URL.Path
 	}))
-	for path, through := range map[string]bool{"/api/q": true, "/api/do/photo": true, "/api/do": false, "/api/people": false, "/people": false} {
+	for path, through := range map[string]bool{"/api/q": true, "/api/do/photo": true, "/api/blob/pho00000000001/thumbnail": true, "/api/do": false, "/api/people": false, "/people": false} {
 		reached = ""
 		req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com"+path, nil)
 		req.Header.Set("Authorization", "Bearer anything")

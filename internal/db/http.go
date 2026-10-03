@@ -75,6 +75,7 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, importKey []byte, 
 
 func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, importKey []byte, now func() time.Time) {
 	registerDo(mux, s, queue, pics, importKey, now)
+	registerBlobs(mux, s, pics, importKey, now)
 	mux.HandleFunc("GET /api/openapi.json", openapi)
 	mux.HandleFunc("QUERY /api/q", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()

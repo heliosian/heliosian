@@ -113,7 +113,7 @@ func unfiltered(t *testing.T, src string) *Query {
 	if err != nil {
 		t.Fatal(err)
 	}
-	q, err := (&compiler{policy: true}).query(tree)
+	q, err := newCompiler(true).query(tree)
 	if err != nil {
 		t.Fatalf("%s: %v", src, err)
 	}

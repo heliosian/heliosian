@@ -117,13 +117,12 @@ func cropBox(row store.Row) (image.Rectangle, bool, error) {
 }
 
 func (p *Pictures) store(ctx context.Context, content []byte) (string, error) {
-	name := blob.Name(content, "jpg")
-	full := pictureFolder + "/" + name
-	held, err := p.bucket.Exists(ctx, full)
+	name := pictureFolder + "/" + blob.Name(content, "jpg")
+	held, err := p.bucket.Exists(ctx, name)
 	if err != nil || held {
 		return name, err
 	}
-	return name, p.bucket.PutMedia(ctx, full, "image/jpeg", content)
+	return name, p.bucket.Put(ctx, name, "image/jpeg", content)
 }
 
 func (p *Pictures) make(id string) error {
@@ -132,7 +131,7 @@ func (p *Pictures) make(id string) error {
 	if !ok {
 		return nil
 	}
-	src, _, err := p.bucket.Get(ctx, pictureFolder+"/"+row["photo"])
+	src, _, err := p.bucket.Get(ctx, row["photo"])
 	if err != nil {
 		return err
 	}

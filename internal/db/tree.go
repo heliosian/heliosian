@@ -24,7 +24,7 @@ func ParseJSON(raw []byte) (*Query, error) {
 	if err != nil {
 		return nil, err
 	}
-	return (&compiler{}).query(s)
+	return newCompiler(false).query(s)
 }
 
 func (q *Query) Tree() map[string]any {
@@ -259,7 +259,23 @@ func condFromJSON(v any, where string) (*sexp, error) {
 		}
 		return out, nil
 	}
-	return nil, fmt.Errorf("%s: no condition %s", where, op)
+	return callFromJSON(op, arg, at)
+}
+
+func callFromJSON(op string, arg any, at string) (*sexp, error) {
+	args, ok := arg.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%s is not a list of arguments", at)
+	}
+	out := bracket(word(op))
+	for i, a := range args {
+		o, err := operandFromJSON(a, fmt.Sprintf("%s[%d]", at, i))
+		if err != nil {
+			return nil, err
+		}
+		out.list = append(out.list, o)
+	}
+	return out, nil
 }
 
 func operandFromJSON(v any, where string) (*sexp, error) {
@@ -305,7 +321,7 @@ func operandFromJSON(v any, where string) (*sexp, error) {
 		}
 		return bracket(append([]*sexp{word("select"), word(table + "." + column)}, conds...)...), nil
 	}
-	return nil, fmt.Errorf("%s: no value %s", where, op)
+	return callFromJSON(op, arg, at)
 }
 
 func scanToJSON(s *sexp, at int) map[string]any {
@@ -393,13 +409,19 @@ func operandToJSON(s *sexp) any {
 		switch s.head() {
 		case "count", "sum":
 			return map[string]any{s.head(): scanToJSON(s, 1)}
+		case "select":
+			table, column, _ := strings.Cut(s.list[1].text, ".")
+			out := map[string]any{"from": table, "column": column}
+			if len(s.list) > 2 {
+				out["where"] = condsToJSON(s.list[2:])
+			}
+			return map[string]any{"select": out}
 		}
-		table, column, _ := strings.Cut(s.list[1].text, ".")
-		out := map[string]any{"from": table, "column": column}
-		if len(s.list) > 2 {
-			out["where"] = condsToJSON(s.list[2:])
+		args := []any{}
+		for _, a := range s.list[1:] {
+			args = append(args, operandToJSON(a))
 		}
-		return map[string]any{"select": out}
+		return map[string]any{s.head(): args}
 	}
 	switch {
 	case s.kind == atomString:

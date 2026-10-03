@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -37,7 +39,7 @@ func TestPoliciesRefuse(t *testing.T) {
 		policySource + `(read MEMBER.price true)`:                                                                      "policies are define",
 		policySource + `(define (nobody) false)`:                                                                       "nobody is never used",
 	} {
-		if _, err := compilePolicies(src); err == nil || !strings.Contains(err.Error(), want) {
+		if _, _, err := compilePolicies(src); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("compilePolicies = %v, want %q", err, want)
 		}
 	}
@@ -433,15 +435,48 @@ func TestAuthorize(t *testing.T) {
 	}
 }
 
-func TestClientsGetNoPolicyLanguage(t *testing.T) {
-	for src, want := range map[string]string{
-		`(from GROUP @g (where (in id (ancestors @g))))`: "belongs to policies",
-		`(from GROUP (where (system "import")))`:         "belongs to policies",
-		`(from GROUP (where (manages id)))`:              "no condition manages",
-		`(from GROUP @row)`:                              "is taken",
-	} {
-		if _, err := Parse(src); err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("Parse(%s) = %v, want %q", src, err, want)
+func TestClientsGetThePolicyLanguage(t *testing.T) {
+	s := sample(t)
+	ids := func(src string) []string {
+		out := []string{}
+		for _, row := range as(t, s, parent, src) {
+			out = append(out, row["id"])
 		}
+		return out
+	}
+	for call, body := range map[string]string{
+		`(from MEMBER (where (in person (household @viewer))))`: `(from MEMBER (where (in person (select MEMBER.person (in group (select MEMBER.group (= person @viewer) (= role "manager") (= group.kind "family"))) (= role "member")))))`,
+		`(from GROUP @g (where (manages @g)))`:                  `(from GROUP @g (where (exists MEMBER (in group (ancestors @g)) (= person @viewer) (= role "manager") (= status "yes"))))`,
+		`(from PERSON @row (where (person_visible @row)))`:      `(from PERSON @row (where (or (= @row @viewer) (and (= @row.source "guest") (exists MEMBER (in group (select MEMBER.group (= person @viewer))) (= person @row))) (and (!= @row.source "guest") (not @row.hidden) (blank @row.deactivated)))))`,
+	} {
+		got, want := ids(call), ids(body)
+		if len(want) == 0 || !slices.Equal(got, want) {
+			t.Errorf("%s answered %v, its body %v", call, got, want)
+		}
+	}
+	if got := ids(`(from GROUP (where (system "import")))`); len(got) != 0 {
+		t.Errorf("a person's query is the import's: %v", got)
+	}
+	if _, err := Parse(`(from GROUP @viewer)`); err == nil || !strings.Contains(err.Error(), "can't name a row") {
+		t.Errorf("naming a row @viewer: %v", err)
+	}
+}
+
+func TestTheJSONFormCarriesDefinitionsAndAncestors(t *testing.T) {
+	text := `(from GROUP @g (where (in parent (ancestors @g)) (visible @g) (exists MEMBER (= group @g) (in person (household @viewer))) (system "import")))`
+	q, err := Parse(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(q.Tree())
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := ParseJSON(raw)
+	if err != nil {
+		t.Fatalf("%s: %v", raw, err)
+	}
+	if back.String() != q.String() {
+		t.Errorf("round trip %s, want %s", back.String(), q.String())
 	}
 }

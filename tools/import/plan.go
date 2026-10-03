@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -156,7 +157,8 @@ func (p *planner) portraits() ([]portrait, error) {
 	held := map[string]bool{}
 	for _, pid := range p.st.photos.order {
 		r := p.st.photos.rows[pid]
-		held[r["person"]+"/"+strings.TrimSuffix(r["photo"], filepath.Ext(r["photo"]))] = true
+		name := path.Base(r["photo"])
+		held[r["person"]+"/"+strings.TrimSuffix(name, path.Ext(name))] = true
 	}
 	out := []portrait{}
 	for _, id := range p.ids {

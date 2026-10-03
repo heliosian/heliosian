@@ -1,0 +1,60 @@
+#src {
+  display: block;
+  width: 100%;
+  min-height: 9em;
+  padding: 10px 12px;
+  font: 13px/1.5 var(--mono);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+  resize: vertical;
+  tab-size: 2;
+}
+
+#src:focus {
+  border-color: var(--accent);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 16px;
+}
+
+#run {
+  color: var(--ink);
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.hint {
+  color: var(--faint);
+}
+
+.canonical {
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  color: var(--dim);
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
+.answer {
+  margin-bottom: 18px;
+}
+
+.answer h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--k);
+}
+
+.answer .scroll {
+  max-height: 520px;
+}

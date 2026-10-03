@@ -14,9 +14,11 @@ Helios Admin, at `admin.heliosian.com`, holds views of the data behind the apps.
 
 `/erd` (`web/admin/erd/`) is an entity relationship diagram of the spec, drawn in the browser on each load: a box per table, edged in its spreadsheet's colour, with its columns and their kinds, and an arrow per reference from the table that has it to its target, labelled with the column: a single arrowhead for one, a double for a list. A box opens its table under Resources. It draws with the vendored `mermaid.min.js` bundle, unpatched: a list of references is drawn as Mermaid's composition and the page redraws that marker (`-compositionEnd`) as the double arrowhead after rendering, which a new copy of the bundle needs checked again.
 
-## API
+## Query
 
-`/swagger` (`web/admin/swagger/`) is Swagger UI over the spec; its Try it out runs as the signed-in person. It is the vendored `swagger-ui-dist` bundle and stylesheet, since the security policy allows no scripts from elsewhere. The bundle is patched: where an example draws one key of an object keyed by data, it names the key the value schema's `x-additionalPropertiesName` as it stands (`<id>` in `resources`) rather than with a counter appended, in both sample generators (`ae[_>1?o+s:o]=u`); a new copy of the bundle needs the patch again.
+`/query` (`web/admin/query/`) runs a query typed or pasted into its box, in the language (`docs/datamodel.md`, Queries), through `QUERY /api/q` as the signed-in person - or whoever they view as - with ⌘↵ or Run. The policies' definitions are part of the language, so a condition copied out of a policy runs as it stands inside a `from` naming its row: `(from GROUP @row (where (visible @row)))`. It answers the query's canonical form, how many rows and how long, the answered rows in the shared grid, and every row the includes brought, a grid per table; a query that does not parse shows the reason with the box's cursor at the place. The query rides in the address as `?q=`, so a link reruns it.
+
+The grid on this page and Resources' is `web/admin/grid.js` and `grid.css`: the columns any row fills, references as links to the row under Resources, sorting, the quick filters and the trees. A blob cell links to its object through `/api/blob/{id}/{column}` (`docs/datamodel.md`, The query API), opening in a new tab: a `thumbnail` shows inline, any other blob as its file type. A row's own page shows its images and plays its audio there.
 
 ## The spec
 

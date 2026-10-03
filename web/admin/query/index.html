@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Query · Helios Admin</title>
+<link rel="stylesheet" href="/chrome.css">
+<link rel="stylesheet" href="/grid.css">
+<link rel="stylesheet" href="/query/style.css">
+</head>
+<body>
+<header>
+<div class="tools">
+<h1>query<span class="sub">/ runs as you, or whoever you view as</span></h1>
+<span id="summary" class="summary"></span>
+</div>
+</header>
+<main>
+<textarea id="src" spellcheck="false" autofocus placeholder="(from GROUP @g (where (manages @g)))"></textarea>
+<div class="actions">
+<button id="run" type="button">run</button>
+<span class="hint">⌘↵</span>
+<input id="filter" type="search" placeholder="filter rows">
+<button id="open" type="button" hidden>expand all</button>
+<button id="close" type="button" hidden>collapse all</button>
+</div>
+<div id="out"></div>
+</main>
+<script type="module" src="/query/start.js"></script>
+</body>
+</html>

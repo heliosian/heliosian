@@ -86,7 +86,7 @@ func made(t *testing.T, s *Store, table, id, column string) store.Row {
 
 func thumbOf(t *testing.T, pics *Pictures, name string) string {
 	t.Helper()
-	content, _, err := pics.bucket.Get(context.Background(), pictureFolder+"/"+name)
+	content, _, err := pics.bucket.Get(context.Background(), name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func thumbOf(t *testing.T, pics *Pictures, name string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return blob.Name(thumb, "jpg")
+	return pictureFolder + "/" + blob.Name(thumb, "jpg")
 }
 
 func TestPersonPhotoAddsFirst(t *testing.T) {
@@ -111,14 +111,14 @@ func TestPersonPhotoAddsFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 		row := made(t, s, "PHOTO", out.Result[0], "ready")
-		if row["person"] != staff || row["photo"] != out.Hash+".png" || row["crop"] != "" || row["thumbnail"] == "" {
+		if row["person"] != staff || row["photo"] != pictureFolder+"/"+out.Hash+".png" || row["crop"] != "" || row["thumbnail"] == "" {
 			t.Fatalf("photo %d answered %+v and reads %v", i, out, row)
 		}
-		if found, err := pics.bucket.Exists(context.Background(), pictureFolder+"/"+row["photo"]); err != nil || !found {
+		if found, err := pics.bucket.Exists(context.Background(), row["photo"]); err != nil || !found {
 			t.Fatalf("photo %d's original is not in the bucket: %v", i, err)
 		}
-		re, mimeType, err := pics.bucket.Get(context.Background(), pictureFolder+"/"+row["reencode"])
-		if err != nil || mimeType != "image/jpeg" || blob.Name(re, "jpg") != row["reencode"] {
+		re, mimeType, err := pics.bucket.Get(context.Background(), row["reencode"])
+		if err != nil || mimeType != "image/jpeg" || pictureFolder+"/"+blob.Name(re, "jpg") != row["reencode"] {
 			t.Fatalf("photo %d's re-encode %q is not its own stored jpeg: %v", i, row["reencode"], err)
 		}
 		if row["thumbnail"] != thumbOf(t, pics, row["reencode"]) {
@@ -160,7 +160,7 @@ func TestACropBoxMakesTheCropAndThumbnail(t *testing.T) {
 	}
 	id := out.Result[0]
 	row := made(t, s, "PHOTO", id, "crop")
-	content, _, err := pics.bucket.Get(context.Background(), pictureFolder+"/"+row["crop"])
+	content, _, err := pics.bucket.Get(context.Background(), row["crop"])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,8 +240,8 @@ func TestStartupMakesPhotosNotReady(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
 	original := pngOf(t, 7)
-	name := blob.Name(original, "png")
-	if err := bucket.Put(context.Background(), pictureFolder+"/"+name, "image/png", original); err != nil {
+	name := pictureFolder + "/" + blob.Name(original, "png")
+	if err := bucket.Put(context.Background(), name, "image/png", original); err != nil {
 		t.Fatal(err)
 	}
 	if err := commit(s, PeopleSheet, store.Insert("PHOTO", store.Row{"id": "pho00000000099", "person": staff, "photo": name, "order": "m"})); err != nil {

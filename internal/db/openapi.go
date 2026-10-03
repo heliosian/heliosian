@@ -152,7 +152,7 @@ func spec() schema {
 	examples := schema{}
 	for _, t := range Tables {
 		schemas[t.Name] = tableSchema(t)
-		resources[t.Name] = schema{"type": "object", "additionalProperties": component(t.Name), "x-additionalPropertiesName": "<id>"}
+		resources[t.Name] = schema{"type": "object", "additionalProperties": component(t.Name)}
 		examples[t.Name] = schema{"summary": t.Name, "value": "(from " + t.Name + " (limit 20))"}
 	}
 	tables := tableNames()

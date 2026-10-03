@@ -102,14 +102,18 @@ type pathSpec struct {
 type define struct {
 	params []string
 	body   *sexp
-	used   bool
 }
 
 type compiler struct {
 	policy  bool
 	defines map[string]*define
+	used    map[string]bool
 	hidden  int
 	touched []*scope
+}
+
+func newCompiler(policy bool) *compiler {
+	return &compiler{policy: policy, defines: definitions, used: map[string]bool{}}
 }
 
 var keywords = []string{"true", "false", "today", "now", "asc", "desc"}
@@ -119,7 +123,7 @@ func Parse(src string) (*Query, error) {
 	if err != nil {
 		return nil, err
 	}
-	return (&compiler{}).query(tree)
+	return newCompiler(false).query(tree)
 }
 
 func (cx *compiler) query(tree *sexp) (*Query, error) {
@@ -198,12 +202,12 @@ func (cx *compiler) scanHead(s *sexp, at int) (*scan, []*sexp, error) {
 	rest := s.list[at+1:]
 	if len(rest) > 0 && !rest[0].isList && rest[0].kind == atomAt {
 		out.name = rest[0].text
-		if slices.Contains([]string{"viewer", "row", "old", "new"}, out.name) {
-			return nil, nil, rest[0].errorf("@%s is taken and can't name a row", out.name)
+		if out.name == "viewer" {
+			return nil, nil, rest[0].errorf("@viewer is the viewer and can't name a row")
 		}
 		rest = rest[1:]
 	}
-	if out.name == "" && cx.policy {
+	if out.name == "" {
 		cx.hidden++
 		out.name = fmt.Sprintf("_%d", cx.hidden)
 	}
@@ -402,9 +406,6 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 			return found
 		}}, nil
 	case "system":
-		if !cx.policy {
-			return cond{}, s.errorf("system belongs to policies")
-		}
 		if len(args) != 1 || args[0].isList || args[0].kind != atomString {
 			return cond{}, s.errorf("system takes one quoted name")
 		}
@@ -429,7 +430,7 @@ func (cx *compiler) expand(call *sexp, d *define, sc *scope) (*sexp, error) {
 	if len(args) != len(d.params) {
 		return nil, call.errorf("%s takes %d arguments", call.head(), len(d.params))
 	}
-	d.used = true
+	cx.used[call.head()] = true
 	bound := map[string]*sexp{}
 	for i, p := range d.params {
 		bound[p] = anchor(args[i], sc)
@@ -619,9 +620,6 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 	case "select":
 		return cx.selectSet(s, sc, x)
 	case "ancestors":
-		if !cx.policy {
-			return nil, typ{}, s.errorf("ancestors belongs to policies")
-		}
 		if len(s.list) != 2 {
 			return nil, typ{}, s.errorf("ancestors takes one group")
 		}
@@ -678,10 +676,8 @@ func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueS
 		return nil, typ{}, err
 	}
 	inner := &scan{table: t, guarded: !cx.policy}
-	if cx.policy {
-		cx.hidden++
-		inner.name = fmt.Sprintf("_%d", cx.hidden)
-	}
+	cx.hidden++
+	inner.name = fmt.Sprintf("_%d", cx.hidden)
 	within := &scope{table: t, name: inner.name, outer: sc}
 	mark := len(cx.touched)
 	inner.conds, err = cx.conds(s.list[2:], within)

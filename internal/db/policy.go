@@ -769,48 +769,51 @@ type policySet struct {
 	delete map[string][]cond
 }
 
-var policies *policySet
+var (
+	policies    *policySet
+	definitions map[string]*define
+)
 
 func init() {
-	p, err := compilePolicies(policySource)
+	p, d, err := compilePolicies(policySource)
 	if err != nil {
 		panic("db: policies: " + err.Error())
 	}
-	policies = p
+	policies, definitions = p, d
 }
 
-func compilePolicies(src string) (*policySet, error) {
+func compilePolicies(src string) (*policySet, map[string]*define, error) {
 	forms, err := readForms(src)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	cx := &compiler{policy: true, defines: map[string]*define{}}
+	cx := &compiler{policy: true, defines: map[string]*define{}, used: map[string]bool{}}
 	out := &policySet{read: map[string][]cond{}, open: map[string]bool{}, insert: map[string][]cond{}, set: map[string][]cond{}, delete: map[string][]cond{}}
 	for _, form := range forms {
 		head := form.head()
 		if head == "define" {
 			if err := cx.define(form); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			continue
 		}
 		if head == "read" && len(form.list) == 4 {
 			if err := cx.columnGrant(form, out); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			continue
 		}
 		if len(form.list) != 3 || form.list[1].isList || form.list[1].kind != atomName {
-			return nil, form.errorf("a policy is (%s TABLE[.column] condition)", head)
+			return nil, nil, form.errorf("a policy is (%s TABLE[.column] condition)", head)
 		}
 		tableName, column, hasColumn := strings.Cut(form.list[1].text, ".")
 		t, err := tableNamed(&sexp{text: tableName, pos: form.list[1].pos})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if hasColumn {
 			if _, err := columnNamed(t, column, form.list[1]); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 		var sc *scope
@@ -825,27 +828,27 @@ func compilePolicies(src string) (*policySet, error) {
 		case head == "delete" && !hasColumn:
 			sc, into = &scope{table: t, name: "old"}, out.delete
 		default:
-			return nil, form.errorf("policies are define, read TABLE, read TABLE (column…), set TABLE.column, insert TABLE and delete TABLE")
+			return nil, nil, form.errorf("policies are define, read TABLE, read TABLE (column…), set TABLE.column, insert TABLE and delete TABLE")
 		}
 		c, err := cx.cond(form.list[2], sc)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		into[form.list[1].text] = append(into[form.list[1].text], c)
 	}
 	for _, form := range forms {
-		if form.head() == "define" && !cx.defines[form.list[1].list[0].text].used {
-			return nil, form.errorf("%s is never used", form.list[1].list[0].text)
+		if form.head() == "define" && !cx.used[form.list[1].list[0].text] {
+			return nil, nil, form.errorf("%s is never used", form.list[1].list[0].text)
 		}
 	}
 	for _, t := range Tables {
 		for _, c := range t.Columns {
 			if _, ok := out.read[t.Name+"."+c.Name]; !ok && !c.Private {
-				return nil, fmt.Errorf("%s.%s has no read grant", t.Name, c.Name)
+				return nil, nil, fmt.Errorf("%s.%s has no read grant", t.Name, c.Name)
 			}
 		}
 	}
-	return out, nil
+	return out, cx.defines, nil
 }
 
 func (cx *compiler) columnGrant(form *sexp, out *policySet) error {

@@ -103,7 +103,7 @@ Helios Ask, in `docs/ask/`:
 
 Helios Admin, in `docs/admin/`:
 
-- [admin.md](docs/admin/admin.md) — the views of the data behind the apps: the table browser, the schema diagram, Swagger UI, and the OpenAPI spec of the query API
+- [admin.md](docs/admin/admin.md) — the views of the data behind the apps: the table browser, the query runner, the schema diagram, and the OpenAPI spec of the query API
 
 Audits, in `docs/audits/`:
 
