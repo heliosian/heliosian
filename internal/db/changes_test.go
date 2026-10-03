@@ -7,12 +7,43 @@ import (
 	"heliosian/internal/store"
 )
 
+func changesOf(rows []store.Row, id string) []store.Row {
+	out := []store.Row{}
+	for _, row := range rows {
+		if row["row"] == id {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+func TestAChangeMayNameARowOfADroppedTable(t *testing.T) {
+	changes, _ := Lookup(ChangesTable)
+	row := map[string]string{"id": "chgX7pQ2m9KdLr", "at": "2026-09-24 16:00:05", "actor": "import", "action": "delete", "table": "GONE", "row": "gctyCb75KlEPU7"}
+	if err := changes.Check(row); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAChangeToAHiddenRowIsHidden(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": staff}, store.Row{"pronouns": "she/her"})); err != nil {
+		t.Fatal(err)
+	}
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": staff}, store.Row{"consent": "withheld"})); err != nil {
+		t.Fatal(err)
+	}
+	if shown := changesOf(s.Model().Shown(ChangesTable).All(), staff); len(shown) != 0 {
+		t.Errorf("changes to a withheld person shown: %v", shown)
+	}
+}
+
 func TestEveryWriteIsAChange(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"title": "Autumn Picnic"})); err != nil {
 		t.Fatal(err)
 	}
-	changes := s.Model().Table(ChangesTable).Referencing("row", "grp00000000040")
+	changes := changesOf(s.Model().Table(ChangesTable).All(), "grp00000000040")
 	if len(changes) != 3 {
 		t.Fatalf("the picnic's changes = %v", changes)
 	}
@@ -39,10 +70,10 @@ func TestAChangeToAPrivateColumnIsHidden(t *testing.T) {
 	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": staff}, store.Row{"vc_phone": "650-555-0100", "pronouns": "she/her"})); err != nil {
 		t.Fatal(err)
 	}
-	if all := s.Model().Table(ChangesTable).Referencing("row", staff); len(all) != 2 {
+	if all := changesOf(s.Model().Table(ChangesTable).All(), staff); len(all) != 2 {
 		t.Fatalf("the changes recorded = %v", all)
 	}
-	shown := s.Model().Shown(ChangesTable).Referencing("row", staff)
+	shown := changesOf(s.Model().Shown(ChangesTable).All(), staff)
 	if len(shown) != 1 || shown[0]["column"] != "pronouns" {
 		t.Errorf("the changes shown = %v", shown)
 	}
