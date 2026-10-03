@@ -12,6 +12,7 @@ import (
 	"net/http"
 	netmail "net/mail"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/net/html/charset"
@@ -31,6 +32,7 @@ type DocumentFiler struct {
 	store    *Store
 	embedder *artifacts.Vertex
 	holder   *store.Queue
+	filing   sync.Mutex
 }
 
 func RegisterDocuments(mux *http.ServeMux, s *Store, embedder *artifacts.Vertex, holder *store.Queue, mailbox artifacts.Inbox) *DocumentFiler {
@@ -133,6 +135,8 @@ func (in *DocumentFiler) file(ctx context.Context, actor access.Actor, m Documen
 }
 
 func (in *DocumentFiler) record(ctx context.Context, actor access.Actor, doc *Document) error {
+	in.filing.Lock()
+	defer in.filing.Unlock()
 	if in.known(doc) {
 		slog.Info("artifacts: already on file", "key", doc.Key, "subject", doc.Title, "date", doc.Date)
 		return nil

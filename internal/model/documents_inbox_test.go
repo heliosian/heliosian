@@ -207,6 +207,33 @@ func TestAFreshStoreReadsWhatWasFiled(t *testing.T) {
 	}
 }
 
+func TestANewsletterForwardedByTwoParentsAtOnceIsFiledOnce(t *testing.T) {
+	in, _, sheet, queue := testInbox(t)
+	saved, err := ReadSaved(documentSamples + "/2026-09-11-newsletter-sep-11.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	errs := make(chan error, 2)
+	for _, id := range []string{"copy-1@mail1.veracross.com", "copy-2@mail1.veracross.com"} {
+		m := saved.(DocumentMessage)
+		m.MessageID = id
+		go func() { errs <- in.file(context.Background(), access.System("test"), m) }()
+	}
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	queue.Flush()
+	_, rows, err := sheet.Table(DocumentsApp, documentsTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || len(in.store.Model().Documents.Documents) != 1 {
+		t.Fatalf("rows: %+v", rows)
+	}
+}
+
 func postMail(in *DocumentFiler, key, raw string) int {
 	timestamp, signature := mail.SignMailgun(key, "token", time.Now())
 	form := url.Values{"timestamp": {timestamp}, "token": {"token"}, "signature": {signature}, "body-mime": {raw}}
