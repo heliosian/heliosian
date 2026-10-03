@@ -1,0 +1,250 @@
+:root {
+  --ink: #0e1719;
+  --panel: #142124;
+  --raise: #1a2b2f;
+  --line: #24383c;
+  --text: #d6e4e1;
+  --dim: #7f9a96;
+  --faint: #4f6763;
+  --accent: #3fd0b4;
+  --hit: #ffd166;
+  --warn: #ffb4a2;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+[data-sheet] {
+  --k: #9fb3b0;
+}
+
+[data-sheet="datapeople"] { --k: #f4a261; }
+[data-sheet="datagroups"] { --k: #8ecae6; }
+[data-sheet="datadocuments"] { --k: #90be6d; }
+[data-sheet="datamail"] { --k: #c77dff; }
+[data-sheet="dataconfig"] { --k: #ffd166; }
+[data-sheet="generated"] { --k: #3fd0b4; }
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--ink);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font: 13px/1.45 var(--mono);
+  color: var(--text);
+  background:
+    radial-gradient(1200px 500px at 90% -10%, rgba(63, 208, 180, 0.05), transparent 60%),
+    radial-gradient(900px 400px at -10% 0%, rgba(247, 37, 133, 0.035), transparent 60%),
+    var(--ink);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(14, 23, 25, 0.86);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 28px;
+}
+
+.bar + .tools {
+  border-top: 1px solid var(--line);
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+}
+
+.brand .mark {
+  color: var(--accent);
+}
+
+nav {
+  display: flex;
+  gap: 4px;
+}
+
+nav a {
+  padding: 3px 10px;
+  border-radius: 5px;
+  color: var(--dim);
+}
+
+nav a:hover {
+  color: var(--text);
+  background: var(--raise);
+  text-decoration: none;
+}
+
+nav a.here {
+  color: var(--ink);
+  background: var(--accent);
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 28px;
+}
+
+.tools h1 {
+  margin: 0 12px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.tools h1 .sub {
+  margin-left: 8px;
+  font-weight: 400;
+  color: var(--dim);
+}
+
+input[type="search"] {
+  flex: 0 1 340px;
+  padding: 5px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  outline: none;
+}
+
+input[type="search"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(63, 208, 180, 0.10);
+}
+
+input[type="search"]::placeholder {
+  color: var(--faint);
+}
+
+button {
+  padding: 4px 11px;
+  font: inherit;
+  color: var(--dim);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button:hover {
+  color: var(--text);
+  border-color: var(--dim);
+}
+
+.summary {
+  margin-left: auto;
+  color: var(--dim);
+}
+
+.spoof {
+  position: relative;
+  margin-left: auto;
+}
+
+.spoof.on > button {
+  color: var(--ink);
+  background: var(--hit);
+  border-color: var(--hit);
+}
+
+.spoof .stop {
+  margin-left: 4px;
+}
+
+.spoof-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 340px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.spoof-menu input[type="search"] {
+  width: 100%;
+}
+
+.spoof-menu .section {
+  margin: 8px 4px 2px;
+  font-size: 11px;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.spoof-menu .person {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 3px 6px;
+  text-align: left;
+  color: var(--text);
+  border: none;
+  border-radius: 4px;
+}
+
+.spoof-menu .person:hover,
+.spoof-menu .person.active {
+  background: var(--raise);
+}
+
+.spoof-menu .person .words {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dim);
+}
+
+.spoof-menu .empty {
+  padding: 4px 6px;
+  color: var(--dim);
+}
+
+main {
+  padding: 16px 28px 80px;
+}
+
+.error {
+  padding: 12px 16px;
+  color: var(--warn);
+  background: rgba(255, 112, 80, 0.10);
+  border: 1px solid rgba(255, 112, 80, 0.35);
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
+::selection {
+  background: rgba(63, 208, 180, 0.35);
+}

@@ -52,7 +52,7 @@ const (
 var Sheets = []string{PeopleSheet, GroupsSheet, DocumentsSheet, MailSheet, ConfigSheet}
 
 var (
-	apps     = []string{"who", "when", "team", "celebrate", "birthday", "loop", "ask", "home"}
+	apps     = []string{"who", "when", "team", "celebrate", "birthday", "loop", "ask", "admin", "home"}
 	grades   = []string{"K", "1", "2", "3", "4", "5", "6", "7", "8"}
 	sources  = []string{"veracross", "manual", "guest"}
 	audience = []string{"everyone", "members", "managers"}

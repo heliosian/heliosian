@@ -30,6 +30,7 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/model"
+	"heliosian/internal/serve"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
@@ -202,6 +203,13 @@ func NewCore(cfg Config) *Core {
 		About:     loopAbout,
 	})
 	askAbout := ask.About(appName("ask"), taglineOf("ask"))
+	adminMux := http.NewServeMux()
+	adminMux.Handle("GET /{$}", http.RedirectHandler("/resources", http.StatusFound))
+	for _, page := range []string{"resources", "erd", "swagger"} {
+		adminMux.HandleFunc("GET /"+page, func(w http.ResponseWriter, r *http.Request) {
+			serve.File(w, r, "web/admin/"+page+"/index.html")
+		})
+	}
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: model.HomePreviewHead(models, homeStyle)},
@@ -213,6 +221,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: hooks.PreviewHead()},
 		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
 		{Key: "ask", Title: "Helios Ask", Mux: askMux, Preview: askAbout.PreviewHead},
+		{Key: "admin", Title: "Helios Admin", Mux: adminMux},
 	}
 	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin, documents, cfg.BrowserKey)
 	ask.Register(askMux, ask.Sources{Registry: registry, Now: time.Now}, cfg.Asker, spend, cfg.ChatKey, askAbout)

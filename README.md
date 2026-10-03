@@ -101,6 +101,10 @@ Helios Ask, in `docs/ask/`:
 - [data.md](docs/ask/data.md) — the call to Claude, the conversation, the tools and their limits
 - [artifacts.md](docs/ask/artifacts.md) — the community's documents, its mail, its website's pages and its parent portal: what is in them and what is withheld, how they become markdown, chunks and embeddings, and how they are searched
 
+Helios Admin, in `docs/admin/`:
+
+- [admin.md](docs/admin/admin.md) — the views of the data behind the apps: the table browser, the schema diagram, Swagger UI, and the OpenAPI spec of the query API
+
 Audits, in `docs/audits/`:
 
 - [README.md](docs/audits/README.md) — how every audit is run: reading the existing issues first, and how findings are filed and closed

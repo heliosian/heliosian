@@ -1,0 +1,199 @@
+.layout {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+}
+
+#rail {
+  position: sticky;
+  top: 90px;
+  align-self: start;
+  max-height: calc(100vh - 90px);
+  overflow: auto;
+  padding: 16px 0 40px 28px;
+}
+
+.sheet {
+  margin-bottom: 12px;
+}
+
+.sheet-name {
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--k);
+}
+
+.sheet a {
+  display: block;
+  padding: 1px 8px;
+  border-left: 2px solid color-mix(in srgb, var(--k) 25%, transparent);
+  color: var(--dim);
+}
+
+.sheet a:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.sheet a.here {
+  color: #fff;
+  border-left-color: var(--k);
+  background: color-mix(in srgb, var(--k) 10%, transparent);
+}
+
+#heading a {
+  color: #fff;
+}
+
+.scroll {
+  overflow: auto;
+  max-height: calc(100vh - 140px);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--k);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.referrer .scroll {
+  max-height: 360px;
+}
+
+.grid {
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.grid th {
+  position: sticky;
+  top: 0;
+  padding: 4px 8px;
+  text-align: left;
+  font-weight: 700;
+  color: var(--k);
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.grid th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.grid th.sortable:hover {
+  color: #fff;
+}
+
+.grid th[data-sort="asc"]::after {
+  content: " ▲";
+}
+
+.grid th[data-sort="desc"]::after {
+  content: " ▼";
+}
+
+.grid tr.quick th {
+  top: 25px;
+  padding: 2px 4px 4px;
+}
+
+.grid tr.quick input,
+.grid tr.quick select {
+  width: 100%;
+  min-width: 6ch;
+  padding: 1px 6px;
+  font: inherit;
+  font-weight: 400;
+  color: var(--text);
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  outline: none;
+}
+
+.grid tr.quick input:focus,
+.grid tr.quick select:focus {
+  border-color: var(--accent);
+}
+
+.grid tr.quick input:not(:placeholder-shown),
+.grid tr.quick select.set {
+  border-color: var(--hit);
+}
+
+.grid td {
+  max-width: 32ch;
+  padding: 1px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
+}
+
+.grid tbody tr:hover {
+  background: var(--raise);
+}
+
+.grid .toggle {
+  width: 2ch;
+  margin-right: 4px;
+  padding: 0;
+  color: var(--k);
+  border: none;
+}
+
+.grid .toggle:disabled {
+  cursor: default;
+}
+
+.grid td.id a {
+  color: var(--faint);
+}
+
+.grid td.id a:hover {
+  color: var(--accent);
+}
+
+.card {
+  margin-bottom: 18px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--k);
+  border-radius: 8px;
+}
+
+.card h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: #fff;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 1px 16px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.fields dt {
+  color: var(--k);
+}
+
+.fields dd {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.referrer {
+  margin-bottom: 18px;
+}
+
+.referrer h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--k);
+}

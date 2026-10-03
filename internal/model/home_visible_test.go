@@ -104,7 +104,7 @@ func TestAppsAsResources(t *testing.T) {
 		return out
 	}
 	parent := apps("jordan.whitfield@heliosschool.org")
-	if got := keys(parent); !slices.Equal(got, []string{"home", "who", "team", "celebrate", "birthday", "when", "loop", "ask"}) {
+	if got := keys(parent); !slices.Equal(got, []string{"home", "who", "team", "celebrate", "birthday", "when", "loop", "ask", "admin"}) {
 		t.Errorf("apps in order = %v", got)
 	}
 	if l := listed(parent); !l["home"] || !l["who"] || !l["celebrate"] || !l["birthday"] {
@@ -199,11 +199,11 @@ func TestVisibilityNarrowsAnApp(t *testing.T) {
 	if got := c.Model().HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
 		t.Errorf("hidden from the sample parent = %v, want just the app with no row", got)
 	}
-	if got := c.Model().HiddenApps(" Mia.Torres@heliosschool.org "); len(got) != 1 || got[0] != "birthday" {
-		t.Errorf("hidden from mia = %v, want just the app with no row, her address normalized", got)
+	if got := c.Model().HiddenApps(" Mia.Torres@heliosschool.org "); !slices.Equal(got, []string{"birthday", "admin"}) {
+		t.Errorf("hidden from mia = %v, want the app with no row and admin, her address normalized", got)
 	}
-	if got := c.Model().HiddenApps("sam.whitfield@heliosschool.org"); len(got) != 2 || got[0] != "celebrate" || got[1] != "birthday" {
-		t.Errorf("hidden from sam = %v, want [celebrate birthday]", got)
+	if got := c.Model().HiddenApps("sam.whitfield@heliosschool.org"); !slices.Equal(got, []string{"celebrate", "birthday", "admin"}) {
+		t.Errorf("hidden from sam = %v, want [celebrate birthday admin]", got)
 	}
 	if got := c.Model().Home.MissingVisibility(); len(got) != 1 || got[0].Key != "birthday" {
 		t.Errorf("apps without a row = %v, want the birthday team's", got)
@@ -229,8 +229,8 @@ func TestVisibilityNarrowsAnApp(t *testing.T) {
 	}
 
 	setAppVisibility(t, c, "celebrate", AppVisibilityRow{Mode: VisibleToEveryone, Emails: []string{"mia.torres@heliosschool.org"}})
-	if got := c.Model().HiddenApps("sam.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
-		t.Errorf("hidden from sam with the celebration everyone's = %v, want just birthday", got)
+	if got := c.Model().HiddenApps("sam.whitfield@heliosschool.org"); !slices.Equal(got, []string{"birthday", "admin"}) {
+		t.Errorf("hidden from sam with the celebration everyone's = %v, want [birthday admin]", got)
 	}
 	if got := c.Model().Home.AppVisibilities()[2].Emails; len(got) != 1 {
 		t.Errorf("the celebration's list = %v, want kept while everyone's", got)
@@ -248,8 +248,8 @@ func TestGrantAddsToAnAppsList(t *testing.T) {
 	if err := c.GrantApp(context.Background(), "celebrate", " Sam.Whitfield@heliosschool.org "); err != nil {
 		t.Fatal(err)
 	}
-	if got := c.Model().HiddenApps(email); len(got) != 1 || got[0] != "birthday" {
-		t.Errorf("hidden from sam after the grant = %v, want just birthday", got)
+	if got := c.Model().HiddenApps(email); !slices.Equal(got, []string{"birthday", "admin"}) {
+		t.Errorf("hidden from sam after the grant = %v, want [birthday admin]", got)
 	}
 	if err := c.GrantApp(context.Background(), "celebrate", email); err != nil {
 		t.Fatal(err)

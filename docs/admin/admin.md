@@ -1,0 +1,23 @@
+# Helios Admin
+
+Helios Admin, at `admin.heliosian.com`, holds views of the data behind the apps. It is an app like any other in `model.Apps`, so it signs in the same way and its place on Heliosian and the app switch follows its row on the Apps sheet's `Visibility` tab; a new deployment finds no row and adds one listing nobody (`docs/home/data.md`). Its pages are plain files under `web/admin/`, each at the route `internal/app` registers for it, `/` going to `/resources`. Every page reads through the query API (`docs/datamodel.md`, The query API) as the signed-in person, so it shows exactly what they may see.
+
+## Chrome
+
+`web/admin/chrome.js` and `chrome.css` are what every page shares: the bar across the top with a link to each page, the colours, and Spoof Mode for a super admin - the same `/auth/spoof` the toolbar's Spoof Mode sets (`docs/toolbar.md`), so it views every app as that person, the admin pages included. Recent picks are listed first, and anyone in the directory can be searched for by name or address. `query` runs one query; `tables` reads every table and its columns from the spec (The spec, below), which is all the pages know of the schema.
+
+## Resources
+
+`/resources` (`web/admin/resources/`) browses every table, listed by spreadsheet in the rail. `#TABLE` lists the table's rows, up to `limit` in its script, with a column for every column any of them fills; a table with a reference to itself (`GROUP.parent`, `MESSAGE.parent`) is listed as a tree, each row under the one it names, folded to the rows at the top: a row's toggle opens or closes what is under it, and expand all and collapse all do every row at once. Every reference is a link, worded as its row's title or name when the query's includes brought it. `#TABLE/ID` is one row: its filled columns, then every row anywhere whose reference names it, a list per table and column. A column's heading sorts by it, again to reverse and a third time to put the rows back as the query answered them; a tree sorts each row's children among themselves. Numbers sort as numbers, IDs, order keys, dates and moments by their characters, a reference by the words it shows, anything else as text, and blanks go last either way. Under each heading is a quick filter: a menu of the values present for an enum or a yes/no, a box matching the shown text for any other column. The filter in the bar matches the text anywhere in a row; every filter set must match, and in a tree they open the way down to each row that does.
+
+## Schema
+
+`/erd` (`web/admin/erd/`) is an entity relationship diagram of the spec, drawn in the browser on each load: a box per table, edged in its spreadsheet's colour, with its columns and their kinds, and an arrow per reference from the table that has it to its target, labelled with the column: a single arrowhead for one, a double for a list. A box opens its table under Resources. It draws with the vendored `mermaid.min.js` bundle, unpatched: a list of references is drawn as Mermaid's composition and the page redraws that marker (`-compositionEnd`) as the double arrowhead after rendering, which a new copy of the bundle needs checked again.
+
+## API
+
+`/swagger` (`web/admin/swagger/`) is Swagger UI over the spec; its Try it out runs as the signed-in person. It is the vendored `swagger-ui-dist` bundle and stylesheet, since the security policy allows no scripts from elsewhere. The bundle is patched: where an example draws one key of an object keyed by data, it names the key the value schema's `x-additionalPropertiesName` as it stands (`<id>` in `resources`) rather than with a counter appended, in both sample generators (`ae[_>1?o+s:o]=u`); a new copy of the bundle needs the patch again.
+
+## The spec
+
+`GET /api/openapi.json`, on every host beside `/api/q`, is an OpenAPI 3.2 description of the query API, built from `db.Tables` (`internal/db/openapi.go`): `QUERY /api/q` with the language or the JSON tree, with an example query per table, `POST /api/q`'s batch, and the calls under `/api/do/`. A query's answer is typed table by table: `resources` holds each table's rows by ID, and a table's schema has a property per column, every cell a string as the sheet holds it, with its enum, pattern or format where the column's kind has one. The extensions are what the admin pages read: on a table `x-columns` (its columns in order), `x-sheet`, `x-unique`, `x-generated` and `x-appendOnly`; on a column `x-kind` (the `db.Kind`), `x-relation` (a reference's target table), `x-required`, `x-generated` and `x-private`. `TestEveryAnsweredCellFitsTheSpec` checks every cell of every sample table against it.

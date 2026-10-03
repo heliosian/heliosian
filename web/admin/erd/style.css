@@ -1,0 +1,48 @@
+main {
+  overflow: auto;
+}
+
+.legend {
+  display: flex;
+  gap: 12px;
+  color: var(--dim);
+}
+
+.legend .item::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--k);
+}
+
+#erd svg {
+  max-width: none !important;
+}
+
+#erd g.table {
+  cursor: pointer;
+}
+
+#erd g.table:hover rect,
+#erd g.table:hover path {
+  fill: #1a2b2f !important;
+}
+
+#erd .classTitle,
+#erd .label-group .nodeLabel {
+  font-weight: 700;
+  color: #fff;
+}
+
+#erd .relation {
+  stroke: #4f6763 !important;
+}
+
+#erd .edgeLabel,
+#erd .edgeLabel p {
+  color: #7f9a96;
+  background: #0e1719 !important;
+}

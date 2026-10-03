@@ -67,7 +67,7 @@ func TestTheOldServiceWorkerIsReplacedEverywhere(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("%s fell through on %s", r.URL.Path, r.Host)
 	})
-	for _, app := range []string{"who", "home", "team", "birthday", "celebrate", "when", "loop", "ask"} {
+	for _, app := range []string{"who", "home", "team", "birthday", "celebrate", "when", "loop", "ask", "admin"} {
 		rec := get(t, Public(app, next), app+".heliosiandev.com", "/sw-prod-v4.js?dv=6ee63b1f4a87c21b6f330bafecdc5b45a1655fb6")
 		if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") || !strings.Contains(rec.Body.String(), "unregister") {
 			t.Errorf("%s: got %d %q, want the replacement worker", app, rec.Code, rec.Header().Get("Content-Type"))
