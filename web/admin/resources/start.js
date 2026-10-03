@@ -146,15 +146,39 @@ async function accessCard(table, id) {
   return box;
 }
 
-async function historyCard(id) {
-  const changes = byName.get('CHANGES');
+function withValues(changes) {
+  const columns = [];
+  for (const c of changes.columns) {
+    columns.push(c);
+    if (c.name === 'previous') {
+      columns.push({name: 'value', kind: 'text', relation: '', schema: {description: 'what the column held after the change: the next change\'s previous, or the row as it is now'}});
+    }
+  }
+  return {...changes, columns};
+}
+
+function fillValues(answer, current) {
+  const after = {...current};
+  for (const id of answer.result) {
+    const change = answer.resources.CHANGES[id];
+    if (!change.column) {
+      continue;
+    }
+    change.value = change.action === 'delete' ? '' : (after[change.column] ?? '');
+    after[change.column] = change.previous ?? '';
+  }
+}
+
+async function historyCard(id, current) {
+  const changes = withValues(byName.get('CHANGES'));
   const box = el('details', 'card history');
   box.dataset.sheet = changes.sheet;
   try {
     const answer = await query({from: 'CHANGES', where: [{'=': [{path: 'row'}, id]}], order: [{path: 'at', dir: 'desc'}]});
     box.append(el('summary', '', answer.result.length ? `history · ${answer.result.length} changes, the last ${answer.resources.CHANGES[answer.result[0]].at}` : 'history · no changes the viewer can see'));
     if (answer.result.length) {
-      const g = grid(changes, answer, answer.result, changed);
+      fillValues(answer, current);
+      const g = grid(changes, answer, answer.result, changed, ['column', 'previous', 'value']);
       grids.push(g);
       box.append(g.wrap);
     }
@@ -195,7 +219,7 @@ async function detailView(table, id) {
   card.append(fields);
   const sections = [card];
   if (table.sheet !== 'generated') {
-    sections.push(await accessCard(table, id), await historyCard(id));
+    sections.push(await accessCard(table, id), await historyCard(id, row));
   }
   const found = [];
   const refs = [...(referrers.get(table.name) ?? []), ...(referrers.get('*') ?? [])];

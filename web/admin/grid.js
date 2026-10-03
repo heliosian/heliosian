@@ -108,13 +108,13 @@ function treeOrder(table, rows) {
   return out;
 }
 
-export function grid(table, answer, ids, changed) {
+export function grid(table, answer, ids, changed, always = []) {
   const rows = treeOrder(table, ids.map(id => answer.resources[table.name][id]));
   const tree = rows.some(r => r.kids);
   const open = new Set();
   const entries = [];
   const byId = new Map();
-  const columns = table.columns.filter(c => c.name === 'id' || rows.some(({row}) => row[c.name]));
+  const columns = table.columns.filter(c => c.name === 'id' || always.includes(c.name) || rows.some(({row}) => row[c.name]));
   const wrap = el('div', 'scroll');
   const out = el('table', 'grid');
   out.dataset.sheet = table.sheet;
