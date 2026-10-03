@@ -293,7 +293,6 @@ var Tables = []Table{
 			col("all_day", Bool),
 			col("location", Text),
 			col("description", Text),
-			refs("audience", "GROUP"),
 			enum("marker", "first_day", "last_day"),
 			col("hash", Text),
 		},

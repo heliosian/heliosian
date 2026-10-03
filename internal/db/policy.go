@@ -157,8 +157,7 @@ const policySource = `
 (read GROUP_SOURCE (visible group))
 ; every column of where a calendar group came from
 (read GROUP_SOURCE
-  (id group calendar_event document title start end all_day location description audience marker
-   hash)
+  (id group calendar_event document title start end all_day location description marker hash)
   true)
 ; the rules of groups the viewer manages
 (read RULE (manages group))
