@@ -146,13 +146,23 @@ async function accessCard(table, id) {
   return box;
 }
 
+function changedColumn(change) {
+  const c = byName.get(change.table)?.columns.find(c => c.name === change.column);
+  if (!c || c.kind === 'blob') {
+    return {name: change.column, kind: 'text', relation: '', schema: {}};
+  }
+  return c;
+}
+
 function withValues(changes) {
   const columns = [];
   for (const c of changes.columns) {
-    columns.push(c);
     if (c.name === 'previous') {
-      columns.push({name: 'value', kind: 'text', relation: '', schema: {description: 'what the column held after the change: the next change\'s previous, or the row as it is now'}});
+      columns.push({...c, label: 'before', cellOf: changedColumn});
+      columns.push({name: 'after', kind: 'text', relation: '', schema: {description: 'what the column held after the change: the next change\'s previous, or the row as it is now'}, cellOf: changedColumn});
+      continue;
     }
+    columns.push(c);
   }
   return {...changes, columns};
 }
@@ -164,7 +174,7 @@ function fillValues(answer, current) {
     if (!change.column) {
       continue;
     }
-    change.value = change.action === 'delete' ? '' : (after[change.column] ?? '');
+    change.after = change.action === 'delete' ? '' : (after[change.column] ?? '');
     after[change.column] = change.previous ?? '';
   }
 }
@@ -178,7 +188,7 @@ async function historyCard(id, current) {
     box.append(el('summary', '', answer.result.length ? `history · ${answer.result.length} changes, the last ${answer.resources.CHANGES[answer.result[0]].at}` : 'history · no changes the viewer can see'));
     if (answer.result.length) {
       fillValues(answer, current);
-      const g = grid(changes, answer, answer.result, changed, ['column', 'previous', 'value']);
+      const g = grid(changes, answer, answer.result, changed, ['column', 'previous', 'after']);
       grids.push(g);
       box.append(g.wrap);
     }

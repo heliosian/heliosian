@@ -123,7 +123,7 @@ export function grid(table, answer, ids, changed, always = []) {
   const filters = new Map();
   let sort = null;
   for (const c of columns) {
-    const th = el('th', 'sortable', c.name);
+    const th = el('th', 'sortable', c.label ?? c.name);
     th.title = [c.kind, c.relation && `→ ${c.relation}`, c.schema.description, 'click to sort'].filter(Boolean).join(' · ');
     th.addEventListener('click', () => {
       if (sort?.column !== c) {
@@ -298,9 +298,10 @@ export function grid(table, answer, ids, changed, always = []) {
         entry.values.id = {raw: row.id, show: row.id.toLowerCase(), key: row.id};
         continue;
       }
-      const td = cell(answer, c, row[c.name], row.id);
+      const as = c.cellOf?.(row) ?? c;
+      const td = cell(answer, as, row[c.name], row.id);
       const shown = td.textContent.trim();
-      entry.values[c.name] = {raw: row[c.name], show: shown.toLowerCase(), key: c.kind === 'ref' || c.kind === 'refs' ? shown : (row[c.name] ?? '')};
+      entry.values[c.name] = {raw: row[c.name], show: shown.toLowerCase(), key: as.kind === 'ref' || as.kind === 'refs' ? shown : (row[c.name] ?? '')};
       tr.append(td);
     }
     entries.push(entry);
