@@ -27,7 +27,6 @@ const (
 	MomentLayout       = "2006-01-02 15:04"
 	classifyBatch      = 10
 	noDayType          = "None"
-	noCategory         = "None"
 )
 
 var School = func() *time.Location {
@@ -230,7 +229,7 @@ You classify events from the school calendar for a family-facing app. For each e
 
 - classrooms: the classrooms the event concerns, as the narrowest set the event supports: a band's two classrooms when the title names a band, a grade pair, or both classrooms; one classroom when it names one; the Lower School or Middle School classrooms when it says LS or MS; every classroom when nothing narrows it.
 - who: "families" when students and their families take part; "parents" when adults attend without students, such as a parent coffee, a parent education session or an HCA meeting; "staff" when it is for staff only.
-- category: the one of these the event is, or "None" when none fits. Schedule is only for an event about the school day itself; an event that also changes the school day, such as a conference with an early dismissal, takes its own category and gives the day type:
+- category: the one of these the event is, Misc only when no other fits. Schedule is only for an event about the school day itself; an event that also changes the school day, such as a conference with an early dismissal, takes its own category and gives the day type:
 ` + described.String() + `- dayType: for an all-day event only, the day type it imposes on the students it applies to, or "None". "No School" for holidays, breaks and professional development days; "Early Dismissal" for early dismissal and half days; any other listed type only when the title says so plainly. An event with a time of day, or one that merely happens on a school day, is "None".
 
 Answer under every event's id, repeating its title exactly as given.`
@@ -342,7 +341,7 @@ func classifyRequest(items []CalendarItem) (string, map[string]CalendarItem, err
 }
 
 func (v *Vocabulary) classifyBatch(ctx context.Context, client anthropic.Client, items []CalendarItem) (map[string]Classification, error) {
-	categories := []string{noCategory}
+	categories := []string{}
 	byTitle := map[string]string{}
 	for _, c := range v.Events {
 		categories = append(categories, c.Title)
