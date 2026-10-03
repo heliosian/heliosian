@@ -198,6 +198,123 @@ async function historyCard(id, current) {
   return box;
 }
 
+function editable(c) {
+  return c.kind !== 'id' && c.kind !== 'blob' && !c.schema['x-generated'] && !c.schema['x-private'];
+}
+
+function button(text, className = '') {
+  const b = el('button', className, text);
+  b.type = 'button';
+  return b;
+}
+
+function input(c, value) {
+  const options = c.kind === 'bool' ? ['', 'Yes', 'No'] : c.kind === 'enum' ? c.schema.enum : null;
+  if (options) {
+    const select = el('select');
+    for (const v of options.includes(value) ? options : [...options, value]) {
+      const option = el('option', '', v || '(blank)');
+      option.value = v;
+      select.append(option);
+    }
+    select.value = value;
+    return select;
+  }
+  if (c.kind === 'text') {
+    const area = el('textarea');
+    area.value = value;
+    area.rows = Math.max(1, value.split('\n').length);
+    return area;
+  }
+  const box = el('input');
+  box.type = 'text';
+  box.value = value;
+  box.placeholder = c.schema.examples?.[0] ?? '';
+  return box;
+}
+
+function editor(table, row) {
+  const form = el('form', 'editor');
+  const list = el('dl', 'fields');
+  const inputs = new Map();
+  for (const c of table.columns.filter(editable)) {
+    const value = row[c.name] ?? '';
+    const field = input(c, value);
+    const dt = el('dt', '', c.name);
+    dt.title = [c.kind, c.relation && `→ ${c.relation}`, c.schema.description].filter(Boolean).join(' · ');
+    const dd = el('dd');
+    dd.append(field);
+    list.append(dt, dd);
+    inputs.set(c.name, {field, value});
+  }
+  const error = el('p', 'error');
+  error.hidden = true;
+  const save = el('button', 'primary', 'save');
+  save.type = 'submit';
+  const cancel = button('cancel');
+  const actions = el('div', 'actions');
+  actions.append(save, cancel);
+  form.append(list, error, actions);
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const cells = {};
+    for (const [name, {field, value}] of inputs) {
+      if (field.value !== value) {
+        cells[name] = field.value;
+      }
+    }
+    if (!Object.keys(cells).length) {
+      cancel.click();
+      return;
+    }
+    save.disabled = true;
+    try {
+      await api('POST', '/api/q', {batch: [{set: row.id, cells}]});
+      await route();
+    } catch (err) {
+      error.textContent = err.message;
+      error.hidden = false;
+      save.disabled = false;
+    }
+  });
+  return {form, cancel};
+}
+
+function rowActions(table, row, fields) {
+  const actions = el('div', 'actions');
+  const error = el('p', 'error');
+  error.hidden = true;
+  const edit = button('edit');
+  edit.addEventListener('click', () => {
+    const {form, cancel} = editor(table, row);
+    cancel.addEventListener('click', () => {
+      form.replaceWith(fields);
+      actions.hidden = false;
+    });
+    fields.replaceWith(form);
+    actions.hidden = true;
+    error.hidden = true;
+    form.querySelector('select, textarea, input')?.focus();
+  });
+  const remove = button('delete', 'danger');
+  remove.addEventListener('click', async () => {
+    if (!confirm(`Delete ${table.name} ${row.id}, ${labelOf(row)}?`)) {
+      return;
+    }
+    remove.disabled = true;
+    try {
+      await api('POST', '/api/q', {batch: [{delete: row.id}]});
+      location.hash = `#${table.name}`;
+    } catch (err) {
+      error.textContent = err.message;
+      error.hidden = false;
+      remove.disabled = false;
+    }
+  });
+  actions.append(edit, remove);
+  return {actions, error};
+}
+
 async function detailView(table, id) {
   heading.replaceChildren(link(`#${table.name}`, '', table.name), ` / ${id}`);
   const answer = await scan(table, [{'=': [{path: 'id'}, id]}]);
@@ -214,7 +331,9 @@ async function detailView(table, id) {
   }
   const card = el('section', 'card');
   card.dataset.sheet = table.sheet;
-  card.append(el('h2', '', labelOf(row)));
+  const top = el('div', 'card-top');
+  top.append(el('h2', '', labelOf(row)));
+  card.append(top);
   const fields = el('dl', 'fields');
   for (const c of table.columns) {
     if (!row[c.name]) {
@@ -227,6 +346,11 @@ async function detailView(table, id) {
     fields.append(dt, dd);
   }
   card.append(fields);
+  if (table.sheet !== 'generated' && !table.appendOnly) {
+    const {actions, error} = rowActions(table, row, fields);
+    top.append(actions);
+    card.append(error);
+  }
   const sections = [card];
   if (table.sheet !== 'generated') {
     sections.push(await accessCard(table, id), await historyCard(id, row));

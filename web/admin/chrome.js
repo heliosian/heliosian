@@ -36,6 +36,7 @@ export async function tables() {
     out.push({
       name,
       sheet: s['x-generated'] ? 'generated' : s['x-sheet'],
+      appendOnly: s['x-appendOnly'],
       columns: s['x-columns'].map(c => ({name: c, kind: s.properties[c]['x-kind'], relation: s.properties[c]['x-relation'] ?? '', schema: s.properties[c]})),
     });
   }

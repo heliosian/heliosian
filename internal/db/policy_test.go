@@ -57,7 +57,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"GROUP":            {11, 11, 11, 13, 11},
 		"MEMBER":           {15, 15, 15, 16, 15},
 		"EFFECTIVE_MEMBER": {15, 15, 15, 17, 15},
-		"RULE":             {0, 0, 0, 1, 0},
+		"RULE":             {0, 0, 0, 2, 0},
 		"DOCUMENT":         {1, 1, 1, 1, 1},
 		"DOCUMENT_GROUP":   {1, 1, 1, 1, 1},
 		"INBOX":            {0, 1, 1, 0, 0},
@@ -360,10 +360,16 @@ func TestPendingIsForManagersAndAdmins(t *testing.T) {
 	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000040", "person": staff, "role": "manager"})); err != nil {
 		t.Fatal(err)
 	}
+	if n := len(as(t, s, staff, q)); n != 1 {
+		t.Fatal("a super admin can't see a pending event")
+	}
+	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000005", "person": staff, "role": "member"})); err != nil {
+		t.Fatal(err)
+	}
 	if n := len(as(t, s, staff, q)); n != 0 {
 		t.Fatal("a pending event is visible to someone neither host nor When admin")
 	}
-	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "admins": "grp00000000006"})); err != nil {
+	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "admins": "grp00000000003"})); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(as(t, s, staff, q)); n != 1 {
@@ -412,7 +418,7 @@ func TestAuthorize(t *testing.T) {
 		{"a parent renames a child", parent, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), true},
 		{"a guest renames a child", guest, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), false},
 		{"Who?'s admin renames anyone", staff, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), true},
-		{"nobody approves without being an admin", staff, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"}), false},
+		{"a super admin is When's admin", staff, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"}), true},
 		{"nobody may add rows yet", staff, Change{Table: "MEMBER", New: store.Row{"group": "grp00000000040", "person": student, "role": "member"}}, false},
 		{"nobody may remove rows yet", staff, Change{Table: "MEMBER", Old: store.Row{"group": "grp00000000040", "person": parent, "role": "member"}}, false},
 	} {
@@ -427,7 +433,13 @@ func TestAuthorize(t *testing.T) {
 	if err := s.Model().Authorize(Env{Viewer: parent, Now: testNow}, change(t, s, "MEMBER", picnic(guest), store.Row{"status": "excluded"})); err == nil {
 		t.Fatal("an event's lead may set any status, as if they managed it")
 	}
-	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "admins": "grp00000000006"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000005", "person": staff, "role": "member"})); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Model().Authorize(Env{Viewer: staff, Now: testNow}, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"})); err == nil {
+		t.Fatal("someone neither super admin nor When admin may change an event's status")
+	}
+	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "admins": "grp00000000003"})); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Model().Authorize(Env{Viewer: staff, Now: testNow}, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"})); err != nil {

@@ -68,7 +68,7 @@ Nothing is readable until a clause says yes, rows and columns alike, so every re
 
 `Model.Run` applies the read policies to every row a client query touches - the rows it lists, every row an `exists`, `count`, `sum` or `select` inside it scans, and every row a path follows a reference to - and the column policies to every cell it reads, so a condition can't learn what the reader can't see. A reference to a row the reader can't see reads blank, in conditions and in what is answered. Policies themselves, and `EFFECTIVE_MEMBER`'s rules, run unfiltered.
 
-The layer knows nothing of the apps on top of it but their admins: an app's admins are the effective members of its `APP` row's `admins` group (`admin_of`), and each app's grants are a block of clauses naming exactly the groups, by kind or flag, and the tables they open - a When admin reads every event and school day and their members, rules and mail, and sets an event's status and a member's role; a Loop admin does the same for every group with `mail`. Everything else in the policies is about people, groups, membership, managing and visibility.
+The layer knows nothing of the apps on top of it but their admins: an app's admins are the super admins and the effective members of its `APP` row's `admins` group (`admin_of`), and each app's grants are a block of clauses naming exactly the groups, by kind or flag, and the tables they open - a When admin reads every event and school day and their members, rules and mail, and sets an event's status and a member's role; a Loop admin does the same for every group with `mail`. Everything else in the policies is about people, groups, membership, managing and visibility.
 
 ## Changes
 

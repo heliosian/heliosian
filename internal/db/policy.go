@@ -30,9 +30,10 @@ const policySource = `
 (define (groups_of @p)
   (select MEMBER.group (= person @p)))
 
-; the viewer is in effect a member of the app's admins group
+; the viewer is a super admin, or in effect a member of the app's admins group
 (define (admin_of app)
-  (exists EFFECTIVE_MEMBER (in group (select APP.admins (= key app))) (= person @viewer)))
+  (or (super_admin)
+      (exists EFFECTIVE_MEMBER (in group (select APP.admins (= key app))) (= person @viewer))))
 
 ; the viewer is in effect a member of super-admins
 (define (super_admin)

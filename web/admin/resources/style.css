@@ -84,6 +84,72 @@
   word-break: break-word;
 }
 
+.card-top {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.editor .fields {
+  align-items: center;
+  gap: 4px 16px;
+}
+
+.editor input,
+.editor select,
+.editor textarea {
+  width: 100%;
+  max-width: 640px;
+  padding: 3px 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  outline: none;
+}
+
+.editor textarea {
+  display: block;
+  resize: vertical;
+}
+
+.editor input:focus,
+.editor select:focus,
+.editor textarea:focus {
+  border-color: var(--accent);
+}
+
+.editor .actions {
+  margin: 10px 0 2px;
+}
+
+.card .error {
+  margin: 10px 0 2px;
+}
+
+button.primary {
+  color: var(--ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+button.danger:hover {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .access > summary,
 .history > summary {
   cursor: pointer;
