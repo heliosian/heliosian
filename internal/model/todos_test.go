@@ -48,7 +48,7 @@ func TestToDos(t *testing.T) {
 	}
 	toDos := func(as string) []map[string]any { return listOf(t, mux, as, "/api/to-dos") }
 	jordan := toDos("jordan.whitfield@heliosschool.org")
-	if got := toDoTitles(jordan); !slices.Equal(got, []string{"Plan 12:30pm pickups for ILP week", "Return the tide pool permission slip", "Volunteer to drive for the tide pool trip"}) {
+	if got := toDoTitles(jordan); !slices.Equal(got, []string{"Plan 12:30pm pickups for ILP week", "Return the tide pool permission slip", "Pay the $8 pumpkin patch fee", "Register for the Science Fair", "Send muddy-ready boots", "Send in a tri-fold poster board", "Volunteer to drive for the tide pool trip"}) {
 		t.Fatalf("the Jays parent's to-dos = %v, want the dated ones by day and then the undated", got)
 	}
 	slip := toDoNamed(t, jordan, "Return the tide pool permission slip")
@@ -59,7 +59,7 @@ func TestToDos(t *testing.T) {
 	if !can(slip, "complete") || !can(slip, "save") || can(slip, "clear") || toDoState(slip) != "" {
 		t.Errorf("an open to-do's can and state = %v", slip)
 	}
-	if got := toDoTitles(toDos("ruth.amari@heliosschool.org")); !slices.Equal(got, []string{"Plan 12:30pm pickups for ILP week"}) {
+	if got := toDoTitles(toDos("ruth.amari@heliosschool.org")); !slices.Equal(got, []string{"Plan 12:30pm pickups for ILP week", "Register for the Science Fair", "Send in a tri-fold poster board"}) {
 		t.Errorf("a staff member without a Jays seat sees %v", got)
 	}
 
@@ -79,7 +79,7 @@ func TestToDos(t *testing.T) {
 
 	drivers := toDoNamed(t, jordan, "Volunteer to drive for the tide pool trip")
 	write(t, mux, "jordan.whitfield@heliosschool.org", "POST", "/api/to-dos/"+drivers["id"].(string)+"/save", nil)
-	clockAt(t, time.Date(2026, 10, 10, 9, 0, 0, 0, Location))
+	clockAt(t, time.Date(2026, 10, 22, 9, 0, 0, 0, Location))
 	if got := toDoTitles(toDos("jordan.whitfield@heliosschool.org")); !slices.Equal(got, []string{"Volunteer to drive for the tide pool trip"}) {
 		t.Errorf("past their days, the to-dos are %v, want the saved one alone", got)
 	}

@@ -456,10 +456,23 @@ function pointItem(email, words, point) {
   return item;
 }
 
+function emailTodos(email) {
+  const repeated = Object.values(email.repeats);
+  return state.model.todos.filter(t => t.email === email.id || repeated.includes(t.id));
+}
+
+function reminderCount(n) {
+  return `${n} ${n === 1 ? 'reminder' : 'reminders'}`;
+}
+
 function emailRow(email, n, open) {
   const date = parseDate(email.date);
   const title = el('button', 'wg-title', email.title);
   title.type = 'button';
+  const reminders = emailTodos(email).length;
+  if (reminders) {
+    title.append(el('span', 'wg-title-count', reminderCount(reminders)));
+  }
   title.setAttribute('aria-expanded', String(open));
   const to = el('span', 'wg-email-to', email.to);
   to.title = email.to;
@@ -531,13 +544,12 @@ function typePick(school) {
 }
 
 function dayCount(emails) {
-  const ids = new Set(emails.map(e => e.id));
-  const reminders = state.model.todos.filter(t => ids.has(t.email)).length;
+  const reminders = new Set(emails.flatMap(e => emailTodos(e).map(t => t.id))).size;
   const count = `${emails.length} ${emails.length === 1 ? 'email' : 'emails'}`;
   if (!reminders) {
     return count;
   }
-  return `${count} · ${reminders} ${reminders === 1 ? 'reminder' : 'reminders'}`;
+  return `${count} · ${reminderCount(reminders)}`;
 }
 
 function schoolWidget() {

@@ -312,10 +312,10 @@ func everyPassage(*Document, int) bool {
 
 func TestSearchRanksTheMatchingChunkFirst(t *testing.T) {
 	m := sampleDocuments(t)
-	if len(m.Documents) != 9 || m.Documents[0].Date != "2026-09-25" {
+	if len(m.Documents) != 12 || m.Documents[0].Date != "2026-10-02" {
 		t.Fatalf("documents: %d, first %s", len(m.Documents), m.Documents[0].Date)
 	}
-	if oldest, newest := m.Span(); oldest != "2026-08-30" || newest != "2026-09-25" {
+	if oldest, newest := m.Span(); oldest != "2026-08-30" || newest != "2026-10-02" {
 		t.Fatalf("span: %s to %s", oldest, newest)
 	}
 	embedder := vertex(t)

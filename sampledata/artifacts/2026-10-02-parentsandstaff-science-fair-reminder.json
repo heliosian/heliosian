@@ -1,0 +1,12 @@
+{
+  "messageId": "sample-parentsandstaff-2026-10-02@example.org",
+  "subject": "Reminder: Science Fair registration",
+  "date": "2026-10-02T10:30:00-07:00",
+  "from": "Helios Science Team",
+  "to": [
+    "parentsandstaff@heliosschool.org"
+  ],
+  "channel": "parentsandstaff",
+  "kind": "list",
+  "text": "A reminder that Science Fair registration closes Wednesday, October 14. Thirty students have signed up so far, and judges are still welcome.\n\nThe Science Team\n"
+}

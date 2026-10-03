@@ -1,0 +1,12 @@
+{
+  "messageId": "sample-jays-parents-2026-10-01@example.org",
+  "subject": "Jays pumpkin patch trip",
+  "date": "2026-10-01T15:40:00-07:00",
+  "from": "Jays Teachers",
+  "to": [
+    "jays.parents@heliosschool.org"
+  ],
+  "channel": "jays.parents",
+  "kind": "list",
+  "text": "The Jays visit Arata's Pumpkin Farm on Friday, October 16. Please pay the $8 trip fee by Friday, October 9, and send your child in boots that can get muddy.\n\nThanks,\nThe Jays teachers\n"
+}
