@@ -27,7 +27,7 @@ const (
 
 var (
 	ToDoColumns     = []string{"Document", "Title", "Summary", "Details", "Link", "Due", "Point"}
-	ReadColumns     = []string{"Document", "Read", "Key Points", "Audience", "Repeats"}
+	ReadColumns     = []string{"Document", "Read", "Summary", "Key Points", "Audience", "Repeats"}
 	HomeToDoColumns = []string{"Email", "To Do", "State", "Changed"}
 )
 
@@ -43,6 +43,7 @@ type ToDo struct {
 }
 
 type Reading struct {
+	Summary  string
 	Points   []string
 	Audience string
 	ToDos    []ToDo
@@ -114,7 +115,7 @@ func toDoPoint(cell string) (int, error) {
 }
 
 func buildReads(tables store.Tables, m *Documents) error {
-	m.ToDos, m.Read, m.Points, m.Audience, m.Repeats = []*ToDo{}, map[string]string{}, map[string][]string{}, map[string]string{}, map[string]map[int]string{}
+	m.ToDos, m.Read, m.Summary, m.Points, m.Audience, m.Repeats = []*ToDo{}, map[string]string{}, map[string]string{}, map[string][]string{}, map[string]string{}, map[string]map[int]string{}
 	seen := map[string]bool{}
 	for _, row := range tables[toDosTab] {
 		point, err := toDoPoint(row["Point"])
@@ -141,6 +142,9 @@ func buildReads(tables store.Tables, m *Documents) error {
 	for _, row := range tables[readsTab] {
 		key := strings.TrimSpace(row["Document"])
 		m.Read[key] = strings.TrimSpace(row["Read"])
+		if summary := strings.TrimSpace(row["Summary"]); summary != "" {
+			m.Summary[key] = summary
+		}
 		if points := splitPoints(row["Key Points"]); len(points) > 0 {
 			m.Points[key] = points
 		}

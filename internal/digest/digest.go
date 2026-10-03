@@ -22,17 +22,19 @@ const claudeModel = "claude-sonnet-5"
 
 const maxEmail = 24 << 10
 
-const Revision = "2026-10-02.2"
+const Revision = "2026-10-03.1"
 
 var actor = access.System("digest")
 
-const system = `You read one email the Helios School community received - the school's newsletter, a message to all the families or to one class, or a post to a parent email list - and do three things.
+const system = `You read one email the Helios School community received - the school's newsletter, a message to all the families or to one class, or a post to a parent email list - and do four things.
 
-First, list its key points for a parent skimming their week. Write three to five points, fewer for a short email. Lead with what a family must do or know by a date: deadlines, events with their day and time, things to bring, forms to send. Then the rest that matters most. Each point is one plain sentence under twenty words, naming the day ("Tue, Sep 29") where the email gives one. Say only what the email says; no greetings, no sign-offs, no advice of your own. If the email has nothing worth a point - an automatic notice, an empty message - return no points.
+First, sum it up in one plain sentence under twenty words, for a parent deciding whether to open it: what the email is about and what it asks, if anything ("The Jays visit the tide pools Oct 9 and need signed slips and drivers."). Name no sender and add nothing the email does not say.
 
-Second, say whom it was written to. The school's classrooms and grades are listed with the email, and so are the classrooms its sender teaches, when they teach any. A classroom holds two grades (Condors are 5th and 6th graders), so say each as the email does. If the email is written to the families or students of particular classrooms - its greeting ("Hi Condor Families"), its sign-off, or what it is about (one class's play, trip or homework) says so - list those classrooms. If it is written to particular grades - "Dear Parents of 2nd, 4th, 6th, and 8th graders", "for our 8th graders" - list those grades, and not the classrooms that hold them. List both only when it names both ("6th graders in Condors"). The middle school is grades 5 through 8, so an email to the middle school or its families is written to Grade 5, Grade 6, Grade 7 and Grade 8. The Yellowstone trip is for 7th and 8th graders, so an email about it is written to Grade 7 and Grade 8. Use the names given. If it is for the whole school, or a program you cannot tie to classrooms or grades, or you cannot tell, list neither. An email to one lit circle, or another group smaller than a classroom or grade, is written to none of them: say nobody, and list neither. A teacher writing about their own class is writing to that class, even without a greeting.
+Second, list its key points for a parent skimming their week. Write three to five points, fewer for a short email. Lead with what a family must do or know by a date: deadlines, events with their day and time, things to bring, forms to send. Then the rest that matters most. Each point is one plain sentence under twenty words, naming the day ("Tue, Sep 29") where the email gives one. Say only what the email says; no greetings, no sign-offs, no advice of your own. If the email has nothing worth a point - an automatic notice, an empty message - return no points.
 
-Third, list what it asks families to do. A to-do is something a parent or student has to act on: a form to fill out or return, something to sign, pay, buy, bring, send or sign up for, a reply or an RSVP, a deadline to meet. Leave out what only informs: an event with nothing to do before it, a schedule change, news, thanks. An event is a to-do only when the email asks for something before it - a sign-up, a ticket, a permission slip, something to bring. A call for volunteers counts when the email asks its readers directly. If the email asks nothing of its readers, return no to-dos.
+Third, say whom it was written to. The school's classrooms and grades are listed with the email, and so are the classrooms its sender teaches, when they teach any. A classroom holds two grades (Condors are 5th and 6th graders), so say each as the email does. If the email is written to the families or students of particular classrooms - its greeting ("Hi Condor Families"), its sign-off, or what it is about (one class's play, trip or homework) says so - list those classrooms. If it is written to particular grades - "Dear Parents of 2nd, 4th, 6th, and 8th graders", "for our 8th graders" - list those grades, and not the classrooms that hold them. List both only when it names both ("6th graders in Condors"). The middle school is grades 5 through 8, so an email to the middle school or its families is written to Grade 5, Grade 6, Grade 7 and Grade 8. The Yellowstone trip is for 7th and 8th graders, so an email about it is written to Grade 7 and Grade 8. Use the names given. If it is for the whole school, or a program you cannot tie to classrooms or grades, or you cannot tell, list neither. An email to one lit circle, or another group smaller than a classroom or grade, is written to none of them: say nobody, and list neither. A teacher writing about their own class is writing to that class, even without a greeting.
+
+Fourth, list what it asks families to do. A to-do is something a parent or student has to act on: a form to fill out or return, something to sign, pay, buy, bring, send or sign up for, a reply or an RSVP, a deadline to meet. Leave out what only informs: an event with nothing to do before it, a schedule change, news, thanks. An event is a to-do only when the email asks for something before it - a sign-up, a ticket, a permission slip, something to bring. A call for volunteers counts when the email asks its readers directly. If the email asks nothing of its readers, return no to-dos.
 
 First say in asks, in a sentence or two, what the email asks its readers to do, or that it asks nothing. Then list a to-do for each thing it asks.
 
@@ -82,6 +84,7 @@ type repeatFields struct {
 }
 
 type readingFields struct {
+	Summary    field     `json:"summary"`
 	Points     listField `json:"points"`
 	Classrooms listField `json:"classrooms"`
 	Grades     listField `json:"grades"`
@@ -94,6 +97,7 @@ type readingFields struct {
 var schema = map[string]any{
 	"type": "object",
 	"properties": readingFields{
+		Summary:    field{"string", "one plain sentence under twenty words on what the email is about"},
 		Points:     listField{"array", field{"string", "one key point"}, "the key points, most pressing first"},
 		Classrooms: listField{"array", field{"string", "a classroom"}, "the classrooms it was written to, by the names given; none for the whole school, for grades alone, or when unclear"},
 		Grades:     listField{"array", field{"string", "a grade"}, "the grades it was written to, by the names given; none unless the email names grades"},
@@ -130,7 +134,7 @@ var schema = map[string]any{
 			Description: "each key point that repeats a to-do already on the list",
 		},
 	},
-	"required":             []string{"points", "classrooms", "grades", "nobody", "asks", "todos", "repeats"},
+	"required":             []string{"summary", "points", "classrooms", "grades", "nobody", "asks", "todos", "repeats"},
 	"additionalProperties": false,
 }
 
@@ -195,6 +199,7 @@ func (c *Claude) Read(ctx context.Context, e Email) (model.Reading, error) {
 	prompt := fmt.Sprintf("The school's classrooms: %s\nThe school's grades: %s\nThe sender teaches: %s\n\nAlready on the list:\n%s\n\nSubject: %s\nFrom: %s\nSent to: %s\nSent: %s\n\n%s",
 		strings.Join(e.Classrooms, ", "), strings.Join(e.Grades, ", "), teaches, strings.Join(listed, "\n"), e.Title, e.Author, e.To, sent, markdown)
 	var out struct {
+		Summary    string   `json:"summary"`
 		Points     []string `json:"points"`
 		Classrooms []string `json:"classrooms"`
 		Grades     []string `json:"grades"`
@@ -214,8 +219,11 @@ func (c *Claude) Read(ctx context.Context, e Email) (model.Reading, error) {
 		return model.Reading{}, err
 	}
 	points := cleanPoints(out.Points)
-	reading := model.Reading{Points: points, Audience: audience(out.Nobody, known(out.Classrooms, e.Classrooms), known(out.Grades, e.Grades)), ToDos: clean(out.ToDos, e.Markdown, len(points)), Repeats: repeats(out.Repeats, len(points), e.Listed)}
-	slog.InfoContext(ctx, "digest: read an email", "title", e.Title, "points", len(points), "audience", reading.Audience, "asks", out.Asks, "asked", len(out.ToDos), "kept", len(reading.ToDos), "repeats", len(reading.Repeats))
+	reading := model.Reading{Summary: tidy(out.Summary), Points: points, Audience: audience(out.Nobody, known(out.Classrooms, e.Classrooms), known(out.Grades, e.Grades)), ToDos: clean(out.ToDos, e.Markdown, len(points)), Repeats: repeats(out.Repeats, len(points), e.Listed)}
+	slog.InfoContext(ctx, "digest: read an email", "title", e.Title, "summary", reading.Summary, "points", len(points), "audience", reading.Audience, "asks", out.Asks, "asked", len(out.ToDos), "kept", len(reading.ToDos), "repeats", len(reading.Repeats))
+	if reading.Summary == "" {
+		slog.InfoContext(ctx, "digest: claude wrote no summary", "title", e.Title)
+	}
 	if len(reading.ToDos) < len(out.ToDos) {
 		slog.InfoContext(ctx, "digest: claude's whole answer, some of it left out", "title", e.Title, "answer", raw)
 	}

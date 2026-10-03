@@ -19,6 +19,7 @@ type SchoolEmail struct {
 	Kind     string            `json:"kind"`
 	Channel  string            `json:"channel"`
 	Audience string            `json:"audience"`
+	Summary  string            `json:"summary"`
 	Points   []string          `json:"points"`
 	Repeats  map[string]string `json:"repeats"`
 }
@@ -41,7 +42,7 @@ func (m *Documents) SchoolMail(people *Directory, email, since string) []SchoolE
 		for point, toDo := range m.Repeats[d.Key] {
 			repeats[strconv.Itoa(point)] = toDo
 		}
-		out = append(out, SchoolEmail{Key: d.Key, Title: d.Title, Date: d.Date, Time: d.Time, Kind: d.Kind, Channel: d.Channel, Audience: m.Audience[d.Key], Points: points, Repeats: repeats})
+		out = append(out, SchoolEmail{Key: d.Key, Title: d.Title, Date: d.Date, Time: d.Time, Kind: d.Kind, Channel: d.Channel, Audience: m.Audience[d.Key], Summary: m.Summary[d.Key], Points: points, Repeats: repeats})
 	}
 	return out
 }

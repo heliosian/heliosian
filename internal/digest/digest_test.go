@@ -65,7 +65,7 @@ func TestTheSchemaListsPointsBeforeToDosAndTitlesFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	order := []int{}
-	for _, name := range []string{`"points"`, `"classrooms"`, `"grades"`, `"asks"`, `"todos"`, `"title"`, `"summary"`, `"details"`, `"link"`, `"due"`, `"point"`} {
+	for _, name := range []string{`"summary"`, `"points"`, `"classrooms"`, `"grades"`, `"asks"`, `"todos"`, `"title"`, `"details"`, `"link"`, `"due"`, `"point"`} {
 		order = append(order, strings.Index(string(body), name+`:{`))
 	}
 	if !slices.IsSorted(order) || order[0] < 0 {

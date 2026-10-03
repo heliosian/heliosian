@@ -666,6 +666,10 @@ main {
 
 .wg-email.is-open .wg-email-body { display: block; }
 
+.wg-email-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; color: var(--muted); font-size: 13.5px; }
+
+.wg-email.is-open .wg-email-summary { display: none; }
+
 
 .widget-school { container-type: inline-size; }
 

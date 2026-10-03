@@ -152,6 +152,7 @@ func (d *Document) normalize() error {
 type Documents struct {
 	Documents  []*Document
 	Fetched    int
+	Summary    map[string]string
 	Points     map[string][]string
 	Audience   map[string]string
 	Read       map[string]string

@@ -22,6 +22,9 @@ func (m *Documents) setReading(actor access.Actor, document string, reading Read
 	if m.byKey[document] == nil {
 		return nil, access.Missing("no document %s", document)
 	}
+	if strings.Contains(reading.Summary, "\n") {
+		return nil, access.Invalid("the summary of %s is more than one line", document)
+	}
 	ops := []store.Op{store.Delete(toDosTab, store.Row{"Document": document})}
 	for _, t := range reading.ToDos {
 		t.Document = document
@@ -43,7 +46,7 @@ func (m *Documents) setReading(actor access.Actor, document string, reading Read
 			return nil, access.Invalid("point %d repeats %q, not another email's to-do", point, toDo)
 		}
 	}
-	row := store.Row{"Read": read, "Key Points": strings.Join(reading.Points, "\n"), "Audience": reading.Audience, "Repeats": repeatsCell(reading.Repeats)}
+	row := store.Row{"Read": read, "Summary": reading.Summary, "Key Points": strings.Join(reading.Points, "\n"), "Audience": reading.Audience, "Repeats": repeatsCell(reading.Repeats)}
 	return append(ops, store.Upsert(readsTab, store.Row{"Document": document}, row)), nil
 }
 

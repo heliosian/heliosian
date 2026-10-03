@@ -96,6 +96,7 @@ func TestSettingAReadingReplacesADocumentsOwn(t *testing.T) {
 	c, _, _ := schoolServer(t)
 	ctx, system := context.Background(), access.System("test")
 	reading := Reading{
+		Summary:  "The Jays' tide pool trip needs drivers.",
 		Points:   []string{"The Jays visit the tide pools on Fri, Oct 9.", "Four parent drivers are needed."},
 		Audience: "Jays",
 		ToDos:    []ToDo{{Title: "Drive on the trip", Summary: "Drivers wanted", Details: "Four drivers.", Due: "2026-10-09", Point: 2}},
@@ -113,13 +114,19 @@ func TestSettingAReadingReplacesADocumentsOwn(t *testing.T) {
 	if len(got) != 1 || got[0].Title != "Drive on the trip" || got[0].Point != 2 || docs.Read[jaysTripKey] != "2026-10-01" {
 		t.Errorf("after setting, the trip's to-dos are %+v, read %q", got, docs.Read[jaysTripKey])
 	}
-	if !slices.Equal(docs.Points[jaysTripKey], reading.Points) || docs.Audience[jaysTripKey] != "Jays" {
-		t.Errorf("after setting, the trip's points are %v to %q", docs.Points[jaysTripKey], docs.Audience[jaysTripKey])
+	if !slices.Equal(docs.Points[jaysTripKey], reading.Points) || docs.Audience[jaysTripKey] != "Jays" || docs.Summary[jaysTripKey] != reading.Summary {
+		t.Errorf("after setting, the trip's summary is %q and points are %v to %q", docs.Summary[jaysTripKey], docs.Points[jaysTripKey], docs.Audience[jaysTripKey])
 	}
 	for _, bad := range []ToDo{{Title: "Pay", Link: "not a link"}, {Title: "Pay", Due: "Friday"}, {Title: "Pay", Point: 3}} {
-		if err := c.SetReading(ctx, system, jaysTripKey, Reading{Points: reading.Points, ToDos: []ToDo{bad}}, "2026-10-01"); err == nil {
+		if err := c.SetReading(ctx, system, jaysTripKey, Reading{Summary: reading.Summary, Points: reading.Points, ToDos: []ToDo{bad}}, "2026-10-01"); err == nil {
 			t.Errorf("a to-do %+v was taken", bad)
 		}
+	}
+	if err := c.SetReading(ctx, system, jaysTripKey, Reading{Summary: "Two\nlines.", Points: reading.Points}, "2026-10-01"); err == nil {
+		t.Errorf("a summary of two lines was taken")
+	}
+	if err := c.SetReading(ctx, system, jaysTripKey, Reading{Points: reading.Points}, "2026-10-01"); err != nil {
+		t.Errorf("a reading with no summary was refused: %v", err)
 	}
 	ilp := ""
 	for _, toDo := range c.Model().Documents.ToDos {
@@ -127,7 +134,7 @@ func TestSettingAReadingReplacesADocumentsOwn(t *testing.T) {
 			ilp = toDo.ID
 		}
 	}
-	repeating := Reading{Points: reading.Points, ToDos: reading.ToDos, Repeats: map[int]string{1: ilp}}
+	repeating := Reading{Summary: reading.Summary, Points: reading.Points, ToDos: reading.ToDos, Repeats: map[int]string{1: ilp}}
 	if err := c.SetReading(ctx, system, jaysTripKey, repeating, "2026-10-01"); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +143,7 @@ func TestSettingAReadingReplacesADocumentsOwn(t *testing.T) {
 	}
 	own := c.Model().Documents.ToDos[0].ID
 	for _, bad := range []map[int]string{{3: ilp}, {1: "nosuchtodo00"}} {
-		if err := c.SetReading(ctx, system, jaysTripKey, Reading{Points: reading.Points, Repeats: bad}, "2026-10-01"); err == nil {
+		if err := c.SetReading(ctx, system, jaysTripKey, Reading{Summary: reading.Summary, Points: reading.Points, Repeats: bad}, "2026-10-01"); err == nil {
 			t.Errorf("repeats %v were taken", bad)
 		}
 	}
@@ -145,7 +152,7 @@ func TestSettingAReadingReplacesADocumentsOwn(t *testing.T) {
 			own = toDo.ID
 		}
 	}
-	if err := c.SetReading(ctx, system, jaysTripKey, Reading{Points: reading.Points, ToDos: reading.ToDos, Repeats: map[int]string{1: own}}, "2026-10-01"); err == nil {
+	if err := c.SetReading(ctx, system, jaysTripKey, Reading{Summary: reading.Summary, Points: reading.Points, ToDos: reading.ToDos, Repeats: map[int]string{1: own}}, "2026-10-01"); err == nil {
 		t.Errorf("a point repeating the email's own to-do was taken")
 	}
 	if err := c.SetReading(ctx, system, "no-such-document", Reading{}, "2026-10-01"); err == nil {
