@@ -724,6 +724,8 @@ const policySource = `
 (set GROUP.flyer (and (system "import") (= @old.kind "activity")))
 ; an activity's place among its siblings, as the old sheet has it
 (set GROUP.order (and (system "import") (= @old.kind "activity")))
+; who added an activity, as the old sheet has it
+(set GROUP.added_by (and (system "import") (= @old.kind "activity")))
 ; the volunteers and co-chairs of activities
 (read MEMBER (and (system "import") (= group.kind "activity")))
 ; add a volunteer or co-chair the old sheet has
