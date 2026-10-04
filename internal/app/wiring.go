@@ -81,6 +81,7 @@ type Core struct {
 	Store     *model.Store
 	Data      *db.Store
 	Pictures  *db.Pictures
+	Search    *db.Searcher
 	Documents *model.DocumentFiler
 	Queue     *store.Queue
 	Spoof     *auth.Spoof
@@ -107,11 +108,12 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load the models", "error", err)
 	}
-	dataStore, err := db.NewStore(cfg.Source, cfg.Writer, queue)
+	dataStore, err := db.NewStore(cfg.Source, cfg.Writer, queue, db.NewSearchIndex())
 	if err != nil {
 		logging.Fatal("load the data sheets", "error", err)
 	}
 	pictures := db.NewPictures(dataStore, queue, cfg.Bucket)
+	search := db.NewSearcher(dataStore, queue, cfg.Bucket, cfg.Embedder)
 	go models.Locate(cfg.Geocoder)
 	taglineOf := func(key string) func() string {
 		return func() string {
@@ -205,7 +207,7 @@ func NewCore(cfg Config) *Core {
 	askAbout := ask.About(appName("ask"), taglineOf("ask"))
 	adminMux := http.NewServeMux()
 	adminMux.Handle("GET /{$}", http.RedirectHandler("/resources", http.StatusFound))
-	for _, page := range []string{"resources", "query", "policies", "erd"} {
+	for _, page := range []string{"resources", "query", "search", "policies", "erd"} {
 		adminMux.HandleFunc("GET /"+page, func(w http.ResponseWriter, r *http.Request) {
 			serve.File(w, r, "web/admin/"+page+"/index.html")
 		})
@@ -242,6 +244,7 @@ func NewCore(cfg Config) *Core {
 	for _, a := range apps {
 		registry.Register(a.Mux)
 		db.Register(a.Mux, dataStore, queue, pictures, cfg.ImportKey, schoolNow)
+		db.RegisterSearch(a.Mux, dataStore, search, cfg.ImportKey, schoolNow)
 		a.Mux.Handle("GET "+OptInPath, optIn)
 		model.RegisterFeedback(a.Mux, a.Key, appName(a.Key), feedbackIntake)
 		suggestions.Register(a.Mux)
@@ -257,7 +260,7 @@ func NewCore(cfg Config) *Core {
 		queue.Refresh()
 	})
 	return &Core{
-		Store: models, Data: dataStore, Pictures: pictures, Documents: documents, Queue: queue,
+		Store: models, Data: dataStore, Pictures: pictures, Search: search, Documents: documents, Queue: queue,
 		Spoof: &auth.Spoof{Allowed: models.IsSuperAdmin, Person: spoofPerson(models)},
 		apps:  apps,
 	}
@@ -351,6 +354,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	}), core.Aliased())
 	if os.Getenv("K_SERVICE") != "" {
 		db.StartConsent(core.Data, core.Queue, core.Pictures, sheet)
+		core.Search.StartMaking(anthropicKey)
 		watcher := calendarWatcher(core, sessionKey, anthropicKey)
 		muxes["when"].Handle("POST "+db.CalendarHookPath, watcher)
 		watcher.Start()

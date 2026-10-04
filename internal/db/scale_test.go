@@ -79,7 +79,7 @@ func scaleStore(tb testing.TB) *Store {
 	appendRows(tb, filepath.Join(root, "datagroups", "GROUP.csv"), groups)
 	appendRows(tb, filepath.Join(root, "datagroups", "MEMBER.csv"), members)
 	dir := &data.Dir{Root: root}
-	s, err := NewStore(dir, dir, store.NewQueue())
+	s, err := NewStore(dir, dir, store.NewQueue(), NewSearchIndex())
 	if err != nil {
 		tb.Fatal(err)
 	}

@@ -29,6 +29,7 @@ type Model struct {
 	changes   *Rows
 	derived   *derived
 	consented map[string]*View
+	index     *SearchIndex
 }
 
 type View struct {

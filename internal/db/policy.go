@@ -244,7 +244,7 @@ const policySource = `
 ; every column of a document
 (read DOCUMENT
   (id parent kind relation order name date author url filename content_id content message
-   key_points index)
+   key_points)
   true)
 ; the bytes of documents and mail the viewer may see
 (read CONTENT
@@ -523,6 +523,10 @@ const policySource = `
 (read REDIRECT (super_admin))
 ; every column of a redirect
 (read REDIRECT (id app old new added) true)
+; every group's and person's search entry
+(read SEARCH (super_admin))
+; every column of a search entry
+(read SEARCH (id target input summary keywords chunks object made) true)
 ; every change the store recorded, but those the consent step hides
 (read CHANGES (super_admin))
 ; every column of a change

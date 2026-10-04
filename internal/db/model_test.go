@@ -14,7 +14,7 @@ func sampleWithQueue(t *testing.T) (*Store, *store.Queue) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	s, err := NewStore(dir, dir, queue)
+	s, err := NewStore(dir, dir, queue, NewSearchIndex())
 	if err != nil {
 		t.Fatal(err)
 	}

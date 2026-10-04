@@ -11,9 +11,10 @@ import (
 )
 
 type derived struct {
-	mu      sync.Mutex
-	byGroup map[string][]store.Row
-	sets    map[string]*generatedSet
+	mu            sync.Mutex
+	byGroup       map[string][]store.Row
+	sets          map[string]*generatedSet
+	searchVersion int
 }
 
 type generatedSet struct {
@@ -40,10 +41,12 @@ func (m *Model) effectiveRows(group string) []store.Row {
 }
 
 func (m *Model) generated(t *Table) *generatedSet {
+	version := m.index.current()
 	m.derived.mu.Lock()
 	set := m.derived.sets[t.Name]
+	stale := t.Name == "SEARCH" && m.derived.searchVersion != version
 	m.derived.mu.Unlock()
-	if set != nil {
+	if set != nil && !stale {
 		return set
 	}
 	var rows []store.Row
@@ -52,6 +55,11 @@ func (m *Model) generated(t *Table) *generatedSet {
 		rows = m.effectiveAll()
 	case "INBOX":
 		rows = m.inbox()
+	case "SEARCH":
+		rows, version = m.index.generatedRows()
+		m.derived.mu.Lock()
+		m.derived.searchVersion = version
+		m.derived.mu.Unlock()
 	default:
 		panic("db: no builder for " + t.Name)
 	}

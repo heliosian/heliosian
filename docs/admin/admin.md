@@ -28,6 +28,10 @@ After it, folded too, is the row's history: its `CHANGES` entries newest first i
 
 The grid on this page and Resources' is `web/admin/grid.js` and `grid.css`: the columns any row fills, references as links to the row under Resources, sorting, the quick filters and the trees. A blob cell links to its object through `/api/blob/{id}/{column}` (`docs/datamodel.md`, The query API), opening in a new tab: a `thumbnail` shows inline, any other blob as its file type. A row's own page shows its images and plays its audio there.
 
+## Search
+
+`/search` (`web/admin/search/`) runs `POST /api/do/search` (`docs/datamodel.md`, Search) as the signed-in person, or whoever they view as, and reads its events as they come: the word results in one column at once, the meaning results in the other when they arrive, each with how many and how long since the search began. Each result is its row's name, linking to the row under Resources, its kind, and its summary, or a note that its entry isn't made yet. The words ride in the address as `?q=`, so a link reruns the search. The entries themselves are the generated `SEARCH` table under Resources, which a super admin reads.
+
 ## The spec
 
 `GET /api/openapi.json`, on every host beside `/api/q`, is an OpenAPI 3.2 description of the query API, built from `db.Tables` (`internal/db/openapi.go`): `QUERY /api/q` with the language or the JSON tree, with an example query per table, `POST /api/q`'s batch, and the calls under `/api/do/`. A query's answer is typed table by table: `resources` holds each table's rows by ID, and a table's schema has a property per column, every cell a string as the sheet holds it, with its enum, pattern or format where the column's kind has one. The extensions are what the admin pages read: on a table `x-columns` (its columns in order), `x-sheet`, `x-unique`, `x-generated` and `x-appendOnly`; on a column `x-kind` (the `db.Kind`), `x-relation` (a reference's target table), `x-required`, `x-generated` and `x-private`. `TestEveryAnsweredCellFitsTheSpec` checks every cell of every sample table against it.

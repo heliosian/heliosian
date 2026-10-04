@@ -50,7 +50,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("load the models: %v", err)
 	}
-	dataStore, err := db.NewStore(source, nil, store.NewQueue())
+	dataStore, err := db.NewStore(source, nil, store.NewQueue(), db.NewSearchIndex())
 	if err != nil {
 		log.Fatalf("load the data sheets: %v", err)
 	}

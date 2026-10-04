@@ -266,6 +266,22 @@ func spec() schema {
 				"responses": refusals(schema{"200": answers("The DOCUMENT holding the PDF and its hash.", "Stored"), "400": failure("Not a PDF.")}),
 			},
 		},
+		doPrefix + "search": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Search groups and people",
+				"description": "Answers server-sent events, each a list of {id, summary} the caller may read, best first: words, the rows holding the most of the words, at once; then meaning, ranked by the closest of each row's embedded chunks to the words; or error if the meaning search fails.",
+				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
+					"type":       "object",
+					"required":   []string{"words"},
+					"properties": schema{"words": schema{"type": "string"}},
+				}}}},
+				"responses": refusals(schema{
+					"200": schema{"description": "The words event, then the meaning or error event.", "content": schema{"text/event-stream": schema{"schema": schema{"type": "string"}}}},
+					"400": failure("No words."),
+				}),
+			},
+		},
 	}
 	return schema{
 		"openapi": "3.2.0",

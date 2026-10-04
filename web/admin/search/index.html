@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Search · Helios Admin</title>
+<link rel="stylesheet" href="/chrome.css">
+<link rel="stylesheet" href="/search/style.css">
+</head>
+<body>
+<header>
+<div class="tools">
+<h1>search<span class="sub">/ runs as you, or whoever you view as</span></h1>
+<span id="summary" class="summary"></span>
+</div>
+</header>
+<main>
+<form id="ask" class="actions">
+<input id="words" type="search" autofocus placeholder="what are you looking for?">
+<button id="run" type="submit">search</button>
+</form>
+<div class="results">
+<section data-sheet="generated"><h3>by words <span id="words-took" class="took"></span></h3><ol id="by-words"></ol></section>
+<section data-sheet="generated"><h3>by meaning <span id="meaning-took" class="took"></span></h3><ol id="by-meaning"></ol></section>
+</div>
+</main>
+<script type="module" src="/search/start.js"></script>
+</body>
+</html>

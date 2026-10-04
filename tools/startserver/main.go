@@ -112,6 +112,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 		ArtifactsMail: artifacts.Inbox{Bucket: bucket},
 		Digest:        digest.New("sample"),
 	})
+	core.Search.StartMaking("sample")
 	saved, err := filepath.Glob("sampledata/artifacts/*.json")
 	if err != nil {
 		logging.Fatal("list the sample documents", "error", err)

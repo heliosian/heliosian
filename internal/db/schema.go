@@ -499,7 +499,6 @@ var Tables = []Table{
 			ref("content", "CONTENT").about("Its bytes."),
 			ref("message", "MESSAGE").about("The mail it was filed from."),
 			col("key_points", Text).about("Its key points, as the inbox shows them."),
-			col("index", Blob).about("Ask's search index of its text."),
 		},
 	},
 	{
@@ -623,6 +622,21 @@ var Tables = []Table{
 			ident(InboxPrefix),
 			ref("person", "PERSON").about("Whose inbox."),
 			ref("document", "DOCUMENT").about("The document."),
+		},
+	},
+	{
+		Name:        "SEARCH",
+		Generated:   true,
+		Description: "A group's or person's search entry: the input built from what every reader of it may read, and what Claude and Vertex made of it, kept in the media bucket under its object. Read from the searcher's index as it stands, so an entry made since the last commit shows at once.",
+		Columns: []Column{
+			ident(SearchPrefix),
+			ref("target", "").about("The group or person it is the entry of."),
+			col("input", Text).about("The search input, built from the row."),
+			col("summary", Text).about("Claude's summary of it, shown under its name in search results; blank until made."),
+			col("keywords", Text).about("Claude's words someone might type looking for it, comma-separated; blank until made."),
+			col("chunks", Int).about("How many pieces the input was cut into, each embedded by Vertex; blank until made."),
+			col("object", Text).about("Where the entry is kept in the media bucket: search/ and the input's SHA-256."),
+			col("made", Bool).about("Whether the entry is in the index; no while it waits for Claude and Vertex."),
 		},
 	},
 	{

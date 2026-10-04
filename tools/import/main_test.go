@@ -77,7 +77,7 @@ func sampleServer(t *testing.T) (client, *db.Store) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	s, err := db.NewStore(dir, dir, queue)
+	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex())
 	if err != nil {
 		t.Fatal(err)
 	}
