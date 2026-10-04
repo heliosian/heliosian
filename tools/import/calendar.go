@@ -23,7 +23,7 @@ import (
 	"heliosian/internal/db"
 )
 
-var calendarTables = []string{"GROUP", "GROUP_SOURCE", "RULE", "MEMBER", "DOCUMENT_GROUP", "PERSON", "DOCUMENT"}
+var calendarTables = []string{"GROUP", "GROUP_SOURCE", "RULE", "MEMBER", "DOCUMENT_GROUP", "PERSON", "DOCUMENT", "CONTENT"}
 
 func (c client) calendarRows() (db.CalendarRows, error) {
 	out := db.CalendarRows{}
@@ -110,9 +110,15 @@ func findPDF(page []byte) (string, error) {
 }
 
 func current(rows db.CalendarRows, hash, reading string) (string, bool) {
+	content := ""
+	for _, c := range rows["CONTENT"] {
+		if c["hash"] == hash {
+			content = c["id"]
+		}
+	}
 	doc := ""
 	for _, d := range rows["DOCUMENT"] {
-		if d["kind"] == "calendar" && d["hash"] == hash {
+		if content != "" && d["kind"] == "calendar" && d["content"] == content {
 			doc = d["id"]
 		}
 	}

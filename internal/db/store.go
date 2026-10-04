@@ -72,6 +72,11 @@ func build(sheet string) func(context.Context, store.Tables, *Model) error {
 				return err
 			}
 		}
+		if sheet == DocumentsSheet {
+			if err := checkDocuments(built); err != nil {
+				return err
+			}
+		}
 		*m.slot(sheet) = built
 		m.derived = &derived{byGroup: map[string][]store.Row{}, sets: map[string]*generatedSet{}}
 		if sheet == MailSheet {

@@ -99,6 +99,7 @@ func TestParseRefuses(t *testing.T) {
 		`(from PERSON (where (= hidden "Yes")))`:              "is text",
 		`(from GROUP @viewer)`:                                "can't name a row",
 		`(select PERSON.id)`:                                  "starts with from",
+		`(from PERSON @p (where (in id (ancestors @p))))`:     "PERSON has no parent to follow",
 	} {
 		_, err := Parse(src)
 		if err == nil || !strings.Contains(err.Error(), want) {

@@ -60,6 +60,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"RULE":             {0, 0, 0, 2, 0},
 		"DOCUMENT":         {1, 1, 1, 1, 1},
 		"DOCUMENT_GROUP":   {1, 1, 1, 1, 1},
+		"CONTENT":          {0, 0, 0, 0, 0},
 		"INBOX":            {0, 1, 1, 0, 0},
 		"MESSAGE":          {0, 0, 1, 1, 0},
 		"RECIPIENT":        {0, 0, 1, 1, 0},
@@ -71,6 +72,30 @@ func TestWhoSeesWhichRows(t *testing.T) {
 			if got := len(as(t, s, viewer, "(from "+table+")")); got != want[i] {
 				t.Errorf("%s as %q: %d rows, want %d", table, viewer, got, want[i])
 			}
+		}
+	}
+}
+
+func TestDocumentsUnderAMailedPostFollowIt(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, DocumentsSheet,
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "application/pdf", "size": "200"}),
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000003", "hash": "c3", "blob": "content/c3", "mime": "text/markdown", "size": "30"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "post", "content": "cnt00000000001", "title": "Field trip"}),
+		store.Insert("DOCUMENT_GROUP", store.Row{"id": "dgr00000000010", "document": "doc00000000010", "group": "grp00000000030", "relation": "sent_to"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "attachment", "parent": "doc00000000010", "content": "cnt00000000002", "filename": "permission.pdf"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "extract", "parent": "doc00000000011", "content": "cnt00000000003"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	for i, viewer := range []string{nobody, student, parent, staff, guest} {
+		want := []int{0, 0, 3, 3, 0}[i]
+		if got := len(as(t, s, viewer, `(from DOCUMENT (where (in id "doc00000000010" "doc00000000011" "doc00000000012")))`)); got != want {
+			t.Errorf("the post and what sits under it as %q: %d documents, want %d", viewer, got, want)
+		}
+		if got := len(as(t, s, viewer, `(from CONTENT)`)); got != want {
+			t.Errorf("the post's bytes and what sits under it as %q: %d, want %d", viewer, got, want)
 		}
 	}
 }

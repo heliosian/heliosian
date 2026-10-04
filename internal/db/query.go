@@ -621,16 +621,20 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 		return cx.selectSet(s, sc, x)
 	case "ancestors":
 		if len(s.list) != 2 {
-			return nil, typ{}, s.errorf("ancestors takes one group")
+			return nil, typ{}, s.errorf("ancestors takes one row")
 		}
 		g, err := cx.operand(s.list[1], sc)
 		if err != nil {
 			return nil, typ{}, err
 		}
-		t := typ{class: classRow, kind: ID, table: "GROUP"}
-		if g.lit != nil || g.t.class != classRow || g.t.table != "GROUP" || g.t.list {
-			return nil, typ{}, s.errorf("ancestors takes a group")
+		if g.lit != nil || g.t.class != classRow || g.t.table == "" || g.t.list {
+			return nil, typ{}, s.errorf("ancestors takes a row")
 		}
+		table, _ := Lookup(g.t.table)
+		if parent, ok := table.Column("parent"); !ok || parent.Kind != Ref || parent.Target != table.Name {
+			return nil, typ{}, s.errorf("%s has no parent to follow", table.Name)
+		}
+		t := typ{class: classRow, kind: ID, table: table.Name}
 		return func(f *frame) *valueSet {
 			out := newValueSet(false)
 			v := g.eval(f)
@@ -639,7 +643,7 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 			}
 			for id := v.s; id != "" && !out.scalar[id]; {
 				out.add(value{kind: ID, s: id})
-				row, ok := f.run.table("GROUP").Get(id)
+				row, ok := f.run.table(table.Name).Get(id)
 				if !ok {
 					break
 				}

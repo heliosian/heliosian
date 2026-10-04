@@ -328,6 +328,17 @@ func checkPhotos(people Sheet) error {
 	return nil
 }
 
+func checkDocuments(documents Sheet) error {
+	for _, row := range documents["DOCUMENT"].rows {
+		root := row["kind"] != "" && row["relation"] == "" && row["parent"] == ""
+		child := row["kind"] == "" && row["relation"] != "" && row["parent"] != ""
+		if !root && !child {
+			return fmt.Errorf("DOCUMENT %s: a document has a kind and no parent, or a relation and a parent", row["id"])
+		}
+	}
+	return nil
+}
+
 func checkRuleProperties(groups Sheet) error {
 	person, _ := Lookup("PERSON")
 	for _, row := range groups["RULE"].rows {

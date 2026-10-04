@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -284,15 +285,22 @@ func TestCalendarPDFIsStoredOnce(t *testing.T) {
 		}
 		ids = append(ids, out.Result[0])
 		row, ok := s.Model().Table("DOCUMENT").Get(out.Result[0])
-		if !ok || row["kind"] != "calendar" || row["hash"] != out.Hash || row["object"] != "calendar/"+blob.Name(pdf, "pdf") || row["url"] != fields["url"] {
+		if !ok || row["kind"] != "calendar" || row["url"] != fields["url"] {
 			t.Fatalf("post %d answered %+v and reads %v", i, out, row)
 		}
-		if found, err := pics.bucket.Exists(context.Background(), row["object"]); err != nil || !found {
+		content, ok := s.Model().Table("CONTENT").Get(row["content"])
+		if !ok || content["hash"] != out.Hash || content["blob"] != "content/"+strings.TrimSuffix(blob.Name(pdf, "pdf"), ".pdf") || content["mime"] != "application/pdf" || content["size"] != strconv.Itoa(len(pdf)) {
+			t.Fatalf("post %d: the document's content reads %v", i, content)
+		}
+		if found, err := pics.bucket.Exists(context.Background(), content["blob"]); err != nil || !found {
 			t.Fatalf("post %d: the pdf is not in the bucket: %v", i, err)
 		}
 	}
 	if ids[0] != ids[1] {
 		t.Fatalf("the same pdf made two documents: %v", ids)
+	}
+	if n := s.Model().Table("CONTENT").Len(); n != 1 {
+		t.Fatalf("the same pdf stored %d times", n)
 	}
 	if rec := postFile(t, s, queue, pics, "maya.lindqvist@example.org", "calendar-pdf", fields, "pdf", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusForbidden {
 		t.Fatalf("a person with no grant: %d %s", rec.Code, rec.Body.String())

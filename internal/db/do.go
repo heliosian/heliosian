@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	doPrefix   = "/api/do/"
-	photoLimit = 30 << 20
-	pdfLimit   = 30 << 20
+	doPrefix      = "/api/do/"
+	photoLimit    = 30 << 20
+	pdfLimit      = 30 << 20
+	contentFolder = "content"
 )
 
 type stored struct {
@@ -103,31 +104,45 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, access.Invalid("%s is not a pdf", mimeType))
 			return
 		}
-		name := blob.Name(content, "pdf")
-		hash := strings.TrimSuffix(name, ".pdf")
+		hash := strings.TrimSuffix(blob.Name(content, "pdf"), ".pdf")
 		m := s.Model()
-		for _, row := range m.Table("DOCUMENT").All() {
-			if row["kind"] == "calendar" && row["hash"] == hash {
-				serve.Write(w, r, http.StatusOK, stored{Result: []string{row["id"]}, Hash: hash})
-				return
+		existing, found := m.Table("CONTENT").Find(hash)
+		if found {
+			for _, row := range m.Table("DOCUMENT").Referencing("content", existing["id"]) {
+				if row["kind"] == "calendar" {
+					serve.Write(w, r, http.StatusOK, stored{Result: []string{row["id"]}, Hash: hash})
+					return
+				}
 			}
 		}
-		row := map[string]any{"kind": "calendar", "object": "calendar/" + name, "hash": hash, "url": r.FormValue("url"), "date": now().In(School).Format(DateLayout)}
-		if err := m.Authorize(env, Change{Table: "DOCUMENT", New: store.Row{"kind": "calendar", "object": "calendar/" + name, "hash": hash}}); err != nil {
+		if err := m.Authorize(env, Change{Table: "DOCUMENT", New: store.Row{"kind": "calendar"}}); err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		if err := pics.bucket.Put(r.Context(), "calendar/"+name, "application/pdf", content); err != nil {
-			serve.Error(w, r, err)
-			return
+		edits := []Edit{}
+		contentID := existing["id"]
+		if !found {
+			name, mimeType, size := contentFolder+"/"+hash, "application/pdf", strconv.Itoa(len(content))
+			if err := m.Authorize(env, Change{Table: "CONTENT", New: store.Row{"hash": hash, "blob": name, "mime": mimeType, "size": size}}); err != nil {
+				serve.Error(w, r, err)
+				return
+			}
+			if err := pics.bucket.Put(r.Context(), name, mimeType, content); err != nil {
+				serve.Error(w, r, err)
+				return
+			}
+			edits = append(edits, Edit{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": hash, "blob": name, "mime": mimeType, "size": size}})
+			contentID = "@content"
 		}
-		ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: []Edit{{Insert: "DOCUMENT", Row: row}}})
+		edits = append(edits, Edit{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar", "content": contentID, "url": r.FormValue("url"), "date": now().In(School).Format(DateLayout)}})
+		ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: edits})
 		if err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "added a version of the year calendar", "viewer", env.Viewer, "system", env.System, "document", ids[0], "hash", hash)
-		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: hash})
+		document := ids[len(ids)-1]
+		slog.InfoContext(r.Context(), "added a version of the year calendar", "viewer", env.Viewer, "system", env.System, "document", document, "hash", hash)
+		serve.Write(w, r, http.StatusOK, stored{Result: []string{document}, Hash: hash})
 	})
 }
 

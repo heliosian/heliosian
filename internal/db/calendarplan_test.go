@@ -176,8 +176,8 @@ func TestGooglePlan(t *testing.T) {
 func TestPDFPlan(t *testing.T) {
 	s, queue := calendarSample(t)
 	if err := commit(s, DocumentsSheet,
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000002", "kind": "calendar", "hash": "v1"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000003", "kind": "calendar", "hash": "v2"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000002", "kind": "calendar"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000003", "kind": "calendar"}),
 	); err != nil {
 		t.Fatal(err)
 	}

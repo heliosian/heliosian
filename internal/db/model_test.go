@@ -92,6 +92,9 @@ func TestCommitsTheModelRefuses(t *testing.T) {
 		"still named":      {PeopleSheet, store.Delete("PERSON", store.Row{"id": "per00000000004"}), "names no row"},
 		"private property": {GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000030", "order": "j", "property": "vc_phone", "value": "555-0100"}), "is private"},
 		"guarded property": {GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000030", "order": "j", "property": "phone_consent", "value": "shared"}), "not open to everyone"},
+		"kind and parent":  {DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000099", "kind": "newsletter", "relation": "attachment", "parent": "doc00000000001"}), "a kind and no parent"},
+		"orphan part":      {DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000099", "relation": "attachment"}), "a kind and no parent"},
+		"neither":          {DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000099"}), "a kind and no parent"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			err := commit(sample(t), c.sheet, c.op)

@@ -81,10 +81,20 @@ const policySource = `
       (and (!= @g.visibility "managers")
            (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer)))))
 
-; @d was sent to no group that takes mail, or to one whose mail the viewer sees
+; @d, or a document it sits under, was sent to a group that takes mail
+(define (mailed @d)
+  (exists DOCUMENT_GROUP (in document (ancestors @d)) (= relation "sent_to") group.mail))
+
+; neither @d nor any document it sits under was sent to a group that takes mail, or one was sent to a group whose mail the viewer sees
 (define (document_visible @d)
-  (or (not (exists DOCUMENT_GROUP (= document @d) (= relation "sent_to") group.mail))
-      (exists DOCUMENT_GROUP (= document @d) (= relation "sent_to") group.mail (sees_mail group))))
+  (or (not (mailed @d))
+      (exists DOCUMENT_GROUP (in document (ancestors @d)) (= relation "sent_to") group.mail (sees_mail group))))
+
+; the viewer sent or received @m, or manages the group it went to
+(define (message_visible @m)
+  (or (= @m.from_person @viewer)
+      (exists RECIPIENT (= message @m) (= person @viewer))
+      (manages @m.group)))
 
 ;; Everyone
 
@@ -192,10 +202,19 @@ const policySource = `
 ; every column of an effective membership
 (read EFFECTIVE_MEMBER (id group person status reasons) true)
 
-; documents sent to no group that takes mail, or to one whose mail the viewer sees
+; documents sent to no group that takes mail, or to one whose mail the viewer sees, and every document under them
 (read DOCUMENT (document_visible @row))
 ; every column of a document
-(read DOCUMENT (id kind title date author url message object hash key_points indexed order) true)
+(read DOCUMENT
+  (id kind relation parent content title date author url filename content_id message key_points
+   index order)
+  true)
+; the bytes of documents and mail the viewer may see
+(read CONTENT
+  (or (exists DOCUMENT @d (= content @row) (document_visible @d))
+      (exists MESSAGE @m (= content @row) (message_visible @m))))
+; every column of a document's bytes
+(read CONTENT (id hash blob mime size) true)
 ; links between a document and a group, where the viewer may see both
 (read DOCUMENT_GROUP (and (document_visible document) (visible group)))
 ; every column of a link between a document and a group
@@ -206,13 +225,10 @@ const policySource = `
 (read INBOX (id person document) true)
 
 ; mail the viewer sent or received, and mail to groups they manage
-(read MESSAGE
-  (or (= from_person @viewer)
-      (exists RECIPIENT (= message @row) (= person @viewer))
-      (manages group)))
+(read MESSAGE (message_visible @row))
 ; every column of a message
 (read MESSAGE
-  (id direction kind group about from_person from_address subject object header_id parent created)
+  (id direction kind group about from_person from_address subject content header_id parent created)
   true)
 ; the viewer's own deliveries, deliveries of mail they sent, and of mail to groups they manage
 (read RECIPIENT
@@ -362,8 +378,10 @@ const policySource = `
 (read MESSAGE (and (admin_of "loop") group.mail))
 ; every delivery of mail to groups that take it
 (read RECIPIENT (and (admin_of "loop") message.group.mail))
-; every post sent to a group that takes mail
-(read DOCUMENT (and (admin_of "loop") (exists DOCUMENT_GROUP (= document @row) (= relation "sent_to") group.mail)))
+; every post sent to a group that takes mail, and every document under one
+(read DOCUMENT (and (admin_of "loop") (mailed @row)))
+; the bytes of every post sent to a group that takes mail, and of every document under one
+(read CONTENT (and (admin_of "loop") (exists DOCUMENT @d (= content @row) (mailed @d))))
 ; which mail groups each post was sent to
 (read DOCUMENT_GROUP (and (admin_of "loop") group.mail))
 
@@ -544,6 +562,8 @@ const policySource = `
 (delete DOCUMENT_GROUP (and (system "import") (calendar_kind @old.group)))
 ; add a version of the school's year calendar
 (insert DOCUMENT (and (system "import") (= @new.kind "calendar")))
+; store the bytes of a version of the school's year calendar
+(insert CONTENT (and (system "import") (= @new.mime "application/pdf")))
 
 ;; System: import, the sync from the old sheets, until the cutover
 
@@ -681,6 +701,10 @@ const policySource = `
 (read MESSAGE (and (system "import") (= group.kind "group")))
 ; a post to a Loop list, and the copy it sent out
 (insert MESSAGE (and (system "import") (= @new.group.kind "group")))
+; every stored file, to find a Loop post's message an earlier sync stored
+(read CONTENT (system "import"))
+; a Loop post's message as it arrived
+(insert CONTENT (and (system "import") (= @new.mime "message/rfc822")))
 ; Loop's deliveries, to find what an earlier sync added
 (read RECIPIENT (and (system "import") (= message.group.kind "group")))
 ; a copy of a Loop post that went to one person
