@@ -317,6 +317,8 @@ const policySource = `
 (read RULE (and (admin_of "when") (in group.kind "event" "day_part")))
 ; all mail about events
 (read MESSAGE (and (admin_of "when") (= group.kind "event")))
+; the bytes of all mail about events
+(read CONTENT (and (admin_of "when") (exists MESSAGE (= content @row) (= group.kind "event"))))
 ; every delivery of mail about events
 (read RECIPIENT (and (admin_of "when") (= message.group.kind "event")))
 
@@ -336,6 +338,8 @@ const policySource = `
 (read RULE (and (admin_of "team") (in group.kind "activity")))
 ; all mail about activities
 (read MESSAGE (and (admin_of "team") (in group.kind "activity")))
+; the bytes of all mail about activities
+(read CONTENT (and (admin_of "team") (exists MESSAGE (= content @row) (in group.kind "activity"))))
 ; every delivery of mail about activities
 (read RECIPIENT (and (admin_of "team") (in message.group.kind "activity")))
 
@@ -357,6 +361,8 @@ const policySource = `
 (read RULE (and (admin_of "celebrate") (in group.kind "party" "celebration")))
 ; all mail about parties and celebrations
 (read MESSAGE (and (admin_of "celebrate") (in group.kind "party" "celebration")))
+; the bytes of all mail about parties and celebrations
+(read CONTENT (and (admin_of "celebrate") (exists MESSAGE (= content @row) (in group.kind "party" "celebration"))))
 ; every delivery of mail about parties and celebrations
 (read RECIPIENT (and (admin_of "celebrate") (in message.group.kind "party" "celebration")))
 
@@ -376,6 +382,8 @@ const policySource = `
 (read RULE (and (admin_of "loop") group.mail))
 ; all mail to groups that take it
 (read MESSAGE (and (admin_of "loop") group.mail))
+; the bytes of all mail to groups that take it
+(read CONTENT (and (admin_of "loop") (exists MESSAGE (= content @row) group.mail)))
 ; every delivery of mail to groups that take it
 (read RECIPIENT (and (admin_of "loop") message.group.mail))
 ; every post sent to a group that takes mail, and every document under one
@@ -867,6 +875,10 @@ const policySource = `
 (set ALIAS.target (system "import"))
 ; remove a merged guest once nothing names it
 (delete PERSON (and (system "import") (= @old.source "guest")))
+; remove a party's waitlist row or offer that the old sheet no longer has
+(delete MEMBER (and (system "import") (= @old.group.kind "party") (= @old.role "waitlist")))
+; remove an old ID naming a row the sync removed
+(delete ALIAS (system "import"))
 `
 
 type policySet struct {

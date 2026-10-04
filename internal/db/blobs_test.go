@@ -1,14 +1,17 @@
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"heliosian/internal/auth"
+	"heliosian/internal/store"
 )
 
 func fetchBlob(t *testing.T, s *Store, pics *Pictures, as, path, etag string) *httptest.ResponseRecorder {
@@ -27,6 +30,24 @@ func fetchBlob(t *testing.T, s *Store, pics *Pictures, as, path, etag string) *h
 	}
 	auth.Fixed(as, mux).ServeHTTP(rec, r)
 	return rec
+}
+
+func TestContentIsServedAsItsMimeInASandbox(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := newPictures(s, queue)
+	if err := pics.bucket.Put(context.Background(), "content/h1", "application/octet-stream", []byte("<script>alert(1)</script>")); err != nil {
+		t.Fatal(err)
+	}
+	if err := commit(s, DocumentsSheet,
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "h1", "blob": "content/h1", "mime": "text/html", "size": "25"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "page", "content": "cnt00000000001"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	got := fetchBlob(t, s, pics, "rowan.ashdown@example.org", "cnt00000000001/blob", "")
+	if got.Code != http.StatusOK || got.Header().Get("Content-Type") != "text/html" || !slices.Contains(got.Header().Values("Content-Security-Policy"), "sandbox") {
+		t.Fatalf("a stored page: %d %v", got.Code, got.Header())
+	}
 }
 
 func TestABlobIsServedToWhoeverMayReadItsCell(t *testing.T) {

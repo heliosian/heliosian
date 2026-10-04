@@ -100,6 +100,31 @@ func TestDocumentsUnderAMailedPostFollowIt(t *testing.T) {
 	}
 }
 
+func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, GroupsSheet,
+		store.Insert("GROUP", store.Row{"id": "grp00000000070", "kind": "admins", "title": "When Admins", "status": "open", "visibility": "members"}),
+		store.Insert("MEMBER", store.Row{"id": "mem00000000070", "group": "grp00000000070", "person": student, "role": "member", "status": "yes"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000070", "key": "when", "admins": "grp00000000070"})); err != nil {
+		t.Fatal(err)
+	}
+	if err := commit(s, DocumentsSheet, store.Insert("CONTENT", store.Row{"id": "cnt00000000005", "hash": "e5", "blob": "content/e5", "mime": "message/rfc822", "size": "50"})); err != nil {
+		t.Fatal(err)
+	}
+	if err := commit(s, MailSheet, store.Insert("MESSAGE", store.Row{"id": "msg00000000005", "direction": "in", "kind": "reply", "group": "grp00000000040", "content": "cnt00000000005", "created": "2026-09-27 10:00"})); err != nil {
+		t.Fatal(err)
+	}
+	for i, viewer := range []string{nobody, student, parent, staff, guest} {
+		want := []int{0, 1, 0, 1, 0}[i]
+		if got := len(as(t, s, viewer, `(from CONTENT)`)); got != want {
+			t.Errorf("a reply about the picnic's bytes as %q: %d, want %d", viewer, got, want)
+		}
+	}
+}
+
 func cellAs(t *testing.T, s *Store, viewer, src, column string) string {
 	t.Helper()
 	rows := as(t, s, viewer, src)
