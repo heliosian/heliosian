@@ -510,7 +510,7 @@ export async function offerTickets(p, a, quantity) {
 }
 
 export function openAddTicket(p) {
-  let paid = false;
+  let paid = Boolean(p.price);
   const box = el('div', 'ticket-kind');
   const lead = el('p', 'form-lead');
   const guestOf = peoplePicker({placeholder: 'Search for an adult\u2026', allow: person => !person.isStudent});
@@ -547,7 +547,7 @@ export function openAddTicket(p) {
     }
   };
   if (p.price) {
-    const kind = segmented([{label: 'Free', value: 'free'}, {label: `Paid \u00b7 ${money(p.price)}`, value: 'paid'}], 'free', v => {
+    const kind = segmented([{label: `Paid \u00b7 ${money(p.price)}`, value: 'paid'}, {label: 'Free', value: 'free'}], 'paid', v => {
       paid = v === 'paid';
       show();
     });
