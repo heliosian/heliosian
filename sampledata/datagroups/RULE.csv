@@ -1,6 +1,7 @@
-id,group,order,exclude,target,person,search,property,value,descend,expand,within
-rul00000000001,grp00000000030,i,,grp00000000010,,,,,,parents,
-rul00000000002,grp00000000006,i,,grp00000000005,,,,,,,
-rul00000000003,grp00000000012,i,,grp00000000012,,,,,Yes,,
-rul00000000004,grp00000000004,i,,,,,source,veracross,,,
-rul00000000005,grp00000000004,j,,,,,source,manual,,,
+id,group,order,exclude,target,person,search,property,value,replace_with,within
+rul00000000001,grp00000000030,i,,grp00000000010,,,,,parents,
+rul00000000002,grp00000000006,i,,grp00000000005,,,,,,
+rul00000000003,grp00000000012,i,,grp00000000011,,,,,,
+rul00000000006,grp00000000012,j,,grp00000000010,,,,,,
+rul00000000004,grp00000000004,i,,,,,source,veracross,,
+rul00000000005,grp00000000004,j,,,,,source,manual,,

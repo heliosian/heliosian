@@ -137,6 +137,7 @@ func plan(x *export, st *state) (*planner, error) {
 	if err := p.people(households); err != nil {
 		return nil, err
 	}
+	p.bandRules()
 	for _, id := range p.ids {
 		if err := p.emails(id); err != nil {
 			return nil, err
@@ -464,28 +465,56 @@ func (p *planner) ensureGrades() {
 		}
 		p.newGroup(row{"kind": "grade", "slug": slug, "title": g.title, "parent": band})
 	}
+}
+
+func plainTarget(r row) bool {
+	for _, c := range []string{"exclude", "person", "search", "property", "value", "replace_with", "within"} {
+		if strings.TrimSpace(r[c]) != "" && !strings.EqualFold(strings.TrimSpace(r[c]), "no") {
+			return false
+		}
+	}
+	return r["target"] != ""
+}
+
+func (p *planner) bandRules() {
 	for _, band := range p.groups.order {
 		if p.groups.rows[band]["kind"] != "band" {
 			continue
 		}
+		want := map[string]bool{}
+		for _, g := range p.groups.order {
+			r := p.groups.rows[g]
+			if r["parent"] == band && (r["kind"] == "grade" || r["kind"] == "classroom") {
+				want[g] = true
+			}
+		}
 		orders := []string{}
-		held := false
+		held := map[string]bool{}
 		for _, rid := range p.st.rules.order {
 			r := p.st.rules.rows[rid]
 			if r["group"] != band {
 				continue
 			}
-			orders = append(orders, r["order"])
-			descend, _ := cells.YesNo(r["descend"], false)
-			exclude, _ := cells.YesNo(r["exclude"], false)
-			held = held || (!exclude && r["target"] == band && descend)
+			if plainTarget(r) && want[r["target"]] && !held[r["target"]] {
+				held[r["target"]] = true
+				orders = append(orders, r["order"])
+				continue
+			}
+			p.groupWrites = append(p.groupWrites, write{Delete: rid})
+			p.counts["band rules removed"]++
 		}
-		if held {
-			continue
+		missing := []string{}
+		for _, g := range p.groups.order {
+			if want[g] && !held[g] {
+				missing = append(missing, g)
+			}
 		}
-		order := store.Order(append(orders, ""))[len(orders)]
-		p.groupWrites = append(p.groupWrites, write{Insert: "RULE", Row: row{"group": band, "order": order, "target": band, "descend": "Yes"}})
-		p.counts["band rules added"]++
+		slices.Sort(orders)
+		filled := store.Order(append(orders, make([]string, len(missing))...))
+		for i, g := range missing {
+			p.groupWrites = append(p.groupWrites, write{Insert: "RULE", Row: row{"group": band, "order": filled[len(orders)+i], "target": g}})
+			p.counts["band rules added"]++
+		}
 	}
 }
 
@@ -819,7 +848,13 @@ func (p *planner) syncMembers(group string, want map[string]bool) {
 }
 
 func (p *planner) families(households []*household) {
-	managers := map[string]map[string]bool{}
+	students := map[string]bool{}
+	for _, id := range p.ids {
+		if id.roles[student] {
+			students[id.person] = true
+		}
+	}
+	parents := map[string]map[string]bool{}
 	members := map[string]map[string]bool{}
 	for _, mid := range p.st.members.order {
 		m := p.st.members.rows[mid]
@@ -828,13 +863,14 @@ func (p *planner) families(households []*household) {
 		}
 		if members[m["group"]] == nil {
 			members[m["group"]] = map[string]bool{}
-			managers[m["group"]] = map[string]bool{}
+			parents[m["group"]] = map[string]bool{}
 		}
-		if strings.EqualFold(strings.TrimSpace(m["member"]), "yes") {
-			members[m["group"]][m["person"]] = true
+		if !strings.EqualFold(strings.TrimSpace(m["member"]), "yes") {
+			continue
 		}
-		if isManager(m) {
-			managers[m["group"]][m["person"]] = true
+		members[m["group"]][m["person"]] = true
+		if !students[m["person"]] {
+			parents[m["group"]][m["person"]] = true
 		}
 	}
 	families := []string{}
@@ -846,7 +882,7 @@ func (p *planner) families(households []*household) {
 	shared := func(h *household, family string) int {
 		n := 0
 		for _, a := range h.adults {
-			if managers[family][a.person] {
+			if parents[family][a.person] {
 				n++
 			}
 		}
@@ -858,7 +894,7 @@ func (p *planner) families(households []*household) {
 			inHousehold[id.person] = true
 		}
 		for _, f := range families {
-			if len(managers[f]) == len(h.adults) && shared(h, f) == len(h.adults) {
+			if len(parents[f]) == len(h.adults) && shared(h, f) == len(h.adults) {
 				h.family = f
 				break
 			}
@@ -869,8 +905,8 @@ func (p *planner) families(households []*household) {
 		best := 0
 		for _, f := range families {
 			hasMember := slices.ContainsFunc(slices.Collect(maps.Keys(members[f])), func(person string) bool { return inHousehold[person] })
-			hasManager := slices.ContainsFunc(slices.Collect(maps.Keys(managers[f])), func(person string) bool { return inHousehold[person] })
-			if hasMember && hasManager && shared(h, f) > best {
+			hasParent := slices.ContainsFunc(slices.Collect(maps.Keys(parents[f])), func(person string) bool { return inHousehold[person] })
+			if hasMember && hasParent && shared(h, f) > best {
 				h.family, best = f, shared(h, f)
 			}
 		}
@@ -913,11 +949,8 @@ func (p *planner) families(households []*household) {
 			}
 		}
 		want := map[string]bool{}
-		for _, id := range h.kids {
-			want[id.person] = false
-		}
-		for _, a := range h.adults {
-			want[a.person] = true
+		for _, id := range slices.Concat(h.kids, h.adults) {
+			want[id.person] = true
 		}
 		p.syncMembers(h.family, want)
 	}

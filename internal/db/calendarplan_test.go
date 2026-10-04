@@ -128,7 +128,7 @@ func TestGooglePlan(t *testing.T) {
 	}
 	cafeGroup := sourcesKeyed(m, cafe.Key)[0]["group"]
 	rules := m.Table("RULE").Referencing("group", cafeGroup)
-	if len(rules) != 1 || rules[0]["target"] != hummingbirds || rules[0]["expand"] != "parents" {
+	if len(rules) != 1 || rules[0]["target"] != hummingbirds || rules[0]["replace_with"] != "parents" {
 		t.Fatalf("the cafe's rules are %v", rules)
 	}
 	days := groupsOf(m, "day")

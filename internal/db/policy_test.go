@@ -509,7 +509,10 @@ func TestAuthorize(t *testing.T) {
 	}{
 		{"answer for oneself", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"rsvp": "no"}), true},
 		{"answer for one's guest", parent, change(t, s, "MEMBER", picnic(guest), store.Row{"rsvp": "maybe"}), true},
-		{"answer for a stranger", student, change(t, s, "MEMBER", picnic(parent), store.Row{"rsvp": "no"}), false},
+		{"answer for someone in one's family", student, change(t, s, "MEMBER", picnic(parent), store.Row{"rsvp": "no"}), true},
+		{"answer for a stranger", guest, change(t, s, "MEMBER", picnic(parent), store.Row{"rsvp": "no"}), false},
+		{"a child leaves their family", student, change(t, s, "MEMBER", []string{"grp00000000020", student}, store.Row{"member": "cancelled"}), false},
+		{"a parent takes a child out of their family", parent, change(t, s, "MEMBER", []string{"grp00000000020", student}, store.Row{"member": "excluded"}), false},
 		{"give up one's place", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"member": "cancelled"}), true},
 		{"exclude oneself", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"member": "excluded"}), false},
 		{"make oneself a host", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"manager": "Yes"}), false},

@@ -16,10 +16,10 @@ const policySource = `
 (define (manages @g)
   (exists MEMBER (in group (ancestors @g)) (= person @viewer) manager))
 
-; the members of every family @p manages
+; the members of every family @p is in
 (define (household @p)
   (select MEMBER.person
-    (in group (select MEMBER.group (= person @p) manager (= group.kind "family")))
+    (in group (select MEMBER.group (= person @p) (= member "yes") (= group.kind "family")))
     (= member "yes")))
 
 ; @g is one of the role groups the import keeps: students, parents, staff, adults, everyone
@@ -68,7 +68,7 @@ const policySource = `
 (define (calendar_kind @g)
   (in @g.kind "event" "day" "day_part"))
 
-; the viewer is @p or a manager of @p's family
+; the viewer is @p or in a family with @p
 (define (self_or_household @p)
   (or (= @p @viewer) (in @p (household @viewer))))
 
@@ -107,13 +107,13 @@ const policySource = `
   true)
 ; when a person last signed out everywhere and when the import dropped them, for the server alone
 (read PERSON (signed_out deactivated) false)
-; whether the form shares a person's address and phone, to them and their family's managers
+; whether the form shares a person's address and phone, to them and their family
 (read PERSON (address_consent phone_consent) (self_or_household @row))
-; a person or a manager of their family overrides their long name
+; a person or someone in their family overrides their long name
 (set PERSON.name_long_override (self_or_household @old))
-; a person or a manager of their family overrides their short name
+; a person or someone in their family overrides their short name
 (set PERSON.name_short_override (self_or_household @old))
-; a person or a manager of their family overrides their sort name
+; a person or someone in their family overrides their sort name
 (set PERSON.name_sort_override (self_or_household @old))
 ; the emails of people the viewer may see
 (read PERSON_EMAIL (person_visible person))
@@ -125,7 +125,7 @@ const policySource = `
       (and (not (blank group)) (visible group))))
 ; every column of a photo but its original, its re-encode and its crop
 (read PHOTO (id person group crop_left crop_top crop_width crop_height image thumbnail ready order) true)
-; a photo's re-encode and crop, to its person and their family's managers, or its group's managers
+; a photo's re-encode and crop, to its person and their family, or its group's managers
 (read PHOTO (reencode crop)
   (or (and (not (blank person)) (self_or_household person))
       (and (not (blank group)) (manages group))))
@@ -173,7 +173,7 @@ const policySource = `
 ; the rules of groups the viewer manages
 (read RULE (manages group))
 ; every column of a rule
-(read RULE (id group order exclude target person search property value descend expand within) true)
+(read RULE (id group order exclude target person search property value replace_with within) true)
 ; the viewer's own, household's and guests' memberships, those in groups they manage, visible groups' managers, and everyone where members are shown
 (read MEMBER
   (or (self_or_household person)
@@ -188,17 +188,19 @@ const policySource = `
   true)
 ; what a membership cost and its payment reference, to the member, their host and the group's managers
 (read MEMBER (price purchase_id) (or (= person @viewer) (= guest_of @viewer) (manages group)))
-; a person, their family's manager or their host answers about coming; the group's managers set anyone's answer
+; a person, someone in their family or their host answers about coming; the group's managers set anyone's answer; never in a family, which only the import changes
 (set MEMBER.rsvp
-  (or (self_or_household @old.person)
-      (= @old.guest_of @viewer)
-      (manages @old.group)))
-; a person, their family's manager or their host gives up a place; the group's managers set anyone's
+  (and (!= @old.group.kind "family")
+       (or (self_or_household @old.person)
+           (= @old.guest_of @viewer)
+           (manages @old.group))))
+; a person, someone in their family or their host gives up a place; the group's managers set anyone's; never in a family, which only the import changes
 (set MEMBER.member
-  (or (and (or (self_or_household @old.person)
-               (= @old.guest_of @viewer))
-           (= @new.member "cancelled"))
-      (manages @old.group)))
+  (and (!= @old.group.kind "family")
+       (or (and (or (self_or_household @old.person)
+                    (= @old.guest_of @viewer))
+                (= @new.member "cancelled"))
+           (manages @old.group))))
 ; the viewer's own and household's effective memberships, and members of groups that show them
 (read EFFECTIVE_MEMBER
   (or (self_or_household person)
@@ -489,10 +491,12 @@ const policySource = `
 (insert GROUP (and (system "import") (or (in @new.kind "family" "classroom" "crew" "grade" "band" "department") (role_group @new))))
 ; put a classroom under the band of its students' grades
 (set GROUP.parent (and (system "import") (= @old.kind "classroom")))
-; every band's rules, to find the one that takes in its grades and classrooms
+; every band's rules, to compare with the grades and classrooms under it
 (read RULE (and (system "import") (= group.kind "band")))
-; make a band hold everyone in its grades and classrooms
+; make a band take in a grade or classroom under it
 (insert RULE (and (system "import") (= @new.group.kind "band")))
+; stop a band taking in a grade or classroom no longer under it
+(delete RULE (and (system "import") (= @old.group.kind "band")))
 ; a family's address as Veracross has it
 (set GROUP.vc_address (and (system "import") (= @old.kind "family")))
 ; a family's phone as Veracross has it
@@ -507,7 +511,7 @@ const policySource = `
 (read MEMBER (and (system "import") (or (= group.kind "family") (role_group group))))
 ; add a family or role group membership new in the export
 (insert MEMBER (and (system "import") (or (= @new.group.kind "family") (role_group @new.group))))
-; whether someone is a family's adult
+; that someone in a family manages it, as everyone in one does
 (set MEMBER.manager (and (system "import") (= @old.group.kind "family")))
 ; whether someone is in a family or role group
 (set MEMBER.member (and (system "import") (or (= @old.group.kind "family") (role_group @old.group))))

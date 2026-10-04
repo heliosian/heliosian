@@ -38,8 +38,12 @@ func personFamilyTitles(m *Model, c Change) ([]Edit, error) {
 func memberFamilyTitle(m *Model, c Change) ([]Edit, error) {
 	families := []string{}
 	for _, row := range []store.Row{c.Old, c.New} {
-		if row != nil {
-			families = append(families, row["group"])
+		if row == nil {
+			continue
+		}
+		families = append(families, row["group"])
+		for _, other := range m.Table("MEMBER").Referencing("person", row["person"]) {
+			families = append(families, other["group"])
 		}
 	}
 	return m.retitleFamilies(families), nil
@@ -61,16 +65,13 @@ func (m *Model) retitleFamilies(groups []string) []Edit {
 }
 
 func (m *Model) familyTitle(group string) string {
-	rows := m.Table("MEMBER").Referencing("group", group)
+	students := m.students()
 	order := []string{}
-	for _, row := range rows {
-		if memberAs(row) == "yes" && !isManager(row) {
-			order = append(order, row["person"])
-		}
-	}
-	for _, row := range rows {
-		if isManager(row) {
-			order = append(order, row["person"])
+	for _, first := range []bool{true, false} {
+		for _, row := range m.Table("MEMBER").Referencing("group", group) {
+			if memberAs(row) == "yes" && students[row["person"]] == first {
+				order = append(order, row["person"])
+			}
 		}
 	}
 	found := []string{}

@@ -21,11 +21,6 @@ type generatedSet struct {
 	by   map[string]map[string][]store.Row
 }
 
-func isManager(row store.Row) bool {
-	manager, _ := cells.YesNo(row["manager"], false)
-	return manager
-}
-
 func memberAs(row store.Row) string {
 	return strings.ToLower(strings.TrimSpace(row["member"]))
 }
@@ -100,7 +95,7 @@ func (m *Model) inbox() []store.Row {
 				members[row["person"]] = true
 			}
 		}
-		for _, person := range slices.Sorted(maps.Keys(m.expand(members, "household"))) {
+		for _, person := range slices.Sorted(maps.Keys(m.replaceWith(members, "household"))) {
 			out = append(out, store.Row{"id": Derive(InboxPrefix, person, doc["id"]), "person": person, "document": doc["id"]})
 		}
 	}
@@ -169,14 +164,8 @@ func (m *Model) selectRule(rule store.Row, stack map[string]bool) map[string]boo
 	}
 	if target := rule["target"]; target != "" {
 		s := map[string]bool{}
-		groups := []string{target}
-		if descend, _ := cells.YesNo(rule["descend"], false); descend {
-			groups = append(groups, m.descendants(target)...)
-		}
-		for _, g := range groups {
-			for person := range m.resolve(g, stack) {
-				s[person] = true
-			}
+		for person := range m.resolve(target, stack) {
+			s[person] = true
 		}
 		narrow(s)
 	}
@@ -199,7 +188,7 @@ func (m *Model) selectRule(rule store.Row, stack map[string]bool) map[string]boo
 	if picked == nil {
 		return map[string]bool{}
 	}
-	picked = m.expand(picked, strings.ToLower(strings.TrimSpace(rule["expand"])))
+	picked = m.replaceWith(picked, strings.ToLower(strings.TrimSpace(rule["replace_with"])))
 	if within := rule["within"]; within != "" {
 		in := m.resolve(within, stack)
 		for person := range picked {
@@ -209,25 +198,6 @@ func (m *Model) selectRule(rule store.Row, stack map[string]bool) map[string]boo
 		}
 	}
 	return picked
-}
-
-func (m *Model) descendants(group string) []string {
-	out := []string{}
-	seen := map[string]bool{group: true}
-	queue := []string{group}
-	for len(queue) > 0 {
-		g := queue[0]
-		queue = queue[1:]
-		for _, child := range m.Shown("GROUP").Referencing("parent", g) {
-			if seen[child["id"]] {
-				continue
-			}
-			seen[child["id"]] = true
-			out = append(out, child["id"])
-			queue = append(queue, child["id"])
-		}
-	}
-	return out
 }
 
 func (m *Model) search(text string) map[string]bool {
@@ -245,17 +215,25 @@ func (m *Model) search(text string) map[string]bool {
 	return out
 }
 
-func inFamilyAs(row store.Row, role string) bool {
-	if role == "manager" {
-		return isManager(row)
+func (m *Model) students() map[string]bool {
+	out := map[string]bool{}
+	for _, g := range m.Table("GROUP").All() {
+		if g["kind"] != "group" || g["slug"] != "students" {
+			continue
+		}
+		for _, row := range m.Table("MEMBER").Referencing("group", g["id"]) {
+			if memberAs(row) == "yes" {
+				out[row["person"]] = true
+			}
+		}
 	}
-	return memberAs(row) == "yes"
+	return out
 }
 
-func (m *Model) familyRows(person, role string) []string {
+func (m *Model) familiesOf(person string) []string {
 	out := []string{}
 	for _, row := range m.Shown("MEMBER").Referencing("person", person) {
-		if !inFamilyAs(row, role) {
+		if memberAs(row) != "yes" {
 			continue
 		}
 		if g, ok := m.Shown("GROUP").Get(row["group"]); ok && g["kind"] == "family" {
@@ -265,46 +243,32 @@ func (m *Model) familyRows(person, role string) []string {
 	return out
 }
 
-func (m *Model) familyPeople(family, role string) []string {
+func (m *Model) familyPeople(family string) []string {
 	out := []string{}
 	for _, row := range m.Shown("MEMBER").Referencing("group", family) {
-		if inFamilyAs(row, role) {
+		if memberAs(row) == "yes" {
 			out = append(out, row["person"])
 		}
 	}
 	return out
 }
 
-func (m *Model) expand(people map[string]bool, how string) map[string]bool {
+func (m *Model) replaceWith(people map[string]bool, how string) map[string]bool {
 	if how == "" {
 		return people
 	}
+	students := m.students()
 	out := map[string]bool{}
 	for person := range people {
-		switch how {
-		case "parents":
-			managed := m.familyRows(person, "manager")
-			for _, f := range m.familyRows(person, "member") {
-				if slices.Contains(managed, f) {
-					continue
-				}
-				for _, p := range m.familyPeople(f, "manager") {
-					out[p] = true
-				}
-			}
-		case "children":
-			for _, f := range m.familyRows(person, "manager") {
-				managers := m.familyPeople(f, "manager")
-				for _, p := range m.familyPeople(f, "member") {
-					if !slices.Contains(managers, p) {
-						out[p] = true
-					}
-				}
-			}
-		case "household":
+		if how == "household" {
 			out[person] = true
-			for _, f := range m.familyRows(person, "member") {
-				for _, p := range m.familyPeople(f, "member") {
+		}
+		if how == "parents" && !students[person] || how == "children" && students[person] {
+			continue
+		}
+		for _, f := range m.familiesOf(person) {
+			for _, p := range m.familyPeople(f) {
+				if how == "household" || how == "parents" && !students[p] || how == "children" && students[p] {
 					out[p] = true
 				}
 			}

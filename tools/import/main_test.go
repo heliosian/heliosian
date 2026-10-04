@@ -239,7 +239,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 	if wren == nil || wren["name_sort_import"] != "Ashdown, Wren" || wren["vc_grade"] != "K" {
 		t.Fatalf("Wren reads %v", wren)
 	}
-	want := []string{"classroom:Oak:member", "crew:Acorn:member", "family:Ashdown Family:member", "grade:Kindergartengrade-k:member", "group:Studentsstudents:member"}
+	want := []string{"classroom:Oak:member", "crew:Acorn:member", "family:Ashdown Family:manager", "family:Ashdown Family:member", "grade:Kindergartengrade-k:member", "group:Studentsstudents:member"}
 	if got := groupsOf(s, wren["id"]); !slices.Equal(got, want) {
 		t.Fatalf("Wren is in %v", got)
 	}
@@ -250,9 +250,20 @@ func TestImportAgainstTheSample(t *testing.T) {
 		if band["kind"] != "band" || band["title"] != title {
 			t.Fatalf("classroom %s sits under %v, not the %s band", c["title"], band, title)
 		}
-		rules := s.Model().Table("RULE").Referencing("group", band["id"])
-		if len(rules) != 1 || rules[0]["target"] != band["id"] || rules[0]["descend"] != "Yes" {
-			t.Fatalf("the %s band's rules: %v", title, rules)
+		under := []string{}
+		for _, g := range groups.Referencing("parent", band["id"]) {
+			if g["kind"] == "grade" || g["kind"] == "classroom" {
+				under = append(under, g["id"])
+			}
+		}
+		targets := []string{}
+		for _, r := range s.Model().Table("RULE").Referencing("group", band["id"]) {
+			targets = append(targets, r["target"])
+		}
+		slices.Sort(under)
+		slices.Sort(targets)
+		if len(under) == 0 || !slices.Equal(targets, under) {
+			t.Fatalf("the %s band's rules target %v, not its grades and classrooms %v", title, targets, under)
 		}
 	}
 	x.entries = append(x.entries, entry{role: student, name: "Ada Ashdown", grade: "4", classroom: "Oak"})

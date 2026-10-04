@@ -299,13 +299,32 @@ func TestEffectiveDropsDeactivated(t *testing.T) {
 	}
 }
 
+func TestParentsAndChildrenFollowStudents(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, GroupsSheet,
+		store.Insert("GROUP", store.Row{"id": "grp00000000051", "kind": "group", "title": "Juni's parents"}),
+		store.Insert("RULE", store.Row{"id": "rul00000000055", "group": "grp00000000051", "order": "a", "person": student, "replace_with": "parents"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000052", "kind": "group", "title": "Rowan's children"}),
+		store.Insert("RULE", store.Row{"id": "rul00000000056", "group": "grp00000000052", "order": "a", "person": parent, "replace_with": "children"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000053", "kind": "group", "title": "Rowan's parents"}),
+		store.Insert("RULE", store.Row{"id": "rul00000000057", "group": "grp00000000053", "order": "a", "person": parent, "replace_with": "parents"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	for group, want := range map[string][]string{"grp00000000051": {parent}, "grp00000000052": {student}, "grp00000000053": nil} {
+		if got := effective(t, s, group); !slices.Equal(got, want) {
+			t.Errorf("%s holds %v, want %v", group, got, want)
+		}
+	}
+}
+
 func TestRuleSelectors(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
 		store.Insert("GROUP", store.Row{"id": "grp00000000050", "kind": "group", "title": "Test"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000051", "group": "grp00000000050", "order": "a", "property": "source", "value": "veracross", "within": "grp00000000004"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000052", "group": "grp00000000050", "order": "b", "exclude": "Yes", "search": "lindqvist"}),
-		store.Insert("RULE", store.Row{"id": "rul00000000053", "group": "grp00000000050", "order": "c", "person": "per00000000001", "expand": "household"}),
+		store.Insert("RULE", store.Row{"id": "rul00000000053", "group": "grp00000000050", "order": "c", "person": "per00000000001", "replace_with": "household"}),
 	); err != nil {
 		t.Fatal(err)
 	}

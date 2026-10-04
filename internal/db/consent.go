@@ -168,23 +168,24 @@ func (m *Model) consentWrites(responses []map[string]string) ([]Edit, error) {
 		wants[p["id"]] = want
 		writes = appendChanges(writes, p, want)
 	}
+	students := m.students()
 	for _, g := range groups.All() {
 		if g["kind"] != "family" {
 			continue
 		}
-		managers := 0
+		parents := 0
 		listed, shareAddress, sharePhone := true, true, true
 		for _, row := range m.Table("MEMBER").Referencing("group", g["id"]) {
-			if !isManager(row) {
+			if memberAs(row) != "yes" || students[row["person"]] {
 				continue
 			}
-			managers++
+			parents++
 			w := wants[row["person"]]
 			listed = listed && w["consent"] == "listed"
 			shareAddress = shareAddress && w["address_consent"] == "shared"
 			sharePhone = sharePhone && w["phone_consent"] == "shared"
 		}
-		if managers == 0 {
+		if parents == 0 {
 			listed, shareAddress, sharePhone = false, false, false
 		}
 		consent := "listed"

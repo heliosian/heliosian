@@ -222,7 +222,7 @@ func TestGroupPhotos(t *testing.T) {
 	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000020"}, store.Row{"visible_to": ""})); err != nil {
 		t.Fatal(err)
 	}
-	if visible := as(t, s, student, `(from PHOTO (where (= group "grp00000000020")))`); len(visible) != 0 {
+	if visible := as(t, s, guest, `(from PHOTO (where (= group "grp00000000020")))`); len(visible) != 0 {
 		t.Fatalf("someone who may not see the family sees %d of its photos", len(visible))
 	}
 	both := map[string]string{"group": "grp00000000020", "person": staff}

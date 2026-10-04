@@ -170,7 +170,7 @@ func (p *calendarPlan) everyClassroom(classrooms []string) bool {
 }
 
 func (p *calendarPlan) rules(group string, classrooms []string, who string) {
-	type rule struct{ target, expand string }
+	type rule struct{ target, replaceWith string }
 	want := []rule{}
 	switch {
 	case who == "staff":
@@ -180,19 +180,19 @@ func (p *calendarPlan) rules(group string, classrooms []string, who string) {
 	case p.everyClassroom(classrooms):
 		want = append(want, rule{p.v.Roles["everyone"], ""})
 	default:
-		expand := "household"
+		replaceWith := "household"
 		if who == "parents" {
-			expand = "parents"
+			replaceWith = "parents"
 		}
 		for _, c := range classrooms {
-			want = append(want, rule{c, expand})
+			want = append(want, rule{c, replaceWith})
 		}
 	}
 	orders := store.Order(make([]string, len(want)))
 	for i, r := range want {
 		row := map[string]any{"group": group, "order": orders[i], "target": r.target}
-		if r.expand != "" {
-			row["expand"] = r.expand
+		if r.replaceWith != "" {
+			row["replace_with"] = r.replaceWith
 		}
 		p.edits = append(p.edits, Edit{Insert: "RULE", Row: row})
 	}
