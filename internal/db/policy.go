@@ -851,6 +851,22 @@ const policySource = `
 (read MEMBER (and (system "import") (= group.kind "party")))
 ; add a host, a ticket, a waiting family or a sale the old sheet has
 (insert MEMBER (and (system "import") (= @new.group.kind "party")))
+; what a ticket or sale cost, to compare with the old sheet
+(read MEMBER (price) (system "import"))
+; move a membership to the guest a same-named guest is merged into
+(set MEMBER.person (and (system "import") (= @old.person.source "guest")))
+; move a purchase to the guest a same-named guest is merged into
+(set MEMBER.guest_of (and (system "import") (= @old.guest_of.source "guest")))
+; remove a merged guest's membership that the guest it joins already holds
+(delete MEMBER (and (system "import") (= @old.person.source "guest")))
+; move a merged guest's address to the guest it joins
+(set PERSON_EMAIL.person (and (system "import") (= @old.source "guest")))
+; whether a moved guest address is the guest's main one
+(set PERSON_EMAIL.primary (and (system "import") (= @old.source "guest")))
+; point an old ID at the row a merged guest's membership collapsed into
+(set ALIAS.target (system "import"))
+; remove a merged guest once nothing names it
+(delete PERSON (and (system "import") (= @old.source "guest")))
 `
 
 type policySet struct {
