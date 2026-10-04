@@ -103,6 +103,15 @@ function mark(holds) {
   return el('span', holds ? 'mark held' : 'mark', holds ? '✓' : '✗');
 }
 
+function restMark(v) {
+  const m = mark(v.rest);
+  if (!v.actor) {
+    m.classList.add('moot');
+    m.title = v.rest ? 'the row meets this, but the viewer isn’t this actor' : 'the row doesn’t meet this, and the viewer isn’t this actor';
+  }
+  return m;
+}
+
 function verdictItem(clauses, defined, v) {
   const c = clauses[v.clause];
   const li = el('li', v.holds ? 'held' : '');
@@ -110,7 +119,7 @@ function verdictItem(clauses, defined, v) {
   const form = el('pre', 'verdict-form');
   form.append(highlight(c.rest, defined));
   text.append(link(clauseHref(v.clause), 'verdict-comment', c.comment || '(no comment)'), form);
-  li.append(mark(v.rest), text, link(queryHref(clauseQuery(c)), 'run', 'run ↗'));
+  li.append(restMark(v), text, link(queryHref(clauseQuery(c)), 'run', 'run ↗'));
   return li;
 }
 
@@ -124,10 +133,10 @@ function grant(clauses, defined, v) {
   const c = clauses[v.clause];
   const out = el('span', v.holds ? 'grant held' : 'grant');
   out.title = c.condition;
-  if (c.actor) {
+  if (actorOf(c) !== 'nobody') {
     out.append(mark(v.actor));
   }
-  out.append(actorLabel(actorOf(c), defined), mark(v.rest), link(clauseHref(v.clause), '', c.comment || c.rest));
+  out.append(actorLabel(actorOf(c), defined), restMark(v), link(clauseHref(v.clause), '', c.comment || c.rest));
   return out;
 }
 
@@ -151,7 +160,7 @@ async function accessCard(table, id) {
   for (const [key, verdicts] of actors) {
     const group = el('div', 'actor-group');
     const heading = el('div', 'actor');
-    if (clauses[verdicts[0].clause].actor) {
+    if (key !== 'nobody') {
       heading.append(mark(verdicts[0].actor));
     }
     heading.append(actorLabel(key, defined));
