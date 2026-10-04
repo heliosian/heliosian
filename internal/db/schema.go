@@ -156,15 +156,17 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:   "PERSON_EMAIL",
-		Sheet:  PeopleSheet,
-		Unique: []string{"address"},
+		Name:     "PERSON_EMAIL",
+		Sheet:    PeopleSheet,
+		Unique:   []string{"address", "guest"},
+		Generate: emailGenerated,
 		Columns: []Column{
 			ident(PersonEmailPrefix),
 			col("address", Email).required(),
 			ref("person", "PERSON").required(),
 			col("primary", Bool),
 			enum("source", sources...).required(),
+			{Name: "guest", Kind: Bool, Generated: true},
 		},
 	},
 	{

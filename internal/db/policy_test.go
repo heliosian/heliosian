@@ -49,7 +49,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 	s := sample(t)
 	viewers := []string{nobody, student, parent, staff, guest}
 	for table, want := range map[string][]int{
-		"PERSON":           {3, 3, 4, 4, 4},
+		"PERSON":           {4, 4, 4, 4, 4},
 		"PERSON_EMAIL":     {4, 4, 4, 4, 4},
 		"PERSON_SETTING":   {0, 0, 0, 1, 0},
 		"BIRTHDAY_YEAR":    {1, 1, 1, 1, 1},
@@ -186,6 +186,30 @@ func TestWithheldPersonSignsInAsNobody(t *testing.T) {
 	}
 	if got := m.PersonOf("rowan@example.com"); got != parent {
 		t.Errorf("the consent import no longer finds the withheld parent: %q", got)
+	}
+}
+
+func TestAGuestSharesAnAddressButNeverSignsInWithIt(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "rowan@example.com", "person": guest, "primary": "Yes", "source": "guest"})); err != nil {
+		t.Fatalf("a guest can't share a person's address: %v", err)
+	}
+	err := commit(s, PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000098", "address": "rowan@example.com", "person": staff, "source": "manual"}))
+	if err == nil || !strings.Contains(err.Error(), "two rows have the same") {
+		t.Errorf("two people who aren't guests share an address: %v", err)
+	}
+	m := s.Model()
+	if got := m.signedIn("rowan@example.com"); got != parent {
+		t.Errorf("the shared address signs in as %q, not the parent", got)
+	}
+	if got := m.PersonOf("rowan@example.com"); got != parent {
+		t.Errorf("the shared address belongs to %q, not the parent", got)
+	}
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": parent}, store.Row{"consent": "withheld"})); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Model().signedIn("rowan@example.com"); got != "" {
+		t.Errorf("a withheld parent signs in as %q through their guest", got)
 	}
 }
 

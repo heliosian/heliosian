@@ -110,7 +110,7 @@ function verdictItem(clauses, defined, v) {
   const form = el('pre', 'verdict-form');
   form.append(highlight(c.rest, defined));
   text.append(link(clauseHref(v.clause), 'verdict-comment', c.comment || '(no comment)'), form);
-  li.append(mark(v.holds), text, link(queryHref(clauseQuery(c)), 'run', 'run ↗'));
+  li.append(mark(v.rest), text, link(queryHref(clauseQuery(c)), 'run', 'run ↗'));
   return li;
 }
 
@@ -124,7 +124,10 @@ function grant(clauses, defined, v) {
   const c = clauses[v.clause];
   const out = el('span', v.holds ? 'grant held' : 'grant');
   out.title = c.condition;
-  out.append(actorLabel(actorOf(c), defined), link(clauseHref(v.clause), '', c.comment || c.rest));
+  if (c.actor) {
+    out.append(mark(v.actor));
+  }
+  out.append(actorLabel(actorOf(c), defined), mark(v.rest), link(clauseHref(v.clause), '', c.comment || c.rest));
   return out;
 }
 
@@ -136,7 +139,7 @@ async function accessCard(table, id) {
   const held = ex.clauses.filter(v => v.holds).length;
   box.append(el('summary', '', `who may see this · ${ex.readable ? 'readable' : 'not readable'} as the viewer, ${held} of ${ex.clauses.length} row clauses hold`));
   const rows = el('div', 'access-part');
-  rows.append(partHead('row', 'any one clause that holds lets the viewer see the row'));
+  rows.append(partHead('row', 'any one clause whose actor and criteria both hold lets the viewer see the row'));
   const actors = new Map();
   for (const v of ex.clauses) {
     const key = actorOf(clauses[v.clause]);
@@ -148,6 +151,9 @@ async function accessCard(table, id) {
   for (const [key, verdicts] of actors) {
     const group = el('div', 'actor-group');
     const heading = el('div', 'actor');
+    if (clauses[verdicts[0].clause].actor) {
+      heading.append(mark(verdicts[0].actor));
+    }
     heading.append(actorLabel(key, defined));
     const list = el('ul', 'verdicts');
     for (const v of verdicts) {

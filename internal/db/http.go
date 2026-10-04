@@ -141,7 +141,7 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 }
 
 func (m *Model) PersonOf(email string) string {
-	row, ok := m.Table("PERSON_EMAIL").Find(strings.ToLower(strings.TrimSpace(email)))
+	row, ok := m.Table("PERSON_EMAIL").Find(strings.ToLower(strings.TrimSpace(email)), "No")
 	if !ok {
 		return ""
 	}
@@ -149,7 +149,11 @@ func (m *Model) PersonOf(email string) string {
 }
 
 func (m *Model) signedIn(email string) string {
-	row, ok := m.Shown("PERSON_EMAIL").Find(strings.ToLower(strings.TrimSpace(email)))
+	address := strings.ToLower(strings.TrimSpace(email))
+	row, ok := m.Table("PERSON_EMAIL").Find(address, "No")
+	if !ok {
+		row, ok = m.Table("PERSON_EMAIL").Find(address, "Yes")
+	}
 	if !ok {
 		return ""
 	}

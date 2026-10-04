@@ -12,6 +12,16 @@ import (
 type verdict struct {
 	Clause int  `json:"clause"`
 	Holds  bool `json:"holds"`
+	Actor  bool `json:"actor"`
+	Rest   bool `json:"rest"`
+}
+
+func judge(i int, c Clause, f *frame) verdict {
+	v := verdict{Clause: i, Holds: c.cond.eval(f), Actor: true, Rest: c.rest.eval(f)}
+	if c.Actor != "" {
+		v.Actor = c.actor.eval(f)
+	}
+	return v
 }
 
 type columnVerdict struct {
@@ -55,16 +65,16 @@ func (m *Model) explain(env, self Env, id string) (explanation, bool) {
 	out := explanation{Table: t.Name, ID: id, Readable: readable, Clauses: []verdict{}, Columns: []columnVerdict{}}
 	for i, c := range policies.clauses {
 		if c.Kind == "read" && c.Table == t.Name {
-			out.Clauses = append(out.Clauses, verdict{Clause: i, Holds: c.cond.eval(f)})
+			out.Clauses = append(out.Clauses, judge(i, c, f))
 		}
 	}
 	for _, col := range t.Columns {
 		cv := columnVerdict{Column: col.Name, Private: col.Private, Clauses: []verdict{}}
 		for i, c := range policies.clauses {
 			if c.Kind == "read columns" && c.Table == t.Name && slices.Contains(c.Columns, col.Name) {
-				holds := c.cond.eval(f)
-				cv.Clauses = append(cv.Clauses, verdict{Clause: i, Holds: holds})
-				cv.Readable = cv.Readable || holds
+				v := judge(i, c, f)
+				cv.Clauses = append(cv.Clauses, v)
+				cv.Readable = cv.Readable || v.Holds
 			}
 		}
 		out.Columns = append(out.Columns, cv)

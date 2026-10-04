@@ -79,6 +79,14 @@ func TestExplainingARow(t *testing.T) {
 	if !held {
 		t.Errorf("a readable row with no clause holding: %+v", out.Clauses)
 	}
+	for _, v := range out.Clauses {
+		if v.Holds != (v.Actor && v.Rest) {
+			t.Errorf("clause %d holds %v, its actor %v and the rest %v", v.Clause, v.Holds, v.Actor, v.Rest)
+		}
+		if policies.clauses[v.Clause].Condition == `(admin_of "who")` && (v.Actor || !v.Rest) {
+			t.Errorf("Who?'s every-person clause for a parent: %+v", v)
+		}
+	}
 	columns := map[string]columnVerdict{}
 	for _, c := range out.Columns {
 		columns[c.Column] = c

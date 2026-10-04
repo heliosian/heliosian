@@ -59,11 +59,12 @@ const policySource = `
            (and (= @g.members_visible "members")
                 (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))))))
 
-; @p is the viewer, a guest in one of the viewer's groups, or anyone else not hidden and active; the consent step has already removed everyone unconsented
+; @p is the viewer, a guest in one of the viewer's groups or in a group whose members the viewer sees, or anyone else not hidden and active; the consent step has already removed everyone unconsented
 (define (person_visible @p)
   (or (= @p @viewer)
       (and (= @p.source "guest")
-           (exists MEMBER (in group (groups_of @viewer)) (= person @p)))
+           (or (exists MEMBER (in group (groups_of @viewer)) (= person @p))
+               (exists MEMBER (= person @p) (sees_members group))))
       (and (!= @p.source "guest") (not @p.hidden) (blank @p.deactivated))))
 
 ; @g is an event, a school day or a part of one
@@ -110,7 +111,7 @@ const policySource = `
 ; the emails of people the viewer may see
 (read PERSON_EMAIL (person_visible person))
 ; every column of an email
-(read PERSON_EMAIL (id address person primary source) true)
+(read PERSON_EMAIL (id address person primary source guest) true)
 ; the photos of people and groups the viewer may see
 (read PHOTO
   (or (and (not (blank person)) (person_visible person))
@@ -684,6 +685,8 @@ const policySource = `
 (read RECIPIENT (and (system "import") (= message.group.kind "group")))
 ; a copy of a Loop post that went to one person
 (insert RECIPIENT (and (system "import") (= @new.message.group.kind "group")))
+; a copy of a Loop post recorded on someone who can't be shown, now on their guest
+(delete RECIPIENT (and (system "import") (= @old.message.group.kind "group")))
 ; every activity, to find what an earlier sync added
 (read GROUP (and (system "import") (= kind "activity")))
 ; add a school year, an activity or a heading of an event's activities
@@ -791,22 +794,39 @@ type Clause struct {
 	Rest      string   `json:"rest"`
 	Form      string   `json:"form"`
 	cond      cond
+	actor     cond
+	rest      cond
 }
 
 var actorHeads = map[string]bool{"admin_of": true, "super_admin": true, "system": true}
 
-func splitActor(c *sexp) (string, string) {
+func splitActor(c *sexp) (*sexp, *sexp) {
 	if actorHeads[c.head()] {
-		return c.flat(), "true"
+		return c, &sexp{kind: atomName, text: "true", pos: -1}
 	}
 	if c.head() != "and" || len(c.list) < 3 || !actorHeads[c.list[1].head()] {
-		return "", c.render(0)
+		return nil, c
 	}
 	rest := c.list[2:]
 	if len(rest) == 1 {
-		return c.list[1].flat(), rest[0].render(0)
+		return c.list[1], rest[0]
 	}
-	return c.list[1].flat(), (&sexp{isList: true, pos: -1, list: append([]*sexp{c.list[0]}, rest...)}).render(0)
+	return c.list[1], &sexp{isList: true, pos: -1, list: append([]*sexp{c.list[0]}, rest...)}
+}
+
+func (cx *compiler) parts(d *Clause, c *sexp, sc *scope) error {
+	actor, rest := splitActor(c)
+	var err error
+	if d.rest, err = cx.cond(rest, sc); err != nil {
+		return err
+	}
+	d.Rest = rest.render(0)
+	if actor == nil {
+		return nil
+	}
+	d.Actor = actor.flat()
+	d.actor, err = cx.cond(actor, sc)
+	return err
 }
 
 var (
@@ -847,7 +867,13 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 				return nil, nil, err
 			}
 			described.Kind, described.Table, described.Condition, described.cond = "read columns", form.list[1].text, form.list[3].render(0), c
-			described.Actor, described.Rest = splitActor(form.list[3])
+			t, err := tableNamed(form.list[1])
+			if err != nil {
+				return nil, nil, err
+			}
+			if err := cx.parts(&described, form.list[3], &scope{table: t, name: "row"}); err != nil {
+				return nil, nil, err
+			}
 			for _, item := range form.list[2].list {
 				described.Columns = append(described.Columns, item.text)
 			}
@@ -887,7 +913,9 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 		}
 		into[form.list[1].text] = append(into[form.list[1].text], c)
 		described.Table, described.Column, described.Condition, described.cond = tableName, column, form.list[2].render(0), c
-		described.Actor, described.Rest = splitActor(form.list[2])
+		if err := cx.parts(&described, form.list[2], sc); err != nil {
+			return nil, nil, err
+		}
 		out.clauses = append(out.clauses, described)
 	}
 	for _, form := range forms {

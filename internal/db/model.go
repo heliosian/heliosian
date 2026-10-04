@@ -266,6 +266,10 @@ func groupGenerated(row map[string]string) {
 	row["phone"] = consented(row, "phone")
 }
 
+func emailGenerated(row map[string]string) {
+	row["guest"] = cells.YesNoCell(row["source"] == "guest")
+}
+
 func photoGenerated(row map[string]string) {
 	row["image"] = row["crop"]
 	if row["image"] == "" {

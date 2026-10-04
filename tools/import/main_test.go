@@ -267,7 +267,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 	if _, ok := s.Model().Table("MEMBER").Find("grp00000000020", sam["id"], "manager"); !ok {
 		t.Fatal("Sam does not manage the Ashdowns' family")
 	}
-	if email, ok := s.Model().Table("PERSON_EMAIL").Find("sam@example.org"); !ok || email["primary"] != "Yes" || email["source"] != "veracross" {
+	if email, ok := s.Model().Table("PERSON_EMAIL").Find("sam@example.org", "No"); !ok || email["primary"] != "Yes" || email["source"] != "veracross" {
 		t.Fatalf("Sam's address reads %v", email)
 	}
 

@@ -193,6 +193,9 @@ button:disabled {
 }
 
 .actor {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   margin-bottom: 2px;
   font-size: 12px;
   font-weight: 700;
