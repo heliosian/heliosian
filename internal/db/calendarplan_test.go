@@ -18,13 +18,13 @@ func calendarSample(t *testing.T) (*Store, *store.Queue) {
 	t.Helper()
 	s, queue := sampleWithQueue(t)
 	ops := []store.Op{
-		store.Insert("GROUP", store.Row{"id": ospreys, "kind": "classroom", "title": "Ospreys", "status": "open", "visibility": "everyone"}),
-		store.Insert("GROUP", store.Row{"id": conference, "kind": "category", "title": "Conference", "description": "Family and teacher conferences.", "status": "open", "visibility": "everyone"}),
+		store.Insert("GROUP", store.Row{"id": ospreys, "kind": "classroom", "title": "Ospreys", "status": "open", "visible_to": "grp00000000004"}),
+		store.Insert("GROUP", store.Row{"id": conference, "kind": "category", "title": "Conference", "description": "Family and teacher conferences.", "status": "open", "visible_to": "grp00000000004"}),
 	}
 	n := 70
 	for name := range DayTemplates {
 		n++
-		ops = append(ops, store.Insert("GROUP", store.Row{"id": "grp000000000" + itoa2(n), "kind": "category", "title": name, "status": "open", "visibility": "everyone"}))
+		ops = append(ops, store.Insert("GROUP", store.Row{"id": "grp000000000" + itoa2(n), "kind": "category", "title": name, "status": "open", "visible_to": "grp00000000004"}))
 	}
 	if err := commit(s, GroupsSheet, ops...); err != nil {
 		t.Fatal(err)

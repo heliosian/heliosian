@@ -49,18 +49,18 @@ func TestWhoSeesWhichRows(t *testing.T) {
 	s := sample(t)
 	viewers := []string{nobody, student, parent, staff, guest}
 	for table, want := range map[string][]int{
-		"PERSON":           {4, 4, 4, 4, 4},
+		"PERSON":           {3, 4, 4, 4, 4},
 		"PERSON_EMAIL":     {4, 4, 4, 4, 4},
 		"PERSON_SETTING":   {0, 0, 0, 1, 0},
 		"BIRTHDAY_YEAR":    {1, 1, 1, 1, 1},
 		"COLLECTION":       {0, 0, 1, 0, 0},
-		"GROUP":            {11, 11, 11, 13, 11},
-		"MEMBER":           {13, 13, 13, 14, 13},
+		"GROUP":            {0, 11, 11, 13, 0},
+		"MEMBER":           {0, 10, 10, 11, 1},
 		"WAITLIST":         {0, 0, 0, 0, 0},
-		"EFFECTIVE_MEMBER": {15, 15, 15, 17, 15},
-		"RULE":             {0, 0, 0, 2, 0},
+		"EFFECTIVE_MEMBER": {0, 15, 15, 17, 1},
+		"RULE":             {0, 0, 0, 4, 0},
 		"DOCUMENT":         {1, 1, 1, 1, 1},
-		"DOCUMENT_GROUP":   {1, 1, 1, 1, 1},
+		"DOCUMENT_GROUP":   {0, 1, 1, 1, 0},
 		"CONTENT":          {0, 0, 0, 0, 0},
 		"INBOX":            {0, 1, 1, 0, 0},
 		"MESSAGE":          {0, 0, 1, 1, 0},
@@ -104,12 +104,12 @@ func TestDocumentsUnderAMailedPostFollowIt(t *testing.T) {
 func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000070", "kind": "admins", "title": "When Admins", "status": "open", "visibility": "members"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000070", "kind": "admins", "title": "When Admins", "status": "open", "visible_to": "grp00000000070"}),
 		store.Insert("MEMBER", store.Row{"id": "mem00000000070", "group": "grp00000000070", "person": student, "member": "yes"}),
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000070", "key": "when", "admins": "grp00000000070"})); err != nil {
+	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000070", "key": "when", "visible_to": "grp00000000004", "admins": "grp00000000070"})); err != nil {
 		t.Fatal(err)
 	}
 	if err := commit(s, DocumentsSheet, store.Insert("CONTENT", store.Row{"id": "cnt00000000005", "hash": "e5", "blob": "content/e5", "mime": "message/rfc822", "size": "50"})); err != nil {
@@ -358,7 +358,7 @@ func TestPriceAndToken(t *testing.T) {
 	if err := commit(s, GroupsSheet, store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": guest}, store.Row{"price": "7.25"})); err != nil {
 		t.Fatal(err)
 	}
-	q := `(from MEMBER (where (= group "grp00000000040") (= member "yes") (= guest_of "per00000000002")))`
+	q := `(from MEMBER (where (= person "per00000000004") (= member "yes") (= guest_of "per00000000002")))`
 	for viewer, want := range map[string]string{student: "", parent: "7.25", staff: "7.25", guest: "7.25"} {
 		if got := cellAs(t, s, viewer, q, "price"); got != want {
 			t.Errorf("the guest's price as %s = %q, want %q", viewer, got, want)
@@ -376,16 +376,16 @@ func TestHiddenPersonIsUnreachable(t *testing.T) {
 	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": student}, store.Row{"hidden": "Yes"})); err != nil {
 		t.Fatal(err)
 	}
-	if n := len(as(t, s, guest, `(from PERSON (where (= id "per00000000001")))`)); n != 0 {
+	if n := len(as(t, s, parent, `(from PERSON (where (= id "per00000000001")))`)); n != 0 {
 		t.Fatal("a hidden person is listed")
 	}
-	if got := cellAs(t, s, guest, `(from MEMBER (where (= group "grp00000000010")))`, "person"); got != "" {
+	if got := cellAs(t, s, parent, `(from MEMBER (where (= group "grp00000000010")))`, "person"); got != "" {
 		t.Fatalf("a classroom row names a hidden person: %q", got)
 	}
-	if n := len(as(t, s, guest, `(from MEMBER (where (= person.name_short "Juni")))`)); n != 0 {
+	if n := len(as(t, s, parent, `(from MEMBER (where (= person.name_short "Juni")))`)); n != 0 {
 		t.Fatal("a path reached a hidden person")
 	}
-	if n := len(as(t, s, guest, `(from GROUP @g (where (exists MEMBER (= group @g) (= person "per00000000001"))))`)); n != 0 {
+	if n := len(as(t, s, parent, `(from GROUP @g (where (exists MEMBER (= group @g) (= person "per00000000001"))))`)); n != 0 {
 		t.Fatal("exists probed a hidden person")
 	}
 	if n := len(as(t, s, student, `(from PERSON (where (= id "per00000000001")))`)); n != 1 {
@@ -444,7 +444,7 @@ func TestPendingIsForManagersAndAdmins(t *testing.T) {
 	if n := len(as(t, s, staff, q)); n != 0 {
 		t.Fatal("a pending event is visible to someone neither host nor When admin")
 	}
-	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "admins": "grp00000000003"})); err != nil {
+	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "visible_to": "grp00000000004", "admins": "grp00000000003"})); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(as(t, s, staff, q)); n != 1 {
@@ -516,7 +516,7 @@ func TestAuthorize(t *testing.T) {
 	if err := s.Model().Authorize(Env{Viewer: staff, Now: testNow}, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"})); err == nil {
 		t.Fatal("someone neither super admin nor When admin may change an event's status")
 	}
-	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "admins": "grp00000000003"})); err != nil {
+	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "visible_to": "grp00000000004", "admins": "grp00000000003"})); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Model().Authorize(Env{Viewer: staff, Now: testNow}, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"})); err != nil {

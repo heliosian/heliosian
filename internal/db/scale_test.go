@@ -58,7 +58,7 @@ func scaleStore(tb testing.TB) *Store {
 	n, m := 100, 100
 	for f := range scaleFamilies {
 		family := fmt.Sprintf("grp%011d", 1000+f)
-		groups = append(groups, map[string]string{"id": family, "kind": "family", "title": fmt.Sprintf("Family %d", f), "status": "open", "visibility": "everyone", "vc_address": fmt.Sprintf("%d Main St", f), "consent": "listed", "address_consent": "shared", "phone_consent": "shared"})
+		groups = append(groups, map[string]string{"id": family, "kind": "family", "title": fmt.Sprintf("Family %d", f), "status": "open", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "vc_address": fmt.Sprintf("%d Main St", f), "consent": "listed", "address_consent": "shared", "phone_consent": "shared"})
 		for k := range 4 {
 			n++
 			id := fmt.Sprintf("per%011d", n)

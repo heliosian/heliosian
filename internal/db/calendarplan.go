@@ -155,7 +155,8 @@ func (p *calendarPlan) insert(table string, row map[string]any) string {
 }
 
 func (p *calendarPlan) newGroup(kind string, row map[string]any) string {
-	row["kind"], row["listed"], row["status"], row["visibility"] = kind, true, "open", "everyone"
+	everyone := p.v.Roles["everyone"]
+	row["kind"], row["listed"], row["status"], row["visible_to"], row["members_visible_to"] = kind, true, "open", everyone, everyone
 	return p.insert("GROUP", row)
 }
 

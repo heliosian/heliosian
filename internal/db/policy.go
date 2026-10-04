@@ -39,25 +39,18 @@ const policySource = `
 (define (super_admin)
   (exists EFFECTIVE_MEMBER (= group.slug "super-admins") (= person @viewer)))
 
-; @g is not closed, and the viewer manages it or its visibility lets them see it
+; @g is not closed, and the viewer manages it or, unless it is pending, is an effective member of the group it is visible to
 (define (visible @g)
   (and (!= @g.status "closed")
        (or (manages @g)
            (and (!= @g.status "pending")
-                (or (= @g.visibility "everyone")
-                    (and (= @g.visibility "members")
-                         (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer)))
-                    (and (= @g.visibility "group")
-                         (exists EFFECTIVE_MEMBER (= group @g.visible_to) (= person @viewer))))))))
+                (exists EFFECTIVE_MEMBER (= group @g.visible_to) (= person @viewer))))))
 
-; the viewer may see @g, and @g lets them see its members
+; the viewer may see @g, and manages it or is an effective member of the group its members are visible to
 (define (sees_members @g)
   (and (visible @g)
        (or (manages @g)
-           (blank @g.members_visible)
-           (= @g.members_visible "everyone")
-           (and (= @g.members_visible "members")
-                (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))))))
+           (exists EFFECTIVE_MEMBER (= group @g.members_visible_to) (= person @viewer)))))
 
 ; @p is the viewer, a guest in one of the viewer's groups or in a group whose members the viewer sees, or anyone else not hidden and active; the consent step has already removed everyone unconsented
 (define (person_visible @p)
@@ -75,10 +68,10 @@ const policySource = `
 (define (self_or_household @p)
   (or (= @p @viewer) (in @p (household @viewer))))
 
-; the viewer manages @g, or is in it and it is not for its managers alone
+; the viewer manages @g, or is in it and it is not hidden from all but its managers
 (define (sees_mail @g)
   (or (manages @g)
-      (and (!= @g.visibility "managers")
+      (and (not (blank @g.visible_to))
            (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer)))))
 
 ; @d, or a document it sits under, was sent to a group that takes mail
@@ -159,7 +152,7 @@ const policySource = `
 ; every column of a group but what its family's form shares
 (read GROUP
   (id parent kind listed mail slug title subtitle description
-   color flyer pronunciation address phone status visibility visible_to members_visible posting
+   color flyer pronunciation address phone status visible_to members_visible_to posting
    replying join adding capacity minimum price unit waitlist eligible parent_ticket_required drop_off_allowed
    lead_needed priority start end all_day timing location url default order added_by added)
   true)
@@ -260,16 +253,12 @@ const policySource = `
 (read CHARITY true)
 ; every column of a charity
 (read CHARITY (id name link about allowed) true)
-; apps open to everyone or to a group the viewer is in
-(read APP
-  (or (blank visible_to)
-      (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))))
+; apps open to a group the viewer is in
+(read APP (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer)))
 ; every column of an app
 (read APP (id key name tagline visible_to admins order) true)
-; front-page widgets open to everyone or to a group the viewer is in
-(read WIDGET
-  (or (blank visible_to)
-      (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))))
+; front-page widgets open to a group the viewer is in
+(read WIDGET (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer)))
 ; every column of a widget
 (read WIDGET (id key order visible_to) true)
 ; the coordinates of a family address the viewer may see; a withheld address is blank, so it matches nothing
@@ -591,6 +580,12 @@ const policySource = `
 
 ;; System: import, the sync from the old sheets, until the cutover
 
+; every membership, to compare the old sites' with
+(read MEMBER (system "import"))
+; every group's effective members, to compare the old sites' with
+(read EFFECTIVE_MEMBER (system "import"))
+; every rule, to compare the old sites' with
+(read RULE (system "import"))
 ; every alias, to find what an earlier sync wrote
 (read ALIAS (system "import"))
 ; an old ID and the row it now names
@@ -708,7 +703,7 @@ const policySource = `
 ; a Loop list's description, as the old sheet has it
 (set GROUP.description (and (system "import") (= @old.kind "group")))
 ; who sees a Loop list, as the old sheet has it
-(set GROUP.visibility (and (system "import") (= @old.kind "group")))
+(set GROUP.visible_to (and (system "import") (in @old.kind "group" "admins")))
 ; who may post to a Loop list, as the old sheet has it
 (set GROUP.posting (and (system "import") (= @old.kind "group")))
 ; who may reply on a Loop list, as the old sheet has it
@@ -750,7 +745,7 @@ const policySource = `
 ; whether an activity is open or done, as the old sheet has it
 (set GROUP.status (and (system "import") (= @old.kind "activity")))
 ; whether an activity is hidden, as the old sheet has it
-(set GROUP.visibility (and (system "import") (= @old.kind "activity")))
+(set GROUP.visible_to (and (system "import") (= @old.kind "activity")))
 ; when an activity starts, as the old sheet has it
 (set GROUP.start (and (system "import") (= @old.kind "activity")))
 ; when an activity ends, as the old sheet has it
@@ -764,7 +759,7 @@ const policySource = `
 ; how volunteers join an activity, as the old sheet has it
 (set GROUP.join (and (system "import") (= @old.kind "activity")))
 ; who sees an activity's volunteers, as the old sheet has it
-(set GROUP.members_visible (and (system "import") (= @old.kind "activity")))
+(set GROUP.members_visible_to (and (system "import") (= @old.kind "activity")))
 ; who may add activities under an activity, as the old sheet has it
 (set GROUP.adding (and (system "import") (= @old.kind "activity")))
 ; whether an activity needs a co-chair, as the old sheet has it
@@ -798,11 +793,11 @@ const policySource = `
 ; a category's color, as the old tables have it
 (set GROUP.color (and (system "import") (= @old.kind "category")))
 ; whether a heading is hidden, as the old sheet has it
-(set GROUP.visibility (and (system "import") (= @old.kind "category")))
+(set GROUP.visible_to (and (system "import") (= @old.kind "category")))
 ; how volunteers join the activities under a heading, as the old sheet has it
 (set GROUP.join (and (system "import") (= @old.kind "category")))
 ; who sees the volunteers of the activities under a heading, as the old sheet has it
-(set GROUP.members_visible (and (system "import") (= @old.kind "category")))
+(set GROUP.members_visible_to (and (system "import") (= @old.kind "category")))
 ; who may add activities under a heading, as the old sheet has it
 (set GROUP.adding (and (system "import") (= @old.kind "category")))
 ; every redirect, to find what an earlier sync added
@@ -846,7 +841,7 @@ const policySource = `
 ; whether a party is pending, as the old sheet has it
 (set GROUP.status (and (system "import") (in @old.kind "party" "celebration")))
 ; whether a party is hidden, as the old sheet has it
-(set GROUP.visibility (and (system "import") (in @old.kind "party" "celebration")))
+(set GROUP.visible_to (and (system "import") (in @old.kind "party" "celebration")))
 ; whether a party's tickets are on sale, as the old sheet has it
 (set GROUP.join (and (system "import") (= @old.kind "party")))
 ; what a party's ticket is for, as the old sheet has it

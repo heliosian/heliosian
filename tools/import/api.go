@@ -37,7 +37,7 @@ func or(conditions ...any) map[string]any {
 }
 
 func roleGroup(kind, slug string) map[string]any {
-	slugs := []any{}
+	slugs := []any{"everyone"}
 	for _, rg := range roleGroups {
 		slugs = append(slugs, rg.slug)
 	}

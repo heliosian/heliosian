@@ -13,13 +13,8 @@ var designQueries = []string{
 	`(from GROUP @g
   (where mail
          (= status "open")
-         (or (= visibility "everyone")
-             (and (= visibility "members")
-                  (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer)))
-             (and (= visibility "managers")
-                  (exists MEMBER (= group @g) (= person @viewer) manager))
-             (and (= visibility "group")
-                  (exists EFFECTIVE_MEMBER (= group @g.visible_to) (= person @viewer))))))`,
+         (or (exists MEMBER (= group @g) (= person @viewer) manager)
+             (exists EFFECTIVE_MEMBER (= group @g.visible_to) (= person @viewer)))))`,
 	`(from GROUP @g
   (where (exists MEMBER (= group @g) (= person.grade "6"))))`,
 	`(from MEMBER
@@ -147,7 +142,7 @@ func TestRun(t *testing.T) {
 		{"", `(from MEMBER (where (= group "grp00000000040") (= member "yes")) (order person.name_sort asc))`, "person", []string{"per00000000002", "per00000000003", "per00000000004"}},
 		{"per00000000002", `(from GROUP @g (where (exists MEMBER (= group @g) (= person @viewer) manager)))`, "id", []string{"grp00000000020"}},
 		{"", `(from MEMBER (where lead))`, "person", []string{"per00000000003"}},
-		{"", `(from GROUP @g (where (> (count MEMBER (= group @g) (= member "yes")) 2)))`, "id", []string{"grp00000000004", "grp00000000040"}},
+		{"", `(from GROUP @g (where (> (count MEMBER (= group @g) (= member "yes")) 2)))`, "id", []string{"grp00000000040"}},
 		{"", `(from GROUP (where (>= start today)))`, "id", []string{"grp00000000040"}},
 		{"", `(from GROUP (where (< end now)))`, "id", nil},
 		{"", `(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020")))))`, "id", []string{"per00000000001", "per00000000002"}},

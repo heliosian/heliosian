@@ -239,7 +239,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 	if wren == nil || wren["name_sort_import"] != "Ashdown, Wren" || wren["vc_grade"] != "K" {
 		t.Fatalf("Wren reads %v", wren)
 	}
-	want := []string{"classroom:Oak:member", "crew:Acorn:member", "family:Ashdown Family:member", "grade:Kindergartengrade-k:member", "group:Everyoneeveryone:member", "group:Studentsstudents:member"}
+	want := []string{"classroom:Oak:member", "crew:Acorn:member", "family:Ashdown Family:member", "grade:Kindergartengrade-k:member", "group:Studentsstudents:member"}
 	if got := groupsOf(s, wren["id"]); !slices.Equal(got, want) {
 		t.Fatalf("Wren is in %v", got)
 	}

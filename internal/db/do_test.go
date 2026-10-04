@@ -219,7 +219,7 @@ func TestGroupPhotos(t *testing.T) {
 	if visible := as(t, s, parent, `(from PHOTO (where (= group "grp00000000020")))`); len(visible) != 2 {
 		t.Fatalf("a family member sees %d of the family's photos", len(visible))
 	}
-	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000020"}, store.Row{"visibility": "managers"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000020"}, store.Row{"visible_to": ""})); err != nil {
 		t.Fatal(err)
 	}
 	if visible := as(t, s, student, `(from PHOTO (where (= group "grp00000000020")))`); len(visible) != 0 {

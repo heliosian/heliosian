@@ -86,7 +86,6 @@ var roleGroups = []struct {
 	{"parents", "Parents", func(id *identity) bool { return id.roles[parent] }},
 	{"staff", "Staff", func(id *identity) bool { return id.roles[staff] }},
 	{"adults", "Adults", func(id *identity) bool { return id.roles[parent] || id.roles[staff] }},
-	{"everyone", "Everyone", func(id *identity) bool { return true }},
 }
 
 var personColumns = []string{
@@ -109,6 +108,7 @@ type planner struct {
 	web     map[int]websiteRow
 
 	classroomBands map[string]string
+	everyone       string
 
 	groupWrites, personWrites, emailWrites, familyWrites []write
 	memberDeletes, memberInserts, memberSets             []write
@@ -128,6 +128,7 @@ func plan(x *export, st *state) (*planner, error) {
 	if err := p.website(); err != nil {
 		return nil, err
 	}
+	p.ensureEveryone()
 	p.ensureGrades()
 	households, err := p.households()
 	if err != nil {
@@ -420,11 +421,31 @@ func (p *planner) findGroup(match func(row) bool) string {
 	return ""
 }
 
+func (p *planner) ensureEveryone() {
+	p.everyone = p.findGroup(func(r row) bool { return r["kind"] == "group" && strings.EqualFold(r["slug"], "everyone") })
+	if p.everyone != "" {
+		return
+	}
+	id := p.name("g")
+	cells := row{"kind": "group", "slug": "everyone", "title": "Everyone", "listed": "Yes", "status": "open"}
+	p.groups.add(id, cells)
+	p.groupWrites = append(p.groupWrites,
+		write{Insert: "GROUP", As: strings.TrimPrefix(id, "@"), Row: cells},
+		write{Set: id, Cells: row{"visible_to": id, "members_visible_to": id}})
+	orders := store.Order(make([]string, 2))
+	for i, source := range []string{"veracross", "manual"} {
+		p.groupWrites = append(p.groupWrites, write{Insert: "RULE", Row: row{"group": id, "order": orders[i], "property": "source", "value": source}})
+	}
+	p.counts["group groups added"]++
+	p.everyone = id
+}
+
 func (p *planner) newGroup(cells row) string {
 	id := p.name("g")
 	cells["listed"] = "Yes"
 	cells["status"] = "open"
-	cells["visibility"] = "everyone"
+	cells["visible_to"] = p.everyone
+	cells["members_visible_to"] = p.everyone
 	p.groups.add(id, cells)
 	p.groupWrites = append(p.groupWrites, write{Insert: "GROUP", As: strings.TrimPrefix(id, "@"), Row: cells})
 	p.counts[cells["kind"]+" groups added"]++

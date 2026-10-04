@@ -100,8 +100,8 @@ var (
 		v("manual", "added by hand or by an app"),
 		v("guest", "a guest: someone outside the school's records, or the shown twin of someone who isn't"),
 	}
-	audience = []Value{
-		v("everyone", "anyone who can see the group"),
+	senders = []Value{
+		v("everyone", "anyone, from any address, in Helios or not"),
 		v("members", "its effective members and managers"),
 		v("managers", "its managers alone"),
 	}
@@ -363,15 +363,10 @@ var Tables = []Table{
 				v("done", "an activity that happened, still shown"),
 				v("cancelled", "called off"),
 				v("closed", "gone from every list and page, kept for the messages naming it")).about("Where it stands."),
-			enum("visibility",
-				v("everyone", "anyone signed in"),
-				v("members", "its effective members and managers"),
-				v("managers", "its managers and its app's admins; a hidden group"),
-				v("group", "the effective members of visible_to")).about("Who can see it. Its managers and its app's admins always can."),
-			ref("visible_to", "GROUP").about("With visibility group, the group whose effective members can see it."),
-			enum("members_visible", audience...).about("Who can see its members."),
-			enum("posting", audience...).about("Who may post to a Loop list."),
-			enum("replying", audience...).about("Who may reply to a Loop list's posts."),
+			ref("visible_to", "GROUP").about("The group whose effective members can see it: everyone for all, the group itself for its members, blank for its managers and its app's admins alone (a hidden group). Its managers and its app's admins always can."),
+			ref("members_visible_to", "GROUP").about("The group whose effective members can see who is in it, among those who can see it: everyone, the group itself, or blank for its managers alone."),
+			enum("posting", senders...).about("Who may post to a Loop list."),
+			enum("replying", senders...).about("Who may reply to a Loop list's posts."),
 			enum("join",
 				v("direct", "sign up or buy right here"),
 				v("below", "sign up for something under it, not here"),
@@ -682,7 +677,7 @@ var Tables = []Table{
 			enum("key", apps...).required().about("Which app."),
 			col("name", Text).about("What the switch and the front page call it."),
 			col("tagline", Text).about("The line under its name."),
-			ref("visible_to", "GROUP").about("The group whose effective members see it; blank for everyone."),
+			ref("visible_to", "GROUP").required().about("The group whose effective members see it; everyone for all."),
 			ref("admins", "GROUP").about("Its admins group; the super admins are admins of every app."),
 			col("order", Order).about("Its place in the switch and on the front page."),
 		},
@@ -700,7 +695,7 @@ var Tables = []Table{
 				v("celebrate", "Celebrate: parties"),
 				v("school", "Inbox: school mail")).required().about("Which widget."),
 			col("order", Order).about("Its place on the page."),
-			ref("visible_to", "GROUP").about("The group whose effective members see it; blank for everyone."),
+			ref("visible_to", "GROUP").required().about("The group whose effective members see it; everyone for all."),
 		},
 	},
 	{
