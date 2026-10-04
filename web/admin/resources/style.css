@@ -303,6 +303,11 @@ button:disabled {
   color: var(--dim);
 }
 
+.table-about {
+  margin: 0 0 8px;
+  max-width: 80ch;
+}
+
 .referrer {
   margin-bottom: 18px;
 }

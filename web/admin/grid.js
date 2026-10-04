@@ -79,8 +79,13 @@ export function cell(answer, column, value, id, large) {
     return td;
   }
   td.textContent = value;
-  td.title = value;
+  td.title = valueTitle(column, value);
   return td;
+}
+
+export function valueTitle(column, value) {
+  const about = column.schema?.['x-enumDescriptions']?.[value];
+  return about ? `${value}: ${about}` : value;
 }
 
 function treeOrder(table, rows) {
@@ -153,6 +158,7 @@ export function grid(table, answer, ids, changed, always = []) {
       for (const v of values) {
         const option = el('option', '', v || '(blank)');
         option.value = v || blank;
+        option.title = valueTitle(c, v);
         select.append(option);
       }
       select.addEventListener('change', () => {

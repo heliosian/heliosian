@@ -67,6 +67,30 @@ func TestSchemaHangsTogether(t *testing.T) {
 	}
 }
 
+func TestCheckDescribed(t *testing.T) {
+	good := Table{Name: "T", Description: "a table", Columns: []Column{
+		col("a", Text).about("a column"),
+		enum("b", v("x", "an x"), v("y", "a y")).about("an enum"),
+	}}
+	if err := checkDescribed([]Table{good}); err != nil {
+		t.Fatal(err)
+	}
+	for name, bad := range map[string]func(*Table){
+		"table":  func(tb *Table) { tb.Description = "" },
+		"column": func(tb *Table) { tb.Columns[0].Description = " " },
+		"value":  func(tb *Table) { tb.Columns[1].Values[1].Description = "" },
+		"twice":  func(tb *Table) { tb.Columns[1].Values[1].Name = "X" },
+	} {
+		tb := good
+		tb.Columns = []Column{good.Columns[0], good.Columns[1]}
+		tb.Columns[1].Values = slices.Clone(good.Columns[1].Values)
+		bad(&tb)
+		if err := checkDescribed([]Table{tb}); err == nil {
+			t.Errorf("%s: checkDescribed accepted it", name)
+		}
+	}
+}
+
 func TestStoredLeavesOutGenerated(t *testing.T) {
 	person, _ := Lookup("PERSON")
 	stored := person.Stored()

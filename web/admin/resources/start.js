@@ -1,7 +1,7 @@
 import {el} from '/elements.js';
 import {api} from '/api.js';
 import {chrome, query, labelOf} from '/chrome.js';
-import {all, byName, link, cell, grid} from '/grid.js';
+import {all, byName, link, cell, grid, valueTitle} from '/grid.js';
 import {policyList, clauseQuery, queryHref, clauseHref, actorOf, actorLabel, definitions, highlight} from '/policies.js';
 
 chrome('resources');
@@ -86,11 +86,12 @@ function drawRail(current) {
 
 async function listView(table) {
   heading.textContent = table.name;
+  heading.title = table.description;
   const answer = await scan(table);
   const g = grid(table, answer, answer.result, changed);
   grids = [g];
   showTreeButtons();
-  view.replaceChildren(g.wrap);
+  view.replaceChildren(el('p', 'note table-about', table.description), g.wrap);
   const update = () => {
     const shown = refresh();
     summary.textContent = `${shown} of ${g.count}${g.count === limit ? ` (first ${limit})` : ''} rows shown`;
@@ -264,6 +265,7 @@ function input(c, value) {
     for (const v of options.includes(value) ? options : [...options, value]) {
       const option = el('option', '', v || '(blank)');
       option.value = v;
+      option.title = valueTitle(c, v);
       select.append(option);
     }
     select.value = value;

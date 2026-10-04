@@ -135,7 +135,7 @@ func NewVocabulary(rows CalendarRows) (*Vocabulary, error) {
 		}
 	}
 	for _, c := range byClassroom {
-		slices.SortFunc(c.Grades, func(a, b string) int { return cmp.Compare(slices.Index(grades, a), slices.Index(grades, b)) })
+		slices.SortFunc(c.Grades, func(a, b string) int { return cmp.Compare(gradeIndex(a), gradeIndex(b)) })
 		slices.Sort(c.Crews)
 		v.Classrooms = append(v.Classrooms, *c)
 	}
@@ -152,7 +152,11 @@ func firstGrade(c Classroom) int {
 	if len(c.Grades) == 0 {
 		return len(grades)
 	}
-	return slices.Index(grades, c.Grades[0])
+	return gradeIndex(c.Grades[0])
+}
+
+func gradeIndex(name string) int {
+	return slices.IndexFunc(grades, func(g Value) bool { return g.Name == name })
 }
 
 func (v *Vocabulary) ClassroomNames() []string {

@@ -36,15 +36,20 @@ func idPattern(prefix string) string {
 
 func cellSchema(c Column) schema {
 	out := schema{"type": "string", "x-kind": kindNames[c.Kind]}
-	notes := []string{}
+	notes := []string{c.Description}
 	switch c.Kind {
 	case Enum:
-		out["enum"] = append([]string{""}, c.Values...)
+		out["enum"] = append([]string{""}, c.ValueNames()...)
+		described := map[string]string{}
+		for _, value := range c.Values {
+			described[value.Name] = value.Description
+		}
+		out["x-enumDescriptions"] = described
 	case ID:
 		out["pattern"] = idPattern(c.Prefix)
 		out["readOnly"] = true
 		if c.Name == "id" {
-			notes = append(notes, "This row's ID, minted by the server.")
+			notes = append(notes, "Minted by the server.")
 		} else {
 			notes = append(notes, "A token minted by the server.")
 		}
@@ -94,9 +99,7 @@ func cellSchema(c Column) schema {
 		out["x-private"] = true
 		notes = append(notes, "Private: answered to the import alone.")
 	}
-	if len(notes) > 0 {
-		out["description"] = strings.Join(notes, " ")
-	}
+	out["description"] = strings.Join(notes, " ")
 	return out
 }
 
@@ -115,9 +118,10 @@ func tableSchema(t Table) schema {
 		"x-unique":     slices.Clone(t.Unique),
 		"x-generated":  t.Generated,
 		"x-appendOnly": t.AppendOnly,
+		"description":  t.Description,
 	}
 	if t.Generated {
-		out["description"] = "Generated: worked out from other tables, never stored or written."
+		out["description"] = t.Description + " Generated: worked out from other tables, never stored or written."
 	}
 	return out
 }

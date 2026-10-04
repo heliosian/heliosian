@@ -60,7 +60,10 @@ func classOf(k Kind) class {
 }
 
 func columnType(table string, c Column) typ {
-	t := typ{class: classOf(c.Kind), kind: c.Kind, values: c.Values}
+	t := typ{class: classOf(c.Kind), kind: c.Kind}
+	if c.Kind == Enum {
+		t.values = c.ValueNames()
+	}
 	switch c.Kind {
 	case ID:
 		t.table = table

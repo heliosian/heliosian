@@ -6,14 +6,17 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
 
 type specProperty struct {
-	Enum     []string `json:"enum"`
-	Pattern  string   `json:"pattern"`
-	Relation string   `json:"x-relation"`
+	Enum             []string          `json:"enum"`
+	EnumDescriptions map[string]string `json:"x-enumDescriptions"`
+	Pattern          string            `json:"pattern"`
+	Relation         string            `json:"x-relation"`
+	Description      string            `json:"description"`
 }
 
 type specDoc struct {
@@ -21,7 +24,8 @@ type specDoc struct {
 	Paths      map[string]map[string]map[string]any `json:"paths"`
 	Components struct {
 		Schemas map[string]struct {
-			Properties map[string]specProperty `json:"properties"`
+			Description string                  `json:"description"`
+			Properties  map[string]specProperty `json:"properties"`
 		} `json:"schemas"`
 	} `json:"components"`
 }
@@ -66,6 +70,27 @@ func TestTheSpecDescribesTheQueryAPI(t *testing.T) {
 	}
 	if got := spec.Components.Schemas["MEMBER"].Properties["role"].Enum; !slices.Contains(got, "manager") {
 		t.Errorf("MEMBER.role enum %v", got)
+	}
+}
+
+func TestTheSpecCarriesEveryDescription(t *testing.T) {
+	spec := served(t)
+	for _, table := range Tables {
+		component := spec.Components.Schemas[table.Name]
+		if !strings.HasPrefix(component.Description, table.Description) {
+			t.Errorf("%s: description %q", table.Name, component.Description)
+		}
+		for _, c := range table.Columns {
+			p := component.Properties[c.Name]
+			if !strings.HasPrefix(p.Description, c.Description) {
+				t.Errorf("%s.%s: description %q", table.Name, c.Name, p.Description)
+			}
+			for _, value := range c.Values {
+				if p.EnumDescriptions[value.Name] != value.Description {
+					t.Errorf("%s.%s: %s described as %q", table.Name, c.Name, value.Name, p.EnumDescriptions[value.Name])
+				}
+			}
+		}
 	}
 }
 
