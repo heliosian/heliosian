@@ -150,7 +150,7 @@ func TestRun(t *testing.T) {
 		{"", `(from GROUP (where (>= start today)))`, "id", []string{"grp00000000040"}},
 		{"", `(from GROUP (where (< end now)))`, "id", nil},
 		{"", `(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020")))))`, "id", []string{"per00000000001", "per00000000002"}},
-		{"", `(from SAVED_VIEW (where (= groups "grp00000000010")))`, "token", []string{"fed00000000001"}},
+		{"", `(from COLLECTION (where (= groups "grp00000000010")))`, "token", []string{"fed00000000001"}},
 		{"", `(from PERSON (where (not hidden)))`, "id", []string{"per00000000001", "per00000000002", "per00000000003", "per00000000004"}},
 		{"", `(from PERSON (where (= vc_classroom.title "Hummingbirds")))`, "id", []string{"per00000000001"}},
 		{"", `(from MEMBER (where (= guest_of.name_short "Rowan")))`, "person", []string{"per00000000004"}},
@@ -230,7 +230,7 @@ func TestInclude(t *testing.T) {
 	if len(r.Resources["MEMBER"]) != 4 || len(r.Resources["PERSON"]) != 3 || len(r.Resources["GROUP"]) != 1 {
 		t.Fatalf("resources %v", r.Resources)
 	}
-	r = runAs(t, m, "", `(from SAVED_VIEW (include groups))`)
+	r = runAs(t, m, "", `(from COLLECTION (include groups))`)
 	if len(r.Resources["GROUP"]) != 2 {
 		t.Fatalf("resources %v", r.Resources)
 	}

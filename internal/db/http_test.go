@@ -38,8 +38,8 @@ func TestImportKey(t *testing.T) {
 	if code != http.StatusOK || len(out.Result) != 4 {
 		t.Fatalf("the import sees every person, but got %d %s", code, body)
 	}
-	if _, out, _ := ask(t, s, "application/json", "bearer:"+testImportKey, `{"from": "SAVED_VIEW"}`); len(out.Result) != 0 {
-		t.Fatalf("the import sees %d saved views", len(out.Result))
+	if _, out, _ := ask(t, s, "application/json", "bearer:"+testImportKey, `{"from": "COLLECTION"}`); len(out.Result) != 0 {
+		t.Fatalf("the import sees %d collections", len(out.Result))
 	}
 	rec := send(t, s, queue, http.MethodPost, "application/json", "bearer:"+testImportKey, `{"batch": [{"set": "per00000000001", "cells": {"vc_name": "June Ashdown"}}]}`)
 	if rec.Code != http.StatusOK {
@@ -120,12 +120,12 @@ func TestTextAndJSONAreOneTree(t *testing.T) {
 
 func TestServeQueryAsTheViewer(t *testing.T) {
 	s := sample(t)
-	q := `{"from": "SAVED_VIEW"}`
+	q := `{"from": "COLLECTION"}`
 	if _, out, _ := ask(t, s, "application/json", "rowan@example.com", q); len(out.Result) != 1 {
-		t.Fatalf("Rowan's second address sees %d saved views", len(out.Result))
+		t.Fatalf("Rowan's second address sees %d collections", len(out.Result))
 	}
 	if _, out, _ := ask(t, s, "application/json", "maya.lindqvist@example.org", q); len(out.Result) != 0 {
-		t.Fatalf("Maya sees %d of Rowan's saved views", len(out.Result))
+		t.Fatalf("Maya sees %d of Rowan's collections", len(out.Result))
 	}
 }
 

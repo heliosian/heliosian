@@ -119,8 +119,8 @@ func TestCheck(t *testing.T) {
 }
 
 func TestCheckRefs(t *testing.T) {
-	view, _ := Lookup("SAVED_VIEW")
-	row := map[string]string{"id": "svwX7pQ2m9KdLr", "token": "fedX7pQ2m9KdLr", "person": "perX7pQ2m9KdLr", "groups": "grpX7pQ2m9KdLr, grpY7pQ2m9KdLr"}
+	view, _ := Lookup("COLLECTION")
+	row := map[string]string{"id": "colX7pQ2m9KdLr", "token": "fedX7pQ2m9KdLr", "person": "perX7pQ2m9KdLr", "groups": "grpX7pQ2m9KdLr, grpY7pQ2m9KdLr"}
 	if err := view.Check(row); err != nil {
 		t.Fatal(err)
 	}

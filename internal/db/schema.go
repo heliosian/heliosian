@@ -221,11 +221,11 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:   "SAVED_VIEW",
+		Name:   "COLLECTION",
 		Sheet:  PeopleSheet,
 		Unique: []string{"token"},
 		Columns: []Column{
-			ident(SavedViewPrefix),
+			ident(CollectionPrefix),
 			token("token", FeedTokenPrefix),
 			ref("person", "PERSON").required(),
 			col("name", Text),

@@ -53,7 +53,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"PERSON_EMAIL":     {4, 4, 4, 4, 4},
 		"PERSON_SETTING":   {0, 0, 0, 1, 0},
 		"BIRTHDAY_YEAR":    {1, 1, 1, 1, 1},
-		"SAVED_VIEW":       {0, 0, 1, 0, 0},
+		"COLLECTION":       {0, 0, 1, 0, 0},
 		"GROUP":            {11, 11, 11, 13, 11},
 		"MEMBER":           {15, 15, 15, 16, 15},
 		"EFFECTIVE_MEMBER": {15, 15, 15, 17, 15},

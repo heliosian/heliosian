@@ -132,10 +132,10 @@ const policySource = `
 (read BIRTHDAY_YEAR
   (id person year assigned_to contacted_on contacted_by charity participation used_on note)
   true)
-; the viewer's own saved calendars
-(read SAVED_VIEW (= person @viewer))
-; every column of a saved calendar
-(read SAVED_VIEW (id token person name groups emoji order is_default) true)
+; the viewer's own collections
+(read COLLECTION (= person @viewer))
+; every column of a collection
+(read COLLECTION (id token person name groups emoji order is_default) true)
 ; the viewer's own bug reports and ideas
 (read REPORT (= reporter @viewer))
 ; every column of a bug report or idea

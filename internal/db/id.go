@@ -21,7 +21,7 @@ const (
 	PhotoPrefix           = "pho"
 	PersonSettingPrefix   = "pst"
 	BirthdayYearPrefix    = "bdy"
-	SavedViewPrefix       = "svw"
+	CollectionPrefix      = "col"
 	FeedTokenPrefix       = "fed"
 	GroupPrefix           = "grp"
 	GroupSourcePrefix     = "src"
@@ -50,7 +50,7 @@ const (
 
 var prefixes = map[string]bool{
 	PersonPrefix: true, PersonEmailPrefix: true, PhotoPrefix: true, PersonSettingPrefix: true,
-	BirthdayYearPrefix: true, SavedViewPrefix: true, FeedTokenPrefix: true,
+	BirthdayYearPrefix: true, CollectionPrefix: true, FeedTokenPrefix: true,
 	GroupPrefix: true, GroupSourcePrefix: true, MemberPrefix: true, EffectiveMemberPrefix: true,
 	RulePrefix: true, DocumentPrefix: true, DocumentGroupPrefix: true, InboxPrefix: true,
 	ReportPrefix: true, MessagePrefix: true, RecipientPrefix: true, MailTokenPrefix: true,
