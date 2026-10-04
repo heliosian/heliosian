@@ -968,10 +968,23 @@ main {
 .person-chip:disabled { opacity: 0.45; cursor: not-allowed; }
 
 
-/* The Add someone button under the household chips, and its popup. */
 .who-add { margin-top: 10px; }
 
 .add-someone .segmented { margin: 4px 0 10px; }
+
+.ticket-kind { margin-top: 14px; padding: 12px 16px 4px; background: var(--wash, #fbf7e6); border: 1px solid #efe4b8; border-radius: 12px; }
+
+.ticket-kind .segmented { margin: 0 0 8px; }
+
+.ticket-kind .form-lead { margin: 0 0 8px; }
+
+.add-someone-actions { display: flex; align-items: center; gap: 16px; margin-top: 14px; }
+
+.add-someone-actions > .button { margin-left: auto; flex: none; }
+
+.add-someone-actions .field { margin: 0; }
+
+.add-someone .field[hidden] { display: none; }
 
 .add-someone .field:first-of-type { margin-top: 6px; }
 

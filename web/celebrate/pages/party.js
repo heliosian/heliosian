@@ -4,7 +4,7 @@ import {el, link, svg, button, imageThumb, copyText, toast} from '/elements.js';
 import {listPath} from '../chrome.js';
 import {setTitle} from '/shell.js';
 import {appOrigin} from '/appswitch.js';
-import {openBuy, openParty, openTickets, openFreeTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setPartyStatus, openContacts, savePartyFields, uploadImage, imageSearchOn, openImageSearch} from '../edit.js';
+import {openBuy, openParty, openTickets, openAddTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setPartyStatus, openContacts, savePartyFields, uploadImage, imageSearchOn, openImageSearch} from '../edit.js';
 import {statusBadges} from '../cards.js';
 import {openPhotoLightbox} from '/crop.js';
 import {heroImageBar} from '/heroimage.js';
@@ -211,7 +211,7 @@ function attendeesSection(p) {
   }
   if (p.can.edit && p.availability !== 'past') {
     const foot = el('div', 'attendees-foot');
-    foot.append(button('Add Free Ticket', 'ticket', 'button button-secondary button-small', () => openFreeTicket(p)));
+    foot.append(button('Add Ticket', 'ticket', 'button button-secondary button-small', () => openAddTicket(p)));
     section.append(foot);
   }
   return section;

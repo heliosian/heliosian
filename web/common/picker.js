@@ -144,5 +144,9 @@ export function createPersonPicker(mountEl, {people, placeholder = 'Search by na
       selected = null;
       input.value = '';
     },
+    set(person) {
+      selected = person;
+      input.value = person.fullName || person.email;
+    },
   };
 }

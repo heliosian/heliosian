@@ -296,33 +296,48 @@ function openAddSomeone(p, editor, onAdd, opts = {}) {
   const name = text('', {placeholder: 'Percy Jackson', maxLength: 120, required: true});
   const email = text('', {type: 'email', placeholder: 'percy.jackson@gmail.com', maxLength: 200});
   guestPanel.append(...guestFields(p, name, email));
-  const addGuest = button('Add guest', 'plus', 'button', () => {
+  const guest = () => {
     const n = name.value.trim();
     if (!n) {
       name.focus();
-      return;
+      return null;
     }
     const e = email.value.trim().toLowerCase();
     if (e && !e.includes('@')) {
       email.focus();
+      return null;
+    }
+    return {guest: true, name: n, email: e};
+  };
+  let mode = editor ? 'directory' : 'guest';
+  let chosen = null;
+  let picker = null;
+  const submit = () => {
+    const who = mode === 'directory' ? chosen : guest();
+    if (!who) {
+      if (mode === 'directory') {
+        picker.input.focus();
+      }
       return;
     }
-    onAdd({guest: true, name: n, email: e});
+    onAdd(who);
     shut();
-  });
-  guestPanel.append(addGuest);
-  name.addEventListener('keydown', ev => {
-    if (ev.key === 'Enter') {
-      ev.preventDefault();
-      addGuest.click();
-    }
-  });
-  email.addEventListener('keydown', ev => {
-    if (ev.key === 'Enter') {
-      ev.preventDefault();
-      addGuest.click();
-    }
-  });
+  };
+  if (opts.guestExtra) {
+    guestPanel.append(opts.guestExtra);
+  }
+  const addGuest = button('Add guest', 'plus', 'button', submit);
+  if (!opts.hold) {
+    guestPanel.append(addGuest);
+  }
+  for (const input of [name, email]) {
+    input.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        submit();
+      }
+    });
+  }
 
   let directoryPanel = null;
   if (editor) {
@@ -334,18 +349,30 @@ function openAddSomeone(p, editor, onAdd, opts = {}) {
       kinds.push('a student');
     }
     const label = kinds.length === 2 ? 'Search the directory…' : `Search for ${kinds.join(' or ')}…`;
-    const picker = peoplePicker({placeholder: label, allow: person => inAudience(p, person), onPick: person => {
-      onAdd({email: person.email, name: person.fullName || person.email, photoUrl: person.heroPhotoUrl, title: person.words});
-      shut();
+    picker = peoplePicker({placeholder: label, allow: person => inAudience(p, person), onPick: person => {
+      chosen = {email: person.email, name: person.fullName || person.email, photoUrl: person.heroPhotoUrl, title: person.words};
+      if (!opts.hold) {
+        submit();
+        return;
+      }
+      picker.set(person);
+      opts.onChoose(person);
     }});
+    picker.input.addEventListener('input', () => {
+      chosen = null;
+    });
     directoryPanel = el('div');
     directoryPanel.append(field('Who', picker.mount, `This party is for ${audienceWords(p)}.`));
   }
   if (directoryPanel) {
     const which = segmented([{label: 'From the directory', value: 'directory'}, {label: 'Guest', value: 'guest'}], 'directory', v => {
+      mode = v;
       directoryPanel.hidden = v !== 'directory';
       guestPanel.hidden = v !== 'guest';
-      (v === 'directory' ? directoryPanel.querySelector('input') : name).focus();
+      if (opts.hold) {
+        opts.onChoose(v === 'directory' && chosen ? picker.person : null);
+      }
+      (v === 'directory' ? picker.input : name).focus();
     });
     guestPanel.hidden = true;
     wrap.append(which.wrap);
@@ -358,9 +385,20 @@ function openAddSomeone(p, editor, onAdd, opts = {}) {
   } else {
     wrap.append(guestPanel);
   }
+  if (opts.foot) {
+    wrap.append(opts.foot);
+  }
+  if (opts.hold) {
+    const actions = el('div', 'add-someone-actions');
+    if (opts.beside) {
+      actions.append(opts.beside);
+    }
+    actions.append(button(opts.hold, 'ticket', 'button', submit));
+    wrap.append(actions);
+  }
   const {shut} = popup(opts.title || 'Add someone', wrap);
   const first = wrap.querySelector('input:not([hidden])');
-  if (first) {
+  if (first && !opts.hold) {
     first.focus();
   }
 }
@@ -471,27 +509,69 @@ export async function offerTickets(p, a, quantity) {
   }
 }
 
-export function openFreeTicket(p) {
+export function openAddTicket(p) {
+  let paid = false;
+  const box = el('div', 'ticket-kind');
+  const lead = el('p', 'form-lead');
   const guestOf = peoplePicker({placeholder: 'Search for an adult\u2026', allow: person => !person.isStudent});
-  const extra = el('div');
-  extra.append(field('Guest of', guestOf.mount, 'Optional - who is bringing them. They get the note, and the ticket sits with their family to pass on. Blank means you.'));
+  const guestOfField = field('Guest of', guestOf.mount, 'Optional - who is bringing them. They get the note, and the ticket sits with their family to pass on. Blank means you.');
   const raise = p.capacity ? checkbox('Raise the capacity by one', true, `So this ticket takes none of the ${p.capacity} paid places.`) : null;
-  if (raise) {
-    extra.append(raise.wrap);
+  const paidPanel = el('div');
+  const invoice = peoplePicker({placeholder: 'Search for an adult\u2026', allow: person => !person.isStudent});
+  paidPanel.append(field('Invoice', invoice.mount, 'Who pays for it, and is emailed the ticket: the ticket holder, or a student\u2019s parent, unless you pick someone else. Blank, for a guest by name, bills you.'));
+  const billTo = async person => {
+    if (!person) {
+      invoice.reset();
+      return;
+    }
+    if (!person.isStudent) {
+      invoice.set(person);
+      return;
+    }
+    const dir = await directory();
+    const parent = dir.follow(person, 'parents').find(adult => adult && !adult.isStudent);
+    if (!parent) {
+      invoice.reset();
+      return;
+    }
+    invoice.set(parent);
+  };
+  const show = () => {
+    lead.textContent = paid
+      ? `A ticket at the party\u2019s price, ${money(p.price)}, added to the invoicing ledger.`
+      : 'A ticket at no charge - for a helper, a performer, a family you\u2019d like to treat. Nothing is billed.';
+    guestOfField.hidden = paid;
+    paidPanel.hidden = !paid;
+    if (raise) {
+      raise.wrap.hidden = paid;
+    }
+  };
+  if (p.price) {
+    const kind = segmented([{label: 'Free', value: 'free'}, {label: `Paid \u00b7 ${money(p.price)}`, value: 'paid'}], 'free', v => {
+      paid = v === 'paid';
+      show();
+    });
+    box.append(kind.wrap);
   }
+  box.append(lead, paidPanel);
+  show();
   openAddSomeone(p, true, async person => {
+    const attendees = [{email: person.email || '', name: person.guest ? person.name : ''}];
     try {
-      await act('parties', p.id, 'buy', {
-        free: true, purchaser: guestOf.value, raiseCapacity: Boolean(raise && raise.input.checked), note: 'Free ticket from the hosts',
-        attendees: [{email: person.email || '', name: person.guest ? person.name : ''}],
-      });
+      if (paid) {
+        await act('parties', p.id, 'buy', {invoice: invoice.value, attendees});
+      } else {
+        await act('parties', p.id, 'buy', {free: true, purchaser: person.guest ? guestOf.value : '', raiseCapacity: Boolean(raise && raise.input.checked), note: 'Free ticket from the hosts', attendees});
+      }
       await load();
-      const host = guestOf.person;
-      toast(host ? `${person.name} has a free ticket as ${host.fullName}'s guest` : `${person.name} has a free ticket`);
+      const host = person.guest && guestOf.person;
+      const billed = invoice.person;
+      toast(paid ? (billed ? `${person.name} has a ticket, invoiced to ${billed.fullName}` : `${person.name} has a ticket`)
+        : host ? `${person.name} has a free ticket as ${host.fullName}'s guest` : `${person.name} has a free ticket`);
     } catch (err) {
       toast(err.message);
     }
-  }, {title: 'Add a free ticket', lead: 'A ticket at no charge - for a helper, a performer, a family you\u2019d like to treat. Nothing is billed.', extra});
+  }, {title: 'Add a ticket', foot: box, beside: raise && raise.wrap, hold: 'Add Ticket', onChoose: billTo, guestExtra: guestOfField});
 }
 
 export function openTicket(p, a) {

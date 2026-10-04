@@ -22,6 +22,10 @@ func TestTakeTicketsDirectly(t *testing.T) {
 	order := func(party, purchaser string, free, raise bool, people ...attendee) ticketOrder {
 		return ticketOrder{PartyID: party, Purchaser: purchaser, Free: free, RaiseCapacity: raise, Attendees: people}
 	}
+	invoiced := func(o ticketOrder, to string) ticketOrder {
+		o.Invoice = to
+		return o
+	}
 	cases := []struct {
 		name       string
 		actor      access.Actor
@@ -47,6 +51,10 @@ func TestTakeTicketsDirectly(t *testing.T) {
 		{"a host adds past capacity", partyViewerOf(abena, false), order("pty0000000008", "", false, false, attendee{Email: teacher}), http.StatusOK, 1, 0, 2},
 		{"a free ticket raises capacity and skips the invoice", partyViewerOf(elena, false), order("pty0000000002", "", true, true, attendee{Name: "Percy"}), http.StatusOK, 1, 0, 2},
 		{"an old party id", partyViewerOf(jordan, false), order("P002", "", false, false, attendee{Email: partner}), http.StatusOK, 1, 0, 2},
+		{"only a host chooses the invoice", partyViewerOf(jordan, false), invoiced(order("pty0000000002", "", false, false, attendee{Email: jordan}), elena), http.StatusForbidden, 0, 0, 0},
+		{"a free ticket invoices nobody", partyViewerOf(elena, false), invoiced(order("pty0000000002", "", true, false, attendee{Name: "Percy"}), jordan), http.StatusBadRequest, 0, 0, 0},
+		{"a student is never invoiced", partyViewerOf(elena, false), invoiced(order("pty0000000002", "", false, false, attendee{Name: "Percy"}), teen), http.StatusBadRequest, 0, 0, 0},
+		{"a host invoices another adult", partyViewerOf(elena, false), invoiced(order("pty0000000002", "", false, false, attendee{Name: "Percy"}), jordan), http.StatusOK, 1, 0, 2},
 	}
 	for _, c := range cases {
 		got, err := m.takeTickets(c.actor, partiesSampleDirectory, c.order)
@@ -61,6 +69,10 @@ func TestTakeTicketsDirectly(t *testing.T) {
 	got, err := m.takeTickets(partyViewerOf("mina.park@heliosschool.org", false), partiesSampleDirectory, order("pty0000000012", "", false, false, attendee{Email: teen}))
 	if err != nil || len(got.added) != 1 || got.added[0]["Purchaser"] != jordan {
 		t.Fatalf("a host's ticket for a student is billed to %v (%v)", got.added, err)
+	}
+	got, err = m.takeTickets(partyViewerOf(elena, false), partiesSampleDirectory, invoiced(order("pty0000000002", "", false, false, attendee{Name: "Percy"}, attendee{Email: partner}), jordan))
+	if err != nil || len(got.added) != 2 || got.added[0]["Purchaser"] != jordan || got.added[1]["Purchaser"] != jordan || got.added[0]["Price"] == "0" {
+		t.Fatalf("a host's paid tickets are billed to %v (%v), want both to the chosen adult at the party's price", got.added, err)
 	}
 	got, err = m.takeTickets(partyViewerOf(jordan, false), partiesSampleDirectory, order("P002", "", false, false, attendee{Email: partner}, attendee{Name: "Aunt May"}, attendee{Name: "Uncle Ben"}))
 	if err != nil {

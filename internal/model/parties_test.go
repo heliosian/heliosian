@@ -1191,6 +1191,23 @@ func TestPartiesMail(t *testing.T) {
 	if ics := strings.ReplaceAll(string(invite.Attachments[0].Content), "\r\n ", ""); !strings.Contains(ics, "ATTENDEE;CN=Michael Bolin;") {
 		t.Errorf("outside guest's invite goes by their address:\n%s", ics)
 	}
+	if r := testkit.Call(t, mux, "sofia.marchetti@heliosschool.org", "POST", "/api/parties/pty0000000004/buy", map[string]any{"invoice": jordan, "attendees": []map[string]string{{"email": elena}}}); r.Code != http.StatusNoContent {
+		t.Fatalf("a host's paid ticket: %d %s", r.Code, r.Body)
+	}
+	m, _ = pair()
+	if !slices.Equal(m.To, []string{jordan, elena}) || !slices.Contains(m.CC, "sofia.marchetti@heliosschool.org") {
+		t.Fatalf("a host's paid ticket goes to %v cc %v, want the invoiced adult and the holder, the host copied", m.To, m.CC)
+	}
+	for _, want := range []string{"Billed to", "Jordan Whitfield (" + jordan + ")", "$75 (1 × $75)"} {
+		if !strings.Contains(m.HTML, want) {
+			t.Errorf("a host's paid ticket note lacks %q", want)
+		}
+	}
+	if !slices.ContainsFunc(cache.Model().Parties.Invoicing, func(l InvoiceLine) bool {
+		return l.PartyID == "pty0000000004" && l.Purchaser == jordan && l.Guest == "Elena Torres" && l.Cost == 75 && l.Action == "ADD"
+	}) {
+		t.Errorf("a host's paid ticket left no invoicing line billed to the chosen adult: %+v", cache.Model().Parties.Invoicing)
+	}
 	if r := testkit.Call(t, mux, teacher, "POST", "/api/parties/pty0000000006/join-waitlist", map[string]any{"quantity": 2, "note": "either day works"}); r.Code != http.StatusNoContent {
 		t.Fatalf("waitlist: %d %s", r.Code, r.Body)
 	}

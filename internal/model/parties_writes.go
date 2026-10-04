@@ -98,6 +98,7 @@ type ticketOrder struct {
 	Purchaser     string `json:"purchaser"`
 	Note          string `json:"note"`
 	Free          bool   `json:"free"`
+	Invoice       string `json:"invoice"`
 	RaiseCapacity bool   `json:"raiseCapacity"`
 	Attendees     []struct {
 		Email string `json:"email"`
@@ -125,6 +126,19 @@ func (m *Parties) takeTickets(actor access.Actor, directory *Directory, order ti
 	}
 	if order.Free && !editor {
 		return taken{}, access.Forbidden("only the hosts can give a free ticket")
+	}
+	invoice := mail.Normalize(order.Invoice)
+	if invoice != "" {
+		if !editor {
+			return taken{}, access.Forbidden("only the hosts choose who is invoiced")
+		}
+		if order.Free {
+			return taken{}, access.Invalid("a free ticket invoices nobody")
+		}
+		if person := directory.Person(invoice); person == nil || person.IsStudent {
+			return taken{}, access.Invalid("an invoice goes to an adult in the directory")
+		}
+		invoice = directory.Resolve(invoice)
 	}
 	if len(order.Attendees) == 0 {
 		return taken{}, access.Invalid("pick at least one person")
@@ -219,6 +233,12 @@ func (m *Parties) takeTickets(actor access.Actor, directory *Directory, order ti
 			}
 		}
 		rows = append(rows, row{email, "", bill})
+	}
+	if invoice != "" {
+		for i := range rows {
+			rows[i].purchaser = invoice
+		}
+		purchaser = invoice
 	}
 	remaining := p.Remaining()
 	mint := m.minter()
