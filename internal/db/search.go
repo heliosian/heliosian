@@ -36,6 +36,7 @@ const (
 	searchLexical = 0.15
 	searchMakers  = 4
 	searchLoaders = 16
+	searchTimeout = 2 * time.Minute
 )
 
 const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, or a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like. You are given what everyone who can see it can read.
@@ -331,18 +332,23 @@ func (x *Searcher) make() {
 			continue
 		}
 		start := time.Now()
-		entry, err := x.entry(input)
+		ctx, cancel := context.WithTimeout(context.Background(), searchTimeout)
+		entry, err := x.entry(ctx, input)
+		cancel()
 		if err != nil {
 			slog.Error("search: make", "object", hash, "error", err)
+			x.retry(hash)
 			continue
 		}
 		raw, err := json.Marshal(entry)
 		if err != nil {
 			slog.Error("search: encode", "object", hash, "error", err)
+			x.retry(hash)
 			continue
 		}
 		if err := x.bucket.Put(context.Background(), hash, "application/json", raw); err != nil {
 			slog.Error("search: store", "object", hash, "error", err)
+			x.retry(hash)
 			continue
 		}
 		x.mu.Lock()
@@ -355,8 +361,13 @@ func (x *Searcher) make() {
 	}
 }
 
-func (x *Searcher) entry(input string) (*SearchEntry, error) {
-	ctx := context.Background()
+func (x *Searcher) retry(hash string) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	x.enqueue(hash)
+}
+
+func (x *Searcher) entry(ctx context.Context, input string) (*SearchEntry, error) {
 	entry := &SearchEntry{}
 	if _, err := claude.JSON(ctx, *x.client, anthropic.MessageNewParams{
 		Model:        SearchModel,
