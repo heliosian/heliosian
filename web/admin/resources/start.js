@@ -2,7 +2,7 @@ import {el} from '/elements.js';
 import {api} from '/api.js';
 import {chrome, query, labelOf} from '/chrome.js';
 import {all, byName, link, cell, grid} from '/grid.js';
-import {policyList, clauseQuery, queryHref, clauseHref} from '/policies.js';
+import {policyList, clauseQuery, queryHref, clauseHref, actorOf, actorLabel, definitions, highlight} from '/policies.js';
 
 chrome('resources');
 
@@ -103,26 +103,59 @@ function mark(holds) {
   return el('span', holds ? 'mark held' : 'mark', holds ? '✓' : '✗');
 }
 
-function verdictItem(clauses, v) {
+function verdictItem(clauses, defined, v) {
   const c = clauses[v.clause];
   const li = el('li', v.holds ? 'held' : '');
   const text = el('div', 'verdict-text');
-  text.append(link(clauseHref(v.clause), 'verdict-comment', c.comment || '(no comment)'), el('code', '', c.condition));
+  const form = el('pre', 'verdict-form');
+  form.append(highlight(c.rest, defined));
+  text.append(link(clauseHref(v.clause), 'verdict-comment', c.comment || '(no comment)'), form);
   li.append(mark(v.holds), text, link(queryHref(clauseQuery(c)), 'run', 'run ↗'));
   return li;
 }
 
+function partHead(name, note) {
+  const out = el('div', 'part-head');
+  out.append(el('h3', '', name), el('span', 'note', note));
+  return out;
+}
+
+function grant(clauses, defined, v) {
+  const c = clauses[v.clause];
+  const out = el('span', v.holds ? 'grant held' : 'grant');
+  out.title = c.condition;
+  out.append(actorLabel(actorOf(c), defined), link(clauseHref(v.clause), '', c.comment || c.rest));
+  return out;
+}
+
 async function accessCard(table, id) {
   const [clauses, ex] = await Promise.all([policyList(), api('GET', `/api/explain/${id}`)]);
+  const defined = definitions(clauses);
   const box = el('details', 'card access');
   box.dataset.sheet = table.sheet;
   const held = ex.clauses.filter(v => v.holds).length;
   box.append(el('summary', '', `who may see this · ${ex.readable ? 'readable' : 'not readable'} as the viewer, ${held} of ${ex.clauses.length} row clauses hold`));
-  const rows = el('ul', 'verdicts');
+  const rows = el('div', 'access-part');
+  rows.append(partHead('row', 'any one clause that holds lets the viewer see the row'));
+  const actors = new Map();
   for (const v of ex.clauses) {
-    rows.append(verdictItem(clauses, v));
+    const key = actorOf(clauses[v.clause]);
+    if (!actors.has(key)) {
+      actors.set(key, []);
+    }
+    actors.get(key).push(v);
   }
-  box.append(rows);
+  for (const [key, verdicts] of actors) {
+    const group = el('div', 'actor-group');
+    const heading = el('div', 'actor');
+    heading.append(actorLabel(key, defined));
+    const list = el('ul', 'verdicts');
+    for (const v of verdicts) {
+      list.append(verdictItem(clauses, defined, v));
+    }
+    group.append(heading, list);
+    rows.append(group);
+  }
   const columns = el('table', 'column-access');
   for (const c of ex.columns) {
     const tr = el('tr', c.readable ? 'held' : '');
@@ -132,17 +165,18 @@ async function accessCard(table, id) {
     } else if (!c.clauses.length) {
       why.textContent = 'no column clause names it';
     } else {
-      for (const v of c.clauses) {
-        const a = link(clauseHref(v.clause), v.holds ? 'held' : '', clauses[v.clause].comment || clauses[v.clause].condition);
-        a.title = clauses[v.clause].condition;
-        why.append(a, ' ');
-      }
+      const grants = el('div', 'grants');
+      grants.append(...c.clauses.map(v => grant(clauses, defined, v)));
+      why.append(grants);
     }
-    tr.append(el('td', 'column-name', c.column), el('td', '', ''), why);
-    tr.children[1].append(c.private ? el('span', 'mark', '·') : mark(c.readable));
+    const state = el('td');
+    state.append(c.private ? el('span', 'mark', '·') : mark(c.readable));
+    tr.append(el('td', 'column-name', c.column), state, why);
     columns.append(tr);
   }
-  box.append(el('h3', '', 'columns'), columns);
+  const fields = el('div', 'access-part');
+  fields.append(partHead('columns', 'which cells the viewer reads once they see the row'), columns);
+  box.append(rows, fields);
   return box;
 }
 

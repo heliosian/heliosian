@@ -162,14 +162,48 @@ button:disabled {
   margin-bottom: 8px;
 }
 
-.access h3 {
-  margin: 4px 0 6px;
-  font-size: 13px;
+.access-part {
+  margin: 0 0 14px;
+}
+
+.part-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 4px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.part-head h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--k);
 }
 
+.part-head .note {
+  font-size: 12px;
+}
+
+.actor-group {
+  margin: 0 0 8px;
+}
+
+.actor {
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.actor-word {
+  color: var(--accent);
+}
+
 .verdicts {
-  margin: 0 0 10px;
+  margin: 0 0 0 12px;
   padding: 0;
   list-style: none;
 }
@@ -187,10 +221,43 @@ button:disabled {
   min-width: 0;
 }
 
-.verdict-text code {
-  color: var(--dim);
+.verdict-form {
+  margin: 2px 0 0;
   font-size: 11px;
   white-space: pre-wrap;
+}
+
+.verdicts li:not(.held) .verdict-form {
+  opacity: 0.6;
+}
+
+.grants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.grant {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0 6px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.grant.held {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.grant .sexp,
+.grant .actor-word {
+  font-size: 11px;
+}
+
+.grant:not(.held) {
+  opacity: 0.6;
 }
 
 .verdicts .run {
@@ -207,8 +274,7 @@ button:disabled {
   color: var(--accent);
 }
 
-.verdicts li:not(.held) .verdict-comment,
-.column-access a:not(.held) {
+.verdicts li:not(.held) .verdict-comment {
   color: var(--dim);
 }
 

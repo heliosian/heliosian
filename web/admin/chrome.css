@@ -246,6 +246,16 @@ main {
   white-space: pre-wrap;
 }
 
+.sexp .paren { color: var(--faint); }
+.sexp .call { color: #8ecae6; }
+.sexp .def { color: #c77dff; }
+.sexp .table { color: #c77dff; }
+.sexp .path { color: var(--text); }
+.sexp .at { color: #f4a261; }
+.sexp .str { color: #90be6d; }
+.sexp .num,
+.sexp .const { color: #ffd166; }
+
 ::selection {
   background: rgba(63, 208, 180, 0.35);
 }

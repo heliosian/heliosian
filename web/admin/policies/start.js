@@ -1,6 +1,6 @@
 import {el} from '/elements.js';
 import {chrome} from '/chrome.js';
-import {policyList, clauseQuery, queryHref} from '/policies.js';
+import {policyList, clauseQuery, queryHref, actorOf, definitions, highlight} from '/policies.js';
 
 chrome('policies');
 
@@ -8,58 +8,10 @@ const list = document.getElementById('list');
 const filter = document.getElementById('filter');
 const summary = document.getElementById('summary');
 
-const token = /("(?:[^"\\]|\\.)*")|(@[^\s()"]+)|([()])|(-?\d+(?:\.\d+)?(?![^\s()]))|([^\s()"]+)|(\s+)/g;
-
 function link(href, className, text) {
   const a = el('a', className, text);
   a.href = href;
   return a;
-}
-
-function highlight(text, defined) {
-  const out = el('code', 'sexp');
-  let head = false;
-  for (const [, string, at, paren, number, name, space] of text.matchAll(token)) {
-    if (space) {
-      out.append(space);
-      continue;
-    }
-    if (paren) {
-      out.append(el('span', 'paren', paren));
-      head = paren === '(';
-      continue;
-    }
-    const call = head;
-    head = false;
-    if (string) {
-      out.append(el('span', 'str', string));
-    } else if (at) {
-      out.append(el('span', 'at', at));
-    } else if (number) {
-      out.append(el('span', 'num', number));
-    } else if (defined.has(name)) {
-      out.append(link(`#clause-${defined.get(name)}`, 'def', name));
-    } else if (call) {
-      out.append(el('span', 'call', name));
-    } else if (name === 'true' || name === 'false') {
-      out.append(el('span', 'const', name));
-    } else if (/^[A-Z][A-Z_]*$/.test(name)) {
-      out.append(el('span', 'table', name));
-    } else {
-      out.append(el('span', 'path', name));
-    }
-  }
-  return out;
-}
-
-function actorOf(c) {
-  if (c.kind === 'define') {
-    return 'definitions';
-  }
-  if (c.actor) {
-    return c.actor;
-  }
-  return c.condition === 'false' ? 'nobody' : 'everyone';
 }
 
 function onColumns(c) {
@@ -88,7 +40,7 @@ function card(c, index, defined) {
   const head = el('div', 'clause-head');
   head.append(el('span', 'kind', c.kind === 'read columns' ? 'read' : c.kind));
   if (c.kind === 'define') {
-    head.append(highlight(`(${[c.name, ...(c.params ?? [])].join(' ')})`, new Map()));
+    head.append(highlight(`(${[c.name, ...(c.params ?? [])].join(' ')})`));
   } else if (onColumns(c)) {
     const columns = el('span', 'columns');
     for (const name of c.columns ?? [c.column]) {
@@ -162,12 +114,7 @@ function mark() {
 
 try {
   const clauses = await policyList();
-  const defined = new Map();
-  clauses.forEach((c, i) => {
-    if (c.kind === 'define') {
-      defined.set(c.name, i);
-    }
-  });
+  const defined = definitions(clauses);
   const groups = new Map();
   clauses.forEach((c, i) => {
     const key = actorOf(c);
