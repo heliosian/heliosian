@@ -13,7 +13,7 @@ var designQueries = []string{
 	`(from GROUP @g
   (where mail
          (= status "open")
-         (or (exists MEMBER (= group @g) (= person @viewer) manager)
+         (or (exists EFFECTIVE_MEMBER (= group @g.managed_by) (= person @viewer))
              (exists EFFECTIVE_MEMBER (= group @g.visible_to) (= person @viewer)))))`,
 	`(from GROUP @g
   (where (exists MEMBER (= group @g) (= person.grade "6"))))`,
@@ -140,7 +140,7 @@ func TestRun(t *testing.T) {
 		{"", `(from PERSON (where (= source "veracross")) (order name_sort asc))`, "id", []string{"per00000000001", "per00000000002", "per00000000003"}},
 		{"", `(from PERSON (where (= source "veracross")) (order name_sort desc) (limit 1))`, "id", []string{"per00000000003"}},
 		{"", `(from MEMBER (where (= group "grp00000000040") (= member "yes")) (order person.name_sort asc))`, "person", []string{"per00000000002", "per00000000003", "per00000000004"}},
-		{"per00000000002", `(from GROUP @g (where (exists MEMBER (= group @g) (= person @viewer) manager)))`, "id", []string{"grp00000000020"}},
+		{"per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g.managed_by) (= person @viewer))))`, "id", []string{"grp00000000020"}},
 		{"", `(from MEMBER (where lead))`, "person", []string{"per00000000003"}},
 		{"", `(from GROUP @g (where (> (count MEMBER (= group @g) (= member "yes")) 2)))`, "id", []string{"grp00000000040"}},
 		{"", `(from GROUP (where (>= start today)))`, "id", []string{"grp00000000040"}},

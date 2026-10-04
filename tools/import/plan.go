@@ -13,7 +13,6 @@ import (
 	"slices"
 	"strings"
 
-	"heliosian/internal/cells"
 	"heliosian/internal/store"
 )
 
@@ -793,18 +792,6 @@ func (p *planner) managed(person string) bool {
 	return p.st.people.rows[person]["source"] == "veracross"
 }
 
-func isManager(m row) bool {
-	manager, _ := cells.YesNo(m["manager"], false)
-	return manager
-}
-
-func managerCell(manager bool) string {
-	if manager {
-		return "Yes"
-	}
-	return ""
-}
-
 func (p *planner) syncMembers(group string, want map[string]bool) {
 	seen := map[string]bool{}
 	for _, mid := range p.st.members.order {
@@ -812,18 +799,10 @@ func (p *planner) syncMembers(group string, want map[string]bool) {
 		if m["group"] != group {
 			continue
 		}
-		manager, wanted := want[m["person"]]
-		if wanted && !seen[m["person"]] {
+		if want[m["person"]] && !seen[m["person"]] {
 			seen[m["person"]] = true
-			set := row{}
 			if !strings.EqualFold(strings.TrimSpace(m["member"]), "yes") {
-				set["member"] = "yes"
-			}
-			if isManager(m) != manager {
-				set["manager"] = managerCell(manager)
-			}
-			if len(set) > 0 {
-				p.memberSets = append(p.memberSets, write{Set: mid, Cells: set})
+				p.memberSets = append(p.memberSets, write{Set: mid, Cells: row{"member": "yes"}})
 				p.counts["memberships changed"]++
 			}
 			continue
@@ -838,11 +817,7 @@ func (p *planner) syncMembers(group string, want map[string]bool) {
 		if seen[person] {
 			continue
 		}
-		insert := row{"group": group, "person": person, "member": "yes"}
-		if want[person] {
-			insert["manager"] = "Yes"
-		}
-		p.memberInserts = append(p.memberInserts, write{Insert: "MEMBER", Row: insert})
+		p.memberInserts = append(p.memberInserts, write{Insert: "MEMBER", Row: row{"group": group, "person": person, "member": "yes"}})
 		p.counts["memberships added"]++
 	}
 }
@@ -935,6 +910,7 @@ func (p *planner) families(households []*household) {
 				}
 			}
 			h.family = p.newGroup(insert)
+			p.familyWrites = append(p.familyWrites, write{Set: h.family, Cells: row{"managed_by": h.family}})
 		} else {
 			current := p.groups.rows[h.family]
 			set := row{}
@@ -942,6 +918,9 @@ func (p *planner) families(households []*household) {
 				if strings.TrimSpace(current[c]) != cells[c] {
 					set[c] = cells[c]
 				}
+			}
+			if current["managed_by"] != h.family {
+				set["managed_by"] = h.family
 			}
 			if len(set) > 0 {
 				p.familyWrites = append(p.familyWrites, write{Set: h.family, Cells: set})
@@ -965,7 +944,7 @@ func (p *planner) roles() {
 		want := map[string]bool{}
 		for _, id := range p.ids {
 			if rg.holds(id) {
-				want[id.person] = false
+				want[id.person] = true
 			}
 		}
 		p.syncMembers(group, want)

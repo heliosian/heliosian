@@ -105,7 +105,6 @@ func TestCheck(t *testing.T) {
 		"id":          "memX7pQ2m9KdLr",
 		"group":       "grpX7pQ2m9KdLr",
 		"person":      "perX7pQ2m9KdLr",
-		"manager":     "Yes",
 		"member":      "Yes",
 		"rsvp":        "no",
 		"price":       "12.50",

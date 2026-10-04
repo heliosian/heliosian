@@ -106,3 +106,30 @@ func TestFamilyNameFollowsItsMembers(t *testing.T) {
 	write(`{"batch": [{"set": "` + kai + `", "cells": {"consent": "withheld"}}]}`)
 	name("Chang-Ashdown Family", "with Kai withheld")
 }
+
+func TestServingGroupsAreRenamedWithTheirGroup(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	write := func(raw string) {
+		t.Helper()
+		b, err := ParseBatch([]byte(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(importReader), Env{System: importReader, Now: testNow}, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	name := func(want, when string) {
+		t.Helper()
+		managers, _ := s.Model().Table("GROUP").Get("grp00000000041")
+		if managers["name"] != want {
+			t.Fatalf("%s, the picnic's managers are %q, not %q", when, managers["name"], want)
+		}
+	}
+	write(`{"batch": [{"set": "grp00000000040", "cells": {"name": "Autumn Picnic"}}]}`)
+	name("Autumn Picnic Managers", "once the picnic is renamed")
+
+	write(`{"batch": [{"set": "grp00000000041", "cells": {"name": "Picnic Crew"}}]}`)
+	write(`{"batch": [{"set": "grp00000000040", "cells": {"name": "Harvest Picnic"}}]}`)
+	name("Picnic Crew", "with a name chosen by hand")
+}

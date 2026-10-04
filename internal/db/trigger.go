@@ -21,6 +21,26 @@ var triggers = []trigger{
 	{table: "PERSON", fire: personFamilyNames},
 	{table: "MEMBER", fire: memberFamilyName},
 	{table: "PHOTO", fire: photoNotReady},
+	{table: "GROUP", fire: servingNames},
+}
+
+func servingNames(m *Model, c Change) ([]Edit, error) {
+	if c.Old == nil || c.New == nil || c.Old["name"] == c.New["name"] {
+		return nil, nil
+	}
+	writes := []Edit{}
+	for _, served := range []struct{ column, suffix string }{{"managed_by", " Managers"}, {"waitlist", " Waitlist"}} {
+		id, suffix := c.New[served.column], served.suffix
+		if id == "" || id == c.New["id"] {
+			continue
+		}
+		g, ok := m.Table("GROUP").Get(id)
+		if !ok || g["name"] != c.Old["name"]+suffix {
+			continue
+		}
+		writes = append(writes, Edit{Set: id, Cells: map[string]any{"name": c.New["name"] + suffix}})
+	}
+	return writes, nil
 }
 
 func personFamilyNames(m *Model, c Change) ([]Edit, error) {

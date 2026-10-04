@@ -204,9 +204,6 @@ func groupsOf(s *db.Store, person string) []string {
 		if r["member"] == "yes" {
 			out = append(out, g["kind"]+":"+g["name"]+g["slug"]+":member")
 		}
-		if r["manager"] == "Yes" {
-			out = append(out, g["kind"]+":"+g["name"]+g["slug"]+":manager")
-		}
 	}
 	slices.Sort(out)
 	return out
@@ -239,7 +236,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 	if wren == nil || wren["vc_name_sort"] != "Ashdown, Wren" || wren["vc_grade"] != "K" {
 		t.Fatalf("Wren reads %v", wren)
 	}
-	want := []string{"classroom:Oak:member", "crew:Acorn:member", "family:Ashdown Family:manager", "family:Ashdown Family:member", "grade:Kindergartengrade-k:member", "group:Studentsstudents:member"}
+	want := []string{"classroom:Oak:member", "crew:Acorn:member", "family:Ashdown Family:member", "grade:Kindergartengrade-k:member", "group:Studentsstudents:member"}
 	if got := groupsOf(s, wren["id"]); !slices.Equal(got, want) {
 		t.Fatalf("Wren is in %v", got)
 	}
@@ -280,8 +277,13 @@ func TestImportAgainstTheSample(t *testing.T) {
 	if sam == nil || sam["vc_job_title"] != "Coach" || sam["vc_legal_name"] != "Samuel Ashdown" {
 		t.Fatalf("Sam, a parent and staff, reads %v", sam)
 	}
-	if row, ok := s.Model().Table("MEMBER").Find("grp00000000020", sam["id"]); !ok || row["manager"] != "Yes" {
-		t.Fatal("Sam does not manage the Ashdowns' family")
+	if row, ok := s.Model().Table("MEMBER").Find("grp00000000020", sam["id"]); !ok || row["member"] != "yes" || family["managed_by"] != "grp00000000020" {
+		t.Fatalf("the Ashdowns' family, managing itself, lacks Sam: %v, %v", row, family)
+	}
+	for _, f := range s.Model().Table("GROUP").All() {
+		if f["kind"] == "family" && f["managed_by"] != f["id"] {
+			t.Fatalf("a family the import keeps does not manage itself: %v", f)
+		}
 	}
 	if email, ok := s.Model().Table("PERSON_EMAIL").Find("sam@example.org", "No"); !ok || email["primary"] != "Yes" || email["source"] != "veracross" {
 		t.Fatalf("Sam's address reads %v", email)
@@ -297,9 +299,10 @@ func TestImportAgainstTheSample(t *testing.T) {
 	if p.counts["people deactivated"] != 1 || maya["deactivated"] != "2026-09-30 12:00:00" {
 		t.Fatalf("Maya gone from the export: %v, %v", p.counts, maya)
 	}
-	for _, g := range groupsOf(s, "per00000000003") {
-		if strings.HasPrefix(g, "group:") {
-			t.Fatalf("deactivated, Maya is still in %v", g)
+	m := s.Model()
+	for _, r := range m.Table("MEMBER").Referencing("person", "per00000000003") {
+		if g, _ := m.Table("GROUP").Get(r["group"]); g["kind"] == "group" && slices.Contains([]string{"students", "parents", "staff", "adults", "everyone"}, g["slug"]) {
+			t.Fatalf("deactivated, Maya is still in the %s role group", g["slug"])
 		}
 	}
 }

@@ -54,9 +54,9 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"PERSON_SETTING":   {0, 0, 0, 1, 0},
 		"BIRTHDAY_YEAR":    {1, 1, 1, 1, 1},
 		"COLLECTION":       {0, 0, 1, 0, 0},
-		"GROUP":            {0, 11, 11, 13, 0},
-		"MEMBER":           {0, 10, 10, 11, 1},
-		"EFFECTIVE_MEMBER": {0, 15, 15, 17, 1},
+		"GROUP":            {0, 12, 12, 14, 0},
+		"MEMBER":           {0, 11, 11, 12, 1},
+		"EFFECTIVE_MEMBER": {0, 16, 16, 18, 1},
 		"RULE":             {0, 0, 0, 4, 0},
 		"DOCUMENT":         {1, 1, 1, 1, 1},
 		"DOCUMENT_GROUP":   {0, 1, 1, 1, 0},
@@ -125,14 +125,14 @@ func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 	}
 }
 
-func TestAWaitlistShowsToTheWaitingAndThePartysManagers(t *testing.T) {
+func TestAWaitlistShowsToTheWaitingThePartysManagersAndAdmins(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000081", "kind": "group", "name": "Waitlist", "parent": "grp00000000080", "status": "open"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000080", "kind": "party", "name": "Fondue Night", "status": "open", "visible_to": "grp00000000004", "waitlist": "grp00000000081"}),
-		store.Insert("MEMBER", store.Row{"id": "mem00000000080", "group": "grp00000000080", "person": student, "manager": "Yes"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000081", "kind": "group", "name": "Fondue Night Waitlist", "parent": "grp00000000080", "status": "open"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000082", "kind": "group", "name": "Fondue Night Managers", "status": "open", "managed_by": "grp00000000082"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000080", "kind": "party", "name": "Fondue Night", "status": "open", "visible_to": "grp00000000004", "waitlist": "grp00000000081", "managed_by": "grp00000000082"}),
+		store.Insert("MEMBER", store.Row{"id": "mem00000000080", "group": "grp00000000082", "person": student, "member": "yes"}),
 		store.Insert("MEMBER", store.Row{"id": "mem00000000081", "group": "grp00000000081", "person": parent, "member": "yes", "added": "2026-09-03 21:12:05"}),
-		store.Insert("MEMBER", store.Row{"id": "mem00000000082", "group": "grp00000000006", "person": guest, "member": "yes"}),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -146,6 +146,85 @@ func TestAWaitlistShowsToTheWaitingAndThePartysManagers(t *testing.T) {
 	}
 	if got := cellAs(t, s, parent, `(from GROUP (where (= id "grp00000000080")))`, "waitlist"); got != "grp00000000081" {
 		t.Errorf("the party's waitlist as the parent = %q", got)
+	}
+	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000082", "group": "grp00000000006", "person": guest, "member": "yes"})); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(as(t, s, guest, `(from MEMBER (where (= group "grp00000000081")))`)); n != 1 {
+		t.Errorf("a Who? admin sees %d places on the waitlist, want 1", n)
+	}
+}
+
+func TestManagersAreTheManagingGroupsMembers(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, GroupsSheet,
+		store.Insert("GROUP", store.Row{"id": "grp00000000090", "kind": "category", "name": "Fairs", "status": "open", "visible_to": "grp00000000004", "managed_by": "grp00000000091"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000091", "kind": "group", "name": "Fairs Managers", "status": "open", "managed_by": "grp00000000091"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000092", "kind": "event", "name": "Book Fair", "parent": "grp00000000090", "status": "pending", "visible_to": "grp00000000004"}),
+		store.Insert("MEMBER", store.Row{"id": "mem00000000090", "group": "grp00000000091", "person": parent, "member": "yes"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	fair := `(from GROUP (where (= id "grp00000000092")))`
+	if n := len(as(t, s, parent, fair)); n != 1 {
+		t.Error("a manager of the category can't see a pending event under it")
+	}
+	if n := len(as(t, s, student, fair)); n != 0 {
+		t.Error("someone who manages nothing sees a pending event")
+	}
+	if n := len(as(t, s, student, `(from MEMBER (where (= group "grp00000000091")))`)); n != 1 {
+		t.Errorf("whoever sees the category reads %d of its managers, want 1", n)
+	}
+	if n := len(as(t, s, student, `(from GROUP (where (= id "grp00000000091")))`)); n != 1 {
+		t.Error("whoever sees the category can't read the group that manages it")
+	}
+	if err := commit(s, GroupsSheet, store.Update("MEMBER", store.Row{"group": "grp00000000091", "person": parent}, store.Row{"member": "excluded"})); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(as(t, s, parent, fair)); n != 0 {
+		t.Error("someone kept out of the managers group still manages")
+	}
+}
+
+func TestAnAppsAdminsAppointManagers(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000005", "person": staff})); err != nil {
+		t.Fatal(err)
+	}
+	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "visible_to": "grp00000000004", "admins": "grp00000000003"})); err != nil {
+		t.Fatal(err)
+	}
+	write := func(viewer string, edits ...Edit) error {
+		_, err := Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "maya@example.com"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return err
+	}
+	if err := write(staff, Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000041", "person": parent, "member": "yes"}}); err != nil {
+		t.Errorf("a When admin can't add a host: %v", err)
+	}
+	if err := write(staff,
+		Edit{Insert: "GROUP", As: "hosts", Row: map[string]any{"kind": "group", "name": "Fall Picnic Hosts", "status": "open"}},
+		Edit{Set: "grp00000000040", Cells: map[string]any{"managed_by": "@hosts"}},
+		Edit{Set: "@hosts", Cells: map[string]any{"managed_by": "@hosts"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": "@hosts", "person": student, "member": "yes"}},
+	); err != nil {
+		t.Errorf("a When admin can't give an event a new managers group: %v", err)
+	}
+	for name, e := range map[string]Edit{
+		"a When admin adds to a role group": {Insert: "MEMBER", Row: map[string]any{"group": "grp00000000002", "person": guest, "member": "yes"}},
+		"a When admin adds to a mail list":  {Insert: "MEMBER", Row: map[string]any{"group": "grp00000000030", "person": guest, "member": "yes"}},
+	} {
+		if err := write(staff, e); err == nil {
+			t.Errorf("%s", name)
+		}
+	}
+	if err := write(staff,
+		Edit{Set: "grp00000000040", Cells: map[string]any{"managed_by": "grp00000000005"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000005", "person": staff, "member": "yes"}},
+	); err == nil {
+		t.Error("a When admin makes themselves a super admin through an event's managers")
+	}
+	if err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000041", "person": parent, "member": "yes"}}); err == nil {
+		t.Error("a parent makes themselves a host")
 	}
 }
 
@@ -455,7 +534,7 @@ func TestPendingIsForManagersAndAdmins(t *testing.T) {
 	if n := len(as(t, s, staff, q)); n != 1 {
 		t.Fatal("a host can't see their pending event")
 	}
-	if err := commit(s, GroupsSheet, store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": staff}, store.Row{"manager": ""})); err != nil {
+	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"managed_by": ""})); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(as(t, s, staff, q)); n != 1 {
@@ -515,7 +594,8 @@ func TestAuthorize(t *testing.T) {
 		{"a parent takes a child out of their family", parent, change(t, s, "MEMBER", []string{"grp00000000020", student}, store.Row{"member": "excluded"}), false},
 		{"give up one's place", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"member": "cancelled"}), true},
 		{"exclude oneself", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"member": "excluded"}), false},
-		{"make oneself a host", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"manager": "Yes"}), false},
+		{"make oneself a host", parent, Change{Table: "MEMBER", New: store.Row{"group": "grp00000000041", "person": parent, "member": "yes"}}, false},
+		{"hand one's event to another group", parent, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"managed_by": "grp00000000020"}), false},
 		{"a host excludes", staff, change(t, s, "MEMBER", picnic(parent), store.Row{"member": "excluded"}), true},
 		{"answer and change one's note", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"rsvp": "no", "note": "sorry"}), false},
 		{"a parent renames a child", parent, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), true},
@@ -560,8 +640,8 @@ func TestClientsGetThePolicyLanguage(t *testing.T) {
 		return out
 	}
 	for call, body := range map[string]string{
-		`(from MEMBER (where (in person (household @viewer))))`: `(from MEMBER (where (in person (select MEMBER.person (in group (select MEMBER.group (= person @viewer) manager (= group.kind "family"))) (= member "yes")))))`,
-		`(from GROUP @g (where (manages @g)))`:                  `(from GROUP @g (where (exists MEMBER (in group (ancestors @g)) (= person @viewer) manager)))`,
+		`(from MEMBER (where (in person (household @viewer))))`: `(from MEMBER (where (in person (select MEMBER.person (in group (select MEMBER.group (= person @viewer) (= member "yes") (= group.kind "family"))) (= member "yes")))))`,
+		`(from GROUP @g (where (manages @g)))`:                  `(from GROUP @g (where (exists EFFECTIVE_MEMBER @e (= person @viewer) (exists GROUP (= managed_by @e.group) (in id (ancestors @g))))))`,
 		`(from PERSON @row (where (person_visible @row)))`:      `(from PERSON @row (where (or (= @row @viewer) (and (= @row.source "guest") (exists MEMBER (in group (select MEMBER.group (= person @viewer))) (= person @row))) (and (!= @row.source "guest") (not @row.hidden) (blank @row.deactivated)))))`,
 	} {
 		got, want := ids(call), ids(body)

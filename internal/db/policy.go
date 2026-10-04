@@ -12,9 +12,26 @@ import (
 const policySource = `
 ;; Definitions
 
-; the viewer is a manager of @g or of a group above it
+; the viewer is an effective member of the group that manages @g or a group above it
 (define (manages @g)
-  (exists MEMBER (in group (ancestors @g)) (= person @viewer) manager))
+  (exists EFFECTIVE_MEMBER @e (= person @viewer)
+    (exists GROUP (= managed_by @e.group) (in id (ancestors @g)))))
+
+; @g is a plain group, neither a role group nor a mail list, that manages a group of kind k and nothing else but itself
+(define (managers_for @g k)
+  (and (= @g.kind "group") (not (role_group @g)) (not @g.mail)
+       (exists GROUP (= managed_by @g) (= kind k))
+       (not (exists GROUP (= managed_by @g) (!= kind k) (!= id @g)))))
+
+; @g is a plain group, neither a role group nor a mail list, that manages a mail list and nothing else but itself
+(define (managers_for_mail @g)
+  (and (= @g.kind "group") (not (role_group @g)) (not @g.mail)
+       (exists GROUP (= managed_by @g) mail)
+       (not (exists GROUP (= managed_by @g) (not mail) (!= id @g)))))
+
+; @g is the group that manages a group the viewer may see
+(define (manages_visible @g)
+  (exists GROUP @v (= managed_by @g) (visible @v)))
 
 ; the members of every family @p is in
 (define (household @p)
@@ -156,10 +173,12 @@ const policySource = `
 (read GROUP (visible @row))
 ; the waitlist of a party the viewer may see
 (read GROUP (exists GROUP @p (= waitlist @row) (= kind "party") (visible @p)))
+; the group that manages a group the viewer may see
+(read GROUP (manages_visible @row))
 ; every column of a group but what its family's form shares
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
-   default order visible_to members_visible_to address phone mail posting replying join adding
+   default order visible_to members_visible_to managed_by address phone mail posting replying join adding
    eligible capacity minimum waitlist lead_needed priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location added_by added)
   true)
@@ -175,16 +194,16 @@ const policySource = `
 (read RULE (manages group))
 ; every column of a rule
 (read RULE (id group order exclude target person search property value replace_with within) true)
-; the viewer's own, household's and guests' memberships, those in groups they manage, visible groups' managers, and everyone where members are shown
+; the viewer's own, household's and guests' memberships, those in groups they manage, the managers of visible groups, and everyone where members are shown
 (read MEMBER
   (or (self_or_household person)
       (= guest_of @viewer)
       (manages group)
-      (and manager (visible group))
+      (manages_visible group)
       (sees_members group)))
 ; every column of a membership but what it cost
 (read MEMBER
-  (id group person manager member lead rsvp answered answered_by answered_via opened guest_of
+  (id group person member lead rsvp answered answered_by answered_via opened guest_of
    note added_by added)
   true)
 ; what a membership cost and its payment reference, to the member, their host and the group's managers
@@ -202,9 +221,10 @@ const policySource = `
                     (= @old.guest_of @viewer))
                 (= @new.member "cancelled"))
            (manages @old.group))))
-; the viewer's own and household's effective memberships, and members of groups that show them
+; the viewer's own and household's effective memberships, the managers of visible groups, and members of groups that show them
 (read EFFECTIVE_MEMBER
   (or (self_or_household person)
+      (manages_visible group)
       (sees_members group)))
 ; every column of an effective membership
 (read EFFECTIVE_MEMBER (id group person reasons) true)
@@ -293,12 +313,12 @@ const policySource = `
 (set PERSON.name_short_override (admin_of "who"))
 ; override anyone's sort name
 (set PERSON.name_sort_override (admin_of "who"))
-; every directory group and plain group but a party's waitlist, pending too
-(read GROUP (and (admin_of "who") (in kind "family" "group" "classroom" "grade" "band" "crew" "department") (not (party_waitlist @row))))
-; every directory group's and plain group's memberships but a party's waitlist
-(read MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department") (not (party_waitlist group))))
-; every directory group's and plain group's effective members but a party's waitlist
-(read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department") (not (party_waitlist group))))
+; every directory group and plain group, pending too
+(read GROUP (and (admin_of "who") (in kind "family" "group" "classroom" "grade" "band" "crew" "department")))
+; every directory group's and plain group's memberships
+(read MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department")))
+; every directory group's and plain group's effective members
+(read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department")))
 ; the rules that pick each plain group's members
 (read RULE (and (admin_of "who") (= group.kind "group")))
 
@@ -312,8 +332,22 @@ const policySource = `
 (read GROUP_SOURCE (and (admin_of "when") (in group.kind "event" "day" "day_part")))
 ; every event's invitees and hosts
 (read MEMBER (and (admin_of "when") (= group.kind "event")))
-; make someone a host of an event, or stop them being one
-(set MEMBER.manager (and (admin_of "when") (= @old.group.kind "event")))
+; make a plain group to manage events
+(insert GROUP (and (admin_of "when") (= @new.kind "group")))
+; name the group that manages an event, or what manages an event's managers
+(set GROUP.managed_by (and (admin_of "when") (or (= @old.kind "event") (managers_for @old "event"))))
+; every event's managers
+(read GROUP (and (admin_of "when") (managers_for @row "event")))
+; who manages events
+(read MEMBER (and (admin_of "when") (managers_for group "event")))
+; who in effect manages events
+(read EFFECTIVE_MEMBER (and (admin_of "when") (managers_for group "event")))
+; make someone a host of an event
+(insert MEMBER (and (admin_of "when") (managers_for @new.group "event")))
+; make someone a host of an event again, or keep them from being one
+(set MEMBER.member (and (admin_of "when") (managers_for @old.group "event")))
+; stop someone being a host of an event
+(delete MEMBER (and (admin_of "when") (managers_for @old.group "event")))
 ; every event's effective invitees
 (read EFFECTIVE_MEMBER (and (admin_of "when") (= group.kind "event")))
 ; the rules that say who events and day parts are for
@@ -333,8 +367,22 @@ const policySource = `
 (set GROUP.status (and (admin_of "team") (in @old.kind "activity")))
 ; every activity's volunteers and chairs
 (read MEMBER (and (admin_of "team") (in group.kind "activity")))
-; make someone a manager of an activity, or stop them being one
-(set MEMBER.manager (and (admin_of "team") (in @old.group.kind "activity")))
+; make a plain group to manage activities
+(insert GROUP (and (admin_of "team") (= @new.kind "group")))
+; name the group that manages an activity, or what manages an activity's managers
+(set GROUP.managed_by (and (admin_of "team") (or (= @old.kind "activity") (managers_for @old "activity"))))
+; every activity's managers
+(read GROUP (and (admin_of "team") (managers_for @row "activity")))
+; who manages activities
+(read MEMBER (and (admin_of "team") (managers_for group "activity")))
+; who in effect manages activities
+(read EFFECTIVE_MEMBER (and (admin_of "team") (managers_for group "activity")))
+; make someone a manager of an activity
+(insert MEMBER (and (admin_of "team") (managers_for @new.group "activity")))
+; make someone a manager of an activity again, or keep them from being one
+(set MEMBER.member (and (admin_of "team") (managers_for @old.group "activity")))
+; stop someone being a manager of an activity
+(delete MEMBER (and (admin_of "team") (managers_for @old.group "activity")))
 ; every activity's effective volunteers
 (read EFFECTIVE_MEMBER (and (admin_of "team") (in group.kind "activity")))
 ; the rules that say who activities are for
@@ -356,8 +404,22 @@ const policySource = `
 (read MEMBER (and (admin_of "celebrate") (in group.kind "party" "celebration")))
 ; what every party ticket cost and its payment reference
 (read MEMBER (price purchase_id) (and (admin_of "celebrate") (in group.kind "party")))
-; make someone a host of a party, or stop them being one
-(set MEMBER.manager (and (admin_of "celebrate") (in @old.group.kind "party")))
+; make a plain group to host parties
+(insert GROUP (and (admin_of "celebrate") (= @new.kind "group")))
+; name the group that hosts a party, or what manages a party's hosts
+(set GROUP.managed_by (and (admin_of "celebrate") (or (= @old.kind "party") (managers_for @old "party"))))
+; every party's hosts
+(read GROUP (and (admin_of "celebrate") (managers_for @row "party")))
+; who hosts parties
+(read MEMBER (and (admin_of "celebrate") (managers_for group "party")))
+; who in effect hosts parties
+(read EFFECTIVE_MEMBER (and (admin_of "celebrate") (managers_for group "party")))
+; make someone a host of a party
+(insert MEMBER (and (admin_of "celebrate") (managers_for @new.group "party")))
+; make someone a host of a party again, or keep them from being one
+(set MEMBER.member (and (admin_of "celebrate") (managers_for @old.group "party")))
+; stop someone being a host of a party
+(delete MEMBER (and (admin_of "celebrate") (managers_for @old.group "party")))
 ; every party's waitlist
 (read GROUP (and (admin_of "celebrate") (party_waitlist @row)))
 ; who waits on every party's waitlist
@@ -379,10 +441,24 @@ const policySource = `
 (read GROUP (and (admin_of "loop") mail))
 ; open or close a group that takes mail
 (set GROUP.status (and (admin_of "loop") @old.mail))
-; every mail group's members and managers
+; every mail group's members
 (read MEMBER (and (admin_of "loop") group.mail))
-; make someone a manager of a mail group, or stop them being one
-(set MEMBER.manager (and (admin_of "loop") @old.group.mail))
+; make a plain group to manage mail groups
+(insert GROUP (and (admin_of "loop") (= @new.kind "group")))
+; name the group that manages a mail group, or what manages a mail group's managers
+(set GROUP.managed_by (and (admin_of "loop") (or @old.mail (managers_for_mail @old))))
+; every mail group's managers
+(read GROUP (and (admin_of "loop") (managers_for_mail @row)))
+; who manages mail groups
+(read MEMBER (and (admin_of "loop") (managers_for_mail group)))
+; who in effect manages mail groups
+(read EFFECTIVE_MEMBER (and (admin_of "loop") (managers_for_mail group)))
+; make someone a manager of a mail group
+(insert MEMBER (and (admin_of "loop") (managers_for_mail @new.group)))
+; make someone a manager of a mail group again, or keep them from being one
+(set MEMBER.member (and (admin_of "loop") (managers_for_mail @old.group)))
+; stop someone being a manager of a mail group
+(delete MEMBER (and (admin_of "loop") (managers_for_mail @old.group)))
 ; every mail group's effective members
 (read EFFECTIVE_MEMBER (and (admin_of "loop") group.mail))
 ; the rules that pick each mail group's members
@@ -498,6 +574,8 @@ const policySource = `
 (insert RULE (and (system "import") (= @new.group.kind "band")))
 ; stop a band taking in a grade or classroom no longer under it
 (delete RULE (and (system "import") (= @old.group.kind "band")))
+; make a family manage itself
+(set GROUP.managed_by (and (system "import") (= @old.kind "family") (= @new.managed_by @old.id)))
 ; a family's address as Veracross has it
 (set GROUP.vc_address (and (system "import") (= @old.kind "family")))
 ; a family's phone as Veracross has it
@@ -512,8 +590,6 @@ const policySource = `
 (read MEMBER (and (system "import") (or (= group.kind "family") (role_group group))))
 ; add a family or role group membership new in the export
 (insert MEMBER (and (system "import") (or (= @new.group.kind "family") (role_group @new.group))))
-; that someone in a family manages it, as everyone in one does
-(set MEMBER.manager (and (system "import") (= @old.group.kind "family")))
 ; whether someone is in a family or role group
 (set MEMBER.member (and (system "import") (or (= @old.group.kind "family") (role_group @old.group))))
 ; remove a family or role group membership gone from the export
@@ -886,8 +962,8 @@ const policySource = `
 (set MEMBER.guest_of (and (system "import") (= @old.guest_of.source "guest")))
 ; remove a merged guest's membership that the guest it joins already holds
 (delete MEMBER (and (system "import") (= @old.person.source "guest")))
-; whether someone runs a tag, list, admins group, activity or party, as the old sheets have it
-(set MEMBER.manager (and (system "import") (in @old.group.kind "group" "admins" "activity" "party")))
+; the group that runs a tag, list, activity or party, as the old sheets have it
+(set GROUP.managed_by (and (system "import") (in @old.kind "group" "activity" "party")))
 ; whether someone is in a tag, list, admins group, activity or party, as the old sheets have it
 (set MEMBER.member (and (system "import") (in @old.group.kind "group" "admins" "activity" "party")))
 ; whether a volunteer co-chairs an activity, as the old sheet has it

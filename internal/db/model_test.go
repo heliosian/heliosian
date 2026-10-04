@@ -42,8 +42,11 @@ func TestSampleLoads(t *testing.T) {
 	if n := len(m.Table("COLLECTION").Referencing("groups", "grp00000000010")); n != 1 {
 		t.Fatalf("%d collections name the Hummingbirds", n)
 	}
-	if row, ok := m.Table("MEMBER").Find("grp00000000020", "per00000000002"); !ok || row["manager"] != "Yes" || row["id"] != "mem00000000010" {
+	if row, ok := m.Table("MEMBER").Find("grp00000000020", "per00000000002"); !ok || row["member"] != "yes" || row["id"] != "mem00000000010" {
 		t.Fatalf("Rowan's row in the Ashdowns is %v", row)
+	}
+	if g, _ := m.Table("GROUP").Get("grp00000000020"); g["managed_by"] != "grp00000000020" {
+		t.Fatalf("the Ashdowns are managed by %q", g["managed_by"])
 	}
 	if !m.Has("grp00000000030") || m.Has("grp99999999999") {
 		t.Fatal("Has is wrong")
