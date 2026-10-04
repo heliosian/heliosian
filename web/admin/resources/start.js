@@ -6,7 +6,6 @@ import {policyList, clauseQuery, queryHref, clauseHref, actorOf, actorLabel, def
 
 chrome('resources');
 
-const limit = 1000;
 const sheets = ['datapeople', 'datagroups', 'datadocuments', 'datamail', 'dataconfig', '*', 'generated'];
 const sheetNames = {'*': 'every sheet'};
 
@@ -31,7 +30,7 @@ for (const t of all.filter(t => t.name !== 'CHANGES')) {
 }
 
 function scan(table, where) {
-  const out = {from: table.name, limit};
+  const out = {from: table.name};
   if (where) {
     out.where = where;
   }
@@ -94,7 +93,7 @@ async function listView(table) {
   view.replaceChildren(el('p', 'note table-about', table.description), g.wrap);
   const update = () => {
     const shown = refresh();
-    summary.textContent = `${shown} of ${g.count}${g.count === limit ? ` (first ${limit})` : ''} rows shown`;
+    summary.textContent = `${shown} of ${g.count} rows shown`;
   };
   filter.oninput = update;
   update();
