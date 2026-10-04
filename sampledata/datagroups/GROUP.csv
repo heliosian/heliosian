@@ -1,4 +1,4 @@
-id,kind,listed,mail,slug,title,parent,status,visibility,visible_to,posting,start,end,order,vc_address,vc_phone,subtitle,description,color,flyer,pronunciation,address_override,phone_override,members_visible,replying,join,adding,capacity,minimum,price,unit,waitlist,eligible,parent_ticket_required,manager_needed,priority,all_day,location,added_by,added,consent,address_consent,phone_consent,timing,url,default,drop_off_allowed
+id,kind,listed,mail,slug,title,parent,status,visibility,visible_to,posting,start,end,order,vc_address,vc_phone,subtitle,description,color,flyer,pronunciation,address_override,phone_override,members_visible,replying,join,adding,capacity,minimum,price,unit,waitlist,eligible,parent_ticket_required,lead_needed,priority,all_day,location,added_by,added,consent,address_consent,phone_consent,timing,url,default,drop_off_allowed
 grp00000000001,group,Yes,,students,Students,,open,everyone,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 grp00000000002,group,Yes,,parents,Parents,,open,everyone,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 grp00000000003,group,Yes,,staff,Staff,,open,everyone,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

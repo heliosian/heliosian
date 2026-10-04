@@ -201,7 +201,12 @@ func groupsOf(s *db.Store, person string) []string {
 	out := []string{}
 	for _, r := range m.Table("MEMBER").Referencing("person", person) {
 		g, _ := m.Table("GROUP").Get(r["group"])
-		out = append(out, g["kind"]+":"+g["title"]+g["slug"]+":"+r["role"])
+		if r["member"] == "yes" {
+			out = append(out, g["kind"]+":"+g["title"]+g["slug"]+":member")
+		}
+		if r["manager"] == "Yes" {
+			out = append(out, g["kind"]+":"+g["title"]+g["slug"]+":manager")
+		}
 	}
 	slices.Sort(out)
 	return out
@@ -264,7 +269,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 	if sam == nil || sam["vc_job_title"] != "Coach" || sam["vc_legal_name"] != "Samuel Ashdown" {
 		t.Fatalf("Sam, a parent and staff, reads %v", sam)
 	}
-	if _, ok := s.Model().Table("MEMBER").Find("grp00000000020", sam["id"], "manager"); !ok {
+	if row, ok := s.Model().Table("MEMBER").Find("grp00000000020", sam["id"]); !ok || row["manager"] != "Yes" {
 		t.Fatal("Sam does not manage the Ashdowns' family")
 	}
 	if email, ok := s.Model().Table("PERSON_EMAIL").Find("sam@example.org", "No"); !ok || email["primary"] != "Yes" || email["source"] != "veracross" {

@@ -21,7 +21,14 @@ type generatedSet struct {
 	by   map[string]map[string][]store.Row
 }
 
-var effectiveStatuses = []string{"invited", "pending", "yes", "maybe", "no"}
+func isManager(row store.Row) bool {
+	manager, _ := cells.YesNo(row["manager"], false)
+	return manager
+}
+
+func memberAs(row store.Row) string {
+	return strings.ToLower(strings.TrimSpace(row["member"]))
+}
 
 func (m *Model) effectiveRows(group string) []store.Row {
 	m.derived.mu.Lock()
@@ -102,16 +109,9 @@ func (m *Model) inbox() []store.Row {
 
 func (m *Model) effectiveOf(group string) []store.Row {
 	reasons := m.resolve(group, map[string]bool{})
-	statuses := map[string]string{}
-	for _, row := range m.Shown("MEMBER").Referencing("group", group) {
-		status := strings.ToLower(strings.TrimSpace(row["status"]))
-		if row["role"] == "member" && slices.Contains(effectiveStatuses, status) {
-			statuses[row["person"]] = status
-		}
-	}
 	out := []store.Row{}
 	for _, person := range slices.Sorted(maps.Keys(reasons)) {
-		out = append(out, store.Row{"id": Derive(EffectiveMemberPrefix, group, person), "group": group, "person": person, "status": statuses[person], "reasons": strings.Join(reasons[person], ", ")})
+		out = append(out, store.Row{"id": Derive(EffectiveMemberPrefix, group, person), "group": group, "person": person, "reasons": strings.Join(reasons[person], ", ")})
 	}
 	return out
 }
@@ -125,13 +125,10 @@ func (m *Model) resolve(group string, stack map[string]bool) map[string][]string
 	defer delete(stack, group)
 	excluded := map[string]bool{}
 	for _, row := range m.Shown("MEMBER").Referencing("group", group) {
-		if row["role"] != "member" {
-			continue
-		}
-		switch status := strings.ToLower(strings.TrimSpace(row["status"])); {
-		case status == "excluded":
+		switch memberAs(row) {
+		case "excluded":
 			excluded[row["person"]] = true
-		case status != "" && status != "cancelled":
+		case "yes":
 			out[row["person"]] = append(out[row["person"]], "member")
 		}
 	}
@@ -248,10 +245,17 @@ func (m *Model) search(text string) map[string]bool {
 	return out
 }
 
+func inFamilyAs(row store.Row, role string) bool {
+	if role == "manager" {
+		return isManager(row)
+	}
+	return memberAs(row) == "yes"
+}
+
 func (m *Model) familyRows(person, role string) []string {
 	out := []string{}
 	for _, row := range m.Shown("MEMBER").Referencing("person", person) {
-		if row["role"] != role {
+		if !inFamilyAs(row, role) {
 			continue
 		}
 		if g, ok := m.Shown("GROUP").Get(row["group"]); ok && g["kind"] == "family" {
@@ -264,7 +268,7 @@ func (m *Model) familyRows(person, role string) []string {
 func (m *Model) familyPeople(family, role string) []string {
 	out := []string{}
 	for _, row := range m.Shown("MEMBER").Referencing("group", family) {
-		if row["role"] == role {
+		if inFamilyAs(row, role) {
 			out = append(out, row["person"])
 		}
 	}

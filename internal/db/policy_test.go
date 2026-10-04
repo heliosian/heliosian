@@ -55,7 +55,8 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"BIRTHDAY_YEAR":    {1, 1, 1, 1, 1},
 		"COLLECTION":       {0, 0, 1, 0, 0},
 		"GROUP":            {11, 11, 11, 13, 11},
-		"MEMBER":           {15, 15, 15, 16, 15},
+		"MEMBER":           {13, 13, 13, 14, 13},
+		"WAITLIST":         {0, 0, 0, 0, 0},
 		"EFFECTIVE_MEMBER": {15, 15, 15, 17, 15},
 		"RULE":             {0, 0, 0, 2, 0},
 		"DOCUMENT":         {1, 1, 1, 1, 1},
@@ -104,7 +105,7 @@ func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
 		store.Insert("GROUP", store.Row{"id": "grp00000000070", "kind": "admins", "title": "When Admins", "status": "open", "visibility": "members"}),
-		store.Insert("MEMBER", store.Row{"id": "mem00000000070", "group": "grp00000000070", "person": student, "role": "member", "status": "yes"}),
+		store.Insert("MEMBER", store.Row{"id": "mem00000000070", "group": "grp00000000070", "person": student, "member": "yes"}),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +275,7 @@ func TestWritesCantReachWithheldRows(t *testing.T) {
 		want string
 	}{
 		"set":       {Edit{Set: student, Cells: map[string]any{"name_long_override": "Juni A."}}, "no PERSON " + student},
-		"reference": {Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000040", "person": student, "role": "member", "status": "yes"}}, "names no row " + student},
+		"reference": {Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000040", "person": student, "member": "yes"}}, "names no row " + student},
 	} {
 		_, err := Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "rowan@example.com"}, env, Batch{Batch: []Edit{c.w}})
 		if err == nil || !strings.Contains(err.Error(), c.want) {
@@ -354,10 +355,10 @@ func TestPrivateColumnsNeverShow(t *testing.T) {
 
 func TestPriceAndToken(t *testing.T) {
 	s := sample(t)
-	if err := commit(s, GroupsSheet, store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": guest, "role": "member"}, store.Row{"price": "7.25"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": guest}, store.Row{"price": "7.25"})); err != nil {
 		t.Fatal(err)
 	}
-	q := `(from MEMBER (where (= group "grp00000000040") (= role "member") (= guest_of "per00000000002")))`
+	q := `(from MEMBER (where (= group "grp00000000040") (= member "yes") (= guest_of "per00000000002")))`
 	for viewer, want := range map[string]string{student: "", parent: "7.25", staff: "7.25", guest: "7.25"} {
 		if got := cellAs(t, s, viewer, q, "price"); got != want {
 			t.Errorf("the guest's price as %s = %q, want %q", viewer, got, want)
@@ -431,13 +432,13 @@ func TestPendingIsForManagersAndAdmins(t *testing.T) {
 	if n := len(as(t, s, staff, q)); n != 1 {
 		t.Fatal("a host can't see their pending event")
 	}
-	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000040", "person": staff, "role": "manager"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": staff}, store.Row{"manager": ""})); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(as(t, s, staff, q)); n != 1 {
 		t.Fatal("a super admin can't see a pending event")
 	}
-	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000005", "person": staff, "role": "member"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000005", "person": staff})); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(as(t, s, staff, q)); n != 0 {
@@ -476,38 +477,40 @@ func change(t *testing.T, s *Store, table string, key []string, cells store.Row)
 
 func TestAuthorize(t *testing.T) {
 	s := sample(t)
-	picnic := func(person string) []string { return []string{"grp00000000040", person, "member"} }
+	picnic := func(person string) []string { return []string{"grp00000000040", person} }
 	for _, c := range []struct {
 		name   string
 		viewer string
 		change Change
 		ok     bool
 	}{
-		{"answer for oneself", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"status": "no"}), true},
-		{"answer for one's guest", parent, change(t, s, "MEMBER", picnic(guest), store.Row{"status": "maybe"}), true},
-		{"answer for a stranger", student, change(t, s, "MEMBER", picnic(parent), store.Row{"status": "no"}), false},
-		{"exclude oneself", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"status": "excluded"}), false},
-		{"a host excludes", staff, change(t, s, "MEMBER", picnic(parent), store.Row{"status": "excluded"}), true},
-		{"answer and change one's note", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"status": "no", "note": "sorry"}), false},
+		{"answer for oneself", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"rsvp": "no"}), true},
+		{"answer for one's guest", parent, change(t, s, "MEMBER", picnic(guest), store.Row{"rsvp": "maybe"}), true},
+		{"answer for a stranger", student, change(t, s, "MEMBER", picnic(parent), store.Row{"rsvp": "no"}), false},
+		{"give up one's place", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"member": "cancelled"}), true},
+		{"exclude oneself", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"member": "excluded"}), false},
+		{"make oneself a host", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"manager": "Yes"}), false},
+		{"a host excludes", staff, change(t, s, "MEMBER", picnic(parent), store.Row{"member": "excluded"}), true},
+		{"answer and change one's note", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"rsvp": "no", "note": "sorry"}), false},
 		{"a parent renames a child", parent, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), true},
 		{"a guest renames a child", guest, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), false},
 		{"Who?'s admin renames anyone", staff, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), true},
 		{"a super admin is When's admin", staff, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"}), true},
-		{"nobody may add rows yet", staff, Change{Table: "MEMBER", New: store.Row{"group": "grp00000000040", "person": student, "role": "member"}}, false},
-		{"nobody may remove rows yet", staff, Change{Table: "MEMBER", Old: store.Row{"group": "grp00000000040", "person": parent, "role": "member"}}, false},
+		{"nobody may add rows yet", staff, Change{Table: "MEMBER", New: store.Row{"group": "grp00000000040", "person": student, "member": "yes"}}, false},
+		{"nobody may remove rows yet", staff, Change{Table: "MEMBER", Old: store.Row{"group": "grp00000000040", "person": parent, "member": "yes"}}, false},
 	} {
 		err := s.Model().Authorize(Env{Viewer: c.viewer, Now: testNow}, c.change)
 		if (err == nil) != c.ok {
 			t.Errorf("%s: %v", c.name, err)
 		}
 	}
-	if err := commit(s, GroupsSheet, store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": parent, "role": "member"}, store.Row{"lead": "Yes"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": parent}, store.Row{"lead": "Yes"})); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Model().Authorize(Env{Viewer: parent, Now: testNow}, change(t, s, "MEMBER", picnic(guest), store.Row{"status": "excluded"})); err == nil {
-		t.Fatal("an event's lead may set any status, as if they managed it")
+	if err := s.Model().Authorize(Env{Viewer: parent, Now: testNow}, change(t, s, "MEMBER", picnic(guest), store.Row{"member": "excluded"})); err == nil {
+		t.Fatal("an event's lead may exclude anyone, as if they managed it")
 	}
-	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000005", "person": staff, "role": "member"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000005", "person": staff})); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Model().Authorize(Env{Viewer: staff, Now: testNow}, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"})); err == nil {
@@ -531,8 +534,8 @@ func TestClientsGetThePolicyLanguage(t *testing.T) {
 		return out
 	}
 	for call, body := range map[string]string{
-		`(from MEMBER (where (in person (household @viewer))))`: `(from MEMBER (where (in person (select MEMBER.person (in group (select MEMBER.group (= person @viewer) (= role "manager") (= group.kind "family"))) (= role "member")))))`,
-		`(from GROUP @g (where (manages @g)))`:                  `(from GROUP @g (where (exists MEMBER (in group (ancestors @g)) (= person @viewer) (= role "manager") (= status "yes"))))`,
+		`(from MEMBER (where (in person (household @viewer))))`: `(from MEMBER (where (in person (select MEMBER.person (in group (select MEMBER.group (= person @viewer) manager (= group.kind "family"))) (= member "yes")))))`,
+		`(from GROUP @g (where (manages @g)))`:                  `(from GROUP @g (where (exists MEMBER (in group (ancestors @g)) (= person @viewer) manager)))`,
 		`(from PERSON @row (where (person_visible @row)))`:      `(from PERSON @row (where (or (= @row @viewer) (and (= @row.source "guest") (exists MEMBER (in group (select MEMBER.group (= person @viewer))) (= person @row))) (and (!= @row.source "guest") (not @row.hidden) (blank @row.deactivated)))))`,
 	} {
 		got, want := ids(call), ids(body)

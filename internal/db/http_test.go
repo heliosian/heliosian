@@ -69,10 +69,10 @@ func ask(t *testing.T, s *Store, kind, as, query string) (int, answer, string) {
 	return rec.Code, out, rec.Body.String()
 }
 
-const picnicText = `(from MEMBER (where (= group "grp00000000040") (= role "member")) (order person.name_sort asc) (include person))`
+const picnicText = `(from MEMBER (where (= group "grp00000000040") (= member "yes")) (order person.name_sort asc) (include person))`
 
 const picnicJSON = `{"from": "MEMBER",
-  "where": [{"=": [{"path": "group"}, "grp00000000040"]}, {"=": [{"path": "role"}, "member"]}],
+  "where": [{"=": [{"path": "group"}, "grp00000000040"]}, {"=": [{"path": "member"}, "yes"]}],
   "order": [{"path": "person.name_sort", "dir": "asc"}],
   "include": ["person"]}`
 
@@ -136,7 +136,7 @@ func TestOnlyListedActivePeopleGetIn(t *testing.T) {
 		if code, _, body := ask(t, s, "application/json", as, `{"from": "PERSON"}`); code != http.StatusForbidden {
 			t.Errorf("%s reading: %d %s", why, code, body)
 		}
-		rec := send(t, s, queue, http.MethodPost, "application/json", as, `{"batch": [{"set": "mem00000000014", "cells": {"status": "no"}}]}`)
+		rec := send(t, s, queue, http.MethodPost, "application/json", as, `{"batch": [{"set": "mem00000000014", "cells": {"rsvp":"no"}}]}`)
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("%s writing: %d %s", why, rec.Code, rec.Body.String())
 		}
@@ -185,13 +185,13 @@ func TestServeWrites(t *testing.T) {
 		return rec.Code, rec.Body.String()
 	}
 	code, body := write("rowan.ashdown@example.org", `{"batch": [
-		{"set": "mem00000000014", "cells": {"status": "no"}},
-		{"set": "mem00000000015", "cells": {"status": "maybe"}}]}`)
+		{"set": "mem00000000014", "cells": {"rsvp":"no"}},
+		{"set": "mem00000000015", "cells": {"rsvp":"maybe"}}]}`)
 	if code != http.StatusOK || !strings.Contains(body, `"mem00000000014","mem00000000015"`) {
 		t.Fatalf("answering for oneself and a guest: %d %s", code, body)
 	}
 	for id, want := range map[string]string{"mem00000000014": "no", "mem00000000015": "maybe"} {
-		if row, _ := s.Model().Table("MEMBER").Get(id); row["status"] != want {
+		if row, _ := s.Model().Table("MEMBER").Get(id); row["rsvp"] != want {
 			t.Fatalf("%s reads %v", id, row)
 		}
 	}
@@ -199,12 +199,12 @@ func TestServeWrites(t *testing.T) {
 		as, batch, want string
 		code            int
 	}{
-		{"rowan.ashdown@example.org", `{"batch": [{"set": "mem00000000014", "cells": {"status": "yes"}}, {"set": "mem00000000014", "cells": {"note": "hi"}}]}`, "may not change MEMBER.note", http.StatusForbidden},
-		{"rowan.ashdown@example.org", `{"batch": [{"insert": "MEMBER", "row": {"group": "grp00000000040", "person": "per00000000001", "role": "member"}}]}`, "may not add to MEMBER", http.StatusForbidden},
+		{"rowan.ashdown@example.org", `{"batch": [{"set": "mem00000000014", "cells": {"rsvp":"yes"}}, {"set": "mem00000000014", "cells": {"note": "hi"}}]}`, "may not change MEMBER.note", http.StatusForbidden},
+		{"rowan.ashdown@example.org", `{"batch": [{"insert": "MEMBER", "row": {"group": "grp00000000040", "person": "per00000000001", "member": "yes"}}]}`, "may not add to MEMBER", http.StatusForbidden},
 		{"rowan.ashdown@example.org", `{"batch": [{"delete": "mem00000000014"}]}`, "may not remove from MEMBER", http.StatusForbidden},
-		{"rowan.ashdown@example.org", `{"batch": [{"set": "mem99999999999", "cells": {"status": "yes"}}]}`, "no MEMBER", http.StatusNotFound},
+		{"rowan.ashdown@example.org", `{"batch": [{"set": "mem99999999999", "cells": {"rsvp":"yes"}}]}`, "no MEMBER", http.StatusNotFound},
 		{"rowan.ashdown@example.org", `{"batch": [{"set": "mem00000000014", "cells": {"colour": "red"}}]}`, "no column colour", http.StatusBadRequest},
-		{"rowan.ashdown@example.org", `{"batch": [{"set": "mem00000000014", "cells": {"status": "sure"}}]}`, "not one of", http.StatusBadRequest},
+		{"rowan.ashdown@example.org", `{"batch": [{"set": "mem00000000014", "cells": {"rsvp":"sure"}}]}`, "not one of", http.StatusBadRequest},
 		{"rowan.ashdown@example.org", `{"batch": [{"set": "mem00000000014", "delete": "mem00000000014"}]}`, "one of insert", http.StatusBadRequest},
 		{"rowan.ashdown@example.org", `{"batch": []}`, "empty", http.StatusBadRequest},
 		{"bearer:" + testImportKey, `{"batch": [{"insert": "GROUP", "row": {"id": "grp00000000099", "kind": "family"}}]}`, "minted by the server", http.StatusBadRequest},
@@ -219,7 +219,7 @@ func TestServeWrites(t *testing.T) {
 			t.Errorf("%s: %d %s", c.batch, code, body)
 		}
 	}
-	if row, _ := s.Model().Table("MEMBER").Get("mem00000000014"); row["status"] != "no" || row["note"] != "" {
+	if row, _ := s.Model().Table("MEMBER").Get("mem00000000014"); row["rsvp"] != "no" || row["note"] != "" {
 		t.Fatalf("a refused batch left %v", row)
 	}
 }

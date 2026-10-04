@@ -743,23 +743,37 @@ func (p *planner) managed(person string) bool {
 	return p.st.people.rows[person]["source"] == "veracross"
 }
 
-type membership struct {
-	person string
-	role   string
+func isManager(m row) bool {
+	manager, _ := cells.YesNo(m["manager"], false)
+	return manager
 }
 
-func (p *planner) syncMembers(group string, want map[membership]bool) {
-	seen := map[membership]bool{}
+func managerCell(manager bool) string {
+	if manager {
+		return "Yes"
+	}
+	return ""
+}
+
+func (p *planner) syncMembers(group string, want map[string]bool) {
+	seen := map[string]bool{}
 	for _, mid := range p.st.members.order {
 		m := p.st.members.rows[mid]
-		if m["group"] != group || (m["role"] != "member" && m["role"] != "manager") {
+		if m["group"] != group {
 			continue
 		}
-		key := membership{m["person"], m["role"]}
-		if want[key] && !seen[key] {
-			seen[key] = true
-			if m["status"] != "yes" {
-				p.memberSets = append(p.memberSets, write{Set: mid, Cells: row{"status": "yes"}})
+		manager, wanted := want[m["person"]]
+		if wanted && !seen[m["person"]] {
+			seen[m["person"]] = true
+			set := row{}
+			if !strings.EqualFold(strings.TrimSpace(m["member"]), "yes") {
+				set["member"] = "yes"
+			}
+			if isManager(m) != manager {
+				set["manager"] = managerCell(manager)
+			}
+			if len(set) > 0 {
+				p.memberSets = append(p.memberSets, write{Set: mid, Cells: set})
 				p.counts["memberships changed"]++
 			}
 			continue
@@ -770,16 +784,15 @@ func (p *planner) syncMembers(group string, want map[membership]bool) {
 		p.memberDeletes = append(p.memberDeletes, write{Delete: mid})
 		p.counts["memberships removed"]++
 	}
-	keys := slices.SortedFunc(maps.Keys(want), func(a, b membership) int {
-		return strings.Compare(a.person+a.role, b.person+b.role)
-	})
-	for _, key := range keys {
-		if seen[key] {
+	for _, person := range slices.Sorted(maps.Keys(want)) {
+		if seen[person] {
 			continue
 		}
-		p.memberInserts = append(p.memberInserts, write{Insert: "MEMBER", Row: row{
-			"group": group, "person": key.person, "role": key.role, "status": "yes",
-		}})
+		insert := row{"group": group, "person": person, "member": "yes"}
+		if want[person] {
+			insert["manager"] = "Yes"
+		}
+		p.memberInserts = append(p.memberInserts, write{Insert: "MEMBER", Row: insert})
 		p.counts["memberships added"]++
 	}
 }
@@ -792,14 +805,16 @@ func (p *planner) families(households []*household) {
 		if p.groups.rows[m["group"]]["kind"] != "family" {
 			continue
 		}
-		into := members
-		if m["role"] == "manager" {
-			into = managers
+		if members[m["group"]] == nil {
+			members[m["group"]] = map[string]bool{}
+			managers[m["group"]] = map[string]bool{}
 		}
-		if into[m["group"]] == nil {
-			into[m["group"]] = map[string]bool{}
+		if strings.EqualFold(strings.TrimSpace(m["member"]), "yes") {
+			members[m["group"]][m["person"]] = true
 		}
-		into[m["group"]][m["person"]] = true
+		if isManager(m) {
+			managers[m["group"]][m["person"]] = true
+		}
 	}
 	families := []string{}
 	for _, gid := range p.st.groups.order {
@@ -876,12 +891,12 @@ func (p *planner) families(households []*household) {
 				p.counts["families changed"]++
 			}
 		}
-		want := map[membership]bool{}
-		for _, id := range slices.Concat(h.adults, h.kids) {
-			want[membership{id.person, "member"}] = true
+		want := map[string]bool{}
+		for _, id := range h.kids {
+			want[id.person] = false
 		}
 		for _, a := range h.adults {
-			want[membership{a.person, "manager"}] = true
+			want[a.person] = true
 		}
 		p.syncMembers(h.family, want)
 	}
@@ -893,10 +908,10 @@ func (p *planner) roles() {
 		if group == "" {
 			group = p.newGroup(row{"kind": "group", "slug": rg.slug, "title": rg.title})
 		}
-		want := map[membership]bool{}
+		want := map[string]bool{}
 		for _, id := range p.ids {
 			if rg.holds(id) {
-				want[membership{id.person, "member"}] = true
+				want[id.person] = false
 			}
 		}
 		p.syncMembers(group, want)

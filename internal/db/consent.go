@@ -175,7 +175,7 @@ func (m *Model) consentWrites(responses []map[string]string) ([]Edit, error) {
 		managers := 0
 		listed, shareAddress, sharePhone := true, true, true
 		for _, row := range m.Table("MEMBER").Referencing("group", g["id"]) {
-			if row["role"] != "manager" {
+			if !isManager(row) {
 				continue
 			}
 			managers++

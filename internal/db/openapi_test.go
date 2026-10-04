@@ -68,8 +68,8 @@ func TestTheSpecDescribesTheQueryAPI(t *testing.T) {
 	if got := spec.Components.Schemas["GROUP"].Properties["parent"].Relation; got != "GROUP" {
 		t.Errorf("GROUP.parent relates to %q", got)
 	}
-	if got := spec.Components.Schemas["MEMBER"].Properties["role"].Enum; !slices.Contains(got, "manager") {
-		t.Errorf("MEMBER.role enum %v", got)
+	if got := spec.Components.Schemas["MEMBER"].Properties["member"].Enum; !slices.Contains(got, "excluded") {
+		t.Errorf("MEMBER.member enum %v", got)
 	}
 }
 

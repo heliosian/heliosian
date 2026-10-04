@@ -36,17 +36,14 @@ func TestSampleLoads(t *testing.T) {
 	if n := m.Table("PERSON").Len(); n != 4 {
 		t.Fatalf("PERSON has %d rows", n)
 	}
-	if n := len(m.Table("MEMBER").Referencing("group", "grp00000000040")); n != 4 {
+	if n := len(m.Table("MEMBER").Referencing("group", "grp00000000040")); n != 3 {
 		t.Fatalf("the picnic has %d member rows", n)
 	}
 	if n := len(m.Table("COLLECTION").Referencing("groups", "grp00000000010")); n != 1 {
 		t.Fatalf("%d collections name the Hummingbirds", n)
 	}
-	if _, ok := m.Table("MEMBER").Find("grp00000000020", "per00000000002", "manager"); !ok {
-		t.Fatal("Rowan does not manage the Ashdowns")
-	}
-	if row, ok := m.Table("MEMBER").Get("mem00000000011"); !ok || row["role"] != "manager" {
-		t.Fatalf("mem00000000011 is %v", row)
+	if row, ok := m.Table("MEMBER").Find("grp00000000020", "per00000000002"); !ok || row["manager"] != "Yes" || row["id"] != "mem00000000010" {
+		t.Fatalf("Rowan's row in the Ashdowns is %v", row)
 	}
 	if !m.Has("grp00000000030") || m.Has("grp99999999999") {
 		t.Fatal("Has is wrong")
@@ -80,12 +77,11 @@ func TestCommitsTheModelRefuses(t *testing.T) {
 		op    store.Op
 		want  string
 	}{
-		"missing person":   {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per99999999999", "role": "member"}), "names no row"},
-		"wrong table":      {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "grp00000000001", "role": "member"}), "not a PERSON id"},
-		"duplicate member": {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per00000000002", "role": "member"}), "two rows have the same group="},
-		"duplicate id":     {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000001", "group": "grp00000000040", "person": "per00000000001", "role": "member"}), "two rows have the id"},
-		"no id":            {GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000001", "role": "member"}), "id is required"},
-		"second primary":   {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "ro@example.net", "person": "per00000000002", "primary": "Yes", "source": "manual"}), "2 primary"},
+		"missing person":   {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per99999999999", "member": "yes"}), "names no row"},
+		"wrong table":      {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "grp00000000001", "member": "yes"}), "not a PERSON id"},
+		"duplicate member": {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per00000000002", "rsvp": "no"}), "two rows have the same group="},
+		"duplicate id":     {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000001", "group": "grp00000000040", "person": "per00000000001", "member": "yes"}), "two rows have the id"},
+		"no id":            {GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000001", "member": "yes"}), "id is required"}, "second primary": {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "ro@example.net", "person": "per00000000002", "primary": "Yes", "source": "manual"}), "2 primary"},
 		"no primary":       {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "juni@example.net", "person": "per00000000001", "source": "manual"}), "0 primary"},
 		"bad enum":         {GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"status": "maybe"}), "not one of"},
 		"referenced alias": {ConfigSheet, store.Insert("ALIAS", store.Row{"id": "als00000000099", "alias": "old", "target": "doc99999999999"}), "names no row"},
@@ -110,7 +106,7 @@ func TestCommitAcrossSheets(t *testing.T) {
 	if err := commit(s, PeopleSheet, store.Insert("PERSON", store.Row{"id": "per00000000005", "source": "manual", "name_long_override": "Sam Ortiz"})); err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per00000000005", "role": "member", "status": "invited"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per00000000005", "member": "yes"})); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(s.Model().Table("MEMBER").Referencing("person", "per00000000005")); n != 1 {

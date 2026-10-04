@@ -38,7 +38,7 @@ func TestReadShowsTables(t *testing.T) {
 	}
 	out := &strings.Builder{}
 	show(out, a)
-	for _, want := range []string{"MEMBER: 3\n", "PERSON: 2\n", "id  ", "Juni (Juniper) Ashdown", "Rowan Ashdown"} {
+	for _, want := range []string{"MEMBER: 2\n", "PERSON: 2\n", "id  ", "Juni (Juniper) Ashdown", "Rowan Ashdown"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("the output lacks %q:\n%s", want, out)
 		}

@@ -62,20 +62,14 @@ func (m *Model) retitleFamilies(groups []string) []Edit {
 
 func (m *Model) familyTitle(group string) string {
 	rows := m.Table("MEMBER").Referencing("group", group)
-	managers := map[string]bool{}
-	for _, row := range rows {
-		if row["role"] == "manager" {
-			managers[row["person"]] = true
-		}
-	}
 	order := []string{}
 	for _, row := range rows {
-		if row["role"] == "member" && !managers[row["person"]] {
+		if memberAs(row) == "yes" && !isManager(row) {
 			order = append(order, row["person"])
 		}
 	}
 	for _, row := range rows {
-		if row["role"] == "manager" {
+		if isManager(row) {
 			order = append(order, row["person"])
 		}
 	}
@@ -176,14 +170,17 @@ func schoolGroups(m *Model, c Change) ([]Edit, error) {
 		if !slices.Contains(schoolKinds, g["kind"]) {
 			continue
 		}
-		if want[row["group"]] && row["role"] == "member" && row["status"] == "yes" {
-			delete(want, row["group"])
+		if !want[row["group"]] {
+			writes = append(writes, Edit{Delete: row["id"]})
 			continue
 		}
-		writes = append(writes, Edit{Delete: row["id"]})
+		delete(want, row["group"])
+		if memberAs(row) != "yes" {
+			writes = append(writes, Edit{Set: row["id"], Cells: map[string]any{"member": "yes"}})
+		}
 	}
 	for _, group := range slices.Sorted(maps.Keys(want)) {
-		writes = append(writes, Edit{Insert: "MEMBER", Row: map[string]any{"group": group, "person": person, "role": "member", "status": "yes"}})
+		writes = append(writes, Edit{Insert: "MEMBER", Row: map[string]any{"group": group, "person": person, "member": "yes"}})
 	}
 	return writes, nil
 }

@@ -58,7 +58,7 @@ func TestSchoolGroupsFollowThePerson(t *testing.T) {
 	if got := schoolGroupsHeld(s, student); len(got) != 0 {
 		t.Fatalf("deactivated, the student is in %v", got)
 	}
-	if _, ok := s.Model().Table("MEMBER").Find("grp00000000020", student, "member"); !ok {
+	if _, ok := s.Model().Table("MEMBER").Find("grp00000000020", student); !ok {
 		t.Fatal("deactivating took the student out of their family")
 	}
 
@@ -100,7 +100,7 @@ func TestFamilyTitleFollowsItsMembers(t *testing.T) {
 
 	kai := write(`{"batch": [
 		{"insert": "PERSON", "as": "kai", "row": {"source": "veracross", "name_long_import": "Kai Lindqvist", "consent": "listed"}},
-		{"insert": "MEMBER", "row": {"group": "grp00000000020", "person": "@kai", "role": "member", "status": "yes"}}]}`)[0]
+		{"insert": "MEMBER", "row": {"group": "grp00000000020", "person": "@kai", "member": "yes"}}]}`)[0]
 	title("Chang-Ashdown & Lindqvist Family", "once Kai joins")
 
 	write(`{"batch": [{"set": "` + kai + `", "cells": {"consent": "withheld"}}]}`)

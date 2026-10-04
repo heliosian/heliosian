@@ -12,15 +12,15 @@ import (
 const policySource = `
 ;; Definitions
 
-; the viewer is an accepted manager of @g or of a group above it
+; the viewer is a manager of @g or of a group above it
 (define (manages @g)
-  (exists MEMBER (in group (ancestors @g)) (= person @viewer) (= role "manager") (= status "yes")))
+  (exists MEMBER (in group (ancestors @g)) (= person @viewer) manager))
 
 ; the members of every family @p manages
 (define (household @p)
   (select MEMBER.person
-    (in group (select MEMBER.group (= person @p) (= role "manager") (= group.kind "family")))
-    (= role "member")))
+    (in group (select MEMBER.group (= person @p) manager (= group.kind "family")))
+    (= member "yes")))
 
 ; @g is one of the role groups the import keeps: students, parents, staff, adults, everyone
 (define (role_group @g)
@@ -161,7 +161,7 @@ const policySource = `
   (id parent kind listed mail slug title subtitle description
    color flyer pronunciation address phone status visibility visible_to members_visible posting
    replying join adding capacity minimum price unit waitlist eligible parent_ticket_required drop_off_allowed
-   manager_needed priority start end all_day timing location url default order added_by added)
+   lead_needed priority start end all_day timing location url default order added_by added)
   true)
 ; whether a family's adults all share their address and phone, to its members
 (read GROUP (address_consent phone_consent) (exists MEMBER (= group @row) (= person @viewer)))
@@ -175,32 +175,44 @@ const policySource = `
 (read RULE (manages group))
 ; every column of a rule
 (read RULE (id group order exclude target person search property value descend expand within) true)
-; the viewer's own, household's and guests' memberships, those in groups they manage, visible groups' managers, and members where shown
+; the viewer's own, household's and guests' memberships, those in groups they manage, visible groups' managers, and everyone where members are shown
 (read MEMBER
   (or (self_or_household person)
       (= guest_of @viewer)
       (manages group)
-      (and (= role "manager") (visible group))
-      (and (= role "member") (sees_members group))))
+      (and manager (visible group))
+      (sees_members group)))
 ; every column of a membership but what it cost
 (read MEMBER
-  (id group person role status lead quantity guest_of note answered answered_by via opened
+  (id group person manager member lead rsvp guest_of note answered answered_by via opened
    added_by added)
   true)
 ; what a membership cost and its payment reference, to the member, their host and the group's managers
 (read MEMBER (price purchase_id) (or (= person @viewer) (= guest_of @viewer) (manages group)))
-; a person, their family's manager or their host answers an invitation; the group's managers set any status
-(set MEMBER.status
+; a person, their family's manager or their host answers about coming; the group's managers set anyone's answer
+(set MEMBER.rsvp
+  (or (self_or_household @old.person)
+      (= @old.guest_of @viewer)
+      (manages @old.group)))
+; a person, their family's manager or their host gives up a place; the group's managers set anyone's
+(set MEMBER.member
   (or (and (or (self_or_household @old.person)
                (= @old.guest_of @viewer))
-           (in @new.status "yes" "maybe" "no" "cancelled"))
+           (= @new.member "cancelled"))
       (manages @old.group)))
+; the viewer's own, household's and guests' places on a waitlist, and those of groups they manage
+(read WAITLIST
+  (or (self_or_household person)
+      (= guest_of @viewer)
+      (manages group)))
+; every column of a waitlist place
+(read WAITLIST (id group person guest_of note added_by added) true)
 ; the viewer's own and household's effective memberships, and members of groups that show them
 (read EFFECTIVE_MEMBER
   (or (self_or_household person)
       (sees_members group)))
 ; every column of an effective membership
-(read EFFECTIVE_MEMBER (id group person status reasons) true)
+(read EFFECTIVE_MEMBER (id group person reasons) true)
 
 ; documents sent to no group that takes mail, or to one whose mail the viewer sees, and every document under them
 (read DOCUMENT (document_visible @row))
@@ -309,8 +321,8 @@ const policySource = `
 (read GROUP_SOURCE (and (admin_of "when") (in group.kind "event" "day" "day_part")))
 ; every event's invitees and hosts
 (read MEMBER (and (admin_of "when") (= group.kind "event")))
-; make an invitee a host, or a host an invitee
-(set MEMBER.role (and (admin_of "when") (= @old.group.kind "event")))
+; make someone a host of an event, or stop them being one
+(set MEMBER.manager (and (admin_of "when") (= @old.group.kind "event")))
 ; every event's effective invitees
 (read EFFECTIVE_MEMBER (and (admin_of "when") (= group.kind "event")))
 ; the rules that say who events and day parts are for
@@ -330,8 +342,8 @@ const policySource = `
 (set GROUP.status (and (admin_of "team") (in @old.kind "activity")))
 ; every activity's volunteers and chairs
 (read MEMBER (and (admin_of "team") (in group.kind "activity")))
-; make a volunteer a chair, or a chair a volunteer
-(set MEMBER.role (and (admin_of "team") (in @old.group.kind "activity")))
+; make someone a manager of an activity, or stop them being one
+(set MEMBER.manager (and (admin_of "team") (in @old.group.kind "activity")))
 ; every activity's effective volunteers
 (read EFFECTIVE_MEMBER (and (admin_of "team") (in group.kind "activity")))
 ; the rules that say who activities are for
@@ -353,8 +365,10 @@ const policySource = `
 (read MEMBER (and (admin_of "celebrate") (in group.kind "party" "celebration")))
 ; what every party ticket cost and its payment reference
 (read MEMBER (price purchase_id) (and (admin_of "celebrate") (in group.kind "party")))
-; make a ticket holder a host, or a host a ticket holder
-(set MEMBER.role (and (admin_of "celebrate") (in @old.group.kind "party")))
+; make someone a host of a party, or stop them being one
+(set MEMBER.manager (and (admin_of "celebrate") (in @old.group.kind "party")))
+; every party's waitlist
+(read WAITLIST (and (admin_of "celebrate") (= group.kind "party")))
 ; every party's and celebration's effective members
 (read EFFECTIVE_MEMBER (and (admin_of "celebrate") (in group.kind "party" "celebration")))
 ; the rules that say who parties and celebrations are for
@@ -374,8 +388,8 @@ const policySource = `
 (set GROUP.status (and (admin_of "loop") @old.mail))
 ; every mail group's members and managers
 (read MEMBER (and (admin_of "loop") group.mail))
-; make a member a manager, or a manager a member
-(set MEMBER.role (and (admin_of "loop") @old.group.mail))
+; make someone a manager of a mail group, or stop them being one
+(set MEMBER.manager (and (admin_of "loop") @old.group.mail))
 ; every mail group's effective members
 (read EFFECTIVE_MEMBER (and (admin_of "loop") group.mail))
 ; the rules that pick each mail group's members
@@ -503,8 +517,10 @@ const policySource = `
 (read MEMBER (and (system "import") (or (= group.kind "family") (role_group group))))
 ; add a family or role group membership new in the export
 (insert MEMBER (and (system "import") (or (= @new.group.kind "family") (role_group @new.group))))
-; the status of a family or role group membership
-(set MEMBER.status (and (system "import") (or (= @old.group.kind "family") (role_group @old.group))))
+; whether someone is a family's adult
+(set MEMBER.manager (and (system "import") (= @old.group.kind "family")))
+; whether someone is in a family or role group
+(set MEMBER.member (and (system "import") (or (= @old.group.kind "family") (role_group @old.group))))
 ; remove a family or role group membership gone from the export
 (delete MEMBER (and (system "import") (or (= @old.group.kind "family") (role_group @old.group))))
 
@@ -752,7 +768,7 @@ const policySource = `
 ; who may add activities under an activity, as the old sheet has it
 (set GROUP.adding (and (system "import") (= @old.kind "activity")))
 ; whether an activity needs a co-chair, as the old sheet has it
-(set GROUP.manager_needed (and (system "import") (= @old.kind "activity")))
+(set GROUP.lead_needed (and (system "import") (= @old.kind "activity")))
 ; whether an activity is a priority, as the old sheet has it
 (set GROUP.priority (and (system "import") (= @old.kind "activity")))
 ; an activity's flyer, as the old sheet has it
@@ -805,7 +821,7 @@ const policySource = `
 (set PERSON_EMAIL.address (and (system "import") (= @old.source "guest")))
 ; every party and celebration, to find what an earlier sync added
 (read GROUP (and (system "import") (in kind "party" "celebration")))
-; add a celebration, a party, or an item sold outside the app
+; add a celebration or a party
 (insert GROUP (and (system "import") (in @new.kind "party" "celebration")))
 ; a party's category or celebration, as the old sheet has it
 (set GROUP.parent (and (system "import") (in @old.kind "party" "celebration")))
@@ -855,18 +871,34 @@ const policySource = `
 (set GROUP.added_by (and (system "import") (= @old.kind "party")))
 ; when a party was posted, as the old sheet has it
 (set GROUP.added (and (system "import") (= @old.kind "party")))
-; the hosts, ticket holders and waiting families of every party
+; the hosts and ticket holders of every party
 (read MEMBER (and (system "import") (= group.kind "party")))
-; add a host, a ticket, a waiting family or a sale the old sheet has
+; add a host or a ticket the old sheet has
 (insert MEMBER (and (system "import") (= @new.group.kind "party")))
-; what a ticket or sale cost, to compare with the old sheet
+; what a ticket cost, to compare with the old sheet
 (read MEMBER (price) (system "import"))
+; every party's waitlist
+(read WAITLIST (and (system "import") (= group.kind "party")))
+; add someone waiting for a party the old sheet has
+(insert WAITLIST (and (system "import") (= @new.group.kind "party")))
+; remove someone waiting for a party the old sheet no longer has
+(delete WAITLIST (and (system "import") (= @old.group.kind "party")))
 ; move a membership to the guest a same-named guest is merged into
 (set MEMBER.person (and (system "import") (= @old.person.source "guest")))
 ; move a purchase to the guest a same-named guest is merged into
 (set MEMBER.guest_of (and (system "import") (= @old.guest_of.source "guest")))
 ; remove a merged guest's membership that the guest it joins already holds
 (delete MEMBER (and (system "import") (= @old.person.source "guest")))
+; whether someone runs a tag, list, admins group, activity or party, as the old sheets have it
+(set MEMBER.manager (and (system "import") (in @old.group.kind "group" "admins" "activity" "party")))
+; whether someone is in a tag, list, admins group, activity or party, as the old sheets have it
+(set MEMBER.member (and (system "import") (in @old.group.kind "group" "admins" "activity" "party")))
+; whether a volunteer co-chairs an activity, as the old sheet has it
+(set MEMBER.lead (and (system "import") (= @old.group.kind "activity")))
+; move a waitlist place to the guest a same-named guest is merged into
+(set WAITLIST.person (and (system "import") (= @old.person.source "guest")))
+; move a waitlist place's host to the guest a same-named guest is merged into
+(set WAITLIST.guest_of (and (system "import") (= @old.guest_of.source "guest")))
 ; move a merged guest's address to the guest it joins
 (set PERSON_EMAIL.person (and (system "import") (= @old.source "guest")))
 ; whether a moved guest address is the guest's main one
@@ -875,8 +907,6 @@ const policySource = `
 (set ALIAS.target (system "import"))
 ; remove a merged guest once nothing names it
 (delete PERSON (and (system "import") (= @old.source "guest")))
-; remove a party's waitlist row or offer that the old sheet no longer has
-(delete MEMBER (and (system "import") (= @old.group.kind "party") (= @old.role "waitlist")))
 ; remove an old ID naming a row the sync removed
 (delete ALIAS (system "import"))
 `

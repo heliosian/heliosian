@@ -17,7 +17,7 @@ var designQueries = []string{
              (and (= visibility "members")
                   (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer)))
              (and (= visibility "managers")
-                  (exists MEMBER (= group @g) (= person @viewer) (= role "manager")))
+                  (exists MEMBER (= group @g) (= person @viewer) manager))
              (and (= visibility "group")
                   (exists EFFECTIVE_MEMBER (= group @g.visible_to) (= person @viewer))))))`,
 	`(from GROUP @g
@@ -29,7 +29,7 @@ var designQueries = []string{
 	`(from GROUP @p
   (where (= kind "party")
          (>= start today)
-         (> capacity (count MEMBER (= group @p) (= role "member") (= status "yes")
+         (> capacity (count MEMBER (= group @p) (= member "yes")
                                   (not (blank purchase_id))))))`,
 }
 
@@ -144,10 +144,10 @@ func TestRun(t *testing.T) {
 	}{
 		{"", `(from PERSON (where (= source "veracross")) (order name_sort asc))`, "id", []string{"per00000000001", "per00000000002", "per00000000003"}},
 		{"", `(from PERSON (where (= source "veracross")) (order name_sort desc) (limit 1))`, "id", []string{"per00000000003"}},
-		{"", `(from MEMBER (where (= group "grp00000000040") (= role "member")) (order person.name_sort asc))`, "person", []string{"per00000000002", "per00000000003", "per00000000004"}},
-		{"per00000000002", `(from GROUP @g (where (exists MEMBER (= group @g) (= person @viewer) (= role "manager"))))`, "id", []string{"grp00000000020"}},
+		{"", `(from MEMBER (where (= group "grp00000000040") (= member "yes")) (order person.name_sort asc))`, "person", []string{"per00000000002", "per00000000003", "per00000000004"}},
+		{"per00000000002", `(from GROUP @g (where (exists MEMBER (= group @g) (= person @viewer) manager)))`, "id", []string{"grp00000000020"}},
 		{"", `(from MEMBER (where lead))`, "person", []string{"per00000000003"}},
-		{"", `(from GROUP @g (where (> (count MEMBER (= group @g) (= role "member")) 2)))`, "id", []string{"grp00000000004", "grp00000000040"}},
+		{"", `(from GROUP @g (where (> (count MEMBER (= group @g) (= member "yes")) 2)))`, "id", []string{"grp00000000004", "grp00000000040"}},
 		{"", `(from GROUP (where (>= start today)))`, "id", []string{"grp00000000040"}},
 		{"", `(from GROUP (where (< end now)))`, "id", nil},
 		{"", `(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020")))))`, "id", []string{"per00000000001", "per00000000002"}},
@@ -228,7 +228,7 @@ func TestValueSetMatchesEquality(t *testing.T) {
 func TestInclude(t *testing.T) {
 	m := sample(t).Model()
 	r := runAs(t, m, "", `(from MEMBER (where (= group "grp00000000040")) (include person group.added_by))`)
-	if len(r.Resources["MEMBER"]) != 4 || len(r.Resources["PERSON"]) != 3 || len(r.Resources["GROUP"]) != 1 {
+	if len(r.Resources["MEMBER"]) != 3 || len(r.Resources["PERSON"]) != 3 || len(r.Resources["GROUP"]) != 1 {
 		t.Fatalf("resources %v", r.Resources)
 	}
 	r = runAs(t, m, "", `(from COLLECTION (include groups))`)
@@ -240,8 +240,8 @@ func TestInclude(t *testing.T) {
 func TestSum(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000002", "role": "member"}, store.Row{"price": "12.50"}),
-		store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000004", "role": "member"}, store.Row{"price": "7.25"}),
+		store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000002"}, store.Row{"price": "12.50"}),
+		store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000004"}, store.Row{"price": "7.25"}),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestEffectiveMembers(t *testing.T) {
 	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000020", "grp00000000030", "grp00000000040"}) {
 		t.Fatalf("Rowan is effectively in %v", got)
 	}
-	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000030", "person": "per00000000002", "role": "member", "status": "excluded"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000030", "person": "per00000000002", "member": "excluded"})); err != nil {
 		t.Fatal(err)
 	}
 	if got := effective(t, s, "grp00000000030"); len(got) != 0 {
