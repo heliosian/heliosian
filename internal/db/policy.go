@@ -26,6 +26,10 @@ const policySource = `
 (define (role_group @g)
   (and (= @g.kind "group") (in @g.slug "students" "parents" "staff" "adults" "everyone")))
 
+; @g is the waitlist a party names
+(define (party_waitlist @g)
+  (exists GROUP (= kind "party") (= waitlist @g)))
+
 ; every group @p has a membership row in
 (define (groups_of @p)
   (select MEMBER.group (= person @p)))
@@ -149,6 +153,8 @@ const policySource = `
 
 ; groups the viewer may see
 (read GROUP (visible @row))
+; the waitlist of a party the viewer may see
+(read GROUP (exists GROUP @p (= waitlist @row) (= kind "party") (visible @p)))
 ; every column of a group but what its family's form shares
 (read GROUP
   (id parent kind listed mail slug title subtitle description
@@ -193,13 +199,6 @@ const policySource = `
                (= @old.guest_of @viewer))
            (= @new.member "cancelled"))
       (manages @old.group)))
-; the viewer's own, household's and guests' places on a waitlist, and those of groups they manage
-(read WAITLIST
-  (or (self_or_household person)
-      (= guest_of @viewer)
-      (manages group)))
-; every column of a waitlist place
-(read WAITLIST (id group person guest_of note added_by added) true)
 ; the viewer's own and household's effective memberships, and members of groups that show them
 (read EFFECTIVE_MEMBER
   (or (self_or_household person)
@@ -291,12 +290,12 @@ const policySource = `
 (set PERSON.name_short_override (admin_of "who"))
 ; override anyone's sort name
 (set PERSON.name_sort_override (admin_of "who"))
-; every directory group and plain group, pending too
-(read GROUP (and (admin_of "who") (in kind "family" "group" "classroom" "grade" "band" "crew" "department")))
-; every directory group's and plain group's memberships
-(read MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department")))
-; every directory group's and plain group's effective members
-(read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department")))
+; every directory group and plain group but a party's waitlist, pending too
+(read GROUP (and (admin_of "who") (in kind "family" "group" "classroom" "grade" "band" "crew" "department") (not (party_waitlist @row))))
+; every directory group's and plain group's memberships but a party's waitlist
+(read MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department") (not (party_waitlist group))))
+; every directory group's and plain group's effective members but a party's waitlist
+(read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department") (not (party_waitlist group))))
 ; the rules that pick each plain group's members
 (read RULE (and (admin_of "who") (= group.kind "group")))
 
@@ -357,7 +356,9 @@ const policySource = `
 ; make someone a host of a party, or stop them being one
 (set MEMBER.manager (and (admin_of "celebrate") (in @old.group.kind "party")))
 ; every party's waitlist
-(read WAITLIST (and (admin_of "celebrate") (= group.kind "party")))
+(read GROUP (and (admin_of "celebrate") (party_waitlist @row)))
+; who waits on every party's waitlist
+(read MEMBER (and (admin_of "celebrate") (party_waitlist group)))
 ; every party's and celebration's effective members
 (read EFFECTIVE_MEMBER (and (admin_of "celebrate") (in group.kind "party" "celebration")))
 ; the rules that say who parties and celebrations are for
@@ -646,11 +647,11 @@ const policySource = `
 (set GROUP.color (and (system "import") (in @old.kind "classroom" "grade")))
 ; every plain group and admins group, to find what an earlier sync added
 (read GROUP (and (system "import") (in kind "group" "admins")))
-; add a tag, a band's room parents or an admins group
+; add a tag, a band's room parents, an admins group or a party's waitlist
 (insert GROUP (and (system "import") (in @new.kind "group" "admins")))
 ; the memberships of plain groups and admins groups
 (read MEMBER (and (system "import") (in group.kind "group" "admins")))
-; add someone to a tag, a band's room parents or an admins group
+; add someone to a tag, a band's room parents, an admins group or a party's waitlist
 (insert MEMBER (and (system "import") (in @new.group.kind "group" "admins")))
 ; the rules of admins groups
 (read RULE (and (system "import") (= group.kind "admins")))
@@ -854,7 +855,7 @@ const policySource = `
 (set GROUP.minimum (and (system "import") (= @old.kind "party")))
 ; a party's flyer, as the old sheet has it
 (set GROUP.flyer (and (system "import") (= @old.kind "party")))
-; whether a full party takes a waitlist, as the old sheet has it
+; a party's waitlist, set when the old sheet has it take one
 (set GROUP.waitlist (and (system "import") (= @old.kind "party")))
 ; who may come to a party, as the old sheet has it
 (set GROUP.eligible (and (system "import") (= @old.kind "party")))
@@ -872,12 +873,8 @@ const policySource = `
 (insert MEMBER (and (system "import") (= @new.group.kind "party")))
 ; what a ticket cost, to compare with the old sheet
 (read MEMBER (price) (system "import"))
-; every party's waitlist
-(read WAITLIST (and (system "import") (= group.kind "party")))
-; add someone waiting for a party the old sheet has
-(insert WAITLIST (and (system "import") (= @new.group.kind "party")))
 ; remove someone waiting for a party the old sheet no longer has
-(delete WAITLIST (and (system "import") (= @old.group.kind "party")))
+(delete MEMBER (and (system "import") (party_waitlist @old.group)))
 ; move a membership to the guest a same-named guest is merged into
 (set MEMBER.person (and (system "import") (= @old.person.source "guest")))
 ; move a purchase to the guest a same-named guest is merged into
@@ -890,10 +887,6 @@ const policySource = `
 (set MEMBER.member (and (system "import") (in @old.group.kind "group" "admins" "activity" "party")))
 ; whether a volunteer co-chairs an activity, as the old sheet has it
 (set MEMBER.lead (and (system "import") (= @old.group.kind "activity")))
-; move a waitlist place to the guest a same-named guest is merged into
-(set WAITLIST.person (and (system "import") (= @old.person.source "guest")))
-; move a waitlist place's host to the guest a same-named guest is merged into
-(set WAITLIST.guest_of (and (system "import") (= @old.guest_of.source "guest")))
 ; move a merged guest's address to the guest it joins
 (set PERSON_EMAIL.person (and (system "import") (= @old.source "guest")))
 ; whether a moved guest address is the guest's main one

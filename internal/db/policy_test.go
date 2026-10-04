@@ -56,7 +56,6 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"COLLECTION":       {0, 0, 1, 0, 0},
 		"GROUP":            {0, 11, 11, 13, 0},
 		"MEMBER":           {0, 10, 10, 11, 1},
-		"WAITLIST":         {0, 0, 0, 0, 0},
 		"EFFECTIVE_MEMBER": {0, 15, 15, 17, 1},
 		"RULE":             {0, 0, 0, 4, 0},
 		"DOCUMENT":         {1, 1, 1, 1, 1},
@@ -123,6 +122,30 @@ func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 		if got := len(as(t, s, viewer, `(from CONTENT)`)); got != want {
 			t.Errorf("a reply about the picnic's bytes as %q: %d, want %d", viewer, got, want)
 		}
+	}
+}
+
+func TestAWaitlistShowsToTheWaitingAndThePartysManagers(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, GroupsSheet,
+		store.Insert("GROUP", store.Row{"id": "grp00000000081", "kind": "group", "title": "Waitlist", "parent": "grp00000000080", "status": "open"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000080", "kind": "party", "title": "Fondue Night", "status": "open", "visible_to": "grp00000000004", "waitlist": "grp00000000081"}),
+		store.Insert("MEMBER", store.Row{"id": "mem00000000080", "group": "grp00000000080", "person": student, "manager": "Yes"}),
+		store.Insert("MEMBER", store.Row{"id": "mem00000000081", "group": "grp00000000081", "person": parent, "member": "yes", "added": "2026-09-03 21:12:05"}),
+		store.Insert("MEMBER", store.Row{"id": "mem00000000082", "group": "grp00000000006", "person": guest, "member": "yes"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	for i, viewer := range []string{nobody, student, parent, staff, guest} {
+		if got, want := len(as(t, s, viewer, `(from MEMBER (where (= group "grp00000000081")))`)), []int{0, 1, 1, 1, 0}[i]; got != want {
+			t.Errorf("places on the waitlist as %q: %d, want %d", viewer, got, want)
+		}
+		if got, want := len(as(t, s, viewer, `(from GROUP (where (= id "grp00000000081")))`)), []int{0, 1, 1, 1, 0}[i]; got != want {
+			t.Errorf("the waitlist as %q: %d, want %d", viewer, got, want)
+		}
+	}
+	if got := cellAs(t, s, parent, `(from GROUP (where (= id "grp00000000080")))`, "waitlist"); got != "grp00000000081" {
+		t.Errorf("the party's waitlist as the parent = %q", got)
 	}
 }
 
