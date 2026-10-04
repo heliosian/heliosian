@@ -22,6 +22,27 @@ var triggers = []trigger{
 	{table: "MEMBER", fire: memberFamilyName},
 	{table: "PHOTO", fire: photoNotReady},
 	{table: "GROUP", fire: servingNames},
+	{table: "MEMBER", fire: oneAnswer},
+}
+
+func oneAnswer(m *Model, c Change) ([]Edit, error) {
+	if c.New == nil || memberAs(c.New) != "yes" || (c.Old != nil && memberAs(c.Old) == "yes") {
+		return nil, nil
+	}
+	groups := m.Table("GROUP")
+	writes := []Edit{}
+	for _, pair := range [][2]string{{"rsvp_yes", "rsvp_no"}, {"rsvp_no", "rsvp_yes"}} {
+		for _, answered := range groups.Referencing(pair[0], c.New["group"]) {
+			other := answered[pair[1]]
+			if other == "" {
+				continue
+			}
+			if row, ok := m.Table("MEMBER").Find(other, c.New["person"]); ok {
+				writes = append(writes, Edit{Delete: row["id"]})
+			}
+		}
+	}
+	return writes, nil
 }
 
 func servingNames(m *Model, c Change) ([]Edit, error) {
@@ -29,7 +50,7 @@ func servingNames(m *Model, c Change) ([]Edit, error) {
 		return nil, nil
 	}
 	writes := []Edit{}
-	for _, served := range []struct{ column, suffix string }{{"managed_by", " Managers"}, {"waitlist", " Waitlist"}} {
+	for _, served := range []struct{ column, suffix string }{{"managed_by", " Managers"}, {"waitlist", " Waitlist"}, {"rsvp_yes", " Going"}, {"rsvp_no", " Not Going"}} {
 		id, suffix := c.New[served.column], served.suffix
 		if id == "" || id == c.New["id"] {
 			continue

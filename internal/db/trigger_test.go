@@ -128,6 +128,11 @@ func TestServingGroupsAreRenamedWithTheirGroup(t *testing.T) {
 	}
 	write(`{"batch": [{"set": "grp00000000040", "cells": {"name": "Autumn Picnic"}}]}`)
 	name("Autumn Picnic Managers", "once the picnic is renamed")
+	for id, want := range map[string]string{"grp00000000042": "Autumn Picnic Going", "grp00000000043": "Autumn Picnic Not Going"} {
+		if g, _ := s.Model().Table("GROUP").Get(id); g["name"] != want {
+			t.Errorf("once the picnic is renamed, %s is %q, not %q", id, g["name"], want)
+		}
+	}
 
 	write(`{"batch": [{"set": "grp00000000041", "cells": {"name": "Picnic Crew"}}]}`)
 	write(`{"batch": [{"set": "grp00000000040", "cells": {"name": "Harvest Picnic"}}]}`)

@@ -54,9 +54,9 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"PERSON_SETTING":   {0, 0, 0, 1, 0},
 		"BIRTHDAY_YEAR":    {1, 1, 1, 1, 1},
 		"COLLECTION":       {0, 0, 1, 0, 0},
-		"GROUP":            {0, 12, 12, 14, 0},
-		"MEMBER":           {0, 11, 11, 12, 1},
-		"EFFECTIVE_MEMBER": {0, 16, 16, 18, 1},
+		"GROUP":            {0, 14, 14, 16, 0},
+		"MEMBER":           {0, 12, 12, 13, 1},
+		"EFFECTIVE_MEMBER": {0, 17, 17, 19, 1},
 		"RULE":             {0, 0, 0, 4, 0},
 		"DOCUMENT":         {1, 1, 1, 1, 1},
 		"DOCUMENT_GROUP":   {0, 1, 1, 1, 0},
@@ -580,16 +580,31 @@ func change(t *testing.T, s *Store, table string, key []string, cells store.Row)
 func TestAuthorize(t *testing.T) {
 	s := sample(t)
 	picnic := func(person string) []string { return []string{"grp00000000040", person} }
+	notGoing := func(person string) Change {
+		return Change{Table: "MEMBER", New: store.Row{"group": "grp00000000043", "person": person, "member": "yes"}}
+	}
+	going := func(person string) store.Row {
+		row, ok := s.Model().Table("MEMBER").Find("grp00000000042", person)
+		if !ok {
+			t.Fatalf("%s is not going", person)
+		}
+		return row
+	}
 	for _, c := range []struct {
 		name   string
 		viewer string
 		change Change
 		ok     bool
 	}{
-		{"answer for oneself", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"rsvp": "no"}), true},
-		{"answer for one's guest", parent, change(t, s, "MEMBER", picnic(guest), store.Row{"rsvp": "maybe"}), true},
-		{"answer for someone in one's family", student, change(t, s, "MEMBER", picnic(parent), store.Row{"rsvp": "no"}), true},
-		{"answer for a stranger", guest, change(t, s, "MEMBER", picnic(parent), store.Row{"rsvp": "no"}), false},
+		{"answer for oneself", parent, notGoing(parent), true},
+		{"answer for one's guest", parent, notGoing(guest), true},
+		{"answer for someone in one's family", student, notGoing(parent), true},
+		{"answer for a stranger", student, notGoing(guest), false},
+		{"answer about an event one can't see", guest, notGoing(guest), false},
+		{"a host answers for anyone", staff, notGoing(student), true},
+		{"answer maybe by taking back a yes", parent, Change{Table: "MEMBER", Old: going(parent)}, true},
+		{"take back a stranger's yes", guest, Change{Table: "MEMBER", Old: going(parent)}, false},
+		{"answer without being in", parent, Change{Table: "MEMBER", New: store.Row{"group": "grp00000000043", "person": parent, "member": "excluded"}}, false},
 		{"a child leaves their family", student, change(t, s, "MEMBER", []string{"grp00000000020", student}, store.Row{"member": "cancelled"}), false},
 		{"a parent takes a child out of their family", parent, change(t, s, "MEMBER", []string{"grp00000000020", student}, store.Row{"member": "excluded"}), false},
 		{"give up one's place", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"member": "cancelled"}), true},
@@ -597,7 +612,6 @@ func TestAuthorize(t *testing.T) {
 		{"make oneself a host", parent, Change{Table: "MEMBER", New: store.Row{"group": "grp00000000041", "person": parent, "member": "yes"}}, false},
 		{"hand one's event to another group", parent, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"managed_by": "grp00000000020"}), false},
 		{"a host excludes", staff, change(t, s, "MEMBER", picnic(parent), store.Row{"member": "excluded"}), true},
-		{"answer and change one's note", parent, change(t, s, "MEMBER", picnic(parent), store.Row{"rsvp": "no", "note": "sorry"}), false},
 		{"a parent renames a child", parent, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), true},
 		{"a guest renames a child", guest, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), false},
 		{"Who?'s admin renames anyone", staff, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), true},

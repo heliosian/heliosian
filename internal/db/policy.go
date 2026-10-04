@@ -33,6 +33,17 @@ const policySource = `
 (define (manages_visible @g)
   (exists GROUP @v (= managed_by @g) (visible @v)))
 
+; @g holds those who said they are coming, or not, to a group the viewer may see
+(define (answers_visible @g)
+  (or (exists GROUP @answered (= rsvp_yes @g) (visible @answered))
+      (exists GROUP @answered (= rsvp_no @g) (visible @answered))))
+
+; the viewer may answer for @m's person in @m's answer group: themselves, someone in their family, their guest at the group answered, or anyone in a group they manage
+(define (answers_for @m)
+  (or (self_or_household @m.person)
+      (exists MEMBER (= group @m.group.parent) (= person @m.person) (= guest_of @viewer))
+      (manages @m.group)))
+
 ; the members of every family @p is in
 (define (household @p)
   (select MEMBER.person
@@ -175,11 +186,13 @@ const policySource = `
 (read GROUP (exists GROUP @p (= waitlist @row) (= kind "party") (visible @p)))
 ; the group that manages a group the viewer may see
 (read GROUP (manages_visible @row))
+; who said they are coming, or not, to a group the viewer may see
+(read GROUP (answers_visible @row))
 ; every column of a group but what its family's form shares
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone mail posting replying join adding
-   eligible capacity minimum waitlist lead_needed priority price unit parent_ticket_required
+   eligible capacity minimum waitlist rsvp_yes rsvp_no lead_needed priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location added_by added)
   true)
 ; whether a family's adults all share their address and phone, to its members
@@ -203,17 +216,14 @@ const policySource = `
       (sees_members group)))
 ; every column of a membership but what it cost
 (read MEMBER
-  (id group person member lead rsvp answered answered_by answered_via opened guest_of
-   note added_by added)
+  (id group person member lead opened guest_of note added_by added)
   true)
 ; what a membership cost and its payment reference, to the member, their host and the group's managers
 (read MEMBER (price purchase_id) (or (= person @viewer) (= guest_of @viewer) (manages group)))
-; a person, someone in their family or their host answers about coming; the group's managers set anyone's answer; never in a family, which only the import changes
-(set MEMBER.rsvp
-  (and (!= @old.group.kind "family")
-       (or (self_or_household @old.person)
-           (= @old.guest_of @viewer)
-           (manages @old.group))))
+; say someone is coming, or not, to a group the viewer may see, for whoever the viewer may answer for
+(insert MEMBER (and (answers_visible @new.group) (= @new.member "yes") (answers_for @new)))
+; take back someone's answer about coming to a group the viewer may see, for whoever the viewer may answer for
+(delete MEMBER (and (answers_visible @old.group) (answers_for @old)))
 ; a person, someone in their family or their host gives up a place; the group's managers set anyone's; never in a family, which only the import changes
 (set MEMBER.member
   (and (!= @old.group.kind "family")
@@ -328,6 +338,10 @@ const policySource = `
 (read GROUP (and (admin_of "when") (in kind "event" "day" "day_part")))
 ; open, cancel or close an event
 (set GROUP.status (and (admin_of "when") (= @old.kind "event")))
+; name the group of those coming to an event
+(set GROUP.rsvp_yes (and (admin_of "when") (= @old.kind "event")))
+; name the group of those not coming to an event
+(set GROUP.rsvp_no (and (admin_of "when") (= @old.kind "event")))
 ; where every calendar group came from
 (read GROUP_SOURCE (and (admin_of "when") (in group.kind "event" "day" "day_part")))
 ; every event's invitees and hosts
@@ -365,6 +379,10 @@ const policySource = `
 (read GROUP (and (admin_of "team") (in kind "activity")))
 ; open, finish, cancel or close an activity
 (set GROUP.status (and (admin_of "team") (in @old.kind "activity")))
+; name the group of those coming to an activity
+(set GROUP.rsvp_yes (and (admin_of "team") (= @old.kind "activity")))
+; name the group of those not coming to an activity
+(set GROUP.rsvp_no (and (admin_of "team") (= @old.kind "activity")))
 ; every activity's volunteers and chairs
 (read MEMBER (and (admin_of "team") (in group.kind "activity")))
 ; make a plain group to manage activities
@@ -400,6 +418,10 @@ const policySource = `
 (read GROUP (and (admin_of "celebrate") (in kind "party" "celebration")))
 ; open, cancel or close a party or celebration
 (set GROUP.status (and (admin_of "celebrate") (in @old.kind "party" "celebration")))
+; name the group of those coming to a party
+(set GROUP.rsvp_yes (and (admin_of "celebrate") (= @old.kind "party")))
+; name the group of those not coming to a party
+(set GROUP.rsvp_no (and (admin_of "celebrate") (= @old.kind "party")))
 ; every party's and celebration's ticket holders and hosts
 (read MEMBER (and (admin_of "celebrate") (in group.kind "party" "celebration")))
 ; what every party ticket cost and its payment reference

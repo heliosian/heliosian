@@ -106,17 +106,16 @@ func TestCheck(t *testing.T) {
 		"group":       "grpX7pQ2m9KdLr",
 		"person":      "perX7pQ2m9KdLr",
 		"member":      "Yes",
-		"rsvp":        "no",
 		"price":       "12.50",
 		"purchase_id": "pi_3PqXyZ2eZvKYlo2C",
 		"lead":        "No",
-		"answered":    "2026-09-24 16:00",
+		"added":       "2026-09-24 16:00",
 		"unknown":     "a column added by hand",
 	}
 	if err := member.Check(good); err != nil {
 		t.Fatalf("Check(%v) = %v", good, err)
 	}
-	good["answered"] = "2026-09-24 16:00:05"
+	good["added"] = "2026-09-24 16:00:05"
 	if err := member.Check(good); err != nil {
 		t.Fatalf("a moment to the second: %v", err)
 	}
@@ -124,10 +123,9 @@ func TestCheck(t *testing.T) {
 		"group":    "perX7pQ2m9KdLr",
 		"person":   "",
 		"member":   "waitlist",
-		"rsvp":     "sure",
 		"price":    "12.5.0",
 		"lead":     "maybe",
-		"answered": "yesterday",
+		"added":    "yesterday",
 		"guest_of": " perX7pQ2m9KdLr",
 		"id":       "grpX7pQ2m9KdLr",
 	} {
