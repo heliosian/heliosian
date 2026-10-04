@@ -2,6 +2,7 @@ package data
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"google.golang.org/api/sheets/v4"
@@ -152,6 +153,49 @@ func (s *Sheet) DropColumns(app, table string, names []string) error {
 	}
 	_, err = callOnce("drop columns "+table, s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{Requests: requests}).Do)
 	return err
+}
+
+func (s *Sheet) MoveColumns(app, table string, order []string) (int, error) {
+	id, err := s.spreadsheet(app)
+	if err != nil {
+		return 0, err
+	}
+	current, err := s.Header(app, table)
+	if err != nil {
+		return 0, err
+	}
+	want := []string{}
+	for _, name := range order {
+		if slices.Contains(current, name) {
+			want = append(want, name)
+		}
+	}
+	for _, name := range current {
+		if !slices.Contains(want, name) {
+			want = append(want, name)
+		}
+	}
+	tab, err := s.tabID(id, table)
+	if err != nil {
+		return 0, err
+	}
+	requests := []*sheets.Request{}
+	for i, name := range want {
+		j := slices.Index(current, name)
+		if j == i {
+			continue
+		}
+		requests = append(requests, &sheets.Request{MoveDimension: &sheets.MoveDimensionRequest{
+			Source:           &sheets.DimensionRange{SheetId: tab, Dimension: "COLUMNS", StartIndex: int64(j), EndIndex: int64(j + 1)},
+			DestinationIndex: int64(i),
+		}})
+		current = slices.Insert(slices.Delete(current, j, j+1), i, name)
+	}
+	if len(requests) == 0 {
+		return 0, nil
+	}
+	_, err = callOnce("move columns "+table, s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{Requests: requests}).Do)
+	return len(requests), err
 }
 
 func (s *Sheet) RenameTab(app, from, to string) error {

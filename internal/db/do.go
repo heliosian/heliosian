@@ -55,13 +55,13 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			return
 		}
 		m := s.Model()
-		row := store.Row{"person": person, "group": group, "photo": pictureFolder + "/" + img.name}
+		row := store.Row{"person": person, "group": group, "original": pictureFolder + "/" + img.name}
 		maps.Copy(row, box)
 		if err := m.Authorize(env, Change{Table: "PHOTO", New: row}); err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		if err := pics.bucket.Put(r.Context(), row["photo"], img.mimeType, img.content); err != nil {
+		if err := pics.bucket.Put(r.Context(), row["original"], img.mimeType, img.content); err != nil {
 			serve.Error(w, r, err)
 			return
 		}
@@ -76,7 +76,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "added a photo", "viewer", env.Viewer, "system", env.System, "person", person, "group", group, "photo", row["photo"])
+		slog.InfoContext(r.Context(), "added a photo", "viewer", env.Viewer, "system", env.System, "person", person, "group", group, "original", row["original"])
 		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(img.name, "."+img.ext)})
 	})
 	mux.HandleFunc("POST "+doPrefix+"calendar-pdf", func(w http.ResponseWriter, r *http.Request) {

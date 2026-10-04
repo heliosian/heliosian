@@ -89,8 +89,8 @@ var roleGroups = []struct {
 }
 
 var personColumns = []string{
-	"vc_name", "vc_legal_name", "vc_grade", "vc_classroom", "vc_crew", "vc_department", "vc_job_title", "vc_phone", "vc_bio",
-	"vc_address_visibility", "vc_phone_visibility", "name_long_import", "name_short_import", "name_sort_import", "deactivated",
+	"vc_name", "vc_legal_name", "vc_name_long", "vc_name_short", "vc_name_sort", "vc_grade", "vc_classroom", "vc_crew",
+	"vc_department", "vc_job_title", "vc_phone", "vc_phone_visibility", "vc_address_visibility", "vc_bio", "deactivated",
 }
 
 var familyColumns = []string{"vc_address", "vc_phone"}
@@ -159,7 +159,7 @@ func (p *planner) portraits() ([]portrait, error) {
 	held := map[string]bool{}
 	for _, pid := range p.st.photos.order {
 		r := p.st.photos.rows[pid]
-		name := path.Base(r["photo"])
+		name := path.Base(r["original"])
 		held[r["person"]+"/"+strings.TrimSuffix(name, path.Ext(name))] = true
 	}
 	out := []portrait{}
@@ -428,7 +428,7 @@ func (p *planner) ensureEveryone() {
 		return
 	}
 	id := p.name("g")
-	cells := row{"kind": "group", "slug": "everyone", "title": "Everyone", "listed": "Yes", "status": "open"}
+	cells := row{"kind": "group", "slug": "everyone", "name": "Everyone", "listed": "Yes", "status": "open"}
 	p.groups.add(id, cells)
 	p.groupWrites = append(p.groupWrites,
 		write{Insert: "GROUP", As: strings.TrimPrefix(id, "@"), Row: cells},
@@ -459,11 +459,11 @@ func (p *planner) ensureGrades() {
 		if p.findGroup(func(r row) bool { return r["kind"] == "grade" && strings.EqualFold(r["slug"], slug) }) != "" {
 			continue
 		}
-		band := p.findGroup(func(r row) bool { return r["kind"] == "band" && strings.EqualFold(r["title"], g.band) })
+		band := p.findGroup(func(r row) bool { return r["kind"] == "band" && strings.EqualFold(r["name"], g.band) })
 		if band == "" {
-			band = p.newGroup(row{"kind": "band", "title": g.band})
+			band = p.newGroup(row{"kind": "band", "name": g.band})
 		}
-		p.newGroup(row{"kind": "grade", "slug": slug, "title": g.title, "parent": band})
+		p.newGroup(row{"kind": "grade", "slug": slug, "name": g.title, "parent": band})
 	}
 }
 
@@ -532,12 +532,12 @@ func (p *planner) classroom(name, grade string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	id := p.findGroup(func(r row) bool { return r["kind"] == "classroom" && strings.EqualFold(r["title"], name) })
+	id := p.findGroup(func(r row) bool { return r["kind"] == "classroom" && strings.EqualFold(r["name"], name) })
 	if id == "" {
-		id = p.newGroup(row{"kind": "classroom", "title": name, "parent": band})
+		id = p.newGroup(row{"kind": "classroom", "name": name, "parent": band})
 	}
 	if seen, ok := p.classroomBands[id]; ok && seen != band {
-		return "", fmt.Errorf("classroom %s has students in the %s and %s bands", name, p.groups.rows[seen]["title"], p.groups.rows[band]["title"])
+		return "", fmt.Errorf("classroom %s has students in the %s and %s bands", name, p.groups.rows[seen]["name"], p.groups.rows[band]["name"])
 	}
 	p.classroomBands[id] = band
 	if current := p.groups.rows[id]; current["parent"] != band {
@@ -549,19 +549,19 @@ func (p *planner) classroom(name, grade string) (string, error) {
 }
 
 func (p *planner) department(name string) string {
-	if id := p.findGroup(func(r row) bool { return r["kind"] == "department" && strings.EqualFold(r["title"], name) }); id != "" {
+	if id := p.findGroup(func(r row) bool { return r["kind"] == "department" && strings.EqualFold(r["name"], name) }); id != "" {
 		return id
 	}
-	return p.newGroup(row{"kind": "department", "title": name})
+	return p.newGroup(row{"kind": "department", "name": name})
 }
 
 func (p *planner) crew(classroom, name string) string {
 	if id := p.findGroup(func(r row) bool {
-		return r["kind"] == "crew" && r["parent"] == classroom && strings.EqualFold(r["title"], name)
+		return r["kind"] == "crew" && r["parent"] == classroom && strings.EqualFold(r["name"], name)
 	}); id != "" {
 		return id
 	}
-	return p.newGroup(row{"kind": "crew", "title": name, "parent": classroom})
+	return p.newGroup(row{"kind": "crew", "name": name, "parent": classroom})
 }
 
 func (p *planner) households() ([]*household, error) {
@@ -636,9 +636,9 @@ func (p *planner) desired(id *identity) (row, error) {
 	}
 	cells["vc_name"] = clean(id.name)
 	cells["vc_legal_name"] = n.legal
-	cells["name_long_import"] = n.long
-	cells["name_short_import"] = n.short
-	cells["name_sort_import"] = n.sort
+	cells["vc_name_long"] = n.long
+	cells["vc_name_short"] = n.short
+	cells["vc_name_sort"] = n.sort
 	staffPhone := ""
 	students := 0
 	for _, i := range id.entries {
@@ -960,7 +960,7 @@ func (p *planner) roles() {
 	for _, rg := range roleGroups {
 		group := p.findGroup(func(r row) bool { return r["kind"] == "group" && strings.EqualFold(r["slug"], rg.slug) })
 		if group == "" {
-			group = p.newGroup(row{"kind": "group", "slug": rg.slug, "title": rg.title})
+			group = p.newGroup(row{"kind": "group", "slug": rg.slug, "name": rg.title})
 		}
 		want := map[string]bool{}
 		for _, id := range p.ids {

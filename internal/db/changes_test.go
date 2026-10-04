@@ -44,7 +44,7 @@ func TestAChangeToAHiddenRowIsHidden(t *testing.T) {
 
 func TestEveryWriteIsAChange(t *testing.T) {
 	s := sample(t)
-	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"title": "Autumn Picnic"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"name": "Autumn Picnic"})); err != nil {
 		t.Fatal(err)
 	}
 	changes := changesOf(s.Model().Table(ChangesTable).All(), "grp00000000040")
@@ -52,7 +52,7 @@ func TestEveryWriteIsAChange(t *testing.T) {
 		t.Fatalf("the picnic's changes = %v", changes)
 	}
 	last := changes[2]
-	if last["action"] != "set" || last["table"] != "GROUP" || last["column"] != "title" || last["previous"] != "Fall Picnic" || last["actor"] != "test" {
+	if last["action"] != "set" || last["table"] != "GROUP" || last["column"] != "name" || last["previous"] != "Fall Picnic" || last["actor"] != "test" {
 		t.Errorf("the change = %v", last)
 	}
 	if _, err := cells.When(last["at"]); err != nil || len(last["at"]) != len(cells.StampFormat) {
@@ -61,7 +61,7 @@ func TestEveryWriteIsAChange(t *testing.T) {
 	if prefix, ok := ParseID(last["id"]); !ok || prefix != ChangePrefix {
 		t.Errorf("the change's id %q", last["id"])
 	}
-	if got := as(t, s, staff, `(from CHANGES (where (= row "grp00000000040")) (order at desc))`); len(got) != 3 || got[0]["column"] != "title" || got[0]["previous"] != "Fall Picnic" {
+	if got := as(t, s, staff, `(from CHANGES (where (= row "grp00000000040")) (order at desc))`); len(got) != 3 || got[0]["column"] != "name" || got[0]["previous"] != "Fall Picnic" {
 		t.Errorf("a super admin reads the picnic's history as %v", got)
 	}
 	if got := as(t, s, parent, `(from CHANGES)`); len(got) != 0 {

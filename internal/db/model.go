@@ -239,11 +239,8 @@ func describeUnique(t *Table, row store.Row) string {
 }
 
 func personGenerated(row map[string]string) {
-	for _, name := range []string{"name_long", "name_short", "name_sort"} {
-		row[name] = row[name+"_override"]
-		if row[name] == "" {
-			row[name] = row[name+"_import"]
-		}
+	for _, name := range []string{"name_long", "name_short", "name_sort", "grade", "classroom", "crew", "department", "job_title"} {
+		row[name] = overrideOr(row, name)
 	}
 	row["phone"] = consented(row, "phone")
 	switch {

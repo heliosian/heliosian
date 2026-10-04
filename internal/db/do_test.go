@@ -112,10 +112,10 @@ func TestPersonPhotoAddsFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 		row := made(t, s, "PHOTO", out.Result[0], "ready")
-		if row["person"] != staff || row["photo"] != pictureFolder+"/"+out.Hash+".png" || row["crop"] != "" || row["thumbnail"] == "" {
+		if row["person"] != staff || row["original"] != pictureFolder+"/"+out.Hash+".png" || row["crop"] != "" || row["thumbnail"] == "" {
 			t.Fatalf("photo %d answered %+v and reads %v", i, out, row)
 		}
-		if found, err := pics.bucket.Exists(context.Background(), row["photo"]); err != nil || !found {
+		if found, err := pics.bucket.Exists(context.Background(), row["original"]); err != nil || !found {
 			t.Fatalf("photo %d's original is not in the bucket: %v", i, err)
 		}
 		re, mimeType, err := pics.bucket.Get(context.Background(), row["reencode"])
@@ -130,7 +130,7 @@ func TestPersonPhotoAddsFirst(t *testing.T) {
 	if store.CompareKeys(orders[1], orders[0]) >= 0 {
 		t.Fatalf("the second photo's order %q is not before the first's %q", orders[1], orders[0])
 	}
-	if visible := as(t, s, parent, `(from PHOTO)`); len(visible) == 0 || visible[0]["photo"] != "" {
+	if visible := as(t, s, parent, `(from PHOTO)`); len(visible) == 0 || visible[0]["original"] != "" {
 		t.Fatalf("a viewer reads the original: %v", visible)
 	}
 
@@ -245,7 +245,7 @@ func TestStartupMakesPhotosNotReady(t *testing.T) {
 	if err := bucket.Put(context.Background(), name, "image/png", original); err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, PeopleSheet, store.Insert("PHOTO", store.Row{"id": "pho00000000099", "person": staff, "photo": name, "order": "m"})); err != nil {
+	if err := commit(s, PeopleSheet, store.Insert("PHOTO", store.Row{"id": "pho00000000099", "person": staff, "original": name, "order": "m"})); err != nil {
 		t.Fatal(err)
 	}
 	NewPictures(s, queue, bucket)
@@ -255,7 +255,7 @@ func TestStartupMakesPhotosNotReady(t *testing.T) {
 }
 
 func TestChangingWhatAPhotoIsMadeFromClearsReady(t *testing.T) {
-	old := store.Row{"id": "pho00000000099", "photo": "a.png", "ready": "Yes"}
+	old := store.Row{"id": "pho00000000099", "original": "a.png", "ready": "Yes"}
 	moved := maps.Clone(old)
 	moved["crop_left"] = "3"
 	if edits, _ := photoNotReady(nil, Change{Table: "PHOTO", Old: old, New: moved}); len(edits) != 1 || edits[0].Cells["ready"] != "" {

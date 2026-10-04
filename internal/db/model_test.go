@@ -50,6 +50,21 @@ func TestSampleLoads(t *testing.T) {
 	}
 }
 
+func TestGeneratedSchoolFieldsTakeTheOverride(t *testing.T) {
+	s := sample(t)
+	juni, _ := s.Model().Table("PERSON").Get("per00000000001")
+	if juni["grade"] != "3" || juni["classroom"] != "grp00000000010" {
+		t.Fatalf("Veracross's grade and classroom read %q %q", juni["grade"], juni["classroom"])
+	}
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": "per00000000001"}, store.Row{"grade_override": "4", "job_title_override": "Reader"})); err != nil {
+		t.Fatal(err)
+	}
+	juni, _ = s.Model().Table("PERSON").Get("per00000000001")
+	if juni["grade"] != "4" || juni["vc_grade"] != "3" || juni["job_title"] != "Reader" || juni["classroom"] != "grp00000000010" {
+		t.Fatalf("after overrides: grade %q vc_grade %q job_title %q classroom %q", juni["grade"], juni["vc_grade"], juni["job_title"], juni["classroom"])
+	}
+}
+
 func TestGeneratedNames(t *testing.T) {
 	s := sample(t)
 	people := s.Model().Table("PERSON")

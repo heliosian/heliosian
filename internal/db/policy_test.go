@@ -82,7 +82,7 @@ func TestDocumentsUnderAMailedPostFollowIt(t *testing.T) {
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "application/pdf", "size": "200"}),
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000003", "hash": "c3", "blob": "content/c3", "mime": "text/markdown", "size": "30"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "post", "content": "cnt00000000001", "title": "Field trip"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "post", "content": "cnt00000000001", "name": "Field trip"}),
 		store.Insert("DOCUMENT_GROUP", store.Row{"id": "dgr00000000010", "document": "doc00000000010", "group": "grp00000000030", "relation": "sent_to"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "attachment", "parent": "doc00000000010", "content": "cnt00000000002", "filename": "permission.pdf"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "extract", "parent": "doc00000000011", "content": "cnt00000000003"}),
@@ -103,7 +103,7 @@ func TestDocumentsUnderAMailedPostFollowIt(t *testing.T) {
 func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000070", "kind": "admins", "title": "When Admins", "status": "open", "visible_to": "grp00000000070"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000070", "kind": "admins", "name": "When Admins", "status": "open", "visible_to": "grp00000000070"}),
 		store.Insert("MEMBER", store.Row{"id": "mem00000000070", "group": "grp00000000070", "person": student, "member": "yes"}),
 	); err != nil {
 		t.Fatal(err)
@@ -128,8 +128,8 @@ func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 func TestAWaitlistShowsToTheWaitingAndThePartysManagers(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000081", "kind": "group", "title": "Waitlist", "parent": "grp00000000080", "status": "open"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000080", "kind": "party", "title": "Fondue Night", "status": "open", "visible_to": "grp00000000004", "waitlist": "grp00000000081"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000081", "kind": "group", "name": "Waitlist", "parent": "grp00000000080", "status": "open"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000080", "kind": "party", "name": "Fondue Night", "status": "open", "visible_to": "grp00000000004", "waitlist": "grp00000000081"}),
 		store.Insert("MEMBER", store.Row{"id": "mem00000000080", "group": "grp00000000080", "person": student, "manager": "Yes"}),
 		store.Insert("MEMBER", store.Row{"id": "mem00000000081", "group": "grp00000000081", "person": parent, "member": "yes", "added": "2026-09-03 21:12:05"}),
 		store.Insert("MEMBER", store.Row{"id": "mem00000000082", "group": "grp00000000006", "person": guest, "member": "yes"}),

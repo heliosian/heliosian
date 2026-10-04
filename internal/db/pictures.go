@@ -20,7 +20,7 @@ const pictureFolder = "photos"
 
 var (
 	cropColumns  = []string{"crop_left", "crop_top", "crop_width", "crop_height"}
-	photoInputs  = append([]string{"photo"}, cropColumns...)
+	photoInputs  = append([]string{"original"}, cropColumns...)
 	photoOutputs = []string{"reencode", "crop", "thumbnail"}
 )
 
@@ -131,7 +131,7 @@ func (p *Pictures) make(id string) error {
 	if !ok {
 		return nil
 	}
-	src, _, err := p.bucket.Get(ctx, row["photo"])
+	src, _, err := p.bucket.Get(ctx, row["original"])
 	if err != nil {
 		return err
 	}

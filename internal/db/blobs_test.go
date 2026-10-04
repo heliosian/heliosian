@@ -72,10 +72,10 @@ func TestABlobIsServedToWhoeverMayReadItsCell(t *testing.T) {
 	if again := fetchBlob(t, s, pics, reader, id+"/thumbnail", got.Header().Get("ETag")); again.Code != http.StatusNotModified || again.Body.Len() != 0 {
 		t.Fatalf("the thumbnail again with its etag: %d", again.Code)
 	}
-	if original := fetchBlob(t, s, pics, reader, id+"/photo", ""); original.Code != http.StatusNotFound {
+	if original := fetchBlob(t, s, pics, reader, id+"/original", ""); original.Code != http.StatusNotFound {
 		t.Fatalf("a person fetching the private original: %d", original.Code)
 	}
-	if original := fetchBlob(t, s, pics, "bearer:"+testImportKey, id+"/photo", ""); original.Code != http.StatusOK || original.Header().Get("Content-Type") != "image/png" {
+	if original := fetchBlob(t, s, pics, "bearer:"+testImportKey, id+"/original", ""); original.Code != http.StatusOK || original.Header().Get("Content-Type") != "image/png" {
 		t.Fatalf("the import fetching the original: %d %v", original.Code, original.Header())
 	}
 	for _, path := range []string{id + "/order", id + "/nothing", "pho00000000098/thumbnail", "nonsense/thumbnail"} {

@@ -44,7 +44,7 @@ func TestSchoolGroupsFollowThePerson(t *testing.T) {
 	}
 
 	if err := write(`{"batch": [
-		{"insert": "GROUP", "as": "grade4", "row": {"kind": "grade", "slug": "grade-4", "title": "Grade 4", "parent": "grp00000000012"}},
+		{"insert": "GROUP", "as": "grade4", "row": {"kind": "grade", "slug": "grade-4", "name": "Grade 4", "parent": "grp00000000012"}},
 		{"set": "per00000000001", "cells": {"vc_grade": "4"}}]}`); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestSchoolGroupsFollowThePerson(t *testing.T) {
 	}
 
 	if err := write(`{"batch": [
-		{"insert": "GROUP", "as": "oak", "row": {"kind": "classroom", "title": "Oak"}},
+		{"insert": "GROUP", "as": "oak", "row": {"kind": "classroom", "name": "Oak"}},
 		{"insert": "PERSON", "row": {"source": "veracross", "vc_name": "Wren Ashdown", "vc_classroom": "@oak"}}]}`); err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestSchoolGroupsFollowThePerson(t *testing.T) {
 	}
 }
 
-func TestFamilyTitleFollowsItsMembers(t *testing.T) {
+func TestFamilyNameFollowsItsMembers(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	write := func(raw string) []string {
 		t.Helper()
@@ -86,23 +86,23 @@ func TestFamilyTitleFollowsItsMembers(t *testing.T) {
 		}
 		return written
 	}
-	title := func(want, when string) {
+	name := func(want, when string) {
 		t.Helper()
 		family, _ := s.Model().Table("GROUP").Get("grp00000000020")
-		if family["title"] != want {
-			t.Fatalf("%s, the family is %q, not %q", when, family["title"], want)
+		if family["name"] != want {
+			t.Fatalf("%s, the family is %q, not %q", when, family["name"], want)
 		}
 	}
-	title("Ashdown Family", "as the sample has it")
+	name("Ashdown Family", "as the sample has it")
 
 	write(`{"batch": [{"set": "per00000000001", "cells": {"name_long_override": "Juni Chang-Ashdown"}}]}`)
-	title("Chang-Ashdown Family", "with a hyphenated name taking in the other")
+	name("Chang-Ashdown Family", "with a hyphenated name taking in the other")
 
 	kai := write(`{"batch": [
-		{"insert": "PERSON", "as": "kai", "row": {"source": "veracross", "name_long_import": "Kai Lindqvist", "consent": "listed"}},
+		{"insert": "PERSON", "as": "kai", "row": {"source": "veracross", "vc_name_long": "Kai Lindqvist", "consent": "listed"}},
 		{"insert": "MEMBER", "row": {"group": "grp00000000020", "person": "@kai", "member": "yes"}}]}`)[0]
-	title("Chang-Ashdown & Lindqvist Family", "once Kai joins")
+	name("Chang-Ashdown & Lindqvist Family", "once Kai joins")
 
 	write(`{"batch": [{"set": "` + kai + `", "cells": {"consent": "withheld"}}]}`)
-	title("Chang-Ashdown Family", "with Kai withheld")
+	name("Chang-Ashdown Family", "with Kai withheld")
 }

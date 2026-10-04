@@ -173,14 +173,23 @@ func applyLayout(source *data.Sheet, layout string) (tabs, columns int, err erro
 					missing = append(missing, name)
 				}
 			}
-			if len(missing) == 0 {
+			if len(missing) > 0 {
+				if err := source.AddColumns(layout, t.title, missing); err != nil {
+					return 0, 0, err
+				}
+				log.Printf("added %d columns to %q: %v", len(missing), t.title, missing)
+				columns += len(missing)
+			}
+			if !dataLayouts[layout] {
 				continue
 			}
-			if err := source.AddColumns(layout, t.title, missing); err != nil {
+			moved, err := source.MoveColumns(layout, t.title, t.header)
+			if err != nil {
 				return 0, 0, err
 			}
-			log.Printf("added %d columns to %q: %v", len(missing), t.title, missing)
-			columns += len(missing)
+			if moved > 0 {
+				log.Printf("moved %d columns of %q into the schema's order", moved, t.title)
+			}
 			continue
 		}
 		if err := source.AddTab(layout, t.title, t.header); err != nil {
@@ -197,6 +206,8 @@ func applyLayout(source *data.Sheet, layout string) (tabs, columns int, err erro
 	return tabs, columns, nil
 }
 
+var dataLayouts = map[string]bool{}
+
 func addDataLayouts() {
 	for _, s := range spreadsheets.All {
 		tabs := []tab{}
@@ -207,6 +218,7 @@ func addDataLayouts() {
 		}
 		if len(tabs) > 0 {
 			layouts[s.Title] = tabs
+			dataLayouts[s.Title] = true
 		}
 	}
 }

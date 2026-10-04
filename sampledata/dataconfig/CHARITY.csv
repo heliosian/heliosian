@@ -1,2 +1,2 @@
-id,name,link,about,allowed
-chr00000000001,Second Harvest,https://www.shfb.org,,Yes
+id,name,description,url,allowed
+chr00000000001,Second Harvest,,https://www.shfb.org,Yes

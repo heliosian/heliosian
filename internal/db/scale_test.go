@@ -58,11 +58,11 @@ func scaleStore(tb testing.TB) *Store {
 	n, m := 100, 100
 	for f := range scaleFamilies {
 		family := fmt.Sprintf("grp%011d", 1000+f)
-		groups = append(groups, map[string]string{"id": family, "kind": "family", "title": fmt.Sprintf("Family %d", f), "status": "open", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "vc_address": fmt.Sprintf("%d Main St", f), "consent": "listed", "address_consent": "shared", "phone_consent": "shared"})
+		groups = append(groups, map[string]string{"id": family, "kind": "family", "name": fmt.Sprintf("Family %d", f), "status": "open", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "vc_address": fmt.Sprintf("%d Main St", f), "consent": "listed", "address_consent": "shared", "phone_consent": "shared"})
 		for k := range 4 {
 			n++
 			id := fmt.Sprintf("per%011d", n)
-			people = append(people, map[string]string{"id": id, "source": "veracross", "vc_name": fmt.Sprintf("Person %d", n), "name_long_import": fmt.Sprintf("Person %d", n), "name_short_import": fmt.Sprintf("P%d", n), "name_sort_import": fmt.Sprintf("%d, Person", n), "consent": "listed", "address_consent": "shared", "phone_consent": "shared", "vc_phone": "555-0100"})
+			people = append(people, map[string]string{"id": id, "source": "veracross", "vc_name": fmt.Sprintf("Person %d", n), "vc_name_long": fmt.Sprintf("Person %d", n), "vc_name_short": fmt.Sprintf("P%d", n), "vc_name_sort": fmt.Sprintf("%d, Person", n), "consent": "listed", "address_consent": "shared", "phone_consent": "shared", "vc_phone": "555-0100"})
 			emails = append(emails, map[string]string{"id": fmt.Sprintf("eml%011d", n), "address": fmt.Sprintf("p%d@example.org", n), "person": id, "primary": "Yes", "source": "veracross"})
 			manager, roleGroup := "Yes", "grp00000000002"
 			if k >= 2 {

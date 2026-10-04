@@ -18,12 +18,12 @@ type trigger struct {
 
 var triggers = []trigger{
 	{table: "PERSON", fire: schoolGroups},
-	{table: "PERSON", fire: personFamilyTitles},
-	{table: "MEMBER", fire: memberFamilyTitle},
+	{table: "PERSON", fire: personFamilyNames},
+	{table: "MEMBER", fire: memberFamilyName},
 	{table: "PHOTO", fire: photoNotReady},
 }
 
-func personFamilyTitles(m *Model, c Change) ([]Edit, error) {
+func personFamilyNames(m *Model, c Change) ([]Edit, error) {
 	p := c.New
 	if p == nil {
 		p = c.Old
@@ -32,10 +32,10 @@ func personFamilyTitles(m *Model, c Change) ([]Edit, error) {
 	for _, row := range m.Table("MEMBER").Referencing("person", p["id"]) {
 		families = append(families, row["group"])
 	}
-	return m.retitleFamilies(families), nil
+	return m.renameFamilies(families), nil
 }
 
-func memberFamilyTitle(m *Model, c Change) ([]Edit, error) {
+func memberFamilyName(m *Model, c Change) ([]Edit, error) {
 	families := []string{}
 	for _, row := range []store.Row{c.Old, c.New} {
 		if row == nil {
@@ -46,10 +46,10 @@ func memberFamilyTitle(m *Model, c Change) ([]Edit, error) {
 			families = append(families, other["group"])
 		}
 	}
-	return m.retitleFamilies(families), nil
+	return m.renameFamilies(families), nil
 }
 
-func (m *Model) retitleFamilies(groups []string) []Edit {
+func (m *Model) renameFamilies(groups []string) []Edit {
 	slices.Sort(groups)
 	writes := []Edit{}
 	for _, id := range slices.Compact(groups) {
@@ -57,14 +57,14 @@ func (m *Model) retitleFamilies(groups []string) []Edit {
 		if !ok || g["kind"] != "family" {
 			continue
 		}
-		if title := m.familyTitle(id); title != g["title"] {
-			writes = append(writes, Edit{Set: id, Cells: map[string]any{"title": title}})
+		if name := m.familyName(id); name != g["name"] {
+			writes = append(writes, Edit{Set: id, Cells: map[string]any{"name": name}})
 		}
 	}
 	return writes
 }
 
-func (m *Model) familyTitle(group string) string {
+func (m *Model) familyName(group string) string {
 	students := m.students()
 	order := []string{}
 	for _, first := range []bool{true, false} {
@@ -149,7 +149,7 @@ func fire(s *Store, tx *store.Tx, c Change, where string) error {
 
 var (
 	schoolKinds   = []string{"classroom", "crew", "grade", "band", "department"}
-	schoolColumns = []string{"grade", "vc_grade", "classroom", "vc_classroom", "crew", "vc_crew", "department", "vc_department", "deactivated"}
+	schoolColumns = []string{"grade_override", "vc_grade", "classroom_override", "vc_classroom", "crew_override", "vc_crew", "department_override", "vc_department", "deactivated"}
 )
 
 func schoolGroups(m *Model, c Change) ([]Edit, error) {
@@ -191,18 +191,12 @@ func (m *Model) schoolGroupsOf(p store.Row) (map[string]bool, error) {
 	if p["deactivated"] != "" {
 		return out, nil
 	}
-	effective := func(column string) string {
-		if v := p[column]; v != "" {
-			return v
-		}
-		return p["vc_"+column]
-	}
 	for _, column := range []string{"classroom", "crew", "department"} {
-		if g := effective(column); g != "" {
+		if g := overrideOr(p, column); g != "" {
 			out[g] = true
 		}
 	}
-	grade := effective("grade")
+	grade := overrideOr(p, "grade")
 	if grade == "" {
 		return out, nil
 	}

@@ -45,7 +45,7 @@ export async function tables() {
 }
 
 export function labelOf(row) {
-  return row.title || row.name_show || row.name || row.address || row.subject || row.slug || row.key || row.id;
+  return row.name_show || row.name || row.address || row.subject || row.slug || row.key || row.id;
 }
 
 async function setSpoof(email) {

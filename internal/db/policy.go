@@ -99,11 +99,12 @@ const policySource = `
 (read PERSON (person_visible @row))
 ; every column of a person but what the form shares
 (read PERSON
-  (id source vc_name vc_legal_name vc_grade vc_classroom vc_crew vc_department vc_job_title vc_bio
-   vc_address_visibility vc_phone_visibility name_long_import name_short_import name_sort_import
-   name_long_override name_short_override name_sort_override name_long name_short name_sort
-   name_show grade classroom crew job_title department phone facts pronouns pronunciation
-   facts_updated photo_updated birthday)
+  (id source vc_name vc_legal_name vc_name_long name_long_override name_long
+   vc_name_short name_short_override name_short vc_name_sort name_sort_override name_sort name_show
+   vc_grade grade_override grade vc_classroom classroom_override classroom vc_crew crew_override crew
+   vc_department department_override department vc_job_title job_title_override job_title
+   phone vc_phone_visibility vc_address_visibility pronouns pronunciation facts facts_updated
+   photo_updated vc_bio birthday)
   true)
 ; when a person last signed out everywhere and when the import dropped them, for the server alone
 (read PERSON (signed_out deactivated) false)
@@ -118,13 +119,13 @@ const policySource = `
 ; the emails of people the viewer may see
 (read PERSON_EMAIL (person_visible person))
 ; every column of an email
-(read PERSON_EMAIL (id address person primary source guest) true)
+(read PERSON_EMAIL (id person address primary source guest) true)
 ; the photos of people and groups the viewer may see
 (read PHOTO
   (or (and (not (blank person)) (person_visible person))
       (and (not (blank group)) (visible group))))
 ; every column of a photo but its original, its re-encode and its crop
-(read PHOTO (id person group crop_left crop_top crop_width crop_height image thumbnail ready order) true)
+(read PHOTO (id person group order crop_left crop_top crop_width crop_height thumbnail image ready) true)
 ; a photo's re-encode and crop, to its person and their family, or its group's managers
 (read PHOTO (reencode crop)
   (or (and (not (blank person)) (self_or_household person))
@@ -137,18 +138,18 @@ const policySource = `
 (read BIRTHDAY_YEAR (person_visible person))
 ; every column of a birthday year
 (read BIRTHDAY_YEAR
-  (id person year assigned_to contacted_on contacted_by charity participation used_on note)
+  (id person year assigned_to contacted contacted_by participation charity note published)
   true)
 ; the viewer's own collections
 (read COLLECTION (= person @viewer))
 ; every column of a collection
-(read COLLECTION (id token person name groups emoji order is_default) true)
+(read COLLECTION (id person name emoji groups order default token) true)
 ; the viewer's own bug reports and ideas
-(read REPORT (= reporter @viewer))
+(read REPORT (= added_by @viewer))
 ; every column of a bug report or idea
 (read REPORT
-  (id reporter received app kind status summary details page_url browser errors screenshot
-   issue handled_by)
+  (id app kind summary details url browser errors screenshot status issue handled_by added_by
+   added)
   true)
 
 ; groups the viewer may see
@@ -157,10 +158,10 @@ const policySource = `
 (read GROUP (exists GROUP @p (= waitlist @row) (= kind "party") (visible @p)))
 ; every column of a group but what its family's form shares
 (read GROUP
-  (id parent kind listed mail slug title subtitle description
-   color flyer pronunciation address phone status visible_to members_visible_to posting
-   replying join adding capacity minimum price unit waitlist eligible parent_ticket_required drop_off_allowed
-   lead_needed priority start end all_day timing location url default order added_by added)
+  (id parent kind status slug name subtitle description color flyer pronunciation url listed
+   default order visible_to members_visible_to address phone mail posting replying join adding
+   eligible capacity minimum waitlist lead_needed priority price unit parent_ticket_required
+   drop_off_allowed start end all_day timing location added_by added)
   true)
 ; whether a family's adults all share their address and phone, to its members
 (read GROUP (address_consent phone_consent) (exists MEMBER (= group @row) (= person @viewer)))
@@ -168,7 +169,7 @@ const policySource = `
 (read GROUP_SOURCE (visible group))
 ; every column of where a calendar group came from
 (read GROUP_SOURCE
-  (id group calendar_event document title start end all_day location description marker hash)
+  (id group calendar_event document name description start end all_day location marker hash)
   true)
 ; the rules of groups the viewer manages
 (read RULE (manages group))
@@ -183,8 +184,8 @@ const policySource = `
       (sees_members group)))
 ; every column of a membership but what it cost
 (read MEMBER
-  (id group person manager member lead rsvp guest_of note answered answered_by via opened
-   added_by added)
+  (id group person manager member lead rsvp answered answered_by answered_via opened guest_of
+   note added_by added)
   true)
 ; what a membership cost and its payment reference, to the member, their host and the group's managers
 (read MEMBER (price purchase_id) (or (= person @viewer) (= guest_of @viewer) (manages group)))
@@ -212,8 +213,8 @@ const policySource = `
 (read DOCUMENT (document_visible @row))
 ; every column of a document
 (read DOCUMENT
-  (id kind relation parent content title date author url filename content_id message key_points
-   index order)
+  (id parent kind relation order name date author url filename content_id content message
+   key_points index)
   true)
 ; the bytes of documents and mail the viewer may see
 (read CONTENT
@@ -234,7 +235,7 @@ const policySource = `
 (read MESSAGE (message_visible @row))
 ; every column of a message
 (read MESSAGE
-  (id direction kind group about from_person from_address subject content header_id parent created)
+  (id direction kind group about parent from_person from_address subject header_id content created)
   true)
 ; the viewer's own deliveries, deliveries of mail they sent, and of mail to groups they manage
 (read RECIPIENT
@@ -253,15 +254,15 @@ const policySource = `
 ; the birthday charities
 (read CHARITY true)
 ; every column of a charity
-(read CHARITY (id name link about allowed) true)
+(read CHARITY (id name description url allowed) true)
 ; apps open to a group the viewer is in
 (read APP (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer)))
 ; every column of an app
-(read APP (id key name tagline visible_to admins order) true)
+(read APP (id key name subtitle admins visible_to order) true)
 ; front-page widgets open to a group the viewer is in
 (read WIDGET (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer)))
 ; every column of a widget
-(read WIDGET (id key order visible_to) true)
+(read WIDGET (id key visible_to order) true)
 ; the coordinates of a family address the viewer may see; a withheld address is blank, so it matches nothing
 (read GEOCODE
   (exists GROUP @f (= kind "family") (= address @row.address) (visible @f)))
@@ -270,15 +271,15 @@ const policySource = `
 ; the invite list services
 (read INVITE_SERVICE true)
 ; every column of an invite list service
-(read INVITE_SERVICE (id name header_row supports_groups description) true)
+(read INVITE_SERVICE (id name description header_row grouped) true)
 ; the invite list templates
 (read INVITE_TEMPLATE true)
 ; every column of an invite list template
 (read INVITE_TEMPLATE (id service order column template) true)
 ; shared greetings and the viewer's own
-(read GREETING (or (blank owner) (= owner @viewer)))
+(read GREETING (or (blank added_by) (= added_by @viewer)))
 ; every column of a greeting
-(read GREETING (id owner name format grouped individual) true)
+(read GREETING (id name format grouped individual added_by) true)
 
 ;; Who? admins
 
@@ -458,11 +459,11 @@ const policySource = `
 ; Veracross's phone privacy, shown on the profile to explain it
 (set PERSON.vc_phone_visibility (system "import"))
 ; a person's long name derived from Veracross's
-(set PERSON.name_long_import (system "import"))
+(set PERSON.vc_name_long (system "import"))
 ; a person's short name derived from Veracross's
-(set PERSON.name_short_import (system "import"))
+(set PERSON.vc_name_short (system "import"))
 ; a person's sort name derived from Veracross's
-(set PERSON.name_sort_import (system "import"))
+(set PERSON.vc_name_sort (system "import"))
 ; whether a person is deactivated, to compare with the export
 (read PERSON (deactivated) (system "import"))
 ; deactivate a Veracross person gone from the export, or bring one back
@@ -524,8 +525,8 @@ const policySource = `
 (read GROUP (and (system "import") (calendar_kind @row)))
 ; add an event, day or day part
 (insert GROUP (and (system "import") (calendar_kind @new)))
-; a calendar group's title as its source has it
-(set GROUP.title (and (system "import") (calendar_kind @old)))
+; a calendar group's name as its source has it
+(set GROUP.name (and (system "import") (calendar_kind @old)))
 ; a calendar group's start as its source has it
 (set GROUP.start (and (system "import") (calendar_kind @old)))
 ; a calendar group's end as its source has it
@@ -544,8 +545,8 @@ const policySource = `
 (read GROUP_SOURCE (system "import"))
 ; record where a calendar group came from
 (insert GROUP_SOURCE (and (system "import") (calendar_kind @new.group)))
-; a source's title as it reads now
-(set GROUP_SOURCE.title (and (system "import") (calendar_kind @old.group)))
+; a source's name as it reads now
+(set GROUP_SOURCE.name (and (system "import") (calendar_kind @old.group)))
 ; a source's start as it reads now
 (set GROUP_SOURCE.start (and (system "import") (calendar_kind @old.group)))
 ; a source's end as it reads now
@@ -612,13 +613,13 @@ const policySource = `
 ; a person's recorded name
 (set PERSON.pronunciation (system "import"))
 ; a person's grade as the old directory overrode it
-(set PERSON.grade (system "import"))
+(set PERSON.grade_override (system "import"))
 ; a person's classroom as the old directory overrode it
-(set PERSON.classroom (system "import"))
+(set PERSON.classroom_override (system "import"))
 ; a person's crew as the old directory overrode it
-(set PERSON.crew (system "import"))
+(set PERSON.crew_override (system "import"))
 ; a person's job title as the old directory overrode it
-(set PERSON.job_title (system "import"))
+(set PERSON.job_title_override (system "import"))
 ; a person's phone as the old directory overrode it
 (set PERSON.phone_override (system "import"))
 ; whether a person is hidden and when they last signed out, to compare with the old directory
@@ -678,7 +679,7 @@ const policySource = `
 ; whether a service's list has a header row, as the old sheet has it
 (set INVITE_SERVICE.header_row (system "import"))
 ; whether a service takes one row per family, as the old sheet has it
-(set INVITE_SERVICE.supports_groups (system "import"))
+(set INVITE_SERVICE.grouped (system "import"))
 ; a service's description, as the old sheet has it
 (set INVITE_SERVICE.description (system "import"))
 ; add a column of a service's list
@@ -703,8 +704,8 @@ const policySource = `
 (set GREETING.individual (system "import"))
 ; a Loop list's address, as the old sheet has it
 (set GROUP.slug (and (system "import") (= @old.kind "group")))
-; a Loop list's title, as the old sheet has it
-(set GROUP.title (and (system "import") (= @old.kind "group")))
+; a Loop list's name, as the old sheet has it
+(set GROUP.name (and (system "import") (= @old.kind "group")))
 ; a Loop list's description, as the old sheet has it
 (set GROUP.description (and (system "import") (= @old.kind "group")))
 ; who sees a Loop list, as the old sheet has it
@@ -741,8 +742,8 @@ const policySource = `
 (insert GROUP (and (system "import") (= @new.kind "activity")))
 ; an activity's place in its tree, as the old sheet has it
 (set GROUP.parent (and (system "import") (= @old.kind "activity")))
-; an activity's title, as the old sheet has it
-(set GROUP.title (and (system "import") (= @old.kind "activity")))
+; an activity's name, as the old sheet has it
+(set GROUP.name (and (system "import") (= @old.kind "activity")))
 ; an activity's description, as the old sheet has it
 (set GROUP.description (and (system "import") (= @old.kind "activity")))
 ; an activity's stub, as the old sheet has it
@@ -783,8 +784,8 @@ const policySource = `
 (insert MEMBER (and (system "import") (= @new.group.kind "activity")))
 ; add a category the old tables or sheets held
 (insert GROUP (and (system "import") (= @new.kind "category")))
-; a category's title, as the old tables or sheets have it
-(set GROUP.title (and (system "import") (= @old.kind "category")))
+; a category's name, as the old tables or sheets have it
+(set GROUP.name (and (system "import") (= @old.kind "category")))
 ; a category's description, as the old tables or sheets have it
 (set GROUP.description (and (system "import") (= @old.kind "category")))
 ; a category's place among the others, as the old tables or sheets have it
@@ -827,8 +828,8 @@ const policySource = `
 (set GROUP.parent (and (system "import") (in @old.kind "party" "celebration")))
 ; a party's or celebration's address on the site, as the old sheet has it
 (set GROUP.slug (and (system "import") (in @old.kind "party" "celebration")))
-; a party's or celebration's title, as the old sheet has it
-(set GROUP.title (and (system "import") (in @old.kind "party" "celebration")))
+; a party's or celebration's name, as the old sheet has it
+(set GROUP.name (and (system "import") (in @old.kind "party" "celebration")))
 ; a party's or celebration's subtitle, as the old sheet has it
 (set GROUP.subtitle (and (system "import") (in @old.kind "party" "celebration")))
 ; a party's or celebration's description, as the old sheet has it

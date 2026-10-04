@@ -18,13 +18,13 @@ func calendarSample(t *testing.T) (*Store, *store.Queue) {
 	t.Helper()
 	s, queue := sampleWithQueue(t)
 	ops := []store.Op{
-		store.Insert("GROUP", store.Row{"id": ospreys, "kind": "classroom", "title": "Ospreys", "status": "open", "visible_to": "grp00000000004"}),
-		store.Insert("GROUP", store.Row{"id": conference, "kind": "category", "title": "Conference", "description": "Family and teacher conferences.", "status": "open", "visible_to": "grp00000000004"}),
+		store.Insert("GROUP", store.Row{"id": ospreys, "kind": "classroom", "name": "Ospreys", "status": "open", "visible_to": "grp00000000004"}),
+		store.Insert("GROUP", store.Row{"id": conference, "kind": "category", "name": "Conference", "description": "Family and teacher conferences.", "status": "open", "visible_to": "grp00000000004"}),
 	}
 	n := 70
 	for name := range DayTemplates {
 		n++
-		ops = append(ops, store.Insert("GROUP", store.Row{"id": "grp000000000" + itoa2(n), "kind": "category", "title": name, "status": "open", "visible_to": "grp00000000004"}))
+		ops = append(ops, store.Insert("GROUP", store.Row{"id": "grp000000000" + itoa2(n), "kind": "category", "name": name, "status": "open", "visible_to": "grp00000000004"}))
 	}
 	if err := commit(s, GroupsSheet, ops...); err != nil {
 		t.Fatal(err)
@@ -135,7 +135,7 @@ func TestGooglePlan(t *testing.T) {
 	if len(days) != 1 || days[0]["start"] != "2026-10-09" {
 		t.Fatalf("days %v, want one on 2026-10-09", days)
 	}
-	if dayType, _ := m.Table("GROUP").Get(days[0]["parent"]); dayType["title"] != "Early Dismissal" || dayType["kind"] != "category" {
+	if dayType, _ := m.Table("GROUP").Get(days[0]["parent"]); dayType["name"] != "Early Dismissal" || dayType["kind"] != "category" {
 		t.Fatalf("the day is under %v, want its day type", dayType)
 	}
 	if parts := len(m.Table("GROUP").Referencing("parent", days[0]["id"])); parts != len(DayTemplates["Early Dismissal"]) {
@@ -209,7 +209,7 @@ func TestPDFPlan(t *testing.T) {
 			p := newCalendarPlan(rows, v)
 			for _, e := range cal.Entries {
 				for _, g := range p.googleOn(e) {
-					if g["title"] == e.Title {
+					if g["name"] == e.Title {
 						matched[e.Key] = append(matched[e.Key], g["id"])
 					}
 				}
@@ -230,7 +230,7 @@ func TestPDFPlan(t *testing.T) {
 	btsnGroup := sourcesKeyed(s.Model(), btsnGoogle.Key)[0]["group"]
 	twins := 0
 	for _, g := range groupsOf(s.Model(), "event") {
-		if g["title"] == btsn.Title {
+		if g["name"] == btsn.Title {
 			twins++
 		}
 	}
@@ -247,7 +247,7 @@ func TestPDFPlan(t *testing.T) {
 	for _, d := range days {
 		byDate[d["start"]] = append(byDate[d["start"]], d)
 	}
-	if len(byDate["2026-09-02"]) != 2 || len(byDate["2026-09-01"]) != 1 || byDate["2026-09-01"][0]["title"] != "No School" {
+	if len(byDate["2026-09-02"]) != 2 || len(byDate["2026-09-01"]) != 1 || byDate["2026-09-01"][0]["name"] != "No School" {
 		t.Fatalf("days by date %v", byDate)
 	}
 	markers := 0
@@ -264,7 +264,7 @@ func TestPDFPlan(t *testing.T) {
 	}
 	twins = 0
 	for _, g := range groupsOf(m, "event") {
-		if g["title"] == btsn.Title {
+		if g["name"] == btsn.Title {
 			twins++
 		}
 	}

@@ -1,2 +1,2 @@
-id,kind,relation,parent,content,title,date,author,url,filename,content_id,message,key_points,index,order
-doc00000000001,newsletter,,,,Hummingbirds Weekly,2026-09-25,per00000000003,,,,,,,
+id,parent,kind,relation,order,name,date,author,url,filename,content_id,content,message,key_points,index
+doc00000000001,,newsletter,,,Hummingbirds Weekly,2026-09-25,per00000000003,,,,,,,

@@ -202,10 +202,10 @@ func groupsOf(s *db.Store, person string) []string {
 	for _, r := range m.Table("MEMBER").Referencing("person", person) {
 		g, _ := m.Table("GROUP").Get(r["group"])
 		if r["member"] == "yes" {
-			out = append(out, g["kind"]+":"+g["title"]+g["slug"]+":member")
+			out = append(out, g["kind"]+":"+g["name"]+g["slug"]+":member")
 		}
 		if r["manager"] == "Yes" {
-			out = append(out, g["kind"]+":"+g["title"]+g["slug"]+":manager")
+			out = append(out, g["kind"]+":"+g["name"]+g["slug"]+":manager")
 		}
 	}
 	slices.Sort(out)
@@ -220,7 +220,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 		t.Fatalf("the first run: %v, %d photos", p.counts, photos)
 	}
 	ines := personNamed(s, "Ines Okafor")
-	if got := photosOf(s, ines["id"]); len(got) != 2 || got[0]["photo"] != "photos/"+x.entries[6].photos[0] || got[1]["photo"] != "photos/"+x.website[0].photos[0] {
+	if got := photosOf(s, ines["id"]); len(got) != 2 || got[0]["original"] != "photos/"+x.entries[6].photos[0] || got[1]["original"] != "photos/"+x.website[0].photos[0] {
 		t.Fatalf("Ines's photos, Veracross's first: %v", got)
 	}
 	if ines["vc_bio"] != "Reads." {
@@ -236,7 +236,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 		t.Fatalf("Juni was not matched by name: %v", juni)
 	}
 	wren := personNamed(s, "Wren (Wrennie) Ashdown")
-	if wren == nil || wren["name_sort_import"] != "Ashdown, Wren" || wren["vc_grade"] != "K" {
+	if wren == nil || wren["vc_name_sort"] != "Ashdown, Wren" || wren["vc_grade"] != "K" {
 		t.Fatalf("Wren reads %v", wren)
 	}
 	want := []string{"classroom:Oak:member", "crew:Acorn:member", "family:Ashdown Family:manager", "family:Ashdown Family:member", "grade:Kindergartengrade-k:member", "group:Studentsstudents:member"}
@@ -247,8 +247,8 @@ func TestImportAgainstTheSample(t *testing.T) {
 	for classroom, title := range map[string]string{"grp00000000010": "Jayvens", wren["vc_classroom"]: "Hummingbirds"} {
 		c, _ := groups.Get(classroom)
 		band, _ := groups.Get(c["parent"])
-		if band["kind"] != "band" || band["title"] != title {
-			t.Fatalf("classroom %s sits under %v, not the %s band", c["title"], band, title)
+		if band["kind"] != "band" || band["name"] != title {
+			t.Fatalf("classroom %s sits under %v, not the %s band", c["name"], band, title)
 		}
 		under := []string{}
 		for _, g := range groups.Referencing("parent", band["id"]) {
@@ -273,7 +273,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 	}
 	x.entries, x.households = x.entries[:len(x.entries)-1], x.households[:len(x.households)-1]
 	family, _ := s.Model().Table("GROUP").Get("grp00000000020")
-	if family["title"] != "Ashdown Family" || family["vc_address"] != "12 Elm St" {
+	if family["name"] != "Ashdown Family" || family["vc_address"] != "12 Elm St" {
 		t.Fatalf("the Ashdowns' family reads %v", family)
 	}
 	sam := personNamed(s, "Sam (Samuel) Ashdown")

@@ -1,1 +1,1 @@
-id,reporter,received,app,kind,status,summary,details,page_url,browser,errors,screenshot,issue,handled_by
+id,app,kind,summary,details,url,browser,errors,screenshot,status,issue,handled_by,added_by,added

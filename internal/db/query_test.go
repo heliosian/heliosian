@@ -148,7 +148,7 @@ func TestRun(t *testing.T) {
 		{"", `(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020")))))`, "id", []string{"per00000000001", "per00000000002"}},
 		{"", `(from COLLECTION (where (= groups "grp00000000010")))`, "token", []string{"fed00000000001"}},
 		{"", `(from PERSON (where (not hidden)))`, "id", []string{"per00000000001", "per00000000002", "per00000000003", "per00000000004"}},
-		{"", `(from PERSON (where (= vc_classroom.title "Hummingbirds")))`, "id", []string{"per00000000001"}},
+		{"", `(from PERSON (where (= vc_classroom.name "Hummingbirds")))`, "id", []string{"per00000000001"}},
 		{"", `(from MEMBER (where (= guest_of.name_short "Rowan")))`, "person", []string{"per00000000004"}},
 		{"", `(from GROUP (where (or (= kind "family") mail)))`, "id", []string{"grp00000000020", "grp00000000030"}},
 		{"", `(from PERSON (where (blank vc_name)))`, "id", []string{"per00000000004"}},
@@ -302,11 +302,11 @@ func TestEffectiveDropsDeactivated(t *testing.T) {
 func TestParentsAndChildrenFollowStudents(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000051", "kind": "group", "title": "Juni's parents"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000051", "kind": "group", "name": "Juni's parents"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000055", "group": "grp00000000051", "order": "a", "person": student, "replace_with": "parents"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000052", "kind": "group", "title": "Rowan's children"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000052", "kind": "group", "name": "Rowan's children"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000056", "group": "grp00000000052", "order": "a", "person": parent, "replace_with": "children"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000053", "kind": "group", "title": "Rowan's parents"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000053", "kind": "group", "name": "Rowan's parents"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000057", "group": "grp00000000053", "order": "a", "person": parent, "replace_with": "parents"}),
 	); err != nil {
 		t.Fatal(err)
@@ -321,7 +321,7 @@ func TestParentsAndChildrenFollowStudents(t *testing.T) {
 func TestRuleSelectors(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000050", "kind": "group", "title": "Test"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000050", "kind": "group", "name": "Test"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000051", "group": "grp00000000050", "order": "a", "property": "source", "value": "veracross", "within": "grp00000000004"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000052", "group": "grp00000000050", "order": "b", "exclude": "Yes", "search": "lindqvist"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000053", "group": "grp00000000050", "order": "c", "person": "per00000000001", "replace_with": "household"}),

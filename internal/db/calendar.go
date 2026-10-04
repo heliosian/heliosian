@@ -60,13 +60,6 @@ type Vocabulary struct {
 	DayTypes   map[string]string
 }
 
-func effectiveCell(p map[string]string, column string) string {
-	if v := p[column]; v != "" {
-		return v
-	}
-	return p["vc_"+column]
-}
-
 func NewVocabulary(rows CalendarRows) (*Vocabulary, error) {
 	v := &Vocabulary{Roles: map[string]string{}, DayTypes: map[string]string{}}
 	groups := map[string]map[string]string{}
@@ -77,12 +70,12 @@ func NewVocabulary(rows CalendarRows) (*Vocabulary, error) {
 		if c["kind"] != "category" {
 			continue
 		}
-		if _, ok := DayTemplates[c["title"]]; ok {
-			v.DayTypes[c["title"]] = c["id"]
+		if _, ok := DayTemplates[c["name"]]; ok {
+			v.DayTypes[c["name"]] = c["id"]
 			continue
 		}
 		if parent := groups[c["parent"]]; parent == nil || parent["kind"] == "category" {
-			v.Events = append(v.Events, Category{ID: c["id"], Title: c["title"], Description: c["description"]})
+			v.Events = append(v.Events, Category{ID: c["id"], Title: c["name"], Description: c["description"]})
 		}
 	}
 	slices.SortStableFunc(v.Events, func(a, b Category) int { return strings.Compare(a.Title, b.Title) })
@@ -98,7 +91,7 @@ func NewVocabulary(rows CalendarRows) (*Vocabulary, error) {
 	for _, g := range rows["GROUP"] {
 		switch g["kind"] {
 		case "classroom":
-			byClassroom[g["id"]] = &Classroom{ID: g["id"], Name: g["title"]}
+			byClassroom[g["id"]] = &Classroom{ID: g["id"], Name: g["name"]}
 		case "group":
 			if g["slug"] != "" {
 				v.Roles[g["slug"]] = g["id"]
@@ -111,8 +104,8 @@ func NewVocabulary(rows CalendarRows) (*Vocabulary, error) {
 		}
 	}
 	for _, g := range rows["GROUP"] {
-		if c, ok := byClassroom[g["parent"]]; ok && g["kind"] == "crew" && !slices.Contains(c.Crews, g["title"]) {
-			c.Crews = append(c.Crews, g["title"])
+		if c, ok := byClassroom[g["parent"]]; ok && g["kind"] == "crew" && !slices.Contains(c.Crews, g["name"]) {
+			c.Crews = append(c.Crews, g["name"])
 		}
 	}
 	gradeGroups := map[string]map[string]string{}
@@ -122,15 +115,15 @@ func NewVocabulary(rows CalendarRows) (*Vocabulary, error) {
 		}
 	}
 	for _, p := range rows["PERSON"] {
-		c, ok := byClassroom[effectiveCell(p, "classroom")]
-		grade := effectiveCell(p, "grade")
+		c, ok := byClassroom[p["classroom"]]
+		grade := p["grade"]
 		if !ok || grade == "" || p["deactivated"] != "" || slices.Contains(c.Grades, grade) {
 			continue
 		}
 		c.Grades = append(c.Grades, grade)
 		if g, ok := gradeGroups["grade-"+strings.ToLower(grade)]; ok && c.Band == "" {
 			if band, ok := groups[g["parent"]]; ok {
-				c.Band = band["title"]
+				c.Band = band["name"]
 			}
 		}
 	}
@@ -478,7 +471,7 @@ func (v *Vocabulary) matchBatch(ctx context.Context, client anthropic.Client, as
 			id := handle + "g" + strconv.Itoa(j+1)
 			groups[id] = g
 			ids = append(ids, id)
-			e.Google = append(e.Google, matchCandidate{ID: id, Title: g["title"], Start: g["start"], End: g["end"]})
+			e.Google = append(e.Google, matchCandidate{ID: id, Title: g["name"], Start: g["start"], End: g["end"]})
 		}
 		entries = append(entries, e)
 		properties[handle] = map[string]any{"type": "array", "items": enumOf(ids)}

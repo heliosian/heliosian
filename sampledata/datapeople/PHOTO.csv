@@ -1,1 +1,1 @@
-id,person,group,photo,reencode,crop_left,crop_top,crop_width,crop_height,crop,thumbnail,ready,order
+id,person,group,order,original,reencode,crop_left,crop_top,crop_width,crop_height,crop,thumbnail,ready

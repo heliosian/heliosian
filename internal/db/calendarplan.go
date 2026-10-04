@@ -123,7 +123,7 @@ func (p *calendarPlan) dropSource(source map[string]string) {
 
 func itemCells(it CalendarItem) map[string]any {
 	return map[string]any{
-		"title": it.Title, "start": it.Start, "end": it.End, "all_day": it.AllDay,
+		"name": it.Title, "start": it.Start, "end": it.End, "all_day": it.AllDay,
 		"location": it.Location, "description": it.Description,
 	}
 }
@@ -205,7 +205,7 @@ func (p *calendarPlan) unclassify(group string) {
 }
 
 func (p *calendarPlan) addDay(date, dayType string, classrooms []string, source map[string]any) {
-	day := p.newGroup("day", map[string]any{"title": dayType, "parent": p.v.DayTypes[dayType], "start": date, "all_day": true})
+	day := p.newGroup("day", map[string]any{"name": dayType, "parent": p.v.DayTypes[dayType], "start": date, "all_day": true})
 	if !p.everyClassroom(classrooms) {
 		orders := store.Order(make([]string, len(classrooms)))
 		for i, c := range classrooms {
@@ -213,10 +213,10 @@ func (p *calendarPlan) addDay(date, dayType string, classrooms []string, source 
 		}
 	}
 	row := maps.Clone(source)
-	row["group"], row["title"], row["start"], row["all_day"] = day, dayType, date, true
+	row["group"], row["name"], row["start"], row["all_day"] = day, dayType, date, true
 	p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: row})
 	for _, part := range DayTemplates[dayType] {
-		p.newGroup("day_part", map[string]any{"title": part.Part, "parent": day, "start": date + " " + part.Start, "end": date + " " + part.End})
+		p.newGroup("day_part", map[string]any{"name": part.Part, "parent": day, "start": date + " " + part.Start, "end": date + " " + part.End})
 	}
 }
 
@@ -308,12 +308,12 @@ func GooglePlan(rows CalendarRows, v *Vocabulary, feed []GoogleEvent, from, to t
 						p.setChanged(s["group"], p.groups[s["group"]], map[string]any{"parent": category})
 					}
 				} else {
-					row := map[string]any{"title": e.Title}
+					row := map[string]any{"name": e.Title}
 					if category != "" {
 						row["parent"] = category
 					}
 					ref := p.newGroup("event", row)
-					p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: map[string]any{"group": ref, "calendar_event": e.Series, "title": e.Title}})
+					p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: map[string]any{"group": ref, "calendar_event": e.Series, "name": e.Title}})
 					seriesRef[e.Series] = ref
 				}
 			}
@@ -412,7 +412,7 @@ func (p *calendarPlan) pdfEvents(cal YearCalendar) map[string][]map[string]strin
 	pdf := map[string][]map[string]string{}
 	for _, s := range p.pdfSourcesOf(cal.Year) {
 		if p.kind(s) == "event" {
-			key := matchKey(s["start"], s["title"])
+			key := matchKey(s["start"], s["name"])
 			pdf[key] = append(pdf[key], s)
 		}
 	}

@@ -1,2 +1,2 @@
-id,key,name,tagline,visible_to,admins,order
-app00000000001,who,Helios Who?,,grp00000000004,grp00000000006,i
+id,key,name,subtitle,admins,visible_to,order
+app00000000001,who,Helios Who?,,grp00000000006,grp00000000004,i
