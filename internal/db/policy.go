@@ -150,7 +150,7 @@ const policySource = `
 (read GROUP
   (id parent kind listed mail slug title subtitle description
    color flyer pronunciation address phone status visibility visible_to members_visible posting
-   replying join adding capacity minimum price unit waitlist eligible parent_required
+   replying join adding capacity minimum price unit waitlist eligible parent_ticket_required drop_off_allowed
    manager_needed priority start end all_day timing location url default order added_by added)
   true)
 ; whether a family's adults all share their address and phone, to its members
@@ -769,6 +769,64 @@ const policySource = `
 (insert PERSON_SETTING (system "import"))
 ; a person's app setting, as the old sheets hold it
 (set PERSON_SETTING.value (system "import"))
+; a guest's address that the old Celebrate sheet says has moved
+(set PERSON_EMAIL.address (and (system "import") (= @old.source "guest")))
+; every party and celebration, to find what an earlier sync added
+(read GROUP (and (system "import") (in kind "party" "celebration")))
+; add a celebration, a party, or an item sold outside the app
+(insert GROUP (and (system "import") (in @new.kind "party" "celebration")))
+; a party's category or celebration, as the old sheet has it
+(set GROUP.parent (and (system "import") (in @old.kind "party" "celebration")))
+; a party's or celebration's address on the site, as the old sheet has it
+(set GROUP.slug (and (system "import") (in @old.kind "party" "celebration")))
+; a party's or celebration's title, as the old sheet has it
+(set GROUP.title (and (system "import") (in @old.kind "party" "celebration")))
+; a party's or celebration's subtitle, as the old sheet has it
+(set GROUP.subtitle (and (system "import") (in @old.kind "party" "celebration")))
+; a party's or celebration's description, as the old sheet has it
+(set GROUP.description (and (system "import") (in @old.kind "party" "celebration")))
+; where a party or celebration is, in words, as the old sheet has it
+(set GROUP.location (and (system "import") (in @old.kind "party" "celebration")))
+; a party's or celebration's street address, as the old sheet has it
+(set GROUP.address_override (and (system "import") (in @old.kind "party" "celebration")))
+; when a party or celebration starts, as the old sheet has it
+(set GROUP.start (and (system "import") (in @old.kind "party" "celebration")))
+; when a party or celebration ends, as the old sheet has it
+(set GROUP.end (and (system "import") (in @old.kind "party" "celebration")))
+; whether a party or celebration runs all day, as the old sheet has it
+(set GROUP.all_day (and (system "import") (in @old.kind "party" "celebration")))
+; whether a party is pending, as the old sheet has it
+(set GROUP.status (and (system "import") (in @old.kind "party" "celebration")))
+; whether a party is hidden, as the old sheet has it
+(set GROUP.visibility (and (system "import") (in @old.kind "party" "celebration")))
+; whether a party's tickets are on sale, as the old sheet has it
+(set GROUP.join (and (system "import") (= @old.kind "party")))
+; what a party's ticket is for, as the old sheet has it
+(set GROUP.unit (and (system "import") (= @old.kind "party")))
+; a party's ticket price, as the old sheet has it
+(set GROUP.price (and (system "import") (= @old.kind "party")))
+; how many tickets a party has, as the old sheet has it
+(set GROUP.capacity (and (system "import") (= @old.kind "party")))
+; how many tickets a party needs to go ahead, as the old sheet has it
+(set GROUP.minimum (and (system "import") (= @old.kind "party")))
+; a party's flyer, as the old sheet has it
+(set GROUP.flyer (and (system "import") (= @old.kind "party")))
+; whether a full party takes a waitlist, as the old sheet has it
+(set GROUP.waitlist (and (system "import") (= @old.kind "party")))
+; who may come to a party, as the old sheet has it
+(set GROUP.eligible (and (system "import") (= @old.kind "party")))
+; whether kids may be dropped off at a party, as the old sheet has it
+(set GROUP.drop_off_allowed (and (system "import") (= @old.kind "party")))
+; whether a parent who stays needs a ticket, as the old sheet has it
+(set GROUP.parent_ticket_required (and (system "import") (= @old.kind "party")))
+; who posted a party, as the old sheet has it
+(set GROUP.added_by (and (system "import") (= @old.kind "party")))
+; when a party was posted, as the old sheet has it
+(set GROUP.added (and (system "import") (= @old.kind "party")))
+; the hosts, ticket holders and waiting families of every party
+(read MEMBER (and (system "import") (= group.kind "party")))
+; add a host, a ticket, a waiting family or a sale the old sheet has
+(insert MEMBER (and (system "import") (= @new.group.kind "party")))
 `
 
 type policySet struct {
