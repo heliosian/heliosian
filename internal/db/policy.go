@@ -787,8 +787,26 @@ type Clause struct {
 	Name      string   `json:"name,omitempty"`
 	Params    []string `json:"params,omitempty"`
 	Condition string   `json:"condition"`
+	Actor     string   `json:"actor"`
+	Rest      string   `json:"rest"`
 	Form      string   `json:"form"`
 	cond      cond
+}
+
+var actorHeads = map[string]bool{"admin_of": true, "super_admin": true, "system": true}
+
+func splitActor(c *sexp) (string, string) {
+	if actorHeads[c.head()] {
+		return c.flat(), "true"
+	}
+	if c.head() != "and" || len(c.list) < 3 || !actorHeads[c.list[1].head()] {
+		return "", c.render(0)
+	}
+	rest := c.list[2:]
+	if len(rest) == 1 {
+		return c.list[1].flat(), rest[0].render(0)
+	}
+	return c.list[1].flat(), (&sexp{isList: true, pos: -1, list: append([]*sexp{c.list[0]}, rest...)}).render(0)
 }
 
 var (
@@ -829,6 +847,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 				return nil, nil, err
 			}
 			described.Kind, described.Table, described.Condition, described.cond = "read columns", form.list[1].text, form.list[3].render(0), c
+			described.Actor, described.Rest = splitActor(form.list[3])
 			for _, item := range form.list[2].list {
 				described.Columns = append(described.Columns, item.text)
 			}
@@ -868,6 +887,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 		}
 		into[form.list[1].text] = append(into[form.list[1].text], c)
 		described.Table, described.Column, described.Condition, described.cond = tableName, column, form.list[2].render(0), c
+		described.Actor, described.Rest = splitActor(form.list[2])
 		out.clauses = append(out.clauses, described)
 	}
 	for _, form := range forms {

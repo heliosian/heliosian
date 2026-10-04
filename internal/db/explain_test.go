@@ -42,6 +42,25 @@ func TestThePoliciesAreListedWithTheirComments(t *testing.T) {
 	if c := found["define  manages"]; c.Section != "Definitions" || len(c.Params) != 1 || c.Params[0] != "@g" || c.Comment == "" {
 		t.Errorf("manages: %+v", c)
 	}
+	if c := found["read PERSON "]; c.Actor != "" || c.Rest != c.Condition {
+		t.Errorf("PERSON's read clause names an actor: %+v", c)
+	}
+	for _, c := range out.Clauses {
+		switch c.Condition {
+		case `(and (admin_of "when") (in kind "event" "day" "day_part"))`:
+			if c.Actor != `(admin_of "when")` || c.Rest != `(in kind "event" "day" "day_part")` {
+				t.Errorf("When's calendar groups: %+v", c)
+			}
+		case `(and (system "import") (= @old.source "veracross"))`:
+			if c.Actor != `(system "import")` || c.Rest != `(= @old.source "veracross")` {
+				t.Errorf("the import's Veracross rows: %+v", c)
+			}
+		case `(super_admin)`:
+			if c.Actor != `(super_admin)` || c.Rest != "true" {
+				t.Errorf("a super admin's clause: %+v", c)
+			}
+		}
+	}
 }
 
 func TestExplainingARow(t *testing.T) {
