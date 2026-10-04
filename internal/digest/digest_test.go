@@ -41,6 +41,13 @@ func TestRepeats(t *testing.T) {
 	}
 }
 
+func TestAToDoOnARepeatingPointIsDropped(t *testing.T) {
+	got := unrepeated([]model.ToDo{{Title: "Reserve tickets", Point: 4}, {Title: "Register", Point: 5}, {Title: "Bring boots"}}, map[int]string{4: "earlier"})
+	if len(got) != 2 || got[0].Title != "Register" || got[1].Title != "Bring boots" {
+		t.Errorf("unrepeated = %+v, want the to-do on the repeating point dropped", got)
+	}
+}
+
 func TestPointsAndAudience(t *testing.T) {
 	if got := cleanPoints([]string{"  a   b ", "", "c"}); !slices.Equal(got, []string{"a b", "c"}) {
 		t.Errorf("cleanPoints: %v", got)

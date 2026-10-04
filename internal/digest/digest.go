@@ -22,7 +22,7 @@ const claudeModel = "claude-sonnet-5"
 
 const maxEmail = 24 << 10
 
-const Revision = "2026-10-03.1"
+const Revision = "2026-10-03.2"
 
 var actor = access.System("digest")
 
@@ -219,7 +219,8 @@ func (c *Claude) Read(ctx context.Context, e Email) (model.Reading, error) {
 		return model.Reading{}, err
 	}
 	points := cleanPoints(out.Points)
-	reading := model.Reading{Summary: tidy(out.Summary), Points: points, Audience: audience(out.Nobody, known(out.Classrooms, e.Classrooms), known(out.Grades, e.Grades)), ToDos: clean(out.ToDos, e.Markdown, len(points)), Repeats: repeats(out.Repeats, len(points), e.Listed)}
+	repeated := repeats(out.Repeats, len(points), e.Listed)
+	reading := model.Reading{Summary: tidy(out.Summary), Points: points, Audience: audience(out.Nobody, known(out.Classrooms, e.Classrooms), known(out.Grades, e.Grades)), ToDos: unrepeated(clean(out.ToDos, e.Markdown, len(points)), repeated), Repeats: repeated}
 	slog.InfoContext(ctx, "digest: read an email", "title", e.Title, "summary", reading.Summary, "points", len(points), "audience", reading.Audience, "asks", out.Asks, "asked", len(out.ToDos), "kept", len(reading.ToDos), "repeats", len(reading.Repeats))
 	if reading.Summary == "" {
 		slog.InfoContext(ctx, "digest: claude wrote no summary", "title", e.Title)
@@ -240,6 +241,18 @@ func repeats(answers []repeat, points int, listed []Listed) map[int]string {
 		if _, taken := out[r.Point]; !taken {
 			out[r.Point] = listed[r.Listed-1].ID
 		}
+	}
+	return out
+}
+
+func unrepeated(toDos []model.ToDo, repeated map[int]string) []model.ToDo {
+	out := []model.ToDo{}
+	for _, t := range toDos {
+		if _, ok := repeated[t.Point]; ok {
+			slog.Info("digest: a to-do on a point that repeats another email's, dropped", "title", t.Title, "point", t.Point)
+			continue
+		}
+		out = append(out, t)
 	}
 	return out
 }

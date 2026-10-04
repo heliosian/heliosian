@@ -438,9 +438,13 @@ function emailAsk(email) {
   return appOrigin('ask') + '/?q=' + encodeURIComponent(`What should I know from the school email "${email.title}" sent ${day}?`);
 }
 
-function pointItem(email, words, point) {
+function pointTodo(email, point) {
   const repeated = email.repeats[point];
-  const todo = state.model.todos.find(t => t.email === email.id && t.point === point) || state.model.todos.find(t => t.id === repeated);
+  return state.model.todos.find(t => t.email === email.id && t.point === point) || state.model.todos.find(t => t.id === repeated);
+}
+
+function pointItem(email, words, point) {
+  const todo = pointTodo(email, point);
   if (!todo) {
     return el('li', '', words);
   }
@@ -457,8 +461,8 @@ function pointItem(email, words, point) {
 }
 
 function emailTodos(email) {
-  const repeated = Object.values(email.repeats);
-  return state.model.todos.filter(t => t.email === email.id || repeated.includes(t.id));
+  const drawn = email.points.map((p, i) => pointTodo(email, i + 1)).filter(Boolean);
+  return [...new Map(drawn.map(t => [t.id, t])).values()];
 }
 
 function reminderCount(n) {
