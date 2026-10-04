@@ -23,7 +23,7 @@ function diagram(list) {
     lines.push(`  class ${t.name} {`);
     for (const c of t.columns) {
       if (c.relation) {
-        links.push(`  ${t.name} ${c.kind === 'refs' ? '--*' : '-->'} ${c.relation} : ${c.name}`);
+        links.push(`  ${t.name} --> ${c.relation} : ${c.name}`);
         continue;
       }
       lines.push(`    ${c.kind} ${c.name}`);
@@ -32,15 +32,6 @@ function diagram(list) {
     styles.push(`  style ${t.name} stroke:${sheetColors[t.sheet]},stroke-width:2px`);
   }
   return [...lines, ...links, ...styles].join('\n');
-}
-
-function doubleArrowheads(root) {
-  for (const [suffix, refX] of [['-compositionEnd', 13], ['-compositionEnd-margin', 16]]) {
-    for (const marker of root.querySelectorAll(`marker[id$="${suffix}"]`)) {
-      marker.setAttribute('refX', refX);
-      marker.querySelector('path').setAttribute('d', 'M 18,7 L9,13 L14,7 L9,1 Z M 11,7 L2,13 L7,7 L2,1 Z');
-    }
-  }
 }
 
 function clickable(root, names) {
@@ -86,7 +77,6 @@ try {
   });
   const {svg} = await window.mermaid.render('erd-svg', diagram(list));
   root.innerHTML = svg;
-  doubleArrowheads(root);
   clickable(root, list.map(t => t.name));
 } catch (err) {
   root.replaceChildren(el('p', 'error', err.message));

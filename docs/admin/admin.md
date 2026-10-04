@@ -20,7 +20,7 @@ After it, folded too, is the row's history: its `CHANGES` entries newest first i
 
 ## Schema
 
-`/erd` (`web/admin/erd/`) is an entity relationship diagram of the spec, drawn in the browser on each load: a box per table, edged in its spreadsheet's colour, with its columns and their kinds, and an arrow per reference from the table that has it to its target, labelled with the column: a single arrowhead for one, a double for a list. A box opens its table under Resources. It draws with the vendored `mermaid.min.js` bundle, unpatched: a list of references is drawn as Mermaid's composition and the page redraws that marker (`-compositionEnd`) as the double arrowhead after rendering, which a new copy of the bundle needs checked again.
+`/erd` (`web/admin/erd/`) is an entity relationship diagram of the spec, drawn in the browser on each load: a box per table, edged in its spreadsheet's colour, with its columns and their kinds, and an arrow per reference from the table that has it to its target, labelled with the column. A box opens its table under Resources. It draws with the vendored `mermaid.min.js` bundle, unpatched.
 
 ## Query
 

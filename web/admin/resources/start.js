@@ -18,7 +18,7 @@ const summary = document.getElementById('summary');
 const referrers = new Map();
 for (const t of all.filter(t => t.name !== 'CHANGES')) {
   for (const c of t.columns) {
-    if (c.kind !== 'ref' && c.kind !== 'refs') {
+    if (c.kind !== 'ref') {
       continue;
     }
     const target = c.relation || '*';

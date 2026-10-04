@@ -24,7 +24,6 @@ type typ struct {
 	class  class
 	kind   Kind
 	table  string
-	list   bool
 	values []string
 }
 
@@ -53,7 +52,7 @@ func classOf(k Kind) class {
 		return classTime
 	case Bool:
 		return classBool
-	case ID, Ref, Refs:
+	case ID, Ref:
 		return classRow
 	}
 	return classText
@@ -69,9 +68,6 @@ func columnType(table string, c Column) typ {
 		t.table = table
 	case Ref:
 		t.table = c.Target
-	case Refs:
-		t.table = c.Target
-		t.list = true
 	}
 	return t
 }
@@ -80,7 +76,6 @@ type value struct {
 	blank bool
 	kind  Kind
 	s     string
-	list  []string
 	num   *big.Rat
 	t     time.Time
 	b     bool
@@ -113,10 +108,6 @@ func cellValue(c Column, cell string) value {
 			return blankValue
 		}
 		v.b = b
-	case classRow:
-		if c.Kind == Refs {
-			v.list = cells.SplitList(s)
-		}
 	}
 	return v
 }
@@ -147,13 +138,12 @@ func compareValues(a, b value) (int, bool) {
 }
 
 type valueSet struct {
-	exact  bool
-	scalar map[string]bool
-	whole  map[string]bool
+	exact bool
+	keys  map[string]bool
 }
 
 func newValueSet(exact bool) *valueSet {
-	return &valueSet{exact: exact, scalar: map[string]bool{}, whole: map[string]bool{}}
+	return &valueSet{exact: exact, keys: map[string]bool{}}
 }
 
 func (s *valueSet) key(v value) string {
@@ -174,42 +164,14 @@ func (s *valueSet) add(v value) {
 	if v.blank {
 		return
 	}
-	if v.list != nil {
-		for _, item := range v.list {
-			s.scalar[item] = true
-		}
-		s.whole[v.s] = true
-		return
-	}
-	k := s.key(v)
-	s.scalar[k] = true
-	s.whole[k] = true
+	s.keys[s.key(v)] = true
 }
 
 func (s *valueSet) has(v value) bool {
-	if v.list != nil {
-		for _, item := range v.list {
-			if s.whole[item] {
-				return true
-			}
-		}
-		return false
-	}
-	return !v.blank && s.scalar[s.key(v)]
+	return !v.blank && s.keys[s.key(v)]
 }
 
 func equalValues(a, b value) bool {
-	if a.list != nil {
-		for _, item := range a.list {
-			if !b.blank && item == b.s {
-				return true
-			}
-		}
-		return false
-	}
-	if b.list != nil {
-		return equalValues(b, a)
-	}
 	n, ok := compareValues(a, b)
 	return ok && n == 0
 }

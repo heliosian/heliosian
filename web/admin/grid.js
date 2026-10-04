@@ -68,12 +68,6 @@ export function cell(answer, column, value, id, large) {
     td.append(refLink(answer, column.relation, value));
     return td;
   }
-  if (column.kind === 'refs') {
-    for (const id of value.split(',').map(s => s.trim()).filter(Boolean)) {
-      td.append(refLink(answer, column.relation, id), ' ');
-    }
-    return td;
-  }
   if (column.kind === 'url') {
     td.append(link(value, '', value));
     return td;
@@ -307,7 +301,7 @@ export function grid(table, answer, ids, changed, always = []) {
       const as = c.cellOf?.(row) ?? c;
       const td = cell(answer, as, row[c.name], row.id);
       const shown = td.textContent.trim();
-      entry.values[c.name] = {raw: row[c.name], show: shown.toLowerCase(), key: as.kind === 'ref' || as.kind === 'refs' ? shown : (row[c.name] ?? '')};
+      entry.values[c.name] = {raw: row[c.name], show: shown.toLowerCase(), key: as.kind === 'ref' ? shown : (row[c.name] ?? '')};
       tr.append(td);
     }
     entries.push(entry);

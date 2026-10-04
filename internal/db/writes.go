@@ -71,8 +71,8 @@ func cellsOf(t *Table, values map[string]any, where string, names map[string]str
 		if err != nil {
 			return nil, access.Invalid("%s: %s: %v", where, column, err)
 		}
-		if c.Kind == Ref || c.Kind == Refs {
-			if text, err = resolve(text, c.Kind == Refs, names); err != nil {
+		if c.Kind == Ref {
+			if text, err = resolve(text, names); err != nil {
 				return nil, access.Invalid("%s: %s: %v", where, column, err)
 			}
 		}
@@ -81,26 +81,16 @@ func cellsOf(t *Table, values map[string]any, where string, names map[string]str
 	return out, nil
 }
 
-func resolve(text string, list bool, names map[string]string) (string, error) {
-	parts := []string{text}
-	if list {
-		parts = cells.SplitList(text)
+func resolve(text string, names map[string]string) (string, error) {
+	name, ok := strings.CutPrefix(text, "@")
+	if !ok {
+		return text, nil
 	}
-	for i, part := range parts {
-		name, ok := strings.CutPrefix(part, "@")
-		if !ok {
-			continue
-		}
-		id, ok := names[name]
-		if !ok {
-			return "", fmt.Errorf("@%s names no earlier insert in the batch", name)
-		}
-		parts[i] = id
+	id, ok := names[name]
+	if !ok {
+		return "", fmt.Errorf("@%s names no earlier insert in the batch", name)
 	}
-	if list {
-		return cells.JoinList(parts), nil
-	}
-	return parts[0], nil
+	return id, nil
 }
 
 func Write(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, b Batch) ([]string, error) {
@@ -170,7 +160,7 @@ func stageWrite(s *Store, tx *store.Tx, w Edit, where string, names map[string]s
 		}
 		return id, c, s.Stage(tx, t.Sheet, store.Insert(t.Name, row))
 	case w.Set != "" && w.Insert == "" && w.Delete == "" && w.Row == nil:
-		target, err := resolve(w.Set, false, names)
+		target, err := resolve(w.Set, names)
 		if err != nil {
 			return "", Change{}, access.Invalid("%s: %v", where, err)
 		}
@@ -198,7 +188,7 @@ func stageWrite(s *Store, tx *store.Tx, w Edit, where string, names map[string]s
 		}
 		return target, c, s.Stage(tx, t.Sheet, store.Update(t.Name, store.Row{"id": target}, set))
 	case w.Delete != "" && w.Insert == "" && w.Set == "" && w.Row == nil && w.Cells == nil:
-		target, err := resolve(w.Delete, false, names)
+		target, err := resolve(w.Delete, names)
 		if err != nil {
 			return "", Change{}, access.Invalid("%s: %v", where, err)
 		}

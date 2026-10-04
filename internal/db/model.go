@@ -219,16 +219,10 @@ func indexRows(t *Table, rows []store.Row) (*Rows, error) {
 }
 
 func references(c Column, cell string) []string {
-	switch c.Kind {
-	case Ref:
-		if cell == "" {
-			return nil
-		}
-		return []string{cell}
-	case Refs:
-		return cells.SplitList(cell)
+	if c.Kind != Ref || cell == "" {
+		return nil
 	}
-	return nil
+	return []string{cell}
 }
 
 func describeUnique(t *Table, row store.Row) string {

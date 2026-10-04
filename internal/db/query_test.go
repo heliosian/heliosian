@@ -146,7 +146,7 @@ func TestRun(t *testing.T) {
 		{"", `(from GROUP (where (>= start today)))`, "id", []string{"grp00000000040"}},
 		{"", `(from GROUP (where (< end now)))`, "id", nil},
 		{"", `(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020")))))`, "id", []string{"per00000000001", "per00000000002"}},
-		{"", `(from COLLECTION (where (= groups "grp00000000010")))`, "token", []string{"fed00000000001"}},
+		{"", `(from COLLECTION @c (where (exists COLLECTION_GROUP (= collection @c) (= group "grp00000000010"))))`, "token", []string{"fed00000000001"}},
 		{"", `(from PERSON (where (not hidden)))`, "id", []string{"per00000000001", "per00000000002", "per00000000003", "per00000000004"}},
 		{"", `(from PERSON (where (= vc_classroom.name "Hummingbirds")))`, "id", []string{"per00000000001"}},
 		{"", `(from MEMBER (where (= guest_of.name_short "Rowan")))`, "person", []string{"per00000000004"}},
@@ -189,7 +189,6 @@ func TestValueSetMatchesEquality(t *testing.T) {
 		Date:  {"2026-09-24", "2026-09-25"},
 		Bool:  {"Yes", "No", "true"},
 		Ref:   {"per00000000001", "per00000000002", ""},
-		Refs:  {"per00000000001, per00000000002", "per00000000002", "per00000000003"},
 	}
 	moments := []string{"2026-09-24 00:00", "2026-09-24 16:00"}
 	values := func(k Kind) []value {
@@ -204,7 +203,7 @@ func TestValueSetMatchesEquality(t *testing.T) {
 		}
 		return out
 	}
-	pairs := [][2]Kind{{Text, Text}, {Order, Order}, {Order, Text}, {Text, Order}, {Int, Int}, {Int, Money}, {Date, Date}, {Bool, Bool}, {Ref, Ref}, {Ref, Refs}, {Refs, Ref}, {Refs, Refs}}
+	pairs := [][2]Kind{{Text, Text}, {Order, Order}, {Order, Text}, {Text, Order}, {Int, Int}, {Int, Money}, {Date, Date}, {Bool, Bool}, {Ref, Ref}}
 	for _, p := range pairs {
 		items := values(p[1])
 		set := newValueSet(p[0] == Order && p[1] == Order)
@@ -226,7 +225,7 @@ func TestInclude(t *testing.T) {
 	if len(r.Resources["MEMBER"]) != 3 || len(r.Resources["PERSON"]) != 3 || len(r.Resources["GROUP"]) != 1 {
 		t.Fatalf("resources %v", r.Resources)
 	}
-	r = runAs(t, m, "", `(from COLLECTION (include groups))`)
+	r = runAs(t, m, "", `(from COLLECTION_GROUP (include group))`)
 	if len(r.Resources["GROUP"]) != 2 {
 		t.Fatalf("resources %v", r.Resources)
 	}

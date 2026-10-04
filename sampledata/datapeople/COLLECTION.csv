@@ -1,2 +1,2 @@
-id,person,name,emoji,groups,order,default,token
-col00000000001,per00000000002,My Heliosian,,"grp00000000010, grp00000000060",i,Yes,fed00000000001
+id,person,name,emoji,order,default,token
+col00000000001,per00000000002,My Heliosian,,i,Yes,fed00000000001

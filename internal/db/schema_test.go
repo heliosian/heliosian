@@ -37,7 +37,7 @@ func TestSchemaHangsTogether(t *testing.T) {
 					t.Errorf("%s.%s and %s share prefix %s", table.Name, c.Name, owner, c.Prefix)
 				}
 				owners[c.Prefix] = table.Name + "." + c.Name
-			case Ref, Refs:
+			case Ref:
 				if c.Target == "" {
 					continue
 				}
@@ -141,14 +141,14 @@ func TestCheck(t *testing.T) {
 }
 
 func TestCheckRefs(t *testing.T) {
-	view, _ := Lookup("COLLECTION")
-	row := map[string]string{"id": "colX7pQ2m9KdLr", "token": "fedX7pQ2m9KdLr", "person": "perX7pQ2m9KdLr", "groups": "grpX7pQ2m9KdLr, grpY7pQ2m9KdLr"}
+	view, _ := Lookup("COLLECTION_GROUP")
+	row := map[string]string{"id": "clgX7pQ2m9KdLr", "collection": "colX7pQ2m9KdLr", "clause": "1", "relation": "under", "group": "grpX7pQ2m9KdLr"}
 	if err := view.Check(row); err != nil {
 		t.Fatal(err)
 	}
-	row["groups"] = "grpX7pQ2m9KdLr, perY7pQ2m9KdLr"
+	row["group"] = "perY7pQ2m9KdLr"
 	if err := view.Check(row); err == nil {
-		t.Fatal("Check accepted a person among groups")
+		t.Fatal("Check accepted a person as the group")
 	}
 }
 

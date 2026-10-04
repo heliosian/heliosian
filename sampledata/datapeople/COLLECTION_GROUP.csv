@@ -1,0 +1,3 @@
+id,collection,clause,relation,group
+clg00000000001,col00000000001,1,for,grp00000000010
+clg00000000002,col00000000001,2,under,grp00000000060

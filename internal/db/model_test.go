@@ -39,7 +39,7 @@ func TestSampleLoads(t *testing.T) {
 	if n := len(m.Table("MEMBER").Referencing("group", "grp00000000040")); n != 3 {
 		t.Fatalf("the picnic has %d member rows", n)
 	}
-	if n := len(m.Table("COLLECTION").Referencing("groups", "grp00000000010")); n != 1 {
+	if n := len(m.Table("COLLECTION_GROUP").Referencing("group", "grp00000000010")); n != 1 {
 		t.Fatalf("%d collections name the Hummingbirds", n)
 	}
 	if row, ok := m.Table("MEMBER").Find("grp00000000020", "per00000000002"); !ok || row["member"] != "yes" || row["id"] != "mem00000000010" {

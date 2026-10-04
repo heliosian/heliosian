@@ -54,13 +54,6 @@ func (c Column) check(raw string) error {
 		return nil
 	case Ref:
 		return c.reference(raw)
-	case Refs:
-		for _, item := range strings.Split(raw, ",") {
-			if err := c.reference(strings.TrimSpace(item)); err != nil {
-				return err
-			}
-		}
-		return nil
 	case Bool:
 		_, err := cells.YesNo(v, false)
 		return err

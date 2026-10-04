@@ -13,7 +13,7 @@ import (
 type schema = map[string]any
 
 var kindNames = map[Kind]string{
-	Text: "text", Enum: "enum", ID: "id", Ref: "ref", Refs: "refs", Bool: "bool", Int: "int", Money: "money",
+	Text: "text", Enum: "enum", ID: "id", Ref: "ref", Bool: "bool", Int: "int", Money: "money",
 	Float: "float", Date: "date", Moment: "moment", Blob: "blob", Order: "order", Email: "email", URL: "url",
 }
 
@@ -61,9 +61,6 @@ func cellSchema(c Column) schema {
 		out["x-relation"] = c.Target
 		out["pattern"] = "^$|" + idPattern(prefixOf(c.Target))
 		notes = append(notes, "A "+c.Target+" ID.")
-	case Refs:
-		out["x-relation"] = c.Target
-		notes = append(notes, c.Target+" IDs, comma separated.")
 	case Bool:
 		out["enum"] = []string{"", "Yes", "No"}
 	case Int:

@@ -522,16 +522,16 @@ func (cx *compiler) compare(s *sexp, op string, sc *scope) (cond, error) {
 		return cond{}, err
 	}
 	ordered := op != "=" && op != "!="
-	if ordered && (a.t.class == classRow || a.t.class == classBool || a.t.list || b.t.list) {
+	if ordered && (a.t.class == classRow || a.t.class == classBool) {
 		return cond{}, s.errorf("%s orders numbers, dates and text, not %s", op, a.t)
 	}
 	out := cond{}
 	switch op {
 	case "=":
 		out.eval = func(f *frame) bool { return equalValues(a.eval(f), b.eval(f)) }
-		if a.direct != "" && !b.local && a.t.class == classRow && !a.t.list {
+		if a.direct != "" && !b.local && a.t.class == classRow {
 			out.probeCol, out.probe = a.direct, &b
-		} else if b.direct != "" && !a.local && b.t.class == classRow && !b.t.list {
+		} else if b.direct != "" && !a.local && b.t.class == classRow {
 			out.probeCol, out.probe = b.direct, &a
 		}
 	case "!=":
@@ -627,7 +627,7 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 		if err != nil {
 			return nil, typ{}, err
 		}
-		if g.lit != nil || g.t.class != classRow || g.t.table == "" || g.t.list {
+		if g.lit != nil || g.t.class != classRow || g.t.table == "" {
 			return nil, typ{}, s.errorf("ancestors takes a row")
 		}
 		table, _ := Lookup(g.t.table)
@@ -641,7 +641,7 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 			if v.blank {
 				return out
 			}
-			for id := v.s; id != "" && !out.scalar[id]; {
+			for id := v.s; id != "" && !out.keys[id]; {
 				out.add(value{kind: ID, s: id})
 				row, ok := f.run.table(table.Name).Get(id)
 				if !ok {
@@ -946,21 +946,15 @@ func compileInclude(s *sexp, start *Table) (*pathSpec, error) {
 	out := &pathSpec{}
 	table := start
 	for _, seg := range strings.Split(s.text, ".") {
-		if table == nil {
-			return nil, s.errorf("%s follows past a list of references", s.text)
-		}
 		c, err := columnNamed(table, seg, s)
 		if err != nil {
 			return nil, err
 		}
-		if (c.Kind != Ref && c.Kind != Refs) || c.Target == "" {
+		if c.Kind != Ref || c.Target == "" {
 			return nil, s.errorf("%s.%s is not a reference to include", table.Name, seg)
 		}
 		out.steps = append(out.steps, c)
 		table, _ = Lookup(c.Target)
-		if c.Kind == Refs {
-			table = nil
-		}
 	}
 	return out, nil
 }
@@ -1055,20 +1049,19 @@ func (r *run) includePath(guarded bool, row store.Row, steps []Column, into map[
 	}
 	c := steps[0]
 	target := r.table(c.Target)
-	for _, id := range cells.SplitList(row[c.Name]) {
-		next, ok := target.Get(id)
-		if !ok || (guarded && !r.readable(target.Table(), next)) {
-			continue
-		}
-		if guarded {
-			next = r.redact(target.Table(), next)
-		}
-		if into[c.Target] == nil {
-			into[c.Target] = map[string]store.Row{}
-		}
-		into[c.Target][id] = next
-		r.includePath(guarded, next, steps[1:], into)
+	id := row[c.Name]
+	next, ok := target.Get(id)
+	if id == "" || !ok || (guarded && !r.readable(target.Table(), next)) {
+		return
 	}
+	if guarded {
+		next = r.redact(target.Table(), next)
+	}
+	if into[c.Target] == nil {
+		into[c.Target] = map[string]store.Row{}
+	}
+	into[c.Target][id] = next
+	r.includePath(guarded, next, steps[1:], into)
 }
 
 func wallClock(t time.Time) time.Time {

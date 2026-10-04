@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"heliosian/internal/access"
-	"heliosian/internal/cells"
 	"heliosian/internal/store"
 )
 
@@ -171,7 +170,11 @@ const policySource = `
 ; the viewer's own collections
 (read COLLECTION (= person @viewer))
 ; every column of a collection
-(read COLLECTION (id person name emoji groups order default token) true)
+(read COLLECTION (id person name emoji order default token) true)
+; what the viewer's own collections are made from
+(read COLLECTION_GROUP (= collection.person @viewer))
+; every column of what a collection is made from
+(read COLLECTION_GROUP (id collection clause relation group) true)
 ; the viewer's own bug reports and ideas
 (read REPORT (= added_by @viewer))
 ; every column of a bug report or idea
@@ -1292,19 +1295,8 @@ func (r *run) guardedCell(t *Table, row store.Row, c Column) string {
 	if raw == "" || !r.columnReadable(t, row, c) {
 		return ""
 	}
-	switch c.Kind {
-	case Ref:
-		if !r.idReadable(raw) {
-			return ""
-		}
-	case Refs:
-		kept := []string{}
-		for _, id := range cells.SplitList(raw) {
-			if r.idReadable(id) {
-				kept = append(kept, id)
-			}
-		}
-		return cells.JoinList(kept)
+	if c.Kind == Ref && !r.idReadable(raw) {
+		return ""
 	}
 	return raw
 }

@@ -12,7 +12,6 @@ const (
 	Enum
 	ID
 	Ref
-	Refs
 	Bool
 	Int
 	Money
@@ -129,10 +128,6 @@ func token(name, prefix string) Column {
 
 func ref(name, target string) Column {
 	return Column{Name: name, Kind: Ref, Target: target}
-}
-
-func refs(name, target string) Column {
-	return Column{Name: name, Kind: Refs, Target: target}
 }
 
 func enum(name string, values ...Value) Column {
@@ -308,16 +303,30 @@ var Tables = []Table{
 		Name:        "COLLECTION",
 		Sheet:       PeopleSheet,
 		Unique:      []string{"token"},
-		Description: "A calendar a person saved in When: the classrooms and categories it filters by. Each is also a personal feed address.",
+		Description: "A set of things a person keeps: a calendar they saved in When, things they set aside. What it holds is its COLLECTION_GROUP rows. Each is also a personal feed address.",
 		Columns: []Column{
 			ident(CollectionPrefix),
-			ref("person", "PERSON").required().about("Whose calendar it is."),
+			ref("person", "PERSON").required().about("Whose collection it is."),
 			col("name", Text).about("What they call it."),
 			col("emoji", Text).about("The mark they gave it."),
-			refs("groups", "GROUP").about("The classrooms and categories it shows; none means every one."),
-			col("order", Order).about("Its place among their saved calendars."),
+			col("order", Order).about("Its place among their collections."),
 			col("default", Bool).about("The calendar When opens to for them."),
 			token("token", FeedTokenPrefix).about("The secret in its feed address. Minted by the server."),
+		},
+	},
+	{
+		Name:        "COLLECTION_GROUP",
+		Sheet:       PeopleSheet,
+		Unique:      []string{"collection", "clause", "relation", "group"},
+		Description: "A group a collection is made from, and how a thing must stand to it. Rows sharing a clause are alternatives; a thing is in the collection when it meets every clause, and a collection with no rows holds everything.",
+		Columns: []Column{
+			ident(CollectionGroupPrefix),
+			ref("collection", "COLLECTION").required().about("The collection."),
+			col("clause", Int).required().about("The clause it is an alternative in."),
+			enum("relation",
+				v("under", "the group itself or anything under it through parent"),
+				v("for", "anything one of whose rules names the group as target or within")).required().about("How a thing must stand to the group."),
+			ref("group", "GROUP").required().about("The group."),
 		},
 	},
 	{
