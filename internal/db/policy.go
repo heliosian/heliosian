@@ -992,9 +992,9 @@ const policySource = `
 ; remove a merged guest's membership that the guest it joins already holds
 (delete MEMBER (and (system "import") (= @old.person.source "guest")))
 ; the group that runs a tag, list, activity or party, as the old sheets have it
-(set GROUP.managed_by (and (system "import") (in @old.kind "group" "activity" "party")))
-; whether someone is in a tag, list, admins group, activity or party, as the old sheets have it
-(set MEMBER.member (and (system "import") (in @old.group.kind "group" "admins" "activity" "party")))
+(set GROUP.managed_by (and (system "import") (in @old.kind "group" "activity" "party" "event")))
+; whether someone is in a tag, list, admins group, activity, party or event, as the old sheets have it
+(set MEMBER.member (and (system "import") (in @old.group.kind "group" "admins" "activity" "party" "event")))
 ; whether a volunteer co-chairs an activity, as the old sheet has it
 (set MEMBER.lead (and (system "import") (= @old.group.kind "activity")))
 ; move a merged guest's address to the guest it joins
@@ -1007,6 +1007,58 @@ const policySource = `
 (delete PERSON (and (system "import") (= @old.source "guest")))
 ; remove an old ID naming a row the sync removed
 (delete ALIAS (system "import"))
+; a hand-added event's status, as the old calendar has it
+(set GROUP.status (and (system "import") (calendar_kind @old)))
+; whether a hand-added event is listed, as the old calendar has it
+(set GROUP.listed (and (system "import") (calendar_kind @old)))
+; who sees an event, as the old calendar has it
+(set GROUP.visible_to (and (system "import") (calendar_kind @old)))
+; who sees an event's guests, as the old calendar has it
+(set GROUP.members_visible_to (and (system "import") (calendar_kind @old)))
+; a hand-added event's link, as the old calendar has it
+(set GROUP.url (and (system "import") (calendar_kind @old)))
+; an event's friendly address, as the old calendar has it
+(set GROUP.slug (and (system "import") (calendar_kind @old)))
+; who may add guests to an event, as the old calendar has it
+(set GROUP.adding (and (system "import") (calendar_kind @old)))
+; an event's flyer, as the old calendar has it
+(set GROUP.flyer (and (system "import") (calendar_kind @old)))
+; who added a hand-added event, as the old calendar has it
+(set GROUP.added_by (and (system "import") (calendar_kind @old)))
+; when a hand-added event was added, as the old calendar has it
+(set GROUP.added (and (system "import") (calendar_kind @old)))
+; who said they are coming to an event, party or activity, as the old calendar has it
+(set GROUP.rsvp_yes (and (system "import") (in @old.kind "event" "party" "activity")))
+; who said they are not coming to an event, party or activity, as the old calendar has it
+(set GROUP.rsvp_no (and (system "import") (in @old.kind "event" "party" "activity")))
+; a guest on an event's list or someone kept off it, as the old calendar has it
+(insert MEMBER (and (system "import") (calendar_kind @new.group)))
+; when someone first opened their invitation, as the old calendar has it
+(set MEMBER.opened (and (system "import") (in @old.group.kind "event" "party" "activity")))
+; every invitation, to compare with the old calendar's
+(read MESSAGE (and (system "import") (= kind "invitation")))
+; an invitation the old calendar sent or holds unsent
+(insert MESSAGE (and (system "import") (= @new.kind "invitation")))
+; every copy of an invitation, to compare with the old calendar's
+(read RECIPIENT (and (system "import") (= message.kind "invitation")))
+; a copy of an invitation the old calendar sent or holds unsent
+(insert RECIPIENT (and (system "import") (= @new.message.kind "invitation")))
+; every collection, to compare with the old calendar's saved calendars and hidden events
+(read COLLECTION (system "import"))
+; a saved calendar or set of hidden events from the old calendar
+(insert COLLECTION (system "import"))
+; a saved calendar's name, as the old calendar has it
+(set COLLECTION.name (system "import"))
+; a saved calendar's mark, as the old calendar has it
+(set COLLECTION.emoji (system "import"))
+; a saved calendar's place, as the old calendar has it
+(set COLLECTION.order (system "import"))
+; whether a saved calendar is the one When opens to, as the old calendar has it
+(set COLLECTION.default (system "import"))
+; every collection's groups, to compare with the old calendar's filters
+(read COLLECTION_GROUP (system "import"))
+; a saved calendar's filter or a hidden event from the old calendar
+(insert COLLECTION_GROUP (system "import"))
 `
 
 type policySet struct {
