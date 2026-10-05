@@ -487,6 +487,31 @@ func (w *countingWriter) Delete(app, table string, match map[string]string) erro
 	return w.Dir.Delete(app, table, match)
 }
 
+func (w *countingWriter) DeleteMany(app, table, keyColumn string, keys []string) error {
+	w.calls = append(w.calls, "delete "+table)
+	return w.Dir.DeleteMany(app, table, keyColumn, keys)
+}
+
+func TestConsecutiveDeletesAreOneCall(t *testing.T) {
+	f := newFixture(t)
+	writer := &countingWriter{Dir: f.dir}
+	s, err := New([]Part[counts]{part()}, consent, f.dir, writer, f.queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.CommitAndWait(context.Background(), access.System("job"), "app",
+		Delete("Uses", Row{"Thing": "boot"}),
+		Delete("Uses", Row{"Thing": "hat"}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	equal(t, "calls", writer.calls, []string{"delete Uses", "insert Change Log"})
+	if rows := f.rows(t, "Uses"); len(rows) != 0 {
+		t.Fatalf("uses left: %v", rows)
+	}
+}
+
 func TestWritesToOneTabAreBatched(t *testing.T) {
 	f := newFixture(t)
 	writer := &countingWriter{Dir: f.dir}

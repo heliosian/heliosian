@@ -301,6 +301,13 @@ func (b *Book) batches(writes []Op) [][]Op {
 }
 
 func (b *Book) joinable(out [][]Op, w Op) int {
+	if w.kind == remove {
+		last := len(out) - 1
+		if last >= 0 && len(w.match) == 1 && out[last][0].kind == remove && out[last][0].tab == w.tab && slices.Equal(slices.Collect(maps.Keys(out[last][0].match)), slices.Collect(maps.Keys(w.match))) {
+			return last
+		}
+		return -1
+	}
 	if w.kind != insert && w.kind != keyed {
 		return -1
 	}
@@ -394,7 +401,15 @@ func (b *Book) put(run []Op) error {
 		}
 		return b.writer.SetMany(b.app, op.tab, column, cells)
 	case remove:
-		return b.writer.Delete(b.app, op.tab, op.match)
+		if len(op.match) != 1 {
+			return b.writer.Delete(b.app, op.tab, op.match)
+		}
+		column := slices.Collect(maps.Keys(op.match))[0]
+		keys := []string{}
+		for _, w := range run {
+			keys = append(keys, w.match[column])
+		}
+		return b.writer.DeleteMany(b.app, op.tab, column, keys)
 	case update:
 		return b.writer.Update(b.app, op.tab, op.match, op.cells)
 	}

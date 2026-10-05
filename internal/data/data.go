@@ -42,6 +42,7 @@ type Writer interface {
 	Update(app, table string, match, cells map[string]string) error
 	SetMany(app, table, keyColumn string, cells map[string]map[string]string) error
 	Delete(app, table string, match map[string]string) error
+	DeleteMany(app, table, keyColumn string, keys []string) error
 }
 
 type table struct {
@@ -263,6 +264,39 @@ func (d *Dir) Delete(app, name string, match map[string]string) error {
 	}
 	if len(kept) == len(t.rows) {
 		return fmt.Errorf("table %s has no row matching %v", name, match)
+	}
+	t.rows = kept
+	return nil
+}
+
+func (d *Dir) DeleteMany(app, name, keyColumn string, keys []string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	t, err := d.load(app, name)
+	if err != nil {
+		return err
+	}
+	if err := t.has(name, map[string]string{keyColumn: ""}); err != nil {
+		return err
+	}
+	wanted := map[string]bool{}
+	for _, key := range keys {
+		wanted[Key(key)] = true
+	}
+	seen := map[string]bool{}
+	kept := []map[string]string{}
+	for _, row := range t.rows {
+		key := Key(row[keyColumn])
+		if wanted[key] {
+			seen[key] = true
+			continue
+		}
+		kept = append(kept, row)
+	}
+	for _, key := range keys {
+		if !seen[Key(key)] {
+			return fmt.Errorf("table %s has no row matching %s %q", name, keyColumn, key)
+		}
 	}
 	t.rows = kept
 	return nil

@@ -361,6 +361,17 @@ func (s *Sheet) deleteOnce(app, table string, match map[string]string, retry boo
 }
 
 func (s *Sheet) DeleteMany(app, table, keyColumn string, keys []string) error {
+	for attempt := 0; ; attempt++ {
+		err := s.deleteManyOnce(app, table, keyColumn, keys, attempt > 0)
+		if err == nil || !unavailable(err) || attempt >= len(retryWaits) {
+			return err
+		}
+		slog.Warn("sheets failed a delete; reading the tab again before retrying", "table", table, "error", err, "wait", retryWaits[attempt])
+		time.Sleep(retryWaits[attempt])
+	}
+}
+
+func (s *Sheet) deleteManyOnce(app, table, keyColumn string, keys []string, retry bool) error {
 	g, err := s.read(app, table)
 	if err != nil {
 		return err
@@ -399,8 +410,8 @@ func (s *Sheet) DeleteMany(app, table, keyColumn string, keys []string) error {
 		}})
 	}
 	for _, key := range keys {
-		if !seen[key] {
-			return fmt.Errorf("table %s has no row with %s %q", table, keyColumn, key)
+		if !seen[key] && !retry {
+			return fmt.Errorf("table %s has no row matching %s %q", table, keyColumn, key)
 		}
 	}
 	if len(requests) == 0 {
