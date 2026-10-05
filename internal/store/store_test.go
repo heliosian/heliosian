@@ -514,6 +514,46 @@ func TestWritesToOneTabAreBatched(t *testing.T) {
 	equal(t, "sheet", got, []string{"hat|green|large", "boot|black|small", "beret||", "sock||"})
 }
 
+func TestWaitingCommitsAreWrittenTogether(t *testing.T) {
+	f := newFixture(t)
+	writer := &countingWriter{Dir: f.dir}
+	s, err := New([]Part[counts]{part()}, consent, f.dir, writer, f.queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	f.queue.Add(func() { <-release })
+	dones := []<-chan struct{}{}
+	for _, ops := range [][]Op{
+		{Insert("Things", Row{"Name": "cap"}), Insert("Uses", Row{"Thing": "cap", "By": "cy"})},
+		{Insert("Things", Row{"Name": "sock"}), Insert("Uses", Row{"Thing": "sock", "By": "cy"})},
+		{Update("Things", Row{"Name": "hat"}, Row{"Color": "green"})},
+	} {
+		done, err := s.queue.Transact(context.Background(), access.System("job"), func(tx *Tx) error { return s.Stage(tx, "app", ops...) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		dones = append(dones, done)
+	}
+	close(release)
+	for _, done := range dones {
+		<-done
+	}
+	equal(t, "calls", writer.calls, []string{"insert Things", "insert Uses", "setmany Things", "insert Change Log"})
+	things, uses := []string{}, []string{}
+	for _, row := range f.rows(t, "Things") {
+		things = append(things, row["Name"]+"|"+row["Color"])
+	}
+	for _, row := range f.rows(t, "Uses") {
+		uses = append(uses, row["Thing"]+"|"+row["By"])
+	}
+	equal(t, "things", things, []string{"hat|green", "boot|black", "cap|", "sock|"})
+	equal(t, "uses", uses, []string{"hat|ann", "hat|bo", "boot|ann", "cap|cy", "sock|cy"})
+	if n := len(f.log(t)); n != 5 {
+		t.Fatalf("the change log holds %d entries", n)
+	}
+}
+
 func TestBatchingReachesPastOtherTabs(t *testing.T) {
 	for _, c := range []struct {
 		name   string

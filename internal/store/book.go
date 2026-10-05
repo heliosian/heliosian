@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"heliosian/internal/auth"
@@ -99,6 +100,15 @@ type Book struct {
 	source  data.Source
 	writer  data.Writer
 	queue   *Queue
+
+	mu        sync.Mutex
+	waiting   []waitingWrite
+	scheduled bool
+}
+
+type waitingWrite struct {
+	plan Plan
+	done chan struct{}
 }
 
 type Plan struct {
@@ -220,11 +230,30 @@ func (b *Book) Plan(ctx context.Context, tables Tables, actor string, ops []Op) 
 
 func (b *Book) Write(p Plan) <-chan struct{} {
 	done := make(chan struct{})
-	b.queue.addWrite(func() {
-		b.write(p.writes, p.log)
-		close(done)
-	})
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.waiting = append(b.waiting, waitingWrite{plan: p, done: done})
+	if !b.scheduled {
+		b.scheduled = true
+		b.queue.addWrite(b.flush)
+	}
 	return done
+}
+
+func (b *Book) flush() {
+	b.mu.Lock()
+	taken := b.waiting
+	b.waiting, b.scheduled = nil, false
+	b.mu.Unlock()
+	writes, log := []Op{}, []Row{}
+	for _, w := range taken {
+		writes = append(writes, w.plan.writes...)
+		log = append(log, w.plan.log...)
+	}
+	b.write(writes, log)
+	for _, w := range taken {
+		close(w.done)
+	}
 }
 
 func (b *Book) write(writes []Op, log []Row) {
