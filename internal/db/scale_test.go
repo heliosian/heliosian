@@ -94,7 +94,7 @@ func benchQuery(b *testing.B, src string) {
 	}
 	env := Env{Viewer: scaleViewer, Now: testNow}
 	for b.Loop() {
-		m.Run(q, env)
+		m.Run(b.Context(), q, env)
 	}
 }
 

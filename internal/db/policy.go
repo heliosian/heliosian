@@ -3,9 +3,11 @@ package db
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/store"
+	"heliosian/internal/trace"
 )
 
 const policySource = `
@@ -1193,12 +1195,17 @@ const policySource = `
 (set REPORT.handled_by (system "import"))
 `
 
+type grant struct {
+	cond    cond
+	comment string
+}
+
 type policySet struct {
-	read    map[string][]cond
+	read    map[string][]grant
 	open    map[string]bool
-	insert  map[string][]cond
-	set     map[string][]cond
-	delete  map[string][]cond
+	insert  map[string][]grant
+	set     map[string][]grant
+	delete  map[string][]grant
 	clauses []Clause
 }
 
@@ -1270,7 +1277,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 		return nil, nil, err
 	}
 	cx := &compiler{policy: true, defines: map[string]*define{}, used: map[string]bool{}}
-	out := &policySet{read: map[string][]cond{}, open: map[string]bool{}, insert: map[string][]cond{}, set: map[string][]cond{}, delete: map[string][]cond{}, clauses: []Clause{}}
+	out := &policySet{read: map[string][]grant{}, open: map[string]bool{}, insert: map[string][]grant{}, set: map[string][]grant{}, delete: map[string][]grant{}, clauses: []Clause{}}
 	for i, form := range forms {
 		head := form.head()
 		described := Clause{Section: notes[i].section, Comment: notes[i].comment, Kind: head, Form: form.render(0)}
@@ -1284,7 +1291,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 			continue
 		}
 		if head == "read" && len(form.list) == 4 {
-			c, err := cx.columnGrant(form, out)
+			c, err := cx.columnGrant(form, notes[i].comment, out)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -1316,7 +1323,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 			}
 		}
 		var sc *scope
-		var into map[string][]cond
+		var into map[string][]grant
 		switch {
 		case head == "read" && !hasColumn:
 			sc, into = &scope{table: t, name: "row"}, out.read
@@ -1333,7 +1340,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		into[form.list[1].text] = append(into[form.list[1].text], c)
+		into[form.list[1].text] = append(into[form.list[1].text], grant{cond: c, comment: notes[i].comment})
 		described.Table, described.Column, described.Condition, described.cond = tableName, column, form.list[2].render(0), c
 		if err := cx.parts(&described, form.list[2], sc); err != nil {
 			return nil, nil, err
@@ -1355,7 +1362,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 	return out, cx.defines, nil
 }
 
-func (cx *compiler) columnGrant(form *sexp, out *policySet) (cond, error) {
+func (cx *compiler) columnGrant(form *sexp, comment string, out *policySet) (cond, error) {
 	if form.list[1].isList || form.list[1].kind != atomName || !form.list[2].isList || len(form.list[2].list) == 0 {
 		return cond{}, form.errorf("a column grant is (read TABLE (column…) condition)")
 	}
@@ -1380,7 +1387,7 @@ func (cx *compiler) columnGrant(form *sexp, out *policySet) (cond, error) {
 			return cond{}, item.errorf("%s.%s is private, kept from everyone but the import by the consent step", t.Name, col.Name)
 		}
 		key := t.Name + "." + col.Name
-		out.read[key] = append(out.read[key], c)
+		out.read[key] = append(out.read[key], grant{cond: c, comment: comment})
 		if open {
 			out.open[key] = true
 		}
@@ -1413,21 +1420,40 @@ func (cx *compiler) define(form *sexp) error {
 	return nil
 }
 
-func holds(conds []cond, f *frame) bool {
-	for _, c := range conds {
-		if c.eval(f) {
+func holds(grants []grant, f *frame, tally *trace.Span) bool {
+	for _, g := range grants {
+		clause := tally.Tally(g.comment)
+		start := time.Now()
+		held := g.cond.eval(f)
+		clause.Add(time.Since(start))
+		if held {
+			clause.Inc("held")
 			return true
 		}
 	}
 	return false
 }
 
+func (r *run) check(name string, grants []grant, f *frame) bool {
+	tally := r.policy.Tally(name)
+	start := time.Now()
+	held := holds(grants, f, tally)
+	took := time.Since(start)
+	tally.Add(took)
+	r.policy.Add(took)
+	if held {
+		tally.Inc("held")
+	}
+	return held
+}
+
 func (r *run) readable(t *Table, row store.Row) bool {
 	key := t.Name + "\x00" + row["id"]
 	if seen, ok := r.rows[key]; ok {
+		r.policy.Tally(t.Name).Inc("cached")
 		return seen
 	}
-	ok := holds(policies.read[t.Name], &frame{table: t, row: row, name: "row", run: r})
+	ok := r.check(t.Name, policies.read[t.Name], &frame{table: t, row: row, name: "row", run: r})
 	r.rows[key] = ok
 	return ok
 }
@@ -1441,7 +1467,7 @@ func (r *run) columnReadable(t *Table, row store.Row, c Column) bool {
 	if seen, ok := r.columns[key]; ok {
 		return seen
 	}
-	held := holds(policies.read[t.Name+"."+c.Name], &frame{table: t, row: row, name: "row", run: r})
+	held := r.check(t.Name+" columns", policies.read[t.Name+"."+c.Name], &frame{table: t, row: row, name: "row", run: r})
 	r.columns[key] = held
 	return held
 }
@@ -1510,11 +1536,11 @@ func (m *Model) Authorize(env Env, c Change) error {
 	old := &frame{table: t, row: c.Old, name: "old", run: r}
 	switch {
 	case c.Old == nil:
-		if !holds(policies.insert[t.Name], &frame{table: t, row: c.New, name: "new", run: r}) {
+		if !holds(policies.insert[t.Name], &frame{table: t, row: c.New, name: "new", run: r}, nil) {
 			return access.Forbidden("you may not add to %s", t.Name)
 		}
 	case c.New == nil:
-		if !holds(policies.delete[t.Name], old) {
+		if !holds(policies.delete[t.Name], old, nil) {
 			return access.Forbidden("you may not remove from %s", t.Name)
 		}
 	default:
@@ -1523,7 +1549,7 @@ func (m *Model) Authorize(env Env, c Change) error {
 			if col.Generated || strings.TrimSpace(c.Old[col.Name]) == strings.TrimSpace(c.New[col.Name]) {
 				continue
 			}
-			if !holds(policies.set[t.Name+"."+col.Name], changed) {
+			if !holds(policies.set[t.Name+"."+col.Name], changed, nil) {
 				return access.Forbidden("you may not change %s.%s", t.Name, col.Name)
 			}
 		}

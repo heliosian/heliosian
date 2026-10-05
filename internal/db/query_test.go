@@ -120,7 +120,7 @@ var testNow = time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 
 func runAs(t *testing.T, m *Model, viewer, src string) Result {
 	t.Helper()
-	return m.Run(unfiltered(t, src), Env{Viewer: viewer, Now: testNow})
+	return m.Run(t.Context(), unfiltered(t, src), Env{Viewer: viewer, Now: testNow})
 }
 
 func ids(rows []store.Row, column string) []string {

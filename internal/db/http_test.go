@@ -10,6 +10,7 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/store"
+	"heliosian/internal/trace"
 )
 
 const testImportKey = "test-import-key"
@@ -96,6 +97,56 @@ func TestServeQuery(t *testing.T) {
 		if out.Result[2] != "mem00000000015" || last["guest_of"] != "per00000000002" || last["price"] != "" {
 			t.Fatalf("%s: the guest's row %s reads %v", kind, out.Result[2], last)
 		}
+	}
+}
+
+func child(t *testing.T, s *trace.Span, name string) *trace.Span {
+	t.Helper()
+	for _, c := range s.Children {
+		if c.Name == name {
+			return c
+		}
+	}
+	t.Fatalf("%s has no %s among %d children", s.Name, name, len(s.Children))
+	return nil
+}
+
+func TestServeQueryTrace(t *testing.T) {
+	rec := send(t, sample(t), nil, "QUERY", "text/plain", "Rowan.Ashdown@example.org", picnicText)
+	var root trace.Span
+	if err := json.Unmarshal([]byte(rec.Header().Get("Trace")), &root); err != nil {
+		t.Fatalf("Trace header %q: %v", rec.Header().Get("Trace"), err)
+	}
+	if root.Name != "request" || root.CPU == nil {
+		t.Fatalf("root span %q", rec.Header().Get("Trace"))
+	}
+	child(t, &root, "parse")
+	child(t, &root, "encode")
+	run := child(t, &root, "run")
+	if run.Attrs["rows"] != float64(3) {
+		t.Fatalf("run attrs %v", run.Attrs)
+	}
+	if scan := child(t, run, "scan"); scan.Attrs["table"] != "MEMBER" {
+		t.Fatalf("scan attrs %v", scan.Attrs)
+	}
+	child(t, run, "sort")
+	if include := child(t, run, "include"); include.Count != 3 {
+		t.Fatalf("include ran %d times, want once per row", include.Count)
+	}
+	policy := child(t, run, "policy")
+	member := child(t, policy, "MEMBER")
+	if member.Count == 0 || member.Counts["held"] != 3 || len(member.Children) == 0 {
+		t.Fatalf("MEMBER policy tally %+v", member)
+	}
+	clauses := 0
+	for _, c := range member.Children {
+		clauses += c.Count
+	}
+	if clauses < member.Count {
+		t.Fatalf("%d clause runs under %d MEMBER checks", clauses, member.Count)
+	}
+	if policy.Count < member.Count {
+		t.Fatalf("policy counts %d checks, fewer than MEMBER's %d", policy.Count, member.Count)
 	}
 }
 

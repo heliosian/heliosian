@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"slices"
@@ -10,6 +11,7 @@ import (
 
 	"heliosian/internal/cells"
 	"heliosian/internal/store"
+	"heliosian/internal/trace"
 )
 
 type Query struct {
@@ -64,6 +66,7 @@ type run struct {
 	columns map[string]bool
 	exists  map[*scan]bool
 	selects map[*scan]*valueSet
+	policy  *trace.Span
 }
 
 type operand struct {
@@ -971,16 +974,25 @@ func (r *run) table(name string) *View {
 	return r.m.view(name, r.whole)
 }
 
-func (m *Model) Run(q *Query, env Env) Result {
+func (m *Model) Run(ctx context.Context, q *Query, env Env) Result {
+	_, span := trace.Start(ctx, "run")
+	defer span.End()
 	r := m.newRun(env)
+	r.policy = span.Tally("policy")
 	top := &frame{run: r}
+	scanned := span.Start("scan")
 	rows := []store.Row{}
 	q.scan.each(top, func(f *frame) bool {
 		rows = append(rows, f.row)
 		return true
 	})
+	scanned.Set("table", q.scan.table.Name)
+	scanned.Set("rows", len(rows))
+	scanned.End()
 	if len(q.order) > 0 {
+		sorting := span.Start("sort")
 		rows = q.sorted(rows, top)
+		sorting.End()
 	}
 	if q.limit > 0 && len(rows) > q.limit {
 		rows = rows[:q.limit]
@@ -988,16 +1000,22 @@ func (m *Model) Run(q *Query, env Env) Result {
 	table := q.scan.table.Name
 	out := Result{Table: table, IDs: []string{}, Resources: map[string]map[string]store.Row{table: {}}}
 	guarded := q.scan.guarded
+	redacting, including := span.Tally("redact"), span.Tally("include")
 	for _, row := range rows {
+		start := time.Now()
 		if guarded {
 			row = r.redact(q.scan.table, row)
 		}
+		redacting.Add(time.Since(start))
 		out.IDs = append(out.IDs, row["id"])
 		out.Resources[table][row["id"]] = row
+		start = time.Now()
 		for _, p := range q.include {
 			r.includePath(guarded, row, p.steps, out.Resources)
 		}
+		including.Add(time.Since(start))
 	}
+	span.Set("rows", len(out.IDs))
 	return out
 }
 

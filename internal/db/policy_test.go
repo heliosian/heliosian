@@ -21,7 +21,7 @@ const (
 
 func as(t *testing.T, s *Store, viewer, src string) []store.Row {
 	t.Helper()
-	return s.Model().Run(mustParse(t, src), Env{Viewer: viewer, Now: testNow}).Rows()
+	return s.Model().Run(t.Context(), mustParse(t, src), Env{Viewer: viewer, Now: testNow}).Rows()
 }
 
 func TestEveryTableHasAReadPolicy(t *testing.T) {
@@ -449,10 +449,10 @@ func TestOnlyTheImportSeesWithheldRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	q := mustParse(t, `(from PERSON (where (= id "per00000000001")))`)
-	if n := len(s.Model().Run(q, Env{System: importReader, Now: testNow}).IDs); n != 1 {
+	if n := len(s.Model().Run(t.Context(), q, Env{System: importReader, Now: testNow}).IDs); n != 1 {
 		t.Errorf("the import sees %d withheld students, want 1", n)
 	}
-	if n := len(s.Model().Run(q, Env{System: "other", Now: testNow}).IDs); n != 0 {
+	if n := len(s.Model().Run(t.Context(), q, Env{System: "other", Now: testNow}).IDs); n != 0 {
 		t.Errorf("another system reader sees %d withheld students, want 0", n)
 	}
 }

@@ -1,12 +1,15 @@
 package db
 
 import (
+	"bytes"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +18,7 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
+	"heliosian/internal/trace"
 )
 
 const (
@@ -79,6 +83,8 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 	registerExplain(mux, s, importKey, now)
 	mux.HandleFunc("GET /api/openapi.json", openapi)
 	mux.HandleFunc("QUERY /api/q", func(w http.ResponseWriter, r *http.Request) {
+		root := trace.New("request")
+		ctx := trace.With(r.Context(), root)
 		m := s.Model()
 		env, _, ok := caller(w, r, m, importKey, now())
 		if !ok {
@@ -88,6 +94,7 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 		if !ok {
 			return
 		}
+		_, parsing := trace.Start(ctx, "parse")
 		var q *Query
 		var err error
 		if kind == "text/plain" {
@@ -95,12 +102,13 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 		} else {
 			q, err = ParseJSON(raw)
 		}
+		parsing.End()
 		if err != nil {
 			serve.Error(w, r, access.Invalid("%v", err))
 			return
 		}
 		slog.InfoContext(r.Context(), "query", "viewer", env.Viewer, "system", env.System, "query", q.tree.flat())
-		result := m.Run(q, env)
+		result := m.Run(ctx, q, env)
 		out := answer{
 			Now:       env.Now.Format(cells.StampFormat),
 			Query:     q.String(),
@@ -110,7 +118,21 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 		if kind == "text/plain" {
 			out.Tree = q.Tree()
 		}
-		serve.Write(w, r, http.StatusOK, out)
+		_, encoding := trace.Start(ctx, "encode")
+		var buf bytes.Buffer
+		if err := json.NewEncoder(&buf).Encode(out); err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		encoding.Set("bytes", buf.Len())
+		encoding.End()
+		root.End()
+		w.Header().Set("Trace", root.Header())
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
+		if _, err := w.Write(buf.Bytes()); err != nil {
+			slog.ErrorContext(r.Context(), "write response", "path", r.URL.Path, "error", err)
+		}
 	})
 	mux.HandleFunc("POST /api/q", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), importKey, now())
