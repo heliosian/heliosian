@@ -4,14 +4,18 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
-	"sync"
+	"strings"
 	"time"
 
+	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/storage"
 	"github.com/chromedp/chromedp"
 
 	"heliosian/internal/capture"
@@ -21,18 +25,15 @@ import (
 )
 
 const (
-	pageTimeout  = time.Minute
+	fetchTimeout = time.Minute
+	bodyLimit    = 25 << 20
 	googleSignIn = "accounts.google.com"
 	signedInPage = "https://myaccount.google.com/"
 	stillToFetch = `(from DOCUMENT (where (and (= relation "linked") (= fetch "sign_in") (blank content))))`
+	accept       = "text/html,image/webp,image/png,image/jpeg,image/gif,*/*;q=0.8"
+	sendTries    = 4
+	sendWait     = 5 * time.Second
 )
-
-type page struct {
-	mu     sync.Mutex
-	id     network.RequestID
-	status int64
-	url    string
-}
 
 type answer struct {
 	Hash  string `json:"hash"`
@@ -40,40 +41,55 @@ type answer struct {
 	Why   string `json:"why"`
 }
 
-func (p *page) listen(ev any) {
-	e, ok := ev.(*network.EventResponseReceived)
-	if !ok || e.Type != network.ResourceTypeDocument {
-		return
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.id == "" {
-		p.id, p.status, p.url = e.RequestID, e.Response.Status, e.Response.URL
-	}
+type signedIn struct {
+	client    *http.Client
+	userAgent string
 }
 
-func (p *page) load(ctx context.Context, address string) ([]byte, int64, string, error) {
-	p.mu.Lock()
-	p.id = ""
-	p.mu.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, pageTimeout)
-	defer cancel()
-	if err := chromedp.Run(ctx, chromedp.Navigate(address)); err != nil {
-		return nil, 0, "", err
-	}
-	p.mu.Lock()
-	id, status, final := p.id, p.status, p.url
-	p.mu.Unlock()
-	if id == "" {
-		return nil, 0, "", errors.New("the page answered no document")
-	}
-	var body []byte
+func session(ctx context.Context) (signedIn, error) {
+	var cookies []*network.Cookie
+	var userAgent string
 	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		var err error
-		body, err = network.GetResponseBody(id).Do(ctx)
+		if cookies, err = storage.GetCookies().Do(ctx); err != nil {
+			return err
+		}
+		_, _, _, userAgent, _, err = browser.GetVersion().Do(ctx)
 		return err
 	}))
-	return body, status, final, err
+	if err != nil {
+		return signedIn{}, err
+	}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return signedIn{}, err
+	}
+	for _, c := range cookies {
+		u := &url.URL{Scheme: "https", Host: strings.TrimPrefix(c.Domain, "."), Path: c.Path}
+		cookie := &http.Cookie{Name: c.Name, Value: c.Value, Path: c.Path, Secure: c.Secure, HttpOnly: c.HTTPOnly}
+		if strings.HasPrefix(c.Domain, ".") {
+			cookie.Domain = c.Domain
+		}
+		jar.SetCookies(u, []*http.Cookie{cookie})
+	}
+	slog.Info("copied the capture browser's cookies", "cookies", len(cookies))
+	return signedIn{client: &http.Client{Jar: jar, Timeout: fetchTimeout}, userAgent: userAgent}, nil
+}
+
+func (s signedIn) get(address string) ([]byte, int, string, error) {
+	req, err := http.NewRequest(http.MethodGet, address, nil)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	req.Header.Set("Accept", accept)
+	req.Header.Set("User-Agent", s.userAgent)
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit+1))
+	return body, resp.StatusCode, resp.Request.URL.String(), err
 }
 
 func host(address string) string {
@@ -82,6 +98,20 @@ func host(address string) string {
 		return ""
 	}
 	return u.Host
+}
+
+func sendAgain(c qclient.Client, id string, body []byte, stop string) (answer, error) {
+	wait := sendWait
+	for try := 1; ; try++ {
+		got, err := send(c, id, body, stop)
+		var status *qclient.StatusError
+		if err == nil || try == sendTries || !errors.As(err, &status) || (status.Code != http.StatusTooManyRequests && status.Code < 500) {
+			return got, err
+		}
+		slog.Warn("send again", "document", id, "try", try, "in", wait, "error", err)
+		time.Sleep(wait)
+		wait *= 3
+	}
 }
 
 func send(c qclient.Client, id string, body []byte, stop string) (answer, error) {
@@ -120,13 +150,12 @@ func main() {
 		logging.Fatal("open tab", "error", err)
 	}
 	ctx, cancel := capture.Attach(tab)
-	defer cancel()
-	p := &page{}
-	chromedp.ListenTarget(ctx, p.listen)
-	if err := chromedp.Run(ctx, network.Enable()); err != nil {
-		logging.Fatal("watch the network", "error", err)
+	s, err := session(ctx)
+	cancel()
+	if err != nil {
+		logging.Fatal("copy the capture browser's session", "error", err)
 	}
-	if _, _, final, err := p.load(ctx, signedInPage); err != nil || host(final) == googleSignIn {
+	if _, _, final, err := s.get(signedInPage); err != nil || host(final) == googleSignIn {
 		logging.Fatal("sign in to google in the capture browser, then run this again", "page", final, "error", err)
 	}
 	a, err := c.QueryText(stillToFetch)
@@ -137,7 +166,7 @@ func main() {
 	counts := map[string]int{}
 	for i, id := range a.Result {
 		address := a.Resources["DOCUMENT"][id]["url"]
-		body, status, final, err := p.load(ctx, address)
+		body, status, final, err := s.get(address)
 		stop := ""
 		switch {
 		case err != nil:
@@ -158,8 +187,10 @@ func main() {
 			slog.Warn("unexpected answer", "document", id, "url", address, "status", status)
 			counts["failed"]++
 			continue
+		case len(body) > bodyLimit:
+			stop = "refused"
 		}
-		got, err := send(c, id, body, stop)
+		got, err := sendAgain(c, id, body, stop)
 		if err != nil {
 			logging.Fatal("send", "document", id, "error", err)
 		}
@@ -168,7 +199,7 @@ func main() {
 			outcome = "filled"
 		}
 		counts[outcome]++
-		slog.Info("fetched", "n", i+1, "of", len(a.Result), "document", id, "outcome", outcome, "why", got.Why, "hash", got.Hash)
+		slog.Info("fetched", "n", i+1, "of", len(a.Result), "document", id, "outcome", outcome, "why", got.Why, "hash", got.Hash, "bytes", len(body), "type", http.DetectContentType(body))
 	}
 	slog.Info("done", "documents", len(a.Result), "filled", counts["filled"], "gone", counts["gone"], "refused", counts["refused"], "sign_in", counts["sign_in"], "failed", counts["failed"])
 }

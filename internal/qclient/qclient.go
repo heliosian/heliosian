@@ -40,9 +40,18 @@ func (c Client) Send(method, path, kind string, body io.Reader, out any) error {
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(got)))
+		return &StatusError{Code: resp.StatusCode, What: fmt.Sprintf("%s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(got)))}
 	}
 	return json.Unmarshal(got, out)
+}
+
+type StatusError struct {
+	Code int
+	What string
+}
+
+func (e *StatusError) Error() string {
+	return e.What
 }
 
 func (c Client) Query(tree any) (Answer, error) {

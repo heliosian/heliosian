@@ -1,8 +1,15 @@
+.compose {
+  margin-bottom: 22px;
+  padding: 12px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
 .describe {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 10px;
 }
 
 #words {
@@ -10,7 +17,7 @@
   padding: 7px 12px;
   font: inherit;
   color: var(--text);
-  background: var(--panel);
+  background: var(--ink);
   border: 1px solid var(--line);
   border-radius: 8px;
   outline: none;
@@ -25,15 +32,13 @@
 }
 
 .understood {
-  margin: 0 0 10px;
+  margin: 12px 0 0;
 }
 
 .understood:not(.error) {
-  padding: 10px 14px;
-  color: var(--text);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  padding: 2px 0 2px 12px;
+  color: var(--dim);
+  border-left: 2px solid var(--accent);
   white-space: pre-wrap;
 }
 

@@ -16,12 +16,14 @@
 </div>
 </header>
 <main>
+<section class="compose">
 <div class="describe">
 <input id="words" type="text" spellcheck="true" autofocus placeholder="describe a query: linked documents still waiting to be fetched">
 <button id="compose" type="button">write</button>
 <span class="hint">↵ · Claude writes the query and runs it</span>
 </div>
 <p id="understood" class="understood" hidden></p>
+</section>
 <textarea id="src" spellcheck="false" placeholder="(from GROUP @g (where (manages @g)))"></textarea>
 <div class="actions">
 <button id="run" type="button">run</button>
