@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -1198,6 +1199,7 @@ const policySource = `
 type grant struct {
 	cond    cond
 	comment string
+	gated   bool
 }
 
 type policySet struct {
@@ -1340,7 +1342,8 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		into[form.list[1].text] = append(into[form.list[1].text], grant{cond: c, comment: notes[i].comment})
+		actor, _ := splitActor(form.list[2])
+		into[form.list[1].text] = append(into[form.list[1].text], grant{cond: c, comment: notes[i].comment, gated: head == "read" && actor != nil})
 		described.Table, described.Column, described.Condition, described.cond = tableName, column, form.list[2].render(0), c
 		if err := cx.parts(&described, form.list[2], sc); err != nil {
 			return nil, nil, err
@@ -1358,6 +1361,17 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 				return nil, nil, fmt.Errorf("%s.%s has no read grant", t.Name, c.Name)
 			}
 		}
+	}
+	for _, grants := range out.read {
+		slices.SortStableFunc(grants, func(a, b grant) int {
+			switch {
+			case a.gated == b.gated:
+				return 0
+			case a.gated:
+				return -1
+			}
+			return 1
+		})
 	}
 	return out, cx.defines, nil
 }
