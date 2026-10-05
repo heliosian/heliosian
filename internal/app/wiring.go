@@ -367,6 +367,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 			<-core.Settled
 			db.StartClassifier(core.Data, core.Queue, bucket, anthropicKey)
 			db.StartSweeper(core.Data, core.Queue, bucket)
+			db.StartFetcher(core.Data, core.Queue, bucket)
 		}()
 		watcher := calendarWatcher(core, sessionKey, anthropicKey)
 		muxes["when"].Handle("POST "+db.CalendarHookPath, watcher)

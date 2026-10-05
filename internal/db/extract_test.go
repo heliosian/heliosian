@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"heliosian/internal/blob"
 	"heliosian/internal/store"
@@ -142,12 +143,13 @@ func TestMailIsReadIntoATree(t *testing.T) {
 }
 
 func TestHTMLImagesAreFetched(t *testing.T) {
-	logo, pixel, inline := pngOf(t, 3), pngOf(t, 1), pngOf(t, 2)
-	asked := map[string]bool{}
+	logo, pixel, inline, later := pngOf(t, 3), pngOf(t, 1), pngOf(t, 2), pngOf(t, 4)
+	asked := map[string]int{}
 	mu := sync.Mutex{}
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		asked[r.URL.Path] = true
+		asked[r.URL.Path]++
+		times := asked[r.URL.Path]
 		mu.Unlock()
 		switch r.URL.Path {
 		case "/logo.png":
@@ -156,6 +158,17 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 			w.Write(pixel)
 		case "/page":
 			w.Write([]byte("<html><body>not a picture</body></html>"))
+		case "/private.png":
+			w.WriteHeader(http.StatusForbidden)
+		case "/broken.png":
+			w.WriteHeader(http.StatusBadGateway)
+		case "/busy.png":
+			if times == 1 {
+				w.Header().Set("Retry-After", "1")
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			w.Write(later)
 		default:
 			http.NotFound(w, r)
 		}
@@ -165,6 +178,7 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 	bucket := blob.NewMemoryBucket()
 	pics := NewPictures(s, queue, bucket)
 	NewExtractor(s, queue, bucket)
+	StartFetcher(s, queue, bucket)
 	body := strings.Join([]string{
 		`<html><body><p>See the schedule.</p>`,
 		`<img src="` + site.URL + `/logo.png">`,
@@ -175,6 +189,9 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 		`<img src="data:image/png;base64,` + base64.StdEncoding.EncodeToString(inline) + `">`,
 		`<img src="` + site.URL + `/gone.png">`,
 		`<img src="` + site.URL + `/page">`,
+		`<img src="` + site.URL + `/private.png">`,
+		`<img src="` + site.URL + `/busy.png">`,
+		`<img src="` + site.URL + `/broken.png">`,
 		`<img src="/relative.png">`,
 		`</body></html>`,
 	}, "")
@@ -208,21 +225,45 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 	made(t, s, "DOCUMENT", root, "extracted")
 	htmlPart := children(s, root)[1]
 	made(t, s, "DOCUMENT", htmlPart["id"], "extracted")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		mu.Lock()
+		broken := asked["/broken.png"]
+		mu.Unlock()
+		settled := !slices.ContainsFunc(children(s, htmlPart["id"]), func(child store.Row) bool {
+			return child["content"] == "" && child["fetch"] == "" && !strings.HasSuffix(child["url"], "/broken.png")
+		})
+		if settled && broken > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the images were not all fetched: %v", children(s, htmlPart["id"]))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	got := []string{}
 	under := children(s, htmlPart["id"])
 	for _, child := range under {
 		content, _ := s.Model().Table("CONTENT").Get(child["content"])
-		got = append(got, child["relation"]+"|"+content["mime"]+"|"+child["url"])
+		got = append(got, child["relation"]+"|"+content["mime"]+"|"+strings.TrimPrefix(child["url"], site.URL)+"|"+child["fetch"])
 	}
 	equalLines(t, "the HTML part's children", got, []string{
-		"extract|text/markdown|",
-		"linked|image/png|" + site.URL + "/logo.png",
-		"linked|image/png|",
+		"extract|text/markdown||",
+		"linked|image/png|/logo.png|",
+		"linked||/pixel.png|refused",
+		"linked|image/png||",
+		"linked||/gone.png|gone",
+		"linked||/page|refused",
+		"linked||/private.png|sign_in",
+		"linked|image/png|/busy.png|",
+		"linked||/broken.png|",
 	})
-	if bytesOf(t, s, bucket, under[1]) != string(logo) || bytesOf(t, s, bucket, under[2]) != string(inline) {
+	if bytesOf(t, s, bucket, under[1]) != string(logo) || bytesOf(t, s, bucket, under[3]) != string(inline) || bytesOf(t, s, bucket, under[7]) != string(later) {
 		t.Fatal("the images' bytes in the bucket differ")
 	}
-	if asked["/open.gif"] {
+	mu.Lock()
+	defer mu.Unlock()
+	if asked["/open.gif"] > 0 {
 		t.Fatal("an image sized as a pixel was fetched")
 	}
 }

@@ -132,11 +132,8 @@ func TestTheImportAddsImagesUnderParts(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	image := func(mime string) Change {
-		return Change{Table: "CONTENT", New: store.Row{"hash": "c3", "blob": "content/c3", "mime": mime, "size": "30"}}
-	}
-	linked := func(parent string) Change {
-		return Change{Table: "DOCUMENT", New: store.Row{"relation": "linked", "parent": parent, "content": "cnt00000000002", "url": "https://example.org/clubs.png"}}
+	linked := func(parent, content string) Change {
+		return Change{Table: "DOCUMENT", New: store.Row{"relation": "linked", "parent": parent, "content": content, "url": "https://example.org/clubs.png"}}
 	}
 	for _, c := range []struct {
 		name   string
@@ -144,11 +141,11 @@ func TestTheImportAddsImagesUnderParts(t *testing.T) {
 		change Change
 		ok     bool
 	}{
-		{"store an image", "import", image("image/png"), true},
-		{"store something else", "import", image("text/html"), false},
-		{"add an image under a part", "import", linked("doc00000000011"), true},
-		{"add an image under a root", "import", linked("doc00000000010"), false},
-		{"add an image as another system", "extract", linked("doc00000000011"), false},
+		{"place an image under a part", "import", linked("doc00000000011", ""), true},
+		{"place an image under a root", "import", linked("doc00000000010", ""), false},
+		{"place an image with its bytes", "import", linked("doc00000000011", "cnt00000000002"), false},
+		{"place an image as another system", "extract", linked("doc00000000011", ""), false},
+		{"store an image", "import", Change{Table: "CONTENT", New: store.Row{"hash": "c3", "blob": "content/c3", "mime": "image/png", "size": "30"}}, false},
 	} {
 		err := s.Model().Authorize(Env{System: c.system, Now: testNow}, c.change)
 		if (err == nil) != c.ok {

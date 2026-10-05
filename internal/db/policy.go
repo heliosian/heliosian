@@ -257,7 +257,7 @@ const policySource = `
 (read DOCUMENT (document_visible @row))
 ; every column of a document
 (read DOCUMENT
-  (id parent kind relation order name published author url filename content_id content message
+  (id parent kind relation order name published author url fetch filename content_id content message
    key_points extracted)
   true)
 ; the bytes of documents and mail the viewer may see
@@ -723,10 +723,8 @@ const policySource = `
 (read DOCUMENT_GROUP (system "import"))
 ; a Loop post uploaded as mail, and everything under it: Loop files the mail it sends itself
 (delete DOCUMENT (and (system "import") (exists DOCUMENT (in id (ancestors @old)) (= kind "post"))))
-; an image an email's HTML part shows, for HTML extracted before extraction fetched its images
-(insert DOCUMENT (and (system "import") (= @new.relation "linked") (= @new.parent.relation "part")))
-; store the bytes of such an image
-(insert CONTENT (and (system "import") (in @new.mime "image/png" "image/jpeg" "image/gif" "image/webp" "image/bmp" "image/x-icon")))
+; an image an email's HTML part shows, still to fetch, for HTML extracted before extraction placed its images
+(insert DOCUMENT (and (system "import") (= @new.relation "linked") (= @new.parent.relation "part") (blank @new.content)))
 
 ;; System: import, the sync from the old sheets, until the cutover
 

@@ -40,7 +40,7 @@ type extracted struct {
 	mime, name, contentID, url string
 }
 
-var extractors = map[string]func(context.Context, []byte) ([]extracted, error){
+var extractors = map[string]func([]byte) ([]extracted, error){
 	"message/rfc822": mailParts,
 	"text/html":      htmlMarkdown,
 	"text/plain":     textMarkdown,
@@ -100,7 +100,7 @@ func (x *Extractor) pending() []string {
 	return out
 }
 
-func mailParts(_ context.Context, raw []byte) ([]extracted, error) {
+func mailParts(raw []byte) ([]extracted, error) {
 	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
 		return nil, fmt.Errorf("not a mail message: %w", err)
@@ -134,19 +134,19 @@ func markdownExtract(markdown string) []extracted {
 	return []extracted{{relation: "extract", body: []byte(markdown), mime: "text/markdown"}}
 }
 
-func htmlMarkdown(ctx context.Context, raw []byte) ([]extracted, error) {
+func htmlMarkdown(raw []byte) ([]extracted, error) {
 	markdown, err := tomarkdown.HTML(string(raw), (&tomarkdown.LinkResolver{}).Links(&url.URL{}))
 	if err != nil {
 		return nil, err
 	}
-	images, err := htmlImages(ctx, raw)
+	images, err := htmlImages(raw)
 	if err != nil {
 		return nil, err
 	}
 	return append(markdownExtract(tomarkdown.Trim(markdown)), images...), nil
 }
 
-func textMarkdown(_ context.Context, raw []byte) ([]extracted, error) {
+func textMarkdown(raw []byte) ([]extracted, error) {
 	return markdownExtract(tomarkdown.Trim(tomarkdown.Text(string(raw)))), nil
 }
 
@@ -159,6 +159,33 @@ func (m *Model) htmlAlongside(doc store.Row) bool {
 		c, _ := contents.Get(sibling["content"])
 		return sibling["relation"] == "part" && baseType(c["mime"]) == "text/html"
 	})
+}
+
+func stager(s *Store, tx *store.Tx, actor string) func(Edit) (string, error) {
+	return func(e Edit) (string, error) {
+		written, c, err := stageWrite(s, tx, e, actor, nil, true, unchecked)
+		if err != nil {
+			return "", err
+		}
+		return written, fire(s, tx, c, actor)
+	}
+}
+
+func stageContent(s *Store, tx *store.Tx, stage func(Edit) (string, error), held map[string]string, hash, mimeType string, size int) (string, error) {
+	key := hash + "\x00" + mimeType
+	if id, ok := held[key]; ok {
+		return id, nil
+	}
+	if row, ok := s.In(tx).Table("CONTENT").Find(hash, mimeType); ok {
+		held[key] = row["id"]
+		return row["id"], nil
+	}
+	id, err := stage(Edit{Insert: "CONTENT", Row: map[string]any{"hash": hash, "blob": contentFolder + "/" + hash, "mime": mimeType, "size": strconv.Itoa(size)}})
+	if err != nil {
+		return "", err
+	}
+	held[key] = id
+	return id, nil
 }
 
 func (x *Extractor) extract(id string) (int, error) {
@@ -182,13 +209,16 @@ func (x *Extractor) extract(id string) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		if children, err = read(ctx, raw); err != nil {
+		if children, err = read(raw); err != nil {
 			return 0, err
 		}
 	}
 	hashes := make([]string, len(children))
 	stored := map[string]bool{}
 	for i, child := range children {
+		if child.body == nil {
+			continue
+		}
 		sum := sha256.Sum256(child.body)
 		hashes[i] = hex.EncodeToString(sum[:])
 		if _, held := m.Table("CONTENT").Find(hashes[i], child.mime); held || stored[hashes[i]] {
@@ -202,32 +232,21 @@ func (x *Extractor) extract(id string) (int, error) {
 	orders := store.Order(make([]string, len(children)))
 	committed := false
 	_, err := x.queue.Transact(ctx, access.System(extractActor), func(tx *store.Tx) error {
-		stage := func(e Edit) (string, error) {
-			written, c, err := stageWrite(x.s, tx, e, extractActor, nil, true, unchecked)
-			if err != nil {
-				return "", err
-			}
-			return written, fire(x.s, tx, c, extractActor)
-		}
+		stage := stager(x.s, tx, extractActor)
 		now, ok := x.s.In(tx).Table("DOCUMENT").Get(id)
 		if !ok || now["extracted"] != "" {
 			return nil
 		}
 		contents := map[string]string{}
 		for i, child := range children {
-			hash, key := hashes[i], hashes[i]+"\x00"+child.mime
-			if _, done := contents[key]; !done {
-				if held, ok := x.s.In(tx).Table("CONTENT").Find(hash, child.mime); ok {
-					contents[key] = held["id"]
-				} else {
-					inserted, err := stage(Edit{Insert: "CONTENT", Row: map[string]any{"hash": hash, "blob": contentFolder + "/" + hash, "mime": child.mime, "size": strconv.Itoa(len(child.body))}})
-					if err != nil {
-						return err
-					}
-					contents[key] = inserted
+			row := map[string]any{"parent": id, "relation": child.relation, "order": orders[i]}
+			if child.body != nil {
+				content, err := stageContent(x.s, tx, stage, contents, hashes[i], child.mime, len(child.body))
+				if err != nil {
+					return err
 				}
+				row["content"] = content
 			}
-			row := map[string]any{"parent": id, "relation": child.relation, "order": orders[i], "content": contents[key]}
 			if child.name != "" {
 				row["filename"] = child.name
 			}
