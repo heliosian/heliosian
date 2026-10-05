@@ -12,6 +12,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
+	"heliosian/internal/cells"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
@@ -134,7 +135,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			edits = append(edits, Edit{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": hash, "blob": name, "mime": mimeType, "size": size}})
 			contentID = "@content"
 		}
-		edits = append(edits, Edit{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar", "content": contentID, "url": r.FormValue("url"), "date": now().In(School).Format(DateLayout)}})
+		edits = append(edits, Edit{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar", "content": contentID, "url": r.FormValue("url"), "published": now().In(School).Format(cells.StampFormat)}})
 		ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: edits})
 		if err != nil {
 			serve.Error(w, r, err)

@@ -246,7 +246,7 @@ const policySource = `
 (read DOCUMENT (document_visible @row))
 ; every column of a document
 (read DOCUMENT
-  (id parent kind relation order name date author url filename content_id content message
+  (id parent kind relation order name published author url filename content_id content message
    key_points)
   true)
 ; the bytes of documents and mail the viewer may see

@@ -500,7 +500,7 @@ var Tables = []Table{
 				v("extract", "text read out of its parent's content, as Markdown")).about("What a non-root is to its parent."),
 			col("order", Order).about("Its place among its parent's documents."),
 			col("name", Text).about("Its title."),
-			col("date", Date).about("Its date: sent, published or posted."),
+			col("published", Moment).about("When it was sent, published or posted, to the second."),
 			ref("author", "PERSON").about("Who wrote or sent it."),
 			col("url", URL).about("Where it lives on the web."),
 			col("filename", Text).about("The file name it came with."),
