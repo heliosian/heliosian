@@ -30,7 +30,7 @@ const (
 	googleSignIn = "accounts.google.com"
 	signedInPage = "https://myaccount.google.com/"
 	stillToFetch = `(from DOCUMENT (where (and (= relation "linked") (= fetch "sign_in") (blank content))))`
-	accept       = "text/html,image/webp,image/png,image/jpeg,image/gif,*/*;q=0.8"
+	accept       = "image/webp,image/png,image/jpeg,image/gif,*/*;q=0.8"
 	sendTries    = 4
 	sendWait     = 5 * time.Second
 )
