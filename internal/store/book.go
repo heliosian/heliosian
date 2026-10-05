@@ -220,7 +220,7 @@ func (b *Book) Plan(ctx context.Context, tables Tables, actor string, ops []Op) 
 
 func (b *Book) Write(p Plan) <-chan struct{} {
 	done := make(chan struct{})
-	b.queue.Add(func() {
+	b.queue.addWrite(func() {
 		b.write(p.writes, p.log)
 		close(done)
 	})

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -14,12 +15,13 @@ type Queue struct {
 	mu       sync.Mutex
 	cond     *sync.Cond
 	pending  []func()
+	writes   atomic.Int64
 	holds    int
 	draining bool
 	done     chan struct{}
 
 	commits sync.Mutex
-	cancel  context.CancelFunc
+	cancel  atomic.Pointer[context.CancelFunc]
 	loads   []Load
 	swapped []func()
 }
@@ -36,6 +38,14 @@ func (q *Queue) Add(task func()) {
 	defer q.mu.Unlock()
 	q.pending = append(q.pending, task)
 	q.cond.Signal()
+}
+
+func (q *Queue) addWrite(write func()) {
+	q.writes.Add(1)
+	q.Add(func() {
+		write()
+		q.writes.Add(-1)
+	})
 }
 
 func (q *Queue) Hold() {
@@ -113,9 +123,8 @@ func (q *Queue) Refresh() {
 }
 
 func (q *Queue) interrupt() {
-	if q.cancel != nil {
-		q.cancel()
-		q.cancel = nil
+	if cancel := q.cancel.Swap(nil); cancel != nil {
+		(*cancel)()
 	}
 }
 
@@ -123,8 +132,13 @@ func (q *Queue) refresh() {
 	start := time.Now()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	q.cancel.Store(&cancel)
+	if q.writes.Load() > 0 {
+		q.cancel.CompareAndSwap(&cancel, nil)
+		slog.Info("refresh skipped: a write is waiting")
+		return
+	}
 	q.commits.Lock()
-	q.cancel = cancel
 	loads := slices.Clone(q.loads)
 	q.commits.Unlock()
 	swaps := []func(){}
@@ -146,7 +160,7 @@ func (q *Queue) refresh() {
 		slog.Info("refresh abandoned: a commit came in")
 		return
 	}
-	q.cancel = nil
+	q.cancel.CompareAndSwap(&cancel, nil)
 	for _, swap := range swaps {
 		swap()
 	}

@@ -614,6 +614,52 @@ func TestACommitAbandonsTheRefresh(t *testing.T) {
 	}
 }
 
+func TestACommitHeldOverARefreshAbandonsIt(t *testing.T) {
+	f := newFixture(t)
+	if err := f.dir.Delete("app", "Uses", Row{"By": "bo"}); err != nil {
+		t.Fatal(err)
+	}
+	entered, hold := make(chan struct{}), make(chan struct{})
+	committed := make(chan error, 1)
+	go func() {
+		_, err := f.queue.Transact(context.Background(), access.Actor{Email: "ann"}, func(tx *Tx) error {
+			close(entered)
+			<-hold
+			return f.store.Stage(tx, "app", Insert("Things", Row{"Name": "cap"}))
+		})
+		committed <- err
+	}()
+	<-entered
+	f.queue.Refresh()
+	time.Sleep(50 * time.Millisecond)
+	close(hold)
+	if err := <-committed; err != nil {
+		t.Fatal(err)
+	}
+	f.queue.Flush()
+	if f.store.Count("app", "Things", Row{"Name": "cap"}) != 1 || f.store.Model().uses != 3 {
+		t.Fatal("a refresh waiting out a commit put the older sheet back")
+	}
+}
+
+func TestAWriteWaitingBehindARefreshSkipsIt(t *testing.T) {
+	f := newFixture(t)
+	if err := f.dir.Delete("app", "Uses", Row{"By": "bo"}); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	f.queue.Add(func() { <-release })
+	f.queue.Refresh()
+	if err := f.store.Commit(context.Background(), access.Actor{Email: "ann"}, "app", Insert("Things", Row{"Name": "cap"})); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	f.queue.Flush()
+	if f.store.Count("app", "Things", Row{"Name": "cap"}) != 1 || f.store.Model().uses != 3 {
+		t.Fatal("a refresh ahead of a commit's write put the older sheet back")
+	}
+}
+
 func TestARefreshSwapsEveryPartOrNone(t *testing.T) {
 	f, s := reportFixture(t)
 	if err := f.dir.Delete("app", "Uses", Row{"By": "bo"}); err != nil {

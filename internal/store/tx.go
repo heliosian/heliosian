@@ -61,7 +61,6 @@ func (q *Queue) transact(ctx context.Context, actor access.Actor, run func(tx *T
 	if len(tx.staged) == 0 {
 		return nil, tx.after, nil
 	}
-	q.interrupt()
 	for _, st := range tx.staged {
 		st.swap()
 	}
@@ -70,5 +69,6 @@ func (q *Queue) transact(ctx context.Context, actor access.Actor, run func(tx *T
 	for _, st := range tx.staged {
 		done = st.write()
 	}
+	q.interrupt()
 	return done, tx.after, nil
 }
