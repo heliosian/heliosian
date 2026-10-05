@@ -120,23 +120,20 @@ export function grid(table, answer, ids, changed, always = []) {
   const head = el('tr');
   const quick = el('tr', 'quick');
   const filters = new Map();
+  const controls = new Map();
   let sort = null;
   for (const c of columns) {
     const th = el('th', 'sortable', c.label ?? c.name);
     th.title = [c.kind, c.relation && `→ ${c.relation}`, c.schema.description, 'click to sort'].filter(Boolean).join(' · ');
     th.addEventListener('click', () => {
       if (sort?.column !== c) {
-        sort = {column: c, dir: 1};
+        sortBy({column: c, dir: 1});
       } else if (sort.dir === 1) {
-        sort.dir = -1;
+        sortBy({column: c, dir: -1});
       } else {
-        sort = null;
+        sortBy(null);
       }
-      for (const other of head.children) {
-        other.dataset.sort = '';
-      }
-      th.dataset.sort = sort ? (sort.dir === 1 ? 'asc' : 'desc') : '';
-      reorder();
+      changed(true);
     });
     head.append(th);
     quick.append(quickFilter(c));
@@ -155,30 +152,51 @@ export function grid(table, answer, ids, changed, always = []) {
         option.title = valueTitle(c, v);
         select.append(option);
       }
-      select.addEventListener('change', () => {
-        if (select.value) {
-          filters.set(c.name, {equals: select.value === blank ? '' : select.value});
-        } else {
-          filters.delete(c.name);
+      const read = () => {
+        if (!select.value) {
+          return undefined;
         }
-        select.classList.toggle('set', Boolean(select.value));
-        changed();
+        return select.value === blank ? '' : select.value;
+      };
+      const sync = () => {
+        const v = read();
+        if (v === undefined) {
+          filters.delete(c.name);
+        } else {
+          filters.set(c.name, {equals: v});
+        }
+        select.classList.toggle('set', v !== undefined);
+      };
+      select.addEventListener('change', () => {
+        sync();
+        changed(true);
       });
+      controls.set(c.name, {get: read, set: v => {
+        select.value = v === undefined ? '' : (v || blank);
+        sync();
+      }});
       th.append(select);
       return th;
     }
     const input = el('input');
     input.type = 'search';
     input.placeholder = '…';
-    input.addEventListener('input', () => {
+    const sync = () => {
       const v = input.value.trim().toLowerCase();
       if (v) {
         filters.set(c.name, {has: v});
       } else {
         filters.delete(c.name);
       }
-      changed();
+    };
+    input.addEventListener('input', () => {
+      sync();
+      changed(false);
     });
+    controls.set(c.name, {get: () => input.value.trim() || undefined, set: v => {
+      input.value = v ?? '';
+      sync();
+    }});
     th.append(input);
     return th;
   }
@@ -231,6 +249,13 @@ export function grid(table, answer, ids, changed, always = []) {
       }
     };
     walk('');
+  };
+  const sortBy = next => {
+    sort = next;
+    for (const [i, th] of [...head.children].entries()) {
+      th.dataset.sort = sort?.column === columns[i] ? (sort.dir === 1 ? 'asc' : 'desc') : '';
+    }
+    reorder();
   };
   let text = '';
   const apply = () => {
@@ -324,6 +349,23 @@ export function grid(table, answer, ids, changed, always = []) {
     }
     return apply();
   };
+  const state = () => {
+    const values = new Map();
+    for (const [name, control] of controls) {
+      const v = control.get();
+      if (v !== undefined) {
+        values.set(name, v);
+      }
+    }
+    return {sort: sort && `${sort.dir === 1 ? '' : '-'}${sort.column.name}`, filters: values};
+  };
+  const setState = (key, values) => {
+    for (const [name, control] of controls) {
+      control.set(values.get(name));
+    }
+    const column = key && columns.find(c => c.name === key.replace(/^-/, ''));
+    sortBy(column ? {column, dir: key.startsWith('-') ? -1 : 1} : null);
+  };
   apply();
-  return {wrap, count: rows.length, tree, filterBy, setAll};
+  return {wrap, count: rows.length, tree, filterBy, setAll, state, setState};
 }

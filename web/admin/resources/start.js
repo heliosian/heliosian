@@ -41,9 +41,64 @@ function scan(table, where) {
   return query(out);
 }
 
-const changed = () => filter.oninput?.();
-
 let grids = [];
+let list = null;
+let show = () => {};
+let current = {};
+
+function parse() {
+  const [path, search = ''] = location.hash.slice(1).split('?');
+  const [name, id] = decodeURIComponent(path).split('/');
+  return {path, name, id, params: new URLSearchParams(search)};
+}
+
+function save(push) {
+  const params = new URLSearchParams();
+  const text = filter.value.trim();
+  if (text) {
+    params.set('q', text);
+  }
+  if (list) {
+    const {sort, filters} = list.state();
+    if (sort) {
+      params.set('sort', sort);
+    }
+    for (const [name, v] of filters) {
+      params.set(`f.${name}`, v);
+    }
+  }
+  const search = params.toString();
+  const hash = `#${parse().path}${search ? `?${search}` : ''}`;
+  if (hash === location.hash) {
+    return;
+  }
+  if (push) {
+    history.pushState(null, '', hash);
+  } else {
+    history.replaceState(null, '', hash);
+  }
+}
+
+function restore(params) {
+  filter.value = params.get('q') ?? '';
+  if (list) {
+    const filters = new Map();
+    for (const [key, v] of params) {
+      if (key.startsWith('f.')) {
+        filters.set(key.slice(2), v);
+      }
+    }
+    list.setState(params.get('sort'), filters);
+  }
+  show();
+}
+
+function changed(push) {
+  show();
+  save(push);
+}
+
+filter.addEventListener('input', () => changed(false));
 
 function refresh() {
   const text = filter.value.trim().toLowerCase();
@@ -89,14 +144,13 @@ async function listView(table) {
   const answer = await scan(table);
   const g = grid(table, answer, answer.result, changed);
   grids = [g];
+  list = g;
   showTreeButtons();
   view.replaceChildren(el('p', 'note table-about', table.description), g.wrap);
-  const update = () => {
+  show = () => {
     const shown = refresh();
     summary.textContent = `${shown} of ${g.count} rows shown`;
   };
-  filter.oninput = update;
-  update();
 }
 
 function mark(holds) {
@@ -320,6 +374,7 @@ function editor(table, row) {
     save.disabled = true;
     try {
       await api('POST', '/api/q', {batch: [{set: row.id, cells}]});
+      current = {};
       await route();
     } catch (err) {
       error.textContent = err.message;
@@ -432,17 +487,26 @@ async function detailView(table, id) {
   sections.push(...found);
   showTreeButtons();
   view.replaceChildren(...sections);
-  filter.oninput = refresh;
+  show = refresh;
   summary.textContent = `${found.length} tables point here`;
 }
 
 async function route() {
-  const [name, id] = decodeURIComponent(location.hash.slice(1)).split('/');
+  const {name, id, params} = parse();
   const table = byName.get(name) ?? byName.get('PERSON');
+  if (table.name !== current.name || id !== current.id) {
+    current = {name: table.name, id};
+    await load(table, id);
+  }
+  restore(params);
+}
+
+async function load(table, id) {
   drawRail(table.name);
-  filter.value = '';
   summary.textContent = '';
   grids = [];
+  list = null;
+  show = () => {};
   showTreeButtons();
   view.replaceChildren('Loading…');
   try {
