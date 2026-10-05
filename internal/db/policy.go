@@ -696,6 +696,10 @@ const policySource = `
 (delete MEMBER (and (system "import") (calendar_kind @old.group)))
 ; unlink a document from a calendar group being removed
 (delete DOCUMENT_GROUP (and (system "import") (calendar_kind @old.group)))
+; the old IDs naming every calendar group, to remove them with it
+(read ALIAS (and (system "import") (exists GROUP (= id @row.target) (in kind "event" "day" "day_part"))))
+; remove an old ID naming a calendar group being removed
+(delete ALIAS (and (system "import") (exists GROUP (= id @old.target) (in kind "event" "day" "day_part"))))
 ; add a version of the school's year calendar
 (insert DOCUMENT (and (system "import") (= @new.kind "calendar")))
 ; store the bytes of a version of the school's year calendar

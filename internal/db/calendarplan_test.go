@@ -272,11 +272,23 @@ func TestPDFPlan(t *testing.T) {
 		t.Fatalf("%d Back to School Nights once matched, want the twin gone", twins)
 	}
 	events := len(groupsOf(m, "event"))
+	picnicGroup := ""
+	for _, g := range groupsOf(m, "event") {
+		if g["name"] == picnic.Title {
+			picnicGroup = g["id"]
+		}
+	}
+	if err := commit(s, ConfigSheet, store.Insert("ALIAS", store.Row{"id": "als00000000070", "alias": "oldpicnicid", "target": picnicGroup})); err != nil {
+		t.Fatal(err)
+	}
 
 	run(year("doc00000000003", btsn), true)
 	m = s.Model()
 	if n := len(groupsOf(m, "event")); n != events-1 {
 		t.Fatalf("%d events after the picnic left the pdf, want %d", n, events-1)
+	}
+	if _, ok := m.Table("ALIAS").Get("als00000000070"); ok {
+		t.Fatal("the old ID naming the picnic outlived it")
 	}
 	if _, ok := m.Table("GROUP").Get(btsnGroup); !ok {
 		t.Fatal("Back to School Night went with the old version")

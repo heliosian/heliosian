@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -37,6 +38,7 @@ const (
 	searchMakers  = 4
 	searchLoaders = 16
 	searchTimeout = 2 * time.Minute
+	searchBackoff = 30 * time.Second
 )
 
 const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like - or one part of an email the community received, its body or an attachment, read as text and headed by the email it came in. You are given what everyone who can see it can read.
@@ -109,19 +111,20 @@ func (x *SearchIndex) generatedRows() ([]store.Row, int) {
 
 type Searcher struct {
 	*SearchIndex
-	s       *Store
-	bucket  *blob.Bucket
-	vertex  *artifacts.Vertex
-	client  *anthropic.Client
-	texts   map[string]string
-	pending []string
-	waiting map[string]bool
-	poke    chan struct{}
-	wake    chan struct{}
+	s         *Store
+	bucket    *blob.Bucket
+	vertex    *artifacts.Vertex
+	client    *anthropic.Client
+	texts     map[string]string
+	summaries map[string]*SearchEntry
+	pending   []string
+	waiting   map[string]bool
+	poke      chan struct{}
+	wake      chan struct{}
 }
 
 func NewSearcher(s *Store, queue *store.Queue, bucket *blob.Bucket, vertex *artifacts.Vertex) *Searcher {
-	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, waiting: map[string]bool{}, poke: make(chan struct{}, 1), wake: make(chan struct{}, 1)}
+	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, summaries: map[string]*SearchEntry{}, waiting: map[string]bool{}, poke: make(chan struct{}, 1), wake: make(chan struct{}, 1)}
 	go x.follow()
 	queue.OnSwap(func() {
 		select {
@@ -327,6 +330,11 @@ func (x *Searcher) follow() {
 				delete(x.missing, hash)
 			}
 		}
+		for hash := range x.summaries {
+			if !wanted[hash] {
+				delete(x.summaries, hash)
+			}
+		}
 		x.mu.Unlock()
 		loaded, errs := FanOut(len(unknown), func(i int) (*SearchEntry, error) { return x.load(unknown[i]) })
 		x.mu.Lock()
@@ -421,8 +429,12 @@ func (x *Searcher) make() {
 		}
 		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), searchTimeout)
-		entry, err := x.entry(ctx, input)
+		entry, err := x.entry(ctx, hash, input)
 		cancel()
+		if errors.Is(err, claude.ErrFinal) {
+			slog.Error("search: make, not to be asked again until a restart", "object", hash, "error", err)
+			continue
+		}
 		if err != nil {
 			slog.Error("search: make", "object", hash, "error", err)
 			x.retry(hash)
@@ -441,6 +453,7 @@ func (x *Searcher) make() {
 		}
 		x.mu.Lock()
 		x.entries[hash] = entry
+		delete(x.summaries, hash)
 		delete(x.missing, hash)
 		x.version++
 		left := len(x.missing)
@@ -450,27 +463,38 @@ func (x *Searcher) make() {
 }
 
 func (x *Searcher) retry(hash string) {
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	x.enqueue(hash)
+	time.AfterFunc(searchBackoff, func() {
+		x.mu.Lock()
+		defer x.mu.Unlock()
+		x.enqueue(hash)
+	})
 }
 
-func (x *Searcher) entry(ctx context.Context, input string) (*SearchEntry, error) {
-	entry := &SearchEntry{}
-	if _, err := claude.JSON(ctx, *x.client, anthropic.MessageNewParams{
-		Model:        SearchModel,
-		MaxTokens:    16000,
-		System:       []anthropic.TextBlockParam{{Text: searchSystem}},
-		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(input))},
-		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffort("medium"), Format: anthropic.JSONOutputFormatParam{Schema: searchSchema}},
-	}, entry); err != nil {
-		return nil, err
+func (x *Searcher) entry(ctx context.Context, hash, input string) (*SearchEntry, error) {
+	x.mu.Lock()
+	summary := x.summaries[hash]
+	x.mu.Unlock()
+	if summary == nil {
+		summary = &SearchEntry{}
+		if _, err := claude.JSON(ctx, *x.client, anthropic.MessageNewParams{
+			Model:        SearchModel,
+			MaxTokens:    16000,
+			System:       []anthropic.TextBlockParam{{Text: searchSystem}},
+			Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(input))},
+			OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffort("medium"), Format: anthropic.JSONOutputFormatParam{Schema: searchSchema}},
+		}, summary); err != nil {
+			return nil, err
+		}
+		x.mu.Lock()
+		x.summaries[hash] = summary
+		x.mu.Unlock()
 	}
 	texts := searchChunks(input)
 	vectors, err := x.vertex.Embed(ctx, texts, false)
 	if err != nil {
 		return nil, err
 	}
+	entry := &SearchEntry{Summary: summary.Summary, Keywords: summary.Keywords}
 	for i, text := range texts {
 		normalize(vectors[i])
 		entry.Chunks = append(entry.Chunks, SearchChunk{Text: text, Vector: vectors[i]})

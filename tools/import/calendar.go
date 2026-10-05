@@ -23,7 +23,7 @@ import (
 	"heliosian/internal/db"
 )
 
-var calendarTables = []string{"GROUP", "GROUP_SOURCE", "RULE", "MEMBER", "DOCUMENT_GROUP", "PERSON", "DOCUMENT", "CONTENT"}
+var calendarTables = []string{"GROUP", "GROUP_SOURCE", "RULE", "MEMBER", "DOCUMENT_GROUP", "PERSON", "DOCUMENT", "CONTENT", "ALIAS"}
 
 func (c client) calendarRows() (db.CalendarRows, error) {
 	out := db.CalendarRows{}

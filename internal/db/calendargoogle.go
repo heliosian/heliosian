@@ -32,7 +32,7 @@ const (
 	feedFields       = googleapi.Field("nextPageToken,items(iCalUID,recurringEventId,originalStartTime,start,end,summary,location,description,status)")
 )
 
-var calendarTables = []string{"GROUP", "GROUP_SOURCE", "RULE", "MEMBER", "DOCUMENT_GROUP", "PERSON"}
+var calendarTables = []string{"GROUP", "GROUP_SOURCE", "RULE", "MEMBER", "DOCUMENT_GROUP", "PERSON", "ALIAS"}
 
 func (m *Model) calendarRows() CalendarRows {
 	out := CalendarRows{}

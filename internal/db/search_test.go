@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,11 +28,11 @@ func instantClaude(w http.ResponseWriter, r *http.Request) {
 func claudeReplying(reply func(request string) string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request, _ := io.ReadAll(r.Body)
-		claudeStream(w, reply(string(request)))
+		claudeStream(w, reply(string(request)), "end_turn")
 	}
 }
 
-func claudeStream(w http.ResponseWriter, text string) {
+func claudeStream(w http.ResponseWriter, text, stop string) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	answer, _ := json.Marshal(text)
 	for _, event := range []string{
@@ -39,7 +40,7 @@ func claudeStream(w http.ResponseWriter, text string) {
 		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
 		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":` + string(answer) + `}}`,
 		`{"type":"content_block_stop","index":0}`,
-		`{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":0}}`,
+		`{"type":"message_delta","delta":{"stop_reason":"` + stop + `","stop_sequence":null},"usage":{"output_tokens":0}}`,
 		`{"type":"message_stop"}`,
 	} {
 		var kind struct {
@@ -64,6 +65,38 @@ func searcher(t *testing.T) (*Store, *store.Queue, *blob.Bucket, *Searcher) {
 	x := NewSearcher(s, queue, bucket, vertex)
 	x.StartMaking("test")
 	return s, queue, bucket, x
+}
+
+func TestAnAnswerCutShortIsNotAskedAgain(t *testing.T) {
+	var mu sync.Mutex
+	asked := map[string]int{}
+	intercept.GoogleLogin(t.TempDir())
+	intercept.Install(intercept.VertexHost, intercept.Vertex())
+	intercept.Install(intercept.ClaudeHost, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		request, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		asked[string(request)]++
+		mu.Unlock()
+		claudeStream(w, `{"summary": "cut`, "max_tokens")
+	}))
+	vertex, err := artifacts.NewVertex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, queue := sampleWithQueue(t)
+	x := NewSearcher(s, queue, blob.NewMemoryBucket(), vertex)
+	x.StartMaking("test")
+	time.Sleep(500 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(asked) == 0 {
+		t.Fatal("nothing was asked")
+	}
+	for request, n := range asked {
+		if n > 1 {
+			t.Fatalf("an input was asked %d times after its answer was cut short: %.80s", n, request)
+		}
+	}
 }
 
 func madeAll(t *testing.T, s *Store, x *Searcher) {

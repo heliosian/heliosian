@@ -46,6 +46,7 @@ type calendarPlan struct {
 	sources  []map[string]string
 	under    map[string]map[string][]map[string]string
 	children map[string][]string
+	aliases  map[string][]string
 	deleted  map[string]bool
 	edits    []Edit
 	names    int
@@ -54,7 +55,10 @@ type calendarPlan struct {
 var underTables = []string{"RULE", "MEMBER", "DOCUMENT_GROUP", "GROUP_SOURCE"}
 
 func newCalendarPlan(rows CalendarRows, v *Vocabulary) *calendarPlan {
-	p := &calendarPlan{v: v, groups: map[string]map[string]string{}, under: map[string]map[string][]map[string]string{}, children: map[string][]string{}, deleted: map[string]bool{}}
+	p := &calendarPlan{v: v, groups: map[string]map[string]string{}, under: map[string]map[string][]map[string]string{}, children: map[string][]string{}, aliases: map[string][]string{}, deleted: map[string]bool{}}
+	for _, a := range rows["ALIAS"] {
+		p.aliases[a["target"]] = append(p.aliases[a["target"]], a["id"])
+	}
 	for _, g := range rows["GROUP"] {
 		p.groups[g["id"]] = g
 		if g["parent"] != "" {
@@ -86,6 +90,9 @@ func (p *calendarPlan) remove(id string) {
 		return
 	}
 	p.deleted[id] = true
+	for _, alias := range p.aliases[id] {
+		p.remove(alias)
+	}
 	p.edits = append(p.edits, Edit{Delete: id})
 }
 
