@@ -180,8 +180,8 @@ const policySource = `
 (read REPORT (= added_by @viewer))
 ; every column of a bug report or idea
 (read REPORT
-  (id app kind summary details url browser errors screenshot status issue handled_by added_by
-   added)
+  (id app kind summary details url page browser viewport screen language time_zone errors screenshot
+   status issue handled handled_by added_by added)
   true)
 
 ; groups the viewer may see
@@ -1126,6 +1126,18 @@ const policySource = `
 (read RECIPIENT (and (system "import") (= message.kind "calendar")))
 ; the copy of a calendar invite that went to an assignee
 (insert RECIPIENT (and (system "import") (= @new.message.kind "calendar")))
+; every bug report and idea, to find what an earlier sync added
+(read REPORT (system "import"))
+; add a bug report or idea the old Feedback sheet has
+(insert REPORT (system "import"))
+; where a report's triage stands, as the old sheet has it
+(set REPORT.status (system "import"))
+; the GitHub issue a report became, as the old sheet has it
+(set REPORT.issue (system "import"))
+; when a report was triaged, as the old sheet has it
+(set REPORT.handled (system "import"))
+; who triaged a report, as the old sheet has it
+(set REPORT.handled_by (system "import"))
 `
 
 type policySet struct {

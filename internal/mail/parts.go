@@ -17,15 +17,16 @@ type Part struct {
 	MediaType   string
 	Disposition string
 	Name        string
+	ContentID   string
 	Body        io.Reader
 }
 
 func Parts(msg *netmail.Message, each func(Part) error) error {
 	h := msg.Header
-	return walk(h.Get("Content-Type"), h.Get("Content-Transfer-Encoding"), h.Get("Content-Disposition"), msg.Body, each)
+	return walk(h.Get("Content-Type"), h.Get("Content-Transfer-Encoding"), h.Get("Content-Disposition"), h.Get("Content-Id"), msg.Body, each)
 }
 
-func walk(contentType, encoding, disposition string, body io.Reader, each func(Part) error) error {
+func walk(contentType, encoding, disposition, contentID string, body io.Reader, each func(Part) error) error {
 	if contentType == "" {
 		contentType = "text/plain"
 	}
@@ -43,7 +44,7 @@ func walk(contentType, encoding, disposition string, body io.Reader, each func(P
 			if err != nil {
 				return err
 			}
-			if err := walk(part.Header.Get("Content-Type"), part.Header.Get("Content-Transfer-Encoding"), part.Header.Get("Content-Disposition"), part, each); err != nil {
+			if err := walk(part.Header.Get("Content-Type"), part.Header.Get("Content-Transfer-Encoding"), part.Header.Get("Content-Disposition"), part.Header.Get("Content-Id"), part, each); err != nil {
 				return err
 			}
 		}
@@ -65,5 +66,5 @@ func walk(contentType, encoding, disposition string, body io.Reader, each func(P
 			return fmt.Errorf("charset %q: %w", label, err)
 		}
 	}
-	return each(Part{MediaType: mediaType, Disposition: kind, Name: name, Body: content})
+	return each(Part{MediaType: mediaType, Disposition: kind, Name: name, ContentID: strings.Trim(strings.TrimSpace(contentID), "<>"), Body: content})
 }
