@@ -40,7 +40,7 @@ func TestMailIsReadIntoATree(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
 	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket)
+	NewExtractor(s, queue, bucket, "test")
 	logo := pngOf(t, 3)
 	eml := strings.Join([]string{
 		"From: Maya Lindqvist <maya.lindqvist@example.org>",
@@ -177,7 +177,7 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
 	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket)
+	NewExtractor(s, queue, bucket, "test")
 	StartFetcher(s, queue, bucket)
 	body := strings.Join([]string{
 		`<html><body><p>See the schedule.</p>`,
@@ -249,14 +249,14 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 	}
 	equalLines(t, "the HTML part's children", got, []string{
 		"extract|text/markdown||",
-		"linked|image/png|/logo.png|",
-		"linked||/pixel.png|refused",
-		"linked|image/png||",
-		"linked||/gone.png|gone",
-		"linked||/page|refused",
-		"linked||/private.png|sign_in",
-		"linked|image/png|/busy.png|",
-		"linked||/broken.png|",
+		"image|image/png|/logo.png|",
+		"image||/pixel.png|refused",
+		"image|image/png||",
+		"image||/gone.png|gone",
+		"image||/page|refused",
+		"image||/private.png|sign_in",
+		"image|image/png|/busy.png|",
+		"image||/broken.png|",
 	})
 	if bytesOf(t, s, bucket, under[1]) != string(logo) || bytesOf(t, s, bucket, under[3]) != string(inline) || bytesOf(t, s, bucket, under[7]) != string(later) {
 		t.Fatal("the images' bytes in the bucket differ")

@@ -257,7 +257,7 @@ const policySource = `
 (read DOCUMENT (document_visible @row))
 ; every column of a document
 (read DOCUMENT
-  (id parent kind relation order name published author url fetch filename content_id content message
+  (id parent kind relation order name published author url fetch link filename content_id content message
    key_points extracted)
   true)
 ; the bytes of documents and mail the viewer may see
@@ -723,14 +723,16 @@ const policySource = `
 (read DOCUMENT_GROUP (system "import"))
 ; a Loop post uploaded as mail, and everything under it: Loop files the mail it sends itself
 (delete DOCUMENT (and (system "import") (exists DOCUMENT (in id (ancestors @old)) (= kind "post"))))
-; an image an email's HTML part shows, still to fetch, for HTML extracted before extraction placed its images
-(insert DOCUMENT (and (system "import") (= @new.relation "linked") (= @new.parent.relation "part") (blank @new.content)))
-; fill a linked document still to fetch with what a fetch run with someone's own credentials got
-(set DOCUMENT.content (and (system "import") (= @old.relation "linked") (blank @old.content)))
-; say why fetching a linked document stopped, or that it no longer has
-(set DOCUMENT.fetch (and (system "import") (= @old.relation "linked") (blank @old.content)))
-; store the bytes of an image such a fetch got
-(insert CONTENT (and (system "import") (in @new.mime "image/png" "image/jpeg" "image/gif" "image/webp" "image/bmp" "image/x-icon")))
+; an image or a link of an email's HTML part, still to fetch or judged not worth it, for HTML extracted before extraction placed them
+(insert DOCUMENT (and (system "import") (in @new.relation "image" "linked") (= @new.parent.relation "part") (blank @new.content)))
+; fill an image or a link still to fetch with what a fetch run with someone's own credentials got
+(set DOCUMENT.content (and (system "import") (in @old.relation "image" "linked") (blank @old.content)))
+; say why fetching an image or a link stopped, or that it no longer has
+(set DOCUMENT.fetch (and (system "import") (in @old.relation "image" "linked") (blank @old.content)))
+; mark an image placed before images had a relation of their own
+(set DOCUMENT.relation (and (system "import") (= @old.relation "linked") (= @new.relation "image")))
+; store the bytes of an image, a pdf or a page such a fetch got
+(insert CONTENT (and (system "import") (in @new.mime "image/png" "image/jpeg" "image/gif" "image/webp" "image/bmp" "image/x-icon" "application/pdf" "text/html; charset=utf-8")))
 
 ;; System: import, the sync from the old sheets, until the cutover
 

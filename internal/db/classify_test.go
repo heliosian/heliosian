@@ -64,7 +64,7 @@ func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 	}
 	bucket := blob.NewMemoryBucket()
 	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket)
+	NewExtractor(s, queue, bucket, "test")
 	StartClassifier(s, queue, bucket, "test")
 	mail := func(subject, list string) string {
 		header := "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Thu, 12 Feb 2026 01:48:03 +0000\r\nSubject: " + subject + "\r\n"

@@ -29,7 +29,7 @@ func htmlImages(raw []byte) ([]extracted, error) {
 				slog.Warn("extract: skipped image", "src", ShortSource(src), "error", err)
 				continue
 			}
-			out = append(out, extracted{relation: "linked", url: src})
+			out = append(out, extracted{relation: "image", url: src})
 			continue
 		}
 		body, err := dataBytes(src[len("data:"):])
@@ -42,7 +42,7 @@ func htmlImages(raw []byte) ([]extracted, error) {
 			slog.Warn("extract: skipped image", "src", ShortSource(src), "error", err)
 			continue
 		}
-		out = append(out, extracted{relation: "linked", body: body, mime: mimeType})
+		out = append(out, extracted{relation: "image", body: body, mime: mimeType})
 	}
 	return out, nil
 }

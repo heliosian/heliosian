@@ -116,10 +116,6 @@ func NewCore(cfg Config) *Core {
 	}
 	pictures := db.NewPictures(dataStore, queue, cfg.Bucket)
 	settled := make(chan struct{})
-	go func() {
-		<-settled
-		db.NewExtractor(dataStore, queue, cfg.Bucket)
-	}()
 	search := db.NewSearcher(dataStore, queue, cfg.Bucket, cfg.Embedder)
 	go models.Locate(cfg.Geocoder)
 	taglineOf := func(key string) func() string {
@@ -368,6 +364,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		core.Search.StartMaking(anthropicKey)
 		go func() {
 			<-core.Settled
+			db.NewExtractor(core.Data, core.Queue, bucket, anthropicKey)
 			db.StartClassifier(core.Data, core.Queue, bucket, anthropicKey)
 			db.StartSweeper(core.Data, core.Queue, bucket)
 			db.StartFetcher(core.Data, core.Queue, bucket)

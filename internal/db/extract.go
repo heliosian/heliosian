@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +16,9 @@ import (
 	"slices"
 	"strconv"
 	"time"
+
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
@@ -30,6 +34,7 @@ type Extractor struct {
 	s      *Store
 	queue  *store.Queue
 	bucket *blob.Bucket
+	client anthropic.Client
 	failed map[string]bool
 	poke   chan struct{}
 }
@@ -38,6 +43,7 @@ type extracted struct {
 	relation                   string
 	body                       []byte
 	mime, name, contentID, url string
+	title, skip                string
 }
 
 var extractors = map[string]func([]byte) ([]extracted, error){
@@ -46,8 +52,8 @@ var extractors = map[string]func([]byte) ([]extracted, error){
 	"text/plain":     textMarkdown,
 }
 
-func NewExtractor(s *Store, queue *store.Queue, bucket *blob.Bucket) *Extractor {
-	x := &Extractor{s: s, queue: queue, bucket: bucket, failed: map[string]bool{}, poke: make(chan struct{}, 1)}
+func NewExtractor(s *Store, queue *store.Queue, bucket *blob.Bucket, anthropicKey string) *Extractor {
+	x := &Extractor{s: s, queue: queue, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), failed: map[string]bool{}, poke: make(chan struct{}, 1)}
 	go x.run()
 	queue.OnSwap(func() {
 		select {
@@ -60,15 +66,29 @@ func NewExtractor(s *Store, queue *store.Queue, bucket *blob.Bucket) *Extractor 
 
 func (x *Extractor) run() {
 	for range x.poke {
+		again := false
 		for _, id := range x.pending() {
 			start := time.Now()
 			n, err := x.extract(id)
+			if errors.Is(err, errAskAgain) {
+				slog.Error("extract, to be asked again", "document", id, "error", err)
+				time.Sleep(linkBackoff)
+				again = true
+				continue
+			}
 			if err != nil {
 				x.failed[id] = true
 				slog.Error("extract", "document", id, "error", err)
 				continue
 			}
 			slog.Info("extract: made", "document", id, "children", n, "took", time.Since(start).Round(time.Millisecond))
+		}
+		if !again {
+			continue
+		}
+		select {
+		case x.poke <- struct{}{}:
+		default:
 		}
 	}
 }
@@ -204,13 +224,26 @@ func (x *Extractor) extract(id string) (int, error) {
 		return 0, nil
 	}
 	children := []extracted{}
+	var raw []byte
 	if baseType(content["mime"]) != "text/plain" || !m.htmlAlongside(doc) {
-		raw, _, err := x.bucket.Get(ctx, content["blob"])
-		if err != nil {
+		var err error
+		if raw, _, err = x.bucket.Get(ctx, content["blob"]); err != nil {
 			return 0, err
 		}
 		if children, err = read(raw); err != nil {
 			return 0, err
+		}
+	}
+	if doc["relation"] != "part" {
+		children = slices.DeleteFunc(children, func(child extracted) bool { return child.relation == "image" })
+	}
+	if root, mail := m.mailRootOf(doc); mail && doc["relation"] == "part" && baseType(content["mime"]) == "text/html" {
+		links, err := ChooseLinks(ctx, x.client, LinkEmail{Subject: root["name"], Kind: root["kind"], Sent: root["published"]}, raw)
+		if err != nil {
+			return 0, err
+		}
+		for _, l := range links {
+			children = append(children, extracted{relation: "linked", url: l.URL, title: l.Text, skip: l.Skip})
 		}
 	}
 	hashes := make([]string, len(children))
@@ -255,6 +288,12 @@ func (x *Extractor) extract(id string) (int, error) {
 			}
 			if child.url != "" {
 				row["url"] = child.url
+			}
+			if child.title != "" {
+				row["name"] = child.title
+			}
+			if child.skip != "" {
+				row["fetch"], row["link"] = "skipped", child.skip
 			}
 			if _, err := stage(Edit{Insert: "DOCUMENT", Row: row}); err != nil {
 				return err

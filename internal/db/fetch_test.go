@@ -18,9 +18,10 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "newsletter", "content": "cnt00000000001", "name": "Clubs this week"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000011", "url": "https://lh6.example.org/schedule", "fetch": "sign_in"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000013", "relation": "linked", "parent": "doc00000000011", "url": "https://lh6.example.org/gone", "fetch": "sign_in"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000014", "relation": "linked", "parent": "doc00000000011", "url": "https://lh6.example.org/page", "fetch": "sign_in"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "image", "parent": "doc00000000011", "url": "https://lh6.example.org/schedule", "fetch": "sign_in"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000013", "relation": "image", "parent": "doc00000000011", "url": "https://lh6.example.org/gone", "fetch": "sign_in"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000014", "relation": "image", "parent": "doc00000000011", "url": "https://lh6.example.org/page", "fetch": "sign_in"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000015", "relation": "linked", "parent": "doc00000000011", "url": "https://docs.example.org/handbook", "fetch": "sign_in"}),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -60,6 +61,12 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 	}
 	if code, answer := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000014"}, []byte("<html><body>sign in</body></html>")); code != http.StatusOK || answer.Fetch != "refused" {
 		t.Fatalf("a page was kept as an image: %d %+v", code, answer)
+	}
+	if code, answer := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000015"}, []byte("<html><body>the handbook</body></html>")); code != http.StatusOK || answer.Hash == "" {
+		t.Fatalf("a link's page was not kept: %d %+v", code, answer)
+	}
+	if page, _ := s.Model().Table("DOCUMENT").Get("doc00000000015"); page["content"] == "" || page["fetch"] != "" {
+		t.Fatalf("the link's page: %v", page)
 	}
 	for id, want := range map[string]string{"doc00000000013": "gone", "doc00000000014": "refused"} {
 		if row, _ := s.Model().Table("DOCUMENT").Get(id); row["fetch"] != want || row["content"] != "" {

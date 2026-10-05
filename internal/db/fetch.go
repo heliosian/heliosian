@@ -10,7 +10,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +34,12 @@ const (
 )
 
 var fetchClient = &http.Client{Timeout: fetchTimeout}
+
+var keptPages = []string{"application/pdf", "text/html"}
+
+var fetchedRelations = []string{"image", "linked"}
+
+var googleExports = []string{"document", "presentation", "spreadsheets"}
 
 type Fetcher struct {
 	s      *Store
@@ -98,7 +106,7 @@ func (f *Fetcher) pending() []store.Row {
 	defer f.mu.Unlock()
 	out := []store.Row{}
 	for _, row := range f.s.Model().Table("DOCUMENT").All() {
-		if row["relation"] == "linked" && row["url"] != "" && row["content"] == "" && row["fetch"] == "" && f.tries[row["id"]] < fetchTries {
+		if slices.Contains(fetchedRelations, row["relation"]) && row["url"] != "" && row["content"] == "" && row["fetch"] == "" && f.tries[row["id"]] < fetchTries {
 			out = append(out, row)
 		}
 	}
@@ -108,7 +116,7 @@ func (f *Fetcher) pending() []store.Row {
 func (f *Fetcher) fetch(doc store.Row) {
 	ctx := context.Background()
 	start := time.Now()
-	got, err := fetchURL(ctx, doc["url"])
+	got, err := fetchURL(ctx, doc)
 	for waits := 0; err != nil && waits < fetchWaits; waits++ {
 		var b busy
 		if !errors.As(err, &b) {
@@ -116,7 +124,7 @@ func (f *Fetcher) fetch(doc store.Row) {
 		}
 		slog.Info("fetch: waiting", "document", doc["id"], "url", ShortSource(doc["url"]), "for", b.wait)
 		time.Sleep(b.wait)
-		got, err = fetchURL(ctx, doc["url"])
+		got, err = fetchURL(ctx, doc)
 	}
 	if err != nil {
 		f.mu.Lock()
@@ -127,19 +135,20 @@ func (f *Fetcher) fetch(doc store.Row) {
 	}
 	if got.stop != "" {
 		slog.Info("fetch: stopped", "document", doc["id"], "url", ShortSource(doc["url"]), "fetch", got.stop, "why", got.why)
-		err = f.stop(ctx, doc["id"], got.stop)
-	} else {
-		err = f.keep(ctx, doc["id"], got)
+		if err := f.stop(ctx, doc["id"], got.stop); err != nil {
+			slog.Error("fetch: write", "document", doc["id"], "error", err)
+		}
+		return
 	}
-	if err != nil {
+	if err := f.keep(ctx, doc["id"], got); err != nil {
 		slog.Error("fetch: write", "document", doc["id"], "error", err)
 		return
 	}
 	slog.Info("fetch: done", "document", doc["id"], "url", ShortSource(doc["url"]), "mime", got.mime, "bytes", len(got.body), "took", time.Since(start).Round(time.Millisecond))
 }
 
-func fetchURL(ctx context.Context, address string) (fetched, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+func fetchURL(ctx context.Context, doc store.Row) (fetched, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ExportURL(doc["url"]), nil)
 	if err != nil {
 		return fetched{stop: "refused", why: err.Error()}, nil
 	}
@@ -170,11 +179,41 @@ func fetchURL(ctx context.Context, address string) (fetched, error) {
 	if len(body) > fetchLimit {
 		return fetched{stop: "refused", why: fmt.Sprintf("larger than %d bytes", fetchLimit)}, nil
 	}
-	mimeType, err := keptImage(body)
+	mimeType, err := keptBody(doc["relation"], body)
 	if err != nil {
 		return fetched{stop: "refused", why: err.Error()}, nil
 	}
 	return fetched{body: body, mime: mimeType}, nil
+}
+
+func keptBody(relation string, body []byte) (string, error) {
+	mimeType := http.DetectContentType(body)
+	if relation == "image" || strings.HasPrefix(mimeType, "image/") {
+		return keptImage(body)
+	}
+	if !slices.Contains(keptPages, baseType(mimeType)) {
+		return "", fmt.Errorf("%s is not an image, a pdf or a page", mimeType)
+	}
+	return mimeType, nil
+}
+
+func ExportURL(address string) string {
+	u, err := url.Parse(address)
+	if err != nil {
+		return address
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	at := slices.Index(parts, "d")
+	if at < 1 || at+1 >= len(parts) {
+		return address
+	}
+	switch {
+	case u.Host == "docs.google.com" && slices.Contains(googleExports, parts[0]):
+		return "https://docs.google.com/" + parts[0] + "/d/" + parts[at+1] + "/export?format=pdf"
+	case u.Host == "drive.google.com" && parts[0] == "file":
+		return "https://drive.google.com/uc?id=" + parts[at+1] + "&export=download"
+	}
+	return address
 }
 
 func retryAfter(header string) time.Duration {

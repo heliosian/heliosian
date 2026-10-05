@@ -15,6 +15,8 @@ const (
 	DescribeEffort      = anthropic.OutputConfigEffortLow
 	DigestModel         = "claude-sonnet-5-5"
 	DigestEffort        = anthropic.OutputConfigEffortMedium
+	LinkModel           = "claude-sonnet-5-5"
+	LinkEffort          = anthropic.OutputConfigEffortMedium
 	SearchSummaryModel  = "claude-sonnet-5-5"
 	SearchSummaryEffort = anthropic.OutputConfigEffortMedium
 )

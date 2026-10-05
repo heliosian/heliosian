@@ -19,6 +19,7 @@ import (
 	"github.com/chromedp/chromedp"
 
 	"heliosian/internal/capture"
+	"heliosian/internal/db"
 	"heliosian/internal/env"
 	"heliosian/internal/logging"
 	"heliosian/internal/qclient"
@@ -29,8 +30,9 @@ const (
 	bodyLimit    = 25 << 20
 	googleSignIn = "accounts.google.com"
 	signedInPage = "https://myaccount.google.com/"
-	stillToFetch = `(from DOCUMENT (where (and (= relation "linked") (= fetch "sign_in") (blank content))))`
-	accept       = "image/webp,image/png,image/jpeg,image/gif,*/*;q=0.8"
+	stillToFetch = `(from DOCUMENT (where (and (in relation "image" "linked") (= fetch "sign_in") (blank content))))`
+	imageAccept  = "image/webp,image/png,image/jpeg,image/gif,*/*;q=0.8"
+	linkAccept   = "application/pdf,text/html,image/webp,image/png,image/jpeg,image/gif,*/*;q=0.8"
 	sendTries    = 4
 	sendWait     = 5 * time.Second
 )
@@ -76,7 +78,7 @@ func session(ctx context.Context) (signedIn, error) {
 	return signedIn{client: &http.Client{Jar: jar, Timeout: fetchTimeout}, userAgent: userAgent}, nil
 }
 
-func (s signedIn) get(address string) ([]byte, int, string, error) {
+func (s signedIn) get(address, accept string) ([]byte, int, string, error) {
 	req, err := http.NewRequest(http.MethodGet, address, nil)
 	if err != nil {
 		return nil, 0, "", err
@@ -155,7 +157,7 @@ func main() {
 	if err != nil {
 		logging.Fatal("copy the capture browser's session", "error", err)
 	}
-	if _, _, final, err := s.get(signedInPage); err != nil || host(final) == googleSignIn {
+	if _, _, final, err := s.get(signedInPage, linkAccept); err != nil || host(final) == googleSignIn {
 		logging.Fatal("sign in to google in the capture browser, then run this again", "page", final, "error", err)
 	}
 	a, err := c.QueryText(stillToFetch)
@@ -165,8 +167,12 @@ func main() {
 	slog.Info("documents to fetch", "count", len(a.Result))
 	counts := map[string]int{}
 	for i, id := range a.Result {
-		address := a.Resources["DOCUMENT"][id]["url"]
-		body, status, final, err := s.get(address)
+		doc := a.Resources["DOCUMENT"][id]
+		address, accept := doc["url"], imageAccept
+		if doc["relation"] == "linked" {
+			address, accept = db.ExportURL(address), linkAccept
+		}
+		body, status, final, err := s.get(address, accept)
 		stop := ""
 		switch {
 		case err != nil:

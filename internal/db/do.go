@@ -164,11 +164,11 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		}
 		id := r.FormValue("document")
 		doc, found := s.Model().Table("DOCUMENT").Get(id)
-		if !found || doc["relation"] != "linked" || doc["url"] == "" || doc["content"] != "" {
-			serve.Error(w, r, access.Invalid("%q is not a linked document still to fetch", id))
+		if !found || !slices.Contains(fetchedRelations, doc["relation"]) || doc["url"] == "" || doc["content"] != "" {
+			serve.Error(w, r, access.Invalid("%q is not an image or a link still to fetch", id))
 			return
 		}
-		answer, err := storeFetched(r, s, queue, pics, actor, env, id)
+		answer, err := storeFetched(r, s, queue, pics, actor, env, id, doc["relation"])
 		if err != nil {
 			serve.Error(w, r, err)
 			return
@@ -185,7 +185,7 @@ type fetchedAnswer struct {
 	Why    string   `json:"why,omitempty"`
 }
 
-func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, id string) (fetchedAnswer, error) {
+func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, id, relation string) (fetchedAnswer, error) {
 	stop := func(why, reason string) (fetchedAnswer, error) {
 		if _, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"fetch": why}}}}); err != nil {
 			return fetchedAnswer{}, err
@@ -207,7 +207,7 @@ func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures,
 	if len(content) > fetchLimit {
 		return stop("refused", fmt.Sprintf("larger than %d bytes", fetchLimit))
 	}
-	mimeType, err := keptImage(content)
+	mimeType, err := keptBody(relation, content)
 	if err != nil {
 		return stop("refused", err.Error())
 	}
