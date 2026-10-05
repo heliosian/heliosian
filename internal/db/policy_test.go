@@ -85,7 +85,7 @@ func TestDocumentsUnderAMailedPostFollowIt(t *testing.T) {
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000003", "hash": "c3", "blob": "content/c3", "mime": "text/markdown", "size": "30"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "post", "content": "cnt00000000001", "name": "Field trip"}),
 		store.Insert("DOCUMENT_GROUP", store.Row{"id": "dgr00000000010", "document": "doc00000000010", "group": "grp00000000030", "relation": "sent_to"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "attachment", "parent": "doc00000000010", "content": "cnt00000000002", "filename": "permission.pdf"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002", "filename": "permission.pdf"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "extract", "parent": "doc00000000011", "content": "cnt00000000003"}),
 	); err != nil {
 		t.Fatal(err)

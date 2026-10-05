@@ -1,2 +1,2 @@
-id,person,year,assigned_to,contacted,contacted_by,participation,charity,note,published
-bdy00000000001,per00000000003,2026,per00000000002,,,full,chr00000000001,,
+id,person,year,assigned_to,assigned,ask_by,contacted,contacted_by,participation,charity,note,recorded,recorded_by,published,published_by
+bdy00000000001,per00000000003,2026,per00000000002,,,,,full,chr00000000001,,,,,

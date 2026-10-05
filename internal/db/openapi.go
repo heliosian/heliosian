@@ -263,6 +263,18 @@ func spec() schema {
 				"responses": refusals(schema{"200": answers("The DOCUMENT holding the PDF and its hash.", "Stored"), "400": failure("Not a PDF.")}),
 			},
 		},
+		doPrefix + "mail": schema{
+			"post": schema{
+				"tags":    []string{"do"},
+				"summary": "Add a mail message the community received",
+				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
+					"type":       "object",
+					"required":   []string{"eml"},
+					"properties": schema{"eml": schema{"type": "string", "contentMediaType": "message/rfc822"}},
+				}}}},
+				"responses": refusals(schema{"200": answers("The root DOCUMENT holding the message and its hash.", "Stored"), "400": failure("Not a mail message, or no readable Date.")}),
+			},
+		},
 		doPrefix + "search": schema{
 			"post": schema{
 				"tags":        []string{"do"},

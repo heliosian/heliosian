@@ -309,3 +309,61 @@ func TestCalendarPDFIsStoredOnce(t *testing.T) {
 		t.Fatalf("not a pdf: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestMailIsStoredOnceWithItsHeaders(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := newPictures(s, queue)
+	eml := []byte("From: Maya Lindqvist <Maya.Lindqvist@example.org>\r\n" +
+		"Date: Thu, 12 Feb 2026 01:48:03 +0000\r\n" +
+		"Subject: =?UTF-8?Q?Spring_Camping_Trip_=E2=80=94_Follow_Up?=\r\n" +
+		"List-Id: Hummingbirds Parents <Hummingbirds.Parents.heliosns.org>\r\n" +
+		"Message-Id: <one@example.org>\r\n" +
+		"\r\n" +
+		"Bring a sleeping bag.\r\n")
+	ids := []string{}
+	for i := range 2 {
+		rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "mail", nil, "eml", eml)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("post %d: %d %s", i, rec.Code, rec.Body.String())
+		}
+		var out stored
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, out.Result[0])
+		row, ok := s.Model().Table("DOCUMENT").Get(out.Result[0])
+		if !ok || row["kind"] != "list" || row["name"] != "Spring Camping Trip — Follow Up" || row["published"] != "2026-02-11 17:48:03" || row["author"] != s.Model().PersonOf("maya.lindqvist@example.org") || row["author"] == "" {
+			t.Fatalf("post %d answered %+v and reads %v", i, out, row)
+		}
+		content, ok := s.Model().Table("CONTENT").Get(row["content"])
+		if !ok || content["hash"] != out.Hash || content["mime"] != "message/rfc822" || content["size"] != strconv.Itoa(len(eml)) {
+			t.Fatalf("post %d: the document's content reads %v", i, content)
+		}
+		if found, err := pics.bucket.Exists(context.Background(), content["blob"]); err != nil || !found {
+			t.Fatalf("post %d: the message is not in the bucket: %v", i, err)
+		}
+	}
+	if ids[0] != ids[1] {
+		t.Fatalf("the same message made two documents: %v", ids)
+	}
+	if rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "mail", nil, "eml", []byte("Subject: no date\r\n\r\nhello\r\n")); rec.Code != http.StatusBadRequest {
+		t.Fatalf("no date: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := postFile(t, s, queue, pics, "maya.lindqvist@example.org", "mail", nil, "eml", eml); rec.Code != http.StatusForbidden {
+		t.Fatalf("a person: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMailKindFollowsTheList(t *testing.T) {
+	for listID, want := range map[string]string{
+		"":                                   "newsletter",
+		"<parentsandstaff.heliosschool.org>": "list",
+		"Jays Parents <jays.parents.heliosns.org>": "list",
+		"<team.loop.heliosian.com>":                "post",
+		"<3064358178.560896@benchmarkemail.com>":   "newsletter",
+	} {
+		if got := mailKind(listID); got != want {
+			t.Errorf("%q: %s, want %s", listID, got, want)
+		}
+	}
+}

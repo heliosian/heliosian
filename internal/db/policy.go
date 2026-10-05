@@ -165,7 +165,8 @@ const policySource = `
 (read BIRTHDAY_YEAR (person_visible person))
 ; every column of a birthday year
 (read BIRTHDAY_YEAR
-  (id person year assigned_to contacted contacted_by participation charity note published)
+  (id person year assigned_to assigned ask_by contacted contacted_by participation charity note recorded
+   recorded_by published published_by)
   true)
 ; the viewer's own collections
 (read COLLECTION (= person @viewer))
@@ -247,7 +248,7 @@ const policySource = `
 ; every column of a document
 (read DOCUMENT
   (id parent kind relation order name published author url filename content_id content message
-   key_points)
+   key_points extracted)
   true)
 ; the bytes of documents and mail the viewer may see
 (read CONTENT
@@ -287,7 +288,7 @@ const policySource = `
 ; the birthday charities
 (read CHARITY true)
 ; every column of a charity
-(read CHARITY (id name description url allowed) true)
+(read CHARITY (id name description url ein allowed not_allowed_reason added) true)
 ; apps open to a group the viewer is in
 (read APP (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer)))
 ; every column of an app
@@ -688,6 +689,8 @@ const policySource = `
 (insert DOCUMENT (and (system "import") (= @new.kind "calendar")))
 ; store the bytes of a version of the school's year calendar
 (insert CONTENT (and (system "import") (= @new.mime "application/pdf")))
+; add a mail message the community received
+(insert DOCUMENT (and (system "import") (in @new.kind "newsletter" "list" "post")))
 
 ;; System: import, the sync from the old sheets, until the cutover
 
@@ -771,6 +774,8 @@ const policySource = `
 (read APP (system "import"))
 ; add an app, naming its admins group
 (insert APP (system "import"))
+; who sees an app, as the old Apps sheet's Audience tab has it
+(set APP.visible_to (system "import"))
 ; add an app setting the old sheets held
 (insert SETTING (system "import"))
 ; change an app setting to what the old sheets hold
@@ -1059,6 +1064,68 @@ const policySource = `
 (read COLLECTION_GROUP (system "import"))
 ; a saved calendar's filter or a hidden event from the old calendar
 (insert COLLECTION_GROUP (system "import"))
+; every front-page widget, to find what an earlier sync added
+(read WIDGET (system "import"))
+; add a front-page widget the old Apps sheet has
+(insert WIDGET (system "import"))
+; who sees a widget, as the old Apps sheet's Audience tab has it
+(set WIDGET.visible_to (system "import"))
+; a widget's place on the page, as the old Apps sheet has it
+(set WIDGET.order (system "import"))
+; a staff member's birthday, as the old Birthdays sheet has it
+(set PERSON.birthday (system "import"))
+; every birthday year, to find what an earlier sync added
+(read BIRTHDAY_YEAR (system "import"))
+; add a staff member's birthday year the old Birthdays sheet has
+(insert BIRTHDAY_YEAR (system "import"))
+; who has a birthday, as the old sheet has it
+(set BIRTHDAY_YEAR.assigned_to (system "import"))
+; when a birthday was assigned, as the old sheet has it
+(set BIRTHDAY_YEAR.assigned (system "import"))
+; the day to ask the last invite named, as the old sheet has it
+(set BIRTHDAY_YEAR.ask_by (system "import"))
+; when the staff member was asked, as the old sheet has it
+(set BIRTHDAY_YEAR.contacted (system "import"))
+; who asked the staff member, as the old sheet has it
+(set BIRTHDAY_YEAR.contacted_by (system "import"))
+; how the staff member takes part, as the old sheet has it
+(set BIRTHDAY_YEAR.participation (system "import"))
+; the charity chosen, as the old sheet has it
+(set BIRTHDAY_YEAR.charity (system "import"))
+; the staff member's words about their charity, as the old sheet has it
+(set BIRTHDAY_YEAR.note (system "import"))
+; when the charity was recorded, as the old sheet has it
+(set BIRTHDAY_YEAR.recorded (system "import"))
+; who recorded the charity, as the old sheet has it
+(set BIRTHDAY_YEAR.recorded_by (system "import"))
+; when the newsletter copy took it, as the old sheet has it
+(set BIRTHDAY_YEAR.published (system "import"))
+; who copied it for the newsletter, as the old sheet has it
+(set BIRTHDAY_YEAR.published_by (system "import"))
+; add a charity the old Birthdays sheet has
+(insert CHARITY (system "import"))
+; a charity's name, as the old sheet has it
+(set CHARITY.name (system "import"))
+; a charity's sentence for the newsletter, as the old sheet has it
+(set CHARITY.description (system "import"))
+; where a donation to a charity is made, as the old sheet has it
+(set CHARITY.url (system "import"))
+; a charity's EIN, as the old sheet has it
+(set CHARITY.ein (system "import"))
+; whether a charity may be chosen, as the old sheet has it
+(set CHARITY.allowed (system "import"))
+; why a charity may not be chosen, as the old sheet has it
+(set CHARITY.not_allowed_reason (system "import"))
+; when a charity was added, as the old sheet has it
+(set CHARITY.added (system "import"))
+; every calendar invite, to compare with the old Birthdays sheet's
+(read MESSAGE (and (system "import") (= kind "calendar")))
+; a calendar invite the old Birthdays sheet sent an assignee
+(insert MESSAGE (and (system "import") (= @new.kind "calendar")))
+; every copy of a calendar invite, to compare with the old Birthdays sheet's
+(read RECIPIENT (and (system "import") (= message.kind "calendar")))
+; the copy of a calendar invite that went to an assignee
+(insert RECIPIENT (and (system "import") (= @new.message.kind "calendar")))
 `
 
 type policySet struct {

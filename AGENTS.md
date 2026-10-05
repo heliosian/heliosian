@@ -4,9 +4,10 @@ How code is written in this repository, for coding agents and the people driving
 
 ## Questions
 
-- This codebase has a lot of features and complex data, and the person answering a question won't have the code in front of them. Every question starts with the background it needs: what part of the system is involved and how it works today.
-- Fetch real examples - the rows, records, pages or log lines in question - and include them, rather than describing data in the abstract.
-- Be very clear about the broader context the change sits in: what the larger task is, why this question came up, and what depends on the answer.
+- This codebase has a lot of features and complex data, and the person answering a question won't have the code in front of them. Every question stands alone: someone reading only that question, not the rest of the message, can answer it. It starts with the background it needs - what part of the system is involved and how it works today - repeated inside the question rather than pointed at from a section above.
+- Explain every identifier where it appears: a table, column, header, enum value or file gets a plain sentence on what it is and does today. A mapping written in names alone ("List-Id → sent_to group") is not a question.
+- Fetch real examples - the rows, records, pages or log lines in question - and put them inside the question they belong to, rather than describing data in the abstract.
+- Be very clear about the broader context the change sits in: what the larger task is, why this question came up, and what depends on the answer. Each option says what changes for people: who can see what, who receives what, what someone reading the data would notice.
 - Propose a path. Say which option you recommend and why, so the question can be answered with a yes or a correction.
 
 ## Code

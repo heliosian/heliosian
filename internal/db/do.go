@@ -1,6 +1,8 @@
 package db
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"log/slog"
 	"maps"
@@ -21,6 +23,7 @@ const (
 	doPrefix      = "/api/do/"
 	photoLimit    = 30 << 20
 	pdfLimit      = 30 << 20
+	mailLimit     = 64 << 20
 	contentFolder = "content"
 )
 
@@ -105,46 +108,85 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, access.Invalid("%s is not a pdf", mimeType))
 			return
 		}
-		hash := strings.TrimSuffix(blob.Name(content, "pdf"), ".pdf")
-		m := s.Model()
-		existing, found := m.Table("CONTENT").Find(hash)
-		if found {
-			for _, row := range m.Table("DOCUMENT").Referencing("content", existing["id"]) {
-				if row["kind"] == "calendar" {
-					serve.Write(w, r, http.StatusOK, stored{Result: []string{row["id"]}, Hash: hash})
-					return
-				}
-			}
-		}
-		if err := m.Authorize(env, Change{Table: "DOCUMENT", New: store.Row{"kind": "calendar"}}); err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		edits := []Edit{}
-		contentID := existing["id"]
-		if !found {
-			name, mimeType, size := contentFolder+"/"+hash, "application/pdf", strconv.Itoa(len(content))
-			if err := m.Authorize(env, Change{Table: "CONTENT", New: store.Row{"hash": hash, "blob": name, "mime": mimeType, "size": size}}); err != nil {
-				serve.Error(w, r, err)
-				return
-			}
-			if err := pics.bucket.Put(r.Context(), name, mimeType, content); err != nil {
-				serve.Error(w, r, err)
-				return
-			}
-			edits = append(edits, Edit{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": hash, "blob": name, "mime": mimeType, "size": size}})
-			contentID = "@content"
-		}
-		edits = append(edits, Edit{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar", "content": contentID, "url": r.FormValue("url"), "published": now().In(School).Format(cells.StampFormat)}})
-		ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: edits})
+		root := map[string]any{"kind": "calendar", "url": r.FormValue("url"), "published": now().In(School).Format(cells.StampFormat)}
+		document, hash, err := storeRoot(r, s, queue, pics, actor, env, content, "application/pdf", root)
 		if err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		document := ids[len(ids)-1]
 		slog.InfoContext(r.Context(), "added a version of the year calendar", "viewer", env.Viewer, "system", env.System, "document", document, "hash", hash)
 		serve.Write(w, r, http.StatusOK, stored{Result: []string{document}, Hash: hash})
 	})
+	mux.HandleFunc("POST "+doPrefix+"mail", func(w http.ResponseWriter, r *http.Request) {
+		env, actor, ok := caller(w, r, s.Model(), importKey, now())
+		if !ok {
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, mailLimit)
+		if err := r.ParseMultipartForm(mailLimit); err != nil {
+			serve.Error(w, r, access.Invalid("send the message as multipart form data: %v", err))
+			return
+		}
+		file, _, err := r.FormFile("eml")
+		if err != nil {
+			serve.Error(w, r, access.Invalid("the eml is required"))
+			return
+		}
+		defer file.Close()
+		content, err := io.ReadAll(file)
+		if err != nil {
+			serve.Error(w, r, access.Invalid("could not read the eml"))
+			return
+		}
+		root, err := s.Model().mailRoot(content)
+		if err != nil {
+			serve.Error(w, r, access.Invalid("%v", err))
+			return
+		}
+		document, hash, err := storeRoot(r, s, queue, pics, actor, env, content, "message/rfc822", root)
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		slog.InfoContext(r.Context(), "added a mail message", "viewer", env.Viewer, "system", env.System, "document", document, "hash", hash, "kind", root["kind"])
+		serve.Write(w, r, http.StatusOK, stored{Result: []string{document}, Hash: hash})
+	})
+}
+
+func storeRoot(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, content []byte, mimeType string, root map[string]any) (string, string, error) {
+	sum := sha256.Sum256(content)
+	hash := hex.EncodeToString(sum[:])
+	m := s.Model()
+	if err := m.Authorize(env, Change{Table: "DOCUMENT", New: store.Row{"kind": root["kind"].(string)}}); err != nil {
+		return "", "", err
+	}
+	existing, found := m.Table("CONTENT").Find(hash)
+	if found {
+		for _, row := range m.Table("DOCUMENT").Referencing("content", existing["id"]) {
+			if row["parent"] == "" && row["kind"] == root["kind"] {
+				return row["id"], hash, nil
+			}
+		}
+	}
+	edits := []Edit{}
+	root["content"] = existing["id"]
+	if !found {
+		name, size := contentFolder+"/"+hash, strconv.Itoa(len(content))
+		if err := m.Authorize(env, Change{Table: "CONTENT", New: store.Row{"hash": hash, "blob": name, "mime": mimeType, "size": size}}); err != nil {
+			return "", "", err
+		}
+		if err := pics.bucket.Put(r.Context(), name, mimeType, content); err != nil {
+			return "", "", err
+		}
+		edits = append(edits, Edit{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": hash, "blob": name, "mime": mimeType, "size": size}})
+		root["content"] = "@content"
+	}
+	edits = append(edits, Edit{Insert: "DOCUMENT", Row: root})
+	ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: edits})
+	if err != nil {
+		return "", "", err
+	}
+	return ids[len(ids)-1], hash, nil
 }
 
 type upload struct {

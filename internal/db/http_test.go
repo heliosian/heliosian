@@ -45,9 +45,9 @@ func TestImportKey(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("the import setting a vc_ column got %d %s", rec.Code, rec.Body.String())
 	}
-	rec = send(t, s, queue, http.MethodPost, "application/json", "bearer:"+testImportKey, `{"batch": [{"set": "per00000000001", "cells": {"birthday": "2016-04-12"}}]}`)
+	rec = send(t, s, queue, http.MethodPost, "application/json", "bearer:"+testImportKey, `{"batch": [{"set": "per00000000001", "cells": {"department_override": "grp00000000010"}}]}`)
 	if rec.Code != http.StatusForbidden {
-		t.Fatalf("the import setting a birthday got %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("the import setting a department override got %d %s", rec.Code, rec.Body.String())
 	}
 	if code, _, body := ask(t, s, "application/json", "bearer:wrong", `{"from": "PERSON"}`); code != http.StatusUnauthorized {
 		t.Fatalf("a wrong key got %d %s", code, body)
