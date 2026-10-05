@@ -360,6 +360,58 @@ func (s *Sheet) deleteOnce(app, table string, match map[string]string, retry boo
 	return err
 }
 
+func (s *Sheet) DeleteMany(app, table, keyColumn string, keys []string) error {
+	g, err := s.read(app, table)
+	if err != nil {
+		return err
+	}
+	if err := requireColumns(table, g.index, keyColumn); err != nil {
+		return err
+	}
+	tab, err := s.tabID(g.id, table)
+	if err != nil {
+		return err
+	}
+	wanted := map[string]string{}
+	for _, key := range keys {
+		wanted[Key(key)] = key
+	}
+	seen := map[string]bool{}
+	requests := []*sheets.Request{}
+	k := g.index[keyColumn]
+	// Descending, so deleting a row never shifts one still queued behind it.
+	for i := len(g.values) - 1; i >= 1; i-- {
+		if k >= len(g.values[i]) {
+			continue
+		}
+		key, ok := wanted[Key(fmt.Sprint(g.values[i][k]))]
+		if !ok {
+			continue
+		}
+		seen[key] = true
+		requests = append(requests, &sheets.Request{DeleteDimension: &sheets.DeleteDimensionRequest{
+			Range: &sheets.DimensionRange{
+				SheetId:    tab,
+				Dimension:  "ROWS",
+				StartIndex: int64(i),
+				EndIndex:   int64(i + 1),
+			},
+		}})
+	}
+	for _, key := range keys {
+		if !seen[key] {
+			return fmt.Errorf("table %s has no row with %s %q", table, keyColumn, key)
+		}
+	}
+	if len(requests) == 0 {
+		return nil
+	}
+	_, err = callOnce("delete "+table, s.service.Spreadsheets.BatchUpdate(g.id, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: requests,
+	}).Do)
+	return err
+}
+
 func valuesMatch(row []any, index map[string]int, match map[string]string) bool {
 	cells := map[string]string{}
 	for column := range match {
