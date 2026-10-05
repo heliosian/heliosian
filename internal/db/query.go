@@ -81,6 +81,7 @@ type cond struct {
 	eval     func(f *frame) bool
 	probeCol string
 	probe    *operand
+	probeSet func(f *frame) *valueSet
 }
 
 type scan struct {
@@ -91,6 +92,7 @@ type scan struct {
 	conds    []cond
 	probeCol string
 	probe    *operand
+	probeSet func(f *frame) *valueSet
 }
 
 type orderKey struct {
@@ -264,13 +266,29 @@ func (s *scan) pickProbe() {
 			return
 		}
 	}
+	for _, c := range s.conds {
+		if c.probeSet != nil {
+			s.probeCol, s.probeSet = c.probeCol, c.probeSet
+			return
+		}
+	}
 }
 
 func (s *scan) candidates(f *frame) []store.Row {
-	m := f.run.m
+	if s.probeSet != nil {
+		out := []store.Row{}
+		for id := range s.probeSet(f).keys {
+			out = append(out, s.lookup(f, id)...)
+		}
+		if !s.table.Generated {
+			byID := f.run.table(s.table.Name).rows.byID
+			slices.SortFunc(out, func(a, b store.Row) int { return byID[a["id"]] - byID[b["id"]] })
+		}
+		return out
+	}
 	if s.probe == nil {
 		if s.table.Generated {
-			return m.generated(s.table).rows
+			return f.run.m.generated(s.table).rows
 		}
 		return f.run.table(s.table.Name).All()
 	}
@@ -278,20 +296,25 @@ func (s *scan) candidates(f *frame) []store.Row {
 	if v.blank {
 		return nil
 	}
+	return s.lookup(f, v.s)
+}
+
+func (s *scan) lookup(f *frame, v string) []store.Row {
+	m := f.run.m
 	if s.table.Generated {
 		if s.table.Name == "EFFECTIVE_MEMBER" && s.probeCol == "group" {
-			return m.effectiveRows(v.s)
+			return m.effectiveRows(v)
 		}
-		return m.generated(s.table).by[s.probeCol][v.s]
+		return m.generated(s.table).by[s.probeCol][v]
 	}
 	rows := f.run.table(s.table.Name)
 	if s.probeCol == "id" {
-		if row, ok := rows.Get(v.s); ok {
+		if row, ok := rows.Get(v); ok {
 			return []store.Row{row}
 		}
 		return nil
 	}
-	return rows.Referencing(s.probeCol, v.s)
+	return rows.Referencing(s.probeCol, v)
 }
 
 func (s *scan) each(f *frame, fn func(inner *frame) bool) {
@@ -587,14 +610,18 @@ func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 		return cond{}, s.list[1].errorf("in tests a path, not a literal")
 	}
 	if len(s.list) == 3 && s.list[2].isList {
-		set, t, err := cx.set(s.list[2], sc, x.t)
+		set, t, outer, err := cx.set(s.list[2], sc, x.t)
 		if err != nil {
 			return cond{}, err
 		}
 		if err := comparable(s, x.t, t); err != nil {
 			return cond{}, err
 		}
-		return cond{eval: func(f *frame) bool { return set(f).has(x.eval(f)) }}, nil
+		out := cond{eval: func(f *frame) bool { return set(f).has(x.eval(f)) }}
+		if outer && x.direct != "" && x.t.class == classRow {
+			out.probeCol, out.probeSet = x.direct, set
+		}
+		return out, nil
 	}
 	options := []value{}
 	for _, item := range s.list[2:] {
@@ -618,24 +645,25 @@ func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 	}}, nil
 }
 
-func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, typ, error) {
+func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, typ, bool, error) {
 	switch head := s.head(); head {
 	case "select":
-		return cx.selectSet(s, sc, x)
+		set, t, err := cx.selectSet(s, sc, x)
+		return set, t, false, err
 	case "ancestors":
 		if len(s.list) != 2 {
-			return nil, typ{}, s.errorf("ancestors takes one row")
+			return nil, typ{}, false, s.errorf("ancestors takes one row")
 		}
 		g, err := cx.operand(s.list[1], sc)
 		if err != nil {
-			return nil, typ{}, err
+			return nil, typ{}, false, err
 		}
 		if g.lit != nil || g.t.class != classRow || g.t.table == "" {
-			return nil, typ{}, s.errorf("ancestors takes a row")
+			return nil, typ{}, false, s.errorf("ancestors takes a row")
 		}
 		table, _ := Lookup(g.t.table)
 		if parent, ok := table.Column("parent"); !ok || parent.Kind != Ref || parent.Target != table.Name {
-			return nil, typ{}, s.errorf("%s has no parent to follow", table.Name)
+			return nil, typ{}, false, s.errorf("%s has no parent to follow", table.Name)
 		}
 		t := typ{class: classRow, kind: ID, table: table.Name}
 		return func(f *frame) *valueSet {
@@ -653,17 +681,17 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 				id = row["parent"]
 			}
 			return out
-		}, t, nil
+		}, t, !g.local, nil
 	default:
 		if d, ok := cx.defines[head]; ok {
 			expanded, err := cx.expand(s, d, sc)
 			if err != nil {
-				return nil, typ{}, err
+				return nil, typ{}, false, err
 			}
 			return cx.set(expanded, sc, x)
 		}
 	}
-	return nil, typ{}, s.errorf("in takes literals or one select")
+	return nil, typ{}, false, s.errorf("in takes literals or one select")
 }
 
 func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, typ, error) {
