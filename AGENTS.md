@@ -2,6 +2,13 @@
 
 How code is written in this repository, for coding agents and the people driving them. What the project is and how it is laid out is in `README.md` and `docs/dev.md`.
 
+## Questions
+
+- This codebase has a lot of features and complex data, and the person answering a question won't have the code in front of them. Every question starts with the background it needs: what part of the system is involved and how it works today.
+- Fetch real examples - the rows, records, pages or log lines in question - and include them, rather than describing data in the abstract.
+- Be very clear about the broader context the change sits in: what the larger task is, why this question came up, and what depends on the answer.
+- Propose a path. Say which option you recommend and why, so the question can be answered with a yes or a correction.
+
 ## Code
 
 - No comments in new code. The one exception is genuinely subtle logic a reader would misread, two lines at most. Design rationale goes in the commit message, and what a package is goes in `docs/`, not a package comment.
