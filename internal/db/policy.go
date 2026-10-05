@@ -725,6 +725,12 @@ const policySource = `
 (delete DOCUMENT (and (system "import") (exists DOCUMENT (in id (ancestors @old)) (= kind "post"))))
 ; an image an email's HTML part shows, still to fetch, for HTML extracted before extraction placed its images
 (insert DOCUMENT (and (system "import") (= @new.relation "linked") (= @new.parent.relation "part") (blank @new.content)))
+; fill a linked document still to fetch with what a fetch run with someone's own credentials got
+(set DOCUMENT.content (and (system "import") (= @old.relation "linked") (blank @old.content)))
+; say why fetching a linked document stopped, or that it no longer has
+(set DOCUMENT.fetch (and (system "import") (= @old.relation "linked") (blank @old.content)))
+; store the bytes of an image such a fetch got
+(insert CONTENT (and (system "import") (in @new.mime "image/png" "image/jpeg" "image/gif" "image/webp" "image/bmp" "image/x-icon")))
 
 ;; System: import, the sync from the old sheets, until the cutover
 

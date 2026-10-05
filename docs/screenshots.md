@@ -50,7 +50,7 @@ Some source material sits behind a login. The capture browser handles this:
 
     go run ./tools/capturebrowser
 
-launches a headed Chrome with a dedicated profile in `local/capture-profile` and DevTools on `localhost:9222`. Log in to the target site in that window; the session persists in the profile across restarts. The profile holds that site's cookies, so it sits under `local/`, which is gitignored and never enters an image.
+launches a headed Chrome with a dedicated profile in `local/capture-profile` and DevTools on `localhost:9222`, unless one is already answering there. Log in to the target site in that window; the session persists in the profile across restarts. The profile holds that site's cookies, so it sits under `local/`, which is gitignored and never enters an image.
 
 With the capture browser running, add `--remote` to attach to it instead of launching headless Chrome:
 

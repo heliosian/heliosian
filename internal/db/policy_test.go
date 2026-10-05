@@ -129,6 +129,7 @@ func TestTheImportAddsImagesUnderParts(t *testing.T) {
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "newsletter", "content": "cnt00000000001", "name": "Clubs this week"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000011", "url": "https://example.org/clubs.png", "fetch": "sign_in"}),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +146,11 @@ func TestTheImportAddsImagesUnderParts(t *testing.T) {
 		{"place an image under a root", "import", linked("doc00000000010", ""), false},
 		{"place an image with its bytes", "import", linked("doc00000000011", "cnt00000000002"), false},
 		{"place an image as another system", "extract", linked("doc00000000011", ""), false},
-		{"store an image", "import", Change{Table: "CONTENT", New: store.Row{"hash": "c3", "blob": "content/c3", "mime": "image/png", "size": "30"}}, false},
+		{"store an image", "import", Change{Table: "CONTENT", New: store.Row{"hash": "c3", "blob": "content/c3", "mime": "image/png", "size": "30"}}, true},
+		{"store a page", "import", Change{Table: "CONTENT", New: store.Row{"hash": "c3", "blob": "content/c3", "mime": "text/html", "size": "30"}}, false},
+		{"fill an image still to fetch", "import", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"content": "cnt00000000002", "fetch": ""}), true},
+		{"fill a part", "import", change(t, s, "DOCUMENT", []string{"doc00000000011"}, store.Row{"content": "cnt00000000001"}), false},
+		{"fill an image as another system", "extract", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"content": "cnt00000000002"}), false},
 	} {
 		err := s.Model().Authorize(Env{System: c.system, Now: testNow}, c.change)
 		if (err == nil) != c.ok {

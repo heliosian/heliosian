@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,8 +18,9 @@ import (
 )
 
 const (
-	Port     = "9222"
-	DevTools = "http://localhost:" + Port
+	Port      = "9222"
+	DevTools  = "http://localhost:" + Port
+	startWait = 10 * time.Second
 )
 
 type Options struct {
@@ -27,6 +31,44 @@ type Options struct {
 	Click         string
 	Settle        time.Duration
 	Width, Height int
+}
+
+func Start() (string, error) {
+	profile, err := filepath.Abs("local/capture-profile")
+	if err != nil {
+		return "", err
+	}
+	if running() {
+		return profile, nil
+	}
+	if err := os.MkdirAll(profile, 0o700); err != nil {
+		return "", err
+	}
+	cmd := exec.Command("open", "-na", "Google Chrome", "--args",
+		"--user-data-dir="+profile,
+		"--remote-debugging-port="+Port,
+		"--no-first-run",
+		"--no-default-browser-check")
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("launch chrome: %w", err)
+	}
+	deadline := time.Now().Add(startWait)
+	for !running() {
+		if time.Now().After(deadline) {
+			return "", fmt.Errorf("capture browser did not come up on %s", DevTools)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return profile, nil
+}
+
+func running() bool {
+	resp, err := http.Get(DevTools + "/json/version")
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return true
 }
 
 func Launch() (context.Context, context.CancelFunc) {

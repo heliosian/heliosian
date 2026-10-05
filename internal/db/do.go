@@ -3,6 +3,7 @@ package db
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -151,6 +152,91 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		slog.InfoContext(r.Context(), "added a mail message", "viewer", env.Viewer, "system", env.System, "document", document, "hash", hash, "kind", root["kind"])
 		serve.Write(w, r, http.StatusOK, stored{Result: []string{document}, Hash: hash})
 	})
+	mux.HandleFunc("POST "+doPrefix+"fetched", func(w http.ResponseWriter, r *http.Request) {
+		env, actor, ok := caller(w, r, s.Model(), importKey, now())
+		if !ok {
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, fetchLimit+1<<20)
+		if err := r.ParseMultipartForm(fetchLimit); err != nil {
+			serve.Error(w, r, access.Invalid("send what was fetched as multipart form data: %v", err))
+			return
+		}
+		id := r.FormValue("document")
+		doc, found := s.Model().Table("DOCUMENT").Get(id)
+		if !found || doc["relation"] != "linked" || doc["url"] == "" || doc["content"] != "" {
+			serve.Error(w, r, access.Invalid("%q is not a linked document still to fetch", id))
+			return
+		}
+		answer, err := storeFetched(r, s, queue, pics, actor, env, id)
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		slog.InfoContext(r.Context(), "filled a linked document", "viewer", env.Viewer, "system", env.System, "document", id, "hash", answer.Hash, "fetch", answer.Fetch, "why", answer.Why)
+		serve.Write(w, r, http.StatusOK, answer)
+	})
+}
+
+type fetchedAnswer struct {
+	Result []string `json:"result"`
+	Hash   string   `json:"hash,omitempty"`
+	Fetch  string   `json:"fetch,omitempty"`
+	Why    string   `json:"why,omitempty"`
+}
+
+func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, id string) (fetchedAnswer, error) {
+	stop := func(why, reason string) (fetchedAnswer, error) {
+		if _, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"fetch": why}}}}); err != nil {
+			return fetchedAnswer{}, err
+		}
+		return fetchedAnswer{Result: []string{id}, Fetch: why, Why: reason}, nil
+	}
+	if why := r.FormValue("stop"); why != "" {
+		return stop(why, "the fetcher stopped")
+	}
+	file, _, err := r.FormFile("body")
+	if err != nil {
+		return fetchedAnswer{}, access.Invalid("the body, or a stop, is required")
+	}
+	defer file.Close()
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return fetchedAnswer{}, access.Invalid("could not read the body")
+	}
+	if len(content) > fetchLimit {
+		return stop("refused", fmt.Sprintf("larger than %d bytes", fetchLimit))
+	}
+	mimeType, err := keptImage(content)
+	if err != nil {
+		return stop("refused", err.Error())
+	}
+	sum := sha256.Sum256(content)
+	hash := hex.EncodeToString(sum[:])
+	m := s.Model()
+	cells := map[string]any{"fetch": ""}
+	edits := []Edit{}
+	existing, found := m.Table("CONTENT").Find(hash, mimeType)
+	cells["content"] = existing["id"]
+	if !found {
+		name, size := contentFolder+"/"+hash, strconv.Itoa(len(content))
+		if err := m.Authorize(env, Change{Table: "CONTENT", New: store.Row{"hash": hash, "blob": name, "mime": mimeType, "size": size}}); err != nil {
+			return fetchedAnswer{}, err
+		}
+		if err := pics.bucket.Put(r.Context(), name, mimeType, content); err != nil {
+			return fetchedAnswer{}, err
+		}
+		edits = append(edits, Edit{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": hash, "blob": name, "mime": mimeType, "size": size}})
+		cells["content"] = "@content"
+	}
+	edits = append(edits, Edit{Set: id, Cells: cells})
+	if _, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: edits}); err != nil {
+		if !found {
+			dropUnheld(s, pics.bucket, []string{contentFolder + "/" + hash})
+		}
+		return fetchedAnswer{}, err
+	}
+	return fetchedAnswer{Result: []string{id}, Hash: hash}, nil
 }
 
 func storeRoot(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, content []byte, mimeType string, root map[string]any, sentTo []string) (string, string, error) {

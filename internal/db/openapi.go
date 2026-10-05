@@ -205,6 +205,12 @@ func spec() schema {
 		"result": schema{"type": "array", "items": schema{"type": "string"}},
 		"hash":   schema{"type": "string", "description": "The SHA-256 of the stored file."},
 	}}
+	schemas["Fetched"] = schema{"type": "object", "properties": schema{
+		"result": schema{"type": "array", "items": schema{"type": "string"}},
+		"hash":   schema{"type": "string", "description": "The SHA-256 of the content, when the body was kept."},
+		"fetch":  schema{"type": "string", "enum": []string{"gone", "sign_in", "refused"}, "description": "What fetch was set to, when it was."},
+		"why":    schema{"type": "string", "description": "Why fetch was set."},
+	}}
 	crop := schema{"type": "integer", "minimum": 0}
 	paths := schema{
 		"/api/q": schema{
@@ -273,6 +279,23 @@ func spec() schema {
 					"properties": schema{"eml": schema{"type": "string", "contentMediaType": "message/rfc822"}},
 				}}}},
 				"responses": refusals(schema{"200": answers("The root DOCUMENT holding the message and its hash.", "Stored"), "400": failure("Not a mail message, or no readable Date.")}),
+			},
+		},
+		doPrefix + "fetched": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Fill a linked document still to fetch",
+				"description": "Takes what a fetch got for a linked document whose content is blank: its body, which becomes the document's content if it is kept, or sets fetch to refused if not; or a stop, which sets fetch to it.",
+				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
+					"type":     "object",
+					"required": []string{"document"},
+					"properties": schema{
+						"document": schema{"type": "string", "pattern": idPattern(DocumentPrefix)},
+						"body":     schema{"type": "string", "contentMediaType": "application/octet-stream"},
+						"stop":     schema{"type": "string", "enum": []string{"gone", "sign_in", "refused"}},
+					},
+				}}}},
+				"responses": refusals(schema{"200": answers("The DOCUMENT, and the content's hash, or the fetch it was set to and why.", "Fetched"), "400": failure("Not a linked document still to fetch, or neither a body nor a stop.")}),
 			},
 		},
 		doPrefix + "search": schema{

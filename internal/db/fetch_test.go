@@ -1,0 +1,72 @@
+package db
+
+import (
+	"encoding/json"
+	"net/http"
+	"testing"
+
+	"heliosian/internal/blob"
+	"heliosian/internal/store"
+)
+
+func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	bucket := blob.NewMemoryBucket()
+	pics := NewPictures(s, queue, bucket)
+	if err := commit(s, DocumentsSheet,
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "newsletter", "content": "cnt00000000001", "name": "Clubs this week"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000011", "url": "https://lh6.example.org/schedule", "fetch": "sign_in"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000013", "relation": "linked", "parent": "doc00000000011", "url": "https://lh6.example.org/gone", "fetch": "sign_in"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000014", "relation": "linked", "parent": "doc00000000011", "url": "https://lh6.example.org/page", "fetch": "sign_in"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	post := func(as string, fields map[string]string, body []byte) (int, fetchedAnswer) {
+		t.Helper()
+		file := ""
+		if body != nil {
+			file = "body"
+		}
+		rec := postFile(t, s, queue, pics, as, "fetched", fields, file, body)
+		var answer fetchedAnswer
+		if rec.Code == http.StatusOK {
+			if err := json.Unmarshal(rec.Body.Bytes(), &answer); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return rec.Code, answer
+	}
+	schedule := pngOf(t, 5)
+	if code, _ := post("maya.lindqvist@example.org", map[string]string{"document": "doc00000000012"}, schedule); code != http.StatusForbidden {
+		t.Fatalf("a person filled a linked document: %d", code)
+	}
+	code, answer := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000012"}, schedule)
+	if code != http.StatusOK || answer.Hash == "" {
+		t.Fatalf("the import could not fill a linked document: %d %+v", code, answer)
+	}
+	filled, _ := s.Model().Table("DOCUMENT").Get("doc00000000012")
+	content, _ := s.Model().Table("CONTENT").Get(filled["content"])
+	if filled["fetch"] != "" || content["mime"] != "image/png" || bytesOf(t, s, bucket, filled) != string(schedule) {
+		t.Fatalf("the filled document: %v, its content %v", filled, content)
+	}
+	if code, _ := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000012"}, schedule); code != http.StatusBadRequest {
+		t.Fatalf("a filled document was filled again: %d", code)
+	}
+	if code, answer := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000013", "stop": "gone"}, nil); code != http.StatusOK || answer.Fetch != "gone" {
+		t.Fatalf("the import could not stop a fetch: %d %+v", code, answer)
+	}
+	if code, answer := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000014"}, []byte("<html><body>sign in</body></html>")); code != http.StatusOK || answer.Fetch != "refused" {
+		t.Fatalf("a page was kept as an image: %d %+v", code, answer)
+	}
+	for id, want := range map[string]string{"doc00000000013": "gone", "doc00000000014": "refused"} {
+		if row, _ := s.Model().Table("DOCUMENT").Get(id); row["fetch"] != want || row["content"] != "" {
+			t.Errorf("%s: %v, want fetch %s", id, row, want)
+		}
+	}
+	if code, _ := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000011"}, schedule); code != http.StatusBadRequest {
+		t.Fatalf("a part was filled as a linked document: %d", code)
+	}
+}
