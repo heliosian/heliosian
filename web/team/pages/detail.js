@@ -8,7 +8,7 @@ import {dateCard, googleCalendarLink, parseWhen} from '/datecard.js';
 import {appOrigin} from '/appswitch.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
 import {openPhotoLightbox} from '/crop.js';
-import {heroImageBar} from '/heroimage.js';
+import {detailHero} from '/heroimage.js';
 import {personTile, peopleRow, offerTile, andList} from '/people.js';
 import {personRow} from '/personrow.js';
 import {act, query} from '/data.js';
@@ -579,30 +579,6 @@ function helpCard(node) {
   return card;
 }
 
-function heroButton(icon, label, onClick) {
-  const node = el('button', 'hero-action');
-  node.type = 'button';
-  node.title = label;
-  node.setAttribute('aria-label', label);
-  node.append(svg(icon));
-  node.addEventListener('click', onClick);
-  return node;
-}
-
-function shareButton(node) {
-  return heroButton('share', 'Share this page', async () => {
-    const url = location.origin + node.path;
-    if (navigator.share) {
-      try {
-        await navigator.share({title: node.title, url});
-        return;
-      } catch {
-      }
-    }
-    copyText(url, 'Link copied');
-  });
-}
-
 function childrenSection(node) {
   const editing = Boolean(node.canEdit);
   const root = rootOf(node);
@@ -820,22 +796,10 @@ export function activityPage(node) {
   }
   page.append(top);
 
-  const hero = el('div', 'detail-hero');
-  hero.append(imageThumb(node.imageUrl || root.imageUrl, node.title, 'detail-hero-image ' + categoryClass(root.category)));
-  const stamp = heroStamp(node);
-  if (stamp) {
-    hero.append(stamp);
-  }
-  const heroActions = el('div', 'hero-actions');
-  heroActions.append(shareButton(node));
-  if (node.imageUrl) {
-    heroActions.append(heroButton('expand', 'View full size', () => openPhotoLightbox(node.imageUrl)));
-  }
-  hero.append(heroActions);
-  if (node.canEdit) {
-    hero.append(heroImageBar({image: node.image, imageUrl: node.imageUrl, query: node.title, tools: {uploadImage, imageSearchOn, openImageSearch}, save: image => save({image})}));
-  }
-  page.append(hero);
+  page.append(detailHero({
+    imageUrl: node.imageUrl || root.imageUrl, title: node.title, path: node.path, className: categoryClass(root.category), stamp: heroStamp(node),
+    edit: node.canEdit ? {image: node.image, tools: {uploadImage, imageSearchOn, openImageSearch}, save: image => save({image})} : null,
+  }));
 
   const cols = el('div', 'detail-cols');
   const main = el('div', 'detail-main');

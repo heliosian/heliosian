@@ -41,7 +41,7 @@
 
 .hero-line:not(:first-child) .hero-line-text { color: #4d6a6d; }
 
-.hero-add { display: inline-flex; align-items: center; gap: 6px; align-self: center; margin-left: auto; padding: 4px 11px 4px 9px; border-radius: 999px; background: #e6eeee; color: var(--brand-fill); font-size: 13px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.hero-add { display: inline-flex; align-items: center; justify-content: center; align-self: center; margin-left: auto; width: 32px; height: 32px; border-radius: 50%; background: #e6eeee; color: var(--brand-fill); text-decoration: none; flex: none; }
 
 .hero-add:hover { background: #d9e5e5; }
 

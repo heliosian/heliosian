@@ -1,5 +1,45 @@
-import {openCropTool} from '/crop.js';
-import {el, svg, toast} from '/elements.js';
+import {openCropTool, openPhotoLightbox} from '/crop.js';
+import {el, svg, toast, imageThumb, copyText} from '/elements.js';
+
+function heroButton(icon, label, onClick) {
+  const node = el('button', 'hero-action');
+  node.type = 'button';
+  node.title = label;
+  node.setAttribute('aria-label', label);
+  node.append(svg(icon));
+  node.addEventListener('click', onClick);
+  return node;
+}
+
+export function detailHero({imageUrl, title, path, className, stamp, extras = [], edit}) {
+  const wrap = el('div', 'detail-hero');
+  const picture = imageThumb(imageUrl, title, 'detail-hero-image ' + (className || ''));
+  const actions = el('div', 'hero-actions');
+  actions.append(heroButton('share', 'Share this page', async () => {
+    const url = location.origin + path;
+    if (navigator.share) {
+      try {
+        await navigator.share({title, url});
+        return;
+      } catch {
+      }
+    }
+    copyText(url, 'Link copied');
+  }));
+  if (imageUrl) {
+    picture.classList.add('is-openable');
+    picture.addEventListener('click', () => openPhotoLightbox(imageUrl));
+  }
+  wrap.append(picture, actions);
+  if (stamp) {
+    wrap.append(stamp);
+  }
+  wrap.append(...extras);
+  if (edit) {
+    wrap.append(heroImageBar({image: edit.image, imageUrl, query: title, tools: edit.tools, save: edit.save}));
+  }
+  return wrap;
+}
 
 export function heroImageBar({image, imageUrl, query, tools, save}) {
   const bar = el('div', 'hero-image-bar');

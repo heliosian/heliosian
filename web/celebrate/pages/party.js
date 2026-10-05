@@ -1,13 +1,13 @@
 import {state, canApprove, mayTake, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {paragraphs} from '../dom.js';
-import {el, link, svg, button, imageThumb, copyText, toast} from '/elements.js';
+import {el, link, svg, button, toast} from '/elements.js';
 import {listPath} from '../chrome.js';
 import {setTitle} from '/shell.js';
 import {appOrigin} from '/appswitch.js';
 import {openBuy, openParty, openTickets, openAddTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setPartyStatus, openContacts, savePartyFields, uploadImage, imageSearchOn, openImageSearch} from '../edit.js';
 import {statusBadges} from '../cards.js';
 import {openPhotoLightbox} from '/crop.js';
-import {heroImageBar} from '/heroimage.js';
+import {detailHero} from '/heroimage.js';
 import {dateCard, parseWhen} from '/datecard.js';
 import {render} from '/router.js';
 import {personTile, personCard, peopleRow, andList} from '/people.js';
@@ -26,40 +26,11 @@ function heroStamp(p) {
   return dateCard({start: p.start, end: p.end, location: p.location || '', add: partyCalendarLink(p)});
 }
 
-function heroTools(p) {
-  const tools = el('div', 'hero-actions');
-  const tool = (icon, label, onClick) => {
-    const b = button('', icon, 'hero-action', onClick);
-    b.title = label;
-    b.setAttribute('aria-label', label);
-    return b;
-  };
-  tools.append(tool('share', 'Share this party', async () => {
-    const url = location.origin + partyPath(p);
-    if (navigator.share) {
-      try {
-        await navigator.share({title: p.title, url});
-        return;
-      } catch {
-      }
-    }
-    copyText(url, 'Link copied');
-  }));
-  return tools;
-}
-
 function hero(p, save) {
-  const wrap = el('div', 'detail-hero');
-  const image = imageThumb(p.imageUrl, p.title, 'detail-hero-image');
-  if (p.imageUrl) {
-    image.classList.add('is-openable');
-    image.addEventListener('click', () => openPhotoLightbox(p.imageUrl));
-  }
-  wrap.append(image, heroTools(p), heroStamp(p));
-  if (p.can.edit) {
-    wrap.append(heroImageBar({image: p.image, imageUrl: p.imageUrl, query: p.title, tools: {uploadImage, imageSearchOn, openImageSearch}, save: image => save({image})}));
-  }
-  return wrap;
+  return detailHero({
+    imageUrl: p.imageUrl, title: p.title, path: partyPath(p), stamp: heroStamp(p),
+    edit: p.can.edit ? {image: p.image, tools: {uploadImage, imageSearchOn, openImageSearch}, save: image => save({image})} : null,
+  });
 }
 
 function ticketWords(p, mine) {

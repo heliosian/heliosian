@@ -4,7 +4,7 @@ import {paragraphs} from '../dom.js';
 import {el, svg, button, toast, longToast, copyText} from '/elements.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
-import {heroImageBar} from '/heroimage.js';
+import {heroImageBar, detailHero} from '/heroimage.js';
 import {openPersonCard} from '/personcard.js';
 import {setTitle} from '/shell.js';
 import {load} from '/router.js';
@@ -16,31 +16,19 @@ import {audienceChips, blocks} from '../events.js';
 import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, ticketHoldersSection,inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow, inviteCall, openGuestSettings} from '../invites.js';
 
 function hero(e) {
-  const wrap = el('div', 'detail-hero');
-  const img = el('img');
-  img.src = eventImage(e);
-  img.alt = '';
-  img.addEventListener('error', () => {
-    if (!img.src.endsWith('/brand/default-header.jpg')) {
-      img.src = '/brand/default-header.jpg';
-    }
-  }, {once: true});
-  wrap.append(img);
-  wrap.append(dateCard({start: e.start, end: e.end, allDay: e.allDay, location: e.location, add: googleCalendarLink({title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location || '', details: [e.description, location.origin + eventPath(e)].filter(Boolean).join('\n\n')})}));
-  if (e.link) {
-    wrap.append(linkedBadge(e));
-  }
-  if (e.can.edit || e.can.image) {
-    wrap.append(imageBar(e));
-  }
-  return wrap;
+  return detailHero({
+    imageUrl: eventImage(e), title: e.title, path: eventPath(e),
+    stamp: dateCard({start: e.start, end: e.end, allDay: e.allDay, location: e.location, add: googleCalendarLink({title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location || '', details: [e.description, location.origin + eventPath(e)].filter(Boolean).join('\n\n')})}),
+    extras: e.link ? [linkedBadge(e)] : [],
+    edit: e.can.edit || e.can.image ? imageEdit(e) : null,
+  });
 }
 
 function imported(e) {
   return e.source === 'google' || e.source === 'pdf';
 }
 
-function imageBar(e) {
+function imageEdit(e) {
   const save = async image => {
     try {
       await act('events', e.id, imported(e) ? 'image' : 'edit', {image});
@@ -51,7 +39,12 @@ function imageBar(e) {
     toast(image ? 'Picture saved' : 'Picture removed');
     await load();
   };
-  return heroImageBar({image: e.image, imageUrl: eventImage(e), query: e.title, tools: {uploadImage, imageSearchOn, openImageSearch}, save});
+  return {image: e.image, tools: {uploadImage, imageSearchOn, openImageSearch}, save};
+}
+
+function imageBar(e) {
+  const edit = imageEdit(e);
+  return heroImageBar({image: edit.image, imageUrl: eventImage(e), query: e.title, tools: edit.tools, save: edit.save});
 }
 
 let editorView = null;

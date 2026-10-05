@@ -1,3 +1,23 @@
+.detail-hero { position: relative; margin-bottom: 20px; }
+
+.detail-hero .thumb.detail-hero-image { width: 100%; height: 270px; border-radius: 14px; object-fit: cover; display: block; }
+
+.detail-hero .thumb.detail-hero-image.is-openable { cursor: zoom-in; }
+
+.detail-hero .thumb.detail-hero-image.initial { display: flex; align-items: center; justify-content: center; font-size: 84px; color: var(--brand); background: #cfe3e2; }
+
+.hero-stamp { position: absolute; top: 18px; right: 18px; min-width: 108px; padding: 12px 16px; border-radius: 12px; background: #fff; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); text-align: center; }
+
+.hero-stamp-text { font-size: 13px; font-weight: 700; color: var(--brand-fill); max-width: 40%; }
+
+.hero-actions { position: absolute; top: 18px; left: 18px; display: flex; gap: 8px; }
+
+.hero-action { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0; border: var(--disc-border, 0); border-radius: 50%; background: var(--disc, #fff); color: var(--disc-ink, var(--brand)); box-shadow: var(--disc-shadow, 0 2px 8px rgba(0, 0, 0, 0.22)); backdrop-filter: var(--disc-blur, none); cursor: pointer; }
+
+.hero-action:hover { background: var(--disc-hover, var(--input)); }
+
+.hero-action svg { width: 17px; height: 17px; }
+
 .hero-image-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-radius: 0 0 14px 14px; background: linear-gradient(180deg, rgba(10, 50, 54, 0), rgba(10, 50, 54, 0.82)); }
 
 .hero-image-action { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 0; border-radius: 999px; background: var(--disc, rgba(255, 255, 255, 0.92)); color: var(--brand); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
@@ -17,3 +37,14 @@
 .hero-image-menu-item:hover { background: var(--input); }
 
 .hero-image-menu-item svg { width: 16px; height: 16px; color: var(--brand); }
+
+@media (max-width: 900px) {
+  .detail-hero .thumb.detail-hero-image { height: 190px; }
+  .hero-stamp { top: 10px; right: 10px; min-width: 88px; padding: 9px 12px; }
+  .hero-actions { top: 10px; left: 10px; }
+}
+
+@media (max-width: 640px) {
+  .hero-image-bar { top: 0; bottom: auto; height: 190px; align-items: flex-end; border-radius: 14px; pointer-events: none; }
+  .hero-image-bar > * { pointer-events: auto; }
+}

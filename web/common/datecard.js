@@ -106,7 +106,8 @@ export function dateCard({start, end, allDay = false, location = '', add = ''}) 
       button.target = '_blank';
       button.rel = 'noopener';
       button.title = 'Add to Google Calendar';
-      button.append(svg('calendar-plus'), el('span', '', 'Add'));
+      button.setAttribute('aria-label', 'Add to Google Calendar');
+      button.append(svg('calendar-plus'));
       row.append(button);
     }
     return row;
