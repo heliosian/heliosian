@@ -12,6 +12,7 @@ import (
 	"net/http"
 	netmail "net/mail"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -145,6 +146,17 @@ func textMarkdown(raw []byte) ([]extracted, error) {
 	return markdownExtract(tomarkdown.Trim(tomarkdown.Text(string(raw)))), nil
 }
 
+func (m *Model) htmlAlongside(doc store.Row) bool {
+	if doc["relation"] != "part" {
+		return false
+	}
+	contents := m.Table("CONTENT")
+	return slices.ContainsFunc(m.Table("DOCUMENT").Referencing("parent", doc["parent"]), func(sibling store.Row) bool {
+		c, _ := contents.Get(sibling["content"])
+		return sibling["relation"] == "part" && baseType(c["mime"]) == "text/html"
+	})
+}
+
 func (x *Extractor) extract(id string) (int, error) {
 	ctx := context.Background()
 	m := x.s.Model()
@@ -160,13 +172,15 @@ func (x *Extractor) extract(id string) (int, error) {
 	if !ok {
 		return 0, nil
 	}
-	raw, _, err := x.bucket.Get(ctx, content["blob"])
-	if err != nil {
-		return 0, err
-	}
-	children, err := read(raw)
-	if err != nil {
-		return 0, err
+	children := []extracted{}
+	if baseType(content["mime"]) != "text/plain" || !m.htmlAlongside(doc) {
+		raw, _, err := x.bucket.Get(ctx, content["blob"])
+		if err != nil {
+			return 0, err
+		}
+		if children, err = read(raw); err != nil {
+			return 0, err
+		}
 	}
 	hashes := make([]string, len(children))
 	stored := map[string]bool{}
@@ -182,7 +196,7 @@ func (x *Extractor) extract(id string) (int, error) {
 		stored[hashes[i]] = true
 	}
 	orders := store.Order(make([]string, len(children)))
-	_, err = x.queue.Transact(ctx, access.System(extractActor), func(tx *store.Tx) error {
+	_, err := x.queue.Transact(ctx, access.System(extractActor), func(tx *store.Tx) error {
 		stage := func(e Edit) (string, error) {
 			written, c, err := stageWrite(x.s, tx, e, extractActor, nil, true, unchecked)
 			if err != nil {

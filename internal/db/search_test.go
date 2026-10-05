@@ -175,6 +175,37 @@ func TestAnEmailsMarkdownIsSearchedByThoseItWasSentTo(t *testing.T) {
 	}
 }
 
+func TestARemovedExtractLeavesTheIndex(t *testing.T) {
+	s, queue, bucket, x := searcher(t)
+	pics := NewPictures(s, queue, bucket)
+	NewExtractor(s, queue, bucket)
+	root := uploadMail(t, s, pics, "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Thu, 12 Feb 2026 01:48:03 +0000\r\nSubject: Tide pools\r\nList-Id: <hummingbirds.parents.heliosschool.org>\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Bring <b>boots</b> for the tide pools.</p>\r\n")
+	made(t, s, "DOCUMENT", root, "extracted")
+	part := children(s, root)[0]
+	made(t, s, "DOCUMENT", part["id"], "extracted")
+	extract := children(s, part["id"])[0]["id"]
+	madeAll(t, s, x)
+	x.mu.RLock()
+	object := x.rows[extract].Object
+	x.mu.RUnlock()
+	if err := commit(s, DocumentsSheet, store.Delete("DOCUMENT", store.Row{"id": extract})); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		x.mu.RLock()
+		_, indexed := x.rows[extract]
+		x.mu.RUnlock()
+		held, err := bucket.Exists(context.Background(), object)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !indexed && !held {
+			return
+		}
+	}
+	t.Fatalf("the removed extract's entry %s is still indexed or stored", object)
+}
+
 func TestSearchKeepsToWhatTheCallerMayRead(t *testing.T) {
 	s, _, _, x := searcher(t)
 	madeAll(t, s, x)

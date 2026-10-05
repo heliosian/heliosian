@@ -3,6 +3,7 @@ package db
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	netmail "net/mail"
@@ -20,10 +21,13 @@ import (
 )
 
 const (
-	ClassifyModel = "claude-sonnet-5-5"
-	classifyActor = "classify"
-	classifyLimit = 24 << 10
+	ClassifyModel   = "claude-sonnet-5-5"
+	classifyActor   = "classify"
+	classifyLimit   = 24 << 10
+	classifyBackoff = 30 * time.Second
 )
+
+var errAskAgain = errors.New("asking again may answer")
 
 const classifySystem = `You read one email the Helios School community received - the school's newsletter, a notice from the school's mailer, a message to all the families or to one class - and say whom it was written to.
 
@@ -69,9 +73,16 @@ func StartClassifier(s *Store, queue *store.Queue, bucket *blob.Bucket, anthropi
 
 func (c *Classifier) run() {
 	for range c.poke {
+		again := false
 		for _, id := range c.pending() {
 			start := time.Now()
 			outcome, err := c.classify(id)
+			if errors.Is(err, errAskAgain) {
+				slog.Error("classify, to be asked again", "document", id, "error", err)
+				time.Sleep(classifyBackoff)
+				again = true
+				continue
+			}
 			if err != nil {
 				c.skipped[id] = true
 				slog.Error("classify", "document", id, "error", err)
@@ -81,6 +92,13 @@ func (c *Classifier) run() {
 				continue
 			}
 			slog.Info("classify: done", "document", id, "sent_to", outcome, "took", time.Since(start).Round(time.Millisecond))
+		}
+		if !again {
+			continue
+		}
+		select {
+		case c.poke <- struct{}{}:
+		default:
 		}
 	}
 }
@@ -181,7 +199,10 @@ func (c *Classifier) classify(id string) (string, error) {
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt))},
 		OutputConfig: anthropic.OutputConfigParam{Format: anthropic.JSONOutputFormatParam{Schema: classifySchema}},
 	}, &out); err != nil {
-		return "", err
+		if errors.Is(err, claude.ErrFinal) {
+			return "", err
+		}
+		return "", fmt.Errorf("%w: %w", errAskAgain, err)
 	}
 	if out.Nobody {
 		return "nobody: deleted", c.discard(id)

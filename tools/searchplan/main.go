@@ -15,8 +15,8 @@ import (
 const (
 	systemTokens    = 250
 	outputTokens    = 500
-	inputDollars    = 4.0
-	outputDollars   = 20.0
+	inputDollars    = 2.0
+	outputDollars   = 10.0
 	charsPerToken   = 4
 	existsParallels = 16
 )

@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	SearchModel   = "claude-opus-5-5"
+	SearchModel   = "claude-sonnet-5-5"
 	searchFolder  = "search"
 	searchResults = 50
 	searchChunk   = 1500
@@ -310,8 +310,6 @@ func (x *Searcher) follow() {
 		x.texts = texts
 		rows := m.SearchInputs(texts)
 		x.mu.Lock()
-		x.rows = rows
-		x.version++
 		wanted := map[string]bool{}
 		unknown := []string{}
 		for _, r := range rows {
@@ -320,6 +318,14 @@ func (x *Searcher) follow() {
 				unknown = append(unknown, r.Object)
 			}
 		}
+		removed := []string{}
+		for id, r := range x.rows {
+			if _, kept := rows[id]; !kept && !wanted[r.Object] && !slices.Contains(removed, r.Object) {
+				removed = append(removed, r.Object)
+			}
+		}
+		x.rows = rows
+		x.version++
 		for hash := range x.entries {
 			if !wanted[hash] {
 				delete(x.entries, hash)
@@ -336,6 +342,11 @@ func (x *Searcher) follow() {
 			}
 		}
 		x.mu.Unlock()
+		for _, hash := range removed {
+			if err := x.bucket.Remove(context.Background(), hash); err != nil {
+				slog.Error("search: remove", "object", hash, "error", err)
+			}
+		}
 		loaded, errs := FanOut(len(unknown), func(i int) (*SearchEntry, error) { return x.load(unknown[i]) })
 		x.mu.Lock()
 		for i, hash := range unknown {
@@ -452,6 +463,13 @@ func (x *Searcher) make() {
 			continue
 		}
 		x.mu.Lock()
+		if !x.missing[hash] {
+			x.mu.Unlock()
+			if err := x.bucket.Remove(context.Background(), hash); err != nil {
+				slog.Error("search: remove", "object", hash, "error", err)
+			}
+			continue
+		}
 		x.entries[hash] = entry
 		delete(x.summaries, hash)
 		delete(x.missing, hash)
@@ -463,11 +481,10 @@ func (x *Searcher) make() {
 }
 
 func (x *Searcher) retry(hash string) {
-	time.AfterFunc(searchBackoff, func() {
-		x.mu.Lock()
-		defer x.mu.Unlock()
-		x.enqueue(hash)
-	})
+	time.Sleep(searchBackoff)
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	x.enqueue(hash)
 }
 
 func (x *Searcher) entry(ctx context.Context, hash, input string) (*SearchEntry, error) {

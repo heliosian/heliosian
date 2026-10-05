@@ -107,16 +107,18 @@ func TestMailIsReadIntoATree(t *testing.T) {
 	if bytesOf(t, s, bucket, parts[2]) != string(logo) {
 		t.Fatal("the logo's bytes in the bucket differ")
 	}
-	for i, want := range map[int]string{0: "Bring a sleeping bag.", 1: "Bring a **sleeping bag**."} {
-		made(t, s, "DOCUMENT", parts[i]["id"], "extracted")
-		extracts := children(s, parts[i]["id"])
-		if len(extracts) != 1 || extracts[0]["relation"] != "extract" {
-			t.Fatalf("part %d's extracts: %v", i, extracts)
-		}
-		content, _ := s.Model().Table("CONTENT").Get(extracts[0]["content"])
-		if got := bytesOf(t, s, bucket, extracts[0]); got != want || content["mime"] != "text/markdown" {
-			t.Fatalf("part %d's markdown reads %q as %s", i, got, content["mime"])
-		}
+	made(t, s, "DOCUMENT", parts[0]["id"], "extracted")
+	if extracts := children(s, parts[0]["id"]); len(extracts) != 0 {
+		t.Fatalf("the text part beside the HTML was read: %v", extracts)
+	}
+	made(t, s, "DOCUMENT", parts[1]["id"], "extracted")
+	extracts := children(s, parts[1]["id"])
+	if len(extracts) != 1 || extracts[0]["relation"] != "extract" {
+		t.Fatalf("the HTML part's extracts: %v", extracts)
+	}
+	content, _ := s.Model().Table("CONTENT").Get(extracts[0]["content"])
+	if got := bytesOf(t, s, bucket, extracts[0]); got != "Bring a **sleeping bag**." || content["mime"] != "text/markdown" {
+		t.Fatalf("the HTML part's markdown reads %q as %s", got, content["mime"])
 	}
 	made(t, s, "DOCUMENT", parts[3]["id"], "extracted")
 	inner := children(s, parts[3]["id"])

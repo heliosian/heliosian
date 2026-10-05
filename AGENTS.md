@@ -46,3 +46,4 @@ How code is written in this repository, for coding agents and the people driving
 
 - Commit messages are one short line summarizing the change, not every detail of it crammed into a single line. The diff carries the detail.
 - Work that belongs to a GitHub issue references it in the commit message (`Fix login redirect (#123)`).
+- Several agents work in this tree at once. A file another session has dirty is still open to you: edit it whenever your task needs it, alongside their changes, and leave their edits as they are.
