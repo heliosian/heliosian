@@ -478,7 +478,7 @@ func (x *Searcher) entry(ctx context.Context, hash, input string) (*SearchEntry,
 		summary = &SearchEntry{}
 		if _, err := claude.JSON(ctx, *x.client, anthropic.MessageNewParams{
 			Model:        SearchModel,
-			MaxTokens:    16000,
+			MaxTokens:    32000,
 			System:       []anthropic.TextBlockParam{{Text: searchSystem}},
 			Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(input))},
 			OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffort("medium"), Format: anthropic.JSONOutputFormatParam{Schema: searchSchema}},

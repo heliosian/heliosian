@@ -524,14 +524,17 @@ func PDFPlan(rows CalendarRows, v *Vocabulary, cal YearCalendar, classified map[
 	if first == "" || last == "" {
 		return nil, fmt.Errorf("the year calendar has no first or last day of school")
 	}
+	days := map[string][]map[string]string{}
 	for _, s := range p.pdfSourcesOf(cal.Year) {
-		switch {
-		case kept[s["id"]]:
-		case p.kind(s) == "day":
-			p.deleteGroup(s["group"])
-		default:
-			p.dropSource(s)
+		if p.kind(s) != "day" {
+			continue
 		}
+		classrooms := []string{}
+		for _, r := range p.under["RULE"][s["group"]] {
+			classrooms = append(classrooms, r["target"])
+		}
+		key := p.dayKey(s["start"], s["name"], classrooms)
+		days[key] = append(days[key], s)
 	}
 	every := []string{}
 	for _, c := range v.Classrooms {
@@ -568,12 +571,36 @@ func PDFPlan(rows CalendarRows, v *Vocabulary, cal YearCalendar, classified map[
 			marker = "last_day"
 		}
 		for _, t := range slices.Sorted(maps.Keys(byType)) {
-			source := map[string]any{"document": cal.Document, "hash": cal.Hash}
-			if marker != "" {
-				source["marker"] = marker
+			source := map[string]any{"document": cal.Document, "hash": cal.Hash, "marker": marker}
+			key := p.dayKey(d, t, byType[t])
+			if i := slices.IndexFunc(days[key], func(s map[string]string) bool { return !kept[s["id"]] }); i >= 0 {
+				s := days[key][i]
+				kept[s["id"]] = true
+				p.setChanged(s["id"], s, source)
+				continue
+			}
+			if marker == "" {
+				delete(source, "marker")
 			}
 			p.addDay(d, t, byType[t], source)
 		}
 	}
+	for _, s := range p.pdfSourcesOf(cal.Year) {
+		switch {
+		case kept[s["id"]]:
+		case p.kind(s) == "day":
+			p.deleteGroup(s["group"])
+		default:
+			p.dropSource(s)
+		}
+	}
 	return p.edits, nil
+}
+
+func (p *calendarPlan) dayKey(date, dayType string, classrooms []string) string {
+	who := "every classroom"
+	if len(classrooms) > 0 && !p.everyClassroom(classrooms) {
+		who = strings.Join(slices.Sorted(slices.Values(classrooms)), " ")
+	}
+	return date[:min(len(date), len(DateLayout))] + "\x00" + dayType + "\x00" + who
 }

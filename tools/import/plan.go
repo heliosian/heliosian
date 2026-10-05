@@ -284,7 +284,9 @@ func (p *planner) match() error {
 	owner := map[string]string{}
 	for _, eid := range p.st.emails.order {
 		e := p.st.emails.rows[eid]
-		owner[e["address"]] = e["person"]
+		if p.st.people.rows[e["person"]]["source"] != "guest" {
+			owner[e["address"]] = e["person"]
+		}
 	}
 	for _, id := range p.ids {
 		owners := []string{}
@@ -305,7 +307,7 @@ func (p *planner) match() error {
 	byEmail := maps.Clone(p.claimed)
 	byName := map[string][]string{}
 	for _, pid := range p.st.people.order {
-		if _, taken := byEmail[pid]; taken {
+		if _, taken := byEmail[pid]; taken || p.st.people.rows[pid]["source"] == "guest" {
 			continue
 		}
 		if n := resolved(p.st.people.rows[pid]["vc_name"]); n != "" {

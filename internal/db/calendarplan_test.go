@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+	"maps"
+	"strings"
 	"testing"
 
 	"heliosian/internal/access"
@@ -178,6 +180,7 @@ func TestPDFPlan(t *testing.T) {
 	if err := commit(s, DocumentsSheet,
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000002", "kind": "calendar"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000003", "kind": "calendar"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000004", "kind": "calendar"}),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -281,8 +284,23 @@ func TestPDFPlan(t *testing.T) {
 	if err := commit(s, ConfigSheet, store.Insert("ALIAS", store.Row{"id": "als00000000070", "alias": "oldpicnicid", "target": picnicGroup})); err != nil {
 		t.Fatal(err)
 	}
+	dayIDs := func() map[string]string {
+		out := map[string]string{}
+		for _, d := range groupsOf(s.Model(), "day") {
+			rules := []string{}
+			for _, r := range s.Model().Table("RULE").Referencing("group", d["id"]) {
+				rules = append(rules, r["target"])
+			}
+			out[d["start"]+" "+d["name"]+" "+strings.Join(rules, ",")] = d["id"]
+		}
+		return out
+	}
+	before := dayIDs()
 
 	run(year("doc00000000003", btsn), true)
+	if after := dayIDs(); !maps.Equal(after, before) {
+		t.Fatalf("a new version with the same days remade them:\nbefore %v\nafter  %v", before, after)
+	}
 	m = s.Model()
 	if n := len(groupsOf(m, "event")); n != events-1 {
 		t.Fatalf("%d events after the picnic left the pdf, want %d", n, events-1)
@@ -300,5 +318,29 @@ func TestPDFPlan(t *testing.T) {
 	}
 	if n := len(groupsOf(m, "day")); n != 9 {
 		t.Fatalf("%d days after the new version, want 9", n)
+	}
+
+	shaded := year("doc00000000004", btsn)
+	shaded.Shaded = append(shaded.Shaded, ShadedDay{Date: "2026-09-03", DayType: "No School"})
+	run(shaded, true)
+	after := dayIDs()
+	for key, id := range before {
+		if strings.HasPrefix(key, "2026-09-03 ") {
+			if after[key] != "" {
+				t.Fatalf("the regular day on a newly shaded date stayed: %s", key)
+			}
+			continue
+		}
+		if after[key] != id {
+			t.Fatalf("the day %s changed from %s to %s when another date was shaded", key, id, after[key])
+		}
+	}
+	if after["2026-09-03 No School "] == "" {
+		t.Fatalf("no No School day on the newly shaded date: %v", after)
+	}
+	for _, src := range s.Model().Table("GROUP_SOURCE").All() {
+		if src["document"] != "" && src["document"] != "doc00000000004" {
+			t.Fatalf("a source still names an old version: %v", src)
+		}
 	}
 }

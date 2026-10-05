@@ -129,6 +129,30 @@ func sampleExport(t *testing.T, withMaya bool) *export {
 	return x
 }
 
+func TestAGuestIsNeverTakenForTheVeracrossPersonItStandsFor(t *testing.T) {
+	c, s := sampleServer(t)
+	x := sampleExport(t, true)
+	importOnce(t, c, x)
+	rowan := personNamed(s, "Rowan Ashdown")
+	if _, err := c.write([]write{
+		{Insert: "PERSON", As: "guest", Row: row{"source": "guest", "name_long_override": "Rowan Ashdown"}},
+		{Insert: "PERSON_EMAIL", Row: row{"address": "rowan.ashdown@example.org", "person": "@guest", "source": "guest", "primary": "Yes"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := importOnce(t, c, x); len(p.batch) != 0 {
+		t.Fatalf("a guest holding Rowan's address made the import change %v", p.counts)
+	}
+	for _, r := range s.Model().Table("PERSON").All() {
+		if r["source"] == "guest" && r["name_long_override"] == "Rowan Ashdown" && (r["vc_name"] != "" || r["vc_grade"] != "") {
+			t.Fatalf("the guest took Rowan's Veracross fields: %v", r)
+		}
+	}
+	if now := personNamed(s, "Rowan Ashdown"); now["id"] != rowan["id"] || now["deactivated"] != "" {
+		t.Fatalf("Rowan's own row went: %v", now)
+	}
+}
+
 func TestOneNameTwoPeople(t *testing.T) {
 	for _, kidEmails := range [][]string{{"marco.jr@example.org"}, {}} {
 		c, s := sampleServer(t)

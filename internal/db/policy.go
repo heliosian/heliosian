@@ -250,7 +250,7 @@ const policySource = `
 ; every column of an effective membership
 (read EFFECTIVE_MEMBER (id group person reasons) true)
 
-; documents sent to no group that takes mail, or to one whose mail the viewer sees, and every document under them
+; documents sent to a group whose mail the viewer sees, or no mail and sent to no group, and every document under them
 (read DOCUMENT (document_visible @row))
 ; every column of a document
 (read DOCUMENT
@@ -538,6 +538,12 @@ const policySource = `
 (read SEARCH (super_admin))
 ; every column of a search entry
 (read SEARCH (id target input summary keywords chunks object made) true)
+; every document, whoever it was sent to
+(read DOCUMENT (super_admin))
+; every document's groups
+(read DOCUMENT_GROUP (super_admin))
+; every stored file
+(read CONTENT (super_admin))
 ; every change the store recorded, but those the consent step hides
 (read CHANGES (super_admin))
 ; every column of a change

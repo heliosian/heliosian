@@ -77,6 +77,27 @@ func TestWhoSeesWhichRows(t *testing.T) {
 	}
 }
 
+func TestMailShowsToWhomItWasSentAndToSuperAdmins(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, DocumentsSheet,
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000020", "kind": "list", "name": "Not yet placed"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000021", "kind": "list", "name": "To Hummingbirds parents"}),
+		store.Insert("DOCUMENT_GROUP", store.Row{"id": "dgr00000000021", "document": "doc00000000021", "group": "grp00000000030", "relation": "sent_to"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	for viewer, want := range map[string]string{nobody: "", student: "", parent: "doc00000000021", staff: "doc00000000020 doc00000000021", guest: ""} {
+		got := []string{}
+		for _, row := range as(t, s, viewer, `(from DOCUMENT (where (in id "doc00000000020" "doc00000000021")))`) {
+			got = append(got, row["id"])
+		}
+		slices.Sort(got)
+		if strings.Join(got, " ") != want {
+			t.Errorf("as %q: %v, want %q", viewer, got, want)
+		}
+	}
+}
+
 func TestDocumentsUnderAMailedPostFollowIt(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, DocumentsSheet,
