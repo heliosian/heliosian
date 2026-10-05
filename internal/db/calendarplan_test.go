@@ -175,6 +175,79 @@ func TestGooglePlan(t *testing.T) {
 	}
 }
 
+func TestOneDayPerDateTypeAndClassrooms(t *testing.T) {
+	s, queue := calendarSample(t)
+	if err := commit(s, DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000002", "kind": "calendar"})); err != nil {
+		t.Fatal(err)
+	}
+	from, to := feedWindow(testNow)
+	both := []string{hummingbirds, ospreys}
+	early := GoogleEvent{CalendarItem: CalendarItem{Key: "early@google", Title: "Early dismissal", Start: "2026-10-07", End: "2026-10-07", AllDay: true}}
+	google := func(feed []GoogleEvent) {
+		t.Helper()
+		rows := s.Model().calendarRows()
+		v, err := NewVocabulary(rows)
+		if err != nil {
+			t.Fatal(err)
+		}
+		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, map[string]Classification{early.Key: {Classrooms: both, Who: "families", DayType: "Early Dismissal"}}))
+	}
+	pdf := func() {
+		t.Helper()
+		rows := s.Model().calendarRows()
+		v, _ := NewVocabulary(rows)
+		cal := YearCalendar{Document: "doc00000000002", Year: "2026-2027", Hash: "reading", Entries: []YearEntry{
+			{Key: "first", Title: "First day of school", Start: "2026-10-05", End: "2026-10-05", Classrooms: both, Marker: "first_day"},
+			{Key: "last", Title: "Last day of school", Start: "2026-10-09", End: "2026-10-09", Classrooms: both, Marker: "last_day"},
+		}, Shaded: []ShadedDay{{Date: "2026-10-07", DayType: "Early Dismissal"}}}
+		classified := map[string]Classification{}
+		for _, it := range PDFToClassify(rows, v, cal, nil) {
+			classified[it.Key] = Classification{Who: "families"}
+		}
+		edits, err := PDFPlan(rows, v, cal, classified, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		apply(t, s, queue, edits)
+	}
+	onTheDay := func() []store.Row {
+		out := []store.Row{}
+		for _, d := range groupsOf(s.Model(), "day") {
+			if d["start"] == "2026-10-07" {
+				out = append(out, d)
+			}
+		}
+		return out
+	}
+
+	google([]GoogleEvent{early})
+	pdf()
+	days := onTheDay()
+	if len(days) != 1 {
+		t.Fatalf("%d days on the early dismissal, want the feed's and the pdf's to share one", len(days))
+	}
+	if n := len(s.Model().Table("GROUP_SOURCE").Referencing("group", days[0]["id"])); n != 2 {
+		t.Fatalf("the shared day has %d sources, want the feed's and the pdf's", n)
+	}
+	if n := len(s.Model().Table("GROUP").Referencing("parent", days[0]["id"])); n != len(DayTemplates["Early Dismissal"]) {
+		t.Fatalf("the shared day has %d parts", n)
+	}
+
+	google(nil)
+	after := onTheDay()
+	if len(after) != 1 || after[0]["id"] != days[0]["id"] {
+		t.Fatalf("the day the pdf still states went with the feed's event: %v", after)
+	}
+	if n := len(s.Model().Table("GROUP_SOURCE").Referencing("group", days[0]["id"])); n != 1 {
+		t.Fatalf("the day has %d sources once the feed dropped it, want the pdf's", n)
+	}
+
+	google([]GoogleEvent{early})
+	if after := onTheDay(); len(after) != 1 || after[0]["id"] != days[0]["id"] {
+		t.Fatalf("the feed's event back made another day: %v", after)
+	}
+}
+
 func TestPDFPlan(t *testing.T) {
 	s, queue := calendarSample(t)
 	if err := commit(s, DocumentsSheet,

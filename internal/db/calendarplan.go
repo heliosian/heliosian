@@ -48,6 +48,8 @@ type calendarPlan struct {
 	children map[string][]string
 	aliases  map[string][]string
 	deleted  map[string]bool
+	days     map[string]string
+	joined   map[string]bool
 	edits    []Edit
 	names    int
 }
@@ -55,7 +57,7 @@ type calendarPlan struct {
 var underTables = []string{"RULE", "MEMBER", "DOCUMENT_GROUP", "GROUP_SOURCE"}
 
 func newCalendarPlan(rows CalendarRows, v *Vocabulary) *calendarPlan {
-	p := &calendarPlan{v: v, groups: map[string]map[string]string{}, under: map[string]map[string][]map[string]string{}, children: map[string][]string{}, aliases: map[string][]string{}, deleted: map[string]bool{}}
+	p := &calendarPlan{v: v, groups: map[string]map[string]string{}, under: map[string]map[string][]map[string]string{}, children: map[string][]string{}, aliases: map[string][]string{}, deleted: map[string]bool{}, days: map[string]string{}, joined: map[string]bool{}}
 	for _, a := range rows["ALIAS"] {
 		p.aliases[a["target"]] = append(p.aliases[a["target"]], a["id"])
 	}
@@ -72,6 +74,18 @@ func newCalendarPlan(rows CalendarRows, v *Vocabulary) *calendarPlan {
 		}
 	}
 	p.sources = rows["GROUP_SOURCE"]
+	for _, g := range rows["GROUP"] {
+		if g["kind"] != "day" {
+			continue
+		}
+		classrooms := []string{}
+		for _, r := range p.under["RULE"][g["id"]] {
+			classrooms = append(classrooms, r["target"])
+		}
+		if key := p.dayKey(g["start"], g["name"], classrooms); p.days[key] == "" {
+			p.days[key] = g["id"]
+		}
+	}
 	return p
 }
 
@@ -123,7 +137,7 @@ func (p *calendarPlan) liveSources(group string) []map[string]string {
 
 func (p *calendarPlan) dropSource(source map[string]string) {
 	p.remove(source["id"])
-	if len(p.liveSources(source["group"])) == 0 {
+	if len(p.liveSources(source["group"])) == 0 && !p.joined[source["group"]] {
 		p.deleteGroup(source["group"])
 	}
 }
@@ -212,15 +226,24 @@ func (p *calendarPlan) unclassify(group string) {
 }
 
 func (p *calendarPlan) addDay(date, dayType string, classrooms []string, source map[string]any) {
+	row := maps.Clone(source)
+	row["name"], row["start"], row["all_day"] = dayType, date, true
+	key := p.dayKey(date, dayType, classrooms)
+	if day := p.days[key]; day != "" && !p.deleted[day] {
+		row["group"] = day
+		p.joined[day] = true
+		p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: row})
+		return
+	}
 	day := p.newGroup("day", map[string]any{"name": dayType, "parent": p.v.DayTypes[dayType], "start": date, "all_day": true})
+	p.days[key] = day
 	if !p.everyClassroom(classrooms) {
 		orders := store.Order(make([]string, len(classrooms)))
 		for i, c := range classrooms {
 			p.edits = append(p.edits, Edit{Insert: "RULE", Row: map[string]any{"group": day, "order": orders[i], "target": c}})
 		}
 	}
-	row := maps.Clone(source)
-	row["group"], row["name"], row["start"], row["all_day"] = day, dayType, date, true
+	row["group"] = day
 	p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: row})
 	for _, part := range DayTemplates[dayType] {
 		p.newGroup("day_part", map[string]any{"name": part.Part, "parent": day, "start": date + " " + part.Start, "end": date + " " + part.End})
@@ -283,10 +306,10 @@ func GooglePlan(rows CalendarRows, v *Vocabulary, feed []GoogleEvent, from, to t
 	p := newCalendarPlan(rows, v)
 	events := p.googleEvents(false)
 	series := p.googleEvents(true)
-	days := map[string][]string{}
+	days := map[string][]map[string]string{}
 	for _, s := range p.sources {
 		if s["calendar_event"] != "" && p.kind(s) == "day" {
-			days[s["calendar_event"]] = append(days[s["calendar_event"]], s["group"])
+			days[s["calendar_event"]] = append(days[s["calendar_event"]], s)
 		}
 	}
 	reclassified := func(e GoogleEvent) (Classification, bool) {
@@ -363,7 +386,7 @@ func GooglePlan(rows CalendarRows, v *Vocabulary, feed []GoogleEvent, from, to t
 		p.unclassify(s["group"])
 		p.rules(s["group"], c.Classrooms, c.Who)
 		for _, day := range days[e.Key] {
-			p.deleteGroup(day)
+			p.dropSource(day)
 		}
 		p.googleDays(e, c, hash)
 	}
@@ -377,7 +400,7 @@ func GooglePlan(rows CalendarRows, v *Vocabulary, feed []GoogleEvent, from, to t
 		}
 		p.dropSource(s)
 		for _, day := range days[key] {
-			p.deleteGroup(day)
+			p.dropSource(day)
 		}
 	}
 	for key, s := range series {
@@ -588,8 +611,6 @@ func PDFPlan(rows CalendarRows, v *Vocabulary, cal YearCalendar, classified map[
 	for _, s := range p.pdfSourcesOf(cal.Year) {
 		switch {
 		case kept[s["id"]]:
-		case p.kind(s) == "day":
-			p.deleteGroup(s["group"])
 		default:
 			p.dropSource(s)
 		}
