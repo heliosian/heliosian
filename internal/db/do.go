@@ -109,7 +109,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			return
 		}
 		root := map[string]any{"kind": "calendar", "url": r.FormValue("url"), "published": now().In(School).Format(cells.StampFormat)}
-		document, hash, err := storeRoot(r, s, queue, pics, actor, env, content, "application/pdf", root)
+		document, hash, err := storeRoot(r, s, queue, pics, actor, env, content, "application/pdf", root, nil)
 		if err != nil {
 			serve.Error(w, r, err)
 			return
@@ -138,12 +138,12 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, access.Invalid("could not read the eml"))
 			return
 		}
-		root, err := s.Model().mailRoot(content)
+		root, sentTo, err := s.Model().mailRoot(content)
 		if err != nil {
 			serve.Error(w, r, access.Invalid("%v", err))
 			return
 		}
-		document, hash, err := storeRoot(r, s, queue, pics, actor, env, content, "message/rfc822", root)
+		document, hash, err := storeRoot(r, s, queue, pics, actor, env, content, "message/rfc822", root, sentTo)
 		if err != nil {
 			serve.Error(w, r, err)
 			return
@@ -153,19 +153,37 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 	})
 }
 
-func storeRoot(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, content []byte, mimeType string, root map[string]any) (string, string, error) {
+func storeRoot(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, content []byte, mimeType string, root map[string]any, sentTo []string) (string, string, error) {
 	sum := sha256.Sum256(content)
 	hash := hex.EncodeToString(sum[:])
 	m := s.Model()
 	if err := m.Authorize(env, Change{Table: "DOCUMENT", New: store.Row{"kind": root["kind"].(string)}}); err != nil {
 		return "", "", err
 	}
-	existing, found := m.Table("CONTENT").Find(hash)
+	existing, found := m.Table("CONTENT").Find(hash, mimeType)
 	if found {
 		for _, row := range m.Table("DOCUMENT").Referencing("content", existing["id"]) {
-			if row["parent"] == "" && row["kind"] == root["kind"] {
-				return row["id"], hash, nil
+			if row["parent"] != "" || row["kind"] != root["kind"] {
+				continue
 			}
+			held := map[string]bool{}
+			for _, link := range m.Table("DOCUMENT_GROUP").Referencing("document", row["id"]) {
+				if link["relation"] == "sent_to" {
+					held[link["group"]] = true
+				}
+			}
+			edits := []Edit{}
+			for _, group := range sentTo {
+				if !held[group] {
+					edits = append(edits, Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": row["id"], "group": group, "relation": "sent_to"}})
+				}
+			}
+			if len(edits) > 0 {
+				if _, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: edits}); err != nil {
+					return "", "", err
+				}
+			}
+			return row["id"], hash, nil
 		}
 	}
 	edits := []Edit{}
@@ -181,12 +199,16 @@ func storeRoot(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, ac
 		edits = append(edits, Edit{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": hash, "blob": name, "mime": mimeType, "size": size}})
 		root["content"] = "@content"
 	}
-	edits = append(edits, Edit{Insert: "DOCUMENT", Row: root})
+	edits = append(edits, Edit{Insert: "DOCUMENT", As: "document", Row: root})
+	at := len(edits) - 1
+	for _, group := range sentTo {
+		edits = append(edits, Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": "@document", "group": group, "relation": "sent_to"}})
+	}
 	ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: edits})
 	if err != nil {
 		return "", "", err
 	}
-	return ids[len(ids)-1], hash, nil
+	return ids[at], hash, nil
 }
 
 type upload struct {

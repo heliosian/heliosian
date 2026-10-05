@@ -173,7 +173,7 @@ func (x *Extractor) extract(id string) (int, error) {
 	for i, child := range children {
 		sum := sha256.Sum256(child.body)
 		hashes[i] = hex.EncodeToString(sum[:])
-		if _, held := m.Table("CONTENT").Find(hashes[i]); held || stored[hashes[i]] {
+		if _, held := m.Table("CONTENT").Find(hashes[i], child.mime); held || stored[hashes[i]] {
 			continue
 		}
 		if err := x.bucket.Put(ctx, contentFolder+"/"+hashes[i], child.mime, child.body); err != nil {
@@ -196,19 +196,19 @@ func (x *Extractor) extract(id string) (int, error) {
 		}
 		contents := map[string]string{}
 		for i, child := range children {
-			hash := hashes[i]
-			if _, done := contents[hash]; !done {
-				if held, ok := x.s.In(tx).Table("CONTENT").Find(hash); ok {
-					contents[hash] = held["id"]
+			hash, key := hashes[i], hashes[i]+"\x00"+child.mime
+			if _, done := contents[key]; !done {
+				if held, ok := x.s.In(tx).Table("CONTENT").Find(hash, child.mime); ok {
+					contents[key] = held["id"]
 				} else {
 					inserted, err := stage(Edit{Insert: "CONTENT", Row: map[string]any{"hash": hash, "blob": contentFolder + "/" + hash, "mime": child.mime, "size": strconv.Itoa(len(child.body))}})
 					if err != nil {
 						return err
 					}
-					contents[hash] = inserted
+					contents[key] = inserted
 				}
 			}
-			row := map[string]any{"parent": id, "relation": child.relation, "order": orders[i], "content": contents[hash]}
+			row := map[string]any{"parent": id, "relation": child.relation, "order": orders[i], "content": contents[key]}
 			if child.name != "" {
 				row["filename"] = child.name
 			}

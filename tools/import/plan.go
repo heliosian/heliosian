@@ -129,6 +129,7 @@ func plan(x *export, st *state) (*planner, error) {
 	}
 	p.ensureEveryone()
 	p.ensureGrades()
+	p.gradeParents()
 	households, err := p.households()
 	if err != nil {
 		return nil, err
@@ -463,6 +464,38 @@ func (p *planner) ensureGrades() {
 			band = p.newGroup(row{"kind": "band", "name": g.band})
 		}
 		p.newGroup(row{"kind": "grade", "slug": slug, "name": g.title, "parent": band})
+	}
+}
+
+func (p *planner) gradeParents() {
+	for _, g := range grades {
+		gradeSlug := "grade-" + strings.ToLower(g.code)
+		grade := p.findGroup(func(r row) bool { return r["kind"] == "grade" && strings.EqualFold(r["slug"], gradeSlug) })
+		slug := gradeSlug + "-parents"
+		group := p.findGroup(func(r row) bool { return r["kind"] == "group" && strings.EqualFold(r["slug"], slug) })
+		if group == "" {
+			group = p.newGroup(row{"kind": "group", "slug": slug, "name": g.title + " Parents"})
+		}
+		held := false
+		for _, rid := range p.st.rules.order {
+			r := p.st.rules.rows[rid]
+			if r["group"] != group {
+				continue
+			}
+			parents := strings.EqualFold(strings.TrimSpace(r["replace_with"]), "parents")
+			r = maps.Clone(r)
+			delete(r, "replace_with")
+			if !held && parents && plainTarget(r) && r["target"] == grade {
+				held = true
+				continue
+			}
+			p.groupWrites = append(p.groupWrites, write{Delete: rid})
+			p.counts["grade parents rules removed"]++
+		}
+		if !held {
+			p.groupWrites = append(p.groupWrites, write{Insert: "RULE", Row: row{"group": group, "order": store.Order([]string{""})[0], "target": grade, "replace_with": "parents"}})
+			p.counts["grade parents rules added"]++
+		}
 	}
 }
 

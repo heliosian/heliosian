@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"mime/multipart"
 	"net/http"
+	"strings"
 
 	"heliosian/internal/qclient"
 )
@@ -44,6 +45,14 @@ func roleGroup(kind, slug string) map[string]any {
 	return map[string]any{"and": []any{in(kind, "group"), in(slug, slugs...)}}
 }
 
+func gradeParentsGroup(kind, slug string) map[string]any {
+	slugs := []any{}
+	for _, g := range grades {
+		slugs = append(slugs, "grade-"+strings.ToLower(g.code)+"-parents")
+	}
+	return map[string]any{"and": []any{in(kind, "group"), in(slug, slugs...)}}
+}
+
 func (c client) read() (*state, error) {
 	st := &state{}
 	var err error
@@ -56,13 +65,13 @@ func (c client) read() (*state, error) {
 	if st.photos, _, err = c.table("PHOTO"); err != nil {
 		return nil, err
 	}
-	if st.groups, _, err = c.table("GROUP", or(in("kind", "family", "classroom", "crew", "grade", "band", "department"), roleGroup("kind", "slug"))); err != nil {
+	if st.groups, _, err = c.table("GROUP", or(in("kind", "family", "classroom", "crew", "grade", "band", "department"), roleGroup("kind", "slug"), gradeParentsGroup("kind", "slug"))); err != nil {
 		return nil, err
 	}
 	if st.members, _, err = c.table("MEMBER", or(in("group.kind", "family"), roleGroup("group.kind", "group.slug"))); err != nil {
 		return nil, err
 	}
-	if st.rules, _, err = c.table("RULE", in("group.kind", "band")); err != nil {
+	if st.rules, _, err = c.table("RULE", or(in("group.kind", "band"), gradeParentsGroup("group.kind", "group.slug"))); err != nil {
 		return nil, err
 	}
 	return st, nil

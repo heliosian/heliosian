@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -17,9 +18,22 @@ import (
 	"heliosian/internal/store"
 )
 
-func instantClaude(w http.ResponseWriter, _ *http.Request) {
+func instantClaude(w http.ResponseWriter, r *http.Request) {
+	claudeReplying(func(string) string {
+		return `{"summary": "a thing in the sample", "keywords": ["outing", "lunch"]}`
+	})(w, r)
+}
+
+func claudeReplying(reply func(request string) string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		request, _ := io.ReadAll(r.Body)
+		claudeStream(w, reply(string(request)))
+	}
+}
+
+func claudeStream(w http.ResponseWriter, text string) {
 	w.Header().Set("Content-Type", "text/event-stream")
-	answer, _ := json.Marshal(`{"summary": "a thing in the sample", "keywords": ["outing", "lunch"]}`)
+	answer, _ := json.Marshal(text)
 	for _, event := range []string{
 		`{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","model":"test","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}`,
 		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
@@ -55,7 +69,12 @@ func searcher(t *testing.T) (*Store, *store.Queue, *blob.Bucket, *Searcher) {
 func madeAll(t *testing.T, s *Store, x *Searcher) {
 	t.Helper()
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		want := s.Model().SearchInputs()
+		m := s.Model()
+		texts, err := SearchTexts(context.Background(), m, x.bucket, map[string]string{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := m.SearchInputs(texts)
 		x.mu.RLock()
 		done := len(x.rows) == len(want)
 		for id, r := range want {
@@ -83,7 +102,7 @@ func TestEveryShownRowGetsAnEntry(t *testing.T) {
 	s, _, bucket, x := searcher(t)
 	madeAll(t, s, x)
 	m := s.Model()
-	inputs := m.SearchInputs()
+	inputs := m.SearchInputs(nil)
 	if _, ok := inputs["grp00000000041"]; !ok {
 		t.Error("a managers group has no search input")
 	}
@@ -93,6 +112,33 @@ func TestEveryShownRowGetsAnEntry(t *testing.T) {
 	}
 	if held, err := bucket.Exists(context.Background(), picnic.Object); err != nil || !held || !strings.HasPrefix(picnic.Object, "search/") {
 		t.Errorf("the picnic's entry %s is not in the bucket: %v", picnic.Object, err)
+	}
+}
+
+func TestAnEmailsMarkdownIsSearchedByThoseItWasSentTo(t *testing.T) {
+	s, queue, bucket, x := searcher(t)
+	pics := NewPictures(s, queue, bucket)
+	NewExtractor(s, queue, bucket)
+	root := uploadMail(t, s, pics, "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Thu, 12 Feb 2026 01:48:03 +0000\r\nSubject: Tide pools\r\nList-Id: <hummingbirds.parents.heliosschool.org>\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Bring <b>boots</b> for the tide pools.</p>\r\n")
+	made(t, s, "DOCUMENT", root, "extracted")
+	part := children(s, root)[0]
+	made(t, s, "DOCUMENT", part["id"], "extracted")
+	extract := children(s, part["id"])[0]["id"]
+	madeAll(t, s, x)
+	x.mu.RLock()
+	input := x.rows[extract].Input
+	x.mu.RUnlock()
+	for _, want := range []string{"Email: Tide pools", "Kind: list", "From: Maya Lindqvist", "Part: text/html", "Bring **boots** for the tide pools."} {
+		if !strings.Contains(input, want) {
+			t.Errorf("the extract's input lacks %q:\n%s", want, input)
+		}
+	}
+	m := s.Model()
+	if got := hitIDs(x.Words(m, Env{Viewer: parent, Now: testNow}, "boots")); !slices.Contains(got, extract) {
+		t.Errorf("the Hummingbirds parent's search for boots found %v", got)
+	}
+	if got := hitIDs(x.Words(m, Env{Viewer: student, Now: testNow}, "boots")); slices.Contains(got, extract) {
+		t.Errorf("a student the email was not sent to found it: %v", got)
 	}
 }
 
@@ -118,11 +164,11 @@ func TestSearchKeepsToWhatTheCallerMayRead(t *testing.T) {
 func TestAChangedRowIsMadeAgain(t *testing.T) {
 	s, _, bucket, x := searcher(t)
 	madeAll(t, s, x)
-	before := s.Model().SearchInputs()["grp00000000040"].Object
+	before := s.Model().SearchInputs(nil)["grp00000000040"].Object
 	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"location": "the meadow"})); err != nil {
 		t.Fatal(err)
 	}
-	after := s.Model().SearchInputs()["grp00000000040"].Object
+	after := s.Model().SearchInputs(nil)["grp00000000040"].Object
 	if after == before {
 		t.Fatal("a new location left the picnic's input unchanged")
 	}

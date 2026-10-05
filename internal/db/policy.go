@@ -53,6 +53,12 @@ const policySource = `
 (define (role_group @g)
   (and (= @g.kind "group") (in @g.slug "students" "parents" "staff" "adults" "everyone")))
 
+; @g is one of the grade Parents groups the import keeps, whose one rule is its grade's parents
+(define (grade_parents @g)
+  (and (= @g.kind "group")
+       (in @g.slug "grade-k-parents" "grade-1-parents" "grade-2-parents" "grade-3-parents" "grade-4-parents"
+           "grade-5-parents" "grade-6-parents" "grade-7-parents" "grade-8-parents")))
+
 ; @g is the waitlist a party names
 (define (party_waitlist @g)
   (exists GROUP (= kind "party") (= waitlist @g)))
@@ -109,10 +115,11 @@ const policySource = `
 (define (mailed @d)
   (exists DOCUMENT_GROUP (in document (ancestors @d)) (= relation "sent_to") group.mail))
 
-; neither @d nor any document it sits under was sent to a group that takes mail, or one was sent to a group whose mail the viewer sees
+; @d or a document it sits under was sent to a group whose mail the viewer sees, or it is no mail and was sent to no group
 (define (document_visible @d)
-  (or (not (mailed @d))
-      (exists DOCUMENT_GROUP (in document (ancestors @d)) (= relation "sent_to") group.mail (sees_mail group))))
+  (or (exists DOCUMENT_GROUP (in document (ancestors @d)) (= relation "sent_to") (sees_mail group))
+      (and (not (exists DOCUMENT (in id (ancestors @d)) (in kind "newsletter" "list" "post")))
+           (not (exists DOCUMENT_GROUP (in document (ancestors @d)) (= relation "sent_to"))))))
 
 ; the viewer sent or received @m, or manages the group it went to
 (define (message_visible @m)
@@ -296,7 +303,7 @@ const policySource = `
 ; front-page widgets open to a group the viewer is in
 (read WIDGET (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer)))
 ; every column of a widget
-(read WIDGET (id key visible_to order) true)
+(read WIDGET (id key group name icon style descriptions sidebar visible_to order) true)
 ; the coordinates of a family address the viewer may see; a withheld address is blank, so it matches nothing
 (read GEOCODE
   (exists GROUP @f (= kind "family") (= address @row.address) (visible @f)))
@@ -593,9 +600,15 @@ const policySource = `
 ; add a portrait from Veracross or the website, or a picture the old sheets held
 (insert PHOTO (system "import"))
 ; every directory group the import keeps, withheld families too
-(read GROUP (and (system "import") (or (in kind "family" "classroom" "crew" "grade" "band" "department") (role_group @row))))
-; add a family, role group, classroom, crew, grade, band or department new in the export
-(insert GROUP (and (system "import") (or (in @new.kind "family" "classroom" "crew" "grade" "band" "department") (role_group @new))))
+(read GROUP (and (system "import") (or (in kind "family" "classroom" "crew" "grade" "band" "department") (role_group @row) (grade_parents @row))))
+; add a family, role group, grade Parents group, classroom, crew, grade, band or department new in the export
+(insert GROUP (and (system "import") (or (in @new.kind "family" "classroom" "crew" "grade" "band" "department") (role_group @new) (grade_parents @new))))
+; every grade Parents group's rules, to keep each its grade's parents
+(read RULE (and (system "import") (grade_parents group)))
+; make a grade Parents group take in its grade's parents
+(insert RULE (and (system "import") (grade_parents @new.group)))
+; stop a grade Parents group taking in anything but its grade's parents
+(delete RULE (and (system "import") (grade_parents @old.group)))
 ; put a classroom under the band of its students' grades
 (set GROUP.parent (and (system "import") (= @old.kind "classroom")))
 ; every band's rules, to compare with the grades and classrooms under it
@@ -681,8 +694,6 @@ const policySource = `
 (read MEMBER (and (system "import") (calendar_kind group)))
 ; remove someone from a calendar group being removed
 (delete MEMBER (and (system "import") (calendar_kind @old.group)))
-; links between documents and calendar groups, to remove them with the group
-(read DOCUMENT_GROUP (and (system "import") (calendar_kind group)))
 ; unlink a document from a calendar group being removed
 (delete DOCUMENT_GROUP (and (system "import") (calendar_kind @old.group)))
 ; add a version of the school's year calendar
@@ -690,7 +701,15 @@ const policySource = `
 ; store the bytes of a version of the school's year calendar
 (insert CONTENT (and (system "import") (= @new.mime "application/pdf")))
 ; add a mail message the community received
-(insert DOCUMENT (and (system "import") (in @new.kind "newsletter" "list" "post")))
+(insert DOCUMENT (and (system "import") (in @new.kind "newsletter" "list")))
+; say which groups a mail message was sent to
+(insert DOCUMENT_GROUP (and (system "import") (= @new.relation "sent_to") (in @new.document.kind "newsletter" "list")))
+; every document, to find the mail already uploaded
+(read DOCUMENT (system "import"))
+; every document's groups, to find the mail whose groups are not yet said
+(read DOCUMENT_GROUP (system "import"))
+; a Loop post uploaded as mail, and everything under it: Loop files the mail it sends itself
+(delete DOCUMENT (and (system "import") (exists DOCUMENT (in id (ancestors @old)) (= kind "post"))))
 
 ;; System: import, the sync from the old sheets, until the cutover
 
@@ -1072,6 +1091,30 @@ const policySource = `
 (set WIDGET.visible_to (system "import"))
 ; a widget's place on the page, as the old Apps sheet has it
 (set WIDGET.order (system "import"))
+; a section's group of links, as the old Apps sheet has it
+(set WIDGET.group (system "import"))
+; a section's heading, as the old Apps sheet has it
+(set WIDGET.name (system "import"))
+; a section's mark, as the old Apps sheet has it
+(set WIDGET.icon (system "import"))
+; how a section is laid out, as the old Apps sheet has it
+(set WIDGET.style (system "import"))
+; whether a section shows descriptions, as the old Apps sheet has it
+(set WIDGET.descriptions (system "import"))
+; whether a widget shows in the rail, as the old Apps sheet has it
+(set WIDGET.sidebar (system "import"))
+; what an app is called, as the old Apps sheet has it
+(set APP.name (system "import"))
+; the line under an app's name, as the old Apps sheet has it
+(set APP.subtitle (system "import"))
+; an app's place in the switch, as the old Apps sheet has it
+(set APP.order (system "import"))
+; where a front-page link goes, as the old Apps sheet has it
+(set GROUP.url (and (system "import") (= @old.kind "group")))
+; the section a front-page link sits in, as the old Apps sheet has it
+(set GROUP.parent (and (system "import") (= @old.kind "group")))
+; a front-page link's place in its section, as the old Apps sheet has it
+(set GROUP.order (and (system "import") (= @old.kind "group")))
 ; a staff member's birthday, as the old Birthdays sheet has it
 (set PERSON.birthday (system "import"))
 ; every birthday year, to find what an earlier sync added

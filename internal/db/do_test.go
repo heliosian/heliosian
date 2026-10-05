@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/png"
 	"maps"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -346,6 +348,10 @@ func TestMailIsStoredOnceWithItsHeaders(t *testing.T) {
 	if ids[0] != ids[1] {
 		t.Fatalf("the same message made two documents: %v", ids)
 	}
+	links := s.Model().Table("DOCUMENT_GROUP").Referencing("document", ids[0])
+	if len(links) != 1 || links[0]["group"] != "grp00000000030" || links[0]["relation"] != "sent_to" {
+		t.Fatalf("the message's groups: %v", links)
+	}
 	if rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "mail", nil, "eml", []byte("Subject: no date\r\n\r\nhello\r\n")); rec.Code != http.StatusBadRequest {
 		t.Fatalf("no date: %d %s", rec.Code, rec.Body.String())
 	}
@@ -354,16 +360,36 @@ func TestMailIsStoredOnceWithItsHeaders(t *testing.T) {
 	}
 }
 
-func TestMailKindFollowsTheList(t *testing.T) {
+func TestMailIsSentToItsListsGroups(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, GroupsSheet, store.Insert("GROUP", store.Row{"id": "grp00000000031", "kind": "group", "status": "open", "slug": "jayvens-parents", "name": "Jayvens Parents", "visible_to": "grp00000000004"})); err != nil {
+		t.Fatal(err)
+	}
+	m := s.Model()
 	for listID, want := range map[string]string{
 		"":                                   "newsletter",
-		"<parentsandstaff.heliosschool.org>": "list",
-		"Jays Parents <jays.parents.heliosns.org>": "list",
-		"<team.loop.heliosian.com>":                "post",
-		"<3064358178.560896@benchmarkemail.com>":   "newsletter",
+		"<parentsandstaff.heliosschool.org>": "list grp00000000002 grp00000000003",
+		"<parentsonly.heliosschool.org>":     "list grp00000000002",
+		"<community.heliosns.org>":           "list grp00000000004",
+		"Hummingbirds Parents <Hummingbirds.Parents.heliosns.org>": "list grp00000000030",
+		"<2020-21.hummingbirds.parents.heliosns.org>":              "list grp00000000030",
+		"<hummingbirds.students.heliosns.org>":                     "list grp00000000010",
+		"<jaysandravens.heliosns.org>":                             "list grp00000000031",
+		"<chat.heliosschool.org>":                                  "list grp00000000004",
+		"<michelle-level3math.parents.heliosschool.org>":           "list grp00000000004",
+		"<3064358178.560896@benchmarkemail.com>":                   "newsletter grp00000000004",
 	} {
-		if got := mailKind(listID); got != want {
+		root, sentTo, err := m.mailRoot([]byte("Date: Thu, 12 Feb 2026 01:48:03 +0000\r\nList-Id: " + listID + "\r\n\r\nhello\r\n"))
+		if err != nil {
+			t.Errorf("%q: %v", listID, err)
+			continue
+		}
+		slices.Sort(sentTo)
+		if got := strings.Join(append([]string{root["kind"].(string)}, sentTo...), " "); got != want {
 			t.Errorf("%q: %s, want %s", listID, got, want)
 		}
+	}
+	if _, _, err := m.mailRoot([]byte("Date: Thu, 12 Feb 2026 01:48:03 +0000\r\nList-Id: <team.loop.heliosian.com>\r\n\r\nhello\r\n")); !errors.Is(err, errLoopMail) {
+		t.Fatalf("loop's own mail: %v", err)
 	}
 }

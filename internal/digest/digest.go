@@ -18,7 +18,7 @@ import (
 	"heliosian/internal/store"
 )
 
-const claudeModel = "claude-sonnet-5"
+const claudeModel = "claude-sonnet-5-5"
 
 const maxEmail = 24 << 10
 

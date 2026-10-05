@@ -28,7 +28,7 @@ func TestJSONReadsTheAnswer(t *testing.T) {
 		Kind     string   `json:"kind"`
 	}
 	raw, err := JSON(context.Background(), anthropic.NewClient(option.WithAPIKey("test")), anthropic.MessageNewParams{
-		Model:        "claude-sonnet-5",
+		Model:        "claude-sonnet-5-5",
 		MaxTokens:    100,
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock("Hello"))},
 		OutputConfig: anthropic.OutputConfigParam{Format: anthropic.JSONOutputFormatParam{Schema: schema}},

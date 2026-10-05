@@ -38,8 +38,8 @@ func TestImportKey(t *testing.T) {
 	if code != http.StatusOK || len(out.Result) != 4 {
 		t.Fatalf("the import sees every person, but got %d %s", code, body)
 	}
-	if _, out, _ := ask(t, s, "application/json", "bearer:"+testImportKey, `{"from": "DOCUMENT_GROUP"}`); len(out.Result) != 0 {
-		t.Fatalf("the import sees %d document ties to a classroom", len(out.Result))
+	if _, out, _ := ask(t, s, "application/json", "bearer:"+testImportKey, `{"from": "DOCUMENT_GROUP"}`); len(out.Result) != 1 {
+		t.Fatalf("the import sees %d of the one document tie, which it reads to find mail not yet sent to its groups", len(out.Result))
 	}
 	rec := send(t, s, queue, http.MethodPost, "application/json", "bearer:"+testImportKey, `{"batch": [{"set": "per00000000001", "cells": {"vc_name": "June Ashdown"}}]}`)
 	if rec.Code != http.StatusOK {

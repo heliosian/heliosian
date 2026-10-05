@@ -54,7 +54,7 @@ func (m *Model) generated(t *Table) *generatedSet {
 	case "EFFECTIVE_MEMBER":
 		rows = m.effectiveAll()
 	case "INBOX":
-		rows = m.inbox()
+		rows = []store.Row{}
 	case "SEARCH":
 		rows, version = m.index.generatedRows()
 		m.derived.mu.Lock()
@@ -84,28 +84,6 @@ func (m *Model) effectiveAll() []store.Row {
 	out := []store.Row{}
 	for _, g := range m.Shown("GROUP").All() {
 		out = append(out, m.effectiveRows(g["id"])...)
-	}
-	return out
-}
-
-func (m *Model) inbox() []store.Row {
-	out := []store.Row{}
-	for _, doc := range m.Shown("DOCUMENT").All() {
-		if !slices.Contains([]string{"newsletter", "list", "post"}, doc["kind"]) {
-			continue
-		}
-		members := map[string]bool{}
-		for _, link := range m.Shown("DOCUMENT_GROUP").Referencing("document", doc["id"]) {
-			if link["relation"] != "sent_to" && link["relation"] != "for" {
-				continue
-			}
-			for _, row := range m.effectiveRows(link["group"]) {
-				members[row["person"]] = true
-			}
-		}
-		for _, person := range slices.Sorted(maps.Keys(m.replaceWith(members, "household"))) {
-			out = append(out, store.Row{"id": Derive(InboxPrefix, person, doc["id"]), "person": person, "document": doc["id"]})
-		}
 	}
 	return out
 }

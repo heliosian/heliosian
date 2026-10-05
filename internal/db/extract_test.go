@@ -127,6 +127,11 @@ func TestMailIsReadIntoATree(t *testing.T) {
 	if extracts := children(s, inner[0]["id"]); len(extracts) != 1 || bytesOf(t, s, bucket, extracts[0]) != "Tent, stove, water." {
 		t.Fatalf("the forwarded message's text was not read: %v", extracts)
 	}
+	for _, row := range s.Model().Table("DOCUMENT").All() {
+		if row["relation"] == "extract" && len(children(s, row["id"])) > 0 {
+			t.Fatalf("an extract was read again: %v", children(s, row["id"]))
+		}
+	}
 	if parts[2]["extracted"] != "" {
 		t.Fatalf("an image with no extractor was marked extracted: %v", parts[2])
 	}

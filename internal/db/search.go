@@ -39,7 +39,7 @@ const (
 	searchTimeout = 2 * time.Minute
 )
 
-const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, or a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like. You are given what everyone who can see it can read.
+const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like - or one part of an email the community received, its body or an attachment, read as text and headed by the email it came in. You are given what everyone who can see it can read.
 
 summary: one or two plain sentences saying what it is, shown under its name in a list of search results. Say only what the text supports.
 keywords: words and short phrases someone might type looking for it that its text doesn't already contain - synonyms, related terms, other names for the same thing, likely misspellings. Lower case, at most 30.`
@@ -113,6 +113,7 @@ type Searcher struct {
 	bucket  *blob.Bucket
 	vertex  *artifacts.Vertex
 	client  *anthropic.Client
+	texts   map[string]string
 	pending []string
 	waiting map[string]bool
 	poke    chan struct{}
@@ -120,7 +121,7 @@ type Searcher struct {
 }
 
 func NewSearcher(s *Store, queue *store.Queue, bucket *blob.Bucket, vertex *artifacts.Vertex) *Searcher {
-	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, waiting: map[string]bool{}, poke: make(chan struct{}, 1), wake: make(chan struct{}, 1)}
+	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, waiting: map[string]bool{}, poke: make(chan struct{}, 1), wake: make(chan struct{}, 1)}
 	go x.follow()
 	queue.OnSwap(func() {
 		select {
@@ -149,7 +150,7 @@ func SearchObject(input string) string {
 	return searchFolder + "/" + hex.EncodeToString(sum[:]) + ".json"
 }
 
-func (m *Model) SearchInputs() map[string]SearchRow {
+func (m *Model) SearchInputs(texts map[string]string) map[string]SearchRow {
 	out := map[string]SearchRow{}
 	for _, table := range []string{"GROUP", "PERSON"} {
 		for _, row := range m.Shown(table).All() {
@@ -160,7 +161,87 @@ func (m *Model) SearchInputs() map[string]SearchRow {
 			out[row["id"]] = SearchRow{Table: table, Input: input, Object: SearchObject(input)}
 		}
 	}
+	for _, row := range m.markdownExtracts() {
+		text, ok := texts[row["content"]]
+		if !ok {
+			continue
+		}
+		input := m.extractInput(row, text)
+		out[row["id"]] = SearchRow{Table: "DOCUMENT", Input: input, Object: SearchObject(input)}
+	}
 	return out
+}
+
+func (m *Model) markdownExtracts() []store.Row {
+	contents := m.Shown("CONTENT")
+	out := []store.Row{}
+	for _, row := range m.Shown("DOCUMENT").All() {
+		if row["relation"] != "extract" {
+			continue
+		}
+		if c, ok := contents.Get(row["content"]); ok && baseType(c["mime"]) == "text/markdown" {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+func SearchTexts(ctx context.Context, m *Model, bucket *blob.Bucket, held map[string]string) (map[string]string, error) {
+	contents := m.Shown("CONTENT")
+	out := map[string]string{}
+	missing := []store.Row{}
+	for _, row := range m.markdownExtracts() {
+		id := row["content"]
+		if _, done := out[id]; done {
+			continue
+		}
+		if text, ok := held[id]; ok {
+			out[id] = text
+			continue
+		}
+		c, _ := contents.Get(id)
+		out[id] = ""
+		missing = append(missing, c)
+	}
+	texts, errs := FanOut(len(missing), func(i int) (string, error) {
+		searchLoads <- struct{}{}
+		defer func() { <-searchLoads }()
+		raw, _, err := bucket.Get(ctx, missing[i]["blob"])
+		return string(raw), err
+	})
+	for i, c := range missing {
+		if errs[i] != nil {
+			return nil, fmt.Errorf("read %s: %w", c["blob"], errs[i])
+		}
+		out[c["id"]] = texts[i]
+	}
+	return out, nil
+}
+
+func (m *Model) extractInput(row store.Row, text string) string {
+	docs := m.Shown("DOCUMENT")
+	part, _ := docs.Get(row["parent"])
+	root := part
+	for seen := map[string]bool{}; root["parent"] != "" && !seen[root["id"]]; {
+		seen[root["id"]] = true
+		root, _ = docs.Get(root["parent"])
+	}
+	lines := []string{}
+	add := func(label, value string) {
+		if value = strings.TrimSpace(value); value != "" {
+			lines = append(lines, label+": "+value)
+		}
+	}
+	add("Email", root["name"])
+	add("Kind", root["kind"])
+	add("Sent", root["published"])
+	if author, ok := m.Shown("PERSON").Get(root["author"]); ok {
+		add("From", author["name_show"])
+	}
+	if content, ok := m.Shown("CONTENT").Get(part["content"]); ok {
+		add("Part", strings.TrimSpace(part["filename"]+" "+baseType(content["mime"])))
+	}
+	return strings.Join(lines, "\n") + "\n\n" + strings.TrimSpace(text)
 }
 
 func (m *Model) searchInput(table string, row store.Row) string {
@@ -217,7 +298,14 @@ func (m *Model) searchInput(table string, row store.Row) string {
 func (x *Searcher) follow() {
 	for range x.poke {
 		start := time.Now()
-		rows := x.s.Model().SearchInputs()
+		m := x.s.Model()
+		texts, err := SearchTexts(context.Background(), m, x.bucket, x.texts)
+		if err != nil {
+			slog.Error("search: read the extracts", "error", err)
+			continue
+		}
+		x.texts = texts
+		rows := m.SearchInputs(texts)
 		x.mu.Lock()
 		x.rows = rows
 		x.version++

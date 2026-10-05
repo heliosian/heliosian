@@ -34,7 +34,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("media bucket: %v", err)
 	}
-	rows := s.Model().SearchInputs()
+	m := s.Model()
+	texts, err := db.SearchTexts(context.Background(), m, bucket, map[string]string{})
+	if err != nil {
+		log.Fatalf("read the extracts: %v", err)
+	}
+	rows := m.SearchInputs(texts)
 	inputs := map[string]string{}
 	tables := map[string]map[string]bool{}
 	for _, r := range rows {

@@ -263,6 +263,22 @@ func TestImportAgainstTheSample(t *testing.T) {
 			t.Fatalf("the %s band's rules target %v, not its grades and classrooms %v", title, targets, under)
 		}
 	}
+	for _, g := range grades {
+		slug := "grade-" + strings.ToLower(g.code)
+		var grade, parents store.Row
+		for _, r := range groups.All() {
+			switch r["slug"] {
+			case slug:
+				grade = r
+			case slug + "-parents":
+				parents = r
+			}
+		}
+		rules := s.Model().Table("RULE").Referencing("group", parents["id"])
+		if parents["kind"] != "group" || parents["name"] != g.title+" Parents" || len(rules) != 1 || rules[0]["target"] != grade["id"] || rules[0]["replace_with"] != "parents" {
+			t.Fatalf("%s's Parents group %v has rules %v", g.title, parents, rules)
+		}
+	}
 	x.entries = append(x.entries, entry{role: student, name: "Ada Ashdown", grade: "4", classroom: "Oak"})
 	x.households = append(x.households, householdRow{adults: []int{1, 2}, kid: len(x.entries) - 1, address: "12 Elm St"})
 	if _, err := planned(c, x); err == nil || !strings.Contains(err.Error(), "Oak has students in the Hummingbirds and Jayvens bands") {
