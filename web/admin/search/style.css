@@ -21,7 +21,7 @@
 
 #run {
   color: var(--ink);
-  background: var(--accent);
+  background-color: var(--accent);
   border-color: var(--accent);
   font-weight: 700;
 }
