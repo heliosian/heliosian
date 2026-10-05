@@ -723,6 +723,10 @@ const policySource = `
 (read DOCUMENT_GROUP (system "import"))
 ; a Loop post uploaded as mail, and everything under it: Loop files the mail it sends itself
 (delete DOCUMENT (and (system "import") (exists DOCUMENT (in id (ancestors @old)) (= kind "post"))))
+; an image an email's HTML part shows, for HTML extracted before extraction fetched its images
+(insert DOCUMENT (and (system "import") (= @new.relation "linked") (= @new.parent.relation "part")))
+; store the bytes of such an image
+(insert CONTENT (and (system "import") (in @new.mime "image/png" "image/jpeg" "image/gif" "image/webp" "image/bmp" "image/x-icon")))
 
 ;; System: import, the sync from the old sheets, until the cutover
 

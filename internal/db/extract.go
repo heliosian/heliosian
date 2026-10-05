@@ -35,12 +35,12 @@ type Extractor struct {
 }
 
 type extracted struct {
-	relation              string
-	body                  []byte
-	mime, name, contentID string
+	relation                   string
+	body                       []byte
+	mime, name, contentID, url string
 }
 
-var extractors = map[string]func([]byte) ([]extracted, error){
+var extractors = map[string]func(context.Context, []byte) ([]extracted, error){
 	"message/rfc822": mailParts,
 	"text/html":      htmlMarkdown,
 	"text/plain":     textMarkdown,
@@ -100,7 +100,7 @@ func (x *Extractor) pending() []string {
 	return out
 }
 
-func mailParts(raw []byte) ([]extracted, error) {
+func mailParts(_ context.Context, raw []byte) ([]extracted, error) {
 	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
 		return nil, fmt.Errorf("not a mail message: %w", err)
@@ -134,15 +134,19 @@ func markdownExtract(markdown string) []extracted {
 	return []extracted{{relation: "extract", body: []byte(markdown), mime: "text/markdown"}}
 }
 
-func htmlMarkdown(raw []byte) ([]extracted, error) {
+func htmlMarkdown(ctx context.Context, raw []byte) ([]extracted, error) {
 	markdown, err := tomarkdown.HTML(string(raw), (&tomarkdown.LinkResolver{}).Links(&url.URL{}))
 	if err != nil {
 		return nil, err
 	}
-	return markdownExtract(tomarkdown.Trim(markdown)), nil
+	images, err := htmlImages(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+	return append(markdownExtract(tomarkdown.Trim(markdown)), images...), nil
 }
 
-func textMarkdown(raw []byte) ([]extracted, error) {
+func textMarkdown(_ context.Context, raw []byte) ([]extracted, error) {
 	return markdownExtract(tomarkdown.Trim(tomarkdown.Text(string(raw)))), nil
 }
 
@@ -178,7 +182,7 @@ func (x *Extractor) extract(id string) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		if children, err = read(raw); err != nil {
+		if children, err = read(ctx, raw); err != nil {
 			return 0, err
 		}
 	}
@@ -229,6 +233,9 @@ func (x *Extractor) extract(id string) (int, error) {
 			}
 			if child.contentID != "" {
 				row["content_id"] = child.contentID
+			}
+			if child.url != "" {
+				row["url"] = child.url
 			}
 			if _, err := stage(Edit{Insert: "DOCUMENT", Row: row}); err != nil {
 				return err

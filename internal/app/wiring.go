@@ -85,6 +85,7 @@ type Core struct {
 	Documents *model.DocumentFiler
 	Queue     *store.Queue
 	Spoof     *auth.Spoof
+	Settled   <-chan struct{}
 	apps      []appSpec
 }
 
@@ -113,7 +114,11 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load the data sheets", "error", err)
 	}
 	pictures := db.NewPictures(dataStore, queue, cfg.Bucket)
-	db.NewExtractor(dataStore, queue, cfg.Bucket)
+	settled := make(chan struct{})
+	go func() {
+		<-settled
+		db.NewExtractor(dataStore, queue, cfg.Bucket)
+	}()
 	search := db.NewSearcher(dataStore, queue, cfg.Bucket, cfg.Embedder)
 	go models.Locate(cfg.Geocoder)
 	taglineOf := func(key string) func() string {
@@ -259,11 +264,13 @@ func NewCore(cfg Config) *Core {
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
 		queue.Refresh()
+		queue.Add(func() { close(settled) })
 	})
 	return &Core{
 		Store: models, Data: dataStore, Pictures: pictures, Search: search, Documents: documents, Queue: queue,
-		Spoof: &auth.Spoof{Allowed: models.IsSuperAdmin, Person: spoofPerson(models)},
-		apps:  apps,
+		Spoof:   &auth.Spoof{Allowed: models.IsSuperAdmin, Person: spoofPerson(models)},
+		Settled: settled,
+		apps:    apps,
 	}
 }
 
@@ -356,8 +363,11 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	if os.Getenv("K_SERVICE") != "" {
 		db.StartConsent(core.Data, core.Queue, core.Pictures, sheet)
 		core.Search.StartMaking(anthropicKey)
-		db.StartClassifier(core.Data, core.Queue, bucket, anthropicKey)
-		db.StartSweeper(core.Data, core.Queue, bucket)
+		go func() {
+			<-core.Settled
+			db.StartClassifier(core.Data, core.Queue, bucket, anthropicKey)
+			db.StartSweeper(core.Data, core.Queue, bucket)
+		}()
 		watcher := calendarWatcher(core, sessionKey, anthropicKey)
 		muxes["when"].Handle("POST "+db.CalendarHookPath, watcher)
 		watcher.Start()

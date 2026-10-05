@@ -4,8 +4,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"heliosian/internal/blob"
@@ -136,6 +138,92 @@ func TestMailIsReadIntoATree(t *testing.T) {
 	}
 	if parts[2]["extracted"] != "" {
 		t.Fatalf("an image with no extractor was marked extracted: %v", parts[2])
+	}
+}
+
+func TestHTMLImagesAreFetched(t *testing.T) {
+	logo, pixel, inline := pngOf(t, 3), pngOf(t, 1), pngOf(t, 2)
+	asked := map[string]bool{}
+	mu := sync.Mutex{}
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		asked[r.URL.Path] = true
+		mu.Unlock()
+		switch r.URL.Path {
+		case "/logo.png":
+			w.Write(logo)
+		case "/pixel.png":
+			w.Write(pixel)
+		case "/page":
+			w.Write([]byte("<html><body>not a picture</body></html>"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer site.Close()
+	s, queue := sampleWithQueue(t)
+	bucket := blob.NewMemoryBucket()
+	pics := NewPictures(s, queue, bucket)
+	NewExtractor(s, queue, bucket)
+	body := strings.Join([]string{
+		`<html><body><p>See the schedule.</p>`,
+		`<img src="` + site.URL + `/logo.png">`,
+		`<img src="` + site.URL + `/logo.png">`,
+		`<img src="` + site.URL + `/open.gif" width="1" height="1">`,
+		`<img src="` + site.URL + `/pixel.png">`,
+		`<img src="cid:logo-1">`,
+		`<img src="data:image/png;base64,` + base64.StdEncoding.EncodeToString(inline) + `">`,
+		`<img src="` + site.URL + `/gone.png">`,
+		`<img src="` + site.URL + `/page">`,
+		`<img src="/relative.png">`,
+		`</body></html>`,
+	}, "")
+	eml := strings.Join([]string{
+		"From: Maya Lindqvist <maya.lindqvist@example.org>",
+		"Date: Thu, 12 Feb 2026 01:48:03 +0000",
+		"Subject: Clubs this week",
+		"MIME-Version: 1.0",
+		`Content-Type: multipart/alternative; boundary="alt"`,
+		"",
+		"--alt",
+		"Content-Type: text/plain; charset=utf-8",
+		"",
+		"See the schedule.",
+		"--alt",
+		"Content-Type: text/html; charset=utf-8",
+		"",
+		body,
+		"--alt--",
+		"",
+	}, "\r\n")
+	rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "mail", nil, "eml", []byte(eml))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
+	}
+	var out stored
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	root := out.Result[0]
+	made(t, s, "DOCUMENT", root, "extracted")
+	htmlPart := children(s, root)[1]
+	made(t, s, "DOCUMENT", htmlPart["id"], "extracted")
+	got := []string{}
+	under := children(s, htmlPart["id"])
+	for _, child := range under {
+		content, _ := s.Model().Table("CONTENT").Get(child["content"])
+		got = append(got, child["relation"]+"|"+content["mime"]+"|"+child["url"])
+	}
+	equalLines(t, "the HTML part's children", got, []string{
+		"extract|text/markdown|",
+		"linked|image/png|" + site.URL + "/logo.png",
+		"linked|image/png|",
+	})
+	if bytesOf(t, s, bucket, under[1]) != string(logo) || bytesOf(t, s, bucket, under[2]) != string(inline) {
+		t.Fatal("the images' bytes in the bucket differ")
+	}
+	if asked["/open.gif"] {
+		t.Fatal("an image sized as a pixel was fetched")
 	}
 }
 

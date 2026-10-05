@@ -122,6 +122,41 @@ func TestDocumentsUnderAMailedPostFollowIt(t *testing.T) {
 	}
 }
 
+func TestTheImportAddsImagesUnderParts(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, DocumentsSheet,
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "newsletter", "content": "cnt00000000001", "name": "Clubs this week"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	image := func(mime string) Change {
+		return Change{Table: "CONTENT", New: store.Row{"hash": "c3", "blob": "content/c3", "mime": mime, "size": "30"}}
+	}
+	linked := func(parent string) Change {
+		return Change{Table: "DOCUMENT", New: store.Row{"relation": "linked", "parent": parent, "content": "cnt00000000002", "url": "https://example.org/clubs.png"}}
+	}
+	for _, c := range []struct {
+		name   string
+		system string
+		change Change
+		ok     bool
+	}{
+		{"store an image", "import", image("image/png"), true},
+		{"store something else", "import", image("text/html"), false},
+		{"add an image under a part", "import", linked("doc00000000011"), true},
+		{"add an image under a root", "import", linked("doc00000000010"), false},
+		{"add an image as another system", "extract", linked("doc00000000011"), false},
+	} {
+		err := s.Model().Authorize(Env{System: c.system, Now: testNow}, c.change)
+		if (err == nil) != c.ok {
+			t.Errorf("%s: %v", c.name, err)
+		}
+	}
+}
+
 func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
