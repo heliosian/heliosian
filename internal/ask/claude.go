@@ -10,13 +10,14 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
+
+	"heliosian/internal/claude"
 )
 
 const (
-	claudeModel = "claude-opus-5-5"
-	maxTokens   = 16000
-	maxRounds   = 8
-	refused     = "I can't help with that one here."
+	maxTokens = 16000
+	maxRounds = 8
+	refused   = "I can't help with that one here."
 )
 
 type Emitter func(kind string, data any)
@@ -68,14 +69,14 @@ func (c *Claude) Respond(ctx context.Context, req Request, emit Emitter) (Reply,
 	text := &strings.Builder{}
 	for round := 0; round < maxRounds; round++ {
 		params := anthropic.BetaMessageNewParams{
-			Model:        claudeModel,
+			Model:        claude.AskModel,
 			MaxTokens:    maxTokens,
 			Betas:        []anthropic.AnthropicBeta{anthropic.AnthropicBetaServerSideFallback2026_07_01},
 			Fallbacks:    anthropic.BetaFallbacksParamUnion{OfDefault: constant.ValueOf[constant.Default]()},
 			System:       req.System,
 			Messages:     reply.Messages,
 			Tools:        req.Tools,
-			OutputConfig: anthropic.BetaOutputConfigParam{Effort: anthropic.BetaOutputConfigEffortMedium},
+			OutputConfig: anthropic.BetaOutputConfigParam{Effort: claude.AskEffort},
 			CacheControl: anthropic.NewBetaCacheControlEphemeralParam(),
 		}
 		if round == maxRounds-1 {

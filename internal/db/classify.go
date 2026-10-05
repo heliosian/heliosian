@@ -21,7 +21,6 @@ import (
 )
 
 const (
-	ClassifyModel   = "claude-sonnet-5-5"
 	classifyActor   = "classify"
 	classifyLimit   = 24 << 10
 	classifyBackoff = 30 * time.Second
@@ -193,11 +192,11 @@ func (c *Classifier) classify(id string) (string, error) {
 		root["name"], msg.Header.Get("From"), root["published"], markdown)
 	var out audience
 	if _, err := claude.JSON(ctx, c.client, anthropic.MessageNewParams{
-		Model:        ClassifyModel,
+		Model:        claude.ClassifyModel,
 		MaxTokens:    4000,
 		System:       []anthropic.TextBlockParam{{Text: classifySystem}},
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt))},
-		OutputConfig: anthropic.OutputConfigParam{Format: anthropic.JSONOutputFormatParam{Schema: classifySchema}},
+		OutputConfig: anthropic.OutputConfigParam{Effort: claude.ClassifyEffort, Format: anthropic.JSONOutputFormatParam{Schema: classifySchema}},
 	}, &out); err != nil {
 		if errors.Is(err, claude.ErrFinal) {
 			return "", err

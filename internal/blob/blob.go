@@ -60,6 +60,7 @@ type objects interface {
 	put(ctx context.Context, name, mimeType string, content []byte) error
 	exists(ctx context.Context, name string) (bool, error)
 	remove(ctx context.Context, name string) error
+	list(ctx context.Context, prefix string) ([]string, error)
 }
 
 type gcs struct {
@@ -119,6 +120,20 @@ func (b gcs) remove(ctx context.Context, name string) error {
 	return nil
 }
 
+func (b gcs) list(ctx context.Context, prefix string) ([]string, error) {
+	out := []string{}
+	err := b.service.Objects.List(b.name).Prefix(prefix).Fields("nextPageToken", "items/name").Pages(ctx, func(page *storage.Objects) error {
+		for _, o := range page.Items {
+			out = append(out, o.Name)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list %s: %w", prefix, err)
+	}
+	return out, nil
+}
+
 type Bucket struct {
 	objects objects
 }
@@ -170,6 +185,10 @@ func (b *Bucket) Remove(ctx context.Context, name string) error {
 	return b.objects.remove(ctx, name)
 }
 
+func (b *Bucket) List(ctx context.Context, prefix string) ([]string, error) {
+	return b.objects.list(ctx, prefix)
+}
+
 type memory struct {
 	mu         sync.Mutex
 	objects    map[string]object
@@ -206,6 +225,19 @@ func (m *memory) remove(_ context.Context, name string) error {
 	defer m.mu.Unlock()
 	delete(m.objects, name)
 	return nil
+}
+
+func (m *memory) list(_ context.Context, prefix string) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []string{}
+	for name := range m.objects {
+		if strings.HasPrefix(name, prefix) {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
 }
 
 func Media(path string) bool {

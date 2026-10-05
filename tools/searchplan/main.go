@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"heliosian/internal/blob"
+	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/db"
 	"heliosian/internal/spreadsheets"
@@ -80,7 +81,7 @@ func main() {
 	out := missing * outputTokens
 	dollars := float64(in)*inputDollars/1e6 + float64(out)*outputDollars/1e6
 	log.Printf("%d rows, %d distinct inputs, %d already in the bucket, %d to make: %v", len(rows), len(objects), len(objects)-missing, missing, byTable)
-	log.Printf("claude %s: about %d input and %d output tokens (assuming %d out per row, thinking included), about $%.2f", db.SearchModel, in, out, outputTokens, dollars)
+	log.Printf("claude %s: about %d input and %d output tokens (assuming %d out per row, thinking included), about $%.2f", claude.SearchSummaryModel, in, out, outputTokens, dollars)
 	log.Printf("vertex: about %d tokens to embed", chars/charsPerToken)
 }
 

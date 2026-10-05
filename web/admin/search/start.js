@@ -7,9 +7,11 @@ chrome('search');
 const form = document.getElementById('ask');
 const words = document.getElementById('words');
 const summary = document.getElementById('summary');
+const button = document.getElementById('run');
 const lists = {words: document.getElementById('by-words'), meaning: document.getElementById('by-meaning')};
 const took = {words: document.getElementById('words-took'), meaning: document.getElementById('meaning-took')};
-const tableOf = {grp: 'GROUP', per: 'PERSON'};
+const tableOf = {grp: 'GROUP', per: 'PERSON', doc: 'DOCUMENT'};
+const sheetOf = {GROUP: 'datagroups', PERSON: 'datapeople', DOCUMENT: 'datadocuments'};
 
 async function rowsOf(hits) {
   const byTable = {};
@@ -36,7 +38,7 @@ async function show(kind, hits, started) {
   lists[kind].replaceChildren(...hits.map(h => {
     const table = tableOf[h.id.slice(0, 3)];
     const item = el('li', '');
-    item.dataset.sheet = table === 'GROUP' ? 'datagroups' : 'datapeople';
+    item.dataset.sheet = sheetOf[table];
     const name = el('a', 'name', rows[h.id] ? labelOf(rows[h.id]) : h.id);
     name.href = `/resources#${table}/${h.id}`;
     item.append(name, el('span', 'kind', rows[h.id]?.kind ?? table.toLowerCase()), el('div', 'about', h.summary || 'no entry yet'));
@@ -56,7 +58,7 @@ async function run() {
     lists[kind].replaceChildren();
     took[kind].textContent = '…';
   }
-  summary.textContent = 'searching…';
+  summary.textContent = '';
   const started = performance.now();
   const res = await signedIn(await fetch('/api/do/search', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({words: text})}));
   if (!res.ok) {
@@ -90,9 +92,15 @@ async function run() {
 
 form.addEventListener('submit', e => {
   e.preventDefault();
+  if (button.ariaBusy === 'true') {
+    return;
+  }
+  button.ariaBusy = 'true';
   run().catch(err => {
     summary.textContent = 'failed';
     lists.words.replaceChildren(el('li', 'error', err.message));
+  }).finally(() => {
+    button.ariaBusy = 'false';
   });
 });
 

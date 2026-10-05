@@ -11,6 +11,7 @@ const filter = document.getElementById('filter');
 const summary = document.getElementById('summary');
 const open = document.getElementById('open');
 const close = document.getElementById('close');
+const button = document.getElementById('run');
 
 let grids = [];
 
@@ -52,13 +53,22 @@ function showError(message) {
 
 async function run() {
   const text = src.value;
-  if (!text.trim()) {
+  if (!text.trim() || button.ariaBusy === 'true') {
     return;
   }
+  button.ariaBusy = 'true';
+  try {
+    await runText(text);
+  } finally {
+    button.ariaBusy = 'false';
+  }
+}
+
+async function runText(text) {
   const url = new URL(location.href);
   url.searchParams.set('q', text);
   history.replaceState(null, '', url);
-  summary.textContent = 'running…';
+  summary.textContent = '';
   const started = performance.now();
   const res = await signedIn(await fetch('/api/q', {method: 'QUERY', headers: {'Content-Type': 'text/plain'}, body: text}));
   const took = Math.round(performance.now() - started);
@@ -85,7 +95,7 @@ async function run() {
   refresh();
 }
 
-document.getElementById('run').addEventListener('click', run);
+button.addEventListener('click', run);
 src.addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();

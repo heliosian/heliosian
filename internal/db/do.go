@@ -206,6 +206,9 @@ func storeRoot(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, ac
 	}
 	ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: edits})
 	if err != nil {
+		if !found {
+			dropUnheld(s, pics.bucket, []string{contentFolder + "/" + hash})
+		}
 		return "", "", err
 	}
 	return ids[at], hash, nil

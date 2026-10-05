@@ -160,6 +160,20 @@ button:hover {
   border-color: var(--dim);
 }
 
+button[aria-busy="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+  cursor: progress;
+  background: linear-gradient(90deg, transparent, rgba(63, 208, 180, 0.35), transparent) no-repeat;
+  background-size: 40% 100%;
+  animation: busy 0.9s linear infinite;
+}
+
+@keyframes busy {
+  from { background-position: -100% 0; }
+  to { background-position: 200% 0; }
+}
+
 .summary {
   margin-left: auto;
   color: var(--dim);

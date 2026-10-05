@@ -240,6 +240,38 @@ func TestAChangedRowIsMadeAgain(t *testing.T) {
 	if held, err := bucket.Exists(context.Background(), after); err != nil || !held {
 		t.Errorf("the picnic's new entry %s was never made: %v", after, err)
 	}
+	if held, err := bucket.Exists(context.Background(), before); err != nil || held {
+		t.Errorf("the picnic's old entry %s is still stored: %v", before, err)
+	}
+}
+
+func TestAStrayEntryIsRemovedOnceMaking(t *testing.T) {
+	intercept.GoogleLogin(t.TempDir())
+	intercept.Install(intercept.VertexHost, intercept.Vertex())
+	intercept.Install(intercept.ClaudeHost, http.HandlerFunc(instantClaude))
+	vertex, err := artifacts.NewVertex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, queue := sampleWithQueue(t)
+	bucket := blob.NewMemoryBucket()
+	stray := SearchObject("a row long gone")
+	if err := bucket.Put(context.Background(), stray, "application/json", []byte("{}")); err != nil {
+		t.Fatal(err)
+	}
+	x := NewSearcher(s, queue, bucket, vertex)
+	x.StartMaking("test")
+	madeAll(t, s, x)
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		held, err := bucket.Exists(context.Background(), stray)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !held {
+			return
+		}
+	}
+	t.Fatalf("the stray entry %s is still stored", stray)
 }
 
 func TestTheIndexIsATableForSuperAdmins(t *testing.T) {

@@ -357,6 +357,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		db.StartConsent(core.Data, core.Queue, core.Pictures, sheet)
 		core.Search.StartMaking(anthropicKey)
 		db.StartClassifier(core.Data, core.Queue, bucket, anthropicKey)
+		db.StartSweeper(core.Data, core.Queue, bucket)
 		watcher := calendarWatcher(core, sessionKey, anthropicKey)
 		muxes["when"].Handle("POST "+db.CalendarHookPath, watcher)
 		watcher.Start()

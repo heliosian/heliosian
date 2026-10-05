@@ -30,7 +30,6 @@ import (
 )
 
 const (
-	SearchModel   = "claude-sonnet-5-5"
 	searchFolder  = "search"
 	searchResults = 50
 	searchChunk   = 1500
@@ -119,6 +118,7 @@ type Searcher struct {
 	summaries map[string]*SearchEntry
 	pending   []string
 	waiting   map[string]bool
+	swept     bool
 	poke      chan struct{}
 	wake      chan struct{}
 }
@@ -145,6 +145,10 @@ func (x *Searcher) StartMaking(anthropicKey string) {
 	x.mu.Unlock()
 	for range searchMakers {
 		go x.make()
+	}
+	select {
+	case x.poke <- struct{}{}:
+	default:
 	}
 }
 
@@ -319,11 +323,13 @@ func (x *Searcher) follow() {
 			}
 		}
 		removed := []string{}
-		for id, r := range x.rows {
-			if _, kept := rows[id]; !kept && !wanted[r.Object] && !slices.Contains(removed, r.Object) {
+		for _, r := range x.rows {
+			if x.client != nil && !wanted[r.Object] && !slices.Contains(removed, r.Object) {
 				removed = append(removed, r.Object)
 			}
 		}
+		sweep := x.client != nil && !x.swept
+		x.swept = x.swept || sweep
 		x.rows = rows
 		x.version++
 		for hash := range x.entries {
@@ -342,6 +348,23 @@ func (x *Searcher) follow() {
 			}
 		}
 		x.mu.Unlock()
+		if sweep {
+			held, err := x.bucket.List(context.Background(), searchFolder+"/")
+			if err != nil {
+				slog.Error("search: list the entries", "error", err)
+				x.mu.Lock()
+				x.swept = false
+				x.mu.Unlock()
+			}
+			for _, hash := range held {
+				if !wanted[hash] && !slices.Contains(removed, hash) {
+					removed = append(removed, hash)
+				}
+			}
+		}
+		if len(removed) > 0 {
+			slog.Info("search: remove the unwanted entries", "objects", len(removed))
+		}
 		for _, hash := range removed {
 			if err := x.bucket.Remove(context.Background(), hash); err != nil {
 				slog.Error("search: remove", "object", hash, "error", err)
@@ -494,11 +517,11 @@ func (x *Searcher) entry(ctx context.Context, hash, input string) (*SearchEntry,
 	if summary == nil {
 		summary = &SearchEntry{}
 		if _, err := claude.JSON(ctx, *x.client, anthropic.MessageNewParams{
-			Model:        SearchModel,
+			Model:        claude.SearchSummaryModel,
 			MaxTokens:    32000,
 			System:       []anthropic.TextBlockParam{{Text: searchSystem}},
 			Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(input))},
-			OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffort("medium"), Format: anthropic.JSONOutputFormatParam{Schema: searchSchema}},
+			OutputConfig: anthropic.OutputConfigParam{Effort: claude.SearchSummaryEffort, Format: anthropic.JSONOutputFormatParam{Schema: searchSchema}},
 		}, summary); err != nil {
 			return nil, err
 		}

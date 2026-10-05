@@ -16,8 +16,6 @@ import (
 	"heliosian/internal/ratelimit"
 )
 
-const model = "claude-opus-5"
-
 const maxPrompt = 4 << 10
 
 var ErrTooLong = errors.New("that's more than Claude needs to go on; shorten it")
@@ -72,7 +70,7 @@ func (d *Describer) Charity(ctx context.Context, actor, name, link string) (Info
 	fetch := anthropic.WebFetchTool20260209Param{MaxUses: anthropic.Int(4)}
 	var out Info
 	if _, err := claude.JSON(ctx, d.client, anthropic.MessageNewParams{
-		Model:     model,
+		Model:     claude.DescribeModel,
 		MaxTokens: 16000,
 		System:    []anthropic.TextBlockParam{{Text: system, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
 		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt))},
@@ -80,7 +78,7 @@ func (d *Describer) Charity(ctx context.Context, actor, name, link string) (Info
 			{OfWebFetchTool20260209: &fetch},
 			{OfWebSearchTool20260209: &anthropic.WebSearchTool20260209Param{MaxUses: anthropic.Int(3)}},
 		},
-		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffortLow, Format: anthropic.JSONOutputFormatParam{Schema: schema}},
+		OutputConfig: anthropic.OutputConfigParam{Effort: claude.DescribeEffort, Format: anthropic.JSONOutputFormatParam{Schema: schema}},
 	}, &out); err != nil {
 		return Info{}, err
 	}
@@ -156,11 +154,11 @@ func (d *Describer) Group(ctx context.Context, actor string, facts GroupFacts) (
 		Description string `json:"description"`
 	}
 	if _, err := claude.JSON(ctx, d.client, anthropic.MessageNewParams{
-		Model:        model,
+		Model:        claude.DescribeModel,
 		MaxTokens:    4000,
 		System:       []anthropic.TextBlockParam{{Text: groupSystem, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt.String()))},
-		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffortLow, Format: anthropic.JSONOutputFormatParam{Schema: groupSchema}},
+		OutputConfig: anthropic.OutputConfigParam{Effort: claude.DescribeEffort, Format: anthropic.JSONOutputFormatParam{Schema: groupSchema}},
 	}, &out); err != nil {
 		return "", err
 	}
@@ -215,11 +213,11 @@ func (d *Describer) Activity(ctx context.Context, actor string, facts ActivityFa
 		Description string `json:"description"`
 	}
 	if _, err := claude.JSON(ctx, d.client, anthropic.MessageNewParams{
-		Model:        model,
+		Model:        claude.DescribeModel,
 		MaxTokens:    4000,
 		System:       []anthropic.TextBlockParam{{Text: activitySystem, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt.String()))},
-		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffortLow, Format: anthropic.JSONOutputFormatParam{Schema: activitySchema}},
+		OutputConfig: anthropic.OutputConfigParam{Effort: claude.DescribeEffort, Format: anthropic.JSONOutputFormatParam{Schema: activitySchema}},
 	}, &out); err != nil {
 		return "", err
 	}

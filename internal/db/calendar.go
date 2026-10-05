@@ -22,7 +22,6 @@ import (
 const (
 	SchoolCalendarID   = "heliosns.org_cidjj9plktli1gdm2hrkj7gqks@group.calendar.google.com"
 	SchoolCalendarPage = "https://www.heliosschool.org/school-calendar"
-	CalendarModel      = "claude-fable-5-1"
 	DateLayout         = "2006-01-02"
 	MomentLayout       = "2006-01-02 15:04"
 	classifyBatch      = 10
@@ -276,14 +275,14 @@ type classifyAnswer struct {
 
 func Ask(ctx context.Context, client anthropic.Client, system string, content []anthropic.ContentBlockParamUnion, schema map[string]any, out any) (string, error) {
 	return claude.JSON(ctx, client, anthropic.MessageNewParams{
-		Model:     CalendarModel,
+		Model:     claude.CalendarModel,
 		MaxTokens: 64000,
 		System: []anthropic.TextBlockParam{{
 			Text:         system,
 			CacheControl: anthropic.NewCacheControlEphemeralParam(),
 		}},
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(content...)},
-		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffort("max"), Format: anthropic.JSONOutputFormatParam{Schema: schema}},
+		OutputConfig: anthropic.OutputConfigParam{Effort: claude.CalendarEffort, Format: anthropic.JSONOutputFormatParam{Schema: schema}},
 	}, out)
 }
 

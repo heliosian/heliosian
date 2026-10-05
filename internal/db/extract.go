@@ -196,6 +196,7 @@ func (x *Extractor) extract(id string) (int, error) {
 		stored[hashes[i]] = true
 	}
 	orders := store.Order(make([]string, len(children)))
+	committed := false
 	_, err := x.queue.Transact(ctx, access.System(extractActor), func(tx *store.Tx) error {
 		stage := func(e Edit) (string, error) {
 			written, c, err := stageWrite(x.s, tx, e, extractActor, nil, true, unchecked)
@@ -234,7 +235,15 @@ func (x *Extractor) extract(id string) (int, error) {
 			}
 		}
 		_, err := stage(Edit{Set: id, Cells: map[string]any{"extracted": time.Now().In(School).Format(cells.StampFormat)}})
+		committed = err == nil
 		return err
 	})
+	if err != nil || !committed {
+		names := []string{}
+		for hash := range stored {
+			names = append(names, contentFolder+"/"+hash)
+		}
+		dropUnheld(x.s, x.bucket, names)
+	}
 	return len(children), err
 }

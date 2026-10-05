@@ -18,8 +18,6 @@ import (
 	"heliosian/internal/store"
 )
 
-const claudeModel = "claude-sonnet-5-5"
-
 const maxEmail = 24 << 10
 
 const Revision = "2026-10-03.2"
@@ -209,11 +207,11 @@ func (c *Claude) Read(ctx context.Context, e Email) (model.Reading, error) {
 		Repeats    []repeat `json:"repeats"`
 	}
 	raw, err := claude.JSON(ctx, c.client, anthropic.MessageNewParams{
-		Model:        claudeModel,
+		Model:        claude.DigestModel,
 		MaxTokens:    4000,
 		System:       []anthropic.TextBlockParam{{Text: system, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt))},
-		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffortMedium, Format: anthropic.JSONOutputFormatParam{Schema: schema}},
+		OutputConfig: anthropic.OutputConfigParam{Effort: claude.DigestEffort, Format: anthropic.JSONOutputFormatParam{Schema: schema}},
 	}, &out)
 	if err != nil {
 		return model.Reading{}, err
