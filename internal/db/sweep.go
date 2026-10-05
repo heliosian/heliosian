@@ -10,7 +10,10 @@ import (
 	"heliosian/internal/store"
 )
 
-const sweepActor = "sweep"
+const (
+	sweepActor = "sweep"
+	sweepBatch = 25
+)
 
 type sweeper struct {
 	s      *Store
@@ -32,16 +35,18 @@ func StartSweeper(s *Store, queue *store.Queue, bucket *blob.Bucket) {
 
 func (x *sweeper) run() {
 	for range x.poke {
-		if len(x.s.Model().unreferencedContent()) == 0 {
-			continue
+		for len(x.s.Model().unreferencedContent()) > 0 {
+			start := time.Now()
+			rows, objects, written, err := x.sweep()
+			if err != nil {
+				slog.Error("sweep: content", "error", err)
+				break
+			}
+			if written != nil {
+				<-written
+			}
+			slog.Info("sweep: content", "rows", rows, "objects", objects, "took", time.Since(start).Round(time.Millisecond))
 		}
-		start := time.Now()
-		rows, objects, err := x.sweep()
-		if err != nil {
-			slog.Error("sweep: content", "error", err)
-			continue
-		}
-		slog.Info("sweep: content", "rows", rows, "objects", objects, "took", time.Since(start).Round(time.Millisecond))
 	}
 }
 
@@ -87,11 +92,12 @@ func dropUnheld(s *Store, bucket *blob.Bucket, names []string) {
 	}
 }
 
-func (x *sweeper) sweep() (int, int, error) {
+func (x *sweeper) sweep() (int, int, <-chan struct{}, error) {
 	rows, objects := 0, 0
-	_, err := x.queue.Transact(context.Background(), access.System(sweepActor), func(tx *store.Tx) error {
+	written, err := x.queue.Transact(context.Background(), access.System(sweepActor), func(tx *store.Tx) error {
 		m := x.s.In(tx)
 		gone := m.unreferencedContent()
+		gone = gone[:min(len(gone), sweepBatch)]
 		deleted := map[string]bool{}
 		for _, row := range gone {
 			deleted[row["id"]] = true
@@ -105,14 +111,12 @@ func (x *sweeper) sweep() (int, int, error) {
 				delete(blobs, row["blob"])
 			}
 		}
+		ops := []store.Op{}
 		for _, row := range gone {
-			_, ch, err := stageWrite(x.s, tx, Edit{Delete: row["id"]}, sweepActor, nil, true, unchecked)
-			if err != nil {
-				return err
-			}
-			if err := fire(x.s, tx, ch, sweepActor); err != nil {
-				return err
-			}
+			ops = append(ops, store.Delete("CONTENT", store.Row{"id": row["id"]}))
+		}
+		if err := x.s.Stage(tx, DocumentsSheet, ops...); err != nil {
+			return err
 		}
 		tx.After(func() {
 			for name := range blobs {
@@ -126,5 +130,5 @@ func (x *sweeper) sweep() (int, int, error) {
 		rows = len(gone)
 		return nil
 	})
-	return rows, objects, err
+	return rows, objects, written, err
 }

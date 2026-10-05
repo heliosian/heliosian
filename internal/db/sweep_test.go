@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -47,4 +48,23 @@ func TestUnreferencedContentIsSwept(t *testing.T) {
 		return
 	}
 	t.Fatal("the unreferenced content is still held")
+}
+
+func TestContentIsSweptInBatches(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	ops := []store.Op{}
+	for i := range sweepBatch*2 + 3 {
+		hash := fmt.Sprintf("h%d", i)
+		ops = append(ops, store.Insert("CONTENT", store.Row{"id": fmt.Sprintf("cnt%011d", i+1), "hash": hash, "blob": "content/" + hash, "mime": "text/html", "size": "9"}))
+	}
+	if err := commit(s, DocumentsSheet, ops...); err != nil {
+		t.Fatal(err)
+	}
+	StartSweeper(s, queue, blob.NewMemoryBucket())
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if s.Model().Table("CONTENT").Len() == 0 {
+			return
+		}
+	}
+	t.Fatalf("%d content rows are left", s.Model().Table("CONTENT").Len())
 }
