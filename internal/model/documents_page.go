@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"golang.org/x/net/html"
+
+	"heliosian/internal/tomarkdown"
 )
 
 const SchoolSite = "https://www.heliosschool.org"
@@ -43,7 +45,7 @@ func ExcludedPage(address string) bool {
 
 var ErrExcluded = errors.New("the page is not one the documents carry")
 
-func (p SavedPage) Build(links *LinkResolver, embeddingModel string) (*Document, error) {
+func (p SavedPage) Build(links *tomarkdown.LinkResolver, embeddingModel string) (*Document, error) {
 	if ExcludedPage(p.URL) {
 		return nil, fmt.Errorf("%s: %w", p.URL, ErrExcluded)
 	}
@@ -70,7 +72,7 @@ func (p SavedPage) Build(links *LinkResolver, embeddingModel string) (*Document,
 	if err := html.Render(body, main); err != nil {
 		return nil, fmt.Errorf("%s: %w", p.URL, err)
 	}
-	markdown, err := Markdown(body.String(), links.Links(base))
+	markdown, err := tomarkdown.HTML(body.String(), links.Links(base))
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", p.URL, err)
 	}

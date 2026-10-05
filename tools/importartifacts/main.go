@@ -22,6 +22,7 @@ import (
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
+	"heliosian/internal/tomarkdown"
 )
 
 const (
@@ -70,7 +71,7 @@ func main() {
 		}
 	}
 	log.Printf("%d documents on file, %d files to consider", len(objects), len(files))
-	resolver := &model.LinkResolver{}
+	resolver := &tomarkdown.LinkResolver{}
 
 	pending := []work{}
 	drops := []store.Op{}

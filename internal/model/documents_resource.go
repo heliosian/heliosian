@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"heliosian/internal/tomarkdown"
 )
 
 const (
@@ -38,7 +40,7 @@ func readResource(raw []byte) (SavedDocument, error) {
 	return r, nil
 }
 
-func (r SavedResource) Build(links *LinkResolver, embeddingModel string) (*Document, error) {
+func (r SavedResource) Build(links *tomarkdown.LinkResolver, embeddingModel string) (*Document, error) {
 	base, err := url.Parse(r.URL)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", r.URL, err)
@@ -50,7 +52,7 @@ func (r SavedResource) Build(links *LinkResolver, embeddingModel string) (*Docum
 	markdown := ""
 	switch r.Format {
 	case ResourceHTML:
-		if markdown, err = Markdown(r.Body, links.Links(base)); err != nil {
+		if markdown, err = tomarkdown.HTML(r.Body, links.Links(base)); err != nil {
 			return nil, fmt.Errorf("%s: %w", r.URL, err)
 		}
 	case ResourceText:

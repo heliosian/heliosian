@@ -9,6 +9,7 @@ import (
 
 	"heliosian/internal/artifacts"
 	"heliosian/internal/intercept"
+	"heliosian/internal/tomarkdown"
 )
 
 const documentSamples = "../../sampledata/artifacts"
@@ -30,7 +31,7 @@ func sampleIssue(t *testing.T) *Document {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := message.Build(&LinkResolver{}, artifacts.Vertex{}.Model())
+	doc, err := message.Build(&tomarkdown.LinkResolver{}, artifacts.Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestPlainTextMessageKeepsItsParagraphs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := message.Build(&LinkResolver{}, artifacts.Vertex{}.Model())
+	doc, err := message.Build(&tomarkdown.LinkResolver{}, artifacts.Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +97,7 @@ func TestPageBecomesMarkdown(t *testing.T) {
 	if _, ok := saved.(SavedPage); !ok {
 		t.Fatalf("read as %T", saved)
 	}
-	doc, err := saved.Build(&LinkResolver{}, artifacts.Vertex{}.Model())
+	doc, err := saved.Build(&tomarkdown.LinkResolver{}, artifacts.Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func TestEveryKindUnwrapsLinks(t *testing.T) {
 	const body = `<p>See <a href="https://www.google.com/url?q=https://www.choicelunch.com/&amp;sa=D">Choicelunch</a>, <a href="https://email.mail1.veracross.com/c/eJxMzT1u7SAQhuHVQGnB8F9Q3MbbOIIBH9DlGAscrz9CKZJynnmlL3lpLKfZc2Md11oIS4tPwiiUGuOhdIyodU7WhATKpuisi7R6YKCZ4xxAWGU3riCZw0UjxRGMQSLZJ9TGtyePgKPPuWH_0ObLfV-TiH8EdgJ7wbCV3GqfNZyrILDT4dfx_mqtPnkQyX6KiaX3tvXxpo8H-uALW83n7f--F-e1_Lr-eyucXnDlMfv56wCMgfgOAAD__5zzUBI">the form</a> and <a href="/about">about</a>.</p>`
 	const want = "See [Choicelunch](https://www.choicelunch.com/), [the form](https://hca.heliosian.com/) and "
 	page := SavedPage{URL: "https://www.heliosschool.org/student-life/lunch", HTML: `<html><head><title>Lunch - Helios School</title><meta name="page-published" content="2026-09-01T12:00:00Z"></head><body><main>` + body + `</main></body></html>`}
-	doc, err := page.Build(&LinkResolver{}, artifacts.Vertex{}.Model())
+	doc, err := page.Build(&tomarkdown.LinkResolver{}, artifacts.Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +139,7 @@ func TestEveryKindUnwrapsLinks(t *testing.T) {
 		t.Errorf("page markdown:\n%s", doc.Markdown)
 	}
 	message := DocumentMessage{MessageID: "m@x", Date: "2026-09-01T12:00:00Z", Subject: "Lunch", Channel: "parents", Kind: DocumentKindList, HTML: body}
-	if doc, err = message.Build(&LinkResolver{}, artifacts.Vertex{}.Model()); err != nil {
+	if doc, err = message.Build(&tomarkdown.LinkResolver{}, artifacts.Vertex{}.Model()); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(doc.Markdown, want) {
@@ -156,7 +157,7 @@ func TestExcludedPagesAreRefused(t *testing.T) {
 		if !ExcludedPage(address) {
 			t.Errorf("%s is not excluded", address)
 		}
-		if _, err := (SavedPage{URL: address, HTML: "<main><p>Words.</p></main>"}).Build(&LinkResolver{}, artifacts.Vertex{}.Model()); !errors.Is(err, ErrExcluded) {
+		if _, err := (SavedPage{URL: address, HTML: "<main><p>Words.</p></main>"}).Build(&tomarkdown.LinkResolver{}, artifacts.Vertex{}.Model()); !errors.Is(err, ErrExcluded) {
 			t.Errorf("%s: %v", address, err)
 		}
 	}
@@ -175,7 +176,7 @@ func TestPortalResourceBecomesMarkdown(t *testing.T) {
 		Format:  ResourceHTML,
 		Body:    `<h2>Ordering</h2><p>Order by Thursday on <a href="https://www.google.com/url?q=https://www.choicelunch.com/&amp;sa=D&amp;usg=x">Choicelunch</a>, and see <a href="/heliosschool/parent/pages/Aftercare-Program">aftercare</a>.</p>`,
 	}
-	doc, err := r.Build(&LinkResolver{}, artifacts.Vertex{}.Model())
+	doc, err := r.Build(&tomarkdown.LinkResolver{}, artifacts.Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,14 +192,14 @@ func TestPortalResourceBecomesMarkdown(t *testing.T) {
 func TestTextResourceKeepsItsLines(t *testing.T) {
 	r := SavedResource{URL: "https://docs.google.com/presentation/d/x/edit", Title: "SEL", Fetched: "2026-09-17T19:00:00Z", Format: ResourceText,
 		Body: "Day in the Life\r\nSEL skills   matter.\n\n1\n\nEssential Skills\nAsk for help\n\fRespect others\n"}
-	doc, err := r.Build(&LinkResolver{}, artifacts.Vertex{}.Model())
+	doc, err := r.Build(&tomarkdown.LinkResolver{}, artifacts.Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if doc.Markdown != "Day in the Life\nSEL skills matter.\n\nEssential Skills\nAsk for help\n\nRespect others" {
 		t.Fatalf("markdown:\n%q", doc.Markdown)
 	}
-	if _, err := (SavedResource{URL: r.URL, Title: "Empty", Fetched: r.Fetched, Format: ResourceText, Body: "\f 2 \n"}).Build(&LinkResolver{}, artifacts.Vertex{}.Model()); !errors.Is(err, ErrNoWords) {
+	if _, err := (SavedResource{URL: r.URL, Title: "Empty", Fetched: r.Fetched, Format: ResourceText, Body: "\f 2 \n"}).Build(&tomarkdown.LinkResolver{}, artifacts.Vertex{}.Model()); !errors.Is(err, ErrNoWords) {
 		t.Fatalf("an empty resource: %v", err)
 	}
 }
@@ -374,90 +375,8 @@ func TestAQuotedPassageIsReturnedOnce(t *testing.T) {
 	}
 }
 
-func TestTrackingLinksAreTheOnlyOnesTouched(t *testing.T) {
-	for _, address := range []string{"https://www.heliosschool.org/parent", "mailto:someone@example.org", "https://email.mail1.veracross.com/newsletter"} {
-		if trackingLink(address) {
-			t.Errorf("%q reads as a tracking link", address)
-		}
-	}
-	for _, address := range []string{"https://email.mail1.veracross.com/c/eJxMzT1u"} {
-		if !trackingLink(address) {
-			t.Errorf("%q does not read as a tracking link", address)
-		}
-	}
-	r := &LinkResolver{}
-	if got := r.Resolve("https://example.org/page"); got != "https://example.org/page" {
-		t.Fatalf("plain link: %q", got)
-	}
-}
-
-func TestVeracrossLinksAreReadWithoutAsking(t *testing.T) {
-	const wrapped = "https://email.mail1.veracross.com/c/eJxMzT1u7SAQhuHVQGnB8F9Q3MbbOIIBH9DlGAscrz9CKZJynnmlL3lpLKfZc2Md11oIS4tPwiiUGuOhdIyodU7WhATKpuisi7R6YKCZ4xxAWGU3riCZw0UjxRGMQSLZJ9TGtyePgKPPuWH_0ObLfV-TiH8EdgJ7wbCV3GqfNZyrILDT4dfx_mqtPnkQyX6KiaX3tvXxpo8H-uALW83n7f--F-e1_Lr-eyucXnDlMfv56wCMgfgOAAD__5zzUBI"
-	r := &LinkResolver{}
-	if got := r.Resolve(wrapped); got != "https://hca.heliosian.com/" {
-		t.Fatalf("unwrapped: %q", got)
-	}
-	if r.Dropped != 0 {
-		t.Fatalf("dropped %d", r.Dropped)
-	}
-	if strings.Contains(r.Resolve(wrapped), "veracross") {
-		t.Fatal("the tracking address came back")
-	}
-}
-
-func TestAnUnreadableTrackingLinkKeepsItsWords(t *testing.T) {
-	r := &LinkResolver{}
-	markdown, err := Markdown(`<p>Please <a href="https://email.mail1.veracross.com/c/not-a-real-blob">sign up here</a> today.</p>`, r.Resolve)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if markdown != "Please sign up here today." {
-		t.Fatalf("markdown: %q", markdown)
-	}
-	if r.Dropped != 1 {
-		t.Fatalf("dropped %d", r.Dropped)
-	}
-}
-
-func TestInlineMarkupAroundBlocksKeepsItsWords(t *testing.T) {
-	r := &LinkResolver{}
-	markdown, err := Markdown(`<a href="https://example.org/"><table><tr><td><p>Read the notice</p></td></tr><tr><td><p>Second row</p></td></tr></table></a><p>After.</p>`, r.Resolve)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"Read the notice", "Second row", "After."} {
-		if !strings.Contains(markdown, want) {
-			t.Errorf("markdown lacks %q:\n%s", want, markdown)
-		}
-	}
-	markdown, err = Markdown(`<b><div><p>Bold block</p></div></b><p>Then this.</p>`, r.Resolve)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(markdown, "Bold block") || !strings.Contains(markdown, "Then this.") {
-		t.Fatalf("markdown: %q", markdown)
-	}
-}
-
-func TestOtherLinksAreKeptAsWritten(t *testing.T) {
-	r := &LinkResolver{}
-	for _, address := range []string{
-		"https://anything.example.org/page?email=someone%40example.org",
-		"http://10.0.0.1/c/l?email=x",
-		"https://heliosns.bmetrack.com/c/l?u=DD88991",
-		"https://email.mail1.veracross.com/newsletter?email=x",
-	} {
-		if got := r.Resolve(address); got != address {
-			t.Errorf("%q became %q", address, got)
-		}
-	}
-	if r.Dropped != 0 {
-		t.Fatalf("dropped %d", r.Dropped)
-	}
-}
-
 func TestBoldCapitalsBecomeHeadings(t *testing.T) {
-	markdown, err := Markdown(`<p><strong>A NOTE FROM BEN</strong></p><p>Dear Helios Families,</p><p><b><a href="https://example.org/map">HELIOS WORLD COMMUNITY MAP</a></b></p><p>Instructions below.</p><p><strong>Ben</strong></p>`, (&LinkResolver{}).Resolve)
+	markdown, err := tomarkdown.HTML(`<p><strong>A NOTE FROM BEN</strong></p><p>Dear Helios Families,</p><p><b><a href="https://example.org/map">HELIOS WORLD COMMUNITY MAP</a></b></p><p>Instructions below.</p><p><strong>Ben</strong></p>`, (&tomarkdown.LinkResolver{}).Resolve)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,24 +390,6 @@ func TestBoldCapitalsBecomeHeadings(t *testing.T) {
 	}
 	if strings.Join(sections, "|") != "A NOTE FROM BEN|HELIOS WORLD COMMUNITY MAP" {
 		t.Fatalf("sections: %q", sections)
-	}
-}
-
-func TestListFootersAndNoticesAreLeftOff(t *testing.T) {
-	markdown := trimMarkdown(strings.Join([]string{
-		"Dear Friends,",
-		"Please check the ingredients.",
-		"Kristine",
-		"This message (including any attachments) may contain confidential information intended for a specific individual.",
-		"--",
-		"You received this message because you are subscribed to the Google Groups \"chat\" group.\nTo unsubscribe from this group and stop receiving emails from it, send an email to [chat+unsubscribe@heliosns.org](mailto:chat+unsubscribe@heliosns.org).",
-		"To view this discussion on the web visit https://groups.google.com/a/x/d/msgid/y",
-	}, "\n\n"))
-	if markdown != "Dear Friends,\n\nPlease check the ingredients.\n\nKristine" {
-		t.Fatalf("trimmed:\n%s", markdown)
-	}
-	if strings.Contains(markdown, "unsubscribe") {
-		t.Fatal("an unsubscribe address survived")
 	}
 }
 
@@ -518,11 +419,5 @@ func TestMessagesArePlacedByWhatTheyCarry(t *testing.T) {
 		if ok != c.belongs || (ok && (channel != c.channel || kind != c.kind)) {
 			t.Errorf("%s: %q %q %v, wanted %q %q %v", c.what, channel, kind, ok, c.channel, c.kind, c.belongs)
 		}
-	}
-}
-
-func TestUtmMarksAreLeftOff(t *testing.T) {
-	if got := cleanLink("https://sites.google.com/page?authuser=2&utm_source=BenchmarkEmail&utm_medium=email"); got != "https://sites.google.com/page?authuser=2" {
-		t.Fatalf("clean: %q", got)
 	}
 }

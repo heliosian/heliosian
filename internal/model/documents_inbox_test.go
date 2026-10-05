@@ -16,6 +16,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/tomarkdown"
 )
 
 const classMail = "Received: by mxa.mailgun.org with SMTP id 1; Wed, 16 Sep 2026 07:05:00 +0000\r\n" +
@@ -82,7 +83,7 @@ func TestParseMailReadsHeadersAndBody(t *testing.T) {
 	if m.Text != "Pack a lunch." || m.HTML != "<p>We walk to the library on Thursday. Pack a lunch – and a hat.</p>" {
 		t.Fatalf("body: text %q, html %q", m.Text, m.HTML)
 	}
-	doc, err := m.Build(&LinkResolver{}, artifacts.Vertex{}.Model())
+	doc, err := m.Build(&tomarkdown.LinkResolver{}, artifacts.Vertex{}.Model())
 	if err != nil {
 		t.Fatal(err)
 	}

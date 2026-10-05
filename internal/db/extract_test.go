@@ -23,11 +23,21 @@ func children(s *Store, parent string) []store.Row {
 	return out
 }
 
-func TestMailIsSplitIntoItsParts(t *testing.T) {
+func bytesOf(t *testing.T, s *Store, bucket *blob.Bucket, doc store.Row) string {
+	t.Helper()
+	content, _ := s.Model().Table("CONTENT").Get(doc["content"])
+	raw, _, err := bucket.Get(t.Context(), content["blob"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+func TestMailIsReadIntoATree(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
 	pics := NewPictures(s, queue, bucket)
-	NewMailParts(s, queue, bucket)
+	NewExtractor(s, queue, bucket)
 	logo := pngOf(t, 3)
 	eml := strings.Join([]string{
 		"From: Maya Lindqvist <maya.lindqvist@example.org>",
@@ -45,11 +55,12 @@ func TestMailIsSplitIntoItsParts(t *testing.T) {
 		"--alt",
 		"Content-Type: text/plain; charset=utf-8",
 		"",
-		"Bring a sleeping bag.",
+		"Bring a sleeping",
+		"bag.",
 		"--alt",
 		"Content-Type: text/html; charset=utf-8",
 		"",
-		`<html><body><p>Bring a sleeping bag.</p><img src="cid:logo-1"></body></html>`,
+		`<html><body><p>Bring a <b>sleeping bag</b>.</p><img src="cid:logo-1"><p>You received this message because you are subscribed to the list.</p></body></html>`,
 		"--alt--",
 		"--related",
 		"Content-Type: image/png",
@@ -93,23 +104,31 @@ func TestMailIsSplitIntoItsParts(t *testing.T) {
 		"part|image/png|logo.png|logo-1",
 		"part|message/rfc822|Packing list.eml|",
 	})
-	content, _ := s.Model().Table("CONTENT").Get(parts[2]["content"])
-	if stored, _, err := bucket.Get(t.Context(), content["blob"]); err != nil || string(stored) != string(logo) {
-		t.Fatalf("the logo's bytes in the bucket: %v", err)
+	if bytesOf(t, s, bucket, parts[2]) != string(logo) {
+		t.Fatal("the logo's bytes in the bucket differ")
+	}
+	for i, want := range map[int]string{0: "Bring a sleeping bag.", 1: "Bring a **sleeping bag**."} {
+		made(t, s, "DOCUMENT", parts[i]["id"], "extracted")
+		extracts := children(s, parts[i]["id"])
+		if len(extracts) != 1 || extracts[0]["relation"] != "extract" {
+			t.Fatalf("part %d's extracts: %v", i, extracts)
+		}
+		content, _ := s.Model().Table("CONTENT").Get(extracts[0]["content"])
+		if got := bytesOf(t, s, bucket, extracts[0]); got != want || content["mime"] != "text/markdown" {
+			t.Fatalf("part %d's markdown reads %q as %s", i, got, content["mime"])
+		}
 	}
 	made(t, s, "DOCUMENT", parts[3]["id"], "extracted")
 	inner := children(s, parts[3]["id"])
-	if len(inner) != 1 {
+	if len(inner) != 1 || strings.TrimSpace(bytesOf(t, s, bucket, inner[0])) != "Tent, stove, water." {
 		t.Fatalf("the forwarded message's parts: %v", inner)
 	}
-	text, _ := s.Model().Table("CONTENT").Get(inner[0]["content"])
-	if body, _, err := bucket.Get(t.Context(), text["blob"]); err != nil || strings.TrimSpace(string(body)) != "Tent, stove, water." {
-		t.Fatalf("the forwarded message's text reads %q: %v", body, err)
+	made(t, s, "DOCUMENT", inner[0]["id"], "extracted")
+	if extracts := children(s, inner[0]["id"]); len(extracts) != 1 || bytesOf(t, s, bucket, extracts[0]) != "Tent, stove, water." {
+		t.Fatalf("the forwarded message's text was not read: %v", extracts)
 	}
-	for _, part := range parts[:3] {
-		if part["extracted"] != "" {
-			t.Fatalf("a part that is not a message was marked extracted: %v", part)
-		}
+	if parts[2]["extracted"] != "" {
+		t.Fatalf("an image with no extractor was marked extracted: %v", parts[2])
 	}
 }
 

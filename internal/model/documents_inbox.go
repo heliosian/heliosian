@@ -21,6 +21,7 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/tomarkdown"
 )
 
 const maxMailMarkdown = 200_000
@@ -111,7 +112,7 @@ func (in *DocumentFiler) FileSaved(ctx context.Context, actor access.Actor, path
 	if err != nil {
 		return err
 	}
-	doc, err := saved.Build(&LinkResolver{}, in.embedder.Model())
+	doc, err := saved.Build(&tomarkdown.LinkResolver{}, in.embedder.Model())
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
@@ -119,7 +120,7 @@ func (in *DocumentFiler) FileSaved(ctx context.Context, actor access.Actor, path
 }
 
 func (in *DocumentFiler) file(ctx context.Context, actor access.Actor, m DocumentMessage) error {
-	doc, err := m.Build(&LinkResolver{}, in.embedder.Model())
+	doc, err := m.Build(&tomarkdown.LinkResolver{}, in.embedder.Model())
 	if errors.Is(err, ErrNotBroadcast) || errors.Is(err, ErrNoWords) {
 		slog.Info("artifacts: mail left out", "from", m.From, "subject", m.Subject, "reason", err)
 		return nil

@@ -1,8 +1,9 @@
-package model
+package tomarkdown
 
 import (
 	"regexp"
 	"strings"
+	"unicode"
 
 	"golang.org/x/net/html"
 )
@@ -17,19 +18,19 @@ var blockTags = map[string]bool{
 
 var headingTags = map[string]int{"h1": 1, "h2": 2, "h3": 3, "h4": 4, "h5": 5, "h6": 6}
 
-type markdownRenderer struct {
+type renderer struct {
 	resolve func(string) string
 	blocks  []string
 	line    strings.Builder
 	prefix  string
 }
 
-func Markdown(source string, resolve func(string) string) (string, error) {
+func HTML(source string, resolve func(string) string) (string, error) {
 	doc, err := html.Parse(strings.NewReader(source))
 	if err != nil {
 		return "", err
 	}
-	r := &markdownRenderer{resolve: resolve}
+	r := &renderer{resolve: resolve}
 	r.walk(doc)
 	r.flush()
 	out := &strings.Builder{}
@@ -46,7 +47,7 @@ func Markdown(source string, resolve func(string) string) (string, error) {
 	return out.String(), nil
 }
 
-func (r *markdownRenderer) walk(n *html.Node) {
+func (r *renderer) walk(n *html.Node) {
 	switch n.Type {
 	case html.TextNode:
 		r.text(n.Data)
@@ -101,13 +102,13 @@ func (r *markdownRenderer) walk(n *html.Node) {
 	}
 }
 
-func (r *markdownRenderer) children(n *html.Node) {
+func (r *renderer) children(n *html.Node) {
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		r.walk(c)
 	}
 }
 
-func (r *markdownRenderer) text(s string) {
+func (r *renderer) text(s string) {
 	s = strings.ReplaceAll(s, " ", " ")
 	leading := s != "" && strings.TrimLeft(s, " \t\r\n") != s
 	trailing := s != "" && strings.TrimRight(s, " \t\r\n") != s
@@ -127,7 +128,7 @@ func (r *markdownRenderer) text(s string) {
 	}
 }
 
-func (r *markdownRenderer) space() {
+func (r *renderer) space() {
 	s := r.line.String()
 	if s == "" || strings.HasSuffix(s, " ") || strings.HasSuffix(s, "\n") {
 		return
@@ -135,7 +136,7 @@ func (r *markdownRenderer) space() {
 	r.line.WriteString(" ")
 }
 
-func (r *markdownRenderer) capture(n *html.Node) (core string, leading, trailing, inline bool) {
+func (r *renderer) capture(n *html.Node) (core string, leading, trailing, inline bool) {
 	blocks := len(r.blocks)
 	before := r.line.String()
 	r.children(n)
@@ -152,7 +153,7 @@ func (r *markdownRenderer) capture(n *html.Node) (core string, leading, trailing
 	return core, leading, trailing, true
 }
 
-func (r *markdownRenderer) wrap(n *html.Node, marker string) {
+func (r *renderer) wrap(n *html.Node, marker string) {
 	core, leading, trailing, inline := r.capture(n)
 	if !inline {
 		return
@@ -172,7 +173,7 @@ func (r *markdownRenderer) wrap(n *html.Node, marker string) {
 	}
 }
 
-func (r *markdownRenderer) link(n *html.Node) {
+func (r *renderer) link(n *html.Node) {
 	href := ""
 	for _, attr := range n.Attr {
 		if attr.Key == "href" {
@@ -207,7 +208,7 @@ func (r *markdownRenderer) link(n *html.Node) {
 	}
 }
 
-func (r *markdownRenderer) flush() {
+func (r *renderer) flush() {
 	prefix := r.prefix
 	r.prefix = ""
 	raw := r.line.String()
@@ -250,10 +251,23 @@ func sectionBanner(line string) (string, bool) {
 		return "", false
 	}
 	words := linkText.ReplaceAllString(inner, "$1")
-	if !capitals(words) {
+	if !Capitals(words) {
 		return "", false
 	}
 	return strings.TrimSpace(words), true
 }
 
 var linkText = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+
+func Capitals(text string) bool {
+	letters := false
+	for _, r := range text {
+		if unicode.IsLower(r) {
+			return false
+		}
+		if unicode.IsUpper(r) {
+			letters = true
+		}
+	}
+	return letters
+}

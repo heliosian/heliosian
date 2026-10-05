@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"heliosian/internal/tomarkdown"
 )
 
 type DocumentMessage struct {
@@ -27,7 +29,7 @@ type DocumentMessage struct {
 
 type SavedDocument interface {
 	Key() string
-	Build(links *LinkResolver, embeddingModel string) (*Document, error)
+	Build(links *tomarkdown.LinkResolver, embeddingModel string) (*Document, error)
 }
 
 func (m DocumentMessage) Key() string {
@@ -92,7 +94,7 @@ var ErrNoWords = errors.New("the message has no words")
 
 var ErrNotBroadcast = errors.New("the message is not one the community was sent")
 
-func (m DocumentMessage) Build(links *LinkResolver, embeddingModel string) (*Document, error) {
+func (m DocumentMessage) Build(links *tomarkdown.LinkResolver, embeddingModel string) (*Document, error) {
 	channel, kind, ok := m.Broadcast()
 	if !ok {
 		return nil, fmt.Errorf("%s: %w", m.MessageID, ErrNotBroadcast)
@@ -103,11 +105,11 @@ func (m DocumentMessage) Build(links *LinkResolver, embeddingModel string) (*Doc
 	}
 	markdown := ""
 	if page := strings.TrimSpace(m.HTML); page != "" {
-		if markdown, err = Markdown(page, links.Links(&url.URL{})); err != nil {
+		if markdown, err = tomarkdown.HTML(page, links.Links(&url.URL{})); err != nil {
 			return nil, fmt.Errorf("%s: %w", m.MessageID, err)
 		}
 	} else {
-		markdown = fromText(m.Text)
+		markdown = tomarkdown.Text(m.Text)
 	}
 	title := strings.TrimSpace(m.Subject)
 	if title == "" {
@@ -122,7 +124,7 @@ func (m DocumentMessage) Build(links *LinkResolver, embeddingModel string) (*Doc
 		Channel:  channel,
 		Source:   "mail:" + m.MessageID,
 		Model:    embeddingModel,
-		Markdown: trimMarkdown(markdown),
+		Markdown: tomarkdown.Trim(markdown),
 	}, day)
 }
 
@@ -133,75 +135,4 @@ func finishDocument(doc *Document, day time.Time) (*Document, error) {
 	doc.Date = day.In(Location).Format(DateFormat)
 	doc.Chunks = Chunks(doc.Markdown)
 	return doc, nil
-}
-
-var trailers = []string{
-	"You received this message because you are subscribed to",
-	"To view this discussion on the web visit",
-	"To unsubscribe from this group and stop receiving emails",
-}
-
-var notices = []string{
-	"This message (including any attachments) may contain confidential information",
-	"Please do not forward school emails without permission",
-	"Please do not forward emails without permission",
-}
-
-func trimMarkdown(markdown string) string {
-	blocks := strings.Split(markdown, "\n\n")
-	for i, block := range blocks {
-		if containsAny(block, trailers) {
-			blocks = blocks[:i]
-			break
-		}
-	}
-	kept := []string{}
-	for _, block := range blocks {
-		if containsAny(block, notices) {
-			continue
-		}
-		kept = append(kept, block)
-	}
-	for len(kept) > 0 {
-		last := strings.TrimSpace(kept[len(kept)-1])
-		if last != "" && last != "--" && last != "---" && last != "-" {
-			break
-		}
-		kept = kept[:len(kept)-1]
-	}
-	return strings.TrimSpace(strings.Join(kept, "\n\n"))
-}
-
-func containsAny(block string, phrases []string) bool {
-	for _, phrase := range phrases {
-		if strings.Contains(block, phrase) {
-			return true
-		}
-	}
-	return false
-}
-
-func fromText(text string) string {
-	paragraphs := []string{}
-	for _, block := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n\n") {
-		lines := []string{}
-		for _, line := range strings.Split(block, "\n") {
-			if line = strings.TrimSpace(line); line != "" {
-				lines = append(lines, line)
-			}
-		}
-		if len(lines) == 0 {
-			continue
-		}
-		joined := lines[0]
-		for _, line := range lines[1:] {
-			if strings.HasPrefix(line, "-") || strings.HasPrefix(line, "*") || strings.HasPrefix(line, ">") || strings.HasPrefix(line, "#") {
-				joined += "\n" + line
-				continue
-			}
-			joined += " " + line
-		}
-		paragraphs = append(paragraphs, joined)
-	}
-	return strings.Join(paragraphs, "\n\n")
 }

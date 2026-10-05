@@ -2,7 +2,8 @@ package model
 
 import (
 	"strings"
-	"unicode"
+
+	"heliosian/internal/tomarkdown"
 )
 
 const (
@@ -25,7 +26,7 @@ func Chunks(markdown string) []DocumentChunk {
 			emit()
 			// A mixed-case heading nests under the all-capitals one before it at
 			// the same level: one mailer marks every heading h1.
-			if !capitals(text) && level <= len(path) && capitals(path[level-1]) {
+			if !tomarkdown.Capitals(text) && level <= len(path) && tomarkdown.Capitals(path[level-1]) {
 				level++
 			}
 			if level <= len(path) {
@@ -57,19 +58,6 @@ func heading(line string) (int, string, bool) {
 		return 0, "", false
 	}
 	return level, text, true
-}
-
-func capitals(text string) bool {
-	letters := false
-	for _, r := range text {
-		if unicode.IsLower(r) {
-			return false
-		}
-		if unicode.IsUpper(r) {
-			letters = true
-		}
-	}
-	return letters
 }
 
 func compact(path []string) []string {
