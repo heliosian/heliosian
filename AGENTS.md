@@ -10,6 +10,10 @@ How code is written in this repository, for coding agents and the people driving
 - Be very clear about the broader context the change sits in: what the larger task is, why this question came up, and what depends on the answer. Each option says what changes for people: who can see what, who receives what, what someone reading the data would notice.
 - Propose a path. Say which option you recommend and why, so the question can be answered with a yes or a correction.
 
+## Answers
+
+- Asked for a query, answer with a link to Helios Admin's Query page, `https://admin.heliosian.com/query?q=` and the query URL-encoded (`docs/admin/admin.md`, Query), and the query itself in a code block. Run it with `go run ./tools/q read` first to check that it parses and answers, but the answer is the link, not the tool's output.
+
 ## Code
 
 - No comments in new code. The one exception is genuinely subtle logic a reader would misread, two lines at most. Design rationale goes in the commit message, and what a package is goes in `docs/`, not a package comment.
