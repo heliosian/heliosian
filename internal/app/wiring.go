@@ -67,6 +67,7 @@ type Config struct {
 	Embedder      *artifacts.Vertex
 	ArtifactsMail artifacts.Inbox
 	Digest        *digest.Claude
+	Composer      *db.Composer
 }
 
 type appSpec struct {
@@ -260,6 +261,7 @@ func NewCore(cfg Config) *Core {
 		}
 		blob.Register(a.Mux, cfg.Store, folders...)
 	}
+	db.RegisterCompose(adminMux, dataStore, cfg.Composer, cfg.ImportKey, schoolNow)
 	go queue.Tick()
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
@@ -344,6 +346,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		Loop:          loopMail(sessionKey),
 		Asker:         ask.NewClaude(anthropicKey),
 		Digest:        digest.New(anthropicKey),
+		Composer:      db.NewComposer(anthropicKey, spend),
 		Embedder:      embedder,
 		ArtifactsMail: artifactsMail(bucket),
 	})

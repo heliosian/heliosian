@@ -9,6 +9,8 @@ const (
 	CalendarEffort      = anthropic.OutputConfigEffortMax
 	ClassifyModel       = "claude-sonnet-5-5"
 	ClassifyEffort      = anthropic.OutputConfigEffortHigh
+	ComposeModel        = "claude-opus-5-5"
+	ComposeEffort       = anthropic.OutputConfigEffortMedium
 	DescribeModel       = "claude-sonnet-5-5"
 	DescribeEffort      = anthropic.OutputConfigEffortLow
 	DigestModel         = "claude-sonnet-5-5"

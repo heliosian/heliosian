@@ -314,6 +314,27 @@ func spec() schema {
 				}),
 			},
 		},
+		doPrefix + "compose": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Write a query from a description",
+				"description": "On the admin host alone. Asks Claude for a query in the language answering the words, and answers what it understood them to ask for and the query, blank when it found none. Nothing is run.",
+				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
+					"type":       "object",
+					"required":   []string{"words"},
+					"properties": schema{"words": schema{"type": "string"}},
+				}}}},
+				"responses": refusals(schema{
+					"200": schema{"description": "What Claude understood, and the query.", "content": schema{"application/json": schema{"schema": schema{
+						"type":       "object",
+						"required":   []string{"understanding", "query"},
+						"properties": schema{"understanding": schema{"type": "string"}, "query": schema{"type": "string"}},
+					}}}},
+					"400": failure("No words, or Claude refused or could not answer."),
+					"429": failure("Too many Claude calls from this person this hour."),
+				}),
+			},
+		},
 	}
 	return schema{
 		"openapi": "3.2.0",

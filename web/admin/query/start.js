@@ -12,6 +12,9 @@ const summary = document.getElementById('summary');
 const open = document.getElementById('open');
 const close = document.getElementById('close');
 const button = document.getElementById('run');
+const words = document.getElementById('words');
+const compose = document.getElementById('compose');
+const understood = document.getElementById('understood');
 
 let grids = [];
 
@@ -94,6 +97,43 @@ async function runText(text) {
   summary.textContent = `${answer.result.length} rows in ${took} ms · now ${answer.now}`;
   refresh();
 }
+
+async function write() {
+  const text = words.value.trim();
+  if (!text || compose.ariaBusy === 'true') {
+    return;
+  }
+  compose.ariaBusy = 'true';
+  understood.hidden = true;
+  try {
+    const res = await signedIn(await fetch('/api/do/compose', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({words: text})}));
+    if (!res.ok) {
+      understood.className = 'understood error';
+      understood.textContent = await res.text();
+      understood.hidden = false;
+      return;
+    }
+    const composed = await res.json();
+    understood.className = composed.query ? 'understood' : 'understood error';
+    understood.textContent = composed.understanding;
+    understood.hidden = false;
+    if (!composed.query) {
+      return;
+    }
+    src.value = composed.query;
+  } finally {
+    compose.ariaBusy = 'false';
+  }
+  await run();
+}
+
+compose.addEventListener('click', write);
+words.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    write();
+  }
+});
 
 button.addEventListener('click', run);
 src.addEventListener('keydown', e => {

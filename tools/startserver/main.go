@@ -22,6 +22,7 @@ import (
 	"heliosian/internal/capture"
 	"heliosian/internal/claude"
 	"heliosian/internal/data"
+	"heliosian/internal/db"
 	"heliosian/internal/describe"
 	"heliosian/internal/devcache"
 	"heliosian/internal/devtls"
@@ -111,6 +112,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 		Embedder:      embedder,
 		ArtifactsMail: artifacts.Inbox{Bucket: bucket},
 		Digest:        digest.New("sample"),
+		Composer:      db.NewComposer("sample", claude.NewLimiter()),
 	})
 	core.Search.StartMaking("sample")
 	saved, err := filepath.Glob("sampledata/artifacts/*.json")

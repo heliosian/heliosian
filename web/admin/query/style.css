@@ -1,3 +1,42 @@
+.describe {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+#words {
+  flex: 1;
+  padding: 7px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+}
+
+#words:focus {
+  border-color: var(--accent);
+}
+
+#words::placeholder {
+  color: var(--faint);
+}
+
+.understood {
+  margin: 0 0 10px;
+}
+
+.understood:not(.error) {
+  padding: 10px 14px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
 #src {
   display: block;
   width: 100%;
@@ -24,7 +63,8 @@
   margin: 8px 0 16px;
 }
 
-#run {
+#run,
+#compose {
   color: var(--ink);
   background-color: var(--accent);
   border-color: var(--accent);
