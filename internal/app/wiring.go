@@ -222,6 +222,8 @@ func NewCore(cfg Config) *Core {
 	}
 	wikiImages, _ := blob.ImageFolder("wiki")
 	cfg.ImageSearch.Register(wikiMux, "/api/wiki", wikiImages, imagesearch.Members)
+	wikiShare := db.NewWikiShare(dataStore, pictures, appName("wiki"), taglineOf("wiki"))
+	wikiShare.Register(wikiMux)
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: model.HomePreviewHead(models, homeStyle)},
@@ -234,7 +236,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
 		{Key: "ask", Title: "Helios Ask", Mux: askMux, Preview: askAbout.PreviewHead},
 		{Key: "admin", Title: "Helios Admin", Mux: adminMux},
-		{Key: "wiki", Title: "Helios Wiki", Mux: wikiMux},
+		{Key: "wiki", Title: "Helios Wiki", Mux: wikiMux, Preview: wikiShare.PreviewHead},
 	}
 	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin, documents, cfg.BrowserKey)
 	ask.Register(askMux, ask.Sources{Registry: registry, Now: time.Now}, cfg.Asker, spend, cfg.ChatKey, askAbout)
