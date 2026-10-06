@@ -78,6 +78,7 @@ func main() {
 		"--allow-unauthenticated",
 		"--min-instances", "1",
 		"--max-instances", "1",
+		"--cpu", "2",
 		"--memory", "2Gi",
 		"--concurrency", "250",
 		"--no-cpu-throttling",
