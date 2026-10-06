@@ -115,7 +115,6 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load the data sheets", "error", err)
 	}
 	pictures := db.NewPictures(dataStore, queue, cfg.Bucket)
-	settled := make(chan struct{})
 	search := db.NewSearcher(dataStore, queue, cfg.Bucket, cfg.Embedder)
 	go models.Locate(cfg.Geocoder)
 	taglineOf := func(key string) func() string {
@@ -259,15 +258,18 @@ func NewCore(cfg Config) *Core {
 	}
 	db.RegisterCompose(adminMux, dataStore, cfg.Composer, cfg.ImportKey, schoolNow)
 	go queue.Tick()
+	go func() {
+		<-queue.Refreshed()
+		pictures.Start()
+	}()
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
 		queue.Refresh()
-		queue.Add(func() { close(settled) })
 	})
 	return &Core{
 		Store: models, Data: dataStore, Pictures: pictures, Search: search, Documents: documents, Queue: queue,
 		Spoof:   &auth.Spoof{Allowed: models.IsSuperAdmin, Person: spoofPerson(models)},
-		Settled: settled,
+		Settled: queue.Refreshed(),
 		apps:    apps,
 	}
 }
@@ -360,19 +362,19 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		return auths[key].Wrap(next)
 	}), core.Aliased())
 	if os.Getenv("K_SERVICE") != "" {
-		db.StartConsent(core.Data, core.Queue, core.Pictures, sheet)
-		core.Search.StartMaking(anthropicKey)
+		watcher := calendarWatcher(core, sessionKey, anthropicKey)
+		muxes["when"].Handle("POST "+db.CalendarHookPath, watcher)
+		server.RegisterOnShutdown(func() { core.Queue.Add(watcher.Stop) })
 		go func() {
 			<-core.Settled
+			db.StartConsent(core.Data, core.Queue, core.Pictures, sheet)
+			core.Search.StartMaking(anthropicKey)
+			watcher.Start()
 			db.NewExtractor(core.Data, core.Queue, bucket, anthropicKey)
 			db.StartClassifier(core.Data, core.Queue, bucket, anthropicKey)
 			db.StartSweeper(core.Data, core.Queue, bucket)
 			db.StartFetcher(core.Data, core.Queue, bucket)
 		}()
-		watcher := calendarWatcher(core, sessionKey, anthropicKey)
-		muxes["when"].Handle("POST "+db.CalendarHookPath, watcher)
-		watcher.Start()
-		server.RegisterOnShutdown(func() { core.Queue.Add(watcher.Stop) })
 	}
 	return server, core.Queue
 }

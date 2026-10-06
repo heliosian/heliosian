@@ -75,6 +75,11 @@ const policySource = `
   (or (super_admin)
       (exists EFFECTIVE_MEMBER (in group (select APP.admins (= key app))) (= person @viewer))))
 
+; the viewer is in effect a member of the group the Birthdays app is open to, or a Birthdays admin
+(define (birthday_team)
+  (or (admin_of "birthday")
+      (exists EFFECTIVE_MEMBER (in group (select APP.visible_to (= key "birthday"))) (= person @viewer))))
+
 ; the viewer is in effect a member of super-admins
 (define (super_admin)
   (exists EFFECTIVE_MEMBER (= group.slug "super-admins") (= person @viewer)))
@@ -141,8 +146,10 @@ const policySource = `
    vc_grade grade_override grade vc_classroom classroom_override classroom vc_crew crew_override crew
    vc_department department_override department vc_job_title job_title_override job_title
    phone vc_phone_visibility vc_address_visibility pronouns pronunciation facts facts_updated
-   photo_updated vc_bio birthday)
+   photo_updated vc_bio)
   true)
+; a person's birthday, to the Birthdays team and the sync
+(read PERSON (birthday) (or (birthday_team) (system "import")))
 ; when a person last signed out everywhere and when the import dropped them, for the server alone
 (read PERSON (signed_out deactivated) false)
 ; whether the form shares a person's address and phone, to them and their family
@@ -171,8 +178,8 @@ const policySource = `
 (read PERSON_SETTING (= person @viewer))
 ; every column of an app setting
 (read PERSON_SETTING (id person app key value) true)
-; the birthday years of people the viewer may see
-(read BIRTHDAY_YEAR (person_visible person))
+; the birthday years of people the viewer may see, to the Birthdays team
+(read BIRTHDAY_YEAR (and (birthday_team) (person_visible person)))
 ; every column of a birthday year
 (read BIRTHDAY_YEAR
   (id person year assigned_to assigned ask_by contacted contacted_by participation charity note recorded
@@ -295,8 +302,8 @@ const policySource = `
 (read SETTING true)
 ; every column of an app setting
 (read SETTING (id app key value) true)
-; the birthday charities
-(read CHARITY true)
+; the birthday charities, to the Birthdays team
+(read CHARITY (birthday_team))
 ; every column of a charity
 (read CHARITY (id name description url ein allowed not_allowed_reason added) true)
 ; apps open to a group the viewer is in
@@ -547,6 +554,8 @@ const policySource = `
 (read DOCUMENT_GROUP (super_admin))
 ; every stored file
 (read CONTENT (super_admin))
+; every bug report and idea, to triage
+(read REPORT (super_admin))
 ; every change the store recorded, but those the consent step hides
 (read CHANGES (super_admin))
 ; every column of a change
@@ -1168,6 +1177,8 @@ const policySource = `
 (set BIRTHDAY_YEAR.published (system "import"))
 ; who copied it for the newsletter, as the old sheet has it
 (set BIRTHDAY_YEAR.published_by (system "import"))
+; every charity, to find what an earlier sync added
+(read CHARITY (system "import"))
 ; add a charity the old Birthdays sheet has
 (insert CHARITY (system "import"))
 ; a charity's name, as the old sheet has it
@@ -1239,7 +1250,7 @@ type Clause struct {
 	rest      cond
 }
 
-var actorHeads = map[string]bool{"admin_of": true, "super_admin": true, "system": true}
+var actorHeads = map[string]bool{"admin_of": true, "super_admin": true, "birthday_team": true, "system": true}
 
 func splitActor(c *sexp) (*sexp, *sexp) {
 	if actorHeads[c.head()] {

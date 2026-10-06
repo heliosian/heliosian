@@ -35,17 +35,19 @@ type Pictures struct {
 }
 
 func NewPictures(s *Store, queue *store.Queue, bucket *blob.Bucket) *Pictures {
-	p := &Pictures{s: s, queue: queue, bucket: bucket, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
+	return &Pictures{s: s, queue: queue, bucket: bucket, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
+}
+
+func (p *Pictures) Start() {
 	go p.run()
 	queued := 0
-	for _, row := range s.Model().Table("PHOTO").All() {
+	for _, row := range p.s.Model().Table("PHOTO").All() {
 		if row["ready"] == "" {
 			p.enqueue(row["id"])
 			queued++
 		}
 	}
 	slog.Info("pictures: queued photos not ready at startup", "queued", queued)
-	return p
 }
 
 func (p *Pictures) watch(tx *store.Tx, c Change) {

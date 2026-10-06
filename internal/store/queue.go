@@ -20,14 +20,16 @@ type Queue struct {
 	draining bool
 	done     chan struct{}
 
-	commits sync.Mutex
-	cancel  atomic.Pointer[context.CancelFunc]
-	loads   []Load
-	swapped []func()
+	commits   sync.Mutex
+	cancel    atomic.Pointer[context.CancelFunc]
+	loads     []Load
+	swapped   []func()
+	refreshed chan struct{}
+	firstOnce sync.Once
 }
 
 func NewQueue() *Queue {
-	q := &Queue{done: make(chan struct{})}
+	q := &Queue{done: make(chan struct{}), refreshed: make(chan struct{})}
 	q.cond = sync.NewCond(&q.mu)
 	go q.run()
 	return q
@@ -122,6 +124,10 @@ func (q *Queue) Refresh() {
 	q.Add(q.refresh)
 }
 
+func (q *Queue) Refreshed() <-chan struct{} {
+	return q.refreshed
+}
+
 func (q *Queue) interrupt() {
 	if cancel := q.cancel.Swap(nil); cancel != nil {
 		(*cancel)()
@@ -165,5 +171,6 @@ func (q *Queue) refresh() {
 		swap()
 	}
 	q.afterSwap()
+	q.firstOnce.Do(func() { close(q.refreshed) })
 	slog.Info("refreshed", "took", time.Since(start).Round(time.Millisecond))
 }

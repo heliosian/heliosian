@@ -33,7 +33,9 @@ func pngOf(t *testing.T, size int) []byte {
 }
 
 func newPictures(s *Store, queue *store.Queue) *Pictures {
-	return NewPictures(s, queue, blob.NewMemoryBucket())
+	p := NewPictures(s, queue, blob.NewMemoryBucket())
+	p.Start()
+	return p
 }
 
 func addPhoto(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as, person string, photo []byte) *httptest.ResponseRecorder {
@@ -250,7 +252,7 @@ func TestStartupMakesPhotosNotReady(t *testing.T) {
 	if err := commit(s, PeopleSheet, store.Insert("PHOTO", store.Row{"id": "pho00000000099", "person": staff, "original": name, "order": "m"})); err != nil {
 		t.Fatal(err)
 	}
-	NewPictures(s, queue, bucket)
+	NewPictures(s, queue, bucket).Start()
 	if row := made(t, s, "PHOTO", "pho00000000099", "ready"); row["ready"] != "Yes" || row["thumbnail"] == "" || row["reencode"] == "" {
 		t.Fatalf("a photo left unmade before a restart reads %v", row)
 	}

@@ -725,6 +725,30 @@ func TestAWriteWaitingBehindARefreshSkipsIt(t *testing.T) {
 	}
 }
 
+func TestRefreshedWaitsForARefreshThatSwaps(t *testing.T) {
+	f := newFixture(t)
+	release := make(chan struct{})
+	f.queue.Add(func() { <-release })
+	f.queue.Refresh()
+	if err := f.store.Commit(context.Background(), access.Actor{Email: "ann"}, "app", Insert("Things", Row{"Name": "cap"})); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	f.queue.Flush()
+	select {
+	case <-f.queue.Refreshed():
+		t.Fatal("a skipped refresh counted as the first")
+	default:
+	}
+	f.queue.Refresh()
+	f.queue.Flush()
+	select {
+	case <-f.queue.Refreshed():
+	default:
+		t.Fatal("a refresh that swapped did not count")
+	}
+}
+
 func TestARefreshSwapsEveryPartOrNone(t *testing.T) {
 	f, s := reportFixture(t)
 	if err := f.dir.Delete("app", "Uses", Row{"By": "bo"}); err != nil {

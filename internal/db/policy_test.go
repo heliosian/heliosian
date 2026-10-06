@@ -52,7 +52,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"PERSON":           {3, 4, 4, 4, 4},
 		"PERSON_EMAIL":     {4, 4, 4, 4, 4},
 		"PERSON_SETTING":   {0, 0, 0, 1, 0},
-		"BIRTHDAY_YEAR":    {1, 1, 1, 1, 1},
+		"BIRTHDAY_YEAR":    {0, 0, 0, 1, 0},
 		"COLLECTION":       {0, 0, 1, 0, 0},
 		"COLLECTION_GROUP": {0, 0, 2, 0, 0},
 		"GROUP":            {0, 14, 14, 16, 0},
@@ -65,7 +65,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"INBOX":            {0, 0, 0, 0, 0},
 		"MESSAGE":          {0, 0, 1, 1, 0},
 		"RECIPIENT":        {0, 0, 1, 1, 0},
-		"CHARITY":          {1, 1, 1, 1, 1},
+		"CHARITY":          {0, 0, 0, 1, 0},
 		"APP":              {0, 1, 1, 1, 0},
 		"ALIAS":            {0, 0, 0, 1, 0},
 	} {
@@ -73,6 +73,33 @@ func TestWhoSeesWhichRows(t *testing.T) {
 			if got := len(as(t, s, viewer, "(from "+table+")")); got != want[i] {
 				t.Errorf("%s as %q: %d rows, want %d", table, viewer, got, want[i])
 			}
+		}
+	}
+}
+
+func TestBirthdaysShowToTheGroupTheAppIsOpenTo(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "birthday", "visible_to": "grp00000000020", "admins": "grp00000000003"})); err != nil {
+		t.Fatal(err)
+	}
+	for i, viewer := range []string{nobody, student, parent, staff, guest} {
+		want := []int{0, 1, 1, 1, 0}[i]
+		for _, table := range []string{"BIRTHDAY_YEAR", "CHARITY"} {
+			if got := len(as(t, s, viewer, "(from "+table+")")); got != want {
+				t.Errorf("%s as %q: %d rows, want %d", table, viewer, got, want)
+			}
+		}
+	}
+}
+
+func TestSuperAdminsReadEveryReport(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, DocumentsSheet, store.Insert("REPORT", store.Row{"id": "rpt00000000001", "app": "who", "kind": "bug", "summary": "Broken", "status": "new", "added_by": parent, "added": "2026-09-01 10:00:00"})); err != nil {
+		t.Fatal(err)
+	}
+	for i, viewer := range []string{nobody, student, parent, staff, guest} {
+		if got, want := len(as(t, s, viewer, "(from REPORT)")), []int{0, 0, 1, 1, 0}[i]; got != want {
+			t.Errorf("as %q: %d reports, want %d", viewer, got, want)
 		}
 	}
 }
