@@ -178,6 +178,8 @@ func main() {
 		body, status, final, err := s.get(address, accept)
 		stop := ""
 		switch {
+		case db.HostGone(err):
+			stop = "gone"
 		case err != nil:
 			slog.Warn("failed", "document", id, "url", address, "error", err)
 			counts["failed"]++

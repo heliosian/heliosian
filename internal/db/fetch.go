@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -153,6 +154,9 @@ func fetchURL(ctx context.Context, doc store.Row) (fetched, error) {
 		return fetched{stop: "refused", why: err.Error()}, nil
 	}
 	resp, err := fetchClient.Do(req)
+	if HostGone(err) {
+		return fetched{stop: "gone", why: err.Error()}, nil
+	}
 	if err != nil {
 		return fetched{}, err
 	}
@@ -214,6 +218,11 @@ func ExportURL(address string) string {
 		return "https://drive.google.com/uc?id=" + parts[at+1] + "&export=download"
 	}
 	return address
+}
+
+func HostGone(err error) bool {
+	var dns *net.DNSError
+	return errors.As(err, &dns) && dns.IsNotFound
 }
 
 func retryAfter(header string) time.Duration {

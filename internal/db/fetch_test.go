@@ -2,12 +2,32 @@ package db
 
 import (
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"heliosian/internal/blob"
 	"heliosian/internal/store"
 )
+
+func TestOnlyAMissingHostIsGone(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		err  error
+		gone bool
+	}{
+		{"no such host", &url.Error{Op: "Get", URL: "http://r560896.example.org/c", Err: &net.OpError{Op: "dial", Err: &net.DNSError{Err: "no such host", Name: "r560896.example.org", IsNotFound: true}}}, true},
+		{"a dns server that timed out", &url.Error{Op: "Get", URL: "http://example.org/", Err: &net.DNSError{Err: "i/o timeout", Name: "example.org", IsTimeout: true}}, false},
+		{"a refused connection", &url.Error{Op: "Get", URL: "http://example.org/", Err: &net.OpError{Op: "dial", Err: errors.New("connection refused")}}, false},
+		{"no error", nil, false},
+	} {
+		if got := HostGone(c.err); got != c.gone {
+			t.Errorf("%s: gone %v, want %v", c.name, got, c.gone)
+		}
+	}
+}
 
 func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 	s, queue := sampleWithQueue(t)
