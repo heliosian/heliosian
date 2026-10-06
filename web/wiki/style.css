@@ -154,8 +154,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .wiki-card-title { font-weight: 700; font-size: 16px; }
 
-.wiki-card-path { font-size: 13px; color: var(--muted); }
-
 .wiki-card-count { flex-shrink: 0; font-size: 13px; color: var(--muted); }
 
 /* Where a page sits: Wiki, then each page above it. */

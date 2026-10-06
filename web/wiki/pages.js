@@ -1,4 +1,5 @@
-import {state, page, pagePath, editPath, childrenOf, hasChildren, trail, under, mine, sidesOf, body, save, remove, picturePath, splitHeader, joinHeader, setHeader} from './state.js';
+import {state, page, pagePath, editPath, childrenOf, hasChildren, trail, under, mine, sidesOf, body, save, remove, picturePath, splitHeader, joinHeader, setHeader, firstSentence} from './state.js';
+import {card} from '/cardgrid.js';
 import {el, svg, link, button, toast, imageThumb} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
 import {navigate, load, notFound} from '/router.js';
@@ -22,22 +23,33 @@ function pathWords(p) {
   return trail(p).map(a => a.name).join(' › ');
 }
 
-function pageCard(p, withPath) {
+function pageCard(p) {
   const card = link(pagePath(p), 'wiki-card');
   const icon = el('span', 'wiki-card-icon');
   icon.append(svg(childrenOf(p.id).length ? 'book' : 'doc'));
   const words = el('span', 'wiki-card-words');
   words.append(el('span', 'wiki-card-title', p.name));
-  const path = withPath && pathWords(p);
-  if (path) {
-    words.append(el('span', 'wiki-card-path', path));
-  }
   card.append(icon, words);
   const count = childrenOf(p.id).length;
   if (count) {
     card.append(el('span', 'wiki-card-count', `${count} ${count === 1 ? 'page' : 'pages'}`));
   }
   return card;
+}
+
+function wikiCard(p, md, withPath) {
+  const count = childrenOf(p.id).length;
+  const open = link(pagePath(p), 'button button-secondary button-small', 'Open');
+  return card({
+    href: pagePath(p),
+    imageUrl: splitHeader(md).header,
+    title: p.name,
+    subtitle: withPath ? pathWords(p) : '',
+    text: firstSentence(md),
+    media: mine(p) ? [el('span', 'card-chip card-chip-mine', 'Yours')] : [],
+    chips: count ? [`${count} ${count === 1 ? 'page' : 'pages'}`] : [],
+    foot: [open],
+  });
 }
 
 function crumbs(p) {
@@ -57,13 +69,26 @@ export function listPage() {
   const actions = el('div');
   actions.append(make);
   out.append(head('Helios Wiki', actions), el('p', 'page-lead', 'Parent-to-parent info: what families have learned, written down for the next ones.'));
-  const list = el('div', 'wiki-list');
+  const list = el('div');
   out.append(list);
-  const show = q => {
+  let asked = 0;
+  const show = async q => {
+    const ask = ++asked;
     const shown = q ? state.pages.filter(p => p.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name)) : childrenOf('');
-    list.replaceChildren(...shown.map(p => pageCard(p, Boolean(q))));
     if (!shown.length) {
-      list.append(el('p', 'panel-empty', state.pages.length ? 'No page has that in its title.' : 'No pages yet. Start the first one.'));
+      list.replaceChildren(el('p', 'panel-empty', state.pages.length ? 'No page has that in its title.' : 'No pages yet. Start the first one.'));
+      return;
+    }
+    try {
+      const texts = await Promise.all(shown.map(p => body(p)));
+      if (ask !== asked) {
+        return;
+      }
+      const grid = el('div', 'card-grid');
+      grid.append(...shown.map((p, i) => wikiCard(p, texts[i], Boolean(q))));
+      list.replaceChildren(grid);
+    } catch (err) {
+      list.replaceChildren(el('p', 'panel-empty', err.message));
     }
   };
   show('');
@@ -181,7 +206,7 @@ export function viewPage(id) {
   });
   if (children.length) {
     const list = el('div', 'wiki-list');
-    list.append(...children.map(c => pageCard(c, false)));
+    list.append(...children.map(c => pageCard(c)));
     main.append(el('h2', 'wiki-section', 'Pages in this section'), list);
   }
   cols.append(main, side);

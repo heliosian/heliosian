@@ -141,6 +141,31 @@ export function splitHeader(md) {
   return {header: value.startsWith(picturePath) ? value : '', text: md.slice(front[0].length)};
 }
 
+export function firstSentence(md) {
+  let fenced = false;
+  for (const line of splitHeader(md).text.split('\n')) {
+    if (line.startsWith('```')) {
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced || /^\s*#{1,6}\s/.test(line)) {
+      continue;
+    }
+    const text = line
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/^\s*(#{1,6}\s|>\s?|[-*]\s+|\d+[.)]\s+)/, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/\*\*|\*|`/g, '')
+      .trim();
+    if (!text) {
+      continue;
+    }
+    const end = text.search(/[.!?](\s|$)/);
+    return end < 0 ? text : text.slice(0, end + 1);
+  }
+  return '';
+}
+
 export function joinHeader(header, text) {
   if (!header) {
     return text;

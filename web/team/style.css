@@ -501,33 +501,9 @@ main {
   flex-shrink: 0;
 }
 
-/* Each card sits in a slot, and a card of its category's colour peeks out
-   from behind it, swung a little from the bottom-right corner the way
-   Helios Who?'s photos have one - further on hover; the gap gives the
-   peeks room. */
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 40px 52px;
-}
+.card-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
 
-.card-slot { position: relative; z-index: 0; display: flex; }
-
-.card-slot > .card { flex: 1; min-width: 0; }
-
-.card-slot::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 14px;
-  background: var(--peek, var(--brand-fill));
-  transform: rotate(1.5deg);
-  transform-origin: bottom right;
-  transition: transform 0.2s ease;
-  z-index: -1;
-}
-
-.card-slot:hover::before { transform: rotate(3deg); }
+.card-slot::before { background: var(--peek, var(--brand-fill)); }
 
 .card-slot.cat-1 { --peek: #ee523c; }
 .card-slot.cat-2 { --peek: var(--cat-teal); }
@@ -536,36 +512,11 @@ main {
 .card-slot.cat-5 { --peek: #4b8a8d; }
 .card-slot.cat-none { --peek: #5f6f6e; }
 
-.card {
-  display: flex;
-  flex-direction: column;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-}
-
 .card.is-muted { opacity: 0.62; }
 
-/* The media is a link, so the fallback initial would otherwise be underlined. */
-.card-media { position: relative; display: block; line-height: 0; text-decoration: none; }
+.card-media .thumb.card-image { height: 150px; display: block; }
 
-.card-media .thumb.card-image {
-  width: 100%;
-  height: 150px;
-  border-radius: 0;
-  object-fit: cover;
-  display: block;
-}
-
-.card-media .thumb.card-image.initial {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 44px;
-  color: var(--brand-fill);
-}
+.card-media .thumb.card-image.initial { font-size: 44px; }
 
 .card-media .thumb.initial.cat-1 { background: #f6cfc7; }
 .card-media .thumb.initial.cat-2 { background: #bfe6e4; }
@@ -575,44 +526,9 @@ main {
 .card-media .thumb.initial.cat-none { background: #e3e7e6; }
 .cat-none { background: #e3e7e6; }
 
-.card-chip {
-  position: absolute;
-  left: 10px;
-  bottom: 10px;
-  max-width: calc(100% - 84px);
-  padding: 5px 11px;
-  border-radius: 999px;
-  background: var(--brand-fill);
-  color: #fff;
-  font-size: 11.5px;
-  font-weight: 700;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.card-chip { position: absolute; left: 10px; bottom: 10px; max-width: calc(100% - 84px); padding: 5px 11px; letter-spacing: normal; text-transform: none; box-shadow: none; }
 
-/* The date stamp is a page off a tear-off calendar: the month as a red band
-   across the top, the day large under it, then the weekday, small and muted. */
-.card-stamp {
-  position: absolute;
-  right: 10px;
-  bottom: -14px;
-  min-width: 52px;
-  padding: 0 0 5px;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
-  text-align: center;
-  line-height: 1.1;
-  overflow: hidden;
-}
-
-.card-stamp-month { padding: 3px 8px; background: #ee523c; color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; }
-
-.card-stamp-day { padding: 4px 8px 0; font-size: 19px; font-weight: 700; color: var(--brand-fill); }
-
-.card-stamp-dow { padding: 1px 8px 0; font-size: 9px; font-weight: 700; color: var(--stamp-muted, var(--muted)); letter-spacing: 0.08em; }
+.card-stamp-month { background: #ee523c; }
 
 .card-stamp-text {
   bottom: 10px;
@@ -623,35 +539,10 @@ main {
   max-width: 45%;
 }
 
-.card-body { padding: 20px 14px 12px; flex: 1; }
+.card-body { padding: 20px 14px 12px; }
 
-.card-title {
-  display: block;
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--brand);
-  text-decoration: none;
-  margin-bottom: 6px;
-}
+.card-title { margin: 0 0 6px; color: var(--brand); }
 
-.card-title:hover { text-decoration: underline; }
-
-.card-text { font-size: 13.5px; color: var(--muted); }
-
-/* The shared .clamp helper is scoped to .row-text, so cards carry their own. */
-.card-text.clamp {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.card-marks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-
-/* The viewer's sign-ups named on an event's card, on My Sign Ups - each a
-   link with a check, and its own date when it has one - closing the card. */
-/* The household's part in the event, under the card's text: my roles, then
-   the rest of the family as a count. */
 .card-roles { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 13px; }
 
 .card-roles-row { display: flex; align-items: flex-start; gap: 7px; }
@@ -662,29 +553,17 @@ main {
 
 .card-role-family { color: var(--muted); }
 
-.card-under { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; padding: 10px 0 4px; border-top: 1px solid var(--line); }
+.card-under { padding: 10px 0 4px; }
 
-.card-under-item { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 13.5px; font-weight: 600; color: var(--brand); text-decoration: none; }
+.card-under-item { flex-wrap: wrap; gap: 4px 8px; text-decoration: none; }
 
 .card-under-item:hover .card-under-title { text-decoration: underline; }
-
-.card-under-item svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
 
 .card-under-item .person-role { margin-top: 0; }
 
 .card-under-item .card-under-edit { margin-left: auto; width: 26px; height: 26px; }
 
 .card-under-when { font-size: 12.5px; font-weight: 500; color: var(--muted); }
-
-.card-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 0 14px 14px;
-}
-
-.card-note { font-size: 12.5px; color: var(--muted); text-align: right; }
 
 .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
 

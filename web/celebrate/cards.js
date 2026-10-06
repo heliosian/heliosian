@@ -1,7 +1,8 @@
 import {partyPath, availabilityLabel, myTickets} from './state.js';
 import {parseWhen} from '/datecard.js';
 import {badge} from './dom.js';
-import {el, link, svg, imageThumb, button} from '/elements.js';
+import {el, link, svg, button} from '/elements.js';
+import {card} from '/cardgrid.js';
 import {openBuy} from './edit.js';
 
 export function statusBadges(p) {
@@ -58,55 +59,26 @@ function footButton(p, mine) {
 }
 
 export function partyCard(p) {
-  const slot = el('div', 'card-slot');
-  slot.append(partyCardBody(p));
-  return slot;
-}
-
-function partyCardBody(p) {
-  const card = el('div', 'card' + (p.status !== 'Open' ? ' is-muted' : ''));
-  const media = link(partyPath(p), 'card-media');
-  media.append(imageThumb(p.imageUrl, p.title, 'card-image'));
+  const past = p.availability === 'past';
+  const media = [];
   const stamp = dateStamp(p);
   if (stamp) {
-    media.append(stamp);
+    media.push(stamp);
   }
   if (p.hosting) {
-    media.append(el('span', 'card-chip card-chip-hosting', 'Hosting'));
+    media.push(el('span', 'card-chip card-chip-mine', 'Hosting'));
   }
-  if (p.availability === 'past') {
-    card.classList.add('is-past');
-    media.append(el('span', 'card-chip card-chip-past', 'Past'));
+  if (past) {
+    media.push(el('span', 'card-chip card-chip-past', 'Past'));
   }
-  if (p.audience) {
-    const chips = el('div', 'card-chips');
-    chips.append(el('span', 'card-chip', p.audience));
-    media.append(chips);
-  }
-  card.append(media);
-  const body = el('div', 'card-body');
-  const title = link(partyPath(p), 'card-title');
-  title.textContent = p.title;
-  body.append(title);
-  if (p.subtitle) {
-    body.append(el('div', 'card-subtitle', p.subtitle));
-  }
-  if (p.summary) {
-    body.append(el('div', 'card-text clamp', p.summary));
-  }
-  const marks = el('div', 'card-marks');
-  for (const b of statusBadges(p)) {
-    marks.append(b);
-  }
+  const marks = statusBadges(p);
   if (p.availability !== 'available') {
-    marks.append(availabilityBadge(p));
-  }
-  if (marks.children.length) {
-    body.append(marks);
+    marks.push(availabilityBadge(p));
   }
   const mine = myTickets(p);
+  let under = null;
   if (mine.length) {
-    const under = el('div', 'card-under');
+    under = el('div', 'card-under');
     for (const a of mine) {
       const item = el('div', 'card-under-item');
       item.append(svg(a.status === 'Ticket' ? 'ticket' : 'hourglass'), el('span', 'card-under-name', a.name));
@@ -115,15 +87,19 @@ function partyCardBody(p) {
       }
       under.append(item);
     }
-    body.append(under);
   }
-  card.append(body);
-  const foot = el('div', 'card-foot');
-  foot.append(footButton(p, mine));
-  const note = spotsNote(p);
-  if (note) {
-    foot.append(el('span', 'card-note', note));
-  }
-  card.append(foot);
-  return card;
+  return card({
+    href: partyPath(p),
+    imageUrl: p.imageUrl,
+    title: p.title,
+    subtitle: p.subtitle,
+    text: p.summary,
+    media,
+    chips: p.audience ? [p.audience] : [],
+    marks,
+    under,
+    foot: [footButton(p, mine)],
+    note: spotsNote(p),
+    className: [p.status !== 'Open' && 'is-muted', past && 'is-past'].filter(Boolean).join(' '),
+  });
 }
