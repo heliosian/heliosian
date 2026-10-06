@@ -397,7 +397,7 @@ export function editPage(id) {
   const text = el('textarea', 'wiki-text');
   text.placeholder = 'Write the page here.';
   text.disabled = Boolean(p);
-  const hint = el('p', 'wiki-hint', 'Markdown works: # Heading, **bold**, *italic*, - a list, [words](https://a.link); Insert Image puts a picture at the cursor.');
+  const hint = el('p', 'wiki-hint', 'Markdown works: # Heading, **bold**, *italic*, - a list, [words](https://a.link), > [!NOTE] (or TIP, IMPORTANT, WARNING, CAUTION) for a callout; Insert Image puts a picture at the cursor.');
   const saveButton = el('button', 'button', 'Save');
   saveButton.type = 'submit';
   const back = p ? pagePath(p) : (parentId ? pagePath(page(parentId)) : '/');
