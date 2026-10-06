@@ -25,6 +25,7 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"heliosian/internal/lru"
+	"heliosian/internal/store"
 
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
@@ -278,11 +279,11 @@ func Register(mux *http.ServeMux, s *Store, folders ...string) {
 	}
 }
 
-func (s *Store) Load(context.Context) (func(), error) {
+func (s *Store) Load(context.Context) (store.Settle, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.named = map[string]bool{}
-	return s.drop, nil
+	return func() (func(), error) { return s.drop, nil }, nil
 }
 
 func (s *Store) drop() {

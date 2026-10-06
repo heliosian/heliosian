@@ -5,23 +5,22 @@ import (
 	"log/slog"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
-type Load func(context.Context) (func(), error)
+type Load func(context.Context) (Settle, error)
+
+type Settle func() (swap func(), err error)
 
 type Queue struct {
 	mu       sync.Mutex
 	cond     *sync.Cond
 	pending  []func()
-	writes   atomic.Int64
 	holds    int
 	draining bool
 	done     chan struct{}
 
 	commits   sync.Mutex
-	cancel    atomic.Pointer[context.CancelFunc]
 	loads     []Load
 	swapped   []func()
 	refreshed chan struct{}
@@ -40,14 +39,6 @@ func (q *Queue) Add(task func()) {
 	defer q.mu.Unlock()
 	q.pending = append(q.pending, task)
 	q.cond.Signal()
-}
-
-func (q *Queue) addWrite(write func()) {
-	q.writes.Add(1)
-	q.Add(func() {
-		write()
-		q.writes.Add(-1)
-	})
 }
 
 func (q *Queue) Hold() {
@@ -128,49 +119,36 @@ func (q *Queue) Refreshed() <-chan struct{} {
 	return q.refreshed
 }
 
-func (q *Queue) interrupt() {
-	if cancel := q.cancel.Swap(nil); cancel != nil {
-		(*cancel)()
-	}
-}
-
 func (q *Queue) refresh() {
 	start := time.Now()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	q.cancel.Store(&cancel)
-	if q.writes.Load() > 0 {
-		q.cancel.CompareAndSwap(&cancel, nil)
-		slog.Info("refresh skipped: a write is waiting")
-		return
-	}
 	q.commits.Lock()
 	loads := slices.Clone(q.loads)
 	q.commits.Unlock()
-	swaps := []func(){}
+	settles := []Settle{}
 	for _, load := range loads {
-		swap, err := load(ctx)
-		if ctx.Err() != nil {
-			slog.Info("refresh abandoned: a commit came in")
+		settle, err := load(context.Background())
+		if err != nil {
+			slog.Error("refresh", "error", err)
 			return
 		}
+		settles = append(settles, settle)
+	}
+	q.commits.Lock()
+	defer q.commits.Unlock()
+	settled := time.Now()
+	swaps := []func(){}
+	for _, settle := range settles {
+		swap, err := settle()
 		if err != nil {
 			slog.Error("refresh", "error", err)
 			return
 		}
 		swaps = append(swaps, swap)
 	}
-	q.commits.Lock()
-	defer q.commits.Unlock()
-	if ctx.Err() != nil {
-		slog.Info("refresh abandoned: a commit came in")
-		return
-	}
-	q.cancel.CompareAndSwap(&cancel, nil)
 	for _, swap := range swaps {
 		swap()
 	}
 	q.afterSwap()
 	q.firstOnce.Do(func() { close(q.refreshed) })
-	slog.Info("refreshed", "took", time.Since(start).Round(time.Millisecond))
+	slog.Info("refreshed", "took", time.Since(start).Round(time.Millisecond), "locked", time.Since(settled).Round(time.Millisecond))
 }

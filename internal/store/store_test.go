@@ -653,7 +653,7 @@ func (p pausedSource) Tabs(ctx context.Context, app string, tables, headers []st
 	return p.Dir.Tabs(ctx, app, tables, headers)
 }
 
-func TestACommitAbandonsTheRefresh(t *testing.T) {
+func TestACommitDuringARefreshIsKeptAndTheRefreshSwaps(t *testing.T) {
 	f := newFixture(t)
 	paused := pausedSource{Dir: f.dir, pause: &atomic.Bool{}, reading: make(chan struct{}), release: make(chan struct{})}
 	other, err := New([]Part[counts]{part()}, consent, paused, f.dir, f.queue)
@@ -671,15 +671,48 @@ func TestACommitAbandonsTheRefresh(t *testing.T) {
 	}
 	close(paused.release)
 	f.queue.Flush()
-	if f.store.Count("app", "Things", Row{"Name": "cap"}) != 1 {
+	if f.store.Count("app", "Things", Row{"Name": "cap"}) != 1 || f.store.Model().things != 3 {
 		t.Fatal("a refresh read before the commit put the older sheet back")
 	}
-	if f.store.Model().uses != 3 || other.Model().uses != 3 {
-		t.Fatal("an abandoned refresh swapped a model in")
+	if f.store.Model().uses != 2 || other.Model().uses != 2 {
+		t.Fatal("a refresh a commit landed in did not swap its read in")
+	}
+	if len(f.rows(t, "Things")) != 3 {
+		t.Fatalf("the sheet after the refresh: %v", f.rows(t, "Things"))
 	}
 }
 
-func TestACommitHeldOverARefreshAbandonsIt(t *testing.T) {
+func TestARefreshThatCannotTakeACommitKeepsTheModel(t *testing.T) {
+	f := newFixture(t)
+	paused := pausedSource{Dir: f.dir, pause: &atomic.Bool{}, reading: make(chan struct{}), release: make(chan struct{})}
+	s, err := New([]Part[counts]{reportPart(), part()}, consent, paused, f.dir, f.queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paused.pause.Store(true)
+	f.queue.Refresh()
+	<-paused.reading
+	if err := f.dir.Insert("app", "Things", []map[string]string{{"Name": "sock"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Commit(context.Background(), access.Actor{Email: "ann"}, "app", Insert("Things", Row{"Name": "cap"})); err != nil {
+		t.Fatal(err)
+	}
+	paused.release <- struct{}{}
+	<-paused.reading
+	paused.release <- struct{}{}
+	f.queue.Flush()
+	if m := s.Model(); m.things != 3 || m.report != 31 {
+		t.Fatalf("a refresh the commit could not be replayed on swapped in: %+v", *m)
+	}
+	select {
+	case <-f.queue.Refreshed():
+		t.Fatal("a refresh that did not swap counted as the first")
+	default:
+	}
+}
+
+func TestACommitHeldOverARefreshIsKept(t *testing.T) {
 	f := newFixture(t)
 	if err := f.dir.Delete("app", "Uses", Row{"By": "bo"}); err != nil {
 		t.Fatal(err)
@@ -702,12 +735,12 @@ func TestACommitHeldOverARefreshAbandonsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.queue.Flush()
-	if f.store.Count("app", "Things", Row{"Name": "cap"}) != 1 || f.store.Model().uses != 3 {
+	if f.store.Count("app", "Things", Row{"Name": "cap"}) != 1 || f.store.Model().uses != 2 {
 		t.Fatal("a refresh waiting out a commit put the older sheet back")
 	}
 }
 
-func TestAWriteWaitingBehindARefreshSkipsIt(t *testing.T) {
+func TestAWriteWaitingBehindARefreshIsKept(t *testing.T) {
 	f := newFixture(t)
 	if err := f.dir.Delete("app", "Uses", Row{"By": "bo"}); err != nil {
 		t.Fatal(err)
@@ -720,12 +753,15 @@ func TestAWriteWaitingBehindARefreshSkipsIt(t *testing.T) {
 	}
 	close(release)
 	f.queue.Flush()
-	if f.store.Count("app", "Things", Row{"Name": "cap"}) != 1 || f.store.Model().uses != 3 {
+	if f.store.Count("app", "Things", Row{"Name": "cap"}) != 1 || f.store.Model().uses != 2 {
 		t.Fatal("a refresh ahead of a commit's write put the older sheet back")
+	}
+	if len(f.rows(t, "Things")) != 3 {
+		t.Fatalf("the sheet after the refresh: %v", f.rows(t, "Things"))
 	}
 }
 
-func TestRefreshedWaitsForARefreshThatSwaps(t *testing.T) {
+func TestRefreshedClosesWithTheFirstRefreshDespiteWrites(t *testing.T) {
 	f := newFixture(t)
 	release := make(chan struct{})
 	f.queue.Add(func() { <-release })
@@ -737,15 +773,8 @@ func TestRefreshedWaitsForARefreshThatSwaps(t *testing.T) {
 	f.queue.Flush()
 	select {
 	case <-f.queue.Refreshed():
-		t.Fatal("a skipped refresh counted as the first")
 	default:
-	}
-	f.queue.Refresh()
-	f.queue.Flush()
-	select {
-	case <-f.queue.Refreshed():
-	default:
-		t.Fatal("a refresh that swapped did not count")
+		t.Fatal("a refresh with a write waiting behind it did not count")
 	}
 }
 

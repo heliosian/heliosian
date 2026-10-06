@@ -26,7 +26,7 @@ func TestOnlyWhatARefreshNamesIsKept(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	Register(mux, s, "pronunciation")
-	swap, err := s.Load(context.Background())
+	settle, err := s.Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,6 +37,10 @@ func TestOnlyWhatARefreshNamesIsKept(t *testing.T) {
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/pronunciation/dropped.m4a", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("serve before the swap: %d", rec.Code)
+	}
+	swap, err := settle()
+	if err != nil {
+		t.Fatal(err)
 	}
 	swap()
 	if _, _, ok := s.Bytes("pronunciation/kept.m4a"); !ok {

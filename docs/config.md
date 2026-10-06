@@ -13,7 +13,7 @@ The `Config` spreadsheet in the community shared drive holds the platform settin
 
 ## Where it is read
 
-The sheet is the config part of the one store (`docs/storage.md`), `Model.Config`, re-read every five minutes like every other sheet. Every signed-in user reads the settings and colors as the `who-settings` resource (`docs/api.md`, Helios Who?), which the directory's client reads beside the directory and looks colors up by grade and classroom name; the servers consult the config part otherwise only for the super admin list (`Model.Config.SuperAdmins`, `Model.IsSuperAdmin`), which gates admin tools in every app and is never serialized to anyone but a super admin (the `super` admin list, `docs/api.md`, Admin lists), and for the sign-out times, which every app's sign-in (`auth.Sessions`, which is `model.Store` itself: `SignedOut` and `SignOut`) checks on every request and which are serialized to nobody.
+The sheet is the config part of the one store (`docs/storage.md`), `Model.Config`, re-read at every refresh like every other sheet. Every signed-in user reads the settings and colors as the `who-settings` resource (`docs/api.md`, Helios Who?), which the directory's client reads beside the directory and looks colors up by grade and classroom name; the servers consult the config part otherwise only for the super admin list (`Model.Config.SuperAdmins`, `Model.IsSuperAdmin`), which gates admin tools in every app and is never serialized to anyone but a super admin (the `super` admin list, `docs/api.md`, Admin lists), and for the sign-out times, which every app's sign-in (`auth.Sessions`, which is `model.Store` itself: `SignedOut` and `SignOut`) checks on every request and which are serialized to nobody.
 
 ## Editing
 

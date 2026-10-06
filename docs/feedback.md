@@ -14,7 +14,7 @@ The handler validates, commits the report as a new row of the Reports tab, made 
 
 One spreadsheet, `FEEDBACK_SHEET`, one tab, `Reports`, one row per report, appended as it arrives and never deleted. Its columns are in `model.ReportColumns`, which `tools/createtabs` writes: the `ID` that names the row, `Received`, the `App` key and `App Name`, `Kind`, `Status`, the reporter's `Summary` and `Details`, their `Email` and `Role`, the page's `URL`, `Page`, `Browser`, `Viewport`, `Screen`, `Language` and `Time Zone`, the `Errors` the page had raised, once an admin has dealt with it the `Issue` it became, when it was `Handled` and by whom, and the `Screenshot`'s object name in the media bucket when one was sent. A sheet laid out before a column existed gets it from a `tools/createtabs` run, which the server's load needs before it will start.
 
-`Status` is the whole of the workflow: `New` until an admin acts, then `Filed` against an issue or `Dismissed` without one. The Feedback sheet is a part of the one store like every app's sheet (`docs/storage.md`): it loads at startup and refreshes on the same five minutes, every change is a commit, and its Change Log holds what a changed cell held before, so the page shows a filing the instant it happens and the status it replaced is on record.
+`Status` is the whole of the workflow: `New` until an admin acts, then `Filed` against an issue or `Dismissed` without one. The Feedback sheet is a part of the one store like every app's sheet (`docs/storage.md`): it loads at startup and refreshes with the rest, every change is a commit, and its Change Log holds what a changed cell held before, so the page shows a filing the instant it happens and the status it replaced is on record.
 
 ## Telling the super admins
 

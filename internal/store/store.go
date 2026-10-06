@@ -12,7 +12,7 @@ import (
 	"heliosian/internal/data"
 )
 
-const refreshInterval = 5 * time.Minute
+const refreshInterval = 30 * time.Minute
 
 type Part[M any] struct {
 	App     string
@@ -46,7 +46,11 @@ func New[M any](parts []Part[M], consent func(m *M) error, source data.Source, w
 		}
 		s.books[p.App] = book
 	}
-	swap, err := s.load(context.Background())
+	settle, err := s.load(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	swap, err := settle()
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +99,7 @@ func order[M any](parts []Part[M]) ([]Part[M], error) {
 	return out, nil
 }
 
-func (s *Store[M]) load(ctx context.Context) (func(), error) {
+func (s *Store[M]) load(ctx context.Context) (Settle, error) {
 	tables := map[string]Tables{}
 	took := map[string]time.Duration{}
 	for _, p := range s.parts {
@@ -107,17 +111,42 @@ func (s *Store[M]) load(ctx context.Context) (func(), error) {
 		tables[p.App] = read
 		took[p.App] = time.Since(start)
 	}
+	replayed := map[string]int{}
+	for app, book := range s.books {
+		plans := book.unwritten()
+		replayed[app] = len(plans)
+		tables[app] = book.replay(tables[app], plans)
+	}
 	model, err := s.build(ctx, tables, new(M), nil, took)
 	if err != nil {
 		return nil, err
 	}
-	return func() {
-		s.mu.Lock()
-		s.tables, s.model = tables, model
-		s.mu.Unlock()
-		for _, p := range s.parts {
-			p.Loaded(model, took[p.App])
+	return func() (func(), error) {
+		next, final := maps.Clone(tables), model
+		changed := map[string]bool{}
+		for app, book := range s.books {
+			plans := book.unwritten()[replayed[app]:]
+			if len(plans) == 0 {
+				continue
+			}
+			next[app] = book.replay(next[app], plans)
+			changed[app] = true
 		}
+		if len(changed) > 0 {
+			rebuilt, err := s.build(ctx, next, model, changed, nil)
+			if err != nil {
+				return nil, err
+			}
+			final = rebuilt
+		}
+		return func() {
+			s.mu.Lock()
+			s.tables, s.model = next, final
+			s.mu.Unlock()
+			for _, p := range s.parts {
+				p.Loaded(final, took[p.App])
+			}
+		}, nil
 	}, nil
 }
 

@@ -235,9 +235,32 @@ func (b *Book) Write(p Plan) <-chan struct{} {
 	b.waiting = append(b.waiting, waitingWrite{plan: p, done: done})
 	if !b.scheduled {
 		b.scheduled = true
-		b.queue.addWrite(b.flush)
+		b.queue.Add(b.flush)
 	}
 	return done
+}
+
+func (b *Book) unwritten() []Plan {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := []Plan{}
+	for _, w := range b.waiting {
+		out = append(out, w.plan)
+	}
+	return out
+}
+
+func (b *Book) replay(tables Tables, plans []Plan) Tables {
+	tables = maps.Clone(tables)
+	for _, p := range plans {
+		for _, op := range p.writes {
+			tables[op.tab], _ = apply(tables[op.tab], op)
+		}
+		if b.changes != oldChangeLog && len(p.log) > 0 {
+			tables[b.changes.Tab] = append(slices.Clone(tables[b.changes.Tab]), p.log...)
+		}
+	}
+	return tables
 }
 
 func (b *Book) flush() {
