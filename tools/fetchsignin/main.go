@@ -144,7 +144,7 @@ func send(c qclient.Client, id string, body []byte, stop string) (answer, error)
 }
 
 func main() {
-	signInGone := flag.Bool("sign-in-gone", false, "mark a document still asking for a sign-in as gone")
+	signInGone := flag.Bool("sign-in-gone", true, "mark a document still asking for a sign-in as gone")
 	flag.Parse()
 	c := qclient.Client{Base: qclient.Production, Key: env.Required("IMPORT_KEY")}
 	if _, err := capture.Start(); err != nil {
