@@ -22,17 +22,22 @@ func TestEachQueuesQueryListsWhatItCounts(t *testing.T) {
 	m := s.Model()
 	counted := map[string]int{}
 	for _, q := range m.queueCounts() {
-		counted[q.Name] = q.Waiting
-		if q.Query == "" {
-			continue
+		counted[q.Name] = q.Pending
+		for _, c := range append([]queueCount{q}, q.Parts...) {
+			if c.Query == "" {
+				continue
+			}
+			if got := len(as(t, s, staff, c.Query)); got != c.Pending {
+				t.Errorf("%s %s: counts %d pending, its query lists %d:\n%s", q.Name, c.Name, c.Pending, got, c.Query)
+			}
 		}
-		if got := len(as(t, s, staff, q.Query)); got != q.Waiting {
-			t.Errorf("%s: counts %d waiting, its query lists %d:\n%s", q.Name, q.Waiting, got, q.Query)
+		for _, p := range q.Parts {
+			counted[q.Name+" "+p.Name] = p.Pending
 		}
 	}
-	for name, want := range map[string]int{"extraction": 2, "fetching": 1, "classifying": 1, "content sweep": 1} {
+	for name, want := range map[string]int{"extraction": 2, "extraction message/rfc822": 1, "extraction text/html": 1, "fetching": 1, "fetching image": 1, "fetching linked": 0, "classifying": 1, "content sweep": 1, "content sweep image/png": 1} {
 		if counted[name] != want {
-			t.Errorf("%s waiting %d, want %d", name, counted[name], want)
+			t.Errorf("%s pending %d, want %d", name, counted[name], want)
 		}
 	}
 	if !m.superAdmin(staff) || m.superAdmin(parent) || m.superAdmin("") {

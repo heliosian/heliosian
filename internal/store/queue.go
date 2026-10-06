@@ -121,7 +121,7 @@ func (q *Queue) Refreshed() <-chan struct{} {
 }
 
 type Status struct {
-	Waiting     int       `json:"waiting"`
+	Pending     int       `json:"pending"`
 	Held        int       `json:"held"`
 	LastRefresh time.Time `json:"lastRefresh"`
 }
@@ -129,7 +129,7 @@ type Status struct {
 func (q *Queue) Status() Status {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	return Status{Waiting: len(q.pending), Held: q.holds, LastRefresh: q.lastRefresh}
+	return Status{Pending: len(q.pending), Held: q.holds, LastRefresh: q.lastRefresh}
 }
 
 func (q *Queue) refresh() {

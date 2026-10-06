@@ -13,12 +13,13 @@ import (
 )
 
 type queueCount struct {
-	Name    string `json:"name"`
-	About   string `json:"about"`
-	Waiting int    `json:"waiting"`
-	Done    int    `json:"done,omitempty"`
-	Total   int    `json:"total,omitempty"`
-	Query   string `json:"query,omitempty"`
+	Name    string       `json:"name"`
+	About   string       `json:"about,omitempty"`
+	Pending int          `json:"pending"`
+	Done    int          `json:"done"`
+	Total   int          `json:"total"`
+	Query   string       `json:"query,omitempty"`
+	Parts   []queueCount `json:"parts,omitempty"`
 }
 
 type queueReport struct {
@@ -39,7 +40,7 @@ func RegisterQueues(mux *http.ServeMux, s *Store, queue *store.Queue, importKey 
 		}
 		status := queue.Status()
 		report := queueReport{Queues: m.queueCounts(), LastRefresh: status.LastRefresh}
-		report.Queues = append(report.Queues, queueCount{Name: "pending writes", About: "commits and refreshes waiting on the write queue, plus work held open", Waiting: status.Waiting + status.Held})
+		report.Queues = append(report.Queues, queueCount{Name: "pending writes", About: "commits and refreshes waiting on the write queue, plus work held open", Pending: status.Pending + status.Held})
 		serve.Write(w, r, http.StatusOK, report)
 	})
 }
@@ -65,59 +66,101 @@ func quoted(values []string) string {
 	return strings.Join(out, " ")
 }
 
+type tally struct {
+	parts map[string]*queueCount
+}
+
+func (t *tally) add(c *queueCount, part string, pending bool) {
+	c.Total++
+	if pending {
+		c.Pending++
+	}
+	if t.parts == nil {
+		t.parts = map[string]*queueCount{}
+	}
+	p := t.parts[part]
+	if p == nil {
+		p = &queueCount{Name: part}
+		t.parts[part] = p
+	}
+	p.Total++
+	if pending {
+		p.Pending++
+	}
+}
+
+func (t *tally) finish(c *queueCount, query func(part string) string) {
+	for _, name := range slices.Sorted(maps.Keys(t.parts)) {
+		p := t.parts[name]
+		p.Done = p.Total - p.Pending
+		p.Query = query(name)
+		c.Parts = append(c.Parts, *p)
+	}
+	c.Done = c.Total - c.Pending
+}
+
 func (m *Model) queueCounts() []queueCount {
-	out := []queueCount{}
 	contents := m.Table("CONTENT")
-	mimes := slices.Collect(maps.Keys(extractors))
+	mimesOf := map[string][]string{}
+	for kind := range extractors {
+		mimesOf[kind] = []string{kind}
+	}
 	for _, c := range contents.All() {
-		if extractable(baseType(c["mime"])) && !slices.Contains(mimes, c["mime"]) {
-			mimes = append(mimes, c["mime"])
+		kind := baseType(c["mime"])
+		if extractable(kind) && !slices.Contains(mimesOf[kind], c["mime"]) {
+			mimesOf[kind] = append(mimesOf[kind], c["mime"])
 		}
 	}
-	slices.Sort(mimes)
-	extraction := queueCount{Name: "extraction", About: "documents whose content the extractor reads, not yet read", Query: `(from DOCUMENT (where (blank extracted) (in content.mime ` + quoted(mimes) + `)))`}
-	fetching := queueCount{Name: "fetching", About: "images and links an email shows, not yet fetched", Query: `(from DOCUMENT (where (in relation "image" "linked") (blank content) (blank fetch)))`}
+	allMimes := []string{}
+	for _, kind := range slices.Sorted(maps.Keys(mimesOf)) {
+		allMimes = append(allMimes, mimesOf[kind]...)
+	}
+	extractionQuery := func(mimes []string) string {
+		return `(from DOCUMENT (where (blank extracted) (in content.mime ` + quoted(mimes) + `)))`
+	}
+	fetchingQuery := func(relations ...string) string {
+		return `(from DOCUMENT (where (in relation ` + quoted(relations) + `) (blank content) (blank fetch)))`
+	}
+	extraction := queueCount{Name: "extraction", About: "documents whose content the extractor reads, not yet read", Query: extractionQuery(allMimes)}
+	fetching := queueCount{Name: "fetching", About: "images and links an email shows, not yet fetched", Query: fetchingQuery("image", "linked")}
 	classifying := queueCount{Name: "classifying", About: "mail sent to no group yet, waiting for Claude to say whom it was written to", Query: `(from DOCUMENT @d (where (= kind "mail") (blank parent) (not (exists DOCUMENT_GROUP (= document @d) (= relation "sent_to")))))`}
+	byType, byRelation := &tally{}, &tally{}
 	links := m.Table("DOCUMENT_GROUP")
 	for _, d := range m.Table("DOCUMENT").All() {
 		if c, ok := contents.Get(d["content"]); ok && extractable(baseType(c["mime"])) {
-			extraction.Total++
-			if d["extracted"] == "" {
-				extraction.Waiting++
-			}
+			byType.add(&extraction, baseType(c["mime"]), d["extracted"] == "")
 		}
 		if d["relation"] == "image" || d["relation"] == "linked" {
-			fetching.Total++
-			if d["content"] == "" && d["fetch"] == "" {
-				fetching.Waiting++
-			}
+			byRelation.add(&fetching, d["relation"], d["content"] == "" && d["fetch"] == "")
 		}
 		if d["kind"] == "mail" && d["parent"] == "" && !slices.ContainsFunc(links.Referencing("document", d["id"]), func(l store.Row) bool { return l["relation"] == "sent_to" }) {
-			classifying.Waiting++
+			classifying.Pending++
 		}
 	}
-	extraction.Done, fetching.Done = extraction.Total-extraction.Waiting, fetching.Total-fetching.Waiting
-	out = append(out, extraction, fetching, classifying)
+	byType.finish(&extraction, func(kind string) string { return extractionQuery(mimesOf[kind]) })
+	byRelation.finish(&fetching, func(relation string) string { return fetchingQuery(relation) })
+	out := []queueCount{extraction, fetching, classifying}
 
 	search := queueCount{Name: "search indexing", About: "groups, people and extracts whose search entry Claude and Vertex have not made yet", Query: `(from SEARCH (where (not made)))`}
+	byTable := &tally{}
 	searchTable, _ := Lookup("SEARCH")
 	for _, row := range m.generated(searchTable).rows {
-		search.Total++
-		if !strings.EqualFold(row["made"], "yes") {
-			search.Waiting++
-		}
+		table, _ := TableOf(row["target"])
+		byTable.add(&search, table, !strings.EqualFold(row["made"], "yes"))
 	}
-	search.Done = search.Total - search.Waiting
+	byTable.finish(&search, func(table string) string {
+		return `(from SEARCH @s (where (not made) (exists ` + table + ` (= id @s.target))))`
+	})
 	out = append(out, search)
 
 	photos := queueCount{Name: "photos", About: "photos whose re-encode, crop and thumbnail are not made for the current original and box", Query: `(from PHOTO (where (not ready)))`}
 	for _, row := range m.Table("PHOTO").All() {
 		photos.Total++
 		if !strings.EqualFold(row["ready"], "yes") {
-			photos.Waiting++
+			photos.Pending++
 		}
 	}
-	photos.Done = photos.Total - photos.Waiting
+	photos.Done = photos.Total - photos.Pending
 	out = append(out, photos)
 
 	refs := []string{}
@@ -131,6 +174,17 @@ func (m *Model) queueCounts() []queueCount {
 			}
 		}
 	}
-	out = append(out, queueCount{Name: "content sweep", About: "stored content no row refers to, which the sweeper deletes with its object", Waiting: len(m.unreferencedContent()), Query: `(from CONTENT @c (where ` + strings.Join(refs, " ") + `))`})
-	return out
+	sweepQuery := func(also string) string {
+		return `(from CONTENT @c (where ` + also + strings.Join(refs, " ") + `))`
+	}
+	sweep := queueCount{Name: "content sweep", About: "stored content no row refers to, which the sweeper deletes with its object", Query: sweepQuery("")}
+	byMime := map[string]int{}
+	for _, c := range m.unreferencedContent() {
+		sweep.Pending++
+		byMime[c["mime"]]++
+	}
+	for _, mimeType := range slices.Sorted(maps.Keys(byMime)) {
+		sweep.Parts = append(sweep.Parts, queueCount{Name: baseType(mimeType), Pending: byMime[mimeType], Query: sweepQuery(`(= mime ` + strconv.Quote(mimeType) + `) `)})
+	}
+	return append(out, sweep)
 }

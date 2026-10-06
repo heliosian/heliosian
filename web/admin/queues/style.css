@@ -18,7 +18,8 @@
   vertical-align: middle;
 }
 
-#queues .num {
+#queues th.num,
+#queues td.num {
   text-align: right;
   font-family: var(--mono);
   white-space: nowrap;
@@ -34,30 +35,26 @@
   color: var(--accent);
 }
 
-#queues tr.busy .num:nth-child(2) {
+#queues tr.part td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 13px;
+}
+
+#queues tr.part .name {
+  padding-left: 28px;
+}
+
+#queues tr.part .name a {
+  font-weight: 400;
+}
+
+#queues tr.busy .pending {
   color: var(--hit);
 }
 
-#queues tr.idle .num:nth-child(2) {
+#queues tr.idle .pending {
   color: var(--faint);
-}
-
-#queues .bar {
-  width: 160px;
-}
-
-#queues .track {
-  display: block;
-  height: 6px;
-  background: var(--raise);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-#queues .fill {
-  display: block;
-  height: 100%;
-  background: var(--accent);
 }
 
 #queues .about {
