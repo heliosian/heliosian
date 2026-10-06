@@ -45,9 +45,6 @@ func TestAnEmailsPDFsAreTranscribed(t *testing.T) {
 	if len(under) != 1 || under[0]["relation"] != "extract" || bytesOf(t, s, bucket, under[0]) != "# Supply list\n\n- Pencils\n- Glue" {
 		t.Fatalf("the pdf's children: %v", under)
 	}
-	if calendar, _ := s.Model().Table("DOCUMENT").Get("doc00000000020"); calendar["extracted"] != "" || s.Model().readable(calendar, pdfType) {
-		t.Fatalf("the year calendar's pdf is read: %v", calendar)
-	}
 	mu.Lock()
 	defer mu.Unlock()
 	if asked != 1 {

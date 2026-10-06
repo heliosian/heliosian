@@ -13,12 +13,13 @@ type Load func(context.Context) (Settle, error)
 type Settle func() (swap func(), err error)
 
 type Queue struct {
-	mu       sync.Mutex
-	cond     *sync.Cond
-	pending  []func()
-	holds    int
-	draining bool
-	done     chan struct{}
+	mu          sync.Mutex
+	cond        *sync.Cond
+	pending     []func()
+	holds       int
+	draining    bool
+	done        chan struct{}
+	lastRefresh time.Time
 
 	commits   sync.Mutex
 	loads     []Load
@@ -119,6 +120,18 @@ func (q *Queue) Refreshed() <-chan struct{} {
 	return q.refreshed
 }
 
+type Status struct {
+	Waiting     int       `json:"waiting"`
+	Held        int       `json:"held"`
+	LastRefresh time.Time `json:"lastRefresh"`
+}
+
+func (q *Queue) Status() Status {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return Status{Waiting: len(q.pending), Held: q.holds, LastRefresh: q.lastRefresh}
+}
+
 func (q *Queue) refresh() {
 	start := time.Now()
 	q.commits.Lock()
@@ -149,6 +162,9 @@ func (q *Queue) refresh() {
 		swap()
 	}
 	q.afterSwap()
+	q.mu.Lock()
+	q.lastRefresh = time.Now()
+	q.mu.Unlock()
 	q.firstOnce.Do(func() { close(q.refreshed) })
 	slog.Info("refreshed", "took", time.Since(start).Round(time.Millisecond), "locked", time.Since(settled).Round(time.Millisecond))
 }

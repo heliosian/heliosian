@@ -15,7 +15,6 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -51,10 +50,29 @@ type extracted struct {
 	title, skip                string
 }
 
-var extractors = map[string]func([]byte) ([]extracted, error){
-	"message/rfc822": mailParts,
-	"text/html":      htmlMarkdown,
-	"text/plain":     textMarkdown,
+type extractFunc func(x *Extractor, ctx context.Context, m *Model, doc, content store.Row, raw []byte) ([]extracted, error)
+
+var extractors = map[string]extractFunc{
+	"message/rfc822": bytesOnly(mailParts),
+	"text/html":      bytesOnly(htmlMarkdown),
+	"text/plain":     bytesOnly(textMarkdown),
+	// "application/pdf": (*Extractor).readPDF,
+	// "image/jpeg":      (*Extractor).readImage,
+	// "image/png":       (*Extractor).readImage,
+	// "image/gif":       (*Extractor).readImage,
+	// "image/webp":      (*Extractor).readImage,
+	// "image/bmp":       (*Extractor).readImage,
+}
+
+func bytesOnly(read func([]byte) ([]extracted, error)) extractFunc {
+	return func(_ *Extractor, _ context.Context, _ *Model, _, _ store.Row, raw []byte) ([]extracted, error) {
+		return read(raw)
+	}
+}
+
+func extractable(kind string) bool {
+	_, ok := extractors[kind]
+	return ok
 }
 
 func NewExtractor(s *Store, queue *store.Queue, bucket *blob.Bucket, anthropicKey string) *Extractor {
@@ -118,24 +136,11 @@ func (x *Extractor) pending() []string {
 		if !ok {
 			continue
 		}
-		if m.readable(row, baseType(c["mime"])) {
+		if extractable(baseType(c["mime"])) {
 			out = append(out, row["id"])
 		}
 	}
 	return out
-}
-
-func isImage(kind string) bool {
-	return strings.HasPrefix(kind, "image/")
-}
-
-func (m *Model) readable(doc store.Row, kind string) bool {
-	_, ok := extractors[kind]
-	return ok
-}
-
-func transcribable(kind string) bool {
-	return isImage(kind) || kind == pdfType
 }
 
 func mailParts(raw []byte) ([]extracted, error) {
@@ -238,8 +243,8 @@ func (x *Extractor) extract(id string) (int, error) {
 		return 0, fmt.Errorf("its content %s is missing", doc["content"])
 	}
 	kind := baseType(content["mime"])
-	read := extractors[kind]
-	if !m.readable(doc, kind) {
+	read, ok := extractors[kind]
+	if !ok {
 		return 0, nil
 	}
 	children := []extracted{}
@@ -249,15 +254,7 @@ func (x *Extractor) extract(id string) (int, error) {
 		if raw, _, err = x.bucket.Get(ctx, content["blob"]); err != nil {
 			return 0, err
 		}
-		switch {
-		case isImage(kind):
-			children, err = x.readImage(ctx, m, id, content, raw)
-		case kind == pdfType:
-			children, err = x.readPDF(ctx, m, doc, content, raw)
-		default:
-			children, err = read(raw)
-		}
-		if err != nil {
+		if children, err = read(x, ctx, m, doc, content, raw); err != nil {
 			return 0, err
 		}
 	}

@@ -209,7 +209,7 @@ func NewCore(cfg Config) *Core {
 	askAbout := ask.About(appName("ask"), taglineOf("ask"))
 	adminMux := http.NewServeMux()
 	adminMux.Handle("GET /{$}", http.RedirectHandler("/resources", http.StatusFound))
-	for _, page := range []string{"resources", "query", "search", "policies", "erd"} {
+	for _, page := range []string{"resources", "query", "search", "queues", "policies", "erd"} {
 		adminMux.HandleFunc("GET /"+page, func(w http.ResponseWriter, r *http.Request) {
 			serve.File(w, r, "web/admin/"+page+"/index.html")
 		})
@@ -268,6 +268,7 @@ func NewCore(cfg Config) *Core {
 		blob.Register(a.Mux, cfg.Store, folders...)
 	}
 	db.RegisterCompose(adminMux, dataStore, cfg.Composer, cfg.ImportKey, schoolNow)
+	db.RegisterQueues(adminMux, dataStore, queue, cfg.ImportKey, schoolNow)
 	go queue.Tick()
 	go func() {
 		<-queue.Refreshed()

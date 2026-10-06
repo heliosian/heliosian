@@ -1,0 +1,70 @@
+#queues {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+#queues th {
+  padding: 6px 10px;
+  text-align: left;
+  color: var(--dim);
+  font-weight: 400;
+  border-bottom: 1px solid var(--line);
+}
+
+#queues td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+#queues .num {
+  text-align: right;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+#queues .name a {
+  color: var(--k);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+#queues .name a:hover {
+  color: var(--accent);
+}
+
+#queues tr.busy .num:nth-child(2) {
+  color: var(--hit);
+}
+
+#queues tr.idle .num:nth-child(2) {
+  color: var(--faint);
+}
+
+#queues .bar {
+  width: 160px;
+}
+
+#queues .track {
+  display: block;
+  height: 6px;
+  background: var(--raise);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#queues .fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+#queues .about {
+  color: var(--dim);
+  font-size: 13px;
+}
+
+#reload {
+  margin-left: auto;
+}

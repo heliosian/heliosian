@@ -89,7 +89,8 @@ func transcribed(text string, err error) ([]extracted, error) {
 	return markdownExtract(text), nil
 }
 
-func (x *Extractor) readImage(ctx context.Context, m *Model, id string, content store.Row, raw []byte) ([]extracted, error) {
+func (x *Extractor) readImage(ctx context.Context, m *Model, doc, content store.Row, raw []byte) ([]extracted, error) {
+	id := doc["id"]
 	if before, read, err := x.readBefore(ctx, m, id, content); read || err != nil {
 		return before, err
 	}

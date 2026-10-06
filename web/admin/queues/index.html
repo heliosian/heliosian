@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Queues · Helios Admin</title>
+<link rel="stylesheet" href="/chrome.css">
+<link rel="stylesheet" href="/queues/style.css">
+</head>
+<body>
+<header>
+<div class="tools">
+<h1>queues<span class="sub">/ the server's background work, as it stands</span></h1>
+<span id="summary" class="summary"></span>
+<button id="reload" type="button">refresh</button>
+</div>
+</header>
+<main>
+<table id="queues">
+<thead><tr><th>queue</th><th class="num">waiting</th><th class="num">done</th><th class="bar"></th><th>what it is</th></tr></thead>
+<tbody></tbody>
+</table>
+</main>
+<script type="module" src="/queues/start.js"></script>
+</body>
+</html>
