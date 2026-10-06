@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"maps"
 	"strings"
+	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/store"
+	"heliosian/internal/trace"
 )
 
 type Edit struct {
@@ -96,9 +98,22 @@ func resolve(text string, names map[string]string) (string, error) {
 func Write(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, b Batch) ([]string, error) {
 	written := []string{}
 	whole := env.System == importReader
-	authorize := func(m *Model, c Change) error { return m.Authorize(env, c) }
+	span := trace.From(ctx)
+	authorizing, staging, firing := span.Tally("authorize"), span.Tally("stage"), span.Tally("fire")
+	var authorized time.Duration
+	authorize := func(m *Model, c Change) error {
+		start := time.Now()
+		err := m.Authorize(env, c)
+		authorized += time.Since(start)
+		authorizing.Add(time.Since(start))
+		return err
+	}
 	names := map[string]string{}
+	waiting := span.Start("lock")
+	var committing *trace.Span
 	_, err := queue.Transact(ctx, actor, func(tx *store.Tx) error {
+		waiting.End()
+		defer func() { committing = span.Start("commit") }()
 		for i, w := range b.Batch {
 			where := fmt.Sprintf("batch[%d]", i)
 			if w.As != "" {
@@ -109,14 +124,20 @@ func Write(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, ac
 					return access.Invalid("%s: the batch names two rows %s", where, w.As)
 				}
 			}
+			authorized = 0
+			start := time.Now()
 			id, c, err := stageWrite(s, tx, w, where, names, whole, authorize)
+			staging.Add(time.Since(start) - authorized)
 			if err != nil {
 				return err
 			}
 			if w.As != "" {
 				names[w.As] = id
 			}
-			if err := fire(s, tx, c, where); err != nil {
+			start = time.Now()
+			err = fire(s, tx, c, where)
+			firing.Add(time.Since(start))
+			if err != nil {
 				return err
 			}
 			pics.watch(tx, c)
@@ -124,6 +145,7 @@ func Write(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, ac
 		}
 		return nil
 	})
+	committing.End()
 	if err != nil {
 		return nil, err
 	}

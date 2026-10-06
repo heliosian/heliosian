@@ -153,7 +153,10 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 			return
 		}
 		slog.InfoContext(r.Context(), "write", "viewer", env.Viewer, "system", env.System, "writes", len(b.Batch))
-		ids, err := Write(r.Context(), s, queue, pics, actor, env, b)
+		root := trace.New("request")
+		ids, err := Write(trace.With(r.Context(), root), s, queue, pics, actor, env, b)
+		root.End()
+		w.Header().Set("Trace", root.Header())
 		if err != nil {
 			serve.Error(w, r, err)
 			return

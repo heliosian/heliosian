@@ -229,6 +229,30 @@ func TestServeQueryRefuses(t *testing.T) {
 	}
 }
 
+func TestServeWriteTrace(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	rec := send(t, s, queue, http.MethodPost, "application/json", "rowan.ashdown@example.org", `{"batch": [
+		{"insert": "MEMBER", "row": {"group": "grp00000000043", "person": "per00000000002", "member": "yes"}},
+		{"insert": "MEMBER", "row": {"group": "grp00000000042", "person": "per00000000004", "member": "yes"}}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("write: %d %s", rec.Code, rec.Body.String())
+	}
+	var root trace.Span
+	if err := json.Unmarshal([]byte(rec.Header().Get("Trace")), &root); err != nil {
+		t.Fatalf("Trace header %q: %v", rec.Header().Get("Trace"), err)
+	}
+	if root.Name != "request" || root.CPU == nil {
+		t.Fatalf("root span %q", rec.Header().Get("Trace"))
+	}
+	child(t, &root, "lock")
+	child(t, &root, "commit")
+	for _, name := range []string{"authorize", "stage", "fire"} {
+		if tally := child(t, &root, name); tally.Count != 2 {
+			t.Errorf("%s ran %d times, want once per write", name, tally.Count)
+		}
+	}
+}
+
 func TestServeWrites(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	write := func(as, batch string) (int, string) {
