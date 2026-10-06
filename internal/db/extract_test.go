@@ -137,8 +137,9 @@ func TestMailIsReadIntoATree(t *testing.T) {
 			t.Fatalf("an extract was read again: %v", children(s, row["id"]))
 		}
 	}
-	if parts[2]["extracted"] != "" {
-		t.Fatalf("an image with no extractor was marked extracted: %v", parts[2])
+	made(t, s, "DOCUMENT", parts[2]["id"], "extracted")
+	if under := children(s, parts[2]["id"]); len(under) != 0 {
+		t.Fatalf("a logo too small to hold anything was transcribed: %v", under)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"io"
 	"log/slog"
 	"mime/multipart"
@@ -143,6 +144,8 @@ func send(c qclient.Client, id string, body []byte, stop string) (answer, error)
 }
 
 func main() {
+	signInGone := flag.Bool("sign-in-gone", false, "mark a document still asking for a sign-in as gone")
+	flag.Parse()
 	c := qclient.Client{Base: qclient.Production, Key: env.Required("IMPORT_KEY")}
 	if _, err := capture.Start(); err != nil {
 		logging.Fatal("start capture browser", "error", err)
@@ -180,6 +183,10 @@ func main() {
 			counts["failed"]++
 			continue
 		case host(final) == googleSignIn || status == http.StatusUnauthorized || status == http.StatusForbidden:
+			if *signInGone {
+				stop = "gone"
+				break
+			}
 			slog.Warn("still needs a sign-in", "document", id, "url", address, "status", status, "page", final)
 			counts["sign_in"]++
 			continue

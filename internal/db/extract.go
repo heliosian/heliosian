@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -113,11 +114,16 @@ func (x *Extractor) pending() []string {
 		if !ok {
 			continue
 		}
-		if _, ok := extractors[baseType(c["mime"])]; ok {
+		kind := baseType(c["mime"])
+		if _, ok := extractors[kind]; ok || isImage(kind) {
 			out = append(out, row["id"])
 		}
 	}
 	return out
+}
+
+func isImage(kind string) bool {
+	return strings.HasPrefix(kind, "image/")
 }
 
 func mailParts(raw []byte) ([]extracted, error) {
@@ -219,18 +225,24 @@ func (x *Extractor) extract(id string) (int, error) {
 	if !ok {
 		return 0, fmt.Errorf("its content %s is missing", doc["content"])
 	}
-	read, ok := extractors[baseType(content["mime"])]
-	if !ok {
+	kind := baseType(content["mime"])
+	read, ok := extractors[kind]
+	if !ok && !isImage(kind) {
 		return 0, nil
 	}
 	children := []extracted{}
 	var raw []byte
-	if baseType(content["mime"]) != "text/plain" || !m.htmlAlongside(doc) {
+	if kind != "text/plain" || !m.htmlAlongside(doc) {
 		var err error
 		if raw, _, err = x.bucket.Get(ctx, content["blob"]); err != nil {
 			return 0, err
 		}
-		if children, err = read(raw); err != nil {
+		if isImage(kind) {
+			children, err = x.readImage(ctx, m, id, content, raw)
+		} else {
+			children, err = read(raw)
+		}
+		if err != nil {
 			return 0, err
 		}
 	}
